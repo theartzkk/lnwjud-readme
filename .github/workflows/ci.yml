@@ -152,3 +152,30 @@ jobs:
             throw "Packaged main module did not receive the smoke argument: $($boot | ConvertTo-Json -Compress)"
           }
           Write-Host "Packaged Windows main module boot verified at stage '$($boot.stage)'. Full BrowserWindow runtime is verified separately under Xvfb because the GitHub-hosted Windows runner has no interactive display driver."
+
+  lockfile-once:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/agent/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Generate and commit package-lock.json once
+        run: |
+          if [ -f package-lock.json ]; then
+            echo 'package-lock.json already exists; nothing to do.'
+            exit 0
+          fi
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          test -f package-lock.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package-lock.json
+          git commit -m 'Lock Art Agent dependencies'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
