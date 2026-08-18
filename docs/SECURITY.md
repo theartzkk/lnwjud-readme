@@ -37,7 +37,7 @@ Art Agent resolves executable names from `PATH` itself and launches the resultin
 
 `project_command` only accepts one of `test`, `lint`, `typecheck`, or `build`. The package manager is selected from a fixed set (`npm`, `pnpm`, `yarn`) and no free-form command string is accepted from the MCP caller.
 
-On Windows, npm/pnpm/yarn are commonly `.cmd` shims. Art Agent therefore uses the system `cmd.exe` only as an internal fixed launcher for the resolved package-manager shim. The package-manager name and script name are not arbitrary user strings. No general `cmd`, PowerShell, or shell MCP tool is exposed.
+On Windows, npm/pnpm/yarn are commonly `.cmd` shims. Art Agent does **not** hand those shims to a general command shell. It resolves a known JavaScript CLI layout next to the package-manager shim and invokes that CLI with the current `node.exe`. If no recognized safe launcher is found, the operation fails closed.
 
 Package scripts themselves are executable project code and inherit the Art Agent process environment. For that reason execution is opt-in and remote transport is not enabled in the MVP.
 

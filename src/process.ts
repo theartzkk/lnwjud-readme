@@ -1,6 +1,6 @@
 import { access } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { delimiter, extname, isAbsolute, join } from 'node:path';
+import { delimiter, dirname, extname, isAbsolute, join } from 'node:path';
 import { spawn } from 'node:child_process';
 
 export interface ExecResult {
@@ -87,12 +87,46 @@ export async function execCommand(
   return execFile(executable, args, cwd, timeoutMs);
 }
 
+async function firstExisting(paths: string[]): Promise<string | undefined> {
+  for (const path of paths) {
+    try {
+      await access(path, constants.F_OK);
+      return path;
+    } catch {
+      // Try the next known CLI layout.
+    }
+  }
+  return undefined;
+}
+
+async function resolveWindowsPackageCli(manager: 'npm' | 'pnpm' | 'yarn', managerPath: string): Promise<string> {
+  const binDir = dirname(managerPath);
+  const candidates = manager === 'npm'
+    ? [join(binDir, 'node_modules', 'npm', 'bin', 'npm-cli.js')]
+    : manager === 'pnpm'
+      ? [
+          join(binDir, 'node_modules', 'corepack', 'dist', 'pnpm.js'),
+          join(binDir, 'node_modules', 'pnpm', 'bin', 'pnpm.cjs'),
+          join(binDir, 'node_modules', 'pnpm', 'bin', 'pnpm.js'),
+        ]
+      : [
+          join(binDir, 'node_modules', 'corepack', 'dist', 'yarn.js'),
+          join(binDir, 'node_modules', 'yarn', 'bin', 'yarn.js'),
+        ];
+
+  const cli = await firstExisting(candidates);
+  if (!cli) {
+    throw new Error(`Safe Windows ${manager} JavaScript launcher was not found next to ${managerPath}`);
+  }
+  return cli;
+}
+
 export async function runPackageScript(
   cwd: string,
   packageManager: string | undefined,
   command: 'test' | 'lint' | 'typecheck' | 'build',
 ): Promise<ExecResult> {
-  const manager = packageManager?.startsWith('pnpm@')
+  const manager: 'npm' | 'pnpm' | 'yarn' = packageManager?.startsWith('pnpm@')
     ? 'pnpm'
     : packageManager?.startsWith('yarn@')
       ? 'yarn'
@@ -101,12 +135,8 @@ export async function runPackageScript(
   const managerArgs = manager === 'npm' ? ['run', command] : [command];
 
   if (process.platform === 'win32' && ['.cmd', '.bat'].includes(extname(managerPath).toLowerCase())) {
-    const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
-    const cmdPath = join(systemRoot, 'System32', 'cmd.exe');
-    await access(cmdPath, constants.F_OK);
-    const safeManagerPath = managerPath.replaceAll('"', '""');
-    const commandLine = `""${safeManagerPath}" ${managerArgs.join(' ')}"`;
-    return execFile(cmdPath, ['/d', '/s', '/c', commandLine], cwd, 15 * 60_000);
+    const cli = await resolveWindowsPackageCli(manager, managerPath);
+    return execFile(process.execPath, [cli, ...managerArgs], cwd, 15 * 60_000);
   }
 
   return execFile(managerPath, managerArgs, cwd, 15 * 60_000);
