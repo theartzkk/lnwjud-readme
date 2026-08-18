@@ -1,11 +1,10 @@
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import type { ArtAgentConfig } from './config.js';
 import { AuditLog } from './audit.js';
 import { listWorkspace, readTextFile, searchText, writeTextFile } from './files.js';
-import { execFile, gitDiff, gitLog, gitStatus } from './git.js';
+import { gitDiff, gitLog, gitStatus } from './git.js';
+import { runPackageScript } from './process.js';
 import { SecurityError } from './security.js';
 
 function text(value: unknown, isError = false) {
@@ -158,7 +157,7 @@ export function createServer(config: ArtAgentConfig, workspace: string): McpServ
   server.registerTool(
     'project_command',
     {
-      description: 'Run a named package.json script (test, lint, typecheck, build) with shell=false. Disabled unless ART_AGENT_ALLOW_EXEC=1.',
+      description: 'Run a named package.json script (test, lint, typecheck, build). Disabled unless ART_AGENT_ALLOW_EXEC=1.',
       inputSchema: z.object({ command: z.enum(['test', 'lint', 'typecheck', 'build']) }),
     },
     async ({ command }) => {
@@ -167,12 +166,11 @@ export function createServer(config: ArtAgentConfig, workspace: string): McpServ
         return text({ error: 'EXEC_DISABLED', message: 'Set ART_AGENT_ALLOW_EXEC=1 to enable approved project commands.' }, true);
       }
       try {
-        const packageJson = JSON.parse(await readFile(join(workspace, 'package.json'), 'utf8')) as { packageManager?: string; scripts?: Record<string, string> };
+        const packageText = await readTextFile(workspace, 'package.json', 512 * 1024);
+        const packageJson = JSON.parse(packageText) as { packageManager?: string; scripts?: Record<string, string> };
         if (!packageJson.scripts?.[command]) return text({ error: 'SCRIPT_NOT_FOUND', command }, true);
-        const manager = packageJson.packageManager?.startsWith('pnpm@') ? 'pnpm' : packageJson.packageManager?.startsWith('yarn@') ? 'yarn' : 'npm';
-        const args = manager === 'npm' ? ['run', command] : [command];
-        const result = await execFile(manager, args, workspace, 15 * 60_000);
-        await audit.write({ tool: 'project_command', outcome: result.code === 0 ? 'allowed' : 'error', detail: `${manager} ${args.join(' ')} => ${result.code}` });
+        const result = await runPackageScript(workspace, packageJson.packageManager, command);
+        await audit.write({ tool: 'project_command', outcome: result.code === 0 ? 'allowed' : 'error', detail: `${command} => ${result.code}` });
         return text(result, result.code !== 0);
       } catch (error) {
         await audit.write({ tool: 'project_command', outcome: 'error', detail: `${command}: ${error instanceof Error ? error.message : String(error)}` });

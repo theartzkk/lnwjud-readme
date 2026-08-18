@@ -15,7 +15,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test test/security.test.ts"
+    "test": "node --import tsx --test test/security.test.ts test/files.test.ts test/git.test.ts test/process.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",
