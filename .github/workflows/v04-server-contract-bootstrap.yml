@@ -1,0 +1,202 @@
+name: v0.4 server contract bootstrap
+
+on:
+  push:
+    branches: ['agent/art-agent-v0.4-context-economy']
+
+permissions:
+  contents: write
+
+jobs:
+  migrate-server-contract:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Apply exact MCP contract migration
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/server.ts')
+          text = path.read_text(encoding='utf-8')
+
+          def replace_once(old: str, new: str, label: str):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one anchor, found {count}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              "import { listWorkspace, readTextFile, searchText, writeTextFile } from './files.js';",
+              "import { listWorkspace, readTextFile, readTextPage, searchText, writeTextFile } from './files.js';",
+              'files import',
+          )
+          replace_once(
+              "import { gitDiff, gitLog, gitStatus } from './git.js';",
+              "import { gitDiffPage, gitLog, gitStatus } from './git.js';",
+              'git import',
+          )
+
+          replace_once('''  server.registerTool(
+    'workspace_tree',
+    {
+      description: 'List a bounded workspace tree; vendor/build directories are skipped automatically',
+      inputSchema: z.object({ depth: z.number().int().min(0).max(6).default(2) }),
+    },
+    async ({ depth }) => {
+      try {
+        return text(await listWorkspace(workspace, depth));
+      } catch (error) {
+        return errorText(error);
+      }
+    },
+  );''', '''  server.registerTool(
+    'workspace_tree',
+    {
+      description: 'List a bounded workspace tree; vendor/build directories are skipped automatically',
+      inputSchema: z.object({
+        depth: z.number().int().min(0).max(6).default(2),
+        limit: z.number().int().min(1).max(300).default(100),
+      }),
+    },
+    async ({ depth, limit }) => {
+      try {
+        return text(await listWorkspace(workspace, depth, limit));
+      } catch (error) {
+        return errorText(error);
+      }
+    },
+  );''', 'workspace_tree')
+
+          replace_once('''  server.registerTool(
+    'read_file',
+    {
+      description: 'Read a UTF-8 text file inside the workspace. Secret files and path escapes are blocked.',
+      inputSchema: z.object({ path: z.string().min(1) }),
+    },
+    async ({ path }) => {
+      try {
+        const value = await readTextFile(workspace, path, config.maxReadBytes);
+        await audit.write({ tool: 'read_file', outcome: 'allowed', detail: path });
+        return text(value);
+      } catch (error) {
+        await audit.write({ tool: 'read_file', outcome: 'denied', detail: `${path}: ${error instanceof Error ? error.message : String(error)}` });
+        return errorText(error);
+      }
+    },
+  );''', '''  server.registerTool(
+    'read_file',
+    {
+      description: 'Read one bounded page of a UTF-8 workspace file. Secret files and path escapes are blocked. Re-send a prior digest as knownDigest to suppress unchanged content.',
+      inputSchema: z.object({
+        path: z.string().min(1),
+        startLine: z.number().int().min(1).max(10_000_000).default(1),
+        maxLines: z.number().int().min(1).max(500).default(200),
+        knownDigest: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+      }),
+    },
+    async ({ path, startLine, maxLines, knownDigest }) => {
+      try {
+        const page = await readTextPage(workspace, path, config.maxReadBytes, { startLine, maxLines, knownDigest });
+        await audit.write({
+          tool: 'read_file',
+          outcome: 'allowed',
+          detail: `${path}: lines ${page.startLine}-${page.endLine}/${page.totalLines}${page.unchanged ? ' unchanged' : ''}`,
+        });
+        return text({ path, ...page });
+      } catch (error) {
+        await audit.write({ tool: 'read_file', outcome: 'denied', detail: `${path}: ${error instanceof Error ? error.message : String(error)}` });
+        return errorText(error);
+      }
+    },
+  );''', 'read_file')
+
+          replace_once('''  server.registerTool(
+    'search_text',
+    {
+      description: 'Search text recursively inside normal project files with bounded results',
+      inputSchema: z.object({ query: z.string().min(1).max(200) }),
+    },
+    async ({ query }) => {
+      try {
+        return text(await searchText(workspace, query, config.maxSearchResults));
+      } catch (error) {
+        return errorText(error);
+      }
+    },
+  );''', '''  server.registerTool(
+    'search_text',
+    {
+      description: 'Search text recursively inside normal project files with bounded results',
+      inputSchema: z.object({
+        query: z.string().min(1).max(200),
+        limit: z.number().int().min(1).max(100).default(25),
+      }),
+    },
+    async ({ query, limit }) => {
+      try {
+        return text(await searchText(workspace, query, Math.min(limit, config.maxSearchResults)));
+      } catch (error) {
+        return errorText(error);
+      }
+    },
+  );''', 'search_text')
+
+          replace_once('''  server.registerTool(
+    'git_diff',
+    { description: 'Read-only working tree git diff', inputSchema: z.object({}) },
+    async () => {
+      try {
+        const result = await gitDiff(workspace);
+        return text(result.code === 0 ? result.stdout : result, result.code !== 0);
+      } catch (error) {
+        return errorText(error);
+      }
+    },
+  );''', '''  server.registerTool(
+    'git_diff',
+    {
+      description: 'Read one bounded page of the secret-filtered working-tree diff. Optionally target one changed path and suppress unchanged diff content by digest.',
+      inputSchema: z.object({
+        path: z.string().min(1).max(1_000).optional(),
+        startLine: z.number().int().min(1).max(10_000_000).default(1),
+        maxLines: z.number().int().min(1).max(500).default(300),
+        knownDigest: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+      }),
+    },
+    async ({ path, startLine, maxLines, knownDigest }) => {
+      try {
+        const result = await gitDiffPage(workspace, { path, startLine, maxLines, knownDigest });
+        return text(result, result.code !== 0);
+      } catch (error) {
+        return errorText(error);
+      }
+    },
+  );''', 'git_diff')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Verify migration before commit
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run typecheck
+          npm test
+          git diff --check
+          grep -q "readTextPage" src/server.ts
+          grep -q "gitDiffPage" src/server.ts
+          ! grep -q "gitDiff(workspace)" src/server.ts
+      - name: Commit migrated contract
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/server.ts
+          git commit -m 'Migrate MCP reads and diffs to bounded context pages'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
