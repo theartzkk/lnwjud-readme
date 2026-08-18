@@ -15,8 +15,26 @@ test('automatic text search skips blocked secret paths', async () => {
   const results = await searchText(root, 'needle', 20);
   assert.equal(results.length, 1);
   assert.equal(results[0]?.path, 'safe.txt');
+  assert.equal(results[0]?.truncated, false);
   assert.match(results[0]?.text ?? '', /SAFE_VALUE/);
   assert.doesNotMatch(JSON.stringify(results), /SECRET_VALUE|SSH_SECRET/);
+});
+
+test('automatic text search bounds very long matching lines around the match', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'art-agent-search-snippet-'));
+  const line = `${'A'.repeat(6_000)}MATCH_NEEDLE${'B'.repeat(6_000)}`;
+  await writeFile(join(root, 'long.txt'), `${line}\nshort MATCH_NEEDLE line\n`, 'utf8');
+
+  const results = await searchText(root, 'match_needle', 20);
+  assert.equal(results.length, 2);
+  assert.equal(results[0]?.line, 1);
+  assert.equal(results[0]?.truncated, true);
+  assert.ok((results[0]?.text.length ?? 0) <= 500);
+  assert.match(results[0]?.text ?? '', /MATCH_NEEDLE/);
+  assert.match(results[0]?.text ?? '', /^…/);
+  assert.match(results[0]?.text ?? '', /…$/);
+  assert.equal(results[1]?.text, 'short MATCH_NEEDLE line');
+  assert.equal(results[1]?.truncated, false);
 });
 
 test('paged file reads preserve line endings and suppress unchanged content by digest', async () => {
