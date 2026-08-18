@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { gitDiff, gitStatus } from '../src/git.js';
+import { gitDiff, gitDiffPage, gitStatus } from '../src/git.js';
 import { execCommand } from '../src/process.js';
 
 async function git(root: string, args: string[]): Promise<void> {
@@ -34,4 +34,40 @@ test('git views suppress blocked secret paths and content', async () => {
   assert.match(status.stdout, /safe\.txt/);
   assert.doesNotMatch(status.stdout, /\.env/);
   assert.match(status.stdout, /secret-path status entry hidden/);
+});
+
+test('paged git diff is bounded, path-selectable and digest-suppressible without secret leakage', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'art-agent-git-page-'));
+  await git(root, ['init']);
+  await git(root, ['config', 'user.name', 'Art Agent Test']);
+  await git(root, ['config', 'user.email', 'art-agent@example.invalid']);
+  await writeFile(join(root, 'safe.txt'), 'base\n');
+  await writeFile(join(root, '.env'), 'SECRET_BASE=one\n');
+  await git(root, ['add', 'safe.txt', '.env']);
+  await git(root, ['commit', '-m', 'fixture']);
+
+  const safeNew = Array.from({ length: 40 }, (_, index) => `safe-${index + 1}`).join('\n') + '\n';
+  await writeFile(join(root, 'safe.txt'), safeNew);
+  await writeFile(join(root, '.env'), 'SECRET_CHANGED=two\n');
+
+  const page = await gitDiffPage(root, { path: 'safe.txt', startLine: 1, maxLines: 5 });
+  assert.equal(page.code, 0, page.stderr);
+  assert.equal(page.selectedPath, 'safe.txt');
+  assert.equal(page.pathFound, true);
+  assert.deepEqual(page.availablePaths, ['safe.txt']);
+  assert.equal(page.hiddenPathCount, 1);
+  assert.equal(page.page?.hasMore, true);
+  assert.equal(page.page?.endLine, 5);
+  assert.match(page.page?.content ?? '', /safe\.txt/);
+  assert.doesNotMatch(JSON.stringify(page), /SECRET_BASE|SECRET_CHANGED|\.env/);
+
+  const unchanged = await gitDiffPage(root, {
+    path: 'safe.txt',
+    startLine: 1,
+    maxLines: 5,
+    knownDigest: page.page?.digest,
+  });
+  assert.equal(unchanged.page?.unchanged, true);
+  assert.equal(unchanged.page?.content, undefined);
+  assert.equal(unchanged.page?.digest, page.page?.digest);
 });
