@@ -41,6 +41,11 @@ async function safeDiffPaths(cwd: string): Promise<{
   };
 }
 
+async function gitDiffForPaths(cwd: string, paths: string[]): Promise<ExecResult> {
+  if (paths.length === 0) return { code: 0, stdout: '', stderr: '' };
+  return git(cwd, ['diff', 'HEAD', '--no-ext-diff', '--no-textconv', '--ignore-submodules=all', '--', ...paths]);
+}
+
 export async function gitStatus(cwd: string): Promise<ExecResult> {
   const result = await git(cwd, ['status', '--short', '--branch', '--ignore-submodules=all']);
   if (result.code !== 0) return result;
@@ -63,8 +68,7 @@ export async function gitDiff(cwd: string, requestedPath?: string): Promise<Exec
   const selectedPaths = normalizedRequested
     ? paths.safePaths.filter((path) => path === normalizedRequested)
     : paths.safePaths;
-  if (selectedPaths.length === 0) return { code: 0, stdout: '', stderr: '' };
-  return git(cwd, ['diff', 'HEAD', '--no-ext-diff', '--no-textconv', '--ignore-submodules=all', '--', ...selectedPaths]);
+  return gitDiffForPaths(cwd, selectedPaths);
 }
 
 export interface GitDiffPageResult {
@@ -81,9 +85,11 @@ export interface GitDiffPageResult {
 
 export async function gitDiffPage(
   cwd: string,
-  options: TextPageOptions & { path?: string } = {},
+  options: TextPageOptions & { path?: string | undefined } = {},
 ): Promise<GitDiffPageResult> {
   const paths = await safeDiffPaths(cwd);
+  const selectedPath = options.path?.trim().replaceAll('\\', '/') ?? null;
+
   if (paths.code !== 0) {
     return {
       code: paths.code,
@@ -92,14 +98,16 @@ export async function gitDiffPage(
       hiddenPathCount: 0,
       availablePaths: [],
       pathsTruncated: false,
-      selectedPath: options.path?.trim().replaceAll('\\', '/') ?? null,
-      pathFound: options.path ? false : null,
+      selectedPath,
+      pathFound: selectedPath ? false : null,
     };
   }
 
-  const selectedPath = options.path?.trim().replaceAll('\\', '/') ?? null;
   const pathFound = selectedPath ? paths.safePaths.includes(selectedPath) : null;
-  const diff = await gitDiff(cwd, selectedPath ?? undefined);
+  const selectedPaths = selectedPath
+    ? paths.safePaths.filter((path) => path === selectedPath)
+    : paths.safePaths;
+  const diff = await gitDiffForPaths(cwd, selectedPaths);
   if (diff.code !== 0) {
     return {
       code: diff.code,
