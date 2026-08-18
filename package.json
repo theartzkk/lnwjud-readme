@@ -1,7 +1,7 @@
 {
   "name": "art-agent",
   "productName": "Art Agent",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "author": "Art Agent",
   "description": "Safe-by-default local Windows MCP development agent for ChatGPT and Codex.",
@@ -24,7 +24,7 @@
     "desktop:package": "npm run prepare:windows-icon && npm run build && electron-forge package --platform=win32 --arch=x64",
     "desktop:make": "npm run prepare:windows-icon && npm run build && electron-forge make --platform=win32 --arch=x64",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test test/security.test.ts test/files.test.ts test/git.test.ts test/process.test.ts test/changes.test.ts test/tasks.test.ts test/codex.test.ts test/settings.test.ts test/desktop.test.ts test/version.test.ts test/installer.test.ts"
+    "test": "node --import tsx --test test/security.test.ts test/files.test.ts test/git.test.ts test/process.test.ts test/changes.test.ts test/tasks.test.ts test/project.test.ts test/codex.test.ts test/settings.test.ts test/desktop.test.ts test/version.test.ts test/installer.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",

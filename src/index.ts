@@ -2,9 +2,10 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { loadConfig } from './config.js';
 import { createServer } from './server.js';
 import { canonicalWorkspace } from './security.js';
+import { ART_AGENT_VERSION } from './version.js';
 
 const config = loadConfig();
 const workspace = await canonicalWorkspace(config.workspace);
 
 void serveStdio(() => createServer(config, workspace));
-console.error(`Art Agent MCP 0.2.0 running on stdio | workspace=${workspace} | write=${config.allowWrite} | exec=${config.allowExec} | codex=${config.allowCodex}`);
+console.error(`Art Agent MCP ${ART_AGENT_VERSION} running on stdio | workspace=${workspace} | write=${config.allowWrite} | exec=${config.allowExec} | codex=${config.allowCodex}`);

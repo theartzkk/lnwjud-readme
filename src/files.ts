@@ -1,8 +1,35 @@
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, relative } from 'node:path';
+import { pageText, type TextPage, type TextPageOptions } from './context.js';
 import { assertNotSecret, resolveForRead, resolveForWrite } from './security.js';
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', 'coverage', '.next', '.cache']);
+const MAX_SEARCH_SNIPPET_CHARS = 500;
+
+export interface SearchResult {
+  path: string;
+  line: number;
+  text: string;
+  truncated: boolean;
+}
+
+function searchSnippet(line: string, needle: string): Pick<SearchResult, 'text' | 'truncated'> {
+  if (line.length <= MAX_SEARCH_SNIPPET_CHARS) return { text: line, truncated: false };
+
+  const matchIndex = line.toLowerCase().indexOf(needle);
+  const payloadLimit = MAX_SEARCH_SNIPPET_CHARS - 2; // Reserve room for both ellipses.
+  const halfWindow = Math.max(0, Math.floor((payloadLimit - Math.min(needle.length, payloadLimit)) / 2));
+  let start = Math.max(0, matchIndex - halfWindow);
+  let end = Math.min(line.length, start + payloadLimit);
+  if (end - start < payloadLimit) start = Math.max(0, end - payloadLimit);
+
+  const prefix = start > 0 ? '…' : '';
+  const suffix = end < line.length ? '…' : '';
+  return {
+    text: `${prefix}${line.slice(start, end)}${suffix}`,
+    truncated: true,
+  };
+}
 
 export async function readTextFile(root: string, path: string, maxBytes: number): Promise<string> {
   const target = await resolveForRead(root, path);
@@ -10,6 +37,15 @@ export async function readTextFile(root: string, path: string, maxBytes: number)
   if (!info.isFile()) throw new Error('Target is not a file');
   if (info.size > maxBytes) throw new Error(`File exceeds ${maxBytes} byte read limit`);
   return readFile(target, 'utf8');
+}
+
+export async function readTextPage(
+  root: string,
+  path: string,
+  maxBytes: number,
+  options: TextPageOptions = {},
+): Promise<TextPage> {
+  return pageText(await readTextFile(root, path, maxBytes), options);
 }
 
 export async function writeTextFile(root: string, path: string, content: string): Promise<void> {
@@ -40,8 +76,8 @@ export async function searchText(
   root: string,
   query: string,
   maxResults: number,
-): Promise<Array<{ path: string; line: number; text: string }>> {
-  const results: Array<{ path: string; line: number; text: string }> = [];
+): Promise<SearchResult[]> {
+  const results: SearchResult[] = [];
   const needle = query.toLowerCase();
 
   async function walk(dir: string): Promise<void> {
@@ -64,7 +100,11 @@ export async function searchText(
         for (let i = 0; i < lines.length && results.length < maxResults; i += 1) {
           const line = lines[i] ?? '';
           if (line.toLowerCase().includes(needle)) {
-            results.push({ path: relative(root, full).replaceAll('\\', '/'), line: i + 1, text: line });
+            results.push({
+              path: relative(root, full).replaceAll('\\', '/'),
+              line: i + 1,
+              ...searchSnippet(line, needle),
+            });
           }
         }
       } catch {

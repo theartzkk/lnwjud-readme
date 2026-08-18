@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -45,4 +45,74 @@ test('managed task stop only targets a registry-owned process', async () => {
   const stopped = await tasks.stop(task.id);
   assert.equal(stopped.state, 'stopped');
   assert.throws(() => tasks.status('not-owned'), /Unknown task id/);
+});
+
+test('task metadata persists across registry restarts without logs or command details', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'art-agent-task-'));
+  const dataDir = await mkdtemp(join(tmpdir(), 'art-agent-task-data-'));
+  const tasks = new ManagedTaskRegistry(64 * 1024, dataDir);
+  const task = tasks.start({
+    executable: process.execPath,
+    args: ['-e', 'console.log("PERSISTED_SECRET_OUTPUT")'],
+    cwd: root,
+    label: 'project:test',
+    timeoutMs: 5_000,
+  });
+  await waitForFinish(tasks, task.id);
+
+  const restarted = new ManagedTaskRegistry(64 * 1024, dataDir);
+  const historical = restarted.status(task.id);
+  assert.equal(historical.state, 'succeeded');
+  assert.equal(historical.historyOnly, true);
+  assert.equal(historical.stdout, '');
+  assert.equal(historical.stderr, '');
+  assert.deepEqual(restarted.list(10).map((entry) => entry.id), [task.id]);
+  assert.throws(() => restarted.logs(task.id), /Unknown active task id/);
+
+  const files = await readdir(join(dataDir, 'tasks'));
+  assert.deepEqual(files, [`${task.id}.json`]);
+  const raw = await readFile(join(dataDir, 'tasks', files[0]!), 'utf8');
+  const persisted = JSON.parse(raw) as Record<string, unknown>;
+  assert.deepEqual(Object.keys(persisted).sort(), [
+    'code',
+    'finishedAt',
+    'id',
+    'label',
+    'runtimeId',
+    'schema',
+    'signal',
+    'startedAt',
+    'state',
+    'truncated',
+  ]);
+  assert.equal(persisted.id, task.id);
+  assert.equal(persisted.label, 'project:test');
+  assert.equal(persisted.state, 'succeeded');
+  for (const forbidden of ['stdout', 'stderr', 'executable', 'args', 'cwd', 'env', 'stdin', 'prompt', 'instruction']) {
+    assert.equal(Object.hasOwn(persisted, forbidden), false, `persisted metadata must not contain ${forbidden}`);
+  }
+  assert.doesNotMatch(raw, /PERSISTED_SECRET_OUTPUT|console\.log|art-agent-task-/);
+});
+
+test('running metadata from another runtime is never treated as an owned live task', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'art-agent-task-'));
+  const dataDir = await mkdtemp(join(tmpdir(), 'art-agent-task-data-'));
+  const owner = new ManagedTaskRegistry(64 * 1024, dataDir);
+  const task = owner.start({
+    executable: process.execPath,
+    args: ['-e', 'setInterval(() => {}, 1000)'],
+    cwd: root,
+    label: 'project:test',
+    timeoutMs: 30_000,
+  });
+
+  const restarted = new ManagedTaskRegistry(64 * 1024, dataDir);
+  const historical = restarted.status(task.id);
+  assert.equal(historical.state, 'unknown_after_restart');
+  assert.equal(historical.historyOnly, true);
+  assert.throws(() => restarted.logs(task.id), /Unknown active task id/);
+  await assert.rejects(() => restarted.stop(task.id), /Unknown active task id/);
+
+  const stopped = await owner.stop(task.id);
+  assert.equal(stopped.state, 'stopped');
 });

@@ -4,8 +4,9 @@ import type { ArtAgentConfig } from './config.js';
 import { AuditLog } from './audit.js';
 import { applyTextPatch, createCheckpoint, listCheckpoints, restoreCheckpoint } from './changes.js';
 import { buildCodexArgs, codexEnvironment, codexStatus, resolveCodexExecutable } from './codex.js';
-import { listWorkspace, readTextFile, searchText, writeTextFile } from './files.js';
-import { gitDiff, gitLog, gitStatus } from './git.js';
+import { listWorkspace, readTextFile, readTextPage, searchText, writeTextFile } from './files.js';
+import { gitDiffPage, gitLog, gitStatus } from './git.js';
+import { detectProject } from './project.js';
 import { resolvePackageInvocation, runPackageScript, type PackageCommand } from './process.js';
 import { SecurityError } from './security.js';
 import { ManagedTaskRegistry } from './tasks.js';
@@ -30,7 +31,7 @@ async function packageMetadata(workspace: string): Promise<{ packageManager?: st
 
 export function createServer(config: ArtAgentConfig, workspace: string): McpServer {
   const audit = new AuditLog(config.dataDir);
-  const tasks = new ManagedTaskRegistry(config.maxTaskLogBytes);
+  const tasks = new ManagedTaskRegistry(config.maxTaskLogBytes, config.dataDir);
   const server = new McpServer({ name: 'art-agent', version: ART_AGENT_VERSION });
 
   server.registerTool(
@@ -50,11 +51,11 @@ export function createServer(config: ArtAgentConfig, workspace: string): McpServ
 
   server.registerTool(
     'workspace_info',
-    { description: 'Show the registered workspace and Git status', inputSchema: z.object({}) },
+    { description: 'Show the registered workspace, safe project profile and Git status', inputSchema: z.object({}) },
     async () => {
       try {
-        const status = await gitStatus(workspace);
-        return text({ workspace, git: status.code === 0 ? status.stdout : status.stderr });
+        const [status, project] = await Promise.all([gitStatus(workspace), detectProject(workspace)]);
+        return text({ workspace, project, git: status.code === 0 ? status.stdout : status.stderr });
       } catch (error) {
         return errorText(error);
       }
@@ -65,11 +66,14 @@ export function createServer(config: ArtAgentConfig, workspace: string): McpServ
     'workspace_tree',
     {
       description: 'List a bounded workspace tree; vendor/build directories are skipped automatically',
-      inputSchema: z.object({ depth: z.number().int().min(0).max(6).default(2) }),
+      inputSchema: z.object({
+        depth: z.number().int().min(0).max(6).default(2),
+        limit: z.number().int().min(1).max(300).default(100),
+      }),
     },
-    async ({ depth }) => {
+    async ({ depth, limit }) => {
       try {
-        return text(await listWorkspace(workspace, depth));
+        return text(await listWorkspace(workspace, depth, limit));
       } catch (error) {
         return errorText(error);
       }
@@ -79,14 +83,23 @@ export function createServer(config: ArtAgentConfig, workspace: string): McpServ
   server.registerTool(
     'read_file',
     {
-      description: 'Read a UTF-8 text file inside the workspace. Secret files and path escapes are blocked.',
-      inputSchema: z.object({ path: z.string().min(1) }),
+      description: 'Read one bounded page of a UTF-8 workspace file. Secret files and path escapes are blocked. Re-send a prior digest as knownDigest to suppress unchanged content.',
+      inputSchema: z.object({
+        path: z.string().min(1),
+        startLine: z.number().int().min(1).max(10_000_000).default(1),
+        maxLines: z.number().int().min(1).max(500).default(200),
+        knownDigest: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+      }),
     },
-    async ({ path }) => {
+    async ({ path, startLine, maxLines, knownDigest }) => {
       try {
-        const value = await readTextFile(workspace, path, config.maxReadBytes);
-        await audit.write({ tool: 'read_file', outcome: 'allowed', detail: path });
-        return text(value);
+        const page = await readTextPage(workspace, path, config.maxReadBytes, { startLine, maxLines, knownDigest });
+        await audit.write({
+          tool: 'read_file',
+          outcome: 'allowed',
+          detail: `${path}: lines ${page.startLine}-${page.endLine}/${page.totalLines}${page.unchanged ? ' unchanged' : ''}`,
+        });
+        return text({ path, ...page });
       } catch (error) {
         await audit.write({ tool: 'read_file', outcome: 'denied', detail: `${path}: ${error instanceof Error ? error.message : String(error)}` });
         return errorText(error);
@@ -98,11 +111,14 @@ export function createServer(config: ArtAgentConfig, workspace: string): McpServ
     'search_text',
     {
       description: 'Search text recursively inside normal project files with bounded results',
-      inputSchema: z.object({ query: z.string().min(1).max(200) }),
+      inputSchema: z.object({
+        query: z.string().min(1).max(200),
+        limit: z.number().int().min(1).max(100).default(25),
+      }),
     },
-    async ({ query }) => {
+    async ({ query, limit }) => {
       try {
-        return text(await searchText(workspace, query, config.maxSearchResults));
+        return text(await searchText(workspace, query, Math.min(limit, config.maxSearchResults)));
       } catch (error) {
         return errorText(error);
       }
@@ -227,11 +243,19 @@ export function createServer(config: ArtAgentConfig, workspace: string): McpServ
 
   server.registerTool(
     'git_diff',
-    { description: 'Read-only working tree git diff', inputSchema: z.object({}) },
-    async () => {
+    {
+      description: 'Read one bounded page of the secret-filtered working-tree diff. Optionally target one changed path and suppress unchanged diff content by digest.',
+      inputSchema: z.object({
+        path: z.string().min(1).max(1_000).optional(),
+        startLine: z.number().int().min(1).max(10_000_000).default(1),
+        maxLines: z.number().int().min(1).max(500).default(300),
+        knownDigest: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+      }),
+    },
+    async ({ path, startLine, maxLines, knownDigest }) => {
       try {
-        const result = await gitDiff(workspace);
-        return text(result.code === 0 ? result.stdout : result, result.code !== 0);
+        const result = await gitDiffPage(workspace, { path, startLine, maxLines, knownDigest });
+        return text(result, result.code !== 0);
       } catch (error) {
         return errorText(error);
       }
@@ -303,13 +327,13 @@ export function createServer(config: ArtAgentConfig, workspace: string): McpServ
   server.registerTool(
     'task_status',
     {
-      description: 'Read status for a process launched by this Art Agent runtime',
+      description: 'Read current or persisted metadata for an Art Agent task without returning logs',
       inputSchema: z.object({ taskId: z.string().min(1).max(120) }),
     },
     async ({ taskId }) => {
       try {
-        const task = tasks.status(taskId);
-        return text({ ...task, stdout: undefined, stderr: undefined });
+        const { stdout: _stdout, stderr: _stderr, ...task } = tasks.status(taskId);
+        return text(task);
       } catch (error) {
         return errorText(error);
       }
@@ -317,9 +341,18 @@ export function createServer(config: ArtAgentConfig, workspace: string): McpServ
   );
 
   server.registerTool(
+    'task_list',
+    {
+      description: 'List bounded current and persisted Art Agent task metadata without logs, command arguments or prompts',
+      inputSchema: z.object({ limit: z.number().int().min(1).max(100).default(20) }),
+    },
+    async ({ limit }) => text(tasks.list(limit)),
+  );
+
+  server.registerTool(
     'task_logs',
     {
-      description: 'Read bounded stdout/stderr for a process launched by this Art Agent runtime',
+      description: 'Read bounded stdout/stderr only for a process owned by this Art Agent runtime',
       inputSchema: z.object({ taskId: z.string().min(1).max(120) }),
     },
     async ({ taskId }) => {
@@ -334,7 +367,7 @@ export function createServer(config: ArtAgentConfig, workspace: string): McpServ
   server.registerTool(
     'task_stop',
     {
-      description: 'Stop only a process launched by this Art Agent runtime. Requires explicit userConfirmed=true.',
+      description: 'Stop only a process owned by this Art Agent runtime. Requires explicit userConfirmed=true.',
       inputSchema: z.object({ taskId: z.string().min(1).max(120), userConfirmed: z.boolean() }),
     },
     async ({ taskId, userConfirmed }) => {

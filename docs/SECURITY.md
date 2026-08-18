@@ -1,6 +1,6 @@
 # Art Agent security model
 
-Art Agent is designed to be **safe by default**. v0.3 adds a local Electron Control Center and persistent non-secret preferences without widening the default machine boundary.
+Art Agent is designed to be **safe by default**. v0.4 adds bounded context reads, safe project profiling, and persistent task metadata while preserving the existing workspace, execution, Codex, and desktop security boundaries.
 
 ## Defaults
 
@@ -52,7 +52,11 @@ Package scripts are executable project code and inherit the Art Agent process en
 
 ## Managed task boundary
 
-Background task tools operate only on processes launched by the current Art Agent runtime. Each receives an opaque task ID and bounded stdout/stderr. Unknown task IDs are rejected. Stop is confirmation-gated and targets the owned process tree (Windows `taskkill /T` by owned PID; Unix process group termination).
+Only processes launched by the current Art Agent runtime are controllable. Each active task receives an opaque task ID and bounded in-memory stdout/stderr. `task_logs` and `task_stop` reject task IDs that are not owned by the current runtime; stop remains confirmation-gated and targets the owned process tree (Windows `taskkill /T` by owned PID; Unix process group termination).
+
+v0.4 persists task **metadata only** under the Art Agent data directory so completed task IDs remain discoverable through `task_status` and `task_list` after restart. Persisted records are limited to identity/label, state, exit code/signal, timestamps, runtime ID, and the log-truncation flag. They do not persist stdout, stderr, executable paths, arguments, cwd, environment variables, stdin, Codex prompts, or instructions.
+
+A persisted task that was still `running` under another runtime is exposed only as `unknown_after_restart`. A new runtime does not inherit process ownership and therefore cannot retrieve its logs or stop it.
 
 ## Codex bridge boundary
 

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
+import { ART_AGENT_VERSION } from '../src/version.js';
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 
@@ -18,7 +19,7 @@ test('Windows installer configuration stays Squirrel-aware and per-user', async 
   const forge = await readFile(new URL('../forge.config.cjs', import.meta.url), 'utf8');
   const desktop = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
 
-  assert.equal(pkg.version, '0.3.1');
+  assert.equal(pkg.version, ART_AGENT_VERSION);
   assert.equal(pkg.dependencies?.['electron-squirrel-startup'], '1.0.1');
   assert.equal(pkg.devDependencies?.['@electron-forge/maker-squirrel'], '7.11.2');
   assert.match(pkg.scripts?.['desktop:make'] ?? '', /prepare:windows-icon/);
