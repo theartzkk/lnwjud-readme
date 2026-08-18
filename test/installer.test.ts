@@ -17,7 +17,8 @@ test('Windows installer configuration stays Squirrel-aware and per-user', async 
     devDependencies?: Record<string, string>;
   };
   const forge = await readFile(new URL('../forge.config.cjs', import.meta.url), 'utf8');
-  const desktop = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  const dispatcher = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  const desktopUi = await readFile(new URL('../src/desktop/ui.ts', import.meta.url), 'utf8');
 
   assert.equal(pkg.version, ART_AGENT_VERSION);
   assert.equal(pkg.dependencies?.['electron-squirrel-startup'], '1.0.1');
@@ -29,8 +30,9 @@ test('Windows installer configuration stays Squirrel-aware and per-user', async 
   assert.match(forge, /setupIcon:\s*windowsIcon/);
   assert.match(forge, /icon:\s*windowsIcon/);
   assert.match(forge, /noMsi:\s*true/);
-  assert.match(desktop, /SQUIRREL_STARTUP/);
-  assert.match(desktop, /electron-squirrel-startup/);
+  assert.match(dispatcher, /--mcp-stdio/);
+  assert.match(desktopUi, /SQUIRREL_STARTUP/);
+  assert.match(desktopUi, /electron-squirrel-startup/);
 });
 
 test('Windows icon preparation preserves the canonical Art Agent PNG payload', async () => {
