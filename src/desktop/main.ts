@@ -26,7 +26,11 @@ let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let quitting = false;
 
-if (SMOKE_TEST) app.commandLine.appendSwitch('disable-gpu');
+if (SMOKE_TEST) {
+  app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch('disable-gpu');
+  if (process.platform === 'linux') app.commandLine.appendSwitch('ozone-platform', 'x11');
+}
 
 function argValue(name: string): string | undefined {
   const index = process.argv.indexOf(name);
@@ -252,29 +256,32 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
 app.on('before-quit', () => { quitting = true; });
 app.on('window-all-closed', () => { /* Keep the tray process alive on Windows. */ });
 
-if (SMOKE_TEST) {
-  await writeSmokeMarker({ ok: false, stage: 'module-loaded' }).catch((error) => {
-    console.error(`ART_AGENT_DESKTOP_SMOKE_MARKER_FAILED ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
-  });
-}
+const smokeMarkerReady = SMOKE_TEST
+  ? writeSmokeMarker({ ok: false, stage: 'module-loaded' }).catch((error) => {
+      console.error(`ART_AGENT_DESKTOP_SMOKE_MARKER_FAILED ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    })
+  : Promise.resolve();
 
-await app.whenReady();
-registerIpc();
+async function startAfterReady(): Promise<void> {
+  await smokeMarkerReady;
+  registerIpc();
 
-if (SMOKE_TEST) {
-  try {
-    await writeSmokeMarker({ ok: false, stage: 'main-ready' });
-    mainWindow = await createWindow(false);
-    await writeSmokeMarker({ ok: false, stage: 'window-loaded' });
-    await runSmokeTest(mainWindow);
-  } catch (error) {
-    const message = error instanceof Error ? error.stack ?? error.message : String(error);
-    await writeSmokeMarker({ ok: false, stage: 'failed', error: message }).catch(() => undefined);
-    console.error(`ART_AGENT_DESKTOP_SMOKE_BOOT_FAILED ${message}`);
-    quitting = true;
-    app.exit(1);
+  if (SMOKE_TEST) {
+    try {
+      await writeSmokeMarker({ ok: false, stage: 'main-ready' });
+      mainWindow = await createWindow(false);
+      await writeSmokeMarker({ ok: false, stage: 'window-loaded' });
+      await runSmokeTest(mainWindow);
+    } catch (error) {
+      const message = error instanceof Error ? error.stack ?? error.message : String(error);
+      await writeSmokeMarker({ ok: false, stage: 'failed', error: message }).catch(() => undefined);
+      console.error(`ART_AGENT_DESKTOP_SMOKE_BOOT_FAILED ${message}`);
+      quitting = true;
+      app.exit(1);
+    }
+    return;
   }
-} else {
+
   mainWindow = await createWindow(true);
   tray = createTray();
   app.on('activate', () => {
@@ -284,3 +291,11 @@ if (SMOKE_TEST) {
     })();
   });
 }
+
+void app.whenReady().then(startAfterReady).catch(async (error) => {
+  const message = error instanceof Error ? error.stack ?? error.message : String(error);
+  if (SMOKE_TEST) await writeSmokeMarker({ ok: false, stage: 'failed', error: message }).catch(() => undefined);
+  console.error(`ART_AGENT_DESKTOP_START_FAILED ${message}`);
+  quitting = true;
+  app.exit(1);
+});
