@@ -1,5 +1,16 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, Tray } from 'electron';
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeImage,
+  shell,
+  Tray,
+  type OpenDialogOptions,
+} from 'electron';
 import { AuditLog } from '../audit.js';
 import { listCheckpoints } from '../changes.js';
 import { codexStatus } from '../codex.js';
@@ -14,18 +25,46 @@ let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let quitting = false;
 
+function argValue(name: string): string | undefined {
+  const index = process.argv.indexOf(name);
+  const value = index >= 0 ? process.argv[index + 1] : undefined;
+  return value && !value.startsWith('--') ? value : undefined;
+}
+
+function hasExplicitWorkspace(dataDir: string): boolean {
+  return Boolean(
+    argValue('--workspace') ||
+    process.env.ART_AGENT_WORKSPACE?.trim() ||
+    loadStoredSettings(dataDir).defaultWorkspace?.trim(),
+  );
+}
+
 async function runtimeOverview() {
   const config = loadConfig();
-  const workspace = await canonicalWorkspace(config.workspace);
   const audit = new AuditLog(config.dataDir);
-  const git = await gitStatus(workspace).catch((error: unknown) => ({ code: -1, stdout: '', stderr: error instanceof Error ? error.message : String(error) }));
-  const codex = await codexStatus(workspace);
   const checkpoints = await listCheckpoints(config.dataDir, 8);
   const auditEntries = await audit.tail(20);
+  const workspaceConfigured = hasExplicitWorkspace(config.dataDir);
+
+  let workspace: string | null = null;
+  let workspaceError: string | null = null;
+  if (workspaceConfigured) {
+    try {
+      workspace = await canonicalWorkspace(config.workspace);
+    } catch (error) {
+      workspaceError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  const git = workspace
+    ? await gitStatus(workspace).catch((error: unknown) => ({ code: -1, stdout: '', stderr: error instanceof Error ? error.message : String(error) }))
+    : { code: -1, stdout: '', stderr: workspaceError ?? 'ยังไม่ได้เลือก workspace' };
+  const codex = await codexStatus(workspace ?? process.cwd());
+
   return {
     name: 'Art Agent',
     version: VERSION,
-    workspace,
+    workspace: workspace ?? (workspaceConfigured ? config.workspace : 'ยังไม่ได้เลือก workspace'),
     dataDir: config.dataDir,
     permissions: {
       write: config.allowWrite,
@@ -33,7 +72,7 @@ async function runtimeOverview() {
       codex: config.allowCodex,
     },
     git: {
-      ok: git.code === 0,
+      ok: Boolean(workspace) && git.code === 0,
       text: git.code === 0 ? git.stdout : git.stderr,
     },
     codex,
@@ -44,7 +83,9 @@ async function runtimeOverview() {
       arch: process.arch,
       node: process.versions.node,
       electron: (process.versions as NodeJS.ProcessVersions & { electron?: string }).electron ?? null,
-      workspaceReady: true,
+      workspaceReady: Boolean(workspace),
+      workspaceConfigured,
+      workspaceError,
       remoteTunnelEnabled: false,
     },
   };
@@ -98,9 +139,9 @@ function registerIpc(): void {
   ipcMain.handle(DESKTOP_IPC.overview, async () => runtimeOverview());
 
   ipcMain.handle(DESKTOP_IPC.chooseWorkspace, async () => {
-    const options = {
+    const options: OpenDialogOptions = {
       title: 'เลือกโฟลเดอร์โปรเจกต์สำหรับ Art Agent',
-      properties: ['openDirectory'] as const,
+      properties: ['openDirectory'],
     };
     const result = mainWindow
       ? await dialog.showOpenDialog(mainWindow, options)
@@ -134,6 +175,7 @@ function registerIpc(): void {
 
   ipcMain.handle(DESKTOP_IPC.openDataDir, async () => {
     const config = loadConfig();
+    await mkdir(config.dataDir, { recursive: true });
     const result = await shell.openPath(config.dataDir);
     return { ok: result === '', error: result || null };
   });
