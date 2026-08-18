@@ -18,6 +18,7 @@
     "start": "node dist/index.js",
     "mcp:start": "node dist/index.js",
     "desktop": "npm run build && electron .",
+    "desktop:smoke": "npm run build && electron . --smoke-test",
     "desktop:package": "npm run build && electron-forge package --platform=win32 --arch=x64",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test test/security.test.ts test/files.test.ts test/git.test.ts test/process.test.ts test/changes.test.ts test/tasks.test.ts test/codex.test.ts test/settings.test.ts test/desktop.test.ts"
