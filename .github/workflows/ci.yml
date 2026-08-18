@@ -174,6 +174,74 @@ jobs:
           if (Test-Path $marker) { Get-Content $marker -Raw | Write-Host }
           if (-not $boot -or -not $boot.stage) { throw 'Packaged ArtAgent.exe did not execute the desktop main module' }
           if ($boot.argv -notcontains '--smoke-test') { throw 'Packaged main module did not receive --smoke-test' }
+      - name: Verify packaged Windows MCP stdio protocol
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          $exe = Get-ChildItem -Path out -Recurse -Filter ArtAgent.exe | Select-Object -First 1
+          if (-not $exe) { throw 'ArtAgent.exe not found for MCP stdio verification' }
+
+          $workspace = Join-Path $env:RUNNER_TEMP 'art-agent-mcp-workspace'
+          $dataDir = Join-Path $env:RUNNER_TEMP 'art-agent-mcp-data'
+          Remove-Item -Recurse -Force $workspace -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force $dataDir -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $workspace -Force | Out-Null
+          New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
+          $env:ART_AGENT_DATA_DIR = $dataDir
+          Remove-Item Env:ART_AGENT_SMOKE_TEST -ErrorAction SilentlyContinue
+          Remove-Item Env:ELECTRON_ENABLE_LOGGING -ErrorAction SilentlyContinue
+
+          $input = Join-Path $dataDir 'mcp.stdin.jsonl'
+          $stdout = Join-Path $dataDir 'mcp.stdout.jsonl'
+          $stderr = Join-Path $dataDir 'mcp.stderr.log'
+          $request = @{
+            jsonrpc = '2.0'
+            id = 1
+            method = 'initialize'
+            params = @{
+              protocolVersion = '2025-06-18'
+              capabilities = @{}
+              clientInfo = @{ name = 'art-agent-ci'; version = '1.0.0' }
+            }
+          } | ConvertTo-Json -Depth 8 -Compress
+          [System.IO.File]::WriteAllText($input, "$request`n", [System.Text.UTF8Encoding]::new($false))
+
+          $process = Start-Process -FilePath $exe.FullName `
+            -ArgumentList @('--mcp-stdio', '--workspace', $workspace) `
+            -PassThru `
+            -RedirectStandardInput $input `
+            -RedirectStandardOutput $stdout `
+            -RedirectStandardError $stderr
+
+          for ($i = 0; $i -lt 40; $i++) {
+            Start-Sleep -Milliseconds 250
+            if ((Test-Path $stdout) -and (Get-Item $stdout).Length -gt 0) { break }
+            if ($process.HasExited) { break }
+          }
+          if (-not $process.HasExited) { & taskkill.exe /PID $process.Id /T /F | Out-Host }
+          Start-Sleep -Milliseconds 250
+
+          if (Test-Path $stderr) { Get-Content $stderr -Raw | Write-Host }
+          if (-not (Test-Path $stdout)) { throw 'Packaged MCP stdio produced no stdout file' }
+          $lines = @(Get-Content $stdout | Where-Object { $_.Trim().Length -gt 0 })
+          if ($lines.Count -ne 1) {
+            throw "Expected exactly one MCP stdout line, found $($lines.Count): $($lines -join ' | ')"
+          }
+          try {
+            $response = $lines[0] | ConvertFrom-Json
+          } catch {
+            throw "Packaged MCP stdout is not JSON-RPC: $($lines[0])"
+          }
+          if ($response.jsonrpc -ne '2.0' -or $response.id -ne 1) {
+            throw "Packaged MCP response envelope invalid: $($lines[0])"
+          }
+          if ($response.result.serverInfo.name -ne 'art-agent') {
+            throw "Packaged MCP server name mismatch: $($response.result.serverInfo.name)"
+          }
+          if ($response.result.serverInfo.version -ne $version) {
+            throw "Packaged MCP version mismatch: expected $version, got $($response.result.serverInfo.version)"
+          }
+          Write-Host "Packaged MCP stdio initialize passed for Art Agent $version"
       - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v7
         with:
