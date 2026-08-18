@@ -8,11 +8,11 @@
 
 Art Agent turns one selected local project folder into a tightly scoped MCP workspace so an AI can inspect the current source of truth, review Git state, patch files with recovery checkpoints, run approved verification tasks, inspect bounded process logs, and optionally delegate to a local Codex CLI.
 
-> Status: **v0.3.0 Control Center MVP**. Local stdio MCP plus a sandboxed Electron Control Center are implemented. Remote Secure MCP Tunnel, browser control, Office integration, clipboard access, and arbitrary shell access remain intentionally disabled.
+> Status: **v0.4 Context Economy baseline**. Local stdio MCP, the sandboxed Electron Control Center, the per-user Windows installer, bounded/paged context reads, safe project profiling, and persistent task metadata are implemented. Remote Secure MCP Tunnel, browser control, Office integration, clipboard access, and arbitrary shell access remain intentionally disabled.
 
 ## Security posture
 
-Art Agent is deliberately narrower than the README-only prototype it replaced:
+Art Agent is deliberately narrow:
 
 - one canonical workspace, not all drives;
 - secret paths denied by default;
@@ -21,63 +21,86 @@ Art Agent is deliberately narrower than the README-only prototype it replaced:
 - Codex delegation separately opt-in with `ART_AGENT_ALLOW_CODEX=1`;
 - desktop renderer is sandboxed with context isolation and no Node integration;
 - persistent local settings contain only workspace/permission preferences, never API keys;
+- persisted task history contains metadata only — no logs, command arguments, cwd, environment, stdin, or prompts;
 - no destructive Git tools;
 - no arbitrary shell or generic HTTP/network tool;
-- recovery restore and task stop require explicit `userConfirmed=true`.
+- recovery restore and task stop require explicit `userConfirmed=true`;
+- historical tasks from a previous runtime cannot be stopped or queried for logs by a new runtime.
 
-See [`docs/SECURITY.md`](docs/SECURITY.md) for the full boundary.
+See [`docs/SECURITY.md`](docs/SECURITY.md) for the full boundary and [`docs/V04_CONTEXT_ECONOMY.md`](docs/V04_CONTEXT_ECONOMY.md) for the v0.4 context contract.
 
 ## MCP tools
 
 | Tool | Default | Purpose |
 | --- | --- | --- |
 | `health` | allow | runtime health + effective permissions |
-| `workspace_info` | allow | workspace + Git status |
+| `workspace_info` | allow | workspace + safe project profile + Git status |
 | `workspace_tree` | allow | bounded project tree |
-| `read_file` | allow | guarded UTF-8 file read |
-| `search_text` | allow | bounded recursive text search |
+| `read_file` | allow | paged guarded UTF-8 read + digest suppression |
+| `search_text` | allow | bounded recursive search with capped snippets |
 | `write_file` | **disabled** | direct workspace write |
 | `checkpoint_create` | allow | snapshot existing non-secret text files |
 | `checkpoint_list` | allow | list recovery checkpoints without contents |
 | `checkpoint_restore` | **disabled + confirm** | restore a checkpoint |
 | `apply_patch` | **disabled** | exact-text patch with automatic pre-write checkpoint |
 | `git_status` | allow | hardened read-only Git status |
-| `git_diff` | allow | hardened read-only Git diff |
+| `git_diff` | allow | paged/path-selectable secret-filtered Git diff |
 | `git_log` | allow | recent Git history |
 | `project_command` | **disabled** | synchronous `test/lint/typecheck/build` |
 | `project_task_start` | **disabled** | background approved project task |
-| `task_status` | allow | status for an Art Agent-owned task |
-| `task_logs` | allow | bounded stdout/stderr for an owned task |
-| `task_stop` | **disabled + confirm** | stop only an Art Agent-owned task |
+| `task_status` | allow | current or persisted task metadata, without logs |
+| `task_list` | allow | bounded current + persisted task metadata |
+| `task_logs` | allow | bounded stdout/stderr for a current-runtime-owned task |
+| `task_stop` | **disabled + confirm** | stop only a current-runtime-owned task |
 | `codex_status` | allow | local Codex CLI discovery/version only |
 | `codex_run` | **disabled** | sandboxed local Codex delegation with JSONL logs |
 | `audit_tail` | allow | recent security/audit decisions |
 
-## Windows Control Center
+## Context economy
 
-The v0.3 desktop app provides a Thai-first local dashboard for workspace, Git, permissions, Codex availability, checkpoints, audit history, and Doctor diagnostics. Workspace and permission changes are written to `~/.art-agent/settings.json` and take effect after restart so permissions do not mutate silently in the middle of an agent task.
+`read_file` defaults to 200 lines per response and supports `startLine`, `maxLines`, and whole-file SHA-256 `knownDigest`. If the digest still matches, Art Agent returns `unchanged: true` and omits content. Omit `knownDigest` when intentionally requesting the next page.
+
+`git_diff` applies the same bounded-page/digest pattern and can target a single safe changed path. Secret-path filtering remains the same Source of Truth as before.
+
+`workspace_tree` defaults to 100 entries, `search_text` defaults to 25 matches, and each search snippet is capped at 500 characters around the match.
+
+## Project and task continuity
+
+`workspace_info` detects a small safe profile for Node.js, PHP, Python, Rust, and Go projects. For Node.js it exposes only package-manager identity and the approved script names `test`, `lint`, `typecheck`, and `build`; dependency lists and arbitrary script commands are not returned.
+
+Task history is stored under the Art Agent data directory as bounded metadata. Finished task IDs remain discoverable after restart. A task that was running when another runtime takes over is shown as `unknown_after_restart`; the new runtime does not gain control over that process.
+
+Checkpoint persistence was already implemented with SHA-256 snapshot integrity, so v0.4 reuses that existing checkpoint store instead of creating a parallel database.
+
+## Windows Control Center and installer
+
+The desktop app provides a Thai-first local dashboard for workspace, Git, permissions, Codex availability, checkpoints, audit history, and Doctor diagnostics. Workspace and permission changes are written to `~/.art-agent/settings.json` and take effect after restart so permissions do not mutate silently in the middle of an agent task.
+
+The recommended Windows path is the per-user Squirrel installer produced by CI. See [`docs/WINDOWS_INSTALL.md`](docs/WINDOWS_INSTALL.md) for UI-first installation and integrity verification.
+
+Run the Control Center from source:
 
 ```powershell
 npm run desktop
 ```
 
-To package the Windows x64 desktop application:
+Create the Windows x64 installer set:
 
 ```powershell
-npm run desktop:package
+npm run desktop:make
 ```
 
 The renderer loads only local files, uses a restrictive Content Security Policy, has `nodeIntegration=false`, `contextIsolation=true`, and Chromium sandboxing enabled. The preload exposes only fixed Art Agent IPC operations instead of the raw Electron IPC surface.
 
 ## Requirements
 
-- Windows 10/11 recommended; Ubuntu is also exercised by CI for security regressions
-- Node.js 20+; Node 24 recommended
+- Windows 10/11 recommended; Ubuntu is also exercised by CI for security/runtime regressions
+- Node.js 20+; Node 24 is the CI baseline
 - Git for Git tools
 - npm, pnpm, or yarn for project commands
 - optional local Codex CLI for `codex_status` / `codex_run`
 
-## Install and verify
+## Develop and verify from source
 
 ```powershell
 npm install
@@ -86,7 +109,7 @@ npm test
 npm run build
 ```
 
-## Run locally
+## Run local MCP directly
 
 Read-only safe mode:
 
@@ -137,7 +160,7 @@ node dist/index.js --workspace "D:/Projects/MyProject"
 
 Do **not** put API keys in this configuration.
 
-## v0.2 workflow contract
+## Workflow contract
 
 ### Patch and rollback
 
@@ -145,7 +168,7 @@ Do **not** put API keys in this configuration.
 
 ### Managed tasks
 
-Only approved project scripts and Codex processes launched by Art Agent receive task IDs. Logs are bounded in memory, and `task_stop` can target only a task known to the current Art Agent runtime.
+Only approved project scripts and Codex processes launched by the current Art Agent runtime are controllable. Logs remain bounded in memory. Persisted task history is metadata-only, and `task_stop`/`task_logs` refuse historical tasks from another runtime.
 
 ### Codex bridge
 
@@ -157,15 +180,20 @@ The bridge follows the current OpenAI Codex non-interactive interface: `codex ex
 - desktop UI and workspace picker
 - persistent permission toggles with restart gate
 - Git/checkpoint/audit visibility
-- system tray
-- Doctor diagnostics
-- Windows packaging gate in CI
+- system tray and Doctor diagnostics
 
-### v0.4 — Context economy + richer Git/project workflow
+### v0.3.1 — Windows installer ✅
+- per-user Squirrel.Windows installer
+- deterministic Art Agent Windows icon
+- installer integrity checks and CI artifacts
+
+### v0.4 — Context economy + richer Git/project workflow ✅
 - structured/paged diff and file reads
 - duplicate-content suppression
-- project detection profiles
-- persistent task/checkpoint metadata
+- bounded search snippets and discovery defaults
+- safe project detection profiles
+- persistent task metadata while reusing existing checkpoint persistence
+- superseded CI run cancellation
 
 ### v0.5 — Remote connection
 - OpenAI Secure MCP Tunnel integration
