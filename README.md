@@ -6,50 +6,65 @@
 
 **Safe-by-default local Windows MCP development agent for ChatGPT and Codex.**
 
-Art Agent turns a selected local project folder into a tightly scoped MCP workspace. The goal is to let an AI inspect the current source of truth, review Git state, search and edit project files, run approved verification commands, and keep an audit trail — without exposing the whole Windows machine by default.
+Art Agent turns one selected local project folder into a tightly scoped MCP workspace so an AI can inspect the current source of truth, review Git state, patch files with recovery checkpoints, run approved verification tasks, inspect bounded process logs, and optionally delegate to a local Codex CLI.
 
-> Status: **v0.1.0 MVP**. Local stdio MCP is implemented. Remote Secure MCP Tunnel, Windows UI automation, browser control, Office integration, and arbitrary shell access are intentionally not enabled yet.
+> Status: **v0.2.0 workflow MVP**. Local stdio MCP is implemented. Remote Secure MCP Tunnel, Windows UI automation, browser control, Office integration, clipboard access, and arbitrary shell access remain intentionally disabled.
 
-## Why Art Agent exists
+## Security posture
 
-The original repository contained a detailed concept/README for a Windows-first MCP gateway but not the implementation source. Art Agent is a new implementation built around a stricter security model:
+Art Agent is deliberately narrower than the README-only prototype it replaced:
 
-- workspace-scoped instead of all-drives access;
-- secrets denied by default;
-- writes opt-in;
-- execution opt-in and limited to named project scripts;
+- one canonical workspace, not all drives;
+- secret paths denied by default;
+- writes opt-in with `ART_AGENT_ALLOW_WRITE=1`;
+- execution opt-in with `ART_AGENT_ALLOW_EXEC=1`;
+- Codex delegation separately opt-in with `ART_AGENT_ALLOW_CODEX=1`;
 - no destructive Git tools;
-- no arbitrary shell or network exfiltration surface in the MVP.
+- no arbitrary shell or generic HTTP/network tool;
+- recovery restore and task stop require explicit `userConfirmed=true`.
 
-## Implemented MCP tools
+See [`docs/SECURITY.md`](docs/SECURITY.md) for the full boundary.
+
+## MCP tools
 
 | Tool | Default | Purpose |
 | --- | --- | --- |
 | `health` | allow | runtime health + effective permissions |
 | `workspace_info` | allow | workspace + Git status |
 | `workspace_tree` | allow | bounded project tree |
-| `read_file` | allow | UTF-8 reads inside workspace |
-| `search_text` | allow | recursive bounded text search |
-| `write_file` | **disabled** | workspace write when explicitly enabled |
-| `git_status` | allow | read-only Git status with secret paths suppressed |
-| `git_diff` | allow | read-only Git diff for non-secret paths |
+| `read_file` | allow | guarded UTF-8 file read |
+| `search_text` | allow | bounded recursive text search |
+| `write_file` | **disabled** | direct workspace write |
+| `checkpoint_create` | allow | snapshot existing non-secret text files |
+| `checkpoint_list` | allow | list recovery checkpoints without contents |
+| `checkpoint_restore` | **disabled + confirm** | restore a checkpoint |
+| `apply_patch` | **disabled** | exact-text patch with automatic pre-write checkpoint |
+| `git_status` | allow | hardened read-only Git status |
+| `git_diff` | allow | hardened read-only Git diff |
 | `git_log` | allow | recent Git history |
-| `project_command` | **disabled** | `test`, `lint`, `typecheck`, `build` only |
+| `project_command` | **disabled** | synchronous `test/lint/typecheck/build` |
+| `project_task_start` | **disabled** | background approved project task |
+| `task_status` | allow | status for an Art Agent-owned task |
+| `task_logs` | allow | bounded stdout/stderr for an owned task |
+| `task_stop` | **disabled + confirm** | stop only an Art Agent-owned task |
+| `codex_status` | allow | local Codex CLI discovery/version only |
+| `codex_run` | **disabled** | sandboxed local Codex delegation with JSONL logs |
 | `audit_tail` | allow | recent security/audit decisions |
 
 ## Requirements
 
-- Windows 10/11 recommended (the core is cross-platform for CI/testing)
-- Node.js 20+; Node 24 LTS recommended
+- Windows 10/11 recommended; Ubuntu is also exercised by CI for security regressions
+- Node.js 20+; Node 24 recommended
 - Git for Git tools
-- npm, pnpm, or yarn for `project_command`
+- npm, pnpm, or yarn for project commands
+- optional local Codex CLI for `codex_status` / `codex_run`
 
-The MCP implementation uses the official `@modelcontextprotocol/server` v2 package.
-
-## Install
+## Install and verify
 
 ```powershell
 npm install
+npm run typecheck
+npm test
 npm run build
 ```
 
@@ -61,30 +76,31 @@ Read-only safe mode:
 node dist/index.js --workspace "D:/Projects/MyProject"
 ```
 
-Development mode:
-
-```powershell
-npm run dev -- --workspace "D:/Projects/MyProject"
-```
-
-Enable workspace writes for a trusted session:
+Enable workspace patch/write operations for a trusted session:
 
 ```powershell
 $env:ART_AGENT_ALLOW_WRITE = '1'
 node dist/index.js --workspace "D:/Projects/MyProject"
 ```
 
-Enable approved verification commands too:
+Enable approved project execution:
 
 ```powershell
-$env:ART_AGENT_ALLOW_WRITE = '1'
 $env:ART_AGENT_ALLOW_EXEC = '1'
 node dist/index.js --workspace "D:/Projects/MyProject"
 ```
 
-## Local MCP configuration example
+Enable local Codex delegation separately:
 
-Use the built JS entrypoint from an MCP-capable client:
+```powershell
+$env:ART_AGENT_ALLOW_EXEC = '1'
+$env:ART_AGENT_ALLOW_CODEX = '1'
+node dist/index.js --workspace "D:/Projects/MyProject"
+```
+
+`codex_run` defaults to a `read-only` Codex sandbox. Its `workspace-write` mode additionally requires `ART_AGENT_ALLOW_WRITE=1`. Art Agent forces Codex web search and workspace-write network access off, does not use a sandbox-bypass flag, sends the task prompt over stdin, and does not record that prompt in the Art Agent audit log. Generic `OPENAI_API_KEY` / `CODEX_API_KEY` environment variables are not forwarded to the Codex child; use the normal local Codex login/credential store if delegation is enabled.
+
+## Local MCP configuration
 
 ```json
 {
@@ -103,40 +119,34 @@ Use the built JS entrypoint from an MCP-capable client:
 
 Do **not** put API keys in this configuration.
 
-## Security
+## v0.2 workflow contract
 
-See [`docs/SECURITY.md`](docs/SECURITY.md). Secret files, traversal, symlink escapes, automatic search, and Git diff/status are guarded. Remote tunneling will only be added after local security and regression tests are expanded.
+### Patch and rollback
 
-## Verification
+`apply_patch` validates every exact-text guard before any write. If all guards pass it snapshots every affected file under the Art Agent data directory, then writes. If a write fails, Art Agent attempts automatic restore from that checkpoint. Manual `checkpoint_restore` is confirmation-gated.
 
-```powershell
-npm run typecheck
-npm test
-npm run build
-```
+### Managed tasks
+
+Only approved project scripts and Codex processes launched by Art Agent receive task IDs. Logs are bounded in memory, and `task_stop` can target only a task known to the current Art Agent runtime.
+
+### Codex bridge
+
+The bridge follows the current OpenAI Codex non-interactive interface: `codex exec`, structured JSONL output, working-directory and sandbox arguments, and prompt input over stdin. The bridge is disabled by default and intentionally does not expose arbitrary Codex CLI flags to MCP callers.
 
 ## Roadmap
 
-### v0.2 — Project workflow
-- patch/checkpoint primitive
-- richer project detection
-- bounded process logs
-- structured Git diff/status
-- content-economy/duplicate suppression
-
 ### v0.3 — Windows Control Center
-- desktop UI
-- workspace picker
-- permission controls
-- live audit/log viewer
+- desktop UI and workspace picker
+- permission toggles
+- live task/audit viewer
 - system tray
 - Doctor diagnostics
 
-### v0.4 — Local Codex bridge
-- discover Codex CLI without reading credentials
-- delegate tasks
-- poll logs/status
-- require final Git diff + verification before completion
+### v0.4 — Context economy + richer Git/project workflow
+- structured/paged diff and file reads
+- duplicate-content suppression
+- project detection profiles
+- persistent task/checkpoint metadata
 
 ### v0.5 — Remote connection
 - OpenAI Secure MCP Tunnel integration
@@ -145,5 +155,4 @@ npm run build
 - remote-safe secrets policy
 - connection/session audit
 
-### Later capabilities
-Browser/Windows UI/Office/clipboard capabilities will be added individually behind separate permissions after threat-model review. They will not silently inherit full machine access.
+Browser/Windows UI/Office/clipboard capabilities will be added individually behind separate permissions only after threat-model review.

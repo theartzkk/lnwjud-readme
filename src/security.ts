@@ -66,9 +66,10 @@ export async function canonicalWorkspace(root: string): Promise<string> {
 
 export async function resolveForRead(root: string, input: string): Promise<string> {
   assertNotSecret(input);
-  const candidate = resolve(root, input);
+  const canonicalRoot = await canonicalWorkspace(root);
+  const candidate = resolve(canonicalRoot, input);
   const canonical = await realpath(candidate);
-  if (!isInside(root, canonical)) {
+  if (!isInside(canonicalRoot, canonical)) {
     throw new SecurityError('Path escapes the registered workspace', 'PATH_OUTSIDE_WORKSPACE');
   }
   assertNotSecret(canonical);
@@ -77,14 +78,15 @@ export async function resolveForRead(root: string, input: string): Promise<strin
 
 export async function resolveForWrite(root: string, input: string): Promise<string> {
   assertNotSecret(input);
-  const candidate = resolve(root, input);
-  if (!isInside(root, candidate)) {
+  const canonicalRoot = await canonicalWorkspace(root);
+  const candidate = resolve(canonicalRoot, input);
+  if (!isInside(canonicalRoot, candidate)) {
     throw new SecurityError('Path escapes the registered workspace', 'PATH_OUTSIDE_WORKSPACE');
   }
 
   try {
     const canonicalTarget = await realpath(candidate);
-    if (!isInside(root, canonicalTarget)) {
+    if (!isInside(canonicalRoot, canonicalTarget)) {
       throw new SecurityError('Write target escapes the registered workspace', 'PATH_OUTSIDE_WORKSPACE');
     }
     assertNotSecret(canonicalTarget);
@@ -96,7 +98,7 @@ export async function resolveForWrite(root: string, input: string): Promise<stri
 
   const existing = await nearestExisting(dirname(candidate));
   const canonicalParent = await realpath(existing);
-  if (!isInside(root, canonicalParent)) {
+  if (!isInside(canonicalRoot, canonicalParent)) {
     throw new SecurityError('Write parent escapes the registered workspace', 'PATH_OUTSIDE_WORKSPACE');
   }
   assertNotSecret(candidate);
