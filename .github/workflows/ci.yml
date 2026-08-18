@@ -95,7 +95,12 @@ jobs:
         shell: pwsh
         run: |
           node node_modules/electron/install.js
-          node node_modules/electron-winstaller/script/select-7z-arch.js
+          Push-Location node_modules/electron-winstaller
+          try {
+            node script/select-7z-arch.js
+          } finally {
+            Pop-Location
+          }
           $electron = 'node_modules/electron/dist/electron.exe'
           $sevenZip = 'node_modules/electron-winstaller/vendor/7z.exe'
           $sevenZipDll = 'node_modules/electron-winstaller/vendor/7z.dll'
