@@ -62,36 +62,27 @@ jobs:
         run: |
           rm -rf "$ART_AGENT_DATA_DIR"
           mkdir -p "$ART_AGENT_DATA_DIR"
-
-          # The marker is written only after renderer + preload + IPC assertions pass.
-          # Bound the process tree but make that in-app marker the QA source of truth.
           set +e
           timeout --signal=TERM --kill-after=5s 30s xvfb-run -a npm run desktop:smoke
           runtime_code=$?
           set -e
           echo "Electron smoke wrapper exit code: $runtime_code"
-
           marker="$ART_AGENT_DATA_DIR/desktop-smoke.json"
-          echo '--- Electron smoke marker ---'
-          if [ -f "$marker" ]; then
-            cat "$marker"
-          else
-            echo '<missing>'
-          fi
-
+          if [ -f "$marker" ]; then cat "$marker"; else echo '<missing>'; fi
           node - <<'NODE'
           const fs = require('node:fs');
           const path = require('node:path');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
           const marker = path.join(process.env.ART_AGENT_DATA_DIR, 'desktop-smoke.json');
           if (!fs.existsSync(marker)) throw new Error('Electron runtime did not create a smoke marker');
           const smoke = JSON.parse(fs.readFileSync(marker, 'utf8'));
-          if (!smoke.ok || smoke.stage !== 'passed' || !smoke.apiReady || !smoke.requiredDom || smoke.overviewName !== 'Art Agent' || smoke.overviewVersion !== '0.3.0') {
+          if (!smoke.ok || smoke.stage !== 'passed' || !smoke.apiReady || !smoke.requiredDom || smoke.overviewName !== 'Art Agent' || smoke.overviewVersion !== pkg.version) {
             throw new Error(`Electron runtime smoke marker invalid: ${JSON.stringify(smoke)}`);
           }
           console.log(`Electron runtime smoke passed: ${JSON.stringify(smoke)}`);
           NODE
 
-  desktop-package-windows:
+  desktop-installer-windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -100,17 +91,55 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Install Electron Windows runtime binary explicitly
-        run: node node_modules/electron/install.js
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run desktop:package
-      - name: Verify packaged executable
+      - name: Prepare audited installer toolchain explicitly
         shell: pwsh
         run: |
+          node node_modules/electron/install.js
+          Push-Location node_modules/electron-winstaller
+          try {
+            node script/select-7z-arch.js
+          } finally {
+            Pop-Location
+          }
+          $electron = 'node_modules/electron/dist/electron.exe'
+          $sevenZip = 'node_modules/electron-winstaller/vendor/7z.exe'
+          $sevenZipDll = 'node_modules/electron-winstaller/vendor/7z.dll'
+          if (-not (Test-Path $electron)) { throw "Electron runtime missing: $electron" }
+          if (-not (Test-Path $sevenZip)) { throw "Squirrel 7-Zip helper missing: $sevenZip" }
+          if (-not (Test-Path $sevenZipDll)) { throw "Squirrel 7-Zip DLL missing: $sevenZipDll" }
+          Write-Host "Electron runtime: $electron"
+          Write-Host "Squirrel 7-Zip helper: $sevenZip"
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run desktop:make
+      - name: Resolve release metadata
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Art Agent version: $version"
+      - name: Verify packaged app and Squirrel installer set
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
           $exe = Get-ChildItem -Path out -Recurse -Filter ArtAgent.exe | Select-Object -First 1
+          $setup = Get-ChildItem -Path out/make -Recurse -Filter ArtAgentSetup.exe | Select-Object -First 1
+          $releases = Get-ChildItem -Path out/make -Recurse -Filter RELEASES | Select-Object -First 1
+          $nupkg = Get-ChildItem -Path out/make -Recurse -Filter *.nupkg | Select-Object -First 1
           if (-not $exe) { throw 'ArtAgent.exe not found in packaged output' }
-          Write-Host "Packaged executable: $($exe.FullName)"
+          if (-not $setup) { throw 'ArtAgentSetup.exe not found in maker output' }
+          if (-not $releases) { throw 'Squirrel RELEASES file not found' }
+          if (-not $nupkg) { throw 'Squirrel .nupkg not found' }
+          if ($setup.Length -lt 1MB) { throw "ArtAgentSetup.exe is unexpectedly small: $($setup.Length) bytes" }
+          if ($nupkg.Length -lt 1MB) { throw "Squirrel package is unexpectedly small: $($nupkg.Length) bytes" }
+          Write-Host "Packaged exe: $($exe.FullName)"
+          Write-Host "Installer: $($setup.FullName)"
+          Write-Host "Package: $($nupkg.FullName)"
+          $hashes = @($setup, $nupkg) | Get-FileHash -Algorithm SHA256
+          $hashFile = Join-Path (Split-Path $setup.DirectoryName -Parent) 'ArtAgent-SHA256.txt'
+          $hashes | ForEach-Object { "$($_.Hash)  $(Split-Path $_.Path -Leaf)" } | Set-Content -Encoding ascii $hashFile
+          Get-Content $hashFile | Write-Host
       - name: Verify packaged Windows main module boots
         shell: pwsh
         run: |
@@ -125,7 +154,6 @@ jobs:
           $stdout = Join-Path $env:ART_AGENT_DATA_DIR 'desktop-boot.stdout.log'
           $stderr = Join-Path $env:ART_AGENT_DATA_DIR 'desktop-boot.stderr.log'
           $process = Start-Process -FilePath $exe.FullName -ArgumentList '--smoke-test' -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-
           $boot = $null
           for ($i = 0; $i -lt 20; $i++) {
             Start-Sleep -Milliseconds 500
@@ -133,26 +161,21 @@ jobs:
               try {
                 $boot = Get-Content $marker -Raw | ConvertFrom-Json
                 if ($boot.stage) { break }
-              } catch {
-                # Retry a partial marker write.
-              }
+              } catch {}
             }
           }
-
-          if (-not $process.HasExited) {
-            & taskkill.exe /PID $process.Id /T /F | Out-Host
-          }
-          Write-Host '--- packaged stdout ---'
+          if (-not $process.HasExited) { & taskkill.exe /PID $process.Id /T /F | Out-Host }
           if (Test-Path $stdout) { Get-Content $stdout -Raw | Write-Host }
-          Write-Host '--- packaged stderr ---'
           if (Test-Path $stderr) { Get-Content $stderr -Raw | Write-Host }
-          Write-Host '--- packaged boot marker ---'
-          if (Test-Path $marker) { Get-Content $marker -Raw | Write-Host } else { Write-Host '<missing>' }
-
-          if (-not $boot -or -not $boot.stage) {
-            throw 'Packaged ArtAgent.exe did not execute the packaged desktop main module'
-          }
-          if ($boot.argv -notcontains '--smoke-test') {
-            throw "Packaged main module did not receive the smoke argument: $($boot | ConvertTo-Json -Compress)"
-          }
-          Write-Host "Packaged Windows main module boot verified at stage '$($boot.stage)'. Full BrowserWindow runtime is verified separately under Xvfb because the GitHub-hosted Windows runner has no interactive display driver."
+          if (Test-Path $marker) { Get-Content $marker -Raw | Write-Host }
+          if (-not $boot -or -not $boot.stage) { throw 'Packaged ArtAgent.exe did not execute the desktop main module' }
+          if ($boot.argv -notcontains '--smoke-test') { throw 'Packaged main module did not receive --smoke-test' }
+      - name: Upload Windows installer artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Art-Agent-Windows-Installer-${{ steps.version.outputs.version }}
+          path: |
+            out/make/squirrel.windows/x64/**
+            out/make/**/ArtAgent-SHA256.txt
+          if-no-files-found: error
+          retention-days: 14

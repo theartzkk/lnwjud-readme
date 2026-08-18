@@ -4,6 +4,7 @@ dist/
 .env.*
 !.env.example
 .art-agent/
+.art-agent-build/
 *.log
 .DS_Store
 Thumbs.db
