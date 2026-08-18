@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 
 export interface TextPageOptions {
-  startLine?: number;
-  maxLines?: number;
-  knownDigest?: string;
+  startLine?: number | undefined;
+  maxLines?: number | undefined;
+  knownDigest?: string | undefined;
 }
 
 export interface TextPage {
