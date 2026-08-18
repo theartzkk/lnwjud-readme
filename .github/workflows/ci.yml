@@ -60,11 +60,29 @@ jobs:
         run: |
           rm -rf "$ART_AGENT_DATA_DIR"
           mkdir -p "$ART_AGENT_DATA_DIR"
-          xvfb-run -a npm run desktop:smoke
+
+          # Electron may leave Chromium/Xvfb descendants alive briefly after app.exit().
+          # The marker below is written only after renderer + preload + IPC assertions pass,
+          # so bound the process tree but make that in-app marker the QA source of truth.
+          set +e
+          timeout --signal=TERM --kill-after=5s 30s xvfb-run -a npm run desktop:smoke
+          runtime_code=$?
+          set -e
+          echo "Electron smoke wrapper exit code: $runtime_code"
+
+          marker="$ART_AGENT_DATA_DIR/desktop-smoke.json"
+          echo '--- Electron smoke marker ---'
+          if [ -f "$marker" ]; then
+            cat "$marker"
+          else
+            echo '<missing>'
+          fi
+
           node - <<'NODE'
           const fs = require('node:fs');
           const path = require('node:path');
           const marker = path.join(process.env.ART_AGENT_DATA_DIR, 'desktop-smoke.json');
+          if (!fs.existsSync(marker)) throw new Error('Electron runtime did not create a smoke marker');
           const smoke = JSON.parse(fs.readFileSync(marker, 'utf8'));
           if (!smoke.ok || smoke.stage !== 'passed' || !smoke.apiReady || !smoke.requiredDom || smoke.overviewName !== 'Art Agent' || smoke.overviewVersion !== '0.3.0') {
             throw new Error(`Electron runtime smoke marker invalid: ${JSON.stringify(smoke)}`);
