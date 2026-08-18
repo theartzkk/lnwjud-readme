@@ -20,7 +20,139 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: npm install --ignore-scripts --no-audit --no-fund
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  desktop-runtime-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install Electron runtime binary explicitly
+        run: |
+          node node_modules/electron/install.js
+          test -x node_modules/electron/dist/electron
+          test -f node_modules/electron/dist/chrome-sandbox
+      - name: Configure Chromium SUID sandbox
+        run: |
+          sandbox='node_modules/electron/dist/chrome-sandbox'
+          sudo chown root:root "$sandbox"
+          sudo chmod 4755 "$sandbox"
+          stat -c '%U %G %a %n' "$sandbox"
+          test "$(stat -c '%U' "$sandbox")" = 'root'
+          test "$(stat -c '%G' "$sandbox")" = 'root'
+          test "$(stat -c '%a' "$sandbox")" = '4755'
+      - name: Ensure virtual display
+        run: |
+          if ! command -v xvfb-run >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y xvfb
+          fi
+      - name: Smoke test Electron renderer, preload and IPC under Xvfb
+        env:
+          ART_AGENT_DATA_DIR: ${{ runner.temp }}/art-agent-smoke-data
+          ART_AGENT_SMOKE_TEST: '1'
+        run: |
+          rm -rf "$ART_AGENT_DATA_DIR"
+          mkdir -p "$ART_AGENT_DATA_DIR"
+
+          # The marker is written only after renderer + preload + IPC assertions pass.
+          # Bound the process tree but make that in-app marker the QA source of truth.
+          set +e
+          timeout --signal=TERM --kill-after=5s 30s xvfb-run -a npm run desktop:smoke
+          runtime_code=$?
+          set -e
+          echo "Electron smoke wrapper exit code: $runtime_code"
+
+          marker="$ART_AGENT_DATA_DIR/desktop-smoke.json"
+          echo '--- Electron smoke marker ---'
+          if [ -f "$marker" ]; then
+            cat "$marker"
+          else
+            echo '<missing>'
+          fi
+
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const marker = path.join(process.env.ART_AGENT_DATA_DIR, 'desktop-smoke.json');
+          if (!fs.existsSync(marker)) throw new Error('Electron runtime did not create a smoke marker');
+          const smoke = JSON.parse(fs.readFileSync(marker, 'utf8'));
+          if (!smoke.ok || smoke.stage !== 'passed' || !smoke.apiReady || !smoke.requiredDom || smoke.overviewName !== 'Art Agent' || smoke.overviewVersion !== '0.3.0') {
+            throw new Error(`Electron runtime smoke marker invalid: ${JSON.stringify(smoke)}`);
+          }
+          console.log(`Electron runtime smoke passed: ${JSON.stringify(smoke)}`);
+          NODE
+
+  desktop-package-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install Electron Windows runtime binary explicitly
+        run: node node_modules/electron/install.js
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run desktop:package
+      - name: Verify packaged executable
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path out -Recurse -Filter ArtAgent.exe | Select-Object -First 1
+          if (-not $exe) { throw 'ArtAgent.exe not found in packaged output' }
+          Write-Host "Packaged executable: $($exe.FullName)"
+      - name: Verify packaged Windows main module boots
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path out -Recurse -Filter ArtAgent.exe | Select-Object -First 1
+          if (-not $exe) { throw 'ArtAgent.exe not found for boot verification' }
+          $env:ART_AGENT_DATA_DIR = Join-Path $env:RUNNER_TEMP 'art-agent-package-boot'
+          $env:ART_AGENT_SMOKE_TEST = '1'
+          $env:ELECTRON_ENABLE_LOGGING = '1'
+          Remove-Item -Recurse -Force $env:ART_AGENT_DATA_DIR -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $env:ART_AGENT_DATA_DIR -Force | Out-Null
+          $marker = Join-Path $env:ART_AGENT_DATA_DIR 'desktop-smoke.json'
+          $stdout = Join-Path $env:ART_AGENT_DATA_DIR 'desktop-boot.stdout.log'
+          $stderr = Join-Path $env:ART_AGENT_DATA_DIR 'desktop-boot.stderr.log'
+          $process = Start-Process -FilePath $exe.FullName -ArgumentList '--smoke-test' -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+
+          $boot = $null
+          for ($i = 0; $i -lt 20; $i++) {
+            Start-Sleep -Milliseconds 500
+            if (Test-Path $marker) {
+              try {
+                $boot = Get-Content $marker -Raw | ConvertFrom-Json
+                if ($boot.stage) { break }
+              } catch {
+                # Retry a partial marker write.
+              }
+            }
+          }
+
+          if (-not $process.HasExited) {
+            & taskkill.exe /PID $process.Id /T /F | Out-Host
+          }
+          Write-Host '--- packaged stdout ---'
+          if (Test-Path $stdout) { Get-Content $stdout -Raw | Write-Host }
+          Write-Host '--- packaged stderr ---'
+          if (Test-Path $stderr) { Get-Content $stderr -Raw | Write-Host }
+          Write-Host '--- packaged boot marker ---'
+          if (Test-Path $marker) { Get-Content $marker -Raw | Write-Host } else { Write-Host '<missing>' }
+
+          if (-not $boot -or -not $boot.stage) {
+            throw 'Packaged ArtAgent.exe did not execute the packaged desktop main module'
+          }
+          if ($boot.argv -notcontains '--smoke-test') {
+            throw "Packaged main module did not receive the smoke argument: $($boot | ConvertTo-Json -Compress)"
+          }
+          Write-Host "Packaged Windows main module boot verified at stage '$($boot.stage)'. Full BrowserWindow runtime is verified separately under Xvfb because the GitHub-hosted Windows runner has no interactive display driver."

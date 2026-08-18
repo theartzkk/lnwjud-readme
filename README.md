@@ -8,7 +8,7 @@
 
 Art Agent turns one selected local project folder into a tightly scoped MCP workspace so an AI can inspect the current source of truth, review Git state, patch files with recovery checkpoints, run approved verification tasks, inspect bounded process logs, and optionally delegate to a local Codex CLI.
 
-> Status: **v0.2.0 workflow MVP**. Local stdio MCP is implemented. Remote Secure MCP Tunnel, Windows UI automation, browser control, Office integration, clipboard access, and arbitrary shell access remain intentionally disabled.
+> Status: **v0.3.0 Control Center MVP**. Local stdio MCP plus a sandboxed Electron Control Center are implemented. Remote Secure MCP Tunnel, browser control, Office integration, clipboard access, and arbitrary shell access remain intentionally disabled.
 
 ## Security posture
 
@@ -19,6 +19,8 @@ Art Agent is deliberately narrower than the README-only prototype it replaced:
 - writes opt-in with `ART_AGENT_ALLOW_WRITE=1`;
 - execution opt-in with `ART_AGENT_ALLOW_EXEC=1`;
 - Codex delegation separately opt-in with `ART_AGENT_ALLOW_CODEX=1`;
+- desktop renderer is sandboxed with context isolation and no Node integration;
+- persistent local settings contain only workspace/permission preferences, never API keys;
 - no destructive Git tools;
 - no arbitrary shell or generic HTTP/network tool;
 - recovery restore and task stop require explicit `userConfirmed=true`.
@@ -50,6 +52,22 @@ See [`docs/SECURITY.md`](docs/SECURITY.md) for the full boundary.
 | `codex_status` | allow | local Codex CLI discovery/version only |
 | `codex_run` | **disabled** | sandboxed local Codex delegation with JSONL logs |
 | `audit_tail` | allow | recent security/audit decisions |
+
+## Windows Control Center
+
+The v0.3 desktop app provides a Thai-first local dashboard for workspace, Git, permissions, Codex availability, checkpoints, audit history, and Doctor diagnostics. Workspace and permission changes are written to `~/.art-agent/settings.json` and take effect after restart so permissions do not mutate silently in the middle of an agent task.
+
+```powershell
+npm run desktop
+```
+
+To package the Windows x64 desktop application:
+
+```powershell
+npm run desktop:package
+```
+
+The renderer loads only local files, uses a restrictive Content Security Policy, has `nodeIntegration=false`, `contextIsolation=true`, and Chromium sandboxing enabled. The preload exposes only fixed Art Agent IPC operations instead of the raw Electron IPC surface.
 
 ## Requirements
 
@@ -135,12 +153,13 @@ The bridge follows the current OpenAI Codex non-interactive interface: `codex ex
 
 ## Roadmap
 
-### v0.3 — Windows Control Center
+### v0.3 — Windows Control Center ✅
 - desktop UI and workspace picker
-- permission toggles
-- live task/audit viewer
+- persistent permission toggles with restart gate
+- Git/checkpoint/audit visibility
 - system tray
 - Doctor diagnostics
+- Windows packaging gate in CI
 
 ### v0.4 — Context economy + richer Git/project workflow
 - structured/paged diff and file reads

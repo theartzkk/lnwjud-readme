@@ -1,9 +1,11 @@
 {
   "name": "art-agent",
-  "version": "0.2.0",
+  "productName": "Art Agent",
+  "version": "0.3.0",
   "private": true,
   "description": "Safe-by-default local Windows MCP development agent for ChatGPT and Codex.",
   "type": "module",
+  "main": "dist/desktop/main.js",
   "bin": {
     "art-agent": "dist/index.js"
   },
@@ -14,15 +16,21 @@
     "dev": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
+    "mcp:start": "node dist/index.js",
+    "desktop": "npm run build && electron .",
+    "desktop:smoke": "npm run build && electron . --smoke-test",
+    "desktop:package": "npm run build && electron-forge package --platform=win32 --arch=x64",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test test/security.test.ts test/files.test.ts test/git.test.ts test/process.test.ts test/changes.test.ts test/tasks.test.ts test/codex.test.ts"
+    "test": "node --import tsx --test test/security.test.ts test/files.test.ts test/git.test.ts test/process.test.ts test/changes.test.ts test/tasks.test.ts test/codex.test.ts test/settings.test.ts test/desktop.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@electron-forge/cli": "7.11.2",
     "@types/node": "26.1.2",
+    "electron": "43.2.0",
     "tsx": "4.23.1",
     "typescript": "7.0.2"
   }
