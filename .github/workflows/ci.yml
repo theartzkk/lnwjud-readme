@@ -42,3 +42,13 @@ jobs:
           $exe = Get-ChildItem -Path out -Recurse -Filter ArtAgent.exe | Select-Object -First 1
           if (-not $exe) { throw 'ArtAgent.exe not found in packaged output' }
           Write-Host "Packaged executable: $($exe.FullName)"
+      - name: Smoke test packaged Control Center
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path out -Recurse -Filter ArtAgent.exe | Select-Object -First 1
+          if (-not $exe) { throw 'ArtAgent.exe not found for smoke test' }
+          $env:ART_AGENT_DATA_DIR = Join-Path $env:RUNNER_TEMP 'art-agent-smoke-data'
+          Remove-Item -Recurse -Force $env:ART_AGENT_DATA_DIR -ErrorAction SilentlyContinue
+          $process = Start-Process -FilePath $exe.FullName -ArgumentList '--smoke-test' -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw "Packaged Control Center smoke test failed with exit code $($process.ExitCode)" }
+          Write-Host 'Packaged Control Center smoke test passed.'
