@@ -72,8 +72,26 @@ test('task metadata persists across registry restarts without logs or command de
   const files = await readdir(join(dataDir, 'tasks'));
   assert.deepEqual(files, [`${task.id}.json`]);
   const raw = await readFile(join(dataDir, 'tasks', files[0]!), 'utf8');
-  assert.doesNotMatch(raw, /PERSISTED_SECRET_OUTPUT|console\.log|-e|art-agent-task-/);
-  assert.match(raw, /project:test/);
+  const persisted = JSON.parse(raw) as Record<string, unknown>;
+  assert.deepEqual(Object.keys(persisted).sort(), [
+    'code',
+    'finishedAt',
+    'id',
+    'label',
+    'runtimeId',
+    'schema',
+    'signal',
+    'startedAt',
+    'state',
+    'truncated',
+  ]);
+  assert.equal(persisted.id, task.id);
+  assert.equal(persisted.label, 'project:test');
+  assert.equal(persisted.state, 'succeeded');
+  for (const forbidden of ['stdout', 'stderr', 'executable', 'args', 'cwd', 'env', 'stdin', 'prompt', 'instruction']) {
+    assert.equal(Object.hasOwn(persisted, forbidden), false, `persisted metadata must not contain ${forbidden}`);
+  }
+  assert.doesNotMatch(raw, /PERSISTED_SECRET_OUTPUT|console\.log|art-agent-task-/);
 });
 
 test('running metadata from another runtime is never treated as an owned live task', async () => {
