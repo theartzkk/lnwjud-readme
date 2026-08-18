@@ -1,7 +1,7 @@
 {
   "name": "art-agent",
   "productName": "Art Agent",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "author": "Art Agent",
   "description": "Safe-by-default local Windows MCP development agent for ChatGPT and Codex.",
