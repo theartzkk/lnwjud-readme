@@ -21,9 +21,12 @@ import { loadStoredSettings, saveStoredSettings } from '../settings.js';
 import { DESKTOP_IPC, DESKTOP_WEB_PREFERENCES } from './security.js';
 
 const VERSION = '0.3.0';
+const SMOKE_TEST = process.argv.includes('--smoke-test');
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let quitting = false;
+
+if (SMOKE_TEST) app.commandLine.appendSwitch('disable-gpu');
 
 function argValue(name: string): string | undefined {
   const index = process.argv.indexOf(name);
@@ -91,7 +94,7 @@ async function runtimeOverview() {
   };
 }
 
-function createWindow(): BrowserWindow {
+async function createWindow(showOnReady = true): Promise<BrowserWindow> {
   const win = new BrowserWindow({
     width: 1180,
     height: 780,
@@ -109,8 +112,7 @@ function createWindow(): BrowserWindow {
     },
   });
 
-  void win.loadFile(join(app.getAppPath(), 'desktop', 'index.html'));
-  win.once('ready-to-show', () => win.show());
+  if (showOnReady) win.once('ready-to-show', () => win.show());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (event) => event.preventDefault());
   win.on('close', (event) => {
@@ -119,6 +121,7 @@ function createWindow(): BrowserWindow {
       win.hide();
     }
   });
+  await win.loadFile(join(app.getAppPath(), 'desktop', 'index.html'));
   return win;
 }
 
@@ -186,15 +189,64 @@ function registerIpc(): void {
   });
 }
 
+async function runSmokeTest(win: BrowserWindow): Promise<void> {
+  const timeout = setTimeout(() => {
+    console.error('ART_AGENT_DESKTOP_SMOKE_TIMEOUT');
+    quitting = true;
+    app.exit(1);
+  }, 20_000);
+
+  try {
+    const result = await win.webContents.executeJavaScript(`(async () => {
+      const apiReady = typeof window.artAgent?.getOverview === 'function';
+      const requiredDom = ['workspace', 'git-output', 'perm-write', 'doctor-runtime'].every((id) => Boolean(document.getElementById(id)));
+      const overview = apiReady ? await window.artAgent.getOverview() : null;
+      return {
+        apiReady,
+        requiredDom,
+        title: document.title,
+        overviewName: overview?.name ?? null,
+        overviewVersion: overview?.version ?? null,
+        workspaceValue: document.getElementById('workspace')?.textContent ?? null,
+      };
+    })()`, true) as Record<string, unknown>;
+
+    if (
+      result.apiReady !== true ||
+      result.requiredDom !== true ||
+      result.title !== 'Art Agent Control Center' ||
+      result.overviewName !== 'Art Agent' ||
+      result.overviewVersion !== VERSION
+    ) {
+      throw new Error(`Desktop smoke validation failed: ${JSON.stringify(result)}`);
+    }
+    console.error(`ART_AGENT_DESKTOP_SMOKE_OK ${JSON.stringify(result)}`);
+    clearTimeout(timeout);
+    quitting = true;
+    app.exit(0);
+  } catch (error) {
+    clearTimeout(timeout);
+    console.error(`ART_AGENT_DESKTOP_SMOKE_FAILED ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    quitting = true;
+    app.exit(1);
+  }
+}
+
 app.on('before-quit', () => { quitting = true; });
 app.on('window-all-closed', () => { /* Keep the tray process alive on Windows. */ });
 
 await app.whenReady();
 registerIpc();
-mainWindow = createWindow();
-tray = createTray();
+mainWindow = await createWindow(!SMOKE_TEST);
 
-app.on('activate', () => {
-  if (!mainWindow) mainWindow = createWindow();
-  mainWindow.show();
-});
+if (SMOKE_TEST) {
+  await runSmokeTest(mainWindow);
+} else {
+  tray = createTray();
+  app.on('activate', () => {
+    void (async () => {
+      if (!mainWindow) mainWindow = await createWindow();
+      mainWindow.show();
+    })();
+  });
+}
