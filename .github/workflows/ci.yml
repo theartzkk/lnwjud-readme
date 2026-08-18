@@ -91,8 +91,19 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Install Electron Windows runtime binary explicitly
-        run: node node_modules/electron/install.js
+      - name: Prepare audited installer toolchain explicitly
+        shell: pwsh
+        run: |
+          node node_modules/electron/install.js
+          node node_modules/electron-winstaller/script/select-7z-arch.js
+          $electron = 'node_modules/electron/dist/electron.exe'
+          $sevenZip = 'node_modules/electron-winstaller/vendor/7z.exe'
+          $sevenZipDll = 'node_modules/electron-winstaller/vendor/7z.dll'
+          if (-not (Test-Path $electron)) { throw "Electron runtime missing: $electron" }
+          if (-not (Test-Path $sevenZip)) { throw "Squirrel 7-Zip helper missing: $sevenZip" }
+          if (-not (Test-Path $sevenZipDll)) { throw "Squirrel 7-Zip DLL missing: $sevenZipDll" }
+          Write-Host "Electron runtime: $electron"
+          Write-Host "Squirrel 7-Zip helper: $sevenZip"
       - run: npm run typecheck
       - run: npm test
       - run: npm run desktop:make
