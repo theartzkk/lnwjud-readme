@@ -6,6 +6,7 @@ import { applyTextPatch, createCheckpoint, listCheckpoints, restoreCheckpoint } 
 import { buildCodexArgs, codexEnvironment, codexStatus, resolveCodexExecutable } from './codex.js';
 import { listWorkspace, readTextFile, readTextPage, searchText, writeTextFile } from './files.js';
 import { gitDiffPage, gitLog, gitStatus } from './git.js';
+import { detectProject } from './project.js';
 import { resolvePackageInvocation, runPackageScript, type PackageCommand } from './process.js';
 import { SecurityError } from './security.js';
 import { ManagedTaskRegistry } from './tasks.js';
@@ -30,7 +31,7 @@ async function packageMetadata(workspace: string): Promise<{ packageManager?: st
 
 export function createServer(config: ArtAgentConfig, workspace: string): McpServer {
   const audit = new AuditLog(config.dataDir);
-  const tasks = new ManagedTaskRegistry(config.maxTaskLogBytes);
+  const tasks = new ManagedTaskRegistry(config.maxTaskLogBytes, config.dataDir);
   const server = new McpServer({ name: 'art-agent', version: ART_AGENT_VERSION });
 
   server.registerTool(
@@ -50,11 +51,11 @@ export function createServer(config: ArtAgentConfig, workspace: string): McpServ
 
   server.registerTool(
     'workspace_info',
-    { description: 'Show the registered workspace and Git status', inputSchema: z.object({}) },
+    { description: 'Show the registered workspace, safe project profile and Git status', inputSchema: z.object({}) },
     async () => {
       try {
-        const status = await gitStatus(workspace);
-        return text({ workspace, git: status.code === 0 ? status.stdout : status.stderr });
+        const [status, project] = await Promise.all([gitStatus(workspace), detectProject(workspace)]);
+        return text({ workspace, project, git: status.code === 0 ? status.stdout : status.stderr });
       } catch (error) {
         return errorText(error);
       }
@@ -326,13 +327,13 @@ export function createServer(config: ArtAgentConfig, workspace: string): McpServ
   server.registerTool(
     'task_status',
     {
-      description: 'Read status for a process launched by this Art Agent runtime',
+      description: 'Read current or persisted metadata for an Art Agent task without returning logs',
       inputSchema: z.object({ taskId: z.string().min(1).max(120) }),
     },
     async ({ taskId }) => {
       try {
-        const task = tasks.status(taskId);
-        return text({ ...task, stdout: undefined, stderr: undefined });
+        const { stdout: _stdout, stderr: _stderr, ...task } = tasks.status(taskId);
+        return text(task);
       } catch (error) {
         return errorText(error);
       }
@@ -340,9 +341,18 @@ export function createServer(config: ArtAgentConfig, workspace: string): McpServ
   );
 
   server.registerTool(
+    'task_list',
+    {
+      description: 'List bounded current and persisted Art Agent task metadata without logs, command arguments or prompts',
+      inputSchema: z.object({ limit: z.number().int().min(1).max(100).default(20) }),
+    },
+    async ({ limit }) => text(tasks.list(limit)),
+  );
+
+  server.registerTool(
     'task_logs',
     {
-      description: 'Read bounded stdout/stderr for a process launched by this Art Agent runtime',
+      description: 'Read bounded stdout/stderr only for a process owned by this Art Agent runtime',
       inputSchema: z.object({ taskId: z.string().min(1).max(120) }),
     },
     async ({ taskId }) => {
@@ -357,7 +367,7 @@ export function createServer(config: ArtAgentConfig, workspace: string): McpServ
   server.registerTool(
     'task_stop',
     {
-      description: 'Stop only a process launched by this Art Agent runtime. Requires explicit userConfirmed=true.',
+      description: 'Stop only a process owned by this Art Agent runtime. Requires explicit userConfirmed=true.',
       inputSchema: z.object({ taskId: z.string().min(1).max(120), userConfirmed: z.boolean() }),
     },
     async ({ taskId, userConfirmed }) => {
