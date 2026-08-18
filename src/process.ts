@@ -105,7 +105,7 @@ export async function runPackageScript(
     const cmdPath = join(systemRoot, 'System32', 'cmd.exe');
     await access(cmdPath, constants.F_OK);
     const safeManagerPath = managerPath.replaceAll('"', '""');
-    const commandLine = `"${safeManagerPath}" ${managerArgs.join(' ')}`;
+    const commandLine = `""${safeManagerPath}" ${managerArgs.join(' ')}"`;
     return execFile(cmdPath, ['/d', '/s', '/c', commandLine], cwd, 15 * 60_000);
   }
 
