@@ -1,5 +1,6 @@
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, relative } from 'node:path';
+import { pageText, type TextPage, type TextPageOptions } from './context.js';
 import { assertNotSecret, resolveForRead, resolveForWrite } from './security.js';
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', 'coverage', '.next', '.cache']);
@@ -10,6 +11,15 @@ export async function readTextFile(root: string, path: string, maxBytes: number)
   if (!info.isFile()) throw new Error('Target is not a file');
   if (info.size > maxBytes) throw new Error(`File exceeds ${maxBytes} byte read limit`);
   return readFile(target, 'utf8');
+}
+
+export async function readTextPage(
+  root: string,
+  path: string,
+  maxBytes: number,
+  options: TextPageOptions = {},
+): Promise<TextPage> {
+  return pageText(await readTextFile(root, path, maxBytes), options);
 }
 
 export async function writeTextFile(root: string, path: string, content: string): Promise<void> {
