@@ -33,6 +33,19 @@ jobs:
         with:
           node-version: 24
       - run: npm install --no-audit --no-fund
+      - name: Configure Chromium SUID sandbox
+        run: |
+          sandbox='node_modules/electron/dist/chrome-sandbox'
+          if [ ! -f "$sandbox" ]; then
+            echo "Missing Electron sandbox helper: $sandbox" >&2
+            exit 1
+          fi
+          sudo chown root:root "$sandbox"
+          sudo chmod 4755 "$sandbox"
+          stat -c '%U %G %a %n' "$sandbox"
+          test "$(stat -c '%U' "$sandbox")" = 'root'
+          test "$(stat -c '%G' "$sandbox")" = 'root'
+          test "$(stat -c '%a' "$sandbox")" = '4755'
       - name: Ensure virtual display
         run: |
           if ! command -v xvfb-run >/dev/null 2>&1; then
