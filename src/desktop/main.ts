@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   app,
@@ -189,11 +189,24 @@ function registerIpc(): void {
   });
 }
 
+async function writeSmokeMarker(payload: Record<string, unknown>): Promise<void> {
+  const config = loadConfig();
+  await mkdir(config.dataDir, { recursive: true });
+  await writeFile(
+    join(config.dataDir, 'desktop-smoke.json'),
+    `${JSON.stringify({ ts: new Date().toISOString(), ...payload }, null, 2)}\n`,
+    'utf8',
+  );
+}
+
 async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const timeout = setTimeout(() => {
-    console.error('ART_AGENT_DESKTOP_SMOKE_TIMEOUT');
-    quitting = true;
-    app.exit(1);
+    void (async () => {
+      await writeSmokeMarker({ ok: false, error: 'timeout' }).catch(() => undefined);
+      console.error('ART_AGENT_DESKTOP_SMOKE_TIMEOUT');
+      quitting = true;
+      app.exit(1);
+    })();
   }, 20_000);
 
   try {
@@ -220,13 +233,16 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     ) {
       throw new Error(`Desktop smoke validation failed: ${JSON.stringify(result)}`);
     }
+    await writeSmokeMarker({ ok: true, ...result });
     console.error(`ART_AGENT_DESKTOP_SMOKE_OK ${JSON.stringify(result)}`);
     clearTimeout(timeout);
     quitting = true;
     app.exit(0);
   } catch (error) {
     clearTimeout(timeout);
-    console.error(`ART_AGENT_DESKTOP_SMOKE_FAILED ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    const message = error instanceof Error ? error.stack ?? error.message : String(error);
+    await writeSmokeMarker({ ok: false, error: message }).catch(() => undefined);
+    console.error(`ART_AGENT_DESKTOP_SMOKE_FAILED ${message}`);
     quitting = true;
     app.exit(1);
   }
