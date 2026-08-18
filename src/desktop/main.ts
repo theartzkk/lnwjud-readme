@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import {
   app,
@@ -19,12 +20,16 @@ import { gitStatus } from '../git.js';
 import { canonicalWorkspace } from '../security.js';
 import { loadStoredSettings, saveStoredSettings } from '../settings.js';
 import { DESKTOP_IPC, DESKTOP_WEB_PREFERENCES } from './security.js';
+import { ART_AGENT_VERSION } from '../version.js';
 
-const VERSION = '0.3.0';
+const VERSION = ART_AGENT_VERSION;
 const SMOKE_TEST = process.argv.includes('--smoke-test') || process.env.ART_AGENT_SMOKE_TEST === '1';
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let quitting = false;
+
+const require = createRequire(import.meta.url);
+const SQUIRREL_STARTUP = process.platform === 'win32' && Boolean(require('electron-squirrel-startup'));
 
 if (SMOKE_TEST) {
   app.disableHardwareAcceleration();
@@ -292,10 +297,15 @@ async function startAfterReady(): Promise<void> {
   });
 }
 
-void app.whenReady().then(startAfterReady).catch(async (error) => {
-  const message = error instanceof Error ? error.stack ?? error.message : String(error);
-  if (SMOKE_TEST) await writeSmokeMarker({ ok: false, stage: 'failed', error: message }).catch(() => undefined);
-  console.error(`ART_AGENT_DESKTOP_START_FAILED ${message}`);
+if (SQUIRREL_STARTUP) {
   quitting = true;
-  app.exit(1);
-});
+  app.quit();
+} else {
+  void app.whenReady().then(startAfterReady).catch(async (error) => {
+    const message = error instanceof Error ? error.stack ?? error.message : String(error);
+    if (SMOKE_TEST) await writeSmokeMarker({ ok: false, stage: 'failed', error: message }).catch(() => undefined);
+    console.error(`ART_AGENT_DESKTOP_START_FAILED ${message}`);
+    quitting = true;
+    app.exit(1);
+  });
+}

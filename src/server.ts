@@ -9,6 +9,7 @@ import { gitDiff, gitLog, gitStatus } from './git.js';
 import { resolvePackageInvocation, runPackageScript, type PackageCommand } from './process.js';
 import { SecurityError } from './security.js';
 import { ManagedTaskRegistry } from './tasks.js';
+import { ART_AGENT_VERSION } from './version.js';
 
 function text(value: unknown, isError = false) {
   return {
@@ -30,7 +31,7 @@ async function packageMetadata(workspace: string): Promise<{ packageManager?: st
 export function createServer(config: ArtAgentConfig, workspace: string): McpServer {
   const audit = new AuditLog(config.dataDir);
   const tasks = new ManagedTaskRegistry(config.maxTaskLogBytes);
-  const server = new McpServer({ name: 'art-agent', version: '0.2.0' });
+  const server = new McpServer({ name: 'art-agent', version: ART_AGENT_VERSION });
 
   server.registerTool(
     'health',
@@ -38,7 +39,7 @@ export function createServer(config: ArtAgentConfig, workspace: string): McpServ
     async () => text({
       ok: true,
       name: 'Art Agent',
-      version: '0.2.0',
+      version: ART_AGENT_VERSION,
       workspace,
       safeMode: true,
       allowWrite: config.allowWrite,
