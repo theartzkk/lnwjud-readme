@@ -1,0 +1,50 @@
+name: v0.4 version sync
+
+on:
+  push:
+    branches: ['agent/art-agent-v0.4-context-economy']
+
+permissions:
+  contents: write
+
+jobs:
+  sync-version:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Bump package and lockfile together
+        run: |
+          current="$(node -p "require('./package.json').version")"
+          if [ "$current" != '0.3.1' ]; then
+            echo "Expected release precursor 0.3.1, found $current" >&2
+            exit 1
+          fi
+          npm version 0.4.0 --no-git-tag-version --ignore-scripts
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+          if (pkg.version !== '0.4.0') throw new Error(`package version mismatch: ${pkg.version}`);
+          if (lock.version !== '0.4.0') throw new Error(`lock version mismatch: ${lock.version}`);
+          if (lock.packages?.['']?.version !== '0.4.0') throw new Error(`lock root package mismatch: ${lock.packages?.['']?.version}`);
+          NODE
+      - name: Verify release version before commit
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run typecheck
+          npm test
+          git diff --check
+      - name: Commit synchronized version
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json package-lock.json
+          git commit -m 'Bump Art Agent to v0.4.0'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
