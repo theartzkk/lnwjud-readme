@@ -9,6 +9,13 @@ export interface ExecResult {
   stderr: string;
 }
 
+export type PackageCommand = 'test' | 'lint' | 'typecheck' | 'build';
+
+export interface ProcessInvocation {
+  executable: string;
+  args: string[];
+}
+
 export async function resolveExecutable(command: string): Promise<string> {
   if (isAbsolute(command)) {
     await access(command, constants.F_OK);
@@ -121,11 +128,10 @@ async function resolveWindowsPackageCli(manager: 'npm' | 'pnpm' | 'yarn', manage
   return cli;
 }
 
-export async function runPackageScript(
-  cwd: string,
+export async function resolvePackageInvocation(
   packageManager: string | undefined,
-  command: 'test' | 'lint' | 'typecheck' | 'build',
-): Promise<ExecResult> {
+  command: PackageCommand,
+): Promise<ProcessInvocation> {
   const manager: 'npm' | 'pnpm' | 'yarn' = packageManager?.startsWith('pnpm@')
     ? 'pnpm'
     : packageManager?.startsWith('yarn@')
@@ -136,8 +142,16 @@ export async function runPackageScript(
 
   if (process.platform === 'win32' && ['.cmd', '.bat'].includes(extname(managerPath).toLowerCase())) {
     const cli = await resolveWindowsPackageCli(manager, managerPath);
-    return execFile(process.execPath, [cli, ...managerArgs], cwd, 15 * 60_000);
+    return { executable: process.execPath, args: [cli, ...managerArgs] };
   }
+  return { executable: managerPath, args: managerArgs };
+}
 
-  return execFile(managerPath, managerArgs, cwd, 15 * 60_000);
+export async function runPackageScript(
+  cwd: string,
+  packageManager: string | undefined,
+  command: PackageCommand,
+): Promise<ExecResult> {
+  const invocation = await resolvePackageInvocation(packageManager, command);
+  return execFile(invocation.executable, invocation.args, cwd, 15 * 60_000);
 }
