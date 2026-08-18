@@ -20,7 +20,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: npm install --ignore-scripts --no-audit --no-fund
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
@@ -32,7 +33,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: npm install --no-audit --no-fund
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Install Electron runtime binary explicitly
         run: |
           node node_modules/electron/install.js
@@ -61,9 +63,8 @@ jobs:
           rm -rf "$ART_AGENT_DATA_DIR"
           mkdir -p "$ART_AGENT_DATA_DIR"
 
-          # Electron may leave Chromium/Xvfb descendants alive briefly after app.exit().
-          # The marker below is written only after renderer + preload + IPC assertions pass,
-          # so bound the process tree but make that in-app marker the QA source of truth.
+          # The marker is written only after renderer + preload + IPC assertions pass.
+          # Bound the process tree but make that in-app marker the QA source of truth.
           set +e
           timeout --signal=TERM --kill-after=5s 30s xvfb-run -a npm run desktop:smoke
           runtime_code=$?
@@ -97,7 +98,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: npm install --no-audit --no-fund
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install Electron Windows runtime binary explicitly
+        run: node node_modules/electron/install.js
       - run: npm run typecheck
       - run: npm test
       - run: npm run desktop:package
@@ -152,30 +156,3 @@ jobs:
             throw "Packaged main module did not receive the smoke argument: $($boot | ConvertTo-Json -Compress)"
           }
           Write-Host "Packaged Windows main module boot verified at stage '$($boot.stage)'. Full BrowserWindow runtime is verified separately under Xvfb because the GitHub-hosted Windows runner has no interactive display driver."
-
-  lockfile-once:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/agent/')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref_name }}
-          persist-credentials: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - name: Generate and commit package-lock.json once
-        run: |
-          if [ -f package-lock.json ]; then
-            echo 'package-lock.json already exists; nothing to do.'
-            exit 0
-          fi
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          test -f package-lock.json
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add package-lock.json
-          git commit -m 'Lock Art Agent dependencies'
-          git push origin "HEAD:${GITHUB_REF_NAME}"
