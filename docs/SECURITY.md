@@ -1,6 +1,6 @@
 # Art Agent security model
 
-Art Agent is designed to be **safe by default**. v0.2 adds recovery checkpoints, managed process logs, and an optional Codex bridge without widening the default machine boundary.
+Art Agent is designed to be **safe by default**. v0.3 adds a local Electron Control Center and persistent non-secret preferences without widening the default machine boundary.
 
 ## Defaults
 
@@ -75,6 +75,14 @@ Security-sensitive reads, writes, patches, restores, task starts/stops, and Code
 ## Verification
 
 CI runs on Windows and Ubuntu. Windows covers the primary deployment platform and package/task behavior; Ubuntu ensures symlink-escape tests execute even when Windows symlink creation is privilege-restricted.
+
+## Desktop Control Center boundary
+
+The Electron renderer loads local packaged files only. Node integration is disabled, context isolation and Chromium sandboxing are enabled, navigation/new-window requests are denied, and the page carries a restrictive CSP with no network connections.
+
+The preload is CommonJS specifically so it remains compatible with a sandboxed preload process and exposes only five fixed high-level operations: overview, workspace picker, permission settings, restart, and opening Art Agent's own data directory. It does not expose raw `ipcRenderer`.
+
+Desktop settings are stored outside the project workspace under the Art Agent data directory and contain only the selected workspace and boolean permission preferences. They never store API keys or Codex prompts. Permission changes require a restart before becoming effective, avoiding mid-task privilege changes. Environment variables and explicit CLI workspace arguments continue to override stored preferences.
 
 ## Remote access gate
 

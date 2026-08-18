@@ -1,5 +1,6 @@
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
+import { loadStoredSettings } from './settings.js';
 
 export interface ArtAgentConfig {
   workspace: string;
@@ -12,9 +13,9 @@ export interface ArtAgentConfig {
   maxTaskLogBytes: number;
 }
 
-function boolEnv(name: string, fallback = false): boolean {
+function boolValue(name: string, stored: boolean | undefined, fallback = false): boolean {
   const raw = process.env[name];
-  if (raw === undefined) return fallback;
+  if (raw === undefined) return stored ?? fallback;
   return ['1', 'true', 'yes', 'on'].includes(raw.trim().toLowerCase());
 }
 
@@ -30,16 +31,18 @@ function argValue(name: string): string | undefined {
 }
 
 export function loadConfig(): ArtAgentConfig {
+  const dataDir = resolve(process.env.ART_AGENT_DATA_DIR ?? `${homedir()}/.art-agent`);
+  const stored = loadStoredSettings(dataDir);
   const workspace = resolve(
-    argValue('--workspace') ?? process.env.ART_AGENT_WORKSPACE ?? process.cwd(),
+    argValue('--workspace') ?? process.env.ART_AGENT_WORKSPACE ?? stored.defaultWorkspace ?? process.cwd(),
   );
 
   return {
     workspace,
-    dataDir: resolve(process.env.ART_AGENT_DATA_DIR ?? `${homedir()}/.art-agent`),
-    allowWrite: boolEnv('ART_AGENT_ALLOW_WRITE', false),
-    allowExec: boolEnv('ART_AGENT_ALLOW_EXEC', false),
-    allowCodex: boolEnv('ART_AGENT_ALLOW_CODEX', false),
+    dataDir,
+    allowWrite: boolValue('ART_AGENT_ALLOW_WRITE', stored.allowWrite, false),
+    allowExec: boolValue('ART_AGENT_ALLOW_EXEC', stored.allowExec, false),
+    allowCodex: boolValue('ART_AGENT_ALLOW_CODEX', stored.allowCodex, false),
     maxReadBytes: intEnv('ART_AGENT_MAX_READ_BYTES', 512 * 1024),
     maxSearchResults: intEnv('ART_AGENT_MAX_SEARCH_RESULTS', 100),
     maxTaskLogBytes: intEnv('ART_AGENT_MAX_TASK_LOG_BYTES', 512 * 1024),

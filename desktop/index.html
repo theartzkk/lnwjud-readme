@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" />
+  <title>Art Agent Control Center</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="../logo-256x256.png" alt="Art Agent" />
+        <div><strong>Art Agent</strong><span>Control Center</span></div>
+      </div>
+      <nav>
+        <button class="nav active" data-section="overview">ภาพรวม</button>
+        <button class="nav" data-section="security">สิทธิ์และความปลอดภัย</button>
+        <button class="nav" data-section="activity">กิจกรรม</button>
+        <button class="nav" data-section="doctor">Doctor</button>
+      </nav>
+      <div class="sidebar-foot"><span class="dot"></span><span id="version">กำลังโหลด…</span></div>
+    </aside>
+
+    <main>
+      <header>
+        <div><p class="eyebrow">LOCAL AI WORKSPACE GATEWAY</p><h1>ศูนย์ควบคุม Art Agent</h1><p class="muted">สถานะจริงของ workspace, Git, Codex และ permission profile ในเครื่องนี้</p></div>
+        <button id="refresh" class="btn secondary">รีเฟรช</button>
+      </header>
+
+      <section id="section-overview" class="section active">
+        <div class="hero card">
+          <div><p class="label">WORKSPACE</p><h2 id="workspace">กำลังตรวจสอบ…</h2><p id="git-summary" class="muted mono"></p></div>
+          <button id="choose-workspace" class="btn">เปลี่ยนโปรเจกต์</button>
+        </div>
+        <div class="grid metrics">
+          <article class="card"><p class="label">WRITE</p><div id="metric-write" class="metric">—</div><p class="muted">แก้ไฟล์ / patch</p></article>
+          <article class="card"><p class="label">EXECUTE</p><div id="metric-exec" class="metric">—</div><p class="muted">test / build / task</p></article>
+          <article class="card"><p class="label">CODEX</p><div id="metric-codex" class="metric">—</div><p id="codex-version" class="muted">—</p></article>
+          <article class="card"><p class="label">CHECKPOINTS</p><div id="metric-checkpoints" class="metric">—</div><p class="muted">จุดย้อนกลับล่าสุด</p></article>
+        </div>
+        <div class="grid two">
+          <article class="card"><div class="card-head"><h3>Git status</h3><span id="git-state" class="badge">—</span></div><pre id="git-output">—</pre></article>
+          <article class="card"><div class="card-head"><h3>Checkpoint ล่าสุด</h3></div><div id="checkpoint-list" class="list"></div></article>
+        </div>
+      </section>
+
+      <section id="section-security" class="section">
+        <div class="card narrow">
+          <p class="eyebrow">SAFE BY DEFAULT</p><h2>สิทธิ์ของ session ถัดไป</h2><p class="muted">ค่าที่บันทึกจะมีผลหลังรีสตาร์ต Art Agent เพื่อไม่ให้ permission เปลี่ยนกลางงานโดยไม่ตั้งใจ</p>
+          <label class="toggle-row"><span><strong>Workspace Write</strong><small>อนุญาต patch และเขียนไฟล์ภายใน workspace</small></span><input id="perm-write" type="checkbox" /></label>
+          <label class="toggle-row"><span><strong>Approved Execution</strong><small>อนุญาตเฉพาะ test / lint / typecheck / build และ task ที่ Art Agent เป็นผู้เปิด</small></span><input id="perm-exec" type="checkbox" /></label>
+          <label class="toggle-row"><span><strong>Local Codex Delegation</strong><small>Codex ยังอยู่ภายใต้ sandbox และปิด web/network ตาม policy</small></span><input id="perm-codex" type="checkbox" /></label>
+          <div class="actions"><button id="save-permissions" class="btn">บันทึกสิทธิ์</button><button id="open-data-dir" class="btn secondary">เปิดโฟลเดอร์ข้อมูล</button></div>
+          <div id="restart-banner" class="notice hidden"><span>มีการตั้งค่าใหม่ ต้องรีสตาร์ตจึงจะมีผล</span><button id="restart" class="btn small">รีสตาร์ตตอนนี้</button></div>
+        </div>
+      </section>
+
+      <section id="section-activity" class="section">
+        <div class="card"><div class="card-head"><h2>Audit ล่าสุด</h2><span class="badge">ไม่เก็บเนื้อหาไฟล์/Prompt</span></div><div id="audit-list" class="timeline"></div></div>
+      </section>
+
+      <section id="section-doctor" class="section">
+        <div class="grid two">
+          <article class="card"><p class="label">RUNTIME</p><dl id="doctor-runtime" class="kv"></dl></article>
+          <article class="card"><p class="label">BOUNDARY</p><dl id="doctor-boundary" class="kv"></dl></article>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>

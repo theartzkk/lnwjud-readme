@@ -24,3 +24,21 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  desktop-package-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run desktop:package
+      - name: Verify packaged executable
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path out -Recurse -Filter ArtAgent.exe | Select-Object -First 1
+          if (-not $exe) { throw 'ArtAgent.exe not found in packaged output' }
+          Write-Host "Packaged executable: $($exe.FullName)"
