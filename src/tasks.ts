@@ -61,8 +61,10 @@ export interface TaskStartOptions {
 }
 
 const TASK_ID = /^[A-Za-z0-9-]{1,120}$/;
+const TASK_STATES = new Set<TaskState>(['running', 'succeeded', 'failed', 'stopped', 'timed_out', 'unknown_after_restart']);
 const MAX_PERSISTED_TASKS = 500;
 const MAX_TASK_METADATA_BYTES = 64 * 1024;
+const MAX_TASK_LABEL_CHARS = 200;
 
 export class ManagedTaskRegistry {
   private readonly tasks = new Map<string, InternalTask>();
@@ -86,7 +88,7 @@ export class ManagedTaskRegistry {
 
     const task: InternalTask = {
       id,
-      label: options.label,
+      label: options.label.slice(0, MAX_TASK_LABEL_CHARS),
       state: 'running',
       code: null,
       signal: null,
@@ -220,20 +222,21 @@ export class ManagedTaskRegistry {
     renameSync(temp, file);
   }
 
-  private parsePersisted(file: string): PersistedTask | null {
+  private parsePersisted(file: string, expectedId?: string): PersistedTask | null {
     try {
       if (statSync(file).size > MAX_TASK_METADATA_BYTES) return null;
       const value = JSON.parse(readFileSync(file, 'utf8')) as Partial<PersistedTask>;
       if (
         value.schema !== 1 ||
-        typeof value.runtimeId !== 'string' ||
-        typeof value.id !== 'string' ||
-        !TASK_ID.test(value.id) ||
-        typeof value.label !== 'string' ||
-        typeof value.state !== 'string' ||
-        !['running', 'succeeded', 'failed', 'stopped', 'timed_out', 'unknown_after_restart'].includes(value.state) ||
-        typeof value.startedAt !== 'string' ||
-        (value.finishedAt !== null && typeof value.finishedAt !== 'string') ||
+        typeof value.runtimeId !== 'string' || value.runtimeId.length > 120 ||
+        typeof value.id !== 'string' || !TASK_ID.test(value.id) ||
+        (expectedId !== undefined && value.id !== expectedId) ||
+        typeof value.label !== 'string' || value.label.length > MAX_TASK_LABEL_CHARS ||
+        typeof value.state !== 'string' || !TASK_STATES.has(value.state as TaskState) ||
+        (value.code !== null && typeof value.code !== 'number') ||
+        (value.signal !== null && typeof value.signal !== 'string') ||
+        typeof value.startedAt !== 'string' || Number.isNaN(Date.parse(value.startedAt)) ||
+        (value.finishedAt !== null && (typeof value.finishedAt !== 'string' || Number.isNaN(Date.parse(value.finishedAt)))) ||
         typeof value.truncated !== 'boolean'
       ) return null;
       return value as PersistedTask;
@@ -248,10 +251,10 @@ export class ManagedTaskRegistry {
       id: record.id,
       label: record.label,
       state: staleRunning ? 'unknown_after_restart' : record.state,
-      code: record.code ?? null,
-      signal: record.signal ?? null,
+      code: record.code,
+      signal: record.signal,
       startedAt: record.startedAt,
-      finishedAt: record.finishedAt ?? null,
+      finishedAt: record.finishedAt,
       stdout: '',
       stderr: '',
       truncated: record.truncated,
@@ -262,7 +265,7 @@ export class ManagedTaskRegistry {
   private readPersisted(id: string): TaskSnapshot | null {
     const file = this.taskFile(id);
     if (!file) return null;
-    const record = this.parsePersisted(file);
+    const record = this.parsePersisted(file, id);
     return record ? this.historicalSnapshot(record) : null;
   }
 
@@ -279,7 +282,7 @@ export class ManagedTaskRegistry {
     for (const name of names) {
       const id = name.slice(0, -5);
       if (!TASK_ID.test(id)) continue;
-      const record = this.parsePersisted(join(root, name));
+      const record = this.parsePersisted(join(root, name), id);
       if (record) out.push(this.historicalSnapshot(record));
     }
     return out;
