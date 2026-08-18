@@ -11,5 +11,18 @@ module.exports = {
       /^\/\.github($|\/)/,
     ],
   },
-  makers: [],
+  makers: [
+    {
+      name: '@electron-forge/maker-squirrel',
+      config: {
+        name: 'ArtAgent',
+        title: 'Art Agent',
+        authors: 'Art Agent',
+        description: 'Safe-by-default local Windows MCP development agent for ChatGPT and Codex.',
+        exe: 'ArtAgent.exe',
+        setupExe: 'ArtAgentSetup.exe',
+        noMsi: true,
+      },
+    },
+  ],
 };

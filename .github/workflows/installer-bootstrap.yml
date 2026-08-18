@@ -1,0 +1,86 @@
+name: Installer bootstrap
+
+on:
+  push:
+    branches: ['agent/art-agent-v0.3.1-installer']
+
+permissions:
+  contents: write
+
+jobs:
+  sync-installer-source:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Sync shared version and Squirrel startup handling
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+
+          const serverPath = 'src/server.ts';
+          let server = fs.readFileSync(serverPath, 'utf8');
+          if (!server.includes("import { ART_AGENT_VERSION } from './version.js';")) {
+            const anchor = "import { ManagedTaskRegistry } from './tasks.js';";
+            if (!server.includes(anchor)) throw new Error('server import anchor not found');
+            server = server.replace(anchor, `${anchor}\nimport { ART_AGENT_VERSION } from './version.js';`);
+          }
+          const serverMatches = server.match(/version: '0\.2\.0'/g) ?? [];
+          if (serverMatches.length !== 2 && !server.includes('version: ART_AGENT_VERSION')) {
+            throw new Error(`unexpected server version occurrences: ${serverMatches.length}`);
+          }
+          server = server.replaceAll("version: '0.2.0'", 'version: ART_AGENT_VERSION');
+          fs.writeFileSync(serverPath, server);
+
+          const desktopPath = 'src/desktop/main.ts';
+          let desktop = fs.readFileSync(desktopPath, 'utf8');
+          if (!desktop.includes("import { createRequire } from 'node:module';")) {
+            desktop = desktop.replace(
+              "import { mkdir, writeFile } from 'node:fs/promises';",
+              "import { mkdir, writeFile } from 'node:fs/promises';\nimport { createRequire } from 'node:module';",
+            );
+          }
+          if (!desktop.includes("import { ART_AGENT_VERSION } from '../version.js';")) {
+            const anchor = "import { DESKTOP_IPC, DESKTOP_WEB_PREFERENCES } from './security.js';";
+            if (!desktop.includes(anchor)) throw new Error('desktop import anchor not found');
+            desktop = desktop.replace(anchor, `${anchor}\nimport { ART_AGENT_VERSION } from '../version.js';`);
+          }
+          if (!desktop.includes('const VERSION = ART_AGENT_VERSION;')) {
+            if (!desktop.includes("const VERSION = '0.3.0';")) throw new Error('desktop version anchor not found');
+            desktop = desktop.replace("const VERSION = '0.3.0';", 'const VERSION = ART_AGENT_VERSION;');
+          }
+          if (!desktop.includes('const SQUIRREL_STARTUP =')) {
+            const anchor = 'let quitting = false;';
+            if (!desktop.includes(anchor)) throw new Error('desktop startup anchor not found');
+            desktop = desktop.replace(
+              anchor,
+              `${anchor}\n\nconst require = createRequire(import.meta.url);\nconst SQUIRREL_STARTUP = process.platform === 'win32' && Boolean(require('electron-squirrel-startup'));`,
+            );
+          }
+          if (!desktop.includes('if (SQUIRREL_STARTUP) {')) {
+            const anchor = "void app.whenReady().then(startAfterReady).catch(async (error) => {\n  const message = error instanceof Error ? error.stack ?? error.message : String(error);\n  if (SMOKE_TEST) await writeSmokeMarker({ ok: false, stage: 'failed', error: message }).catch(() => undefined);\n  console.error(`ART_AGENT_DESKTOP_START_FAILED ${message}`);\n  quitting = true;\n  app.exit(1);\n});";
+            if (!desktop.includes(anchor)) throw new Error('desktop ready lifecycle anchor not found');
+            const replacement = "if (SQUIRREL_STARTUP) {\n  quitting = true;\n  app.quit();\n} else {\n  void app.whenReady().then(startAfterReady).catch(async (error) => {\n    const message = error instanceof Error ? error.stack ?? error.message : String(error);\n    if (SMOKE_TEST) await writeSmokeMarker({ ok: false, stage: 'failed', error: message }).catch(() => undefined);\n    console.error(`ART_AGENT_DESKTOP_START_FAILED ${message}`);\n    quitting = true;\n    app.exit(1);\n  });\n}";
+            desktop = desktop.replace(anchor, replacement);
+          }
+          fs.writeFileSync(desktopPath, desktop);
+          NODE
+      - name: Refresh dependency lockfile
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Verify and commit generated changes
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm run typecheck
+          npm test
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/server.ts src/desktop/main.ts package-lock.json
+          git commit -m 'Sync Art Agent installer runtime and lockfile'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
