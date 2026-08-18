@@ -194,7 +194,7 @@ async function writeSmokeMarker(payload: Record<string, unknown>): Promise<void>
   await mkdir(config.dataDir, { recursive: true });
   await writeFile(
     join(config.dataDir, 'desktop-smoke.json'),
-    `${JSON.stringify({ ts: new Date().toISOString(), ...payload }, null, 2)}\n`,
+    `${JSON.stringify({ ts: new Date().toISOString(), pid: process.pid, argv: process.argv, ...payload }, null, 2)}\n`,
     'utf8',
   );
 }
@@ -251,6 +251,12 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
 
 app.on('before-quit', () => { quitting = true; });
 app.on('window-all-closed', () => { /* Keep the tray process alive on Windows. */ });
+
+if (SMOKE_TEST) {
+  await writeSmokeMarker({ ok: false, stage: 'module-loaded' }).catch((error) => {
+    console.error(`ART_AGENT_DESKTOP_SMOKE_MARKER_FAILED ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+  });
+}
 
 await app.whenReady();
 registerIpc();
