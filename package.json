@@ -1,0 +1,29 @@
+{
+  "name": "art-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Safe-by-default local Windows MCP development agent for ChatGPT and Codex.",
+  "type": "module",
+  "bin": {
+    "art-agent": "dist/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test test/security.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.2",
+    "tsx": "4.23.1",
+    "typescript": "7.0.2"
+  }
+}
