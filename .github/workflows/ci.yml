@@ -33,13 +33,14 @@ jobs:
         with:
           node-version: 24
       - run: npm install --no-audit --no-fund
+      - name: Install Electron runtime binary explicitly
+        run: |
+          node node_modules/electron/install.js
+          test -x node_modules/electron/dist/electron
+          test -f node_modules/electron/dist/chrome-sandbox
       - name: Configure Chromium SUID sandbox
         run: |
           sandbox='node_modules/electron/dist/chrome-sandbox'
-          if [ ! -f "$sandbox" ]; then
-            echo "Missing Electron sandbox helper: $sandbox" >&2
-            exit 1
-          fi
           sudo chown root:root "$sandbox"
           sudo chmod 4755 "$sandbox"
           stat -c '%U %G %a %n' "$sandbox"
