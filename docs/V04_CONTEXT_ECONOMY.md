@@ -2,6 +2,8 @@
 
 Art Agent v0.4 reduces repeated MCP payloads and preserves useful project/task continuity without adding parallel filesystem, Git, checkpoint, or process-control systems.
 
+Release versioning now treats `package.json` as the runtime Source of Truth. `ART_AGENT_VERSION` derives from package metadata, so the MCP server, desktop app, tests, and installer do not keep a second hard-coded runtime version.
+
 ## Read contract
 
 `read_file` remains the single guarded workspace read tool. It uses bounded line paging and a whole-file SHA-256 digest:
