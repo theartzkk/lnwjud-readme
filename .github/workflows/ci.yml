@@ -49,6 +49,18 @@ jobs:
           if (-not $exe) { throw 'ArtAgent.exe not found for smoke test' }
           $env:ART_AGENT_DATA_DIR = Join-Path $env:RUNNER_TEMP 'art-agent-smoke-data'
           Remove-Item -Recurse -Force $env:ART_AGENT_DATA_DIR -ErrorAction SilentlyContinue
-          $process = Start-Process -FilePath $exe.FullName -ArgumentList '--smoke-test' -PassThru -Wait
-          if ($process.ExitCode -ne 0) { throw "Packaged Control Center smoke test failed with exit code $($process.ExitCode)" }
-          Write-Host 'Packaged Control Center smoke test passed.'
+          $process = Start-Process -FilePath $exe.FullName -ArgumentList '--smoke-test' -PassThru
+          if (-not $process.WaitForExit(30000)) {
+            & taskkill.exe /PID $process.Id /T /F | Out-Host
+            throw 'Packaged Control Center smoke test timed out after 30 seconds'
+          }
+          $marker = Join-Path $env:ART_AGENT_DATA_DIR 'desktop-smoke.json'
+          if (-not (Test-Path $marker)) { throw 'Desktop smoke marker was not created by packaged app' }
+          $smoke = Get-Content $marker -Raw | ConvertFrom-Json
+          if ($process.ExitCode -ne 0 -or $smoke.ok -ne $true) {
+            throw "Packaged Control Center smoke failed. Exit=$($process.ExitCode) Marker=$($smoke | ConvertTo-Json -Compress)"
+          }
+          if ($smoke.apiReady -ne $true -or $smoke.requiredDom -ne $true -or $smoke.overviewName -ne 'Art Agent' -or $smoke.overviewVersion -ne '0.3.0') {
+            throw "Desktop smoke marker is incomplete: $($smoke | ConvertTo-Json -Compress)"
+          }
+          Write-Host "Packaged Control Center smoke passed: $($smoke | ConvertTo-Json -Compress)"
