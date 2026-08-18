@@ -21,7 +21,7 @@ import { loadStoredSettings, saveStoredSettings } from '../settings.js';
 import { DESKTOP_IPC, DESKTOP_WEB_PREFERENCES } from './security.js';
 
 const VERSION = '0.3.0';
-const SMOKE_TEST = process.argv.includes('--smoke-test');
+const SMOKE_TEST = process.argv.includes('--smoke-test') || process.env.ART_AGENT_SMOKE_TEST === '1';
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let quitting = false;
@@ -202,7 +202,7 @@ async function writeSmokeMarker(payload: Record<string, unknown>): Promise<void>
 async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const timeout = setTimeout(() => {
     void (async () => {
-      await writeSmokeMarker({ ok: false, error: 'timeout' }).catch(() => undefined);
+      await writeSmokeMarker({ ok: false, stage: 'failed', error: 'timeout' }).catch(() => undefined);
       console.error('ART_AGENT_DESKTOP_SMOKE_TIMEOUT');
       quitting = true;
       app.exit(1);
@@ -210,6 +210,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   }, 20_000);
 
   try {
+    await writeSmokeMarker({ ok: false, stage: 'renderer-check' });
     const result = await win.webContents.executeJavaScript(`(async () => {
       const apiReady = typeof window.artAgent?.getOverview === 'function';
       const requiredDom = ['workspace', 'git-output', 'perm-write', 'doctor-runtime'].every((id) => Boolean(document.getElementById(id)));
@@ -233,7 +234,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     ) {
       throw new Error(`Desktop smoke validation failed: ${JSON.stringify(result)}`);
     }
-    await writeSmokeMarker({ ok: true, ...result });
+    await writeSmokeMarker({ ok: true, stage: 'passed', ...result });
     console.error(`ART_AGENT_DESKTOP_SMOKE_OK ${JSON.stringify(result)}`);
     clearTimeout(timeout);
     quitting = true;
@@ -241,7 +242,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   } catch (error) {
     clearTimeout(timeout);
     const message = error instanceof Error ? error.stack ?? error.message : String(error);
-    await writeSmokeMarker({ ok: false, error: message }).catch(() => undefined);
+    await writeSmokeMarker({ ok: false, stage: 'failed', error: message }).catch(() => undefined);
     console.error(`ART_AGENT_DESKTOP_SMOKE_FAILED ${message}`);
     quitting = true;
     app.exit(1);
@@ -253,11 +254,22 @@ app.on('window-all-closed', () => { /* Keep the tray process alive on Windows. *
 
 await app.whenReady();
 registerIpc();
-mainWindow = await createWindow(!SMOKE_TEST);
 
 if (SMOKE_TEST) {
-  await runSmokeTest(mainWindow);
+  try {
+    await writeSmokeMarker({ ok: false, stage: 'main-ready' });
+    mainWindow = await createWindow(false);
+    await writeSmokeMarker({ ok: false, stage: 'window-loaded' });
+    await runSmokeTest(mainWindow);
+  } catch (error) {
+    const message = error instanceof Error ? error.stack ?? error.message : String(error);
+    await writeSmokeMarker({ ok: false, stage: 'failed', error: message }).catch(() => undefined);
+    console.error(`ART_AGENT_DESKTOP_SMOKE_BOOT_FAILED ${message}`);
+    quitting = true;
+    app.exit(1);
+  }
 } else {
+  mainWindow = await createWindow(true);
   tray = createTray();
   app.on('activate', () => {
     void (async () => {
