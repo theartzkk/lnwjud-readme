@@ -1,5 +1,7 @@
 const $ = (id) => document.getElementById(id);
 let overview = null;
+let projectsData = null;
+let activeProjectId = null;
 
 function escapeText(value) { return value == null ? '—' : String(value); }
 function permission(el, enabled) { el.textContent = enabled ? 'ON' : 'OFF'; el.className = `metric ${enabled ? 'on' : 'off'}`; }
@@ -10,6 +12,8 @@ function renderList(container, items, emptyText, render) {
 }
 function item(title, detail, cls='list-item') { const root=document.createElement('div');root.className=cls;const strong=document.createElement('strong');strong.textContent=title;const small=document.createElement('small');small.textContent=detail;root.append(strong,small);return root; }
 function row(dl, key, value) { const dt=document.createElement('dt');dt.textContent=key;const dd=document.createElement('dd');dd.textContent=escapeText(value);dl.append(dt,dd); }
+function dateText(value) { return value ? new Date(value).toLocaleString('th-TH') : '—'; }
+function showProjectStatus(message, kind = '') { const status = $('project-status'); status.textContent = message; status.className = `notice ${kind}`.trim(); }
 
 function remoteState(data) {
   const readiness = data.doctor.remoteTunnel;
@@ -41,6 +45,90 @@ function renderRemote(data) {
   row(details, 'Packaged MCP', readiness?.packagedMcpReady ? 'READY' : 'NOT READY');
   row(details, 'Last verified', runtime?.verifiedAt ? new Date(runtime.verifiedAt).toLocaleString('th-TH') : 'ยังไม่มีการเชื่อมต่อ/หยุดใน session นี้');
   if (readiness?.blockers?.length) row(details, 'Blocker', readiness.blockers.join(' • '));
+}
+
+function projectStatusLabel(project) {
+  if (project.state === 'CONFLICT') return ['CONFLICT', 'danger'];
+  if (!project.localAvailable) return ['WORKSPACE UNAVAILABLE', 'danger'];
+  return [project.selected ? 'SELECTED' : 'AVAILABLE', project.selected ? 'success' : ''];
+}
+
+function renderProjects(data) {
+  projectsData = data;
+  const list = $('project-list');
+  list.replaceChildren();
+  if (!data.projects?.length) {
+    list.append(item('ยังไม่มี registered project', 'ใช้ Register Existing Project หรือ Initialize as AWH Project เพื่อเริ่มต้น', 'list-item'));
+    return;
+  }
+  for (const project of data.projects) {
+    const card = document.createElement('article'); card.className = 'card project-card';
+    const head = document.createElement('div'); head.className = 'card-head';
+    const title = document.createElement('div');
+    const name = document.createElement('h3'); name.textContent = project.name || project.projectId; name.className = 'project-name';
+    const identity = document.createElement('small'); identity.textContent = `${project.type || 'type unavailable'} • ${project.projectId}`; identity.className = 'mono muted';
+    title.append(name, identity);
+    const badge = document.createElement('span'); const [label, cls] = projectStatusLabel(project); badge.textContent = label; badge.className = `badge ${cls}`.trim();
+    head.append(title, badge); card.append(head);
+    const details = document.createElement('dl'); details.className = 'kv project-details';
+    row(details, 'Local workspace', project.localAvailable ? project.workspacePath : 'Workspace unavailable');
+    row(details, 'Last opened', dateText(project.lastOpenedAt));
+    row(details, 'Last used', dateText(project.lastUsedAt));
+    row(details, 'Git', project.git ? (project.git.ok ? (project.git.text || 'Working tree clean') : project.git.text) : '—');
+    if (project.error) row(details, 'Note', project.error);
+    card.append(details);
+    const actions = document.createElement('div'); actions.className = 'actions';
+    if (project.localAvailable && project.state === 'AVAILABLE') {
+      const select = document.createElement('button'); select.className = 'btn'; select.textContent = project.selected ? 'Selected Project' : 'Select / Open Project'; select.disabled = project.selected;
+      select.addEventListener('click', () => runProjectAction(() => window.artAgent.selectProject(project.projectId), 'เลือกโปรเจกต์แล้ว ต้อง restart เพื่อเปิด workspace นี้'));
+      actions.append(select);
+      const memory = document.createElement('button'); memory.className = 'btn secondary'; memory.textContent = 'Project Memory'; memory.addEventListener('click', () => loadMemory(project.projectId)); actions.append(memory);
+    }
+    if (!project.localAvailable || project.state === 'CONFLICT') {
+      const locate = document.createElement('button'); locate.className = 'btn secondary'; locate.textContent = 'Locate Project'; locate.addEventListener('click', () => runProjectAction(() => window.artAgent.locateProject(project.projectId), 'พบและผูกโปรเจกต์แล้ว ต้อง restart เพื่อเปิด workspace นี้'));
+    actions.append(locate);
+    }
+    card.append(actions); list.append(card);
+  }
+}
+
+function renderMemory(context) {
+  activeProjectId = context.project.projectId;
+  $('memory-title').textContent = context.project.name;
+  $('memory-project-state').textContent = `${context.project.type} • READY`;
+  $('memory-project-state').className = 'badge success';
+  $('memory-workspace').textContent = context.workspacePath;
+  const handoff = $('handoff-preview');
+  if (!context.handoffPreview) handoff.textContent = 'HANDOFF.md — Missing';
+  else handoff.textContent = `${context.handoffPreview.text}${context.handoffPreview.truncated ? '\n\n[Preview truncated]' : ''}`;
+  const list = $('memory-list'); list.replaceChildren();
+  for (const [file, status] of Object.entries(context.memory || {})) {
+    const entry = document.createElement('div'); entry.className = 'memory-entry';
+    const name = document.createElement('strong'); name.textContent = file;
+    const state = document.createElement('span'); state.textContent = status === 'present' ? 'Present' : 'Missing'; state.className = `badge ${status === 'present' ? 'success' : ''}`.trim();
+    entry.append(name, state); list.append(entry);
+  }
+  $('initialize-memory').disabled = !Object.values(context.memory || {}).includes('missing');
+}
+
+async function loadMemory(projectId) {
+  showSection('memory');
+  $('memory-title').textContent = 'Project Memory'; $('memory-project-state').textContent = 'กำลังโหลด...'; $('initialize-memory').disabled = true;
+  try { renderMemory(await window.artAgent.getProjectContext(projectId)); }
+  catch (error) { $('memory-project-state').textContent = 'UNAVAILABLE'; $('memory-project-state').className = 'badge danger'; $('handoff-preview').textContent = `Project Memory error: ${error?.message ?? error}`; }
+}
+
+async function refreshProjects() {
+  try { renderProjects(await window.artAgent.getProjects()); }
+  catch (error) { showProjectStatus(`Projects error: ${error?.message ?? error}`, 'danger'); }
+}
+
+async function runProjectAction(action, successMessage) {
+  try {
+    const result = await action();
+    if (result?.changed) { showProjectStatus(successMessage, ''); $('restart-banner').classList.remove('hidden'); }
+    await refreshProjects();
+  } catch (error) { showProjectStatus(error?.message ?? String(error), 'danger'); }
 }
 
 function render(data) {
@@ -84,9 +172,14 @@ function render(data) {
   row(boundary, 'Codex CLI', data.codex.available ? 'READY' : 'NOT FOUND');
 }
 
+function showSection(section) {
+  document.querySelectorAll('.nav').forEach((node) => node.classList.toggle('active', node.dataset.section === section));
+  document.querySelectorAll('.section').forEach((node) => node.classList.toggle('active', node.id === `section-${section}`));
+}
+
 async function refresh() {
   $('refresh').disabled = true;
-  try { render(await window.artAgent.getOverview()); }
+  try { render(await window.artAgent.getOverview()); await refreshProjects(); }
   catch (error) { $('git-output').textContent = `Control Center error: ${error?.message ?? error}`; }
   finally { $('refresh').disabled = false; }
 }
@@ -116,14 +209,20 @@ async function runRemoteAction(action) {
   }
 }
 
-document.querySelectorAll('.nav').forEach((button) => button.addEventListener('click', () => {
-  document.querySelectorAll('.nav').forEach((node) => node.classList.toggle('active', node === button));
-  document.querySelectorAll('.section').forEach((node) => node.classList.remove('active'));
-  $(`section-${button.dataset.section}`).classList.add('active');
-}));
+document.querySelectorAll('.nav').forEach((button) => button.addEventListener('click', () => showSection(button.dataset.section)));
 
 $('refresh').addEventListener('click', refresh);
-$('choose-workspace').addEventListener('click', async () => { const result=await window.artAgent.chooseWorkspace(); if(result.changed) $('restart-banner').classList.remove('hidden'); });
+$('choose-workspace').addEventListener('click', () => showSection('projects'));
+$('register-project').addEventListener('click', () => runProjectAction(() => window.artAgent.registerProject(), 'ลงทะเบียนโปรเจกต์แล้ว'));
+$('initialize-project').addEventListener('click', () => runProjectAction(() => window.artAgent.initializeProject(), 'เริ่มต้นและลงทะเบียน AWH Project แล้ว'));
+$('initialize-memory').addEventListener('click', async () => {
+  if (!activeProjectId) return;
+  await runProjectAction(async () => {
+    const result = await window.artAgent.initializeProjectMemory(activeProjectId);
+    await loadMemory(activeProjectId);
+    return { changed: result.changed };
+  }, 'สร้างเฉพาะ Project Memory ที่หายไปแล้ว');
+});
 $('save-permissions').addEventListener('click', async () => {
   const execute = $('perm-exec').checked;
   const codex = $('perm-codex').checked;

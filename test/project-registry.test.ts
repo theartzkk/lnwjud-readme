@@ -8,11 +8,14 @@ import {
   initializeProject,
   initializeProjectMemory,
   listProjects,
+  openRegisteredProject,
+  projectMemoryStatus,
   ProjectRegistryError,
   PROJECT_MANIFEST_PATH,
   PROJECT_MEMORY_FILES,
   readProjectManifest,
   registerProject,
+  resolveRegisteredProject,
 } from '../src/project-registry.js';
 
 async function fixture(): Promise<{ root: string; dataDir: string; project: string }> {
@@ -131,6 +134,39 @@ test('builds bounded context in deterministic project-memory read order', async 
     assert.deepEqual(Object.values(context.memory), ['project truth', 'handoff truth', 'task truth', 'architecture truth', 'decision truth']);
     await writeFile(join(f.project, 'PROJECT.md'), 'x'.repeat(32 * 1024 + 1));
     await assert.rejects(() => buildProjectContext(f.project), /read limit/);
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test('reports memory presence without overwriting and selection revalidates portable identity', async () => {
+  const f = await fixture();
+  try {
+    const manifest = await initializeProject(f.project, { name: 'Portable AWH', type: 'node' });
+    await registerProject(f.dataDir, f.project);
+    const before = await projectMemoryStatus(f.project);
+    assert.equal(before['HANDOFF.md'], 'missing');
+    await initializeProjectMemory(f.project);
+    const after = await projectMemoryStatus(f.project);
+    assert.equal(after['HANDOFF.md'], 'present');
+    const opened = await openRegisteredProject(f.dataDir, manifest.projectId);
+    assert.equal(opened.projectId, manifest.projectId);
+    assert.equal((await resolveRegisteredProject(f.dataDir, manifest.projectId)).manifest.name, 'Portable AWH');
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test('fails closed when one portable project id is available at two local paths', async () => {
+  const f = await fixture();
+  const second = join(f.root, 'second');
+  try {
+    const manifest = await initializeProject(f.project);
+    await mkdir(join(second, '.awh'), { recursive: true });
+    await writeFile(join(second, PROJECT_MANIFEST_PATH), JSON.stringify(manifest));
+    const now = new Date().toISOString();
+    await mkdir(f.dataDir, { recursive: true });
+    await writeFile(join(f.dataDir, 'projects.json'), JSON.stringify({ schemaVersion: 1, projects: [
+      { projectId: manifest.projectId, workspacePath: await realpath(f.project), lastOpenedAt: now, lastUsedAt: now, pinned: false, available: true },
+      { projectId: manifest.projectId, workspacePath: await realpath(second), lastOpenedAt: now, lastUsedAt: now, pinned: false, available: true },
+    ] }));
+    await assert.rejects(() => resolveRegisteredProject(f.dataDir, manifest.projectId), (error: unknown) => error instanceof ProjectRegistryError && error.code === 'PROJECT_ID_CONFLICT');
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 

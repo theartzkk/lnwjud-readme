@@ -16,6 +16,8 @@
       </div>
       <nav>
         <button class="nav active" data-section="overview">ภาพรวม</button>
+        <button class="nav" data-section="projects">Projects</button>
+        <button class="nav" data-section="memory">Project Memory</button>
         <button class="nav" data-section="git">Git</button>
         <button class="nav" data-section="permissions">สิทธิ์</button>
         <button class="nav" data-section="remote">Remote</button>
@@ -43,7 +45,7 @@
             <h2 id="workspace">กำลังโหลด...</h2>
             <p id="git-summary" class="muted"></p>
           </div>
-          <button id="choose-workspace" class="btn">เลือกโปรเจกต์</button>
+          <button id="choose-workspace" class="btn">เปิด Projects</button>
         </div>
         <div class="grid metrics">
           <div class="card"><span class="label">WRITE</span><div id="metric-write" class="metric"></div></div>
@@ -54,6 +56,27 @@
         <div class="grid two">
           <div class="card"><div class="card-head"><h3>Codex CLI</h3><span class="badge">LOCAL</span></div><p id="codex-version" class="mono muted"></p></div>
           <div class="card"><div class="card-head"><h3>Recent checkpoints</h3><span class="badge">RECOVERY</span></div><div id="checkpoint-list" class="list"></div></div>
+        </div>
+      </section>
+
+      <section id="section-projects" class="section">
+        <div class="card project-toolbar">
+          <div><p class="eyebrow">PROJECT REGISTRY</p><h2>Projects</h2><p class="muted">Portable identity อยู่ในโปรเจกต์ ส่วน path และสถานะเป็นข้อมูลของเครื่องนี้</p></div>
+          <div class="actions"><button id="register-project" class="btn">Register Existing Project</button><button id="initialize-project" class="btn secondary">Initialize as AWH Project</button></div>
+        </div>
+        <div id="project-status" class="notice hidden"></div>
+        <div id="project-list" class="project-list"></div>
+      </section>
+
+      <section id="section-memory" class="section">
+        <div class="card narrow">
+          <div class="card-head"><div><p class="eyebrow">PORTABLE PROJECT MEMORY</p><h2 id="memory-title">Project Memory</h2></div><span id="memory-project-state" class="badge">เลือกโปรเจกต์</span></div>
+          <p id="memory-workspace" class="muted">เลือกโปรเจกต์ที่พร้อมใช้งานจากหน้า Projects</p>
+          <h3>HANDOFF</h3>
+          <pre id="handoff-preview">ยังไม่มี context preview</pre>
+          <div class="card-head memory-heading"><h3>Memory files</h3><button id="initialize-memory" class="btn secondary small" disabled>Initialize Missing Project Memory</button></div>
+          <div id="memory-list" class="memory-list"></div>
+          <p class="muted">AWH จะสร้างเฉพาะไฟล์ที่หายไป และไม่เขียนทับไฟล์เดิม</p>
         </div>
       </section>
 

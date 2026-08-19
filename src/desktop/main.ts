@@ -20,6 +20,19 @@ import { gitStatus } from '../git.js';
 import { canonicalWorkspace } from '../security.js';
 import { loadStoredSettings, saveStoredSettings } from '../settings.js';
 import {
+  buildProjectContext,
+  initializeProject,
+  initializeProjectMemory,
+  listProjects,
+  openRegisteredProject,
+  projectMemoryStatus,
+  ProjectRegistryError,
+  readProjectManifest,
+  registerProject,
+  resolveRegisteredProject,
+  PROJECT_MEMORY_FILES,
+} from '../project-registry.js';
+import {
   connectTunnelRuntime,
   inspectTunnelReadiness,
   stopTunnelRuntime,
@@ -37,6 +50,7 @@ let tray: Tray | null = null;
 let quitting = false;
 let remoteOperationInFlight = false;
 let lastRemoteRuntime: ReturnType<typeof sanitizedTunnelRuntime> | null = null;
+const MAX_HANDOFF_PREVIEW_CHARS = 4_000;
 
 const require = createRequire(import.meta.url);
 const SQUIRREL_STARTUP = process.platform === 'win32' && Boolean(require('electron-squirrel-startup'));
@@ -115,6 +129,86 @@ async function confirmRemoteAction(action: 'connect' | 'stop'): Promise<boolean>
     ? await dialog.showMessageBox(mainWindow, options)
     : await dialog.showMessageBox(options);
   return result.response === 1;
+}
+
+async function chooseDirectory(title: string): Promise<string | null> {
+  const options: OpenDialogOptions = { title, properties: ['openDirectory'] };
+  const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+  return result.canceled || !result.filePaths[0] ? null : result.filePaths[0];
+}
+
+function projectError(error: unknown): { code: string; message: string } {
+  if (error instanceof ProjectRegistryError) return { code: error.code, message: error.message };
+  return { code: 'PROJECT_OPERATION_FAILED', message: error instanceof Error ? error.message : String(error) };
+}
+
+async function projectsOverview() {
+  const config = loadConfig();
+  const configuredWorkspace = hasExplicitWorkspace(config.dataDir)
+    ? await canonicalWorkspace(config.workspace).catch(() => null)
+    : null;
+  const records = await listProjects(config.dataDir);
+  const availableById = new Map<string, Set<string>>();
+  const entries = await Promise.all(records.map(async (record) => {
+    const base = {
+      projectId: record.projectId,
+      workspacePath: record.workspacePath,
+      lastOpenedAt: record.lastOpenedAt,
+      lastUsedAt: record.lastUsedAt,
+      pinned: record.pinned,
+      selected: false,
+      name: null as string | null,
+      type: null as string | null,
+      localAvailable: false,
+      state: 'UNAVAILABLE' as 'AVAILABLE' | 'UNAVAILABLE' | 'CONFLICT',
+      error: null as string | null,
+      memory: null as Record<string, 'present' | 'missing'> | null,
+      git: null as { ok: boolean; text: string } | null,
+    };
+    try {
+      const root = await canonicalWorkspace(record.workspacePath);
+      const manifest = await readProjectManifest(root);
+      if (manifest.projectId !== record.projectId) throw new ProjectRegistryError('Workspace manifest project id does not match the registry', 'PROJECT_ID_MISMATCH');
+      const git = await gitStatus(root);
+      base.name = manifest.name;
+      base.type = manifest.type;
+      base.localAvailable = true;
+      base.state = 'AVAILABLE';
+      base.selected = configuredWorkspace === root;
+      base.memory = await projectMemoryStatus(root);
+      base.git = { ok: git.code === 0, text: git.code === 0 ? git.stdout : git.stderr };
+      const paths = availableById.get(record.projectId) ?? new Set<string>();
+      paths.add(root);
+      availableById.set(record.projectId, paths);
+    } catch (error) {
+      const detail = projectError(error);
+      base.error = detail.message;
+      if (detail.code === 'PROJECT_ID_MISMATCH') base.state = 'CONFLICT';
+    }
+    return base;
+  }));
+  for (const entry of entries) {
+    if ((availableById.get(entry.projectId)?.size ?? 0) > 1) {
+      entry.state = 'CONFLICT';
+      entry.error = 'Project ID is available at more than one local workspace';
+    }
+  }
+  return { projects: entries, currentWorkspace: configuredWorkspace };
+}
+
+async function projectContext(projectId: unknown) {
+  const config = loadConfig();
+  if (typeof projectId !== 'string') throw new ProjectRegistryError('Project id is required', 'PROJECT_ID_INVALID');
+  const resolved = await resolveRegisteredProject(config.dataDir, projectId);
+  const context = await buildProjectContext(resolved.workspacePath);
+  const memory = Object.fromEntries(PROJECT_MEMORY_FILES.map((file) => [file, context.memory[file] === null ? 'missing' : 'present']));
+  const handoff = context.memory['HANDOFF.md'];
+  return {
+    project: context.project,
+    workspacePath: context.workspace.path,
+    memory,
+    handoffPreview: handoff === null ? null : { text: handoff.slice(0, MAX_HANDOFF_PREVIEW_CHARS), truncated: handoff.length > MAX_HANDOFF_PREVIEW_CHARS },
+  };
 }
 
 async function runtimeOverview() {
@@ -246,21 +340,65 @@ function createTray(): Tray {
 function registerIpc(): void {
   ipcMain.handle(DESKTOP_IPC.overview, async () => runtimeOverview());
 
-  ipcMain.handle(DESKTOP_IPC.chooseWorkspace, async () => {
-    const options: OpenDialogOptions = {
-      title: `เลือกโฟลเดอร์โปรเจกต์สำหรับ ${PRODUCT.desktopName}`,
-      properties: ['openDirectory'],
-    };
-    const result = mainWindow
-      ? await dialog.showOpenDialog(mainWindow, options)
-      : await dialog.showOpenDialog(options);
-    const selected = result.filePaths[0];
-    if (result.canceled || !selected) return { changed: false };
-    const canonical = await canonicalWorkspace(selected);
+  ipcMain.handle(DESKTOP_IPC.projects, async () => projectsOverview());
+
+  ipcMain.handle(DESKTOP_IPC.projectContext, async (_event, projectId: unknown) => projectContext(projectId));
+
+  ipcMain.handle(DESKTOP_IPC.registerProject, async () => {
+    const selected = await chooseDirectory(`ลงทะเบียนโปรเจกต์ที่มีอยู่ใน ${PRODUCT.desktopName}`);
+    if (!selected) return { changed: false, cancelled: true };
     const config = loadConfig();
+    const record = await registerProject(config.dataDir, selected);
+    return { changed: true, projectId: record.projectId, workspace: record.workspacePath };
+  });
+
+  ipcMain.handle(DESKTOP_IPC.initializeProject, async () => {
+    const selected = await chooseDirectory(`เริ่มต้นโปรเจกต์ AWH ในโฟลเดอร์ที่เลือก`);
+    if (!selected) return { changed: false, cancelled: true };
+    const config = loadConfig();
+    const manifest = await initializeProject(selected);
+    const record = await registerProject(config.dataDir, selected);
+    return { changed: true, project: manifest, projectId: record.projectId, workspace: record.workspacePath };
+  });
+
+  ipcMain.handle(DESKTOP_IPC.initializeProjectMemory, async (_event, projectId: unknown) => {
+    if (typeof projectId !== 'string') throw new ProjectRegistryError('Project id is required', 'PROJECT_ID_INVALID');
+    const config = loadConfig();
+    const resolved = await resolveRegisteredProject(config.dataDir, projectId);
+    const created = await initializeProjectMemory(resolved.workspacePath);
+    return { changed: created.length > 0, created };
+  });
+
+  ipcMain.handle(DESKTOP_IPC.selectProject, async (_event, projectId: unknown) => {
+    if (typeof projectId !== 'string') throw new ProjectRegistryError('Project id is required', 'PROJECT_ID_INVALID');
+    const config = loadConfig();
+    const record = await openRegisteredProject(config.dataDir, projectId);
     const stored = loadStoredSettings(config.dataDir);
-    await saveStoredSettings(config.dataDir, { ...stored, defaultWorkspace: canonical });
-    return { changed: true, workspace: canonical, restartRequired: true };
+    await saveStoredSettings(config.dataDir, { ...stored, defaultWorkspace: record.workspacePath });
+    return { changed: true, restartRequired: true, projectId: record.projectId, workspace: record.workspacePath };
+  });
+
+  ipcMain.handle(DESKTOP_IPC.locateProject, async (_event, projectId: unknown) => {
+    if (typeof projectId !== 'string') throw new ProjectRegistryError('Project id is required', 'PROJECT_ID_INVALID');
+    const selected = await chooseDirectory('ค้นหาโฟลเดอร์ของโปรเจกต์ที่ย้ายแล้ว');
+    if (!selected) return { changed: false, cancelled: true };
+    const config = loadConfig();
+    const manifest = await readProjectManifest(selected);
+    if (manifest.projectId !== projectId) throw new ProjectRegistryError('โฟลเดอร์ที่เลือกมี projectId ไม่ตรงกัน', 'PROJECT_ID_MISMATCH');
+    const record = await registerProject(config.dataDir, selected);
+    const stored = loadStoredSettings(config.dataDir);
+    await saveStoredSettings(config.dataDir, { ...stored, defaultWorkspace: record.workspacePath });
+    return { changed: true, restartRequired: true, projectId: record.projectId, workspace: record.workspacePath };
+  });
+
+  ipcMain.handle(DESKTOP_IPC.chooseWorkspace, async () => {
+    const selected = await chooseDirectory(`เลือกโปรเจกต์ที่ลงทะเบียนแล้วสำหรับ ${PRODUCT.desktopName}`);
+    if (!selected) return { changed: false, cancelled: true };
+    const config = loadConfig();
+    const record = await registerProject(config.dataDir, selected);
+    const stored = loadStoredSettings(config.dataDir);
+    await saveStoredSettings(config.dataDir, { ...stored, defaultWorkspace: record.workspacePath });
+    return { changed: true, projectId: record.projectId, workspace: record.workspacePath, restartRequired: true };
   });
 
   ipcMain.handle(DESKTOP_IPC.setPermissions, async (_event, input: unknown) => {

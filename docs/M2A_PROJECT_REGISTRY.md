@@ -33,7 +33,9 @@ the existing canonical workspace, read, write, secret-path, and project/Git
 guards. Project context takes name/type from the manifest, never from the local
 workspace basename.
 
-This milestone does not add a cloud registry, synchronization, automatic
-project discovery, project switching UI, or AI model. Future AWH Hub sync may
-share portable identity, memory, and revisions, but must never synchronize
-device-local absolute paths as project identity.
+This foundation does not add a cloud registry, synchronization, automatic
+project discovery, or an AI model. The Desktop Projects workflow is documented
+separately in `M2C_DESKTOP_PROJECTS.md`; it consumes this local registry and
+portable memory foundation. Future AWH Hub sync may share portable identity,
+memory, and revisions, but must never synchronize device-local absolute paths as
+project identity.

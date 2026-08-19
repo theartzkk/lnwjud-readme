@@ -23,12 +23,15 @@ const ISO_DATE = (value: unknown): value is string => typeof value === 'string' 
 export interface ProjectManifest { schemaVersion: 1; projectId: string; name: string; type: string; createdAt: string; }
 export interface ProjectInitializationOptions { name?: string; type?: string; }
 export interface ProjectRecord { projectId: string; workspacePath: string; lastOpenedAt: string; lastUsedAt: string; pinned: boolean; available: boolean; }
+export type ProjectMemoryFileStatus = 'present' | 'missing';
+export type ProjectMemoryStatus = Record<(typeof PROJECT_MEMORY_FILES)[number], ProjectMemoryFileStatus>;
 export interface ProjectContext {
   project: ProjectManifest;
   memory: Record<(typeof PROJECT_MEMORY_FILES)[number], string | null>;
   workspace: { path: string; profile: Awaited<ReturnType<typeof detectProject>> };
   git: { code: number; stdout: string; stderr: string };
 }
+export interface ResolvedProjectRecord { record: ProjectRecord; workspacePath: string; manifest: ProjectManifest; }
 interface RegistryDocument { schemaVersion: 1; projects: ProjectRecord[]; }
 
 export class ProjectRegistryError extends Error {
@@ -169,13 +172,19 @@ export async function registerProject(dataDir: string, workspace: string): Promi
   const registry = await loadRegistry(dataDir);
   const now = new Date().toISOString();
   const byPath = registry.projects.find((project) => project.workspacePath === root);
-  const byId = registry.projects.find((project) => project.projectId === manifest.projectId);
+  const byIdRecords = registry.projects.filter((project) => project.projectId === manifest.projectId);
   if (byPath && byPath.projectId !== manifest.projectId) throw new ProjectRegistryError('Workspace already maps to another project id', 'PROJECT_PATH_CONFLICT');
-  if (byId && byId.workspacePath !== root) {
-    try { await canonicalWorkspace(byId.workspacePath); throw new ProjectRegistryError('Project id is already mapped to another available workspace', 'PROJECT_ID_CONFLICT'); }
-    catch (error) { if (error instanceof ProjectRegistryError) throw error; }
+  for (const byId of byIdRecords) {
+    if (byId.workspacePath === root) continue;
+    try {
+      const availableRoot = await canonicalWorkspace(byId.workspacePath);
+      if (availableRoot !== root) throw new ProjectRegistryError('Project id is already mapped to another available workspace', 'PROJECT_ID_CONFLICT');
+    } catch (error) {
+      if (error instanceof ProjectRegistryError) throw error;
+    }
   }
-  const record: ProjectRecord = { projectId: manifest.projectId, workspacePath: root, lastOpenedAt: now, lastUsedAt: now, pinned: byId?.pinned ?? false, available: true };
+  const existing = byIdRecords.find((project) => project.workspacePath === root);
+  const record: ProjectRecord = { projectId: manifest.projectId, workspacePath: root, lastOpenedAt: now, lastUsedAt: now, pinned: existing?.pinned ?? false, available: true };
   registry.projects = registry.projects.filter((project) => project.projectId !== manifest.projectId && project.workspacePath !== root);
   registry.projects.push(record);
   if (registry.projects.length > MAX_PROJECTS) throw new ProjectRegistryError('Project registry limit reached');
@@ -185,6 +194,39 @@ export async function registerProject(dataDir: string, workspace: string): Promi
 
 export async function listProjects(dataDir: string): Promise<ProjectRecord[]> { return (await loadRegistry(dataDir)).projects.map((project) => ({ ...project })); }
 
+/** Mark a registered project as the selected/open project after re-validating its portable identity. */
+export async function resolveRegisteredProject(dataDir: string, projectId: string): Promise<ResolvedProjectRecord> {
+  assertProjectId(projectId);
+  const registry = await loadRegistry(dataDir);
+  const matches = registry.projects.filter((project) => project.projectId === projectId);
+  if (matches.length === 0) throw new ProjectRegistryError('Project is not registered', 'PROJECT_NOT_REGISTERED');
+  let selected: ResolvedProjectRecord | undefined;
+  for (const record of matches) {
+    try {
+      const root = await canonicalWorkspace(record.workspacePath);
+      const manifest = await readProjectManifest(root);
+      if (manifest.projectId !== projectId) throw new ProjectRegistryError('Workspace manifest project id does not match the registry', 'PROJECT_ID_MISMATCH');
+      if (selected && selected.workspacePath !== root) throw new ProjectRegistryError('Project id is mapped to more than one available workspace', 'PROJECT_ID_CONFLICT');
+      selected = { record, workspacePath: root, manifest };
+    } catch (error) {
+      if (error instanceof ProjectRegistryError) throw error;
+    }
+  }
+  if (!selected) throw new ProjectRegistryError('Registered project workspace is unavailable', 'PROJECT_WORKSPACE_UNAVAILABLE');
+  return selected;
+}
+
+/** Mark a registered project as the selected/open project after re-validating its portable identity. */
+export async function openRegisteredProject(dataDir: string, projectId: string): Promise<ProjectRecord> {
+  const resolved = await resolveRegisteredProject(dataDir, projectId);
+  const registry = await loadRegistry(dataDir);
+  const now = new Date().toISOString();
+  const updated = { ...resolved.record, available: true, lastOpenedAt: now, lastUsedAt: now };
+  registry.projects = registry.projects.map((project) => project.workspacePath === resolved.workspacePath ? updated : project);
+  await writeRegistry(dataDir, registry);
+  return updated;
+}
+
 async function readMemoryFile(root: string, file: (typeof PROJECT_MEMORY_FILES)[number]): Promise<string | null> {
   const candidate = join(root, file);
   try {
@@ -192,6 +234,24 @@ async function readMemoryFile(root: string, file: (typeof PROJECT_MEMORY_FILES)[
     if (info.isSymbolicLink()) throw new ProjectRegistryError(`Memory file symlink is not allowed: ${file}`, 'PROJECT_MEMORY_SYMLINK');
     return await readTextFile(root, file, MAX_MEMORY_FILE_BYTES);
   } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; }
+}
+
+/** Return only portable memory presence; content remains behind the bounded context builder. */
+export async function projectMemoryStatus(workspace: string): Promise<ProjectMemoryStatus> {
+  const { root } = await readManifestAt(workspace);
+  const status = {} as ProjectMemoryStatus;
+  for (const file of PROJECT_MEMORY_FILES) {
+    try {
+      const info = await lstat(join(root, file));
+      if (info.isSymbolicLink()) throw new ProjectRegistryError(`Memory file symlink is not allowed: ${file}`, 'PROJECT_MEMORY_SYMLINK');
+      if (!info.isFile()) throw new ProjectRegistryError(`Memory path is not a regular file: ${file}`, 'PROJECT_MEMORY_INVALID');
+      status[file] = 'present';
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') status[file] = 'missing';
+      else throw error;
+    }
+  }
+  return status;
 }
 
 /** Build bounded context in the canonical AI read order. */
