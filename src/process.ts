@@ -49,6 +49,7 @@ export function execFile(
   args: string[],
   cwd: string,
   timeoutMs = 30_000,
+  env?: NodeJS.ProcessEnv,
 ): Promise<ExecResult> {
   return new Promise((resolveResult, reject) => {
     const child = spawn(executable, args, {
@@ -56,6 +57,7 @@ export function execFile(
       shell: false,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
+      ...(env ? { env } : {}),
     });
     let stdout = '';
     let stderr = '';
