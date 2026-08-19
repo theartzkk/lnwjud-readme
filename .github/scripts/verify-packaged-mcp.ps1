@@ -8,15 +8,16 @@ $ErrorActionPreference = 'Stop'
 $exe = Get-ChildItem -Path out -Recurse -Filter ArtAgent.exe | Select-Object -First 1
 if (-not $exe) { throw 'ArtAgent.exe not found for MCP stdio verification' }
 
+$appAsar = Join-Path $exe.DirectoryName 'resources/app.asar'
+if (-not (Test-Path $appAsar)) { throw "Packaged app.asar not found: $appAsar" }
+$entrypoint = Join-Path $appAsar 'dist/index.js'
+
 $workspace = Join-Path $env:RUNNER_TEMP 'art-agent-mcp-workspace'
 $dataDir = Join-Path $env:RUNNER_TEMP 'art-agent-mcp-data'
 Remove-Item -Recurse -Force $workspace -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force $dataDir -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $workspace -Force | Out-Null
 New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
-$env:ART_AGENT_DATA_DIR = $dataDir
-Remove-Item Env:ART_AGENT_SMOKE_TEST -ErrorAction SilentlyContinue
-Remove-Item Env:ELECTRON_ENABLE_LOGGING -ErrorAction SilentlyContinue
 
 $request = @{
   jsonrpc = '2.0'
@@ -36,13 +37,17 @@ $startInfo.CreateNoWindow = $true
 $startInfo.RedirectStandardInput = $true
 $startInfo.RedirectStandardOutput = $true
 $startInfo.RedirectStandardError = $true
-$startInfo.ArgumentList.Add('--mcp-stdio')
+$startInfo.Environment['ELECTRON_RUN_AS_NODE'] = '1'
+$startInfo.Environment['ART_AGENT_DATA_DIR'] = $dataDir
+$startInfo.Environment.Remove('ART_AGENT_SMOKE_TEST') | Out-Null
+$startInfo.Environment.Remove('ELECTRON_ENABLE_LOGGING') | Out-Null
+$startInfo.ArgumentList.Add($entrypoint)
 $startInfo.ArgumentList.Add('--workspace')
 $startInfo.ArgumentList.Add($workspace)
 
 $process = [System.Diagnostics.Process]::new()
 $process.StartInfo = $startInfo
-if (-not $process.Start()) { throw 'Failed to start packaged ArtAgent.exe for MCP stdio verification' }
+if (-not $process.Start()) { throw 'Failed to start packaged ArtAgent.exe in Electron Node mode' }
 
 $stderrTask = $process.StandardError.ReadToEndAsync()
 $firstLineTask = $process.StandardOutput.ReadLineAsync()
@@ -56,7 +61,7 @@ if (-not $firstLineTask.Wait(10000)) {
   }
   $stderr = $stderrTask.GetAwaiter().GetResult()
   if ($stderr) { Write-Host $stderr }
-  throw 'Timed out waiting for packaged MCP initialize response while stdin pipe remained open'
+  throw 'Timed out waiting for packaged MCP initialize response in Electron Node mode'
 }
 
 $firstLine = $firstLineTask.GetAwaiter().GetResult()
@@ -93,5 +98,8 @@ if ($response.result.serverInfo.name -ne 'art-agent') {
 if ($response.result.serverInfo.version -ne $Version) {
   throw "Packaged MCP version mismatch: expected $Version, got $($response.result.serverInfo.version)"
 }
+if ($stderr -notmatch [regex]::Escape("Art Agent MCP $Version running on stdio")) {
+  throw 'Packaged MCP stderr did not contain the expected readiness banner'
+}
 
-Write-Host "Packaged MCP stdio initialize passed for Art Agent $Version"
+Write-Host "Packaged MCP stdio initialize passed via Electron Node mode for Art Agent $Version"
