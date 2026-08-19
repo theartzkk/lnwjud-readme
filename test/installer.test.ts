@@ -35,6 +35,20 @@ test('Windows installer configuration stays Squirrel-aware and per-user', async 
   assert.match(desktopUi, /electron-squirrel-startup/);
 });
 
+test('packaged MCP PowerShell verifier parses on Windows', { skip: process.platform !== 'win32' }, () => {
+  const command = [
+    '$errors = $null',
+    '$tokens = $null',
+    "[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path '.github/scripts/verify-packaged-mcp.ps1'), [ref]$tokens, [ref]$errors) | Out-Null",
+    "if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }",
+  ].join('; ');
+  const result = spawnSync('pwsh', ['-NoProfile', '-Command', command], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+});
+
 test('Windows icon preparation preserves the canonical Art Agent PNG payload', async () => {
   const temp = await mkdtemp(join(tmpdir(), 'art-agent-icon-'));
   const target = join(temp, 'art-agent.ico');
