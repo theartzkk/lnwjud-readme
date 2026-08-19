@@ -19,6 +19,7 @@ import { loadConfig } from '../config.js';
 import { gitStatus } from '../git.js';
 import { canonicalWorkspace } from '../security.js';
 import { loadStoredSettings, saveStoredSettings } from '../settings.js';
+import { inspectTunnelReadiness, type TunnelReadiness } from '../tunnel.js';
 import { DESKTOP_IPC, DESKTOP_WEB_PREFERENCES } from './security.js';
 import { ART_AGENT_VERSION } from '../version.js';
 
@@ -51,6 +52,22 @@ function hasExplicitWorkspace(dataDir: string): boolean {
   );
 }
 
+function sanitizedTunnelReadiness(status: TunnelReadiness) {
+  return {
+    ready: status.ready,
+    binaryConfigured: status.binaryConfigured,
+    binaryReady: status.binaryReady,
+    binaryVersion: status.binaryVersion ?? null,
+    pathDiagnosticCandidate: status.pathDiagnosticCandidate ?? null,
+    runtimeKeyPresent: status.runtimeKeyPresent,
+    runtimeKeyValid: status.runtimeKeyValid,
+    tunnelIdPresent: status.tunnelIdPresent,
+    tunnelIdValid: status.tunnelIdValid,
+    packagedMcpReady: status.packagedMcpReady,
+    blockers: status.blockers,
+  };
+}
+
 async function runtimeOverview() {
   const config = loadConfig();
   const audit = new AuditLog(config.dataDir);
@@ -72,6 +89,35 @@ async function runtimeOverview() {
     ? await gitStatus(workspace).catch((error: unknown) => ({ code: -1, stdout: '', stderr: error instanceof Error ? error.message : String(error) }))
     : { code: -1, stdout: '', stderr: workspaceError ?? 'ยังไม่ได้เลือก workspace' };
   const codex = await codexStatus(workspace ?? process.cwd());
+  const remoteTunnel = workspace
+    ? await inspectTunnelReadiness(workspace, process.execPath)
+        .then(sanitizedTunnelReadiness)
+        .catch((error: unknown) => ({
+          ready: false,
+          binaryConfigured: Boolean(process.env.TUNNEL_CLIENT_BIN?.trim()),
+          binaryReady: false,
+          binaryVersion: null,
+          pathDiagnosticCandidate: null,
+          runtimeKeyPresent: Boolean(process.env.CONTROL_PLANE_API_KEY?.trim()),
+          runtimeKeyValid: false,
+          tunnelIdPresent: Boolean(process.env.CONTROL_PLANE_TUNNEL_ID?.trim()),
+          tunnelIdValid: false,
+          packagedMcpReady: false,
+          blockers: [`Tunnel readiness check failed: ${error instanceof Error ? error.message : String(error)}`],
+        }))
+    : {
+        ready: false,
+        binaryConfigured: false,
+        binaryReady: false,
+        binaryVersion: null,
+        pathDiagnosticCandidate: null,
+        runtimeKeyPresent: false,
+        runtimeKeyValid: false,
+        tunnelIdPresent: false,
+        tunnelIdValid: false,
+        packagedMcpReady: false,
+        blockers: ['Workspace is not ready'],
+      };
 
   return {
     name: 'Art Agent',
@@ -99,6 +145,7 @@ async function runtimeOverview() {
       workspaceConfigured,
       workspaceError,
       remoteTunnelEnabled: false,
+      remoteTunnel,
     },
   };
 }

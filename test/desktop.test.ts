@@ -21,3 +21,16 @@ test('desktop HTML has a restrictive CSP and no inline script', async () => {
   assert.match(html, /object-src 'none'/);
   assert.doesNotMatch(html, /<script(?![^>]*src=)[^>]*>/i);
 });
+
+test('desktop Doctor exposes sanitized tunnel readiness without a secret or network control surface', async () => {
+  const main = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  const renderer = await readFile(new URL('../desktop/renderer.js', import.meta.url), 'utf8');
+
+  assert.match(main, /inspectTunnelReadiness/);
+  assert.match(main, /sanitizedTunnelReadiness/);
+  assert.match(renderer, /READY TO CONNECT/);
+  assert.match(renderer, /runtimeKeyPresent/);
+  assert.match(renderer, /tunnelIdValid/);
+  assert.doesNotMatch(renderer, /CONTROL_PLANE_API_KEY|mcpCommand|binaryPath/);
+  assert.doesNotMatch(renderer, /\bCONNECTED\b/);
+});

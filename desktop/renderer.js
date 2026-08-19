@@ -34,7 +34,19 @@ function render(data) {
   const runtime = $('doctor-runtime'); runtime.replaceChildren();
   row(runtime, 'Platform', `${data.doctor.platform} / ${data.doctor.arch}`); row(runtime, 'Node', data.doctor.node); row(runtime, 'Electron', data.doctor.electron); row(runtime, 'Data dir', data.dataDir);
   const boundary = $('doctor-boundary'); boundary.replaceChildren();
-  row(boundary, 'Workspace', data.doctor.workspaceReady ? 'READY' : 'ERROR'); row(boundary, 'Remote tunnel', data.doctor.remoteTunnelEnabled ? 'ON' : 'OFF'); row(boundary, 'Codex CLI', data.codex.available ? 'READY' : 'NOT FOUND');
+  const tunnel = data.doctor.remoteTunnel;
+  const binaryState = tunnel?.binaryReady ? `READY${tunnel.binaryVersion ? ` • ${tunnel.binaryVersion}` : ''}` : tunnel?.binaryConfigured ? 'INVALID' : 'NOT CONFIGURED';
+  const keyState = tunnel?.runtimeKeyValid ? 'PRESENT' : tunnel?.runtimeKeyPresent ? 'INVALID' : 'NOT SET';
+  const tunnelIdState = tunnel?.tunnelIdValid ? 'VALID' : tunnel?.tunnelIdPresent ? 'INVALID' : 'NOT SET';
+  row(boundary, 'Workspace', data.doctor.workspaceReady ? 'READY' : 'ERROR');
+  row(boundary, 'Remote tunnel', tunnel?.ready ? 'READY TO CONNECT' : 'NOT READY');
+  row(boundary, 'Tunnel binary', binaryState);
+  row(boundary, 'Runtime key', keyState);
+  row(boundary, 'Tunnel ID', tunnelIdState);
+  row(boundary, 'Packaged MCP', tunnel?.packagedMcpReady ? 'READY' : 'NOT READY');
+  if (tunnel?.pathDiagnosticCandidate && !tunnel.binaryConfigured) row(boundary, 'PATH candidate', tunnel.pathDiagnosticCandidate);
+  if (tunnel?.blockers?.length) row(boundary, 'Remote blocker', tunnel.blockers.join(' • '));
+  row(boundary, 'Codex CLI', data.codex.available ? 'READY' : 'NOT FOUND');
 }
 
 async function refresh() {
