@@ -174,6 +174,9 @@ jobs:
           if (Test-Path $marker) { Get-Content $marker -Raw | Write-Host }
           if (-not $boot -or -not $boot.stage) { throw 'Packaged ArtAgent.exe did not execute the desktop main module' }
           if ($boot.argv -notcontains '--smoke-test') { throw 'Packaged main module did not receive --smoke-test' }
+      - name: Verify packaged Windows MCP stdio protocol
+        shell: pwsh
+        run: ./.github/scripts/verify-packaged-mcp.ps1 -Version '${{ steps.version.outputs.version }}'
       - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v7
         with:

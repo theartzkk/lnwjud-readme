@@ -18,6 +18,7 @@ test('Windows installer configuration stays Squirrel-aware and per-user', async 
   };
   const forge = await readFile(new URL('../forge.config.cjs', import.meta.url), 'utf8');
   const desktop = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  const packagedMcpVerifier = await readFile(new URL('../.github/scripts/verify-packaged-mcp.ps1', import.meta.url), 'utf8');
 
   assert.equal(pkg.version, ART_AGENT_VERSION);
   assert.equal(pkg.dependencies?.['electron-squirrel-startup'], '1.0.1');
@@ -31,6 +32,24 @@ test('Windows installer configuration stays Squirrel-aware and per-user', async 
   assert.match(forge, /noMsi:\s*true/);
   assert.match(desktop, /SQUIRREL_STARTUP/);
   assert.match(desktop, /electron-squirrel-startup/);
+  assert.match(packagedMcpVerifier, /ELECTRON_RUN_AS_NODE/);
+  assert.match(packagedMcpVerifier, /resources\/app\.asar/);
+  assert.match(packagedMcpVerifier, /dist\/index\.js/);
+  assert.doesNotMatch(packagedMcpVerifier, /--mcp-stdio/);
+});
+
+test('packaged MCP PowerShell verifier parses on Windows', { skip: process.platform !== 'win32' }, () => {
+  const command = [
+    '$errors = $null',
+    '$tokens = $null',
+    "[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path '.github/scripts/verify-packaged-mcp.ps1'), [ref]$tokens, [ref]$errors) | Out-Null",
+    "if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }",
+  ].join('; ');
+  const result = spawnSync('pwsh', ['-NoProfile', '-Command', command], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
 });
 
 test('Windows icon preparation preserves the canonical Art Agent PNG payload', async () => {
