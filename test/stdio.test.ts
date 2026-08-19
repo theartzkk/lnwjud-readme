@@ -111,13 +111,13 @@ async function startMcp(extraArgs: string[] = [], extraEnv: NodeJS.ProcessEnv = 
       if (protocolError) return Promise.reject(protocolError);
       const id = nextId;
       nextId += 1;
-      child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }) })}\n`);
       return new Promise<JsonRpcResponse>((resolve, reject) => {
         const timer = setTimeout(() => {
           pending.delete(id);
           reject(new Error(`Timed out waiting for ${method}; stdout=${stdoutLines.join(' | ')}; stderr=${stderr}`));
         }, 8_000);
         pending.set(id, { resolve, reject, timer });
+        child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }) })}\n`);
       });
     },
     notify(method, params) {
