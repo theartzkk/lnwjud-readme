@@ -240,8 +240,9 @@ test('managed connect uses fixed argv, secret reference and verifies status befo
   assert.ok(connectArgs.includes('--runtime-api-key'));
   assert.ok(connectArgs.includes('env:CONTROL_PLANE_API_KEY'));
   assert.ok(connectArgs.includes('--mcp-command'));
-  assert.ok(connectArgs.includes('--tunnel-client-bin'));
-  assert.ok(connectArgs.includes(fixture.appExecutable));
+  const tunnelClientBinIndex = connectArgs.indexOf('--tunnel-client-bin');
+  assert.ok(tunnelClientBinIndex >= 0);
+  assert.equal(connectArgs[tunnelClientBinIndex + 1], calls[0]?.binary);
   assert.equal(connectArgs.at(-1), '--json');
   assert.doesNotMatch(JSON.stringify(connectArgs), new RegExp(VALID_RUNTIME_KEY));
   assert.equal(calls[0]?.env.CONTROL_PLANE_API_KEY, VALID_RUNTIME_KEY);
