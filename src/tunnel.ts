@@ -3,6 +3,8 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { execFile, resolveExecutable } from './process.js';
 
 const TUNNEL_ID = /^tunnel_[a-z0-9]{32}$/;
+const RUNTIME_KEY = /^[0-9A-Za-z_-]+$/;
+const TUNNEL_HELP_SIGNATURE = 'Tunnel client for the OpenAI MCP control plane';
 
 export interface TunnelReadiness {
   binaryConfigured: boolean;
@@ -11,6 +13,7 @@ export interface TunnelReadiness {
   binaryVersion?: string;
   pathDiagnosticCandidate?: string;
   runtimeKeyPresent: boolean;
+  runtimeKeyValid: boolean;
   tunnelIdPresent: boolean;
   tunnelIdValid: boolean;
   tunnelId?: string;
@@ -21,6 +24,13 @@ export interface TunnelReadiness {
   ready: boolean;
   blockers: string[];
 }
+
+export interface TunnelBinaryProbeResult {
+  version: string;
+  help: string;
+}
+
+export type TunnelBinaryProbe = (path: string) => Promise<TunnelBinaryProbeResult>;
 
 function trimmed(value: string | undefined): string | undefined {
   const result = value?.trim();
@@ -70,13 +80,32 @@ async function pathDiagnosticCandidate(): Promise<string | undefined> {
   }
 }
 
+export async function probeTunnelClientBinary(path: string): Promise<TunnelBinaryProbeResult> {
+  const cwd = dirname(path);
+  const versionResult = await execFile(path, ['--version'], cwd, 5_000);
+  if (versionResult.code !== 0) throw new Error(`--version exited with code ${versionResult.code}`);
+  const version = (versionResult.stdout || versionResult.stderr).trim().split(/\r?\n/, 1)[0]?.trim();
+  if (!version) throw new Error('--version returned no version text');
+
+  const helpResult = await execFile(path, ['--help'], cwd, 5_000);
+  if (helpResult.code !== 0) throw new Error(`--help exited with code ${helpResult.code}`);
+  const help = `${helpResult.stdout}\n${helpResult.stderr}`;
+  if (!help.includes(TUNNEL_HELP_SIGNATURE) || !/(?:^|\s)runtimes(?:\s|$)/m.test(help)) {
+    throw new Error('binary identity does not match OpenAI tunnel-client');
+  }
+  return { version, help };
+}
+
 export async function inspectTunnelReadiness(
   workspace: string,
   appExecutable: string,
   env: NodeJS.ProcessEnv = process.env,
+  probeBinary: TunnelBinaryProbe = probeTunnelClientBinary,
 ): Promise<TunnelReadiness> {
   const configuredPath = trimmed(env.TUNNEL_CLIENT_BIN);
-  const runtimeKeyPresent = trimmed(env.CONTROL_PLANE_API_KEY) !== undefined;
+  const runtimeKey = trimmed(env.CONTROL_PLANE_API_KEY);
+  const runtimeKeyPresent = runtimeKey !== undefined;
+  const runtimeKeyValid = runtimeKey !== undefined && RUNTIME_KEY.test(runtimeKey);
   const tunnelId = trimmed(env.CONTROL_PLANE_TUNNEL_ID);
   const tunnelIdPresent = tunnelId !== undefined;
   const tunnelIdValid = tunnelId !== undefined && TUNNEL_ID.test(tunnelId);
@@ -99,26 +128,18 @@ export async function inspectTunnelReadiness(
       if (!info.isFile()) {
         blockers.push('Configured tunnel-client path is not a file');
       } else {
-        const result = await execFile(canonical, ['--version'], dirname(canonical), 5_000);
-        if (result.code !== 0) {
-          blockers.push(`tunnel-client --version exited with code ${result.code}`);
-        } else {
-          const version = (result.stdout || result.stderr).trim().split(/\r?\n/, 1)[0]?.trim();
-          if (!version) {
-            blockers.push('tunnel-client --version returned no version text');
-          } else {
-            binaryReady = true;
-            binaryPath = canonical;
-            binaryVersion = version;
-          }
-        }
+        const probe = await probeBinary(canonical);
+        binaryReady = true;
+        binaryPath = canonical;
+        binaryVersion = probe.version;
       }
     } catch (error) {
-      blockers.push(`Configured tunnel-client is unavailable: ${error instanceof Error ? error.message : String(error)}`);
+      blockers.push(`Configured tunnel-client validation failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   if (!runtimeKeyPresent) blockers.push('CONTROL_PLANE_API_KEY is not present');
+  else if (!runtimeKeyValid) blockers.push('CONTROL_PLANE_API_KEY is malformed');
   if (!tunnelIdPresent) blockers.push('CONTROL_PLANE_TUNNEL_ID is not present');
   else if (!tunnelIdValid) blockers.push('CONTROL_PLANE_TUNNEL_ID is malformed');
 
@@ -147,6 +168,7 @@ export async function inspectTunnelReadiness(
     ...(binaryVersion ? { binaryVersion } : {}),
     ...(diagnosticCandidate ? { pathDiagnosticCandidate: diagnosticCandidate } : {}),
     runtimeKeyPresent,
+    runtimeKeyValid,
     tunnelIdPresent,
     tunnelIdValid,
     ...(tunnelIdValid && tunnelId ? { tunnelId } : {}),
@@ -154,7 +176,7 @@ export async function inspectTunnelReadiness(
     ...(isAbsolute(appExecutable) ? { appExecutable } : {}),
     ...(appAsar ? { appAsar } : {}),
     ...(mcpCommand ? { mcpCommand } : {}),
-    ready: binaryReady && runtimeKeyPresent && tunnelIdValid && packagedMcpReady,
+    ready: binaryReady && runtimeKeyValid && tunnelIdValid && packagedMcpReady,
     blockers,
   };
 }

@@ -3,9 +3,19 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test, { type TestContext } from 'node:test';
-import { buildPackagedMcpCommand, inspectTunnelReadiness, packagedMcpPaths } from '../src/tunnel.js';
+import {
+  buildPackagedMcpCommand,
+  inspectTunnelReadiness,
+  packagedMcpPaths,
+  type TunnelBinaryProbe,
+} from '../src/tunnel.js';
 
 const VALID_TUNNEL_ID = 'tunnel_0123456789abcdef0123456789abcdef';
+const VALID_RUNTIME_KEY = 'runtime_key-0123456789';
+const TRUSTED_PROBE: TunnelBinaryProbe = async () => ({
+  version: '0.0.0-test',
+  help: 'Tunnel client for the OpenAI MCP control plane\n\nruntimes',
+});
 
 async function packagedFixture(t: TestContext): Promise<{ root: string; appExecutable: string; workspace: string }> {
   const root = await mkdtemp(join(tmpdir(), 'art-agent-tunnel-'));
@@ -35,20 +45,20 @@ test('packaged MCP command is fixed to the packaged entrypoint and remote profil
   assert.ok(command.startsWith('"') && command.endsWith('"'));
 });
 
-test('tunnel readiness requires explicit binary, restricted runtime key, tunnel id and packaged MCP layout', async (t) => {
+test('tunnel readiness requires explicit trusted binary, restricted runtime key, tunnel id and packaged MCP layout', async (t) => {
   const fixture = await packagedFixture(t);
   const secret = 'runtime_secret_must_never_be_returned';
   const status = await inspectTunnelReadiness(fixture.workspace, fixture.appExecutable, {
-    ...process.env,
-    TUNNEL_CLIENT_BIN: process.execPath,
+    TUNNEL_CLIENT_BIN: fixture.appExecutable,
     CONTROL_PLANE_API_KEY: secret,
     CONTROL_PLANE_TUNNEL_ID: VALID_TUNNEL_ID,
-  });
+  }, TRUSTED_PROBE);
 
   assert.equal(status.binaryConfigured, true);
   assert.equal(status.binaryReady, true);
-  assert.ok(status.binaryVersion);
+  assert.equal(status.binaryVersion, '0.0.0-test');
   assert.equal(status.runtimeKeyPresent, true);
+  assert.equal(status.runtimeKeyValid, true);
   assert.equal(status.tunnelIdPresent, true);
   assert.equal(status.tunnelIdValid, true);
   assert.equal(status.tunnelId, VALID_TUNNEL_ID);
@@ -57,6 +67,20 @@ test('tunnel readiness requires explicit binary, restricted runtime key, tunnel 
   assert.deepEqual(status.blockers, []);
   assert.match(status.mcpCommand ?? '', /--remote-tunnel/);
   assert.doesNotMatch(JSON.stringify(status), new RegExp(secret));
+});
+
+test('tunnel readiness rejects a non-tunnel executable even when it can answer --version', async (t) => {
+  const fixture = await packagedFixture(t);
+  const status = await inspectTunnelReadiness(fixture.workspace, fixture.appExecutable, {
+    TUNNEL_CLIENT_BIN: process.execPath,
+    CONTROL_PLANE_API_KEY: VALID_RUNTIME_KEY,
+    CONTROL_PLANE_TUNNEL_ID: VALID_TUNNEL_ID,
+  });
+
+  assert.equal(status.binaryConfigured, true);
+  assert.equal(status.binaryReady, false);
+  assert.equal(status.ready, false);
+  assert.ok(status.blockers.some((blocker) => blocker.includes('binary identity does not match OpenAI tunnel-client')));
 });
 
 test('tunnel readiness does not select PATH implicitly and does not treat OPENAI_API_KEY as the runtime key', async (t) => {
@@ -70,6 +94,7 @@ test('tunnel readiness does not select PATH implicitly and does not treat OPENAI
   assert.equal(status.binaryConfigured, false);
   assert.equal(status.binaryReady, false);
   assert.equal(status.runtimeKeyPresent, false);
+  assert.equal(status.runtimeKeyValid, false);
   assert.equal(status.ready, false);
   assert.ok(status.blockers.includes('TUNNEL_CLIENT_BIN is not configured'));
   assert.ok(status.blockers.includes('CONTROL_PLANE_API_KEY is not present'));
@@ -80,9 +105,9 @@ test('relative tunnel-client configuration fails closed even if PATH may contain
   const status = await inspectTunnelReadiness(fixture.workspace, fixture.appExecutable, {
     PATH: process.env.PATH,
     TUNNEL_CLIENT_BIN: 'tunnel-client',
-    CONTROL_PLANE_API_KEY: 'runtime-key',
+    CONTROL_PLANE_API_KEY: VALID_RUNTIME_KEY,
     CONTROL_PLANE_TUNNEL_ID: VALID_TUNNEL_ID,
-  });
+  }, TRUSTED_PROBE);
 
   assert.equal(status.binaryConfigured, true);
   assert.equal(status.binaryReady, false);
@@ -90,17 +115,20 @@ test('relative tunnel-client configuration fails closed even if PATH may contain
   assert.ok(status.blockers.includes('TUNNEL_CLIENT_BIN must be an absolute path'));
 });
 
-test('malformed tunnel ids and unsafe command arguments fail closed', async (t) => {
+test('malformed tunnel ids, malformed runtime keys and unsafe command arguments fail closed', async (t) => {
   const fixture = await packagedFixture(t);
   const status = await inspectTunnelReadiness(fixture.workspace, fixture.appExecutable, {
-    TUNNEL_CLIENT_BIN: process.execPath,
-    CONTROL_PLANE_API_KEY: 'runtime-key',
+    TUNNEL_CLIENT_BIN: fixture.appExecutable,
+    CONTROL_PLANE_API_KEY: 'bad key with spaces',
     CONTROL_PLANE_TUNNEL_ID: 'tunnel_bad',
-  });
+  }, TRUSTED_PROBE);
 
+  assert.equal(status.runtimeKeyPresent, true);
+  assert.equal(status.runtimeKeyValid, false);
   assert.equal(status.tunnelIdPresent, true);
   assert.equal(status.tunnelIdValid, false);
   assert.equal(status.ready, false);
+  assert.ok(status.blockers.includes('CONTROL_PLANE_API_KEY is malformed'));
   assert.ok(status.blockers.includes('CONTROL_PLANE_TUNNEL_ID is malformed'));
   assert.throws(() => buildPackagedMcpCommand(fixture.appExecutable, `${fixture.workspace}\nmalicious`), /must not contain NUL or newlines/);
 });
