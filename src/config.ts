@@ -1,5 +1,5 @@
-import { homedir } from 'node:os';
 import { resolve } from 'node:path';
+import { resolveActiveDataDir } from './data-migration.js';
 import { loadStoredSettings } from './settings.js';
 
 export interface ArtAgentConfig {
@@ -54,7 +54,7 @@ function argValue(name: string): string | undefined {
 }
 
 export function loadConfig(): ArtAgentConfig {
-  const dataDir = resolve(compatibilityEnv('dataDir') ?? `${homedir()}/.art-agent`);
+  const dataDir = resolve(resolveActiveDataDir());
   const stored = loadStoredSettings(dataDir);
   const workspace = resolve(
     argValue('--workspace') ?? compatibilityEnv('workspace') ?? stored.defaultWorkspace ?? process.cwd(),
