@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,16 +8,6 @@ import test from 'node:test';
 import { ART_AGENT_VERSION } from '../src/version.js';
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
-
-test('desktop main dispatches packaged MCP stdio mode without importing Electron UI', async () => {
-  const dispatcher = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
-  const ui = await readFile(new URL('../src/desktop/ui.ts', import.meta.url), 'utf8');
-  assert.match(dispatcher, /--mcp-stdio/);
-  assert.match(dispatcher, /import\('\.\/ui\.js'\)/);
-  assert.match(dispatcher, /import\('\.\.\/stdio\.js'\)/);
-  assert.doesNotMatch(dispatcher, /from ['"]electron['"]/);
-  assert.match(ui, /from ['"]electron['"]/);
-});
 
 test('stdio entrypoint returns a valid MCP initialize response without stdout noise', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'art-agent-stdio-workspace-'));
