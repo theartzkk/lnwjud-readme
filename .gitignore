@@ -5,6 +5,7 @@ dist/
 !.env.example
 .art-agent/
 .art-agent-build/
+.awh-local/
 *.log
 .DS_Store
 Thumbs.db
