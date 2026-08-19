@@ -19,7 +19,13 @@ import { loadConfig } from '../config.js';
 import { gitStatus } from '../git.js';
 import { canonicalWorkspace } from '../security.js';
 import { loadStoredSettings, saveStoredSettings } from '../settings.js';
-import { inspectTunnelReadiness, type TunnelReadiness } from '../tunnel.js';
+import {
+  connectTunnelRuntime,
+  inspectTunnelReadiness,
+  stopTunnelRuntime,
+  type TunnelReadiness,
+  type TunnelRuntimeStatus,
+} from '../tunnel.js';
 import { DESKTOP_IPC, DESKTOP_WEB_PREFERENCES } from './security.js';
 import { ART_AGENT_VERSION } from '../version.js';
 
@@ -28,6 +34,8 @@ const SMOKE_TEST = process.argv.includes('--smoke-test') || process.env.ART_AGEN
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let quitting = false;
+let remoteOperationInFlight = false;
+let lastRemoteRuntime: ReturnType<typeof sanitizedTunnelRuntime> | null = null;
 
 const require = createRequire(import.meta.url);
 const SQUIRREL_STARTUP = process.platform === 'win32' && Boolean(require('electron-squirrel-startup'));
@@ -66,6 +74,46 @@ function sanitizedTunnelReadiness(status: TunnelReadiness) {
     packagedMcpReady: status.packagedMcpReady,
     blockers: status.blockers,
   };
+}
+
+function sanitizedTunnelRuntime(status: TunnelRuntimeStatus) {
+  return {
+    state: status.state,
+    connected: status.connected,
+    processRunning: status.processRunning,
+    healthy: status.healthy,
+    ready: status.ready,
+    runtimeState: status.runtimeState,
+    verifiedAt: new Date().toISOString(),
+  };
+}
+
+async function canonicalRemoteWorkspace(): Promise<{ config: ReturnType<typeof loadConfig>; workspace: string }> {
+  const config = loadConfig();
+  if (!hasExplicitWorkspace(config.dataDir)) throw new Error('Workspace is not configured');
+  return { config, workspace: await canonicalWorkspace(config.workspace) };
+}
+
+async function confirmRemoteAction(action: 'connect' | 'stop'): Promise<boolean> {
+  const connect = action === 'connect';
+  const options = {
+    type: 'warning' as const,
+    title: connect ? 'ยืนยัน Remote Connection' : 'ยืนยันหยุด Remote Connection',
+    message: connect
+      ? 'เชื่อมต่อ Art Agent กับ ChatGPT ผ่าน Secure MCP Tunnel ตอนนี้หรือไม่?'
+      : 'หยุด Secure MCP Tunnel ที่ Art Agent จัดการอยู่ตอนนี้หรือไม่?',
+    detail: connect
+      ? 'การเชื่อมต่อเป็น outbound-only และ remote profile เป็น read-only 8 tools ไม่มี write / execute / Codex'
+      : 'Art Agent จะสั่งหยุดเฉพาะ managed runtime alias ของ workspace ปัจจุบัน และตรวจสถานะซ้ำก่อนรายงานผล',
+    buttons: ['ยกเลิก', connect ? 'เชื่อมต่อ' : 'หยุดการเชื่อมต่อ'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  };
+  const result = mainWindow
+    ? await dialog.showMessageBox(mainWindow, options)
+    : await dialog.showMessageBox(options);
+  return result.response === 1;
 }
 
 async function runtimeOverview() {
@@ -144,8 +192,8 @@ async function runtimeOverview() {
       workspaceReady: Boolean(workspace),
       workspaceConfigured,
       workspaceError,
-      remoteTunnelEnabled: false,
       remoteTunnel,
+      remoteRuntime: lastRemoteRuntime,
     },
   };
 }
@@ -232,6 +280,85 @@ function registerIpc(): void {
     return { changed: true, restartRequired: true };
   });
 
+  ipcMain.handle(DESKTOP_IPC.remoteConnect, async () => {
+    if (remoteOperationInFlight) return { ok: false, error: 'REMOTE_BUSY', message: 'Remote Connection กำลังทำรายการอื่นอยู่' };
+    remoteOperationInFlight = true;
+    try {
+      const { config, workspace } = await canonicalRemoteWorkspace();
+      const audit = new AuditLog(config.dataDir);
+      const readiness = await inspectTunnelReadiness(workspace, process.execPath);
+      if (!readiness.ready) {
+        await audit.write({ tool: 'remote_connect', outcome: 'denied', detail: `not ready: ${readiness.blockers.join('; ')}` });
+        return {
+          ok: false,
+          error: 'REMOTE_NOT_READY',
+          message: 'Remote Connection ยังไม่พร้อม',
+          blockers: readiness.blockers,
+          readiness: sanitizedTunnelReadiness(readiness),
+        };
+      }
+      if (!(await confirmRemoteAction('connect'))) return { ok: false, cancelled: true };
+
+      try {
+        const runtime = await connectTunnelRuntime(workspace, process.execPath);
+        lastRemoteRuntime = sanitizedTunnelRuntime(runtime);
+        await audit.write({
+          tool: 'remote_connect',
+          outcome: runtime.connected ? 'allowed' : 'error',
+          detail: `state=${runtime.state}; running=${runtime.processRunning}; healthy=${runtime.healthy}; ready=${runtime.ready}`,
+        });
+        return {
+          ok: true,
+          connected: runtime.connected,
+          message: runtime.connected ? 'Remote Connection connected and verified' : 'Tunnel runtime started but is not ready yet',
+          runtime: lastRemoteRuntime,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await audit.write({ tool: 'remote_connect', outcome: 'error', detail: message });
+        return { ok: false, error: 'REMOTE_CONNECT_FAILED', message };
+      }
+    } catch (error) {
+      return { ok: false, error: 'REMOTE_CONNECT_FAILED', message: error instanceof Error ? error.message : String(error) };
+    } finally {
+      remoteOperationInFlight = false;
+    }
+  });
+
+  ipcMain.handle(DESKTOP_IPC.remoteStop, async () => {
+    if (remoteOperationInFlight) return { ok: false, error: 'REMOTE_BUSY', message: 'Remote Connection กำลังทำรายการอื่นอยู่' };
+    remoteOperationInFlight = true;
+    try {
+      const { config, workspace } = await canonicalRemoteWorkspace();
+      const audit = new AuditLog(config.dataDir);
+      if (!(await confirmRemoteAction('stop'))) return { ok: false, cancelled: true };
+
+      try {
+        const runtime = await stopTunnelRuntime(workspace);
+        lastRemoteRuntime = sanitizedTunnelRuntime(runtime);
+        const stopped = runtime.processRunning === false && runtime.state === 'stopped';
+        await audit.write({
+          tool: 'remote_stop',
+          outcome: stopped ? 'allowed' : 'error',
+          detail: `state=${runtime.state}; running=${runtime.processRunning}; healthy=${runtime.healthy}; ready=${runtime.ready}`,
+        });
+        return {
+          ok: stopped,
+          message: stopped ? 'Remote Connection stopped and verified' : 'Stop command completed but runtime still reports running',
+          runtime: lastRemoteRuntime,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await audit.write({ tool: 'remote_stop', outcome: 'error', detail: message });
+        return { ok: false, error: 'REMOTE_STOP_FAILED', message };
+      }
+    } catch (error) {
+      return { ok: false, error: 'REMOTE_STOP_FAILED', message: error instanceof Error ? error.message : String(error) };
+    } finally {
+      remoteOperationInFlight = false;
+    }
+  });
+
   ipcMain.handle(DESKTOP_IPC.openDataDir, async () => {
     const config = loadConfig();
     await mkdir(config.dataDir, { recursive: true });
@@ -269,7 +396,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     await writeSmokeMarker({ ok: false, stage: 'renderer-check' });
     const result = await win.webContents.executeJavaScript(`(async () => {
       const apiReady = typeof window.artAgent?.getOverview === 'function';
-      const requiredDom = ['workspace', 'git-output', 'perm-write', 'doctor-runtime'].every((id) => Boolean(document.getElementById(id)));
+      const requiredDom = ['workspace', 'git-output', 'perm-write', 'doctor-runtime', 'remote-state', 'remote-connect', 'remote-stop'].every((id) => Boolean(document.getElementById(id)));
       const overview = apiReady ? await window.artAgent.getOverview() : null;
       return {
         apiReady,
