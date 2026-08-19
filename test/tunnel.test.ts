@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import test, { type TestContext } from 'node:test';
 import { buildPackagedMcpCommand, inspectTunnelReadiness, packagedMcpPaths } from '../src/tunnel.js';
 
-const VALID_TUNNEL_ID = 'tunnel_0123456789abcdef0123456789abcd';
+const VALID_TUNNEL_ID = 'tunnel_0123456789abcdef0123456789abcdef';
 
 async function packagedFixture(t: TestContext): Promise<{ root: string; appExecutable: string; workspace: string }> {
   const root = await mkdtemp(join(tmpdir(), 'art-agent-tunnel-'));
