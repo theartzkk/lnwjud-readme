@@ -1,8 +1,9 @@
 # AWH data directory migration
 
-M1.3A adds a local, fail-closed migration engine for the future move from the
-legacy `~/.art-agent` directory to `~/.awh`. The legacy directory remains the
-compatibility source of truth until a migration has completed successfully.
+M1.3A/M1.3B add a local, fail-closed migration engine and active-directory
+policy for the move from the legacy `~/.art-agent` directory to `~/.awh`.
+`~/.awh` is canonical for clean/new AWH installations. `~/.art-agent` remains
+legacy compatibility storage until an explicit migration has completed.
 
 The engine recognizes these existing owners:
 
@@ -25,10 +26,18 @@ deleted, or renamed. A nonempty destination without a valid migration marker
 is a conflict and is never overwritten. Interrupted staging can be inspected
 and cleaned only when its own marker proves ownership.
 
-`resolveActiveDataDir()` selects exactly one active directory: explicit
-`AWH_DATA_DIR`, explicit `ART_AGENT_DATA_DIR`, a destination with a valid
-completed migration marker, or the legacy `~/.art-agent` compatibility
-default. It does not enable dual writes. No real-user migration is performed
+`resolveActiveDataDir()` selects exactly one active directory in this order:
+explicit `AWH_DATA_DIR`, explicit `ART_AGENT_DATA_DIR`, a valid active
+`~/.awh`, existing legacy `~/.art-agent`, or clean-install `~/.awh`. A legacy
+installation is not auto-migrated; it remains active until a future explicit
+user action. After successful migration, legacy storage is rollback-only.
+AWH never dual-writes both directories. If both directories contain meaningful
+data and AWH cannot be proven valid, resolution fails closed as a conflict; it
+does not merge, compare timestamps, or overwrite either directory.
+
+Resolution and migration are separate operations. Selecting `~/.awh` on a
+clean installation does not create it; the directory is created only when the
+application first persists data. No real-user migration is performed
 automatically by this milestone.
 
 Inspection and dry-run callers receive state, category counts, approximate

@@ -11,7 +11,7 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises';
-import { lstatSync, readFileSync } from 'node:fs';
+import { lstatSync, readFileSync, readdirSync } from 'node:fs';
 
 export const MIGRATION_SCHEMA_VERSION = 1;
 export const MIGRATION_MARKER_FILENAME = 'migration.json';
@@ -28,6 +28,15 @@ export type DataMigrationState =
   | 'MIGRATION_CONFLICT'
   | 'MIGRATION_INVALID_LEGACY'
   | 'MIGRATION_FAILED';
+
+export class DataDirectoryResolutionError extends Error {
+  readonly state = 'MIGRATION_CONFLICT' as const;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'DataDirectoryResolutionError';
+  }
+}
 
 export interface MigrationCategoryReport {
   id: CategoryName;
@@ -298,14 +307,52 @@ export function resolveActiveDataDir(env: NodeJS.ProcessEnv = process.env, home 
   if (env.AWH_DATA_DIR) return resolve(env.AWH_DATA_DIR);
   if (env.ART_AGENT_DATA_DIR) return resolve(env.ART_AGENT_DATA_DIR);
   const { legacyDir, awhDir } = defaultPaths(home);
+  const legacy = localDirectoryState(legacyDir);
+  const awh = localDirectoryState(awhDir);
+
+  if (awh.symlink || legacy.symlink || awh.invalidType || legacy.invalidType) {
+    throw new DataDirectoryResolutionError('AWH data directories must be regular directories');
+  }
+  if (awh.complete) return awhDir;
+  if (awh.meaningful && legacy.meaningful) {
+    throw new DataDirectoryResolutionError('Both AWH and legacy data directories contain unresolved data');
+  }
+  if (awh.meaningful) {
+    throw new DataDirectoryResolutionError('AWH data directory is not proven active by a complete migration marker');
+  }
+  if (legacy.exists) return legacyDir;
+  return awhDir;
+}
+
+interface LocalDirectoryState {
+  exists: boolean;
+  meaningful: boolean;
+  complete: boolean;
+  symlink: boolean;
+  invalidType: boolean;
+}
+
+function localDirectoryState(path: string): LocalDirectoryState {
   try {
-    const info = lstatSync(join(awhDir, MIGRATION_MARKER_FILENAME));
-    if (info.isFile() && !info.isSymbolicLink() && info.size <= 16 * 1024) {
-      const marker = JSON.parse(readFileSync(join(awhDir, MIGRATION_MARKER_FILENAME), 'utf8')) as MigrationMarker;
-      if (marker.schemaVersion === MIGRATION_SCHEMA_VERSION && marker.kind === MIGRATION_COMPLETE_KIND && marker.source === '.art-agent' && marker.target === '.awh' && validIso(marker.completedAt)) return awhDir;
-    }
-  } catch { /* Keep the legacy compatibility default when no complete marker exists. */ }
-  return legacyDir;
+    const info = lstatSync(path);
+    if (info.isSymbolicLink()) return { exists: true, meaningful: true, complete: false, symlink: true, invalidType: false };
+    if (!info.isDirectory()) return { exists: true, meaningful: true, complete: false, symlink: false, invalidType: true };
+    let entries: string[];
+    try { entries = readdirSync(path); } catch { return { exists: true, meaningful: true, complete: false, symlink: false, invalidType: false }; }
+    const markerPath = join(path, MIGRATION_MARKER_FILENAME);
+    let complete = false;
+    try {
+      const markerInfo = lstatSync(markerPath);
+      if (markerInfo.isFile() && !markerInfo.isSymbolicLink() && markerInfo.size <= 16 * 1024) {
+        const marker = JSON.parse(readFileSync(markerPath, 'utf8')) as MigrationMarker;
+        complete = marker.schemaVersion === MIGRATION_SCHEMA_VERSION && marker.kind === MIGRATION_COMPLETE_KIND && marker.source === '.art-agent' && marker.target === '.awh' && validIso(marker.completedAt);
+      }
+    } catch { /* Invalid or absent marker is not proof of an active AWH directory. */ }
+    return { exists: true, meaningful: entries.length > 0, complete, symlink: false, invalidType: false };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { exists: false, meaningful: false, complete: false, symlink: false, invalidType: false };
+    return { exists: true, meaningful: true, complete: false, symlink: false, invalidType: true };
+  }
 }
 
 export async function inspectDataMigration(options: { legacyDir?: string; awhDir?: string } = {}): Promise<DataMigrationInspection> {

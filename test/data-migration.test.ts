@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   cleanupOwnedMigrationStaging,
+  DataDirectoryResolutionError,
   inspectDataMigration,
   migrateData,
   resolveActiveDataDir,
@@ -33,6 +34,11 @@ async function writeCheckpoint(legacy: string, corrupt = false): Promise<void> {
   };
   await mkdir(join(legacy, 'checkpoints', 'checkpoint-1'), { recursive: true });
   await writeFile(join(legacy, 'checkpoints', 'checkpoint-1', 'checkpoint.json'), JSON.stringify({ id: 'checkpoint-1', createdAt: new Date().toISOString(), files: [record] }));
+}
+
+async function writeCompleteMarker(awh: string): Promise<void> {
+  await mkdir(awh, { recursive: true });
+  await writeFile(join(awh, MIGRATION_MARKER_FILENAME), JSON.stringify({ schemaVersion: MIGRATION_SCHEMA_VERSION, kind: 'AWH_DATA_MIGRATION', source: '.art-agent', target: '.awh', completedAt: new Date().toISOString() }));
 }
 
 test('reports no legacy data without touching the filesystem', async () => {
@@ -143,3 +149,46 @@ test('uses one active data directory with AWH and legacy compatibility precedenc
     assert.equal(resolveActiveDataDir({}, root), awh);
   } finally { await clean(root); }
 });
+
+test('activates the M1.3B clean, legacy, migrated, standalone, and conflict policy without creating directories', async () => {
+  const clean = await fixture();
+  try {
+    assert.equal(resolveActiveDataDir({}, clean.root), clean.awh);
+    assert.deepEqual(await readdir(clean.root), []);
+  } finally { await cleanFixture(clean.root); }
+
+  const legacyOnly = await fixture();
+  try {
+    await mkdir(legacyOnly.legacy, { recursive: true });
+    assert.equal(resolveActiveDataDir({}, legacyOnly.root), legacyOnly.legacy);
+    await writeFile(join(legacyOnly.legacy, 'settings.json'), '{}');
+    assert.equal((await inspectDataMigration({ legacyDir: legacyOnly.legacy, awhDir: legacyOnly.awh })).state, 'MIGRATION_AVAILABLE');
+  } finally { await cleanFixture(legacyOnly.root); }
+
+  const migrated = await fixture();
+  try {
+    await writeCompleteMarker(migrated.awh);
+    await mkdir(migrated.legacy, { recursive: true });
+    await writeFile(join(migrated.legacy, 'settings.json'), '{}');
+    assert.equal(resolveActiveDataDir({}, migrated.root), migrated.awh);
+  } finally { await cleanFixture(migrated.root); }
+
+  const standalone = await fixture();
+  try {
+    await writeCompleteMarker(standalone.awh);
+    assert.equal(resolveActiveDataDir({}, standalone.root), standalone.awh);
+  } finally { await cleanFixture(standalone.root); }
+
+  const conflict = await fixture();
+  try {
+    await mkdir(conflict.legacy, { recursive: true });
+    await mkdir(conflict.awh, { recursive: true });
+    await writeFile(join(conflict.legacy, 'settings.json'), '{}');
+    await writeFile(join(conflict.awh, 'settings.json'), '{}');
+    assert.throws(() => resolveActiveDataDir({}, conflict.root), (error: unknown) => error instanceof DataDirectoryResolutionError && error.state === 'MIGRATION_CONFLICT');
+  } finally { await cleanFixture(conflict.root); }
+});
+
+async function cleanFixture(root: string): Promise<void> {
+  await clean(root);
+}
