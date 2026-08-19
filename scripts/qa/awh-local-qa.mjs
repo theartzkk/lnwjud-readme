@@ -141,7 +141,7 @@ async function runScript(script, timeoutMs = 15 * 60_000) {
   const tsx = join(ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
   const testFiles = [
     'test/security.test.ts', 'test/files.test.ts', 'test/git.test.ts', 'test/process.test.ts',
-    'test/changes.test.ts', 'test/tasks.test.ts', 'test/project.test.ts', 'test/project-registry.test.ts', 'test/stdio.test.ts',
+    'test/changes.test.ts', 'test/tasks.test.ts', 'test/project.test.ts', 'test/project-registry.test.ts', 'test/hub-contract.test.ts', 'test/stdio.test.ts',
     'test/tunnel.test.ts', 'test/codex.test.ts', 'test/settings.test.ts', 'test/desktop.test.ts', 'test/desktop-projects.test.ts',
     'test/version.test.ts', 'test/installer.test.ts',
   ];
