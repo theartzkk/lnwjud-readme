@@ -5,6 +5,7 @@ import { canonicalWorkspace, resolveForWrite } from './security.js';
 import { readTextFile } from './files.js';
 import { detectProject } from './project.js';
 import { gitStatus } from './git.js';
+import { ensureAwhDataDirectoryActive } from './data-migration.js';
 
 export const PROJECT_REGISTRY_SCHEMA_VERSION = 1;
 export const PROJECT_MANIFEST_SCHEMA_VERSION = 1;
@@ -83,6 +84,7 @@ async function loadRegistry(dataDir: string): Promise<RegistryDocument> {
 }
 
 async function writeRegistry(dataDir: string, registry: RegistryDocument): Promise<void> {
+  await ensureAwhDataDirectoryActive(dataDir);
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
   if (process.platform !== 'win32') await chmod(dataDir, 0o700);
   const path = registryPath(dataDir);

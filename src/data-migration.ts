@@ -17,6 +17,8 @@ export const MIGRATION_SCHEMA_VERSION = 1;
 export const MIGRATION_MARKER_FILENAME = 'migration.json';
 export const MIGRATION_STAGING_KIND = 'AWH_DATA_MIGRATION_STAGING';
 export const MIGRATION_COMPLETE_KIND = 'AWH_DATA_MIGRATION';
+export const AWH_ACTIVE_MARKER_FILENAME = '.awh-active.json';
+export const AWH_ACTIVE_MARKER_KIND = 'AWH_DATA_DIRECTORY';
 
 type CategoryName = 'settings' | 'audit' | 'checkpoints' | 'tasks';
 export type DataMigrationState =
@@ -302,6 +304,31 @@ function defaultPaths(home = homedir()): { legacyDir: string; awhDir: string } {
   return { legacyDir: resolve(home, '.art-agent'), awhDir: resolve(home, '.awh') };
 }
 
+function validActiveMarkerSync(path: string): boolean {
+  try {
+    const info = lstatSync(path);
+    if (info.isSymbolicLink() || !info.isFile() || info.size > 16 * 1024) return false;
+    const marker = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+    return marker.schemaVersion === MIGRATION_SCHEMA_VERSION && marker.kind === AWH_ACTIVE_MARKER_KIND && validIso(marker.activatedAt);
+  } catch { return false; }
+}
+
+/** Mark a clean-install AWH directory as active without pretending a legacy migration occurred. */
+export async function ensureAwhDataDirectoryActive(dataDir: string): Promise<void> {
+  if (basename(dataDir) !== '.awh') return;
+  await mkdir(dataDir, { recursive: true, mode: 0o700 });
+  if (process.platform !== 'win32') await chmod(dataDir, 0o700);
+  const markerPath = join(dataDir, AWH_ACTIVE_MARKER_FILENAME);
+  if (validActiveMarkerSync(markerPath)) return;
+  try {
+    await writeFile(markerPath, JSON.stringify({ schemaVersion: MIGRATION_SCHEMA_VERSION, kind: AWH_ACTIVE_MARKER_KIND, activatedAt: new Date().toISOString() }), { encoding: 'utf8', flag: 'wx', mode: 0o600 });
+    if (process.platform !== 'win32') await chmod(markerPath, 0o600);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    if (!validActiveMarkerSync(markerPath)) throw new DataDirectoryResolutionError('AWH active marker is invalid');
+  }
+}
+
 /** Select one active data directory. Explicit AWH then legacy overrides are authoritative. */
 export function resolveActiveDataDir(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
   if (env.AWH_DATA_DIR) return resolve(env.AWH_DATA_DIR);
@@ -313,7 +340,7 @@ export function resolveActiveDataDir(env: NodeJS.ProcessEnv = process.env, home 
   if (awh.symlink || legacy.symlink || awh.invalidType || legacy.invalidType) {
     throw new DataDirectoryResolutionError('AWH data directories must be regular directories');
   }
-  if (awh.complete) return awhDir;
+  if (awh.complete || awh.active) return awhDir;
   if (awh.meaningful && legacy.meaningful) {
     throw new DataDirectoryResolutionError('Both AWH and legacy data directories contain unresolved data');
   }
@@ -328,6 +355,7 @@ interface LocalDirectoryState {
   exists: boolean;
   meaningful: boolean;
   complete: boolean;
+  active: boolean;
   symlink: boolean;
   invalidType: boolean;
 }
@@ -335,10 +363,10 @@ interface LocalDirectoryState {
 function localDirectoryState(path: string): LocalDirectoryState {
   try {
     const info = lstatSync(path);
-    if (info.isSymbolicLink()) return { exists: true, meaningful: true, complete: false, symlink: true, invalidType: false };
-    if (!info.isDirectory()) return { exists: true, meaningful: true, complete: false, symlink: false, invalidType: true };
+    if (info.isSymbolicLink()) return { exists: true, meaningful: true, complete: false, active: false, symlink: true, invalidType: false };
+    if (!info.isDirectory()) return { exists: true, meaningful: true, complete: false, active: false, symlink: false, invalidType: true };
     let entries: string[];
-    try { entries = readdirSync(path); } catch { return { exists: true, meaningful: true, complete: false, symlink: false, invalidType: false }; }
+    try { entries = readdirSync(path); } catch { return { exists: true, meaningful: true, complete: false, active: false, symlink: false, invalidType: false }; }
     const markerPath = join(path, MIGRATION_MARKER_FILENAME);
     let complete = false;
     try {
@@ -348,10 +376,10 @@ function localDirectoryState(path: string): LocalDirectoryState {
         complete = marker.schemaVersion === MIGRATION_SCHEMA_VERSION && marker.kind === MIGRATION_COMPLETE_KIND && marker.source === '.art-agent' && marker.target === '.awh' && validIso(marker.completedAt);
       }
     } catch { /* Invalid or absent marker is not proof of an active AWH directory. */ }
-    return { exists: true, meaningful: entries.length > 0, complete, symlink: false, invalidType: false };
+    return { exists: true, meaningful: entries.length > 0, complete, active: validActiveMarkerSync(join(path, AWH_ACTIVE_MARKER_FILENAME)), symlink: false, invalidType: false };
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { exists: false, meaningful: false, complete: false, symlink: false, invalidType: false };
-    return { exists: true, meaningful: true, complete: false, symlink: false, invalidType: true };
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { exists: false, meaningful: false, complete: false, active: false, symlink: false, invalidType: false };
+    return { exists: true, meaningful: true, complete: false, active: false, symlink: false, invalidType: true };
   }
 }
 
