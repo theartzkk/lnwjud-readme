@@ -49,7 +49,7 @@ $firstLineTask = $process.StandardOutput.ReadLineAsync()
 $process.StandardInput.WriteLine($request)
 $process.StandardInput.Flush()
 
-if (-not $firstLineTask.Wait(10_000)) {
+if (-not $firstLineTask.Wait(10000)) {
   if (-not $process.HasExited) {
     try { $process.Kill($true) } catch {}
     try { $process.WaitForExit() } catch {}
@@ -62,7 +62,7 @@ if (-not $firstLineTask.Wait(10_000)) {
 $firstLine = $firstLineTask.GetAwaiter().GetResult()
 $remainingTask = $process.StandardOutput.ReadToEndAsync()
 $process.StandardInput.Close()
-if (-not $process.WaitForExit(2_000)) {
+if (-not $process.WaitForExit(2000)) {
   try { $process.Kill($true) } catch {}
   $process.WaitForExit()
 }
