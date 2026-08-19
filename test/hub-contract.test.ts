@@ -8,6 +8,11 @@ import {
   MAX_CONTENT_BLOB_BYTES,
   MAX_SOURCE_FILE_BYTES,
   sourceManifestHash,
+  assertNoCredentialInRequestTarget,
+  assertProjectAuthorization,
+  deviceTokenState,
+  pairingCodeState,
+  validateAuthorizationHeader,
   validateBuildReleaseMetadata,
   validateConflictResponse,
   validateDeviceRegistration,
@@ -15,6 +20,10 @@ import {
   validateHubProject,
   validateHubUser,
   validateMemoryRevision,
+  validateDeviceTokenRecord,
+  validateOwnerBootstrapState,
+  validatePairingCodeRecord,
+  validatePairingEnrollmentRequest,
   validateProjectMembership,
   validateRelativeSourcePath,
   validateSmallContentBlob,
@@ -94,9 +103,41 @@ test('memory revisions and conflict responses are explicit, bounded schemas', ()
   assert.equal(conflict.code, 'REVISION_CONFLICT');
 });
 
+test('pairing is bounded, single-use/expiring, and owner bootstrap closes permanently', () => {
+  const pairing = validatePairingEnrollmentRequest({ schemaVersion: 1, pairingCode: 'A'.repeat(40), deviceId, displayName: 'Mac Home', platform: 'darwin', arch: 'arm64', appVersion: '0.4.0' });
+  assert.equal(pairing.deviceId, deviceId);
+  assert.throws(() => validatePairingEnrollmentRequest({ ...pairing, pairingCode: 'short' }), /pairing code/i);
+  const active = validatePairingCodeRecord({ schemaVersion: 1, pairingCodeId: revisionId, codeHash: hash, issuedAt: now, expiresAt: '2026-08-20T00:00:00.000Z', consumedAt: null, revokedAt: null });
+  assert.equal(pairingCodeState(active, new Date(now)), 'active');
+  assert.equal(pairingCodeState({ ...active, consumedAt: now }, new Date(now)), 'consumed');
+  assert.equal(pairingCodeState({ ...active, expiresAt: '2026-08-18T00:00:00.000Z' }, new Date(now)), 'expired');
+  assert.deepEqual(validateOwnerBootstrapState({ schemaVersion: 1, ownerUserId: null, initializedAt: null, bootstrapClosed: false }).ownerUserId, null);
+  assert.equal(validateOwnerBootstrapState({ schemaVersion: 1, ownerUserId: projectId, initializedAt: now, bootstrapClosed: true }).bootstrapClosed, true);
+  assert.throws(() => validateOwnerBootstrapState({ schemaVersion: 1, ownerUserId: null, initializedAt: null, bootstrapClosed: true }), /bootstrap/i);
+});
+
+test('device token rotation/revocation and project authorization are server-side contract checks', () => {
+  const token = validateDeviceTokenRecord({ schemaVersion: 1, tokenId: revisionId, userId: projectId, deviceId, tokenHash: hash, createdAt: now, expiresAt: '2026-08-20T00:00:00.000Z', revokedAt: null, lastUsedAt: null, rotatedFromTokenId: null, replacedByTokenId: null });
+  assert.equal(deviceTokenState(token, new Date(now)), 'active');
+  assert.equal(deviceTokenState({ ...token, revokedAt: now }, new Date(now)), 'revoked');
+  const membership = validateProjectMembership({ schemaVersion: 1, projectId, userId: projectId, role: 'owner', createdAt: now, revokedAt: null });
+  const device = { deviceId, userId: projectId, revokedAt: null } as const;
+  assert.doesNotThrow(() => assertProjectAuthorization({ schemaVersion: 1, userId: projectId, deviceId, projectId }, membership, device));
+  assert.throws(() => assertProjectAuthorization({ schemaVersion: 1, userId: deviceId, deviceId, projectId }, membership, device), /membership/i);
+  assert.throws(() => assertProjectAuthorization({ schemaVersion: 1, userId: projectId, deviceId, projectId }, membership, { ...device, userId: deviceId }), /membership/i);
+});
+
+test('request auth forbids URL credentials and returns no bearer secret', () => {
+  assert.equal(validateAuthorizationHeader('Bearer opaque-secret-value'), 'Bearer');
+  assert.equal(assertNoCredentialInRequestTarget('/api/v1/projects/abc'), '/api/v1/projects/abc');
+  assert.throws(() => assertNoCredentialInRequestTarget('/api/v1/projects/abc?access_token=secret'), /URLs|query/i);
+  assert.throws(() => validateAuthorizationHeader('Basic abc'), /bearer/i);
+});
+
 test('audit validation rejects credential fields and contract routes expose no execution API', async () => {
-  const audit = validateAuditEvent({ schemaVersion: 1, eventId: revisionId, requestId: parentRevisionId, userId: projectId, deviceId, projectId, action: 'revision.create', outcome: 'allowed', occurredAt: now, metadata: { revisionCount: 1 } });
-  assert.doesNotMatch(JSON.stringify(audit), /token|secret|password|authorization/i);
+  const audit = validateAuditEvent({ schemaVersion: 1, eventId: revisionId, requestId: parentRevisionId, userId: projectId, deviceId, projectId, tokenId: revisionId, action: 'revision.create', outcome: 'allowed', occurredAt: now, metadata: { revisionCount: 1 } });
+  assert.equal(audit.tokenId, revisionId);
+  assert.doesNotMatch(JSON.stringify(audit), /accessToken|tokenSecret|secret|password|authorization/i);
   assert.throws(() => validateAuditEvent({ ...audit, metadata: { accessToken: 'do-not-log' } }), /credential-like/i);
   assert.equal(Object.values(HUB_API_ROUTES).some((route) => /(?:exec|shell|spawn)/i.test(route)), false);
   const contractSource = await readFile(new URL('../src/hub-contract.ts', import.meta.url), 'utf8');

@@ -23,7 +23,8 @@ const EXCLUDED_DIRECTORIES = new Set(['.git', 'node_modules', 'vendor', 'dist', 
 const SECRET_FILE_NAMES = new Set(['.env', 'credentials.json', 'service-account.json', 'id_rsa', 'id_ed25519']);
 const SECRET_SUFFIXES = ['.pem', '.key', '.p12', '.pfx'];
 const MEDIA_CONTENT_TYPES = /^(?:image\/|video\/|audio\/|application\/pdf$)/i;
-const SENSITIVE_METADATA_KEY = /token|secret|password|authorization|credential|api[-_]?key/i;
+const SENSITIVE_METADATA_KEY = /(?:access|refresh)?token(?:secret|value)?$|secret|password|authorization|credential|api[-_]?key/i;
+const PAIRING_CODE = /^[A-Za-z0-9_-]{32,128}$/;
 
 export type HubPlatform = 'darwin' | 'win32' | 'linux';
 export type HubProjectRole = 'owner' | 'member';
@@ -132,6 +133,7 @@ export interface AuditEvent {
   userId: string | null;
   deviceId: string | null;
   projectId: string | null;
+  tokenId: string | null;
   action: string;
   outcome: 'allowed' | 'denied' | 'error';
   occurredAt: string;
@@ -165,6 +167,63 @@ export interface DeviceRegistrationRequest {
   arch: string;
   appVersion: string;
 }
+
+export interface PairingCodeRecord {
+  schemaVersion: 1;
+  pairingCodeId: string;
+  codeHash: string;
+  issuedAt: string;
+  expiresAt: string;
+  consumedAt: string | null;
+  revokedAt: string | null;
+}
+
+export interface PairingEnrollmentRequest {
+  schemaVersion: 1;
+  pairingCode: string;
+  deviceId: string;
+  displayName: string;
+  platform: HubPlatform;
+  arch: string;
+  appVersion: string;
+}
+
+export interface DeviceTokenRecord {
+  schemaVersion: 1;
+  tokenId: string;
+  userId: string;
+  deviceId: string;
+  tokenHash: string;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+  rotatedFromTokenId: string | null;
+  replacedByTokenId: string | null;
+}
+
+export interface TokenRotationRequest {
+  schemaVersion: 1;
+  tokenId: string;
+  deviceId: string;
+}
+
+export interface ProjectAuthorizationInput {
+  schemaVersion: 1;
+  userId: string;
+  deviceId: string;
+  projectId: string;
+}
+
+export interface OwnerBootstrapState {
+  schemaVersion: 1;
+  ownerUserId: string | null;
+  initializedAt: string | null;
+  bootstrapClosed: boolean;
+}
+
+export type PairingCodeState = 'active' | 'expired' | 'consumed' | 'revoked';
+export type DeviceTokenState = 'active' | 'expired' | 'revoked';
 
 export interface TokenEnvelope {
   schemaVersion: 1;
@@ -316,6 +375,86 @@ export function validateDeviceRegistration(input: unknown): DeviceRegistrationRe
   };
 }
 
+export function validatePairingEnrollmentRequest(input: unknown): PairingEnrollmentRequest {
+  const value = record(input);
+  exactKeys(value, ['appVersion', 'arch', 'deviceId', 'displayName', 'pairingCode', 'platform', 'schemaVersion']);
+  if (value.schemaVersion !== 1) throw new HubContractError('Unsupported pairing schema', 'SCHEMA_VERSION');
+  const pairingCode = text(value.pairingCode, 'pairingCode', 128);
+  if (!PAIRING_CODE.test(pairingCode)) throw new HubContractError('Pairing code is invalid or too weakly bounded', 'PAIRING_CODE_INVALID', 'pairingCode');
+  const platform = text(value.platform, 'platform', 16);
+  if (!['darwin', 'win32', 'linux'].includes(platform)) throw new HubContractError('Unsupported platform', 'FIELD_INVALID', 'platform');
+  return { schemaVersion: 1, pairingCode, deviceId: validateDeviceId(value.deviceId), displayName: portableName(value.displayName, 'displayName', MAX_DEVICE_DISPLAY_NAME_LENGTH), platform: platform as HubPlatform, arch: text(value.arch, 'arch', 32), appVersion: text(value.appVersion, 'appVersion', 32) };
+}
+
+export function validatePairingCodeRecord(input: unknown): PairingCodeRecord {
+  const value = record(input);
+  exactKeys(value, ['codeHash', 'consumedAt', 'expiresAt', 'issuedAt', 'pairingCodeId', 'revokedAt', 'schemaVersion']);
+  if (value.schemaVersion !== 1) throw new HubContractError('Unsupported pairing record schema', 'SCHEMA_VERSION');
+  return { schemaVersion: 1, pairingCodeId: validateRevisionId(value.pairingCodeId), codeHash: sha(value.codeHash, 'codeHash'), issuedAt: date(value.issuedAt, 'issuedAt'), expiresAt: date(value.expiresAt, 'expiresAt'), consumedAt: nullableDate(value.consumedAt, 'consumedAt'), revokedAt: nullableDate(value.revokedAt, 'revokedAt') };
+}
+
+export function pairingCodeState(record: PairingCodeRecord, at = new Date()): PairingCodeState {
+  if (record.revokedAt !== null) return 'revoked';
+  if (record.consumedAt !== null) return 'consumed';
+  return Date.parse(record.expiresAt) <= at.getTime() ? 'expired' : 'active';
+}
+
+export function validateDeviceTokenRecord(input: unknown): DeviceTokenRecord {
+  const value = record(input);
+  exactKeys(value, ['createdAt', 'deviceId', 'expiresAt', 'lastUsedAt', 'replacedByTokenId', 'revokedAt', 'rotatedFromTokenId', 'schemaVersion', 'tokenHash', 'tokenId', 'userId']);
+  if (value.schemaVersion !== 1) throw new HubContractError('Unsupported device token schema', 'SCHEMA_VERSION');
+  const tokenId = validateRevisionId(value.tokenId);
+  const rotatedFromTokenId = value.rotatedFromTokenId === null ? null : validateRevisionId(value.rotatedFromTokenId);
+  const replacedByTokenId = value.replacedByTokenId === null ? null : validateRevisionId(value.replacedByTokenId);
+  if (rotatedFromTokenId === tokenId || replacedByTokenId === tokenId) throw new HubContractError('Token rotation chain is invalid', 'TOKEN_ROTATION_INVALID');
+  return { schemaVersion: 1, tokenId, userId: validateUserId(value.userId), deviceId: validateDeviceId(value.deviceId), tokenHash: sha(value.tokenHash, 'tokenHash'), createdAt: date(value.createdAt, 'createdAt'), expiresAt: date(value.expiresAt, 'expiresAt'), revokedAt: nullableDate(value.revokedAt, 'revokedAt'), lastUsedAt: nullableDate(value.lastUsedAt, 'lastUsedAt'), rotatedFromTokenId, replacedByTokenId };
+}
+
+export function deviceTokenState(record: DeviceTokenRecord, at = new Date()): DeviceTokenState {
+  if (record.revokedAt !== null) return 'revoked';
+  return Date.parse(record.expiresAt) <= at.getTime() ? 'expired' : 'active';
+}
+
+export function validateOwnerBootstrapState(input: unknown): OwnerBootstrapState {
+  const value = record(input);
+  exactKeys(value, ['bootstrapClosed', 'initializedAt', 'ownerUserId', 'schemaVersion']);
+  if (value.schemaVersion !== 1 || typeof value.bootstrapClosed !== 'boolean') throw new HubContractError('Invalid owner bootstrap state', 'BOOTSTRAP_STATE_INVALID');
+  const ownerUserId = nullableUuid(value.ownerUserId, 'ownerUserId');
+  const initializedAt = nullableDate(value.initializedAt, 'initializedAt');
+  if ((ownerUserId === null) !== (initializedAt === null) || value.bootstrapClosed !== (ownerUserId !== null)) throw new HubContractError('Owner bootstrap state is not closed consistently', 'BOOTSTRAP_STATE_INVALID');
+  return { schemaVersion: 1, ownerUserId, initializedAt, bootstrapClosed: value.bootstrapClosed };
+}
+
+export function validateTokenRotationRequest(input: unknown): TokenRotationRequest {
+  const value = record(input);
+  exactKeys(value, ['deviceId', 'schemaVersion', 'tokenId']);
+  if (value.schemaVersion !== 1) throw new HubContractError('Unsupported token rotation schema', 'SCHEMA_VERSION');
+  return { schemaVersion: 1, tokenId: validateRevisionId(value.tokenId), deviceId: validateDeviceId(value.deviceId) };
+}
+
+/** Validate the safe Authorization shape without returning or serializing the bearer secret. */
+export function validateAuthorizationHeader(input: unknown): 'Bearer' {
+  if (typeof input !== 'string' || !/^Bearer\s+[^\s]+$/i.test(input) || /[\u0000-\u001f\u007f]/.test(input)) throw new HubContractError('Authorization must be a bearer credential', 'AUTHORIZATION_INVALID');
+  return 'Bearer';
+}
+
+export function assertNoCredentialInRequestTarget(input: unknown): string {
+  const target = text(input, 'requestTarget', 2048);
+  if (/[?#].*(?:token|secret|password|authorization|credential)/i.test(target) || /(?:^|[?&])(access_token|refresh_token|token|secret|password|authorization)=/i.test(target)) throw new HubContractError('Credentials are forbidden in URLs and query strings', 'AUTHORIZATION_IN_URL');
+  return target;
+}
+
+/** Authentication must be followed by this project/user/device membership check. */
+export function assertProjectAuthorization(input: ProjectAuthorizationInput, membership: ProjectMembership, device: Pick<HubDevice, 'deviceId' | 'userId' | 'revokedAt'>): void {
+  const request = record(input);
+  exactKeys(request, ['deviceId', 'projectId', 'schemaVersion', 'userId']);
+  if (request.schemaVersion !== 1) throw new HubContractError('Unsupported authorization schema', 'SCHEMA_VERSION');
+  const userId = validateUserId(request.userId);
+  const projectId = validateProjectId(request.projectId);
+  const deviceId = validateDeviceId(request.deviceId);
+  if (membership.revokedAt !== null || membership.userId !== userId || membership.projectId !== projectId || device.deviceId !== deviceId || device.userId !== userId || device.revokedAt !== null) throw new HubContractError('Project membership does not authorize this request', 'PROJECT_FORBIDDEN');
+}
+
 function excludedSourcePath(value: string): boolean {
   const parts = value.split('/');
   const leaf = parts.at(-1)?.toLowerCase() ?? '';
@@ -450,7 +589,7 @@ export function validateConflictResponse(input: unknown): RevisionConflictRespon
 
 export function validateAuditEvent(input: unknown): AuditEvent {
   const value = record(input);
-  exactKeys(value, ['action', 'deviceId', 'eventId', 'metadata', 'occurredAt', 'outcome', 'projectId', 'requestId', 'schemaVersion', 'userId']);
+  exactKeys(value, ['action', 'deviceId', 'eventId', 'metadata', 'occurredAt', 'outcome', 'projectId', 'requestId', 'schemaVersion', 'tokenId', 'userId']);
   if (value.schemaVersion !== 1) throw new HubContractError('Unsupported audit schema', 'SCHEMA_VERSION');
   const metadata = record(value.metadata, 'AUDIT_METADATA_INVALID');
   const keys = Object.keys(metadata);
@@ -463,7 +602,7 @@ export function validateAuditEvent(input: unknown): AuditEvent {
   }
   const outcome = text(value.outcome, 'outcome', 16);
   if (!['allowed', 'denied', 'error'].includes(outcome)) throw new HubContractError('Audit outcome is invalid', 'FIELD_INVALID', 'outcome');
-  return { schemaVersion: 1, eventId: uuid(value.eventId, 'eventId'), requestId: uuid(value.requestId, 'requestId'), userId: nullableUuid(value.userId, 'userId'), deviceId: nullableUuid(value.deviceId, 'deviceId'), projectId: nullableUuid(value.projectId, 'projectId'), action: text(value.action, 'action', 80), outcome: outcome as AuditEvent['outcome'], occurredAt: date(value.occurredAt, 'occurredAt'), metadata: safeMetadata };
+  return { schemaVersion: 1, eventId: uuid(value.eventId, 'eventId'), requestId: uuid(value.requestId, 'requestId'), userId: nullableUuid(value.userId, 'userId'), deviceId: nullableUuid(value.deviceId, 'deviceId'), projectId: nullableUuid(value.projectId, 'projectId'), tokenId: nullableUuid(value.tokenId, 'tokenId'), action: text(value.action, 'action', 80), outcome: outcome as AuditEvent['outcome'], occurredAt: date(value.occurredAt, 'occurredAt'), metadata: safeMetadata };
 }
 
 /** Queue state is local-only in M3A; this contract describes status without executing work. */

@@ -19,6 +19,7 @@ import { explicitWorkspaceEnv, loadConfig } from '../config.js';
 import { gitStatus } from '../git.js';
 import { canonicalWorkspace } from '../security.js';
 import { loadStoredSettings, saveStoredSettings } from '../settings.js';
+import { readDeviceIdentity } from '../device-identity.js';
 import {
   buildProjectContext,
   initializeProject,
@@ -217,6 +218,13 @@ async function runtimeOverview() {
   const checkpoints = await listCheckpoints(config.dataDir, 8);
   const auditEntries = await audit.tail(20);
   const workspaceConfigured = hasExplicitWorkspace(config.dataDir);
+  let deviceIdentity: Awaited<ReturnType<typeof readDeviceIdentity>> = null;
+  let deviceIdentityError: string | null = null;
+  try {
+    deviceIdentity = await readDeviceIdentity(config.dataDir);
+  } catch (error) {
+    deviceIdentityError = error instanceof Error ? error.message : String(error);
+  }
 
   let workspace: string | null = null;
   let workspaceError: string | null = null;
@@ -287,6 +295,9 @@ async function runtimeOverview() {
       workspaceReady: Boolean(workspace),
       workspaceConfigured,
       workspaceError,
+      device: deviceIdentity
+        ? { ready: true, displayName: deviceIdentity.displayName, idShort: deviceIdentity.deviceId.slice(0, 8), platform: deviceIdentity.platform, arch: deviceIdentity.arch, error: null }
+        : { ready: false, displayName: null, idShort: null, platform: process.platform, arch: process.arch, error: deviceIdentityError },
       remoteTunnel,
       remoteRuntime: lastRemoteRuntime,
     },

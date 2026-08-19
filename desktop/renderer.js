@@ -155,6 +155,8 @@ function render(data) {
 
   const runtime = $('doctor-runtime'); runtime.replaceChildren();
   row(runtime, 'Platform', `${data.doctor.platform} / ${data.doctor.arch}`); row(runtime, 'Node', data.doctor.node); row(runtime, 'Electron', data.doctor.electron); row(runtime, 'Data dir', data.dataDir);
+  row(runtime, 'Device identity', data.doctor.device?.ready ? 'READY' : data.doctor.device?.error ? 'ERROR' : 'NOT INITIALIZED');
+  if (data.doctor.device?.ready) { row(runtime, 'Device name', data.doctor.device.displayName); row(runtime, 'Device ID', data.doctor.device.idShort); }
   const boundary = $('doctor-boundary'); boundary.replaceChildren();
   const tunnel = data.doctor.remoteTunnel;
   const tunnelRuntime = data.doctor.remoteRuntime;

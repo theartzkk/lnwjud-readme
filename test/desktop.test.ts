@@ -83,6 +83,16 @@ test('desktop Doctor exposes sanitized tunnel readiness without a secret or raw 
   assert.doesNotMatch(renderer, /CONTROL_PLANE_API_KEY|mcpCommand|binaryPath/);
 });
 
+test('desktop Doctor exposes bounded local device readiness without credentials', async () => {
+  const main = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  const renderer = await readFile(new URL('../desktop/renderer.js', import.meta.url), 'utf8');
+  assert.match(main, /readDeviceIdentity/);
+  assert.match(main, /idShort: deviceIdentity\.deviceId\.slice\(0, 8\)/);
+  assert.match(renderer, /data\.doctor\.device\?\.ready/);
+  assert.match(renderer, /Device identity/);
+  assert.doesNotMatch(renderer, /accessToken|pairingCode|Authorization|tokenHash/);
+});
+
 test('desktop Projects workflow uses registry/memory IPC and stays fail-closed', async () => {
   const main = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
   const preload = await readFile(new URL('../desktop/preload.cjs', import.meta.url), 'utf8');
