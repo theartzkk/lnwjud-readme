@@ -1,6 +1,6 @@
-# Art Agent — Windows Installation
+# AWH — Windows Installation
 
-Art Agent uses a **per-user Squirrel.Windows installer**. The normal install path does not require administrator privileges from Art Agent.
+AWH uses the legacy **per-user Squirrel.Windows installer** identity. The normal install path does not require administrator privileges from AWH. `ArtAgent.exe` and `ArtAgentSetup.exe` remain unchanged temporarily so upgrades do not install a second application.
 
 ## Install through the Windows UI
 
@@ -14,7 +14,7 @@ Art Agent uses a **per-user Squirrel.Windows installer**. The normal install pat
    - `RELEASES`
    - `ArtAgent-SHA256.txt`
 6. Double-click `ArtAgentSetup.exe`.
-7. Start **Art Agent** from the Windows shortcut.
+7. Start **AWH Desktop** from the Windows shortcut.
 8. Choose the project workspace in Control Center, then enable only the permissions needed for that project.
 
 ## Integrity and trust boundary
@@ -27,7 +27,7 @@ GitHub Actions artifacts have limited retention. A permanent GitHub Release chan
 
 ## What the installer changes
 
-- Installs Art Agent for the current Windows user.
+- Installs AWH Desktop for the current Windows user while retaining the ArtAgent Squirrel identity.
 - Uses Squirrel install/update/uninstall lifecycle handling.
 - Creates/removes the normal application shortcut through Squirrel startup handling.
 - Does not enable workspace writes, execution, or Codex permissions automatically.

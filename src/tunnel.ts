@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { stat, realpath } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import { execFile, resolveExecutable, type ExecResult } from './process.js';
+import { PRODUCT } from './product.js';
 
 const TUNNEL_ID = /^tunnel_[a-z0-9]{32}$/;
 const RUNTIME_KEY = /^[0-9A-Za-z_-]+$/;
@@ -18,6 +19,9 @@ const REMOTE_ENV_DENY = new Set([
   'NODE_OPTIONS',
   'NODE_PATH',
   'ELECTRON_RUN_AS_NODE',
+  'AWH_ALLOW_WRITE',
+  'AWH_ALLOW_EXEC',
+  'AWH_ALLOW_CODEX',
   'ART_AGENT_ALLOW_WRITE',
   'ART_AGENT_ALLOW_EXEC',
   'ART_AGENT_ALLOW_CODEX',
@@ -101,7 +105,7 @@ function quoteTunnelCommandArg(value: string): string {
 }
 
 export function packagedMcpPaths(appExecutable: string): { appExecutable: string; appAsar: string; entrypoint: string } {
-  if (!isAbsolute(appExecutable)) throw new Error('Packaged Art Agent executable path must be absolute');
+  if (!isAbsolute(appExecutable)) throw new Error(`Packaged ${PRODUCT.desktopName} executable path must be absolute`);
   const appAsar = join(dirname(appExecutable), 'resources', 'app.asar');
   return {
     appExecutable,
@@ -125,7 +129,7 @@ export function buildPackagedMcpCommand(appExecutable: string, workspace: string
 export function tunnelRuntimeAlias(workspace: string): string {
   if (!isAbsolute(workspace)) throw new Error('Tunnel runtime workspace must be an absolute canonical path');
   const digest = createHash('sha256').update(workspace, 'utf8').digest('hex').slice(0, 16);
-  return `art-agent-${digest}`;
+  return `${PRODUCT.legacyPackageId}-${digest}`;
 }
 
 export function tunnelRuntimeEnvironment(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
@@ -135,6 +139,9 @@ export function tunnelRuntimeEnvironment(source: NodeJS.ProcessEnv = process.env
     if (value !== undefined) env[key] = value;
   }
   env.ELECTRON_RUN_AS_NODE = '1';
+  env.AWH_ALLOW_WRITE = '0';
+  env.AWH_ALLOW_EXEC = '0';
+  env.AWH_ALLOW_CODEX = '0';
   env.ART_AGENT_ALLOW_WRITE = '0';
   env.ART_AGENT_ALLOW_EXEC = '0';
   env.ART_AGENT_ALLOW_CODEX = '0';
@@ -290,7 +297,7 @@ function parseJsonObject(text: string, operation: string): Record<string, unknow
 }
 
 function parseRuntimeStatus(alias: string, payload: RuntimeStatusPayload): TunnelRuntimeStatus {
-  if (payload.alias !== alias) throw new Error('tunnel-client status alias did not match the requested Art Agent runtime');
+  if (payload.alias !== alias) throw new Error(`tunnel-client status alias did not match the requested ${PRODUCT.desktopName} runtime`);
   const processRunning = payload.process_running === true;
   const healthy = payload.healthy === true;
   const ready = payload.ready === true;
@@ -362,7 +369,7 @@ export async function connectTunnelRuntime(
   if (result.code !== 0) throw new Error(`tunnel-client connect exited with code ${result.code}`);
   const connectPayload = parseJsonObject(result.stdout, 'connect');
   if (typeof connectPayload.alias === 'string' && connectPayload.alias !== alias) {
-    throw new Error('tunnel-client connect alias did not match the requested Art Agent runtime');
+    throw new Error(`tunnel-client connect alias did not match the requested ${PRODUCT.desktopName} runtime`);
   }
 
   const status = await runRuntimeStatus(readiness.binaryPath, alias, childEnv, runner);
@@ -388,7 +395,7 @@ export async function stopTunnelRuntime(
   if (result.code !== 0) throw new Error(`tunnel-client stop exited with code ${result.code}`);
   const stopPayload = parseJsonObject(result.stdout, 'stop');
   if (typeof stopPayload.alias === 'string' && stopPayload.alias !== alias) {
-    throw new Error('tunnel-client stop alias did not match the requested Art Agent runtime');
+    throw new Error(`tunnel-client stop alias did not match the requested ${PRODUCT.desktopName} runtime`);
   }
 
   const status = await runRuntimeStatus(binary.path, alias, childEnv, runner);

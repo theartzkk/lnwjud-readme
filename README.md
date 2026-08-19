@@ -1,24 +1,26 @@
 <p align="center">
-  <img src="/logo-256x256.png" width="140" alt="Art Agent logo" />
+  <img src="/logo-256x256.png" width="140" alt="Art’s Workspace Hub logo" />
 </p>
 
-# Art Agent
+# Art’s Workspace Hub (AWH)
 
-**Safe-by-default local Windows MCP development agent for ChatGPT and Codex.**
+**Your Projects. One Workspace. Anywhere.**
 
-Art Agent turns one selected local project folder into a tightly scoped MCP workspace so an AI can inspect the current source of truth, review Git state, patch files with recovery checkpoints, run approved verification tasks, inspect bounded process logs, and optionally delegate to a local Codex CLI.
+AWH Desktop turns one selected local project folder into a tightly scoped MCP workspace so an AI can inspect the current source of truth, review Git state, patch files with recovery checkpoints, run approved verification tasks, inspect bounded process logs, and optionally delegate to a local Codex CLI.
+
+> Compatibility note: Art Agent is the legacy codename. Package, installer, MCP protocol, data-directory, and `ART_AGENT_*` identifiers remain temporarily for upgrade and runtime compatibility.
 
 > Status: **v0.4 Context Economy baseline**. Local stdio MCP, the sandboxed Electron Control Center, the per-user Windows installer, bounded/paged context reads, safe project profiling, and persistent task metadata are implemented. Remote Secure MCP Tunnel, browser control, Office integration, clipboard access, and arbitrary shell access remain intentionally disabled.
 
 ## Security posture
 
-Art Agent is deliberately narrow:
+AWH is deliberately narrow:
 
 - one canonical workspace, not all drives;
 - secret paths denied by default;
-- writes opt-in with `ART_AGENT_ALLOW_WRITE=1`;
-- execution opt-in with `ART_AGENT_ALLOW_EXEC=1`;
-- Codex delegation separately opt-in with `ART_AGENT_ALLOW_CODEX=1`;
+- writes opt-in with `AWH_ALLOW_WRITE=1` (legacy `ART_AGENT_ALLOW_WRITE=1` remains supported);
+- execution opt-in with `AWH_ALLOW_EXEC=1` (legacy `ART_AGENT_ALLOW_EXEC=1` remains supported);
+- Codex delegation separately opt-in with `AWH_ALLOW_CODEX=1` (legacy `ART_AGENT_ALLOW_CODEX=1` remains supported);
 - desktop renderer is sandboxed with context isolation and no Node integration;
 - persistent local settings contain only workspace/permission preferences, never API keys;
 - persisted task history contains metadata only — no logs, command arguments, cwd, environment, stdin, or prompts;
@@ -58,7 +60,7 @@ See [`docs/SECURITY.md`](docs/SECURITY.md) for the full boundary and [`docs/V04_
 
 ## Context economy
 
-`read_file` defaults to 200 lines per response and supports `startLine`, `maxLines`, and whole-file SHA-256 `knownDigest`. If the digest still matches, Art Agent returns `unchanged: true` and omits content. Omit `knownDigest` when intentionally requesting the next page.
+`read_file` defaults to 200 lines per response and supports `startLine`, `maxLines`, and whole-file SHA-256 `knownDigest`. If the digest still matches, AWH returns `unchanged: true` and omits content. Omit `knownDigest` when intentionally requesting the next page.
 
 `git_diff` applies the same bounded-page/digest pattern and can target a single safe changed path. Secret-path filtering remains the same Source of Truth as before.
 
@@ -68,13 +70,13 @@ See [`docs/SECURITY.md`](docs/SECURITY.md) for the full boundary and [`docs/V04_
 
 `workspace_info` detects a small safe profile for Node.js, PHP, Python, Rust, and Go projects. For Node.js it exposes only package-manager identity and the approved script names `test`, `lint`, `typecheck`, and `build`; dependency lists and arbitrary script commands are not returned.
 
-Task history is stored under the Art Agent data directory as bounded metadata. Finished task IDs remain discoverable after restart. A task that was running when another runtime takes over is shown as `unknown_after_restart`; the new runtime does not gain control over that process.
+Task history is stored under the legacy `.art-agent` data directory as bounded metadata. Finished task IDs remain discoverable after restart. A task that was running when another runtime takes over is shown as `unknown_after_restart`; the new runtime does not gain control over that process.
 
 Checkpoint persistence was already implemented with SHA-256 snapshot integrity, so v0.4 reuses that existing checkpoint store instead of creating a parallel database.
 
 ## Windows Control Center and installer
 
-The desktop app provides a Thai-first local dashboard for workspace, Git, permissions, Codex availability, checkpoints, audit history, and Doctor diagnostics. Workspace and permission changes are written to `~/.art-agent/settings.json` and take effect after restart so permissions do not mutate silently in the middle of an agent task.
+The AWH Desktop app provides a Thai-first local dashboard for workspace, Git, permissions, Codex availability, checkpoints, audit history, and Doctor diagnostics. Workspace and permission changes remain written to `~/.art-agent/settings.json` for compatibility and take effect after restart so permissions do not mutate silently in the middle of an agent task.
 
 The recommended Windows path is the per-user Squirrel installer produced by CI. See [`docs/WINDOWS_INSTALL.md`](docs/WINDOWS_INSTALL.md) for UI-first installation and integrity verification.
 
@@ -90,7 +92,7 @@ Create the Windows x64 installer set:
 npm run desktop:make
 ```
 
-The renderer loads only local files, uses a restrictive Content Security Policy, has `nodeIntegration=false`, `contextIsolation=true`, and Chromium sandboxing enabled. The preload exposes only fixed Art Agent IPC operations instead of the raw Electron IPC surface.
+The renderer loads only local files, uses a restrictive Content Security Policy, has `nodeIntegration=false`, `contextIsolation=true`, and Chromium sandboxing enabled. The preload exposes only seven fixed AWH Desktop IPC operations instead of the raw Electron IPC surface.
 
 ## Requirements
 
@@ -120,26 +122,26 @@ node dist/index.js --workspace "D:/Projects/MyProject"
 Enable workspace patch/write operations for a trusted session:
 
 ```powershell
-$env:ART_AGENT_ALLOW_WRITE = '1'
+$env:AWH_ALLOW_WRITE = '1'
 node dist/index.js --workspace "D:/Projects/MyProject"
 ```
 
 Enable approved project execution:
 
 ```powershell
-$env:ART_AGENT_ALLOW_EXEC = '1'
+$env:AWH_ALLOW_EXEC = '1'
 node dist/index.js --workspace "D:/Projects/MyProject"
 ```
 
 Enable local Codex delegation separately:
 
 ```powershell
-$env:ART_AGENT_ALLOW_EXEC = '1'
-$env:ART_AGENT_ALLOW_CODEX = '1'
+$env:AWH_ALLOW_EXEC = '1'
+$env:AWH_ALLOW_CODEX = '1'
 node dist/index.js --workspace "D:/Projects/MyProject"
 ```
 
-`codex_run` defaults to a `read-only` Codex sandbox. Its `workspace-write` mode additionally requires `ART_AGENT_ALLOW_WRITE=1`. Art Agent forces Codex web search and workspace-write network access off, does not use a sandbox-bypass flag, sends the task prompt over stdin, and does not record that prompt in the Art Agent audit log. Generic `OPENAI_API_KEY` / `CODEX_API_KEY` environment variables are not forwarded to the Codex child; use the normal local Codex login/credential store if delegation is enabled.
+`codex_run` defaults to a `read-only` Codex sandbox. Its `workspace-write` mode additionally requires `AWH_ALLOW_WRITE=1` or the legacy `ART_AGENT_ALLOW_WRITE=1`. AWH forces Codex web search and workspace-write network access off, does not use a sandbox-bypass flag, sends the task prompt over stdin, and does not record that prompt in the AWH audit log. Generic `OPENAI_API_KEY` / `CODEX_API_KEY` environment variables are not forwarded to the Codex child; use the normal local Codex login/credential store if delegation is enabled.
 
 ## Local MCP configuration
 
@@ -160,15 +162,17 @@ node dist/index.js --workspace "D:/Projects/MyProject"
 
 Do **not** put API keys in this configuration.
 
+The `art-agent` MCP key and server identity remain legacy compatibility identifiers during the migration.
+
 ## Workflow contract
 
 ### Patch and rollback
 
-`apply_patch` validates every exact-text guard before any write. If all guards pass it snapshots every affected file under the Art Agent data directory, then writes. If a write fails, Art Agent attempts automatic restore from that checkpoint. Manual `checkpoint_restore` is confirmation-gated.
+`apply_patch` validates every exact-text guard before any write. If all guards pass it snapshots every affected file under the legacy `.art-agent` data directory, then writes. If a write fails, AWH attempts automatic restore from that checkpoint. Manual `checkpoint_restore` is confirmation-gated.
 
 ### Managed tasks
 
-Only approved project scripts and Codex processes launched by the current Art Agent runtime are controllable. Logs remain bounded in memory. Persisted task history is metadata-only, and `task_stop`/`task_logs` refuse historical tasks from another runtime.
+Only approved project scripts and Codex processes launched by the current AWH runtime are controllable. Logs remain bounded in memory. Persisted task history is metadata-only, and `task_stop`/`task_logs` refuse historical tasks from another runtime.
 
 ### Codex bridge
 
@@ -184,7 +188,7 @@ The bridge follows the current OpenAI Codex non-interactive interface: `codex ex
 
 ### v0.3.1 — Windows installer ✅
 - per-user Squirrel.Windows installer
-- deterministic Art Agent Windows icon
+- deterministic legacy ArtAgent Windows icon for upgrade compatibility
 - installer integrity checks and CI artifacts
 
 ### v0.4 — Context economy + richer Git/project workflow ✅
@@ -195,11 +199,11 @@ The bridge follows the current OpenAI Codex non-interactive interface: `codex ex
 - persistent task metadata while reusing existing checkpoint persistence
 - superseded CI run cancellation
 
-### v0.5 — Remote connection
-- OpenAI Secure MCP Tunnel integration
-- outbound-only tunnel lifecycle
-- explicit remote permission profile
-- remote-safe secrets policy
-- connection/session audit
+### M1.2 — Product identity migration foundation
+- AWH public product identity with legacy package/installer/MCP compatibility
+- `AWH_*` configuration aliases with legacy `ART_AGENT_*` fallback
+- documentation and security-boundary identity alignment
+
+Remote Connection readiness and local remote-readonly isolation exist in source, but OpenAI Secure MCP Tunnel control-plane end-to-end verification is not claimed by this repository.
 
 Browser/Windows UI/Office/clipboard capabilities will be added individually behind separate permissions only after threat-model review.

@@ -1,6 +1,6 @@
 # AWH Local QA Engine
 
-This repository keeps Art Agent's current product identity and security boundaries. The local QA engine is only a migration milestone: it does not rename the product, change installer names, alter `.art-agent` paths or `ART_AGENT_*` variables, change MCP identity, or enable remote tunnel capabilities.
+This repository is migrating the public product identity to AWH while preserving Art Agent as a legacy compatibility identity. The local QA engine remains the source of truth for local verification: it does not change installer executable names, `.art-agent` paths, legacy `ART_AGENT_*` variables, or MCP protocol identity.
 
 ## Commands
 

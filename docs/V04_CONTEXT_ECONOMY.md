@@ -1,6 +1,6 @@
-# Art Agent v0.4 — Context Economy
+# AWH v0.4 — Context Economy
 
-Art Agent v0.4 reduces repeated MCP payloads and preserves useful project/task continuity without adding parallel filesystem, Git, checkpoint, or process-control systems.
+AWH v0.4 reduces repeated MCP payloads and preserves useful project/task continuity without adding parallel filesystem, Git, checkpoint, or process-control systems.
 
 Release versioning now treats `package.json` as the runtime Source of Truth. `ART_AGENT_VERSION` derives from package metadata, so the MCP server, desktop app, tests, and installer do not keep a second hard-coded runtime version.
 
@@ -12,7 +12,7 @@ Release versioning now treats `package.json` as the runtime Source of Truth. `AR
 - `maxLines` — at most 500 lines; default 200
 - `knownDigest` — optional digest from a prior response
 
-If `knownDigest` still matches the current file, Art Agent returns metadata with `unchanged: true` and omits `content`. If the file changed, the requested page is returned with its original CRLF/LF line endings preserved.
+If `knownDigest` still matches the current file, AWH returns metadata with `unchanged: true` and omits `content`. If the file changed, the requested page is returned with its original CRLF/LF line endings preserved.
 
 `knownDigest` is a freshness/re-check mechanism. **Do not send the previous digest when intentionally requesting the next page**, because a matching whole-file digest correctly suppresses content. Omit `knownDigest` when moving to `nextStartLine`.
 
@@ -45,9 +45,9 @@ It does **not** return dependency lists or arbitrary script commands. Manifest s
 
 ## Persistent task metadata
 
-The existing task registry remains the only process-control authority. v0.4 persists a bounded metadata record under the Art Agent data directory so task IDs and completion state survive an Art Agent restart.
+The existing task registry remains the only process-control authority. v0.4 persists a bounded metadata record under the legacy `.art-agent` data directory so task IDs and completion state survive an AWH restart.
 
-Persisted fields are limited to task identity/label, state, exit code/signal, timestamps, and the log-truncation flag. Art Agent deliberately does **not** persist stdout, stderr, executable paths, arguments, cwd, environment variables, stdin, Codex prompts, or instructions.
+Persisted fields are limited to task identity/label, state, exit code/signal, timestamps, and the log-truncation flag. AWH deliberately does **not** persist stdout, stderr, executable paths, arguments, cwd, environment variables, stdin, Codex prompts, or instructions.
 
 After restart:
 
@@ -59,7 +59,7 @@ This preserves continuity without granting a new runtime control over old/unknow
 
 ## Checkpoints
 
-No second checkpoint database was created. Art Agent already persists checkpoint metadata and snapshots under its existing checkpoint store with SHA-256 integrity verification, so v0.4 reuses that Source of Truth unchanged.
+No second checkpoint database was created. AWH already persists checkpoint metadata and snapshots under the existing legacy checkpoint store with SHA-256 integrity verification, so v0.4 reuses that Source of Truth unchanged.
 
 ## CI economy
 

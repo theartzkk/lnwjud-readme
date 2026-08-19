@@ -30,6 +30,9 @@ test('desktop HTML has a restrictive CSP, remote controls and no inline script',
   assert.match(html, /id="remote-connect"/);
   assert.match(html, /id="remote-stop"/);
   assert.match(html, /ไม่ auto-connect/);
+  assert.match(html, /Art’s Workspace Hub/);
+  assert.match(html, /AWH Desktop/);
+  assert.match(html, /Your Projects\. One Workspace\. Anywhere\./);
   assert.doesNotMatch(html, /<script(?![^>]*src=)[^>]*>/i);
 });
 

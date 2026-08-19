@@ -4,15 +4,15 @@
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Art Agent Control Center</title>
+  <title>AWH Desktop — Art’s Workspace Hub</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <div class="shell">
     <aside class="sidebar">
       <div class="brand">
-        <img src="../logo-256x256.png" alt="Art Agent" />
-        <div><strong>Art Agent</strong><span id="version">local control</span></div>
+        <img src="../logo-256x256.png" alt="Art’s Workspace Hub" />
+        <div><strong>Art’s Workspace Hub</strong><span id="version">AWH Desktop</span></div>
       </div>
       <nav>
         <button class="nav active" data-section="overview">ภาพรวม</button>
@@ -30,6 +30,7 @@
         <div>
           <p class="eyebrow">LOCAL DEVELOPMENT CONTROL PLANE</p>
           <h1>Control Center</h1>
+          <p class="muted">Your Projects. One Workspace. Anywhere.</p>
           <p class="muted">สถานะ workspace, Git, สิทธิ์, Remote Connection และ local Codex ในจุดเดียว</p>
         </div>
         <button id="refresh" class="btn secondary">รีเฟรช</button>
@@ -62,13 +63,13 @@
 
       <section id="section-permissions" class="section">
         <div class="card narrow">
-          <h2>สิทธิ์ของ Art Agent</h2>
+          <h2>สิทธิ์ของ AWH Desktop</h2>
           <p class="muted">ค่าที่นี่บันทึกเฉพาะ boolean permission และมีผลหลัง restart เพื่อไม่ให้สิทธิ์เปลี่ยนกลางงาน</p>
           <label class="toggle-row"><span><strong>Workspace write</strong><small>อนุญาต write_file, patch และ checkpoint restore</small></span><input id="perm-write" type="checkbox" /></label>
           <label class="toggle-row"><span><strong>Approved execution</strong><small>อนุญาตเฉพาะ test / lint / typecheck / build</small></span><input id="perm-exec" type="checkbox" /></label>
           <label class="toggle-row"><span><strong>Local Codex delegation</strong><small>เปิด bridge ไป Codex CLI แยกจาก execution และยังอยู่ใต้ sandbox</small></span><input id="perm-codex" type="checkbox" /></label>
           <div class="actions"><button id="save-permissions" class="btn">บันทึกสิทธิ์</button></div>
-          <div id="restart-banner" class="notice hidden"><span>ต้อง restart Art Agent ก่อนค่าใหม่จะมีผล</span><button id="restart" class="btn small">Restart</button></div>
+          <div id="restart-banner" class="notice hidden"><span>ต้อง restart AWH Desktop ก่อนค่าใหม่จะมีผล</span><button id="restart" class="btn small">Restart</button></div>
         </div>
       </section>
 
@@ -81,7 +82,7 @@
             <button id="remote-connect" class="btn" disabled>เชื่อมต่อ ChatGPT</button>
             <button id="remote-stop" class="btn secondary" disabled>หยุดการเชื่อมต่อ</button>
           </div>
-          <p class="muted remote-note">Art Agent จะไม่ auto-connect เมื่อเปิดโปรแกรม การเชื่อมต่อจริงต้องกดปุ่มและยืนยันใน dialog ก่อนทุกครั้ง ส่วนสถานะ Connected จะแสดงเฉพาะผลที่ tunnel runtime ตรวจแล้วว่า running + healthy + ready เท่านั้น</p>
+          <p class="muted remote-note">AWH Desktop จะไม่ auto-connect เมื่อเปิดโปรแกรม การเชื่อมต่อจริงต้องกดปุ่มและยืนยันใน dialog ก่อนทุกครั้ง ส่วนสถานะ Connected จะแสดงเฉพาะผลที่ tunnel runtime ตรวจแล้วว่า running + healthy + ready เท่านั้น</p>
         </div>
       </section>
 

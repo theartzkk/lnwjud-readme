@@ -80,7 +80,7 @@ jobs:
           const marker = path.join(process.env.ART_AGENT_DATA_DIR, 'desktop-smoke.json');
           if (!fs.existsSync(marker)) throw new Error('Electron runtime did not create a smoke marker');
           const smoke = JSON.parse(fs.readFileSync(marker, 'utf8'));
-          if (!smoke.ok || smoke.stage !== 'passed' || !smoke.apiReady || !smoke.requiredDom || smoke.overviewName !== 'Art Agent' || smoke.overviewVersion !== pkg.version) {
+          if (!smoke.ok || smoke.stage !== 'passed' || !smoke.apiReady || !smoke.requiredDom || smoke.overviewName !== 'Art’s Workspace Hub' || smoke.overviewVersion !== pkg.version) {
             throw new Error(`Electron runtime smoke marker invalid: ${JSON.stringify(smoke)}`);
           }
           console.log(`Electron runtime smoke passed: ${JSON.stringify(smoke)}`);

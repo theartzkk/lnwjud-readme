@@ -49,6 +49,9 @@ function readyEnv(appExecutable: string): NodeJS.ProcessEnv {
     ART_AGENT_ALLOW_WRITE: '1',
     ART_AGENT_ALLOW_EXEC: '1',
     ART_AGENT_ALLOW_CODEX: '1',
+    AWH_ALLOW_WRITE: '1',
+    AWH_ALLOW_EXEC: '1',
+    AWH_ALLOW_CODEX: '1',
   };
 }
 
@@ -204,6 +207,9 @@ test('runtime child environment forces remote read-only Node mode and removes in
   assert.equal(env.ART_AGENT_ALLOW_WRITE, '0');
   assert.equal(env.ART_AGENT_ALLOW_EXEC, '0');
   assert.equal(env.ART_AGENT_ALLOW_CODEX, '0');
+  assert.equal(env.AWH_ALLOW_WRITE, '0');
+  assert.equal(env.AWH_ALLOW_EXEC, '0');
+  assert.equal(env.AWH_ALLOW_CODEX, '0');
   for (const key of ['OPENAI_API_KEY', 'OPENAI_ADMIN_KEY', 'CODEX_API_KEY', 'NODE_OPTIONS', 'NODE_PATH']) {
     assert.equal(env[key], undefined, `${key} unexpectedly propagated`);
   }

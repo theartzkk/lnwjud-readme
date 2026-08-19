@@ -15,7 +15,7 @@ import {
 import { AuditLog } from '../audit.js';
 import { listCheckpoints } from '../changes.js';
 import { codexStatus } from '../codex.js';
-import { loadConfig } from '../config.js';
+import { explicitWorkspaceEnv, loadConfig } from '../config.js';
 import { gitStatus } from '../git.js';
 import { canonicalWorkspace } from '../security.js';
 import { loadStoredSettings, saveStoredSettings } from '../settings.js';
@@ -28,6 +28,7 @@ import {
 } from '../tunnel.js';
 import { DESKTOP_IPC, DESKTOP_WEB_PREFERENCES } from './security.js';
 import { ART_AGENT_VERSION } from '../version.js';
+import { PRODUCT } from '../product.js';
 
 const VERSION = ART_AGENT_VERSION;
 const SMOKE_TEST = process.argv.includes('--smoke-test') || process.env.ART_AGENT_SMOKE_TEST === '1';
@@ -55,7 +56,7 @@ function argValue(name: string): string | undefined {
 function hasExplicitWorkspace(dataDir: string): boolean {
   return Boolean(
     argValue('--workspace') ||
-    process.env.ART_AGENT_WORKSPACE?.trim() ||
+    explicitWorkspaceEnv()?.trim() ||
     loadStoredSettings(dataDir).defaultWorkspace?.trim(),
   );
 }
@@ -100,11 +101,11 @@ async function confirmRemoteAction(action: 'connect' | 'stop'): Promise<boolean>
     type: 'warning' as const,
     title: connect ? 'ยืนยัน Remote Connection' : 'ยืนยันหยุด Remote Connection',
     message: connect
-      ? 'เชื่อมต่อ Art Agent กับ ChatGPT ผ่าน Secure MCP Tunnel ตอนนี้หรือไม่?'
-      : 'หยุด Secure MCP Tunnel ที่ Art Agent จัดการอยู่ตอนนี้หรือไม่?',
+      ? `เชื่อมต่อ ${PRODUCT.desktopName} กับ ChatGPT ผ่าน Secure MCP Tunnel ตอนนี้หรือไม่?`
+      : `หยุด Secure MCP Tunnel ที่ ${PRODUCT.desktopName} จัดการอยู่ตอนนี้หรือไม่?`,
     detail: connect
       ? 'การเชื่อมต่อเป็น outbound-only และ remote profile เป็น read-only 8 tools ไม่มี write / execute / Codex'
-      : 'Art Agent จะสั่งหยุดเฉพาะ managed runtime alias ของ workspace ปัจจุบัน และตรวจสถานะซ้ำก่อนรายงานผล',
+      : `${PRODUCT.desktopName} จะสั่งหยุดเฉพาะ managed runtime alias ของ workspace ปัจจุบัน และตรวจสถานะซ้ำก่อนรายงานผล`,
     buttons: ['ยกเลิก', connect ? 'เชื่อมต่อ' : 'หยุดการเชื่อมต่อ'],
     defaultId: 0,
     cancelId: 0,
@@ -168,7 +169,7 @@ async function runtimeOverview() {
       };
 
   return {
-    name: 'Art Agent',
+    name: PRODUCT.productName,
     version: VERSION,
     workspace: workspace ?? (workspaceConfigured ? config.workspace : 'ยังไม่ได้เลือก workspace'),
     dataDir: config.dataDir,
@@ -205,7 +206,7 @@ async function createWindow(showOnReady = true): Promise<BrowserWindow> {
     minWidth: 900,
     minHeight: 640,
     show: false,
-    title: 'Art Agent Control Center',
+    title: `${PRODUCT.desktopName} — ${PRODUCT.productName}`,
     backgroundColor: '#111318',
     autoHideMenuBar: true,
     webPreferences: {
@@ -232,9 +233,9 @@ async function createWindow(showOnReady = true): Promise<BrowserWindow> {
 function createTray(): Tray {
   const image = nativeImage.createFromPath(join(app.getAppPath(), 'logo-256x256.png')).resize({ width: 20, height: 20 });
   const item = new Tray(image);
-  item.setToolTip('Art Agent Control Center');
+  item.setToolTip(`${PRODUCT.desktopName} — ${PRODUCT.productName}`);
   item.setContextMenu(Menu.buildFromTemplate([
-    { label: 'เปิด Art Agent', click: () => { mainWindow?.show(); mainWindow?.focus(); } },
+    { label: `เปิด ${PRODUCT.desktopName}`, click: () => { mainWindow?.show(); mainWindow?.focus(); } },
     { type: 'separator' },
     { label: 'ออก', click: () => { quitting = true; app.quit(); } },
   ]));
@@ -247,7 +248,7 @@ function registerIpc(): void {
 
   ipcMain.handle(DESKTOP_IPC.chooseWorkspace, async () => {
     const options: OpenDialogOptions = {
-      title: 'เลือกโฟลเดอร์โปรเจกต์สำหรับ Art Agent',
+      title: `เลือกโฟลเดอร์โปรเจกต์สำหรับ ${PRODUCT.desktopName}`,
       properties: ['openDirectory'],
     };
     const result = mainWindow
@@ -411,8 +412,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     if (
       result.apiReady !== true ||
       result.requiredDom !== true ||
-      result.title !== 'Art Agent Control Center' ||
-      result.overviewName !== 'Art Agent' ||
+      result.title !== `${PRODUCT.desktopName} — ${PRODUCT.productName}` ||
+      result.overviewName !== PRODUCT.productName ||
       result.overviewVersion !== VERSION
     ) {
       throw new Error(`Desktop smoke validation failed: ${JSON.stringify(result)}`);
