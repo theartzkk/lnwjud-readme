@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { browserRequestOptions, degradedHubPreview, fetchStaticData, getJson, isSafeRelativePath } from '../web/hub-read-adapter.js';
+import { browserRequestOptions, degradedHubPreview, fetchStaticData, getJson, hubDataFromApi, isSafeRelativePath } from '../web/hub-read-adapter.js';
 
 const runFile = promisify(execFile);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -88,6 +88,33 @@ test('browser adapter never constructs Authorization headers, generated output h
   assert.equal(isSafeRelativePath('//evil.example/api'), null);
   assert.equal(isSafeRelativePath('/api/v1/projects?token=secret'), null);
   assert.equal(isSafeRelativePath('/api/../secret'), null);
+});
+
+test('HUB_READ keeps every live-read request under the configured /api/v1 base', async () => {
+  const requests: string[] = [];
+  const projectId = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
+  const fakeFetch = async (path: string) => {
+    requests.push(path);
+    const payload = path.endsWith('/projects')
+      ? { projects: [{ projectId, name: 'Art’s Workspace Hub', type: 'node', createdAt: '2026-01-01T00:00:00.000Z' }] }
+      : path.endsWith('/memory')
+        ? { files: {}, handoffSummary: 'bounded' }
+        : path.endsWith('/status')
+          ? { status: 'ok' }
+          : path.endsWith('/devices')
+            ? { devices: [] }
+            : path.endsWith('/builds')
+              ? { builds: [] }
+              : path.endsWith('/releases')
+                ? { releases: [] }
+                : { project: { projectId, name: 'Art’s Workspace Hub', type: 'node', createdAt: '2026-01-01T00:00:00.000Z' } };
+    return { ok: true, text: async () => JSON.stringify(payload) } as Response;
+  };
+  await hubDataFromApi('/api/v1', fakeFetch);
+  assert.ok(requests.length === 7);
+  assert.ok(requests.every((path) => path.startsWith('/api/v1/')));
+  assert.ok(requests.includes('/api/v1/status'));
+  assert.ok(!requests.includes('/api/status'));
 });
 
 test('Hub outage is truthfully degraded to the static preview and never reported online', () => {

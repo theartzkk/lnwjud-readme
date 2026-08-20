@@ -73,19 +73,19 @@ async function staticData() {
   return fetchStaticData();
 }
 
-async function hubDataFromApi(apiBase) {
-  const projectList = await getJson(`${apiBase}/projects`, 'HUB_READ');
+export async function hubDataFromApi(apiBase, fetchImpl = globalThis.fetch) {
+  const projectList = await getJson(`${apiBase}/projects`, 'HUB_READ', fetchImpl);
   const projects = Array.isArray(projectList?.projects) ? projectList.projects : [];
   const project = projects[0];
   if (!project) throw new Error('Hub has no readable project');
   const id = encodeURIComponent(project.projectId);
   const [projectPayload, memory, status, devices, builds, releases] = await Promise.all([
-    getJson(`${apiBase}/projects/${id}`, 'HUB_READ'),
-    getJson(`${apiBase}/projects/${id}/memory`, 'HUB_READ'),
-    getJson(`${apiBase.replace(/\/v1$/, '')}/status`, 'HUB_READ'),
-    getJson(`${apiBase}/devices`, 'HUB_READ'),
-    getJson(`${apiBase}/builds`, 'HUB_READ'),
-    getJson(`${apiBase}/releases`, 'HUB_READ'),
+    getJson(`${apiBase}/projects/${id}`, 'HUB_READ', fetchImpl),
+    getJson(`${apiBase}/projects/${id}/memory`, 'HUB_READ', fetchImpl),
+    getJson(`${apiBase}/status`, 'HUB_READ', fetchImpl),
+    getJson(`${apiBase}/devices`, 'HUB_READ', fetchImpl),
+    getJson(`${apiBase}/builds`, 'HUB_READ', fetchImpl),
+    getJson(`${apiBase}/releases`, 'HUB_READ', fetchImpl),
   ]);
   return hubData(projectPayload, memory, status, devices, builds, releases);
 }
