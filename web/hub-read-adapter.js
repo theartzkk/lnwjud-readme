@@ -2,14 +2,18 @@ const MEMORY_FILES = ['PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md',
 const MAX_JSON_BYTES = 512 * 1024;
 const PROJECT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function safeRelativePath(value) {
-  return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//') && !/[?#]/.test(value) ? value : null;
+export function isSafeRelativePath(value) {
+  return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//') && !/[?#]/.test(value) && !value.split('/').includes('..') ? value : null;
 }
 
-async function getJson(path) {
-  const safePath = safeRelativePath(path);
+export function browserRequestOptions(mode) {
+  return { credentials: mode === 'STATIC_PREVIEW' ? 'same-origin' : 'omit', cache: 'no-store' };
+}
+
+export async function getJson(path, mode = 'HUB_READ', fetchImpl = globalThis.fetch) {
+  const safePath = isSafeRelativePath(path);
   if (!safePath) throw new Error('Hub read path is not safe');
-  const response = await fetch(safePath, { credentials: 'same-origin', cache: 'no-store' });
+  const response = await fetchImpl(safePath, browserRequestOptions(mode));
   if (!response.ok) throw new Error(`Hub read unavailable (${response.status})`);
   const body = await response.text();
   if (body.length > MAX_JSON_BYTES) throw new Error('Hub response exceeds the browser bound');
@@ -20,7 +24,7 @@ function validateConfig(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Web mode configuration is invalid');
   if (value.mode === 'STATIC_PREVIEW') return { mode: value.mode };
   if (value.mode !== 'HUB_READ' || typeof value.apiBase !== 'string') throw new Error('Web mode is not supported');
-  const apiBase = safeRelativePath(value.apiBase.replace(/\/$/, ''));
+  const apiBase = isSafeRelativePath(value.apiBase.replace(/\/$/, ''));
   if (!apiBase || apiBase.includes('..')) throw new Error('Hub API base is not safe');
   return { mode: value.mode, apiBase };
 }
@@ -53,23 +57,27 @@ function hubData(projectPayload, memoryPayload, statusPayload, devicesPayload, b
   };
 }
 
+export async function fetchStaticData(fetchImpl = globalThis.fetch) {
+  return getJson('/data.json', 'STATIC_PREVIEW', fetchImpl);
+}
+
 async function staticData() {
-  return getJson('/data.json');
+  return fetchStaticData();
 }
 
 async function hubDataFromApi(apiBase) {
-  const projectList = await getJson(`${apiBase}/projects`);
+  const projectList = await getJson(`${apiBase}/projects`, 'HUB_READ');
   const projects = Array.isArray(projectList?.projects) ? projectList.projects : [];
   const project = projects[0];
   if (!project) throw new Error('Hub has no readable project');
   const id = encodeURIComponent(project.projectId);
   const [projectPayload, memory, status, devices, builds, releases] = await Promise.all([
-    getJson(`${apiBase}/projects/${id}`),
-    getJson(`${apiBase}/projects/${id}/memory`),
-    getJson(`${apiBase.replace(/\/v1$/, '')}/status`),
-    getJson(`${apiBase}/devices`),
-    getJson(`${apiBase}/builds`),
-    getJson(`${apiBase}/releases`),
+    getJson(`${apiBase}/projects/${id}`, 'HUB_READ'),
+    getJson(`${apiBase}/projects/${id}/memory`, 'HUB_READ'),
+    getJson(`${apiBase.replace(/\/v1$/, '')}/status`, 'HUB_READ'),
+    getJson(`${apiBase}/devices`, 'HUB_READ'),
+    getJson(`${apiBase}/builds`, 'HUB_READ'),
+    getJson(`${apiBase}/releases`, 'HUB_READ'),
   ]);
   return hubData(projectPayload, memory, status, devices, builds, releases);
 }
@@ -77,7 +85,7 @@ async function hubDataFromApi(apiBase) {
 export async function loadWebData() {
   let config = { mode: 'STATIC_PREVIEW' };
   try {
-    const response = await fetch('/web-config.json', { credentials: 'same-origin', cache: 'no-store' });
+    const response = await fetch('/web-config.json', browserRequestOptions('HUB_READ'));
     if (response.ok) {
       const body = await response.text();
       if (body.length > 4096) throw new Error('Web mode configuration exceeds the browser bound');

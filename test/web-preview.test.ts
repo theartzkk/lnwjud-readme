@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { browserRequestOptions, fetchStaticData, getJson, isSafeRelativePath } from '../web/hub-read-adapter.js';
 
 const runFile = promisify(execFile);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -59,7 +60,33 @@ test('static preview serialization is deterministic with a fixed build timestamp
   const adapter = await readFile(join(ROOT, 'web', 'hub-read-adapter.js'), 'utf8');
   assert.match(adapter, /STATIC_PREVIEW/);
   assert.match(adapter, /HUB_READ/);
-  assert.doesNotMatch(adapter, /Authorization|localStorage|sessionStorage|document\.cookie/i);
+  assert.doesNotMatch(adapter, /Authorization\s*[:=]|localStorage|sessionStorage|document\.cookie/i);
+});
+
+test('static data reuses same-origin HTTP authentication while Hub requests omit credentials', async () => {
+  const requests = [] as Array<{ path: string; options: RequestInit }>;
+  const fakeFetch = async (path: string, options: RequestInit) => {
+    requests.push({ path, options });
+    return { ok: true, text: async () => JSON.stringify({ static: true }) } as Response;
+  };
+  await fetchStaticData(fakeFetch);
+  await getJson('/api/v1/projects', 'HUB_READ', fakeFetch);
+  assert.deepEqual(requests[0], { path: '/data.json', options: { credentials: 'same-origin', cache: 'no-store' } });
+  assert.deepEqual(requests[1], { path: '/api/v1/projects', options: { credentials: 'omit', cache: 'no-store' } });
+  assert.deepEqual(browserRequestOptions('STATIC_PREVIEW'), { credentials: 'same-origin', cache: 'no-store' });
+  assert.deepEqual(browserRequestOptions('HUB_READ'), { credentials: 'omit', cache: 'no-store' });
+});
+
+test('browser adapter never constructs Authorization headers, generated output has no credential values, and cross-origin paths fail closed', async () => {
+  const adapter = await readFile(join(ROOT, 'web', 'hub-read-adapter.js'), 'utf8');
+  const output = await readFile(join(OUTPUT, 'data.json'), 'utf8');
+  assert.doesNotMatch(adapter, /Authorization\s*[:=]|Bearer\s+|password\s*[:=]|token\s*[:=]/i);
+  assert.doesNotMatch(output, /username|password|accessToken|tokenHash|pairingCode|privateKey/i);
+  assert.equal(isSafeRelativePath('/api/v1/projects'), '/api/v1/projects');
+  assert.equal(isSafeRelativePath('https://evil.example/api'), null);
+  assert.equal(isSafeRelativePath('//evil.example/api'), null);
+  assert.equal(isSafeRelativePath('/api/v1/projects?token=secret'), null);
+  assert.equal(isSafeRelativePath('/api/../secret'), null);
 });
 
 test('browser surface has responsive mobile structure and bounded read-only status cards', async () => {
