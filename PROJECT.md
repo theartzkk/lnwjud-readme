@@ -31,6 +31,7 @@ local control, explicit permissions, and recoverable changes.
 - M3D field state: Connected read-only, one indexed project, and PHP-FPM + SQLite + Nginx gateway operational.
 - M3C2 hosting foundation and VPS bootstrap are documented design/templates only.
 - M3E Secure Device Enrollment Foundation is implemented locally: independent device enrollment, bounded pairing, token rotation/revocation, and explicit project membership are server/domain foundations only; no enrollment transport is exposed yet.
+- M3E.1 additive SQLite migration safety is implemented locally with preflight, ledger, idempotent rerun, rollback testing, and a reviewed VPS runbook; it has not been run on the VPS.
 
 ## Current limitations
 

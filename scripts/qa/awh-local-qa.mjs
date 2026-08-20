@@ -262,7 +262,7 @@ async function requiredFilesCheck() {
     '.github/workflows/ci.yml', '.github/scripts/verify-packaged-mcp.ps1',
     'src/security.ts', 'src/stdio.ts', 'src/tunnel.ts', 'src/tasks.ts', 'src/files.ts', 'src/git.ts',
     'desktop/index.html', 'desktop/preload.cjs', 'src/desktop/main.ts', 'web/index.html', 'web/app.js', 'web/styles.css', 'web/hub-read-adapter.js', 'scripts/build-web-preview.ts',
-    'hub/schema.sql', 'hub/public/index.php', 'hub/public/web-gateway.php', 'hub/src/HubReadModel.php', 'hub/src/HubReadRouter.php', 'hub/src/HubWebGateway.php', 'hub/src/HubEnrollmentService.php', 'hub/bin/index-project.php', 'hub/tests/read-foundation.php', 'deploy/nginx/awh-preview.conf',
+    'hub/schema.sql', 'hub/migrations/001_m3e_enrollment.sql', 'hub/public/index.php', 'hub/public/web-gateway.php', 'hub/src/HubReadModel.php', 'hub/src/HubReadRouter.php', 'hub/src/HubWebGateway.php', 'hub/src/HubEnrollmentService.php', 'hub/src/HubSchemaMigration.php', 'hub/bin/index-project.php', 'hub/bin/migrate-m3e.php', 'hub/tests/read-foundation.php', 'hub/tests/m3e-migration.php', 'deploy/nginx/awh-preview.conf',
   ];
   const missing = [];
   for (const path of required) if (!(await exists(join(ROOT, path)))) missing.push(path);
@@ -312,7 +312,7 @@ async function phpHubCheck() {
     check('php-hub', 'FAIL', 'PHP runtime is required to validate the local Hub read foundation', started);
     return;
   }
-  const syntaxFiles = ['hub/src/HubReadModel.php', 'hub/src/HubReadRouter.php', 'hub/src/HubWebGateway.php', 'hub/src/HubEnrollmentService.php', 'hub/public/index.php', 'hub/public/web-gateway.php', 'hub/bin/index-project.php'];
+  const syntaxFiles = ['hub/src/HubReadModel.php', 'hub/src/HubReadRouter.php', 'hub/src/HubWebGateway.php', 'hub/src/HubEnrollmentService.php', 'hub/src/HubSchemaMigration.php', 'hub/public/index.php', 'hub/public/web-gateway.php', 'hub/bin/index-project.php', 'hub/bin/migrate-m3e.php'];
   for (const file of syntaxFiles) {
     const result = await run(php, ['-l', join(ROOT, file)], { timeoutMs: 15_000 });
     if (result.code !== 0) {
@@ -328,7 +328,12 @@ async function phpHubCheck() {
     return;
   }
   const test = await run(php, [join(ROOT, 'hub', 'tests', 'read-foundation.php')], { timeoutMs: 60_000 });
-  check('php-hub', test.code === 0 ? 'PASS' : 'FAIL', test.code === 0 ? 'PHP Hub read foundation syntax and security tests passed' : 'PHP Hub read foundation tests failed', started);
+  if (test.code !== 0) {
+    check('php-hub', 'FAIL', 'PHP Hub read foundation tests failed', started);
+    return;
+  }
+  const migration = await run(php, [join(ROOT, 'hub', 'tests', 'm3e-migration.php')], { timeoutMs: 60_000 });
+  check('php-hub', migration.code === 0 ? 'PASS' : 'FAIL', migration.code === 0 ? 'PHP Hub read foundation and M3E migration tests passed' : 'PHP Hub or M3E migration tests failed', started);
 }
 
 async function desktopReadinessCheck(dependenciesReady) {

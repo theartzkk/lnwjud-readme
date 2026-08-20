@@ -32,4 +32,5 @@ enabled.
    enrollment, and explicit device/project membership.
 
 Production enrollment transport and schema migration remain human-reviewed
-future work. The M3D browser gateway remains read-only.
+future work. M3E.1 provides a separate additive migration and rollback runbook;
+it has not been run on the VPS. The M3D browser gateway remains read-only.

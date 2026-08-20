@@ -13,6 +13,8 @@ M3A Hub contract; M3B device identity foundation; M3C0 static browser preview;
 M3D live Hub read over HTTPS verified on VPS and iPhone.
 M3E local PHP/SQLite enrollment domain foundation is implemented and tested;
 no enrollment endpoint is deployed or exposed through the browser gateway.
+M3E.1 migration runner, additive SQL, fixtures, and VPS runbook are implemented
+and locally tested; the production database has not been modified.
 
 ## Source of Truth
 
@@ -21,6 +23,7 @@ no enrollment endpoint is deployed or exposed through the browser gateway.
 - Current working tree: intentionally dirty with the M3D closeout changes.
 - Field verification: Connected read-only, one indexed project, PHP-FPM + SQLite + Nginx gateway operational, HTTPS works on VPS and iPhone.
 - M3E local tests cover owner bootstrap closure, pairing expiry/replay, device binding, token rotation/revocation, project authorization, and sanitized device reads.
+- M3E.1 tests cover M3D metadata preservation, empty bootstrap, idempotent rerun, partial/interrupted recovery, schema mismatch, constraints, and secret-free migration state.
 - No VPS, DNS, firewall, SSH, GitHub, production, or shared-hosting action has been performed.
 
 ## Next action

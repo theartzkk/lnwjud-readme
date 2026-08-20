@@ -77,3 +77,6 @@
   enrollment before project authorization.
 - `/api/v1/devices` returns sanitized metadata only. Enrollment mutations are
   not connected to the browser read gateway.
+- M3E.1 migrates existing M3D databases additively in one transaction, records
+  a checksum-backed migration ledger and schema version, and never replays the
+  full fresh-install schema against production.
