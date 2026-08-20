@@ -21,3 +21,4 @@
 - M3D uses a same-origin PHP web gateway behind Nginx Basic Auth for the read-only browser perimeter; it does not put a Bearer token in JavaScript and does not replace M3B device/account authorization.
 - The web gateway trusts only a reviewed Nginx FastCGI parameter, never a client HTTP header; PHP-FPM uses a Unix socket and SQLite remains query-only for HTTP reads.
 - Browser HUB_READ failures degrade truthfully to the static preview with Offline status.
+- M3D is closed on field evidence: the read-only Hub is live over HTTPS on the VPS and iPhone, with one indexed project and operational Nginx → PHP-FPM → SQLite routing. This does not authorize writes, sync, or production migration.

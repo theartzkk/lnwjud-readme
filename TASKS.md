@@ -2,12 +2,11 @@
 
 ## NOW
 
-- Review M3D browser live-read adapter, PHP gateway, and Nginx template.
-- Keep VPS deployment human-gated; verify the rendered Nginx configuration before switching any release.
+- Close M3D after recording verified live HTTPS field state.
 
 ## NEXT
 
-- Human review of dry-run VPS/Nginx assets; no deployment without explicit approval.
+- Keep future writes, sync, device pairing, and production migration human-gated.
 - M3B secure OS credential adapter and authenticated Hub enrollment.
 - M3C2 hosting foundation implementation only after infrastructure review.
 - M4 Mac ↔ Hub ↔ Windows continuity and explicit conflict handling.
@@ -36,3 +35,4 @@
 - M3B local device identity foundation.
 - M3C0 browser-safe static Remote Read-Only Preview.
 - M3C1 PHP/SQLite Hub read foundation.
+- M3D AWH Hub Live Read: HTTPS, Nginx Basic Auth, PHP-FPM, SQLite, Connected read-only, one indexed project, desktop and iPhone verified.

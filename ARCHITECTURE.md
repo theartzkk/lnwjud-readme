@@ -61,3 +61,6 @@
 - The direct Bearer-token API remains a separate service-client boundary.
 - A Hub read failure is rendered as offline/degraded static preview, never as
   a false online state.
+- M3D is field-verified live over HTTPS on the VPS and iPhone. The operational
+  path is Nginx Basic Auth → PHP-FPM Unix socket → query-only SQLite Hub read;
+  the verified state is Connected read-only with one indexed project.

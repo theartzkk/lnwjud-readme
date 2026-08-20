@@ -27,7 +27,8 @@ local control, explicit permissions, and recoverable changes.
 - Local Project Registry and bounded Project Context builder are implemented.
 - Local MCP, security boundaries, checkpoints, task/runtime engine, Git context, and desktop foundation are implemented.
 - M3C0 browser-safe static Remote Read-Only Preview is implemented; the operator has reported the static preview behind Nginx Basic Auth, but this repository has not verified the VPS.
-- M3C1 PHP/SQLite Hub read foundation and M3D same-origin web gateway are implemented locally; no Hub read deployment was performed by this task.
+- M3C1 PHP/SQLite Hub read foundation and M3D same-origin web gateway are operational on the VPS; field verification confirms live HTTPS access on desktop and iPhone.
+- M3D field state: Connected read-only, one indexed project, and PHP-FPM + SQLite + Nginx gateway operational.
 - M3C2 hosting foundation and VPS bootstrap are documented design/templates only.
 
 ## Current limitations
@@ -39,4 +40,4 @@ local control, explicit permissions, and recoverable changes.
 - macOS packaging is not complete.
 - OpenAI Secure MCP Tunnel control-plane end-to-end connectivity is not claimed.
 - AI provider adapters are local integration points; no AWH-owned model is bundled.
-- Hub read deployment, VPS behavior, DNS, firewall, HTTPS, and Basic Auth configuration remain human-gated and are not verified by local tests.
+- VPS live behavior is recorded from field verification; credentials, passwords, public IPs, and SSH details remain intentionally outside Project Memory.
