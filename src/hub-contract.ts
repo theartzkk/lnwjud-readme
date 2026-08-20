@@ -233,11 +233,16 @@ export interface TokenEnvelope {
 }
 
 export const HUB_API_ROUTES = Object.freeze({
+  health: 'GET /api/v1/health',
+  status: 'GET /api/v1/status',
   deviceRegister: 'POST /api/v1/auth/device/register',
   tokenRotate: 'POST /api/v1/auth/token/rotate',
   logout: 'POST /api/v1/auth/logout',
   projectsList: 'GET /api/v1/projects',
   projectGet: 'GET /api/v1/projects/{projectId}',
+  devicesList: 'GET /api/v1/devices',
+  buildsList: 'GET /api/v1/builds',
+  releasesList: 'GET /api/v1/releases',
   projectRegister: 'PUT /api/v1/projects/{projectId}',
   revisionsList: 'GET /api/v1/projects/{projectId}/revisions',
   revisionCreate: 'POST /api/v1/projects/{projectId}/revisions',

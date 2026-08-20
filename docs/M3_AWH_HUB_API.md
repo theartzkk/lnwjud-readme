@@ -3,6 +3,24 @@
 The API is versioned under `/api/v1`. M3A defines JSON shapes and validation;
 it does not implement an HTTP server or call a cloud service.
 
+M3C1 adds a local PHP read foundation for the following GET-only operational
+surface. It is an implementation of the read boundary, not a replacement for
+the future authenticated sync service:
+
+```text
+GET /api/v1/health
+GET /api/v1/status
+GET /api/v1/projects
+GET /api/v1/projects/{projectId}
+GET /api/v1/projects/{projectId}/memory
+GET /api/v1/devices
+GET /api/v1/builds
+GET /api/v1/releases
+```
+
+Non-health reads require a bearer credential at the server boundary. No
+mutation or execution route is enabled by M3C1.
+
 ## Common rules
 
 - JSON request and response bodies use `schemaVersion: 1`.

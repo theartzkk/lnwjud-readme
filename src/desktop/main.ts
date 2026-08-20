@@ -20,6 +20,7 @@ import { gitStatus } from '../git.js';
 import { canonicalWorkspace } from '../security.js';
 import { loadStoredSettings, saveStoredSettings } from '../settings.js';
 import { readDeviceIdentity } from '../device-identity.js';
+import { ensureAwhDataDirectoryActive } from '../data-migration.js';
 import {
   buildProjectContext,
   initializeProject,
@@ -524,6 +525,7 @@ function registerIpc(): void {
 
 async function writeSmokeMarker(payload: Record<string, unknown>): Promise<void> {
   const config = loadConfig();
+  await ensureAwhDataDirectoryActive(config.dataDir);
   await mkdir(config.dataDir, { recursive: true });
   await writeFile(
     join(config.dataDir, 'desktop-smoke.json'),

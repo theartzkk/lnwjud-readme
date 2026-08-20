@@ -6,6 +6,7 @@ import { delimiter, dirname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { platform, arch } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { npmLaunchSpec } from './lib/npm-runtime.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const OUTPUT_DIR = join(ROOT, '.awh-local', 'qa');
@@ -47,8 +48,15 @@ function pathCandidates(command) {
   return dirs.flatMap((dir) => names.map((name) => join(dir, name)));
 }
 
+function commonToolCandidates(command) {
+  if (process.platform === 'win32') return [];
+  return command === 'php'
+    ? ['/opt/local/bin/php', '/opt/homebrew/bin/php', '/usr/local/bin/php', '/usr/bin/php']
+    : [];
+}
+
 async function resolveCommand(command) {
-  for (const candidate of pathCandidates(command)) {
+  for (const candidate of [...pathCandidates(command), ...commonToolCandidates(command)]) {
     if (await exists(candidate)) return candidate;
   }
   return undefined;
@@ -76,8 +84,8 @@ async function discoverNpm() {
   ].filter(Boolean);
   for (const candidate of candidates) {
     if (!(await exists(candidate))) continue;
-    if (candidate.endsWith('npm-cli.js')) return { path: candidate, executable: process.execPath, argsPrefix: [candidate], source: 'Node-adjacent npm CLI' };
-    return { path: candidate, executable: candidate, argsPrefix: [], source: candidate === pathNpm ? 'PATH' : 'common/Node-adjacent location' };
+    const launch = npmLaunchSpec(candidate, process.execPath);
+    return { ...launch, source: candidate === pathNpm && launch.source === 'native executable' ? 'PATH' : launch.source };
   }
   return null;
 }
@@ -141,8 +149,8 @@ async function runScript(script, timeoutMs = 15 * 60_000) {
   const tsx = join(ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
   const testFiles = [
     'test/security.test.ts', 'test/files.test.ts', 'test/git.test.ts', 'test/process.test.ts',
-    'test/changes.test.ts', 'test/tasks.test.ts', 'test/project.test.ts', 'test/project-registry.test.ts', 'test/hub-contract.test.ts', 'test/device-identity.test.ts', 'test/stdio.test.ts',
-    'test/tunnel.test.ts', 'test/codex.test.ts', 'test/settings.test.ts', 'test/desktop.test.ts', 'test/desktop-projects.test.ts',
+    'test/changes.test.ts', 'test/tasks.test.ts', 'test/project.test.ts', 'test/project-registry.test.ts', 'test/hub-contract.test.ts', 'test/device-identity.test.ts', 'test/web-preview.test.ts', 'test/stdio.test.ts',
+    'test/tunnel.test.ts', 'test/codex.test.ts', 'test/settings.test.ts', 'test/deployment-foundation.test.ts', 'test/qa-toolchain.test.ts', 'test/desktop.test.ts', 'test/desktop-projects.test.ts',
     'test/version.test.ts', 'test/installer.test.ts',
   ];
   if (script === 'typecheck') return (await exists(tsc)) ? run(process.execPath, [tsc, '-p', 'tsconfig.json', '--noEmit'], { timeoutMs }) : { code: -1, unavailable: true };
@@ -253,7 +261,8 @@ async function requiredFilesCheck() {
     'package.json', 'package-lock.json', 'tsconfig.json', 'forge.config.cjs',
     '.github/workflows/ci.yml', '.github/scripts/verify-packaged-mcp.ps1',
     'src/security.ts', 'src/stdio.ts', 'src/tunnel.ts', 'src/tasks.ts', 'src/files.ts', 'src/git.ts',
-    'desktop/index.html', 'desktop/preload.cjs', 'src/desktop/main.ts',
+    'desktop/index.html', 'desktop/preload.cjs', 'src/desktop/main.ts', 'web/index.html', 'web/app.js', 'web/styles.css', 'web/hub-read-adapter.js', 'scripts/build-web-preview.ts',
+    'hub/schema.sql', 'hub/public/index.php', 'hub/src/HubReadModel.php', 'hub/src/HubReadRouter.php', 'hub/bin/index-project.php', 'hub/tests/read-foundation.php',
   ];
   const missing = [];
   for (const path of required) if (!(await exists(join(ROOT, path)))) missing.push(path);
@@ -294,6 +303,32 @@ async function mcpIsolationCheck() {
   const started = Date.now();
   const result = await runNodeTest(['test/stdio.test.ts', 'test/tunnel.test.ts']);
   check('mcp-isolation', result.code === 0 ? 'PASS' : 'FAIL', result.code === 0 ? 'MCP stdio and remote-readonly isolation tests passed' : 'MCP or remote-readonly isolation tests failed', started);
+}
+
+async function phpHubCheck() {
+  const started = Date.now();
+  const php = await resolveCommand('php');
+  if (!php) {
+    check('php-hub', 'FAIL', 'PHP runtime is required to validate the local Hub read foundation', started);
+    return;
+  }
+  const syntaxFiles = ['hub/src/HubReadModel.php', 'hub/src/HubReadRouter.php', 'hub/public/index.php', 'hub/bin/index-project.php'];
+  for (const file of syntaxFiles) {
+    const result = await run(php, ['-l', join(ROOT, file)], { timeoutMs: 15_000 });
+    if (result.code !== 0) {
+      check('php-hub', 'FAIL', `PHP syntax failed for ${file}`, started);
+      return;
+    }
+  }
+  const sqliteDriver = await run(php, ['-r', 'exit(in_array("sqlite", PDO::getAvailableDrivers(), true) ? 0 : 1);'], { timeoutMs: 15_000 });
+  if (sqliteDriver.code !== 0) {
+    const sqlite = await resolveCommand('sqlite3');
+    const schema = sqlite ? await run(sqlite, [':memory:', `.read ${join(ROOT, 'hub', 'schema.sql')}`], { timeoutMs: 15_000 }) : { code: -1 };
+    check('php-hub', sqlite?.length && schema.code === 0 ? 'SKIP' : 'FAIL', sqlite?.length && schema.code === 0 ? 'PHP syntax passed; pdo_sqlite is unavailable, SQLite schema smoke passed with the local sqlite3 tool' : 'PHP syntax passed but neither pdo_sqlite nor a local SQLite schema tool is available', started);
+    return;
+  }
+  const test = await run(php, [join(ROOT, 'hub', 'tests', 'read-foundation.php')], { timeoutMs: 60_000 });
+  check('php-hub', test.code === 0 ? 'PASS' : 'FAIL', test.code === 0 ? 'PHP Hub read foundation syntax and security tests passed' : 'PHP Hub read foundation tests failed', started);
 }
 
 async function desktopReadinessCheck(dependenciesReady) {
@@ -384,6 +419,7 @@ async function main() {
     if (dependenciesReady) {
       await securityBoundaryCheck();
       await mcpIsolationCheck();
+      await phpHubCheck();
     } else {
       blockedCheck('security-boundary', 'Security tests require installed npm dependencies');
       blockedCheck('mcp-isolation', 'MCP isolation tests require installed npm dependencies');

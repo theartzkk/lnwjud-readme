@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta name="description" content="Art’s Workspace Hub remote read-only preview" />
+  <title>AWH — Remote Preview</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Art’s Workspace Hub home">
+        <span class="brand-mark">A</span>
+        <span><strong id="product-name">Art’s Workspace Hub</strong><small id="product-tagline">Your Projects. One Workspace. Anywhere.</small></span>
+      </a>
+      <span id="preview-label" class="status-pill warning">Remote Preview — Read Only</span>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">AWH HUB SURFACE</p>
+          <h1 id="page-title">One calm view of your workspace.</h1>
+          <p class="lead">Portable project identity, continuity, and readiness — presented safely from the Hub preview.</p>
+        </div>
+        <div class="hub-status card">
+          <span class="label">HUB STATUS</span>
+          <strong id="hub-status">Loading…</strong>
+          <small id="hub-summary">Read-only preview</small>
+        </div>
+      </section>
+
+      <section class="project-grid" aria-label="AWH project and continuity status">
+        <article id="project-card" class="card project-card">
+          <div class="card-heading"><div><span class="label">PROJECT</span><h2 id="project-name">Loading…</h2></div><span id="project-type" class="type-pill">—</span></div>
+          <p id="project-id" class="project-id">—</p>
+          <div class="milestone"><span class="label">CURRENT MILESTONE</span><strong id="milestone">—</strong></div>
+          <div class="handoff"><div class="card-heading"><span class="label">HANDOFF SUMMARY</span><span class="bounded">BOUNDED</span></div><p id="handoff-summary">—</p></div>
+        </article>
+
+        <article class="card memory-card">
+          <div class="card-heading"><div><span class="label">PROJECT MEMORY</span><h2>Continuity files</h2></div><span id="memory-ready" class="status-pill">—</span></div>
+          <p class="muted">Canonical files remain in the project workspace. This preview shows readiness only.</p>
+          <ul id="memory-list" class="memory-list"></ul>
+        </article>
+      </section>
+
+      <section class="status-grid" aria-label="Hub operational status">
+        <article id="device-card" class="card status-card"><span class="label">DEVICES</span><h2 id="device-status">—</h2><p id="device-summary" class="muted">—</p></article>
+        <article class="card status-card"><span class="label">BUILDS / RELEASES</span><h2 id="build-status">—</h2><p id="build-summary" class="muted">—</p></article>
+        <article class="card status-card"><span class="label">AUDIT</span><h2 id="audit-status">—</h2><p id="audit-summary" class="muted">—</p></article>
+      </section>
+
+      <footer class="footer"><span>Local-first AWH</span><span>Read-only surface • No source editing • No remote execution</span></footer>
+    </main>
+  </div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

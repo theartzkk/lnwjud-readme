@@ -30,6 +30,8 @@
 - **Task/runtime engine:** approved task execution with bounded runtime metadata and logs.
 - **Local QA:** cross-platform Node-based QA engine with machine-readable results.
 - **MCP / remote-readonly AI adapter:** local stdio MCP and restricted remote-readonly profile; remote tunnel E2E is not claimed.
+- **M3C0 Web Surface:** browser-only static presentation adapter with strict CSP, bounded sanitized data, and a separate future same-origin Hub-read mode.
+- **M3C1 Hub Read Foundation:** PHP-FPM-compatible front controller, SQLite metadata schema, query-only HTTP connection, Bearer-auth read boundary, and a local metadata-only indexer.
 
 ## FUTURE COMPONENTS
 
@@ -40,3 +42,11 @@
 - Creative/Remotion workspace.
 - macOS packaged app.
 - Real OpenAI Secure MCP Tunnel control-plane E2E verification.
+- M3C2 hosting control-plane design and a separately reviewed deployment path.
+
+## HUB DATA BOUNDARY
+
+- The Hub stores portable project metadata and rebuildable memory-file metadata only.
+- `workspacePath`, local registry mappings, Git credentials, source contents, and device credentials remain outside Hub responses.
+- Project Memory remains canonical in the five portable Markdown files; the Hub read foundation stores status, hash, size, provenance, and observation time only.
+- AWH Web defaults to static preview. Hub-connected mode is future, same-origin, GET-only, and does not receive a browser bearer token.

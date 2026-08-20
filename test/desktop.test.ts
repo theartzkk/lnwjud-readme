@@ -115,3 +115,12 @@ test('desktop Projects workflow uses registry/memory IPC and stays fail-closed',
   assert.doesNotMatch(renderer, /require\(|process\.|fs\.|child_process|spawn\(/);
   assert.doesNotMatch(preload, /readFile|writeFile|readdir|spawn|process\.env|shell\.openPath/);
 });
+
+test('desktop smoke bootstrap activates a clean AWH data directory before writing its first marker', async () => {
+  const main = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  const marker = main.indexOf('async function writeSmokeMarker');
+  const ensure = main.indexOf('ensureAwhDataDirectoryActive(config.dataDir)', marker);
+  const mkdir = main.indexOf('await mkdir(config.dataDir', marker);
+  const write = main.indexOf("await writeFile(\n    join(config.dataDir, 'desktop-smoke.json')", marker);
+  assert.ok(marker >= 0 && ensure > marker && mkdir > ensure && write > mkdir, 'fresh-install bootstrap must precede smoke marker persistence');
+});

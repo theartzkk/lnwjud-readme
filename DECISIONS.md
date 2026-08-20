@@ -13,3 +13,8 @@
 - AI providers are adapters/components, not the AWH product.
 - Remote execution remains restricted.
 - AWH Hub must not become a single point of failure.
+- M3C1 uses PHP-FPM-compatible routing with SQLite metadata because the M3A contract targets a lightweight Ubuntu deployment; the repository's Node tooling remains the local development/QA toolchain.
+- Hub HTTP reads are fail-closed, Bearer-authenticated except health, query-only, bounded, and free of arbitrary paths, SQL, shell, MCP, and execution capabilities.
+- Project Memory is not duplicated into a second editable database; only rebuildable status/hash/size/provenance metadata may be indexed.
+- M3C0 static browser preview is the default. Future Hub-read mode must consume sanitized same-origin GET responses without browser credential injection.
+- VPS, DNS, firewall, Caddy, HTTPS, PHP-FPM, databases, backups, and service migration remain unexecuted design work.
