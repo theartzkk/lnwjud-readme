@@ -31,6 +31,7 @@ enabled.
 6. Project access requires active token, matching device identity, active
    enrollment, and explicit device/project membership.
 
-Production enrollment transport and schema migration remain human-reviewed
-future work. M3E.1 provides a separate additive migration and rollback runbook;
-it has not been run on the VPS. The M3D browser gateway remains read-only.
+M3E-FINAL provides the local enrollment transport, Desktop lifecycle UX, native
+OS credential adapters, additive M3E.2 migration package, and rollback runbook.
+Production deployment and real Mac/Windows validation remain human-reviewed and
+have not been run on the VPS. The M3D browser gateway remains read-only.

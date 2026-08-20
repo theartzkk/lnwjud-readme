@@ -13,6 +13,10 @@ const CHANNELS = Object.freeze({
   setPermissions: 'art-agent:set-permissions',
   remoteConnect: 'art-agent:remote-connect',
   remoteStop: 'art-agent:remote-stop',
+  enrollmentState: 'art-agent:enrollment-state',
+  enrollmentPair: 'art-agent:enrollment-pair',
+  enrollmentRotate: 'art-agent:enrollment-rotate',
+  enrollmentRevoke: 'art-agent:enrollment-revoke',
   restart: 'art-agent:restart',
   openDataDir: 'art-agent:open-data-dir',
 });
@@ -34,6 +38,10 @@ contextBridge.exposeInMainWorld('artAgent', Object.freeze({
   }),
   remoteConnect: () => ipcRenderer.invoke(CHANNELS.remoteConnect),
   remoteStop: () => ipcRenderer.invoke(CHANNELS.remoteStop),
+  getEnrollmentState: () => ipcRenderer.invoke(CHANNELS.enrollmentState),
+  pairDevice: (pairingCode) => ipcRenderer.invoke(CHANNELS.enrollmentPair, typeof pairingCode === 'string' ? pairingCode.slice(0, 128) : ''),
+  rotateDeviceCredential: () => ipcRenderer.invoke(CHANNELS.enrollmentRotate),
+  revokeDeviceCredential: () => ipcRenderer.invoke(CHANNELS.enrollmentRevoke),
   restart: () => ipcRenderer.invoke(CHANNELS.restart),
   openDataDir: () => ipcRenderer.invoke(CHANNELS.openDataDir),
 }));

@@ -14,6 +14,7 @@ POST /api/v1/enrollment/bootstrap
 POST /api/v1/enrollment/pairing-codes
 POST /api/v1/enrollment/devices
 POST /api/v1/enrollment/token/rotate
+POST /api/v1/enrollment/token/revoke
 POST /api/v1/enrollment/devices/{deviceId}/revoke
 ```
 
@@ -37,13 +38,16 @@ credential through the injected credential store, and returns only sanitized
 state. It never puts tokens in URLs, logs, Project Memory, renderer IPC, or
 browser Hub Read data.
 
-The current production credential adapter remains fail-closed until a reviewed
-OS Keychain/Credential Manager implementation is available. Tests use the
-existing in-memory test store only.
+The production credential adapter is now selected by platform: macOS uses the
+native Keychain `security` command and Windows uses native Credential Manager
+through a fixed, in-memory PowerShell P/Invoke helper. Linux remains
+fail-closed. No plaintext file fallback exists; in-memory storage remains
+test-only.
 
 ## Deployment delta from M3D/M3E.1
 
-Not executed. Before a human-reviewed deployment:
+Not executed. The complete local deployment package and runbook are in
+`docs/M3E_FINAL_PRODUCTION_VALIDATION.md`. Before a human-reviewed deployment:
 
 1. Apply migration 002 to the already-migrated Hub SQLite database and verify
    integrity/foreign keys.

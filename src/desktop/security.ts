@@ -18,6 +18,10 @@ export const DESKTOP_IPC = Object.freeze({
   setPermissions: 'art-agent:set-permissions',
   remoteConnect: 'art-agent:remote-connect',
   remoteStop: 'art-agent:remote-stop',
+  enrollmentState: 'art-agent:enrollment-state',
+  enrollmentPair: 'art-agent:enrollment-pair',
+  enrollmentRotate: 'art-agent:enrollment-rotate',
+  enrollmentRevoke: 'art-agent:enrollment-revoke',
   restart: 'art-agent:restart',
   openDataDir: 'art-agent:open-data-dir',
 });

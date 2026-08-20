@@ -23,6 +23,10 @@ test('desktop IPC exposes fixed high-level channel names only', () => {
     'registerProject',
     'remoteConnect',
     'remoteStop',
+    'enrollmentPair',
+    'enrollmentRevoke',
+    'enrollmentRotate',
+    'enrollmentState',
     'restart',
     'selectProject',
     'setPermissions',
@@ -41,6 +45,11 @@ test('desktop HTML has a restrictive CSP, remote controls and no inline script',
   assert.match(html, /AWH Desktop/);
   assert.match(html, /Your Projects\. One Workspace\. Anywhere\./);
   assert.match(html, /data-section="projects"/);
+  assert.match(html, /data-section="enrollment"/);
+  assert.match(html, /id="enrollment-code"/);
+  assert.match(html, /Pair this device/);
+  assert.match(html, /Rotate credential/);
+  assert.match(html, /Revoke device credential/);
   assert.match(html, /Register Existing Project/);
   assert.match(html, /Initialize as AWH Project/);
   assert.match(html, /Project Memory/);
@@ -114,6 +123,26 @@ test('desktop Projects workflow uses registry/memory IPC and stays fail-closed',
   assert.match(renderer, /context\.handoffPreview\.truncated/);
   assert.doesNotMatch(renderer, /require\(|process\.|fs\.|child_process|spawn\(/);
   assert.doesNotMatch(preload, /readFile|writeFile|readdir|spawn|process\.env|shell\.openPath/);
+});
+
+test('desktop enrollment UX uses fixed IPC and never exposes credentials', async () => {
+  const main = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  const preload = await readFile(new URL('../desktop/preload.cjs', import.meta.url), 'utf8');
+  const renderer = await readFile(new URL('../desktop/renderer.js', import.meta.url), 'utf8');
+  const html = await readFile(new URL('../desktop/index.html', import.meta.url), 'utf8');
+  for (const channel of ['enrollmentState', 'enrollmentPair', 'enrollmentRotate', 'enrollmentRevoke']) {
+    assert.match(main, new RegExp(`ipcMain\\.handle\\(DESKTOP_IPC\\.${channel}`));
+    assert.match(preload, new RegExp(`${channel}:`));
+  }
+  assert.match(main, /createProductionCredentialStore/);
+  assert.match(main, /readLocalEnrollmentState/);
+  assert.match(renderer, /window\.artAgent\.pairDevice/);
+  assert.match(renderer, /window\.artAgent\.rotateDeviceCredential/);
+  assert.match(renderer, /window\.artAgent\.revokeDeviceCredential/);
+  assert.match(renderer, /enrollment-device-id/);
+  assert.doesNotMatch(renderer, /accessToken|Authorization|tokenHash|pairingCode/);
+  assert.doesNotMatch(preload, /process\.env|readFile|writeFile|spawn|shell\.openPath/);
+  assert.doesNotMatch(html, /type="password"/i);
 });
 
 test('desktop smoke bootstrap activates a clean AWH data directory before writing its first marker', async () => {

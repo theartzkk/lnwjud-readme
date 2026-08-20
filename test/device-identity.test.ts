@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promise
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
-import { DEVICE_TOKEN_CREDENTIAL_KEY, CredentialStoreError, InMemoryCredentialStore, createProductionCredentialStore } from '../src/credential-store.js';
+import { DEVICE_TOKEN_CREDENTIAL_KEY, CredentialStoreError, InMemoryCredentialStore, UnavailableCredentialStore, createProductionCredentialStore } from '../src/credential-store.js';
 import { deviceIdentityPath, DeviceIdentityError, loadOrCreateDeviceIdentity, readDeviceIdentity, updateDeviceDisplayName } from '../src/device-identity.js';
 
 async function fixture(): Promise<{ root: string; dataDir: string; projectDir: string }> {
@@ -48,7 +48,7 @@ test('malformed or symlinked device metadata fails closed and never regenerates'
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
-test('in-memory credential store supports replacement and deletion while production adapter fails closed', async () => {
+test('in-memory credential store supports replacement and deletion while unsupported production platforms fail closed', async () => {
   const store = new InMemoryCredentialStore();
   assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY), null);
   await store.set(DEVICE_TOKEN_CREDENTIAL_KEY, 'token-one');
@@ -57,5 +57,7 @@ test('in-memory credential store supports replacement and deletion while product
   assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY), 'token-two');
   await store.delete(DEVICE_TOKEN_CREDENTIAL_KEY);
   assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY), null);
-  await assert.rejects(() => createProductionCredentialStore().set(DEVICE_TOKEN_CREDENTIAL_KEY, 'token'), (error: unknown) => error instanceof CredentialStoreError && error.code === 'CREDENTIAL_STORE_UNAVAILABLE');
+  const unsupported = createProductionCredentialStore('linux');
+  assert.equal(unsupported instanceof UnavailableCredentialStore, true);
+  await assert.rejects(() => unsupported.set(DEVICE_TOKEN_CREDENTIAL_KEY, 'token'), (error: unknown) => error instanceof CredentialStoreError && error.code === 'CREDENTIAL_STORE_UNAVAILABLE');
 });

@@ -2,12 +2,12 @@
 
 ## NOW
 
-- Review M3E Secure Device Enrollment Foundation; keep enrollment transport human-gated.
+- Review M3E-FINAL local implementation; keep the single production deployment and both device pairings human-gated.
 
 ## NEXT
 
-- Keep future writes, sync, device pairing, and production migration human-gated.
-- M3B secure OS credential adapter and authenticated Hub enrollment.
+- Deploy the reviewed M3E-FINAL package once, then pair Mac and Windows independently.
+- Verify sanitized Hub device read shows exactly two devices and no shared credential before closing M3E.
 - M3C2 hosting foundation implementation only after infrastructure review.
 - M4 Mac ↔ Hub ↔ Windows continuity and explicit conflict handling.
 
@@ -38,4 +38,5 @@
 - M3D AWH Hub Live Read: HTTPS, Nginx Basic Auth, PHP-FPM, SQLite, Connected read-only, one indexed project, desktop and iPhone verified.
 - M3E Secure Device Enrollment Foundation: local-only domain/schema/tests complete; no deployment or browser mutation route.
 - M3E.1 Enrollment Production Migration Safety: local migration, verification, rollback runbook and tests complete; VPS migration remains pending human review.
-- M3E.2 Secure Enrollment API + Local Device Client: local implementation complete; migration 002, deployment and OS credential adapter remain pending review.
+- M3E.2 Secure Enrollment API + Local Device Client: local implementation complete; production deployment remains human-gated.
+- M3E-FINAL: local implementation READY FOR PRODUCTION VALIDATION; not closed until real Mac and Windows enrollment, credential persistence, rotation/revocation, and sanitized `devices = 2` are verified.

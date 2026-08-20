@@ -51,6 +51,12 @@ try {
     api_assert($forgedRotate['status'] === 401, 'forged device identity must be rejected');
     $rotated = api_response($service, 'POST', '/api/v1/enrollment/token/rotate', api_server(['HTTP_AUTHORIZATION' => 'Bearer ' . $target['accessToken']]), ['schemaVersion' => 1, 'deviceId' => $targetId]);
     api_assert($rotated['status'] === 200, 'device credential rotation must work');
+    $selfPairing = $service->issuePairingCode($ownerId, [$projectId]);
+    $selfDevice = $service->enrollDevice(['schemaVersion' => 1, 'pairingCode' => $selfPairing['pairingCode'], 'deviceId' => '623b45c0-23e1-408d-ae0f-ac5eca7f6900', 'displayName' => 'Self Revoke', 'platform' => 'darwin', 'arch' => 'arm64', 'appVersion' => '0.4.0']);
+    $selfRevoked = api_response($service, 'POST', '/api/v1/enrollment/token/revoke', api_server(['HTTP_AUTHORIZATION' => 'Bearer ' . $selfDevice['accessToken']]), ['schemaVersion' => 1, 'deviceId' => '623b45c0-23e1-408d-ae0f-ac5eca7f6900']);
+    api_assert($selfRevoked['status'] === 200 && str_contains($selfRevoked['body'], '"revoked":true'), 'device must be able to revoke its own credential');
+    $selfAfterRevoke = api_response($service, 'POST', '/api/v1/enrollment/token/rotate', api_server(['HTTP_AUTHORIZATION' => 'Bearer ' . $selfDevice['accessToken']]), ['schemaVersion' => 1, 'deviceId' => '623b45c0-23e1-408d-ae0f-ac5eca7f6900']);
+    api_assert($selfAfterRevoke['status'] === 401, 'self-revoked credential must fail closed');
     $revoked = api_response($service, 'POST', '/api/v1/enrollment/devices/' . $targetId . '/revoke', api_server(['HTTP_AUTHORIZATION' => 'Bearer ' . $ownerDevice['accessToken']]), []);
     api_assert($revoked['status'] === 200, 'owner must be able to revoke a device');
     $afterRevoke = api_response($service, 'POST', '/api/v1/enrollment/token/rotate', api_server(['HTTP_AUTHORIZATION' => 'Bearer ' . json_decode($rotated['body'], true)['accessToken']]), ['schemaVersion' => 1, 'deviceId' => $targetId]);

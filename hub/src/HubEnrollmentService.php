@@ -39,6 +39,9 @@ final class HubEnrollmentService
             $schema = @file_get_contents($schemaPath);
             if (!is_string($schema) || $schema === '') throw new RuntimeException('schema unavailable');
             $pdo->exec($schema);
+            // HubEnrollmentService::open is a local fixture/bootstrap helper;
+            // production HTTP uses openExisting after the dedicated migration.
+            $pdo->exec('PRAGMA user_version = 3');
         } catch (Throwable) {
             throw new HubEnrollmentException('Enrollment storage is unavailable', 'DATABASE_UNAVAILABLE');
         }
@@ -62,7 +65,7 @@ final class HubEnrollmentService
     public function assertApiSchemaReady(): void
     {
         $query = $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'enrollment_rate_limits'");
-        if ($query->fetchColumn() === false) throw new HubEnrollmentException('Enrollment API schema migration is required', 'ENROLLMENT_SCHEMA_NOT_READY');
+        if ($query->fetchColumn() === false || (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() !== 3) throw new HubEnrollmentException('Enrollment API schema migration is required', 'ENROLLMENT_SCHEMA_NOT_READY');
     }
 
     public function initializeOwner(string $userId, string $displayName, array $projectIds, ?string $now = null): array

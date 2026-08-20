@@ -40,6 +40,12 @@ final class HubEnrollmentRouter
                 self::exactKeys($payload, ['deviceId', 'schemaVersion']);
                 return self::response(200, $service->rotateToken($token, (string) ($payload['deviceId'] ?? ''), null) + ['requestId' => $requestId], $headers);
             }
+            if ($path === '/api/v1/enrollment/token/revoke') {
+                $token = self::bearer($server);
+                self::exactKeys($payload, ['deviceId', 'schemaVersion']);
+                $service->revokeToken($token, (string) ($payload['deviceId'] ?? ''), null);
+                return self::response(200, ['schemaVersion' => 1, 'revoked' => true, 'deviceId' => strtolower((string) $payload['deviceId']), 'requestId' => $requestId], $headers);
+            }
             if (preg_match('#^/api/v1/enrollment/devices/(' . self::UUID . ')/revoke$#i', $path, $match) === 1) {
                 self::exactKeys($payload, []);
                 $service->revokeDeviceForToken(self::bearer($server), $match[1]);

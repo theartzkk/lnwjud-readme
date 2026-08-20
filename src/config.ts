@@ -11,6 +11,7 @@ export interface ArtAgentConfig {
   maxReadBytes: number;
   maxSearchResults: number;
   maxTaskLogBytes: number;
+  hubApiBase: string;
 }
 
 const ENV_ALIASES = {
@@ -22,6 +23,7 @@ const ENV_ALIASES = {
   maxReadBytes: ['AWH_MAX_READ_BYTES', 'ART_AGENT_MAX_READ_BYTES'],
   maxSearchResults: ['AWH_MAX_SEARCH_RESULTS', 'ART_AGENT_MAX_SEARCH_RESULTS'],
   maxTaskLogBytes: ['AWH_MAX_TASK_LOG_BYTES', 'ART_AGENT_MAX_TASK_LOG_BYTES'],
+  hubApiBase: ['AWH_HUB_API_BASE', 'ART_AGENT_HUB_API_BASE'],
 } as const;
 
 export type ConfigEnvironmentKey = keyof typeof ENV_ALIASES;
@@ -69,5 +71,6 @@ export function loadConfig(): ArtAgentConfig {
     maxReadBytes: intEnv('maxReadBytes', 512 * 1024),
     maxSearchResults: intEnv('maxSearchResults', 100),
     maxTaskLogBytes: intEnv('maxTaskLogBytes', 512 * 1024),
+    hubApiBase: compatibilityEnv('hubApiBase')?.trim() ?? '',
   };
 }

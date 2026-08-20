@@ -47,6 +47,39 @@ function renderRemote(data) {
   if (readiness?.blockers?.length) row(details, 'Blocker', readiness.blockers.join(' • '));
 }
 
+function renderEnrollment(data) {
+  const status = $('enrollment-state');
+  const connected = data?.hubConfigured === true;
+  const enrolled = data?.enrolled === true;
+  status.textContent = data?.ok === false ? 'UNAVAILABLE' : enrolled ? 'ENROLLED' : 'NOT ENROLLED';
+  status.className = `badge ${data?.ok === false ? 'danger' : enrolled ? 'success' : ''}`.trim();
+  $('enrollment-hub').textContent = connected ? 'API configured — connection is used only for explicit actions' : 'Hub API not configured';
+  $('enrollment-device-name').textContent = data?.displayName || '—';
+  $('enrollment-device-id').textContent = data?.deviceId || '—';
+  $('enrollment-platform').textContent = data?.platform || '—';
+  $('enrollment-message').textContent = data?.ok === false ? data.message : enrolled ? 'This device has an active local credential.' : 'Enter a short-lived pairing code issued by the owner.';
+  $('enrollment-pair').disabled = !connected || enrolled;
+  $('enrollment-rotate').disabled = !connected || !enrolled;
+  $('enrollment-revoke').disabled = !connected || !enrolled;
+}
+
+async function refreshEnrollment() {
+  try { renderEnrollment(await window.artAgent.getEnrollmentState()); }
+  catch (error) { renderEnrollment({ ok: false, message: 'Device enrollment is unavailable' }); }
+}
+
+async function runEnrollmentAction(action) {
+  for (const id of ['enrollment-pair', 'enrollment-rotate', 'enrollment-revoke']) $(id).disabled = true;
+  try {
+    const result = await action();
+    if (result?.ok !== true) $('enrollment-message').textContent = result?.message || 'Enrollment action was rejected';
+    await refreshEnrollment();
+  } catch (error) {
+    $('enrollment-message').textContent = 'Enrollment action was rejected';
+    await refreshEnrollment();
+  }
+}
+
 function projectStatusLabel(project) {
   if (project.state === 'CONFLICT') return ['CONFLICT', 'danger'];
   if (!project.localAvailable) return ['WORKSPACE UNAVAILABLE', 'danger'];
@@ -181,7 +214,7 @@ function showSection(section) {
 
 async function refresh() {
   $('refresh').disabled = true;
-  try { render(await window.artAgent.getOverview()); await refreshProjects(); }
+  try { render(await window.artAgent.getOverview()); await refreshProjects(); await refreshEnrollment(); }
   catch (error) { $('git-output').textContent = `Control Center error: ${error?.message ?? error}`; }
   finally { $('refresh').disabled = false; }
 }
@@ -234,6 +267,9 @@ $('save-permissions').addEventListener('click', async () => {
 });
 $('remote-connect').addEventListener('click', () => runRemoteAction('connect'));
 $('remote-stop').addEventListener('click', () => runRemoteAction('stop'));
+$('enrollment-pair').addEventListener('click', () => runEnrollmentAction(() => window.artAgent.pairDevice($('enrollment-code').value.trim())));
+$('enrollment-rotate').addEventListener('click', () => runEnrollmentAction(() => window.artAgent.rotateDeviceCredential()));
+$('enrollment-revoke').addEventListener('click', () => runEnrollmentAction(() => window.artAgent.revokeDeviceCredential()));
 $('restart').addEventListener('click', () => window.artAgent.restart());
 $('open-data-dir').addEventListener('click', () => window.artAgent.openDataDir());
 

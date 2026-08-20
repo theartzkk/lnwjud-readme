@@ -30,13 +30,16 @@ local control, explicit permissions, and recoverable changes.
 - M3C1 PHP/SQLite Hub read foundation and M3D same-origin web gateway are operational on the VPS; field verification confirms live HTTPS access on desktop and iPhone.
 - M3D field state: Connected read-only, one indexed project, and PHP-FPM + SQLite + Nginx gateway operational.
 - M3C2 hosting foundation and VPS bootstrap are documented design/templates only.
-- M3E Secure Device Enrollment Foundation is implemented locally: independent device enrollment, bounded pairing, token rotation/revocation, and explicit project membership are server/domain foundations only; no enrollment transport is exposed yet.
+- M3E Secure Device Enrollment Foundation and M3E.1 production migration safety are implemented and tested.
 - M3E.1 additive SQLite migration safety is implemented locally with preflight, ledger, idempotent rerun, rollback testing, and a reviewed VPS runbook; it has not been run on the VPS.
-- M3E.2 Secure Enrollment API and local device client are implemented locally only; the API is separate from browser Hub Read, and no enrollment route has been deployed.
+- M3E.2 Secure Enrollment API and local device client are implemented locally only; the API is separate from browser Hub Read.
+- M3E-FINAL local implementation is READY FOR PRODUCTION VALIDATION: macOS Keychain and Windows Credential Manager adapters, Desktop enrollment UX, additive M3E.2 migration package, isolated Nginx/PHP-FPM templates, and rollback runbook are present and locally tested.
+- M3E is not CLOSED: no real Mac/Windows pair has been performed in this local milestone, and the verified production device count is not yet `2`.
 
 ## Current limitations
 
-- Hub account enrollment, secure OS credential storage, project membership, account sync, and source revision sync are not complete.
+- Real VPS enrollment deployment, field Keychain/Credential Manager verification, account sync, and source revision sync are not complete.
+- The disposable native macOS Keychain probe reached `/usr/bin/security` but this session returned an OS authorization failure; no credential value was retained or logged. Windows native runtime remains unverified on Mac.
 - Google VPS deployment has not started.
 - Mac ↔ Hub ↔ Windows continuity is a goal, not a verified service.
 - Large assets require a future separate asset layer.
@@ -45,3 +48,4 @@ local control, explicit permissions, and recoverable changes.
 - AI provider adapters are local integration points; no AWH-owned model is bundled.
 - VPS live behavior is recorded from field verification; credentials, passwords, public IPs, and SSH details remain intentionally outside Project Memory.
 - M3D Hub Read remains read-only. M3E does not enable source writes, remote execution, synchronization, browser bearer tokens, or MCP proxying.
+- M3E-FINAL preserves those boundaries; production validation is the next human-gated action.

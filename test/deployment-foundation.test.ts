@@ -42,3 +42,24 @@ test('Nginx Hub read gateway keeps the perimeter and PHP-FPM private', async () 
   assert.doesNotMatch(nginx, /(?:BEGIN [A-Z ]+PRIVATE KEY|password\s*[:=]\s*[^<{\s]+|AWH_HUB_READ_TOKEN_HASH\s*[:=])/i);
   assert.doesNotMatch(nginx, /HTTP_X_AWH_WEB_GATEWAY_TRUSTED_PERIMETER/);
 });
+
+test('enrollment deployment is isolated, bearer-compatible, and dry-run by default', async () => {
+  const nginx = await readFile(join(ROOT, 'deploy/nginx/awh-enrollment.conf'), 'utf8');
+  const pool = await readFile(join(ROOT, 'deploy/php-fpm/awh-enrollment.pool.conf'), 'utf8');
+  const deploy = await readFile(join(ROOT, 'deploy/awh-enrollment/deploy-enrollment.sh'), 'utf8');
+  assert.match(nginx, /location \^~ \/api\/v1\/enrollment\//);
+  assert.match(nginx, /auth_basic off/);
+  assert.match(nginx, /HTTP_AUTHORIZATION \$http_authorization/);
+  assert.match(nginx, /client_max_body_size 16k/);
+  assert.match(nginx, /access_log off/);
+  assert.match(nginx, /enrollment-current\/public\/enrollment\.php/);
+  assert.match(nginx, /fastcgi_pass unix:/);
+  assert.match(pool, /clear_env = yes/);
+  assert.match(pool, /AWH_ENROLLMENT_BOOTSTRAP_NONCE_HASH/);
+  assert.match(pool, /REPLACE_WITH_SHA256_HASH_PROVISIONED_OUT_OF_BAND/);
+  assert.match(deploy, /MODE=dry-run/);
+  assert.match(deploy, /--deploy/);
+  assert.match(deploy, /StrictHostKeyChecking=yes/);
+  assert.match(deploy, /migrate-m3e2\.php/);
+  assert.doesNotMatch(`${nginx}\n${pool}\n${deploy}`, /BEGIN [A-Z ]+PRIVATE KEY|password\s*[:=]\s*[^<{{\s]+|pairingCode\s*[:=]\s*[^<{{\s]+/i);
+});

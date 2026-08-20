@@ -150,7 +150,7 @@ async function runScript(script, timeoutMs = 15 * 60_000) {
   const testFiles = [
     'test/security.test.ts', 'test/files.test.ts', 'test/git.test.ts', 'test/process.test.ts',
     'test/changes.test.ts', 'test/tasks.test.ts', 'test/project.test.ts', 'test/project-registry.test.ts', 'test/hub-contract.test.ts', 'test/device-identity.test.ts', 'test/web-preview.test.ts', 'test/stdio.test.ts',
-    'test/tunnel.test.ts', 'test/codex.test.ts', 'test/settings.test.ts', 'test/deployment-foundation.test.ts', 'test/qa-toolchain.test.ts', 'test/desktop.test.ts', 'test/desktop-projects.test.ts',
+    'test/tunnel.test.ts', 'test/codex.test.ts', 'test/settings.test.ts', 'test/deployment-foundation.test.ts', 'test/qa-toolchain.test.ts', 'test/desktop.test.ts', 'test/desktop-projects.test.ts', 'test/credential-store.test.ts', 'test/enrollment-client.test.ts',
     'test/version.test.ts', 'test/installer.test.ts',
   ];
   if (script === 'typecheck') return (await exists(tsc)) ? run(process.execPath, [tsc, '-p', 'tsconfig.json', '--noEmit'], { timeoutMs }) : { code: -1, unavailable: true };
@@ -262,7 +262,7 @@ async function requiredFilesCheck() {
     '.github/workflows/ci.yml', '.github/scripts/verify-packaged-mcp.ps1',
     'src/security.ts', 'src/stdio.ts', 'src/tunnel.ts', 'src/tasks.ts', 'src/files.ts', 'src/git.ts',
     'desktop/index.html', 'desktop/preload.cjs', 'src/desktop/main.ts', 'web/index.html', 'web/app.js', 'web/styles.css', 'web/hub-read-adapter.js', 'scripts/build-web-preview.ts',
-    'hub/schema.sql', 'hub/migrations/001_m3e_enrollment.sql', 'hub/migrations/002_m3e2_enrollment_api.sql', 'hub/public/index.php', 'hub/public/web-gateway.php', 'hub/public/enrollment.php', 'hub/src/HubReadModel.php', 'hub/src/HubReadRouter.php', 'hub/src/HubWebGateway.php', 'hub/src/HubEnrollmentService.php', 'hub/src/HubEnrollmentRouter.php', 'hub/src/HubSchemaMigration.php', 'hub/bin/index-project.php', 'hub/bin/migrate-m3e.php', 'hub/tests/read-foundation.php', 'hub/tests/m3e-migration.php', 'hub/tests/enrollment-api.php', 'src/enrollment-client.ts', 'docs/M3E2_ENROLLMENT_API.md', 'deploy/nginx/awh-preview.conf',
+    'hub/schema.sql', 'hub/migrations/001_m3e_enrollment.sql', 'hub/migrations/002_m3e2_enrollment_api.sql', 'hub/public/index.php', 'hub/public/web-gateway.php', 'hub/public/enrollment.php', 'hub/src/HubReadModel.php', 'hub/src/HubReadRouter.php', 'hub/src/HubWebGateway.php', 'hub/src/HubEnrollmentService.php', 'hub/src/HubEnrollmentRouter.php', 'hub/src/HubSchemaMigration.php', 'hub/src/HubEnrollmentApiMigration.php', 'hub/bin/index-project.php', 'hub/bin/migrate-m3e.php', 'hub/bin/migrate-m3e2.php', 'hub/tests/read-foundation.php', 'hub/tests/m3e-migration.php', 'hub/tests/m3e2-migration.php', 'hub/tests/enrollment-api.php', 'src/enrollment-client.ts', 'src/credential-store.ts', 'docs/M3E2_ENROLLMENT_API.md', 'docs/M3E_FINAL_PRODUCTION_VALIDATION.md', 'deploy/nginx/awh-preview.conf', 'deploy/nginx/awh-enrollment.conf', 'deploy/php-fpm/awh-enrollment.pool.conf', 'deploy/awh-enrollment/deploy-enrollment.sh',
   ];
   const missing = [];
   for (const path of required) if (!(await exists(join(ROOT, path)))) missing.push(path);
@@ -312,7 +312,7 @@ async function phpHubCheck() {
     check('php-hub', 'FAIL', 'PHP runtime is required to validate the local Hub read foundation', started);
     return;
   }
-  const syntaxFiles = ['hub/src/HubReadModel.php', 'hub/src/HubReadRouter.php', 'hub/src/HubWebGateway.php', 'hub/src/HubEnrollmentService.php', 'hub/src/HubEnrollmentRouter.php', 'hub/src/HubSchemaMigration.php', 'hub/public/index.php', 'hub/public/web-gateway.php', 'hub/public/enrollment.php', 'hub/bin/index-project.php', 'hub/bin/migrate-m3e.php'];
+  const syntaxFiles = ['hub/src/HubReadModel.php', 'hub/src/HubReadRouter.php', 'hub/src/HubWebGateway.php', 'hub/src/HubEnrollmentService.php', 'hub/src/HubEnrollmentRouter.php', 'hub/src/HubSchemaMigration.php', 'hub/src/HubEnrollmentApiMigration.php', 'hub/public/index.php', 'hub/public/web-gateway.php', 'hub/public/enrollment.php', 'hub/bin/index-project.php', 'hub/bin/migrate-m3e.php', 'hub/bin/migrate-m3e2.php'];
   for (const file of syntaxFiles) {
     const result = await run(php, ['-l', join(ROOT, file)], { timeoutMs: 15_000 });
     if (result.code !== 0) {
@@ -337,8 +337,13 @@ async function phpHubCheck() {
     check('php-hub', 'FAIL', 'PHP Hub or M3E migration tests failed', started);
     return;
   }
+  const apiMigration = await run(php, [join(ROOT, 'hub', 'tests', 'm3e2-migration.php')], { timeoutMs: 60_000 });
+  if (apiMigration.code !== 0) {
+    check('php-hub', 'FAIL', 'PHP M3E.2 migration tests failed', started);
+    return;
+  }
   const enrollment = await run(php, [join(ROOT, 'hub', 'tests', 'enrollment-api.php')], { timeoutMs: 60_000 });
-  check('php-hub', enrollment.code === 0 ? 'PASS' : 'FAIL', enrollment.code === 0 ? 'PHP Hub, M3E migration and enrollment API tests passed' : 'PHP enrollment API tests failed', started);
+  check('php-hub', enrollment.code === 0 ? 'PASS' : 'FAIL', enrollment.code === 0 ? 'PHP Hub, M3E.1/M3E.2 migration and enrollment API tests passed' : 'PHP enrollment API tests failed', started);
 }
 
 async function desktopReadinessCheck(dependenciesReady) {

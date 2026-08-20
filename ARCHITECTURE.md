@@ -32,11 +32,14 @@
 - **MCP / remote-readonly AI adapter:** local stdio MCP and restricted remote-readonly profile; remote tunnel E2E is not claimed.
 - **M3C0 Web Surface:** browser-only static presentation adapter with strict CSP, bounded sanitized data, and a separate future same-origin Hub-read mode.
 - **M3C1/M3D Hub Read Foundation:** PHP-FPM-compatible front controller and web gateway, SQLite metadata schema, query-only HTTP connection, Bearer-auth service boundary, same-origin Nginx perimeter adapter, and a local metadata-only indexer.
+- **M3E enrollment:** the existing `HubEnrollmentService`/router owns bounded pairing, owner bootstrap closure, device binding, token rotation/revocation, rate limiting, and project membership. `hub/public/enrollment.php` is a separate mutation front controller and is never dispatched by browser Hub Read.
+- **M3E-FINAL credential boundary:** macOS uses `/usr/bin/security` Keychain commands with fixed argv and secret stdin; Windows uses a fixed native Credential Manager P/Invoke script through non-interactive PowerShell with request data on stdin. Unsupported platforms fail closed; there is no plaintext-file fallback.
+- **M3E-FINAL Desktop boundary:** preload exposes only enrollment state/pair/rotate/revoke high-level IPC. Renderer receives sanitized device metadata and never receives a credential, filesystem access, shell, environment, or raw process surface.
 
 ## FUTURE COMPONENTS
 
-- AWH Hub API and schema.
-- Device registry.
+- AWH Hub API expansion and field enrollment validation.
+- Device registry expansion.
 - Source revision synchronization.
 - Separate assets layer.
 - Creative/Remotion workspace.
@@ -84,3 +87,12 @@
   local client. The browser read gateway never dispatches enrollment routes;
   all mutation requests are bounded POST/JSON and require owner/device
   authentication or the one-time bootstrap approval boundary.
+- M3E.2 production migration is additive: `m3e.2-enrollment-api` creates only
+  `enrollment_rate_limits`, moves SQLite `user_version` from 2 to 3, records a
+  checksum ledger row, and fails closed on partial/untracked state.
+- The isolated Nginx enrollment location disables only inherited Basic Auth for
+  the Bearer API path; Basic Auth still protects all static preview assets and
+  M3D browser reads. Enrollment rejects browser Origin and is not a browser UI.
+- M3E status is READY FOR PRODUCTION VALIDATION, not CLOSED. Each real device
+  must persist an independent OS credential and sanitized Hub Read must verify
+  two enrolled devices before the milestone closes.

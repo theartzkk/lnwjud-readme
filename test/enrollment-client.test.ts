@@ -40,3 +40,19 @@ test('local enrollment client rotates only its own stored credential and rejects
     assert.equal(await store.get('awh/device-token'), 'new-token');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('local enrollment client revokes its own credential without exposing it in state', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awh-enroll-client-'));
+  try {
+    const store = new InMemoryCredentialStore();
+    await store.set('awh/device-token', 'device-token-to-revoke');
+    const client = new EnrollmentClient('https://hub.example/api/v1', root, store, async (_input, init) => {
+      assert.equal((init?.headers as Record<string, string>).Authorization, 'Bearer device-token-to-revoke');
+      return new Response(JSON.stringify({ revoked: true }), { status: 200 });
+    });
+    const state = await client.revoke();
+    assert.equal(state.enrolled, false);
+    assert.equal(await store.get('awh/device-token'), null);
+    assert.equal('accessToken' in state, false);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

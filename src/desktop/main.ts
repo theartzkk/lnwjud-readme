@@ -20,6 +20,8 @@ import { gitStatus } from '../git.js';
 import { canonicalWorkspace } from '../security.js';
 import { loadStoredSettings, saveStoredSettings } from '../settings.js';
 import { readDeviceIdentity } from '../device-identity.js';
+import { createProductionCredentialStore, CredentialStoreError } from '../credential-store.js';
+import { EnrollmentClient, EnrollmentClientError, readLocalEnrollmentState } from '../enrollment-client.js';
 import { ensureAwhDataDirectoryActive } from '../data-migration.js';
 import {
   buildProjectContext,
@@ -142,6 +144,44 @@ async function chooseDirectory(title: string): Promise<string | null> {
 function projectError(error: unknown): { code: string; message: string } {
   if (error instanceof ProjectRegistryError) return { code: error.code, message: error.message };
   return { code: 'PROJECT_OPERATION_FAILED', message: error instanceof Error ? error.message : String(error) };
+}
+
+function enrollmentError(error: unknown): { ok: false; error: string; message: string } {
+  if (error instanceof CredentialStoreError) return { ok: false, error: error.code, message: 'Secure OS credential store is unavailable' };
+  if (error instanceof EnrollmentClientError) return { ok: false, error: error.code, message: error.code === 'HUB_NOT_CONFIGURED' ? 'Hub enrollment API is not configured' : 'Enrollment action was rejected' };
+  return { ok: false, error: 'ENROLLMENT_FAILED', message: 'Device enrollment is unavailable' };
+}
+
+function enrollmentClient(config: ReturnType<typeof loadConfig>): EnrollmentClient {
+  if (!config.hubApiBase) throw new EnrollmentClientError('Hub enrollment API is not configured', 'HUB_NOT_CONFIGURED');
+  return new EnrollmentClient(config.hubApiBase, config.dataDir, createProductionCredentialStore());
+}
+
+async function enrollmentState() {
+  const config = loadConfig();
+  try {
+    const store = createProductionCredentialStore();
+    const state = await readLocalEnrollmentState(config.dataDir, store);
+    return { ok: true, hubConfigured: Boolean(config.hubApiBase), ...state };
+  } catch (error) {
+    return { ...enrollmentError(error), hubConfigured: Boolean(config.hubApiBase), enrolled: false, deviceId: null, displayName: null, platform: process.platform, credentialStored: false, expiresAt: null, projectCount: null };
+  }
+}
+
+async function pairDevice(pairingCode: unknown) {
+  if (typeof pairingCode !== 'string' || !/^[A-Za-z0-9_-]{32,128}$/.test(pairingCode)) return { ok: false, error: 'PAIRING_CODE_INVALID', message: 'Pairing code is invalid' };
+  try { return { ok: true, hubConfigured: true, ...(await enrollmentClient(loadConfig()).pair(pairingCode)) }; }
+  catch (error) { return enrollmentError(error); }
+}
+
+async function rotateDevice() {
+  try { return { ok: true, hubConfigured: true, ...(await enrollmentClient(loadConfig()).rotate()) }; }
+  catch (error) { return enrollmentError(error); }
+}
+
+async function revokeDevice() {
+  try { return { ok: true, hubConfigured: true, ...(await enrollmentClient(loadConfig()).revoke()) }; }
+  catch (error) { return enrollmentError(error); }
 }
 
 async function projectsOverview() {
@@ -431,6 +471,11 @@ function registerIpc(): void {
     return { changed: true, restartRequired: true };
   });
 
+  ipcMain.handle(DESKTOP_IPC.enrollmentState, async () => enrollmentState());
+  ipcMain.handle(DESKTOP_IPC.enrollmentPair, async (_event, pairingCode: unknown) => pairDevice(pairingCode));
+  ipcMain.handle(DESKTOP_IPC.enrollmentRotate, async () => rotateDevice());
+  ipcMain.handle(DESKTOP_IPC.enrollmentRevoke, async () => revokeDevice());
+
   ipcMain.handle(DESKTOP_IPC.remoteConnect, async () => {
     if (remoteOperationInFlight) return { ok: false, error: 'REMOTE_BUSY', message: 'Remote Connection กำลังทำรายการอื่นอยู่' };
     remoteOperationInFlight = true;
@@ -548,7 +593,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     await writeSmokeMarker({ ok: false, stage: 'renderer-check' });
     const result = await win.webContents.executeJavaScript(`(async () => {
       const apiReady = typeof window.artAgent?.getOverview === 'function';
-      const requiredDom = ['workspace', 'git-output', 'perm-write', 'doctor-runtime', 'remote-state', 'remote-connect', 'remote-stop'].every((id) => Boolean(document.getElementById(id)));
+      const requiredDom = ['workspace', 'git-output', 'perm-write', 'doctor-runtime', 'remote-state', 'remote-connect', 'remote-stop', 'enrollment-state', 'enrollment-code', 'enrollment-pair'].every((id) => Boolean(document.getElementById(id)));
       const overview = apiReady ? await window.artAgent.getOverview() : null;
       return {
         apiReady,

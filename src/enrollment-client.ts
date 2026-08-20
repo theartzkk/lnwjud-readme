@@ -21,6 +21,12 @@ export interface SanitizedEnrollmentState {
   projectCount: number | null;
 }
 
+export async function readLocalEnrollmentState(dataDir: string, credentialStore: CredentialStore): Promise<SanitizedEnrollmentState> {
+  const identity = await loadOrCreateDeviceIdentity(dataDir);
+  const token = await credentialStore.get(DEVICE_TOKEN_CREDENTIAL_KEY);
+  return { enrolled: Boolean(token), deviceId: identity.deviceId, displayName: identity.displayName, platform: identity.platform, credentialStored: Boolean(token), expiresAt: null, projectCount: null };
+}
+
 function apiRoot(value: string): URL {
   let url: URL;
   try { url = new URL(value); } catch { throw new EnrollmentClientError('Enrollment API URL is invalid', 'API_URL_INVALID'); }
@@ -51,9 +57,7 @@ export class EnrollmentClient {
   }
 
   async state(): Promise<SanitizedEnrollmentState> {
-    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
-    const token = await this.credentialStore.get(DEVICE_TOKEN_CREDENTIAL_KEY);
-    return { enrolled: Boolean(token), deviceId: identity.deviceId, displayName: identity.displayName, platform: identity.platform, credentialStored: Boolean(token), expiresAt: null, projectCount: null };
+    return readLocalEnrollmentState(this.dataDir, this.credentialStore);
   }
 
   async pair(pairingCode: string): Promise<SanitizedEnrollmentState> {
@@ -75,6 +79,16 @@ export class EnrollmentClient {
     if (typeof response.accessToken !== 'string' || typeof response.expiresAt !== 'string') throw new EnrollmentClientError('Rotation response did not contain a credential', 'RESPONSE_INVALID');
     await this.credentialStore.set(DEVICE_TOKEN_CREDENTIAL_KEY, response.accessToken);
     return this.sanitize(identity, response);
+  }
+
+  async revoke(): Promise<SanitizedEnrollmentState> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    const token = await this.credentialStore.get(DEVICE_TOKEN_CREDENTIAL_KEY);
+    if (!token) throw new EnrollmentClientError('Device is not enrolled', 'DEVICE_NOT_ENROLLED');
+    const response = await this.post('/enrollment/token/revoke', { schemaVersion: 1, deviceId: identity.deviceId }, token);
+    if (response.revoked !== true) throw new EnrollmentClientError('Credential revocation was not confirmed', 'RESPONSE_INVALID');
+    await this.credentialStore.delete(DEVICE_TOKEN_CREDENTIAL_KEY);
+    return { enrolled: false, deviceId: identity.deviceId, displayName: identity.displayName, platform: identity.platform, credentialStored: false, expiresAt: null, projectCount: null };
   }
 
   private async post(path: string, payload: Record<string, unknown>, token?: string): Promise<Record<string, unknown>> {

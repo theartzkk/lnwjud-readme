@@ -26,3 +26,7 @@
 - Enrollment is a server/domain foundation only. The browser Hub Read perimeter remains read-only, and no enrollment, write, sync, execution, or MCP proxy route is enabled.
 - M3E.1 uses a dedicated additive migration with preflight, backup, integrity verification, checksum ledger, idempotent rerun, and backup restore recovery. It is not a production deployment and does not alter the M3D tables.
 - M3E.2 separates enrollment mutations from browser Hub Read and stores rate-limit state in a dedicated additive migration. No enrollment route is enabled by the M3D Nginx read gateway until separately reviewed.
+- M3E-FINAL uses native OS credential stores: macOS Keychain through fixed-argv `security` with stdin prompting, Windows Credential Manager through fixed native P/Invoke, and fail-closed Linux behavior. Plaintext credential files are not an allowed fallback.
+- M3E-FINAL keeps credential lifecycle in `EnrollmentClient` and `HubEnrollmentService`; Desktop only exposes sanitized enrollment state plus explicit pair, rotate, and revoke actions through fixed IPC.
+- M3E.2 deployment is a separate additive migration from M3E.1: `enrollment_rate_limits` and its migration ledger row are applied only after backup/preflight, then an isolated enrollment release is switched atomically. The M3D browser read path remains unchanged.
+- M3E is READY FOR PRODUCTION VALIDATION, not CLOSED. Closure requires independently enrolled Mac and Windows devices, secure OS persistence on both, safe rotation/revocation, sanitized Hub visibility, and verified `devices = 2`.

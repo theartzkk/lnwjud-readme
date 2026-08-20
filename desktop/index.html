@@ -17,6 +17,7 @@
       <nav>
         <button class="nav active" data-section="overview">ภาพรวม</button>
         <button class="nav" data-section="projects">Projects</button>
+        <button class="nav" data-section="enrollment">Device Enrollment</button>
         <button class="nav" data-section="memory">Project Memory</button>
         <button class="nav" data-section="git">Git</button>
         <button class="nav" data-section="permissions">สิทธิ์</button>
@@ -77,6 +78,26 @@
           <div class="card-head memory-heading"><h3>Memory files</h3><button id="initialize-memory" class="btn secondary small" disabled>Initialize Missing Project Memory</button></div>
           <div id="memory-list" class="memory-list"></div>
           <p class="muted">AWH จะสร้างเฉพาะไฟล์ที่หายไป และไม่เขียนทับไฟล์เดิม</p>
+        </div>
+      </section>
+
+      <section id="section-enrollment" class="section">
+        <div class="card narrow">
+          <div class="card-head"><div><p class="eyebrow">M3E SECURE DEVICE ENROLLMENT</p><h2>Device Enrollment</h2></div><span id="enrollment-state" class="badge">NOT ENROLLED</span></div>
+          <p id="enrollment-message" class="muted">กำลังตรวจสถานะ...</p>
+          <dl class="kv">
+            <dt>Hub</dt><dd id="enrollment-hub">—</dd>
+            <dt>Device name</dt><dd id="enrollment-device-name">—</dd>
+            <dt>Device ID</dt><dd id="enrollment-device-id" class="mono">—</dd>
+            <dt>Platform</dt><dd id="enrollment-platform">—</dd>
+          </dl>
+          <label class="toggle-row"><span><strong>Pairing code</strong><small>วางรหัสอายุสั้นที่เจ้าของออกให้</small></span><input id="enrollment-code" type="text" inputmode="text" autocomplete="off" maxlength="128" placeholder="pairing code" /></label>
+          <div class="actions">
+            <button id="enrollment-pair" class="btn" disabled>Pair this device</button>
+            <button id="enrollment-rotate" class="btn secondary" disabled>Rotate credential</button>
+            <button id="enrollment-revoke" class="btn danger" disabled>Revoke device credential</button>
+          </div>
+          <p class="muted remote-note">AWH จะเก็บ credential เฉพาะใน secure OS credential store ของเครื่องนี้ ไม่แสดง credential ในหน้าจอ Browser หรือ Project Memory</p>
         </div>
       </section>
 

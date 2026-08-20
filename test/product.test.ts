@@ -34,6 +34,23 @@ test('AWH environment aliases take precedence over ART_AGENT compatibility value
   }
 });
 
+test('Hub API base uses the central AWH-first compatibility resolver', () => {
+  const originalAwh = process.env.AWH_HUB_API_BASE;
+  const originalLegacy = process.env.ART_AGENT_HUB_API_BASE;
+  try {
+    process.env.AWH_HUB_API_BASE = 'https://hub.example/api/v1';
+    process.env.ART_AGENT_HUB_API_BASE = 'https://legacy.example/api/v1';
+    assert.equal(compatibilityEnv('hubApiBase'), 'https://hub.example/api/v1');
+    delete process.env.AWH_HUB_API_BASE;
+    assert.equal(compatibilityEnv('hubApiBase'), 'https://legacy.example/api/v1');
+  } finally {
+    if (originalAwh === undefined) delete process.env.AWH_HUB_API_BASE;
+    else process.env.AWH_HUB_API_BASE = originalAwh;
+    if (originalLegacy === undefined) delete process.env.ART_AGENT_HUB_API_BASE;
+    else process.env.ART_AGENT_HUB_API_BASE = originalLegacy;
+  }
+});
+
 test('loadConfig applies AWH aliases before legacy values and stored defaults', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'awh-config-'));
   const keys = ['AWH_DATA_DIR', 'ART_AGENT_DATA_DIR', 'AWH_WORKSPACE', 'ART_AGENT_WORKSPACE', 'AWH_ALLOW_WRITE', 'ART_AGENT_ALLOW_WRITE'];
