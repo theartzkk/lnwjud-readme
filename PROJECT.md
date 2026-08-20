@@ -26,8 +26,8 @@ local control, explicit permissions, and recoverable changes.
 - M2B initialized this repository as the first real AWH Project.
 - Local Project Registry and bounded Project Context builder are implemented.
 - Local MCP, security boundaries, checkpoints, task/runtime engine, Git context, and desktop foundation are implemented.
-- M3C0 browser-safe static Remote Read-Only Preview is implemented and remains un-deployed.
-- M3C1 PHP/SQLite Hub read foundation is implemented locally; its API is read-only and has not been deployed.
+- M3C0 browser-safe static Remote Read-Only Preview is implemented; the operator has reported the static preview behind Nginx Basic Auth, but this repository has not verified the VPS.
+- M3C1 PHP/SQLite Hub read foundation and M3D same-origin web gateway are implemented locally; no Hub read deployment was performed by this task.
 - M3C2 hosting foundation and VPS bootstrap are documented design/templates only.
 
 ## Current limitations
@@ -39,4 +39,4 @@ local control, explicit permissions, and recoverable changes.
 - macOS packaging is not complete.
 - OpenAI Secure MCP Tunnel control-plane end-to-end connectivity is not claimed.
 - AI provider adapters are local integration points; no AWH-owned model is bundled.
-- The local PHP runtime lacks `pdo_sqlite`; PHP syntax and the SQLite schema were checked, but PHP SQLite behavior tests remain environment-blocked on this Mac.
+- Hub read deployment, VPS behavior, DNS, firewall, HTTPS, and Basic Auth configuration remain human-gated and are not verified by local tests.

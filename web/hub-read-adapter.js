@@ -7,7 +7,7 @@ export function isSafeRelativePath(value) {
 }
 
 export function browserRequestOptions(mode) {
-  return { credentials: mode === 'STATIC_PREVIEW' ? 'same-origin' : 'omit', cache: 'no-store' };
+  return { credentials: mode === 'STATIC_PREVIEW' || mode === 'HUB_READ' ? 'same-origin' : 'omit', cache: 'no-store' };
 }
 
 export async function getJson(path, mode = 'HUB_READ', fetchImpl = globalThis.fetch) {
@@ -61,6 +61,14 @@ export async function fetchStaticData(fetchImpl = globalThis.fetch) {
   return getJson('/data.json', 'STATIC_PREVIEW', fetchImpl);
 }
 
+export function degradedHubPreview(staticPreview) {
+  return {
+    ...staticPreview,
+    preview: { ...staticPreview.preview, mode: 'HUB_READ_DEGRADED', status: 'Hub unavailable — Static preview' },
+    hub: { status: 'Offline', summary: 'Live Hub read is unavailable; showing the static preview.' },
+  };
+}
+
 async function staticData() {
   return fetchStaticData();
 }
@@ -94,5 +102,10 @@ export async function loadWebData() {
   } catch (error) {
     if (error instanceof SyntaxError || String(error?.message).includes('configuration') || String(error?.message).includes('mode')) throw error;
   }
-  return config.mode === 'HUB_READ' ? hubDataFromApi(config.apiBase) : staticData();
+  if (config.mode !== 'HUB_READ') return staticData();
+  try {
+    return await hubDataFromApi(config.apiBase);
+  } catch {
+    return degradedHubPreview(await staticData());
+  }
 }

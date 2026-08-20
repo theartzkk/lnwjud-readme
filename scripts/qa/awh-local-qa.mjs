@@ -262,7 +262,7 @@ async function requiredFilesCheck() {
     '.github/workflows/ci.yml', '.github/scripts/verify-packaged-mcp.ps1',
     'src/security.ts', 'src/stdio.ts', 'src/tunnel.ts', 'src/tasks.ts', 'src/files.ts', 'src/git.ts',
     'desktop/index.html', 'desktop/preload.cjs', 'src/desktop/main.ts', 'web/index.html', 'web/app.js', 'web/styles.css', 'web/hub-read-adapter.js', 'scripts/build-web-preview.ts',
-    'hub/schema.sql', 'hub/public/index.php', 'hub/src/HubReadModel.php', 'hub/src/HubReadRouter.php', 'hub/bin/index-project.php', 'hub/tests/read-foundation.php',
+    'hub/schema.sql', 'hub/public/index.php', 'hub/public/web-gateway.php', 'hub/src/HubReadModel.php', 'hub/src/HubReadRouter.php', 'hub/src/HubWebGateway.php', 'hub/bin/index-project.php', 'hub/tests/read-foundation.php', 'deploy/nginx/awh-preview.conf',
   ];
   const missing = [];
   for (const path of required) if (!(await exists(join(ROOT, path)))) missing.push(path);
@@ -312,7 +312,7 @@ async function phpHubCheck() {
     check('php-hub', 'FAIL', 'PHP runtime is required to validate the local Hub read foundation', started);
     return;
   }
-  const syntaxFiles = ['hub/src/HubReadModel.php', 'hub/src/HubReadRouter.php', 'hub/public/index.php', 'hub/bin/index-project.php'];
+  const syntaxFiles = ['hub/src/HubReadModel.php', 'hub/src/HubReadRouter.php', 'hub/src/HubWebGateway.php', 'hub/public/index.php', 'hub/public/web-gateway.php', 'hub/bin/index-project.php'];
   for (const file of syntaxFiles) {
     const result = await run(php, ['-l', join(ROOT, file)], { timeoutMs: 15_000 });
     if (result.code !== 0) {

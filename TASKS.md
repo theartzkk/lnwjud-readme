@@ -2,12 +2,12 @@
 
 ## NOW
 
-- Review M3C0 browser hardening and M3C1 local PHP/SQLite Hub read foundation.
-- Resolve the local PHP `pdo_sqlite` environment gap before claiming end-to-end PHP Hub test coverage.
+- Review M3D browser live-read adapter, PHP gateway, and Nginx template.
+- Keep VPS deployment human-gated; verify the rendered Nginx configuration before switching any release.
 
 ## NEXT
 
-- Human review of dry-run VPS/Caddy assets; no deployment without explicit approval.
+- Human review of dry-run VPS/Nginx assets; no deployment without explicit approval.
 - M3B secure OS credential adapter and authenticated Hub enrollment.
 - M3C2 hosting foundation implementation only after infrastructure review.
 - M4 Mac ↔ Hub ↔ Windows continuity and explicit conflict handling.
@@ -35,3 +35,4 @@
 - M3A Hub API/schema contract.
 - M3B local device identity foundation.
 - M3C0 browser-safe static Remote Read-Only Preview.
+- M3C1 PHP/SQLite Hub read foundation.

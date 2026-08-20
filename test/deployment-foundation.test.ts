@@ -28,3 +28,15 @@ test('Hub data schema has explicit provenance and no workspace or content column
   assert.match(schema, /observed_at/);
   assert.doesNotMatch(schema, /workspace_path|\bcontent\b/i);
 });
+
+test('Nginx Hub read gateway keeps the perimeter and PHP-FPM private', async () => {
+  const nginx = await readFile(join(ROOT, 'deploy/nginx/awh-preview.conf'), 'utf8');
+  assert.match(nginx, /auth_basic\s+"AWH Remote Preview"/);
+  assert.match(nginx, /location \^~ \/api\/v1\//);
+  assert.match(nginx, /SCRIPT_FILENAME .*web-gateway\.php/);
+  assert.match(nginx, /AWH_WEB_GATEWAY_TRUSTED_PERIMETER nginx/);
+  assert.match(nginx, /fastcgi_pass unix:/);
+  assert.doesNotMatch(nginx, /fastcgi_pass\s+(?:127\.0\.0\.1|localhost|[0-9]+\.[0-9]+)/);
+  assert.doesNotMatch(nginx, /(?:BEGIN [A-Z ]+PRIVATE KEY|password\s*[:=]\s*[^<{\s]+|AWH_HUB_READ_TOKEN_HASH\s*[:=])/i);
+  assert.doesNotMatch(nginx, /HTTP_X_AWH_WEB_GATEWAY_TRUSTED_PERIMETER/);
+});

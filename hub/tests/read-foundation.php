@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/src/HubReadModel.php';
 require_once dirname(__DIR__) . '/src/HubReadRouter.php';
+require_once dirname(__DIR__) . '/src/HubWebGateway.php';
 
 if (!in_array('sqlite', PDO::getAvailableDrivers(), true)) {
     fwrite(STDOUT, "AWH PHP Hub read foundation: SKIP pdo_sqlite extension unavailable\n");
@@ -74,6 +75,11 @@ try {
     test_assert($queryCredential['status'] === 400, 'credentials in URLs must be rejected');
     $unknown = HubReadRouter::dispatch('GET', '/api/v1/projects/' . $manifest['projectId'] . '/../../etc/passwd', ['HTTP_AUTHORIZATION' => 'Bearer ' . $token], $readModel);
     test_assert($unknown['status'] === 404, 'arbitrary path access must be rejected');
+    test_assert(!HubWebGateway::isTrusted([]), 'web gateway must fail closed without the server perimeter');
+    test_assert(!HubWebGateway::isTrusted(['HTTP_X_AWH_WEB_GATEWAY_TRUSTED_PERIMETER' => 'nginx']), 'client HTTP headers must not establish gateway trust');
+    test_assert(HubWebGateway::isTrusted(['AWH_WEB_GATEWAY_TRUSTED_PERIMETER' => 'nginx']), 'reviewed Nginx FastCGI perimeter must establish gateway trust');
+    $gatewayRead = HubReadRouter::dispatch('GET', '/api/v1/projects', ['AWH_WEB_GATEWAY_TRUSTED_PERIMETER' => 'nginx'], $readModel, false);
+    test_assert($gatewayRead['status'] === 200 && !str_contains($gatewayRead['body'], $workspace), 'trusted web gateway must expose only sanitized read data');
 
     $before = count($model->projects()['projects']);
     $badWorkspace = $root . DIRECTORY_SEPARATOR . 'bad';

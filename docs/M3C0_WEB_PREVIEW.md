@@ -39,11 +39,12 @@ environment, SSH details, or credential-store data.
 ## Browser boundary
 
 The default static surface uses same-origin `GET ./data.json`. The browser
-adapter also has a separate future `HUB_READ` mode that accepts only a
-same-origin relative API base from an external `web-config.json`; it issues
-GET requests only, never creates or forwards bearer credentials, and sanitizes
+adapter also has a separate `HUB_READ` mode that accepts only a same-origin
+relative API base from an external `web-config.json`; it issues GET requests
+only, reuses same-origin HTTP session credentials for the reviewed web
+perimeter, never creates or forwards bearer credentials, and sanitizes
 project/memory metadata before rendering. No Hub mode is enabled by the
-generated static build.
+generated static build unless a reviewed `web-config.json` is supplied.
 
 The browser surface has no Electron preload, IPC, Node, shell, filesystem,
 environment, write, source-editing, MCP-proxy, or remote-execution capability.
@@ -55,10 +56,10 @@ The visible status is intentionally:
 
 `Remote Preview — Read Only`
 
-M3C0 is a static preview snapshot. “Hub status”, Devices, Builds/Releases, and
-Audit are honest placeholders until a future authenticated Hub API exists.
-M3C1 supplies a separate local PHP/SQLite read foundation; it is not deployed
-or enabled by this static build.
+M3C0 is a static preview snapshot by default. A configured Hub-read failure is
+shown as `Hub unavailable — Static preview`, with `Offline` Hub status. M3C1
+supplies the PHP/SQLite read foundation and M3D supplies its reviewed gateway;
+actual VPS enablement remains a human-gated deployment step.
 
 ## Safe deployment shape for Ubuntu/Nginx
 

@@ -1,7 +1,8 @@
 # M3C1 AWH Hub Read Foundation
 
 M3C1 adds a minimal PHP-FPM/SQLite read foundation that follows the M3A
-TypeScript contract. It is a local implementation and has not been deployed.
+TypeScript contract. M3D adds a reviewed same-origin web gateway for the same
+read model; these repository changes have not been deployed by this task.
 
 ## API boundary
 
@@ -44,29 +45,41 @@ state visible and the index is rebuildable.
 The HTTP connection opens SQLite with `PRAGMA query_only = ON`. The indexer is
 the separate local maintenance path and is not reachable through HTTP.
 
+## Web read gateway
+
+`hub/public/web-gateway.php` reuses the same router and model for browser reads;
+it does not create a second API or copy Project Memory. Nginx supplies the
+server-controlled `AWH_WEB_GATEWAY_TRUSTED_PERIMETER=nginx` FastCGI parameter,
+which the gateway accepts instead of a browser Bearer token. A client HTTP
+header cannot establish that trust. The reviewed Nginx template applies Basic
+Auth at server scope to static assets and `/api/v1/*`, and sends PHP-FPM over a
+Unix socket. This is a temporary preview perimeter, not the completed M3B
+device/account authorization model.
+
 ## Local validation
 
 ```sh
 /opt/local/bin/php -l hub/src/HubReadModel.php
 /opt/local/bin/php -l hub/src/HubReadRouter.php
 /opt/local/bin/php -l hub/public/index.php
+/opt/local/bin/php -l hub/public/web-gateway.php
+/opt/local/bin/php -l hub/src/HubWebGateway.php
 /opt/local/bin/php -l hub/bin/index-project.php
 /opt/local/bin/php hub/tests/read-foundation.php
 ```
 
-The current Mac PHP runtime has no `pdo_sqlite` driver. Therefore the PHP
-behavior test reports an explicit environment skip; syntax is checked and the
-SQLite schema is smoke-tested with the local `sqlite3` tool. A full PHP
-read-model test requires a PHP runtime with `pdo_sqlite`.
+The PHP behavior test requires `pdo_sqlite`; when it is available it exercises
+the real SQLite read model and gateway trust boundary.
 
 ## Browser relationship
 
 The browser adapter has two explicit modes:
 
 - `STATIC_PREVIEW` (the default M3C0 build, using `data.json`)
-- `HUB_READ` (future same-origin sanitized GET mode, configured by an external
-  `web-config.json`; it never receives or creates a bearer token)
+- `HUB_READ` (same-origin sanitized GET mode, configured by an external
+  `web-config.json`; it reuses only the same-origin web session and never
+  receives or creates a bearer token)
 
-The Hub-connected mode is not enabled in the generated static output and must
-not be described as a live connection until the authenticated server perimeter
-and API deployment are separately verified.
+The generated static output remains static unless a reviewed `web-config.json`
+selects `HUB_READ`. If the live read fails, the adapter falls back to a
+truthful offline/degraded static preview and never labels the Hub connected.

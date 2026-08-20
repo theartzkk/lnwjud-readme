@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { browserRequestOptions, fetchStaticData, getJson, isSafeRelativePath } from '../web/hub-read-adapter.js';
+import { browserRequestOptions, degradedHubPreview, fetchStaticData, getJson, isSafeRelativePath } from '../web/hub-read-adapter.js';
 
 const runFile = promisify(execFile);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -63,7 +63,7 @@ test('static preview serialization is deterministic with a fixed build timestamp
   assert.doesNotMatch(adapter, /Authorization\s*[:=]|localStorage|sessionStorage|document\.cookie/i);
 });
 
-test('static data reuses same-origin HTTP authentication while Hub requests omit credentials', async () => {
+test('static data and Hub reads reuse only the same-origin web perimeter session', async () => {
   const requests = [] as Array<{ path: string; options: RequestInit }>;
   const fakeFetch = async (path: string, options: RequestInit) => {
     requests.push({ path, options });
@@ -72,9 +72,10 @@ test('static data reuses same-origin HTTP authentication while Hub requests omit
   await fetchStaticData(fakeFetch);
   await getJson('/api/v1/projects', 'HUB_READ', fakeFetch);
   assert.deepEqual(requests[0], { path: '/data.json', options: { credentials: 'same-origin', cache: 'no-store' } });
-  assert.deepEqual(requests[1], { path: '/api/v1/projects', options: { credentials: 'omit', cache: 'no-store' } });
+  assert.deepEqual(requests[1], { path: '/api/v1/projects', options: { credentials: 'same-origin', cache: 'no-store' } });
   assert.deepEqual(browserRequestOptions('STATIC_PREVIEW'), { credentials: 'same-origin', cache: 'no-store' });
-  assert.deepEqual(browserRequestOptions('HUB_READ'), { credentials: 'omit', cache: 'no-store' });
+  assert.deepEqual(browserRequestOptions('HUB_READ'), { credentials: 'same-origin', cache: 'no-store' });
+  assert.notEqual(browserRequestOptions('HUB_READ').credentials, 'include');
 });
 
 test('browser adapter never constructs Authorization headers, generated output has no credential values, and cross-origin paths fail closed', async () => {
@@ -87,6 +88,17 @@ test('browser adapter never constructs Authorization headers, generated output h
   assert.equal(isSafeRelativePath('//evil.example/api'), null);
   assert.equal(isSafeRelativePath('/api/v1/projects?token=secret'), null);
   assert.equal(isSafeRelativePath('/api/../secret'), null);
+});
+
+test('Hub outage is truthfully degraded to the static preview and never reported online', () => {
+  const degraded = degradedHubPreview({
+    preview: { mode: 'STATIC_PREVIEW', status: 'Static preview' },
+    hub: { status: 'Static snapshot', summary: 'snapshot' },
+  });
+  assert.equal(degraded.preview.mode, 'HUB_READ_DEGRADED');
+  assert.equal(degraded.preview.status, 'Hub unavailable — Static preview');
+  assert.equal(degraded.hub.status, 'Offline');
+  assert.doesNotMatch(JSON.stringify(degraded), /Connected|Online|Authenticated Hub read mode/);
 });
 
 test('browser surface has responsive mobile structure and bounded read-only status cards', async () => {

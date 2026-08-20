@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 final class HubReadRouter
 {
-    public static function dispatch(string $method, string $requestUri, array $server, ?HubReadModel $model): array
+    public static function dispatch(string $method, string $requestUri, array $server, ?HubReadModel $model, bool $requireBearer = true): array
     {
         $requestId = self::requestId();
         $headers = self::headers();
@@ -19,7 +19,7 @@ final class HubReadRouter
         }
 
         $isHealth = $path === '/api/v1/health';
-        if (!$isHealth && !self::authorized($server)) {
+        if (!$isHealth && $requireBearer && !self::authorized($server)) {
             $configured = getenv('AWH_HUB_READ_TOKEN_HASH');
             $status = is_string($configured) && preg_match('/^[a-f0-9]{64}$/i', $configured) ? 401 : 503;
             $code = $status === 503 ? 'AUTH_NOT_CONFIGURED' : 'AUTH_REQUIRED';

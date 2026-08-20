@@ -31,7 +31,7 @@
 - **Local QA:** cross-platform Node-based QA engine with machine-readable results.
 - **MCP / remote-readonly AI adapter:** local stdio MCP and restricted remote-readonly profile; remote tunnel E2E is not claimed.
 - **M3C0 Web Surface:** browser-only static presentation adapter with strict CSP, bounded sanitized data, and a separate future same-origin Hub-read mode.
-- **M3C1 Hub Read Foundation:** PHP-FPM-compatible front controller, SQLite metadata schema, query-only HTTP connection, Bearer-auth read boundary, and a local metadata-only indexer.
+- **M3C1/M3D Hub Read Foundation:** PHP-FPM-compatible front controller and web gateway, SQLite metadata schema, query-only HTTP connection, Bearer-auth service boundary, same-origin Nginx perimeter adapter, and a local metadata-only indexer.
 
 ## FUTURE COMPONENTS
 
@@ -49,4 +49,15 @@
 - The Hub stores portable project metadata and rebuildable memory-file metadata only.
 - `workspacePath`, local registry mappings, Git credentials, source contents, and device credentials remain outside Hub responses.
 - Project Memory remains canonical in the five portable Markdown files; the Hub read foundation stores status, hash, size, provenance, and observation time only.
-- AWH Web defaults to static preview. Hub-connected mode is future, same-origin, GET-only, and does not receive a browser bearer token.
+- AWH Web defaults to static preview. Hub-connected mode is same-origin, GET-only, and reuses only the reviewed web perimeter session; it does not receive a browser bearer token.
+
+## WEB READ DEPLOYMENT BOUNDARY
+
+- Nginx Basic Auth protects all preview assets and `/api/v1/*`.
+- Nginx passes a server-controlled trust parameter to PHP-FPM over a Unix socket.
+- `hub/public/web-gateway.php` reuses the same read router/model with SQLite
+  query-only access; it exposes no write, sync, execution, filesystem, or
+  arbitrary-file route.
+- The direct Bearer-token API remains a separate service-client boundary.
+- A Hub read failure is rendered as offline/degraded static preview, never as
+  a false online state.
