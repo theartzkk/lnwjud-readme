@@ -28,6 +28,11 @@
 - **Filesystem/security boundary:** canonical workspace resolution, secret-path protection, and containment checks.
 - **Checkpoints:** bounded local recovery manifests for guarded workspace changes.
 - **Task/runtime engine:** approved task execution with bounded runtime metadata and logs.
+- **Autopilot v0.5:** one local orchestration layer creates a bounded Task Contract, reloads Project Context, creates a recovery checkpoint, selects a reusable profile, runs only approved package scripts, retries one safe gate once, produces a bounded Artifact record, and records a continuity checkpoint.
+- **Local capability discovery:** fixed internal capability names resolve through inherited PATH first, then bounded user/system locations appropriate to the host, including common macOS package-manager bins; no recursive or browser/remote executable discovery is exposed. The FFmpeg capability gate resolves both FFmpeg and FFprobe, validates both versions, runs a disposable frame-sequence → MP4 pipeline through fixed argv, and verifies output metadata and decoded frame order.
+- **Artifact Center:** metadata and bounded payloads live in the active AWH data directory; references are relative and no absolute workspace path is returned.
+- **Continuity:** device-local checkpoint metadata records portable projectId, source device UUID, Git revision/dirty state, bounded HANDOFF summary, task state and artifact refs. A copied checkpoint may be discovered on another device, but AWH does not silently overwrite dirty local work or sync `.git`.
+- **First-run trust:** owner/device display metadata is stored in a strict local session record. It is not a password store and never contains a bearer credential; native device credentials remain under M3E OS credential adapters.
 - **Local QA:** cross-platform Node-based QA engine with machine-readable results.
 - **MCP / remote-readonly AI adapter:** local stdio MCP and restricted remote-readonly profile; remote tunnel E2E is not claimed.
 - **M3C0 Web Surface:** browser-only static presentation adapter with strict CSP, bounded sanitized data, and a separate future same-origin Hub-read mode.
@@ -46,6 +51,8 @@
 - macOS packaged app.
 - Real OpenAI Secure MCP Tunnel control-plane E2E verification.
 - M3C2 hosting control-plane design and a separately reviewed deployment path.
+- **AWH Web Control Center:** Home/Projects/Tasks/Artifacts/Devices/Builds/Audit are presentation sections. Web remains read/review-only; Local Autopilot execution is Desktop-only.
+- **Desktop smoke:** the harness uses a temporary AWH data directory and safe child environment. A pre-marker macOS AppKit/LaunchServices failure from the Codex GUI sandbox, including `_RegisterApplication`/`SIGABRT` or LaunchServices `-10822`, is classified as `GUI_SANDBOX_BLOCKED`, not `AWH_APP_FAILED` and never PASS. A logged-in macOS GUI LaunchServices run outside Codex is the runtime proof and has produced a valid `stage: passed` marker with the primary UI paths and Cmd+K routing checked.
 
 ## HUB DATA BOUNDARY
 
@@ -96,3 +103,17 @@
 - M3E status is READY FOR PRODUCTION VALIDATION, not CLOSED. Each real device
   must persist an independent OS credential and sanitized Hub Read must verify
   two enrolled devices before the milestone closes.
+
+## AUTOPILOT SAFETY CONTRACT
+
+- Goal text is bounded content, never a command. Secret-like goal text is rejected.
+- The runner requires a registered portable project and canonical workspace match.
+- Command selection comes from profile capabilities and `detectProject` approved
+  scripts; user input never becomes executable, argv, cwd, env, or shell text.
+- The runner is local-only and respects `AWH_ALLOW_EXEC`; disabled execution fails
+  closed. Browser/Web has no task mutation or execution endpoint.
+- Outputs are bounded, redacted in summaries, and not persisted as task metadata.
+- Source mutation, production, destructive and credential tasks require explicit
+  approval in the contract. Routine dogfood does not modify source memory.
+- The runner persists only strict lifecycle metadata and can surface interrupted
+  history for human review; it does not treat stale process metadata as live.

@@ -28,6 +28,8 @@ test('browser surface builds without Electron and serializes the real portable p
   assert.equal(data.project.name, 'Art’s Workspace Hub');
   assert.equal(data.project.type, 'node');
   assert.equal(data.preview.label, 'Remote Preview — Read Only');
+  assert.equal(data.tasks.status, 'Desktop runtime only');
+  assert.equal(data.artifacts.status, 'Preview only');
   assert.ok(data.project.handoffSummary.length <= 480);
   assert.deepEqual(Object.keys(data.project.memory), ['PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md']);
   assert.match(html, /meta name="viewport"/);
@@ -133,7 +135,7 @@ test('browser surface has responsive mobile structure and bounded read-only stat
     readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
     readFile(join(ROOT, 'web', 'styles.css'), 'utf8'),
   ]);
-  for (const id of ['project-card', 'device-card', 'memory-list', 'handoff-summary', 'build-status', 'audit-status']) assert.match(html, new RegExp(`id="${id}"`));
+  for (const id of ['project-card', 'device-card', 'memory-list', 'handoff-summary', 'build-status', 'audit-status', 'tasks-status', 'artifacts-status']) assert.match(html, new RegExp(`id="${id}"`));
   assert.match(css, /@media\(max-width:560px\)/);
   assert.match(css, /status-grid\{grid-template-columns:1fr\}/);
 });

@@ -14,6 +14,75 @@ function item(title, detail, cls='list-item') { const root=document.createElemen
 function row(dl, key, value) { const dt=document.createElement('dt');dt.textContent=key;const dd=document.createElement('dd');dd.textContent=escapeText(value);dl.append(dt,dd); }
 function dateText(value) { return value ? new Date(value).toLocaleString('th-TH') : '—'; }
 function showProjectStatus(message, kind = '') { const status = $('project-status'); status.textContent = message; status.className = `notice ${kind}`.trim(); }
+function renderFirstRun(data) {
+  $('welcome-title').textContent = data?.trusted ? `ยินดีต้อนรับกลับ ${data.ownerDisplayName || 'กลับมา'}` : 'ตั้งค่า owner และ trusted device ครั้งแรก';
+  $('welcome-summary').textContent = data?.trusted ? `${data.deviceName || 'อุปกรณ์นี้'} • ${data.platform} • device identity พร้อมใช้งาน` : 'ตั้งค่าเฉพาะ local session metadata ก่อนเริ่มงาน ไม่ใช่การเก็บ secret หรือ credential';
+  $('owner-name').value = data?.ownerDisplayName || $('owner-name').value;
+  $('device-name').value = data?.deviceName || $('device-name').value;
+  $('trust-owner').textContent = data?.trusted ? 'อัปเดต trusted device' : 'ตั้งค่า trusted device';
+}
+
+function renderAutopilotOverview(data) {
+  if (!data) return;
+  $('autopilot-state').textContent = data.executionEnabled ? 'READY' : 'EXECUTION OFF';
+  $('autopilot-state').className = `badge ${data.executionEnabled ? 'success' : 'danger'}`.trim();
+  $('autopilot-home-state').textContent = data.executionEnabled ? 'READY' : 'OFF';
+  $('autopilot-home-state').className = `badge ${data.executionEnabled ? 'success' : 'danger'}`.trim();
+  $('autopilot-project').textContent = `${data.project.name} • ${data.project.type} • ${data.project.projectId}`;
+  const profile = $('autopilot-profile'); profile.replaceChildren();
+  row(profile, 'Profile', data.profile.label); row(profile, 'Commands', data.profile.packageCommands.join(' • '));
+  row(profile, 'Capabilities', Object.entries(data.capabilities || {}).filter(([, value]) => value === true).map(([key]) => key).join(' • ') || 'none');
+  renderAutopilotTasks(data.tasks || [], data.allowWrite === true);
+}
+
+function renderAutopilotTasks(tasks, allowWrite) {
+  renderList($('autopilot-task-list'), tasks, 'ยังไม่มี task — เริ่มจาก goal ด้านบน', (task) => {
+    const entry = item(`${task.state} • ${task.goal}`, `${task.taskId} • artifact ${task.artifactRefs?.length || 0} • retry ${task.retryCount}`, 'timeline-item');
+    if (allowWrite && task.state === 'COMPLETED') {
+      const checkpoint = document.createElement('button'); checkpoint.className = 'btn secondary small'; checkpoint.textContent = 'Save concise Memory checkpoint';
+      checkpoint.addEventListener('click', async () => { checkpoint.disabled = true; const result = await window.artAgent.checkpointAutopilotMemory(task.taskId); checkpoint.textContent = result?.ok ? 'Memory checkpoint saved' : 'Review/write permission required'; });
+      entry.append(checkpoint);
+    }
+    return entry;
+  });
+}
+
+function renderContinuity(data) {
+  const badge = $('continuity-state');
+  badge.textContent = data?.available ? (data.protectedLocalChanges ? 'REVIEW REQUIRED' : 'READY TO CONTINUE') : 'NO CHECKPOINT';
+  badge.className = `badge ${data?.available && !data.protectedLocalChanges ? 'success' : data?.available ? 'danger' : ''}`.trim();
+  $('continuity-summary').textContent = data?.reason || 'ยังไม่มี checkpoint';
+  const details = $('continuity-details'); details.replaceChildren();
+  if (data?.checkpoint) { row(details, 'Source device', data.checkpoint.sourceDeviceId); row(details, 'Task', data.checkpoint.taskId); row(details, 'Revision', data.checkpoint.sourceRevision || 'unavailable'); row(details, 'Source dirty', data.checkpoint.sourceDirty ? 'YES — protect local work' : 'NO'); }
+}
+
+function renderArtifacts(data) {
+  renderList($('artifact-list'), data?.artifacts || [], 'ยังไม่มี artifact ที่พร้อม review', (artifact) => item(`${artifact.kind} • ${artifact.label}`, `${artifact.status} • ${artifact.relativeRef} • ${artifact.bytes} bytes`, 'timeline-item'));
+}
+
+async function refreshAutopilot() {
+  try {
+    const data = await window.artAgent.getAutopilotOverview();
+    renderAutopilotOverview(data);
+    renderContinuity(await window.artAgent.getAutopilotContinuity());
+    renderArtifacts({ artifacts: data.artifacts });
+  } catch (error) {
+    $('autopilot-state').textContent = 'UNAVAILABLE'; $('autopilot-state').className = 'badge danger';
+    $('autopilot-project').textContent = 'เลือกและลงทะเบียน project ก่อนเริ่ม Local Autopilot';
+  }
+}
+
+async function startAutopilot(goalId) {
+  const goal = $(goalId).value.trim();
+  if (!goal) { $('autopilot-home-message').textContent = 'กรุณาระบุ goal ก่อนเริ่มงาน'; return; }
+  $('autopilot-home-message').textContent = 'กำลังสร้าง Task Contract และเริ่มงานแบบ local...';
+  try {
+    const result = await window.artAgent.startAutopilot(goal);
+    $('autopilot-home-message').textContent = result?.ok ? `สร้าง task แล้ว: ${result.task.taskId}` : (result?.message || 'Autopilot เริ่มไม่ได้');
+    showSection('autopilot');
+    await refreshAutopilot();
+  } catch { $('autopilot-home-message').textContent = 'Autopilot เริ่มไม่ได้ — ตรวจ project และ Approved execution'; }
+}
 
 function remoteState(data) {
   const readiness = data.doctor.remoteTunnel;
@@ -214,7 +283,7 @@ function showSection(section) {
 
 async function refresh() {
   $('refresh').disabled = true;
-  try { render(await window.artAgent.getOverview()); await refreshProjects(); await refreshEnrollment(); }
+  try { render(await window.artAgent.getOverview()); renderFirstRun(await window.artAgent.getFirstRun()); await refreshProjects(); await refreshEnrollment(); await refreshAutopilot(); }
   catch (error) { $('git-output').textContent = `Control Center error: ${error?.message ?? error}`; }
   finally { $('refresh').disabled = false; }
 }
@@ -270,8 +339,16 @@ $('remote-stop').addEventListener('click', () => runRemoteAction('stop'));
 $('enrollment-pair').addEventListener('click', () => runEnrollmentAction(() => window.artAgent.pairDevice($('enrollment-code').value.trim())));
 $('enrollment-rotate').addEventListener('click', () => runEnrollmentAction(() => window.artAgent.rotateDeviceCredential()));
 $('enrollment-revoke').addEventListener('click', () => runEnrollmentAction(() => window.artAgent.revokeDeviceCredential()));
+$('trust-owner').addEventListener('click', async () => { const result = await window.artAgent.trustOwner($('owner-name').value.trim(), $('device-name').value.trim()); if (result?.ok) renderFirstRun(await window.artAgent.getFirstRun()); else $('welcome-summary').textContent = result?.message || 'ตั้งค่า trusted device ไม่สำเร็จ'; });
+$('start-autopilot-home').addEventListener('click', () => startAutopilot('autopilot-goal'));
+$('start-autopilot').addEventListener('click', () => startAutopilot('autopilot-goal-center'));
+$('view-autopilot').addEventListener('click', () => showSection('autopilot'));
+$('refresh-autopilot').addEventListener('click', refreshAutopilot);
+$('refresh-artifacts').addEventListener('click', async () => renderArtifacts(await window.artAgent.getAutopilotArtifacts()));
 $('restart').addEventListener('click', () => window.artAgent.restart());
 $('open-data-dir').addEventListener('click', () => window.artAgent.openDataDir());
+
+document.addEventListener('keydown', (event) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); showSection('autopilot'); $('autopilot-goal-center').focus(); } });
 
 void refresh();
 setInterval(() => { if (!document.hidden) void refresh(); }, 10000);

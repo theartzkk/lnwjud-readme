@@ -17,6 +17,8 @@
       <nav>
         <button class="nav active" data-section="overview">ภาพรวม</button>
         <button class="nav" data-section="projects">Projects</button>
+        <button class="nav" data-section="autopilot">Autopilot</button>
+        <button class="nav" data-section="artifacts">Artifacts</button>
         <button class="nav" data-section="enrollment">Device Enrollment</button>
         <button class="nav" data-section="memory">Project Memory</button>
         <button class="nav" data-section="git">Git</button>
@@ -40,6 +42,10 @@
       </header>
 
       <section id="section-overview" class="section active">
+        <div class="card welcome-card">
+          <div><p class="eyebrow">WELCOME TO ART’S WORKSPACE HUB</p><h2 id="welcome-title">กำลังเตรียม workspace...</h2><p id="welcome-summary" class="muted">Trusted-device state จะถูกเก็บเฉพาะ local session metadata ที่ไม่ใช่ credential</p></div>
+          <div class="welcome-form"><input id="owner-name" maxlength="80" placeholder="Owner name / ชื่อเจ้าของ" autocomplete="off" /><input id="device-name" maxlength="80" placeholder="Device name / ชื่อเครื่อง" autocomplete="off" /><button id="trust-owner" class="btn secondary">ตั้งค่า trusted device</button></div>
+        </div>
         <div class="card hero">
           <div>
             <span class="label">WORKSPACE</span>
@@ -58,6 +64,13 @@
           <div class="card"><div class="card-head"><h3>Codex CLI</h3><span class="badge">LOCAL</span></div><p id="codex-version" class="mono muted"></p></div>
           <div class="card"><div class="card-head"><h3>Recent checkpoints</h3><span class="badge">RECOVERY</span></div><div id="checkpoint-list" class="list"></div></div>
         </div>
+        <div class="card goal-card">
+          <div class="card-head"><div><p class="eyebrow">LOCAL AUTOPILOT</p><h2>What would you like to work on?</h2></div><span id="autopilot-home-state" class="badge">READY</span></div>
+          <p class="muted">AWH จะเลือก project context, สร้าง checkpoint, รันเฉพาะ gate ที่อนุมัติ และสร้าง artifact พร้อม checkpoint ต่อเนื่องให้ตรวจสอบ</p>
+          <textarea id="autopilot-goal" maxlength="2000" rows="3" placeholder="เช่น ตรวจความพร้อมของโปรเจกต์และสร้าง QA report"></textarea>
+          <div class="actions"><button id="start-autopilot-home" class="btn">เริ่ม Local Autopilot</button><button id="view-autopilot" class="btn secondary">ดู Task Center</button></div>
+          <p id="autopilot-home-message" class="muted"></p>
+        </div>
       </section>
 
       <section id="section-projects" class="section">
@@ -67,6 +80,26 @@
         </div>
         <div id="project-status" class="notice hidden"></div>
         <div id="project-list" class="project-list"></div>
+      </section>
+
+      <section id="section-autopilot" class="section">
+        <div class="card goal-card">
+          <div class="card-head"><div><p class="eyebrow">TASK CENTER</p><h2>Local Autopilot</h2></div><span id="autopilot-state" class="badge">LOADING</span></div>
+          <p id="autopilot-project" class="muted">เลือก registered project ก่อนเริ่มงาน</p>
+          <dl id="autopilot-profile" class="kv"></dl>
+          <label class="field-label" for="autopilot-goal-center">Goal</label>
+          <textarea id="autopilot-goal-center" maxlength="2000" rows="4" placeholder="AWH ควรทำอะไรให้เสร็จ?"></textarea>
+          <div class="actions"><button id="start-autopilot" class="btn">Start approved local run</button><button id="refresh-autopilot" class="btn secondary">Refresh</button></div>
+          <p class="muted">Browser/Web surface ไม่มี execution endpoint; งานนี้เริ่มได้จาก AWH Desktop และยังอยู่ใต้ local permission/allowlist</p>
+        </div>
+        <div class="grid two autopilot-panels">
+          <div class="card"><div class="card-head"><h3>Tasks</h3><span class="badge">BOUNDED</span></div><div id="autopilot-task-list" class="list"></div></div>
+          <div class="card"><div class="card-head"><h3>Continuity</h3><span id="continuity-state" class="badge">CHECKING</span></div><p id="continuity-summary" class="muted">กำลังตรวจ checkpoint ล่าสุด</p><dl id="continuity-details" class="kv"></dl></div>
+        </div>
+      </section>
+
+      <section id="section-artifacts" class="section">
+        <div class="card"><div class="card-head"><div><p class="eyebrow">ARTIFACT CENTER</p><h2>Results ready for review</h2></div><button id="refresh-artifacts" class="btn secondary small">Refresh</button></div><p class="muted">แสดงเฉพาะ metadata/reference แบบ relative ไม่แสดง absolute path หรือ credential</p><div id="artifact-list" class="list"></div></div>
       </section>
 
       <section id="section-memory" class="section">

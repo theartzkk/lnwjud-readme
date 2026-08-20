@@ -54,6 +54,8 @@ function hubData(projectPayload, memoryPayload, statusPayload, devicesPayload, b
     devices: { status: 'Read-only', summary: 'Device metadata is visible only through the authenticated Hub boundary.', count: Array.isArray(devicesPayload?.devices) ? devicesPayload.devices.length : 0 },
     builds: { status: 'Read-only', summary: `Builds: ${Array.isArray(buildsPayload?.builds) ? buildsPayload.builds.length : 0}; releases: ${Array.isArray(releasesPayload?.releases) ? releasesPayload.releases.length : 0}.` },
     audit: { status: 'Read-only', summary: 'Audit mutation and credential data are not exposed by the browser adapter.' },
+    tasks: { status: 'Review-only', summary: 'Tasks are coordinated by AWH Desktop; no browser execution route is available.', count: 0 },
+    artifacts: { status: 'Read-only', summary: 'Artifact references are not exposed until a bounded Hub contract is available.', count: 0 },
   };
 }
 

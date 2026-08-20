@@ -30,3 +30,8 @@
 - M3E-FINAL keeps credential lifecycle in `EnrollmentClient` and `HubEnrollmentService`; Desktop only exposes sanitized enrollment state plus explicit pair, rotate, and revoke actions through fixed IPC.
 - M3E.2 deployment is a separate additive migration from M3E.1: `enrollment_rate_limits` and its migration ledger row are applied only after backup/preflight, then an isolated enrollment release is switched atomically. The M3D browser read path remains unchanged.
 - M3E is READY FOR PRODUCTION VALIDATION, not CLOSED. Closure requires independently enrolled Mac and Windows devices, secure OS persistence on both, safe rotation/revocation, sanitized Hub visibility, and verified `devices = 2`.
+- AWH v0.5 uses one local Autopilot orchestration layer rather than separate per-project runners. It owns the Task Contract and delegates filesystem safety, checkpoints, project detection, package invocation and audit to existing engines.
+- Task goals are content, not commands. Only fixed allowlisted package scripts selected by a reusable project profile can execute; browser Hub remains review-only.
+- Autopilot creates a checkpoint before local gates, emits a bounded QA artifact, and records continuity metadata. It never silently overwrites dirty local work and does not synchronize `.git`.
+- Project Memory updates are not implicit in the v0.5 dogfood path. A later explicit approval action may update concise HANDOFF/TASKS state after review; no large logs or secrets may enter Project Memory.
+- The first-run experience stores only bounded owner/device trust metadata. M3E device credentials remain separate, native-OS-backed and fail-closed; a trusted session does not bypass sensitive-action confirmation.

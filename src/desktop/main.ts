@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import {
   app,
   BrowserWindow,
@@ -19,10 +19,15 @@ import { explicitWorkspaceEnv, loadConfig } from '../config.js';
 import { gitStatus } from '../git.js';
 import { canonicalWorkspace } from '../security.js';
 import { loadStoredSettings, saveStoredSettings } from '../settings.js';
-import { readDeviceIdentity } from '../device-identity.js';
+import { loadOrCreateDeviceIdentity, readDeviceIdentity, updateDeviceDisplayName } from '../device-identity.js';
 import { createProductionCredentialStore, CredentialStoreError } from '../credential-store.js';
 import { EnrollmentClient, EnrollmentClientError, readLocalEnrollmentState } from '../enrollment-client.js';
 import { ensureAwhDataDirectoryActive } from '../data-migration.js';
+import { AutopilotRunner, detectLocalCapabilities, loadAutopilotTasks, selectAutopilotProfile } from '../autopilot.js';
+import { listArtifacts } from '../artifacts.js';
+import { discoverContinuity } from '../continuity.js';
+import { readOwnerSession, trustOwner } from '../first-run.js';
+import { detectProject } from '../project.js';
 import {
   buildProjectContext,
   initializeProject,
@@ -54,6 +59,7 @@ let tray: Tray | null = null;
 let quitting = false;
 let remoteOperationInFlight = false;
 let lastRemoteRuntime: ReturnType<typeof sanitizedTunnelRuntime> | null = null;
+let autopilotRuntime: { key: string; runner: AutopilotRunner } | null = null;
 const MAX_HANDOFF_PREVIEW_CHARS = 4_000;
 
 const require = createRequire(import.meta.url);
@@ -70,6 +76,16 @@ function argValue(name: string): string | undefined {
   const value = index >= 0 ? process.argv[index + 1] : undefined;
   return value && !value.startsWith('--') ? value : undefined;
 }
+
+function applySmokeArguments(): void {
+  if (!SMOKE_TEST) return;
+  const dataDir = argValue('--smoke-data-dir');
+  const workspace = argValue('--smoke-workspace');
+  if (dataDir && isAbsolute(dataDir) && !/[\u0000-\u001f\u007f]/.test(dataDir)) process.env.AWH_DATA_DIR = dataDir;
+  if (workspace && isAbsolute(workspace) && !/[\u0000-\u001f\u007f]/.test(workspace)) process.env.AWH_WORKSPACE = workspace;
+}
+
+applySmokeArguments();
 
 function hasExplicitWorkspace(dataDir: string): boolean {
   return Boolean(
@@ -182,6 +198,55 @@ async function rotateDevice() {
 async function revokeDevice() {
   try { return { ok: true, hubConfigured: true, ...(await enrollmentClient(loadConfig()).revoke()) }; }
   catch (error) { return enrollmentError(error); }
+}
+
+async function firstRunState() {
+  const config = loadConfig();
+  const session = await readOwnerSession(config.dataDir).catch(() => null);
+  const identity = await readDeviceIdentity(config.dataDir).catch(() => null);
+  return {
+    ready: Boolean(session),
+    trusted: Boolean(session),
+    ownerDisplayName: session?.ownerDisplayName ?? null,
+    deviceName: identity?.displayName ?? session?.deviceName ?? null,
+    deviceId: identity?.deviceId ?? null,
+    platform: identity?.platform ?? process.platform,
+    nativeCredentialBoundary: process.platform === 'darwin' || process.platform === 'win32' ? 'available_for_explicit_validation' : 'fail_closed',
+  };
+}
+
+async function trustLocalOwner(ownerDisplayName: unknown, deviceName: unknown) {
+  if (typeof ownerDisplayName !== 'string' || typeof deviceName !== 'string') return { ok: false, error: 'OWNER_INPUT_INVALID', message: 'Owner and device names are required' };
+  const config = loadConfig();
+  try {
+    const identity = await loadOrCreateDeviceIdentity(config.dataDir, deviceName);
+    const updated = identity.displayName === deviceName.trim() ? identity : await updateDeviceDisplayName(config.dataDir, deviceName);
+    const session = await trustOwner(config.dataDir, ownerDisplayName, updated.displayName);
+    return { ok: true, trusted: true, ownerDisplayName: session.ownerDisplayName, deviceName: updated.displayName, deviceId: updated.deviceId };
+  } catch {
+    return { ok: false, error: 'OWNER_TRUST_FAILED', message: 'Owner setup could not be saved safely' };
+  }
+}
+
+async function currentAutopilot() {
+  const config = loadConfig();
+  if (!hasExplicitWorkspace(config.dataDir)) throw new ProjectRegistryError('Workspace is not configured', 'PROJECT_WORKSPACE_UNAVAILABLE');
+  const workspace = await canonicalWorkspace(config.workspace);
+  const manifest = await readProjectManifest(workspace);
+  const identity = await loadOrCreateDeviceIdentity(config.dataDir);
+  const key = `${config.dataDir}:${workspace}:${manifest.projectId}:${config.allowExec}`;
+  if (!autopilotRuntime || autopilotRuntime.key !== key) autopilotRuntime = {
+    key,
+    runner: new AutopilotRunner({ dataDir: config.dataDir, workspace, manifest, deviceId: identity.deviceId, maxReadBytes: config.maxReadBytes, allowExec: config.allowExec, allowWrite: config.allowWrite }),
+  };
+  return { config, workspace, manifest, runner: autopilotRuntime.runner };
+}
+
+async function autopilotOverview() {
+  const { config, workspace, manifest } = await currentAutopilot();
+  const detected = await detectProject(workspace);
+  const profile = selectAutopilotProfile(manifest, detected);
+  return { project: manifest, profile, capabilities: await detectLocalCapabilities(workspace), approvedScripts: detected.approvedScripts, executionEnabled: config.allowExec, allowWrite: config.allowWrite, tasks: await loadAutopilotTasks(config.dataDir, 12), artifacts: await listArtifacts(config.dataDir, 12) };
 }
 
 async function projectsOverview() {
@@ -475,6 +540,38 @@ function registerIpc(): void {
   ipcMain.handle(DESKTOP_IPC.enrollmentPair, async (_event, pairingCode: unknown) => pairDevice(pairingCode));
   ipcMain.handle(DESKTOP_IPC.enrollmentRotate, async () => rotateDevice());
   ipcMain.handle(DESKTOP_IPC.enrollmentRevoke, async () => revokeDevice());
+  ipcMain.handle(DESKTOP_IPC.firstRun, async () => firstRunState());
+  ipcMain.handle(DESKTOP_IPC.trustOwner, async (_event, ownerDisplayName: unknown, deviceName: unknown) => trustLocalOwner(ownerDisplayName, deviceName));
+  ipcMain.handle(DESKTOP_IPC.autopilotOverview, async () => autopilotOverview());
+  ipcMain.handle(DESKTOP_IPC.autopilotStart, async (_event, goal: unknown) => {
+    if (typeof goal !== 'string' || !goal.trim() || goal.length > 2_000) return { ok: false, error: 'GOAL_INVALID', message: 'Please enter a bounded goal' };
+    try {
+      const { runner } = await currentAutopilot();
+      const task = await runner.start({ goal: goal.trim(), acceptanceCriteria: ['Approved local gates pass', 'A bounded artifact is available', 'A continuity checkpoint is created'] });
+      return { ok: task.state !== 'FAILED', task };
+    } catch {
+      return { ok: false, error: 'AUTOPILOT_UNAVAILABLE', message: 'Autopilot is unavailable for this project' };
+    }
+  });
+  ipcMain.handle(DESKTOP_IPC.autopilotTasks, async () => {
+    const config = loadConfig();
+    return { tasks: await loadAutopilotTasks(config.dataDir, 20) };
+  });
+  ipcMain.handle(DESKTOP_IPC.autopilotArtifacts, async () => {
+    const config = loadConfig();
+    return { artifacts: await listArtifacts(config.dataDir, 20) };
+  });
+  ipcMain.handle(DESKTOP_IPC.autopilotContinuity, async () => {
+    const { config, manifest } = await currentAutopilot();
+    const status = await gitStatus(config.workspace);
+    const dirty = status.code !== 0 || status.stdout.split(/\r?\n/).some((line) => line.trim() && !line.startsWith('## '));
+    return discoverContinuity(config.dataDir, manifest.projectId, dirty);
+  });
+  ipcMain.handle(DESKTOP_IPC.autopilotCheckpointMemory, async (_event, taskId: unknown) => {
+    if (typeof taskId !== 'string' || !taskId.trim()) return { ok: false, error: 'TASK_ID_INVALID', message: 'Task id is invalid' };
+    try { const { runner } = await currentAutopilot(); return { ok: true, ...(await runner.checkpointMemory(taskId)) }; }
+    catch { return { ok: false, error: 'MEMORY_CHECKPOINT_REJECTED', message: 'Memory checkpoint requires explicit write permission and a completed task' }; }
+  });
 
   ipcMain.handle(DESKTOP_IPC.remoteConnect, async () => {
     if (remoteOperationInFlight) return { ok: false, error: 'REMOTE_BUSY', message: 'Remote Connection กำลังทำรายการอื่นอยู่' };
@@ -593,11 +690,20 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     await writeSmokeMarker({ ok: false, stage: 'renderer-check' });
     const result = await win.webContents.executeJavaScript(`(async () => {
       const apiReady = typeof window.artAgent?.getOverview === 'function';
-      const requiredDom = ['workspace', 'git-output', 'perm-write', 'doctor-runtime', 'remote-state', 'remote-connect', 'remote-stop', 'enrollment-state', 'enrollment-code', 'enrollment-pair'].every((id) => Boolean(document.getElementById(id)));
+      const requiredDom = ['workspace', 'git-output', 'perm-write', 'doctor-runtime', 'remote-state', 'remote-connect', 'remote-stop', 'enrollment-state', 'enrollment-code', 'enrollment-pair', 'project-list', 'autopilot-state', 'autopilot-task-list', 'artifact-list', 'continuity-state', 'autopilot-goal', 'autopilot-goal-center'].every((id) => Boolean(document.getElementById(id)));
+      const uiPaths = Object.fromEntries(['overview', 'projects', 'autopilot', 'artifacts', 'memory'].map((section) => {
+        document.querySelector('.nav[data-section="' + section + '"]')?.click();
+        return [section, document.getElementById('section-' + section)?.classList.contains('active') === true];
+      }));
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }));
+      const cmdKReady = document.activeElement?.id === 'autopilot-goal-center' && document.getElementById('section-autopilot')?.classList.contains('active') === true;
+      document.querySelector('.nav[data-section="overview"]')?.click();
       const overview = apiReady ? await window.artAgent.getOverview() : null;
       return {
         apiReady,
         requiredDom,
+        uiPaths,
+        cmdKReady,
         title: document.title,
         overviewName: overview?.name ?? null,
         overviewVersion: overview?.version ?? null,
@@ -608,6 +714,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     if (
       result.apiReady !== true ||
       result.requiredDom !== true ||
+      Object.values(result.uiPaths ?? {}).some((value) => value !== true) ||
+      result.cmdKReady !== true ||
       result.title !== `${PRODUCT.desktopName} — ${PRODUCT.productName}` ||
       result.overviewName !== PRODUCT.productName ||
       result.overviewVersion !== VERSION

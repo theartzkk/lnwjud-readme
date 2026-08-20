@@ -27,6 +27,14 @@ test('desktop IPC exposes fixed high-level channel names only', () => {
     'enrollmentRevoke',
     'enrollmentRotate',
     'enrollmentState',
+    'firstRun',
+    'trustOwner',
+    'autopilotOverview',
+    'autopilotStart',
+    'autopilotTasks',
+    'autopilotArtifacts',
+    'autopilotContinuity',
+    'autopilotCheckpointMemory',
     'restart',
     'selectProject',
     'setPermissions',
@@ -145,6 +153,36 @@ test('desktop enrollment UX uses fixed IPC and never exposes credentials', async
   assert.doesNotMatch(html, /type="password"/i);
 });
 
+test('desktop Autopilot is goal-based, local-only, bounded and never exposes raw process access', async () => {
+  const main = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  const preload = await readFile(new URL('../desktop/preload.cjs', import.meta.url), 'utf8');
+  const renderer = await readFile(new URL('../desktop/renderer.js', import.meta.url), 'utf8');
+  const html = await readFile(new URL('../desktop/index.html', import.meta.url), 'utf8');
+  for (const channel of ['autopilotOverview', 'autopilotStart', 'autopilotTasks', 'autopilotArtifacts', 'autopilotContinuity', 'autopilotCheckpointMemory']) {
+    assert.match(main, new RegExp(`ipcMain\\.handle\\(DESKTOP_IPC\\.${channel}`));
+    assert.match(preload, new RegExp(`${channel}:`));
+  }
+  assert.match(main, /AutopilotRunner/);
+  assert.match(main, /typeof goal !== 'string'/);
+  assert.match(preload, /startAutopilot: \(goal\) =>/);
+  assert.match(renderer, /startAutopilot/);
+  assert.match(html, /What would you like to work on/);
+  assert.match(html, /id="section-autopilot"/);
+  assert.match(html, /id="section-artifacts"/);
+  assert.doesNotMatch(renderer, /child_process|spawn\(|execFile|process\.env|Authorization|accessToken|tokenHash/);
+  assert.doesNotMatch(preload, /readFile|writeFile|readdir|spawn|process\.env|shell\.openPath/);
+});
+
+test('desktop first-run trust stores only bounded identity/session metadata', async () => {
+  const main = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  const renderer = await readFile(new URL('../desktop/renderer.js', import.meta.url), 'utf8');
+  const html = await readFile(new URL('../desktop/index.html', import.meta.url), 'utf8');
+  assert.match(main, /readOwnerSession/);
+  assert.match(main, /trustOwner/);
+  assert.match(html, /trusted device/);
+  assert.doesNotMatch(renderer, /password|accessToken|pairingCode|Authorization/i);
+});
+
 test('desktop smoke bootstrap activates a clean AWH data directory before writing its first marker', async () => {
   const main = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
   const marker = main.indexOf('async function writeSmokeMarker');
@@ -152,4 +190,27 @@ test('desktop smoke bootstrap activates a clean AWH data directory before writin
   const mkdir = main.indexOf('await mkdir(config.dataDir', marker);
   const write = main.indexOf("await writeFile(\n    join(config.dataDir, 'desktop-smoke.json')", marker);
   assert.ok(marker >= 0 && ensure > marker && mkdir > ensure && write > mkdir, 'fresh-install bootstrap must precede smoke marker persistence');
+});
+
+test('desktop smoke harness isolates data, uses normal macOS LaunchServices, and classifies Codex GUI sandbox aborts', async () => {
+  const smoke = await readFile(new URL('../scripts/desktop-smoke.mjs', import.meta.url), 'utf8');
+  const qa = await readFile(new URL('../scripts/qa/awh-local-qa.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  assert.match(smoke, /AWH_DATA_DIR/);
+  assert.match(smoke, /AWH_ALLOW_EXEC: '0'/);
+  assert.match(smoke, /shell: false/);
+  assert.match(smoke, /\/usr\/bin\/open/);
+  assert.match(smoke, /GUI_SANDBOX_BLOCKED/);
+  assert.match(smoke, /-10822|kLS/);
+  assert.match(smoke, /result\.code === 134/);
+  assert.match(smoke, /SIGABRT\|AppKit/);
+  assert.match(smoke, /_RegisterApplication|GetCurrentProcess/);
+  assert.match(smoke, /marker === null/);
+  assert.match(smoke, /--smoke-data-dir/);
+  assert.match(qa, /result\.code === 2/);
+  assert.match(qa, /GUI_SANDBOX_BLOCKED/);
+  assert.match(qa, /interactive GUI validation remains required/);
+  assert.match(main, /uiPaths/);
+  assert.match(main, /cmdKReady/);
+  assert.match(smoke, /result\.stderr/);
 });

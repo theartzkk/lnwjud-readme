@@ -18,4 +18,8 @@ The engine uses fixed executable names and argument arrays with `shell: false`. 
 
 On macOS and Linux, Windows installer QA is explicitly `SKIP_PLATFORM`. A skipped platform gate is not represented as a pass. On Windows, installer work runs only when the existing Forge/Squirrel toolchain is available.
 
+The `ffmpeg` gate is an actual disposable video E2E, not executable detection alone: it resolves both FFmpeg and FFprobe, validates both versions, encodes an ordered temporary frame sequence to H.264/yuv420p MP4 through bounded argv execution, and verifies count, duration, FPS, timebase and decoded ordering.
+
+On macOS, a pre-marker AppKit/LaunchServices abort from the Codex GUI sandbox is reported in the human summary as `GUI_SANDBOX_BLOCKED` and stored with schema-compatible `SKIP` status; it is not an AWH application failure. A real logged-in macOS GUI launch outside Codex is still required for desktop runtime PASS.
+
 `.github/workflows/ci.yml` remains unchanged in this milestone and is not required by the local runtime.

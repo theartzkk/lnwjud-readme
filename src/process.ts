@@ -16,28 +16,50 @@ export interface ProcessInvocation {
   args: string[];
 }
 
+function discoveryDirectories(): string[] {
+  const pathEntries = (process.env.PATH ?? '').split(delimiter).filter(Boolean);
+  const home = process.env.HOME ?? process.env.USERPROFILE;
+  const userDirectories = home
+    ? [join(home, '.local', 'bin'), join(home, 'bin'), join(home, '.asdf', 'shims'), join(home, '.nvm', 'current', 'bin'), join(home, '.fnm', 'current', 'bin')]
+    : [];
+  const commonDirectories = process.platform === 'darwin'
+    ? ['/opt/homebrew/bin', '/opt/homebrew/sbin', '/usr/local/bin', '/usr/local/sbin', '/opt/local/bin', '/opt/local/sbin', '/usr/bin', '/bin', '/usr/sbin', '/sbin']
+    : process.platform === 'win32'
+      ? [
+          process.env.ProgramFiles ? join(process.env.ProgramFiles, 'nodejs') : '',
+          process.env.APPDATA ? join(process.env.APPDATA, 'npm') : '',
+          process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'Microsoft', 'WindowsApps') : '',
+        ]
+      : ['/usr/local/bin', '/usr/local/sbin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
+  return [...new Set([...pathEntries, dirname(process.execPath), ...userDirectories, ...commonDirectories].filter(Boolean))];
+}
+
+async function executableExists(path: string): Promise<boolean> {
+  try {
+    await access(path, process.platform === 'win32' ? constants.F_OK : constants.F_OK | constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function resolveExecutable(command: string): Promise<string> {
   if (isAbsolute(command)) {
-    await access(command, constants.F_OK);
+    if (!(await executableExists(command))) throw new Error(`Executable is not available: ${command}`);
     return command;
   }
+  if (!/^[A-Za-z0-9._+-]+$/.test(command)) throw new Error(`Executable name is unsafe: ${command}`);
 
-  const pathEntries = (process.env.PATH ?? '').split(delimiter).filter(Boolean);
   const extensions = process.platform === 'win32'
     ? (process.env.PATHEXT ?? '.EXE;.CMD;.BAT;.COM').split(';').filter(Boolean)
     : [''];
   const hasExtension = extname(command) !== '';
 
-  for (const rawDir of pathEntries) {
+  for (const rawDir of discoveryDirectories()) {
     const dir = rawDir.replace(/^"|"$/g, '');
     const candidates = hasExtension ? [join(dir, command)] : extensions.map((ext) => join(dir, `${command}${ext}`));
     for (const candidate of candidates) {
-      try {
-        await access(candidate, constants.F_OK);
-        return candidate;
-      } catch {
-        // Keep searching PATH without falling back to the workspace directory.
-      }
+      if (await executableExists(candidate)) return candidate;
     }
   }
 
@@ -153,7 +175,8 @@ export async function runPackageScript(
   cwd: string,
   packageManager: string | undefined,
   command: PackageCommand,
+  env?: NodeJS.ProcessEnv,
 ): Promise<ExecResult> {
   const invocation = await resolvePackageInvocation(packageManager, command);
-  return execFile(invocation.executable, invocation.args, cwd, 15 * 60_000);
+  return execFile(invocation.executable, invocation.args, cwd, 15 * 60_000, env);
 }

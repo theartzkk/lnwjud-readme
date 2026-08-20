@@ -34,6 +34,9 @@ local control, explicit permissions, and recoverable changes.
 - M3E.1 additive SQLite migration safety is implemented locally with preflight, ledger, idempotent rerun, rollback testing, and a reviewed VPS runbook; it has not been run on the VPS.
 - M3E.2 Secure Enrollment API and local device client are implemented locally only; the API is separate from browser Hub Read.
 - M3E-FINAL local implementation is READY FOR PRODUCTION VALIDATION: macOS Keychain and Windows Credential Manager adapters, Desktop enrollment UX, additive M3E.2 migration package, isolated Nginx/PHP-FPM templates, and rollback runbook are present and locally tested.
+- Autopilot v0.5 local-first product path is implemented: first-run trusted-device metadata, goal-based Task Contract, reusable project profiles, bounded local runner, QA artifacts, continuity checkpoints, Artifact Center, and Desktop Task Center.
+- A local end-to-end dogfood passed from goal through Project Context, checkpoint, allowlisted test/typecheck/build gates, QA artifact, continuity checkpoint, and discovery from a second device data directory.
+- The registered real AWH project completed the `general-node` profile locally; test/typecheck/build gates passed, the disposable FFmpeg/FFprobe frame-sequence → MP4 E2E passed with 8 ordered frames at 5 FPS, H.264/yuv420p output, and completion continuity metadata is discoverable from a second data directory.
 - M3E is not CLOSED: no real Mac/Windows pair has been performed in this local milestone, and the verified production device count is not yet `2`.
 
 ## Current limitations
@@ -44,8 +47,12 @@ local control, explicit permissions, and recoverable changes.
 - Mac ↔ Hub ↔ Windows continuity is a goal, not a verified service.
 - Large assets require a future separate asset layer.
 - macOS packaging is not complete.
+- Under the Codex launch context, the installed Electron 43.2.0 x64 binary has a real native AppKit abort before app startup (`EXC_CRASH/SIGABRT` at `_RegisterApplication`); `/usr/bin/open` additionally returns LaunchServices `-10822`. The smoke harness safely isolates temporary data and classifies that pre-marker Codex GUI failure as `GUI_SANDBOX_BLOCKED`, never as an AWH application failure or PASS. A separately authorized logged-in macOS GUI LaunchServices launch produced a valid AWH marker with `stage: passed`, `apiReady: true`, `requiredDom: true`, all Overview/Projects/Autopilot/Artifacts/Memory paths active, and `cmdKReady: true`; that interactive proof is required for `MAC_DESKTOP_RUNTIME_PASS`. Forge packaging also cannot complete offline because the packager attempts to resolve the Electron artifact from github.com; no package was produced or deployed.
+- FFmpeg capability detection is fixed for reduced GUI PATHs. The real disposable frame-sequence → MP4 E2E passes through FFmpeg and FFprobe, including ordering/count/duration/FPS/timebase/codec/pixel-format checks; Remotion readiness remains unverified because no AWH-registered Remotion project is selected.
 - OpenAI Secure MCP Tunnel control-plane end-to-end connectivity is not claimed.
 - AI provider adapters are local integration points; no AWH-owned model is bundled.
 - VPS live behavior is recorded from field verification; credentials, passwords, public IPs, and SSH details remain intentionally outside Project Memory.
 - M3D Hub Read remains read-only. M3E does not enable source writes, remote execution, synchronization, browser bearer tokens, or MCP proxying.
 - M3E-FINAL preserves those boundaries; production validation is the next human-gated action.
+- Autopilot does not make GitHub Actions, browser shell, remote execution, source synchronization, MCP proxying, or unrestricted commands available. Browser tasks/artifacts remain review-only placeholders until a future sanitized Hub read contract exists.
+- AWH v0.5 is locally usable for bounded routine project QA, but production publish, DB migration, destructive operations, credential changes, and Project Memory writes remain explicit human-approval work.

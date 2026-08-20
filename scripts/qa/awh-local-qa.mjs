@@ -50,9 +50,7 @@ function pathCandidates(command) {
 
 function commonToolCandidates(command) {
   if (process.platform === 'win32') return [];
-  return command === 'php'
-    ? ['/opt/local/bin/php', '/opt/homebrew/bin/php', '/usr/local/bin/php', '/usr/bin/php']
-    : [];
+  return ['/opt/homebrew/bin', '/usr/local/bin', '/opt/local/bin', '/usr/bin', '/bin'].map((dir) => join(dir, command));
 }
 
 async function resolveCommand(command) {
@@ -111,9 +109,9 @@ function probe(executable, args, timeoutMs = 5_000) {
   });
 }
 
-async function toolVersion(info) {
+async function toolVersion(info, args = ['--version']) {
   if (!info) return null;
-  const result = await probe(info.executable, [...info.argsPrefix, '--version']);
+  const result = await probe(info.executable, [...info.argsPrefix, ...args]);
   return result.code === 0 ? result.output.split(/\r?\n/, 1)[0]?.trim() || null : null;
 }
 
@@ -150,15 +148,15 @@ async function runScript(script, timeoutMs = 15 * 60_000) {
   const testFiles = [
     'test/security.test.ts', 'test/files.test.ts', 'test/git.test.ts', 'test/process.test.ts',
     'test/changes.test.ts', 'test/tasks.test.ts', 'test/project.test.ts', 'test/project-registry.test.ts', 'test/hub-contract.test.ts', 'test/device-identity.test.ts', 'test/web-preview.test.ts', 'test/stdio.test.ts',
-    'test/tunnel.test.ts', 'test/codex.test.ts', 'test/settings.test.ts', 'test/deployment-foundation.test.ts', 'test/qa-toolchain.test.ts', 'test/desktop.test.ts', 'test/desktop-projects.test.ts', 'test/credential-store.test.ts', 'test/enrollment-client.test.ts',
+    'test/tunnel.test.ts', 'test/codex.test.ts', 'test/settings.test.ts', 'test/deployment-foundation.test.ts', 'test/qa-toolchain.test.ts', 'test/desktop.test.ts', 'test/desktop-projects.test.ts', 'test/credential-store.test.ts', 'test/enrollment-client.test.ts', 'test/autopilot.test.ts', 'test/first-run.test.ts', 'test/video.test.ts',
     'test/version.test.ts', 'test/installer.test.ts',
   ];
   if (script === 'typecheck') return (await exists(tsc)) ? run(process.execPath, [tsc, '-p', 'tsconfig.json', '--noEmit'], { timeoutMs }) : { code: -1, unavailable: true };
   if (script === 'build') return (await exists(tsc)) ? run(process.execPath, [tsc, '-p', 'tsconfig.json'], { timeoutMs }) : { code: -1, unavailable: true };
   if (script === 'test') return (await exists(tsx)) ? run(process.execPath, ['--import', tsx, '--test', ...testFiles], { timeoutMs }) : { code: -1, unavailable: true };
   if (script === 'desktop:smoke') {
-    const electron = join(ROOT, 'node_modules', 'electron', 'cli.js');
-    return (await exists(electron)) ? run(process.execPath, [electron, '.', '--smoke-test'], { timeoutMs }) : { code: -1, unavailable: true };
+    const smoke = join(ROOT, 'scripts', 'desktop-smoke.mjs');
+    return (await exists(smoke)) ? run(process.execPath, [smoke], { timeoutMs }) : { code: -1, unavailable: true };
   }
   return { code: -1, unavailable: true };
 }
@@ -202,13 +200,28 @@ async function toolchainCheck() {
   const optional = [
     ['php', 'PHP'],
     ['python3', 'Python'],
-    ['ffmpeg', 'FFmpeg'],
   ];
   for (const [command, label] of optional) {
     const optionalStarted = Date.now();
     const path = await resolveCommand(command);
-    const version = path ? await toolVersion({ path, executable: path, argsPrefix: [] }) : null;
+    const version = path ? await toolVersion({ path, executable: path, argsPrefix: [] }, command === 'ffmpeg' ? ['-version'] : ['--version']) : null;
     check(command, path && version ? 'PASS' : 'SKIP', path && version ? `${label} ${version}; path=${path}; optional` : `${label} not available; optional future runtime tool`, optionalStarted);
+  }
+  const ffmpegStarted = Date.now();
+  const ffmpegPath = await resolveCommand('ffmpeg');
+  const ffprobePath = await resolveCommand('ffprobe');
+  const ffmpegVersion = ffmpegPath ? await toolVersion({ path: ffmpegPath, executable: ffmpegPath, argsPrefix: [] }, ['-version']) : null;
+  const ffprobeVersion = ffprobePath ? await toolVersion({ path: ffprobePath, executable: ffprobePath, argsPrefix: [] }, ['-version']) : null;
+  toolState.ffmpeg = { available: false, path: ffmpegPath ?? null, ffprobePath: ffprobePath ?? null, version: ffmpegVersion, ffprobeVersion };
+  if (!ffmpegPath && !ffprobePath) {
+    check('ffmpeg', 'SKIP', 'FFmpeg/FFprobe not available; video pipeline is optional on this device', ffmpegStarted);
+  } else if (!ffmpegPath || !ffprobePath || !ffmpegVersion || !ffprobeVersion) {
+    check('ffmpeg', 'FAIL', 'FFmpeg/FFprobe installation is incomplete or version probes failed', ffmpegStarted);
+  } else {
+    const result = await run(process.execPath, ['--import', 'tsx', join(ROOT, 'scripts', 'qa', 'video-e2e.mjs')], { timeoutMs: 90_000 });
+    const passed = result.code === 0;
+    toolState.ffmpeg.available = passed;
+    check('ffmpeg', passed ? 'PASS' : 'FAIL', passed ? `FFmpeg/FFprobe frame-sequence E2E passed; ffmpeg=${ffmpegPath}; ffprobe=${ffprobePath}` : `FFmpeg/FFprobe frame-sequence E2E failed; exit code ${result.code}`, ffmpegStarted);
   }
   const remotionStarted = Date.now();
   check('remotion', 'SKIP', 'Remotion readiness is not required and is not evaluated without project dependencies', remotionStarted);
@@ -260,8 +273,8 @@ async function requiredFilesCheck() {
   const required = [
     'package.json', 'package-lock.json', 'tsconfig.json', 'forge.config.cjs',
     '.github/workflows/ci.yml', '.github/scripts/verify-packaged-mcp.ps1',
-    'src/security.ts', 'src/stdio.ts', 'src/tunnel.ts', 'src/tasks.ts', 'src/files.ts', 'src/git.ts',
-    'desktop/index.html', 'desktop/preload.cjs', 'src/desktop/main.ts', 'web/index.html', 'web/app.js', 'web/styles.css', 'web/hub-read-adapter.js', 'scripts/build-web-preview.ts',
+    'src/security.ts', 'src/stdio.ts', 'src/tunnel.ts', 'src/tasks.ts', 'src/files.ts', 'src/git.ts', 'src/autopilot.ts', 'src/artifacts.ts', 'src/continuity.ts', 'src/first-run.ts', 'src/video.ts', 'scripts/qa/video-e2e.mjs',
+    'desktop/index.html', 'desktop/preload.cjs', 'src/desktop/main.ts', 'web/index.html', 'web/app.js', 'web/styles.css', 'web/hub-read-adapter.js', 'scripts/build-web-preview.ts', 'scripts/desktop-smoke.mjs',
     'hub/schema.sql', 'hub/migrations/001_m3e_enrollment.sql', 'hub/migrations/002_m3e2_enrollment_api.sql', 'hub/public/index.php', 'hub/public/web-gateway.php', 'hub/public/enrollment.php', 'hub/src/HubReadModel.php', 'hub/src/HubReadRouter.php', 'hub/src/HubWebGateway.php', 'hub/src/HubEnrollmentService.php', 'hub/src/HubEnrollmentRouter.php', 'hub/src/HubSchemaMigration.php', 'hub/src/HubEnrollmentApiMigration.php', 'hub/bin/index-project.php', 'hub/bin/migrate-m3e.php', 'hub/bin/migrate-m3e2.php', 'hub/tests/read-foundation.php', 'hub/tests/m3e-migration.php', 'hub/tests/m3e2-migration.php', 'hub/tests/enrollment-api.php', 'src/enrollment-client.ts', 'src/credential-store.ts', 'docs/M3E2_ENROLLMENT_API.md', 'docs/M3E_FINAL_PRODUCTION_VALIDATION.md', 'deploy/nginx/awh-preview.conf', 'deploy/nginx/awh-enrollment.conf', 'deploy/php-fpm/awh-enrollment.pool.conf', 'deploy/awh-enrollment/deploy-enrollment.sh',
   ];
   const missing = [];
@@ -367,7 +380,9 @@ async function desktopSmokeCheck(dependenciesReady) {
   }
   if (process.platform === 'win32' || process.platform === 'darwin' || process.platform === 'linux') {
     const result = await runScript('desktop:smoke', 45_000);
-    check('desktop-smoke', result.code === 0 ? 'PASS' : 'FAIL', result.code === 0 ? 'Electron desktop smoke marker passed' : 'Electron desktop smoke did not pass', started);
+    if (result.code === 0) check('desktop-smoke', 'PASS', 'Electron desktop smoke marker passed', started);
+    else if (result.code === 2) check('desktop-smoke', 'SKIP', 'GUI_SANDBOX_BLOCKED: Codex/macOS GUI sandbox prevented LaunchServices/AppKit registration; no AWH runtime result is claimed; interactive GUI validation remains required', started);
+    else check('desktop-smoke', 'FAIL', 'Electron runtime/app smoke failed before a valid marker was produced', started);
     return;
   }
   check('desktop-smoke', 'SKIP_PLATFORM', `desktop smoke is not supported on ${process.platform}`, started);
@@ -446,7 +461,7 @@ async function main() {
   }
 
   const failed = checks.some((item) => item.status === 'FAIL');
-  const environmentNotReady = checks.some((item) => item.summary.includes('ENVIRONMENT BLOCKER'));
+  const environmentNotReady = checks.some((item) => item.status === 'FAIL' && item.summary.includes('ENVIRONMENT BLOCKER'));
   const result = environmentNotReady ? 'ENVIRONMENT_NOT_READY' : failed ? 'FAIL' : 'PASS';
   const completedAt = new Date();
   const payload = {

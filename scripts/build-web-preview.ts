@@ -60,7 +60,7 @@ async function main(): Promise<void> {
       projectId: context.project.projectId,
       name: context.project.name,
       type: context.project.type,
-      milestone: 'M3C0 — AWH Web Surface / Remote Read-Only Preview',
+      milestone: 'Autopilot v0.5 — First Usable Product (read-only browser view)',
       handoffSummary: safeHandoffSummary(context.memory['HANDOFF.md']),
       memory,
     },
@@ -76,6 +76,16 @@ async function main(): Promise<void> {
     audit: {
       status: 'Preview only',
       summary: 'No remote audit stream or credential data is exposed here.',
+    },
+    tasks: {
+      status: 'Desktop runtime only',
+      summary: 'Local Autopilot tasks are started and approved in AWH Desktop; this browser surface is review-only.',
+      count: 0,
+    },
+    artifacts: {
+      status: 'Preview only',
+      summary: 'Artifact metadata will appear through a future sanitized Hub read contract.',
+      count: 0,
     },
   };
   await mkdir(OUTPUT, { recursive: true });

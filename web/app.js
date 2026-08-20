@@ -31,6 +31,10 @@ import { loadWebData } from './hub-read-adapter.js';
     text('build-summary', data.builds.summary);
     text('audit-status', data.audit.status);
     text('audit-summary', data.audit.summary);
+    text('tasks-status', data.tasks?.status || '—');
+    text('tasks-summary', data.tasks?.summary || '—');
+    text('artifacts-status', data.artifacts?.status || '—');
+    text('artifacts-summary', data.artifacts?.summary || '—');
   }
 
   loadWebData()
