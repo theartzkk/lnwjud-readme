@@ -30,6 +30,7 @@ local control, explicit permissions, and recoverable changes.
 - M3C1 PHP/SQLite Hub read foundation and M3D same-origin web gateway are operational on the VPS; field verification confirms live HTTPS access on desktop and iPhone.
 - M3D field state: Connected read-only, one indexed project, and PHP-FPM + SQLite + Nginx gateway operational.
 - M3C2 hosting foundation and VPS bootstrap are documented design/templates only.
+- M3E Secure Device Enrollment Foundation is implemented locally: independent device enrollment, bounded pairing, token rotation/revocation, and explicit project membership are server/domain foundations only; no enrollment transport is exposed yet.
 
 ## Current limitations
 
@@ -41,3 +42,4 @@ local control, explicit permissions, and recoverable changes.
 - OpenAI Secure MCP Tunnel control-plane end-to-end connectivity is not claimed.
 - AI provider adapters are local integration points; no AWH-owned model is bundled.
 - VPS live behavior is recorded from field verification; credentials, passwords, public IPs, and SSH details remain intentionally outside Project Memory.
+- M3D Hub Read remains read-only. M3E does not enable source writes, remote execution, synchronization, browser bearer tokens, or MCP proxying.

@@ -2,7 +2,7 @@
 
 ## NOW
 
-- Close M3D after recording verified live HTTPS field state.
+- Review M3E Secure Device Enrollment Foundation; keep enrollment transport human-gated.
 
 ## NEXT
 
@@ -36,3 +36,4 @@
 - M3C0 browser-safe static Remote Read-Only Preview.
 - M3C1 PHP/SQLite Hub read foundation.
 - M3D AWH Hub Live Read: HTTPS, Nginx Basic Auth, PHP-FPM, SQLite, Connected read-only, one indexed project, desktop and iPhone verified.
+- M3E Secure Device Enrollment Foundation: local-only domain/schema/tests complete; no deployment or browser mutation route.

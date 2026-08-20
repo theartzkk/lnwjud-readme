@@ -150,7 +150,7 @@ final class HubReadModel
 
     public function devices(): array
     {
-        $rows = $this->pdo->query('SELECT device_id, display_name, platform, arch, app_version, last_seen_at, revoked_at FROM devices ORDER BY display_name, device_id LIMIT 100')->fetchAll();
+        $rows = $this->pdo->query("SELECT d.device_id, d.display_name, d.platform, d.arch, d.app_version, d.last_seen_at, d.revoked_at, e.revoked_at AS enrollment_revoked, CASE WHEN e.device_id IS NULL THEN 'unmanaged' WHEN d.revoked_at IS NOT NULL OR e.revoked_at IS NOT NULL THEN 'revoked' ELSE 'active' END AS enrollment_status, (SELECT COUNT(*) FROM device_project_memberships m WHERE m.device_id = d.device_id AND m.revoked_at IS NULL) AS project_count FROM devices d LEFT JOIN device_enrollments e ON e.device_id = d.device_id ORDER BY d.display_name, d.device_id LIMIT 100")->fetchAll();
         return ['schemaVersion' => self::SCHEMA_VERSION, 'devices' => array_map(static fn (array $row): array => [
             'schemaVersion' => 1,
             'deviceId' => (string) $row['device_id'],
@@ -160,6 +160,8 @@ final class HubReadModel
             'appVersion' => (string) $row['app_version'],
             'lastSeenAt' => (string) $row['last_seen_at'],
             'revokedAt' => $row['revoked_at'] === null ? null : (string) $row['revoked_at'],
+            'enrollmentStatus' => in_array($row['enrollment_status'] ?? '', ['active', 'revoked', 'unmanaged'], true) ? $row['enrollment_status'] : 'unmanaged',
+            'projectCount' => is_numeric($row['project_count'] ?? null) ? (int) $row['project_count'] : 0,
         ], $rows)];
     }
 

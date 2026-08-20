@@ -2,7 +2,8 @@
 
 M3C1 adds a minimal PHP-FPM/SQLite read foundation that follows the M3A
 TypeScript contract. M3D adds a reviewed same-origin web gateway for the same
-read model; these repository changes have not been deployed by this task.
+read model. Field verification reports the gateway live over HTTPS on the VPS
+and iPhone with Connected read-only status and one indexed project.
 
 ## API boundary
 

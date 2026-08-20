@@ -64,3 +64,16 @@
 - M3D is field-verified live over HTTPS on the VPS and iPhone. The operational
   path is Nginx Basic Auth → PHP-FPM Unix socket → query-only SQLite Hub read;
   the verified state is Connected read-only with one indexed project.
+
+## DEVICE ENROLLMENT BOUNDARY
+
+- M3B device identity remains local and UUID-based; every device has an
+  independent credential.
+- M3E stores only pairing-code and token hashes in SQLite. Pairing is bounded,
+  expiring, single-use, and atomically consumed.
+- Owner bootstrap closes permanently after initialization. Enrollment binds
+  user, device, and explicit project memberships.
+- Token authentication checks device binding, expiry, revocation, and active
+  enrollment before project authorization.
+- `/api/v1/devices` returns sanitized metadata only. Enrollment mutations are
+  not connected to the browser read gateway.

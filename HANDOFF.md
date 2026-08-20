@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-M3D — AWH Hub Live Read Connection — CLOSED.
+M3D — AWH Hub Live Read Connection — CLOSED; M3E Secure Device Enrollment Foundation — LOCAL-ONLY.
 
 ## Completed
 
@@ -11,6 +11,8 @@ Migration Engine; M1.3B Active Data Directory Policy; M2A Project Registry +
 Project Memory Foundation; M2B first real AWH Project; M2C Desktop Projects UX;
 M3A Hub contract; M3B device identity foundation; M3C0 static browser preview;
 M3D live Hub read over HTTPS verified on VPS and iPhone.
+M3E local PHP/SQLite enrollment domain foundation is implemented and tested;
+no enrollment endpoint is deployed or exposed through the browser gateway.
 
 ## Source of Truth
 
@@ -18,11 +20,12 @@ M3D live Hub read over HTTPS verified on VPS and iPhone.
 - Current local HEAD is recorded by Git; this M3D closeout remains uncommitted.
 - Current working tree: intentionally dirty with the M3D closeout changes.
 - Field verification: Connected read-only, one indexed project, PHP-FPM + SQLite + Nginx gateway operational, HTTPS works on VPS and iPhone.
+- M3E local tests cover owner bootstrap closure, pairing expiry/replay, device binding, token rotation/revocation, project authorization, and sanitized device reads.
 - No VPS, DNS, firewall, SSH, GitHub, production, or shared-hosting action has been performed.
 
 ## Next action
 
-Review the M3D closeout diff and commit locally only after the normal review.
+Review the uncommitted M3E schema/service/tests and commit locally only after the normal review.
 
 ## Blockers and warnings
 

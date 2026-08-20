@@ -22,3 +22,5 @@
 - The web gateway trusts only a reviewed Nginx FastCGI parameter, never a client HTTP header; PHP-FPM uses a Unix socket and SQLite remains query-only for HTTP reads.
 - Browser HUB_READ failures degrade truthfully to the static preview with Offline status.
 - M3D is closed on field evidence: the read-only Hub is live over HTTPS on the VPS and iPhone, with one indexed project and operational Nginx → PHP-FPM → SQLite routing. This does not authorize writes, sync, or production migration.
+- M3E reuses M3B device UUIDs and auth contracts instead of creating a second identity system. Pairing and token secrets are hash-only server state; device credentials remain independent per device.
+- Enrollment is a server/domain foundation only. The browser Hub Read perimeter remains read-only, and no enrollment, write, sync, execution, or MCP proxy route is enabled.

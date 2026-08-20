@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/src/HubReadModel.php';
 require_once dirname(__DIR__) . '/src/HubReadRouter.php';
 require_once dirname(__DIR__) . '/src/HubWebGateway.php';
+require_once dirname(__DIR__) . '/src/HubEnrollmentService.php';
 
 if (!in_array('sqlite', PDO::getAvailableDrivers(), true)) {
     fwrite(STDOUT, "AWH PHP Hub read foundation: SKIP pdo_sqlite extension unavailable\n");
@@ -81,6 +82,49 @@ try {
     $gatewayRead = HubReadRouter::dispatch('GET', '/api/v1/projects', ['AWH_WEB_GATEWAY_TRUSTED_PERIMETER' => 'nginx'], $readModel, false);
     test_assert($gatewayRead['status'] === 200 && !str_contains($gatewayRead['body'], $workspace), 'trusted web gateway must expose only sanitized read data');
 
+    $otherWorkspace = $root . DIRECTORY_SEPARATOR . 'other-project';
+    mkdir($otherWorkspace . DIRECTORY_SEPARATOR . '.awh', 0700, true);
+    file_put_contents($otherWorkspace . DIRECTORY_SEPARATOR . '.awh' . DIRECTORY_SEPARATOR . 'project.json', json_encode([
+        'schemaVersion' => 1,
+        'projectId' => '523b45c0-23e1-408d-ae0f-ac5eca7f6900',
+        'name' => 'Other Project',
+        'type' => 'node',
+        'createdAt' => '2026-01-01T00:00:00.000Z',
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    $model->indexLocalProject($otherWorkspace);
+    $enrollment = HubEnrollmentService::open($database, dirname(__DIR__) . '/schema.sql');
+    $ownerId = '623b45c0-23e1-408d-ae0f-ac5eca7f6900';
+    $enrollment->initializeOwner($ownerId, 'Art', [$manifest['projectId']], '2026-08-19T00:00:00.000Z');
+    test_throws(fn () => $enrollment->initializeOwner('723b45c0-23e1-408d-ae0f-ac5eca7f6900', 'Second Owner', [], '2026-08-19T00:00:00.000Z'), 'owner bootstrap must not reopen');
+    $expired = $enrollment->issuePairingCode($ownerId, [$manifest['projectId']], '2026-08-19T00:00:00.000Z', 1);
+    test_throws(fn () => $enrollment->enrollDevice([
+        'schemaVersion' => 1, 'pairingCode' => $expired['pairingCode'], 'deviceId' => '823b45c0-23e1-408d-ae0f-ac5eca7f6900', 'displayName' => 'Expired', 'platform' => 'darwin', 'arch' => 'arm64', 'appVersion' => '0.4.0',
+    ], '2026-08-19T00:00:02.000Z'), 'expired pairing code must fail closed');
+    test_throws(fn () => $enrollment->enrollDevice([
+        'schemaVersion' => 1, 'pairingCode' => 'malformed', 'deviceId' => '823b45c0-23e1-408d-ae0f-ac5eca7f6900', 'displayName' => 'Malformed', 'platform' => 'darwin', 'arch' => 'arm64', 'appVersion' => '0.4.0',
+    ], '2026-08-19T00:00:00.000Z'), 'malformed pairing code must fail closed');
+    $pairing = $enrollment->issuePairingCode($ownerId, [$manifest['projectId']], '2026-08-19T00:00:00.000Z');
+    $enrolled = $enrollment->enrollDevice([
+        'schemaVersion' => 1, 'pairingCode' => $pairing['pairingCode'], 'deviceId' => '823b45c0-23e1-408d-ae0f-ac5eca7f6900', 'displayName' => 'School Mac', 'platform' => 'darwin', 'arch' => 'arm64', 'appVersion' => '0.4.0',
+    ], '2026-08-19T00:00:01.000Z');
+    test_assert(isset($enrolled['accessToken']) && !str_contains(json_encode($model->devices()), $enrolled['accessToken']), 'device token must never appear in sanitized device metadata');
+    test_throws(fn () => $enrollment->enrollDevice([
+        'schemaVersion' => 1, 'pairingCode' => $pairing['pairingCode'], 'deviceId' => '923b45c0-23e1-408d-ae0f-ac5eca7f6900', 'displayName' => 'Replay', 'platform' => 'win32', 'arch' => 'x64', 'appVersion' => '0.4.0',
+    ], '2026-08-19T00:00:02.000Z'), 'pairing code replay must fail closed');
+    $duplicatePairing = $enrollment->issuePairingCode($ownerId, [$manifest['projectId']], '2026-08-19T00:00:03.000Z');
+    test_throws(fn () => $enrollment->enrollDevice([
+        'schemaVersion' => 1, 'pairingCode' => $duplicatePairing['pairingCode'], 'deviceId' => '823b45c0-23e1-408d-ae0f-ac5eca7f6900', 'displayName' => 'Duplicate', 'platform' => 'win32', 'arch' => 'x64', 'appVersion' => '0.4.0',
+    ], '2026-08-19T00:00:04.000Z'), 'duplicate device enrollment must fail closed');
+    test_throws(fn () => $enrollment->rotateToken($enrolled['accessToken'], '923b45c0-23e1-408d-ae0f-ac5eca7f6900', '2026-08-19T00:00:05.000Z'), 'forged device ID must fail closed');
+    $rotated = $enrollment->rotateToken($enrolled['accessToken'], $enrolled['deviceId'], '2026-08-19T00:00:05.000Z');
+    test_throws(fn () => $enrollment->assertProjectAccess($enrolled['accessToken'], $manifest['projectId'], '2026-08-19T00:00:06.000Z'), 'rotated credential must reject the old token');
+    test_assert($enrollment->assertProjectAccess($rotated['accessToken'], $manifest['projectId'], '2026-08-19T00:00:06.000Z')['projectId'] === $manifest['projectId'], 'active rotated credential must authorize its permitted project');
+    test_throws(fn () => $enrollment->assertProjectAccess($rotated['accessToken'], '523b45c0-23e1-408d-ae0f-ac5eca7f6900', '2026-08-19T00:00:06.000Z'), 'cross-project authorization must fail closed');
+    $enrollment->revokeToken($rotated['accessToken'], $enrolled['deviceId'], '2026-08-19T00:00:07.000Z');
+    test_throws(fn () => $enrollment->assertProjectAccess($rotated['accessToken'], $manifest['projectId'], '2026-08-19T00:00:08.000Z'), 'revoked credential must fail closed');
+    $deviceJson = json_encode($model->devices(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    test_assert(is_string($deviceJson) && !preg_match('/accessToken|tokenHash|pairingCode|password|secret|workspacePath|\/Users\/|[A-Za-z]:\\\\/i', $deviceJson), 'device read metadata must not leak secrets or local paths');
+
     $before = count($model->projects()['projects']);
     $badWorkspace = $root . DIRECTORY_SEPARATOR . 'bad';
     mkdir($badWorkspace . DIRECTORY_SEPARATOR . '.awh', 0700, true);
@@ -106,5 +150,8 @@ try {
     @unlink($database);
     @rmdir($badWorkspace ?? '');
     @rmdir(($badWorkspace ?? '') . DIRECTORY_SEPARATOR . '.awh');
+    @unlink(($otherWorkspace ?? '') . DIRECTORY_SEPARATOR . '.awh' . DIRECTORY_SEPARATOR . 'project.json');
+    @rmdir(($otherWorkspace ?? '') . DIRECTORY_SEPARATOR . '.awh');
+    @rmdir($otherWorkspace ?? '');
     @rmdir($root);
 }
