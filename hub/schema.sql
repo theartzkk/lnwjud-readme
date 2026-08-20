@@ -112,6 +112,13 @@ CREATE TABLE IF NOT EXISTS device_project_memberships (
     FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS enrollment_rate_limits (
+    rate_key TEXT PRIMARY KEY,
+    window_started_at TEXT NOT NULL,
+    attempts INTEGER NOT NULL CHECK (attempts >= 0),
+    blocked_until TEXT
+);
+
 CREATE TABLE IF NOT EXISTS builds (
     build_id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL,

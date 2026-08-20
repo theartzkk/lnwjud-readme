@@ -80,3 +80,7 @@
 - M3E.1 migrates existing M3D databases additively in one transaction, records
   a checksum-backed migration ledger and schema version, and never replays the
   full fresh-install schema against production.
+- M3E.2 keeps enrollment mutations in a separate PHP front controller and
+  local client. The browser read gateway never dispatches enrollment routes;
+  all mutation requests are bounded POST/JSON and require owner/device
+  authentication or the one-time bootstrap approval boundary.

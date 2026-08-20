@@ -25,3 +25,4 @@
 - M3E reuses M3B device UUIDs and auth contracts instead of creating a second identity system. Pairing and token secrets are hash-only server state; device credentials remain independent per device.
 - Enrollment is a server/domain foundation only. The browser Hub Read perimeter remains read-only, and no enrollment, write, sync, execution, or MCP proxy route is enabled.
 - M3E.1 uses a dedicated additive migration with preflight, backup, integrity verification, checksum ledger, idempotent rerun, and backup restore recovery. It is not a production deployment and does not alter the M3D tables.
+- M3E.2 separates enrollment mutations from browser Hub Read and stores rate-limit state in a dedicated additive migration. No enrollment route is enabled by the M3D Nginx read gateway until separately reviewed.

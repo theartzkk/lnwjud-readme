@@ -38,3 +38,4 @@
 - M3D AWH Hub Live Read: HTTPS, Nginx Basic Auth, PHP-FPM, SQLite, Connected read-only, one indexed project, desktop and iPhone verified.
 - M3E Secure Device Enrollment Foundation: local-only domain/schema/tests complete; no deployment or browser mutation route.
 - M3E.1 Enrollment Production Migration Safety: local migration, verification, rollback runbook and tests complete; VPS migration remains pending human review.
+- M3E.2 Secure Enrollment API + Local Device Client: local implementation complete; migration 002, deployment and OS credential adapter remain pending review.

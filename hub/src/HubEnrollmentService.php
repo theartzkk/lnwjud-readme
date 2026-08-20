@@ -45,6 +45,26 @@ final class HubEnrollmentService
         return new self($pdo);
     }
 
+    /** Open only an already-migrated database; never creates schema on an API request. */
+    public static function openExisting(string $databasePath): self
+    {
+        if ($databasePath === '' || str_contains($databasePath, "\0")) throw new HubEnrollmentException('Enrollment database configuration is invalid', 'DATABASE_CONFIG_INVALID');
+        try {
+            $pdo = new PDO('sqlite:' . $databasePath, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES => false]);
+            $pdo->exec('PRAGMA foreign_keys = ON');
+            $pdo->exec('PRAGMA busy_timeout = 2500');
+            return new self($pdo);
+        } catch (Throwable) {
+            throw new HubEnrollmentException('Enrollment storage is unavailable', 'DATABASE_UNAVAILABLE');
+        }
+    }
+
+    public function assertApiSchemaReady(): void
+    {
+        $query = $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'enrollment_rate_limits'");
+        if ($query->fetchColumn() === false) throw new HubEnrollmentException('Enrollment API schema migration is required', 'ENROLLMENT_SCHEMA_NOT_READY');
+    }
+
     public function initializeOwner(string $userId, string $displayName, array $projectIds, ?string $now = null): array
     {
         $userId = self::uuid($userId, 'userId');
@@ -101,6 +121,13 @@ final class HubEnrollmentService
         return ['schemaVersion' => 1, 'pairingCode' => $code, 'pairingCodeId' => $codeId, 'issuedAt' => $now, 'expiresAt' => $expires, 'projectCount' => count($projects)];
     }
 
+    public function issuePairingCodeForToken(string $presentedToken, array $projectIds, ?string $now = null, int $ttlSeconds = self::TTL_SECONDS): array
+    {
+        $auth = $this->authenticate($presentedToken, null, $now);
+        $this->assertOwner((string) $auth['user_id']);
+        return $this->issuePairingCode((string) $auth['user_id'], $projectIds, $now, $ttlSeconds);
+    }
+
     public function enrollDevice(array $request, ?string $now = null): array
     {
         self::exactKeys($request, ['appVersion', 'arch', 'deviceId', 'displayName', 'pairingCode', 'platform', 'schemaVersion']);
@@ -152,6 +179,13 @@ final class HubEnrollmentService
         return ['schemaVersion' => 1, 'deviceId' => $deviceId, 'userId' => (string) $record['user_id'], 'accessToken' => $token, 'expiresAt' => $expires, 'tokenType' => 'Bearer', 'projectCount' => count($projectIds)];
     }
 
+    public function enrollDeviceRateLimited(array $request, ?string $now = null): array
+    {
+        $deviceId = is_string($request['deviceId'] ?? null) ? $request['deviceId'] : '';
+        $this->assertRateLimit($deviceId, $now ?? gmdate('c'));
+        return $this->enrollDevice($request, $now);
+    }
+
     public function rotateToken(string $presentedToken, string $deviceId, ?string $now = null): array
     {
         $auth = $this->authenticate($presentedToken, $deviceId, $now);
@@ -175,6 +209,27 @@ final class HubEnrollmentService
     {
         $auth = $this->authenticate($presentedToken, $deviceId, $now);
         $this->pdo->prepare('UPDATE device_tokens SET revoked_at = :at WHERE token_id = :id AND revoked_at IS NULL')->execute(['at' => self::timestamp($now ?? gmdate('c'), 'now'), 'id' => $auth['token_id']]);
+    }
+
+    public function revokeDeviceForToken(string $presentedToken, string $targetDeviceId, ?string $now = null): void
+    {
+        $auth = $this->authenticate($presentedToken, null, $now);
+        $targetDeviceId = self::uuid($targetDeviceId, 'deviceId');
+        $this->assertOwner((string) $auth['user_id']);
+        $target = $this->pdo->prepare('SELECT user_id FROM device_enrollments WHERE device_id = :device AND revoked_at IS NULL');
+        $target->execute(['device' => $targetDeviceId]);
+        if ($target->fetchColumn() !== $auth['user_id']) throw new HubEnrollmentException('Device is not owned by the authenticated user', 'DEVICE_FORBIDDEN');
+        $at = self::timestamp($now ?? gmdate('c'), 'now');
+        $this->pdo->beginTransaction();
+        try {
+            $this->pdo->prepare('UPDATE device_enrollments SET revoked_at = :at WHERE device_id = :device')->execute(['at' => $at, 'device' => $targetDeviceId]);
+            $this->pdo->prepare('UPDATE devices SET revoked_at = :at WHERE device_id = :device')->execute(['at' => $at, 'device' => $targetDeviceId]);
+            $this->pdo->prepare('UPDATE device_tokens SET revoked_at = :at WHERE device_id = :device AND revoked_at IS NULL')->execute(['at' => $at, 'device' => $targetDeviceId]);
+            $this->pdo->commit();
+        } catch (Throwable) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw new HubEnrollmentException('Device revocation failed closed', 'DEVICE_REVOKE_FAILED');
+        }
     }
 
     public function assertProjectAccess(string $presentedToken, string $projectId, ?string $now = null): array
@@ -226,6 +281,25 @@ final class HubEnrollmentService
         $query = $this->pdo->prepare('SELECT 1 FROM devices WHERE device_id = :id');
         $query->execute(['id' => $deviceId]);
         return $query->fetchColumn() !== false;
+    }
+
+    private function assertRateLimit(string $rateKey, string $now): void
+    {
+        $rateKey = self::uuid($rateKey, 'deviceId');
+        $now = self::timestamp($now, 'now');
+        $at = strtotime($now);
+        $query = $this->pdo->prepare('SELECT window_started_at, attempts, blocked_until FROM enrollment_rate_limits WHERE rate_key = :key');
+        $query->execute(['key' => $rateKey]);
+        $row = $query->fetch();
+        if (is_array($row) && $row['blocked_until'] !== null && strtotime((string) $row['blocked_until']) > $at) throw new HubEnrollmentException('Pairing attempts are temporarily rate limited', 'RATE_LIMITED');
+        if (!is_array($row) || $at - strtotime((string) $row['window_started_at']) >= 600) {
+            $this->pdo->prepare('INSERT INTO enrollment_rate_limits(rate_key, window_started_at, attempts, blocked_until) VALUES(:key, :at, 1, NULL) ON CONFLICT(rate_key) DO UPDATE SET window_started_at=excluded.window_started_at, attempts=1, blocked_until=NULL')->execute(['key' => $rateKey, 'at' => $now]);
+            return;
+        }
+        $attempts = (int) $row['attempts'] + 1;
+        $blocked = $attempts > 5 ? gmdate('c', $at + 1800) : null;
+        $this->pdo->prepare('UPDATE enrollment_rate_limits SET attempts = :attempts, blocked_until = :blocked WHERE rate_key = :key')->execute(['attempts' => $attempts, 'blocked' => $blocked, 'key' => $rateKey]);
+        if ($blocked !== null) throw new HubEnrollmentException('Pairing attempts are temporarily rate limited', 'RATE_LIMITED');
     }
 
     private static function exactKeys(array $value, array $keys): void

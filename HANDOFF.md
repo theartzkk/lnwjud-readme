@@ -15,6 +15,8 @@ M3E local PHP/SQLite enrollment domain foundation is implemented and tested;
 no enrollment endpoint is deployed or exposed through the browser gateway.
 M3E.1 migration runner, additive SQL, fixtures, and VPS runbook are implemented
 and locally tested; the production database has not been modified.
+M3E.2 enrollment API/router and local client are implemented locally; migration
+002, Nginx/API deployment, and OS credential integration remain unexecuted.
 
 ## Source of Truth
 
@@ -24,6 +26,7 @@ and locally tested; the production database has not been modified.
 - Field verification: Connected read-only, one indexed project, PHP-FPM + SQLite + Nginx gateway operational, HTTPS works on VPS and iPhone.
 - M3E local tests cover owner bootstrap closure, pairing expiry/replay, device binding, token rotation/revocation, project authorization, and sanitized device reads.
 - M3E.1 tests cover M3D metadata preservation, empty bootstrap, idempotent rerun, partial/interrupted recovery, schema mismatch, constraints, and secret-free migration state.
+- M3E.2 tests cover origin separation, bootstrap closure, replay, forged identity, rate limiting, token rotation/revocation, and local client secret isolation.
 - No VPS, DNS, firewall, SSH, GitHub, production, or shared-hosting action has been performed.
 
 ## Next action

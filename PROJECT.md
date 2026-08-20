@@ -32,6 +32,7 @@ local control, explicit permissions, and recoverable changes.
 - M3C2 hosting foundation and VPS bootstrap are documented design/templates only.
 - M3E Secure Device Enrollment Foundation is implemented locally: independent device enrollment, bounded pairing, token rotation/revocation, and explicit project membership are server/domain foundations only; no enrollment transport is exposed yet.
 - M3E.1 additive SQLite migration safety is implemented locally with preflight, ledger, idempotent rerun, rollback testing, and a reviewed VPS runbook; it has not been run on the VPS.
+- M3E.2 Secure Enrollment API and local device client are implemented locally only; the API is separate from browser Hub Read, and no enrollment route has been deployed.
 
 ## Current limitations
 
