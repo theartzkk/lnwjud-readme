@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-M3D — AWH Hub Live Read Connection — CLOSED; M3E-FINAL — READY FOR PRODUCTION VALIDATION; AWH Autopilot v0.5 — LOCAL DOGFOOD PASS.
+M3D — AWH Hub Live Read Connection — CLOSED; M3E-FINAL — READY FOR PRODUCTION VALIDATION; AWH Autopilot v0.5 — LOCAL DOGFOOD PASS; AWH 0.5.0 release closure — local packaging PASS, VPS preflight BLOCKED.
 
 ## Completed
 
@@ -23,11 +23,15 @@ AWH v0.5 adds the first usable local product flow: trusted-device first-run
 metadata, bounded Task Contract, reusable BAY/Remotion/School Website/Node
 profiles, local allowlisted runner, artifacts, and cross-device continuity
 checkpoint discovery. The local dogfood path passed end-to-end.
+Release identity 0.5.0 is now AWH-facing. `AWH.app` and the win32-x64 portable
+bundle containing `AWH.exe` were built locally and verified structurally; the
+Mac packaged non-GUI remote-readonly probe passed. The Squirrel installer,
+Windows execution, and signing/notarization remain platform/field gates.
 
 ## Source of Truth
 
 - Branch: `awh/v0.1-migration`
-- Current local HEAD is recorded by Git; M3E-FINAL changes are intentionally uncommitted.
+- Current local HEAD: `fe52d9e8e9a2d4ad6f49c0e3d840e4ffcf672a13`; release-closure changes are intentionally uncommitted.
 - Current working tree: intentionally dirty for review.
 - Field verification: Connected read-only, one indexed project, PHP-FPM + SQLite + Nginx gateway operational, HTTPS works on VPS and iPhone.
 - M3E local tests cover owner bootstrap closure, pairing expiry/replay, device binding, token rotation/revocation, project authorization, and sanitized device reads.
@@ -39,17 +43,17 @@ checkpoint discovery. The local dogfood path passed end-to-end.
 - Real AWH project profile validation: `general-node` bound to the registered project; `test`, `typecheck`, and `build` passed; Git/Node/PHP/FFmpeg and local browsers were detected; FFmpeg and FFprobe both passed the disposable 8-frame sequence → MP4 E2E with ordering/count/duration/FPS/timebase/codec/pixel-format verification.
 - Completion continuity metadata records `COMPLETED`, the committed HEAD, dirty-state protection, source device, project/task IDs, bounded HANDOFF and relative artifact references. The real workspace is currently dirty, so another device must review local changes before continuation.
 - The device-local registry currently contains only the real AWH project. BAY EXCUSE X and Teacher Video are present locally but are not registered/portable AWH projects; no school website workspace is registered.
-- No VPS, DNS, firewall, SSH, GitHub, production, or shared-hosting action has been performed.
+- No VPS mutation, DNS, firewall, GitHub, production, or shared-hosting action has been performed. A read-only SSH reconciliation through `awh-vps` resolved `/var/lib/awh-hub/awh.sqlite` from effective Nginx configuration; integrity is `ok`, FK check is empty, `user_version=2`, ledger `m3e.1-enrollment`, and the one indexed project is the canonical AWH project. Backup is `BACKUP_PROVISION_REQUIRED`, enrollment is `FIRST_DEPLOY_EXPECTED`, and `db_enrollment_write=BLOCKED` because the current database is `root:www-data 640`; no enrollment route or pool is configured.
 
 ## Next action
 
-Review the uncommitted M3E-FINAL + Autopilot v0.5 diff, then separately and human-gated validate native Keychain, deploy enrollment once, pair Mac and Windows independently, and verify sanitized `devices = 2`.
+Review the uncommitted release-closure diff, obtain explicit approval for the still-blocked VPS permission/backup/configuration remediation, then separately and human-gated validate native Keychain, deploy enrollment once, pair Mac and Windows independently, and verify sanitized `devices = 2`.
 
 ## Blockers and warnings
 
 - Real OS credential persistence on the Mac Keychain and Windows Credential Manager, VPS deployment, and Mac ↔ Hub ↔ Windows continuity remain field validation work.
-- Desktop source/security readiness passes. Direct Electron 43.2.0 x64 launch from the Codex context produces a real native AppKit `SIGABRT` before AWH application startup, and non-GUI `/usr/bin/open` returns LaunchServices `-10822`. The smoke harness isolates temp data and classifies that pre-marker Codex GUI failure as `GUI_SANDBOX_BLOCKED`, not `AWH_APP_FAILED` and never PASS; a separately authorized logged-in macOS GUI LaunchServices run produced `stage: passed`, `apiReady: true`, `requiredDom: true`, all Overview/Projects/Autopilot/Artifacts/Memory paths active, and `cmdKReady: true`. That interactive proof remains required for `MAC_DESKTOP_RUNTIME_PASS`. macOS Forge packaging is configured but cannot complete offline because it attempts an Electron artifact lookup on github.com.
-- Caddy/HTTPS, VPS bootstrap, firewall, DNS, databases, and migration plans are documented but unexecuted.
+- Desktop source/security readiness passes. Direct Electron 43.2.0 x64 launch from the Codex context produces a real native AppKit `SIGABRT` before AWH application startup, and non-GUI `/usr/bin/open` returns LaunchServices `-10822`. The smoke harness isolates temp data and classifies that pre-marker Codex GUI failure as `GUI_SANDBOX_BLOCKED`, not `AWH_APP_FAILED` and never PASS; the local Mac bundle passes non-GUI structural/runtime verification. Windows runtime and Squirrel installer remain Windows-only checks, and the Mac bundle is unsigned/not notarized.
+- Caddy/HTTPS, firewall, DNS, production DB/enrollment migration, and service mutation remain unexecuted. The read-only VPS reconciliation passed the effective Nginx/PHP-FPM/SQLite authority checks but did not mutate the database, backup destination, route, pool, or services.
 - GitHub Actions is optional and not part of the local critical path.
 - The GitHub remote may be behind this local Source of Truth. Do not use the remote as the authority for this work.
 - M3E remains READY FOR PRODUCTION VALIDATION, not CLOSED, until both real devices are enrolled with independent credentials.

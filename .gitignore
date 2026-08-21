@@ -6,6 +6,8 @@ dist-web/
 !.env.example
 .art-agent/
 .art-agent-build/
+.awh-build/
+out/
 .awh-local/
 *.log
 .DS_Store

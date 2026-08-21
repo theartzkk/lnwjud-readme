@@ -17,7 +17,9 @@
 - Hub HTTP reads are fail-closed, Bearer-authenticated except health, query-only, bounded, and free of arbitrary paths, SQL, shell, MCP, and execution capabilities.
 - Project Memory is not duplicated into a second editable database; only rebuildable status/hash/size/provenance metadata may be indexed.
 - M3C0 static browser preview is the default. Future Hub-read mode must consume sanitized same-origin GET responses without browser credential injection.
-- VPS, DNS, firewall, Caddy, HTTPS, PHP-FPM, databases, backups, and service migration remain unexecuted design work.
+- Production DB/enrollment migration, backup creation, service mutation, DNS, and firewall changes remain unexecuted. A read-only VPS preflight uses the configured `awh-vps` SSH alias and must pass before a single explicit production approval.
+- VPS database authority is resolved from effective Nginx/PHP-FPM configuration before bounded candidate search. The current read-only evidence is `/var/lib/awh-hub/awh.sqlite` with clean integrity/FK checks, `user_version=2`, `m3e.1-enrollment`, and one canonical project; no database may be initialized or duplicated because a default path is absent from a local shell.
+- M3E deployment remains blocked until the enrollment service user has an explicitly reviewed write path to the existing DB and its directory, the secure backup destination is provisioned, and the isolated Nginx/PHP-FPM route is present. The preflight classifies these states without mutating production.
 - M3D uses a same-origin PHP web gateway behind Nginx Basic Auth for the read-only browser perimeter; it does not put a Bearer token in JavaScript and does not replace M3B device/account authorization.
 - The web gateway trusts only a reviewed Nginx FastCGI parameter, never a client HTTP header; PHP-FPM uses a Unix socket and SQLite remains query-only for HTTP reads.
 - Browser HUB_READ failures degrade truthfully to the static preview with Offline status.
@@ -35,3 +37,4 @@
 - Autopilot creates a checkpoint before local gates, emits a bounded QA artifact, and records continuity metadata. It never silently overwrites dirty local work and does not synchronize `.git`.
 - Project Memory updates are not implicit in the v0.5 dogfood path. A later explicit approval action may update concise HANDOFF/TASKS state after review; no large logs or secrets may enter Project Memory.
 - The first-run experience stores only bounded owner/device trust metadata. M3E device credentials remain separate, native-OS-backed and fail-closed; a trusted session does not bypass sensitive-action confirmation.
+- AWH release 0.5.0 uses AWH-facing package/artifact names while preserving legacy package/storage/env/protocol compatibility. Local bundles are evidence only until platform field validation and signing are complete.

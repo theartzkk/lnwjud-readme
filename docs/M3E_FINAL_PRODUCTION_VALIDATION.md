@@ -38,20 +38,31 @@ credential คนละชุดและแสดงเป็น metadata ท�
 
 ### 1. Preflight and backup
 
-ตรวจว่าเป็น AWH Hub SQLite ตัวจริงและหยุด indexer/write process ที่เกี่ยวข้องก่อน
-จากนั้น backup แบบ SQLite-aware:
+ตรวจว่าเป็น AWH Hub SQLite ตัวจริงจาก effective Nginx/PHP-FPM configuration
+และหยุด indexer/write process ที่เกี่ยวข้องก่อน โดยห้ามเลือกจากชื่อไฟล์อย่างเดียว
+รัน read-only preflight ก่อนเสมอ:
 
 ```sh
 DB=/var/lib/awh-hub/awh.sqlite
 BACKUP=/var/backups/awh-hub/awh.sqlite.pre-m3e2
+sh deploy/awh-enrollment/preflight-production.sh
+```
+
+ต้องได้ `db_classification=DB_AUTHORITY_RESOLVED`, `db_integrity=ok`,
+`db_foreign_keys=0`, `db_enrollment_write=PASS` และ
+`backup_classification=BACKUP_READY` หรือ `BACKUP_PROVISION_REQUIRED` ก่อน
+ดำเนินการต่อ หากได้ `DB_NOT_FOUND`, `DB_AMBIGUOUS`, `DB_INTEGRITY_FAILED` หรือ
+`db_enrollment_write=BLOCKED` ให้หยุดทันที ห้ามสร้างหรือคัดลอกฐานข้อมูลใหม่.
+
+จากนั้น backup แบบ SQLite-aware:
+
+```sh
 sudo install -d -m 0700 /var/backups/awh-hub
 sudo -u awh-hub sqlite3 "$DB" ".backup '$BACKUP'"
 sudo test -s "$BACKUP"
 sudo sqlite3 "$BACKUP" 'PRAGMA integrity_check; PRAGMA foreign_key_check;'
 ```
-
-ต้องได้ `ok` และไม่มีแถวจาก foreign-key check ก่อนดำเนินการต่อ เก็บ backup ไว้
-จนกว่าการ pair ทั้งสองเครื่องจะตรวจสอบเสร็จ
+เก็บ backup ไว้จนกว่าการ pair ทั้งสองเครื่องจะตรวจสอบเสร็จ
 
 ### 2. Stage one reviewed release
 
@@ -61,10 +72,11 @@ sudo sqlite3 "$BACKUP" 'PRAGMA integrity_check; PRAGMA foreign_key_check;'
 sh deploy/awh-enrollment/deploy-enrollment.sh --dry-run
 ```
 
-หลัง human review เท่านั้น จึงตั้งค่า `AWH_DEPLOY_USER` จาก secure shell session
-และรันคำสั่งเดิมด้วย `--deploy`; อย่าใส่ password, private key หรือ nonce ใน
-command line. Script นี้ใช้ fixed file list และ fixed SSH/SCP argv; ไม่รับ shell
-command จากผู้ใช้.
+หลัง human review เท่านั้น จึงรันคำสั่งเดิมด้วย `--deploy`; อย่าใส่ password,
+private key หรือ nonce ใน command line. ปัจจุบัน deployment target อ่านจาก
+`AWH_DEPLOY_TARGET` และค่า
+เริ่มต้นคือ SSH alias `awh-vps` ไม่ใช่ชื่อ host ที่ซ้ำอยู่ใน source. Script นี้ใช้
+fixed file list และ fixed SSH/SCP argv; ไม่รับ shell command จากผู้ใช้.
 
 ### 3. Apply the dedicated migration
 

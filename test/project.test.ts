@@ -49,3 +49,15 @@ test('project profile recognizes mixed ecosystems but ignores manifest symlinks 
   assert.equal(profile.packageManager, null);
   assert.doesNotMatch(JSON.stringify(profile), /outside-secret-command|package\.json/);
 });
+
+test('project profile recognizes a bounded PHP root marker without reading source content', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'art-agent-php-project-'));
+  await writeFile(join(root, 'index.php'), '<?php /* application source is never returned */\n');
+
+  const profile = await detectProject(root);
+  assert.equal(profile.primary, 'php');
+  assert.deepEqual(profile.ecosystems, ['php']);
+  assert.deepEqual(profile.manifests, ['index.php']);
+  assert.equal(profile.packageManager, null);
+  assert.doesNotMatch(JSON.stringify(profile), /application source|<\?php/);
+});

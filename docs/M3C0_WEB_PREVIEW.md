@@ -71,8 +71,8 @@ then switch one symlink atomically:
 ```sh
 npm run web:build
 RELEASE="m3c0-$(date -u +%Y%m%dT%H%M%SZ)"
-scp -r dist-web "DEPLOY_USER@awh-hub-01:/tmp/awh-web-$RELEASE"
-ssh -o BatchMode=yes "DEPLOY_USER@awh-hub-01" "sudo install -d -m 0755 /var/www/awh-web/releases/$RELEASE && sudo cp -a /tmp/awh-web-$RELEASE/. /var/www/awh-web/releases/$RELEASE/ && sudo ln -sfnT /var/www/awh-web/releases/$RELEASE /var/www/awh-web/current && sudo nginx -t && sudo systemctl reload nginx"
+scp -r dist-web "awh-vps:/tmp/awh-web-$RELEASE"
+ssh -o BatchMode=yes "awh-vps" "sudo install -d -m 0755 /var/www/awh-web/releases/$RELEASE && sudo cp -a /tmp/awh-web-$RELEASE/. /var/www/awh-web/releases/$RELEASE/ && sudo ln -sfnT /var/www/awh-web/releases/$RELEASE /var/www/awh-web/current && sudo nginx -t && sudo systemctl reload nginx"
 ```
 
 Suggested Nginx server block:

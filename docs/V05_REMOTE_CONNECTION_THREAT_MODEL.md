@@ -8,8 +8,8 @@ The existing `serveStdio()` MCP factory remains the Source of Truth. The tunnel 
 
 ## Required architecture
 
-1. The normal packaged `ArtAgent.exe` remains the AWH Desktop application; remote MCP does not add a second application executable.
-2. For the packaged stdio child, AWH launches `tunnel-client` with a **process-scoped** `ELECTRON_RUN_AS_NODE=1` environment and a fixed MCP command pointing the same packaged `ArtAgent.exe` at `resources/app.asar/dist/index.js`. Electron then runs the existing MCP entrypoint as a Node.js process with real stdin/stdout pipes.
+1. The normal packaged `AWH.exe` is the AWH Desktop application; remote MCP does not add a second application executable. Legacy MCP protocol identity remains `art-agent`.
+2. For the packaged stdio child, AWH launches `tunnel-client` with a **process-scoped** `ELECTRON_RUN_AS_NODE=1` environment and a fixed MCP command pointing the same packaged `AWH.exe` at `resources/app.asar/dist/index.js`. Electron then runs the existing MCP entrypoint as a Node.js process with real stdin/stdout pipes.
 3. The Node-mode environment is scoped to the owned tunnel-client process tree only. AWH must not set `ELECTRON_RUN_AS_NODE` globally for the user or machine.
 4. OpenAI `tunnel-client` initiates outbound HTTPS to OpenAI and forwards MCP JSON-RPC locally over stdio.
 5. The Electron renderer never gets network access. Its CSP remains `connect-src 'none'`; tunnel lifecycle belongs in the main process or an owned child process.

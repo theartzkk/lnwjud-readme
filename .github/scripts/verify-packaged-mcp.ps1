@@ -5,15 +5,15 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$exe = Get-ChildItem -Path out -Recurse -Filter ArtAgent.exe | Select-Object -First 1
-if (-not $exe) { throw 'ArtAgent.exe not found for MCP stdio verification' }
+$exe = Get-ChildItem -Path out -Recurse -Filter AWH.exe | Select-Object -First 1
+if (-not $exe) { throw 'AWH.exe not found for MCP stdio verification' }
 
 $appAsar = Join-Path $exe.DirectoryName 'resources/app.asar'
 if (-not (Test-Path $appAsar)) { throw "Packaged app.asar not found: $appAsar" }
 $entrypoint = Join-Path $appAsar 'dist/index.js'
 
-$workspace = Join-Path $env:RUNNER_TEMP 'art-agent-mcp-workspace'
-$dataDir = Join-Path $env:RUNNER_TEMP 'art-agent-mcp-data'
+$workspace = Join-Path $env:RUNNER_TEMP 'awh-mcp-workspace'
+$dataDir = Join-Path $env:RUNNER_TEMP 'awh-mcp-data'
 $forbiddenPath = Join-Path $workspace 'should-not-exist.txt'
 Remove-Item -Recurse -Force $workspace -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force $dataDir -ErrorAction SilentlyContinue
@@ -42,7 +42,7 @@ $startInfo.ArgumentList.Add('--remote-tunnel')
 
 $process = [System.Diagnostics.Process]::new()
 $process.StartInfo = $startInfo
-if (-not $process.Start()) { throw 'Failed to start packaged ArtAgent.exe in Electron Node mode' }
+if (-not $process.Start()) { throw 'Failed to start packaged AWH.exe in Electron Node mode' }
 
 $stderrTask = $process.StandardError.ReadToEndAsync()
 $protocolLines = [System.Collections.Generic.List[string]]::new()
@@ -171,7 +171,7 @@ try {
     throw "Expected exactly four packaged MCP response lines, found $($protocolLines.Count)"
   }
 
-  Write-Host "Packaged remote MCP isolation passed via Electron Node mode for Art Agent $Version"
+Write-Host "Packaged remote MCP isolation passed via Electron Node mode for AWH $Version"
   Write-Host "Remote tools: $($actualTools -join ', ')"
 } finally {
   if (-not $process.HasExited) {

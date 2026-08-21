@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 
 const source = resolve('logo-256x256.png');
-const target = resolve(process.env.ART_AGENT_ICON_OUT?.trim() || '.art-agent-build/art-agent.ico');
+const target = resolve(process.env.AWH_ICON_OUT?.trim() || process.env.ART_AGENT_ICON_OUT?.trim() || '.awh-build/awh.ico');
 const png = await readFile(source);
 const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -19,8 +19,9 @@ if (width !== 256 || height !== 256) {
 }
 
 // ICO supports a PNG-compressed 256x256 image. Wrapping the canonical PNG keeps
-// the Art Agent artwork byte-for-byte intact while giving Windows/Squirrel the
-// .ico container they require for the executable and installer.
+// the canonical AWH artwork byte-for-byte intact while giving Windows/Squirrel
+// the .ico container they require for the executable and installer. The legacy
+// ART_AGENT_ICON_OUT variable remains a compatibility alias for local tooling.
 const header = Buffer.alloc(22);
 header.writeUInt16LE(0, 0); // reserved
 header.writeUInt16LE(1, 2); // image type: icon

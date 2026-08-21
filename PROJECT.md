@@ -26,7 +26,7 @@ local control, explicit permissions, and recoverable changes.
 - M2B initialized this repository as the first real AWH Project.
 - Local Project Registry and bounded Project Context builder are implemented.
 - Local MCP, security boundaries, checkpoints, task/runtime engine, Git context, and desktop foundation are implemented.
-- M3C0 browser-safe static Remote Read-Only Preview is implemented; the operator has reported the static preview behind Nginx Basic Auth, but this repository has not verified the VPS.
+- M3C0 browser-safe static Remote Read-Only Preview is implemented; M3D field verification confirms the read-only preview path over HTTPS on desktop and iPhone.
 - M3C1 PHP/SQLite Hub read foundation and M3D same-origin web gateway are operational on the VPS; field verification confirms live HTTPS access on desktop and iPhone.
 - M3D field state: Connected read-only, one indexed project, and PHP-FPM + SQLite + Nginx gateway operational.
 - M3C2 hosting foundation and VPS bootstrap are documented design/templates only.
@@ -37,17 +37,18 @@ local control, explicit permissions, and recoverable changes.
 - Autopilot v0.5 local-first product path is implemented: first-run trusted-device metadata, goal-based Task Contract, reusable project profiles, bounded local runner, QA artifacts, continuity checkpoints, Artifact Center, and Desktop Task Center.
 - A local end-to-end dogfood passed from goal through Project Context, checkpoint, allowlisted test/typecheck/build gates, QA artifact, continuity checkpoint, and discovery from a second device data directory.
 - The registered real AWH project completed the `general-node` profile locally; test/typecheck/build gates passed, the disposable FFmpeg/FFprobe frame-sequence → MP4 E2E passed with 8 ordered frames at 5 FPS, H.264/yuv420p output, and completion continuity metadata is discoverable from a second data directory.
+- Release identity 0.5.0 is resolved from the package source of truth; local structural bundles were produced as `AWH.app` (darwin-x64) and `AWH.exe` inside the win32-x64 portable bundle. Packaged ASAR/runtime identity and the Mac non-GUI remote-readonly probe passed; Windows execution and Squirrel installer creation remain Windows field gates.
 - M3E is not CLOSED: no real Mac/Windows pair has been performed in this local milestone, and the verified production device count is not yet `2`.
 
 ## Current limitations
 
 - Real VPS enrollment deployment, field Keychain/Credential Manager verification, account sync, and source revision sync are not complete.
 - The disposable native macOS Keychain probe reached `/usr/bin/security` but this session returned an OS authorization failure; no credential value was retained or logged. Windows native runtime remains unverified on Mac.
-- Google VPS deployment has not started.
+- No VPS mutation or deployment has occurred. A read-only `awh-vps` reconciliation resolved the effective Nginx DB authority to `/var/lib/awh-hub/awh.sqlite`: integrity is `ok`, foreign-key check is empty, `user_version=2`, ledger `m3e.1-enrollment`, and the one indexed project matches the canonical AWH identity. Enrollment remains blocked because the `awh-hub` service user cannot write the current `root:www-data 640` database, the backup destination is `BACKUP_PROVISION_REQUIRED`, and the enrollment route/pool are absent.
 - Mac ↔ Hub ↔ Windows continuity is a goal, not a verified service.
 - Large assets require a future separate asset layer.
-- macOS packaging is not complete.
-- Under the Codex launch context, the installed Electron 43.2.0 x64 binary has a real native AppKit abort before app startup (`EXC_CRASH/SIGABRT` at `_RegisterApplication`); `/usr/bin/open` additionally returns LaunchServices `-10822`. The smoke harness safely isolates temporary data and classifies that pre-marker Codex GUI failure as `GUI_SANDBOX_BLOCKED`, never as an AWH application failure or PASS. A separately authorized logged-in macOS GUI LaunchServices launch produced a valid AWH marker with `stage: passed`, `apiReady: true`, `requiredDom: true`, all Overview/Projects/Autopilot/Artifacts/Memory paths active, and `cmdKReady: true`; that interactive proof is required for `MAC_DESKTOP_RUNTIME_PASS`. Forge packaging also cannot complete offline because the packager attempts to resolve the Electron artifact from github.com; no package was produced or deployed.
+- Local macOS x64 and Windows x64 portable packaging is complete structurally, but the Mac app is unsigned/not notarized, Windows runtime/installer QA requires Windows, and no production distribution claim is made.
+- Under the Codex launch context, the installed Electron 43.2.0 x64 binary has a real native AppKit abort before app startup (`EXC_CRASH/SIGABRT` at `_RegisterApplication`); `/usr/bin/open` additionally returns LaunchServices `-10822`. The smoke harness safely isolates temporary data and classifies that pre-marker Codex GUI failure as `GUI_SANDBOX_BLOCKED`, never as an AWH application failure or PASS. A separately authorized logged-in macOS GUI LaunchServices launch produced a valid AWH marker with `stage: passed`, `apiReady: true`, `requiredDom: true`, all Overview/Projects/Autopilot/Artifacts/Memory paths active, and `cmdKReady: true`; the local Mac bundle now passes non-GUI structural/runtime verification. Windows runtime, Squirrel installer, and signing/notarization remain field gates.
 - FFmpeg capability detection is fixed for reduced GUI PATHs. The real disposable frame-sequence → MP4 E2E passes through FFmpeg and FFprobe, including ordering/count/duration/FPS/timebase/codec/pixel-format checks; Remotion readiness remains unverified because no AWH-registered Remotion project is selected.
 - OpenAI Secure MCP Tunnel control-plane end-to-end connectivity is not claimed.
 - AI provider adapters are local integration points; no AWH-owned model is bundled.

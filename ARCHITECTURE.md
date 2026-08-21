@@ -34,6 +34,8 @@
 - **Continuity:** device-local checkpoint metadata records portable projectId, source device UUID, Git revision/dirty state, bounded HANDOFF summary, task state and artifact refs. A copied checkpoint may be discovered on another device, but AWH does not silently overwrite dirty local work or sync `.git`.
 - **First-run trust:** owner/device display metadata is stored in a strict local session record. It is not a password store and never contains a bearer credential; native device credentials remain under M3E OS credential adapters.
 - **Local QA:** cross-platform Node-based QA engine with machine-readable results.
+- **Release packaging:** package/version identity resolves to AWH 0.5.0; Forge reuses a checksum-verified local Electron artifact when available, while packaging output remains ignored local evidence until signing and field review.
+- **Deployment preflight:** `deploy/awh-enrollment/preflight-production.sh` is a read-only SSH-alias-based VPS check; mutation remains in the guarded deployment path and stops at explicit production approval.
 - **MCP / remote-readonly AI adapter:** local stdio MCP and restricted remote-readonly profile; remote tunnel E2E is not claimed.
 - **M3C0 Web Surface:** browser-only static presentation adapter with strict CSP, bounded sanitized data, and a separate future same-origin Hub-read mode.
 - **M3C1/M3D Hub Read Foundation:** PHP-FPM-compatible front controller and web gateway, SQLite metadata schema, query-only HTTP connection, Bearer-auth service boundary, same-origin Nginx perimeter adapter, and a local metadata-only indexer.
@@ -48,7 +50,7 @@
 - Source revision synchronization.
 - Separate assets layer.
 - Creative/Remotion workspace.
-- macOS packaged app.
+- Signed/notarized distribution packaging and Windows Squirrel installer field validation.
 - Real OpenAI Secure MCP Tunnel control-plane E2E verification.
 - M3C2 hosting control-plane design and a separately reviewed deployment path.
 - **AWH Web Control Center:** Home/Projects/Tasks/Artifacts/Devices/Builds/Audit are presentation sections. Web remains read/review-only; Local Autopilot execution is Desktop-only.

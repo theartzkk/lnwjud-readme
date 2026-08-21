@@ -13,6 +13,7 @@ export interface ProjectProfile {
 }
 
 const APPROVED_NODE_SCRIPTS = ['test', 'lint', 'typecheck', 'build'] as const;
+const PHP_ROOT_MARKERS = ['index.php', 'public/index.php'] as const;
 
 async function safeExists(workspace: string, path: string): Promise<boolean> {
   try {
@@ -60,6 +61,15 @@ export async function detectProject(workspace: string): Promise<ProjectProfile> 
   if (await safeExists(workspace, 'composer.json')) {
     ecosystems.push('php');
     manifests.push('composer.json');
+  }
+  if (!ecosystems.includes('php')) {
+    for (const marker of PHP_ROOT_MARKERS) {
+      if (await safeExists(workspace, marker)) {
+        ecosystems.push('php');
+        manifests.push(marker);
+        break;
+      }
+    }
   }
   if (await safeExists(workspace, 'pyproject.toml')) {
     ecosystems.push('python');

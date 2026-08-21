@@ -148,7 +148,7 @@ async function runScript(script, timeoutMs = 15 * 60_000) {
   const testFiles = [
     'test/security.test.ts', 'test/files.test.ts', 'test/git.test.ts', 'test/process.test.ts',
     'test/changes.test.ts', 'test/tasks.test.ts', 'test/project.test.ts', 'test/project-registry.test.ts', 'test/hub-contract.test.ts', 'test/device-identity.test.ts', 'test/web-preview.test.ts', 'test/stdio.test.ts',
-    'test/tunnel.test.ts', 'test/codex.test.ts', 'test/settings.test.ts', 'test/deployment-foundation.test.ts', 'test/qa-toolchain.test.ts', 'test/desktop.test.ts', 'test/desktop-projects.test.ts', 'test/credential-store.test.ts', 'test/enrollment-client.test.ts', 'test/autopilot.test.ts', 'test/first-run.test.ts', 'test/video.test.ts',
+    'test/tunnel.test.ts', 'test/codex.test.ts', 'test/settings.test.ts', 'test/deployment-foundation.test.ts', 'test/qa-toolchain.test.ts', 'test/desktop.test.ts', 'test/desktop-projects.test.ts', 'test/credential-store.test.ts', 'test/enrollment-client.test.ts', 'test/autopilot.test.ts', 'test/first-run.test.ts', 'test/video.test.ts', 'test/release-identity.test.ts',
     'test/version.test.ts', 'test/installer.test.ts',
   ];
   if (script === 'typecheck') return (await exists(tsc)) ? run(process.execPath, [tsc, '-p', 'tsconfig.json', '--noEmit'], { timeoutMs }) : { code: -1, unavailable: true };
@@ -273,9 +273,9 @@ async function requiredFilesCheck() {
   const required = [
     'package.json', 'package-lock.json', 'tsconfig.json', 'forge.config.cjs',
     '.github/workflows/ci.yml', '.github/scripts/verify-packaged-mcp.ps1',
-    'src/security.ts', 'src/stdio.ts', 'src/tunnel.ts', 'src/tasks.ts', 'src/files.ts', 'src/git.ts', 'src/autopilot.ts', 'src/artifacts.ts', 'src/continuity.ts', 'src/first-run.ts', 'src/video.ts', 'scripts/qa/video-e2e.mjs',
+    'src/security.ts', 'src/stdio.ts', 'src/tunnel.ts', 'src/tasks.ts', 'src/files.ts', 'src/git.ts', 'src/autopilot.ts', 'src/artifacts.ts', 'src/continuity.ts', 'src/first-run.ts', 'src/video.ts', 'scripts/qa/video-e2e.mjs', 'scripts/qa/verify-packaged-bundle.mjs', 'scripts/prepare-macos-icon.mjs', 'scripts/prepare-windows-icon.mjs',
     'desktop/index.html', 'desktop/preload.cjs', 'src/desktop/main.ts', 'web/index.html', 'web/app.js', 'web/styles.css', 'web/hub-read-adapter.js', 'scripts/build-web-preview.ts', 'scripts/desktop-smoke.mjs',
-    'hub/schema.sql', 'hub/migrations/001_m3e_enrollment.sql', 'hub/migrations/002_m3e2_enrollment_api.sql', 'hub/public/index.php', 'hub/public/web-gateway.php', 'hub/public/enrollment.php', 'hub/src/HubReadModel.php', 'hub/src/HubReadRouter.php', 'hub/src/HubWebGateway.php', 'hub/src/HubEnrollmentService.php', 'hub/src/HubEnrollmentRouter.php', 'hub/src/HubSchemaMigration.php', 'hub/src/HubEnrollmentApiMigration.php', 'hub/bin/index-project.php', 'hub/bin/migrate-m3e.php', 'hub/bin/migrate-m3e2.php', 'hub/tests/read-foundation.php', 'hub/tests/m3e-migration.php', 'hub/tests/m3e2-migration.php', 'hub/tests/enrollment-api.php', 'src/enrollment-client.ts', 'src/credential-store.ts', 'docs/M3E2_ENROLLMENT_API.md', 'docs/M3E_FINAL_PRODUCTION_VALIDATION.md', 'deploy/nginx/awh-preview.conf', 'deploy/nginx/awh-enrollment.conf', 'deploy/php-fpm/awh-enrollment.pool.conf', 'deploy/awh-enrollment/deploy-enrollment.sh',
+    'hub/schema.sql', 'hub/migrations/001_m3e_enrollment.sql', 'hub/migrations/002_m3e2_enrollment_api.sql', 'hub/public/index.php', 'hub/public/web-gateway.php', 'hub/public/enrollment.php', 'hub/src/HubReadModel.php', 'hub/src/HubReadRouter.php', 'hub/src/HubWebGateway.php', 'hub/src/HubEnrollmentService.php', 'hub/src/HubEnrollmentRouter.php', 'hub/src/HubSchemaMigration.php', 'hub/src/HubEnrollmentApiMigration.php', 'hub/bin/index-project.php', 'hub/bin/migrate-m3e.php', 'hub/bin/migrate-m3e2.php', 'hub/tests/read-foundation.php', 'hub/tests/m3e-migration.php', 'hub/tests/m3e2-migration.php', 'hub/tests/enrollment-api.php', 'src/enrollment-client.ts', 'src/credential-store.ts', 'docs/M3E2_ENROLLMENT_API.md', 'docs/M3E_FINAL_PRODUCTION_VALIDATION.md', 'deploy/nginx/awh-preview.conf', 'deploy/nginx/awh-enrollment.conf', 'deploy/php-fpm/awh-enrollment.pool.conf', 'deploy/awh-enrollment/deploy-enrollment.sh', 'deploy/awh-enrollment/preflight-production.sh',
   ];
   const missing = [];
   for (const path of required) if (!(await exists(join(ROOT, path)))) missing.push(path);
@@ -404,13 +404,13 @@ async function installerCheck() {
     const info = await stat(path);
     if (info.isFile()) {
       const name = path.split('\\').pop() ?? path.split('/').pop();
-      if (['ArtAgent.exe', 'ArtAgentSetup.exe', 'RELEASES'].includes(name) || name?.endsWith('.nupkg')) found.set(name, path);
+      if (['AWH.exe', 'AWHSetup.exe', 'RELEASES'].includes(name) || name?.endsWith('.nupkg')) found.set(name, path);
       return;
     }
     if (info.isDirectory()) for (const entry of await readdir(path)) await walk(join(path, entry));
   }
   await walk(out);
-  const required = ['ArtAgent.exe', 'ArtAgentSetup.exe', 'RELEASES'];
+  const required = ['AWH.exe', 'AWHSetup.exe', 'RELEASES'];
   const missing = required.filter((name) => !found.has(name));
   check('windows-installer-files', missing.length === 0 && [...found.keys()].some((name) => name.endsWith('.nupkg')) ? 'PASS' : 'FAIL', missing.length === 0 ? 'packaged executable, Squirrel installer, RELEASES and nupkg are present' : `installer output missing ${missing.join(', ')}`, started);
 

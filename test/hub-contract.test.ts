@@ -52,9 +52,9 @@ test('Hub project payload preserves portable identity and rejects local identity
 });
 
 test('device identity is UUID-based and does not use hardware identifiers', () => {
-  const device = validateDeviceRegistration({ schemaVersion: 1, userId: projectId, deviceId, displayName: 'Mac Home', platform: 'darwin', arch: 'arm64', appVersion: '0.4.0' });
+  const device = validateDeviceRegistration({ schemaVersion: 1, userId: projectId, deviceId, displayName: 'Mac Home', platform: 'darwin', arch: 'arm64', appVersion: '0.5.0' });
   assert.equal(device.deviceId, deviceId);
-  assert.throws(() => validateDeviceRegistration({ schemaVersion: 1, userId: projectId, deviceId: 'AA:BB:CC:DD:EE:FF', displayName: 'Mac', platform: 'darwin', arch: 'arm64', appVersion: '0.4.0' }), /UUID/i);
+  assert.throws(() => validateDeviceRegistration({ schemaVersion: 1, userId: projectId, deviceId: 'AA:BB:CC:DD:EE:FF', displayName: 'Mac', platform: 'darwin', arch: 'arm64', appVersion: '0.5.0' }), /UUID/i);
 });
 
 test('user, membership, and build metadata use bounded lifecycle contracts', () => {
@@ -62,7 +62,7 @@ test('user, membership, and build metadata use bounded lifecycle contracts', () 
   assert.equal(user.revokedAt, null);
   const membership = validateProjectMembership({ schemaVersion: 1, projectId, userId: projectId, role: 'owner', createdAt: now, revokedAt: null });
   assert.equal(membership.role, 'owner');
-  const build = validateBuildReleaseMetadata({ schemaVersion: 1, buildId: revisionId, projectId, revisionId: parentRevisionId, deviceId, status: 'passed', version: '0.4.0', createdAt: now, completedAt: now, artifactRefs: ['sha256:' + hash] });
+  const build = validateBuildReleaseMetadata({ schemaVersion: 1, buildId: revisionId, projectId, revisionId: parentRevisionId, deviceId, status: 'passed', version: '0.5.0', createdAt: now, completedAt: now, artifactRefs: ['sha256:' + hash] });
   assert.equal(build.status, 'passed');
   assert.throws(() => validateProjectMembership({ ...membership, role: 'administrator' }), /role/i);
 });
@@ -104,7 +104,7 @@ test('memory revisions and conflict responses are explicit, bounded schemas', ()
 });
 
 test('pairing is bounded, single-use/expiring, and owner bootstrap closes permanently', () => {
-  const pairing = validatePairingEnrollmentRequest({ schemaVersion: 1, pairingCode: 'A'.repeat(40), deviceId, displayName: 'Mac Home', platform: 'darwin', arch: 'arm64', appVersion: '0.4.0' });
+  const pairing = validatePairingEnrollmentRequest({ schemaVersion: 1, pairingCode: 'A'.repeat(40), deviceId, displayName: 'Mac Home', platform: 'darwin', arch: 'arm64', appVersion: '0.5.0' });
   assert.equal(pairing.deviceId, deviceId);
   assert.throws(() => validatePairingEnrollmentRequest({ ...pairing, pairingCode: 'short' }), /pairing code/i);
   const active = validatePairingCodeRecord({ schemaVersion: 1, pairingCodeId: revisionId, codeHash: hash, issuedAt: now, expiresAt: '2026-08-20T00:00:00.000Z', consumedAt: null, revokedAt: null });

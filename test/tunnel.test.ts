@@ -26,7 +26,7 @@ const TRUSTED_PROBE: TunnelBinaryProbe = async () => ({
 async function packagedFixture(t: TestContext): Promise<{ root: string; appExecutable: string; workspace: string }> {
   const root = await mkdtemp(join(tmpdir(), 'art-agent-tunnel-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const appExecutable = join(root, process.platform === 'win32' ? 'ArtAgent.exe' : 'ArtAgent');
+  const appExecutable = join(root, process.platform === 'win32' ? 'AWH.exe' : 'AWH');
   const workspace = join(root, 'workspace with spaces');
   const appAsar = join(dirname(appExecutable), 'resources', 'app.asar');
   await mkdir(dirname(appAsar), { recursive: true });

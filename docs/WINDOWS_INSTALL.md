@@ -1,6 +1,6 @@
 # AWH — Windows Installation
 
-AWH uses the legacy **per-user Squirrel.Windows installer** identity. The normal install path does not require administrator privileges from AWH. `ArtAgent.exe` and `ArtAgentSetup.exe` remain unchanged temporarily so upgrades do not install a second application.
+AWH uses the **per-user Squirrel.Windows installer** identity. The normal install path does not require administrator privileges from AWH. The public v0.5 artifacts are `AWH.exe` and `AWHSetup.exe`; legacy data, environment and MCP protocol identifiers remain compatibility boundaries.
 
 ## Install through the Windows UI
 
@@ -9,17 +9,17 @@ AWH uses the legacy **per-user Squirrel.Windows installer** identity. The normal
 3. In **Artifacts**, download `Art-Agent-Windows-Installer-<version>`.
 4. Extract the downloaded ZIP.
 5. Confirm the folder contains:
-   - `ArtAgentSetup.exe`
-   - `ArtAgent-<version>-full.nupkg`
+   - `AWHSetup.exe`
+   - `AWH-<version>-full.nupkg`
    - `RELEASES`
-   - `ArtAgent-SHA256.txt`
-6. Double-click `ArtAgentSetup.exe`.
+   - `AWH-SHA256.txt`
+6. Double-click `AWHSetup.exe`.
 7. Start **AWH Desktop** from the Windows shortcut.
 8. Choose the project workspace in Control Center, then enable only the permissions needed for that project.
 
 ## Integrity and trust boundary
 
-CI verifies the installer set before upload and writes SHA-256 values for the installer and Squirrel package into `ArtAgent-SHA256.txt`.
+CI verifies the installer set before upload and writes SHA-256 values for the installer and Squirrel package into `AWH-SHA256.txt`.
 
 Current internal/test builds are **unsigned** unless the relevant release notes explicitly say otherwise. Windows SmartScreen or reputation warnings are therefore expected on some machines. Use only an artifact from a successful CI run in this repository and keep the SHA-256 file with the installer. Public distribution should wait for a code-signing certificate and signing workflow.
 
@@ -27,7 +27,7 @@ GitHub Actions artifacts have limited retention. A permanent GitHub Release chan
 
 ## What the installer changes
 
-- Installs AWH Desktop for the current Windows user while retaining the ArtAgent Squirrel identity.
+- Installs AWH Desktop for the current Windows user with the AWH Squirrel identity while retaining legacy storage and protocol compatibility.
 - Uses Squirrel install/update/uninstall lifecycle handling.
 - Creates/removes the normal application shortcut through Squirrel startup handling.
 - Does not enable workspace writes, execution, or Codex permissions automatically.
@@ -35,7 +35,7 @@ GitHub Actions artifacts have limited retention. A permanent GitHub Release chan
 
 ## Branding
 
-Both `ArtAgent.exe` and `ArtAgentSetup.exe` use the repository's canonical `logo-256x256.png`. Packaging generates the required Windows `.ico` container deterministically and preserves the original PNG artwork byte-for-byte inside that container.
+Both `AWH.exe` and `AWHSetup.exe` use the repository's canonical `logo-256x256.png`. Packaging generates the required Windows `.ico` container deterministically and preserves the original PNG artwork byte-for-byte inside that container.
 
 ## Build the installer from source
 

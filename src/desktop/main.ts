@@ -49,10 +49,10 @@ import {
   type TunnelRuntimeStatus,
 } from '../tunnel.js';
 import { DESKTOP_IPC, DESKTOP_WEB_PREFERENCES } from './security.js';
-import { ART_AGENT_VERSION } from '../version.js';
+import { RELEASE_VERSION } from '../version.js';
 import { PRODUCT } from '../product.js';
 
-const VERSION = ART_AGENT_VERSION;
+const VERSION = RELEASE_VERSION;
 const SMOKE_TEST = process.argv.includes('--smoke-test') || process.env.ART_AGENT_SMOKE_TEST === '1';
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
