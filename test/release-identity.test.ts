@@ -10,7 +10,7 @@ test('AWH public release identity is distinct from retained legacy compatibility
     readFile(new URL('../package-lock.json', import.meta.url), 'utf8').then((raw) => JSON.parse(raw) as Record<string, any>),
     readFile(new URL('../forge.config.cjs', import.meta.url), 'utf8'),
   ]);
-  assert.equal(RELEASE_VERSION, '0.5.0');
+  assert.equal(RELEASE_VERSION, '1.0.0-rc.1');
   assert.equal(ART_AGENT_VERSION, RELEASE_VERSION);
   assert.equal(pkg.version, RELEASE_VERSION);
   assert.equal(lock.version, RELEASE_VERSION);

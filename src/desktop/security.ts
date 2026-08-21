@@ -29,8 +29,11 @@ export const DESKTOP_IPC = Object.freeze({
   autopilotStart: 'art-agent:autopilot-start',
   autopilotTasks: 'art-agent:autopilot-tasks',
   autopilotArtifacts: 'art-agent:autopilot-artifacts',
+  autopilotRemoteResults: 'art-agent:autopilot-remote-results',
   autopilotContinuity: 'art-agent:autopilot-continuity',
   autopilotCheckpointMemory: 'art-agent:autopilot-checkpoint-memory',
+  workerState: 'art-agent:worker-state',
+  workerRunOnce: 'art-agent:worker-run-once',
   restart: 'art-agent:restart',
   openDataDir: 'art-agent:open-data-dir',
 });

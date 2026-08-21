@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { PRODUCT } from '../src/product.js';
 import { buildProjectContext } from '../src/project-registry.js';
@@ -96,6 +96,9 @@ async function main(): Promise<void> {
     writeFile(join(OUTPUT, 'app.js'), await asset('app.js'), 'utf8'),
     writeFile(join(OUTPUT, 'hub-read-adapter.js'), await asset('hub-read-adapter.js'), 'utf8'),
     writeFile(join(OUTPUT, 'control-plane-adapter.js'), await asset('control-plane-adapter.js'), 'utf8'),
+    writeFile(join(OUTPUT, 'manifest.webmanifest'), await asset('manifest.webmanifest'), 'utf8'),
+    writeFile(join(OUTPUT, 'sw.js'), await asset('sw.js'), 'utf8'),
+    copyFile(join(ROOT, 'logo-256x256.png'), join(OUTPUT, 'logo-256x256.png')),
     writeFile(join(OUTPUT, 'web-config.json'), `${JSON.stringify({ schemaVersion: 1, mode: webMode, apiBase: '/api/v1' }, null, 2)}\n`, 'utf8'),
     writeFile(join(OUTPUT, 'data.json'), `${JSON.stringify(data, null, 2)}\n`, 'utf8'),
   ]);

@@ -247,7 +247,7 @@ export async function inspectTunnelReadiness(
     const paths = packagedMcpPaths(appExecutable);
     appAsar = paths.appAsar;
     if (!(await fileExists(paths.appExecutable))) {
-      blockers.push('Packaged ArtAgent executable was not found');
+      blockers.push('Packaged AWH executable was not found');
     } else if (!(await fileExists(paths.appAsar))) {
       blockers.push('Packaged resources/app.asar was not found');
     } else {

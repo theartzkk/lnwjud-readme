@@ -2,8 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, 'agent/**']
+    branches: [main, 'agent/**', 'awh/**']
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -122,17 +123,17 @@ jobs:
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           "version=$version" >> $env:GITHUB_OUTPUT
-          Write-Host "Art Agent version: $version"
+          Write-Host "AWH release version: $version"
       - name: Verify packaged app and Squirrel installer set
         shell: pwsh
         run: |
           $version = '${{ steps.version.outputs.version }}'
-          $exe = Get-ChildItem -Path out -Recurse -Filter ArtAgent.exe | Select-Object -First 1
-          $setup = Get-ChildItem -Path out/make -Recurse -Filter ArtAgentSetup.exe | Select-Object -First 1
+          $exe = Get-ChildItem -Path out -Recurse -Filter AWH.exe | Select-Object -First 1
+          $setup = Get-ChildItem -Path out/make -Recurse -Filter AWHSetup.exe | Select-Object -First 1
           $releases = Get-ChildItem -Path out/make -Recurse -Filter RELEASES | Select-Object -First 1
           $nupkg = Get-ChildItem -Path out/make -Recurse -Filter *.nupkg | Select-Object -First 1
-          if (-not $exe) { throw 'ArtAgent.exe not found in packaged output' }
-          if (-not $setup) { throw 'ArtAgentSetup.exe not found in maker output' }
+          if (-not $exe) { throw 'AWH.exe not found in packaged output' }
+          if (-not $setup) { throw 'AWHSetup.exe not found in maker output' }
           if (-not $releases) { throw 'Squirrel RELEASES file not found' }
           if (-not $nupkg) { throw 'Squirrel .nupkg not found' }
           if ($setup.Length -lt 1MB) { throw "ArtAgentSetup.exe is unexpectedly small: $($setup.Length) bytes" }
@@ -141,14 +142,14 @@ jobs:
           Write-Host "Installer: $($setup.FullName)"
           Write-Host "Package: $($nupkg.FullName)"
           $hashes = @($setup, $nupkg) | Get-FileHash -Algorithm SHA256
-          $hashFile = Join-Path (Split-Path $setup.DirectoryName -Parent) 'ArtAgent-SHA256.txt'
+          $hashFile = Join-Path (Split-Path $setup.DirectoryName -Parent) 'AWH-SHA256.txt'
           $hashes | ForEach-Object { "$($_.Hash)  $(Split-Path $_.Path -Leaf)" } | Set-Content -Encoding ascii $hashFile
           Get-Content $hashFile | Write-Host
       - name: Verify packaged Windows main module boots
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path out -Recurse -Filter ArtAgent.exe | Select-Object -First 1
-          if (-not $exe) { throw 'ArtAgent.exe not found for boot verification' }
+          $exe = Get-ChildItem -Path out -Recurse -Filter AWH.exe | Select-Object -First 1
+          if (-not $exe) { throw 'AWH.exe not found for boot verification' }
           $env:ART_AGENT_DATA_DIR = Join-Path $env:RUNNER_TEMP 'art-agent-package-boot'
           $env:ART_AGENT_SMOKE_TEST = '1'
           $env:ELECTRON_ENABLE_LOGGING = '1'
@@ -180,9 +181,9 @@ jobs:
       - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v7
         with:
-          name: Art-Agent-Windows-Installer-${{ steps.version.outputs.version }}
+          name: AWH-Windows-Installer-${{ steps.version.outputs.version }}
           path: |
             out/make/squirrel.windows/x64/**
-            out/make/**/ArtAgent-SHA256.txt
+            out/make/**/AWH-SHA256.txt
           if-no-files-found: error
           retention-days: 14

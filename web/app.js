@@ -1,10 +1,12 @@
 import { loadWebData } from './hub-read-adapter.js';
-import { loadControlData, openMobileSession, submitGoal } from './control-plane-adapter.js';
+import { decideApproval, loadControlData, openMobileSession, submitGoal } from './control-plane-adapter.js';
 
 (() => {
   const $ = (id) => document.getElementById(id);
   const text = (id, value) => { const node = $(id); if (node) node.textContent = value == null ? '—' : String(value); };
   let controlData = null;
+
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => undefined);
 
   function render(data) {
     text('product-name', data.product.name);
@@ -62,11 +64,17 @@ import { loadControlData, openMobileSession, submitGoal } from './control-plane-
       text('handoff-summary', selected.memoryReady === true ? 'Project Memory metadata is ready; execution context remains on the authorized worker.' : 'Project Memory metadata is partial; AWH will keep the project context bounded on the worker.');
     }
     const tasks = $('control-task-list'); tasks.replaceChildren();
-    for (const task of (control.tasks || []).slice(0, 8)) { const row = document.createElement('article'); row.className = 'control-item'; row.textContent = `${task.state} · ${task.goal}`; tasks.append(row); }
+    for (const task of (control.tasks || []).slice(0, 8)) { const row = document.createElement('article'); row.className = 'control-item'; row.textContent = `${task.projectName || task.projectId} · ${task.state} · ${task.goal} · ${task.resultSummary || task.lastEvent?.message || 'กำลังรอผลลัพธ์'}`; tasks.append(row); }
     if (!tasks.childElementCount) tasks.append(Object.assign(document.createElement('p'), { className: 'muted', textContent: 'ยังไม่มีงาน' }));
     const workers = $('control-worker-list'); workers.replaceChildren();
     for (const worker of control.workers || []) { const row = document.createElement('article'); row.className = 'control-item'; row.textContent = `${worker.displayName} · ${worker.state}`; workers.append(row); }
     if (!workers.childElementCount) workers.append(Object.assign(document.createElement('p'), { className: 'muted', textContent: 'ยังไม่มี worker ออนไลน์ — งานจะอยู่ในสถานะรอ worker' }));
+    const results = $('control-result-list'); results.replaceChildren();
+    for (const result of (control.results || []).slice(0, 8)) { const row = document.createElement('article'); row.className = 'control-item'; row.textContent = `${result.projectName || result.projectId} · ${result.state} · ${result.goal} · ${result.resultSummary || result.lastEvent?.message || 'กำลังรอผลลัพธ์'} · artifact ${Array.isArray(result.artifactRefs) && result.artifactRefs.length ? result.artifactRefs.length : 'ไม่มี'}`; results.append(row); }
+    if (!results.childElementCount) results.append(Object.assign(document.createElement('p'), { className: 'muted', textContent: 'ยังไม่มีผลลัพธ์' }));
+    const approvals = $('control-approval-list'); approvals.replaceChildren();
+    for (const approval of (control.approvals || []).filter((item) => item.status === 'PENDING').slice(0, 8)) { const row = document.createElement('article'); row.className = 'control-item'; const label = document.createElement('strong'); label.textContent = `ต้องการอนุมัติ · ${approval.action}`; const detail = document.createElement('small'); detail.textContent = `หมดอายุ ${new Date(approval.expiresAt).toLocaleString('th-TH')}`; const approve = document.createElement('button'); approve.className = 'control-button'; approve.textContent = 'อนุมัติ'; approve.addEventListener('click', async () => { approve.disabled = true; await decideApproval(approval.approvalId, 'approve'); renderControl(await loadControlData(), 'CONTROL'); }); const reject = document.createElement('button'); reject.className = 'control-button secondary'; reject.textContent = 'ปฏิเสธ'; reject.addEventListener('click', async () => { reject.disabled = true; await decideApproval(approval.approvalId, 'reject'); renderControl(await loadControlData(), 'CONTROL'); }); row.append(label, detail, approve, reject); approvals.append(row); }
+    if (!approvals.childElementCount) approvals.append(Object.assign(document.createElement('p'), { className: 'muted', textContent: 'ไม่มี action ที่ต้องอนุมัติ' }));
   }
 
   $('control-sign-in-button')?.addEventListener('click', async () => {

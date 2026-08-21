@@ -1,0 +1,62 @@
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+import { ControlPlaneWorkerClient, type WorkerTask } from '../src/control-plane-worker-client.js';
+import { ControlPlaneWorkerRuntime } from '../src/control-plane-worker-runtime.js';
+import { loadOrCreateDeviceIdentity } from '../src/device-identity.js';
+import type { CredentialStore } from '../src/credential-store.js';
+
+class MemoryCredentials implements CredentialStore {
+  async get(): Promise<string | null> { return null; }
+  async set(): Promise<void> {}
+  async delete(): Promise<void> {}
+}
+
+class FixtureWorkerClient extends ControlPlaneWorkerClient {
+  heartbeatCalls = 0;
+  updates: Array<{ taskId: string; state: string }> = [];
+  constructor(dataDir: string, private readonly nextTask: WorkerTask | null) {
+    super('https://hub.example/api/v1', dataDir, new MemoryCredentials(), async () => new Response('{}', { status: 200 }));
+  }
+  override async heartbeat(): Promise<{ deviceId: string; state: string; lastSeenAt: string }> {
+    this.heartbeatCalls += 1;
+    return { deviceId: '423b45c0-23e1-408d-ae0f-ac5eca7f6900', state: 'READY', lastSeenAt: '2026-08-21T00:00:00.000Z' };
+  }
+  override async claim(): Promise<WorkerTask | null> { return this.nextTask; }
+  override async update(taskId: string, state: string): Promise<WorkerTask> {
+    this.updates.push({ taskId, state });
+    return this.nextTask ?? { taskId, projectId: '423b45c0-23e1-408d-ae0f-ac5eca7f6900', goal: 'fixture', state, progress: 0, assignedDevice: null, approvalStatus: null };
+  }
+}
+
+test('desktop worker runtime is wired to heartbeat and truthful idle state', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'awh-worker-runtime-'));
+  try {
+    const identity = await loadOrCreateDeviceIdentity(dataDir);
+    const client = new FixtureWorkerClient(dataDir, null);
+    const runtime = new ControlPlaneWorkerRuntime(client, { dataDir, maxReadBytes: 32_000, allowExec: false, allowWrite: false, allowCodex: false });
+    const result = await runtime.runOnce();
+    assert.deepEqual(result, { status: 'IDLE', deviceId: identity.deviceId });
+    assert.equal(client.heartbeatCalls, 1);
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test('desktop worker runtime rejects an unregistered project before execution', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'awh-worker-runtime-'));
+  try {
+    await loadOrCreateDeviceIdentity(dataDir);
+    const task: WorkerTask = { taskId: '423b45c0-23e1-408d-ae0f-ac5eca7f6900', projectId: '523b45c0-23e1-408d-ae0f-ac5eca7f6900', goal: 'safe inspection', state: 'PREPARING', progress: 0, assignedDevice: '423b45c0-23e1-408d-ae0f-ac5eca7f6900', approvalStatus: null };
+    const client = new FixtureWorkerClient(dataDir, task);
+    const runtime = new ControlPlaneWorkerRuntime(client, { dataDir, maxReadBytes: 32_000, allowExec: true, allowWrite: false, allowCodex: false });
+    const result = await runtime.runOnce();
+    assert.equal(result.status, 'FAILED');
+    assert.equal(result.reason, 'PROJECT_CONTEXT_REJECTED');
+    assert.deepEqual(client.updates, [{ taskId: task.taskId, state: 'FAILED' }]);
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});

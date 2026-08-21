@@ -18,6 +18,7 @@ export interface WorkerTask {
   state: string;
   progress: number;
   assignedDevice: string | null;
+  approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | null;
 }
 
 function apiRoot(value: string): URL {
@@ -32,8 +33,8 @@ function apiRoot(value: string): URL {
 function boundedTask(value: unknown): WorkerTask {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ControlPlaneWorkerError('Worker task response is invalid', 'RESPONSE_INVALID');
   const task = value as Record<string, unknown>;
-  if (typeof task.taskId !== 'string' || !UUID_V4.test(task.taskId) || typeof task.projectId !== 'string' || !UUID_V4.test(task.projectId) || typeof task.goal !== 'string' || task.goal.length > 2_000 || typeof task.state !== 'string' || typeof task.progress !== 'number' || !Number.isInteger(task.progress) || task.progress < 0 || task.progress > 100 || (task.assignedDevice !== null && (typeof task.assignedDevice !== 'string' || !UUID_V4.test(task.assignedDevice)))) throw new ControlPlaneWorkerError('Worker task response is invalid', 'RESPONSE_INVALID');
-  return { taskId: task.taskId, projectId: task.projectId, goal: task.goal, state: task.state, progress: task.progress, assignedDevice: task.assignedDevice };
+  if (typeof task.taskId !== 'string' || !UUID_V4.test(task.taskId) || typeof task.projectId !== 'string' || !UUID_V4.test(task.projectId) || typeof task.goal !== 'string' || task.goal.length > 2_000 || typeof task.state !== 'string' || typeof task.progress !== 'number' || !Number.isInteger(task.progress) || task.progress < 0 || task.progress > 100 || (task.assignedDevice !== null && (typeof task.assignedDevice !== 'string' || !UUID_V4.test(task.assignedDevice))) || (task.approvalStatus !== undefined && task.approvalStatus !== null && !['PENDING', 'APPROVED', 'REJECTED', 'EXPIRED'].includes(String(task.approvalStatus)))) throw new ControlPlaneWorkerError('Worker task response is invalid', 'RESPONSE_INVALID');
+  return { taskId: task.taskId, projectId: task.projectId, goal: task.goal, state: task.state, progress: task.progress, assignedDevice: task.assignedDevice, approvalStatus: task.approvalStatus === undefined ? null : task.approvalStatus as WorkerTask['approvalStatus'] };
 }
 
 export class ControlPlaneWorkerClient {
@@ -63,6 +64,20 @@ export class ControlPlaneWorkerClient {
     return boundedTask(response);
   }
 
+  async addArtifact(taskId: string, input: { kind: string; name: string; sha256: string | null; sizeBytes: number; relativeRef: string | null }): Promise<WorkerTask> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    if (!UUID_V4.test(taskId) || !/^[a-z][a-z0-9-]{0,39}$/.test(input.kind) || typeof input.name !== 'string' || input.name.length < 1 || input.name.length > 160 || /[\\/\u0000-\u001f\u007f]/.test(input.name) || (input.sha256 !== null && !/^[0-9a-f]{64}$/i.test(input.sha256)) || !Number.isSafeInteger(input.sizeBytes) || input.sizeBytes < 0 || input.sizeBytes > 50 * 1024 * 1024 || (input.relativeRef !== null && (input.relativeRef.length > 240 || input.relativeRef.startsWith('/') || input.relativeRef.includes('..') || input.relativeRef.includes('\\')))) throw new ControlPlaneWorkerError('Worker artifact is invalid', 'PAYLOAD_INVALID');
+    const response = await this.post(`/control/tasks/${taskId}/artifact`, { schemaVersion: 1, deviceId: identity.deviceId, kind: input.kind, name: input.name, sha256: input.sha256, sizeBytes: input.sizeBytes, relativeRef: input.relativeRef });
+    return boundedTask(response);
+  }
+
+  async readResults(): Promise<{ results: WorkerTask[]; artifacts: Array<Record<string, unknown>>; approvals: Array<Record<string, unknown>> }> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    const response = await this.get(`/control/worker/results/${identity.deviceId}`);
+    if (response.schemaVersion !== 1 || !Array.isArray(response.results) || !Array.isArray(response.artifacts) || !Array.isArray(response.approvals)) throw new ControlPlaneWorkerError('Worker results response is invalid', 'RESPONSE_INVALID');
+    return { results: response.results.map(boundedTask), artifacts: response.artifacts.filter((value): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value))).slice(0, 100), approvals: response.approvals.filter((value): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value))).slice(0, 50) };
+  }
+
   private async post(path: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
     if (!path.startsWith('/control/') || path.includes('..') || /[?#]/.test(path)) throw new ControlPlaneWorkerError('Worker route is invalid', 'ROUTE_INVALID');
     const token = await this.credentialStore.get(DEVICE_TOKEN_CREDENTIAL_KEY);
@@ -72,6 +87,20 @@ export class ControlPlaneWorkerClient {
     if (body.length > MAX_RESPONSE_BYTES) throw new ControlPlaneWorkerError('Worker response is too large', 'RESPONSE_TOO_LARGE');
     let value: unknown;
     try { value = JSON.parse(body); } catch { throw new ControlPlaneWorkerError('Worker response is invalid', 'RESPONSE_INVALID'); }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ControlPlaneWorkerError('Worker response is invalid', 'RESPONSE_INVALID');
+    const result = value as Record<string, unknown>;
+    if (!response.ok) throw new ControlPlaneWorkerError(typeof result.message === 'string' ? result.message : 'Worker request was rejected', typeof result.code === 'string' ? result.code : 'WORKER_REJECTED');
+    return result;
+  }
+
+  private async get(path: string): Promise<Record<string, unknown>> {
+    if (!path.startsWith('/control/') || path.includes('..') || /[?#]/.test(path)) throw new ControlPlaneWorkerError('Worker route is invalid', 'ROUTE_INVALID');
+    const token = await this.credentialStore.get(DEVICE_TOKEN_CREDENTIAL_KEY);
+    if (!token) throw new ControlPlaneWorkerError('Worker is not enrolled', 'DEVICE_NOT_ENROLLED');
+    const response = await this.fetchImpl(new URL(`/api/v1${path}`, this.root), { method: 'GET', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }, credentials: 'omit', cache: 'no-store' });
+    const body = await response.text();
+    if (body.length > MAX_RESPONSE_BYTES) throw new ControlPlaneWorkerError('Worker response is too large', 'RESPONSE_TOO_LARGE');
+    let value: unknown; try { value = JSON.parse(body); } catch { throw new ControlPlaneWorkerError('Worker response is invalid', 'RESPONSE_INVALID'); }
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ControlPlaneWorkerError('Worker response is invalid', 'RESPONSE_INVALID');
     const result = value as Record<string, unknown>;
     if (!response.ok) throw new ControlPlaneWorkerError(typeof result.message === 'string' ? result.message : 'Worker request was rejected', typeof result.code === 'string' ? result.code : 'WORKER_REJECTED');

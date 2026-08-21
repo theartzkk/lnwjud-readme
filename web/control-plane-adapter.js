@@ -35,16 +35,24 @@ export async function openMobileSession(pairingCode, displayName = 'AWH iPhone',
 
 export async function loadControlData() {
   const session = await controlRequest('/api/v1/control/session');
-  const [projects, tasks, workers] = await Promise.all([
+  const [projects, tasks, workers, results, artifacts, approvals] = await Promise.all([
     controlRequest('/api/v1/control/projects'),
     controlRequest('/api/v1/control/tasks'),
     controlRequest('/api/v1/control/workers'),
+    controlRequest('/api/v1/control/results'),
+    controlRequest('/api/v1/control/artifacts'),
+    controlRequest('/api/v1/control/approvals'),
   ]);
-  return { mode: 'CONTROL', authenticated: true, expiresAt: session.expiresAt, projects: projects.projects.filter((project) => UUID.test(project.projectId)), tasks: Array.isArray(tasks.tasks) ? tasks.tasks : [], workers: Array.isArray(workers.workers) ? workers.workers : [] };
+  return { mode: 'CONTROL', authenticated: true, expiresAt: session.expiresAt, projects: projects.projects.filter((project) => UUID.test(project.projectId)), tasks: Array.isArray(tasks.tasks) ? tasks.tasks : [], workers: Array.isArray(workers.workers) ? workers.workers : [], results: Array.isArray(results.results) ? results.results : [], artifacts: Array.isArray(artifacts.artifacts) ? artifacts.artifacts : [], approvals: Array.isArray(approvals.approvals) ? approvals.approvals : [] };
 }
 
 export async function submitGoal(projectId, goal) {
   if (!UUID.test(projectId) || typeof goal !== 'string' || !goal.trim() || goal.length > 2000) throw new Error('กรุณาเลือกโปรเจกต์และเขียน Goal ที่ชัดเจน');
   const idempotencyKey = `web-${crypto.randomUUID()}`;
   return controlRequest('/api/v1/control/tasks', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, goal: goal.trim(), idempotencyKey }) });
+}
+
+export async function decideApproval(approvalId, decision) {
+  if (!UUID.test(approvalId) || !['approve', 'reject'].includes(decision)) throw new Error('การอนุมัติไม่ถูกต้อง');
+  return controlRequest(`/api/v1/control/approvals/${approvalId}/${decision}`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) });
 }

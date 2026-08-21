@@ -3,9 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0e1014" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="description" content="Art’s Workspace Hub remote read-only preview" />
   <title>AWH — Remote Preview</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./logo-256x256.png" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -45,6 +51,7 @@
           <button id="control-submit" class="control-button">ส่ง Goal</button>
           <p id="control-submit-message" class="muted" role="status"></p>
           <div class="control-columns"><div><span class="label">WORK</span><div id="control-task-list" class="control-list"></div></div><div><span class="label">WORKERS</span><div id="control-worker-list" class="control-list"></div></div></div>
+          <div class="control-results"><div class="card-heading"><span class="label">RESULTS</span><span class="bounded">BOUNDED</span></div><div id="control-result-list" class="control-list"></div><div class="card-heading control-approval-heading"><span class="label">APPROVALS</span><span class="bounded">SCOPED</span></div><div id="control-approval-list" class="control-list"></div></div>
         </div>
       </section>
 

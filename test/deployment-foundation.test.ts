@@ -29,6 +29,22 @@ test('local deployment assets are dry-run by default and require explicit review
   assert.match(health, /--proto '=https'/);
 });
 
+test('M4 control-plane activation package is executable in a local dry-run without SSH', async () => {
+  const controlBuild = await execFile(process.execPath, ['--import', 'tsx', 'scripts/build-web-preview.ts', '--control'], { cwd: ROOT, env: { ...process.env, AWH_PREVIEW_GENERATED_AT: '2026-08-21T00:00:00.000Z' } });
+  assert.equal(controlBuild.stderr, '');
+  await execFile(process.execPath, ['scripts/create-web-release-manifest.mjs', 'dist-web'], { cwd: ROOT, env: { ...process.env, AWH_RELEASE_ID: 'fixture-m4-release', AWH_PREVIEW_GENERATED_AT: '2026-08-21T00:00:00.000Z' } });
+  const deploy = join(ROOT, 'deploy/awh-control-plane/deploy-control-plane.sh');
+  const result = await execFile('sh', [deploy, '--dry-run'], { cwd: ROOT, env: { ...process.env, AWH_SOURCE_ROOT: ROOT, AWH_DEPLOY_TARGET: 'awh-ready', AWH_RELEASE_COMMIT: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', AWH_HUB_HOSTNAME: 'awh.example' } });
+  assert.match(result.stdout, /M4_DRY_RUN=PASS/);
+  assert.match(result.stdout, /M4_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL/);
+  assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /ssh|scp|sqlite3|systemctl|nginx -t/i);
+  const remote = await readFile(join(ROOT, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'), 'utf8');
+  assert.match(remote, /tar -xzf "\$REMOTE_STAGE" -C "\$RELEASE"/);
+  assert.match(remote, /stage M3D_REGRESSION; verify_m3d/);
+  assert.match(remote, /stage CONTROL_ROUTE; code=/);
+  assert.doesNotMatch(remote, /curl\s+-k/);
+});
+
 test('Hub data schema has explicit provenance and no workspace or content columns', async () => {
   const schema = await readFile(join(ROOT, 'hub/schema.sql'), 'utf8');
   assert.match(schema, /provenance/);

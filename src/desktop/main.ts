@@ -24,6 +24,8 @@ import { createProductionCredentialStore, CredentialStoreError } from '../creden
 import { EnrollmentClient, EnrollmentClientError, readLocalEnrollmentState } from '../enrollment-client.js';
 import { ensureAwhDataDirectoryActive } from '../data-migration.js';
 import { AutopilotRunner, detectLocalCapabilities, loadAutopilotTasks, selectAutopilotProfile } from '../autopilot.js';
+import { ControlPlaneWorkerClient } from '../control-plane-worker-client.js';
+import { ControlPlaneWorkerRuntime } from '../control-plane-worker-runtime.js';
 import { listArtifacts } from '../artifacts.js';
 import { discoverContinuity } from '../continuity.js';
 import { readOwnerSession, trustOwner } from '../first-run.js';
@@ -60,6 +62,9 @@ let quitting = false;
 let remoteOperationInFlight = false;
 let lastRemoteRuntime: ReturnType<typeof sanitizedTunnelRuntime> | null = null;
 let autopilotRuntime: { key: string; runner: AutopilotRunner } | null = null;
+let workerRuntime: { key: string; runtime: ControlPlaneWorkerRuntime } | null = null;
+let workerTimer: NodeJS.Timeout | null = null;
+let workerRunning = false;
 const MAX_HANDOFF_PREVIEW_CHARS = 4_000;
 
 const require = createRequire(import.meta.url);
@@ -171,6 +176,36 @@ function enrollmentError(error: unknown): { ok: false; error: string; message: s
 function enrollmentClient(config: ReturnType<typeof loadConfig>): EnrollmentClient {
   if (!config.hubApiBase) throw new EnrollmentClientError('Hub enrollment API is not configured', 'HUB_NOT_CONFIGURED');
   return new EnrollmentClient(config.hubApiBase, config.dataDir, createProductionCredentialStore());
+}
+
+function controlPlaneWorker(config: ReturnType<typeof loadConfig>): ControlPlaneWorkerRuntime {
+  const key = `${config.dataDir}:${config.hubApiBase}:${config.allowExec}:${config.allowWrite}:${config.allowCodex}`;
+  if (!workerRuntime || workerRuntime.key !== key) workerRuntime = { key, runtime: new ControlPlaneWorkerRuntime(new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createProductionCredentialStore()), { dataDir: config.dataDir, maxReadBytes: config.maxReadBytes, allowExec: config.allowExec, allowWrite: config.allowWrite, allowCodex: config.allowCodex }) };
+  return workerRuntime.runtime;
+}
+
+async function workerState() {
+  const config = loadConfig();
+  const identity = await readDeviceIdentity(config.dataDir).catch(() => null);
+  return { enabled: config.controlPlaneWorker, hubConfigured: Boolean(config.hubApiBase), hubAuthority: config.hubApiBase, device: identity ? { idShort: identity.deviceId.slice(0, 8), platform: identity.platform, arch: identity.arch, displayName: identity.displayName } : null, running: workerRunning };
+}
+
+async function runWorkerOnce() {
+  const config = loadConfig();
+  if (!config.controlPlaneWorker) return { ok: false, error: 'WORKER_DISABLED', message: 'Worker is disabled in this device policy' };
+  if (workerRunning) return { ok: false, error: 'WORKER_BUSY', message: 'Worker is already running' };
+  workerRunning = true;
+  try { return { ok: true, ...(await controlPlaneWorker(config).runOnce()) }; }
+  catch { return { ok: false, error: 'WORKER_RUN_FAILED', message: 'Worker could not complete a safe run' }; }
+  finally { workerRunning = false; }
+}
+
+function startWorkerLoop(): void {
+  const config = loadConfig();
+  if (!config.controlPlaneWorker || workerTimer) return;
+  void runWorkerOnce();
+  workerTimer = setInterval(() => { void runWorkerOnce(); }, 30_000);
+  workerTimer.unref?.();
 }
 
 async function enrollmentState() {
@@ -584,6 +619,10 @@ function registerIpc(): void {
     const config = loadConfig();
     return { artifacts: await listArtifacts(config.dataDir, 20) };
   });
+  ipcMain.handle(DESKTOP_IPC.autopilotRemoteResults, async () => {
+    try { const config = loadConfig(); return { ok: true, ...(await new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createProductionCredentialStore()).readResults()) }; }
+    catch { return { ok: false, results: [], artifacts: [], approvals: [] }; }
+  });
   ipcMain.handle(DESKTOP_IPC.autopilotContinuity, async () => {
     const { config, manifest } = await currentAutopilot();
     const status = await gitStatus(config.workspace);
@@ -595,6 +634,8 @@ function registerIpc(): void {
     try { const { runner } = await currentAutopilot(); return { ok: true, ...(await runner.checkpointMemory(taskId)) }; }
     catch { return { ok: false, error: 'MEMORY_CHECKPOINT_REJECTED', message: 'Memory checkpoint requires explicit write permission and a completed task' }; }
   });
+  ipcMain.handle(DESKTOP_IPC.workerState, async () => workerState());
+  ipcMain.handle(DESKTOP_IPC.workerRunOnce, async () => runWorkerOnce());
 
   ipcMain.handle(DESKTOP_IPC.remoteConnect, async () => {
     if (remoteOperationInFlight) return { ok: false, error: 'REMOTE_BUSY', message: 'Remote Connection กำลังทำรายการอื่นอยู่' };
@@ -772,6 +813,7 @@ const smokeMarkerReady = SMOKE_TEST
 async function startAfterReady(): Promise<void> {
   await smokeMarkerReady;
   registerIpc();
+  startWorkerLoop();
 
   if (SMOKE_TEST) {
     try {

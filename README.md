@@ -10,7 +10,7 @@ AWH Desktop turns one selected local project folder into a tightly scoped MCP wo
 
 > Compatibility note: Art Agent is the legacy codename. Package, installer, MCP protocol, data-directory, and `ART_AGENT_*` identifiers remain temporarily for upgrade and runtime compatibility.
 
-> Status: **v0.4 Context Economy baseline**. Local stdio MCP, the sandboxed Electron Control Center, the per-user Windows installer, bounded/paged context reads, safe project profiling, and persistent task metadata are implemented. Remote Secure MCP Tunnel, browser control, Office integration, clipboard access, and arbitrary shell access remain intentionally disabled.
+> Status: **v1.0.0-rc.1 feature-complete local release candidate**. AWH Desktop, the installable CONTROL/PWA surface, canonical Projects/Tasks/Workers/Results/Approvals contracts, bounded local worker runtime, and real-project profiles are prepared for one reviewed ReadyIDC activation. Production activation and physical iPhone/Mac/Windows field testing remain intentionally pending.
 
 ## Security posture
 

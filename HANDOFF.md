@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-M3D — AWH Hub Live Read Connection — CLOSED; M3E-FINAL — Mac active / Windows field pending; AWH real-project unblock — LOCAL DOGFOOD PASS; M4 local control-plane package prepared / ReadyIDC activation pending.
+V1.0.0-rc.1 — feature-complete local release candidate; M3D/M3E live baseline preserved; M4 control-plane/PWA/worker package prepared locally / ReadyIDC activation and physical field testing pending.
 
 ## Completed
 
@@ -19,10 +19,12 @@ AWH v0.5 adds the first usable local product flow: trusted-device first-run
 metadata, bounded Task Contract, reusable BAY/Remotion/School Website/Node
 profiles, local allowlisted runner, artifacts, and cross-device continuity
 checkpoint discovery. The local dogfood path passed end-to-end.
-Release identity 0.5.0 is now AWH-facing. `AWH.app` and the win32-x64 portable
+Release identity `1.0.0-rc.1` is now AWH-facing. `AWH.app` and the win32-x64 portable
 bundle containing `AWH.exe` were built locally and verified structurally; the
-Mac packaged non-GUI remote-readonly probe passed. The Squirrel installer,
-Windows execution, and signing/notarization remain platform/field gates.
+Mac packaged non-GUI remote-readonly probe passed. The Windows workflow is
+prepared for AWH-native packaging and manual dispatch, but the native installer
+artifact still requires a Windows CI run. Signing/notarization remain optional
+distribution gates.
 
 ## Source of Truth
 
@@ -40,7 +42,7 @@ Windows execution, and signing/notarization remain platform/field gates.
 - Real-project validation: BAY EXCUSE X is registered as `php` and passed bounded PHP lint; Teacher Evaluation Video is registered as `remotion` and passed the existing `check` typecheck alias plus FFmpeg/FFprobe probe. Both completed with bounded artifacts and continuity checkpoints while preserving dirty local work.
 - Completion continuity metadata records `COMPLETED`, the committed HEAD, dirty-state protection, source device, project/task IDs, bounded HANDOFF and relative artifact references. Another device must use the committed release only; uncommitted local changes are never a continuation source.
 - The device-local registry contains AWH, BAY EXCUSE X (`d1e48976-cfde-479d-9a9c-f3b0ab5ec4fc`), and Teacher Evaluation Video (`dad35312-06d6-488b-9ed2-f4886d5394ac`). The second Teacher clone is intentionally not registered, so there is no duplicate identity.
-- M4 local foundation is now implemented and fixture-verified: additive schema 003 targets user_version 4; browser control sessions use HttpOnly Secure cookies plus CSRF/origin checks; Goal submission is idempotent and project-authorized; workers heartbeat/claim/update through existing device-token auth; stale workers are surfaced offline. The release/deployment/rollback package is prepared but no M4 migration, route, static CONTROL release, or ReadyIDC mutation has occurred. Google Cloud `awh-vps` remains untouched legacy/backup infrastructure.
+- M4 v1 RC foundation is implemented and fixture-verified: additive schema 003 targets user_version 4; browser control sessions use HttpOnly Secure cookies plus CSRF/origin checks; Goal submission is idempotent and project-authorized; Results/Artifacts/Approvals are bounded and scoped; the Desktop runtime can heartbeat/claim/update through existing device-token auth; stale workers are surfaced offline. The release/deployment/rollback package is executable in local dry-run/fixture scope, but no M4 migration, route, static CONTROL release, or ReadyIDC mutation has occurred. Google Cloud `awh-vps` remains untouched legacy/backup infrastructure.
 
 ## Next action
 
@@ -54,7 +56,7 @@ submit a real Goal. Keep Windows device pairing separate and verify sanitized
 
 - Windows Credential Manager persistence, Windows runtime/installer proof, and Mac ↔ Hub ↔ Windows continuity remain field validation work.
 - Desktop source/security readiness passes. Direct Electron 43.2.0 x64 launch from the Codex context produces a real native AppKit `SIGABRT` before AWH application startup, and non-GUI `/usr/bin/open` returns LaunchServices `-10822`. The smoke harness isolates temp data and classifies that pre-marker Codex GUI failure as `GUI_SANDBOX_BLOCKED`, not `AWH_APP_FAILED` and never PASS; the local Mac bundle passes non-GUI structural/runtime verification. Windows runtime and Squirrel installer remain Windows-only checks, and the Mac bundle is unsigned/not notarized.
-- New M4 task/worker/mobile control-plane routes are not deployed; the local package is ready but remains behind one production approval. The local worker client/protocol is implemented; actual Mac/Windows outbound worker operation and live iPhone submission still require activation/field validation.
+- New M4 task/worker/mobile control-plane routes are not deployed; the local package is ready but remains behind one production approval. The worker client is wired into the Desktop main process as an opt-in outbound heartbeat/claim runtime, and actual Mac/Windows outbound operation/live iPhone submission still require activation/field validation.
 - GitHub Actions is optional and not part of the local critical path.
 - The GitHub remote may be behind this local Source of Truth. Do not use the remote as the authority for this work.
 - M3E is operational but not fully closed: Mac is active; milestone closure still requires the independent Windows device and sanitized `devices = 2`.

@@ -14,18 +14,20 @@
         <img src="../logo-256x256.png" alt="Art’s Workspace Hub" />
         <div><strong>Art’s Workspace Hub</strong><span id="version">AWH Desktop</span></div>
       </div>
-      <nav>
-        <button class="nav active" data-section="overview">ภาพรวม</button>
+      <nav aria-label="AWH primary navigation">
+        <button class="nav active" data-section="overview">Control Panel</button>
         <button class="nav" data-section="projects">Projects</button>
-        <button class="nav" data-section="autopilot">Autopilot</button>
-        <button class="nav" data-section="artifacts">Artifacts</button>
-        <button class="nav" data-section="enrollment">Device Enrollment</button>
-        <button class="nav" data-section="memory">Project Memory</button>
-        <button class="nav" data-section="git">Git</button>
-        <button class="nav" data-section="permissions">สิทธิ์</button>
-        <button class="nav" data-section="remote">Remote</button>
-        <button class="nav" data-section="doctor">Doctor</button>
-        <button class="nav" data-section="audit">Audit</button>
+        <button class="nav" data-section="autopilot">Work</button>
+        <button class="nav" data-section="artifacts">Results</button>
+        <button class="nav" data-section="enrollment">Devices</button>
+        <details class="advanced-nav"><summary>Advanced</summary>
+          <button class="nav" data-section="memory">Project Memory</button>
+          <button class="nav" data-section="git">Git</button>
+          <button class="nav" data-section="permissions">Permissions</button>
+          <button class="nav" data-section="remote">Remote / MCP</button>
+          <button class="nav" data-section="doctor">Doctor</button>
+          <button class="nav" data-section="audit">Audit</button>
+        </details>
       </nav>
       <div class="sidebar-foot"><span class="dot"></span> Safe-by-default</div>
     </aside>
@@ -33,10 +35,10 @@
     <main>
       <header>
         <div>
-          <p class="eyebrow">LOCAL DEVELOPMENT CONTROL PLANE</p>
-          <h1>Control Center</h1>
+          <p class="eyebrow">AWH CONTROL PANEL</p>
+          <h1>Control Panel</h1>
           <p class="muted">Your Projects. One Workspace. Anywhere.</p>
-          <p class="muted">สถานะ workspace, Git, สิทธิ์, Remote Connection และ local Codex ในจุดเดียว</p>
+          <p class="muted">เลือกโปรเจกต์ พิมพ์ Goal และติดตามงานต่อจากอุปกรณ์ที่ไว้ใจได้</p>
         </div>
         <button id="refresh" class="btn secondary">รีเฟรช</button>
       </header>
@@ -99,7 +101,7 @@
       </section>
 
       <section id="section-artifacts" class="section">
-        <div class="card"><div class="card-head"><div><p class="eyebrow">ARTIFACT CENTER</p><h2>Results ready for review</h2></div><button id="refresh-artifacts" class="btn secondary small">Refresh</button></div><p class="muted">แสดงเฉพาะ metadata/reference แบบ relative ไม่แสดง absolute path หรือ credential</p><div id="artifact-list" class="list"></div></div>
+        <div class="card"><div class="card-head"><div><p class="eyebrow">RESULTS</p><h2>ผลลัพธ์ที่พร้อมตรวจ</h2></div><button id="refresh-artifacts" class="btn secondary small">Refresh</button></div><p class="muted">แสดงเฉพาะผลลัพธ์และ metadata ที่ผูกกับโปรเจกต์ ไม่แสดง source path หรือ credential</p><div id="remote-result-list" class="list"></div><div id="artifact-list" class="list"></div><div class="card-head" style="margin-top:22px"><h3>ต้องการการอนุมัติ</h3><span class="badge">SCOPED</span></div><div id="approval-list" class="list"></div></div>
       </section>
 
       <section id="section-memory" class="section">
@@ -140,6 +142,7 @@
             <button id="enrollment-rotate" class="btn secondary" disabled>Rotate credential</button>
             <button id="enrollment-revoke" class="btn danger" disabled>Revoke device credential</button>
           </div>
+          <div class="owner-tools"><div class="card-head"><div><h3>Worker พร้อมทำงาน</h3><p id="worker-summary" class="muted">ตรวจสถานะ worker จาก Hub เมื่อเปิดใช้ control plane</p></div><span id="worker-state" class="badge">OFF</span></div><div class="actions"><button id="worker-run-once" class="btn secondary small">ตรวจงานใหม่</button></div></div>
           <p class="muted remote-note">AWH จะเก็บ credential เฉพาะใน secure OS credential store ของเครื่องนี้ ไม่แสดง credential ในหน้าจอ Browser หรือ Project Memory</p>
         </div>
       </section>

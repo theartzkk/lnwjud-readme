@@ -16,6 +16,7 @@ export interface ArtAgentConfig {
   maxSearchResults: number;
   maxTaskLogBytes: number;
   hubApiBase: string;
+  controlPlaneWorker: boolean;
 }
 
 const ENV_ALIASES = {
@@ -28,6 +29,7 @@ const ENV_ALIASES = {
   maxSearchResults: ['AWH_MAX_SEARCH_RESULTS', 'ART_AGENT_MAX_SEARCH_RESULTS'],
   maxTaskLogBytes: ['AWH_MAX_TASK_LOG_BYTES', 'ART_AGENT_MAX_TASK_LOG_BYTES'],
   hubApiBase: ['AWH_HUB_API_BASE', 'ART_AGENT_HUB_API_BASE'],
+  controlPlaneWorker: ['AWH_CONTROL_PLANE_WORKER', 'ART_AGENT_CONTROL_PLANE_WORKER'],
 } as const;
 
 export type ConfigEnvironmentKey = keyof typeof ENV_ALIASES;
@@ -76,5 +78,6 @@ export function loadConfig(): ArtAgentConfig {
     maxSearchResults: intEnv('maxSearchResults', 100),
     maxTaskLogBytes: intEnv('maxTaskLogBytes', 512 * 1024),
     hubApiBase: compatibilityEnv('hubApiBase')?.trim() || DEFAULT_AWH_HUB_API_BASE,
+    controlPlaneWorker: boolValue('controlPlaneWorker', undefined, false),
   };
 }

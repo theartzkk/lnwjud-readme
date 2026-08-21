@@ -57,7 +57,18 @@ function renderContinuity(data) {
 }
 
 function renderArtifacts(data) {
-  renderList($('artifact-list'), data?.artifacts || [], 'ยังไม่มี artifact ที่พร้อม review', (artifact) => item(`${artifact.kind} • ${artifact.label}`, `${artifact.status} • ${artifact.relativeRef} • ${artifact.bytes} bytes`, 'timeline-item'));
+  renderList($('remote-result-list'), data?.results || [], 'ยังไม่มีงานจาก Hub', (result) => item(`${result.projectName || result.projectId || 'Project'} • ${result.state}`, `${result.goal} • ${result.resultSummary || result.lastEvent?.message || 'กำลังรอผลลัพธ์'} • artifact ${result.artifactRefs?.length || 0}`, 'timeline-item'));
+  renderList($('artifact-list'), data?.artifacts || [], 'ยังไม่มีผลลัพธ์ที่พร้อม review', (artifact) => item(`${artifact.kind} • ${artifact.label || artifact.name || 'ผลลัพธ์'}`, `${artifact.status || 'READY'} • ${artifact.relativeRef || 'metadata only'} • ${artifact.bytes ?? artifact.sizeBytes ?? 0} bytes`, 'timeline-item'));
+  renderList($('approval-list'), data?.approvals || [], 'ยังไม่มี action ที่รอการอนุมัติ', (approval) => item(`${approval.action || 'Action'} • ${approval.status || 'PENDING'}`, `Project ${approval.projectId || '—'} • หมดอายุ ${dateText(approval.expiresAt)}`, 'timeline-item'));
+}
+
+async function refreshWorker() {
+  try {
+    const state = await window.artAgent.getWorkerState();
+    $('worker-state').textContent = state.enabled ? (state.running ? 'WORKING' : 'READY') : 'OFF';
+    $('worker-state').className = `badge ${state.enabled ? 'success' : ''}`.trim();
+    $('worker-summary').textContent = state.enabled ? `${state.hubAuthority} • งานจะเริ่มเมื่อ Hub มอบหมายและ policy อนุญาต` : 'เปิดใช้ worker ผ่าน device policy เมื่อ control plane พร้อม';
+  } catch { $('worker-state').textContent = 'CHECK'; $('worker-state').className = 'badge danger'; }
 }
 
 async function refreshAutopilot() {
@@ -65,7 +76,9 @@ async function refreshAutopilot() {
     const data = await window.artAgent.getAutopilotOverview();
     renderAutopilotOverview(data);
     renderContinuity(await window.artAgent.getAutopilotContinuity());
-    renderArtifacts({ artifacts: data.artifacts });
+    const remote = await window.artAgent.getAutopilotRemoteResults().catch(() => ({ results: [], artifacts: [], approvals: [] }));
+    renderArtifacts({ results: remote.results || [], artifacts: [...(data.artifacts || []), ...(remote.artifacts || [])], approvals: remote.approvals || [] });
+    await refreshWorker();
   } catch (error) {
     $('autopilot-state').textContent = 'UNAVAILABLE'; $('autopilot-state').className = 'badge danger';
     $('autopilot-project').textContent = 'เลือกและลงทะเบียน project ก่อนเริ่ม Local Autopilot';
@@ -399,6 +412,7 @@ $('start-autopilot').addEventListener('click', () => startAutopilot('autopilot-g
 $('view-autopilot').addEventListener('click', () => showSection('autopilot'));
 $('refresh-autopilot').addEventListener('click', refreshAutopilot);
 $('refresh-artifacts').addEventListener('click', async () => renderArtifacts(await window.artAgent.getAutopilotArtifacts()));
+$('worker-run-once').addEventListener('click', async () => { $('worker-run-once').disabled = true; await window.artAgent.runWorkerOnce(); await refreshWorker(); await refreshAutopilot(); $('worker-run-once').disabled = false; });
 $('restart').addEventListener('click', () => window.artAgent.restart());
 $('open-data-dir').addEventListener('click', () => window.artAgent.openDataDir());
 

@@ -20,6 +20,14 @@ Canonical routes หลัง activation:
 - `POST /api/v1/control/workers/heartbeat`
 - `POST /api/v1/control/workers/claim`
 - `POST /api/v1/control/tasks/{taskId}/update`
+- `GET /api/v1/control/results`
+- `GET /api/v1/control/artifacts`
+- `GET /api/v1/control/approvals`
+- `GET /api/v1/control/approvals/{approvalId}`
+- `POST /api/v1/control/approvals/{approvalId}/approve`
+- `POST /api/v1/control/approvals/{approvalId}/reject`
+- `GET /api/v1/control/worker/results/{deviceId}`
+- `POST /api/v1/control/tasks/{taskId}/artifact`
 
 Worker routes ใช้ device token ผ่าน existing M3E authentication boundary; browser routes ใช้ session cookie. ไม่มี shell/exec/file browser/MCP proxy/source editor.
 
@@ -37,4 +45,26 @@ Prepare the exact release assets locally with `npm run web:build:control` follow
 
 ## Known boundary
 
-Local fixture tests prove session exchange, CSRF/origin boundary, project authorization, idempotent task submission and truthful waiting state. ReadyIDC production remains M3E-only until the single M4 approval is executed; therefore live iPhone command submission is not claimed in this source pass.
+Local fixture tests prove session exchange, CSRF/origin boundary, project authorization, idempotent task submission, truthful waiting state, worker claim/update, Results/Artifacts, scoped Approval decisions, and device-authenticated worker results. The Desktop runtime now has an opt-in outbound heartbeat/claim loop that routes claimed Goals through the existing project context, checkpoint, bounded Autopilot/QA, artifact and continuity engines; source-changing Goals additionally require the scoped approval. ReadyIDC production remains M3E-only until the single M4 approval is executed; therefore live iPhone command submission is not claimed in this source pass.
+
+## PWA release contract
+
+`npm run web:build:control` produces the same canonical CONTROL surface as a
+phone-first installable PWA. The manifest uses standalone display and the
+canonical AWH artwork. The versioned service worker caches only the static app
+shell and never caches `/api/` responses, session state, or mutation results;
+activation removes older `awh-shell-*` caches. Safari can use the ordinary
+HTTPS page even when installation is unavailable.
+
+## Deployment execution contract
+
+`deploy/awh-control-plane/deploy-control-plane.sh --dry-run` is safe and local.
+The real command is `--deploy --approve`, requires a clean exact release SHA,
+validates the local PHP/SQL/Nginx/PWA assets and read-only production preflight,
+then uploads one fixed bundle to the configured target. The remote script first
+extracts that bundle into an exact release-owned directory, backs up SQLite,
+applies migration 003 twice, registers portable project metadata, atomically
+switches control/web pointers, inserts the include only in the reviewed HTTPS
+server block, reloads the required service, runs M3D/control checks, and emits
+allowlisted stage lines only. Failure restores the database, pointers and
+Nginx state and verifies the baseline. This command has not been executed.

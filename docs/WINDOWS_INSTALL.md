@@ -1,12 +1,12 @@
 # AWH — Windows Installation
 
-AWH uses the **per-user Squirrel.Windows installer** identity. The normal install path does not require administrator privileges from AWH. The public v0.5 artifacts are `AWH.exe` and `AWHSetup.exe`; legacy data, environment and MCP protocol identifiers remain compatibility boundaries.
+AWH uses the **per-user Squirrel.Windows installer** identity. The normal install path does not require administrator privileges from AWH. The v1.0.0-rc.1 candidate artifacts are `AWH.exe` and `AWHSetup.exe`; legacy data, environment and MCP protocol identifiers remain compatibility boundaries.
 
 ## Install through the Windows UI
 
 1. Open this repository on GitHub and choose **Actions**.
 2. Open the latest successful **CI** run for the release commit you want to install.
-3. In **Artifacts**, download `Art-Agent-Windows-Installer-<version>`.
+3. In **Artifacts**, download `AWH-Windows-Installer-<version>`.
 4. Extract the downloaded ZIP.
 5. Confirm the folder contains:
    - `AWHSetup.exe`

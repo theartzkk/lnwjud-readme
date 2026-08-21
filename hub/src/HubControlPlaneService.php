@@ -128,6 +128,88 @@ final class HubControlPlaneService
 
     public function getTask(string $sessionToken, string $taskId, ?string $now = null): array { $session = $this->sessionRow($sessionToken, $now); return $this->taskById($taskId, (string) $session['user_id']); }
 
+    /** Results are task-scoped, bounded and never include source content or local paths. */
+    public function results(string $sessionToken, ?string $projectId = null, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now);
+        $sql = 'SELECT * FROM control_tasks WHERE user_id = :user AND state IN (\'COMPLETED\', \'FAILED\', \'WAITING_FOR_APPROVAL\')';
+        $params = ['user' => $session['user_id']];
+        if ($projectId !== null) { $projectId = self::uuid($projectId); $this->assertProjectMember((string) $session['user_id'], $projectId); $sql .= ' AND project_id = :project'; $params['project'] = $projectId; }
+        $sql .= ' ORDER BY updated_at DESC, task_id DESC LIMIT 50';
+        $query = $this->pdo->prepare($sql); $query->execute($params);
+        return ['schemaVersion' => 1, 'results' => array_map(fn (array $row): array => $this->taskRow($row), $query->fetchAll())];
+    }
+
+    public function artifacts(string $sessionToken, ?string $taskId = null, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now);
+        $sql = 'SELECT a.artifact_id, a.task_id, a.project_id, a.kind, a.name, a.sha256, a.size_bytes, a.relative_ref, a.created_at FROM control_artifacts a JOIN control_tasks t ON t.task_id = a.task_id WHERE t.user_id = :user';
+        $params = ['user' => $session['user_id']];
+        if ($taskId !== null) { $taskId = self::uuid($taskId); $sql .= ' AND a.task_id = :task'; $params['task'] = $taskId; }
+        $sql .= ' ORDER BY a.created_at DESC, a.artifact_id DESC LIMIT 100';
+        $query = $this->pdo->prepare($sql); $query->execute($params);
+        return ['schemaVersion' => 1, 'artifacts' => array_map([self::class, 'artifactRow'], $query->fetchAll())];
+    }
+
+    /** Device-authenticated read for the Desktop worker; the device never receives another device's credential. */
+    public function workerResults(string $token, string $deviceId, ?string $now = null): array
+    {
+        $auth = $this->enrollment->authenticateForControlPlane($token, self::uuid($deviceId), $now);
+        $query = $this->pdo->prepare("SELECT * FROM control_tasks WHERE user_id = :user AND state IN ('COMPLETED', 'FAILED', 'WAITING_FOR_APPROVAL') ORDER BY updated_at DESC, task_id DESC LIMIT 50"); $query->execute(['user' => $auth['userId']]);
+        $artifact = $this->pdo->prepare('SELECT a.artifact_id, a.task_id, a.project_id, a.kind, a.name, a.sha256, a.size_bytes, a.relative_ref, a.created_at FROM control_artifacts a JOIN control_tasks t ON t.task_id = a.task_id WHERE t.user_id = :user ORDER BY a.created_at DESC, a.artifact_id DESC LIMIT 100'); $artifact->execute(['user' => $auth['userId']]);
+        $approval = $this->pdo->prepare('SELECT a.approval_id, a.task_id, t.project_id, a.action, a.status, a.expires_at, a.decided_at FROM control_approvals a JOIN control_tasks t ON t.task_id = a.task_id WHERE t.user_id = :user ORDER BY a.expires_at DESC, a.approval_id DESC LIMIT 50'); $approval->execute(['user' => $auth['userId']]);
+        return ['schemaVersion' => 1, 'results' => array_map(fn (array $row): array => $this->taskRow($row), $query->fetchAll()), 'artifacts' => array_map([self::class, 'artifactRow'], $artifact->fetchAll()), 'approvals' => array_map([self::class, 'approvalRow'], $approval->fetchAll())];
+    }
+
+    public function approvals(string $sessionToken, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $at = strtotime(self::timestamp($now ?? gmdate('c')));
+        $query = $this->pdo->prepare('SELECT a.approval_id, a.task_id, t.project_id, a.action, a.scope_json, a.status, a.expires_at, a.decided_at FROM control_approvals a JOIN control_tasks t ON t.task_id = a.task_id WHERE t.user_id = :user ORDER BY a.expires_at DESC, a.approval_id DESC LIMIT 50');
+        $query->execute(['user' => $session['user_id']]);
+        return ['schemaVersion' => 1, 'approvals' => array_map(static function (array $row) use ($at): array { $status = (string) $row['status']; if ($status === 'PENDING' && strtotime((string) $row['expires_at']) <= $at) $status = 'EXPIRED'; return self::approvalRow($row, $status); }, $query->fetchAll())];
+    }
+
+    public function decideApproval(string $sessionToken, string $csrfToken, string $approvalId, string $decision, ?string $now = null): array
+    {
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); $approvalId = self::uuid($approvalId); $decision = strtoupper($decision);
+        if (!in_array($decision, ['APPROVED', 'REJECTED'], true)) throw new HubControlPlaneException('Approval decision is invalid', 'APPROVAL_DECISION_INVALID');
+        $at = self::timestamp($now ?? gmdate('c')); $epoch = strtotime($at);
+        $q = $this->pdo->prepare('SELECT a.*, t.project_id, t.user_id, t.goal FROM control_approvals a JOIN control_tasks t ON t.task_id = a.task_id WHERE a.approval_id = :approval AND t.user_id = :user');
+        $q->execute(['approval' => $approvalId, 'user' => $session['user_id']]); $row = $q->fetch();
+        if (!is_array($row)) throw new HubControlPlaneException('Approval was not found', 'APPROVAL_NOT_FOUND');
+        $current = (string) $row['status'];
+        if ($current !== 'PENDING') {
+            if ($current === $decision) return self::approvalRow($row, $current);
+            throw new HubControlPlaneException('Approval was already decided', 'APPROVAL_ALREADY_DECIDED');
+        }
+        if (strtotime((string) $row['expires_at']) <= $epoch) { $this->pdo->prepare("UPDATE control_approvals SET status = 'EXPIRED' WHERE approval_id = :approval AND status = 'PENDING'")->execute(['approval' => $approvalId]); throw new HubControlPlaneException('Approval has expired', 'APPROVAL_EXPIRED'); }
+        try {
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $update = $this->pdo->prepare('UPDATE control_approvals SET status = :status, decided_at = :at WHERE approval_id = :approval AND status = \'PENDING\'');
+            $update->execute(['status' => $decision, 'at' => $at, 'approval' => $approvalId]);
+            if ($update->rowCount() !== 1) throw new HubControlPlaneException('Approval was already decided', 'APPROVAL_ALREADY_DECIDED');
+            $taskState = $decision === 'APPROVED' ? 'WAITING_FOR_WORKER' : 'FAILED';
+            $message = $decision === 'APPROVED' ? 'approved' : 'rejected';
+            $this->pdo->prepare('UPDATE control_tasks SET state = :state, assigned_device_id = NULL, lease_expires_at = NULL, progress = CASE WHEN :failed = 1 THEN progress ELSE 0 END, failure_code = CASE WHEN :failed = 1 THEN \'APPROVAL_REJECTED\' ELSE NULL END, result_summary = CASE WHEN :failed = 1 THEN \'เจ้าของไม่อนุมัติการดำเนินการ\' ELSE NULL END, updated_at = :at WHERE task_id = :task AND user_id = :user')->execute(['state' => $taskState, 'failed' => $decision === 'REJECTED' ? 1 : 0, 'at' => $at, 'task' => $row['task_id'], 'user' => $session['user_id']]);
+            $this->event((string) $row['task_id'], $taskState, $decision === 'REJECTED' ? 0 : 0, $message, $at);
+            $this->pdo->prepare('UPDATE control_workers SET state = \'READY\', busy_task_id = NULL, last_seen_at = :at WHERE busy_task_id = :task')->execute(['at' => $at, 'task' => $row['task_id']]);
+            $this->pdo->exec('COMMIT');
+        } catch (Throwable $error) { try { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); else $this->pdo->exec('ROLLBACK'); } catch (Throwable) {} if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Approval decision failed closed', 'APPROVAL_DECISION_FAILED'); }
+        $row['status'] = $decision; $row['decided_at'] = $at; return self::approvalRow($row, $decision);
+    }
+
+    public function addArtifact(string $token, string $taskId, array $payload, ?string $now = null): array
+    {
+        self::exactKeys($payload, ['deviceId', 'kind', 'name', 'relativeRef', 'schemaVersion', 'sha256', 'sizeBytes']); if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Unsupported artifact schema', 'SCHEMA_VERSION');
+        $taskId = self::uuid($taskId); $kind = self::portableText((string) ($payload['kind'] ?? ''), 'kind', 40); $name = self::portableText((string) ($payload['name'] ?? ''), 'name', 160); $sha = $payload['sha256']; if ($sha !== null && (!is_string($sha) || !preg_match('/^[0-9a-f]{64}$/i', $sha))) throw new HubControlPlaneException('Artifact checksum is invalid', 'FIELD_INVALID');
+        $size = $payload['sizeBytes']; if (!is_int($size) || $size < 0 || $size > 50 * 1024 * 1024) throw new HubControlPlaneException('Artifact size is invalid', 'FIELD_INVALID');
+        $ref = $payload['relativeRef']; if ($ref !== null && (!is_string($ref) || $ref === '' || strlen($ref) > 240 || str_starts_with($ref, '/') || str_contains($ref, '\\') || str_contains($ref, '..') || preg_match('/[\x00-\x1f\x7f]/', $ref))) throw new HubControlPlaneException('Artifact reference is invalid', 'FIELD_INVALID');
+        $auth = $this->enrollment->authenticateForControlPlane($token, self::uuid((string) ($payload['deviceId'] ?? '')), $now);
+        $q = $this->pdo->prepare('SELECT project_id, assigned_device_id, user_id FROM control_tasks WHERE task_id = :task'); $q->execute(['task' => $taskId]); $task = $q->fetch(); if (!is_array($task) || $task['assigned_device_id'] !== $auth['deviceId'] || $task['user_id'] !== $auth['userId']) throw new HubControlPlaneException('Task is not assigned to this worker', 'TASK_FORBIDDEN');
+        $at = self::timestamp($now ?? gmdate('c')); $this->pdo->prepare('INSERT INTO control_artifacts(artifact_id, task_id, project_id, kind, name, sha256, size_bytes, relative_ref, created_at) VALUES(:id, :task, :project, :kind, :name, :sha, :size, :ref, :at)')->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'task' => $taskId, 'project' => $task['project_id'], 'kind' => $kind, 'name' => $name, 'sha' => $sha === null ? null : strtolower($sha), 'size' => $size, 'ref' => $ref, 'at' => $at]);
+        return $this->taskById($taskId, (string) $auth['userId']);
+    }
+
     public function workers(string $sessionToken, ?string $now = null): array
     {
         $this->sessionRow($sessionToken, $now);
@@ -189,14 +271,37 @@ final class HubControlPlaneService
         $progress = $payload['progress']; if (!is_int($progress) || $progress < 0 || $progress > 100) throw new HubControlPlaneException('Task progress is invalid', 'FIELD_INVALID');
         $message = self::optionalText($payload['message'] ?? null, 240); $result = self::optionalText($payload['resultSummary'] ?? null, 500); $at = self::timestamp($now ?? gmdate('c'));
         $q = $this->pdo->prepare('SELECT * FROM control_tasks WHERE task_id = :task AND assigned_device_id = :device AND user_id = :user'); $q->execute(['task' => $taskId, 'device' => $auth['deviceId'], 'user' => $auth['userId']]); $row = $q->fetch(); if (!is_array($row)) throw new HubControlPlaneException('Task is not assigned to this worker', 'TASK_FORBIDDEN');
-        $this->pdo->prepare('UPDATE control_tasks SET state = :state, progress = :progress, result_summary = COALESCE(:result, result_summary), updated_at = :at, lease_expires_at = CASE WHEN :terminal = 1 THEN NULL ELSE lease_expires_at END WHERE task_id = :task AND assigned_device_id = :device')->execute(['state' => $state, 'progress' => $progress, 'result' => $result, 'at' => $at, 'terminal' => in_array($state, ['COMPLETED', 'FAILED'], true) ? 1 : 0, 'task' => $taskId, 'device' => $auth['deviceId']]);
+        $needsApproval = $state === 'WAITING_FOR_APPROVAL'; $terminal = in_array($state, ['COMPLETED', 'FAILED'], true);
+        $this->pdo->prepare('UPDATE control_tasks SET state = :state, progress = :progress, result_summary = COALESCE(:result, result_summary), assigned_device_id = CASE WHEN :waiting = 1 THEN NULL ELSE assigned_device_id END, lease_expires_at = CASE WHEN :terminal = 1 OR :waiting = 1 THEN NULL ELSE lease_expires_at END, updated_at = :at WHERE task_id = :task AND assigned_device_id = :device')->execute(['state' => $state, 'progress' => $progress, 'result' => $result, 'at' => $at, 'terminal' => $terminal ? 1 : 0, 'waiting' => $needsApproval ? 1 : 0, 'task' => $taskId, 'device' => $auth['deviceId']]);
         $this->event($taskId, $state, $progress, $message, $at);
-        if (in_array($state, ['COMPLETED', 'FAILED'], true)) $this->pdo->prepare('UPDATE control_workers SET state = \'READY\', busy_task_id = NULL, last_seen_at = :at WHERE device_id = :device')->execute(['at' => $at, 'device' => $auth['deviceId']]);
+        if ($terminal || $needsApproval) $this->pdo->prepare('UPDATE control_workers SET state = \'READY\', busy_task_id = NULL, last_seen_at = :at WHERE device_id = :device')->execute(['at' => $at, 'device' => $auth['deviceId']]);
+        if ($needsApproval) { $check = $this->pdo->prepare("SELECT 1 FROM control_approvals WHERE task_id = :task AND status = 'PENDING'"); $check->execute(['task' => $taskId]); if ($check->fetchColumn() === false) $this->pdo->prepare('INSERT INTO control_approvals(approval_id, task_id, action, scope_json, status, expires_at, decided_at) VALUES(:id, :task, :action, :scope, \'PENDING\', :expires, NULL)')->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'task' => $taskId, 'action' => 'task.execute', 'scope' => json_encode(['taskId' => $taskId, 'projectId' => (string) $row['project_id'], 'goalDigest' => hash('sha256', (string) $row['goal'])], JSON_THROW_ON_ERROR), 'expires' => gmdate('c', strtotime($at) + 3600)]); }
         return $this->taskById($taskId, (string) $auth['userId']);
     }
 
     private function taskById(string $taskId, string $userId): array { $taskId = self::uuid($taskId); $q = $this->pdo->prepare('SELECT * FROM control_tasks WHERE task_id = :task AND user_id = :user'); $q->execute(['task' => $taskId, 'user' => $userId]); $row = $q->fetch(); if (!is_array($row)) throw new HubControlPlaneException('Task was not found', 'TASK_NOT_FOUND'); return $this->taskRow($row); }
-    private function taskRow(array $row): array { return ['schemaVersion' => 1, 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'goal' => (string) $row['goal'], 'state' => (string) $row['state'], 'progress' => (int) $row['progress'], 'assignedDevice' => $row['assigned_device_id'] === null ? null : (string) $row['assigned_device_id'], 'createdAt' => (string) $row['created_at'], 'updatedAt' => (string) $row['updated_at'], 'resultSummary' => $row['result_summary'] === null ? null : (string) $row['result_summary'], 'failureCode' => $row['failure_code'] === null ? null : (string) $row['failure_code'], 'artifactRefs' => []]; }
+    private function taskRow(array $row): array
+    {
+        $q = $this->pdo->prepare('SELECT artifact_id FROM control_artifacts WHERE task_id = :task ORDER BY created_at, artifact_id LIMIT 20'); $q->execute(['task' => $row['task_id']]);
+        $approval = $this->pdo->prepare('SELECT status FROM control_approvals WHERE task_id = :task ORDER BY expires_at DESC, approval_id DESC LIMIT 1'); $approval->execute(['task' => $row['task_id']]); $approvalStatus = $approval->fetchColumn();
+        $project = $this->pdo->prepare('SELECT name, type FROM projects WHERE project_id = :project'); $project->execute(['project' => $row['project_id']]); $projectRow = $project->fetch();
+        $event = $this->pdo->prepare('SELECT state, progress, message FROM control_task_events WHERE task_id = :task ORDER BY occurred_at DESC, event_id DESC LIMIT 1'); $event->execute(['task' => $row['task_id']]); $eventRow = $event->fetch();
+        return ['schemaVersion' => 1, 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'projectName' => is_array($projectRow) ? (string) $projectRow['name'] : null, 'projectType' => is_array($projectRow) ? (string) $projectRow['type'] : null, 'goal' => (string) $row['goal'], 'state' => (string) $row['state'], 'progress' => (int) $row['progress'], 'assignedDevice' => $row['assigned_device_id'] === null ? null : (string) $row['assigned_device_id'], 'approvalStatus' => $approvalStatus === false ? null : (string) $approvalStatus, 'createdAt' => (string) $row['created_at'], 'updatedAt' => (string) $row['updated_at'], 'resultSummary' => $row['result_summary'] === null ? null : (string) $row['result_summary'], 'failureCode' => $row['failure_code'] === null ? null : (string) $row['failure_code'], 'lastEvent' => is_array($eventRow) ? ['state' => (string) $eventRow['state'], 'progress' => (int) $eventRow['progress'], 'message' => $eventRow['message'] === null ? null : (string) $eventRow['message']] : null, 'artifactRefs' => array_map(static fn (array $item): string => (string) $item['artifact_id'], $q->fetchAll())];
+    }
+    private static function artifactRow(array $row): array { return ['schemaVersion' => 1, 'artifactId' => (string) $row['artifact_id'], 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'kind' => (string) $row['kind'], 'name' => (string) $row['name'], 'sha256' => $row['sha256'] === null ? null : (string) $row['sha256'], 'sizeBytes' => (int) $row['size_bytes'], 'relativeRef' => $row['relative_ref'] === null ? null : (string) $row['relative_ref'], 'createdAt' => (string) $row['created_at']]; }
+    private static function approvalRow(array $row, ?string $status = null): array
+    {
+        $scope = ['taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id']];
+        if (isset($row['scope_json']) && is_string($row['scope_json'])) {
+            try {
+                $parsed = json_decode($row['scope_json'], true, 8, JSON_THROW_ON_ERROR);
+                if (is_array($parsed) && isset($parsed['goalDigest']) && is_string($parsed['goalDigest']) && preg_match('/^[0-9a-f]{64}$/i', $parsed['goalDigest'])) $scope['goalDigest'] = strtolower($parsed['goalDigest']);
+            } catch (Throwable) {
+                // Scope is metadata only; a malformed persisted scope never becomes a reason to expose raw data.
+            }
+        }
+        return ['schemaVersion' => 1, 'approvalId' => (string) $row['approval_id'], 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'action' => (string) $row['action'], 'scope' => $scope, 'status' => $status ?? (string) $row['status'], 'expiresAt' => (string) $row['expires_at'], 'decidedAt' => $row['decided_at'] === null ? null : (string) $row['decided_at']];
+    }
     private function event(string $taskId, string $state, int $progress, ?string $message, string $at): void { $this->pdo->prepare('INSERT INTO control_task_events(event_id, task_id, state, progress, message, occurred_at) VALUES(:id, :task, :state, :progress, :message, :at)')->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'task' => $taskId, 'state' => $state, 'progress' => $progress, 'message' => $message, 'at' => $at]); }
     private function assertSessionRateLimit(?string $rateKey, string $now): void
     {

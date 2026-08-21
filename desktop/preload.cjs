@@ -24,8 +24,11 @@ const CHANNELS = Object.freeze({
   autopilotStart: 'art-agent:autopilot-start',
   autopilotTasks: 'art-agent:autopilot-tasks',
   autopilotArtifacts: 'art-agent:autopilot-artifacts',
+  autopilotRemoteResults: 'art-agent:autopilot-remote-results',
   autopilotContinuity: 'art-agent:autopilot-continuity',
   autopilotCheckpointMemory: 'art-agent:autopilot-checkpoint-memory',
+  workerState: 'art-agent:worker-state',
+  workerRunOnce: 'art-agent:worker-run-once',
   restart: 'art-agent:restart',
   openDataDir: 'art-agent:open-data-dir',
 });
@@ -60,8 +63,11 @@ contextBridge.exposeInMainWorld('artAgent', Object.freeze({
   startAutopilot: (goal) => ipcRenderer.invoke(CHANNELS.autopilotStart, typeof goal === 'string' ? goal.slice(0, 2_000) : ''),
   getAutopilotTasks: () => ipcRenderer.invoke(CHANNELS.autopilotTasks),
   getAutopilotArtifacts: () => ipcRenderer.invoke(CHANNELS.autopilotArtifacts),
+  getAutopilotRemoteResults: () => ipcRenderer.invoke(CHANNELS.autopilotRemoteResults),
   getAutopilotContinuity: () => ipcRenderer.invoke(CHANNELS.autopilotContinuity),
   checkpointAutopilotMemory: (taskId) => ipcRenderer.invoke(CHANNELS.autopilotCheckpointMemory, typeof taskId === 'string' ? taskId.slice(0, 128) : ''),
+  getWorkerState: () => ipcRenderer.invoke(CHANNELS.workerState),
+  runWorkerOnce: () => ipcRenderer.invoke(CHANNELS.workerRunOnce),
   restart: () => ipcRenderer.invoke(CHANNELS.restart),
   openDataDir: () => ipcRenderer.invoke(CHANNELS.openDataDir),
 }));

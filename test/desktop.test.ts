@@ -36,9 +36,12 @@ test('desktop IPC exposes fixed high-level channel names only', () => {
     'autopilotArtifacts',
     'autopilotContinuity',
     'autopilotCheckpointMemory',
+    'autopilotRemoteResults',
     'restart',
     'selectProject',
     'setPermissions',
+    'workerRunOnce',
+    'workerState',
   ].sort());
 });
 
@@ -55,6 +58,8 @@ test('desktop HTML has a restrictive CSP, remote controls and no inline script',
   assert.match(html, /Your Projects\. One Workspace\. Anywhere\./);
   assert.match(html, /data-section="projects"/);
   assert.match(html, /data-section="enrollment"/);
+  assert.match(html, /id="remote-result-list"/);
+  assert.match(html, /data-section="overview"/);
   assert.match(html, /id="enrollment-code"/);
   assert.match(html, /id="enrollment-issue-pairing"/);
   assert.match(html, /สร้างรหัสเชื่อมต่อ/);

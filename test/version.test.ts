@@ -15,7 +15,7 @@ test('package, MCP and desktop share the AWH release version source', async () =
 
   assert.equal(pkg.version, ART_AGENT_VERSION);
   assert.equal(pkg.version, RELEASE_VERSION);
-  assert.equal(pkg.version, '0.5.0');
+  assert.equal(pkg.version, '1.0.0-rc.1');
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages?.['']?.version, pkg.version);
   assert.match(server, /ART_AGENT_VERSION/);

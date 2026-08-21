@@ -71,3 +71,21 @@ export async function codexStatus(cwd: string): Promise<CodexStatus> {
     return { available: false, executable: null, version: null, error: error instanceof Error ? error.message : String(error) };
   }
 }
+
+/**
+ * The only AWH AI execution bridge. A goal is content passed as one argv item;
+ * it is never interpreted as a shell command. The caller must have already
+ * passed the task/project approval boundary.
+ */
+export async function runCodexGoal(workspace: string, goal: string, sandbox: CodexSandbox = 'read-only'): Promise<{ code: number; summary: string }> {
+  if (typeof goal !== 'string' || !goal.trim() || goal.length > 2_000 || /[\u0000-\u001f\u007f]/.test(goal) || /(?:bearer\s+|password\s*[=:]|secret\s*[=:]|token\s*[=:]|api[_-]?key\s*[=:]|-----begin\s+(?:private|open)[^-]*key)/i.test(goal)) throw new Error('Codex goal is invalid');
+  const executable = await resolveCodexExecutable();
+  const result = await execFile(executable, [...buildCodexArgs(workspace, sandbox), goal.trim()], workspace, 15 * 60_000, codexEnvironment());
+  const output = `${result.stdout}\n${result.stderr}`
+    .replaceAll(workspace, '[workspace]')
+    .replace(/(?:Bearer\s+)[A-Za-z0-9._~-]+/gi, 'Bearer [redacted]')
+    .replace(/((?:password|secret|token|api[_-]?key)\s*[=:]\s*)[^\s&]+/gi, '$1[redacted]')
+    .replace(/(?:\/Users\/|\/home\/|[A-Za-z]:[\\/])[^\s'"`]+/g, '[path]')
+    .slice(-1_200);
+  return { code: result.code, summary: output.trim() || (result.code === 0 ? 'Codex task completed' : `Codex task failed with exit ${result.code}`) };
+}

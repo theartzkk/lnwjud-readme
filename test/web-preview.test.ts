@@ -139,3 +139,20 @@ test('browser surface has responsive mobile structure and bounded read-only stat
   assert.match(css, /@media\(max-width:560px\)/);
   assert.match(css, /status-grid\{grid-template-columns:1fr\}/);
 });
+
+test('CONTROL web build is installable without caching authenticated or API state', async () => {
+  await runFile(process.execPath, ['--import', 'tsx', 'scripts/build-web-preview.ts', '--control'], { cwd: ROOT, env: { ...process.env, AWH_PREVIEW_GENERATED_AT: '2026-01-01T00:00:00.000Z' } });
+  const [manifest, worker, config] = await Promise.all([
+    readFile(join(OUTPUT, 'manifest.webmanifest'), 'utf8'),
+    readFile(join(OUTPUT, 'sw.js'), 'utf8'),
+    readFile(join(OUTPUT, 'web-config.json'), 'utf8'),
+  ]);
+  const parsed = JSON.parse(manifest) as Record<string, unknown>;
+  assert.equal(parsed.display, 'standalone');
+  assert.equal(parsed.short_name, 'AWH');
+  assert.equal(JSON.parse(config).mode, 'CONTROL');
+  assert.match(worker, /awh-shell-v1-rc1/);
+  assert.match(worker, /url.pathname.includes\('\/api\/'\)/);
+  assert.doesNotMatch(worker, /cache.put\([^\n]*api/i);
+  assert.match(worker, /skipWaiting/);
+});
