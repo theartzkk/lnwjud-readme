@@ -176,7 +176,13 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
 
 test('guarded deployment refuses a dirty tree and rollback order stays restore-first', async () => {
   const deploy = join(ROOT, 'deploy/awh-enrollment/deploy-enrollment.sh');
-  await assert.rejects(() => execFile('sh', [deploy, '--deploy'], { cwd: ROOT, env: { ...process.env, AWH_SOURCE_ROOT: ROOT, AWH_DEPLOY_TARGET: 'awh-vps', AWH_HUB_HOSTNAME: 'awh.example' } }), /dirty|uncommitted/i);
+  const dirtyMarker = join(ROOT, `.awh-dirty-tree-fixture-${process.pid}-${Date.now()}`);
+  await writeFile(dirtyMarker, 'temporary regression fixture\n', 'utf8');
+  try {
+    await assert.rejects(() => execFile('sh', [deploy, '--deploy'], { cwd: ROOT, env: { ...process.env, AWH_SOURCE_ROOT: ROOT, AWH_DEPLOY_TARGET: 'awh-vps', AWH_HUB_HOSTNAME: 'awh.example' } }), /dirty|uncommitted/i);
+  } finally {
+    await rm(dirtyMarker, { force: true });
+  }
 
   const remote = await readFile(join(ROOT, 'deploy/awh-enrollment/remote-deploy.sh'), 'utf8');
   const order = [
