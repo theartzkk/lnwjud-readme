@@ -6,7 +6,7 @@ import { runCodexGoal } from './codex.js';
 import { loadOrCreateDeviceIdentity } from './device-identity.js';
 import { createCheckpoint } from './changes.js';
 import { createContinuityCheckpoint } from './continuity.js';
-import { resolveRegisteredProject, PROJECT_MEMORY_FILES } from './project-registry.js';
+import { buildProjectContext, resolveRegisteredProject, PROJECT_MEMORY_FILES } from './project-registry.js';
 import { ControlPlaneWorkerClient, type WorkerTask } from './control-plane-worker-client.js';
 
 const MUTATION_GOAL = /(?:\b(?:fix|edit|change|modify|write|render|publish|deploy|delete|remove)\b|แก้|เพิ่ม|ลบ|สร้าง|เรนเดอร์|เผยแพร่|deploy)/iu;
@@ -30,6 +30,26 @@ function boundedSummary(value: string): string {
 }
 
 export function isMutationGoal(goal: string): boolean { return MUTATION_GOAL.test(goal); }
+
+/**
+ * Canonical AI instruction order for AWH workers. Project memory remains in the
+ * canonical workspace and Codex is explicitly required to inspect it after the
+ * owner-level Constitution and before implementing the current Goal.
+ */
+export function buildCodexTaskInstruction(ownerProtocol: string, goal: string): string {
+  if (typeof ownerProtocol !== 'string' || !ownerProtocol.includes('Art ↔ AI Working Constitution')) throw new Error('Owner working protocol is unavailable');
+  const memoryFiles = PROJECT_MEMORY_FILES.join(', ');
+  return [
+    'AWH OWNER-LEVEL WORKING CONTRACT — MANDATORY',
+    ownerProtocol.trim(),
+    'PROJECT CONTEXT CONTRACT',
+    `Before implementation, inspect the canonical project identity and relevant Project Memory in this workspace (${memoryFiles}). Inspect current source/runtime state and treat those files as project-specific Source of Truth beneath the owner-level contract. Do not assume the user\'s wording limits analysis scope.`,
+    'CURRENT OWNER GOAL',
+    goal.trim(),
+    'EXECUTION REQUIREMENT',
+    'Apply the owner contract: system-first and root-cause-first analysis, search for shared/legacy/duplicate paths, preserve validated core and unrelated work, make one coherent bounded change, run architecture-relevant QA, and report only what is proven. Do not create a parallel system or broaden permissions.',
+  ].join('\n\n');
+}
 
 export async function workerCapabilities(dataDir: string): Promise<string[]> {
   const local = await detectLocalCapabilities(dataDir).catch(() => ({ git: false, node: false, php: false, ffmpeg: false, remotion: false, browsers: [] }));
@@ -74,17 +94,19 @@ export class ControlPlaneWorkerRuntime {
     }
 
     try {
-      await this.client.update(task.taskId, mutation ? 'RUNNING' : 'PREPARING', 5, 'Project context verified');
+      const context = await buildProjectContext(resolved.workspacePath);
+      await this.client.update(task.taskId, mutation ? 'RUNNING' : 'PREPARING', 5, 'Owner protocol and project context verified');
       if (mutation) {
         await createCheckpoint(this.options.dataDir, resolved.workspacePath, [...PROJECT_MEMORY_FILES], this.options.maxReadBytes);
-        const codex = await runCodexGoal(resolved.workspacePath, task.goal, 'workspace-write');
+        const instruction = buildCodexTaskInstruction(context.ownerProtocol, task.goal);
+        const codex = await runCodexGoal(resolved.workspacePath, instruction, 'workspace-write');
         if (codex.code !== 0) { await this.safeUpdate(task, 'FAILED', 10, 'AI-assisted task failed safely', 'CODEX_EXECUTION_FAILED'); return { status: 'FAILED', taskId: task.taskId, projectId: task.projectId, reason: 'CODEX_EXECUTION_FAILED' }; }
       }
       await this.client.update(task.taskId, 'QA', 70, 'Running approved project QA');
       const runner = new AutopilotRunner({ dataDir: this.options.dataDir, workspace: resolved.workspacePath, manifest: resolved.manifest, deviceId, maxReadBytes: this.options.maxReadBytes, allowExec: true, allowWrite: mutation && this.options.allowWrite });
-      const result = await runner.runNow({ goal: mutation ? 'Run bounded QA after the approved change' : task.goal, acceptanceCriteria: ['Project context remains bound to the canonical identity', 'Approved QA completes', 'A bounded result is available'] });
+      const result = await runner.runNow({ goal: mutation ? 'Run bounded QA after the approved change' : task.goal, acceptanceCriteria: ['Owner protocol and project context remain bound to the canonical identity', 'Approved QA completes', 'A bounded result is available'] });
       if (result.contract.state !== 'COMPLETED') { await this.safeUpdate(task, 'FAILED', 80, 'Project QA failed', 'PROJECT_QA_FAILED'); return { status: 'FAILED', taskId: task.taskId, projectId: task.projectId, reason: 'PROJECT_QA_FAILED' }; }
-      let artifactRef: string | null = result.artifact?.relativeRef ?? null;
+      const artifactRef: string | null = result.artifact?.relativeRef ?? null;
       if (result.artifact) {
         const artifactPath = join(this.options.dataDir, result.artifact.relativeRef);
         const bytes = (await stat(artifactPath)).size;
@@ -92,7 +114,7 @@ export class ControlPlaneWorkerRuntime {
         await this.client.addArtifact(task.taskId, { kind: result.artifact.kind, name: result.artifact.label, sha256, sizeBytes: bytes, relativeRef: result.artifact.relativeRef });
       }
       await createContinuityCheckpoint({ dataDir: this.options.dataDir, workspace: resolved.workspacePath, projectId: task.projectId, taskId: task.taskId, sourceDeviceId: deviceId, taskState: 'COMPLETED', goalSummary: task.goal, artifactRefs: artifactRef ? [artifactRef] : [] });
-      await this.client.update(task.taskId, 'COMPLETED', 100, 'Completed with bounded QA and continuity', mutation ? 'Approved project change and QA completed' : 'Project context and approved QA completed');
+      await this.client.update(task.taskId, 'COMPLETED', 100, 'Completed with owner protocol, bounded QA and continuity', mutation ? 'Approved project change and QA completed' : 'Project context and approved QA completed');
       return { status: 'COMPLETED', taskId: task.taskId, projectId: task.projectId, artifact: artifactRef };
     } catch (error) {
       await this.safeUpdate(task, 'FAILED', 0, 'Worker execution failed safely', 'WORKER_EXECUTION_FAILED');
