@@ -77,17 +77,22 @@ private key หรือ nonce ใน command line. ปัจจุบัน dep
 `AWH_DEPLOY_TARGET` และค่า
 เริ่มต้นคือ SSH alias `awh-vps` ไม่ใช่ชื่อ host ที่ซ้ำอยู่ใน source. Script นี้ใช้
 fixed file list และ fixed SSH/SCP argv; ไม่รับ shell command จากผู้ใช้.
+เมื่อ preflight ผ่าน `deploy-enrollment.sh --deploy` จะเรียก remote deployment
+phase เดียวที่ทำ backup, migration/idempotence, ติดตั้ง isolated PHP-FPM/Nginx
+route, `php-fpm -t`, `nginx -t`, reload และ regression checks พร้อม rollback เมื่อ
+critical gate ล้มเหลว. ห้ามเรียก phase นี้จาก dirty tree.
 
 ### 3. Apply the dedicated migration
 
-บน host หลัง package ถูก stage แต่ก่อนเปิด Nginx location:
+Remote deployment phase จะเรียก migration หลัง backup ผ่านแล้ว และรันสองครั้ง
+อัตโนมัติบน host ก่อนเปิด route:
 
 ```sh
 sudo -u awh-hub /usr/bin/php /opt/awh-hub/enrollment-current/bin/migrate-m3e2.php "$DB"
 sudo -u awh-hub /usr/bin/php /opt/awh-hub/enrollment-current/bin/migrate-m3e2.php "$DB"
 ```
 
-ครั้งแรกต้องได้ `"result":"applied"` และครั้งที่สองต้องได้
+การตรวจผลต้องได้ครั้งแรก `"result":"applied"` และครั้งที่สองต้องได้
 `"result":"already-applied"`. ถ้าไม่ใช่ ให้หยุดและใช้ rollback ไม่แก้ SQLite
 ด้วยมือ.
 
@@ -107,8 +112,8 @@ credential ใน URL หรือ log.
 ### 5. Provision bootstrap nonce hash safely
 
 ห้ามเก็บ nonce ตัวจริงใน Git, Project Memory, log หรือ shell history ใช้ secure
-interactive input แล้วเก็บเฉพาะ SHA-256 hash ใน PHP-FPM pool environment ที่
-permission `0600`:
+interactive input แล้วเก็บเฉพาะ SHA-256 hash ในไฟล์ provisioning นอก repository
+ที่ permission `0600`:
 
 ```sh
 umask 077
@@ -117,24 +122,23 @@ printf '%s' "$AWH_BOOTSTRAP_NONCE" | sha256sum | awk '{print $1}'
 unset AWH_BOOTSTRAP_NONCE
 ```
 
-นำ hash ที่ได้ไปแทน placeholder ในไฟล์ PHP-FPM ที่อยู่นอก repository โดย
-ตรวจซ้ำว่าไฟล์ owner/permission ถูกต้อง แล้ว `unset` ค่าชั่วคราวทั้งหมด. ห้าม
-คัดลอก nonce เข้า `AWH_ENROLLMENT_BOOTSTRAP_NONCE_HASH`; ตัวแปรนี้รับ hash เท่านั้น.
+เก็บ hash ที่ได้เป็นไฟล์นอก repository ที่
+`/etc/awh-hub/enrollment-bootstrap.sha256` ด้วย owner/permission ที่เข้มงวด
+(root และ `0600`) แล้ว `unset` ค่าชั่วคราวทั้งหมด. Remote deployment phase จะอ่าน
+hash ผ่าน privileged file access และแทนค่าใน PHP-FPM pool โดยไม่ใส่ nonce/hash ใน
+argv, log หรือ Project Memory. ห้ามคัดลอก nonce เข้า
+`AWH_ENROLLMENT_BOOTSTRAP_NONCE_HASH`; ตัวแปรนี้รับ hash เท่านั้น.
 
 ### 6. Enable the isolated route
 
-ติดตั้ง `deploy/php-fpm/awh-enrollment.pool.conf` หลังแทนค่า hash นอก source
-control แล้ว include `deploy/nginx/awh-enrollment.conf` ภายใน HTTPS server เดิม
-หรือ server แยกที่ผ่าน review. Location นี้ปิด Basic Auth inheritance เฉพาะ
+Remote deployment phase จะสร้าง PHP-FPM pool จาก template หลังตรวจ hash file และ
+เพิ่ม include ของ `deploy/nginx/awh-enrollment.conf` ใน effective HTTPS server
+config ที่ผ่าน preflight แล้ว. Location นี้ปิด Basic Auth inheritance เฉพาะ
 mutation API เพื่อให้ client ใช้ `Authorization: Bearer`; Basic Auth ยังคง
 ปกป้อง static preview assets และ M3D Hub Read ทั้งหมด. ห้ามเพิ่ม CORS และ PHP
 จะ reject non-empty browser `Origin` อยู่แล้ว.
-
-```sh
-sudo nginx -t
-sudo systemctl reload php8.3-fpm
-sudo systemctl reload nginx
-```
+การติดตั้ง config, `php-fpm -t`, `nginx -t` และ reload เป็นส่วนหนึ่งของ guarded
+phase เดียว ไม่ควรรันแยกทีละคำสั่ง.
 
 ### 7. Enrollment regression and two-device check
 

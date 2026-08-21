@@ -273,6 +273,12 @@ else
 fi
 if printf '%s\n' "$NGINX_CONFIG" | grep -q 'enrollment-current'; then say 'enrollment_route=CONFIGURED'; else say 'enrollment_route=ABSENT'; fi
 if test -f /etc/php/8.3/fpm/pool.d/awh-enrollment.conf; then say 'enrollment_pool=CONFIGURED'; else say 'enrollment_pool=ABSENT'; fi
+if sudo -n test -f /etc/awh-hub/enrollment-bootstrap.sha256 2>/dev/null \
+  && sudo -n awk 'BEGIN { if ((getline hash < ARGV[1]) != 1 || length(hash) != 64 || hash !~ /^[0-9a-fA-F]+$/) exit 30; }' /etc/awh-hub/enrollment-bootstrap.sha256; then
+  say 'enrollment_bootstrap_hash=READY'
+else
+  say 'enrollment_bootstrap_hash=PROVISION_REQUIRED'
+fi
 
 for path in / /var/lib/awh-hub /opt/awh-hub; do
   if df -P "$path" >/dev/null 2>&1; then

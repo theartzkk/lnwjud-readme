@@ -50,6 +50,7 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   const pool = await readFile(join(ROOT, 'deploy/php-fpm/awh-enrollment.pool.conf'), 'utf8');
   const deploy = await readFile(join(ROOT, 'deploy/awh-enrollment/deploy-enrollment.sh'), 'utf8');
   const preflight = await readFile(join(ROOT, 'deploy/awh-enrollment/preflight-production.sh'), 'utf8');
+  const remoteDeploy = await readFile(join(ROOT, 'deploy/awh-enrollment/remote-deploy.sh'), 'utf8');
   assert.match(nginx, /location \^~ \/api\/v1\/enrollment\//);
   assert.match(nginx, /auth_basic off/);
   assert.match(nginx, /HTTP_AUTHORIZATION \$http_authorization/);
@@ -68,9 +69,16 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(deploy, /migrate-m3e2\.php/);
   assert.match(deploy, /Refusing deployment from a dirty or uncommitted working tree/);
   assert.match(deploy, /db_enrollment_write=PASS/);
-  assert.match(deploy, /PRAGMA user_version/);
-  assert.match(deploy, /rollback\(\)/);
-  assert.match(deploy, /\.restore/);
+  assert.match(remoteDeploy, /PRAGMA user_version/);
+  assert.match(remoteDeploy, /rollback\(\)/);
+  assert.match(remoteDeploy, /\.restore/);
+  assert.match(deploy, /remote-deploy\.sh/);
+  assert.match(remoteDeploy, /sqlite3/);
+  assert.match(remoteDeploy, /systemctl reload/);
+  assert.match(remoteDeploy, /nginx -t/);
+  assert.match(remoteDeploy, /enrollment\/devices/);
+  assert.match(remoteDeploy, /\.restore/);
+  assert.doesNotMatch(remoteDeploy, /echo .*BOOTSTRAP|printf .*BOOTSTRAP|cat .*bootstrap/i);
   assert.match(preflight, /AWH_DEPLOY_TARGET|awh-vps/);
   assert.match(preflight, /DB_AUTHORITY_RESOLVED/);
   assert.match(preflight, /DB_NOT_FOUND/);
@@ -89,6 +97,7 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(preflight, /effective_nginx_server_config/);
   assert.match(preflight, /enrollment_route/);
   assert.match(preflight, /enrollment_pool/);
+  assert.match(preflight, /enrollment_bootstrap_hash/);
   assert.match(preflight, /nginx -T/);
   assert.match(preflight, /php8\.3-fpm/);
   assert.doesNotMatch(preflight, /scp\s|systemctl\s+(?:reload|restart|start|stop)|sudo\s+(?:install|rm|mv|cp|ln)/i);
