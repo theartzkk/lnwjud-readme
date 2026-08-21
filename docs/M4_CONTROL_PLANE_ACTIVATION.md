@@ -4,7 +4,7 @@
 
 ## สัญญาที่เพิ่ม
 
-Migration `003_m4_control_plane.sql` เปลี่ยน SQLite `user_version` จาก 3 เป็น 4 แบบ additive และบันทึก ledger เป็น `m4-control-plane`. ตารางใหม่คือ session สำหรับ control surface, canonical tasks/events, worker presence/claim state, bounded artifact metadata และ scoped approvals. ไม่สร้าง project registry, memory หรือ task database ใหม่ และไม่เก็บ workspace path, source content หรือ credentials. หลัง migration มีขั้นตอน `hub/bin/register-m4-projects.php` ที่เพิ่มเฉพาะ portable metadata ของ BAY EXCUSE X และ Teacher Evaluation Video ด้วย project IDs ที่มีอยู่แล้ว, ตรวจ conflict, ผูก owner membership, และรันซ้ำได้โดยไม่สร้าง duplicate.
+Migration `003_m4_control_plane.sql` เปลี่ยน SQLite `user_version` จาก 3 เป็น 4 แบบ additive และบันทึก ledger เป็น `m4-control-plane`. ตารางใหม่คือ session สำหรับ control surface, canonical tasks/events, worker presence/claim state, bounded artifact metadata และ scoped approvals. ไม่สร้าง project registry, memory หรือ task database ใหม่ และไม่เก็บ workspace path, source content หรือ credentials. หลัง migration มีขั้นตอน `hub/bin/register-m4-projects.php` ที่รับรายการ portable metadata ที่ผ่านการตรวจจาก onboarding service แต่ activation เรียกด้วยรายการว่างเสมอ จึงไม่ติดตั้ง user project ใดไว้ล่วงหน้า. เมื่อผู้ใช้เพิ่มโปรเจกต์ภายหลัง ระบบใช้ service เดิม ตรวจ conflict, ผูก owner membership และรันซ้ำได้โดยไม่สร้าง duplicate.
 
 Browser control ใช้ `POST /api/v1/control/session` กับ pairing code อายุสั้นจาก owner device แล้วรับ Secure/HttpOnly session cookie. Permanent device bearer token ไม่ถูกส่งเข้า JavaScript หรือ browser storage. Requests ที่แก้ state ต้องส่ง same-origin และ CSRF header; goal เป็น bounded text ไม่ใช่คำสั่ง shell.
 
@@ -35,13 +35,13 @@ Worker routes ใช้ device token ผ่าน existing M3E authentication bo
 
 Prepare the exact release assets locally with `npm run web:build:control` followed by `npm run web:manifest`; the generated `dist-web/web-config.json` is the explicit `CONTROL` switch and contains no credential. The activation package stages that static release together with the PHP control plane; the ordinary `npm run web:build` remains the safe static-preview build.
 
-ก่อน activation ต้องมี backup SQLite ที่ตรวจ `integrity_check` และ `foreign_key_check`, apply migration 003, run second invocation, register the two fixed portable project manifests, stage exact release, install `awh-control-plane.conf` ใน HTTPS AWH server block เดิม, `nginx -t`, reload PHP-FPM/Nginx, แล้วตรวจ M3D read routes และ control-plane fixture/health. Rollback คือ restore verified DB backup and remove the control-plane/static release/config before reload; because project registration is inside the same verified DB backup boundary, restore also removes only this attempt's metadata changes.
+ก่อน activation ต้องมี backup SQLite ที่ตรวจ `integrity_check` และ `foreign_key_check`, apply migration 003, run second invocation, verify generic project-onboarding readiness with an empty input, stage exact release, install `awh-control-plane.conf` ใน HTTPS AWH server block เดิม, `nginx -t`, reload PHP-FPM/Nginx, แล้วตรวจ M3D read routes และ control-plane fixture/health. Rollback คือ restore verified DB backup and remove the control-plane/static release/config before reload; because onboarding metadata is inside the same verified DB backup boundary, restore also removes only this attempt's metadata changes.
 
 ใช้ `deploy/awh-control-plane/deploy-control-plane.sh --dry-run` เพื่อดู bounded plan. `--deploy` ถูก guard ให้หยุดจนกว่าจะมี reviewed activation path; รอบนี้ห้ามรัน production mutation.
 
 ## Field behavior
 
-หลัง activation owner ออก pairing code จาก AWH Desktop แล้ว iPhone เปิด AWH URL, กรอกรหัสครั้งเดียว, เลือก BAY EXCUSE X หรือ Teacher Evaluation Video, พิมพ์ Goal และส่ง. ถ้าไม่มี worker online งานต้องแสดง `WAITING_FOR_WORKER`; ห้ามแสดง `RUNNING` จนกว่า Mac/Windows worker จะ claim งานจริง. Mac/Windows worker ต้องรายงาน capabilities และ claim ผ่าน outbound HTTPS โดยใช้ credential ของเครื่องตัวเอง.
+หลัง activation owner ออก pairing code จาก AWH Desktop แล้ว iPhone เปิด AWH URL, กรอกรหัสครั้งเดียว, เพิ่มหรือเลือกโปรเจกต์ที่ onboard แล้ว, พิมพ์ Goal และส่ง. Fresh Hub จะแสดง empty-project state ที่ถูกต้องจนกว่าจะมีการเพิ่มโปรเจกต์ผ่าน Add Project/onboarding. ถ้าไม่มี worker online งานต้องแสดง `WAITING_FOR_WORKER`; ห้ามแสดง `RUNNING` จนกว่า Mac/Windows worker จะ claim งานจริง. Mac/Windows worker ต้องรายงาน capabilities และ claim ผ่าน outbound HTTPS โดยใช้ credential ของเครื่องตัวเอง.
 
 ## Known boundary
 
@@ -63,7 +63,7 @@ The real command is `--deploy --approve`, requires a clean exact release SHA,
 validates the local PHP/SQL/Nginx/PWA assets and read-only production preflight,
 then uploads one fixed bundle to the configured target. The remote script first
 extracts that bundle into an exact release-owned directory, backs up SQLite,
-applies migration 003 twice, registers portable project metadata, atomically
+applies migration 003 twice, verifies empty-project onboarding readiness, atomically
 switches control/web pointers, inserts the include only in the reviewed HTTPS
 server block, reloads the required service, runs M3D/control checks, and emits
 allowlisted stage lines only. Failure restores the database, pointers and

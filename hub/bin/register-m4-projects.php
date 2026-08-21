@@ -9,8 +9,10 @@ if ($database === '' || str_contains($database, "\0")) { fwrite(STDERR, "M4 proj
 try {
     $pdo = new PDO('sqlite:' . $database, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
     $pdo->exec('PRAGMA foreign_keys = ON');
-    $count = HubControlPlaneProjectRegistration::register($pdo);
-    fwrite(STDOUT, "M4_PROJECT_REGISTRATION=PASS\nM4_PROJECTS_REGISTERED=" . $count . "\n");
+    // M4 activation is a generic product release: it must not seed user projects.
+    // Later onboarding passes validated portable manifest metadata to the same service.
+    $count = HubControlPlaneProjectRegistration::register($pdo, []);
+    fwrite(STDOUT, "M4_PROJECT_ONBOARDING=PASS\nM4_PROJECTS_ONBOARDED=" . $count . "\n");
 } catch (Throwable $error) {
     fwrite(STDERR, "M4_PROJECT_REGISTRATION=FAIL\n");
     exit(1);

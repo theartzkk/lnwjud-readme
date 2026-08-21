@@ -11,13 +11,9 @@ final class HubControlPlaneProjectRegistrationException extends RuntimeException
 final class HubControlPlaneProjectRegistration
 {
     private const UUID = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i';
-    public const PORTABLE_PROJECTS = [
-        ['projectId' => 'd1e48976-cfde-479d-9a9c-f3b0ab5ec4fc', 'name' => 'BAY EXCUSE X', 'type' => 'php'],
-        ['projectId' => 'dad35312-06d6-488b-9ed2-f4886d5394ac', 'name' => 'Teacher Evaluation Video', 'type' => 'remotion'],
-    ];
 
     /** @param list<array{projectId:string,name:string,type:string}> $projects */
-    public static function register(PDO $pdo, array $projects = self::PORTABLE_PROJECTS, ?string $now = null): int
+    public static function register(PDO $pdo, array $projects = [], ?string $now = null): int
     {
         if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() !== 4) throw new HubControlPlaneProjectRegistrationException('M4 schema is not active', 'CONTROL_SCHEMA_NOT_READY');
         $owner = $pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1')->fetchColumn();

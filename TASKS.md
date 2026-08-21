@@ -2,7 +2,7 @@
 
 ## NOW
 
-- Use the Projects page as the normal entry point for BAY EXCUSE X and Teacher Evaluation Video; keep production deployment, device pairing, publish, destructive actions and memory writes human-gated.
+- Use the Projects page and reusable Add Project/onboarding flow as the normal entry point for any user project, including the optional local BAY EXCUSE X and Teacher Evaluation Video registrations; keep production deployment, device pairing, publish, destructive actions and memory writes human-gated.
 - Review release candidate identity `1.0.0-rc.1` and the local `AWH.app`/Windows portable bundle evidence; keep signing, Windows installer creation, and production deployment human-gated.
 - Keep ReadyIDC read-only for this pass: production is active at DB v3 with one indexed project and one enrolled Mac. M4 control-plane source, migration, installable PWA/CONTROL release, preflight, executable deployment and rollback package are prepared locally; do not activate them without one bounded approval.
 

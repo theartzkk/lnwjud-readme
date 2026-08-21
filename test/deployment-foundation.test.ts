@@ -37,13 +37,34 @@ test('M4 control-plane activation package is executable in a local dry-run witho
   const deploy = join(ROOT, 'deploy/awh-control-plane/deploy-control-plane.sh');
   const result = await execFile('sh', [deploy, '--dry-run'], { cwd: ROOT, env: { ...process.env, AWH_SOURCE_ROOT: ROOT, AWH_DEPLOY_TARGET: 'awh-ready', AWH_RELEASE_COMMIT: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', AWH_HUB_HOSTNAME: 'awh.example' } });
   assert.match(result.stdout, /M4_DRY_RUN=PASS/);
+  assert.match(result.stdout, /project-onboarding-ready/);
   assert.match(result.stdout, /M4_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL/);
   assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /ssh|scp|sqlite3|systemctl|nginx -t/i);
   const remote = await readText(join(ROOT, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'));
   assert.match(remote, /tar -xzf "\$REMOTE_STAGE" -C "\$RELEASE"/);
   assert.match(remote, /stage M3D_REGRESSION; verify_m3d/);
+  assert.match(remote, /stage PROJECTS_READY/);
+  assert.doesNotMatch(remote, /PROJECTS_REGISTERED|d1e48976|dad35312|BAY EXCUSE X|Teacher Evaluation Video/);
   assert.match(remote, /stage CONTROL_ROUTE; code=/);
   assert.doesNotMatch(remote, /curl\s+-k/);
+});
+
+test('M4 activation never requires or seeds a user project', async () => {
+  const [registration, entrypoint, deploy, remote] = await Promise.all([
+    readText(join(ROOT, 'hub/src/HubControlPlaneProjectRegistration.php')),
+    readText(join(ROOT, 'hub/bin/register-m4-projects.php')),
+    readText(join(ROOT, 'deploy/awh-control-plane/deploy-control-plane.sh')),
+    readText(join(ROOT, 'deploy/awh-control-plane/remote-deploy-control-plane.sh')),
+  ]);
+  assert.match(registration, /array \$projects = \[\]/);
+  assert.doesNotMatch(`${registration}\n${entrypoint}\n${deploy}\n${remote}`, /d1e48976|dad35312|BAY EXCUSE X|Teacher Evaluation Video/);
+  assert.match(entrypoint, /register\(\$pdo, \[\]\)/);
+  assert.match(entrypoint, /M4_PROJECTS_ONBOARDED=/);
+  assert.doesNotMatch(entrypoint, /M4_PROJECTS_REGISTERED=/);
+  assert.match(remote, /register-m4-projects\.php.*stage PROJECTS_READY/);
+  assert.doesNotMatch(remote, /SELECT count\(\*\).*project_id IN/);
+  assert.match(deploy, /DEPLOY_STAGE=PROJECTS_READY/);
+  assert.doesNotMatch(deploy, /PROJECTS_REGISTERED/);
 });
 
 test('Hub data schema has explicit provenance and no workspace or content columns', async () => {

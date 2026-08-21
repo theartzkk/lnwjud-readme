@@ -41,14 +41,14 @@ distribution gates.
 - Real AWH project profile validation: `general-node` bound to the registered project; `test`, `typecheck`, and `build` passed; Git/Node/PHP/FFmpeg and local browsers were detected; FFmpeg and FFprobe both passed the disposable 8-frame sequence → MP4 E2E with ordering/count/duration/FPS/timebase/codec/pixel-format verification.
 - Real-project validation: BAY EXCUSE X is registered as `php` and passed bounded PHP lint; Teacher Evaluation Video is registered as `remotion` and passed the existing `check` typecheck alias plus FFmpeg/FFprobe probe. Both completed with bounded artifacts and continuity checkpoints while preserving dirty local work.
 - Completion continuity metadata records `COMPLETED`, the committed HEAD, dirty-state protection, source device, project/task IDs, bounded HANDOFF and relative artifact references. Another device must use the committed release only; uncommitted local changes are never a continuation source.
-- The device-local registry contains AWH, BAY EXCUSE X (`d1e48976-cfde-479d-9a9c-f3b0ab5ec4fc`), and Teacher Evaluation Video (`dad35312-06d6-488b-9ed2-f4886d5394ac`). The second Teacher clone is intentionally not registered, so there is no duplicate identity.
+- The device-local registry contains AWH plus optional local registrations for BAY EXCUSE X and Teacher Evaluation Video. The second Teacher clone is intentionally not registered, so there is no duplicate identity. M4 activation does not require or seed either project; later onboarding reuses each portable manifest.
 - M4 v1 RC foundation is implemented and fixture-verified: additive schema 003 targets user_version 4; browser control sessions use HttpOnly Secure cookies plus CSRF/origin checks; Goal submission is idempotent and project-authorized; Results/Artifacts/Approvals are bounded and scoped; the Desktop runtime can heartbeat/claim/update through existing device-token auth; stale workers are surfaced offline. The release/deployment/rollback package is executable in local dry-run/fixture scope, but no M4 migration, route, static CONTROL release, or ReadyIDC mutation has occurred. Google Cloud `awh-vps` remains untouched legacy/backup infrastructure.
 
 ## Next action
 
 Give one bounded approval for the prepared M4 ReadyIDC activation package. After
 that activation, open the AWH control surface on iPhone, trust it once with an
-owner-issued pairing code, select BAY EXCUSE X or Teacher Evaluation Video, and
+owner-issued pairing code, add or select an onboarded project, and
 submit a real Goal. Keep Windows device pairing separate and verify sanitized
 `devices = 2` when that hardware is available.
 

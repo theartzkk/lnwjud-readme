@@ -52,10 +52,15 @@ import { decideApproval, loadControlData, openMobileSession, submitGoal } from '
     $('control-sign-in').hidden = signedIn;
     $('control-workspace').hidden = !signedIn;
     if (!signedIn) { text('control-sign-in-message', control?.error || 'กรอกรหัสเชื่อมต่อเพื่อเริ่มใช้งาน'); return; }
+    const projectList = Array.isArray(control.projects) ? control.projects : [];
     const projects = $('control-project'); const previousProjectId = projects.value; projects.replaceChildren();
-    for (const project of control.projects || []) { const option = document.createElement('option'); option.value = project.projectId; option.textContent = `${project.name} · ${project.type}`; projects.append(option); }
+    if (!projectList.length) { const option = document.createElement('option'); option.value = ''; option.textContent = 'ยังไม่มีโปรเจกต์'; projects.append(option); }
+    for (const project of projectList) { const option = document.createElement('option'); option.value = project.projectId; option.textContent = `${project.name} · ${project.type}`; projects.append(option); }
     if ([...projects.options].some((option) => option.value === previousProjectId)) projects.value = previousProjectId;
-    const selected = (control.projects || []).find((project) => project.projectId === projects.value) || control.projects?.[0];
+    const hasProjects = projectList.length > 0;
+    $('control-empty-project').hidden = hasProjects;
+    $('control-submit').disabled = !hasProjects;
+    const selected = projectList.find((project) => project.projectId === projects.value) || projectList[0];
     if (selected) {
       text('project-name', selected.name);
       text('project-type', selected.type);

@@ -40,6 +40,9 @@ test('mobile control UI is phone-first and truthful when no worker is online', a
   assert.match(app, /WAITING_FOR_WORKER/);
   assert.match(app, /previousProjectId/);
   assert.match(app, /memoryReady/);
+  assert.match(html, /control-empty-project/);
+  assert.match(app, /ยังไม่มีโปรเจกต์/);
+  assert.match(app, /control-submit.*disabled/);
   assert.match(css, /control-columns/);
   assert.match(css, /@media\(max-width:560px\)/);
 });
