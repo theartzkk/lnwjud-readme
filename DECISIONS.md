@@ -43,3 +43,7 @@
 - Project Memory updates are not implicit in the v0.5 dogfood path. A later explicit approval action may update concise HANDOFF/TASKS state after review; no large logs or secrets may enter Project Memory.
 - The first-run experience stores only bounded owner/device trust metadata. M3E device credentials remain separate, native-OS-backed and fail-closed; a trusted session does not bypass sensitive-action confirmation.
 - AWH release 0.5.0 uses AWH-facing package/artifact names while preserving legacy package/storage/env/protocol compatibility. Local bundles are evidence only until platform field validation and signing are complete.
+- M3C2 uses one internal AWH Command Bus with replaceable transport adapters; transport never owns execution logic, project truth, credentials, or arbitrary shell capability.
+- The current ChatGPT compatibility path is a GitHub command bridge using exact-SHA structured jobs and GitHub webhooks; GitHub-hosted Actions are explicitly outside the critical build/test/deploy path.
+- A future full-write Remote MCP/Apps adapter must feed the same Command Bus contract rather than creating a second executor.
+- Remote command jobs contain no command-line field. Routine actions are allowlisted; staging/production/rollback are revision-bound production-risk actions and require an explicit approval state before execution.
