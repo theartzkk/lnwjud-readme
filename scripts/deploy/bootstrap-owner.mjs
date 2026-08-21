@@ -11,6 +11,8 @@ import { provisionBootstrapHash } from './provision-bootstrap-hash.mjs';
 const TARGET_PATTERN = /^[A-Za-z0-9._-]+$/;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DEPLOY_SCRIPT = fileURLToPath(new URL('./awh-enrollment/deploy-enrollment.sh', import.meta.url));
+const HUB_READ_DB = '/var/lib/awh-hub/awh.sqlite';
+const HUB_READ_FRONT_CONTROLLER = '/opt/awh-hub/public/index.php';
 const FORBIDDEN_KEY = /(token|secret|nonce|password|credential|authorization|private|workspacepath|filepath|ssh)/i;
 
 function safeTarget(value) {
@@ -39,6 +41,33 @@ function runProcess(executable, args) {
   });
 }
 
+function runReadOnlySsh(executable, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(executable, args, { shell: false, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+    let stdout = '';
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      finish({ exitCode: 124, stdout: '' });
+    }, 15_000);
+    child.stdout.on('data', (chunk) => {
+      if (Buffer.byteLength(stdout, 'utf8') <= 16 * 1024) stdout += chunk.toString();
+      if (Buffer.byteLength(stdout, 'utf8') > 16 * 1024) {
+        clearTimeout(timer);
+        child.kill();
+        finish({ exitCode: 75, stdout: '' });
+      }
+    });
+    child.once('error', () => { clearTimeout(timer); reject(new Error('Read-only SSH process is unavailable')); });
+    child.once('close', (code) => { clearTimeout(timer); finish({ exitCode: code ?? 1, stdout }); });
+  });
+}
+
 export async function runGuardedDeployment({ spawnImpl = runProcess, scriptPath = DEPLOY_SCRIPT } = {}) {
   if (typeof scriptPath !== 'string' || !scriptPath.endsWith('/deploy-enrollment.sh')) throw new Error('Deployment script is not the reviewed enrollment engine');
   const exitCode = await spawnImpl('/bin/sh', [scriptPath, '--deploy']);
@@ -49,21 +78,45 @@ function assertSanitizedHealth(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Hub health response is invalid');
   const record = value;
   for (const key of Object.keys(record)) if (FORBIDDEN_KEY.test(key)) throw new Error('Hub health response is not sanitized');
-  if (record.status !== 'ok' || record.service !== 'awh-hub-read-foundation') throw new Error('Hub health response is not ready');
-  return { status: 'ok', service: 'awh-hub-read-foundation' };
+  if (record.schemaVersion !== 1 || record.status !== 'ok' || record.service !== 'awh-hub-read-foundation') throw new Error('Hub health response is not ready');
+  return { schemaVersion: 1, status: 'ok', service: 'awh-hub-read-foundation' };
 }
 
-export async function verifyHubHealth(apiBase, fetchImpl = fetch) {
+export async function verifyProtectedPerimeter(apiBase, fetchImpl = fetch) {
   const root = apiRoot(apiBase);
-  const response = await fetchImpl(new URL(`${root.toString()}/health`), {
-    method: 'GET',
-    headers: { Accept: 'application/json' },
-    credentials: 'omit',
-    cache: 'no-store',
-  });
-  if (!response.ok) throw new Error('Hub health verification failed');
+  const statuses = {};
+  for (const path of ['health', 'status', 'projects']) {
+    const requestUrl = new URL(`${root.toString()}/${path}`);
+    const response = await fetchImpl(requestUrl, {
+      method: 'GET',
+      redirect: 'error',
+      headers: { Accept: 'application/json' },
+      credentials: 'omit',
+      cache: 'no-store',
+    });
+    if (new URL(response.url || requestUrl).origin !== root.origin || response.status !== 401) throw new Error('Hub HTTPS perimeter verification failed');
+    statuses[path] = 401;
+  }
+  return statuses;
+}
+
+export async function verifyInternalHubHealth(target, { sshImpl = runReadOnlySsh, executable = 'ssh' } = {}) {
+  const safe = safeTarget(target);
+  const args = [
+    '-o', 'BatchMode=yes',
+    '-o', 'StrictHostKeyChecking=yes',
+    safe,
+    'sudo', '-n', 'env',
+    `AWH_HUB_DB_PATH=${HUB_READ_DB}`,
+    'REQUEST_METHOD=GET',
+    'REQUEST_URI=/api/v1/health',
+    '/usr/bin/php',
+    HUB_READ_FRONT_CONTROLLER,
+  ];
+  const result = await sshImpl(executable, args);
+  if (!result || result.exitCode !== 0 || typeof result.stdout !== 'string' || Buffer.byteLength(result.stdout, 'utf8') > 16 * 1024) throw new Error('Internal Hub health command failed');
   let body;
-  try { body = JSON.parse(await response.text()); } catch { throw new Error('Hub health response is invalid'); }
+  try { body = JSON.parse(result.stdout); } catch { throw new Error('Internal Hub health JSON is invalid'); }
   return assertSanitizedHealth(body);
 }
 
@@ -76,7 +129,8 @@ export async function runBootstrapOrchestration({
   userId,
   provision = provisionBootstrapHash,
   deploy = runGuardedDeployment,
-  verify = verifyHubHealth,
+  verifyExternal = verifyProtectedPerimeter,
+  verifyInternal = verifyInternalHubHealth,
   apiBase,
 }) {
   if (!client || !store) throw new Error('Bootstrap orchestration dependencies are unavailable');
@@ -86,13 +140,14 @@ export async function runBootstrapOrchestration({
   const state = await client.bootstrapAndEnroll(projectIds, displayName, userId);
   const stored = await store.get(DEVICE_TOKEN_CREDENTIAL_KEY);
   if (!stored) throw new Error('First device credential was not stored');
-  const hub = await verify(apiBase);
+  const external = await verifyExternal(apiBase);
+  const internal = await verifyInternal(target);
   return {
     enrolled: state.enrolled,
     deviceId: state.deviceId,
     platform: state.platform,
     credentialStored: state.credentialStored,
-    hub,
+    hub: { external, internal },
   };
 }
 
@@ -128,7 +183,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       projectIds: await currentProjectIds(config),
       apiBase,
     });
-    process.stdout.write(`AWH bootstrap orchestration completed: enrolled=${result.enrolled}; credentialStored=${result.credentialStored}; hub=${result.hub.status}\n`);
+    process.stdout.write(`AWH bootstrap orchestration completed: enrolled=${result.enrolled}; credentialStored=${result.credentialStored}; hub=protected-perimeter+internal-health\n`);
   } catch {
     process.stderr.write('AWH bootstrap orchestration failed closed.\n');
     process.exitCode = 1;

@@ -36,6 +36,7 @@
 - **Local QA:** cross-platform Node-based QA engine with machine-readable results.
 - **Release packaging:** package/version identity resolves to AWH 0.5.0; Forge reuses a checksum-verified local Electron artifact when available, while packaging output remains ignored local evidence until signing and field review.
 - **Deployment preflight:** `deploy/awh-enrollment/preflight-production.sh` is a read-only SSH-alias-based VPS check; it resolves the effective DB authority and reports `DB_WRITE_READY`, `DB_WRITE_PROVISION_REQUIRED`, or `DB_WRITE_BLOCKED` without permission mutation. Mutation remains in the guarded deployment path and stops at explicit production approval.
+- **Hub health contract:** external HTTPS Hub Read checks expect the reviewed Basic Auth perimeter to return `401` for health/status/projects; trusted health invokes the existing deployed PHP read front controller through fixed SSH/PHP argv and accepts only sanitized `schemaVersion=1`, `status=ok`, `awh-hub-read-foundation` JSON.
 - **MCP / remote-readonly AI adapter:** local stdio MCP and restricted remote-readonly profile; remote tunnel E2E is not claimed.
 - **M3C0 Web Surface:** browser-only static presentation adapter with strict CSP, bounded sanitized data, and a separate future same-origin Hub-read mode.
 - **M3C1/M3D Hub Read Foundation:** PHP-FPM-compatible front controller and web gateway, SQLite metadata schema, query-only HTTP connection, Bearer-auth service boundary, same-origin Nginx perimeter adapter, and a local metadata-only indexer.
@@ -104,9 +105,10 @@
   the first device. `prepareBootstrapNonce()` and
   `bootstrapAndEnroll()` share one OS-stored temporary nonce; the latter never
   silently generates a replacement. The approval-gated bootstrap orchestrator
-  calls the existing provisioning/deployment engines in order and provisioning
-  sends only a SHA-256 digest through fixed SSH stdin/argv; no bootstrap token is
-  issued.
+  calls the existing provisioning/deployment engines in order, then verifies
+  the protected external perimeter and trusted internal Hub health. Provisioning
+  sends only a SHA-256 digest through fixed SSH stdin/argv; no bootstrap token
+  is issued.
 - The guarded deployment engine takes a SQLite-aware backup before any DB/parent
   metadata change. The minimum write provision makes `awh-hub` the owner while
   retaining the existing `www-data` read/traverse group and rejects broad group

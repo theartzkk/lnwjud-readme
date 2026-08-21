@@ -16,6 +16,19 @@ credential คนละชุดและแสดงเป็น metadata ท�
   Manager บน Windows; Linux fail-closed และไม่มี plaintext-file fallback
 - อุปกรณ์แต่ละเครื่องใช้ device UUID และ OS credential store ของตัวเอง
 
+## Protected perimeter health contract
+
+M3D Hub Read อยู่หลัง Nginx Basic Auth แบบ server-wide ดังนั้น external
+verification ต้องใช้ TLS ปกติและคาดหวัง `401` สำหรับ `/api/v1/health`,
+`/api/v1/status` และ `/api/v1/projects` โดยไม่ส่ง Basic Auth หรือ bearer
+credential ใด ๆ. นี่เป็นหลักฐานว่า perimeter ไม่ได้เปิด Hub Read ออกสาธารณะ.
+
+Trusted health ใช้ existing `/opt/awh-hub/public/index.php` ผ่าน SSH alias ที่
+reviewed ด้วย fixed `sudo -n env`/PHP argv, `AWH_HUB_DB_PATH` ที่กำหนดตายตัว,
+`REQUEST_METHOD=GET` และ `REQUEST_URI=/api/v1/health`. ผลลัพธ์ต้องเป็น JSON ที่
+sanitize แล้ว มี `schemaVersion=1`, `status=ok` และ service ที่ตรงกับ
+`awh-hub-read-foundation`; ไม่มี DB mutation หรือ secret output.
+
 ## Exact delta from live M3E.1
 
 เพิ่มเฉพาะสิ่งต่อไปนี้:
@@ -130,7 +143,8 @@ node scripts/deploy/bootstrap-owner.mjs --approve-bootstrap-orchestration
 คำสั่งนี้เป็น approval-gated และยังไม่ได้ execute ในรอบ freeze นี้. Orchestrator
 เตรียม nonce ใน secure store, provision digest ผ่าน helper, เรียก guarded
 enrollment deployment, bootstrap owner, consume initial pairing code, enroll Mac,
-ตรวจ Keychain และ Hub health แบบ sanitized ตามลำดับ. `bootstrapAndEnroll()` อ่าน
+ตรวจ Keychain, external protected perimeter และ trusted internal Hub health แบบ
+sanitized ตามลำดับ. `bootstrapAndEnroll()` อ่าน
 nonce เดิมจาก secure store และจะไม่สร้าง nonce ใหม่หลัง provisioning หรือเมื่อ
 bootstrap ล้มเหลว. Helper ใช้ compiled `dist/credential-store.js`, fixed SSH
 argv, `shell:false`, และส่ง digest ผ่าน stdin เท่านั้น.

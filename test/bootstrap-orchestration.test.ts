@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
-import { runBootstrapOrchestration, verifyHubHealth } from '../scripts/deploy/bootstrap-owner.mjs';
+import { runBootstrapOrchestration, verifyInternalHubHealth, verifyProtectedPerimeter } from '../scripts/deploy/bootstrap-owner.mjs';
 import { BOOTSTRAP_NONCE_CREDENTIAL_KEY, DEVICE_TOKEN_CREDENTIAL_KEY, InMemoryCredentialStore } from '../src/credential-store.js';
 import { EnrollmentClient } from '../src/enrollment-client.js';
 
@@ -43,9 +43,13 @@ test('one-shot orchestration provisions and bootstraps with the exact same secur
         provisioned = true;
       },
       deploy: async () => { deployed = true; },
-      verify: async (apiBase) => {
+      verifyExternal: async (apiBase) => {
         assert.equal(apiBase, 'https://hub.example/api/v1');
-        return { status: 'ok', service: 'awh-hub-read-foundation' };
+        return { health: 401, status: 401, projects: 401 };
+      },
+      verifyInternal: async (target) => {
+        assert.equal(target, 'awh-vps');
+        return { schemaVersion: 1, status: 'ok', service: 'awh-hub-read-foundation' };
       },
       apiBase: 'https://hub.example/api/v1',
     });
@@ -55,6 +59,8 @@ test('one-shot orchestration provisions and bootstraps with the exact same secur
     assert.equal(requests.length, 2);
     assert.equal(result.enrolled, true);
     assert.equal(result.credentialStored, true);
+    assert.deepEqual(result.hub.external, { health: 401, status: 401, projects: 401 });
+    assert.deepEqual(result.hub.internal, { schemaVersion: 1, status: 'ok', service: 'awh-hub-read-foundation' });
     assert.equal(await store.get(BOOTSTRAP_NONCE_CREDENTIAL_KEY), null);
     assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY), 'device-token-only-in-store');
     const resultText = JSON.stringify(result);
@@ -82,7 +88,8 @@ test('failed provisioning stops before bootstrap and keeps the prepared nonce fo
       projectIds: [PROJECT_ID],
       provision: async () => { throw new Error('fixture provisioning failure'); },
       deploy: async () => { throw new Error('deployment must not run'); },
-      verify: async () => ({ status: 'ok', service: 'awh-hub-read-foundation' }),
+      verifyExternal: async () => ({ health: 401, status: 401, projects: 401 }),
+      verifyInternal: async () => ({ schemaVersion: 1, status: 'ok', service: 'awh-hub-read-foundation' }),
       apiBase: 'https://hub.example/api/v1',
     }));
     assert.equal(requestCount, 0);
@@ -114,14 +121,55 @@ test('failed bootstrap reuses the same nonce and never silently generates a repl
   }
 });
 
-test('sanitized Hub verification is same-origin read-only and does not forward credentials', async () => {
-  let receivedInit;
-  const result = await verifyHubHealth('https://hub.example/api/v1', async (input, init) => {
-    assert.equal(String(input), 'https://hub.example/api/v1/health');
-    receivedInit = init;
-    return new Response(JSON.stringify({ schemaVersion: 1, status: 'ok', service: 'awh-hub-read-foundation' }), { status: 200 });
+test('protected external perimeter accepts 401 without forwarding Basic Auth or bearer credentials', async () => {
+  const requests = [];
+  const result = await verifyProtectedPerimeter('https://hub.example/api/v1', async (input, init) => {
+    requests.push({ input: String(input), init });
+    return new Response('', { status: 401 });
   });
-  assert.deepEqual(result, { status: 'ok', service: 'awh-hub-read-foundation' });
-  assert.equal(receivedInit.credentials, 'omit');
-  assert.equal(Object.hasOwn(receivedInit.headers, 'Authorization'), false);
+  assert.deepEqual(result, { health: 401, status: 401, projects: 401 });
+  assert.deepEqual(requests.map((request) => request.input), [
+    'https://hub.example/api/v1/health',
+    'https://hub.example/api/v1/status',
+    'https://hub.example/api/v1/projects',
+  ]);
+  for (const request of requests) {
+    assert.equal(request.init.credentials, 'omit');
+    assert.equal(Object.hasOwn(request.init.headers, 'Authorization'), false);
+    assert.equal(Object.hasOwn(request.init.headers, 'Cookie'), false);
+  }
+});
+
+test('unexpected public 200, redirect/fetch failure, and non-401 responses fail closed', async () => {
+  await assert.rejects(() => verifyProtectedPerimeter('https://hub.example/api/v1', async () => new Response('{}', { status: 200 })));
+  await assert.rejects(() => verifyProtectedPerimeter('https://hub.example/api/v1', async () => { throw new Error('TLS failure'); }));
+  await assert.rejects(() => verifyProtectedPerimeter('https://hub.example/api/v1', async () => new Response('', { status: 404 })));
+});
+
+test('trusted internal Hub health reuses the deployed PHP front controller with fixed read-only argv', async () => {
+  let receivedExecutable = '';
+  let receivedArgs = [];
+  const result = await verifyInternalHubHealth('awh-vps', {
+    sshImpl: async (executable, args) => {
+      receivedExecutable = executable;
+      receivedArgs = [...args];
+      return { exitCode: 0, stdout: JSON.stringify({ schemaVersion: 1, status: 'ok', service: 'awh-hub-read-foundation', requestId: 'safe-request-id' }) };
+    },
+  });
+  assert.deepEqual(result, { schemaVersion: 1, status: 'ok', service: 'awh-hub-read-foundation' });
+  assert.equal(receivedExecutable, 'ssh');
+  assert.deepEqual(receivedArgs, [
+    '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', 'awh-vps', 'sudo', '-n', 'env',
+    'AWH_HUB_DB_PATH=/var/lib/awh-hub/awh.sqlite', 'REQUEST_METHOD=GET', 'REQUEST_URI=/api/v1/health',
+    '/usr/bin/php', '/opt/awh-hub/public/index.php',
+  ]);
+});
+
+test('trusted internal Hub health rejects malformed, wrong, oversized, or failed responses without logging them', async () => {
+  await assert.rejects(() => verifyInternalHubHealth('awh-vps', { sshImpl: async () => ({ exitCode: 0, stdout: '<html>401</html>' }) }));
+  await assert.rejects(() => verifyInternalHubHealth('awh-vps', { sshImpl: async () => ({ exitCode: 0, stdout: JSON.stringify({ schemaVersion: 1, status: 'down', service: 'awh-hub-read-foundation' }) }) }));
+  await assert.rejects(() => verifyInternalHubHealth('awh-vps', { sshImpl: async () => ({ exitCode: 0, stdout: JSON.stringify({ schemaVersion: 1, status: 'ok', service: 'other' }) }) }));
+  await assert.rejects(() => verifyInternalHubHealth('awh-vps', { sshImpl: async () => ({ exitCode: 1, stdout: '' }) }));
+  const secret = 'device-token-must-not-appear';
+  await assert.rejects(() => verifyInternalHubHealth('awh-vps', { sshImpl: async () => ({ exitCode: 0, stdout: JSON.stringify({ schemaVersion: 1, status: 'ok', service: 'awh-hub-read-foundation', token: secret }) }) }));
 });
