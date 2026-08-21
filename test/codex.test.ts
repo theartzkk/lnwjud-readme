@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildCodexArgs, codexEnvironment } from '../src/codex.js';
+import { buildCodexArgs, codexEnvironment, codexInstructionContainsSecretValue } from '../src/codex.js';
 
 test('Codex invocation is non-interactive, sandboxed, ephemeral, JSONL, and network-disabled', () => {
   const args = buildCodexArgs('/workspace', 'read-only');
@@ -28,4 +28,12 @@ test('Codex child environment does not forward generic API key variables', () =>
     if (previousCodexApi === undefined) delete process.env.CODEX_API_KEY;
     else process.env.CODEX_API_KEY = previousCodexApi;
   }
+});
+
+test('Codex instruction secret guard allows policy prose but rejects credential-like values', () => {
+  assert.equal(codexInstructionContainsSecretValue('Permanent bearer token must never be placed in browser storage.'), false);
+  assert.equal(codexInstructionContainsSecretValue('Do not expose password stores or API key material.'), false);
+  assert.equal(codexInstructionContainsSecretValue('Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345'), true);
+  assert.equal(codexInstructionContainsSecretValue('token=abcdefghijklmnopqrstuvwxyz012345'), true);
+  assert.equal(codexInstructionContainsSecretValue('-----BEGIN PRIVATE KEY-----'), true);
 });
