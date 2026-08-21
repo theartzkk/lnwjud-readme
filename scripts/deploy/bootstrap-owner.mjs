@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process';
+import { lstat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createProductionCredentialStore, DEVICE_TOKEN_CREDENTIAL_KEY } from '../../dist/credential-store.js';
 import { EnrollmentClient } from '../../dist/enrollment-client.js';
@@ -9,8 +10,20 @@ import { readProjectManifest } from '../../dist/project-registry.js';
 import { provisionBootstrapHash } from './provision-bootstrap-hash.mjs';
 
 const TARGET_PATTERN = /^[A-Za-z0-9._-]+$/;
+const SHA_PATTERN = /^[0-9a-f]{40}$/i;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const DEPLOY_SCRIPT = fileURLToPath(new URL('./awh-enrollment/deploy-enrollment.sh', import.meta.url));
+const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+export const DEFAULT_DEPLOY_SCRIPT = fileURLToPath(new URL('../../deploy/awh-enrollment/deploy-enrollment.sh', import.meta.url));
+const PREFLIGHT_SCRIPT = fileURLToPath(new URL('../../deploy/awh-enrollment/preflight-production.sh', import.meta.url));
+const REMOTE_DEPLOY_SCRIPT = fileURLToPath(new URL('../../deploy/awh-enrollment/remote-deploy.sh', import.meta.url));
+const NGINX_INSERT_HELPER = fileURLToPath(new URL('../../deploy/awh-enrollment/insert-nginx-include.php', import.meta.url));
+const BOOTSTRAP_PROVISION_HELPER = fileURLToPath(new URL('./provision-bootstrap-hash.mjs', import.meta.url));
+const DIST_RUNTIME = [
+  fileURLToPath(new URL('../../dist/credential-store.js', import.meta.url)),
+  fileURLToPath(new URL('../../dist/enrollment-client.js', import.meta.url)),
+  fileURLToPath(new URL('../../dist/config.js', import.meta.url)),
+  fileURLToPath(new URL('../../dist/project-registry.js', import.meta.url)),
+];
 const HUB_READ_DB = '/var/lib/awh-hub/awh.sqlite';
 const HUB_READ_FRONT_CONTROLLER = '/opt/awh-hub/public/index.php';
 const FORBIDDEN_KEY = /(token|secret|nonce|password|credential|authorization|private|workspacepath|filepath|ssh)/i;
@@ -33,11 +46,38 @@ function apiRoot(value) {
   return url;
 }
 
-function runProcess(executable, args) {
+function runProcess(executable, args, { env = process.env } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(executable, args, { shell: false, stdio: ['ignore', 'ignore', 'ignore'], windowsHide: true });
+    const child = spawn(executable, args, { shell: false, stdio: ['ignore', 'ignore', 'ignore'], windowsHide: true, env });
     child.once('error', () => reject(new Error('Guarded deployment process is unavailable')));
     child.once('close', (code) => resolve(code ?? 1));
+  });
+}
+
+function runCapture(executable, args, { cwd, env = process.env, maxBytes = 16 * 1024 } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(executable, args, { cwd, env, shell: false, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+    let stdout = '';
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      finish({ exitCode: 124, stdout: '' });
+    }, 10_000);
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+      if (Buffer.byteLength(stdout, 'utf8') > maxBytes) {
+        clearTimeout(timer);
+        child.kill();
+        finish({ exitCode: 75, stdout: '' });
+      }
+    });
+    child.once('error', () => { clearTimeout(timer); reject(new Error('Fixed local process is unavailable')); });
+    child.once('close', (code) => { clearTimeout(timer); finish({ exitCode: code ?? 1, stdout }); });
   });
 }
 
@@ -68,10 +108,46 @@ function runReadOnlySsh(executable, args) {
   });
 }
 
-export async function runGuardedDeployment({ spawnImpl = runProcess, scriptPath = DEPLOY_SCRIPT } = {}) {
-  if (typeof scriptPath !== 'string' || !scriptPath.endsWith('/deploy-enrollment.sh')) throw new Error('Deployment script is not the reviewed enrollment engine');
-  const exitCode = await spawnImpl('/bin/sh', [scriptPath, '--deploy']);
+export async function runDeploymentDryRun({ runImpl = runCapture } = {}) {
+  const result = await runImpl('/bin/sh', [DEFAULT_DEPLOY_SCRIPT, '--dry-run'], { maxBytes: 16 * 1024 });
+  if (!result || result.exitCode !== 0 || typeof result.stdout !== 'string' || !result.stdout.includes('PRODUCTION_DEPLOY_APPROVAL_REQUIRED')) {
+    throw new Error('Local enrollment deployment dry-run failed');
+  }
+}
+
+export async function runGuardedDeployment({ spawnImpl = runProcess } = {}) {
+  const exitCode = await spawnImpl('/bin/sh', [DEFAULT_DEPLOY_SCRIPT, '--deploy']);
   if (exitCode !== 0) throw new Error('Guarded enrollment deployment failed');
+}
+
+async function requireRegularFile(filePath, lstatImpl = lstat) {
+  let info;
+  try { info = await lstatImpl(filePath); } catch { throw new Error('Reviewed local deployment asset is unavailable'); }
+  if (!info.isFile() || info.isSymbolicLink()) throw new Error('Reviewed local deployment asset is unsafe');
+}
+
+export async function validateLocalAssets({ expectedCommit = process.env.AWH_RELEASE_COMMIT, lstatImpl = lstat, gitImpl = runCapture } = {}) {
+  if (typeof expectedCommit !== 'string' || !SHA_PATTERN.test(expectedCommit)) throw new Error('AWH release lock is unavailable');
+  const assets = [DEFAULT_DEPLOY_SCRIPT, PREFLIGHT_SCRIPT, REMOTE_DEPLOY_SCRIPT, NGINX_INSERT_HELPER, BOOTSTRAP_PROVISION_HELPER, ...DIST_RUNTIME];
+  for (const asset of assets) await requireRegularFile(asset, lstatImpl);
+  const wrongDeployPath = fileURLToPath(new URL('./awh-enrollment/deploy-enrollment.sh', import.meta.url));
+  try {
+    const wrongInfo = await lstatImpl(wrongDeployPath);
+    if (wrongInfo.isFile() || wrongInfo.isSymbolicLink()) throw new Error('Duplicate deployment engine path is present');
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Duplicate deployment engine path is present') throw error;
+  }
+  const head = await gitImpl('git', ['-C', REPO_ROOT, 'rev-parse', '--verify', 'HEAD'], { cwd: REPO_ROOT, maxBytes: 1024 });
+  const status = await gitImpl('git', ['-C', REPO_ROOT, 'status', '--porcelain', '--untracked-files=all'], { cwd: REPO_ROOT, maxBytes: 16 * 1024 });
+  if (head.exitCode !== 0 || head.stdout.trim() !== expectedCommit) throw new Error('AWH release HEAD does not match the approved lock');
+  if (status.exitCode !== 0 || status.stdout.trim() !== '') throw new Error('AWH release tree is dirty or uncommitted');
+  return { repoRoot: REPO_ROOT, head: expectedCommit, assetCount: assets.length };
+}
+
+export async function runReadOnlyPreflight({ target, spawnImpl = runProcess } = {}) {
+  const safe = safeTarget(target);
+  const exitCode = await spawnImpl('/bin/sh', [PREFLIGHT_SCRIPT], { env: { ...process.env, AWH_DEPLOY_TARGET: safe } });
+  if (exitCode !== 0) throw new Error('Read-only VPS preflight failed');
 }
 
 function assertSanitizedHealth(value) {
@@ -129,11 +205,19 @@ export async function runBootstrapOrchestration({
   userId,
   provision = provisionBootstrapHash,
   deploy = runGuardedDeployment,
+  validateAssets = validateLocalAssets,
+  dryRun = runDeploymentDryRun,
   verifyExternal = verifyProtectedPerimeter,
   verifyInternal = verifyInternalHubHealth,
+  verifyPreflight = runReadOnlyPreflight,
   apiBase,
 }) {
   if (!client || !store) throw new Error('Bootstrap orchestration dependencies are unavailable');
+  await validateAssets({ expectedCommit: process.env.AWH_RELEASE_COMMIT });
+  await dryRun();
+  await verifyExternal(apiBase);
+  await verifyInternal(target);
+  await verifyPreflight({ target });
   await client.prepareBootstrapNonce();
   await provision({ store, target: safeTarget(target) });
   await deploy();

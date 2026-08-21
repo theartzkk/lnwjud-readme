@@ -1,15 +1,94 @@
 import assert from 'node:assert/strict';
+import { execFile as execFileCallback } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { chmod, lstat, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { promisify } from 'node:util';
 import test from 'node:test';
-import { runBootstrapOrchestration, verifyInternalHubHealth, verifyProtectedPerimeter } from '../scripts/deploy/bootstrap-owner.mjs';
+import { DEFAULT_DEPLOY_SCRIPT, runBootstrapOrchestration, runDeploymentDryRun, validateLocalAssets, verifyInternalHubHealth, verifyProtectedPerimeter } from '../scripts/deploy/bootstrap-owner.mjs';
 import { BOOTSTRAP_NONCE_CREDENTIAL_KEY, DEVICE_TOKEN_CREDENTIAL_KEY, InMemoryCredentialStore } from '../src/credential-store.js';
 import { EnrollmentClient } from '../src/enrollment-client.js';
 
 const PROJECT_ID = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
 const OWNER_ID = '223b45c0-23e1-408d-ae0f-ac5eca7f6900';
+const execFile = promisify(execFileCallback);
+
+test('default deployment path is the canonical repo asset and dry-run performs no SSH or provisioning', async () => {
+  const repoRoot = process.cwd();
+  assert.equal(DEFAULT_DEPLOY_SCRIPT, join(repoRoot, 'deploy/awh-enrollment/deploy-enrollment.sh'));
+  assert.equal(existsSync(DEFAULT_DEPLOY_SCRIPT), true);
+  assert.equal(existsSync(join(repoRoot, 'scripts/deploy/awh-enrollment/deploy-enrollment.sh')), false);
+  let invoked = false;
+  await runDeploymentDryRun({ runImpl: async (executable, args) => {
+    invoked = true;
+    assert.equal(executable, '/bin/sh');
+    assert.deepEqual(args, [DEFAULT_DEPLOY_SCRIPT, '--dry-run']);
+    return { exitCode: 0, stdout: 'PRODUCTION_DEPLOY_APPROVAL_REQUIRED: pass\n' };
+  } });
+  assert.equal(invoked, true);
+
+  const root = await mkdtemp(join(tmpdir(), 'awh-deploy-dry-run-'));
+  const fakeBin = join(root, 'bin');
+  const marker = join(root, 'ssh-called');
+  try {
+    await mkdir(fakeBin, { recursive: true });
+    const fakeSsh = join(fakeBin, 'ssh');
+    await writeFile(fakeSsh, `#!/bin/sh\nprintf called > '${marker}'\nexit 99\n`, 'utf8');
+    await chmod(fakeSsh, 0o755);
+    const result = await execFile('/bin/sh', [DEFAULT_DEPLOY_SCRIPT, '--dry-run'], {
+      cwd: repoRoot,
+      env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH ?? ''}`, AWH_DEPLOY_TARGET: 'awh-vps' },
+    });
+    assert.match(result.stdout, /PRODUCTION_DEPLOY_APPROVAL_REQUIRED/);
+    assert.equal(existsSync(marker), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('local asset gate verifies the canonical assets, compiled runtime, HEAD and clean release lock', async () => {
+  const head = '207edbbc38ad9c9a98bbd56ca3ad41ff9ba8a87e';
+  const gitCalls = [];
+  const result = await validateLocalAssets({
+    expectedCommit: head,
+    gitImpl: async (executable, args) => {
+      gitCalls.push({ executable, args });
+      return { exitCode: 0, stdout: args.includes('status') ? '' : `${head}\n` };
+    },
+  });
+  assert.equal(result.head, head);
+  assert.equal(result.assetCount >= 9, true);
+  assert.deepEqual(gitCalls.map(({ executable, args }) => [executable, ...args.slice(2)]), [
+    ['git', 'rev-parse', '--verify', 'HEAD'],
+    ['git', 'status', '--porcelain', '--untracked-files=all'],
+  ]);
+  await assert.rejects(() => validateLocalAssets({
+    expectedCommit: head,
+    lstatImpl: async (filePath) => {
+      if (filePath === DEFAULT_DEPLOY_SCRIPT) throw new Error('missing');
+      return lstat(filePath);
+    },
+    gitImpl: async () => ({ exitCode: 0, stdout: `${head}\n` }),
+  }), /unavailable/);
+});
+
+test('pre-mutation failures stop before bootstrap provisioning', async () => {
+  const store = new InMemoryCredentialStore();
+  const base = { client: {}, store, target: 'awh-vps', projectIds: [PROJECT_ID], apiBase: 'https://hub.example/api/v1', provision: async () => { throw new Error('provision must not run'); } };
+  const noOpAssets = async () => {};
+  const noOpDryRun = async () => {};
+  const noOpPreflight = async () => {};
+  const healthyInternal = async () => ({ schemaVersion: 1, status: 'ok', service: 'awh-hub-read-foundation' });
+  const healthyExternal = async () => ({ health: 401, status: 401, projects: 401 });
+
+  await assert.rejects(() => runBootstrapOrchestration({ ...base, validateAssets: async () => { throw new Error('missing deployment asset'); } }), /missing deployment asset/);
+  await assert.rejects(() => runBootstrapOrchestration({ ...base, validateAssets: noOpAssets, dryRun: async () => { throw new Error('dry-run failed'); } }), /dry-run failed/);
+  await assert.rejects(() => runBootstrapOrchestration({ ...base, validateAssets: noOpAssets, dryRun: noOpDryRun, verifyExternal: async () => { throw new Error('external perimeter failed'); }, verifyInternal: healthyInternal, verifyPreflight: noOpPreflight }), /external perimeter failed/);
+  await assert.rejects(() => runBootstrapOrchestration({ ...base, validateAssets: noOpAssets, dryRun: noOpDryRun, verifyExternal: healthyExternal, verifyInternal: async () => { throw new Error('internal health failed'); }, verifyPreflight: noOpPreflight }), /internal health failed/);
+  await assert.rejects(() => runBootstrapOrchestration({ ...base, validateAssets: noOpAssets, dryRun: noOpDryRun, verifyExternal: healthyExternal, verifyInternal: healthyInternal, verifyPreflight: async () => { throw new Error('preflight failed'); } }), /preflight failed/);
+});
 
 test('one-shot orchestration provisions and bootstraps with the exact same secure nonce', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awh-bootstrap-orchestration-'));
@@ -36,6 +115,9 @@ test('one-shot orchestration provisions and bootstraps with the exact same secur
       target: 'awh-vps',
       projectIds: [PROJECT_ID],
       userId: OWNER_ID,
+      validateAssets: async () => {},
+      dryRun: async () => {},
+      verifyPreflight: async ({ target }) => { assert.equal(target, 'awh-vps'); },
       provision: async ({ store: receivedStore }) => {
         const nonce = await receivedStore.get(BOOTSTRAP_NONCE_CREDENTIAL_KEY);
         assert.ok(nonce);
@@ -86,6 +168,9 @@ test('failed provisioning stops before bootstrap and keeps the prepared nonce fo
       store,
       target: 'awh-vps',
       projectIds: [PROJECT_ID],
+      validateAssets: async () => {},
+      dryRun: async () => {},
+      verifyPreflight: async () => {},
       provision: async () => { throw new Error('fixture provisioning failure'); },
       deploy: async () => { throw new Error('deployment must not run'); },
       verifyExternal: async () => ({ health: 401, status: 401, projects: 401 }),

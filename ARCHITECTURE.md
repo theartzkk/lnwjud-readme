@@ -35,7 +35,7 @@
 - **First-run trust:** owner/device display metadata is stored in a strict local session record. It is not a password store and never contains a bearer credential; native device credentials remain under M3E OS credential adapters.
 - **Local QA:** cross-platform Node-based QA engine with machine-readable results.
 - **Release packaging:** package/version identity resolves to AWH 0.5.0; Forge reuses a checksum-verified local Electron artifact when available, while packaging output remains ignored local evidence until signing and field review.
-- **Deployment preflight:** `deploy/awh-enrollment/preflight-production.sh` is a read-only SSH-alias-based VPS check; it resolves the effective DB authority and reports `DB_WRITE_READY`, `DB_WRITE_PROVISION_REQUIRED`, or `DB_WRITE_BLOCKED` without permission mutation. Mutation remains in the guarded deployment path and stops at explicit production approval.
+- **Deployment preflight:** the one-shot enrollment path first locks the clean approved HEAD, validates the canonical local deployment assets and compiled `dist` runtime, runs `deploy/awh-enrollment/deploy-enrollment.sh --dry-run`, then runs the external/internal Hub checks and `preflight-production.sh`; only those read-only gates can precede nonce provisioning. The preflight resolves the effective DB authority and reports `DB_WRITE_READY`, `DB_WRITE_PROVISION_REQUIRED`, or `DB_WRITE_BLOCKED` without permission mutation. Mutation remains in the guarded deployment path and stops at explicit production approval.
 - **Hub health contract:** external HTTPS Hub Read checks expect the reviewed Basic Auth perimeter to return `401` for health/status/projects; trusted health invokes the existing deployed PHP read front controller through fixed SSH/PHP argv and accepts only sanitized `schemaVersion=1`, `status=ok`, `awh-hub-read-foundation` JSON.
 - **MCP / remote-readonly AI adapter:** local stdio MCP and restricted remote-readonly profile; remote tunnel E2E is not claimed.
 - **M3C0 Web Surface:** browser-only static presentation adapter with strict CSP, bounded sanitized data, and a separate future same-origin Hub-read mode.
@@ -105,10 +105,11 @@
   the first device. `prepareBootstrapNonce()` and
   `bootstrapAndEnroll()` share one OS-stored temporary nonce; the latter never
   silently generates a replacement. The approval-gated bootstrap orchestrator
-  calls the existing provisioning/deployment engines in order, then verifies
-  the protected external perimeter and trusted internal Hub health. Provisioning
-  sends only a SHA-256 digest through fixed SSH stdin/argv; no bootstrap token
-  is issued.
+  validates the canonical `deploy/awh-enrollment` assets and clean release lock,
+  runs the local deployment dry-run, verifies the protected external perimeter
+  and trusted internal Hub health, and runs the read-only VPS preflight before
+  calling the existing provisioning/deployment engines. Provisioning sends only
+  a SHA-256 digest through fixed SSH stdin/argv; no bootstrap token is issued.
 - The guarded deployment engine takes a SQLite-aware backup before any DB/parent
   metadata change. The minimum write provision makes `awh-hub` the owner while
   retaining the existing `www-data` read/traverse group and rejects broad group

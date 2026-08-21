@@ -140,11 +140,15 @@ npm run build
 node scripts/deploy/bootstrap-owner.mjs --approve-bootstrap-orchestration
 ```
 
-คำสั่งนี้เป็น approval-gated และยังไม่ได้ execute ในรอบ freeze นี้. Orchestrator
-เตรียม nonce ใน secure store, provision digest ผ่าน helper, เรียก guarded
-enrollment deployment, bootstrap owner, consume initial pairing code, enroll Mac,
-ตรวจ Keychain, external protected perimeter และ trusted internal Hub health แบบ
-sanitized ตามลำดับ. `bootstrapAndEnroll()` อ่าน
+คำสั่งนี้เป็น approval-gated และยังไม่ได้ execute ในรอบ freeze นี้. ก่อนแตะ
+CredentialStore หรือ VPS orchestrator จะยืนยัน clean approved HEAD, ตรวจ exact
+assets ที่ `deploy/awh-enrollment/` และ compiled `dist` runtime, รัน
+`deploy-enrollment.sh --dry-run`, ตรวจ external protected perimeter, trusted
+internal Hub health และ read-only VPS preflight ตามลำดับ. จากนั้นจึงเตรียม nonce
+ใน secure store, provision digest ผ่าน helper, เรียก guarded enrollment
+deployment, bootstrap owner, consume initial pairing code, enroll Mac, ตรวจ
+Keychain และตรวจ external/internal health หลัง deploy แบบ sanitized.
+`bootstrapAndEnroll()` อ่าน
 nonce เดิมจาก secure store และจะไม่สร้าง nonce ใหม่หลัง provisioning หรือเมื่อ
 bootstrap ล้มเหลว. Helper ใช้ compiled `dist/credential-store.js`, fixed SSH
 argv, `shell:false`, และส่ง digest ผ่าน stdin เท่านั้น.
