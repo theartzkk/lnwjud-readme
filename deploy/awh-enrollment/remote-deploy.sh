@@ -42,6 +42,8 @@ NGINX_CHANGED=0
 POOL_CHANGED=0
 POOL_EXISTED=0
 SERVICE_USER_CREATED=0
+SERVICE_GROUP_ADDED=0
+PREVIOUS_SUPPLEMENTARY_GROUPS=
 RELEASE_CREATED=0
 SUCCESS=0
 CURRENT_STAGE=BOOTSTRAP_HASH_VALIDATED
@@ -114,6 +116,14 @@ rollback() {
     if test "$RELEASE_CREATED" -eq 1; then
       if ! sudo rm -rf "$REMOTE_RELEASE"; then rollback_ok=0; fi
     fi
+    if test "$SERVICE_GROUP_ADDED" -eq 1 && test "$SERVICE_USER_CREATED" -eq 0; then
+      if test -n "$PREVIOUS_SUPPLEMENTARY_GROUPS"; then
+        if ! sudo /usr/sbin/usermod -G "$PREVIOUS_SUPPLEMENTARY_GROUPS" awh-hub; then rollback_ok=0; fi
+      elif ! sudo /usr/sbin/usermod -G '' awh-hub; then
+        rollback_ok=0
+      fi
+      if sudo -n -u awh-hub id -Gn | tr ' ' '\n' | grep -qx 'www-data'; then rollback_ok=0; fi
+    fi
     if test "$SERVICE_USER_CREATED" -eq 1; then
       # userdel does not accept useradd's --system flag on Debian/Ubuntu.
       if ! sudo /usr/sbin/userdel awh-hub; then rollback_ok=0; fi
@@ -149,7 +159,17 @@ sudo test -f "$DB"
 if ! id -u awh-hub >/dev/null 2>&1; then
   sudo /usr/sbin/useradd --system --user-group --home-dir "$REMOTE_ROOT" --no-create-home --shell /usr/sbin/nologin awh-hub
   SERVICE_USER_CREATED=1
+else
+  PRIMARY_GROUP=$(id -gn awh-hub)
+  PREVIOUS_SUPPLEMENTARY_GROUPS=$(id -Gn awh-hub | tr ' ' '\n' | awk -v primary="$PRIMARY_GROUP" '$1 != primary {print}' | paste -sd, -)
 fi
+getent group www-data >/dev/null 2>&1
+if ! id -Gn awh-hub | tr ' ' '\n' | grep -qx 'www-data'; then
+  sudo /usr/sbin/usermod -a -G www-data awh-hub
+  SERVICE_GROUP_ADDED=1
+fi
+test "$(id -gn awh-hub)" = awh-hub
+sudo -n -u awh-hub id -Gn | tr ' ' '\n' | grep -qx 'www-data'
 CURRENT_STAGE=SERVICE_USER_READY
 stage "$CURRENT_STAGE"
 
@@ -212,7 +232,19 @@ sudo test -f "$REMOTE_RELEASE/deploy/awh-enrollment/insert-nginx-include.php"
 sudo test -f "$REMOTE_RELEASE/deploy/php-fpm/awh-enrollment.pool.conf"
 sudo chown -R awh-hub:awh-hub "$REMOTE_RELEASE"
 sudo chmod 0750 "$REMOTE_RELEASE" "$REMOTE_RELEASE/hub" "$REMOTE_RELEASE/hub/public" "$REMOTE_RELEASE/hub/src" "$REMOTE_RELEASE/hub/bin" "$REMOTE_RELEASE/hub/migrations" "$REMOTE_RELEASE/deploy" "$REMOTE_RELEASE/deploy/awh-enrollment"
-sudo chmod 0640 "$REMOTE_RELEASE/hub/public/enrollment.php" "$REMOTE_RELEASE/hub/src/"*.php "$REMOTE_RELEASE/hub/bin/migrate-m3e2.php" "$REMOTE_RELEASE/hub/migrations/002_m3e2_enrollment_api.sql" "$REMOTE_RELEASE/deploy/nginx/awh-enrollment.conf" "$REMOTE_RELEASE/deploy/awh-enrollment/insert-nginx-include.php" "$REMOTE_RELEASE/deploy/php-fpm/awh-enrollment.pool.conf"
+for php_file in HubEnrollmentService.php HubEnrollmentRouter.php HubEnrollmentApiMigration.php; do
+  SRC_FILE="$REMOTE_RELEASE/hub/src/$php_file"
+  sudo test -f "$SRC_FILE"
+  sudo test ! -L "$SRC_FILE"
+  sudo chmod 0640 "$SRC_FILE"
+done
+sudo chmod 0640 "$REMOTE_RELEASE/hub/public/enrollment.php" "$REMOTE_RELEASE/hub/bin/migrate-m3e2.php" "$REMOTE_RELEASE/hub/migrations/002_m3e2_enrollment_api.sql" "$REMOTE_RELEASE/deploy/nginx/awh-enrollment.conf" "$REMOTE_RELEASE/deploy/awh-enrollment/insert-nginx-include.php" "$REMOTE_RELEASE/deploy/php-fpm/awh-enrollment.pool.conf"
+sudo -u awh-hub test -x "$REMOTE_ROOT"
+sudo -u awh-hub test -x "$REMOTE_RELEASE"
+sudo -u awh-hub test -r "$REMOTE_RELEASE/hub/src/HubEnrollmentService.php"
+sudo -u awh-hub /usr/bin/php -r 'require $argv[1]; if (!class_exists("HubEnrollmentService", false)) exit(1);' "$REMOTE_RELEASE/hub/src/HubEnrollmentService.php"
+CURRENT_STAGE=RELEASE_ACCESS_READY
+stage "$CURRENT_STAGE"
 CURRENT_STAGE=RELEASE_STAGED
 stage "$CURRENT_STAGE"
 

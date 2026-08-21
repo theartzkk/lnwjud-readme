@@ -90,6 +90,18 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(remoteDeploy, /if test "\$RELEASE_CREATED" -eq 1; then[\s\S]*?rm -rf "\$REMOTE_RELEASE"/);
   assert.match(remoteDeploy, /if sudo test -e "\$REMOTE_RELEASE" \|\| sudo test -L "\$REMOTE_RELEASE"/);
   assert.match(remoteDeploy, /RELEASE_CREATED=1/);
+  assert.match(remoteDeploy, /SERVICE_GROUP_ADDED=0/);
+  assert.match(remoteDeploy, /PREVIOUS_SUPPLEMENTARY_GROUPS=/);
+  assert.match(remoteDeploy, /usermod -a -G www-data awh-hub/);
+  assert.match(remoteDeploy, /sudo -n -u awh-hub id -Gn[\s\S]*grep -qx 'www-data'/);
+  assert.match(remoteDeploy, /usermod -G "\$PREVIOUS_SUPPLEMENTARY_GROUPS" awh-hub/);
+  assert.match(remoteDeploy, /usermod -G '' awh-hub/);
+  assert.match(remoteDeploy, /test -x "\$REMOTE_ROOT"/);
+  assert.match(remoteDeploy, /test -x "\$REMOTE_RELEASE"/);
+  assert.match(remoteDeploy, /test -r "\$REMOTE_RELEASE\/hub\/src\/HubEnrollmentService\.php"/);
+  assert.match(remoteDeploy, /class_exists\("HubEnrollmentService", false\)/);
+  assert.match(remoteDeploy, /CURRENT_STAGE=RELEASE_ACCESS_READY/);
+  assert.doesNotMatch(remoteDeploy, /"\$REMOTE_RELEASE\/hub\/src\/"\*\.php/);
   assert.match(remoteDeploy, /DEPLOY_STAGE=|DEPLOY_RESULT=PASS/);
   assert.doesNotMatch(remoteDeploy, /printf .*hash|printf .*token|printf .*nonce/i);
   assert.match(remoteDeploy, /insert-nginx-include\.php/);
@@ -133,6 +145,10 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.ok(releaseCleanup >= 0 && serviceUserCleanup > releaseCleanup);
   assert.ok(remoteDeploy.slice(releaseCleanup, serviceUserCleanup).includes('rm -rf "$REMOTE_RELEASE"'));
   assert.equal(remoteDeploy.slice(serviceUserCleanup).includes('rm -rf "$REMOTE_RELEASE"'), false);
+  const accessReady = remoteDeploy.indexOf('CURRENT_STAGE=RELEASE_ACCESS_READY');
+  const migrationStart = remoteDeploy.indexOf('MIGRATION_STARTED=1\nFIRST=');
+  assert.ok(accessReady >= 0 && migrationStart > accessReady);
+  assert.ok(remoteDeploy.indexOf('usermod -G', accessReady) < serviceUserCleanup);
 });
 
 test('guarded deployment refuses a dirty tree and rollback order stays restore-first', async () => {
