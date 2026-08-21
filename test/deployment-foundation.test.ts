@@ -44,6 +44,10 @@ test('M4 control-plane activation package is executable in a local dry-run witho
   assert.match(remote, /tar -xzf "\$REMOTE_STAGE" -C "\$RELEASE"/);
   assert.match(remote, /stage M3D_REGRESSION; verify_m3d/);
   assert.match(remote, /stage PROJECTS_READY/);
+  assert.match(remote, /stage WEB_RELEASE_COPY/);
+  assert.match(remote, /stage WEB_POINTER_SWITCH/);
+  assert.match(remote, /stage NGINX_INCLUDE_PREPARE/);
+  assert.match(remote, /stage NGINX_INCLUDE_INSERT/);
   assert.doesNotMatch(remote, /PROJECTS_REGISTERED|d1e48976|dad35312|BAY EXCUSE X|Teacher Evaluation Video/);
   assert.match(remote, /stage CONTROL_ROUTE; code=/);
   assert.doesNotMatch(remote, /curl\s+-k/);
@@ -153,6 +157,7 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(remoteDeploy, /insert-nginx-include\.php/);
   assert.match(nginxInsert, /authoritative AWH HTTPS server block/);
   assert.match(nginxInsert, /Exactly one authoritative/);
+  assert.doesNotMatch(nginxInsert, /hasEnrollmentReference/);
   assert.match(deploy, /remote-deploy\.sh/);
   assert.match(deploy, /AWH_HUB_HOSTNAME/);
   assert.match(deploy, /BOOTSTRAP_HASH_FILE.*HUB_HOSTNAME/);
@@ -292,28 +297,46 @@ test('DB permission readiness arithmetic accepts safe 640/750 modes without broa
   await execFile('sh', ['-c', 'DB_MODE=640; PARENT_MODE=750; test $((0$DB_MODE & 0020)) -eq 0; test $((0$PARENT_MODE & 0020)) -eq 0; test $((0$DB_MODE & 0600)) -eq $((0600)); test $((0$PARENT_MODE & 0700)) -eq $((0700))']);
 });
 
-test('Nginx enrollment insertion selects exactly the AWH HTTPS server, not an HTTP redirect', async () => {
+test('Nginx AWH include insertion composes with enrollment and rejects duplicate, outside, or ambiguous control includes', async () => {
   const php = existsSync('/opt/local/bin/php') ? '/opt/local/bin/php' : 'php';
   const root = await mkdtemp(join(tmpdir(), 'awh-nginx-fixture-'));
   const input = join(root, 'awh.conf');
   const output = join(root, 'awh.out.conf');
-  const includePath = '/opt/awh-hub/enrollment-current/deploy/nginx/awh-enrollment.conf';
-  const fixture = `server {\n    listen 80;\n    return 301 https://$host$request_uri;\n}\n\nserver {\n    listen 443 ssl;\n    fastcgi_param AWH_HUB_DB_PATH /var/lib/awh-hub/awh.sqlite;\n    fastcgi_param SCRIPT_FILENAME /opt/awh-hub/public/web-gateway.php;\n    location ^~ /api/v1/ {\n        try_files $uri /web-gateway.php?$query_string;\n    }\n}\n`;
+  const enrollmentInclude = '/opt/awh-hub/enrollment-current/deploy/nginx/awh-enrollment.conf';
+  const controlInclude = '/opt/awh-hub/control-plane-current/deploy/nginx/awh-control-plane.conf';
+  const fixture = `server {\n    listen 80;\n    server_name awh.example.test;\n    return 301 https://$host$request_uri;\n}\n\nserver {\n    listen 443 ssl;\n    server_name awh.example.test;\n    fastcgi_param AWH_HUB_DB_PATH /var/lib/awh-hub/awh.sqlite;\n    fastcgi_param SCRIPT_FILENAME /opt/awh-hub/public/web-gateway.php;\n    include ${enrollmentInclude};\n    location ^~ /api/v1/ {\n        try_files $uri /web-gateway.php?$query_string;\n    }\n}\n`;
   try {
     await writeFile(input, fixture, 'utf8');
-    await execFile(php, [join(ROOT, 'deploy/awh-enrollment/insert-nginx-include.php'), input, output, includePath]);
+    await execFile(php, [join(ROOT, 'deploy/awh-enrollment/insert-nginx-include.php'), input, output, controlInclude]);
     const inserted = await readFile(output, 'utf8');
-    assert.equal((inserted.match(new RegExp(`include ${includePath.replaceAll('/', '\\/')};`, 'g')) ?? []).length, 1);
+    assert.equal((inserted.match(new RegExp(`include ${controlInclude.replaceAll('/', '\\/')};`, 'g')) ?? []).length, 1);
+    assert.equal((inserted.match(new RegExp(`include ${enrollmentInclude.replaceAll('/', '\\/')};`, 'g')) ?? []).length, 1);
     const httpBlock = inserted.slice(0, inserted.indexOf('server {', inserted.indexOf('server {') + 1));
     assert.doesNotMatch(httpBlock, /enrollment-current/);
-    assert.ok(inserted.indexOf(`include ${includePath};`) > inserted.indexOf('fastcgi_param SCRIPT_FILENAME'));
-    await execFile(php, [join(ROOT, 'deploy/awh-enrollment/insert-nginx-include.php'), output, input, includePath]);
+    assert.ok(inserted.indexOf(`include ${controlInclude};`) > inserted.indexOf('fastcgi_param SCRIPT_FILENAME'));
+    await execFile(php, [join(ROOT, 'deploy/awh-enrollment/insert-nginx-include.php'), output, input, controlInclude]);
     const idempotent = await readFile(input, 'utf8');
     assert.equal(idempotent, inserted);
 
+    const duplicate = join(root, 'duplicate.conf');
+    await writeFile(duplicate, inserted.replace(`include ${controlInclude};`, `include ${controlInclude};\n    include ${controlInclude};`), 'utf8');
+    await assert.rejects(() => execFile(php, [join(ROOT, 'deploy/awh-enrollment/insert-nginx-include.php'), duplicate, output, controlInclude]));
+
+    const outside = join(root, 'outside.conf');
+    await writeFile(outside, fixture.replace('return 301 https://$host$request_uri;', `include ${controlInclude};\n    return 301 https://$host$request_uri;`), 'utf8');
+    await assert.rejects(() => execFile(php, [join(ROOT, 'deploy/awh-enrollment/insert-nginx-include.php'), outside, output, controlInclude]));
+
+    const wildcard = join(root, 'wildcard.conf');
+    await writeFile(wildcard, fixture.replaceAll('server_name awh.example.test;', 'server_name _;'), 'utf8');
+    await assert.rejects(() => execFile(php, [join(ROOT, 'deploy/awh-enrollment/insert-nginx-include.php'), wildcard, output, controlInclude]));
+
+    const defaultServer = join(root, 'default-server.conf');
+    await writeFile(defaultServer, fixture.replace('listen 443 ssl;', 'listen 443 ssl default_server;'), 'utf8');
+    await assert.rejects(() => execFile(php, [join(ROOT, 'deploy/awh-enrollment/insert-nginx-include.php'), defaultServer, output, controlInclude]));
+
     const ambiguous = join(root, 'ambiguous.conf');
     await writeFile(ambiguous, `${fixture}\n${fixture.slice(fixture.indexOf('server {', fixture.indexOf('server {') + 1))}`, 'utf8');
-    await assert.rejects(() => execFile(php, [join(ROOT, 'deploy/awh-enrollment/insert-nginx-include.php'), ambiguous, output, includePath]));
+    await assert.rejects(() => execFile(php, [join(ROOT, 'deploy/awh-enrollment/insert-nginx-include.php'), ambiguous, output, controlInclude]));
   } finally {
     await rm(root, { recursive: true, force: true });
   }

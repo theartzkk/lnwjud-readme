@@ -38,14 +38,20 @@ foreach ($lines as $index => $line) {
             'database' => false,
             'gateway' => false,
             'includeCount' => 0,
-            'hasEnrollmentReference' => false,
+            'defaultServer' => false,
+            'serverNames' => [],
         ];
     }
     if ($active !== null) {
-        if (preg_match('/\blisten\s+(?:\[[^]]+\]:)?443\b[^;]*\bssl\b/i', $line) === 1) $active['https'] = true;
+        if (preg_match('/\blisten\s+(?:\[[^]]+\]:)?443\b[^;]*\bssl\b/i', $line) === 1) {
+            $active['https'] = true;
+            if (preg_match('/\bdefault_server\b/i', $line) === 1) $active['defaultServer'] = true;
+        }
+        if (preg_match('/^\s*server_name\s+([^;]+);/i', $line, $match) === 1) {
+            $active['serverNames'] = array_merge($active['serverNames'], preg_split('/\s+/', trim($match[1])) ?: []);
+        }
         if (str_contains($line, 'AWH_HUB_DB_PATH')) $active['database'] = true;
         if (str_contains($line, 'web-gateway.php')) $active['gateway'] = true;
-        if (str_contains($line, 'enrollment-current')) $active['hasEnrollmentReference'] = true;
         if (preg_match('/^\s*include\s+' . preg_quote('' . $includePath, '/') . '\s*;\s*$/', $line) === 1) $active['includeCount']++;
     }
     $braces = nginx_braces($line);
@@ -61,20 +67,21 @@ if ($active !== null || $depth !== 0) {
     exit(4);
 }
 
-$authoritative = array_values(array_filter($servers, static fn (array $server): bool => $server['https'] && $server['database'] && $server['gateway']));
+$authoritative = array_values(array_filter($servers, static function (array $server): bool {
+    if (!$server['https'] || !$server['database'] || !$server['gateway'] || $server['defaultServer'] || $server['serverNames'] === []) return false;
+    foreach ($server['serverNames'] as $name) {
+        if ($name === '_' || str_contains($name, '*') || strcasecmp($name, 'localhost') === 0) return false;
+    }
+    return true;
+}));
 if (count($authoritative) !== 1) {
     fwrite(STDERR, "Exactly one authoritative AWH HTTPS server block is required\n");
     exit(5);
 }
 $target = $authoritative[0];
-$targetIndex = array_search($target, $servers, true);
 $totalIncludes = array_sum(array_map(static fn (array $server): int => $server['includeCount'], $servers));
-if ($target['hasEnrollmentReference'] && $target['includeCount'] === 0) {
-    fwrite(STDERR, "Existing enrollment reference is not the reviewed include\n");
-    exit(6);
-}
-if ($totalIncludes > 1 || ($totalIncludes === 1 && $target['includeCount'] !== 1)) {
-    fwrite(STDERR, "Enrollment include is duplicated or outside the authoritative server\n");
+if ($target['includeCount'] > 1 || ($totalIncludes > 0 && $target['includeCount'] === 0) || $totalIncludes > 1) {
+    fwrite(STDERR, "Requested AWH include is duplicated or outside the authoritative server\n");
     exit(7);
 }
 if ($target['includeCount'] === 1) {
