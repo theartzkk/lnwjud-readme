@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import test from 'node:test';
-import { DEFAULT_DEPLOY_SCRIPT, runBootstrapOrchestration, runDeploymentDryRun, validateLocalAssets, verifyInternalHubHealth, verifyProtectedPerimeter } from '../scripts/deploy/bootstrap-owner.mjs';
+import { DEFAULT_DEPLOY_SCRIPT, runBootstrapOrchestration, runDeploymentDryRun, runGuardedDeployment, validateLocalAssets, verifyInternalHubHealth, verifyProtectedPerimeter } from '../scripts/deploy/bootstrap-owner.mjs';
 import { BOOTSTRAP_NONCE_CREDENTIAL_KEY, DEVICE_TOKEN_CREDENTIAL_KEY, InMemoryCredentialStore } from '../src/credential-store.js';
 import { EnrollmentClient } from '../src/enrollment-client.js';
 
@@ -39,7 +39,7 @@ test('default deployment path is the canonical repo asset and dry-run performs n
     await chmod(fakeSsh, 0o755);
     const result = await execFile('/bin/sh', [DEFAULT_DEPLOY_SCRIPT, '--dry-run'], {
       cwd: repoRoot,
-      env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH ?? ''}`, AWH_DEPLOY_TARGET: 'awh-vps' },
+      env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH ?? ''}`, TMPDIR: root, AWH_DEPLOY_TARGET: 'awh-vps' },
     });
     assert.match(result.stdout, /PRODUCTION_DEPLOY_APPROVAL_REQUIRED/);
     assert.equal(existsSync(marker), false);
@@ -88,6 +88,28 @@ test('pre-mutation failures stop before bootstrap provisioning', async () => {
   await assert.rejects(() => runBootstrapOrchestration({ ...base, validateAssets: noOpAssets, dryRun: noOpDryRun, verifyExternal: async () => { throw new Error('external perimeter failed'); }, verifyInternal: healthyInternal, verifyPreflight: noOpPreflight }), /external perimeter failed/);
   await assert.rejects(() => runBootstrapOrchestration({ ...base, validateAssets: noOpAssets, dryRun: noOpDryRun, verifyExternal: healthyExternal, verifyInternal: async () => { throw new Error('internal health failed'); }, verifyPreflight: noOpPreflight }), /internal health failed/);
   await assert.rejects(() => runBootstrapOrchestration({ ...base, validateAssets: noOpAssets, dryRun: noOpDryRun, verifyExternal: healthyExternal, verifyInternal: healthyInternal, verifyPreflight: async () => { throw new Error('preflight failed'); } }), /preflight failed/);
+});
+
+test('guarded deployment captures only allowlisted sanitized success stages', async () => {
+  const result = await runGuardedDeployment({
+    runImpl: async () => ({
+      exitCode: 0,
+      stdout: 'DEPLOY_STAGE=BOOTSTRAP_HASH_VALIDATED\nDEPLOY_STAGE=BACKUP_VERIFIED\nDEPLOY_STAGE=MIGRATION_IDEMPOTENT\nDEPLOY_RESULT=PASS\n',
+    }),
+  });
+  assert.deepEqual(result.stages, ['BOOTSTRAP_HASH_VALIDATED', 'BACKUP_VERIFIED', 'MIGRATION_IDEMPOTENT']);
+  assert.equal(result.result, 'PASS');
+  await assert.rejects(() => runGuardedDeployment({ runImpl: async () => ({ exitCode: 0, stdout: 'DEPLOY_STAGE=UNKNOWN\nDEPLOY_RESULT=PASS\n' }) }), /sanitized/);
+  await assert.rejects(() => runGuardedDeployment({ runImpl: async () => ({ exitCode: 0, stdout: `DEPLOY_STAGE=BACKUP_VERIFIED\nsecret=${'x'.repeat(64)}\nDEPLOY_RESULT=PASS\n` }) }), (error: unknown) => error instanceof Error && !error.message.includes('x'.repeat(64)));
+});
+
+test('guarded deployment preserves sanitized failure stage and rollback result', async () => {
+  for (const rollback of ['PASS', 'FAIL']) {
+    await assert.rejects(
+      () => runGuardedDeployment({ runImpl: async () => ({ exitCode: 1, stdout: `DEPLOY_STAGE=BACKUP_VERIFIED\nDEPLOY_FAILED_AT=MIGRATION_FIRST_PASS\nROLLBACK=${rollback}\n` }) }),
+      (error: unknown) => error instanceof Error && error.deployFailedAt === 'MIGRATION_FIRST_PASS' && error.rollback === rollback,
+    );
+  }
 });
 
 test('one-shot orchestration provisions and bootstraps with the exact same secure nonce', async () => {

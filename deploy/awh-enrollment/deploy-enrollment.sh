@@ -74,7 +74,6 @@ PREFLIGHT_OUTPUT=$(AWH_DEPLOY_TARGET="$DEPLOY_TARGET" sh "$PREFLIGHT_SCRIPT") ||
   echo "Production preflight command failed" >&2
   exit 1
 }
-printf '%s\n' "$PREFLIGHT_OUTPUT"
 printf '%s\n' "$PREFLIGHT_OUTPUT" | grep -q '^db_classification=DB_AUTHORITY_RESOLVED$' || {
   echo "Production deployment blocked: DB authority is not resolved" >&2
   exit 1

@@ -79,11 +79,15 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(remoteDeploy, /rollback\(\)/);
   assert.match(remoteDeploy, /\.restore/);
   assert.match(remoteDeploy, /DB_UID|PARENT_UID/);
-  assert.match(remoteDeploy, /ROLLBACK: PASS/);
+  assert.match(remoteDeploy, /ROLLBACK=PASS/);
   assert.match(remoteDeploy, /PHP_FPM_BIN.*-t/);
   assert.match(remoteDeploy, /systemctl reload/);
   assert.match(remoteDeploy, /useradd --system --user-group/);
-  assert.match(remoteDeploy, /userdel --system awh-hub/);
+  assert.match(remoteDeploy, /userdel awh-hub/);
+  assert.doesNotMatch(remoteDeploy, /userdel --system awh-hub/);
+  assert.match(remoteDeploy, /if test "\$SERVICE_USER_CREATED" -eq 1/);
+  assert.match(remoteDeploy, /DEPLOY_STAGE=|DEPLOY_RESULT=PASS/);
+  assert.doesNotMatch(remoteDeploy, /printf .*hash|printf .*token|printf .*nonce/i);
   assert.match(remoteDeploy, /insert-nginx-include\.php/);
   assert.match(nginxInsert, /authoritative AWH HTTPS server block/);
   assert.match(nginxInsert, /Exactly one authoritative/);

@@ -27,6 +27,12 @@ const DIST_RUNTIME = [
 const HUB_READ_DB = '/var/lib/awh-hub/awh.sqlite';
 const HUB_READ_FRONT_CONTROLLER = '/opt/awh-hub/public/index.php';
 const FORBIDDEN_KEY = /(token|secret|nonce|password|credential|authorization|private|workspacepath|filepath|ssh)/i;
+const DEPLOY_STAGES = new Set([
+  'BOOTSTRAP_HASH_VALIDATED', 'SERVICE_USER_READY', 'BACKUP_VERIFIED', 'DB_WRITE_READY',
+  'RELEASE_STAGED', 'MIGRATION_FIRST_PASS', 'MIGRATION_IDEMPOTENT', 'FPM_CONFIGURED',
+  'NGINX_CONFIGURED', 'SERVICE_RELOAD', 'M3D_REGRESSION', 'ENROLLMENT_ROUTE',
+]);
+const MAX_DEPLOY_OUTPUT_BYTES = 16 * 1024;
 
 function safeTarget(value) {
   if (typeof value !== 'string' || !TARGET_PATTERN.test(value)) throw new Error('Deployment target is invalid');
@@ -115,9 +121,53 @@ export async function runDeploymentDryRun({ runImpl = runCapture } = {}) {
   }
 }
 
-export async function runGuardedDeployment({ spawnImpl = runProcess } = {}) {
-  const exitCode = await spawnImpl('/bin/sh', [DEFAULT_DEPLOY_SCRIPT, '--deploy']);
-  if (exitCode !== 0) throw new Error('Guarded enrollment deployment failed');
+function parseDeploymentOutput(stdout) {
+  if (typeof stdout !== 'string' || Buffer.byteLength(stdout, 'utf8') > MAX_DEPLOY_OUTPUT_BYTES) throw new Error('Deployment output is not sanitized');
+  const lines = stdout.trim() === '' ? [] : stdout.trim().split(/\r?\n/);
+  const stages = [];
+  let failedAt = null;
+  let rollback = null;
+  let result = null;
+  for (const line of lines) {
+    if (line.startsWith('DEPLOY_STAGE=')) {
+      const stage = line.slice('DEPLOY_STAGE='.length);
+      if (!DEPLOY_STAGES.has(stage)) throw new Error('Deployment output is not sanitized');
+      stages.push(stage);
+      continue;
+    }
+    if (line.startsWith('DEPLOY_FAILED_AT=')) {
+      const stage = line.slice('DEPLOY_FAILED_AT='.length);
+      if (failedAt !== null || !DEPLOY_STAGES.has(stage)) throw new Error('Deployment output is not sanitized');
+      failedAt = stage;
+      continue;
+    }
+    if (line.startsWith('DEPLOY_RESULT=')) {
+      if (result !== null || line !== 'DEPLOY_RESULT=PASS') throw new Error('Deployment output is not sanitized');
+      result = 'PASS';
+      continue;
+    }
+    if (line.startsWith('ROLLBACK=')) {
+      if (rollback !== null || !['PASS', 'FAIL'].includes(line.slice('ROLLBACK='.length))) throw new Error('Deployment output is not sanitized');
+      rollback = line.slice('ROLLBACK='.length);
+      continue;
+    }
+    throw new Error('Deployment output is not sanitized');
+  }
+  return { stages, failedAt, rollback, result };
+}
+
+export async function runGuardedDeployment({ runImpl = runCapture } = {}) {
+  const processResult = await runImpl('/bin/sh', [DEFAULT_DEPLOY_SCRIPT, '--deploy'], { maxBytes: MAX_DEPLOY_OUTPUT_BYTES });
+  const output = parseDeploymentOutput(processResult?.stdout);
+  if (processResult?.exitCode !== 0) {
+    if (!output.failedAt || !output.rollback) throw new Error('Guarded enrollment deployment failed');
+    const error = new Error('Guarded enrollment deployment failed');
+    error.deployFailedAt = output.failedAt;
+    error.rollback = output.rollback;
+    throw error;
+  }
+  if (output.result !== 'PASS' || output.failedAt !== null || output.rollback !== null) throw new Error('Deployment success output is invalid');
+  return output;
 }
 
 async function requireRegularFile(filePath, lstatImpl = lstat) {
@@ -268,8 +318,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       apiBase,
     });
     process.stdout.write(`AWH bootstrap orchestration completed: enrolled=${result.enrolled}; credentialStored=${result.credentialStored}; hub=protected-perimeter+internal-health\n`);
-  } catch {
-    process.stderr.write('AWH bootstrap orchestration failed closed.\n');
+  } catch (error) {
+    if (error && typeof error === 'object' && typeof error.deployFailedAt === 'string' && ['PASS', 'FAIL'].includes(error.rollback)) {
+      process.stderr.write(`DEPLOY_FAILED_AT=${error.deployFailedAt}\nROLLBACK=${error.rollback}\n`);
+    } else {
+      process.stderr.write('AWH bootstrap orchestration failed closed.\n');
+    }
     process.exitCode = 1;
   }
 }
