@@ -117,24 +117,23 @@ credential ใน URL หรือ log.
 ### 5. Provision bootstrap nonce hash safely
 
 ห้ามเก็บ nonce ตัวจริงใน Git, Project Memory, log หรือ shell history. ใช้
-`CredentialStore` ของเครื่องเพื่อสร้าง/เก็บ nonce ชั่วคราว และให้ reviewed
-provisioning helper อ่านจาก Keychain/Credential Manager แล้วส่งเฉพาะ SHA-256 hash
-ผ่าน SSH stdin:
+`CredentialStore` ของเครื่องเพื่อสร้าง/เก็บ nonce ชั่วคราว แล้วใช้ one-shot
+orchestrator ที่เรียก reviewed provisioning helper จาก runtime ที่ build แล้ว
+โดยใช้ nonce เดียวกันตลอด sequence. หลัง explicit production approval ให้รัน
+จาก source ที่ clean เท่านั้น:
 
 ```sh
-umask 077
-read -r -s AWH_BOOTSTRAP_NONCE
-printf '%s' "$AWH_BOOTSTRAP_NONCE" | sha256sum | awk '{print $1}'
-unset AWH_BOOTSTRAP_NONCE
+npm run build
+node scripts/deploy/bootstrap-owner.mjs --approve-bootstrap-orchestration
 ```
 
-หลัง explicit production approval ให้รันจาก source ที่ clean เท่านั้น:
-
-```sh
-node --import tsx scripts/deploy/provision-bootstrap-hash.mjs --approve-bootstrap-provision
-```
-
-helper ใช้ fixed SSH argv, `shell:false`, และส่ง digest ผ่าน stdin เท่านั้น.
+คำสั่งนี้เป็น approval-gated และยังไม่ได้ execute ในรอบ freeze นี้. Orchestrator
+เตรียม nonce ใน secure store, provision digest ผ่าน helper, เรียก guarded
+enrollment deployment, bootstrap owner, consume initial pairing code, enroll Mac,
+ตรวจ Keychain และ Hub health แบบ sanitized ตามลำดับ. `bootstrapAndEnroll()` อ่าน
+nonce เดิมจาก secure store และจะไม่สร้าง nonce ใหม่หลัง provisioning หรือเมื่อ
+bootstrap ล้มเหลว. Helper ใช้ compiled `dist/credential-store.js`, fixed SSH
+argv, `shell:false`, และส่ง digest ผ่าน stdin เท่านั้น.
 ปลายทางเขียน `/etc/awh-hub/enrollment-bootstrap.sha256` เป็น root และ `0600`
 โดยไม่แสดงค่าใด ๆ. Remote deployment phase จะอ่าน hash ผ่าน privileged file
 access และแทนค่าใน PHP-FPM pool โดยไม่ใส่ nonce/hash ใน argv, log หรือ Project

@@ -26,6 +26,8 @@ test('local enrollment client closes bootstrap into first-device enrollment and 
       assert.match(String(payload.deviceId), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
       return new Response(JSON.stringify({ accessToken: 'first-device-secret', expiresAt: '2026-09-01T00:00:00.000Z', projectCount: 1 }), { status: 200 });
     });
+    const prepared = await client.prepareBootstrapNonce();
+    assert.equal(prepared.reused, false);
     const state = await client.bootstrapAndEnroll(['113b45c0-23e1-408d-ae0f-ac5eca7f6900'], 'Art’s Mac', ownerId);
     assert.equal(state.enrolled, true);
     assert.match(state.deviceId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
@@ -33,6 +35,16 @@ test('local enrollment client closes bootstrap into first-device enrollment and 
     assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY), 'first-device-secret');
     assert.equal('accessToken' in state, false);
     assert.equal(requests.length, 2);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('bootstrap refuses to invent a nonce when the secure store was not prepared', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awh-enroll-bootstrap-'));
+  try {
+    const client = new EnrollmentClient('https://hub.example/api/v1', root, new InMemoryCredentialStore(), async () => {
+      throw new Error('bootstrap request must not run');
+    });
+    await assert.rejects(() => client.bootstrapAndEnroll(['113b45c0-23e1-408d-ae0f-ac5eca7f6900']), (error: unknown) => error instanceof EnrollmentClientError && error.code === 'BOOTSTRAP_NONCE_MISSING');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

@@ -101,9 +101,12 @@
   checksum ledger row, and fails closed on partial/untracked state.
 - First-owner bootstrap creates owner membership and one initial pairing code in
   the same transaction, then the local `EnrollmentClient` consumes that code for
-  the first device. Temporary bootstrap nonce storage reuses the OS credential
-  adapter and provisioning sends only a SHA-256 digest through fixed SSH
-  stdin/argv; no bootstrap token is issued.
+  the first device. `prepareBootstrapNonce()` and
+  `bootstrapAndEnroll()` share one OS-stored temporary nonce; the latter never
+  silently generates a replacement. The approval-gated bootstrap orchestrator
+  calls the existing provisioning/deployment engines in order and provisioning
+  sends only a SHA-256 digest through fixed SSH stdin/argv; no bootstrap token is
+  issued.
 - The guarded deployment engine takes a SQLite-aware backup before any DB/parent
   metadata change. The minimum write provision makes `awh-hub` the owner while
   retaining the existing `www-data` read/traverse group and rejects broad group

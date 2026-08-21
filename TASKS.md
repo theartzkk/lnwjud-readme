@@ -8,7 +8,7 @@
 
 ## NEXT
 
-- Deploy the reviewed M3E-FINAL package once, then pair Mac and Windows independently.
+- Execute the reviewed one-shot bootstrap orchestration once in the approved production window, then pair Mac and Windows independently.
 - Verify sanitized Hub device read shows exactly two devices and no shared credential before closing M3E.
 - Review Autopilot Task Center/Artifact Center UX and test the normal Desktop flow with a real project goal.
 - Add the next explicit approval action for Project Memory checkpoint updates after human review.

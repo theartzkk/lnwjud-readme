@@ -2,9 +2,10 @@
 
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { BOOTSTRAP_NONCE_CREDENTIAL_KEY, createProductionCredentialStore } from '../../src/credential-store.js';
+import { BOOTSTRAP_NONCE_CREDENTIAL_KEY, createProductionCredentialStore } from '../../dist/credential-store.js';
 
 const TARGET_PATTERN = /^[A-Za-z0-9._-]+$/;
+const NONCE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const REMOTE_HASH_PATH = '/etc/awh-hub/enrollment-bootstrap.sha256';
 const REMOTE_PROVISION = String.raw`set -eu
 umask 077
@@ -23,7 +24,7 @@ function targetName(value) {
 }
 
 function hashNonce(nonce) {
-  if (typeof nonce !== 'string' || nonce.length < 32 || /[\u0000-\u001f\u007f]/.test(nonce)) throw new Error('Bootstrap nonce is unavailable');
+  if (typeof nonce !== 'string' || !NONCE_PATTERN.test(nonce)) throw new Error('Bootstrap nonce is unavailable');
   return createHash('sha256').update(nonce, 'utf8').digest('hex');
 }
 
@@ -31,7 +32,7 @@ function shellQuote(value) {
   return `'${value.replaceAll("'", "'\"'\"'")}'`;
 }
 
-function runSsh(executable, args, stdin) {
+export function runSsh(executable, args, stdin) {
   return new Promise((resolve, reject) => {
     const child = spawn(executable, args, { shell: false, stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true });
     child.once('error', () => reject(new Error('SSH provisioning process is unavailable')));

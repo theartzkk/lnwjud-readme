@@ -36,9 +36,12 @@ additive `enrollment_rate_limits` table from
 ## Local Desktop client
 
 `src/enrollment-client.ts` reuses the existing local device identity and
-`awh/device-token` credential key. `bootstrapAndEnroll()` creates a temporary
-nonce in `awh/bootstrap-nonce`, sends it only as the HTTPS bootstrap header,
-consumes the returned one-time pairing code, then deletes the temporary nonce.
+`awh/device-token` credential key. `prepareBootstrapNonce()` creates one
+temporary nonce in `awh/bootstrap-nonce` only when no valid nonce is present.
+`bootstrapAndEnroll()` reads that same stored nonce, sends it only as the HTTPS
+bootstrap header, consumes the returned one-time pairing code, then deletes the
+temporary nonce only after first-device enrollment succeeds. It never silently
+creates a replacement nonce after provisioning or a failed bootstrap.
 It sends credentials only in the fixed
 `Authorization` request header to the separate enrollment API, stores the new
 credential through the injected credential store, and returns only sanitized
@@ -59,16 +62,22 @@ Not executed. The complete local deployment package and runbook are in
 1. Apply migration 002 to the already-migrated Hub SQLite database and verify
    integrity/foreign keys.
 2. Deploy the PHP enrollment router/service files outside the static web root.
-3. Use the approval-gated `scripts/deploy/provision-bootstrap-hash.mjs` helper
-   to read the local OS credential store and send only the SHA-256 hash through
-   fixed SSH argv/stdin; configure PHP-FPM for the resulting root-owned `0600`
-   hash file outside source control.
-4. Add a separately reviewed Nginx location for the enrollment front
+3. Build the compiled runtime, then use the approval-gated
+   `scripts/deploy/bootstrap-owner.mjs` one-shot orchestrator. It prepares the
+   nonce in the existing OS store, calls the hash provisioning helper with that
+   same store value, runs the guarded enrollment deployment, bootstraps the
+   owner, enrolls the current Mac, verifies Keychain state and performs a
+   sanitized Hub health read. The direct helper is a lower-level reviewed
+   component; it reads only the compiled `dist/credential-store.js` runtime and
+   sends only the SHA-256 hash through fixed SSH argv/stdin.
+4. Configure PHP-FPM for the resulting root-owned `0600` hash file outside
+   source control.
+5. Add a separately reviewed Nginx location for the enrollment front
    controller. Do not route it through `web-gateway.php` or expose it as
    browser `data.json`/HUB_READ.
-5. Run the enrollment API regression and verify existing health/status/projects/
+6. Run the enrollment API regression and verify existing health/status/projects/
    memory reads remain unchanged.
-6. Only then pair a device with an operator-held short-lived code.
+7. Only then pair a device with an operator-held short-lived code.
 
 No deployment, SSH mutation, source synchronization, write endpoint, shell,
 MCP proxy, or remote execution is part of this milestone.

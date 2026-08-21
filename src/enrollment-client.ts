@@ -4,6 +4,7 @@ import { DeviceIdentity, loadOrCreateDeviceIdentity } from './device-identity.js
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const BOOTSTRAP_NONCE = /^[A-Za-z0-9_-]{43}$/;
 
 export class EnrollmentClientError extends Error {
   constructor(message: string, readonly code = 'ENROLLMENT_CLIENT_FAILED') {
@@ -61,6 +62,21 @@ export class EnrollmentClient {
     return readLocalEnrollmentState(this.dataDir, this.credentialStore);
   }
 
+  /**
+   * Prepare the one bootstrap nonce in the existing OS credential store.
+   * Returning only whether an existing valid nonce was reused keeps the
+   * secret out of UI state, logs, and orchestration results.
+   */
+  async prepareBootstrapNonce(): Promise<{ reused: boolean }> {
+    const existing = await this.credentialStore.get(BOOTSTRAP_NONCE_CREDENTIAL_KEY);
+    if (existing !== null) {
+      if (!BOOTSTRAP_NONCE.test(existing)) throw new EnrollmentClientError('Stored bootstrap nonce is invalid', 'BOOTSTRAP_NONCE_INVALID');
+      return { reused: true };
+    }
+    await this.credentialStore.set(BOOTSTRAP_NONCE_CREDENTIAL_KEY, rfc4648Nonce());
+    return { reused: false };
+  }
+
   async pair(pairingCode: string): Promise<SanitizedEnrollmentState> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir);
     if (typeof pairingCode !== 'string' || !/^[A-Za-z0-9_-]{32,128}$/.test(pairingCode)) throw new EnrollmentClientError('Pairing code is invalid', 'PAIRING_CODE_INVALID');
@@ -74,27 +90,27 @@ export class EnrollmentClient {
 
   /**
    * Bootstrap the first owner and immediately consume the one-time pairing
-   * code for this device. The nonce and pairing code stay in memory only; the
-   * temporary nonce is removed from the OS credential store after the flow.
+   * code for this device. A nonce must already have been prepared in the OS
+   * credential store; this method never silently creates a replacement nonce.
+   * The nonce is removed only after first-device enrollment succeeds.
    */
   async bootstrapAndEnroll(projectIds: string[], displayName?: string, userId?: string): Promise<SanitizedEnrollmentState> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir, displayName);
     const ownerId = userId ?? identity.deviceId;
     if (!isEnrollmentDeviceId(ownerId)) throw new EnrollmentClientError('Owner identity is invalid', 'OWNER_ID_INVALID');
-    const nonce = rfc4648Nonce();
-    await this.credentialStore.set(BOOTSTRAP_NONCE_CREDENTIAL_KEY, nonce);
-    try {
-      const response = await this.post('/enrollment/bootstrap', {
-        schemaVersion: 1, userId: ownerId, displayName: identity.displayName, projectIds,
-      }, undefined, { 'X-AWH-Bootstrap-Nonce': nonce });
-      if (response.bootstrapClosed !== true || typeof response.initialPairingCode !== 'string' || !/^[A-Za-z0-9_-]{32,128}$/.test(response.initialPairingCode)) {
-        throw new EnrollmentClientError('Bootstrap response did not contain a bounded pairing code', 'RESPONSE_INVALID');
-      }
-      if (typeof response.initialPairingExpiresAt !== 'string') throw new EnrollmentClientError('Bootstrap response expiry is invalid', 'RESPONSE_INVALID');
-      return await this.pair(response.initialPairingCode);
-    } finally {
-      await this.credentialStore.delete(BOOTSTRAP_NONCE_CREDENTIAL_KEY);
+    const nonce = await this.credentialStore.get(BOOTSTRAP_NONCE_CREDENTIAL_KEY);
+    if (nonce === null) throw new EnrollmentClientError('Bootstrap nonce is not prepared in the secure credential store', 'BOOTSTRAP_NONCE_MISSING');
+    if (!BOOTSTRAP_NONCE.test(nonce)) throw new EnrollmentClientError('Stored bootstrap nonce is invalid', 'BOOTSTRAP_NONCE_INVALID');
+    const response = await this.post('/enrollment/bootstrap', {
+      schemaVersion: 1, userId: ownerId, displayName: identity.displayName, projectIds,
+    }, undefined, { 'X-AWH-Bootstrap-Nonce': nonce });
+    if (response.bootstrapClosed !== true || typeof response.initialPairingCode !== 'string' || !/^[A-Za-z0-9_-]{32,128}$/.test(response.initialPairingCode)) {
+      throw new EnrollmentClientError('Bootstrap response did not contain a bounded pairing code', 'RESPONSE_INVALID');
     }
+    if (typeof response.initialPairingExpiresAt !== 'string') throw new EnrollmentClientError('Bootstrap response expiry is invalid', 'RESPONSE_INVALID');
+    const state = await this.pair(response.initialPairingCode);
+    await this.credentialStore.delete(BOOTSTRAP_NONCE_CREDENTIAL_KEY);
+    return state;
   }
 
   async rotate(): Promise<SanitizedEnrollmentState> {
