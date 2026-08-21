@@ -20,6 +20,19 @@ final class HubEnrollmentApiMigration
         'pairing_codes', 'pairing_projects', 'device_tokens', 'device_project_memberships',
         'awh_schema_migrations',
     ];
+    private const REQUIRED_COLUMNS = [
+        'hub_users' => ['user_id', 'display_name', 'created_at', 'revoked_at'],
+        'owner_bootstrap' => ['singleton_id', 'owner_user_id', 'initialized_at', 'bootstrap_closed'],
+        'device_enrollments' => ['device_id', 'user_id', 'enrolled_at', 'revoked_at'],
+        'user_project_memberships' => ['user_id', 'project_id', 'role', 'created_at', 'revoked_at'],
+        'pairing_codes' => ['pairing_code_id', 'user_id', 'code_hash', 'issued_at', 'expires_at', 'consumed_at', 'revoked_at'],
+        'pairing_projects' => ['pairing_code_id', 'project_id'],
+        'device_tokens' => ['token_id', 'user_id', 'device_id', 'token_hash', 'created_at', 'expires_at', 'revoked_at', 'last_used_at', 'rotated_from_token_id', 'replaced_by_token_id'],
+        'device_project_memberships' => ['device_id', 'project_id', 'role', 'created_at', 'revoked_at'],
+        'enrollment_rate_limits' => ['rate_key', 'window_started_at', 'attempts', 'blocked_until'],
+        'awh_schema_migrations' => ['migration_id', 'schema_version', 'checksum', 'applied_at'],
+    ];
+    private const REQUIRED_INDEXES = ['idx_device_tokens_device', 'idx_device_memberships_project', 'idx_user_memberships_project'];
 
     public static function apply(string $databasePath, string $migrationSqlPath, ?string $now = null): string
     {
@@ -60,6 +73,50 @@ final class HubEnrollmentApiMigration
             throw new HubEnrollmentApiMigrationException('Enrollment API migration rolled back and requires review', 'MIGRATION_ROLLED_BACK');
         }
         return 'applied';
+    }
+
+    /**
+     * Verify the enrollment capability on the shared Hub database. The global
+     * SQLite version is a monotonic database version, not the version of this
+     * subsystem; M4 (version 4) must remain a valid enrollment database.
+     */
+    public static function assertCapabilityReady(PDO $pdo, string $migrationSqlPath): void
+    {
+        if ($migrationSqlPath === '' || str_contains($migrationSqlPath, "\0") || !is_file($migrationSqlPath)) {
+            throw new HubEnrollmentApiMigrationException('Enrollment migration authority is unavailable', 'MIGRATION_FILE_INVALID');
+        }
+        $checksum = hash_file('sha256', $migrationSqlPath);
+        if (!is_string($checksum) || !preg_match('/^[a-f0-9]{64}$/', $checksum)) {
+            throw new HubEnrollmentApiMigrationException('Enrollment migration authority is invalid', 'MIGRATION_FILE_INVALID');
+        }
+        if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() < self::TARGET_USER_VERSION) {
+            throw new HubEnrollmentApiMigrationException('SQLite schema is older than the enrollment capability', 'SCHEMA_VERSION_MISMATCH');
+        }
+        foreach (self::REQUIRED_TABLES as $table) {
+            if (!self::tableExists($pdo, $table)) throw new HubEnrollmentApiMigrationException('Enrollment schema is incomplete', 'SCHEMA_VERIFY_FAILED');
+        }
+        foreach (self::REQUIRED_COLUMNS as $table => $columns) {
+            $actual = array_column($pdo->query('PRAGMA table_info(' . $table . ')')->fetchAll(), 'name');
+            if (array_diff($columns, $actual) !== []) throw new HubEnrollmentApiMigrationException('Enrollment schema columns are incomplete', 'SCHEMA_VERIFY_FAILED');
+        }
+        foreach (self::REQUIRED_INDEXES as $index) {
+            if (!self::indexExists($pdo, $index)) throw new HubEnrollmentApiMigrationException('Enrollment schema indexes are incomplete', 'SCHEMA_VERIFY_FAILED');
+        }
+        $m3e1 = $pdo->query("SELECT schema_version, checksum FROM awh_schema_migrations WHERE migration_id = 'm3e.1-enrollment'")->fetch();
+        if (!is_array($m3e1) || (int) $m3e1['schema_version'] !== 2 || !preg_match('/^[a-f0-9]{64}$/i', (string) $m3e1['checksum'])) {
+            throw new HubEnrollmentApiMigrationException('M3E.1 migration ledger is invalid', 'BASE_SCHEMA_INVALID');
+        }
+        $m3e2 = $pdo->query("SELECT schema_version, checksum FROM awh_schema_migrations WHERE migration_id = '" . self::MIGRATION_ID . "'")->fetch();
+        if (!is_array($m3e2) || (int) $m3e2['schema_version'] !== self::TARGET_USER_VERSION || !hash_equals(strtolower($checksum), strtolower((string) $m3e2['checksum']))) {
+            throw new HubEnrollmentApiMigrationException('M3E.2 migration ledger is invalid', 'MIGRATION_RECORD_INVALID');
+        }
+        if ($pdo->query('PRAGMA foreign_key_check')->fetchAll() !== []) throw new HubEnrollmentApiMigrationException('Foreign-key integrity check failed', 'FOREIGN_KEY_CHECK_FAILED');
+    }
+
+    public static function verifyDatabase(string $databasePath, string $migrationSqlPath): void
+    {
+        $pdo = self::open($databasePath);
+        self::assertCapabilityReady($pdo, $migrationSqlPath);
     }
 
     private static function open(string $path): PDO
@@ -106,6 +163,13 @@ final class HubEnrollmentApiMigration
     {
         $query = $pdo->prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = :name");
         $query->execute(['name' => $table]);
+        return $query->fetchColumn() !== false;
+    }
+
+    private static function indexExists(PDO $pdo, string $index): bool
+    {
+        $query = $pdo->prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = :name");
+        $query->execute(['name' => $index]);
         return $query->fetchColumn() !== false;
     }
 }

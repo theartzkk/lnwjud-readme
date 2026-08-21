@@ -15,6 +15,7 @@ NGINX_CONFIG=$6
 PHP_VERSION=$7
 BOOTSTRAP_HASH_FILE=$8
 HUB_HOSTNAME=$9
+COMPAT_REFRESH=${10:-0}
 
 case "$DB" in /var/lib/awh-hub/*|/opt/awh-hub/*|/srv/awh/*) ;; *) exit 20 ;; esac
 case "$REMOTE_ROOT" in /opt/awh-hub) ;; *) exit 20 ;; esac
@@ -25,6 +26,7 @@ case "$NGINX_CONFIG" in /etc/nginx/sites-enabled/*) ;; *) exit 20 ;; esac
 case "$PHP_VERSION" in [0-9]*.[0-9]*) ;; *) exit 20 ;; esac
 case "$BOOTSTRAP_HASH_FILE" in /etc/awh-hub/*) ;; *) exit 20 ;; esac
 case "$HUB_HOSTNAME" in ''|*[!A-Za-z0-9.-]*|.*|*.) exit 20 ;; esac
+case "$COMPAT_REFRESH" in 0|1) ;; *) exit 20 ;; esac
 case "$HUB_HOSTNAME" in *[A-Za-z]*.*) : ;; *) exit 20 ;; esac
 printf '%s\n' "$HUB_HOSTNAME" | awk 'BEGIN { valid = 1 } { if (length($0) > 253 || split($0, labels, ".") < 2) valid = 0; for (i in labels) if (labels[i] == "" || length(labels[i]) > 63 || labels[i] ~ /^-/ || labels[i] ~ /-$/) valid = 0 } END { exit valid ? 0 : 1 }' || exit 20
 
@@ -170,7 +172,9 @@ sudo test -f "$DB"
 # The live M3D host may not have the future enrollment service account yet.
 # Create it only inside this approval-gated deployment phase; preflight never
 # performs this mutation.
-if ! id -u awh-hub >/dev/null 2>&1; then
+if test "$COMPAT_REFRESH" -eq 1; then
+  id -u awh-hub >/dev/null 2>&1 || exit 20
+elif ! id -u awh-hub >/dev/null 2>&1; then
   sudo /usr/sbin/useradd --system --user-group --home-dir "$REMOTE_ROOT" --no-create-home --shell /usr/sbin/nologin awh-hub
   SERVICE_USER_CREATED=1
 else
@@ -221,15 +225,17 @@ stage "$CURRENT_STAGE"
 
 # Minimum bounded write provision: the service owns the DB and its directory,
 # while the existing www-data group keeps read/traverse access only.
-if test "$DB_OWNER" != awh-hub || test "$PARENT_OWNER" != awh-hub; then
+if test "$COMPAT_REFRESH" -eq 0 && { test "$DB_OWNER" != awh-hub || test "$PARENT_OWNER" != awh-hub; }; then
   sudo chown awh-hub:"$DB_GROUP" "$DB"
   sudo chmod "$DB_MODE" "$DB"
   sudo chown awh-hub:"$PARENT_GROUP" "$DB_PARENT"
   sudo chmod "$PARENT_MODE" "$DB_PARENT"
   PERMISSIONS_CHANGED=1
 fi
-sudo -n -u awh-hub test -w "$DB"
-sudo -n -u awh-hub test -w "$DB_PARENT"
+if test "$COMPAT_REFRESH" -eq 0; then
+  sudo -n -u awh-hub test -w "$DB"
+  sudo -n -u awh-hub test -w "$DB_PARENT"
+fi
 CURRENT_STAGE=DB_WRITE_READY
 stage "$CURRENT_STAGE"
 
@@ -268,18 +274,31 @@ POINTER_PATH=$REMOTE_ROOT/enrollment-current
 POINTER_SUDO=/usr/bin/sudo
 if ! pointer_capture; then exit 20; fi
 
-MIGRATION_STARTED=1
-FIRST=$(sudo -u awh-hub /usr/bin/php "$REMOTE_RELEASE/hub/bin/migrate-m3e2.php" "$DB")
-SECOND=$(sudo -u awh-hub /usr/bin/php "$REMOTE_RELEASE/hub/bin/migrate-m3e2.php" "$DB")
-printf '%s\n' "$FIRST" "$SECOND" | grep -q '"result":"applied"'
-CURRENT_STAGE=MIGRATION_FIRST_PASS
-stage "$CURRENT_STAGE"
-printf '%s\n' "$FIRST" "$SECOND" | grep -q '"result":"already-applied"'
-CURRENT_STAGE=MIGRATION_IDEMPOTENT
-stage "$CURRENT_STAGE"
+if test "$COMPAT_REFRESH" -eq 1; then
+  MIGRATION_STARTED=0
+  VERIFY_OUTPUT=$(sudo -u awh-hub /usr/bin/php "$REMOTE_RELEASE/hub/bin/migrate-m3e2.php" --verify "$DB")
+  printf '%s\n' "$VERIFY_OUTPUT" | grep -q '"ok":true'
+  printf '%s\n' "$VERIFY_OUTPUT" | grep -q '"capability":"m3e2-enrollment"'
+  CURRENT_STAGE=ENROLLMENT_COMPATIBILITY_VERIFIED
+  stage "$CURRENT_STAGE"
+else
+  MIGRATION_STARTED=1
+  FIRST=$(sudo -u awh-hub /usr/bin/php "$REMOTE_RELEASE/hub/bin/migrate-m3e2.php" "$DB")
+  SECOND=$(sudo -u awh-hub /usr/bin/php "$REMOTE_RELEASE/hub/bin/migrate-m3e2.php" "$DB")
+  printf '%s\n' "$FIRST" "$SECOND" | grep -q '"result":"applied"'
+  CURRENT_STAGE=MIGRATION_FIRST_PASS
+  stage "$CURRENT_STAGE"
+  printf '%s\n' "$FIRST" "$SECOND" | grep -q '"result":"already-applied"'
+  CURRENT_STAGE=MIGRATION_IDEMPOTENT
+  stage "$CURRENT_STAGE"
+fi
 test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;' | head -n 1)" = ok
 test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
-test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;' | head -n 1)" = 3
+if test "$COMPAT_REFRESH" -eq 1; then
+  test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;' | head -n 1)" -ge 3
+else
+  test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;' | head -n 1)" = 3
+fi
 test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='enrollment_rate_limits';")" = 1
 
 sudo install -d -m 0750 -o root -g root "$CONFIG_BACKUP_ROOT/nginx" "$CONFIG_BACKUP_ROOT/php-fpm"

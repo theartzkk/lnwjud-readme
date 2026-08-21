@@ -6,6 +6,7 @@ const tests = [
   'hub/tests/m3e-migration.php',
   'hub/tests/m3e2-migration.php',
   'hub/tests/enrollment-api.php',
+  'hub/tests/m3e-m4-compatibility.php',
   'hub/tests/m4-control-plane.php',
   'hub/tests/m4-zero-project-control.php',
   'hub/tests/m4-project-registration.php',

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/src/HubEnrollmentService.php';
 require_once dirname(__DIR__) . '/src/HubEnrollmentRouter.php';
+require_once dirname(__DIR__) . '/src/HubSchemaMigration.php';
+require_once dirname(__DIR__) . '/src/HubEnrollmentApiMigration.php';
 
 function api_assert(bool $condition, string $message): void { if (!$condition) throw new RuntimeException($message); }
 function api_json(array $value): string { return json_encode($value === [] ? (object) [] : $value, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR); }
@@ -22,8 +24,11 @@ $ownerId = '223b45c0-23e1-408d-ae0f-ac5eca7f6900';
 try {
     $pdo = new PDO('sqlite:' . $database, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
     $pdo->exec(file_get_contents($schema));
+    foreach (['enrollment_rate_limits', 'device_project_memberships', 'device_tokens', 'pairing_projects', 'pairing_codes', 'user_project_memberships', 'device_enrollments', 'owner_bootstrap', 'hub_users'] as $table) $pdo->exec('DROP TABLE IF EXISTS ' . $table);
     $pdo->exec("INSERT INTO projects VALUES('$projectId', 'Art’s Workspace Hub', 'node', '2026-01-01T00:00:00.000Z', NULL, '2026-08-20T00:00:00.000Z', 'api-test')");
-    $service = HubEnrollmentService::open($database, $schema);
+    HubSchemaMigration::apply($database, dirname(__DIR__) . '/migrations/001_m3e_enrollment.sql', '2026-08-20T00:00:00.000Z', false, $schema);
+    HubEnrollmentApiMigration::apply($database, dirname(__DIR__) . '/migrations/002_m3e2_enrollment_api.sql', '2026-08-20T00:01:00.000Z');
+    $service = HubEnrollmentService::openExisting($database);
     putenv('AWH_ENROLLMENT_BOOTSTRAP_NONCE_HASH=' . hash('sha256', 'bootstrap-test-only'));
 
     // Exercise the deployed entrypoint, not only the router helper. A release-root

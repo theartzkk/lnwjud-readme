@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/HubEnrollmentApiMigration.php';
+
 final class HubEnrollmentException extends RuntimeException
 {
     public function __construct(string $message, public readonly string $codeName = 'ENROLLMENT_FAILED')
@@ -19,7 +21,7 @@ final class HubEnrollmentService
     private const TTL_SECONDS = 600;
     private const TOKEN_TTL_SECONDS = 2592000;
 
-    private function __construct(private readonly PDO $pdo)
+    private function __construct(private readonly PDO $pdo, private readonly string $migrationSqlPath)
     {
     }
 
@@ -45,18 +47,19 @@ final class HubEnrollmentService
         } catch (Throwable) {
             throw new HubEnrollmentException('Enrollment storage is unavailable', 'DATABASE_UNAVAILABLE');
         }
-        return new self($pdo);
+        return new self($pdo, dirname(__DIR__) . '/migrations/002_m3e2_enrollment_api.sql');
     }
 
     /** Open only an already-migrated database; never creates schema on an API request. */
-    public static function openExisting(string $databasePath): self
+    public static function openExisting(string $databasePath, ?string $migrationSqlPath = null): self
     {
         if ($databasePath === '' || str_contains($databasePath, "\0")) throw new HubEnrollmentException('Enrollment database configuration is invalid', 'DATABASE_CONFIG_INVALID');
         try {
             $pdo = new PDO('sqlite:' . $databasePath, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES => false]);
             $pdo->exec('PRAGMA foreign_keys = ON');
             $pdo->exec('PRAGMA busy_timeout = 2500');
-            return new self($pdo);
+            $migrationSqlPath ??= dirname(__DIR__) . '/migrations/002_m3e2_enrollment_api.sql';
+            return new self($pdo, $migrationSqlPath);
         } catch (Throwable) {
             throw new HubEnrollmentException('Enrollment storage is unavailable', 'DATABASE_UNAVAILABLE');
         }
@@ -64,8 +67,11 @@ final class HubEnrollmentService
 
     public function assertApiSchemaReady(): void
     {
-        $query = $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'enrollment_rate_limits'");
-        if ($query->fetchColumn() === false || (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() !== 3) throw new HubEnrollmentException('Enrollment API schema migration is required', 'ENROLLMENT_SCHEMA_NOT_READY');
+        try {
+            HubEnrollmentApiMigration::assertCapabilityReady($this->pdo, $this->migrationSqlPath);
+        } catch (HubEnrollmentApiMigrationException $error) {
+            throw new HubEnrollmentException('Enrollment API schema migration is required', 'ENROLLMENT_SCHEMA_NOT_READY');
+        }
     }
 
     public function initializeOwner(string $userId, string $displayName, array $projectIds, ?string $now = null): array

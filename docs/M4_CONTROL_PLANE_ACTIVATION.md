@@ -37,7 +37,7 @@ Prepare the exact release assets locally with `npm run web:build:control` follow
 
 ก่อน activation ต้องมี backup SQLite ที่ตรวจ `integrity_check` และ `foreign_key_check`, apply migration 003, run second invocation, verify generic project-onboarding readiness with an empty input, stage exact release, install `awh-control-plane.conf` ใน HTTPS AWH server block เดิม, `nginx -t`, reload PHP-FPM/Nginx, แล้วตรวจ M3D read routes และ control-plane fixture/health. Rollback คือ restore verified DB backup and remove the control-plane/static release/config before reload; because onboarding metadata is inside the same verified DB backup boundary, restore also removes only this attempt's metadata changes.
 
-ใช้ `deploy/awh-control-plane/deploy-control-plane.sh --dry-run` เพื่อดู bounded plan. `--deploy` ถูก guard ให้หยุดจนกว่าจะมี reviewed activation path; รอบนี้ห้ามรัน production mutation.
+ใช้ `deploy/awh-control-plane/deploy-control-plane.sh --dry-run` เพื่อดู bounded plan. `--deploy --approve` เป็น activation path ที่ต้องใช้กับ release ที่ clean และได้รับ approval เท่านั้น; M4 verification จะตรวจ M3E หลัง schema v4 ด้วย invalid-bearer POST โดยไม่สร้าง pairing code.
 
 ## Field behavior
 

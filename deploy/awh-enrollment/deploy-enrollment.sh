@@ -5,11 +5,16 @@ LC_ALL=C
 export LC_ALL
 
 MODE=dry-run
-case "${1:-}" in
-  ""|--dry-run) MODE=dry-run ;;
-  --deploy) MODE=deploy ;;
-  *) echo "Usage: $0 [--dry-run|--deploy]" >&2; exit 2 ;;
-esac
+COMPAT_REFRESH=0
+while test "$#" -gt 0; do
+  case "$1" in
+    --dry-run) MODE=dry-run ;;
+    --deploy) MODE=deploy ;;
+    --compat-refresh) COMPAT_REFRESH=1 ;;
+    *) echo "Usage: $0 [--dry-run] | --deploy [--compat-refresh]" >&2; exit 2 ;;
+  esac
+  shift
+done
 
 ROOT=${AWH_SOURCE_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}
 RELEASE_ID=${AWH_ENROLLMENT_RELEASE_ID:-m3e2-$(date -u +%Y%m%dT%H%M%SZ)}
@@ -56,7 +61,11 @@ if [ "$MODE" = dry-run ]; then
   echo "DRY-RUN: target SSH alias=$DEPLOY_TARGET"
   echo "DRY-RUN: would require a clean committed release and run the read-only preflight"
   echo "DRY-RUN: would require DB_AUTHORITY_RESOLVED, DB_WRITE_READY or DB_WRITE_PROVISION_REQUIRED, bootstrap hash READY, and BACKUP_READY or BACKUP_PROVISION_REQUIRED before mutation"
-  echo "DRY-RUN: would create a SQLite-aware backup, verify it, stage the exact reviewed release, and run 002_m3e2_enrollment_api.php twice"
+  if test "$COMPAT_REFRESH" -eq 1; then
+    echo "DRY-RUN: compatibility refresh would verify the existing M3E.2 capability on the shared database without replaying or downgrading historical migrations"
+  else
+    echo "DRY-RUN: would create a SQLite-aware backup, verify it, stage the exact reviewed release, and run 002_m3e2_enrollment_api.php twice"
+  fi
   echo "DRY-RUN: would verify integrity/FK/schema, install reviewed Nginx/PHP-FPM configuration, reload, and run M3D/enrollment regression"
   echo "DRY-RUN: critical gate failure would disable the new route/release and restore the verified DB backup"
   echo "PRODUCTION_DEPLOY_APPROVAL_REQUIRED: pass --deploy only after the final human review"
@@ -129,4 +138,4 @@ case "$BOOTSTRAP_HASH_FILE" in /etc/awh-hub/*) ;; *) echo "AWH_ENROLLMENT_BOOTST
 command -v scp >/dev/null 2>&1 || { echo "scp is required" >&2; exit 1; }
 command -v ssh >/dev/null 2>&1 || { echo "ssh is required" >&2; exit 1; }
 scp -o BatchMode=yes -o StrictHostKeyChecking=yes "$BUNDLE" "$DEPLOY_TARGET:$REMOTE_STAGE"
-ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$DEPLOY_TARGET" sh -s -- "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "$REMOTE_RELEASE" "$RELEASE_ID" "$NGINX_CONFIG_PATH" "$PHP_VERSION" "$BOOTSTRAP_HASH_FILE" "$HUB_HOSTNAME" < "$REMOTE_DEPLOY_SCRIPT"
+ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$DEPLOY_TARGET" sh -s -- "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "$REMOTE_RELEASE" "$RELEASE_ID" "$NGINX_CONFIG_PATH" "$PHP_VERSION" "$BOOTSTRAP_HASH_FILE" "$HUB_HOSTNAME" "$COMPAT_REFRESH" < "$REMOTE_DEPLOY_SCRIPT"

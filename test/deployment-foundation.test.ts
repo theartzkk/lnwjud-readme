@@ -43,6 +43,9 @@ test('M4 control-plane activation package is executable in a local dry-run witho
   const remote = await readText(join(ROOT, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'));
   assert.match(remote, /tar -xzf "\$REMOTE_STAGE" -C "\$RELEASE"/);
   assert.match(remote, /stage M3D_REGRESSION; verify_m3d/);
+  assert.match(remote, /stage M3E_POST_SCHEMA_REGRESSION; verify_m3e_after_m4/);
+  assert.match(remote, /enrollment\/pairing-codes/);
+  assert.match(remote, /invalid-regression-token/);
   assert.match(remote, /stage PROJECTS_READY/);
   assert.match(remote, /stage WEB_RELEASE_COPY/);
   assert.match(remote, /stage WEB_POINTER_SWITCH/);
@@ -144,6 +147,7 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(deploy, /PRODUCTION_DEPLOY_APPROVAL_REQUIRED/);
   assert.match(deploy, /StrictHostKeyChecking=yes/);
   assert.match(deploy, /migrate-m3e2\.php/);
+  assert.match(deploy, /--compat-refresh/);
   assert.match(deploy, /Refusing deployment from a dirty or uncommitted working tree/);
   assert.match(deploy, /DB_WRITE_READY|DB_WRITE_PROVISION_REQUIRED/);
   assert.match(remoteDeploy, /PRAGMA user_version/);
@@ -172,6 +176,9 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(remoteDeploy, /test -r "\$REMOTE_RELEASE\/hub\/src\/HubEnrollmentService\.php"/);
   assert.match(remoteDeploy, /class_exists\("HubEnrollmentService", false\)/);
   assert.match(remoteDeploy, /CURRENT_STAGE=RELEASE_ACCESS_READY/);
+  assert.match(remoteDeploy, /COMPAT_REFRESH/);
+  assert.match(remoteDeploy, /--verify/);
+  assert.match(remoteDeploy, /ENROLLMENT_COMPATIBILITY_VERIFIED/);
   assert.match(remoteDeploy, /CURRENT_STAGE=M3D_REGRESSION[\s\S]*CURRENT_STAGE=ENROLLMENT_ROUTE[\s\S]*test "\$code" = 405/);
   const m3dStage = remoteDeploy.indexOf('CURRENT_STAGE=M3D_REGRESSION');
   const m3dProbe = remoteDeploy.lastIndexOf('\nrun_m3d_health\n');
@@ -240,7 +247,7 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.ok(remoteDeploy.slice(releaseCleanup, serviceUserCleanup).includes('rm -rf "$REMOTE_RELEASE"'));
   assert.equal(remoteDeploy.slice(serviceUserCleanup).includes('rm -rf "$REMOTE_RELEASE"'), false);
   const accessReady = remoteDeploy.indexOf('CURRENT_STAGE=RELEASE_ACCESS_READY');
-  const migrationStart = remoteDeploy.indexOf('MIGRATION_STARTED=1\nFIRST=');
+  const migrationStart = remoteDeploy.indexOf('MIGRATION_STARTED=1');
   assert.ok(accessReady >= 0 && migrationStart > accessReady);
   assert.ok(remoteDeploy.indexOf('usermod -G', accessReady) < serviceUserCleanup);
 });
