@@ -102,15 +102,16 @@ export class EnrollmentClient {
   async issuePairingCode(projectIds: string[], ttlSeconds = 600): Promise<OwnerPairingCode> {
     const token = await this.credentialStore.get(DEVICE_TOKEN_CREDENTIAL_KEY);
     if (!token) throw new EnrollmentClientError('Device is not enrolled', 'DEVICE_NOT_ENROLLED');
-    if (!Array.isArray(projectIds) || projectIds.length < 1 || projectIds.length > 16 || projectIds.some((projectId) => !UUID_V4.test(projectId))) {
+    const projectScope = Array.isArray(projectIds) ? [...new Set(projectIds)] : [];
+    if (!Array.isArray(projectIds) || projectScope.length > 16 || projectScope.some((projectId) => !UUID_V4.test(projectId))) {
       throw new EnrollmentClientError('Project scope is invalid', 'PROJECT_SCOPE_INVALID');
     }
     if (!Number.isInteger(ttlSeconds) || ttlSeconds < 1 || ttlSeconds > 600) throw new EnrollmentClientError('Pairing expiry is invalid', 'PAIRING_TTL_INVALID');
-    const response = await this.post('/enrollment/pairing-codes', { schemaVersion: 1, projectIds, ttlSeconds }, token);
+    const response = await this.post('/enrollment/pairing-codes', { schemaVersion: 1, projectIds: projectScope, ttlSeconds }, token);
     const pairingCode = typeof response.pairingCode === 'string' ? response.pairingCode : '';
     const expiresAt = typeof response.expiresAt === 'string' ? response.expiresAt : '';
     const projectCount = typeof response.projectCount === 'number' ? response.projectCount : 0;
-    if (!/^[A-Za-z0-9_-]{32,128}$/.test(pairingCode) || !Number.isInteger(projectCount) || projectCount < 1 || !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now()) {
+    if (!/^[A-Za-z0-9_-]{32,128}$/.test(pairingCode) || !Number.isInteger(projectCount) || projectCount < 0 || projectCount !== projectScope.length || !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now()) {
       throw new EnrollmentClientError('Pairing response is invalid', 'RESPONSE_INVALID');
     }
     return { pairingCode, expiresAt, projectCount };

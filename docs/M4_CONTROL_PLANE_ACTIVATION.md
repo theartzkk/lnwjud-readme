@@ -41,7 +41,7 @@ Prepare the exact release assets locally with `npm run web:build:control` follow
 
 ## Field behavior
 
-หลัง activation owner ออก pairing code จาก AWH Desktop แล้ว iPhone เปิด AWH URL, กรอกรหัสครั้งเดียว, เพิ่มหรือเลือกโปรเจกต์ที่ onboard แล้ว, พิมพ์ Goal และส่ง. Fresh Hub จะแสดง empty-project state ที่ถูกต้องจนกว่าจะมีการเพิ่มโปรเจกต์ผ่าน Add Project/onboarding. ถ้าไม่มี worker online งานต้องแสดง `WAITING_FOR_WORKER`; ห้ามแสดง `RUNNING` จนกว่า Mac/Windows worker จะ claim งานจริง. Mac/Windows worker ต้องรายงาน capabilities และ claim ผ่าน outbound HTTPS โดยใช้ credential ของเครื่องตัวเอง.
+หลัง activation owner ออก pairing code จาก AWH Desktop ได้แม้ยังไม่มีโปรเจกต์ โดยรหัสแบบ empty scope เปิดได้เฉพาะ Control Panel และไม่ให้สิทธิ์ project ใด. iPhone เปิด AWH URL, กรอกรหัสครั้งเดียว, เห็น empty-project state, เพิ่มหรือเลือกโปรเจกต์ที่ onboard แล้ว, จึงพิมพ์ Goal และส่งได้. ถ้าไม่มี worker online งานต้องแสดง `WAITING_FOR_WORKER`; ห้ามแสดง `RUNNING` จนกว่า Mac/Windows worker จะ claim งานจริง. Mac/Windows worker ต้องรายงาน capabilities และ claim ผ่าน outbound HTTPS โดยใช้ credential ของเครื่องตัวเอง.
 
 ## Known boundary
 

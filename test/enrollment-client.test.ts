@@ -97,6 +97,27 @@ test('enrolled owner can issue a bounded pairing code without persisting the cod
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('enrolled owner can issue a zero-project control pairing code without granting project scope', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awh-enroll-empty-owner-'));
+  const store = new InMemoryCredentialStore();
+  const ownerToken = 'owner-token-never-returned-to-ui';
+  const pairingCode = 'Z'.repeat(43);
+  await store.set(DEVICE_TOKEN_CREDENTIAL_KEY, ownerToken);
+  try {
+    const client = new EnrollmentClient('https://hub.example/api/v1', root, store, async (input, init) => {
+      const request = new Request(input, init);
+      assert.equal(request.headers.get('Authorization'), `Bearer ${ownerToken}`);
+      assert.deepEqual(JSON.parse(await request.text()), { schemaVersion: 1, projectIds: [], ttlSeconds: 600 });
+      return new Response(JSON.stringify({ schemaVersion: 1, pairingCode, expiresAt: new Date(Date.now() + 600_000).toISOString(), projectCount: 0 }), { status: 200 });
+    });
+    const result = await client.issuePairingCode([]);
+    assert.equal(result.pairingCode, pairingCode);
+    assert.equal(result.projectCount, 0);
+    assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY), ownerToken);
+    assert.equal(await store.get('awh/pairing-code'), null);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('owner pairing issuance fails closed for missing credentials, invalid scope and malformed response', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awh-enroll-owner-'));
   const projectId = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';

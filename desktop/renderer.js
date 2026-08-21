@@ -171,6 +171,7 @@ function clearOwnerCode() {
   if (ownerCodeExpiryTimer !== null) { clearTimeout(ownerCodeExpiryTimer); ownerCodeExpiryTimer = null; }
   $('enrollment-pairing-code').textContent = '';
   $('enrollment-pairing-expiry').textContent = '';
+  $('enrollment-pairing-scope').textContent = '';
   $('enrollment-pairing-result').hidden = true;
 }
 
@@ -183,6 +184,9 @@ function showOwnerCode(data) {
   }
   $('enrollment-pairing-code').textContent = data.code;
   $('enrollment-pairing-expiry').textContent = `หมดอายุ ${new Date(expiry).toLocaleString('th-TH')}`;
+  $('enrollment-pairing-scope').textContent = data.projectCount === 0
+    ? 'รหัสนี้เปิด Control Panel ได้ แต่ยังไม่มีสิทธิ์เข้าถึงโปรเจกต์ใด จนกว่าจะมีการ onboard โปรเจกต์'
+    : `ขอบเขตโปรเจกต์: ${data.projectCount} โปรเจกต์`;
   $('enrollment-pairing-result').hidden = false;
   $('enrollment-message').textContent = 'สร้างรหัสแล้ว — แสดงเฉพาะในหน้าจอนี้และจะไม่ถูกบันทึก';
   ownerCodeExpiryTimer = setTimeout(() => {

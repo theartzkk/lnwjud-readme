@@ -155,15 +155,19 @@ test('desktop enrollment UX uses fixed IPC and never exposes credentials', async
   }
   assert.match(main, /createProductionCredentialStore/);
   assert.match(main, /readLocalEnrollmentState/);
-  assert.match(main, /selectedEnrollmentProjectId/);
+  assert.match(main, /selectedEnrollmentProjectIds/);
+  assert.match(main, /if \(!hasExplicitWorkspace\(config\.dataDir\)\) return \[\]/);
   assert.match(main, /issuePairingCode/);
+  assert.match(main, /issuePairingCode\(projectIds, 600\)/);
   assert.match(renderer, /window\.artAgent\.pairDevice/);
   assert.match(renderer, /window\.artAgent\.createDeviceCode/);
   assert.match(renderer, /showOwnerCode/);
+  assert.match(renderer, /projectCount === 0/);
   assert.match(renderer, /if \(result\?\.ok === true\) \{ await refreshProjects\(\); await refreshAutopilot\(\); \}/);
   assert.match(renderer, /window\.artAgent\.rotateDeviceCredential/);
   assert.match(renderer, /window\.artAgent\.revokeDeviceCredential/);
   assert.match(renderer, /enrollment-device-id/);
+  assert.match(html, /enrollment-pairing-scope/);
   assert.doesNotMatch(renderer, /accessToken|Authorization|tokenHash/);
   assert.doesNotMatch(preload, /process\.env|readFile|writeFile|spawn|shell\.openPath/);
   assert.doesNotMatch(html, /type="password"/i);
