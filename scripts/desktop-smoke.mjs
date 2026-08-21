@@ -32,8 +32,11 @@ function run(executable, args, env, timeoutMs = 45_000) {
   });
 }
 
-const dataRoot = await mkdtemp(join(tmpdir(), 'awh-desktop-smoke-'));
-const dataDir = join(dataRoot, 'data');
+const configuredDataDir = typeof process.env.ART_AGENT_DATA_DIR === 'string' && process.env.ART_AGENT_DATA_DIR.trim() !== ''
+  ? process.env.ART_AGENT_DATA_DIR
+  : null;
+const dataRoot = configuredDataDir ? null : await mkdtemp(join(tmpdir(), 'awh-desktop-smoke-'));
+const dataDir = configuredDataDir ?? join(dataRoot, 'data');
 try {
   const electronCli = join(ROOT, 'node_modules', 'electron', 'cli.js');
   if (!(await exists(electronCli))) throw new Error('Electron CLI is unavailable');
@@ -66,5 +69,5 @@ try {
     process.exitCode = 1;
   }
 } finally {
-  await rm(dataRoot, { recursive: true, force: true });
+  if (dataRoot) await rm(dataRoot, { recursive: true, force: true });
 }

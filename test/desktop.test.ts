@@ -210,6 +210,8 @@ test('desktop smoke harness isolates data, uses normal macOS LaunchServices, and
   const qa = await readFile(new URL('../scripts/qa/awh-local-qa.mjs', import.meta.url), 'utf8');
   const main = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
   assert.match(smoke, /AWH_DATA_DIR/);
+  assert.match(smoke, /configuredDataDir/);
+  assert.match(smoke, /if \(dataRoot\)/);
   assert.match(smoke, /AWH_ALLOW_EXEC: '0'/);
   assert.match(smoke, /'DISPLAY'/);
   assert.match(smoke, /shell: false/);
