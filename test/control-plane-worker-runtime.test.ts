@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { ControlPlaneWorkerClient, type WorkerTask } from '../src/control-plane-worker-client.js';
-import { ControlPlaneWorkerRuntime } from '../src/control-plane-worker-runtime.js';
+import { buildCodexTaskInstruction, ControlPlaneWorkerRuntime } from '../src/control-plane-worker-runtime.js';
 import { loadOrCreateDeviceIdentity } from '../src/device-identity.js';
 import type { CredentialStore } from '../src/credential-store.js';
 
@@ -59,4 +59,20 @@ test('desktop worker runtime rejects an unregistered project before execution', 
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }
+});
+
+test('Codex task instruction preserves owner protocol precedence before project memory and Goal', () => {
+  const protocol = '# Art ↔ AI Working Constitution\n\nVersion: 1.0\n\nSystem-first, patch-second.';
+  const goal = 'แก้ตารางรายงานโดยวิเคราะห์ระบบร่วมทั้งหมดก่อน';
+  const instruction = buildCodexTaskInstruction(protocol, goal);
+  const ownerIndex = instruction.indexOf('Art ↔ AI Working Constitution');
+  const memoryIndex = instruction.indexOf('PROJECT CONTEXT CONTRACT');
+  const goalIndex = instruction.indexOf('CURRENT OWNER GOAL');
+  assert.ok(ownerIndex >= 0);
+  assert.ok(memoryIndex > ownerIndex);
+  assert.ok(goalIndex > memoryIndex);
+  assert.match(instruction, /PROJECT\.md, HANDOFF\.md, TASKS\.md, ARCHITECTURE\.md, DECISIONS\.md/);
+  assert.match(instruction, /system-first and root-cause-first/i);
+  assert.match(instruction, /Do not create a parallel system/i);
+  assert.match(instruction, new RegExp(goal));
 });

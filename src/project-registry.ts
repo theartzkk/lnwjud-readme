@@ -6,6 +6,7 @@ import { readTextFile } from './files.js';
 import { detectProject } from './project.js';
 import { gitStatus } from './git.js';
 import { ensureAwhDataDirectoryActive } from './data-migration.js';
+import { loadOwnerProtocol } from './owner-protocol.js';
 
 export const PROJECT_REGISTRY_SCHEMA_VERSION = 1;
 export const PROJECT_MANIFEST_SCHEMA_VERSION = 1;
@@ -26,6 +27,7 @@ export interface ProjectRecord { projectId: string; workspacePath: string; lastO
 export type ProjectMemoryFileStatus = 'present' | 'missing';
 export type ProjectMemoryStatus = Record<(typeof PROJECT_MEMORY_FILES)[number], ProjectMemoryFileStatus>;
 export interface ProjectContext {
+  ownerProtocol: string;
   project: ProjectManifest;
   memory: Record<(typeof PROJECT_MEMORY_FILES)[number], string | null>;
   workspace: { path: string; profile: Awaited<ReturnType<typeof detectProject>> };
@@ -254,11 +256,11 @@ export async function projectMemoryStatus(workspace: string): Promise<ProjectMem
   return status;
 }
 
-/** Build bounded context in the canonical AI read order. */
+/** Build bounded context in canonical AI precedence: owner protocol, project memory, runtime/source state. */
 export async function buildProjectContext(workspace: string): Promise<ProjectContext> {
   const { root, manifest } = await readManifestAt(workspace);
   const memory = {} as ProjectContext['memory'];
   for (const file of PROJECT_MEMORY_FILES) memory[file] = await readMemoryFile(root, file);
-  const [profile, git] = await Promise.all([detectProject(root), gitStatus(root)]);
-  return { project: manifest, memory, workspace: { path: root, profile }, git };
+  const [ownerProtocol, profile, git] = await Promise.all([loadOwnerProtocol(), detectProject(root), gitStatus(root)]);
+  return { ownerProtocol, project: manifest, memory, workspace: { path: root, profile }, git };
 }

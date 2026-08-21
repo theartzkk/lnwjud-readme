@@ -10,6 +10,13 @@ export interface CodexStatus {
   error: string | null;
 }
 
+const MAX_CODEX_INSTRUCTION_CHARS = 32 * 1024;
+const SECRET_VALUE_TEXT = /(?:bearer\s+[A-Za-z0-9._~-]{16,}|(?:password|secret|token|api[_-]?key)\s*[=:]\s*[^\s&]{4,}|-----begin\s+(?:private|open)[^-]*key)/i;
+
+export function codexInstructionContainsSecretValue(value: string): boolean {
+  return SECRET_VALUE_TEXT.test(value);
+}
+
 export function buildCodexArgs(workspace: string, sandbox: CodexSandbox): string[] {
   return [
     'exec',
@@ -73,14 +80,14 @@ export async function codexStatus(cwd: string): Promise<CodexStatus> {
 }
 
 /**
- * The only AWH AI execution bridge. A goal is content passed as one argv item;
- * it is never interpreted as a shell command. The caller must have already
- * passed the task/project approval boundary.
+ * The only AWH AI execution bridge. The complete bounded instruction is content
+ * passed as one argv item; it is never interpreted as a shell command. The
+ * caller must have already passed the task/project approval boundary.
  */
-export async function runCodexGoal(workspace: string, goal: string, sandbox: CodexSandbox = 'read-only'): Promise<{ code: number; summary: string }> {
-  if (typeof goal !== 'string' || !goal.trim() || goal.length > 2_000 || /[\u0000-\u001f\u007f]/.test(goal) || /(?:bearer\s+|password\s*[=:]|secret\s*[=:]|token\s*[=:]|api[_-]?key\s*[=:]|-----begin\s+(?:private|open)[^-]*key)/i.test(goal)) throw new Error('Codex goal is invalid');
+export async function runCodexGoal(workspace: string, instruction: string, sandbox: CodexSandbox = 'read-only'): Promise<{ code: number; summary: string }> {
+  if (typeof instruction !== 'string' || !instruction.trim() || instruction.length > MAX_CODEX_INSTRUCTION_CHARS || /[\u0000-\u001f\u007f]/.test(instruction) || codexInstructionContainsSecretValue(instruction)) throw new Error('Codex instruction is invalid');
   const executable = await resolveCodexExecutable();
-  const result = await execFile(executable, [...buildCodexArgs(workspace, sandbox), goal.trim()], workspace, 15 * 60_000, codexEnvironment());
+  const result = await execFile(executable, [...buildCodexArgs(workspace, sandbox), instruction.trim()], workspace, 15 * 60_000, codexEnvironment());
   const output = `${result.stdout}\n${result.stderr}`
     .replaceAll(workspace, '[workspace]')
     .replace(/(?:Bearer\s+)[A-Za-z0-9._~-]+/gi, 'Bearer [redacted]')
