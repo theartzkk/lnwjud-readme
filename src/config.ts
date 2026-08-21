@@ -2,6 +2,10 @@ import { resolve } from 'node:path';
 import { resolveActiveDataDir } from './data-migration.js';
 import { loadStoredSettings } from './settings.js';
 
+// Non-secret production authority used by packaged AWH when no explicit
+// environment override is present. Credentials remain OS-store-only.
+export const DEFAULT_AWH_HUB_API_BASE = 'https://157-85-108-142.sslip.io/api/v1';
+
 export interface ArtAgentConfig {
   workspace: string;
   dataDir: string;
@@ -71,6 +75,6 @@ export function loadConfig(): ArtAgentConfig {
     maxReadBytes: intEnv('maxReadBytes', 512 * 1024),
     maxSearchResults: intEnv('maxSearchResults', 100),
     maxTaskLogBytes: intEnv('maxTaskLogBytes', 512 * 1024),
-    hubApiBase: compatibilityEnv('hubApiBase')?.trim() ?? '',
+    hubApiBase: compatibilityEnv('hubApiBase')?.trim() || DEFAULT_AWH_HUB_API_BASE,
   };
 }

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { PRODUCT } from '../src/product.js';
-import { compatibilityEnv, loadConfig } from '../src/config.js';
+import { compatibilityEnv, DEFAULT_AWH_HUB_API_BASE, loadConfig } from '../src/config.js';
 
 test('AWH product identity is centralized while legacy compatibility identity remains explicit', () => {
   assert.deepEqual(PRODUCT, {
@@ -48,6 +48,29 @@ test('Hub API base uses the central AWH-first compatibility resolver', () => {
     else process.env.AWH_HUB_API_BASE = originalAwh;
     if (originalLegacy === undefined) delete process.env.ART_AGENT_HUB_API_BASE;
     else process.env.ART_AGENT_HUB_API_BASE = originalLegacy;
+  }
+});
+
+test('normal packaged runtime defaults to the ReadyIDC authority without a legacy Google setting', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'awh-ready-config-'));
+  const keys = ['AWH_DATA_DIR', 'ART_AGENT_DATA_DIR', 'AWH_WORKSPACE', 'ART_AGENT_WORKSPACE', 'AWH_HUB_API_BASE', 'ART_AGENT_HUB_API_BASE'];
+  const original = new Map(keys.map((key) => [key, process.env[key]]));
+  try {
+    process.env.AWH_DATA_DIR = dataDir;
+    process.env.AWH_WORKSPACE = dataDir;
+    delete process.env.ART_AGENT_DATA_DIR;
+    delete process.env.ART_AGENT_WORKSPACE;
+    delete process.env.AWH_HUB_API_BASE;
+    delete process.env.ART_AGENT_HUB_API_BASE;
+    assert.equal(DEFAULT_AWH_HUB_API_BASE, 'https://157-85-108-142.sslip.io/api/v1');
+    assert.equal(loadConfig().hubApiBase, DEFAULT_AWH_HUB_API_BASE);
+    assert.doesNotMatch(loadConfig().hubApiBase, /136-66-217-63|127\.0\.0\.1|localhost/);
+  } finally {
+    for (const [key, value] of original) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await rm(dataDir, { recursive: true, force: true });
   }
 });
 
