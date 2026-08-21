@@ -2,12 +2,17 @@
 
 ## NOW
 
+- M3C2 Chat Command Bridge architecture is frozen on `awh/m3c2-chat-command-bridge`: one Command Bus, current Plus-compatible GitHub transport adapter, future direct MCP adapter, exact-SHA jobs, no arbitrary shell field, and revision-bound production approval.
+- M3C2-A bounded command contract is implemented with targeted strict TypeScript compile + unit-logic QA passing outside GitHub Actions; integrate durable inbox/idempotency next without changing Autopilot execution semantics.
 - Review M3E-FINAL and Autopilot v0.5 local implementations; keep production deployment, device pairing, publish, destructive actions and memory writes human-gated.
 - Review release identity 0.5.0 and the local `AWH.app`/Windows portable bundle evidence; keep signing, Windows installer creation, and production deployment human-gated.
 - Reconcile the read-only `awh-vps` release gates: the effective DB authority is `/var/lib/awh-hub/awh.sqlite` and is healthy; its `root:www-data 640` metadata is now classified as `DB_WRITE_PROVISION_REQUIRED` with a bounded owner-only write plan, backup is `BACKUP_PROVISION_REQUIRED`, and enrollment route/pool are first-deploy expected.
 
 ## NEXT
 
+- Implement M3C2-A durable job/result state with idempotent replay handling and interrupted-run reconciliation.
+- Implement M3C2-B GitHub webhook transport with signature verification, trusted repository/requester policy and bounded result reporting; do not use GitHub Actions.
+- Implement M3C2-C exact-revision sync and serialized worker mapping into existing Autopilot/project profiles; dirty workspaces fail closed.
 - Execute the reviewed one-shot bootstrap orchestration once in the approved production window, then pair Mac and Windows independently.
 - Verify sanitized Hub device read shows exactly two devices and no shared credential before closing M3E.
 - Review Autopilot Task Center/Artifact Center UX and test the normal Desktop flow with a real project goal.
@@ -23,13 +28,14 @@
 - Assets layer.
 - Creative/Remotion workspace.
 - Device registry.
-- Source revision sync.
+- Source revision sync beyond the bounded M3C2 exact-revision worker.
 - Conflict resolution UX.
 - Signed/notarized distribution packaging and Windows Squirrel field validation.
 - Optional GitHub mirror/CI.
 - AI provider adapters.
 - Browser Hub task/artifact read contract and authenticated review state.
 - Production device pair and cross-device continuation field validation.
+- Direct full-write Remote MCP transport when the user's ChatGPT plan supports it; it must reuse the M3C2 Command Bus.
 
 ## DONE
 
