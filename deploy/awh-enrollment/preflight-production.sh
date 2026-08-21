@@ -233,13 +233,44 @@ fi
 say "db_classification=$DB_CLASS"
 say "db_classification_reason=$DB_REASON"
 if test "$DB_CLASS" = DB_AUTHORITY_RESOLVED; then describe_db "$DB_PATH"; fi
-if test "$DB_CLASS" = DB_AUTHORITY_RESOLVED \
-  && sudo -n -u awh-hub test -w "$DB_PATH" 2>/dev/null \
-  && sudo -n -u awh-hub test -w "$(dirname "$DB_PATH")" 2>/dev/null; then
-  say 'db_enrollment_write=PASS'
-else
-  say 'db_enrollment_write=BLOCKED'
+SERVICE_USER_CLASS=BLOCKED
+if id -u awh-hub >/dev/null 2>&1; then
+  SERVICE_USER_CLASS=READY
+elif sudo -n test -x /usr/sbin/useradd 2>/dev/null && sudo -n -u root true 2>/dev/null; then
+  SERVICE_USER_CLASS=PROVISION_REQUIRED
 fi
+say "enrollment_service_user=$SERVICE_USER_CLASS"
+DB_WRITE_CLASS=DB_WRITE_BLOCKED
+if test "$DB_CLASS" = DB_AUTHORITY_RESOLVED; then
+  DB_PARENT=$(dirname "$DB_PATH")
+  if sudo -n -u awh-hub test -w "$DB_PATH" 2>/dev/null \
+    && sudo -n -u awh-hub test -w "$DB_PARENT" 2>/dev/null; then
+    DB_WRITE_CLASS=DB_WRITE_READY
+  elif test "$SERVICE_USER_CLASS" != BLOCKED \
+    && sudo -n stat -c '%U|%G|%a' "$DB_PATH" >/dev/null 2>&1 \
+    && sudo -n stat -c '%U|%G|%a' "$DB_PARENT" >/dev/null 2>&1; then
+    DB_META=$(sudo -n stat -c '%U|%G|%a' "$DB_PATH" 2>/dev/null || true)
+    DB_PARENT_META=$(sudo -n stat -c '%U|%G|%a' "$DB_PARENT" 2>/dev/null || true)
+    DB_GROUP=$(printf '%s' "$DB_META" | cut -d '|' -f 2)
+    DB_MODE=$(printf '%s' "$DB_META" | cut -d '|' -f 3)
+    DB_PARENT_GROUP=$(printf '%s' "$DB_PARENT_META" | cut -d '|' -f 2)
+    DB_PARENT_MODE=$(printf '%s' "$DB_PARENT_META" | cut -d '|' -f 3)
+    if test "$DB_GROUP" = www-data \
+      && test "$DB_PARENT_GROUP" = www-data \
+      && test $((0$DB_MODE & 0020)) -eq 0 \
+      && test $((0$DB_PARENT_MODE & 0020)) -eq 0 \
+      && test $((0$DB_MODE & 0600)) -eq $((0600)) \
+      && test $((0$DB_PARENT_MODE & 0700)) -eq $((0700)); then
+      DB_WRITE_CLASS=DB_WRITE_PROVISION_REQUIRED
+    fi
+  fi
+fi
+say "db_write_classification=$DB_WRITE_CLASS"
+case "$DB_WRITE_CLASS" in
+  DB_WRITE_READY) say 'db_enrollment_write=PASS' ;;
+  DB_WRITE_PROVISION_REQUIRED) say 'db_enrollment_write=PROVISION_REQUIRED' ;;
+  *) say 'db_enrollment_write=BLOCKED' ;;
+esac
 
 if printenv AWH_BACKUP_DIR >/dev/null 2>&1; then BACKUP_DIR=$(printenv AWH_BACKUP_DIR); else BACKUP_DIR=/var/backups/awh-hub; fi
 say "backup_path=$BACKUP_DIR"
@@ -273,8 +304,11 @@ else
 fi
 if printf '%s\n' "$NGINX_CONFIG" | grep -q 'enrollment-current'; then say 'enrollment_route=CONFIGURED'; else say 'enrollment_route=ABSENT'; fi
 if test -f /etc/php/8.3/fpm/pool.d/awh-enrollment.conf; then say 'enrollment_pool=CONFIGURED'; else say 'enrollment_pool=ABSENT'; fi
-if sudo -n test -f /etc/awh-hub/enrollment-bootstrap.sha256 2>/dev/null \
-  && sudo -n awk 'BEGIN { if ((getline hash < ARGV[1]) != 1 || length(hash) != 64 || hash !~ /^[0-9a-fA-F]+$/) exit 30; }' /etc/awh-hub/enrollment-bootstrap.sha256; then
+if printenv AWH_ENROLLMENT_BOOTSTRAP_HASH_FILE >/dev/null 2>&1; then HASH_FILE=$(printenv AWH_ENROLLMENT_BOOTSTRAP_HASH_FILE); else HASH_FILE=/etc/awh-hub/enrollment-bootstrap.sha256; fi
+case "$HASH_FILE" in /etc/awh-hub/*) ;; *) HASH_FILE=/etc/awh-hub/enrollment-bootstrap.sha256 ;; esac
+say "enrollment_bootstrap_hash_path=$HASH_FILE"
+if sudo -n test -f "$HASH_FILE" 2>/dev/null \
+  && sudo -n awk 'BEGIN { if ((getline hash < ARGV[1]) != 1 || length(hash) != 64 || hash !~ /^[0-9a-fA-F]+$/) exit 30; }' "$HASH_FILE"; then
   say 'enrollment_bootstrap_hash=READY'
 else
   say 'enrollment_bootstrap_hash=PROVISION_REQUIRED'

@@ -30,13 +30,23 @@ try {
     api_assert($origin['status'] === 403, 'browser Origin must not reach enrollment bootstrap');
     $unauthenticated = api_response($service, 'POST', '/api/v1/enrollment/bootstrap', api_server(), ['schemaVersion' => 1, 'userId' => $ownerId, 'displayName' => 'Art', 'projectIds' => [$projectId]]);
     api_assert($unauthenticated['status'] === 503, 'bootstrap without configured approval must fail closed');
+    $failedBootstrap = api_response($service, 'POST', '/api/v1/enrollment/bootstrap', api_server(['HTTP_X_AWH_BOOTSTRAP_NONCE' => 'bootstrap-test-only']), ['schemaVersion' => 1, 'userId' => $ownerId, 'displayName' => 'Art', 'projectIds' => ['313b45c0-23e1-408d-ae0f-ac5eca7f6900']]);
+    api_assert($failedBootstrap['status'] === 400, 'invalid bootstrap project must fail closed');
+    api_assert((int) $pdo->query('SELECT COUNT(*) FROM hub_users')->fetchColumn() === 0, 'failed bootstrap must not leave an owner');
+    api_assert((int) $pdo->query('SELECT COUNT(*) FROM owner_bootstrap')->fetchColumn() === 0, 'failed bootstrap must not close the owner marker');
+    api_assert((int) $pdo->query('SELECT COUNT(*) FROM pairing_codes')->fetchColumn() === 0, 'failed bootstrap must not leave a pairing code');
     $bootstrap = api_response($service, 'POST', '/api/v1/enrollment/bootstrap', api_server(['HTTP_X_AWH_BOOTSTRAP_NONCE' => 'bootstrap-test-only']), ['schemaVersion' => 1, 'userId' => $ownerId, 'displayName' => 'Art', 'projectIds' => [$projectId]]);
+    $bootstrapPayload = json_decode($bootstrap['body'], true, 32, JSON_THROW_ON_ERROR);
     api_assert($bootstrap['status'] === 200 && !str_contains($bootstrap['body'], 'accessToken'), 'bootstrap must not issue a browser token');
+    api_assert(is_string($bootstrapPayload['initialPairingCode'] ?? null) && strlen($bootstrapPayload['initialPairingCode']) >= 32, 'bootstrap must issue one bounded initial pairing code');
+    api_assert(is_string($bootstrapPayload['initialPairingExpiresAt'] ?? null) && strtotime($bootstrapPayload['initialPairingExpiresAt']) <= strtotime($bootstrapPayload['initializedAt']) + 600, 'initial pairing expiry must be bounded');
+    api_assert(!str_contains($bootstrap['body'], 'bootstrap-test-only') && !str_contains($bootstrap['body'], hash('sha256', 'bootstrap-test-only')), 'bootstrap response must not leak nonce or nonce hash');
     $reopen = api_response($service, 'POST', '/api/v1/enrollment/bootstrap', api_server(['HTTP_X_AWH_BOOTSTRAP_NONCE' => 'bootstrap-test-only']), ['schemaVersion' => 1, 'userId' => '323b45c0-23e1-408d-ae0f-ac5eca7f6900', 'displayName' => 'Other', 'projectIds' => []]);
     api_assert($reopen['status'] === 409, 'bootstrap reopening must fail closed');
 
-    $ownerPairing = $service->issuePairingCode($ownerId, [$projectId]);
-    $ownerDevice = $service->enrollDevice(['schemaVersion' => 1, 'pairingCode' => $ownerPairing['pairingCode'], 'deviceId' => '423b45c0-23e1-408d-ae0f-ac5eca7f6900', 'displayName' => 'Owner Device', 'platform' => 'darwin', 'arch' => 'arm64', 'appVersion' => '0.4.0']);
+    $ownerDevice = $service->enrollDevice(['schemaVersion' => 1, 'pairingCode' => $bootstrapPayload['initialPairingCode'], 'deviceId' => '423b45c0-23e1-408d-ae0f-ac5eca7f6900', 'displayName' => 'Owner Device', 'platform' => 'darwin', 'arch' => 'arm64', 'appVersion' => '0.4.0']);
+    $initialReplay = api_response($service, 'POST', '/api/v1/enrollment/devices', api_server(), ['schemaVersion' => 1, 'pairingCode' => $bootstrapPayload['initialPairingCode'], 'deviceId' => '823b45c0-23e1-408d-ae0f-ac5eca7f6900', 'displayName' => 'Initial Replay', 'platform' => 'win32', 'arch' => 'x64', 'appVersion' => '0.4.0']);
+    api_assert($initialReplay['status'] === 409, 'initial pairing code must be single-use');
     $pairing = api_response($service, 'POST', '/api/v1/enrollment/pairing-codes', api_server(['HTTP_AUTHORIZATION' => 'Bearer ' . $ownerDevice['accessToken']]), ['schemaVersion' => 1, 'projectIds' => [$projectId], 'ttlSeconds' => 600]);
     api_assert($pairing['status'] === 200 && str_contains($pairing['body'], 'pairingCode'), 'owner must be able to create a bounded pairing code');
     $pairingPayload = json_decode($pairing['body'], true, 32, JSON_THROW_ON_ERROR);

@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-M3D — AWH Hub Live Read Connection — CLOSED; M3E-FINAL — READY FOR PRODUCTION VALIDATION; AWH Autopilot v0.5 — LOCAL DOGFOOD PASS; AWH 0.5.0 release closure — local packaging PASS, VPS preflight BLOCKED.
+M3D — AWH Hub Live Read Connection — CLOSED; M3E-FINAL — READY FOR PRODUCTION VALIDATION; AWH Autopilot v0.5 — LOCAL DOGFOOD PASS; AWH 0.5.0 release closure — local packaging PASS, production approval gates hardened locally.
 
 ## Completed
 
@@ -31,23 +31,23 @@ Windows execution, and signing/notarization remain platform/field gates.
 ## Source of Truth
 
 - Branch: `awh/v0.1-migration`
-- Current local HEAD: `fe52d9e8e9a2d4ad6f49c0e3d840e4ffcf672a13`; release-closure changes are intentionally uncommitted.
-- Current working tree: intentionally dirty for review.
+- Release-freeze baseline before this gate: `368ac94b308ba72ff8ba98934178650b16e76f56`; this production-approval closure is intentionally uncommitted until staged QA completes.
+- Current working tree: intentionally dirty for review; no production mutation has occurred.
 - Field verification: Connected read-only, one indexed project, PHP-FPM + SQLite + Nginx gateway operational, HTTPS works on VPS and iPhone.
 - M3E local tests cover owner bootstrap closure, pairing expiry/replay, device binding, token rotation/revocation, project authorization, and sanitized device reads.
 - M3E.1 tests cover M3D metadata preservation, empty bootstrap, idempotent rerun, partial/interrupted recovery, schema mismatch, constraints, and secret-free migration state.
 - M3E.2 tests cover origin separation, bootstrap closure, replay, forged identity, rate limiting, token rotation/revocation, and local client secret isolation.
-- M3E-FINAL tests cover native adapter argv/stdin isolation, missing/malformed OS credential records, platform selection, self-revoke, Desktop enrollment IPC, M3E.2 additive migration, deployment isolation, and secret-free templates.
+- M3E-FINAL tests cover native adapter argv/stdin isolation, missing/malformed OS credential records, platform selection, self-revoke, Desktop enrollment IPC, M3E.2 additive migration, first-owner-to-first-device bootstrap, digest-only bootstrap provisioning, two-server Nginx insertion, deployment isolation, rollback metadata/order, and secret-free templates.
 - Native macOS probe attempted only with a disposable QA account and cleanup; the current session returned Keychain authorization failure. No credential value was logged. Windows Credential Manager requires a Windows field run.
 - Autopilot local dogfood: goal → context → checkpoint → approved gates → QA artifact → continuity checkpoint → second-device discovery PASS. No source mutation was performed by the dogfood run.
 - Real AWH project profile validation: `general-node` bound to the registered project; `test`, `typecheck`, and `build` passed; Git/Node/PHP/FFmpeg and local browsers were detected; FFmpeg and FFprobe both passed the disposable 8-frame sequence → MP4 E2E with ordering/count/duration/FPS/timebase/codec/pixel-format verification.
 - Completion continuity metadata records `COMPLETED`, the committed HEAD, dirty-state protection, source device, project/task IDs, bounded HANDOFF and relative artifact references. The real workspace is currently dirty, so another device must review local changes before continuation.
 - The device-local registry currently contains only the real AWH project. BAY EXCUSE X and Teacher Video are present locally but are not registered/portable AWH projects; no school website workspace is registered.
-- No VPS mutation, DNS, firewall, GitHub, production, or shared-hosting action has been performed. A read-only SSH reconciliation through `awh-vps` resolved `/var/lib/awh-hub/awh.sqlite` from effective Nginx configuration; integrity is `ok`, FK check is empty, `user_version=2`, ledger `m3e.1-enrollment`, and the one indexed project is the canonical AWH project. Backup is `BACKUP_PROVISION_REQUIRED`, enrollment is `FIRST_DEPLOY_EXPECTED`, and `db_enrollment_write=BLOCKED` because the current database is `root:www-data 640`; no enrollment route or pool is configured.
+- No VPS mutation, DNS, firewall, GitHub, production, or shared-hosting action has been performed. A read-only SSH reconciliation through `awh-vps` resolved `/var/lib/awh-hub/awh.sqlite` from effective Nginx configuration; integrity is `ok`, FK check is empty, `user_version=2`, ledger `m3e.1-enrollment`, and the one indexed project is the canonical AWH project. Backup is `BACKUP_PROVISION_REQUIRED`, enrollment is `FIRST_DEPLOY_EXPECTED`, and the current database is safely classified as `DB_WRITE_PROVISION_REQUIRED` because it is `root:www-data 640`; the future `awh-hub` service account, route, and pool are absent as first-deploy provisioning states.
 
 ## Next action
 
-Review the uncommitted release-closure diff, obtain explicit approval for the still-blocked VPS permission/backup/configuration remediation, then separately and human-gated validate native Keychain, deploy enrollment once, pair Mac and Windows independently, and verify sanitized `devices = 2`.
+Complete staged QA and selective release commit/push, then obtain explicit approval for the provisionable VPS permission/backup/configuration remediation. Run the bootstrap-hash helper and guarded enrollment deployment only after that approval, then pair Mac and Windows independently and verify sanitized `devices = 2`.
 
 ## Blockers and warnings
 

@@ -86,6 +86,7 @@ final class HubEnrollmentService
                 $membership = $this->pdo->prepare('INSERT INTO user_project_memberships(user_id, project_id, role, created_at, revoked_at) VALUES(:user, :project, \'owner\', :created, NULL)');
                 $membership->execute(['user' => $userId, 'project' => $projectId, 'created' => $now]);
             }
+            $initialPairing = $this->createPairingCodeInTransaction($userId, $projects, $now, self::TTL_SECONDS);
             $bootstrap = $this->pdo->prepare('INSERT INTO owner_bootstrap(singleton_id, owner_user_id, initialized_at, bootstrap_closed) VALUES(1, :user, :at, 1)');
             $bootstrap->execute(['user' => $userId, 'at' => $now]);
             $this->pdo->commit();
@@ -96,32 +97,56 @@ final class HubEnrollmentService
             if ($this->pdo->inTransaction()) $this->pdo->rollBack();
             throw new HubEnrollmentException('Owner bootstrap failed closed', 'BOOTSTRAP_FAILED');
         }
-        return ['schemaVersion' => 1, 'userId' => $userId, 'displayName' => $displayName, 'initializedAt' => $now, 'bootstrapClosed' => true];
+        return [
+            'schemaVersion' => 1,
+            'userId' => $userId,
+            'displayName' => $displayName,
+            'initializedAt' => $now,
+            'bootstrapClosed' => true,
+            'initialPairingCode' => $initialPairing['pairingCode'],
+            'initialPairingExpiresAt' => $initialPairing['expiresAt'],
+            'projectCount' => count($projects),
+        ];
+    }
+
+    /**
+     * Create a one-time pairing code while the caller's transaction is open.
+     * The plaintext is returned only to the immediate caller; SQLite receives
+     * only the SHA-256 digest and project bindings.
+     *
+     * @param list<string> $projects
+     * @return array{pairingCode:string,pairingCodeId:string,issuedAt:string,expiresAt:string,projectCount:int}
+     */
+    private function createPairingCodeInTransaction(string $ownerUserId, array $projects, string $now, int $ttlSeconds): array
+    {
+        if ($ttlSeconds < 1 || $ttlSeconds > self::TTL_SECONDS) throw new HubEnrollmentException('Pairing expiry is outside the safe bound', 'PAIRING_TTL_INVALID');
+        $code = self::base64url(random_bytes(24));
+        $codeId = self::uuid(strtolower(sprintf('%08x-%04x-4%03x-%04x-%012x', random_int(0, 0xffffffff), random_int(0, 0xffff), random_int(0, 0xfff), random_int(0x8000, 0xbfff), random_int(0, 0xffffffffffff))), 'pairingCodeId');
+        $expires = gmdate('c', strtotime($now) + $ttlSeconds);
+        $insert = $this->pdo->prepare('INSERT INTO pairing_codes(pairing_code_id, user_id, code_hash, issued_at, expires_at, consumed_at, revoked_at) VALUES(:id, :user, :hash, :issued, :expires, NULL, NULL)');
+        $insert->execute(['id' => $codeId, 'user' => $ownerUserId, 'hash' => hash('sha256', $code), 'issued' => $now, 'expires' => $expires]);
+        $link = $this->pdo->prepare('INSERT INTO pairing_projects(pairing_code_id, project_id) VALUES(:code, :project)');
+        foreach ($projects as $projectId) $link->execute(['code' => $codeId, 'project' => $projectId]);
+        return ['pairingCode' => $code, 'pairingCodeId' => $codeId, 'issuedAt' => $now, 'expiresAt' => $expires, 'projectCount' => count($projects)];
     }
 
     public function issuePairingCode(string $ownerUserId, array $projectIds, ?string $now = null, int $ttlSeconds = self::TTL_SECONDS): array
     {
         $ownerUserId = self::uuid($ownerUserId, 'userId');
         $now = self::timestamp($now ?? gmdate('c'), 'now');
-        if ($ttlSeconds < 1 || $ttlSeconds > 900) throw new HubEnrollmentException('Pairing expiry is outside the safe bound', 'PAIRING_TTL_INVALID');
+        if ($ttlSeconds < 1 || $ttlSeconds > self::TTL_SECONDS) throw new HubEnrollmentException('Pairing expiry is outside the safe bound', 'PAIRING_TTL_INVALID');
         $this->assertOwner($ownerUserId);
         $projects = array_values(array_unique(array_map(fn (mixed $id): string => self::uuid((string) $id, 'projectId'), $projectIds)));
         foreach ($projects as $projectId) $this->assertOwnerProject($ownerUserId, $projectId);
-        $code = self::base64url(random_bytes(24));
-        $codeId = self::uuid(strtolower(sprintf('%08x-%04x-4%03x-%04x-%012x', random_int(0, 0xffffffff), random_int(0, 0xffff), random_int(0, 0xfff), random_int(0x8000, 0xbfff), random_int(0, 0xffffffffffff))), 'pairingCodeId');
-        $expires = gmdate('c', strtotime($now) + $ttlSeconds);
         try {
             $this->pdo->beginTransaction();
-            $insert = $this->pdo->prepare('INSERT INTO pairing_codes(pairing_code_id, user_id, code_hash, issued_at, expires_at, consumed_at, revoked_at) VALUES(:id, :user, :hash, :issued, :expires, NULL, NULL)');
-            $insert->execute(['id' => $codeId, 'user' => $ownerUserId, 'hash' => hash('sha256', $code), 'issued' => $now, 'expires' => $expires]);
-            $link = $this->pdo->prepare('INSERT INTO pairing_projects(pairing_code_id, project_id) VALUES(:code, :project)');
-            foreach ($projects as $projectId) $link->execute(['code' => $codeId, 'project' => $projectId]);
+            $pairing = $this->createPairingCodeInTransaction($ownerUserId, $projects, $now, $ttlSeconds);
             $this->pdo->commit();
         } catch (Throwable) {
             if ($this->pdo->inTransaction()) $this->pdo->rollBack();
             throw new HubEnrollmentException('Pairing code could not be created', 'PAIRING_CREATE_FAILED');
         }
-        return ['schemaVersion' => 1, 'pairingCode' => $code, 'pairingCodeId' => $codeId, 'issuedAt' => $now, 'expiresAt' => $expires, 'projectCount' => count($projects)];
+        return ['schemaVersion' => 1] + $pairing;
     }
 
     public function issuePairingCodeForToken(string $presentedToken, array $projectIds, ?string $now = null, int $ttlSeconds = self::TTL_SECONDS): array

@@ -4,7 +4,7 @@
 
 - Review M3E-FINAL and Autopilot v0.5 local implementations; keep production deployment, device pairing, publish, destructive actions and memory writes human-gated.
 - Review release identity 0.5.0 and the local `AWH.app`/Windows portable bundle evidence; keep signing, Windows installer creation, and production deployment human-gated.
-- Reconcile the read-only `awh-vps` release blockers: the effective DB authority is `/var/lib/awh-hub/awh.sqlite` and is healthy, but `awh-hub` cannot write its current `root:www-data 640` DB, backup is `BACKUP_PROVISION_REQUIRED`, and enrollment route/pool are absent.
+- Reconcile the read-only `awh-vps` release gates: the effective DB authority is `/var/lib/awh-hub/awh.sqlite` and is healthy; its `root:www-data 640` metadata is now classified as `DB_WRITE_PROVISION_REQUIRED` with a bounded owner-only write plan, backup is `BACKUP_PROVISION_REQUIRED`, and enrollment route/pool are first-deploy expected.
 
 ## NEXT
 

@@ -1,8 +1,8 @@
 #!/bin/sh
 
-# Remote phase for deploy-enrollment.sh.
-# Inputs are fixed, validated paths and versions from the read-only preflight.
-# The script never prints credentials or the bootstrap hash.
+# Remote phase for deploy-enrollment.sh. It is reached only after the local
+# release guard and read-only preflight, and it receives fixed validated paths.
+# It never prints credentials, bootstrap hashes, token hashes, or SQL rows.
 set -eu
 
 DB=$1
@@ -30,37 +30,95 @@ INCLUDE_PATH=$REMOTE_ROOT/enrollment-current/deploy/nginx/awh-enrollment.conf
 NGINX_BACKUP=$NGINX_CONFIG.pre-m3e2-$RELEASE_ID
 POOL_BACKUP=$POOL_PATH.pre-m3e2-$RELEASE_ID
 POOL_TMP=$(sudo mktemp /tmp/awh-enrollment-pool.XXXXXX)
-NGINX_TMP=$(mktemp /tmp/awh-enrollment-nginx.XXXXXX)
+NGINX_TMP=$(sudo mktemp /tmp/awh-enrollment-nginx.XXXXXX)
 PREVIOUS_TARGET=$(sudo readlink -f "$REMOTE_ROOT/enrollment-current" 2>/dev/null || true)
+
+BACKUP_CREATED=0
+PERMISSIONS_CHANGED=0
 MIGRATION_STARTED=0
 SWITCHED=0
 NGINX_CHANGED=0
 POOL_CHANGED=0
-SERVICES_RELOADED=0
+POOL_EXISTED=0
+SERVICE_USER_CREATED=0
 SUCCESS=0
 
 cleanup() {
   sudo rm -f "$POOL_TMP" "$NGINX_TMP" >/dev/null 2>&1 || true
 }
+
+run_m3d_health() {
+  for path in /api/v1/health /api/v1/status /api/v1/projects /api/v1/projects/113b45c0-23e1-408d-ae0f-ac5eca7f6900/memory; do
+    code=$(curl -k -sS --max-time 10 -o /dev/null -w '%{http_code}' "https://127.0.0.1$path" -H 'Host: awh.invalid' 2>/dev/null || printf 000)
+    test "$code" = 401 || return 1
+  done
+}
+
 rollback() {
   status=$?
   if test "$SUCCESS" -eq 0; then
-    if test "$SERVICES_RELOADED" -eq 1; then
-      sudo "$PHP_FPM_BIN" -t >/dev/null 2>&1 || true
-      sudo systemctl reload "php$PHP_VERSION-fpm" >/dev/null 2>&1 || true
-      sudo nginx -t >/dev/null 2>&1 && sudo systemctl reload nginx >/dev/null 2>&1 || true
+    rollback_ok=1
+
+    # Restore the verified SQLite backup before restoring its metadata.
+    if test "$MIGRATION_STARTED" -eq 1; then
+      if ! sudo sqlite3 "$BACKUP" 'PRAGMA integrity_check;' >/dev/null 2>&1; then rollback_ok=0; fi
+      if ! sudo sqlite3 "$BACKUP" 'PRAGMA foreign_key_check;' >/dev/null 2>&1; then rollback_ok=0; fi
+      if ! sudo sqlite3 "$DB" ".restore '$BACKUP'" >/dev/null 2>&1; then rollback_ok=0; fi
     fi
+
+    # Restore exact numeric owner/group/mode captured before provisioning.
+    if test "$PERMISSIONS_CHANGED" -eq 1; then
+      if ! sudo chown "$DB_UID:$DB_GID" "$DB" >/dev/null 2>&1; then rollback_ok=0; fi
+      if ! sudo chmod "$DB_MODE" "$DB" >/dev/null 2>&1; then rollback_ok=0; fi
+      if ! sudo chown "$PARENT_UID:$PARENT_GID" "$DB_PARENT" >/dev/null 2>&1; then rollback_ok=0; fi
+      if ! sudo chmod "$PARENT_MODE" "$DB_PARENT" >/dev/null 2>&1; then rollback_ok=0; fi
+    fi
+
+    # Restore release pointer, Nginx, then PHP-FPM configuration.
     if test "$SWITCHED" -eq 1; then
-      if test -n "$PREVIOUS_TARGET"; then sudo ln -sfn "$PREVIOUS_TARGET" "$REMOTE_ROOT/enrollment-current"; else sudo rm -f "$REMOTE_ROOT/enrollment-current"; fi
+      if test -n "$PREVIOUS_TARGET"; then
+        if ! sudo ln -sfn "$PREVIOUS_TARGET" "$REMOTE_ROOT/enrollment-current"; then rollback_ok=0; fi
+      elif ! sudo rm -f "$REMOTE_ROOT/enrollment-current"; then
+        rollback_ok=0
+      fi
     fi
-    if test "$NGINX_CHANGED" -eq 1; then sudo cp -p "$NGINX_BACKUP" "$NGINX_CONFIG" >/dev/null 2>&1 || true; fi
+    if test "$NGINX_CHANGED" -eq 1; then
+      if ! sudo cp -p "$NGINX_BACKUP" "$NGINX_CONFIG"; then rollback_ok=0; fi
+    fi
     if test "$POOL_CHANGED" -eq 1; then
-      if sudo test -f "$POOL_BACKUP"; then sudo cp -p "$POOL_BACKUP" "$POOL_PATH" >/dev/null 2>&1 || true; else sudo rm -f "$POOL_PATH" >/dev/null 2>&1 || true; fi
+      if test "$POOL_EXISTED" -eq 1; then
+        if ! sudo cp -p "$POOL_BACKUP" "$POOL_PATH"; then rollback_ok=0; fi
+      elif ! sudo rm -f "$POOL_PATH"; then
+        rollback_ok=0
+      fi
     fi
-    if test "$MIGRATION_STARTED" -eq 1; then sudo -u awh-hub sqlite3 "$DB" ".restore '$BACKUP'" >/dev/null 2>&1 || true; fi
-    rm -f "$REMOTE_STAGE"
+
+    # Validate restored files before any service reload. If no service/config
+    # mutation happened, no reload is needed.
+    if test "$POOL_CHANGED" -eq 1 || test "$NGINX_CHANGED" -eq 1 || test "$SWITCHED" -eq 1; then
+      if ! sudo "$PHP_FPM_BIN" -t >/dev/null 2>&1; then rollback_ok=0; fi
+      if ! sudo nginx -t >/dev/null 2>&1; then rollback_ok=0; fi
+      if test "$rollback_ok" -eq 1; then
+        if ! sudo systemctl reload "php$PHP_VERSION-fpm"; then rollback_ok=0; fi
+        if test "$rollback_ok" -eq 1 && ! sudo systemctl reload nginx; then rollback_ok=0; fi
+        if test "$rollback_ok" -eq 1 && ! run_m3d_health; then rollback_ok=0; fi
+      fi
+    fi
+    if test "$SERVICE_USER_CREATED" -eq 1; then
+      if ! sudo rm -rf "$REMOTE_RELEASE"; then rollback_ok=0; fi
+      if ! sudo /usr/sbin/userdel --system awh-hub; then rollback_ok=0; fi
+    fi
+    if test "$rollback_ok" -eq 1; then
+      printf '%s\n' 'ROLLBACK: PASS'
+    else
+      printf '%s\n' 'ROLLBACK: FAIL' >&2
+      status=1
+    fi
+    sudo rm -f "$REMOTE_STAGE" >/dev/null 2>&1 || true
   fi
   cleanup
+  trap - EXIT HUP INT TERM
+  if test "$status" -eq 0; then status=1; fi
   exit "$status"
 }
 trap rollback EXIT HUP INT TERM
@@ -68,22 +126,68 @@ trap rollback EXIT HUP INT TERM
 sudo test -f "$BOOTSTRAP_HASH_FILE"
 sudo awk 'BEGIN { if ((getline hash < ARGV[1]) != 1 || length(hash) != 64 || hash !~ /^[0-9a-fA-F]+$/) exit 30; }' "$BOOTSTRAP_HASH_FILE"
 test -x "$PHP_FPM_BIN"
+sudo test -f "$DB"
+
+# The live M3D host may not have the future enrollment service account yet.
+# Create it only inside this approval-gated deployment phase; preflight never
+# performs this mutation.
+if ! id -u awh-hub >/dev/null 2>&1; then
+  sudo /usr/sbin/useradd --system --user-group --home-dir "$REMOTE_ROOT" --no-create-home --shell /usr/sbin/nologin awh-hub
+  SERVICE_USER_CREATED=1
+fi
+
+# Capture the exact metadata before the first permission mutation.
+DB_UID=$(sudo stat -c '%u' "$DB")
+DB_GID=$(sudo stat -c '%g' "$DB")
+DB_MODE=$(sudo stat -c '%a' "$DB")
+DB_OWNER=$(sudo stat -c '%U' "$DB")
+DB_GROUP=$(sudo stat -c '%G' "$DB")
+DB_PARENT=$(dirname "$DB")
+PARENT_UID=$(sudo stat -c '%u' "$DB_PARENT")
+PARENT_GID=$(sudo stat -c '%g' "$DB_PARENT")
+PARENT_MODE=$(sudo stat -c '%a' "$DB_PARENT")
+PARENT_OWNER=$(sudo stat -c '%U' "$DB_PARENT")
+PARENT_GROUP=$(sudo stat -c '%G' "$DB_PARENT")
+
+# Preserve www-data read access and reject any existing broad group-write mode.
+test "$DB_GROUP" = www-data
+test "$PARENT_GROUP" = www-data
+test $((0$DB_MODE & 0020)) -eq 0
+test $((0$PARENT_MODE & 0020)) -eq 0
+test $((0$DB_MODE & 0600)) -eq $((0600))
+test $((0$PARENT_MODE & 0700)) -eq $((0700))
+
+sudo install -d -m 0750 -o root -g awh-hub /var/backups/awh-hub
+sudo sqlite3 "$DB" ".backup '$BACKUP'"
+sudo test -s "$BACKUP"
+sudo chown root:root "$BACKUP"
+sudo chmod 0600 "$BACKUP"
+BACKUP_CREATED=1
+test "$(sudo sqlite3 "$BACKUP" 'PRAGMA integrity_check;' | head -n 1)" = ok
+test -z "$(sudo sqlite3 "$BACKUP" 'PRAGMA foreign_key_check;')"
+
+# Minimum bounded write provision: the service owns the DB and its directory,
+# while the existing www-data group keeps read/traverse access only.
+if test "$DB_OWNER" != awh-hub || test "$PARENT_OWNER" != awh-hub; then
+  sudo chown awh-hub:"$DB_GROUP" "$DB"
+  sudo chmod "$DB_MODE" "$DB"
+  sudo chown awh-hub:"$PARENT_GROUP" "$DB_PARENT"
+  sudo chmod "$PARENT_MODE" "$DB_PARENT"
+  PERMISSIONS_CHANGED=1
+fi
+sudo -n -u awh-hub test -w "$DB"
+sudo -n -u awh-hub test -w "$DB_PARENT"
 
 sudo install -d -m 0750 -o awh-hub -g awh-hub "$REMOTE_ROOT/enrollment-releases/$RELEASE_ID"
 sudo tar -xzf "$REMOTE_STAGE" -C "$REMOTE_RELEASE"
 sudo test -f "$REMOTE_RELEASE/hub/public/enrollment.php"
 sudo test -f "$REMOTE_RELEASE/hub/bin/migrate-m3e2.php"
 sudo test -f "$REMOTE_RELEASE/deploy/nginx/awh-enrollment.conf"
+sudo test -f "$REMOTE_RELEASE/deploy/awh-enrollment/insert-nginx-include.php"
 sudo test -f "$REMOTE_RELEASE/deploy/php-fpm/awh-enrollment.pool.conf"
 sudo chown -R awh-hub:awh-hub "$REMOTE_RELEASE"
-sudo chmod 0750 "$REMOTE_RELEASE" "$REMOTE_RELEASE/hub" "$REMOTE_RELEASE/hub/public" "$REMOTE_RELEASE/hub/src" "$REMOTE_RELEASE/hub/bin" "$REMOTE_RELEASE/hub/migrations"
-sudo chmod 0640 "$REMOTE_RELEASE/hub/public/enrollment.php" "$REMOTE_RELEASE/hub/src/"*.php "$REMOTE_RELEASE/hub/bin/migrate-m3e2.php" "$REMOTE_RELEASE/hub/migrations/002_m3e2_enrollment_api.sql" "$REMOTE_RELEASE/deploy/nginx/awh-enrollment.conf" "$REMOTE_RELEASE/deploy/php-fpm/awh-enrollment.pool.conf"
-
-sudo install -d -m 0700 -o awh-hub -g awh-hub /var/backups/awh-hub
-sudo -u awh-hub sqlite3 "$DB" ".backup '$BACKUP'"
-sudo test -s "$BACKUP"
-test "$(sudo sqlite3 "$BACKUP" 'PRAGMA integrity_check;' | head -n 1)" = ok
-test -z "$(sudo sqlite3 "$BACKUP" 'PRAGMA foreign_key_check;')"
+sudo chmod 0750 "$REMOTE_RELEASE" "$REMOTE_RELEASE/hub" "$REMOTE_RELEASE/hub/public" "$REMOTE_RELEASE/hub/src" "$REMOTE_RELEASE/hub/bin" "$REMOTE_RELEASE/hub/migrations" "$REMOTE_RELEASE/deploy" "$REMOTE_RELEASE/deploy/awh-enrollment"
+sudo chmod 0640 "$REMOTE_RELEASE/hub/public/enrollment.php" "$REMOTE_RELEASE/hub/src/"*.php "$REMOTE_RELEASE/hub/bin/migrate-m3e2.php" "$REMOTE_RELEASE/hub/migrations/002_m3e2_enrollment_api.sql" "$REMOTE_RELEASE/deploy/nginx/awh-enrollment.conf" "$REMOTE_RELEASE/deploy/awh-enrollment/insert-nginx-include.php" "$REMOTE_RELEASE/deploy/php-fpm/awh-enrollment.pool.conf"
 
 MIGRATION_STARTED=1
 FIRST=$(sudo -u awh-hub /usr/bin/php "$REMOTE_RELEASE/hub/bin/migrate-m3e2.php" "$DB")
@@ -98,7 +202,11 @@ test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM sqlite_master WHERE type='table
 sudo test ! -e "$NGINX_BACKUP"
 sudo cp -p "$NGINX_CONFIG" "$NGINX_BACKUP"
 NGINX_CHANGED=1
-if sudo test -f "$POOL_PATH"; then sudo test ! -e "$POOL_BACKUP"; sudo cp -p "$POOL_PATH" "$POOL_BACKUP"; fi
+if sudo test -f "$POOL_PATH"; then
+  sudo test ! -e "$POOL_BACKUP"
+  sudo cp -p "$POOL_PATH" "$POOL_BACKUP"
+  POOL_EXISTED=1
+fi
 POOL_CHANGED=1
 sudo awk -v hash_file="$BOOTSTRAP_HASH_FILE" '
 BEGIN {
@@ -115,41 +223,23 @@ sudo grep -q '^\[awh-hub\]$' "$POOL_TMP"
 sudo grep -Eq 'env\[AWH_ENROLLMENT_BOOTSTRAP_NONCE_HASH\][[:space:]]*=[[:space:]]*[0-9a-fA-F]{64}$' "$POOL_TMP"
 sudo install -o root -g root -m 0640 "$POOL_TMP" "$POOL_PATH"
 
-INCLUDE_LINE="    include $INCLUDE_PATH;"
-if sudo grep -Fq "$INCLUDE_LINE" "$NGINX_CONFIG"; then
-  :
-elif sudo grep -q 'enrollment-current' "$NGINX_CONFIG"; then
-  exit 31
-else
-  sudo awk -v include_line="$INCLUDE_LINE" '
-  { line[NR] = $0 }
-  END {
-    if (line[NR] !~ /^[[:space:]]*}[[:space:]]*$/) exit 32
-    for (i = 1; i < NR; i++) print line[i]
-    print include_line
-    print line[NR]
-  }
-  ' "$NGINX_CONFIG" > "$NGINX_TMP"
-  sudo install -o root -g root -m 0644 "$NGINX_TMP" "$NGINX_CONFIG"
-fi
-
+# The release pointer exists before Nginx sees the reviewed include target.
 sudo ln -sfn "$REMOTE_RELEASE" "$REMOTE_ROOT/enrollment-current"
 SWITCHED=1
+sudo /usr/bin/php "$REMOTE_RELEASE/deploy/awh-enrollment/insert-nginx-include.php" "$NGINX_CONFIG" "$NGINX_TMP" "$INCLUDE_PATH"
+sudo install -o root -g root -m 0644 "$NGINX_TMP" "$NGINX_CONFIG"
+
 sudo "$PHP_FPM_BIN" -t >/dev/null
 sudo nginx -t >/dev/null
 sudo systemctl reload "php$PHP_VERSION-fpm"
 sudo systemctl reload nginx
-SERVICES_RELOADED=1
 
-for path in /api/v1/health /api/v1/status /api/v1/projects /api/v1/projects/113b45c0-23e1-408d-ae0f-ac5eca7f6900/memory; do
-  code=$(curl -k -sS --max-time 10 -o /dev/null -w '%{http_code}' "https://127.0.0.1$path" 2>/dev/null || printf 000)
-  test "$code" = 401
-done
-code=$(curl -k -sS --max-time 10 -o /dev/null -w '%{http_code}' -X GET https://127.0.0.1/api/v1/enrollment/devices 2>/dev/null || printf 000)
+run_m3d_health
+code=$(curl -k -sS --max-time 10 -o /dev/null -w '%{http_code}' -X GET https://127.0.0.1/api/v1/enrollment/devices -H 'Host: awh.invalid' 2>/dev/null || printf 000)
 test "$code" = 405
 
 SUCCESS=1
-rm -f "$REMOTE_STAGE"
+sudo rm -f "$REMOTE_STAGE"
 cleanup
 trap - EXIT HUP INT TERM
 printf '%s\n' 'AWH enrollment deployment: PASS'

@@ -35,6 +35,8 @@ done
 test -f "$PREFLIGHT_SCRIPT" || { echo "Missing production preflight: $PREFLIGHT_SCRIPT" >&2; exit 1; }
 REMOTE_DEPLOY_SCRIPT=$ROOT/deploy/awh-enrollment/remote-deploy.sh
 test -f "$REMOTE_DEPLOY_SCRIPT" || { echo "Missing remote deployment phase: $REMOTE_DEPLOY_SCRIPT" >&2; exit 1; }
+NGINX_INSERT_HELPER=$ROOT/deploy/awh-enrollment/insert-nginx-include.php
+test -f "$NGINX_INSERT_HELPER" || { echo "Missing Nginx insertion helper: $NGINX_INSERT_HELPER" >&2; exit 1; }
 
 tar -czf "$BUNDLE" -C "$ROOT" \
   hub/public/enrollment.php \
@@ -45,12 +47,13 @@ tar -czf "$BUNDLE" -C "$ROOT" \
   hub/bin/migrate-m3e2.php \
   deploy/nginx/awh-enrollment.conf \
   deploy/php-fpm/awh-enrollment.pool.conf \
+  deploy/awh-enrollment/insert-nginx-include.php \
   deploy/awh-enrollment/remote-deploy.sh
 
 if [ "$MODE" = dry-run ]; then
   echo "DRY-RUN: target SSH alias=$DEPLOY_TARGET"
   echo "DRY-RUN: would require a clean committed release and run the read-only preflight"
-  echo "DRY-RUN: would require DB_AUTHORITY_RESOLVED, db_enrollment_write=PASS, bootstrap hash READY, and BACKUP_READY or BACKUP_PROVISION_REQUIRED before mutation"
+  echo "DRY-RUN: would require DB_AUTHORITY_RESOLVED, DB_WRITE_READY or DB_WRITE_PROVISION_REQUIRED, bootstrap hash READY, and BACKUP_READY or BACKUP_PROVISION_REQUIRED before mutation"
   echo "DRY-RUN: would create a SQLite-aware backup, verify it, stage the exact reviewed release, and run 002_m3e2_enrollment_api.php twice"
   echo "DRY-RUN: would verify integrity/FK/schema, install reviewed Nginx/PHP-FPM configuration, reload, and run M3D/enrollment regression"
   echo "DRY-RUN: critical gate failure would disable the new route/release and restore the verified DB backup"
@@ -80,8 +83,8 @@ printf '%s\n' "$PREFLIGHT_OUTPUT" | grep -Eq '^backup_classification=(BACKUP_REA
   echo "Production deployment blocked: backup destination is not ready" >&2
   exit 1
 }
-printf '%s\n' "$PREFLIGHT_OUTPUT" | grep -q '^db_enrollment_write=PASS$' || {
-  echo "Production deployment blocked: enrollment service cannot write the resolved Hub database" >&2
+printf '%s\n' "$PREFLIGHT_OUTPUT" | grep -Eq '^db_write_classification=(DB_WRITE_READY|DB_WRITE_PROVISION_REQUIRED)$' || {
+  echo "Production deployment blocked: bounded SQLite write provisioning is unavailable" >&2
   exit 1
 }
 printf '%s\n' "$PREFLIGHT_OUTPUT" | grep -q '^enrollment_bootstrap_hash=READY$' || {

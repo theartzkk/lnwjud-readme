@@ -1,4 +1,5 @@
-import { DEVICE_TOKEN_CREDENTIAL_KEY, CredentialStore } from './credential-store.js';
+import { randomBytes } from 'node:crypto';
+import { BOOTSTRAP_NONCE_CREDENTIAL_KEY, DEVICE_TOKEN_CREDENTIAL_KEY, CredentialStore } from './credential-store.js';
 import { DeviceIdentity, loadOrCreateDeviceIdentity } from './device-identity.js';
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
@@ -71,6 +72,31 @@ export class EnrollmentClient {
     return this.sanitize(identity, response);
   }
 
+  /**
+   * Bootstrap the first owner and immediately consume the one-time pairing
+   * code for this device. The nonce and pairing code stay in memory only; the
+   * temporary nonce is removed from the OS credential store after the flow.
+   */
+  async bootstrapAndEnroll(projectIds: string[], displayName?: string, userId?: string): Promise<SanitizedEnrollmentState> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir, displayName);
+    const ownerId = userId ?? identity.deviceId;
+    if (!isEnrollmentDeviceId(ownerId)) throw new EnrollmentClientError('Owner identity is invalid', 'OWNER_ID_INVALID');
+    const nonce = rfc4648Nonce();
+    await this.credentialStore.set(BOOTSTRAP_NONCE_CREDENTIAL_KEY, nonce);
+    try {
+      const response = await this.post('/enrollment/bootstrap', {
+        schemaVersion: 1, userId: ownerId, displayName: identity.displayName, projectIds,
+      }, undefined, { 'X-AWH-Bootstrap-Nonce': nonce });
+      if (response.bootstrapClosed !== true || typeof response.initialPairingCode !== 'string' || !/^[A-Za-z0-9_-]{32,128}$/.test(response.initialPairingCode)) {
+        throw new EnrollmentClientError('Bootstrap response did not contain a bounded pairing code', 'RESPONSE_INVALID');
+      }
+      if (typeof response.initialPairingExpiresAt !== 'string') throw new EnrollmentClientError('Bootstrap response expiry is invalid', 'RESPONSE_INVALID');
+      return await this.pair(response.initialPairingCode);
+    } finally {
+      await this.credentialStore.delete(BOOTSTRAP_NONCE_CREDENTIAL_KEY);
+    }
+  }
+
   async rotate(): Promise<SanitizedEnrollmentState> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir);
     const token = await this.credentialStore.get(DEVICE_TOKEN_CREDENTIAL_KEY);
@@ -91,8 +117,8 @@ export class EnrollmentClient {
     return { enrolled: false, deviceId: identity.deviceId, displayName: identity.displayName, platform: identity.platform, credentialStored: false, expiresAt: null, projectCount: null };
   }
 
-  private async post(path: string, payload: Record<string, unknown>, token?: string): Promise<Record<string, unknown>> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  private async post(path: string, payload: Record<string, unknown>, token?: string, extraHeaders: Record<string, string> = {}): Promise<Record<string, unknown>> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extraHeaders };
     if (token) headers.Authorization = `Bearer ${token}`;
     const response = await this.fetchImpl(new URL(`${this.root.toString()}/${path.replace(/^\//, '')}`), { method: 'POST', headers, body: JSON.stringify(payload), credentials: 'omit', cache: 'no-store' });
     return jsonResponse(response);
@@ -104,3 +130,7 @@ export class EnrollmentClient {
 }
 
 export function isEnrollmentDeviceId(value: string): boolean { return UUID_V4.test(value); }
+
+function rfc4648Nonce(): string {
+  return randomBytes(32).toString('base64url');
+}

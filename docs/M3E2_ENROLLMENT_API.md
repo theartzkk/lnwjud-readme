@@ -22,7 +22,11 @@ The route is not part of `web-gateway.php` or the browser `HUB_READ` adapter.
 It rejects non-empty browser `Origin`, credentials in URLs, non-JSON bodies,
 unknown fields, oversized requests, and non-POST methods. Bootstrap requires a
 one-time deployment-provided nonce hash and remains closed after first owner
-initialization. Owner routes require an active device Bearer credential.
+initialization. Bootstrap creates the owner, requested project memberships, and
+one bounded initial pairing code in one transaction; it returns that plaintext
+pairing code once, never a bearer token. The local client immediately consumes
+it through `/enrollment/devices`. Later owner routes require an active device
+Bearer credential.
 
 Pairing consumption is limited to five attempts per device in a ten-minute
 window, then blocked for thirty minutes. The counter is stored in the
@@ -32,7 +36,10 @@ additive `enrollment_rate_limits` table from
 ## Local Desktop client
 
 `src/enrollment-client.ts` reuses the existing local device identity and
-`awh/device-token` credential key. It sends credentials only in the fixed
+`awh/device-token` credential key. `bootstrapAndEnroll()` creates a temporary
+nonce in `awh/bootstrap-nonce`, sends it only as the HTTPS bootstrap header,
+consumes the returned one-time pairing code, then deletes the temporary nonce.
+It sends credentials only in the fixed
 `Authorization` request header to the separate enrollment API, stores the new
 credential through the injected credential store, and returns only sanitized
 state. It never puts tokens in URLs, logs, Project Memory, renderer IPC, or
@@ -52,8 +59,10 @@ Not executed. The complete local deployment package and runbook are in
 1. Apply migration 002 to the already-migrated Hub SQLite database and verify
    integrity/foreign keys.
 2. Deploy the PHP enrollment router/service files outside the static web root.
-3. Configure PHP-FPM environment for the database and a secret bootstrap nonce
-   hash outside source control.
+3. Use the approval-gated `scripts/deploy/provision-bootstrap-hash.mjs` helper
+   to read the local OS credential store and send only the SHA-256 hash through
+   fixed SSH argv/stdin; configure PHP-FPM for the resulting root-owned `0600`
+   hash file outside source control.
 4. Add a separately reviewed Nginx location for the enrollment front
    controller. Do not route it through `web-gateway.php` or expose it as
    browser `data.json`/HUB_READ.

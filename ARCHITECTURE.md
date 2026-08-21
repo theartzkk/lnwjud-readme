@@ -35,7 +35,7 @@
 - **First-run trust:** owner/device display metadata is stored in a strict local session record. It is not a password store and never contains a bearer credential; native device credentials remain under M3E OS credential adapters.
 - **Local QA:** cross-platform Node-based QA engine with machine-readable results.
 - **Release packaging:** package/version identity resolves to AWH 0.5.0; Forge reuses a checksum-verified local Electron artifact when available, while packaging output remains ignored local evidence until signing and field review.
-- **Deployment preflight:** `deploy/awh-enrollment/preflight-production.sh` is a read-only SSH-alias-based VPS check; mutation remains in the guarded deployment path and stops at explicit production approval.
+- **Deployment preflight:** `deploy/awh-enrollment/preflight-production.sh` is a read-only SSH-alias-based VPS check; it resolves the effective DB authority and reports `DB_WRITE_READY`, `DB_WRITE_PROVISION_REQUIRED`, or `DB_WRITE_BLOCKED` without permission mutation. Mutation remains in the guarded deployment path and stops at explicit production approval.
 - **MCP / remote-readonly AI adapter:** local stdio MCP and restricted remote-readonly profile; remote tunnel E2E is not claimed.
 - **M3C0 Web Surface:** browser-only static presentation adapter with strict CSP, bounded sanitized data, and a separate future same-origin Hub-read mode.
 - **M3C1/M3D Hub Read Foundation:** PHP-FPM-compatible front controller and web gateway, SQLite metadata schema, query-only HTTP connection, Bearer-auth service boundary, same-origin Nginx perimeter adapter, and a local metadata-only indexer.
@@ -99,6 +99,20 @@
 - M3E.2 production migration is additive: `m3e.2-enrollment-api` creates only
   `enrollment_rate_limits`, moves SQLite `user_version` from 2 to 3, records a
   checksum ledger row, and fails closed on partial/untracked state.
+- First-owner bootstrap creates owner membership and one initial pairing code in
+  the same transaction, then the local `EnrollmentClient` consumes that code for
+  the first device. Temporary bootstrap nonce storage reuses the OS credential
+  adapter and provisioning sends only a SHA-256 digest through fixed SSH
+  stdin/argv; no bootstrap token is issued.
+- The guarded deployment engine takes a SQLite-aware backup before any DB/parent
+  metadata change. The minimum write provision makes `awh-hub` the owner while
+  retaining the existing `www-data` read/traverse group and rejects broad group
+  write. Rollback restores data and exact numeric metadata before symlink/Nginx/
+  PHP-FPM restoration, validation, reload, and M3D health.
+- Nginx enrollment insertion is implemented by
+  `deploy/awh-enrollment/insert-nginx-include.php`, which requires exactly one
+  authoritative HTTPS AWH server block and is idempotent; an HTTP redirect or
+  ambiguous config fails closed.
 - The isolated Nginx enrollment location disables only inherited Basic Auth for
   the Bearer API path; Basic Auth still protects all static preview assets and
   M3D browser reads. Enrollment rejects browser Origin and is not a browser UI.

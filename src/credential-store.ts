@@ -6,6 +6,7 @@ const MAX_PROCESS_OUTPUT_BYTES = MAX_CREDENTIAL_BYTES + 1024;
 const PROCESS_TIMEOUT_MS = 15_000;
 
 export const DEVICE_TOKEN_CREDENTIAL_KEY = 'awh/device-token';
+export const BOOTSTRAP_NONCE_CREDENTIAL_KEY = 'awh/bootstrap-nonce';
 export const AWH_CREDENTIAL_SERVICE = 'Art’s Workspace Hub';
 export const AWH_CREDENTIAL_ACCOUNT = 'awh-device-token-v1';
 export const WINDOWS_CREDENTIAL_TARGET = `${AWH_CREDENTIAL_SERVICE}/${DEVICE_TOKEN_CREDENTIAL_KEY}`;

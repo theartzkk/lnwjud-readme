@@ -4,7 +4,37 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { EnrollmentClient, EnrollmentClientError } from '../src/enrollment-client.js';
-import { InMemoryCredentialStore } from '../src/credential-store.js';
+import { BOOTSTRAP_NONCE_CREDENTIAL_KEY, DEVICE_TOKEN_CREDENTIAL_KEY, InMemoryCredentialStore } from '../src/credential-store.js';
+
+test('local enrollment client closes bootstrap into first-device enrollment and removes the temporary nonce', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awh-enroll-bootstrap-'));
+  const store = new InMemoryCredentialStore();
+  const requests: Request[] = [];
+  const ownerId = '223b45c0-23e1-408d-ae0f-ac5eca7f6900';
+  try {
+    const client = new EnrollmentClient('https://hub.example/api/v1', root, store, async (input, init) => {
+      const request = new Request(input, init);
+      requests.push(request);
+      if (request.url.endsWith('/enrollment/bootstrap')) {
+        assert.match(request.headers.get('X-AWH-Bootstrap-Nonce') ?? '', /^[A-Za-z0-9_-]{43}$/);
+        assert.equal(new URL(request.url).search, '');
+        return new Response(JSON.stringify({ bootstrapClosed: true, initialPairingCode: 'P'.repeat(43), initialPairingExpiresAt: '2026-09-01T00:10:00.000Z' }), { status: 200 });
+      }
+      assert.equal(request.url, 'https://hub.example/api/v1/enrollment/devices');
+      const payload = JSON.parse(await request.text()) as Record<string, unknown>;
+      assert.equal(payload.pairingCode, 'P'.repeat(43));
+      assert.match(String(payload.deviceId), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+      return new Response(JSON.stringify({ accessToken: 'first-device-secret', expiresAt: '2026-09-01T00:00:00.000Z', projectCount: 1 }), { status: 200 });
+    });
+    const state = await client.bootstrapAndEnroll(['113b45c0-23e1-408d-ae0f-ac5eca7f6900'], 'Art’s Mac', ownerId);
+    assert.equal(state.enrolled, true);
+    assert.match(state.deviceId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    assert.equal(await store.get(BOOTSTRAP_NONCE_CREDENTIAL_KEY), null);
+    assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY), 'first-device-secret');
+    assert.equal('accessToken' in state, false);
+    assert.equal(requests.length, 2);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 test('local enrollment client pairs with the existing device UUID and never returns the credential', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awh-enroll-client-'));

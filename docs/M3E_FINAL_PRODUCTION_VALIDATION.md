@@ -49,10 +49,15 @@ sh deploy/awh-enrollment/preflight-production.sh
 ```
 
 ต้องได้ `db_classification=DB_AUTHORITY_RESOLVED`, `db_integrity=ok`,
-`db_foreign_keys=0`, `db_enrollment_write=PASS` และ
-`backup_classification=BACKUP_READY` หรือ `BACKUP_PROVISION_REQUIRED` ก่อน
+`db_foreign_keys=0`, `db_write_classification=DB_WRITE_READY` หรือ
+`DB_WRITE_PROVISION_REQUIRED` และ `backup_classification=BACKUP_READY` หรือ
+`BACKUP_PROVISION_REQUIRED` ก่อน
 ดำเนินการต่อ หากได้ `DB_NOT_FOUND`, `DB_AMBIGUOUS`, `DB_INTEGRITY_FAILED` หรือ
-`db_enrollment_write=BLOCKED` ให้หยุดทันที ห้ามสร้างหรือคัดลอกฐานข้อมูลใหม่.
+`db_write_classification=DB_WRITE_BLOCKED` ให้หยุดทันที ห้ามสร้างหรือคัดลอก
+ฐานข้อมูลใหม่. `DB_WRITE_PROVISION_REQUIRED` เป็นสถานะที่ deployment engine
+จะ backup ก่อน แล้วปรับ owner ของ DB และ parent directory แบบจำกัดให้
+`awh-hub` เขียนได้ โดยคง `www-data` เป็น read/traverse และ restore metadata เดิม
+ได้ 100% เมื่อ rollback.
 
 จากนั้น backup แบบ SQLite-aware:
 
@@ -111,9 +116,10 @@ credential ใน URL หรือ log.
 
 ### 5. Provision bootstrap nonce hash safely
 
-ห้ามเก็บ nonce ตัวจริงใน Git, Project Memory, log หรือ shell history ใช้ secure
-interactive input แล้วเก็บเฉพาะ SHA-256 hash ในไฟล์ provisioning นอก repository
-ที่ permission `0600`:
+ห้ามเก็บ nonce ตัวจริงใน Git, Project Memory, log หรือ shell history. ใช้
+`CredentialStore` ของเครื่องเพื่อสร้าง/เก็บ nonce ชั่วคราว และให้ reviewed
+provisioning helper อ่านจาก Keychain/Credential Manager แล้วส่งเฉพาะ SHA-256 hash
+ผ่าน SSH stdin:
 
 ```sh
 umask 077
@@ -122,12 +128,18 @@ printf '%s' "$AWH_BOOTSTRAP_NONCE" | sha256sum | awk '{print $1}'
 unset AWH_BOOTSTRAP_NONCE
 ```
 
-เก็บ hash ที่ได้เป็นไฟล์นอก repository ที่
-`/etc/awh-hub/enrollment-bootstrap.sha256` ด้วย owner/permission ที่เข้มงวด
-(root และ `0600`) แล้ว `unset` ค่าชั่วคราวทั้งหมด. Remote deployment phase จะอ่าน
-hash ผ่าน privileged file access และแทนค่าใน PHP-FPM pool โดยไม่ใส่ nonce/hash ใน
-argv, log หรือ Project Memory. ห้ามคัดลอก nonce เข้า
-`AWH_ENROLLMENT_BOOTSTRAP_NONCE_HASH`; ตัวแปรนี้รับ hash เท่านั้น.
+หลัง explicit production approval ให้รันจาก source ที่ clean เท่านั้น:
+
+```sh
+node --import tsx scripts/deploy/provision-bootstrap-hash.mjs --approve-bootstrap-provision
+```
+
+helper ใช้ fixed SSH argv, `shell:false`, และส่ง digest ผ่าน stdin เท่านั้น.
+ปลายทางเขียน `/etc/awh-hub/enrollment-bootstrap.sha256` เป็น root และ `0600`
+โดยไม่แสดงค่าใด ๆ. Remote deployment phase จะอ่าน hash ผ่าน privileged file
+access และแทนค่าใน PHP-FPM pool โดยไม่ใส่ nonce/hash ใน argv, log หรือ Project
+Memory. หลัง bootstrap และ first-device enrollment สำเร็จ client ลบ
+`awh/bootstrap-nonce` ออกจาก secure store.
 
 ### 6. Enable the isolated route
 
@@ -142,7 +154,16 @@ phase เดียว ไม่ควรรันแยกทีละคำส�
 
 ### 7. Enrollment regression and two-device check
 
-ใช้ operator flow ที่ออก pairing code อายุสั้นจาก owner device แล้วทำตามลำดับ:
+first-device flow ทำใน transaction เดียวกันตั้งแต่ owner bootstrap:
+
+1. Desktop สร้าง owner identity และเรียก bootstrap ด้วย nonce จาก secure store
+2. Hub สร้าง owner, project membership, initial pairing code hash และ closed
+   marker ใน transaction เดียวกัน; response คืน `initialPairingCode` ได้ครั้งเดียว
+3. Desktop consume code นั้นผ่าน `/enrollment/devices`, เก็บ device credential
+   ใน Keychain/Credential Manager และลบ temporary bootstrap nonce
+4. จากนั้น owner device จึงออก pairing code ใหม่สำหรับอุปกรณ์ถัดไป
+
+สำหรับการ pair เครื่องที่สอง ให้ทำตามลำดับ:
 
 1. Mac AWH Desktop ตั้ง `AWH_HUB_API_BASE` เป็น HTTPS `/api/v1`, เปิด Device
    Enrollment, ตรวจ Device ID แล้วใส่ pairing code หนึ่งครั้ง
@@ -165,20 +186,23 @@ browser credential exposure = false
 
 ## Rollback / recovery
 
-ถ้า migration, `nginx -t`, health regression หรือ enrollment regression ล้มเหลว:
+ถ้า migration, permission gate, `nginx -t`, health regression หรือ enrollment
+regression ล้มเหลว ให้ใช้ guarded engine rollback อัตโนมัติ:
 
-1. ปิด/ถอด isolated enrollment location และ reload Nginx
-2. สลับ `enrollment-current` กลับ release ก่อนหน้า หรือหยุด route หากยังไม่มี
-   release ก่อนหน้า
-3. ตรวจ backup ด้วย `integrity_check` อีกครั้ง แล้ว restore เฉพาะ backup ที่
-   ตรวจแล้ว:
+1. restore verified SQLite backup
+2. restore DB และ parent owner/group/mode เดิม
+3. สลับ `enrollment-current` กลับ release ก่อนหน้า หรือหยุด route หากยังไม่มี
+4. restore Nginx config และ PHP-FPM pool
+5. validate PHP-FPM และ `nginx -t`
+6. เมื่อ validate ผ่านเท่านั้นจึง reload PHP-FPM/Nginx และ rerun M3D read health
+
+Engine จะรายงาน `ROLLBACK: PASS` หรือ `ROLLBACK: FAIL`; ไม่ถือว่าการ restore
+สำเร็จเมื่อขั้นตอนใดขั้นตอนหนึ่งล้มเหลว. การ restore backup ที่ตรวจแล้วใช้คำสั่ง
+SQLite-aware ภายใน remote phase:
 
 ```sh
-sudo nginx -t
-sudo systemctl reload nginx
-sudo -u awh-hub sqlite3 "$DB" 'PRAGMA integrity_check;'
-sudo install -o awh-hub -g awh-hub -m 0600 "$BACKUP" "$DB"
-sudo -u awh-hub sqlite3 "$DB" 'PRAGMA integrity_check; PRAGMA foreign_key_check;'
+sudo sqlite3 "$DB" ".restore '$BACKUP'"
+sudo sqlite3 "$DB" 'PRAGMA integrity_check; PRAGMA foreign_key_check;'
 ```
 
 อย่า DROP ตาราง M3E/M3D, อย่าแก้ ledger หรือย้อน migration ด้วยคำสั่ง ad-hoc.

@@ -21,8 +21,10 @@ enabled.
 
 ## Enrollment lifecycle
 
-1. The first owner is initialized once; a second bootstrap attempt fails closed.
-2. An owner issues a bounded pairing code for already-authorized projects.
+1. The first owner, its project memberships, and one initial pairing code are
+   initialized in one transaction; a second bootstrap attempt fails closed.
+2. The first device consumes that initial code; later the owner device issues a
+   bounded pairing code for already-authorized projects.
 3. The code is stored as SHA-256 only, expires within the bounded TTL, and is
    consumed atomically on successful enrollment.
 4. Each device keeps its own stable UUID and receives its own token.
