@@ -95,6 +95,18 @@ test('autopilot fails closed when approved execution is disabled', async () => {
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
+test('runNow also fails closed when approved execution is disabled', async () => {
+  const f = await fixture();
+  try {
+    const runner = new AutopilotRunner({ dataDir: f.dataDir, workspace: f.workspace, manifest: f.manifest, deviceId, maxReadBytes: 512 * 1024, allowExec: false, allowWrite: false });
+    const result = await runner.runNow({ goal: 'inspect without execution', acceptanceCriteria: ['execution remains blocked'] });
+    assert.equal(result.contract.state, 'FAILED');
+    assert.match(result.contract.error ?? '', /disabled/i);
+    assert.equal(result.contextLoaded, false);
+    assert.equal(result.artifact, null);
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
 test('failed safe gates retry once and retain the retry state in the Task Contract', async () => {
   const f = await fixture();
   try {

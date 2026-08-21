@@ -9,7 +9,7 @@ export interface ExecResult {
   stderr: string;
 }
 
-export type PackageCommand = 'test' | 'lint' | 'typecheck' | 'build';
+export type PackageCommand = 'test' | 'lint' | 'typecheck' | 'build' | 'check';
 
 export interface ProcessInvocation {
   executable: string;

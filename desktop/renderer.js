@@ -225,12 +225,12 @@ function renderProjects(data) {
     const actions = document.createElement('div'); actions.className = 'actions';
     if (project.localAvailable && project.state === 'AVAILABLE') {
       const select = document.createElement('button'); select.className = 'btn'; select.textContent = project.selected ? 'Selected Project' : 'Select / Open Project'; select.disabled = project.selected;
-      select.addEventListener('click', () => runProjectAction(() => window.artAgent.selectProject(project.projectId), 'เลือกโปรเจกต์แล้ว ต้อง restart เพื่อเปิด workspace นี้'));
+      select.addEventListener('click', () => runProjectAction(() => window.artAgent.selectProject(project.projectId), 'เลือกโปรเจกต์แล้ว — พร้อมรับ Goal'));
       actions.append(select);
       const memory = document.createElement('button'); memory.className = 'btn secondary'; memory.textContent = 'Project Memory'; memory.addEventListener('click', () => loadMemory(project.projectId)); actions.append(memory);
     }
     if (!project.localAvailable || project.state === 'CONFLICT') {
-      const locate = document.createElement('button'); locate.className = 'btn secondary'; locate.textContent = 'Locate Project'; locate.addEventListener('click', () => runProjectAction(() => window.artAgent.locateProject(project.projectId), 'พบและผูกโปรเจกต์แล้ว ต้อง restart เพื่อเปิด workspace นี้'));
+      const locate = document.createElement('button'); locate.className = 'btn secondary'; locate.textContent = 'Locate Project'; locate.addEventListener('click', () => runProjectAction(() => window.artAgent.locateProject(project.projectId), 'พบและผูกโปรเจกต์แล้ว — พร้อมรับ Goal'));
     actions.append(locate);
     }
     card.append(actions); list.append(card);
@@ -271,7 +271,17 @@ async function refreshProjects() {
 async function runProjectAction(action, successMessage) {
   try {
     const result = await action();
-    if (result?.changed) { showProjectStatus(successMessage, ''); $('restart-banner').classList.remove('hidden'); }
+    if (result?.changed) {
+      showProjectStatus(successMessage, '');
+      if (result.restartRequired === true) $('restart-banner').classList.remove('hidden');
+      else $('restart-banner').classList.add('hidden');
+      await refresh();
+      if (result.projectId && result.restartRequired === false) {
+        showSection('autopilot');
+        $('autopilot-goal-center').focus();
+      }
+      return;
+    }
     await refreshProjects();
   } catch (error) { showProjectStatus(error?.message ?? String(error), 'danger'); }
 }

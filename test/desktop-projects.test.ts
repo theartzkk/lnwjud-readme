@@ -24,3 +24,12 @@ test('Project Memory view is bounded and makes missing-file initialization expli
   assert.match(renderer, /window\.artAgent\.initializeProjectMemory/);
   assert.match(renderer, /!Object\.values\(context\.memory \|\| \{\}\)\.includes\('missing'\)/);
 });
+
+test('selecting a registered project hot-switches the Desktop context without a restart', async () => {
+  const main = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  const renderer = await readFile(new URL('../desktop/renderer.js', import.meta.url), 'utf8');
+  assert.match(main, /selectProject[\s\S]*restartRequired: false/);
+  assert.match(renderer, /if \(result\.restartRequired === true\)/);
+  assert.match(renderer, /await refresh\(\);[\s\S]*showSection\('autopilot'\)/);
+  assert.match(renderer, /พร้อมรับ Goal/);
+});

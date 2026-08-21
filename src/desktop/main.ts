@@ -268,7 +268,7 @@ async function autopilotOverview() {
   const { config, workspace, manifest } = await currentAutopilot();
   const detected = await detectProject(workspace);
   const profile = selectAutopilotProfile(manifest, detected);
-  return { project: manifest, profile, capabilities: await detectLocalCapabilities(workspace), approvedScripts: detected.approvedScripts, executionEnabled: config.allowExec, allowWrite: config.allowWrite, tasks: await loadAutopilotTasks(config.dataDir, 12), artifacts: await listArtifacts(config.dataDir, 12) };
+  return { project: manifest, profile, capabilities: await detectLocalCapabilities(workspace), approvedScripts: detected.approvedScripts, approvedScriptAliases: detected.approvedScriptAliases ?? {}, executionEnabled: config.allowExec, allowWrite: config.allowWrite, tasks: await loadAutopilotTasks(config.dataDir, 12), artifacts: await listArtifacts(config.dataDir, 12) };
 }
 
 async function projectsOverview() {
@@ -514,7 +514,7 @@ function registerIpc(): void {
     const record = await openRegisteredProject(config.dataDir, projectId);
     const stored = loadStoredSettings(config.dataDir);
     await saveStoredSettings(config.dataDir, { ...stored, defaultWorkspace: record.workspacePath });
-    return { changed: true, restartRequired: true, projectId: record.projectId, workspace: record.workspacePath };
+    return { changed: true, restartRequired: false, projectId: record.projectId, workspace: record.workspacePath };
   });
 
   ipcMain.handle(DESKTOP_IPC.locateProject, async (_event, projectId: unknown) => {
@@ -527,7 +527,7 @@ function registerIpc(): void {
     const record = await registerProject(config.dataDir, selected);
     const stored = loadStoredSettings(config.dataDir);
     await saveStoredSettings(config.dataDir, { ...stored, defaultWorkspace: record.workspacePath });
-    return { changed: true, restartRequired: true, projectId: record.projectId, workspace: record.workspacePath };
+    return { changed: true, restartRequired: false, projectId: record.projectId, workspace: record.workspacePath };
   });
 
   ipcMain.handle(DESKTOP_IPC.chooseWorkspace, async () => {
@@ -537,7 +537,7 @@ function registerIpc(): void {
     const record = await registerProject(config.dataDir, selected);
     const stored = loadStoredSettings(config.dataDir);
     await saveStoredSettings(config.dataDir, { ...stored, defaultWorkspace: record.workspacePath });
-    return { changed: true, projectId: record.projectId, workspace: record.workspacePath, restartRequired: true };
+    return { changed: true, projectId: record.projectId, workspace: record.workspacePath, restartRequired: false };
   });
 
   ipcMain.handle(DESKTOP_IPC.setPermissions, async (_event, input: unknown) => {

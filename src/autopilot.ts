@@ -107,7 +107,7 @@ export function createTaskContract(input: { projectId: string; goal: string; acc
 
 export const AUTOPILOT_PROFILES: Record<AutopilotProfileId, AutopilotProfile> = {
   'bay-excuse-x-php': { id: 'bay-excuse-x-php', label: 'BAY EXCUSE X PHP/Web', capabilities: ['project-memory:read', 'checkpoint:create', 'git:read', 'php:lint', 'artifact:write'], packageCommands: ['test', 'lint'], additionalGates: ['php:lint'], defaultArtifact: 'release-candidate', description: 'Source audit, PHP lint, tests, QA hooks, package and rollback contract.' },
-  'teacher-video-remotion': { id: 'teacher-video-remotion', label: 'Teacher Video / Remotion', capabilities: ['project-memory:read', 'checkpoint:create', 'git:read', 'package:test', 'package:build', 'ffmpeg:probe', 'artifact:write'], packageCommands: ['test', 'build'], additionalGates: ['ffmpeg:probe'], defaultArtifact: 'video-preview', description: 'Asset audit, timeline, preview render, frame extraction and final render contract.' },
+  'teacher-video-remotion': { id: 'teacher-video-remotion', label: 'Teacher Video / Remotion', capabilities: ['project-memory:read', 'checkpoint:create', 'git:read', 'package:test', 'package:typecheck', 'package:build', 'ffmpeg:probe', 'artifact:write'], packageCommands: ['test', 'typecheck', 'build'], additionalGates: ['ffmpeg:probe'], defaultArtifact: 'video-preview', description: 'Asset audit, timeline, preview render, frame extraction and final render contract.' },
   'school-website': { id: 'school-website', label: 'School Website', capabilities: ['project-memory:read', 'checkpoint:create', 'git:read', 'package:test', 'package:build', 'artifact:write'], packageCommands: ['test', 'build'], additionalGates: [], defaultArtifact: 'release-candidate', description: 'Web assets, mobile/desktop QA, staging preview, publish approval and rollback.' },
   'general-node': { id: 'general-node', label: 'General Node Project', capabilities: ['project-memory:read', 'checkpoint:create', 'git:read', 'package:test', 'package:typecheck', 'package:build', 'artifact:write'], packageCommands: ['test', 'typecheck', 'build'], additionalGates: [], defaultArtifact: 'qa-report', description: 'Bounded local test, typecheck and build loop for a Node project.' },
 };
@@ -200,6 +200,12 @@ export class AutopilotRunner {
     const contract = createTaskContract({ projectId: this.options.manifest.projectId, goal: input.goal, acceptanceCriteria: input.acceptanceCriteria, allowedCapabilities: profile.capabilities, riskClass: 'routine', requiredApproval: false, expectedArtifact: profile.defaultArtifact, assignedDevice: this.options.deviceId });
     this.records.set(contract.taskId, contract);
     await this.persist(contract);
+    if (!this.options.allowExec) {
+      const blocked = stateUpdate(contract, 'FAILED', { error: 'Approved local execution is disabled' });
+      this.records.set(contract.taskId, blocked);
+      await this.persist(blocked);
+      return { contract: blocked, profile, contextLoaded: false, checkpoint: null, gates: [], artifact: null, continuity: null };
+    }
     return this.execute(contract, profile, detected);
   }
 
@@ -256,14 +262,19 @@ export class AutopilotRunner {
       ];
       for (const spec of specs) {
         if (!profile.capabilities.includes(spec.capability)) { gates.push({ id: spec.id, status: 'SKIP', attempts: 0, summary: 'Capability is not enabled by the selected profile' }); continue; }
-        if (spec.command && !detected.approvedScripts.includes(spec.command)) { gates.push({ id: spec.id, status: 'SKIP', attempts: 0, summary: `Approved ${spec.command} script is not present` }); continue; }
+        const actualCommand = spec.command === 'typecheck' && detected.approvedScriptAliases?.typecheck
+          ? detected.approvedScriptAliases.typecheck
+          : spec.command;
+        const aliasPresent = spec.command === 'typecheck' && Boolean(detected.approvedScriptAliases?.typecheck);
+        const commandPresent = !spec.command || detected.approvedScripts.includes(spec.command) || aliasPresent;
+        if (!commandPresent) { gates.push({ id: spec.id, status: 'SKIP', attempts: 0, summary: `Approved ${spec.command} script is not present` }); continue; }
         let attempts = 0; let result = { code: -1, stdout: '', stderr: '' };
         let fixedUnavailable = false;
         while (attempts < 2) {
           attempts += 1;
           const fixed = spec.command ? null : await runFixedCapability(this.options.workspace, spec.capability, this.options.maxReadBytes);
           if (fixed && !fixed.available) { fixedUnavailable = true; result = { code: 0, stdout: '', stderr: '' }; break; }
-          result = fixed ?? await runPackageScript(this.options.workspace, detected.packageManager ?? undefined, spec.command!, safeExecutionEnvironment());
+          result = fixed ?? await runPackageScript(this.options.workspace, detected.packageManager ?? undefined, actualCommand!, safeExecutionEnvironment());
           if (result.code === 0) break;
           if (attempts === 1) { contract = stateUpdate(contract, 'RETRYING', { retryCount: 1 }); this.records.set(contract.taskId, contract); await this.persist(contract); }
         }

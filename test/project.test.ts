@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -27,6 +27,16 @@ test('project profile detects package manager and approved scripts without depen
   assert.equal(profile.packageManager, 'pnpm');
   assert.deepEqual(profile.approvedScripts, ['test', 'build']);
   assert.doesNotMatch(JSON.stringify(profile), /deploy|sensitive-internal-package-name|secret-deploy-command/);
+});
+
+test('project profile maps the bounded Remotion check script to the typecheck gate', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'art-agent-project-check-'));
+  try {
+    await writeFile(join(root, 'package.json'), JSON.stringify({ packageManager: 'pnpm@10.0.0', scripts: { check: 'tsc --noEmit', build: 'remotion render' } }));
+    const profile = await detectProject(root);
+    assert.deepEqual(profile.approvedScripts, ['build']);
+    assert.deepEqual(profile.approvedScriptAliases, { typecheck: 'check' });
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test('project profile recognizes mixed ecosystems but ignores manifest symlinks escaping the workspace', async (t) => {

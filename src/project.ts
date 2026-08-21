@@ -9,6 +9,8 @@ export interface ProjectProfile {
   manifests: string[];
   packageManager: string | null;
   approvedScripts: string[];
+  /** Safe semantic aliases, e.g. a project's `check` script as typecheck. */
+  approvedScriptAliases?: Partial<Record<'typecheck', 'check'>>;
   warnings: string[];
 }
 
@@ -36,6 +38,7 @@ export async function detectProject(workspace: string): Promise<ProjectProfile> 
   const warnings: string[] = [];
   let packageManager: string | null = null;
   let approvedScripts: string[] = [];
+  let approvedScriptAliases: ProjectProfile['approvedScriptAliases'] = {};
 
   if (await safeExists(workspace, 'package.json')) {
     ecosystems.push('node');
@@ -47,6 +50,9 @@ export async function detectProject(workspace: string): Promise<ProjectProfile> 
       };
       packageManager = packageManagerName(parsed.packageManager);
       approvedScripts = APPROVED_NODE_SCRIPTS.filter((name) => typeof parsed.scripts?.[name] === 'string');
+      if (typeof parsed.scripts?.typecheck !== 'string' && typeof parsed.scripts?.check === 'string') {
+        approvedScriptAliases = { typecheck: 'check' };
+      }
     } catch {
       warnings.push('package.json is present but could not be parsed safely');
     }
@@ -93,6 +99,7 @@ export async function detectProject(workspace: string): Promise<ProjectProfile> 
     manifests,
     packageManager,
     approvedScripts,
+    ...(Object.keys(approvedScriptAliases).length > 0 ? { approvedScriptAliases } : {}),
     warnings,
   };
 }

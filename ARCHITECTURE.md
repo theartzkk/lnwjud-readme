@@ -43,6 +43,9 @@
 - **M3E enrollment:** the existing `HubEnrollmentService`/router owns bounded pairing, owner bootstrap closure, device binding, token rotation/revocation, rate limiting, and project membership. `hub/public/enrollment.php` is a separate mutation front controller and is never dispatched by browser Hub Read.
 - **M3E-FINAL credential boundary:** macOS uses `/usr/bin/security` Keychain commands with fixed argv and secret stdin; Windows uses a fixed native Credential Manager P/Invoke script through non-interactive PowerShell with request data on stdin. Unsupported platforms fail closed; there is no plaintext-file fallback.
 - **M3E-FINAL Desktop boundary:** preload exposes only enrollment state/pair/rotate/revoke high-level IPC. Renderer receives sanitized device metadata and never receives a credential, filesystem access, shell, environment, or raw process surface.
+- **Real-project Desktop workflow:** the device-local registry maps the real BAY EXCUSE X (`php`) and Teacher Evaluation Video (`remotion`) manifests to local workspaces. Selection updates the stored workspace immediately; the Desktop reloads the same runner/context without a restart, then routes the user to the bounded Goal entry point.
+- **Project-specific safe gates:** Teacher's existing `check` script is recognized only as a semantic `typecheck` alias and invoked through the existing fixed package-manager argv path. BAY uses the bounded PHP lint gate. User Goal text never becomes a command.
+- **Current operational state:** ReadyIDC is active at DB schema version 3 with M3E.1/M3E.2, one indexed project, one enrolled Mac device and a closed bootstrap. The second Teacher clone remains unregistered to avoid duplicate local identity.
 
 ## FUTURE COMPONENTS
 
@@ -54,7 +57,7 @@
 - Signed/notarized distribution packaging and Windows Squirrel installer field validation.
 - Real OpenAI Secure MCP Tunnel control-plane E2E verification.
 - M3C2 hosting control-plane design and a separately reviewed deployment path.
-- **AWH Web Control Center:** Home/Projects/Tasks/Artifacts/Devices/Builds/Audit are presentation sections. Web remains read/review-only; Local Autopilot execution is Desktop-only.
+- **AWH Web Control Center:** Home/Projects/Tasks/Artifacts/Devices/Builds/Audit are presentation sections. Web remains read/review-only; Local Autopilot execution is Desktop-only. Real-project command submission through mobile/Hub is not deployed in this pass.
 - **Desktop smoke:** the harness uses a temporary AWH data directory and safe child environment. A pre-marker macOS AppKit/LaunchServices failure from the Codex GUI sandbox, including `_RegisterApplication`/`SIGABRT` or LaunchServices `-10822`, is classified as `GUI_SANDBOX_BLOCKED`, not `AWH_APP_FAILED` and never PASS. A logged-in macOS GUI LaunchServices run outside Codex is the runtime proof and has produced a valid `stage: passed` marker with the primary UI paths and Cmd+K routing checked.
 
 ## HUB DATA BOUNDARY
@@ -122,9 +125,9 @@
 - The isolated Nginx enrollment location disables only inherited Basic Auth for
   the Bearer API path; Basic Auth still protects all static preview assets and
   M3D browser reads. Enrollment rejects browser Origin and is not a browser UI.
-- M3E status is READY FOR PRODUCTION VALIDATION, not CLOSED. Each real device
-  must persist an independent OS credential and sanitized Hub Read must verify
-  two enrolled devices before the milestone closes.
+- M3E is operational for the enrolled Mac and remains open only for the
+  independent Windows field device; closure still requires native Windows
+  Credential Manager proof and sanitized `devices = 2`.
 
 ## AUTOPILOT SAFETY CONTRACT
 
@@ -132,6 +135,8 @@
 - The runner requires a registered portable project and canonical workspace match.
 - Command selection comes from profile capabilities and `detectProject` approved
   scripts; user input never becomes executable, argv, cwd, env, or shell text.
+- Both asynchronous `start()` and synchronous dogfood `runNow()` enforce the
+  `allowExec` permission before any project gate executes.
 - The runner is local-only and respects `AWH_ALLOW_EXEC`; disabled execution fails
   closed. Browser/Web has no task mutation or execution endpoint.
 - Outputs are bounded, redacted in summaries, and not persisted as task metadata.

@@ -30,22 +30,22 @@ local control, explicit permissions, and recoverable changes.
 - M3C1 PHP/SQLite Hub read foundation and M3D same-origin web gateway are operational on the VPS; field verification confirms live HTTPS access on desktop and iPhone.
 - M3D field state: Connected read-only, one indexed project, and PHP-FPM + SQLite + Nginx gateway operational.
 - M3C2 hosting foundation and VPS bootstrap are documented design/templates only.
-- M3E Secure Device Enrollment Foundation and M3E.1 production migration safety are implemented and tested.
-- M3E.1 additive SQLite migration safety is implemented locally with preflight, ledger, idempotent rerun, rollback testing, and a reviewed VPS runbook; it has not been run on the VPS.
-- M3E.2 Secure Enrollment API and local device client are implemented locally only; the API is separate from browser Hub Read.
-- M3E-FINAL local implementation is READY FOR PRODUCTION VALIDATION: macOS Keychain and Windows Credential Manager adapters, Desktop enrollment UX, additive M3E.2 migration package, isolated Nginx/PHP-FPM templates, and rollback runbook are present and locally tested.
-- M3E production approval gates are locally hardened: first-owner bootstrap now creates owner membership and one initial pairing code atomically; the local client prepares and reuses one OS-stored nonce through provisioning and first-device enrollment; the approval-gated bootstrap orchestrator locks the clean release, validates canonical local assets and compiled runtime, runs the deployment dry-run, verifies the protected external perimeter plus trusted internal Hub health, and completes read-only VPS preflight before any nonce provisioning; preflight distinguishes `DB_WRITE_READY`, `DB_WRITE_PROVISION_REQUIRED`, and `DB_WRITE_BLOCKED`; Nginx insertion is restricted to one authoritative HTTPS server block; and rollback restores verified SQLite data and exact filesystem metadata before validation/reload.
+- M3E.1 additive SQLite migration and M3E.2 enrollment API are deployed on the verified ReadyIDC production Hub; the database is at schema version 3 with the M3D project and memory metadata preserved.
+- M3E-FINAL is operational for the enrolled Mac: owner bootstrap is closed, the Mac credential is stored in macOS Keychain, and the owner-only pairing UI is ready for a separate Windows device. Browser Hub Read remains sanitized and read-only.
+- ReadyIDC production is active with one enrolled Mac device (`devices=1`). The legacy Google Cloud host remains backup/legacy only and is not part of the current runtime path.
 - Autopilot v0.5 local-first product path is implemented: first-run trusted-device metadata, goal-based Task Contract, reusable project profiles, bounded local runner, QA artifacts, continuity checkpoints, Artifact Center, and Desktop Task Center.
 - A local end-to-end dogfood passed from goal through Project Context, checkpoint, allowlisted test/typecheck/build gates, QA artifact, continuity checkpoint, and discovery from a second device data directory.
 - The registered real AWH project completed the `general-node` profile locally; test/typecheck/build gates passed, the disposable FFmpeg/FFprobe frame-sequence → MP4 E2E passed with 8 ordered frames at 5 FPS, H.264/yuv420p output, and completion continuity metadata is discoverable from a second data directory.
+- The device-local registry now contains BAY EXCUSE X (`d1e48976-cfde-479d-9a9c-f3b0ab5ec4fc`, type `php`) and Teacher Evaluation Video (`dad35312-06d6-488b-9ed2-f4886d5394ac`, type `remotion`) in addition to AWH. Their portable manifests are path-independent and no duplicate identity was registered.
+- Both real projects passed a read/QA-only AWH Autopilot dogfood: context binding, profile selection, fixed safe gates, bounded artifact creation, and continuity checkpoint creation. BAY passed PHP lint; Teacher passed its bounded `check` typecheck alias and FFmpeg/FFprobe probe. No project source was modified by dogfood.
 - Release identity 0.5.0 is resolved from the package source of truth; local structural bundles were produced as `AWH.app` (darwin-x64) and `AWH.exe` inside the win32-x64 portable bundle. Packaged ASAR/runtime identity and the Mac non-GUI remote-readonly probe passed; Windows execution and Squirrel installer creation remain Windows field gates.
-- M3E is not CLOSED: no real Mac/Windows pair has been performed in this local milestone, and the verified production device count is not yet `2`.
+- M3E remains open only for the Windows field device: the Mac is active, the Windows Credential Manager path still needs native Windows proof, and production `devices=2` has not yet been verified.
 
 ## Current limitations
 
-- Real VPS enrollment deployment, field Keychain/Credential Manager verification, account sync, and source revision sync are not complete.
+- Windows field enrollment and independent Credential Manager verification, account sync, and source revision sync are not complete.
 - The disposable native macOS Keychain probe reached `/usr/bin/security` but this session returned an OS authorization failure; no credential value was retained or logged. Windows native runtime remains unverified on Mac.
-- No VPS mutation or deployment has occurred. A read-only `awh-vps` reconciliation resolved the effective Nginx DB authority to `/var/lib/awh-hub/awh.sqlite`: integrity is `ok`, foreign-key check is empty, `user_version=2`, ledger `m3e.1-enrollment`, and the one indexed project matches the canonical AWH identity. The current `root:www-data 640` database is classified as `DB_WRITE_PROVISION_REQUIRED` (not a source failure); the `awh-hub` service account, backup destination, enrollment route, and pool are first-deploy provisioning states, with backup classified `BACKUP_PROVISION_REQUIRED`.
+- No new M4 control-plane/schema mutation was performed in this pass. ReadyIDC remains the active M3D/M3E production authority with DB v3, clean integrity/FK state, one indexed project, and one enrolled Mac; new task/worker/mobile APIs still require a separate bounded production approval.
 - Mac ↔ Hub ↔ Windows continuity is a goal, not a verified service.
 - Large assets require a future separate asset layer.
 - Local macOS x64 and Windows x64 portable packaging is complete structurally, but the Mac app is unsigned/not notarized, Windows runtime/installer QA requires Windows, and no production distribution claim is made.
@@ -55,6 +55,6 @@ local control, explicit permissions, and recoverable changes.
 - AI provider adapters are local integration points; no AWH-owned model is bundled.
 - VPS live behavior is recorded from field verification; credentials, passwords, public IPs, and SSH details remain intentionally outside Project Memory.
 - M3D Hub Read remains read-only. M3E does not enable source writes, remote execution, synchronization, browser bearer tokens, or MCP proxying.
-- M3E-FINAL preserves those boundaries; production validation is the next human-gated action.
+- M3E-FINAL preserves those boundaries; Windows field enrollment is the remaining device gate.
 - Autopilot does not make GitHub Actions, browser shell, remote execution, source synchronization, MCP proxying, or unrestricted commands available. Browser tasks/artifacts remain review-only placeholders until a future sanitized Hub read contract exists.
-- AWH v0.5 is locally usable for bounded routine project QA, but production publish, DB migration, destructive operations, credential changes, and Project Memory writes remain explicit human-approval work.
+- AWH is locally usable for bounded routine work on the two real projects. Production publish, DB/control-plane migration, destructive operations, credential changes, and Project Memory writes remain explicit human-approval work.
