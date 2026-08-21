@@ -13,6 +13,7 @@ test('desktop renderer security preferences stay isolated and sandboxed', () => 
 test('desktop IPC exposes fixed high-level channel names only', () => {
   assert.deepEqual(Object.keys(DESKTOP_IPC).sort(), [
     'chooseWorkspace',
+    'enrollmentIssuePairing',
     'initializeProject',
     'initializeProjectMemory',
     'locateProject',
@@ -55,6 +56,8 @@ test('desktop HTML has a restrictive CSP, remote controls and no inline script',
   assert.match(html, /data-section="projects"/);
   assert.match(html, /data-section="enrollment"/);
   assert.match(html, /id="enrollment-code"/);
+  assert.match(html, /id="enrollment-issue-pairing"/);
+  assert.match(html, /สร้างรหัสเชื่อมต่อ/);
   assert.match(html, /Pair this device/);
   assert.match(html, /Rotate credential/);
   assert.match(html, /Revoke device credential/);
@@ -138,17 +141,22 @@ test('desktop enrollment UX uses fixed IPC and never exposes credentials', async
   const preload = await readFile(new URL('../desktop/preload.cjs', import.meta.url), 'utf8');
   const renderer = await readFile(new URL('../desktop/renderer.js', import.meta.url), 'utf8');
   const html = await readFile(new URL('../desktop/index.html', import.meta.url), 'utf8');
-  for (const channel of ['enrollmentState', 'enrollmentPair', 'enrollmentRotate', 'enrollmentRevoke']) {
+  for (const channel of ['enrollmentState', 'enrollmentPair', 'enrollmentIssuePairing', 'enrollmentRotate', 'enrollmentRevoke']) {
     assert.match(main, new RegExp(`ipcMain\\.handle\\(DESKTOP_IPC\\.${channel}`));
     assert.match(preload, new RegExp(`${channel}:`));
   }
   assert.match(main, /createProductionCredentialStore/);
   assert.match(main, /readLocalEnrollmentState/);
+  assert.match(main, /selectedEnrollmentProjectId/);
+  assert.match(main, /issuePairingCode/);
   assert.match(renderer, /window\.artAgent\.pairDevice/);
+  assert.match(renderer, /window\.artAgent\.createDeviceCode/);
+  assert.match(renderer, /showOwnerCode/);
+  assert.match(renderer, /if \(result\?\.ok === true\) \{ await refreshProjects\(\); await refreshAutopilot\(\); \}/);
   assert.match(renderer, /window\.artAgent\.rotateDeviceCredential/);
   assert.match(renderer, /window\.artAgent\.revokeDeviceCredential/);
   assert.match(renderer, /enrollment-device-id/);
-  assert.doesNotMatch(renderer, /accessToken|Authorization|tokenHash|pairingCode/);
+  assert.doesNotMatch(renderer, /accessToken|Authorization|tokenHash/);
   assert.doesNotMatch(preload, /process\.env|readFile|writeFile|spawn|shell\.openPath/);
   assert.doesNotMatch(html, /type="password"/i);
 });

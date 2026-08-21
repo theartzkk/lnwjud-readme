@@ -200,6 +200,28 @@ async function revokeDevice() {
   catch (error) { return enrollmentError(error); }
 }
 
+async function selectedEnrollmentProjectId(config: ReturnType<typeof loadConfig>): Promise<string> {
+  if (!hasExplicitWorkspace(config.dataDir)) throw new ProjectRegistryError('A registered project must be selected before issuing a pairing code', 'PROJECT_WORKSPACE_UNAVAILABLE');
+  const workspace = await canonicalWorkspace(config.workspace);
+  const manifest = await readProjectManifest(workspace);
+  const resolved = await resolveRegisteredProject(config.dataDir, manifest.projectId);
+  if (resolved.workspacePath !== workspace) throw new ProjectRegistryError('Selected project workspace does not match the registry', 'PROJECT_ID_CONFLICT');
+  return resolved.manifest.projectId;
+}
+
+async function issueDevicePairingCode() {
+  try {
+    const config = loadConfig();
+    const state = await readLocalEnrollmentState(config.dataDir, createProductionCredentialStore());
+    if (!state.enrolled) throw new EnrollmentClientError('Device is not enrolled', 'DEVICE_NOT_ENROLLED');
+    const projectId = await selectedEnrollmentProjectId(config);
+    const result = await enrollmentClient(config).issuePairingCode([projectId], 600);
+    // The IPC shape uses a neutral field name so the renderer never receives
+    // token/credential-shaped fields. The code remains memory-only UI data.
+    return { ok: true, hubConfigured: true, code: result.pairingCode, expiresAt: result.expiresAt, projectCount: result.projectCount };
+  } catch (error) { return enrollmentError(error); }
+}
+
 async function firstRunState() {
   const config = loadConfig();
   const session = await readOwnerSession(config.dataDir).catch(() => null);
@@ -538,6 +560,7 @@ function registerIpc(): void {
 
   ipcMain.handle(DESKTOP_IPC.enrollmentState, async () => enrollmentState());
   ipcMain.handle(DESKTOP_IPC.enrollmentPair, async (_event, pairingCode: unknown) => pairDevice(pairingCode));
+  ipcMain.handle(DESKTOP_IPC.enrollmentIssuePairing, async () => issueDevicePairingCode());
   ipcMain.handle(DESKTOP_IPC.enrollmentRotate, async () => rotateDevice());
   ipcMain.handle(DESKTOP_IPC.enrollmentRevoke, async () => revokeDevice());
   ipcMain.handle(DESKTOP_IPC.firstRun, async () => firstRunState());

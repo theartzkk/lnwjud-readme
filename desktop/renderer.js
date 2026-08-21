@@ -128,8 +128,10 @@ function renderEnrollment(data) {
   $('enrollment-platform').textContent = data?.platform || '—';
   $('enrollment-message').textContent = data?.ok === false ? data.message : enrolled ? 'This device has an active local credential.' : 'Enter a short-lived pairing code issued by the owner.';
   $('enrollment-pair').disabled = !connected || enrolled;
+  $('enrollment-issue-pairing').disabled = !connected || !enrolled;
   $('enrollment-rotate').disabled = !connected || !enrolled;
   $('enrollment-revoke').disabled = !connected || !enrolled;
+  if (!enrolled) clearOwnerCode();
 }
 
 async function refreshEnrollment() {
@@ -138,13 +140,54 @@ async function refreshEnrollment() {
 }
 
 async function runEnrollmentAction(action) {
-  for (const id of ['enrollment-pair', 'enrollment-rotate', 'enrollment-revoke']) $(id).disabled = true;
+  clearOwnerCode();
+  for (const id of ['enrollment-pair', 'enrollment-issue-pairing', 'enrollment-rotate', 'enrollment-revoke']) $(id).disabled = true;
   try {
     const result = await action();
     if (result?.ok !== true) $('enrollment-message').textContent = result?.message || 'Enrollment action was rejected';
     await refreshEnrollment();
+    if (result?.ok === true) { await refreshProjects(); await refreshAutopilot(); }
   } catch (error) {
     $('enrollment-message').textContent = 'Enrollment action was rejected';
+    await refreshEnrollment();
+  }
+}
+
+let ownerCodeExpiryTimer = null;
+function clearOwnerCode() {
+  if (ownerCodeExpiryTimer !== null) { clearTimeout(ownerCodeExpiryTimer); ownerCodeExpiryTimer = null; }
+  $('enrollment-pairing-code').textContent = '';
+  $('enrollment-pairing-expiry').textContent = '';
+  $('enrollment-pairing-result').hidden = true;
+}
+
+function showOwnerCode(data) {
+  const expiry = Date.parse(data?.expiresAt || '');
+  if (typeof data?.code !== 'string' || !/^[A-Za-z0-9_-]{32,128}$/.test(data.code) || !Number.isFinite(expiry) || expiry <= Date.now()) {
+    clearOwnerCode();
+    $('enrollment-message').textContent = 'รหัสเชื่อมต่อที่ได้รับไม่ปลอดภัย จึงไม่แสดงผล';
+    return;
+  }
+  $('enrollment-pairing-code').textContent = data.code;
+  $('enrollment-pairing-expiry').textContent = `หมดอายุ ${new Date(expiry).toLocaleString('th-TH')}`;
+  $('enrollment-pairing-result').hidden = false;
+  $('enrollment-message').textContent = 'สร้างรหัสแล้ว — แสดงเฉพาะในหน้าจอนี้และจะไม่ถูกบันทึก';
+  ownerCodeExpiryTimer = setTimeout(() => {
+    clearOwnerCode();
+    $('enrollment-message').textContent = 'รหัสเชื่อมต่อหมดอายุแล้ว สร้างรหัสใหม่ได้เมื่อจำเป็น';
+  }, Math.max(0, expiry - Date.now()));
+}
+
+async function issueOwnerCode() {
+  $('enrollment-issue-pairing').disabled = true;
+  $('enrollment-message').textContent = 'กำลังสร้างรหัสเชื่อมต่อแบบใช้ครั้งเดียว...';
+  try {
+    const result = await window.artAgent.createDeviceCode();
+    if (result?.ok === true) showOwnerCode(result);
+    else $('enrollment-message').textContent = result?.message || 'สร้างรหัสเชื่อมต่อไม่สำเร็จ';
+    await refreshEnrollment();
+  } catch {
+    $('enrollment-message').textContent = 'สร้างรหัสเชื่อมต่อไม่สำเร็จ';
     await refreshEnrollment();
   }
 }
@@ -337,6 +380,7 @@ $('save-permissions').addEventListener('click', async () => {
 $('remote-connect').addEventListener('click', () => runRemoteAction('connect'));
 $('remote-stop').addEventListener('click', () => runRemoteAction('stop'));
 $('enrollment-pair').addEventListener('click', () => runEnrollmentAction(() => window.artAgent.pairDevice($('enrollment-code').value.trim())));
+$('enrollment-issue-pairing').addEventListener('click', issueOwnerCode);
 $('enrollment-rotate').addEventListener('click', () => runEnrollmentAction(() => window.artAgent.rotateDeviceCredential()));
 $('enrollment-revoke').addEventListener('click', () => runEnrollmentAction(() => window.artAgent.revokeDeviceCredential()));
 $('trust-owner').addEventListener('click', async () => { const result = await window.artAgent.trustOwner($('owner-name').value.trim(), $('device-name').value.trim()); if (result?.ok) renderFirstRun(await window.artAgent.getFirstRun()); else $('welcome-summary').textContent = result?.message || 'ตั้งค่า trusted device ไม่สำเร็จ'; });

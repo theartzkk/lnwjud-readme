@@ -67,6 +67,53 @@ test('local enrollment client pairs with the existing device UUID and never retu
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('enrolled owner can issue a bounded pairing code without persisting the code', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awh-enroll-owner-'));
+  const store = new InMemoryCredentialStore();
+  const projectId = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
+  const ownerToken = 'owner-token-never-returned-to-ui';
+  const pairingCode = 'P'.repeat(43);
+  await store.set(DEVICE_TOKEN_CREDENTIAL_KEY, ownerToken);
+  try {
+    const client = new EnrollmentClient('https://hub.example/api/v1', root, store, async (input, init) => {
+      const request = new Request(input, init);
+      assert.equal(request.url, 'https://hub.example/api/v1/enrollment/pairing-codes');
+      assert.equal(request.method, 'POST');
+      assert.equal(request.headers.get('Authorization'), `Bearer ${ownerToken}`);
+      assert.equal(request.headers.get('Content-Type'), 'application/json');
+      assert.equal((init as RequestInit).credentials, 'omit');
+      assert.equal((init as RequestInit).cache, 'no-store');
+      const payload = JSON.parse(await request.text()) as Record<string, unknown>;
+      assert.deepEqual(payload, { schemaVersion: 1, projectIds: [projectId], ttlSeconds: 600 });
+      return new Response(JSON.stringify({ schemaVersion: 1, pairingCode, expiresAt: new Date(Date.now() + 600_000).toISOString(), projectCount: 1 }), { status: 200 });
+    });
+    const result = await client.issuePairingCode([projectId]);
+    assert.equal(result.pairingCode, pairingCode);
+    assert.equal(result.projectCount, 1);
+    assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY), ownerToken);
+    assert.equal(await store.get('awh/pairing-code'), null);
+    assert.equal('accessToken' in result, false);
+    assert.equal('Authorization' in result, false);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('owner pairing issuance fails closed for missing credentials, invalid scope and malformed response', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awh-enroll-owner-'));
+  const projectId = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
+  try {
+    const missing = new EnrollmentClient('https://hub.example/api/v1', root, new InMemoryCredentialStore(), async () => {
+      throw new Error('request must not run');
+    });
+    await assert.rejects(() => missing.issuePairingCode([projectId]), (error: unknown) => error instanceof EnrollmentClientError && error.code === 'DEVICE_NOT_ENROLLED');
+
+    const store = new InMemoryCredentialStore(); await store.set(DEVICE_TOKEN_CREDENTIAL_KEY, 'owner-token');
+    const malformed = new EnrollmentClient('https://hub.example/api/v1', root, store, async () => new Response(JSON.stringify({ pairingCode: 'too-short', expiresAt: new Date(Date.now() + 600_000).toISOString(), projectCount: 1 }), { status: 200 }));
+    await assert.rejects(() => malformed.issuePairingCode([projectId]), (error: unknown) => error instanceof EnrollmentClientError && error.code === 'RESPONSE_INVALID');
+    await assert.rejects(() => malformed.issuePairingCode(['not-a-project-id']), (error: unknown) => error instanceof EnrollmentClientError && error.code === 'PROJECT_SCOPE_INVALID');
+    assert.equal(await store.get('awh/pairing-code'), null);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('local enrollment client rotates only its own stored credential and rejects insecure/arbitrary API URLs', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awh-enroll-client-'));
   try {

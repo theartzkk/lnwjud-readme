@@ -23,6 +23,12 @@ export interface SanitizedEnrollmentState {
   projectCount: number | null;
 }
 
+export interface OwnerPairingCode {
+  pairingCode: string;
+  expiresAt: string;
+  projectCount: number;
+}
+
 export async function readLocalEnrollmentState(dataDir: string, credentialStore: CredentialStore): Promise<SanitizedEnrollmentState> {
   const identity = await loadOrCreateDeviceIdentity(dataDir);
   const token = await credentialStore.get(DEVICE_TOKEN_CREDENTIAL_KEY);
@@ -86,6 +92,28 @@ export class EnrollmentClient {
     if (typeof response.accessToken !== 'string' || typeof response.expiresAt !== 'string') throw new EnrollmentClientError('Enrollment response did not contain a credential', 'RESPONSE_INVALID');
     await this.credentialStore.set(DEVICE_TOKEN_CREDENTIAL_KEY, response.accessToken);
     return this.sanitize(identity, response);
+  }
+
+  /**
+   * Issue one short-lived pairing code for projects owned by this device's
+   * owner. The code is intentionally returned to the immediate caller only;
+   * it is never written to the credential store or local settings.
+   */
+  async issuePairingCode(projectIds: string[], ttlSeconds = 600): Promise<OwnerPairingCode> {
+    const token = await this.credentialStore.get(DEVICE_TOKEN_CREDENTIAL_KEY);
+    if (!token) throw new EnrollmentClientError('Device is not enrolled', 'DEVICE_NOT_ENROLLED');
+    if (!Array.isArray(projectIds) || projectIds.length < 1 || projectIds.length > 16 || projectIds.some((projectId) => !UUID_V4.test(projectId))) {
+      throw new EnrollmentClientError('Project scope is invalid', 'PROJECT_SCOPE_INVALID');
+    }
+    if (!Number.isInteger(ttlSeconds) || ttlSeconds < 1 || ttlSeconds > 600) throw new EnrollmentClientError('Pairing expiry is invalid', 'PAIRING_TTL_INVALID');
+    const response = await this.post('/enrollment/pairing-codes', { schemaVersion: 1, projectIds, ttlSeconds }, token);
+    const pairingCode = typeof response.pairingCode === 'string' ? response.pairingCode : '';
+    const expiresAt = typeof response.expiresAt === 'string' ? response.expiresAt : '';
+    const projectCount = typeof response.projectCount === 'number' ? response.projectCount : 0;
+    if (!/^[A-Za-z0-9_-]{32,128}$/.test(pairingCode) || !Number.isInteger(projectCount) || projectCount < 1 || !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now()) {
+      throw new EnrollmentClientError('Pairing response is invalid', 'RESPONSE_INVALID');
+    }
+    return { pairingCode, expiresAt, projectCount };
   }
 
   /**
