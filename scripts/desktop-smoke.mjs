@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 function safeEnvironment(dataDir) {
-  const allowed = ['PATH', 'PATHEXT', 'SystemRoot', 'SYSTEMROOT', 'TMP', 'TEMP', 'TMPDIR', 'HOME', 'USER', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'LANG', 'LC_ALL', 'TERM'];
+  const allowed = ['PATH', 'PATHEXT', 'SystemRoot', 'SYSTEMROOT', 'TMP', 'TEMP', 'TMPDIR', 'HOME', 'USER', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'LANG', 'LC_ALL', 'TERM', 'DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'XDG_RUNTIME_DIR'];
   const env = { AWH_DATA_DIR: dataDir, AWH_WORKSPACE: ROOT, AWH_ALLOW_WRITE: '0', AWH_ALLOW_EXEC: '0', AWH_ALLOW_CODEX: '0' };
   for (const key of allowed) if (process.env[key] !== undefined) env[key] = process.env[key];
   return env;

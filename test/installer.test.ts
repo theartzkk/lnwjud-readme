@@ -20,7 +20,7 @@ test('AWH packaging configuration keeps Squirrel per-user behavior and public ar
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
   };
-  const forge = await readFile(new URL('../forge.config.cjs', import.meta.url), 'utf8');
+  const forge = (await readFile(new URL('../forge.config.cjs', import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
   const desktop = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
   const packagedMcpVerifier = await readFile(new URL('../.github/scripts/verify-packaged-mcp.ps1', import.meta.url), 'utf8');
 

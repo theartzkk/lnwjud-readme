@@ -73,7 +73,7 @@ test('desktop HTML has a restrictive CSP, remote controls and no inline script',
 });
 
 test('desktop remote lifecycle stays behind confirmation-gated high-level IPC', async () => {
-  const main = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  const main = (await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
   const preload = await readFile(new URL('../desktop/preload.cjs', import.meta.url), 'utf8');
   const renderer = await readFile(new URL('../desktop/renderer.js', import.meta.url), 'utf8');
   const html = await readFile(new URL('../desktop/index.html', import.meta.url), 'utf8');
@@ -197,7 +197,7 @@ test('desktop first-run trust stores only bounded identity/session metadata', as
 });
 
 test('desktop smoke bootstrap activates a clean AWH data directory before writing its first marker', async () => {
-  const main = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  const main = (await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
   const marker = main.indexOf('async function writeSmokeMarker');
   const ensure = main.indexOf('ensureAwhDataDirectoryActive(config.dataDir)', marker);
   const mkdir = main.indexOf('await mkdir(config.dataDir', marker);
@@ -211,6 +211,7 @@ test('desktop smoke harness isolates data, uses normal macOS LaunchServices, and
   const main = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
   assert.match(smoke, /AWH_DATA_DIR/);
   assert.match(smoke, /AWH_ALLOW_EXEC: '0'/);
+  assert.match(smoke, /'DISPLAY'/);
   assert.match(smoke, /shell: false/);
   assert.match(smoke, /\/usr\/bin\/open/);
   assert.match(smoke, /GUI_SANDBOX_BLOCKED/);

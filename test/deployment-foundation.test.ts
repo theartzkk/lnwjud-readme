@@ -9,6 +9,7 @@ import test from 'node:test';
 
 const ROOT = process.cwd();
 const execFile = promisify(execFileCallback);
+const readText = async (path: string): Promise<string> => (await readFile(path, 'utf8')).replace(/\r\n/g, '\n');
 
 test('local deployment assets are dry-run by default and require explicit reviewed deployment', async () => {
   const deploy = await readFile(join(ROOT, 'deploy/awh-web/deploy-preview.sh'), 'utf8');
@@ -29,7 +30,7 @@ test('local deployment assets are dry-run by default and require explicit review
   assert.match(health, /--proto '=https'/);
 });
 
-test('M4 control-plane activation package is executable in a local dry-run without SSH', async () => {
+test('M4 control-plane activation package is executable in a local dry-run without SSH', { skip: process.platform === 'win32' }, async () => {
   const controlBuild = await execFile(process.execPath, ['--import', 'tsx', 'scripts/build-web-preview.ts', '--control'], { cwd: ROOT, env: { ...process.env, AWH_PREVIEW_GENERATED_AT: '2026-08-21T00:00:00.000Z' } });
   assert.equal(controlBuild.stderr, '');
   await execFile(process.execPath, ['scripts/create-web-release-manifest.mjs', 'dist-web'], { cwd: ROOT, env: { ...process.env, AWH_RELEASE_ID: 'fixture-m4-release', AWH_PREVIEW_GENERATED_AT: '2026-08-21T00:00:00.000Z' } });
@@ -38,7 +39,7 @@ test('M4 control-plane activation package is executable in a local dry-run witho
   assert.match(result.stdout, /M4_DRY_RUN=PASS/);
   assert.match(result.stdout, /M4_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL/);
   assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /ssh|scp|sqlite3|systemctl|nginx -t/i);
-  const remote = await readFile(join(ROOT, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'), 'utf8');
+  const remote = await readText(join(ROOT, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'));
   assert.match(remote, /tar -xzf "\$REMOTE_STAGE" -C "\$RELEASE"/);
   assert.match(remote, /stage M3D_REGRESSION; verify_m3d/);
   assert.match(remote, /stage CONTROL_ROUTE; code=/);
@@ -46,14 +47,14 @@ test('M4 control-plane activation package is executable in a local dry-run witho
 });
 
 test('Hub data schema has explicit provenance and no workspace or content columns', async () => {
-  const schema = await readFile(join(ROOT, 'hub/schema.sql'), 'utf8');
+  const schema = await readText(join(ROOT, 'hub/schema.sql'));
   assert.match(schema, /provenance/);
   assert.match(schema, /observed_at/);
   assert.doesNotMatch(schema, /workspace_path|\bcontent\b/i);
 });
 
 test('Nginx Hub read gateway keeps the perimeter and PHP-FPM private', async () => {
-  const nginx = await readFile(join(ROOT, 'deploy/nginx/awh-preview.conf'), 'utf8');
+  const nginx = await readText(join(ROOT, 'deploy/nginx/awh-preview.conf'));
   assert.match(nginx, /auth_basic\s+"AWH Remote Preview"/);
   assert.match(nginx, /auth_basic_user_file\s+\/etc\/nginx\/\.awh-preview-users;/);
   assert.doesNotMatch(nginx, /\/etc\/awh-hub\/preview\.htpasswd/);
@@ -67,13 +68,13 @@ test('Nginx Hub read gateway keeps the perimeter and PHP-FPM private', async () 
 });
 
 test('enrollment deployment is isolated, bearer-compatible, and dry-run by default', async () => {
-  const nginx = await readFile(join(ROOT, 'deploy/nginx/awh-enrollment.conf'), 'utf8');
-  const pool = await readFile(join(ROOT, 'deploy/php-fpm/awh-enrollment.pool.conf'), 'utf8');
-  const deploy = await readFile(join(ROOT, 'deploy/awh-enrollment/deploy-enrollment.sh'), 'utf8');
-  const preflight = await readFile(join(ROOT, 'deploy/awh-enrollment/preflight-production.sh'), 'utf8');
-  const remoteDeploy = await readFile(join(ROOT, 'deploy/awh-enrollment/remote-deploy.sh'), 'utf8');
-  const nginxInsert = await readFile(join(ROOT, 'deploy/awh-enrollment/insert-nginx-include.php'), 'utf8');
-  const pointer = await readFile(join(ROOT, 'deploy/awh-enrollment/pointer-state.sh'), 'utf8');
+  const nginx = await readText(join(ROOT, 'deploy/nginx/awh-enrollment.conf'));
+  const pool = await readText(join(ROOT, 'deploy/php-fpm/awh-enrollment.pool.conf'));
+  const deploy = await readText(join(ROOT, 'deploy/awh-enrollment/deploy-enrollment.sh'));
+  const preflight = await readText(join(ROOT, 'deploy/awh-enrollment/preflight-production.sh'));
+  const remoteDeploy = await readText(join(ROOT, 'deploy/awh-enrollment/remote-deploy.sh'));
+  const nginxInsert = await readText(join(ROOT, 'deploy/awh-enrollment/insert-nginx-include.php'));
+  const pointer = await readText(join(ROOT, 'deploy/awh-enrollment/pointer-state.sh'));
   assert.match(nginx, /location \^~ \/api\/v1\/enrollment\//);
   assert.match(nginx, /auth_basic off/);
   assert.match(nginx, /HTTP_AUTHORIZATION \$http_authorization/);
@@ -190,7 +191,7 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.ok(remoteDeploy.indexOf('usermod -G', accessReady) < serviceUserCleanup);
 });
 
-test('guarded deployment refuses a dirty tree and rollback order stays restore-first', async () => {
+test('guarded deployment refuses a dirty tree and rollback order stays restore-first', { skip: process.platform === 'win32' }, async () => {
   const deploy = join(ROOT, 'deploy/awh-enrollment/deploy-enrollment.sh');
   const dirtyMarker = join(ROOT, `.awh-dirty-tree-fixture-${process.pid}-${Date.now()}`);
   await writeFile(dirtyMarker, 'temporary regression fixture\n', 'utf8');
@@ -200,7 +201,7 @@ test('guarded deployment refuses a dirty tree and rollback order stays restore-f
     await rm(dirtyMarker, { force: true });
   }
 
-  const remote = await readFile(join(ROOT, 'deploy/awh-enrollment/remote-deploy.sh'), 'utf8');
+  const remote = await readText(join(ROOT, 'deploy/awh-enrollment/remote-deploy.sh'));
   const order = [
     remote.indexOf('.restore'),
     remote.indexOf('chown "$DB_UID:$DB_GID"'),
@@ -215,7 +216,7 @@ test('guarded deployment refuses a dirty tree and rollback order stays restore-f
 });
 
 test('release-root pointer resolves the canonical enrollment entrypoint used by Nginx', async () => {
-  const nginx = await readFile(join(ROOT, 'deploy/nginx/awh-enrollment.conf'), 'utf8');
+  const nginx = await readText(join(ROOT, 'deploy/nginx/awh-enrollment.conf'));
   const root = await mkdtemp(join(tmpdir(), 'awh-release-layout-'));
   const releaseRoot = join(root, 'enrollment-releases');
   const release = join(releaseRoot, 'release-a');
@@ -233,7 +234,7 @@ test('release-root pointer resolves the canonical enrollment entrypoint used by 
   }
 });
 
-test('enrollment pointer helper rejects unsafe links and restores verified states', async () => {
+test('enrollment pointer helper rejects unsafe links and restores verified states', { skip: process.platform === 'win32' }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'awh-pointer-state-'));
   const releaseRoot = join(root, 'enrollment-releases');
   const releaseA = join(releaseRoot, 'release-a');
@@ -266,7 +267,7 @@ test('enrollment pointer helper rejects unsafe links and restores verified state
   }
 });
 
-test('DB permission readiness arithmetic accepts safe 640/750 modes without broad group write', async () => {
+test('DB permission readiness arithmetic accepts safe 640/750 modes without broad group write', { skip: process.platform === 'win32' }, async () => {
   await execFile('sh', ['-c', 'DB_MODE=640; PARENT_MODE=750; test $((0$DB_MODE & 0020)) -eq 0; test $((0$PARENT_MODE & 0020)) -eq 0; test $((0$DB_MODE & 0600)) -eq $((0600)); test $((0$PARENT_MODE & 0700)) -eq $((0700))']);
 });
 

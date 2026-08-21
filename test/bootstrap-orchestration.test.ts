@@ -15,7 +15,7 @@ const PROJECT_ID = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
 const OWNER_ID = '223b45c0-23e1-408d-ae0f-ac5eca7f6900';
 const execFile = promisify(execFileCallback);
 
-test('default deployment path is the canonical repo asset and dry-run performs no SSH or provisioning', async () => {
+test('default deployment path is the canonical repo asset and dry-run performs no SSH or provisioning', { skip: process.platform === 'win32' }, async () => {
   const repoRoot = process.cwd();
   assert.equal(DEFAULT_DEPLOY_SCRIPT, join(repoRoot, 'deploy/awh-enrollment/deploy-enrollment.sh'));
   assert.equal(existsSync(DEFAULT_DEPLOY_SCRIPT), true);
@@ -126,7 +126,7 @@ test('deployment stage contract records completed M3D before distinct enrollment
   );
 });
 
-test('production deployment keeps the longer bounded timeout and preserves stage output', async () => {
+test('production deployment keeps the longer bounded timeout and preserves stage output', { skip: process.platform === 'win32' }, async () => {
   const startedAt = Date.now();
   const result = await runCapture('/bin/sh', ['-c', "sleep 11; printf 'DEPLOY_STAGE=RELEASE_STAGED\\nDEPLOY_RESULT=PASS\\n'"], { timeoutMs: PRODUCTION_DEPLOY_TIMEOUT_MS });
   assert.ok(Date.now() - startedAt >= 10_000);
@@ -160,7 +160,7 @@ test('production deployment receives only a validated public Hub hostname', asyn
   assert.equal(receivedOptions.env.AWH_HUB_HOSTNAME, '157-85-108-142.sslip.io');
 });
 
-test('real deployment timeout is sanitized and retains safe stages received before timeout', async () => {
+test('real deployment timeout is sanitized and retains safe stages received before timeout', { skip: process.platform === 'win32' }, async () => {
   const result = await runCapture('/bin/sh', ['-c', "printf 'DEPLOY_STAGE=RELEASE_STAGED\\n'; sleep 1"], { timeoutMs: 250 });
   assert.equal(result.timedOut, true);
   assert.match(result.stdout, /DEPLOY_STAGE=RELEASE_STAGED/);

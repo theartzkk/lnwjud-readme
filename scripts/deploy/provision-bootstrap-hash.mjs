@@ -3,6 +3,8 @@
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { BOOTSTRAP_NONCE_CREDENTIAL_KEY, createProductionCredentialStore } from '../../dist/credential-store.js';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const TARGET_PATTERN = /^[A-Za-z0-9._-]+$/;
 const NONCE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -72,7 +74,7 @@ function usage() {
   process.stdout.write('Bootstrap hash provisioning is approval-gated; use --approve-bootstrap-provision after reviewed deployment approval.\n');
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1])) {
   if (process.argv[2] !== '--approve-bootstrap-provision') {
     usage();
     process.exit(2);
