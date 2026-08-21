@@ -71,6 +71,34 @@ test('M4 activation never requires or seeds a user project', async () => {
   assert.doesNotMatch(deploy, /PROJECTS_REGISTERED/);
 });
 
+test('M3E and M4 configuration snapshots stay outside Nginx active configuration directories', async () => {
+  const [m3e, m4, preflight, deploy] = await Promise.all([
+    readText(join(ROOT, 'deploy/awh-enrollment/remote-deploy.sh')),
+    readText(join(ROOT, 'deploy/awh-control-plane/remote-deploy-control-plane.sh')),
+    readText(join(ROOT, 'deploy/awh-enrollment/preflight-production.sh')),
+    readText(join(ROOT, 'deploy/awh-control-plane/deploy-control-plane.sh')),
+  ]);
+  assert.match(m3e, /CONFIG_BACKUP_ROOT=\/var\/backups\/awh-hub\/config/);
+  assert.match(m3e, /CONFIG_BACKUP_ROOT\/nginx/);
+  assert.match(m3e, /CONFIG_BACKUP_ROOT\/php-fpm/);
+  assert.doesNotMatch(m3e, /NGINX_CONFIG\.pre-m3e2|POOL_PATH\.pre-m3e2/);
+  assert.match(m4, /CONFIG_BACKUP_ROOT=\/var\/backups\/awh-hub\/config/);
+  assert.match(m4, /TOPOLOGY_ARCHIVE=\/var\/backups\/awh-hub\/topology-cleanup-/);
+  assert.doesNotMatch(m4, /NGINX_CONFIG\.\$RELEASE_ID/);
+  assert.match(m4, /TOPOLOGY_CLEANUP_ARCHIVE/);
+  assert.match(m4, /TOPOLOGY_CLEANUP_VERIFY/);
+  assert.match(m4, /cleanup_loaded_topology/);
+  assert.match(preflight, /nginx -T 2>&1/);
+  assert.match(preflight, /conflicting server name/);
+  assert.match(preflight, /nginx_loaded_backup_residue_count/);
+  assert.match(preflight, /BLOCKED_HISTORICAL_BACKUP_RESIDUE/);
+  assert.match(preflight, /OPTIONAL_ABSENT/);
+  assert.match(preflight, /--resolve \"\$HUB_HOSTNAME:443:127\.0\.0\.1\"/);
+  assert.doesNotMatch(preflight, /curl\s+-k/);
+  assert.match(deploy, /--cleanup-topology/);
+  assert.match(deploy, /nginx_topology/);
+});
+
 test('Hub data schema has explicit provenance and no workspace or content columns', async () => {
   const schema = await readText(join(ROOT, 'hub/schema.sql'));
   assert.match(schema, /provenance/);

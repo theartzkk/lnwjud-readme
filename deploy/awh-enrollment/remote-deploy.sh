@@ -29,11 +29,12 @@ case "$HUB_HOSTNAME" in *[A-Za-z]*.*) : ;; *) exit 20 ;; esac
 printf '%s\n' "$HUB_HOSTNAME" | awk 'BEGIN { valid = 1 } { if (length($0) > 253 || split($0, labels, ".") < 2) valid = 0; for (i in labels) if (labels[i] == "" || length(labels[i]) > 63 || labels[i] ~ /^-/ || labels[i] ~ /-$/) valid = 0 } END { exit valid ? 0 : 1 }' || exit 20
 
 BACKUP=/var/backups/awh-hub/awh.sqlite.pre-m3e2
+CONFIG_BACKUP_ROOT=/var/backups/awh-hub/config
 POOL_PATH=/etc/php/$PHP_VERSION/fpm/pool.d/awh-enrollment.conf
 PHP_FPM_BIN=/usr/sbin/php-fpm$PHP_VERSION
 INCLUDE_PATH=$REMOTE_ROOT/enrollment-current/deploy/nginx/awh-enrollment.conf
-NGINX_BACKUP=$NGINX_CONFIG.pre-m3e2-$RELEASE_ID
-POOL_BACKUP=$POOL_PATH.pre-m3e2-$RELEASE_ID
+NGINX_BACKUP=$CONFIG_BACKUP_ROOT/nginx/awh-preview.conf.pre-m3e2-$RELEASE_ID
+POOL_BACKUP=$CONFIG_BACKUP_ROOT/php-fpm/awh-enrollment.conf.pre-m3e2-$RELEASE_ID
 POOL_TMP=$(sudo mktemp /tmp/awh-enrollment-pool.XXXXXX)
 NGINX_TMP=$(sudo mktemp /tmp/awh-enrollment-nginx.XXXXXX)
 POINTER_PATH=$REMOTE_ROOT/enrollment-current
@@ -54,6 +55,8 @@ SERVICE_USER_CREATED=0
 SERVICE_GROUP_ADDED=0
 PREVIOUS_SUPPLEMENTARY_GROUPS=
 RELEASE_CREATED=0
+NGINX_BACKUP_CREATED=0
+POOL_BACKUP_CREATED=0
 SUCCESS=0
 CURRENT_STAGE=BOOTSTRAP_HASH_VALIDATED
 
@@ -133,6 +136,12 @@ rollback() {
       # userdel does not accept useradd's --system flag on Debian/Ubuntu.
       if ! sudo /usr/sbin/userdel awh-hub; then rollback_ok=0; fi
       if id -u awh-hub >/dev/null 2>&1; then rollback_ok=0; fi
+    fi
+    if test "$NGINX_BACKUP_CREATED" -eq 1; then
+      if ! sudo rm -f "$NGINX_BACKUP"; then rollback_ok=0; fi
+    fi
+    if test "$POOL_BACKUP_CREATED" -eq 1; then
+      if ! sudo rm -f "$POOL_BACKUP"; then rollback_ok=0; fi
     fi
     if test "$rollback_ok" -eq 1; then
       printf '%s\n' "DEPLOY_FAILED_AT=$CURRENT_STAGE"
@@ -273,12 +282,15 @@ test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
 test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;' | head -n 1)" = 3
 test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='enrollment_rate_limits';")" = 1
 
+sudo install -d -m 0750 -o root -g root "$CONFIG_BACKUP_ROOT/nginx" "$CONFIG_BACKUP_ROOT/php-fpm"
 sudo test ! -e "$NGINX_BACKUP"
 sudo cp -p "$NGINX_CONFIG" "$NGINX_BACKUP"
+NGINX_BACKUP_CREATED=1
 NGINX_CHANGED=1
 if sudo test -f "$POOL_PATH"; then
   sudo test ! -e "$POOL_BACKUP"
   sudo cp -p "$POOL_PATH" "$POOL_BACKUP"
+  POOL_BACKUP_CREATED=1
   POOL_EXISTED=1
 fi
 POOL_CHANGED=1
@@ -323,6 +335,7 @@ test "$code" = 405
 stage "$CURRENT_STAGE"
 
 SUCCESS=1
+sudo rm -f "$NGINX_BACKUP" "$POOL_BACKUP"
 sudo rm -f "$REMOTE_STAGE"
 cleanup
 trap - EXIT HUP INT TERM

@@ -16,10 +16,18 @@ esac
 
 command -v ssh >/dev/null 2>&1 || { echo "ssh is required" >&2; exit 1; }
 ssh -G "$TARGET" >/dev/null 2>&1 || { echo "SSH alias does not resolve: $TARGET" >&2; exit 1; }
+HUB_HOSTNAME=$(printenv AWH_HUB_HOSTNAME 2>/dev/null || true)
+case "$HUB_HOSTNAME" in
+  '') ;;
+  *[!A-Za-z0-9.-]*|.*|*.) echo "AWH_HUB_HOSTNAME is invalid" >&2; exit 2 ;;
+  *[A-Za-z]*.*) : ;;
+  *) echo "AWH_HUB_HOSTNAME is invalid" >&2; exit 2 ;;
+esac
 
-ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes "$TARGET" 'sh -s' <<'REMOTE'
+ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes "$TARGET" sh -s -- "$HUB_HOSTNAME" <<'REMOTE'
 set -u
 
+HUB_HOSTNAME=${1:-}
 MIRROR=/srv/awh/git/awh.git
 HUB=/opt/awh-hub
 FALLBACK_DB=/var/lib/awh-hub/awh.sqlite
@@ -121,12 +129,15 @@ say 'ssh=PASS'
 if test -d "$MIRROR" && test "$(git -C "$MIRROR" rev-parse --is-bare-repository 2>/dev/null || true)" = true; then
   say 'git_mirror=PASS'
 else
-  say 'git_mirror=FAIL'
+  say 'git_mirror=OPTIONAL_ABSENT'
 fi
 if test -d "$HUB"; then say 'hub_root=PASS'; else say 'hub_root=FAIL'; fi
 
-NGINX_CONFIG=$(sudo -n nginx -T 2>/dev/null || true)
-if test -n "$NGINX_CONFIG"; then
+set +e
+NGINX_CONFIG=$(sudo -n nginx -T 2>&1)
+NGINX_STATUS=$?
+set -e
+if test "$NGINX_STATUS" -eq 0 && test -n "$NGINX_CONFIG"; then
   say 'nginx_dump=PASS'
   printf '%s\n' "$NGINX_CONFIG" \
     | grep -E 'AWH_HUB_DB_PATH|SCRIPT_FILENAME|fastcgi_pass|auth_basic[[:space:]]|auth_basic_user_file|location[[:space:]]|server_name|awh-hub|awh-web|enrollment-current' \
@@ -135,6 +146,24 @@ if test -n "$NGINX_CONFIG"; then
     | head -n 120
 else
   say 'nginx_dump=FAIL'
+fi
+
+NGINX_WARNING_COUNT=$(printf '%s\n' "$NGINX_CONFIG" | grep -c 'conflicting server name' || true)
+NGINX_RESIDUE_COUNT=$(printf '%s\n' "$NGINX_CONFIG" | grep -Ec '^# configuration file /etc/nginx/(sites-enabled|conf\.d)/.*\.(m4|pre-m3e2)-' || true)
+say "nginx_topology_warning_count=$NGINX_WARNING_COUNT"
+say "nginx_loaded_backup_residue_count=$NGINX_RESIDUE_COUNT"
+if test "$NGINX_STATUS" -ne 0 || test -z "$NGINX_CONFIG"; then
+  say 'nginx_topology=BLOCKED_NGINX_DUMP'
+  say 'nginx_topology_cleanup=BLOCKED'
+elif test "$NGINX_RESIDUE_COUNT" -gt 0; then
+  say 'nginx_topology=BLOCKED_HISTORICAL_BACKUP_RESIDUE'
+  say 'nginx_topology_cleanup=REQUIRED'
+elif test "$NGINX_WARNING_COUNT" -gt 0; then
+  say 'nginx_topology=BLOCKED_CONFLICTING_SERVER_NAME'
+  say 'nginx_topology_cleanup=BLOCKED'
+else
+  say 'nginx_topology=PASS'
+  say 'nginx_topology_cleanup=NONE'
 fi
 
 NGINX_DB=$(printf '%s\n' "$NGINX_CONFIG" | awk '/AWH_HUB_DB_PATH/ { for (i=1; i<=NF; i++) if ($i ~ /^\//) { gsub(/;/, "", $i); print $i; exit } }')
@@ -274,7 +303,9 @@ esac
 
 if printenv AWH_BACKUP_DIR >/dev/null 2>&1; then BACKUP_DIR=$(printenv AWH_BACKUP_DIR); else BACKUP_DIR=/var/backups/awh-hub; fi
 say "backup_path=$BACKUP_DIR"
-if test -d "$BACKUP_DIR" && sudo -n test -w "$BACKUP_DIR" 2>/dev/null; then
+if test "$BACKUP_DIR" != /var/backups/awh-hub; then
+  say 'backup_classification=BACKUP_BLOCKED'
+elif test -d "$BACKUP_DIR" && sudo -n test -w "$BACKUP_DIR" 2>/dev/null; then
   say 'backup_classification=BACKUP_READY'
 else
   BACKUP_PARENT=$(dirname "$BACKUP_DIR")
@@ -324,7 +355,11 @@ done
 if sudo -n nginx -t >/dev/null 2>&1; then say 'nginx_config_test=PASS'; else say 'nginx_config_test=FAIL'; fi
 for endpoint in /api/v1/health /api/v1/status /api/v1/projects /api/v1/projects/113b45c0-23e1-408d-ae0f-ac5eca7f6900/memory; do
   label=$(printf '%s' "$endpoint" | tr '/.' '__')
-  code=$(curl -k -sS --max-time 10 -o /dev/null -w '%{http_code}' "https://127.0.0.1$endpoint" -H 'Host: awh.invalid' 2>/dev/null || printf UNAVAILABLE)
+  if test -n "$HUB_HOSTNAME"; then
+    code=$(curl --silent --max-time 10 --resolve "$HUB_HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HUB_HOSTNAME$endpoint" 2>/dev/null || printf UNAVAILABLE)
+  else
+    code=UNAVAILABLE
+  fi
   say "hub_read_$label=$code"
 done
 REMOTE

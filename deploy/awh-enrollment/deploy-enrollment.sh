@@ -84,7 +84,7 @@ printf '%s\n' "$HUB_HOSTNAME" | awk 'BEGIN { valid = 1 } { if (length($0) > 253 
   exit 2
 }
 
-PREFLIGHT_OUTPUT=$(AWH_DEPLOY_TARGET="$DEPLOY_TARGET" sh "$PREFLIGHT_SCRIPT") || {
+PREFLIGHT_OUTPUT=$(AWH_DEPLOY_TARGET="$DEPLOY_TARGET" AWH_HUB_HOSTNAME="$HUB_HOSTNAME" sh "$PREFLIGHT_SCRIPT") || {
   echo "Production preflight command failed" >&2
   exit 1
 }
@@ -106,6 +106,10 @@ printf '%s\n' "$PREFLIGHT_OUTPUT" | grep -q '^enrollment_bootstrap_hash=READY$' 
 }
 printf '%s\n' "$PREFLIGHT_OUTPUT" | grep -Eq '^enrollment_classification=(FIRST_DEPLOY_EXPECTED|ENROLLMENT_RELEASE_READY)$' || {
   echo "Production deployment blocked: enrollment release state is unsafe" >&2
+  exit 1
+}
+printf '%s\n' "$PREFLIGHT_OUTPUT" | grep -q '^nginx_topology=PASS$' || {
+  echo "Production deployment blocked: Nginx topology is not clean" >&2
   exit 1
 }
 DB_PATH=$(printf '%s\n' "$PREFLIGHT_OUTPUT" | sed -n 's/^db_resolution_path=//p' | tail -n 1)
