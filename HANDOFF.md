@@ -23,7 +23,7 @@ Release identity `1.0.0-rc.1` is now AWH-facing. `AWH.app` and the win32-x64 por
 bundle containing `AWH.exe` were built locally and verified structurally; the
 Mac packaged non-GUI remote-readonly probe passed. The Windows workflow is
 prepared for AWH-native packaging and manual dispatch, but the native installer
-artifact still requires a Windows CI run. Signing/notarization remain optional
+artifact was produced and verified by the Windows CI release run. Signing/notarization remain optional
 distribution gates.
 
 ## Source of Truth
