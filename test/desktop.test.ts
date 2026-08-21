@@ -69,6 +69,9 @@ test('desktop HTML has a restrictive CSP, remote controls and no inline script',
   assert.match(html, /Register Existing Project/);
   assert.match(html, /Initialize as AWH Project/);
   assert.match(html, /Project Memory/);
+  assert.match(html, /card-head-spaced/);
+  assert.match(html, /card-spaced/);
+  assert.doesNotMatch(html, /\sstyle=/i);
   assert.doesNotMatch(html, /<script(?![^>]*src=)[^>]*>/i);
 });
 
