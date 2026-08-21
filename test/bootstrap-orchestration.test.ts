@@ -94,10 +94,10 @@ test('guarded deployment captures only allowlisted sanitized success stages', as
   const result = await runGuardedDeployment({
     runImpl: async () => ({
       exitCode: 0,
-      stdout: 'DEPLOY_STAGE=BOOTSTRAP_HASH_VALIDATED\nDEPLOY_STAGE=BACKUP_VERIFIED\nDEPLOY_STAGE=MIGRATION_IDEMPOTENT\nDEPLOY_RESULT=PASS\n',
+      stdout: 'DEPLOY_STAGE=BOOTSTRAP_HASH_VALIDATED\nDEPLOY_STAGE=RELEASE_ACCESS_READY\nDEPLOY_STAGE=BACKUP_VERIFIED\nDEPLOY_STAGE=MIGRATION_IDEMPOTENT\nDEPLOY_RESULT=PASS\n',
     }),
   });
-  assert.deepEqual(result.stages, ['BOOTSTRAP_HASH_VALIDATED', 'BACKUP_VERIFIED', 'MIGRATION_IDEMPOTENT']);
+  assert.deepEqual(result.stages, ['BOOTSTRAP_HASH_VALIDATED', 'RELEASE_ACCESS_READY', 'BACKUP_VERIFIED', 'MIGRATION_IDEMPOTENT']);
   assert.equal(result.result, 'PASS');
   await assert.rejects(() => runGuardedDeployment({ runImpl: async () => ({ exitCode: 0, stdout: 'DEPLOY_STAGE=UNKNOWN\nDEPLOY_RESULT=PASS\n' }) }), /sanitized/);
   await assert.rejects(() => runGuardedDeployment({ runImpl: async () => ({ exitCode: 0, stdout: `DEPLOY_STAGE=BACKUP_VERIFIED\nsecret=${'x'.repeat(64)}\nDEPLOY_RESULT=PASS\n` }) }), (error: unknown) => error instanceof Error && !error.message.includes('x'.repeat(64)));
