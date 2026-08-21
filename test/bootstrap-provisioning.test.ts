@@ -5,7 +5,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
-import { provisionBootstrapHash, runSsh } from '../scripts/deploy/provision-bootstrap-hash.mjs';
+import { provisionBootstrapHash, REMOTE_PROVISION_SCRIPT, runSsh } from '../scripts/deploy/provision-bootstrap-hash.mjs';
 import { BOOTSTRAP_NONCE_CREDENTIAL_KEY, InMemoryCredentialStore } from '../src/credential-store.js';
 
 test('bootstrap hash provisioning reads the secure store and sends only a digest on stdin', async () => {
@@ -33,7 +33,30 @@ test('bootstrap hash provisioning reads the secure store and sends only a digest
   assert.equal(args.includes(digest), false);
   assert.match(args.join('\u0000'), /StrictHostKeyChecking=yes/);
   assert.match(args.join('\u0000'), /0600/);
+  assert.match(args.at(-1) ?? '', /install -d -o root -g root -m 0750 "\$CONFIG_DIR"/);
+  assert.match(args.at(-1) ?? '', /\/usr\/bin\/tee "\$HASH_PATH"/);
   assert.match(args.at(-1) ?? '', /^sh -c '/);
+});
+
+test('bootstrap directory provisioning is idempotent and failures are stage-classified without secrets', async () => {
+  assert.match(REMOTE_PROVISION_SCRIPT, /if test -d "\$CONFIG_DIR"/);
+  assert.match(REMOTE_PROVISION_SCRIPT, /sudo -n \/usr\/bin\/install -d -o root -g root -m 0750/);
+  assert.match(REMOTE_PROVISION_SCRIPT, /test "\$METADATA" = 'root\|root\|750'/);
+  const nonce = 'C'.repeat(43);
+  const digest = createHash('sha256').update(nonce).digest('hex');
+  const store = new InMemoryCredentialStore();
+  await store.set(BOOTSTRAP_NONCE_CREDENTIAL_KEY, nonce);
+  for (const [exitCode, classification] of [[31, 'BOOTSTRAP_CONFIG_DIR_PROVISION_FAILED'], [32, 'BOOTSTRAP_HASH_WRITE_FAILED'], [33, 'BOOTSTRAP_HASH_METADATA_FAILED'], [99, 'BOOTSTRAP_HASH_PROVISION_FAILED']] as const) {
+    await assert.rejects(
+      () => provisionBootstrapHash({ store, target: 'awh-vps', spawnImpl: async (_executable, _args, stdin) => {
+        assert.equal(stdin, `${digest}\n`);
+        return exitCode;
+      } }),
+      (error: unknown) => error instanceof Error && error.message === classification && !error.message.includes(nonce) && !error.message.includes(digest),
+    );
+  }
+  const reused = await store.get(BOOTSTRAP_NONCE_CREDENTIAL_KEY);
+  assert.equal(reused, nonce);
 });
 
 test('bootstrap hash provisioning rejects missing secure state and unsafe SSH aliases', async () => {
