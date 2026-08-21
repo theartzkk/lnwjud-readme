@@ -29,6 +29,7 @@
 - **Checkpoints:** bounded local recovery manifests for guarded workspace changes.
 - **Task/runtime engine:** approved task execution with bounded runtime metadata and logs.
 - **Autopilot v0.5:** one local orchestration layer creates a bounded Task Contract, reloads Project Context, creates a recovery checkpoint, selects a reusable profile, runs only approved package scripts, retries one safe gate once, produces a bounded Artifact record, and records a continuity checkpoint.
+- **M4 control plane (local/prepared):** one additive PHP/SQLite Hub model owns canonical task state/events, idempotency, worker presence and leases, bounded artifact metadata, and scoped approval metadata. Browser control uses a same-origin HttpOnly session cookie and CSRF token obtained after one owner-issued pairing code; it reuses existing `hub_users`, project memberships, pairing hashes, and device-token auth. `ControlPlaneWorkerClient` is a Node-side outbound client for enrolled Desktop devices; it never exposes the token to renderer/browser code and never accepts a shell command.
 - **Local capability discovery:** fixed internal capability names resolve through inherited PATH first, then bounded user/system locations appropriate to the host, including common macOS package-manager bins; no recursive or browser/remote executable discovery is exposed. The FFmpeg capability gate resolves both FFmpeg and FFprobe, validates both versions, runs a disposable frame-sequence → MP4 pipeline through fixed argv, and verifies output metadata and decoded frame order.
 - **Artifact Center:** metadata and bounded payloads live in the active AWH data directory; references are relative and no absolute workspace path is returned.
 - **Continuity:** device-local checkpoint metadata records portable projectId, source device UUID, Git revision/dirty state, bounded HANDOFF summary, task state and artifact refs. A copied checkpoint may be discovered on another device, but AWH does not silently overwrite dirty local work or sync `.git`.
@@ -38,14 +39,14 @@
 - **Deployment preflight:** the one-shot enrollment path first locks the clean approved HEAD, validates the canonical local deployment assets and compiled `dist` runtime, runs `deploy/awh-enrollment/deploy-enrollment.sh --dry-run`, then runs the external/internal Hub checks and `preflight-production.sh`; only those read-only gates can precede nonce provisioning. The preflight resolves the effective DB authority and reports `DB_WRITE_READY`, `DB_WRITE_PROVISION_REQUIRED`, or `DB_WRITE_BLOCKED` without permission mutation. Mutation remains in the guarded deployment path and stops at explicit production approval.
 - **Hub health contract:** external HTTPS Hub Read checks expect the reviewed Basic Auth perimeter to return `401` for health/status/projects; trusted health invokes the existing deployed PHP read front controller through fixed SSH/PHP argv and accepts only sanitized `schemaVersion=1`, `status=ok`, `awh-hub-read-foundation` JSON.
 - **MCP / remote-readonly AI adapter:** local stdio MCP and restricted remote-readonly profile; remote tunnel E2E is not claimed.
-- **M3C0 Web Surface:** browser-only static presentation adapter with strict CSP, bounded sanitized data, and a separate future same-origin Hub-read mode.
+- **M3C0/M4 Web Surface:** browser-only presentation adapter with strict CSP and bounded sanitized data. Static preview remains the default; `web:build:control` produces an explicit same-origin CONTROL mode for the shared Hub task/project model. No permanent bearer credential enters browser storage, and no browser route exposes shell, filesystem, source editing, MCP, or arbitrary execution.
 - **M3C1/M3D Hub Read Foundation:** PHP-FPM-compatible front controller and web gateway, SQLite metadata schema, query-only HTTP connection, Bearer-auth service boundary, same-origin Nginx perimeter adapter, and a local metadata-only indexer.
 - **M3E enrollment:** the existing `HubEnrollmentService`/router owns bounded pairing, owner bootstrap closure, device binding, token rotation/revocation, rate limiting, and project membership. `hub/public/enrollment.php` is a separate mutation front controller and is never dispatched by browser Hub Read.
 - **M3E-FINAL credential boundary:** macOS uses `/usr/bin/security` Keychain commands with fixed argv and secret stdin; Windows uses a fixed native Credential Manager P/Invoke script through non-interactive PowerShell with request data on stdin. Unsupported platforms fail closed; there is no plaintext-file fallback.
 - **M3E-FINAL Desktop boundary:** preload exposes only enrollment state/pair/rotate/revoke high-level IPC. Renderer receives sanitized device metadata and never receives a credential, filesystem access, shell, environment, or raw process surface.
 - **Real-project Desktop workflow:** the device-local registry maps the real BAY EXCUSE X (`php`) and Teacher Evaluation Video (`remotion`) manifests to local workspaces. Selection updates the stored workspace immediately; the Desktop reloads the same runner/context without a restart, then routes the user to the bounded Goal entry point.
 - **Project-specific safe gates:** Teacher's existing `check` script is recognized only as a semantic `typecheck` alias and invoked through the existing fixed package-manager argv path. BAY uses the bounded PHP lint gate. User Goal text never becomes a command.
-- **Current operational state:** ReadyIDC is active at DB schema version 3 with M3E.1/M3E.2, one indexed project, one enrolled Mac device and a closed bootstrap. The second Teacher clone remains unregistered to avoid duplicate local identity.
+- **Current operational state:** ReadyIDC is active at DB schema version 3 with M3E.1/M3E.2, one indexed project, one enrolled Mac device and a closed bootstrap. M4 local migration 003 targets schema version 4 but is not deployed; the second Teacher clone remains unregistered to avoid duplicate local identity.
 
 ## FUTURE COMPONENTS
 
@@ -57,7 +58,7 @@
 - Signed/notarized distribution packaging and Windows Squirrel installer field validation.
 - Real OpenAI Secure MCP Tunnel control-plane E2E verification.
 - M3C2 hosting control-plane design and a separately reviewed deployment path.
-- **AWH Web Control Center:** Home/Projects/Tasks/Artifacts/Devices/Builds/Audit are presentation sections. Web remains read/review-only; Local Autopilot execution is Desktop-only. Real-project command submission through mobile/Hub is not deployed in this pass.
+- **AWH Web Control Center:** Home/Projects/Tasks/Artifacts/Devices/Builds/Audit are the owner-facing sections. Static preview remains read-only. CONTROL mode is a prepared, authenticated mobile/control surface over canonical Hub projects/tasks; it queues Goals and reports WAITING_FOR_WORKER until an enrolled worker claims them. The prepared M4 package is not deployed in this pass.
 - **Desktop smoke:** the harness uses a temporary AWH data directory and safe child environment. A pre-marker macOS AppKit/LaunchServices failure from the Codex GUI sandbox, including `_RegisterApplication`/`SIGABRT` or LaunchServices `-10822`, is classified as `GUI_SANDBOX_BLOCKED`, not `AWH_APP_FAILED` and never PASS. A logged-in macOS GUI LaunchServices run outside Codex is the runtime proof and has produced a valid `stage: passed` marker with the primary UI paths and Cmd+K routing checked.
 
 ## HUB DATA BOUNDARY
@@ -65,7 +66,15 @@
 - The Hub stores portable project metadata and rebuildable memory-file metadata only.
 - `workspacePath`, local registry mappings, Git credentials, source contents, and device credentials remain outside Hub responses.
 - Project Memory remains canonical in the five portable Markdown files; the Hub read foundation stores status, hash, size, provenance, and observation time only.
-- AWH Web defaults to static preview. Hub-connected mode is same-origin, GET-only, and reuses only the reviewed web perimeter session; it does not receive a browser bearer token.
+- AWH Web defaults to static preview. The M3 HUB_READ mode is same-origin, GET-only, and reuses only the reviewed web perimeter session; it does not receive a browser bearer token. M4 CONTROL is a separately built, approval-gated session surface described below.
+
+## M4 CONTROL-PLANE BOUNDARY
+
+- The Hub remains a lightweight coordinator: SQLite stores task state/events, worker leases/presence, scoped approvals, and sanitized artifact metadata; it does not store source content, workspace paths, large media, credentials, or a second Project Memory.
+- Browser session exchange consumes one existing owner-issued pairing code and creates only a short-lived server-side session hash plus CSRF hash. Cookies are Secure, HttpOnly where appropriate, SameSite=Strict, no-store, origin-bound, rate-limited, and never copied to localStorage/sessionStorage.
+- Goal submission is exact-schema, project-membership checked, bounded, and idempotent. A queued task cannot become RUNNING until an enrolled worker claims it under BEGIN IMMEDIATE; stale worker presence is shown as offline and leases are bounded.
+- Worker requests are outbound HTTPS POSTs through `ControlPlaneWorkerClient`, using the existing device credential only in a fixed Authorization header inside the Node main/runtime boundary. The client accepts only bounded task metadata; it does not accept or construct arbitrary commands.
+- `003_m4_control_plane.sql` is additive from schema version 3 to 4 and records a checksum-backed ledger entry. Deployment is approval-gated with verified backup, migration idempotence, Nginx/PHP-FPM validation, M3D regression, and rollback to the v3 database/config.
 
 ## WEB READ DEPLOYMENT BOUNDARY
 

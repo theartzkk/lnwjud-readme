@@ -88,12 +88,15 @@ async function main(): Promise<void> {
       count: 0,
     },
   };
+  const webMode = process.env.AWH_WEB_MODE === 'CONTROL' || process.argv.includes('--control') ? 'CONTROL' : 'STATIC_PREVIEW';
   await mkdir(OUTPUT, { recursive: true });
   await Promise.all([
     writeFile(join(OUTPUT, 'index.html'), await asset('index.html'), 'utf8'),
     writeFile(join(OUTPUT, 'styles.css'), await asset('styles.css'), 'utf8'),
     writeFile(join(OUTPUT, 'app.js'), await asset('app.js'), 'utf8'),
     writeFile(join(OUTPUT, 'hub-read-adapter.js'), await asset('hub-read-adapter.js'), 'utf8'),
+    writeFile(join(OUTPUT, 'control-plane-adapter.js'), await asset('control-plane-adapter.js'), 'utf8'),
+    writeFile(join(OUTPUT, 'web-config.json'), `${JSON.stringify({ schemaVersion: 1, mode: webMode, apiBase: '/api/v1' }, null, 2)}\n`, 'utf8'),
     writeFile(join(OUTPUT, 'data.json'), `${JSON.stringify(data, null, 2)}\n`, 'utf8'),
   ]);
   console.log(`AWH web preview built at ${OUTPUT}`);

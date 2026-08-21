@@ -4,11 +4,11 @@
 
 - Use the Projects page as the normal entry point for BAY EXCUSE X and Teacher Evaluation Video; keep production deployment, device pairing, publish, destructive actions and memory writes human-gated.
 - Review release identity 0.5.0 and the local `AWH.app`/Windows portable bundle evidence; keep signing, Windows installer creation, and production deployment human-gated.
-- Keep ReadyIDC read-only for this pass: production is active at DB v3 with one indexed project and one enrolled Mac. Do not activate new M4 control-plane routes without one bounded approval.
+- Keep ReadyIDC read-only for this pass: production is active at DB v3 with one indexed project and one enrolled Mac. M4 control-plane source, migration, static CONTROL release, preflight, and rollback package are prepared locally; do not activate them without one bounded approval.
 
 ## NEXT
 
-- Open AWH, select one of the two real projects, enter a real Goal, and review the result.
+- Review and give one bounded approval for M4 activation, then open the CONTROL surface on iPhone, trust it with an owner-issued one-time pairing code, select a real project, and submit a Goal.
 - Verify sanitized Hub device read shows exactly two devices and no shared credential before closing M3E.
 - Pair the school Windows device independently, verify Windows Credential Manager persistence, and confirm sanitized `devices = 2`.
 - Add the next explicit approval action for Project Memory checkpoint updates after human review.
@@ -16,7 +16,7 @@
 - Confirm Home, Projects, Autopilot, Artifacts, Cmd/Ctrl+K and Continuity visually from the logged-in macOS GUI path; the current GUI smoke marker already proves AWH main startup and renderer DOM readiness.
 - Review and commit the new `.awh/project.json` manifests in each real source repository when their owners are ready; AWH currently keeps those local manifests uncommitted to the project repos.
 - M3C2 hosting foundation implementation only after infrastructure review.
-- M4 shared task/worker/mobile control plane and explicit conflict handling; production activation requires one bounded approval.
+- M4 local shared task/worker/mobile control plane and explicit conflict handling are implemented and fixture-tested; production activation requires one bounded approval.
 
 ## BACKLOG
 
@@ -50,3 +50,4 @@
 - AWH Autopilot v0.5 local-first product flow and dogfood acceptance scenario.
 - AWH video pipeline blocker closure: real FFmpeg/FFprobe discovery, disposable frame-sequence → MP4 E2E, metadata validation, decoded ordering verification, and corrupt/missing-frame regressions.
 - Real BAY EXCUSE X and Teacher Evaluation Video registration, project selection hot-switch, fixed profile/QA aliasing, and read/QA-only Autopilot dogfood with artifact and continuity checkpoints.
+- M4 local control-plane foundation: additive schema/migration, HttpOnly mobile session, CSRF/origin boundary, canonical Goal queue/idempotency, worker heartbeat/claim/lease/update, and Desktop worker client.

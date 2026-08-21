@@ -270,6 +270,13 @@ final class HubEnrollmentService
         return ['userId' => $auth['user_id'], 'deviceId' => $auth['device_id'], 'projectId' => $projectId];
     }
 
+    /** Shared control-plane authentication boundary; returns only internal identity metadata. */
+    public function authenticateForControlPlane(string $presentedToken, ?string $deviceId = null, ?string $now = null): array
+    {
+        $auth = $this->authenticate($presentedToken, $deviceId, $now);
+        return ['userId' => (string) $auth['user_id'], 'deviceId' => (string) $auth['device_id'], 'tokenId' => (string) $auth['token_id']];
+    }
+
     private function authenticate(string $token, ?string $deviceId, ?string $now): array
     {
         if ($token === '' || strlen($token) > 512 || preg_match('/[\x00-\x1F\x7F]/', $token)) throw new HubEnrollmentException('Device credential is invalid', 'TOKEN_INVALID');

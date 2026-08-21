@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-M3D — AWH Hub Live Read Connection — CLOSED; M3E-FINAL — Mac active / Windows field pending; AWH real-project unblock — LOCAL DOGFOOD PASS.
+M3D — AWH Hub Live Read Connection — CLOSED; M3E-FINAL — Mac active / Windows field pending; AWH real-project unblock — LOCAL DOGFOOD PASS; M4 local control-plane package prepared / ReadyIDC activation pending.
 
 ## Completed
 
@@ -11,8 +11,6 @@ Migration Engine; M1.3B Active Data Directory Policy; M2A Project Registry +
 Project Memory Foundation; M2B first real AWH Project; M2C Desktop Projects UX;
 M3A Hub contract; M3B device identity foundation; M3C0 static browser preview;
 M3D live Hub read over HTTPS verified on VPS and iPhone.
-M3E local PHP/SQLite enrollment domain foundation is implemented and tested;
-no enrollment endpoint is deployed or exposed through the browser gateway.
 M3E.1 additive migration and M3E.2 enrollment API are live on ReadyIDC at schema
 version 3. The Mac owner device is enrolled and its permanent credential is in
 macOS Keychain; bootstrap is closed. Windows enrollment remains a separate field
@@ -42,19 +40,21 @@ Windows execution, and signing/notarization remain platform/field gates.
 - Real-project validation: BAY EXCUSE X is registered as `php` and passed bounded PHP lint; Teacher Evaluation Video is registered as `remotion` and passed the existing `check` typecheck alias plus FFmpeg/FFprobe probe. Both completed with bounded artifacts and continuity checkpoints while preserving dirty local work.
 - Completion continuity metadata records `COMPLETED`, the committed HEAD, dirty-state protection, source device, project/task IDs, bounded HANDOFF and relative artifact references. Another device must use the committed release only; uncommitted local changes are never a continuation source.
 - The device-local registry contains AWH, BAY EXCUSE X (`d1e48976-cfde-479d-9a9c-f3b0ab5ec4fc`), and Teacher Evaluation Video (`dad35312-06d6-488b-9ed2-f4886d5394ac`). The second Teacher clone is intentionally not registered, so there is no duplicate identity.
-- No new M4/control-plane mutation was performed. ReadyIDC remains the active production Hub with DB v3, clean integrity/FK state, one indexed project, one enrolled Mac, and active enrollment runtime; Google Cloud `awh-vps` remains untouched legacy/backup infrastructure.
+- M4 local foundation is now implemented and fixture-verified: additive schema 003 targets user_version 4; browser control sessions use HttpOnly Secure cookies plus CSRF/origin checks; Goal submission is idempotent and project-authorized; workers heartbeat/claim/update through existing device-token auth; stale workers are surfaced offline. The release/deployment/rollback package is prepared but no M4 migration, route, static CONTROL release, or ReadyIDC mutation has occurred. Google Cloud `awh-vps` remains untouched legacy/backup infrastructure.
 
 ## Next action
 
-Open AWH Desktop, select BAY EXCUSE X or Teacher Evaluation Video, enter a real
-Goal, and review the bounded artifact/continuity result. Tomorrow, pair the
-Windows device independently and verify sanitized `devices = 2`.
+Give one bounded approval for the prepared M4 ReadyIDC activation package. After
+that activation, open the AWH control surface on iPhone, trust it once with an
+owner-issued pairing code, select BAY EXCUSE X or Teacher Evaluation Video, and
+submit a real Goal. Keep Windows device pairing separate and verify sanitized
+`devices = 2` when that hardware is available.
 
 ## Blockers and warnings
 
 - Windows Credential Manager persistence, Windows runtime/installer proof, and Mac ↔ Hub ↔ Windows continuity remain field validation work.
 - Desktop source/security readiness passes. Direct Electron 43.2.0 x64 launch from the Codex context produces a real native AppKit `SIGABRT` before AWH application startup, and non-GUI `/usr/bin/open` returns LaunchServices `-10822`. The smoke harness isolates temp data and classifies that pre-marker Codex GUI failure as `GUI_SANDBOX_BLOCKED`, not `AWH_APP_FAILED` and never PASS; the local Mac bundle passes non-GUI structural/runtime verification. Windows runtime and Squirrel installer remain Windows-only checks, and the Mac bundle is unsigned/not notarized.
-- New M4 task/worker/mobile control-plane routes are not deployed; any production schema/API change remains a single future approval-gated package.
+- New M4 task/worker/mobile control-plane routes are not deployed; the local package is ready but remains behind one production approval. The local worker client/protocol is implemented; actual Mac/Windows outbound worker operation and live iPhone submission still require activation/field validation.
 - GitHub Actions is optional and not part of the local critical path.
 - The GitHub remote may be behind this local Source of Truth. Do not use the remote as the authority for this work.
 - M3E is operational but not fully closed: Mac is active; milestone closure still requires the independent Windows device and sanitized `devices = 2`.

@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 const root = resolve(process.cwd());
 const input = resolve(root, process.argv[2] ?? 'dist-web');
 const output = resolve(root, process.argv[3] ?? join(input, 'release.json'));
-const files = ['index.html', 'styles.css', 'app.js', 'hub-read-adapter.js', 'data.json'];
+const files = ['index.html', 'styles.css', 'app.js', 'hub-read-adapter.js', 'control-plane-adapter.js', 'web-config.json', 'data.json'];
 const releaseId = process.env.AWH_RELEASE_ID ?? new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
 
 const entries = [];

@@ -32,6 +32,22 @@
         </div>
       </section>
 
+      <section id="control-panel" class="control-panel card" hidden aria-labelledby="control-title">
+        <div class="card-heading"><div><span class="label">CONTROL PANEL</span><h2 id="control-title">ทำงานต่อจากโทรศัพท์</h2></div><span id="control-state" class="status-pill">—</span></div>
+        <div id="control-sign-in" class="control-sign-in">
+          <p class="muted">ใช้รหัสเชื่อมต่ออายุสั้นจากอุปกรณ์เจ้าของ รหัสจะถูกใช้ครั้งเดียวและไม่ถูกบันทึกในเบราว์เซอร์</p>
+          <div class="control-form"><label for="control-pairing-code">รหัสเชื่อมต่อ</label><input id="control-pairing-code" inputmode="text" autocomplete="one-time-code" maxlength="128" /><button id="control-sign-in-button" class="control-button">เชื่อมต่อ AWH</button></div>
+          <p id="control-sign-in-message" class="muted" role="status"></p>
+        </div>
+        <div id="control-workspace" class="control-workspace" hidden>
+          <label for="control-project">โปรเจกต์</label><select id="control-project"></select>
+          <label for="control-goal">AWH ควรทำอะไรให้เสร็จ?</label><textarea id="control-goal" maxlength="2000" rows="4" placeholder="เช่น ตรวจปัญหาศูนย์เอกสารล่าสุดและสรุป QA ที่ต้องทำ"></textarea>
+          <button id="control-submit" class="control-button">ส่ง Goal</button>
+          <p id="control-submit-message" class="muted" role="status"></p>
+          <div class="control-columns"><div><span class="label">WORK</span><div id="control-task-list" class="control-list"></div></div><div><span class="label">WORKERS</span><div id="control-worker-list" class="control-list"></div></div></div>
+        </div>
+      </section>
+
       <section class="project-grid" aria-label="AWH project and continuity status">
         <article id="project-card" class="card project-card">
           <div class="card-heading"><div><span class="label">PROJECT</span><h2 id="project-name">Loading…</h2></div><span id="project-type" class="type-pill">—</span></div>

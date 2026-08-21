@@ -23,6 +23,11 @@ export async function getJson(path, mode = 'HUB_READ', fetchImpl = globalThis.fe
 function validateConfig(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Web mode configuration is invalid');
   if (value.mode === 'STATIC_PREVIEW') return { mode: value.mode };
+  if (value.mode === 'CONTROL') {
+    const apiBase = isSafeRelativePath(typeof value.apiBase === 'string' ? value.apiBase.replace(/\/$/, '') : '');
+    if (!apiBase || apiBase.includes('..')) throw new Error('Control API base is not safe');
+    return { mode: value.mode, apiBase };
+  }
   if (value.mode !== 'HUB_READ' || typeof value.apiBase !== 'string') throw new Error('Web mode is not supported');
   const apiBase = isSafeRelativePath(value.apiBase.replace(/\/$/, ''));
   if (!apiBase || apiBase.includes('..')) throw new Error('Hub API base is not safe');
@@ -103,6 +108,14 @@ export async function loadWebData() {
     }
   } catch (error) {
     if (error instanceof SyntaxError || String(error?.message).includes('configuration') || String(error?.message).includes('mode')) throw error;
+  }
+  if (config.mode === 'CONTROL') {
+    const { loadControlData } = await import('./control-plane-adapter.js');
+    try {
+      return { ...(await staticData()), control: await loadControlData(), preview: { mode: 'CONTROL', label: 'AWH Control Panel', status: 'Authenticated control session' } };
+    } catch (error) {
+      return { ...(await staticData()), control: { mode: 'CONTROL', authenticated: false, error: error instanceof Error ? error.message : 'AWH control session is unavailable', projects: [], tasks: [], workers: [] }, preview: { mode: 'CONTROL_SIGN_IN', label: 'AWH Control Panel', status: 'Sign in required' } };
+    }
   }
   if (config.mode !== 'HUB_READ') return staticData();
   try {
