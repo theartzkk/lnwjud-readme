@@ -48,9 +48,9 @@ test('risk and approval cannot be downgraded for production actions', () => {
 });
 
 test('contract rejects arbitrary command fields, moving refs and malformed repositories', () => {
-  assert.throws(() => validateCommandJob({ ...base, command: 'rm -rf /' }), /unrecognized|key/i);
-  assert.throws(() => validateCommandJob({ ...base, revision: 'main' }), /invalid|expected|format/i);
-  assert.throws(() => validateCommandJob({ ...base, repository: 'https://github.com/theartzkk/lnwjud-readme' }), /invalid|expected|format/i);
+  assert.throws(() => validateCommandJob({ ...base, command: 'rm -rf /' }), /unsupported fields/i);
+  assert.throws(() => validateCommandJob({ ...base, revision: 'main' }), /revision is invalid/i);
+  assert.throws(() => validateCommandJob({ ...base, repository: 'https://github.com/theartzkk/lnwjud-readme' }), /repository is invalid/i);
 });
 
 test('routine actions cannot smuggle approval state', () => {
