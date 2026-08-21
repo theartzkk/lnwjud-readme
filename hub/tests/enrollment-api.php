@@ -26,6 +26,18 @@ try {
     $service = HubEnrollmentService::open($database, $schema);
     putenv('AWH_ENROLLMENT_BOOTSTRAP_NONCE_HASH=' . hash('sha256', 'bootstrap-test-only'));
 
+    // Exercise the deployed entrypoint, not only the router helper. A release-root
+    // pointer resolves this file at hub/public/enrollment.php; GET must reach the
+    // router and be rejected before any enrollment mutation is considered.
+    putenv('AWH_HUB_DB_PATH=' . $database);
+    $_SERVER['REQUEST_METHOD'] = 'GET';
+    $_SERVER['REQUEST_URI'] = '/api/v1/enrollment/devices';
+    ob_start();
+    require dirname(__DIR__) . '/public/enrollment.php';
+    $entrypointBody = (string) ob_get_clean();
+    api_assert(http_response_code() === 405, 'enrollment entrypoint GET must reach the router and return 405');
+    api_assert(str_contains($entrypointBody, 'METHOD_NOT_ALLOWED'), 'enrollment entrypoint GET must use the router response');
+
     $origin = api_response($service, 'POST', '/api/v1/enrollment/bootstrap', api_server(['HTTP_ORIGIN' => 'https://evil.example', 'HTTP_X_AWH_BOOTSTRAP_NONCE' => 'bootstrap-test-only']), ['schemaVersion' => 1, 'userId' => $ownerId, 'displayName' => 'Art', 'projectIds' => [$projectId]]);
     api_assert($origin['status'] === 403, 'browser Origin must not reach enrollment bootstrap');
     $unauthenticated = api_response($service, 'POST', '/api/v1/enrollment/bootstrap', api_server(), ['schemaVersion' => 1, 'userId' => $ownerId, 'displayName' => 'Art', 'projectIds' => [$projectId]]);
@@ -80,5 +92,6 @@ try {
     fwrite(STDOUT, "AWH enrollment API tests: PASS\n");
 } finally {
     putenv('AWH_ENROLLMENT_BOOTSTRAP_NONCE_HASH');
+    putenv('AWH_HUB_DB_PATH');
     @unlink($database); @rmdir($root);
 }

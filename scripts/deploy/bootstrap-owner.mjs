@@ -197,6 +197,7 @@ export async function runGuardedDeployment({ runImpl = runCapture, hubHostname }
   if (processResult?.exitCode !== 0) {
     if (!output.failedAt || !output.rollback) throw new Error('Guarded enrollment deployment failed');
     const error = new Error('Guarded enrollment deployment failed');
+    error.stages = output.stages;
     error.deployFailedAt = output.failedAt;
     error.rollback = output.rollback;
     throw error;

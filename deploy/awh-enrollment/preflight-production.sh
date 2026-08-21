@@ -288,11 +288,11 @@ fi
 if test -L "$HUB/enrollment-current"; then
   ENROLLMENT_TARGET=$(readlink -f "$HUB/enrollment-current" 2>/dev/null || true)
   if test -n "$ENROLLMENT_TARGET" && test -d "$ENROLLMENT_TARGET" \
-    && test -f "$ENROLLMENT_TARGET/public/enrollment.php" \
-    && test -f "$ENROLLMENT_TARGET/src/HubEnrollmentService.php" \
-    && test -f "$ENROLLMENT_TARGET/src/HubEnrollmentRouter.php" \
-    && test -f "$ENROLLMENT_TARGET/migrations/002_m3e2_enrollment_api.sql" \
-    && test -f "$ENROLLMENT_TARGET/bin/migrate-m3e2.php"; then
+    && test -f "$ENROLLMENT_TARGET/hub/public/enrollment.php" \
+    && test -f "$ENROLLMENT_TARGET/hub/src/HubEnrollmentService.php" \
+    && test -f "$ENROLLMENT_TARGET/hub/src/HubEnrollmentRouter.php" \
+    && test -f "$ENROLLMENT_TARGET/hub/migrations/002_m3e2_enrollment_api.sql" \
+    && test -f "$ENROLLMENT_TARGET/hub/bin/migrate-m3e2.php"; then
     say 'enrollment_classification=ENROLLMENT_RELEASE_READY'
   else
     say 'enrollment_classification=ENROLLMENT_RELEASE_INVALID'

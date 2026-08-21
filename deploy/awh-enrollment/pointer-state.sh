@@ -16,10 +16,10 @@ pointer_exec() {
 
 pointer_release_shape() {
   pointer_exec test -d "$1" \
-    && pointer_exec test -f "$1/public/enrollment.php" \
-    && pointer_exec test -f "$1/src/HubEnrollmentService.php" \
-    && pointer_exec test -f "$1/migrations/002_m3e2_enrollment_api.sql" \
-    && pointer_exec test -f "$1/bin/migrate-m3e2.php"
+    && pointer_exec test -f "$1/hub/public/enrollment.php" \
+    && pointer_exec test -f "$1/hub/src/HubEnrollmentService.php" \
+    && pointer_exec test -f "$1/hub/migrations/002_m3e2_enrollment_api.sql" \
+    && pointer_exec test -f "$1/hub/bin/migrate-m3e2.php"
 }
 
 pointer_resolve() {

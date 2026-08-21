@@ -63,7 +63,7 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(nginx, /HTTP_AUTHORIZATION \$http_authorization/);
   assert.match(nginx, /client_max_body_size 16k/);
   assert.match(nginx, /access_log off/);
-  assert.match(nginx, /enrollment-current\/public\/enrollment\.php/);
+  assert.match(nginx, /enrollment-current\/hub\/public\/enrollment\.php/);
   assert.match(nginx, /fastcgi_pass unix:/);
   assert.match(pool, /clear_env = yes/);
   assert.match(pool, /AWH_ENROLLMENT_BOOTSTRAP_NONCE_HASH/);
@@ -102,6 +102,13 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(remoteDeploy, /test -r "\$REMOTE_RELEASE\/hub\/src\/HubEnrollmentService\.php"/);
   assert.match(remoteDeploy, /class_exists\("HubEnrollmentService", false\)/);
   assert.match(remoteDeploy, /CURRENT_STAGE=RELEASE_ACCESS_READY/);
+  assert.match(remoteDeploy, /CURRENT_STAGE=M3D_REGRESSION[\s\S]*CURRENT_STAGE=ENROLLMENT_ROUTE[\s\S]*test "\$code" = 405/);
+  const m3dStage = remoteDeploy.indexOf('CURRENT_STAGE=M3D_REGRESSION');
+  const m3dProbe = remoteDeploy.lastIndexOf('\nrun_m3d_health\n');
+  const enrollmentStage = remoteDeploy.indexOf('CURRENT_STAGE=ENROLLMENT_ROUTE', m3dStage);
+  const enrollmentProbe = remoteDeploy.indexOf('code=', enrollmentStage);
+  const enrollmentStageComplete = remoteDeploy.indexOf('stage "$CURRENT_STAGE"', enrollmentProbe);
+  assert.ok(m3dStage >= 0 && m3dProbe > m3dStage && enrollmentStage > m3dProbe && enrollmentProbe > enrollmentStage && enrollmentStageComplete > enrollmentProbe);
   assert.doesNotMatch(remoteDeploy, /"\$REMOTE_RELEASE\/hub\/src\/"\*\.php/);
   assert.match(remoteDeploy, /DEPLOY_STAGE=|DEPLOY_RESULT=PASS/);
   assert.doesNotMatch(remoteDeploy, /printf .*hash|printf .*token|printf .*nonce/i);
@@ -151,6 +158,7 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(preflight, /enrollment_route/);
   assert.match(preflight, /enrollment_pool/);
   assert.match(preflight, /enrollment_bootstrap_hash/);
+  assert.match(preflight, /ENROLLMENT_TARGET\/hub\/public\/enrollment\.php/);
   assert.match(preflight, /nginx -T/);
   assert.match(preflight, /php8\.3-fpm/);
   assert.doesNotMatch(preflight, /scp\s|systemctl\s+(?:reload|restart|start|stop)|sudo\s+(?:install|rm|mv|cp|ln)/i);
@@ -184,6 +192,25 @@ test('guarded deployment refuses a dirty tree and rollback order stays restore-f
   assert.equal(order.every((value, index) => index === 0 || value > order[index - 1]!), true);
 });
 
+test('release-root pointer resolves the canonical enrollment entrypoint used by Nginx', async () => {
+  const nginx = await readFile(join(ROOT, 'deploy/nginx/awh-enrollment.conf'), 'utf8');
+  const root = await mkdtemp(join(tmpdir(), 'awh-release-layout-'));
+  const releaseRoot = join(root, 'enrollment-releases');
+  const release = join(releaseRoot, 'release-a');
+  const pointer = join(root, 'enrollment-current');
+  try {
+    await mkdir(join(release, 'hub/public'), { recursive: true });
+    const entrypoint = join(release, 'hub/public/enrollment.php');
+    await writeFile(entrypoint, '<?php', 'utf8');
+    await symlink(await realpath(release), pointer);
+    assert.equal(await realpath(join(pointer, 'hub/public/enrollment.php')), await realpath(entrypoint));
+    assert.match(nginx, /fastcgi_param SCRIPT_FILENAME \/opt\/awh-hub\/enrollment-current\/hub\/public\/enrollment\.php;/);
+    assert.doesNotMatch(nginx, /enrollment-current\/public\/enrollment\.php/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('enrollment pointer helper rejects unsafe links and restores verified states', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awh-pointer-state-'));
   const releaseRoot = join(root, 'enrollment-releases');
@@ -193,8 +220,8 @@ test('enrollment pointer helper rejects unsafe links and restores verified state
   const helper = join(ROOT, 'deploy/awh-enrollment/pointer-state.sh');
   const quote = (value: string): string => `'${value.replaceAll("'", "'\"'\"'")}'`;
   const releaseFiles = async (release: string): Promise<void> => {
-    for (const directory of ['public', 'src', 'migrations', 'bin']) await mkdir(join(release, directory), { recursive: true });
-    for (const file of ['public/enrollment.php', 'src/HubEnrollmentService.php', 'migrations/002_m3e2_enrollment_api.sql', 'bin/migrate-m3e2.php']) await writeFile(join(release, file), 'fixture', 'utf8');
+    for (const directory of ['hub/public', 'hub/src', 'hub/migrations', 'hub/bin']) await mkdir(join(release, directory), { recursive: true });
+    for (const file of ['hub/public/enrollment.php', 'hub/src/HubEnrollmentService.php', 'hub/migrations/002_m3e2_enrollment_api.sql', 'hub/bin/migrate-m3e2.php']) await writeFile(join(release, file), 'fixture', 'utf8');
   };
   try {
     await releaseFiles(releaseA);

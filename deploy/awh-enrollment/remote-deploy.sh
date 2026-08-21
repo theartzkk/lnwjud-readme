@@ -314,12 +314,12 @@ sudo systemctl reload nginx
 CURRENT_STAGE=SERVICE_RELOAD
 stage "$CURRENT_STAGE"
 
-run_m3d_health
 CURRENT_STAGE=M3D_REGRESSION
+run_m3d_health
 stage "$CURRENT_STAGE"
+CURRENT_STAGE=ENROLLMENT_ROUTE
 code=$(curl --silent --show-error --max-time 10 --resolve "$HUB_HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' -X GET "https://$HUB_HOSTNAME/api/v1/enrollment/devices" 2>/dev/null || printf 000)
 test "$code" = 405
-CURRENT_STAGE=ENROLLMENT_ROUTE
 stage "$CURRENT_STAGE"
 
 SUCCESS=1

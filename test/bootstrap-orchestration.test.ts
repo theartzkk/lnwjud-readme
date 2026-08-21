@@ -112,6 +112,20 @@ test('guarded deployment preserves sanitized failure stage and rollback result',
   }
 });
 
+test('deployment stage contract records completed M3D before distinct enrollment readiness', async () => {
+  const success = await runGuardedDeployment({
+    runImpl: async () => ({
+      exitCode: 0,
+      stdout: 'DEPLOY_STAGE=M3D_REGRESSION\nDEPLOY_STAGE=ENROLLMENT_ROUTE\nDEPLOY_RESULT=PASS\n',
+    }),
+  });
+  assert.deepEqual(success.stages, ['M3D_REGRESSION', 'ENROLLMENT_ROUTE']);
+  await assert.rejects(
+    () => runGuardedDeployment({ runImpl: async () => ({ exitCode: 1, stdout: 'DEPLOY_STAGE=M3D_REGRESSION\nDEPLOY_FAILED_AT=ENROLLMENT_ROUTE\nROLLBACK=PASS\n' }) }),
+    (error: unknown) => error instanceof Error && error.deployFailedAt === 'ENROLLMENT_ROUTE' && error.rollback === 'PASS' && error.stages?.includes('M3D_REGRESSION'),
+  );
+});
+
 test('production deployment keeps the longer bounded timeout and preserves stage output', async () => {
   const startedAt = Date.now();
   const result = await runCapture('/bin/sh', ['-c', "sleep 11; printf 'DEPLOY_STAGE=RELEASE_STAGED\\nDEPLOY_RESULT=PASS\\n'"], { timeoutMs: PRODUCTION_DEPLOY_TIMEOUT_MS });
