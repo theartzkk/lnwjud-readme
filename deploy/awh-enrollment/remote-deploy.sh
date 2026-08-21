@@ -42,6 +42,7 @@ NGINX_CHANGED=0
 POOL_CHANGED=0
 POOL_EXISTED=0
 SERVICE_USER_CREATED=0
+RELEASE_CREATED=0
 SUCCESS=0
 CURRENT_STAGE=BOOTSTRAP_HASH_VALIDATED
 
@@ -110,8 +111,10 @@ rollback() {
         if test "$rollback_ok" -eq 1 && ! run_m3d_health; then rollback_ok=0; fi
       fi
     fi
-    if test "$SERVICE_USER_CREATED" -eq 1; then
+    if test "$RELEASE_CREATED" -eq 1; then
       if ! sudo rm -rf "$REMOTE_RELEASE"; then rollback_ok=0; fi
+    fi
+    if test "$SERVICE_USER_CREATED" -eq 1; then
       # userdel does not accept useradd's --system flag on Debian/Ubuntu.
       if ! sudo /usr/sbin/userdel awh-hub; then rollback_ok=0; fi
       if id -u awh-hub >/dev/null 2>&1; then rollback_ok=0; fi
@@ -196,7 +199,11 @@ sudo -n -u awh-hub test -w "$DB_PARENT"
 CURRENT_STAGE=DB_WRITE_READY
 stage "$CURRENT_STAGE"
 
+if sudo test -e "$REMOTE_RELEASE" || sudo test -L "$REMOTE_RELEASE"; then
+  exit 20
+fi
 sudo install -d -m 0750 -o awh-hub -g awh-hub "$REMOTE_ROOT/enrollment-releases/$RELEASE_ID"
+RELEASE_CREATED=1
 sudo tar -xzf "$REMOTE_STAGE" -C "$REMOTE_RELEASE"
 sudo test -f "$REMOTE_RELEASE/hub/public/enrollment.php"
 sudo test -f "$REMOTE_RELEASE/hub/bin/migrate-m3e2.php"

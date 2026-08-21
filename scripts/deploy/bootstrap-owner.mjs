@@ -27,6 +27,8 @@ const DIST_RUNTIME = [
 const HUB_READ_DB = '/var/lib/awh-hub/awh.sqlite';
 const HUB_READ_FRONT_CONTROLLER = '/opt/awh-hub/public/index.php';
 const FORBIDDEN_KEY = /(token|secret|nonce|password|credential|authorization|private|workspacepath|filepath|ssh)/i;
+export const DEFAULT_COMMAND_TIMEOUT_MS = 10_000;
+export const PRODUCTION_DEPLOY_TIMEOUT_MS = 180_000;
 const DEPLOY_STAGES = new Set([
   'BOOTSTRAP_HASH_VALIDATED', 'SERVICE_USER_READY', 'BACKUP_VERIFIED', 'DB_WRITE_READY',
   'RELEASE_STAGED', 'MIGRATION_FIRST_PASS', 'MIGRATION_IDEMPOTENT', 'FPM_CONFIGURED',
@@ -60,7 +62,7 @@ function runProcess(executable, args, { env = process.env } = {}) {
   });
 }
 
-function runCapture(executable, args, { cwd, env = process.env, maxBytes = 16 * 1024 } = {}) {
+export function runCapture(executable, args, { cwd, env = process.env, maxBytes = 16 * 1024, timeoutMs = DEFAULT_COMMAND_TIMEOUT_MS } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(executable, args, { cwd, env, shell: false, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
     let stdout = '';
@@ -72,18 +74,18 @@ function runCapture(executable, args, { cwd, env = process.env, maxBytes = 16 * 
     };
     const timer = setTimeout(() => {
       child.kill();
-      finish({ exitCode: 124, stdout: '' });
-    }, 10_000);
+      finish({ exitCode: 124, stdout, timedOut: true });
+    }, timeoutMs);
     child.stdout.on('data', (chunk) => {
       stdout += chunk.toString();
       if (Buffer.byteLength(stdout, 'utf8') > maxBytes) {
         clearTimeout(timer);
         child.kill();
-        finish({ exitCode: 75, stdout: '' });
+        finish({ exitCode: 75, stdout, timedOut: false });
       }
     });
     child.once('error', () => { clearTimeout(timer); reject(new Error('Fixed local process is unavailable')); });
-    child.once('close', (code) => { clearTimeout(timer); finish({ exitCode: code ?? 1, stdout }); });
+    child.once('close', (code) => { clearTimeout(timer); finish({ exitCode: code ?? 1, stdout, timedOut: false }); });
   });
 }
 
@@ -128,37 +130,63 @@ function parseDeploymentOutput(stdout) {
   let failedAt = null;
   let rollback = null;
   let result = null;
+  const rejectOutput = () => {
+    const error = new Error('Deployment output is not sanitized');
+    error.stages = [...stages];
+    error.failedAt = failedAt;
+    error.rollback = rollback;
+    throw error;
+  };
   for (const line of lines) {
     if (line.startsWith('DEPLOY_STAGE=')) {
       const stage = line.slice('DEPLOY_STAGE='.length);
-      if (!DEPLOY_STAGES.has(stage)) throw new Error('Deployment output is not sanitized');
+      if (!DEPLOY_STAGES.has(stage)) rejectOutput();
       stages.push(stage);
       continue;
     }
     if (line.startsWith('DEPLOY_FAILED_AT=')) {
       const stage = line.slice('DEPLOY_FAILED_AT='.length);
-      if (failedAt !== null || !DEPLOY_STAGES.has(stage)) throw new Error('Deployment output is not sanitized');
+      if (failedAt !== null || !DEPLOY_STAGES.has(stage)) rejectOutput();
       failedAt = stage;
       continue;
     }
     if (line.startsWith('DEPLOY_RESULT=')) {
-      if (result !== null || line !== 'DEPLOY_RESULT=PASS') throw new Error('Deployment output is not sanitized');
+      if (result !== null || line !== 'DEPLOY_RESULT=PASS') rejectOutput();
       result = 'PASS';
       continue;
     }
     if (line.startsWith('ROLLBACK=')) {
-      if (rollback !== null || !['PASS', 'FAIL'].includes(line.slice('ROLLBACK='.length))) throw new Error('Deployment output is not sanitized');
+      if (rollback !== null || !['PASS', 'FAIL'].includes(line.slice('ROLLBACK='.length))) rejectOutput();
       rollback = line.slice('ROLLBACK='.length);
       continue;
     }
-    throw new Error('Deployment output is not sanitized');
+    rejectOutput();
   }
   return { stages, failedAt, rollback, result };
 }
 
 export async function runGuardedDeployment({ runImpl = runCapture } = {}) {
-  const processResult = await runImpl('/bin/sh', [DEFAULT_DEPLOY_SCRIPT, '--deploy'], { maxBytes: MAX_DEPLOY_OUTPUT_BYTES });
-  const output = parseDeploymentOutput(processResult?.stdout);
+  const processResult = await runImpl('/bin/sh', [DEFAULT_DEPLOY_SCRIPT, '--deploy'], { maxBytes: MAX_DEPLOY_OUTPUT_BYTES, timeoutMs: PRODUCTION_DEPLOY_TIMEOUT_MS });
+  let output;
+  try {
+    output = parseDeploymentOutput(processResult?.stdout);
+  } catch (error) {
+    if (!processResult?.timedOut) throw error;
+    const timeoutError = new Error('Guarded enrollment deployment timed out');
+    timeoutError.deployTimeout = true;
+    timeoutError.stages = error?.stages ?? [];
+    timeoutError.deployFailedAt = error?.failedAt ?? null;
+    timeoutError.rollback = error?.rollback ?? null;
+    throw timeoutError;
+  }
+  if (processResult?.timedOut) {
+    const error = new Error('Guarded enrollment deployment timed out');
+    error.deployTimeout = true;
+    error.stages = output.stages;
+    error.deployFailedAt = output.failedAt;
+    error.rollback = output.rollback;
+    throw error;
+  }
   if (processResult?.exitCode !== 0) {
     if (!output.failedAt || !output.rollback) throw new Error('Guarded enrollment deployment failed');
     const error = new Error('Guarded enrollment deployment failed');
@@ -319,7 +347,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     });
     process.stdout.write(`AWH bootstrap orchestration completed: enrolled=${result.enrolled}; credentialStored=${result.credentialStored}; hub=protected-perimeter+internal-health\n`);
   } catch (error) {
-    if (error && typeof error === 'object' && typeof error.deployFailedAt === 'string' && ['PASS', 'FAIL'].includes(error.rollback)) {
+    if (error && typeof error === 'object' && error.deployTimeout === true) {
+      for (const stage of Array.isArray(error.stages) ? error.stages : []) process.stdout.write(`DEPLOY_STAGE=${stage}\n`);
+      if (typeof error.deployFailedAt === 'string') process.stdout.write(`DEPLOY_FAILED_AT=${error.deployFailedAt}\n`);
+      if (error.rollback === 'PASS' || error.rollback === 'FAIL') process.stdout.write(`ROLLBACK=${error.rollback}\n`);
+      process.stderr.write('DEPLOY_TIMEOUT=1\n');
+    } else if (error && typeof error === 'object' && typeof error.deployFailedAt === 'string' && ['PASS', 'FAIL'].includes(error.rollback)) {
       process.stderr.write(`DEPLOY_FAILED_AT=${error.deployFailedAt}\nROLLBACK=${error.rollback}\n`);
     } else {
       process.stderr.write('AWH bootstrap orchestration failed closed.\n');

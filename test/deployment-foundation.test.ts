@@ -86,6 +86,10 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(remoteDeploy, /userdel awh-hub/);
   assert.doesNotMatch(remoteDeploy, /userdel --system awh-hub/);
   assert.match(remoteDeploy, /if test "\$SERVICE_USER_CREATED" -eq 1/);
+  assert.match(remoteDeploy, /RELEASE_CREATED=0/);
+  assert.match(remoteDeploy, /if test "\$RELEASE_CREATED" -eq 1; then[\s\S]*?rm -rf "\$REMOTE_RELEASE"/);
+  assert.match(remoteDeploy, /if sudo test -e "\$REMOTE_RELEASE" \|\| sudo test -L "\$REMOTE_RELEASE"/);
+  assert.match(remoteDeploy, /RELEASE_CREATED=1/);
   assert.match(remoteDeploy, /DEPLOY_STAGE=|DEPLOY_RESULT=PASS/);
   assert.doesNotMatch(remoteDeploy, /printf .*hash|printf .*token|printf .*nonce/i);
   assert.match(remoteDeploy, /insert-nginx-include\.php/);
@@ -124,6 +128,11 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(preflight, /php8\.3-fpm/);
   assert.doesNotMatch(preflight, /scp\s|systemctl\s+(?:reload|restart|start|stop)|sudo\s+(?:install|rm|mv|cp|ln)/i);
   assert.doesNotMatch(`${nginx}\n${pool}\n${deploy}\n${preflight}`, /BEGIN [A-Z ]+PRIVATE KEY|password\s*[:=]\s*[^<{{\s]+|pairingCode\s*[:=]\s*[^<{{\s]+/i);
+  const releaseCleanup = remoteDeploy.indexOf('if test "$RELEASE_CREATED" -eq 1; then');
+  const serviceUserCleanup = remoteDeploy.indexOf('if test "$SERVICE_USER_CREATED" -eq 1; then');
+  assert.ok(releaseCleanup >= 0 && serviceUserCleanup > releaseCleanup);
+  assert.ok(remoteDeploy.slice(releaseCleanup, serviceUserCleanup).includes('rm -rf "$REMOTE_RELEASE"'));
+  assert.equal(remoteDeploy.slice(serviceUserCleanup).includes('rm -rf "$REMOTE_RELEASE"'), false);
 });
 
 test('guarded deployment refuses a dirty tree and rollback order stays restore-first', async () => {

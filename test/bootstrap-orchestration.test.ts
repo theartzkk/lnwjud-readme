@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import test from 'node:test';
-import { DEFAULT_DEPLOY_SCRIPT, runBootstrapOrchestration, runDeploymentDryRun, runGuardedDeployment, validateLocalAssets, verifyInternalHubHealth, verifyProtectedPerimeter } from '../scripts/deploy/bootstrap-owner.mjs';
+import { DEFAULT_DEPLOY_SCRIPT, DEFAULT_COMMAND_TIMEOUT_MS, PRODUCTION_DEPLOY_TIMEOUT_MS, runBootstrapOrchestration, runCapture, runDeploymentDryRun, runGuardedDeployment, validateLocalAssets, verifyInternalHubHealth, verifyProtectedPerimeter } from '../scripts/deploy/bootstrap-owner.mjs';
 import { BOOTSTRAP_NONCE_CREDENTIAL_KEY, DEVICE_TOKEN_CREDENTIAL_KEY, InMemoryCredentialStore } from '../src/credential-store.js';
 import { EnrollmentClient } from '../src/enrollment-client.js';
 
@@ -110,6 +110,39 @@ test('guarded deployment preserves sanitized failure stage and rollback result',
       (error: unknown) => error instanceof Error && error.deployFailedAt === 'MIGRATION_FIRST_PASS' && error.rollback === rollback,
     );
   }
+});
+
+test('production deployment keeps the longer bounded timeout and preserves stage output', async () => {
+  const startedAt = Date.now();
+  const result = await runCapture('/bin/sh', ['-c', "sleep 11; printf 'DEPLOY_STAGE=RELEASE_STAGED\\nDEPLOY_RESULT=PASS\\n'"], { timeoutMs: PRODUCTION_DEPLOY_TIMEOUT_MS });
+  assert.ok(Date.now() - startedAt >= 10_000);
+  assert.equal(result.timedOut, false);
+  assert.match(result.stdout, /DEPLOY_STAGE=RELEASE_STAGED/);
+
+  let receivedOptions;
+  const guarded = await runGuardedDeployment({
+    runImpl: async (_executable, _args, options) => {
+      receivedOptions = options;
+      return { exitCode: 0, stdout: 'DEPLOY_STAGE=RELEASE_STAGED\nDEPLOY_RESULT=PASS\n' };
+    },
+  });
+  assert.equal(receivedOptions.timeoutMs, PRODUCTION_DEPLOY_TIMEOUT_MS);
+  assert.equal(guarded.result, 'PASS');
+  assert.equal(DEFAULT_COMMAND_TIMEOUT_MS, 10_000);
+});
+
+test('real deployment timeout is sanitized and retains safe stages received before timeout', async () => {
+  const result = await runCapture('/bin/sh', ['-c', "printf 'DEPLOY_STAGE=RELEASE_STAGED\\n'; sleep 1"], { timeoutMs: 25 });
+  assert.equal(result.timedOut, true);
+  assert.match(result.stdout, /DEPLOY_STAGE=RELEASE_STAGED/);
+
+  await assert.rejects(
+    () => runGuardedDeployment({ runImpl: async () => ({ exitCode: 124, timedOut: true, stdout: 'DEPLOY_STAGE=RELEASE_STAGED\n' }) }),
+    (error: unknown) => error instanceof Error
+      && error.deployTimeout === true
+      && error.stages?.[0] === 'RELEASE_STAGED'
+      && !error.message.includes('RELEASE_STAGED'),
+  );
 });
 
 test('one-shot orchestration provisions and bootstraps with the exact same secure nonce', async () => {
