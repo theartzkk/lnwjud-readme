@@ -112,4 +112,3 @@ command -v scp >/dev/null 2>&1 || { echo "scp is required" >&2; exit 1; }
 command -v ssh >/dev/null 2>&1 || { echo "ssh is required" >&2; exit 1; }
 scp -o BatchMode=yes -o StrictHostKeyChecking=yes "$BUNDLE" "$DEPLOY_TARGET:$REMOTE_STAGE"
 ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$DEPLOY_TARGET" sh -s -- "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "$REMOTE_RELEASE" "$RELEASE_ID" "$NGINX_CONFIG_PATH" "$PHP_VERSION" "$BOOTSTRAP_HASH_FILE" < "$REMOTE_DEPLOY_SCRIPT"
-printf '%s\n' "AWH enrollment deployment phase completed for $RELEASE_ID"
