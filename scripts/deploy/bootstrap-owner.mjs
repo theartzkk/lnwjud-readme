@@ -51,7 +51,12 @@ function apiRoot(value) {
   let url;
   try { url = new URL(value); } catch { throw new Error('Hub API configuration is invalid'); }
   if (url.protocol !== 'https:' || url.search || url.hash || !url.pathname.endsWith('/api/v1')) throw new Error('Hub API configuration is invalid');
+  if (!/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(url.hostname) || !/[a-z]/i.test(url.hostname)) throw new Error('Hub API hostname is invalid');
   return url;
+}
+
+export function validatedHubHostname(apiBase) {
+  return apiRoot(apiBase).hostname;
 }
 
 function runProcess(executable, args, { env = process.env } = {}) {
@@ -165,8 +170,10 @@ function parseDeploymentOutput(stdout) {
   return { stages, failedAt, rollback, result };
 }
 
-export async function runGuardedDeployment({ runImpl = runCapture } = {}) {
-  const processResult = await runImpl('/bin/sh', [DEFAULT_DEPLOY_SCRIPT, '--deploy'], { maxBytes: MAX_DEPLOY_OUTPUT_BYTES, timeoutMs: PRODUCTION_DEPLOY_TIMEOUT_MS });
+export async function runGuardedDeployment({ runImpl = runCapture, hubHostname } = {}) {
+  const options = { maxBytes: MAX_DEPLOY_OUTPUT_BYTES, timeoutMs: PRODUCTION_DEPLOY_TIMEOUT_MS };
+  if (hubHostname !== undefined) options.env = { ...process.env, AWH_HUB_HOSTNAME: validatedHubHostname(`https://${hubHostname}/api/v1`) };
+  const processResult = await runImpl('/bin/sh', [DEFAULT_DEPLOY_SCRIPT, '--deploy'], options);
   let output;
   try {
     output = parseDeploymentOutput(processResult?.stdout);
@@ -291,6 +298,7 @@ export async function runBootstrapOrchestration({
   apiBase,
 }) {
   if (!client || !store) throw new Error('Bootstrap orchestration dependencies are unavailable');
+  const hubHostname = validatedHubHostname(apiBase);
   await validateAssets({ expectedCommit: process.env.AWH_RELEASE_COMMIT });
   await dryRun();
   await verifyExternal(apiBase);
@@ -298,7 +306,7 @@ export async function runBootstrapOrchestration({
   await verifyPreflight({ target });
   await client.prepareBootstrapNonce();
   await provision({ store, target: safeTarget(target) });
-  await deploy();
+  await deploy({ hubHostname });
   const state = await client.bootstrapAndEnroll(projectIds, displayName, userId);
   const stored = await store.get(DEVICE_TOKEN_CREDENTIAL_KEY);
   if (!stored) throw new Error('First device credential was not stored');

@@ -14,6 +14,7 @@ RELEASE_ID=$5
 NGINX_CONFIG=$6
 PHP_VERSION=$7
 BOOTSTRAP_HASH_FILE=$8
+HUB_HOSTNAME=$9
 
 case "$DB" in /var/lib/awh-hub/*|/opt/awh-hub/*|/srv/awh/*) ;; *) exit 20 ;; esac
 case "$REMOTE_ROOT" in /opt/awh-hub) ;; *) exit 20 ;; esac
@@ -23,6 +24,9 @@ case "$RELEASE_ID" in ''|*[!A-Za-z0-9._-]*) exit 20 ;; esac
 case "$NGINX_CONFIG" in /etc/nginx/sites-enabled/*) ;; *) exit 20 ;; esac
 case "$PHP_VERSION" in [0-9]*.[0-9]*) ;; *) exit 20 ;; esac
 case "$BOOTSTRAP_HASH_FILE" in /etc/awh-hub/*) ;; *) exit 20 ;; esac
+case "$HUB_HOSTNAME" in ''|*[!A-Za-z0-9.-]*|.*|*.) exit 20 ;; esac
+case "$HUB_HOSTNAME" in *[A-Za-z]*.*) : ;; *) exit 20 ;; esac
+printf '%s\n' "$HUB_HOSTNAME" | awk 'BEGIN { valid = 1 } { if (length($0) > 253 || split($0, labels, ".") < 2) valid = 0; for (i in labels) if (labels[i] == "" || length(labels[i]) > 63 || labels[i] ~ /^-/ || labels[i] ~ /-$/) valid = 0 } END { exit valid ? 0 : 1 }' || exit 20
 
 BACKUP=/var/backups/awh-hub/awh.sqlite.pre-m3e2
 POOL_PATH=/etc/php/$PHP_VERSION/fpm/pool.d/awh-enrollment.conf
@@ -32,7 +36,12 @@ NGINX_BACKUP=$NGINX_CONFIG.pre-m3e2-$RELEASE_ID
 POOL_BACKUP=$POOL_PATH.pre-m3e2-$RELEASE_ID
 POOL_TMP=$(sudo mktemp /tmp/awh-enrollment-pool.XXXXXX)
 NGINX_TMP=$(sudo mktemp /tmp/awh-enrollment-nginx.XXXXXX)
-PREVIOUS_TARGET=$(sudo readlink -f "$REMOTE_ROOT/enrollment-current" 2>/dev/null || true)
+POINTER_PATH=$REMOTE_ROOT/enrollment-current
+POINTER_STATE=UNSET
+PREVIOUS_TARGET=
+POINTER_SUDO=/usr/bin/sudo
+POINTER_RELEASE_ROOT=/opt/awh-hub/enrollment-releases
+export POINTER_RELEASE_ROOT
 
 BACKUP_CREATED=0
 PERMISSIONS_CHANGED=0
@@ -58,7 +67,7 @@ cleanup() {
 
 run_m3d_health() {
   for path in /api/v1/health /api/v1/status /api/v1/projects /api/v1/projects/113b45c0-23e1-408d-ae0f-ac5eca7f6900/memory; do
-    code=$(curl -k -sS --max-time 10 -o /dev/null -w '%{http_code}' "https://127.0.0.1$path" -H 'Host: awh.invalid' 2>/dev/null || printf 000)
+    code=$(curl --silent --show-error --max-time 10 --resolve "$HUB_HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HUB_HOSTNAME$path" 2>/dev/null || printf 000)
     test "$code" = 401 || return 1
   done
 }
@@ -85,11 +94,7 @@ rollback() {
 
     # Restore release pointer, Nginx, then PHP-FPM configuration.
     if test "$SWITCHED" -eq 1; then
-      if test -n "$PREVIOUS_TARGET"; then
-        if ! sudo ln -sfn "$PREVIOUS_TARGET" "$REMOTE_ROOT/enrollment-current"; then rollback_ok=0; fi
-      elif ! sudo rm -f "$REMOTE_ROOT/enrollment-current"; then
-        rollback_ok=0
-      fi
+      if ! pointer_restore_and_verify; then rollback_ok=0; fi
     fi
     if test "$NGINX_CHANGED" -eq 1; then
       if ! sudo cp -p "$NGINX_BACKUP" "$NGINX_CONFIG"; then rollback_ok=0; fi
@@ -239,6 +244,7 @@ for php_file in HubEnrollmentService.php HubEnrollmentRouter.php HubEnrollmentAp
   sudo chmod 0640 "$SRC_FILE"
 done
 sudo chmod 0640 "$REMOTE_RELEASE/hub/public/enrollment.php" "$REMOTE_RELEASE/hub/bin/migrate-m3e2.php" "$REMOTE_RELEASE/hub/migrations/002_m3e2_enrollment_api.sql" "$REMOTE_RELEASE/deploy/nginx/awh-enrollment.conf" "$REMOTE_RELEASE/deploy/awh-enrollment/insert-nginx-include.php" "$REMOTE_RELEASE/deploy/php-fpm/awh-enrollment.pool.conf"
+sudo test -f "$REMOTE_RELEASE/deploy/awh-enrollment/pointer-state.sh"
 sudo -u awh-hub test -x "$REMOTE_ROOT"
 sudo -u awh-hub test -x "$REMOTE_RELEASE"
 sudo -u awh-hub test -r "$REMOTE_RELEASE/hub/src/HubEnrollmentService.php"
@@ -247,6 +253,11 @@ CURRENT_STAGE=RELEASE_ACCESS_READY
 stage "$CURRENT_STAGE"
 CURRENT_STAGE=RELEASE_STAGED
 stage "$CURRENT_STAGE"
+
+. "$REMOTE_RELEASE/deploy/awh-enrollment/pointer-state.sh"
+POINTER_PATH=$REMOTE_ROOT/enrollment-current
+POINTER_SUDO=/usr/bin/sudo
+if ! pointer_capture; then exit 20; fi
 
 MIGRATION_STARTED=1
 FIRST=$(sudo -u awh-hub /usr/bin/php "$REMOTE_RELEASE/hub/bin/migrate-m3e2.php" "$DB")
@@ -289,7 +300,7 @@ CURRENT_STAGE=FPM_CONFIGURED
 stage "$CURRENT_STAGE"
 
 # The release pointer exists before Nginx sees the reviewed include target.
-sudo ln -sfn "$REMOTE_RELEASE" "$REMOTE_ROOT/enrollment-current"
+sudo ln -sfn "$REMOTE_RELEASE" "$POINTER_PATH"
 SWITCHED=1
 sudo /usr/bin/php "$REMOTE_RELEASE/deploy/awh-enrollment/insert-nginx-include.php" "$NGINX_CONFIG" "$NGINX_TMP" "$INCLUDE_PATH"
 sudo install -o root -g root -m 0644 "$NGINX_TMP" "$NGINX_CONFIG"
@@ -306,7 +317,7 @@ stage "$CURRENT_STAGE"
 run_m3d_health
 CURRENT_STAGE=M3D_REGRESSION
 stage "$CURRENT_STAGE"
-code=$(curl -k -sS --max-time 10 -o /dev/null -w '%{http_code}' -X GET https://127.0.0.1/api/v1/enrollment/devices -H 'Host: awh.invalid' 2>/dev/null || printf 000)
+code=$(curl --silent --show-error --max-time 10 --resolve "$HUB_HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' -X GET "https://$HUB_HOSTNAME/api/v1/enrollment/devices" 2>/dev/null || printf 000)
 test "$code" = 405
 CURRENT_STAGE=ENROLLMENT_ROUTE
 stage "$CURRENT_STAGE"

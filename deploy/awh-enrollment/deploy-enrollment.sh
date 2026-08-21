@@ -18,6 +18,7 @@ PREFLIGHT_SCRIPT=$ROOT/deploy/awh-enrollment/preflight-production.sh
 REMOTE_ROOT=/opt/awh-hub
 REMOTE_STAGE=/tmp/awh-enrollment-$RELEASE_ID.tar.gz
 REMOTE_RELEASE=$REMOTE_ROOT/enrollment-releases/$RELEASE_ID
+HUB_HOSTNAME=${AWH_HUB_HOSTNAME:-}
 BUNDLE=$(mktemp "${TMPDIR:-/tmp}/awh-enrollment.XXXXXX.tar.gz")
 cleanup() { rm -f "$BUNDLE"; }
 trap cleanup EXIT HUP INT TERM
@@ -47,6 +48,7 @@ tar -czf "$BUNDLE" -C "$ROOT" \
   hub/bin/migrate-m3e2.php \
   deploy/nginx/awh-enrollment.conf \
   deploy/php-fpm/awh-enrollment.pool.conf \
+  deploy/awh-enrollment/pointer-state.sh \
   deploy/awh-enrollment/insert-nginx-include.php \
   deploy/awh-enrollment/remote-deploy.sh
 
@@ -68,6 +70,18 @@ test "$SOURCE_COMMIT" = "$EXPECTED_COMMIT" || { echo "AWH_RELEASE_COMMIT must ma
 test -z "$(git -C "$ROOT" status --porcelain --untracked-files=all)" || {
   echo "Refusing deployment from a dirty or uncommitted working tree" >&2
   exit 1
+}
+
+case "$HUB_HOSTNAME" in
+  ''|*[!A-Za-z0-9.-]*|.*|*.) echo "AWH_HUB_HOSTNAME is invalid" >&2; exit 2 ;;
+esac
+case "$HUB_HOSTNAME" in
+  *[A-Za-z]*.*) : ;;
+  *) echo "AWH_HUB_HOSTNAME is invalid" >&2; exit 2 ;;
+esac
+printf '%s\n' "$HUB_HOSTNAME" | awk 'BEGIN { valid = 1 } { if (length($0) > 253 || split($0, labels, ".") < 2) valid = 0; for (i in labels) if (labels[i] == "" || length(labels[i]) > 63 || labels[i] ~ /^-/ || labels[i] ~ /-$/) valid = 0 } END { exit valid ? 0 : 1 }' || {
+  echo "AWH_HUB_HOSTNAME is invalid" >&2
+  exit 2
 }
 
 PREFLIGHT_OUTPUT=$(AWH_DEPLOY_TARGET="$DEPLOY_TARGET" sh "$PREFLIGHT_SCRIPT") || {
@@ -111,4 +125,4 @@ case "$BOOTSTRAP_HASH_FILE" in /etc/awh-hub/*) ;; *) echo "AWH_ENROLLMENT_BOOTST
 command -v scp >/dev/null 2>&1 || { echo "scp is required" >&2; exit 1; }
 command -v ssh >/dev/null 2>&1 || { echo "ssh is required" >&2; exit 1; }
 scp -o BatchMode=yes -o StrictHostKeyChecking=yes "$BUNDLE" "$DEPLOY_TARGET:$REMOTE_STAGE"
-ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$DEPLOY_TARGET" sh -s -- "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "$REMOTE_RELEASE" "$RELEASE_ID" "$NGINX_CONFIG_PATH" "$PHP_VERSION" "$BOOTSTRAP_HASH_FILE" < "$REMOTE_DEPLOY_SCRIPT"
+ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$DEPLOY_TARGET" sh -s -- "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "$REMOTE_RELEASE" "$RELEASE_ID" "$NGINX_CONFIG_PATH" "$PHP_VERSION" "$BOOTSTRAP_HASH_FILE" "$HUB_HOSTNAME" < "$REMOTE_DEPLOY_SCRIPT"

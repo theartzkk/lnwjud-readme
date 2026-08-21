@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile as execFileCallback } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
@@ -57,6 +57,7 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   const preflight = await readFile(join(ROOT, 'deploy/awh-enrollment/preflight-production.sh'), 'utf8');
   const remoteDeploy = await readFile(join(ROOT, 'deploy/awh-enrollment/remote-deploy.sh'), 'utf8');
   const nginxInsert = await readFile(join(ROOT, 'deploy/awh-enrollment/insert-nginx-include.php'), 'utf8');
+  const pointer = await readFile(join(ROOT, 'deploy/awh-enrollment/pointer-state.sh'), 'utf8');
   assert.match(nginx, /location \^~ \/api\/v1\/enrollment\//);
   assert.match(nginx, /auth_basic off/);
   assert.match(nginx, /HTTP_AUTHORIZATION \$http_authorization/);
@@ -108,6 +109,20 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(nginxInsert, /authoritative AWH HTTPS server block/);
   assert.match(nginxInsert, /Exactly one authoritative/);
   assert.match(deploy, /remote-deploy\.sh/);
+  assert.match(deploy, /AWH_HUB_HOSTNAME/);
+  assert.match(deploy, /BOOTSTRAP_HASH_FILE.*HUB_HOSTNAME/);
+  assert.match(remoteDeploy, /HUB_HOSTNAME=\$9/);
+  assert.match(remoteDeploy, /--resolve "\$HUB_HOSTNAME:443:127\.0\.0\.1"/);
+  assert.doesNotMatch(remoteDeploy, /curl\s+-k/);
+  assert.match(remoteDeploy, /https:\/\/\$HUB_HOSTNAME/);
+  assert.match(remoteDeploy, /pointer_capture/);
+  assert.match(remoteDeploy, /pointer_restore_and_verify/);
+  assert.match(remoteDeploy, /POINTER_RELEASE_ROOT=\/opt\/awh-hub\/enrollment-releases/);
+  assert.match(pointer, /POINTER_STATE=ABSENT/);
+  assert.match(pointer, /test ! -e "\$POINTER_PATH"/);
+  assert.match(pointer, /test ! -L "\$POINTER_PATH"/);
+  assert.match(pointer, /POINTER_RELEASE_ROOT/);
+  assert.doesNotMatch(pointer, /readlink -f "\$POINTER_PATH"/);
   assert.match(remoteDeploy, /sqlite3/);
   assert.match(remoteDeploy, /systemctl reload/);
   assert.match(remoteDeploy, /nginx -t/);
@@ -159,7 +174,7 @@ test('guarded deployment refuses a dirty tree and rollback order stays restore-f
   const order = [
     remote.indexOf('.restore'),
     remote.indexOf('chown "$DB_UID:$DB_GID"'),
-    remote.indexOf('ln -sfn "$PREVIOUS_TARGET"'),
+    remote.indexOf('pointer_restore_and_verify'),
     remote.indexOf('cp -p "$NGINX_BACKUP"'),
     remote.indexOf('cp -p "$POOL_BACKUP"'),
     remote.indexOf('PHP_FPM_BIN" -t'),
@@ -167,6 +182,39 @@ test('guarded deployment refuses a dirty tree and rollback order stays restore-f
   ];
   assert.equal(order.every((value) => value >= 0), true);
   assert.equal(order.every((value, index) => index === 0 || value > order[index - 1]!), true);
+});
+
+test('enrollment pointer helper rejects unsafe links and restores verified states', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awh-pointer-state-'));
+  const releaseRoot = join(root, 'enrollment-releases');
+  const releaseA = join(releaseRoot, 'release-a');
+  const releaseB = join(releaseRoot, 'release-b');
+  const pointerPath = join(root, 'enrollment-current');
+  const helper = join(ROOT, 'deploy/awh-enrollment/pointer-state.sh');
+  const quote = (value: string): string => `'${value.replaceAll("'", "'\"'\"'")}'`;
+  const releaseFiles = async (release: string): Promise<void> => {
+    for (const directory of ['public', 'src', 'migrations', 'bin']) await mkdir(join(release, directory), { recursive: true });
+    for (const file of ['public/enrollment.php', 'src/HubEnrollmentService.php', 'migrations/002_m3e2_enrollment_api.sql', 'bin/migrate-m3e2.php']) await writeFile(join(release, file), 'fixture', 'utf8');
+  };
+  try {
+    await releaseFiles(releaseA);
+    await releaseFiles(releaseB);
+    const releaseRootCanonical = await realpath(releaseRoot);
+    const releaseACanonical = await realpath(releaseA);
+    const releaseBCanonical = await realpath(releaseB);
+    const run = async (body: string): Promise<void> => {
+      await execFile('/bin/sh', ['-c', `set -eu\nPOINTER_SUDO=\nPOINTER_RELEASE_ROOT=${quote(releaseRootCanonical)}\nPOINTER_PATH=${quote(pointerPath)}\n. ${quote(helper)}\n${body}`]);
+    };
+
+    await run('pointer_capture\ntest "$POINTER_STATE" = ABSENT\npointer_restore_and_verify');
+    await symlink(releaseACanonical, pointerPath);
+    await run('pointer_capture\ntest "$POINTER_STATE" = PRESENT\ntest "$PREVIOUS_TARGET" = ' + quote(releaseACanonical) + '\nrm -f "$POINTER_PATH"\nln -s ' + quote(releaseBCanonical) + ' "$POINTER_PATH"\npointer_restore_and_verify\ntest "$(realpath "$POINTER_PATH")" = ' + quote(releaseACanonical));
+    await rm(pointerPath, { force: true });
+    await symlink(pointerPath, pointerPath);
+    await assert.rejects(() => run('pointer_capture'));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('DB permission readiness arithmetic accepts safe 640/750 modes without broad group write', async () => {

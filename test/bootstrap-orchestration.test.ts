@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import test from 'node:test';
-import { DEFAULT_DEPLOY_SCRIPT, DEFAULT_COMMAND_TIMEOUT_MS, PRODUCTION_DEPLOY_TIMEOUT_MS, runBootstrapOrchestration, runCapture, runDeploymentDryRun, runGuardedDeployment, validateLocalAssets, verifyInternalHubHealth, verifyProtectedPerimeter } from '../scripts/deploy/bootstrap-owner.mjs';
+import { DEFAULT_DEPLOY_SCRIPT, DEFAULT_COMMAND_TIMEOUT_MS, PRODUCTION_DEPLOY_TIMEOUT_MS, runBootstrapOrchestration, runCapture, runDeploymentDryRun, runGuardedDeployment, validatedHubHostname, validateLocalAssets, verifyInternalHubHealth, verifyProtectedPerimeter } from '../scripts/deploy/bootstrap-owner.mjs';
 import { BOOTSTRAP_NONCE_CREDENTIAL_KEY, DEVICE_TOKEN_CREDENTIAL_KEY, InMemoryCredentialStore } from '../src/credential-store.js';
 import { EnrollmentClient } from '../src/enrollment-client.js';
 
@@ -131,8 +131,23 @@ test('production deployment keeps the longer bounded timeout and preserves stage
   assert.equal(DEFAULT_COMMAND_TIMEOUT_MS, 10_000);
 });
 
+test('production deployment receives only a validated public Hub hostname', async () => {
+  assert.equal(validatedHubHostname('https://157-85-108-142.sslip.io/api/v1'), '157-85-108-142.sslip.io');
+  assert.throws(() => validatedHubHostname('https://127.0.0.1/api/v1'), /hostname/i);
+  assert.throws(() => validatedHubHostname('https://*.example/api/v1'), /hostname/i);
+  let receivedOptions;
+  await runGuardedDeployment({
+    hubHostname: '157-85-108-142.sslip.io',
+    runImpl: async (_executable, _args, options) => {
+      receivedOptions = options;
+      return { exitCode: 0, stdout: 'DEPLOY_STAGE=RELEASE_STAGED\nDEPLOY_RESULT=PASS\n' };
+    },
+  });
+  assert.equal(receivedOptions.env.AWH_HUB_HOSTNAME, '157-85-108-142.sslip.io');
+});
+
 test('real deployment timeout is sanitized and retains safe stages received before timeout', async () => {
-  const result = await runCapture('/bin/sh', ['-c', "printf 'DEPLOY_STAGE=RELEASE_STAGED\\n'; sleep 1"], { timeoutMs: 25 });
+  const result = await runCapture('/bin/sh', ['-c', "printf 'DEPLOY_STAGE=RELEASE_STAGED\\n'; sleep 1"], { timeoutMs: 250 });
   assert.equal(result.timedOut, true);
   assert.match(result.stdout, /DEPLOY_STAGE=RELEASE_STAGED/);
 
@@ -152,6 +167,7 @@ test('one-shot orchestration provisions and bootstraps with the exact same secur
   let provisionedDigest = '';
   let provisioned = false;
   let deployed = false;
+  let deployedHost = '';
   let bootstrapNonce = '';
   try {
     const client = new EnrollmentClient('https://hub.example/api/v1', root, store, async (input, init) => {
@@ -179,7 +195,7 @@ test('one-shot orchestration provisions and bootstraps with the exact same secur
         provisionedDigest = createHash('sha256').update(nonce).digest('hex');
         provisioned = true;
       },
-      deploy: async () => { deployed = true; },
+      deploy: async ({ hubHostname }) => { deployed = true; deployedHost = hubHostname; },
       verifyExternal: async (apiBase) => {
         assert.equal(apiBase, 'https://hub.example/api/v1');
         return { health: 401, status: 401, projects: 401 };
@@ -192,6 +208,7 @@ test('one-shot orchestration provisions and bootstraps with the exact same secur
     });
     assert.equal(provisioned, true);
     assert.equal(deployed, true);
+    assert.equal(deployedHost, 'hub.example');
     assert.equal(createHash('sha256').update(bootstrapNonce).digest('hex'), provisionedDigest);
     assert.equal(requests.length, 2);
     assert.equal(result.enrolled, true);
