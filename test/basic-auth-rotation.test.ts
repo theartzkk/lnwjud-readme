@@ -9,20 +9,20 @@ import { ALLOWED_STAGES, BASIC_AUTH_HOST, BASIC_AUTH_KEY, BASIC_AUTH_USER, STAGE
 import { InMemoryCredentialStore } from '../src/credential-store.js';
 
 const execFileAsync = promisify(execFile);
-const runScript = (script: string, args: string[], env: NodeJS.ProcessEnv, input: string) => new Promise<{ stdout: string }>((resolve, reject) => {
+const runScript = (script: string, args: string[], env: NodeJS.ProcessEnv, input: string, allowFailure = false) => new Promise<{ stdout: string; code: number }>((resolve, reject) => {
   const child = spawn('sh', [script, ...args], { env, stdio: ['pipe', 'pipe', 'pipe'] });
   let stdout = ''; let stderr = '';
   child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
   child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
   child.once('error', reject);
-  child.once('close', (code) => code === 0 ? resolve({ stdout }) : reject(new Error(`fixture exit ${code}: ${stderr} OUTPUT=${stdout}`)));
+  child.once('close', (code) => code === 0 || allowFailure ? resolve({ stdout, code: code ?? 1 }) : reject(new Error(`fixture exit ${code}: ${stderr} OUTPUT=${stdout}`)));
   child.stdin.end(input);
 });
-const runCommand = (command: string, env: NodeJS.ProcessEnv, input: string) => new Promise<{ stdout: string }>((resolve, reject) => {
+const runCommand = (command: string, env: NodeJS.ProcessEnv, input: string, allowFailure = false) => new Promise<{ stdout: string; code: number }>((resolve, reject) => {
   const child = spawn('sh', ['-c', command], { env, stdio: ['pipe', 'pipe', 'pipe'] });
   let stdout = ''; let stderr = '';
   child.stdout.on('data', (chunk) => { stdout += chunk.toString(); }); child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-  child.once('error', reject); child.once('close', (code) => code === 0 ? resolve({ stdout }) : reject(new Error(`command exit ${code}: ${stderr} OUTPUT=${stdout}`)));
+  child.once('error', reject); child.once('close', (code) => code === 0 || allowFailure ? resolve({ stdout, code: code ?? 1 }) : reject(new Error(`command exit ${code}: ${stderr} OUTPUT=${stdout}`)));
   child.stdin.end(input);
 });
 
@@ -167,7 +167,7 @@ eval "exec $cmd$args"`;
   await writeFile(join(bin, 'sudo'), sudo.replace('${NGINX_ROOT}', nginxRoot), { mode: 0o755 });
   await writeFile(join(bin, 'stat'), '#!/bin/sh\nif [ "$1" = "-c" ]; then fmt=$(printf "%s" "$2" | tr -d "\\\'"); case "$fmt" in %u|%g) echo 0;; %a) stat -f %Lp "$3";; *) exit 1;; esac; else exit 1; fi\n', { mode: 0o755 });
   await writeFile(join(bin, 'nginx'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-  await writeFile(join(bin, 'systemctl'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  await writeFile(join(bin, 'systemctl'), '#!/bin/sh\nif [ "${AWH_FIXTURE_ALWAYS_FAIL_RELOAD:-0}" = 1 ]; then exit 1; fi\nexit 0\n', { mode: 0o755 });
   await writeFile(join(bin, 'curl'), '#!/bin/sh\nprintf 401\n', { mode: 0o755 });
   await writeFile(join(bin, 'base64'), `#!/bin/sh\n${process.execPath} --input-type=module -e "let d=''; process.stdin.on('data',b=>d+=b); process.stdin.on('end',()=>process.stdout.write(Buffer.from(d, 'base64')));"\n`, { mode: 0o755 });
   const script = join(process.cwd(), 'deploy/nginx/rotate-basic-auth-remote.sh');
@@ -191,6 +191,15 @@ eval "exec $cmd$args"`;
   assert.match(cleanup.stdout, /ROTATE_RESULT=CLEANUP/);
   assert.equal(await stat(join(nginxRoot, '.awh-preview-users.rfixture.backup')).catch(() => null), null);
   assert.equal(await stat(join(nginxRoot, '.awh-preview-users.rfixture.meta')).catch(() => null), null);
+  const failed = await runCommand(buildRemoteCommand(remoteSource, args), { ...env, AWH_FIXTURE_ALWAYS_FAIL_RELOAD: '1' }, '$apr1$fixture$abcdefghijklmnopqrstuv', true);
+  const failedOutput = failed.stdout;
+  assert.match(failedOutput, /ROLLBACK=FAIL/);
+  assert.equal(await stat(join(nginxRoot, '.awh-preview-users.rfixture.backup')).then(() => true).catch(() => false), true);
+  assert.equal(await stat(join(nginxRoot, '.awh-preview-users.rfixture.meta')).then(() => true).catch(() => false), true);
+  const uncertainRollback = await runScript(script, [...args.slice(0, 3), 'rollback'], { ...env, AWH_FIXTURE_ALWAYS_FAIL_RELOAD: '1' }, '', true);
+  assert.notEqual(uncertainRollback.code, 0);
+  assert.equal(await stat(join(nginxRoot, '.awh-preview-users.rfixture.backup')).then(() => true).catch(() => false), true);
+  assert.equal(await stat(join(nginxRoot, '.awh-preview-users.rfixture.meta')).then(() => true).catch(() => false), true);
   await rm(root, { recursive: true, force: true });
 });
 
@@ -222,4 +231,27 @@ test('transaction fixtures keep Keychain authoritative until public verify, roll
   assert.equal(pending.result, 'PASS'); assert.equal(pending.cleanup, 'PENDING_RETRY_SAFE'); assert.notEqual(await pendingStore.get(BASIC_AUTH_KEY), old);
   assert.equal(calls.some((call) => call.args.some((arg) => arg.includes('old-keychain-value'))), false);
   assert.equal(calls.some((call) => call.stdin?.includes('$apr1$fixture')), true);
+});
+
+test('remote failure classification is fail-safe and never changes the old Keychain value', async () => {
+  const old = 'old-keychain-value';
+  const remoteFailure = (rollback: string, stage = 'ATOMIC_REPLACE') => async (executable: string, args: readonly string[], stdin = '') => {
+    if (executable.includes('openssl')) return { code: 0, stdout: '$apr1$fixture$abcdefghijklmnopqrstuv\n' };
+    const command = String(args.at(-1));
+    if (command.endsWith(' rotate')) return { code: 1, stdout: `ROTATE_STAGE=PRECHECK\nROTATE_STAGE=HASH_RECEIVED\nROTATE_STAGE=BACKUP_CREATED\nROTATE_STAGE=TEMP_CREATED\nROTATE_STAGE=${stage}\nROTATE_FAILED_AT=${stage}\nROTATE_FAILURE_CODE=RELOAD_FAILED\nROLLBACK=${rollback}\n` };
+    if (command.endsWith(' rollback')) return { code: rollback === 'PASS' ? 0 : 1, stdout: `ROLLBACK=${rollback}\n` };
+    return { code: 0, stdout: 'ROTATE_RESULT=CLEANUP\n' };
+  };
+  const uncertainStore = new InMemoryCredentialStore(); await uncertainStore.set(BASIC_AUTH_KEY, old);
+  await assert.rejects(() => rotateBasicAuth({ store: uncertainStore, processRunner: remoteFailure('FAIL') }), /STATE_UNCERTAIN/);
+  assert.equal(await uncertainStore.get(BASIC_AUTH_KEY), old);
+  const ordinaryStore = new InMemoryCredentialStore(); await ordinaryStore.set(BASIC_AUTH_KEY, old);
+  await assert.rejects(() => rotateBasicAuth({ store: ordinaryStore, processRunner: remoteFailure('PASS') }), /ROTATION_FAILED/);
+  assert.equal(await ordinaryStore.get(BASIC_AUTH_KEY), old);
+  const preMutationStore = new InMemoryCredentialStore(); await preMutationStore.set(BASIC_AUTH_KEY, old);
+  const preMutation = async (executable: string, args: readonly string[]) => executable.includes('openssl')
+    ? { code: 0, stdout: '$apr1$fixture$abcdefghijklmnopqrstuv\n' }
+    : { code: 1, stdout: 'ROTATE_STAGE=PRECHECK\nROTATE_FAILED_AT=PRECHECK\nROTATE_FAILURE_CODE=TARGET_MISSING\n' };
+  await assert.rejects(() => rotateBasicAuth({ store: preMutationStore, processRunner: preMutation }), /ROTATION_FAILED|OUTPUT_CONTRACT_INVALID/);
+  assert.equal(await preMutationStore.get(BASIC_AUTH_KEY), old);
 });

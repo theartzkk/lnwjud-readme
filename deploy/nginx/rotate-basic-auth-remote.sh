@@ -52,10 +52,13 @@ $META
 EOF
 sudo -n cp -p "$B" "$T" && sudo -n chown "$O:$G" "$T" && sudo -n chmod "$M" "$T" && sudo -n mv -f "$T" "$F" && sudo -n nginx -t >/dev/null 2>&1 && sudo -n systemctl reload nginx >/dev/null 2>&1; then
     printf '%s\n' 'ROLLBACK=PASS'
+    sudo -n rm -f "$T" "$B" "$X" >/dev/null 2>&1 || true
   else
     printf '%s\n' 'ROLLBACK=FAIL'
+    # B/X are the only recovery evidence for an uncertain remote state.
+    # Retain them for an explicitly approved reconciliation operation.
+    sudo -n rm -f "$T" >/dev/null 2>&1 || true
   fi
-  sudo -n rm -f "$T" "$B" "$X" >/dev/null 2>&1 || true
   exit "$code"
 }
 trap rollback EXIT HUP INT TERM

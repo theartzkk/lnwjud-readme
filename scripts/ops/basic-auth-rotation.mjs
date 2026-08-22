@@ -10,6 +10,7 @@ export const BASIC_AUTH_HOST = '157-85-108-142.sslip.io';
 export const BASIC_AUTH_USER = 'awh-preview';
 export const STAGE_SEQUENCE = ['PRECHECK','HASH_RECEIVED','BACKUP_CREATED','TEMP_CREATED','ATOMIC_REPLACE','NGINX_TEST','RELOAD','PERIMETER_VERIFY','COMPLETE'];
 export const ALLOWED_STAGES = new Set(STAGE_SEQUENCE);
+const MUTATION_BOUNDARY = STAGE_SEQUENCE.indexOf('ATOMIC_REPLACE');
 const REMOTE = join(dirname(fileURLToPath(import.meta.url)), '../../deploy/nginx/rotate-basic-auth-remote.sh');
 
 export function buildRemoteCommand(remoteScript, args) {
@@ -49,6 +50,23 @@ export function parseRotationOutput(output) {
   return result;
 }
 
+function mutationReached(parsed) {
+  return parsed.stages.some((stage) => STAGE_SEQUENCE.indexOf(stage) >= MUTATION_BOUNDARY);
+}
+
+function rawOutputReachedMutation(output) {
+  return output.split(/\r?\n/).some((line) => line === 'ROTATE_STAGE=ATOMIC_REPLACE' || STAGE_SEQUENCE.slice(MUTATION_BOUNDARY + 1).some((stage) => line === `ROTATE_STAGE=${stage}`));
+}
+
+function classifyRemoteFailure(response, parsed) {
+  if (parsed.ROLLBACK === 'FAIL' || (mutationReached(parsed) && parsed.ROLLBACK !== 'PASS')) {
+    return 'STATE_UNCERTAIN';
+  }
+  const error = new Error(parsed.ROTATE_FAILURE_CODE ? `ROTATION_FAILED:${parsed.ROTATE_FAILED_AT}:${parsed.ROTATE_FAILURE_CODE}` : 'ROTATION_FAILED');
+  error.cause = parsed;
+  return error;
+}
+
 function run(executable, args, stdin = '', timeout = 45000) {
   return new Promise((resolve, reject) => {
     const child = spawn(executable, args, { shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -85,24 +103,27 @@ export async function rotateBasicAuth({ dryRun = false, store = createProduction
   const response = await remoteRun('rotate', `${hash}\n`);
   let parsed;
   try { parsed = parseRotationOutput(response.stdout); } catch (error) {
+    if (!rawOutputReachedMutation(response.stdout)) {
+      const contractError = new Error('OUTPUT_CONTRACT_INVALID'); contractError.cause = error; throw contractError;
+    }
     const rollback = await remoteRun('rollback');
     if (rollback.code !== 0 || !rollback.stdout.includes('ROLLBACK=PASS')) throw new Error('STATE_UNCERTAIN');
     const contractError = new Error('OUTPUT_CONTRACT_INVALID'); contractError.cause = error; throw contractError;
   }
   if (response.code !== 0 || parsed.ROTATE_RESULT !== 'REMOTE_READY') {
-    const error = new Error(parsed.ROTATE_FAILURE_CODE ? `ROTATION_FAILED:${parsed.ROTATE_FAILED_AT}:${parsed.ROTATE_FAILURE_CODE}` : 'ROTATION_FAILED');
-    error.cause = parsed;
-    throw error;
+    const classified = classifyRemoteFailure(response, parsed);
+    if (classified === 'STATE_UNCERTAIN') throw new Error(classified);
+    throw classified;
   }
   const auth = await processRunner(curlExecutable, ['--config','-'], `url = https://${BASIC_AUTH_HOST}/\nuser = ${BASIC_AUTH_USER}:${password}\nsilent\noutput = /dev/null\nwrite-out = %{http_code}\nmax-time = 15\n`, 30000);
   if (auth.code !== 0 || auth.stdout.trim() !== '200') {
     const rollback = await remoteRun('rollback');
-    if (rollback.code !== 0 || !rollback.stdout.includes('ROLLBACK=PASS')) throw new Error('ROLLBACK_FAILED');
+    if (rollback.code !== 0 || !rollback.stdout.includes('ROLLBACK=PASS')) throw new Error('STATE_UNCERTAIN');
     throw new Error('AUTH_VERIFY_FAILED');
   }
   try { await store.set(BASIC_AUTH_KEY, password); } catch {
     const rollback = await remoteRun('rollback');
-    if (rollback.code !== 0 || !rollback.stdout.includes('ROLLBACK=PASS')) throw new Error('ROLLBACK_FAILED');
+    if (rollback.code !== 0 || !rollback.stdout.includes('ROLLBACK=PASS')) throw new Error('STATE_UNCERTAIN');
     throw new Error('KEYCHAIN_COMMIT_FAILED');
   }
   const cleanup = await remoteRun('cleanup');
