@@ -47,7 +47,13 @@
 - **M3E-FINAL Desktop boundary:** preload exposes only enrollment state/pair/rotate/revoke high-level IPC. Renderer receives sanitized device metadata and never receives a credential, filesystem access, shell, environment, or raw process surface.
 - **Real-project Desktop workflow:** the device-local registry can map portable manifests such as the real BAY EXCUSE X (`php`) and Teacher Evaluation Video (`remotion`) manifests to local workspaces. These are optional user projects, not AWH core dependencies; selection updates the stored workspace immediately, and the Desktop reloads the same runner/context without a restart before routing the user to the bounded Goal entry point.
 - **Project-specific safe gates:** Teacher's existing `check` script is recognized only as a semantic `typecheck` alias and invoked through the existing fixed package-manager argv path. BAY uses the bounded PHP lint gate. User Goal text never becomes a command.
-- **Current operational state:** ReadyIDC is active at DB schema version 4 with M3E.1/M3E.2/M4, one indexed project, one enrolled Mac device and a closed bootstrap. Owner-auth migration 004 is a source-only v4→v5 candidate in this pass; it is not deployed. M4 remains generic and accepts zero user projects with later onboarding; the second Teacher clone remains unregistered to avoid duplicate local identity.
+- **Current operational state:** ReadyIDC is active at DB schema version 5 with
+  M3E.1/M3E.2/M4/M5, one indexed project, one enrolled Mac device and a closed
+  bootstrap. M4 remains generic and accepts zero user projects with later
+  onboarding; the second Teacher clone remains unregistered to avoid duplicate
+  local identity. The `8c5ea0e` compatibility refresh updated exact
+  control/web/Nginx/PHP-FPM release pointers after backup and capability gates,
+  without replaying migrations or altering owner/project/device data.
 
 ## FUTURE COMPONENTS
 
@@ -59,7 +65,10 @@
 - Signed/notarized distribution packaging and Windows Squirrel installer field validation.
 - Real OpenAI Secure MCP Tunnel control-plane E2E verification.
 - M3C2 hosting control-plane design and a separately reviewed deployment path.
-- **AWH Web Control Center:** Home/Projects/Tasks/Artifacts/Devices/Builds/Audit are the owner-facing sections. Static preview remains read-only. CONTROL mode is the deployed authenticated mobile/control surface over canonical Hub projects/tasks; it queues Goals and reports WAITING_FOR_WORKER until an enrolled worker claims them. Owner username/password access is a prepared v5 source candidate and is not live until its bounded approval.
+- **AWH Web Control Center:** the deployed authenticated mobile/control surface
+  is one project/work-first flow over canonical Hub projects/tasks. It queues
+  Goals and reports WAITING_FOR_WORKER until an enrolled worker claims them.
+  Owner username/password access is live; static Preview is historical only.
 - **Desktop smoke:** the harness uses a temporary AWH data directory and safe child environment. A pre-marker macOS AppKit/LaunchServices failure from the Codex GUI sandbox, including `_RegisterApplication`/`SIGABRT` or LaunchServices `-10822`, is classified as `GUI_SANDBOX_BLOCKED`, not `AWH_APP_FAILED` and never PASS. A logged-in macOS GUI LaunchServices run outside Codex is the runtime proof and has produced a valid `stage: passed` marker with the primary UI paths and Cmd+K routing checked.
 
 ## HUB DATA BOUNDARY

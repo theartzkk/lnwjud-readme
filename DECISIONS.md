@@ -1,5 +1,21 @@
 # Decisions
 
+## Current production supersession (2026-08-22)
+
+- ReadyIDC is the active M3D/M3E/M4/M5 authority at SQLite schema v5. The
+  `8c5ea0e79c96fb0796c643164a596aa8beabfa51` compatibility refresh updated
+  only exact release/web/Nginx/PHP-FPM pointers after backup and capability
+  checks; it did not replay migrations or alter the canonical owner, project,
+  device or enrollment records.
+- The normal web product is one public owner-login → project → work → Goal
+  surface. Old static Preview/dashboard output is not a fallback. A release
+  identifier versions all shell assets and the service worker uses network-first
+  shell retrieval, so an old PWA generation cannot combine with new HTML.
+- AWH's local Secure MCP Tunnel is a restricted local workspace adapter, not a
+  private ReadyIDC control-plane gateway. A future ChatGPT integration must use
+  one canonical control-plane contract plus server-enforced OAuth/mTLS and
+  scoped authorization; it must not reuse the owner password or browser session.
+
 - Art Agent is a legacy codename only.
 - There is one AWH product; no parallel ArtAgent product is created.
 - AWH is local-first.

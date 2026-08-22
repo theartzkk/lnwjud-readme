@@ -2,60 +2,31 @@
 
 ## Current state
 
-### Active field incident — browser runtime, not backend-only
+### Current live state — browser/runtime closure deployed
 
-ReadyIDC has a healthy M3E/M4/M5 backend baseline, but the first iPhone owner
-field test exposed a frontend/runtime release mismatch: the live `web-config`
-identified CONTROL while `data.json` still described a static Remote Preview.
-The login request could succeed, then Safari's ordinary same-origin GET with
-`Sec-Fetch-Site: same-origin` and no `Origin` was rejected as
-`ORIGIN_FORBIDDEN`; the UI surfaced that as “This AWH surface is not
-authorized” and could not load projects.
+ReadyIDC is active at SQLite schema v5 with M3E.1, M3E.2, M4 and M5 ledgers,
+one existing project and one enrolled Mac device. The exact release
+`8c5ea0e79c96fb0796c643164a596aa8beabfa51` is deployed through the bounded
+M5 compatibility refresh. It rebuilt the PWA from its exact source and passed
+the deployed login → session → projects gate without replaying a migration or
+changing the owner, projects, device or enrollment state.
 
-The next candidate closes this whole boundary. It centralizes safe-read versus
-mutation origin rules, produces a generic CONTROL PWA from the exact release,
-uses a release-specific service-worker cache, verifies authenticated
-session→projects during deployment, and provides a v5 compatibility refresh
-that changes only release/web/Nginx pointers—never migrations, owner identity,
-password binding, or projects. Production remains unchanged until that exact
-candidate is approved.
+The previous iPhone incident was a shared release boundary: a stale Preview
+artifact could be served beside CONTROL configuration, and Safari's valid
+same-origin safe GET could omit `Origin`. The deployed product now has one
+generic account shell, project picker, conversation-style work stream and Goal
+composer. Its `html`, `body` and app shell use the same graphite canvas;
+release-specific asset URLs and a network-first app-shell cache prevent mixed
+generations. Orange is accent-only.
 
-### Current web product-surface correction
+Normal owner use is username/password plus a revocable remembered session.
+The Keychain value is only bootstrap delivery. After signing in, Art should set
+a memorable password in Account. Basic Auth remains only on technical routes.
 
-The field screenshot also proved that the old web release still carried the
-M3 preview/dashboard surface and its orange `body` radial-gradient. The next
-candidate replaces it rather than layering another panel over it: there is one
-mobile-first account shell, one project picker, one conversation-style work
-thread and Goal composer, and Advanced for bounded system detail. `html`,
-`body`, and app shell use the same graphite canvas; orange is an accent only.
-Normal owner use is username/password plus a revocable remembered session; the
-initial Keychain password is only a delivery bootstrap, not a daily workflow.
-
-### Latest owner-auth closure evidence
-
-The source release `055484d7ac9a4b9e5676ab5312518f8c722fd705` was attempted once
-on ReadyIDC and rolled back safely at the owner-auth surface gate. The
-post-rollback baseline is verified: SQLite v4, integrity/FK clean, one project,
-one device, original control/web pointers, Nginx syntax, M3D and M4 healthy.
-No source retry is authorized by this record.
-
-The repeated failure is governed by the shared incident rule in
-`ART_AI_WORKING_PROTOCOL.md`: route reachability, application auth, web file
-access and post-reload behavior must be reported as distinct gates. The next
-source candidate separates the owner route probe from the public web probe and
-keeps the `www-data` read/traverse contract explicit. It must pass QA and receive
-one new bounded production approval before mutation.
-
-AWH `1.0.0-rc.1` is feature-complete in source/artifact scope. ReadyIDC production has the verified M3D/M3E/M4 control-plane baseline at SQLite schema v4 with one indexed project and one enrolled Mac.
-
-The current source candidate adds owner username/password access as additive
-`m5-owner-auth` (v4→v5). It reuses `control_sessions`, stores only password
-and recovery hashes, and is not deployed. Basic Auth was not retried or
-changed by this pass; optional Passkey remains deferred.
-
-The first M4 activation attempt using release `062b18eb37c043f755099e4d3d40215c99edb33e` reached the web-release stage, then failed safely before Nginx activation. Automatic rollback passed and restored DB v3, M3D/M3E routes, pointers and service health.
-
-Read-only inspection of the real ReadyIDC Nginx topology proved the root cause: the reused include inserter incorrectly treated the existing valid M3E enrollment include as a conflict with the new M4 control-plane include. Release `88834b5ad34ed35e7aa1f54c473307482e37feee` fixes that shared Nginx composition contract and passes targeted/local deployment regression. That SHA has not been retried in production.
+The first M4 activation attempt is historical evidence only: it failed before
+Nginx activation and rollback restored the v3 baseline. Subsequent reviewed
+releases closed that include-composition boundary; the active v5 state above is
+authoritative.
 
 ## Durable owner working protocol
 
@@ -82,16 +53,17 @@ The owner-protocol integration is isolated on `awh/clean-foundation` / PR #8 for
 
 ## Production safety state
 
-- ReadyIDC M4: **not active**.
-- ReadyIDC baseline after rollback: **restored and verified**.
+- ReadyIDC M3D/M3E/M4/M5: **active and verified after the 8c5ea compatibility refresh**.
+- DB: schema v5; integrity/FK, M3D perimeter, M3E post-schema and M4 control gates passed.
 - Google Cloud `awh-vps`: untouched legacy/backup authority.
 - BAY production: untouched.
-- M4 retry must use an exact reviewed SHA and whole-path production-parity evidence; do not retry by guessing at another isolated subcommand.
-- Owner-auth v5 activation requires one bounded approval covering backup, additive migration, auth route, Nginx application-auth cutover, rollback and live login/session regression.
+- Future release changes require an exact reviewed SHA and whole-path
+  production-parity evidence; do not reopen an incident by guessing at an
+  isolated subcommand.
 
-## Field gates after successful M4 activation
+## Remaining field gates
 
-1. iPhone Safari/PWA trust + Control Panel + zero-project/real-project flow.
+1. iPhone Safari/PWA: sign in → select existing project → submit one safe Goal → see truthful worker/result state.
 2. Live Goal → canonical task → worker claim → bounded AI/QA → Result/Artifact/Approval.
 3. Logged-in Mac GUI field test with the final package.
 4. Physical Windows pairing/Credential Manager/runtime field test.
@@ -99,19 +71,9 @@ The owner-protocol integration is isolated on `awh/clean-foundation` / PR #8 for
 
 ## Next action
 
-Finish PR #8 cross-platform QA and reconcile it cleanly with the current release line. Then perform one whole-path production-readiness review of the final exact SHA, not only the previously failing Nginx step. Only after that review may one bounded ReadyIDC M4 retry be approved.
-
-For owner authentication, the next production action is one reviewed v5
-activation approval; this source pass performs no production mutation. The
-activation must resolve the AWH PHP-FPM socket from the live enrollment
-include, pass the origin as a FastCGI request parameter, verify the effective
-Nginx generation, then allow the public auth route a short bounded convergence
-window before evaluating application login/session. Only sanitized HTTP status
-and attempt evidence may cross the deployment boundary.
-
-The failed v5 retry additionally established that moving the stable
-`control-plane-current` pointer must reload the derived AWH PHP-FPM service:
-the old M4 worker can retain its exact-v4 schema code while SQLite is already
-v5 and return a generic 503 before Owner Auth routing. Rollback must reload
-the same service after pointer restoration before it declares the v4 baseline
-healthy.
+Use AWH on iPhone: open the ReadyIDC URL, sign in as the existing owner, change
+the bootstrap password in Account if desired, select the existing project and
+send one real, safe Goal. Do not begin another infrastructure rewrite before
+that field evidence. A private ChatGPT MCP gateway requires a separately
+approved OAuth/mTLS production boundary; the current local Secure MCP Tunnel
+remains read-only and is not that gateway.
