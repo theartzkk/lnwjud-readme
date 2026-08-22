@@ -80,6 +80,7 @@ test('owner-auth transformation matches the real ReadyIDC topology and is idempo
     assert.match(rendered, /location \^~ \/api\/v1\/auth\/ \{\n        auth_basic off;[\s\S]*fastcgi_param SCRIPT_FILENAME \/opt\/awh-hub\/control-plane-current\/hub\/public\/control-plane\.php;/);
     assert.match(rendered, /location = \/api\/v1\/auth\/login \{\n        auth_basic off;/);
     assert.match(rendered, /location = \/api\/v1\/auth\/session \{\n        auth_basic off;/);
+    assert.ok(rendered.indexOf('location = /api/v1/auth/login {') < rendered.indexOf('location ^~ /api/v1/ {'));
     assert.match(rendered, /fastcgi_param AWH_CONTROL_ORIGIN https:\/\/157-85-108-142\.sslip\.io;/);
     assert.match(rendered, /location \/ \{\n        auth_basic off;/);
     assert.match(rendered, /location \^~ \/preview\/ \{\n        auth_basic "AWH Remote Preview";/);

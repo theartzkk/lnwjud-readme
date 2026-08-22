@@ -245,7 +245,7 @@ $publicAuth = [
     '    }',
 ];
 if ($auth['start'] >= 0) $rewriteLocation($auth, $remove, $insertBefore, ['        auth_basic off;'], $lines);
-else $insertBefore[$target['end']] = array_merge($insertBefore[$target['end']] ?? [], $publicAuth);
+else $insertBefore[$generic['start']] = array_merge($insertBefore[$generic['start']] ?? [], $publicAuth);
 $rewriteLocation($root, $remove, $insertBefore, $canonicalPublic, $lines);
 if ($preview['start'] >= 0) $rewriteLocation($preview, $remove, $insertBefore, $canonicalTechnical, $lines);
 else {
