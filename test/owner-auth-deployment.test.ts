@@ -120,8 +120,8 @@ test('owner-auth deployment assets keep owner identity bootstrap bounded to stdi
   assert.match(remote, /OWNER_AUTH_SETUP.*OWNER_USERNAME|setup-owner-auth\.php.*OWNER_USERNAME/);
   assert.match(remote, /printf '%s\\n' "\$OWNER_PASSWORD"/);
   assert.match(remote, /OWNER_AUTH_LOGIN/);
-  assert.match(remote, /surface_code.*= 401/);
-  assert.match(remote, /AUTH_FAILED/);
+  assert.match(remote, /surface_code.*= 405/);
+  assert.match(remote, /METHOD_NOT_ALLOWED/);
   assert.match(remote, /www-authenticate: Basic/);
   assert.match(remote, /CONTROL_ORIGIN_RENDER/);
   assert.match(remote, /-H \"Origin: https:\/\/\$HOSTNAME\"/);
