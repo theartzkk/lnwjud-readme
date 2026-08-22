@@ -5,7 +5,8 @@ import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { ALLOWED_STAGES, BASIC_AUTH_HOST, BASIC_AUTH_KEY, BASIC_AUTH_USER, STAGE_SEQUENCE, parseRotationOutput, validateAssets } from '../scripts/ops/basic-auth-rotation.mjs';
+import { ALLOWED_STAGES, BASIC_AUTH_HOST, BASIC_AUTH_KEY, BASIC_AUTH_USER, STAGE_SEQUENCE, buildRemoteCommand, parseRotationOutput, rotateBasicAuth, validateAssets } from '../scripts/ops/basic-auth-rotation.mjs';
+import { InMemoryCredentialStore } from '../src/credential-store.js';
 
 const execFileAsync = promisify(execFile);
 const runScript = (script: string, args: string[], env: NodeJS.ProcessEnv, input: string) => new Promise<{ stdout: string }>((resolve, reject) => {
@@ -15,6 +16,13 @@ const runScript = (script: string, args: string[], env: NodeJS.ProcessEnv, input
   child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
   child.once('error', reject);
   child.once('close', (code) => code === 0 ? resolve({ stdout }) : reject(new Error(`fixture exit ${code}: ${stderr} OUTPUT=${stdout}`)));
+  child.stdin.end(input);
+});
+const runCommand = (command: string, env: NodeJS.ProcessEnv, input: string) => new Promise<{ stdout: string }>((resolve, reject) => {
+  const child = spawn('sh', ['-c', command], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+  let stdout = ''; let stderr = '';
+  child.stdout.on('data', (chunk) => { stdout += chunk.toString(); }); child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+  child.once('error', reject); child.once('close', (code) => code === 0 ? resolve({ stdout }) : reject(new Error(`command exit ${code}: ${stderr} OUTPUT=${stdout}`)));
   child.stdin.end(input);
 });
 
@@ -72,9 +80,9 @@ test('primitive never accepts a plaintext password on the remote boundary', asyn
 
 test('post-replacement verification has an explicit rollback-before-cleanup contract', async () => {
   const source = await readFile(new URL('../scripts/ops/basic-auth-rotation.mjs', import.meta.url), 'utf8');
-  assert.match(source, /command\('rollback'\)/);
-  assert.match(source, /command\('cleanup'\)/);
-  assert.ok(source.indexOf("command('rollback')") < source.indexOf("command('cleanup')"));
+  assert.match(source, /remoteRun\('rollback'\)/);
+  assert.match(source, /remoteRun\('cleanup'\)/);
+  assert.ok(source.indexOf("remoteRun('rollback')") < source.indexOf("remoteRun('cleanup')"));
 });
 
 async function fixtureRotate(failure: 'none' | 'before' | 'replace' | 'nginx' | 'reload' | 'credential' | 'symlink' = 'none') {
@@ -161,10 +169,13 @@ eval "exec $cmd$args"`;
   await writeFile(join(bin, 'nginx'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
   await writeFile(join(bin, 'systemctl'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
   await writeFile(join(bin, 'curl'), '#!/bin/sh\nprintf 401\n', { mode: 0o755 });
+  await writeFile(join(bin, 'base64'), `#!/bin/sh\n${process.execPath} --input-type=module -e "let d=''; process.stdin.on('data',b=>d+=b); process.stdin.on('end',()=>process.stdout.write(Buffer.from(d, 'base64')));"\n`, { mode: 0o755 });
   const script = join(process.cwd(), 'deploy/nginx/rotate-basic-auth-remote.sh');
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` };
   const args = ['rfixture', 'fixture.invalid', 'awh-preview', 'rotate'];
-  const rotated = await runScript(script, args, env, '$apr1$fixture$abcdefghijklmnopqrstuv');
+  const remoteSource = await readFile(script, 'utf8');
+  const rotated = await runCommand(buildRemoteCommand(remoteSource, args), env, '$apr1$fixture$abcdefghijklmnopqrstuv');
+  assert.match(buildRemoteCommand(remoteSource, args), /base64 -d/);
   assert.match(rotated.stdout, /ROTATE_RESULT=REMOTE_READY/);
   assert.equal(await readFile(join(nginxRoot, '.awh-preview-users.rfixture.backup'), 'utf8'), 'awh-preview:$apr1$old$oldhash\n');
   assert.match(await readFile(join(nginxRoot, '.awh-preview-users.rfixture.meta'), 'utf8'), /:640/);
@@ -174,11 +185,41 @@ eval "exec $cmd$args"`;
   assert.equal(await readFile(target, 'utf8'), 'awh-preview:$apr1$old$oldhash\n');
   assert.equal((await stat(target)).mode & 0o777, 0o640);
   assert.equal(await stat(join(nginxRoot, '.awh-preview-users.rfixture.backup')).catch(() => null), null);
-  const rotatedAgain = await runScript(script, args, env, '$apr1$fixture$abcdefghijklmnopqrstuv');
+  const rotatedAgain = await runCommand(buildRemoteCommand(remoteSource, args), env, '$apr1$fixture$abcdefghijklmnopqrstuv');
   assert.match(rotatedAgain.stdout, /ROTATE_RESULT=REMOTE_READY/);
   const cleanup = await runScript(script, [...args.slice(0, 3), 'cleanup'], env, '');
   assert.match(cleanup.stdout, /ROTATE_RESULT=CLEANUP/);
   assert.equal(await stat(join(nginxRoot, '.awh-preview-users.rfixture.backup')).catch(() => null), null);
   assert.equal(await stat(join(nginxRoot, '.awh-preview-users.rfixture.meta')).catch(() => null), null);
   await rm(root, { recursive: true, force: true });
+});
+
+test('transaction fixtures keep Keychain authoritative until public verify, rollback on Keychain failure, and commit cleanup safely', async () => {
+  const remoteReady = `${STAGE_SEQUENCE.map((stage) => `ROTATE_STAGE=${stage}`).join('\n')}\nROTATE_RESULT=REMOTE_READY`;
+  const calls: Array<{ executable: string; args: readonly string[]; stdin: string | undefined }> = [];
+  const makeRunner = (authCode: string, cleanupCode = 0, keychainStore?: InMemoryCredentialStore) => async (executable: string, args: readonly string[], stdin = '') => {
+    calls.push({ executable, args, stdin });
+    if (executable.includes('openssl')) return { code: 0, stdout: '$apr1$fixture$abcdefghijklmnopqrstuv\n' };
+    if (executable.includes('curl')) return { code: 0, stdout: authCode };
+    const command = String(args.at(-1));
+    const action = command.endsWith(' rotate') ? 'rotate' : command.endsWith(' rollback') ? 'rollback' : 'cleanup';
+    if (action === 'rotate') return { code: 0, stdout: remoteReady };
+    if (action === 'rollback') return { code: 0, stdout: 'ROLLBACK=PASS\n' };
+    return { code: cleanupCode, stdout: cleanupCode === 0 ? 'ROTATE_RESULT=CLEANUP\n' : '' };
+  };
+  const old = 'old-keychain-value';
+  const failedStore = new InMemoryCredentialStore(); await failedStore.set(BASIC_AUTH_KEY, old);
+  await assert.rejects(() => rotateBasicAuth({ store: failedStore, processRunner: makeRunner('401') }), /AUTH_VERIFY_FAILED/);
+  assert.equal(await failedStore.get(BASIC_AUTH_KEY), old);
+  assert.equal(calls.some((call) => call.args.includes(old)), false);
+  const commitFailStore = { get: async () => old, set: async () => { throw new Error('KEYCHAIN_FAIL'); }, delete: async () => {} };
+  await assert.rejects(() => rotateBasicAuth({ store: commitFailStore, processRunner: makeRunner('200') }), /KEYCHAIN_COMMIT_FAILED/);
+  const successStore = new InMemoryCredentialStore(); await successStore.set(BASIC_AUTH_KEY, old);
+  const success = await rotateBasicAuth({ store: successStore, processRunner: makeRunner('200') });
+  assert.equal(success.result, 'PASS'); assert.equal(success.cleanup, 'PASS'); assert.notEqual(await successStore.get(BASIC_AUTH_KEY), old);
+  const pendingStore = new InMemoryCredentialStore(); await pendingStore.set(BASIC_AUTH_KEY, old);
+  const pending = await rotateBasicAuth({ store: pendingStore, processRunner: makeRunner('200', 1) });
+  assert.equal(pending.result, 'PASS'); assert.equal(pending.cleanup, 'PENDING_RETRY_SAFE'); assert.notEqual(await pendingStore.get(BASIC_AUTH_KEY), old);
+  assert.equal(calls.some((call) => call.args.some((arg) => arg.includes('old-keychain-value'))), false);
+  assert.equal(calls.some((call) => call.stdin?.includes('$apr1$fixture')), true);
 });

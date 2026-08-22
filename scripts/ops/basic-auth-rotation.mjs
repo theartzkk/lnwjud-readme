@@ -12,6 +12,12 @@ export const STAGE_SEQUENCE = ['PRECHECK','HASH_RECEIVED','BACKUP_CREATED','TEMP
 export const ALLOWED_STAGES = new Set(STAGE_SEQUENCE);
 const REMOTE = join(dirname(fileURLToPath(import.meta.url)), '../../deploy/nginx/rotate-basic-auth-remote.sh');
 
+export function buildRemoteCommand(remoteScript, args) {
+  if (!Array.isArray(args) || args.length !== 4 || args.some((value) => !/^[A-Za-z0-9._:-]+$/.test(value))) throw new Error('REMOTE_ARGUMENT_INVALID');
+  const encoded = Buffer.from(remoteScript, 'utf8').toString('base64');
+  return `sh -c "$(printf %s '${encoded}' | (base64 -d 2>/dev/null || base64 -D))" -- ${args.join(' ')}`;
+}
+
 export function parseRotationOutput(output) {
   const lines = output.trim().split(/\r?\n/).filter(Boolean);
   const result = {};
@@ -63,40 +69,43 @@ export function validateAssets() {
   return REMOTE;
 }
 
-export async function rotateBasicAuth({ dryRun = false, store = createProductionCredentialStore('darwin'), sshExecutable = '/usr/bin/ssh', curlExecutable = '/usr/bin/curl' } = {}) {
+export async function rotateBasicAuth({ dryRun = false, store = createProductionCredentialStore('darwin'), sshExecutable = '/usr/bin/ssh', curlExecutable = '/usr/bin/curl', processRunner = run } = {}) {
   validateAssets();
   if (dryRun) return { result: 'DRY_RUN', host: BASIC_AUTH_HOST, username: BASIC_AUTH_USER, remoteAsset: REMOTE };
   const old = await store.get(BASIC_AUTH_KEY);
   const password = randomBytes(32).toString('base64url');
   const openssl = existsSync('/usr/bin/openssl') ? '/usr/bin/openssl' : '/opt/local/bin/openssl';
-  const hashResult = await run(openssl, ['passwd', '-apr1', '-stdin'], `${password}\n`);
+  const hashResult = await processRunner(openssl, ['passwd', '-apr1', '-stdin'], `${password}\n`);
   const hash = hashResult.stdout.trim();
   if (hashResult.code !== 0 || !/^\$apr1\$[^$]{1,16}\$[A-Za-z0-9./]{20,}$/.test(hash)) throw new Error('HASH_DERIVATION_FAILED');
-  await store.set(BASIC_AUTH_KEY, password);
   const id = `r${Date.now().toString(36)}${randomBytes(5).toString('hex')}`;
   const remote = readFileSync(REMOTE, 'utf8');
-  const command = (action) => `sh -c ${JSON.stringify(remote)} -- ${id} ${BASIC_AUTH_HOST} ${BASIC_AUTH_USER} ${action}`;
-  const response = await run(sshExecutable, ['-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','awh-ready',command('rotate')], `${hash}\n`, 60000);
+  const command = (action) => buildRemoteCommand(remote, [id, BASIC_AUTH_HOST, BASIC_AUTH_USER, action]);
+  const remoteRun = (action, input = '') => processRunner(sshExecutable, ['-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','awh-ready',command(action)], input, 60000);
+  const response = await remoteRun('rotate', `${hash}\n`);
   let parsed;
   try { parsed = parseRotationOutput(response.stdout); } catch (error) {
-    const contractError = new Error('OUTPUT_CONTRACT_INVALID');
-    contractError.cause = error;
-    throw contractError;
+    const rollback = await remoteRun('rollback');
+    if (rollback.code !== 0 || !rollback.stdout.includes('ROLLBACK=PASS')) throw new Error('STATE_UNCERTAIN');
+    const contractError = new Error('OUTPUT_CONTRACT_INVALID'); contractError.cause = error; throw contractError;
   }
   if (response.code !== 0 || parsed.ROTATE_RESULT !== 'REMOTE_READY') {
-    if (old === null) await store.delete(BASIC_AUTH_KEY); else await store.set(BASIC_AUTH_KEY, old);
     const error = new Error(parsed.ROTATE_FAILURE_CODE ? `ROTATION_FAILED:${parsed.ROTATE_FAILED_AT}:${parsed.ROTATE_FAILURE_CODE}` : 'ROTATION_FAILED');
     error.cause = parsed;
     throw error;
   }
-  const auth = await run(curlExecutable, ['--config','-'], `url = https://${BASIC_AUTH_HOST}/\nuser = ${BASIC_AUTH_USER}:${password}\nsilent\noutput = /dev/null\nwrite-out = %{http_code}\nmax-time = 15\n`, 30000);
+  const auth = await processRunner(curlExecutable, ['--config','-'], `url = https://${BASIC_AUTH_HOST}/\nuser = ${BASIC_AUTH_USER}:${password}\nsilent\noutput = /dev/null\nwrite-out = %{http_code}\nmax-time = 15\n`, 30000);
   if (auth.code !== 0 || auth.stdout.trim() !== '200') {
-    const rollback = await run(sshExecutable, ['-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','awh-ready',command('rollback')], '', 60000);
+    const rollback = await remoteRun('rollback');
     if (rollback.code !== 0 || !rollback.stdout.includes('ROLLBACK=PASS')) throw new Error('ROLLBACK_FAILED');
-    if (old === null) await store.delete(BASIC_AUTH_KEY); else await store.set(BASIC_AUTH_KEY, old);
     throw new Error('AUTH_VERIFY_FAILED');
   }
-  const cleanup = await run(sshExecutable, ['-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','awh-ready',command('cleanup')], '', 30000);
+  try { await store.set(BASIC_AUTH_KEY, password); } catch {
+    const rollback = await remoteRun('rollback');
+    if (rollback.code !== 0 || !rollback.stdout.includes('ROLLBACK=PASS')) throw new Error('ROLLBACK_FAILED');
+    throw new Error('KEYCHAIN_COMMIT_FAILED');
+  }
+  const cleanup = await remoteRun('cleanup');
   const cleanupState = cleanup.code === 0 && cleanup.stdout.includes('ROTATE_RESULT=CLEANUP') ? 'PASS' : 'PENDING_RETRY_SAFE';
   return { result: 'PASS', stage: parsed, publicCredentialVerify: 'PASS', cleanup: cleanupState, operatorDelivery: `security find-generic-password -a 'awh-device-token-v1:${BASIC_AUTH_KEY}' -s 'Art’s Workspace Hub' -w`, password, host: BASIC_AUTH_HOST, username: BASIC_AUTH_USER };
 }
