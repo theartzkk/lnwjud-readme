@@ -17,7 +17,7 @@ try {
         $response = HubOwnerAuthRouter::dispatch((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'), (string) ($_SERVER['REQUEST_URI'] ?? '/'), $_SERVER, $auth, is_string($body) ? $body : '');
     } else {
         $control = HubControlPlaneService::openExisting($database);
-        $response = HubControlPlaneRouter::dispatch((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'), (string) ($_SERVER['REQUEST_URI'] ?? '/'), $_SERVER, $control, is_string($body) ? $body : '');
+        $response = HubControlPlaneRouter::dispatch((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'), (string) ($_SERVER['REQUEST_URI'] ?? '/'), $_SERVER, $control, is_string($body) ? $body : '', $_FILES);
     }
 } catch (Throwable) {
     http_response_code(503);
@@ -30,5 +30,12 @@ http_response_code($response['status']);
 foreach ($response['headers'] as $name => $value) {
     if (is_array($value)) foreach ($value as $line) header($name . ': ' . $line, false);
     else header($name . ': ' . $value);
+}
+if (isset($response['streamPath'])) {
+    $path = $response['streamPath'];
+    if (!is_string($path) || $path === '' || !is_file($path) || is_link($path)) { http_response_code(404); exit; }
+    $handle = fopen($path, 'rb');
+    if ($handle === false) { http_response_code(404); exit; }
+    fpassthru($handle); fclose($handle); exit;
 }
 echo $response['body'];

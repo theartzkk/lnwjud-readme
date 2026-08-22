@@ -1,21 +1,24 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import test from 'node:test';
+import test, { after } from 'node:test';
 import { browserRequestOptions, isSafeRelativePath, loadWebData } from '../web/hub-read-adapter.js';
+import { safeApiPath } from '../web/control-plane-adapter.js';
 
 const runFile = promisify(execFile);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const OUTPUT = join(ROOT, 'dist-web');
+const OUTPUT = await mkdtemp(join(tmpdir(), 'awh-web-preview-'));
+after(async () => { await rm(OUTPUT, { recursive: true, force: true }); });
 
 async function buildWeb(control = false): Promise<void> {
   await runFile(process.execPath, ['--import', 'tsx', 'scripts/build-web-preview.ts', ...(control ? ['--control'] : [])], {
     cwd: ROOT,
     shell: false,
-    env: { ...process.env, AWH_PREVIEW_GENERATED_AT: '2026-01-01T00:00:00.000Z', AWH_WEB_RELEASE_ID: 'fixture-control-sha' },
+    env: { ...process.env, AWH_PREVIEW_GENERATED_AT: '2026-01-01T00:00:00.000Z', AWH_WEB_RELEASE_ID: 'fixture-control-sha', AWH_WEB_OUTPUT_DIR: OUTPUT },
   });
 }
 
@@ -109,9 +112,10 @@ test('CONTROL shell uses authenticated canonical data and presents a truthful si
 });
 
 test('control UI is work-first, project-bound, mobile-first, and truthful about offline workers', async () => {
-  const [html, app, css] = await Promise.all([
+  const [html, app, adapter, css] = await Promise.all([
     readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
     readFile(join(ROOT, 'web', 'app.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'control-plane-adapter.js'), 'utf8'),
     readFile(join(ROOT, 'web', 'styles.css'), 'utf8'),
   ]);
   assert.match(html, /id="project-open"/);
@@ -121,9 +125,38 @@ test('control UI is work-first, project-bound, mobile-first, and truthful about 
   assert.match(app, /WAITING_FOR_WORKER/);
   assert.match(app, /ยังไม่มีอุปกรณ์ทำงานออนไลน์/);
   assert.match(app, /goal-submit.*disabled/);
+  assert.match(app, /conversationAvailable/);
+  assert.doesNotMatch(app, /Work stream นี้จะพร้อมทันทีที่ Hub ได้รับ release ล่าสุด/);
   assert.match(css, /@media \(max-width: 680px\)/);
   assert.match(css, /env\(safe-area-inset-bottom\)/);
   assert.match(css, /position:\s*sticky/);
+  assert.match(css, /\.workspace-heading > div \{ min-width: 0; flex: 1 1 auto; \}/);
+});
+
+test('CONTROL work composer keeps attachment previews, camera-capable file picking, and a bounded private upload contract', async () => {
+  const [html, app, adapter, css] = await Promise.all([
+    readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
+    readFile(join(ROOT, 'web', 'app.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'control-plane-adapter.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'styles.css'), 'utf8'),
+  ]);
+  assert.match(html, /id="attachment-input"[^>]*multiple[^>]*accept="image\/\*/);
+  assert.match(html, /id="pending-attachments"/);
+  assert.match(app, /MAX_ATTACHMENT_BYTES/);
+  assert.match(app, /localAttachments/);
+  assert.match(app, /attachment\.pending/);
+  assert.match(adapter, /conversations\/thread\/\$\{conversationId\}\/attachments/);
+  assert.match(adapter, /maxBytes = 60 \* 1024 \* 1024/);
+  assert.match(adapter, /totalBytes > maxBytes/);
+  assert.match(css, /\.pending-attachments, \.message-attachments/);
+  assert.doesNotMatch(`${html}\n${app}\n${adapter}`, /workspacePath|absolutePath|\/Users\/|[A-Za-z]:\\\\/);
+});
+
+test('CONTROL API adapter permits the bounded query routes used by Work while rejecting non-relative or traversal paths', () => {
+  const projectId = '11111111-1111-4111-8111-111111111111';
+  assert.equal(safeApiPath(`/api/v1/control/conversations?projectId=${projectId}&q=%E0%B8%97%E0%B8%94%E0%B8%AA%E0%B8%AD%E0%B8%9A`), `/api/v1/control/conversations?projectId=${projectId}&q=%E0%B8%97%E0%B8%94%E0%B8%AA%E0%B8%AD%E0%B8%9A`);
+  assert.equal(safeApiPath('/api/v1/control/settings/history?settingKey=tagline'), '/api/v1/control/settings/history?settingKey=tagline');
+  for (const unsafe of ['https://example.invalid/api/v1/control/projects', '//example.invalid/api/v1/control/projects', '/api/v1/control/%2e%2e/auth/session', '/api/v1/control/projects#fragment']) assert.throws(() => safeApiPath(unsafe), /not safe/);
 });
 
 test('CONTROL build stays deterministic and has a safe PWA cache boundary', async () => {

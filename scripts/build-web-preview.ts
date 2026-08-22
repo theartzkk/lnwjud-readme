@@ -1,9 +1,20 @@
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 import { PRODUCT } from '../src/product.js';
 
 const ROOT = resolve(process.cwd());
-const OUTPUT = join(ROOT, 'dist-web');
+const requestedOutput = process.env.AWH_WEB_OUTPUT_DIR;
+const OUTPUT = requestedOutput === undefined ? join(ROOT, 'dist-web') : resolve(requestedOutput);
+
+// Production keeps the historical dist-web destination. Isolated fixtures may
+// render under the repository or the system temporary root, but a build cannot
+// be redirected to an arbitrary filesystem location by a stray environment.
+function isWithin(root: string, candidate: string): boolean {
+  const value = relative(root, candidate);
+  return value !== '' && !value.startsWith(`..${sep}`) && value !== '..' && !value.startsWith('../');
+}
+if (requestedOutput !== undefined && !isWithin(ROOT, OUTPUT) && !isWithin(tmpdir(), OUTPUT)) throw new Error('AWH web output path is outside the allowed build roots');
 
 async function asset(name: string): Promise<string> {
   return readFile(join(ROOT, 'web', name), 'utf8');

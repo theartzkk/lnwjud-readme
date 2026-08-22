@@ -15,6 +15,7 @@ const tests = [
   'hub/tests/m6-assistant-workstream.php',
   'hub/tests/m7-workspace-continuity.php',
   'hub/tests/m8-unified-workspace.php',
+  'hub/tests/m9-final-product.php',
 ];
 
 const php = await resolveExecutable('php');
