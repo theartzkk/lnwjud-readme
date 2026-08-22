@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { PRODUCT } from '../src/product.js';
 import { compatibilityEnv, DEFAULT_AWH_HUB_API_BASE, loadConfig } from '../src/config.js';
+import { saveStoredSettings } from '../src/settings.js';
 
 test('AWH product identity is centralized while legacy compatibility identity remains explicit', () => {
   assert.deepEqual(PRODUCT, {
@@ -89,6 +90,30 @@ test('loadConfig applies AWH aliases before legacy values and stored defaults', 
     assert.equal(config.dataDir, dataDir);
     assert.equal(config.workspace, join(dataDir, 'awh-workspace'));
     assert.equal(config.allowWrite, true);
+  } finally {
+    for (const [key, value] of original) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test('legacy approved execution resumes the enrolled control-plane worker after restart until explicitly paused', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'awh-worker-activation-'));
+  const keys = ['AWH_DATA_DIR', 'ART_AGENT_DATA_DIR', 'AWH_ALLOW_EXEC', 'ART_AGENT_ALLOW_EXEC', 'AWH_CONTROL_PLANE_WORKER', 'ART_AGENT_CONTROL_PLANE_WORKER'];
+  const original = new Map(keys.map((key) => [key, process.env[key]]));
+  try {
+    process.env.AWH_DATA_DIR = dataDir;
+    for (const key of keys.slice(1)) delete process.env[key];
+    await saveStoredSettings(dataDir, { allowExec: true, allowWrite: true, allowCodex: true });
+    assert.equal(loadConfig().controlPlaneWorker, true, 'legacy approved execution activates the worker after restart');
+
+    await saveStoredSettings(dataDir, { allowExec: true, allowWrite: true, allowCodex: true, controlPlaneWorker: false });
+    assert.equal(loadConfig().controlPlaneWorker, false, 'an explicit local pause overrides legacy migration intent');
+
+    process.env.AWH_CONTROL_PLANE_WORKER = '1';
+    assert.equal(loadConfig().controlPlaneWorker, true, 'the explicit AWH environment override remains authoritative');
   } finally {
     for (const [key, value] of original) {
       if (value === undefined) delete process.env[key];

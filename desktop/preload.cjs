@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('artAgent', Object.freeze({
     write: permissions?.write === true,
     execute: permissions?.execute === true,
     codex: permissions?.codex === true,
+    worker: permissions?.worker === true,
   }),
   remoteConnect: () => ipcRenderer.invoke(CHANNELS.remoteConnect),
   remoteStop: () => ipcRenderer.invoke(CHANNELS.remoteStop),

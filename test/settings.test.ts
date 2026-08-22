@@ -7,8 +7,8 @@ import { loadStoredSettings, saveStoredSettings } from '../src/settings.js';
 
 test('stored settings persist only known non-secret fields', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'art-agent-settings-'));
-  await saveStoredSettings(dataDir, { defaultWorkspace: 'C:/Projects/Test', allowWrite: true, allowExec: false, allowCodex: false });
-  assert.deepEqual(loadStoredSettings(dataDir), { defaultWorkspace: 'C:/Projects/Test', allowWrite: true, allowExec: false, allowCodex: false });
-  await saveStoredSettings(dataDir, { defaultWorkspace: 'D:/Projects/Next', allowWrite: false, allowExec: true, allowCodex: true });
-  assert.deepEqual(loadStoredSettings(dataDir), { defaultWorkspace: 'D:/Projects/Next', allowWrite: false, allowExec: true, allowCodex: true });
+  await saveStoredSettings(dataDir, { defaultWorkspace: 'C:/Projects/Test', allowWrite: true, allowExec: false, allowCodex: false, controlPlaneWorker: false });
+  assert.deepEqual(loadStoredSettings(dataDir), { defaultWorkspace: 'C:/Projects/Test', allowWrite: true, allowExec: false, allowCodex: false, controlPlaneWorker: false });
+  await saveStoredSettings(dataDir, { defaultWorkspace: 'D:/Projects/Next', allowWrite: false, allowExec: true, allowCodex: true, controlPlaneWorker: true });
+  assert.deepEqual(loadStoredSettings(dataDir), { defaultWorkspace: 'D:/Projects/Next', allowWrite: false, allowExec: true, allowCodex: true, controlPlaneWorker: true });
 });

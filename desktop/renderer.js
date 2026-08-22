@@ -319,6 +319,7 @@ function render(data) {
   $('perm-write').checked = data.permissions.write;
   $('perm-exec').checked = data.permissions.execute;
   $('perm-codex').checked = data.permissions.codex;
+  $('perm-worker').checked = data.permissions.worker;
 
   renderList($('checkpoint-list'), data.checkpoints, 'ยังไม่มี checkpoint', (checkpoint) => item(checkpoint.id, `${checkpoint.files.length} file(s) • ${new Date(checkpoint.createdAt).toLocaleString('th-TH')}`));
   renderList($('audit-list'), data.audit, 'ยังไม่มีกิจกรรมที่บันทึก', (entry) => item(`${entry.tool} • ${entry.outcome}`, `${new Date(entry.ts).toLocaleString('th-TH')} • ${entry.detail}`, 'timeline-item'));
@@ -401,7 +402,8 @@ $('save-permissions').addEventListener('click', async () => {
   const execute = $('perm-exec').checked;
   const codex = $('perm-codex').checked;
   if (codex && !execute) { $('perm-exec').checked = true; }
-  await window.artAgent.setPermissions({ write: $('perm-write').checked, execute: $('perm-exec').checked, codex: $('perm-codex').checked });
+  if ($('perm-worker').checked && !$('perm-exec').checked) { $('perm-exec').checked = true; }
+  await window.artAgent.setPermissions({ write: $('perm-write').checked, execute: $('perm-exec').checked, codex: $('perm-codex').checked, worker: $('perm-worker').checked });
   $('restart-banner').classList.remove('hidden');
 });
 $('remote-connect').addEventListener('click', () => runRemoteAction('connect'));

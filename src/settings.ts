@@ -7,6 +7,12 @@ export interface StoredSettings {
   allowWrite?: boolean;
   allowExec?: boolean;
   allowCodex?: boolean;
+  /**
+   * Whether this enrolled device should poll the Control Plane for work.
+   * Kept separate from the execution grants so an owner can explicitly pause
+   * remote work without removing the local capability policy.
+   */
+  controlPlaneWorker?: boolean;
 }
 
 export function settingsPath(dataDir: string): string {
@@ -23,6 +29,7 @@ export function loadStoredSettings(dataDir: string): StoredSettings {
     if (typeof parsed.allowWrite === 'boolean') out.allowWrite = parsed.allowWrite;
     if (typeof parsed.allowExec === 'boolean') out.allowExec = parsed.allowExec;
     if (typeof parsed.allowCodex === 'boolean') out.allowCodex = parsed.allowCodex;
+    if (typeof parsed.controlPlaneWorker === 'boolean') out.controlPlaneWorker = parsed.controlPlaneWorker;
     return out;
   } catch {
     return {};
@@ -37,5 +44,6 @@ export async function saveStoredSettings(dataDir: string, settings: StoredSettin
   if (typeof settings.allowWrite === 'boolean') normalized.allowWrite = settings.allowWrite;
   if (typeof settings.allowExec === 'boolean') normalized.allowExec = settings.allowExec;
   if (typeof settings.allowCodex === 'boolean') normalized.allowCodex = settings.allowCodex;
+  if (typeof settings.controlPlaneWorker === 'boolean') normalized.controlPlaneWorker = settings.controlPlaneWorker;
   await writeFile(target, `${JSON.stringify(normalized, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
 }

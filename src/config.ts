@@ -67,17 +67,25 @@ export function loadConfig(): ArtAgentConfig {
   const workspace = resolve(
     argValue('--workspace') ?? compatibilityEnv('workspace') ?? stored.defaultWorkspace ?? process.cwd(),
   );
+  const allowWrite = boolValue('allowWrite', stored.allowWrite, false);
+  const allowExec = boolValue('allowExec', stored.allowExec, false);
+  const allowCodex = boolValue('allowCodex', stored.allowCodex, false);
 
   return {
     workspace,
     dataDir,
-    allowWrite: boolValue('allowWrite', stored.allowWrite, false),
-    allowExec: boolValue('allowExec', stored.allowExec, false),
-    allowCodex: boolValue('allowCodex', stored.allowCodex, false),
+    allowWrite,
+    allowExec,
+    allowCodex,
     maxReadBytes: intEnv('maxReadBytes', 512 * 1024),
     maxSearchResults: intEnv('maxSearchResults', 100),
     maxTaskLogBytes: intEnv('maxTaskLogBytes', 512 * 1024),
     hubApiBase: compatibilityEnv('hubApiBase')?.trim() || DEFAULT_AWH_HUB_API_BASE,
-    controlPlaneWorker: boolValue('controlPlaneWorker', undefined, false),
+    // Existing approved-execution settings predate the explicit worker switch.
+    // Migrate that intent at read time: a legacy enrolled device that was
+    // already allowed to execute resumes its worker after restart, while new
+    // devices remain off until execution has been approved. An explicit saved
+    // worker setting (or environment override) always wins.
+    controlPlaneWorker: boolValue('controlPlaneWorker', stored.controlPlaneWorker, allowExec),
   };
 }

@@ -62,6 +62,7 @@ test('desktop HTML has a restrictive CSP, remote controls and no inline script',
   assert.match(html, /data-section="overview"/);
   assert.match(html, /id="enrollment-code"/);
   assert.match(html, /id="enrollment-issue-pairing"/);
+  assert.match(html, /id="perm-worker"/);
   assert.match(html, /สร้างรหัสเชื่อมต่อ/);
   assert.match(html, /Pair this device/);
   assert.match(html, /Rotate credential/);
@@ -185,6 +186,9 @@ test('desktop Autopilot is goal-based, local-only, bounded and never exposes raw
   assert.match(main, /AutopilotRunner/);
   assert.match(main, /typeof goal !== 'string'/);
   assert.match(preload, /startAutopilot: \(goal\) =>/);
+  assert.match(preload, /worker: permissions\?\.worker === true/);
+  assert.match(renderer, /perm-worker/);
+  assert.match(main, /Worker requires approved execution/);
   assert.match(renderer, /startAutopilot/);
   assert.match(html, /What would you like to work on/);
   assert.match(html, /id="section-autopilot"/);

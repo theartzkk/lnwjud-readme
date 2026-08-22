@@ -158,13 +158,13 @@ function normalizeSettings(content: Buffer, blockers: string[]): Buffer | null {
         continue;
       }
       if (key === 'defaultWorkspace' && typeof value !== 'string') issue(blockers, 'settings defaultWorkspace is invalid');
-      if (['allowWrite', 'allowExec', 'allowCodex'].includes(key) && typeof value !== 'boolean') {
+      if (['allowWrite', 'allowExec', 'allowCodex', 'controlPlaneWorker'].includes(key) && typeof value !== 'boolean') {
         issue(blockers, `settings ${key} is invalid`);
       }
     }
     const normalized: Record<string, unknown> = {};
     if (typeof parsed.defaultWorkspace === 'string' && parsed.defaultWorkspace.trim()) normalized.defaultWorkspace = parsed.defaultWorkspace;
-    for (const key of ['allowWrite', 'allowExec', 'allowCodex']) if (typeof parsed[key] === 'boolean') normalized[key] = parsed[key];
+    for (const key of ['allowWrite', 'allowExec', 'allowCodex', 'controlPlaneWorker']) if (typeof parsed[key] === 'boolean') normalized[key] = parsed[key];
     return Buffer.from(JSON.stringify(normalized), 'utf8');
   } catch {
     issue(blockers, 'settings.json is invalid JSON');

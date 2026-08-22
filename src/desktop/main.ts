@@ -444,6 +444,7 @@ async function runtimeOverview() {
       write: config.allowWrite,
       execute: config.allowExec,
       codex: config.allowCodex,
+      worker: config.controlPlaneWorker,
     },
     git: {
       ok: Boolean(workspace) && git.code === 0,
@@ -580,10 +581,11 @@ function registerIpc(): void {
   ipcMain.handle(DESKTOP_IPC.setPermissions, async (_event, input: unknown) => {
     if (!input || typeof input !== 'object') throw new Error('Invalid permission payload');
     const value = input as Record<string, unknown>;
-    if (typeof value.write !== 'boolean' || typeof value.execute !== 'boolean' || typeof value.codex !== 'boolean') {
+    if (typeof value.write !== 'boolean' || typeof value.execute !== 'boolean' || typeof value.codex !== 'boolean' || typeof value.worker !== 'boolean') {
       throw new Error('Permission values must be booleans');
     }
     if (value.codex && !value.execute) throw new Error('Codex requires approved execution');
+    if (value.worker && !value.execute) throw new Error('Worker requires approved execution');
     const config = loadConfig();
     const stored = loadStoredSettings(config.dataDir);
     await saveStoredSettings(config.dataDir, {
@@ -591,6 +593,7 @@ function registerIpc(): void {
       allowWrite: value.write,
       allowExec: value.execute,
       allowCodex: value.codex,
+      controlPlaneWorker: value.worker,
     });
     return { changed: true, restartRequired: true };
   });
