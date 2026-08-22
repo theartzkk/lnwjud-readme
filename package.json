@@ -37,12 +37,13 @@
     "web:manifest": "node scripts/create-web-release-manifest.mjs dist-web",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "pretest": "npm run build",
-    "test": "node --test-concurrency=1 --import tsx --test test/product.test.ts test/security.test.ts test/files.test.ts test/git.test.ts test/process.test.ts test/changes.test.ts test/tasks.test.ts test/project.test.ts test/project-registry.test.ts test/owner-protocol.test.ts test/hub-contract.test.ts test/device-identity.test.ts test/credential-store.test.ts test/enrollment-client.test.ts test/control-plane-worker-client.test.ts test/control-plane-worker-runtime.test.ts test/bootstrap-provisioning.test.ts test/bootstrap-orchestration.test.ts test/web-preview.test.ts test/deployment-foundation.test.ts test/m4-control-plane.test.ts test/qa-toolchain.test.ts test/stdio.test.ts test/tunnel.test.ts test/codex.test.ts test/settings.test.ts test/data-migration.test.ts test/desktop.test.ts test/desktop-projects.test.ts test/autopilot.test.ts test/first-run.test.ts test/video.test.ts test/version.test.ts test/installer.test.ts test/release-identity.test.ts",
+    "test": "node --test-concurrency=1 --import tsx --test test/product.test.ts test/security.test.ts test/files.test.ts test/git.test.ts test/process.test.ts test/changes.test.ts test/tasks.test.ts test/project.test.ts test/project-registry.test.ts test/owner-protocol.test.ts test/hub-contract.test.ts test/device-identity.test.ts test/credential-store.test.ts test/enrollment-client.test.ts test/control-plane-worker-client.test.ts test/control-plane-worker-runtime.test.ts test/bootstrap-provisioning.test.ts test/bootstrap-orchestration.test.ts test/web-preview.test.ts test/deployment-foundation.test.ts test/m4-control-plane.test.ts test/qa-toolchain.test.ts test/stdio.test.ts test/tunnel.test.ts test/codex.test.ts test/settings.test.ts test/data-migration.test.ts test/desktop.test.ts test/desktop-projects.test.ts test/autopilot.test.ts test/first-run.test.ts test/video.test.ts test/version.test.ts test/installer.test.ts test/release-identity.test.ts test/basic-auth-rotation.test.ts",
     "hub:test": "node --import tsx scripts/qa/run-hub-tests.mjs",
     "qa:fast": "node scripts/qa/awh-local-qa.mjs fast",
     "qa:local": "node scripts/qa/awh-local-qa.mjs local",
     "qa:full": "node scripts/qa/awh-local-qa.mjs full",
-    "qa:video": "node --import tsx scripts/qa/video-e2e.mjs"
+    "qa:video": "node --import tsx scripts/qa/video-e2e.mjs",
+    "ops:basic-auth:dry-run": "node scripts/ops/basic-auth-rotation.mjs --dry-run"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",
