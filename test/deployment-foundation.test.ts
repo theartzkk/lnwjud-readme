@@ -70,11 +70,11 @@ test('owner-auth release boundary includes the canonical v4-to-v5 capability ass
   assert.doesNotMatch(deploy, /passwordHash\s*=|recoveryCode\s*=/i);
 });
 
-test('owner-auth include disables inherited app Basic Auth while preserving explicit protected locations', async () => {
+test('owner-auth cutover keeps the control include focused and renders public auth at the authoritative site', async () => {
   const include = await readText(join(ROOT, 'deploy/nginx/awh-control-plane.conf'));
-  assert.doesNotMatch(include, /^auth_basic off;$/m);
-  assert.match(include, /location \^~ \/api\/v1\/auth\/[\s\S]*auth_basic off/);
   assert.match(include, /location \^~ \/api\/v1\/control\/[\s\S]*auth_basic off/);
+  assert.doesNotMatch(include, /location \^~ \/api\/v1\/auth\//);
+  assert.match(await readText(join(ROOT, 'deploy/nginx/transform-owner-auth.php')), /location \^~ \/api\/v1\/auth\//);
   assert.match(await readText(join(ROOT, 'deploy/nginx/awh-preview.conf')), /location \^~ \/api\/v1\/[\s\S]*auth_basic "AWH Remote Preview"/);
   assert.match(await readText(join(ROOT, 'deploy/nginx/awh-preview.conf')), /location \^~ \/preview\/[\s\S]*auth_basic "AWH Remote Preview"/);
 });

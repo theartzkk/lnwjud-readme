@@ -22,12 +22,12 @@ if (!is_string($template) || $template === '' || str_contains($template, "\0")) 
 $placeholder = 'https://PREVIEW_HOSTNAME';
 $expected = 'fastcgi_param AWH_CONTROL_ORIGIN ' . $placeholder . ';';
 $lineCount = preg_match_all('/^\s*' . preg_quote($expected, '/') . '\s*$/m', $template, $matches);
-if ($lineCount !== 2 || substr_count($template, 'AWH_CONTROL_ORIGIN') !== 2 || substr_count($template, $placeholder) !== 2) {
+if ($lineCount !== 1 || substr_count($template, 'AWH_CONTROL_ORIGIN') !== 1 || substr_count($template, $placeholder) !== 1) {
     exit(2);
 }
 
 $rendered = str_replace($placeholder, 'https://' . $hostname, $template, $replacements);
-if ($replacements !== 2 || str_contains($rendered, 'PREVIEW_HOSTNAME') || substr_count($rendered, 'https://' . $hostname) !== 2) {
+if ($replacements !== 1 || str_contains($rendered, 'PREVIEW_HOSTNAME') || substr_count($rendered, 'https://' . $hostname) !== 1) {
     exit(2);
 }
 if (@file_put_contents($outputPath, $rendered, LOCK_EX) === false || @file_get_contents($outputPath) !== $rendered) {

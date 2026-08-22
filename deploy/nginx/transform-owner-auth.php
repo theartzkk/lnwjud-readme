@@ -165,6 +165,7 @@ foreach ($requiredIncludes as $include) {
 
 $locations = $meta['locations'];
 $generic = require_one_location($locations, '/api/v1/');
+$auth = require_one_location($locations, '/api/v1/auth/');
 $root = require_one_location($locations, '/');
 $preview = require_one_location($locations, '/preview/');
 if ($generic['start'] < 0 || $root['start'] < 0) {
@@ -192,6 +193,26 @@ if (count($meta['directAuth']) !== 0 && count($meta['directAuth']) !== 2) {
     exit(9);
 }
 $rewriteLocation($generic, $remove, $insertBefore, $canonicalTechnical, $lines);
+$publicAuth = [
+    '    location ^~ /api/v1/auth/ {',
+    '        auth_basic off;',
+    '        client_max_body_size 16k;',
+    '        access_log off;',
+    '        include fastcgi_params;',
+    '        fastcgi_param SCRIPT_FILENAME /opt/awh-hub/control-plane-current/hub/public/control-plane.php;',
+    '        fastcgi_param AWH_HUB_DB_PATH /var/lib/awh-hub/awh.sqlite;',
+    '        fastcgi_param AWH_CONTROL_ORIGIN https://' . $hostname . ';',
+    '        fastcgi_param HTTP_ORIGIN $http_origin;',
+    '        fastcgi_param HTTP_COOKIE $http_cookie;',
+    '        fastcgi_param HTTP_X_AWH_CSRF $http_x_awh_csrf;',
+    '        fastcgi_param REMOTE_ADDR $remote_addr;',
+    '        fastcgi_param HTTP_USER_AGENT $http_user_agent;',
+    '        fastcgi_param QUERY_STRING $query_string;',
+    '        fastcgi_pass unix:/run/php/php8.3-fpm-awh.sock;',
+    '    }',
+];
+if ($auth['start'] >= 0) $rewriteLocation($auth, $remove, $insertBefore, ['        auth_basic off;'], $lines);
+else $insertBefore[$target['end']] = array_merge($insertBefore[$target['end']] ?? [], $publicAuth);
 $rewriteLocation($root, $remove, $insertBefore, $canonicalPublic, $lines);
 if ($preview['start'] >= 0) $rewriteLocation($preview, $remove, $insertBefore, $canonicalTechnical, $lines);
 else {

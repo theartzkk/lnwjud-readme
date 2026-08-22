@@ -76,6 +76,8 @@ test('owner-auth transformation matches the real ReadyIDC topology and is idempo
     assert.doesNotMatch(authoritativeHead, /^\s*auth_basic "AWH Remote Preview";/m);
     assert.doesNotMatch(authoritativeHead, /^\s*auth_basic_user_file \/etc\/nginx\/\.awh-preview-users;/m);
     assert.match(rendered, /location \^~ \/api\/v1\/ \{\n        auth_basic "AWH Remote Preview";/);
+    assert.match(rendered, /location \^~ \/api\/v1\/auth\/ \{\n        auth_basic off;[\s\S]*fastcgi_param SCRIPT_FILENAME \/opt\/awh-hub\/control-plane-current\/hub\/public\/control-plane\.php;/);
+    assert.match(rendered, /fastcgi_param AWH_CONTROL_ORIGIN https:\/\/157-85-108-142\.sslip\.io;/);
     assert.match(rendered, /location \/ \{\n        auth_basic off;/);
     assert.match(rendered, /location \^~ \/preview\/ \{\n        auth_basic "AWH Remote Preview";/);
     assert.equal((rendered.match(new RegExp(`include ${ENROLLMENT.replaceAll('/', '\\/')};`, 'g')) ?? []).length, 1);
@@ -134,7 +136,7 @@ test('owner-auth release renders the real origin into the staged control include
     await writeFile(input, await readFile(join(ROOT, 'deploy/nginx/awh-control-plane.conf'), 'utf8'));
     await execFileAsync(PHP, [originRenderer, input, output, HOST]);
     const rendered = await readFile(output, 'utf8');
-    assert.equal((rendered.match(new RegExp(`https://${HOST.replaceAll('.', '\\.')}`, 'g')) ?? []).length, 2);
+    assert.equal((rendered.match(new RegExp(`https://${HOST.replaceAll('.', '\\.')}`, 'g')) ?? []).length, 1);
     assert.doesNotMatch(rendered, /PREVIEW_HOSTNAME/);
     await assert.rejects(execFileAsync(PHP, [originRenderer, input, output, 'localhost']));
     await writeFile(input, rendered, 'utf8');
