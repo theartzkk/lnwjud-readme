@@ -193,6 +193,18 @@ Never retry production repeatedly by guessing at the next failing line.
 
 After a failed production attempt with successful rollback, do not immediately prescribe another narrow fix from the last error alone. Give the senior worker the complete failure evidence and let it independently re-evaluate the full affected runtime boundary before another retry is approved.
 
+### Incident closure rule
+
+When the same production gate fails more than once, treat the gate name as an
+observation boundary, not as the root cause. Preserve the rollback baseline,
+separate route/perimeter, application, runtime-permission and business-state
+checks into truthful stages, and add a production-shaped behavioral regression
+before another retry. A verifier must distinguish an expected application
+error from an infrastructure challenge; a successful status code alone is not
+proof of the intended route. Every fix must remain at the shared authority,
+avoid parallel systems, retain exact rollback evidence, and be recorded in
+Project Memory with the evidence and the next bounded action.
+
 ## 10. Truthful completion states
 
 Never collapse different levels of confidence into “done”.

@@ -2,6 +2,21 @@
 
 ## Current state
 
+### Latest owner-auth closure evidence
+
+The source release `055484d7ac9a4b9e5676ab5312518f8c722fd705` was attempted once
+on ReadyIDC and rolled back safely at the owner-auth surface gate. The
+post-rollback baseline is verified: SQLite v4, integrity/FK clean, one project,
+one device, original control/web pointers, Nginx syntax, M3D and M4 healthy.
+No source retry is authorized by this record.
+
+The repeated failure is governed by the shared incident rule in
+`ART_AI_WORKING_PROTOCOL.md`: route reachability, application auth, web file
+access and post-reload behavior must be reported as distinct gates. The next
+source candidate separates the owner route probe from the public web probe and
+keeps the `www-data` read/traverse contract explicit. It must pass QA and receive
+one new bounded production approval before mutation.
+
 AWH `1.0.0-rc.1` is feature-complete in source/artifact scope. ReadyIDC production has the verified M3D/M3E/M4 control-plane baseline at SQLite schema v4 with one indexed project and one enrolled Mac.
 
 The current source candidate adds owner username/password access as additive

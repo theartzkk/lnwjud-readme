@@ -128,6 +128,7 @@ test('owner-auth deployment assets keep owner identity bootstrap bounded to stdi
   assert.match(remote, /-c \"\$OWNER_AUTH_COOKIE_JAR\"/);
   assert.match(remote, /OWNER_AUTH_SESSION/);
   assert.match(remote, /OWNER_AUTH_EFFECTIVE_CONFIG/);
+  assert.match(remote, /stage OWNER_AUTH_WEB_SURFACE/);
   assert.match(remote, /WEB_ACCESS_READY/);
   assert.match(remote, /www-data test -r.*WEB_RELEASE/);
   assert.match(remote, /chown -R awh-hub:www-data/);

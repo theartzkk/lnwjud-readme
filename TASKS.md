@@ -2,6 +2,8 @@
 
 ## NOW
 
+- Close the current owner-auth deployment candidate using the shared incident rule: prove the effective HTTPS route, application response, web `www-data` access, login/session and rollback as separate gates. Do not retry the rolled-back `055484d7ac9a4b9e5676ab5312518f8c722fd705`; require a new exact SHA and one bounded approval.
+
 - Review the owner-auth v4→v5 deployment/rollback package and request one bounded production approval only after parity checks pass.
 - Keep Basic Auth as temporary technical perimeter scaffolding; do not retry its rotation primitive in this auth pass.
 
