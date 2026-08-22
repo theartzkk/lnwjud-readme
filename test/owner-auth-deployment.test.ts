@@ -10,6 +10,7 @@ const execFileAsync = promisify(execFile);
 const ROOT = process.cwd();
 const PHP = '/opt/local/bin/php';
 const helper = join(ROOT, 'deploy/nginx/transform-owner-auth.php');
+const originRenderer = join(ROOT, 'deploy/nginx/render-control-plane-include.php');
 const HOST = '157-85-108-142.sslip.io';
 const ENROLLMENT = '/opt/awh-hub/enrollment-current/deploy/nginx/awh-enrollment.conf';
 const CONTROL = '/opt/awh-hub/control-plane-current/deploy/nginx/awh-control-plane.conf';
@@ -114,6 +115,7 @@ test('owner-auth deployment assets keep owner identity bootstrap bounded to stdi
   assert.match(remote, /OWNER_AUTH_SETUP.*OWNER_USERNAME|setup-owner-auth\.php.*OWNER_USERNAME/);
   assert.match(remote, /printf '%s\\n' "\$OWNER_PASSWORD"/);
   assert.match(remote, /OWNER_AUTH_LOGIN/);
+  assert.match(remote, /CONTROL_ORIGIN_RENDER/);
   assert.match(remote, /-H \"Origin: https:\/\/\$HOSTNAME\"/);
   assert.match(remote, /-c \"\$OWNER_AUTH_COOKIE_JAR\"/);
   assert.match(remote, /OWNER_AUTH_SESSION/);
@@ -122,4 +124,22 @@ test('owner-auth deployment assets keep owner identity bootstrap bounded to stdi
   assert.match(deploy, /scp .*\$REMOTE_DEPLOY.*\$TARGET:\$REMOTE_SCRIPT/);
   assert.match(deploy, /printf '%s\\n' "\$OWNER_PASSWORD" \| ssh/);
   assert.match(remote, /printf '%s\\n' "\$OWNER_PASSWORD" \| sudo/);
+});
+
+test('owner-auth release renders the real origin into the staged control include', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awh-owner-auth-origin-'));
+  const input = join(root, 'control.conf');
+  const output = join(root, 'rendered.conf');
+  try {
+    await writeFile(input, await readFile(join(ROOT, 'deploy/nginx/awh-control-plane.conf'), 'utf8'));
+    await execFileAsync(PHP, [originRenderer, input, output, HOST]);
+    const rendered = await readFile(output, 'utf8');
+    assert.equal((rendered.match(new RegExp(`https://${HOST.replaceAll('.', '\\.')}`, 'g')) ?? []).length, 2);
+    assert.doesNotMatch(rendered, /PREVIEW_HOSTNAME/);
+    await assert.rejects(execFileAsync(PHP, [originRenderer, input, output, 'localhost']));
+    await writeFile(input, rendered, 'utf8');
+    await assert.rejects(execFileAsync(PHP, [originRenderer, input, output, HOST]));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
