@@ -1,12 +1,12 @@
 import { loadWebData } from './hub-read-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 import {
-  cancelTask, changePassword, changeUsername, createRecoveryCodes, decideApproval, listAuthSessions,
-  loadControlData, loadConversation, loadWorkspaceContinuity, login, logout, recover, revokeAuthSession, submitWorkMessage,
+  cancelTask, changePassword, changeUsername, createConversation, createRecoveryCodes, decideApproval, listAuthSessions,
+  exportWorkspace, loadControlData, loadConversation, loadConversations, loadCurrentContext, loadProductSettings, loadWorkspaceContinuity, login, logout, recover, resetProductSetting, revokeAuthSession, saveCurrentContext, submitWorkMessage, updateConversation, updateProductSetting,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 (() => {
   const $ = (id) => document.getElementById(id);
-  const state = { control: null, selectedProjectId: null, conversation: null, workspaceContinuity: null, refreshTimer: null };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, workspaceContinuity: null, productSettings: null, refreshTimer: null };
   const taskLabels = {
     WAITING_FOR_WORKER: 'กำลังรออุปกรณ์ทำงาน', PREPARING: 'กำลังเตรียมงาน', RUNNING: 'กำลังทำงาน',
     QA: 'กำลังตรวจคุณภาพ', WAITING_FOR_APPROVAL: 'รอการอนุมัติ', COMPLETED: 'เสร็จแล้ว',
@@ -32,6 +32,16 @@ import {
     if (control?.available !== true && control?.error) message('login-message', control.error);
   }
 
+  function settingValue(key, fallback) { const item = state.productSettings?.[key]; return item && Object.prototype.hasOwnProperty.call(item, 'value') ? item.value : fallback; }
+  function applyProductSettings() {
+    const name = settingValue('productName', 'Art’s Workspace Hub');
+    const tagline = settingValue('tagline', 'Your Projects. One Workspace. Anywhere.');
+    const accent = settingValue('accent', '#ff7a1a');
+    document.title = `${name} — Work`; message('product-name', name); message('product-tagline', tagline);
+    document.documentElement.style.setProperty('--accent', accent);
+    $('setting-product-name').value = name; $('setting-short-name').value = settingValue('shortName', 'AWH'); $('setting-tagline').value = tagline; $('setting-welcome').value = settingValue('welcome', 'เริ่มคุยกับ Art’s Workspace Hub ได้เลย'); $('setting-accent').value = accent;
+  }
+
   function renderProjectSheet(projects) {
     const list = $('project-list'); list.replaceChildren();
     const empty = !Array.isArray(projects) || projects.length === 0;
@@ -42,7 +52,7 @@ import {
       const name = document.createElement('strong'); name.textContent = project.name;
       const detail = document.createElement('span'); detail.textContent = project.memoryReady ? 'พร้อมใช้ context ของโปรเจกต์' : 'Project Memory ยังต้องตรวจสอบบน worker';
       button.append(name, detail);
-      button.addEventListener('click', async () => { state.selectedProjectId = project.projectId; state.conversation = null; state.workspaceContinuity = null; renderWorkspace(); closeSheet('project-sheet'); await refreshConversation(); });
+      button.addEventListener('click', async () => { state.selectedProjectId = project.projectId; state.selectedConversationId = null; state.conversations = []; state.conversation = null; state.workspaceContinuity = null; renderWorkspace(); closeSheet('project-sheet'); await refreshConversation(); });
       list.append(button);
     }
   }
@@ -123,6 +133,21 @@ import {
     }
   }
 
+  function renderConversationSheet() {
+    const list = $('conversation-list'); if (!list) return; list.replaceChildren();
+    for (const conversation of state.conversations) {
+      const button = document.createElement('button'); button.type = 'button'; button.className = `project-choice${conversation.conversationId === state.selectedConversationId ? ' selected' : ''}`;
+      const title = document.createElement('strong'); title.textContent = conversation.title || 'Work';
+      const detail = document.createElement('span'); detail.textContent = date(conversation.updatedAt) || 'ยังไม่มีข้อความ'; button.append(title, detail);
+      button.addEventListener('click', async () => { state.selectedConversationId = conversation.conversationId; closeSheet('conversation-sheet'); await refreshConversation(false); }); list.append(button);
+    }
+    $('conversation-empty').hidden = state.conversations.length > 0;
+    const selected = state.conversations.find((conversation) => conversation.conversationId === state.selectedConversationId) || state.conversation?.conversation || null;
+    $('conversation-title-input').value = selected?.title || 'Work';
+    $('conversation-title-input').disabled = !selected;
+    $('conversation-archive').disabled = !selected;
+  }
+
   function renderWorkspace() {
     const control = state.control;
     if (!control?.authenticated) return;
@@ -130,6 +155,7 @@ import {
     if (!projects.some((project) => project.projectId === state.selectedProjectId)) state.selectedProjectId = projects[0]?.projectId || null;
     const project = selectedProject();
     message('selected-project-name', project?.name || 'ยังไม่มีโปรเจกต์');
+    message('selected-conversation-name', state.conversation?.conversation?.title || 'Work');
     message('worker-summary', workerSummary(control.workers));
     message('work-context', project ? (project.memoryReady ? `บริบทและงานจะถูกผูกกับโปรเจกต์นี้${continuitySummary(state.workspaceContinuity)}` : 'AWH จะรักษาขอบเขตของโปรเจกต์นี้ไว้ขณะ worker ตรวจ context') : 'เพิ่มโปรเจกต์จาก AWH Desktop เพื่อเริ่มงาน');
     message('advanced-status', `${workerSummary(control.workers)} · งานและผลลัพธ์แสดงเฉพาะตามสิทธิ์ของบัญชีคุณ`);
@@ -137,6 +163,7 @@ import {
     $('goal-input').disabled = project === null;
     $('goal-input').placeholder = project ? 'พิมพ์สิ่งที่อยากให้ AWH ช่วย…' : 'เลือกหรือเพิ่มโปรเจกต์ก่อน';
     renderProjectSheet(projects);
+    renderConversationSheet();
     renderThread(state.conversation, state.conversation?.approvals || control.approvals);
   }
 
@@ -150,11 +177,22 @@ import {
     if (authenticated) renderWorkspace();
   }
 
-  async function refreshConversation() {
+  async function refreshConversation(refreshList = true) {
     const project = selectedProject();
-    if (!project) { state.conversation = null; state.workspaceContinuity = null; renderWorkspace(); return; }
-    try { const [conversation, workspaceContinuity] = await Promise.all([loadConversation(project.projectId), loadWorkspaceContinuity(project.projectId)]); state.conversation = conversation; state.workspaceContinuity = workspaceContinuity; renderWorkspace(); }
-    catch (error) { state.conversation = { messages: [{ messageId: 'local-unavailable', taskId: null, kind: 'assistant', sequence: 1, body: 'Work stream นี้จะพร้อมทันทีที่ Hub ได้รับ release ล่าสุด', createdAt: new Date().toISOString() }], tasks: [], artifacts: [], approvals: [] }; renderWorkspace(); message('goal-message', error instanceof Error ? error.message : 'AWH ยังโหลดการสนทนาไม่ได้'); }
+    if (!project) { state.selectedConversationId = null; state.conversations = []; state.conversation = null; state.workspaceContinuity = null; renderWorkspace(); return; }
+    try {
+      const [conversations, workspaceContinuity, currentContext] = await Promise.all([loadConversations(project.projectId), loadWorkspaceContinuity(project.projectId), loadCurrentContext(project.projectId)]);
+      state.conversations = conversations;
+      if (!conversations.some((conversation) => conversation.conversationId === state.selectedConversationId)) {
+        const remembered = currentContext?.context?.conversationId;
+        state.selectedConversationId = conversations.some((conversation) => conversation.conversationId === remembered) ? remembered : conversations[0]?.conversationId || null;
+      }
+      if (!state.selectedConversationId) {
+        const created = await createConversation(project.projectId, 'Work'); state.selectedConversationId = created.conversation.conversationId; state.conversations = [created.conversation]; state.conversation = created;
+      } else state.conversation = await loadConversation(state.selectedConversationId);
+      state.workspaceContinuity = workspaceContinuity; renderWorkspace();
+      void saveCurrentContext(project.projectId, state.selectedConversationId, 'work').catch(() => undefined);
+    } catch (error) { state.conversation = { messages: [{ messageId: 'local-unavailable', taskId: null, kind: 'assistant', sequence: 1, body: 'Work stream นี้จะพร้อมทันทีที่ Hub ได้รับ release ล่าสุด', createdAt: new Date().toISOString() }], tasks: [], artifacts: [], approvals: [] }; renderWorkspace(); message('goal-message', error instanceof Error ? error.message : 'AWH ยังโหลดการสนทนาไม่ได้'); }
   }
 
   async function refreshWorkspace() {
@@ -165,7 +203,12 @@ import {
 
   function openSheet(id) { show(id); }
   function closeSheet(id) { hide(id); }
-  function openAccount() { if (state.control?.authenticated) openSheet('account-sheet'); }
+  async function openAccount() {
+    if (!state.control?.authenticated) return;
+    openSheet('account-sheet');
+    try { state.productSettings = (await loadProductSettings()).settings; applyProductSettings(); }
+    catch { message('product-settings-message', 'ยังโหลดการตั้งค่าลักษณะของ AWH ไม่ได้'); }
+  }
 
   $('login-form').addEventListener('submit', async (event) => {
     event.preventDefault(); message('login-message', 'กำลังเข้าสู่ AWH…');
@@ -180,11 +223,13 @@ import {
   $('goal-form').addEventListener('submit', async (event) => {
     event.preventDefault(); const goal = $('goal-input').value.trim(); const project = selectedProject();
     if (!project || !goal) { message('goal-message', 'เลือกโปรเจกต์และพิมพ์สิ่งที่อยากให้ AWH ช่วยก่อน'); return; }
+    const conversationId = state.selectedConversationId;
+    if (!conversationId) { message('goal-message', 'กำลังเตรียมการสนทนา กรุณาลองใหม่อีกครั้ง'); return; }
     const idempotencyKey = `web-${crypto.randomUUID()}`;
     state.conversation = { ...(state.conversation || {}), messages: [...(state.conversation?.messages || []), { messageId: `local-${idempotencyKey}`, taskId: null, kind: 'user', sequence: Number.MAX_SAFE_INTEGER - 1, body: goal, createdAt: new Date().toISOString() }, { messageId: `local-progress-${idempotencyKey}`, taskId: null, kind: 'progress', sequence: Number.MAX_SAFE_INTEGER, body: 'กำลังตรวจบริบทและบันทึกงาน…', createdAt: new Date().toISOString() }], tasks: state.conversation?.tasks || [], artifacts: state.conversation?.artifacts || [], approvals: state.conversation?.approvals || [] };
     renderWorkspace(); message('goal-message', ''); $('goal-submit').disabled = true;
     try {
-      await submitWorkMessage(project.projectId, goal, idempotencyKey);
+      await submitWorkMessage(project.projectId, conversationId, goal, idempotencyKey);
       $('goal-input').value = '';
       await refreshConversation();
     } catch (error) { message('goal-message', error instanceof Error ? error.message : 'ส่งงานไม่สำเร็จ'); }
@@ -193,6 +238,26 @@ import {
 
   $('refresh-work').addEventListener('click', refreshWorkspace);
   $('project-open').addEventListener('click', () => openSheet('project-sheet'));
+  $('conversation-open').addEventListener('click', () => openSheet('conversation-sheet'));
+  $('conversation-new').addEventListener('click', async () => {
+    const project = selectedProject(); if (!project) return; const button = $('conversation-new'); button.disabled = true;
+    try { const created = await createConversation(project.projectId, 'การสนทนาใหม่'); state.selectedConversationId = created.conversation.conversationId; state.conversation = created; await refreshConversation(); closeSheet('conversation-sheet'); }
+    catch (error) { message('goal-message', error instanceof Error ? error.message : 'AWH ยังสร้างการสนทนาใหม่ไม่ได้'); }
+    finally { button.disabled = false; }
+  });
+  $('conversation-title-form').addEventListener('submit', async (event) => {
+    event.preventDefault(); const conversationId = state.selectedConversationId; if (!conversationId) return;
+    message('conversation-title-message', 'กำลังบันทึก…');
+    try { await updateConversation(conversationId, $('conversation-title-input').value, false); await refreshConversation(); message('conversation-title-message', 'บันทึกแล้ว'); }
+    catch (error) { message('conversation-title-message', error instanceof Error ? error.message : 'ยังบันทึกชื่อการสนทนาไม่ได้'); }
+  });
+  $('conversation-archive').addEventListener('click', async () => {
+    const conversationId = state.selectedConversationId; const current = state.conversation?.conversation; if (!conversationId || !current) return;
+    $('conversation-archive').disabled = true; message('conversation-title-message', 'กำลังเก็บเข้าคลัง…');
+    try { await updateConversation(conversationId, current.title || 'Work', true); state.selectedConversationId = null; await refreshConversation(); message('conversation-title-message', 'เก็บการสนทนาแล้ว'); }
+    catch (error) { message('conversation-title-message', error instanceof Error ? error.message : 'ยังเก็บการสนทนาไม่ได้'); }
+    finally { $('conversation-archive').disabled = false; }
+  });
   $('account-open').addEventListener('click', openAccount);
   $('account-open-inline').addEventListener('click', openAccount);
   $('recovery-open').addEventListener('click', () => openSheet('recovery-sheet'));
@@ -213,6 +278,32 @@ import {
       $('old-password').value = ''; $('new-password').value = ''; $('confirm-password').value = '';
       message('password-message', 'บันทึกแล้ว กรุณาเข้าสู่ AWH อีกครั้ง'); setTimeout(() => window.location.reload(), 700);
     } catch (error) { message('password-message', error instanceof Error ? error.message : 'เปลี่ยนรหัสผ่านไม่สำเร็จ'); }
+  });
+
+  $('product-settings-form').addEventListener('submit', async (event) => {
+    event.preventDefault(); message('product-settings-message', 'กำลังบันทึก…');
+    try {
+      const values = [['productName', $('setting-product-name').value], ['shortName', $('setting-short-name').value], ['tagline', $('setting-tagline').value], ['welcome', $('setting-welcome').value], ['accent', $('setting-accent').value]];
+      for (const [key, value] of values) state.productSettings = (await updateProductSetting(key, value)).settings;
+      applyProductSettings(); message('product-settings-message', 'บันทึกลักษณะของ AWH แล้ว');
+    } catch (error) { message('product-settings-message', error instanceof Error ? error.message : 'ยังบันทึกการตั้งค่าไม่ได้'); }
+  });
+
+  $('product-settings-reset').addEventListener('click', async () => {
+    const button = $('product-settings-reset'); button.disabled = true; message('product-settings-message', 'กำลังคืนค่ามาตรฐาน…');
+    try {
+      for (const key of ['productName', 'shortName', 'tagline', 'welcome', 'accent']) state.productSettings = (await resetProductSetting(key)).settings;
+      applyProductSettings(); message('product-settings-message', 'คืนค่ามาตรฐานแล้ว');
+    } catch (error) { message('product-settings-message', error instanceof Error ? error.message : 'ยังคืนค่ามาตรฐานไม่ได้'); }
+    finally { button.disabled = false; }
+  });
+
+  $('workspace-export').addEventListener('click', async () => {
+    const button = $('workspace-export'); button.disabled = true;
+    try {
+      const data = await exportWorkspace(); const blob = new Blob([`${JSON.stringify(data, null, 2)}\n`], { type: 'application/json' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `awh-workspace-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(url);
+    } catch (error) { message('product-settings-message', error instanceof Error ? error.message : 'ยังส่งออกข้อมูลไม่ได้'); }
+    finally { button.disabled = false; }
   });
 
   $('sessions-load').addEventListener('click', async () => {
@@ -247,5 +338,5 @@ import {
 
   $('logout-button').addEventListener('click', async () => { await logout().catch(() => undefined); window.location.reload(); });
 
-  loadWebData().then(async (data) => { render(data); if (data?.control?.authenticated) { await refreshConversation(); state.refreshTimer = window.setInterval(() => { void refreshWorkspace(); }, 15_000); } }).catch(() => render({ product: { shortName: 'AWH' }, control: { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' } }));
+  loadWebData().then(async (data) => { render(data); if (data?.control?.authenticated) { await refreshConversation(); try { state.productSettings = (await loadProductSettings()).settings; applyProductSettings(); } catch {} state.refreshTimer = window.setInterval(() => { void refreshWorkspace(); }, 15_000); } }).catch(() => render({ product: { shortName: 'AWH' }, control: { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' } }));
 })();

@@ -213,6 +213,14 @@ async function currentWorkClient(): Promise<{ projectId: string; workspace: stri
   return { projectId: manifest.projectId, workspace, client: new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createProductionCredentialStore()) };
 }
 
+/** Publish a portable manifest to the Hub; local filesystem paths never cross this boundary. */
+async function syncPortableProjectToHub(config: ReturnType<typeof loadConfig>, workspace: string): Promise<boolean> {
+  if (!config.hubApiBase) return false;
+  const manifest = await readProjectManifest(workspace);
+  await new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createProductionCredentialStore()).registerProject({ projectId: manifest.projectId, name: manifest.name, type: manifest.type, sourceRevision: null });
+  return true;
+}
+
 async function workConversation() {
   try { const current = await currentWorkClient(); return { ok: true, projectId: current.projectId, ...(await current.client.readConversation(current.projectId)) }; }
   catch { return { ok: false, error: 'WORK_UNAVAILABLE', message: 'Work ยังไม่พร้อมบน Hub นี้' }; }
@@ -591,7 +599,8 @@ function registerIpc(): void {
     if (!selected) return { changed: false, cancelled: true };
     const config = loadConfig();
     const record = await registerProject(config.dataDir, selected);
-    return { changed: true, projectId: record.projectId, workspace: record.workspacePath };
+    const hubSynced = await syncPortableProjectToHub(config, record.workspacePath).catch(() => false);
+    return { changed: true, projectId: record.projectId, workspace: record.workspacePath, hubSynced };
   });
 
   ipcMain.handle(DESKTOP_IPC.initializeProject, async () => {
@@ -600,7 +609,8 @@ function registerIpc(): void {
     const config = loadConfig();
     const manifest = await initializeProject(selected);
     const record = await registerProject(config.dataDir, selected);
-    return { changed: true, project: manifest, projectId: record.projectId, workspace: record.workspacePath };
+    const hubSynced = await syncPortableProjectToHub(config, record.workspacePath).catch(() => false);
+    return { changed: true, project: manifest, projectId: record.projectId, workspace: record.workspacePath, hubSynced };
   });
 
   ipcMain.handle(DESKTOP_IPC.initializeProjectMemory, async (_event, projectId: unknown) => {
@@ -628,9 +638,10 @@ function registerIpc(): void {
     const manifest = await readProjectManifest(selected);
     if (manifest.projectId !== projectId) throw new ProjectRegistryError('โฟลเดอร์ที่เลือกมี projectId ไม่ตรงกัน', 'PROJECT_ID_MISMATCH');
     const record = await registerProject(config.dataDir, selected);
+    const hubSynced = await syncPortableProjectToHub(config, record.workspacePath).catch(() => false);
     const stored = loadStoredSettings(config.dataDir);
     await saveStoredSettings(config.dataDir, { ...stored, defaultWorkspace: record.workspacePath });
-    return { changed: true, restartRequired: false, projectId: record.projectId, workspace: record.workspacePath };
+    return { changed: true, restartRequired: false, projectId: record.projectId, workspace: record.workspacePath, hubSynced };
   });
 
   ipcMain.handle(DESKTOP_IPC.chooseWorkspace, async () => {
@@ -638,9 +649,10 @@ function registerIpc(): void {
     if (!selected) return { changed: false, cancelled: true };
     const config = loadConfig();
     const record = await registerProject(config.dataDir, selected);
+    const hubSynced = await syncPortableProjectToHub(config, record.workspacePath).catch(() => false);
     const stored = loadStoredSettings(config.dataDir);
     await saveStoredSettings(config.dataDir, { ...stored, defaultWorkspace: record.workspacePath });
-    return { changed: true, projectId: record.projectId, workspace: record.workspacePath, restartRequired: false };
+    return { changed: true, projectId: record.projectId, workspace: record.workspacePath, restartRequired: false, hubSynced };
   });
 
   ipcMain.handle(DESKTOP_IPC.setPermissions, async (_event, input: unknown) => {

@@ -73,12 +73,45 @@ export async function loadControlData() {
   return { mode: 'CONTROL', authenticated: true, expiresAt: session.expiresAt, projects: projects.projects.filter((project) => UUID.test(project.projectId)), tasks: Array.isArray(tasks.tasks) ? tasks.tasks : [], workers: Array.isArray(workers.workers) ? workers.workers : [], results: Array.isArray(results.results) ? results.results : [], artifacts: Array.isArray(artifacts.artifacts) ? artifacts.artifacts : [], approvals: Array.isArray(approvals.approvals) ? approvals.approvals : [] };
 }
 
-export async function loadConversation(projectId) {
-  if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง');
-  const value = await controlRequest(`/api/v1/control/conversations/${projectId}`);
-  if (value.schemaVersion !== 1 || !Array.isArray(value.messages) || !Array.isArray(value.tasks) || !Array.isArray(value.artifacts) || !Array.isArray(value.approvals)) throw new Error('ประวัติการทำงานของ AWH ไม่ถูกต้อง');
+export async function loadConversations(projectId, query = '') {
+  if (!UUID.test(projectId) || (typeof query !== 'string' || query.length > 120)) throw new Error('โปรเจกต์ไม่ถูกต้อง');
+  const value = await controlRequest(`/api/v1/control/conversations?projectId=${encodeURIComponent(projectId)}${query ? `&q=${encodeURIComponent(query)}` : ''}`);
+  if (value.schemaVersion !== 2 || !Array.isArray(value.conversations)) throw new Error('รายการการสนทนาของ AWH ไม่ถูกต้อง');
+  return value.conversations.filter((conversation) => conversation && UUID.test(conversation.conversationId) && conversation.projectId === projectId);
+}
+
+export async function loadConversation(conversationId) {
+  if (!UUID.test(conversationId)) throw new Error('การสนทนาไม่ถูกต้อง');
+  const value = await controlRequest(`/api/v1/control/conversations/thread/${conversationId}`);
+  if (value.schemaVersion !== 2 || !value.conversation || !Array.isArray(value.messages) || !Array.isArray(value.tasks) || !Array.isArray(value.artifacts) || !Array.isArray(value.approvals)) throw new Error('ประวัติการทำงานของ AWH ไม่ถูกต้อง');
   return value;
 }
+
+export async function createConversation(projectId, title = 'การสนทนาใหม่') {
+  if (!UUID.test(projectId) || typeof title !== 'string' || !title.trim() || title.length > 120) throw new Error('ชื่อการสนทนาไม่ถูกต้อง');
+  return controlRequest('/api/v1/control/conversations/new', { method: 'POST', body: JSON.stringify({ schemaVersion: 2, projectId, title: title.trim() }) });
+}
+
+export async function updateConversation(conversationId, title, archived = false) {
+  if (!UUID.test(conversationId) || typeof title !== 'string' || !title.trim() || title.length > 120 || typeof archived !== 'boolean') throw new Error('การสนทนาไม่ถูกต้อง');
+  return controlRequest(`/api/v1/control/conversations/thread/${conversationId}`, { method: 'POST', body: JSON.stringify({ schemaVersion: 2, title: title.trim(), archived }) });
+}
+
+export async function loadCurrentContext(projectId) {
+  if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง');
+  return controlRequest(`/api/v1/control/contexts/${projectId}`);
+}
+
+export async function saveCurrentContext(projectId, conversationId, viewKind = 'work', selectedRef = null, sourceRevision = null) {
+  if (!UUID.test(projectId) || !UUID.test(conversationId)) return null;
+  return controlRequest('/api/v1/control/contexts', { method: 'POST', body: JSON.stringify({ schemaVersion: 2, projectId, conversationId, viewKind, selectedRef, sourceRevision }) });
+}
+
+export async function loadProductSettings() { return controlRequest('/api/v1/control/settings'); }
+export async function updateProductSetting(settingKey, value) { return controlRequest('/api/v1/control/settings', { method: 'POST', body: JSON.stringify({ schemaVersion: 2, settingKey, value }) }); }
+export async function loadProductSettingHistory(settingKey) { if (!['productName', 'shortName', 'tagline', 'accent', 'welcome', 'starterPrompts'].includes(settingKey)) throw new Error('การตั้งค่าไม่ถูกต้อง'); return controlRequest(`/api/v1/control/settings/history?settingKey=${encodeURIComponent(settingKey)}`); }
+export async function resetProductSetting(settingKey) { if (!['productName', 'shortName', 'tagline', 'accent', 'welcome', 'starterPrompts'].includes(settingKey)) throw new Error('การตั้งค่าไม่ถูกต้อง'); return controlRequest('/api/v1/control/settings/reset', { method: 'POST', body: JSON.stringify({ schemaVersion: 2, settingKey }) }); }
+export async function exportWorkspace() { return controlRequest('/api/v1/control/export'); }
 
 export async function loadWorkspaceContinuity(projectId) {
   if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง');
@@ -87,15 +120,15 @@ export async function loadWorkspaceContinuity(projectId) {
   return value.workspace;
 }
 
-export async function submitWorkMessage(projectId, message, idempotencyKey = `web-${crypto.randomUUID()}`) {
-  if (!UUID.test(projectId) || typeof message !== 'string' || !message.trim() || message.length > 2000 || !/^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey)) throw new Error('กรุณาเลือกโปรเจกต์และบอกสิ่งที่อยากให้ AWH ช่วย');
-  const value = await controlRequest('/api/v1/control/conversations', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, message: message.trim(), idempotencyKey }) });
-  if (value.schemaVersion !== 1 || !Array.isArray(value.messages) || !Array.isArray(value.tasks)) throw new Error('AWH ไม่สามารถบันทึกการสนทนาได้');
+export async function submitWorkMessage(projectId, conversationId, message, idempotencyKey = `web-${crypto.randomUUID()}`) {
+  if (!UUID.test(projectId) || !UUID.test(conversationId) || typeof message !== 'string' || !message.trim() || message.length > 2000 || !/^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey)) throw new Error('กรุณาเลือกโปรเจกต์และบอกสิ่งที่อยากให้ AWH ช่วย');
+  const value = await controlRequest('/api/v1/control/conversations', { method: 'POST', body: JSON.stringify({ schemaVersion: 2, projectId, conversationId, message: message.trim(), idempotencyKey }) });
+  if (value.schemaVersion !== 2 || !Array.isArray(value.messages) || !Array.isArray(value.tasks)) throw new Error('AWH ไม่สามารถบันทึกการสนทนาได้');
   return value;
 }
 
-export async function submitGoal(projectId, goal) {
-  return submitWorkMessage(projectId, goal);
+export async function submitGoal(projectId, conversationId, goal) {
+  return submitWorkMessage(projectId, conversationId, goal);
 }
 
 export async function cancelTask(taskId) {

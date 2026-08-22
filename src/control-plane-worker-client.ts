@@ -145,6 +145,25 @@ export class ControlPlaneWorkerClient {
     return boundedWorkspace(response);
   }
 
+  /**
+   * Publishes only portable binding metadata. In particular, a local path is
+   * deliberately not accepted by this boundary: each trusted device owns its
+   * own path mapping for the one canonical Hub project.
+   */
+  async registerProjectBinding(projectId: string, workspaceLabel: string, capabilities: string[], sourceFingerprint: string | null = null): Promise<void> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    if (!UUID_V4.test(projectId) || typeof workspaceLabel !== 'string' || !workspaceLabel.trim() || workspaceLabel.trim().length > 120 || /[\\/\u0000-\u001f\u007f]/.test(workspaceLabel) || !Array.isArray(capabilities) || capabilities.length > 24 || capabilities.some((value) => typeof value !== 'string' || !CAPABILITY.test(value)) || (sourceFingerprint !== null && !/^[0-9a-f]{40,64}$/i.test(sourceFingerprint))) throw new ControlPlaneWorkerError('Project binding is invalid', 'PAYLOAD_INVALID');
+    const response = await this.post('/control/worker/projects/bindings', { schemaVersion: 2, deviceId: identity.deviceId, projectId, workspaceLabel: workspaceLabel.trim(), sourceFingerprint, capabilities: [...new Set(capabilities)] });
+    if (response.schemaVersion !== 2 || !response.binding || typeof response.binding !== 'object') throw new ControlPlaneWorkerError('Project binding response is invalid', 'RESPONSE_INVALID');
+  }
+
+  async registerProject(project: { projectId: string; name: string; type: string; sourceRevision: string | null }): Promise<void> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    if (!project || !UUID_V4.test(project.projectId) || typeof project.name !== 'string' || !project.name.trim() || project.name.trim().length > 120 || /[\\/\u0000-\u001f\u007f]/.test(project.name) || typeof project.type !== 'string' || !/^[a-z][a-z0-9-]{0,31}$/.test(project.type) || (project.sourceRevision !== null && !/^[0-9a-f]{40,64}$/i.test(project.sourceRevision))) throw new ControlPlaneWorkerError('Project registration is invalid', 'PAYLOAD_INVALID');
+    const response = await this.post('/control/worker/projects/register', { schemaVersion: 2, deviceId: identity.deviceId, project: { projectId: project.projectId, name: project.name.trim(), type: project.type, sourceRevision: project.sourceRevision } });
+    if (response.schemaVersion !== 2 || !response.project || typeof response.project !== 'object') throw new ControlPlaneWorkerError('Project registration response is invalid', 'RESPONSE_INVALID');
+  }
+
   async publishWorkspaceCheckpoint(checkpoint: WorkspaceWipCheckpoint): Promise<WorkerWorkspace> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir);
     if (checkpoint.schemaVersion !== 1 || checkpoint.sourceDeviceId !== identity.deviceId || !UUID_V4.test(checkpoint.projectId) || !UUID_V4.test(checkpoint.checkpointId) || (checkpoint.taskId !== null && !UUID_V4.test(checkpoint.taskId))) throw new ControlPlaneWorkerError('Workspace checkpoint is invalid', 'PAYLOAD_INVALID');

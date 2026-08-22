@@ -75,8 +75,19 @@ final class HubAssistantWorkstreamMigration
     private static function missingTaskColumns(PDO $pdo): array { $columns = array_column($pdo->query('PRAGMA table_info(control_tasks)')->fetchAll(), 'name'); return array_values(array_diff(self::TASK_COLUMNS, $columns)); }
     private static function ready(PDO $pdo): bool
     {
-        $indexes = ['idx_control_conversations_user_project', 'idx_control_conversation_messages_order', 'idx_control_conversation_messages_idempotency', 'idx_control_conversation_messages_event', 'idx_control_tasks_conversation'];
+        // M8 deliberately replaces the old one-thread-per-project index with
+        // a recent-thread index. M6 remains available only when either its
+        // exact legacy layout is present, or the complete known M8 extension
+        // proves that the same conversation authority still exists. This is
+        // capability compatibility, not an unbounded user_version shortcut.
+        $indexes = ['idx_control_conversation_messages_order', 'idx_control_conversation_messages_idempotency', 'idx_control_conversation_messages_event', 'idx_control_tasks_conversation'];
         foreach ($indexes as $index) if ($pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = '" . $index . "'")->fetchColumn() === false) return false;
+        $legacyConversationIndex = $pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_control_conversations_user_project'")->fetchColumn() !== false;
+        if (!$legacyConversationIndex) {
+            $columns = array_column($pdo->query('PRAGMA table_info(control_conversations)')->fetchAll(), 'name');
+            $unifiedConversationIndex = $pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_control_conversations_project_recent'")->fetchColumn() !== false;
+            if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() < 8 || !$unifiedConversationIndex || array_diff(['title', 'archived_at', 'origin'], $columns) !== []) return false;
+        }
         return self::presentTables($pdo) === self::TABLES && self::missingTaskColumns($pdo) === [];
     }
 }

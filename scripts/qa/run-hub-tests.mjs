@@ -14,6 +14,7 @@ const tests = [
   'hub/tests/owner-auth-rollback.php',
   'hub/tests/m6-assistant-workstream.php',
   'hub/tests/m7-workspace-continuity.php',
+  'hub/tests/m8-unified-workspace.php',
 ];
 
 const php = await resolveExecutable('php');

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/HubAssistantWorkstreamMigration.php';
 require_once __DIR__ . '/HubWorkspaceContinuityMigration.php';
+require_once __DIR__ . '/HubUnifiedWorkspaceMigration.php';
 
 final class HubControlPlaneException extends RuntimeException
 {
@@ -100,15 +101,116 @@ final class HubControlPlaneService
 
     public function listProjectsForSession(string $sessionToken, ?string $now = null): array { $row = $this->sessionRow($sessionToken, $now); return ['schemaVersion' => 1, 'projects' => $this->projectsForUser((string) $row['user_id'])]; }
 
-    /**
-     * M6's Work surface is an ordered view over existing canonical tasks.  A
-     * project owns one durable conversation; a message can create zero or one
-     * task, and task activity is reflected back into the same stream.
-     */
+    /** Legacy project route: returns the most recently active Work thread. */
     public function conversation(string $sessionToken, string $projectId, ?string $now = null): array
     {
         $session = $this->sessionRow($sessionToken, $now);
         return $this->conversationForUser((string) $session['user_id'], self::uuid($projectId));
+    }
+
+    /** M8 thread index. It is a projection over M6 tasks/messages, not a new task authority. */
+    public function conversations(string $sessionToken, ?string $projectId = null, ?string $query = null, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertUnifiedReady();
+        $userId = (string) $session['user_id']; $params = ['user' => $userId];
+        $sql = 'SELECT c.conversation_id, c.project_id, c.title, c.archived_at, c.origin, c.created_at, c.updated_at, c.last_task_id, p.name AS project_name FROM control_conversations c JOIN projects p ON p.project_id = c.project_id WHERE c.user_id = :user';
+        if ($projectId !== null && $projectId !== '') { $projectId = self::uuid($projectId); $this->assertProjectMember($userId, $projectId); $sql .= ' AND c.project_id = :project'; $params['project'] = $projectId; }
+        if ($query !== null && trim($query) !== '') { $needle = self::searchText($query); $sql .= ' AND (c.title LIKE :needle ESCAPE \'\\\' OR EXISTS (SELECT 1 FROM control_conversation_messages m WHERE m.conversation_id = c.conversation_id AND m.body LIKE :needle ESCAPE \'\\\'))'; $params['needle'] = '%' . self::escapeLike($needle) . '%'; }
+        $sql .= ' ORDER BY c.archived_at IS NOT NULL, c.updated_at DESC, c.conversation_id DESC LIMIT 100';
+        $q = $this->pdo->prepare($sql); $q->execute($params);
+        return ['schemaVersion' => 2, 'conversations' => array_map(fn (array $row): array => $this->conversationSummaryRow($row), $q->fetchAll())];
+    }
+
+    public function conversationById(string $sessionToken, string $conversationId, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertUnifiedReady();
+        return $this->conversationByIdForUser((string) $session['user_id'], self::uuid($conversationId));
+    }
+
+    public function createConversation(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['projectId', 'schemaVersion', 'title']);
+        if (($payload['schemaVersion'] ?? null) !== 2) throw new HubControlPlaneException('Unsupported conversation schema', 'SCHEMA_VERSION');
+        $this->assertUnifiedReady(); $projectId = self::uuid((string) ($payload['projectId'] ?? '')); $this->assertProjectMember((string) $session['user_id'], $projectId);
+        $at = self::timestamp($now ?? gmdate('c')); $title = self::conversationTitle((string) ($payload['title'] ?? ''));
+        $id = self::uuidFromBytes(random_bytes(16));
+        $this->pdo->prepare("INSERT INTO control_conversations(conversation_id, user_id, project_id, created_at, updated_at, last_task_id, title, archived_at, origin) VALUES(:id, :user, :project, :at, :at, NULL, :title, NULL, 'native')")->execute(['id' => $id, 'user' => $session['user_id'], 'project' => $projectId, 'at' => $at, 'title' => $title]);
+        return $this->conversationByIdForUser((string) $session['user_id'], $id);
+    }
+
+    public function updateConversation(string $sessionToken, string $csrfToken, string $conversationId, array $payload, ?string $now = null): array
+    {
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['archived', 'schemaVersion', 'title']);
+        if (($payload['schemaVersion'] ?? null) !== 2 || !is_bool($payload['archived'] ?? null)) throw new HubControlPlaneException('Conversation request is invalid', 'SCHEMA_VERSION');
+        $this->assertUnifiedReady(); $conversationId = self::uuid($conversationId); $userId = (string) $session['user_id']; $current = $this->conversationRowForUser($userId, $conversationId);
+        $title = self::conversationTitle((string) ($payload['title'] ?? $current['title'] ?? 'Work')); $at = self::timestamp($now ?? gmdate('c'));
+        $this->pdo->prepare('UPDATE control_conversations SET title = :title, archived_at = :archived, updated_at = :at WHERE conversation_id = :id AND user_id = :user')->execute(['title' => $title, 'archived' => $payload['archived'] ? $at : null, 'at' => $at, 'id' => $conversationId, 'user' => $userId]);
+        return $this->conversationByIdForUser($userId, $conversationId);
+    }
+
+    /** Structured current-view metadata is bounded and excludes workspace paths/source content. */
+    public function setCurrentContext(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['conversationId', 'projectId', 'schemaVersion', 'selectedRef', 'sourceRevision', 'viewKind']);
+        if (($payload['schemaVersion'] ?? null) !== 2) throw new HubControlPlaneException('Unsupported context schema', 'SCHEMA_VERSION');
+        $this->assertUnifiedReady(); $userId = (string) $session['user_id']; $projectId = self::uuid((string) ($payload['projectId'] ?? '')); $this->assertProjectMember($userId, $projectId);
+        $conversationId = $payload['conversationId'] === null ? null : self::uuid((string) $payload['conversationId']); if ($conversationId !== null) { $conversation = $this->conversationRowForUser($userId, $conversationId); if ((string) $conversation['project_id'] !== $projectId) throw new HubControlPlaneException('Conversation does not belong to this project', 'PROJECT_FORBIDDEN'); }
+        $viewKind = self::contextKind((string) ($payload['viewKind'] ?? 'work')); $selected = self::optionalText($payload['selectedRef'] ?? null, 160); $revision = self::optionalGitSha($payload['sourceRevision'] ?? null); $at = self::timestamp($now ?? gmdate('c'));
+        $this->pdo->prepare("INSERT INTO control_project_contexts(context_id, user_id, project_id, conversation_id, device_id, scope_key, view_kind, selected_ref, preview_ref, source_revision, observed_at, expires_at) VALUES(:id, :user, :project, :conversation, NULL, 'owner', :kind, :selected, NULL, :revision, :at, NULL) ON CONFLICT(user_id, project_id, scope_key, view_kind) DO UPDATE SET conversation_id=excluded.conversation_id, selected_ref=excluded.selected_ref, source_revision=excluded.source_revision, observed_at=excluded.observed_at")->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'user' => $userId, 'project' => $projectId, 'conversation' => $conversationId, 'kind' => $viewKind, 'selected' => $selected, 'revision' => $revision, 'at' => $at]);
+        return $this->currentContextForUser($userId, $projectId);
+    }
+
+    public function currentContext(string $sessionToken, string $projectId, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertUnifiedReady(); return $this->currentContextForUser((string) $session['user_id'], self::uuid($projectId));
+    }
+
+    /** Validated structured product configuration; values are never arbitrary CSS/HTML. */
+    public function productSettings(string $sessionToken, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertUnifiedReady(); return ['schemaVersion' => 2, 'settings' => $this->productSettingsForUser((string) $session['user_id'])];
+    }
+
+    public function updateProductSetting(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['schemaVersion', 'settingKey', 'value']); if (($payload['schemaVersion'] ?? null) !== 2) throw new HubControlPlaneException('Unsupported settings schema', 'SCHEMA_VERSION');
+        $this->assertUnifiedReady(); $key = self::settingKey((string) ($payload['settingKey'] ?? '')); return $this->saveProductSetting((string) $session['user_id'], $key, self::settingValue($key, $payload['value'] ?? null), $now);
+    }
+
+    /** The bounded revision history makes owner configuration reversible without arbitrary code edits. */
+    public function productSettingHistory(string $sessionToken, string $key, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertUnifiedReady(); $key = self::settingKey($key); $userId = (string) $session['user_id']; $this->productSettingsForUser($userId);
+        $q = $this->pdo->prepare('SELECT revision_no, value_json, created_at FROM control_product_setting_revisions WHERE setting_key = :key ORDER BY revision_no DESC LIMIT 20'); $q->execute(['key' => $key]); $revisions = [];
+        foreach ($q->fetchAll() as $row) { try { $revisions[] = ['revision' => (int) $row['revision_no'], 'value' => self::settingValue($key, json_decode((string) $row['value_json'], true, 16, JSON_THROW_ON_ERROR)), 'createdAt' => (string) $row['created_at']]; } catch (Throwable) { throw new HubControlPlaneException('Product configuration history is invalid', 'PRODUCT_SETTING_INVALID'); } }
+        return ['schemaVersion' => 2, 'settingKey' => $key, 'revisions' => $revisions];
+    }
+
+    /** Reset records the product default as a new revision; it never deletes audit history. */
+    public function resetProductSetting(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['schemaVersion', 'settingKey']); if (($payload['schemaVersion'] ?? null) !== 2) throw new HubControlPlaneException('Unsupported settings schema', 'SCHEMA_VERSION');
+        $this->assertUnifiedReady(); $key = self::settingKey((string) ($payload['settingKey'] ?? '')); return $this->saveProductSetting((string) $session['user_id'], $key, self::productDefaults()[$key]['value'], $now);
+    }
+
+    private function saveProductSetting(string $userId, string $key, mixed $value, ?string $now): array
+    {
+        $encoded = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR); $at = self::timestamp($now ?? gmdate('c'));
+        try {
+            $this->pdo->exec('BEGIN IMMEDIATE'); $q = $this->pdo->prepare('SELECT revision_no FROM control_product_settings WHERE setting_key = :key'); $q->execute(['key' => $key]); $revision = ((int) $q->fetchColumn()) + 1;
+            $this->pdo->prepare('INSERT INTO control_product_settings(setting_key, value_json, revision_no, updated_by_user_id, updated_at) VALUES(:key, :value, :revision, :user, :at) ON CONFLICT(setting_key) DO UPDATE SET value_json=excluded.value_json, revision_no=excluded.revision_no, updated_by_user_id=excluded.updated_by_user_id, updated_at=excluded.updated_at')->execute(['key' => $key, 'value' => $encoded, 'revision' => $revision, 'user' => $userId, 'at' => $at]);
+            $this->pdo->prepare('INSERT INTO control_product_setting_revisions(revision_id, setting_key, revision_no, value_json, updated_by_user_id, created_at) VALUES(:id, :key, :revision, :value, :user, :at)')->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'key' => $key, 'revision' => $revision, 'value' => $encoded, 'user' => $userId, 'at' => $at]);
+            $this->pdo->exec('COMMIT');
+        } catch (Throwable $error) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); throw $error instanceof HubControlPlaneException ? $error : new HubControlPlaneException('Product setting could not be saved', 'PRODUCT_SETTING_FAILED'); }
+        return ['schemaVersion' => 2, 'settings' => $this->productSettingsForUser($userId)];
+    }
+
+    /** Safe logical export. It excludes credentials, cookies, paths, WIP refs and source contents. */
+    public function exportWorkspace(string $sessionToken, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertUnifiedReady(); $userId = (string) $session['user_id'];
+        $projects = $this->projectsForUser($userId); $threads = $this->conversations($sessionToken, null, null, $now)['conversations'];
+        return ['schemaVersion' => 2, 'exportedAt' => self::timestamp($now ?? gmdate('c')), 'product' => $this->productSettingsForUser($userId), 'projects' => $projects, 'conversations' => $threads, 'security' => ['secretsIncluded' => false, 'localPathsIncluded' => false, 'sourceFilesIncluded' => false]];
     }
 
     public function submitConversation(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
@@ -164,10 +266,22 @@ final class HubControlPlaneService
     {
         $this->assertAssistantReady();
         $this->assertProjectMember($userId, $projectId);
-        $conversationQuery = $this->pdo->prepare('SELECT * FROM control_conversations WHERE user_id = :user AND project_id = :project');
+        $conversationQuery = $this->pdo->prepare($this->unifiedSchemaPresent() ? 'SELECT * FROM control_conversations WHERE user_id = :user AND project_id = :project AND archived_at IS NULL ORDER BY updated_at DESC, conversation_id DESC LIMIT 1' : 'SELECT * FROM control_conversations WHERE user_id = :user AND project_id = :project LIMIT 1');
         $conversationQuery->execute(['user' => $userId, 'project' => $projectId]);
         $conversation = $conversationQuery->fetch();
         if (!is_array($conversation)) return ['schemaVersion' => 1, 'conversation' => null, 'messages' => [], 'tasks' => [], 'artifacts' => [], 'approvals' => []];
+
+        return $this->conversationPayload($conversation, $userId);
+    }
+
+    private function conversationByIdForUser(string $userId, string $conversationId): array
+    {
+        $this->assertUnifiedReady();
+        return $this->conversationPayload($this->conversationRowForUser($userId, $conversationId), $userId);
+    }
+
+    private function conversationPayload(array $conversation, string $userId): array
+    {
 
         $messageQuery = $this->pdo->prepare('SELECT message_id, task_id, message_kind, sequence_no, body, created_at FROM control_conversation_messages WHERE conversation_id = :conversation ORDER BY sequence_no ASC LIMIT 250');
         $messageQuery->execute(['conversation' => $conversation['conversation_id']]);
@@ -183,29 +297,33 @@ final class HubControlPlaneService
         $artifacts = $this->conversationArtifacts($taskIds);
         $approvals = $this->conversationApprovals($taskIds);
         return [
-            'schemaVersion' => 1,
-            'conversation' => ['conversationId' => (string) $conversation['conversation_id'], 'projectId' => (string) $conversation['project_id'], 'createdAt' => (string) $conversation['created_at'], 'updatedAt' => (string) $conversation['updated_at'], 'lastTaskId' => $conversation['last_task_id'] === null ? null : (string) $conversation['last_task_id']],
+            'schemaVersion' => isset($conversation['title']) ? 2 : 1,
+            'conversation' => ['conversationId' => (string) $conversation['conversation_id'], 'projectId' => (string) $conversation['project_id'], 'title' => isset($conversation['title']) ? (string) $conversation['title'] : 'Work', 'archivedAt' => isset($conversation['archived_at']) && $conversation['archived_at'] !== null ? (string) $conversation['archived_at'] : null, 'origin' => isset($conversation['origin']) ? (string) $conversation['origin'] : 'native', 'createdAt' => (string) $conversation['created_at'], 'updatedAt' => (string) $conversation['updated_at'], 'lastTaskId' => $conversation['last_task_id'] === null ? null : (string) $conversation['last_task_id']],
             'messages' => $messages, 'tasks' => $tasks, 'artifacts' => $artifacts, 'approvals' => $approvals,
         ];
     }
 
     private function submitConversationForUser(string $userId, array $payload, ?string $now): array
     {
-        self::exactKeys($payload, ['idempotencyKey', 'message', 'projectId', 'schemaVersion']);
-        if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Unsupported conversation schema', 'SCHEMA_VERSION');
+        $schema = $payload['schemaVersion'] ?? null;
+        if ($schema === 1) self::exactKeys($payload, ['idempotencyKey', 'message', 'projectId', 'schemaVersion']);
+        elseif ($schema === 2) self::exactKeys($payload, ['conversationId', 'idempotencyKey', 'message', 'projectId', 'schemaVersion']);
+        else throw new HubControlPlaneException('Unsupported conversation schema', 'SCHEMA_VERSION');
         $this->assertAssistantReady();
         $projectId = self::uuid((string) ($payload['projectId'] ?? ''));
         $message = self::goal((string) ($payload['message'] ?? ''));
         $idempotency = self::idempotency((string) ($payload['idempotencyKey'] ?? ''));
         $this->assertProjectMember($userId, $projectId);
+        if ($schema === 2) $this->assertUnifiedReady();
         $at = self::timestamp($now ?? gmdate('c'));
         $transactionOpen = false;
         try {
             $this->pdo->exec('BEGIN IMMEDIATE'); $transactionOpen = true;
-            $conversation = $this->getOrCreateConversation($userId, $projectId, $at);
+            $conversation = $schema === 2 ? $this->conversationRowForUser($userId, self::uuid((string) ($payload['conversationId'] ?? ''))) : $this->getOrCreateConversation($userId, $projectId, $at);
+            if ((string) $conversation['project_id'] !== $projectId || (isset($conversation['archived_at']) && $conversation['archived_at'] !== null)) throw new HubControlPlaneException('Conversation is not available for this project', 'PROJECT_FORBIDDEN');
             $existing = $this->pdo->prepare('SELECT message_id FROM control_conversation_messages WHERE conversation_id = :conversation AND idempotency_key = :key');
             $existing->execute(['conversation' => $conversation['conversation_id'], 'key' => $idempotency]);
-            if ($existing->fetchColumn() !== false) { $this->pdo->exec('COMMIT'); $transactionOpen = false; return $this->conversationForUser($userId, $projectId); }
+            if ($existing->fetchColumn() !== false) { $this->pdo->exec('COMMIT'); $transactionOpen = false; return $schema === 2 ? $this->conversationByIdForUser($userId, (string) $conversation['conversation_id']) : $this->conversationForUser($userId, $projectId); }
             $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'USER', $message, $at, $idempotency);
             if (self::isConversationOnly($message)) {
                 $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'ASSISTANT', $this->conversationAnswer($projectId, $message), $at);
@@ -227,7 +345,7 @@ final class HubControlPlaneService
             if ($transactionOpen) { try { $this->pdo->exec('ROLLBACK'); } catch (Throwable) {} }
             throw new HubControlPlaneException('Conversation could not be saved', 'CONVERSATION_CREATE_FAILED');
         }
-        return $this->conversationForUser($userId, $projectId);
+        return $schema === 2 ? $this->conversationByIdForUser($userId, (string) $conversation['conversation_id']) : $this->conversationForUser($userId, $projectId);
     }
 
     public function listTasks(string $sessionToken, ?string $projectId = null, ?string $now = null): array
@@ -516,6 +634,56 @@ final class HubControlPlaneService
         return ['schemaVersion' => 1, 'workspace' => $this->workspaceState($projectId, self::timestamp($now ?? gmdate('c')), true)];
     }
 
+    /** Device-local binding metadata makes a canonical project portable without exposing a filesystem path. */
+    public function registerProjectBinding(string $token, array $payload, ?string $now = null): array
+    {
+        self::exactKeys($payload, ['capabilities', 'deviceId', 'projectId', 'schemaVersion', 'sourceFingerprint', 'workspaceLabel']);
+        if (($payload['schemaVersion'] ?? null) !== 2 || !is_array($payload['capabilities']) || count($payload['capabilities']) > 24) throw new HubControlPlaneException('Project binding is invalid', 'PAYLOAD_INVALID');
+        $deviceId = self::uuid((string) ($payload['deviceId'] ?? '')); $projectId = self::uuid((string) ($payload['projectId'] ?? '')); $auth = $this->enrollment->authenticateForControlPlane($token, $deviceId, $now); $this->assertDeviceProjectMember((string) $auth['deviceId'], $projectId); $this->assertUnifiedReady();
+        $label = self::portableText((string) ($payload['workspaceLabel'] ?? ''), 'workspaceLabel', 120); $fingerprint = $payload['sourceFingerprint'] === null ? null : self::gitSha((string) $payload['sourceFingerprint']); $caps = [];
+        foreach ($payload['capabilities'] as $capability) { if (!is_string($capability) || preg_match('/^[a-z][a-z0-9:._-]{0,63}$/', $capability) !== 1) throw new HubControlPlaneException('Project binding capability is invalid', 'FIELD_INVALID'); $caps[] = $capability; }
+        $at = self::timestamp($now ?? gmdate('c'));
+        $this->pdo->prepare('INSERT INTO control_project_device_bindings(binding_id, project_id, device_id, workspace_label, source_fingerprint, capabilities_json, observed_at, revoked_at) VALUES(:id, :project, :device, :label, :fingerprint, :caps, :at, NULL) ON CONFLICT(project_id, device_id) DO UPDATE SET workspace_label=excluded.workspace_label, source_fingerprint=excluded.source_fingerprint, capabilities_json=excluded.capabilities_json, observed_at=excluded.observed_at, revoked_at=NULL')->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'project' => $projectId, 'device' => $auth['deviceId'], 'label' => $label, 'fingerprint' => $fingerprint, 'caps' => json_encode(array_values(array_unique($caps)), JSON_THROW_ON_ERROR), 'at' => $at]);
+        return ['schemaVersion' => 2, 'binding' => ['projectId' => $projectId, 'deviceId' => (string) $auth['deviceId'], 'workspaceLabel' => $label, 'sourceFingerprint' => $fingerprint, 'capabilities' => array_values(array_unique($caps)), 'observedAt' => $at]];
+    }
+
+    /**
+     * The enrolled owner may publish a portable manifest into the one Hub
+     * registry. This is deliberately metadata-only: a desktop folder stays a
+     * device-local binding and an existing identity is never duplicated.
+     */
+    public function registerProjectFromDevice(string $token, array $payload, ?string $now = null): array
+    {
+        self::exactKeys($payload, ['deviceId', 'project', 'schemaVersion']);
+        if (($payload['schemaVersion'] ?? null) !== 2 || !is_array($payload['project'])) throw new HubControlPlaneException('Project registration is invalid', 'PAYLOAD_INVALID');
+        self::exactKeys($payload['project'], ['name', 'projectId', 'sourceRevision', 'type']);
+        $deviceId = self::uuid((string) ($payload['deviceId'] ?? '')); $auth = $this->enrollment->authenticateForControlPlane($token, $deviceId, $now);
+        $owner = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1')->fetchColumn();
+        if (!is_string($owner) || !hash_equals($owner, (string) $auth['userId'])) throw new HubControlPlaneException('Only the AWH owner may register a project', 'PROJECT_FORBIDDEN');
+        $project = $payload['project']; $projectId = self::uuid((string) ($project['projectId'] ?? '')); $name = self::portableText((string) ($project['name'] ?? ''), 'projectName', 120); $type = strtolower(trim((string) ($project['type'] ?? '')));
+        if (!preg_match('/^[a-z][a-z0-9-]{0,31}$/', $type)) throw new HubControlPlaneException('Project type is invalid', 'FIELD_INVALID');
+        $revision = $project['sourceRevision'] === null ? null : self::gitSha((string) $project['sourceRevision']); $at = self::timestamp($now ?? gmdate('c'));
+        try {
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $existing = $this->pdo->prepare('SELECT name, type FROM projects WHERE project_id = :project'); $existing->execute(['project' => $projectId]); $row = $existing->fetch();
+            if (is_array($row) && ((string) $row['name'] !== $name || (string) $row['type'] !== $type)) throw new HubControlPlaneException('Project identity conflicts with the Hub registry', 'PROJECT_ID_CONFLICT');
+            if (!is_array($row)) $this->pdo->prepare('INSERT INTO projects(project_id, name, type, created_at, source_revision, observed_at, provenance) VALUES(:project, :name, :type, :at, :revision, :at, :provenance)')->execute(['project' => $projectId, 'name' => $name, 'type' => $type, 'at' => $at, 'revision' => $revision, 'provenance' => 'portable-owner-device']);
+            elseif ($revision !== null) $this->pdo->prepare('UPDATE projects SET source_revision = :revision, observed_at = :at WHERE project_id = :project')->execute(['project' => $projectId, 'revision' => $revision, 'at' => $at]);
+            $this->pdo->prepare("INSERT INTO user_project_memberships(user_id, project_id, role, created_at, revoked_at) VALUES(:user, :project, 'owner', :at, NULL) ON CONFLICT(user_id, project_id) DO UPDATE SET role='owner', revoked_at=NULL")->execute(['user' => $auth['userId'], 'project' => $projectId, 'at' => $at]);
+            $this->pdo->prepare("INSERT INTO device_project_memberships(device_id, project_id, role, created_at, revoked_at) VALUES(:device, :project, 'owner', :at, NULL) ON CONFLICT(device_id, project_id) DO UPDATE SET role='owner', revoked_at=NULL")->execute(['device' => $auth['deviceId'], 'project' => $projectId, 'at' => $at]);
+            $this->pdo->exec('COMMIT');
+        } catch (Throwable $error) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Project could not be registered', 'PROJECT_REGISTER_FAILED'); }
+        return ['schemaVersion' => 2, 'project' => ['projectId' => $projectId, 'name' => $name, 'type' => $type, 'sourceRevision' => $revision, 'observedAt' => $at]];
+    }
+
+    public function projectBindings(string $sessionToken, string $projectId, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertUnifiedReady(); $projectId = self::uuid($projectId); $this->assertProjectMember((string) $session['user_id'], $projectId);
+        $q = $this->pdo->prepare('SELECT b.workspace_label, b.source_fingerprint, b.capabilities_json, b.observed_at, d.display_name, d.platform, d.arch FROM control_project_device_bindings b JOIN devices d ON d.device_id = b.device_id WHERE b.project_id = :project AND b.revoked_at IS NULL AND d.revoked_at IS NULL ORDER BY b.observed_at DESC LIMIT 20'); $q->execute(['project' => $projectId]);
+        $bindings = []; foreach ($q->fetchAll() as $row) { try { $capabilities = json_decode((string) $row['capabilities_json'], true, 16, JSON_THROW_ON_ERROR); if (!is_array($capabilities)) $capabilities = []; } catch (Throwable) { $capabilities = []; } $bindings[] = ['workspaceLabel' => (string) $row['workspace_label'], 'sourceFingerprint' => $row['source_fingerprint'] === null ? null : (string) $row['source_fingerprint'], 'capabilities' => array_values(array_filter($capabilities, 'is_string')), 'device' => ['displayName' => (string) $row['display_name'], 'platform' => (string) $row['platform'], 'arch' => (string) $row['arch']], 'observedAt' => (string) $row['observed_at']]; }
+        return ['schemaVersion' => 2, 'projectId' => $projectId, 'bindings' => $bindings];
+    }
+
     /** Publish only bounded Git WIP metadata after the source device has verified its private remote ref. */
     public function publishWorkspaceCheckpoint(string $token, array $payload, ?string $now = null): array
     {
@@ -597,6 +765,7 @@ final class HubControlPlaneService
 
     private function assertAssistantReady(): void { HubAssistantWorkstreamMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/005_assistant_workstream.sql'); }
     private function assertWorkspaceReady(): void { HubWorkspaceContinuityMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/006_workspace_continuity.sql'); }
+    private function assertUnifiedReady(): void { HubUnifiedWorkspaceMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/007_unified_workspace.sql'); }
     private function workspaceEvent(string $projectId, ?string $checkpointId, string $deviceId, string $event, string $at): void { $q = $this->pdo->prepare('INSERT INTO control_workspace_events(event_id, project_id, checkpoint_id, device_id, event_type, occurred_at) VALUES(:id, :project, :checkpoint, :device, :event, :at)'); $q->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'project' => $projectId, 'checkpoint' => $checkpointId, 'device' => $deviceId, 'event' => $event, 'at' => $at]); }
     private function latestWorkspaceCheckpoint(string $projectId): array|false { $q = $this->pdo->prepare('SELECT * FROM control_workspace_checkpoints WHERE project_id = :project ORDER BY created_at DESC, checkpoint_id DESC LIMIT 1'); $q->execute(['project' => $projectId]); return $q->fetch(); }
     private function workspaceState(string $projectId, string $at, bool $includeIds): array
@@ -635,11 +804,15 @@ final class HubControlPlaneService
 
     private function getOrCreateConversation(string $userId, string $projectId, string $at): array
     {
-        $q = $this->pdo->prepare('SELECT * FROM control_conversations WHERE user_id = :user AND project_id = :project'); $q->execute(['user' => $userId, 'project' => $projectId]); $row = $q->fetch();
+        $q = $this->pdo->prepare($this->unifiedSchemaPresent() ? 'SELECT * FROM control_conversations WHERE user_id = :user AND project_id = :project AND archived_at IS NULL ORDER BY updated_at DESC, conversation_id DESC LIMIT 1' : 'SELECT * FROM control_conversations WHERE user_id = :user AND project_id = :project LIMIT 1'); $q->execute(['user' => $userId, 'project' => $projectId]); $row = $q->fetch();
         if (is_array($row)) return $row;
         $id = self::uuidFromBytes(random_bytes(16));
+        if ($this->unifiedSchemaPresent()) {
+            $this->pdo->prepare("INSERT INTO control_conversations(conversation_id, user_id, project_id, created_at, updated_at, last_task_id, title, archived_at, origin) VALUES(:id, :user, :project, :at, :at, NULL, 'Work', NULL, 'native')")->execute(['id' => $id, 'user' => $userId, 'project' => $projectId, 'at' => $at]);
+            return ['conversation_id' => $id, 'user_id' => $userId, 'project_id' => $projectId, 'created_at' => $at, 'updated_at' => $at, 'last_task_id' => null, 'title' => 'Work', 'archived_at' => null, 'origin' => 'native'];
+        }
         $this->pdo->prepare('INSERT INTO control_conversations(conversation_id, user_id, project_id, created_at, updated_at, last_task_id) VALUES(:id, :user, :project, :at, :at, NULL)')->execute(['id' => $id, 'user' => $userId, 'project' => $projectId, 'at' => $at]);
-        return ['conversation_id' => $id, 'user_id' => $userId, 'project_id' => $projectId, 'created_at' => $at, 'updated_at' => $at, 'last_task_id' => null];
+        return ['conversation_id' => $id, 'user_id' => $userId, 'project_id' => $projectId, 'created_at' => $at, 'updated_at' => $at, 'last_task_id' => null, 'archived_at' => null];
     }
 
     private function appendConversationMessage(string $conversationId, ?string $taskId, string $kind, string $body, string $at, ?string $idempotency = null, ?string $sourceEventId = null): void
@@ -710,6 +883,50 @@ final class HubControlPlaneService
         return "สถานะล่าสุดของ $name: " . self::workStateMessage((string) $latest['state'], 0, null) . $summary;
     }
 
+    private function conversationRowForUser(string $userId, string $conversationId): array
+    {
+        $q = $this->pdo->prepare('SELECT * FROM control_conversations WHERE conversation_id = :id AND user_id = :user'); $q->execute(['id' => $conversationId, 'user' => $userId]); $row = $q->fetch();
+        if (!is_array($row)) throw new HubControlPlaneException('Conversation was not found', 'CONVERSATION_NOT_FOUND');
+        $this->assertProjectMember($userId, (string) $row['project_id']); return $row;
+    }
+
+    private function conversationSummaryRow(array $row): array
+    {
+        return ['conversationId' => (string) $row['conversation_id'], 'projectId' => (string) $row['project_id'], 'projectName' => (string) $row['project_name'], 'title' => (string) $row['title'], 'archivedAt' => $row['archived_at'] === null ? null : (string) $row['archived_at'], 'origin' => (string) $row['origin'], 'createdAt' => (string) $row['created_at'], 'updatedAt' => (string) $row['updated_at'], 'lastTaskId' => $row['last_task_id'] === null ? null : (string) $row['last_task_id']];
+    }
+
+    private function currentContextForUser(string $userId, string $projectId): array
+    {
+        $this->assertProjectMember($userId, $projectId); $q = $this->pdo->prepare('SELECT * FROM control_project_contexts WHERE user_id = :user AND project_id = :project ORDER BY observed_at DESC, context_id DESC LIMIT 1'); $q->execute(['user' => $userId, 'project' => $projectId]); $row = $q->fetch();
+        return ['schemaVersion' => 2, 'context' => !is_array($row) ? null : ['projectId' => (string) $row['project_id'], 'conversationId' => $row['conversation_id'] === null ? null : (string) $row['conversation_id'], 'viewKind' => (string) $row['view_kind'], 'selectedRef' => $row['selected_ref'] === null ? null : (string) $row['selected_ref'], 'sourceRevision' => $row['source_revision'] === null ? null : (string) $row['source_revision'], 'observedAt' => (string) $row['observed_at']]];
+    }
+
+    private function productSettingsForUser(string $userId): array
+    {
+        $owner = $this->pdo->prepare('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1'); $owner->execute(); if ($owner->fetchColumn() !== $userId) throw new HubControlPlaneException('Product configuration is owner-only', 'PROJECT_FORBIDDEN');
+        $q = $this->pdo->query('SELECT setting_key, value_json, revision_no, updated_at FROM control_product_settings ORDER BY setting_key'); $out = self::productDefaults();
+        foreach ($q->fetchAll() as $row) { try { $value = json_decode((string) $row['value_json'], true, 16, JSON_THROW_ON_ERROR); $out[(string) $row['setting_key']] = ['value' => $value, 'revision' => (int) $row['revision_no'], 'updatedAt' => (string) $row['updated_at']]; } catch (Throwable) { throw new HubControlPlaneException('Product configuration is invalid', 'PRODUCT_SETTING_INVALID'); } }
+        return $out;
+    }
+
+    private static function productDefaults(): array
+    {
+        return ['productName' => ['value' => 'Art’s Workspace Hub', 'revision' => 0, 'updatedAt' => null], 'shortName' => ['value' => 'AWH', 'revision' => 0, 'updatedAt' => null], 'tagline' => ['value' => 'Your Projects. One Workspace. Anywhere.', 'revision' => 0, 'updatedAt' => null], 'accent' => ['value' => '#ff7a1a', 'revision' => 0, 'updatedAt' => null], 'welcome' => ['value' => 'เริ่มคุยกับ Art’s Workspace Hub ได้เลย', 'revision' => 0, 'updatedAt' => null], 'starterPrompts' => ['value' => ['ตรวจสถานะล่าสุด', 'ทำต่อจากงานล่าสุด', 'ตรวจอย่างเดียว ห้ามแก้'], 'revision' => 0, 'updatedAt' => null]];
+    }
+
+    private static function conversationTitle(string $value): string { $value = trim($value); if ($value === '' || strlen($value) > 120 || preg_match('/[\x00-\x1f\x7f]/', $value)) throw new HubControlPlaneException('Conversation title is invalid', 'FIELD_INVALID'); return $value; }
+    private static function contextKind(string $value): string { $value = strtolower(trim($value)); if (!in_array($value, ['work', 'project', 'result', 'preview', 'settings'], true)) throw new HubControlPlaneException('Current view is invalid', 'FIELD_INVALID'); return $value; }
+    private static function optionalGitSha(mixed $value): ?string { if ($value === null || $value === '') return null; if (!is_string($value) || preg_match('/^[0-9a-f]{40,64}$/i', $value) !== 1) throw new HubControlPlaneException('Source revision is invalid', 'FIELD_INVALID'); return strtolower($value); }
+    private static function searchText(string $value): string { $value = trim($value); if ($value === '' || strlen($value) > 120 || preg_match('/[\x00-\x1f\x7f]/', $value)) throw new HubControlPlaneException('Conversation search is invalid', 'FIELD_INVALID'); return $value; }
+    private static function escapeLike(string $value): string { return strtr($value, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']); }
+    private static function settingKey(string $value): string { if (!in_array($value, ['productName', 'shortName', 'tagline', 'accent', 'welcome', 'starterPrompts'], true)) throw new HubControlPlaneException('Product setting is not supported', 'FIELD_INVALID'); return $value; }
+    private static function settingValue(string $key, mixed $value): mixed
+    {
+        if (in_array($key, ['productName', 'shortName', 'tagline', 'welcome'], true)) { if (!is_string($value) || trim($value) === '' || strlen($value) > ($key === 'welcome' ? 240 : 120) || preg_match('/[\x00-\x1f\x7f<>]/', $value)) throw new HubControlPlaneException('Product setting is invalid', 'FIELD_INVALID'); return trim($value); }
+        if ($key === 'accent') { if (!is_string($value) || preg_match('/^#[0-9a-f]{6}$/i', $value) !== 1) throw new HubControlPlaneException('Accent color is invalid', 'FIELD_INVALID'); return strtolower($value); }
+        if (!is_array($value) || array_is_list($value) === false || count($value) > 6) throw new HubControlPlaneException('Starter prompts are invalid', 'FIELD_INVALID'); $out = []; foreach ($value as $prompt) { if (!is_string($prompt) || trim($prompt) === '' || strlen($prompt) > 120 || preg_match('/[\x00-\x1f\x7f<>]/', $prompt)) throw new HubControlPlaneException('Starter prompt is invalid', 'FIELD_INVALID'); $out[] = trim($prompt); } return $out;
+    }
+
     /** Deterministic low-risk intent path: questions are answered from canonical state; project work remains a task. */
     private static function isConversationOnly(string $message): bool { return preg_match('/^(?:สวัสดี|ช่วยอะไรได้บ้าง|ทำอะไรได้บ้าง|สรุป|สถานะ|ยังมีอะไร|มีอะไรเหลือ)|(?:^|\s)(?:what remains|status|summary|help|what can you do)(?:\s|$|[.!?])/iu', trim($message)) === 1; }
     private static function isConversationFollowUp(string $message): bool { return preg_match('/^(?:ทำต่อ|ต่อจาก|ต่อเลย|เอาอัน(?:นี้|นั้น|ล่าสุด)|ยังไม่ใช่|ตรวจอีกที|continue|keep going|that one)(?:\s|$|[.!?])/iu', trim($message)) === 1; }
@@ -722,6 +939,7 @@ final class HubControlPlaneService
     }
 
     private function assistantSchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 6 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_conversation_messages'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
+    private function unifiedSchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 8 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_product_settings'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
     private function assertSessionRateLimit(?string $rateKey, string $now): void
     {
         if ($rateKey === null) return;

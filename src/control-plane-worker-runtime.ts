@@ -101,6 +101,20 @@ export class ControlPlaneWorkerRuntime {
         await this.safeUpdate(task, 'FAILED', 0, 'Project context was rejected', 'PROJECT_CONTEXT_REJECTED');
         return { status: 'FAILED', taskId: task.taskId, projectId: task.projectId, reason: 'PROJECT_CONTEXT_REJECTED' };
       }
+      // This tells the Hub that this trusted device can restore/work on the
+      // canonical project. The Hub stores no local path and binding failure
+      // must not turn a safe existing task into a false success.
+      try {
+        await this.client.registerProjectBinding(task.projectId, resolved.manifest.name, capabilities, null);
+      } catch (error) {
+        // A newer desktop must not execute against an older Hub whose
+        // workspace-binding contract is unavailable. Keep the claimed task
+        // truthful and retryable; do not mutate the workspace or fabricate a
+        // completed result.
+        const reason = boundedSummary(error instanceof Error ? error.message : 'HUB_PROTOCOL_UPDATE_REQUIRED');
+        await this.safeUpdate(task, 'WAITING_FOR_WORKER', 0, 'A compatible AWH Hub update is required before this workspace can run', reason);
+        return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason };
+      }
       const mutation = isMutationGoal(task.goal);
       if (mutation && task.approvalStatus !== 'APPROVED') {
         await this.safeUpdate(task, 'WAITING_FOR_APPROVAL', 0, 'Owner approval is required before a source-changing goal can run', null);
