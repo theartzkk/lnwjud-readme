@@ -38,6 +38,7 @@ OWNER_AUTH_SETUP=
 OWNER_AUTH_TRANSFORM=
 OWNER_AUTH_COOKIE_JAR=
 OWNER_AUTH_COOKIE_HEADERS=
+OWNER_AUTH_SURFACE_HEADERS=
 CONTROL_ORIGIN_RENDER=
 CONTROL_INCLUDE_TMP=
 
@@ -46,6 +47,8 @@ cleanup_owner_auth_cookie_files() {
   test -z "$OWNER_AUTH_COOKIE_HEADERS" || rm -f "$OWNER_AUTH_COOKIE_HEADERS"
   OWNER_AUTH_COOKIE_JAR=
   OWNER_AUTH_COOKIE_HEADERS=
+  test -z "$OWNER_AUTH_SURFACE_HEADERS" || rm -f "$OWNER_AUTH_SURFACE_HEADERS"
+  OWNER_AUTH_SURFACE_HEADERS=
 }
 
 stage() { printf '%s\n' "DEPLOY_STAGE=$1"; CURRENT_STAGE=$1; }
@@ -154,7 +157,8 @@ sudo rm -f "$POINTER_TMP"; sudo ln -s "$RELEASE" "$POINTER_TMP"; sudo mv -Tf "$P
 web_pointer_capture; sudo install -d -o awh-hub -g awh-hub -m 0750 /var/www/awh-web/releases; if sudo test -e "$WEB_RELEASE" || sudo test -L "$WEB_RELEASE"; then exit 20; fi; sudo install -d -o awh-hub -g awh-hub -m 0750 "$WEB_RELEASE"; WEB_CREATED=1; stage WEB_RELEASE_COPY; sudo cp -a "$RELEASE/dist-web/." "$WEB_RELEASE/"; sudo chown -R awh-hub:awh-hub "$WEB_RELEASE"; stage WEB_POINTER_SWITCH; sudo rm -f "$WEB_POINTER_TMP"; sudo ln -s "$WEB_RELEASE" "$WEB_POINTER_TMP"; sudo mv -Tf "$WEB_POINTER_TMP" "$WEB_POINTER"; WEB_POINTER_CHANGED=1; test "$(readlink "$WEB_POINTER")" = "$WEB_RELEASE"; stage WEB_RELEASE_STAGED
 stage NGINX_CUTOVER_INSTALL; sudo install -o root -g root -m 0644 "$NGINX_CANDIDATE" "$NGINX_CONFIG"; NGINX_CHANGED=1; stage NGINX_CONFIGURED; sudo nginx -t >/dev/null
 stage SERVICE_RELOAD; sudo systemctl reload nginx
-stage OWNER_AUTH_LOGIN; OWNER_AUTH_COOKIE_JAR=$(mktemp /tmp/awh-owner-auth-cookie.XXXXXX); OWNER_AUTH_COOKIE_HEADERS=$(mktemp /tmp/awh-owner-auth-headers.XXXXXX); code=$(printf '{"schemaVersion":1,"username":"%s","password":"%s","remember":false}\n' "$OWNER_USERNAME" "$OWNER_PASSWORD" | curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H 'Content-Type: application/json' -H "Origin: https://$HOSTNAME" -c "$OWNER_AUTH_COOKIE_JAR" -D "$OWNER_AUTH_COOKIE_HEADERS" --data-binary @- -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/auth/login" 2>/dev/null || printf 000); test "$code" = 200; grep -qi '^set-cookie: __Host-awh_control_session=.*; Path=/; Secure; HttpOnly; SameSite=Strict;' "$OWNER_AUTH_COOKIE_HEADERS"; grep -qi '^set-cookie: awh_csrf=.*; Path=/; Secure; SameSite=Strict;' "$OWNER_AUTH_COOKIE_HEADERS"; grep -q '__Host-awh_control_session' "$OWNER_AUTH_COOKIE_JAR"; grep -q 'awh_csrf' "$OWNER_AUTH_COOKIE_JAR"; OWNER_PASSWORD=
+stage OWNER_AUTH_SURFACE; OWNER_AUTH_SURFACE_HEADERS=$(mktemp /tmp/awh-owner-auth-surface.XXXXXX); surface_code=$(printf '{"schemaVersion":1,"username":"invalid","password":"invalid","remember":false}\n' | curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H 'Content-Type: application/json' -H "Origin: https://$HOSTNAME" -D "$OWNER_AUTH_SURFACE_HEADERS" --data-binary @- -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/auth/login" 2>/dev/null || printf 000); test "$surface_code" != 401; ! grep -qi '^www-authenticate: Basic ' "$OWNER_AUTH_SURFACE_HEADERS"; rm -f "$OWNER_AUTH_SURFACE_HEADERS"; OWNER_AUTH_SURFACE_HEADERS=
+stage OWNER_AUTH_LOGIN; OWNER_AUTH_COOKIE_JAR=$(mktemp /tmp/awh-owner-auth-cookie.XXXXXX); OWNER_AUTH_COOKIE_HEADERS=$(mktemp /tmp/awh-owner-auth-headers.XXXXXX); code=$(printf '{"schemaVersion":1,"username":"%s","password":"%s","remember":false}\n' "$OWNER_USERNAME" "$OWNER_PASSWORD" | curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H 'Content-Type: application/json' -H "Origin: https://$HOSTNAME" -c "$OWNER_AUTH_COOKIE_JAR" -D "$OWNER_AUTH_COOKIE_HEADERS" --data-binary @- -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/auth/login" 2>/dev/null || printf 000); test "$code" = 200; ! grep -qi '^www-authenticate: Basic ' "$OWNER_AUTH_COOKIE_HEADERS"; grep -qi '^set-cookie: __Host-awh_control_session=.*; Path=/; Secure; HttpOnly; SameSite=Strict;' "$OWNER_AUTH_COOKIE_HEADERS"; grep -qi '^set-cookie: awh_csrf=.*; Path=/; Secure; SameSite=Strict;' "$OWNER_AUTH_COOKIE_HEADERS"; grep -q '__Host-awh_control_session' "$OWNER_AUTH_COOKIE_JAR"; grep -q 'awh_csrf' "$OWNER_AUTH_COOKIE_JAR"; OWNER_PASSWORD=
 stage OWNER_AUTH_SESSION; session_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H "Origin: https://$HOSTNAME" -b "$OWNER_AUTH_COOKIE_JAR" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/auth/session" 2>/dev/null || printf 000); test "$session_code" = 200; cleanup_owner_auth_cookie_files
 stage OWNER_AUTH_SURFACE; root_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/" 2>/dev/null || printf 000); test "$root_code" = 200; preview_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/preview/" 2>/dev/null || printf 000); test "$preview_code" = 401
 stage M3D_REGRESSION; verify_m3d
