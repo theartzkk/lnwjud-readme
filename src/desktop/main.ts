@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { isAbsolute, join } from 'node:path';
 import {
@@ -198,6 +199,28 @@ async function runWorkerOnce() {
   try { return { ok: true, ...(await controlPlaneWorker(config).runOnce()) }; }
   catch { return { ok: false, error: 'WORKER_RUN_FAILED', message: 'Worker could not complete a safe run' }; }
   finally { workerRunning = false; }
+}
+
+async function currentWorkClient(): Promise<{ projectId: string; client: ControlPlaneWorkerClient }> {
+  const config = loadConfig();
+  if (!config.hubApiBase) throw new Error('Hub is not configured');
+  if (!hasExplicitWorkspace(config.dataDir)) throw new Error('Project workspace is not configured');
+  const workspace = await canonicalWorkspace(config.workspace);
+  const manifest = await readProjectManifest(workspace);
+  await resolveRegisteredProject(config.dataDir, manifest.projectId);
+  return { projectId: manifest.projectId, client: new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createProductionCredentialStore()) };
+}
+
+async function workConversation() {
+  try { const current = await currentWorkClient(); return { ok: true, projectId: current.projectId, ...(await current.client.readConversation(current.projectId)) }; }
+  catch { return { ok: false, error: 'WORK_UNAVAILABLE', message: 'Work ยังไม่พร้อมบน Hub นี้' }; }
+}
+
+async function submitWorkMessage(message: unknown, idempotencyKey: unknown) {
+  if (typeof message !== 'string' || !message.trim() || message.length > 2_000) return { ok: false, error: 'MESSAGE_INVALID', message: 'กรุณาบอกสิ่งที่อยากให้ AWH ช่วย' };
+  const key = typeof idempotencyKey === 'string' && /^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey) ? idempotencyKey : `desktop-${randomUUID()}`;
+  try { const current = await currentWorkClient(); return { ok: true, projectId: current.projectId, ...(await current.client.submitConversation(current.projectId, message.trim(), key)) }; }
+  catch { return { ok: false, error: 'WORK_UNAVAILABLE', message: 'AWH ยังบันทึก Work นี้ไม่ได้ กรุณาตรวจการเชื่อมต่อ Hub' }; }
 }
 
 function startWorkerLoop(): void {
@@ -639,6 +662,8 @@ function registerIpc(): void {
     try { const { runner } = await currentAutopilot(); return { ok: true, ...(await runner.checkpointMemory(taskId)) }; }
     catch { return { ok: false, error: 'MEMORY_CHECKPOINT_REJECTED', message: 'Memory checkpoint requires explicit write permission and a completed task' }; }
   });
+  ipcMain.handle(DESKTOP_IPC.workConversation, async () => workConversation());
+  ipcMain.handle(DESKTOP_IPC.workSubmit, async (_event, message: unknown, idempotencyKey: unknown) => submitWorkMessage(message, idempotencyKey));
   ipcMain.handle(DESKTOP_IPC.workerState, async () => workerState());
   ipcMain.handle(DESKTOP_IPC.workerRunOnce, async () => runWorkerOnce());
 

@@ -2,13 +2,16 @@
 
 ## NOW
 
+- Review the exact M6 Native Assistant Workstream release, then use one bounded ReadyIDC approval to migrate schema v5→v6 and switch the release. It must not seed projects, alter owner credentials, replay M3E/M4/M5 or mutate Google Cloud/BAY production.
+- After M6 activation, field-test one iPhone → canonical Work message → Mac worker claim → natural result/artifact flow, then verify the same stream after a Desktop restart. Do not call iPhone/Mac field PASS until performed.
+
 - After successful sign-in, set a memorable owner username/password in Control
   Panel and retain a revocable remembered-device session; Keychain is not a
   normal-user dependency after the initial activation credential.
-- Field-test ordinary iPhone Safari/PWA: sign in → select the existing project
-  → submit a safe Goal → see a truthful task state. Validate normal viewport
-  and full-page capture share the graphite canvas; do not revive the legacy
-  preview dashboard.
+- Field-test ordinary iPhone Safari/PWA after M6 activation: sign in → select
+  the existing project → send a normal message/read-only request → see a
+  truthful Work stream. Validate normal viewport and full-page capture share
+  the graphite canvas; do not revive the legacy preview dashboard.
 - Keep Basic Auth as technical perimeter scaffolding only; it is not a normal
   user login path and its rotation primitive is not current product work.
 
@@ -42,7 +45,7 @@
   and sanitized audit fixtures.
 
 - M3D live read path field-verified.
-- M3E.1/M3E.2 live on ReadyIDC schema v3; Mac enrolled; owner bootstrap closed.
+- M3E.1/M3E.2 are live and compatible through ReadyIDC schema v5; Mac enrolled; owner bootstrap closed.
 - AWH generic zero-project product contract established.
 - BAY EXCUSE X and Teacher Evaluation Video removed as AWH deployment dependencies; their portable identities remain reusable user-project metadata.
 - M4 canonical tasks/workers/results/artifacts/approvals/session/PWA foundation implemented locally.

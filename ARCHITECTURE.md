@@ -80,6 +80,13 @@
 
 ## M4 CONTROL-PLANE BOUNDARY
 
+### M6 assistant work-stream extension (prepared, deployment-gated)
+
+- M6 is a single additive v5→v6 capability: `control_conversations` records one authorized project conversation and `control_conversation_messages` records immutable ordered user/assistant/progress/approval/result/failure turns. Existing `control_tasks`, task events, artifacts, approvals, checkpoints, memberships and Project Memory remain authoritative.
+- A single user idempotency key creates one logical Work message and at most one canonical task. Low-risk questions are answered from the existing project/task state without scheduling a worker. Follow-ups use the selected project plus prior task lineage; an ambiguous project remains fail-closed at the existing project-membership boundary.
+- Task updates, event-to-conversation projection, approval creation and worker release occur inside one SQLite immediate transaction. Artifact insertion is idempotent and serialized. A worker renews a bounded lease while working; only expired leases are requeued, retaining the same task/conversation identity. Safe cancellation is limited to unclaimed/waiting work so no generic remote process termination is claimed.
+- Browser and Desktop read/write the same routes and data shape. Browser mutations retain existing same-origin + CSRF + HttpOnly session rules; Desktop calls the same bounded service only from Electron main through the already-enrolled device credential. Neither surface receives a shell endpoint, workspace path, raw token or worker payload as product UI.
+
 ### Browser runtime origin and release contract
 
 - Owner Auth and Control share `HubBrowserOriginPolicy`; they do not maintain
@@ -100,7 +107,7 @@
 - Browser session exchange accepts username/password and creates only a bounded server-side session hash plus CSRF hash. The pairing exchange remains compatibility-only. Cookies are Secure, HttpOnly where appropriate, SameSite=Strict, no-store, origin-bound, rate-limited, revocable, and never copied to localStorage/sessionStorage.
 - Goal submission is exact-schema, project-membership checked, bounded, and idempotent. A queued task cannot become RUNNING until an enrolled worker claims it under BEGIN IMMEDIATE; stale worker presence is shown as offline and leases are bounded.
 - Worker requests are outbound HTTPS POSTs through `ControlPlaneWorkerClient`, using the existing device credential only in a fixed Authorization header inside the Node main/runtime boundary. The client accepts only bounded task metadata; it does not accept or construct arbitrary commands.
-- `003_m4_control_plane.sql` is additive from schema version 3 to 4 and records a checksum-backed ledger entry; it is active on ReadyIDC. `004_owner_auth.sql` is additive from v4 to v5, records its own checksum-backed capability ledger, and is source-only in this pass. Any activation remains approval-gated with verified backup, migration idempotence, Nginx/PHP-FPM validation, M3D/M3E regression, and rollback to the v4 database/config.
+- `003_m4_control_plane.sql` and `004_owner_auth.sql` are active ReadyIDC capabilities with checksum-backed ledger entries at schema v5. M6 is the next additive v5→v6 capability and remains approval-gated; activation requires a verified backup, migration idempotence, Nginx/PHP-FPM validation, M3D/M3E/M4/M5 regression and rollback to the verified v5 database/config.
 
 ## WEB READ DEPLOYMENT BOUNDARY
 

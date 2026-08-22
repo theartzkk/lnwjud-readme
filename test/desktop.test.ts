@@ -37,6 +37,8 @@ test('desktop IPC exposes fixed high-level channel names only', () => {
     'autopilotContinuity',
     'autopilotCheckpointMemory',
     'autopilotRemoteResults',
+    'workConversation',
+    'workSubmit',
     'restart',
     'selectProject',
     'setPermissions',
@@ -60,6 +62,7 @@ test('desktop HTML has a restrictive CSP, remote controls and no inline script',
   assert.match(html, /data-section="enrollment"/);
   assert.match(html, /id="remote-result-list"/);
   assert.match(html, /data-section="overview"/);
+  assert.match(html, /id="home-open-work"/);
   assert.match(html, /id="enrollment-code"/);
   assert.match(html, /id="enrollment-issue-pairing"/);
   assert.match(html, /id="perm-worker"/);
@@ -174,7 +177,7 @@ test('desktop enrollment UX uses fixed IPC and never exposes credentials', async
   assert.doesNotMatch(html, /type="password"/i);
 });
 
-test('desktop Autopilot is goal-based, local-only, bounded and never exposes raw process access', async () => {
+test('desktop Work is conversation-first, project-bound, and never exposes raw process access', async () => {
   const main = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
   const preload = await readFile(new URL('../desktop/preload.cjs', import.meta.url), 'utf8');
   const renderer = await readFile(new URL('../desktop/renderer.js', import.meta.url), 'utf8');
@@ -185,25 +188,29 @@ test('desktop Autopilot is goal-based, local-only, bounded and never exposes raw
   }
   assert.match(main, /AutopilotRunner/);
   assert.match(main, /typeof goal !== 'string'/);
-  assert.match(preload, /startAutopilot: \(goal\) =>/);
+  assert.match(preload, /getWorkConversation/);
+  assert.match(preload, /submitWorkMessage/);
   assert.match(preload, /worker: permissions\?\.worker === true/);
   assert.match(renderer, /perm-worker/);
   assert.match(main, /Worker requires approved execution/);
-  assert.match(renderer, /startAutopilot/);
-  assert.match(html, /What would you like to work on/);
+  assert.match(renderer, /submitWork/);
+  assert.match(renderer, /renderWorkConversation/);
+  assert.match(html, /id="desktop-work-thread"/);
+  assert.match(html, /id="desktop-work-input"/);
   assert.match(html, /id="section-autopilot"/);
   assert.match(html, /id="section-artifacts"/);
   assert.doesNotMatch(renderer, /child_process|spawn\(|execFile|process\.env|Authorization|accessToken|tokenHash/);
   assert.doesNotMatch(preload, /readFile|writeFile|readdir|spawn|process\.env|shell\.openPath/);
 });
 
-test('desktop first-run trust stores only bounded identity/session metadata', async () => {
+test('desktop keeps legacy trusted-device setup out of the primary Work surface', async () => {
   const main = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
   const renderer = await readFile(new URL('../desktop/renderer.js', import.meta.url), 'utf8');
   const html = await readFile(new URL('../desktop/index.html', import.meta.url), 'utf8');
   assert.match(main, /readOwnerSession/);
   assert.match(main, /trustOwner/);
-  assert.match(html, /trusted device/);
+  assert.match(html, /id="section-autopilot"/);
+  assert.doesNotMatch(html.slice(html.indexOf('section id="section-overview"'), html.indexOf('section id="section-projects"')), /trusted device|Workspace write|Codex CLI/i);
   assert.doesNotMatch(renderer, /password|accessToken|pairingCode|Authorization/i);
 });
 

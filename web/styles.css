@@ -132,6 +132,7 @@ input:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px
 .task-summary { max-width: 650px; color: #d5dae2; font-size: 14px; line-height: 1.6; }
 .task-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .task-actions .secondary-button { min-height: 36px; padding: 7px 10px; font-size: 12px; }
+.artifact-links { display: grid; gap: 4px; margin: 2px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 13px; }
 
 .composer { position: sticky; bottom: 0; z-index: 2; display: grid; gap: 10px; margin: 0 -12px; padding: 16px 12px calc(14px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--canvas); }
 .composer textarea { min-height: 58px; max-height: 180px; resize: none; background: var(--surface); }

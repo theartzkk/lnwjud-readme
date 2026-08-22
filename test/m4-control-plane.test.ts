@@ -52,6 +52,23 @@ test('M4 control-plane contract is additive and keeps execution bounded', async 
   assert.doesNotMatch(service, /workspacePath|sourceContent|shell_exec|passthru|proc_open|popen|system\s*\(/i);
 });
 
+test('M6 assistant Work stream is an additive ordered view over canonical M4 tasks', async () => {
+  const migration = await readFile(new URL('../hub/migrations/005_assistant_workstream.sql', import.meta.url), 'utf8');
+  const service = await readFile(new URL('../hub/src/HubControlPlaneService.php', import.meta.url), 'utf8');
+  const router = await readFile(new URL('../hub/src/HubControlPlaneRouter.php', import.meta.url), 'utf8');
+  assert.match(migration, /control_conversations/);
+  assert.match(migration, /control_conversation_messages/);
+  assert.match(migration, /conversation_id/);
+  assert.match(migration, /idx_control_conversation_messages_order/);
+  assert.match(service, /BEGIN IMMEDIATE/);
+  assert.match(service, /idempotency_key/);
+  assert.match(service, /syncConversationEvent/);
+  assert.match(service, /cancelTask/);
+  assert.match(router, /\/cancel/);
+  assert.match(router, /\/api\/v1\/control\/conversations/);
+  assert.doesNotMatch(`${migration}\n${service}`, /shell_exec|passthru|proc_open|popen|system\s*\(/i);
+});
+
 test('mobile control UI is phone-first and truthful when no worker is online', async () => {
   const html = await readFile(new URL('../web/index.html', import.meta.url), 'utf8');
   const app = await readFile(new URL('../web/app.js', import.meta.url), 'utf8');

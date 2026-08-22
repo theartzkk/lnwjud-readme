@@ -4,12 +4,13 @@
 # only. Raw stderr and all secret-bearing diagnostics are intentionally hidden.
 set -eu
 exec 2>/dev/null
-DB=$1; REMOTE_ROOT=$2; REMOTE_STAGE=$3; RELEASE=$4; RELEASE_ID=$5; NGINX_CONFIG=$6; HOSTNAME=$7; AWH_FPM_SOCKET=$8; AWH_FPM_SERVICE=$9; CLEANUP_TOPOLOGY=${10}; OWNER_USERNAME=${11}; OWNER_AUTH_ENABLED=${12}; REMOTE_SCRIPT=${13}; COMPAT_REFRESH=${14}
+DB=$1; REMOTE_ROOT=$2; REMOTE_STAGE=$3; RELEASE=$4; RELEASE_ID=$5; NGINX_CONFIG=$6; HOSTNAME=$7; AWH_FPM_SOCKET=$8; AWH_FPM_SERVICE=$9; CLEANUP_TOPOLOGY=${10}; OWNER_USERNAME=${11}; OWNER_AUTH_ENABLED=${12}; REMOTE_SCRIPT=${13}; COMPAT_REFRESH=${14}; ASSISTANT_WORKSTREAM=${15}
 case "$DB" in /var/lib/awh-hub/*|/opt/awh-hub/*|/srv/awh/*) ;; *) exit 20 ;; esac
 case "$REMOTE_ROOT" in /opt/awh-hub) ;; *) exit 20 ;; esac
 case "$REMOTE_STAGE" in /tmp/awh-control-plane-*.tar.gz) ;; *) exit 20 ;; esac
 case "$RELEASE" in /opt/awh-hub/control-releases/*) ;; *) exit 20 ;; esac
-case "$RELEASE_ID" in m4-[0-9a-fA-F]*) ;; *) exit 20 ;; esac
+case "$ASSISTANT_WORKSTREAM" in 0|1) ;; *) exit 20 ;; esac
+if test "$ASSISTANT_WORKSTREAM" = 1; then case "$RELEASE_ID" in m6-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; else case "$RELEASE_ID" in m4-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; fi
 case "$NGINX_CONFIG" in /etc/nginx/sites-enabled/*) ;; *) exit 20 ;; esac
 case "$HOSTNAME" in ''|*[!A-Za-z0-9.-]*|.*|*.) exit 20 ;; esac
 printf '%s' "$AWH_FPM_SOCKET" | grep -Eq '^/run/php/php[0-9]+\.[0-9]+-fpm-awh\.sock$' || exit 20
@@ -20,9 +21,9 @@ test "${#OWNER_USERNAME}" -ge 3 && test "${#OWNER_USERNAME}" -le 64 || exit 20
 case "$OWNER_AUTH_ENABLED" in 1) ;; *) exit 20 ;; esac
 case "$REMOTE_SCRIPT" in /tmp/awh-control-plane-*.sh) ;; *) exit 20 ;; esac
 case "$COMPAT_REFRESH" in 0|1) ;; *) exit 20 ;; esac
-
-IFS= read -r OWNER_PASSWORD || exit 20
-case "$OWNER_PASSWORD" in ''|*[!A-Za-z0-9._~-]*) exit 20 ;; esac
+if test "$COMPAT_REFRESH" = 1 && test "$ASSISTANT_WORKSTREAM" = 1; then exit 20; fi
+OWNER_PASSWORD=
+if test "$ASSISTANT_WORKSTREAM" = 0; then IFS= read -r OWNER_PASSWORD || exit 20; case "$OWNER_PASSWORD" in ''|*[!A-Za-z0-9._~-]*) exit 20 ;; esac; fi
 
 BACKUP=/var/backups/awh-hub/awh.sqlite.pre-$RELEASE_ID
 POINTER=$REMOTE_ROOT/control-plane-current
@@ -40,6 +41,7 @@ ENROLLMENT_INCLUDE=/opt/awh-hub/enrollment-current/deploy/nginx/awh-enrollment.c
 OWNER_AUTH_SETUP=
 OWNER_AUTH_RUNTIME=
 OWNER_AUTH_TRANSFORM=
+ASSISTANT_MIGRATION=
 OWNER_AUTH_COOKIE_JAR=
 OWNER_AUTH_COOKIE_HEADERS=
 OWNER_AUTH_SURFACE_HEADERS=
@@ -179,11 +181,28 @@ sudo test -f "$DB"; sudo test -f "$REMOTE_STAGE"; pointer_capture; cleanup_loade
 sudo install -d -o root -g root -m 0750 /var/backups/awh-hub
 sudo sqlite3 "$DB" ".backup '$BACKUP'"; sudo chown root:root "$BACKUP"; sudo chmod 0600 "$BACKUP"; test "$(sudo sqlite3 "$BACKUP" 'PRAGMA integrity_check;')" = ok; test -z "$(sudo sqlite3 "$BACKUP" 'PRAGMA foreign_key_check;')"; sudo install -d -m 0750 -o root -g root "$CONFIG_BACKUP_ROOT/nginx"; sudo test ! -e "$NGINX_BACKUP"; sudo cp -p "$NGINX_CONFIG" "$NGINX_BACKUP"; sudo chown root:root "$NGINX_BACKUP"; sudo chmod 0600 "$NGINX_BACKUP"; sudo cmp -s "$NGINX_CONFIG" "$NGINX_BACKUP"; NGINX_BACKUP_CREATED=1; stage BACKUP_VERIFIED
 if sudo test -e "$RELEASE" || sudo test -L "$RELEASE"; then exit 20; fi
-sudo install -d -o awh-hub -g awh-hub -m 0750 "$RELEASE"; RELEASE_CREATED=1; sudo tar -xzf "$REMOTE_STAGE" -C "$RELEASE"; sudo chown -R awh-hub:awh-hub "$RELEASE"; sudo test -f "$RELEASE/hub/public/control-plane.php"; sudo test -f "$RELEASE/hub/bin/migrate-m4.php"; sudo -u awh-hub test -r "$RELEASE/hub/src/HubControlPlaneService.php"; stage RELEASE_STAGED
-OWNER_AUTH_SETUP=$RELEASE/hub/bin/setup-owner-auth.php; OWNER_AUTH_RUNTIME=$RELEASE/hub/bin/verify-owner-auth-runtime.php; OWNER_AUTH_TRANSFORM=$RELEASE/deploy/nginx/transform-owner-auth.php; CONTROL_ORIGIN_RENDER=$RELEASE/deploy/nginx/render-control-plane-include.php; CONTROL_INCLUDE=$RELEASE/deploy/nginx/awh-control-plane.conf; CONTROL_INCLUDE_TMP=/tmp/awh-control-include-$RELEASE_ID.conf
+sudo install -d -o awh-hub -g awh-hub -m 0750 "$RELEASE"; RELEASE_CREATED=1; sudo tar -xzf "$REMOTE_STAGE" -C "$RELEASE"; sudo chown -R awh-hub:awh-hub "$RELEASE"; sudo test -f "$RELEASE/hub/public/control-plane.php"; sudo test -f "$RELEASE/hub/bin/migrate-m4.php"; if test "$ASSISTANT_WORKSTREAM" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-assistant-workstream.php"; sudo test -f "$RELEASE/hub/migrations/005_assistant_workstream.sql"; fi; sudo -u awh-hub test -r "$RELEASE/hub/src/HubControlPlaneService.php"; stage RELEASE_STAGED
+OWNER_AUTH_SETUP=$RELEASE/hub/bin/setup-owner-auth.php; OWNER_AUTH_RUNTIME=$RELEASE/hub/bin/verify-owner-auth-runtime.php; ASSISTANT_MIGRATION=$RELEASE/hub/bin/migrate-assistant-workstream.php; OWNER_AUTH_TRANSFORM=$RELEASE/deploy/nginx/transform-owner-auth.php; CONTROL_ORIGIN_RENDER=$RELEASE/deploy/nginx/render-control-plane-include.php; CONTROL_INCLUDE=$RELEASE/deploy/nginx/awh-control-plane.conf; CONTROL_INCLUDE_TMP=/tmp/awh-control-include-$RELEASE_ID.conf
 stage CONTROL_ORIGIN_RENDER; sudo /usr/bin/php "$CONTROL_ORIGIN_RENDER" "$CONTROL_INCLUDE" "$CONTROL_INCLUDE_TMP" "$HOSTNAME" "$AWH_FPM_SOCKET" >/dev/null; sudo test -s "$CONTROL_INCLUDE_TMP"; sudo install -o awh-hub -g awh-hub -m 0644 "$CONTROL_INCLUDE_TMP" "$CONTROL_INCLUDE"; sudo rm -f "$CONTROL_INCLUDE_TMP"; CONTROL_INCLUDE_TMP=
 stage NGINX_CUTOVER_PREPARE; sudo /usr/bin/php "$OWNER_AUTH_TRANSFORM" "$NGINX_CONFIG" "$NGINX_CANDIDATE" "$HOSTNAME" "$AWH_FPM_SOCKET" >/dev/null; sudo test -s "$NGINX_CANDIDATE"; sudo chown root:root "$NGINX_CANDIDATE"; sudo chmod 0644 "$NGINX_CANDIDATE"
-if test "$COMPAT_REFRESH" = 1; then
+if test "$ASSISTANT_WORKSTREAM" = 1; then
+  # M6 is additive to a healthy owner-auth M5 database. It never replays M3E,
+  # M4 or M5 and it does not provision a second owner/password binding.
+  stage OWNER_AUTH_PRESERVED
+  test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 5
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm4-control-plane' AND schema_version = 4;")" = 1
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm5-owner-auth' AND schema_version = 5;")" = 1
+  sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$OWNER_AUTH_RUNTIME" >/dev/null
+  test "$(sudo sqlite3 "$DB" 'SELECT count(*) FROM owner_bootstrap b JOIN owner_passwords p ON p.user_id = b.owner_user_id WHERE b.singleton_id = 1 AND b.bootstrap_closed = 1 AND p.enabled = 1 AND length(p.password_hash) > 20;')" = 1
+  DB_MUTATED=1; stage ASSISTANT_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$ASSISTANT_MIGRATION" "$DB" "$RELEASE/hub/migrations/005_assistant_workstream.sql" >/dev/null
+  stage ASSISTANT_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$ASSISTANT_MIGRATION" "$DB" "$RELEASE/hub/migrations/005_assistant_workstream.sql" >/dev/null
+  test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 6
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm6-assistant-workstream' AND schema_version = 6;")" = 1
+  test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok
+  test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
+  stage ASSISTANT_MIGRATION_VERIFIED
+  stage PROJECTS_READY
+elif test "$COMPAT_REFRESH" = 1; then
   # A v5 compatibility refresh is code/pointer-only. It proves the existing
   # M4/M5 capability records and owner binding without replaying migrations,
   # seeding projects, or replacing the owner's credential.
@@ -227,11 +246,14 @@ stage NGINX_CUTOVER_INSTALL; sudo install -o root -g root -m 0644 "$NGINX_CANDID
 stage SERVICE_RELOAD; sudo systemctl reload nginx
 stage OWNER_AUTH_EFFECTIVE_CONFIG; verify_owner_auth_effective_config
 stage OWNER_AUTH_SURFACE; verify_owner_auth_surface
-stage OWNER_AUTH_LOGIN; verify_owner_auth_login
-stage OWNER_AUTH_SESSION; session_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H 'Sec-Fetch-Site: same-origin' -b "$OWNER_AUTH_COOKIE_JAR" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/auth/session" 2>/dev/null || printf 000); test "$session_code" = 200
-stage OWNER_AUTH_CONTROL; projects_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H 'Sec-Fetch-Site: same-origin' -b "$OWNER_AUTH_COOKIE_JAR" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/projects" 2>/dev/null || printf 000); test "$projects_code" = 200; cleanup_owner_auth_cookie_files
+if test "$ASSISTANT_WORKSTREAM" = 0; then
+  stage OWNER_AUTH_LOGIN; verify_owner_auth_login
+  stage OWNER_AUTH_SESSION; session_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H 'Sec-Fetch-Site: same-origin' -b "$OWNER_AUTH_COOKIE_JAR" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/auth/session" 2>/dev/null || printf 000); test "$session_code" = 200
+  stage OWNER_AUTH_CONTROL; projects_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H 'Sec-Fetch-Site: same-origin' -b "$OWNER_AUTH_COOKIE_JAR" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/projects" 2>/dev/null || printf 000); test "$projects_code" = 200; cleanup_owner_auth_cookie_files
+fi
 stage OWNER_AUTH_WEB_SURFACE; root_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/" 2>/dev/null || printf 000); test "$root_code" = 200; control_config_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /tmp/awh-control-web-config-$RELEASE_ID.json -w '%{http_code}' "https://$HOSTNAME/web-config.json" 2>/dev/null || printf 000); test "$control_config_code" = 200; grep -q '"mode": "CONTROL"' /tmp/awh-control-web-config-$RELEASE_ID.json; sudo rm -f /tmp/awh-control-web-config-$RELEASE_ID.json; preview_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/preview/" 2>/dev/null || printf 000); test "$preview_code" = 401
 stage M3D_REGRESSION; verify_m3d
 stage M3E_POST_SCHEMA_REGRESSION; verify_m3e_after_m4
+if test "$ASSISTANT_WORKSTREAM" = 1; then stage ASSISTANT_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/conversations/423b45c0-23e1-408d-ae0f-ac5eca7f6900" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; fi
 stage CONTROL_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/session" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403
 SUCCESS=1; printf '%s\n' 'DEPLOY_RESULT=PASS'; trap - EXIT HUP INT TERM; sudo rm -f "$REMOTE_STAGE" "$NGINX_BACKUP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" "$CONTROL_INCLUDE_TMP"; exit 0

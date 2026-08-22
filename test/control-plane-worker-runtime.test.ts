@@ -27,7 +27,7 @@ class FixtureWorkerClient extends ControlPlaneWorkerClient {
   override async claim(): Promise<WorkerTask | null> { return this.nextTask; }
   override async update(taskId: string, state: string): Promise<WorkerTask> {
     this.updates.push({ taskId, state });
-    return this.nextTask ?? { taskId, projectId: '423b45c0-23e1-408d-ae0f-ac5eca7f6900', goal: 'fixture', state, progress: 0, assignedDevice: null, approvalStatus: null };
+    return this.nextTask ?? { taskId, projectId: '423b45c0-23e1-408d-ae0f-ac5eca7f6900', conversationId: null, goal: 'fixture', state, progress: 0, assignedDevice: null, approvalStatus: null };
   }
 }
 
@@ -49,7 +49,7 @@ test('desktop worker runtime rejects an unregistered project before execution', 
   const dataDir = await mkdtemp(join(tmpdir(), 'awh-worker-runtime-'));
   try {
     await loadOrCreateDeviceIdentity(dataDir);
-    const task: WorkerTask = { taskId: '423b45c0-23e1-408d-ae0f-ac5eca7f6900', projectId: '523b45c0-23e1-408d-ae0f-ac5eca7f6900', goal: 'safe inspection', state: 'PREPARING', progress: 0, assignedDevice: '423b45c0-23e1-408d-ae0f-ac5eca7f6900', approvalStatus: null };
+    const task: WorkerTask = { taskId: '423b45c0-23e1-408d-ae0f-ac5eca7f6900', projectId: '523b45c0-23e1-408d-ae0f-ac5eca7f6900', conversationId: null, goal: 'safe inspection', state: 'PREPARING', progress: 0, assignedDevice: '423b45c0-23e1-408d-ae0f-ac5eca7f6900', approvalStatus: null };
     const client = new FixtureWorkerClient(dataDir, task);
     const runtime = new ControlPlaneWorkerRuntime(client, { dataDir, maxReadBytes: 32_000, allowExec: true, allowWrite: false, allowCodex: false });
     const result = await runtime.runOnce();

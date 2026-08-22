@@ -125,7 +125,7 @@ const packagedProtocol = asar.extractFile(asarPath, OWNER_PROTOCOL_FILENAME).toS
 assert(/Art ↔ AI Working Constitution/.test(packagedProtocol) && packagedProtocol.includes(`Version: ${expectedProtocolVersion}`), 'packaged owner working protocol identity is invalid');
 assert(/System-first, patch-second/i.test(packagedProtocol) && /AWH-direct contract/i.test(packagedProtocol), 'packaged owner working protocol contract is incomplete');
 const packagedDesktopHtml = asar.extractFile(asarPath, 'desktop/index.html').toString('utf8');
-assert(/Control Panel/.test(packagedDesktopHtml) && /remote-result-list/.test(packagedDesktopHtml), 'packaged renderer does not contain the final owner/results surface');
+assert(/id="desktop-work-thread"/.test(packagedDesktopHtml) && /id="desktop-work-input"/.test(packagedDesktopHtml), 'packaged renderer does not contain the final project Work surface');
 const packagedPackage = JSON.parse(asar.extractFile(asarPath, 'package.json').toString('utf8'));
 assert(packagedPackage.version === EXPECTED_VERSION, 'packaged package version is not 1.0.0-rc.1');
 assert(packagedPackage.productName === EXPECTED_PRODUCT, 'packaged productName is not AWH');

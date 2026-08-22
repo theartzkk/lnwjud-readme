@@ -11,7 +11,7 @@ test('Projects page exposes the real portable project identity contract', async 
   assert.match(renderer, /project\.name/);
   assert.match(renderer, /project\.type/);
   assert.match(renderer, /project\.selected/);
-  assert.match(renderer, /project\.lastOpenedAt/);
+  assert.match(renderer, /project\.state/);
   assert.match(renderer, /project\.localAvailable/);
 });
 

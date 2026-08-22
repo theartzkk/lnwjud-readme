@@ -4,7 +4,6 @@ let projectsData = null;
 let activeProjectId = null;
 
 function escapeText(value) { return value == null ? '—' : String(value); }
-function permission(el, enabled) { el.textContent = enabled ? 'ON' : 'OFF'; el.className = `metric ${enabled ? 'on' : 'off'}`; }
 function renderList(container, items, emptyText, render) {
   container.replaceChildren();
   if (!items?.length) { const p = document.createElement('p'); p.className = 'muted'; p.textContent = emptyText; container.append(p); return; }
@@ -14,52 +13,15 @@ function item(title, detail, cls='list-item') { const root=document.createElemen
 function row(dl, key, value) { const dt=document.createElement('dt');dt.textContent=key;const dd=document.createElement('dd');dd.textContent=escapeText(value);dl.append(dt,dd); }
 function dateText(value) { return value ? new Date(value).toLocaleString('th-TH') : '—'; }
 function showProjectStatus(message, kind = '') { const status = $('project-status'); status.textContent = message; status.className = `notice ${kind}`.trim(); }
-function renderFirstRun(data) {
-  $('welcome-title').textContent = data?.trusted ? `ยินดีต้อนรับกลับ ${data.ownerDisplayName || 'กลับมา'}` : 'ตั้งค่า owner และ trusted device ครั้งแรก';
-  $('welcome-summary').textContent = data?.trusted ? `${data.deviceName || 'อุปกรณ์นี้'} • ${data.platform} • device identity พร้อมใช้งาน` : 'ตั้งค่าเฉพาะ local session metadata ก่อนเริ่มงาน ไม่ใช่การเก็บ secret หรือ credential';
-  $('owner-name').value = data?.ownerDisplayName || $('owner-name').value;
-  $('device-name').value = data?.deviceName || $('device-name').value;
-  $('trust-owner').textContent = data?.trusted ? 'อัปเดต trusted device' : 'ตั้งค่า trusted device';
-}
-
 function renderAutopilotOverview(data) {
   if (!data) return;
-  $('autopilot-state').textContent = data.executionEnabled ? 'READY' : 'EXECUTION OFF';
-  $('autopilot-state').className = `badge ${data.executionEnabled ? 'success' : 'danger'}`.trim();
-  $('autopilot-home-state').textContent = data.executionEnabled ? 'READY' : 'OFF';
-  $('autopilot-home-state').className = `badge ${data.executionEnabled ? 'success' : 'danger'}`.trim();
-  $('autopilot-project').textContent = `${data.project.name} • ${data.project.type} • ${data.project.projectId}`;
-  const profile = $('autopilot-profile'); profile.replaceChildren();
-  row(profile, 'Profile', data.profile.label); row(profile, 'Commands', data.profile.packageCommands.join(' • '));
-  row(profile, 'Capabilities', Object.entries(data.capabilities || {}).filter(([, value]) => value === true).map(([key]) => key).join(' • ') || 'none');
-  renderAutopilotTasks(data.tasks || [], data.allowWrite === true);
-}
-
-function renderAutopilotTasks(tasks, allowWrite) {
-  renderList($('autopilot-task-list'), tasks, 'ยังไม่มี task — เริ่มจาก goal ด้านบน', (task) => {
-    const entry = item(`${task.state} • ${task.goal}`, `${task.taskId} • artifact ${task.artifactRefs?.length || 0} • retry ${task.retryCount}`, 'timeline-item');
-    if (allowWrite && task.state === 'COMPLETED') {
-      const checkpoint = document.createElement('button'); checkpoint.className = 'btn secondary small'; checkpoint.textContent = 'Save concise Memory checkpoint';
-      checkpoint.addEventListener('click', async () => { checkpoint.disabled = true; const result = await window.artAgent.checkpointAutopilotMemory(task.taskId); checkpoint.textContent = result?.ok ? 'Memory checkpoint saved' : 'Review/write permission required'; });
-      entry.append(checkpoint);
-    }
-    return entry;
-  });
-}
-
-function renderContinuity(data) {
-  const badge = $('continuity-state');
-  badge.textContent = data?.available ? (data.protectedLocalChanges ? 'REVIEW REQUIRED' : 'READY TO CONTINUE') : 'NO CHECKPOINT';
-  badge.className = `badge ${data?.available && !data.protectedLocalChanges ? 'success' : data?.available ? 'danger' : ''}`.trim();
-  $('continuity-summary').textContent = data?.reason || 'ยังไม่มี checkpoint';
-  const details = $('continuity-details'); details.replaceChildren();
-  if (data?.checkpoint) { row(details, 'Source device', data.checkpoint.sourceDeviceId); row(details, 'Task', data.checkpoint.taskId); row(details, 'Revision', data.checkpoint.sourceRevision || 'unavailable'); row(details, 'Source dirty', data.checkpoint.sourceDirty ? 'YES — protect local work' : 'NO'); }
+  $('autopilot-project').textContent = data.executionEnabled ? 'AWH จะใช้เฉพาะความสามารถที่อนุมัติและขออนุมัติก่อนงานเสี่ยง' : 'เปิด Approved execution บนอุปกรณ์นี้ก่อนจึงจะรับงานได้';
 }
 
 function renderArtifacts(data) {
-  renderList($('remote-result-list'), data?.results || [], 'ยังไม่มีงานจาก Hub', (result) => item(`${result.projectName || result.projectId || 'Project'} • ${result.state}`, `${result.goal} • ${result.resultSummary || result.lastEvent?.message || 'กำลังรอผลลัพธ์'} • artifact ${result.artifactRefs?.length || 0}`, 'timeline-item'));
-  renderList($('artifact-list'), data?.artifacts || [], 'ยังไม่มีผลลัพธ์ที่พร้อม review', (artifact) => item(`${artifact.kind} • ${artifact.label || artifact.name || 'ผลลัพธ์'}`, `${artifact.status || 'READY'} • ${artifact.relativeRef || 'metadata only'} • ${artifact.bytes ?? artifact.sizeBytes ?? 0} bytes`, 'timeline-item'));
-  renderList($('approval-list'), data?.approvals || [], 'ยังไม่มี action ที่รอการอนุมัติ', (approval) => item(`${approval.action || 'Action'} • ${approval.status || 'PENDING'}`, `Project ${approval.projectId || '—'} • หมดอายุ ${dateText(approval.expiresAt)}`, 'timeline-item'));
+  renderList($('remote-result-list'), data?.results || [], 'ยังไม่มีผลลัพธ์จาก Work', (result) => item(result.projectName || 'งานล่าสุด', result.resultSummary || result.lastEvent?.message || 'AWH กำลังรอผลลัพธ์จากงานนี้', 'timeline-item'));
+  renderList($('artifact-list'), data?.artifacts || [], 'ยังไม่มีไฟล์ผลลัพธ์ที่พร้อมตรวจ', (artifact) => item(artifact.label || artifact.name || 'ผลลัพธ์', artifact.status === 'READY' ? 'พร้อมตรวจ' : 'กำลังเตรียมผลลัพธ์', 'timeline-item'));
+  renderList($('approval-list'), data?.approvals || [], 'ยังไม่มีสิ่งที่ต้องอนุมัติ', (approval) => item(approval.status === 'PENDING' ? 'ต้องการการอนุมัติ' : 'การอนุมัติ', `หมดอายุ ${dateText(approval.expiresAt)}`, 'timeline-item'));
 }
 
 async function refreshWorker() {
@@ -75,26 +37,62 @@ async function refreshAutopilot() {
   try {
     const data = await window.artAgent.getAutopilotOverview();
     renderAutopilotOverview(data);
-    renderContinuity(await window.artAgent.getAutopilotContinuity());
     const remote = await window.artAgent.getAutopilotRemoteResults().catch(() => ({ results: [], artifacts: [], approvals: [] }));
     renderArtifacts({ results: remote.results || [], artifacts: [...(data.artifacts || []), ...(remote.artifacts || [])], approvals: remote.approvals || [] });
     await refreshWorker();
+    await refreshWork();
   } catch (error) {
-    $('autopilot-state').textContent = 'UNAVAILABLE'; $('autopilot-state').className = 'badge danger';
     $('autopilot-project').textContent = 'เลือกและลงทะเบียน project ก่อนเริ่ม Local Autopilot';
+    $('desktop-work-status').textContent = 'เลือกและลงทะเบียนโปรเจกต์ก่อนเริ่ม Work';
   }
 }
 
-async function startAutopilot(goalId) {
-  const goal = $(goalId).value.trim();
-  if (!goal) { $('autopilot-home-message').textContent = 'กรุณาระบุ goal ก่อนเริ่มงาน'; return; }
-  $('autopilot-home-message').textContent = 'กำลังสร้าง Task Contract และเริ่มงานแบบ local...';
+function workState(task) {
+  return ({ WAITING_FOR_WORKER: 'กำลังรออุปกรณ์ทำงาน', PREPARING: 'กำลังเตรียมงาน', RUNNING: 'กำลังทำงาน', QA: 'กำลังตรวจผลลัพธ์', WAITING_FOR_APPROVAL: 'รอการอนุมัติ', COMPLETED: 'เสร็จแล้ว', FAILED: 'ต้องตรวจสอบ', CANCELLED: 'ยกเลิกแล้ว' })[task?.state] || 'AWH';
+}
+
+function renderWorkConversation(data) {
+  const thread = $('desktop-work-thread'); thread.replaceChildren();
+  const messages = data?.messages || [];
+  const taskById = new Map((data?.tasks || []).map((task) => [task.taskId, task]));
+  const artifactsByTask = new Map();
+  for (const artifact of data?.artifacts || []) {
+    if (!artifact?.taskId) continue;
+    const list = artifactsByTask.get(artifact.taskId) || []; list.push(artifact); artifactsByTask.set(artifact.taskId, list);
+  }
+  $('desktop-work-empty').hidden = messages.length > 0;
+  for (const turn of messages) {
+    const row = document.createElement('li'); row.className = `desktop-turn ${turn.kind === 'user' ? 'user-turn' : 'assistant-turn'}`;
+    const body = document.createElement('p'); body.className = turn.kind === 'user' ? 'desktop-user-message' : 'desktop-assistant-message'; body.textContent = turn.body;
+    if (turn.kind === 'user') { row.append(body); thread.append(row); continue; }
+    const meta = document.createElement('div'); meta.className = 'desktop-turn-meta'; const task = turn.taskId ? taskById.get(turn.taskId) : null;
+    const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = turn.kind === 'approval' ? 'ต้องอนุมัติ' : turn.kind === 'result' ? 'เสร็จแล้ว' : turn.kind === 'failure' ? 'ต้องตรวจสอบ' : workState(task); meta.append(badge);
+    if (task?.progress > 0 && task?.progress < 100) { const progress = document.createElement('span'); progress.textContent = `${task.progress}%`; meta.append(progress); }
+    row.append(meta, body);
+    const artifacts = task ? artifactsByTask.get(task.taskId) || [] : [];
+    if (artifacts.length) { const list = document.createElement('ul'); list.className = 'desktop-artifact-links'; for (const artifact of artifacts) { const item = document.createElement('li'); item.textContent = `↳ ${artifact.name || 'ไฟล์ผลลัพธ์'}`; list.append(item); } row.append(list); }
+    thread.append(row);
+  }
+}
+
+async function refreshWork() {
+  const result = await window.artAgent.getWorkConversation();
+  if (result?.ok !== true) { $('desktop-work-status').textContent = result?.message || 'Work ยังไม่พร้อม'; return; }
+  $('desktop-work-project').textContent = projectsData?.projects?.find((project) => project.projectId === result.projectId)?.name || 'Project Work';
+  $('desktop-work-status').textContent = result.conversation?.lastTaskId ? 'งานล่าสุดและความต่อเนื่องอยู่ในบทสนทนานี้' : 'พิมพ์สิ่งที่อยากให้ AWH ช่วยได้เลย';
+  renderWorkConversation(result);
+}
+
+async function submitWork() {
+  const input = $('desktop-work-input'); const message = input.value.trim();
+  if (!message) { $('desktop-work-message').textContent = 'กรุณาพิมพ์สิ่งที่อยากให้ AWH ช่วย'; return; }
+  const key = `desktop-${crypto.randomUUID()}`; $('desktop-work-submit').disabled = true; $('desktop-work-message').textContent = 'กำลังตรวจบริบทและบันทึกงาน…';
   try {
-    const result = await window.artAgent.startAutopilot(goal);
-    $('autopilot-home-message').textContent = result?.ok ? `สร้าง task แล้ว: ${result.task.taskId}` : (result?.message || 'Autopilot เริ่มไม่ได้');
-    showSection('autopilot');
-    await refreshAutopilot();
-  } catch { $('autopilot-home-message').textContent = 'Autopilot เริ่มไม่ได้ — ตรวจ project และ Approved execution'; }
+    const result = await window.artAgent.submitWorkMessage(message, key);
+    if (result?.ok !== true) throw new Error(result?.message || 'ส่ง Work ไม่สำเร็จ');
+    input.value = ''; renderWorkConversation(result); $('desktop-work-message').textContent = '';
+  } catch (error) { $('desktop-work-message').textContent = error?.message || 'AWH ยังส่ง Work นี้ไม่ได้'; }
+  finally { $('desktop-work-submit').disabled = false; }
 }
 
 function remoteState(data) {
@@ -228,23 +226,17 @@ function renderProjects(data) {
     const head = document.createElement('div'); head.className = 'card-head';
     const title = document.createElement('div');
     const name = document.createElement('h3'); name.textContent = project.name || project.projectId; name.className = 'project-name';
-    const identity = document.createElement('small'); identity.textContent = `${project.type || 'type unavailable'} • ${project.projectId}`; identity.className = 'mono muted';
-    title.append(name, identity);
+    const stateText = document.createElement('small'); stateText.textContent = project.localAvailable ? 'พร้อมใช้งานบนอุปกรณ์นี้' : 'ต้องค้นหาโฟลเดอร์โปรเจกต์บนอุปกรณ์นี้'; stateText.className = 'muted';
+    title.append(name, stateText);
     const badge = document.createElement('span'); const [label, cls] = projectStatusLabel(project); badge.textContent = label; badge.className = `badge ${cls}`.trim();
     head.append(title, badge); card.append(head);
-    const details = document.createElement('dl'); details.className = 'kv project-details';
-    row(details, 'Local workspace', project.localAvailable ? project.workspacePath : 'Workspace unavailable');
-    row(details, 'Last opened', dateText(project.lastOpenedAt));
-    row(details, 'Last used', dateText(project.lastUsedAt));
-    row(details, 'Git', project.git ? (project.git.ok ? (project.git.text || 'Working tree clean') : project.git.text) : '—');
-    if (project.error) row(details, 'Note', project.error);
-    card.append(details);
+    if (project.error) { const note = document.createElement('p'); note.className = 'muted'; note.textContent = project.error; card.append(note); }
     const actions = document.createElement('div'); actions.className = 'actions';
     if (project.localAvailable && project.state === 'AVAILABLE') {
       const select = document.createElement('button'); select.className = 'btn'; select.textContent = project.selected ? 'Selected Project' : 'Select / Open Project'; select.disabled = project.selected;
       select.addEventListener('click', () => runProjectAction(() => window.artAgent.selectProject(project.projectId), 'เลือกโปรเจกต์แล้ว — พร้อมรับ Goal'));
       actions.append(select);
-      const memory = document.createElement('button'); memory.className = 'btn secondary'; memory.textContent = 'Project Memory'; memory.addEventListener('click', () => loadMemory(project.projectId)); actions.append(memory);
+      const memory = document.createElement('button'); memory.className = 'btn secondary'; memory.textContent = 'ดูบริบทโปรเจกต์'; memory.addEventListener('click', () => loadMemory(project.projectId)); actions.append(memory);
     }
     if (!project.localAvailable || project.state === 'CONFLICT') {
       const locate = document.createElement('button'); locate.className = 'btn secondary'; locate.textContent = 'Locate Project'; locate.addEventListener('click', () => runProjectAction(() => window.artAgent.locateProject(project.projectId), 'พบและผูกโปรเจกต์แล้ว — พร้อมรับ Goal'));
@@ -295,7 +287,7 @@ async function runProjectAction(action, successMessage) {
       await refresh();
       if (result.projectId && result.restartRequired === false) {
         showSection('autopilot');
-        $('autopilot-goal-center').focus();
+        $('desktop-work-input').focus();
       }
       return;
     }
@@ -306,13 +298,7 @@ async function runProjectAction(action, successMessage) {
 function render(data) {
   overview = data;
   $('version').textContent = `v${data.version} • local`;
-  $('workspace').textContent = data.workspace;
-  $('git-summary').textContent = data.git.ok ? 'Git workspace พร้อมใช้งาน' : 'Git ตรวจพบปัญหา';
-  permission($('metric-write'), data.permissions.write);
-  permission($('metric-exec'), data.permissions.execute);
-  permission($('metric-codex'), data.permissions.codex);
-  $('metric-checkpoints').textContent = String(data.checkpoints.length);
-  $('codex-version').textContent = data.codex.available ? data.codex.version : 'ยังไม่พร้อมใช้งาน';
+  $('home-project-summary').textContent = data.workspace && data.workspace !== 'not configured' ? 'โปรเจกต์ที่เลือกพร้อมให้คุยและทำงานต่อได้จาก Work' : 'ยังไม่มีโปรเจกต์ที่เลือก — เริ่มจากเลือกหรือเพิ่มโปรเจกต์';
   $('git-state').textContent = data.git.ok ? 'READY' : 'CHECK';
   $('git-state').className = `badge ${data.git.ok ? 'success' : 'danger'}`;
   $('git-output').textContent = data.git.text || 'Working tree clean';
@@ -321,7 +307,6 @@ function render(data) {
   $('perm-codex').checked = data.permissions.codex;
   $('perm-worker').checked = data.permissions.worker;
 
-  renderList($('checkpoint-list'), data.checkpoints, 'ยังไม่มี checkpoint', (checkpoint) => item(checkpoint.id, `${checkpoint.files.length} file(s) • ${new Date(checkpoint.createdAt).toLocaleString('th-TH')}`));
   renderList($('audit-list'), data.audit, 'ยังไม่มีกิจกรรมที่บันทึก', (entry) => item(`${entry.tool} • ${entry.outcome}`, `${new Date(entry.ts).toLocaleString('th-TH')} • ${entry.detail}`, 'timeline-item'));
 
   renderRemote(data);
@@ -354,7 +339,7 @@ function showSection(section) {
 
 async function refresh() {
   $('refresh').disabled = true;
-  try { render(await window.artAgent.getOverview()); renderFirstRun(await window.artAgent.getFirstRun()); await refreshProjects(); await refreshEnrollment(); await refreshAutopilot(); }
+  try { render(await window.artAgent.getOverview()); await refreshProjects(); await refreshEnrollment(); await refreshAutopilot(); }
   catch (error) { $('git-output').textContent = `Control Center error: ${error?.message ?? error}`; }
   finally { $('refresh').disabled = false; }
 }
@@ -387,7 +372,8 @@ async function runRemoteAction(action) {
 document.querySelectorAll('.nav').forEach((button) => button.addEventListener('click', () => showSection(button.dataset.section)));
 
 $('refresh').addEventListener('click', refresh);
-$('choose-workspace').addEventListener('click', () => showSection('projects'));
+$('home-open-projects').addEventListener('click', () => showSection('projects'));
+$('home-open-work').addEventListener('click', () => showSection('autopilot'));
 $('register-project').addEventListener('click', () => runProjectAction(() => window.artAgent.registerProject(), 'ลงทะเบียนโปรเจกต์แล้ว'));
 $('initialize-project').addEventListener('click', () => runProjectAction(() => window.artAgent.initializeProject(), 'เริ่มต้นและลงทะเบียน AWH Project แล้ว'));
 $('initialize-memory').addEventListener('click', async () => {
@@ -412,17 +398,16 @@ $('enrollment-pair').addEventListener('click', () => runEnrollmentAction(() => w
 $('enrollment-issue-pairing').addEventListener('click', issueOwnerCode);
 $('enrollment-rotate').addEventListener('click', () => runEnrollmentAction(() => window.artAgent.rotateDeviceCredential()));
 $('enrollment-revoke').addEventListener('click', () => runEnrollmentAction(() => window.artAgent.revokeDeviceCredential()));
-$('trust-owner').addEventListener('click', async () => { const result = await window.artAgent.trustOwner($('owner-name').value.trim(), $('device-name').value.trim()); if (result?.ok) renderFirstRun(await window.artAgent.getFirstRun()); else $('welcome-summary').textContent = result?.message || 'ตั้งค่า trusted device ไม่สำเร็จ'; });
-$('start-autopilot-home').addEventListener('click', () => startAutopilot('autopilot-goal'));
-$('start-autopilot').addEventListener('click', () => startAutopilot('autopilot-goal-center'));
-$('view-autopilot').addEventListener('click', () => showSection('autopilot'));
 $('refresh-autopilot').addEventListener('click', refreshAutopilot);
+$('desktop-work-form').addEventListener('submit', (event) => { event.preventDefault(); void submitWork(); });
+$('desktop-work-project').addEventListener('click', () => showSection('projects'));
+$('view-results').addEventListener('click', () => showSection('artifacts'));
 $('refresh-artifacts').addEventListener('click', async () => renderArtifacts(await window.artAgent.getAutopilotArtifacts()));
 $('worker-run-once').addEventListener('click', async () => { $('worker-run-once').disabled = true; await window.artAgent.runWorkerOnce(); await refreshWorker(); await refreshAutopilot(); $('worker-run-once').disabled = false; });
 $('restart').addEventListener('click', () => window.artAgent.restart());
 $('open-data-dir').addEventListener('click', () => window.artAgent.openDataDir());
 
-document.addEventListener('keydown', (event) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); showSection('autopilot'); $('autopilot-goal-center').focus(); } });
+document.addEventListener('keydown', (event) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); showSection('autopilot'); $('desktop-work-input').focus(); } });
 
 void refresh();
 setInterval(() => { if (!document.hidden) void refresh(); }, 10000);

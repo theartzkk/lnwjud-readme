@@ -12,6 +12,7 @@ const tests = [
   'hub/tests/m4-project-registration.php',
   'hub/tests/owner-auth.php',
   'hub/tests/owner-auth-rollback.php',
+  'hub/tests/m6-assistant-workstream.php',
 ];
 
 const php = await resolveExecutable('php');

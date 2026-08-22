@@ -71,29 +71,37 @@ export class ControlPlaneWorkerRuntime {
     this.running = true;
     const identity = await loadOrCreateDeviceIdentity(this.options.dataDir);
     try {
-      await this.client.heartbeat(await workerCapabilities(this.options.dataDir), 'READY');
+      const capabilities = await workerCapabilities(this.options.dataDir);
+      await this.client.heartbeat(capabilities, 'READY');
       const task = await this.client.claim();
       if (!task) return { status: 'IDLE', deviceId: identity.deviceId };
-      return await this.execute(task, identity.deviceId);
+      return await this.execute(task, identity.deviceId, capabilities);
     } finally { this.running = false; }
   }
 
-  private async execute(task: WorkerTask, deviceId: string): Promise<WorkerRunResult> {
-    let resolved;
-    try { resolved = await resolveRegisteredProject(this.options.dataDir, task.projectId); }
-    catch { await this.safeUpdate(task, 'FAILED', 0, 'Project context was rejected', 'PROJECT_CONTEXT_REJECTED'); return { status: 'FAILED', taskId: task.taskId, projectId: task.projectId, reason: 'PROJECT_CONTEXT_REJECTED' }; }
-
-    const mutation = isMutationGoal(task.goal);
-    if (mutation && task.approvalStatus !== 'APPROVED') {
-      await this.safeUpdate(task, 'WAITING_FOR_APPROVAL', 0, 'Owner approval is required before a source-changing goal can run', null);
-      return { status: 'WAITING_FOR_APPROVAL', taskId: task.taskId, projectId: task.projectId, reason: 'OWNER_APPROVAL_REQUIRED' };
-    }
-    if (!this.options.allowExec || (mutation && (!this.options.allowWrite || !this.options.allowCodex))) {
-      await this.safeUpdate(task, 'WAITING_FOR_APPROVAL', 0, 'This device policy does not allow the requested execution boundary', null);
-      return { status: 'WAITING_FOR_APPROVAL', taskId: task.taskId, projectId: task.projectId, reason: 'DEVICE_POLICY_REQUIRES_APPROVAL' };
-    }
-
+  private async execute(task: WorkerTask, deviceId: string, capabilities: string[]): Promise<WorkerRunResult> {
+    // A bounded lease is what prevents two workers from mutating one task. A
+    // Codex run can legitimately exceed the initial five-minute lease, so the
+    // already-authenticated worker renews it while it owns the task. Failure
+    // to renew never fabricates success; the Hub's stale-lease recovery path
+    // will requeue the task safely.
+    const leaseHeartbeat = setInterval(() => { void this.client.heartbeat(capabilities, 'WORKING').catch(() => undefined); }, 60_000);
+    leaseHeartbeat.unref?.();
     try {
+      const resolved = await resolveRegisteredProject(this.options.dataDir, task.projectId).catch(() => null);
+      if (!resolved) {
+        await this.safeUpdate(task, 'FAILED', 0, 'Project context was rejected', 'PROJECT_CONTEXT_REJECTED');
+        return { status: 'FAILED', taskId: task.taskId, projectId: task.projectId, reason: 'PROJECT_CONTEXT_REJECTED' };
+      }
+      const mutation = isMutationGoal(task.goal);
+      if (mutation && task.approvalStatus !== 'APPROVED') {
+        await this.safeUpdate(task, 'WAITING_FOR_APPROVAL', 0, 'Owner approval is required before a source-changing goal can run', null);
+        return { status: 'WAITING_FOR_APPROVAL', taskId: task.taskId, projectId: task.projectId, reason: 'OWNER_APPROVAL_REQUIRED' };
+      }
+      if (!this.options.allowExec || (mutation && (!this.options.allowWrite || !this.options.allowCodex))) {
+        await this.safeUpdate(task, 'WAITING_FOR_APPROVAL', 0, 'This device policy does not allow the requested execution boundary', null);
+        return { status: 'WAITING_FOR_APPROVAL', taskId: task.taskId, projectId: task.projectId, reason: 'DEVICE_POLICY_REQUIRES_APPROVAL' };
+      }
       const context = await buildProjectContext(resolved.workspacePath);
       await this.client.update(task.taskId, mutation ? 'RUNNING' : 'PREPARING', 5, 'Owner protocol and project context verified');
       if (mutation) {
@@ -114,12 +122,14 @@ export class ControlPlaneWorkerRuntime {
         await this.client.addArtifact(task.taskId, { kind: result.artifact.kind, name: result.artifact.label, sha256, sizeBytes: bytes, relativeRef: result.artifact.relativeRef });
       }
       await createContinuityCheckpoint({ dataDir: this.options.dataDir, workspace: resolved.workspacePath, projectId: task.projectId, taskId: task.taskId, sourceDeviceId: deviceId, taskState: 'COMPLETED', goalSummary: task.goal, artifactRefs: artifactRef ? [artifactRef] : [] });
-      await this.client.update(task.taskId, 'COMPLETED', 100, 'Completed with owner protocol, bounded QA and continuity', mutation ? 'Approved project change and QA completed' : 'Project context and approved QA completed');
+      const passed = result.gates.filter((gate) => gate.status === 'PASS').length;
+      const summary = mutation ? `ดำเนินการตามขอบเขตที่อนุมัติแล้ว และ QA ผ่าน ${passed} รายการ` : `ตรวจบริบทและ QA แล้วผ่าน ${passed} รายการ โดยไม่ได้แก้ไข source`;
+      await this.client.update(task.taskId, 'COMPLETED', 100, 'Completed with owner protocol, bounded QA and continuity', summary);
       return { status: 'COMPLETED', taskId: task.taskId, projectId: task.projectId, artifact: artifactRef };
     } catch (error) {
       await this.safeUpdate(task, 'FAILED', 0, 'Worker execution failed safely', 'WORKER_EXECUTION_FAILED');
       return { status: 'FAILED', taskId: task.taskId, projectId: task.projectId, reason: boundedSummary(error instanceof Error ? error.message : 'WORKER_EXECUTION_FAILED') };
-    }
+    } finally { clearInterval(leaseHeartbeat); }
   }
 
   private async safeUpdate(task: WorkerTask, state: 'WAITING_FOR_APPROVAL' | 'FAILED', progress: number, message: string, result: string | null): Promise<void> {

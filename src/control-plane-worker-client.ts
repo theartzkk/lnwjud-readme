@@ -14,6 +14,7 @@ export class ControlPlaneWorkerError extends Error {
 export interface WorkerTask {
   taskId: string;
   projectId: string;
+  conversationId: string | null;
   goal: string;
   state: string;
   progress: number;
@@ -33,8 +34,24 @@ function apiRoot(value: string): URL {
 function boundedTask(value: unknown): WorkerTask {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ControlPlaneWorkerError('Worker task response is invalid', 'RESPONSE_INVALID');
   const task = value as Record<string, unknown>;
-  if (typeof task.taskId !== 'string' || !UUID_V4.test(task.taskId) || typeof task.projectId !== 'string' || !UUID_V4.test(task.projectId) || typeof task.goal !== 'string' || task.goal.length > 2_000 || typeof task.state !== 'string' || typeof task.progress !== 'number' || !Number.isInteger(task.progress) || task.progress < 0 || task.progress > 100 || (task.assignedDevice !== null && (typeof task.assignedDevice !== 'string' || !UUID_V4.test(task.assignedDevice))) || (task.approvalStatus !== undefined && task.approvalStatus !== null && !['PENDING', 'APPROVED', 'REJECTED', 'EXPIRED'].includes(String(task.approvalStatus)))) throw new ControlPlaneWorkerError('Worker task response is invalid', 'RESPONSE_INVALID');
-  return { taskId: task.taskId, projectId: task.projectId, goal: task.goal, state: task.state, progress: task.progress, assignedDevice: task.assignedDevice, approvalStatus: task.approvalStatus === undefined ? null : task.approvalStatus as WorkerTask['approvalStatus'] };
+  if (typeof task.taskId !== 'string' || !UUID_V4.test(task.taskId) || typeof task.projectId !== 'string' || !UUID_V4.test(task.projectId) || (task.conversationId !== undefined && task.conversationId !== null && (typeof task.conversationId !== 'string' || !UUID_V4.test(task.conversationId))) || typeof task.goal !== 'string' || task.goal.length > 2_000 || typeof task.state !== 'string' || typeof task.progress !== 'number' || !Number.isInteger(task.progress) || task.progress < 0 || task.progress > 100 || (task.assignedDevice !== null && (typeof task.assignedDevice !== 'string' || !UUID_V4.test(task.assignedDevice))) || (task.approvalStatus !== undefined && task.approvalStatus !== null && !['PENDING', 'APPROVED', 'REJECTED', 'EXPIRED'].includes(String(task.approvalStatus)))) throw new ControlPlaneWorkerError('Worker task response is invalid', 'RESPONSE_INVALID');
+  return { taskId: task.taskId, projectId: task.projectId, conversationId: task.conversationId === undefined || task.conversationId === null ? null : task.conversationId, goal: task.goal, state: task.state, progress: task.progress, assignedDevice: task.assignedDevice, approvalStatus: task.approvalStatus === undefined ? null : task.approvalStatus as WorkerTask['approvalStatus'] };
+}
+
+export interface WorkerConversationMessage { messageId: string; taskId: string | null; kind: 'user' | 'assistant' | 'progress' | 'approval' | 'result' | 'failure'; sequence: number; body: string; createdAt: string; }
+export interface WorkerConversation { conversation: { conversationId: string; projectId: string; createdAt: string; updatedAt: string; lastTaskId: string | null } | null; messages: WorkerConversationMessage[]; tasks: WorkerTask[]; artifacts: Array<Record<string, unknown>>; approvals: Array<Record<string, unknown>>; }
+
+function boundedConversation(value: Record<string, unknown>): WorkerConversation {
+  const conversation = value.conversation;
+  if (conversation !== null && (!conversation || typeof conversation !== 'object' || Array.isArray(conversation) || !UUID_V4.test(String((conversation as Record<string, unknown>).conversationId)) || !UUID_V4.test(String((conversation as Record<string, unknown>).projectId)))) throw new ControlPlaneWorkerError('Worker conversation response is invalid', 'RESPONSE_INVALID');
+  if (!Array.isArray(value.messages) || !Array.isArray(value.tasks) || !Array.isArray(value.artifacts) || !Array.isArray(value.approvals) || value.messages.length > 250 || value.tasks.length > 100) throw new ControlPlaneWorkerError('Worker conversation response is invalid', 'RESPONSE_INVALID');
+  const messages = value.messages.map((entry): WorkerConversationMessage => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new ControlPlaneWorkerError('Worker conversation response is invalid', 'RESPONSE_INVALID');
+    const item = entry as Record<string, unknown>;
+    if (typeof item.messageId !== 'string' || !UUID_V4.test(item.messageId) || (item.taskId !== null && (typeof item.taskId !== 'string' || !UUID_V4.test(item.taskId))) || !['user', 'assistant', 'progress', 'approval', 'result', 'failure'].includes(String(item.kind)) || !Number.isInteger(item.sequence) || Number(item.sequence) < 1 || typeof item.body !== 'string' || item.body.length > 800 || typeof item.createdAt !== 'string') throw new ControlPlaneWorkerError('Worker conversation response is invalid', 'RESPONSE_INVALID');
+    return { messageId: item.messageId, taskId: item.taskId as string | null, kind: item.kind as WorkerConversationMessage['kind'], sequence: item.sequence as number, body: item.body, createdAt: item.createdAt };
+  });
+  return { conversation: conversation === null ? null : { conversationId: String((conversation as Record<string, unknown>).conversationId), projectId: String((conversation as Record<string, unknown>).projectId), createdAt: String((conversation as Record<string, unknown>).createdAt), updatedAt: String((conversation as Record<string, unknown>).updatedAt), lastTaskId: (conversation as Record<string, unknown>).lastTaskId === null ? null : String((conversation as Record<string, unknown>).lastTaskId) }, messages, tasks: value.tasks.map(boundedTask), artifacts: value.artifacts.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item))).slice(0, 100), approvals: value.approvals.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item))).slice(0, 50) };
 }
 
 export class ControlPlaneWorkerClient {
@@ -76,6 +93,22 @@ export class ControlPlaneWorkerClient {
     const response = await this.get(`/control/worker/results/${identity.deviceId}`);
     if (response.schemaVersion !== 1 || !Array.isArray(response.results) || !Array.isArray(response.artifacts) || !Array.isArray(response.approvals)) throw new ControlPlaneWorkerError('Worker results response is invalid', 'RESPONSE_INVALID');
     return { results: response.results.map(boundedTask), artifacts: response.artifacts.filter((value): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value))).slice(0, 100), approvals: response.approvals.filter((value): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value))).slice(0, 50) };
+  }
+
+  async readConversation(projectId: string): Promise<WorkerConversation> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    if (!UUID_V4.test(projectId)) throw new ControlPlaneWorkerError('Project identity is invalid', 'PAYLOAD_INVALID');
+    const response = await this.get(`/control/worker/conversations/${identity.deviceId}/${projectId}`);
+    if (response.schemaVersion !== 1) throw new ControlPlaneWorkerError('Worker conversation response is invalid', 'RESPONSE_INVALID');
+    return boundedConversation(response);
+  }
+
+  async submitConversation(projectId: string, message: string, idempotencyKey: string): Promise<WorkerConversation> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    if (!UUID_V4.test(projectId) || typeof message !== 'string' || message.trim().length < 1 || message.length > 2_000 || !/^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey)) throw new ControlPlaneWorkerError('Worker conversation input is invalid', 'PAYLOAD_INVALID');
+    const response = await this.post('/control/worker/conversations', { schemaVersion: 1, deviceId: identity.deviceId, projectId, message: message.trim(), idempotencyKey });
+    if (response.schemaVersion !== 1) throw new ControlPlaneWorkerError('Worker conversation response is invalid', 'RESPONSE_INVALID');
+    return boundedConversation(response);
   }
 
   private async post(path: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {

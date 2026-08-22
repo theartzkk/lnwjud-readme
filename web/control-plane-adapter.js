@@ -73,10 +73,27 @@ export async function loadControlData() {
   return { mode: 'CONTROL', authenticated: true, expiresAt: session.expiresAt, projects: projects.projects.filter((project) => UUID.test(project.projectId)), tasks: Array.isArray(tasks.tasks) ? tasks.tasks : [], workers: Array.isArray(workers.workers) ? workers.workers : [], results: Array.isArray(results.results) ? results.results : [], artifacts: Array.isArray(artifacts.artifacts) ? artifacts.artifacts : [], approvals: Array.isArray(approvals.approvals) ? approvals.approvals : [] };
 }
 
+export async function loadConversation(projectId) {
+  if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง');
+  const value = await controlRequest(`/api/v1/control/conversations/${projectId}`);
+  if (value.schemaVersion !== 1 || !Array.isArray(value.messages) || !Array.isArray(value.tasks) || !Array.isArray(value.artifacts) || !Array.isArray(value.approvals)) throw new Error('ประวัติการทำงานของ AWH ไม่ถูกต้อง');
+  return value;
+}
+
+export async function submitWorkMessage(projectId, message, idempotencyKey = `web-${crypto.randomUUID()}`) {
+  if (!UUID.test(projectId) || typeof message !== 'string' || !message.trim() || message.length > 2000 || !/^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey)) throw new Error('กรุณาเลือกโปรเจกต์และบอกสิ่งที่อยากให้ AWH ช่วย');
+  const value = await controlRequest('/api/v1/control/conversations', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, message: message.trim(), idempotencyKey }) });
+  if (value.schemaVersion !== 1 || !Array.isArray(value.messages) || !Array.isArray(value.tasks)) throw new Error('AWH ไม่สามารถบันทึกการสนทนาได้');
+  return value;
+}
+
 export async function submitGoal(projectId, goal) {
-  if (!UUID.test(projectId) || typeof goal !== 'string' || !goal.trim() || goal.length > 2000) throw new Error('กรุณาเลือกโปรเจกต์และเขียน Goal ที่ชัดเจน');
-  const idempotencyKey = `web-${crypto.randomUUID()}`;
-  return controlRequest('/api/v1/control/tasks', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, goal: goal.trim(), idempotencyKey }) });
+  return submitWorkMessage(projectId, goal);
+}
+
+export async function cancelTask(taskId) {
+  if (!UUID.test(taskId)) throw new Error('งานไม่ถูกต้อง');
+  return controlRequest(`/api/v1/control/tasks/${taskId}/cancel`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) });
 }
 
 export async function decideApproval(approvalId, decision) {

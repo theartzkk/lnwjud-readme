@@ -23,6 +23,12 @@ Normal owner use is username/password plus a revocable remembered session.
 The Keychain value is only bootstrap delivery. After signing in, Art should set
 a memorable password in Account. Basic Auth remains only on technical routes.
 
+### Pending source release — M6 Native Assistant Workstream
+
+The next source candidate adds one additive v5→v6 Hub capability, `m6-assistant-workstream`. It is intentionally not deployed in the current live v5 state. It makes the existing Work surface a durable ordered conversation per project by projecting existing canonical tasks, task events, artifacts and approvals into one work stream; it does not introduce another project/task/memory/result authority.
+
+M6 has a local cross-version fixture for M3E.1 → M3E.2 → owner/device → M4 → M5 → M6, browser session, conversation-only response, idempotent Work submission, claim/reclaim, expired-lease recovery, artifact/result, follow-up continuity and safe cancellation before worker claim. The current Mac worker will renew an owned lease every minute, preserving the existing outbound credential and approved-execution boundaries. Deployment remains one new exact-SHA approval with backup, v5→v6 idempotence, pointer/Nginx/PHP checks and rollback to the verified v5 backup.
+
 The first M4 activation attempt is historical evidence only: it failed before
 Nginx activation and rollback restored the v3 baseline. Subsequent reviewed
 releases closed that include-composition boundary; the active v5 state above is
@@ -63,9 +69,9 @@ The owner-protocol integration is isolated on `awh/clean-foundation` / PR #8 for
 
 ## Remaining field gates
 
-1. iPhone Safari/PWA: sign in → select existing project → submit one safe Goal → see truthful worker/result state.
-2. Live Goal → canonical task → worker claim → bounded AI/QA → Result/Artifact/Approval.
-3. Logged-in Mac GUI field test with the final package.
+1. Approve and activate the exact M6 source release; do not deploy the uncommitted/current tree.
+2. iPhone Safari/PWA: sign in → select existing project → ask a normal question → submit one safe read-only Work request → see the same worker/result/continuity stream.
+3. Logged-in Mac GUI field test with the final package and worker restart/reconnect.
 4. Physical Windows pairing/Credential Manager/runtime field test.
 5. Fix only verified field defects, then release stable `1.0.0`.
 

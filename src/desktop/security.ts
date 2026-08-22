@@ -32,6 +32,8 @@ export const DESKTOP_IPC = Object.freeze({
   autopilotRemoteResults: 'art-agent:autopilot-remote-results',
   autopilotContinuity: 'art-agent:autopilot-continuity',
   autopilotCheckpointMemory: 'art-agent:autopilot-checkpoint-memory',
+  workConversation: 'art-agent:work-conversation',
+  workSubmit: 'art-agent:work-submit',
   workerState: 'art-agent:worker-state',
   workerRunOnce: 'art-agent:worker-run-once',
   restart: 'art-agent:restart',
