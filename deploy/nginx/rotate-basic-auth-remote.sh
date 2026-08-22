@@ -97,4 +97,4 @@ stage COMPLETE
 # cross-boundary public credential gate and possible rollback.
 printf '%s\n' 'ROTATE_RESULT=REMOTE_READY'
 trap - EXIT HUP INT TERM
-sudo -n rm -f "$T" "$X"
+sudo -n rm -f "$T"
