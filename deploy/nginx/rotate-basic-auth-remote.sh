@@ -93,6 +93,8 @@ for P in / /api/v1/health /api/v1/status /api/v1/projects; do
   test "$C" = 401 || fail PERIMETER_VERIFY UNAUTHENTICATED_PERIMETER
 done
 stage COMPLETE
-printf '%s\n' 'ROTATE_RESULT=PASS'
+# Remote replacement is prepared, not committed. B/X remain for the
+# cross-boundary public credential gate and possible rollback.
+printf '%s\n' 'ROTATE_RESULT=REMOTE_READY'
 trap - EXIT HUP INT TERM
 sudo -n rm -f "$T" "$X"

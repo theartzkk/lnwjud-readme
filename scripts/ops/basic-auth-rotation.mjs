@@ -8,22 +8,38 @@ import { createProductionCredentialStore } from '../../dist/credential-store.js'
 export const BASIC_AUTH_KEY = 'awh/preview-basic-auth-password';
 export const BASIC_AUTH_HOST = '157-85-108-142.sslip.io';
 export const BASIC_AUTH_USER = 'awh-preview';
-export const ALLOWED_STAGES = new Set(['PRECHECK','HASH_RECEIVED','BACKUP_CREATED','TEMP_CREATED','ATOMIC_REPLACE','NGINX_TEST','RELOAD','PERIMETER_VERIFY','COMPLETE']);
+export const STAGE_SEQUENCE = ['PRECHECK','HASH_RECEIVED','BACKUP_CREATED','TEMP_CREATED','ATOMIC_REPLACE','NGINX_TEST','RELOAD','PERIMETER_VERIFY','COMPLETE'];
+export const ALLOWED_STAGES = new Set(STAGE_SEQUENCE);
 const REMOTE = join(dirname(fileURLToPath(import.meta.url)), '../../deploy/nginx/rotate-basic-auth-remote.sh');
 
 export function parseRotationOutput(output) {
   const lines = output.trim().split(/\r?\n/).filter(Boolean);
   const result = {};
+  const stages = [];
+  let terminal = false;
   for (const line of lines) {
     const match = /^(ROTATE_STAGE|ROTATE_FAILED_AT|ROTATE_FAILURE_CODE|ROTATE_RESULT|ROLLBACK)=([A-Z0-9_:-]+)$/.exec(line);
-    if (!match) throw new Error('ROTATION_OUTPUT_INVALID');
+    if (!match) throw new Error('OUTPUT_CONTRACT_INVALID');
     const [, key, value] = match;
-    if (key === 'ROTATE_STAGE' && !ALLOWED_STAGES.has(value)) throw new Error('ROTATION_STAGE_INVALID');
-    if (key === 'ROTATE_FAILED_AT' && !ALLOWED_STAGES.has(value)) throw new Error('ROTATION_FAILURE_STAGE_INVALID');
-    if (key === 'ROTATE_RESULT' && value !== 'PASS') throw new Error('ROTATION_RESULT_INVALID');
+    if (key === 'ROTATE_STAGE') {
+      if (!ALLOWED_STAGES.has(value) || terminal || stages.length >= STAGE_SEQUENCE.length || value !== STAGE_SEQUENCE[stages.length]) throw new Error('OUTPUT_CONTRACT_INVALID');
+      stages.push(value);
+    }
+    if (key === 'ROTATE_RESULT') {
+      if (terminal || !['REMOTE_READY','CLEANUP'].includes(value)) throw new Error('OUTPUT_CONTRACT_INVALID');
+      terminal = true;
+      if (value === 'REMOTE_READY' && stages.join('|') !== STAGE_SEQUENCE.join('|')) throw new Error('OUTPUT_CONTRACT_INVALID');
+    }
+    if (key === 'ROTATE_FAILED_AT') {
+      if (terminal || !STAGE_SEQUENCE.includes(value) || stages.length === 0 || value !== STAGE_SEQUENCE[stages.length - 1]) throw new Error('OUTPUT_CONTRACT_INVALID');
+    }
+    if (key === 'ROTATE_FAILURE_CODE' && !/^[A-Z][A-Z0-9_]{1,63}$/.test(value)) throw new Error('OUTPUT_CONTRACT_INVALID');
     if (key === 'ROLLBACK' && !['PASS','FAIL'].includes(value)) throw new Error('ROTATION_ROLLBACK_INVALID');
     result[key] = value;
   }
+  if (!terminal && !result.ROTATE_FAILED_AT) throw new Error('OUTPUT_CONTRACT_INVALID');
+  if (result.ROTATE_FAILED_AT && !result.ROTATE_FAILURE_CODE) throw new Error('OUTPUT_CONTRACT_INVALID');
+  result.stages = stages;
   return result;
 }
 
@@ -62,8 +78,12 @@ export async function rotateBasicAuth({ dryRun = false, store = createProduction
   const command = (action) => `sh -c ${JSON.stringify(remote)} -- ${id} ${BASIC_AUTH_HOST} ${BASIC_AUTH_USER} ${action}`;
   const response = await run(sshExecutable, ['-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','awh-ready',command('rotate')], `${hash}\n`, 60000);
   let parsed;
-  try { parsed = parseRotationOutput(response.stdout); } catch { parsed = { ROTATE_FAILED_AT: 'PRECHECK', ROTATE_FAILURE_CODE: 'OUTPUT_INVALID' }; }
-  if (response.code !== 0 || parsed.ROTATE_RESULT !== 'PASS') {
+  try { parsed = parseRotationOutput(response.stdout); } catch (error) {
+    const contractError = new Error('OUTPUT_CONTRACT_INVALID');
+    contractError.cause = error;
+    throw contractError;
+  }
+  if (response.code !== 0 || parsed.ROTATE_RESULT !== 'REMOTE_READY') {
     if (old === null) await store.delete(BASIC_AUTH_KEY); else await store.set(BASIC_AUTH_KEY, old);
     const error = new Error(parsed.ROTATE_FAILURE_CODE ? `ROTATION_FAILED:${parsed.ROTATE_FAILED_AT}:${parsed.ROTATE_FAILURE_CODE}` : 'ROTATION_FAILED');
     error.cause = parsed;

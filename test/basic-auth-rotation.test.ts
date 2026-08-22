@@ -3,7 +3,7 @@ import { chmod, mkdtemp, readFile, rename, rm, stat, symlink, writeFile } from '
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { ALLOWED_STAGES, BASIC_AUTH_HOST, BASIC_AUTH_KEY, BASIC_AUTH_USER, parseRotationOutput, validateAssets } from '../scripts/ops/basic-auth-rotation.mjs';
+import { ALLOWED_STAGES, BASIC_AUTH_HOST, BASIC_AUTH_KEY, BASIC_AUTH_USER, STAGE_SEQUENCE, parseRotationOutput, validateAssets } from '../scripts/ops/basic-auth-rotation.mjs';
 
 test('Basic Auth primitive has a fixed asset, host, user and no secret-bearing shell path', async () => {
   const path = validateAssets();
@@ -18,12 +18,16 @@ test('Basic Auth primitive has a fixed asset, host, user and no secret-bearing s
 });
 
 test('stage/error contract accepts only sanitized allowlisted output', () => {
-  const parsed = parseRotationOutput('ROTATE_STAGE=PRECHECK\nROTATE_STAGE=HASH_RECEIVED\nROTATE_RESULT=PASS');
-  assert.equal(parsed.ROTATE_RESULT, 'PASS');
+  const parsed = parseRotationOutput(`${STAGE_SEQUENCE.map((stage) => `ROTATE_STAGE=${stage}`).join('\n')}\nROTATE_RESULT=REMOTE_READY`);
+  assert.equal(parsed.ROTATE_RESULT, 'REMOTE_READY');
   assert.equal(ALLOWED_STAGES.has('PERIMETER_VERIFY'), true);
-  assert.throws(() => parseRotationOutput('ROTATE_STAGE=PRECHECK\nsecret-value'), /ROTATION_OUTPUT_INVALID/);
-  assert.throws(() => parseRotationOutput('ROTATE_FAILED_AT=RUN_SHELL\nROTATE_FAILURE_CODE=X'), /ROTATION_FAILURE_STAGE_INVALID/);
-  assert.throws(() => parseRotationOutput('ROTATE_STAGE=PRECHECK\nROTATE_FAILURE_CODE=raw-stderr'), /ROTATION_OUTPUT_INVALID/);
+  assert.throws(() => parseRotationOutput('ROTATE_STAGE=PRECHECK\nsecret-value'), /OUTPUT_CONTRACT_INVALID/);
+  assert.throws(() => parseRotationOutput('ROTATE_FAILED_AT=RUN_SHELL\nROTATE_FAILURE_CODE=X'), /OUTPUT_CONTRACT_INVALID/);
+  assert.throws(() => parseRotationOutput('ROTATE_STAGE=PRECHECK\nROTATE_FAILURE_CODE=RAW_STDERR'), /OUTPUT_CONTRACT_INVALID/);
+  assert.throws(() => parseRotationOutput('ROTATE_STAGE=PRECHECK\nROTATE_RESULT=REMOTE_READY'), /OUTPUT_CONTRACT_INVALID/);
+  assert.throws(() => parseRotationOutput('ROTATE_STAGE=PRECHECK\nROTATE_STAGE=PRECHECK\nROTATE_RESULT=REMOTE_READY'), /OUTPUT_CONTRACT_INVALID/);
+  assert.throws(() => parseRotationOutput(`${STAGE_SEQUENCE.slice(0, 2).map((stage) => `ROTATE_STAGE=${stage}`).join('\n')}\nROTATE_RESULT=REMOTE_READY`), /OUTPUT_CONTRACT_INVALID/);
+  assert.deepEqual(parseRotationOutput('ROTATE_STAGE=PRECHECK\nROTATE_FAILED_AT=PRECHECK\nROTATE_FAILURE_CODE=TARGET_MISSING').stages, ['PRECHECK']);
 });
 
 test('rollback contract and metadata protections are explicit', async () => {
@@ -33,6 +37,7 @@ test('rollback contract and metadata protections are explicit', async () => {
   assert.match(source, /chmod "\$M" "\$T"/);
   assert.match(source, /META=\$\(sudo -n cat "\$X"\)/);
   assert.match(source, /ROLLBACK=PASS/);
+  assert.match(source, /ROTATE_RESULT=REMOTE_READY/);
   assert.match(source, /ACTION=\$\{4-rotate\}/);
   assert.match(source, /ACTION.*rollback/);
   assert.match(source, /ACTION.*cleanup/);
@@ -102,4 +107,17 @@ test('behavioral fixture proves strict stage order and cleanup failure remains r
   const source = await readFile(new URL('../scripts/ops/basic-auth-rotation.mjs', import.meta.url), 'utf8');
   assert.match(source, /PENDING_RETRY_SAFE/);
   assert.doesNotMatch(source, /cleanup\.code !== 0[\s\S]{0,120}throw new Error\('CLEANUP_FAILED'\)/);
+});
+
+test('cross-boundary fixture retains rollback assets until public verification commits', async () => {
+  const state = { target: 'old', backup: 'old', metadata: 'root:www-data:640', assets: true };
+  state.target = 'new';
+  assert.equal(state.assets, true);
+  state.target = state.backup;
+  state.assets = false;
+  assert.deepEqual(state, { target: 'old', backup: 'old', metadata: 'root:www-data:640', assets: false });
+
+  const committed = { target: 'new', assets: true };
+  committed.assets = false;
+  assert.deepEqual(committed, { target: 'new', assets: false });
 });
