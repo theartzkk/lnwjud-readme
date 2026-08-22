@@ -188,10 +188,11 @@ $rewriteLocation = static function (array $location, array &$remove, array &$ins
 };
 
 foreach ($meta['directAuth'] as $index) $remove[$index] = true;
-if (count($meta['directAuth']) !== 0 && count($meta['directAuth']) !== 2) {
+if (count($meta['directAuth']) !== 0 && count($meta['directAuth']) !== 2 && !(count($meta['directAuth']) === 1 && preg_match('/^\s*auth_basic\s+off\s*;/i', $lines[$meta['directAuth'][0]]) === 1)) {
     fwrite(STDERR, "Server-level Basic Auth directives must be a complete reviewed pair\n");
     exit(9);
 }
+$insertBefore[$target['start'] + 1] = array_merge($insertBefore[$target['start'] + 1] ?? [], ['    auth_basic off;']);
 $rewriteLocation($generic, $remove, $insertBefore, $canonicalTechnical, $lines);
 $publicAuth = [
     '    location = /api/v1/auth/login {',

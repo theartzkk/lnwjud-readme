@@ -73,6 +73,7 @@ test('owner-auth transformation matches the real ReadyIDC topology and is idempo
     const rendered = await readFile(first, 'utf8');
     assert.equal(rendered, await readFile(second, 'utf8'));
     const authoritativeHead = rendered.slice(0, rendered.indexOf('    location'));
+    assert.match(authoritativeHead, /^    auth_basic off;$/m);
     assert.doesNotMatch(authoritativeHead, /^\s*auth_basic "AWH Remote Preview";/m);
     assert.doesNotMatch(authoritativeHead, /^\s*auth_basic_user_file \/etc\/nginx\/\.awh-preview-users;/m);
     assert.match(rendered, /location \^~ \/api\/v1\/ \{\n        auth_basic "AWH Remote Preview";/);
