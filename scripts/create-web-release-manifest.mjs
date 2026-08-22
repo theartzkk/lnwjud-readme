@@ -18,7 +18,10 @@ for (const name of files) {
   const content = await readFile(path);
   entries.push({ path: name, sha256: createHash('sha256').update(content).digest('hex'), sizeBytes: content.byteLength });
 }
-const manifest = { schemaVersion: 1, releaseId, product: 'AWH Web Read-Only Preview', generatedAt: process.env.AWH_PREVIEW_GENERATED_AT ?? new Date().toISOString(), files: entries };
+const mode = JSON.parse(await readFile(join(input, 'web-config.json'), 'utf8')).mode;
+if (!['STATIC_PREVIEW', 'HUB_READ', 'CONTROL'].includes(mode)) throw new Error('Web release mode is invalid');
+const product = mode === 'CONTROL' ? 'AWH Control Panel' : 'AWH Web Read-Only Preview';
+const manifest = { schemaVersion: 1, releaseId, product, generatedAt: process.env.AWH_PREVIEW_GENERATED_AT ?? new Date().toISOString(), files: entries };
 await mkdir(resolve(output, '..'), { recursive: true });
 await writeFile(output, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 process.stdout.write(`${output}\n`);

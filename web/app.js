@@ -1,5 +1,5 @@
 import { loadWebData } from './hub-read-adapter.js';
-import { changePassword, createRecoveryCodes, decideApproval, listAuthSessions, loadControlData, openMobileSession, recover, revokeAuthSession, submitGoal, login, logout } from './control-plane-adapter.js';
+import { changePassword, changeUsername, createRecoveryCodes, decideApproval, listAuthSessions, loadControlData, openMobileSession, recover, revokeAuthSession, submitGoal, login, logout } from './control-plane-adapter.js';
 
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -9,6 +9,9 @@ import { changePassword, createRecoveryCodes, decideApproval, listAuthSessions, 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => undefined);
 
   function render(data) {
+    const isControlSurface = data.preview?.mode === 'CONTROL' || data.preview?.mode === 'CONTROL_SIGN_IN';
+    const legacyPreview = $('legacy-preview'); if (legacyPreview) legacyPreview.hidden = isControlSurface;
+    const legacyStatus = $('legacy-status'); if (legacyStatus) legacyStatus.hidden = isControlSurface;
     text('product-name', data.product.name);
     text('product-tagline', data.product.tagline);
     text('preview-label', data.preview.label);
@@ -92,11 +95,22 @@ import { changePassword, createRecoveryCodes, decideApproval, listAuthSessions, 
   $('control-password-change-button')?.addEventListener('click', async () => {
     const message = $('control-password-change-message'); message.textContent = 'กำลังเปลี่ยนรหัสผ่าน...';
     try {
+      if ($('control-new-password').value !== $('control-confirm-password').value) throw new Error('กรุณายืนยันรหัสผ่านใหม่ให้ตรงกัน');
       await changePassword($('control-old-password').value, $('control-new-password').value);
-      $('control-old-password').value = ''; $('control-new-password').value = '';
+      $('control-old-password').value = ''; $('control-new-password').value = ''; $('control-confirm-password').value = '';
       message.textContent = 'เปลี่ยนรหัสผ่านแล้ว กรุณาเข้าสู่ AWH อีกครั้ง';
       setTimeout(() => window.location.reload(), 600);
     } catch (error) { message.textContent = error instanceof Error ? error.message : 'เปลี่ยนรหัสผ่านไม่สำเร็จ'; }
+  });
+
+  $('control-username-change-button')?.addEventListener('click', async () => {
+    const message = $('control-username-change-message'); message.textContent = 'กำลังบันทึกชื่อผู้ใช้...';
+    try {
+      await changeUsername($('control-identity-password').value, $('control-new-username').value);
+      $('control-identity-password').value = '';
+      message.textContent = 'บันทึกชื่อผู้ใช้แล้ว กรุณาเข้าสู่ AWH อีกครั้ง';
+      setTimeout(() => window.location.reload(), 600);
+    } catch (error) { message.textContent = error instanceof Error ? error.message : 'เปลี่ยนชื่อผู้ใช้ไม่สำเร็จ'; }
   });
 
   $('control-sessions-button')?.addEventListener('click', async () => {

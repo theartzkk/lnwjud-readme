@@ -91,6 +91,32 @@ final class HubOwnerAuthService
         $now = gmdate('c'); $this->pdo->prepare('UPDATE owner_passwords SET password_hash = :hash, password_changed_at = :at WHERE user_id = :user')->execute(['hash' => self::hashPassword($newPassword), 'at' => $now, 'user' => $row['user_id']]); $this->pdo->prepare('UPDATE control_sessions SET revoked_at = :at WHERE user_id = :user AND revoked_at IS NULL')->execute(['at' => $now, 'user' => $row['user_id']]); $this->audit((string) $row['user_id'], 'password_changed', $now);
     }
 
+    /** Rename the existing owner login identity; it never creates another owner. */
+    public function changeUsername(string $token, string $csrf, string $currentPassword, string $newUsername): void
+    {
+        $row = $this->authorize($token, $csrf); $newUsername = self::username($newUsername);
+        $q = $this->pdo->prepare('SELECT password_hash, username FROM owner_passwords WHERE user_id = :user AND enabled = 1'); $q->execute(['user' => $row['user_id']]); $record = $q->fetch();
+        if (!is_array($record) || !is_string($record['password_hash']) || !password_verify($currentPassword, $record['password_hash'])) throw new HubOwnerAuthException('Current password is incorrect', 'AUTH_FAILED');
+        if (hash_equals((string) $record['username'], $newUsername)) return;
+        $now = gmdate('c');
+        try {
+            $this->pdo->beginTransaction();
+            $update = $this->pdo->prepare('UPDATE owner_passwords SET username = :username, password_changed_at = :at WHERE user_id = :user AND enabled = 1');
+            $update->execute(['username' => $newUsername, 'at' => $now, 'user' => $row['user_id']]);
+            if ($update->rowCount() !== 1) throw new RuntimeException('owner identity changed');
+            $this->pdo->prepare('UPDATE control_sessions SET revoked_at = :at WHERE user_id = :user AND revoked_at IS NULL')->execute(['at' => $now, 'user' => $row['user_id']]);
+            $this->audit((string) $row['user_id'], 'username_changed', $now);
+            $this->pdo->commit();
+        } catch (PDOException $error) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw new HubOwnerAuthException('Username is not available', 'USERNAME_UNAVAILABLE');
+        } catch (Throwable $error) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            if ($error instanceof HubOwnerAuthException) throw $error;
+            throw new HubOwnerAuthException('Owner username could not be changed', 'AUTH_UNAVAILABLE');
+        }
+    }
+
     public function createRecoveryCodesForSession(string $token, string $csrf): array { $row = $this->authorize($token, $csrf); return $this->createRecoveryCodes((string) $row['user_id'], gmdate('c')); }
 
     public function recover(string $username, string $recoveryCode, string $newPassword, ?string $now = null, ?string $rateKey = null): void

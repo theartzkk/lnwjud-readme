@@ -13,12 +13,15 @@ if (!args.includes('--deploy') || !args.includes('--approve')) {
 }
 const deployArgs = ['--deploy', '--approve', '--owner-auth'];
 if (args.includes('--cleanup-topology')) deployArgs.push('--cleanup-topology');
+const compatibilityRefresh = args.includes('--compat-refresh');
+if (compatibilityRefresh) deployArgs.push('--compat-refresh');
+const ownerUsername = process.env.AWH_OWNER_AUTH_USERNAME || 'art';
 
 function runDeploy(password) {
   return new Promise((resolve) => {
     const child = spawn('/bin/sh', [deployScript, ...deployArgs], {
       cwd: ROOT,
-      env: { ...process.env, AWH_OWNER_AUTH_USERNAME: 'art' },
+      env: { ...process.env, AWH_OWNER_AUTH_USERNAME: ownerUsername },
       shell: false,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -45,10 +48,14 @@ const store = createProductionCredentialStore();
 let password = '';
 let keychainOwned = false;
 try {
-  if (await store.get(OWNER_AUTH_PASSWORD_CREDENTIAL_KEY)) throw new Error('OWNER_AUTH_KEYCHAIN_ALREADY_PRESENT');
-  password = randomBytes(32).toString('base64url');
-  await store.set(OWNER_AUTH_PASSWORD_CREDENTIAL_KEY, password);
-  keychainOwned = true;
+  const existing = await store.get(OWNER_AUTH_PASSWORD_CREDENTIAL_KEY);
+  if (compatibilityRefresh) {
+    if (!existing) throw new Error('OWNER_AUTH_KEYCHAIN_MISSING_FOR_COMPAT_REFRESH');
+    password = existing;
+  } else {
+    if (existing) throw new Error('OWNER_AUTH_KEYCHAIN_ALREADY_PRESENT');
+    password = randomBytes(32).toString('base64url');
+  }
   const result = await runDeploy(password);
   for (const line of safeLines(result.stdout)) process.stdout.write(`${line}\n`);
   if (result.overflow) throw new Error('OWNER_AUTH_OUTPUT_BOUND_EXCEEDED');
@@ -57,11 +64,13 @@ try {
       process.stdout.write('OWNER_AUTH_STATE_UNCERTAIN=YES\n');
       throw new Error('OWNER_AUTH_REMOTE_STATE_UNCERTAIN');
     }
-    await store.delete(OWNER_AUTH_PASSWORD_CREDENTIAL_KEY);
-    keychainOwned = false;
     throw new Error('OWNER_AUTH_ACTIVATION_FAILED');
   }
-  process.stdout.write('OWNER_AUTH_ACTIVATION=PASS\nOWNER_AUTH_KEYCHAIN=PASS\nRECOVERY_CODES=REGENERATE_IN_CONTROL_PANEL\n');
+  if (!compatibilityRefresh) {
+    await store.set(OWNER_AUTH_PASSWORD_CREDENTIAL_KEY, password);
+    keychainOwned = true;
+  }
+  process.stdout.write(`${compatibilityRefresh ? 'OWNER_AUTH_COMPAT_REFRESH' : 'OWNER_AUTH_ACTIVATION'}=PASS\nOWNER_AUTH_KEYCHAIN=PASS\nRECOVERY_CODES=REGENERATE_IN_CONTROL_PANEL\n`);
   process.stdout.write(`KEYCHAIN_OPERATOR_COMMAND=${operatorCommand}\n`);
 } catch (error) {
   if (keychainOwned && error?.message !== 'OWNER_AUTH_REMOTE_STATE_UNCERTAIN') {

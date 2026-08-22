@@ -14,6 +14,31 @@ AWH_RELEASE_COMMIT=<exact-reviewed-release-sha> \
 npm run ops:owner-auth:activate
 ```
 
+For a production that is already at schema v5 with its existing owner binding,
+use the bounded code/runtime compatibility refresh instead. It rebuilds the
+CONTROL PWA from the exact release, validates the M4/M5 capability ledgers and
+existing owner credential, then refreshes only release/web/Nginx pointers. It
+does not replay a migration, provision a password, or register a project:
+
+```sh
+cd /Users/mac/Documents/ChatGPT/lnwjud-readme
+AWH_SOURCE_ROOT=/Users/mac/Documents/ChatGPT/lnwjud-readme \
+AWH_DEPLOY_TARGET=awh-ready \
+AWH_HUB_HOSTNAME=157-85-108-142.sslip.io \
+AWH_RELEASE_COMMIT=<exact-reviewed-release-sha> \
+npm run ops:owner-auth:activate -- --compat-refresh
+```
+
+The compatibility refresh proves the browser-shaped sequence
+login (exact Origin) → session/projects (same-origin Fetch Metadata with no
+Origin) before it reports success. It retains no session cookie or password in
+deployment output.
+
+`art` is the first-install default only. Once the owner changes their username
+through Control Panel, an explicitly supplied `AWH_OWNER_AUTH_USERNAME` is used
+for a later live golden-login verification; the capability gate itself always
+checks the one canonical owner binding rather than a hard-coded name.
+
 The local wrapper generates the initial password in process memory, stores it
 in the existing macOS Keychain boundary, and sends it only through stdin to
 the fixed remote helper. It never prints the password or recovery codes. The

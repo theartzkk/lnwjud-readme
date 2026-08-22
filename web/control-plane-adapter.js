@@ -13,8 +13,20 @@ async function json(response) {
   let value;
   try { value = JSON.parse(body); } catch { throw new Error('AWH response is invalid'); }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('AWH response is invalid');
-  if (!response.ok) throw new Error(typeof value.message === 'string' ? value.message : 'AWH request was rejected');
+  if (!response.ok) throw new Error(safeErrorMessage(value));
   return value;
+}
+
+function safeErrorMessage(value) {
+  const code = typeof value?.code === 'string' ? value.code : '';
+  return ({
+    AUTH_FAILED: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง',
+    SESSION_INVALID: 'กรุณาเข้าสู่ AWH อีกครั้ง',
+    SESSION_EXPIRED: 'เซสชันหมดอายุ กรุณาเข้าสู่ AWH อีกครั้ง',
+    ORIGIN_FORBIDDEN: 'ไม่สามารถยืนยันความปลอดภัยของหน้านี้ได้ กรุณารีเฟรชแล้วลองใหม่',
+    CSRF_REJECTED: 'ไม่สามารถยืนยันคำขอได้ กรุณารีเฟรชแล้วลองใหม่',
+    PROJECT_FORBIDDEN: 'โปรเจกต์นี้ไม่พร้อมใช้งานสำหรับบัญชีของคุณ',
+  })[code] || 'AWH ไม่สามารถดำเนินการได้ในขณะนี้';
 }
 
 export async function controlRequest(path, init = {}, fetchImpl = globalThis.fetch) {
@@ -42,6 +54,7 @@ export async function loadAuthSession() { return controlRequest('/api/v1/auth/se
 export async function logout() { return controlRequest('/api/v1/auth/logout', { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
 export async function logoutAll() { return controlRequest('/api/v1/auth/logout-all', { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
 export async function changePassword(oldPassword, newPassword) { return controlRequest('/api/v1/auth/password', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, oldPassword, newPassword }) }); }
+export async function changeUsername(currentPassword, username) { return controlRequest('/api/v1/auth/identity', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, currentPassword, username: username.trim() }) }); }
 export async function createRecoveryCodes() { return controlRequest('/api/v1/auth/recovery-codes', { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
 export async function recover(username, recoveryCode, newPassword) { return controlRequest('/api/v1/auth/recover', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, username, recoveryCode, newPassword }) }); }
 export async function listAuthSessions() { return controlRequest('/api/v1/auth/sessions'); }

@@ -2,6 +2,15 @@
 
 ## NOW
 
+- Release the owner-access browser-runtime compatibility candidate only after
+  the exact SHA is reviewed: it must fix Safari same-origin safe GET handling,
+  build a generic CONTROL PWA from the locked source, and use the v5
+  no-migration compatibility-refresh path. The post-release gate is a real
+  browser-shaped login → session → projects flow, not a backend status check.
+- After successful sign-in, set a memorable owner username/password in Control
+  Panel and retain a revocable remembered-device session; Keychain is not a
+  normal-user dependency after the initial activation credential.
+
 - Close the current owner-auth deployment candidate using the shared incident rule: prove the effective HTTPS route, application response, web `www-data` access, login/session and rollback as separate gates. Do not retry the rolled-back `055484d7ac9a4b9e5676ab5312518f8c722fd705`; require a new exact SHA and one bounded approval.
 
 - Review the owner-auth v4→v5 deployment/rollback package and request one bounded production approval only after parity checks pass.

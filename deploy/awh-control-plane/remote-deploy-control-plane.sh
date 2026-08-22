@@ -4,7 +4,7 @@
 # only. Raw stderr and all secret-bearing diagnostics are intentionally hidden.
 set -eu
 exec 2>/dev/null
-DB=$1; REMOTE_ROOT=$2; REMOTE_STAGE=$3; RELEASE=$4; RELEASE_ID=$5; NGINX_CONFIG=$6; HOSTNAME=$7; AWH_FPM_SOCKET=$8; AWH_FPM_SERVICE=$9; CLEANUP_TOPOLOGY=${10}; OWNER_USERNAME=${11}; OWNER_AUTH_ENABLED=${12}; REMOTE_SCRIPT=${13}
+DB=$1; REMOTE_ROOT=$2; REMOTE_STAGE=$3; RELEASE=$4; RELEASE_ID=$5; NGINX_CONFIG=$6; HOSTNAME=$7; AWH_FPM_SOCKET=$8; AWH_FPM_SERVICE=$9; CLEANUP_TOPOLOGY=${10}; OWNER_USERNAME=${11}; OWNER_AUTH_ENABLED=${12}; REMOTE_SCRIPT=${13}; COMPAT_REFRESH=${14}
 case "$DB" in /var/lib/awh-hub/*|/opt/awh-hub/*|/srv/awh/*) ;; *) exit 20 ;; esac
 case "$REMOTE_ROOT" in /opt/awh-hub) ;; *) exit 20 ;; esac
 case "$REMOTE_STAGE" in /tmp/awh-control-plane-*.tar.gz) ;; *) exit 20 ;; esac
@@ -15,9 +15,11 @@ case "$HOSTNAME" in ''|*[!A-Za-z0-9.-]*|.*|*.) exit 20 ;; esac
 printf '%s' "$AWH_FPM_SOCKET" | grep -Eq '^/run/php/php[0-9]+\.[0-9]+-fpm-awh\.sock$' || exit 20
 printf '%s' "$AWH_FPM_SERVICE" | grep -Eq '^php[0-9]+\.[0-9]+-fpm\.service$' || exit 20
 case "$CLEANUP_TOPOLOGY" in 0|1) ;; *) exit 20 ;; esac
-case "$OWNER_USERNAME" in art) ;; *) exit 20 ;; esac
+case "$OWNER_USERNAME" in [A-Za-z][A-Za-z0-9._-][A-Za-z0-9._-]* ) ;; *) exit 20 ;; esac
+test "${#OWNER_USERNAME}" -ge 3 && test "${#OWNER_USERNAME}" -le 64 || exit 20
 case "$OWNER_AUTH_ENABLED" in 1) ;; *) exit 20 ;; esac
 case "$REMOTE_SCRIPT" in /tmp/awh-control-plane-*.sh) ;; *) exit 20 ;; esac
+case "$COMPAT_REFRESH" in 0|1) ;; *) exit 20 ;; esac
 
 IFS= read -r OWNER_PASSWORD || exit 20
 case "$OWNER_PASSWORD" in ''|*[!A-Za-z0-9._~-]*) exit 20 ;; esac
@@ -132,7 +134,7 @@ verify_owner_auth_login() {
   grep -q 'awh_csrf' "$OWNER_AUTH_COOKIE_JAR"
   OWNER_PASSWORD=
 }
-verify_web_access() { sudo -n -u www-data test -x /var; sudo -n -u www-data test -x /var/www; sudo -n -u www-data test -x /var/www/awh-web; sudo -n -u www-data test -x /var/www/awh-web/releases; sudo -n -u www-data test -x "$WEB_RELEASE"; sudo -n -u www-data test -r "$WEB_RELEASE/index.html"; }
+verify_web_access() { sudo -n -u www-data test -x /var; sudo -n -u www-data test -x /var/www; sudo -n -u www-data test -x /var/www/awh-web; sudo -n -u www-data test -x /var/www/awh-web/releases; sudo -n -u www-data test -x "$WEB_RELEASE"; sudo -n -u www-data test -r "$WEB_RELEASE/index.html"; sudo grep -q '"mode": "CONTROL"' "$WEB_RELEASE/web-config.json"; sudo grep -q '"mode": "CONTROL"' "$WEB_RELEASE/data.json"; ! sudo grep -q 'Remote Preview\|Preview only\|static build' "$WEB_RELEASE/data.json"; sudo grep -q "awh-shell-$RELEASE_ID" "$WEB_RELEASE/sw.js"; }
 pointer_capture() { PREVIOUS_POINTER=ABSENT; PREVIOUS_TARGET=; if test -L "$POINTER"; then PREVIOUS_TARGET=$(readlink "$POINTER"); case "$PREVIOUS_TARGET" in /opt/awh-hub/control-releases/*) test -d "$PREVIOUS_TARGET" || return 1 ;; *) return 1 ;; esac; PREVIOUS_POINTER=PRESENT; elif test -e "$POINTER"; then return 1; fi; }
 pointer_restore() { if test "$PREVIOUS_POINTER" = ABSENT; then sudo rm -f "$POINTER"; test ! -e "$POINTER" && test ! -L "$POINTER"; else sudo rm -f "$POINTER"; sudo ln -s "$PREVIOUS_TARGET" "$POINTER"; test "$(readlink "$POINTER")" = "$PREVIOUS_TARGET"; fi; }
 web_pointer_capture() { WEB_PREVIOUS=ABSENT; WEB_TARGET=; if test -L "$WEB_POINTER"; then WEB_TARGET=$(readlink "$WEB_POINTER"); case "$WEB_TARGET" in /var/www/awh-web/releases/*) test -d "$WEB_TARGET" || return 1 ;; *) return 1 ;; esac; WEB_PREVIOUS=PRESENT; elif test -e "$WEB_POINTER"; then return 1; fi; }
@@ -181,23 +183,43 @@ sudo install -d -o awh-hub -g awh-hub -m 0750 "$RELEASE"; RELEASE_CREATED=1; sud
 OWNER_AUTH_SETUP=$RELEASE/hub/bin/setup-owner-auth.php; OWNER_AUTH_RUNTIME=$RELEASE/hub/bin/verify-owner-auth-runtime.php; OWNER_AUTH_TRANSFORM=$RELEASE/deploy/nginx/transform-owner-auth.php; CONTROL_ORIGIN_RENDER=$RELEASE/deploy/nginx/render-control-plane-include.php; CONTROL_INCLUDE=$RELEASE/deploy/nginx/awh-control-plane.conf; CONTROL_INCLUDE_TMP=/tmp/awh-control-include-$RELEASE_ID.conf
 stage CONTROL_ORIGIN_RENDER; sudo /usr/bin/php "$CONTROL_ORIGIN_RENDER" "$CONTROL_INCLUDE" "$CONTROL_INCLUDE_TMP" "$HOSTNAME" "$AWH_FPM_SOCKET" >/dev/null; sudo test -s "$CONTROL_INCLUDE_TMP"; sudo install -o awh-hub -g awh-hub -m 0644 "$CONTROL_INCLUDE_TMP" "$CONTROL_INCLUDE"; sudo rm -f "$CONTROL_INCLUDE_TMP"; CONTROL_INCLUDE_TMP=
 stage NGINX_CUTOVER_PREPARE; sudo /usr/bin/php "$OWNER_AUTH_TRANSFORM" "$NGINX_CONFIG" "$NGINX_CANDIDATE" "$HOSTNAME" "$AWH_FPM_SOCKET" >/dev/null; sudo test -s "$NGINX_CANDIDATE"; sudo chown root:root "$NGINX_CANDIDATE"; sudo chmod 0644 "$NGINX_CANDIDATE"
-DB_MUTATED=1; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/migrate-m4.php" "$DB" "$RELEASE/hub/migrations/003_m4_control_plane.sql" >/dev/null; stage MIGRATION_FIRST_PASS
-sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/migrate-m4.php" "$DB" "$RELEASE/hub/migrations/003_m4_control_plane.sql" >/dev/null; stage MIGRATION_IDEMPOTENT
-test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 4
-test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm4-control-plane';")" = 1
-test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok
-test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
-stage MIGRATION_VERIFIED
-sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/migrate-owner-auth.php" "$DB" "$RELEASE/hub/migrations/004_owner_auth.sql" >/dev/null; stage OWNER_AUTH_MIGRATION_FIRST
-sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/migrate-owner-auth.php" "$DB" "$RELEASE/hub/migrations/004_owner_auth.sql" >/dev/null; stage OWNER_AUTH_MIGRATION_IDEMPOTENT
-test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 5
-test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm5-owner-auth';")" = 1
-test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok
-test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
-stage OWNER_AUTH_VERIFIED
-stage OWNER_AUTH_RUNTIME; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$OWNER_AUTH_RUNTIME" >/dev/null
-stage OWNER_AUTH_PROVISION; printf '%s\n' "$OWNER_PASSWORD" | sudo -n -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$OWNER_AUTH_SETUP" "$OWNER_USERNAME" >/dev/null; test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM owner_passwords WHERE username = '$OWNER_USERNAME' AND enabled = 1 AND length(password_hash) > 20;")" = 1; test "$(sudo sqlite3 "$DB" 'SELECT count(*) FROM owner_passwords;')" = 1
-sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/register-m4-projects.php" >/dev/null; stage PROJECTS_READY
+if test "$COMPAT_REFRESH" = 1; then
+  # A v5 compatibility refresh is code/pointer-only. It proves the existing
+  # M4/M5 capability records and owner binding without replaying migrations,
+  # seeding projects, or replacing the owner's credential.
+  stage OWNER_AUTH_COMPATIBILITY
+  test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 5
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm4-control-plane' AND schema_version = 4;")" = 1
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm5-owner-auth' AND schema_version = 5;")" = 1
+  test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok
+  test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
+  stage OWNER_AUTH_RUNTIME; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$OWNER_AUTH_RUNTIME" >/dev/null
+  # The compatibility refresh validates the canonical existing owner binding,
+  # rather than assuming that the owner still uses the installation default
+  # username.  The supplied username is used only by the live golden-login
+  # verifier and may be changed deliberately through Control Panel security.
+  test "$(sudo sqlite3 "$DB" 'SELECT count(*) FROM owner_bootstrap b JOIN owner_passwords p ON p.user_id = b.owner_user_id WHERE b.singleton_id = 1 AND b.bootstrap_closed = 1 AND p.enabled = 1 AND length(p.password_hash) > 20;')" = 1
+  test "$(sudo sqlite3 "$DB" 'SELECT count(*) FROM owner_passwords;')" = 1
+  stage PROJECTS_READY
+else
+  DB_MUTATED=1; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/migrate-m4.php" "$DB" "$RELEASE/hub/migrations/003_m4_control_plane.sql" >/dev/null; stage MIGRATION_FIRST_PASS
+  sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/migrate-m4.php" "$DB" "$RELEASE/hub/migrations/003_m4_control_plane.sql" >/dev/null; stage MIGRATION_IDEMPOTENT
+  test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 4
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm4-control-plane';")" = 1
+  test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok
+  test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
+  stage MIGRATION_VERIFIED
+  sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/migrate-owner-auth.php" "$DB" "$RELEASE/hub/migrations/004_owner_auth.sql" >/dev/null; stage OWNER_AUTH_MIGRATION_FIRST
+  sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/migrate-owner-auth.php" "$DB" "$RELEASE/hub/migrations/004_owner_auth.sql" >/dev/null; stage OWNER_AUTH_MIGRATION_IDEMPOTENT
+  test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 5
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm5-owner-auth';")" = 1
+  test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok
+  test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
+  stage OWNER_AUTH_VERIFIED
+  stage OWNER_AUTH_RUNTIME; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$OWNER_AUTH_RUNTIME" >/dev/null
+  stage OWNER_AUTH_PROVISION; printf '%s\n' "$OWNER_PASSWORD" | sudo -n -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$OWNER_AUTH_SETUP" "$OWNER_USERNAME" >/dev/null; test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM owner_passwords WHERE username = '$OWNER_USERNAME' AND enabled = 1 AND length(password_hash) > 20;")" = 1; test "$(sudo sqlite3 "$DB" 'SELECT count(*) FROM owner_passwords;')" = 1
+  sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/register-m4-projects.php" >/dev/null; stage PROJECTS_READY
+fi
 sudo rm -f "$POINTER_TMP"; sudo ln -s "$RELEASE" "$POINTER_TMP"; sudo mv -Tf "$POINTER_TMP" "$POINTER"; POINTER_CHANGED=1; test "$(readlink "$POINTER")" = "$RELEASE"; stage CONTROL_POINTER
 stage PHP_FPM_RELOAD; reload_awh_php_fpm
 web_pointer_capture; sudo install -d -o awh-hub -g www-data -m 0750 /var/www/awh-web/releases; if sudo test -e "$WEB_RELEASE" || sudo test -L "$WEB_RELEASE"; then exit 20; fi; sudo install -d -o awh-hub -g www-data -m 0750 "$WEB_RELEASE"; WEB_CREATED=1; stage WEB_RELEASE_COPY; sudo cp -a "$RELEASE/dist-web/." "$WEB_RELEASE/"; sudo chown -R awh-hub:www-data "$WEB_RELEASE"; sudo find "$WEB_RELEASE" -type d -exec chmod 0750 {} +; sudo find "$WEB_RELEASE" -type f -exec chmod 0640 {} +; stage WEB_ACCESS_READY; verify_web_access; stage WEB_POINTER_SWITCH; sudo rm -f "$WEB_POINTER_TMP"; sudo ln -s "$WEB_RELEASE" "$WEB_POINTER_TMP"; sudo mv -Tf "$WEB_POINTER_TMP" "$WEB_POINTER"; WEB_POINTER_CHANGED=1; test "$(readlink "$WEB_POINTER")" = "$WEB_RELEASE"; stage WEB_RELEASE_STAGED
@@ -206,8 +228,9 @@ stage SERVICE_RELOAD; sudo systemctl reload nginx
 stage OWNER_AUTH_EFFECTIVE_CONFIG; verify_owner_auth_effective_config
 stage OWNER_AUTH_SURFACE; verify_owner_auth_surface
 stage OWNER_AUTH_LOGIN; verify_owner_auth_login
-stage OWNER_AUTH_SESSION; session_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H "Origin: https://$HOSTNAME" -b "$OWNER_AUTH_COOKIE_JAR" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/auth/session" 2>/dev/null || printf 000); test "$session_code" = 200; cleanup_owner_auth_cookie_files
-stage OWNER_AUTH_WEB_SURFACE; root_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/" 2>/dev/null || printf 000); test "$root_code" = 200; preview_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/preview/" 2>/dev/null || printf 000); test "$preview_code" = 401
+stage OWNER_AUTH_SESSION; session_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H 'Sec-Fetch-Site: same-origin' -b "$OWNER_AUTH_COOKIE_JAR" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/auth/session" 2>/dev/null || printf 000); test "$session_code" = 200
+stage OWNER_AUTH_CONTROL; projects_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H 'Sec-Fetch-Site: same-origin' -b "$OWNER_AUTH_COOKIE_JAR" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/projects" 2>/dev/null || printf 000); test "$projects_code" = 200; cleanup_owner_auth_cookie_files
+stage OWNER_AUTH_WEB_SURFACE; root_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/" 2>/dev/null || printf 000); test "$root_code" = 200; control_config_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /tmp/awh-control-web-config-$RELEASE_ID.json -w '%{http_code}' "https://$HOSTNAME/web-config.json" 2>/dev/null || printf 000); test "$control_config_code" = 200; grep -q '"mode": "CONTROL"' /tmp/awh-control-web-config-$RELEASE_ID.json; sudo rm -f /tmp/awh-control-web-config-$RELEASE_ID.json; preview_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/preview/" 2>/dev/null || printf 000); test "$preview_code" = 401
 stage M3D_REGRESSION; verify_m3d
 stage M3E_POST_SCHEMA_REGRESSION; verify_m3e_after_m4
 stage CONTROL_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/session" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403

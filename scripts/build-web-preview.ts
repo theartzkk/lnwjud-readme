@@ -37,9 +37,24 @@ function generatedAt(): string {
 }
 
 async function main(): Promise<void> {
-  const context = await buildProjectContext(ROOT);
-  const memory = Object.fromEntries(MEMORY_FILES.map((file) => [file, context.memory[file] === null ? 'missing' : 'present']));
-  const data = {
+  const webMode = process.env.AWH_WEB_MODE === 'CONTROL' || process.argv.includes('--control') ? 'CONTROL' : 'STATIC_PREVIEW';
+  const releaseId = process.env.AWH_WEB_RELEASE_ID ?? process.env.AWH_RELEASE_ID ?? 'local';
+  if (!/^[A-Za-z0-9._-]{1,80}$/.test(releaseId)) throw new Error('AWH web release identity is invalid');
+  const context = webMode === 'CONTROL' ? null : await buildProjectContext(ROOT);
+  const memory = context ? Object.fromEntries(MEMORY_FILES.map((file) => [file, context.memory[file] === null ? 'missing' : 'present'])) : {};
+  const data = webMode === 'CONTROL' ? {
+    schemaVersion: 1,
+    generatedAt: generatedAt(),
+    preview: { mode: 'CONTROL', label: 'AWH Control Panel', status: 'Sign in to continue' },
+    product: { name: PRODUCT.productName, shortName: PRODUCT.shortName, tagline: PRODUCT.tagline },
+    hub: { status: 'พร้อมเข้าสู่ระบบ', summary: 'เข้าสู่ AWH เพื่อดูโปรเจกต์ งาน และผลลัพธ์ของคุณ' },
+    project: { projectId: '', name: 'โปรเจกต์ของคุณ', type: 'CONTROL', milestone: 'เลือกโปรเจกต์หลังเข้าสู่ระบบ', handoffSummary: 'ข้อมูลความต่อเนื่องของโปรเจกต์จะแสดงหลังเข้าสู่ระบบ', memory },
+    devices: { status: 'ใช้บัญชีของคุณ', summary: 'เซสชันนี้ป้องกันด้วยคุกกี้ที่ปลอดภัยและเพิกถอนได้', count: 0 },
+    builds: { status: 'พร้อมใช้งาน', summary: 'AWH Control Panel' },
+    audit: { status: 'ปกป้องข้อมูล', summary: 'ไม่มี credential หรือข้อมูลส่วนตัวใน static release' },
+    tasks: { status: 'เข้าสู่ระบบเพื่อดูงาน', summary: 'งานและผลลัพธ์เชื่อมกับบัญชี AWH ของคุณ', count: 0 },
+    artifacts: { status: 'เข้าสู่ระบบเพื่อดูผลลัพธ์', summary: 'AWH จะแสดงเฉพาะข้อมูลที่ได้รับสิทธิ์', count: 0 },
+  } : {
     schemaVersion: 1,
     generatedAt: generatedAt(),
     preview: {
@@ -57,11 +72,11 @@ async function main(): Promise<void> {
       summary: 'Hub API is not connected in the static build. Local AWH Desktop remains the runtime client.',
     },
     project: {
-      projectId: context.project.projectId,
-      name: context.project.name,
-      type: context.project.type,
+      projectId: context!.project.projectId,
+      name: context!.project.name,
+      type: context!.project.type,
       milestone: 'Autopilot v0.5 — First Usable Product (read-only browser view)',
-      handoffSummary: safeHandoffSummary(context.memory['HANDOFF.md']),
+      handoffSummary: safeHandoffSummary(context!.memory['HANDOFF.md']),
       memory,
     },
     devices: {
@@ -88,7 +103,8 @@ async function main(): Promise<void> {
       count: 0,
     },
   };
-  const webMode = process.env.AWH_WEB_MODE === 'CONTROL' || process.argv.includes('--control') ? 'CONTROL' : 'STATIC_PREVIEW';
+  const serviceWorker = (await asset('sw.js')).replaceAll('__AWH_WEB_RELEASE_ID__', releaseId);
+  if (serviceWorker.includes('__AWH_WEB_RELEASE_ID__')) throw new Error('AWH web release identity was not rendered');
   await mkdir(OUTPUT, { recursive: true });
   await Promise.all([
     writeFile(join(OUTPUT, 'index.html'), await asset('index.html'), 'utf8'),
@@ -97,7 +113,7 @@ async function main(): Promise<void> {
     writeFile(join(OUTPUT, 'hub-read-adapter.js'), await asset('hub-read-adapter.js'), 'utf8'),
     writeFile(join(OUTPUT, 'control-plane-adapter.js'), await asset('control-plane-adapter.js'), 'utf8'),
     writeFile(join(OUTPUT, 'manifest.webmanifest'), await asset('manifest.webmanifest'), 'utf8'),
-    writeFile(join(OUTPUT, 'sw.js'), await asset('sw.js'), 'utf8'),
+    writeFile(join(OUTPUT, 'sw.js'), serviceWorker, 'utf8'),
     copyFile(join(ROOT, 'logo-256x256.png'), join(OUTPUT, 'logo-256x256.png')),
     writeFile(join(OUTPUT, 'web-config.json'), `${JSON.stringify({ schemaVersion: 1, mode: webMode, apiBase: '/api/v1' }, null, 2)}\n`, 'utf8'),
     writeFile(join(OUTPUT, 'data.json'), `${JSON.stringify(data, null, 2)}\n`, 'utf8'),

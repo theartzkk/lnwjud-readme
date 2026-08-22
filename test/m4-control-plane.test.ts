@@ -5,6 +5,7 @@ import test from 'node:test';
 test('M4 control-plane browser adapter uses same-origin session cookies, not bearer storage', async () => {
   const adapter = await readFile(new URL('../web/control-plane-adapter.js', import.meta.url), 'utf8');
   const router = await readFile(new URL('../hub/src/HubControlPlaneRouter.php', import.meta.url), 'utf8');
+  const originPolicy = await readFile(new URL('../hub/src/HubBrowserOriginPolicy.php', import.meta.url), 'utf8');
   assert.match(adapter, /credentials:\s*'include'/);
   assert.doesNotMatch(adapter, /localStorage|sessionStorage|Authorization|accessToken|tokenHash/);
   assert.match(adapter, /X-AWH-CSRF/);
@@ -12,8 +13,12 @@ test('M4 control-plane browser adapter uses same-origin session cookies, not bea
   assert.match(router, /__Host-awh_control_session/);
   assert.match(router, /HttpOnly/);
   assert.match(router, /SameSite=Strict/);
-  assert.match(router, /AWH_CONTROL_ORIGIN/);
+  assert.match(router, /HubBrowserOriginPolicy/);
+  assert.match(originPolicy, /AWH_CONTROL_ORIGIN/);
   assert.match(router, /AUTHORIZATION_IN_URL/);
+  assert.match(originPolicy, /HTTP_SEC_FETCH_SITE/);
+  assert.match(originPolicy, /same-origin/);
+  assert.match(originPolicy, /mutationAllowed/);
 });
 
 test('owner username/password auth reuses the M4 cookie and exposes only bounded session controls', async () => {
@@ -26,6 +31,8 @@ test('owner username/password auth reuses the M4 cookie and exposes only bounded
   assert.match(router, /__Host-awh_control_session/);
   assert.match(router, new RegExp('/api/v1/auth/sessions'));
   assert.match(router, /CSRF_REJECTED|sameOrigin/);
+  assert.match(router, /auth\/identity/);
+  assert.match(adapter, /changeUsername/);
   assert.match(migration, /owner_passwords/);
   assert.match(migration, /auth_recovery_codes/);
   assert.doesNotMatch(`${router}\n${migration}`, /plaintext|password\s+AS|SELECT .*token/i);

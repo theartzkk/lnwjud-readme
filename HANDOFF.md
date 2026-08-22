@@ -2,6 +2,24 @@
 
 ## Current state
 
+### Active field incident — browser runtime, not backend-only
+
+ReadyIDC has a healthy M3E/M4/M5 backend baseline, but the first iPhone owner
+field test exposed a frontend/runtime release mismatch: the live `web-config`
+identified CONTROL while `data.json` still described a static Remote Preview.
+The login request could succeed, then Safari's ordinary same-origin GET with
+`Sec-Fetch-Site: same-origin` and no `Origin` was rejected as
+`ORIGIN_FORBIDDEN`; the UI surfaced that as “This AWH surface is not
+authorized” and could not load projects.
+
+The next candidate closes this whole boundary. It centralizes safe-read versus
+mutation origin rules, produces a generic CONTROL PWA from the exact release,
+uses a release-specific service-worker cache, verifies authenticated
+session→projects during deployment, and provides a v5 compatibility refresh
+that changes only release/web/Nginx pointers—never migrations, owner identity,
+password binding, or projects. Production remains unchanged until that exact
+candidate is approved.
+
 ### Latest owner-auth closure evidence
 
 The source release `055484d7ac9a4b9e5676ab5312518f8c722fd705` was attempted once

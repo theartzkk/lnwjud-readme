@@ -1,4 +1,4 @@
-const CACHE_NAME = 'awh-shell-v1-rc1';
+const CACHE_NAME = 'awh-shell-__AWH_WEB_RELEASE_ID__';
 const APP_SHELL = ['./', './index.html', './styles.css', './app.js', './hub-read-adapter.js', './control-plane-adapter.js', './manifest.webmanifest', './logo-256x256.png'];
 
 self.addEventListener('install', (event) => {

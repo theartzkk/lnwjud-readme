@@ -71,6 +71,22 @@
 
 ## M4 CONTROL-PLANE BOUNDARY
 
+### Browser runtime origin and release contract
+
+- Owner Auth and Control share `HubBrowserOriginPolicy`; they do not maintain
+  copied origin logic. State-changing browser requests require the exact
+  FastCGI-configured `Origin`. Safe GETs with a supplied origin must match it;
+  normal same-origin browser GETs may omit `Origin` only when Fetch Metadata
+  says `same-origin`. Cross-site metadata fails closed.
+- A CONTROL web release is an account-scoped generic PWA shell. It contains no
+  static project identity, Preview wording, credential, or authenticated data.
+  The deployment engine builds it from the exact release SHA and substitutes a
+  release identity into the app-shell cache before staging the web pointer.
+- A v5 compatibility refresh revalidates M4/M5 ledgers/capabilities and the
+  existing owner binding, then atomically refreshes runtime/web/Nginx pointers.
+  It does not replay migrations, seed projects, create an owner, or replace an
+  owner password; rollback restores pointers/Nginx and leaves DB v5 intact.
+
 - The Hub remains a lightweight coordinator: SQLite stores task state/events, worker leases/presence, scoped approvals, sanitized artifact metadata and the password/recovery hashes required for owner auth; it never stores plaintext credentials, source content, workspace paths, large media, or a second Project Memory.
 - Browser session exchange accepts username/password and creates only a bounded server-side session hash plus CSRF hash. The pairing exchange remains compatibility-only. Cookies are Secure, HttpOnly where appropriate, SameSite=Strict, no-store, origin-bound, rate-limited, revocable, and never copied to localStorage/sessionStorage.
 - Goal submission is exact-schema, project-membership checked, bounded, and idempotent. A queued task cannot become RUNNING until an enrolled worker claims it under BEGIN IMMEDIATE; stale worker presence is shown as offline and leases are bounded.

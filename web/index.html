@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="th">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,8 +8,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
-  <meta name="description" content="Art’s Workspace Hub remote read-only preview" />
-  <title>AWH — Remote Preview</title>
+  <meta name="description" content="AWH — Your Projects. One Workspace. Anywhere." />
+  <title>AWH — Control Panel</title>
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="apple-touch-icon" href="./logo-256x256.png" />
   <link rel="stylesheet" href="./styles.css" />
@@ -21,28 +21,28 @@
         <span class="brand-mark">A</span>
         <span><strong id="product-name">Art’s Workspace Hub</strong><small id="product-tagline">Your Projects. One Workspace. Anywhere.</small></span>
       </a>
-      <span id="preview-label" class="status-pill warning">Remote Preview — Read Only</span>
+      <span id="preview-label" class="status-pill warning">กำลังเชื่อมต่อ AWH</span>
     </header>
 
     <main>
       <section class="hero" aria-labelledby="page-title">
         <div>
-          <p class="eyebrow">AWH HUB SURFACE</p>
-          <h1 id="page-title">One calm view of your workspace.</h1>
-          <p class="lead">Portable project identity, continuity, and readiness — presented safely from the Hub preview.</p>
+          <p class="eyebrow">AWH CONTROL PANEL</p>
+          <h1 id="page-title">ทุกโปรเจกต์ของคุณ ในที่ทำงานเดียว</h1>
+          <p class="lead">เลือกโปรเจกต์ ส่ง Goal ติดตามงาน และกลับมาทำต่อได้จากทุกอุปกรณ์</p>
         </div>
         <div class="hub-status card">
           <span class="label">HUB STATUS</span>
           <strong id="hub-status">Loading…</strong>
-          <small id="hub-summary">Read-only preview</small>
+          <small id="hub-summary">กำลังตรวจสอบสถานะ</small>
         </div>
       </section>
 
       <section id="control-panel" class="control-panel card" hidden aria-labelledby="control-title">
-        <div class="card-heading"><div><span class="label">CONTROL PANEL</span><h2 id="control-title">ทำงานต่อจากโทรศัพท์</h2></div><span id="control-state" class="status-pill">—</span></div>
+        <div class="card-heading"><div><span class="label">CONTROL PANEL</span><h2 id="control-title">ทำงานต่อได้ทุกที่</h2></div><span id="control-state" class="status-pill">—</span></div>
         <div id="control-sign-in" class="control-sign-in">
           <p class="muted">เข้าสู่ AWH ด้วยชื่อผู้ใช้และรหัสผ่านของคุณ</p>
-          <div class="control-form"><label for="control-username">ชื่อผู้ใช้</label><input id="control-username" autocomplete="username" inputmode="text" /><label for="control-password">รหัสผ่าน</label><input id="control-password" type="password" autocomplete="current-password" /><label class="remember-row"><input id="control-remember" type="checkbox" /> จดจำการเข้าสู่ระบบบนอุปกรณ์นี้</label><button id="control-login-button" class="control-button">เข้าสู่ AWH</button><p id="control-login-message" class="muted" role="status"></p><details><summary>ตัวเลือกเชื่อมต่ออุปกรณ์เดิม</summary><label for="control-pairing-code">รหัสชั่วคราว</label><input id="control-pairing-code" inputmode="text" autocomplete="one-time-code" maxlength="128" /><button id="control-sign-in-button" class="control-button secondary">เชื่อมต่อ</button></details></div>
+          <div class="control-form"><label for="control-username">ชื่อผู้ใช้</label><input id="control-username" autocomplete="username" inputmode="text" /><label for="control-password">รหัสผ่าน</label><input id="control-password" type="password" autocomplete="current-password" /><label class="remember-row"><input id="control-remember" type="checkbox" checked /> จดจำการเข้าสู่ระบบบนอุปกรณ์นี้</label><button id="control-login-button" class="control-button">เข้าสู่ AWH</button><p id="control-login-message" class="muted" role="status"></p><details><summary>เชื่อมต่ออุปกรณ์เดิม (ขั้นสูง)</summary><p class="muted">ใช้เฉพาะเมื่อคุณได้รับรหัสเชื่อมต่อจากอุปกรณ์ AWH ที่เชื่อถือได้</p><label for="control-pairing-code">รหัสชั่วคราว</label><input id="control-pairing-code" inputmode="text" autocomplete="one-time-code" maxlength="128" /><button id="control-sign-in-button" class="control-button secondary">เชื่อมต่อ</button></details></div>
           <details class="security-details"><summary>กู้คืนการเข้าถึง</summary><p class="muted">ใช้รหัสกู้คืนที่เก็บไว้อย่างปลอดภัยตอนตั้งค่าบัญชี รหัสนี้ใช้ได้ครั้งเดียว</p><label for="control-recovery-code">รหัสกู้คืน</label><input id="control-recovery-code" autocomplete="one-time-code" inputmode="text" /><label for="control-recovery-password">รหัสผ่านใหม่</label><input id="control-recovery-password" type="password" autocomplete="new-password" /><button id="control-recovery-button" class="control-button secondary">ตั้งรหัสผ่านใหม่</button><p id="control-recovery-message" class="muted" role="status"></p></details>
           <p id="control-sign-in-message" class="muted" role="status"></p>
         </div>
@@ -52,12 +52,12 @@
           <label for="control-goal">AWH ควรทำอะไรให้เสร็จ?</label><textarea id="control-goal" maxlength="2000" rows="4" placeholder="เช่น ตรวจปัญหาศูนย์เอกสารล่าสุดและสรุป QA ที่ต้องทำ"></textarea>
           <button id="control-submit" class="control-button">ส่ง Goal</button>
           <p id="control-submit-message" class="muted" role="status"></p>
-          <div class="control-columns"><div><span class="label">WORK</span><div id="control-task-list" class="control-list"></div></div><div><span class="label">WORKERS</span><div id="control-worker-list" class="control-list"></div></div></div><details class="security-details"><summary>ความปลอดภัยของบัญชี</summary><label for="control-old-password">รหัสผ่านปัจจุบัน</label><input id="control-old-password" type="password" autocomplete="current-password" /><label for="control-new-password">รหัสผ่านใหม่</label><input id="control-new-password" type="password" autocomplete="new-password" /><button id="control-password-change-button" class="control-button secondary">เปลี่ยนรหัสผ่าน</button><p id="control-password-change-message" class="muted" role="status"></p><button id="control-recovery-codes-button" class="control-button secondary">สร้างรหัสกู้คืนใหม่</button><pre id="control-recovery-codes" class="muted"></pre><button id="control-sessions-button" class="control-button secondary">ดูเซสชันและอุปกรณ์ที่เข้าสู่ระบบ</button><div id="control-session-list" class="control-list"></div></details><button id="control-logout-button" class="control-button secondary">ออกจาก AWH</button>
+          <div class="control-columns"><div><span class="label">WORK</span><div id="control-task-list" class="control-list"></div></div><div><span class="label">WORKERS</span><div id="control-worker-list" class="control-list"></div></div></div><details class="security-details"><summary>บัญชีและความปลอดภัย</summary><p class="muted">หลังเข้าสู่ครั้งแรก คุณตั้งชื่อผู้ใช้และรหัสผ่านที่จำได้เองได้ทันที รหัสผ่านจะไม่ถูกเก็บในอุปกรณ์</p><label for="control-new-username">ชื่อผู้ใช้ใหม่</label><input id="control-new-username" autocomplete="username" inputmode="text" /><label for="control-identity-password">ยืนยันด้วยรหัสผ่านปัจจุบัน</label><input id="control-identity-password" type="password" autocomplete="current-password" /><button id="control-username-change-button" class="control-button secondary">บันทึกชื่อผู้ใช้ใหม่</button><p id="control-username-change-message" class="muted" role="status"></p><label for="control-old-password">รหัสผ่านปัจจุบัน</label><input id="control-old-password" type="password" autocomplete="current-password" /><label for="control-new-password">รหัสผ่านใหม่ที่คุณจำได้</label><input id="control-new-password" type="password" autocomplete="new-password" /><label for="control-confirm-password">ยืนยันรหัสผ่านใหม่</label><input id="control-confirm-password" type="password" autocomplete="new-password" /><button id="control-password-change-button" class="control-button secondary">บันทึกรหัสผ่านใหม่</button><p id="control-password-change-message" class="muted" role="status"></p><button id="control-recovery-codes-button" class="control-button secondary">สร้างรหัสกู้คืนใหม่</button><pre id="control-recovery-codes" class="muted"></pre><button id="control-sessions-button" class="control-button secondary">จัดการอุปกรณ์ที่เข้าสู่ระบบ</button><div id="control-session-list" class="control-list"></div></details><button id="control-logout-button" class="control-button secondary">ออกจาก AWH</button>
           <div class="control-results"><div class="card-heading"><span class="label">RESULTS</span><span class="bounded">BOUNDED</span></div><div id="control-result-list" class="control-list"></div><div class="card-heading control-approval-heading"><span class="label">APPROVALS</span><span class="bounded">SCOPED</span></div><div id="control-approval-list" class="control-list"></div></div>
         </div>
       </section>
 
-      <section class="project-grid" aria-label="AWH project and continuity status">
+      <section id="legacy-preview" class="project-grid" aria-label="AWH project and continuity status">
         <article id="project-card" class="card project-card">
           <div class="card-heading"><div><span class="label">PROJECT</span><h2 id="project-name">Loading…</h2></div><span id="project-type" class="type-pill">—</span></div>
           <p id="project-id" class="project-id">—</p>
@@ -72,7 +72,7 @@
         </article>
       </section>
 
-      <section class="status-grid" aria-label="Hub operational status">
+      <section id="legacy-status" class="status-grid" aria-label="Hub operational status">
         <article id="device-card" class="card status-card"><span class="label">DEVICES</span><h2 id="device-status">—</h2><p id="device-summary" class="muted">—</p></article>
         <article class="card status-card"><span class="label">TASKS</span><h2 id="tasks-status">—</h2><p id="tasks-summary" class="muted">—</p></article>
         <article class="card status-card"><span class="label">ARTIFACTS</span><h2 id="artifacts-status">—</h2><p id="artifacts-summary" class="muted">—</p></article>
@@ -80,7 +80,7 @@
         <article class="card status-card"><span class="label">AUDIT</span><h2 id="audit-status">—</h2><p id="audit-summary" class="muted">—</p></article>
       </section>
 
-      <footer class="footer"><span>Local-first AWH</span><span>Read-only surface • No source editing • No remote execution</span></footer>
+      <footer class="footer"><span>Art’s Workspace Hub</span><span>โปรเจกต์ งาน และผลลัพธ์ของคุณ</span></footer>
     </main>
   </div>
   <script type="module" src="./app.js"></script>

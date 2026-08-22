@@ -18,6 +18,14 @@ local control, explicit permissions, and recoverable changes.
 
 ## Current implementation status
 
+### Current live owner-access state and field closure
+
+- ReadyIDC is live at schema v5 with the M3E.1, M3E.2, M4 and M5 ledgers; integrity/FK checks, the existing project, and the enrolled Mac identity remain canonical production state.
+- The iPhone field incident proved two shared release defects: a browser same-origin safe GET may omit `Origin` while sending `Sec-Fetch-Site: same-origin`, and a CONTROL web release must never inherit static Preview data from the repository build.
+- The next release uses one shared browser-origin policy: mutations require the exact configured `Origin`; safe reads accept only an exact supplied origin, `same-origin` Fetch Metadata without an origin, or the legacy no-metadata path. Cross-site reads remain rejected.
+- CONTROL PWA builds are generic account shells, not preinstalled-project previews. They are rebuilt from the exact release SHA, carry a release-specific app-shell cache, and are validated before the web pointer can move.
+- Normal owner use is application login: remembered, revocable Secure/HttpOnly sessions; the authenticated Control Panel lets the existing owner set a memorable username and password. No normal browser flow depends on a Keychain password after that first sign-in.
+
 - M1.1 Local QA Engine: closed.
 - M1.2 Product Identity Migration: closed.
 - M1.3A Safe Data Migration Engine: closed.

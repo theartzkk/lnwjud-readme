@@ -140,19 +140,28 @@ test('browser surface has responsive mobile structure and bounded read-only stat
   assert.match(css, /status-grid\{grid-template-columns:1fr\}/);
 });
 
-test('CONTROL web build is installable without caching authenticated or API state', async () => {
-  await runFile(process.execPath, ['--import', 'tsx', 'scripts/build-web-preview.ts', '--control'], { cwd: ROOT, env: { ...process.env, AWH_PREVIEW_GENERATED_AT: '2026-01-01T00:00:00.000Z' } });
-  const [manifest, worker, config] = await Promise.all([
+test('CONTROL web build is a generic application shell without static preview data or cached authenticated state', async () => {
+  await runFile(process.execPath, ['--import', 'tsx', 'scripts/build-web-preview.ts', '--control'], { cwd: ROOT, env: { ...process.env, AWH_PREVIEW_GENERATED_AT: '2026-01-01T00:00:00.000Z', AWH_WEB_RELEASE_ID: 'fixture-control-sha' } });
+  const [manifest, worker, config, data, html] = await Promise.all([
     readFile(join(OUTPUT, 'manifest.webmanifest'), 'utf8'),
     readFile(join(OUTPUT, 'sw.js'), 'utf8'),
     readFile(join(OUTPUT, 'web-config.json'), 'utf8'),
+    readFile(join(OUTPUT, 'data.json'), 'utf8'),
+    readFile(join(OUTPUT, 'index.html'), 'utf8'),
   ]);
   const parsed = JSON.parse(manifest) as Record<string, unknown>;
   assert.equal(parsed.display, 'standalone');
   assert.equal(parsed.short_name, 'AWH');
   assert.equal(JSON.parse(config).mode, 'CONTROL');
-  assert.match(worker, /awh-shell-v1-rc1/);
+  assert.equal(JSON.parse(data).preview.mode, 'CONTROL');
+  assert.doesNotMatch(data, /Remote Preview|Preview only|static build/i);
+  assert.match(worker, /awh-shell-fixture-control-sha/);
+  assert.doesNotMatch(worker, /__AWH_WEB_RELEASE_ID__/);
   assert.match(worker, /url.pathname.includes\('\/api\/'\)/);
   assert.doesNotMatch(worker, /cache.put\([^\n]*api/i);
   assert.match(worker, /skipWaiting/);
+  assert.match(html, /id="legacy-preview"/);
+  assert.match(html, /id="control-remember" type="checkbox" checked/);
+  assert.match(html, /id="control-confirm-password"/);
+  assert.match(html, /id="control-new-username"/);
 });
