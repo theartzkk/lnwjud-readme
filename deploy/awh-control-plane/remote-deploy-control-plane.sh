@@ -4,7 +4,7 @@
 # only. Raw stderr and all secret-bearing diagnostics are intentionally hidden.
 set -eu
 exec 2>/dev/null
-DB=$1; REMOTE_ROOT=$2; REMOTE_STAGE=$3; RELEASE=$4; RELEASE_ID=$5; NGINX_CONFIG=$6; HOSTNAME=$7; AWH_FPM_SOCKET=$8; AWH_FPM_SERVICE=$9; CLEANUP_TOPOLOGY=${10}; OWNER_USERNAME=${11}; OWNER_AUTH_ENABLED=${12}; REMOTE_SCRIPT=${13}; COMPAT_REFRESH=${14}; ASSISTANT_WORKSTREAM=${15}; WORKSPACE_CONTINUITY=${16}; UNIFIED_WORKSPACE=${17}; FINAL_PRODUCT=${18}
+DB=$1; REMOTE_ROOT=$2; REMOTE_STAGE=$3; RELEASE=$4; RELEASE_ID=$5; NGINX_CONFIG=$6; HOSTNAME=$7; AWH_FPM_SOCKET=$8; AWH_FPM_SERVICE=$9; CLEANUP_TOPOLOGY=${10}; OWNER_USERNAME=${11}; OWNER_AUTH_ENABLED=${12}; REMOTE_SCRIPT=${13}; COMPAT_REFRESH=${14}; ASSISTANT_WORKSTREAM=${15}; WORKSPACE_CONTINUITY=${16}; UNIFIED_WORKSPACE=${17}; FINAL_PRODUCT=${18}; FOUNDING_MEMORY=${19}
 case "$DB" in /var/lib/awh-hub/*|/opt/awh-hub/*|/srv/awh/*) ;; *) exit 20 ;; esac
 case "$REMOTE_ROOT" in /opt/awh-hub) ;; *) exit 20 ;; esac
 case "$REMOTE_STAGE" in /tmp/awh-control-plane-*.tar.gz) ;; *) exit 20 ;; esac
@@ -13,8 +13,9 @@ case "$ASSISTANT_WORKSTREAM" in 0|1) ;; *) exit 20 ;; esac
 case "$WORKSPACE_CONTINUITY" in 0|1) ;; *) exit 20 ;; esac
 case "$UNIFIED_WORKSPACE" in 0|1) ;; *) exit 20 ;; esac
 case "$FINAL_PRODUCT" in 0|1) ;; *) exit 20 ;; esac
-if test $((COMPAT_REFRESH + ASSISTANT_WORKSTREAM + WORKSPACE_CONTINUITY + UNIFIED_WORKSPACE + FINAL_PRODUCT)) -gt 1; then exit 20; fi
-if test "$FINAL_PRODUCT" = 1; then case "$RELEASE_ID" in m9-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$UNIFIED_WORKSPACE" = 1; then case "$RELEASE_ID" in m8-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$WORKSPACE_CONTINUITY" = 1; then case "$RELEASE_ID" in m7-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ASSISTANT_WORKSTREAM" = 1; then case "$RELEASE_ID" in m6-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; else case "$RELEASE_ID" in m4-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; fi
+case "$FOUNDING_MEMORY" in 0|1) ;; *) exit 20 ;; esac
+if test $((COMPAT_REFRESH + ASSISTANT_WORKSTREAM + WORKSPACE_CONTINUITY + UNIFIED_WORKSPACE + FINAL_PRODUCT + FOUNDING_MEMORY)) -gt 1; then exit 20; fi
+if test "$FOUNDING_MEMORY" = 1; then case "$RELEASE_ID" in m10-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$FINAL_PRODUCT" = 1; then case "$RELEASE_ID" in m9-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$UNIFIED_WORKSPACE" = 1; then case "$RELEASE_ID" in m8-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$WORKSPACE_CONTINUITY" = 1; then case "$RELEASE_ID" in m7-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ASSISTANT_WORKSTREAM" = 1; then case "$RELEASE_ID" in m6-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; else case "$RELEASE_ID" in m4-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; fi
 case "$NGINX_CONFIG" in /etc/nginx/sites-enabled/*) ;; *) exit 20 ;; esac
 case "$HOSTNAME" in ''|*[!A-Za-z0-9.-]*|.*|*.) exit 20 ;; esac
 printf '%s' "$AWH_FPM_SOCKET" | grep -Eq '^/run/php/php[0-9]+\.[0-9]+-fpm-awh\.sock$' || exit 20
@@ -27,7 +28,7 @@ case "$REMOTE_SCRIPT" in /tmp/awh-control-plane-*.sh) ;; *) exit 20 ;; esac
 case "$COMPAT_REFRESH" in 0|1) ;; *) exit 20 ;; esac
 if test "$COMPAT_REFRESH" = 1 && test "$ASSISTANT_WORKSTREAM" = 1; then exit 20; fi
 OWNER_PASSWORD=
-if test "$ASSISTANT_WORKSTREAM" = 0 && test "$WORKSPACE_CONTINUITY" = 0 && test "$UNIFIED_WORKSPACE" = 0 && test "$FINAL_PRODUCT" = 0; then IFS= read -r OWNER_PASSWORD || exit 20; case "$OWNER_PASSWORD" in ''|*[!A-Za-z0-9._~-]*) exit 20 ;; esac; fi
+if test "$ASSISTANT_WORKSTREAM" = 0 && test "$WORKSPACE_CONTINUITY" = 0 && test "$UNIFIED_WORKSPACE" = 0 && test "$FINAL_PRODUCT" = 0 && test "$FOUNDING_MEMORY" = 0; then IFS= read -r OWNER_PASSWORD || exit 20; case "$OWNER_PASSWORD" in ''|*[!A-Za-z0-9._~-]*) exit 20 ;; esac; fi
 
 BACKUP=/var/backups/awh-hub/awh.sqlite.pre-$RELEASE_ID
 POINTER=$REMOTE_ROOT/control-plane-current
@@ -49,6 +50,7 @@ ASSISTANT_MIGRATION=
 WORKSPACE_MIGRATION=
 UNIFIED_MIGRATION=
 FINAL_MIGRATION=
+FOUNDING_MIGRATION=
 OWNER_AUTH_COOKIE_JAR=
 OWNER_AUTH_COOKIE_HEADERS=
 OWNER_AUTH_SURFACE_HEADERS=
@@ -171,12 +173,12 @@ rollback() {
     if test "$ok" -eq 1 && test "$POINTER_CHANGED" -eq 1; then reload_awh_php_fpm || ok=0; fi
     if test "$ok" -eq 1 && { test "$NGINX_CHANGED" -eq 1 || test "$TOPOLOGY_ARCHIVED" -eq 1; }; then sudo systemctl reload nginx || ok=0; fi
     if test "$ok" -eq 1; then verify_m3d || ok=0; fi
-    # M9 is an all-or-nothing v7 -> v8 -> v9 release.  A successful rollback
+    # M9/M10 are all-or-nothing v7 extensions. A successful rollback
     # must prove the original M7 authority, not merely that SQLite restored a
     # readable file.  The attachment root is intentionally durable and may be
     # empty after a failed activation; it is not user data until an authorized
     # post-release upload has committed a record in the database.
-    if test "$ok" -eq 1 && test "$FINAL_PRODUCT" = 1 && test "$DB_MUTATED" -eq 1; then
+    if test "$ok" -eq 1 && { test "$FINAL_PRODUCT" = 1 || test "$FOUNDING_MEMORY" = 1; } && test "$DB_MUTATED" -eq 1; then
       test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 7 || ok=0
       test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm7-workspace-continuity' AND schema_version = 7;")" = 1 || ok=0
       test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok || ok=0
@@ -200,11 +202,46 @@ sudo test -f "$DB"; sudo test -f "$REMOTE_STAGE"; pointer_capture; cleanup_loade
 sudo install -d -o root -g root -m 0750 /var/backups/awh-hub
 sudo sqlite3 "$DB" ".backup '$BACKUP'"; sudo chown root:root "$BACKUP"; sudo chmod 0600 "$BACKUP"; test "$(sudo sqlite3 "$BACKUP" 'PRAGMA integrity_check;')" = ok; test -z "$(sudo sqlite3 "$BACKUP" 'PRAGMA foreign_key_check;')"; sudo install -d -m 0750 -o root -g root "$CONFIG_BACKUP_ROOT/nginx"; sudo test ! -e "$NGINX_BACKUP"; sudo cp -p "$NGINX_CONFIG" "$NGINX_BACKUP"; sudo chown root:root "$NGINX_BACKUP"; sudo chmod 0600 "$NGINX_BACKUP"; sudo cmp -s "$NGINX_CONFIG" "$NGINX_BACKUP"; NGINX_BACKUP_CREATED=1; stage BACKUP_VERIFIED
 if sudo test -e "$RELEASE" || sudo test -L "$RELEASE"; then exit 20; fi
-sudo install -d -o awh-hub -g awh-hub -m 0750 "$RELEASE"; RELEASE_CREATED=1; sudo tar -xzf "$REMOTE_STAGE" -C "$RELEASE"; sudo chown -R awh-hub:awh-hub "$RELEASE"; sudo test -f "$RELEASE/hub/public/control-plane.php"; sudo test -f "$RELEASE/hub/bin/migrate-m4.php"; if test "$ASSISTANT_WORKSTREAM" = 1 || test "$WORKSPACE_CONTINUITY" = 1 || test "$UNIFIED_WORKSPACE" = 1 || test "$FINAL_PRODUCT" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-assistant-workstream.php"; sudo test -f "$RELEASE/hub/migrations/005_assistant_workstream.sql"; fi; if test "$WORKSPACE_CONTINUITY" = 1 || test "$UNIFIED_WORKSPACE" = 1 || test "$FINAL_PRODUCT" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-workspace-continuity.php"; sudo test -f "$RELEASE/hub/migrations/006_workspace_continuity.sql"; fi; if test "$UNIFIED_WORKSPACE" = 1 || test "$FINAL_PRODUCT" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-unified-workspace.php"; sudo test -f "$RELEASE/hub/migrations/007_unified_workspace.sql"; fi; if test "$FINAL_PRODUCT" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-final-product.php"; sudo test -f "$RELEASE/hub/migrations/008_final_product.sql"; sudo test -f "$RELEASE/hub/src/HubAttachmentStore.php"; sudo test -f "$RELEASE/hub/src/HubNativeAgentService.php"; fi; sudo -u awh-hub test -r "$RELEASE/hub/src/HubControlPlaneService.php"; stage RELEASE_STAGED
-OWNER_AUTH_SETUP=$RELEASE/hub/bin/setup-owner-auth.php; OWNER_AUTH_RUNTIME=$RELEASE/hub/bin/verify-owner-auth-runtime.php; ASSISTANT_MIGRATION=$RELEASE/hub/bin/migrate-assistant-workstream.php; WORKSPACE_MIGRATION=$RELEASE/hub/bin/migrate-workspace-continuity.php; UNIFIED_MIGRATION=$RELEASE/hub/bin/migrate-unified-workspace.php; FINAL_MIGRATION=$RELEASE/hub/bin/migrate-final-product.php; OWNER_AUTH_TRANSFORM=$RELEASE/deploy/nginx/transform-owner-auth.php; CONTROL_ORIGIN_RENDER=$RELEASE/deploy/nginx/render-control-plane-include.php; CONTROL_INCLUDE=$RELEASE/deploy/nginx/awh-control-plane.conf; CONTROL_INCLUDE_TMP=/tmp/awh-control-include-$RELEASE_ID.conf
+sudo install -d -o awh-hub -g awh-hub -m 0750 "$RELEASE"; RELEASE_CREATED=1; sudo tar -xzf "$REMOTE_STAGE" -C "$RELEASE"; sudo chown -R awh-hub:awh-hub "$RELEASE"; sudo test -f "$RELEASE/hub/public/control-plane.php"; sudo test -f "$RELEASE/hub/bin/migrate-m4.php"; if test "$ASSISTANT_WORKSTREAM" = 1 || test "$WORKSPACE_CONTINUITY" = 1 || test "$UNIFIED_WORKSPACE" = 1 || test "$FINAL_PRODUCT" = 1 || test "$FOUNDING_MEMORY" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-assistant-workstream.php"; sudo test -f "$RELEASE/hub/migrations/005_assistant_workstream.sql"; fi; if test "$WORKSPACE_CONTINUITY" = 1 || test "$UNIFIED_WORKSPACE" = 1 || test "$FINAL_PRODUCT" = 1 || test "$FOUNDING_MEMORY" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-workspace-continuity.php"; sudo test -f "$RELEASE/hub/migrations/006_workspace_continuity.sql"; fi; if test "$UNIFIED_WORKSPACE" = 1 || test "$FINAL_PRODUCT" = 1 || test "$FOUNDING_MEMORY" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-unified-workspace.php"; sudo test -f "$RELEASE/hub/migrations/007_unified_workspace.sql"; fi; if test "$FINAL_PRODUCT" = 1 || test "$FOUNDING_MEMORY" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-final-product.php"; sudo test -f "$RELEASE/hub/migrations/008_final_product.sql"; sudo test -f "$RELEASE/hub/src/HubAttachmentStore.php"; sudo test -f "$RELEASE/hub/src/HubNativeAgentService.php"; fi; if test "$FOUNDING_MEMORY" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-founding-memory.php"; sudo test -f "$RELEASE/hub/migrations/009_founding_memory.sql"; sudo test -f "$RELEASE/hub/src/HubFoundingMemorySeed.php"; sudo test -f "$RELEASE/hub/src/HubFoundingMemoryMigration.php"; sudo test -f "$RELEASE/hub/src/HubFoundingMemoryService.php"; fi; sudo -u awh-hub test -r "$RELEASE/hub/src/HubControlPlaneService.php"; stage RELEASE_STAGED
+OWNER_AUTH_SETUP=$RELEASE/hub/bin/setup-owner-auth.php; OWNER_AUTH_RUNTIME=$RELEASE/hub/bin/verify-owner-auth-runtime.php; ASSISTANT_MIGRATION=$RELEASE/hub/bin/migrate-assistant-workstream.php; WORKSPACE_MIGRATION=$RELEASE/hub/bin/migrate-workspace-continuity.php; UNIFIED_MIGRATION=$RELEASE/hub/bin/migrate-unified-workspace.php; FINAL_MIGRATION=$RELEASE/hub/bin/migrate-final-product.php; FOUNDING_MIGRATION=$RELEASE/hub/bin/migrate-founding-memory.php; OWNER_AUTH_TRANSFORM=$RELEASE/deploy/nginx/transform-owner-auth.php; CONTROL_ORIGIN_RENDER=$RELEASE/deploy/nginx/render-control-plane-include.php; CONTROL_INCLUDE=$RELEASE/deploy/nginx/awh-control-plane.conf; CONTROL_INCLUDE_TMP=/tmp/awh-control-include-$RELEASE_ID.conf
 stage CONTROL_ORIGIN_RENDER; sudo /usr/bin/php "$CONTROL_ORIGIN_RENDER" "$CONTROL_INCLUDE" "$CONTROL_INCLUDE_TMP" "$HOSTNAME" "$AWH_FPM_SOCKET" >/dev/null; sudo test -s "$CONTROL_INCLUDE_TMP"; sudo install -o awh-hub -g awh-hub -m 0644 "$CONTROL_INCLUDE_TMP" "$CONTROL_INCLUDE"; sudo rm -f "$CONTROL_INCLUDE_TMP"; CONTROL_INCLUDE_TMP=
 stage NGINX_CUTOVER_PREPARE; sudo /usr/bin/php "$OWNER_AUTH_TRANSFORM" "$NGINX_CONFIG" "$NGINX_CANDIDATE" "$HOSTNAME" "$AWH_FPM_SOCKET" >/dev/null; sudo test -s "$NGINX_CANDIDATE"; sudo chown root:root "$NGINX_CANDIDATE"; sudo chmod 0644 "$NGINX_CANDIDATE"
-if test "$FINAL_PRODUCT" = 1; then
+if test "$FOUNDING_MEMORY" = 1; then
+  # M10 is the one bounded activation from the actual deployed M7 baseline.
+  # It chains the reviewed M8/M9 authorities and then imports only curated,
+  # owner-private Founding Memory records. It never seeds a Project or replays
+  # historical M3E/M4/M5/M6/M7 migrations.
+  stage WORKSPACE_PRESERVED
+  test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 7
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm4-control-plane' AND schema_version = 4;")" = 1
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm5-owner-auth' AND schema_version = 5;")" = 1
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm6-assistant-workstream' AND schema_version = 6;")" = 1
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm7-workspace-continuity' AND schema_version = 7;")" = 1
+  sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$OWNER_AUTH_RUNTIME" >/dev/null
+  test "$(sudo sqlite3 "$DB" 'SELECT count(*) FROM owner_bootstrap b JOIN owner_passwords p ON p.user_id = b.owner_user_id WHERE b.singleton_id = 1 AND b.bootstrap_closed = 1 AND p.enabled = 1 AND length(p.password_hash) > 20;')" = 1
+  test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok
+  test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
+  DB_MUTATED=1; stage UNIFIED_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$UNIFIED_MIGRATION" "$DB" "$RELEASE/hub/migrations/007_unified_workspace.sql" >/dev/null
+  stage UNIFIED_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$UNIFIED_MIGRATION" "$DB" "$RELEASE/hub/migrations/007_unified_workspace.sql" >/dev/null
+  test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 8
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm8-unified-workspace' AND schema_version = 8;")" = 1
+  stage UNIFIED_MIGRATION_VERIFIED
+  stage ATTACHMENT_STORAGE_READY; sudo install -d -o awh-hub -g awh-hub -m 0750 /var/lib/awh-hub/attachments; sudo -u awh-hub test -w /var/lib/awh-hub/attachments
+  stage FINAL_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_ATTACHMENT_ROOT=/var/lib/awh-hub/attachments /usr/bin/php "$FINAL_MIGRATION" "$DB" "$RELEASE/hub/migrations/008_final_product.sql" >/dev/null
+  stage FINAL_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_ATTACHMENT_ROOT=/var/lib/awh-hub/attachments /usr/bin/php "$FINAL_MIGRATION" "$DB" "$RELEASE/hub/migrations/008_final_product.sql" >/dev/null
+  test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 9
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm9-final-product' AND schema_version = 9;")" = 1
+  stage FINAL_MIGRATION_VERIFIED
+  stage FOUNDING_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$FOUNDING_MIGRATION" "$DB" >/dev/null
+  stage FOUNDING_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$FOUNDING_MIGRATION" "$DB" >/dev/null
+  test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 10
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm10-founding-memory' AND schema_version = 10;")" = 1
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM control_memory_import_batches WHERE provenance = 'Founding Memory Migration' AND rolled_back_at IS NULL;")" = 1
+  test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok
+  test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
+  stage FOUNDING_MIGRATION_VERIFIED
+  stage PROJECTS_READY
+elif test "$FINAL_PRODUCT" = 1; then
   # The final activation is the only path from the actual deployed v7 baseline.
   # It applies the already-reviewed M8 authority first, then the additive M9
   # product layer; no historical M3E/M4/M5/M6/M7 migration is replayed.
@@ -346,6 +383,16 @@ stage M3E_POST_SCHEMA_REGRESSION; verify_m3e_after_m4
 if test "$ASSISTANT_WORKSTREAM" = 1; then stage ASSISTANT_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/conversations/423b45c0-23e1-408d-ae0f-ac5eca7f6900" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; fi
 if test "$WORKSPACE_CONTINUITY" = 1; then stage ASSISTANT_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/conversations/423b45c0-23e1-408d-ae0f-ac5eca7f6900" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; stage WORKSPACE_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/workspaces/423b45c0-23e1-408d-ae0f-ac5eca7f6900" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; fi
 if test "$UNIFIED_WORKSPACE" = 1; then stage ASSISTANT_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/conversations/423b45c0-23e1-408d-ae0f-ac5eca7f6900" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; stage WORKSPACE_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/workspaces/423b45c0-23e1-408d-ae0f-ac5eca7f6900" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; stage UNIFIED_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/conversations?projectId=423b45c0-23e1-408d-ae0f-ac5eca7f6900" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; fi
+if test "$FOUNDING_MEMORY" = 1; then
+  # These unauthenticated probes prove routing and server-side authorization
+  # only. They do not expose seed contents, create a conversation, or mutate
+  # the imported Founding Memory batch.
+  stage ASSISTANT_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/conversations/423b45c0-23e1-408d-ae0f-ac5eca7f6900" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403
+  stage WORKSPACE_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/workspaces/423b45c0-23e1-408d-ae0f-ac5eca7f6900" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403
+  stage UNIFIED_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/conversations?projectId=423b45c0-23e1-408d-ae0f-ac5eca7f6900" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403
+  stage FINAL_PRODUCT_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/provider" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403
+  stage FOUNDING_MEMORY_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/memory" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403
+fi
 if test "$FINAL_PRODUCT" = 1; then
   # The final route proof is deliberately unauthenticated: it proves that the
   # intended release/router owns all M6/M7/M8/M9 surfaces without creating a

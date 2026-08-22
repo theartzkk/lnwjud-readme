@@ -6,9 +6,11 @@ require_once __DIR__ . '/HubAssistantWorkstreamMigration.php';
 require_once __DIR__ . '/HubWorkspaceContinuityMigration.php';
 require_once __DIR__ . '/HubUnifiedWorkspaceMigration.php';
 require_once __DIR__ . '/HubFinalProductMigration.php';
+require_once __DIR__ . '/HubFoundingMemoryMigration.php';
 require_once __DIR__ . '/HubAttachmentStore.php';
 require_once __DIR__ . '/HubNativeAgentService.php';
 require_once __DIR__ . '/HubOwnerAuthService.php';
+require_once __DIR__ . '/HubFoundingMemoryService.php';
 
 final class HubControlPlaneException extends RuntimeException
 {
@@ -40,11 +42,13 @@ final class HubControlPlaneService
 
     private readonly HubAttachmentStore $attachments;
     private readonly HubNativeAgentService $agent;
+    private readonly HubFoundingMemoryService $memory;
 
     private function __construct(private readonly PDO $pdo, private readonly HubEnrollmentService $enrollment)
     {
         $this->attachments = HubAttachmentStore::fromEnvironment();
         $this->agent = new HubNativeAgentService($pdo);
+        $this->memory = new HubFoundingMemoryService($pdo);
     }
 
     public static function openExisting(string $databasePath): self
@@ -202,6 +206,32 @@ final class HubControlPlaneService
         $this->assertUnifiedReady(); if ($this->finalProductSchemaPresent()) $this->assertOwner((string) $session['user_id']); $key = self::settingKey((string) ($payload['settingKey'] ?? '')); return $this->saveProductSetting((string) $session['user_id'], $key, self::productDefaults()[$key]['value'], $now);
     }
 
+    /** One authorized view of Owner, Project and archive memory; never raw transcript replay. */
+    public function memory(string $sessionToken, ?string $projectId = null, ?string $scope = null, ?string $query = null, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertFoundingReady(); $userId = (string) $session['user_id'];
+        $project = $projectId === null || $projectId === '' ? null : self::uuid($projectId); if ($project !== null) $this->assertProjectMember($userId, $project);
+        try { return $this->memory->retrieve($userId, $this->isOwnerUser($userId), $project, $scope ?? 'all', $query); }
+        catch (HubFoundingMemoryException $error) { throw new HubControlPlaneException('Memory is not available', $error->codeName); }
+    }
+
+    public function memoryImportReport(string $sessionToken, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertFoundingReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId);
+        try { return $this->memory->importReport($userId); }
+        catch (HubFoundingMemoryException $error) { throw new HubControlPlaneException('Memory import report is unavailable', $error->codeName); }
+    }
+
+    /** Owner-controlled correction, pinning, sharing and forgetting stay in the same memory authority. */
+    public function updateMemory(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['action', 'content', 'memoryId', 'pinned', 'schemaVersion', 'sharingPolicy', 'tags']);
+        if (($payload['schemaVersion'] ?? null) !== 1 || !is_string($payload['memoryId'] ?? null) || !is_string($payload['action'] ?? null) || (!is_null($payload['content'] ?? null) && !is_string($payload['content'])) || (!is_null($payload['tags'] ?? null) && !is_array($payload['tags'])) || (!is_null($payload['sharingPolicy'] ?? null) && !is_string($payload['sharingPolicy'])) || (!is_null($payload['pinned'] ?? null) && !is_bool($payload['pinned']))) throw new HubControlPlaneException('Memory request is invalid', 'MEMORY_INVALID');
+        $this->assertFoundingReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId);
+        try { return $this->memory->mutate($userId, (string) $payload['memoryId'], (string) $payload['action'], $payload['content'], $payload['tags'], $payload['sharingPolicy'], $payload['pinned'], $now); }
+        catch (HubFoundingMemoryException $error) { throw new HubControlPlaneException('Memory could not be updated', $error->codeName); }
+    }
+
     private function saveProductSetting(string $userId, string $key, mixed $value, ?string $now): array
     {
         $encoded = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR); $at = self::timestamp($now ?? gmdate('c'));
@@ -219,7 +249,12 @@ final class HubControlPlaneService
     {
         $session = $this->sessionRow($sessionToken, $now); $this->assertUnifiedReady(); $userId = (string) $session['user_id'];
         $projects = $this->projectsForUser($userId); $threads = $this->conversations($sessionToken, null, null, $now)['conversations'];
-        return ['schemaVersion' => 2, 'exportedAt' => self::timestamp($now ?? gmdate('c')), 'product' => $this->productSettingsForUser($userId), 'projects' => $projects, 'conversations' => $threads, 'security' => ['secretsIncluded' => false, 'localPathsIncluded' => false, 'sourceFilesIncluded' => false]];
+        $export = ['schemaVersion' => $this->foundingMemorySchemaPresent() ? 3 : 2, 'exportedAt' => self::timestamp($now ?? gmdate('c')), 'product' => $this->productSettingsForUser($userId), 'projects' => $projects, 'conversations' => $threads, 'security' => ['secretsIncluded' => false, 'localPathsIncluded' => false, 'sourceFilesIncluded' => false]];
+        if ($this->foundingMemorySchemaPresent()) {
+            try { $export['memory'] = $this->memory->exportForOwner($userId); }
+            catch (HubFoundingMemoryException) { throw new HubControlPlaneException('Memory export is unavailable', 'FOUNDING_MEMORY_SCHEMA_NOT_READY'); }
+        }
+        return $export;
     }
 
     public function submitConversation(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
@@ -345,7 +380,7 @@ final class HubControlPlaneService
                     $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'PROGRESS', 'กำลังตรวจบริบทที่เกี่ยวข้อง', $at);
                     $nativeRequest = ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => $messageId, 'projectId' => $projectId, 'request' => $message];
                 } else {
-                    $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'ASSISTANT', $this->conversationAnswer($projectId, $message), $at);
+                    $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'ASSISTANT', $this->conversationAnswer($userId, $projectId, $message), $at);
                 }
             } else {
                 $taskId = self::uuidFromBytes(random_bytes(16));
@@ -433,16 +468,16 @@ final class HubControlPlaneService
         try {
             $turns = $this->recentConversationTurns((string) $request['conversationId'], (string) $request['messageId']);
             $attachments = $this->nativeAttachments((string) $request['messageId'], $userId);
-            $context = $this->nativeProjectContext($userId, (string) $request['projectId']);
+            $context = $this->nativeProjectContext($userId, (string) $request['projectId'], (string) $request['request']);
             $result = $this->agent->respond($userId, (string) $request['projectId'], (string) $request['conversationId'], (string) $request['messageId'], (string) $request['request'], $turns, $attachments, $at, $context);
             $body = trim((string) $result['summary']);
         } catch (HubNativeAgentException $error) {
             $body = match ($error->codeName) {
                 'BUDGET_EXHAUSTED' => 'งบ AI ของ AWH ถึงขีดจำกัดแล้ว ผมเก็บข้อความนี้ไว้ในบทสนทนา คุณสามารถเพิ่มงบหรือส่งต่อให้ worker ที่พร้อมได้',
-                default => $this->conversationAnswer((string) $request['projectId'], (string) $request['request']),
+                default => $this->conversationAnswer($userId, (string) $request['projectId'], (string) $request['request']),
             };
         } catch (Throwable) {
-            $body = $this->conversationAnswer((string) $request['projectId'], (string) $request['request']);
+            $body = $this->conversationAnswer($userId, (string) $request['projectId'], (string) $request['request']);
         }
         // Conversation messages are intentionally compact.  Full provider output
         // is never treated as an unbounded internal log in the normal UI.
@@ -467,18 +502,24 @@ final class HubControlPlaneService
      * duplicating source files, local paths, or private memory blobs into the
      * control plane.
      */
-    private function nativeProjectContext(string $userId, string $projectId): array
+    private function nativeProjectContext(string $userId, string $projectId, string $request = ''): array
     {
         $this->assertProjectCapability($userId, $projectId, 'project.read');
         $project = $this->pdo->prepare('SELECT name, type, source_revision, observed_at FROM projects WHERE project_id = :project'); $project->execute(['project' => $projectId]); $row = $project->fetch();
         $memory = $this->pdo->prepare('SELECT memory_file, status, observed_at FROM project_memory WHERE project_id = :project ORDER BY memory_file LIMIT 5'); $memory->execute(['project' => $projectId]);
         $task = $this->pdo->prepare('SELECT state, result_summary, updated_at FROM control_tasks WHERE project_id = :project AND user_id = :user ORDER BY updated_at DESC, task_id DESC LIMIT 1'); $task->execute(['project' => $projectId, 'user' => $userId]); $latest = $task->fetch();
         $view = $this->pdo->prepare('SELECT view_kind, selected_ref, source_revision, observed_at FROM control_project_contexts WHERE project_id = :project AND user_id = :user ORDER BY observed_at DESC, context_id DESC LIMIT 1'); $view->execute(['project' => $projectId, 'user' => $userId]); $current = $view->fetch();
+        $durableMemory = null;
+        if ($this->foundingMemorySchemaPresent()) {
+            try { $durableMemory = $this->memory->promptContext($userId, $this->isOwnerUser($userId), $projectId, $request); }
+            catch (HubFoundingMemoryException) { $durableMemory = null; }
+        }
         return [
             'project' => is_array($row) ? ['name' => (string) $row['name'], 'type' => (string) $row['type'], 'sourceRevision' => $row['source_revision'] === null ? null : (string) $row['source_revision'], 'observedAt' => (string) $row['observed_at']] : null,
             'memoryFiles' => array_map(static fn (array $file): array => ['name' => (string) $file['memory_file'], 'status' => (string) $file['status'], 'observedAt' => (string) $file['observed_at']], $memory->fetchAll()),
             'latestTask' => is_array($latest) ? ['state' => (string) $latest['state'], 'summary' => $latest['result_summary'] === null ? null : self::conversationText((string) $latest['result_summary']), 'updatedAt' => (string) $latest['updated_at']] : null,
             'currentView' => is_array($current) ? ['kind' => (string) $current['view_kind'], 'selectedRef' => $current['selected_ref'] === null ? null : (string) $current['selected_ref'], 'sourceRevision' => $current['source_revision'] === null ? null : (string) $current['source_revision'], 'observedAt' => (string) $current['observed_at']] : null,
+            'durableMemory' => $durableMemory,
         ];
     }
 
@@ -818,6 +859,10 @@ final class HubControlPlaneService
             elseif ($revision !== null) $this->pdo->prepare('UPDATE projects SET source_revision = :revision, observed_at = :at WHERE project_id = :project')->execute(['project' => $projectId, 'revision' => $revision, 'at' => $at]);
             $this->pdo->prepare("INSERT INTO user_project_memberships(user_id, project_id, role, created_at, revoked_at) VALUES(:user, :project, 'owner', :at, NULL) ON CONFLICT(user_id, project_id) DO UPDATE SET role='owner', revoked_at=NULL")->execute(['user' => $auth['userId'], 'project' => $projectId, 'at' => $at]);
             $this->pdo->prepare("INSERT INTO device_project_memberships(device_id, project_id, role, created_at, revoked_at) VALUES(:device, :project, 'owner', :at, NULL) ON CONFLICT(device_id, project_id) DO UPDATE SET role='owner', revoked_at=NULL")->execute(['device' => $auth['deviceId'], 'project' => $projectId, 'at' => $at]);
+            if ($this->foundingMemorySchemaPresent()) {
+                HubFoundingMemoryMigration::bindSeedProjectsForCurrentSchema($this->pdo, $at);
+                HubFoundingMemoryMigration::reconcileProjectSourceTruth($this->pdo, $projectId, $at);
+            }
             $this->pdo->exec('COMMIT');
         } catch (Throwable $error) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Project could not be registered', 'PROJECT_REGISTER_FAILED'); }
         return ['schemaVersion' => 2, 'project' => ['projectId' => $projectId, 'name' => $name, 'type' => $type, 'sourceRevision' => $revision, 'observedAt' => $at]];
@@ -1043,12 +1088,31 @@ final class HubControlPlaneService
         return array_map([self::class, 'approvalRow'], $q->fetchAll());
     }
 
-    private function conversationAnswer(string $projectId, string $message): string
+    private function conversationAnswer(string $userId, string $projectId, string $message): string
     {
+        $hint = $this->foundingMemoryHint($userId, $projectId, $message); if ($hint !== null) return $hint;
         if (preg_match('/^(?:สวัสดี|ช่วยอะไรได้บ้าง|ทำอะไรได้บ้าง|help|what can you do)(?:\s|$|[.!?])/iu', trim($message)) === 1) {
             return 'ผมช่วยตรวจสถานะ สรุป วางแผน ตรวจ source แบบอ่านอย่างเดียว หรือส่งงานที่มีขอบเขตชัดเจนให้กับอุปกรณ์ที่พร้อมได้ คุณพิมพ์สิ่งที่อยากทำต่อได้เลย';
         }
         return $this->contextAnswer($projectId);
+    }
+
+    /** Deterministic founding answers remain useful while a configured provider is unavailable. */
+    private function foundingMemoryHint(string $userId, string $projectId, string $message): ?string
+    {
+        if (!$this->foundingMemorySchemaPresent() || !$this->isOwnerUser($userId)) return null;
+        try {
+            if (preg_match('/(?:สร้าง|ทำ).*AWH.*(?:ทำไม|เพื่ออะไร)|AWH.*(?:ทำไม|เพื่ออะไร)/iu', $message) === 1) {
+                $rows = $this->memory->retrieve($userId, true, null, 'owner', 'awh.purpose')['memories']; return isset($rows[0]['content']) && is_string($rows[0]['content']) ? $rows[0]['content'] : null;
+            }
+            if (preg_match('/(?:วารสาร|ประชาสัมพันธ์).*(?:ชอบ|แบบ)/iu', $message) === 1) {
+                $rows = $this->memory->retrieve($userId, true, null, 'owner', 'creative.pr_journal')['memories']; return isset($rows[0]['content']) && is_string($rows[0]['content']) ? $rows[0]['content'] : null;
+            }
+            if (preg_match('/BAY.*(?:หลักการ|ห้ามรื้อ|constraint)/iu', $message) === 1) {
+                $rows = $this->memory->retrieve($userId, true, $projectId, 'project', 'bay.frozen_constraints')['memories']; return isset($rows[0]['content']) && is_string($rows[0]['content']) ? $rows[0]['content'] : null;
+            }
+        } catch (HubFoundingMemoryException) { return null; }
+        return null;
     }
 
     private function contextAnswer(string $projectId): string
@@ -1110,6 +1174,11 @@ final class HubControlPlaneService
     {
         $value = trim($message);
         if (preg_match('/^(?:สวัสดี|ช่วยอะไรได้บ้าง|ทำอะไรได้บ้าง|สรุป|สถานะ|ยังมีอะไร|มีอะไรเหลือ)|(?:^|\s)(?:what remains|status|summary|help|what can you do)(?:\s|$|[.!?])/iu', $value) === 1) return true;
+        // A genuine question is a read-only conversation by default. This is
+        // deliberately conservative: an explicit request to change, test,
+        // build, or deploy still follows the task/approval path, while a
+        // question such as "เราสร้าง AWH ขึ้นมาทำไม?" never queues work.
+        if (preg_match('/[?？]$/u', $value) === 1 || preg_match('/(?:ทำไม|เพื่ออะไร|อย่างไร|ยังไง|อะไร|ใคร|ที่ไหน|เมื่อไร|เท่าไร|กี่|หรือไม่|หรือเปล่า|ไหม)\s*$/u', $value) === 1) return true;
         // Explicit images/documents are authorised visual/file context, not an
         // instruction to mutate a workspace.  Questions about the attachment
         // remain on the bounded native-agent path; implementation requests
@@ -1128,7 +1197,9 @@ final class HubControlPlaneService
     private function assistantSchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 6 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_conversation_messages'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
     private function unifiedSchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 8 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_product_settings'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
     private function finalProductSchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 9 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_provider_policies'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
+    private function foundingMemorySchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 10 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_memory_records'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
     private function assertFinalReady(): void { HubFinalProductMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/008_final_product.sql'); }
+    private function assertFoundingReady(): void { HubFoundingMemoryMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/009_founding_memory.sql'); }
     private function assertSessionRateLimit(?string $rateKey, string $now): void
     {
         if ($rateKey === null) return;
@@ -1151,6 +1222,7 @@ final class HubControlPlaneService
     private function assertProjectMember(string $userId, string $projectId): void { $this->assertProjectCapability($userId, $projectId, 'project.read'); }
     private function assertProjectCapability(string $userId, string $projectId, string $capability): void { if ($this->finalProductSchemaPresent()) { $q = $this->pdo->prepare('SELECT 1 FROM control_project_capabilities c JOIN control_user_profiles p ON p.user_id = c.user_id WHERE c.user_id = :user AND c.project_id = :project AND c.capability = :capability AND c.revoked_at IS NULL AND p.status = \'ACTIVE\''); $q->execute(['user' => $userId, 'project' => $projectId, 'capability' => $capability]); if ($q->fetchColumn() !== false) return; } else { $q = $this->pdo->prepare('SELECT 1 FROM user_project_memberships WHERE user_id = :user AND project_id = :project AND revoked_at IS NULL'); $q->execute(['user' => $userId, 'project' => $projectId]); if ($q->fetchColumn() !== false) return; } throw new HubControlPlaneException('Project is not authorized', 'PROJECT_FORBIDDEN'); }
     private function assertOwner(string $userId): void { $q = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1'); if (!hash_equals((string) $q->fetchColumn(), $userId)) throw new HubControlPlaneException('Owner access is required', 'OWNER_FORBIDDEN'); }
+    private function isOwnerUser(string $userId): bool { $q = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1'); $owner = $q->fetchColumn(); return is_string($owner) && hash_equals($owner, $userId); }
     private function profileRole(string $userId): string { $q = $this->pdo->prepare('SELECT system_role FROM control_user_profiles WHERE user_id = :user AND status = \'ACTIVE\''); $q->execute(['user' => $userId]); $role = $q->fetchColumn(); return is_string($role) && in_array($role, ['OWNER', 'COLLABORATOR', 'VIEWER', 'APPROVER'], true) ? $role : 'COLLABORATOR'; }
     private function sessionRow(string $token, ?string $now): array { if ($token === '' || strlen($token) > 512 || preg_match('/[\x00-\x1F\x7F]/', $token)) throw new HubControlPlaneException('Control session is invalid', 'SESSION_INVALID'); $sql = $this->finalProductSchemaPresent() ? 'SELECT s.* FROM control_sessions s JOIN hub_users u ON u.user_id = s.user_id AND u.revoked_at IS NULL WHERE s.session_hash = :hash' : 'SELECT * FROM control_sessions WHERE session_hash = :hash'; $q = $this->pdo->prepare($sql); $q->execute(['hash' => hash('sha256', $token)]); $row = $q->fetch(); $at = strtotime(self::timestamp($now ?? gmdate('c'))); if (!is_array($row) || $row['revoked_at'] !== null || strtotime((string) $row['expires_at']) <= $at) throw new HubControlPlaneException('Control session is expired', 'SESSION_EXPIRED'); return $row; }
     private function authorizeSession(string $token, string $csrf, ?string $now): array { $row = $this->sessionRow($token, $now); if ($csrf === '' || strlen($csrf) > 256 || !hash_equals((string) $row['csrf_hash'], hash('sha256', $csrf))) throw new HubControlPlaneException('Control request failed CSRF validation', 'CSRF_REJECTED'); return $row; }

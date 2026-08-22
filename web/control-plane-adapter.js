@@ -29,6 +29,9 @@ function safeErrorMessage(value) {
     ORIGIN_FORBIDDEN: 'ไม่สามารถยืนยันความปลอดภัยของหน้านี้ได้ กรุณารีเฟรชแล้วลองใหม่',
     CSRF_REJECTED: 'ไม่สามารถยืนยันคำขอได้ กรุณารีเฟรชแล้วลองใหม่',
     PROJECT_FORBIDDEN: 'โปรเจกต์นี้ไม่พร้อมใช้งานสำหรับบัญชีของคุณ',
+    MEMORY_FORBIDDEN: 'ความจำนี้ไม่พร้อมใช้งานสำหรับบัญชีของคุณ',
+    MEMORY_SENSITIVE_EXCLUDED: 'AWH ไม่เก็บข้อมูลลับหรือข้อมูลอ่อนไหวไว้ในความจำปกติ',
+    MEMORY_NOT_FOUND: 'ไม่พบความจำที่ต้องการ',
   })[code] || 'AWH ไม่สามารถดำเนินการได้ในขณะนี้';
 }
 
@@ -115,6 +118,21 @@ export async function loadProductSettings() { return controlRequest('/api/v1/con
 export async function updateProductSetting(settingKey, value) { return controlRequest('/api/v1/control/settings', { method: 'POST', body: JSON.stringify({ schemaVersion: 2, settingKey, value }) }); }
 export async function loadProductSettingHistory(settingKey) { if (!['productName', 'shortName', 'tagline', 'accent', 'welcome', 'starterPrompts'].includes(settingKey)) throw new Error('การตั้งค่าไม่ถูกต้อง'); return controlRequest(`/api/v1/control/settings/history?settingKey=${encodeURIComponent(settingKey)}`); }
 export async function resetProductSetting(settingKey) { if (!['productName', 'shortName', 'tagline', 'accent', 'welcome', 'starterPrompts'].includes(settingKey)) throw new Error('การตั้งค่าไม่ถูกต้อง'); return controlRequest('/api/v1/control/settings/reset', { method: 'POST', body: JSON.stringify({ schemaVersion: 2, settingKey }) }); }
+export async function loadMemory({ projectId = null, scope = 'all', query = '' } = {}) {
+  if (!['all', 'owner', 'constitution', 'project', 'archive'].includes(scope) || typeof query !== 'string' || query.length > 120 || (projectId !== null && !UUID.test(projectId))) throw new Error('ความจำของ AWH ไม่ถูกต้อง');
+  if (scope === 'project' && projectId === null) throw new Error('เลือกโปรเจกต์ก่อนดูความจำของโปรเจกต์');
+  const params = new URLSearchParams({ scope });
+  if (projectId !== null) params.set('projectId', projectId);
+  if (query.trim()) params.set('q', query.trim());
+  const value = await controlRequest('/api/v1/control/memory?' + params.toString());
+  if (value.schemaVersion !== 1 || !Array.isArray(value.memories)) throw new Error('ข้อมูลความจำของ AWH ไม่ถูกต้อง');
+  return value;
+}
+export async function loadMemoryImportReport() { return controlRequest('/api/v1/control/memory/imports'); }
+export async function updateMemory(memoryId, action, { content = null, tags = null, pinned = null } = {}) {
+  if (!UUID.test(memoryId) || !['EDIT', 'PIN', 'FORGET', 'SHARE', 'UNSHARE', 'MARK_OUTDATED'].includes(action)) throw new Error('การเปลี่ยนความจำไม่ถูกต้อง');
+  return controlRequest('/api/v1/control/memory', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, memoryId, action, content, tags, sharingPolicy: null, pinned }) });
+}
 export async function exportWorkspace() { return controlRequest('/api/v1/control/export'); }
 export async function loadProviderStatus() { return controlRequest('/api/v1/control/provider'); }
 export async function updateProviderPolicy(policy) { return controlRequest('/api/v1/control/provider', { method: 'POST', body: JSON.stringify(policy) }); }

@@ -36,7 +36,7 @@ test('M9 final product release is one bounded v7-to-v8-to-v9 activation with att
   assert.match(remoteSource, /PRAGMA user_version;.*= 7/s);
   assert.match(remoteSource, /PRAGMA user_version;.*= 8/s);
   assert.match(remoteSource, /PRAGMA user_version;.*= 9/s);
-  const start = remoteSource.indexOf('if test "$FINAL_PRODUCT" = 1; then\n  # The final activation');
+  const start = remoteSource.indexOf('elif test "$FINAL_PRODUCT" = 1; then\n  # The final activation');
   const end = remoteSource.indexOf('elif test "$UNIFIED_WORKSPACE" = 1; then', start);
   assert.ok(start >= 0 && end > start, 'M9 migration branch is present');
   assert.doesNotMatch(remoteSource.slice(start, end), /register-m4-projects|OWNER_AUTH_SETUP|OWNER_PASSWORD/);

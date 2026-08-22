@@ -1,14 +1,14 @@
 import { loadWebData } from './hub-read-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 import {
   cancelTask, changePassword, changeUsername, createConversation, createRecoveryCodes, decideApproval, listAuthSessions,
-  exportWorkspace, invitePerson, listPeople, loadControlData, loadConversation, loadConversations, loadCurrentContext, loadProductSettings, loadProviderStatus, loadWorkspaceContinuity, login, logout, recover, resetProductSetting, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage, updateConversation, updateProductSetting, updateProviderPolicy, uploadConversationAttachments,
+  exportWorkspace, invitePerson, listPeople, loadControlData, loadConversation, loadConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadProductSettings, loadProviderStatus, loadWorkspaceContinuity, login, logout, recover, resetProductSetting, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage, updateConversation, updateMemory, updateProductSetting, updateProviderPolicy, uploadConversationAttachments,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 (() => {
   const $ = (id) => document.getElementById(id);
   const MAX_ATTACHMENT_BYTES = 60 * 1024 * 1024;
   const MICRO_BAHT = 1000000;
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, people: [], pendingAttachments: [], refreshTimer: null };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, people: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null };
   const taskLabels = {
     WAITING_FOR_WORKER: 'กำลังรออุปกรณ์ทำงาน', PREPARING: 'กำลังเตรียมงาน', RUNNING: 'กำลังทำงาน',
     QA: 'กำลังตรวจคุณภาพ', WAITING_FOR_APPROVAL: 'รอการอนุมัติ', COMPLETED: 'เสร็จแล้ว',
@@ -87,6 +87,80 @@ import {
     for (const project of state.control?.projects || []) { const option = document.createElement('option'); option.value = project.projectId; option.textContent = project.name; select.append(option); }
     const list = $('people-list'); list.replaceChildren();
     for (const person of state.people) { const item = document.createElement('div'); item.className = 'session-item'; const label = document.createElement('span'); label.textContent = `${person.displayName} · ${person.role === 'OWNER' ? 'เจ้าของ' : person.role === 'COLLABORATOR' ? 'ผู้ร่วมงาน' : person.role === 'APPROVER' ? 'ผู้อนุมัติ' : 'ดูอย่างเดียว'}`; item.append(label); if (person.status === 'ACTIVE' && person.role !== 'OWNER') { const revoke = document.createElement('button'); revoke.type = 'button'; revoke.className = 'text-button'; revoke.textContent = 'เพิกถอน'; revoke.addEventListener('click', async () => { revoke.disabled = true; try { await revokePerson(person.userId); state.people = (await listPeople()).people || []; renderPeople(); } catch (error) { message('people-message', error instanceof Error ? error.message : 'ยังเพิกถอนบัญชีไม่ได้'); revoke.disabled = false; } }); item.append(revoke); } list.append(item); }
+  }
+
+  function memoryScopeLabel(scope) { return ({ owner: 'ความจำของฉัน', constitution: 'หลักการทำงาน', project: 'ความจำของโปรเจกต์', archive: 'บันทึกย้อนหลัง' })[scope] || 'ความจำของ AWH'; }
+  function memoryFreshnessLabel(freshness) { return ({ current: 'ปัจจุบัน', founding: 'จุดตั้งต้น', stale: 'ควรตรวจทาน', superseded: 'ถูกแทนด้วยข้อมูลปัจจุบัน' })[freshness] || 'บันทึกไว้'; }
+  function ensureMemorySurface() {
+    const existing = $('memory-settings'); if (existing) return existing;
+    const host = $('owner-only-settings'); if (!host) throw new Error('AWH memory settings surface is unavailable');
+    const section = document.createElement('section'); section.id = 'memory-settings'; section.className = 'account-form';
+    const title = document.createElement('h3'); title.textContent = 'ความจำของ AWH';
+    const copy = document.createElement('p'); copy.className = 'muted'; copy.textContent = 'แก้ไข ปักหมุด แชร์ หรือให้ AWH ลืมสิ่งที่ไม่ต้องใช้แล้วได้ ข้อมูล Source of Truth ปัจจุบันมีสิทธิ์เหนือความจำเสมอ';
+    const refresh = document.createElement('button'); refresh.id = 'memory-refresh'; refresh.type = 'button'; refresh.className = 'secondary-button'; refresh.textContent = 'ตรวจความจำ';
+    const importSummary = document.createElement('p'); importSummary.id = 'memory-import-summary'; importSummary.className = 'muted';
+    const list = document.createElement('div'); list.id = 'memory-list'; list.className = 'session-list';
+    const result = document.createElement('p'); result.id = 'memory-message'; result.className = 'form-message'; result.setAttribute('role', 'status');
+    section.append(title, copy, refresh, importSummary, list, result); host.prepend(section);
+    refresh.addEventListener('click', () => { void refreshMemory(); });
+    return section;
+  }
+  async function changeMemory(record, action) {
+    let content = null; let tags = null; let pinned = null;
+    if (action === 'EDIT') {
+      const next = window.prompt('แก้ไขความจำของ AWH', record.content);
+      if (next === null || next.trim() === record.content) return;
+      content = next.trim(); tags = Array.isArray(record.tags) ? record.tags : [];
+    }
+    if (action === 'FORGET' && !window.confirm('ลบความจำนี้ออกจาก AWH ใช่หรือไม่?')) return;
+    if (action === 'PIN') pinned = !record.pinned;
+    message('memory-message', 'กำลังบันทึกความจำ…');
+    try { await updateMemory(record.memoryId, action, { content, tags, pinned }); await refreshMemory(); message('memory-message', 'บันทึกความจำแล้ว'); }
+    catch (error) { message('memory-message', error instanceof Error ? error.message : 'ยังบันทึกความจำไม่ได้'); }
+  }
+  function renderMemory() {
+    const list = $('memory-list'); if (!list) return;
+    list.replaceChildren();
+    for (const record of state.memory) {
+      const row = document.createElement('article'); row.className = 'memory-row';
+      const header = document.createElement('div'); header.className = 'memory-header';
+      const title = document.createElement('strong'); title.textContent = memoryScopeLabel(record.scope);
+      const status = document.createElement('span'); status.textContent = memoryFreshnessLabel(record.freshness);
+      header.append(title, status);
+      const body = document.createElement('p'); body.textContent = record.content;
+      const detail = document.createElement('small'); const verified = record.lastVerifiedAt ? 'ตรวจล่าสุด ' + date(record.lastVerifiedAt) : memoryFreshnessLabel(record.freshness); detail.textContent = record.pinned ? 'ปักหมุดไว้ · ' + verified : verified;
+      const actions = document.createElement('div'); actions.className = 'memory-actions';
+      for (const [action, label] of [['EDIT', 'แก้ไข'], ['PIN', record.pinned ? 'เลิกปักหมุด' : 'ปักหมุด'], ['MARK_OUTDATED', 'ทำเครื่องหมายว่าต้องตรวจทาน'], ['FORGET', 'ลืม']]) {
+        const button = document.createElement('button'); button.type = 'button'; button.className = action === 'FORGET' ? 'text-button' : 'secondary-button'; button.textContent = label;
+        button.addEventListener('click', () => { void changeMemory(record, action); }); actions.append(button);
+      }
+      if (record.scope === 'project' && record.projectId) {
+        const share = document.createElement('button'); share.type = 'button'; share.className = 'text-button'; share.textContent = record.sharingPolicy === 'project_shared' ? 'เก็บเป็นส่วนตัว' : 'แชร์กับผู้ร่วมงานในโปรเจกต์';
+        share.addEventListener('click', () => { void changeMemory(record, record.sharingPolicy === 'project_shared' ? 'UNSHARE' : 'SHARE'); }); actions.append(share);
+      }
+      row.append(header, body, detail, actions); list.append(row);
+    }
+    if (!list.childElementCount) list.textContent = 'ยังไม่มีความจำที่แสดงได้';
+    const batch = state.memoryImport; message('memory-import-summary', batch ? 'Founding Memory ' + batch.seedVersion + ' · ' + (batch.status === 'committed' ? 'พร้อมใช้งาน' : 'ต้องตรวจทาน') : 'ความจำปัจจุบันอยู่ภายใต้ Source of Truth');
+  }
+  async function refreshMemory() {
+    if (!isOwner()) return;
+    ensureMemorySurface();
+    message('memory-message', 'กำลังโหลดความจำ…');
+    try {
+      const project = selectedProject();
+      const requests = [loadMemory({ scope: 'all' }), loadMemoryImportReport()];
+      if (project) requests.push(loadMemory({ projectId: project.projectId, scope: 'project' }));
+      const results = await Promise.all(requests);
+      const seen = new Set();
+      state.memory = results.flatMap((item) => Array.isArray(item.memories) ? item.memories : []).filter((record) => {
+        if (!record || typeof record.memoryId !== 'string' || seen.has(record.memoryId)) return false;
+        seen.add(record.memoryId);
+        return true;
+      });
+      state.memoryImport = Array.isArray(results[1]?.batches) ? results[1].batches[0] || null : null;
+      renderMemory(); message('memory-message', '');
+    } catch (error) { state.memory = []; renderMemory(); message('memory-message', error instanceof Error ? error.message : 'ยังโหลดความจำของ AWH ไม่ได้'); }
   }
 
   function renderProjectSheet(projects) {
@@ -265,6 +339,7 @@ import {
     if (isOwner()) {
       try { const [provider, people] = await Promise.all([loadProviderStatus(), listPeople()]); state.provider = provider.provider; state.people = Array.isArray(people.people) ? people.people : []; renderProvider(); renderPeople(); }
       catch { message('provider-status', 'ยังโหลดการตั้งค่า AI หรือผู้ร่วมงานไม่ได้'); }
+      await refreshMemory();
     }
   }
 

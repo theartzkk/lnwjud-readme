@@ -126,6 +126,11 @@ test('control UI is work-first, project-bound, mobile-first, and truthful about 
   assert.match(app, /ยังไม่มีอุปกรณ์ทำงานออนไลน์/);
   assert.match(app, /goal-submit.*disabled/);
   assert.match(app, /conversationAvailable/);
+  assert.match(app, /ensureMemorySurface/);
+  assert.match(app, /แก้ไขความจำของ AWH/);
+  assert.match(app, /Source of Truth ปัจจุบันมีสิทธิ์เหนือความจำเสมอ/);
+  assert.match(adapter, /loadMemory/);
+  assert.match(adapter, /updateMemory/);
   assert.doesNotMatch(app, /Work stream นี้จะพร้อมทันทีที่ Hub ได้รับ release ล่าสุด/);
   assert.match(css, /@media \(max-width: 680px\)/);
   assert.match(css, /env\(safe-area-inset-bottom\)/);
@@ -156,6 +161,7 @@ test('CONTROL API adapter permits the bounded query routes used by Work while re
   const projectId = '11111111-1111-4111-8111-111111111111';
   assert.equal(safeApiPath(`/api/v1/control/conversations?projectId=${projectId}&q=%E0%B8%97%E0%B8%94%E0%B8%AA%E0%B8%AD%E0%B8%9A`), `/api/v1/control/conversations?projectId=${projectId}&q=%E0%B8%97%E0%B8%94%E0%B8%AA%E0%B8%AD%E0%B8%9A`);
   assert.equal(safeApiPath('/api/v1/control/settings/history?settingKey=tagline'), '/api/v1/control/settings/history?settingKey=tagline');
+  assert.equal(safeApiPath('/api/v1/control/memory?scope=owner'), '/api/v1/control/memory?scope=owner');
   for (const unsafe of ['https://example.invalid/api/v1/control/projects', '//example.invalid/api/v1/control/projects', '/api/v1/control/%2e%2e/auth/session', '/api/v1/control/projects#fragment']) assert.throws(() => safeApiPath(unsafe), /not safe/);
 });
 
