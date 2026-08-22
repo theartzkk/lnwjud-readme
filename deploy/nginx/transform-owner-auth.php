@@ -8,18 +8,22 @@ declare(strict_types=1);
  * deployment engine owns backup, install, nginx -t, reload and rollback.
  */
 
-if ($argc !== 4) {
-    fwrite(STDERR, "Usage: transform-owner-auth.php INPUT OUTPUT HOSTNAME\n");
+if ($argc !== 5) {
+    fwrite(STDERR, "Usage: transform-owner-auth.php INPUT OUTPUT HOSTNAME AWH_FPM_SOCKET\n");
     exit(2);
 }
 
-[, $input, $output, $hostname] = $argv;
+[, $input, $output, $hostname, $fpmSocket] = $argv;
 if ($input === '' || $output === '' || $hostname === '' || preg_match('/[\x00-\x1F\x7F]/', $input . $output . $hostname)) {
     fwrite(STDERR, "Invalid owner-auth transformation input\n");
     exit(2);
 }
 if (preg_match('/^[A-Za-z0-9.-]+$/', $hostname) !== 1 || str_contains($hostname, '*') || strcasecmp($hostname, 'localhost') === 0 || filter_var($hostname, FILTER_VALIDATE_IP) !== false || str_starts_with($hostname, '.') || str_ends_with($hostname, '.')) {
     fwrite(STDERR, "Owner-auth hostname is not a reviewed DNS authority\n");
+    exit(2);
+}
+if (preg_match('#^/run/php/php[0-9]+\.[0-9]+-fpm-awh\.sock$#', $fpmSocket) !== 1) {
+    fwrite(STDERR, "Owner-auth PHP-FPM socket is not the reviewed AWH authority\n");
     exit(2);
 }
 
@@ -209,7 +213,7 @@ $publicAuth = [
     '        fastcgi_param REMOTE_ADDR $remote_addr;',
     '        fastcgi_param HTTP_USER_AGENT $http_user_agent;',
     '        fastcgi_param QUERY_STRING $query_string;',
-    '        fastcgi_pass unix:/run/php/php8.3-fpm-awh.sock;',
+        '        fastcgi_pass unix:' . $fpmSocket . ';',
     '    }',
     '    location = /api/v1/auth/session {',
     '        auth_basic off;',
@@ -225,7 +229,7 @@ $publicAuth = [
     '        fastcgi_param REMOTE_ADDR $remote_addr;',
     '        fastcgi_param HTTP_USER_AGENT $http_user_agent;',
     '        fastcgi_param QUERY_STRING $query_string;',
-    '        fastcgi_pass unix:/run/php/php8.3-fpm-awh.sock;',
+        '        fastcgi_pass unix:' . $fpmSocket . ';',
     '    }',
     '    location ^~ /api/v1/auth/ {',
     '        auth_basic off;',
@@ -241,7 +245,7 @@ $publicAuth = [
     '        fastcgi_param REMOTE_ADDR $remote_addr;',
     '        fastcgi_param HTTP_USER_AGENT $http_user_agent;',
     '        fastcgi_param QUERY_STRING $query_string;',
-    '        fastcgi_pass unix:/run/php/php8.3-fpm-awh.sock;',
+        '        fastcgi_pass unix:' . $fpmSocket . ';',
     '    }',
 ];
 if ($auth['start'] >= 0) $rewriteLocation($auth, $remove, $insertBefore, ['        auth_basic off;'], $lines);

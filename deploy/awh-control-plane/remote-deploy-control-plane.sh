@@ -4,15 +4,15 @@
 # only. Raw stderr and all secret-bearing diagnostics are intentionally hidden.
 set -eu
 exec 2>/dev/null
-DB=$1; REMOTE_ROOT=$2; REMOTE_STAGE=$3; RELEASE=$4; RELEASE_ID=$5; NGINX_CONFIG=$6; PHP_VERSION=$7; HOSTNAME=$8; CLEANUP_TOPOLOGY=$9; OWNER_USERNAME=${10}; OWNER_AUTH_ENABLED=${11}; REMOTE_SCRIPT=${12}
+DB=$1; REMOTE_ROOT=$2; REMOTE_STAGE=$3; RELEASE=$4; RELEASE_ID=$5; NGINX_CONFIG=$6; HOSTNAME=$7; AWH_FPM_SOCKET=$8; CLEANUP_TOPOLOGY=$9; OWNER_USERNAME=${10}; OWNER_AUTH_ENABLED=${11}; REMOTE_SCRIPT=${12}
 case "$DB" in /var/lib/awh-hub/*|/opt/awh-hub/*|/srv/awh/*) ;; *) exit 20 ;; esac
 case "$REMOTE_ROOT" in /opt/awh-hub) ;; *) exit 20 ;; esac
 case "$REMOTE_STAGE" in /tmp/awh-control-plane-*.tar.gz) ;; *) exit 20 ;; esac
 case "$RELEASE" in /opt/awh-hub/control-releases/*) ;; *) exit 20 ;; esac
 case "$RELEASE_ID" in m4-[0-9a-fA-F]*) ;; *) exit 20 ;; esac
 case "$NGINX_CONFIG" in /etc/nginx/sites-enabled/*) ;; *) exit 20 ;; esac
-case "$PHP_VERSION" in [0-9]*.[0-9]*) ;; *) exit 20 ;; esac
 case "$HOSTNAME" in ''|*[!A-Za-z0-9.-]*|.*|*.) exit 20 ;; esac
+printf '%s' "$AWH_FPM_SOCKET" | grep -Eq '^/run/php/php[0-9]+\.[0-9]+-fpm-awh\.sock$' || exit 20
 case "$CLEANUP_TOPOLOGY" in 0|1) ;; *) exit 20 ;; esac
 case "$OWNER_USERNAME" in art) ;; *) exit 20 ;; esac
 case "$OWNER_AUTH_ENABLED" in 1) ;; *) exit 20 ;; esac
@@ -93,8 +93,43 @@ EOF_RESIDUES
 }
 verify_m3d() { for path in /api/v1/health /api/v1/status /api/v1/projects; do code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME$path" 2>/dev/null || printf 000); test "$code" = 401 || return 1; done; }
 verify_m3e_after_m4() { code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H 'Content-Type: application/json' -H 'Authorization: Bearer invalid-regression-token' -d '{"schemaVersion":1,"projectIds":[],"ttlSeconds":600}' -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/enrollment/pairing-codes" 2>/dev/null || printf 000); test "$code" = 401; }
-verify_owner_auth_effective_config() { EFFECTIVE_NGINX=$(sudo nginx -T 2>/dev/null || true); test -n "$EFFECTIVE_NGINX"; printf '%s\n' "$EFFECTIVE_NGINX" | grep -q 'location = /api/v1/auth/login {'; printf '%s\n' "$EFFECTIVE_NGINX" | grep -q 'location = /api/v1/auth/session {'; printf '%s\n' "$EFFECTIVE_NGINX" | grep -q "fastcgi_param AWH_CONTROL_ORIGIN https://${HOSTNAME};"; }
-verify_web_access() { sudo -n -u www-data test -x /var/www/awh-web/releases; sudo -n -u www-data test -x "$WEB_RELEASE"; sudo -n -u www-data test -r "$WEB_RELEASE/index.html"; }
+verify_owner_auth_effective_config() { if ! EFFECTIVE_NGINX=$(sudo nginx -T 2>&1); then return 1; fi; test -n "$EFFECTIVE_NGINX"; printf '%s\n' "$EFFECTIVE_NGINX" | grep -q 'location = /api/v1/auth/login {'; printf '%s\n' "$EFFECTIVE_NGINX" | grep -q 'location = /api/v1/auth/session {'; printf '%s\n' "$EFFECTIVE_NGINX" | grep -q "fastcgi_param AWH_CONTROL_ORIGIN https://${HOSTNAME};"; printf '%s\n' "$EFFECTIVE_NGINX" | grep -q "fastcgi_pass unix:${AWH_FPM_SOCKET};"; }
+verify_owner_auth_surface() {
+  OWNER_AUTH_SURFACE_HEADERS=$(mktemp /tmp/awh-owner-auth-surface-headers.XXXXXX)
+  OWNER_AUTH_SURFACE_BODY=$(mktemp /tmp/awh-owner-auth-surface-body.XXXXXX)
+  surface_attempt=1
+  while test "$surface_attempt" -le 10; do
+    surface_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H "Origin: https://$HOSTNAME" -D "$OWNER_AUTH_SURFACE_HEADERS" -o "$OWNER_AUTH_SURFACE_BODY" -w '%{http_code}' "https://$HOSTNAME/api/v1/auth/login" 2>/dev/null || printf 000)
+    if test "$surface_code" = 405 && ! grep -qi '^www-authenticate: Basic ' "$OWNER_AUTH_SURFACE_HEADERS" && grep -q '"code":"METHOD_NOT_ALLOWED"' "$OWNER_AUTH_SURFACE_BODY"; then
+      printf '%s\n' "DEPLOY_DIAGNOSTIC=OWNER_AUTH_SURFACE_HTTP_${surface_code}"
+      printf '%s\n' "DEPLOY_DIAGNOSTIC=OWNER_AUTH_SURFACE_ATTEMPTS_${surface_attempt}"
+      rm -f "$OWNER_AUTH_SURFACE_HEADERS" "$OWNER_AUTH_SURFACE_BODY"
+      OWNER_AUTH_SURFACE_HEADERS=
+      OWNER_AUTH_SURFACE_BODY=
+      return 0
+    fi
+    surface_attempt=$((surface_attempt + 1))
+    test "$surface_attempt" -le 10 && sleep 1
+  done
+  printf '%s\n' "DEPLOY_DIAGNOSTIC=OWNER_AUTH_SURFACE_HTTP_${surface_code}"
+  printf '%s\n' 'DEPLOY_DIAGNOSTIC=OWNER_AUTH_SURFACE_ATTEMPTS_10'
+  if grep -qi '^www-authenticate: Basic ' "$OWNER_AUTH_SURFACE_HEADERS"; then printf '%s\n' 'DEPLOY_DIAGNOSTIC=OWNER_AUTH_SURFACE_BASIC_CHALLENGE'; return 1; fi
+  return 1
+}
+verify_owner_auth_login() {
+  OWNER_AUTH_COOKIE_JAR=$(mktemp /tmp/awh-owner-auth-cookie.XXXXXX)
+  OWNER_AUTH_COOKIE_HEADERS=$(mktemp /tmp/awh-owner-auth-headers.XXXXXX)
+  code=$(printf '{"schemaVersion":1,"username":"%s","password":"%s","remember":false}\n' "$OWNER_USERNAME" "$OWNER_PASSWORD" | curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H 'Content-Type: application/json' -H "Origin: https://$HOSTNAME" -c "$OWNER_AUTH_COOKIE_JAR" -D "$OWNER_AUTH_COOKIE_HEADERS" --data-binary @- -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/auth/login" 2>/dev/null || printf 000)
+  printf '%s\n' "DEPLOY_DIAGNOSTIC=OWNER_AUTH_LOGIN_HTTP_${code}"
+  if grep -qi '^www-authenticate: Basic ' "$OWNER_AUTH_COOKIE_HEADERS"; then printf '%s\n' 'DEPLOY_DIAGNOSTIC=OWNER_AUTH_LOGIN_BASIC_CHALLENGE'; return 1; fi
+  test "$code" = 200
+  grep -qi '^set-cookie: __Host-awh_control_session=.*; Path=/; Secure; HttpOnly; SameSite=Strict;' "$OWNER_AUTH_COOKIE_HEADERS"
+  grep -qi '^set-cookie: awh_csrf=.*; Path=/; Secure; SameSite=Strict;' "$OWNER_AUTH_COOKIE_HEADERS"
+  grep -q '__Host-awh_control_session' "$OWNER_AUTH_COOKIE_JAR"
+  grep -q 'awh_csrf' "$OWNER_AUTH_COOKIE_JAR"
+  OWNER_PASSWORD=
+}
+verify_web_access() { sudo -n -u www-data test -x /var; sudo -n -u www-data test -x /var/www; sudo -n -u www-data test -x /var/www/awh-web; sudo -n -u www-data test -x /var/www/awh-web/releases; sudo -n -u www-data test -x "$WEB_RELEASE"; sudo -n -u www-data test -r "$WEB_RELEASE/index.html"; }
 pointer_capture() { PREVIOUS_POINTER=ABSENT; PREVIOUS_TARGET=; if test -L "$POINTER"; then PREVIOUS_TARGET=$(readlink "$POINTER"); case "$PREVIOUS_TARGET" in /opt/awh-hub/control-releases/*) test -d "$PREVIOUS_TARGET" || return 1 ;; *) return 1 ;; esac; PREVIOUS_POINTER=PRESENT; elif test -e "$POINTER"; then return 1; fi; }
 pointer_restore() { if test "$PREVIOUS_POINTER" = ABSENT; then sudo rm -f "$POINTER"; test ! -e "$POINTER" && test ! -L "$POINTER"; else sudo rm -f "$POINTER"; sudo ln -s "$PREVIOUS_TARGET" "$POINTER"; test "$(readlink "$POINTER")" = "$PREVIOUS_TARGET"; fi; }
 web_pointer_capture() { WEB_PREVIOUS=ABSENT; WEB_TARGET=; if test -L "$WEB_POINTER"; then WEB_TARGET=$(readlink "$WEB_POINTER"); case "$WEB_TARGET" in /var/www/awh-web/releases/*) test -d "$WEB_TARGET" || return 1 ;; *) return 1 ;; esac; WEB_PREVIOUS=PRESENT; elif test -e "$WEB_POINTER"; then return 1; fi; }
@@ -140,8 +175,8 @@ sudo sqlite3 "$DB" ".backup '$BACKUP'"; sudo chown root:root "$BACKUP"; sudo chm
 if sudo test -e "$RELEASE" || sudo test -L "$RELEASE"; then exit 20; fi
 sudo install -d -o awh-hub -g awh-hub -m 0750 "$RELEASE"; RELEASE_CREATED=1; sudo tar -xzf "$REMOTE_STAGE" -C "$RELEASE"; sudo chown -R awh-hub:awh-hub "$RELEASE"; sudo test -f "$RELEASE/hub/public/control-plane.php"; sudo test -f "$RELEASE/hub/bin/migrate-m4.php"; sudo -u awh-hub test -r "$RELEASE/hub/src/HubControlPlaneService.php"; stage RELEASE_STAGED
 OWNER_AUTH_SETUP=$RELEASE/hub/bin/setup-owner-auth.php; OWNER_AUTH_TRANSFORM=$RELEASE/deploy/nginx/transform-owner-auth.php; CONTROL_ORIGIN_RENDER=$RELEASE/deploy/nginx/render-control-plane-include.php; CONTROL_INCLUDE=$RELEASE/deploy/nginx/awh-control-plane.conf; CONTROL_INCLUDE_TMP=/tmp/awh-control-include-$RELEASE_ID.conf
-stage CONTROL_ORIGIN_RENDER; sudo /usr/bin/php "$CONTROL_ORIGIN_RENDER" "$CONTROL_INCLUDE" "$CONTROL_INCLUDE_TMP" "$HOSTNAME" >/dev/null; sudo test -s "$CONTROL_INCLUDE_TMP"; sudo install -o awh-hub -g awh-hub -m 0644 "$CONTROL_INCLUDE_TMP" "$CONTROL_INCLUDE"; sudo rm -f "$CONTROL_INCLUDE_TMP"; CONTROL_INCLUDE_TMP=
-stage NGINX_CUTOVER_PREPARE; sudo /usr/bin/php "$OWNER_AUTH_TRANSFORM" "$NGINX_CONFIG" "$NGINX_CANDIDATE" "$HOSTNAME" >/dev/null; sudo test -s "$NGINX_CANDIDATE"; sudo chown root:root "$NGINX_CANDIDATE"; sudo chmod 0644 "$NGINX_CANDIDATE"
+stage CONTROL_ORIGIN_RENDER; sudo /usr/bin/php "$CONTROL_ORIGIN_RENDER" "$CONTROL_INCLUDE" "$CONTROL_INCLUDE_TMP" "$HOSTNAME" "$AWH_FPM_SOCKET" >/dev/null; sudo test -s "$CONTROL_INCLUDE_TMP"; sudo install -o awh-hub -g awh-hub -m 0644 "$CONTROL_INCLUDE_TMP" "$CONTROL_INCLUDE"; sudo rm -f "$CONTROL_INCLUDE_TMP"; CONTROL_INCLUDE_TMP=
+stage NGINX_CUTOVER_PREPARE; sudo /usr/bin/php "$OWNER_AUTH_TRANSFORM" "$NGINX_CONFIG" "$NGINX_CANDIDATE" "$HOSTNAME" "$AWH_FPM_SOCKET" >/dev/null; sudo test -s "$NGINX_CANDIDATE"; sudo chown root:root "$NGINX_CANDIDATE"; sudo chmod 0644 "$NGINX_CANDIDATE"
 DB_MUTATED=1; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/migrate-m4.php" "$DB" "$RELEASE/hub/migrations/003_m4_control_plane.sql" >/dev/null; stage MIGRATION_FIRST_PASS
 sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/migrate-m4.php" "$DB" "$RELEASE/hub/migrations/003_m4_control_plane.sql" >/dev/null; stage MIGRATION_IDEMPOTENT
 test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 4
@@ -163,8 +198,8 @@ web_pointer_capture; sudo install -d -o awh-hub -g www-data -m 0750 /var/www/awh
 stage NGINX_CUTOVER_INSTALL; sudo install -o root -g root -m 0644 "$NGINX_CANDIDATE" "$NGINX_CONFIG"; NGINX_CHANGED=1; stage NGINX_CONFIGURED; sudo nginx -t >/dev/null
 stage SERVICE_RELOAD; sudo systemctl reload nginx
 stage OWNER_AUTH_EFFECTIVE_CONFIG; verify_owner_auth_effective_config
-stage OWNER_AUTH_SURFACE; OWNER_AUTH_SURFACE_HEADERS=$(mktemp /tmp/awh-owner-auth-surface-headers.XXXXXX); OWNER_AUTH_SURFACE_BODY=$(mktemp /tmp/awh-owner-auth-surface-body.XXXXXX); surface_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H "Origin: https://$HOSTNAME" -D "$OWNER_AUTH_SURFACE_HEADERS" -o "$OWNER_AUTH_SURFACE_BODY" -w '%{http_code}' "https://$HOSTNAME/api/v1/auth/login" 2>/dev/null || printf 000); test "$surface_code" = 405; ! grep -qi '^www-authenticate: Basic ' "$OWNER_AUTH_SURFACE_HEADERS"; grep -q '"code":"METHOD_NOT_ALLOWED"' "$OWNER_AUTH_SURFACE_BODY"; rm -f "$OWNER_AUTH_SURFACE_HEADERS" "$OWNER_AUTH_SURFACE_BODY"; OWNER_AUTH_SURFACE_HEADERS=; OWNER_AUTH_SURFACE_BODY=
-stage OWNER_AUTH_LOGIN; OWNER_AUTH_COOKIE_JAR=$(mktemp /tmp/awh-owner-auth-cookie.XXXXXX); OWNER_AUTH_COOKIE_HEADERS=$(mktemp /tmp/awh-owner-auth-headers.XXXXXX); code=$(printf '{"schemaVersion":1,"username":"%s","password":"%s","remember":false}\n' "$OWNER_USERNAME" "$OWNER_PASSWORD" | curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H 'Content-Type: application/json' -H "Origin: https://$HOSTNAME" -c "$OWNER_AUTH_COOKIE_JAR" -D "$OWNER_AUTH_COOKIE_HEADERS" --data-binary @- -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/auth/login" 2>/dev/null || printf 000); test "$code" = 200; ! grep -qi '^www-authenticate: Basic ' "$OWNER_AUTH_COOKIE_HEADERS"; grep -qi '^set-cookie: __Host-awh_control_session=.*; Path=/; Secure; HttpOnly; SameSite=Strict;' "$OWNER_AUTH_COOKIE_HEADERS"; grep -qi '^set-cookie: awh_csrf=.*; Path=/; Secure; SameSite=Strict;' "$OWNER_AUTH_COOKIE_HEADERS"; grep -q '__Host-awh_control_session' "$OWNER_AUTH_COOKIE_JAR"; grep -q 'awh_csrf' "$OWNER_AUTH_COOKIE_JAR"; OWNER_PASSWORD=
+stage OWNER_AUTH_SURFACE; verify_owner_auth_surface
+stage OWNER_AUTH_LOGIN; verify_owner_auth_login
 stage OWNER_AUTH_SESSION; session_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H "Origin: https://$HOSTNAME" -b "$OWNER_AUTH_COOKIE_JAR" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/auth/session" 2>/dev/null || printf 000); test "$session_code" = 200; cleanup_owner_auth_cookie_files
 stage OWNER_AUTH_WEB_SURFACE; root_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/" 2>/dev/null || printf 000); test "$root_code" = 200; preview_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/preview/" 2>/dev/null || printf 000); test "$preview_code" = 401
 stage M3D_REGRESSION; verify_m3d

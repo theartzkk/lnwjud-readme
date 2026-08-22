@@ -73,4 +73,9 @@ The owner-protocol integration is isolated on `awh/clean-foundation` / PR #8 for
 Finish PR #8 cross-platform QA and reconcile it cleanly with the current release line. Then perform one whole-path production-readiness review of the final exact SHA, not only the previously failing Nginx step. Only after that review may one bounded ReadyIDC M4 retry be approved.
 
 For owner authentication, the next production action is one reviewed v5
-activation approval; this source pass performs no production mutation.
+activation approval; this source pass performs no production mutation. The
+activation must resolve the AWH PHP-FPM socket from the live enrollment
+include, pass the origin as a FastCGI request parameter, verify the effective
+Nginx generation, then allow the public auth route a short bounded convergence
+window before evaluating application login/session. Only sanitized HTTP status
+and attempt evidence may cross the deployment boundary.

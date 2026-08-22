@@ -34,8 +34,9 @@ try {
     // Use the domain service to obtain a real owner pairing code without exposing
     // it to assertions beyond the bounded test process.
     $pairing = $enrollment->issuePairingCode($ownerId, [$projectId], $testNow);
+    putenv('AWH_CONTROL_ORIGIN=https://wrong.test');
+    $sessionResponse = m4_response(HubControlPlaneService::openExisting($db), 'POST', '/api/v1/control/session', m4_server(['HTTP_ORIGIN' => 'https://awh.test', 'AWH_CONTROL_ORIGIN' => 'https://awh.test']), ['schemaVersion' => 1, 'pairingCode' => $pairing['pairingCode'], 'displayName' => 'Art iPhone', 'appVersion' => '0.5.0']);
     putenv('AWH_CONTROL_ORIGIN=https://awh.test');
-    $sessionResponse = m4_response(HubControlPlaneService::openExisting($db), 'POST', '/api/v1/control/session', m4_server(['HTTP_ORIGIN' => 'https://awh.test']), ['schemaVersion' => 1, 'pairingCode' => $pairing['pairingCode'], 'displayName' => 'Art iPhone', 'appVersion' => '0.5.0']);
     m4_assert($sessionResponse['status'] === 200 && !str_contains($sessionResponse['body'], 'sessionToken') && !str_contains($sessionResponse['body'], 'accessToken'), 'mobile session must not expose credentials');
     $sessionCookie = m4_cookie($sessionResponse, '__Host-awh_control_session'); $csrfCookie = m4_cookie($sessionResponse, 'awh_csrf');
     $sessionState = m4_response(HubControlPlaneService::openExisting($db), 'GET', '/api/v1/control/session', ['HTTP_COOKIE' => '__Host-awh_control_session=' . $sessionCookie, 'HTTP_ORIGIN' => 'https://awh.test'], []);

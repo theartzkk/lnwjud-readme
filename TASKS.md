@@ -14,7 +14,7 @@
 
 ## NEXT
 
-- If the final exact SHA passes the whole-path review, request one bounded ReadyIDC M4 retry approval.
+- The next Owner Auth retry requires the final exact SHA with production-parity proof for dynamic AWH PHP-FPM authority, FastCGI origin propagation, effective Nginx inspection, and bounded post-reload route convergence. Do not retry from a single immediate request after reload.
 - After successful activation, field-test iPhone Safari/PWA first: trust device, empty-project state, Add Project/onboard, submit Goal, truthful queue/worker/result/approval state.
 - Field-test the final Mac package in a logged-in GUI session.
 - Field-test physical Windows pairing, Credential Manager persistence and runtime.

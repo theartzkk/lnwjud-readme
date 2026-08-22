@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -12,6 +12,7 @@ const PHP = '/opt/local/bin/php';
 const helper = join(ROOT, 'deploy/nginx/transform-owner-auth.php');
 const originRenderer = join(ROOT, 'deploy/nginx/render-control-plane-include.php');
 const HOST = '157-85-108-142.sslip.io';
+const AWH_FPM_SOCKET = '/run/php/php8.3-fpm-awh.sock';
 const ENROLLMENT = '/opt/awh-hub/enrollment-current/deploy/nginx/awh-enrollment.conf';
 const CONTROL = '/opt/awh-hub/control-plane-current/deploy/nginx/awh-control-plane.conf';
 
@@ -54,7 +55,7 @@ async function runTransform(input: string, host = HOST): Promise<{ output: strin
   const outputPath = join(root, 'output.conf');
   await writeFile(inputPath, input, 'utf8');
   try {
-    const result = await execFileAsync(PHP, [helper, inputPath, outputPath, host]);
+    const result = await execFileAsync(PHP, [helper, inputPath, outputPath, host, AWH_FPM_SOCKET]);
     return { output: await readFile(outputPath, 'utf8'), stderr: result.stderr };
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -68,8 +69,8 @@ test('owner-auth transformation matches the real ReadyIDC topology and is idempo
   const second = join(firstRoot, 'second.conf');
   try {
     await writeFile(input, productionShape(), 'utf8');
-    await execFileAsync(PHP, [helper, input, first, HOST]);
-    await execFileAsync(PHP, [helper, first, second, HOST]);
+    await execFileAsync(PHP, [helper, input, first, HOST, AWH_FPM_SOCKET]);
+    await execFileAsync(PHP, [helper, first, second, HOST, AWH_FPM_SOCKET]);
     const rendered = await readFile(first, 'utf8');
     assert.equal(rendered, await readFile(second, 'utf8'));
     const authoritativeHead = rendered.slice(0, rendered.indexOf('    location'));
@@ -82,6 +83,7 @@ test('owner-auth transformation matches the real ReadyIDC topology and is idempo
     assert.match(rendered, /location = \/api\/v1\/auth\/session \{\n        auth_basic off;/);
     assert.ok(rendered.indexOf('location = /api/v1/auth/login {') < rendered.indexOf('location ^~ /api/v1/ {'));
     assert.match(rendered, /fastcgi_param AWH_CONTROL_ORIGIN https:\/\/157-85-108-142\.sslip\.io;/);
+    assert.match(rendered, /fastcgi_pass unix:\/run\/php\/php8\.3-fpm-awh\.sock;/);
     assert.match(rendered, /location \/ \{\n        auth_basic off;/);
     assert.match(rendered, /location \^~ \/preview\/ \{\n        auth_basic "AWH Remote Preview";/);
     assert.equal((rendered.match(new RegExp(`include ${ENROLLMENT.replaceAll('/', '\\/')};`, 'g')) ?? []).length, 1);
@@ -104,7 +106,7 @@ test('owner-auth transformation rejects duplicate/outside/ambiguous topology', a
     const output = join(root, 'output.conf');
     try {
       await writeFile(input, fixture, 'utf8');
-      await assert.rejects(execFileAsync(PHP, [helper, input, output, HOST]), undefined, `fixture ${index} should be rejected`);
+      await assert.rejects(execFileAsync(PHP, [helper, input, output, HOST, AWH_FPM_SOCKET]), undefined, `fixture ${index} should be rejected`);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -131,6 +133,7 @@ test('owner-auth deployment assets keep owner identity bootstrap bounded to stdi
   assert.match(remote, /OWNER_AUTH_EFFECTIVE_CONFIG/);
   assert.match(remote, /stage OWNER_AUTH_WEB_SURFACE/);
   assert.match(remote, /WEB_ACCESS_READY/);
+  assert.match(remote, /www-data test -x \/var\/www\/awh-web/);
   assert.match(remote, /www-data test -r.*WEB_RELEASE/);
   assert.match(remote, /chown -R awh-hub:www-data/);
   assert.match(remote, /location = \/api\/v1\/auth\/login/);
@@ -147,13 +150,64 @@ test('owner-auth release renders the real origin into the staged control include
   const output = join(root, 'rendered.conf');
   try {
     await writeFile(input, await readFile(join(ROOT, 'deploy/nginx/awh-control-plane.conf'), 'utf8'));
-    await execFileAsync(PHP, [originRenderer, input, output, HOST]);
+    await execFileAsync(PHP, [originRenderer, input, output, HOST, AWH_FPM_SOCKET]);
     const rendered = await readFile(output, 'utf8');
     assert.equal((rendered.match(new RegExp(`https://${HOST.replaceAll('.', '\\.')}`, 'g')) ?? []).length, 1);
+    assert.match(rendered, /fastcgi_pass unix:\/run\/php\/php8\.3-fpm-awh\.sock;/);
     assert.doesNotMatch(rendered, /PREVIEW_HOSTNAME/);
-    await assert.rejects(execFileAsync(PHP, [originRenderer, input, output, 'localhost']));
+    await assert.rejects(execFileAsync(PHP, [originRenderer, input, output, 'localhost', AWH_FPM_SOCKET]));
     await writeFile(input, rendered, 'utf8');
-    await assert.rejects(execFileAsync(PHP, [originRenderer, input, output, HOST]));
+    await assert.rejects(execFileAsync(PHP, [originRenderer, input, output, HOST, AWH_FPM_SOCKET]));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('effective owner-auth config gate consumes nginx -T diagnostics from stderr', async () => {
+  const remote = await readFile(join(ROOT, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'), 'utf8');
+  const functionLine = remote.split('\n').find((line) => line.startsWith('verify_owner_auth_effective_config()'));
+  assert.ok(functionLine, 'remote verifier function is present');
+  assert.match(functionLine, /nginx -T 2>&1/);
+  const root = await mkdtemp(join(tmpdir(), 'awh-owner-auth-nginx-t-'));
+  const bin = join(root, 'bin');
+  const config = join(root, 'effective.conf');
+  try {
+    await mkdir(bin);
+    await writeFile(config, `server {\n  location = /api/v1/auth/login {}\n  location = /api/v1/auth/session {}\n  fastcgi_param AWH_CONTROL_ORIGIN https://${HOST};\n  fastcgi_pass unix:${AWH_FPM_SOCKET};\n}\n`);
+    await writeFile(join(bin, 'sudo'), '#!/bin/sh\nexec "$@"\n');
+    await writeFile(join(bin, 'nginx'), '#!/bin/sh\nif test "$1" = -T; then cat "$AWH_FAKE_NGINX_CONFIG" >&2; exit 0; fi\nexit 64\n');
+    await chmod(join(bin, 'sudo'), 0o755);
+    await chmod(join(bin, 'nginx'), 0o755);
+    await execFileAsync('/bin/sh', ['-c', `HOSTNAME=${HOST}; AWH_FPM_SOCKET=${AWH_FPM_SOCKET}; ${functionLine}\nverify_owner_auth_effective_config`], {
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, AWH_FAKE_NGINX_CONFIG: config },
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('owner-auth route gate waits for the reloaded Nginx generation before failing closed', async () => {
+  const remote = await readFile(join(ROOT, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'), 'utf8');
+  const start = remote.indexOf('verify_owner_auth_surface() {');
+  const end = remote.indexOf('verify_owner_auth_login() {', start);
+  assert.ok(start >= 0 && end > start, 'surface verifier is present');
+  const verifier = remote.slice(start, end);
+  const root = await mkdtemp(join(tmpdir(), 'awh-owner-auth-reload-'));
+  const bin = join(root, 'bin');
+  const counter = join(root, 'counter');
+  try {
+    await mkdir(bin);
+    await writeFile(join(bin, 'curl'), `#!/bin/sh\nheaders= body=\nwhile test \"$#\" -gt 0; do\n  case \"$1\" in -D) headers=$2; shift 2; continue ;; -o) body=$2; shift 2; continue ;; esac\n  shift\ndone\ncount=$(cat \"$AWH_FAKE_COUNTER\" 2>/dev/null || printf 0)\ncount=$((count + 1))\nprintf %s \"$count\" > \"$AWH_FAKE_COUNTER\"\nif test \"$count\" = 1; then\n  printf \"WWW-Authenticate: Basic realm=fixture\\n\" > \"$headers\"\n  printf \"{}\\n\" > \"$body\"\n  printf 401\nelse\n  : > \"$headers\"\n  printf \"{\\\"code\\\":\\\"METHOD_NOT_ALLOWED\\\"}\\n\" > \"$body\"\n  printf 405\nfi\n`);
+    await writeFile(join(bin, 'sleep'), '#!/bin/sh\nexit 0\n');
+    await chmod(join(bin, 'curl'), 0o755);
+    await chmod(join(bin, 'sleep'), 0o755);
+    const result = await execFileAsync('/bin/sh', ['-c', `HOSTNAME=${HOST}; ${verifier}\nverify_owner_auth_surface`], {
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, AWH_FAKE_COUNTER: counter },
+    });
+    assert.equal(await readFile(counter, 'utf8'), '2');
+    assert.match(result.stdout, /DEPLOY_DIAGNOSTIC=OWNER_AUTH_SURFACE_HTTP_405/);
+    assert.match(result.stdout, /DEPLOY_DIAGNOSTIC=OWNER_AUTH_SURFACE_ATTEMPTS_2/);
+    assert.doesNotMatch(result.stdout, /Basic realm|password|token/i);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

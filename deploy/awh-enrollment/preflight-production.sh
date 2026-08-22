@@ -170,10 +170,16 @@ NGINX_DB=$(printf '%s\n' "$NGINX_CONFIG" | awk '/AWH_HUB_DB_PATH/ { for (i=1; i<
 NGINX_SERVER_CONFIG=$(printf '%s\n' "$NGINX_CONFIG" | awk '/^# configuration file / { file=$0 } /AWH_HUB_DB_PATH/ { sub(/^# configuration file /, "", file); sub(/:$/, "", file); print file; exit }')
 NGINX_GATEWAY=$(printf '%s\n' "$NGINX_CONFIG" | awk '/SCRIPT_FILENAME/ && /web-gateway\.php/ { print; exit }' | sed -E 's/^[[:space:]]*//')
 NGINX_FCGI=$(printf '%s\n' "$NGINX_CONFIG" | awk '/fastcgi_pass/ { print; exit }' | sed -E 's/^[[:space:]]*//')
+ENROLLMENT_FCGI=$(printf '%s\n' "$NGINX_CONFIG" | awk '
+  /^# configuration file \/opt\/awh-hub\/enrollment-current\/deploy\/nginx\/awh-enrollment\.conf:$/ { enrollment = 1; next }
+  /^# configuration file / { enrollment = 0 }
+  enrollment && /fastcgi_pass unix:\// { sub(/^[[:space:]]*/, ""); print; exit }
+')
 if test -n "$NGINX_DB"; then say "effective_nginx_db=$NGINX_DB"; else say 'effective_nginx_db=UNAVAILABLE'; fi
 if test -n "$NGINX_SERVER_CONFIG"; then say "effective_nginx_server_config=$NGINX_SERVER_CONFIG"; else say 'effective_nginx_server_config=UNAVAILABLE'; fi
 if test -n "$NGINX_GATEWAY"; then say "effective_gateway=$NGINX_GATEWAY"; else say 'effective_gateway=UNAVAILABLE'; fi
 if test -n "$NGINX_FCGI"; then say "effective_fastcgi=$NGINX_FCGI"; else say 'effective_fastcgi=UNAVAILABLE'; fi
+if test -n "$ENROLLMENT_FCGI"; then say "effective_enrollment_fastcgi=$ENROLLMENT_FCGI"; else say 'effective_enrollment_fastcgi=UNAVAILABLE'; fi
 
 PHP_DB=$(grep -hE '^[[:space:]]*env\[AWH_HUB_DB_PATH\][[:space:]]*=' /etc/php/*/fpm/pool.d/*.conf 2>/dev/null \
   | awk -F= '{v=$2; gsub(/[[:space:]]/, "", v); print v; exit}' || true)
