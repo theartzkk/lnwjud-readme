@@ -124,6 +124,8 @@ test('owner-auth deployment assets keep owner identity bootstrap bounded to stdi
   assert.match(remote, /-H \"Origin: https:\/\/\$HOSTNAME\"/);
   assert.match(remote, /-c \"\$OWNER_AUTH_COOKIE_JAR\"/);
   assert.match(remote, /OWNER_AUTH_SESSION/);
+  assert.match(remote, /OWNER_AUTH_EFFECTIVE_CONFIG/);
+  assert.match(remote, /location = \/api\/v1\/auth\/login/);
   assert.match(remote, /api\/v1\/auth\/session/);
   assert.match(remote, /cleanup_owner_auth_cookie_files/);
   assert.match(deploy, /scp .*\$REMOTE_DEPLOY.*\$TARGET:\$REMOTE_SCRIPT/);
