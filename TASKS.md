@@ -10,6 +10,11 @@
 - After successful sign-in, set a memorable owner username/password in Control
   Panel and retain a revocable remembered-device session; Keychain is not a
   normal-user dependency after the initial activation credential.
+- The next compatibility refresh must deploy the one project/work-first PWA
+  shell and then field-test ordinary iPhone Safari: sign in → select the
+  existing project → submit a Goal → see a truthful task state. Validate normal
+  viewport and full-page capture share the graphite canvas; do not revive the
+  legacy preview dashboard.
 
 - Close the current owner-auth deployment candidate using the shared incident rule: prove the effective HTTPS route, application response, web `www-data` access, login/session and rollback as separate gates. Do not retry the rolled-back `055484d7ac9a4b9e5676ab5312518f8c722fd705`; require a new exact SHA and one bounded approval.
 

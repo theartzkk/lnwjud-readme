@@ -20,6 +20,17 @@ that changes only release/web/Nginx pointers—never migrations, owner identity,
 password binding, or projects. Production remains unchanged until that exact
 candidate is approved.
 
+### Current web product-surface correction
+
+The field screenshot also proved that the old web release still carried the
+M3 preview/dashboard surface and its orange `body` radial-gradient. The next
+candidate replaces it rather than layering another panel over it: there is one
+mobile-first account shell, one project picker, one conversation-style work
+thread and Goal composer, and Advanced for bounded system detail. `html`,
+`body`, and app shell use the same graphite canvas; orange is an accent only.
+Normal owner use is username/password plus a revocable remembered session; the
+initial Keychain password is only a delivery bootstrap, not a daily workflow.
+
 ### Latest owner-auth closure evidence
 
 The source release `055484d7ac9a4b9e5676ab5312518f8c722fd705` was attempted once

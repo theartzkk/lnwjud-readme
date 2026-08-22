@@ -2,87 +2,52 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#0e1014" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0d10" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="description" content="AWH — Your Projects. One Workspace. Anywhere." />
-  <title>AWH — Control Panel</title>
-  <link rel="manifest" href="./manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="./logo-256x256.png" />
-  <link rel="stylesheet" href="./styles.css" />
+  <title>AWH</title>
+  <link rel="manifest" href="./manifest.webmanifest?release=__AWH_WEB_RELEASE_ID__" />
+  <link rel="apple-touch-icon" href="./logo-256x256.png?release=__AWH_WEB_RELEASE_ID__" />
+  <link rel="stylesheet" href="./styles.css?release=__AWH_WEB_RELEASE_ID__" />
 </head>
 <body>
-  <div class="shell">
-    <header class="topbar">
-      <a class="brand" href="./" aria-label="Art’s Workspace Hub home">
-        <span class="brand-mark">A</span>
-        <span><strong id="product-name">Art’s Workspace Hub</strong><small id="product-tagline">Your Projects. One Workspace. Anywhere.</small></span>
-      </a>
-      <span id="preview-label" class="status-pill warning">กำลังเชื่อมต่อ AWH</span>
+  <div id="awh-app" class="app-shell">
+    <header class="app-header">
+      <a class="brand" href="./" aria-label="AWH home"><span class="brand-mark" aria-hidden="true">A</span><span><strong>AWH</strong><small>Your Projects. One Workspace. Anywhere.</small></span></a>
+      <div class="header-actions"><span id="surface-state" class="quiet-status" aria-live="polite">กำลังเชื่อมต่อ</span><button id="account-open" class="icon-button" type="button" aria-label="บัญชีและความปลอดภัย" hidden>บัญชี</button></div>
     </header>
 
-    <main>
-      <section class="hero" aria-labelledby="page-title">
-        <div>
-          <p class="eyebrow">AWH CONTROL PANEL</p>
-          <h1 id="page-title">ทุกโปรเจกต์ของคุณ ในที่ทำงานเดียว</h1>
-          <p class="lead">เลือกโปรเจกต์ ส่ง Goal ติดตามงาน และกลับมาทำต่อได้จากทุกอุปกรณ์</p>
-        </div>
-        <div class="hub-status card">
-          <span class="label">HUB STATUS</span>
-          <strong id="hub-status">Loading…</strong>
-          <small id="hub-summary">กำลังตรวจสอบสถานะ</small>
-        </div>
+    <main class="app-main">
+      <section id="sign-in-view" class="sign-in-view" aria-labelledby="sign-in-title">
+        <div class="sign-in-copy"><p class="eyebrow">AWH</p><h1 id="sign-in-title">กลับมาทำงานต่อ<br />ได้ทุกที่</h1><p>เข้าสู่ AWH เพื่อเลือกโปรเจกต์ ส่งสิ่งที่อยากทำ และติดตามผลลัพธ์จากอุปกรณ์ที่คุณใช้</p></div>
+        <form id="login-form" class="auth-card" novalidate>
+          <h2>เข้าสู่ AWH</h2><p class="muted">ใช้ชื่อผู้ใช้และรหัสผ่านของคุณ</p>
+          <label for="login-username">ชื่อผู้ใช้</label><input id="login-username" autocomplete="username" inputmode="text" required />
+          <label for="login-password">รหัสผ่าน</label><input id="login-password" type="password" autocomplete="current-password" required />
+          <label class="check-row"><input id="login-remember" type="checkbox" checked /> <span>จดจำการเข้าสู่ระบบบนอุปกรณ์นี้</span></label>
+          <button class="primary-button" type="submit">เข้าสู่ AWH</button><p id="login-message" class="form-message" role="status"></p>
+          <button id="recovery-open" class="text-button" type="button">กู้คืนการเข้าถึง</button>
+        </form>
       </section>
 
-      <section id="control-panel" class="control-panel card" hidden aria-labelledby="control-title">
-        <div class="card-heading"><div><span class="label">CONTROL PANEL</span><h2 id="control-title">ทำงานต่อได้ทุกที่</h2></div><span id="control-state" class="status-pill">—</span></div>
-        <div id="control-sign-in" class="control-sign-in">
-          <p class="muted">เข้าสู่ AWH ด้วยชื่อผู้ใช้และรหัสผ่านของคุณ</p>
-          <div class="control-form"><label for="control-username">ชื่อผู้ใช้</label><input id="control-username" autocomplete="username" inputmode="text" /><label for="control-password">รหัสผ่าน</label><input id="control-password" type="password" autocomplete="current-password" /><label class="remember-row"><input id="control-remember" type="checkbox" checked /> จดจำการเข้าสู่ระบบบนอุปกรณ์นี้</label><button id="control-login-button" class="control-button">เข้าสู่ AWH</button><p id="control-login-message" class="muted" role="status"></p><details><summary>เชื่อมต่ออุปกรณ์เดิม (ขั้นสูง)</summary><p class="muted">ใช้เฉพาะเมื่อคุณได้รับรหัสเชื่อมต่อจากอุปกรณ์ AWH ที่เชื่อถือได้</p><label for="control-pairing-code">รหัสชั่วคราว</label><input id="control-pairing-code" inputmode="text" autocomplete="one-time-code" maxlength="128" /><button id="control-sign-in-button" class="control-button secondary">เชื่อมต่อ</button></details></div>
-          <details class="security-details"><summary>กู้คืนการเข้าถึง</summary><p class="muted">ใช้รหัสกู้คืนที่เก็บไว้อย่างปลอดภัยตอนตั้งค่าบัญชี รหัสนี้ใช้ได้ครั้งเดียว</p><label for="control-recovery-code">รหัสกู้คืน</label><input id="control-recovery-code" autocomplete="one-time-code" inputmode="text" /><label for="control-recovery-password">รหัสผ่านใหม่</label><input id="control-recovery-password" type="password" autocomplete="new-password" /><button id="control-recovery-button" class="control-button secondary">ตั้งรหัสผ่านใหม่</button><p id="control-recovery-message" class="muted" role="status"></p></details>
-          <p id="control-sign-in-message" class="muted" role="status"></p>
-        </div>
-        <div id="control-workspace" class="control-workspace" hidden>
-          <label for="control-project">โปรเจกต์</label><select id="control-project"></select>
-          <p id="control-empty-project" class="muted" hidden>ยังไม่มีโปรเจกต์ใน Hub — เพิ่มผ่าน Add Project/onboarding จากอุปกรณ์ที่มี workspace แล้ว</p>
-          <label for="control-goal">AWH ควรทำอะไรให้เสร็จ?</label><textarea id="control-goal" maxlength="2000" rows="4" placeholder="เช่น ตรวจปัญหาศูนย์เอกสารล่าสุดและสรุป QA ที่ต้องทำ"></textarea>
-          <button id="control-submit" class="control-button">ส่ง Goal</button>
-          <p id="control-submit-message" class="muted" role="status"></p>
-          <div class="control-columns"><div><span class="label">WORK</span><div id="control-task-list" class="control-list"></div></div><div><span class="label">WORKERS</span><div id="control-worker-list" class="control-list"></div></div></div><details class="security-details"><summary>บัญชีและความปลอดภัย</summary><p class="muted">หลังเข้าสู่ครั้งแรก คุณตั้งชื่อผู้ใช้และรหัสผ่านที่จำได้เองได้ทันที รหัสผ่านจะไม่ถูกเก็บในอุปกรณ์</p><label for="control-new-username">ชื่อผู้ใช้ใหม่</label><input id="control-new-username" autocomplete="username" inputmode="text" /><label for="control-identity-password">ยืนยันด้วยรหัสผ่านปัจจุบัน</label><input id="control-identity-password" type="password" autocomplete="current-password" /><button id="control-username-change-button" class="control-button secondary">บันทึกชื่อผู้ใช้ใหม่</button><p id="control-username-change-message" class="muted" role="status"></p><label for="control-old-password">รหัสผ่านปัจจุบัน</label><input id="control-old-password" type="password" autocomplete="current-password" /><label for="control-new-password">รหัสผ่านใหม่ที่คุณจำได้</label><input id="control-new-password" type="password" autocomplete="new-password" /><label for="control-confirm-password">ยืนยันรหัสผ่านใหม่</label><input id="control-confirm-password" type="password" autocomplete="new-password" /><button id="control-password-change-button" class="control-button secondary">บันทึกรหัสผ่านใหม่</button><p id="control-password-change-message" class="muted" role="status"></p><button id="control-recovery-codes-button" class="control-button secondary">สร้างรหัสกู้คืนใหม่</button><pre id="control-recovery-codes" class="muted"></pre><button id="control-sessions-button" class="control-button secondary">จัดการอุปกรณ์ที่เข้าสู่ระบบ</button><div id="control-session-list" class="control-list"></div></details><button id="control-logout-button" class="control-button secondary">ออกจาก AWH</button>
-          <div class="control-results"><div class="card-heading"><span class="label">RESULTS</span><span class="bounded">BOUNDED</span></div><div id="control-result-list" class="control-list"></div><div class="card-heading control-approval-heading"><span class="label">APPROVALS</span><span class="bounded">SCOPED</span></div><div id="control-approval-list" class="control-list"></div></div>
-        </div>
+      <section id="workspace-view" class="workspace-view" hidden aria-labelledby="work-title">
+        <div class="workspace-heading"><div><p class="eyebrow">PROJECT</p><button id="project-open" class="project-trigger" type="button"><span id="selected-project-name">เลือกโปรเจกต์</span><span aria-hidden="true">⌄</span></button><p id="worker-summary" class="worker-summary">กำลังตรวจสอบอุปกรณ์ทำงาน</p></div><button id="refresh-work" class="refresh-button" type="button">รีเฟรช</button></div>
+        <section class="workstream" aria-labelledby="work-title"><div class="workstream-title"><h1 id="work-title">ทำอะไรต่อดี?</h1><p id="work-context">AWH จะผูกงานกับโปรเจกต์ที่เลือกไว้เสมอ</p></div><div id="empty-work" class="empty-work"><span class="empty-mark" aria-hidden="true">✦</span><h2>เริ่มจากสิ่งที่อยากให้ AWH ช่วย</h2><p>อธิบายเป้าหมายเป็นภาษาปกติ AWH จะสร้างงานที่ผูกกับโปรเจกต์นี้และรายงานสถานะตามจริง</p></div><ol id="work-thread" class="work-thread" aria-live="polite"></ol></section>
+        <form id="goal-form" class="composer" novalidate><label class="sr-only" for="goal-input">สิ่งที่อยากให้ AWH ทำ</label><textarea id="goal-input" rows="2" maxlength="2000" placeholder="พิมพ์สิ่งที่อยากให้ AWH ช่วย…"></textarea><div class="composer-actions"><span id="goal-message" class="form-message" role="status"></span><button id="goal-submit" class="primary-button" type="submit">ส่งงาน <span aria-hidden="true">↑</span></button></div></form>
+        <details class="advanced-panel"><summary>รายละเอียดเพิ่มเติม</summary><div><p id="advanced-status" class="muted">สถานะระบบจะอัปเดตเมื่อเรียกดูข้อมูล</p><button id="account-open-inline" class="secondary-button" type="button">บัญชีและความปลอดภัย</button></div></details>
       </section>
-
-      <section id="legacy-preview" class="project-grid" aria-label="AWH project and continuity status">
-        <article id="project-card" class="card project-card">
-          <div class="card-heading"><div><span class="label">PROJECT</span><h2 id="project-name">Loading…</h2></div><span id="project-type" class="type-pill">—</span></div>
-          <p id="project-id" class="project-id">—</p>
-          <div class="milestone"><span class="label">CURRENT MILESTONE</span><strong id="milestone">—</strong></div>
-          <div class="handoff"><div class="card-heading"><span class="label">HANDOFF SUMMARY</span><span class="bounded">BOUNDED</span></div><p id="handoff-summary">—</p></div>
-        </article>
-
-        <article class="card memory-card">
-          <div class="card-heading"><div><span class="label">PROJECT MEMORY</span><h2>Continuity files</h2></div><span id="memory-ready" class="status-pill">—</span></div>
-          <p class="muted">Canonical files remain in the project workspace. This preview shows readiness only.</p>
-          <ul id="memory-list" class="memory-list"></ul>
-        </article>
-      </section>
-
-      <section id="legacy-status" class="status-grid" aria-label="Hub operational status">
-        <article id="device-card" class="card status-card"><span class="label">DEVICES</span><h2 id="device-status">—</h2><p id="device-summary" class="muted">—</p></article>
-        <article class="card status-card"><span class="label">TASKS</span><h2 id="tasks-status">—</h2><p id="tasks-summary" class="muted">—</p></article>
-        <article class="card status-card"><span class="label">ARTIFACTS</span><h2 id="artifacts-status">—</h2><p id="artifacts-summary" class="muted">—</p></article>
-        <article class="card status-card"><span class="label">BUILDS / RELEASES</span><h2 id="build-status">—</h2><p id="build-summary" class="muted">—</p></article>
-        <article class="card status-card"><span class="label">AUDIT</span><h2 id="audit-status">—</h2><p id="audit-summary" class="muted">—</p></article>
-      </section>
-
-      <footer class="footer"><span>Art’s Workspace Hub</span><span>โปรเจกต์ งาน และผลลัพธ์ของคุณ</span></footer>
     </main>
+
+    <section id="project-sheet" class="sheet" hidden aria-modal="true" role="dialog" aria-labelledby="project-sheet-title"><div class="sheet-backdrop" data-close-sheet="project-sheet"></div><div class="sheet-card"><div class="sheet-header"><div><p class="eyebrow">PROJECTS</p><h2 id="project-sheet-title">เลือกโปรเจกต์</h2></div><button class="icon-button" type="button" data-close-sheet="project-sheet" aria-label="ปิด">ปิด</button></div><div id="project-list" class="project-list"></div><p id="project-empty" class="muted" hidden>ยังไม่มีโปรเจกต์ใน Hub เพิ่มโปรเจกต์จาก AWH Desktop ที่มี workspace ของโปรเจกต์นั้น</p></div></section>
+
+    <section id="account-sheet" class="sheet" hidden aria-modal="true" role="dialog" aria-labelledby="account-sheet-title"><div class="sheet-backdrop" data-close-sheet="account-sheet"></div><div class="sheet-card account-card"><div class="sheet-header"><div><p class="eyebrow">ACCOUNT</p><h2 id="account-sheet-title">บัญชีและความปลอดภัย</h2></div><button class="icon-button" type="button" data-close-sheet="account-sheet" aria-label="ปิด">ปิด</button></div><p class="muted">รหัสผ่านอยู่กับคุณ AWH เก็บเฉพาะข้อมูลยืนยันตัวตนที่ป้องกันและเพิกถอนได้</p><form id="username-form" class="account-form"><h3>ชื่อผู้ใช้</h3><label for="new-username">ชื่อผู้ใช้ใหม่</label><input id="new-username" autocomplete="username" inputmode="text" /><label for="identity-password">ยืนยันด้วยรหัสผ่านปัจจุบัน</label><input id="identity-password" type="password" autocomplete="current-password" /><button class="secondary-button" type="submit">บันทึกชื่อผู้ใช้</button><p id="username-message" class="form-message" role="status"></p></form><form id="password-form" class="account-form"><h3>เปลี่ยนรหัสผ่าน</h3><label for="old-password">รหัสผ่านปัจจุบัน</label><input id="old-password" type="password" autocomplete="current-password" /><label for="new-password">รหัสผ่านใหม่</label><input id="new-password" type="password" autocomplete="new-password" /><label for="confirm-password">ยืนยันรหัสผ่านใหม่</label><input id="confirm-password" type="password" autocomplete="new-password" /><button class="secondary-button" type="submit">บันทึกรหัสผ่านใหม่</button><p id="password-message" class="form-message" role="status"></p></form><div class="account-form"><h3>อุปกรณ์ที่เข้าสู่ระบบ</h3><button id="sessions-load" class="secondary-button" type="button">จัดการเซสชัน</button><div id="session-list" class="session-list"></div></div><details class="technical-entry"><summary>กู้คืนการเข้าถึง</summary><p>สร้างรหัสกู้คืนใหม่แล้วเก็บไว้ในที่ปลอดภัย รหัสเดิมที่ยังไม่ใช้จะถูกแทนที่</p><button id="recovery-codes-create" class="secondary-button" type="button">สร้างรหัสกู้คืน</button><pre id="recovery-codes" hidden></pre></details><button id="logout-button" class="danger-button" type="button">ออกจาก AWH</button></div></section>
+
+    <section id="recovery-sheet" class="sheet" hidden aria-modal="true" role="dialog" aria-labelledby="recovery-sheet-title"><div class="sheet-backdrop" data-close-sheet="recovery-sheet"></div><form id="recovery-form" class="sheet-card"><div class="sheet-header"><div><p class="eyebrow">RECOVERY</p><h2 id="recovery-sheet-title">กู้คืนการเข้าถึง</h2></div><button class="icon-button" type="button" data-close-sheet="recovery-sheet" aria-label="ปิด">ปิด</button></div><p class="muted">ใช้รหัสกู้คืนที่คุณเก็บไว้เพื่อตั้งรหัสผ่านใหม่</p><label for="recovery-username">ชื่อผู้ใช้</label><input id="recovery-username" autocomplete="username" /><label for="recovery-code">รหัสกู้คืน</label><input id="recovery-code" autocomplete="one-time-code" /><label for="recovery-password">รหัสผ่านใหม่</label><input id="recovery-password" type="password" autocomplete="new-password" /><button class="primary-button" type="submit">ตั้งรหัสผ่านใหม่</button><p id="recovery-message" class="form-message" role="status"></p></form></section>
   </div>
-  <script type="module" src="./app.js"></script>
+  <script type="module" src="./app.js?release=__AWH_WEB_RELEASE_ID__"></script>
 </body>
 </html>

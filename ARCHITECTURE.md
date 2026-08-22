@@ -67,7 +67,7 @@
 - The Hub stores portable project metadata and rebuildable memory-file metadata only.
 - `workspacePath`, local registry mappings, Git credentials, source contents, and device credentials remain outside Hub responses.
 - Project Memory remains canonical in the five portable Markdown files; the Hub read foundation stores status, hash, size, provenance, and observation time only.
-- AWH Web defaults to static preview. The M3 HUB_READ mode is same-origin, GET-only, and reuses only the reviewed web perimeter session; it does not receive a browser bearer token. M4 CONTROL is a separately built, approval-gated session surface described below.
+- Historical M3 static-preview and HUB_READ adapters remain bounded compatibility components, but are not a normal AWH product surface. M4 CONTROL is the one account-scoped browser/PWA product path; it uses same-origin server sessions and never receives a browser bearer token.
 
 ## M4 CONTROL-PLANE BOUNDARY
 
@@ -101,8 +101,8 @@
   query-only access; it exposes no write, sync, execution, filesystem, or
   arbitrary-file route.
 - The direct Bearer-token API remains a separate service-client boundary.
-- A Hub read failure is rendered as offline/degraded static preview, never as
-  a false online state.
+- A Control failure is rendered as an unavailable sign-in/control state, never
+  as a false project, task, worker, or preview state.
 - M3D is field-verified live over HTTPS on the VPS and iPhone. The operational
   path is Nginx Basic Auth → PHP-FPM Unix socket → query-only SQLite Hub read;
   the verified state is Connected read-only with one indexed project.

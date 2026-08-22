@@ -1,126 +1,50 @@
-const MEMORY_FILES = ['PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md'];
 const MAX_JSON_BYTES = 512 * 1024;
-const PROJECT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function isSafeRelativePath(value) {
   return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//') && !/[?#]/.test(value) && !value.split('/').includes('..') ? value : null;
 }
 
-export function browserRequestOptions(mode) {
-  return { credentials: mode === 'STATIC_PREVIEW' || mode === 'HUB_READ' ? 'same-origin' : 'omit', cache: 'no-store' };
+export function browserRequestOptions() {
+  return { credentials: 'same-origin', cache: 'no-store' };
 }
 
-export async function getJson(path, mode = 'HUB_READ', fetchImpl = globalThis.fetch) {
+async function readJson(path, fetchImpl = globalThis.fetch) {
   const safePath = isSafeRelativePath(path);
-  if (!safePath) throw new Error('Hub read path is not safe');
-  const response = await fetchImpl(safePath, browserRequestOptions(mode));
-  if (!response.ok) throw new Error(`Hub read unavailable (${response.status})`);
+  if (!safePath) throw new Error('AWH path is not safe');
+  const response = await fetchImpl(safePath, browserRequestOptions());
+  if (!response.ok) throw new Error(`AWH is unavailable (${response.status})`);
   const body = await response.text();
-  if (body.length > MAX_JSON_BYTES) throw new Error('Hub response exceeds the browser bound');
-  return JSON.parse(body);
+  if (body.length > MAX_JSON_BYTES) throw new Error('AWH response exceeds the browser bound');
+  const value = JSON.parse(body);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('AWH response is invalid');
+  return value;
 }
 
-function validateConfig(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Web mode configuration is invalid');
-  if (value.mode === 'STATIC_PREVIEW') return { mode: value.mode };
-  if (value.mode === 'CONTROL') {
-    const apiBase = isSafeRelativePath(typeof value.apiBase === 'string' ? value.apiBase.replace(/\/$/, '') : '');
-    if (!apiBase || apiBase.includes('..')) throw new Error('Control API base is not safe');
-    return { mode: value.mode, apiBase };
-  }
-  if (value.mode !== 'HUB_READ' || typeof value.apiBase !== 'string') throw new Error('Web mode is not supported');
-  const apiBase = isSafeRelativePath(value.apiBase.replace(/\/$/, ''));
-  if (!apiBase || apiBase.includes('..')) throw new Error('Hub API base is not safe');
-  return { mode: value.mode, apiBase };
-}
-
-function portableProject(value) {
-  const project = value?.project ?? value;
-  if (!project || !PROJECT_ID.test(project.projectId) || typeof project.name !== 'string' || typeof project.type !== 'string') throw new Error('Hub project payload is invalid');
-  return { projectId: project.projectId, name: project.name, type: project.type, createdAt: typeof project.createdAt === 'string' ? project.createdAt : null };
-}
-
-function memoryStatus(value) {
-  const source = value?.files && typeof value.files === 'object' ? value.files : {};
-  return Object.fromEntries(MEMORY_FILES.map((file) => [file, source[file]?.status === 'present' ? 'present' : 'missing']));
-}
-
-function hubData(projectPayload, memoryPayload, statusPayload, devicesPayload, buildsPayload, releasesPayload) {
-  const project = portableProject(projectPayload);
-  const memory = memoryStatus(memoryPayload);
-  const handoff = typeof memoryPayload?.handoffSummary === 'string' ? memoryPayload.handoffSummary.slice(0, 480) : 'HANDOFF summary is not exposed by this read adapter.';
+function fallback(error = 'AWH ยังไม่พร้อมใช้งาน') {
   return {
-    schemaVersion: 1,
-    generatedAt: new Date().toISOString(),
-    preview: { mode: 'HUB_READ', label: 'Remote Preview — Read Only', status: 'Authenticated Hub read mode' },
-    product: { name: 'Art’s Workspace Hub', shortName: 'AWH', tagline: 'Your Projects. One Workspace. Anywhere.' },
-    hub: { status: statusPayload?.status === 'ok' ? 'Connected read-only' : 'Hub read available', summary: 'Sanitized metadata from the AWH Hub read foundation.' },
-    project: { ...project, milestone: 'M3C1 — AWH Hub Read Foundation', handoffSummary: handoff, memory },
-    devices: { status: 'Read-only', summary: 'Device metadata is visible only through the authenticated Hub boundary.', count: Array.isArray(devicesPayload?.devices) ? devicesPayload.devices.length : 0 },
-    builds: { status: 'Read-only', summary: `Builds: ${Array.isArray(buildsPayload?.builds) ? buildsPayload.builds.length : 0}; releases: ${Array.isArray(releasesPayload?.releases) ? releasesPayload.releases.length : 0}.` },
-    audit: { status: 'Read-only', summary: 'Audit mutation and credential data are not exposed by the browser adapter.' },
-    tasks: { status: 'Review-only', summary: 'Tasks are coordinated by AWH Desktop; no browser execution route is available.', count: 0 },
-    artifacts: { status: 'Read-only', summary: 'Artifact references are not exposed until a bounded Hub contract is available.', count: 0 },
+    product: { shortName: 'AWH', name: 'Art’s Workspace Hub' },
+    control: { mode: 'UNAVAILABLE', available: false, authenticated: false, error },
   };
 }
 
-export async function fetchStaticData(fetchImpl = globalThis.fetch) {
-  return getJson('/data.json', 'STATIC_PREVIEW', fetchImpl);
+function config(value) {
+  if (value?.mode !== 'CONTROL') return false;
+  const apiBase = isSafeRelativePath(typeof value.apiBase === 'string' ? value.apiBase.replace(/\/$/, '') : '');
+  return apiBase === '/api/v1';
 }
 
-export function degradedHubPreview(staticPreview) {
-  return {
-    ...staticPreview,
-    preview: { ...staticPreview.preview, mode: 'HUB_READ_DEGRADED', status: 'Hub unavailable — Static preview' },
-    hub: { status: 'Offline', summary: 'Live Hub read is unavailable; showing the static preview.' },
-  };
-}
-
-async function staticData() {
-  return fetchStaticData();
-}
-
-export async function hubDataFromApi(apiBase, fetchImpl = globalThis.fetch) {
-  const projectList = await getJson(`${apiBase}/projects`, 'HUB_READ', fetchImpl);
-  const projects = Array.isArray(projectList?.projects) ? projectList.projects : [];
-  const project = projects[0];
-  if (!project) throw new Error('Hub has no readable project');
-  const id = encodeURIComponent(project.projectId);
-  const [projectPayload, memory, status, devices, builds, releases] = await Promise.all([
-    getJson(`${apiBase}/projects/${id}`, 'HUB_READ', fetchImpl),
-    getJson(`${apiBase}/projects/${id}/memory`, 'HUB_READ', fetchImpl),
-    getJson(`${apiBase}/status`, 'HUB_READ', fetchImpl),
-    getJson(`${apiBase}/devices`, 'HUB_READ', fetchImpl),
-    getJson(`${apiBase}/builds`, 'HUB_READ', fetchImpl),
-    getJson(`${apiBase}/releases`, 'HUB_READ', fetchImpl),
-  ]);
-  return hubData(projectPayload, memory, status, devices, builds, releases);
-}
-
-export async function loadWebData() {
-  let config = { mode: 'STATIC_PREVIEW' };
+/** The web shell has one product path: authenticated Control. There is no static preview dashboard. */
+export async function loadWebData(fetchImpl = globalThis.fetch) {
   try {
-    const response = await fetch('/web-config.json', browserRequestOptions('HUB_READ'));
-    if (response.ok) {
-      const body = await response.text();
-      if (body.length > 4096) throw new Error('Web mode configuration exceeds the browser bound');
-      config = validateConfig(JSON.parse(body));
+    const [webConfig, bootstrap] = await Promise.all([readJson('/web-config.json', fetchImpl), readJson('/data.json', fetchImpl)]);
+    if (!config(webConfig)) return fallback('AWH release นี้ยังไม่พร้อมใช้งาน');
+    const { loadControlData } = await import('./control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__');
+    try {
+      return { product: bootstrap.product || { shortName: 'AWH', name: 'Art’s Workspace Hub' }, control: { available: true, ...(await loadControlData()) } };
+    } catch (error) {
+      return { product: bootstrap.product || { shortName: 'AWH', name: 'Art’s Workspace Hub' }, control: { mode: 'CONTROL', available: true, authenticated: false, error: error instanceof Error ? error.message : 'กรุณาเข้าสู่ AWH' } };
     }
   } catch (error) {
-    if (error instanceof SyntaxError || String(error?.message).includes('configuration') || String(error?.message).includes('mode')) throw error;
-  }
-  if (config.mode === 'CONTROL') {
-    const { loadControlData } = await import('./control-plane-adapter.js');
-    try {
-      return { ...(await staticData()), control: await loadControlData(), preview: { mode: 'CONTROL', label: 'AWH Control Panel', status: 'Authenticated control session' } };
-    } catch (error) {
-      return { ...(await staticData()), control: { mode: 'CONTROL', authenticated: false, error: error instanceof Error ? error.message : 'AWH control session is unavailable', projects: [], tasks: [], workers: [] }, preview: { mode: 'CONTROL_SIGN_IN', label: 'AWH Control Panel', status: 'Sign in required' } };
-    }
-  }
-  if (config.mode !== 'HUB_READ') return staticData();
-  try {
-    return await hubDataFromApi(config.apiBase);
-  } catch {
-    return degradedHubPreview(await staticData());
+    return fallback(error instanceof Error ? error.message : 'AWH ยังไม่พร้อมใช้งาน');
   }
 }

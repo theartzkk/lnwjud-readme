@@ -1,33 +1,18 @@
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { PRODUCT } from '../src/product.js';
-import { buildProjectContext } from '../src/project-registry.js';
 
 const ROOT = resolve(process.cwd());
 const OUTPUT = join(ROOT, 'dist-web');
-const MEMORY_FILES = ['PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md'] as const;
-const MAX_HANDOFF_PREVIEW = 480;
-
-function safeHandoffSummary(markdown: string | null): string {
-  if (!markdown) return 'HANDOFF.md is not available in this preview build.';
-  const allowedHeadings = new Set(['Current milestone', 'Next action', 'Blockers and warnings']);
-  let currentHeading = '';
-  const selected: string[] = [];
-  for (const raw of markdown.split(/\r?\n/)) {
-    const heading = raw.match(/^##\s+(.+)$/)?.[1]?.trim();
-    if (heading) { currentHeading = heading; continue; }
-    if (!allowedHeadings.has(currentHeading)) continue;
-    const line = raw.replaceAll(/[`*_>#]/g, '').trim();
-    if (!line || /(?:\/Users\/|[A-Za-z]:\\|workspacePath|Authorization|accessToken|secret|credential|\.env)/i.test(line)) continue;
-    selected.push(line);
-    if (selected.join(' ').length >= MAX_HANDOFF_PREVIEW) break;
-  }
-  const summary = selected.join(' ').replaceAll(/\s+/g, ' ').trim();
-  return summary ? summary.slice(0, MAX_HANDOFF_PREVIEW) : 'HANDOFF.md is present; its sensitive or device-local details are hidden in this preview.';
-}
 
 async function asset(name: string): Promise<string> {
   return readFile(join(ROOT, 'web', name), 'utf8');
+}
+
+function renderReleaseAsset(source: string, releaseId: string): string {
+  const rendered = source.replaceAll('__AWH_WEB_RELEASE_ID__', releaseId);
+  if (rendered.includes('__AWH_WEB_RELEASE_ID__')) throw new Error('AWH web release identity was not rendered');
+  return rendered;
 }
 
 function generatedAt(): string {
@@ -37,85 +22,30 @@ function generatedAt(): string {
 }
 
 async function main(): Promise<void> {
-  const webMode = process.env.AWH_WEB_MODE === 'CONTROL' || process.argv.includes('--control') ? 'CONTROL' : 'STATIC_PREVIEW';
+  const webMode = process.env.AWH_WEB_MODE === 'CONTROL' || process.argv.includes('--control') ? 'CONTROL' : 'UNAVAILABLE';
   const releaseId = process.env.AWH_WEB_RELEASE_ID ?? process.env.AWH_RELEASE_ID ?? 'local';
   if (!/^[A-Za-z0-9._-]{1,80}$/.test(releaseId)) throw new Error('AWH web release identity is invalid');
-  const context = webMode === 'CONTROL' ? null : await buildProjectContext(ROOT);
-  const memory = context ? Object.fromEntries(MEMORY_FILES.map((file) => [file, context.memory[file] === null ? 'missing' : 'present'])) : {};
-  const data = webMode === 'CONTROL' ? {
+  const data = {
     schemaVersion: 1,
     generatedAt: generatedAt(),
-    preview: { mode: 'CONTROL', label: 'AWH Control Panel', status: 'Sign in to continue' },
+    surface: { mode: webMode, label: 'AWH', status: webMode === 'CONTROL' ? 'Sign in to continue' : 'AWH release is not active' },
     product: { name: PRODUCT.productName, shortName: PRODUCT.shortName, tagline: PRODUCT.tagline },
-    hub: { status: 'พร้อมเข้าสู่ระบบ', summary: 'เข้าสู่ AWH เพื่อดูโปรเจกต์ งาน และผลลัพธ์ของคุณ' },
-    project: { projectId: '', name: 'โปรเจกต์ของคุณ', type: 'CONTROL', milestone: 'เลือกโปรเจกต์หลังเข้าสู่ระบบ', handoffSummary: 'ข้อมูลความต่อเนื่องของโปรเจกต์จะแสดงหลังเข้าสู่ระบบ', memory },
-    devices: { status: 'ใช้บัญชีของคุณ', summary: 'เซสชันนี้ป้องกันด้วยคุกกี้ที่ปลอดภัยและเพิกถอนได้', count: 0 },
-    builds: { status: 'พร้อมใช้งาน', summary: 'AWH Control Panel' },
-    audit: { status: 'ปกป้องข้อมูล', summary: 'ไม่มี credential หรือข้อมูลส่วนตัวใน static release' },
-    tasks: { status: 'เข้าสู่ระบบเพื่อดูงาน', summary: 'งานและผลลัพธ์เชื่อมกับบัญชี AWH ของคุณ', count: 0 },
-    artifacts: { status: 'เข้าสู่ระบบเพื่อดูผลลัพธ์', summary: 'AWH จะแสดงเฉพาะข้อมูลที่ได้รับสิทธิ์', count: 0 },
-  } : {
-    schemaVersion: 1,
-    generatedAt: generatedAt(),
-    preview: {
-      mode: 'REMOTE_READ_ONLY',
-      label: 'Remote Preview — Read Only',
-      status: 'Static preview build',
-    },
-    product: {
-      name: PRODUCT.productName,
-      shortName: PRODUCT.shortName,
-      tagline: PRODUCT.tagline,
-    },
-    hub: {
-      status: 'Preview only',
-      summary: 'Hub API is not connected in the static build. Local AWH Desktop remains the runtime client.',
-    },
-    project: {
-      projectId: context!.project.projectId,
-      name: context!.project.name,
-      type: context!.project.type,
-      milestone: 'Autopilot v0.5 — First Usable Product (read-only browser view)',
-      handoffSummary: safeHandoffSummary(context!.memory['HANDOFF.md']),
-      memory,
-    },
-    devices: {
-      status: 'Not connected',
-      summary: 'Device enrollment and Hub authentication are not exposed in the public preview.',
-      count: 0,
-    },
-    builds: {
-      status: 'Not connected',
-      summary: 'Build and release metadata will appear after a future authenticated Hub integration.',
-    },
-    audit: {
-      status: 'Preview only',
-      summary: 'No remote audit stream or credential data is exposed here.',
-    },
-    tasks: {
-      status: 'Desktop runtime only',
-      summary: 'Local Autopilot tasks are started and approved in AWH Desktop; this browser surface is review-only.',
-      count: 0,
-    },
-    artifacts: {
-      status: 'Preview only',
-      summary: 'Artifact metadata will appear through a future sanitized Hub read contract.',
-      count: 0,
-    },
+    message: webMode === 'CONTROL' ? 'Sign in to access your projects and work.' : 'This AWH release is not configured for Control.',
   };
-  const serviceWorker = (await asset('sw.js')).replaceAll('__AWH_WEB_RELEASE_ID__', releaseId);
-  if (serviceWorker.includes('__AWH_WEB_RELEASE_ID__')) throw new Error('AWH web release identity was not rendered');
+  const [index, styles, app, hubAdapter, controlAdapter, manifest, serviceWorker] = await Promise.all([
+    asset('index.html'), asset('styles.css'), asset('app.js'), asset('hub-read-adapter.js'), asset('control-plane-adapter.js'), asset('manifest.webmanifest'), asset('sw.js'),
+  ]);
   await mkdir(OUTPUT, { recursive: true });
   await Promise.all([
-    writeFile(join(OUTPUT, 'index.html'), await asset('index.html'), 'utf8'),
-    writeFile(join(OUTPUT, 'styles.css'), await asset('styles.css'), 'utf8'),
-    writeFile(join(OUTPUT, 'app.js'), await asset('app.js'), 'utf8'),
-    writeFile(join(OUTPUT, 'hub-read-adapter.js'), await asset('hub-read-adapter.js'), 'utf8'),
-    writeFile(join(OUTPUT, 'control-plane-adapter.js'), await asset('control-plane-adapter.js'), 'utf8'),
-    writeFile(join(OUTPUT, 'manifest.webmanifest'), await asset('manifest.webmanifest'), 'utf8'),
-    writeFile(join(OUTPUT, 'sw.js'), serviceWorker, 'utf8'),
+    writeFile(join(OUTPUT, 'index.html'), renderReleaseAsset(index, releaseId), 'utf8'),
+    writeFile(join(OUTPUT, 'styles.css'), styles, 'utf8'),
+    writeFile(join(OUTPUT, 'app.js'), renderReleaseAsset(app, releaseId), 'utf8'),
+    writeFile(join(OUTPUT, 'hub-read-adapter.js'), renderReleaseAsset(hubAdapter, releaseId), 'utf8'),
+    writeFile(join(OUTPUT, 'control-plane-adapter.js'), controlAdapter, 'utf8'),
+    writeFile(join(OUTPUT, 'manifest.webmanifest'), manifest, 'utf8'),
+    writeFile(join(OUTPUT, 'sw.js'), renderReleaseAsset(serviceWorker, releaseId), 'utf8'),
     copyFile(join(ROOT, 'logo-256x256.png'), join(OUTPUT, 'logo-256x256.png')),
-    writeFile(join(OUTPUT, 'web-config.json'), `${JSON.stringify({ schemaVersion: 1, mode: webMode, apiBase: '/api/v1' }, null, 2)}\n`, 'utf8'),
+    writeFile(join(OUTPUT, 'web-config.json'), `${JSON.stringify({ schemaVersion: 1, mode: webMode, apiBase: webMode === 'CONTROL' ? '/api/v1' : null }, null, 2)}\n`, 'utf8'),
     writeFile(join(OUTPUT, 'data.json'), `${JSON.stringify(data, null, 2)}\n`, 'utf8'),
   ]);
   console.log(`AWH web preview built at ${OUTPUT}`);

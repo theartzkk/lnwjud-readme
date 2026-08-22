@@ -1,152 +1,213 @@
-import { loadWebData } from './hub-read-adapter.js';
-import { changePassword, changeUsername, createRecoveryCodes, decideApproval, listAuthSessions, loadControlData, openMobileSession, recover, revokeAuthSession, submitGoal, login, logout } from './control-plane-adapter.js';
+import { loadWebData } from './hub-read-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import {
+  changePassword, changeUsername, createRecoveryCodes, decideApproval, listAuthSessions,
+  loadControlData, login, logout, recover, revokeAuthSession, submitGoal,
+} from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 (() => {
   const $ = (id) => document.getElementById(id);
-  const text = (id, value) => { const node = $(id); if (node) node.textContent = value == null ? '—' : String(value); };
-  let controlData = null;
+  const state = { control: null, selectedProjectId: null };
+  const taskLabels = {
+    WAITING_FOR_WORKER: 'กำลังรออุปกรณ์ทำงาน', PREPARING: 'กำลังเตรียมงาน', RUNNING: 'กำลังทำงาน',
+    QA: 'กำลังตรวจคุณภาพ', WAITING_FOR_APPROVAL: 'รอการอนุมัติ', COMPLETED: 'เสร็จแล้ว',
+    FAILED: 'ต้องตรวจสอบ', CANCELLED: 'ยกเลิกแล้ว',
+  };
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => undefined);
 
+  function message(id, value = '') { const node = $(id); if (node) node.textContent = value; }
+  function show(id) { $(id).hidden = false; }
+  function hide(id) { $(id).hidden = true; }
+  function date(value) { const time = Date.parse(value || ''); return Number.isFinite(time) ? new Date(time).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : ''; }
+  function selectedProject() { return state.control?.projects?.find((project) => project.projectId === state.selectedProjectId) || null; }
+  function stateText(task) { return taskLabels[task?.state] || 'กำลังอัปเดต'; }
+  function stateClass(task) { return task?.state === 'COMPLETED' ? 'completed' : task?.state === 'FAILED' ? 'failed' : task?.state === 'WAITING_FOR_APPROVAL' ? 'approval' : ''; }
+
+  function setSurface(data) {
+    document.title = data?.product?.shortName ? `${data.product.shortName} — Work` : 'AWH';
+    const control = data?.control;
+    const status = control?.authenticated ? 'พร้อมทำงาน' : control?.available ? 'เข้าสู่ระบบ' : 'ยังไม่พร้อม';
+    message('surface-state', status);
+    $('login-form').querySelector('button[type="submit"]').disabled = control?.available !== true;
+    if (control?.available !== true && control?.error) message('login-message', control.error);
+  }
+
+  function renderProjectSheet(projects) {
+    const list = $('project-list'); list.replaceChildren();
+    const empty = !Array.isArray(projects) || projects.length === 0;
+    $('project-empty').hidden = !empty;
+    if (empty) return;
+    for (const project of projects) {
+      const button = document.createElement('button'); button.type = 'button'; button.className = `project-choice${project.projectId === state.selectedProjectId ? ' selected' : ''}`;
+      const name = document.createElement('strong'); name.textContent = project.name;
+      const detail = document.createElement('span'); detail.textContent = project.memoryReady ? 'พร้อมใช้ context ของโปรเจกต์' : 'Project Memory ยังต้องตรวจสอบบน worker';
+      button.append(name, detail);
+      button.addEventListener('click', () => { state.selectedProjectId = project.projectId; renderWorkspace(); closeSheet('project-sheet'); });
+      list.append(button);
+    }
+  }
+
+  function workerSummary(workers) {
+    const source = Array.isArray(workers) ? workers : [];
+    const working = source.filter((worker) => worker.state === 'WORKING');
+    const ready = source.filter((worker) => worker.state === 'READY');
+    if (working.length) return `${working.length} อุปกรณ์กำลังทำงาน`;
+    if (ready.length) return `${ready.length} อุปกรณ์พร้อมทำงาน`;
+    return 'ยังไม่มีอุปกรณ์ทำงานออนไลน์ — งานจะรออย่างปลอดภัย';
+  }
+
+  function renderApproval(task, approvals) {
+    const approval = approvals.find((item) => item.taskId === task.taskId && item.status === 'PENDING');
+    if (!approval) return null;
+    const actions = document.createElement('div'); actions.className = 'task-actions';
+    for (const [decision, text] of [['approve', 'อนุมัติ'], ['reject', 'ปฏิเสธ']]) {
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'secondary-button'; button.textContent = text;
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        try { await decideApproval(approval.approvalId, decision); await refreshWorkspace(); }
+        catch (error) { message('goal-message', error instanceof Error ? error.message : 'AWH ไม่สามารถบันทึกการอนุมัติได้'); button.disabled = false; }
+      });
+      actions.append(button);
+    }
+    return actions;
+  }
+
+  function renderThread(tasks, approvals) {
+    const thread = $('work-thread'); thread.replaceChildren();
+    const projectId = state.selectedProjectId;
+    const projectTasks = (Array.isArray(tasks) ? tasks : []).filter((task) => task.projectId === projectId).sort((a, b) => Date.parse(a.createdAt || '') - Date.parse(b.createdAt || ''));
+    $('empty-work').hidden = projectTasks.length > 0 || !projectId;
+    for (const task of projectTasks) {
+      const row = document.createElement('li'); row.className = 'task-turn';
+      const goal = document.createElement('p'); goal.className = 'task-goal'; goal.textContent = task.goal;
+      const response = document.createElement('div'); response.className = 'task-response';
+      const meta = document.createElement('div'); meta.className = 'task-meta';
+      const chip = document.createElement('span'); chip.className = `state-chip ${stateClass(task)}`.trim(); chip.textContent = stateText(task);
+      const time = document.createElement('span'); time.textContent = date(task.updatedAt || task.createdAt);
+      meta.append(chip, time);
+      const detail = task.resultSummary || task.lastEvent?.message || (task.state === 'WAITING_FOR_WORKER' ? 'AWH บันทึกงานแล้ว และจะเริ่มเมื่ออุปกรณ์ที่เหมาะสมพร้อมทำงาน' : 'กำลังอัปเดตความคืบหน้า');
+      const summary = document.createElement('p'); summary.className = 'task-summary'; summary.textContent = detail;
+      response.append(meta, summary);
+      const actions = renderApproval(task, approvals); if (actions) response.append(actions);
+      row.append(goal, response); thread.append(row);
+    }
+  }
+
+  function renderWorkspace() {
+    const control = state.control;
+    if (!control?.authenticated) return;
+    const projects = Array.isArray(control.projects) ? control.projects : [];
+    if (!projects.some((project) => project.projectId === state.selectedProjectId)) state.selectedProjectId = projects[0]?.projectId || null;
+    const project = selectedProject();
+    message('selected-project-name', project?.name || 'ยังไม่มีโปรเจกต์');
+    message('worker-summary', workerSummary(control.workers));
+    message('work-context', project ? (project.memoryReady ? 'บริบทและงานจะถูกผูกกับโปรเจกต์นี้' : 'AWH จะรักษาขอบเขตของโปรเจกต์นี้ไว้ขณะ worker ตรวจ context') : 'เพิ่มโปรเจกต์จาก AWH Desktop เพื่อเริ่มงาน');
+    message('advanced-status', `${workerSummary(control.workers)} · งานและผลลัพธ์แสดงเฉพาะตามสิทธิ์ของบัญชีคุณ`);
+    $('goal-submit').disabled = project === null;
+    $('goal-input').disabled = project === null;
+    $('goal-input').placeholder = project ? 'พิมพ์สิ่งที่อยากให้ AWH ช่วย…' : 'เลือกหรือเพิ่มโปรเจกต์ก่อน';
+    renderProjectSheet(projects);
+    renderThread(control.tasks, control.approvals);
+  }
+
   function render(data) {
-    const isControlSurface = data.preview?.mode === 'CONTROL' || data.preview?.mode === 'CONTROL_SIGN_IN';
-    const legacyPreview = $('legacy-preview'); if (legacyPreview) legacyPreview.hidden = isControlSurface;
-    const legacyStatus = $('legacy-status'); if (legacyStatus) legacyStatus.hidden = isControlSurface;
-    text('product-name', data.product.name);
-    text('product-tagline', data.product.tagline);
-    text('preview-label', data.preview.label);
-    text('hub-status', data.hub.status);
-    text('hub-summary', data.hub.summary);
-    text('project-name', data.project.name);
-    text('project-type', data.project.type);
-    text('project-id', `Project ID · ${data.project.projectId}`);
-    text('milestone', data.project.milestone);
-    text('handoff-summary', data.project.handoffSummary);
-    text('memory-ready', Object.values(data.project.memory).every((state) => state === 'present') ? 'READY' : 'PARTIAL');
-    $('memory-ready').className = `status-pill ${Object.values(data.project.memory).every((state) => state === 'present') ? 'success' : 'warning'}`;
-    const memory = $('memory-list');
-    memory.replaceChildren();
-    for (const [file, state] of Object.entries(data.project.memory)) {
-      const item = document.createElement('li');
-      const name = document.createElement('span'); name.textContent = file;
-      const badge = document.createElement('span'); badge.textContent = state === 'present' ? 'Present' : 'Missing'; badge.className = `file-state ${state}`;
-      item.append(name, badge); memory.append(item);
-    }
-    text('device-status', data.devices.status);
-    text('device-summary', data.devices.summary);
-    text('build-status', data.builds.status);
-    text('build-summary', data.builds.summary);
-    text('audit-status', data.audit.status);
-    text('audit-summary', data.audit.summary);
-    text('tasks-status', data.tasks?.status || '—');
-    text('tasks-summary', data.tasks?.summary || '—');
-    text('artifacts-status', data.artifacts?.status || '—');
-    text('artifacts-summary', data.artifacts?.summary || '—');
-    renderControl(data.control, data.preview?.mode);
+    setSurface(data);
+    state.control = data?.control || { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน' };
+    const authenticated = state.control.authenticated === true;
+    $('sign-in-view').hidden = authenticated;
+    $('workspace-view').hidden = !authenticated;
+    $('account-open').hidden = !authenticated;
+    if (authenticated) renderWorkspace();
   }
 
-  function renderControl(control, mode) {
-    const panel = $('control-panel');
-    if (!panel || (mode !== 'CONTROL' && mode !== 'CONTROL_SIGN_IN')) return;
-    panel.hidden = false;
-    controlData = control;
-    const signedIn = control?.authenticated === true;
-    text('control-state', signedIn ? 'พร้อมใช้งาน' : 'ต้องเชื่อมต่อ');
-    $('control-sign-in').hidden = signedIn;
-    $('control-workspace').hidden = !signedIn;
-    if (!signedIn) { text('control-sign-in-message', control?.error || 'เข้าสู่ AWH ด้วยชื่อผู้ใช้และรหัสผ่าน'); return; }
-    const projectList = Array.isArray(control.projects) ? control.projects : [];
-    const projects = $('control-project'); const previousProjectId = projects.value; projects.replaceChildren();
-    if (!projectList.length) { const option = document.createElement('option'); option.value = ''; option.textContent = 'ยังไม่มีโปรเจกต์'; projects.append(option); }
-    for (const project of projectList) { const option = document.createElement('option'); option.value = project.projectId; option.textContent = `${project.name} · ${project.type}`; projects.append(option); }
-    if ([...projects.options].some((option) => option.value === previousProjectId)) projects.value = previousProjectId;
-    const hasProjects = projectList.length > 0;
-    $('control-empty-project').hidden = hasProjects;
-    $('control-submit').disabled = !hasProjects;
-    const selected = projectList.find((project) => project.projectId === projects.value) || projectList[0];
-    if (selected) {
-      text('project-name', selected.name);
-      text('project-type', selected.type);
-      text('project-id', `Project ID · ${selected.projectId}`);
-      text('milestone', 'CONTROL — canonical project selected');
-      text('handoff-summary', selected.memoryReady === true ? 'Project Memory metadata is ready; execution context remains on the authorized worker.' : 'Project Memory metadata is partial; AWH will keep the project context bounded on the worker.');
-    }
-    const tasks = $('control-task-list'); tasks.replaceChildren();
-    for (const task of (control.tasks || []).slice(0, 8)) { const row = document.createElement('article'); row.className = 'control-item'; row.textContent = `${task.projectName || task.projectId} · ${task.state} · ${task.goal} · ${task.resultSummary || task.lastEvent?.message || 'กำลังรอผลลัพธ์'}`; tasks.append(row); }
-    if (!tasks.childElementCount) tasks.append(Object.assign(document.createElement('p'), { className: 'muted', textContent: 'ยังไม่มีงาน' }));
-    const workers = $('control-worker-list'); workers.replaceChildren();
-    for (const worker of control.workers || []) { const row = document.createElement('article'); row.className = 'control-item'; row.textContent = `${worker.displayName} · ${worker.state}`; workers.append(row); }
-    if (!workers.childElementCount) workers.append(Object.assign(document.createElement('p'), { className: 'muted', textContent: 'ยังไม่มี worker ออนไลน์ — งานจะอยู่ในสถานะรอ worker' }));
-    const results = $('control-result-list'); results.replaceChildren();
-    for (const result of (control.results || []).slice(0, 8)) { const row = document.createElement('article'); row.className = 'control-item'; row.textContent = `${result.projectName || result.projectId} · ${result.state} · ${result.goal} · ${result.resultSummary || result.lastEvent?.message || 'กำลังรอผลลัพธ์'} · artifact ${Array.isArray(result.artifactRefs) && result.artifactRefs.length ? result.artifactRefs.length : 'ไม่มี'}`; results.append(row); }
-    if (!results.childElementCount) results.append(Object.assign(document.createElement('p'), { className: 'muted', textContent: 'ยังไม่มีผลลัพธ์' }));
-    const approvals = $('control-approval-list'); approvals.replaceChildren();
-    for (const approval of (control.approvals || []).filter((item) => item.status === 'PENDING').slice(0, 8)) { const row = document.createElement('article'); row.className = 'control-item'; const label = document.createElement('strong'); label.textContent = `ต้องการอนุมัติ · ${approval.action}`; const detail = document.createElement('small'); detail.textContent = `หมดอายุ ${new Date(approval.expiresAt).toLocaleString('th-TH')}`; const approve = document.createElement('button'); approve.className = 'control-button'; approve.textContent = 'อนุมัติ'; approve.addEventListener('click', async () => { approve.disabled = true; await decideApproval(approval.approvalId, 'approve'); renderControl(await loadControlData(), 'CONTROL'); }); const reject = document.createElement('button'); reject.className = 'control-button secondary'; reject.textContent = 'ปฏิเสธ'; reject.addEventListener('click', async () => { reject.disabled = true; await decideApproval(approval.approvalId, 'reject'); renderControl(await loadControlData(), 'CONTROL'); }); row.append(label, detail, approve, reject); approvals.append(row); }
-    if (!approvals.childElementCount) approvals.append(Object.assign(document.createElement('p'), { className: 'muted', textContent: 'ไม่มี action ที่ต้องอนุมัติ' }));
+  async function refreshWorkspace() {
+    message('goal-message', 'กำลังรีเฟรช…');
+    try { state.control = await loadControlData(); renderWorkspace(); message('goal-message', ''); }
+    catch (error) { message('goal-message', error instanceof Error ? error.message : 'AWH ไม่สามารถรีเฟรชข้อมูลได้'); }
   }
 
-  $('control-login-button')?.addEventListener('click', async () => {
-    const message = $('control-login-message'); message.textContent = 'กำลังเข้าสู่ AWH...';
-    try { await login($('control-username').value, $('control-password').value, $('control-remember').checked); $('control-password').value = ''; const data = await loadControlData(); renderControl(data, 'CONTROL'); message.textContent = ''; }
-    catch (error) { message.textContent = error instanceof Error ? error.message : 'เข้าสู่ AWH ไม่สำเร็จ'; }
-  });
-  $('control-logout-button')?.addEventListener('click', async () => { await logout().catch(() => undefined); window.location.reload(); });
+  function openSheet(id) { show(id); }
+  function closeSheet(id) { hide(id); }
+  function openAccount() { if (state.control?.authenticated) openSheet('account-sheet'); }
 
-  $('control-password-change-button')?.addEventListener('click', async () => {
-    const message = $('control-password-change-message'); message.textContent = 'กำลังเปลี่ยนรหัสผ่าน...';
+  $('login-form').addEventListener('submit', async (event) => {
+    event.preventDefault(); message('login-message', 'กำลังเข้าสู่ AWH…');
     try {
-      if ($('control-new-password').value !== $('control-confirm-password').value) throw new Error('กรุณายืนยันรหัสผ่านใหม่ให้ตรงกัน');
-      await changePassword($('control-old-password').value, $('control-new-password').value);
-      $('control-old-password').value = ''; $('control-new-password').value = ''; $('control-confirm-password').value = '';
-      message.textContent = 'เปลี่ยนรหัสผ่านแล้ว กรุณาเข้าสู่ AWH อีกครั้ง';
-      setTimeout(() => window.location.reload(), 600);
-    } catch (error) { message.textContent = error instanceof Error ? error.message : 'เปลี่ยนรหัสผ่านไม่สำเร็จ'; }
+      await login($('login-username').value, $('login-password').value, $('login-remember').checked);
+      $('login-password').value = '';
+      state.control = await loadControlData(); render({ product: { shortName: 'AWH' }, control: state.control });
+      message('login-message', '');
+    } catch (error) { message('login-message', error instanceof Error ? error.message : 'เข้าสู่ AWH ไม่สำเร็จ'); }
   });
 
-  $('control-username-change-button')?.addEventListener('click', async () => {
-    const message = $('control-username-change-message'); message.textContent = 'กำลังบันทึกชื่อผู้ใช้...';
+  $('goal-form').addEventListener('submit', async (event) => {
+    event.preventDefault(); const goal = $('goal-input').value.trim(); const project = selectedProject();
+    if (!project || !goal) { message('goal-message', 'เลือกโปรเจกต์และพิมพ์สิ่งที่อยากให้ AWH ช่วยก่อน'); return; }
+    message('goal-message', 'กำลังบันทึกงาน…'); $('goal-submit').disabled = true;
     try {
-      await changeUsername($('control-identity-password').value, $('control-new-username').value);
-      $('control-identity-password').value = '';
-      message.textContent = 'บันทึกชื่อผู้ใช้แล้ว กรุณาเข้าสู่ AWH อีกครั้ง';
-      setTimeout(() => window.location.reload(), 600);
-    } catch (error) { message.textContent = error instanceof Error ? error.message : 'เปลี่ยนชื่อผู้ใช้ไม่สำเร็จ'; }
+      const task = await submitGoal(project.projectId, goal);
+      $('goal-input').value = '';
+      message('goal-message', task.state === 'WAITING_FOR_WORKER' ? 'รับงานแล้ว — กำลังรออุปกรณ์ที่เหมาะสม' : 'รับงานแล้ว');
+      await refreshWorkspace();
+    } catch (error) { message('goal-message', error instanceof Error ? error.message : 'ส่งงานไม่สำเร็จ'); }
+    finally { $('goal-submit').disabled = selectedProject() === null; }
   });
 
-  $('control-sessions-button')?.addEventListener('click', async () => {
-    const list = $('control-session-list'); list.textContent = 'กำลังโหลดเซสชัน...';
+  $('refresh-work').addEventListener('click', refreshWorkspace);
+  $('project-open').addEventListener('click', () => openSheet('project-sheet'));
+  $('account-open').addEventListener('click', openAccount);
+  $('account-open-inline').addEventListener('click', openAccount);
+  $('recovery-open').addEventListener('click', () => openSheet('recovery-sheet'));
+  document.querySelectorAll('[data-close-sheet]').forEach((button) => button.addEventListener('click', () => closeSheet(button.dataset.closeSheet)));
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') document.querySelectorAll('.sheet:not([hidden])').forEach((sheet) => { sheet.hidden = true; }); });
+
+  $('username-form').addEventListener('submit', async (event) => {
+    event.preventDefault(); message('username-message', 'กำลังบันทึกชื่อผู้ใช้…');
+    try { await changeUsername($('identity-password').value, $('new-username').value); $('identity-password').value = ''; message('username-message', 'บันทึกแล้ว กรุณาเข้าสู่ AWH อีกครั้ง'); setTimeout(() => window.location.reload(), 700); }
+    catch (error) { message('username-message', error instanceof Error ? error.message : 'เปลี่ยนชื่อผู้ใช้ไม่สำเร็จ'); }
+  });
+
+  $('password-form').addEventListener('submit', async (event) => {
+    event.preventDefault(); message('password-message', 'กำลังบันทึกรหัสผ่าน…');
     try {
-      const data = await listAuthSessions(); list.replaceChildren();
-      for (const session of data.sessions || []) { const row = document.createElement('div'); row.className = 'control-item'; const label = document.createElement('span'); label.textContent = `${session.current ? 'อุปกรณ์นี้' : 'เซสชันอื่น'} · ใช้งานล่าสุด ${new Date(session.lastSeenAt).toLocaleString('th-TH')}`; row.append(label); if (!session.current) { const button = document.createElement('button'); button.className = 'control-button secondary'; button.textContent = 'เพิกถอน'; button.addEventListener('click', async () => { button.disabled = true; await revokeAuthSession(session.sessionId); row.remove(); }); row.append(button); } list.append(row); }
+      if ($('new-password').value !== $('confirm-password').value) throw new Error('กรุณายืนยันรหัสผ่านใหม่ให้ตรงกัน');
+      await changePassword($('old-password').value, $('new-password').value);
+      $('old-password').value = ''; $('new-password').value = ''; $('confirm-password').value = '';
+      message('password-message', 'บันทึกแล้ว กรุณาเข้าสู่ AWH อีกครั้ง'); setTimeout(() => window.location.reload(), 700);
+    } catch (error) { message('password-message', error instanceof Error ? error.message : 'เปลี่ยนรหัสผ่านไม่สำเร็จ'); }
+  });
+
+  $('sessions-load').addEventListener('click', async () => {
+    const list = $('session-list'); list.replaceChildren();
+    try {
+      const data = await listAuthSessions();
+      for (const session of data.sessions || []) {
+        const row = document.createElement('div'); row.className = 'session-row';
+        const detail = document.createElement('span'); detail.textContent = `${session.current ? 'อุปกรณ์นี้' : 'อุปกรณ์อื่น'} · ใช้งานล่าสุด ${date(session.lastSeenAt)}`;
+        row.append(detail);
+        if (!session.current) {
+          const revoke = document.createElement('button'); revoke.type = 'button'; revoke.className = 'secondary-button'; revoke.textContent = 'เพิกถอน';
+          revoke.addEventListener('click', async () => { revoke.disabled = true; try { await revokeAuthSession(session.sessionId); row.remove(); } catch { revoke.disabled = false; } }); row.append(revoke);
+        }
+        list.append(row);
+      }
       if (!list.childElementCount) list.textContent = 'ไม่มีเซสชันที่ใช้งานอยู่';
     } catch (error) { list.textContent = error instanceof Error ? error.message : 'โหลดเซสชันไม่สำเร็จ'; }
   });
 
-  $('control-recovery-codes-button')?.addEventListener('click', async () => {
-    const output = $('control-recovery-codes'); output.textContent = 'กำลังสร้างรหัสกู้คืน...';
-    try { const data = await createRecoveryCodes(); output.textContent = Array.isArray(data.recoveryCodes) ? data.recoveryCodes.join('\n') : 'ไม่สามารถสร้างรหัสกู้คืนได้'; } catch (error) { output.textContent = error instanceof Error ? error.message : 'สร้างรหัสกู้คืนไม่สำเร็จ'; }
+  $('recovery-codes-create').addEventListener('click', async () => {
+    const output = $('recovery-codes'); output.hidden = false; output.textContent = 'กำลังสร้างรหัสกู้คืน…';
+    try { const data = await createRecoveryCodes(); output.textContent = Array.isArray(data.recoveryCodes) ? data.recoveryCodes.join('\n') : 'ไม่สามารถสร้างรหัสกู้คืนได้'; }
+    catch (error) { output.textContent = error instanceof Error ? error.message : 'ไม่สามารถสร้างรหัสกู้คืนได้'; }
   });
 
-  $('control-recovery-button')?.addEventListener('click', async () => {
-    const message = $('control-recovery-message'); message.textContent = 'กำลังตรวจสอบรหัสกู้คืน...';
-    try {
-      await recover($('control-username').value, $('control-recovery-code').value, $('control-recovery-password').value);
-      $('control-recovery-code').value = ''; $('control-recovery-password').value = '';
-      message.textContent = 'ตั้งรหัสผ่านใหม่แล้ว — กลับไปเข้าสู่ AWH ได้';
-    } catch (error) { message.textContent = error instanceof Error ? error.message : 'กู้คืนการเข้าถึงไม่สำเร็จ'; }
+  $('recovery-form').addEventListener('submit', async (event) => {
+    event.preventDefault(); message('recovery-message', 'กำลังตรวจสอบรหัสกู้คืน…');
+    try { await recover($('recovery-username').value, $('recovery-code').value, $('recovery-password').value); $('recovery-code').value = ''; $('recovery-password').value = ''; message('recovery-message', 'ตั้งรหัสผ่านใหม่แล้ว กลับไปเข้าสู่ AWH ได้'); }
+    catch (error) { message('recovery-message', error instanceof Error ? error.message : 'กู้คืนการเข้าถึงไม่สำเร็จ'); }
   });
 
-  $('control-sign-in-button')?.addEventListener('click', async () => {
-    const message = $('control-sign-in-message'); message.textContent = 'กำลังเชื่อมต่อ...';
-    try { await openMobileSession($('control-pairing-code').value.trim()); window.location.reload(); } catch (error) { message.textContent = error instanceof Error ? error.message : 'เชื่อมต่อไม่สำเร็จ'; }
-  });
-  $('control-project')?.addEventListener('change', () => { if (controlData) renderControl(controlData, 'CONTROL'); });
-  $('control-submit')?.addEventListener('click', async () => {
-    const message = $('control-submit-message'); message.textContent = 'กำลังส่ง Goal...';
-    try { const result = await submitGoal($('control-project').value, $('control-goal').value); message.textContent = result.state === 'WAITING_FOR_WORKER' ? 'รับงานแล้ว — กำลังรอ worker ที่เหมาะสม' : 'รับงานแล้ว'; $('control-goal').value = ''; renderControl(await loadControlData(), 'CONTROL'); } catch (error) { message.textContent = error instanceof Error ? error.message : 'ส่ง Goal ไม่สำเร็จ'; }
-  });
+  $('logout-button').addEventListener('click', async () => { await logout().catch(() => undefined); window.location.reload(); });
 
-  loadWebData()
-    .then(render)
-    .catch((error) => { text('hub-status', 'Preview unavailable'); text('hub-summary', error.message); });
+  loadWebData().then(render).catch(() => render({ product: { shortName: 'AWH' }, control: { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' } }));
 })();
