@@ -52,6 +52,9 @@ test('M4 control-plane activation package is executable in a local dry-run witho
   assert.match(remote, /stage OWNER_AUTH_MIGRATION_IDEMPOTENT/);
   assert.match(remote, /stage OWNER_AUTH_VERIFIED/);
   assert.match(remote, /stage WEB_RELEASE_COPY/);
+  assert.match(remote, /stage WEB_ACCESS_READY; verify_web_access/);
+  assert.match(remote, /chown -R awh-hub:www-data/);
+  assert.match(remote, /sudo -n -u www-data test -r/);
   assert.match(remote, /stage WEB_POINTER_SWITCH/);
   assert.match(remote, /stage NGINX_CUTOVER_PREPARE/);
   assert.match(remote, /stage NGINX_CUTOVER_INSTALL/);
