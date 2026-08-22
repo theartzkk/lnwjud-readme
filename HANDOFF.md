@@ -23,11 +23,11 @@ Normal owner use is username/password plus a revocable remembered session.
 The Keychain value is only bootstrap delivery. After signing in, Art should set
 a memorable password in Account. Basic Auth remains only on technical routes.
 
-### Pending source release — M6 Native Assistant Workstream
+### Pending source release — M6 Native Assistant Workstream + M7 Workspace Continuity
 
-The next source candidate adds one additive v5→v6 Hub capability, `m6-assistant-workstream`. It is intentionally not deployed in the current live v5 state. It makes the existing Work surface a durable ordered conversation per project by projecting existing canonical tasks, task events, artifacts and approvals into one work stream; it does not introduce another project/task/memory/result authority.
+The next source candidate adds two additive capabilities, `m6-assistant-workstream` and `m7-workspace-continuity`. It is intentionally not deployed in the current live v5 state. M6 makes the existing Work surface a durable ordered conversation per project by projecting existing canonical tasks, task events, artifacts and approvals into one work stream; it does not introduce another project/task/memory/result authority. M7 adds only WIP checkpoint metadata and a single project workspace-writer lease to that same Hub authority.
 
-M6 has a local cross-version fixture for M3E.1 → M3E.2 → owner/device → M4 → M5 → M6, browser session, conversation-only response, idempotent Work submission, claim/reclaim, expired-lease recovery, artifact/result, follow-up continuity and safe cancellation before worker claim. The current Mac worker will renew an owned lease every minute, preserving the existing outbound credential and approved-execution boundaries. Deployment remains one new exact-SHA approval with backup, v5→v6 idempotence, pointer/Nginx/PHP checks and rollback to the verified v5 backup.
+M6/M7 have local cross-version fixtures for M3E.1 → M3E.2 → owner/device → M4 → M5 → M6 → M7, browser session, conversation-only response, idempotent Work submission, task lease recovery, safe cancellation, clean/WIP Mac↔Windows handoff, reverse handoff, source-offline/unsynced truthfulness and no-secret/cache transfer. Git is the WIP content authority through a private `refs/awh/wip/<project>/<checkpoint>` ref; the Hub never receives paths or source content. The target claims its workspace lease before restoring and fails closed on a dirty workspace, base-revision mismatch, conflict or unavailable source. Deployment remains one new exact-SHA approval with backup, v5→v7 idempotence, pointer/Nginx/PHP checks and rollback to the verified v5 backup.
 
 The first M4 activation attempt is historical evidence only: it failed before
 Nginx activation and rollback restored the v3 baseline. Subsequent reviewed
@@ -69,9 +69,9 @@ The owner-protocol integration is isolated on `awh/clean-foundation` / PR #8 for
 
 ## Remaining field gates
 
-1. Approve and activate the exact M6 source release; do not deploy the uncommitted/current tree.
+1. Approve and activate the exact M6/M7 source release; do not deploy the uncommitted/current tree.
 2. iPhone Safari/PWA: sign in → select existing project → ask a normal question → submit one safe read-only Work request → see the same worker/result/continuity stream.
-3. Logged-in Mac GUI field test with the final package and worker restart/reconnect.
+3. Logged-in Mac GUI field test with the final package, worker restart/reconnect and one clean/WIP handoff to Windows.
 4. Physical Windows pairing/Credential Manager/runtime field test.
 5. Fix only verified field defects, then release stable `1.0.0`.
 

@@ -2,8 +2,8 @@
 
 ## NOW
 
-- Review the exact M6 Native Assistant Workstream release, then use one bounded ReadyIDC approval to migrate schema v5→v6 and switch the release. It must not seed projects, alter owner credentials, replay M3E/M4/M5 or mutate Google Cloud/BAY production.
-- After M6 activation, field-test one iPhone → canonical Work message → Mac worker claim → natural result/artifact flow, then verify the same stream after a Desktop restart. Do not call iPhone/Mac field PASS until performed.
+- Review the exact M6/M7 Native Assistant + Workspace Continuity release, then use one bounded ReadyIDC approval to migrate schema v5→v7 and switch the release. It must not seed projects, alter owner credentials, replay M3E/M4/M5 or mutate Google Cloud/BAY production.
+- After M6/M7 activation, field-test one iPhone → canonical Work message → Mac worker claim → natural result/artifact flow, then verify the same stream after a Desktop restart and a Mac↔Windows WIP handoff. Do not call iPhone/Mac/Windows field PASS until performed.
 
 - After successful sign-in, set a memorable owner username/password in Control
   Panel and retain a revocable remembered-device session; Keychain is not a

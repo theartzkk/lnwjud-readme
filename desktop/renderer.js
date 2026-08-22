@@ -83,6 +83,31 @@ async function refreshWork() {
   renderWorkConversation(result);
 }
 
+function workspaceContinuityText(workspace) {
+  if (!workspace) return 'ยังไม่มี checkpoint สำหรับส่งต่องานข้ามอุปกรณ์';
+  if (workspace.syncStatus === 'SYNCED') return 'พร้อมทำงานต่อจาก checkpoint ล่าสุดบนอุปกรณ์ที่เชื่อถือได้';
+  if (workspace.syncStatus === 'HANDOFF_REQUIRED') return 'กำลังทำงานอยู่บนอุปกรณ์อื่น — บันทึกและส่งต่องานจากเครื่องนั้นก่อน';
+  if (workspace.syncStatus === 'SOURCE_OFFLINE') return 'เครื่องเดิมออฟไลน์ แต่มี checkpoint ล่าสุดที่ตรวจสอบแล้ว';
+  if (workspace.syncStatus === 'UNSYNCED_CHANGES') return 'มีงานที่ยัง sync ไม่ครบ จึงยังไม่อนุญาตให้เขียนทับหรือรับต่อ';
+  return 'ยังไม่มี checkpoint — งานใหม่จะเริ่มจาก revision ที่ลงทะเบียนไว้';
+}
+
+async function refreshWorkspaceContinuity() {
+  const result = await window.artAgent.getWorkspaceContinuity();
+  $('workspace-continuity-status').textContent = result?.ok === true ? workspaceContinuityText(result.workspace) : result?.message || 'สถานะการทำงานข้ามอุปกรณ์ยังไม่พร้อม';
+  $('workspace-sync').disabled = result?.ok !== true;
+  $('workspace-takeover').disabled = result?.ok !== true || result.workspace?.syncStatus === 'UNSYNCED_CHANGES';
+}
+
+async function runWorkspaceAction(action) {
+  $('workspace-sync').disabled = true; $('workspace-takeover').disabled = true;
+  $('workspace-continuity-status').textContent = 'กำลังตรวจและบันทึกสถานะ workspace อย่างปลอดภัย…';
+  try {
+    const result = await action();
+    $('workspace-continuity-status').textContent = result?.message || 'AWH ยังดำเนินการไม่ได้';
+  } finally { await refreshWorkspaceContinuity(); }
+}
+
 async function submitWork() {
   const input = $('desktop-work-input'); const message = input.value.trim();
   if (!message) { $('desktop-work-message').textContent = 'กรุณาพิมพ์สิ่งที่อยากให้ AWH ช่วย'; return; }
@@ -339,7 +364,7 @@ function showSection(section) {
 
 async function refresh() {
   $('refresh').disabled = true;
-  try { render(await window.artAgent.getOverview()); await refreshProjects(); await refreshEnrollment(); await refreshAutopilot(); }
+  try { render(await window.artAgent.getOverview()); await refreshProjects(); await refreshEnrollment(); await refreshAutopilot(); await refreshWorkspaceContinuity(); }
   catch (error) { $('git-output').textContent = `Control Center error: ${error?.message ?? error}`; }
   finally { $('refresh').disabled = false; }
 }
@@ -400,6 +425,8 @@ $('enrollment-rotate').addEventListener('click', () => runEnrollmentAction(() =>
 $('enrollment-revoke').addEventListener('click', () => runEnrollmentAction(() => window.artAgent.revokeDeviceCredential()));
 $('refresh-autopilot').addEventListener('click', refreshAutopilot);
 $('desktop-work-form').addEventListener('submit', (event) => { event.preventDefault(); void submitWork(); });
+$('workspace-sync').addEventListener('click', () => { void runWorkspaceAction(() => window.artAgent.syncWorkspaceForHandoff()); });
+$('workspace-takeover').addEventListener('click', () => { void runWorkspaceAction(() => window.artAgent.takeOverWorkspace()); });
 $('desktop-work-project').addEventListener('click', () => showSection('projects'));
 $('view-results').addEventListener('click', () => showSection('artifacts'));
 $('refresh-artifacts').addEventListener('click', async () => renderArtifacts(await window.artAgent.getAutopilotArtifacts()));

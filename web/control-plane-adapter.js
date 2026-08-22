@@ -80,6 +80,13 @@ export async function loadConversation(projectId) {
   return value;
 }
 
+export async function loadWorkspaceContinuity(projectId) {
+  if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง');
+  const value = await controlRequest(`/api/v1/control/workspaces/${projectId}`);
+  if (value.schemaVersion !== 1 || !value.workspace || typeof value.workspace !== 'object' || Array.isArray(value.workspace)) throw new Error('สถานะ workspace ไม่ถูกต้อง');
+  return value.workspace;
+}
+
 export async function submitWorkMessage(projectId, message, idempotencyKey = `web-${crypto.randomUUID()}`) {
   if (!UUID.test(projectId) || typeof message !== 'string' || !message.trim() || message.length > 2000 || !/^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey)) throw new Error('กรุณาเลือกโปรเจกต์และบอกสิ่งที่อยากให้ AWH ช่วย');
   const value = await controlRequest('/api/v1/control/conversations', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, message: message.trim(), idempotencyKey }) });

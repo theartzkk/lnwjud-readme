@@ -8,6 +8,7 @@ import { createCheckpoint } from './changes.js';
 import { createContinuityCheckpoint } from './continuity.js';
 import { buildProjectContext, resolveRegisteredProject, PROJECT_MEMORY_FILES } from './project-registry.js';
 import { ControlPlaneWorkerClient, type WorkerTask } from './control-plane-worker-client.js';
+import { createUnsyncedWorkspaceCheckpoint, createWorkspaceWipCheckpoint, reconstructWorkspaceWip } from './workspace-continuity.js';
 
 const MUTATION_GOAL = /(?:\b(?:fix|edit|change|modify|write|render|publish|deploy|delete|remove)\b|แก้|เพิ่ม|ลบ|สร้าง|เรนเดอร์|เผยแพร่|deploy)/iu;
 
@@ -21,6 +22,7 @@ export interface WorkerRuntimeOptions {
 
 export type WorkerRunResult =
   | { status: 'IDLE'; deviceId: string }
+  | { status: 'WAITING_FOR_WORKER'; taskId: string; projectId: string; reason: string }
   | { status: 'WAITING_FOR_APPROVAL'; taskId: string; projectId: string; reason: string }
   | { status: 'COMPLETED'; taskId: string; projectId: string; artifact: string | null }
   | { status: 'FAILED'; taskId: string; projectId: string; reason: string };
@@ -85,7 +87,13 @@ export class ControlPlaneWorkerRuntime {
     // already-authenticated worker renews it while it owns the task. Failure
     // to renew never fabricates success; the Hub's stale-lease recovery path
     // will requeue the task safely.
-    const leaseHeartbeat = setInterval(() => { void this.client.heartbeat(capabilities, 'WORKING').catch(() => undefined); }, 60_000);
+    let workspaceLeaseHeld = false;
+    let workspaceLeaseLost = false;
+    let mutationWorkspace: string | null = null;
+    const leaseHeartbeat = setInterval(() => {
+      void this.client.heartbeat(capabilities, 'WORKING').catch(() => undefined);
+      if (workspaceLeaseHeld) void this.client.renewWorkspaceLease(task.projectId).catch(() => { workspaceLeaseLost = true; });
+    }, 60_000);
     leaseHeartbeat.unref?.();
     try {
       const resolved = await resolveRegisteredProject(this.options.dataDir, task.projectId).catch(() => null);
@@ -102,18 +110,45 @@ export class ControlPlaneWorkerRuntime {
         await this.safeUpdate(task, 'WAITING_FOR_APPROVAL', 0, 'This device policy does not allow the requested execution boundary', null);
         return { status: 'WAITING_FOR_APPROVAL', taskId: task.taskId, projectId: task.projectId, reason: 'DEVICE_POLICY_REQUIRES_APPROVAL' };
       }
+      if (mutation) {
+        try {
+          const workspace = await this.client.workspace(task.projectId);
+          if (workspace.syncStatus === 'UNSYNCED_CHANGES') throw new Error('UNSYNCED_WORKSPACE_CHANGES');
+          if (workspace.lease?.active && workspace.lease.owner.deviceId !== deviceId) throw new Error('WORKSPACE_HANDOFF_REQUIRED');
+          await this.client.claimWorkspaceLease(task.projectId, workspace.checkpoint?.checkpointId ?? null);
+          workspaceLeaseHeld = true;
+          // Claim before touching the local worktree. This closes the handoff
+          // race where a second target could otherwise restore the same WIP
+          // while the first target was still reconstructing it.
+          if (workspace.checkpoint !== null && workspace.checkpoint.sourceDeviceId !== deviceId) {
+            try {
+              await reconstructWorkspaceWip({ workspace: resolved.workspacePath, checkpoint: workspace.checkpoint });
+            } catch (error) {
+              try { await this.client.releaseWorkspaceLease(task.projectId); } catch { /* The short Hub lease expires safely if transport is unavailable. */ }
+              workspaceLeaseHeld = false;
+              throw error;
+            }
+          }
+          mutationWorkspace = resolved.workspacePath;
+        } catch (error) {
+          const reason = boundedSummary(error instanceof Error ? error.message : 'WORKSPACE_HANDOFF_REQUIRED');
+          await this.safeUpdate(task, 'WAITING_FOR_WORKER', 0, 'Workspace handoff is required before source-changing work can continue', reason);
+          return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason };
+        }
+      }
       const context = await buildProjectContext(resolved.workspacePath);
       await this.client.update(task.taskId, mutation ? 'RUNNING' : 'PREPARING', 5, 'Owner protocol and project context verified');
       if (mutation) {
         await createCheckpoint(this.options.dataDir, resolved.workspacePath, [...PROJECT_MEMORY_FILES], this.options.maxReadBytes);
         const instruction = buildCodexTaskInstruction(context.ownerProtocol, task.goal);
         const codex = await runCodexGoal(resolved.workspacePath, instruction, 'workspace-write');
-        if (codex.code !== 0) { await this.safeUpdate(task, 'FAILED', 10, 'AI-assisted task failed safely', 'CODEX_EXECUTION_FAILED'); return { status: 'FAILED', taskId: task.taskId, projectId: task.projectId, reason: 'CODEX_EXECUTION_FAILED' }; }
+        if (codex.code !== 0) throw new Error('CODEX_EXECUTION_FAILED');
       }
+      if (workspaceLeaseLost) throw new Error('WORKSPACE_LEASE_RENEWAL_FAILED');
       await this.client.update(task.taskId, 'QA', 70, 'Running approved project QA');
       const runner = new AutopilotRunner({ dataDir: this.options.dataDir, workspace: resolved.workspacePath, manifest: resolved.manifest, deviceId, maxReadBytes: this.options.maxReadBytes, allowExec: true, allowWrite: mutation && this.options.allowWrite });
       const result = await runner.runNow({ goal: mutation ? 'Run bounded QA after the approved change' : task.goal, acceptanceCriteria: ['Owner protocol and project context remain bound to the canonical identity', 'Approved QA completes', 'A bounded result is available'] });
-      if (result.contract.state !== 'COMPLETED') { await this.safeUpdate(task, 'FAILED', 80, 'Project QA failed', 'PROJECT_QA_FAILED'); return { status: 'FAILED', taskId: task.taskId, projectId: task.projectId, reason: 'PROJECT_QA_FAILED' }; }
+      if (result.contract.state !== 'COMPLETED') throw new Error('PROJECT_QA_FAILED');
       const artifactRef: string | null = result.artifact?.relativeRef ?? null;
       if (result.artifact) {
         const artifactPath = join(this.options.dataDir, result.artifact.relativeRef);
@@ -121,18 +156,46 @@ export class ControlPlaneWorkerRuntime {
         const sha256 = createHash('sha256').update(await readFile(artifactPath)).digest('hex');
         await this.client.addArtifact(task.taskId, { kind: result.artifact.kind, name: result.artifact.label, sha256, sizeBytes: bytes, relativeRef: result.artifact.relativeRef });
       }
+      if (mutation) {
+        try {
+          const checkpoint = await createWorkspaceWipCheckpoint({ workspace: resolved.workspacePath, projectId: task.projectId, sourceDeviceId: deviceId, taskId: task.taskId, artifactRefs: artifactRef ? [artifactRef] : [] });
+          await this.client.publishWorkspaceCheckpoint(checkpoint);
+          await this.client.releaseWorkspaceLease(task.projectId);
+          workspaceLeaseHeld = false;
+        } catch (error) {
+          try {
+            const unsynced = await createUnsyncedWorkspaceCheckpoint({ workspace: resolved.workspacePath, projectId: task.projectId, sourceDeviceId: deviceId, taskId: task.taskId, artifactRefs: artifactRef ? [artifactRef] : [] });
+            await this.client.publishWorkspaceCheckpoint(unsynced);
+          } catch { /* Hub may be offline; do not falsely claim that local WIP is synchronized. */ }
+          await this.safeUpdate(task, 'FAILED', 90, 'Work completed locally but could not be synchronized safely for another device', 'WORKSPACE_CONTINUITY_REQUIRED');
+          return { status: 'FAILED', taskId: task.taskId, projectId: task.projectId, reason: boundedSummary(error instanceof Error ? error.message : 'WORKSPACE_CONTINUITY_REQUIRED') };
+        }
+      }
       await createContinuityCheckpoint({ dataDir: this.options.dataDir, workspace: resolved.workspacePath, projectId: task.projectId, taskId: task.taskId, sourceDeviceId: deviceId, taskState: 'COMPLETED', goalSummary: task.goal, artifactRefs: artifactRef ? [artifactRef] : [] });
       const passed = result.gates.filter((gate) => gate.status === 'PASS').length;
       const summary = mutation ? `ดำเนินการตามขอบเขตที่อนุมัติแล้ว และ QA ผ่าน ${passed} รายการ` : `ตรวจบริบทและ QA แล้วผ่าน ${passed} รายการ โดยไม่ได้แก้ไข source`;
       await this.client.update(task.taskId, 'COMPLETED', 100, 'Completed with owner protocol, bounded QA and continuity', summary);
       return { status: 'COMPLETED', taskId: task.taskId, projectId: task.projectId, artifact: artifactRef };
     } catch (error) {
+      if (workspaceLeaseHeld && mutationWorkspace !== null) {
+        try {
+          const checkpoint = await createWorkspaceWipCheckpoint({ workspace: mutationWorkspace, projectId: task.projectId, sourceDeviceId: deviceId, taskId: task.taskId });
+          await this.client.publishWorkspaceCheckpoint(checkpoint);
+          await this.client.releaseWorkspaceLease(task.projectId);
+          workspaceLeaseHeld = false;
+        } catch {
+          try {
+            const unsynced = await createUnsyncedWorkspaceCheckpoint({ workspace: mutationWorkspace, projectId: task.projectId, sourceDeviceId: deviceId, taskId: task.taskId });
+            await this.client.publishWorkspaceCheckpoint(unsynced);
+          } catch { /* A disconnected Hub must never be represented as a synced workspace. */ }
+        }
+      }
       await this.safeUpdate(task, 'FAILED', 0, 'Worker execution failed safely', 'WORKER_EXECUTION_FAILED');
       return { status: 'FAILED', taskId: task.taskId, projectId: task.projectId, reason: boundedSummary(error instanceof Error ? error.message : 'WORKER_EXECUTION_FAILED') };
     } finally { clearInterval(leaseHeartbeat); }
   }
 
-  private async safeUpdate(task: WorkerTask, state: 'WAITING_FOR_APPROVAL' | 'FAILED', progress: number, message: string, result: string | null): Promise<void> {
+  private async safeUpdate(task: WorkerTask, state: 'WAITING_FOR_WORKER' | 'WAITING_FOR_APPROVAL' | 'FAILED', progress: number, message: string, result: string | null): Promise<void> {
     try { await this.client.update(task.taskId, state, progress, message, result); } catch { /* Keep the original bounded failure state; never leak transport diagnostics. */ }
   }
 }

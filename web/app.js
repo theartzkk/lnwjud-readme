@@ -1,12 +1,12 @@
 import { loadWebData } from './hub-read-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 import {
   cancelTask, changePassword, changeUsername, createRecoveryCodes, decideApproval, listAuthSessions,
-  loadControlData, loadConversation, login, logout, recover, revokeAuthSession, submitWorkMessage,
+  loadControlData, loadConversation, loadWorkspaceContinuity, login, logout, recover, revokeAuthSession, submitWorkMessage,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 (() => {
   const $ = (id) => document.getElementById(id);
-  const state = { control: null, selectedProjectId: null, conversation: null, refreshTimer: null };
+  const state = { control: null, selectedProjectId: null, conversation: null, workspaceContinuity: null, refreshTimer: null };
   const taskLabels = {
     WAITING_FOR_WORKER: 'กำลังรออุปกรณ์ทำงาน', PREPARING: 'กำลังเตรียมงาน', RUNNING: 'กำลังทำงาน',
     QA: 'กำลังตรวจคุณภาพ', WAITING_FOR_APPROVAL: 'รอการอนุมัติ', COMPLETED: 'เสร็จแล้ว',
@@ -42,7 +42,7 @@ import {
       const name = document.createElement('strong'); name.textContent = project.name;
       const detail = document.createElement('span'); detail.textContent = project.memoryReady ? 'พร้อมใช้ context ของโปรเจกต์' : 'Project Memory ยังต้องตรวจสอบบน worker';
       button.append(name, detail);
-      button.addEventListener('click', async () => { state.selectedProjectId = project.projectId; state.conversation = null; renderWorkspace(); closeSheet('project-sheet'); await refreshConversation(); });
+      button.addEventListener('click', async () => { state.selectedProjectId = project.projectId; state.conversation = null; state.workspaceContinuity = null; renderWorkspace(); closeSheet('project-sheet'); await refreshConversation(); });
       list.append(button);
     }
   }
@@ -54,6 +54,15 @@ import {
     if (working.length) return `${working.length} อุปกรณ์กำลังทำงาน`;
     if (ready.length) return `${ready.length} อุปกรณ์พร้อมทำงาน`;
     return 'ยังไม่มีอุปกรณ์ทำงานออนไลน์ — งานจะรออย่างปลอดภัย';
+  }
+
+  function continuitySummary(workspace) {
+    if (!workspace) return '';
+    if (workspace.syncStatus === 'SYNCED') return ' · งานล่าสุดพร้อมทำต่อบนอุปกรณ์ที่เชื่อถือได้';
+    if (workspace.syncStatus === 'HANDOFF_REQUIRED') return ' · งานกำลังอยู่บนอุปกรณ์อื่น';
+    if (workspace.syncStatus === 'SOURCE_OFFLINE') return ' · อุปกรณ์เดิมออฟไลน์ แต่มี checkpoint ล่าสุด';
+    if (workspace.syncStatus === 'UNSYNCED_CHANGES') return ' · มีงานที่ยัง sync ไม่ครบ';
+    return '';
   }
 
   function renderApproval(task, approvals) {
@@ -122,7 +131,7 @@ import {
     const project = selectedProject();
     message('selected-project-name', project?.name || 'ยังไม่มีโปรเจกต์');
     message('worker-summary', workerSummary(control.workers));
-    message('work-context', project ? (project.memoryReady ? 'บริบทและงานจะถูกผูกกับโปรเจกต์นี้' : 'AWH จะรักษาขอบเขตของโปรเจกต์นี้ไว้ขณะ worker ตรวจ context') : 'เพิ่มโปรเจกต์จาก AWH Desktop เพื่อเริ่มงาน');
+    message('work-context', project ? (project.memoryReady ? `บริบทและงานจะถูกผูกกับโปรเจกต์นี้${continuitySummary(state.workspaceContinuity)}` : 'AWH จะรักษาขอบเขตของโปรเจกต์นี้ไว้ขณะ worker ตรวจ context') : 'เพิ่มโปรเจกต์จาก AWH Desktop เพื่อเริ่มงาน');
     message('advanced-status', `${workerSummary(control.workers)} · งานและผลลัพธ์แสดงเฉพาะตามสิทธิ์ของบัญชีคุณ`);
     $('goal-submit').disabled = project === null;
     $('goal-input').disabled = project === null;
@@ -143,8 +152,8 @@ import {
 
   async function refreshConversation() {
     const project = selectedProject();
-    if (!project) { state.conversation = null; renderWorkspace(); return; }
-    try { state.conversation = await loadConversation(project.projectId); renderWorkspace(); }
+    if (!project) { state.conversation = null; state.workspaceContinuity = null; renderWorkspace(); return; }
+    try { const [conversation, workspaceContinuity] = await Promise.all([loadConversation(project.projectId), loadWorkspaceContinuity(project.projectId)]); state.conversation = conversation; state.workspaceContinuity = workspaceContinuity; renderWorkspace(); }
     catch (error) { state.conversation = { messages: [{ messageId: 'local-unavailable', taskId: null, kind: 'assistant', sequence: 1, body: 'Work stream นี้จะพร้อมทันทีที่ Hub ได้รับ release ล่าสุด', createdAt: new Date().toISOString() }], tasks: [], artifacts: [], approvals: [] }; renderWorkspace(); message('goal-message', error instanceof Error ? error.message : 'AWH ยังโหลดการสนทนาไม่ได้'); }
   }
 

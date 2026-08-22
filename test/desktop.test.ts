@@ -39,6 +39,9 @@ test('desktop IPC exposes fixed high-level channel names only', () => {
     'autopilotRemoteResults',
     'workConversation',
     'workSubmit',
+    'workspaceContinuity',
+    'workspaceSync',
+    'workspaceTakeover',
     'restart',
     'selectProject',
     'setPermissions',
@@ -190,6 +193,9 @@ test('desktop Work is conversation-first, project-bound, and never exposes raw p
   assert.match(main, /typeof goal !== 'string'/);
   assert.match(preload, /getWorkConversation/);
   assert.match(preload, /submitWorkMessage/);
+  assert.match(preload, /getWorkspaceContinuity/);
+  assert.match(preload, /syncWorkspaceForHandoff/);
+  assert.match(preload, /takeOverWorkspace/);
   assert.match(preload, /worker: permissions\?\.worker === true/);
   assert.match(renderer, /perm-worker/);
   assert.match(main, /Worker requires approved execution/);
@@ -197,6 +203,8 @@ test('desktop Work is conversation-first, project-bound, and never exposes raw p
   assert.match(renderer, /renderWorkConversation/);
   assert.match(html, /id="desktop-work-thread"/);
   assert.match(html, /id="desktop-work-input"/);
+  assert.match(html, /id="workspace-sync"/);
+  assert.match(html, /id="workspace-takeover"/);
   assert.match(html, /id="section-autopilot"/);
   assert.match(html, /id="section-artifacts"/);
   assert.doesNotMatch(renderer, /child_process|spawn\(|execFile|process\.env|Authorization|accessToken|tokenHash/);

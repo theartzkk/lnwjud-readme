@@ -1,11 +1,12 @@
 import { CredentialStore, DEVICE_TOKEN_CREDENTIAL_KEY } from './credential-store.js';
 import { DeviceIdentity, loadOrCreateDeviceIdentity } from './device-identity.js';
+import type { WorkspaceWipCheckpoint } from './workspace-continuity.js';
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CAPABILITY = /^[a-z][a-z0-9:._-]{0,63}$/;
 const STATE = new Set(['READY', 'WORKING', 'OFFLINE']);
-const TASK_STATE = new Set(['PREPARING', 'RUNNING', 'QA', 'WAITING_FOR_APPROVAL', 'COMPLETED', 'FAILED']);
+const TASK_STATE = new Set(['WAITING_FOR_WORKER', 'PREPARING', 'RUNNING', 'QA', 'WAITING_FOR_APPROVAL', 'COMPLETED', 'FAILED']);
 
 export class ControlPlaneWorkerError extends Error {
   constructor(message: string, readonly code = 'CONTROL_PLANE_WORKER_FAILED') { super(message); this.name = 'ControlPlaneWorkerError'; }
@@ -40,6 +41,7 @@ function boundedTask(value: unknown): WorkerTask {
 
 export interface WorkerConversationMessage { messageId: string; taskId: string | null; kind: 'user' | 'assistant' | 'progress' | 'approval' | 'result' | 'failure'; sequence: number; body: string; createdAt: string; }
 export interface WorkerConversation { conversation: { conversationId: string; projectId: string; createdAt: string; updatedAt: string; lastTaskId: string | null } | null; messages: WorkerConversationMessage[]; tasks: WorkerTask[]; artifacts: Array<Record<string, unknown>>; approvals: Array<Record<string, unknown>>; }
+export interface WorkerWorkspace { projectId: string; syncStatus: 'NO_CHECKPOINT' | 'UNSYNCED_CHANGES' | 'HANDOFF_REQUIRED' | 'SYNCED' | 'SOURCE_OFFLINE'; checkpoint: WorkspaceWipCheckpoint | null; lease: { active: boolean; state: 'ACTIVE' | 'EXPIRED'; checkpointId: string | null; owner: { deviceId: string; displayName: string; platform: string; lastSeenAt: string | null }; leaseExpiresAt: string } | null; }
 
 function boundedConversation(value: Record<string, unknown>): WorkerConversation {
   const conversation = value.conversation;
@@ -52,6 +54,30 @@ function boundedConversation(value: Record<string, unknown>): WorkerConversation
     return { messageId: item.messageId, taskId: item.taskId as string | null, kind: item.kind as WorkerConversationMessage['kind'], sequence: item.sequence as number, body: item.body, createdAt: item.createdAt };
   });
   return { conversation: conversation === null ? null : { conversationId: String((conversation as Record<string, unknown>).conversationId), projectId: String((conversation as Record<string, unknown>).projectId), createdAt: String((conversation as Record<string, unknown>).createdAt), updatedAt: String((conversation as Record<string, unknown>).updatedAt), lastTaskId: (conversation as Record<string, unknown>).lastTaskId === null ? null : String((conversation as Record<string, unknown>).lastTaskId) }, messages, tasks: value.tasks.map(boundedTask), artifacts: value.artifacts.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item))).slice(0, 100), approvals: value.approvals.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item))).slice(0, 50) };
+}
+
+function boundedWorkspace(value: Record<string, unknown>): WorkerWorkspace {
+  const workspace = value.workspace;
+  if (!workspace || typeof workspace !== 'object' || Array.isArray(workspace)) throw new ControlPlaneWorkerError('Workspace response is invalid', 'RESPONSE_INVALID');
+  const item = workspace as Record<string, unknown>;
+  if (typeof item.projectId !== 'string' || !UUID_V4.test(item.projectId) || !['NO_CHECKPOINT', 'UNSYNCED_CHANGES', 'HANDOFF_REQUIRED', 'SYNCED', 'SOURCE_OFFLINE'].includes(String(item.syncStatus))) throw new ControlPlaneWorkerError('Workspace response is invalid', 'RESPONSE_INVALID');
+  const checkpoint = item.checkpoint;
+  let parsedCheckpoint: WorkspaceWipCheckpoint | null = null;
+  if (checkpoint !== null) {
+    if (!checkpoint || typeof checkpoint !== 'object' || Array.isArray(checkpoint)) throw new ControlPlaneWorkerError('Workspace checkpoint is invalid', 'RESPONSE_INVALID');
+    const record = checkpoint as Record<string, unknown>;
+    if (!UUID_V4.test(String(record.checkpointId)) || !UUID_V4.test(String(record.projectId)) || String(record.projectId) !== item.projectId || !UUID_V4.test(String(record.sourceDeviceId)) || (record.taskId !== null && !UUID_V4.test(String(record.taskId))) || !/^[0-9a-f]{40,64}$/i.test(String(record.baseRevision)) || (record.wipRevision !== null && !/^[0-9a-f]{40,64}$/i.test(String(record.wipRevision))) || (record.wipRef !== null && !/^refs\/awh\/wip\/[0-9a-f-]{36}\/[0-9a-f-]{36}$/i.test(String(record.wipRef))) || !/^[0-9a-f]{40,64}$/i.test(String(record.treeRevision)) || !['CLEAN', 'SYNCED', 'UNSYNCED'].includes(String(record.syncState)) || !Array.isArray(record.files) || !Array.isArray(record.artifactRefs) || typeof record.createdAt !== 'string') throw new ControlPlaneWorkerError('Workspace checkpoint is invalid', 'RESPONSE_INVALID');
+    parsedCheckpoint = { schemaVersion: 1, checkpointId: String(record.checkpointId), projectId: String(record.projectId), taskId: record.taskId === null ? null : String(record.taskId), sourceDeviceId: String(record.sourceDeviceId), baseRevision: String(record.baseRevision), wipRevision: record.wipRevision === null ? null : String(record.wipRevision), wipRef: record.wipRef === null ? null : String(record.wipRef), treeRevision: String(record.treeRevision), files: record.files as WorkspaceWipCheckpoint['files'], artifactRefs: record.artifactRefs as string[], syncState: record.syncState as WorkspaceWipCheckpoint['syncState'], createdAt: String(record.createdAt) };
+  }
+  const lease = item.lease;
+  if (lease !== null && (!lease || typeof lease !== 'object' || Array.isArray(lease))) throw new ControlPlaneWorkerError('Workspace lease is invalid', 'RESPONSE_INVALID');
+  let parsedLease: WorkerWorkspace['lease'] = null;
+  if (lease !== null) {
+    const record = lease as Record<string, unknown>; const owner = record.owner;
+    if (typeof record.active !== 'boolean' || !['ACTIVE', 'EXPIRED'].includes(String(record.state)) || (record.checkpointId !== null && !UUID_V4.test(String(record.checkpointId))) || !owner || typeof owner !== 'object' || Array.isArray(owner) || !UUID_V4.test(String((owner as Record<string, unknown>).deviceId)) || typeof (owner as Record<string, unknown>).displayName !== 'string' || typeof (owner as Record<string, unknown>).platform !== 'string' || ((owner as Record<string, unknown>).lastSeenAt !== null && typeof (owner as Record<string, unknown>).lastSeenAt !== 'string') || typeof record.leaseExpiresAt !== 'string') throw new ControlPlaneWorkerError('Workspace lease is invalid', 'RESPONSE_INVALID');
+    parsedLease = { active: record.active, state: record.state as 'ACTIVE' | 'EXPIRED', checkpointId: record.checkpointId === null ? null : String(record.checkpointId), owner: { deviceId: String((owner as Record<string, unknown>).deviceId), displayName: String((owner as Record<string, unknown>).displayName), platform: String((owner as Record<string, unknown>).platform), lastSeenAt: (owner as Record<string, unknown>).lastSeenAt === null ? null : String((owner as Record<string, unknown>).lastSeenAt) }, leaseExpiresAt: String(record.leaseExpiresAt) };
+  }
+  return { projectId: item.projectId, syncStatus: item.syncStatus as WorkerWorkspace['syncStatus'], checkpoint: parsedCheckpoint, lease: parsedLease };
 }
 
 export class ControlPlaneWorkerClient {
@@ -109,6 +135,46 @@ export class ControlPlaneWorkerClient {
     const response = await this.post('/control/worker/conversations', { schemaVersion: 1, deviceId: identity.deviceId, projectId, message: message.trim(), idempotencyKey });
     if (response.schemaVersion !== 1) throw new ControlPlaneWorkerError('Worker conversation response is invalid', 'RESPONSE_INVALID');
     return boundedConversation(response);
+  }
+
+  async workspace(projectId: string): Promise<WorkerWorkspace> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    if (!UUID_V4.test(projectId)) throw new ControlPlaneWorkerError('Project identity is invalid', 'PAYLOAD_INVALID');
+    const response = await this.get(`/control/worker/workspaces/${identity.deviceId}/${projectId}`);
+    if (response.schemaVersion !== 1) throw new ControlPlaneWorkerError('Workspace response is invalid', 'RESPONSE_INVALID');
+    return boundedWorkspace(response);
+  }
+
+  async publishWorkspaceCheckpoint(checkpoint: WorkspaceWipCheckpoint): Promise<WorkerWorkspace> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    if (checkpoint.schemaVersion !== 1 || checkpoint.sourceDeviceId !== identity.deviceId || !UUID_V4.test(checkpoint.projectId) || !UUID_V4.test(checkpoint.checkpointId) || (checkpoint.taskId !== null && !UUID_V4.test(checkpoint.taskId))) throw new ControlPlaneWorkerError('Workspace checkpoint is invalid', 'PAYLOAD_INVALID');
+    const response = await this.post('/control/worker/workspaces/checkpoints', { schemaVersion: 1, checkpointId: checkpoint.checkpointId, deviceId: identity.deviceId, projectId: checkpoint.projectId, taskId: checkpoint.taskId, baseRevision: checkpoint.baseRevision, wipRevision: checkpoint.wipRevision, wipRef: checkpoint.wipRef, treeRevision: checkpoint.treeRevision, files: checkpoint.files, artifactRefs: checkpoint.artifactRefs, syncState: checkpoint.syncState });
+    if (response.schemaVersion !== 1) throw new ControlPlaneWorkerError('Workspace response is invalid', 'RESPONSE_INVALID');
+    return boundedWorkspace(response);
+  }
+
+  async claimWorkspaceLease(projectId: string, checkpointId: string | null): Promise<WorkerWorkspace> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    if (!UUID_V4.test(projectId) || (checkpointId !== null && !UUID_V4.test(checkpointId))) throw new ControlPlaneWorkerError('Workspace lease is invalid', 'PAYLOAD_INVALID');
+    const response = await this.post('/control/worker/workspaces/leases/claim', { schemaVersion: 1, deviceId: identity.deviceId, projectId, checkpointId });
+    if (response.schemaVersion !== 1) throw new ControlPlaneWorkerError('Workspace response is invalid', 'RESPONSE_INVALID');
+    return boundedWorkspace(response);
+  }
+
+  async renewWorkspaceLease(projectId: string): Promise<WorkerWorkspace> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    if (!UUID_V4.test(projectId)) throw new ControlPlaneWorkerError('Project identity is invalid', 'PAYLOAD_INVALID');
+    const response = await this.post('/control/worker/workspaces/leases/renew', { schemaVersion: 1, deviceId: identity.deviceId, projectId });
+    if (response.schemaVersion !== 1) throw new ControlPlaneWorkerError('Workspace response is invalid', 'RESPONSE_INVALID');
+    return boundedWorkspace(response);
+  }
+
+  async releaseWorkspaceLease(projectId: string): Promise<WorkerWorkspace> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    if (!UUID_V4.test(projectId)) throw new ControlPlaneWorkerError('Project identity is invalid', 'PAYLOAD_INVALID');
+    const response = await this.post('/control/worker/workspaces/leases/release', { schemaVersion: 1, deviceId: identity.deviceId, projectId });
+    if (response.schemaVersion !== 1) throw new ControlPlaneWorkerError('Workspace response is invalid', 'RESPONSE_INVALID');
+    return boundedWorkspace(response);
   }
 
   private async post(path: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {

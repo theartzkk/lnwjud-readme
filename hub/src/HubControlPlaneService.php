@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/HubAssistantWorkstreamMigration.php';
+require_once __DIR__ . '/HubWorkspaceContinuityMigration.php';
 
 final class HubControlPlaneException extends RuntimeException
 {
@@ -27,8 +28,10 @@ final class HubControlPlaneService
     private const SESSION_RATE_LIMIT = 5;
     private const WORKER_STALE_TTL = 120;
     private const LEASE_TTL = 300;
+    private const WORKSPACE_LEASE_TTL = 300;
     private const STATES = ['QUEUED', 'WAITING_FOR_WORKER', 'PREPARING', 'RUNNING', 'QA', 'WAITING_FOR_APPROVAL', 'COMPLETED', 'FAILED', 'CANCELLED'];
     private const CONVERSATION_KINDS = ['USER', 'ASSISTANT', 'PROGRESS', 'APPROVAL', 'RESULT', 'FAILURE'];
+    private const WORKSPACE_SYNC_STATES = ['CLEAN', 'SYNCED', 'UNSYNCED'];
 
     private function __construct(private readonly PDO $pdo, private readonly HubEnrollmentService $enrollment)
     {
@@ -317,8 +320,9 @@ final class HubControlPlaneService
             throw new HubControlPlaneException('Approval was already decided', 'APPROVAL_ALREADY_DECIDED');
         }
         if (strtotime((string) $row['expires_at']) <= $epoch) { $this->pdo->prepare("UPDATE control_approvals SET status = 'EXPIRED' WHERE approval_id = :approval AND status = 'PENDING'")->execute(['approval' => $approvalId]); throw new HubControlPlaneException('Approval has expired', 'APPROVAL_EXPIRED'); }
+        $transactionOpen = false;
         try {
-            $this->pdo->exec('BEGIN IMMEDIATE');
+            $this->pdo->exec('BEGIN IMMEDIATE'); $transactionOpen = true;
             $update = $this->pdo->prepare('UPDATE control_approvals SET status = :status, decided_at = :at WHERE approval_id = :approval AND status = \'PENDING\'');
             $update->execute(['status' => $decision, 'at' => $at, 'approval' => $approvalId]);
             if ($update->rowCount() !== 1) throw new HubControlPlaneException('Approval was already decided', 'APPROVAL_ALREADY_DECIDED');
@@ -446,21 +450,21 @@ final class HubControlPlaneService
     public function updateTask(string $token, string $taskId, array $payload, ?string $now = null): array
     {
         self::exactKeys($payload, ['deviceId', 'message', 'progress', 'resultSummary', 'schemaVersion', 'state']); if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Unsupported worker schema', 'SCHEMA_VERSION');
-        $deviceId = self::uuid((string) ($payload['deviceId'] ?? '')); $auth = $this->enrollment->authenticateForControlPlane($token, $deviceId, $now); $taskId = self::uuid($taskId); $state = (string) ($payload['state'] ?? ''); if (!in_array($state, ['PREPARING', 'RUNNING', 'QA', 'WAITING_FOR_APPROVAL', 'COMPLETED', 'FAILED'], true)) throw new HubControlPlaneException('Task state is invalid', 'FIELD_INVALID');
+        $deviceId = self::uuid((string) ($payload['deviceId'] ?? '')); $auth = $this->enrollment->authenticateForControlPlane($token, $deviceId, $now); $taskId = self::uuid($taskId); $state = (string) ($payload['state'] ?? ''); if (!in_array($state, ['WAITING_FOR_WORKER', 'PREPARING', 'RUNNING', 'QA', 'WAITING_FOR_APPROVAL', 'COMPLETED', 'FAILED'], true)) throw new HubControlPlaneException('Task state is invalid', 'FIELD_INVALID');
         $progress = $payload['progress']; if (!is_int($progress) || $progress < 0 || $progress > 100) throw new HubControlPlaneException('Task progress is invalid', 'FIELD_INVALID');
         $message = self::optionalText($payload['message'] ?? null, 240); $result = self::optionalText($payload['resultSummary'] ?? null, 500); $at = self::timestamp($now ?? gmdate('c'));
-        $needsApproval = $state === 'WAITING_FOR_APPROVAL'; $terminal = in_array($state, ['COMPLETED', 'FAILED'], true);
+        $needsApproval = $state === 'WAITING_FOR_APPROVAL'; $releaseWorker = $needsApproval || $state === 'WAITING_FOR_WORKER'; $terminal = in_array($state, ['COMPLETED', 'FAILED'], true);
         $transactionOpen = false;
         try {
             $this->pdo->exec('BEGIN IMMEDIATE');
             $transactionOpen = true;
             $q = $this->pdo->prepare('SELECT * FROM control_tasks WHERE task_id = :task AND assigned_device_id = :device AND user_id = :user'); $q->execute(['task' => $taskId, 'device' => $auth['deviceId'], 'user' => $auth['userId']]); $row = $q->fetch(); if (!is_array($row)) throw new HubControlPlaneException('Task is not assigned to this worker', 'TASK_FORBIDDEN');
-            $update = $this->pdo->prepare('UPDATE control_tasks SET state = :state, progress = :progress, result_summary = COALESCE(:result, result_summary), assigned_device_id = CASE WHEN :waiting = 1 THEN NULL ELSE assigned_device_id END, lease_expires_at = CASE WHEN :terminal = 1 OR :waiting = 1 THEN NULL ELSE lease_expires_at END, updated_at = :at WHERE task_id = :task AND assigned_device_id = :device');
-            $update->execute(['state' => $state, 'progress' => $progress, 'result' => $result, 'at' => $at, 'terminal' => $terminal ? 1 : 0, 'waiting' => $needsApproval ? 1 : 0, 'task' => $taskId, 'device' => $auth['deviceId']]);
+            $update = $this->pdo->prepare('UPDATE control_tasks SET state = :state, progress = :progress, result_summary = COALESCE(:result, result_summary), assigned_device_id = CASE WHEN :release = 1 THEN NULL ELSE assigned_device_id END, lease_expires_at = CASE WHEN :terminal = 1 OR :release = 1 THEN NULL ELSE lease_expires_at END, updated_at = :at WHERE task_id = :task AND assigned_device_id = :device');
+            $update->execute(['state' => $state, 'progress' => $progress, 'result' => $result, 'at' => $at, 'terminal' => $terminal ? 1 : 0, 'release' => $releaseWorker ? 1 : 0, 'task' => $taskId, 'device' => $auth['deviceId']]);
             if ($update->rowCount() !== 1) throw new HubControlPlaneException('Task update raced with another worker', 'TASK_UPDATE_RACE');
             $eventId = $this->event($taskId, $state, $progress, $message, $at);
             $this->syncConversationEvent($taskId, $eventId, $state, $progress, $message, $result, $at);
-            if ($terminal || $needsApproval) $this->pdo->prepare('UPDATE control_workers SET state = \'READY\', busy_task_id = NULL, last_seen_at = :at WHERE device_id = :device')->execute(['at' => $at, 'device' => $auth['deviceId']]);
+            if ($terminal || $releaseWorker) $this->pdo->prepare('UPDATE control_workers SET state = \'READY\', busy_task_id = NULL, last_seen_at = :at WHERE device_id = :device')->execute(['at' => $at, 'device' => $auth['deviceId']]);
             if ($needsApproval) { $check = $this->pdo->prepare("SELECT 1 FROM control_approvals WHERE task_id = :task AND status = 'PENDING'"); $check->execute(['task' => $taskId]); if ($check->fetchColumn() === false) $this->pdo->prepare('INSERT INTO control_approvals(approval_id, task_id, action, scope_json, status, expires_at, decided_at) VALUES(:id, :task, :action, :scope, \'PENDING\', :expires, NULL)')->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'task' => $taskId, 'action' => 'task.execute', 'scope' => json_encode(['taskId' => $taskId, 'projectId' => (string) $row['project_id'], 'goalDigest' => hash('sha256', (string) $row['goal'])], JSON_THROW_ON_ERROR), 'expires' => gmdate('c', strtotime($at) + 3600)]); }
             $this->pdo->exec('COMMIT');
             $transactionOpen = false;
@@ -495,9 +499,138 @@ final class HubControlPlaneService
         }
         return ['schemaVersion' => 1, 'approvalId' => (string) $row['approval_id'], 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'action' => (string) $row['action'], 'scope' => $scope, 'status' => $status ?? (string) $row['status'], 'expiresAt' => (string) $row['expires_at'], 'decidedAt' => $row['decided_at'] === null ? null : (string) $row['decided_at']];
     }
+
+    /** Browser-visible, metadata-only continuity state. Source files remain in Git. */
+    public function workspace(string $sessionToken, string $projectId, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $projectId = self::uuid($projectId);
+        $this->assertProjectMember((string) $session['user_id'], $projectId); $this->assertWorkspaceReady();
+        return ['schemaVersion' => 1, 'workspace' => $this->workspaceState($projectId, self::timestamp($now ?? gmdate('c')), false)];
+    }
+
+    /** Device-authenticated state includes only the identifiers needed for its own bounded handoff. */
+    public function workerWorkspace(string $token, string $deviceId, string $projectId, ?string $now = null): array
+    {
+        $projectId = self::uuid($projectId); $auth = $this->enrollment->authenticateForControlPlane($token, self::uuid($deviceId), $now);
+        $this->assertDeviceProjectMember((string) $auth['deviceId'], $projectId); $this->assertWorkspaceReady();
+        return ['schemaVersion' => 1, 'workspace' => $this->workspaceState($projectId, self::timestamp($now ?? gmdate('c')), true)];
+    }
+
+    /** Publish only bounded Git WIP metadata after the source device has verified its private remote ref. */
+    public function publishWorkspaceCheckpoint(string $token, array $payload, ?string $now = null): array
+    {
+        self::exactKeys($payload, ['artifactRefs', 'baseRevision', 'checkpointId', 'deviceId', 'files', 'projectId', 'schemaVersion', 'syncState', 'taskId', 'treeRevision', 'wipRef', 'wipRevision']);
+        if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Unsupported workspace schema', 'SCHEMA_VERSION');
+        $deviceId = self::uuid((string) ($payload['deviceId'] ?? '')); $projectId = self::uuid((string) ($payload['projectId'] ?? ''));
+        $auth = $this->enrollment->authenticateForControlPlane($token, $deviceId, $now); $this->assertDeviceProjectMember((string) $auth['deviceId'], $projectId); $this->assertWorkspaceReady();
+        $record = $this->workspaceCheckpointPayload($payload, $projectId, (string) $auth['deviceId']); $at = self::timestamp($now ?? gmdate('c')); $expires = gmdate('c', strtotime($at) + self::WORKSPACE_LEASE_TTL);
+        $transactionOpen = false;
+        try {
+            $this->pdo->exec('BEGIN IMMEDIATE'); $transactionOpen = true;
+            $existing = $this->pdo->prepare('SELECT * FROM control_workspace_checkpoints WHERE checkpoint_id = :id'); $existing->execute(['id' => $record['checkpointId']]); $row = $existing->fetch();
+            if (is_array($row)) {
+                if ((string) $row['project_id'] !== $projectId || (string) $row['source_device_id'] !== $auth['deviceId'] || (string) $row['base_revision'] !== $record['baseRevision'] || (string) ($row['wip_revision'] ?? '') !== (string) ($record['wipRevision'] ?? '')) throw new HubControlPlaneException('Workspace checkpoint id conflicts with existing state', 'WORKSPACE_CHECKPOINT_CONFLICT');
+            } else {
+                $insert = $this->pdo->prepare('INSERT INTO control_workspace_checkpoints(checkpoint_id, project_id, task_id, source_device_id, base_revision, wip_revision, wip_ref, tree_revision, files_json, artifact_refs_json, sync_state, created_at, durable_at) VALUES(:id, :project, :task, :device, :base, :wip, :ref, :tree, :files, :artifacts, :state, :created, :durable)');
+                $insert->execute(['id' => $record['checkpointId'], 'project' => $projectId, 'task' => $record['taskId'], 'device' => $auth['deviceId'], 'base' => $record['baseRevision'], 'wip' => $record['wipRevision'], 'ref' => $record['wipRef'], 'tree' => $record['treeRevision'], 'files' => json_encode($record['files'], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR), 'artifacts' => json_encode($record['artifactRefs'], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR), 'state' => $record['syncState'], 'created' => $at, 'durable' => $record['syncState'] === 'UNSYNCED' ? null : $at]);
+                $this->workspaceEvent($projectId, $record['checkpointId'], (string) $auth['deviceId'], 'CHECKPOINT_PUBLISHED', $at);
+            }
+            $lease = $this->pdo->prepare('SELECT owner_device_id, state, lease_expires_at FROM control_workspace_leases WHERE project_id = :project'); $lease->execute(['project' => $projectId]); $current = $lease->fetch();
+            if (is_array($current) && $current['state'] === 'ACTIVE' && (string) $current['owner_device_id'] !== $auth['deviceId'] && strtotime((string) $current['lease_expires_at']) > strtotime($at)) throw new HubControlPlaneException('Another device currently owns this workspace', 'WORKSPACE_LEASE_HELD');
+            $upsert = $this->pdo->prepare('INSERT INTO control_workspace_leases(project_id, owner_device_id, checkpoint_id, state, lease_expires_at, acquired_at, updated_at) VALUES(:project, :device, :checkpoint, \'ACTIVE\', :expires, :at, :at) ON CONFLICT(project_id) DO UPDATE SET owner_device_id=excluded.owner_device_id, checkpoint_id=excluded.checkpoint_id, state=\'ACTIVE\', lease_expires_at=excluded.lease_expires_at, updated_at=excluded.updated_at');
+            $upsert->execute(['project' => $projectId, 'device' => $auth['deviceId'], 'checkpoint' => $record['checkpointId'], 'expires' => $expires, 'at' => $at]);
+            $this->workspaceEvent($projectId, $record['checkpointId'], (string) $auth['deviceId'], 'LEASE_ACQUIRED', $at);
+            $this->pdo->exec('COMMIT'); $transactionOpen = false;
+        } catch (Throwable $error) {
+            if ($transactionOpen) { try { $this->pdo->exec('ROLLBACK'); } catch (Throwable) {} }
+            if ($error instanceof HubControlPlaneException) throw $error;
+            throw new HubControlPlaneException('Workspace checkpoint could not be stored', 'WORKSPACE_CHECKPOINT_FAILED');
+        }
+        return ['schemaVersion' => 1, 'workspace' => $this->workspaceState($projectId, $at, true)];
+    }
+
+    /** Atomically give one trusted target device the writer lease for a known durable checkpoint. */
+    public function claimWorkspaceLease(string $token, array $payload, ?string $now = null): array
+    {
+        self::exactKeys($payload, ['checkpointId', 'deviceId', 'projectId', 'schemaVersion']); if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Unsupported workspace schema', 'SCHEMA_VERSION');
+        $deviceId = self::uuid((string) ($payload['deviceId'] ?? '')); $projectId = self::uuid((string) ($payload['projectId'] ?? '')); $checkpointId = $payload['checkpointId'] === null ? null : self::uuid((string) $payload['checkpointId']);
+        $auth = $this->enrollment->authenticateForControlPlane($token, $deviceId, $now); $this->assertDeviceProjectMember((string) $auth['deviceId'], $projectId); $this->assertWorkspaceReady(); $at = self::timestamp($now ?? gmdate('c')); $expires = gmdate('c', strtotime($at) + self::WORKSPACE_LEASE_TTL);
+        $transactionOpen = false;
+        try {
+            $this->pdo->exec('BEGIN IMMEDIATE'); $transactionOpen = true;
+            $latest = $this->latestWorkspaceCheckpoint($projectId);
+            if ($checkpointId !== null) {
+                if (!is_array($latest) || (string) $latest['checkpoint_id'] !== $checkpointId || !in_array((string) $latest['sync_state'], ['CLEAN', 'SYNCED'], true)) throw new HubControlPlaneException('Requested workspace checkpoint is not the latest durable state', 'WORKSPACE_CHECKPOINT_STALE');
+            } elseif (is_array($latest) && in_array((string) $latest['sync_state'], ['CLEAN', 'SYNCED'], true)) throw new HubControlPlaneException('A durable workspace checkpoint must be selected before takeover', 'WORKSPACE_CHECKPOINT_REQUIRED');
+            $lease = $this->pdo->prepare('SELECT * FROM control_workspace_leases WHERE project_id = :project'); $lease->execute(['project' => $projectId]); $current = $lease->fetch();
+            if (is_array($current) && $current['state'] === 'ACTIVE' && (string) $current['owner_device_id'] !== $auth['deviceId'] && strtotime((string) $current['lease_expires_at']) > strtotime($at)) throw new HubControlPlaneException('Another device currently owns this workspace', 'WORKSPACE_LEASE_HELD');
+            if (is_array($current) && $current['state'] === 'ACTIVE' && (string) $current['owner_device_id'] !== $auth['deviceId']) $this->workspaceEvent($projectId, $current['checkpoint_id'] === null ? null : (string) $current['checkpoint_id'], (string) $current['owner_device_id'], 'LEASE_EXPIRED', $at);
+            $upsert = $this->pdo->prepare('INSERT INTO control_workspace_leases(project_id, owner_device_id, checkpoint_id, state, lease_expires_at, acquired_at, updated_at) VALUES(:project, :device, :checkpoint, \'ACTIVE\', :expires, :at, :at) ON CONFLICT(project_id) DO UPDATE SET owner_device_id=excluded.owner_device_id, checkpoint_id=excluded.checkpoint_id, state=\'ACTIVE\', lease_expires_at=excluded.lease_expires_at, acquired_at=excluded.acquired_at, updated_at=excluded.updated_at');
+            $upsert->execute(['project' => $projectId, 'device' => $auth['deviceId'], 'checkpoint' => $checkpointId, 'expires' => $expires, 'at' => $at]); $this->workspaceEvent($projectId, $checkpointId, (string) $auth['deviceId'], 'LEASE_ACQUIRED', $at); $this->pdo->exec('COMMIT'); $transactionOpen = false;
+        } catch (Throwable $error) { if ($transactionOpen) { try { $this->pdo->exec('ROLLBACK'); } catch (Throwable) {} } if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Workspace takeover could not be completed', 'WORKSPACE_LEASE_FAILED'); }
+        return ['schemaVersion' => 1, 'workspace' => $this->workspaceState($projectId, $at, true)];
+    }
+
+    public function renewWorkspaceLease(string $token, array $payload, ?string $now = null): array
+    {
+        self::exactKeys($payload, ['deviceId', 'projectId', 'schemaVersion']); if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Unsupported workspace schema', 'SCHEMA_VERSION');
+        $deviceId = self::uuid((string) ($payload['deviceId'] ?? '')); $projectId = self::uuid((string) ($payload['projectId'] ?? '')); $auth = $this->enrollment->authenticateForControlPlane($token, $deviceId, $now); $this->assertDeviceProjectMember((string) $auth['deviceId'], $projectId); $this->assertWorkspaceReady();
+        $at = self::timestamp($now ?? gmdate('c')); $expires = gmdate('c', strtotime($at) + self::WORKSPACE_LEASE_TTL);
+        $update = $this->pdo->prepare("UPDATE control_workspace_leases SET lease_expires_at = :expires, updated_at = :at WHERE project_id = :project AND owner_device_id = :device AND state = 'ACTIVE'"); $update->execute(['expires' => $expires, 'at' => $at, 'project' => $projectId, 'device' => $auth['deviceId']]);
+        if ($update->rowCount() !== 1) throw new HubControlPlaneException('This device does not own the workspace lease', 'WORKSPACE_LEASE_FORBIDDEN');
+        return ['schemaVersion' => 1, 'workspace' => $this->workspaceState($projectId, $at, true)];
+    }
+
+    public function releaseWorkspaceLease(string $token, array $payload, ?string $now = null): array
+    {
+        self::exactKeys($payload, ['deviceId', 'projectId', 'schemaVersion']); if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Unsupported workspace schema', 'SCHEMA_VERSION');
+        $deviceId = self::uuid((string) ($payload['deviceId'] ?? '')); $projectId = self::uuid((string) ($payload['projectId'] ?? '')); $auth = $this->enrollment->authenticateForControlPlane($token, $deviceId, $now); $this->assertDeviceProjectMember((string) $auth['deviceId'], $projectId); $this->assertWorkspaceReady(); $at = self::timestamp($now ?? gmdate('c'));
+        $transactionOpen = false;
+        try {
+            $this->pdo->exec('BEGIN IMMEDIATE'); $transactionOpen = true; $q = $this->pdo->prepare("SELECT checkpoint_id FROM control_workspace_leases WHERE project_id = :project AND owner_device_id = :device AND state = 'ACTIVE'"); $q->execute(['project' => $projectId, 'device' => $auth['deviceId']]); $checkpointId = $q->fetchColumn();
+            if ($checkpointId === false) throw new HubControlPlaneException('This device does not own the workspace lease', 'WORKSPACE_LEASE_FORBIDDEN');
+            $this->pdo->prepare("UPDATE control_workspace_leases SET state = 'RELEASED', lease_expires_at = :at, updated_at = :at WHERE project_id = :project")->execute(['at' => $at, 'project' => $projectId]); $this->workspaceEvent($projectId, $checkpointId === null ? null : (string) $checkpointId, (string) $auth['deviceId'], 'LEASE_RELEASED', $at); $this->pdo->exec('COMMIT'); $transactionOpen = false;
+        } catch (Throwable $error) { if ($transactionOpen) { try { $this->pdo->exec('ROLLBACK'); } catch (Throwable) {} } if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Workspace lease could not be released', 'WORKSPACE_LEASE_FAILED'); }
+        return ['schemaVersion' => 1, 'workspace' => $this->workspaceState($projectId, $at, true)];
+    }
     private function event(string $taskId, string $state, int $progress, ?string $message, string $at): string { $id = self::uuidFromBytes(random_bytes(16)); $this->pdo->prepare('INSERT INTO control_task_events(event_id, task_id, state, progress, message, occurred_at) VALUES(:id, :task, :state, :progress, :message, :at)')->execute(['id' => $id, 'task' => $taskId, 'state' => $state, 'progress' => $progress, 'message' => $message, 'at' => $at]); return $id; }
 
     private function assertAssistantReady(): void { HubAssistantWorkstreamMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/005_assistant_workstream.sql'); }
+    private function assertWorkspaceReady(): void { HubWorkspaceContinuityMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/006_workspace_continuity.sql'); }
+    private function workspaceEvent(string $projectId, ?string $checkpointId, string $deviceId, string $event, string $at): void { $q = $this->pdo->prepare('INSERT INTO control_workspace_events(event_id, project_id, checkpoint_id, device_id, event_type, occurred_at) VALUES(:id, :project, :checkpoint, :device, :event, :at)'); $q->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'project' => $projectId, 'checkpoint' => $checkpointId, 'device' => $deviceId, 'event' => $event, 'at' => $at]); }
+    private function latestWorkspaceCheckpoint(string $projectId): array|false { $q = $this->pdo->prepare('SELECT * FROM control_workspace_checkpoints WHERE project_id = :project ORDER BY created_at DESC, checkpoint_id DESC LIMIT 1'); $q->execute(['project' => $projectId]); return $q->fetch(); }
+    private function workspaceState(string $projectId, string $at, bool $includeIds): array
+    {
+        $checkpoint = $this->latestWorkspaceCheckpoint($projectId);
+        $q = $this->pdo->prepare('SELECT l.*, d.display_name, d.platform, w.last_seen_at FROM control_workspace_leases l JOIN devices d ON d.device_id = l.owner_device_id LEFT JOIN control_workers w ON w.device_id = l.owner_device_id WHERE l.project_id = :project'); $q->execute(['project' => $projectId]); $lease = $q->fetch();
+        $leaseActive = is_array($lease) && $lease['state'] === 'ACTIVE' && strtotime((string) $lease['lease_expires_at']) > strtotime($at);
+        $sync = !is_array($checkpoint) ? 'NO_CHECKPOINT' : ((string) $checkpoint['sync_state'] === 'UNSYNCED' ? 'UNSYNCED_CHANGES' : ($leaseActive ? 'HANDOFF_REQUIRED' : 'SYNCED'));
+        if (is_array($lease) && $lease['state'] === 'ACTIVE' && !$leaseActive) $sync = is_array($checkpoint) && in_array((string) $checkpoint['sync_state'], ['CLEAN', 'SYNCED'], true) ? 'SOURCE_OFFLINE' : 'UNSYNCED_CHANGES';
+        $checkpointOut = !is_array($checkpoint) ? null : ['checkpointId' => (string) $checkpoint['checkpoint_id'], 'taskId' => $checkpoint['task_id'] === null ? null : (string) $checkpoint['task_id'], ...($includeIds ? ['sourceDeviceId' => (string) $checkpoint['source_device_id']] : []), 'baseRevision' => (string) $checkpoint['base_revision'], 'wipRevision' => $checkpoint['wip_revision'] === null ? null : (string) $checkpoint['wip_revision'], ...($includeIds && $checkpoint['wip_ref'] !== null ? ['wipRef' => (string) $checkpoint['wip_ref']] : []), 'treeRevision' => (string) $checkpoint['tree_revision'], 'files' => self::workspaceFiles((string) $checkpoint['files_json']), 'artifactRefs' => self::workspaceRefs((string) $checkpoint['artifact_refs_json']), 'syncState' => (string) $checkpoint['sync_state'], 'createdAt' => (string) $checkpoint['created_at'], 'durableAt' => $checkpoint['durable_at'] === null ? null : (string) $checkpoint['durable_at']];
+        $leaseOut = !is_array($lease) ? null : ['active' => $leaseActive, 'state' => $leaseActive ? 'ACTIVE' : 'EXPIRED', 'checkpointId' => $includeIds && $lease['checkpoint_id'] !== null ? (string) $lease['checkpoint_id'] : null, 'owner' => ['displayName' => (string) $lease['display_name'], 'platform' => (string) $lease['platform'], 'lastSeenAt' => $lease['last_seen_at'] === null ? null : (string) $lease['last_seen_at'], ...($includeIds ? ['deviceId' => (string) $lease['owner_device_id']] : [])], 'leaseExpiresAt' => (string) $lease['lease_expires_at']];
+        return ['projectId' => $projectId, 'syncStatus' => $sync, 'checkpoint' => $checkpointOut, 'lease' => $leaseOut];
+    }
+    private function workspaceCheckpointPayload(array $payload, string $projectId, string $deviceId): array
+    {
+        $checkpointId = self::uuid((string) ($payload['checkpointId'] ?? '')); $taskId = $payload['taskId'] === null ? null : self::uuid((string) $payload['taskId']); $base = self::gitSha((string) ($payload['baseRevision'] ?? '')); $tree = self::gitSha((string) ($payload['treeRevision'] ?? '')); $state = (string) ($payload['syncState'] ?? '');
+        if (!in_array($state, self::WORKSPACE_SYNC_STATES, true)) throw new HubControlPlaneException('Workspace sync state is invalid', 'FIELD_INVALID');
+        $wipRevision = $payload['wipRevision'] === null ? null : self::gitSha((string) $payload['wipRevision']); $wipRef = $payload['wipRef'] === null ? null : self::wipRef((string) $payload['wipRef']);
+        if (($state === 'CLEAN' && ($wipRevision !== null || $wipRef !== null || $payload['files'] !== [])) || ($state === 'SYNCED' && ($wipRevision === null || $wipRef === null)) || ($state === 'UNSYNCED' && ($wipRevision !== null || $wipRef !== null))) throw new HubControlPlaneException('Workspace checkpoint state is inconsistent', 'FIELD_INVALID');
+        $files = self::workspaceFilesPayload($payload['files'] ?? null); $refs = self::workspaceRefsPayload($payload['artifactRefs'] ?? null);
+        return ['checkpointId' => $checkpointId, 'projectId' => $projectId, 'sourceDeviceId' => $deviceId, 'taskId' => $taskId, 'baseRevision' => $base, 'wipRevision' => $wipRevision, 'wipRef' => $wipRef, 'treeRevision' => $tree, 'files' => $files, 'artifactRefs' => $refs, 'syncState' => $state];
+    }
+    private static function workspaceFilesPayload(mixed $value): array
+    {
+        if (!is_array($value) || count($value) > 80 || array_is_list($value) === false) throw new HubControlPlaneException('Workspace file list is invalid', 'FIELD_INVALID'); $out = [];
+        foreach ($value as $file) { if (!is_array($file)) throw new HubControlPlaneException('Workspace file metadata is invalid', 'FIELD_INVALID'); self::exactKeys($file, ['path', 'sha256', 'sizeBytes', 'state']); $path = self::portableRelative((string) ($file['path'] ?? '')); $state = (string) ($file['state'] ?? ''); $sha = $file['sha256'] ?? null; $size = $file['sizeBytes'] ?? null; if (!in_array($state, ['modified', 'untracked', 'deleted'], true) || ($state === 'deleted' ? $sha !== null || $size !== null : !is_string($sha) || preg_match('/^[0-9a-f]{64}$/i', $sha) !== 1 || !is_int($size) || $size < 0 || $size > 524288)) throw new HubControlPlaneException('Workspace file metadata is invalid', 'FIELD_INVALID'); $out[] = ['path' => $path, 'state' => $state, 'sha256' => $sha, 'sizeBytes' => $size]; }
+        return $out;
+    }
+    private static function workspaceRefsPayload(mixed $value): array { if (!is_array($value) || count($value) > 20 || array_is_list($value) === false) throw new HubControlPlaneException('Workspace artifact references are invalid', 'FIELD_INVALID'); $out = []; foreach ($value as $ref) $out[] = self::portableRelative(is_string($ref) ? $ref : ''); return array_values(array_unique($out)); }
+    private static function workspaceFiles(string $json): array { try { $value = json_decode($json, true, 32, JSON_THROW_ON_ERROR); return self::workspaceFilesPayload($value); } catch (HubControlPlaneException $error) { throw $error; } catch (Throwable) { throw new HubControlPlaneException('Workspace checkpoint metadata is invalid', 'WORKSPACE_CHECKPOINT_INVALID'); } }
+    private static function workspaceRefs(string $json): array { try { $value = json_decode($json, true, 32, JSON_THROW_ON_ERROR); return self::workspaceRefsPayload($value); } catch (HubControlPlaneException $error) { throw $error; } catch (Throwable) { throw new HubControlPlaneException('Workspace checkpoint metadata is invalid', 'WORKSPACE_CHECKPOINT_INVALID'); } }
+    private static function gitSha(string $value): string { if (preg_match('/^[0-9a-f]{40,64}$/i', $value) !== 1) throw new HubControlPlaneException('Git revision is invalid', 'FIELD_INVALID'); return strtolower($value); }
+    private static function wipRef(string $value): string { if (preg_match('#^refs/awh/wip/[0-9a-f-]{36}/[0-9a-f-]{36}$#i', $value) !== 1) throw new HubControlPlaneException('Workspace reference is invalid', 'FIELD_INVALID'); return $value; }
+    private static function portableRelative(string $value): string { if ($value === '' || strlen($value) > 240 || str_contains($value, "\0") || str_contains($value, '\\') || str_starts_with($value, '/') || preg_match('#^(?:[A-Za-z]:|~)#', $value) || str_contains($value, '..') || preg_match('/(?:^|\/)(?:\.git|node_modules|\.env)(?:\/|$)/i', $value)) throw new HubControlPlaneException('Workspace path is invalid', 'FIELD_INVALID'); return $value; }
     private function assertDeviceProjectMember(string $deviceId, string $projectId): void { $q = $this->pdo->prepare('SELECT 1 FROM device_project_memberships WHERE device_id = :device AND project_id = :project AND revoked_at IS NULL'); $q->execute(['device' => $deviceId, 'project' => $projectId]); if ($q->fetchColumn() === false) throw new HubControlPlaneException('Project is not available to this device', 'PROJECT_FORBIDDEN'); }
 
     private function getOrCreateConversation(string $userId, string $projectId, string $at): array

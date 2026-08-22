@@ -27,6 +27,7 @@ import { ensureAwhDataDirectoryActive } from '../data-migration.js';
 import { AutopilotRunner, detectLocalCapabilities, loadAutopilotTasks, selectAutopilotProfile } from '../autopilot.js';
 import { ControlPlaneWorkerClient } from '../control-plane-worker-client.js';
 import { ControlPlaneWorkerRuntime } from '../control-plane-worker-runtime.js';
+import { createWorkspaceWipCheckpoint, reconstructWorkspaceWip } from '../workspace-continuity.js';
 import { listArtifacts } from '../artifacts.js';
 import { discoverContinuity } from '../continuity.js';
 import { readOwnerSession, trustOwner } from '../first-run.js';
@@ -201,14 +202,15 @@ async function runWorkerOnce() {
   finally { workerRunning = false; }
 }
 
-async function currentWorkClient(): Promise<{ projectId: string; client: ControlPlaneWorkerClient }> {
+async function currentWorkClient(): Promise<{ projectId: string; workspace: string; client: ControlPlaneWorkerClient }> {
   const config = loadConfig();
   if (!config.hubApiBase) throw new Error('Hub is not configured');
   if (!hasExplicitWorkspace(config.dataDir)) throw new Error('Project workspace is not configured');
   const workspace = await canonicalWorkspace(config.workspace);
   const manifest = await readProjectManifest(workspace);
-  await resolveRegisteredProject(config.dataDir, manifest.projectId);
-  return { projectId: manifest.projectId, client: new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createProductionCredentialStore()) };
+  const registered = await resolveRegisteredProject(config.dataDir, manifest.projectId);
+  if (registered.workspacePath !== workspace) throw new ProjectRegistryError('Selected workspace does not match the canonical project registration', 'PROJECT_ID_CONFLICT');
+  return { projectId: manifest.projectId, workspace, client: new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createProductionCredentialStore()) };
 }
 
 async function workConversation() {
@@ -221,6 +223,46 @@ async function submitWorkMessage(message: unknown, idempotencyKey: unknown) {
   const key = typeof idempotencyKey === 'string' && /^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey) ? idempotencyKey : `desktop-${randomUUID()}`;
   try { const current = await currentWorkClient(); return { ok: true, projectId: current.projectId, ...(await current.client.submitConversation(current.projectId, message.trim(), key)) }; }
   catch { return { ok: false, error: 'WORK_UNAVAILABLE', message: 'AWH ยังบันทึก Work นี้ไม่ได้ กรุณาตรวจการเชื่อมต่อ Hub' }; }
+}
+
+async function workspaceContinuity() {
+  try {
+    const current = await currentWorkClient();
+    return { ok: true, projectId: current.projectId, workspace: await current.client.workspace(current.projectId) };
+  } catch { return { ok: false, error: 'WORKSPACE_CONTINUITY_UNAVAILABLE', message: 'สถานะการทำงานข้ามอุปกรณ์ยังไม่พร้อม' }; }
+}
+
+async function syncWorkspaceForHandoff() {
+  const config = loadConfig();
+  if (!config.allowExec) return { ok: false, error: 'EXECUTION_NOT_APPROVED', message: 'ต้องเปิด Approved execution บนอุปกรณ์นี้ก่อนจึงจะ sync งานข้ามอุปกรณ์ได้' };
+  try {
+    const current = await currentWorkClient();
+    const identity = await loadOrCreateDeviceIdentity(config.dataDir);
+    const checkpoint = await createWorkspaceWipCheckpoint({ workspace: current.workspace, projectId: current.projectId, sourceDeviceId: identity.deviceId });
+    await current.client.publishWorkspaceCheckpoint(checkpoint);
+    await current.client.releaseWorkspaceLease(current.projectId);
+    return { ok: true, projectId: current.projectId, syncStatus: checkpoint.syncState, message: checkpoint.syncState === 'SYNCED' ? 'บันทึกงานระหว่างทำและพร้อมรับต่อบนอุปกรณ์ที่เชื่อถือได้แล้ว' : checkpoint.syncState === 'CLEAN' ? 'workspace นี้สะอาดและ revision พร้อมรับต่อบนอุปกรณ์อื่นแล้ว' : 'ยังมี source revision ที่ sync ไม่ครบ จึงไม่พร้อมส่งต่อ' };
+  } catch { return { ok: false, error: 'WORKSPACE_SYNC_FAILED', message: 'AWH ยังไม่สามารถบันทึก workspace นี้เพื่อส่งต่อได้อย่างปลอดภัย' }; }
+}
+
+async function takeOverWorkspace() {
+  const config = loadConfig();
+  if (!config.allowExec) return { ok: false, error: 'EXECUTION_NOT_APPROVED', message: 'ต้องเปิด Approved execution บนอุปกรณ์นี้ก่อนจึงจะรับงานจากอุปกรณ์อื่นได้' };
+  try {
+    const current = await currentWorkClient();
+    const state = await current.client.workspace(current.projectId);
+    if (state.syncStatus === 'UNSYNCED_CHANGES' || state.checkpoint?.syncState === 'UNSYNCED') return { ok: false, error: 'UNSYNCED_SOURCE', message: 'อุปกรณ์เดิมมีงานที่ยัง sync ไม่ครบ จึงยังรับต่ออย่างปลอดภัยไม่ได้' };
+    const checkpointId = state.checkpoint?.checkpointId ?? null;
+    const identity = await loadOrCreateDeviceIdentity(config.dataDir);
+    await current.client.claimWorkspaceLease(current.projectId, checkpointId);
+    try {
+      if (state.checkpoint !== null && state.checkpoint.sourceDeviceId !== identity.deviceId) await reconstructWorkspaceWip({ workspace: current.workspace, checkpoint: state.checkpoint });
+    } catch {
+      try { await current.client.releaseWorkspaceLease(current.projectId); } catch { /* The Hub retains the lease only if the safe release itself is unavailable. */ }
+      return { ok: false, error: 'WORKSPACE_RESTORE_FAILED', message: 'working copy เครื่องนี้ไม่ตรงกับ checkpoint จึงไม่เขียนทับงานเดิม' };
+    }
+    return { ok: true, projectId: current.projectId, message: 'รับ workspace ล่าสุดแล้ว ตรวจสอบ revision และไฟล์ที่ส่งต่อเรียบร้อย' };
+  } catch { return { ok: false, error: 'WORKSPACE_TAKEOVER_FAILED', message: 'AWH ยังรับ workspace นี้ต่อไม่ได้ เพราะ lease หรือ checkpoint ยังไม่พร้อม' }; }
 }
 
 function startWorkerLoop(): void {
@@ -664,6 +706,9 @@ function registerIpc(): void {
   });
   ipcMain.handle(DESKTOP_IPC.workConversation, async () => workConversation());
   ipcMain.handle(DESKTOP_IPC.workSubmit, async (_event, message: unknown, idempotencyKey: unknown) => submitWorkMessage(message, idempotencyKey));
+  ipcMain.handle(DESKTOP_IPC.workspaceContinuity, async () => workspaceContinuity());
+  ipcMain.handle(DESKTOP_IPC.workspaceSync, async () => syncWorkspaceForHandoff());
+  ipcMain.handle(DESKTOP_IPC.workspaceTakeover, async () => takeOverWorkspace());
   ipcMain.handle(DESKTOP_IPC.workerState, async () => workerState());
   ipcMain.handle(DESKTOP_IPC.workerRunOnce, async () => runWorkerOnce());
 
