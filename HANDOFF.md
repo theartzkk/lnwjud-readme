@@ -2,7 +2,12 @@
 
 ## Current state
 
-AWH `1.0.0-rc.1` is feature-complete in source/artifact scope. ReadyIDC production remains on the verified M3D/M3E baseline at SQLite schema v3 with one indexed project and one enrolled Mac.
+AWH `1.0.0-rc.1` is feature-complete in source/artifact scope. ReadyIDC production has the verified M3D/M3E/M4 control-plane baseline at SQLite schema v4 with one indexed project and one enrolled Mac.
+
+The current source candidate adds owner username/password access as additive
+`m5-owner-auth` (v4→v5). It reuses `control_sessions`, stores only password
+and recovery hashes, and is not deployed. Basic Auth was not retried or
+changed by this pass; optional Passkey remains deferred.
 
 The first M4 activation attempt using release `062b18eb37c043f755099e4d3d40215c99edb33e` reached the web-release stage, then failed safely before Nginx activation. Automatic rollback passed and restored DB v3, M3D/M3E routes, pointers and service health.
 
@@ -38,6 +43,7 @@ The owner-protocol integration is isolated on `awh/clean-foundation` / PR #8 for
 - Google Cloud `awh-vps`: untouched legacy/backup authority.
 - BAY production: untouched.
 - M4 retry must use an exact reviewed SHA and whole-path production-parity evidence; do not retry by guessing at another isolated subcommand.
+- Owner-auth v5 activation requires one bounded approval covering backup, additive migration, auth route, Nginx application-auth cutover, rollback and live login/session regression.
 
 ## Field gates after successful M4 activation
 
@@ -50,3 +56,6 @@ The owner-protocol integration is isolated on `awh/clean-foundation` / PR #8 for
 ## Next action
 
 Finish PR #8 cross-platform QA and reconcile it cleanly with the current release line. Then perform one whole-path production-readiness review of the final exact SHA, not only the previously failing Nginx step. Only after that review may one bounded ReadyIDC M4 retry be approved.
+
+For owner authentication, the next production action is one reviewed v5
+activation approval; this source pass performs no production mutation.

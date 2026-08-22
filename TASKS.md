@@ -2,6 +2,9 @@
 
 ## NOW
 
+- Review the owner-auth v4→v5 deployment/rollback package and request one bounded production approval only after parity checks pass.
+- Keep Basic Auth as temporary technical perimeter scaffolding; do not retry its rotation primitive in this auth pass.
+
 - Keep AWH `1.0.0-rc.1` feature-frozen. No new product features before field validation.
 - Complete PR #8 (`awh/clean-foundation`) cross-platform QA for the durable Art ↔ AI Working Constitution and worker/Codex context enforcement.
 - Reconcile PR #8 into the release line only after QA passes and the exact final SHA is known.
@@ -25,6 +28,8 @@
 
 ## DONE
 
+- Added owner username/password auth over canonical M4 sessions: secure password hashing, rate limits, CSRF, remember sessions, logout/revocation, password change, hashed one-time recovery codes, step-up and sanitized audit fixtures.
+
 - M3D live read path field-verified.
 - M3E.1/M3E.2 live on ReadyIDC schema v3; Mac enrolled; owner bootstrap closed.
 - AWH generic zero-project product contract established.
@@ -32,5 +37,5 @@
 - M4 canonical tasks/workers/results/artifacts/approvals/session/PWA foundation implemented locally.
 - Mac `1.0.0-rc.1` artifact and Windows native installer artifact produced/verified in their respective evidence scopes.
 - First M4 production activation attempt failed safely and rollback restored the verified M3D/M3E baseline.
-- Real ReadyIDC Nginx root cause confirmed and shared include-composition helper hardened in release `88834b5ad34ed35e7aa1f54c473307482e37feee`; production retry not yet performed.
+- Real ReadyIDC Nginx root cause was confirmed and the shared include-composition helper was hardened in release `88834b5ad34ed35e7aa1f54c473307482e37feee`; subsequent M4 activation is recorded in the current production handoff, while owner-auth v5 remains source-only.
 - Durable owner working protocol authored, agent entry contract added, Project Context injection implemented, and Desktop worker → Codex instruction precedence guarded on PR #8.

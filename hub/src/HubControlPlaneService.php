@@ -38,7 +38,7 @@ final class HubControlPlaneService
             $pdo = new PDO('sqlite:' . $databasePath, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES => false]);
             $pdo->exec('PRAGMA foreign_keys = ON');
             $pdo->exec('PRAGMA busy_timeout = 2500');
-            $ready = (int) $pdo->query('PRAGMA user_version')->fetchColumn() === 4 && $pdo->query("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'control_tasks'")->fetchColumn() === 1;
+            $ready = (int) $pdo->query('PRAGMA user_version')->fetchColumn() >= 4 && $pdo->query("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'control_tasks'")->fetchColumn() === 1;
             if (!$ready) throw new HubControlPlaneException('Control-plane migration is not ready', 'CONTROL_SCHEMA_NOT_READY');
             return new self($pdo, HubEnrollmentService::openExisting($databasePath));
         } catch (HubControlPlaneException $error) {

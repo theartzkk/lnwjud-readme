@@ -47,7 +47,7 @@ final class HubEnrollmentApiMigration
         $row->execute(['id' => self::MIGRATION_ID]);
         $applied = $row->fetch();
         if (is_array($applied)) {
-            if ((int) $applied['schema_version'] !== self::TARGET_USER_VERSION || !hash_equals((string) $applied['checksum'], $checksum) || $userVersion !== self::TARGET_USER_VERSION || !self::rateLimitTablePresent($pdo)) {
+            if ((int) $applied['schema_version'] !== self::TARGET_USER_VERSION || !hash_equals((string) $applied['checksum'], $checksum) || $userVersion < self::TARGET_USER_VERSION || !self::rateLimitTablePresent($pdo)) {
                 throw new HubEnrollmentApiMigrationException('Applied enrollment API migration record is invalid', 'MIGRATION_RECORD_INVALID');
             }
             self::verify($pdo);
@@ -148,7 +148,7 @@ final class HubEnrollmentApiMigration
     private static function verify(PDO $pdo): void
     {
         if (!self::rateLimitTablePresent($pdo)) throw new HubEnrollmentApiMigrationException('Enrollment rate limit schema is incomplete', 'SCHEMA_VERIFY_FAILED');
-        if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() !== self::TARGET_USER_VERSION) throw new HubEnrollmentApiMigrationException('SQLite user_version is incorrect', 'SCHEMA_VERSION_MISMATCH');
+        if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() < self::TARGET_USER_VERSION) throw new HubEnrollmentApiMigrationException('SQLite user_version is incorrect', 'SCHEMA_VERSION_MISMATCH');
         if ($pdo->query('PRAGMA foreign_key_check')->fetchAll() !== []) throw new HubEnrollmentApiMigrationException('Foreign-key integrity check failed', 'FOREIGN_KEY_CHECK_FAILED');
     }
 

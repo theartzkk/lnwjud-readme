@@ -117,6 +117,13 @@ test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE mig
 test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok
 test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
 stage MIGRATION_VERIFIED
+sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/migrate-owner-auth.php" "$DB" "$RELEASE/hub/migrations/004_owner_auth.sql" >/dev/null; stage OWNER_AUTH_MIGRATION_FIRST
+sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/migrate-owner-auth.php" "$DB" "$RELEASE/hub/migrations/004_owner_auth.sql" >/dev/null; stage OWNER_AUTH_MIGRATION_IDEMPOTENT
+test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 5
+test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm5-owner-auth';")" = 1
+test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok
+test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
+stage OWNER_AUTH_VERIFIED
 sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/register-m4-projects.php" >/dev/null; stage PROJECTS_READY
 sudo rm -f "$POINTER_TMP"; sudo ln -s "$RELEASE" "$POINTER_TMP"; sudo mv -Tf "$POINTER_TMP" "$POINTER"; POINTER_CHANGED=1; test "$(readlink "$POINTER")" = "$RELEASE"; stage CONTROL_POINTER
 web_pointer_capture; sudo install -d -o awh-hub -g awh-hub -m 0750 /var/www/awh-web/releases; if sudo test -e "$WEB_RELEASE" || sudo test -L "$WEB_RELEASE"; then exit 20; fi; sudo install -d -o awh-hub -g awh-hub -m 0750 "$WEB_RELEASE"; WEB_CREATED=1; stage WEB_RELEASE_COPY; sudo cp -a "$RELEASE/dist-web/." "$WEB_RELEASE/"; sudo chown -R awh-hub:awh-hub "$WEB_RELEASE"; stage WEB_POINTER_SWITCH; sudo rm -f "$WEB_POINTER_TMP"; sudo ln -s "$WEB_RELEASE" "$WEB_POINTER_TMP"; sudo mv -Tf "$WEB_POINTER_TMP" "$WEB_POINTER"; WEB_POINTER_CHANGED=1; test "$(readlink "$WEB_POINTER")" = "$WEB_RELEASE"; stage WEB_RELEASE_STAGED

@@ -45,7 +45,7 @@ test('browser preview contains no local paths, credentials, source payload, or w
     readFile(join(OUTPUT, 'data.json'), 'utf8'),
   ]);
   const browserSurface = `${html}\n${app}\n${adapter}\n${rawData}`;
-  assert.doesNotMatch(browserSurface, /workspacePath|absolutePath|\/Users\/|[A-Za-z]:\\\\|accessToken|tokenHash|pairingCode|Authorization|password|privateKey/i);
+  assert.doesNotMatch(browserSurface, /workspacePath|absolutePath|\/Users\/|[A-Za-z]:\\\\|accessToken|tokenHash|Authorization|privateKey/i);
   assert.doesNotMatch(browserSurface, /Purpose, scope, and stable project constraints|## Now|Key components, boundaries/);
   assert.doesNotMatch(`${html}\n${app}\n${adapter}`, /innerHTML|insertAdjacentHTML|document\.write/i);
   assert.doesNotMatch(`${html}\n${app}\n${adapter}`, /\b(?:POST|PUT|DELETE|PATCH)\b|ipcMain|spawn\(|exec\(|shell\./i);

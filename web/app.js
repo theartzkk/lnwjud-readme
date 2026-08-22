@@ -1,5 +1,5 @@
 import { loadWebData } from './hub-read-adapter.js';
-import { decideApproval, loadControlData, openMobileSession, submitGoal } from './control-plane-adapter.js';
+import { changePassword, createRecoveryCodes, decideApproval, listAuthSessions, loadControlData, openMobileSession, recover, revokeAuthSession, submitGoal, login, logout } from './control-plane-adapter.js';
 
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -51,7 +51,7 @@ import { decideApproval, loadControlData, openMobileSession, submitGoal } from '
     text('control-state', signedIn ? 'พร้อมใช้งาน' : 'ต้องเชื่อมต่อ');
     $('control-sign-in').hidden = signedIn;
     $('control-workspace').hidden = !signedIn;
-    if (!signedIn) { text('control-sign-in-message', control?.error || 'กรอกรหัสเชื่อมต่อเพื่อเริ่มใช้งาน'); return; }
+    if (!signedIn) { text('control-sign-in-message', control?.error || 'เข้าสู่ AWH ด้วยชื่อผู้ใช้และรหัสผ่าน'); return; }
     const projectList = Array.isArray(control.projects) ? control.projects : [];
     const projects = $('control-project'); const previousProjectId = projects.value; projects.replaceChildren();
     if (!projectList.length) { const option = document.createElement('option'); option.value = ''; option.textContent = 'ยังไม่มีโปรเจกต์'; projects.append(option); }
@@ -81,6 +81,46 @@ import { decideApproval, loadControlData, openMobileSession, submitGoal } from '
     for (const approval of (control.approvals || []).filter((item) => item.status === 'PENDING').slice(0, 8)) { const row = document.createElement('article'); row.className = 'control-item'; const label = document.createElement('strong'); label.textContent = `ต้องการอนุมัติ · ${approval.action}`; const detail = document.createElement('small'); detail.textContent = `หมดอายุ ${new Date(approval.expiresAt).toLocaleString('th-TH')}`; const approve = document.createElement('button'); approve.className = 'control-button'; approve.textContent = 'อนุมัติ'; approve.addEventListener('click', async () => { approve.disabled = true; await decideApproval(approval.approvalId, 'approve'); renderControl(await loadControlData(), 'CONTROL'); }); const reject = document.createElement('button'); reject.className = 'control-button secondary'; reject.textContent = 'ปฏิเสธ'; reject.addEventListener('click', async () => { reject.disabled = true; await decideApproval(approval.approvalId, 'reject'); renderControl(await loadControlData(), 'CONTROL'); }); row.append(label, detail, approve, reject); approvals.append(row); }
     if (!approvals.childElementCount) approvals.append(Object.assign(document.createElement('p'), { className: 'muted', textContent: 'ไม่มี action ที่ต้องอนุมัติ' }));
   }
+
+  $('control-login-button')?.addEventListener('click', async () => {
+    const message = $('control-login-message'); message.textContent = 'กำลังเข้าสู่ AWH...';
+    try { await login($('control-username').value, $('control-password').value, $('control-remember').checked); $('control-password').value = ''; const data = await loadControlData(); renderControl(data, 'CONTROL'); message.textContent = ''; }
+    catch (error) { message.textContent = error instanceof Error ? error.message : 'เข้าสู่ AWH ไม่สำเร็จ'; }
+  });
+  $('control-logout-button')?.addEventListener('click', async () => { await logout().catch(() => undefined); window.location.reload(); });
+
+  $('control-password-change-button')?.addEventListener('click', async () => {
+    const message = $('control-password-change-message'); message.textContent = 'กำลังเปลี่ยนรหัสผ่าน...';
+    try {
+      await changePassword($('control-old-password').value, $('control-new-password').value);
+      $('control-old-password').value = ''; $('control-new-password').value = '';
+      message.textContent = 'เปลี่ยนรหัสผ่านแล้ว กรุณาเข้าสู่ AWH อีกครั้ง';
+      setTimeout(() => window.location.reload(), 600);
+    } catch (error) { message.textContent = error instanceof Error ? error.message : 'เปลี่ยนรหัสผ่านไม่สำเร็จ'; }
+  });
+
+  $('control-sessions-button')?.addEventListener('click', async () => {
+    const list = $('control-session-list'); list.textContent = 'กำลังโหลดเซสชัน...';
+    try {
+      const data = await listAuthSessions(); list.replaceChildren();
+      for (const session of data.sessions || []) { const row = document.createElement('div'); row.className = 'control-item'; const label = document.createElement('span'); label.textContent = `${session.current ? 'อุปกรณ์นี้' : 'เซสชันอื่น'} · ใช้งานล่าสุด ${new Date(session.lastSeenAt).toLocaleString('th-TH')}`; row.append(label); if (!session.current) { const button = document.createElement('button'); button.className = 'control-button secondary'; button.textContent = 'เพิกถอน'; button.addEventListener('click', async () => { button.disabled = true; await revokeAuthSession(session.sessionId); row.remove(); }); row.append(button); } list.append(row); }
+      if (!list.childElementCount) list.textContent = 'ไม่มีเซสชันที่ใช้งานอยู่';
+    } catch (error) { list.textContent = error instanceof Error ? error.message : 'โหลดเซสชันไม่สำเร็จ'; }
+  });
+
+  $('control-recovery-codes-button')?.addEventListener('click', async () => {
+    const output = $('control-recovery-codes'); output.textContent = 'กำลังสร้างรหัสกู้คืน...';
+    try { const data = await createRecoveryCodes(); output.textContent = Array.isArray(data.recoveryCodes) ? data.recoveryCodes.join('\n') : 'ไม่สามารถสร้างรหัสกู้คืนได้'; } catch (error) { output.textContent = error instanceof Error ? error.message : 'สร้างรหัสกู้คืนไม่สำเร็จ'; }
+  });
+
+  $('control-recovery-button')?.addEventListener('click', async () => {
+    const message = $('control-recovery-message'); message.textContent = 'กำลังตรวจสอบรหัสกู้คืน...';
+    try {
+      await recover($('control-username').value, $('control-recovery-code').value, $('control-recovery-password').value);
+      $('control-recovery-code').value = ''; $('control-recovery-password').value = '';
+      message.textContent = 'ตั้งรหัสผ่านใหม่แล้ว — กลับไปเข้าสู่ AWH ได้';
+    } catch (error) { message.textContent = error instanceof Error ? error.message : 'กู้คืนการเข้าถึงไม่สำเร็จ'; }
+  });
 
   $('control-sign-in-button')?.addEventListener('click', async () => {
     const message = $('control-sign-in-message'); message.textContent = 'กำลังเชื่อมต่อ...';

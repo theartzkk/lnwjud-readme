@@ -15,7 +15,7 @@ final class HubControlPlaneProjectRegistration
     /** @param list<array{projectId:string,name:string,type:string}> $projects */
     public static function register(PDO $pdo, array $projects = [], ?string $now = null): int
     {
-        if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() !== 4) throw new HubControlPlaneProjectRegistrationException('M4 schema is not active', 'CONTROL_SCHEMA_NOT_READY');
+        if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() < 4) throw new HubControlPlaneProjectRegistrationException('M4 schema is not active', 'CONTROL_SCHEMA_NOT_READY');
         $owner = $pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1')->fetchColumn();
         if (!is_string($owner) || !preg_match(self::UUID, $owner)) throw new HubControlPlaneProjectRegistrationException('Closed owner identity is unavailable', 'OWNER_NOT_READY');
         $now ??= gmdate('c');

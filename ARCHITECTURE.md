@@ -30,6 +30,7 @@
 - **Task/runtime engine:** approved task execution with bounded runtime metadata and logs.
 - **Autopilot v0.5:** one local orchestration layer creates a bounded Task Contract, reloads Project Context, creates a recovery checkpoint, selects a reusable profile, runs only approved package scripts, retries one safe gate once, produces a bounded Artifact record, and records a continuity checkpoint.
 - **M4 control plane (local/prepared):** one additive PHP/SQLite Hub model owns canonical task state/events, idempotency, worker presence and leases, bounded artifact metadata, and scoped approval metadata. Browser control uses a same-origin HttpOnly session cookie and CSRF token obtained after one owner-issued pairing code; it reuses existing `hub_users`, project memberships, pairing hashes, and device-token auth. `ControlPlaneWorkerClient` is a Node-side outbound client for enrolled Desktop devices; it never exposes the token to renderer/browser code and never accepts a shell command.
+- **Owner authentication v1:** additive `m5-owner-auth` extends the canonical `control_sessions` with username/password, remembered-session and step-up state. It adds only password/recovery hashes, login throttles and sanitized audit metadata. Browser login uses Secure, HttpOnly, SameSite cookies and CSRF; no password or permanent bearer credential enters browser storage. Passkey is an optional deferred extension.
 - **Local capability discovery:** fixed internal capability names resolve through inherited PATH first, then bounded user/system locations appropriate to the host, including common macOS package-manager bins; no recursive or browser/remote executable discovery is exposed. The FFmpeg capability gate resolves both FFmpeg and FFprobe, validates both versions, runs a disposable frame-sequence → MP4 pipeline through fixed argv, and verifies output metadata and decoded frame order.
 - **Artifact Center:** metadata and bounded payloads live in the active AWH data directory; references are relative and no absolute workspace path is returned.
 - **Continuity:** device-local checkpoint metadata records portable projectId, source device UUID, Git revision/dirty state, bounded HANDOFF summary, task state and artifact refs. A copied checkpoint may be discovered on another device, but AWH does not silently overwrite dirty local work or sync `.git`.
@@ -46,7 +47,7 @@
 - **M3E-FINAL Desktop boundary:** preload exposes only enrollment state/pair/rotate/revoke high-level IPC. Renderer receives sanitized device metadata and never receives a credential, filesystem access, shell, environment, or raw process surface.
 - **Real-project Desktop workflow:** the device-local registry can map portable manifests such as the real BAY EXCUSE X (`php`) and Teacher Evaluation Video (`remotion`) manifests to local workspaces. These are optional user projects, not AWH core dependencies; selection updates the stored workspace immediately, and the Desktop reloads the same runner/context without a restart before routing the user to the bounded Goal entry point.
 - **Project-specific safe gates:** Teacher's existing `check` script is recognized only as a semantic `typecheck` alias and invoked through the existing fixed package-manager argv path. BAY uses the bounded PHP lint gate. User Goal text never becomes a command.
-- **Current operational state:** ReadyIDC is active at DB schema version 3 with M3E.1/M3E.2, one indexed project, one enrolled Mac device and a closed bootstrap. M4 local migration 003 targets schema version 4 but is not deployed; its activation path is valid with zero user projects and later onboarding remains generic. The second Teacher clone remains unregistered to avoid duplicate local identity.
+- **Current operational state:** ReadyIDC is active at DB schema version 4 with M3E.1/M3E.2/M4, one indexed project, one enrolled Mac device and a closed bootstrap. Owner-auth migration 004 is a source-only v4→v5 candidate in this pass; it is not deployed. M4 remains generic and accepts zero user projects with later onboarding; the second Teacher clone remains unregistered to avoid duplicate local identity.
 
 ## FUTURE COMPONENTS
 
@@ -58,7 +59,7 @@
 - Signed/notarized distribution packaging and Windows Squirrel installer field validation.
 - Real OpenAI Secure MCP Tunnel control-plane E2E verification.
 - M3C2 hosting control-plane design and a separately reviewed deployment path.
-- **AWH Web Control Center:** Home/Projects/Tasks/Artifacts/Devices/Builds/Audit are the owner-facing sections. Static preview remains read-only. CONTROL mode is a prepared, authenticated mobile/control surface over canonical Hub projects/tasks; it queues Goals and reports WAITING_FOR_WORKER until an enrolled worker claims them. The prepared M4 package is not deployed in this pass.
+- **AWH Web Control Center:** Home/Projects/Tasks/Artifacts/Devices/Builds/Audit are the owner-facing sections. Static preview remains read-only. CONTROL mode is the deployed authenticated mobile/control surface over canonical Hub projects/tasks; it queues Goals and reports WAITING_FOR_WORKER until an enrolled worker claims them. Owner username/password access is a prepared v5 source candidate and is not live until its bounded approval.
 - **Desktop smoke:** the harness uses a temporary AWH data directory and safe child environment. A pre-marker macOS AppKit/LaunchServices failure from the Codex GUI sandbox, including `_RegisterApplication`/`SIGABRT` or LaunchServices `-10822`, is classified as `GUI_SANDBOX_BLOCKED`, not `AWH_APP_FAILED` and never PASS. A logged-in macOS GUI LaunchServices run outside Codex is the runtime proof and has produced a valid `stage: passed` marker with the primary UI paths and Cmd+K routing checked.
 
 ## HUB DATA BOUNDARY
@@ -70,15 +71,15 @@
 
 ## M4 CONTROL-PLANE BOUNDARY
 
-- The Hub remains a lightweight coordinator: SQLite stores task state/events, worker leases/presence, scoped approvals, and sanitized artifact metadata; it does not store source content, workspace paths, large media, credentials, or a second Project Memory.
-- Browser session exchange consumes one existing owner-issued pairing code and creates only a short-lived server-side session hash plus CSRF hash. Cookies are Secure, HttpOnly where appropriate, SameSite=Strict, no-store, origin-bound, rate-limited, and never copied to localStorage/sessionStorage.
+- The Hub remains a lightweight coordinator: SQLite stores task state/events, worker leases/presence, scoped approvals, sanitized artifact metadata and the password/recovery hashes required for owner auth; it never stores plaintext credentials, source content, workspace paths, large media, or a second Project Memory.
+- Browser session exchange accepts username/password and creates only a bounded server-side session hash plus CSRF hash. The pairing exchange remains compatibility-only. Cookies are Secure, HttpOnly where appropriate, SameSite=Strict, no-store, origin-bound, rate-limited, revocable, and never copied to localStorage/sessionStorage.
 - Goal submission is exact-schema, project-membership checked, bounded, and idempotent. A queued task cannot become RUNNING until an enrolled worker claims it under BEGIN IMMEDIATE; stale worker presence is shown as offline and leases are bounded.
 - Worker requests are outbound HTTPS POSTs through `ControlPlaneWorkerClient`, using the existing device credential only in a fixed Authorization header inside the Node main/runtime boundary. The client accepts only bounded task metadata; it does not accept or construct arbitrary commands.
-- `003_m4_control_plane.sql` is additive from schema version 3 to 4 and records a checksum-backed ledger entry. Deployment is approval-gated with verified backup, migration idempotence, Nginx/PHP-FPM validation, M3D regression, and rollback to the v3 database/config.
+- `003_m4_control_plane.sql` is additive from schema version 3 to 4 and records a checksum-backed ledger entry; it is active on ReadyIDC. `004_owner_auth.sql` is additive from v4 to v5, records its own checksum-backed capability ledger, and is source-only in this pass. Any activation remains approval-gated with verified backup, migration idempotence, Nginx/PHP-FPM validation, M3D/M3E regression, and rollback to the v4 database/config.
 
 ## WEB READ DEPLOYMENT BOUNDARY
 
-- Nginx Basic Auth protects all preview assets and `/api/v1/*`.
+- Current production Nginx Basic Auth protects all preview assets and `/api/v1/*`; the reviewed owner-auth deployment include prepares the application shell/login cutover while explicit technical/read locations retain their own Basic Auth directives. The current perimeter is not changed by this source pass.
 - Nginx passes a server-controlled trust parameter to PHP-FPM over a Unix socket.
 - `hub/public/web-gateway.php` reuses the same read router/model with SQLite
   query-only access; it exposes no write, sync, execution, filesystem, or

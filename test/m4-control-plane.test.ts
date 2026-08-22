@@ -16,6 +16,21 @@ test('M4 control-plane browser adapter uses same-origin session cookies, not bea
   assert.match(router, /AUTHORIZATION_IN_URL/);
 });
 
+test('owner username/password auth reuses the M4 cookie and exposes only bounded session controls', async () => {
+  const adapter = await readFile(new URL('../web/control-plane-adapter.js', import.meta.url), 'utf8');
+  const router = await readFile(new URL('../hub/src/HubOwnerAuthRouter.php', import.meta.url), 'utf8');
+  const migration = await readFile(new URL('../hub/migrations/004_owner_auth.sql', import.meta.url), 'utf8');
+  assert.match(adapter, new RegExp('/api/v1/auth/login'));
+  assert.match(adapter, /credentials:\s*'include'/);
+  assert.doesNotMatch(adapter, /localStorage|sessionStorage|Authorization|Bearer/);
+  assert.match(router, /__Host-awh_control_session/);
+  assert.match(router, new RegExp('/api/v1/auth/sessions'));
+  assert.match(router, /CSRF_REJECTED|sameOrigin/);
+  assert.match(migration, /owner_passwords/);
+  assert.match(migration, /auth_recovery_codes/);
+  assert.doesNotMatch(`${router}\n${migration}`, /plaintext|password\s+AS|SELECT .*token/i);
+});
+
 test('M4 control-plane contract is additive and keeps execution bounded', async () => {
   const migration = await readFile(new URL('../hub/migrations/003_m4_control_plane.sql', import.meta.url), 'utf8');
   const service = await readFile(new URL('../hub/src/HubControlPlaneService.php', import.meta.url), 'utf8');

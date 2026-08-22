@@ -27,7 +27,7 @@ final class HubControlPlaneMigration
         if ($version !== 3 && $version !== self::TARGET_USER_VERSION) throw new HubControlPlaneMigrationException('SQLite schema version is not M3E-compatible', 'SCHEMA_VERSION_MISMATCH');
         $ledger = $pdo->query("SELECT schema_version, checksum FROM awh_schema_migrations WHERE migration_id = '" . self::MIGRATION_ID . "'")->fetch();
         if (is_array($ledger)) {
-            if ((int) $ledger['schema_version'] !== self::TARGET_USER_VERSION || !hash_equals((string) $ledger['checksum'], $checksum) || $version !== self::TARGET_USER_VERSION || !self::schemaPresent($pdo)) throw new HubControlPlaneMigrationException('Applied M4 migration record is invalid', 'MIGRATION_RECORD_INVALID');
+            if ((int) $ledger['schema_version'] !== self::TARGET_USER_VERSION || !hash_equals((string) $ledger['checksum'], $checksum) || $version < self::TARGET_USER_VERSION || !self::schemaPresent($pdo)) throw new HubControlPlaneMigrationException('Applied M4 migration record is invalid', 'MIGRATION_RECORD_INVALID');
             return 'already-applied';
         }
         if ($version === self::TARGET_USER_VERSION || self::presentTables($pdo) !== []) throw new HubControlPlaneMigrationException('Partial or untracked M4 schema detected', 'MIGRATION_PARTIAL');
@@ -53,7 +53,7 @@ final class HubControlPlaneMigration
         $sql = @file_get_contents($migrationSqlPath);
         if (!is_string($sql) || !is_array($pdo->query("SELECT schema_version, checksum FROM awh_schema_migrations WHERE migration_id = '" . self::MIGRATION_ID . "'")->fetch())) throw new HubControlPlaneMigrationException('M4 migration is not recorded', 'MIGRATION_NOT_APPLIED');
         $row = $pdo->query("SELECT schema_version, checksum FROM awh_schema_migrations WHERE migration_id = '" . self::MIGRATION_ID . "'")->fetch();
-        if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() !== self::TARGET_USER_VERSION || (int) $row['schema_version'] !== self::TARGET_USER_VERSION || !hash_equals((string) $row['checksum'], hash('sha256', $sql)) || !self::schemaPresent($pdo)) throw new HubControlPlaneMigrationException('M4 schema verification failed', 'SCHEMA_VERIFY_FAILED');
+        if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() < self::TARGET_USER_VERSION || (int) $row['schema_version'] !== self::TARGET_USER_VERSION || !hash_equals((string) $row['checksum'], hash('sha256', $sql)) || !self::schemaPresent($pdo)) throw new HubControlPlaneMigrationException('M4 schema verification failed', 'SCHEMA_VERIFY_FAILED');
     }
 
     private static function open(string $path): PDO
@@ -70,5 +70,5 @@ final class HubControlPlaneMigration
     }
 
     private static function schemaPresent(PDO $pdo): bool { return self::presentTables($pdo) === self::TABLES && (bool) $pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_control_tasks_user_idempotency'")->fetchColumn(); }
-    private static function verify(PDO $pdo): void { if (!self::schemaPresent($pdo) || (int) $pdo->query('PRAGMA user_version')->fetchColumn() !== self::TARGET_USER_VERSION || $pdo->query('PRAGMA foreign_key_check')->fetchAll() !== []) throw new HubControlPlaneMigrationException('M4 schema verification failed', 'SCHEMA_VERIFY_FAILED'); }
+    private static function verify(PDO $pdo): void { if (!self::schemaPresent($pdo) || (int) $pdo->query('PRAGMA user_version')->fetchColumn() < self::TARGET_USER_VERSION || $pdo->query('PRAGMA foreign_key_check')->fetchAll() !== []) throw new HubControlPlaneMigrationException('M4 schema verification failed', 'SCHEMA_VERIFY_FAILED'); }
 }

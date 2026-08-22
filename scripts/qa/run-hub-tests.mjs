@@ -10,6 +10,7 @@ const tests = [
   'hub/tests/m4-control-plane.php',
   'hub/tests/m4-zero-project-control.php',
   'hub/tests/m4-project-registration.php',
+  'hub/tests/owner-auth.php',
 ];
 
 const php = await resolveExecutable('php');

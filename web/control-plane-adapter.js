@@ -3,7 +3,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{1
 let csrfToken = null;
 
 function safeApiPath(path) {
-  if (typeof path !== 'string' || !path.startsWith('/api/v1/control/') || path.includes('..') || /[?#]/.test(path)) throw new Error('AWH control path is not safe');
+  if (typeof path !== 'string' || (!path.startsWith('/api/v1/control/') && !path.startsWith('/api/v1/auth/')) || path.includes('..') || /[?#]/.test(path)) throw new Error('AWH control path is not safe');
   return path;
 }
 
@@ -32,6 +32,20 @@ export async function openMobileSession(pairingCode, displayName = 'AWH iPhone',
   if (typeof pairingCode !== 'string' || !/^[A-Za-z0-9_-]{32,128}$/.test(pairingCode)) throw new Error('รหัสเชื่อมต่อไม่ถูกต้อง');
   return controlRequest('/api/v1/control/session', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, pairingCode, displayName, appVersion }) });
 }
+
+export async function login(username, password, remember = false) {
+  if (typeof username !== 'string' || typeof password !== 'string' || !username.trim() || password.length < 1) throw new Error('กรุณากรอกชื่อผู้ใช้และรหัสผ่าน');
+  return controlRequest('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, username: username.trim(), password, remember: Boolean(remember) }) });
+}
+
+export async function loadAuthSession() { return controlRequest('/api/v1/auth/session'); }
+export async function logout() { return controlRequest('/api/v1/auth/logout', { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
+export async function logoutAll() { return controlRequest('/api/v1/auth/logout-all', { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
+export async function changePassword(oldPassword, newPassword) { return controlRequest('/api/v1/auth/password', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, oldPassword, newPassword }) }); }
+export async function createRecoveryCodes() { return controlRequest('/api/v1/auth/recovery-codes', { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
+export async function recover(username, recoveryCode, newPassword) { return controlRequest('/api/v1/auth/recover', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, username, recoveryCode, newPassword }) }); }
+export async function listAuthSessions() { return controlRequest('/api/v1/auth/sessions'); }
+export async function revokeAuthSession(sessionId) { if (typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId)) throw new Error('เซสชันไม่ถูกต้อง'); return controlRequest(`/api/v1/auth/sessions/${sessionId}/revoke`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
 
 export async function loadControlData() {
   const session = await controlRequest('/api/v1/control/session');
