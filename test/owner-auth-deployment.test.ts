@@ -212,3 +212,39 @@ test('owner-auth route gate waits for the reloaded Nginx generation before faili
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('owner-auth activation refreshes the AWH PHP-FPM runtime after pointer movement', async () => {
+  const [remote, deploy] = await Promise.all([
+    readFile(join(ROOT, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'), 'utf8'),
+    readFile(join(ROOT, 'deploy/awh-control-plane/deploy-control-plane.sh'), 'utf8'),
+  ]);
+  const start = remote.indexOf('reload_awh_php_fpm() {');
+  const end = remote.indexOf('\nverify_nginx_topology_clean()', start);
+  assert.ok(start >= 0 && end > start, 'AWH PHP-FPM runtime helper is present');
+  const helper = remote.slice(start, end);
+  const root = await mkdtemp(join(tmpdir(), 'awh-owner-auth-fpm-reload-'));
+  const bin = join(root, 'bin');
+  const log = join(root, 'systemctl.log');
+  try {
+    await mkdir(bin);
+    await writeFile(join(bin, 'sudo'), '#!/bin/sh\nexec "$@"\n');
+    await writeFile(join(bin, 'systemctl'), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$AWH_SYSTEMCTL_LOG"\ncase "$1:$2" in reload:php8.3-fpm.service|is-active:--quiet) exit 0 ;; esac\nexit 64\n');
+    await chmod(join(bin, 'sudo'), 0o755);
+    await chmod(join(bin, 'systemctl'), 0o755);
+    await execFileAsync('/bin/sh', ['-c', `AWH_FPM_SERVICE=php8.3-fpm.service; ${helper}\nreload_awh_php_fpm`], {
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, AWH_SYSTEMCTL_LOG: log },
+    });
+    assert.equal(await readFile(log, 'utf8'), 'reload php8.3-fpm.service\nis-active --quiet php8.3-fpm.service\n');
+    const pointer = remote.indexOf('stage CONTROL_POINTER');
+    const reload = remote.indexOf('stage PHP_FPM_RELOAD; reload_awh_php_fpm');
+    const nginx = remote.indexOf('stage NGINX_CUTOVER_INSTALL');
+    assert.ok(pointer >= 0 && reload > pointer && nginx > reload, 'PHP-FPM reload follows the pointer and precedes public cutover');
+    const rollback = remote.slice(remote.indexOf('rollback() {'), remote.indexOf('\ntrap rollback', remote.indexOf('rollback() {')));
+    assert.match(rollback, /POINTER_CHANGED.*reload_awh_php_fpm/s);
+    assert.match(deploy, /AWH_FPM_SERVICE=php\$AWH_FPM_VERSION-fpm\.service/);
+    assert.match(deploy, /php_service_\$\{AWH_FPM_SERVICE\}=active/);
+    assert.match(deploy, /\$AWH_FPM_SOCKET" "\$AWH_FPM_SERVICE"/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

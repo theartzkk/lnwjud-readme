@@ -45,6 +45,14 @@ response for the new generation. The deployment output may report only
 allowlisted HTTP status and attempt-count diagnostics, never credentials,
 cookies, request bodies or raw server errors.
 
+The control release pointer has a stable pathname. PHP-FPM may therefore
+retain an earlier opcode/realpath view while the database has advanced from
+v4 to v5. Immediately after the pointer changes, activation reloads the
+specific active `awh-hub` PHP-FPM service derived from the live enrollment
+socket and confirms it is active before the Nginx cutover. Rollback restores
+the prior pointer, then reloads that same PHP-FPM service before validating
+the v4 baseline. Reloading only Nginx is not a valid release transition.
+
 If a post-mutation gate fails, the engine restores the verified SQLite backup,
 release pointers and Nginx file, runs `nginx -t`, reloads only after restore,
 and verifies the M3D baseline. A rollback failure is reported as a failed

@@ -27,6 +27,14 @@ function auth_setup_helper(string $database, string $username, string $password)
     fclose($pipes[1]); fclose($pipes[2]); $exit = proc_close($process);
     return ['exit' => $exit, 'stdout' => is_string($stdout) ? $stdout : '', 'stderr' => is_string($stderr) ? $stderr : ''];
 }
+function auth_runtime_helper(string $database): array {
+    $pipes = [];
+    $process = proc_open([PHP_BINARY, dirname(__DIR__) . '/bin/verify-owner-auth-runtime.php'], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, ['AWH_HUB_DB_PATH' => $database]);
+    if (!is_resource($process)) throw new RuntimeException('runtime helper did not start');
+    fclose($pipes[0]); $stdout = stream_get_contents($pipes[1]); $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[1]); fclose($pipes[2]); $exit = proc_close($process);
+    return ['exit' => $exit, 'stdout' => is_string($stdout) ? $stdout : '', 'stderr' => is_string($stderr) ? $stderr : ''];
+}
 
 if (!in_array('sqlite', PDO::getAvailableDrivers(), true)) { fwrite(STDOUT, "AWH owner auth: SKIP pdo_sqlite unavailable\n"); exit(77); }
 $root = sys_get_temp_dir() . '/awh-owner-auth-' . bin2hex(random_bytes(5)); mkdir($root, 0700, true); $db = $root . '/awh.sqlite';
@@ -34,7 +42,7 @@ $schema = dirname(__DIR__) . '/schema.sql'; $m3e = dirname(__DIR__) . '/migratio
 $project = '113b45c0-23e1-408d-ae0f-ac5eca7f6900'; $owner = '223b45c0-23e1-408d-ae0f-ac5eca7f6900'; $device = '423b45c0-23e1-408d-ae0f-ac5eca7f6900'; $now = '2026-08-22T00:00:00Z'; putenv('AWH_CONTROL_ORIGIN=https://awh.test');
 try {
     $pdo = new PDO('sqlite:' . $db, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]); $pdo->exec(file_get_contents($schema)); foreach (['enrollment_rate_limits','device_project_memberships','device_tokens','pairing_projects','pairing_codes','user_project_memberships','device_enrollments','owner_bootstrap','hub_users'] as $table) $pdo->exec('DROP TABLE IF EXISTS ' . $table); $pdo->exec("INSERT INTO projects VALUES('$project','Auth Project','node','$now',NULL,'$now','auth-test')");
-    auth_assert(HubSchemaMigration::apply($db, $m3e, $now, false, $schema) === 'applied', 'm3e1'); auth_assert(HubEnrollmentApiMigration::apply($db, $m3e2, $now) === 'applied', 'm3e2'); $enrollment = HubEnrollmentService::openExisting($db); $bootstrap = $enrollment->initializeOwner($owner, 'Art Owner', [$project], $now); $enrollment->enrollDevice(['schemaVersion' => 1, 'pairingCode' => $bootstrap['initialPairingCode'], 'deviceId' => $device, 'displayName' => 'Mac', 'platform' => 'darwin', 'arch' => 'arm64', 'appVersion' => '1.0.0'], $now); auth_assert(HubControlPlaneMigration::apply($db, $m4, $now) === 'applied', 'm4'); auth_assert(HubOwnerAuthMigration::apply($db, $m5, $now) === 'applied', 'm5'); auth_assert(HubOwnerAuthMigration::apply($db, $m5, $now) === 'already-applied', 'm5 idempotent');
+    auth_assert(HubSchemaMigration::apply($db, $m3e, $now, false, $schema) === 'applied', 'm3e1'); auth_assert(HubEnrollmentApiMigration::apply($db, $m3e2, $now) === 'applied', 'm3e2'); $enrollment = HubEnrollmentService::openExisting($db); $bootstrap = $enrollment->initializeOwner($owner, 'Art Owner', [$project], $now); $enrollment->enrollDevice(['schemaVersion' => 1, 'pairingCode' => $bootstrap['initialPairingCode'], 'deviceId' => $device, 'displayName' => 'Mac', 'platform' => 'darwin', 'arch' => 'arm64', 'appVersion' => '1.0.0'], $now); auth_assert(HubControlPlaneMigration::apply($db, $m4, $now) === 'applied', 'm4'); auth_assert(HubOwnerAuthMigration::apply($db, $m5, $now) === 'applied', 'm5'); auth_assert(HubOwnerAuthMigration::apply($db, $m5, $now) === 'already-applied', 'm5 idempotent'); $runtime = auth_runtime_helper($db); auth_assert($runtime['exit'] === 0 && $runtime['stdout'] === "OWNER_AUTH_RUNTIME=PASS\n" && $runtime['stderr'] === '', 'staged owner-auth runtime capability gate');
     $auth = HubOwnerAuthService::openExisting($db); $setup = auth_setup_helper($db, 'art', 'correct horse battery staple'); auth_assert($setup['exit'] === 0, 'owner setup helper exit'); auth_assert($setup['stdout'] === "OWNER_AUTH_PROVISIONED=PASS\nOWNER_AUTH_USERNAME=art\nRECOVERY_CODES=LOCAL_OPERATOR_BOUNDARY\n", 'owner setup helper contract'); auth_assert($setup['stderr'] === '', 'owner setup helper stderr'); auth_assert((int) $pdo->query('SELECT COUNT(*) FROM owner_passwords')->fetchColumn() === 1, 'one owner password');
     $base = ['CONTENT_TYPE' => 'application/json', 'HTTP_ORIGIN' => 'https://awh.test', 'REMOTE_ADDR' => '192.0.2.10', 'HTTP_USER_AGENT' => 'AWH test'];
     putenv('AWH_CONTROL_ORIGIN=https://wrong.test');

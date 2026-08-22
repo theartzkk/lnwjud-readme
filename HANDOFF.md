@@ -79,3 +79,10 @@ include, pass the origin as a FastCGI request parameter, verify the effective
 Nginx generation, then allow the public auth route a short bounded convergence
 window before evaluating application login/session. Only sanitized HTTP status
 and attempt evidence may cross the deployment boundary.
+
+The failed v5 retry additionally established that moving the stable
+`control-plane-current` pointer must reload the derived AWH PHP-FPM service:
+the old M4 worker can retain its exact-v4 schema code while SQLite is already
+v5 and return a generic 503 before Owner Auth routing. Rollback must reload
+the same service after pointer restoration before it declares the v4 baseline
+healthy.

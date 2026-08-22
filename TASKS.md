@@ -14,7 +14,7 @@
 
 ## NEXT
 
-- The next Owner Auth retry requires the final exact SHA with production-parity proof for dynamic AWH PHP-FPM authority, FastCGI origin propagation, effective Nginx inspection, and bounded post-reload route convergence. Do not retry from a single immediate request after reload.
+- The next Owner Auth retry requires the final exact SHA with production-parity proof for dynamic AWH PHP-FPM authority, FastCGI origin propagation, effective Nginx inspection, PHP-FPM reload after control-pointer movement (and after rollback restore), and bounded post-reload route convergence. Do not retry from a single immediate request after reload.
 - After successful activation, field-test iPhone Safari/PWA first: trust device, empty-project state, Add Project/onboard, submit Goal, truthful queue/worker/result/approval state.
 - Field-test the final Mac package in a logged-in GUI session.
 - Field-test physical Windows pairing, Credential Manager persistence and runtime.

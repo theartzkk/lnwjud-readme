@@ -37,6 +37,7 @@ test('M4 control-plane activation package is executable in a local dry-run witho
   const deploy = join(ROOT, 'deploy/awh-control-plane/deploy-control-plane.sh');
   const result = await execFile('sh', [deploy, '--dry-run'], { cwd: ROOT, env: { ...process.env, AWH_SOURCE_ROOT: ROOT, AWH_DEPLOY_TARGET: 'awh-ready', AWH_RELEASE_COMMIT: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', AWH_HUB_HOSTNAME: 'awh.example' } });
   assert.match(result.stdout, /M4_DRY_RUN=PASS/);
+  assert.match(result.stdout, /php-fpm-reload/);
   assert.match(result.stdout, /project-onboarding-ready/);
   assert.match(result.stdout, /M4_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL/);
   assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /ssh|scp|sqlite3|systemctl|nginx -t/i);
@@ -56,6 +57,8 @@ test('M4 control-plane activation package is executable in a local dry-run witho
   assert.match(remote, /chown -R awh-hub:www-data/);
   assert.match(remote, /sudo -n -u www-data test -r/);
   assert.match(remote, /stage WEB_POINTER_SWITCH/);
+  assert.match(remote, /stage PHP_FPM_RELOAD; reload_awh_php_fpm/);
+  assert.match(remote, /POINTER_CHANGED.*reload_awh_php_fpm/s);
   assert.match(remote, /stage NGINX_CUTOVER_PREPARE/);
   assert.match(remote, /stage NGINX_CUTOVER_INSTALL/);
   assert.match(remote, /transform-owner-auth\.php/);
@@ -66,10 +69,11 @@ test('M4 control-plane activation package is executable in a local dry-run witho
 
 test('owner-auth release boundary includes the canonical v4-to-v5 capability assets', async () => {
   const deploy = await readText(join(ROOT, 'deploy/awh-control-plane/deploy-control-plane.sh'));
-  for (const asset of ['HubOwnerAuthMigration.php', 'HubOwnerAuthService.php', 'HubOwnerAuthRouter.php', '004_owner_auth.sql', 'migrate-owner-auth.php', 'setup-owner-auth.php']) assert.match(deploy, new RegExp(asset.replace('.', '\\.'), 'i'));
+  for (const asset of ['HubOwnerAuthMigration.php', 'HubOwnerAuthService.php', 'HubOwnerAuthRouter.php', '004_owner_auth.sql', 'migrate-owner-auth.php', 'setup-owner-auth.php', 'verify-owner-auth-runtime.php']) assert.match(deploy, new RegExp(asset.replace('.', '\\.'), 'i'));
   assert.match(deploy, /OWNER_AUTH_MIGRATION_FIRST/);
   assert.match(deploy, /OWNER_AUTH_MIGRATION_IDEMPOTENT/);
   assert.match(deploy, /OWNER_AUTH_VERIFIED/);
+  assert.match(deploy, /OWNER_AUTH_RUNTIME/);
   assert.doesNotMatch(deploy, /passwordHash\s*=|recoveryCode\s*=/i);
 });
 
