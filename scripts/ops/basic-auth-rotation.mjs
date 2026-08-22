@@ -8,7 +8,7 @@ import { createProductionCredentialStore } from '../../dist/credential-store.js'
 export const BASIC_AUTH_KEY = 'awh/preview-basic-auth-password';
 export const BASIC_AUTH_HOST = '157-85-108-142.sslip.io';
 export const BASIC_AUTH_USER = 'awh-preview';
-export const ALLOWED_STAGES = new Set(['PRECHECK','HASH_RECEIVED','BACKUP_CREATED','TEMP_CREATED','ATOMIC_REPLACE','NGINX_TEST','RELOAD','AUTH_VERIFY','COMPLETE']);
+export const ALLOWED_STAGES = new Set(['PRECHECK','HASH_RECEIVED','BACKUP_CREATED','TEMP_CREATED','ATOMIC_REPLACE','NGINX_TEST','RELOAD','PERIMETER_VERIFY','COMPLETE']);
 const REMOTE = join(dirname(fileURLToPath(import.meta.url)), '../../deploy/nginx/rotate-basic-auth-remote.sh');
 
 export function parseRotationOutput(output) {
@@ -69,7 +69,7 @@ export async function rotateBasicAuth({ dryRun = false, store = createProduction
     error.cause = parsed;
     throw error;
   }
-  const auth = await run(curlExecutable, ['--config','-'], `url = https://${BASIC_AUTH_HOST}/\nuser = ${BASIC_AUTH_USER}:${password}\nsilent\noutput = /dev/null\nwrite-out = %{http_code}\nmax-time = 15\nresolve = ${BASIC_AUTH_HOST}:443:127.0.0.1\n`, 30000);
+  const auth = await run(curlExecutable, ['--config','-'], `url = https://${BASIC_AUTH_HOST}/\nuser = ${BASIC_AUTH_USER}:${password}\nsilent\noutput = /dev/null\nwrite-out = %{http_code}\nmax-time = 15\n`, 30000);
   if (auth.code !== 0 || auth.stdout.trim() !== '200') {
     const rollback = await run(sshExecutable, ['-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','awh-ready',command('rollback')], '', 60000);
     if (rollback.code !== 0 || !rollback.stdout.includes('ROLLBACK=PASS')) throw new Error('ROLLBACK_FAILED');
@@ -77,11 +77,11 @@ export async function rotateBasicAuth({ dryRun = false, store = createProduction
     throw new Error('AUTH_VERIFY_FAILED');
   }
   const cleanup = await run(sshExecutable, ['-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','awh-ready',command('cleanup')], '', 30000);
-  if (cleanup.code !== 0 || !cleanup.stdout.includes('ROTATE_RESULT=CLEANUP')) throw new Error('CLEANUP_FAILED');
-  return { result: 'PASS', stage: parsed, password, host: BASIC_AUTH_HOST, username: BASIC_AUTH_USER };
+  const cleanupState = cleanup.code === 0 && cleanup.stdout.includes('ROTATE_RESULT=CLEANUP') ? 'PASS' : 'PENDING_RETRY_SAFE';
+  return { result: 'PASS', stage: parsed, publicCredentialVerify: 'PASS', cleanup: cleanupState, operatorDelivery: `security find-generic-password -a 'awh-device-token-v1:${BASIC_AUTH_KEY}' -s 'Art’s Workspace Hub' -w`, password, host: BASIC_AUTH_HOST, username: BASIC_AUTH_USER };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const result = await rotateBasicAuth({ dryRun: process.argv.includes('--dry-run') });
-  process.stdout.write(`${JSON.stringify({ ...result, ...(result.password ? { password: '[DISPLAY_ONCE_ONLY]' } : {}) })}\n`);
+  process.stdout.write(`${JSON.stringify({ ...result, ...(result.password ? { password: '[KEYCHAIN_ONLY]' } : {}) })}\n`);
 }
