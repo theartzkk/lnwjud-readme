@@ -1,10 +1,10 @@
 #!/bin/sh
 
-# Fixed-argument remote M4 activation. It prints allowlisted stage/result lines
+# Fixed-argument remote owner-auth activation. It prints allowlisted stage/result lines
 # only. Raw stderr and all secret-bearing diagnostics are intentionally hidden.
 set -eu
 exec 2>/dev/null
-DB=$1; REMOTE_ROOT=$2; REMOTE_STAGE=$3; RELEASE=$4; RELEASE_ID=$5; NGINX_CONFIG=$6; PHP_VERSION=$7; HOSTNAME=$8; CLEANUP_TOPOLOGY=$9
+DB=$1; REMOTE_ROOT=$2; REMOTE_STAGE=$3; RELEASE=$4; RELEASE_ID=$5; NGINX_CONFIG=$6; PHP_VERSION=$7; HOSTNAME=$8; CLEANUP_TOPOLOGY=$9; OWNER_USERNAME=${10}; OWNER_AUTH_ENABLED=${11}; REMOTE_SCRIPT=${12}
 case "$DB" in /var/lib/awh-hub/*|/opt/awh-hub/*|/srv/awh/*) ;; *) exit 20 ;; esac
 case "$REMOTE_ROOT" in /opt/awh-hub) ;; *) exit 20 ;; esac
 case "$REMOTE_STAGE" in /tmp/awh-control-plane-*.tar.gz) ;; *) exit 20 ;; esac
@@ -14,12 +14,19 @@ case "$NGINX_CONFIG" in /etc/nginx/sites-enabled/*) ;; *) exit 20 ;; esac
 case "$PHP_VERSION" in [0-9]*.[0-9]*) ;; *) exit 20 ;; esac
 case "$HOSTNAME" in ''|*[!A-Za-z0-9.-]*|.*|*.) exit 20 ;; esac
 case "$CLEANUP_TOPOLOGY" in 0|1) ;; *) exit 20 ;; esac
+case "$OWNER_USERNAME" in art) ;; *) exit 20 ;; esac
+case "$OWNER_AUTH_ENABLED" in 1) ;; *) exit 20 ;; esac
+case "$REMOTE_SCRIPT" in /tmp/awh-control-plane-*.sh) ;; *) exit 20 ;; esac
+
+IFS= read -r OWNER_PASSWORD || exit 20
+case "$OWNER_PASSWORD" in ''|*[!A-Za-z0-9._~-]*) exit 20 ;; esac
 
 BACKUP=/var/backups/awh-hub/awh.sqlite.pre-$RELEASE_ID
 POINTER=$REMOTE_ROOT/control-plane-current
 POINTER_TMP=$REMOTE_ROOT/.control-plane-current-$RELEASE_ID
 CONFIG_BACKUP_ROOT=/var/backups/awh-hub/config
 NGINX_BACKUP=$CONFIG_BACKUP_ROOT/nginx/awh-preview.conf.m4-$RELEASE_ID
+NGINX_CANDIDATE=/tmp/awh-control-nginx-$RELEASE_ID.conf
 WEB_RELEASE=/var/www/awh-web/releases/$RELEASE_ID
 WEB_POINTER=/var/www/awh-web/current
 WEB_POINTER_TMP=/var/www/awh-web/.current-$RELEASE_ID
@@ -27,6 +34,8 @@ RELEASE_CREATED=0; WEB_CREATED=0; DB_MUTATED=0; POINTER_CHANGED=0; WEB_POINTER_C
 TOPOLOGY_ARCHIVE=/var/backups/awh-hub/topology-cleanup-$RELEASE_ID
 TOPOLOGY_HELPER=/opt/awh-hub/enrollment-current/deploy/awh-enrollment/insert-nginx-include.php
 ENROLLMENT_INCLUDE=/opt/awh-hub/enrollment-current/deploy/nginx/awh-enrollment.conf
+OWNER_AUTH_SETUP=
+OWNER_AUTH_TRANSFORM=
 
 stage() { printf '%s\n' "DEPLOY_STAGE=$1"; CURRENT_STAGE=$1; }
 verify_nginx_topology_clean() {
@@ -94,7 +103,7 @@ rollback() {
     if test "$ok" -eq 1 && { test "$NGINX_CHANGED" -eq 1 || test "$TOPOLOGY_ARCHIVED" -eq 1; }; then sudo systemctl reload nginx || ok=0; fi
     if test "$ok" -eq 1; then verify_m3d || ok=0; fi
     sudo rm -rf "$RELEASE" "$WEB_RELEASE" >/dev/null 2>&1 || true
-    sudo rm -f "$REMOTE_STAGE" "$POINTER_TMP" "$WEB_POINTER_TMP" >/dev/null 2>&1 || true
+    sudo rm -f "$REMOTE_STAGE" "$POINTER_TMP" "$WEB_POINTER_TMP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" >/dev/null 2>&1 || true
     if test "$NGINX_BACKUP_CREATED" -eq 1; then sudo rm -f "$NGINX_BACKUP" || ok=0; fi
     if test "$TOPOLOGY_ARCHIVED" -eq 1; then sudo rm -rf "$TOPOLOGY_ARCHIVE" || ok=0; fi
     printf '%s\n' "DEPLOY_FAILED_AT=$CURRENT_STAGE"
@@ -107,9 +116,11 @@ trap rollback EXIT HUP INT TERM
 
 sudo test -f "$DB"; sudo test -f "$REMOTE_STAGE"; pointer_capture; cleanup_loaded_topology; stage PREMUTATION_READY
 sudo install -d -o root -g root -m 0750 /var/backups/awh-hub
-sudo sqlite3 "$DB" ".backup '$BACKUP'"; sudo chown root:root "$BACKUP"; sudo chmod 0600 "$BACKUP"; test "$(sudo sqlite3 "$BACKUP" 'PRAGMA integrity_check;')" = ok; test -z "$(sudo sqlite3 "$BACKUP" 'PRAGMA foreign_key_check;')"; stage BACKUP_VERIFIED
+sudo sqlite3 "$DB" ".backup '$BACKUP'"; sudo chown root:root "$BACKUP"; sudo chmod 0600 "$BACKUP"; test "$(sudo sqlite3 "$BACKUP" 'PRAGMA integrity_check;')" = ok; test -z "$(sudo sqlite3 "$BACKUP" 'PRAGMA foreign_key_check;')"; sudo install -d -m 0750 -o root -g root "$CONFIG_BACKUP_ROOT/nginx"; sudo test ! -e "$NGINX_BACKUP"; sudo cp -p "$NGINX_CONFIG" "$NGINX_BACKUP"; sudo chown root:root "$NGINX_BACKUP"; sudo chmod 0600 "$NGINX_BACKUP"; sudo cmp -s "$NGINX_CONFIG" "$NGINX_BACKUP"; NGINX_BACKUP_CREATED=1; stage BACKUP_VERIFIED
 if sudo test -e "$RELEASE" || sudo test -L "$RELEASE"; then exit 20; fi
 sudo install -d -o awh-hub -g awh-hub -m 0750 "$RELEASE"; RELEASE_CREATED=1; sudo tar -xzf "$REMOTE_STAGE" -C "$RELEASE"; sudo chown -R awh-hub:awh-hub "$RELEASE"; sudo test -f "$RELEASE/hub/public/control-plane.php"; sudo test -f "$RELEASE/hub/bin/migrate-m4.php"; sudo -u awh-hub test -r "$RELEASE/hub/src/HubControlPlaneService.php"; stage RELEASE_STAGED
+OWNER_AUTH_SETUP=$RELEASE/hub/bin/setup-owner-auth.php; OWNER_AUTH_TRANSFORM=$RELEASE/deploy/nginx/transform-owner-auth.php
+stage NGINX_CUTOVER_PREPARE; sudo /usr/bin/php "$OWNER_AUTH_TRANSFORM" "$NGINX_CONFIG" "$NGINX_CANDIDATE" "$HOSTNAME" >/dev/null; sudo test -s "$NGINX_CANDIDATE"; sudo chown root:root "$NGINX_CANDIDATE"; sudo chmod 0644 "$NGINX_CANDIDATE"
 DB_MUTATED=1; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/migrate-m4.php" "$DB" "$RELEASE/hub/migrations/003_m4_control_plane.sql" >/dev/null; stage MIGRATION_FIRST_PASS
 sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/migrate-m4.php" "$DB" "$RELEASE/hub/migrations/003_m4_control_plane.sql" >/dev/null; stage MIGRATION_IDEMPOTENT
 test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 4
@@ -124,12 +135,15 @@ test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE mig
 test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok
 test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
 stage OWNER_AUTH_VERIFIED
+stage OWNER_AUTH_PROVISION; printf '%s\n' "$OWNER_PASSWORD" | sudo -n -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$OWNER_AUTH_SETUP" "$OWNER_USERNAME" >/dev/null; test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM owner_passwords WHERE username = '$OWNER_USERNAME' AND enabled = 1 AND length(password_hash) > 20;")" = 1; test "$(sudo sqlite3 "$DB" 'SELECT count(*) FROM owner_passwords;')" = 1
 sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/register-m4-projects.php" >/dev/null; stage PROJECTS_READY
 sudo rm -f "$POINTER_TMP"; sudo ln -s "$RELEASE" "$POINTER_TMP"; sudo mv -Tf "$POINTER_TMP" "$POINTER"; POINTER_CHANGED=1; test "$(readlink "$POINTER")" = "$RELEASE"; stage CONTROL_POINTER
 web_pointer_capture; sudo install -d -o awh-hub -g awh-hub -m 0750 /var/www/awh-web/releases; if sudo test -e "$WEB_RELEASE" || sudo test -L "$WEB_RELEASE"; then exit 20; fi; sudo install -d -o awh-hub -g awh-hub -m 0750 "$WEB_RELEASE"; WEB_CREATED=1; stage WEB_RELEASE_COPY; sudo cp -a "$RELEASE/dist-web/." "$WEB_RELEASE/"; sudo chown -R awh-hub:awh-hub "$WEB_RELEASE"; stage WEB_POINTER_SWITCH; sudo rm -f "$WEB_POINTER_TMP"; sudo ln -s "$WEB_RELEASE" "$WEB_POINTER_TMP"; sudo mv -Tf "$WEB_POINTER_TMP" "$WEB_POINTER"; WEB_POINTER_CHANGED=1; test "$(readlink "$WEB_POINTER")" = "$WEB_RELEASE"; stage WEB_RELEASE_STAGED
-CONTROL_INCLUDE=$REMOTE_ROOT/control-plane-current/deploy/nginx/awh-control-plane.conf; stage NGINX_INCLUDE_PREPARE; sudo sed "s/PREVIEW_HOSTNAME/$HOSTNAME/g" "$RELEASE/deploy/nginx/awh-control-plane.conf" > "$RELEASE/deploy/nginx/awh-control-plane.active.conf"; sudo install -o root -g root -m 0640 "$RELEASE/deploy/nginx/awh-control-plane.active.conf" "$RELEASE/deploy/nginx/awh-control-plane.conf"; sudo install -d -m 0750 -o root -g root "$CONFIG_BACKUP_ROOT/nginx"; sudo test ! -e "$NGINX_BACKUP"; sudo cp -p "$NGINX_CONFIG" "$NGINX_BACKUP"; NGINX_BACKUP_CREATED=1; NGINX_TMP=$(sudo mktemp /tmp/awh-control-nginx.XXXXXX); stage NGINX_INCLUDE_INSERT; sudo /usr/bin/php "$RELEASE/deploy/awh-enrollment/insert-nginx-include.php" "$NGINX_CONFIG" "$NGINX_TMP" "$CONTROL_INCLUDE"; sudo install -o root -g root -m 0644 "$NGINX_TMP" "$NGINX_CONFIG"; sudo rm -f "$NGINX_TMP"; NGINX_CHANGED=1; stage NGINX_CONFIGURED; sudo nginx -t >/dev/null
+stage NGINX_CUTOVER_INSTALL; sudo install -o root -g root -m 0644 "$NGINX_CANDIDATE" "$NGINX_CONFIG"; NGINX_CHANGED=1; stage NGINX_CONFIGURED; sudo nginx -t >/dev/null
 stage SERVICE_RELOAD; sudo systemctl reload nginx
+stage OWNER_AUTH_LOGIN; code=$(printf '{"schemaVersion":1,"username":"%s","password":"%s","remember":false}\n' "$OWNER_USERNAME" "$OWNER_PASSWORD" | curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H 'Content-Type: application/json' --data-binary @- -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/auth/login" 2>/dev/null || printf 000); test "$code" = 200; OWNER_PASSWORD=
+stage OWNER_AUTH_SURFACE; root_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/" 2>/dev/null || printf 000); test "$root_code" = 200; preview_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/preview/" 2>/dev/null || printf 000); test "$preview_code" = 401
 stage M3D_REGRESSION; verify_m3d
 stage M3E_POST_SCHEMA_REGRESSION; verify_m3e_after_m4
 stage CONTROL_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/session" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403
-SUCCESS=1; printf '%s\n' 'DEPLOY_RESULT=PASS'; trap - EXIT HUP INT TERM; sudo rm -f "$REMOTE_STAGE" "$NGINX_BACKUP"; exit 0
+SUCCESS=1; printf '%s\n' 'DEPLOY_RESULT=PASS'; trap - EXIT HUP INT TERM; sudo rm -f "$REMOTE_STAGE" "$NGINX_BACKUP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT"; exit 0

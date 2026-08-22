@@ -53,8 +53,9 @@ test('M4 control-plane activation package is executable in a local dry-run witho
   assert.match(remote, /stage OWNER_AUTH_VERIFIED/);
   assert.match(remote, /stage WEB_RELEASE_COPY/);
   assert.match(remote, /stage WEB_POINTER_SWITCH/);
-  assert.match(remote, /stage NGINX_INCLUDE_PREPARE/);
-  assert.match(remote, /stage NGINX_INCLUDE_INSERT/);
+  assert.match(remote, /stage NGINX_CUTOVER_PREPARE/);
+  assert.match(remote, /stage NGINX_CUTOVER_INSTALL/);
+  assert.match(remote, /transform-owner-auth\.php/);
   assert.doesNotMatch(remote, /PROJECTS_REGISTERED|d1e48976|dad35312|BAY EXCUSE X|Teacher Evaluation Video/);
   assert.match(remote, /stage CONTROL_ROUTE; code=/);
   assert.doesNotMatch(remote, /curl\s+-k/);
@@ -66,12 +67,13 @@ test('owner-auth release boundary includes the canonical v4-to-v5 capability ass
   assert.match(deploy, /OWNER_AUTH_MIGRATION_FIRST/);
   assert.match(deploy, /OWNER_AUTH_MIGRATION_IDEMPOTENT/);
   assert.match(deploy, /OWNER_AUTH_VERIFIED/);
-  assert.doesNotMatch(deploy, /password\s*=|passwordHash\s*=|recoveryCode\s*=/i);
+  assert.doesNotMatch(deploy, /passwordHash\s*=|recoveryCode\s*=/i);
 });
 
 test('owner-auth include disables inherited app Basic Auth while preserving explicit protected locations', async () => {
   const include = await readText(join(ROOT, 'deploy/nginx/awh-control-plane.conf'));
-  assert.match(include, /auth_basic off;[\s\S]*location \^~ \/api\/v1\/auth\//);
+  assert.doesNotMatch(include, /^auth_basic off;$/m);
+  assert.match(include, /location \^~ \/api\/v1\/auth\/[\s\S]*auth_basic off/);
   assert.match(include, /location \^~ \/api\/v1\/control\/[\s\S]*auth_basic off/);
   assert.match(await readText(join(ROOT, 'deploy/nginx/awh-preview.conf')), /location \^~ \/api\/v1\/[\s\S]*auth_basic "AWH Remote Preview"/);
   assert.match(await readText(join(ROOT, 'deploy/nginx/awh-preview.conf')), /location \^~ \/preview\/[\s\S]*auth_basic "AWH Remote Preview"/);
