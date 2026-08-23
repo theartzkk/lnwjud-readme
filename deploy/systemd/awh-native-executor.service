@@ -1,6 +1,7 @@
 [Unit]
 Description=AWH bounded native executor tick
-After=network.target
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 Type=oneshot
@@ -17,7 +18,8 @@ ExecStart=/usr/bin/php /opt/awh-hub/control-plane-current/hub/bin/awh-native-exe
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
-PrivateNetwork=true
+PrivateNetwork=false
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/var/lib/awh-hub /var/lib/awh-hub/project-vault /var/lib/awh-hub/task-workspaces /var/lib/awh-hub/task-transfers /var/lib/awh-hub/artifacts

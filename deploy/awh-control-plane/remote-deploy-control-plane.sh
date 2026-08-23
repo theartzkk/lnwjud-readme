@@ -43,8 +43,14 @@ WEB_POINTER=/var/www/awh-web/current
 WEB_POINTER_TMP=/var/www/awh-web/.current-$RELEASE_ID
 RELEASE_CREATED=0; WEB_CREATED=0; DB_MUTATED=0; POINTER_CHANGED=0; WEB_POINTER_CHANGED=0; NGINX_CHANGED=0; NGINX_BACKUP_CREATED=0; TOPOLOGY_ARCHIVED=0; TOPOLOGY_CLEANED=0; SUCCESS=0; CURRENT_STAGE=PREPARE
 EXECUTOR_UNITS_INSTALLED=0
+EXECUTOR_UNITS_PREEXISTING=0
+EXECUTOR_TIMER_STOPPED=0
+M12_REFRESH=0
 EXECUTOR_SERVICE_UNIT=/etc/systemd/system/awh-native-executor.service
 EXECUTOR_TIMER_UNIT=/etc/systemd/system/awh-native-executor.timer
+EXECUTOR_BACKUP_ROOT=$CONFIG_BACKUP_ROOT/systemd
+EXECUTOR_SERVICE_BACKUP=$EXECUTOR_BACKUP_ROOT/awh-native-executor.service.$RELEASE_ID
+EXECUTOR_TIMER_BACKUP=$EXECUTOR_BACKUP_ROOT/awh-native-executor.timer.$RELEASE_ID
 TOPOLOGY_ARCHIVE=/var/backups/awh-hub/topology-cleanup-$RELEASE_ID
 TOPOLOGY_HELPER=/opt/awh-hub/enrollment-current/deploy/awh-enrollment/insert-nginx-include.php
 ENROLLMENT_INCLUDE=/opt/awh-hub/enrollment-current/deploy/nginx/awh-enrollment.conf
@@ -170,8 +176,17 @@ rollback() {
     if test "$NGINX_CHANGED" -eq 1; then sudo cp -p "$NGINX_BACKUP" "$NGINX_CONFIG" || ok=0; fi
     if test "$EXECUTOR_UNITS_INSTALLED" -eq 1; then
       sudo systemctl disable --now awh-native-executor.timer >/dev/null 2>&1 || ok=0
-      sudo rm -f "$EXECUTOR_SERVICE_UNIT" "$EXECUTOR_TIMER_UNIT" || ok=0
+      if test "$EXECUTOR_UNITS_PREEXISTING" -eq 1; then
+        sudo cp -p "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_SERVICE_UNIT" || ok=0
+        sudo cp -p "$EXECUTOR_TIMER_BACKUP" "$EXECUTOR_TIMER_UNIT" || ok=0
+      else
+        sudo rm -f "$EXECUTOR_SERVICE_UNIT" "$EXECUTOR_TIMER_UNIT" || ok=0
+      fi
       sudo systemctl daemon-reload || ok=0
+    fi
+    if test "$EXECUTOR_UNITS_PREEXISTING" -eq 1; then
+      sudo systemctl enable --now awh-native-executor.timer >/dev/null 2>&1 || ok=0
+      sudo systemctl is-active --quiet awh-native-executor.timer || ok=0
     fi
     if test "$TOPOLOGY_ARCHIVED" -eq 1; then
       for archived in $(sudo find "$TOPOLOGY_ARCHIVE" -maxdepth 1 -type f -print 2>/dev/null | sort); do
@@ -204,7 +219,7 @@ rollback() {
       verify_m3e_after_m4 || ok=0
     fi
     sudo rm -rf "$RELEASE" "$WEB_RELEASE" >/dev/null 2>&1 || true
-    sudo rm -f "$REMOTE_STAGE" "$POINTER_TMP" "$WEB_POINTER_TMP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" "$CONTROL_INCLUDE_TMP" >/dev/null 2>&1 || true
+    sudo rm -f "$REMOTE_STAGE" "$POINTER_TMP" "$WEB_POINTER_TMP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" "$CONTROL_INCLUDE_TMP" "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" >/dev/null 2>&1 || true
     if test "$NGINX_BACKUP_CREATED" -eq 1; then sudo rm -f "$NGINX_BACKUP" || ok=0; fi
     if test "$TOPOLOGY_ARCHIVED" -eq 1; then sudo rm -rf "$TOPOLOGY_ARCHIVE" || ok=0; fi
     cleanup_owner_auth_cookie_files
@@ -226,28 +241,46 @@ OWNER_AUTH_SETUP=$RELEASE/hub/bin/setup-owner-auth.php; OWNER_AUTH_RUNTIME=$RELE
 stage CONTROL_ORIGIN_RENDER; sudo /usr/bin/php "$CONTROL_ORIGIN_RENDER" "$CONTROL_INCLUDE" "$CONTROL_INCLUDE_TMP" "$HOSTNAME" "$AWH_FPM_SOCKET" >/dev/null; sudo test -s "$CONTROL_INCLUDE_TMP"; sudo install -o awh-hub -g awh-hub -m 0644 "$CONTROL_INCLUDE_TMP" "$CONTROL_INCLUDE"; sudo rm -f "$CONTROL_INCLUDE_TMP"; CONTROL_INCLUDE_TMP=
 stage NGINX_CUTOVER_PREPARE; sudo /usr/bin/php "$OWNER_AUTH_TRANSFORM" "$NGINX_CONFIG" "$NGINX_CANDIDATE" "$HOSTNAME" "$AWH_FPM_SOCKET" >/dev/null; sudo test -s "$NGINX_CANDIDATE"; sudo chown root:root "$NGINX_CANDIDATE"; sudo chmod 0644 "$NGINX_CANDIDATE"
 if test "$CENTRAL_PROJECT_AUTHORITY" = 1; then
-  # M12 extends the actual live M11 authority only. It creates no new Project
-  # identity, does not copy existing local workspaces, and keeps the native
-  # executor network-isolated by default.
+  # M12 supports both first v11-to-v12 activation and source-only refresh over v12.
   stage WORKSPACE_PRESERVED
-  test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 11
-  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm11-self-service' AND schema_version = 11;")" = 1
+  M12_START_VERSION=$(sudo sqlite3 "$DB" 'PRAGMA user_version;')
+  case "$M12_START_VERSION" in 11|12) ;; *) exit 20 ;; esac
+  if test "$M12_START_VERSION" = 11; then
+    test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm11-self-service' AND schema_version = 11;")" = 1
+  else
+    M12_REFRESH=1
+    test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm12-central-project-authority' AND schema_version = 12;")" = 1
+  fi
   sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$OWNER_AUTH_RUNTIME" >/dev/null
   test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok
   test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
-  # Vault ingestion is intentionally unavailable without SQLite and ZIP
-  # support.  Verify both before the first schema write so a minimal PHP
-  # install cannot leave a live database at v12 with a non-functional Vault.
   stage PROJECT_VAULT_RUNTIME_READY; sudo -u awh-hub /usr/bin/php -r 'exit((extension_loaded("pdo_sqlite") && class_exists("ZipArchive")) ? 0 : 1);'
   stage PROJECT_VAULT_STORAGE_READY; sudo install -d -o awh-hub -g awh-hub -m 0750 /var/lib/awh-hub/project-vault /var/lib/awh-hub/task-workspaces /var/lib/awh-hub/task-transfers; sudo -u awh-hub test -w /var/lib/awh-hub/project-vault; sudo -u awh-hub test -w /var/lib/awh-hub/task-workspaces; sudo -u awh-hub test -w /var/lib/awh-hub/task-transfers
   stage ARTIFACT_STORAGE_READY; sudo install -d -o awh-hub -g awh-hub -m 0750 /var/lib/awh-hub/artifacts; sudo -u awh-hub test -w /var/lib/awh-hub/artifacts
-  DB_MUTATED=1; stage CENTRAL_PROJECT_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$CENTRAL_PROJECT_MIGRATION" "$DB" >/dev/null
-  stage CENTRAL_PROJECT_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$CENTRAL_PROJECT_MIGRATION" "$DB" >/dev/null
-  test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 12
-  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm12-central-project-authority' AND schema_version = 12;")" = 1
-  test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok
-  test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
-  stage CENTRAL_PROJECT_MIGRATION_VERIFIED
+  if test "$M12_REFRESH" -eq 1; then
+    test -f "$EXECUTOR_SERVICE_UNIT" && test -f "$EXECUTOR_TIMER_UNIT"
+    test "$PREVIOUS_POINTER" = PRESENT
+    sudo cmp -s "$EXECUTOR_SERVICE_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-native-executor.service"
+    sudo cmp -s "$EXECUTOR_TIMER_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-native-executor.timer"
+    sudo install -d -o root -g root -m 0750 "$EXECUTOR_BACKUP_ROOT"
+    sudo test ! -e "$EXECUTOR_SERVICE_BACKUP"; sudo test ! -e "$EXECUTOR_TIMER_BACKUP"
+    sudo cp -p "$EXECUTOR_SERVICE_UNIT" "$EXECUTOR_SERVICE_BACKUP"; sudo cp -p "$EXECUTOR_TIMER_UNIT" "$EXECUTOR_TIMER_BACKUP"
+    sudo chown root:root "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP"; sudo chmod 0600 "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP"
+    EXECUTOR_UNITS_PREEXISTING=1
+    sudo systemctl stop awh-native-executor.timer
+    sudo systemctl stop awh-native-executor.service >/dev/null 2>&1 || true
+    EXECUTOR_TIMER_STOPPED=1
+    test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM control_task_executions WHERE state IN ('LEASED','RUNNING');")" = 0
+    stage CENTRAL_PROJECT_MIGRATION_VERIFIED
+  else
+    DB_MUTATED=1; stage CENTRAL_PROJECT_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$CENTRAL_PROJECT_MIGRATION" "$DB" >/dev/null
+    stage CENTRAL_PROJECT_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$CENTRAL_PROJECT_MIGRATION" "$DB" >/dev/null
+    test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 12
+    test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm12-central-project-authority' AND schema_version = 12;")" = 1
+    test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok
+    test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
+    stage CENTRAL_PROJECT_MIGRATION_VERIFIED
+  fi
   stage PROJECTS_READY
 elif test "$SELF_SERVICE" = 1 && test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 11; then
   # A self-service UI hotfix may be activated over an already-live M11
@@ -473,10 +506,8 @@ else
 fi
 sudo rm -f "$POINTER_TMP"; sudo ln -s "$RELEASE" "$POINTER_TMP"; sudo mv -Tf "$POINTER_TMP" "$POINTER"; POINTER_CHANGED=1; test "$(readlink "$POINTER")" = "$RELEASE"; stage CONTROL_POINTER
 if test "$CENTRAL_PROJECT_AUTHORITY" = 1; then
-  # This is a new bounded service.  Refuse to replace an unknown administrator
-  # unit, and remove only units installed by this activation if a later gate
-  # rolls back.
-  test ! -e "$EXECUTOR_SERVICE_UNIT" && test ! -e "$EXECUTOR_TIMER_UNIT"
+  # First activation refuses unknown units; v12 refresh replaces only proven managed units.
+  if test "$M12_REFRESH" -eq 0; then test ! -e "$EXECUTOR_SERVICE_UNIT" && test ! -e "$EXECUTOR_TIMER_UNIT"; else test "$EXECUTOR_UNITS_PREEXISTING" -eq 1; fi
   sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-native-executor.service" "$EXECUTOR_SERVICE_UNIT"
   sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-native-executor.timer" "$EXECUTOR_TIMER_UNIT"
   EXECUTOR_UNITS_INSTALLED=1
@@ -541,4 +572,4 @@ if test "$FINAL_PRODUCT" = 1; then
   code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/attachments/423b45c0-23e1-408d-ae0f-ac5eca7f6900/download" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403
 fi
 stage CONTROL_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/session" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403
-SUCCESS=1; printf '%s\n' 'DEPLOY_RESULT=PASS'; trap - EXIT HUP INT TERM; sudo rm -f "$REMOTE_STAGE" "$NGINX_BACKUP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" "$CONTROL_INCLUDE_TMP"; exit 0
+SUCCESS=1; printf '%s\n' 'DEPLOY_RESULT=PASS'; trap - EXIT HUP INT TERM; sudo rm -f "$REMOTE_STAGE" "$NGINX_BACKUP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" "$CONTROL_INCLUDE_TMP" "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP"; exit 0

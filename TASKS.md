@@ -2,10 +2,10 @@
 
 ## NOW
 
-- Close the M12 field defect in one coherent source pass: OpenAI Responses history schema, sanitized provider diagnostics, low-cost real Responses connection probe, no false-success, bounded same-task retry, truthful provider/budget states, usage/cost guards and human-readable UI errors.
+- Close the M12 field defect in one coherent source pass: Responses history schema, sanitized provider diagnostics, low-cost real Responses connection probe, no false-success, bounded same-task retry, truthful provider/budget states, usage/cost guards, human-readable UI errors, outbound-capable sandboxed native executor, and a v12→v12 source-refresh deploy path that never replays migration 011.
 - Run focused PHP/M10/M11/M12 regression plus `qa:fast` and `qa:local`; distinguish a real regression from a stale fixture before changing product behavior.
 - Reconcile durable project docs to the actual M12 production truth after source QA; current runtime evidence outranks older project-memory text.
-- When QA is clean, verify local branch/HEAD, fetch and compare remote, commit/push one candidate, report exact SHA, and **stop for Art approval before any production mutation**.
+- When QA is clean, verify local branch/HEAD, fetch and compare remote, commit/push one exact candidate, then use Art’s current explicit authorization to deploy only that resulting SHA to ReadyIDC with backup/rollback and field verification. Future production changes still require explicit approval.
 - After approved deployment, field-test from iPhone with `จำได้ไหมว่าเราสร้าง AWH ขึ้นมาทำไม?`; success requires a real AI answer grounded in Founding/Project Memory and no deterministic provider-failure fallback.
 - Keep Google Cloud legacy VPS and BAY production untouched. Do not replace the OpenAI key, buy additional API budget, or use Codex for this defect.
 

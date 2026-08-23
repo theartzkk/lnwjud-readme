@@ -10,7 +10,7 @@ const root = process.cwd();
 const deploy = join(root, 'deploy/awh-control-plane/deploy-control-plane.sh');
 const remote = join(root, 'deploy/awh-control-plane/remote-deploy-control-plane.sh');
 
-test('M12 Central Project Authority is an explicit v11-to-v12 release with a private Vault, durable executor, and exact rollback', async () => {
+test('M12 Central Project Authority supports first activation and truthful v12 source refresh with a private Vault and durable executor', async () => {
   const release = 'cccccccccccccccccccccccccccccccccccccccc';
   const result = await execFileAsync('/bin/sh', [deploy, '--dry-run', '--central-project-authority'], {
     cwd: root,
@@ -18,9 +18,9 @@ test('M12 Central Project Authority is an explicit v11-to-v12 release with a pri
   });
   assert.match(result.stdout, /^M12_DRY_RUN=PASS$/m);
   assert.match(result.stdout, new RegExp(`^M12_RELEASE=${release}$`, 'm'));
-  assert.match(result.stdout, /project-vault-storage-ready,migrate-011,idempotence,central-project-authority,control-pointer,install-unprivileged-native-executor/);
+  assert.match(result.stdout, /project-vault-storage-ready,migrate-011-only-from-v11,source-refresh-without-migration-on-v12,control-pointer,refresh-managed-native-executor/);
   assert.match(result.stdout, /^M12_ARTIFACT_STORAGE=private-object-root-required$/m);
-  assert.match(result.stdout, /M12_ROLLBACK=restore-db-v11,pointer,web-pointer,nginx,service-health,m3d-m3e-m4-m7-m11-regression/);
+  assert.match(result.stdout, /M12_ROLLBACK=restore-db-only-if-migrated,pointer,web-pointer,managed-executor-units,nginx,service-health,m3d-m3e-control-regression/);
   assert.match(result.stdout, /M12_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL/);
 
   const [local, remoteSource, migration, vault, vaultService, durable, artifactStore, controlService, controlRouter, nativeAgent, webAdapter, webApp, serviceUnit, timerUnit] = await Promise.all([
@@ -33,7 +33,14 @@ test('M12 Central Project Authority is an explicit v11-to-v12 release with a pri
   assert.match(local, /migrate-central-project-authority\.php/);
   assert.match(remoteSource, /CENTRAL_PROJECT_AUTHORITY=\$\{21\}/);
   assert.match(remoteSource, /m12-central-project-authority/);
-  assert.match(remoteSource, /PRAGMA user_version.*= 11/s);
+  assert.match(remoteSource, /M12_START_VERSION/);
+  assert.match(remoteSource, /case \"\$M12_START_VERSION\" in 11\|12/);
+  assert.match(remoteSource, /M12_REFRESH=1/);
+  assert.match(remoteSource, /DB_MUTATED=1; stage CENTRAL_PROJECT_MIGRATION_FIRST/);
+  assert.match(remoteSource, /EXECUTOR_UNITS_PREEXISTING=1/);
+  assert.match(remoteSource, /cmp -s \"\$EXECUTOR_SERVICE_UNIT\" \"\$PREVIOUS_TARGET\/deploy\/systemd\/awh-native-executor\.service\"/);
+  assert.match(remoteSource, /systemctl stop awh-native-executor\.timer/);
+  assert.match(remoteSource, /cp -p \"\$EXECUTOR_SERVICE_BACKUP\" \"\$EXECUTOR_SERVICE_UNIT\"/);
   assert.match(remoteSource, /PRAGMA user_version.*= 12/s);
   assert.match(remoteSource, /project-vault/);
   assert.match(remoteSource, /class_exists\("ZipArchive"\).*\? 0 : 1\);/);
@@ -77,7 +84,9 @@ test('M12 Central Project Authority is an explicit v11-to-v12 release with a pri
   assert.match(artifactStore, /opaque/);
   assert.doesNotMatch(durable, /(?:shell_exec\(|proc_open\(|popen\()/);
   assert.match(serviceUnit, /User=awh-hub/);
-  assert.match(serviceUnit, /PrivateNetwork=true/);
+  assert.match(serviceUnit, /PrivateNetwork=false/);
+  assert.match(serviceUnit, /RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6/);
+  assert.match(nativeAgent, /https:\/\/api\.openai\.com\/v1\/responses/);
   assert.match(serviceUnit, /AWH_ARTIFACT_ROOT/);
   assert.match(serviceUnit, /NoNewPrivileges=true/);
   assert.match(timerUnit, /OnUnitActiveSec=15s/);

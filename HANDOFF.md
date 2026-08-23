@@ -8,9 +8,9 @@ ReadyIDC is the active production authority at SQLite **schema v12**. The deploy
 
 The active source branch is `awh/v0.1-migration`. Current source may be ahead of production; production is never inferred from repository HEAD. For any continuation, inspect current source/local+remote state first, then production read-only evidence, then DB/release pointers, and only then these documents.
 
-The current field defect is the OpenAI Responses conversation path. Production key storage and the old connection test prove credential reachability, but the deployed request path can fail and still surface a deterministic fallback as `COMPLETED`. Source work now targets the exact defect boundary: valid Responses history schema, sanitized diagnostics, a real low-cost Responses probe, no false-success, bounded retry on the same task, truthful user-visible states, and cost accounting that does not treat failed calls as successful model results.
+The current field defect is the OpenAI Responses conversation path. Two production-proven causes exist: historical assistant turns were serialized as `input_text` instead of Responses `output_text`, and the M12 systemd executor was installed with `PrivateNetwork=true`, which prevents its durable timer path from reaching the provider at all. The source candidate fixes both while preserving the server-side credential boundary: sanitized diagnostics, a real low-cost Responses probe, no false-success, bounded retry on the same task, truthful UI states, billed-failure cost accounting, an outbound-capable but still sandboxed executor (`AF_UNIX/AF_INET/AF_INET6` only), and an idempotent M12→M12 source-refresh deployment path that does not replay migration 011.
 
-Normal owner use remains username/password plus a revocable remembered session. Provider secrets are server-side/write-only. No production mutation, key replacement, budget purchase, Google Cloud legacy change or BAY production change is part of this field-debug.
+Normal owner use remains username/password plus a revocable remembered session. Provider secrets are server-side/write-only. Art has authorized the current bounded ReadyIDC source refresh after final QA; the closure must not replace the key, buy API budget, touch Google Cloud legacy, or change BAY production.
 
 ### Deployed evolution — M6 through M12
 
