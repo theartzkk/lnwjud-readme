@@ -38,6 +38,9 @@ test('M11 self-service activation is one v7-to-v11 release with write-only provi
   assert.match(remoteSource, /PRAGMA user_version;.*= 11/s);
   assert.match(remoteSource, /PROVIDER_CREDENTIAL_STORAGE_READY/);
   assert.match(remoteSource, /SELF_SERVICE_ROUTE/);
+  assert.match(remoteSource, /SELF_SERVICE" = 1 && test .*PRAGMA user_version.* = 11/s);
+  assert.match(remoteSource, /m11-self-service.*schema_version = 11/s);
+  assert.match(remoteSource, /already-live M11/);
   assert.match(remoteSource, /install -d -o awh-hub -g awh-hub -m 0700 \/var\/lib\/awh-hub\/provider-credentials/);
   assert.match(migration, /control_provider_credentials/);
   assert.match(migration, /control_project_provider_overrides/);

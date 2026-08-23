@@ -208,7 +208,28 @@ sudo install -d -o awh-hub -g awh-hub -m 0750 "$RELEASE"; RELEASE_CREATED=1; sud
 OWNER_AUTH_SETUP=$RELEASE/hub/bin/setup-owner-auth.php; OWNER_AUTH_RUNTIME=$RELEASE/hub/bin/verify-owner-auth-runtime.php; ASSISTANT_MIGRATION=$RELEASE/hub/bin/migrate-assistant-workstream.php; WORKSPACE_MIGRATION=$RELEASE/hub/bin/migrate-workspace-continuity.php; UNIFIED_MIGRATION=$RELEASE/hub/bin/migrate-unified-workspace.php; FINAL_MIGRATION=$RELEASE/hub/bin/migrate-final-product.php; FOUNDING_MIGRATION=$RELEASE/hub/bin/migrate-founding-memory.php; SELF_SERVICE_MIGRATION=$RELEASE/hub/bin/migrate-self-service.php; OWNER_AUTH_TRANSFORM=$RELEASE/deploy/nginx/transform-owner-auth.php; CONTROL_ORIGIN_RENDER=$RELEASE/deploy/nginx/render-control-plane-include.php; CONTROL_INCLUDE=$RELEASE/deploy/nginx/awh-control-plane.conf; CONTROL_INCLUDE_TMP=/tmp/awh-control-include-$RELEASE_ID.conf
 stage CONTROL_ORIGIN_RENDER; sudo /usr/bin/php "$CONTROL_ORIGIN_RENDER" "$CONTROL_INCLUDE" "$CONTROL_INCLUDE_TMP" "$HOSTNAME" "$AWH_FPM_SOCKET" >/dev/null; sudo test -s "$CONTROL_INCLUDE_TMP"; sudo install -o awh-hub -g awh-hub -m 0644 "$CONTROL_INCLUDE_TMP" "$CONTROL_INCLUDE"; sudo rm -f "$CONTROL_INCLUDE_TMP"; CONTROL_INCLUDE_TMP=
 stage NGINX_CUTOVER_PREPARE; sudo /usr/bin/php "$OWNER_AUTH_TRANSFORM" "$NGINX_CONFIG" "$NGINX_CANDIDATE" "$HOSTNAME" "$AWH_FPM_SOCKET" >/dev/null; sudo test -s "$NGINX_CANDIDATE"; sudo chown root:root "$NGINX_CANDIDATE"; sudo chmod 0644 "$NGINX_CANDIDATE"
-if test "$SELF_SERVICE" = 1; then
+if test "$SELF_SERVICE" = 1 && test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 11; then
+  # A self-service UI hotfix may be activated over an already-live M11
+  # database. Preserve the canonical v11 authority and verify it instead of
+  # replaying the historical v7-to-v11 chain.
+  stage WORKSPACE_PRESERVED
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm4-control-plane' AND schema_version = 4;")" = 1
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm5-owner-auth' AND schema_version = 5;")" = 1
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm6-assistant-workstream' AND schema_version = 6;")" = 1
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm7-workspace-continuity' AND schema_version = 7;")" = 1
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm8-unified-workspace' AND schema_version = 8;")" = 1
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm9-final-product' AND schema_version = 9;")" = 1
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm10-founding-memory' AND schema_version = 10;")" = 1
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm11-self-service' AND schema_version = 11;")" = 1
+  sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$OWNER_AUTH_RUNTIME" >/dev/null
+  test "$(sudo sqlite3 "$DB" 'SELECT count(*) FROM owner_bootstrap b JOIN owner_passwords p ON p.user_id = b.owner_user_id WHERE b.singleton_id = 1 AND b.bootstrap_closed = 1 AND p.enabled = 1 AND length(p.password_hash) > 20;')" = 1
+  test -d /var/lib/awh-hub/attachments
+  test -d /var/lib/awh-hub/provider-credentials
+  test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok
+  test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
+  stage SELF_SERVICE_MIGRATION_VERIFIED
+  stage PROJECTS_READY
+elif test "$SELF_SERVICE" = 1; then
   # M11 is one bounded activation from the known M7 production baseline. It
   # reuses the M8/M9/M10 authorities, then adds only provider-secret metadata
   # and the protected empty server-side credential directory. No credential is
