@@ -184,6 +184,9 @@ test('owner self-service is a focused settings hub whose independent projections
   assert.match(app, /ลืมรหัสผ่าน\?/);
   assert.match(app, /resetPassword\(/);
   assert.match(app, /loadDesktopRelease/);
+  assert.match(app, /WAITING_FOR_WORKER: 'กำลังจัดการต่อบน AWH'/);
+  assert.doesNotMatch(app, /กำลังรออุปกรณ์ทำงาน/);
+  assert.doesNotMatch(app, /กำลังรอ capability/);
   assert.doesNotMatch(app, /schema v\$\{database\.schemaVersion/);
   assert.match(css, /\.settings-tabs/);
   assert.match(css, /\.settings-action-grid/);

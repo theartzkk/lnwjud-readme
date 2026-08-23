@@ -15,7 +15,7 @@ import {
   const MICRO_BAHT = 1000000;
   const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, systemReadiness: null, people: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null };
   const taskLabels = {
-    QUEUED: 'กำลังรอเริ่มงาน', WAITING_FOR_WORKER: 'กำลังรออุปกรณ์ทำงาน', PREPARING: 'กำลังเตรียมงาน', RUNNING: 'กำลังทำงาน',
+    QUEUED: 'กำลังจัดการต่อบน AWH', WAITING_FOR_WORKER: 'กำลังจัดการต่อบน AWH', PREPARING: 'กำลังเตรียมงาน', RUNNING: 'กำลังทำงาน',
     QA: 'กำลังตรวจคุณภาพ', WAITING_FOR_APPROVAL: 'รอการอนุมัติ', COMPLETED: 'เสร็จแล้ว',
     FAILED: 'ต้องตรวจสอบ', CANCELLED: 'ยกเลิกแล้ว',
   };
@@ -385,7 +385,7 @@ import {
   }
 
   function renderCancellation(task) {
-    if (!task || !['WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL'].includes(task.state)) return null;
+    if (!task || task.state !== 'WAITING_FOR_APPROVAL') return null;
     const actions = document.createElement('div'); actions.className = 'task-actions';
     const button = document.createElement('button'); button.type = 'button'; button.className = 'secondary-button'; button.textContent = 'ยกเลิกงานนี้';
     button.addEventListener('click', async () => {

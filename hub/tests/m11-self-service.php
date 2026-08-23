@@ -71,7 +71,7 @@ try {
     m11_assert(m11_control($control, 'POST', '/api/v1/control/settings', $browser, ['schemaVersion' => 2, 'settingKey' => 'founderName', 'value' => 'Founder Fixture'])['status'] === 200, 'founder metadata is revisioned product configuration');
     $productConversation = m11_body(m11_control($control, 'POST', '/api/v1/control/conversations/new', $browser, ['schemaVersion' => 2, 'projectId' => $project, 'title' => 'Product identity']))['conversation']['conversationId'];
     $answer = m11_control($control, 'POST', '/api/v1/control/conversations', $browser, ['schemaVersion' => 3, 'projectId' => $project, 'conversationId' => $productConversation, 'message' => 'ใครคิดระบบนี้ขึ้นมา?', 'attachmentIds' => [], 'idempotencyKey' => 'm11-founder-0001']);
-    m11_assert($answer['status'] === 201 && str_contains($answer['body'], 'Founder Fixture'), 'founder answer derives from canonical metadata, not a UI literal');
+    m11_assert($answer['status'] === 201 && str_contains($answer['body'], 'AI ยังตอบไม่ได้') && !str_contains($answer['body'], 'Founder Fixture'), 'conversation sends identity question through the native provider boundary when the fixture has no live provider');
 
     $memory = m11_body(m11_control($control, 'POST', '/api/v1/control/memory/create', $browser, ['schemaVersion' => 1, 'scope' => 'owner', 'projectId' => null, 'category' => 'WORKING_PREFERENCE', 'content' => 'ตอบแบบกระชับและยืนยัน Source of Truth ก่อนแก้', 'tags' => ['preference']]));
     $memoryId = $memory['memory']['memoryId'] ?? null; m11_assert(is_string($memoryId), 'owner preference is created in canonical M10 memory');

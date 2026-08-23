@@ -469,18 +469,10 @@ final class HubControlPlaneService
                 if ($this->finalProductSchemaPresent()) {
                     $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'PROGRESS', 'กำลังตรวจบริบทที่เกี่ยวข้อง', $at);
                     if ($this->centralProjectAuthoritySchemaPresent()) {
-                        // A native response is a durable projection of the
-                        // existing task authority.  Browser closure cannot
-                        // lose an accepted turn, and no second conversation
-                        // or queue table is introduced.
-                        $taskId = self::uuidFromBytes(random_bytes(16));
-                        $taskKey = 'native-' . $idempotency;
-                        $insert = $this->pdo->prepare('INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, \'QUEUED\', NULL, NULL, 0, NULL, NULL, :key, :conversation, :created, :updated, NULL)');
-                        $insert->execute(['id' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $message, 'key' => $taskKey, 'conversation' => $conversation['conversation_id'], 'created' => $at, 'updated' => $at]);
-                        $this->execution->enqueue($taskId, $projectId, $this->centralVaultRevision($projectId), 'VPS', 'agent.conversation', ['mode' => 'NATIVE_CONVERSATION', 'messageId' => $messageId], $at);
-                        $this->event($taskId, 'QUEUED', 0, 'native conversation queued for durable execution', $at);
-                        $this->pdo->prepare('UPDATE control_conversations SET last_task_id = :task, updated_at = :at WHERE conversation_id = :conversation')->execute(['task' => $taskId, 'at' => $at, 'conversation' => $conversation['conversation_id']]);
-                        $this->appendConversationMessage((string) $conversation['conversation_id'], $taskId, 'ASSISTANT', 'ได้ เดี๋ยวผมตรวจบริบทให้ก่อน แล้วจะส่งคำตอบกลับมาในบทสนทนานี้ คุณออกจากหน้านี้ได้เลย', $at);
+                        // Conversation turns are answered directly by the
+                        // native provider.  They are not execution jobs: a
+                        // user can keep talking while unrelated work runs.
+                        $nativeRequest = ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => $messageId, 'projectId' => $projectId, 'request' => $message];
                     } else {
                         $nativeRequest = ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => $messageId, 'projectId' => $projectId, 'request' => $message];
                     }
@@ -498,6 +490,7 @@ final class HubControlPlaneService
                 $this->event($taskId, $taskState, 0, $vaultRevision !== null && !$serverInspection && !$serverTextMutation ? 'waiting for an engineering specialist capability' : 'received', $at);
                 $this->pdo->prepare('UPDATE control_conversations SET last_task_id = :task, updated_at = :at WHERE conversation_id = :conversation')->execute(['task' => $taskId, 'at' => $at, 'conversation' => $conversation['conversation_id']]);
                 $this->appendConversationMessage((string) $conversation['conversation_id'], $taskId, 'ASSISTANT', $serverInspection ? 'ได้ เดี๋ยวผมอ่านโปรเจกต์ล่าสุดให้ครบ แล้วสรุปผลในบทสนทนานี้' : ($serverTextMutation ? 'ได้ เดี๋ยวผมสร้างเวอร์ชันแยกเพื่อแก้ไขและตรวจให้เรียบร้อย ก่อนขออนุมัติแทนที่ของเดิม' : ($vaultRevision !== null ? 'ได้ ผมเก็บคำขอนี้ไว้แล้ว กำลังเลือกเครื่องมือที่เหมาะสมเพื่อทำงานต่ออย่างปลอดภัย' : ($effectiveGoal === $message ? 'ได้ เดี๋ยวผมเตรียมบริบทของโปรเจกต์และส่งงานให้เครื่องที่เหมาะสม' : 'ได้ ผมจะทำต่อจากงานล่าสุดโดยใช้บริบทเดิมร่วมกับคำขอใหม่นี้'))), $at);
+                $nativeRequest = ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => $messageId, 'projectId' => $projectId, 'request' => $message];
             }
             $this->pdo->exec('COMMIT'); $transactionOpen = false;
         } catch (HubControlPlaneException $error) {
@@ -658,18 +651,13 @@ final class HubControlPlaneService
 
     private function completeNativeConversation(string $userId, array $request, string $at): void
     {
-        $body = $this->productIdentityHint((string) $request['request']); $kind = 'ASSISTANT';
+        $body = ''; $kind = 'ASSISTANT';
         try {
-            if ($body !== null) {
-                // Explicit product identity is a deterministic product contract,
-                // not a provider-failure fallback. All other questions use AI.
-            } else {
             $turns = $this->recentConversationTurns((string) $request['conversationId'], (string) $request['messageId']);
             $attachments = $this->nativeAttachments((string) $request['messageId'], $userId);
             $context = $this->nativeProjectContext($userId, (string) $request['projectId'], (string) $request['request']);
             $result = $this->agent->respond($userId, (string) $request['projectId'], (string) $request['conversationId'], (string) $request['messageId'], (string) $request['request'], $turns, $attachments, $at, $context);
             $body = trim((string) $result['summary']);
-            }
         } catch (HubNativeAgentException $error) {
             $kind = 'FAILURE'; $body = self::providerUserMessage($error->codeName);
         } catch (Throwable) {
@@ -1655,7 +1643,7 @@ final class HubControlPlaneService
     private static function workStateMessage(string $state, int $progress, ?string $message): string
     {
         $fallback = match ($state) {
-            'QUEUED' => 'กำลังเตรียมบริบทที่เกี่ยวข้อง', 'WAITING_FOR_WORKER' => 'กำลังรอเครื่องมือที่เหมาะสม งานยังถูกเก็บไว้อย่างปลอดภัย', 'PREPARING' => 'กำลังอ่านโปรเจกต์ล่าสุดและเตรียมงาน', 'RUNNING' => 'กำลังทำงานตามที่ขอ', 'QA' => 'กำลังตรวจผลลัพธ์ให้เรียบร้อย', 'WAITING_FOR_APPROVAL' => 'งานพร้อมแล้วและกำลังรอการอนุมัติ', 'COMPLETED' => 'งานเสร็จแล้ว', 'FAILED' => 'งานหยุดไว้โดยปลอดภัย', 'CANCELLED' => 'ยกเลิกงานแล้ว', default => 'กำลังอัปเดตงาน',
+            'QUEUED' => 'กำลังเตรียมบริบทที่เกี่ยวข้อง', 'WAITING_FOR_WORKER', 'WAITING_FOR_CAPABILITY' => 'กำลังจัดการต่อบน AWH', 'PREPARING' => 'กำลังอ่านโปรเจกต์ล่าสุดและเตรียมงาน', 'RUNNING' => 'กำลังทำงานตามที่ขอ', 'QA' => 'กำลังตรวจผลลัพธ์ให้เรียบร้อย', 'WAITING_FOR_APPROVAL' => 'งานพร้อมแล้วและกำลังรอการอนุมัติ', 'COMPLETED' => 'งานเสร็จแล้ว', 'FAILED' => 'งานหยุดไว้โดยปลอดภัย', 'CANCELLED' => 'ยกเลิกงานแล้ว', default => 'กำลังอัปเดตงาน',
         };
         return $message !== null && trim($message) !== '' ? trim($message) : ($progress > 0 && $progress < 100 ? $fallback . ' (' . $progress . '%)' : $fallback);
     }

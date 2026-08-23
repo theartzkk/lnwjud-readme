@@ -163,7 +163,7 @@ final class HubDurableExecutionService
             $eventMessage = $retrying ? 'bounded retry queued on the same task' : ($waiting ? 'work preserved; automatic retry paused' : 'server-native execution failed');
             if ($safeDiagnostic !== []) $eventMessage .= ' provider_failure=' . json_encode(['code' => $code] + $safeDiagnostic, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
             $this->event((string) $claimed['task_id'], $taskState, 0, $eventMessage, $at);
-            $userMessage = $terminal ? (self::providerFailureSummary($code) ?? 'งานนี้หยุดไว้โดยปลอดภัย และยังไม่ได้เลื่อนผลลัพธ์ทับ Project หลัก') : self::providerWaitSummary($code, $retrying);
+            $userMessage = $terminal ? (self::providerFailureSummary($code) ?? 'งานนี้หยุดไว้โดยปลอดภัย และยังไม่ได้เลื่อนผลลัพธ์ทับ Project หลัก') : 'ผมเก็บงานนี้ไว้แล้ว และจะทำต่อในเบื้องหลังเมื่อความสามารถที่ต้องใช้พร้อม';
             $this->appendConversationMessage((string) $claimed['conversation_id'], (string) $claimed['task_id'], $terminal ? 'FAILURE' : 'PROGRESS', $userMessage, $at);
             $this->pdo->exec('COMMIT');
         } catch (Throwable) { $this->rollbackImmediate(); }

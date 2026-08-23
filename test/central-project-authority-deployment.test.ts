@@ -59,6 +59,8 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(vault, /sensitivePath/);
   assert.match(vault, /function archive/);
   assert.match(controlService, /workerExecutionWorkspace/);
+  assert.match(controlService, /\$nativeRequest = \['conversationId'/);
+  assert.match(controlService, /private function completeNativeConversation/);
   assert.match(controlService, /acceptWorkerExecutionCandidate/);
   assert.match(controlService, /executor_kind = 'CODEX'/);
   assert.match(controlRouter, /worker\/executions/);
