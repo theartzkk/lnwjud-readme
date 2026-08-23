@@ -42,6 +42,11 @@ test('M9 final product release is one bounded v7-to-v8-to-v9 activation with att
   assert.doesNotMatch(remoteSource.slice(start, end), /register-m4-projects|OWNER_AUTH_SETUP|OWNER_PASSWORD/);
   assert.match(remoteSource, /ATTACHMENT_STORAGE_READY/);
   assert.match(remoteSource, /FINAL_PRODUCT_ROUTE/);
+  // The M9 CLI owns its migration path and accepts only DATABASE_PATH.  The
+  // production runner must not append an unused SQL argument: that makes the
+  // CLI reject the invocation before SQLite is reached.
+  assert.equal((remoteSource.match(/\$FINAL_MIGRATION" "\$DB" >\/dev\/null/g) ?? []).length, 6);
+  assert.doesNotMatch(remoteSource, /\$FINAL_MIGRATION" "\$DB" "\$RELEASE\/hub\/migrations\/008_final_product\.sql"/);
   assert.match(remoteSource, /test "\$\(sudo sqlite3 "\$DB" 'PRAGMA user_version;'\)" = 7 \|\| ok=0/);
   assert.match(include, /client_max_body_size 64m/);
   assert.match(migration, /control_provider_policies/);

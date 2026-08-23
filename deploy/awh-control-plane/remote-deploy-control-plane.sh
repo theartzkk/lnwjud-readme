@@ -230,8 +230,8 @@ if test "$SELF_SERVICE" = 1; then
   test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm8-unified-workspace' AND schema_version = 8;")" = 1
   stage UNIFIED_MIGRATION_VERIFIED
   stage ATTACHMENT_STORAGE_READY; sudo install -d -o awh-hub -g awh-hub -m 0750 /var/lib/awh-hub/attachments; sudo -u awh-hub test -w /var/lib/awh-hub/attachments
-  stage FINAL_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_ATTACHMENT_ROOT=/var/lib/awh-hub/attachments /usr/bin/php "$FINAL_MIGRATION" "$DB" "$RELEASE/hub/migrations/008_final_product.sql" >/dev/null
-  stage FINAL_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_ATTACHMENT_ROOT=/var/lib/awh-hub/attachments /usr/bin/php "$FINAL_MIGRATION" "$DB" "$RELEASE/hub/migrations/008_final_product.sql" >/dev/null
+  stage FINAL_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_ATTACHMENT_ROOT=/var/lib/awh-hub/attachments /usr/bin/php "$FINAL_MIGRATION" "$DB" >/dev/null
+  stage FINAL_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_ATTACHMENT_ROOT=/var/lib/awh-hub/attachments /usr/bin/php "$FINAL_MIGRATION" "$DB" >/dev/null
   test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 9
   test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm9-final-product' AND schema_version = 9;")" = 1
   stage FINAL_MIGRATION_VERIFIED
@@ -271,8 +271,8 @@ elif test "$FOUNDING_MEMORY" = 1; then
   test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm8-unified-workspace' AND schema_version = 8;")" = 1
   stage UNIFIED_MIGRATION_VERIFIED
   stage ATTACHMENT_STORAGE_READY; sudo install -d -o awh-hub -g awh-hub -m 0750 /var/lib/awh-hub/attachments; sudo -u awh-hub test -w /var/lib/awh-hub/attachments
-  stage FINAL_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_ATTACHMENT_ROOT=/var/lib/awh-hub/attachments /usr/bin/php "$FINAL_MIGRATION" "$DB" "$RELEASE/hub/migrations/008_final_product.sql" >/dev/null
-  stage FINAL_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_ATTACHMENT_ROOT=/var/lib/awh-hub/attachments /usr/bin/php "$FINAL_MIGRATION" "$DB" "$RELEASE/hub/migrations/008_final_product.sql" >/dev/null
+  stage FINAL_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_ATTACHMENT_ROOT=/var/lib/awh-hub/attachments /usr/bin/php "$FINAL_MIGRATION" "$DB" >/dev/null
+  stage FINAL_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_ATTACHMENT_ROOT=/var/lib/awh-hub/attachments /usr/bin/php "$FINAL_MIGRATION" "$DB" >/dev/null
   test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 9
   test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm9-final-product' AND schema_version = 9;")" = 1
   stage FINAL_MIGRATION_VERIFIED
@@ -305,8 +305,8 @@ elif test "$FINAL_PRODUCT" = 1; then
   test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm8-unified-workspace' AND schema_version = 8;")" = 1
   stage UNIFIED_MIGRATION_VERIFIED
   stage ATTACHMENT_STORAGE_READY; sudo install -d -o awh-hub -g awh-hub -m 0750 /var/lib/awh-hub/attachments; sudo -u awh-hub test -w /var/lib/awh-hub/attachments
-  stage FINAL_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_ATTACHMENT_ROOT=/var/lib/awh-hub/attachments /usr/bin/php "$FINAL_MIGRATION" "$DB" "$RELEASE/hub/migrations/008_final_product.sql" >/dev/null
-  stage FINAL_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_ATTACHMENT_ROOT=/var/lib/awh-hub/attachments /usr/bin/php "$FINAL_MIGRATION" "$DB" "$RELEASE/hub/migrations/008_final_product.sql" >/dev/null
+  stage FINAL_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_ATTACHMENT_ROOT=/var/lib/awh-hub/attachments /usr/bin/php "$FINAL_MIGRATION" "$DB" >/dev/null
+  stage FINAL_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_ATTACHMENT_ROOT=/var/lib/awh-hub/attachments /usr/bin/php "$FINAL_MIGRATION" "$DB" >/dev/null
   test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 9
   test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm9-final-product' AND schema_version = 9;")" = 1
   test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok
