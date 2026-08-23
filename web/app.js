@@ -53,7 +53,11 @@ import {
     return providerState || taskLabels[task?.state] || 'กำลังอัปเดต';
   }
   function stateClass(task) { return task?.state === 'COMPLETED' ? 'completed' : task?.state === 'FAILED' ? 'failed' : task?.state === 'WAITING_FOR_APPROVAL' ? 'approval' : ''; }
-  function progressText(task) { const progress = Number.isInteger(task?.progress) ? task.progress : 0; const raw = typeof task?.lastEvent?.message === 'string' ? task.lastEvent.message : ''; const event = /[ก-๙]/u.test(raw) ? raw : (task?.execution?.executorKind === 'VPS' && task?.state === 'RUNNING' ? 'AWH Server กำลังประมวลผล' : stateText(task)); return `${event} · ${progress}%`; }
+  function progressText(task) {
+    const raw = typeof task?.lastEvent?.message === 'string' ? task.lastEvent.message.trim() : '';
+    if (/[ก-๙]/u.test(raw)) return raw;
+    return task?.execution?.executorKind === 'VPS' && task?.state === 'RUNNING' ? 'AWH กำลังทำงานบนระบบกลาง' : stateText(task);
+  }
 
   function size(bytes) { if (!Number.isFinite(bytes) || bytes < 0) return ''; if (bytes < 1024) return `${bytes} B`; if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`; return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; }
   function renderPendingAttachments() {
@@ -397,7 +401,11 @@ import {
       chip.textContent = turn.kind === 'approval' ? 'ต้องอนุมัติ' : turn.kind === 'result' ? 'เสร็จแล้ว' : turn.kind === 'failure' ? 'ต้องตรวจสอบ' : task ? stateText(task) : 'AWH';
       const time = document.createElement('span'); time.textContent = date(turn.createdAt);
       meta.append(chip, time); response.append(meta, body);
-      if (task && !['COMPLETED','FAILED','CANCELLED'].includes(task.state)) { const progressRow = document.createElement('div'); progressRow.className = 'task-progress-row'; const bar = document.createElement('progress'); bar.max = 100; bar.value = Number.isInteger(task.progress) ? task.progress : 0; const text = document.createElement('span'); text.textContent = progressText(task); progressRow.append(bar, text); response.append(progressRow); }
+      if (task && !['COMPLETED','FAILED','CANCELLED'].includes(task.state)) {
+        const progressRow = document.createElement('div'); progressRow.className = 'task-progress-row';
+        const bar = document.createElement('progress'); bar.max = 100; bar.value = Number.isInteger(task.progress) ? task.progress : 0; bar.setAttribute('aria-label', progressText(task));
+        const text = document.createElement('span'); text.textContent = progressText(task); progressRow.append(bar, text); response.append(progressRow);
+      }
       if (task) {
         const actions = renderApproval(task, approvals) || renderCancellation(task); if (actions) response.append(actions);
         const artifacts = artifactsByTask.get(task.taskId) || [];
