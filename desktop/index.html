@@ -16,10 +16,10 @@
       </div>
       <nav aria-label="AWH primary navigation">
         <button class="nav active" data-section="autopilot">Work</button>
-        <button class="nav" data-section="overview">เริ่มต้น</button>
+        <button class="nav" data-section="overview">หน้าแรก</button>
         <button class="nav" data-section="projects">Projects</button>
         <button class="nav" data-section="artifacts">Results</button>
-        <button class="nav" data-section="enrollment">Devices</button>
+        <button class="nav" data-section="enrollment">อุปกรณ์</button>
         <details class="advanced-nav"><summary>Advanced</summary>
           <button class="nav" data-section="memory">Project Memory</button>
           <button class="nav" data-section="git">Git</button>
@@ -87,33 +87,32 @@
 
       <section id="section-enrollment" class="section">
         <div class="card narrow">
-          <div class="card-head"><div><p class="eyebrow">M3E SECURE DEVICE ENROLLMENT</p><h2>Device Enrollment</h2></div><span id="enrollment-state" class="badge">NOT ENROLLED</span></div>
-          <p id="enrollment-message" class="muted">กำลังตรวจสถานะ...</p>
+          <div class="card-head"><div><p class="eyebrow">YOUR DEVICE</p><h2>อุปกรณ์นี้</h2></div><span id="enrollment-state" class="badge">NOT ENROLLED</span></div>
+          <p id="enrollment-message" class="muted">กำลังตรวจว่า AWH Desktop พร้อมเชื่อมต่อหรือไม่…</p>
           <dl class="kv">
-            <dt>Hub</dt><dd id="enrollment-hub">—</dd>
-            <dt>Device name</dt><dd id="enrollment-device-name">—</dd>
-            <dt>Device ID</dt><dd id="enrollment-device-id" class="mono">—</dd>
-            <dt>Platform</dt><dd id="enrollment-platform">—</dd>
+            <dt>AWH</dt><dd id="enrollment-hub">—</dd>
+            <dt>ชื่ออุปกรณ์</dt><dd id="enrollment-device-name">—</dd>
+            <dt>ระบบ</dt><dd id="enrollment-platform">—</dd>
           </dl>
           <div id="enrollment-owner-tools" class="owner-tools">
-            <div class="card-head"><div><h3>เชื่อมต่อคอมพิวเตอร์เครื่องใหม่</h3><p class="muted">สร้างรหัสชั่วคราวสำหรับเครื่องใหม่หลังยืนยันว่าเครื่องนี้ลงทะเบียนแล้ว</p></div></div>
-            <button id="enrollment-issue-pairing" class="btn secondary" disabled>สร้างรหัสเชื่อมต่อ</button>
+            <div class="card-head"><div><h3>เพิ่มคอมพิวเตอร์เครื่องใหม่</h3><p class="muted">สร้างรหัสชั่วคราวเฉพาะเมื่อคุณกำลังเชื่อมต่อ AWH Desktop เครื่องใหม่</p></div></div>
+            <button id="enrollment-issue-pairing" class="btn secondary" disabled>สร้างรหัสสำหรับเครื่องใหม่</button>
             <div id="enrollment-pairing-result" class="pairing-result" hidden>
-              <p class="eyebrow">รหัสสำหรับเครื่องใหม่</p>
+              <p class="eyebrow">รหัสชั่วคราวสำหรับเครื่องใหม่</p>
               <strong id="enrollment-pairing-code" class="mono pairing-code"></strong>
               <p id="enrollment-pairing-expiry" class="muted"></p>
               <p id="enrollment-pairing-scope" class="muted"></p>
-              <p class="muted">นำรหัสนี้ไปกรอกใน AWH บนเครื่องใหม่ รหัสจะหายจากหน้าจอเมื่อหมดอายุ</p>
+              <p class="muted">นำรหัสนี้ไปกรอกใน AWH Desktop เครื่องใหม่ แล้วรหัสจะหายจากหน้าจอเมื่อหมดอายุ</p>
             </div>
           </div>
-          <label class="toggle-row"><span><strong>Pairing code</strong><small>วางรหัสอายุสั้นที่เจ้าของออกให้</small></span><input id="enrollment-code" type="text" inputmode="text" autocomplete="off" maxlength="128" placeholder="pairing code" /></label>
+          <label class="toggle-row"><span><strong>เชื่อมต่อกับบัญชี AWH</strong><small>วางรหัสชั่วคราวที่สร้างจากอุปกรณ์ AWH เดิมของคุณ</small></span><input id="enrollment-code" type="text" inputmode="text" autocomplete="off" maxlength="128" placeholder="รหัสชั่วคราว" /></label>
           <div class="actions">
-            <button id="enrollment-pair" class="btn" disabled>Pair this device</button>
-            <button id="enrollment-rotate" class="btn secondary" disabled>Rotate credential</button>
-            <button id="enrollment-revoke" class="btn danger" disabled>Revoke device credential</button>
+            <button id="enrollment-pair" class="btn" disabled>เชื่อมต่ออุปกรณ์นี้</button>
+            <button id="enrollment-rotate" class="btn secondary" disabled>ต่ออายุการเชื่อมต่อ</button>
+            <button id="enrollment-revoke" class="btn danger" disabled>ยกเลิกการเชื่อมต่ออุปกรณ์นี้</button>
           </div>
-          <div class="owner-tools"><div class="card-head"><div><h3>Worker พร้อมทำงาน</h3><p id="worker-summary" class="muted">ตรวจสถานะ worker จาก Hub เมื่อเปิดใช้ control plane</p></div><span id="worker-state" class="badge">OFF</span></div><div class="actions"><button id="worker-run-once" class="btn secondary small">ตรวจงานใหม่</button></div></div>
-          <p class="muted remote-note">AWH จะเก็บ credential เฉพาะใน secure OS credential store ของเครื่องนี้ ไม่แสดง credential ในหน้าจอ Browser หรือ Project Memory</p>
+          <div class="owner-tools"><div class="card-head"><div><h3>พร้อมช่วยทำงาน</h3><p id="worker-summary" class="muted">AWH จะรับงานที่เหมาะกับอุปกรณ์นี้โดยอัตโนมัติเมื่อคุณเปิดใช้งานการทำงาน</p></div><span id="worker-state" class="badge">OFF</span></div><div class="actions"><button id="worker-run-once" class="btn secondary small">ตรวจงานที่รออยู่</button></div></div>
+          <details class="advanced-nav"><summary>รายละเอียดการเชื่อมต่อ</summary><dl class="kv"><dt>รหัสอุปกรณ์</dt><dd id="enrollment-device-id" class="mono">—</dd></dl><p class="muted remote-note">AWH เก็บ credential เฉพาะใน secure OS credential store ของเครื่องนี้ และไม่แสดงใน Browser หรือ Project Memory</p></details>
         </div>
       </section>
 

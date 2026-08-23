@@ -69,10 +69,10 @@ test('desktop HTML has a restrictive CSP, remote controls and no inline script',
   assert.match(html, /id="enrollment-code"/);
   assert.match(html, /id="enrollment-issue-pairing"/);
   assert.match(html, /id="perm-worker"/);
-  assert.match(html, /สร้างรหัสเชื่อมต่อ/);
-  assert.match(html, /Pair this device/);
-  assert.match(html, /Rotate credential/);
-  assert.match(html, /Revoke device credential/);
+  assert.match(html, /สร้างรหัสสำหรับเครื่องใหม่/);
+  assert.match(html, /เชื่อมต่ออุปกรณ์นี้/);
+  assert.match(html, /ต่ออายุการเชื่อมต่อ/);
+  assert.match(html, /ยกเลิกการเชื่อมต่ออุปกรณ์นี้/);
   assert.match(html, /Register Existing Project/);
   assert.match(html, /Initialize as AWH Project/);
   assert.match(html, /Project Memory/);

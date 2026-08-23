@@ -158,11 +158,11 @@ function renderEnrollment(data) {
   const enrolled = data?.enrolled === true;
   status.textContent = data?.ok === false ? 'UNAVAILABLE' : enrolled ? 'ENROLLED' : 'NOT ENROLLED';
   status.className = `badge ${data?.ok === false ? 'danger' : enrolled ? 'success' : ''}`.trim();
-  $('enrollment-hub').textContent = connected ? 'API configured — connection is used only for explicit actions' : 'Hub API not configured';
+  $('enrollment-hub').textContent = connected ? 'พร้อมเชื่อมต่อเมื่อคุณสั่งงาน' : 'ยังไม่ได้ตั้งค่า AWH Hub';
   $('enrollment-device-name').textContent = data?.displayName || '—';
   $('enrollment-device-id').textContent = data?.deviceId || '—';
   $('enrollment-platform').textContent = data?.platform || '—';
-  $('enrollment-message').textContent = data?.ok === false ? data.message : enrolled ? 'This device has an active local credential.' : 'Enter a short-lived pairing code issued by the owner.';
+  $('enrollment-message').textContent = data?.ok === false ? data.message : enrolled ? 'อุปกรณ์นี้เชื่อมต่อกับ AWH แล้วและใช้สิทธิ์เฉพาะที่ได้รับอนุญาต' : 'เชื่อมต่อด้วยรหัสชั่วคราวจากอุปกรณ์ AWH เดิมของคุณ';
   $('enrollment-pair').disabled = !connected || enrolled;
   $('enrollment-issue-pairing').disabled = !connected || !enrolled;
   $('enrollment-rotate').disabled = !connected || !enrolled;
@@ -172,7 +172,7 @@ function renderEnrollment(data) {
 
 async function refreshEnrollment() {
   try { renderEnrollment(await window.artAgent.getEnrollmentState()); }
-  catch (error) { renderEnrollment({ ok: false, message: 'Device enrollment is unavailable' }); }
+  catch (error) { renderEnrollment({ ok: false, message: 'ยังตรวจสถานะอุปกรณ์นี้ไม่ได้ ลองรีเฟรชอีกครั้ง' }); }
 }
 
 async function runEnrollmentAction(action) {

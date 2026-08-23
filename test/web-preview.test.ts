@@ -157,6 +157,36 @@ test('CONTROL work composer keeps attachment previews, camera-capable file picki
   assert.doesNotMatch(`${html}\n${app}\n${adapter}`, /workspacePath|absolutePath|\/Users\/|[A-Za-z]:\\\\/);
 });
 
+test('owner self-service is a focused settings hub whose independent projections cannot hide AI setup', async () => {
+  const [html, app, css, fixture] = await Promise.all([
+    readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
+    readFile(join(ROOT, 'web', 'app.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'styles.css'), 'utf8'),
+    readFile(join(ROOT, 'scripts', 'qa', 'control-web-fixture.mjs'), 'utf8'),
+  ]);
+  for (const section of ['start', 'ai', 'account', 'devices', 'data', 'people']) assert.match(html, new RegExp(`data-settings-tab="${section}"`));
+  assert.match(html, /id="settings-panel-ai"/);
+  assert.match(app, /id="provider-api-key"/);
+  assert.match(app, /provider-credential-settings/);
+  assert.match(html, /id="settings-worker-list"/);
+  assert.match(html, /id="desktop-release-list"/);
+  assert.match(html, /id="memory-host"/);
+  assert.match(html, /id="my-awh-host"/);
+  assert.match(app, /Promise\.allSettled\(requests\)/);
+  assert.match(app, /function showSettingsSection/);
+  assert.match(app, /const host = \$\('memory-host'\)/);
+  assert.match(app, /const host = \$\('my-awh-host'\)/);
+  assert.match(app, /policy\.insertBefore\(models, enabledRow\)/);
+  assert.match(app, /policy\.before\(section\)/);
+  assert.match(app, /AWH deliberately refuses/);
+  assert.doesNotMatch(app, /schema v\$\{database\.schemaVersion/);
+  assert.match(css, /\.settings-tabs/);
+  assert.match(css, /\.settings-action-grid/);
+  assert.match(css, /\.settings-action-grid \{ grid-template-columns: 1fr;/);
+  for (const route of ['/api/v1/control/provider', '/api/v1/control/owner/status', '/api/v1/auth/profile', '/api/v1/control/memory']) assert.match(fixture, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.doesNotMatch(`${html}\n${app}\n${fixture}`, /localStorage|sessionStorage|document\.cookie|Authorization|Bearer\s+/);
+});
+
 test('CONTROL API adapter permits the bounded query routes used by Work while rejecting non-relative or traversal paths', () => {
   const projectId = '11111111-1111-4111-8111-111111111111';
   assert.equal(safeApiPath(`/api/v1/control/conversations?projectId=${projectId}&q=%E0%B8%97%E0%B8%94%E0%B8%AA%E0%B8%AD%E0%B8%9A`), `/api/v1/control/conversations?projectId=${projectId}&q=%E0%B8%97%E0%B8%94%E0%B8%AA%E0%B8%AD%E0%B8%9A`);

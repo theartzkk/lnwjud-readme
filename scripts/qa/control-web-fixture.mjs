@@ -85,10 +85,18 @@ const server = createServer(async (request, response) => {
     if (url.pathname === '/api/v1/control/session') return send(response, 200, { csrfToken: csrf, expiresAt: '2026-12-31T00:00:00.000Z', role: 'OWNER' });
     if (url.pathname === '/api/v1/control/projects') return send(response, 200, { projects: [project] });
     if (url.pathname === '/api/v1/control/tasks') return send(response, 200, { tasks });
-    if (url.pathname === '/api/v1/control/workers') return send(response, 200, { workers: [] });
+    if (url.pathname === '/api/v1/control/workers') return send(response, 200, { workers: [{ deviceId: '66666666-6666-4666-8666-666666666666', displayName: 'AWH Desktop ตัวอย่าง', platform: 'darwin', arch: 'arm64', state: 'READY', lastSeenAt: now, boundProjectCount: 1, capabilities: ['project:context'] }] });
     if (url.pathname === '/api/v1/control/results') return send(response, 200, { results: [] });
     if (url.pathname === '/api/v1/control/artifacts') return send(response, 200, { artifacts: [] });
     if (url.pathname === '/api/v1/control/approvals') return send(response, 200, { approvals: [] });
+    if (url.pathname === '/api/v1/control/settings' && request.method === 'GET') return send(response, 200, { settings: { productName: { value: 'Art’s Workspace Hub' }, shortName: { value: 'AWH' }, tagline: { value: 'Your Projects. One Workspace. Anywhere.' }, welcome: { value: 'เริ่มคุยกับ Art’s Workspace Hub ได้เลย' }, accent: { value: '#ff8a36' }, founderName: { value: 'Art' }, founderCredit: { value: 'Founder · Product Creator · System Concept' } } });
+    if (url.pathname === '/api/v1/control/provider' && request.method === 'GET') return send(response, 200, { schemaVersion: 3, provider: { enabled: false, available: false, keyConfigured: false, credential: { lastTestStatus: 'NOT_TESTED' }, budget: { usedMicrounits: 0, monthlyMicrounits: 0, remainingMicrounits: 0, warningMicrounits: 0 }, rates: { inputMicrounitsPerMillion: 0, outputMicrounitsPerMillion: 0 }, models: { fast: 'gpt-5.4-mini', balanced: 'gpt-5.4', strong: 'gpt-5.4' }, usageByProject: [] } });
+    if (url.pathname === '/api/v1/control/provider/projects/' + project.projectId && request.method === 'GET') return send(response, 200, { schemaVersion: 1, projectId: project.projectId, routing: { routingMode: 'AUTO' } });
+    if (url.pathname === '/api/v1/auth/people' && request.method === 'GET') return send(response, 200, { people: [{ userId: '77777777-7777-4777-8777-777777777777', displayName: 'Art', role: 'OWNER', status: 'ACTIVE' }] });
+    if (url.pathname === '/api/v1/auth/profile' && request.method === 'GET') return send(response, 200, { identity: { displayName: 'Art' } });
+    if (url.pathname === '/api/v1/control/owner/status' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, product: { founderName: 'Art', founderCredit: 'Founder · Product Creator · System Concept' }, database: { state: 'HEALTHY' }, recovery: { state: 'READY' }, backup: { state: 'DEPLOYMENT_MANAGED' }, workers: [{ displayName: 'AWH Desktop ตัวอย่าง', state: 'READY', boundProjectCount: 1 }] });
+    if (url.pathname === '/api/v1/control/memory' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, memories: [] });
+    if (url.pathname === '/api/v1/control/memory/imports' && request.method === 'GET') return send(response, 200, { imports: [] });
     if (url.pathname === '/api/v1/control/conversations' && request.method === 'GET') return send(response, 200, { schemaVersion: 2, conversations: conversations.map(summary) });
     if (url.pathname === '/api/v1/control/conversations/new' && request.method === 'POST') {
       if (!requireCsrf(request, response)) return;
