@@ -54,6 +54,8 @@ test('web build is a generic authenticated Control shell, never a serialized pro
   assert.match(html, /app\.js\?release=fixture-control-sha/);
   assert.match(app, /hub-read-adapter\.js\?release=fixture-control-sha/);
   assert.match(adapter, /control-plane-adapter\.js\?release=fixture-control-sha/);
+  assert.match(html, /downloads\/AWH-macOS-x64\.zip/);
+  assert.match(html, /downloads\/AWH-Windows-x64\.zip/);
 });
 
 test('one canonical dark canvas is used by html, body, and the application shell', async () => {

@@ -234,3 +234,5 @@ pre { overflow: auto; padding: 12px; border: 1px solid var(--line); border-radiu
 .person-access-editor { display: grid; gap: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
 .person-projects { display: grid; gap: 6px; }
 @media (max-width: 640px) { .inline-form { grid-template-columns: 1fr; } .task-progress-row { grid-template-columns: 1fr; } }
+
+.login-downloads{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);display:grid;gap:6px;color:var(--muted);font-size:.78rem}.login-downloads>span{font-weight:650}.login-download-actions{display:flex;gap:7px;flex-wrap:wrap}.login-download-actions a{display:inline-flex;align-items:center;justify-content:center;min-height:30px;padding:5px 10px;border:1px solid var(--line);border-radius:9px;color:var(--text);background:var(--surface-soft);text-decoration:none;font-size:.78rem;font-weight:650}.login-download-actions a:hover,.login-download-actions a:focus-visible{border-color:var(--accent);outline:none}.login-downloads small{font-size:.7rem}
