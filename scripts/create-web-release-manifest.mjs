@@ -8,6 +8,7 @@ const root = resolve(process.cwd());
 const input = resolve(root, process.argv[2] ?? 'dist-web');
 const output = resolve(root, process.argv[3] ?? join(input, 'release.json'));
 const files = ['index.html', 'styles.css', 'app.js', 'hub-read-adapter.js', 'control-plane-adapter.js', 'manifest.webmanifest', 'sw.js', 'logo-256x256.png', 'web-config.json', 'data.json'];
+const optionalFiles = ['downloads/AWH-macOS-x64.zip', 'downloads/AWH-Windows-x64.zip', 'downloads/SHA256SUMS.txt'];
 const releaseId = process.env.AWH_RELEASE_ID ?? new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
 
 const entries = [];
@@ -17,6 +18,17 @@ for (const name of files) {
   if (!info.isFile() || info.isSymbolicLink()) throw new Error(`Release file is not a regular file: ${name}`);
   const content = await readFile(path);
   entries.push({ path: name, sha256: createHash('sha256').update(content).digest('hex'), sizeBytes: content.byteLength });
+}
+for (const name of optionalFiles) {
+  const path = join(input, name);
+  try {
+    const info = await lstat(path);
+    if (!info.isFile() || info.isSymbolicLink()) throw new Error(`Release file is not a regular file: ${name}`);
+    const content = await readFile(path);
+    entries.push({ path: name, sha256: createHash('sha256').update(content).digest('hex'), sizeBytes: content.byteLength });
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
 }
 const mode = JSON.parse(await readFile(join(input, 'web-config.json'), 'utf8')).mode;
 if (!['STATIC_PREVIEW', 'HUB_READ', 'CONTROL'].includes(mode)) throw new Error('Web release mode is invalid');

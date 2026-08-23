@@ -326,7 +326,8 @@ async function runProjectAction(action, successMessage) {
 
 function render(data) {
   overview = data;
-  $('version').textContent = `v${data.version} • local`;
+  const hubAuthority = typeof data.hubAuthority === 'string' && data.hubAuthority ? new URL(data.hubAuthority).hostname : 'AWH Hub';
+  $('version').textContent = `v${data.version} • Hub กลาง ${hubAuthority}`;
   $('home-project-summary').textContent = data.workspace && data.workspace !== 'not configured' ? 'โปรเจกต์ที่เลือกพร้อมให้คุยและทำงานต่อได้จาก Work' : 'ยังไม่มีโปรเจกต์ที่เลือก — เริ่มจากเลือกหรือเพิ่มโปรเจกต์';
   $('git-state').textContent = data.git.ok ? 'READY' : 'CHECK';
   $('git-state').className = `badge ${data.git.ok ? 'success' : 'danger'}`;

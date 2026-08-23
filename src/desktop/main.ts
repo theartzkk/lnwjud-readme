@@ -530,6 +530,7 @@ async function runtimeOverview() {
   return {
     name: PRODUCT.productName,
     version: VERSION,
+    hubAuthority: config.hubApiBase,
     workspace: workspace ?? (workspaceConfigured ? config.workspace : 'ยังไม่ได้เลือก workspace'),
     dataDir: config.dataDir,
     permissions: {

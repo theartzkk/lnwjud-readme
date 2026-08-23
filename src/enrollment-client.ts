@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { BOOTSTRAP_NONCE_CREDENTIAL_KEY, DEVICE_TOKEN_CREDENTIAL_KEY, CredentialStore } from './credential-store.js';
 import { DeviceIdentity, loadOrCreateDeviceIdentity } from './device-identity.js';
+import { RELEASE_VERSION } from './version.js';
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -99,7 +100,7 @@ export class EnrollmentClient {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir);
     if (typeof pairingCode !== 'string' || !/^[A-Za-z0-9_-]{32,128}$/.test(pairingCode)) throw new EnrollmentClientError('Pairing code is invalid', 'PAIRING_CODE_INVALID');
     const response = await this.post('/enrollment/devices', {
-      schemaVersion: 1, pairingCode, deviceId: identity.deviceId, displayName: identity.displayName, platform: identity.platform, arch: identity.arch, appVersion: 'local',
+      schemaVersion: 1, pairingCode, deviceId: identity.deviceId, displayName: identity.displayName, platform: identity.platform, arch: identity.arch, appVersion: RELEASE_VERSION,
     });
     if (typeof response.accessToken !== 'string' || typeof response.expiresAt !== 'string') throw new EnrollmentClientError('Enrollment response did not contain a credential', 'RESPONSE_INVALID');
     await this.credentialStore.set(DEVICE_TOKEN_CREDENTIAL_KEY, response.accessToken);

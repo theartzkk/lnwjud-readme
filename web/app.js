@@ -230,14 +230,32 @@ import {
   }
 
   function workerStateLabel(worker) { return worker.state === 'READY' ? 'พร้อมทำงาน' : worker.state === 'WORKING' ? 'กำลังทำงาน' : 'ออฟไลน์'; }
-  function renderDesktopDelivery() {
+  async function loadDesktopRelease() {
     const list = $('desktop-release-list'); if (!list) return;
-    list.replaceChildren();
-    // The deployment carries only source/web assets. AWH deliberately refuses
-    // to invent a download link until a verified, checksummed desktop package
-    // has been published by the distribution pipeline.
-    message('desktop-release-status', 'ยังไม่มี AWH Desktop release ที่เผยแพร่พร้อม checksum จึงไม่แสดงลิงก์ดาวน์โหลดที่ตรวจสอบไม่ได้');
-    const note = document.createElement('div'); note.className = 'session-item'; note.textContent = 'เมื่อมี release ที่ยืนยันแล้ว AWH จะแสดงตัวเลือก Mac Apple Silicon, Mac Intel หรือ Windows ที่ตรงกับเครื่องของคุณที่นี่'; list.append(note);
+    try {
+      const response = await fetch('./release.json', { credentials: 'same-origin', cache: 'no-store' });
+      if (!response.ok) throw new Error('release metadata unavailable');
+      const manifest = await response.json();
+      if (!manifest || typeof manifest.releaseId !== 'string' || !Array.isArray(manifest.files)) throw new Error('release metadata invalid');
+      const files = new Map(manifest.files.filter((entry) => entry && typeof entry.path === 'string' && typeof entry.sha256 === 'string' && Number.isSafeInteger(entry.sizeBytes)).map((entry) => [entry.path, entry]));
+      const packages = [['downloads/AWH-macOS-x64.zip', 'macOS Intel'], ['downloads/AWH-Windows-x64.zip', 'Windows x64']].filter(([path]) => files.has(path));
+      list.replaceChildren();
+      if (!packages.length) throw new Error('verified desktop packages unavailable');
+      message('desktop-release-status', `release ${manifest.releaseId} · เลือก installer ที่ตรวจสอบ checksum แล้ว`);
+      for (const [path, , platform] of [['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']]) {
+        const link = document.querySelector(`[data-desktop-package="${platform}"]`); if (link && files.has(path)) { link.href = `./${path}`; link.dataset.release = manifest.releaseId; }
+      }
+      for (const [path, label] of packages) {
+        const entry = files.get(path); const item = document.createElement('div'); item.className = 'session-item';
+        const title = document.createElement('strong'); title.textContent = label;
+        const detail = document.createElement('span'); detail.textContent = `${size(entry.sizeBytes)} · SHA-256 ${entry.sha256.slice(0, 12)}…`;
+        const link = document.createElement('a'); link.href = `./${path}`; link.textContent = `ดาวน์โหลด ${label}`; link.setAttribute('download', '');
+        item.append(title, detail, link); list.append(item);
+      }
+    } catch {
+      list.replaceChildren(); message('desktop-release-status', 'ยังไม่มี installer ที่ตรวจสอบยืนยันได้ใน release นี้');
+      const note = document.createElement('div'); note.className = 'session-item'; note.textContent = 'AWH จะไม่แสดงลิงก์ที่ตรวจสอบไม่ได้'; list.append(note);
+    }
   }
   function renderSettingsOverview() {
     const provider = state.provider || {}; const credential = provider.credential || {}; const workers = state.ownerStatus?.workers || state.control?.workers || [];
@@ -251,7 +269,7 @@ import {
     }
     const online = workers.filter((worker) => worker?.online || ['READY', 'WORKING', 'ONLINE'].includes(worker?.state)).length;
     message('settings-worker-message', online > 0 ? `มีอุปกรณ์ทำงานพร้อมรับงาน ${online} เครื่อง` : 'เปิด AWH Desktop บนอุปกรณ์ที่ผูกกับโปรเจกต์เพื่อรับงานที่ต้องใช้เครื่องมือท้องถิ่น');
-    renderDesktopDelivery();
+    void loadDesktopRelease();
     const readiness = state.systemReadiness;
     if (readiness) {
       const checks = readiness.checks || {};
