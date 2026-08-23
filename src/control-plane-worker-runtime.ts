@@ -1,14 +1,15 @@
 import { createHash } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { AutopilotRunner, detectLocalCapabilities } from './autopilot.js';
-import { runCodexGoal } from './codex.js';
+import { codexStatus, runCodexGoal } from './codex.js';
 import { loadOrCreateDeviceIdentity } from './device-identity.js';
 import { createCheckpoint } from './changes.js';
 import { createContinuityCheckpoint } from './continuity.js';
 import { buildProjectContext, resolveRegisteredProject, PROJECT_MEMORY_FILES } from './project-registry.js';
 import { ControlPlaneWorkerClient, type WorkerTask } from './control-plane-worker-client.js';
 import { createUnsyncedWorkspaceCheckpoint, createWorkspaceWipCheckpoint, reconstructWorkspaceWip } from './workspace-continuity.js';
+import { createVaultCandidateArchive } from './vault-transfer.js';
 
 const MUTATION_GOAL = /(?:\b(?:fix|edit|change|modify|write|render|publish|deploy|delete|remove)\b|แก้|เพิ่ม|ลบ|สร้าง|เรนเดอร์|เผยแพร่|deploy)/iu;
 
@@ -53,13 +54,15 @@ export function buildCodexTaskInstruction(ownerProtocol: string, goal: string): 
   ].join('\n\n');
 }
 
-export async function workerCapabilities(dataDir: string): Promise<string[]> {
+export async function workerCapabilities(dataDir: string, allowCodex = true): Promise<string[]> {
   const local = await detectLocalCapabilities(dataDir).catch(() => ({ git: false, node: false, php: false, ffmpeg: false, remotion: false, browsers: [] }));
+  const codex = allowCodex ? await codexStatus(dataDir).catch(() => ({ available: false, version: null })) : { available: false, version: null };
   return [
     'autopilot:local', 'project:context', 'qa:bounded',
     ...(local.git ? ['git:read'] : []), ...(local.node ? ['node'] : []),
     ...(local.php ? ['php:lint'] : []), ...(local.ffmpeg ? ['ffmpeg:probe'] : []),
     ...(local.remotion ? ['remotion'] : []),
+    ...(codex.available ? ['codex:cli'] : []),
   ].slice(0, 24);
 }
 
@@ -73,7 +76,7 @@ export class ControlPlaneWorkerRuntime {
     this.running = true;
     const identity = await loadOrCreateDeviceIdentity(this.options.dataDir);
     try {
-      const capabilities = await workerCapabilities(this.options.dataDir);
+      const capabilities = await workerCapabilities(this.options.dataDir, this.options.allowCodex);
       await this.client.heartbeat(capabilities, 'READY');
       const task = await this.client.claim();
       if (!task) return { status: 'IDLE', deviceId: identity.deviceId };
@@ -82,6 +85,7 @@ export class ControlPlaneWorkerRuntime {
   }
 
   private async execute(task: WorkerTask, deviceId: string, capabilities: string[]): Promise<WorkerRunResult> {
+    if (task.execution?.executorKind === 'CODEX' && task.execution.requiredCapability === 'codex:cli' && task.execution.vaultRevisionId !== null) return this.executeCentralCodex(task, capabilities);
     // A bounded lease is what prevents two workers from mutating one task. A
     // Codex run can legitimately exceed the initial five-minute lease, so the
     // already-authenticated worker renews it while it owns the task. Failure
@@ -207,6 +211,39 @@ export class ControlPlaneWorkerRuntime {
       await this.safeUpdate(task, 'FAILED', 0, 'Worker execution failed safely', 'WORKER_EXECUTION_FAILED');
       return { status: 'FAILED', taskId: task.taskId, projectId: task.projectId, reason: boundedSummary(error instanceof Error ? error.message : 'WORKER_EXECUTION_FAILED') };
     } finally { clearInterval(leaseHeartbeat); }
+  }
+
+  /** Central Vault tasks deliberately bypass device-local project bindings.
+   * The worker receives only an immutable archive under its active execution
+   * lease, runs Codex in a disposable directory, and returns one candidate
+   * archive for Hub-side validation/approval. */
+  private async executeCentralCodex(task: WorkerTask, capabilities: string[]): Promise<WorkerRunResult> {
+    const execution = task.execution;
+    if (!execution) return { status: 'FAILED', taskId: task.taskId, projectId: task.projectId, reason: 'CENTRAL_EXECUTION_INVALID' };
+    if (!this.options.allowExec || !this.options.allowWrite || !this.options.allowCodex || !capabilities.includes('codex:cli')) {
+      await this.client.deferCentralExecution(execution.executionId, 'CODEX_UNAVAILABLE').catch(() => undefined);
+      return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason: 'CODEX_UNAVAILABLE' };
+    }
+    const root = join(this.options.dataDir, 'central-task-workspaces'); let workspace: string | null = null; let archive: string | null = null;
+    const heartbeat = setInterval(() => { void this.client.heartbeat(capabilities, 'WORKING').catch(() => undefined); }, 60_000); heartbeat.unref?.();
+    try {
+      const materialized = await this.client.materializeCentralExecutionWorkspace(execution.executionId, root); workspace = materialized.workspace;
+      if (materialized.taskId !== task.taskId || materialized.projectId !== task.projectId || materialized.vaultRevisionId !== execution.vaultRevisionId) throw new Error('CENTRAL_REVISION_MISMATCH');
+      await this.client.update(task.taskId, 'RUNNING', 20, 'Codex is working in an isolated AWH Vault workspace');
+      const codex = await runCodexGoal(workspace, `${materialized.ownerProtocol}\n\nCURRENT OWNER GOAL\n${task.goal}`, 'workspace-write');
+      if (codex.code !== 0) throw new Error('CODEX_EXECUTION_FAILED');
+      await this.client.update(task.taskId, 'QA', 70, 'AWH is verifying the candidate workspace before any promotion');
+      archive = join(root, `${execution.executionId}.candidate.zip`); await createVaultCandidateArchive(workspace, archive);
+      const result = await this.client.uploadCentralExecutionCandidate(execution.executionId, archive);
+      return result.state === 'WAITING_FOR_APPROVAL'
+        ? { status: 'WAITING_FOR_APPROVAL', taskId: task.taskId, projectId: task.projectId, reason: 'CANDIDATE_READY_FOR_APPROVAL' }
+        : { status: 'COMPLETED', taskId: task.taskId, projectId: task.projectId, artifact: null };
+    } catch (error) {
+      const reason = boundedSummary(error instanceof Error ? error.message : 'CODEX_EXECUTION_FAILED');
+      const code = /CODEX|CENTRAL_REVISION_MISMATCH/.test(reason) ? (reason.includes('MISMATCH') ? 'CENTRAL_REVISION_MISMATCH' : 'CODEX_EXECUTION_FAILED') : 'CENTRAL_WORKSPACE_FAILED';
+      await this.client.deferCentralExecution(execution.executionId, code).catch(() => undefined);
+      return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason: code };
+    } finally { clearInterval(heartbeat); if (archive !== null) await rm(archive, { force: true }).catch(() => undefined); if (workspace !== null) await rm(workspace, { recursive: true, force: true }).catch(() => undefined); }
   }
 
   private async safeUpdate(task: WorkerTask, state: 'WAITING_FOR_WORKER' | 'WAITING_FOR_APPROVAL' | 'FAILED', progress: number, message: string, result: string | null): Promise<void> {

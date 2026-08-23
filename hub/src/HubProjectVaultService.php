@@ -96,6 +96,30 @@ final class HubProjectVaultService
         }
     }
 
+    /** Captures a worker-produced candidate through the same safe ZIP policy
+     * used for project ingestion.  The worker never receives a Vault path and
+     * cannot promote this candidate itself. */
+    public function captureTaskArchive(string $projectId, string $archive, string $userId, string $taskId, string $expectedActiveRevision, ?string $now = null): array
+    {
+        $this->assertReady(); $projectId = self::uuid($projectId); $userId = self::uuid($userId); $taskId = self::uuid($taskId); $expected = self::uuid($expectedActiveRevision); $at = self::timestamp($now ?? gmdate('c')); $revisionId = self::uuidFromBytes(random_bytes(16));
+        $stored = $this->vault->ingestZip($projectId, $archive, $revisionId);
+        try {
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $q = $this->pdo->prepare('SELECT active_revision_id FROM control_project_vaults WHERE project_id = :project'); $q->execute(['project' => $projectId]); $active = $q->fetchColumn();
+            if (!is_string($active) || !hash_equals($expected, $active)) throw new HubProjectVaultException('Project source changed before this task candidate was captured', 'PROJECT_REVISION_CONFLICT');
+            $duplicate = $this->pdo->prepare('SELECT revision_id FROM control_project_vault_revisions WHERE project_id = :project AND content_sha256 = :hash'); $duplicate->execute(['project' => $projectId, 'hash' => $stored['contentSha256']]); $duplicateId = $duplicate->fetchColumn();
+            if (is_string($duplicateId)) { $this->pdo->exec('COMMIT'); $this->vault->removeRevision($projectId, $revisionId); return ['revisionId' => $duplicateId, 'contentSha256' => $stored['contentSha256'], 'contentBytes' => $stored['contentBytes'], 'fileCount' => $stored['fileCount'], 'parentRevisionId' => $expected, 'changed' => false]; }
+            $insert = $this->pdo->prepare("INSERT INTO control_project_vault_revisions(revision_id, project_id, parent_revision_id, content_sha256, manifest_json, content_bytes, file_count, origin_kind, created_by_user_id, created_by_device_id, task_id, state, created_at, promoted_at) VALUES(:id, :project, :parent, :hash, :manifest, :bytes, :files, 'TASK', :user, NULL, :task, 'CANDIDATE', :at, NULL)");
+            $insert->execute(['id' => $revisionId, 'project' => $projectId, 'parent' => $expected, 'hash' => $stored['contentSha256'], 'manifest' => $stored['manifestJson'], 'bytes' => $stored['contentBytes'], 'files' => $stored['fileCount'], 'user' => $userId, 'task' => $taskId, 'at' => $at]);
+            $this->pdo->prepare("UPDATE control_project_vaults SET sync_state = 'STALE', updated_at = :at WHERE project_id = :project")->execute(['at' => $at, 'project' => $projectId]);
+            $this->pdo->exec('COMMIT'); return ['revisionId' => $revisionId, 'contentSha256' => $stored['contentSha256'], 'contentBytes' => $stored['contentBytes'], 'fileCount' => $stored['fileCount'], 'parentRevisionId' => $expected, 'changed' => true];
+        } catch (Throwable $error) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack(); $this->vault->removeRevision($projectId, $revisionId);
+            if ($error instanceof HubProjectVaultException) throw $error;
+            throw new HubProjectVaultException('Task candidate could not be captured', 'PROJECT_VAULT_FAILED');
+        }
+    }
+
     public function rejectCandidate(string $projectId, string $revisionId, ?string $now = null): void
     {
         $this->assertReady(); $projectId = self::uuid($projectId); $revisionId = self::uuid($revisionId); $at = self::timestamp($now ?? gmdate('c')); $ownsTransaction = !$this->pdo->inTransaction();

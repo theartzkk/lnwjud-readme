@@ -208,6 +208,39 @@ final class HubProjectVault
         } catch (Throwable $error) { $this->removeDirectory($workspace); if ($error instanceof HubProjectVaultException) throw $error; throw new HubProjectVaultException('Task workspace could not be prepared', 'TASK_WORKSPACE_UNAVAILABLE'); }
     }
 
+    /**
+     * Builds a bounded, uncompressed ZIP of one immutable revision for a
+     * trusted executor.  The archive is an interchange format only: it never
+     * becomes a second source authority and it is created from the exact
+     * revision named by a leased task.
+     */
+    public function archive(string $projectId, string $revisionId, string $destination): array
+    {
+        $projectId = self::uuid($projectId); $revisionId = self::uuid($revisionId);
+        if (!class_exists('ZipArchive') || $destination === '' || str_contains($destination, "\0") || !str_starts_with($destination, '/') || file_exists($destination) || is_link($destination)) throw new HubProjectVaultException('Task archive is unavailable', 'TASK_WORKSPACE_UNAVAILABLE');
+        $source = $this->revisionDirectory($projectId, $revisionId); $directory = dirname($destination);
+        if (!is_dir($directory) || is_link($directory) || (((int) (@stat($directory)['mode'] ?? 0) & 0o022) !== 0)) throw new HubProjectVaultException('Task archive storage is unavailable', 'TASK_WORKSPACE_UNAVAILABLE');
+        $zip = new ZipArchive();
+        if ($zip->open($destination, ZipArchive::CREATE | ZipArchive::EXCL) !== true) throw new HubProjectVaultException('Task archive is unavailable', 'TASK_WORKSPACE_UNAVAILABLE');
+        try {
+            $count = 0; $bytes = 0;
+            foreach ($this->manifest($projectId, $revisionId) as $entry) {
+                $path = self::archivePath($entry['path']);
+                if ($path === null || self::sensitivePath($path) || !is_file($source . '/' . $path) || is_link($source . '/' . $path)) throw new HubProjectVaultException('Project revision is unsafe', 'PROJECT_VAULT_UNAVAILABLE');
+                if (!$zip->addFile($source . '/' . $path, $path) || !$zip->setCompressionName($path, ZipArchive::CM_STORE)) throw new HubProjectVaultException('Task archive could not be created', 'TASK_WORKSPACE_UNAVAILABLE');
+                $count++; $bytes += (int) $entry['sizeBytes'];
+            }
+            if ($count < 1 || $bytes > self::MAX_CONTENT_BYTES || !$zip->close()) throw new HubProjectVaultException('Task archive could not be created', 'TASK_WORKSPACE_UNAVAILABLE');
+            $archiveBytes = @filesize($destination); $sha = hash_file('sha256', $destination);
+            if (!is_int($archiveBytes) || $archiveBytes < 1 || $archiveBytes > self::MAX_ARCHIVE_BYTES || !is_string($sha) || !preg_match('/^[0-9a-f]{64}$/', $sha)) throw new HubProjectVaultException('Task archive could not be verified', 'TASK_WORKSPACE_UNAVAILABLE');
+            @chmod($destination, 0640); return ['sizeBytes' => $archiveBytes, 'sha256' => $sha, 'fileCount' => $count];
+        } catch (Throwable $error) {
+            $zip->close(); @unlink($destination);
+            if ($error instanceof HubProjectVaultException) throw $error;
+            throw new HubProjectVaultException('Task archive could not be created', 'TASK_WORKSPACE_UNAVAILABLE');
+        }
+    }
+
     public function removeRevision(string $projectId, string $revisionId): void { try { $this->removeDirectory($this->revisionDirectory($projectId, $revisionId)); } catch (Throwable) {} }
     private function projectRoot(string $projectId): string { return $this->root . '/projects/' . strtolower(self::uuid($projectId)); }
     private function revisionDirectory(string $projectId, string $revisionId): string { $this->assertRoot(); $path = $this->projectRoot($projectId) . '/revisions/' . strtolower(self::uuid($revisionId)); if (!is_dir($path) || is_link($path)) throw new HubProjectVaultException('Project revision is not available', 'PROJECT_REVISION_NOT_FOUND'); return $path; }

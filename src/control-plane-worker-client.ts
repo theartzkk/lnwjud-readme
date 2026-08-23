@@ -1,6 +1,12 @@
 import { CredentialStore, DEVICE_TOKEN_CREDENTIAL_KEY } from './credential-store.js';
 import { DeviceIdentity, loadOrCreateDeviceIdentity } from './device-identity.js';
 import type { WorkspaceWipCheckpoint } from './workspace-continuity.js';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdir, rm, stat } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { pipeline } from 'node:stream/promises';
+import { Readable } from 'node:stream';
+import { extractVaultWorkspaceArchive } from './vault-transfer.js';
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -21,6 +27,7 @@ export interface WorkerTask {
   progress: number;
   assignedDevice: string | null;
   approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | null;
+  execution?: { executionId: string; executorKind: 'VPS' | 'DEVICE' | 'CODEX'; requiredCapability: string; vaultRevisionId: string | null; state: string } | null;
 }
 
 function apiRoot(value: string): URL {
@@ -36,8 +43,17 @@ function boundedTask(value: unknown): WorkerTask {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ControlPlaneWorkerError('Worker task response is invalid', 'RESPONSE_INVALID');
   const task = value as Record<string, unknown>;
   if (typeof task.taskId !== 'string' || !UUID_V4.test(task.taskId) || typeof task.projectId !== 'string' || !UUID_V4.test(task.projectId) || (task.conversationId !== undefined && task.conversationId !== null && (typeof task.conversationId !== 'string' || !UUID_V4.test(task.conversationId))) || typeof task.goal !== 'string' || task.goal.length > 2_000 || typeof task.state !== 'string' || typeof task.progress !== 'number' || !Number.isInteger(task.progress) || task.progress < 0 || task.progress > 100 || (task.assignedDevice !== null && (typeof task.assignedDevice !== 'string' || !UUID_V4.test(task.assignedDevice))) || (task.approvalStatus !== undefined && task.approvalStatus !== null && !['PENDING', 'APPROVED', 'REJECTED', 'EXPIRED'].includes(String(task.approvalStatus)))) throw new ControlPlaneWorkerError('Worker task response is invalid', 'RESPONSE_INVALID');
-  return { taskId: task.taskId, projectId: task.projectId, conversationId: task.conversationId === undefined || task.conversationId === null ? null : task.conversationId, goal: task.goal, state: task.state, progress: task.progress, assignedDevice: task.assignedDevice, approvalStatus: task.approvalStatus === undefined ? null : task.approvalStatus as WorkerTask['approvalStatus'] };
+  const rawExecution = task.execution; let execution: WorkerTask['execution'] = null;
+  if (rawExecution !== undefined && rawExecution !== null) {
+    if (!rawExecution || typeof rawExecution !== 'object' || Array.isArray(rawExecution)) throw new ControlPlaneWorkerError('Worker task response is invalid', 'RESPONSE_INVALID');
+    const item = rawExecution as Record<string, unknown>;
+    if (typeof item.executionId !== 'string' || !UUID_V4.test(item.executionId) || !['VPS', 'DEVICE', 'CODEX'].includes(String(item.executorKind)) || typeof item.requiredCapability !== 'string' || !CAPABILITY.test(item.requiredCapability) || (item.vaultRevisionId !== null && (typeof item.vaultRevisionId !== 'string' || !UUID_V4.test(item.vaultRevisionId))) || typeof item.state !== 'string') throw new ControlPlaneWorkerError('Worker task response is invalid', 'RESPONSE_INVALID');
+    execution = { executionId: item.executionId, executorKind: item.executorKind as 'VPS' | 'DEVICE' | 'CODEX', requiredCapability: item.requiredCapability, vaultRevisionId: item.vaultRevisionId === null ? null : item.vaultRevisionId, state: item.state };
+  }
+  return { taskId: task.taskId, projectId: task.projectId, conversationId: task.conversationId === undefined || task.conversationId === null ? null : task.conversationId, goal: task.goal, state: task.state, progress: task.progress, assignedDevice: task.assignedDevice, approvalStatus: task.approvalStatus === undefined ? null : task.approvalStatus as WorkerTask['approvalStatus'], execution };
 }
+
+export interface CentralExecutionPacket { executionId: string; taskId: string; projectId: string; vaultRevisionId: string; ownerProtocol: string; }
 
 export interface WorkerConversationMessage { messageId: string; taskId: string | null; kind: 'user' | 'assistant' | 'progress' | 'approval' | 'result' | 'failure'; sequence: number; body: string; createdAt: string; }
 export interface WorkerConversation { conversation: { conversationId: string; projectId: string; createdAt: string; updatedAt: string; lastTaskId: string | null } | null; messages: WorkerConversationMessage[]; tasks: WorkerTask[]; artifacts: Array<Record<string, unknown>>; approvals: Array<Record<string, unknown>>; }
@@ -113,6 +129,37 @@ export class ControlPlaneWorkerClient {
     if (!UUID_V4.test(taskId) || !/^[a-z][a-z0-9-]{0,39}$/.test(input.kind) || typeof input.name !== 'string' || input.name.length < 1 || input.name.length > 160 || /[\\/\u0000-\u001f\u007f]/.test(input.name) || (input.sha256 !== null && !/^[0-9a-f]{64}$/i.test(input.sha256)) || !Number.isSafeInteger(input.sizeBytes) || input.sizeBytes < 0 || input.sizeBytes > 50 * 1024 * 1024 || (input.relativeRef !== null && (input.relativeRef.length > 240 || input.relativeRef.startsWith('/') || input.relativeRef.includes('..') || input.relativeRef.includes('\\')))) throw new ControlPlaneWorkerError('Worker artifact is invalid', 'PAYLOAD_INVALID');
     const response = await this.post(`/control/tasks/${taskId}/artifact`, { schemaVersion: 1, deviceId: identity.deviceId, kind: input.kind, name: input.name, sha256: input.sha256, sizeBytes: input.sizeBytes, relativeRef: input.relativeRef });
     return boundedTask(response);
+  }
+
+  async centralExecutionPacket(executionId: string): Promise<CentralExecutionPacket> {
+    if (!UUID_V4.test(executionId)) throw new ControlPlaneWorkerError('Central execution reference is invalid', 'PAYLOAD_INVALID');
+    const response = await this.get(`/control/worker/executions/${executionId}/packet`, true);
+    const item = response.execution;
+    if (!item || typeof item !== 'object' || Array.isArray(item) || String((item as Record<string, unknown>).executionId) !== executionId || !UUID_V4.test(String((item as Record<string, unknown>).taskId)) || !UUID_V4.test(String((item as Record<string, unknown>).projectId)) || !UUID_V4.test(String((item as Record<string, unknown>).vaultRevisionId)) || typeof response.ownerProtocol !== 'string' || response.ownerProtocol.length < 1 || response.ownerProtocol.length > 8_000) throw new ControlPlaneWorkerError('Central execution packet is invalid', 'RESPONSE_INVALID');
+    return { executionId, taskId: String((item as Record<string, unknown>).taskId), projectId: String((item as Record<string, unknown>).projectId), vaultRevisionId: String((item as Record<string, unknown>).vaultRevisionId), ownerProtocol: response.ownerProtocol };
+  }
+
+  async materializeCentralExecutionWorkspace(executionId: string, root: string): Promise<CentralExecutionPacket & { workspace: string }> {
+    const packet = await this.centralExecutionPacket(executionId); const workspace = join(root, executionId); const archive = join(root, `${executionId}.zip`);
+    await mkdir(root, { recursive: true, mode: 0o700 }); await rm(workspace, { recursive: true, force: true }); await rm(archive, { force: true });
+    try { await this.download(`/control/worker/executions/${executionId}/workspace`, archive); await extractVaultWorkspaceArchive(archive, workspace); return { ...packet, workspace }; }
+    catch (error) { await rm(workspace, { recursive: true, force: true }); throw error; }
+    finally { await rm(archive, { force: true }); }
+  }
+
+  async uploadCentralExecutionCandidate(executionId: string, archive: string): Promise<WorkerTask> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir); if (!UUID_V4.test(executionId)) throw new ControlPlaneWorkerError('Central execution reference is invalid', 'PAYLOAD_INVALID');
+    const info = await stat(archive); if (!info.isFile() || info.size < 1 || info.size > 1024 * 1024 * 1024) throw new ControlPlaneWorkerError('Central candidate archive is invalid', 'PAYLOAD_INVALID');
+    const token = await this.credentialStore.get(DEVICE_TOKEN_CREDENTIAL_KEY); if (!token) throw new ControlPlaneWorkerError('Worker is not enrolled', 'DEVICE_NOT_ENROLLED');
+    const response = await this.fetchImpl(new URL(`/api/v1/control/worker/executions/${executionId}/candidate`, this.root), { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/octet-stream', 'Content-Length': String(info.size), Authorization: `Bearer ${token}`, 'X-AWH-Device': identity.deviceId }, body: createReadStream(archive) as unknown as BodyInit, duplex: 'half' as never, credentials: 'omit', cache: 'no-store' } as RequestInit);
+    const body = await response.text(); if (body.length > MAX_RESPONSE_BYTES) throw new ControlPlaneWorkerError('Worker response is too large', 'RESPONSE_TOO_LARGE'); let value: unknown; try { value = JSON.parse(body); } catch { throw new ControlPlaneWorkerError('Worker response is invalid', 'RESPONSE_INVALID'); }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ControlPlaneWorkerError('Worker response is invalid', 'RESPONSE_INVALID'); const result = value as Record<string, unknown>;
+    if (!response.ok) throw new ControlPlaneWorkerError(typeof result.message === 'string' ? result.message : 'Worker candidate was rejected', typeof result.code === 'string' ? result.code : 'WORKER_REJECTED'); return boundedTask(result);
+  }
+
+  async deferCentralExecution(executionId: string, code: string): Promise<WorkerTask> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir); if (!UUID_V4.test(executionId) || !/^[A-Z][A-Z0-9_]{2,79}$/.test(code)) throw new ControlPlaneWorkerError('Central execution deferral is invalid', 'PAYLOAD_INVALID');
+    const response = await this.post(`/control/worker/executions/${executionId}/defer`, { schemaVersion: 1, deviceId: identity.deviceId, code }, true); return boundedTask(response);
   }
 
   async readResults(): Promise<{ results: WorkerTask[]; artifacts: Array<Record<string, unknown>>; approvals: Array<Record<string, unknown>> }> {
@@ -205,11 +252,12 @@ export class ControlPlaneWorkerClient {
     return { resetPath: response.resetPath, expiresAt: response.expiresAt };
   }
 
-  private async post(path: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async post(path: string, payload: Record<string, unknown>, centralExecution = false): Promise<Record<string, unknown>> {
     if (!path.startsWith('/control/') || path.includes('..') || /[?#]/.test(path)) throw new ControlPlaneWorkerError('Worker route is invalid', 'ROUTE_INVALID');
     const token = await this.credentialStore.get(DEVICE_TOKEN_CREDENTIAL_KEY);
     if (!token) throw new ControlPlaneWorkerError('Worker is not enrolled', 'DEVICE_NOT_ENROLLED');
-    const response = await this.fetchImpl(new URL(`/api/v1${path}`, this.root), { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(payload), credentials: 'omit', cache: 'no-store' });
+    const identity = centralExecution ? await loadOrCreateDeviceIdentity(this.dataDir) : null;
+    const response = await this.fetchImpl(new URL(`/api/v1${path}`, this.root), { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(identity ? { 'X-AWH-Device': identity.deviceId } : {}) }, body: JSON.stringify(payload), credentials: 'omit', cache: 'no-store' });
     const body = await response.text();
     if (body.length > MAX_RESPONSE_BYTES) throw new ControlPlaneWorkerError('Worker response is too large', 'RESPONSE_TOO_LARGE');
     let value: unknown;
@@ -220,11 +268,12 @@ export class ControlPlaneWorkerClient {
     return result;
   }
 
-  private async get(path: string): Promise<Record<string, unknown>> {
+  private async get(path: string, centralExecution = false): Promise<Record<string, unknown>> {
     if (!path.startsWith('/control/') || path.includes('..') || /[?#]/.test(path)) throw new ControlPlaneWorkerError('Worker route is invalid', 'ROUTE_INVALID');
     const token = await this.credentialStore.get(DEVICE_TOKEN_CREDENTIAL_KEY);
     if (!token) throw new ControlPlaneWorkerError('Worker is not enrolled', 'DEVICE_NOT_ENROLLED');
-    const response = await this.fetchImpl(new URL(`/api/v1${path}`, this.root), { method: 'GET', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }, credentials: 'omit', cache: 'no-store' });
+    const identity = centralExecution ? await loadOrCreateDeviceIdentity(this.dataDir) : null;
+    const response = await this.fetchImpl(new URL(`/api/v1${path}`, this.root), { method: 'GET', headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, ...(identity ? { 'X-AWH-Device': identity.deviceId } : {}) }, credentials: 'omit', cache: 'no-store' });
     const body = await response.text();
     if (body.length > MAX_RESPONSE_BYTES) throw new ControlPlaneWorkerError('Worker response is too large', 'RESPONSE_TOO_LARGE');
     let value: unknown; try { value = JSON.parse(body); } catch { throw new ControlPlaneWorkerError('Worker response is invalid', 'RESPONSE_INVALID'); }
@@ -232,6 +281,17 @@ export class ControlPlaneWorkerClient {
     const result = value as Record<string, unknown>;
     if (!response.ok) throw new ControlPlaneWorkerError(typeof result.message === 'string' ? result.message : 'Worker request was rejected', typeof result.code === 'string' ? result.code : 'WORKER_REJECTED');
     return result;
+  }
+
+  private async download(path: string, destination: string): Promise<void> {
+    if (!path.startsWith('/control/worker/executions/') || path.includes('..') || /[?#]/.test(path)) throw new ControlPlaneWorkerError('Worker route is invalid', 'ROUTE_INVALID');
+    const token = await this.credentialStore.get(DEVICE_TOKEN_CREDENTIAL_KEY); const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    if (!token) throw new ControlPlaneWorkerError('Worker is not enrolled', 'DEVICE_NOT_ENROLLED');
+    const response = await this.fetchImpl(new URL(`/api/v1${path}`, this.root), { method: 'GET', headers: { Accept: 'application/zip', Authorization: `Bearer ${token}`, 'X-AWH-Device': identity.deviceId }, credentials: 'omit', cache: 'no-store' });
+    const length = Number(response.headers.get('content-length')); if (!response.ok || !response.body || !Number.isSafeInteger(length) || length < 1 || length > 1024 * 1024 * 1024) throw new ControlPlaneWorkerError('Central workspace download was rejected', 'WORKSPACE_DOWNLOAD_FAILED');
+    await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
+    try { await pipeline(Readable.fromWeb(response.body as import('node:stream/web').ReadableStream), createWriteStream(destination, { flags: 'wx', mode: 0o600 })); const info = await stat(destination); if (info.size !== length) throw new ControlPlaneWorkerError('Central workspace download is incomplete', 'WORKSPACE_DOWNLOAD_FAILED'); }
+    catch (error) { await rm(destination, { force: true }); throw error; }
   }
 }
 
