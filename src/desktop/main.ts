@@ -21,7 +21,7 @@ import { gitStatus } from '../git.js';
 import { canonicalWorkspace } from '../security.js';
 import { loadStoredSettings, saveStoredSettings } from '../settings.js';
 import { loadOrCreateDeviceIdentity, readDeviceIdentity, updateDeviceDisplayName } from '../device-identity.js';
-import { createProductionCredentialStore, CredentialStoreError } from '../credential-store.js';
+import { createDesktopCredentialStore, CredentialStoreError } from '../credential-store.js';
 import { EnrollmentClient, EnrollmentClientError, readLocalEnrollmentState } from '../enrollment-client.js';
 import { ensureAwhDataDirectoryActive } from '../data-migration.js';
 import { AutopilotRunner, detectLocalCapabilities, loadAutopilotTasks, selectAutopilotProfile } from '../autopilot.js';
@@ -170,19 +170,19 @@ function projectError(error: unknown): { code: string; message: string } {
 }
 
 function enrollmentError(error: unknown): { ok: false; error: string; message: string } {
-  if (error instanceof CredentialStoreError) return { ok: false, error: error.code, message: 'Secure OS credential store is unavailable' };
-  if (error instanceof EnrollmentClientError) return { ok: false, error: error.code, message: error.code === 'HUB_NOT_CONFIGURED' ? 'Hub enrollment API is not configured' : 'Enrollment action was rejected' };
+  if (error instanceof CredentialStoreError) return { ok: false, error: error.code, message: 'AWH session storage is unavailable' };
+  if (error instanceof EnrollmentClientError) return { ok: false, error: error.code, message: error.code === 'HUB_NOT_CONFIGURED' ? 'AWH Hub ยังไม่พร้อม' : error.code === 'AUTH_FAILED' ? 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' : error.message };
   return { ok: false, error: 'ENROLLMENT_FAILED', message: 'Device enrollment is unavailable' };
 }
 
 function enrollmentClient(config: ReturnType<typeof loadConfig>): EnrollmentClient {
   if (!config.hubApiBase) throw new EnrollmentClientError('Hub enrollment API is not configured', 'HUB_NOT_CONFIGURED');
-  return new EnrollmentClient(config.hubApiBase, config.dataDir, createProductionCredentialStore());
+  return new EnrollmentClient(config.hubApiBase, config.dataDir, createDesktopCredentialStore(config.dataDir));
 }
 
 function controlPlaneWorker(config: ReturnType<typeof loadConfig>): ControlPlaneWorkerRuntime {
   const key = `${config.dataDir}:${config.hubApiBase}:${config.allowExec}:${config.allowWrite}:${config.allowCodex}`;
-  if (!workerRuntime || workerRuntime.key !== key) workerRuntime = { key, runtime: new ControlPlaneWorkerRuntime(new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createProductionCredentialStore()), { dataDir: config.dataDir, maxReadBytes: config.maxReadBytes, allowExec: config.allowExec, allowWrite: config.allowWrite, allowCodex: config.allowCodex }) };
+  if (!workerRuntime || workerRuntime.key !== key) workerRuntime = { key, runtime: new ControlPlaneWorkerRuntime(new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createDesktopCredentialStore(config.dataDir)), { dataDir: config.dataDir, maxReadBytes: config.maxReadBytes, allowExec: config.allowExec, allowWrite: config.allowWrite, allowCodex: config.allowCodex }) };
   return workerRuntime.runtime;
 }
 
@@ -210,14 +210,14 @@ async function currentWorkClient(): Promise<{ projectId: string; workspace: stri
   const manifest = await readProjectManifest(workspace);
   const registered = await resolveRegisteredProject(config.dataDir, manifest.projectId);
   if (registered.workspacePath !== workspace) throw new ProjectRegistryError('Selected workspace does not match the canonical project registration', 'PROJECT_ID_CONFLICT');
-  return { projectId: manifest.projectId, workspace, client: new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createProductionCredentialStore()) };
+  return { projectId: manifest.projectId, workspace, client: new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createDesktopCredentialStore(config.dataDir)) };
 }
 
 /** Publish a portable manifest to the Hub; local filesystem paths never cross this boundary. */
 async function syncPortableProjectToHub(config: ReturnType<typeof loadConfig>, workspace: string): Promise<boolean> {
   if (!config.hubApiBase) return false;
   const manifest = await readProjectManifest(workspace);
-  await new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createProductionCredentialStore()).registerProject({ projectId: manifest.projectId, name: manifest.name, type: manifest.type, sourceRevision: null });
+  await new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createDesktopCredentialStore(config.dataDir)).registerProject({ projectId: manifest.projectId, name: manifest.name, type: manifest.type, sourceRevision: null });
   return true;
 }
 
@@ -284,12 +284,18 @@ function startWorkerLoop(): void {
 async function enrollmentState() {
   const config = loadConfig();
   try {
-    const store = createProductionCredentialStore();
+    const store = createDesktopCredentialStore(config.dataDir);
     const state = await readLocalEnrollmentState(config.dataDir, store);
     return { ok: true, hubConfigured: Boolean(config.hubApiBase), ...state };
   } catch (error) {
     return { ...enrollmentError(error), hubConfigured: Boolean(config.hubApiBase), enrolled: false, deviceId: null, displayName: null, platform: process.platform, credentialStored: false, expiresAt: null, projectCount: null };
   }
+}
+
+async function loginDevice(username: unknown, password: unknown) {
+  if (typeof username !== 'string' || typeof password !== 'string') return { ok: false, error: 'AUTH_FAILED', message: 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน' };
+  try { return { ok: true, hubConfigured: true, ...(await enrollmentClient(loadConfig()).login(username, password)) }; }
+  catch (error) { return enrollmentError(error); }
 }
 
 async function pairDevice(pairingCode: unknown) {
@@ -311,7 +317,7 @@ async function revokeDevice() {
 async function openOwnerPasswordReset() {
   try {
     const config = loadConfig();
-    const link = await new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createProductionCredentialStore()).issueOwnerPasswordResetLink();
+    const link = await new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createDesktopCredentialStore(config.dataDir)).issueOwnerPasswordResetLink();
     const url = new URL(link.resetPath, config.hubApiBase);
     if (!['https:', 'http:'].includes(url.protocol) || url.origin !== new URL(config.hubApiBase).origin || url.search) throw new Error('Reset link origin is invalid');
     await shell.openExternal(url.toString());
@@ -335,7 +341,7 @@ async function selectedEnrollmentProjectIds(config: ReturnType<typeof loadConfig
 async function issueDevicePairingCode() {
   try {
     const config = loadConfig();
-    const state = await readLocalEnrollmentState(config.dataDir, createProductionCredentialStore());
+    const state = await readLocalEnrollmentState(config.dataDir, createDesktopCredentialStore(config.dataDir));
     if (!state.enrolled) throw new EnrollmentClientError('Device is not enrolled', 'DEVICE_NOT_ENROLLED');
     const projectIds = await selectedEnrollmentProjectIds(config);
     const result = await enrollmentClient(config).issuePairingCode(projectIds, 600);
@@ -356,7 +362,7 @@ async function firstRunState() {
     deviceName: identity?.displayName ?? session?.deviceName ?? null,
     deviceId: identity?.deviceId ?? null,
     platform: identity?.platform ?? process.platform,
-    nativeCredentialBoundary: process.platform === 'darwin' || process.platform === 'win32' ? 'available_for_explicit_validation' : 'fail_closed',
+    nativeCredentialBoundary: 'private_file_session',
   };
 }
 
@@ -689,6 +695,7 @@ function registerIpc(): void {
   });
 
   ipcMain.handle(DESKTOP_IPC.enrollmentState, async () => enrollmentState());
+  ipcMain.handle(DESKTOP_IPC.enrollmentLogin, async (_event, username: unknown, password: unknown) => loginDevice(username, password));
   ipcMain.handle(DESKTOP_IPC.enrollmentPair, async (_event, pairingCode: unknown) => pairDevice(pairingCode));
   ipcMain.handle(DESKTOP_IPC.enrollmentIssuePairing, async () => issueDevicePairingCode());
   ipcMain.handle(DESKTOP_IPC.enrollmentRotate, async () => rotateDevice());
@@ -716,7 +723,7 @@ function registerIpc(): void {
     return { artifacts: await listArtifacts(config.dataDir, 20) };
   });
   ipcMain.handle(DESKTOP_IPC.autopilotRemoteResults, async () => {
-    try { const config = loadConfig(); return { ok: true, ...(await new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createProductionCredentialStore()).readResults()) }; }
+    try { const config = loadConfig(); return { ok: true, ...(await new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createDesktopCredentialStore(config.dataDir)).readResults()) }; }
     catch { return { ok: false, results: [], artifacts: [], approvals: [] }; }
   });
   ipcMain.handle(DESKTOP_IPC.autopilotContinuity, async () => {

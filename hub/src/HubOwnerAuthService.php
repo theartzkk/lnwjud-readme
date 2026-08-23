@@ -300,7 +300,38 @@ final class HubOwnerAuthService
     {
         $row = $this->sessionRow($token); $this->assertFinalReady(); $this->assertOwner((string) $row['user_id']);
         $q = $this->pdo->query("SELECT p.user_id, p.display_name, p.email, p.system_role, p.status, u.created_at, MAX(s.last_seen_at) AS last_seen_at FROM control_user_profiles p JOIN hub_users u ON u.user_id = p.user_id LEFT JOIN control_sessions s ON s.user_id = p.user_id AND s.revoked_at IS NULL GROUP BY p.user_id ORDER BY CASE WHEN p.system_role = 'OWNER' THEN 0 ELSE 1 END, p.display_name LIMIT 100");
-        return ['schemaVersion' => 1, 'people' => array_map(static fn (array $person): array => ['userId' => (string) $person['user_id'], 'displayName' => (string) $person['display_name'], 'email' => $person['email'] === null ? null : (string) $person['email'], 'role' => (string) $person['system_role'], 'status' => (string) $person['status'], 'createdAt' => (string) $person['created_at'], 'lastSeenAt' => $person['last_seen_at'] === null ? null : (string) $person['last_seen_at']], $q->fetchAll())];
+        $people = [];
+        $projects = $this->pdo->prepare('SELECT project_id FROM user_project_memberships WHERE user_id = :user AND revoked_at IS NULL ORDER BY project_id');
+        foreach ($q->fetchAll() as $person) {
+            $projects->execute(['user' => $person['user_id']]);
+            $people[] = ['userId' => (string) $person['user_id'], 'displayName' => (string) $person['display_name'], 'email' => $person['email'] === null ? null : (string) $person['email'], 'role' => (string) $person['system_role'], 'status' => (string) $person['status'], 'createdAt' => (string) $person['created_at'], 'lastSeenAt' => $person['last_seen_at'] === null ? null : (string) $person['last_seen_at'], 'projectIds' => array_map(static fn (array $item): string => (string) $item['project_id'], $projects->fetchAll())];
+        }
+        return ['schemaVersion' => 1, 'people' => $people];
+    }
+
+    /** Owner-only role/project access editor for an existing non-owner account. */
+    public function updateUserAccess(string $token, string $csrf, string $userId, array $payload, ?string $now = null): array
+    {
+        $owner = $this->authorize($token, $csrf, $now); $this->assertFinalReady(); $this->assertOwner((string) $owner['user_id']);
+        if (!self::isUuid($userId) || hash_equals((string) $owner['user_id'], strtolower($userId))) throw new HubOwnerAuthException('Owner access cannot be edited here', 'USER_ACCESS_FORBIDDEN');
+        self::exactPayloadKeys($payload, ['projectIds', 'role', 'schemaVersion']); if (($payload['schemaVersion'] ?? null) !== 1) throw new HubOwnerAuthException('User access request is invalid', 'PAYLOAD_INVALID');
+        $role = self::collaboratorRole($payload['role'] ?? null); $projects = self::projectIds($payload['projectIds'] ?? null); $at = self::timestamp($now ?? gmdate('c')); self::assertRecentStepUpSession($owner, $at);
+        foreach ($projects as $project) $this->assertOwnerProject((string) $owner['user_id'], $project);
+        $profile = $this->pdo->prepare("SELECT status, system_role FROM control_user_profiles WHERE user_id = :user"); $profile->execute(['user' => strtolower($userId)]); $current = $profile->fetch();
+        if (!is_array($current) || (string) $current['status'] !== 'ACTIVE') throw new HubOwnerAuthException('User was not found', 'USER_NOT_FOUND');
+        if ((string) $current['system_role'] === 'OWNER') throw new HubOwnerAuthException('Owner access cannot be edited here', 'USER_ACCESS_FORBIDDEN');
+        try {
+            $this->pdo->beginTransaction();
+            $this->pdo->prepare('UPDATE control_user_profiles SET system_role = :role, updated_at = :at WHERE user_id = :user')->execute(['role' => $role, 'at' => $at, 'user' => strtolower($userId)]);
+            $this->pdo->prepare('UPDATE user_project_memberships SET revoked_at = :at WHERE user_id = :user AND revoked_at IS NULL')->execute(['at' => $at, 'user' => strtolower($userId)]);
+            $this->pdo->prepare('UPDATE control_project_capabilities SET revoked_at = :at WHERE user_id = :user AND revoked_at IS NULL')->execute(['at' => $at, 'user' => strtolower($userId)]);
+            $membership = $this->pdo->prepare("INSERT INTO user_project_memberships(user_id, project_id, role, created_at, revoked_at) VALUES(:user, :project, 'member', :at, NULL) ON CONFLICT(user_id, project_id) DO UPDATE SET role='member', revoked_at=NULL");
+            $capability = $this->pdo->prepare('INSERT INTO control_project_capabilities(user_id, project_id, capability, granted_by_user_id, created_at, revoked_at) VALUES(:user, :project, :capability, :owner, :at, NULL) ON CONFLICT(user_id, project_id, capability) DO UPDATE SET granted_by_user_id=excluded.granted_by_user_id, created_at=excluded.created_at, revoked_at=NULL');
+            foreach ($projects as $project) { $membership->execute(['user' => strtolower($userId), 'project' => $project, 'at' => $at]); foreach (self::roleCapabilities($role) as $name) $capability->execute(['user' => strtolower($userId), 'project' => $project, 'capability' => $name, 'owner' => $owner['user_id'], 'at' => $at]); }
+            $this->pdo->prepare('UPDATE control_sessions SET revoked_at = :at WHERE user_id = :user AND revoked_at IS NULL')->execute(['at' => $at, 'user' => strtolower($userId)]);
+            $this->audit((string) $owner['user_id'], 'user_access_updated', $at); $this->pdo->commit();
+        } catch (Throwable $error) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); if ($error instanceof HubOwnerAuthException) throw $error; throw new HubOwnerAuthException('User access could not be updated', 'USER_ACCESS_UPDATE_FAILED'); }
+        return ['userId' => strtolower($userId), 'role' => $role, 'projectIds' => $projects, 'reauthenticateUser' => true];
     }
 
     public function revokeUser(string $token, string $csrf, string $userId, ?string $now = null): void
@@ -329,7 +360,7 @@ final class HubOwnerAuthService
     private static function projectIds(mixed $value): array { if (!is_array($value) || array_is_list($value) === false || count($value) < 1 || count($value) > 20) throw new HubOwnerAuthException('Project permissions are invalid', 'PAYLOAD_INVALID'); $out = []; foreach ($value as $id) { if (!is_string($id) || !self::isUuid($id)) throw new HubOwnerAuthException('Project permissions are invalid', 'PAYLOAD_INVALID'); $out[] = strtolower($id); } if (count(array_unique($out)) !== count($out)) throw new HubOwnerAuthException('Project permissions are invalid', 'PAYLOAD_INVALID'); return $out; }
     private static function roleCapabilities(string $role): array { return match ($role) { 'COLLABORATOR' => ['project.read', 'conversation.write', 'attachment.upload'], 'APPROVER' => ['project.read', 'approval.decide'], 'VIEWER' => ['project.read'], default => throw new HubOwnerAuthException('Role is invalid', 'PAYLOAD_INVALID') }; }
     private static function username(string $value): string { $value = strtolower(trim($value)); if (!preg_match(self::USERNAME, $value)) throw new HubOwnerAuthException('Username is invalid', 'USERNAME_INVALID'); return $value; }
-    private static function password(string $value): void { if (strlen($value) < 12 || strlen($value) > 512 || preg_match('/[\x00-\x1F\x7F]/', $value)) throw new HubOwnerAuthException('Password is invalid', 'PASSWORD_INVALID'); }
+    private static function password(string $value): void { if (strlen($value) < 8 || strlen($value) > 512 || preg_match('/[\x00-\x1F\x7F]/', $value)) throw new HubOwnerAuthException('Password must contain at least 8 characters', 'PASSWORD_INVALID'); }
     private static function hashPassword(string $value): string { return password_hash($value, defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_DEFAULT); }
     private static function dummyHash(): string { static $hash; return $hash ??= self::hashPassword('AWH invalid authentication sentinel'); }
     private static function rateKey(string $value, string $username): string { return hash('sha256', substr($value, 0, 128) . "\n" . $username); }

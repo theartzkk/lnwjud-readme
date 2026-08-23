@@ -1,11 +1,11 @@
 import { loadWebData } from './hub-read-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 import {
-  cancelTask, changePassword, changeUsername, createConversation, createMemory, createRecoveryCodes, decideApproval,
+  cancelTask, changePassword, changeUsername, createConversation, createMemory, createProject, createRecoveryCodes, decideApproval,
   exportWorkspace, invitePerson, listAuthSessions, listPeople, loadAuthProfile, loadControlData, loadConversation,
   loadConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus,
   loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadSystemReadiness, loadWorkspaceContinuity, login, logout,
   recover, resetPassword, resetProductSetting, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage,
-  testProviderConnection, updateAuthProfile, updateConversation, updateMemory, updateProductSetting,
+  testProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
   updateProviderCredential, updateProviderPolicy, updateProviderProjectRouting, uploadConversationAttachments,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
@@ -13,7 +13,7 @@ import {
   const $ = (id) => document.getElementById(id);
   const MAX_ATTACHMENT_BYTES = 60 * 1024 * 1024;
   const MICRO_BAHT = 1000000;
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, systemReadiness: null, people: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, resetToken: null };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, systemReadiness: null, people: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null };
   const taskLabels = {
     QUEUED: 'กำลังรอเริ่มงาน', WAITING_FOR_WORKER: 'กำลังรออุปกรณ์ทำงาน', PREPARING: 'กำลังเตรียมงาน', RUNNING: 'กำลังทำงาน',
     QA: 'กำลังตรวจคุณภาพ', WAITING_FOR_APPROVAL: 'รอการอนุมัติ', COMPLETED: 'เสร็จแล้ว',
@@ -53,6 +53,7 @@ import {
     return providerState || taskLabels[task?.state] || 'กำลังอัปเดต';
   }
   function stateClass(task) { return task?.state === 'COMPLETED' ? 'completed' : task?.state === 'FAILED' ? 'failed' : task?.state === 'WAITING_FOR_APPROVAL' ? 'approval' : ''; }
+  function progressText(task) { const progress = Number.isInteger(task?.progress) ? task.progress : 0; const raw = typeof task?.lastEvent?.message === 'string' ? task.lastEvent.message : ''; const event = /[ก-๙]/u.test(raw) ? raw : (task?.execution?.executorKind === 'VPS' && task?.state === 'RUNNING' ? 'AWH Server กำลังประมวลผล' : stateText(task)); return `${event} · ${progress}%`; }
 
   function size(bytes) { if (!Number.isFinite(bytes) || bytes < 0) return ''; if (bytes < 1024) return `${bytes} B`; if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`; return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; }
   function renderPendingAttachments() {
@@ -106,9 +107,25 @@ import {
   }
   function renderPeople() {
     const select = $('invite-project'); if (!select) return; select.replaceChildren();
-    for (const project of state.control?.projects || []) { const option = document.createElement('option'); option.value = project.projectId; option.textContent = project.name; select.append(option); }
+    const projects = state.control?.projects || [];
+    for (const project of projects) { const option = document.createElement('option'); option.value = project.projectId; option.textContent = project.name; select.append(option); }
     const list = $('people-list'); list.replaceChildren();
-    for (const person of state.people) { const item = document.createElement('div'); item.className = 'session-item'; const label = document.createElement('span'); label.textContent = `${person.displayName} · ${person.role === 'OWNER' ? 'เจ้าของ' : person.role === 'COLLABORATOR' ? 'ผู้ร่วมงาน' : person.role === 'APPROVER' ? 'ผู้อนุมัติ' : 'ดูอย่างเดียว'}`; item.append(label); if (person.status === 'ACTIVE' && person.role !== 'OWNER') { const revoke = document.createElement('button'); revoke.type = 'button'; revoke.className = 'text-button'; revoke.textContent = 'เพิกถอน'; revoke.addEventListener('click', async () => { revoke.disabled = true; try { await revokePerson(person.userId); state.people = (await listPeople()).people || []; renderPeople(); } catch (error) { message('people-message', error instanceof Error ? error.message : 'ยังเพิกถอนบัญชีไม่ได้'); revoke.disabled = false; } }); item.append(revoke); } list.append(item); }
+    for (const person of state.people) {
+      const item = document.createElement('div'); item.className = 'session-item person-card';
+      const head = document.createElement('div'); head.className = 'person-head';
+      const label = document.createElement('strong'); label.textContent = `${person.displayName} · ${person.role === 'OWNER' ? 'เจ้าของ' : person.role === 'COLLABORATOR' ? 'ผู้ร่วมงาน' : person.role === 'APPROVER' ? 'ผู้อนุมัติ' : 'ดูอย่างเดียว'}`; head.append(label); item.append(head);
+      if (person.status === 'ACTIVE' && person.role !== 'OWNER') {
+        const editor = document.createElement('div'); editor.className = 'person-access-editor';
+        const role = document.createElement('select'); for (const [value, text] of [['COLLABORATOR','ผู้ร่วมงาน'],['APPROVER','ผู้อนุมัติ'],['VIEWER','ดูอย่างเดียว']]) { const option = document.createElement('option'); option.value = value; option.textContent = text; option.selected = person.role === value; role.append(option); }
+        const projectBox = document.createElement('div'); projectBox.className = 'person-projects';
+        for (const project of projects) { const row = document.createElement('label'); row.className = 'check-row'; const input = document.createElement('input'); input.type = 'checkbox'; input.value = project.projectId; input.checked = Array.isArray(person.projectIds) && person.projectIds.includes(project.projectId); const text = document.createElement('span'); text.textContent = project.name; row.append(input, text); projectBox.append(row); }
+        const actions = document.createElement('div'); actions.className = 'task-actions'; const save = document.createElement('button'); save.type = 'button'; save.className = 'secondary-button'; save.textContent = 'บันทึกสิทธิ์'; const revoke = document.createElement('button'); revoke.type = 'button'; revoke.className = 'text-button'; revoke.textContent = 'เพิกถอน';
+        save.addEventListener('click', async () => { const projectIds = [...projectBox.querySelectorAll('input:checked')].map((node) => node.value); if (!projectIds.length) { message('people-message', 'เลือกอย่างน้อย 1 โปรเจกต์'); return; } save.disabled = true; try { await updatePersonAccess(person.userId, role.value, projectIds); state.people = (await listPeople()).people || []; renderPeople(); message('people-message', 'บันทึกสิทธิ์แล้ว ผู้ใช้นั้นจะเข้าสู่ระบบใหม่เพื่อรับสิทธิ์ล่าสุด'); } catch (error) { message('people-message', error instanceof Error ? error.message : 'ยังบันทึกสิทธิ์ไม่ได้'); } finally { save.disabled = false; } });
+        revoke.addEventListener('click', async () => { revoke.disabled = true; try { await revokePerson(person.userId); state.people = (await listPeople()).people || []; renderPeople(); message('people-message', 'เพิกถอนบัญชีแล้ว'); } catch (error) { message('people-message', error instanceof Error ? error.message : 'ยังเพิกถอนบัญชีไม่ได้'); revoke.disabled = false; } });
+        actions.append(save, revoke); editor.append(role, projectBox, actions); item.append(editor);
+      }
+      list.append(item);
+    }
   }
 
   function memoryScopeLabel(scope) { return ({ owner: 'ความจำของฉัน', constitution: 'หลักการทำงาน', project: 'ความจำของโปรเจกต์', archive: 'บันทึกย้อนหลัง' })[scope] || 'ความจำของ AWH'; }
@@ -380,6 +397,7 @@ import {
       chip.textContent = turn.kind === 'approval' ? 'ต้องอนุมัติ' : turn.kind === 'result' ? 'เสร็จแล้ว' : turn.kind === 'failure' ? 'ต้องตรวจสอบ' : task ? stateText(task) : 'AWH';
       const time = document.createElement('span'); time.textContent = date(turn.createdAt);
       meta.append(chip, time); response.append(meta, body);
+      if (task && !['COMPLETED','FAILED','CANCELLED'].includes(task.state)) { const progressRow = document.createElement('div'); progressRow.className = 'task-progress-row'; const bar = document.createElement('progress'); bar.max = 100; bar.value = Number.isInteger(task.progress) ? task.progress : 0; const text = document.createElement('span'); text.textContent = progressText(task); progressRow.append(bar, text); response.append(progressRow); }
       if (task) {
         const actions = renderApproval(task, approvals) || renderCancellation(task); if (actions) response.append(actions);
         const artifacts = artifactsByTask.get(task.taskId) || [];
@@ -454,9 +472,9 @@ import {
     } catch (error) { state.conversationAvailable = false; state.conversation = { messages: [{ messageId: 'local-unavailable', taskId: null, kind: 'assistant', sequence: 1, body: 'ยังเปิด Work นี้ไม่ได้ จึงยังไม่ส่งคำขอใหม่เพื่อป้องกันงานสูญหาย', createdAt: new Date().toISOString() }], tasks: [], artifacts: [], attachments: [], approvals: [] }; renderWorkspace(); message('goal-message', error instanceof Error ? error.message : 'AWH ยังโหลดการสนทนาไม่ได้'); }
   }
 
-  async function refreshWorkspace() {
-    message('goal-message', 'กำลังรีเฟรช…');
-    try { state.control = await loadControlData(); renderWorkspace(); await refreshConversation(); message('goal-message', ''); }
+  async function refreshWorkspace(showBusy = false) {
+    if (showBusy) message('goal-message', 'กำลังรีเฟรช…');
+    try { state.control = await loadControlData(); renderWorkspace(); await refreshConversation(); if (showBusy) message('goal-message', ''); }
     catch (error) { message('goal-message', error instanceof Error ? error.message : 'AWH ไม่สามารถรีเฟรชข้อมูลได้'); }
   }
 
@@ -559,8 +577,9 @@ import {
     finally { const unavailable = selectedProject() === null || !state.conversationAvailable; $('goal-submit').disabled = unavailable; $('attachment-open').disabled = unavailable; }
   });
 
-  $('refresh-work').addEventListener('click', refreshWorkspace);
+  $('refresh-work').addEventListener('click', () => { void refreshWorkspace(true); });
   $('project-open').addEventListener('click', () => openSheet('project-sheet'));
+  $('project-create-form').addEventListener('submit', async (event) => { event.preventDefault(); if (!isOwner()) { message('project-create-message', 'เฉพาะเจ้าของ AWH เท่านั้นที่เพิ่มโปรเจกต์ได้'); return; } const name = $('project-create-name').value.trim(); if (!name) { message('project-create-message', 'กรอกชื่อโปรเจกต์ก่อน'); return; } const button = $('project-create-form').querySelector('button[type="submit"]'); button.disabled = true; message('project-create-message', 'กำลังเพิ่มโปรเจกต์…'); try { const result = await createProject(name, $('project-create-type').value); state.control = await loadControlData(); state.selectedProjectId = result.project.projectId; $('project-create-name').value = ''; renderWorkspace(); await refreshConversation(); message('project-create-message', 'เพิ่มโปรเจกต์แล้ว เริ่มคุยได้ทันที'); } catch (error) { message('project-create-message', error instanceof Error ? error.message : 'ยังเพิ่มโปรเจกต์ไม่ได้'); } finally { button.disabled = false; } });
   $('conversation-open').addEventListener('click', () => openSheet('conversation-sheet'));
   $('conversation-new').addEventListener('click', async () => {
     const project = selectedProject(); if (!project) return; const button = $('conversation-new'); button.disabled = true;
@@ -706,5 +725,5 @@ import {
 
   $('logout-button').addEventListener('click', async () => { await logout().catch(() => undefined); window.location.reload(); });
 
-  loadWebData().then(async (data) => { render(data); if (window.location.hash.startsWith('#awh-reset=')) openPasswordRecovery(); if (data?.control?.authenticated) { await refreshConversation(); try { state.productSettings = (await loadProductSettings()).settings; applyProductSettings(); } catch {} state.refreshTimer = window.setInterval(() => { void refreshWorkspace(); }, 15_000); } }).catch(() => render({ product: { shortName: 'AWH' }, control: { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' } }));
+  loadWebData().then(async (data) => { render(data); if (window.location.hash.startsWith('#awh-reset=')) openPasswordRecovery(); if (data?.control?.authenticated) { await refreshConversation(); try { state.productSettings = (await loadProductSettings()).settings; applyProductSettings(); } catch {} state.conversationTimer = window.setInterval(() => { if (!document.hidden && state.selectedConversationId && (state.conversation?.tasks || []).some((task) => !['COMPLETED','FAILED','CANCELLED'].includes(task.state))) void loadConversation(state.selectedConversationId).then((value) => { state.conversation = value; renderWorkspace(); }).catch(() => undefined); }, 2500); state.refreshTimer = window.setInterval(() => { if (!document.hidden) void refreshWorkspace(false); }, 15_000); } }).catch(() => render({ product: { shortName: 'AWH' }, control: { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' } }));
 })();

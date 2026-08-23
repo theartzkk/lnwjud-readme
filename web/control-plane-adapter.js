@@ -97,6 +97,11 @@ export async function loadControlData() {
   return { mode: 'CONTROL', authenticated: true, expiresAt: session.expiresAt, role: typeof session.role === 'string' ? session.role : null, projects: projects.projects.filter((project) => UUID.test(project.projectId)), tasks: Array.isArray(tasks.tasks) ? tasks.tasks : [], workers: Array.isArray(workers.workers) ? workers.workers : [], results: Array.isArray(results.results) ? results.results : [], artifacts: Array.isArray(artifacts.artifacts) ? artifacts.artifacts : [], approvals: Array.isArray(approvals.approvals) ? approvals.approvals : [] };
 }
 
+export async function createProject(name, type = 'general') {
+  if (typeof name !== 'string' || !name.trim() || name.trim().length > 120 || typeof type !== 'string' || !/^[a-z][a-z0-9-]{0,31}$/.test(type)) throw new Error('ข้อมูลโปรเจกต์ไม่ถูกต้อง');
+  return controlRequest('/api/v1/control/projects', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, name: name.trim(), type }) });
+}
+
 export async function loadConversations(projectId, query = '') {
   if (!UUID.test(projectId) || (typeof query !== 'string' || query.length > 120)) throw new Error('โปรเจกต์ไม่ถูกต้อง');
   const value = await controlRequest(`/api/v1/control/conversations?projectId=${encodeURIComponent(projectId)}${query ? `&q=${encodeURIComponent(query)}` : ''}`);
@@ -172,6 +177,10 @@ export async function loadSystemReadiness() {
 export async function listPeople() { return controlRequest('/api/v1/auth/people'); }
 export async function invitePerson({ displayName, username, email = null, role, projectIds }) { return controlRequest('/api/v1/auth/people/invite', { method: 'POST', body: JSON.stringify({ displayName, username, email, role, projectIds }) }); }
 export async function revokePerson(userId) { if (!UUID.test(userId)) throw new Error('บัญชีไม่ถูกต้อง'); return controlRequest(`/api/v1/auth/people/${userId}/revoke`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
+export async function updatePersonAccess(userId, role, projectIds) {
+  if (!UUID.test(userId) || !['COLLABORATOR', 'VIEWER', 'APPROVER'].includes(role) || !Array.isArray(projectIds) || projectIds.length < 1 || projectIds.some((id) => !UUID.test(id))) throw new Error('สิทธิ์ผู้ใช้ไม่ถูกต้อง');
+  return controlRequest(`/api/v1/auth/people/${userId}/access`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1, role, projectIds }) });
+}
 
 export async function loadWorkspaceContinuity(projectId) {
   if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง');

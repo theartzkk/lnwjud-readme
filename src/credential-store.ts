@@ -1,4 +1,7 @@
 import { spawn } from 'node:child_process';
+import { lstat, mkdir, readFile, rename, rm, writeFile, chmod } from 'node:fs/promises';
+import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
 
 const CREDENTIAL_KEY = /^[a-z][a-z0-9._/-]{1,127}$/;
 const MAX_CREDENTIAL_BYTES = 4096;
@@ -232,6 +235,38 @@ export class WindowsCredentialManagerStore implements CredentialStore {
     const result = await this.invoke('delete', key);
     if (result.exitCode !== 0 && result.exitCode !== 44) throw processFailure('Windows Credential Manager delete failed');
   }
+}
+
+/** Desktop session store. It stores only a revocable AWH device/session token,
+ * never the user's password or provider API key. Directory/file permissions are
+ * restricted to the current OS user so normal sign-in does not depend on Keychain. */
+export class PrivateFileCredentialStore implements CredentialStore {
+  constructor(private readonly root: string) {
+    if (!root || !root.startsWith('/')) throw new CredentialStoreError('Credential directory is invalid', 'CREDENTIAL_STORE_UNAVAILABLE');
+  }
+
+  private path(key: string): string { validateKey(key); return join(this.root, `${key.replace(/[^a-z0-9._-]/g, '__')}.session`); }
+  private async ready(): Promise<void> {
+    await mkdir(this.root, { recursive: true, mode: 0o700 });
+    const info = await lstat(this.root);
+    if (!info.isDirectory() || info.isSymbolicLink() || (info.mode & 0o077) !== 0) throw new CredentialStoreError('Credential directory is not private', 'CREDENTIAL_STORE_UNAVAILABLE');
+  }
+  async get(key: string): Promise<string | null> {
+    await this.ready(); const file = this.path(key);
+    let info; try { info = await lstat(file); } catch (error: any) { if (error?.code === 'ENOENT') return null; throw new CredentialStoreError('Session credential cannot be read', 'CREDENTIAL_STORE_UNAVAILABLE'); }
+    if (!info.isFile() || info.isSymbolicLink() || (info.mode & 0o077) !== 0) throw new CredentialStoreError('Session credential file is unsafe', 'CREDENTIAL_STORE_UNAVAILABLE');
+    const value = await readFile(file, 'utf8'); validateSecret(value); return value;
+  }
+  async set(key: string, secret: string): Promise<void> {
+    validateSecret(secret); await this.ready(); const file = this.path(key); const temp = `${file}.${randomBytes(6).toString('hex')}.tmp`;
+    try { await writeFile(temp, secret, { encoding: 'utf8', mode: 0o600, flag: 'wx' }); await rename(temp, file); await chmod(file, 0o600); }
+    catch { await rm(temp, { force: true }).catch(() => undefined); throw new CredentialStoreError('Session credential cannot be saved', 'CREDENTIAL_STORE_UNAVAILABLE'); }
+  }
+  async delete(key: string): Promise<void> { await this.ready(); await rm(this.path(key), { force: true }); }
+}
+
+export function createDesktopCredentialStore(dataDir: string): CredentialStore {
+  return new PrivateFileCredentialStore(join(dataDir, 'session-credentials'));
 }
 
 /** Test-only fake; production code must use an OS-backed adapter when available. */

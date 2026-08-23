@@ -19,6 +19,7 @@ export const DESKTOP_IPC = Object.freeze({
   remoteConnect: 'art-agent:remote-connect',
   remoteStop: 'art-agent:remote-stop',
   enrollmentState: 'art-agent:enrollment-state',
+  enrollmentLogin: 'art-agent:enrollment-login',
   enrollmentPair: 'art-agent:enrollment-pair',
   enrollmentIssuePairing: 'art-agent:enrollment-issue-pairing',
   enrollmentRotate: 'art-agent:enrollment-rotate',

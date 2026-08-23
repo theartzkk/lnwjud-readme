@@ -15,7 +15,9 @@ function safeRelativePath(value: string): string {
   const parts = path.split('/');
   if (parts.some((part) => !part || part === '.' || part === '..' || part.length > 180)) throw new Error('Vault archive path is invalid');
   const base = parts.at(-1)!.toLowerCase();
-  if (base === '.env' || /(?:^|[._-])(?:id_rsa|id_ed25519|credential|secret|private[_-]?key|token)(?:[._-]|$)|\.(?:pem|key|p12|pfx)$/.test(base) || path.toLowerCase().includes('/.ssh/')) throw new Error('Vault archive contains restricted content');
+  const restrictedKey = /(?:^|[._-])(?:id_rsa|id_ed25519|private[_-]?key)(?:[._-]|$)|\.(?:pem|key|p12|pfx)$/.test(base);
+  const secretPayload = /(?:^|[._-])(?:credentials?|secrets?|tokens?)(?:[._-]|$)/.test(base) && /\.(?:json|ya?ml|txt|ini|conf|cfg|properties|db|sqlite)$/.test(base);
+  if (base === '.env' || restrictedKey || secretPayload || path.toLowerCase().includes('/.ssh/')) throw new Error('Vault archive contains restricted content');
   return path;
 }
 

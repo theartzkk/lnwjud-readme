@@ -34,6 +34,7 @@ final class HubEnrollmentRouter
                 self::exactKeys($payload, $allowed);
                 return self::response(200, $service->issuePairingCodeForToken($token, is_array($payload['projectIds']) ? $payload['projectIds'] : [], null, is_int($payload['ttlSeconds']) ? $payload['ttlSeconds'] : 0) + ['requestId' => $requestId], $headers);
             }
+            if ($path === '/api/v1/enrollment/password') return self::response(200, $service->enrollDeviceWithPassword($payload) + ['requestId' => $requestId], $headers);
             if ($path === '/api/v1/enrollment/devices') return self::response(200, $service->enrollDeviceRateLimited($payload, (string) ($payload['now'] ?? gmdate('c'))) + ['requestId' => $requestId], $headers);
             if ($path === '/api/v1/enrollment/token/rotate') {
                 $token = self::bearer($server);
@@ -58,9 +59,9 @@ final class HubEnrollmentRouter
             $status = match ($error->codeName) {
                 'RATE_LIMITED' => 429,
                 'BOOTSTRAP_CLOSED', 'PAIRING_REPLAY', 'DEVICE_DUPLICATE' => 409,
-                'TOKEN_REJECTED', 'TOKEN_INVALID', 'BOOTSTRAP_INVALID' => 401,
+                'TOKEN_REJECTED', 'TOKEN_INVALID', 'BOOTSTRAP_INVALID', 'AUTH_FAILED' => 401,
                 'DEVICE_FORBIDDEN', 'PROJECT_FORBIDDEN' => 403,
-                'ENROLLMENT_SCHEMA_NOT_READY', 'DATABASE_UNAVAILABLE', 'BOOTSTRAP_NOT_CONFIGURED' => 503,
+                'ENROLLMENT_SCHEMA_NOT_READY', 'AUTH_SCHEMA_NOT_READY', 'DATABASE_UNAVAILABLE', 'BOOTSTRAP_NOT_CONFIGURED' => 503,
                 default => 400,
             };
             return self::response($status, self::error($error->codeName, $requestId, self::safeMessage($error->codeName)), $headers);
@@ -116,6 +117,7 @@ final class HubEnrollmentRouter
             'PAIRING_REPLAY' => 'Pairing code was already used',
             'DEVICE_DUPLICATE' => 'Device is already enrolled',
             'TOKEN_REJECTED', 'TOKEN_INVALID', 'BOOTSTRAP_INVALID' => 'Enrollment authentication failed',
+            'AUTH_FAILED' => 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง',
             'DEVICE_FORBIDDEN', 'PROJECT_FORBIDDEN' => 'Enrollment authorization failed',
             default => 'Enrollment request was rejected',
         };

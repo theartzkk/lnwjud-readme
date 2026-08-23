@@ -224,3 +224,13 @@ pre { overflow: auto; padding: 12px; border: 1px solid var(--line); border-radiu
 
 @media (prefers-reduced-motion: no-preference) { .sheet-card { animation: sheet-in .16s ease-out; } }
 @keyframes sheet-in { from { transform: translateY(12px); opacity: .5; } to { transform: translateY(0); opacity: 1; } }
+
+.inline-form { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; }
+.inline-form input, .inline-form select { min-width: 0; }
+.task-progress-row { display: grid; grid-template-columns: minmax(90px, 180px) 1fr; gap: 10px; align-items: center; max-width: 650px; color: var(--muted); font-size: 12px; }
+.task-progress-row progress { width: 100%; height: 8px; accent-color: var(--accent); }
+.person-card { display: grid; gap: 10px; }
+.person-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.person-access-editor { display: grid; gap: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.person-projects { display: grid; gap: 6px; }
+@media (max-width: 640px) { .inline-form { grid-template-columns: 1fr; } .task-progress-row { grid-template-columns: 1fr; } }

@@ -280,7 +280,7 @@ async function requiredFilesCheck() {
   const m12Required = [
     'hub/migrations/011_central_project_authority.sql', 'hub/src/HubCentralProjectAuthorityMigration.php',
     'hub/src/HubProjectVault.php', 'hub/src/HubProjectVaultService.php', 'hub/src/HubDurableExecutionService.php',
-    'hub/bin/migrate-central-project-authority.php', 'hub/bin/awh-native-executor.php', 'hub/tests/m12-central-project-authority.php', 'hub/tests/m12-production-parity.php',
+    'hub/bin/migrate-central-project-authority.php', 'hub/bin/awh-native-executor.php', 'hub/bin/sync-deployed-source-vault.php', 'hub/tests/m12-central-project-authority.php', 'hub/tests/m12-production-parity.php',
     'deploy/systemd/awh-native-executor.service', 'deploy/systemd/awh-native-executor.timer', 'test/central-project-authority-deployment.test.ts',
   ];
   const missing = [];

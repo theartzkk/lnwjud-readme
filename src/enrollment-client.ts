@@ -83,6 +83,18 @@ export class EnrollmentClient {
     return { reused: false };
   }
 
+  async login(username: string, password: string): Promise<SanitizedEnrollmentState> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    const normalized = typeof username === 'string' ? username.trim().toLowerCase() : '';
+    if (!/^[a-z][a-z0-9._-]{2,63}$/.test(normalized) || typeof password !== 'string' || password.length < 1 || password.length > 512) throw new EnrollmentClientError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง', 'AUTH_FAILED');
+    const response = await this.post('/enrollment/password', {
+      schemaVersion: 1, username: normalized, password, deviceId: identity.deviceId, displayName: identity.displayName, platform: identity.platform, arch: identity.arch, appVersion: 'desktop',
+    });
+    if (typeof response.accessToken !== 'string' || typeof response.expiresAt !== 'string') throw new EnrollmentClientError('AWH login response did not contain a session token', 'RESPONSE_INVALID');
+    await this.credentialStore.set(DEVICE_TOKEN_CREDENTIAL_KEY, response.accessToken);
+    return this.sanitize(identity, response);
+  }
+
   async pair(pairingCode: string): Promise<SanitizedEnrollmentState> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir);
     if (typeof pairingCode !== 'string' || !/^[A-Za-z0-9_-]{32,128}$/.test(pairingCode)) throw new EnrollmentClientError('Pairing code is invalid', 'PAIRING_CODE_INVALID');

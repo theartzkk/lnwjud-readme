@@ -14,6 +14,7 @@ test('desktop IPC exposes fixed high-level channel names only', () => {
   assert.deepEqual(Object.keys(DESKTOP_IPC).sort(), [
     'chooseWorkspace',
     'enrollmentIssuePairing',
+    'enrollmentLogin',
     'initializeProject',
     'initializeProjectMemory',
     'locateProject',
@@ -70,10 +71,11 @@ test('desktop HTML has a restrictive CSP, remote controls and no inline script',
   assert.match(html, /id="enrollment-code"/);
   assert.match(html, /id="enrollment-issue-pairing"/);
   assert.match(html, /id="perm-worker"/);
-  assert.match(html, /สร้างรหัสสำหรับเครื่องใหม่/);
-  assert.match(html, /เชื่อมต่ออุปกรณ์นี้/);
-  assert.match(html, /ต่ออายุการเชื่อมต่อ/);
-  assert.match(html, /ยกเลิกการเชื่อมต่ออุปกรณ์นี้/);
+  assert.match(html, /เข้าสู่ AWH Desktop/);
+  assert.match(html, /ไม่ต้องใช้ Keychain/);
+  assert.match(html, /เข้าสู่ระบบและเชื่อมต่อเครื่องนี้/);
+  assert.match(html, /ต่ออายุ session/);
+  assert.match(html, /ออกจากระบบเครื่องนี้/);
   assert.match(html, /Register Existing Project/);
   assert.match(html, /Initialize as AWH Project/);
   assert.match(html, /Project Memory/);
@@ -157,16 +159,17 @@ test('desktop enrollment UX uses fixed IPC and never exposes credentials', async
   const preload = await readFile(new URL('../desktop/preload.cjs', import.meta.url), 'utf8');
   const renderer = await readFile(new URL('../desktop/renderer.js', import.meta.url), 'utf8');
   const html = await readFile(new URL('../desktop/index.html', import.meta.url), 'utf8');
-  for (const channel of ['enrollmentState', 'enrollmentPair', 'enrollmentIssuePairing', 'enrollmentRotate', 'enrollmentRevoke']) {
+  for (const channel of ['enrollmentState', 'enrollmentLogin', 'enrollmentPair', 'enrollmentIssuePairing', 'enrollmentRotate', 'enrollmentRevoke']) {
     assert.match(main, new RegExp(`ipcMain\\.handle\\(DESKTOP_IPC\\.${channel}`));
     assert.match(preload, new RegExp(`${channel}:`));
   }
-  assert.match(main, /createProductionCredentialStore/);
+  assert.match(main, /createDesktopCredentialStore/);
   assert.match(main, /readLocalEnrollmentState/);
   assert.match(main, /selectedEnrollmentProjectIds/);
   assert.match(main, /if \(!hasExplicitWorkspace\(config\.dataDir\)\) return \[\]/);
   assert.match(main, /issuePairingCode/);
   assert.match(main, /issuePairingCode\(projectIds, 600\)/);
+  assert.match(renderer, /window\.artAgent\.loginDevice/);
   assert.match(renderer, /window\.artAgent\.pairDevice/);
   assert.match(renderer, /window\.artAgent\.createDeviceCode/);
   assert.match(renderer, /showOwnerCode/);
@@ -178,7 +181,8 @@ test('desktop enrollment UX uses fixed IPC and never exposes credentials', async
   assert.match(html, /enrollment-pairing-scope/);
   assert.doesNotMatch(renderer, /accessToken|Authorization|tokenHash/);
   assert.doesNotMatch(preload, /process\.env|readFile|writeFile|spawn|shell\.openPath/);
-  assert.doesNotMatch(html, /type="password"/i);
+  assert.match(html, /type="password"/i);
+  assert.match(html, /ไม่ต้องใช้ Keychain/);
 });
 
 test('desktop Work is conversation-first, project-bound, and never exposes raw process access', async () => {
@@ -220,7 +224,9 @@ test('desktop keeps legacy trusted-device setup out of the primary Work surface'
   assert.match(main, /trustOwner/);
   assert.match(html, /id="section-autopilot"/);
   assert.doesNotMatch(html.slice(html.indexOf('section id="section-overview"'), html.indexOf('section id="section-projects"')), /trusted device|Workspace write|Codex CLI/i);
-  assert.doesNotMatch(renderer, /password|accessToken|pairingCode|Authorization/i);
+  assert.doesNotMatch(renderer, /accessToken|Authorization|tokenHash/i);
+  assert.match(renderer, /loginDevice/);
+  assert.match(renderer, /enrollment-password/);
 });
 
 test('desktop smoke bootstrap activates a clean AWH data directory before writing its first marker', async () => {

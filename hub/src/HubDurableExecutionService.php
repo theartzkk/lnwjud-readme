@@ -58,7 +58,7 @@ final class HubDurableExecutionService
     /** Claims and completes at most one persisted server-native task. */
     public function runOnce(?string $now = null): ?array
     {
-        $this->assertReady(); $at = self::timestamp($now ?? gmdate('c')); $this->advertise($at); $claimed = $this->claim($at);
+        $this->assertReady(); $at = self::timestamp($now ?? gmdate('c')); $this->advertise($at); $this->reconcileRunnableInspections($at); $claimed = $this->claim($at);
         if ($claimed === null) return null;
         try {
             $checkpoint = json_decode((string) $claimed['checkpoint_json'], true, 32, JSON_THROW_ON_ERROR);
@@ -81,6 +81,32 @@ final class HubDurableExecutionService
             $state = $this->deferOrFail($claimed, $error->codeName, $at, $diagnostic);
             return ['executionId' => (string) $claimed['execution_id'], 'taskId' => (string) $claimed['task_id'], 'state' => $state];
         } catch (Throwable) { $state = $this->deferOrFail($claimed, 'EXECUTION_FAILED', $at); return ['executionId' => (string) $claimed['execution_id'], 'taskId' => (string) $claimed['task_id'], 'state' => $state]; }
+    }
+
+    /**
+     * Reconcile accepted read-only work that arrived before a canonical Vault
+     * revision existed. Mutation/engineering requests remain worker-bound.
+     */
+    private function reconcileRunnableInspections(string $at): int
+    {
+        $q = $this->pdo->query("SELECT t.task_id, t.project_id, t.conversation_id, t.goal, v.active_revision_id FROM control_tasks t JOIN control_project_vaults v ON v.project_id=t.project_id AND v.active_revision_id IS NOT NULL LEFT JOIN control_task_executions e ON e.task_id=t.task_id WHERE t.state='WAITING_FOR_WORKER' AND e.execution_id IS NULL ORDER BY t.created_at, t.task_id LIMIT 25");
+        $count = 0;
+        foreach ($q->fetchAll() as $row) {
+            if (!self::isServerInspectionGoal((string) $row['goal'])) continue;
+            try {
+                $this->pdo->exec('BEGIN IMMEDIATE');
+                $check = $this->pdo->prepare('SELECT state FROM control_tasks WHERE task_id=:task'); $check->execute(['task' => $row['task_id']]);
+                if ($check->fetchColumn() !== 'WAITING_FOR_WORKER') { $this->pdo->exec('COMMIT'); continue; }
+                $exists = $this->pdo->prepare('SELECT 1 FROM control_task_executions WHERE task_id=:task'); $exists->execute(['task' => $row['task_id']]);
+                if ($exists->fetchColumn() !== false) { $this->pdo->exec('COMMIT'); continue; }
+                $this->pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:id,:task,:project,:revision,'VPS','project.read','QUEUED',NULL,NULL,0,NULL,:checkpoint,NULL,:at,:at)")->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'task' => $row['task_id'], 'project' => $row['project_id'], 'revision' => $row['active_revision_id'], 'checkpoint' => json_encode(['mode' => 'PROJECT_INSPECTION'], JSON_THROW_ON_ERROR), 'at' => $at]);
+                $this->pdo->prepare("UPDATE control_tasks SET state='QUEUED',progress=5,failure_code=NULL,updated_at=:at WHERE task_id=:task")->execute(['at' => $at, 'task' => $row['task_id']]);
+                $this->event((string) $row['task_id'], 'QUEUED', 5, 'canonical Project Vault became available; server inspection queued', $at);
+                if (is_string($row['conversation_id']) && preg_match('/^[0-9a-f-]{36}$/i', $row['conversation_id'])) $this->appendConversationMessage((string) $row['conversation_id'], (string) $row['task_id'], 'PROGRESS', 'พบ Source of Truth ของโปรเจกต์แล้ว กำลังเริ่มตรวจบน AWH Server', $at);
+                $this->pdo->exec('COMMIT'); $count++;
+            } catch (Throwable) { $this->rollbackImmediate(); }
+        }
+        return $count;
     }
 
     /** @return list<array<string,mixed>> */
@@ -397,6 +423,7 @@ final class HubDurableExecutionService
     /** PDO does not report transactions opened by SQLite BEGIN IMMEDIATE. */
     private function rollbackImmediate(): void { try { $this->pdo->exec('ROLLBACK'); } catch (Throwable) {} }
     private function assertReady(): void { try { HubCentralProjectAuthorityMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/011_central_project_authority.sql'); } catch (HubCentralProjectAuthorityMigrationException $error) { throw new HubDurableExecutionException('Central Project Authority is not ready', $error->codeName); } }
+    private static function isServerInspectionGoal(string $message): bool { return preg_match('/^(?:ตรวจ|วิเคราะห์|ดู|สรุป|สถานะ|ค้นหา|อ่าน|inspect|review|summari[sz]e|status|search|read)(?:\s|$)/iu', trim($message)) === 1 && preg_match('/(?:แก้|เขียน|สร้าง|ลบ|เปลี่ยน|deploy|commit|push|render|edit|write|create|delete|modify|build)/iu', $message) !== 1; }
     private static function uuid(string $value): string { if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $value) !== 1) throw new HubDurableExecutionException('Execution reference is invalid', 'EXECUTION_INVALID'); return $value; }
     private static function uuidFromBytes(string $bytes): string { $bytes[6] = chr((ord($bytes[6]) & 0x0f) | 0x40); $bytes[8] = chr((ord($bytes[8]) & 0x3f) | 0x80); return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4)); }
     private static function timestamp(string $value): string { if (strtotime($value) === false) throw new HubDurableExecutionException('Execution time is invalid', 'EXECUTION_INVALID'); return gmdate('c', strtotime($value)); }

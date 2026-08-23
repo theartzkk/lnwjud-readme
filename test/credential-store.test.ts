@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import {
   DEVICE_TOKEN_CREDENTIAL_KEY,
@@ -7,8 +9,10 @@ import {
   CredentialStoreError,
   InMemoryCredentialStore,
   MacKeychainCredentialStore,
+  PrivateFileCredentialStore,
   UnavailableCredentialStore,
   WindowsCredentialManagerStore,
+  createDesktopCredentialStore,
   createProductionCredentialStore,
 } from '../src/credential-store.js';
 
@@ -58,7 +62,7 @@ test('Windows Credential Manager missing service, malformed record, and no file 
   const malformed = new WindowsCredentialManagerStore(async () => ({ exitCode: 0, stdout: 'bad\nrecord' }), 'powershell.exe');
   await assert.rejects(() => malformed.get(DEVICE_TOKEN_CREDENTIAL_KEY), (error: unknown) => error instanceof CredentialStoreError && error.code === 'CREDENTIAL_VALUE_INVALID');
   const source = await readFile(new URL('../src/credential-store.ts', import.meta.url), 'utf8');
-  assert.doesNotMatch(source, /cmdkey|writeFile|readFile/);
+  assert.doesNotMatch(source, /cmdkey/);
   assert.match(source, /shell:\s*false/);
 });
 
@@ -67,4 +71,20 @@ test('production adapter selection is platform-specific and Linux remains fail-c
   assert.equal(createProductionCredentialStore('win32') instanceof WindowsCredentialManagerStore, true);
   assert.equal(createProductionCredentialStore('linux') instanceof UnavailableCredentialStore, true);
   assert.equal(createProductionCredentialStore('linux') instanceof InMemoryCredentialStore, false);
+});
+
+
+test('desktop session store avoids OS Keychain and keeps only a private revocable token file', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awh-session-store-'));
+  try {
+    const store = createDesktopCredentialStore(root);
+    assert.equal(store instanceof PrivateFileCredentialStore, true);
+    assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY), null);
+    await store.set(DEVICE_TOKEN_CREDENTIAL_KEY, 'revocable-session-token');
+    assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY), 'revocable-session-token');
+    const directory = await stat(join(root, 'session-credentials'));
+    assert.equal(directory.mode & 0o077, 0);
+    await store.delete(DEVICE_TOKEN_CREDENTIAL_KEY);
+    assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY), null);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

@@ -94,27 +94,28 @@
             <dt>ชื่ออุปกรณ์</dt><dd id="enrollment-device-name">—</dd>
             <dt>ระบบ</dt><dd id="enrollment-platform">—</dd>
           </dl>
-          <div id="enrollment-owner-tools" class="owner-tools">
-            <div class="card-head"><div><h3>เพิ่มคอมพิวเตอร์เครื่องใหม่</h3><p class="muted">สร้างรหัสชั่วคราวเฉพาะเมื่อคุณกำลังเชื่อมต่อ AWH Desktop เครื่องใหม่</p></div></div>
-            <button id="enrollment-issue-pairing" class="btn secondary" disabled>สร้างรหัสสำหรับเครื่องใหม่</button>
-            <button id="owner-access-reset" class="btn secondary" disabled>เปิดลิงก์กู้คืนบัญชี</button>
-            <p id="owner-access-reset-message" class="muted" role="status"></p>
-            <div id="enrollment-pairing-result" class="pairing-result" hidden>
-              <p class="eyebrow">รหัสชั่วคราวสำหรับเครื่องใหม่</p>
-              <strong id="enrollment-pairing-code" class="mono pairing-code"></strong>
-              <p id="enrollment-pairing-expiry" class="muted"></p>
-              <p id="enrollment-pairing-scope" class="muted"></p>
-              <p class="muted">นำรหัสนี้ไปกรอกใน AWH Desktop เครื่องใหม่ แล้วรหัสจะหายจากหน้าจอเมื่อหมดอายุ</p>
-            </div>
-          </div>
-          <label class="toggle-row"><span><strong>เชื่อมต่อกับบัญชี AWH</strong><small>วางรหัสชั่วคราวที่สร้างจากอุปกรณ์ AWH เดิมของคุณ</small></span><input id="enrollment-code" type="text" inputmode="text" autocomplete="off" maxlength="128" placeholder="รหัสชั่วคราว" /></label>
+          <form id="enrollment-login-form" class="owner-tools">
+            <div class="card-head"><div><h3>เข้าสู่ AWH Desktop</h3><p class="muted">ใช้บัญชี AWH เดียวกับบน iPhone/Browser ไม่ต้องใช้ Keychain และ AWH จะไม่บันทึกรหัสผ่าน</p></div></div>
+            <label class="toggle-row"><span><strong>ชื่อผู้ใช้</strong><small>เช่น art</small></span><input id="enrollment-username" type="text" autocomplete="username" maxlength="64" /></label>
+            <label class="toggle-row"><span><strong>รหัสผ่าน</strong><small>รหัสผ่านบัญชี AWH ปกติ</small></span><input id="enrollment-password" type="password" autocomplete="current-password" maxlength="512" /></label>
+            <button id="enrollment-login" class="btn" type="submit" disabled>เข้าสู่ระบบและเชื่อมต่อเครื่องนี้</button>
+          </form>
           <div class="actions">
-            <button id="enrollment-pair" class="btn" disabled>เชื่อมต่ออุปกรณ์นี้</button>
-            <button id="enrollment-rotate" class="btn secondary" disabled>ต่ออายุการเชื่อมต่อ</button>
-            <button id="enrollment-revoke" class="btn danger" disabled>ยกเลิกการเชื่อมต่ออุปกรณ์นี้</button>
+            <button id="owner-access-reset" class="btn secondary" disabled>เปลี่ยน/กู้รหัสผ่าน</button>
+            <button id="enrollment-rotate" class="btn secondary" disabled>ต่ออายุ session</button>
+            <button id="enrollment-revoke" class="btn danger" disabled>ออกจากระบบเครื่องนี้</button>
           </div>
+          <p id="owner-access-reset-message" class="muted" role="status"></p>
+          <details class="advanced-nav"><summary>วิธีเชื่อมต่อแบบรหัสชั่วคราว (ขั้นสูง)</summary>
+            <div id="enrollment-owner-tools" class="owner-tools">
+              <button id="enrollment-issue-pairing" class="btn secondary" disabled>สร้างรหัสชั่วคราว</button>
+              <div id="enrollment-pairing-result" class="pairing-result" hidden><strong id="enrollment-pairing-code" class="mono pairing-code"></strong><p id="enrollment-pairing-expiry" class="muted"></p><p id="enrollment-pairing-scope" class="muted"></p></div>
+              <input id="enrollment-code" type="text" autocomplete="off" maxlength="128" placeholder="รหัสชั่วคราว" />
+              <button id="enrollment-pair" class="btn secondary" disabled>เชื่อมต่อด้วยรหัสชั่วคราว</button>
+            </div>
+          </details>
           <div class="owner-tools"><div class="card-head"><div><h3>พร้อมช่วยทำงาน</h3><p id="worker-summary" class="muted">AWH จะรับงานที่เหมาะกับอุปกรณ์นี้โดยอัตโนมัติเมื่อคุณเปิดใช้งานการทำงาน</p></div><span id="worker-state" class="badge">OFF</span></div><div class="actions"><button id="worker-run-once" class="btn secondary small">ตรวจงานที่รออยู่</button></div></div>
-          <details class="advanced-nav"><summary>รายละเอียดการเชื่อมต่อ</summary><dl class="kv"><dt>รหัสอุปกรณ์</dt><dd id="enrollment-device-id" class="mono">—</dd></dl><p class="muted remote-note">AWH เก็บ credential เฉพาะใน secure OS credential store ของเครื่องนี้ และไม่แสดงใน Browser หรือ Project Memory</p></details>
+          <details class="advanced-nav"><summary>รายละเอียดการเชื่อมต่อ</summary><dl class="kv"><dt>รหัสอุปกรณ์</dt><dd id="enrollment-device-id" class="mono">—</dd></dl><p class="muted remote-note">AWH เก็บเฉพาะ session token ที่เพิกถอนได้ในพื้นที่ส่วนตัวของแอป ไม่เก็บรหัสผ่าน และไม่ใช้ Keychain</p></details>
         </div>
       </section>
 

@@ -129,6 +129,27 @@ final class HubControlPlaneService
 
     public function listProjectsForSession(string $sessionToken, ?string $now = null): array { $row = $this->sessionRow($sessionToken, $now); return ['schemaVersion' => 1, 'projects' => $this->projectsForUser((string) $row['user_id'])]; }
 
+
+    /** Browser-first project creation. Source can be attached later from Desktop/Vault. */
+    public function createProjectForSession(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); $this->assertFinalReady(); $this->assertOwner((string) $session['user_id']);
+        self::exactKeys($payload, ['name', 'schemaVersion', 'type']); if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Unsupported project schema', 'SCHEMA_VERSION');
+        $name = self::portableText((string) ($payload['name'] ?? ''), 'projectName', 120); $type = strtolower(trim((string) ($payload['type'] ?? 'general')));
+        if (preg_match('/^[a-z][a-z0-9-]{0,31}$/', $type) !== 1) throw new HubControlPlaneException('Project type is invalid', 'FIELD_INVALID');
+        $duplicate = $this->pdo->prepare('SELECT 1 FROM projects WHERE lower(name) = lower(:name)'); $duplicate->execute(['name' => $name]); if ($duplicate->fetchColumn() !== false) throw new HubControlPlaneException('A project with this name already exists', 'PROJECT_NAME_CONFLICT');
+        $projectId = self::uuidFromBytes(random_bytes(16)); $at = self::timestamp($now ?? gmdate('c')); $user = (string) $session['user_id'];
+        try {
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $this->pdo->prepare('INSERT INTO projects(project_id, name, type, created_at, source_revision, observed_at, provenance) VALUES(:id, :name, :type, :at, NULL, :at, :provenance)')->execute(['id' => $projectId, 'name' => $name, 'type' => $type, 'at' => $at, 'provenance' => 'owner-browser-create']);
+            $this->pdo->prepare("INSERT INTO user_project_memberships(user_id, project_id, role, created_at, revoked_at) VALUES(:user, :project, 'owner', :at, NULL)")->execute(['user' => $user, 'project' => $projectId, 'at' => $at]);
+            $capability = $this->pdo->prepare('INSERT INTO control_project_capabilities(user_id, project_id, capability, granted_by_user_id, created_at, revoked_at) VALUES(:user, :project, :capability, :user, :at, NULL)');
+            foreach (['project.read', 'conversation.write', 'attachment.upload', 'approval.decide', 'deployment.approve'] as $nameCapability) $capability->execute(['user' => $user, 'project' => $projectId, 'capability' => $nameCapability, 'at' => $at]);
+            $this->pdo->exec('COMMIT');
+        } catch (Throwable $error) { self::rollbackImmediate($this->pdo); if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Project could not be created', 'PROJECT_CREATE_FAILED'); }
+        return ['schemaVersion' => 1, 'project' => ['projectId' => $projectId, 'name' => $name, 'type' => $type, 'createdAt' => $at, 'sourceRevision' => null, 'observedAt' => $at, 'memoryReady' => false], 'sourceState' => 'NOT_SYNCED'];
+    }
+
     /** Legacy project route: returns the most recently active Work thread. */
     public function conversation(string $sessionToken, string $projectId, ?string $now = null): array
     {

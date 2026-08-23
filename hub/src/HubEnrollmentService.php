@@ -162,6 +162,50 @@ final class HubEnrollmentService
         return $this->issuePairingCode((string) $auth['user_id'], $projectIds, $now, $ttlSeconds);
     }
 
+    /** Password-first Desktop enrollment. The password is verified in-memory and never stored on the device. */
+    public function enrollDeviceWithPassword(array $request, ?string $now = null): array
+    {
+        self::exactKeys($request, ['appVersion', 'arch', 'deviceId', 'displayName', 'password', 'platform', 'schemaVersion', 'username']);
+        if (($request['schemaVersion'] ?? null) !== 1) throw new HubEnrollmentException('Unsupported enrollment schema', 'SCHEMA_VERSION');
+        $deviceId = self::uuid((string) ($request['deviceId'] ?? ''), 'deviceId');
+        $display = self::portableText((string) ($request['displayName'] ?? ''), 'displayName', 80);
+        $platform = self::text($request['platform'] ?? null, 'platform', 16); if (!in_array($platform, ['darwin', 'win32', 'linux'], true)) throw new HubEnrollmentException('Platform is unsupported', 'FIELD_INVALID');
+        $arch = self::text($request['arch'] ?? null, 'arch', 32); $appVersion = self::text($request['appVersion'] ?? null, 'appVersion', 32);
+        $username = strtolower(trim(self::text($request['username'] ?? null, 'username', 64))); $password = self::text($request['password'] ?? null, 'password', 512);
+        if (preg_match('/^[a-z][a-z0-9._-]{2,63}$/', $username) !== 1) throw new HubEnrollmentException('Username or password is incorrect', 'AUTH_FAILED');
+        $at = self::timestamp($now ?? gmdate('c'), 'now'); $this->assertRateLimit($deviceId, $at);
+        try {
+            $q = $this->pdo->prepare("SELECT p.user_id, p.password_hash, p.enabled, u.revoked_at, COALESCE(cp.status, 'ACTIVE') AS profile_status FROM owner_passwords p JOIN hub_users u ON u.user_id = p.user_id LEFT JOIN control_user_profiles cp ON cp.user_id = p.user_id WHERE p.username = :username");
+            $q->execute(['username' => $username]); $account = $q->fetch();
+        } catch (Throwable) { throw new HubEnrollmentException('Password login is not ready', 'AUTH_SCHEMA_NOT_READY'); }
+        $hash = is_array($account) && is_string($account['password_hash'] ?? null) ? (string) $account['password_hash'] : password_hash('awh-dummy-password-value', PASSWORD_DEFAULT);
+        if (!is_array($account) || (int) $account['enabled'] !== 1 || $account['revoked_at'] !== null || (string) $account['profile_status'] !== 'ACTIVE' || !password_verify($password, $hash)) throw new HubEnrollmentException('Username or password is incorrect', 'AUTH_FAILED');
+        $userId = (string) $account['user_id'];
+        $existing = $this->pdo->prepare('SELECT e.user_id FROM devices d LEFT JOIN device_enrollments e ON e.device_id = d.device_id WHERE d.device_id = :device'); $existing->execute(['device' => $deviceId]); $existingUser = $existing->fetchColumn();
+        if ($existingUser !== false && (!is_string($existingUser) || !hash_equals($userId, $existingUser))) throw new HubEnrollmentException('This device belongs to another AWH account', 'DEVICE_FORBIDDEN');
+        $projects = $this->pdo->prepare('SELECT project_id FROM user_project_memberships WHERE user_id = :user AND revoked_at IS NULL ORDER BY project_id'); $projects->execute(['user' => $userId]); $projectIds = array_map(static fn (array $row): string => (string) $row['project_id'], $projects->fetchAll());
+        $owner = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1')->fetchColumn(); $role = is_string($owner) && hash_equals($owner, $userId) ? 'owner' : 'member';
+        $tokenId = self::randomUuid(); $token = self::base64url(random_bytes(32)); $expires = gmdate('c', strtotime($at) + self::TOKEN_TTL_SECONDS);
+        try {
+            $this->pdo->beginTransaction();
+            if ($existingUser === false) {
+                $this->pdo->prepare('INSERT INTO devices(device_id, display_name, platform, arch, app_version, last_seen_at, revoked_at) VALUES(:id, :name, :platform, :arch, :version, :last, NULL)')->execute(['id' => $deviceId, 'name' => $display, 'platform' => $platform, 'arch' => $arch, 'version' => $appVersion, 'last' => $at]);
+                $this->pdo->prepare('INSERT INTO device_enrollments(device_id, user_id, enrolled_at, revoked_at) VALUES(:device, :user, :at, NULL)')->execute(['device' => $deviceId, 'user' => $userId, 'at' => $at]);
+            } else {
+                $this->pdo->prepare('UPDATE devices SET display_name=:name, platform=:platform, arch=:arch, app_version=:version, last_seen_at=:at, revoked_at=NULL WHERE device_id=:device')->execute(['name' => $display, 'platform' => $platform, 'arch' => $arch, 'version' => $appVersion, 'at' => $at, 'device' => $deviceId]);
+                $this->pdo->prepare('UPDATE device_enrollments SET enrolled_at=:at, revoked_at=NULL WHERE device_id=:device AND user_id=:user')->execute(['at' => $at, 'device' => $deviceId, 'user' => $userId]);
+            }
+            $this->pdo->prepare('UPDATE device_project_memberships SET revoked_at=:at WHERE device_id=:device AND revoked_at IS NULL')->execute(['at' => $at, 'device' => $deviceId]);
+            $membership = $this->pdo->prepare('INSERT INTO device_project_memberships(device_id, project_id, role, created_at, revoked_at) VALUES(:device, :project, :role, :at, NULL) ON CONFLICT(device_id, project_id) DO UPDATE SET role=excluded.role, revoked_at=NULL');
+            foreach ($projectIds as $projectId) $membership->execute(['device' => $deviceId, 'project' => $projectId, 'role' => $role, 'at' => $at]);
+            $this->pdo->prepare('UPDATE device_tokens SET revoked_at=:at WHERE device_id=:device AND revoked_at IS NULL')->execute(['at' => $at, 'device' => $deviceId]);
+            $this->pdo->prepare('INSERT INTO device_tokens(token_id, user_id, device_id, token_hash, created_at, expires_at, revoked_at, last_used_at, rotated_from_token_id, replaced_by_token_id) VALUES(:id, :user, :device, :hash, :created, :expires, NULL, NULL, NULL, NULL)')->execute(['id' => $tokenId, 'user' => $userId, 'device' => $deviceId, 'hash' => hash('sha256', $token), 'created' => $at, 'expires' => $expires]);
+            $this->pdo->prepare('DELETE FROM enrollment_rate_limits WHERE rate_key=:key')->execute(['key' => $deviceId]);
+            $this->pdo->commit();
+        } catch (Throwable) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); throw new HubEnrollmentException('Device login failed closed', 'ENROLLMENT_FAILED'); }
+        return ['schemaVersion' => 1, 'deviceId' => $deviceId, 'userId' => $userId, 'accessToken' => $token, 'expiresAt' => $expires, 'tokenType' => 'Bearer', 'projectCount' => count($projectIds)];
+    }
+
     public function enrollDevice(array $request, ?string $now = null): array
     {
         self::exactKeys($request, ['appVersion', 'arch', 'deviceId', 'displayName', 'pairingCode', 'platform', 'schemaVersion']);
@@ -373,6 +417,12 @@ final class HubEnrollmentService
     {
         if (strtotime($value) === false) throw new HubEnrollmentException($field . ' is invalid', 'DATE_INVALID');
         return $value;
+    }
+
+    private static function randomUuid(): string
+    {
+        $bytes = random_bytes(16); $bytes[6] = chr((ord($bytes[6]) & 0x0f) | 0x40); $bytes[8] = chr((ord($bytes[8]) & 0x3f) | 0x80);
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4));
     }
 
     private static function base64url(string $bytes): string

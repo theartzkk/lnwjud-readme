@@ -18,20 +18,21 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   });
   assert.match(result.stdout, /^M12_DRY_RUN=PASS$/m);
   assert.match(result.stdout, new RegExp(`^M12_RELEASE=${release}$`, 'm'));
-  assert.match(result.stdout, /project-vault-storage-ready,migrate-011-only-from-v11,source-refresh-without-migration-on-v12,control-pointer,refresh-managed-native-executor/);
+  assert.match(result.stdout, /project-vault-storage-ready,migrate-011-only-from-v11,source-refresh-without-migration-on-v12,control-pointer,refresh-managed-native-executor,php-fpm-reload,project-vault-source-sync/);
   assert.match(result.stdout, /^M12_ARTIFACT_STORAGE=private-object-root-required$/m);
   assert.match(result.stdout, /M12_ROLLBACK=restore-db-only-if-migrated,pointer,web-pointer,managed-executor-units,nginx,service-health,m3d-m3e-control-regression/);
   assert.match(result.stdout, /M12_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL/);
 
-  const [local, remoteSource, migration, vault, vaultService, durable, artifactStore, controlService, controlRouter, nativeAgent, webAdapter, webApp, serviceUnit, timerUnit] = await Promise.all([
+  const [local, remoteSource, migration, vault, vaultService, durable, sourceSync, artifactStore, controlService, controlRouter, nativeAgent, webAdapter, webApp, serviceUnit, timerUnit] = await Promise.all([
     readFile(deploy, 'utf8'), readFile(remote, 'utf8'), readFile(join(root, 'hub/migrations/011_central_project_authority.sql'), 'utf8'),
-    readFile(join(root, 'hub/src/HubProjectVault.php'), 'utf8'), readFile(join(root, 'hub/src/HubProjectVaultService.php'), 'utf8'), readFile(join(root, 'hub/src/HubDurableExecutionService.php'), 'utf8'), readFile(join(root, 'hub/src/HubArtifactStore.php'), 'utf8'), readFile(join(root, 'hub/src/HubControlPlaneService.php'), 'utf8'), readFile(join(root, 'hub/src/HubControlPlaneRouter.php'), 'utf8'),
+    readFile(join(root, 'hub/src/HubProjectVault.php'), 'utf8'), readFile(join(root, 'hub/src/HubProjectVaultService.php'), 'utf8'), readFile(join(root, 'hub/src/HubDurableExecutionService.php'), 'utf8'), readFile(join(root, 'hub/bin/sync-deployed-source-vault.php'), 'utf8'), readFile(join(root, 'hub/src/HubArtifactStore.php'), 'utf8'), readFile(join(root, 'hub/src/HubControlPlaneService.php'), 'utf8'), readFile(join(root, 'hub/src/HubControlPlaneRouter.php'), 'utf8'),
     readFile(join(root, 'hub/src/HubNativeAgentService.php'), 'utf8'), readFile(join(root, 'web/control-plane-adapter.js'), 'utf8'), readFile(join(root, 'web/app.js'), 'utf8'),
     readFile(join(root, 'deploy/systemd/awh-native-executor.service'), 'utf8'), readFile(join(root, 'deploy/systemd/awh-native-executor.timer'), 'utf8'),
   ]);
   assert.match(local, /--central-project-authority/);
   assert.match(local, /migrate-central-project-authority\.php/);
   assert.match(remoteSource, /CENTRAL_PROJECT_AUTHORITY=\$\{21\}/);
+  assert.match(remoteSource, /RELEASE_COMMIT=\$\{22\}/);
   assert.match(remoteSource, /m12-central-project-authority/);
   assert.match(remoteSource, /M12_START_VERSION/);
   assert.match(remoteSource, /case \"\$M12_START_VERSION\" in 11\|12/);
@@ -43,6 +44,11 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(remoteSource, /cp -p \"\$EXECUTOR_SERVICE_BACKUP\" \"\$EXECUTOR_SERVICE_UNIT\"/);
   assert.match(remoteSource, /PRAGMA user_version.*= 12/s);
   assert.match(remoteSource, /project-vault/);
+  assert.match(remoteSource, /PROJECT_VAULT_SOURCE_SYNC/);
+  assert.match(remoteSource, /sync-deployed-source-vault\.php/);
+  assert.match(local, /git -C "\$ROOT" archive --format=zip/);
+  assert.match(sourceSync, /Art’s Workspace Hub/);
+  assert.match(sourceSync, /release-vault:/);
   assert.match(remoteSource, /class_exists\("ZipArchive"\).*\? 0 : 1\);/);
   assert.match(remoteSource, /awh-native-executor\.timer/);
   assert.match(migration, /control_project_vaults/);
