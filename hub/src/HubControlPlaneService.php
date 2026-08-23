@@ -462,7 +462,15 @@ final class HubControlPlaneService
             if ((string) $conversation['project_id'] !== $projectId || (isset($conversation['archived_at']) && $conversation['archived_at'] !== null)) throw new HubControlPlaneException('Conversation is not available for this project', 'PROJECT_FORBIDDEN');
             $existing = $this->pdo->prepare('SELECT message_id FROM control_conversation_messages WHERE conversation_id = :conversation AND idempotency_key = :key');
             $existing->execute(['conversation' => $conversation['conversation_id'], 'key' => $idempotency]);
-            if ($existing->fetchColumn() !== false) { $this->pdo->exec('COMMIT'); $transactionOpen = false; return $schema >= 2 ? $this->conversationByIdForUser($userId, (string) $conversation['conversation_id']) : $this->conversationForUser($userId, $projectId); }
+            $existingMessageId = $existing->fetchColumn();
+            if ($existingMessageId !== false) {
+                $answer = $this->pdo->prepare("SELECT 1 FROM control_conversation_messages WHERE conversation_id = :conversation AND idempotency_key = :key");
+                $answer->execute(['conversation' => $conversation['conversation_id'], 'key' => 'native-answer-' . (string) $existingMessageId]);
+                $needsNativeRetry = $this->finalProductSchemaPresent() && $answer->fetchColumn() === false;
+                $this->pdo->exec('COMMIT'); $transactionOpen = false;
+                if ($needsNativeRetry) $this->completeNativeConversation($userId, ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => (string) $existingMessageId, 'projectId' => $projectId, 'request' => $message], $at);
+                return $schema >= 2 ? $this->conversationByIdForUser($userId, (string) $conversation['conversation_id']) : $this->conversationForUser($userId, $projectId);
+            }
             $messageId = $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'USER', $message, $at, $idempotency);
             if ($attachmentIds !== []) $this->bindAttachments($userId, $projectId, (string) $conversation['conversation_id'], $messageId, $attachmentIds);
             if (self::isConversationOnly($message, $attachmentIds !== [])) {
@@ -665,8 +673,22 @@ final class HubControlPlaneService
         }
         $body = self::conversationText((string) $body);
         if ($body === '') { $kind = 'FAILURE'; $body = 'AI ยังตอบไม่ได้ในขณะนี้ ข้อความของคุณถูกเก็บไว้แล้ว และ AWH จะไม่อ้างว่างานเสร็จ'; }
-        try { $this->pdo->exec('BEGIN IMMEDIATE'); $this->appendConversationMessage((string) $request['conversationId'], null, $kind, $body, self::timestamp(gmdate('c'))); $this->pdo->exec('COMMIT'); }
-        catch (Throwable) { self::rollbackImmediate($this->pdo); }
+        $answerKey = 'native-answer-' . (string) $request['messageId'];
+        $lastError = null;
+        for ($attempt = 0; $attempt < 8; $attempt++) {
+            try {
+                $this->pdo->exec('BEGIN IMMEDIATE');
+                $existing = $this->pdo->prepare('SELECT message_id FROM control_conversation_messages WHERE conversation_id = :conversation AND idempotency_key = :key');
+                $existing->execute(['conversation' => $request['conversationId'], 'key' => $answerKey]);
+                if ($existing->fetchColumn() === false) $this->appendConversationMessage((string) $request['conversationId'], null, $kind, $body, self::timestamp(gmdate('c')), $answerKey);
+                $this->pdo->exec('COMMIT');
+                return;
+            } catch (Throwable $error) {
+                self::rollbackImmediate($this->pdo); $lastError = $error;
+                if ($attempt < 7) usleep(50000 * (1 << min($attempt, 4)));
+            }
+        }
+        throw new HubControlPlaneException('AI response was generated but could not be saved after safe retries', 'CONVERSATION_RESPONSE_PERSIST_FAILED', ['retryable' => true]);
     }
 
     private static function providerUserMessage(string $code): string
@@ -1631,7 +1653,7 @@ final class HubControlPlaneService
     private static function isConversationFollowUp(string $message): bool { return preg_match('/^(?:ทำต่อ|ต่อจาก|ต่อเลย|เอาอัน(?:นี้|นั้น|ล่าสุด)|ยังไม่ใช่|ตรวจอีกที|continue|keep going|that one)(?:\s|$|[.!?])/iu', trim($message)) === 1; }
     /** Read-only Vault work can use the bounded VPS executor.  Any request
      * that might modify content waits for an explicit specialist capability. */
-    private static function isServerInspection(string $message): bool { return preg_match('/^(?:ตรวจ|วิเคราะห์|ดู|สรุป|สถานะ|ค้นหา|อ่าน|inspect|review|summari[sz]e|status|search|read)(?:\s|$)/iu', trim($message)) === 1 && preg_match('/(?:แก้|เขียน|สร้าง|ลบ|เปลี่ยน|deploy|commit|push|render|edit|write|create|delete|modify|build)/iu', $message) !== 1; }
+    private static function isServerInspection(string $message): bool { $value = preg_replace('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)+/iu', '', trim($message)) ?? trim($message); return preg_match('/^(?:ตรวจ|วิเคราะห์|ดู|สรุป|สถานะ|ค้นหา|อ่าน|inspect|review|summari[sz]e|status|search|read)(?:\s|$)/iu', $value) === 1 && preg_match('/(?:แก้|เขียน|สร้าง|ลบ|เปลี่ยน|deploy|commit|push|render|edit|write|create|delete|modify|build)/iu', $value) !== 1; }
     /** A deliberately small deterministic VPS mutation. Everything broader is
      * still routed through an advertised specialist capability. */
     private static function isServerTextNormalization(string $message): bool { return preg_match('/^(?:normalize|normalise|จัดระเบียบ)(?:\s+(?:text|ข้อความ|ไฟล์))?\s+(?:file|ไฟล์)\s+[A-Za-z0-9._\/-]{1,900}\s*$/iu', trim($message)) === 1; }
