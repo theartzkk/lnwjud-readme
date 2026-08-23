@@ -49,6 +49,7 @@ test('M12 Central Project Authority is an explicit v11-to-v12 release with a pri
   assert.match(controlService, /executor_kind = 'CODEX'/);
   assert.match(controlRouter, /worker\/executions/);
   assert.match(remoteSource, /task-transfers/);
+  assert.match(local, /DEPLOY_STAGE=ARTIFACT_STORAGE_READY/);
   assert.match(durable, /one-to-one FK/);
   assert.match(durable, /NATIVE_CONVERSATION/);
   assert.match(durable, /PROJECT_INSPECTION/);
