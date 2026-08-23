@@ -40,6 +40,18 @@ final class HubFoundingMemoryService
         $this->assertReady(); $userId = self::uuid($userId); $projectId = self::uuid($projectId); $needle = self::query($request) ?? '';
         $project = $this->projectRecords($userId, $projectId, 'all', $needle, 24);
         $owner = $isOwner ? $this->ownerRecords($userId, 'all', $needle, 24) : [];
+        // Intentional owner configuration (profile, working preferences,
+        // personality and constitution) is durable context, not a keyword
+        // accident. Include only these small pinned-by-purpose records when a
+        // particular user request does not happen to repeat their wording.
+        if ($isOwner) {
+            $ownerById = [];
+            foreach ($owner as $record) $ownerById[(string) $record['memory_id']] = $record;
+            foreach ($this->ownerRecords($userId, 'all', null, 24) as $record) {
+                if (in_array((string) $record['category'], ['OWNER_PROFILE', 'WORKING_PREFERENCE', 'AI_PERSONALITY', 'OWNER_CONSTITUTION'], true)) $ownerById[(string) $record['memory_id']] = $record;
+            }
+            $owner = array_values($ownerById);
+        }
         $all = array_merge($project, $owner);
         usort($all, static function (array $a, array $b) use ($needle): int {
             $score = static function (array $row) use ($needle): int {
@@ -52,6 +64,39 @@ final class HubFoundingMemoryService
         $records = [];
         foreach (array_slice($all, 0, 6) as $row) $records[] = ['stableKey' => (string) $row['stable_key'], 'scope' => strtolower((string) $row['scope']), 'category' => (string) $row['category'], 'content' => self::bounded((string) $row['content'], 700), 'freshness' => strtolower((string) $row['freshness']), 'tags' => self::tags((string) $row['tags_json'])];
         return ['sourceTruth' => $this->sourceTruth($projectId), 'records' => $records, 'limit' => 6, 'authorityOrder' => ['live-source', 'active-task-context', 'project-memory', 'owner-constitution', 'recent-conversation', 'archive']];
+    }
+
+    /**
+     * Owner-created records extend the same M10 authority; they are never a
+     * browser-only profile cache or a second memory database.
+     * @return array{schemaVersion:int,memory:array}
+     */
+    public function create(string $ownerUserId, string $scope, ?string $projectId, string $category, ?string $content, ?array $tags, ?string $now = null): array
+    {
+        $this->assertReady(); $ownerUserId = self::uuid($ownerUserId); $scope = strtolower(trim($scope));
+        if (!in_array($scope, ['owner', 'constitution', 'project'], true)) throw new HubFoundingMemoryException('Memory scope is invalid', 'MEMORY_INVALID');
+        $project = $projectId === null ? null : self::uuid($projectId);
+        if (($scope === 'project') !== ($project !== null)) throw new HubFoundingMemoryException('Project memory association is invalid', 'MEMORY_INVALID');
+        $category = self::category($category); $content = self::content($content); if (HubFoundingMemoryMigration::isSensitiveContent($content)) throw new HubFoundingMemoryException('Sensitive material cannot be stored as ordinary memory', 'MEMORY_SENSITIVE_EXCLUDED');
+        $tagsJson = self::tagsJson($tags); $at = self::timestamp($now ?? gmdate('c')); $id = self::uuidFromBytes(random_bytes(16));
+        $scopeDb = strtoupper($scope); $subject = $project ?? $ownerUserId; $stable = strtolower($scope) . '.owner.' . $id; $pinned = in_array($category, ['OWNER_PROFILE', 'WORKING_PREFERENCE', 'AI_PERSONALITY', 'OWNER_CONSTITUTION'], true) ? $at : null;
+        $transactionOpen = false;
+        try {
+            $this->pdo->exec('BEGIN IMMEDIATE'); $transactionOpen = true;
+            $insert = $this->pdo->prepare("INSERT INTO control_memory_records(memory_id, scope, scope_subject, stable_key, owner_user_id, project_id, project_key, conversation_id, category, content, content_sha256, authority_level, provenance, created_at, updated_at, last_verified_at, freshness, superseded_by_memory_id, superseded_by_source_revision, sensitivity, sharing_policy, tags_json, source_revision, pinned_at, deleted_at, import_batch_id, revision_no) VALUES(:id, :scope, :subject, :stable, :owner, :project, NULL, NULL, :category, :content, :hash, 'OWNER_EDITED', 'Owner Memory Entry', :at, :at, :at, 'CURRENT', NULL, NULL, 'NORMAL', 'OWNER_PRIVATE', :tags, NULL, :pinned, NULL, NULL, 1)");
+            $insert->execute(['id' => $id, 'scope' => $scopeDb, 'subject' => $subject, 'stable' => $stable, 'owner' => $ownerUserId, 'project' => $project, 'category' => $category, 'content' => $content, 'hash' => hash('sha256', $content), 'at' => $at, 'tags' => $tagsJson, 'pinned' => $pinned]);
+            // OWNER_EDIT is already the durable audited user-authored change
+            // kind in M10; no migration is needed merely to rename it CREATE.
+            self::revision($this->pdo, $id, 1, $content, 'OWNER_EDITED', 'Owner Memory Entry', 'CURRENT', 'OWNER_PRIVATE', $tagsJson, null, 'OWNER_EDIT', $ownerUserId, $at);
+            $this->pdo->exec('COMMIT'); $transactionOpen = false;
+        } catch (Throwable $error) {
+            if ($transactionOpen) { try { $this->pdo->exec('ROLLBACK'); } catch (Throwable) {} }
+            if ($error instanceof HubFoundingMemoryException) throw $error;
+            throw new HubFoundingMemoryException('Memory could not be created', 'MEMORY_CREATE_FAILED');
+        }
+        $q = $this->pdo->prepare('SELECT * FROM control_memory_records WHERE memory_id = :id AND owner_user_id = :owner'); $q->execute(['id' => $id, 'owner' => $ownerUserId]); $record = $q->fetch();
+        if (!is_array($record)) throw new HubFoundingMemoryException('Memory could not be read', 'MEMORY_CREATE_FAILED');
+        return ['schemaVersion' => 1, 'memory' => self::record($record)];
     }
 
     /** @return array{schemaVersion:int,batches:list<array>} */
@@ -148,6 +193,7 @@ final class HubFoundingMemoryService
 
     private function assertReady(): void { try { HubFoundingMemoryMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/009_founding_memory.sql'); } catch (HubFoundingMemoryMigrationException $error) { throw new HubFoundingMemoryException('Founding Memory is not ready', $error->codeName); } }
     private static function scope(string $value): string { $value = strtolower(trim($value)); if (!in_array($value, self::SCOPES, true)) throw new HubFoundingMemoryException('Memory scope is invalid', 'MEMORY_INVALID'); return $value; }
+    private static function category(string $value): string { $value = strtoupper(trim($value)); if (preg_match('/^[A-Z][A-Z0-9_]{2,47}$/', $value) !== 1) throw new HubFoundingMemoryException('Memory category is invalid', 'MEMORY_INVALID'); return $value; }
     private static function query(?string $value): ?string { if ($value === null || trim($value) === '') return null; $value = trim($value); if (strlen($value) > 120 || preg_match('/[\x00-\x1f\x7f]/', $value)) throw new HubFoundingMemoryException('Memory search is invalid', 'MEMORY_INVALID'); return $value; }
     private static function content(?string $value): string { if (!is_string($value) || trim($value) === '' || strlen($value) > 2000 || preg_match('/[\x00-\x1f\x7f]/', $value)) throw new HubFoundingMemoryException('Memory content is invalid', 'MEMORY_INVALID'); return trim($value); }
     private static function tagsJson(?array $tags): string { if (!is_array($tags) || array_is_list($tags) === false || count($tags) > 12) throw new HubFoundingMemoryException('Memory tags are invalid', 'MEMORY_INVALID'); $out = []; foreach ($tags as $tag) { if (!is_string($tag) || preg_match('/^[a-z0-9-]{2,48}$/', $tag) !== 1) throw new HubFoundingMemoryException('Memory tags are invalid', 'MEMORY_INVALID'); $out[] = $tag; } if (count(array_unique($out)) !== count($out)) throw new HubFoundingMemoryException('Memory tags are invalid', 'MEMORY_INVALID'); return json_encode($out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR); }

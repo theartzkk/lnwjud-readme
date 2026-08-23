@@ -37,7 +37,7 @@ test('M10 Founding Memory release is one bounded M7-to-M8-to-M9-to-M10 activatio
   assert.match(remoteSource, /PRAGMA user_version;.*= 8/s);
   assert.match(remoteSource, /PRAGMA user_version;.*= 9/s);
   assert.match(remoteSource, /PRAGMA user_version;.*= 10/s);
-  const start = remoteSource.indexOf('if test "$FOUNDING_MEMORY" = 1; then\n  # M10 is the one bounded activation');
+  const start = remoteSource.indexOf('elif test "$FOUNDING_MEMORY" = 1; then\n  # M10 is the one bounded activation');
   const end = remoteSource.indexOf('elif test "$FINAL_PRODUCT" = 1; then', start);
   assert.ok(start >= 0 && end > start, 'M10 migration branch is present');
   const branch = remoteSource.slice(start, end);

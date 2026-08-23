@@ -7,6 +7,7 @@ require_once __DIR__ . '/HubWorkspaceContinuityMigration.php';
 require_once __DIR__ . '/HubUnifiedWorkspaceMigration.php';
 require_once __DIR__ . '/HubFinalProductMigration.php';
 require_once __DIR__ . '/HubFoundingMemoryMigration.php';
+require_once __DIR__ . '/HubSelfServiceMigration.php';
 require_once __DIR__ . '/HubAttachmentStore.php';
 require_once __DIR__ . '/HubNativeAgentService.php';
 require_once __DIR__ . '/HubOwnerAuthService.php';
@@ -181,7 +182,19 @@ final class HubControlPlaneService
     /** Validated structured product configuration; values are never arbitrary CSS/HTML. */
     public function productSettings(string $sessionToken, ?string $now = null): array
     {
-        $session = $this->sessionRow($sessionToken, $now); $this->assertUnifiedReady(); return ['schemaVersion' => 2, 'settings' => $this->productSettingsForUser((string) $session['user_id'])];
+        $session = $this->sessionRow($sessionToken, $now); $this->assertUnifiedReady(); $userId = (string) $session['user_id'];
+        // Presentation metadata is shared product identity, not owner-private
+        // configuration.  Every authorized Project member needs it to render
+        // one consistent AWH surface, but only the Owner can edit or inspect
+        // the reversible configuration history.
+        return ['schemaVersion' => 2, 'settings' => $this->isOwnerUser($userId) ? $this->productSettingsForUser($userId) : $this->publicProductSettings()];
+    }
+
+    /** Safe, canonical product identity for About and provider context. */
+    public function productIdentityForSession(string $sessionToken, ?string $now = null): array
+    {
+        $this->sessionRow($sessionToken, $now); $this->assertUnifiedReady();
+        return ['schemaVersion' => 1, 'identity' => $this->productIdentity()];
     }
 
     public function updateProductSetting(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
@@ -232,6 +245,17 @@ final class HubControlPlaneService
         catch (HubFoundingMemoryException $error) { throw new HubControlPlaneException('Memory could not be updated', $error->codeName); }
     }
 
+    /** Owner-created profile/preferences use M10 Memory, never a browser cache. */
+    public function createMemory(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['category', 'content', 'projectId', 'schemaVersion', 'scope', 'tags']);
+        if (($payload['schemaVersion'] ?? null) !== 1 || !is_string($payload['scope'] ?? null) || !is_string($payload['category'] ?? null) || !is_string($payload['content'] ?? null) || !is_array($payload['tags'] ?? null) || (!is_null($payload['projectId'] ?? null) && !is_string($payload['projectId']))) throw new HubControlPlaneException('Memory request is invalid', 'MEMORY_INVALID');
+        $this->assertFoundingReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId);
+        $scope = strtolower((string) $payload['scope']); $project = $payload['projectId'] === null ? null : self::uuid((string) $payload['projectId']); if ($project !== null) $this->assertProjectMember($userId, $project);
+        try { return $this->memory->create($userId, $scope, $project, (string) $payload['category'], (string) $payload['content'], $payload['tags'], $now); }
+        catch (HubFoundingMemoryException $error) { throw new HubControlPlaneException('Memory could not be created', $error->codeName); }
+    }
+
     private function saveProductSetting(string $userId, string $key, mixed $value, ?string $now): array
     {
         $encoded = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR); $at = self::timestamp($now ?? gmdate('c'));
@@ -247,14 +271,26 @@ final class HubControlPlaneService
     /** Safe logical export. It excludes credentials, cookies, paths, WIP refs and source contents. */
     public function exportWorkspace(string $sessionToken, ?string $now = null): array
     {
-        $session = $this->sessionRow($sessionToken, $now); $this->assertUnifiedReady(); $userId = (string) $session['user_id'];
+        $session = $this->sessionRow($sessionToken, $now); $this->assertUnifiedReady(); $userId = (string) $session['user_id']; $owner = $this->isOwnerUser($userId);
         $projects = $this->projectsForUser($userId); $threads = $this->conversations($sessionToken, null, null, $now)['conversations'];
-        $export = ['schemaVersion' => $this->foundingMemorySchemaPresent() ? 3 : 2, 'exportedAt' => self::timestamp($now ?? gmdate('c')), 'product' => $this->productSettingsForUser($userId), 'projects' => $projects, 'conversations' => $threads, 'security' => ['secretsIncluded' => false, 'localPathsIncluded' => false, 'sourceFilesIncluded' => false]];
-        if ($this->foundingMemorySchemaPresent()) {
+        // A collaborator may export only their own visible work.  Product
+        // configuration and Owner memory are not project membership data.
+        $export = ['schemaVersion' => $this->foundingMemorySchemaPresent() ? 3 : 2, 'exportedAt' => self::timestamp($now ?? gmdate('c')), 'product' => $owner ? $this->productSettingsForUser($userId) : $this->productIdentity(), 'projects' => $projects, 'conversations' => $threads, 'security' => ['secretsIncluded' => false, 'localPathsIncluded' => false, 'sourceFilesIncluded' => false, 'ownerPrivateMemoryIncluded' => $owner]];
+        if ($owner && $this->foundingMemorySchemaPresent()) {
             try { $export['memory'] = $this->memory->exportForOwner($userId); }
             catch (HubFoundingMemoryException) { throw new HubControlPlaneException('Memory export is unavailable', 'FOUNDING_MEMORY_SCHEMA_NOT_READY'); }
         }
         return $export;
+    }
+
+    /** Owner-facing health/recovery view; it exposes no database path or backup material. */
+    public function ownerSelfServiceStatus(string $sessionToken, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertSelfServiceReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId);
+        $identity = $this->ownerIdentity($userId);
+        $integrity = $this->pdo->query('PRAGMA integrity_check')->fetchColumn() === 'ok'; $foreignKeys = $this->pdo->query('PRAGMA foreign_key_check')->fetchAll() === [];
+        $recovery = $this->pdo->prepare('SELECT COUNT(*) FROM auth_recovery_codes WHERE user_id = :user AND used_at IS NULL'); $recovery->execute(['user' => $userId]);
+        return ['schemaVersion' => 1, 'owner' => $identity, 'product' => $this->productIdentity(), 'database' => ['state' => $integrity && $foreignKeys ? 'HEALTHY' : 'NEEDS_ATTENTION', 'schemaVersion' => (int) $this->pdo->query('PRAGMA user_version')->fetchColumn()], 'backup' => ['state' => 'DEPLOYMENT_MANAGED', 'message' => 'AWH verifies a recoverable backup before every approved production activation.'], 'recovery' => ['state' => (int) $recovery->fetchColumn() > 0 ? 'READY' : 'NEEDS_REGENERATION', 'message' => 'Use recovery codes only for account recovery; they are never included in exports.'], 'export' => ['available' => true, 'secretsIncluded' => false, 'sourceFilesIncluded' => false], 'workers' => $this->workersForUser($userId)];
     }
 
     public function submitConversation(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
@@ -462,6 +498,46 @@ final class HubControlPlaneService
         catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Provider policy is invalid', $error->codeName); }
     }
 
+    /** Provider secrets are write-only and only cross this endpoint in memory. */
+    public function updateProviderCredential(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['action', 'schemaVersion', 'secret']);
+        if (($payload['schemaVersion'] ?? null) !== 1 || !is_string($payload['action'] ?? null) || (!is_null($payload['secret'] ?? null) && !is_string($payload['secret']))) throw new HubControlPlaneException('Provider credential request is invalid', 'PROVIDER_CREDENTIAL_INVALID');
+        $this->assertSelfServiceReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId);
+        try { HubOwnerAuthService::assertRecentStepUpSession($session, $now); } catch (HubOwnerAuthException) { throw new HubControlPlaneException('A recent password confirmation is required', 'STEP_UP_REQUIRED'); }
+        $action = strtoupper((string) $payload['action']);
+        try {
+            if ($action === 'SET' && is_string($payload['secret'])) return ['schemaVersion' => 1, 'provider' => $this->agent->saveCredential($userId, $payload['secret'], $now)];
+            if ($action === 'REMOVE' && $payload['secret'] === null) return ['schemaVersion' => 1, 'provider' => $this->agent->removeCredential($userId, $now)];
+            throw new HubNativeAgentException('Provider credential request is invalid', 'PROVIDER_CREDENTIAL_INVALID');
+        } catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Provider credential could not be changed', $error->codeName); }
+    }
+
+    public function testProviderConnection(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['schemaVersion']); if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Provider test request is invalid', 'PROVIDER_POLICY_INVALID');
+        $this->assertSelfServiceReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId);
+        try { HubOwnerAuthService::assertRecentStepUpSession($session, $now); } catch (HubOwnerAuthException) { throw new HubControlPlaneException('A recent password confirmation is required', 'STEP_UP_REQUIRED'); }
+        try { return ['schemaVersion' => 1, 'connection' => $this->agent->testConnection($userId, $now)]; }
+        catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Provider connection test failed', $error->codeName); }
+    }
+
+    public function providerProjectRouting(string $sessionToken, string $projectId, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertSelfServiceReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId); $projectId = self::uuid($projectId); $this->assertProjectMember($userId, $projectId);
+        try { return ['schemaVersion' => 1, 'projectId' => $projectId, 'routing' => $this->agent->projectRouting($projectId)]; }
+        catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Provider routing is unavailable', $error->codeName); }
+    }
+
+    public function updateProviderProjectRouting(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['projectId', 'routingMode', 'schemaVersion']); if (($payload['schemaVersion'] ?? null) !== 1 || !is_string($payload['projectId'] ?? null) || !is_string($payload['routingMode'] ?? null)) throw new HubControlPlaneException('Provider routing request is invalid', 'PROVIDER_POLICY_INVALID');
+        $this->assertSelfServiceReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId); $projectId = self::uuid($payload['projectId']); $this->assertProjectMember($userId, $projectId);
+        try { HubOwnerAuthService::assertRecentStepUpSession($session, $now); } catch (HubOwnerAuthException) { throw new HubControlPlaneException('A recent password confirmation is required', 'STEP_UP_REQUIRED'); }
+        try { return ['schemaVersion' => 1, 'projectId' => $projectId, 'routing' => $this->agent->updateProjectRouting($userId, $projectId, $payload['routingMode'], $now)]; }
+        catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Provider routing could not be changed', $error->codeName); }
+    }
+
     private function completeNativeConversation(string $userId, array $request, string $at): void
     {
         $body = null;
@@ -515,6 +591,7 @@ final class HubControlPlaneService
             catch (HubFoundingMemoryException) { $durableMemory = null; }
         }
         return [
+            'productIdentity' => $this->productIdentity(),
             'project' => is_array($row) ? ['name' => (string) $row['name'], 'type' => (string) $row['type'], 'sourceRevision' => $row['source_revision'] === null ? null : (string) $row['source_revision'], 'observedAt' => (string) $row['observed_at']] : null,
             'memoryFiles' => array_map(static fn (array $file): array => ['name' => (string) $file['memory_file'], 'status' => (string) $file['status'], 'observedAt' => (string) $file['observed_at']], $memory->fetchAll()),
             'latestTask' => is_array($latest) ? ['state' => (string) $latest['state'], 'summary' => $latest['result_summary'] === null ? null : self::conversationText((string) $latest['result_summary']), 'updatedAt' => (string) $latest['updated_at']] : null,
@@ -671,10 +748,20 @@ final class HubControlPlaneService
 
     public function workers(string $sessionToken, ?string $now = null): array
     {
-        $this->sessionRow($sessionToken, $now);
-        $rows = $this->pdo->query("SELECT w.device_id, w.state, w.last_seen_at, d.display_name, d.platform, d.arch FROM control_workers w JOIN devices d ON d.device_id = w.device_id WHERE d.revoked_at IS NULL ORDER BY d.display_name, d.device_id LIMIT 100")->fetchAll();
-        $nowAt = time();
-        return ['schemaVersion' => 1, 'workers' => array_map(static function (array $row) use ($nowAt): array { $state = strtotime((string) $row['last_seen_at']) < $nowAt - self::WORKER_STALE_TTL ? 'OFFLINE' : (in_array($row['state'], ['READY', 'WORKING', 'OFFLINE'], true) ? $row['state'] : 'OFFLINE'); return ['deviceId' => (string) $row['device_id'], 'displayName' => (string) $row['display_name'], 'platform' => (string) $row['platform'], 'arch' => (string) $row['arch'], 'state' => $state, 'lastSeenAt' => (string) $row['last_seen_at']]; }, $rows)];
+        $session = $this->sessionRow($sessionToken, $now);
+        return ['schemaVersion' => 2, 'workers' => $this->workersForUser((string) $session['user_id'])];
+    }
+
+    /** Workers are visible only through a Project binding the user may read. */
+    private function workersForUser(string $userId): array
+    {
+        $sql = "SELECT w.device_id, w.state, w.last_seen_at, w.capabilities_json, w.busy_task_id, d.display_name, d.platform, d.arch, COUNT(DISTINCT dpm.project_id) AS project_count FROM control_workers w JOIN devices d ON d.device_id = w.device_id JOIN device_project_memberships dpm ON dpm.device_id = w.device_id AND dpm.revoked_at IS NULL JOIN user_project_memberships upm ON upm.project_id = dpm.project_id AND upm.user_id = :user AND upm.revoked_at IS NULL WHERE d.revoked_at IS NULL GROUP BY w.device_id, w.state, w.last_seen_at, w.capabilities_json, w.busy_task_id, d.display_name, d.platform, d.arch ORDER BY d.display_name, w.device_id LIMIT 100";
+        $q = $this->pdo->prepare($sql); $q->execute(['user' => $userId]); $nowAt = time();
+        return array_map(static function (array $row) use ($nowAt): array {
+            $state = strtotime((string) $row['last_seen_at']) < $nowAt - self::WORKER_STALE_TTL ? 'OFFLINE' : (in_array($row['state'], ['READY', 'WORKING', 'OFFLINE'], true) ? $row['state'] : 'OFFLINE');
+            $capabilities = []; try { $raw = json_decode((string) $row['capabilities_json'], true, 32, JSON_THROW_ON_ERROR); if (is_array($raw) && array_is_list($raw)) foreach ($raw as $capability) if (is_string($capability) && preg_match('/^[a-z][a-z0-9:._-]{0,63}$/', $capability)) $capabilities[] = $capability; } catch (Throwable) {}
+            return ['deviceId' => (string) $row['device_id'], 'displayName' => (string) $row['display_name'], 'platform' => (string) $row['platform'], 'arch' => (string) $row['arch'], 'state' => $state, 'lastSeenAt' => (string) $row['last_seen_at'], 'capabilities' => array_values(array_unique($capabilities)), 'boundProjectCount' => (int) $row['project_count'], 'activity' => $state === 'WORKING' ? 'WORKING' : ($state === 'READY' ? 'READY' : 'OFFLINE')];
+        }, $q->fetchAll());
     }
 
     public function heartbeat(string $token, array $payload, ?string $now = null): array
@@ -1090,11 +1177,20 @@ final class HubControlPlaneService
 
     private function conversationAnswer(string $userId, string $projectId, string $message): string
     {
+        $identity = $this->productIdentityHint($message); if ($identity !== null) return $identity;
         $hint = $this->foundingMemoryHint($userId, $projectId, $message); if ($hint !== null) return $hint;
         if (preg_match('/^(?:สวัสดี|ช่วยอะไรได้บ้าง|ทำอะไรได้บ้าง|help|what can you do)(?:\s|$|[.!?])/iu', trim($message)) === 1) {
             return 'ผมช่วยตรวจสถานะ สรุป วางแผน ตรวจ source แบบอ่านอย่างเดียว หรือส่งงานที่มีขอบเขตชัดเจนให้กับอุปกรณ์ที่พร้อมได้ คุณพิมพ์สิ่งที่อยากทำต่อได้เลย';
         }
         return $this->contextAnswer($projectId);
+    }
+
+    /** The wording is generic; name and credit always derive from product metadata. */
+    private function productIdentityHint(string $message): ?string
+    {
+        if (preg_match('/(?:ใคร.*(?:คิด|สร้าง|ออกแบบ).*(?:AWH|ระบบ)|(?:AWH|ระบบ).*(?:ใคร.*(?:คิด|สร้าง|ออกแบบ)))/iu', $message) !== 1) return null;
+        $identity = $this->productIdentity();
+        return $identity['productName'] . ' มี ' . $identity['founderName'] . ' เป็น ' . $identity['founderCredit'];
     }
 
     /** Deterministic founding answers remain useful while a configured provider is unavailable. */
@@ -1146,14 +1242,36 @@ final class HubControlPlaneService
     private function productSettingsForUser(string $userId): array
     {
         $owner = $this->pdo->prepare('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1'); $owner->execute(); if ($owner->fetchColumn() !== $userId) throw new HubControlPlaneException('Product configuration is owner-only', 'PROJECT_FORBIDDEN');
+        return $this->productSettingValues();
+    }
+
+    /** Shared presentation values deliberately contain no Owner/private state. */
+    private function publicProductSettings(): array
+    {
+        return $this->productSettingValues();
+    }
+
+    /** @return array<string,array{value:mixed,revision:int,updatedAt:?string}> */
+    private function productSettingValues(): array
+    {
         $q = $this->pdo->query('SELECT setting_key, value_json, revision_no, updated_at FROM control_product_settings ORDER BY setting_key'); $out = self::productDefaults();
-        foreach ($q->fetchAll() as $row) { try { $value = json_decode((string) $row['value_json'], true, 16, JSON_THROW_ON_ERROR); $out[(string) $row['setting_key']] = ['value' => $value, 'revision' => (int) $row['revision_no'], 'updatedAt' => (string) $row['updated_at']]; } catch (Throwable) { throw new HubControlPlaneException('Product configuration is invalid', 'PRODUCT_SETTING_INVALID'); } }
+        foreach ($q->fetchAll() as $row) {
+            try { $key = self::settingKey((string) $row['setting_key']); $value = self::settingValue($key, json_decode((string) $row['value_json'], true, 16, JSON_THROW_ON_ERROR)); $out[$key] = ['value' => $value, 'revision' => (int) $row['revision_no'], 'updatedAt' => (string) $row['updated_at']]; }
+            catch (Throwable) { throw new HubControlPlaneException('Product configuration is invalid', 'PRODUCT_SETTING_INVALID'); }
+        }
         return $out;
+    }
+
+    /** @return array{productName:string,shortName:string,founderName:string,founderCredit:string} */
+    private function productIdentity(): array
+    {
+        $settings = $this->productSettingValues();
+        return ['productName' => (string) $settings['productName']['value'], 'shortName' => (string) $settings['shortName']['value'], 'founderName' => (string) $settings['founderName']['value'], 'founderCredit' => (string) $settings['founderCredit']['value']];
     }
 
     private static function productDefaults(): array
     {
-        return ['productName' => ['value' => 'Art’s Workspace Hub', 'revision' => 0, 'updatedAt' => null], 'shortName' => ['value' => 'AWH', 'revision' => 0, 'updatedAt' => null], 'tagline' => ['value' => 'Your Projects. One Workspace. Anywhere.', 'revision' => 0, 'updatedAt' => null], 'accent' => ['value' => '#ff7a1a', 'revision' => 0, 'updatedAt' => null], 'welcome' => ['value' => 'เริ่มคุยกับ Art’s Workspace Hub ได้เลย', 'revision' => 0, 'updatedAt' => null], 'starterPrompts' => ['value' => ['ตรวจสถานะล่าสุด', 'ทำต่อจากงานล่าสุด', 'ตรวจอย่างเดียว ห้ามแก้'], 'revision' => 0, 'updatedAt' => null]];
+        return ['productName' => ['value' => 'Art’s Workspace Hub', 'revision' => 0, 'updatedAt' => null], 'shortName' => ['value' => 'AWH', 'revision' => 0, 'updatedAt' => null], 'tagline' => ['value' => 'Your Projects. One Workspace. Anywhere.', 'revision' => 0, 'updatedAt' => null], 'accent' => ['value' => '#ff7a1a', 'revision' => 0, 'updatedAt' => null], 'welcome' => ['value' => 'เริ่มคุยกับ Art’s Workspace Hub ได้เลย', 'revision' => 0, 'updatedAt' => null], 'starterPrompts' => ['value' => ['ตรวจสถานะล่าสุด', 'ทำต่อจากงานล่าสุด', 'ตรวจอย่างเดียว ห้ามแก้'], 'revision' => 0, 'updatedAt' => null], 'founderName' => ['value' => 'Art', 'revision' => 0, 'updatedAt' => null], 'founderCredit' => ['value' => 'Founder · Product Creator · System Concept', 'revision' => 0, 'updatedAt' => null]];
     }
 
     private static function conversationTitle(string $value): string { $value = trim($value); if ($value === '' || strlen($value) > 120 || preg_match('/[\x00-\x1f\x7f]/', $value)) throw new HubControlPlaneException('Conversation title is invalid', 'FIELD_INVALID'); return $value; }
@@ -1161,10 +1279,10 @@ final class HubControlPlaneService
     private static function optionalGitSha(mixed $value): ?string { if ($value === null || $value === '') return null; if (!is_string($value) || preg_match('/^[0-9a-f]{40,64}$/i', $value) !== 1) throw new HubControlPlaneException('Source revision is invalid', 'FIELD_INVALID'); return strtolower($value); }
     private static function searchText(string $value): string { $value = trim($value); if ($value === '' || strlen($value) > 120 || preg_match('/[\x00-\x1f\x7f]/', $value)) throw new HubControlPlaneException('Conversation search is invalid', 'FIELD_INVALID'); return $value; }
     private static function escapeLike(string $value): string { return strtr($value, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']); }
-    private static function settingKey(string $value): string { if (!in_array($value, ['productName', 'shortName', 'tagline', 'accent', 'welcome', 'starterPrompts'], true)) throw new HubControlPlaneException('Product setting is not supported', 'FIELD_INVALID'); return $value; }
+    private static function settingKey(string $value): string { if (!in_array($value, ['productName', 'shortName', 'tagline', 'accent', 'welcome', 'starterPrompts', 'founderName', 'founderCredit'], true)) throw new HubControlPlaneException('Product setting is not supported', 'FIELD_INVALID'); return $value; }
     private static function settingValue(string $key, mixed $value): mixed
     {
-        if (in_array($key, ['productName', 'shortName', 'tagline', 'welcome'], true)) { if (!is_string($value) || trim($value) === '' || strlen($value) > ($key === 'welcome' ? 240 : 120) || preg_match('/[\x00-\x1f\x7f<>]/', $value)) throw new HubControlPlaneException('Product setting is invalid', 'FIELD_INVALID'); return trim($value); }
+        if (in_array($key, ['productName', 'shortName', 'tagline', 'welcome', 'founderName', 'founderCredit'], true)) { if (!is_string($value) || trim($value) === '' || strlen($value) > ($key === 'welcome' ? 240 : 120) || preg_match('/[\x00-\x1f\x7f<>]/', $value)) throw new HubControlPlaneException('Product setting is invalid', 'FIELD_INVALID'); return trim($value); }
         if ($key === 'accent') { if (!is_string($value) || preg_match('/^#[0-9a-f]{6}$/i', $value) !== 1) throw new HubControlPlaneException('Accent color is invalid', 'FIELD_INVALID'); return strtolower($value); }
         if (!is_array($value) || array_is_list($value) === false || count($value) > 6) throw new HubControlPlaneException('Starter prompts are invalid', 'FIELD_INVALID'); $out = []; foreach ($value as $prompt) { if (!is_string($prompt) || trim($prompt) === '' || strlen($prompt) > 120 || preg_match('/[\x00-\x1f\x7f<>]/', $prompt)) throw new HubControlPlaneException('Starter prompt is invalid', 'FIELD_INVALID'); $out[] = trim($prompt); } return $out;
     }
@@ -1198,8 +1316,10 @@ final class HubControlPlaneService
     private function unifiedSchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 8 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_product_settings'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
     private function finalProductSchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 9 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_provider_policies'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
     private function foundingMemorySchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 10 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_memory_records'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
+    private function selfServiceSchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 11 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_provider_credentials'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
     private function assertFinalReady(): void { HubFinalProductMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/008_final_product.sql'); }
     private function assertFoundingReady(): void { HubFoundingMemoryMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/009_founding_memory.sql'); }
+    private function assertSelfServiceReady(): void { HubSelfServiceMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/010_self_service.sql'); }
     private function assertSessionRateLimit(?string $rateKey, string $now): void
     {
         if ($rateKey === null) return;
@@ -1224,6 +1344,14 @@ final class HubControlPlaneService
     private function assertOwner(string $userId): void { $q = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1'); if (!hash_equals((string) $q->fetchColumn(), $userId)) throw new HubControlPlaneException('Owner access is required', 'OWNER_FORBIDDEN'); }
     private function isOwnerUser(string $userId): bool { $q = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1'); $owner = $q->fetchColumn(); return is_string($owner) && hash_equals($owner, $userId); }
     private function profileRole(string $userId): string { $q = $this->pdo->prepare('SELECT system_role FROM control_user_profiles WHERE user_id = :user AND status = \'ACTIVE\''); $q->execute(['user' => $userId]); $role = $q->fetchColumn(); return is_string($role) && in_array($role, ['OWNER', 'COLLABORATOR', 'VIEWER', 'APPROVER'], true) ? $role : 'COLLABORATOR'; }
+
+    /** @return array{displayName:string,username:string} */
+    private function ownerIdentity(string $userId): array
+    {
+        $q = $this->pdo->prepare('SELECT u.display_name, p.username FROM hub_users u JOIN owner_passwords p ON p.user_id = u.user_id AND p.enabled = 1 WHERE u.user_id = :user AND u.revoked_at IS NULL'); $q->execute(['user' => $userId]); $row = $q->fetch();
+        if (!is_array($row)) throw new HubControlPlaneException('Owner identity is unavailable', 'CONTROL_SCHEMA_NOT_READY');
+        return ['displayName' => (string) $row['display_name'], 'username' => (string) $row['username']];
+    }
     private function sessionRow(string $token, ?string $now): array { if ($token === '' || strlen($token) > 512 || preg_match('/[\x00-\x1F\x7F]/', $token)) throw new HubControlPlaneException('Control session is invalid', 'SESSION_INVALID'); $sql = $this->finalProductSchemaPresent() ? 'SELECT s.* FROM control_sessions s JOIN hub_users u ON u.user_id = s.user_id AND u.revoked_at IS NULL WHERE s.session_hash = :hash' : 'SELECT * FROM control_sessions WHERE session_hash = :hash'; $q = $this->pdo->prepare($sql); $q->execute(['hash' => hash('sha256', $token)]); $row = $q->fetch(); $at = strtotime(self::timestamp($now ?? gmdate('c'))); if (!is_array($row) || $row['revoked_at'] !== null || strtotime((string) $row['expires_at']) <= $at) throw new HubControlPlaneException('Control session is expired', 'SESSION_EXPIRED'); return $row; }
     private function authorizeSession(string $token, string $csrf, ?string $now): array { $row = $this->sessionRow($token, $now); if ($csrf === '' || strlen($csrf) > 256 || !hash_equals((string) $row['csrf_hash'], hash('sha256', $csrf))) throw new HubControlPlaneException('Control request failed CSRF validation', 'CSRF_REJECTED'); return $row; }
     private static function exactKeys(array $value, array $allowed): void { $actual = array_keys($value); sort($actual); sort($allowed); if ($actual !== $allowed) throw new HubControlPlaneException('Payload contains unsupported fields', 'SCHEMA_FIELDS'); }

@@ -90,6 +90,29 @@ final class HubOwnerAuthService
     public function sessions(string $token): array { $row = $this->sessionRow($token); $q = $this->pdo->prepare("SELECT session_id, created_at, expires_at, last_seen_at, remembered_until FROM control_sessions WHERE user_id = :user AND session_kind = 'password' AND revoked_at IS NULL ORDER BY last_seen_at DESC LIMIT 20"); $q->execute(['user' => $row['user_id']]); return ['schemaVersion' => 1, 'sessions' => array_map(static fn (array $item): array => ['sessionId' => (string) $item['session_id'], 'createdAt' => (string) $item['created_at'], 'expiresAt' => (string) $item['expires_at'], 'lastSeenAt' => (string) $item['last_seen_at'], 'remembered' => $item['remembered_until'] !== null, 'current' => (string) $item['session_id'] === (string) $row['session_id']], $q->fetchAll())]; }
     public function revokeSession(string $token, string $csrf, string $sessionId): void { $row = $this->authorize($token, $csrf); if (!self::isUuid($sessionId)) throw new HubOwnerAuthException('Session is invalid', 'SESSION_INVALID'); $at = gmdate('c'); $q = $this->pdo->prepare("UPDATE control_sessions SET revoked_at = :at WHERE session_id = :id AND user_id = :user AND session_kind = 'password' AND revoked_at IS NULL"); $q->execute(['at' => $at, 'id' => strtolower($sessionId), 'user' => $row['user_id']]); if ($q->rowCount() !== 1) throw new HubOwnerAuthException('Session was not found', 'SESSION_NOT_FOUND'); $this->audit((string) $row['user_id'], 'session_revoked', $at); }
 
+    /** Canonical account identity: the Hub user row, never a browser profile cache. */
+    public function identity(string $token): array
+    {
+        $session = $this->sessionRow($token); $q = $this->pdo->prepare('SELECT u.display_name, p.username FROM hub_users u JOIN owner_passwords p ON p.user_id = u.user_id AND p.enabled = 1 WHERE u.user_id = :user AND u.revoked_at IS NULL'); $q->execute(['user' => $session['user_id']]); $row = $q->fetch();
+        if (!is_array($row)) throw new HubOwnerAuthException('Account identity is unavailable', 'AUTH_UNAVAILABLE');
+        return ['schemaVersion' => 1, 'displayName' => (string) $row['display_name'], 'username' => (string) $row['username']];
+    }
+
+    public function updateDisplayName(string $token, string $csrf, string $displayName, ?string $now = null): array
+    {
+        $session = $this->authorize($token, $csrf, $now); $displayName = self::displayName($displayName); $at = self::timestamp($now ?? gmdate('c'));
+        try {
+            $this->pdo->beginTransaction();
+            $this->pdo->prepare('UPDATE hub_users SET display_name = :display WHERE user_id = :user AND revoked_at IS NULL')->execute(['display' => $displayName, 'user' => $session['user_id']]);
+            if ($this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_user_profiles'")->fetchColumn() !== false) $this->pdo->prepare('UPDATE control_user_profiles SET display_name = :display, updated_at = :at WHERE user_id = :user')->execute(['display' => $displayName, 'at' => $at, 'user' => $session['user_id']]);
+            $this->audit((string) $session['user_id'], 'display_name_changed', $at); $this->pdo->commit();
+        } catch (Throwable $error) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw new HubOwnerAuthException('Account identity could not be changed', 'AUTH_UNAVAILABLE');
+        }
+        return $this->identity($token);
+    }
+
     public function changePassword(string $token, string $csrf, string $oldPassword, string $newPassword): void
     {
         $row = $this->authorize($token, $csrf); self::password($newPassword); $q = $this->pdo->prepare('SELECT password_hash FROM owner_passwords WHERE user_id = :user AND enabled = 1'); $q->execute(['user' => $row['user_id']]); $hash = $q->fetchColumn();

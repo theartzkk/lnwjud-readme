@@ -1,14 +1,19 @@
 import { loadWebData } from './hub-read-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 import {
-  cancelTask, changePassword, changeUsername, createConversation, createRecoveryCodes, decideApproval, listAuthSessions,
-  exportWorkspace, invitePerson, listPeople, loadControlData, loadConversation, loadConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadProductSettings, loadProviderStatus, loadWorkspaceContinuity, login, logout, recover, resetProductSetting, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage, updateConversation, updateMemory, updateProductSetting, updateProviderPolicy, uploadConversationAttachments,
+  cancelTask, changePassword, changeUsername, createConversation, createMemory, createRecoveryCodes, decideApproval,
+  exportWorkspace, invitePerson, listAuthSessions, listPeople, loadAuthProfile, loadControlData, loadConversation,
+  loadConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus,
+  loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadWorkspaceContinuity, login, logout,
+  recover, resetProductSetting, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage,
+  testProviderConnection, updateAuthProfile, updateConversation, updateMemory, updateProductSetting,
+  updateProviderCredential, updateProviderPolicy, updateProviderProjectRouting, uploadConversationAttachments,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 (() => {
   const $ = (id) => document.getElementById(id);
   const MAX_ATTACHMENT_BYTES = 60 * 1024 * 1024;
   const MICRO_BAHT = 1000000;
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, people: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, people: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null };
   const taskLabels = {
     WAITING_FOR_WORKER: 'กำลังรออุปกรณ์ทำงาน', PREPARING: 'กำลังเตรียมงาน', RUNNING: 'กำลังทำงาน',
     QA: 'กำลังตรวจคุณภาพ', WAITING_FOR_APPROVAL: 'รอการอนุมัติ', COMPLETED: 'เสร็จแล้ว',
@@ -71,6 +76,8 @@ import {
     document.title = `${name} — Work`; message('product-name', name); message('product-tagline', tagline);
     document.documentElement.style.setProperty('--accent', accent);
     $('setting-product-name').value = name; $('setting-short-name').value = settingValue('shortName', 'AWH'); $('setting-tagline').value = tagline; $('setting-welcome').value = settingValue('welcome', 'เริ่มคุยกับ Art’s Workspace Hub ได้เลย'); $('setting-accent').value = accent;
+    const founder = $('setting-founder-name'); if (founder) founder.value = settingValue('founderName', 'Art');
+    const founderCredit = $('setting-founder-credit'); if (founderCredit) founderCredit.value = settingValue('founderCredit', 'Founder · Product Creator · System Concept');
   }
 
   function isOwner() { return state.control?.role === 'OWNER'; }
@@ -79,8 +86,11 @@ import {
   function renderProvider() {
     const provider = state.provider;
     if (!provider) { message('provider-status', 'ยังไม่ได้ตั้งค่า AI ของ AWH'); return; }
-    const budget = provider.budget || {}; const rates = provider.rates || {}; message('provider-status', provider.available ? `AI เดือนนี้ ${baht(budget.usedMicrounits)} จาก ${baht(budget.monthlyMicrounits)} · เหลือ ${baht(budget.remainingMicrounits)}` : (provider.keyConfigured ? 'มี key แล้ว แต่ AI ยังปิดอยู่หรือยังไม่ได้กำหนดงบ' : 'ยังไม่ได้เชื่อม key ที่เก็บอย่างปลอดภัย'));
+    const budget = provider.budget || {}; const rates = provider.rates || {}; const credential = provider.credential || {}; message('provider-status', provider.available ? `AI เดือนนี้ ${baht(budget.usedMicrounits)} จาก ${baht(budget.monthlyMicrounits)} · เหลือ ${baht(budget.remainingMicrounits)}` : (provider.keyConfigured ? `เชื่อม provider แล้ว · ทดสอบล่าสุด ${credential.lastTestStatus === 'PASS' ? 'ผ่าน' : credential.lastTestStatus === 'FAILED' ? 'ไม่ผ่าน' : 'ยังไม่ทดสอบ'}` : 'ยังไม่ได้เชื่อม API key ที่เก็บอย่างปลอดภัย'));
     $('provider-budget').value = (Number.isInteger(budget.monthlyMicrounits) ? budget.monthlyMicrounits / MICRO_BAHT : 0).toFixed(2); $('provider-warning').value = (Number.isInteger(budget.warningMicrounits) ? budget.warningMicrounits / MICRO_BAHT : 0).toFixed(2); $('provider-input-rate').value = (Number.isInteger(rates.inputMicrounitsPerMillion) ? rates.inputMicrounitsPerMillion / MICRO_BAHT : 0).toFixed(6); $('provider-output-rate').value = (Number.isInteger(rates.outputMicrounitsPerMillion) ? rates.outputMicrounitsPerMillion / MICRO_BAHT : 0).toFixed(6); $('provider-enabled').checked = provider.enabled === true;
+    const models = provider.models || {}; for (const [id, value] of [['provider-model-fast', models.fast], ['provider-model-balanced', models.balanced], ['provider-model-strong', models.strong]]) if ($(id) && typeof value === 'string') $(id).value = value;
+    if ($('provider-project-routing')) $('provider-project-routing').value = state.providerRouting?.routingMode || 'AUTO';
+    const usage = $('provider-usage'); if (usage) { usage.replaceChildren(); const rows = Array.isArray(provider.usageByProject) ? provider.usageByProject : []; for (const row of rows) { const item = document.createElement('li'); item.textContent = `${row.projectName || 'Project'} · ${baht(row.estimatedMicrounits || 0)}`; usage.append(item); } if (!usage.childElementCount) usage.textContent = 'ยังไม่มีการใช้งานที่คิดค่าใช้จ่าย'; }
   }
   function renderPeople() {
     const select = $('invite-project'); if (!select) return; select.replaceChildren();
@@ -97,13 +107,89 @@ import {
     const section = document.createElement('section'); section.id = 'memory-settings'; section.className = 'account-form';
     const title = document.createElement('h3'); title.textContent = 'ความจำของ AWH';
     const copy = document.createElement('p'); copy.className = 'muted'; copy.textContent = 'แก้ไข ปักหมุด แชร์ หรือให้ AWH ลืมสิ่งที่ไม่ต้องใช้แล้วได้ ข้อมูล Source of Truth ปัจจุบันมีสิทธิ์เหนือความจำเสมอ';
-    const refresh = document.createElement('button'); refresh.id = 'memory-refresh'; refresh.type = 'button'; refresh.className = 'secondary-button'; refresh.textContent = 'ตรวจความจำ';
+    const search = document.createElement('form'); search.id = 'memory-search-form'; search.className = 'compact-form';
+    search.innerHTML = '<label for="memory-search">ค้นหาความจำ</label><input id="memory-search" maxlength="120" autocomplete="off" placeholder="ค้นหาตามเรื่อง แหล่งที่มา หรือคำสำคัญ…" /><button class="secondary-button" type="submit">ค้นหา</button>';
+    const refresh = document.createElement('button'); refresh.id = 'memory-refresh'; refresh.type = 'button'; refresh.className = 'secondary-button'; refresh.textContent = 'แสดงทั้งหมด';
     const importSummary = document.createElement('p'); importSummary.id = 'memory-import-summary'; importSummary.className = 'muted';
     const list = document.createElement('div'); list.id = 'memory-list'; list.className = 'session-list';
     const result = document.createElement('p'); result.id = 'memory-message'; result.className = 'form-message'; result.setAttribute('role', 'status');
-    section.append(title, copy, refresh, importSummary, list, result); host.prepend(section);
-    refresh.addEventListener('click', () => { void refreshMemory(); });
+    const create = document.createElement('form'); create.id = 'memory-create-form'; create.className = 'compact-form';
+    create.innerHTML = '<label for="memory-create-category">เพิ่มความจำที่ควรจำ</label><select id="memory-create-category"><option value="WORKING_PREFERENCE">รูปแบบการทำงาน</option><option value="AI_PERSONALITY">วิธีที่ AWH ควรตอบ</option><option value="OWNER_PROFILE">ข้อมูลบริบทของฉัน</option><option value="OWNER_CONSTITUTION">หลักการทำงาน</option><option value="PROJECT_MEMORY">ความจำของโปรเจกต์ที่เลือก</option></select><textarea id="memory-create-content" maxlength="2000" rows="3" placeholder="บอกสิ่งที่ AWH ควรจำอย่างกระชับ…"></textarea><button class="secondary-button" type="submit">บันทึกความจำ</button>';
+    section.append(title, copy, create, search, refresh, importSummary, list, result); host.prepend(section);
+    refresh.addEventListener('click', () => { $('memory-search').value = ''; void refreshMemory(); });
+    search.addEventListener('submit', (event) => { event.preventDefault(); void refreshMemory(); });
+    create.addEventListener('submit', async (event) => {
+      event.preventDefault(); const category = $('memory-create-category').value; const content = $('memory-create-content').value.trim(); const project = selectedProject();
+      if (!content) { message('memory-message', 'กรอกสิ่งที่ต้องการให้ AWH จำก่อน'); return; }
+      const projectScoped = category === 'PROJECT_MEMORY'; const scope = projectScoped ? 'project' : category === 'OWNER_CONSTITUTION' ? 'constitution' : 'owner';
+      if (projectScoped && !project) { message('memory-message', 'เลือกโปรเจกต์ก่อนบันทึกความจำของโปรเจกต์'); return; }
+      message('memory-message', 'กำลังบันทึกความจำ…');
+      try { await createMemory({ scope, projectId: projectScoped ? project.projectId : null, category, content, tags: [] }); $('memory-create-content').value = ''; await refreshMemory(); message('memory-message', 'บันทึกความจำแล้ว'); }
+      catch (error) { message('memory-message', error instanceof Error ? error.message : 'ยังบันทึกความจำไม่ได้'); }
+    });
     return section;
+  }
+
+  /** Settings panels are projections of the canonical M10/M11 authorities. */
+  function ensureOwnerSelfServiceSurface() {
+    const existing = $('my-awh-settings'); if (existing) return existing;
+    const host = $('owner-only-settings'); if (!host) throw new Error('AWH owner settings surface is unavailable');
+    const section = document.createElement('section'); section.id = 'my-awh-settings'; section.className = 'account-form';
+    section.innerHTML = '<h3>My AWH</h3><p class="muted">ข้อมูลของคุณ การทำงานที่ชอบ และวิธีที่ AWH ควรช่วย แยกจากความจำของโปรเจกต์เสมอ</p><form id="owner-profile-form" class="compact-form"><label for="owner-display-name">ชื่อที่แสดง</label><input id="owner-display-name" maxlength="80" autocomplete="name" /><button class="secondary-button" type="submit">บันทึกโปรไฟล์</button></form><form id="owner-foundation-form" class="compact-form"><label for="founder-name">ผู้ก่อตั้ง / ผู้คิดระบบ</label><input id="founder-name" maxlength="120" autocomplete="off" /><label for="founder-credit">บทบาทในผลิตภัณฑ์</label><input id="founder-credit" maxlength="160" autocomplete="off" /><button class="secondary-button" type="submit">บันทึกข้อมูลผลิตภัณฑ์</button></form><section class="owner-health"><h4>ข้อมูลและการกู้คืน</h4><p id="owner-health-state" class="muted">กำลังตรวจสถานะ…</p><ul id="owner-worker-list" class="session-list"></ul></section><p id="my-awh-message" class="form-message" role="status"></p>';
+    host.prepend(section);
+    $('owner-profile-form').addEventListener('submit', async (event) => {
+      event.preventDefault(); message('my-awh-message', 'กำลังบันทึกโปรไฟล์…');
+      try { const data = await updateAuthProfile($('owner-display-name').value); state.profile = data.identity || data; message('my-awh-message', 'บันทึกโปรไฟล์แล้ว'); }
+      catch (error) { message('my-awh-message', error instanceof Error ? error.message : 'ยังบันทึกโปรไฟล์ไม่ได้'); }
+    });
+    $('owner-foundation-form').addEventListener('submit', async (event) => {
+      event.preventDefault(); message('my-awh-message', 'กำลังบันทึกข้อมูลผลิตภัณฑ์…');
+      try { state.productSettings = (await updateProductSetting('founderName', $('founder-name').value)).settings; state.productSettings = (await updateProductSetting('founderCredit', $('founder-credit').value)).settings; applyProductSettings(); message('my-awh-message', 'บันทึกข้อมูลผลิตภัณฑ์แล้ว'); }
+      catch (error) { message('my-awh-message', error instanceof Error ? error.message : 'ยังบันทึกข้อมูลผลิตภัณฑ์ไม่ได้'); }
+    });
+    return section;
+  }
+
+  function ensureProviderSelfServiceSurface() {
+    const existing = $('provider-credential-form'); if (existing) return existing;
+    const policy = $('provider-policy-form'); if (!policy) throw new Error('AWH provider settings surface is unavailable');
+    const models = document.createElement('div'); models.className = 'compact-form';
+    models.innerHTML = '<label for="provider-model-fast">โมเดลเร็ว</label><input id="provider-model-fast" maxlength="120" autocomplete="off" /><label for="provider-model-balanced">โมเดลสมดุล</label><input id="provider-model-balanced" maxlength="120" autocomplete="off" /><label for="provider-model-strong">โมเดลละเอียด</label><input id="provider-model-strong" maxlength="120" autocomplete="off" /><ul id="provider-usage" class="session-list"></ul>';
+    policy.insertBefore(models, $('provider-enabled'));
+    const section = document.createElement('section'); section.className = 'account-form';
+    section.innerHTML = '<h3>การเชื่อมต่อ AI</h3><p class="muted">API key จะถูกส่งครั้งเดียวผ่าน HTTPS และเก็บเฉพาะฝั่ง server; AWH จะไม่แสดงหรือส่งคืน key นี้</p><form id="provider-credential-form" class="compact-form"><label for="provider-api-key">OpenAI API key</label><input id="provider-api-key" type="password" maxlength="512" autocomplete="off" spellcheck="false" /><div class="form-actions"><button class="secondary-button" type="submit">บันทึกหรือแทนที่ key</button><button id="provider-credential-remove" class="text-button" type="button">ลบ key</button><button id="provider-connection-test" class="text-button" type="button">ทดสอบการเชื่อมต่อ</button></div></form><form id="provider-project-routing-form" class="compact-form"><label for="provider-project-routing">AI สำหรับโปรเจกต์ที่เลือก</label><select id="provider-project-routing"><option value="AUTO">Auto (ตามค่า AWH)</option><option value="FAST">เร็ว</option><option value="BALANCED">สมดุล</option><option value="STRONG">ละเอียด</option></select><button class="secondary-button" type="submit">บันทึกการเลือกของโปรเจกต์</button></form><p id="provider-credential-message" class="form-message" role="status"></p>';
+    policy.after(section);
+    $('provider-credential-form').addEventListener('submit', async (event) => {
+      event.preventDefault(); const field = $('provider-api-key'); message('provider-credential-message', 'กำลังบันทึก key อย่างปลอดภัย…');
+      try { const data = await updateProviderCredential('SET', field.value); state.provider = data.provider; renderProvider(); message('provider-credential-message', 'บันทึก key แล้ว'); }
+      catch (error) { message('provider-credential-message', error instanceof Error ? error.message : 'ยังบันทึก key ไม่ได้'); }
+      finally { field.value = ''; }
+    });
+    $('provider-credential-remove').addEventListener('click', async () => {
+      if (!window.confirm('ลบ API key ที่เชื่อมต่อกับ AWH ใช่หรือไม่?')) return;
+      message('provider-credential-message', 'กำลังลบ key…');
+      try { const data = await updateProviderCredential('REMOVE'); state.provider = data.provider; renderProvider(); message('provider-credential-message', 'ลบ key แล้ว'); }
+      catch (error) { message('provider-credential-message', error instanceof Error ? error.message : 'ยังลบ key ไม่ได้'); }
+    });
+    $('provider-connection-test').addEventListener('click', async () => {
+      message('provider-credential-message', 'กำลังทดสอบการเชื่อมต่อ…');
+      try { const data = await testProviderConnection(); state.provider = (await loadProviderStatus()).provider; renderProvider(); message('provider-credential-message', data.status === 'PASS' ? 'ทดสอบการเชื่อมต่อผ่าน' : 'ยังไม่ได้ตั้งค่า key'); }
+      catch (error) { message('provider-credential-message', error instanceof Error ? error.message : 'ทดสอบการเชื่อมต่อไม่ผ่าน'); }
+    });
+    $('provider-project-routing-form').addEventListener('submit', async (event) => {
+      event.preventDefault(); const project = selectedProject(); if (!project) { message('provider-credential-message', 'เลือกโปรเจกต์ก่อนกำหนด AI'); return; }
+      try { state.providerRouting = await updateProviderProjectRouting(project.projectId, $('provider-project-routing').value); renderProvider(); message('provider-credential-message', 'บันทึกการเลือก AI ของโปรเจกต์แล้ว'); }
+      catch (error) { message('provider-credential-message', error instanceof Error ? error.message : 'ยังบันทึกการเลือก AI ไม่ได้'); }
+    });
+    return section;
+  }
+
+  function renderOwnerSelfService() {
+    if (!state.profile || !state.ownerStatus) return;
+    ensureOwnerSelfServiceSurface(); const identity = state.profile.identity || state.profile; const product = state.ownerStatus.product || {};
+    $('owner-display-name').value = identity.displayName || ''; $('founder-name').value = product.founderName || settingValue('founderName', 'Art'); $('founder-credit').value = product.founderCredit || settingValue('founderCredit', 'Founder · Product Creator · System Concept');
+    const database = state.ownerStatus.database || {}; const recovery = state.ownerStatus.recovery || {}; const backup = state.ownerStatus.backup || {}; message('owner-health-state', `ข้อมูล ${database.state === 'HEALTHY' ? 'พร้อมใช้งาน' : 'ต้องตรวจสอบ'} · schema v${database.schemaVersion || '—'} · การกู้คืน ${recovery.state === 'READY' ? 'พร้อม' : 'ควรสร้างใหม่'} · backup ${backup.state === 'DEPLOYMENT_MANAGED' ? 'ตรวจสอบก่อน deploy ทุกครั้ง' : 'ต้องตรวจสอบ'} · กรณีฉุกเฉินใช้รหัสกู้คืนก่อนเสมอ`);
+    const workers = $('owner-worker-list'); workers.replaceChildren(); for (const worker of state.ownerStatus.workers || []) { const item = document.createElement('li'); item.textContent = `${worker.displayName || 'อุปกรณ์'} · ${worker.state === 'READY' ? 'พร้อมทำงาน' : worker.state === 'WORKING' ? 'กำลังทำงาน' : 'ออฟไลน์'} · ผูกกับ ${worker.boundProjectCount || 0} โปรเจกต์`; workers.append(item); } if (!workers.childElementCount) workers.textContent = 'ยังไม่มี worker ที่เข้าถึงโปรเจกต์ของคุณได้';
   }
   async function changeMemory(record, action) {
     let content = null; let tags = null; let pinned = null;
@@ -124,11 +210,11 @@ import {
     for (const record of state.memory) {
       const row = document.createElement('article'); row.className = 'memory-row';
       const header = document.createElement('div'); header.className = 'memory-header';
-      const title = document.createElement('strong'); title.textContent = memoryScopeLabel(record.scope);
+      const title = document.createElement('strong'); title.textContent = `${memoryScopeLabel(record.scope)}${record.category ? ` · ${record.category}` : ''}`;
       const status = document.createElement('span'); status.textContent = memoryFreshnessLabel(record.freshness);
       header.append(title, status);
       const body = document.createElement('p'); body.textContent = record.content;
-      const detail = document.createElement('small'); const verified = record.lastVerifiedAt ? 'ตรวจล่าสุด ' + date(record.lastVerifiedAt) : memoryFreshnessLabel(record.freshness); detail.textContent = record.pinned ? 'ปักหมุดไว้ · ' + verified : verified;
+      const detail = document.createElement('small'); const verified = record.lastVerifiedAt ? 'ตรวจล่าสุด ' + date(record.lastVerifiedAt) : memoryFreshnessLabel(record.freshness); const provenance = record.provenance ? ` · ที่มา ${record.provenance}` : ''; const supersession = record.supersededBySourceRevision ? ` · ตรวจเทียบ source ${record.supersededBySourceRevision}` : ''; detail.textContent = (record.pinned ? 'ปักหมุดไว้ · ' + verified : verified) + provenance + supersession;
       const actions = document.createElement('div'); actions.className = 'memory-actions';
       for (const [action, label] of [['EDIT', 'แก้ไข'], ['PIN', record.pinned ? 'เลิกปักหมุด' : 'ปักหมุด'], ['MARK_OUTDATED', 'ทำเครื่องหมายว่าต้องตรวจทาน'], ['FORGET', 'ลืม']]) {
         const button = document.createElement('button'); button.type = 'button'; button.className = action === 'FORGET' ? 'text-button' : 'secondary-button'; button.textContent = label;
@@ -148,9 +234,9 @@ import {
     ensureMemorySurface();
     message('memory-message', 'กำลังโหลดความจำ…');
     try {
-      const project = selectedProject();
-      const requests = [loadMemory({ scope: 'all' }), loadMemoryImportReport()];
-      if (project) requests.push(loadMemory({ projectId: project.projectId, scope: 'project' }));
+      const project = selectedProject(); const query = $('memory-search')?.value.trim() || '';
+      const requests = [loadMemory({ scope: 'all', query }), loadMemoryImportReport()];
+      if (project) requests.push(loadMemory({ projectId: project.projectId, scope: 'project', query }));
       const results = await Promise.all(requests);
       const seen = new Set();
       state.memory = results.flatMap((item) => Array.isArray(item.memories) ? item.memories : []).filter((record) => {
@@ -337,7 +423,14 @@ import {
     try { state.productSettings = (await loadProductSettings()).settings; applyProductSettings(); }
     catch { message('product-settings-message', 'ยังโหลดการตั้งค่าลักษณะของ AWH ไม่ได้'); }
     if (isOwner()) {
-      try { const [provider, people] = await Promise.all([loadProviderStatus(), listPeople()]); state.provider = provider.provider; state.people = Array.isArray(people.people) ? people.people : []; renderProvider(); renderPeople(); }
+      ensureOwnerSelfServiceSurface(); ensureProviderSelfServiceSurface();
+      try {
+        const project = selectedProject(); const requests = [loadProviderStatus(), listPeople(), loadAuthProfile(), loadOwnerSelfServiceStatus()];
+        if (project) requests.push(loadProviderProjectRouting(project.projectId));
+        const [provider, people, profile, ownerStatus, routing] = await Promise.all(requests);
+        state.provider = provider.provider; state.people = Array.isArray(people.people) ? people.people : []; state.profile = profile; state.ownerStatus = ownerStatus; state.providerRouting = routing || null;
+        renderProvider(); renderPeople(); renderOwnerSelfService();
+      }
       catch { message('provider-status', 'ยังโหลดการตั้งค่า AI หรือผู้ร่วมงานไม่ได้'); }
       await refreshMemory();
     }
@@ -458,7 +551,7 @@ import {
     event.preventDefault(); if (!isOwner()) return; message('provider-message', 'กำลังบันทึกงบ AI…');
     try {
       const models = state.provider?.models || { fast: 'gpt-5.4-mini', balanced: 'gpt-5.4', strong: 'gpt-5.4' };
-      const result = await updateProviderPolicy({ enabled: $('provider-enabled').checked, modelFast: models.fast, modelBalanced: models.balanced, modelStrong: models.strong, monthlyBudgetMicrounits: micros('provider-budget'), warningMicrounits: micros('provider-warning'), inputMicrounitsPerMillion: micros('provider-input-rate'), outputMicrounitsPerMillion: micros('provider-output-rate') });
+      const result = await updateProviderPolicy({ enabled: $('provider-enabled').checked, modelFast: $('provider-model-fast')?.value.trim() || models.fast, modelBalanced: $('provider-model-balanced')?.value.trim() || models.balanced, modelStrong: $('provider-model-strong')?.value.trim() || models.strong, monthlyBudgetMicrounits: micros('provider-budget'), warningMicrounits: micros('provider-warning'), inputMicrounitsPerMillion: micros('provider-input-rate'), outputMicrounitsPerMillion: micros('provider-output-rate') });
       state.provider = result.provider; renderProvider(); message('provider-message', 'บันทึกงบ AI แล้ว');
     } catch (error) { message('provider-message', error instanceof Error ? error.message : 'ยังบันทึกงบ AI ไม่ได้'); }
   });

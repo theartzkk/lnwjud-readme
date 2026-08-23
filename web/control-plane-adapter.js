@@ -57,6 +57,8 @@ export async function login(username, password, remember = false) {
 }
 
 export async function loadAuthSession() { return controlRequest('/api/v1/auth/session'); }
+export async function loadAuthProfile() { return controlRequest('/api/v1/auth/profile'); }
+export async function updateAuthProfile(displayName) { if (typeof displayName !== 'string' || !displayName.trim() || displayName.length > 80) throw new Error('ชื่อที่แสดงไม่ถูกต้อง'); return controlRequest('/api/v1/auth/profile', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, displayName: displayName.trim() }) }); }
 export async function logout() { return controlRequest('/api/v1/auth/logout', { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
 export async function logoutAll() { return controlRequest('/api/v1/auth/logout-all', { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
 export async function changePassword(oldPassword, newPassword) { return controlRequest('/api/v1/auth/password', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, oldPassword, newPassword }) }); }
@@ -116,8 +118,10 @@ export async function saveCurrentContext(projectId, conversationId, viewKind = '
 
 export async function loadProductSettings() { return controlRequest('/api/v1/control/settings'); }
 export async function updateProductSetting(settingKey, value) { return controlRequest('/api/v1/control/settings', { method: 'POST', body: JSON.stringify({ schemaVersion: 2, settingKey, value }) }); }
-export async function loadProductSettingHistory(settingKey) { if (!['productName', 'shortName', 'tagline', 'accent', 'welcome', 'starterPrompts'].includes(settingKey)) throw new Error('การตั้งค่าไม่ถูกต้อง'); return controlRequest(`/api/v1/control/settings/history?settingKey=${encodeURIComponent(settingKey)}`); }
-export async function resetProductSetting(settingKey) { if (!['productName', 'shortName', 'tagline', 'accent', 'welcome', 'starterPrompts'].includes(settingKey)) throw new Error('การตั้งค่าไม่ถูกต้อง'); return controlRequest('/api/v1/control/settings/reset', { method: 'POST', body: JSON.stringify({ schemaVersion: 2, settingKey }) }); }
+const PRODUCT_SETTING_KEYS = ['productName', 'shortName', 'tagline', 'accent', 'welcome', 'starterPrompts', 'founderName', 'founderCredit'];
+export async function loadProductSettingHistory(settingKey) { if (!PRODUCT_SETTING_KEYS.includes(settingKey)) throw new Error('การตั้งค่าไม่ถูกต้อง'); return controlRequest(`/api/v1/control/settings/history?settingKey=${encodeURIComponent(settingKey)}`); }
+export async function resetProductSetting(settingKey) { if (!PRODUCT_SETTING_KEYS.includes(settingKey)) throw new Error('การตั้งค่าไม่ถูกต้อง'); return controlRequest('/api/v1/control/settings/reset', { method: 'POST', body: JSON.stringify({ schemaVersion: 2, settingKey }) }); }
+export async function loadProductIdentity() { return controlRequest('/api/v1/control/product-identity'); }
 export async function loadMemory({ projectId = null, scope = 'all', query = '' } = {}) {
   if (!['all', 'owner', 'constitution', 'project', 'archive'].includes(scope) || typeof query !== 'string' || query.length > 120 || (projectId !== null && !UUID.test(projectId))) throw new Error('ความจำของ AWH ไม่ถูกต้อง');
   if (scope === 'project' && projectId === null) throw new Error('เลือกโปรเจกต์ก่อนดูความจำของโปรเจกต์');
@@ -133,9 +137,18 @@ export async function updateMemory(memoryId, action, { content = null, tags = nu
   if (!UUID.test(memoryId) || !['EDIT', 'PIN', 'FORGET', 'SHARE', 'UNSHARE', 'MARK_OUTDATED'].includes(action)) throw new Error('การเปลี่ยนความจำไม่ถูกต้อง');
   return controlRequest('/api/v1/control/memory', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, memoryId, action, content, tags, sharingPolicy: null, pinned }) });
 }
+export async function createMemory({ scope, projectId = null, category, content, tags = [] }) {
+  if (!['owner', 'constitution', 'project'].includes(scope) || (scope === 'project' && !UUID.test(projectId)) || (scope !== 'project' && projectId !== null) || typeof category !== 'string' || !/^[A-Z][A-Z0-9_]{2,47}$/.test(category) || typeof content !== 'string' || !content.trim() || content.length > 2000 || !Array.isArray(tags)) throw new Error('ความจำของ AWH ไม่ถูกต้อง');
+  return controlRequest('/api/v1/control/memory/create', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, scope, projectId, category, content: content.trim(), tags }) });
+}
 export async function exportWorkspace() { return controlRequest('/api/v1/control/export'); }
 export async function loadProviderStatus() { return controlRequest('/api/v1/control/provider'); }
 export async function updateProviderPolicy(policy) { return controlRequest('/api/v1/control/provider', { method: 'POST', body: JSON.stringify(policy) }); }
+export async function updateProviderCredential(action, secret = null) { if (!['SET', 'REMOVE'].includes(action) || (action === 'SET' && (typeof secret !== 'string' || !secret.trim() || secret.length > 512)) || (action === 'REMOVE' && secret !== null)) throw new Error('การตั้งค่า credential ไม่ถูกต้อง'); return controlRequest('/api/v1/control/provider/credential', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, action, secret: action === 'SET' ? secret.trim() : null }) }); }
+export async function testProviderConnection() { return controlRequest('/api/v1/control/provider/test', { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
+export async function loadProviderProjectRouting(projectId) { if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง'); const value = await controlRequest(`/api/v1/control/provider/projects/${projectId}`); if (value.schemaVersion !== 1 || !value.routing || typeof value.routing !== 'object') throw new Error('การกำหนด AI ของโปรเจกต์ไม่ถูกต้อง'); return value.routing; }
+export async function updateProviderProjectRouting(projectId, routingMode) { if (!UUID.test(projectId) || !['AUTO', 'FAST', 'BALANCED', 'STRONG'].includes(routingMode)) throw new Error('การกำหนด AI ของโปรเจกต์ไม่ถูกต้อง'); const value = await controlRequest('/api/v1/control/provider/project', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, routingMode }) }); if (value.schemaVersion !== 1 || !value.routing || typeof value.routing !== 'object') throw new Error('การกำหนด AI ของโปรเจกต์ไม่ถูกต้อง'); return value.routing; }
+export async function loadOwnerSelfServiceStatus() { return controlRequest('/api/v1/control/owner/status'); }
 export async function listPeople() { return controlRequest('/api/v1/auth/people'); }
 export async function invitePerson({ displayName, username, email = null, role, projectIds }) { return controlRequest('/api/v1/auth/people/invite', { method: 'POST', body: JSON.stringify({ displayName, username, email, role, projectIds }) }); }
 export async function revokePerson(userId) { if (!UUID.test(userId)) throw new Error('บัญชีไม่ถูกต้อง'); return controlRequest(`/api/v1/auth/people/${userId}/revoke`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }

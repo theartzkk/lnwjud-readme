@@ -17,6 +17,7 @@ const tests = [
   'hub/tests/m8-unified-workspace.php',
   'hub/tests/m9-final-product.php',
   'hub/tests/m10-founding-memory.php',
+  'hub/tests/m11-self-service.php',
 ];
 
 const php = await resolveExecutable('php');
