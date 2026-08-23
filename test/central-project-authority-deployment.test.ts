@@ -35,6 +35,7 @@ test('M12 Central Project Authority is an explicit v11-to-v12 release with a pri
   assert.match(remoteSource, /PRAGMA user_version.*= 11/s);
   assert.match(remoteSource, /PRAGMA user_version.*= 12/s);
   assert.match(remoteSource, /project-vault/);
+  assert.match(remoteSource, /class_exists\("ZipArchive"\).*\? 0 : 1\);/);
   assert.match(remoteSource, /awh-native-executor\.timer/);
   assert.match(migration, /control_project_vaults/);
   assert.match(migration, /control_task_executions/);

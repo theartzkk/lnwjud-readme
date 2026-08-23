@@ -238,7 +238,7 @@ if test "$CENTRAL_PROJECT_AUTHORITY" = 1; then
   # Vault ingestion is intentionally unavailable without SQLite and ZIP
   # support.  Verify both before the first schema write so a minimal PHP
   # install cannot leave a live database at v12 with a non-functional Vault.
-  stage PROJECT_VAULT_RUNTIME_READY; sudo -u awh-hub /usr/bin/php -r 'exit((extension_loaded("pdo_sqlite") && class_exists("ZipArchive")) ? 0 : 1)'
+  stage PROJECT_VAULT_RUNTIME_READY; sudo -u awh-hub /usr/bin/php -r 'exit((extension_loaded("pdo_sqlite") && class_exists("ZipArchive")) ? 0 : 1);'
   stage PROJECT_VAULT_STORAGE_READY; sudo install -d -o awh-hub -g awh-hub -m 0750 /var/lib/awh-hub/project-vault /var/lib/awh-hub/task-workspaces /var/lib/awh-hub/task-transfers; sudo -u awh-hub test -w /var/lib/awh-hub/project-vault; sudo -u awh-hub test -w /var/lib/awh-hub/task-workspaces; sudo -u awh-hub test -w /var/lib/awh-hub/task-transfers
   stage ARTIFACT_STORAGE_READY; sudo install -d -o awh-hub -g awh-hub -m 0750 /var/lib/awh-hub/artifacts; sudo -u awh-hub test -w /var/lib/awh-hub/artifacts
   DB_MUTATED=1; stage CENTRAL_PROJECT_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$CENTRAL_PROJECT_MIGRATION" "$DB" >/dev/null
