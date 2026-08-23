@@ -155,7 +155,10 @@ import {
     const policy = $('provider-policy-form'); if (!policy) throw new Error('AWH provider settings surface is unavailable');
     const models = document.createElement('div'); models.className = 'compact-form';
     models.innerHTML = '<label for="provider-model-fast">โมเดลเร็ว</label><input id="provider-model-fast" maxlength="120" autocomplete="off" /><label for="provider-model-balanced">โมเดลสมดุล</label><input id="provider-model-balanced" maxlength="120" autocomplete="off" /><label for="provider-model-strong">โมเดลละเอียด</label><input id="provider-model-strong" maxlength="120" autocomplete="off" /><ul id="provider-usage" class="session-list"></ul>';
-    policy.insertBefore(models, $('provider-enabled'));
+    const enabled = $('provider-enabled');
+    const enabledRow = enabled?.closest('label');
+    if (!enabledRow || enabledRow.parentElement !== policy) throw new Error('AWH provider settings surface is unavailable');
+    policy.insertBefore(models, enabledRow);
     const section = document.createElement('section'); section.className = 'account-form';
     section.innerHTML = '<h3>การเชื่อมต่อ AI</h3><p class="muted">API key จะถูกส่งครั้งเดียวผ่าน HTTPS และเก็บเฉพาะฝั่ง server; AWH จะไม่แสดงหรือส่งคืน key นี้</p><form id="provider-credential-form" class="compact-form"><label for="provider-api-key">OpenAI API key</label><input id="provider-api-key" type="password" maxlength="512" autocomplete="off" spellcheck="false" /><div class="form-actions"><button class="secondary-button" type="submit">บันทึกหรือแทนที่ key</button><button id="provider-credential-remove" class="text-button" type="button">ลบ key</button><button id="provider-connection-test" class="text-button" type="button">ทดสอบการเชื่อมต่อ</button></div></form><form id="provider-project-routing-form" class="compact-form"><label for="provider-project-routing">AI สำหรับโปรเจกต์ที่เลือก</label><select id="provider-project-routing"><option value="AUTO">Auto (ตามค่า AWH)</option><option value="FAST">เร็ว</option><option value="BALANCED">สมดุล</option><option value="STRONG">ละเอียด</option></select><button class="secondary-button" type="submit">บันทึกการเลือกของโปรเจกต์</button></form><p id="provider-credential-message" class="form-message" role="status"></p>';
     policy.after(section);

@@ -48,6 +48,9 @@ test('M11 self-service activation is one v7-to-v11 release with write-only provi
   assert.match(service, /workersForUser/);
   assert.match(app, /ensureOwnerSelfServiceSurface/);
   assert.match(app, /ensureProviderSelfServiceSurface/);
+  assert.match(app, /const enabledRow = enabled\?\.closest\('label'\)/);
+  assert.match(app, /policy\.insertBefore\(models, enabledRow\)/);
+  assert.doesNotMatch(app, /policy\.insertBefore\(models, \$\('provider-enabled'\)\)/);
   assert.match(app, /memory-search-form/);
   assert.match(app, /AWH จะไม่แสดงหรือส่งคืน key นี้/);
   assert.match(adapter, /updateProviderCredential/);
