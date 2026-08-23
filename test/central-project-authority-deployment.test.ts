@@ -23,9 +23,10 @@ test('M12 Central Project Authority is an explicit v11-to-v12 release with a pri
   assert.match(result.stdout, /M12_ROLLBACK=restore-db-v11,pointer,web-pointer,nginx,service-health,m3d-m3e-m4-m7-m11-regression/);
   assert.match(result.stdout, /M12_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL/);
 
-  const [local, remoteSource, migration, vault, vaultService, durable, artifactStore, controlService, controlRouter, serviceUnit, timerUnit] = await Promise.all([
+  const [local, remoteSource, migration, vault, vaultService, durable, artifactStore, controlService, controlRouter, nativeAgent, webAdapter, webApp, serviceUnit, timerUnit] = await Promise.all([
     readFile(deploy, 'utf8'), readFile(remote, 'utf8'), readFile(join(root, 'hub/migrations/011_central_project_authority.sql'), 'utf8'),
     readFile(join(root, 'hub/src/HubProjectVault.php'), 'utf8'), readFile(join(root, 'hub/src/HubProjectVaultService.php'), 'utf8'), readFile(join(root, 'hub/src/HubDurableExecutionService.php'), 'utf8'), readFile(join(root, 'hub/src/HubArtifactStore.php'), 'utf8'), readFile(join(root, 'hub/src/HubControlPlaneService.php'), 'utf8'), readFile(join(root, 'hub/src/HubControlPlaneRouter.php'), 'utf8'),
+    readFile(join(root, 'hub/src/HubNativeAgentService.php'), 'utf8'), readFile(join(root, 'web/control-plane-adapter.js'), 'utf8'), readFile(join(root, 'web/app.js'), 'utf8'),
     readFile(join(root, 'deploy/systemd/awh-native-executor.service'), 'utf8'), readFile(join(root, 'deploy/systemd/awh-native-executor.timer'), 'utf8'),
   ]);
   assert.match(local, /--central-project-authority/);
@@ -55,6 +56,19 @@ test('M12 Central Project Authority is an explicit v11-to-v12 release with a pri
   assert.match(durable, /PROJECT_INSPECTION/);
   assert.match(durable, /PROJECT_TEXT_NORMALIZE/);
   assert.match(durable, /project\.revision\.promote/);
+  assert.match(durable, /Native conversation provider failed/);
+  assert.doesNotMatch(durable, /catch \(HubNativeAgentException \$error\) \{\s*if \(\$error->codeName === 'BUDGET_EXHAUSTED'\)[\s\S]{0,240}conversationFallback/);
+  assert.match(nativeAgent, /Reply with OK only/);
+  assert.match(nativeAgent, /providerFailure/);
+  assert.match(nativeAgent, /assistant' \? 'output_text' : 'input_text'/);
+  assert.match(nativeAgent, /PROVIDER_MODEL_UNAVAILABLE/);
+  assert.match(nativeAgent, /PROVIDER_QUOTA_EXHAUSTED/);
+  assert.match(nativeAgent, /PROVIDER_PERMISSION_DENIED/);
+  assert.match(durable, /bounded retry queued on the same task/);
+  assert.doesNotMatch(durable, /conversationFallback/);
+  assert.match(webAdapter, /PROVIDER_REQUEST_INVALID/);
+  assert.match(webApp, /PROVIDER_RATE_LIMITED: 'OpenAI จำกัดการเรียกใช้ชั่วคราว · งานยังถูกเก็บไว้'/);
+  assert.match(webApp, /BUDGET_EXHAUSTED: 'งบ AI ของ AWH ถึงขีดจำกัด · งานยังถูกเก็บไว้'/);
   assert.match(vault, /ingestDirectory/);
   assert.match(vaultService, /awh_vault_promote/);
   assert.match(vaultService, /function savepoint/);

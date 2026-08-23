@@ -33,6 +33,16 @@ function safeErrorMessage(value) {
     MEMORY_FORBIDDEN: 'ความจำนี้ไม่พร้อมใช้งานสำหรับบัญชีของคุณ',
     MEMORY_SENSITIVE_EXCLUDED: 'AWH ไม่เก็บข้อมูลลับหรือข้อมูลอ่อนไหวไว้ในความจำปกติ',
     MEMORY_NOT_FOUND: 'ไม่พบความจำที่ต้องการ',
+    STEP_UP_REQUIRED: 'กรุณายืนยันรหัสผ่านก่อนบันทึกการตั้งค่าสำคัญ',
+    PROVIDER_POLICY_INVALID: 'ตรวจการตั้งค่า AI อีกครั้ง งบและอัตราค่าใช้จ่ายต้องมากกว่า 0 เมื่อเปิดใช้ AI',
+    PROVIDER_AUTH_FAILED: 'OpenAI ปฏิเสธ API key นี้ กรุณาตรวจ key แล้วลองใหม่',
+    PROVIDER_PERMISSION_DENIED: 'บัญชีหรือโปรเจกต์ OpenAI นี้ยังไม่มีสิทธิ์ใช้คำขอที่ตั้งไว้',
+    PROVIDER_QUOTA_EXHAUSTED: 'โควตาหรือวงเงินของ OpenAI ยังไม่พร้อม งานจะไม่ถูกอ้างว่าเสร็จแล้ว',
+    PROVIDER_MODEL_UNAVAILABLE: 'โมเดล AI ที่ตั้งไว้ยังใช้กับบัญชีนี้ไม่ได้ กรุณาเลือกโมเดลอื่น',
+    PROVIDER_REQUEST_INVALID: 'การตั้งค่า AI ใช้ได้ แต่คำขอ Responses API ยังไม่ถูกต้อง',
+    PROVIDER_RATE_LIMITED: 'OpenAI จำกัดการเรียกใช้ชั่วคราว กรุณาลองใหม่ภายหลัง',
+    PROVIDER_UNAVAILABLE: 'OpenAI ยังไม่พร้อมตอบในขณะนี้ งานของคุณจะไม่ถูกอ้างว่าเสร็จแล้ว',
+    PROVIDER_TEST_FAILED: 'ทดสอบ OpenAI ไม่ผ่าน กรุณาตรวจการเชื่อมต่อแล้วลองใหม่',
   })[code] || 'AWH ไม่สามารถดำเนินการได้ในขณะนี้';
 }
 

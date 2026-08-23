@@ -2,32 +2,19 @@
 
 ## Current state
 
-### Current live state — browser/runtime closure deployed
+### Current live state — M12 production + provider field-debug
 
-ReadyIDC is active at SQLite schema v5 with M3E.1, M3E.2, M4 and M5 ledgers,
-one existing project and one enrolled Mac device. The exact release
-`8c5ea0e79c96fb0796c643164a596aa8beabfa51` is deployed through the bounded
-M5 compatibility refresh. It rebuilt the PWA from its exact source and passed
-the deployed login → session → projects gate without replaying a migration or
-changing the owner, projects, device or enrollment state.
+ReadyIDC is the active production authority at SQLite **schema v12**. The deployed runtime SHA is `9b5970f3a29213d79550b068805bd0b23c84674a` and the production pointer is `m12-9b5970f3a292`. M12 migration/idempotence/integrity/FK checks, Nginx/PHP-FPM, native executor timer, Project Vault, artifact storage, task workspace/transfer permissions, owner/auth preservation and the rollback contract are verified production evidence.
 
-The previous iPhone incident was a shared release boundary: a stale Preview
-artifact could be served beside CONTROL configuration, and Safari's valid
-same-origin safe GET could omit `Origin`. The deployed product now has one
-generic account shell, project picker, conversation-style work stream and Goal
-composer. Its `html`, `body` and app shell use the same graphite canvas;
-release-specific asset URLs and a network-first app-shell cache prevent mixed
-generations. Orange is accent-only.
+The active source branch is `awh/v0.1-migration`. Current source may be ahead of production; production is never inferred from repository HEAD. For any continuation, inspect current source/local+remote state first, then production read-only evidence, then DB/release pointers, and only then these documents.
 
-Normal owner use is username/password plus a revocable remembered session.
-The Keychain value is only bootstrap delivery. After signing in, Art should set
-a memorable password in Account. Basic Auth remains only on technical routes.
+The current field defect is the OpenAI Responses conversation path. Production key storage and the old connection test prove credential reachability, but the deployed request path can fail and still surface a deterministic fallback as `COMPLETED`. Source work now targets the exact defect boundary: valid Responses history schema, sanitized diagnostics, a real low-cost Responses probe, no false-success, bounded retry on the same task, truthful user-visible states, and cost accounting that does not treat failed calls as successful model results.
 
-### Pending source release — M6 Native Assistant Workstream + M7 Workspace Continuity
+Normal owner use remains username/password plus a revocable remembered session. Provider secrets are server-side/write-only. No production mutation, key replacement, budget purchase, Google Cloud legacy change or BAY production change is part of this field-debug.
 
-The next source candidate adds two additive capabilities, `m6-assistant-workstream` and `m7-workspace-continuity`. It is intentionally not deployed in the current live v5 state. M6 makes the existing Work surface a durable ordered conversation per project by projecting existing canonical tasks, task events, artifacts and approvals into one work stream; it does not introduce another project/task/memory/result authority. M7 adds only WIP checkpoint metadata and a single project workspace-writer lease to that same Hub authority.
+### Deployed evolution — M6 through M12
 
-M6/M7 have local cross-version fixtures for M3E.1 → M3E.2 → owner/device → M4 → M5 → M6 → M7, browser session, conversation-only response, idempotent Work submission, task lease recovery, safe cancellation, clean/WIP Mac↔Windows handoff, reverse handoff, source-offline/unsynced truthfulness and no-secret/cache transfer. Git is the WIP content authority through a private `refs/awh/wip/<project>/<checkpoint>` ref; the Hub never receives paths or source content. The target claims its workspace lease before restoring and fails closed on a dirty workspace, base-revision mismatch, conflict or unavailable source. Deployment remains one new exact-SHA approval with backup, v5→v7 idempotence, pointer/Nginx/PHP checks and rollback to the verified v5 backup.
+M6/M7 are no longer pending: their durable conversation and workspace-continuity authorities were subsequently extended through M8–M12 and are part of the current v12 production model. M12 is the live foundation for immutable Project Vault revisions, durable server-side execution, isolated task workspaces, artifact objects, bounded native execution and worker/specialist transfer. Older v5→v7 deployment instructions below are historical evidence and must not be reused as a current release plan.
 
 The first M4 activation attempt is historical evidence only: it failed before
 Nginx activation and rollback restored the v3 baseline. Subsequent reviewed
@@ -59,8 +46,8 @@ The owner-protocol integration is isolated on `awh/clean-foundation` / PR #8 for
 
 ## Production safety state
 
-- ReadyIDC M3D/M3E/M4/M5: **active and verified after the 8c5ea compatibility refresh**.
-- DB: schema v5; integrity/FK, M3D perimeter, M3E post-schema and M4 control gates passed.
+- ReadyIDC M12: **active and verified** at deployed SHA `9b5970f3a29213d79550b068805bd0b23c84674a`.
+- DB: schema v12; migration idempotence, integrity/FK, Vault/artifact/workspace/runtime service gates passed.
 - Google Cloud `awh-vps`: untouched legacy/backup authority.
 - BAY production: untouched.
 - Future release changes require an exact reviewed SHA and whole-path
@@ -69,17 +56,12 @@ The owner-protocol integration is isolated on `awh/clean-foundation` / PR #8 for
 
 ## Remaining field gates
 
-1. Approve and activate the exact M6/M7 source release; do not deploy the uncommitted/current tree.
-2. iPhone Safari/PWA: sign in → select existing project → ask a normal question → submit one safe read-only Work request → see the same worker/result/continuity stream.
-3. Logged-in Mac GUI field test with the final package, worker restart/reconnect and one clean/WIP handoff to Windows.
-4. Physical Windows pairing/Credential Manager/runtime field test.
-5. Fix only verified field defects, then release stable `1.0.0`.
+1. Finish source QA for the Responses API/false-success candidate and record the exact final SHA with local/remote/worktree evidence.
+2. Deploy **only after Art explicitly approves that exact SHA**; deployment must preserve DB v12, owner/auth, Project Vault and current rollback authority.
+3. After deployment, run a real iPhone AWH turn: `จำได้ไหมว่าเราสร้าง AWH ขึ้นมาทำไม?` and verify a genuine OpenAI answer uses relevant Founding/Project Memory.
+4. Verify provider-failure field behavior separately: failed AI calls must never produce `COMPLETED` or a fake assistant answer; temporary failures use bounded same-task retry and then a truthful waiting/failure state.
+5. Physical Windows pairing/Credential Manager/runtime validation remains a later field gate and is not part of this provider defect closure.
 
 ## Next action
 
-Use AWH on iPhone: open the ReadyIDC URL, sign in as the existing owner, change
-the bootstrap password in Account if desired, select the existing project and
-send one real, safe Goal. Do not begin another infrastructure rewrite before
-that field evidence. A private ChatGPT MCP gateway requires a separately
-approved OAuth/mTLS production boundary; the current local Secure MCP Tunnel
-remains read-only and is not that gateway.
+Complete the current source candidate and QA. If clean, commit/push it on `awh/v0.1-migration`, report the exact SHA, and stop before production deployment for explicit approval. Do not reopen M12 architecture, do not replay old v5→v7 migration steps, and do not touch Google Cloud legacy or BAY production.

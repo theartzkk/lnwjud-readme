@@ -10,7 +10,7 @@ local control, explicit permissions, and recoverable changes.
 
 - Tagline: **Your Projects. One Workspace. Anywhere.**
 - AWH is one product; Art Agent is a legacy compatibility codename.
-- AWH is local-first. GitHub is an optional mirror/CI path, not critical infrastructure.
+- AWH is Hub-first for durable project/task/memory continuity, with trusted Mac/Windows workers for device-bound execution. GitHub is a source mirror/CI and collaboration path, not the runtime task authority.
 - AI is a component/adapter of AWH, not the AWH product itself.
 - Portable project identity is stored in `.awh/project.json`.
 - Portable Project Memory is stored in `PROJECT.md`, `HANDOFF.md`, `TASKS.md`, `ARCHITECTURE.md`, and `DECISIONS.md`.
@@ -20,15 +20,12 @@ local control, explicit permissions, and recoverable changes.
 
 ### Current live owner-access state and field closure
 
-- ReadyIDC is live at schema v5 with the M3E.1, M3E.2, M4 and M5 ledgers; integrity/FK checks, the existing project, and the enrolled Mac identity remain canonical production state.
-- M6 Assistant Workstream and M7 Workspace Continuity are the next **source-ready, not-yet-deployed** additive release. They advance only the shared Hub schema from v5 to v7 after an exact reviewed release lock; they preserve the owner, project, device, M3E and M4/M5 authorities and have no project-seeding step.
-- M6 makes Work one ordered, durable conversation per authorized project over existing canonical tasks, events, artifacts, approvals and checkpoints. It is not a second project, task, memory or result registry. A message can answer from canonical state without creating work, or create one idempotent bounded task when execution is needed.
-- M7 extends the same authority with durable WIP checkpoint metadata and one bounded workspace-writer lease per project. Git stores a temporary private WIP commit/ref; the Hub stores only verified metadata and lease state. A target registered workspace restores only from the recorded base revision while clean, then returns to an uncommitted WIP state. Secrets, `.git`, dependency/build caches and large/binary files are never transferred.
-- The worker keeps its existing outbound device credential boundary. While it owns a task it renews the bounded lease; expired leases are requeued with their original task/conversation lineage rather than duplicated. Task event, assistant progress/result and worker-release updates are committed atomically.
-- The iPhone field incident proved two shared release defects: a browser same-origin safe GET may omit `Origin` while sending `Sec-Fetch-Site: same-origin`, and a CONTROL web release must never inherit static Preview data from the repository build.
-- The next release uses one shared browser-origin policy: mutations require the exact configured `Origin`; safe reads accept only an exact supplied origin, `same-origin` Fetch Metadata without an origin, or the legacy no-metadata path. Cross-site reads remain rejected.
-- CONTROL PWA builds are generic account shells, not preinstalled-project previews. They are rebuilt from the exact release SHA, carry a release-specific app-shell cache, and are validated before the web pointer can move.
-- Normal owner use is application login: remembered, revocable Secure/HttpOnly sessions; the authenticated Control Panel lets the existing owner set a memorable username and password. No normal browser flow depends on a Keychain password after that first sign-in.
+- ReadyIDC is the active production authority at SQLite **schema v12**. Production runtime is pinned to `9b5970f3a29213d79550b068805bd0b23c84674a` with pointer `m12-9b5970f3a292`; integrity/FK, Nginx/PHP-FPM, native executor timer, Project Vault, artifact storage, task workspace/transfer permissions, owner/auth and rollback contracts have been field-verified.
+- M6 through M12 are deployed history, not pending architecture. M12 adds Central Project Vault, immutable project revisions, isolated task workspaces, durable execution, artifact object storage, bounded VPS-native execution, worker/Codex transfer foundations and revision/concurrency guards while preserving the canonical task/project authorities.
+- Source of Truth order for field work is: **current source → actual production read-only evidence → current DB/release pointers → durable project docs**. Durable docs must be reconciled after verified field changes and must never override newer runtime evidence.
+- The current field-debug scope is the OpenAI Responses API path. Production has a configured write-only key and enabled provider policy, but the deployed conversation path can false-succeed when a provider call fails. Source work closes the request-schema defect, sanitized provider diagnostics, real Responses connection probe, truthful durable failure/retry state, usage/cost guards and UI error mapping. Production remains unchanged until an exact candidate SHA is explicitly approved.
+- AWH product closure still requires a real iPhone field turn after that approved deployment: `จำได้ไหมว่าเราสร้าง AWH ขึ้นมาทำไม?` must return a genuine model answer grounded in Founding/Project Memory, not a deterministic failure fallback.
+- Normal owner use is application login with remembered, revocable Secure/HttpOnly sessions. The authenticated Control Panel owns provider settings and account changes behind step-up verification; provider secrets remain server-side and write-only.
 
 - M1.1 Local QA Engine: closed.
 - M1.2 Product Identity Migration: closed.
@@ -42,7 +39,7 @@ local control, explicit permissions, and recoverable changes.
 - M3C1 PHP/SQLite Hub read foundation and M3D same-origin web gateway are operational on the VPS; field verification confirms live HTTPS access on desktop and iPhone.
 - M3D field state: Connected read-only, one indexed project, and PHP-FPM + SQLite + Nginx gateway operational.
 - M3C2 hosting foundation and VPS bootstrap are documented design/templates only.
-- M3E.1, M3E.2, M4 control-plane, and M5 owner-auth migrations are deployed on the verified ReadyIDC production Hub; the database is at schema version 5 with the existing project and memory metadata preserved.
+- M3E.1 through M12 migrations/capabilities are deployed on the verified ReadyIDC production Hub; the database is at schema version 12 with owner/project/memory identity preserved through additive migrations.
 - M3E-FINAL is operational for the enrolled Mac: owner bootstrap is closed, the Mac credential is stored in macOS Keychain, and the owner-only pairing UI is ready for a separate Windows device. Browser Hub Read remains sanitized and read-only.
 - ReadyIDC production is active with one enrolled Mac device (`devices=1`). The legacy Google Cloud host remains backup/legacy only and is not part of the current runtime path.
 - Autopilot v0.5 local-first product path is implemented: first-run trusted-device metadata, goal-based Task Contract, reusable project profiles, bounded local runner, QA artifacts, continuity checkpoints, Artifact Center, and Desktop Task Center.
@@ -63,8 +60,8 @@ local control, explicit permissions, and recoverable changes.
 
 - Windows field enrollment and independent Credential Manager verification are not complete.
 - The disposable native macOS Keychain probe reached `/usr/bin/security` but this session returned an OS authorization failure; no credential value was retained or logged. Windows native runtime remains unverified on Mac.
-- ReadyIDC is the active M3D/M3E/M4/M5 authority at schema v5. The deployed compatibility refresh at `8c5ea0e79c96fb0796c643164a596aa8beabfa51` rebuilt the generic project/work PWA, refreshed the control/web pointers, and verified owner login → session → projects without changing schema, owner identity, projects, or enrollment data.
-- Mac ↔ Hub ↔ Windows WIP continuity is source/fixture proven through M7 but is not deployed or physical-device field verified. Until a durable checkpoint is published, offline or unsynced work is shown truthfully and never claimed as transferable.
+- ReadyIDC is the active M12 authority at schema v12. Earlier v5 compatibility releases remain historical evidence only; the current production pointer/SHA and read-only runtime evidence take precedence.
+- Mac ↔ Hub ↔ Windows WIP continuity foundations through M12 are deployed, but physical Windows field validation remains open. Offline/unsynced work must still be represented truthfully and never claimed as transferable without a verified checkpoint/revision.
 - Large assets require a future separate asset layer.
 - Local macOS x64 and Windows x64 portable packaging is complete structurally, but the Mac app is unsigned/not notarized, Windows runtime/installer QA requires Windows/CI, and no production distribution claim is made.
 - Under the Codex launch context, the installed Electron 43.2.0 x64 binary has a real native AppKit abort before app startup (`EXC_CRASH/SIGABRT` at `_RegisterApplication`); `/usr/bin/open` additionally returns LaunchServices `-10822`. The smoke harness safely isolates temporary data and classifies that pre-marker Codex GUI failure as `GUI_SANDBOX_BLOCKED`, never as an AWH application failure or PASS. A separately authorized logged-in macOS GUI LaunchServices launch produced a valid AWH marker with `stage: passed`, `apiReady: true`, `requiredDom: true`, all Overview/Projects/Autopilot/Artifacts/Memory paths active, and `cmdKReady: true`; the local Mac bundle now passes non-GUI structural/runtime verification. Windows runtime, Squirrel installer, and signing/notarization remain field gates.

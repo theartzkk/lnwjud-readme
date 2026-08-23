@@ -89,10 +89,10 @@ try {
     $created = m10_control($control, 'POST', '/api/v1/control/conversations/new', $browser, ['schemaVersion' => 2, 'projectId' => $project, 'title' => 'Founding memory']);
     $conversation = m10_body($created)['conversation']['conversationId'];
     $purposeAnswer = m10_control($control, 'POST', '/api/v1/control/conversations', $browser, ['schemaVersion' => 3, 'projectId' => $project, 'conversationId' => $conversation, 'message' => 'เราสร้าง AWH ขึ้นมาทำไม?', 'attachmentIds' => [], 'idempotencyKey' => 'm10-purpose-0001']);
-    m10_assert($purposeAnswer['status'] === 201 && str_contains($purposeAnswer['body'], 'Art’s Workspace Hub'), 'conversation fallback produces a natural founding answer when provider execution is unavailable');
+    m10_assert($purposeAnswer['status'] === 201 && str_contains($purposeAnswer['body'], 'AI ยังตอบไม่ได้ในขณะนี้') && !str_contains($purposeAnswer['body'], 'Art’s Workspace Hub ถูกสร้างขึ้น'), 'provider outage is truthful and never substitutes founding memory as a fake AI answer');
     $secondConversation = m10_control($control, 'POST', '/api/v1/control/conversations/new', $browser, ['schemaVersion' => 2, 'projectId' => $project, 'title' => 'BAY follow-up']);
     $bayAnswer = m10_control($control, 'POST', '/api/v1/control/conversations', $browser, ['schemaVersion' => 3, 'projectId' => $project, 'conversationId' => m10_body($secondConversation)['conversation']['conversationId'], 'message' => 'BAY ตอนนี้มีหลักการอะไรที่ห้ามรื้อ?', 'attachmentIds' => [], 'idempotencyKey' => 'm10-bay-0001']);
-    m10_assert($bayAnswer['status'] === 201 && str_contains($bayAnswer['body'], 'ห้ามรื้อ healthy core'), 'CROSS_THREAD durable project memory survives a new Work thread');
+    m10_assert($bayAnswer['status'] === 201 && str_contains($bayAnswer['body'], 'AI ยังตอบไม่ได้ในขณะนี้') && !str_contains($bayAnswer['body'], 'ห้ามรื้อ healthy core'), 'CROSS_THREAD conversation does not expose durable memory as a provider-failure fallback');
     $secondOwnerSession = $auth->login('art', $ownerPassword, false, 'm10-iphone-logical-client', $now);
     m10_assert(m10_control($control, 'GET', '/api/v1/control/memory?scope=owner&q=awh.purpose', m10_read_browser($secondOwnerSession['sessionToken']))['status'] === 200, 'CROSS_DEVICE logical client sees the same canonical Owner memory');
 

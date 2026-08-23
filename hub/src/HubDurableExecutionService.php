@@ -23,7 +23,8 @@ require_once __DIR__ . '/HubFoundingMemoryService.php';
  */
 final class HubDurableExecutionException extends RuntimeException
 {
-    public function __construct(string $message, public readonly string $codeName = 'EXECUTION_FAILED') { parent::__construct($message); }
+    /** @param array<string,mixed> $diagnostic Sanitized machine-readable metadata only. */
+    public function __construct(string $message, public readonly string $codeName = 'EXECUTION_FAILED', public readonly array $diagnostic = []) { parent::__construct($message); }
 }
 
 final class HubDurableExecutionService
@@ -76,8 +77,10 @@ final class HubDurableExecutionService
             }
             return ['executionId' => (string) $claimed['execution_id'], 'taskId' => (string) $claimed['task_id'], 'state' => ($checkpoint['mode'] ?? null) === 'PROJECT_TEXT_NORMALIZE' ? 'WAITING_FOR_APPROVAL' : 'COMPLETED'];
         } catch (HubProjectVaultException|HubDurableExecutionException $error) {
-            $this->deferOrFail($claimed, $error->codeName, $at); return ['executionId' => (string) $claimed['execution_id'], 'taskId' => (string) $claimed['task_id'], 'state' => $error->codeName === 'WAITING_FOR_CAPABILITY' ? 'WAITING_FOR_CAPABILITY' : 'FAILED'];
-        } catch (Throwable) { $this->deferOrFail($claimed, 'EXECUTION_FAILED', $at); return ['executionId' => (string) $claimed['execution_id'], 'taskId' => (string) $claimed['task_id'], 'state' => 'FAILED']; }
+            $diagnostic = $error instanceof HubDurableExecutionException ? $error->diagnostic : [];
+            $state = $this->deferOrFail($claimed, $error->codeName, $at, $diagnostic);
+            return ['executionId' => (string) $claimed['execution_id'], 'taskId' => (string) $claimed['task_id'], 'state' => $state];
+        } catch (Throwable) { $state = $this->deferOrFail($claimed, 'EXECUTION_FAILED', $at); return ['executionId' => (string) $claimed['execution_id'], 'taskId' => (string) $claimed['task_id'], 'state' => $state]; }
     }
 
     /** @return list<array<string,mixed>> */
@@ -110,17 +113,67 @@ final class HubDurableExecutionService
         } catch (Throwable $error) { $this->rollbackImmediate(); if ($error instanceof HubDurableExecutionException) throw $error; throw new HubDurableExecutionException('Server execution could not be completed', 'EXECUTION_FAILED'); }
     }
 
-    private function deferOrFail(array $claimed, string $code, string $at): void
+    /** @param array<string,mixed> $diagnostic @return string resulting execution state */
+    private function deferOrFail(array $claimed, string $code, string $at, array $diagnostic = []): string
     {
-        $wait = in_array($code, ['WAITING_FOR_CAPABILITY', 'PROJECT_VAULT_EMPTY', 'PROVIDER_UNAVAILABLE', 'BUDGET_EXHAUSTED'], true); $terminal = !$wait && (((int) $claimed['attempt_count'] + 1) >= self::MAX_ATTEMPTS);
+        $attempt = (int) $claimed['attempt_count'] + 1;
+        $retryableProvider = in_array($code, ['PROVIDER_UNAVAILABLE', 'PROVIDER_RATE_LIMITED'], true);
+        $manualWait = in_array($code, ['WAITING_FOR_CAPABILITY', 'PROJECT_VAULT_EMPTY', 'BUDGET_EXHAUSTED', 'PROVIDER_QUOTA_EXHAUSTED'], true);
+        $nonRetryable = in_array($code, ['PROVIDER_AUTH_FAILED', 'PROVIDER_PERMISSION_DENIED', 'PROVIDER_MODEL_UNAVAILABLE', 'PROVIDER_REQUEST_INVALID'], true);
+        if ($nonRetryable) $state = 'FAILED';
+        elseif ($manualWait) $state = 'WAITING_FOR_CAPABILITY';
+        elseif ($retryableProvider) $state = $attempt < self::MAX_ATTEMPTS ? 'QUEUED' : 'WAITING_FOR_CAPABILITY';
+        else $state = $attempt < self::MAX_ATTEMPTS ? 'QUEUED' : 'FAILED';
+        $terminal = $state === 'FAILED';
+        $waiting = $state === 'WAITING_FOR_CAPABILITY';
+        $retrying = $state === 'QUEUED';
+        $safeDiagnostic = self::safeDiagnostic($diagnostic);
         try {
             $this->pdo->exec('BEGIN IMMEDIATE');
-            $state = $terminal ? 'FAILED' : ($wait ? 'WAITING_FOR_CAPABILITY' : 'QUEUED');
             $this->pdo->prepare('UPDATE control_task_executions SET state = :state, lease_owner = NULL, lease_expires_at = NULL, last_error_code = :code, updated_at = :at WHERE execution_id = :id')->execute(['state' => $state, 'code' => $code, 'at' => $at, 'id' => $claimed['execution_id']]);
-            $taskState = $terminal ? 'FAILED' : 'WAITING_FOR_WORKER'; $summary = $wait ? 'งานถูกเก็บไว้และกำลังรอความสามารถที่เหมาะสม' : null;
-            $this->pdo->prepare('UPDATE control_tasks SET state = :state, progress = 0, failure_code = :code, result_summary = COALESCE(:summary, result_summary), lease_expires_at = NULL, updated_at = :at WHERE task_id = :task')->execute(['state' => $taskState, 'code' => $code, 'summary' => $summary, 'at' => $at, 'task' => $claimed['task_id']]); $this->event((string) $claimed['task_id'], $taskState, 0, $wait ? 'waiting for a safe execution capability' : 'server-native execution failed', $at);
-            $this->appendConversationMessage((string) $claimed['conversation_id'], (string) $claimed['task_id'], $terminal ? 'FAILURE' : 'PROGRESS', $terminal ? 'งานนี้หยุดไว้โดยปลอดภัย และยังไม่ได้เลื่อนผลลัพธ์ทับ Project หลัก' : ($code === 'BUDGET_EXHAUSTED' ? 'งบ AI ถึงขีดจำกัด งานนี้ถูกเก็บไว้และจะไม่สูญหาย' : 'งานถูกเก็บไว้และกำลังรอความสามารถที่เหมาะสม'), $at); $this->pdo->exec('COMMIT');
+            $taskState = $terminal ? 'FAILED' : 'WAITING_FOR_WORKER';
+            $summary = $terminal ? self::providerFailureSummary($code) : null;
+            $this->pdo->prepare('UPDATE control_tasks SET state = :state, progress = 0, failure_code = :code, result_summary = COALESCE(:summary, result_summary), lease_expires_at = NULL, updated_at = :at WHERE task_id = :task')->execute(['state' => $taskState, 'code' => $code, 'summary' => $summary, 'at' => $at, 'task' => $claimed['task_id']]);
+            $eventMessage = $retrying ? 'bounded retry queued on the same task' : ($waiting ? 'work preserved; automatic retry paused' : 'server-native execution failed');
+            if ($safeDiagnostic !== []) $eventMessage .= ' provider_failure=' . json_encode(['code' => $code] + $safeDiagnostic, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+            $this->event((string) $claimed['task_id'], $taskState, 0, $eventMessage, $at);
+            $userMessage = $terminal ? (self::providerFailureSummary($code) ?? 'งานนี้หยุดไว้โดยปลอดภัย และยังไม่ได้เลื่อนผลลัพธ์ทับ Project หลัก') : self::providerWaitSummary($code, $retrying);
+            $this->appendConversationMessage((string) $claimed['conversation_id'], (string) $claimed['task_id'], $terminal ? 'FAILURE' : 'PROGRESS', $userMessage, $at);
+            $this->pdo->exec('COMMIT');
         } catch (Throwable) { $this->rollbackImmediate(); }
+        return $state;
+    }
+
+    private static function providerFailureSummary(string $code): ?string
+    {
+        return match ($code) {
+            'PROVIDER_AUTH_FAILED' => 'การเชื่อมต่อ AI ถูกปฏิเสธ กรุณาตรวจ API key ในการตั้งค่า AI',
+            'PROVIDER_PERMISSION_DENIED' => 'OpenAI ยังไม่อนุญาตให้บัญชีหรือโปรเจกต์นี้ใช้คำขอที่ตั้งไว้ งานถูกหยุดไว้โดยไม่อ้างว่าเสร็จแล้ว',
+            'PROVIDER_MODEL_UNAVAILABLE' => 'โมเดล AI ที่ตั้งไว้ยังใช้กับบัญชีนี้ไม่ได้ กรุณาเลือกโมเดลอื่นแล้วทดสอบการเชื่อมต่อ',
+            'PROVIDER_REQUEST_INVALID' => 'AWH ส่งคำขอ AI ไม่สำเร็จ ระบบหยุดงานไว้โดยไม่อ้างว่าเสร็จแล้ว',
+            default => null,
+        };
+    }
+
+    private static function providerWaitSummary(string $code, bool $retrying): string
+    {
+        return match ($code) {
+            'BUDGET_EXHAUSTED' => 'งบ AI ของ AWH ถึงขีดจำกัด งานของคุณยังถูกเก็บไว้และระบบจะไม่อ้างว่าเสร็จแล้ว',
+            'PROVIDER_QUOTA_EXHAUSTED' => 'โควตาหรือวงเงินของ OpenAI ยังไม่พร้อม งานของคุณยังถูกเก็บไว้และระบบจะไม่อ้างว่าเสร็จแล้ว',
+            'PROVIDER_RATE_LIMITED', 'PROVIDER_UNAVAILABLE', 'PROVIDER_FAILED' => $retrying ? 'AI ยังตอบไม่ได้ในขณะนี้ งานของคุณยังถูกเก็บไว้ ระบบจะลองใหม่แบบจำกัดบนงานเดิม' : 'AI ยังตอบไม่ได้ในขณะนี้ งานของคุณยังถูกเก็บไว้ และหยุดการลองอัตโนมัติหลังครบขีดจำกัด',
+            default => 'งานของคุณยังถูกเก็บไว้และกำลังรอความสามารถที่เหมาะสม',
+        };
+    }
+
+    /** @param array<string,mixed> $diagnostic @return array<string,mixed> */
+    private static function safeDiagnostic(array $diagnostic): array
+    {
+        $allowed = ['provider', 'operation', 'category', 'httpStatusClass', 'providerType', 'providerCode', 'model']; $out = [];
+        foreach ($allowed as $key) if (is_string($diagnostic[$key] ?? null) && preg_match('/^[A-Za-z0-9._:-]{1,100}$/', (string) $diagnostic[$key]) === 1) $out[$key] = (string) $diagnostic[$key];
+        if (is_int($diagnostic['httpStatus'] ?? null) && $diagnostic['httpStatus'] >= 100 && $diagnostic['httpStatus'] <= 599) $out['httpStatus'] = $diagnostic['httpStatus'];
+        if (is_int($diagnostic['transportCode'] ?? null) && $diagnostic['transportCode'] > 0 && $diagnostic['transportCode'] < 1000) $out['transportCode'] = $diagnostic['transportCode'];
+        if (is_bool($diagnostic['retryable'] ?? null)) $out['retryable'] = $diagnostic['retryable'];
+        return $out;
     }
 
     /** @param array{revisionId:string,contentSha256:string,files:list<array{path:string,sizeBytes:int}>} $context */
@@ -165,15 +218,14 @@ final class HubDurableExecutionService
         $turns = $this->recentConversationTurns($conversationId, $messageId);
         $attachments = $this->attachmentsForMessage($conversationId, $messageId, (string) $claimed['user_id']);
         $context = $this->conversationContext((string) $claimed['user_id'], (string) $claimed['project_id'], (string) $claimed['goal']);
-        if ($this->agent === null) return $this->conversationFallback($context);
+        if ($this->agent === null) throw new HubDurableExecutionException('Native conversation provider is unavailable', 'PROVIDER_UNAVAILABLE', ['provider' => 'openai', 'operation' => 'responses', 'category' => 'unavailable', 'retryable' => true]);
         try {
             $result = $this->agent->respond((string) $claimed['user_id'], (string) $claimed['project_id'], $conversationId, $messageId, (string) $claimed['goal'], $turns, $attachments, $at, $context);
             $summary = trim((string) ($result['summary'] ?? ''));
-            if ($summary === '') return $this->conversationFallback($context);
+            if ($summary === '') throw new HubDurableExecutionException('Native conversation provider returned no usable answer', 'PROVIDER_FAILED', ['provider' => 'openai', 'operation' => 'responses', 'category' => 'invalid_response', 'retryable' => true]);
             return function_exists('mb_substr') ? mb_substr($summary, 0, 6000) : substr($summary, 0, 6000);
         } catch (HubNativeAgentException $error) {
-            if ($error->codeName === 'BUDGET_EXHAUSTED') throw new HubDurableExecutionException('Owner AI budget is exhausted', 'BUDGET_EXHAUSTED');
-            return $this->conversationFallback($context);
+            throw new HubDurableExecutionException('Native conversation provider failed', $error->codeName, $error->diagnostic);
         }
     }
 
@@ -332,14 +384,6 @@ final class HubDurableExecutionService
         return ['project' => is_array($row) ? ['name' => (string) $row['name'], 'type' => (string) $row['type'], 'sourceRevision' => $row['source_revision'] === null ? null : (string) $row['source_revision'], 'observedAt' => (string) $row['observed_at']] : null, 'vaultRevision' => $revision, 'recentTasks' => array_map(static fn (array $task): array => ['state' => (string) $task['state'], 'summary' => $task['result_summary'] === null ? null : (string) $task['result_summary'], 'updatedAt' => (string) $task['updated_at']], $latest->fetchAll()), 'durableMemory' => $memory];
     }
 
-    /** @param array<string,mixed> $context */
-    private function conversationFallback(array $context): string
-    {
-        $project = is_array($context['project'] ?? null) ? $context['project'] : null; $name = is_array($project) && is_string($project['name'] ?? null) ? $project['name'] : 'โปรเจกต์นี้';
-        $latest = is_array($context['recentTasks'] ?? null) ? ($context['recentTasks'][0] ?? null) : null;
-        if (is_array($latest) && is_string($latest['state'] ?? null)) return 'ผมบันทึกข้อความนี้ไว้กับ ' . $name . ' แล้ว สถานะงานล่าสุดคือ ' . (string) $latest['state'] . ' และยังไม่ได้ดำเนินการเปลี่ยนแปลงใดเพิ่ม';
-        return 'ผมบันทึกข้อความนี้ไว้กับ ' . $name . ' แล้ว ตอนนี้ยังไม่มี provider ที่พร้อมตอบเชิงลึก แต่บทสนทนาและบริบทจะคงอยู่เพื่อทำต่อได้อย่างปลอดภัย';
-    }
 
     private function appendConversationMessage(string $conversationId, string $taskId, string $kind, string $summary, string $at): void
     {

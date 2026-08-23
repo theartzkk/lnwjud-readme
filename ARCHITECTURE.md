@@ -2,7 +2,7 @@
 
 ## DOMAIN TRUTH
 
-- AWH is a local-first personal multi-project workspace hub.
+- AWH is a durable personal multi-project workspace hub: ReadyIDC owns canonical Hub task/project/memory/revision state, while trusted Mac/Windows workers provide device-bound execution when needed.
 - `.awh/project.json` is portable project identity and display metadata.
 - `PROJECT.md`, `HANDOFF.md`, `TASKS.md`, `ARCHITECTURE.md`, and `DECISIONS.md` are portable Project Memory truth.
 - Canonical workspace paths, local availability, and UI state are device-local.
@@ -47,13 +47,9 @@
 - **M3E-FINAL Desktop boundary:** preload exposes only enrollment state/pair/rotate/revoke high-level IPC. Renderer receives sanitized device metadata and never receives a credential, filesystem access, shell, environment, or raw process surface.
 - **Real-project Desktop workflow:** the device-local registry can map portable manifests such as the real BAY EXCUSE X (`php`) and Teacher Evaluation Video (`remotion`) manifests to local workspaces. These are optional user projects, not AWH core dependencies; selection updates the stored workspace immediately, and the Desktop reloads the same runner/context without a restart before routing the user to the bounded Goal entry point.
 - **Project-specific safe gates:** Teacher's existing `check` script is recognized only as a semantic `typecheck` alias and invoked through the existing fixed package-manager argv path. BAY uses the bounded PHP lint gate. User Goal text never becomes a command.
-- **Current operational state:** ReadyIDC is active at DB schema version 5 with
-  M3E.1/M3E.2/M4/M5, one indexed project, one enrolled Mac device and a closed
-  bootstrap. M4 remains generic and accepts zero user projects with later
-  onboarding; the second Teacher clone remains unregistered to avoid duplicate
-  local identity. The `8c5ea0e` compatibility refresh updated exact
-  control/web/Nginx/PHP-FPM release pointers after backup and capability gates,
-  without replaying migrations or altering owner/project/device data.
+- **Current operational state:** ReadyIDC is active at DB schema version **12**. Production SHA `9b5970f3a29213d79550b068805bd0b23c84674a` / pointer `m12-9b5970f3a292` is the deployed runtime authority. M12 adds Central Project Vault, immutable revisions, one-to-one durable task executions, isolated task workspaces, artifact object storage, bounded VPS-native execution and worker/specialist transfer foundations. Owner/auth/project identity is preserved; Google Cloud legacy is not in the runtime path.
+- **Current provider boundary:** OpenAI credentials are server-side/write-only. Conversation generation uses `/v1/responses`; historical assistant turns must use `output_text`, user turns `input_text`. Provider errors are classified into sanitized auth/permission/model/request/rate-limit/quota/temporary categories without storing raw bodies, headers or request payloads. A provider failure is never an assistant result. Temporary failures may retry the same durable task only within a fixed bound; budget/quota/manual conditions pause truthfully.
+- **Source-of-truth precedence:** actual current source, then actual production read-only runtime evidence and DB/release pointers, then durable docs. Repository documentation may describe historical migrations but cannot override current production state.
 
 ## FUTURE COMPONENTS
 
@@ -80,7 +76,7 @@
 
 ## M4 CONTROL-PLANE BOUNDARY
 
-### M6 assistant work-stream and M7 workspace continuity extensions (prepared, deployment-gated)
+### M6 assistant work-stream and M7 workspace continuity extensions (deployed historical foundation)
 
 - M6 is a single additive v5→v6 capability: `control_conversations` records one authorized project conversation and `control_conversation_messages` records immutable ordered user/assistant/progress/approval/result/failure turns. Existing `control_tasks`, task events, artifacts, approvals, checkpoints, memberships and Project Memory remain authoritative.
 - A single user idempotency key creates one logical Work message and at most one canonical task. Low-risk questions are answered from the existing project/task state without scheduling a worker. Follow-ups use the selected project plus prior task lineage; an ambiguous project remains fail-closed at the existing project-membership boundary.
@@ -108,7 +104,7 @@
 - Browser session exchange accepts username/password and creates only a bounded server-side session hash plus CSRF hash. The pairing exchange remains compatibility-only. Cookies are Secure, HttpOnly where appropriate, SameSite=Strict, no-store, origin-bound, rate-limited, revocable, and never copied to localStorage/sessionStorage.
 - Goal submission is exact-schema, project-membership checked, bounded, and idempotent. A queued task cannot become RUNNING until an enrolled worker claims it under BEGIN IMMEDIATE; stale worker presence is shown as offline and leases are bounded.
 - Worker requests are outbound HTTPS POSTs through `ControlPlaneWorkerClient`, using the existing device credential only in a fixed Authorization header inside the Node main/runtime boundary. The client accepts only bounded task metadata; it does not accept or construct arbitrary commands.
-- `003_m4_control_plane.sql` and `004_owner_auth.sql` are active ReadyIDC capabilities with checksum-backed ledger entries at schema v5. M6/M7 are the next additive v5→v7 capabilities and remain approval-gated; activation requires a verified backup, migration idempotence, Nginx/PHP-FPM validation, M3D/M3E/M4/M5 regression and rollback to the verified v5 database/config.
+- `003_m4_control_plane.sql` through the M12 central-project-authority migration are deployed lineage on ReadyIDC schema v12. The older v5→v7 activation procedure is historical only; every future production mutation requires an exact reviewed SHA, backup/rollback evidence, migration compatibility where applicable, service health and regression checks against the current v12 authority.
 
 ## WEB READ DEPLOYMENT BOUNDARY
 

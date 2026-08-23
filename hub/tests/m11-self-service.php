@@ -31,15 +31,15 @@ function m11_auth(HubOwnerAuthService $service, string $method, string $uri, arr
 
 if (!in_array('sqlite', PDO::getAvailableDrivers(), true)) { fwrite(STDOUT, "AWH M11 Self Service: SKIP pdo_sqlite extension unavailable\n"); exit(77); }
 
-$root = sys_get_temp_dir() . '/awh-m11-' . bin2hex(random_bytes(6));
+$root = rtrim(sys_get_temp_dir(), '/') . '/awh-m11-' . bin2hex(random_bytes(6));
 mkdir($root, 0700, true);
-$db = $root . '/awh.sqlite'; $attachments = $root . '/attachments'; $credentials = $root . '/provider-credentials';
-mkdir($attachments, 0750, true);
+$db = $root . '/awh.sqlite'; $attachments = $root . '/attachments'; $credentials = $root . '/provider-credentials'; $vaults = $root . '/project-vault';
+mkdir($attachments, 0750, true); mkdir($vaults, 0700, true);
 $base = dirname(__DIR__); $now = gmdate('c');
 $owner = '223b45c0-23e1-408d-ae0f-ac5eca7f6900'; $device = '423b45c0-23e1-408d-ae0f-ac5eca7f6900'; $otherDevice = '523b45c0-23e1-408d-ae0f-ac5eca7f6900';
 $project = '113b45c0-23e1-408d-ae0f-ac5eca7f6900'; $otherProject = '723b45c0-23e1-408d-ae0f-ac5eca7f6900';
 $ownerPassword = 'owner-fixture-' . bin2hex(random_bytes(12)); $collaboratorPassword = 'collaborator-fixture-' . bin2hex(random_bytes(12));
-putenv('AWH_CONTROL_ORIGIN=https://awh.test'); putenv('AWH_ATTACHMENT_ROOT=' . $attachments); putenv('AWH_PROVIDER_CREDENTIAL_ROOT=' . $credentials);
+putenv('AWH_CONTROL_ORIGIN=https://awh.test'); putenv('AWH_ATTACHMENT_ROOT=' . $attachments); putenv('AWH_PROVIDER_CREDENTIAL_ROOT=' . $credentials); putenv('AWH_PROJECT_VAULT_ROOT=' . $vaults);
 
 try {
     $pdo = new PDO('sqlite:' . $db, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]); $pdo->exec('PRAGMA foreign_keys = ON'); $pdo->exec(file_get_contents($base . '/schema.sql'));
@@ -90,7 +90,7 @@ try {
     m11_assert((int) $pdo->query("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'control_provider_credentials'")->fetchColumn() === 1 && (int) $pdo->query("SELECT COUNT(*) FROM control_provider_credentials WHERE configured = 1")->fetchColumn() === 1, 'only credential metadata is stored in SQLite');
     m11_assert((int) $pdo->query('SELECT COUNT(*) FROM control_provider_credentials WHERE provider_id = \'openai\'')->fetchColumn() === 1 && !str_contains((string) file_get_contents($db), $providerKey), 'credential plaintext is absent from the database');
     $credentialFile = $credentials . '/openai.key'; m11_assert(is_file($credentialFile) && !is_link($credentialFile) && ((fileperms($credentialFile) & 0777) === 0600), 'credential file is server-side and mode 0600');
-    $fakeAgent = new HubNativeAgentService($pdo, static fn (array $_payload, string $_key): array => ['data' => []], null, new HubProviderCredentialStore($credentials));
+    $fakeAgent = new HubNativeAgentService($pdo, static fn (array $_payload, string $_key): array => ['output_text' => 'OK'], null, new HubProviderCredentialStore($credentials));
     m11_assert($fakeAgent->testConnection($owner, $now)['status'] === 'PASS', 'provider connection boundary supports an injected deterministic transport');
     $routing = m11_body(m11_control($control, 'POST', '/api/v1/control/provider/project', $browser, ['schemaVersion' => 1, 'projectId' => $project, 'routingMode' => 'FAST']));
     m11_assert(($routing['routing']['routingMode'] ?? null) === 'FAST', 'owner can configure bounded project provider routing');
@@ -119,5 +119,5 @@ try {
     m11_assert($pdo->query('PRAGMA integrity_check')->fetchColumn() === 'ok' && $pdo->query('PRAGMA foreign_key_check')->fetchAll() === [], 'M11 preserves integrity and foreign keys');
     fwrite(STDOUT, "AWH M11 Self Service: PASS\n");
 } finally {
-    putenv('AWH_PROVIDER_CREDENTIAL_ROOT'); putenv('AWH_ATTACHMENT_ROOT');
+    putenv('AWH_PROVIDER_CREDENTIAL_ROOT'); putenv('AWH_ATTACHMENT_ROOT'); putenv('AWH_PROJECT_VAULT_ROOT');
 }

@@ -39,7 +39,19 @@ import {
     form.append(title, copy, label, password, submit, result); before.before(form); return form;
   }
   function selectedProject() { return state.control?.projects?.find((project) => project.projectId === state.selectedProjectId) || null; }
-  function stateText(task) { return taskLabels[task?.state] || 'กำลังอัปเดต'; }
+  function stateText(task) {
+    const providerState = ({
+      PROVIDER_UNAVAILABLE: 'AI ยังตอบไม่ได้ในขณะนี้ · งานยังถูกเก็บไว้',
+      PROVIDER_RATE_LIMITED: 'OpenAI จำกัดการเรียกใช้ชั่วคราว · งานยังถูกเก็บไว้',
+      PROVIDER_QUOTA_EXHAUSTED: 'โควตาหรือวงเงิน OpenAI ยังไม่พร้อม · งานยังถูกเก็บไว้',
+      BUDGET_EXHAUSTED: 'งบ AI ของ AWH ถึงขีดจำกัด · งานยังถูกเก็บไว้',
+      PROVIDER_AUTH_FAILED: 'การเชื่อมต่อ OpenAI ถูกปฏิเสธ',
+      PROVIDER_PERMISSION_DENIED: 'OpenAI ยังไม่อนุญาตคำขอนี้',
+      PROVIDER_MODEL_UNAVAILABLE: 'โมเดล AI ที่ตั้งไว้ยังใช้ไม่ได้',
+      PROVIDER_REQUEST_INVALID: 'คำขอ AI ไม่ถูกต้อง · งานไม่ได้ถูกอ้างว่าเสร็จแล้ว',
+    })[task?.failureCode];
+    return providerState || taskLabels[task?.state] || 'กำลังอัปเดต';
+  }
   function stateClass(task) { return task?.state === 'COMPLETED' ? 'completed' : task?.state === 'FAILED' ? 'failed' : task?.state === 'WAITING_FOR_APPROVAL' ? 'approval' : ''; }
 
   function size(bytes) { if (!Number.isFinite(bytes) || bytes < 0) return ''; if (bytes < 1024) return `${bytes} B`; if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`; return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; }
@@ -178,7 +190,7 @@ import {
     });
     $('provider-connection-test').addEventListener('click', async () => {
       message('provider-credential-message', 'กำลังทดสอบการเชื่อมต่อ…');
-      try { const data = await testProviderConnection(); state.provider = (await loadProviderStatus()).provider; renderProvider(); message('provider-credential-message', data.status === 'PASS' ? 'ทดสอบการเชื่อมต่อผ่าน' : 'ยังไม่ได้ตั้งค่า key'); }
+      try { const data = await testProviderConnection(); state.provider = (await loadProviderStatus()).provider; renderProvider(); message('provider-credential-message', data.connection?.status === 'PASS' ? `ทดสอบ Responses API ผ่าน (${data.connection.model || 'โมเดลที่ตั้งไว้'})` : 'ยังไม่ได้ตั้งค่า key'); }
       catch (error) { message('provider-credential-message', error instanceof Error ? error.message : 'ทดสอบการเชื่อมต่อไม่ผ่าน'); }
     });
     $('provider-project-routing-form').addEventListener('submit', async (event) => {

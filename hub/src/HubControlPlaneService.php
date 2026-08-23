@@ -20,7 +20,8 @@ require_once __DIR__ . '/HubFoundingMemoryService.php';
 
 final class HubControlPlaneException extends RuntimeException
 {
-    public function __construct(string $message, public readonly string $codeName = 'CONTROL_PLANE_FAILED')
+    /** @param array<string,mixed> $details Sanitized response metadata only. */
+    public function __construct(string $message, public readonly string $codeName = 'CONTROL_PLANE_FAILED', public readonly array $details = [])
     {
         parent::__construct($message);
     }
@@ -615,7 +616,7 @@ final class HubControlPlaneService
         $this->assertSelfServiceReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId);
         try { HubOwnerAuthService::assertRecentStepUpSession($session, $now); } catch (HubOwnerAuthException) { throw new HubControlPlaneException('A recent password confirmation is required', 'STEP_UP_REQUIRED'); }
         try { return ['schemaVersion' => 1, 'connection' => $this->agent->testConnection($userId, $now)]; }
-        catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Provider connection test failed', $error->codeName); }
+        catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Provider connection test failed', $error->codeName, $error->diagnostic); }
     }
 
     public function providerProjectRouting(string $sessionToken, string $projectId, ?string $now = null): array
@@ -636,26 +637,40 @@ final class HubControlPlaneService
 
     private function completeNativeConversation(string $userId, array $request, string $at): void
     {
-        $body = null;
+        $body = $this->productIdentityHint((string) $request['request']); $kind = 'ASSISTANT';
         try {
+            if ($body !== null) {
+                // Explicit product identity is a deterministic product contract,
+                // not a provider-failure fallback. All other questions use AI.
+            } else {
             $turns = $this->recentConversationTurns((string) $request['conversationId'], (string) $request['messageId']);
             $attachments = $this->nativeAttachments((string) $request['messageId'], $userId);
             $context = $this->nativeProjectContext($userId, (string) $request['projectId'], (string) $request['request']);
             $result = $this->agent->respond($userId, (string) $request['projectId'], (string) $request['conversationId'], (string) $request['messageId'], (string) $request['request'], $turns, $attachments, $at, $context);
             $body = trim((string) $result['summary']);
+            }
         } catch (HubNativeAgentException $error) {
-            $body = match ($error->codeName) {
-                'BUDGET_EXHAUSTED' => 'งบ AI ของ AWH ถึงขีดจำกัดแล้ว ผมเก็บข้อความนี้ไว้ในบทสนทนา คุณสามารถเพิ่มงบหรือส่งต่อให้ worker ที่พร้อมได้',
-                default => $this->conversationAnswer($userId, (string) $request['projectId'], (string) $request['request']),
-            };
+            $kind = 'FAILURE'; $body = self::providerUserMessage($error->codeName);
         } catch (Throwable) {
-            $body = $this->conversationAnswer($userId, (string) $request['projectId'], (string) $request['request']);
+            $kind = 'FAILURE'; $body = 'AI ยังตอบไม่ได้ในขณะนี้ ข้อความของคุณถูกเก็บไว้แล้ว และ AWH จะไม่อ้างว่างานเสร็จ';
         }
-        // Conversation messages are intentionally compact.  Full provider output
-        // is never treated as an unbounded internal log in the normal UI.
-        $body = self::conversationText($body); if ($body === '') $body = 'ผมรับข้อความนี้ไว้แล้ว แต่ยังสรุปผลที่เชื่อถือได้ไม่ได้';
-        try { $this->pdo->exec('BEGIN IMMEDIATE'); $this->appendConversationMessage((string) $request['conversationId'], null, 'ASSISTANT', $body, self::timestamp(gmdate('c'))); $this->pdo->exec('COMMIT'); }
+        $body = self::conversationText((string) $body);
+        if ($body === '') { $kind = 'FAILURE'; $body = 'AI ยังตอบไม่ได้ในขณะนี้ ข้อความของคุณถูกเก็บไว้แล้ว และ AWH จะไม่อ้างว่างานเสร็จ'; }
+        try { $this->pdo->exec('BEGIN IMMEDIATE'); $this->appendConversationMessage((string) $request['conversationId'], null, $kind, $body, self::timestamp(gmdate('c'))); $this->pdo->exec('COMMIT'); }
         catch (Throwable) { self::rollbackImmediate($this->pdo); }
+    }
+
+    private static function providerUserMessage(string $code): string
+    {
+        return match ($code) {
+            'BUDGET_EXHAUSTED' => 'งบ AI ของ AWH ถึงขีดจำกัด ข้อความของคุณถูกเก็บไว้แล้ว',
+            'PROVIDER_QUOTA_EXHAUSTED' => 'โควตาหรือวงเงินของ OpenAI ยังไม่พร้อม ข้อความของคุณถูกเก็บไว้แล้ว',
+            'PROVIDER_AUTH_FAILED' => 'OpenAI ปฏิเสธ API key ที่ตั้งไว้ กรุณาตรวจการตั้งค่า AI',
+            'PROVIDER_PERMISSION_DENIED' => 'OpenAI ยังไม่อนุญาตให้บัญชีหรือโปรเจกต์นี้ใช้คำขอที่ตั้งไว้',
+            'PROVIDER_MODEL_UNAVAILABLE' => 'โมเดล AI ที่ตั้งไว้ยังใช้กับบัญชีนี้ไม่ได้',
+            'PROVIDER_REQUEST_INVALID' => 'AWH ส่งคำขอ AI ไม่สำเร็จ ระบบหยุดไว้โดยไม่อ้างว่าเสร็จแล้ว',
+            default => 'AI ยังตอบไม่ได้ในขณะนี้ ข้อความของคุณถูกเก็บไว้แล้ว และ AWH จะไม่อ้างว่างานเสร็จ',
+        };
     }
 
     /** @return list<array{role:string,body:string}> */
