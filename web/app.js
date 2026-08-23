@@ -4,7 +4,7 @@ import {
   exportWorkspace, invitePerson, listAuthSessions, listPeople, loadAuthProfile, loadControlData, loadConversation,
   loadConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus,
   loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadWorkspaceContinuity, login, logout,
-  recover, resetProductSetting, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage,
+  recover, resetPassword, resetProductSetting, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage,
   testProviderConnection, updateAuthProfile, updateConversation, updateMemory, updateProductSetting,
   updateProviderCredential, updateProviderPolicy, updateProviderProjectRouting, uploadConversationAttachments,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
@@ -13,7 +13,7 @@ import {
   const $ = (id) => document.getElementById(id);
   const MAX_ATTACHMENT_BYTES = 60 * 1024 * 1024;
   const MICRO_BAHT = 1000000;
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, people: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, people: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, resetToken: null };
   const taskLabels = {
     WAITING_FOR_WORKER: 'กำลังรออุปกรณ์ทำงาน', PREPARING: 'กำลังเตรียมงาน', RUNNING: 'กำลังทำงาน',
     QA: 'กำลังตรวจคุณภาพ', WAITING_FOR_APPROVAL: 'รอการอนุมัติ', COMPLETED: 'เสร็จแล้ว',
@@ -464,6 +464,17 @@ import {
   }
   function openSheet(id) { show(id); }
   function closeSheet(id) { hide(id); }
+  function openPasswordRecovery() {
+    let token = null;
+    if (window.location.hash.startsWith('#awh-reset=')) {
+      try { const candidate = decodeURIComponent(window.location.hash.slice('#awh-reset='.length)); if (/^[A-Za-z0-9_-]{43}$/.test(candidate)) token = candidate; } catch { token = null; }
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+    }
+    state.resetToken = token;
+    $('reset-password-form').hidden = token === null;
+    message('reset-instructions', token ? 'ลิงก์นี้ใช้ได้ครั้งเดียวและจะหมดอายุในเวลาอันสั้น เลือกรหัสผ่านใหม่ที่คุณจำได้' : 'กด “ลืมรหัสผ่าน?” จากหน้าเข้าสู่ระบบ แล้วเปิดลิงก์กู้คืนจาก AWH Desktop ที่เชื่อถือได้ ลิงก์มีอายุสั้นและใช้ได้ครั้งเดียว');
+    openSheet('recovery-sheet');
+  }
   async function openAccount(section = 'start') {
     if (!state.control?.authenticated) return;
     openSheet('account-sheet');
@@ -555,7 +566,7 @@ import {
   $('account-open').addEventListener('click', () => { void openAccount(); });
   $('account-open-inline').addEventListener('click', () => { void openAccount(); });
   document.querySelectorAll('[data-settings-tab]').forEach((button) => button.addEventListener('click', () => showSettingsSection(button.dataset.settingsTab)));
-  $('recovery-open').addEventListener('click', () => openSheet('recovery-sheet'));
+  $('recovery-open').addEventListener('click', openPasswordRecovery);
   document.querySelectorAll('[data-close-sheet]').forEach((button) => button.addEventListener('click', () => closeSheet(button.dataset.closeSheet)));
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape') document.querySelectorAll('.sheet:not([hidden])').forEach((sheet) => { sheet.hidden = true; }); });
 
@@ -655,7 +666,20 @@ import {
     catch (error) { message('recovery-message', error instanceof Error ? error.message : 'กู้คืนการเข้าถึงไม่สำเร็จ'); }
   });
 
+  $('reset-password-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!state.resetToken) { message('reset-message', 'กรุณาเปิดลิงก์กู้คืนจาก AWH Desktop ที่เชื่อถือได้ก่อน'); return; }
+    if ($('reset-password').value !== $('reset-password-confirm').value) { message('reset-message', 'กรุณายืนยันรหัสผ่านใหม่ให้ตรงกัน'); return; }
+    message('reset-message', 'กำลังบันทึกรหัสผ่านใหม่…'); $('reset-password-form').querySelector('button[type="submit"]').disabled = true;
+    try {
+      await resetPassword(state.resetToken, $('reset-password').value);
+      state.resetToken = null; $('reset-password').value = ''; $('reset-password-confirm').value = ''; $('reset-password-form').hidden = true;
+      message('reset-message', 'ตั้งรหัสผ่านใหม่แล้ว ลิงก์นี้ใช้ซ้ำไม่ได้ กลับไปเข้าสู่ AWH ด้วยรหัสผ่านใหม่ได้เลย');
+    } catch (error) { message('reset-message', error instanceof Error ? error.message : 'ลิงก์ตั้งรหัสผ่านไม่ถูกต้องหรือหมดอายุ'); }
+    finally { $('reset-password-form').querySelector('button[type="submit"]').disabled = false; }
+  });
+
   $('logout-button').addEventListener('click', async () => { await logout().catch(() => undefined); window.location.reload(); });
 
-  loadWebData().then(async (data) => { render(data); if (data?.control?.authenticated) { await refreshConversation(); try { state.productSettings = (await loadProductSettings()).settings; applyProductSettings(); } catch {} state.refreshTimer = window.setInterval(() => { void refreshWorkspace(); }, 15_000); } }).catch(() => render({ product: { shortName: 'AWH' }, control: { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' } }));
+  loadWebData().then(async (data) => { render(data); if (window.location.hash.startsWith('#awh-reset=')) openPasswordRecovery(); if (data?.control?.authenticated) { await refreshConversation(); try { state.productSettings = (await loadProductSettings()).settings; applyProductSettings(); } catch {} state.refreshTimer = window.setInterval(() => { void refreshWorkspace(); }, 15_000); } }).catch(() => render({ product: { shortName: 'AWH' }, control: { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' } }));
 })();

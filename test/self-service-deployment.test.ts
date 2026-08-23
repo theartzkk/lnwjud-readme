@@ -22,9 +22,9 @@ test('M11 self-service activation is one v7-to-v11 release with write-only provi
   assert.match(result.stdout, /M11_ROLLBACK=restore-db-v7,pointer,web-pointer,nginx,service-health,m3d-m3e-m4-m7-regression/);
   assert.match(result.stdout, /M11_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL/);
 
-  const [local, remoteSource, migration, credentials, service, app, adapter, recovery] = await Promise.all([
+  const [local, remoteSource, migration, credentials, service, ownerAuth, app, adapter, recovery] = await Promise.all([
     readFile(deploy, 'utf8'), readFile(remote, 'utf8'), readFile(join(root, 'hub/migrations/010_self_service.sql'), 'utf8'),
-    readFile(join(root, 'hub/src/HubProviderCredentialStore.php'), 'utf8'), readFile(join(root, 'hub/src/HubControlPlaneService.php'), 'utf8'),
+    readFile(join(root, 'hub/src/HubProviderCredentialStore.php'), 'utf8'), readFile(join(root, 'hub/src/HubControlPlaneService.php'), 'utf8'), readFile(join(root, 'hub/src/HubOwnerAuthService.php'), 'utf8'),
     readFile(join(root, 'web/app.js'), 'utf8'), readFile(join(root, 'web/control-plane-adapter.js'), 'utf8'), readFile(join(root, 'docs/OWNER_DATA_RECOVERY.md'), 'utf8'),
   ]);
   assert.match(local, /--self-service/);
@@ -53,6 +53,14 @@ test('M11 self-service activation is one v7-to-v11 release with write-only provi
   assert.match(app, /ensureProviderSelfServiceSurface/);
   assert.match(app, /const enabledRow = enabled\?\.closest\('label'\)/);
   assert.match(app, /policy\.insertBefore\(models, enabledRow\)/);
+  assert.match(app, /ลืมรหัสผ่าน\?/);
+  assert.match(app, /reset-password-form/);
+  assert.match(app, /history\.replaceState/);
+  assert.match(adapter, /resetPassword/);
+  assert.match(service, /issueOwnerPasswordResetLink/);
+  assert.match(ownerAuth, /resetPasswordWithToken/);
+  assert.match(ownerAuth, /RESET_TOKEN_TTL/);
+  assert.doesNotMatch(`${app}\n${adapter}`, /localStorage|sessionStorage|document\.cookie|Authorization|Bearer\s+/);
   assert.doesNotMatch(app, /policy\.insertBefore\(models, \$\('provider-enabled'\)\)/);
   assert.match(app, /memory-search-form/);
   assert.match(app, /AWH จะไม่แสดงหรือส่งคืน key นี้/);

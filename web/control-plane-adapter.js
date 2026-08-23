@@ -24,6 +24,7 @@ function safeErrorMessage(value) {
   const code = typeof value?.code === 'string' ? value.code : '';
   return ({
     AUTH_FAILED: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง',
+    RESET_FAILED: 'ลิงก์ตั้งรหัสผ่านไม่ถูกต้องหรือหมดอายุ กรุณาสร้างลิงก์ใหม่จากอุปกรณ์ AWH ที่เชื่อถือได้',
     SESSION_INVALID: 'กรุณาเข้าสู่ AWH อีกครั้ง',
     SESSION_EXPIRED: 'เซสชันหมดอายุ กรุณาเข้าสู่ AWH อีกครั้ง',
     ORIGIN_FORBIDDEN: 'ไม่สามารถยืนยันความปลอดภัยของหน้านี้ได้ กรุณารีเฟรชแล้วลองใหม่',
@@ -66,6 +67,10 @@ export async function changeUsername(currentPassword, username) { return control
 export async function stepUp(password) { if (typeof password !== 'string' || password.length < 1) throw new Error('กรุณากรอกรหัสผ่าน'); return controlRequest('/api/v1/auth/step-up', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, password }) }); }
 export async function createRecoveryCodes() { return controlRequest('/api/v1/auth/recovery-codes', { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
 export async function recover(username, recoveryCode, newPassword) { return controlRequest('/api/v1/auth/recover', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, username, recoveryCode, newPassword }) }); }
+export async function resetPassword(resetToken, newPassword) {
+  if (typeof resetToken !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(resetToken) || typeof newPassword !== 'string' || newPassword.length < 1) throw new Error('ลิงก์ตั้งรหัสผ่านไม่ถูกต้อง');
+  return controlRequest('/api/v1/auth/reset-password', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, resetToken, newPassword }) });
+}
 export async function listAuthSessions() { return controlRequest('/api/v1/auth/sessions'); }
 export async function revokeAuthSession(sessionId) { if (typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId)) throw new Error('เซสชันไม่ถูกต้อง'); return controlRequest(`/api/v1/auth/sessions/${sessionId}/revoke`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
 

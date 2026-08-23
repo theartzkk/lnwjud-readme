@@ -308,6 +308,19 @@ async function revokeDevice() {
   catch (error) { return enrollmentError(error); }
 }
 
+async function openOwnerPasswordReset() {
+  try {
+    const config = loadConfig();
+    const link = await new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createProductionCredentialStore()).issueOwnerPasswordResetLink();
+    const url = new URL(link.resetPath, config.hubApiBase);
+    if (!['https:', 'http:'].includes(url.protocol) || url.origin !== new URL(config.hubApiBase).origin || url.search) throw new Error('Reset link origin is invalid');
+    await shell.openExternal(url.toString());
+    return { ok: true, expiresAt: link.expiresAt, message: 'เปิดหน้าตั้งรหัสผ่านใหม่ใน browser แล้ว ลิงก์นี้ใช้ได้ครั้งเดียว' };
+  } catch (error) {
+    return { ok: false, error: 'OWNER_PASSWORD_RESET_UNAVAILABLE', message: error instanceof Error ? error.message : 'ยังเปิดหน้าตั้งรหัสผ่านใหม่ไม่ได้' };
+  }
+}
+
 async function selectedEnrollmentProjectIds(config: ReturnType<typeof loadConfig>): Promise<string[]> {
   // An enrolled owner may trust a control surface before any project exists.
   // An explicit workspace still remains the only source of project-scoped access.
@@ -680,6 +693,7 @@ function registerIpc(): void {
   ipcMain.handle(DESKTOP_IPC.enrollmentIssuePairing, async () => issueDevicePairingCode());
   ipcMain.handle(DESKTOP_IPC.enrollmentRotate, async () => rotateDevice());
   ipcMain.handle(DESKTOP_IPC.enrollmentRevoke, async () => revokeDevice());
+  ipcMain.handle(DESKTOP_IPC.ownerPasswordReset, async () => openOwnerPasswordReset());
   ipcMain.handle(DESKTOP_IPC.firstRun, async () => firstRunState());
   ipcMain.handle(DESKTOP_IPC.trustOwner, async (_event, ownerDisplayName: unknown, deviceName: unknown) => trustLocalOwner(ownerDisplayName, deviceName));
   ipcMain.handle(DESKTOP_IPC.autopilotOverview, async () => autopilotOverview());

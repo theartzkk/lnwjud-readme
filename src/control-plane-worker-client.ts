@@ -42,6 +42,7 @@ function boundedTask(value: unknown): WorkerTask {
 export interface WorkerConversationMessage { messageId: string; taskId: string | null; kind: 'user' | 'assistant' | 'progress' | 'approval' | 'result' | 'failure'; sequence: number; body: string; createdAt: string; }
 export interface WorkerConversation { conversation: { conversationId: string; projectId: string; createdAt: string; updatedAt: string; lastTaskId: string | null } | null; messages: WorkerConversationMessage[]; tasks: WorkerTask[]; artifacts: Array<Record<string, unknown>>; approvals: Array<Record<string, unknown>>; }
 export interface WorkerWorkspace { projectId: string; syncStatus: 'NO_CHECKPOINT' | 'UNSYNCED_CHANGES' | 'HANDOFF_REQUIRED' | 'SYNCED' | 'SOURCE_OFFLINE'; checkpoint: WorkspaceWipCheckpoint | null; lease: { active: boolean; state: 'ACTIVE' | 'EXPIRED'; checkpointId: string | null; owner: { deviceId: string; displayName: string; platform: string; lastSeenAt: string | null }; leaseExpiresAt: string } | null; }
+export interface OwnerPasswordResetLink { resetPath: string; expiresAt: string; }
 
 function boundedConversation(value: Record<string, unknown>): WorkerConversation {
   const conversation = value.conversation;
@@ -194,6 +195,14 @@ export class ControlPlaneWorkerClient {
     const response = await this.post('/control/worker/workspaces/leases/release', { schemaVersion: 1, deviceId: identity.deviceId, projectId });
     if (response.schemaVersion !== 1) throw new ControlPlaneWorkerError('Workspace response is invalid', 'RESPONSE_INVALID');
     return boundedWorkspace(response);
+  }
+
+  /** Open a short-lived owner reset link without returning the token to the renderer. */
+  async issueOwnerPasswordResetLink(): Promise<OwnerPasswordResetLink> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    const response = await this.post('/control/owner/password-reset-link', { schemaVersion: 1, deviceId: identity.deviceId });
+    if (response.schemaVersion !== 1 || typeof response.resetPath !== 'string' || !/^\/#awh-reset=[A-Za-z0-9_-]{43}$/.test(response.resetPath) || typeof response.expiresAt !== 'string' || !Number.isFinite(Date.parse(response.expiresAt))) throw new ControlPlaneWorkerError('Owner reset response is invalid', 'RESPONSE_INVALID');
+    return { resetPath: response.resetPath, expiresAt: response.expiresAt };
   }
 
   private async post(path: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {

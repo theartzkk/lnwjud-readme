@@ -28,6 +28,7 @@ test('desktop IPC exposes fixed high-level channel names only', () => {
     'enrollmentRevoke',
     'enrollmentRotate',
     'enrollmentState',
+    'ownerPasswordReset',
     'firstRun',
     'trustOwner',
     'autopilotOverview',

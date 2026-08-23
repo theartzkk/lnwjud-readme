@@ -23,6 +23,7 @@ export const DESKTOP_IPC = Object.freeze({
   enrollmentIssuePairing: 'art-agent:enrollment-issue-pairing',
   enrollmentRotate: 'art-agent:enrollment-rotate',
   enrollmentRevoke: 'art-agent:enrollment-revoke',
+  ownerPasswordReset: 'art-agent:owner-password-reset',
   firstRun: 'art-agent:first-run',
   trustOwner: 'art-agent:trust-owner',
   autopilotOverview: 'art-agent:autopilot-overview',

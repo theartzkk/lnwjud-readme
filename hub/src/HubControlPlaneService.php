@@ -44,12 +44,14 @@ final class HubControlPlaneService
     private readonly HubAttachmentStore $attachments;
     private readonly HubNativeAgentService $agent;
     private readonly HubFoundingMemoryService $memory;
+    private readonly HubOwnerAuthService $ownerAuth;
 
     private function __construct(private readonly PDO $pdo, private readonly HubEnrollmentService $enrollment)
     {
         $this->attachments = HubAttachmentStore::fromEnvironment();
         $this->agent = new HubNativeAgentService($pdo);
         $this->memory = new HubFoundingMemoryService($pdo);
+        $this->ownerAuth = HubOwnerAuthService::fromPdo($pdo);
     }
 
     public static function openExisting(string $databasePath): self
@@ -291,6 +293,24 @@ final class HubControlPlaneService
         $integrity = $this->pdo->query('PRAGMA integrity_check')->fetchColumn() === 'ok'; $foreignKeys = $this->pdo->query('PRAGMA foreign_key_check')->fetchAll() === [];
         $recovery = $this->pdo->prepare('SELECT COUNT(*) FROM auth_recovery_codes WHERE user_id = :user AND used_at IS NULL'); $recovery->execute(['user' => $userId]);
         return ['schemaVersion' => 1, 'owner' => $identity, 'product' => $this->productIdentity(), 'database' => ['state' => $integrity && $foreignKeys ? 'HEALTHY' : 'NEEDS_ATTENTION', 'schemaVersion' => (int) $this->pdo->query('PRAGMA user_version')->fetchColumn()], 'backup' => ['state' => 'DEPLOYMENT_MANAGED', 'message' => 'AWH verifies a recoverable backup before every approved production activation.'], 'recovery' => ['state' => (int) $recovery->fetchColumn() > 0 ? 'READY' : 'NEEDS_REGENERATION', 'message' => 'Use recovery codes only for account recovery; they are never included in exports.'], 'export' => ['available' => true, 'secretsIncluded' => false, 'sourceFilesIncluded' => false], 'workers' => $this->workersForUser($userId)];
+    }
+
+    /** A trusted enrolled Owner device may open one short-lived browser reset link. */
+    public function issueOwnerPasswordResetLink(string $deviceToken, array $payload, ?string $now = null): array
+    {
+        self::exactKeys($payload, ['deviceId', 'schemaVersion']);
+        if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Unsupported reset-link schema', 'SCHEMA_VERSION');
+        $deviceId = self::uuid((string) ($payload['deviceId'] ?? ''));
+        try {
+            $auth = $this->enrollment->authenticateForControlPlane($deviceToken, $deviceId, $now);
+        } catch (Throwable) {
+            throw new HubControlPlaneException('Worker authentication failed', 'TOKEN_INVALID');
+        }
+        try {
+            return ['schemaVersion' => 1] + $this->ownerAuth->issueOwnerPasswordResetLink((string) $auth['userId'], $now);
+        } catch (HubOwnerAuthException $error) {
+            throw new HubControlPlaneException('Owner password reset is unavailable', $error->codeName);
+        }
     }
 
     public function submitConversation(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array

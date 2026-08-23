@@ -17,6 +17,8 @@ const csrf = 'fixturecsrffixturecsrffixturecsrffixture';
 const conversations = [];
 const attachments = [];
 const tasks = [];
+const fixtureResetToken = 'a'.repeat(43);
+let fixtureResetUsed = false;
 let counter = 0;
 
 if (!Number.isSafeInteger(port) || port < 1024 || port > 65535) throw new Error('AWH_WEB_FIXTURE_PORT is invalid');
@@ -69,6 +71,12 @@ const server = createServer(async (request, response) => {
       const value = await readJson(request);
       if (typeof value.username !== 'string' || typeof value.password !== 'string' || !value.username.trim() || !value.password) return send(response, 401, { code: 'AUTH_FAILED' });
       return send(response, 200, { csrfToken: csrf }, { 'Set-Cookie': 'awh_fixture_session=1; Path=/; HttpOnly; SameSite=Strict' });
+    }
+    if (url.pathname === '/api/v1/auth/reset-password' && request.method === 'POST') {
+      const value = await readJson(request);
+      if (fixtureResetUsed || value.schemaVersion !== 1 || value.resetToken !== fixtureResetToken || typeof value.newPassword !== 'string' || value.newPassword.length < 12) return send(response, 401, { code: 'RESET_FAILED' });
+      fixtureResetUsed = true;
+      return send(response, 200, { schemaVersion: 1, authenticated: false });
     }
     if (url.pathname === '/api/v1/auth/session') return session(request) ? send(response, 200, { csrfToken: csrf, username: 'fixture', role: 'OWNER' }) : send(response, 401, { code: 'SESSION_INVALID' });
     if (url.pathname === '/api/v1/auth/logout' && request.method === 'POST') {

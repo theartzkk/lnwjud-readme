@@ -178,12 +178,17 @@ test('owner self-service is a focused settings hub whose independent projections
   assert.match(app, /const host = \$\('my-awh-host'\)/);
   assert.match(app, /policy\.insertBefore\(models, enabledRow\)/);
   assert.match(app, /policy\.before\(section\)/);
+  assert.match(app, /history\.replaceState/);
+  assert.match(app, /ลืมรหัสผ่าน\?/);
+  assert.match(app, /resetPassword\(/);
   assert.match(app, /AWH deliberately refuses/);
   assert.doesNotMatch(app, /schema v\$\{database\.schemaVersion/);
   assert.match(css, /\.settings-tabs/);
   assert.match(css, /\.settings-action-grid/);
   assert.match(css, /\.settings-action-grid \{ grid-template-columns: 1fr;/);
   for (const route of ['/api/v1/control/provider', '/api/v1/control/owner/status', '/api/v1/auth/profile', '/api/v1/control/memory']) assert.match(fixture, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(fixture, /api\/v1\/auth\/reset-password/);
+  assert.match(fixture, /fixtureResetUsed/);
   assert.doesNotMatch(`${html}\n${app}\n${fixture}`, /localStorage|sessionStorage|document\.cookie|Authorization|Bearer\s+/);
 });
 

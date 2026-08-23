@@ -165,6 +165,7 @@ function renderEnrollment(data) {
   $('enrollment-message').textContent = data?.ok === false ? data.message : enrolled ? 'อุปกรณ์นี้เชื่อมต่อกับ AWH แล้วและใช้สิทธิ์เฉพาะที่ได้รับอนุญาต' : 'เชื่อมต่อด้วยรหัสชั่วคราวจากอุปกรณ์ AWH เดิมของคุณ';
   $('enrollment-pair').disabled = !connected || enrolled;
   $('enrollment-issue-pairing').disabled = !connected || !enrolled;
+  $('owner-access-reset').disabled = !connected || !enrolled;
   $('enrollment-rotate').disabled = !connected || !enrolled;
   $('enrollment-revoke').disabled = !connected || !enrolled;
   if (!enrolled) clearOwnerCode();
@@ -177,7 +178,7 @@ async function refreshEnrollment() {
 
 async function runEnrollmentAction(action) {
   clearOwnerCode();
-  for (const id of ['enrollment-pair', 'enrollment-issue-pairing', 'enrollment-rotate', 'enrollment-revoke']) $(id).disabled = true;
+  for (const id of ['enrollment-pair', 'enrollment-issue-pairing', 'owner-access-reset', 'enrollment-rotate', 'enrollment-revoke']) $(id).disabled = true;
   try {
     const result = await action();
     if (result?.ok !== true) $('enrollment-message').textContent = result?.message || 'Enrollment action was rejected';
@@ -421,6 +422,7 @@ $('remote-connect').addEventListener('click', () => runRemoteAction('connect'));
 $('remote-stop').addEventListener('click', () => runRemoteAction('stop'));
 $('enrollment-pair').addEventListener('click', () => runEnrollmentAction(() => window.artAgent.pairDevice($('enrollment-code').value.trim())));
 $('enrollment-issue-pairing').addEventListener('click', issueOwnerCode);
+$('owner-access-reset').addEventListener('click', async () => { $('owner-access-reset').disabled = true; $('owner-access-reset-message').textContent = 'กำลังเปิดหน้ากู้คืนบัญชี…'; try { const result = await window.artAgent.openOwnerRecovery(); $('owner-access-reset-message').textContent = result?.message || 'เปิด browser แล้ว'; } catch { $('owner-access-reset-message').textContent = 'ยังเปิดหน้ากู้คืนบัญชีไม่ได้'; } finally { await refreshEnrollment(); } });
 $('enrollment-rotate').addEventListener('click', () => runEnrollmentAction(() => window.artAgent.rotateDeviceCredential()));
 $('enrollment-revoke').addEventListener('click', () => runEnrollmentAction(() => window.artAgent.revokeDeviceCredential()));
 $('refresh-autopilot').addEventListener('click', refreshAutopilot);
