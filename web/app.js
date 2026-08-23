@@ -3,7 +3,7 @@ import {
   cancelTask, changePassword, changeUsername, createConversation, createMemory, createRecoveryCodes, decideApproval,
   exportWorkspace, invitePerson, listAuthSessions, listPeople, loadAuthProfile, loadControlData, loadConversation,
   loadConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus,
-  loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadWorkspaceContinuity, login, logout,
+  loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadSystemReadiness, loadWorkspaceContinuity, login, logout,
   recover, resetPassword, resetProductSetting, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage,
   testProviderConnection, updateAuthProfile, updateConversation, updateMemory, updateProductSetting,
   updateProviderCredential, updateProviderPolicy, updateProviderProjectRouting, uploadConversationAttachments,
@@ -13,9 +13,9 @@ import {
   const $ = (id) => document.getElementById(id);
   const MAX_ATTACHMENT_BYTES = 60 * 1024 * 1024;
   const MICRO_BAHT = 1000000;
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, people: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, resetToken: null };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, systemReadiness: null, people: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, resetToken: null };
   const taskLabels = {
-    WAITING_FOR_WORKER: 'กำลังรออุปกรณ์ทำงาน', PREPARING: 'กำลังเตรียมงาน', RUNNING: 'กำลังทำงาน',
+    QUEUED: 'กำลังรอเริ่มงาน', WAITING_FOR_WORKER: 'กำลังรออุปกรณ์ทำงาน', PREPARING: 'กำลังเตรียมงาน', RUNNING: 'กำลังทำงาน',
     QA: 'กำลังตรวจคุณภาพ', WAITING_FOR_APPROVAL: 'รอการอนุมัติ', COMPLETED: 'เสร็จแล้ว',
     FAILED: 'ต้องตรวจสอบ', CANCELLED: 'ยกเลิกแล้ว',
   };
@@ -219,6 +219,12 @@ import {
     const online = workers.filter((worker) => worker?.online || ['READY', 'WORKING', 'ONLINE'].includes(worker?.state)).length;
     message('settings-worker-message', online > 0 ? `มีอุปกรณ์ทำงานพร้อมรับงาน ${online} เครื่อง` : 'เปิด AWH Desktop บนอุปกรณ์ที่ผูกกับโปรเจกต์เพื่อรับงานที่ต้องใช้เครื่องมือท้องถิ่น');
     renderDesktopDelivery();
+    const readiness = state.systemReadiness;
+    if (readiness) {
+      const checks = readiness.checks || {};
+      const waiting = Number.isInteger(checks.waitingCapabilityCount) && checks.waitingCapabilityCount > 0 ? ` · มีงานรอความสามารถ ${checks.waitingCapabilityCount} งาน` : '';
+      message('system-check-message', readiness.state === 'READY' ? 'AWH พร้อมทำงาน' : readiness.state === 'PARTIALLY_READY' ? `AWH พร้อมบางส่วน${waiting}` : 'AWH ต้องตรวจสอบบางรายการก่อนเริ่มงาน');
+    }
   }
   async function changeMemory(record, action) {
     let content = null; let tags = null; let pinned = null;
@@ -565,6 +571,13 @@ import {
   });
   $('account-open').addEventListener('click', () => { void openAccount(); });
   $('account-open-inline').addEventListener('click', () => { void openAccount(); });
+  $('system-check').addEventListener('click', async () => {
+    if (!isOwner()) { message('system-check-message', 'เฉพาะเจ้าของ AWH เท่านั้นที่ตรวจความพร้อมของระบบได้'); return; }
+    const button = $('system-check'); button.disabled = true; message('system-check-message', 'กำลังตรวจความพร้อม…');
+    try { state.systemReadiness = await loadSystemReadiness(); renderSettingsOverview(); }
+    catch (error) { message('system-check-message', error instanceof Error ? error.message : 'ยังตรวจความพร้อมของ AWH ไม่ได้'); }
+    finally { button.disabled = false; }
+  });
   document.querySelectorAll('[data-settings-tab]').forEach((button) => button.addEventListener('click', () => showSettingsSection(button.dataset.settingsTab)));
   $('recovery-open').addEventListener('click', openPasswordRecovery);
   document.querySelectorAll('[data-close-sheet]').forEach((button) => button.addEventListener('click', () => closeSheet(button.dataset.closeSheet)));

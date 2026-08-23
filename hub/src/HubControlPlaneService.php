@@ -8,7 +8,11 @@ require_once __DIR__ . '/HubUnifiedWorkspaceMigration.php';
 require_once __DIR__ . '/HubFinalProductMigration.php';
 require_once __DIR__ . '/HubFoundingMemoryMigration.php';
 require_once __DIR__ . '/HubSelfServiceMigration.php';
+require_once __DIR__ . '/HubCentralProjectAuthorityMigration.php';
 require_once __DIR__ . '/HubAttachmentStore.php';
+require_once __DIR__ . '/HubProjectVault.php';
+require_once __DIR__ . '/HubProjectVaultService.php';
+require_once __DIR__ . '/HubDurableExecutionService.php';
 require_once __DIR__ . '/HubNativeAgentService.php';
 require_once __DIR__ . '/HubOwnerAuthService.php';
 require_once __DIR__ . '/HubFoundingMemoryService.php';
@@ -45,6 +49,8 @@ final class HubControlPlaneService
     private readonly HubNativeAgentService $agent;
     private readonly HubFoundingMemoryService $memory;
     private readonly HubOwnerAuthService $ownerAuth;
+    private readonly HubProjectVaultService $vaults;
+    private readonly HubDurableExecutionService $execution;
 
     private function __construct(private readonly PDO $pdo, private readonly HubEnrollmentService $enrollment)
     {
@@ -52,6 +58,8 @@ final class HubControlPlaneService
         $this->agent = new HubNativeAgentService($pdo);
         $this->memory = new HubFoundingMemoryService($pdo);
         $this->ownerAuth = HubOwnerAuthService::fromPdo($pdo);
+        $this->vaults = HubProjectVaultService::fromEnvironment($pdo);
+        $this->execution = new HubDurableExecutionService($pdo, $this->vaults);
     }
 
     public static function openExisting(string $databasePath): self
@@ -352,11 +360,12 @@ final class HubControlPlaneService
         $existing->execute(['user' => $session['user_id'], 'key' => $idempotency]);
         $row = $existing->fetch();
         if (is_array($row)) return $this->taskRow($row);
-        $taskId = self::uuidFromBytes(random_bytes(16));
+        $taskId = self::uuidFromBytes(random_bytes(16)); $vaultRevision = $this->centralVaultRevision($projectId); $serverInspection = $vaultRevision !== null && self::isServerInspection($goal);
         try {
-            $insert = $this->pdo->prepare('INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, \'WAITING_FOR_WORKER\', NULL, NULL, 0, NULL, NULL, :key, :created, :updated, NULL)');
-            $insert->execute(['id' => $taskId, 'user' => $session['user_id'], 'project' => $projectId, 'goal' => $goal, 'key' => $idempotency, 'created' => $now, 'updated' => $now]);
-            $this->event($taskId, 'WAITING_FOR_WORKER', 0, 'received', $now);
+            $insert = $this->pdo->prepare('INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, :state, NULL, NULL, 0, NULL, NULL, :key, :created, :updated, NULL)');
+            $state = $serverInspection ? 'QUEUED' : 'WAITING_FOR_WORKER'; $insert->execute(['id' => $taskId, 'user' => $session['user_id'], 'project' => $projectId, 'goal' => $goal, 'state' => $state, 'key' => $idempotency, 'created' => $now, 'updated' => $now]);
+            if ($vaultRevision !== null) $this->execution->enqueue($taskId, $projectId, $vaultRevision, $serverInspection ? 'VPS' : 'CODEX', $serverInspection ? 'project.read' : 'codex:cli', ['mode' => $serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST'], $now);
+            $this->event($taskId, $state, 0, $vaultRevision !== null && !$serverInspection ? 'waiting for an engineering specialist capability' : 'received', $now);
         } catch (Throwable) { throw new HubControlPlaneException('Task could not be queued', 'TASK_CREATE_FAILED'); }
         return $this->taskById($taskId, (string) $session['user_id']);
     }
@@ -434,7 +443,22 @@ final class HubControlPlaneService
             if (self::isConversationOnly($message, $attachmentIds !== [])) {
                 if ($this->finalProductSchemaPresent()) {
                     $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'PROGRESS', 'กำลังตรวจบริบทที่เกี่ยวข้อง', $at);
-                    $nativeRequest = ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => $messageId, 'projectId' => $projectId, 'request' => $message];
+                    if ($this->centralProjectAuthoritySchemaPresent()) {
+                        // A native response is a durable projection of the
+                        // existing task authority.  Browser closure cannot
+                        // lose an accepted turn, and no second conversation
+                        // or queue table is introduced.
+                        $taskId = self::uuidFromBytes(random_bytes(16));
+                        $taskKey = 'native-' . $idempotency;
+                        $insert = $this->pdo->prepare('INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, \'QUEUED\', NULL, NULL, 0, NULL, NULL, :key, :conversation, :created, :updated, NULL)');
+                        $insert->execute(['id' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $message, 'key' => $taskKey, 'conversation' => $conversation['conversation_id'], 'created' => $at, 'updated' => $at]);
+                        $this->execution->enqueue($taskId, $projectId, $this->centralVaultRevision($projectId), 'VPS', 'agent.conversation', ['mode' => 'NATIVE_CONVERSATION', 'messageId' => $messageId], $at);
+                        $this->event($taskId, 'QUEUED', 0, 'native conversation queued for durable execution', $at);
+                        $this->pdo->prepare('UPDATE control_conversations SET last_task_id = :task, updated_at = :at WHERE conversation_id = :conversation')->execute(['task' => $taskId, 'at' => $at, 'conversation' => $conversation['conversation_id']]);
+                        $this->appendConversationMessage((string) $conversation['conversation_id'], $taskId, 'ASSISTANT', 'รับข้อความแล้ว กำลังประมวลผลอย่างปลอดภัย คุณสามารถออกจากหน้านี้ได้ ผลลัพธ์จะกลับมาในบทสนทนานี้', $at);
+                    } else {
+                        $nativeRequest = ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => $messageId, 'projectId' => $projectId, 'request' => $message];
+                    }
                 } else {
                     $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'ASSISTANT', $this->conversationAnswer($userId, $projectId, $message), $at);
                 }
@@ -442,11 +466,13 @@ final class HubControlPlaneService
                 $taskId = self::uuidFromBytes(random_bytes(16));
                 $taskKey = 'conversation-' . $idempotency;
                 $effectiveGoal = $this->resolveConversationGoal((string) $conversation['conversation_id'], $message);
-                $insert = $this->pdo->prepare('INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, \'WAITING_FOR_WORKER\', NULL, NULL, 0, NULL, NULL, :key, :conversation, :created, :updated, NULL)');
-                $insert->execute(['id' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $effectiveGoal, 'key' => $taskKey, 'conversation' => $conversation['conversation_id'], 'created' => $at, 'updated' => $at]);
-                $this->event($taskId, 'WAITING_FOR_WORKER', 0, 'received', $at);
+                $vaultRevision = $this->centralVaultRevision($projectId); $serverInspection = $vaultRevision !== null && self::isServerInspection($effectiveGoal); $taskState = $serverInspection ? 'QUEUED' : 'WAITING_FOR_WORKER';
+                $insert = $this->pdo->prepare('INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, :state, NULL, NULL, 0, NULL, NULL, :key, :conversation, :created, :updated, NULL)');
+                $insert->execute(['id' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $effectiveGoal, 'state' => $taskState, 'key' => $taskKey, 'conversation' => $conversation['conversation_id'], 'created' => $at, 'updated' => $at]);
+                if ($vaultRevision !== null) $this->execution->enqueue($taskId, $projectId, $vaultRevision, $serverInspection ? 'VPS' : 'CODEX', $serverInspection ? 'project.read' : 'codex:cli', ['mode' => $serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST'], $at);
+                $this->event($taskId, $taskState, 0, $vaultRevision !== null && !$serverInspection ? 'waiting for an engineering specialist capability' : 'received', $at);
                 $this->pdo->prepare('UPDATE control_conversations SET last_task_id = :task, updated_at = :at WHERE conversation_id = :conversation')->execute(['task' => $taskId, 'at' => $at, 'conversation' => $conversation['conversation_id']]);
-                $this->appendConversationMessage((string) $conversation['conversation_id'], $taskId, 'ASSISTANT', $effectiveGoal === $message ? 'รับเรื่องแล้ว ผมกำลังเตรียมบริบทของโปรเจกต์และรออุปกรณ์ที่เหมาะสมเริ่มงานอย่างปลอดภัย' : 'รับเรื่องต่อจากงานล่าสุดแล้ว ผมจะใช้บริบทเดิมร่วมกับคำขอใหม่นี้อย่างปลอดภัย', $at);
+                $this->appendConversationMessage((string) $conversation['conversation_id'], $taskId, 'ASSISTANT', $serverInspection ? 'รับเรื่องแล้ว ผมกำลังตรวจ Project Vault ของ AWH และจะส่งผลในบทสนทนานี้' : ($vaultRevision !== null ? 'รับเรื่องแล้ว งานถูกเก็บไว้กับ Project Vault และกำลังรอ Codex/worker ที่มีความสามารถตรงกับงานอย่างปลอดภัย' : ($effectiveGoal === $message ? 'รับเรื่องแล้ว ผมกำลังเตรียมบริบทของโปรเจกต์และรออุปกรณ์ที่เหมาะสมเริ่มงานอย่างปลอดภัย' : 'รับเรื่องต่อจากงานล่าสุดแล้ว ผมจะใช้บริบทเดิมร่วมกับคำขอใหม่นี้อย่างปลอดภัย')), $at);
             }
             $this->pdo->exec('COMMIT'); $transactionOpen = false;
         } catch (HubControlPlaneException $error) {
@@ -500,6 +526,53 @@ final class HubControlPlaneService
         if (!is_array($row)) throw new HubControlPlaneException('Attachment was not found', 'ATTACHMENT_NOT_FOUND'); $this->assertProjectCapability($userId, (string) $row['project_id'], 'project.read');
         try { $path = $this->attachments->read((string) $row['storage_key']); } catch (HubAttachmentStoreException $error) { throw new HubControlPlaneException('Attachment was not found', $error->codeName); }
         return ['schemaVersion' => 3, 'path' => $path, 'name' => (string) $row['display_name'], 'mimeType' => (string) $row['mime_type'], 'sizeBytes' => (int) $row['size_bytes']];
+    }
+
+    /** Canonical Vault metadata is safe to show to authorized Project members;
+     * content remains private and is only read through bounded capabilities. */
+    public function projectVault(string $sessionToken, string $projectId, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertCentralProjectAuthorityReady(); $projectId = self::uuid($projectId); $this->assertProjectMember((string) $session['user_id'], $projectId);
+        try { return ['schemaVersion' => 1, 'vault' => $this->vaults->state($projectId), 'revisions' => $this->vaults->revisions($projectId)]; }
+        catch (HubProjectVaultException $error) { throw new HubControlPlaneException('Project Vault is unavailable', $error->codeName); }
+    }
+
+    /** Import only an already-authorized private ZIP attachment.  It never
+     * accepts a local path, public URL, or arbitrary server file reference. */
+    public function ingestProjectVault(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['attachmentId', 'expectedActiveRevisionId', 'projectId', 'schemaVersion']);
+        if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Unsupported Project Vault schema', 'SCHEMA_VERSION');
+        $this->assertCentralProjectAuthorityReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId); $projectId = self::uuid((string) ($payload['projectId'] ?? '')); $this->assertProjectMember($userId, $projectId);
+        $expectedRaw = $payload['expectedActiveRevisionId'] ?? null; $expected = $expectedRaw === null ? null : self::uuid((string) $expectedRaw); $attachmentId = self::uuid((string) ($payload['attachmentId'] ?? ''));
+        $q = $this->pdo->prepare('SELECT a.storage_key, a.mime_type, a.project_id FROM control_conversation_attachments a JOIN control_conversations c ON c.conversation_id = a.conversation_id WHERE a.attachment_id = :attachment AND a.deleted_at IS NULL AND c.user_id = :user'); $q->execute(['attachment' => $attachmentId, 'user' => $userId]); $attachment = $q->fetch();
+        if (!is_array($attachment) || (string) $attachment['project_id'] !== $projectId || !in_array((string) $attachment['mime_type'], ['application/zip', 'application/x-zip-compressed'], true)) throw new HubControlPlaneException('Choose a ZIP attachment from this project', 'PROJECT_ARCHIVE_INVALID');
+        try { $path = $this->attachments->read((string) $attachment['storage_key']); $vault = $this->vaults->ingestArchive($projectId, $path, $userId, null, $expected, $now); return ['schemaVersion' => 1, 'vault' => $vault]; }
+        catch (HubAttachmentStoreException $error) { throw new HubControlPlaneException('Project archive is unavailable', $error->codeName); }
+        catch (HubProjectVaultException $error) { throw new HubControlPlaneException('Project archive could not be stored', $error->codeName); }
+    }
+
+    /** Subsequent imports become candidates.  Explicit owner promotion with
+     * an expected prior revision prevents silent cross-device overwrites. */
+    public function promoteProjectVaultRevision(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['expectedActiveRevisionId', 'projectId', 'revisionId', 'schemaVersion']);
+        if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Unsupported Project Vault schema', 'SCHEMA_VERSION');
+        $this->assertCentralProjectAuthorityReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId); $projectId = self::uuid((string) ($payload['projectId'] ?? '')); $this->assertProjectMember($userId, $projectId);
+        try { return ['schemaVersion' => 1, 'vault' => $this->vaults->promote($projectId, self::uuid((string) ($payload['revisionId'] ?? '')), self::uuid((string) ($payload['expectedActiveRevisionId'] ?? '')), $now)]; }
+        catch (HubProjectVaultException $error) { throw new HubControlPlaneException('Project revision could not be promoted', $error->codeName); }
+    }
+
+    /** Non-destructive product readiness, deliberately free of credentials,
+     * raw filesystem paths, and production deployment controls. */
+    public function systemReadiness(string $sessionToken, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertCentralProjectAuthorityReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId);
+        $schema = (int) $this->pdo->query('PRAGMA user_version')->fetchColumn(); $integrity = $this->pdo->query('PRAGMA integrity_check')->fetchColumn() === 'ok' && $this->pdo->query('PRAGMA foreign_key_check')->fetchAll() === [];
+        $vaults = $this->pdo->query("SELECT COUNT(*) FROM control_project_vaults WHERE storage_mode = 'VAULT' AND sync_state = 'SYNCED'")->fetchColumn(); $waiting = $this->pdo->query("SELECT COUNT(*) FROM control_task_executions WHERE state = 'WAITING_FOR_CAPABILITY'")->fetchColumn();
+        $executor = $this->pdo->prepare("SELECT 1 FROM control_executor_capabilities WHERE executor_id = 'vps-native' AND capability = 'agent.conversation' AND expires_at > :now LIMIT 1"); $executor->execute(['now' => self::timestamp($now ?? gmdate('c'))]); $nativeReady = $executor->fetchColumn() !== false;
+        $state = !$integrity ? 'ACTION_REQUIRED' : (!$nativeReady || (int) $waiting > 0 ? 'PARTIALLY_READY' : 'READY');
+        return ['schemaVersion' => 1, 'state' => $state, 'checks' => ['hub' => $integrity ? 'READY' : 'ACTION_REQUIRED', 'projectVault' => (int) $vaults > 0 ? 'READY' : 'NOT_CONFIGURED', 'nativeExecutor' => $nativeReady ? 'READY' : 'ACTION_REQUIRED', 'waitingCapabilityCount' => (int) $waiting, 'schemaVersion' => $schema], 'message' => !$nativeReady ? 'ยังไม่พบ native executor ที่พร้อมทำงาน งานที่รับไว้จะไม่สูญหาย' : ((int) $waiting > 0 ? 'งานบางรายการกำลังรอ capability ที่เหมาะสมและยังไม่สูญหาย' : 'AWH control-plane readiness check completed')];
     }
 
     public function providerStatus(string $sessionToken, ?string $now = null): array
@@ -648,10 +721,11 @@ final class HubControlPlaneService
             $q = $this->pdo->prepare('SELECT state FROM control_tasks WHERE task_id = :task AND user_id = :user'); $q->execute(['task' => $taskId, 'user' => $session['user_id']]); $state = $q->fetchColumn();
             if (!is_string($state)) throw new HubControlPlaneException('Task was not found', 'TASK_NOT_FOUND');
             if ($state === 'CANCELLED') { $this->pdo->exec('COMMIT'); $transactionOpen = false; return $this->taskById($taskId, (string) $session['user_id']); }
-            if (!in_array($state, ['WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL'], true)) throw new HubControlPlaneException('Task can no longer be stopped safely', 'TASK_NOT_CANCELLABLE');
-            $update = $this->pdo->prepare("UPDATE control_tasks SET state = 'CANCELLED', assigned_device_id = NULL, lease_expires_at = NULL, cancelled_at = :at, updated_at = :at WHERE task_id = :task AND user_id = :user AND state IN ('WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL')");
+            if (!in_array($state, ['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL'], true)) throw new HubControlPlaneException('Task can no longer be stopped safely', 'TASK_NOT_CANCELLABLE');
+            $update = $this->pdo->prepare("UPDATE control_tasks SET state = 'CANCELLED', assigned_device_id = NULL, lease_expires_at = NULL, cancelled_at = :at, updated_at = :at WHERE task_id = :task AND user_id = :user AND state IN ('QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL')");
             $update->execute(['at' => $at, 'task' => $taskId, 'user' => $session['user_id']]);
             if ($update->rowCount() !== 1) throw new HubControlPlaneException('Task cancellation raced with a worker', 'TASK_CANCEL_RACE');
+            if ($this->centralProjectAuthoritySchemaPresent()) $this->pdo->prepare("UPDATE control_task_executions SET state = 'CANCELLED', cancellation_requested_at = :at, lease_owner = NULL, lease_expires_at = NULL, updated_at = :at WHERE task_id = :task AND state IN ('QUEUED', 'WAITING_FOR_CAPABILITY')")->execute(['at' => $at, 'task' => $taskId]);
             $eventId = $this->event($taskId, 'CANCELLED', 0, 'cancelled by owner', $at);
             $this->syncConversationEvent($taskId, $eventId, 'CANCELLED', 0, 'cancelled by owner', 'ยกเลิกงานนี้แล้ว ยังไม่มีการเริ่มงานใหม่', $at);
             $this->pdo->exec('COMMIT'); $transactionOpen = false;
@@ -842,7 +916,8 @@ final class HubControlPlaneService
                 }
                 $this->pdo->prepare("UPDATE control_workers SET state = 'READY', busy_task_id = NULL, last_seen_at = :at WHERE device_id = :device")->execute(['at' => $at, 'device' => $auth['deviceId']]);
             }
-            $q = $this->pdo->prepare("SELECT t.* FROM control_tasks t JOIN device_project_memberships m ON m.project_id = t.project_id AND m.device_id = :device AND m.revoked_at IS NULL WHERE t.state = 'WAITING_FOR_WORKER' AND t.assigned_device_id IS NULL ORDER BY t.created_at, t.task_id LIMIT 1"); $q->execute(['device' => $auth['deviceId']]); $row = $q->fetch();
+            $executionFilter = $this->centralProjectAuthoritySchemaPresent() ? ' AND NOT EXISTS (SELECT 1 FROM control_task_executions e WHERE e.task_id = t.task_id)' : '';
+            $q = $this->pdo->prepare("SELECT t.* FROM control_tasks t JOIN device_project_memberships m ON m.project_id = t.project_id AND m.device_id = :device AND m.revoked_at IS NULL WHERE t.state = 'WAITING_FOR_WORKER' AND t.assigned_device_id IS NULL" . $executionFilter . ' ORDER BY t.created_at, t.task_id LIMIT 1'); $q->execute(['device' => $auth['deviceId']]); $row = $q->fetch();
             if (!is_array($row)) { $this->pdo->exec('COMMIT'); $transactionOpen = false; return ['schemaVersion' => 1, 'task' => null]; }
             $stage = 'update-task';
             $update = $this->pdo->prepare("UPDATE control_tasks SET state = 'PREPARING', assigned_device_id = :device, lease_expires_at = :expires, updated_at = :at WHERE task_id = :task AND state = 'WAITING_FOR_WORKER' AND assigned_device_id IS NULL"); $update->execute(['device' => $auth['deviceId'], 'expires' => $expires, 'at' => $at, 'task' => $row['task_id']]);
@@ -1324,10 +1399,18 @@ final class HubControlPlaneService
         return $hasAttachments && preg_match('/^(?:รูป|ภาพ|ไฟล์|เอกสาร|วารสาร|ช่วยดู|ดู|ตรวจ|สรุป|อธิบาย|what(?:\s+is|\s+do)|analy[sz]e|summari[sz]e)/iu', $value) === 1;
     }
     private static function isConversationFollowUp(string $message): bool { return preg_match('/^(?:ทำต่อ|ต่อจาก|ต่อเลย|เอาอัน(?:นี้|นั้น|ล่าสุด)|ยังไม่ใช่|ตรวจอีกที|continue|keep going|that one)(?:\s|$|[.!?])/iu', trim($message)) === 1; }
+    /** Read-only Vault work can use the bounded VPS executor.  Any request
+     * that might modify content waits for an explicit specialist capability. */
+    private static function isServerInspection(string $message): bool { return preg_match('/^(?:ตรวจ|วิเคราะห์|ดู|สรุป|สถานะ|ค้นหา|อ่าน|inspect|review|summari[sz]e|status|search|read)(?:\s|$)/iu', trim($message)) === 1 && preg_match('/(?:แก้|เขียน|สร้าง|ลบ|เปลี่ยน|deploy|commit|push|render|edit|write|create|delete|modify|build)/iu', $message) !== 1; }
+    private function centralVaultRevision(string $projectId): ?string
+    {
+        if (!$this->centralProjectAuthoritySchemaPresent()) return null;
+        try { return $this->vaults->activeRevision($projectId); } catch (HubProjectVaultException) { return null; }
+    }
     private static function workStateMessage(string $state, int $progress, ?string $message): string
     {
         $fallback = match ($state) {
-            'WAITING_FOR_WORKER' => 'รับงานแล้ว กำลังรออุปกรณ์ที่เหมาะสม', 'PREPARING' => 'กำลังตรวจบริบทและเตรียมงาน', 'RUNNING' => 'กำลังทำงาน', 'QA' => 'กำลังตรวจผลลัพธ์', 'WAITING_FOR_APPROVAL' => 'กำลังรอการอนุมัติ', 'COMPLETED' => 'งานเสร็จแล้ว', 'FAILED' => 'งานหยุดไว้โดยปลอดภัย', 'CANCELLED' => 'ยกเลิกงานแล้ว', default => 'กำลังอัปเดตงาน',
+            'QUEUED' => 'รับงานแล้ว กำลังรอเริ่มงาน', 'WAITING_FOR_WORKER' => 'รับงานแล้ว กำลังรออุปกรณ์ที่เหมาะสม', 'PREPARING' => 'กำลังตรวจบริบทและเตรียมงาน', 'RUNNING' => 'กำลังทำงาน', 'QA' => 'กำลังตรวจผลลัพธ์', 'WAITING_FOR_APPROVAL' => 'กำลังรอการอนุมัติ', 'COMPLETED' => 'งานเสร็จแล้ว', 'FAILED' => 'งานหยุดไว้โดยปลอดภัย', 'CANCELLED' => 'ยกเลิกงานแล้ว', default => 'กำลังอัปเดตงาน',
         };
         return $message !== null && trim($message) !== '' ? trim($message) : ($progress > 0 && $progress < 100 ? $fallback . ' (' . $progress . '%)' : $fallback);
     }
@@ -1337,9 +1420,11 @@ final class HubControlPlaneService
     private function finalProductSchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 9 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_provider_policies'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
     private function foundingMemorySchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 10 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_memory_records'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
     private function selfServiceSchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 11 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_provider_credentials'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
+    private function centralProjectAuthoritySchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 12 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_project_vaults'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
     private function assertFinalReady(): void { HubFinalProductMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/008_final_product.sql'); }
     private function assertFoundingReady(): void { HubFoundingMemoryMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/009_founding_memory.sql'); }
     private function assertSelfServiceReady(): void { HubSelfServiceMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/010_self_service.sql'); }
+    private function assertCentralProjectAuthorityReady(): void { HubCentralProjectAuthorityMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/011_central_project_authority.sql'); }
     private function assertSessionRateLimit(?string $rateKey, string $now): void
     {
         if ($rateKey === null) return;

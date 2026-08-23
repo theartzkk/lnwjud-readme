@@ -154,6 +154,11 @@ export async function testProviderConnection() { return controlRequest('/api/v1/
 export async function loadProviderProjectRouting(projectId) { if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง'); const value = await controlRequest(`/api/v1/control/provider/projects/${projectId}`); if (value.schemaVersion !== 1 || !value.routing || typeof value.routing !== 'object') throw new Error('การกำหนด AI ของโปรเจกต์ไม่ถูกต้อง'); return value.routing; }
 export async function updateProviderProjectRouting(projectId, routingMode) { if (!UUID.test(projectId) || !['AUTO', 'FAST', 'BALANCED', 'STRONG'].includes(routingMode)) throw new Error('การกำหนด AI ของโปรเจกต์ไม่ถูกต้อง'); const value = await controlRequest('/api/v1/control/provider/project', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, routingMode }) }); if (value.schemaVersion !== 1 || !value.routing || typeof value.routing !== 'object') throw new Error('การกำหนด AI ของโปรเจกต์ไม่ถูกต้อง'); return value.routing; }
 export async function loadOwnerSelfServiceStatus() { return controlRequest('/api/v1/control/owner/status'); }
+export async function loadSystemReadiness() {
+  const value = await controlRequest('/api/v1/control/system/readiness');
+  if (value.schemaVersion !== 1 || !['READY', 'PARTIALLY_READY', 'ACTION_REQUIRED'].includes(value.state) || !value.checks || typeof value.checks !== 'object') throw new Error('สถานะความพร้อมของ AWH ไม่ถูกต้อง');
+  return value;
+}
 export async function listPeople() { return controlRequest('/api/v1/auth/people'); }
 export async function invitePerson({ displayName, username, email = null, role, projectIds }) { return controlRequest('/api/v1/auth/people/invite', { method: 'POST', body: JSON.stringify({ displayName, username, email, role, projectIds }) }); }
 export async function revokePerson(userId) { if (!UUID.test(userId)) throw new Error('บัญชีไม่ถูกต้อง'); return controlRequest(`/api/v1/auth/people/${userId}/revoke`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
