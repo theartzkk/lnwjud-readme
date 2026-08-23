@@ -231,7 +231,7 @@ final class HubDurableExecutionService
             // inspection vanish: use the deterministic canonical summary.
             // A budget stop remains durable and visible to the Owner.
             if ($error->codeName === 'PROVIDER_UNAVAILABLE') return null;
-            throw new HubDurableExecutionException('Native inspection provider failed', $error->codeName);
+            throw new HubDurableExecutionException('Native inspection provider failed', $error->codeName, $error->diagnostic);
         }
     }
 
