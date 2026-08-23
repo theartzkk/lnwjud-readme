@@ -59,8 +59,9 @@ final class HubProjectVaultService
     public function promote(string $projectId, string $revisionId, string $expectedActiveRevision, ?string $now = null): array
     {
         $this->assertReady(); $projectId = self::uuid($projectId); $revisionId = self::uuid($revisionId); $expected = self::uuid($expectedActiveRevision); $at = self::timestamp($now ?? gmdate('c'));
+        $ownsTransaction = !$this->pdo->inTransaction();
         try {
-            $this->pdo->exec('BEGIN IMMEDIATE');
+            if ($ownsTransaction) $this->pdo->exec('BEGIN IMMEDIATE');
             $q = $this->pdo->prepare('SELECT active_revision_id FROM control_project_vaults WHERE project_id = :project'); $q->execute(['project' => $projectId]); $active = $q->fetchColumn();
             if (!is_string($active) || $active !== $expected) throw new HubProjectVaultException('Project source changed before this revision was promoted', 'PROJECT_REVISION_CONFLICT');
             $candidate = $this->pdo->prepare("SELECT content_bytes, file_count FROM control_project_vault_revisions WHERE revision_id = :revision AND project_id = :project AND state = 'CANDIDATE'"); $candidate->execute(['revision' => $revisionId, 'project' => $projectId]); $row = $candidate->fetch();
@@ -68,8 +69,43 @@ final class HubProjectVaultService
             $this->pdo->prepare("UPDATE control_project_vault_revisions SET state = 'SUPERSEDED' WHERE revision_id = :revision")->execute(['revision' => $active]);
             $this->pdo->prepare("UPDATE control_project_vault_revisions SET state = 'ACTIVE', promoted_at = :at WHERE revision_id = :revision")->execute(['at' => $at, 'revision' => $revisionId]);
             $this->pdo->prepare("UPDATE control_project_vaults SET active_revision_id = :revision, sync_state = 'SYNCED', content_bytes = :bytes, file_count = :files, updated_at = :at WHERE project_id = :project")->execute(['revision' => $revisionId, 'bytes' => (int) $row['content_bytes'], 'files' => (int) $row['file_count'], 'at' => $at, 'project' => $projectId]);
-            $this->pdo->exec('COMMIT'); return $this->state($projectId);
-        } catch (Throwable $error) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); if ($error instanceof HubProjectVaultException) throw $error; throw new HubProjectVaultException('Project revision could not be promoted', 'PROJECT_VAULT_FAILED'); }
+            if ($ownsTransaction) $this->pdo->exec('COMMIT'); return $this->state($projectId);
+        } catch (Throwable $error) { if ($ownsTransaction && $this->pdo->inTransaction()) $this->pdo->rollBack(); if ($error instanceof HubProjectVaultException) throw $error; throw new HubProjectVaultException('Project revision could not be promoted', 'PROJECT_VAULT_FAILED'); }
+    }
+
+    /** @return array{revisionId:string,contentSha256:string,contentBytes:int,fileCount:int,parentRevisionId:string,changed:bool} */
+    public function captureTaskWorkspace(string $projectId, string $workspace, string $userId, string $taskId, string $expectedActiveRevision, ?string $now = null): array
+    {
+        $this->assertReady(); $projectId = self::uuid($projectId); $userId = self::uuid($userId); $taskId = self::uuid($taskId); $expected = self::uuid($expectedActiveRevision); $at = self::timestamp($now ?? gmdate('c')); $revisionId = self::uuidFromBytes(random_bytes(16));
+        $stored = $this->vault->ingestDirectory($projectId, $workspace, $revisionId);
+        try {
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $q = $this->pdo->prepare('SELECT active_revision_id FROM control_project_vaults WHERE project_id = :project'); $q->execute(['project' => $projectId]); $active = $q->fetchColumn();
+            if (!is_string($active) || !hash_equals($expected, $active)) throw new HubProjectVaultException('Project source changed before this task candidate was captured', 'PROJECT_REVISION_CONFLICT');
+            $duplicate = $this->pdo->prepare('SELECT revision_id FROM control_project_vault_revisions WHERE project_id = :project AND content_sha256 = :hash'); $duplicate->execute(['project' => $projectId, 'hash' => $stored['contentSha256']]); $duplicateId = $duplicate->fetchColumn();
+            if (is_string($duplicateId)) { $this->pdo->exec('COMMIT'); $this->vault->removeRevision($projectId, $revisionId); return ['revisionId' => $duplicateId, 'contentSha256' => $stored['contentSha256'], 'contentBytes' => $stored['contentBytes'], 'fileCount' => $stored['fileCount'], 'parentRevisionId' => $expected, 'changed' => false]; }
+            $insert = $this->pdo->prepare("INSERT INTO control_project_vault_revisions(revision_id, project_id, parent_revision_id, content_sha256, manifest_json, content_bytes, file_count, origin_kind, created_by_user_id, created_by_device_id, task_id, state, created_at, promoted_at) VALUES(:id, :project, :parent, :hash, :manifest, :bytes, :files, 'TASK', :user, NULL, :task, 'CANDIDATE', :at, NULL)");
+            $insert->execute(['id' => $revisionId, 'project' => $projectId, 'parent' => $expected, 'hash' => $stored['contentSha256'], 'manifest' => $stored['manifestJson'], 'bytes' => $stored['contentBytes'], 'files' => $stored['fileCount'], 'user' => $userId, 'task' => $taskId, 'at' => $at]);
+            $this->pdo->prepare("UPDATE control_project_vaults SET sync_state = 'STALE', updated_at = :at WHERE project_id = :project")->execute(['at' => $at, 'project' => $projectId]);
+            $this->pdo->exec('COMMIT');
+            return ['revisionId' => $revisionId, 'contentSha256' => $stored['contentSha256'], 'contentBytes' => $stored['contentBytes'], 'fileCount' => $stored['fileCount'], 'parentRevisionId' => $expected, 'changed' => true];
+        } catch (Throwable $error) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack(); $this->vault->removeRevision($projectId, $revisionId);
+            if ($error instanceof HubProjectVaultException) throw $error;
+            throw new HubProjectVaultException('Task candidate could not be captured', 'PROJECT_VAULT_FAILED');
+        }
+    }
+
+    public function rejectCandidate(string $projectId, string $revisionId, ?string $now = null): void
+    {
+        $this->assertReady(); $projectId = self::uuid($projectId); $revisionId = self::uuid($revisionId); $at = self::timestamp($now ?? gmdate('c')); $ownsTransaction = !$this->pdo->inTransaction();
+        try {
+            if ($ownsTransaction) $this->pdo->exec('BEGIN IMMEDIATE');
+            $q = $this->pdo->prepare("UPDATE control_project_vault_revisions SET state = 'REJECTED' WHERE project_id = :project AND revision_id = :revision AND state = 'CANDIDATE'"); $q->execute(['project' => $projectId, 'revision' => $revisionId]);
+            if ($q->rowCount() !== 1) throw new HubProjectVaultException('Project revision is not promotable', 'PROJECT_REVISION_NOT_FOUND');
+            $this->pdo->prepare("UPDATE control_project_vaults SET sync_state = CASE WHEN EXISTS(SELECT 1 FROM control_project_vault_revisions r WHERE r.project_id = :project AND r.state = 'CANDIDATE') THEN 'STALE' ELSE 'SYNCED' END, updated_at = :at WHERE project_id = :project")->execute(['project' => $projectId, 'at' => $at]);
+            if ($ownsTransaction) $this->pdo->exec('COMMIT');
+        } catch (Throwable $error) { if ($ownsTransaction && $this->pdo->inTransaction()) $this->pdo->rollBack(); if ($error instanceof HubProjectVaultException) throw $error; throw new HubProjectVaultException('Project candidate could not be rejected', 'PROJECT_VAULT_FAILED'); }
     }
 
     /** @return array{revisionId:string,contentSha256:string,files:list<array{path:string,sizeBytes:int}>} */

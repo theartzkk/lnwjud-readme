@@ -371,7 +371,7 @@ import {
       if (task) {
         const actions = renderApproval(task, approvals) || renderCancellation(task); if (actions) response.append(actions);
         const artifacts = artifactsByTask.get(task.taskId) || [];
-        if (artifacts.length) { const list = document.createElement('ul'); list.className = 'artifact-links'; for (const artifact of artifacts) { const item = document.createElement('li'); item.textContent = `↳ ${artifact.name || 'ไฟล์ผลลัพธ์'}`; list.append(item); } response.append(list); }
+        if (artifacts.length) { const list = document.createElement('ul'); list.className = 'artifact-links'; for (const artifact of artifacts) { const item = document.createElement('li'); if (typeof artifact.downloadUrl === 'string' && /^\/api\/v1\/control\/artifacts\/[0-9a-f-]{36}\/download$/i.test(artifact.downloadUrl)) { const link = document.createElement('a'); link.href = artifact.downloadUrl; link.textContent = `↳ ดาวน์โหลด ${artifact.name || 'ไฟล์ผลลัพธ์'}`; item.append(link); } else item.textContent = `↳ ${artifact.name || 'ไฟล์ผลลัพธ์'}`; list.append(item); } response.append(list); }
       }
       row.append(response); thread.append(row);
     }

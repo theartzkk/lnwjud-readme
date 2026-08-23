@@ -16,6 +16,7 @@ require_once dirname(__DIR__) . '/src/HubCentralProjectAuthorityMigration.php';
 require_once dirname(__DIR__) . '/src/HubEnrollmentService.php';
 require_once dirname(__DIR__) . '/src/HubProjectVault.php';
 require_once dirname(__DIR__) . '/src/HubProjectVaultService.php';
+require_once dirname(__DIR__) . '/src/HubArtifactStore.php';
 require_once dirname(__DIR__) . '/src/HubDurableExecutionService.php';
 require_once dirname(__DIR__) . '/src/HubNativeAgentService.php';
 
@@ -28,8 +29,8 @@ if (!in_array('sqlite', PDO::getAvailableDrivers(), true) || !class_exists('ZipA
 $root = sys_get_temp_dir() . '/awh-m12-' . bin2hex(random_bytes(6)); $base = dirname(__DIR__); $now = gmdate('c');
 $owner = '223b45c0-23e1-408d-ae0f-ac5eca7f6900'; $project = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
 try {
-    mkdir($root, 0700, true); $db = $root . '/awh.sqlite'; $vaultRoot = $root . '/vault'; $attachments = $root . '/attachments'; $credentials = $root . '/credentials'; mkdir($vaultRoot, 0700, true); mkdir($attachments, 0700, true); mkdir($credentials, 0700, true);
-    putenv('AWH_PROJECT_VAULT_ROOT=' . $vaultRoot); putenv('AWH_ATTACHMENT_ROOT=' . $attachments); putenv('AWH_PROVIDER_CREDENTIAL_ROOT=' . $credentials);
+    mkdir($root, 0700, true); $db = $root . '/awh.sqlite'; $vaultRoot = $root . '/vault'; $attachments = $root . '/attachments'; $credentials = $root . '/credentials'; $artifacts = $root . '/artifacts'; $workspaces = $root . '/workspaces'; mkdir($vaultRoot, 0700, true); mkdir($attachments, 0700, true); mkdir($credentials, 0700, true); mkdir($artifacts, 0700, true); mkdir($workspaces, 0700, true);
+    putenv('AWH_PROJECT_VAULT_ROOT=' . $vaultRoot); putenv('AWH_ATTACHMENT_ROOT=' . $attachments); putenv('AWH_PROVIDER_CREDENTIAL_ROOT=' . $credentials); putenv('AWH_ARTIFACT_ROOT=' . $artifacts); putenv('AWH_TASK_WORKSPACE_ROOT=' . $workspaces);
     $pdo = new PDO('sqlite:' . $db, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]); $pdo->exec('PRAGMA foreign_keys = ON'); $pdo->exec(file_get_contents($base . '/schema.sql'));
     foreach (['enrollment_rate_limits', 'device_project_memberships', 'device_tokens', 'pairing_projects', 'pairing_codes', 'user_project_memberships', 'device_enrollments', 'owner_bootstrap', 'hub_users'] as $table) $pdo->exec('DROP TABLE IF EXISTS ' . $table);
     $pdo->prepare('INSERT INTO projects(project_id, name, type, created_at, source_revision, observed_at, provenance) VALUES(:id, :name, :type, :created, :revision, :observed, :provenance)')->execute(['id' => $project, 'name' => 'Vault Fixture', 'type' => 'php', 'created' => $now, 'revision' => null, 'observed' => $now, 'provenance' => 'm12-fixture']);
@@ -49,7 +50,7 @@ try {
     m12_assert(($first['storageMode'] ?? null) === 'VAULT' && ($first['syncState'] ?? null) === 'SYNCED' && is_string($first['activeRevisionId'] ?? null), 'initial archive becomes canonical only after verification');
     $context = $vaults->context($project, 'ตรวจ README'); m12_assert(count($context['files']) >= 1, 'bounded project context finds canonical file');
     $read = $vaults->vault()->readText($project, $context['revisionId'], 'README.md'); m12_assert(str_contains($read['content'], 'Data only'), 'bounded canonical read works');
-    $zip = new ZipArchive(); m12_assert($zip->open($archive, ZipArchive::OVERWRITE) === true, 'zip overwrite'); $zip->addFromString('README.md', "# Fixture v2\n"); $zip->addFromString('src/main.php', "<?php echo 'fixture-v2';\n"); $zip->close();
+    $zip = new ZipArchive(); m12_assert($zip->open($archive, ZipArchive::OVERWRITE) === true, 'zip overwrite'); $zip->addFromString('README.md', "# Fixture v2  \r\n"); $zip->addFromString('src/main.php', "<?php echo 'fixture-v2';\n"); $zip->close();
     $second = $vaults->ingestArchive($project, $archive, $owner, null, $first['activeRevisionId'], $now); m12_assert(($second['promotionRequired'] ?? false) === true && ($second['syncState'] ?? null) === 'STALE', 'subsequent archive is an explicit candidate');
     $promoted = $vaults->promote($project, (string) $second['createdRevisionId'], (string) $first['activeRevisionId'], $now); m12_assert(($promoted['activeRevisionId'] ?? null) === $second['createdRevisionId'] && ($promoted['syncState'] ?? null) === 'SYNCED', 'revision precondition promotion prevents silent overwrite');
     $unsafe = $root . '/unsafe.zip'; $zip = new ZipArchive(); $zip->open($unsafe, ZipArchive::CREATE); $zip->addFromString('../escape.txt', 'no'); $zip->close(); $unsafeRejected = false; try { $vaults->ingestArchive($project, $unsafe, $owner, null, $promoted['activeRevisionId'], $now); } catch (HubProjectVaultException $error) { $unsafeRejected = $error->codeName === 'PROJECT_ARCHIVE_UNSAFE'; } m12_assert($unsafeRejected, 'path traversal archive fails closed');
@@ -57,6 +58,21 @@ try {
     $task = m12_uuid(); $pdo->prepare("INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:task, :user, :project, 'ตรวจ README อย่างเดียว ห้ามแก้', 'QUEUED', NULL, NULL, 0, NULL, NULL, :key, NULL, :at, :at, NULL)")->execute(['task' => $task, 'user' => $owner, 'project' => $project, 'key' => 'm12-task-0001', 'at' => $now]);
     $executor = new HubDurableExecutionService($pdo, $vaults, null); $executor->enqueue($task, $project, (string) $promoted['activeRevisionId'], 'VPS', 'project.read', ['mode' => 'PROJECT_INSPECTION'], $now); $run = $executor->runOnce($now); m12_assert(($run['state'] ?? null) === 'COMPLETED', 'durable VPS inspection is claimed and completed');
     $taskRow = $pdo->prepare('SELECT state, result_summary FROM control_tasks WHERE task_id = :task'); $taskRow->execute(['task' => $task]); $finished = $taskRow->fetch(); m12_assert(($finished['state'] ?? null) === 'COMPLETED' && str_contains((string) ($finished['result_summary'] ?? ''), 'ไม่ได้แก้ source'), 'read-only execution returns a natural non-mutating result');
+
+    // A bounded server-native mutation always starts from an immutable Vault
+    // revision, captures a separate candidate, writes an opaque artifact, and
+    // stops at the existing approval boundary. Canonical content is not
+    // changed until a revision-preconditioned promotion is explicitly invoked.
+    $mutationTask = m12_uuid();
+    $pdo->prepare("INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:task, :user, :project, 'normalize text file README.md', 'QUEUED', NULL, NULL, 0, NULL, NULL, :key, NULL, :at, :at, NULL)")->execute(['task' => $mutationTask, 'user' => $owner, 'project' => $project, 'key' => 'm12-task-mutate-0001', 'at' => $now]);
+    $mutator = new HubDurableExecutionService($pdo, $vaults, null, HubArtifactStore::fromEnvironment());
+    $mutator->enqueue($mutationTask, $project, (string) $promoted['activeRevisionId'], 'VPS', 'project.mutate.text', ['mode' => 'PROJECT_TEXT_NORMALIZE'], $now);
+    $mutationRun = $mutator->runOnce($now); m12_assert(($mutationRun['state'] ?? null) === 'WAITING_FOR_APPROVAL', 'server-native mutation captures a candidate before promotion');
+    $candidateRow = $pdo->prepare("SELECT revision_id, parent_revision_id, state FROM control_project_vault_revisions WHERE task_id = :task"); $candidateRow->execute(['task' => $mutationTask]); $candidate = $candidateRow->fetch(); m12_assert(is_array($candidate) && $candidate['state'] === 'CANDIDATE' && $candidate['parent_revision_id'] === $promoted['activeRevisionId'], 'candidate remains isolated from canonical Vault');
+    $artifactRow = $pdo->prepare('SELECT o.storage_key FROM control_artifacts a JOIN control_artifact_objects o ON o.artifact_id = a.artifact_id WHERE a.task_id = :task'); $artifactRow->execute(['task' => $mutationTask]); $storageKey = $artifactRow->fetchColumn(); m12_assert(is_string($storageKey) && is_file(HubArtifactStore::fromEnvironment()->read($storageKey)), 'candidate report is a retrievable opaque artifact object');
+    $approval = $pdo->prepare("SELECT action FROM control_approvals WHERE task_id = :task AND status = 'PENDING'"); $approval->execute(['task' => $mutationTask]); m12_assert($approval->fetchColumn() === 'project.revision.promote', 'candidate promotion uses the canonical approval authority');
+    $staleRejected = false; try { $vaults->promote($project, (string) $candidate['revision_id'], (string) $first['activeRevisionId'], $now); } catch (HubProjectVaultException $error) { $staleRejected = $error->codeName === 'PROJECT_REVISION_CONFLICT'; } m12_assert($staleRejected, 'stale candidate promotion fails closed');
+    $promotedCandidate = $vaults->promote($project, (string) $candidate['revision_id'], (string) $promoted['activeRevisionId'], $now); m12_assert(($promotedCandidate['activeRevisionId'] ?? null) === $candidate['revision_id'], 'approved candidate can be promoted only with its exact base revision');
 
     // A conversation-only turn is also a durable projection of the existing
     // task authority. It must survive the response boundary and return its
@@ -76,4 +92,4 @@ try {
     m12_assert($toolUsed && $calls === 2 && str_contains((string) ($agentResult['summary'] ?? ''), 'Vault'), 'bounded provider-independent tool loop returns a natural answer');
     m12_assert($pdo->query('PRAGMA integrity_check')->fetchColumn() === 'ok' && $pdo->query('PRAGMA foreign_key_check')->fetchAll() === [], 'M12 preserves database integrity and foreign keys');
     fwrite(STDOUT, "AWH M12 Central Project Authority: PASS\n");
-} finally { putenv('AWH_PROJECT_VAULT_ROOT'); putenv('AWH_ATTACHMENT_ROOT'); putenv('AWH_PROVIDER_CREDENTIAL_ROOT'); m12_clean($root); }
+} finally { putenv('AWH_PROJECT_VAULT_ROOT'); putenv('AWH_ATTACHMENT_ROOT'); putenv('AWH_PROVIDER_CREDENTIAL_ROOT'); putenv('AWH_ARTIFACT_ROOT'); putenv('AWH_TASK_WORKSPACE_ROOT'); m12_clean($root); }

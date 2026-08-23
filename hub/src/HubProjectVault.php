@@ -102,6 +102,62 @@ final class HubProjectVault
         } finally { $zip->close(); }
     }
 
+    /**
+     * Captures an already-isolated task workspace as an immutable candidate
+     * revision.  This deliberately uses the same content limits and path
+     * policy as archive ingestion: a task cannot smuggle a link, secret, or
+     * filesystem escape back into canonical Project content.
+     *
+     * @return array{revisionId:string,contentSha256:string,manifestJson:string,contentBytes:int,fileCount:int}
+     */
+    public function ingestDirectory(string $projectId, string $workspace, string $revisionId): array
+    {
+        $projectId = self::uuid($projectId); $revisionId = self::uuid($revisionId);
+        if ($workspace === '' || str_contains($workspace, "\0") || !str_starts_with($workspace, '/') || is_link($workspace) || !is_dir($workspace)) throw new HubProjectVaultException('Task workspace is unavailable', 'TASK_WORKSPACE_INVALID');
+        $source = realpath($workspace);
+        if (!is_string($source) || $source === '' || is_link($source)) throw new HubProjectVaultException('Task workspace is unavailable', 'TASK_WORKSPACE_INVALID');
+        $this->assertRoot();
+        $projectRoot = $this->projectRoot($projectId); $revisions = $projectRoot . '/revisions';
+        if (!is_dir($revisions) && !@mkdir($revisions, 0700, true) && !is_dir($revisions)) throw new HubProjectVaultException('Project Vault storage is unavailable', 'PROJECT_VAULT_UNAVAILABLE');
+        if (is_link($projectRoot) || is_link($revisions)) throw new HubProjectVaultException('Project Vault storage is unsafe', 'PROJECT_VAULT_UNAVAILABLE');
+        $destination = $revisions . '/' . strtolower($revisionId);
+        if (file_exists($destination) || is_link($destination)) throw new HubProjectVaultException('Project revision already exists', 'PROJECT_REVISION_CONFLICT');
+        $staging = $revisions . '/.staging-' . strtolower($revisionId) . '-' . bin2hex(random_bytes(6));
+        $manifest = []; $total = 0;
+        try {
+            if (!@mkdir($staging, 0700, true) || is_link($staging)) throw new HubProjectVaultException('Project Vault storage is unavailable', 'PROJECT_VAULT_UNAVAILABLE');
+            $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($source, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::LEAVES_ONLY);
+            foreach ($iterator as $file) {
+                if (!$file instanceof SplFileInfo || $file->isLink() || !$file->isFile()) throw new HubProjectVaultException('Task workspace contains unsupported content', 'TASK_WORKSPACE_INVALID');
+                $physical = $file->getRealPath();
+                if (!is_string($physical) || !str_starts_with($physical, $source . DIRECTORY_SEPARATOR)) throw new HubProjectVaultException('Task workspace is unsafe', 'TASK_WORKSPACE_INVALID');
+                $relative = str_replace(DIRECTORY_SEPARATOR, '/', substr($physical, strlen($source) + 1));
+                $path = self::archivePath($relative);
+                if ($path === null || self::sensitivePath($path)) throw new HubProjectVaultException('Task workspace contains restricted content', 'TASK_WORKSPACE_INVALID');
+                $size = $file->getSize();
+                if ($size < 0 || $size > self::MAX_FILE_BYTES) throw new HubProjectVaultException('Task workspace exceeds the safe limit', 'TASK_WORKSPACE_INVALID');
+                $total += $size;
+                if (count($manifest) >= self::MAX_FILES || $total > self::MAX_CONTENT_BYTES) throw new HubProjectVaultException('Task workspace exceeds the safe limit', 'TASK_WORKSPACE_INVALID');
+                $target = $staging . '/' . $path; $this->mkdirFor($target);
+                if (!@copy($physical, $target) || is_link($target) || @filesize($target) !== $size) throw new HubProjectVaultException('Task workspace could not be captured', 'TASK_WORKSPACE_UNAVAILABLE');
+                $hash = hash_file('sha256', $target);
+                if (!is_string($hash) || !preg_match('/^[0-9a-f]{64}$/', $hash)) throw new HubProjectVaultException('Task workspace could not be verified', 'TASK_WORKSPACE_UNAVAILABLE');
+                @chmod($target, 0640); $manifest[] = ['path' => $path, 'sha256' => $hash, 'sizeBytes' => $size];
+            }
+            if ($manifest === []) throw new HubProjectVaultException('Task workspace has no usable files', 'TASK_WORKSPACE_INVALID');
+            usort($manifest, static fn (array $left, array $right): int => strcmp($left['path'], $right['path']));
+            $manifestJson = json_encode(['schemaVersion' => 1, 'files' => $manifest], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+            $contentSha256 = hash('sha256', $manifestJson);
+            if (!@rename($staging, $destination)) throw new HubProjectVaultException('Project revision could not be committed', 'PROJECT_VAULT_UNAVAILABLE');
+            @chmod($destination, 0750);
+            return ['revisionId' => $revisionId, 'contentSha256' => $contentSha256, 'manifestJson' => $manifestJson, 'contentBytes' => $total, 'fileCount' => count($manifest)];
+        } catch (Throwable $error) {
+            $this->removeDirectory($staging);
+            if ($error instanceof HubProjectVaultException) throw $error;
+            throw new HubProjectVaultException('Task workspace could not be captured', 'TASK_WORKSPACE_UNAVAILABLE');
+        }
+    }
+
     /** @return list<array{path:string,sha256:string,sizeBytes:int}> */
     public function manifest(string $projectId, string $revisionId): array
     {

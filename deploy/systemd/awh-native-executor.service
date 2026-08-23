@@ -9,6 +9,8 @@ Group=awh-hub
 Environment=AWH_HUB_DB_PATH=/var/lib/awh-hub/awh.sqlite
 Environment=AWH_PROJECT_VAULT_ROOT=/var/lib/awh-hub/project-vault
 Environment=AWH_ATTACHMENT_ROOT=/var/lib/awh-hub/attachments
+Environment=AWH_ARTIFACT_ROOT=/var/lib/awh-hub/artifacts
+Environment=AWH_TASK_WORKSPACE_ROOT=/var/lib/awh-hub/task-workspaces
 Environment=AWH_PROVIDER_CREDENTIAL_ROOT=/var/lib/awh-hub/provider-credentials
 ExecStart=/usr/bin/php /opt/awh-hub/control-plane-current/hub/bin/awh-native-executor.php
 NoNewPrivileges=true
@@ -17,5 +19,5 @@ PrivateDevices=true
 PrivateNetwork=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/awh-hub /var/lib/awh-hub/project-vault /var/lib/awh-hub/task-workspaces
+ReadWritePaths=/var/lib/awh-hub /var/lib/awh-hub/project-vault /var/lib/awh-hub/task-workspaces /var/lib/awh-hub/artifacts
 UMask=0077

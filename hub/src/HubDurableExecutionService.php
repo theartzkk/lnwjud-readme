@@ -6,6 +6,7 @@ require_once __DIR__ . '/HubCentralProjectAuthorityMigration.php';
 require_once __DIR__ . '/HubProjectVaultService.php';
 require_once __DIR__ . '/HubNativeAgentService.php';
 require_once __DIR__ . '/HubAttachmentStore.php';
+require_once __DIR__ . '/HubArtifactStore.php';
 require_once __DIR__ . '/HubFoundingMemoryService.php';
 
 /**
@@ -14,11 +15,11 @@ require_once __DIR__ . '/HubFoundingMemoryService.php';
  * to the canonical task and writes progress/result back to that task and its
  * existing conversation stream.
  *
- * The initial VPS executor is deliberately read-only.  It can also complete
- * a persisted native conversation turn, but it never grants a model shell,
- * write, deployment, or network-tool authority.  Mutating work remains in an
- * isolated candidate/worker path until a project-specific capability is
- * explicitly available.
+ * The native executor never receives shell or deployment authority.  Its one
+ * mutating capability is a deliberately narrow deterministic text transform:
+ * it materialises an isolated Vault revision, creates a candidate, records an
+ * object-backed report, then waits for the existing approval authority before
+ * any canonical promotion.
  */
 final class HubDurableExecutionException extends RuntimeException
 {
@@ -31,15 +32,15 @@ final class HubDurableExecutionService
     private const LEASE_SECONDS = 300;
     private const MAX_ATTEMPTS = 3;
 
-    public function __construct(private readonly PDO $pdo, private readonly HubProjectVaultService $vaults, private readonly ?HubNativeAgentService $agent = null) {}
-    public static function fromEnvironment(PDO $pdo): self { return new self($pdo, HubProjectVaultService::fromEnvironment($pdo), new HubNativeAgentService($pdo)); }
+    public function __construct(private readonly PDO $pdo, private readonly HubProjectVaultService $vaults, private readonly ?HubNativeAgentService $agent = null, private readonly ?HubArtifactStore $artifacts = null) {}
+    public static function fromEnvironment(PDO $pdo): self { return new self($pdo, HubProjectVaultService::fromEnvironment($pdo), new HubNativeAgentService($pdo), HubArtifactStore::fromEnvironment()); }
 
     /** Registers only bounded server-native capabilities.  This is an
      * observation, not a blanket authorization to execute arbitrary commands. */
     public function advertise(?string $now = null): void
     {
         $this->assertReady(); $at = self::timestamp($now ?? gmdate('c')); $expires = gmdate('c', strtotime($at) + 300);
-        foreach (['agent.conversation', 'project.read', 'project.search', 'artifact.metadata'] as $capability) $this->pdo->prepare('INSERT INTO control_executor_capabilities(executor_id, executor_kind, capability, version, observed_at, expires_at) VALUES(:id, \'VPS\', :capability, :version, :at, :expires) ON CONFLICT(executor_id, capability) DO UPDATE SET executor_kind=excluded.executor_kind, version=excluded.version, observed_at=excluded.observed_at, expires_at=excluded.expires_at')->execute(['id' => self::EXECUTOR_ID, 'capability' => $capability, 'version' => 'm12', 'at' => $at, 'expires' => $expires]);
+        foreach (['agent.conversation', 'project.read', 'project.search', 'project.mutate.text', 'artifact.object'] as $capability) $this->pdo->prepare('INSERT INTO control_executor_capabilities(executor_id, executor_kind, capability, version, observed_at, expires_at) VALUES(:id, \'VPS\', :capability, :version, :at, :expires) ON CONFLICT(executor_id, capability) DO UPDATE SET executor_kind=excluded.executor_kind, version=excluded.version, observed_at=excluded.observed_at, expires_at=excluded.expires_at')->execute(['id' => self::EXECUTOR_ID, 'capability' => $capability, 'version' => 'm12', 'at' => $at, 'expires' => $expires]);
     }
 
     /** @param array<string,mixed> $checkpoint */
@@ -68,10 +69,12 @@ final class HubDurableExecutionService
             } elseif (($checkpoint['mode'] ?? null) === 'NATIVE_CONVERSATION') {
                 $summary = $this->nativeConversation($claimed, $checkpoint, $at);
                 $this->complete($claimed, $summary, 'ASSISTANT', $at);
+            } elseif (($checkpoint['mode'] ?? null) === 'PROJECT_TEXT_NORMALIZE') {
+                $this->nativeTextNormalize($claimed, $at);
             } else {
                 throw new HubDurableExecutionException('This work needs an approved specialist capability', 'WAITING_FOR_CAPABILITY');
             }
-            return ['executionId' => (string) $claimed['execution_id'], 'taskId' => (string) $claimed['task_id'], 'state' => 'COMPLETED'];
+            return ['executionId' => (string) $claimed['execution_id'], 'taskId' => (string) $claimed['task_id'], 'state' => ($checkpoint['mode'] ?? null) === 'PROJECT_TEXT_NORMALIZE' ? 'WAITING_FOR_APPROVAL' : 'COMPLETED'];
         } catch (HubProjectVaultException|HubDurableExecutionException $error) {
             $this->deferOrFail($claimed, $error->codeName, $at); return ['executionId' => (string) $claimed['execution_id'], 'taskId' => (string) $claimed['task_id'], 'state' => $error->codeName === 'WAITING_FOR_CAPABILITY' ? 'WAITING_FOR_CAPABILITY' : 'FAILED'];
         } catch (Throwable) { $this->deferOrFail($claimed, 'EXECUTION_FAILED', $at); return ['executionId' => (string) $claimed['execution_id'], 'taskId' => (string) $claimed['task_id'], 'state' => 'FAILED']; }
@@ -90,11 +93,11 @@ final class HubDurableExecutionService
         $this->recoverExpired($at); $expires = gmdate('c', strtotime($at) + self::LEASE_SECONDS);
         try {
             $this->pdo->exec('BEGIN IMMEDIATE');
-            $q = $this->pdo->prepare("SELECT e.*, t.goal, t.conversation_id, t.user_id FROM control_task_executions e JOIN control_tasks t ON t.task_id = e.task_id WHERE e.state = 'QUEUED' AND e.executor_kind = 'VPS' AND e.required_capability IN ('agent.conversation', 'project.read') AND t.state IN ('QUEUED', 'WAITING_FOR_WORKER') ORDER BY e.created_at, e.execution_id LIMIT 1"); $q->execute(); $row = $q->fetch();
+            $q = $this->pdo->prepare("SELECT e.*, t.goal, t.conversation_id, t.user_id FROM control_task_executions e JOIN control_tasks t ON t.task_id = e.task_id WHERE e.state = 'QUEUED' AND e.executor_kind = 'VPS' AND e.required_capability IN ('agent.conversation', 'project.read', 'project.mutate.text') AND t.state IN ('QUEUED', 'WAITING_FOR_WORKER') ORDER BY e.created_at, e.execution_id LIMIT 1"); $q->execute(); $row = $q->fetch();
             if (!is_array($row)) { $this->pdo->exec('COMMIT'); return null; }
             $update = $this->pdo->prepare("UPDATE control_task_executions SET state = 'RUNNING', lease_owner = :owner, lease_expires_at = :expires, attempt_count = attempt_count + 1, updated_at = :at WHERE execution_id = :id AND state = 'QUEUED'"); $update->execute(['owner' => self::EXECUTOR_ID, 'expires' => $expires, 'at' => $at, 'id' => $row['execution_id']]);
             if ($update->rowCount() !== 1) { $this->pdo->exec('ROLLBACK'); return null; }
-            $this->pdo->prepare("UPDATE control_tasks SET state = 'RUNNING', progress = 15, updated_at = :at WHERE task_id = :task AND state IN ('QUEUED', 'WAITING_FOR_WORKER')")->execute(['at' => $at, 'task' => $row['task_id']]); $this->event((string) $row['task_id'], 'RUNNING', 15, 'server-native inspection started', $at); $this->pdo->exec('COMMIT'); return $row;
+            $this->pdo->prepare("UPDATE control_tasks SET state = 'RUNNING', progress = 15, updated_at = :at WHERE task_id = :task AND state IN ('QUEUED', 'WAITING_FOR_WORKER')")->execute(['at' => $at, 'task' => $row['task_id']]); $this->event((string) $row['task_id'], 'RUNNING', 15, (string) $row['required_capability'] === 'project.mutate.text' ? 'server-native candidate workspace started' : 'server-native inspection started', $at); $this->pdo->exec('COMMIT'); return $row;
         } catch (Throwable $error) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); if ($error instanceof HubDurableExecutionException) throw $error; throw new HubDurableExecutionException('Server execution claim failed', 'EXECUTION_CLAIM_FAILED'); }
     }
 
@@ -172,6 +175,125 @@ final class HubDurableExecutionService
             if ($error->codeName === 'BUDGET_EXHAUSTED') throw new HubDurableExecutionException('Owner AI budget is exhausted', 'BUDGET_EXHAUSTED');
             return $this->conversationFallback($context);
         }
+    }
+
+    /**
+     * A small but real VPS-native mutation path.  It is intentionally limited
+     * to an explicit text file and deterministic normalisation, so model text
+     * never becomes unrestricted filesystem or shell authority.  Broader code,
+     * document, and media changes continue to wait for their advertised
+     * specialist capabilities.
+     */
+    private function nativeTextNormalize(array $claimed, string $at): void
+    {
+        $projectId = (string) $claimed['project_id']; $taskId = (string) $claimed['task_id']; $userId = (string) $claimed['user_id']; $revision = is_string($claimed['vault_revision_id'] ?? null) ? (string) $claimed['vault_revision_id'] : '';
+        if (!preg_match('/^[0-9a-f-]{36}$/i', $revision)) throw new HubDurableExecutionException('Task revision is invalid', 'EXECUTION_INVALID');
+        $path = $this->normalizationPath((string) $claimed['goal']);
+        $workspace = $this->taskWorkspace((string) $claimed['execution_id']);
+        $candidate = null; $candidateRecorded = false;
+        try {
+            $this->vaults->vault()->materialize($projectId, $revision, $workspace);
+            $source = $this->vaults->vault()->readText($projectId, $revision, $path);
+            if (($source['truncated'] ?? false) === true) throw new HubDurableExecutionException('Text file is too large for the bounded native transform', 'WAITING_FOR_CAPABILITY');
+            $target = $workspace . '/' . (string) $source['path'];
+            $normalised = preg_replace('/\r\n?/', "\n", (string) $source['content']);
+            if (!is_string($normalised)) throw new HubDurableExecutionException('Text transform could not be prepared', 'EXECUTION_FAILED');
+            $normalised = preg_replace('/[ \t]+$/m', '', $normalised);
+            if (!is_string($normalised)) throw new HubDurableExecutionException('Text transform could not be prepared', 'EXECUTION_FAILED');
+            if ($normalised === (string) $source['content']) {
+                $this->complete($claimed, 'ตรวจไฟล์ `' . $source['path'] . '` แล้ว ไม่พบช่องว่างท้ายบรรทัดหรือ line ending ที่ต้องแก้ จึงไม่ได้สร้าง revision ใหม่', 'RESULT', $at);
+                return;
+            }
+            $temporary = dirname($target) . '/.' . basename($target) . '.awh-' . bin2hex(random_bytes(6));
+            if (@file_put_contents($temporary, $normalised, LOCK_EX) === false || !@rename($temporary, $target)) { @unlink($temporary); throw new HubDurableExecutionException('Text transform could not be committed to the task workspace', 'EXECUTION_FAILED'); }
+            @chmod($target, 0640);
+            $candidate = $this->vaults->captureTaskWorkspace($projectId, $workspace, $userId, $taskId, $revision, $at);
+            if (!$candidate['changed']) {
+                $this->complete($claimed, 'ตรวจไฟล์ `' . $source['path'] . '` แล้ว เนื้อหาเท่ากับ revision เดิม จึงไม่ได้สร้าง candidate ใหม่', 'RESULT', $at);
+                return;
+            }
+            $diff = $this->revisionDiff($projectId, $revision, (string) $candidate['revisionId']);
+            $artifactId = $this->storeCandidateReport($claimed, $candidate, $diff, $workspace, $at);
+            $summary = 'จัดระเบียบข้อความใน `' . $source['path'] . '` แล้ว สร้าง revision ผู้สมัครและตรวจความสมบูรณ์ของไฟล์เรียบร้อย รออนุมัติก่อนแทนที่ Project Vault หลัก';
+            $this->completeCandidate($claimed, $candidate, $artifactId, $summary, $at);
+            $candidateRecorded = true;
+        } catch (Throwable $error) {
+            if (is_array($candidate) && ($candidate['changed'] ?? false) === true && !$candidateRecorded) {
+                try { $this->vaults->rejectCandidate($projectId, (string) $candidate['revisionId'], $at); } catch (Throwable) { /* A detached candidate is never canonical and remains auditable for recovery. */ }
+            }
+            throw $error;
+        } finally {
+            $this->removeWorkspace($workspace);
+        }
+    }
+
+    private function normalizationPath(string $goal): string
+    {
+        if (preg_match('/^(?:normalize|normalise|จัดระเบียบ)(?:\s+(?:text|ข้อความ|ไฟล์))?\s+(?:file|ไฟล์)\s+([A-Za-z0-9._\/-]{1,900})\s*$/iu', trim($goal), $match) !== 1) throw new HubDurableExecutionException('This server-native transform needs an explicit file path', 'WAITING_FOR_CAPABILITY');
+        return $match[1];
+    }
+
+    /** @param array{revisionId:string,contentSha256:string,contentBytes:int,fileCount:int,parentRevisionId:string,changed:bool} $candidate @param array{added:list<string>,changed:list<string>,deleted:list<string>} $diff */
+    private function storeCandidateReport(array $claimed, array $candidate, array $diff, string $workspace, string $at): string
+    {
+        $store = $this->artifacts;
+        if ($store === null) throw new HubDurableExecutionException('Artifact object storage is unavailable', 'ARTIFACT_STORAGE_UNAVAILABLE');
+        $artifactId = self::uuidFromBytes(random_bytes(16));
+        $report = ['schemaVersion' => 1, 'kind' => 'project-candidate', 'projectId' => (string) $claimed['project_id'], 'taskId' => (string) $claimed['task_id'], 'baseRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'contentSha256' => $candidate['contentSha256'], 'diff' => $diff, 'qa' => ['workspaceCapture' => 'PASS', 'manifestIntegrity' => 'PASS'], 'createdAt' => $at];
+        $file = $workspace . '/.awh-candidate-report.json';
+        if (@file_put_contents($file, json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), LOCK_EX) === false) throw new HubDurableExecutionException('Candidate report could not be created', 'ARTIFACT_STORAGE_FAILED');
+        try { $stored = $store->storeFile($artifactId, $file); } catch (HubArtifactStoreException $error) { throw new HubDurableExecutionException('Candidate artifact storage is unavailable', $error->codeName); }
+        try {
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $this->pdo->prepare('INSERT INTO control_artifacts(artifact_id, task_id, project_id, kind, name, sha256, size_bytes, relative_ref, created_at) VALUES(:id, :task, :project, :kind, :name, :sha, :size, NULL, :at)')->execute(['id' => $artifactId, 'task' => $claimed['task_id'], 'project' => $claimed['project_id'], 'kind' => 'project-candidate', 'name' => 'candidate-' . substr((string) $candidate['revisionId'], 0, 8) . '.json', 'sha' => $stored['sha256'], 'size' => $stored['sizeBytes'], 'at' => $at]);
+            $this->pdo->prepare('INSERT INTO control_artifact_objects(artifact_id, storage_key, mime_type, retained_until, deleted_at) VALUES(:id, :key, :mime, NULL, NULL)')->execute(['id' => $artifactId, 'key' => $stored['storageKey'], 'mime' => 'application/json']);
+            $this->pdo->exec('COMMIT'); return $artifactId;
+        } catch (Throwable $error) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack(); $store->remove($stored['storageKey']);
+            throw $error instanceof HubDurableExecutionException ? $error : new HubDurableExecutionException('Candidate artifact could not be saved', 'ARTIFACT_STORAGE_FAILED');
+        }
+    }
+
+    /** @param array{revisionId:string,contentSha256:string,contentBytes:int,fileCount:int,parentRevisionId:string,changed:bool} $candidate */
+    private function completeCandidate(array $claimed, array $candidate, string $artifactId, string $summary, string $at): void
+    {
+        try {
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $done = $this->pdo->prepare("UPDATE control_task_executions SET state = 'COMPLETED', lease_expires_at = NULL, updated_at = :at, last_error_code = NULL WHERE execution_id = :id AND state = 'RUNNING' AND lease_owner = :owner"); $done->execute(['at' => $at, 'id' => $claimed['execution_id'], 'owner' => self::EXECUTOR_ID]); if ($done->rowCount() !== 1) throw new HubDurableExecutionException('Server execution lease was lost', 'EXECUTION_LEASE_LOST');
+            $this->pdo->prepare("UPDATE control_tasks SET state = 'WAITING_FOR_APPROVAL', progress = 90, result_summary = :summary, failure_code = NULL, lease_expires_at = NULL, updated_at = :at WHERE task_id = :task")->execute(['summary' => $summary, 'at' => $at, 'task' => $claimed['task_id']]);
+            $scope = json_encode(['taskId' => (string) $claimed['task_id'], 'projectId' => (string) $claimed['project_id'], 'expectedActiveRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'artifactId' => $artifactId], JSON_THROW_ON_ERROR);
+            $this->pdo->prepare("INSERT INTO control_approvals(approval_id, task_id, action, scope_json, status, expires_at, decided_at) VALUES(:id, :task, 'project.revision.promote', :scope, 'PENDING', :expires, NULL)")->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'task' => $claimed['task_id'], 'scope' => $scope, 'expires' => gmdate('c', strtotime($at) + 86400)]);
+            $this->event((string) $claimed['task_id'], 'WAITING_FOR_APPROVAL', 90, 'candidate revision is ready for owner approval', $at);
+            $this->appendConversationMessage((string) $claimed['conversation_id'], (string) $claimed['task_id'], 'RESULT', $summary . ' [ดูรายงาน candidate]', $at);
+            $this->pdo->exec('COMMIT');
+        } catch (Throwable $error) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); if ($error instanceof HubDurableExecutionException) throw $error; throw new HubDurableExecutionException('Candidate approval could not be recorded', 'EXECUTION_FAILED'); }
+    }
+
+    /** @return array{added:list<string>,changed:list<string>,deleted:list<string>} */
+    private function revisionDiff(string $projectId, string $baseRevision, string $candidateRevision): array
+    {
+        $read = function (string $revision) use ($projectId): array { $q = $this->pdo->prepare('SELECT manifest_json FROM control_project_vault_revisions WHERE project_id = :project AND revision_id = :revision'); $q->execute(['project' => $projectId, 'revision' => $revision]); $json = $q->fetchColumn(); $parsed = is_string($json) ? json_decode($json, true, 64) : null; if (!is_array($parsed) || !is_array($parsed['files'] ?? null)) throw new HubDurableExecutionException('Project revision manifest is invalid', 'EXECUTION_FAILED'); $out = []; foreach ($parsed['files'] as $file) if (is_array($file) && is_string($file['path'] ?? null) && is_string($file['sha256'] ?? null)) $out[$file['path']] = $file['sha256']; return $out; };
+        $base = $read($baseRevision); $candidate = $read($candidateRevision); $added = []; $changed = []; $deleted = [];
+        foreach ($candidate as $path => $sha) { if (!isset($base[$path])) $added[] = $path; elseif (!hash_equals($base[$path], $sha)) $changed[] = $path; }
+        foreach ($base as $path => $_) if (!isset($candidate[$path])) $deleted[] = $path;
+        return ['added' => $added, 'changed' => $changed, 'deleted' => $deleted];
+    }
+
+    private function taskWorkspace(string $executionId): string
+    {
+        self::uuid($executionId); $root = getenv('AWH_TASK_WORKSPACE_ROOT'); if (!is_string($root) || $root === '') $root = '/var/lib/awh-hub/task-workspaces';
+        if (str_contains($root, "\0") || !str_starts_with($root, '/') || !is_dir($root) || is_link($root) || (((int) (@stat($root)['mode'] ?? 0) & 0o022) !== 0)) throw new HubDurableExecutionException('Task workspace storage is unavailable', 'TASK_WORKSPACE_UNAVAILABLE');
+        return rtrim($root, '/') . '/' . strtolower($executionId);
+    }
+
+    private function removeWorkspace(string $workspace): void
+    {
+        if ($workspace === '' || !is_dir($workspace) || is_link($workspace)) return;
+        $root = rtrim((string) (getenv('AWH_TASK_WORKSPACE_ROOT') ?: '/var/lib/awh-hub/task-workspaces'), '/');
+        if (!str_starts_with($workspace, $root . '/')) return;
+        $items = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($workspace, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
+        foreach ($items as $item) { if (!$item instanceof SplFileInfo) continue; $path = $item->getPathname(); if ($item->isLink() || $item->isFile()) @unlink($path); elseif ($item->isDir()) @rmdir($path); }
+        @rmdir($workspace);
     }
 
     /** @return list<array{role:string,body:string}> */
