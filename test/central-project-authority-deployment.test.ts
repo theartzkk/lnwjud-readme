@@ -23,9 +23,9 @@ test('M12 Central Project Authority is an explicit v11-to-v12 release with a pri
   assert.match(result.stdout, /M12_ROLLBACK=restore-db-v11,pointer,web-pointer,nginx,service-health,m3d-m3e-m4-m7-m11-regression/);
   assert.match(result.stdout, /M12_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL/);
 
-  const [local, remoteSource, migration, vault, durable, artifactStore, controlService, controlRouter, serviceUnit, timerUnit] = await Promise.all([
+  const [local, remoteSource, migration, vault, vaultService, durable, artifactStore, controlService, controlRouter, serviceUnit, timerUnit] = await Promise.all([
     readFile(deploy, 'utf8'), readFile(remote, 'utf8'), readFile(join(root, 'hub/migrations/011_central_project_authority.sql'), 'utf8'),
-    readFile(join(root, 'hub/src/HubProjectVault.php'), 'utf8'), readFile(join(root, 'hub/src/HubDurableExecutionService.php'), 'utf8'), readFile(join(root, 'hub/src/HubArtifactStore.php'), 'utf8'), readFile(join(root, 'hub/src/HubControlPlaneService.php'), 'utf8'), readFile(join(root, 'hub/src/HubControlPlaneRouter.php'), 'utf8'),
+    readFile(join(root, 'hub/src/HubProjectVault.php'), 'utf8'), readFile(join(root, 'hub/src/HubProjectVaultService.php'), 'utf8'), readFile(join(root, 'hub/src/HubDurableExecutionService.php'), 'utf8'), readFile(join(root, 'hub/src/HubArtifactStore.php'), 'utf8'), readFile(join(root, 'hub/src/HubControlPlaneService.php'), 'utf8'), readFile(join(root, 'hub/src/HubControlPlaneRouter.php'), 'utf8'),
     readFile(join(root, 'deploy/systemd/awh-native-executor.service'), 'utf8'), readFile(join(root, 'deploy/systemd/awh-native-executor.timer'), 'utf8'),
   ]);
   assert.match(local, /--central-project-authority/);
@@ -54,6 +54,10 @@ test('M12 Central Project Authority is an explicit v11-to-v12 release with a pri
   assert.match(durable, /PROJECT_TEXT_NORMALIZE/);
   assert.match(durable, /project\.revision\.promote/);
   assert.match(vault, /ingestDirectory/);
+  assert.match(vaultService, /awh_vault_promote/);
+  assert.match(vaultService, /function savepoint/);
+  assert.match(vaultService, /rollbackSavepoint/);
+  assert.doesNotMatch(vaultService, /ownsTransaction/);
   assert.match(artifactStore, /opaque/);
   assert.doesNotMatch(durable, /(?:shell_exec\(|proc_open\(|popen\()/);
   assert.match(serviceUnit, /User=awh-hub/);

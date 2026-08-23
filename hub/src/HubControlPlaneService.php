@@ -277,7 +277,7 @@ final class HubControlPlaneService
             $this->pdo->prepare('INSERT INTO control_product_settings(setting_key, value_json, revision_no, updated_by_user_id, updated_at) VALUES(:key, :value, :revision, :user, :at) ON CONFLICT(setting_key) DO UPDATE SET value_json=excluded.value_json, revision_no=excluded.revision_no, updated_by_user_id=excluded.updated_by_user_id, updated_at=excluded.updated_at')->execute(['key' => $key, 'value' => $encoded, 'revision' => $revision, 'user' => $userId, 'at' => $at]);
             $this->pdo->prepare('INSERT INTO control_product_setting_revisions(revision_id, setting_key, revision_no, value_json, updated_by_user_id, created_at) VALUES(:id, :key, :revision, :value, :user, :at)')->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'key' => $key, 'revision' => $revision, 'value' => $encoded, 'user' => $userId, 'at' => $at]);
             $this->pdo->exec('COMMIT');
-        } catch (Throwable $error) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); throw $error instanceof HubControlPlaneException ? $error : new HubControlPlaneException('Product setting could not be saved', 'PRODUCT_SETTING_FAILED'); }
+        } catch (Throwable $error) { self::rollbackImmediate($this->pdo); throw $error instanceof HubControlPlaneException ? $error : new HubControlPlaneException('Product setting could not be saved', 'PRODUCT_SETTING_FAILED'); }
         return ['schemaVersion' => 2, 'settings' => $this->productSettingsForUser($userId)];
     }
 
@@ -655,7 +655,7 @@ final class HubControlPlaneService
         // is never treated as an unbounded internal log in the normal UI.
         $body = self::conversationText($body); if ($body === '') $body = 'ผมรับข้อความนี้ไว้แล้ว แต่ยังสรุปผลที่เชื่อถือได้ไม่ได้';
         try { $this->pdo->exec('BEGIN IMMEDIATE'); $this->appendConversationMessage((string) $request['conversationId'], null, 'ASSISTANT', $body, self::timestamp(gmdate('c'))); $this->pdo->exec('COMMIT'); }
-        catch (Throwable) { try { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); } catch (Throwable) {} }
+        catch (Throwable) { self::rollbackImmediate($this->pdo); }
     }
 
     /** @return list<array{role:string,body:string}> */
@@ -934,7 +934,7 @@ final class HubControlPlaneService
             $this->pdo->prepare("UPDATE control_workers SET state = 'READY', busy_task_id = NULL, last_seen_at = :at WHERE device_id = :device")->execute(['at' => $at, 'device' => strtolower($deviceId)]);
             $eventState = $terminal ? 'FAILED' : 'WAITING_FOR_WORKER'; $eventId = $this->event((string) $row['task_id'], $eventState, 0, $terminal ? 'Codex execution failed safely' : 'waiting for Codex capability', $at); $this->syncConversationEvent((string) $row['task_id'], $eventId, $eventState, 0, $terminal ? 'Codex ทำงานไม่สำเร็จอย่างปลอดภัย และไม่ได้เปลี่ยน Project หลัก' : 'Codex ยังไม่พร้อม งานถูกเก็บไว้และจะทำต่ออัตโนมัติเมื่อ worker ที่เหมาะสมกลับมา', null, $at);
             $this->pdo->exec('COMMIT');
-        } catch (Throwable $error) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Central task could not be deferred', 'TASK_UPDATE_FAILED'); }
+        } catch (Throwable $error) { self::rollbackImmediate($this->pdo); if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Central task could not be deferred', 'TASK_UPDATE_FAILED'); }
         return $this->taskById((string) $row['task_id'], (string) $row['user_id']);
     }
 
@@ -976,7 +976,7 @@ final class HubControlPlaneService
             $this->pdo->exec('BEGIN IMMEDIATE');
             $this->pdo->prepare('INSERT INTO control_artifacts(artifact_id, task_id, project_id, kind, name, sha256, size_bytes, relative_ref, created_at) VALUES(:id, :task, :project, :kind, :name, :sha, :size, NULL, :at)')->execute(['id' => $artifactId, 'task' => $row['task_id'], 'project' => $row['project_id'], 'kind' => 'project-candidate', 'name' => 'candidate-' . substr((string) $candidate['revisionId'], 0, 8) . '.json', 'sha' => $stored['sha256'], 'size' => $stored['sizeBytes'], 'at' => $at]);
             $this->pdo->prepare('INSERT INTO control_artifact_objects(artifact_id, storage_key, mime_type, retained_until, deleted_at) VALUES(:id, :key, :mime, NULL, NULL)')->execute(['id' => $artifactId, 'key' => $stored['storageKey'], 'mime' => 'application/json']); $this->pdo->exec('COMMIT'); return $artifactId;
-        } catch (Throwable $error) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); if (isset($stored) && is_array($stored)) $store->remove($stored['storageKey'] ?? null); if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Candidate artifact could not be saved', 'ARTIFACT_STORAGE_FAILED'); }
+        } catch (Throwable $error) { self::rollbackImmediate($this->pdo); if (isset($stored) && is_array($stored)) $store->remove($stored['storageKey'] ?? null); if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Candidate artifact could not be saved', 'ARTIFACT_STORAGE_FAILED'); }
         finally { @unlink($file); }
     }
 
@@ -997,7 +997,7 @@ final class HubControlPlaneService
                 $eventId = $this->event((string) $row['task_id'], 'WAITING_FOR_APPROVAL', 90, 'Codex candidate revision is ready for owner approval', $at); $this->syncConversationEvent((string) $row['task_id'], $eventId, 'WAITING_FOR_APPROVAL', 90, 'Codex candidate พร้อมตรวจและรออนุมัติ', $summary, $at);
             }
             $this->pdo->prepare("UPDATE control_workers SET state = 'READY', busy_task_id = NULL, last_seen_at = :at WHERE busy_task_id = :task")->execute(['at' => $at, 'task' => $row['task_id']]); $this->pdo->exec('COMMIT');
-        } catch (Throwable $error) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Central task completion failed', 'TASK_UPDATE_FAILED'); }
+        } catch (Throwable $error) { self::rollbackImmediate($this->pdo); if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Central task completion failed', 'TASK_UPDATE_FAILED'); }
     }
 
     /** @return array{added:list<string>,changed:list<string>,deleted:list<string>} */
@@ -1251,7 +1251,7 @@ final class HubControlPlaneService
                 HubFoundingMemoryMigration::reconcileProjectSourceTruth($this->pdo, $projectId, $at);
             }
             $this->pdo->exec('COMMIT');
-        } catch (Throwable $error) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Project could not be registered', 'PROJECT_REGISTER_FAILED'); }
+        } catch (Throwable $error) { self::rollbackImmediate($this->pdo); if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Project could not be registered', 'PROJECT_REGISTER_FAILED'); }
         return ['schemaVersion' => 2, 'project' => ['projectId' => $projectId, 'name' => $name, 'type' => $type, 'sourceRevision' => $revision, 'observedAt' => $at]];
     }
 
@@ -1680,5 +1680,7 @@ final class HubControlPlaneService
     private static function optionalText(mixed $value, int $max): ?string { if ($value === null) return null; if (!is_string($value) || strlen($value) > $max || preg_match('/[\x00-\x1F\x7F]/', $value)) throw new HubControlPlaneException('Text field is invalid', 'FIELD_INVALID'); return trim($value); }
     private static function portableText(string $value, string $field, int $max): string { $value = trim($value); if ($value === '' || strlen($value) > $max || preg_match('/[\x00-\x1F\x7F]/', $value) || str_contains($value, '/') || str_contains($value, '\\') || preg_match('#^(?:[A-Za-z]:|~|https?://)#i', $value)) throw new HubControlPlaneException($field . ' is invalid', 'FIELD_INVALID'); return $value; }
     private static function timestamp(string $value): string { if (strtotime($value) === false) throw new HubControlPlaneException('Timestamp is invalid', 'DATE_INVALID'); return $value; }
+    /** PDO does not report transactions opened by SQLite BEGIN IMMEDIATE. */
+    private static function rollbackImmediate(PDO $pdo): void { try { $pdo->exec('ROLLBACK'); } catch (Throwable) {} }
     private static function base64url(string $bytes): string { return rtrim(strtr(base64_encode($bytes), '+/', '-_'), '='); }
 }

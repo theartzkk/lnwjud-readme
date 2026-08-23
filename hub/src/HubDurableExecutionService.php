@@ -98,7 +98,7 @@ final class HubDurableExecutionService
             $update = $this->pdo->prepare("UPDATE control_task_executions SET state = 'RUNNING', lease_owner = :owner, lease_expires_at = :expires, attempt_count = attempt_count + 1, updated_at = :at WHERE execution_id = :id AND state = 'QUEUED'"); $update->execute(['owner' => self::EXECUTOR_ID, 'expires' => $expires, 'at' => $at, 'id' => $row['execution_id']]);
             if ($update->rowCount() !== 1) { $this->pdo->exec('ROLLBACK'); return null; }
             $this->pdo->prepare("UPDATE control_tasks SET state = 'RUNNING', progress = 15, updated_at = :at WHERE task_id = :task AND state IN ('QUEUED', 'WAITING_FOR_WORKER')")->execute(['at' => $at, 'task' => $row['task_id']]); $this->event((string) $row['task_id'], 'RUNNING', 15, (string) $row['required_capability'] === 'project.mutate.text' ? 'server-native candidate workspace started' : 'server-native inspection started', $at); $this->pdo->exec('COMMIT'); return $row;
-        } catch (Throwable $error) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); if ($error instanceof HubDurableExecutionException) throw $error; throw new HubDurableExecutionException('Server execution claim failed', 'EXECUTION_CLAIM_FAILED'); }
+        } catch (Throwable $error) { $this->rollbackImmediate(); if ($error instanceof HubDurableExecutionException) throw $error; throw new HubDurableExecutionException('Server execution claim failed', 'EXECUTION_CLAIM_FAILED'); }
     }
 
     private function complete(array $claimed, string $summary, string $messageKind, string $at): void
@@ -107,7 +107,7 @@ final class HubDurableExecutionService
             $this->pdo->exec('BEGIN IMMEDIATE');
             $update = $this->pdo->prepare("UPDATE control_task_executions SET state = 'COMPLETED', lease_expires_at = NULL, updated_at = :at, last_error_code = NULL WHERE execution_id = :id AND state = 'RUNNING' AND lease_owner = :owner"); $update->execute(['at' => $at, 'id' => $claimed['execution_id'], 'owner' => self::EXECUTOR_ID]); if ($update->rowCount() !== 1) throw new HubDurableExecutionException('Server execution lease was lost', 'EXECUTION_LEASE_LOST');
             $this->pdo->prepare("UPDATE control_tasks SET state = 'COMPLETED', progress = 100, result_summary = :summary, failure_code = NULL, lease_expires_at = NULL, updated_at = :at WHERE task_id = :task")->execute(['summary' => $summary, 'at' => $at, 'task' => $claimed['task_id']]); $this->event((string) $claimed['task_id'], 'COMPLETED', 100, 'server-native execution completed', $at); $this->appendConversationMessage((string) $claimed['conversation_id'], (string) $claimed['task_id'], $messageKind, $summary, $at); $this->pdo->exec('COMMIT');
-        } catch (Throwable $error) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); if ($error instanceof HubDurableExecutionException) throw $error; throw new HubDurableExecutionException('Server execution could not be completed', 'EXECUTION_FAILED'); }
+        } catch (Throwable $error) { $this->rollbackImmediate(); if ($error instanceof HubDurableExecutionException) throw $error; throw new HubDurableExecutionException('Server execution could not be completed', 'EXECUTION_FAILED'); }
     }
 
     private function deferOrFail(array $claimed, string $code, string $at): void
@@ -120,7 +120,7 @@ final class HubDurableExecutionService
             $taskState = $terminal ? 'FAILED' : 'WAITING_FOR_WORKER'; $summary = $wait ? 'งานถูกเก็บไว้และกำลังรอความสามารถที่เหมาะสม' : null;
             $this->pdo->prepare('UPDATE control_tasks SET state = :state, progress = 0, failure_code = :code, result_summary = COALESCE(:summary, result_summary), lease_expires_at = NULL, updated_at = :at WHERE task_id = :task')->execute(['state' => $taskState, 'code' => $code, 'summary' => $summary, 'at' => $at, 'task' => $claimed['task_id']]); $this->event((string) $claimed['task_id'], $taskState, 0, $wait ? 'waiting for a safe execution capability' : 'server-native execution failed', $at);
             $this->appendConversationMessage((string) $claimed['conversation_id'], (string) $claimed['task_id'], $terminal ? 'FAILURE' : 'PROGRESS', $terminal ? 'งานนี้หยุดไว้โดยปลอดภัย และยังไม่ได้เลื่อนผลลัพธ์ทับ Project หลัก' : ($code === 'BUDGET_EXHAUSTED' ? 'งบ AI ถึงขีดจำกัด งานนี้ถูกเก็บไว้และจะไม่สูญหาย' : 'งานถูกเก็บไว้และกำลังรอความสามารถที่เหมาะสม'), $at); $this->pdo->exec('COMMIT');
-        } catch (Throwable) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); }
+        } catch (Throwable) { $this->rollbackImmediate(); }
     }
 
     /** @param array{revisionId:string,contentSha256:string,files:list<array{path:string,sizeBytes:int}>} $context */
@@ -249,7 +249,7 @@ final class HubDurableExecutionService
             $this->pdo->prepare('INSERT INTO control_artifact_objects(artifact_id, storage_key, mime_type, retained_until, deleted_at) VALUES(:id, :key, :mime, NULL, NULL)')->execute(['id' => $artifactId, 'key' => $stored['storageKey'], 'mime' => 'application/json']);
             $this->pdo->exec('COMMIT'); return $artifactId;
         } catch (Throwable $error) {
-            if ($this->pdo->inTransaction()) $this->pdo->rollBack(); $store->remove($stored['storageKey']);
+            $this->rollbackImmediate(); $store->remove($stored['storageKey']);
             throw $error instanceof HubDurableExecutionException ? $error : new HubDurableExecutionException('Candidate artifact could not be saved', 'ARTIFACT_STORAGE_FAILED');
         }
     }
@@ -266,7 +266,7 @@ final class HubDurableExecutionService
             $this->event((string) $claimed['task_id'], 'WAITING_FOR_APPROVAL', 90, 'candidate revision is ready for owner approval', $at);
             $this->appendConversationMessage((string) $claimed['conversation_id'], (string) $claimed['task_id'], 'RESULT', $summary . ' [ดูรายงาน candidate]', $at);
             $this->pdo->exec('COMMIT');
-        } catch (Throwable $error) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); if ($error instanceof HubDurableExecutionException) throw $error; throw new HubDurableExecutionException('Candidate approval could not be recorded', 'EXECUTION_FAILED'); }
+        } catch (Throwable $error) { $this->rollbackImmediate(); if ($error instanceof HubDurableExecutionException) throw $error; throw new HubDurableExecutionException('Candidate approval could not be recorded', 'EXECUTION_FAILED'); }
     }
 
     /** @return array{added:list<string>,changed:list<string>,deleted:list<string>} */
@@ -350,6 +350,8 @@ final class HubDurableExecutionService
     }
 
     private function event(string $task, string $state, int $progress, string $message, string $at): void { $this->pdo->prepare('INSERT INTO control_task_events(event_id, task_id, state, progress, message, occurred_at) VALUES(:id, :task, :state, :progress, :message, :at)')->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'task' => $task, 'state' => $state, 'progress' => $progress, 'message' => $message, 'at' => $at]); }
+    /** PDO does not report transactions opened by SQLite BEGIN IMMEDIATE. */
+    private function rollbackImmediate(): void { try { $this->pdo->exec('ROLLBACK'); } catch (Throwable) {} }
     private function assertReady(): void { try { HubCentralProjectAuthorityMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/011_central_project_authority.sql'); } catch (HubCentralProjectAuthorityMigrationException $error) { throw new HubDurableExecutionException('Central Project Authority is not ready', $error->codeName); } }
     private static function uuid(string $value): string { if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $value) !== 1) throw new HubDurableExecutionException('Execution reference is invalid', 'EXECUTION_INVALID'); return $value; }
     private static function uuidFromBytes(string $bytes): string { $bytes[6] = chr((ord($bytes[6]) & 0x0f) | 0x40); $bytes[8] = chr((ord($bytes[8]) & 0x3f) | 0x80); return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4)); }
