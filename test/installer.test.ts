@@ -48,6 +48,8 @@ test('AWH packaging configuration keeps Squirrel per-user behavior and public ar
   assert.match(forge, /const icon = targetPlatform/);
   assert.match(forge, /\n    icon,\n/);
   assert.match(forge, /noMsi:\s*true/);
+  assert.match(forge, /\^\\\/dist-web\(\$\|\\\/\)/);
+  assert.match(forge, /\^\\\/out\(\$\|\\\/\)/);
   assert.match(desktop, /SQUIRREL_STARTUP/);
   assert.match(desktop, /electron-squirrel-startup/);
   assert.match(packagedMcpVerifier, /ELECTRON_RUN_AS_NODE/);
