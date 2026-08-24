@@ -851,13 +851,13 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     await writeSmokeMarker({ ok: false, stage: 'renderer-check' });
     const result = await win.webContents.executeJavaScript(`(async () => {
       const apiReady = typeof window.artAgent?.getOverview === 'function';
-      const requiredDom = ['workspace', 'git-output', 'perm-write', 'doctor-runtime', 'remote-state', 'remote-connect', 'remote-stop', 'enrollment-state', 'enrollment-code', 'enrollment-pair', 'project-list', 'autopilot-state', 'autopilot-task-list', 'artifact-list', 'continuity-state', 'autopilot-goal', 'autopilot-goal-center'].every((id) => Boolean(document.getElementById(id)));
+      const requiredDom = ['desktop-work-thread', 'desktop-work-input', 'desktop-work-form', 'desktop-work-submit', 'desktop-work-project', 'desktop-work-status', 'project-list', 'artifact-list', 'enrollment-state'].every((id) => Boolean(document.getElementById(id)));
       const uiPaths = Object.fromEntries(['overview', 'projects', 'autopilot', 'artifacts', 'memory'].map((section) => {
         document.querySelector('.nav[data-section="' + section + '"]')?.click();
         return [section, document.getElementById('section-' + section)?.classList.contains('active') === true];
       }));
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }));
-      const cmdKReady = document.activeElement?.id === 'autopilot-goal-center' && document.getElementById('section-autopilot')?.classList.contains('active') === true;
+      const cmdKReady = document.activeElement?.id === 'desktop-work-input' && document.getElementById('section-autopilot')?.classList.contains('active') === true;
       document.querySelector('.nav[data-section="overview"]')?.click();
       const overview = apiReady ? await window.artAgent.getOverview() : null;
       return {

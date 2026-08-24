@@ -43,8 +43,12 @@ test('malformed or symlinked device metadata fails closed and never regenerates'
     await rm(deviceIdentityPath(f.dataDir));
     const outside = join(f.root, 'outside.json');
     await writeFile(outside, '{}', 'utf8');
-    await symlink(outside, deviceIdentityPath(f.dataDir));
-    await assert.rejects(() => readDeviceIdentity(f.dataDir), (error: unknown) => error instanceof DeviceIdentityError);
+    try {
+      await symlink(outside, deviceIdentityPath(f.dataDir));
+      await assert.rejects(() => readDeviceIdentity(f.dataDir), (error: unknown) => error instanceof DeviceIdentityError);
+    } catch (error) {
+      if (!(process.platform === 'win32' && (error as NodeJS.ErrnoException).code === 'EPERM')) throw error;
+    }
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 

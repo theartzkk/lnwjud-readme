@@ -101,8 +101,12 @@ test('rejects malformed, secret-looking, absolute-path, and symlink manifests', 
     await assert.rejects(() => readProjectManifest(f.project), /portable/i);
     await rm(join(f.project, PROJECT_MANIFEST_PATH));
     await writeFile(join(f.root, 'outside.json'), '{}');
-    await symlink(join(f.root, 'outside.json'), join(f.project, PROJECT_MANIFEST_PATH));
-    await assert.rejects(() => initializeProject(f.project), /symlink|escapes the registered workspace/i);
+    try {
+      await symlink(join(f.root, 'outside.json'), join(f.project, PROJECT_MANIFEST_PATH));
+      await assert.rejects(() => initializeProject(f.project), /symlink|escapes the registered workspace/i);
+    } catch (error) {
+      if (!(process.platform === 'win32' && (error as NodeJS.ErrnoException).code === 'EPERM')) throw error;
+    }
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 

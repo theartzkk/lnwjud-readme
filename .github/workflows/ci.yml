@@ -28,7 +28,10 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run typecheck
-      - run: npm test
+      - if: runner.os == 'Windows'
+        run: npm run test:windows
+      - if: runner.os != 'Windows'
+        run: npm test
       - run: npm run build
 
   desktop-runtime-linux:
@@ -115,8 +118,17 @@ jobs:
           Write-Host "Electron runtime: $electron"
           Write-Host "Squirrel 7-Zip helper: $sevenZip"
       - run: npm run typecheck
-      - run: npm test
+      - run: npm run test:windows
       - run: npm run desktop:make
+      - name: Verify packaged Windows runtime
+        run: npm run desktop:verify:windows
+      - name: Create portable Windows archive
+        shell: pwsh
+        run: |
+          Remove-Item AWH-Windows-x64.zip -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path out/AWH-win32-x64 -DestinationPath AWH-Windows-x64.zip -CompressionLevel Optimal
+          if (-not (Test-Path AWH-Windows-x64.zip)) { throw 'Portable Windows archive missing' }
+          Get-FileHash AWH-Windows-x64.zip -Algorithm SHA256 | Format-List
       - name: Resolve release metadata
         id: version
         shell: pwsh
@@ -187,6 +199,20 @@ jobs:
             out/make/**/AWH-SHA256.txt
           if-no-files-found: error
           retention-days: 14
+      - name: Upload Windows portable artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: AWH-Windows-x64
+          path: AWH-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload Windows portable artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: AWH-Windows-x64
+          path: AWH-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14
 
   desktop-package-macos:
     runs-on: macos-14
@@ -197,6 +223,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install Electron runtime binary explicitly
+        run: node node_modules/electron/install.js
       - run: npm run typecheck
       - run: npm test
       - name: Package macOS x64

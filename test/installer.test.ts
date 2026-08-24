@@ -65,7 +65,8 @@ test('packaged MCP PowerShell verifier parses on Windows', { skip: process.platf
     "[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path '.github/scripts/verify-packaged-mcp.ps1'), [ref]$tokens, [ref]$errors) | Out-Null",
     "if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }",
   ].join('; ');
-  const result = spawnSync('pwsh', ['-NoProfile', '-Command', command], {
+  const shell = process.env.AWH_TEST_POWERSHELL?.trim() || 'powershell.exe';
+  const result = spawnSync(shell, ['-NoProfile', '-Command', command], {
     cwd: repoRoot,
     encoding: 'utf8',
   });

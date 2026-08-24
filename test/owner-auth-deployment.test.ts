@@ -8,7 +8,7 @@ import test from 'node:test';
 
 const execFileAsync = promisify(execFile);
 const ROOT = process.cwd();
-const PHP = '/opt/local/bin/php';
+const PHP = process.env.AWH_TEST_PHP?.trim() || 'php';
 const helper = join(ROOT, 'deploy/nginx/transform-owner-auth.php');
 const originRenderer = join(ROOT, 'deploy/nginx/render-control-plane-include.php');
 const HOST = '157-85-108-142.sslip.io';

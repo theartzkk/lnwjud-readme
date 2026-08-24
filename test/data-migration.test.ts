@@ -103,8 +103,12 @@ test('fails closed for conflicts, invalid settings, corrupt checkpoints, and sym
   try {
     await mkdir(symlinkFixture.legacy, { recursive: true });
     await writeFile(join(symlinkFixture.root, 'outside.json'), '{}');
-    await symlink(join(symlinkFixture.root, 'outside.json'), join(symlinkFixture.legacy, 'settings.json'));
-    assert.equal((await inspectDataMigration({ legacyDir: symlinkFixture.legacy, awhDir: symlinkFixture.awh })).state, 'MIGRATION_INVALID_LEGACY');
+    try {
+      await symlink(join(symlinkFixture.root, 'outside.json'), join(symlinkFixture.legacy, 'settings.json'));
+      assert.equal((await inspectDataMigration({ legacyDir: symlinkFixture.legacy, awhDir: symlinkFixture.awh })).state, 'MIGRATION_INVALID_LEGACY');
+    } catch (error) {
+      if (!(process.platform === 'win32' && (error as NodeJS.ErrnoException).code === 'EPERM')) throw error;
+    }
   } finally { await clean(symlinkFixture.root); }
 
   const unknown = await fixture();
