@@ -691,6 +691,7 @@ final class HubControlPlaneService
                 return;
             } catch (Throwable $error) {
                 self::rollbackImmediate($this->pdo); $lastError = $error;
+                if (!self::isSqliteBusy($error)) throw new HubControlPlaneException('AI response could not be saved', 'CONVERSATION_RESPONSE_PERSIST_FAILED', ['retryable' => false]);
                 if ($attempt < 7) usleep(50000 * (1 << min($attempt, 4)));
             }
         }
@@ -1448,7 +1449,7 @@ final class HubControlPlaneService
 
     private function appendConversationMessage(string $conversationId, ?string $taskId, string $kind, string $body, string $at, ?string $idempotency = null, ?string $sourceEventId = null): string
     {
-        if (!in_array($kind, self::CONVERSATION_KINDS, true) || $body === '' || strlen($body) > 800 || preg_match('/[\x00-\x1f\x7f]/', $body)) throw new HubControlPlaneException('Conversation message is invalid', 'FIELD_INVALID');
+        if (!in_array($kind, self::CONVERSATION_KINDS, true) || $body === '' || strlen($body) > 800 || self::hasUnsafeConversationControl($body)) throw new HubControlPlaneException('Conversation message is invalid', 'FIELD_INVALID');
         $sequence = $this->pdo->prepare('SELECT COALESCE(MAX(sequence_no), 0) + 1 FROM control_conversation_messages WHERE conversation_id = :conversation'); $sequence->execute(['conversation' => $conversationId]);
         $messageId = self::uuidFromBytes(random_bytes(16));
         $this->pdo->prepare('INSERT INTO control_conversation_messages(message_id, conversation_id, task_id, message_kind, sequence_no, body, idempotency_key, source_event_id, metadata_json, created_at) VALUES(:id, :conversation, :task, :kind, :sequence, :body, :key, :event, NULL, :at)')->execute(['id' => $messageId, 'conversation' => $conversationId, 'task' => $taskId, 'kind' => $kind, 'sequence' => (int) $sequence->fetchColumn(), 'body' => $body, 'key' => $idempotency, 'event' => $sourceEventId, 'at' => $at]);
@@ -1459,8 +1460,22 @@ final class HubControlPlaneService
     /** Keep persisted Thai/Unicode answers within the schema's byte limit without splitting a code point. */
     private static function conversationText(string $body): string
     {
-        $body = trim($body);
+        $body = str_replace(["\r\n", "\r"], "\n", trim($body));
         return function_exists('mb_strcut') ? trim((string) mb_strcut($body, 0, 800, 'UTF-8')) : trim(substr($body, 0, 800));
+    }
+
+    /** Conversation text may contain normal line breaks/tabs, but never binary/control payloads. */
+    private static function hasUnsafeConversationControl(string $value): bool
+    {
+        return preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $value) === 1;
+    }
+
+    private static function isSqliteBusy(Throwable $error): bool
+    {
+        if (!$error instanceof PDOException) return false;
+        $message = strtolower($error->getMessage());
+        $native = is_array($error->errorInfo ?? null) ? (int) ($error->errorInfo[1] ?? 0) : 0;
+        return in_array($native, [5, 6], true) || str_contains($message, 'database is locked') || str_contains($message, 'database table is locked') || str_contains($message, 'database is busy') || str_contains($message, 'sqlite_busy') || str_contains($message, 'sqlite_locked');
     }
 
     private function resolveConversationGoal(string $conversationId, string $message): string
@@ -1719,7 +1734,7 @@ final class HubControlPlaneService
     private static function exactKeys(array $value, array $allowed): void { $actual = array_keys($value); sort($actual); sort($allowed); if ($actual !== $allowed) throw new HubControlPlaneException('Payload contains unsupported fields', 'SCHEMA_FIELDS'); }
     private static function uuid(string $value): string { if (!preg_match(self::UUID, $value)) throw new HubControlPlaneException('Identifier is invalid', 'ID_INVALID'); return strtolower($value); }
     private static function uuidFromBytes(string $bytes): string { $bytes[6] = chr((ord($bytes[6]) & 15) | 64); $bytes[8] = chr((ord($bytes[8]) & 63) | 128); return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4)); }
-    private static function goal(string $value): string { $value = trim($value); if ($value === '' || strlen($value) > 2000 || preg_match('/[\x00-\x1F\x7F]/', $value) || preg_match('/(?:^|\s)(?:Bearer\s+|password\s*[=:]|secret\s*[=:]|token\s*[=:]|api[_-]?key\s*[=:])/i', $value)) throw new HubControlPlaneException('Goal is invalid or contains credential material', 'GOAL_INVALID'); return $value; }
+    private static function goal(string $value): string { $value = str_replace(["\r\n", "\r"], "\n", trim($value)); if ($value === '' || strlen($value) > 2000 || self::hasUnsafeConversationControl($value) || preg_match('/(?:^|\s)(?:Bearer\s+|password\s*[=:]|secret\s*[=:]|token\s*[=:]|api[_-]?key\s*[=:])/i', $value)) throw new HubControlPlaneException('Goal is invalid or contains credential material', 'GOAL_INVALID'); return $value; }
     private static function idempotency(string $value): string { if (!preg_match('/^[A-Za-z0-9._-]{8,120}$/', $value)) throw new HubControlPlaneException('Idempotency key is invalid', 'IDEMPOTENCY_INVALID'); return $value; }
     /** @return list<string> */
     private static function attachmentIds(mixed $value): array { if (!is_array($value) || array_is_list($value) === false || count($value) > 8) throw new HubControlPlaneException('Attachment references are invalid', 'ATTACHMENT_INVALID'); $out = []; foreach ($value as $id) { if (!is_string($id) || !preg_match(self::UUID, $id)) throw new HubControlPlaneException('Attachment references are invalid', 'ATTACHMENT_INVALID'); $out[] = strtolower($id); } if (count($out) !== count(array_unique($out))) throw new HubControlPlaneException('Attachment references are invalid', 'ATTACHMENT_INVALID'); return $out; }

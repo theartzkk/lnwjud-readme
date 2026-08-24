@@ -128,14 +128,14 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); box-sha
 .empty-mark { display: grid; width: 38px; height: 38px; place-items: center; border: 1px solid #6a4226; border-radius: 12px; color: var(--accent); background: #20170f; }
 .work-thread { display: grid; gap: 16px; max-width: 740px; margin: 0; padding: 0 0 32px; list-style: none; }
 .task-turn { display: grid; gap: 8px; }
-.task-goal { width: fit-content; max-width: min(100%, 620px); margin-left: auto; padding: 13px 15px; border-radius: 16px 16px 4px 16px; color: #fff; background: var(--surface-soft); line-height: 1.55; }
+.task-goal { width: fit-content; max-width: min(100%, 620px); margin-left: auto; padding: 13px 15px; border-radius: 16px 16px 4px 16px; color: #fff; background: var(--surface-soft); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .task-response { display: grid; gap: 8px; padding: 2px 0 0; }
 .task-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
 .state-chip { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 4px 8px; color: #c8cdd7; background: var(--surface); font-size: 11px; font-weight: 750; }
 .state-chip.completed { color: #b7efcc; border-color: #2d6747; background: #14231a; }
 .state-chip.failed { color: #ffd2cf; border-color: #713d3b; background: #29191a; }
 .state-chip.approval { color: #ffd4a9; border-color: #775132; background: #261b13; }
-.task-summary { max-width: 650px; color: #d5dae2; font-size: 14px; line-height: 1.6; }
+.task-summary { max-width: 650px; color: #d5dae2; font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .task-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .task-actions .secondary-button { min-height: 36px; padding: 7px 10px; font-size: 12px; }
 .artifact-links { display: grid; gap: 4px; margin: 2px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 13px; }
