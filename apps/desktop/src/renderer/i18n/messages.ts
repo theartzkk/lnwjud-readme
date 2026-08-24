@@ -152,7 +152,7 @@ export type MessageKey =
 export type Messages = Record<MessageKey, string>;
 
 export const th: Messages = {
-  brand: 'lnwjud',
+  brand: 'Art’s Workspace Hub',
   'nav.home': 'หน้าหลัก',
   'nav.projects': 'โปรเจกต์',
   'nav.git': 'Git',
@@ -200,10 +200,10 @@ export const th: Messages = {
   'project.cancel': 'ยกเลิก',
   'project.archivedBadge': 'เก็บถาวร',
   'project.systemBadge': 'ระบบ',
-  'project.systemHint': 'Workspace นี้ lnwjud จัดการอัตโนมัติ จึงไม่สามารถเก็บถาวรหรือลบได้',
+  'project.systemHint': 'Workspace นี้ AWH จัดการอัตโนมัติ จึงไม่สามารถเก็บถาวรหรือลบได้',
   'project.emptyActive': 'ยังไม่มีโปรเจกต์ที่ใช้งานอยู่',
   'project.emptyArchived': 'ยังไม่มีโปรเจกต์ที่เก็บถาวร',
-  'project.deleteHint': 'ลบเฉพาะรายการออกจาก lnwjud เท่านั้น — โฟลเดอร์ ไฟล์ และ Git ของโปรเจกต์จะไม่ถูกลบ',
+  'project.deleteHint': 'ลบเฉพาะรายการออกจาก AWH เท่านั้น — โฟลเดอร์ ไฟล์ และ Git ของโปรเจกต์จะไม่ถูกลบ',
   'info.workspace': 'Workspace',
   'info.activeProject': 'Active Project',
   'info.mode': 'Mode',
@@ -304,7 +304,7 @@ export const th: Messages = {
 };
 
 export const en: Messages = {
-  brand: 'lnwjud',
+  brand: 'Art’s Workspace Hub',
   'nav.home': 'Home',
   'nav.projects': 'Projects',
   'nav.git': 'Git',
@@ -352,7 +352,7 @@ export const en: Messages = {
   'project.cancel': 'Cancel',
   'project.archivedBadge': 'Archived',
   'project.systemBadge': 'System',
-  'project.systemHint': 'This workspace is managed automatically by lnwjud and cannot be archived or removed.',
+  'project.systemHint': 'This workspace is managed automatically by AWH and cannot be archived or removed.',
   'project.emptyActive': 'No active projects yet.',
   'project.emptyArchived': 'No archived projects.',
   'project.deleteHint': 'Removes only the lnwjud registration — the project folder, files, and Git repository are not deleted.',

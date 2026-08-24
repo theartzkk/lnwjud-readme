@@ -1,0 +1,12 @@
+[Unit]
+Description=Run AWH bounded native executor frequently
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=15s
+AccuracySec=5s
+Persistent=true
+Unit=awh-native-executor.service
+
+[Install]
+WantedBy=timers.target

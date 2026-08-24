@@ -1,5 +1,5 @@
-﻿appId: com.lnwjud.desktop
-productName: lnwjud
+appId: th.theartzkk.awh
+productName: Art’s Workspace Hub
 asar: true
 npmRebuild: false
 directories:
@@ -14,8 +14,8 @@ files:
   - package.json
 publish:
   provider: github
-  owner: engasnm111
-  repo: lnwjud
+  owner: theartzkk
+  repo: lnwjud-readme
   releaseType: release
 extraResources:
   - from: ../../packages/capabilities/src/windows-capability-bridge.ps1
@@ -44,7 +44,7 @@ win:
     - target: nsis
       arch:
         - x64
-  artifactName: lnwjud-Setup-${version}.${ext}
+  artifactName: AWH-Setup-${version}.${ext}
   # Keep the branded icon embedded in lnwjud.exe for Windows shortcuts and taskbar.
   signAndEditExecutable: true
 nsis:

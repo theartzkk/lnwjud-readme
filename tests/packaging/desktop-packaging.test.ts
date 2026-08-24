@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 const desktopRoot = path.resolve(import.meta.dirname, '..', '..', 'apps', 'desktop');
 const repositoryRoot = path.resolve(desktopRoot, '..', '..');
 
-describe('Windows desktop packaging', () => {
+describe('AWH desktop packaging', () => {
   it('pins the product release to v4.9.1', async () => {
     const rootPackage = JSON.parse(await readFile(path.join(repositoryRoot, 'package.json'), 'utf8')) as { version?: unknown };
     const desktopPackage = JSON.parse(await readFile(path.join(desktopRoot, 'package.json'), 'utf8')) as { version?: unknown };
@@ -23,17 +23,21 @@ describe('Windows desktop packaging', () => {
       repository?: { type?: unknown; url?: unknown };
     };
 
-    expect(desktopPackage.description).toBe('Windows-first local AI-agent runtime and MCP gateway with 214 configurable tools.');
-    expect(desktopPackage.author).toBe('Adisorn');
-    expect(desktopPackage.homepage).toBe('https://github.com/engasnm111/lnwjud#readme');
-    expect(desktopPackage.repository).toEqual({ type: 'git', url: 'https://github.com/engasnm111/lnwjud.git' });
+    expect(desktopPackage.description).toBe('Art’s Workspace Hub — lnwjud 4.9.1 execution core with AWH project continuity and control-plane integration.');
+    expect(desktopPackage.author).toBe('Art’s Workspace Hub');
+    expect(desktopPackage.homepage).toBe('https://github.com/theartzkk/lnwjud-readme#readme');
+    expect(desktopPackage.repository).toEqual({ type: 'git', url: 'https://github.com/theartzkk/lnwjud-readme.git' });
   });
 
-  it('declares lnwjud x64 NSIS packaging and built runtime bundles', async () => {
+  it('declares the AWH x64 NSIS distribution while preserving internal lnwjud runtime launchers', async () => {
     const configPath = path.join(desktopRoot, 'electron-builder.yml');
     const config = await readFile(configPath, 'utf8');
 
-    expect(config).toContain('productName: lnwjud');
+    expect(config).toContain('productName: Art’s Workspace Hub');
+    expect(config).toContain('appId: th.theartzkk.awh');
+    expect(config).toContain('owner: theartzkk');
+    expect(config).toContain('repo: lnwjud-readme');
+    expect(config).toContain('artifactName: AWH-Setup-${version}.${ext}');
     expect(config).toContain('output: dist/installers');
     expect(config).toContain('target: nsis');
     expect(config).toContain('- x64');
@@ -50,6 +54,12 @@ describe('Windows desktop packaging', () => {
     expect(config).toContain('windows-capability-bridge.ps1');
     expect(config).toContain('build/lnwjud-node.exe');
     expect(config).toContain('to: lnwjud-node.exe');
+    // Internal launcher/profile names intentionally stay lnwjud-* so the AWH
+    // product overlay does not fork the upstream MCP/tunnel protocol surface.
+    expect(installerScript).toContain('lnwjud.exe');
+  });
+
+  it.skipIf(process.platform !== 'win32')('verifies built Windows runtime bundles', async () => {
     await access(path.join(desktopRoot, 'build', 'lnwjud-node.exe'));
     const stdioLauncher = await readFile(path.join(desktopRoot, 'build', 'lnwjud-mcp-stdio.cmd'), 'utf8');
     expect(stdioLauncher).toContain('lnwjud-node.exe');
@@ -66,13 +76,13 @@ describe('Windows desktop packaging', () => {
     const tunnelBundle = await readFile(path.join(desktopRoot, 'dist', 'main', 'tunnel-controller.js'), 'utf8');
     expect(windowBundle).toContain('webSecurity: true');
     expect(windowBundle).not.toContain('webSecurity: false');
-    expect(mainBundle).toMatch(/setName\(["']lnwjud["']|setName\(APP_NAME\)/);
+    expect(mainBundle).toMatch(/setName\(["']Art’s Workspace Hub["']|setName\(PRODUCT_DISPLAY_NAME\)/);
     expect(tunnelBundle).toContain('LNWJUD_DATA_PATH');
     expect(tunnelBundle).toContain('LNWJUD_UNRESTRICTED');
     expect(mainBundle).toMatch(/setPath\(["']userData["']/);
   });
 
-  it('runs the stdio launcher with the bundled Node runtime even when PATH contains no system Node', async () => {
+  it.skipIf(process.platform !== 'win32')('runs the stdio launcher with the bundled Node runtime even when PATH contains no system Node', async () => {
     const dataPath = await mkdtemp(path.join(os.tmpdir(), 'lnwjud-packaged-stdio-'));
     const launcher = path.join(desktopRoot, 'build', 'lnwjud-mcp-stdio.cmd');
     const systemRoot = process.env.SystemRoot ?? path.win32.join(`C:${path.win32.sep}`, 'Windows');

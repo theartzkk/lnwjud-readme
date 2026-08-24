@@ -44,7 +44,7 @@ import {
   type WorkspaceSummary,
 } from '@lnwjud/ipc-contracts';
 import { readSharedActivitySnapshot, startMcpStdio } from '@lnwjud/mcp-server';
-import { DEFAULT_MCP_POLL_WAIT_SECONDS, DEFAULT_SHELL_SYNCHRONOUS_WAIT_SECONDS, MAX_CONFIGURABLE_WAIT_SECONDS, MIN_CONFIGURABLE_WAIT_SECONDS, resolveLnwjudDataPath } from '@lnwjud/shared';
+import { DEFAULT_MCP_POLL_WAIT_SECONDS, DEFAULT_SHELL_SYNCHRONOUS_WAIT_SECONDS, MAX_CONFIGURABLE_WAIT_SECONDS, MIN_CONFIGURABLE_WAIT_SECONDS, PRODUCT_APP_ID, PRODUCT_DISPLAY_NAME, resolveAwhDataPath } from '@lnwjud/shared';
 import { applyPendingSqliteRestoreSync } from '@lnwjud/storage';
 import { createDesktopRuntime, type DesktopRuntime } from './desktop-services.js';
 import { DesktopShutdownCoordinator } from './desktop-shutdown.js';
@@ -254,7 +254,7 @@ export function registerIpcHandlers(
     choosePath: async (): Promise<string | null> => {
       const window = getMainWindow();
       if (window === null) return null;
-      const result = await dialog.showSaveDialog(window, { title: 'Capture lnwjud incident evidence', defaultPath: 'lnwjud-incident.json', filters: [{ name: 'JSON', extensions: ['json'] }] });
+      const result = await dialog.showSaveDialog(window, { title: 'Capture AWH incident evidence', defaultPath: 'AWH-incident.json', filters: [{ name: 'JSON', extensions: ['json'] }] });
       return result.canceled || result.filePath === undefined || result.filePath.length === 0 ? null : result.filePath;
     },
     write: atomicWrite,
@@ -563,8 +563,8 @@ async function exportLogsToFile(
 ): Promise<{ readonly exported: boolean }> {
   if (window === null) return { exported: false };
   const result = await dialog.showSaveDialog(window, {
-    title: 'Export lnwjud logs',
-    defaultPath: `lnwjud-${request.source}-logs.txt`,
+    title: 'Export AWH logs',
+    defaultPath: `AWH-${request.source}-logs.txt`,
     filters: [{ name: 'Text', extensions: ['txt', 'log'] }],
   });
   if (result.canceled || result.filePath === undefined || result.filePath.length === 0) {
@@ -1185,7 +1185,7 @@ function initAutoUpdater(runtime: DesktopRuntime): void {
 function bootstrapDesktop(): void {
   const dataPath = configureDataPath();
   void app.whenReady().then(async () => {
-    app.setAppUserModelId('com.lnwjud.desktop');
+    app.setAppUserModelId(PRODUCT_APP_ID);
     const runtime = createDesktopRuntime(dataPath);
     desktopRuntime = runtime;
     setDesktopLocale(runtime.getLocale());
@@ -1215,7 +1215,7 @@ function bootstrapDesktop(): void {
 function bootstrapLogViewerOnly(): void {
   const dataPath = configureDataPath();
   void app.whenReady().then(async () => {
-    app.setAppUserModelId('com.lnwjud.desktop');
+    app.setAppUserModelId(PRODUCT_APP_ID);
     const runtime = createDesktopRuntime(dataPath);
     desktopRuntime = runtime;
     configureDesktopShutdown(runtime);
@@ -1254,8 +1254,8 @@ function configureDesktopShutdown(runtime: DesktopRuntime): void {
       });
       void dialog.showMessageBox({
         type: 'error',
-        title: 'lnwjud is still running',
-        message: 'The owned tunnel could not be confirmed stopped. lnwjud will remain open; retry Quit after checking the tunnel status.',
+        title: 'AWH is still running',
+        message: 'The owned tunnel could not be confirmed stopped. AWH will remain open; retry Quit after checking the tunnel status.',
         detail: error.message,
         buttons: ['OK'],
       });
@@ -1328,8 +1328,8 @@ function configureCrashRecovery(dataPath: string): void {
 }
 
 function configureDataPath(): string {
-  app.setName(APP_NAME);
-  const dataPath = resolveLnwjudDataPath(process.env, app.getPath('appData'));
+  app.setName(PRODUCT_DISPLAY_NAME);
+  const dataPath = resolveAwhDataPath(process.env, app.getPath('appData'));
   app.setPath('userData', dataPath);
   configureCrashRecovery(dataPath);
   const restore = applyPendingSqliteRestoreSync(path.join(dataPath, 'lnwjud.sqlite'), path.join(dataPath, 'backups'));

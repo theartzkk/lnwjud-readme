@@ -1,8 +1,11 @@
 export const APP_NAME = 'lnwjud';
 export const APP_VERSION = '4.9.1';
+export const PRODUCT_DISPLAY_NAME = 'Art’s Workspace Hub';
+export const PRODUCT_SHORT_NAME = 'AWH';
+export const PRODUCT_APP_ID = 'th.theartzkk.awh';
 export { isUnrestricted, unrestrictedFromEnv, unrestrictedFromSetting, UNRESTRICTED_SETTING_KEY, type ProcessEnvLike } from './unrestricted.js';
 
-export { resolveLnwjudDataPath, type DataPathEnvironment } from './data-path.js';
+export { resolveAwhDataPath, resolveLnwjudDataPath, type DataPathEnvironment } from './data-path.js';
 
 export {
   ALLOW_AI_DELETE_SETTING_KEY,

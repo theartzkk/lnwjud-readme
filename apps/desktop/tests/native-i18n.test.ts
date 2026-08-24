@@ -15,7 +15,7 @@ describe('native main-process i18n', () => {
     expect(localizedUpdateStatusMessage(ready, 'th')).toContain('พร้อมติดตั้ง');
     expect(localizedUpdateStatusMessage(ready, 'en')).toContain('is ready');
     expect(nativeMessages('th').shutdownBlockedTitle).toContain('ยังทำงานอยู่');
-    expect(nativeMessages('en').shutdownBlockedTitle).toBe('lnwjud is still running');
+    expect(nativeMessages('en').shutdownBlockedTitle).toBe('AWH is still running');
   });
 
   it('keeps Thai native UI literals out of main and tray orchestration files', async () => {

@@ -1,0 +1,20 @@
+# Template only. Replace PREVIEW_HOSTNAME and provide the password hash through
+# the Caddy service environment; never commit a password or a hash generated
+# from a real credential.
+PREVIEW_HOSTNAME {
+	root * /var/www/awh-web/current
+	encode gzip
+
+	# Temporary preview perimeter only; this is not the M3B device identity flow.
+	basic_auth {
+		PREVIEW_USER {env.AWH_CADDY_PASSWORD_HASH}
+	}
+
+	header {
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+	Cache-Control "no-store"
+	Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+	}
+	file_server
+}

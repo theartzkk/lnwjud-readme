@@ -35,7 +35,7 @@ export function AppShell(props: AppShellProps): ReactElement {
       <header className="custom-titlebar">
         <div className="titlebar-drag-region">
           <div className="titlebar-brand">
-            <img src="./favicon.ico" alt="lnwjud logo" className="titlebar-logo" />
+            <img src="./favicon.ico" alt="AWH logo" className="titlebar-logo" />
             <span className="titlebar-title">{t('brand')}</span>
             <button
               type="button"

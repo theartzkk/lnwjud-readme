@@ -1,0 +1,432 @@
+<?php
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/HubEnrollmentApiMigration.php';
+
+final class HubEnrollmentException extends RuntimeException
+{
+    public function __construct(string $message, public readonly string $codeName = 'ENROLLMENT_FAILED')
+    {
+        parent::__construct($message);
+    }
+}
+
+/** Local/server domain service. It is not wired to the browser read gateway. */
+final class HubEnrollmentService
+{
+    private const UUID = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i';
+    private const CODE = '/^[A-Za-z0-9_-]{32,128}$/';
+    private const SHA256 = '/^[0-9a-f]{64}$/i';
+    private const TTL_SECONDS = 600;
+    private const TOKEN_TTL_SECONDS = 2592000;
+
+    private function __construct(private readonly PDO $pdo, private readonly string $migrationSqlPath)
+    {
+    }
+
+    public static function open(string $databasePath, string $schemaPath): self
+    {
+        if ($databasePath === '' || str_contains($databasePath, "\0")) {
+            throw new HubEnrollmentException('Enrollment database configuration is invalid', 'DATABASE_CONFIG_INVALID');
+        }
+        try {
+            $pdo = new PDO('sqlite:' . $databasePath, null, null, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES => false,
+            ]);
+            $pdo->exec('PRAGMA foreign_keys = ON');
+            $pdo->exec('PRAGMA busy_timeout = 2500');
+            $schema = @file_get_contents($schemaPath);
+            if (!is_string($schema) || $schema === '') throw new RuntimeException('schema unavailable');
+            $pdo->exec($schema);
+            // HubEnrollmentService::open is a local fixture/bootstrap helper;
+            // production HTTP uses openExisting after the dedicated migration.
+            $pdo->exec('PRAGMA user_version = 3');
+        } catch (Throwable) {
+            throw new HubEnrollmentException('Enrollment storage is unavailable', 'DATABASE_UNAVAILABLE');
+        }
+        return new self($pdo, dirname(__DIR__) . '/migrations/002_m3e2_enrollment_api.sql');
+    }
+
+    /** Open only an already-migrated database; never creates schema on an API request. */
+    public static function openExisting(string $databasePath, ?string $migrationSqlPath = null): self
+    {
+        if ($databasePath === '' || str_contains($databasePath, "\0")) throw new HubEnrollmentException('Enrollment database configuration is invalid', 'DATABASE_CONFIG_INVALID');
+        try {
+            $pdo = new PDO('sqlite:' . $databasePath, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES => false]);
+            $pdo->exec('PRAGMA foreign_keys = ON');
+            $pdo->exec('PRAGMA busy_timeout = 2500');
+            $migrationSqlPath ??= dirname(__DIR__) . '/migrations/002_m3e2_enrollment_api.sql';
+            return new self($pdo, $migrationSqlPath);
+        } catch (Throwable) {
+            throw new HubEnrollmentException('Enrollment storage is unavailable', 'DATABASE_UNAVAILABLE');
+        }
+    }
+
+    public function assertApiSchemaReady(): void
+    {
+        try {
+            HubEnrollmentApiMigration::assertCapabilityReady($this->pdo, $this->migrationSqlPath);
+        } catch (HubEnrollmentApiMigrationException $error) {
+            throw new HubEnrollmentException('Enrollment API schema migration is required', 'ENROLLMENT_SCHEMA_NOT_READY');
+        }
+    }
+
+    public function initializeOwner(string $userId, string $displayName, array $projectIds, ?string $now = null): array
+    {
+        $userId = self::uuid($userId, 'userId');
+        $displayName = self::portableText($displayName, 'displayName', 80);
+        $now = self::timestamp($now ?? gmdate('c'), 'now');
+        $projects = array_values(array_unique(array_map(fn (mixed $id): string => self::uuid((string) $id, 'projectId'), $projectIds)));
+        try {
+            $this->pdo->beginTransaction();
+            if ((int) $this->pdo->query('SELECT COUNT(*) FROM owner_bootstrap')->fetchColumn() !== 0) {
+                throw new HubEnrollmentException('Owner bootstrap is already closed', 'BOOTSTRAP_CLOSED');
+            }
+            $user = $this->pdo->prepare('INSERT INTO hub_users(user_id, display_name, created_at, revoked_at) VALUES(:id, :name, :created, NULL)');
+            $user->execute(['id' => $userId, 'name' => $displayName, 'created' => $now]);
+            foreach ($projects as $projectId) {
+                $this->assertProjectExists($projectId);
+                $membership = $this->pdo->prepare('INSERT INTO user_project_memberships(user_id, project_id, role, created_at, revoked_at) VALUES(:user, :project, \'owner\', :created, NULL)');
+                $membership->execute(['user' => $userId, 'project' => $projectId, 'created' => $now]);
+            }
+            $initialPairing = $this->createPairingCodeInTransaction($userId, $projects, $now, self::TTL_SECONDS);
+            $bootstrap = $this->pdo->prepare('INSERT INTO owner_bootstrap(singleton_id, owner_user_id, initialized_at, bootstrap_closed) VALUES(1, :user, :at, 1)');
+            $bootstrap->execute(['user' => $userId, 'at' => $now]);
+            $this->pdo->commit();
+        } catch (HubEnrollmentException $error) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw $error;
+        } catch (Throwable) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw new HubEnrollmentException('Owner bootstrap failed closed', 'BOOTSTRAP_FAILED');
+        }
+        return [
+            'schemaVersion' => 1,
+            'userId' => $userId,
+            'displayName' => $displayName,
+            'initializedAt' => $now,
+            'bootstrapClosed' => true,
+            'initialPairingCode' => $initialPairing['pairingCode'],
+            'initialPairingExpiresAt' => $initialPairing['expiresAt'],
+            'projectCount' => count($projects),
+        ];
+    }
+
+    /**
+     * Create a one-time pairing code while the caller's transaction is open.
+     * The plaintext is returned only to the immediate caller; SQLite receives
+     * only the SHA-256 digest and project bindings.
+     *
+     * @param list<string> $projects
+     * @return array{pairingCode:string,pairingCodeId:string,issuedAt:string,expiresAt:string,projectCount:int}
+     */
+    private function createPairingCodeInTransaction(string $ownerUserId, array $projects, string $now, int $ttlSeconds): array
+    {
+        if ($ttlSeconds < 1 || $ttlSeconds > self::TTL_SECONDS) throw new HubEnrollmentException('Pairing expiry is outside the safe bound', 'PAIRING_TTL_INVALID');
+        $code = self::base64url(random_bytes(24));
+        $codeId = self::uuid(strtolower(sprintf('%08x-%04x-4%03x-%04x-%012x', random_int(0, 0xffffffff), random_int(0, 0xffff), random_int(0, 0xfff), random_int(0x8000, 0xbfff), random_int(0, 0xffffffffffff))), 'pairingCodeId');
+        $expires = gmdate('c', strtotime($now) + $ttlSeconds);
+        $insert = $this->pdo->prepare('INSERT INTO pairing_codes(pairing_code_id, user_id, code_hash, issued_at, expires_at, consumed_at, revoked_at) VALUES(:id, :user, :hash, :issued, :expires, NULL, NULL)');
+        $insert->execute(['id' => $codeId, 'user' => $ownerUserId, 'hash' => hash('sha256', $code), 'issued' => $now, 'expires' => $expires]);
+        $link = $this->pdo->prepare('INSERT INTO pairing_projects(pairing_code_id, project_id) VALUES(:code, :project)');
+        foreach ($projects as $projectId) $link->execute(['code' => $codeId, 'project' => $projectId]);
+        return ['pairingCode' => $code, 'pairingCodeId' => $codeId, 'issuedAt' => $now, 'expiresAt' => $expires, 'projectCount' => count($projects)];
+    }
+
+    public function issuePairingCode(string $ownerUserId, array $projectIds, ?string $now = null, int $ttlSeconds = self::TTL_SECONDS): array
+    {
+        $ownerUserId = self::uuid($ownerUserId, 'userId');
+        $now = self::timestamp($now ?? gmdate('c'), 'now');
+        if ($ttlSeconds < 1 || $ttlSeconds > self::TTL_SECONDS) throw new HubEnrollmentException('Pairing expiry is outside the safe bound', 'PAIRING_TTL_INVALID');
+        $this->assertOwner($ownerUserId);
+        $projects = array_values(array_unique(array_map(fn (mixed $id): string => self::uuid((string) $id, 'projectId'), $projectIds)));
+        foreach ($projects as $projectId) $this->assertOwnerProject($ownerUserId, $projectId);
+        try {
+            $this->pdo->beginTransaction();
+            $pairing = $this->createPairingCodeInTransaction($ownerUserId, $projects, $now, $ttlSeconds);
+            $this->pdo->commit();
+        } catch (Throwable) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw new HubEnrollmentException('Pairing code could not be created', 'PAIRING_CREATE_FAILED');
+        }
+        return ['schemaVersion' => 1] + $pairing;
+    }
+
+    public function issuePairingCodeForToken(string $presentedToken, array $projectIds, ?string $now = null, int $ttlSeconds = self::TTL_SECONDS): array
+    {
+        $auth = $this->authenticate($presentedToken, null, $now);
+        $this->assertOwner((string) $auth['user_id']);
+        return $this->issuePairingCode((string) $auth['user_id'], $projectIds, $now, $ttlSeconds);
+    }
+
+    /** Password-first Desktop enrollment. The password is verified in-memory and never stored on the device. */
+    public function enrollDeviceWithPassword(array $request, ?string $now = null): array
+    {
+        self::exactKeys($request, ['appVersion', 'arch', 'deviceId', 'displayName', 'password', 'platform', 'schemaVersion', 'username']);
+        if (($request['schemaVersion'] ?? null) !== 1) throw new HubEnrollmentException('Unsupported enrollment schema', 'SCHEMA_VERSION');
+        $deviceId = self::uuid((string) ($request['deviceId'] ?? ''), 'deviceId');
+        $display = self::portableText((string) ($request['displayName'] ?? ''), 'displayName', 80);
+        $platform = self::text($request['platform'] ?? null, 'platform', 16); if (!in_array($platform, ['darwin', 'win32', 'linux'], true)) throw new HubEnrollmentException('Platform is unsupported', 'FIELD_INVALID');
+        $arch = self::text($request['arch'] ?? null, 'arch', 32); $appVersion = self::text($request['appVersion'] ?? null, 'appVersion', 32);
+        $username = strtolower(trim(self::text($request['username'] ?? null, 'username', 64))); $password = self::text($request['password'] ?? null, 'password', 512);
+        if (preg_match('/^[a-z][a-z0-9._-]{2,63}$/', $username) !== 1) throw new HubEnrollmentException('Username or password is incorrect', 'AUTH_FAILED');
+        $at = self::timestamp($now ?? gmdate('c'), 'now'); $this->assertRateLimit($deviceId, $at);
+        try {
+            $q = $this->pdo->prepare("SELECT p.user_id, p.password_hash, p.enabled, u.revoked_at, COALESCE(cp.status, 'ACTIVE') AS profile_status FROM owner_passwords p JOIN hub_users u ON u.user_id = p.user_id LEFT JOIN control_user_profiles cp ON cp.user_id = p.user_id WHERE p.username = :username");
+            $q->execute(['username' => $username]); $account = $q->fetch();
+        } catch (Throwable) { throw new HubEnrollmentException('Password login is not ready', 'AUTH_SCHEMA_NOT_READY'); }
+        $hash = is_array($account) && is_string($account['password_hash'] ?? null) ? (string) $account['password_hash'] : password_hash('awh-dummy-password-value', PASSWORD_DEFAULT);
+        if (!is_array($account) || (int) $account['enabled'] !== 1 || $account['revoked_at'] !== null || (string) $account['profile_status'] !== 'ACTIVE' || !password_verify($password, $hash)) throw new HubEnrollmentException('Username or password is incorrect', 'AUTH_FAILED');
+        $userId = (string) $account['user_id'];
+        $existing = $this->pdo->prepare('SELECT e.user_id FROM devices d LEFT JOIN device_enrollments e ON e.device_id = d.device_id WHERE d.device_id = :device'); $existing->execute(['device' => $deviceId]); $existingUser = $existing->fetchColumn();
+        if ($existingUser !== false && (!is_string($existingUser) || !hash_equals($userId, $existingUser))) throw new HubEnrollmentException('This device belongs to another AWH account', 'DEVICE_FORBIDDEN');
+        $projects = $this->pdo->prepare('SELECT project_id FROM user_project_memberships WHERE user_id = :user AND revoked_at IS NULL ORDER BY project_id'); $projects->execute(['user' => $userId]); $projectIds = array_map(static fn (array $row): string => (string) $row['project_id'], $projects->fetchAll());
+        $owner = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1')->fetchColumn(); $role = is_string($owner) && hash_equals($owner, $userId) ? 'owner' : 'member';
+        $tokenId = self::randomUuid(); $token = self::base64url(random_bytes(32)); $expires = gmdate('c', strtotime($at) + self::TOKEN_TTL_SECONDS);
+        try {
+            $this->pdo->beginTransaction();
+            if ($existingUser === false) {
+                $this->pdo->prepare('INSERT INTO devices(device_id, display_name, platform, arch, app_version, last_seen_at, revoked_at) VALUES(:id, :name, :platform, :arch, :version, :last, NULL)')->execute(['id' => $deviceId, 'name' => $display, 'platform' => $platform, 'arch' => $arch, 'version' => $appVersion, 'last' => $at]);
+                $this->pdo->prepare('INSERT INTO device_enrollments(device_id, user_id, enrolled_at, revoked_at) VALUES(:device, :user, :at, NULL)')->execute(['device' => $deviceId, 'user' => $userId, 'at' => $at]);
+            } else {
+                $this->pdo->prepare('UPDATE devices SET display_name=:name, platform=:platform, arch=:arch, app_version=:version, last_seen_at=:at, revoked_at=NULL WHERE device_id=:device')->execute(['name' => $display, 'platform' => $platform, 'arch' => $arch, 'version' => $appVersion, 'at' => $at, 'device' => $deviceId]);
+                $this->pdo->prepare('UPDATE device_enrollments SET enrolled_at=:at, revoked_at=NULL WHERE device_id=:device AND user_id=:user')->execute(['at' => $at, 'device' => $deviceId, 'user' => $userId]);
+            }
+            $this->pdo->prepare('UPDATE device_project_memberships SET revoked_at=:at WHERE device_id=:device AND revoked_at IS NULL')->execute(['at' => $at, 'device' => $deviceId]);
+            $membership = $this->pdo->prepare('INSERT INTO device_project_memberships(device_id, project_id, role, created_at, revoked_at) VALUES(:device, :project, :role, :at, NULL) ON CONFLICT(device_id, project_id) DO UPDATE SET role=excluded.role, revoked_at=NULL');
+            foreach ($projectIds as $projectId) $membership->execute(['device' => $deviceId, 'project' => $projectId, 'role' => $role, 'at' => $at]);
+            $this->pdo->prepare('UPDATE device_tokens SET revoked_at=:at WHERE device_id=:device AND revoked_at IS NULL')->execute(['at' => $at, 'device' => $deviceId]);
+            $this->pdo->prepare('INSERT INTO device_tokens(token_id, user_id, device_id, token_hash, created_at, expires_at, revoked_at, last_used_at, rotated_from_token_id, replaced_by_token_id) VALUES(:id, :user, :device, :hash, :created, :expires, NULL, NULL, NULL, NULL)')->execute(['id' => $tokenId, 'user' => $userId, 'device' => $deviceId, 'hash' => hash('sha256', $token), 'created' => $at, 'expires' => $expires]);
+            $this->pdo->prepare('DELETE FROM enrollment_rate_limits WHERE rate_key=:key')->execute(['key' => $deviceId]);
+            $this->pdo->commit();
+        } catch (Throwable) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); throw new HubEnrollmentException('Device login failed closed', 'ENROLLMENT_FAILED'); }
+        return ['schemaVersion' => 1, 'deviceId' => $deviceId, 'userId' => $userId, 'accessToken' => $token, 'expiresAt' => $expires, 'tokenType' => 'Bearer', 'projectCount' => count($projectIds)];
+    }
+
+    public function enrollDevice(array $request, ?string $now = null): array
+    {
+        self::exactKeys($request, ['appVersion', 'arch', 'deviceId', 'displayName', 'pairingCode', 'platform', 'schemaVersion']);
+        if (($request['schemaVersion'] ?? null) !== 1) throw new HubEnrollmentException('Unsupported enrollment schema', 'SCHEMA_VERSION');
+        $code = self::text($request['pairingCode'] ?? null, 'pairingCode', 128);
+        if (!preg_match(self::CODE, $code)) throw new HubEnrollmentException('Pairing code is malformed', 'PAIRING_CODE_INVALID');
+        $deviceId = self::uuid((string) ($request['deviceId'] ?? ''), 'deviceId');
+        $display = self::portableText((string) ($request['displayName'] ?? ''), 'displayName', 80);
+        $platform = self::text($request['platform'] ?? null, 'platform', 16);
+        if (!in_array($platform, ['darwin', 'win32', 'linux'], true)) throw new HubEnrollmentException('Platform is unsupported', 'FIELD_INVALID');
+        $arch = self::text($request['arch'] ?? null, 'arch', 32);
+        $appVersion = self::text($request['appVersion'] ?? null, 'appVersion', 32);
+        $now = self::timestamp($now ?? gmdate('c'), 'now');
+        $pairing = $this->pdo->prepare('SELECT pairing_code_id, user_id, expires_at, consumed_at, revoked_at FROM pairing_codes WHERE code_hash = :hash');
+        $pairing->execute(['hash' => hash('sha256', $code)]);
+        $record = $pairing->fetch();
+        if (!is_array($record)) throw new HubEnrollmentException('Pairing code is invalid', 'PAIRING_CODE_INVALID');
+        if ($record['revoked_at'] !== null) throw new HubEnrollmentException('Pairing code is revoked', 'PAIRING_REVOKED');
+        if ($record['consumed_at'] !== null) throw new HubEnrollmentException('Pairing code was already used', 'PAIRING_REPLAY');
+        if (strtotime((string) $record['expires_at']) <= strtotime($now)) throw new HubEnrollmentException('Pairing code has expired', 'PAIRING_EXPIRED');
+        if ($this->deviceExists($deviceId)) throw new HubEnrollmentException('Device is already enrolled', 'DEVICE_DUPLICATE');
+        $projects = $this->pdo->prepare('SELECT project_id FROM pairing_projects WHERE pairing_code_id = :id ORDER BY project_id');
+        $projects->execute(['id' => $record['pairing_code_id']]);
+        $projectIds = array_map(static fn (array $row): string => (string) $row['project_id'], $projects->fetchAll());
+        $tokenId = self::uuid(strtolower(sprintf('%08x-%04x-4%03x-%04x-%012x', random_int(0, 0xffffffff), random_int(0, 0xffff), random_int(0, 0xfff), random_int(0x8000, 0xbfff), random_int(0, 0xffffffffffff))), 'tokenId');
+        $token = self::base64url(random_bytes(32));
+        $expires = gmdate('c', strtotime($now) + self::TOKEN_TTL_SECONDS);
+        try {
+            $this->pdo->beginTransaction();
+            $device = $this->pdo->prepare('INSERT INTO devices(device_id, display_name, platform, arch, app_version, last_seen_at, revoked_at) VALUES(:id, :name, :platform, :arch, :version, :last, NULL)');
+            $device->execute(['id' => $deviceId, 'name' => $display, 'platform' => $platform, 'arch' => $arch, 'version' => $appVersion, 'last' => $now]);
+            $enrollment = $this->pdo->prepare('INSERT INTO device_enrollments(device_id, user_id, enrolled_at, revoked_at) VALUES(:device, :user, :at, NULL)');
+            $enrollment->execute(['device' => $deviceId, 'user' => $record['user_id'], 'at' => $now]);
+            $membership = $this->pdo->prepare('INSERT INTO device_project_memberships(device_id, project_id, role, created_at, revoked_at) VALUES(:device, :project, \'member\', :at, NULL)');
+            foreach ($projectIds as $projectId) $membership->execute(['device' => $deviceId, 'project' => $projectId, 'at' => $now]);
+            $tokenInsert = $this->pdo->prepare('INSERT INTO device_tokens(token_id, user_id, device_id, token_hash, created_at, expires_at, revoked_at, last_used_at, rotated_from_token_id, replaced_by_token_id) VALUES(:id, :user, :device, :hash, :created, :expires, NULL, NULL, NULL, NULL)');
+            $tokenInsert->execute(['id' => $tokenId, 'user' => $record['user_id'], 'device' => $deviceId, 'hash' => hash('sha256', $token), 'created' => $now, 'expires' => $expires]);
+            $consume = $this->pdo->prepare('UPDATE pairing_codes SET consumed_at = :at WHERE pairing_code_id = :id AND consumed_at IS NULL');
+            $consume->execute(['at' => $now, 'id' => $record['pairing_code_id']]);
+            if ($consume->rowCount() !== 1) throw new RuntimeException('pairing race');
+            $this->pdo->commit();
+        } catch (HubEnrollmentException $error) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw $error;
+        } catch (Throwable) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw new HubEnrollmentException('Device enrollment failed closed', 'ENROLLMENT_FAILED');
+        }
+        return ['schemaVersion' => 1, 'deviceId' => $deviceId, 'userId' => (string) $record['user_id'], 'accessToken' => $token, 'expiresAt' => $expires, 'tokenType' => 'Bearer', 'projectCount' => count($projectIds)];
+    }
+
+    public function enrollDeviceRateLimited(array $request, ?string $now = null): array
+    {
+        $deviceId = is_string($request['deviceId'] ?? null) ? $request['deviceId'] : '';
+        $this->assertRateLimit($deviceId, $now ?? gmdate('c'));
+        return $this->enrollDevice($request, $now);
+    }
+
+    public function rotateToken(string $presentedToken, string $deviceId, ?string $now = null): array
+    {
+        $auth = $this->authenticate($presentedToken, $deviceId, $now);
+        $now = self::timestamp($now ?? gmdate('c'), 'now');
+        $newId = self::uuid(strtolower(sprintf('%08x-%04x-4%03x-%04x-%012x', random_int(0, 0xffffffff), random_int(0, 0xffff), random_int(0, 0xfff), random_int(0x8000, 0xbfff), random_int(0, 0xffffffffffff))), 'tokenId');
+        $token = self::base64url(random_bytes(32));
+        $expires = gmdate('c', strtotime($now) + self::TOKEN_TTL_SECONDS);
+        $this->pdo->beginTransaction();
+        try {
+            $this->pdo->prepare('UPDATE device_tokens SET revoked_at = :at, replaced_by_token_id = :new WHERE token_id = :old')->execute(['at' => $now, 'new' => $newId, 'old' => $auth['token_id']]);
+            $this->pdo->prepare('INSERT INTO device_tokens(token_id, user_id, device_id, token_hash, created_at, expires_at, revoked_at, last_used_at, rotated_from_token_id, replaced_by_token_id) VALUES(:id, :user, :device, :hash, :created, :expires, NULL, NULL, :old, NULL)')->execute(['id' => $newId, 'user' => $auth['user_id'], 'device' => $deviceId, 'hash' => hash('sha256', $token), 'created' => $now, 'expires' => $expires, 'old' => $auth['token_id']]);
+            $this->pdo->commit();
+        } catch (Throwable) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw new HubEnrollmentException('Token rotation failed closed', 'TOKEN_ROTATION_FAILED');
+        }
+        return ['schemaVersion' => 1, 'deviceId' => $deviceId, 'accessToken' => $token, 'expiresAt' => $expires, 'tokenType' => 'Bearer'];
+    }
+
+    public function revokeToken(string $presentedToken, string $deviceId, ?string $now = null): void
+    {
+        $auth = $this->authenticate($presentedToken, $deviceId, $now);
+        $this->pdo->prepare('UPDATE device_tokens SET revoked_at = :at WHERE token_id = :id AND revoked_at IS NULL')->execute(['at' => self::timestamp($now ?? gmdate('c'), 'now'), 'id' => $auth['token_id']]);
+    }
+
+    public function revokeDeviceForToken(string $presentedToken, string $targetDeviceId, ?string $now = null): void
+    {
+        $auth = $this->authenticate($presentedToken, null, $now);
+        $targetDeviceId = self::uuid($targetDeviceId, 'deviceId');
+        $this->assertOwner((string) $auth['user_id']);
+        $target = $this->pdo->prepare('SELECT user_id FROM device_enrollments WHERE device_id = :device AND revoked_at IS NULL');
+        $target->execute(['device' => $targetDeviceId]);
+        if ($target->fetchColumn() !== $auth['user_id']) throw new HubEnrollmentException('Device is not owned by the authenticated user', 'DEVICE_FORBIDDEN');
+        $at = self::timestamp($now ?? gmdate('c'), 'now');
+        $this->pdo->beginTransaction();
+        try {
+            $this->pdo->prepare('UPDATE device_enrollments SET revoked_at = :at WHERE device_id = :device')->execute(['at' => $at, 'device' => $targetDeviceId]);
+            $this->pdo->prepare('UPDATE devices SET revoked_at = :at WHERE device_id = :device')->execute(['at' => $at, 'device' => $targetDeviceId]);
+            $this->pdo->prepare('UPDATE device_tokens SET revoked_at = :at WHERE device_id = :device AND revoked_at IS NULL')->execute(['at' => $at, 'device' => $targetDeviceId]);
+            $this->pdo->commit();
+        } catch (Throwable) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw new HubEnrollmentException('Device revocation failed closed', 'DEVICE_REVOKE_FAILED');
+        }
+    }
+
+    public function assertProjectAccess(string $presentedToken, string $projectId, ?string $now = null): array
+    {
+        $projectId = self::uuid($projectId, 'projectId');
+        $auth = $this->authenticate($presentedToken, null, $now);
+        $query = $this->pdo->prepare('SELECT 1 FROM device_project_memberships WHERE device_id = :device AND project_id = :project AND revoked_at IS NULL');
+        $query->execute(['device' => $auth['device_id'], 'project' => $projectId]);
+        if ($query->fetchColumn() === false) throw new HubEnrollmentException('Device is not authorized for this project', 'PROJECT_FORBIDDEN');
+        return ['userId' => $auth['user_id'], 'deviceId' => $auth['device_id'], 'projectId' => $projectId];
+    }
+
+    /** Shared control-plane authentication boundary; returns only internal identity metadata. */
+    public function authenticateForControlPlane(string $presentedToken, ?string $deviceId = null, ?string $now = null): array
+    {
+        $auth = $this->authenticate($presentedToken, $deviceId, $now);
+        return ['userId' => (string) $auth['user_id'], 'deviceId' => (string) $auth['device_id'], 'tokenId' => (string) $auth['token_id']];
+    }
+
+    private function authenticate(string $token, ?string $deviceId, ?string $now): array
+    {
+        if ($token === '' || strlen($token) > 512 || preg_match('/[\x00-\x1F\x7F]/', $token)) throw new HubEnrollmentException('Device credential is invalid', 'TOKEN_INVALID');
+        if ($deviceId !== null) $deviceId = self::uuid($deviceId, 'deviceId');
+        $query = $this->pdo->prepare('SELECT t.token_id, t.user_id, t.device_id, t.expires_at, t.revoked_at, e.revoked_at AS enrollment_revoked, u.revoked_at AS user_revoked FROM device_tokens t JOIN device_enrollments e ON e.device_id = t.device_id JOIN hub_users u ON u.user_id = t.user_id WHERE t.token_hash = :hash');
+        $query->execute(['hash' => hash('sha256', $token)]);
+        $row = $query->fetch();
+        $at = strtotime(self::timestamp($now ?? gmdate('c'), 'now'));
+        if (!is_array($row) || ($deviceId !== null && $row['device_id'] !== $deviceId) || $row['revoked_at'] !== null || $row['enrollment_revoked'] !== null || $row['user_revoked'] !== null || strtotime((string) $row['expires_at']) <= $at) throw new HubEnrollmentException('Device credential is not active', 'TOKEN_REJECTED');
+        $this->pdo->prepare('UPDATE device_tokens SET last_used_at = :at WHERE token_id = :id')->execute(['at' => gmdate('c', $at), 'id' => $row['token_id']]);
+        return $row;
+    }
+
+    private function assertOwner(string $userId): void
+    {
+        $query = $this->pdo->prepare('SELECT 1 FROM owner_bootstrap WHERE singleton_id = 1 AND owner_user_id = :user');
+        $query->execute(['user' => $userId]);
+        if ($query->fetchColumn() === false) throw new HubEnrollmentException('Owner bootstrap is not valid', 'BOOTSTRAP_INVALID');
+    }
+
+    private function assertProjectExists(string $projectId): void
+    {
+        $query = $this->pdo->prepare('SELECT 1 FROM projects WHERE project_id = :id');
+        $query->execute(['id' => $projectId]);
+        if ($query->fetchColumn() === false) throw new HubEnrollmentException('Project is not indexed', 'PROJECT_NOT_FOUND');
+    }
+
+    private function assertOwnerProject(string $userId, string $projectId): void
+    {
+        $query = $this->pdo->prepare('SELECT 1 FROM user_project_memberships WHERE user_id = :user AND project_id = :project AND revoked_at IS NULL');
+        $query->execute(['user' => $userId, 'project' => $projectId]);
+        if ($query->fetchColumn() === false) throw new HubEnrollmentException('Owner is not authorized for this project', 'PROJECT_FORBIDDEN');
+    }
+
+    private function deviceExists(string $deviceId): bool
+    {
+        $query = $this->pdo->prepare('SELECT 1 FROM devices WHERE device_id = :id');
+        $query->execute(['id' => $deviceId]);
+        return $query->fetchColumn() !== false;
+    }
+
+    private function assertRateLimit(string $rateKey, string $now): void
+    {
+        $rateKey = self::uuid($rateKey, 'deviceId');
+        $now = self::timestamp($now, 'now');
+        $at = strtotime($now);
+        $query = $this->pdo->prepare('SELECT window_started_at, attempts, blocked_until FROM enrollment_rate_limits WHERE rate_key = :key');
+        $query->execute(['key' => $rateKey]);
+        $row = $query->fetch();
+        if (is_array($row) && $row['blocked_until'] !== null && strtotime((string) $row['blocked_until']) > $at) throw new HubEnrollmentException('Pairing attempts are temporarily rate limited', 'RATE_LIMITED');
+        if (!is_array($row) || $at - strtotime((string) $row['window_started_at']) >= 600) {
+            $this->pdo->prepare('INSERT INTO enrollment_rate_limits(rate_key, window_started_at, attempts, blocked_until) VALUES(:key, :at, 1, NULL) ON CONFLICT(rate_key) DO UPDATE SET window_started_at=excluded.window_started_at, attempts=1, blocked_until=NULL')->execute(['key' => $rateKey, 'at' => $now]);
+            return;
+        }
+        $attempts = (int) $row['attempts'] + 1;
+        $blocked = $attempts > 5 ? gmdate('c', $at + 1800) : null;
+        $this->pdo->prepare('UPDATE enrollment_rate_limits SET attempts = :attempts, blocked_until = :blocked WHERE rate_key = :key')->execute(['attempts' => $attempts, 'blocked' => $blocked, 'key' => $rateKey]);
+        if ($blocked !== null) throw new HubEnrollmentException('Pairing attempts are temporarily rate limited', 'RATE_LIMITED');
+    }
+
+    private static function exactKeys(array $value, array $keys): void
+    {
+        $actual = array_keys($value);
+        sort($actual); $expected = $keys; sort($expected);
+        if ($actual !== $expected) throw new HubEnrollmentException('Enrollment payload contains unsupported fields', 'SCHEMA_FIELDS');
+    }
+
+    private static function uuid(string $value, string $field): string
+    {
+        if (!preg_match(self::UUID, $value)) throw new HubEnrollmentException($field . ' is invalid', 'ID_INVALID');
+        return strtolower($value);
+    }
+
+    private static function text(mixed $value, string $field, int $max): string
+    {
+        if (!is_string($value) || $value === '' || strlen($value) > $max || preg_match('/[\x00-\x1F\x7F]/', $value)) throw new HubEnrollmentException($field . ' is invalid', 'FIELD_INVALID');
+        return $value;
+    }
+
+    private static function portableText(string $value, string $field, int $max): string
+    {
+        $value = trim(self::text($value, $field, $max));
+        if ($value === '' || str_contains($value, '/') || str_contains($value, '\\') || preg_match('#^(?:[A-Za-z]:|~|https?://)#i', $value)) throw new HubEnrollmentException($field . ' is not portable', 'PORTABILITY_INVALID');
+        return $value;
+    }
+
+    private static function timestamp(string $value, string $field): string
+    {
+        if (strtotime($value) === false) throw new HubEnrollmentException($field . ' is invalid', 'DATE_INVALID');
+        return $value;
+    }
+
+    private static function randomUuid(): string
+    {
+        $bytes = random_bytes(16); $bytes[6] = chr((ord($bytes[6]) & 0x0f) | 0x40); $bytes[8] = chr((ord($bytes[8]) & 0x3f) | 0x80);
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4));
+    }
+
+    private static function base64url(string $bytes): string
+    {
+        return rtrim(strtr(base64_encode($bytes), '+/', '-_'), '=');
+    }
+}

@@ -95,7 +95,7 @@ export function createLogViewerWindow(): BrowserWindow {
     height: 680,
     show: true,
     autoHideMenuBar: true,
-    title: 'lnwjud — Live Logs',
+    title: 'Art’s Workspace Hub — Live Logs',
     titleBarStyle: 'hidden',
     titleBarOverlay: {
       color: '#07090e',
