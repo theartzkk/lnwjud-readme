@@ -22,12 +22,13 @@ test('M9 final product release is one bounded v7-to-v8-to-v9 activation with att
   assert.match(result.stdout, /M9_ROLLBACK=restore-db-v7,pointer,web-pointer,nginx,service-health,m3d-m3e-m4-m7-regression/);
   assert.match(result.stdout, /M9_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL/);
 
-  const [local, remoteSource, include, migration, agent] = await Promise.all([
+  const [local, remoteSource, include, migration, agent, control] = await Promise.all([
     readFile(deploy, 'utf8'),
     readFile(remote, 'utf8'),
     readFile(join(root, 'deploy/nginx/awh-control-plane.conf'), 'utf8'),
     readFile(join(root, 'hub/migrations/008_final_product.sql'), 'utf8'),
     readFile(join(root, 'hub/src/HubNativeAgentService.php'), 'utf8'),
+    readFile(join(root, 'hub/src/HubControlPlaneService.php'), 'utf8'),
   ]);
   assert.match(local, /--final-product/);
   assert.match(local, /migrate-final-product\.php/);
@@ -53,7 +54,9 @@ test('M9 final product release is one bounded v7-to-v8-to-v9 activation with att
   assert.match(migration, /control_project_capabilities/);
   assert.match(agent, /https:\/\/api\.openai\.com\/v1\/responses/);
   assert.match(agent, /'store' => false/);
-  assert.doesNotMatch(`${local}\n${remoteSource}\n${migration}\n${agent}`, /(?:BEGIN [A-Z ]+PRIVATE KEY|AWH_OPENAI_API_KEY\s*=|Authorization: Bearer sk-[A-Za-z0-9_-]{20,})/i);
+  assert.match(control, /'projectDirectory' => \$directory/);
+  assert.match(control, /state <> 'CANCELLED'/);
+  assert.doesNotMatch(`${local}\n${remoteSource}\n${migration}\n${agent}\n${control}`, /(?:BEGIN [A-Z ]+PRIVATE KEY|AWH_OPENAI_API_KEY\s*=|Authorization: Bearer sk-[A-Za-z0-9_-]{20,})/i);
 });
 
 test('M9 deployment assets remain valid POSIX shell', async () => {

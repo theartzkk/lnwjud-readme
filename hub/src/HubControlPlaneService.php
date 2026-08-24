@@ -732,7 +732,8 @@ final class HubControlPlaneService
         $this->assertProjectCapability($userId, $projectId, 'project.read');
         $project = $this->pdo->prepare('SELECT name, type, source_revision, observed_at FROM projects WHERE project_id = :project'); $project->execute(['project' => $projectId]); $row = $project->fetch();
         $memory = $this->pdo->prepare('SELECT memory_file, status, observed_at FROM project_memory WHERE project_id = :project ORDER BY memory_file LIMIT 5'); $memory->execute(['project' => $projectId]);
-        $task = $this->pdo->prepare('SELECT state, result_summary, updated_at FROM control_tasks WHERE project_id = :project AND user_id = :user ORDER BY updated_at DESC, task_id DESC LIMIT 1'); $task->execute(['project' => $projectId, 'user' => $userId]); $latest = $task->fetch();
+        $task = $this->pdo->prepare("SELECT state, result_summary, updated_at FROM control_tasks WHERE project_id = :project AND user_id = :user AND state <> 'CANCELLED' ORDER BY updated_at DESC, task_id DESC LIMIT 1"); $task->execute(['project' => $projectId, 'user' => $userId]); $latest = $task->fetch();
+        $directory = $this->projectsForUser($userId);
         $view = $this->pdo->prepare('SELECT view_kind, selected_ref, source_revision, observed_at FROM control_project_contexts WHERE project_id = :project AND user_id = :user ORDER BY observed_at DESC, context_id DESC LIMIT 1'); $view->execute(['project' => $projectId, 'user' => $userId]); $current = $view->fetch();
         $durableMemory = null;
         if ($this->foundingMemorySchemaPresent()) {
@@ -742,6 +743,7 @@ final class HubControlPlaneService
         return [
             'productIdentity' => $this->productIdentity(),
             'project' => is_array($row) ? ['name' => (string) $row['name'], 'type' => (string) $row['type'], 'sourceRevision' => $row['source_revision'] === null ? null : (string) $row['source_revision'], 'observedAt' => (string) $row['observed_at']] : null,
+            'projectDirectory' => $directory,
             'memoryFiles' => array_map(static fn (array $file): array => ['name' => (string) $file['memory_file'], 'status' => (string) $file['status'], 'observedAt' => (string) $file['observed_at']], $memory->fetchAll()),
             'latestTask' => is_array($latest) ? ['state' => (string) $latest['state'], 'summary' => $latest['result_summary'] === null ? null : self::conversationText((string) $latest['result_summary']), 'updatedAt' => (string) $latest['updated_at']] : null,
             'currentView' => is_array($current) ? ['kind' => (string) $current['view_kind'], 'selectedRef' => $current['selected_ref'] === null ? null : (string) $current['selected_ref'], 'sourceRevision' => $current['source_revision'] === null ? null : (string) $current['source_revision'], 'observedAt' => (string) $current['observed_at']] : null,
