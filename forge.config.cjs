@@ -75,6 +75,8 @@ module.exports = {
       /^\/src($|\/)/,
       /^\/test($|\/)/,
       /^\/Screenshot($|\/)/,
+      /^\/dist-web($|\/)/,
+      /^\/out($|\/)/,
       /^\/\.github($|\/)/,
       /^\/\.art-agent-build($|\/)/,
       /^\/\.awh-build($|\/)/,
