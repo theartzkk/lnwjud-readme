@@ -111,7 +111,8 @@ assert(await exists(bundle), `packaged bundle not found: ${platform}`);
 assert(await exists(executable), `expected ${platform === 'darwin' ? 'AWH.app/AWH' : 'AWH.exe'} is missing`);
 assert(await exists(asarPath), 'packaged app.asar is missing');
 const listing = asar.listPackage(asarPath, { isPack: false });
-const hasEntry = (entry) => listing.includes(entry) || listing.includes(`/${entry}`);
+const normalizedListing = listing.map((entry) => entry.replaceAll('\\', '/'));
+const hasEntry = (entry) => normalizedListing.includes(entry) || normalizedListing.includes(`/${entry}`);
 assert(hasEntry('dist/index.js'), 'packaged dist/index.js is missing');
 assert(hasEntry('dist/product.js'), 'packaged product runtime is missing');
 assert(hasEntry('dist/owner-protocol.js'), 'packaged owner protocol runtime is missing');
@@ -119,7 +120,7 @@ assert(hasEntry('dist/project-registry.js'), 'packaged project context runtime i
 assert(hasEntry(OWNER_PROTOCOL_FILENAME), 'packaged Art AI Working Constitution is missing');
 assert(hasEntry('desktop/index.html'), 'packaged owner Control Panel renderer is missing');
 assert(hasEntry('dist/desktop/main.js'), 'packaged Desktop main process is missing');
-assert(!listing.some((entry) => /^\/?(?:dist-web|out)(?:\/|$)/.test(entry)), 'packaged bundle contains generated release/output directories');
+assert(!normalizedListing.some((entry) => /^\/?(?:dist-web|out)(?:\/|$)/.test(entry)), 'packaged bundle contains generated release/output directories');
 const sourceProtocol = await readFile(join(ROOT, OWNER_PROTOCOL_FILENAME), 'utf8');
 const expectedProtocolVersion = /^Version:\s*([0-9]+\.[0-9]+)\s*$/m.exec(sourceProtocol)?.[1];
 assert(expectedProtocolVersion, 'source owner working protocol version is invalid');
@@ -131,7 +132,7 @@ assert(/id="desktop-work-thread"/.test(packagedDesktopHtml) && /id="desktop-work
 const packagedPackage = JSON.parse(asar.extractFile(asarPath, 'package.json').toString('utf8'));
 assert(packagedPackage.version === EXPECTED_VERSION, 'packaged package version is not 1.0.0-rc.1');
 assert(packagedPackage.productName === EXPECTED_PRODUCT, 'packaged productName is not AWH');
-const runtime = platform === 'darwin' ? await verifyNodeMode(executable, asarPath) : { status: 'SKIP_PLATFORM', reason: 'Windows executable cannot be executed on macOS' };
+const runtime = platform === process.platform ? await verifyNodeMode(executable, asarPath) : { status: 'SKIP_PLATFORM', reason: `Packaged ${platform} executable cannot run on ${process.platform}` };
 const artifact = await hashTree(bundle);
 assert(artifact.size < MAX_BUNDLE_BYTES, `packaged ${platform} bundle is unexpectedly large: ${artifact.size} bytes`);
 console.log(JSON.stringify({ platform, artifactPath: bundle, artifactName: platform === 'darwin' ? 'AWH.app' : 'AWH-win32-x64', artifactHash: artifact.hash, artifactSize: artifact.size, asarPath, asarHash: createHash('sha256').update(await readFile(asarPath)).digest('hex'), version: packagedPackage.version, productName: packagedPackage.productName, runtime }));
