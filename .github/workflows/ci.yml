@@ -187,3 +187,31 @@ jobs:
             out/make/**/AWH-SHA256.txt
           if-no-files-found: error
           retention-days: 14
+
+  desktop-package-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - name: Package macOS x64
+        run: npm run desktop:package:mac:x64
+      - name: Verify packaged macOS runtime
+        run: npm run desktop:verify:mac
+      - name: Create portable macOS archive
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent out/AWH-darwin-x64/AWH.app AWH-macOS-x64.zip
+          test -s AWH-macOS-x64.zip
+          shasum -a 256 AWH-macOS-x64.zip
+      - name: Upload macOS portable artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: AWH-macOS-x64
+          path: AWH-macOS-x64.zip
+          if-no-files-found: error
+          retention-days: 14
