@@ -72,7 +72,9 @@ final class HubControlPlaneService
         try {
             $pdo = new PDO('sqlite:' . $databasePath, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES => false]);
             $pdo->exec('PRAGMA foreign_keys = ON');
-            $pdo->exec('PRAGMA busy_timeout = 2500');
+            $pdo->exec('PRAGMA busy_timeout = 7500');
+            $pdo->exec('PRAGMA journal_mode = WAL');
+            $pdo->exec('PRAGMA synchronous = NORMAL');
             $ready = (int) $pdo->query('PRAGMA user_version')->fetchColumn() >= 4 && $pdo->query("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'control_tasks'")->fetchColumn() === 1;
             if (!$ready) throw new HubControlPlaneException('Control-plane migration is not ready', 'CONTROL_SCHEMA_NOT_READY');
             return new self($pdo, HubEnrollmentService::openExisting($databasePath));
@@ -352,6 +354,15 @@ final class HubControlPlaneService
         return $this->submitConversationForUser((string) $session['user_id'], $payload, $now);
     }
 
+    /** Hub-authoritative project list for an enrolled Desktop device. Local folders are optional capabilities, not project authority. */
+    public function workerProjects(string $token, string $deviceId, ?string $now = null): array
+    {
+        $auth = $this->enrollment->authenticateForControlPlane($token, self::uuid($deviceId), $now);
+        $q = $this->pdo->prepare("SELECT p.project_id, p.name, p.type, p.source_revision, EXISTS(SELECT 1 FROM control_project_vaults v WHERE v.project_id=p.project_id AND v.active_revision_id IS NOT NULL) AS vault_ready FROM projects p JOIN device_project_memberships dpm ON dpm.project_id=p.project_id AND dpm.device_id=:device AND dpm.revoked_at IS NULL JOIN user_project_memberships upm ON upm.project_id=p.project_id AND upm.user_id=:user AND upm.revoked_at IS NULL ORDER BY p.name, p.project_id LIMIT 200");
+        $q->execute(['device' => $auth['deviceId'], 'user' => $auth['userId']]);
+        return ['schemaVersion' => 1, 'projects' => array_map(static fn (array $row): array => ['projectId' => (string) $row['project_id'], 'name' => (string) $row['name'], 'type' => (string) $row['type'], 'sourceRevision' => $row['source_revision'] === null ? null : (string) $row['source_revision'], 'vaultReady' => (int) $row['vault_ready'] === 1], $q->fetchAll())];
+    }
+
     /** Desktop invokes this only in its privileged main process with the existing M3E credential. */
     public function workerConversation(string $token, string $deviceId, string $projectId, ?string $now = null): array
     {
@@ -468,37 +479,32 @@ final class HubControlPlaneService
                 $answer->execute(['conversation' => $conversation['conversation_id'], 'key' => 'native-answer-' . (string) $existingMessageId]);
                 $needsNativeRetry = $this->finalProductSchemaPresent() && $answer->fetchColumn() === false;
                 $this->pdo->exec('COMMIT'); $transactionOpen = false;
-                if ($needsNativeRetry) $this->completeNativeConversation($userId, ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => (string) $existingMessageId, 'projectId' => $projectId, 'request' => $message], $at);
+                if ($needsNativeRetry) $this->completeNativeConversation($userId, ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => (string) $existingMessageId, 'projectId' => $projectId, 'request' => $message, 'taskId' => null], $at);
                 return $schema >= 2 ? $this->conversationByIdForUser($userId, (string) $conversation['conversation_id']) : $this->conversationForUser($userId, $projectId);
             }
             $messageId = $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'USER', $message, $at, $idempotency);
             if ($attachmentIds !== []) $this->bindAttachments($userId, $projectId, (string) $conversation['conversation_id'], $messageId, $attachmentIds);
-            if (self::isConversationOnly($message, $attachmentIds !== [])) {
-                if ($this->finalProductSchemaPresent()) {
-                    $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'PROGRESS', 'กำลังตรวจบริบทที่เกี่ยวข้อง', $at);
-                    if ($this->centralProjectAuthoritySchemaPresent()) {
-                        // Conversation turns are answered directly by the
-                        // native provider.  They are not execution jobs: a
-                        // user can keep talking while unrelated work runs.
-                        $nativeRequest = ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => $messageId, 'projectId' => $projectId, 'request' => $message];
-                    } else {
-                        $nativeRequest = ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => $messageId, 'projectId' => $projectId, 'request' => $message];
-                    }
-                } else {
-                    $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'ASSISTANT', $this->conversationAnswer($userId, $projectId, $message), $at);
-                }
-            } else {
+
+            $taskId = null;
+            if (!self::isConversationOnly($message, $attachmentIds !== [])) {
                 $taskId = self::uuidFromBytes(random_bytes(16));
                 $taskKey = 'conversation-' . $idempotency;
                 $effectiveGoal = $this->resolveConversationGoal((string) $conversation['conversation_id'], $message);
-                $vaultRevision = $this->centralVaultRevision($projectId); $serverInspection = $vaultRevision !== null && self::isServerInspection($effectiveGoal); $serverTextMutation = $vaultRevision !== null && self::isServerTextNormalization($effectiveGoal); $taskState = ($serverInspection || $serverTextMutation) ? 'QUEUED' : 'WAITING_FOR_WORKER';
+                $vaultRevision = $this->centralVaultRevision($projectId);
+                $serverInspection = $vaultRevision !== null && self::isServerInspection($effectiveGoal);
+                $serverTextMutation = $vaultRevision !== null && self::isServerTextNormalization($effectiveGoal);
+                $taskState = ($serverInspection || $serverTextMutation) ? 'QUEUED' : 'WAITING_FOR_WORKER';
                 $insert = $this->pdo->prepare('INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, :state, NULL, NULL, 0, NULL, NULL, :key, :conversation, :created, :updated, NULL)');
                 $insert->execute(['id' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $effectiveGoal, 'state' => $taskState, 'key' => $taskKey, 'conversation' => $conversation['conversation_id'], 'created' => $at, 'updated' => $at]);
                 if ($vaultRevision !== null) $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverInspection ? 'project.read' : 'codex:cli'), ['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST')], $at);
-                $this->event($taskId, $taskState, 0, $vaultRevision !== null && !$serverInspection && !$serverTextMutation ? 'waiting for an engineering specialist capability' : 'received', $at);
+                $this->event($taskId, $taskState, 0, $serverInspection ? 'server inspection queued' : ($serverTextMutation ? 'server text transform queued' : 'specialist execution recorded'), $at);
                 $this->pdo->prepare('UPDATE control_conversations SET last_task_id = :task, updated_at = :at WHERE conversation_id = :conversation')->execute(['task' => $taskId, 'at' => $at, 'conversation' => $conversation['conversation_id']]);
-                $this->appendConversationMessage((string) $conversation['conversation_id'], $taskId, 'ASSISTANT', $serverInspection ? 'ได้ เดี๋ยวผมอ่านโปรเจกต์ล่าสุดให้ครบ แล้วสรุปผลในบทสนทนานี้' : ($serverTextMutation ? 'ได้ เดี๋ยวผมสร้างเวอร์ชันแยกเพื่อแก้ไขและตรวจให้เรียบร้อย ก่อนขออนุมัติแทนที่ของเดิม' : ($vaultRevision !== null ? 'ได้ ผมเก็บคำขอนี้ไว้แล้ว กำลังเลือกเครื่องมือที่เหมาะสมเพื่อทำงานต่ออย่างปลอดภัย' : ($effectiveGoal === $message ? 'ได้ เดี๋ยวผมเตรียมบริบทของโปรเจกต์และส่งงานให้เครื่องที่เหมาะสม' : 'ได้ ผมจะทำต่อจากงานล่าสุดโดยใช้บริบทเดิมร่วมกับคำขอใหม่นี้'))), $at);
-                $nativeRequest = ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => $messageId, 'projectId' => $projectId, 'request' => $message];
+            }
+
+            if ($this->finalProductSchemaPresent()) {
+                $nativeRequest = ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => $messageId, 'projectId' => $projectId, 'request' => $message, 'taskId' => $taskId];
+            } else {
+                $this->appendConversationMessage((string) $conversation['conversation_id'], $taskId, 'ASSISTANT', $this->conversationAnswer($userId, $projectId, $message), $at);
             }
             $this->pdo->exec('COMMIT'); $transactionOpen = false;
         } catch (HubControlPlaneException $error) {
@@ -680,7 +686,7 @@ final class HubControlPlaneService
                 $this->pdo->exec('BEGIN IMMEDIATE');
                 $existing = $this->pdo->prepare('SELECT message_id FROM control_conversation_messages WHERE conversation_id = :conversation AND idempotency_key = :key');
                 $existing->execute(['conversation' => $request['conversationId'], 'key' => $answerKey]);
-                if ($existing->fetchColumn() === false) $this->appendConversationMessage((string) $request['conversationId'], null, $kind, $body, self::timestamp(gmdate('c')), $answerKey);
+                if ($existing->fetchColumn() === false) $this->appendConversationMessage((string) $request['conversationId'], is_string($request['taskId'] ?? null) ? (string) $request['taskId'] : null, $kind, $body, self::timestamp(gmdate('c')), $answerKey);
                 $this->pdo->exec('COMMIT');
                 return;
             } catch (Throwable $error) {
@@ -1634,26 +1640,22 @@ final class HubControlPlaneService
         if (!is_array($value) || array_is_list($value) === false || count($value) > 6) throw new HubControlPlaneException('Starter prompts are invalid', 'FIELD_INVALID'); $out = []; foreach ($value as $prompt) { if (!is_string($prompt) || trim($prompt) === '' || strlen($prompt) > 120 || preg_match('/[\x00-\x1f\x7f<>]/', $prompt)) throw new HubControlPlaneException('Starter prompt is invalid', 'FIELD_INVALID'); $out[] = trim($prompt); } return $out;
     }
 
-    /** Deterministic low-risk intent path: questions are answered from canonical state; project work remains a task. */
+    /** Conversation is the default.  A background task is created only for an explicit action request at the start of the turn. */
     private static function isConversationOnly(string $message, bool $hasAttachments = false): bool
     {
         $value = trim($message);
-        if (preg_match('/^(?:สวัสดี|ช่วยอะไรได้บ้าง|ทำอะไรได้บ้าง|สรุป|สถานะ|ยังมีอะไร|มีอะไรเหลือ)|(?:^|\s)(?:what remains|status|summary|help|what can you do)(?:\s|$|[.!?])/iu', $value) === 1) return true;
-        // A genuine question is a read-only conversation by default. This is
-        // deliberately conservative: an explicit request to change, test,
-        // build, or deploy still follows the task/approval path, while a
-        // question such as "เราสร้าง AWH ขึ้นมาทำไม?" never queues work.
-        if (preg_match('/[?？]$/u', $value) === 1 || preg_match('/(?:ทำไม|เพื่ออะไร|อย่างไร|ยังไง|อะไร|ใคร|ที่ไหน|เมื่อไร|เท่าไร|กี่|หรือไม่|หรือเปล่า|ไหม)\s*$/u', $value) === 1) return true;
-        // Explicit images/documents are authorised visual/file context, not an
-        // instruction to mutate a workspace.  Questions about the attachment
-        // remain on the bounded native-agent path; implementation requests
-        // still create a canonical worker task.
-        return $hasAttachments && preg_match('/^(?:รูป|ภาพ|ไฟล์|เอกสาร|วารสาร|ช่วยดู|ดู|ตรวจ|สรุป|อธิบาย|what(?:\s+is|\s+do)|analy[sz]e|summari[sz]e)/iu', $value) === 1;
+        $value = preg_replace('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)+/iu', '', $value) ?? $value;
+        $action = preg_match('/^(?:ตรวจ|วิเคราะห์|ดู|ค้นหา|อ่าน|ทำต่อ|จัดการ|แก้|เขียน|สร้าง|ลบ|เปลี่ยน|รัน|ทดสอบ|deploy|commit|push|build|render|inspect|review|search|read|continue|fix|edit|write|create|delete|modify|run|test)(?:หน่อย|ให้|ที|ดู)?(?:\s|$|[ก-๙])/iu', $value) === 1;
+        $summaryAction = preg_match('/^(?:สรุป|summari[sz]e)(?:หน่อย|ให้|ที|ดู)?(?:\s|$|[ก-๙])/iu', $value) === 1
+            && preg_match('/(?:source|repo|repository|project|โปรเจกต์|ไฟล์|โค้ด|code|folder|โฟลเดอร์)/iu', $value) === 1;
+        if (!$action && !$summaryAction) return true;
+        if ($hasAttachments && preg_match('/^(?:ดู|อ่าน|สรุป|อธิบาย)(?:หน่อย|ให้|ที|ดู)?(?:\s|$|[ก-๙])/iu', $value) === 1) return true;
+        return false;
     }
     private static function isConversationFollowUp(string $message): bool { return preg_match('/^(?:ทำต่อ|ต่อจาก|ต่อเลย|เอาอัน(?:นี้|นั้น|ล่าสุด)|ยังไม่ใช่|ตรวจอีกที|continue|keep going|that one)(?:\s|$|[.!?])/iu', trim($message)) === 1; }
     /** Read-only Vault work can use the bounded VPS executor.  Any request
      * that might modify content waits for an explicit specialist capability. */
-    private static function isServerInspection(string $message): bool { $value = preg_replace('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)+/iu', '', trim($message)) ?? trim($message); return preg_match('/^(?:ตรวจ|วิเคราะห์|ดู|สรุป|สถานะ|ค้นหา|อ่าน|inspect|review|summari[sz]e|status|search|read)(?:\s|$)/iu', $value) === 1 && preg_match('/(?:แก้|เขียน|สร้าง|ลบ|เปลี่ยน|deploy|commit|push|render|edit|write|create|delete|modify|build)/iu', $value) !== 1; }
+    private static function isServerInspection(string $message): bool { $value = preg_replace('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)+/iu', '', trim($message)) ?? trim($message); return preg_match('/^(?:ตรวจ|วิเคราะห์|ดู|สรุป|สถานะ|ค้นหา|อ่าน|inspect|review|summari[sz]e|status|search|read)(?:หน่อย|ให้|ที|ดู)?(?:\s|$|[ก-๙])/iu', $value) === 1 && preg_match('/(?:แก้|เขียน|สร้าง|ลบ|เปลี่ยน|deploy|commit|push|render|edit|write|create|delete|modify|build)/iu', $value) !== 1; }
     /** A deliberately small deterministic VPS mutation. Everything broader is
      * still routed through an advertised specialist capability. */
     private static function isServerTextNormalization(string $message): bool { return preg_match('/^(?:normalize|normalise|จัดระเบียบ)(?:\s+(?:text|ข้อความ|ไฟล์))?\s+(?:file|ไฟล์)\s+[A-Za-z0-9._\/-]{1,900}\s*$/iu', trim($message)) === 1; }
@@ -1665,7 +1667,7 @@ final class HubControlPlaneService
     private static function workStateMessage(string $state, int $progress, ?string $message): string
     {
         $fallback = match ($state) {
-            'QUEUED' => 'กำลังเตรียมบริบทที่เกี่ยวข้อง', 'WAITING_FOR_WORKER', 'WAITING_FOR_CAPABILITY' => 'กำลังจัดการต่อบน AWH', 'PREPARING' => 'กำลังอ่านโปรเจกต์ล่าสุดและเตรียมงาน', 'RUNNING' => 'กำลังทำงานตามที่ขอ', 'QA' => 'กำลังตรวจผลลัพธ์ให้เรียบร้อย', 'WAITING_FOR_APPROVAL' => 'งานพร้อมแล้วและกำลังรอการอนุมัติ', 'COMPLETED' => 'งานเสร็จแล้ว', 'FAILED' => 'งานหยุดไว้โดยปลอดภัย', 'CANCELLED' => 'ยกเลิกงานแล้ว', default => 'กำลังอัปเดตงาน',
+            'QUEUED' => 'กำลังเตรียมบริบทที่เกี่ยวข้อง', 'WAITING_FOR_WORKER', 'WAITING_FOR_CAPABILITY' => 'กำลังจัดเส้นทางงานบน AWH', 'PREPARING' => 'กำลังอ่านโปรเจกต์ล่าสุดและเตรียมงาน', 'RUNNING' => 'กำลังทำงานตามที่ขอ', 'QA' => 'กำลังตรวจผลลัพธ์ให้เรียบร้อย', 'WAITING_FOR_APPROVAL' => 'ต้องอนุมัติก่อนดำเนินการต่อ', 'COMPLETED' => 'งานเสร็จแล้ว', 'FAILED' => 'งานหยุดไว้โดยปลอดภัย', 'CANCELLED' => 'ยกเลิกงานแล้ว', default => 'กำลังอัปเดตงาน',
         };
         return $message !== null && trim($message) !== '' ? trim($message) : ($progress > 0 && $progress < 100 ? $fallback . ' (' . $progress . '%)' : $fallback);
     }

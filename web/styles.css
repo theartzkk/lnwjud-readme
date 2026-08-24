@@ -236,3 +236,44 @@ pre { overflow: auto; padding: 12px; border: 1px solid var(--line); border-radiu
 @media (max-width: 640px) { .inline-form { grid-template-columns: 1fr; } .task-progress-row { grid-template-columns: 1fr; } }
 
 .login-downloads{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);display:grid;gap:6px;color:var(--muted);font-size:.78rem}.login-downloads>span{font-weight:650}.login-download-actions{display:flex;gap:7px;flex-wrap:wrap}.login-download-actions a{display:inline-flex;align-items:center;justify-content:center;min-height:30px;padding:5px 10px;border:1px solid var(--line);border-radius:9px;color:var(--text);background:var(--surface-soft);text-decoration:none;font-size:.78rem;font-weight:650}.login-download-actions a:hover,.login-download-actions a:focus-visible{border-color:var(--accent);outline:none}.login-downloads small{font-size:.7rem}
+
+
+/* M13 unified Work surface: one viewport, one conversation, server-first. */
+body.work-active { height: 100dvh; overflow: hidden; }
+body.work-active .app-shell { display: flex; height: 100dvh; min-height: 0; flex-direction: column; overflow: hidden; }
+body.work-active .app-header { width: min(100% - 28px, 880px); min-height: calc(58px + env(safe-area-inset-top)); flex: 0 0 auto; }
+body.work-active .brand small { display: none; }
+body.work-active .app-main { display: flex; width: min(100% - 28px, 880px); min-height: 0; flex: 1 1 auto; padding: 0; overflow: hidden; }
+body.work-active .workspace-view { display: flex; width: 100%; min-height: 0; padding: 0; flex: 1 1 auto; flex-direction: column; overflow: hidden; }
+body.work-active .workspace-heading { min-height: 62px; flex: 0 0 auto; margin: 0; align-items: center; border-bottom: 1px solid var(--line); }
+body.work-active .workspace-heading .eyebrow { display: none; }
+body.work-active .workspace-project { min-width: 0; }
+body.work-active .project-trigger { max-width: 72vw; font-size: 18px; letter-spacing: -.02em; }
+body.work-active .conversation-trigger, body.work-active .work-advanced-links, body.work-active .advanced-panel { display: none !important; }
+body.work-active .hub-status-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 0; color: #aab3c0; font-size: 12px; }
+body.work-active .status-item { display: inline-flex; align-items: center; gap: 6px; }
+body.work-active .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #5bd58c; box-shadow: 0 0 10px rgba(91,213,140,.45); }
+body.work-active .refresh-button { width: 34px; min-height: 34px; padding: 0; border: 0; background: transparent; font-size: 19px; }
+body.work-active .workstream { display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; overflow: hidden; }
+body.work-active .workstream-title { display: none; }
+body.work-active .empty-work { margin: auto 0; padding: 24px 0; }
+body.work-active .work-thread { display: block; width: 100%; max-width: 740px; min-height: 0; flex: 1 1 auto; margin: 0 auto; padding: 18px 0 28px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+body.work-active .task-turn { margin-bottom: 16px; }
+body.work-active .task-meta { opacity: .72; }
+body.work-active .task-progress-row { grid-template-columns: 96px minmax(0,1fr); }
+body.work-active .typing-indicator { width: fit-content; margin: 2px 0; color: var(--muted); font-size: 13px; }
+body.work-active .composer { position: relative; bottom: auto; flex: 0 0 auto; width: 100%; max-width: 760px; margin: 0 auto; padding: 10px 0 calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--canvas); }
+body.work-active .composer textarea { min-height: 48px; max-height: 120px; border-radius: 16px; }
+body.work-active .composer-actions { min-height: 32px; }
+body.work-active .form-message { min-height: 0; }
+@media (max-width: 680px) {
+  body.work-active .app-header, body.work-active .app-main { width: calc(100% - 20px); }
+  body.work-active .app-header { min-height: calc(52px + env(safe-area-inset-top)); }
+  body.work-active .brand strong { font-size: 13px; }
+  body.work-active .workspace-heading { min-height: 54px; }
+  body.work-active .project-trigger { max-width: 74vw; font-size: 16px; }
+  body.work-active .hub-status-row { font-size: 11px; }
+  body.work-active .work-thread { padding: 14px 2px 20px; }
+  body.work-active .composer { margin: 0; padding-inline: 0; }
+  body.work-active .task-goal { max-width: 88%; }
+}

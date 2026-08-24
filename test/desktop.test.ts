@@ -146,8 +146,10 @@ test('desktop Projects workflow uses registry/memory IPC and stays fail-closed',
   assert.match(main, /initializeProjectMemory\(resolved\.workspacePath\)/);
   assert.match(main, /manifest\.projectId !== projectId/);
   assert.match(main, /MAX_HANDOFF_PREVIEW_CHARS = 4_000/);
-  assert.match(renderer, /WORKSPACE UNAVAILABLE/);
-  assert.match(renderer, /Locate Project/);
+  assert.match(renderer, /HUB READY/);
+  assert.match(renderer, /ผูกโฟลเดอร์ Mac/);
+  assert.match(renderer, /AWH Server · Check/);
+  assert.doesNotMatch(renderer, /กำลังรออุปกรณ์ทำงาน|ไม่มีอุปกรณ์ทำงานออนไลน์/);
   assert.match(html, /Initialize Missing Project Memory/);
   assert.match(renderer, /context\.handoffPreview\.truncated/);
   assert.doesNotMatch(renderer, /require\(|process\.|fs\.|child_process|spawn\(/);

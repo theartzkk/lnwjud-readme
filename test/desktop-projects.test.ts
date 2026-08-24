@@ -13,6 +13,8 @@ test('Projects page exposes the real portable project identity contract', async 
   assert.match(renderer, /project\.selected/);
   assert.match(renderer, /project\.state/);
   assert.match(renderer, /project\.localAvailable/);
+  assert.match(renderer, /project\.hubAvailable/);
+  assert.match(renderer, /AWH Hub · Ready/);
 });
 
 test('Project Memory view is bounded and makes missing-file initialization explicit', async () => {
@@ -31,5 +33,7 @@ test('selecting a registered project hot-switches the Desktop context without a 
   assert.match(main, /selectProject[\s\S]*restartRequired: false/);
   assert.match(renderer, /if \(result\.restartRequired === true\)/);
   assert.match(renderer, /await refresh\(\);[\s\S]*showSection\('autopilot'\)/);
-  assert.match(renderer, /พร้อมรับ Goal/);
+  assert.match(renderer, /เลือกโปรเจกต์บน AWH Hub แล้ว/);
+  assert.match(main, /currentHubWorkClient/);
+  assert.match(main, /client\.projects\(\)/);
 });

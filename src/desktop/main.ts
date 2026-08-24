@@ -202,7 +202,19 @@ async function runWorkerOnce() {
   finally { workerRunning = false; }
 }
 
-async function currentWorkClient(): Promise<{ projectId: string; workspace: string; client: ControlPlaneWorkerClient }> {
+async function currentHubWorkClient(): Promise<{ projectId: string; client: ControlPlaneWorkerClient }> {
+  const config = loadConfig();
+  if (!config.hubApiBase) throw new Error('Hub is not configured');
+  const client = new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createDesktopCredentialStore(config.dataDir));
+  const projects = await client.projects();
+  if (projects.length === 0) throw new ProjectRegistryError('AWH Hub has no project for this account', 'PROJECT_NOT_FOUND');
+  const stored = loadStoredSettings(config.dataDir);
+  const selected = projects.find((project) => project.projectId === stored.selectedHubProjectId) ?? projects[0]!;
+  if (stored.selectedHubProjectId !== selected.projectId) await saveStoredSettings(config.dataDir, { ...stored, selectedHubProjectId: selected.projectId });
+  return { projectId: selected.projectId, client };
+}
+
+async function currentLocalWorkClient(): Promise<{ projectId: string; workspace: string; client: ControlPlaneWorkerClient }> {
   const config = loadConfig();
   if (!config.hubApiBase) throw new Error('Hub is not configured');
   if (!hasExplicitWorkspace(config.dataDir)) throw new Error('Project workspace is not configured');
@@ -222,20 +234,20 @@ async function syncPortableProjectToHub(config: ReturnType<typeof loadConfig>, w
 }
 
 async function workConversation() {
-  try { const current = await currentWorkClient(); return { ok: true, projectId: current.projectId, ...(await current.client.readConversation(current.projectId)) }; }
+  try { const current = await currentHubWorkClient(); return { ok: true, projectId: current.projectId, ...(await current.client.readConversation(current.projectId)) }; }
   catch { return { ok: false, error: 'WORK_UNAVAILABLE', message: 'Work ยังไม่พร้อมบน Hub นี้' }; }
 }
 
 async function submitWorkMessage(message: unknown, idempotencyKey: unknown) {
   if (typeof message !== 'string' || !message.trim() || message.length > 2_000) return { ok: false, error: 'MESSAGE_INVALID', message: 'กรุณาบอกสิ่งที่อยากให้ AWH ช่วย' };
   const key = typeof idempotencyKey === 'string' && /^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey) ? idempotencyKey : `desktop-${randomUUID()}`;
-  try { const current = await currentWorkClient(); return { ok: true, projectId: current.projectId, ...(await current.client.submitConversation(current.projectId, message.trim(), key)) }; }
+  try { const current = await currentHubWorkClient(); return { ok: true, projectId: current.projectId, ...(await current.client.submitConversation(current.projectId, message.trim(), key)) }; }
   catch { return { ok: false, error: 'WORK_UNAVAILABLE', message: 'AWH ยังบันทึก Work นี้ไม่ได้ กรุณาตรวจการเชื่อมต่อ Hub' }; }
 }
 
 async function workspaceContinuity() {
   try {
-    const current = await currentWorkClient();
+    const current = await currentLocalWorkClient();
     return { ok: true, projectId: current.projectId, workspace: await current.client.workspace(current.projectId) };
   } catch { return { ok: false, error: 'WORKSPACE_CONTINUITY_UNAVAILABLE', message: 'สถานะการทำงานข้ามอุปกรณ์ยังไม่พร้อม' }; }
 }
@@ -244,7 +256,7 @@ async function syncWorkspaceForHandoff() {
   const config = loadConfig();
   if (!config.allowExec) return { ok: false, error: 'EXECUTION_NOT_APPROVED', message: 'ต้องเปิด Approved execution บนอุปกรณ์นี้ก่อนจึงจะ sync งานข้ามอุปกรณ์ได้' };
   try {
-    const current = await currentWorkClient();
+    const current = await currentLocalWorkClient();
     const identity = await loadOrCreateDeviceIdentity(config.dataDir);
     const checkpoint = await createWorkspaceWipCheckpoint({ workspace: current.workspace, projectId: current.projectId, sourceDeviceId: identity.deviceId });
     await current.client.publishWorkspaceCheckpoint(checkpoint);
@@ -257,7 +269,7 @@ async function takeOverWorkspace() {
   const config = loadConfig();
   if (!config.allowExec) return { ok: false, error: 'EXECUTION_NOT_APPROVED', message: 'ต้องเปิด Approved execution บนอุปกรณ์นี้ก่อนจึงจะรับงานจากอุปกรณ์อื่นได้' };
   try {
-    const current = await currentWorkClient();
+    const current = await currentLocalWorkClient();
     const state = await current.client.workspace(current.projectId);
     if (state.syncStatus === 'UNSYNCED_CHANGES' || state.checkpoint?.syncState === 'UNSYNCED') return { ok: false, error: 'UNSYNCED_SOURCE', message: 'อุปกรณ์เดิมมีงานที่ยัง sync ไม่ครบ จึงยังรับต่ออย่างปลอดภัยไม่ได้' };
     const checkpointId = state.checkpoint?.checkpointId ?? null;
@@ -402,56 +414,31 @@ async function autopilotOverview() {
 
 async function projectsOverview() {
   const config = loadConfig();
-  const configuredWorkspace = hasExplicitWorkspace(config.dataDir)
-    ? await canonicalWorkspace(config.workspace).catch(() => null)
-    : null;
+  const stored = loadStoredSettings(config.dataDir);
+  const configuredWorkspace = hasExplicitWorkspace(config.dataDir) ? await canonicalWorkspace(config.workspace).catch(() => null) : null;
   const records = await listProjects(config.dataDir);
-  const availableById = new Map<string, Set<string>>();
-  const entries = await Promise.all(records.map(async (record) => {
-    const base = {
-      projectId: record.projectId,
-      workspacePath: record.workspacePath,
-      lastOpenedAt: record.lastOpenedAt,
-      lastUsedAt: record.lastUsedAt,
-      pinned: record.pinned,
-      selected: false,
-      name: null as string | null,
-      type: null as string | null,
-      localAvailable: false,
-      state: 'UNAVAILABLE' as 'AVAILABLE' | 'UNAVAILABLE' | 'CONFLICT',
-      error: null as string | null,
-      memory: null as Record<string, 'present' | 'missing'> | null,
-      git: null as { ok: boolean; text: string } | null,
-    };
+  const localById = new Map<string, { workspacePath: string; name: string | null; type: string | null; git: { ok: boolean; text: string } | null; memory: Record<string, 'present' | 'missing'> | null }>();
+  for (const record of records) {
     try {
-      const root = await canonicalWorkspace(record.workspacePath);
-      const manifest = await readProjectManifest(root);
-      if (manifest.projectId !== record.projectId) throw new ProjectRegistryError('Workspace manifest project id does not match the registry', 'PROJECT_ID_MISMATCH');
-      const git = await gitStatus(root);
-      base.name = manifest.name;
-      base.type = manifest.type;
-      base.localAvailable = true;
-      base.state = 'AVAILABLE';
-      base.selected = configuredWorkspace === root;
-      base.memory = await projectMemoryStatus(root);
-      base.git = { ok: git.code === 0, text: git.code === 0 ? git.stdout : git.stderr };
-      const paths = availableById.get(record.projectId) ?? new Set<string>();
-      paths.add(root);
-      availableById.set(record.projectId, paths);
-    } catch (error) {
-      const detail = projectError(error);
-      base.error = detail.message;
-      if (detail.code === 'PROJECT_ID_MISMATCH') base.state = 'CONFLICT';
-    }
-    return base;
-  }));
-  for (const entry of entries) {
-    if ((availableById.get(entry.projectId)?.size ?? 0) > 1) {
-      entry.state = 'CONFLICT';
-      entry.error = 'Project ID is available at more than one local workspace';
-    }
+      const root = await canonicalWorkspace(record.workspacePath); const manifest = await readProjectManifest(root); if (manifest.projectId !== record.projectId) continue;
+      const git = await gitStatus(root); localById.set(record.projectId, { workspacePath: root, name: manifest.name, type: manifest.type, git: { ok: git.code === 0, text: git.code === 0 ? git.stdout : git.stderr }, memory: await projectMemoryStatus(root) });
+    } catch { /* Local binding is optional; Hub remains authoritative. */ }
   }
-  return { projects: entries, currentWorkspace: configuredWorkspace };
+  let hubProjects: Awaited<ReturnType<ControlPlaneWorkerClient['projects']>> = [];
+  if (config.hubApiBase) {
+    const client = new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createDesktopCredentialStore(config.dataDir));
+    hubProjects = await client.projects().catch(() => []);
+  }
+  const entries: Array<Record<string, unknown>> = hubProjects.map((project) => {
+    const local = localById.get(project.projectId);
+    return {
+      projectId: project.projectId, workspacePath: local?.workspacePath ?? null, selected: project.projectId === (stored.selectedHubProjectId ?? hubProjects[0]?.projectId),
+      name: project.name, type: project.type, localAvailable: Boolean(local), hubAvailable: true, vaultReady: project.vaultReady, state: 'AVAILABLE' as const, error: null,
+      memory: local?.memory ?? null, git: local?.git ?? null,
+    };
+  });
+  for (const [projectId, local] of localById) if (!entries.some((entry) => entry['projectId'] === projectId)) entries.push({ projectId, workspacePath: local.workspacePath, selected: false, name: local.name ?? projectId, type: local.type ?? 'general', localAvailable: true, hubAvailable: false, vaultReady: false, state: 'UNAVAILABLE' as const, error: 'โปรเจกต์นี้ยังไม่ได้เชื่อมกับ AWH Hub', memory: local.memory, git: local.git });
+  return { projects: entries, currentWorkspace: configuredWorkspace, selectedHubProjectId: stored.selectedHubProjectId ?? hubProjects[0]?.projectId ?? null };
 }
 
 async function projectContext(projectId: unknown) {
@@ -642,12 +629,13 @@ function registerIpc(): void {
   });
 
   ipcMain.handle(DESKTOP_IPC.selectProject, async (_event, projectId: unknown) => {
-    if (typeof projectId !== 'string') throw new ProjectRegistryError('Project id is required', 'PROJECT_ID_INVALID');
-    const config = loadConfig();
-    const record = await openRegisteredProject(config.dataDir, projectId);
-    const stored = loadStoredSettings(config.dataDir);
-    await saveStoredSettings(config.dataDir, { ...stored, defaultWorkspace: record.workspacePath });
-    return { changed: true, restartRequired: false, projectId: record.projectId, workspace: record.workspacePath };
+    if (typeof projectId !== 'string' || !/^[0-9a-f-]{36}$/i.test(projectId)) throw new ProjectRegistryError('Project id is required', 'PROJECT_ID_INVALID');
+    const config = loadConfig(); const client = new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createDesktopCredentialStore(config.dataDir));
+    const projects = await client.projects(); if (!projects.some((project) => project.projectId === projectId)) throw new ProjectRegistryError('Project is not available from AWH Hub', 'PROJECT_NOT_FOUND');
+    const stored = loadStoredSettings(config.dataDir); let defaultWorkspace = stored.defaultWorkspace;
+    try { const record = await resolveRegisteredProject(config.dataDir, projectId); defaultWorkspace = record.workspacePath; } catch { /* Hub project can be selected without a local folder. */ }
+    await saveStoredSettings(config.dataDir, { ...stored, selectedHubProjectId: projectId.toLowerCase(), ...(defaultWorkspace ? { defaultWorkspace } : {}) });
+    return { changed: true, restartRequired: false, projectId: projectId.toLowerCase(), hubReady: true, localBound: Boolean(defaultWorkspace) };
   });
 
   ipcMain.handle(DESKTOP_IPC.locateProject, async (_event, projectId: unknown) => {
@@ -660,7 +648,7 @@ function registerIpc(): void {
     const record = await registerProject(config.dataDir, selected);
     const hubSynced = await syncPortableProjectToHub(config, record.workspacePath).catch(() => false);
     const stored = loadStoredSettings(config.dataDir);
-    await saveStoredSettings(config.dataDir, { ...stored, defaultWorkspace: record.workspacePath });
+    await saveStoredSettings(config.dataDir, { ...stored, defaultWorkspace: record.workspacePath, selectedHubProjectId: record.projectId });
     return { changed: true, restartRequired: false, projectId: record.projectId, workspace: record.workspacePath, hubSynced };
   });
 
@@ -671,7 +659,7 @@ function registerIpc(): void {
     const record = await registerProject(config.dataDir, selected);
     const hubSynced = await syncPortableProjectToHub(config, record.workspacePath).catch(() => false);
     const stored = loadStoredSettings(config.dataDir);
-    await saveStoredSettings(config.dataDir, { ...stored, defaultWorkspace: record.workspacePath });
+    await saveStoredSettings(config.dataDir, { ...stored, defaultWorkspace: record.workspacePath, selectedHubProjectId: record.projectId });
     return { changed: true, projectId: record.projectId, workspace: record.workspacePath, restartRequired: false, hubSynced };
   });
 

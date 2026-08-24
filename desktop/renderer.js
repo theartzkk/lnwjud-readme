@@ -2,6 +2,7 @@ const $ = (id) => document.getElementById(id);
 let overview = null;
 let projectsData = null;
 let activeProjectId = null;
+document.body.classList.add('work-mode');
 
 function escapeText(value) { return value == null ? '—' : String(value); }
 function renderList(container, items, emptyText, render) {
@@ -19,7 +20,7 @@ function renderAutopilotOverview(data) {
 }
 
 function renderArtifacts(data) {
-  renderList($('remote-result-list'), data?.results || [], 'ยังไม่มีผลลัพธ์จาก Work', (result) => item(result.projectName || 'งานล่าสุด', result.resultSummary || result.lastEvent?.message || 'AWH กำลังรอผลลัพธ์จากงานนี้', 'timeline-item'));
+  renderList($('remote-result-list'), data?.results || [], 'ยังไม่มีผลลัพธ์จาก Work', (result) => item(result.projectName || 'งานล่าสุด', result.resultSummary || result.lastEvent?.message || 'AWH กำลังดำเนินการ', 'timeline-item'));
   renderList($('artifact-list'), data?.artifacts || [], 'ยังไม่มีไฟล์ผลลัพธ์ที่พร้อมตรวจ', (artifact) => item(artifact.label || artifact.name || 'ผลลัพธ์', artifact.status === 'READY' ? 'พร้อมตรวจ' : 'กำลังเตรียมผลลัพธ์', 'timeline-item'));
   renderList($('approval-list'), data?.approvals || [], 'ยังไม่มีสิ่งที่ต้องอนุมัติ', (approval) => item(approval.status === 'PENDING' ? 'ต้องการการอนุมัติ' : 'การอนุมัติ', `หมดอายุ ${dateText(approval.expiresAt)}`, 'timeline-item'));
 }
@@ -34,52 +35,47 @@ async function refreshWorker() {
 }
 
 async function refreshAutopilot() {
-  try {
-    const data = await window.artAgent.getAutopilotOverview();
-    renderAutopilotOverview(data);
-    const remote = await window.artAgent.getAutopilotRemoteResults().catch(() => ({ results: [], artifacts: [], approvals: [] }));
-    renderArtifacts({ results: remote.results || [], artifacts: [...(data.artifacts || []), ...(remote.artifacts || [])], approvals: remote.approvals || [] });
-    await refreshWorker();
-    await refreshWork();
-  } catch (error) {
-    $('autopilot-project').textContent = 'เลือกและลงทะเบียน project ก่อนเริ่ม Local Autopilot';
-    $('desktop-work-status').textContent = 'เลือกและลงทะเบียนโปรเจกต์ก่อนเริ่ม Work';
-  }
+  await refreshWork();
+  const remote = await window.artAgent.getAutopilotRemoteResults().catch(() => ({ results: [], artifacts: [], approvals: [] }));
+  const data = await window.artAgent.getAutopilotOverview().catch(() => null);
+  if (data) renderAutopilotOverview(data);
+  renderArtifacts({ results: remote.results || [], artifacts: [...(data?.artifacts || []), ...(remote.artifacts || [])], approvals: remote.approvals || [] });
+  await refreshWorker();
 }
 
 function workState(task) {
-  return ({ WAITING_FOR_WORKER: 'กำลังรออุปกรณ์ทำงาน', PREPARING: 'กำลังเตรียมงาน', RUNNING: 'กำลังทำงาน', QA: 'กำลังตรวจผลลัพธ์', WAITING_FOR_APPROVAL: 'รอการอนุมัติ', COMPLETED: 'เสร็จแล้ว', FAILED: 'ต้องตรวจสอบ', CANCELLED: 'ยกเลิกแล้ว' })[task?.state] || 'AWH';
+  return ({ WAITING_FOR_WORKER: 'กำลังจัดเส้นทางงาน', PREPARING: 'กำลังเตรียมงาน', RUNNING: 'กำลังทำงาน', QA: 'กำลังตรวจผลลัพธ์', WAITING_FOR_APPROVAL: 'ต้องอนุมัติ', COMPLETED: 'เสร็จแล้ว', FAILED: 'ต้องตรวจสอบ', CANCELLED: 'ยกเลิกแล้ว' })[task?.state] || 'AWH';
 }
 
 function renderWorkConversation(data) {
-  const thread = $('desktop-work-thread'); thread.replaceChildren();
+  const thread = $('desktop-work-thread'); const stickToBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 140; thread.replaceChildren();
   const messages = data?.messages || [];
   const taskById = new Map((data?.tasks || []).map((task) => [task.taskId, task]));
   const artifactsByTask = new Map();
-  for (const artifact of data?.artifacts || []) {
-    if (!artifact?.taskId) continue;
-    const list = artifactsByTask.get(artifact.taskId) || []; list.push(artifact); artifactsByTask.set(artifact.taskId, list);
-  }
-  $('desktop-work-empty').hidden = messages.length > 0;
+  for (const artifact of data?.artifacts || []) { if (!artifact?.taskId) continue; const list = artifactsByTask.get(artifact.taskId) || []; list.push(artifact); artifactsByTask.set(artifact.taskId, list); }
+  $('desktop-work-empty').hidden = messages.some((turn) => turn.kind !== 'progress');
   for (const turn of messages) {
+    if (turn.kind === 'progress') continue;
+    if (turn.kind === 'assistant' && /(?:เครื่องมือที่เหมาะสม|เตรียมบริบทของโปรเจกต์|เก็บคำขอนี้ไว้แล้ว)/u.test(turn.body || '')) continue;
     const row = document.createElement('li'); row.className = `desktop-turn ${turn.kind === 'user' ? 'user-turn' : 'assistant-turn'}`;
     const body = document.createElement('p'); body.className = turn.kind === 'user' ? 'desktop-user-message' : 'desktop-assistant-message'; body.textContent = turn.body;
     if (turn.kind === 'user') { row.append(body); thread.append(row); continue; }
-    const meta = document.createElement('div'); meta.className = 'desktop-turn-meta'; const task = turn.taskId ? taskById.get(turn.taskId) : null;
-    const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = turn.kind === 'approval' ? 'ต้องอนุมัติ' : turn.kind === 'result' ? 'เสร็จแล้ว' : turn.kind === 'failure' ? 'ต้องตรวจสอบ' : workState(task); meta.append(badge);
-    if (task?.progress > 0 && task?.progress < 100) { const progress = document.createElement('span'); progress.textContent = `${task.progress}%`; meta.append(progress); }
+    const task = turn.taskId ? taskById.get(turn.taskId) : null;
+    const meta = document.createElement('div'); meta.className = 'desktop-turn-meta';
+    const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = turn.kind === 'approval' ? 'ต้องอนุมัติ' : turn.kind === 'result' ? 'เสร็จแล้ว' : turn.kind === 'failure' ? 'ต้องตรวจสอบ' : task && !['COMPLETED','FAILED','CANCELLED'].includes(task.state) ? workState(task) : 'AWH'; meta.append(badge);
     row.append(meta, body);
     const artifacts = task ? artifactsByTask.get(task.taskId) || [] : [];
     if (artifacts.length) { const list = document.createElement('ul'); list.className = 'desktop-artifact-links'; for (const artifact of artifacts) { const item = document.createElement('li'); item.textContent = `↳ ${artifact.name || 'ไฟล์ผลลัพธ์'}`; list.append(item); } row.append(list); }
     thread.append(row);
   }
+  if (stickToBottom) requestAnimationFrame(() => { thread.scrollTop = thread.scrollHeight; });
 }
 
 async function refreshWork() {
   const result = await window.artAgent.getWorkConversation();
-  if (result?.ok !== true) { $('desktop-work-status').textContent = result?.message || 'Work ยังไม่พร้อม'; return; }
-  $('desktop-work-project').textContent = projectsData?.projects?.find((project) => project.projectId === result.projectId)?.name || 'Project Work';
-  $('desktop-work-status').textContent = result.conversation?.lastTaskId ? 'งานล่าสุดและความต่อเนื่องอยู่ในบทสนทนานี้' : 'พิมพ์สิ่งที่อยากให้ AWH ช่วยได้เลย';
+  if (result?.ok !== true) { $('desktop-work-status').textContent = 'AWH Server · Check'; return; }
+  $('desktop-work-project').textContent = projectsData?.projects?.find((project) => project.projectId === result.projectId)?.name || 'AWH';
+  $('desktop-work-status').textContent = 'AI · Ready';
   renderWorkConversation(result);
 }
 
@@ -110,14 +106,16 @@ async function runWorkspaceAction(action) {
 
 async function submitWork() {
   const input = $('desktop-work-input'); const message = input.value.trim();
-  if (!message) { $('desktop-work-message').textContent = 'กรุณาพิมพ์สิ่งที่อยากให้ AWH ช่วย'; return; }
-  const key = `desktop-${crypto.randomUUID()}`; $('desktop-work-submit').disabled = true; $('desktop-work-message').textContent = 'กำลังตรวจบริบทและบันทึกงาน…';
+  if (!message) { $('desktop-work-message').textContent = 'พิมพ์สิ่งที่อยากให้ AWH ช่วยได้เลย'; return; }
+  const key = `desktop-${crypto.randomUUID()}`; input.value = ''; input.focus(); $('desktop-work-message').textContent = 'AWH · กำลังตอบ';
+  const thread = $('desktop-work-thread');
+  const local = document.createElement('li'); local.className = 'desktop-turn user-turn'; const bubble = document.createElement('p'); bubble.className = 'desktop-user-message'; bubble.textContent = message; local.append(bubble); thread.append(local);
+  const typing = document.createElement('li'); typing.className = 'desktop-turn assistant-turn desktop-typing'; const text = document.createElement('p'); text.className = 'desktop-assistant-message'; text.textContent = 'AWH · กำลังตอบ'; typing.append(text); thread.append(typing); thread.scrollTop = thread.scrollHeight;
   try {
     const result = await window.artAgent.submitWorkMessage(message, key);
     if (result?.ok !== true) throw new Error(result?.message || 'ส่ง Work ไม่สำเร็จ');
-    input.value = ''; renderWorkConversation(result); $('desktop-work-message').textContent = '';
-  } catch (error) { $('desktop-work-message').textContent = error?.message || 'AWH ยังส่ง Work นี้ไม่ได้'; }
-  finally { $('desktop-work-submit').disabled = false; }
+    renderWorkConversation(result); $('desktop-work-message').textContent = '';
+  } catch (error) { typing.remove(); $('desktop-work-message').textContent = error?.message || 'AWH Server · Check'; void refreshWork(); }
 }
 
 function remoteState(data) {
@@ -237,9 +235,9 @@ async function issueOwnerCode() {
 }
 
 function projectStatusLabel(project) {
-  if (project.state === 'CONFLICT') return ['CONFLICT', 'danger'];
-  if (!project.localAvailable) return ['WORKSPACE UNAVAILABLE', 'danger'];
-  return [project.selected ? 'SELECTED' : 'AVAILABLE', project.selected ? 'success' : ''];
+  if (project.hubAvailable) return [project.selected ? 'SELECTED' : 'HUB READY', 'success'];
+  if (project.state === 'CONFLICT') return ['CHECK', 'danger'];
+  return ['LOCAL ONLY', ''];
 }
 
 function renderProjects(data) {
@@ -255,22 +253,19 @@ function renderProjects(data) {
     const head = document.createElement('div'); head.className = 'card-head';
     const title = document.createElement('div');
     const name = document.createElement('h3'); name.textContent = project.name || project.projectId; name.className = 'project-name';
-    const stateText = document.createElement('small'); stateText.textContent = project.localAvailable ? 'พร้อมใช้งานบนอุปกรณ์นี้' : 'ต้องค้นหาโฟลเดอร์โปรเจกต์บนอุปกรณ์นี้'; stateText.className = 'muted';
+    const stateText = document.createElement('small'); stateText.textContent = project.hubAvailable ? `AWH Hub · Ready${project.localAvailable ? ' · Mac workspace · Bound' : ''}` : 'Mac workspace · Local only'; stateText.className = 'muted';
     title.append(name, stateText);
     const badge = document.createElement('span'); const [label, cls] = projectStatusLabel(project); badge.textContent = label; badge.className = `badge ${cls}`.trim();
     head.append(title, badge); card.append(head);
     if (project.error) { const note = document.createElement('p'); note.className = 'muted'; note.textContent = project.error; card.append(note); }
     const actions = document.createElement('div'); actions.className = 'actions';
-    if (project.localAvailable && project.state === 'AVAILABLE') {
-      const select = document.createElement('button'); select.className = 'btn'; select.textContent = project.selected ? 'Selected Project' : 'Select / Open Project'; select.disabled = project.selected;
-      select.addEventListener('click', () => runProjectAction(() => window.artAgent.selectProject(project.projectId), 'เลือกโปรเจกต์แล้ว — พร้อมรับ Goal'));
+    if (project.hubAvailable) {
+      const select = document.createElement('button'); select.className = 'btn'; select.textContent = project.selected ? 'กำลังใช้งาน' : 'เปิด Work'; select.disabled = project.selected;
+      select.addEventListener('click', () => runProjectAction(() => window.artAgent.selectProject(project.projectId), 'เลือกโปรเจกต์บน AWH Hub แล้ว'));
       actions.append(select);
-      const memory = document.createElement('button'); memory.className = 'btn secondary'; memory.textContent = 'ดูบริบทโปรเจกต์'; memory.addEventListener('click', () => loadMemory(project.projectId)); actions.append(memory);
     }
-    if (!project.localAvailable || project.state === 'CONFLICT') {
-      const locate = document.createElement('button'); locate.className = 'btn secondary'; locate.textContent = 'Locate Project'; locate.addEventListener('click', () => runProjectAction(() => window.artAgent.locateProject(project.projectId), 'พบและผูกโปรเจกต์แล้ว — พร้อมรับ Goal'));
-    actions.append(locate);
-    }
+    if (project.localAvailable) { const memory = document.createElement('button'); memory.className = 'btn secondary'; memory.textContent = 'Local tools'; memory.addEventListener('click', () => loadMemory(project.projectId)); actions.append(memory); }
+    else if (project.hubAvailable) { const locate = document.createElement('button'); locate.className = 'btn secondary'; locate.textContent = 'ผูกโฟลเดอร์ Mac (ถ้าต้องใช้)'; locate.addEventListener('click', () => runProjectAction(() => window.artAgent.locateProject(project.projectId), 'ผูก local workspace แล้ว')); actions.append(locate); }
     card.append(actions); list.append(card);
   }
 }
@@ -363,6 +358,7 @@ function render(data) {
 }
 
 function showSection(section) {
+  document.body.classList.toggle('work-mode', section === 'autopilot');
   document.querySelectorAll('.nav').forEach((node) => node.classList.toggle('active', node.dataset.section === section));
   document.querySelectorAll('.section').forEach((node) => node.classList.toggle('active', node.id === `section-${section}`));
 }
@@ -451,3 +447,4 @@ document.addEventListener('keydown', (event) => { if ((event.metaKey || event.ct
 
 void refresh();
 setInterval(() => { if (!document.hidden) void refresh(); }, 10000);
+setInterval(() => { if (!document.hidden && document.body.classList.contains('work-mode')) void refreshWork(); }, 2000);

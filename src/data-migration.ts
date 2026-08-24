@@ -158,12 +158,14 @@ function normalizeSettings(content: Buffer, blockers: string[]): Buffer | null {
         continue;
       }
       if (key === 'defaultWorkspace' && typeof value !== 'string') issue(blockers, 'settings defaultWorkspace is invalid');
+      if (key === 'selectedHubProjectId' && (typeof value !== 'string' || !/^[0-9a-f-]{36}$/i.test(value))) issue(blockers, 'settings selectedHubProjectId is invalid');
       if (['allowWrite', 'allowExec', 'allowCodex', 'controlPlaneWorker'].includes(key) && typeof value !== 'boolean') {
         issue(blockers, `settings ${key} is invalid`);
       }
     }
     const normalized: Record<string, unknown> = {};
     if (typeof parsed.defaultWorkspace === 'string' && parsed.defaultWorkspace.trim()) normalized.defaultWorkspace = parsed.defaultWorkspace;
+    if (typeof parsed.selectedHubProjectId === 'string' && /^[0-9a-f-]{36}$/i.test(parsed.selectedHubProjectId)) normalized.selectedHubProjectId = parsed.selectedHubProjectId.toLowerCase();
     for (const key of ['allowWrite', 'allowExec', 'allowCodex', 'controlPlaneWorker']) if (typeof parsed[key] === 'boolean') normalized[key] = parsed[key];
     return Buffer.from(JSON.stringify(normalized), 'utf8');
   } catch {

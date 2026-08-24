@@ -15,8 +15,8 @@ import {
   const MICRO_BAHT = 1000000;
   const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, systemReadiness: null, people: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null };
   const taskLabels = {
-    QUEUED: 'กำลังจัดการต่อบน AWH', WAITING_FOR_WORKER: 'กำลังจัดการต่อบน AWH', PREPARING: 'กำลังเตรียมงาน', RUNNING: 'กำลังทำงาน',
-    QA: 'กำลังตรวจคุณภาพ', WAITING_FOR_APPROVAL: 'รอการอนุมัติ', COMPLETED: 'เสร็จแล้ว',
+    QUEUED: 'กำลังจัดการบน AWH', WAITING_FOR_WORKER: 'กำลังจัดเส้นทางงาน', PREPARING: 'กำลังเตรียมงาน', RUNNING: 'กำลังทำงาน',
+    QA: 'กำลังตรวจคุณภาพ', WAITING_FOR_APPROVAL: 'ต้องอนุมัติ', COMPLETED: 'เสร็จแล้ว',
     FAILED: 'ต้องตรวจสอบ', CANCELLED: 'ยกเลิกแล้ว',
   };
 
@@ -259,7 +259,7 @@ import {
   }
   function renderSettingsOverview() {
     const provider = state.provider || {}; const credential = provider.credential || {}; const workers = state.ownerStatus?.workers || state.control?.workers || [];
-    const ai = provider.available ? 'พร้อมใช้งาน · Auto' : provider.keyConfigured ? `เชื่อมแล้ว · ${credential.lastTestStatus === 'PASS' ? 'ตรวจสอบผ่าน' : 'รอทดสอบ'}` : 'ยังไม่เชื่อม API key';
+    const ai = provider.available ? 'พร้อมใช้งาน · Auto' : provider.keyConfigured ? `เชื่อมแล้ว · ${credential.lastTestStatus === 'PASS' ? 'ตรวจสอบผ่าน' : 'ต้องทดสอบ'}` : 'ยังไม่เชื่อม API key';
     message('settings-ai-summary', ai);
     message('settings-device-summary', workers.length ? `${workers.filter((worker) => worker.state === 'READY' || worker.state === 'WORKING').length} เครื่องพร้อมทำงาน` : 'ยังไม่มี AWH Desktop ที่พร้อมทำงาน');
     const list = $('settings-worker-list'); if (list) {
@@ -273,7 +273,7 @@ import {
     const readiness = state.systemReadiness;
     if (readiness) {
       const checks = readiness.checks || {};
-      const waiting = Number.isInteger(checks.waitingCapabilityCount) && checks.waitingCapabilityCount > 0 ? ` · มีงานรอความสามารถ ${checks.waitingCapabilityCount} งาน` : '';
+      const waiting = Number.isInteger(checks.waitingCapabilityCount) && checks.waitingCapabilityCount > 0 ? ` · งานใช้ความสามารถเพิ่มเติม ${checks.waitingCapabilityCount} งาน` : '';
       message('system-check-message', readiness.state === 'READY' ? 'AWH พร้อมทำงาน' : readiness.state === 'PARTIALLY_READY' ? `AWH พร้อมบางส่วน${waiting}` : 'AWH ต้องตรวจสอบบางรายการก่อนเริ่มงาน');
     }
   }
@@ -350,20 +350,16 @@ import {
     }
   }
 
-  function workerSummary(workers) {
-    const source = Array.isArray(workers) ? workers : [];
-    const working = source.filter((worker) => worker.state === 'WORKING');
-    const ready = source.filter((worker) => worker.state === 'READY');
-    if (working.length) return `${working.length} อุปกรณ์กำลังทำงาน`;
-    if (ready.length) return `${ready.length} อุปกรณ์พร้อมทำงาน`;
-    return 'ยังไม่มีอุปกรณ์ทำงานออนไลน์ — งานจะรออย่างปลอดภัย';
+  function workerSummary() {
+    const ai = state.provider?.available === true ? ' · AI · Ready' : state.provider?.keyConfigured === true ? ' · AI · Connected' : '';
+    return `AWH Server · Online${ai}`;
   }
 
   function continuitySummary(workspace) {
     if (!workspace) return '';
-    if (workspace.syncStatus === 'SYNCED') return ' · งานล่าสุดพร้อมทำต่อบนอุปกรณ์ที่เชื่อถือได้';
-    if (workspace.syncStatus === 'HANDOFF_REQUIRED') return ' · งานกำลังอยู่บนอุปกรณ์อื่น';
-    if (workspace.syncStatus === 'SOURCE_OFFLINE') return ' · อุปกรณ์เดิมออฟไลน์ แต่มี checkpoint ล่าสุด';
+    if (workspace.syncStatus === 'SYNCED') return ' · Source ล่าสุดพร้อมใช้งาน';
+    if (workspace.syncStatus === 'HANDOFF_REQUIRED') return ' · มีงานจากเครื่องอื่นที่เชื่อมไว้';
+    if (workspace.syncStatus === 'SOURCE_OFFLINE') return ' · ใช้ checkpoint ล่าสุดบน AWH';
     if (workspace.syncStatus === 'UNSYNCED_CHANGES') return ' · มีงานที่ยัง sync ไม่ครบ';
     return '';
   }
@@ -397,7 +393,7 @@ import {
   }
 
   function renderThread(conversation, approvals) {
-    const thread = $('work-thread'); thread.replaceChildren();
+    const thread = $('work-thread'); const stickToBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 140; thread.replaceChildren();
     const messages = Array.isArray(conversation?.messages) ? conversation.messages : [];
     const taskById = new Map((conversation?.tasks || []).map((task) => [task.taskId, task]));
     const artifactsByTask = new Map();
@@ -409,6 +405,14 @@ import {
     for (const attachment of conversation?.attachments || []) { if (!attachment?.messageId) continue; const list = attachmentsByMessage.get(attachment.messageId) || []; list.push(attachment); attachmentsByMessage.set(attachment.messageId, list); }
     $('empty-work').hidden = messages.length > 0 || !state.selectedProjectId;
     for (const turn of messages) {
+      if (turn.kind === 'progress') {
+        if (String(turn.messageId || '').startsWith('local-progress-')) {
+          const typing = document.createElement('li'); typing.className = 'task-turn assistant-turn typing-turn';
+          const text = document.createElement('p'); text.className = 'typing-indicator'; text.textContent = 'AWH · กำลังตอบ'; typing.append(text); thread.append(typing);
+        }
+        continue;
+      }
+      if (turn.kind === 'assistant' && /(?:เครื่องมือที่เหมาะสม|เตรียมบริบทของโปรเจกต์|เก็บคำขอนี้ไว้แล้ว)/u.test(turn.body || '')) continue;
       const task = turn.taskId ? taskById.get(turn.taskId) : null;
       const row = document.createElement('li'); row.className = `task-turn ${turn.kind === 'user' ? 'user-turn' : 'assistant-turn'}`;
       const body = document.createElement('p'); body.className = turn.kind === 'user' ? 'task-goal' : 'task-summary'; body.textContent = turn.body;
@@ -431,6 +435,7 @@ import {
       }
       row.append(response); thread.append(row);
     }
+    if (stickToBottom) requestAnimationFrame(() => { thread.scrollTop = thread.scrollHeight; });
   }
 
   function renderConversationSheet() {
@@ -456,15 +461,15 @@ import {
     const project = selectedProject();
     message('selected-project-name', project?.name || 'ยังไม่มีโปรเจกต์');
     message('selected-conversation-name', state.conversation?.conversation?.title || 'Work');
-    message('worker-summary', workerSummary(control.workers));
-    message('work-context', project ? (project.memoryReady ? `บริบทและงานจะถูกผูกกับโปรเจกต์นี้${continuitySummary(state.workspaceContinuity)}` : 'AWH จะรักษาขอบเขตของโปรเจกต์นี้ไว้ขณะ worker ตรวจ context') : 'เพิ่มโปรเจกต์จาก AWH Desktop เพื่อเริ่มงาน');
-    message('advanced-status', `${workerSummary(control.workers)} · งานและผลลัพธ์แสดงเฉพาะตามสิทธิ์ของบัญชีคุณ`);
+    message('worker-summary', workerSummary());
+    message('work-context', project ? `คุยและสั่งงานได้จากทุกอุปกรณ์${continuitySummary(state.workspaceContinuity)}` : 'เพิ่มโปรเจกต์เพื่อเริ่มคุยกับ AWH');
+    message('advanced-status', `${workerSummary()} · งานและผลลัพธ์แสดงตามสิทธิ์ของบัญชีคุณ`);
     const workReady = project !== null && state.conversationAvailable;
     $('goal-submit').disabled = !workReady;
     $('goal-input').disabled = !workReady;
     $('attachment-open').disabled = !workReady;
     $('attachment-input').disabled = !workReady;
-    $('goal-input').placeholder = !project ? 'เลือกหรือเพิ่มโปรเจกต์ก่อน' : workReady ? 'พิมพ์สิ่งที่อยากให้ AWH ช่วย…' : 'กำลังเปิด Work อย่างปลอดภัย…';
+    $('goal-input').placeholder = !project ? 'เลือกหรือเพิ่มโปรเจกต์ก่อน' : 'พิมพ์สิ่งที่อยากให้ AWH ช่วย…';
     renderProjectSheet(projects);
     renderConversationSheet();
     renderThread(state.conversation, state.conversation?.approvals || control.approvals);
@@ -476,6 +481,7 @@ import {
     const authenticated = state.control.authenticated === true;
     $('sign-in-view').hidden = authenticated;
     $('workspace-view').hidden = !authenticated;
+    document.body.classList.toggle('work-active', authenticated);
     $('account-open').hidden = !authenticated;
     if (authenticated) renderWorkspace();
   }
@@ -500,7 +506,7 @@ import {
 
   async function refreshWorkspace(showBusy = false) {
     if (showBusy) message('goal-message', 'กำลังรีเฟรช…');
-    try { state.control = await loadControlData(); renderWorkspace(); await refreshConversation(); if (showBusy) message('goal-message', ''); }
+    try { state.control = await loadControlData(); if (state.control?.role === 'OWNER') state.provider = await loadProviderStatus().catch(() => state.provider); renderWorkspace(); await refreshConversation(); if (showBusy) message('goal-message', ''); }
     catch (error) { message('goal-message', error instanceof Error ? error.message : 'AWH ไม่สามารถรีเฟรชข้อมูลได้'); }
   }
 
@@ -592,12 +598,12 @@ import {
     const pending = [...state.pendingAttachments];
     const localMessageId = `local-${idempotencyKey}`;
     const localAttachments = pending.map((file, index) => ({ attachmentId: `local-${idempotencyKey}-${index}`, messageId: localMessageId, name: file.name, sizeBytes: file.size, pending: true }));
-    state.conversation = { ...(state.conversation || {}), messages: [...(state.conversation?.messages || []), { messageId: localMessageId, taskId: null, kind: 'user', sequence: Number.MAX_SAFE_INTEGER - 1, body: goal, createdAt: new Date().toISOString() }, { messageId: `local-progress-${idempotencyKey}`, taskId: null, kind: 'progress', sequence: Number.MAX_SAFE_INTEGER, body: pending.length ? 'กำลังแนบไฟล์และบันทึกงาน…' : 'กำลังตรวจบริบทและบันทึกงาน…', createdAt: new Date().toISOString() }], tasks: state.conversation?.tasks || [], artifacts: state.conversation?.artifacts || [], attachments: [...(state.conversation?.attachments || []), ...localAttachments], approvals: state.conversation?.approvals || [] };
-    renderWorkspace(); message('goal-message', ''); $('goal-submit').disabled = true; $('attachment-open').disabled = true;
+    state.conversation = { ...(state.conversation || {}), messages: [...(state.conversation?.messages || []), { messageId: localMessageId, taskId: null, kind: 'user', sequence: Number.MAX_SAFE_INTEGER - 1, body: goal, createdAt: new Date().toISOString() }, { messageId: `local-progress-${idempotencyKey}`, taskId: null, kind: 'progress', sequence: Number.MAX_SAFE_INTEGER, body: 'AWH · กำลังตอบ', createdAt: new Date().toISOString() }], tasks: state.conversation?.tasks || [], artifacts: state.conversation?.artifacts || [], attachments: [...(state.conversation?.attachments || []), ...localAttachments], approvals: state.conversation?.approvals || [] };
+    renderWorkspace(); message('goal-message', ''); $('goal-input').value = ''; $('goal-input').focus();
     try {
       const uploaded = pending.length ? await uploadConversationAttachments(conversationId, pending) : [];
       await submitWorkMessage(project.projectId, conversationId, goal, uploaded.map((attachment) => attachment.attachmentId), idempotencyKey);
-      $('goal-input').value = ''; state.pendingAttachments = []; renderPendingAttachments();
+      state.pendingAttachments = []; renderPendingAttachments();
       await refreshConversation();
     } catch (error) { message('goal-message', error instanceof Error ? error.message : 'ส่งงานไม่สำเร็จ'); }
     finally { const unavailable = selectedProject() === null || !state.conversationAvailable; $('goal-submit').disabled = unavailable; $('attachment-open').disabled = unavailable; }
@@ -751,5 +757,5 @@ import {
 
   $('logout-button').addEventListener('click', async () => { await logout().catch(() => undefined); window.location.reload(); });
 
-  loadWebData().then(async (data) => { render(data); if (window.location.hash.startsWith('#awh-reset=')) openPasswordRecovery(); if (data?.control?.authenticated) { await refreshConversation(); try { state.productSettings = (await loadProductSettings()).settings; applyProductSettings(); } catch {} state.conversationTimer = window.setInterval(() => { if (!document.hidden && state.selectedConversationId && (state.conversation?.tasks || []).some((task) => !['COMPLETED','FAILED','CANCELLED'].includes(task.state))) void loadConversation(state.selectedConversationId).then((value) => { state.conversation = value; renderWorkspace(); }).catch(() => undefined); }, 2500); state.refreshTimer = window.setInterval(() => { if (!document.hidden) void refreshWorkspace(false); }, 15_000); } }).catch(() => render({ product: { shortName: 'AWH' }, control: { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' } }));
+  loadWebData().then(async (data) => { render(data); if (window.location.hash.startsWith('#awh-reset=')) openPasswordRecovery(); if (data?.control?.authenticated) { await refreshConversation(); try { state.productSettings = (await loadProductSettings()).settings; applyProductSettings(); } catch {} state.conversationTimer = window.setInterval(() => { if (!document.hidden && state.selectedConversationId) void loadConversation(state.selectedConversationId).then((value) => { state.conversation = value; renderWorkspace(); }).catch(() => undefined); }, 2000); state.refreshTimer = window.setInterval(() => { if (!document.hidden) void refreshWorkspace(false); }, 15_000); } }).catch(() => render({ product: { shortName: 'AWH' }, control: { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' } }));
 })();

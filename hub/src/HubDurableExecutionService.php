@@ -163,7 +163,7 @@ final class HubDurableExecutionService
             $eventMessage = $retrying ? 'bounded retry queued on the same task' : ($waiting ? 'work preserved; automatic retry paused' : 'server-native execution failed');
             if ($safeDiagnostic !== []) $eventMessage .= ' provider_failure=' . json_encode(['code' => $code] + $safeDiagnostic, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
             $this->event((string) $claimed['task_id'], $taskState, 0, $eventMessage, $at);
-            $userMessage = $terminal ? (self::providerFailureSummary($code) ?? 'งานนี้หยุดไว้โดยปลอดภัย และยังไม่ได้เลื่อนผลลัพธ์ทับ Project หลัก') : 'ผมเก็บงานนี้ไว้แล้ว และจะทำต่อในเบื้องหลังเมื่อความสามารถที่ต้องใช้พร้อม';
+            $userMessage = $terminal ? (self::providerFailureSummary($code) ?? 'งานนี้หยุดไว้โดยปลอดภัย และยังไม่ได้เลื่อนผลลัพธ์ทับ Project หลัก') : 'ส่วนนี้ถูกเก็บไว้ในเบื้องหลัง บทสนทนาและงานที่ AWH Server ทำได้ยังดำเนินต่อได้ตามปกติ';
             $this->appendConversationMessage((string) $claimed['conversation_id'], (string) $claimed['task_id'], $terminal ? 'FAILURE' : 'PROGRESS', $userMessage, $at);
             $this->pdo->exec('COMMIT');
         } catch (Throwable) { $this->rollbackImmediate(); }
@@ -187,7 +187,7 @@ final class HubDurableExecutionService
             'BUDGET_EXHAUSTED' => 'งบ AI ของ AWH ถึงขีดจำกัด งานของคุณยังถูกเก็บไว้และระบบจะไม่อ้างว่าเสร็จแล้ว',
             'PROVIDER_QUOTA_EXHAUSTED' => 'โควตาหรือวงเงินของ OpenAI ยังไม่พร้อม งานของคุณยังถูกเก็บไว้และระบบจะไม่อ้างว่าเสร็จแล้ว',
             'PROVIDER_RATE_LIMITED', 'PROVIDER_UNAVAILABLE', 'PROVIDER_FAILED' => $retrying ? 'AI ยังตอบไม่ได้ในขณะนี้ งานของคุณยังถูกเก็บไว้ ระบบจะลองใหม่แบบจำกัดบนงานเดิม' : 'AI ยังตอบไม่ได้ในขณะนี้ งานของคุณยังถูกเก็บไว้ และหยุดการลองอัตโนมัติหลังครบขีดจำกัด',
-            default => 'งานของคุณยังถูกเก็บไว้และกำลังรอความสามารถที่เหมาะสม',
+            default => 'งานของคุณยังถูกเก็บไว้ใน AWH และบทสนทนายังใช้งานได้ตามปกติ',
         };
     }
 
@@ -292,7 +292,7 @@ final class HubDurableExecutionService
             }
             $diff = $this->revisionDiff($projectId, $revision, (string) $candidate['revisionId']);
             $artifactId = $this->storeCandidateReport($claimed, $candidate, $diff, $workspace, $at);
-            $summary = 'จัดระเบียบข้อความใน `' . $source['path'] . '` แล้ว สร้าง revision ผู้สมัครและตรวจความสมบูรณ์ของไฟล์เรียบร้อย รออนุมัติก่อนแทนที่ Project Vault หลัก';
+            $summary = 'จัดระเบียบข้อความใน `' . $source['path'] . '` แล้ว สร้าง revision ผู้สมัครและตรวจความสมบูรณ์ของไฟล์เรียบร้อย ต้องอนุมัติก่อนแทนที่ Project Vault หลัก';
             $this->completeCandidate($claimed, $candidate, $artifactId, $summary, $at);
             $candidateRecorded = true;
         } catch (Throwable $error) {

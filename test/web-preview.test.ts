@@ -113,7 +113,7 @@ test('CONTROL shell uses authenticated canonical data and presents a truthful si
   assert.equal(inactive.control.authenticated, false);
 });
 
-test('control UI is work-first, project-bound, mobile-first, and truthful about offline workers', async () => {
+test('control UI is work-first, server-first, mobile-first, and never blocks chat on device state', async () => {
   const [html, app, adapter, css] = await Promise.all([
     readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
     readFile(join(ROOT, 'web', 'app.js'), 'utf8'),
@@ -125,7 +125,9 @@ test('control UI is work-first, project-bound, mobile-first, and truthful about 
   assert.match(html, /id="goal-submit"/);
   assert.match(app, /selectedProjectId/);
   assert.match(app, /WAITING_FOR_WORKER/);
-  assert.match(app, /ยังไม่มีอุปกรณ์ทำงานออนไลน์/);
+  assert.match(html, /AWH Server · Online/);
+  assert.match(html, /AI · Ready/);
+  assert.doesNotMatch(`${html}\n${app}`, /ยังไม่มีอุปกรณ์ทำงานออนไลน์|กำลังรออุปกรณ์ทำงาน|งานจะรอ/);
   assert.match(app, /goal-submit.*disabled/);
   assert.match(app, /conversationAvailable/);
   assert.match(app, /ensureMemorySurface/);
@@ -136,7 +138,9 @@ test('control UI is work-first, project-bound, mobile-first, and truthful about 
   assert.doesNotMatch(app, /Work stream นี้จะพร้อมทันทีที่ Hub ได้รับ release ล่าสุด/);
   assert.match(css, /@media \(max-width: 680px\)/);
   assert.match(css, /env\(safe-area-inset-bottom\)/);
-  assert.match(css, /position:\s*sticky/);
+  assert.match(css, /body\.work-active \{ height: 100dvh; overflow: hidden; \}/);
+  assert.match(css, /body\.work-active \.work-thread[^{]*\{[^}]*overflow-y: auto/s);
+  assert.match(css, /body\.work-active \.composer[^{]*\{[^}]*position: relative/s);
   assert.match(css, /\.workspace-heading > div \{ min-width: 0; flex: 1 1 auto; \}/);
 });
 
@@ -184,7 +188,7 @@ test('owner self-service is a focused settings hub whose independent projections
   assert.match(app, /ลืมรหัสผ่าน\?/);
   assert.match(app, /resetPassword\(/);
   assert.match(app, /loadDesktopRelease/);
-  assert.match(app, /WAITING_FOR_WORKER: 'กำลังจัดการต่อบน AWH'/);
+  assert.match(app, /WAITING_FOR_WORKER: 'กำลังจัดเส้นทางงาน'/);
   assert.doesNotMatch(app, /กำลังรออุปกรณ์ทำงาน/);
   assert.doesNotMatch(app, /กำลังรอ capability/);
   assert.doesNotMatch(app, /schema v\$\{database\.schemaVersion/);

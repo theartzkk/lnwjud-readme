@@ -62,11 +62,11 @@
       </section>
 
       <section id="section-autopilot" class="section active">
-        <div class="work-header"><div><p class="eyebrow">PROJECT WORK</p><button id="desktop-work-project" class="work-project" type="button">กำลังตรวจโปรเจกต์…</button><p id="desktop-work-status" class="muted">กำลังเชื่อมต่อ Work ของคุณ</p></div><button id="refresh-autopilot" class="btn secondary small">รีเฟรช</button></div>
+        <div class="work-header"><div><p class="eyebrow">AWH</p><button id="desktop-work-project" class="work-project" type="button">AWH</button><div class="desktop-hub-status" aria-live="polite"><span><span class="desktop-status-dot"></span>AWH Server · Online</span><span id="desktop-work-status">AI · Ready</span></div></div><button id="refresh-autopilot" class="btn secondary small" aria-label="รีเฟรช Work">↻</button></div>
         <div class="workspace-continuity" aria-live="polite"><div><strong>ทำงานต่อได้ทุกอุปกรณ์</strong><p id="workspace-continuity-status" class="muted">กำลังตรวจสถานะ workspace…</p></div><div class="actions"><button id="workspace-sync" class="btn secondary small" type="button">บันทึกเพื่อทำต่อเครื่องอื่น</button><button id="workspace-takeover" class="btn secondary small" type="button">รับงานต่อบนเครื่องนี้</button></div></div>
-        <div class="desktop-workstream"><div id="desktop-work-empty" class="empty-work"><h2>เริ่มคุยเรื่องงานได้เลย</h2><p>เช่น “ตรวจสถานะล่าสุด”, “ทำต่อจากเมื่อกี้”, หรือ “ตรวจอย่างเดียว ห้ามแก้”</p></div><ol id="desktop-work-thread" class="desktop-work-thread" aria-live="polite"></ol></div>
+        <div class="desktop-workstream"><div id="desktop-work-empty" class="empty-work"><h2>เริ่มคุยกับ AWH ได้เลย</h2><p>ถามหรือสั่งงานเป็นภาษาปกติ AWH จะตอบและจัดการส่วนที่ทำได้บนระบบกลางให้ต่อเนื่อง</p></div><ol id="desktop-work-thread" class="desktop-work-thread" aria-live="polite"></ol></div>
         <form id="desktop-work-form" class="desktop-composer"><label class="sr-only" for="desktop-work-input">พิมพ์สิ่งที่อยากให้ AWH ช่วย</label><textarea id="desktop-work-input" maxlength="2000" rows="3" placeholder="พิมพ์สิ่งที่อยากให้ AWH ช่วย…"></textarea><div class="composer-actions"><p id="desktop-work-message" class="muted" role="status"></p><button id="desktop-work-submit" class="btn" type="submit">ส่ง <span aria-hidden="true">↑</span></button></div></form>
-        <details class="advanced-panel"><summary>รายละเอียดงานและอุปกรณ์</summary><p id="autopilot-project" class="muted">สถานะเชิงเทคนิคจะแสดงเฉพาะเมื่อจำเป็น</p><div class="actions"><button id="view-results" class="btn secondary small" type="button">ดูผลลัพธ์</button></div></details>
+        <div class="advanced-panel desktop-work-advanced" hidden><p id="autopilot-project" class="muted"></p><div class="actions"><button id="view-results" class="btn secondary small" type="button">ดูผลลัพธ์</button></div></div>
       </section>
 
       <section id="section-artifacts" class="section">
@@ -114,7 +114,7 @@
               <button id="enrollment-pair" class="btn secondary" disabled>เชื่อมต่อด้วยรหัสชั่วคราว</button>
             </div>
           </details>
-          <div class="owner-tools"><div class="card-head"><div><h3>พร้อมช่วยทำงาน</h3><p id="worker-summary" class="muted">AWH จะรับงานที่เหมาะกับอุปกรณ์นี้โดยอัตโนมัติเมื่อคุณเปิดใช้งานการทำงาน</p></div><span id="worker-state" class="badge">OFF</span></div><div class="actions"><button id="worker-run-once" class="btn secondary small">ตรวจงานที่รออยู่</button></div></div>
+          <div class="owner-tools"><div class="card-head"><div><h3>พร้อมช่วยทำงาน</h3><p id="worker-summary" class="muted">AWH จะรับงานที่เหมาะกับอุปกรณ์นี้โดยอัตโนมัติเมื่อคุณเปิดใช้งานการทำงาน</p></div><span id="worker-state" class="badge">OFF</span></div><div class="actions"><button id="worker-run-once" class="btn secondary small">ตรวจงานที่ได้รับ</button></div></div>
           <details class="advanced-nav"><summary>รายละเอียดการเชื่อมต่อ</summary><dl class="kv"><dt>รหัสอุปกรณ์</dt><dd id="enrollment-device-id" class="mono">—</dd></dl><p class="muted remote-note">AWH เก็บเฉพาะ session token ที่เพิกถอนได้ในพื้นที่ส่วนตัวของแอป ไม่เก็บรหัสผ่าน และไม่ใช้ Keychain</p></details>
         </div>
       </section>

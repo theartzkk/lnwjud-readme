@@ -18,6 +18,8 @@ export class ControlPlaneWorkerError extends Error {
   constructor(message: string, readonly code = 'CONTROL_PLANE_WORKER_FAILED') { super(message); this.name = 'ControlPlaneWorkerError'; }
 }
 
+export interface WorkerProject { projectId: string; name: string; type: string; sourceRevision: string | null; vaultReady: boolean; }
+
 export interface WorkerTask {
   taskId: string;
   projectId: string;
@@ -160,6 +162,18 @@ export class ControlPlaneWorkerClient {
   async deferCentralExecution(executionId: string, code: string): Promise<WorkerTask> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir); if (!UUID_V4.test(executionId) || !/^[A-Z][A-Z0-9_]{2,79}$/.test(code)) throw new ControlPlaneWorkerError('Central execution deferral is invalid', 'PAYLOAD_INVALID');
     const response = await this.post(`/control/worker/executions/${executionId}/defer`, { schemaVersion: 1, deviceId: identity.deviceId, code }, true); return boundedTask(response);
+  }
+
+  async projects(): Promise<WorkerProject[]> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    const response = await this.get(`/control/worker/projects/${identity.deviceId}`);
+    if (response.schemaVersion !== 1 || !Array.isArray(response.projects) || response.projects.length > 200) throw new ControlPlaneWorkerError('Worker project response is invalid', 'RESPONSE_INVALID');
+    return response.projects.map((value): WorkerProject => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ControlPlaneWorkerError('Worker project response is invalid', 'RESPONSE_INVALID');
+      const item = value as Record<string, unknown>;
+      if (typeof item.projectId !== 'string' || !UUID_V4.test(item.projectId) || typeof item.name !== 'string' || item.name.length < 1 || item.name.length > 120 || typeof item.type !== 'string' || item.type.length < 1 || item.type.length > 32 || (item.sourceRevision !== null && typeof item.sourceRevision !== 'string') || typeof item.vaultReady !== 'boolean') throw new ControlPlaneWorkerError('Worker project response is invalid', 'RESPONSE_INVALID');
+      return { projectId: item.projectId, name: item.name, type: item.type, sourceRevision: item.sourceRevision === null ? null : item.sourceRevision as string, vaultReady: item.vaultReady };
+    });
   }
 
   async readResults(): Promise<{ results: WorkerTask[]; artifacts: Array<Record<string, unknown>>; approvals: Array<Record<string, unknown>> }> {

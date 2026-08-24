@@ -38,6 +38,7 @@ final class HubControlPlaneRouter
             if ($method === 'GET') {
                 self::sameOriginIfBrowser($server);
                 if (preg_match('#^/api/v1/control/worker/results/(' . self::UUID . ')$#i', $path, $match) === 1) return self::response(200, $service->workerResults(self::bearer($server), $match[1]) + ['requestId' => $requestId], $headers);
+                if (preg_match('#^/api/v1/control/worker/projects/(' . self::UUID . ')$#i', $path, $match) === 1) return self::response(200, $service->workerProjects(self::bearer($server), $match[1]) + ['requestId' => $requestId], $headers);
                 if (preg_match('#^/api/v1/control/worker/conversations/(' . self::UUID . ')/(' . self::UUID . ')$#i', $path, $match) === 1) return self::response(200, $service->workerConversation(self::bearer($server), $match[1], $match[2]) + ['requestId' => $requestId], $headers);
                 if (preg_match('#^/api/v1/control/worker/workspaces/(' . self::UUID . ')/(' . self::UUID . ')$#i', $path, $match) === 1) return self::response(200, $service->workerWorkspace(self::bearer($server), $match[1], $match[2]) + ['requestId' => $requestId], $headers);
                 if (preg_match('#^/api/v1/control/worker/executions/(' . self::UUID . ')/packet$#i', $path, $match) === 1) return self::response(200, $service->workerExecutionPacket(self::bearer($server), self::workerDevice($server), $match[1]) + ['requestId' => $requestId], $headers);
