@@ -13,6 +13,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const EXPECTED_VERSION = '1.0.0-rc.1';
 const EXPECTED_PRODUCT = 'Art’s Workspace Hub';
 const OWNER_PROTOCOL_FILENAME = 'ART_AI_WORKING_PROTOCOL.md';
+const MAX_BUNDLE_BYTES = 500 * 1024 * 1024;
 const require = createRequire(import.meta.url);
 const asar = require('@electron/asar');
 
@@ -118,6 +119,7 @@ assert(hasEntry('dist/project-registry.js'), 'packaged project context runtime i
 assert(hasEntry(OWNER_PROTOCOL_FILENAME), 'packaged Art AI Working Constitution is missing');
 assert(hasEntry('desktop/index.html'), 'packaged owner Control Panel renderer is missing');
 assert(hasEntry('dist/desktop/main.js'), 'packaged Desktop main process is missing');
+assert(!listing.some((entry) => /^\/?(?:dist-web|out)(?:\/|$)/.test(entry)), 'packaged bundle contains generated release/output directories');
 const sourceProtocol = await readFile(join(ROOT, OWNER_PROTOCOL_FILENAME), 'utf8');
 const expectedProtocolVersion = /^Version:\s*([0-9]+\.[0-9]+)\s*$/m.exec(sourceProtocol)?.[1];
 assert(expectedProtocolVersion, 'source owner working protocol version is invalid');
@@ -131,4 +133,5 @@ assert(packagedPackage.version === EXPECTED_VERSION, 'packaged package version i
 assert(packagedPackage.productName === EXPECTED_PRODUCT, 'packaged productName is not AWH');
 const runtime = platform === 'darwin' ? await verifyNodeMode(executable, asarPath) : { status: 'SKIP_PLATFORM', reason: 'Windows executable cannot be executed on macOS' };
 const artifact = await hashTree(bundle);
+assert(artifact.size < MAX_BUNDLE_BYTES, `packaged ${platform} bundle is unexpectedly large: ${artifact.size} bytes`);
 console.log(JSON.stringify({ platform, artifactPath: bundle, artifactName: platform === 'darwin' ? 'AWH.app' : 'AWH-win32-x64', artifactHash: artifact.hash, artifactSize: artifact.size, asarPath, asarHash: createHash('sha256').update(await readFile(asarPath)).digest('hex'), version: packagedPackage.version, productName: packagedPackage.productName, runtime }));
