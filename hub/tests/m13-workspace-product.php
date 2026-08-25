@@ -23,7 +23,7 @@ function m13_clean(string $root): void { if (!is_dir($root)) return; $it = new R
 
 if (!in_array('sqlite', PDO::getAvailableDrivers(), true)) { fwrite(STDOUT, "AWH M13 Workspace Product: SKIP pdo_sqlite unavailable\n"); exit(77); }
 $root = rtrim(sys_get_temp_dir(), '/') . '/awh-m13-' . bin2hex(random_bytes(6));
-$base = dirname(__DIR__); $db = $root . '/awh.sqlite'; $now = '2026-08-25T04:30:00Z';
+$base = dirname(__DIR__); $db = $root . '/awh.sqlite'; $now = gmdate('c');
 $owner = '223b45c0-23e1-408d-ae0f-ac5eca7f6900'; $project = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
 $ownerPassword = 'owner correct battery staple'; $teacherTemp = 'teacher temporary pass'; $teacherPassword = 'teacher permanent password';
 try {
