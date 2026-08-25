@@ -18,6 +18,7 @@
     "test:release-gate": "vitest run tests/release/release-gate.test.ts",
     "benchmark:baseline": "node scripts/benchmark-mcp.mjs",
     "package:windows": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/package-windows.ps1",
+    "verify:windows-package": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/verify-windows-package.ps1",
     "test:e2e": "corepack pnpm@10.15.0 -r --if-present test:e2e",
     "diagnose:electron": "node scripts/diagnose-electron-startup.mjs",
     "build": "corepack pnpm@10.15.0 -r --if-present build",

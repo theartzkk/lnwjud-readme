@@ -10,7 +10,7 @@ $installerDirectory = Join-Path $desktopDirectory 'dist\installers'
 $unpackedDirectory = Join-Path $installerDirectory 'win-unpacked'
 $desktopPackagePath = Join-Path $desktopDirectory 'package.json'
 $iconPath = Join-Path $desktopDirectory 'build\icon.ico'
-$resourceProductName = "Art's Workspace Hub"
+$resourceProductName = 'Art’s Workspace Hub'
 $winCodeSignVersion = '2.6.0'
 $winCodeSignArchiveSha256 = 'cdaec7154dda7cc31f88d886e2489379a0625a737d610b5ae7f62a12f16743a4'
 $rceditSha256 = 'ab53500d556fd824636621bca7dbecd8583ba181891c3e9efdcf16b72a28b0cd'
@@ -65,11 +65,11 @@ try {
     }
     finally { Pop-Location }
 
-    $appExecutables = @(Get-ChildItem -LiteralPath $unpackedDirectory -Filter '*.exe' -File | Where-Object { $_.Name -notmatch 'crashpad' })
-    if ($appExecutables.Count -ne 1) {
-        throw "Expected exactly one AWH application executable in $unpackedDirectory, found $($appExecutables.Count)"
+    $appExecutablePath = Join-Path $unpackedDirectory "$resourceProductName.exe"
+    if (-not (Test-Path -LiteralPath $appExecutablePath -PathType Leaf)) {
+        throw "Expected AWH application executable was not produced: $appExecutablePath"
     }
-    $appExecutable = $appExecutables[0]
+    $appExecutable = Get-Item -LiteralPath $appExecutablePath
     $rcedit = Get-AwhRcedit
 
     & $rcedit $appExecutable.FullName `

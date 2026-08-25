@@ -11,6 +11,8 @@
 - [x] Native Windows candidate QA: packaging 6/6, release 6/6, 214-tool catalog, monorepo typecheck, private Node/stdio launcher, tunnel/DPAPI/persistence/concurrency/IPC evidence PASS.
 - [x] Produce `AWH-Setup-4.9.1.exe` on Windows through the safe rcedit + prepackaged NSIS path without enabling Developer Mode; verify AWH app metadata/version and app SHA-256.
 - [x] Automate that safe fallback in `scripts/package-windows.ps1` with pinned archive/rcedit integrity checks; Mac packaging/release/lint/diff contracts PASS.
+- [x] Fix installer shortcut/uninstall safety: branded Start Menu shortcut now resolves to the real AWH app executable; custom uninstall no longer deletes legacy `lnwjud` compatibility data. Mac packaging contract PASS.
+- [x] Make fallback select canonical AWH main executable despite bundled `lnwjud-node.exe`; add guarded `verify:windows-package` artifact/VersionInfo/hash/launch smoke and optional install→launch→uninstall verification.
 - [ ] Next Windows-online gate: run root `package:windows` once from the new exact source SHA, capture installer SHA-256, verify VersionInfo/icon, perform install-launch-uninstall smoke, then mark Batch 1 fully closed.
 - [ ] Publish development branch only after remote transport is healthy. No merge/deploy is implied.
 - [ ] Production deployment remains explicitly out of scope until exact-SHA closure and separate approval.

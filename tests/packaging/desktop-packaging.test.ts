@@ -47,21 +47,31 @@ describe('AWH desktop packaging', () => {
     expect(config).toContain('createStartMenuShortcut: false');
     expect(config).not.toMatch(/[A-Z]:\\Users\\[^\r\n]+/i);
     const installerScript = await readFile(path.join(desktopRoot, 'build', 'installer.nsh'), 'utf8');
-    expect(installerScript).toContain('CreateShortCut "$SMPROGRAMS\\lnwjud.lnk" "$INSTDIR\\lnwjud.exe"');
+    expect(installerScript).toContain('CreateShortCut "$SMPROGRAMS\\${PRODUCT_FILENAME}.lnk" "$INSTDIR\\${APP_EXECUTABLE_FILENAME}"');
     expect(installerScript).toContain('SetOutPath "$INSTDIR"');
+    expect(installerScript).toContain('RMDir /r "$APPDATA\\${PRODUCT_FILENAME}"');
+    expect(installerScript).toContain('IfSilent keepData');
+    expect(installerScript).not.toContain('lnwjud.lnk');
+    expect(installerScript).not.toContain('$INSTDIR\\lnwjud.exe');
+    expect(installerScript).not.toContain('$APPDATA\\lnwjud');
+    expect(installerScript).not.toContain('$LOCALAPPDATA\\lnwjud');
     expect(installerScript).not.toMatch(/[A-Z]:\\Users\\[^\r\n]+/i);
     expect(config).toContain('extraResources:');
     expect(config).toContain('windows-capability-bridge.ps1');
     expect(config).toContain('build/lnwjud-node.exe');
     expect(config).toContain('to: lnwjud-node.exe');
-    // Internal launcher/profile names intentionally stay lnwjud-* so the AWH
-    // product overlay does not fork the upstream MCP/tunnel protocol surface.
-    expect(installerScript).toContain('lnwjud.exe');
+    // Internal launcher/profile names intentionally stay lnwjud-* where they
+    // are protocol/runtime compatibility identifiers, but user shortcuts must
+    // always resolve to the branded Electron application executable.
+    expect(installerScript).toContain('${APP_EXECUTABLE_FILENAME}');
   });
 
   it('packages Windows without requiring winCodeSign symlink privileges', async () => {
     const packagingScript = await readFile(path.join(repositoryRoot, 'scripts', 'package-windows.ps1'), 'utf8');
     expect(packagingScript).toContain("$winCodeSignVersion = '2.6.0'");
+    expect(packagingScript).toContain("$resourceProductName = 'Art’s Workspace Hub'");
+    expect(packagingScript).toContain('Join-Path $unpackedDirectory "$resourceProductName.exe"');
+    expect(packagingScript).not.toContain('Expected exactly one AWH application executable');
     expect(packagingScript).toContain("$rceditSha256 = 'ab53500d556fd824636621bca7dbecd8583ba181891c3e9efdcf16b72a28b0cd'");
     expect(packagingScript).toContain("'--set-icon' $iconPath");
     expect(packagingScript).toContain('--win --dir --x64');
@@ -73,6 +83,21 @@ describe('AWH desktop packaging', () => {
     const config = await readFile(path.join(desktopRoot, 'electron-builder.yml'), 'utf8');
     expect(config).toContain('signAndEditExecutable: true');
     expect(config).not.toContain('signAndEditExecutable: false');
+  });
+
+  it('defines a safe native Windows package verifier', async () => {
+    const verifier = await readFile(path.join(repositoryRoot, 'scripts', 'verify-windows-package.ps1'), 'utf8');
+    const rootPackage = JSON.parse(await readFile(path.join(repositoryRoot, 'package.json'), 'utf8')) as { scripts?: Record<string, unknown> };
+
+    expect(rootPackage.scripts?.['verify:windows-package']).toContain('scripts/verify-windows-package.ps1');
+    expect(verifier).toContain("$productName = 'Art’s Workspace Hub'");
+    expect(verifier).toContain('AWH_INSTALLER_SHA256=');
+    expect(verifier).toContain('AWH_LAUNCH_SMOKE=PASS');
+    expect(verifier).toContain('[switch]$InstallSmoke');
+    expect(verifier).toContain('Install smoke refused because an AWH Start Menu shortcut already exists');
+    expect(verifier).toContain("Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S' -Wait -PassThru");
+    expect(verifier).toContain('AWH_INSTALL_LAUNCH_UNINSTALL_SMOKE=PASS');
+    expect(verifier).toContain('Remove-Item Env:LNWJUD_DATA_PATH');
   });
 
   it.skipIf(process.platform !== 'win32')('verifies built Windows runtime bundles', async () => {
