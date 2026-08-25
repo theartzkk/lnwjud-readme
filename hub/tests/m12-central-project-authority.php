@@ -81,6 +81,29 @@ try {
     $staleRejected = false; try { $vaults->promote($project, (string) $candidate['revision_id'], (string) $first['activeRevisionId'], $now); } catch (HubProjectVaultException $error) { $staleRejected = $error->codeName === 'PROJECT_REVISION_CONFLICT'; } m12_assert($staleRejected, 'stale candidate promotion fails closed');
     $promotedCandidate = $vaults->promote($project, (string) $candidate['revision_id'], (string) $promoted['activeRevisionId'], $now); m12_assert(($promotedCandidate['activeRevisionId'] ?? null) === $candidate['revision_id'], 'approved candidate can be promoted only with its exact base revision');
 
+    // Text/code edits can run entirely on the VPS Vault without an enrolled
+    // device. The provider receives only bounded search/read/write-text tools;
+    // its output becomes an isolated candidate and never canonical source.
+    $pdo->prepare("INSERT INTO control_provider_policies(provider_id, enabled, model_fast, model_balanced, model_strong, monthly_budget_microunits, warning_microunits, input_microunits_per_million, output_microunits_per_million, updated_by_user_id, updated_at) VALUES('openai', 1, 'fixture-fast', 'fixture-balanced', 'fixture-strong', 100000000, 90000000, 1000000, 1000000, :owner, :at)")->execute(['owner' => $owner, 'at' => $now]);
+    $editCalls = 0;
+    $editAgent = new HubNativeAgentService($pdo, static function (array $payload, string $_key) use (&$editCalls): array {
+        $editCalls++;
+        if ($editCalls === 1) return ['id' => 'resp_edit_read_1234', 'output' => [['type' => 'function_call', 'call_id' => 'call_edit_read_1234', 'name' => 'project_read_text', 'arguments' => '{"path":"src/main.php"}']], 'usage' => ['input_tokens' => 3, 'output_tokens' => 2]];
+        if ($editCalls === 2) return ['id' => 'resp_edit_write_1234', 'output' => [['type' => 'function_call', 'call_id' => 'call_edit_write_1234', 'name' => 'project_write_text', 'arguments' => json_encode(['path' => 'src/main.php', 'content' => "<?php echo 'vps-assisted';\n"], JSON_THROW_ON_ERROR)]], 'usage' => ['input_tokens' => 4, 'output_tokens' => 3]];
+        return ['id' => 'resp_edit_done_1234', 'output_text' => 'แก้ src/main.php ตามคำขอแล้ว', 'usage' => ['input_tokens' => 3, 'output_tokens' => 3]];
+    }, 'fixture-key');
+    $assistedTask = m12_uuid(); $activeForAssisted = (string) $vaults->activeRevision($project);
+    $pdo->prepare("INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:task, :user, :project, 'แก้ src/main.php ให้แสดง vps-assisted', 'QUEUED', NULL, NULL, 0, NULL, NULL, :key, NULL, :at, :at, NULL)")->execute(['task' => $assistedTask, 'user' => $owner, 'project' => $project, 'key' => 'm12-task-assisted-0001', 'at' => $now]);
+    $assisted = new HubDurableExecutionService($pdo, $vaults, $editAgent, HubArtifactStore::fromEnvironment());
+    $assisted->enqueue($assistedTask, $project, $activeForAssisted, 'VPS', 'project.mutate.assisted', ['mode' => 'PROJECT_ASSISTED_EDIT'], $now);
+    $assistedRun = $assisted->runOnce($now); m12_assert(($assistedRun['state'] ?? null) === 'WAITING_FOR_APPROVAL' && $editCalls === 3, 'provider-assisted text edit completes on VPS without a device worker');
+    $assistedCandidateQuery = $pdo->prepare("SELECT revision_id, parent_revision_id, state FROM control_project_vault_revisions WHERE task_id=:task"); $assistedCandidateQuery->execute(['task' => $assistedTask]); $assistedCandidate = $assistedCandidateQuery->fetch();
+    m12_assert(is_array($assistedCandidate) && $assistedCandidate['state'] === 'CANDIDATE' && $assistedCandidate['parent_revision_id'] === $activeForAssisted, 'assisted edit remains an isolated candidate revision');
+    $assistedRead = $vaults->vault()->readText($project, (string) $assistedCandidate['revision_id'], 'src/main.php'); m12_assert(str_contains($assistedRead['content'], 'vps-assisted'), 'assisted edit writes only the candidate workspace');
+    m12_assert($vaults->activeRevision($project) === $activeForAssisted, 'assisted edit never silently replaces canonical Vault source');
+    $unsafeToolPath = false; try { $vaults->vault()->toolTextPath('../secret.txt'); } catch (HubProjectVaultException) { $unsafeToolPath = true; } m12_assert($unsafeToolPath, 'assisted edit tool path traversal fails closed');
+    $pdo->exec("DELETE FROM control_provider_policies WHERE provider_id='openai'");
+
     // Native conversation provider failures must never become a successful
     // deterministic answer. Temporary failures retry the same persisted task
     // at most three times, then pause without duplicating work.

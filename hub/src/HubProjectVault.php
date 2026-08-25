@@ -193,6 +193,14 @@ final class HubProjectVault
         return ['path' => $path, 'content' => $content, 'truncated' => $truncated];
     }
 
+    /** Validates one provider/tool-visible text path without exposing Vault internals. */
+    public function toolTextPath(string $relativePath): string
+    {
+        $path = self::archivePath($relativePath);
+        if ($path === null || self::sensitivePath($path)) throw new HubProjectVaultException('Project file path is not available to tools', 'PROJECT_CONTEXT_FORBIDDEN');
+        return $path;
+    }
+
     /** Materialises one immutable revision for an isolated task workspace. */
     public function materialize(string $projectId, string $revisionId, string $workspace): void
     {

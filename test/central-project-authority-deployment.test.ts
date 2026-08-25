@@ -58,6 +58,7 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(vault, /PROJECT_ARCHIVE_UNSAFE/);
   assert.match(vault, /sensitivePath/);
   assert.match(vault, /function archive/);
+  assert.match(vault, /function toolTextPath/);
   assert.match(controlService, /workerExecutionWorkspace/);
   assert.match(controlService, /\$nativeRequest = \['conversationId'/);
   assert.match(controlService, /private function completeNativeConversation/);
@@ -69,6 +70,8 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(controlService, /ช่วย\|กรุณา\|โปรด/);
   assert.match(controlService, /acceptWorkerExecutionCandidate/);
   assert.match(controlService, /executor_kind = 'CODEX'/);
+  assert.match(controlService, /isServerAssistedEdit/);
+  assert.match(controlService, /project\.mutate\.assisted/);
   assert.match(controlRouter, /worker\/executions/);
   assert.match(remoteSource, /task-transfers/);
   assert.match(local, /DEPLOY_STAGE=ARTIFACT_STORAGE_READY/);
@@ -76,6 +79,9 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(durable, /NATIVE_CONVERSATION/);
   assert.match(durable, /PROJECT_INSPECTION/);
   assert.match(durable, /PROJECT_TEXT_NORMALIZE/);
+  assert.match(durable, /PROJECT_ASSISTED_EDIT/);
+  assert.match(durable, /project_write_text/);
+  assert.match(durable, /MAX_ASSISTED_EDIT_FILES/);
   assert.match(durable, /project\.revision\.promote/);
   assert.match(durable, /Native conversation provider failed/);
   assert.doesNotMatch(durable, /catch \(HubNativeAgentException \$error\) \{\s*if \(\$error->codeName === 'BUDGET_EXHAUSTED'\)[\s\S]{0,240}conversationFallback/);

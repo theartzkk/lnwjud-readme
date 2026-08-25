@@ -396,11 +396,11 @@ final class HubControlPlaneService
         $existing->execute(['user' => $session['user_id'], 'key' => $idempotency]);
         $row = $existing->fetch();
         if (is_array($row)) return $this->taskRow($row);
-        $taskId = self::uuidFromBytes(random_bytes(16)); $vaultRevision = $this->centralVaultRevision($projectId); $serverInspection = $vaultRevision !== null && self::isServerInspection($goal); $serverTextMutation = $vaultRevision !== null && self::isServerTextNormalization($goal);
+        $taskId = self::uuidFromBytes(random_bytes(16)); $vaultRevision = $this->centralVaultRevision($projectId); $serverInspection = $vaultRevision !== null && self::isServerInspection($goal); $serverTextMutation = $vaultRevision !== null && self::isServerTextNormalization($goal); $serverAssistedEdit = $vaultRevision !== null && self::isServerAssistedEdit($goal);
         try {
             $insert = $this->pdo->prepare('INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, :state, NULL, NULL, 0, NULL, NULL, :key, :created, :updated, NULL)');
-            $state = ($serverInspection || $serverTextMutation) ? 'QUEUED' : 'WAITING_FOR_WORKER'; $insert->execute(['id' => $taskId, 'user' => $session['user_id'], 'project' => $projectId, 'goal' => $goal, 'state' => $state, 'key' => $idempotency, 'created' => $now, 'updated' => $now]);
-            if ($vaultRevision !== null) $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverInspection ? 'project.read' : 'codex:cli'), ['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST')], $now);
+            $state = ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'QUEUED' : 'WAITING_FOR_WORKER'; $insert->execute(['id' => $taskId, 'user' => $session['user_id'], 'project' => $projectId, 'goal' => $goal, 'state' => $state, 'key' => $idempotency, 'created' => $now, 'updated' => $now]);
+            if ($vaultRevision !== null) $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverAssistedEdit ? 'project.mutate.assisted' : ($serverInspection ? 'project.read' : 'codex:cli')), ['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverAssistedEdit ? 'PROJECT_ASSISTED_EDIT' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST'))], $now);
             $this->event($taskId, $state, 0, $vaultRevision !== null && !$serverInspection && !$serverTextMutation ? 'waiting for an engineering specialist capability' : 'received', $now);
         } catch (Throwable) { throw new HubControlPlaneException('Task could not be queued', 'TASK_CREATE_FAILED'); }
         return $this->taskById($taskId, (string) $session['user_id']);
@@ -493,10 +493,11 @@ final class HubControlPlaneService
                 $vaultRevision = $this->centralVaultRevision($projectId);
                 $serverInspection = $vaultRevision !== null && self::isServerInspection($effectiveGoal);
                 $serverTextMutation = $vaultRevision !== null && self::isServerTextNormalization($effectiveGoal);
-                $taskState = ($serverInspection || $serverTextMutation) ? 'QUEUED' : 'WAITING_FOR_WORKER';
+                $serverAssistedEdit = $vaultRevision !== null && self::isServerAssistedEdit($effectiveGoal);
+                $taskState = ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'QUEUED' : 'WAITING_FOR_WORKER';
                 $insert = $this->pdo->prepare('INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, :state, NULL, NULL, 0, NULL, NULL, :key, :conversation, :created, :updated, NULL)');
                 $insert->execute(['id' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $effectiveGoal, 'state' => $taskState, 'key' => $taskKey, 'conversation' => $conversation['conversation_id'], 'created' => $at, 'updated' => $at]);
-                if ($vaultRevision !== null) $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverInspection ? 'project.read' : 'codex:cli'), ['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST')], $at);
+                if ($vaultRevision !== null) $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverAssistedEdit ? 'project.mutate.assisted' : ($serverInspection ? 'project.read' : 'codex:cli')), ['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverAssistedEdit ? 'PROJECT_ASSISTED_EDIT' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST'))], $at);
                 $this->event($taskId, $taskState, 0, $serverInspection ? 'server inspection queued' : ($serverTextMutation ? 'server text transform queued' : 'specialist execution recorded'), $at);
                 $this->pdo->prepare('UPDATE control_conversations SET last_task_id = :task, updated_at = :at WHERE conversation_id = :conversation')->execute(['task' => $taskId, 'at' => $at, 'conversation' => $conversation['conversation_id']]);
             }
@@ -1662,7 +1663,7 @@ final class HubControlPlaneService
     {
         $value = trim($message);
         $value = preg_replace('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)+/iu', '', $value) ?? $value;
-        $action = preg_match('/^(?:ตรวจ|วิเคราะห์|ดู|ค้นหา|อ่าน|ทำต่อ|จัดการ|แก้|เขียน|สร้าง|ลบ|เปลี่ยน|รัน|ทดสอบ|deploy|commit|push|build|render|inspect|review|search|read|continue|fix|edit|write|create|delete|modify|run|test)(?:หน่อย|ให้|ที|ดู)?(?:\s|$|[ก-๙])/iu', $value) === 1;
+        $action = preg_match('/^(?:ตรวจ|วิเคราะห์|ดู|ค้นหา|อ่าน|ทำต่อ|จัดการ|แก้|เขียน|สร้าง|เพิ่ม|ปรับ|ลบ|เปลี่ยน|รัน|ทดสอบ|deploy|commit|push|build|render|inspect|review|search|read|continue|fix|edit|write|create|add|update|delete|modify|run|test)(?:หน่อย|ให้|ที|ดู)?(?:\s|$|[ก-๙])/iu', $value) === 1;
         $summaryAction = preg_match('/^(?:สรุป|summari[sz]e)(?:หน่อย|ให้|ที|ดู)?(?:\s|$|[ก-๙])/iu', $value) === 1
             && preg_match('/(?:source|repo|repository|project|โปรเจกต์|ไฟล์|โค้ด|code|folder|โฟลเดอร์)/iu', $value) === 1;
         if (!$action && !$summaryAction) return true;
@@ -1673,6 +1674,15 @@ final class HubControlPlaneService
     /** Read-only Vault work can use the bounded VPS executor.  Any request
      * that might modify content waits for an explicit specialist capability. */
     private static function isServerInspection(string $message): bool { $value = preg_replace('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)+/iu', '', trim($message)) ?? trim($message); return preg_match('/^(?:ตรวจ|วิเคราะห์|ดู|สรุป|สถานะ|ค้นหา|อ่าน|inspect|review|summari[sz]e|status|search|read)(?:หน่อย|ให้|ที|ดู)?(?:\s|$|[ก-๙])/iu', $value) === 1 && preg_match('/(?:แก้|เขียน|สร้าง|ลบ|เปลี่ยน|deploy|commit|push|render|edit|write|create|delete|modify|build)/iu', $value) !== 1; }
+    /** Safe text/code changes can run on the canonical VPS Vault without a local device. */
+    private static function isServerAssistedEdit(string $message): bool
+    {
+        $value = preg_replace('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)+/iu', '', trim($message)) ?? trim($message);
+        $action = preg_match('/^(?:แก้|เขียน|สร้าง|เพิ่ม|ปรับ|เปลี่ยน|fix|edit|write|create|add|update|modify)(?:หน่อย|ให้|ที|ดู)?(?:\s|$|[ก-๙])/iu', $value) === 1;
+        if (!$action) return false;
+        return preg_match('/(?:deploy|commit|push|build|render|run|test|ทดสอบ|รัน|วิดีโอ|video|ภาพ|image|pdf|docx|xlsx|excel|pptx|ฐานข้อมูล|database|shell|terminal|command|ลบ|delete|ย้าย|move|rename)/iu', $value) !== 1;
+    }
+
     /** A deliberately small deterministic VPS mutation. Everything broader is
      * still routed through an advertised specialist capability. */
     private static function isServerTextNormalization(string $message): bool { return preg_match('/^(?:normalize|normalise|จัดระเบียบ)(?:\s+(?:text|ข้อความ|ไฟล์))?\s+(?:file|ไฟล์)\s+[A-Za-z0-9._\/-]{1,900}\s*$/iu', trim($message)) === 1; }
