@@ -13,8 +13,8 @@
 - [x] Automate that safe fallback in `scripts/package-windows.ps1` with pinned archive/rcedit integrity checks; Mac packaging/release/lint/diff contracts PASS.
 - [x] Fix installer shortcut/uninstall safety: branded Start Menu shortcut now resolves to the real AWH app executable; custom uninstall no longer deletes legacy `lnwjud` compatibility data. Mac packaging contract PASS.
 - [x] Make fallback select canonical AWH main executable despite bundled `lnwjud-node.exe`; add guarded `verify:windows-package` artifact/VersionInfo/hash/launch smoke and optional install→launch→uninstall verification.
-- [ ] Next Windows-online gate: run root `package:windows` once from the new exact source SHA, capture installer SHA-256, verify VersionInfo/icon, perform install-launch-uninstall smoke, then mark Batch 1 fully closed.
-- [ ] Publish development branch only after remote transport is healthy. No merge/deploy is implied.
+- [ ] Next Windows-online gate: fetch the latest `awh/lnwjud4-port` exact SHA, run root `package:windows`, capture installer SHA-256, verify VersionInfo/icon, perform install-launch-uninstall smoke, then mark Batch 1 fully closed.
+- [x] Publish development branch after transport diagnosis: `origin/awh/lnwjud4-port` verified at `3cf66fdf0b3e048ceb922362b543b4bae5156718`. No merge/deploy is implied.
 - [ ] Production deployment remains explicitly out of scope until exact-SHA closure and separate approval.
 
 ## CONVERGENCE NOW — 2026-08-24
