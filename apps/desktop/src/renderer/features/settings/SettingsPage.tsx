@@ -132,7 +132,7 @@ export function SettingsPage(props: SettingsPageProps): ReactElement {
     try {
       const restartRequired = await props.onScheduleRestoreBackup(backupId);
       setBackupMessage(restartRequired
-        ? (props.locale === 'th' ? 'เตรียม Restore แล้ว — ปิดและเปิด lnwjud ใหม่เพื่อใช้ข้อมูลชุดนี้' : 'Restore scheduled — restart lnwjud to apply it.')
+        ? (props.locale === 'th' ? 'เตรียม Restore แล้ว — ปิดและเปิด AWH ใหม่เพื่อใช้ข้อมูลชุดนี้' : 'Restore scheduled — restart AWH to apply it.')
         : (props.locale === 'th' ? 'เตรียม Restore แล้ว' : 'Restore scheduled.'));
     } catch (cause: unknown) {
       setBackupError(cause instanceof Error ? cause.message : 'Could not schedule restore');

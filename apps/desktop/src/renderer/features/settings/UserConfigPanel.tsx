@@ -131,13 +131,13 @@ export function UserConfigPanel({ locale, settings, section, onSave }: UserConfi
               <label className="field-label" htmlFor="close-behavior">{locale === 'th' ? 'เมื่อกด X ปิดหน้าต่าง' : 'When closing the window'}</label>
               <select id="close-behavior" className="settings-select" value={draft.closeBehavior} onChange={(event) => patch({ closeBehavior: event.target.value === 'quit' ? 'quit' : 'tray' })}>
                 <option value="tray">{locale === 'th' ? 'ซ่อนไปที่ System Tray' : 'Hide to system tray'}</option>
-                <option value="quit">{locale === 'th' ? 'ออกจาก lnwjud' : 'Quit lnwjud'}</option>
+                <option value="quit">{locale === 'th' ? 'ออกจาก AWH' : 'Quit AWH'}</option>
               </select>
             </div>
             <NumberField label={locale === 'th' ? 'ช่วงตรวจอัปเดต (นาที)' : 'Update interval (minutes)'} value={draft.updateIntervalMinutes} min={5} max={1440} onChange={(value) => patch({ updateIntervalMinutes: value })} />
           </div>
           <div className="switch-grid">
-            <SettingSwitch checked={draft.launchAtStartup} label={locale === 'th' ? 'เปิดพร้อม Windows' : 'Start with Windows'} description={locale === 'th' ? 'เปิด lnwjud อัตโนมัติหลัง Sign in' : 'Launch lnwjud automatically after sign in'} onChange={(value) => patch({ launchAtStartup: value })} />
+            <SettingSwitch checked={draft.launchAtStartup} label={locale === 'th' ? 'เปิดพร้อม Windows' : 'Start with Windows'} description={locale === 'th' ? 'เปิด AWH อัตโนมัติหลัง Sign in' : 'Launch AWH automatically after sign in'} onChange={(value) => patch({ launchAtStartup: value })} />
             <SettingSwitch checked={draft.startMinimized} label={locale === 'th' ? 'เริ่มแบบซ่อนใน Tray' : 'Start minimized'} description={locale === 'th' ? 'ไม่แสดงหน้าต่างหลักตอนเปิดอัตโนมัติ' : 'Keep the main window hidden on startup'} onChange={(value) => patch({ startMinimized: value })} />
             <SettingSwitch checked={draft.updateAutoCheck} label={locale === 'th' ? 'ตรวจอัปเดตอัตโนมัติ' : 'Automatic update checks'} description={locale === 'th' ? 'ตรวจตามช่วงเวลาที่กำหนด' : 'Check periodically using the interval above'} onChange={(value) => patch({ updateAutoCheck: value })} />
             <SettingSwitch checked={draft.updateCheckOnStartup} label={locale === 'th' ? 'ตรวจเมื่อเปิดโปรแกรม' : 'Check on startup'} description={locale === 'th' ? 'ตรวจหลังเปิดโปรแกรมไม่นาน' : 'Check shortly after the app starts'} onChange={(value) => patch({ updateCheckOnStartup: value })} />
@@ -181,7 +181,7 @@ export function UserConfigPanel({ locale, settings, section, onSave }: UserConfi
           </section>
 
           <section className="panel settings-card settings-card-polished" aria-label="Tools and timeouts">
-            <CardHeading icon="⌛" title={locale === 'th' ? 'Timeout และ Local MCP' : 'Timeouts & Local MCP'} subtitle={locale === 'th' ? 'เวลารอสำหรับ external tools และ process ที่จัดการโดย lnwjud' : 'Execution limits for external tools and managed processes'} />
+            <CardHeading icon="⌛" title={locale === 'th' ? 'Timeout และ Local MCP' : 'Timeouts & Local MCP'} subtitle={locale === 'th' ? 'เวลารอสำหรับ external tools และ process ที่จัดการโดย AWH' : 'Execution limits for external tools and AWH-managed processes'} />
             <div className="setting-grid two-col">
               <NumberField label={locale === 'th' ? 'External MCP Tool Timeout (วินาที)' : 'External MCP Tool Timeout (seconds)'} value={Math.round(draft.mcpCallTimeoutMs / 1000)} min={1} max={3600} onChange={(value) => patch({ mcpCallTimeoutMs: value * 1000 })} />
               <NumberField label={locale === 'th' ? 'External MCP Idle Timeout (นาที)' : 'External MCP Idle Timeout (minutes)'} value={Math.round(draft.mcpIdleTimeoutMs / 60_000)} min={1} max={1440} onChange={(value) => patch({ mcpIdleTimeoutMs: value * 60_000 })} />

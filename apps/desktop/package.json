@@ -2,7 +2,7 @@
   "name": "@lnwjud/desktop",
   "version": "4.9.1",
   "private": true,
-  "description": "Art’s Workspace Hub — lnwjud 4.9.1 execution core with AWH project continuity and control-plane integration.",
+  "description": "Art’s Workspace Hub — local execution, project continuity, and secure control-plane integration.",
   "author": "Art’s Workspace Hub",
   "homepage": "https://github.com/theartzkk/lnwjud-readme#readme",
   "repository": {

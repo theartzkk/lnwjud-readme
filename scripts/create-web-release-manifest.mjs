@@ -1,0 +1,43 @@
+#!/usr/bin/env node
+
+import { createHash } from 'node:crypto';
+import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+
+const root = resolve(process.cwd());
+const input = resolve(root, process.argv[2] ?? 'dist-web');
+const output = resolve(root, process.argv[3] ?? join(input, 'release.json'));
+const files = [
+  'index.html', 'styles.css', 'hub-shell.css', 'app.js', 'hub-shell.js',
+  'hub-read-adapter.js', 'control-plane-adapter.js', 'manifest.webmanifest',
+  'sw.js', 'logo-256x256.png', 'tool-catalog.json', 'web-config.json', 'data.json',
+];
+const optionalFiles = ['downloads/AWH-macOS-x64.zip', 'downloads/AWH-Windows-x64.zip', 'downloads/SHA256SUMS.txt'];
+const releaseId = process.env.AWH_RELEASE_ID ?? new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
+
+async function entry(name) {
+  const path = join(input, name);
+  const info = await lstat(path);
+  if (!info.isFile() || info.isSymbolicLink()) throw new Error(`Release file is not a regular file: ${name}`);
+  const content = await readFile(path);
+  return { path: name, sha256: createHash('sha256').update(content).digest('hex'), sizeBytes: content.byteLength };
+}
+const entries = [];
+for (const name of files) entries.push(await entry(name));
+for (const name of optionalFiles) {
+  try { entries.push(await entry(name)); }
+  catch (error) { if (error?.code !== 'ENOENT') throw error; }
+}
+const config = JSON.parse(await readFile(join(input, 'web-config.json'), 'utf8'));
+if (!['UNAVAILABLE', 'CONTROL'].includes(config.mode)) throw new Error('Web release mode is invalid');
+const manifest = {
+  schemaVersion: 1,
+  releaseId,
+  product: 'Art’s Workspace Hub',
+  mode: config.mode,
+  generatedAt: process.env.AWH_PREVIEW_GENERATED_AT ?? new Date().toISOString(),
+  files: entries,
+};
+await mkdir(resolve(output, '..'), { recursive: true });
+await writeFile(output, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+process.stdout.write(`${output}\n`);

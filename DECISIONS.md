@@ -1,5 +1,17 @@
 # Decisions
 
+## Batch 1 decisions — 2026-08-25
+
+- AWH human login is conventional Username/Email + Password. Pairing/device/API credentials are never normal-user login UX.
+- Product roles are `OWNER`, `ADMIN`, `DIRECTOR`, `TEACHER`, `STAFF`, `VIEWER`; legacy collaborator/approver values are compatibility mappings, not the intended product vocabulary.
+- Product role defaults and optional feature permissions are additive to existing project capability enforcement, not a replacement or a second RBAC database.
+- Admin may manage ordinary users but cannot create/manage another Admin or Owner. Owner retains system/database/developer authority.
+- New managed accounts use a temporary password and must choose a new password before Control Plane use. This is a backend gate, not merely UI guidance.
+- Database Center starts read-only/diagnostic. A general browser raw-SQL console is rejected as an unsafe product primitive.
+- Normal Tool Center is curated by role/feature while using the same 214-tool runtime registry; UI visibility never grants backend execution permission.
+- User-facing product branding is Art’s Workspace Hub / AWH. Runtime compatibility names may remain only where renaming would break protocol/package compatibility and must not leak into normal web UX.
+- Batch 1 does not deploy or mutate ReadyIDC, BAY or legacy Google Cloud.
+
 ## Convergence foundation — 2026-08-24
 
 - Active convergence branch: `awh/lnwjud4-port`.

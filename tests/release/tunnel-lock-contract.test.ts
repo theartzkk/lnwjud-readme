@@ -1,10 +1,12 @@
 import { spawn } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('PowerShell tunnel launcher ownership contract', () => {
-  it('parses and delegates ownership to the side-effect-free helper without local lock definitions', async () => {
-    const starter = path.resolve('scripts/start-lnwjud-tunnel.ps1').replace(/'/g, "''");
+  it('parses and delegates ownership to the side-effect-free trusted helper', async () => {
+    const starterPath = path.resolve('scripts/start-lnwjud-tunnel.ps1');
+    const starter = starterPath.replace(/'/g, "''");
     const helper = path.resolve('scripts/lib/lnwjud-tunnel-lock.ps1').replace(/'/g, "''");
     const result = await runPowerShell(`
       $tokens=$null; $errors=$null
@@ -18,8 +20,15 @@ describe('PowerShell tunnel launcher ownership contract', () => {
       [pscustomobject]@{ errors=$errors.Count; helperErrors=$helperErrors.Count; helperSideEffects=$helperSideEffects; functions=$functions; dotSources=$dotSources; enter=(@($commands | Where-Object {$_ -eq 'Enter-LnwjudTunnelLock'}).Count); release=(@($commands | Where-Object {$_ -eq 'Release-LnwjudTunnelLock'}).Count) } | ConvertTo-Json -Compress
     `);
 
-    expect(JSON.parse(result)).toMatchObject({ errors: 0, helperErrors: 0, helperSideEffects: 0, functions: 0, enter: 1, release: 1 });
-    expect(JSON.parse(result).dotSources).toEqual(expect.arrayContaining([expect.stringContaining('lnwjud-tunnel-lock.ps1')]));
+    const parsed = JSON.parse(result);
+    expect(parsed).toMatchObject({ errors: 0, helperErrors: 0, helperSideEffects: 0, functions: 0, enter: 1, release: 1 });
+    expect(parsed.dotSources).toEqual(expect.arrayContaining([expect.stringContaining('$lockHelperResolved')]));
+
+    const starterSource = await readFile(starterPath, 'utf8');
+    expect(starterSource).toContain("Join-Path $PSScriptRoot 'lib\\\\lnwjud-tunnel-lock.ps1'");
+    expect(starterSource).toContain('Resolve-Path -LiteralPath $lockHelperRequested -ErrorAction Stop');
+    expect(starterSource).toContain('StartsWith($trustedPrefix');
+    expect(starterSource).toContain('ReparsePoint');
   });
 });
 

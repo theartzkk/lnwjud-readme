@@ -1,0 +1,1505 @@
+{
+  "schemaVersion": 1,
+  "source": "awh-runtime-tool-registry",
+  "toolCount": 214,
+  "tools": [
+    {
+      "name": "workspace_list",
+      "permission": "DANGEROUS",
+      "description": "List all registered workspaces/drive roots available to AWH runtime. Call this first to discover workspace IDs. Entries include kind=machine_root|project.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "workspace_register",
+      "permission": "WRITE",
+      "description": "Register an existing project directory under a machine-root drive. parentWorkspaceId must be a machine root from workspace_list. Idempotent for the same path.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "workspace_info",
+      "permission": "READ",
+      "description": "Return the configured workspace summary.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "workspace_tree",
+      "permission": "READ",
+      "description": "List a bounded workspace tree. Absolute path does not require workspaceId.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "project_snapshot",
+      "permission": "READ",
+      "description": "Return a bounded project snapshot without source contents.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "read_file",
+      "permission": "READ",
+      "description": "Read a workspace file as UTF-8 text or as an image/binary payload. Absolute paths (C:\\...) do not require workspaceId. For large files or an unknown location, prefer search_text first and then read_file_page for the relevant range instead of reading the whole file.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "read_files",
+      "permission": "READ",
+      "description": "Read up to twenty bounded workspace files in parallel. Absolute paths do not require workspaceId. For large files, locate text with search_text and page with read_file_page instead of loading entire files.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "search_files",
+      "permission": "READ",
+      "description": "Search workspace filenames with automatic context-economy filters; set includeIgnored for an explicit full path search. Absolute path does not require workspaceId.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "search_text",
+      "permission": "READ",
+      "description": "Preferred tool to locate relevant code/lines before reading files. Searches workspace text using direct ripgrep arguments with automatic binary/generated filters; set includeIgnored for an explicit full path search. Absolute path does not require workspaceId. Follow with read_file_page for large files.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "git_status",
+      "permission": "READ",
+      "description": "Inspect parsed read-only Git status. For writes (init, add, commit, remote, push, rm, clean, reset) use the git tool.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "git_diff",
+      "permission": "READ",
+      "description": "Return a bounded read-only Git diff. For writes use the git tool.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "git_log",
+      "permission": "READ",
+      "description": "Return bounded structured Git history. For writes use the git tool.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "git",
+      "permission": "EXECUTE",
+      "description": "Run any git subcommand immediately with a separate args array (init, clone, add, commit, remote, fetch, pull, push, rm, mv, restore, checkout, switch, branch, tag, stash, merge, rebase, cherry-pick, reset, clean, revert). cwd may be an absolute path; workspaceId is then optional. Returns exitCode, stdout, and stderr. Destructive Git operations require explicit chat confirmation and userConfirmed: true unless that command family is globally auto-approved and this call supplies a registered workspaceId whose project boundary contains every target. Do not wrap git in powershell/cmd.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "write_file",
+      "permission": "WRITE",
+      "description": "Write UTF-8 text, creating missing parent directories. Checkpoints an existing target first. Absolute paths do not require workspaceId.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "apply_patch",
+      "permission": "WRITE",
+      "description": "Validate and apply bounded file changes, creating missing parent directories.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "move_file",
+      "permission": "WRITE",
+      "description": "Move a file or directory within one workspace, creating missing destination parents.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "copy_file",
+      "permission": "WRITE",
+      "description": "Copy a file or directory within one workspace, creating missing destination parents.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "delete_file",
+      "permission": "DANGEROUS",
+      "description": "Delete one file or an empty directory inside its workspace. Fine-grained policy may auto-approve only when this call supplies a registered workspaceId and the target is proven inside that workspace. Protected Critical Files remain approval-gated; when Recovery Trash is enabled the result includes a recoveryId. Workspace-root deletion remains blocked.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "restore_deleted_file",
+      "permission": "WRITE",
+      "description": "Restore one Recovery Trash item to its original path. Refuses to overwrite an existing target and remains scoped to the recorded workspace.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "process_start",
+      "permission": "EXECUTE",
+      "description": "Immediate-return managed process launcher. Starts one policy-checked executable with separate arguments and returns processId as soon as the child is spawned; it never waits for command completion. Follow with process_status/process_logs/process_stop. For restart-safe durable work, use shell, whose MCP run mode is forced to background.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "process_list",
+      "permission": "READ",
+      "description": "List managed process handles owned by this client in a workspace, including launches whose response was cancelled.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "process_status",
+      "permission": "READ",
+      "description": "Read one status snapshot for an owned process handle. Do not tight-poll this tool; use project_* for normal project verification, or shell background + durable task_id for work expected to exceed ~5 minutes.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "process_logs",
+      "permission": "READ",
+      "description": "Read bounded logs for an owned process handle. Prefer one bounded log read after meaningful progress rather than repeated status polling.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "process_stop",
+      "permission": "EXECUTE",
+      "description": "Stop an owned managed process tree.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "project_dev",
+      "permission": "EXECUTE",
+      "description": "Immediate-return launcher for the detected project dev command. Returns processId after spawn and never waits for the command to finish; follow with process_status/process_logs. Prefer project_* over manually discovering package scripts. For restart-safe durable work, use shell, whose MCP run mode is forced to background.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "project_test",
+      "permission": "EXECUTE",
+      "description": "Immediate-return launcher for the detected project test command. Returns processId after spawn and never waits for the command to finish; follow with process_status/process_logs. Prefer project_* over manually discovering package scripts. For restart-safe durable work, use shell, whose MCP run mode is forced to background.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "project_lint",
+      "permission": "EXECUTE",
+      "description": "Immediate-return launcher for the detected project lint command. Returns processId after spawn and never waits for the command to finish; follow with process_status/process_logs. Prefer project_* over manually discovering package scripts. For restart-safe durable work, use shell, whose MCP run mode is forced to background.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "project_typecheck",
+      "permission": "EXECUTE",
+      "description": "Immediate-return launcher for the detected project typecheck command. Returns processId after spawn and never waits for the command to finish; follow with process_status/process_logs. Prefer project_* over manually discovering package scripts. For restart-safe durable work, use shell, whose MCP run mode is forced to background.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "project_build",
+      "permission": "EXECUTE",
+      "description": "Immediate-return launcher for the detected project build command. Returns processId after spawn and never waits for the command to finish; follow with process_status/process_logs. Prefer project_* over manually discovering package scripts. For restart-safe durable work, use shell, whose MCP run mode is forced to background.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "codex_status",
+      "permission": "READ",
+      "description": "Report local Codex installation and capabilities without credential inspection.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "codex_run",
+      "permission": "EXECUTE",
+      "description": "Delegate an instruction to the local Codex CLI in a workspace.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "codex_task_list",
+      "permission": "READ",
+      "description": "List local Codex task handles owned by this client, including launches whose response was cancelled.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "codex_task_status",
+      "permission": "READ",
+      "description": "Read status for an owned Codex task.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "codex_task_logs",
+      "permission": "READ",
+      "description": "Read bounded logs for an owned Codex task.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "codex_stop",
+      "permission": "EXECUTE",
+      "description": "Stop an owned Codex task process.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "shell",
+      "permission": "EXECUTE",
+      "description": "Non-blocking command runner for system operations and CLI tasks. MCP run calls are ALWAYS forced to execution=background, even if a client requests foreground or auto, so the call returns a task_id immediately instead of waiting for command completion. Follow with status/logs/result; wait uses the user-configurable MCP poll window (5-60 seconds, default 5). After one or two checks still show running, do not keep polling in the same chat turn: preserve task_id and return control so the durable task can continue without risking a ChatGPT turn timeout. Destructive shell commands still require explicit chat confirmation and userConfirmed: true unless that command family is globally auto-approved and this call supplies a registered workspaceId whose project boundary contains every target.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "dom_cdp",
+      "permission": "DANGEROUS",
+      "description": "Default for web-page DOM work inside managed Chrome: inspect content, query selectors, click, type, navigate, evaluate JavaScript, wait, manage tabs, and capture screenshots. Use steps to batch related DOM actions in one call.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "accessibility",
+      "permission": "DANGEROUS",
+      "description": "Semantic native Windows UI tool. Inspect UI trees and named controls, then click, focus, read or set values, select controls and menus, or manage a native element. Prefer shell for direct system work and dom_cdp for web pages.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "input_event",
+      "permission": "DANGEROUS",
+      "description": "Low-level keyboard and pointer fallback. Use only when DOM/CDP and Accessibility cannot operate the target. Supports text, keys, mouse movement, clicks, drag, scroll, held buttons, release_all, and batched sequences.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "vision",
+      "permission": "READ",
+      "description": "Visual and OCR fallback for content unavailable through DOM or Accessibility. Capture a display, window, or region, or run local Vision OCR. It never clicks or types.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "vision_annotated_capture",
+      "permission": "READ",
+      "description": "Capture a local Windows screen/region/window and return a short-lived Set-of-Marks observation with numbered bounds, a content hash, and an annotated PNG. This tool only observes; use ui_target_action for a separately gated action.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "ui_target_action",
+      "permission": "DANGEROUS",
+      "description": "Act on one mark from a current vision_annotated_capture observation. The observation ID, optional hash, TTL, workspace owner, and current Accessibility element are checked before the action is sent.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "window",
+      "permission": "DANGEROUS",
+      "description": "Direct native Windows window management. List, inspect, activate, move, resize, minimize, maximize, restore, or close windows without raw coordinates when a window operation is sufficient.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "health",
+      "permission": "READ",
+      "description": "Diagnostics only. Check all AWH runtime backends or one public tool after a failure, when asked for status, or while diagnosing permissions. Do not use as a preflight before normal work.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "system_info",
+      "permission": "READ",
+      "description": "Read-only system information: OS, CPU, memory, disks, battery, uptime, and top processes by memory. Use for environment checks and diagnostics.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "notification",
+      "permission": "EXECUTE",
+      "description": "Show a Windows notification (toast when BurntToast is installed, balloon otherwise). Use to tell the user when a long task finishes.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "file_dialog",
+      "permission": "EXECUTE",
+      "description": "Open a native Windows file open/save dialog and return the chosen path(s). The dialog does not read or write files itself; use the guarded file tools afterwards.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "clipboard",
+      "permission": "DANGEROUS",
+      "description": "Read or write the Windows clipboard (text, or PNG image as base64). Use get_text/get_image to read and set_text to write.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "web_fetch",
+      "permission": "DANGEROUS",
+      "description": "Fetch an http/https URL (GET/POST/PUT/DELETE/HEAD) with bounded size and timeout. HTTP DELETE requires explicit chat confirmation and userConfirmed: true. Returns status, headers, and text or base64 body.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "audio",
+      "permission": "DANGEROUS",
+      "description": "Record the microphone to a WAV file or play a local audio file through MCI. record is synchronous and limited to 600 seconds. Use stop to abort an ongoing record/play.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "screen_record",
+      "permission": "DANGEROUS",
+      "description": "Record the screen to an MP4 using ffmpeg gdigrab (requires ffmpeg on PATH). start spawns a background capture, status checks it, stop finalizes the file. Recording stops automatically after 3600 seconds.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "office",
+      "permission": "DANGEROUS",
+      "description": "Automate Excel or Word through COM. Mutating actions (write, replace, save_as) require explicit chat confirmation and userConfirmed: true. Requires Microsoft Office installed.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "scheduler",
+      "permission": "DANGEROUS",
+      "description": "Manage Windows scheduled tasks with schtasks.exe. list enumerates tasks, create registers a new task, run starts one immediately. delete requires the user to confirm in chat first, then pass userConfirmed: true.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "wsl_exec",
+      "permission": "EXECUTE",
+      "description": "Non-blocking WSL2 developer runner. MCP run calls are ALWAYS forced to background and return a task_id immediately; foreground/auto requests are normalized by the server. Follow with status/logs/result; wait uses the user-configurable MCP poll window (5-60 seconds, default 5). After one or two checks still show running, do not keep polling in the same chat turn: preserve task_id and return control so the durable task can continue without risking a ChatGPT turn timeout. It executes one Linux executable with argv, an explicit distribution, and a registered Windows workspace cwd, and never accepts shell command strings. Destructive auto-approval requires an explicit registered workspaceId on the call and fails closed when scope cannot be proven.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "wsl_fs",
+      "permission": "READ",
+      "description": "Translate paths and inspect metadata between a registered Windows workspace and WSL without exposing raw \\\\wsl$ read/write access.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "skills_list",
+      "permission": "DANGEROUS",
+      "description": "List local agent skills discovered from Cursor, Claude, Agents, workspace skill roots, and AWH runtime settings. Filter with query or source.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "skills_read",
+      "permission": "DANGEROUS",
+      "description": "Read a local skill SKILL.md (or a relative file inside the skill folder). Follow the skill instructions with AWH runtime tools and mcp_call.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "mcp_list",
+      "permission": "DANGEROUS",
+      "description": "List local MCP servers discovered from Cursor, Claude Desktop, and AWH runtime settings. Does not flatten child tools into the AWH runtime catalog.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "mcp_describe",
+      "permission": "DANGEROUS",
+      "description": "Connect to one local MCP server (if needed) and return its tool names, descriptions, and input schemas.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "mcp_call",
+      "permission": "DANGEROUS",
+      "description": "Call a tool on a discovered local MCP server. Because child side effects cannot be proven non-destructive at this boundary, every mcp_call requires explicit chat confirmation and userConfirmed: true.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "workspace_context",
+      "permission": "READ",
+      "description": "Aggregate ranked workspace context with snippets, symbols, Git/test relevance, economy metadata, and continuation; automatic discovery can be explicitly expanded.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "workspace_context_continue",
+      "permission": "READ",
+      "description": "Continue a workspace_context result without discarding unreturned candidates.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "workspace_full_scan",
+      "permission": "READ",
+      "description": "Enumerate workspace files with full access by default; set includeIgnored false to use the persistent automatic index.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "workspace_full_scan_continue",
+      "permission": "READ",
+      "description": "Continue a workspace_full_scan result page.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "workspace_snapshot",
+      "permission": "READ",
+      "description": "Return workspace identity and project snapshot metadata without source contents.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "search_all",
+      "permission": "READ",
+      "description": "Search text and filenames across one or all registered workspaces with automatic economy filters or an explicit includeIgnored override.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "read_many_files",
+      "permission": "READ",
+      "description": "Read many workspace files in parallel while preserving one result or error per requested path.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "read_file_page",
+      "permission": "READ",
+      "description": "Preferred reader for large files after search_text identifies the relevant area. Reads a deterministic line chunk with explicit continuation instead of silently truncating or loading the whole file.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "read_file_page_continue",
+      "permission": "READ",
+      "description": "Continue read_file_page from the next deterministic line chunk only when more surrounding context is needed; avoid re-reading earlier pages.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "workspace_index",
+      "permission": "READ",
+      "description": "Build or refresh the persistent workspace index using automatic context filters unless ignored paths are explicitly included.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "workspace_index_status",
+      "permission": "READ",
+      "description": "Return persistent index metadata and lossless watcher queue telemetry.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "workspace_index_watch",
+      "permission": "READ",
+      "description": "Watch all workspace paths and incrementally re-index only changed paths with configurable debounce/concurrency.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "workspace_index_stop",
+      "permission": "READ",
+      "description": "Stop a workspace watcher after draining all queued path updates.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "session_handoff",
+      "permission": "READ",
+      "description": "Create a concise same-chat continuation message from the real phase tracker, current git status/diff, and durable background task IDs. Use near the end of a run so the next run can resume without re-reading the whole project. If a tool schema looks stale, Refresh connector first; open a new chat only if refresh does not fix it.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "verify_incremental",
+      "permission": "EXECUTE",
+      "description": "Run the detected project typecheck only when the current git status/diff fingerprint changed. Returns cache=hit when unchanged and cache=miss after a new verification. Prefer this during iterative edits; use project_test/project_lint/project_build only when that specific verification is needed. For full suites or packaging expected to exceed ~5 minutes, launch a durable shell background task and record its task_id in the tracker.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "symbol_search",
+      "permission": "READ",
+      "description": "Search indexed symbols across the workspace.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "find_definition",
+      "permission": "READ",
+      "description": "Find deterministic symbol definitions.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "find_references",
+      "permission": "READ",
+      "description": "Find textual and indexed references to a symbol.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "find_implementations",
+      "permission": "READ",
+      "description": "Find interface and class implementations.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "call_hierarchy",
+      "permission": "READ",
+      "description": "Return a deterministic call hierarchy approximation.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "import_graph",
+      "permission": "READ",
+      "description": "Return indexed imports and exports for a module.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "dependency_graph",
+      "permission": "READ",
+      "description": "Return package and module dependency metadata.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "module_graph",
+      "permission": "READ",
+      "description": "Return the workspace module graph.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "type_search",
+      "permission": "READ",
+      "description": "Search indexed TypeScript, JavaScript, and Python types.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "trace_symbol",
+      "permission": "READ",
+      "description": "Combine definition, references, imports, tests, and recent context.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "context_ranking",
+      "permission": "READ",
+      "description": "Explain ranking signals without removing lower-ranked context.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "debug_context",
+      "permission": "READ",
+      "description": "Gather deterministic debugging context and continuation metadata.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "review_context",
+      "permission": "READ",
+      "description": "Gather code-review context.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "change_context",
+      "permission": "READ",
+      "description": "Gather changed files, symbols, dependencies, and tests.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "symbol_context",
+      "permission": "READ",
+      "description": "Gather context around a symbol.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "test_context",
+      "permission": "READ",
+      "description": "Gather relevant test context.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "dependency_context",
+      "permission": "READ",
+      "description": "Gather dependency-related context.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "git_context",
+      "permission": "READ",
+      "description": "Gather Git status, diff, and history context.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "frontend_context",
+      "permission": "READ",
+      "description": "Gather frontend project context.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "backend_context",
+      "permission": "READ",
+      "description": "Gather backend project context.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "route_intent",
+      "permission": "READ",
+      "description": "Classify a prompt with a deterministic, overridable route.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "recipe_list",
+      "permission": "READ",
+      "description": "List built-in and user recipe names.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "recipe_describe",
+      "permission": "READ",
+      "description": "Describe a recipe plan and permissions.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "recipe_run",
+      "permission": "EXECUTE",
+      "description": "Preview or run a deterministic recipe plan.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "dry_run",
+      "permission": "READ",
+      "description": "Return a no-side-effect execution preview.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "review_changes",
+      "permission": "READ",
+      "description": "Review current Git changes and affected context.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "changed_symbols",
+      "permission": "READ",
+      "description": "Find symbols in changed files.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "affected_modules",
+      "permission": "READ",
+      "description": "Find modules affected by current changes.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "git_history_context",
+      "permission": "READ",
+      "description": "Return relevant recent Git history.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "git_blame_context",
+      "permission": "READ",
+      "description": "Return line ownership context for a file.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "discover_tests",
+      "permission": "READ",
+      "description": "Discover project tests without imposing an execution limit.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "run_affected_tests",
+      "permission": "EXECUTE",
+      "description": "Plan or run tests affected by changed files.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "test_failures",
+      "permission": "READ",
+      "description": "Summarize recorded test failures.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "coverage_context",
+      "permission": "READ",
+      "description": "Return coverage context when project tooling provides it.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "test_history",
+      "permission": "READ",
+      "description": "Return recent test execution history.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "cache_stats",
+      "permission": "READ",
+      "description": "Return shared cache hit/miss telemetry.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "cache_clear",
+      "permission": "WRITE",
+      "description": "Clear safe local runtime caches.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "cache_invalidate",
+      "permission": "WRITE",
+      "description": "Invalidate cache entries for a path or workspace.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "hook_list",
+      "permission": "READ",
+      "description": "List registered lifecycle hooks.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "hook_register",
+      "permission": "WRITE",
+      "description": "Register a deterministic lifecycle hook descriptor.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "hook_remove",
+      "permission": "WRITE",
+      "description": "Remove a lifecycle hook descriptor.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "skill_match",
+      "permission": "READ",
+      "description": "Match relevant local skills without loading all skill text.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "skill_load",
+      "permission": "READ",
+      "description": "Load a selected local skill by identifier.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "plugin_install",
+      "permission": "DANGEROUS",
+      "description": "Install a declared plugin after permission evaluation.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "plugin_list",
+      "permission": "READ",
+      "description": "List installed and enabled plugins.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "plugin_enable",
+      "permission": "WRITE",
+      "description": "Enable an installed plugin.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "plugin_disable",
+      "permission": "WRITE",
+      "description": "Disable an installed plugin.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "plugin_remove",
+      "permission": "DANGEROUS",
+      "description": "Remove an installed plugin.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "session_context",
+      "permission": "READ",
+      "description": "Return persisted development-session context.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "session_checkpoint",
+      "permission": "WRITE",
+      "description": "Persist a development-session checkpoint.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "session_resume",
+      "permission": "READ",
+      "description": "Resume a persisted session context.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "session_history",
+      "permission": "READ",
+      "description": "Return session checkpoints and decisions.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "response_mode",
+      "permission": "READ",
+      "description": "Select compact, normal, verbose, or stream formatting.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "inspect_web_app",
+      "permission": "READ",
+      "description": "Combine DOM, console, network, URL, and screenshot metadata.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "debug_ui",
+      "permission": "READ",
+      "description": "Gather deterministic UI debugging context.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "capture_ui_state",
+      "permission": "READ",
+      "description": "Capture a structured UI state.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "form_context",
+      "permission": "READ",
+      "description": "Inspect form controls and values metadata.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "network_context",
+      "permission": "READ",
+      "description": "Summarize browser network context.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "console_context",
+      "permission": "READ",
+      "description": "Summarize browser console context.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "browser_debug_context",
+      "permission": "READ",
+      "description": "Combine browser diagnostics for one request.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "windows_environment",
+      "permission": "READ",
+      "description": "Inspect Windows environment metadata.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "service_context",
+      "permission": "READ",
+      "description": "Inspect Windows service metadata.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "process_context",
+      "permission": "READ",
+      "description": "Inspect process-tree context.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "port_context",
+      "permission": "READ",
+      "description": "Inspect local listening-port context.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "registry_context",
+      "permission": "READ",
+      "description": "Inspect registry context through the Windows capability boundary.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "event_log_context",
+      "permission": "READ",
+      "description": "Inspect Windows event-log context.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "installed_runtime_context",
+      "permission": "READ",
+      "description": "Inspect installed runtimes and package managers.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "path_context",
+      "permission": "READ",
+      "description": "Resolve executable and PATH context.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "startup_context",
+      "permission": "READ",
+      "description": "Inspect startup configuration context.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "mcp_discover",
+      "permission": "READ",
+      "description": "Discover external MCP servers without flattening native tools.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "mcp_health",
+      "permission": "READ",
+      "description": "Return external MCP connection health.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "mcp_resources",
+      "permission": "READ",
+      "description": "List resources exposed by connected MCP servers.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "task_create",
+      "permission": "EXECUTE",
+      "description": "Create a visible managed runtime task.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "task_status",
+      "permission": "READ",
+      "description": "Read managed task state.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "task_cancel",
+      "permission": "EXECUTE",
+      "description": "Cancel a managed runtime task.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "task_result",
+      "permission": "READ",
+      "description": "Read a managed task result.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "task_list",
+      "permission": "READ",
+      "description": "List managed runtime tasks.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "delegate",
+      "permission": "EXECUTE",
+      "description": "Delegate a task through a policy/audit adapter.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "delegate_status",
+      "permission": "READ",
+      "description": "Read delegated agent state.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "delegate_cancel",
+      "permission": "EXECUTE",
+      "description": "Cancel a delegated agent task.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "delegate_result",
+      "permission": "READ",
+      "description": "Read a delegated agent result.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "parallel_delegate",
+      "permission": "EXECUTE",
+      "description": "Run isolated read-only agent tasks with collision metadata.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "permission_check",
+      "permission": "READ",
+      "description": "Evaluate an action class without limiting allowed context reads.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "permission_profile",
+      "permission": "READ",
+      "description": "Return the active Permission v2 profile.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "live_logs_query",
+      "permission": "READ",
+      "description": "Query structured activity/log metadata with correlation IDs.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "live_logs_status",
+      "permission": "READ",
+      "description": "Return Live Logs pipeline health and source status.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "telemetry_dashboard",
+      "permission": "READ",
+      "description": "Return runtime performance telemetry.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "context_economy_stats",
+      "permission": "READ",
+      "description": "Return context discovery, deduplication, ledger, and token-efficiency telemetry.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "execution_plan",
+      "permission": "READ",
+      "description": "Return the cheapest deterministic execution plan and reason.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "repo_map",
+      "permission": "READ",
+      "description": "Return a traversable repository structural map.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "context_expand",
+      "permission": "READ",
+      "description": "Return optional import, caller, type, test, and change references.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "recovery_status",
+      "permission": "READ",
+      "description": "Return reconnect, retry, continuation, cache, and worker recovery state.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "tool_schema_list",
+      "permission": "READ",
+      "description": "List versioned tool schema metadata.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "tool_schema_register",
+      "permission": "WRITE",
+      "description": "Register a backward-compatible tool schema descriptor.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "capabilities",
+      "permission": "READ",
+      "description": "Discover capability categories without requiring every full schema.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "tool_search",
+      "permission": "READ",
+      "description": "Search tools, tags, phases, and descriptions deterministically.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "tool_dynamic_filter",
+      "permission": "READ",
+      "description": "Return a bounded ranked tool set using deterministic scoring with optional local rerank fallback.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "tool_describe",
+      "permission": "READ",
+      "description": "Describe one tool contract on demand.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "tool_categories",
+      "permission": "READ",
+      "description": "List tool categories and counts.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "tool_function_find",
+      "permission": "READ",
+      "description": "Find the best local tool/function candidates for a prompt.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "tool_aliases",
+      "permission": "READ",
+      "description": "List stable shorthand aliases and their primitive tool targets.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "mcp_hub",
+      "permission": "READ",
+      "description": "Describe the additive MCP hub boundary without flattening child tools or retaining credentials.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "dev_context",
+      "permission": "READ",
+      "description": "Run the unified deterministic development-context facade.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "recipe_catalog",
+      "permission": "READ",
+      "description": "Return inspectable developer automation recipes.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "capture_screenshot",
+      "permission": "READ",
+      "description": "Capture screenshot metadata for visual validation.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "compare_screenshot",
+      "permission": "READ",
+      "description": "Compare screenshot metadata or supplied artifacts.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "dom_snapshot",
+      "permission": "READ",
+      "description": "Return a structured DOM snapshot.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "layout_metadata",
+      "permission": "READ",
+      "description": "Return layout metadata for visual validation.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "visual_context",
+      "permission": "READ",
+      "description": "Combine screenshot, DOM, layout, console, and network references.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "inspect_workbook",
+      "permission": "READ",
+      "description": "Inspect workbook sheets, used ranges, and a bounded sample through Excel COM.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "compare_workbook_layout",
+      "permission": "READ",
+      "description": "Compare workbook layout metadata through an optional spreadsheet plugin.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "render_excel_preview",
+      "permission": "READ",
+      "description": "Render an Excel preview through an optional spreadsheet plugin.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "inspect_pdf",
+      "permission": "READ",
+      "description": "Inspect PDF page structure and text through the local PDF provider.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "compare_pdf_pages",
+      "permission": "READ",
+      "description": "Compare PDF page metadata through an optional PDF plugin.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "project_profile_get",
+      "permission": "READ",
+      "description": "Read project intelligence conventions.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "project_profile_set",
+      "permission": "WRITE",
+      "description": "Update project intelligence conventions.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "handoff_context",
+      "permission": "READ",
+      "description": "Build a structured cross-agent handoff bundle.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "benchmark_run",
+      "permission": "EXECUTE",
+      "description": "Run or preview a benchmark scenario.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "regression_report",
+      "permission": "READ",
+      "description": "Return benchmark and regression results.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "sandbox_exec",
+      "permission": "EXECUTE",
+      "description": "Run an artifact-based Windows Sandbox job with networking disabled and read-only mapped input.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "event_watch",
+      "permission": "EXECUTE",
+      "description": "Watch an allowlisted user-mode ETW or Windows Event Log diagnostic stream.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "crash_trace",
+      "permission": "READ",
+      "description": "Return bounded crash and service-diagnostic context from allowlisted user-mode sources.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "lsp_diagnostics",
+      "permission": "READ",
+      "description": "Read diagnostics from an owned language-server child process.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "lsp_rename",
+      "permission": "WRITE",
+      "description": "Create a cross-file LSP rename edit plan before any workspace write.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "debug_attach",
+      "permission": "EXECUTE",
+      "description": "Attach a DAP client only to an owned workspace debug adapter.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "debug_step",
+      "permission": "EXECUTE",
+      "description": "Perform a bounded DAP stepping/read operation in an owned debug session.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "git_worktree_spawn",
+      "permission": "DANGEROUS",
+      "description": "Create an owned Git worktree for isolated agent work with collision metadata.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "git_worktree_remove",
+      "permission": "DANGEROUS",
+      "description": "Remove a ledger-owned Git worktree after dry-run and explicit confirmation.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "db_inspect",
+      "permission": "READ",
+      "description": "Inspect a local database schema through a configured, read-only connection.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "db_query",
+      "permission": "DANGEROUS",
+      "description": "Run a bounded local database query under explicit connection and mutation policy.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "office_ppt",
+      "permission": "DANGEROUS",
+      "description": "Automate PowerPoint through the existing Office policy boundary.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "office_outlook",
+      "permission": "READ",
+      "description": "Read Outlook folder and message headers through the existing Office policy boundary.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "pdf_extract_tables",
+      "permission": "READ",
+      "description": "Extract bounded PDF text and tables through a local document provider.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "docx_merge",
+      "permission": "WRITE",
+      "description": "Create a deterministic DOCX merge plan and write only after approval.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "self_heal_plan",
+      "permission": "READ",
+      "description": "Propose safe, deterministic, reversible recovery steps without applying mutations.",
+      "readOnly": true,
+      "destructive": false
+    },
+    {
+      "name": "self_heal_apply",
+      "permission": "DANGEROUS",
+      "description": "Apply an approved reversible recovery plan without automatic destructive retries.",
+      "readOnly": false,
+      "destructive": true
+    },
+    {
+      "name": "skills_import",
+      "permission": "WRITE",
+      "description": "Import a compatible skill descriptor after validation and permission review.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "agent_swarm_run",
+      "permission": "EXECUTE",
+      "description": "Plan bounded parallel subagents with ownership, collision, approval, and cancellation metadata.",
+      "readOnly": false,
+      "destructive": false
+    },
+    {
+      "name": "tool_batch",
+      "permission": "DANGEROUS",
+      "description": "Execute multiple MCP tools with parallel, dependency-aware, timeout, cancellation, and partial-result handling.",
+      "readOnly": false,
+      "destructive": true
+    }
+  ]
+}

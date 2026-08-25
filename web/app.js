@@ -1,11 +1,11 @@
 import { loadWebData } from './hub-read-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 import {
-  cancelTask, changePassword, changeUsername, createConversation, createMemory, createProject, createRecoveryCodes, decideApproval,
+  cancelTask, changePassword, changeUsername, createConversation, createMemory, createPerson, createProject, createRecoveryCodes, decideApproval,
   exportWorkspace, invitePerson, listAuthSessions, listPeople, loadAuthProfile, loadControlData, loadConversation,
   loadConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus,
   loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadSystemReadiness, loadWorkspaceContinuity, login, logout,
-  recover, resetPassword, resetProductSetting, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage,
-  testProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
+  recover, resetPassword, resetPersonPassword, resetProductSetting, revokeAuthSession, revokePerson, saveCurrentContext, setPersonEnabled, stepUp, submitWorkMessage,
+  testProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updatePersonFeatures, updatePersonProfile, updatePersonQuota, updateProductSetting,
   updateProviderCredential, updateProviderPolicy, updateProviderProjectRouting, uploadConversationAttachments,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
@@ -13,7 +13,7 @@ import {
   const $ = (id) => document.getElementById(id);
   const MAX_ATTACHMENT_BYTES = 60 * 1024 * 1024;
   const MICRO_BAHT = 1000000;
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, systemReadiness: null, people: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, systemReadiness: null, people: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, firstLogin: null };
   const taskLabels = {
     QUEUED: 'กำลังจัดการบน AWH', WAITING_FOR_WORKER: 'กำลังจัดเส้นทางงาน', PREPARING: 'กำลังเตรียมงาน', RUNNING: 'กำลังทำงาน',
     QA: 'กำลังตรวจคุณภาพ', WAITING_FOR_APPROVAL: 'ต้องอนุมัติ', COMPLETED: 'เสร็จแล้ว',
@@ -39,6 +39,7 @@ import {
     form.append(title, copy, label, password, submit, result); before.before(form); return form;
   }
   function selectedProject() { return state.control?.projects?.find((project) => project.projectId === state.selectedProjectId) || null; }
+  function projectCan(capability, project = selectedProject()) { if (!project) return false; if (Array.isArray(project.capabilities)) return project.capabilities.includes(capability); if (capability === 'project.read') return true; if (capability === 'conversation.write' || capability === 'attachment.upload') return ['OWNER','COLLABORATOR','ADMIN','DIRECTOR','TEACHER','STAFF'].includes(state.control?.role); if (capability === 'approval.decide') return ['OWNER','APPROVER','ADMIN','DIRECTOR'].includes(state.control?.role); return state.control?.role === 'OWNER'; }
   function stateText(task) {
     const providerState = ({
       PROVIDER_UNAVAILABLE: 'AI ยังตอบไม่ได้ในขณะนี้ · งานยังถูกเก็บไว้',
@@ -98,6 +99,7 @@ import {
   }
 
   function isOwner() { return state.control?.role === 'OWNER'; }
+  function canManageUsers() { return isOwner() || state.control?.role === 'ADMIN'; }
   function baht(microunits) { return (Number.isInteger(microunits) ? microunits / MICRO_BAHT : 0).toLocaleString('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function micros(id) { const value = Number.parseFloat($(id).value); if (!Number.isFinite(value) || value < 0) throw new Error('กรอกจำนวนเงินให้ถูกต้อง'); const micro = Math.round(value * MICRO_BAHT); if (!Number.isSafeInteger(micro)) throw new Error('จำนวนเงินมากเกินไป'); return micro; }
   function renderProvider() {
@@ -110,26 +112,40 @@ import {
     const usage = $('provider-usage'); if (usage) { usage.replaceChildren(); const rows = Array.isArray(provider.usageByProject) ? provider.usageByProject : []; for (const row of rows) { const item = document.createElement('li'); item.textContent = `${row.projectName || 'Project'} · ${baht(row.estimatedMicrounits || 0)}`; usage.append(item); } if (!usage.childElementCount) usage.textContent = 'ยังไม่มีการใช้งานที่คิดค่าใช้จ่าย'; }
   }
   function renderPeople() {
-    const select = $('invite-project'); if (!select) return; select.replaceChildren();
+    const select = $('user-create-project'); if (!select) return;
+    const keep = select.value; select.replaceChildren();
+    const none = document.createElement('option'); none.value = ''; none.textContent = 'ยังไม่ผูกโปรเจกต์'; select.append(none);
     const projects = state.control?.projects || [];
-    for (const project of projects) { const option = document.createElement('option'); option.value = project.projectId; option.textContent = project.name; select.append(option); }
+    for (const project of projects) { const option = document.createElement('option'); option.value = project.projectId; option.textContent = project.name; option.selected = project.projectId === keep; select.append(option); }
+    const roleNames = { OWNER:'เจ้าของ', ADMIN:'ผู้ดูแลระบบ', DIRECTOR:'ผู้อำนวยการ', TEACHER:'ครู', STAFF:'บุคลากร', VIEWER:'ดูอย่างเดียว', COLLABORATOR:'บุคลากร', APPROVER:'ผู้อำนวยการ' };
+    const featureNames = { 'ai.chat':'AI Chat', 'tools.pdf':'เครื่องมือ PDF', 'tools.image':'เครื่องมือรูปภาพ', 'documents.use':'เอกสาร', 'files.use':'ไฟล์', 'tasks.use':'งาน', 'approvals.use':'การอนุมัติ', 'projects.use':'โปรเจกต์', 'developer.use':'Developer Tools', 'devices.use':'อุปกรณ์', 'automations.use':'Automations', 'users.manage':'จัดการผู้ใช้', 'system.manage':'ระบบ', 'database.view':'ฐานข้อมูล' };
     const list = $('people-list'); list.replaceChildren();
     for (const person of state.people) {
-      const item = document.createElement('div'); item.className = 'session-item person-card';
+      const item = document.createElement('article'); item.className = 'session-item person-card';
       const head = document.createElement('div'); head.className = 'person-head';
-      const label = document.createElement('strong'); label.textContent = `${person.displayName} · ${person.role === 'OWNER' ? 'เจ้าของ' : person.role === 'COLLABORATOR' ? 'ผู้ร่วมงาน' : person.role === 'APPROVER' ? 'ผู้อนุมัติ' : 'ดูอย่างเดียว'}`; head.append(label); item.append(head);
-      if (person.status === 'ACTIVE' && person.role !== 'OWNER') {
-        const editor = document.createElement('div'); editor.className = 'person-access-editor';
-        const role = document.createElement('select'); for (const [value, text] of [['COLLABORATOR','ผู้ร่วมงาน'],['APPROVER','ผู้อนุมัติ'],['VIEWER','ดูอย่างเดียว']]) { const option = document.createElement('option'); option.value = value; option.textContent = text; option.selected = person.role === value; role.append(option); }
-        const projectBox = document.createElement('div'); projectBox.className = 'person-projects';
-        for (const project of projects) { const row = document.createElement('label'); row.className = 'check-row'; const input = document.createElement('input'); input.type = 'checkbox'; input.value = project.projectId; input.checked = Array.isArray(person.projectIds) && person.projectIds.includes(project.projectId); const text = document.createElement('span'); text.textContent = project.name; row.append(input, text); projectBox.append(row); }
-        const actions = document.createElement('div'); actions.className = 'task-actions'; const save = document.createElement('button'); save.type = 'button'; save.className = 'secondary-button'; save.textContent = 'บันทึกสิทธิ์'; const revoke = document.createElement('button'); revoke.type = 'button'; revoke.className = 'text-button'; revoke.textContent = 'เพิกถอน';
-        save.addEventListener('click', async () => { const projectIds = [...projectBox.querySelectorAll('input:checked')].map((node) => node.value); if (!projectIds.length) { message('people-message', 'เลือกอย่างน้อย 1 โปรเจกต์'); return; } save.disabled = true; try { await updatePersonAccess(person.userId, role.value, projectIds); state.people = (await listPeople()).people || []; renderPeople(); message('people-message', 'บันทึกสิทธิ์แล้ว ผู้ใช้นั้นจะเข้าสู่ระบบใหม่เพื่อรับสิทธิ์ล่าสุด'); } catch (error) { message('people-message', error instanceof Error ? error.message : 'ยังบันทึกสิทธิ์ไม่ได้'); } finally { save.disabled = false; } });
-        revoke.addEventListener('click', async () => { revoke.disabled = true; try { await revokePerson(person.userId); state.people = (await listPeople()).people || []; renderPeople(); message('people-message', 'เพิกถอนบัญชีแล้ว'); } catch (error) { message('people-message', error instanceof Error ? error.message : 'ยังเพิกถอนบัญชีไม่ได้'); revoke.disabled = false; } });
-        actions.append(save, revoke); editor.append(role, projectBox, actions); item.append(editor);
-      }
+      const title = document.createElement('div'); const label = document.createElement('strong'); label.textContent = person.displayName || person.username || 'AWH User'; const meta = document.createElement('small'); meta.textContent = `${roleNames[person.role] || person.role} · ${person.status === 'DISABLED' ? 'ปิดใช้งาน' : person.status === 'REVOKED' ? 'ยกเลิกแล้ว' : 'ใช้งานอยู่'}`; title.append(label, meta);
+      const identity = document.createElement('span'); identity.className = 'muted'; identity.textContent = `@${person.username || '—'}${person.email ? ` · ${person.email}` : ''}${person.lastLoginAt ? ` · เข้าใช้ล่าสุด ${date(person.lastLoginAt)}` : ''}`; head.append(title); item.append(head, identity);
+      if (person.role === 'OWNER' || person.status === 'REVOKED') { list.append(item); continue; }
+      const editor = document.createElement('div'); editor.className = 'person-access-editor';
+      const roleLabel = document.createElement('label'); roleLabel.textContent = 'Role'; const role = document.createElement('select');
+      const roleOptions = isOwner() ? [['ADMIN','ผู้ดูแลระบบ'],['DIRECTOR','ผู้อำนวยการ'],['TEACHER','ครู'],['STAFF','บุคลากร'],['VIEWER','ดูอย่างเดียว']] : [['DIRECTOR','ผู้อำนวยการ'],['TEACHER','ครู'],['STAFF','บุคลากร'],['VIEWER','ดูอย่างเดียว']];
+      for (const [value,textValue] of roleOptions) { const option=document.createElement('option'); option.value=value; option.textContent=textValue; option.selected=(person.role===value)||(person.role==='COLLABORATOR'&&value==='STAFF')||(person.role==='APPROVER'&&value==='DIRECTOR'); role.append(option); }
+      const projectBox = document.createElement('div'); projectBox.className = 'person-projects'; const projectTitle=document.createElement('span'); projectTitle.textContent='โปรเจกต์ที่เข้าถึงได้'; projectBox.append(projectTitle);
+      for (const project of projects) { const row=document.createElement('label'); row.className='check-row'; const input=document.createElement('input'); input.type='checkbox'; input.value=project.projectId; input.checked=Array.isArray(person.projectIds)&&person.projectIds.includes(project.projectId); const textNode=document.createElement('span'); textNode.textContent=project.name; row.append(input,textNode); projectBox.append(row); }
+      const actions=document.createElement('div'); actions.className='task-actions'; const save=document.createElement('button'); save.type='button'; save.className='secondary-button'; save.textContent='บันทึก Role / Project'; const toggle=document.createElement('button'); toggle.type='button'; toggle.className='secondary-button'; toggle.textContent=person.status==='DISABLED'?'เปิดใช้งาน':'ปิดใช้งาน';
+      save.addEventListener('click', async()=>{ const projectIds=[...projectBox.querySelectorAll('input:checked')].map(n=>n.value); save.disabled=true; try { await updatePersonAccess(person.userId,role.value,projectIds); state.people=(await listPeople()).people||[]; renderPeople(); message('people-message','บันทึกสิทธิ์แล้ว'); } catch(error){ message('people-message',error instanceof Error?error.message:'ยังบันทึกสิทธิ์ไม่ได้'); } finally { save.disabled=false; } });
+      toggle.addEventListener('click', async()=>{ toggle.disabled=true; try { await setPersonEnabled(person.userId,person.status==='DISABLED'); state.people=(await listPeople()).people||[]; renderPeople(); message('people-message','อัปเดตสถานะบัญชีแล้ว'); } catch(error){ message('people-message',error instanceof Error?error.message:'ยังเปลี่ยนสถานะบัญชีไม่ได้'); toggle.disabled=false; } }); actions.append(save,toggle); editor.append(roleLabel,role,projectBox,actions); item.append(editor);
+      const account=document.createElement('details'); const accountSummary=document.createElement('summary'); accountSummary.textContent='บัญชีและรหัสผ่าน'; const accountForm=document.createElement('div'); accountForm.className='compact-form';
+      const nameInput=document.createElement('input'); nameInput.value=person.displayName||''; nameInput.maxLength=80; nameInput.placeholder='ชื่อที่แสดง'; const usernameInput=document.createElement('input'); usernameInput.value=person.username||''; usernameInput.maxLength=48; usernameInput.placeholder='Username'; const emailInput=document.createElement('input'); emailInput.type='email'; emailInput.value=person.email||''; emailInput.maxLength=160; emailInput.placeholder='Email'; const identitySave=document.createElement('button'); identitySave.type='button'; identitySave.className='secondary-button'; identitySave.textContent='บันทึกข้อมูลบัญชี';
+      identitySave.addEventListener('click',async()=>{ identitySave.disabled=true; try{ await updatePersonProfile(person.userId,{displayName:nameInput.value.trim(),username:usernameInput.value.trim(),email:emailInput.value.trim()||null}); state.people=(await listPeople()).people||[]; renderPeople(); message('people-message','บันทึกข้อมูลบัญชีแล้ว'); }catch(error){ message('people-message',error instanceof Error?error.message:'ยังบันทึกข้อมูลบัญชีไม่ได้'); }finally{ identitySave.disabled=false; }});
+      const pass=document.createElement('input'); pass.type='password'; pass.minLength=8; pass.maxLength=128; pass.autocomplete='new-password'; pass.placeholder='รหัสผ่านชั่วคราวใหม่'; const reset=document.createElement('button'); reset.type='button'; reset.className='secondary-button'; reset.textContent='ตั้งรหัสผ่านชั่วคราว'; reset.addEventListener('click',async()=>{ if(pass.value.length<8){message('people-message','รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร');return;} reset.disabled=true; try{await resetPersonPassword(person.userId,pass.value); pass.value=''; message('people-message','ตั้งรหัสผ่านชั่วคราวแล้ว ผู้ใช้จะเปลี่ยนรหัสผ่านเมื่อเข้าใช้');}catch(error){message('people-message',error instanceof Error?error.message:'ยัง reset รหัสผ่านไม่ได้');}finally{reset.disabled=false;}}); accountForm.append(nameInput,usernameInput,emailInput,identitySave,pass,reset); account.append(accountSummary,accountForm); item.append(account);
+      const advanced=document.createElement('details'); const advSummary=document.createElement('summary'); advSummary.textContent='สิทธิ์เพิ่มเติมและโควตา'; const features=document.createElement('div'); features.className='person-projects'; const allowedKeys=isOwner()?Object.keys(featureNames):Object.keys(featureNames).filter(k=>!['developer.use','devices.use','users.manage','system.manage','database.view'].includes(k)); const checks={};
+      for(const key of allowedKeys){const row=document.createElement('label');row.className='check-row';const input=document.createElement('input');input.type='checkbox';input.checked=person.features?.[key]===true;checks[key]=input;const t=document.createElement('span');t.textContent=featureNames[key];row.append(input,t);features.append(row);} const featureSave=document.createElement('button');featureSave.type='button';featureSave.className='secondary-button';featureSave.textContent='บันทึกสิทธิ์ฟีเจอร์'; featureSave.addEventListener('click',async()=>{const payload={};for(const [key,input] of Object.entries(checks))payload[key]=input.checked;featureSave.disabled=true;try{await updatePersonFeatures(person.userId,payload);state.people=(await listPeople()).people||[];renderPeople();message('people-message','บันทึกสิทธิ์ฟีเจอร์แล้ว');}catch(error){message('people-message',error instanceof Error?error.message:'ยังบันทึกสิทธิ์ฟีเจอร์ไม่ได้');}finally{featureSave.disabled=false;}});
+      const quotaLabel=document.createElement('label');quotaLabel.textContent='จำนวนคำขอ AI ต่อวัน (เว้นว่าง = ใช้ค่า Role)';const quota=document.createElement('input');quota.type='number';quota.min='0';quota.max='100000';quota.inputMode='numeric';quota.value=Number.isInteger(person.quota?.aiDailyRequests)?String(person.quota.aiDailyRequests):'';const quotaSave=document.createElement('button');quotaSave.type='button';quotaSave.className='secondary-button';quotaSave.textContent='บันทึกโควตา';quotaSave.addEventListener('click',async()=>{const daily=quota.value===''?null:Number.parseInt(quota.value,10);quotaSave.disabled=true;try{await updatePersonQuota(person.userId,daily,person.quota?.aiMonthlyMicrounits??null);state.people=(await listPeople()).people||[];renderPeople();message('people-message','บันทึกโควตาแล้ว');}catch(error){message('people-message',error instanceof Error?error.message:'ยังบันทึกโควตาไม่ได้');}finally{quotaSave.disabled=false;}}); advanced.append(advSummary,features,featureSave,quotaLabel,quota,quotaSave); item.append(advanced);
+      if(isOwner()){const danger=document.createElement('details');danger.className='danger-zone';const ds=document.createElement('summary');ds.textContent='ยกเลิกบัญชีถาวร';const revoke=document.createElement('button');revoke.type='button';revoke.className='text-button';revoke.textContent='เพิกถอนบัญชี';revoke.addEventListener('click',async()=>{revoke.disabled=true;try{await revokePerson(person.userId);state.people=(await listPeople()).people||[];renderPeople();message('people-message','เพิกถอนบัญชีแล้ว');}catch(error){message('people-message',error instanceof Error?error.message:'ยังเพิกถอนบัญชีไม่ได้');revoke.disabled=false;}});danger.append(ds,revoke);item.append(danger);}
       list.append(item);
     }
+    if (!list.childElementCount) { const empty=document.createElement('p'); empty.className='muted'; empty.textContent='ยังไม่มีผู้ใช้อื่นใน AWH'; list.append(empty); }
   }
 
   function memoryScopeLabel(scope) { return ({ owner: 'ความจำของฉัน', constitution: 'หลักการทำงาน', project: 'ความจำของโปรเจกต์', archive: 'บันทึกย้อนหลัง' })[scope] || 'ความจำของ AWH'; }
@@ -464,12 +480,16 @@ import {
     message('worker-summary', workerSummary());
     message('work-context', project ? `คุยและสั่งงานได้จากทุกอุปกรณ์${continuitySummary(state.workspaceContinuity)}` : 'เพิ่มโปรเจกต์เพื่อเริ่มคุยกับ AWH');
     message('advanced-status', `${workerSummary()} · งานและผลลัพธ์แสดงตามสิทธิ์ของบัญชีคุณ`);
-    const workReady = project !== null && state.conversationAvailable;
+    const canWrite = projectCan('conversation.write', project); const canAttach = projectCan('attachment.upload', project); const workReady = project !== null && state.conversationAvailable && canWrite;
     $('goal-submit').disabled = !workReady;
-    $('goal-input').disabled = !workReady;
-    $('attachment-open').disabled = !workReady;
-    $('attachment-input').disabled = !workReady;
-    $('goal-input').placeholder = !project ? 'เลือกหรือเพิ่มโปรเจกต์ก่อน' : 'พิมพ์สิ่งที่อยากให้ AWH ช่วย…';
+    $('goal-input').disabled = project === null || !state.conversationAvailable; $('goal-input').readOnly = !canWrite;
+    $('attachment-open').disabled = !workReady || !canAttach;
+    $('attachment-input').disabled = !workReady || !canAttach;
+    $('goal-input').placeholder = !project ? 'เลือกหรือเพิ่มโปรเจกต์ก่อน' : !canWrite ? 'บัญชีนี้ดูการสนทนาได้ แต่ไม่สามารถส่งคำสั่งในโปรเจกต์นี้' : 'พิมพ์สิ่งที่อยากให้ AWH ช่วย…';
+    if ($('conversation-new')) $('conversation-new').disabled = !canWrite;
+    if ($('conversation-title-input')) $('conversation-title-input').disabled = !canWrite;
+    if ($('conversation-archive')) $('conversation-archive').disabled = !canWrite;
+    window.dispatchEvent(new CustomEvent('awh:workspace-context', { detail: { projectId: project?.projectId || null, capabilities: Array.isArray(project?.capabilities) ? project.capabilities : [], canWrite, canAttach } }));
     renderProjectSheet(projects);
     renderConversationSheet();
     renderThread(state.conversation, state.conversation?.approvals || control.approvals);
@@ -496,11 +516,12 @@ import {
         const remembered = currentContext?.context?.conversationId;
         state.selectedConversationId = conversations.some((conversation) => conversation.conversationId === remembered) ? remembered : conversations[0]?.conversationId || null;
       }
-      if (!state.selectedConversationId) {
+      if (!state.selectedConversationId && projectCan('conversation.write', project)) {
         const created = await createConversation(project.projectId, 'Work'); state.selectedConversationId = created.conversation.conversationId; state.conversations = [created.conversation]; state.conversation = created;
-      } else state.conversation = await loadConversation(state.selectedConversationId);
-      state.workspaceContinuity = workspaceContinuity; state.conversationAvailable = true; renderWorkspace();
-      void saveCurrentContext(project.projectId, state.selectedConversationId, 'work').catch(() => undefined);
+      } else if (state.selectedConversationId) state.conversation = await loadConversation(state.selectedConversationId);
+      else state.conversation = { conversation: null, messages: [], tasks: [], artifacts: [], attachments: [], approvals: [] };
+      state.workspaceContinuity = workspaceContinuity; state.conversationAvailable = state.selectedConversationId !== null; renderWorkspace();
+      if (state.selectedConversationId) void saveCurrentContext(project.projectId, state.selectedConversationId, 'work').catch(() => undefined);
     } catch (error) { state.conversationAvailable = false; state.conversation = { messages: [{ messageId: 'local-unavailable', taskId: null, kind: 'assistant', sequence: 1, body: 'ยังเปิด Work นี้ไม่ได้ จึงยังไม่ส่งคำขอใหม่เพื่อป้องกันงานสูญหาย', createdAt: new Date().toISOString() }], tasks: [], artifacts: [], attachments: [], approvals: [] }; renderWorkspace(); message('goal-message', error instanceof Error ? error.message : 'AWH ยังโหลดการสนทนาไม่ได้'); }
   }
 
@@ -523,12 +544,11 @@ import {
   }
   function configureSettingsVisibility() {
     const owner = isOwner();
-    for (const section of ['ai', 'devices', 'data', 'people']) {
-      const button = document.querySelector(`.settings-tab[data-settings-tab="${section}"]`);
-      if (button) button.hidden = !owner;
-    }
-    const people = document.querySelector('.owner-settings-tab'); if (people) people.hidden = !owner;
-    if (!owner && !['start', 'account'].includes(document.querySelector('.settings-tab.active')?.dataset.settingsTab || '')) showSettingsSection('account');
+    for (const section of ['ai', 'devices', 'data']) { const button = document.querySelector(`.settings-tab[data-settings-tab="${section}"]`); if (button) button.hidden = !owner; }
+    const peopleButton = document.querySelector('.settings-tab[data-settings-tab="people"]'); if (peopleButton) peopleButton.hidden = !canManageUsers();
+    const people = document.querySelector('.owner-settings-tab'); if (people) people.hidden = !canManageUsers();
+    const active = document.querySelector('.settings-tab.active')?.dataset.settingsTab || '';
+    if (!owner && !(canManageUsers() && active === 'people') && !['start', 'account'].includes(active)) showSettingsSection('account');
   }
   function openSheet(id) { show(id); }
   function closeSheet(id) { hide(id); }
@@ -546,7 +566,7 @@ import {
   async function openAccount(section = 'start') {
     if (!state.control?.authenticated) return;
     openSheet('account-sheet');
-    configureSettingsVisibility(); showSettingsSection(isOwner() ? section : 'account');
+    configureSettingsVisibility(); showSettingsSection(isOwner() || (canManageUsers() && section === 'people') ? section : 'account');
     $('owner-only-settings').hidden = !isOwner();
     $('product-settings-form').hidden = !isOwner();
     try { state.productSettings = (await loadProductSettings()).settings; applyProductSettings(); }
@@ -564,17 +584,34 @@ import {
       if (routingResult.status === 'fulfilled') state.providerRouting = routingResult.value;
       if (state.profile && state.ownerStatus) renderOwnerSelfService(); else renderSettingsOverview();
       try { await refreshMemory(); } catch { message('memory-message', 'ยังโหลดความจำไม่ได้ ลองรีเฟรชอีกครั้ง'); }
+    } else if (canManageUsers()) {
+      try { state.people = (await listPeople()).people || []; renderPeople(); } catch { message('people-message', 'ยังโหลดผู้ใช้ไม่ได้ ลองรีเฟรชอีกครั้ง'); }
     }
   }
 
   $('login-form').addEventListener('submit', async (event) => {
     event.preventDefault(); message('login-message', 'กำลังเข้าสู่ AWH…');
+    const username = $('login-username').value.trim(); const password = $('login-password').value; const remember = $('login-remember').checked;
     try {
-      await login($('login-username').value, $('login-password').value, $('login-remember').checked);
-      $('login-password').value = '';
-      state.control = await loadControlData(); render({ product: { shortName: 'AWH' }, control: state.control }); await refreshConversation();
-      message('login-message', '');
+      const session = await login(username, password, remember);
+      if (session.mustChangePassword === true) {
+        state.firstLogin = { username, remember }; $('first-password-current').value = password; $('login-password').value = '';
+        $('login-form').hidden = true; $('first-password-form').hidden = false; $('first-password-new').focus(); message('login-message', ''); return;
+      }
+      $('login-password').value = ''; state.control = await loadControlData(); render({ product: { shortName: 'AWH' }, control: state.control }); await refreshConversation(); message('login-message', '');
     } catch (error) { message('login-message', error instanceof Error ? error.message : 'เข้าสู่ AWH ไม่สำเร็จ'); }
+  });
+
+  $('first-password-form').addEventListener('submit', async (event) => {
+    event.preventDefault(); const current = $('first-password-current').value; const next = $('first-password-new').value; const confirm = $('first-password-confirm').value;
+    if (!state.firstLogin || next !== confirm) { message('first-password-message', !state.firstLogin ? 'กรุณาเข้าสู่ระบบใหม่อีกครั้ง' : 'ยืนยันรหัสผ่านใหม่ให้ตรงกัน'); return; }
+    if (next.length < 8 || next === current) { message('first-password-message', next === current ? 'รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านชั่วคราว' : 'รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร'); return; }
+    const button = $('first-password-form').querySelector('button[type="submit"]'); button.disabled = true; message('first-password-message', 'กำลังบันทึกรหัสผ่าน…');
+    try {
+      await changePassword(current, next); const loginState = state.firstLogin; await login(loginState.username, next, loginState.remember);
+      state.firstLogin = null; $('first-password-current').value = ''; $('first-password-new').value = ''; $('first-password-confirm').value = ''; $('first-password-form').hidden = true; $('login-form').hidden = false;
+      state.control = await loadControlData(); render({ product: { shortName: 'AWH' }, control: state.control }); await refreshConversation(); message('first-password-message', '');
+    } catch (error) { message('first-password-message', error instanceof Error ? error.message : 'ยังตั้งรหัสผ่านใหม่ไม่ได้'); } finally { button.disabled = false; }
   });
 
   $('attachment-open').addEventListener('click', () => { if (!$('attachment-input').disabled) $('attachment-input').click(); });
@@ -614,19 +651,19 @@ import {
   $('project-create-form').addEventListener('submit', async (event) => { event.preventDefault(); if (!isOwner()) { message('project-create-message', 'เฉพาะเจ้าของ AWH เท่านั้นที่เพิ่มโปรเจกต์ได้'); return; } const name = $('project-create-name').value.trim(); if (!name) { message('project-create-message', 'กรอกชื่อโปรเจกต์ก่อน'); return; } const button = $('project-create-form').querySelector('button[type="submit"]'); button.disabled = true; message('project-create-message', 'กำลังเพิ่มโปรเจกต์…'); try { const result = await createProject(name, $('project-create-type').value); state.control = await loadControlData(); state.selectedProjectId = result.project.projectId; $('project-create-name').value = ''; renderWorkspace(); await refreshConversation(); message('project-create-message', 'เพิ่มโปรเจกต์แล้ว เริ่มคุยได้ทันที'); } catch (error) { message('project-create-message', error instanceof Error ? error.message : 'ยังเพิ่มโปรเจกต์ไม่ได้'); } finally { button.disabled = false; } });
   $('conversation-open').addEventListener('click', () => openSheet('conversation-sheet'));
   $('conversation-new').addEventListener('click', async () => {
-    const project = selectedProject(); if (!project) return; const button = $('conversation-new'); button.disabled = true;
+    const project = selectedProject(); if (!project || !projectCan('conversation.write', project)) { message('goal-message', 'บัญชีนี้ไม่สามารถสร้างการสนทนาในโปรเจกต์นี้ได้'); return; } const button = $('conversation-new'); button.disabled = true;
     try { const created = await createConversation(project.projectId, 'การสนทนาใหม่'); state.selectedConversationId = created.conversation.conversationId; state.conversation = created; await refreshConversation(); closeSheet('conversation-sheet'); }
     catch (error) { message('goal-message', error instanceof Error ? error.message : 'AWH ยังสร้างการสนทนาใหม่ไม่ได้'); }
     finally { button.disabled = false; }
   });
   $('conversation-title-form').addEventListener('submit', async (event) => {
-    event.preventDefault(); const conversationId = state.selectedConversationId; if (!conversationId) return;
+    event.preventDefault(); const conversationId = state.selectedConversationId; if (!conversationId || !projectCan('conversation.write')) { message('conversation-title-message', 'บัญชีนี้แก้การสนทนาไม่ได้'); return; }
     message('conversation-title-message', 'กำลังบันทึก…');
     try { await updateConversation(conversationId, $('conversation-title-input').value, false); await refreshConversation(); message('conversation-title-message', 'บันทึกแล้ว'); }
     catch (error) { message('conversation-title-message', error instanceof Error ? error.message : 'ยังบันทึกชื่อการสนทนาไม่ได้'); }
   });
   $('conversation-archive').addEventListener('click', async () => {
-    const conversationId = state.selectedConversationId; const current = state.conversation?.conversation; if (!conversationId || !current) return;
+    const conversationId = state.selectedConversationId; const current = state.conversation?.conversation; if (!conversationId || !current || !projectCan('conversation.write')) { message('conversation-title-message', 'บัญชีนี้เก็บการสนทนาเข้าคลังไม่ได้'); return; }
     $('conversation-archive').disabled = true; message('conversation-title-message', 'กำลังเก็บเข้าคลัง…');
     try { await updateConversation(conversationId, current.title || 'Work', true); state.selectedConversationId = null; await refreshConversation(); message('conversation-title-message', 'เก็บการสนทนาแล้ว'); }
     catch (error) { message('conversation-title-message', error instanceof Error ? error.message : 'ยังเก็บการสนทนาไม่ได้'); }
@@ -696,12 +733,14 @@ import {
     } catch (error) { message('provider-message', error instanceof Error ? error.message : 'ยังบันทึกงบ AI ไม่ได้'); }
   });
 
-  $('people-invite-form').addEventListener('submit', async (event) => {
-    event.preventDefault(); if (!isOwner()) return; message('people-message', 'กำลังสร้างคำเชิญ…'); $('invitation-code').hidden = true;
+  $('people-create-form').addEventListener('submit', async (event) => {
+    event.preventDefault(); if (!canManageUsers()) return; const button = $('people-create-form').querySelector('button[type="submit"]'); button.disabled = true; message('people-message', 'กำลังสร้างบัญชี…');
     try {
-      const invite = await invitePerson({ displayName: $('invite-name').value.trim(), username: $('invite-username').value.trim(), role: $('invite-role').value, projectIds: [$('invite-project').value] });
-      $('invite-name').value = ''; $('invite-username').value = ''; const code = $('invitation-code'); code.hidden = false; code.textContent = `รหัสเชิญแบบใช้ครั้งเดียว (ส่งให้ผู้รับผ่านช่องทางที่ปลอดภัย):\n${invite.invitationCode}`; state.people = (await listPeople()).people || []; renderPeople(); message('people-message', 'สร้างคำเชิญแล้ว');
-    } catch (error) { message('people-message', error instanceof Error ? error.message : 'ยังสร้างคำเชิญไม่ได้'); }
+      const project = $('user-create-project').value;
+      await createPerson({ displayName: $('user-create-name').value.trim(), username: $('user-create-username').value.trim(), email: $('user-create-email').value.trim() || null, temporaryPassword: $('user-create-password').value, role: $('user-create-role').value, projectIds: project ? [project] : [] });
+      $('user-create-name').value = ''; $('user-create-username').value = ''; $('user-create-email').value = ''; $('user-create-password').value = ''; state.people = (await listPeople()).people || []; renderPeople(); message('people-message', 'สร้างบัญชีแล้ว ผู้ใช้เข้าสู่ระบบด้วย Username/Email และรหัสผ่านชั่วคราวได้ทันที');
+    } catch (error) { message('people-message', error instanceof Error ? error.message : 'ยังสร้างบัญชีไม่ได้'); }
+    finally { button.disabled = false; }
   });
 
   $('workspace-export').addEventListener('click', async () => {

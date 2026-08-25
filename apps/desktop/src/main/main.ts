@@ -177,7 +177,7 @@ const defaultDesktopServices: DesktopIpcServices = {
     stdioStrictRoots: false,
     stdioAllowedRoots: [],
     backups: [],
-    connectionModes: { httpUrl: null, stdioCommand: 'lnwjud.exe --mcp-stdio' },
+    connectionModes: { httpUrl: null, stdioCommand: 'AWH.exe --mcp-stdio' },
     workLog: [],
     inFlight: [],
     tunnel: emptyTunnel,

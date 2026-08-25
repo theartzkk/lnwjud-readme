@@ -1,5 +1,17 @@
 # Architecture
 
+## Batch 1 product architecture — 2026-08-25
+
+- **One product / one authority:** AWH UI, Chat, Tools and Automations must route through shared Hub services; no duplicate task, user, project, tool or memory authority.
+- **Human auth != worker auth:** humans use Username/Email + Password sessions; device/runtime enrollment credentials remain internal security. Backend denies Control Plane access while a managed account still has a temporary password.
+- **Role + feature + project model:** product role supplies sane defaults; optional feature overrides refine UX/capability; project capabilities remain the project-specific authorization authority. Both are enforced server-side.
+- **Role-aware UX:** Normal workspace emphasizes Home, AI, Tools, Files and Inbox. Owner-only technical capabilities live under Workspace/System. Teacher/Staff do not inherit developer capability merely because 214 runtime tools exist.
+- **No Ghost Work direction:** Chat/Tool/Automation work must project into canonical Task/Execution/Artifact authorities; Batch 1 preserves these contracts and avoids parallel UI-only state.
+- **Tool Registry:** one runtime registry is projected to UI/Chat/Automation/Agent consumers. User-facing descriptions are AWH-branded; internal protocol identifiers remain compatibility-only.
+- **Database Center:** diagnostic projection only in Batch 1. Mutating DB actions, when added later, require step-up, verified backup, bounded operation, audit/verify and rollback reference.
+- **AI provider direction:** provider/router policy remains an adapter boundary; Teacher AI and Owner AI can later use different free/cheap/quality policies without changing Chat authority.
+- **Production boundary:** this branch is development only; ReadyIDC remains untouched until a future exact-SHA release approval.
+
 ## Convergence foundation — 2026-08-24
 
 - Active convergence branch: `awh/lnwjud4-port`.

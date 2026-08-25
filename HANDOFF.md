@@ -1,5 +1,14 @@
 # Handoff
 
+## Current development handoff — Batch 1, 2026-08-25
+
+- Continue only from `awh/lnwjud4-port`; inspect `git worktree list`, branch, HEAD, status and remotes first. Parent before this Batch 1 candidate was `b940755be087378eb0c698d9d390829bce659019`.
+- Batch 1 implementation now covers conventional human login, six product roles, backend feature/project authorization, managed users, temporary-password first-login, role-based Hub shell, Global Command foundation, Work Inbox, shared 214-tool registry projection and Owner-only Database Center diagnostics. Existing Chat/Conversation authority is preserved.
+- Mac evidence: M1–M11 and M13 runnable Hub fixtures PASS; M12 is SKIP only because local PHP lacks ZipArchive. Aggregate runner: PASS 17 / SKIP 1. CONTROL web build + release manifest + 214/214 catalog gate PASS.
+- Do not deploy. ReadyIDC/BAY/legacy Google Cloud were not mutated by this Batch.
+- Next execution block: commit candidate, checkout that exact SHA on Windows without parallel source edits, run native Windows build/runtime/PowerShell/package QA, fix only Windows-proven defects, then update the handoff with that evidence.
+- Historical production/provider-debug notes below are superseded for development sequencing; use them only as production-history evidence.
+
 ## Convergence foundation — 2026-08-24
 
 - Active convergence branch: `awh/lnwjud4-port`.

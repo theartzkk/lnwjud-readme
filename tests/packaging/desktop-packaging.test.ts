@@ -23,7 +23,7 @@ describe('AWH desktop packaging', () => {
       repository?: { type?: unknown; url?: unknown };
     };
 
-    expect(desktopPackage.description).toBe('Art’s Workspace Hub — lnwjud 4.9.1 execution core with AWH project continuity and control-plane integration.');
+    expect(desktopPackage.description).toBe('Art’s Workspace Hub — local execution, project continuity, and secure control-plane integration.');
     expect(desktopPackage.author).toBe('Art’s Workspace Hub');
     expect(desktopPackage.homepage).toBe('https://github.com/theartzkk/lnwjud-readme#readme');
     expect(desktopPackage.repository).toEqual({ type: 'git', url: 'https://github.com/theartzkk/lnwjud-readme.git' });
@@ -57,6 +57,17 @@ describe('AWH desktop packaging', () => {
     // Internal launcher/profile names intentionally stay lnwjud-* so the AWH
     // product overlay does not fork the upstream MCP/tunnel protocol surface.
     expect(installerScript).toContain('lnwjud.exe');
+  });
+
+  it('keeps Windows resource branding while avoiding the winCodeSign cache extraction trap', async () => {
+    const packagingScript = await readFile(path.join(repositoryRoot, 'scripts', 'package-windows.ps1'), 'utf8');
+    expect(packagingScript).toContain("$env:ELECTRON_BUILDER_DISABLE_BUILD_CACHE = 'true'");
+    expect(packagingScript).toContain('Remove-Item Env:ELECTRON_BUILDER_DISABLE_BUILD_CACHE');
+    expect(packagingScript).toContain('& corepack pnpm@10.15.0 --filter @lnwjud/desktop package:windows');
+
+    const config = await readFile(path.join(desktopRoot, 'electron-builder.yml'), 'utf8');
+    expect(config).toContain('signAndEditExecutable: true');
+    expect(config).not.toContain('signAndEditExecutable: false');
   });
 
   it.skipIf(process.platform !== 'win32')('verifies built Windows runtime bundles', async () => {

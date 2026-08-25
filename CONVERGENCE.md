@@ -1,5 +1,13 @@
 # AWH × lnwjud 4.9.1 Convergence
 
+## Batch 1 convergence checkpoint — 2026-08-25
+
+The convergence core is now being consumed as an internal execution foundation beneath an AWH-owned product surface. Batch 1 does not fork or recreate the runtime. It adds the school-wide Hub product layer: conventional human auth, product roles/features, role-aware UX, managed users, shared Tool Registry projection and guarded Database Center.
+
+Current development invariants: user-facing web branding is AWH; internal compatibility identifiers remain implementation detail; existing Chat/task/project/memory authorities are reused; production is untouched; Windows validation must run against one exact committed SHA rather than a separately edited copy.
+
+Mac evidence for this checkpoint: 214/214 tool registry synchronization, Hub regression PASS 17 / SKIP 1 (local ZipArchive limitation only), M13 Workspace Product PASS, CONTROL web build and release-manifest/hash PASS.
+
 ## Goal
 
 Make Art’s Workspace Hub use lnwjud v4.9.1 as its local Windows execution core instead of continuing the older AWH-local MCP/runtime implementation. Preserve the existing AWH Hub/Project Memory/control-plane authority and layer it around the upstream core.

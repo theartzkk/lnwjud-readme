@@ -1,5 +1,17 @@
 # Art’s Workspace Hub — AWH
 
+## Batch 1 workspace product candidate — 2026-08-25
+
+- Development authority: branch `awh/lnwjud4-port`, based on convergence parent `b940755be087378eb0c698d9d390829bce659019`; always resolve current HEAD with Git before continuing.
+- AWH is now a school-wide role-aware workspace product foundation, not a Chat-only surface. Product roles are Owner, Admin, Director, Teacher, Staff and Viewer over the existing Hub/user/project authorities.
+- Human authentication is conventional Username/Email + Password + Remember me. Worker/device credentials remain internal and separate. New managed users receive a temporary password and must change it before Control Plane access.
+- Hub shell foundation includes role-based Home, AI/Chat, Tools, Files, Inbox/Tasks and Owner Workspace/System surfaces including Projects, Executions, Memory, Devices, Automations, Users and a read-only guarded Database Center.
+- Tools use the single runtime registry (214 tools). User-facing catalog text is AWH-branded; teacher/staff surfaces do not expose developer tools merely because the runtime supports them.
+- Backend enforcement covers project capabilities, feature permissions, disabled accounts, first-login password gate, Viewer read-only behavior, Admin management boundary and Owner-only database inspection. UI hiding is not an authorization boundary.
+- Database Center is read/diagnostic only in Batch 1: health, schema version, DB size, integrity/FK status, tables/row counts and migration ledger. No raw SQL or destructive browser console was added.
+- macOS QA: Hub regression PASS 17 / SKIP 1 (M12 ZipArchive fixture unavailable on this Mac); M13 Workspace Product PASS; synchronized runtime catalog 214/214; CONTROL web build and 13-file release manifest/hash PASS.
+- Production remains untouched by Batch 1. ReadyIDC production history below is not the development branch authority. Windows native QA must use the exact committed Batch 1 SHA.
+
 ## Convergence foundation — 2026-08-24
 
 - Active convergence branch: `awh/lnwjud4-port`.

@@ -1,5 +1,19 @@
 # Tasks
 
+## BATCH 1 CLOSURE — 2026-08-25
+
+- [x] Audit convergence worktree/source and preserve existing Chat/runtime authorities.
+- [x] Add conventional Username/Email + Password human auth foundation and temporary-password first-login gate.
+- [x] Add Owner/Admin/Director/Teacher/Staff/Viewer product roles plus backend feature and project capability enforcement.
+- [x] Add managed Users foundation: create, identity edit, reset temporary password, enable/disable, role/project access, feature access and AI quota metadata.
+- [x] Add role-aware Hub shell, Global Command foundation, Inbox/Tasks, Tools/Files and Owner Workspace/System surfaces.
+- [x] Add Owner-only read/diagnostic Database Center; no raw destructive SQL.
+- [x] Keep Tool Center on one runtime authority and generate AWH-branded 214-tool web catalog.
+- [x] Mac Hub regression PASS 17 / SKIP 1; M13 PASS; CONTROL web build/release manifest PASS.
+- [ ] Commit coherent Batch 1 candidate and record exact SHA.
+- [ ] Native Windows QA against that exact SHA: build, package/runtime, PowerShell, data path, MCP/runtime bridge and user-facing branding.
+- [ ] Update Windows evidence and only then plan Batch 2. Production deployment is explicitly out of scope.
+
 ## CONVERGENCE NOW — 2026-08-24
 
 - Commit and push `awh/lnwjud4-port` as the first convergence candidate based exactly on lnwjud `v4.9.1` commit `166f004`.

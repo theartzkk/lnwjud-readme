@@ -24,7 +24,11 @@
     "desktop": "corepack pnpm@10.15.0 --filter @lnwjud/desktop electron:install && corepack pnpm@10.15.0 --filter @lnwjud/desktop build && corepack pnpm@10.15.0 --filter @lnwjud/desktop exec electron ./dist/main/main.js",
     "start": "corepack pnpm@10.15.0 desktop",
     "docs:tools": "corepack pnpm@10.15.0 --filter @lnwjud/mcp-server build && node scripts/generate-tool-catalog.mjs",
-    "docs:tools:check": "corepack pnpm@10.15.0 --filter @lnwjud/mcp-server build && node scripts/generate-tool-catalog.mjs --check"
+    "docs:tools:check": "corepack pnpm@10.15.0 --filter @lnwjud/mcp-server build && node scripts/generate-tool-catalog.mjs --check",
+    "awh:hub:test": "node scripts/run-awh-hub-tests.mjs",
+    "awh:web:build": "node scripts/build-awh-web.mjs --control",
+    "awh:web:manifest": "node scripts/create-web-release-manifest.mjs",
+    "awh:batch1:qa": "corepack pnpm@10.15.0 docs:tools:check && node scripts/run-awh-hub-tests.mjs && node scripts/build-awh-web.mjs --control && node scripts/create-web-release-manifest.mjs && node --check web/app.js && node --check web/hub-shell.js"
   },
   "devDependencies": {
     "@eslint/js": "9.33.0",

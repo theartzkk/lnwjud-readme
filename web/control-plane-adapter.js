@@ -176,11 +176,23 @@ export async function loadSystemReadiness() {
 }
 export async function listPeople() { return controlRequest('/api/v1/auth/people'); }
 export async function invitePerson({ displayName, username, email = null, role, projectIds }) { return controlRequest('/api/v1/auth/people/invite', { method: 'POST', body: JSON.stringify({ displayName, username, email, role, projectIds }) }); }
+const WORKSPACE_ROLES = ['ADMIN', 'DIRECTOR', 'TEACHER', 'STAFF', 'VIEWER'];
+export async function createPerson({ displayName, username, email = null, role, projectIds = [], temporaryPassword }) {
+  if (!WORKSPACE_ROLES.includes(role) || !Array.isArray(projectIds) || projectIds.some((id) => !UUID.test(id))) throw new Error('ข้อมูลสิทธิ์ผู้ใช้ไม่ถูกต้อง');
+  return controlRequest('/api/v1/auth/people/create', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, displayName, username, email, role, projectIds, temporaryPassword }) });
+}
+export async function updatePersonProfile(userId, { displayName, username, email = null }) { if (!UUID.test(userId)) throw new Error('บัญชีไม่ถูกต้อง'); return controlRequest(`/api/v1/auth/people/${userId}/profile`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1, displayName, username, email }) }); }
+export async function resetPersonPassword(userId, temporaryPassword) { if (!UUID.test(userId)) throw new Error('บัญชีไม่ถูกต้อง'); return controlRequest(`/api/v1/auth/people/${userId}/password`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1, temporaryPassword }) }); }
+export async function setPersonEnabled(userId, enabled) { if (!UUID.test(userId) || typeof enabled !== 'boolean') throw new Error('บัญชีไม่ถูกต้อง'); return controlRequest(`/api/v1/auth/people/${userId}/enabled`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1, enabled }) }); }
+export async function updatePersonFeatures(userId, features) { if (!UUID.test(userId) || !features || typeof features !== 'object' || Array.isArray(features)) throw new Error('สิทธิ์ฟีเจอร์ไม่ถูกต้อง'); return controlRequest(`/api/v1/auth/people/${userId}/features`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1, features }) }); }
+export async function updatePersonQuota(userId, aiDailyRequests = null, aiMonthlyMicrounits = null) { if (!UUID.test(userId)) throw new Error('บัญชีไม่ถูกต้อง'); return controlRequest(`/api/v1/auth/people/${userId}/quota`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1, aiDailyRequests, aiMonthlyMicrounits }) }); }
 export async function revokePerson(userId) { if (!UUID.test(userId)) throw new Error('บัญชีไม่ถูกต้อง'); return controlRequest(`/api/v1/auth/people/${userId}/revoke`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
 export async function updatePersonAccess(userId, role, projectIds) {
-  if (!UUID.test(userId) || !['COLLABORATOR', 'VIEWER', 'APPROVER'].includes(role) || !Array.isArray(projectIds) || projectIds.length < 1 || projectIds.some((id) => !UUID.test(id))) throw new Error('สิทธิ์ผู้ใช้ไม่ถูกต้อง');
+  const roles = [...WORKSPACE_ROLES, 'COLLABORATOR', 'APPROVER'];
+  if (!UUID.test(userId) || !roles.includes(role) || !Array.isArray(projectIds) || projectIds.some((id) => !UUID.test(id))) throw new Error('สิทธิ์ผู้ใช้ไม่ถูกต้อง');
   return controlRequest(`/api/v1/auth/people/${userId}/access`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1, role, projectIds }) });
 }
+export async function loadDatabaseOverview() { return controlRequest('/api/v1/control/database'); }
 
 export async function loadWorkspaceContinuity(projectId) {
   if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง');
