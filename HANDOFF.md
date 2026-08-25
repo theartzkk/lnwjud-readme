@@ -2,12 +2,14 @@
 
 ## Current development handoff — Batch 1, 2026-08-25
 
-- Continue only from `awh/lnwjud4-port`; inspect `git worktree list`, branch, HEAD, status and remotes first. Parent before this Batch 1 candidate was `b940755be087378eb0c698d9d390829bce659019`.
-- Batch 1 implementation now covers conventional human login, six product roles, backend feature/project authorization, managed users, temporary-password first-login, role-based Hub shell, Global Command foundation, Work Inbox, shared 214-tool registry projection and Owner-only Database Center diagnostics. Existing Chat/Conversation authority is preserved.
-- Mac evidence: M1–M11 and M13 runnable Hub fixtures PASS; M12 is SKIP only because local PHP lacks ZipArchive. Aggregate runner: PASS 17 / SKIP 1. CONTROL web build + release manifest + 214/214 catalog gate PASS.
+- Continue only from `awh/lnwjud4-port`; inspect worktree, HEAD, status and remotes first. Batch 1 parent was `b940755be087378eb0c698d9d390829bce659019`.
+- Product implementation covers conventional human login, six product roles, backend feature/project authorization, managed users, temporary-password first-login, role-aware Hub shell, Global Command foundation, Work Inbox, one shared 214-tool registry projection and Owner-only Database Center diagnostics.
+- Exact Windows-verified candidate: `4eb3e57ddaffc6df7fba7ecbd5dc2bd86abc0472`, tree `3e3fb51c2507e8170327b4ad9469b59604de214c`. Windows evidence: packaging 6/6 PASS, release gate 6/6 PASS, tool catalog 214/214, monorepo typecheck PASS, bundled private Node/stdio launcher PASS, plus prior tunnel/DPAPI/persistence/concurrency/IPC suites PASS.
+- `AWH-Setup-4.9.1.exe` was produced successfully on Windows using the proven safe fallback: native build → unbranded `win-unpacked` → AWH icon/VersionInfo via `rcedit-x64.exe` → NSIS from `--prepackaged`. Verified app metadata was `Art's Workspace Hub`, version `4.9.1.0`; branded app SHA-256 was `8c86a1048f780f45bea5454e8b023080ddf97d1c3ae20a82c5917caf1a1fedf6`.
+- Source follow-up automates that fallback in `scripts/package-windows.ps1` without enabling Developer Mode or lowering Windows security. It pins winCodeSign 2.6.0 archive SHA-256 `cdaec7154dda7cc31f88d886e2489379a0625a737d610b5ae7f62a12f16743a4` and `rcedit-x64.exe` SHA-256 `ab53500d556fd824636621bca7dbecd8583ba181891c3e9efdcf16b72a28b0cd`, extracting only the Windows editor and avoiding unrelated macOS symlinks.
+- Mac contract evidence for the automated fallback: packaging contract PASS, release gate PASS, ESLint PASS and `git diff --check` PASS. One final Windows execution of root `package:windows` is still required to prove the newly automated path and capture installer SHA-256/install-launch smoke evidence.
+- GitHub HTTP push previously failed with transport HTTP 400 and SSH had no key; do not claim the candidate is on GitHub until remote evidence exists.
 - Do not deploy. ReadyIDC/BAY/legacy Google Cloud were not mutated by this Batch.
-- Next execution block: commit candidate, checkout that exact SHA on Windows without parallel source edits, run native Windows build/runtime/PowerShell/package QA, fix only Windows-proven defects, then update the handoff with that evidence.
-- Historical production/provider-debug notes below are superseded for development sequencing; use them only as production-history evidence.
 
 ## Convergence foundation — 2026-08-24
 

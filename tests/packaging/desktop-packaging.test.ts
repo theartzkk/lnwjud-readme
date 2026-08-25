@@ -59,11 +59,16 @@ describe('AWH desktop packaging', () => {
     expect(installerScript).toContain('lnwjud.exe');
   });
 
-  it('keeps Windows resource branding while avoiding the winCodeSign cache extraction trap', async () => {
+  it('packages Windows without requiring winCodeSign symlink privileges', async () => {
     const packagingScript = await readFile(path.join(repositoryRoot, 'scripts', 'package-windows.ps1'), 'utf8');
-    expect(packagingScript).toContain("$env:ELECTRON_BUILDER_DISABLE_BUILD_CACHE = 'true'");
-    expect(packagingScript).toContain('Remove-Item Env:ELECTRON_BUILDER_DISABLE_BUILD_CACHE');
-    expect(packagingScript).toContain('& corepack pnpm@10.15.0 --filter @lnwjud/desktop package:windows');
+    expect(packagingScript).toContain("$winCodeSignVersion = '2.6.0'");
+    expect(packagingScript).toContain("$rceditSha256 = 'ab53500d556fd824636621bca7dbecd8583ba181891c3e9efdcf16b72a28b0cd'");
+    expect(packagingScript).toContain("'--set-icon' $iconPath");
+    expect(packagingScript).toContain('--win --dir --x64');
+    expect(packagingScript).toContain('--config.win.signAndEditExecutable=false');
+    expect(packagingScript).toContain('--prepackaged $unpackedDirectory');
+    expect(packagingScript).toContain('AWH_INSTALLER_SHA256=');
+    expect(packagingScript).not.toContain("--filter '@lnwjud/desktop' package:windows");
 
     const config = await readFile(path.join(desktopRoot, 'electron-builder.yml'), 'utf8');
     expect(config).toContain('signAndEditExecutable: true');

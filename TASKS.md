@@ -3,16 +3,17 @@
 ## BATCH 1 CLOSURE — 2026-08-25
 
 - [x] Audit convergence worktree/source and preserve existing Chat/runtime authorities.
-- [x] Add conventional Username/Email + Password human auth foundation and temporary-password first-login gate.
-- [x] Add Owner/Admin/Director/Teacher/Staff/Viewer product roles plus backend feature and project capability enforcement.
-- [x] Add managed Users foundation: create, identity edit, reset temporary password, enable/disable, role/project access, feature access and AI quota metadata.
-- [x] Add role-aware Hub shell, Global Command foundation, Inbox/Tasks, Tools/Files and Owner Workspace/System surfaces.
-- [x] Add Owner-only read/diagnostic Database Center; no raw destructive SQL.
-- [x] Keep Tool Center on one runtime authority and generate AWH-branded 214-tool web catalog.
+- [x] Add conventional Username/Email + Password auth, six product roles, backend feature/project authorization and temporary-password first-login.
+- [x] Add managed Users, role-aware Hub shell, Global Command foundation, Inbox/Tasks, Tool/Files surfaces and Owner-only read/diagnostic Database Center.
+- [x] Keep Tool Center on one runtime authority and generate synchronized AWH-branded 214-tool web catalog.
 - [x] Mac Hub regression PASS 17 / SKIP 1; M13 PASS; CONTROL web build/release manifest PASS.
-- [ ] Commit coherent Batch 1 candidate and record exact SHA.
-- [ ] Native Windows QA against that exact SHA: build, package/runtime, PowerShell, data path, MCP/runtime bridge and user-facing branding.
-- [ ] Update Windows evidence and only then plan Batch 2. Production deployment is explicitly out of scope.
+- [x] Record exact Windows-tested candidate `4eb3e57ddaffc6df7fba7ecbd5dc2bd86abc0472` / tree `3e3fb51c2507e8170327b4ad9469b59604de214c`.
+- [x] Native Windows candidate QA: packaging 6/6, release 6/6, 214-tool catalog, monorepo typecheck, private Node/stdio launcher, tunnel/DPAPI/persistence/concurrency/IPC evidence PASS.
+- [x] Produce `AWH-Setup-4.9.1.exe` on Windows through the safe rcedit + prepackaged NSIS path without enabling Developer Mode; verify AWH app metadata/version and app SHA-256.
+- [x] Automate that safe fallback in `scripts/package-windows.ps1` with pinned archive/rcedit integrity checks; Mac packaging/release/lint/diff contracts PASS.
+- [ ] Next Windows-online gate: run root `package:windows` once from the new exact source SHA, capture installer SHA-256, verify VersionInfo/icon, perform install-launch-uninstall smoke, then mark Batch 1 fully closed.
+- [ ] Publish development branch only after remote transport is healthy. No merge/deploy is implied.
+- [ ] Production deployment remains explicitly out of scope until exact-SHA closure and separate approval.
 
 ## CONVERGENCE NOW — 2026-08-24
 
