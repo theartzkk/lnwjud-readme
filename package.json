@@ -54,6 +54,8 @@
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",
     "electron-squirrel-startup": "1.0.1",
+    "pdf-lib": "1.17.1",
+    "qrcode-generator": "1.4.4",
     "zod": "4.4.3"
   },
   "devDependencies": {

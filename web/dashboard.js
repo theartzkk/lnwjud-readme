@@ -1,4 +1,6 @@
 import { loadControlData } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { SCHOOL_TOOLS, OWNER_TOOLS } from './tool-registry.js?release=__AWH_WEB_RELEASE_ID__';
+import { LOCAL_TOOL_ACTIONS, mountSchoolTools } from './school-tools.js?release=__AWH_WEB_RELEASE_ID__';
 
 const DASHBOARD_ID = 'product-dashboard';
 const IMAGE_MAX_BYTES = 30 * 1024 * 1024;
@@ -160,14 +162,15 @@ function mountDashboard() {
   toolsHeading.innerHTML = '<div><span>เครื่องมือยอดนิยม</span><h2>เริ่มงานได้ทันที</h2></div><small>เครื่องมือทั่วไปพยายามทำบนอุปกรณ์ก่อน เพื่อเร็วและประหยัด AI</small>';
   const toolGrid = document.createElement('div');
   toolGrid.className = 'awh-tool-grid';
-  toolGrid.append(
-    createToolCard({ icon: '✦', title: 'AI ช่วยงาน', copy: 'ถาม เขียน สรุป คิด และช่วยจัดการงาน', badge: 'ฉลาด', action: () => openWork() }),
-    createToolCard({ icon: '▤', title: 'สร้างเอกสาร', copy: 'บันทึกข้อความ รายงาน หนังสือ และงานโรงเรียน', badge: 'AI ช่วย', action: () => openWork('ช่วยฉันสร้างเอกสารงานโรงเรียน โดยถามเฉพาะข้อมูลที่จำเป็น', true) }),
-    createToolCard({ icon: '▧', title: 'จัดการรูปภาพ', copy: 'ย่อขนาด บีบอัด และแปลงไฟล์รูป', badge: 'ฟรี', action: openImageTool }),
-    createToolCard({ icon: 'PDF', title: 'จัดการ PDF', copy: 'รวม แยก บีบอัด หมุน และแปลงไฟล์', badge: 'กำลังเพิ่ม', disabled: true }),
-    createToolCard({ icon: 'QR', title: 'สร้าง QR', copy: 'สร้าง QR จากลิงก์หรือข้อความแบบง่าย', badge: 'กำลังเพิ่ม', disabled: true }),
-    createToolCard({ icon: '＋', title: 'แนบไฟล์ให้ AI', copy: 'ส่งไฟล์แล้วบอก AWH ว่าอยากให้ช่วยอะไร', action: () => { openWork(); window.setTimeout(() => $('attachment-open')?.click(), 0); } }),
-  );
+  const schoolActions = {
+    ai: () => openWork(),
+    documents: () => openWork('ช่วยฉันสร้างเอกสารงานโรงเรียน โดยถามเฉพาะข้อมูลที่จำเป็น', true),
+    image: openImageTool,
+    pdf: LOCAL_TOOL_ACTIONS.pdf,
+    qr: LOCAL_TOOL_ACTIONS.qr,
+    attach: () => { openWork(); window.setTimeout(() => $('attachment-open')?.click(), 0); },
+  };
+  for (const tool of SCHOOL_TOOLS) toolGrid.append(createToolCard({ ...tool, action: schoolActions[tool.id] }));
   tools.append(toolsHeading, toolGrid);
 
   const overview = document.createElement('section');
@@ -185,18 +188,20 @@ function mountDashboard() {
   owner.innerHTML = '<div class="awh-section-heading"><div><span>OWNER</span><h2>ศูนย์รวมทุกอย่างของเรา</h2></div><small>งาน ระบบ AI และอุปกรณ์อยู่ที่เดียว</small></div>';
   const ownerGrid = document.createElement('div');
   ownerGrid.className = 'awh-owner-grid';
-  ownerGrid.append(
-    createToolCard({ icon: '◫', title: 'Projects', copy: 'โปรเจกต์ทั้งหมดและบริบทงาน', action: () => { openWork(); window.setTimeout(() => $('project-open')?.click(), 0); } }),
-    createToolCard({ icon: '☰', title: 'Multi Chat', copy: 'การสนทนาแยกตามโปรเจกต์', action: () => { openWork(); window.setTimeout(() => $('conversation-open')?.click(), 0); } }),
-    createToolCard({ icon: '◎', title: 'Memory', copy: 'ความจำและความต่อเนื่องของ AWH', action: () => openAccountTab('data') }),
-    createToolCard({ icon: '↻', title: 'Tasks & Executions', copy: 'ติดตามงาน การทำงาน และผลลัพธ์', action: () => openWork() }),
-    createToolCard({ icon: '◇', title: 'Devices', copy: 'Mac, Windows และอุปกรณ์ที่เชื่อมต่อ', action: () => openAccountTab('devices') }),
-    createToolCard({ icon: '⚙', title: 'System', copy: 'สุขภาพระบบและ Database Studio', action: () => openAccountTab('system') }),
-  );
+  const ownerActions = {
+    projects: () => { openWork(); window.setTimeout(() => $('project-open')?.click(), 0); },
+    'multi-chat': () => { openWork(); window.setTimeout(() => $('conversation-open')?.click(), 0); },
+    memory: () => openAccountTab('data'),
+    tasks: () => openWork(),
+    devices: () => openAccountTab('devices'),
+    system: () => openAccountTab('system'),
+  };
+  for (const tool of OWNER_TOOLS) ownerGrid.append(createToolCard({ ...tool, action: ownerActions[tool.id] }));
   owner.append(ownerGrid);
 
   const imageTool = createImageTool();
   dashboard.append(hero, tools, overview, files, owner, imageTool);
+  mountSchoolTools(dashboard);
   main.append(dashboard);
 
   $('dashboard-open-work')?.addEventListener('click', () => openWork());
