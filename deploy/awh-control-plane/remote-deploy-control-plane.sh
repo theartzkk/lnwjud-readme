@@ -4,7 +4,7 @@
 # only. Raw stderr and all secret-bearing diagnostics are intentionally hidden.
 set -eu
 exec 2>/dev/null
-DB=$1; REMOTE_ROOT=$2; REMOTE_STAGE=$3; RELEASE=$4; RELEASE_ID=$5; NGINX_CONFIG=$6; HOSTNAME=$7; AWH_FPM_SOCKET=$8; AWH_FPM_SERVICE=$9; CLEANUP_TOPOLOGY=${10}; OWNER_USERNAME=${11}; OWNER_AUTH_ENABLED=${12}; REMOTE_SCRIPT=${13}; COMPAT_REFRESH=${14}; ASSISTANT_WORKSTREAM=${15}; WORKSPACE_CONTINUITY=${16}; UNIFIED_WORKSPACE=${17}; FINAL_PRODUCT=${18}; FOUNDING_MEMORY=${19}; SELF_SERVICE=${20}; CENTRAL_PROJECT_AUTHORITY=${21}; RELEASE_COMMIT=${22}; ANYWHERE_EXECUTION=${23}
+DB=$1; REMOTE_ROOT=$2; REMOTE_STAGE=$3; RELEASE=$4; RELEASE_ID=$5; NGINX_CONFIG=$6; HOSTNAME=$7; AWH_FPM_SOCKET=$8; AWH_FPM_SERVICE=$9; CLEANUP_TOPOLOGY=${10}; OWNER_USERNAME=${11}; OWNER_AUTH_ENABLED=${12}; REMOTE_SCRIPT=${13}; COMPAT_REFRESH=${14}; ASSISTANT_WORKSTREAM=${15}; WORKSPACE_CONTINUITY=${16}; UNIFIED_WORKSPACE=${17}; FINAL_PRODUCT=${18}; FOUNDING_MEMORY=${19}; SELF_SERVICE=${20}; CENTRAL_PROJECT_AUTHORITY=${21}; RELEASE_COMMIT=${22}; ANYWHERE_EXECUTION=${23}; COST_AWARE_AI=${24}
 case "$DB" in /var/lib/awh-hub/*|/opt/awh-hub/*|/srv/awh/*) ;; *) exit 20 ;; esac
 case "$REMOTE_ROOT" in /opt/awh-hub) ;; *) exit 20 ;; esac
 case "$REMOTE_STAGE" in /tmp/awh-control-plane-*.tar.gz) ;; *) exit 20 ;; esac
@@ -17,10 +17,11 @@ case "$FOUNDING_MEMORY" in 0|1) ;; *) exit 20 ;; esac
 case "$SELF_SERVICE" in 0|1) ;; *) exit 20 ;; esac
 case "$CENTRAL_PROJECT_AUTHORITY" in 0|1) ;; *) exit 20 ;; esac
 case "$ANYWHERE_EXECUTION" in 0|1) ;; *) exit 20 ;; esac
+case "$COST_AWARE_AI" in 0|1) ;; *) exit 20 ;; esac
 case "$RELEASE_COMMIT" in ''|*[!0-9a-fA-F]*) exit 20 ;; esac
 test "${#RELEASE_COMMIT}" -ge 40 && test "${#RELEASE_COMMIT}" -le 64 || exit 20
-if test $((COMPAT_REFRESH + ASSISTANT_WORKSTREAM + WORKSPACE_CONTINUITY + UNIFIED_WORKSPACE + FINAL_PRODUCT + FOUNDING_MEMORY + SELF_SERVICE + CENTRAL_PROJECT_AUTHORITY + ANYWHERE_EXECUTION)) -gt 1; then exit 20; fi
-if test "$ANYWHERE_EXECUTION" = 1; then case "$RELEASE_ID" in m13-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$CENTRAL_PROJECT_AUTHORITY" = 1; then case "$RELEASE_ID" in m12-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$SELF_SERVICE" = 1; then case "$RELEASE_ID" in m11-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$FOUNDING_MEMORY" = 1; then case "$RELEASE_ID" in m10-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$FINAL_PRODUCT" = 1; then case "$RELEASE_ID" in m9-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$UNIFIED_WORKSPACE" = 1; then case "$RELEASE_ID" in m8-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$WORKSPACE_CONTINUITY" = 1; then case "$RELEASE_ID" in m7-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ASSISTANT_WORKSTREAM" = 1; then case "$RELEASE_ID" in m6-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; else case "$RELEASE_ID" in m4-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; fi
+if test $((COMPAT_REFRESH + ASSISTANT_WORKSTREAM + WORKSPACE_CONTINUITY + UNIFIED_WORKSPACE + FINAL_PRODUCT + FOUNDING_MEMORY + SELF_SERVICE + CENTRAL_PROJECT_AUTHORITY + ANYWHERE_EXECUTION + COST_AWARE_AI)) -gt 1; then exit 20; fi
+if test "$COST_AWARE_AI" = 1; then case "$RELEASE_ID" in m14-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ANYWHERE_EXECUTION" = 1; then case "$RELEASE_ID" in m13-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$CENTRAL_PROJECT_AUTHORITY" = 1; then case "$RELEASE_ID" in m12-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$SELF_SERVICE" = 1; then case "$RELEASE_ID" in m11-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$FOUNDING_MEMORY" = 1; then case "$RELEASE_ID" in m10-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$FINAL_PRODUCT" = 1; then case "$RELEASE_ID" in m9-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$UNIFIED_WORKSPACE" = 1; then case "$RELEASE_ID" in m8-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$WORKSPACE_CONTINUITY" = 1; then case "$RELEASE_ID" in m7-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ASSISTANT_WORKSTREAM" = 1; then case "$RELEASE_ID" in m6-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; else case "$RELEASE_ID" in m4-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; fi
 case "$NGINX_CONFIG" in /etc/nginx/sites-enabled/*) ;; *) exit 20 ;; esac
 case "$HOSTNAME" in ''|*[!A-Za-z0-9.-]*|.*|*.) exit 20 ;; esac
 printf '%s' "$AWH_FPM_SOCKET" | grep -Eq '^/run/php/php[0-9]+\.[0-9]+-fpm-awh\.sock$' || exit 20
@@ -33,7 +34,7 @@ case "$REMOTE_SCRIPT" in /tmp/awh-control-plane-*.sh) ;; *) exit 20 ;; esac
 case "$COMPAT_REFRESH" in 0|1) ;; *) exit 20 ;; esac
 if test "$COMPAT_REFRESH" = 1 && test "$ASSISTANT_WORKSTREAM" = 1; then exit 20; fi
 OWNER_PASSWORD=
-if test "$ASSISTANT_WORKSTREAM" = 0 && test "$WORKSPACE_CONTINUITY" = 0 && test "$UNIFIED_WORKSPACE" = 0 && test "$FINAL_PRODUCT" = 0 && test "$FOUNDING_MEMORY" = 0 && test "$SELF_SERVICE" = 0 && test "$CENTRAL_PROJECT_AUTHORITY" = 0 && test "$ANYWHERE_EXECUTION" = 0; then IFS= read -r OWNER_PASSWORD || exit 20; case "$OWNER_PASSWORD" in ''|*[!A-Za-z0-9._~-]*) exit 20 ;; esac; fi
+if test "$ASSISTANT_WORKSTREAM" = 0 && test "$WORKSPACE_CONTINUITY" = 0 && test "$UNIFIED_WORKSPACE" = 0 && test "$FINAL_PRODUCT" = 0 && test "$FOUNDING_MEMORY" = 0 && test "$SELF_SERVICE" = 0 && test "$CENTRAL_PROJECT_AUTHORITY" = 0 && test "$ANYWHERE_EXECUTION" = 0 && test "$COST_AWARE_AI" = 0; then IFS= read -r OWNER_PASSWORD || exit 20; case "$OWNER_PASSWORD" in ''|*[!A-Za-z0-9._~-]*) exit 20 ;; esac; fi
 
 BACKUP=/var/backups/awh-hub/awh.sqlite.pre-$RELEASE_ID
 POINTER=$REMOTE_ROOT/control-plane-current
@@ -50,6 +51,7 @@ EXECUTOR_UNITS_PREEXISTING=0
 EXECUTOR_TIMER_STOPPED=0
 M12_REFRESH=0
 M13_REFRESH=0
+M14_REFRESH=0
 DEPLOY_BASE_VERSION=
 EXECUTOR_SERVICE_UNIT=/etc/systemd/system/awh-native-executor.service
 EXECUTOR_TIMER_UNIT=/etc/systemd/system/awh-native-executor.timer
@@ -70,6 +72,7 @@ FOUNDING_MIGRATION=
 SELF_SERVICE_MIGRATION=
 CENTRAL_PROJECT_MIGRATION=
 ANYWHERE_MIGRATION=
+COST_AWARE_MIGRATION=
 OWNER_AUTH_COOKIE_JAR=
 OWNER_AUTH_COOKIE_HEADERS=
 OWNER_AUTH_SURFACE_HEADERS=
@@ -218,12 +221,13 @@ rollback() {
       test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')" || ok=0
       verify_m3e_after_m4 || ok=0
     fi
-    if test "$ok" -eq 1 && { test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1; } && test "$DB_MUTATED" -eq 1; then
+    if test "$ok" -eq 1 && { test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1; } && test "$DB_MUTATED" -eq 1; then
       test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = "$DEPLOY_BASE_VERSION" || ok=0
       case "$DEPLOY_BASE_VERSION" in
         11) test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm11-self-service' AND schema_version = 11;")" = 1 || ok=0 ;;
         12) test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm12-central-project-authority' AND schema_version = 12;")" = 1 || ok=0 ;;
         13) test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm13-anywhere-execution-fabric' AND schema_version = 13;")" = 1 || ok=0 ;;
+        14) test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm14-cost-aware-ai' AND schema_version = 14;")" = 1 || ok=0 ;;
         *) ok=0 ;;
       esac
       test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok || ok=0
@@ -243,17 +247,41 @@ rollback() {
 }
 trap rollback EXIT HUP INT TERM
 
-sudo test -f "$DB"; sudo test -f "$REMOTE_STAGE"; pointer_capture; cleanup_loaded_topology; DEPLOY_BASE_VERSION=$(sudo sqlite3 "$DB" 'PRAGMA user_version;'); case "$DEPLOY_BASE_VERSION" in 4|5|6|7|8|9|10|11|12|13) ;; *) exit 20 ;; esac; stage PREMUTATION_READY
+sudo test -f "$DB"; sudo test -f "$REMOTE_STAGE"; pointer_capture; cleanup_loaded_topology; DEPLOY_BASE_VERSION=$(sudo sqlite3 "$DB" 'PRAGMA user_version;'); case "$DEPLOY_BASE_VERSION" in 4|5|6|7|8|9|10|11|12|13|14) ;; *) exit 20 ;; esac; stage PREMUTATION_READY
 sudo install -d -o root -g root -m 0750 /var/backups/awh-hub
 sudo sqlite3 "$DB" ".backup '$BACKUP'"; sudo chown root:root "$BACKUP"; sudo chmod 0600 "$BACKUP"; test "$(sudo sqlite3 "$BACKUP" 'PRAGMA integrity_check;')" = ok; test -z "$(sudo sqlite3 "$BACKUP" 'PRAGMA foreign_key_check;')"; sudo install -d -m 0750 -o root -g root "$CONFIG_BACKUP_ROOT/nginx"; sudo test ! -e "$NGINX_BACKUP"; sudo cp -p "$NGINX_CONFIG" "$NGINX_BACKUP"; sudo chown root:root "$NGINX_BACKUP"; sudo chmod 0600 "$NGINX_BACKUP"; sudo cmp -s "$NGINX_CONFIG" "$NGINX_BACKUP"; NGINX_BACKUP_CREATED=1; stage BACKUP_VERIFIED
 if sudo test -e "$RELEASE" || sudo test -L "$RELEASE"; then exit 20; fi
-sudo install -d -o awh-hub -g awh-hub -m 0750 "$RELEASE"; RELEASE_CREATED=1; sudo tar -xzf "$REMOTE_STAGE" -C "$RELEASE"; sudo chown -R awh-hub:awh-hub "$RELEASE"; sudo test -f "$RELEASE/hub/public/control-plane.php"; sudo test -f "$RELEASE/hub/bin/migrate-m4.php"; if test "$ASSISTANT_WORKSTREAM" = 1 || test "$WORKSPACE_CONTINUITY" = 1 || test "$UNIFIED_WORKSPACE" = 1 || test "$FINAL_PRODUCT" = 1 || test "$FOUNDING_MEMORY" = 1 || test "$SELF_SERVICE" = 1 || test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-assistant-workstream.php"; sudo test -f "$RELEASE/hub/migrations/005_assistant_workstream.sql"; fi; if test "$WORKSPACE_CONTINUITY" = 1 || test "$UNIFIED_WORKSPACE" = 1 || test "$FINAL_PRODUCT" = 1 || test "$FOUNDING_MEMORY" = 1 || test "$SELF_SERVICE" = 1 || test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-workspace-continuity.php"; sudo test -f "$RELEASE/hub/migrations/006_workspace_continuity.sql"; fi; if test "$UNIFIED_WORKSPACE" = 1 || test "$FINAL_PRODUCT" = 1 || test "$FOUNDING_MEMORY" = 1 || test "$SELF_SERVICE" = 1 || test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-unified-workspace.php"; sudo test -f "$RELEASE/hub/migrations/007_unified_workspace.sql"; fi; if test "$FINAL_PRODUCT" = 1 || test "$FOUNDING_MEMORY" = 1 || test "$SELF_SERVICE" = 1 || test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-final-product.php"; sudo test -f "$RELEASE/hub/migrations/008_final_product.sql"; sudo test -f "$RELEASE/hub/src/HubAttachmentStore.php"; sudo test -f "$RELEASE/hub/src/HubNativeAgentService.php"; fi; if test "$FOUNDING_MEMORY" = 1 || test "$SELF_SERVICE" = 1 || test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-founding-memory.php"; sudo test -f "$RELEASE/hub/migrations/009_founding_memory.sql"; sudo test -f "$RELEASE/hub/src/HubFoundingMemorySeed.php"; sudo test -f "$RELEASE/hub/src/HubFoundingMemoryMigration.php"; sudo test -f "$RELEASE/hub/src/HubFoundingMemoryService.php"; fi; if test "$SELF_SERVICE" = 1 || test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-self-service.php"; sudo test -f "$RELEASE/hub/migrations/010_self_service.sql"; sudo test -f "$RELEASE/hub/src/HubSelfServiceMigration.php"; sudo test -f "$RELEASE/hub/src/HubProviderCredentialStore.php"; fi; if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-central-project-authority.php"; sudo test -f "$RELEASE/hub/bin/awh-native-executor.php"; sudo test -f "$RELEASE/hub/bin/sync-deployed-source-vault.php"; sudo test -s "$RELEASE/.awh-build/awh-source.zip"; sudo test -f "$RELEASE/hub/migrations/011_central_project_authority.sql"; sudo test -f "$RELEASE/hub/src/HubCentralProjectAuthorityMigration.php"; sudo test -f "$RELEASE/hub/src/HubProjectVault.php"; sudo test -f "$RELEASE/hub/src/HubProjectVaultService.php"; sudo test -f "$RELEASE/hub/src/HubDurableExecutionService.php"; sudo test -f "$RELEASE/deploy/systemd/awh-native-executor.service"; sudo test -f "$RELEASE/deploy/systemd/awh-native-executor.timer"; fi; sudo -u awh-hub test -r "$RELEASE/hub/src/HubControlPlaneService.php"; stage RELEASE_STAGED
-if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1; then sudo test -f "$RELEASE/hub/src/HubArtifactStore.php"; fi
-if test "$ANYWHERE_EXECUTION" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-anywhere-execution.php"; sudo test -f "$RELEASE/hub/migrations/012_anywhere_execution_fabric.sql"; sudo test -f "$RELEASE/hub/src/HubAnywhereExecutionMigration.php"; sudo test -f "$RELEASE/hub/src/HubCapabilityRegistryService.php"; fi
-OWNER_AUTH_SETUP=$RELEASE/hub/bin/setup-owner-auth.php; OWNER_AUTH_RUNTIME=$RELEASE/hub/bin/verify-owner-auth-runtime.php; ASSISTANT_MIGRATION=$RELEASE/hub/bin/migrate-assistant-workstream.php; WORKSPACE_MIGRATION=$RELEASE/hub/bin/migrate-workspace-continuity.php; UNIFIED_MIGRATION=$RELEASE/hub/bin/migrate-unified-workspace.php; FINAL_MIGRATION=$RELEASE/hub/bin/migrate-final-product.php; FOUNDING_MIGRATION=$RELEASE/hub/bin/migrate-founding-memory.php; SELF_SERVICE_MIGRATION=$RELEASE/hub/bin/migrate-self-service.php; CENTRAL_PROJECT_MIGRATION=$RELEASE/hub/bin/migrate-central-project-authority.php; ANYWHERE_MIGRATION=$RELEASE/hub/bin/migrate-anywhere-execution.php; OWNER_AUTH_TRANSFORM=$RELEASE/deploy/nginx/transform-owner-auth.php; CONTROL_ORIGIN_RENDER=$RELEASE/deploy/nginx/render-control-plane-include.php; CONTROL_INCLUDE=$RELEASE/deploy/nginx/awh-control-plane.conf; CONTROL_INCLUDE_TMP=/tmp/awh-control-include-$RELEASE_ID.conf
+sudo install -d -o awh-hub -g awh-hub -m 0750 "$RELEASE"; RELEASE_CREATED=1; sudo tar -xzf "$REMOTE_STAGE" -C "$RELEASE"; sudo chown -R awh-hub:awh-hub "$RELEASE"; sudo test -f "$RELEASE/hub/public/control-plane.php"; sudo test -f "$RELEASE/hub/bin/migrate-m4.php"; if test "$ASSISTANT_WORKSTREAM" = 1 || test "$WORKSPACE_CONTINUITY" = 1 || test "$UNIFIED_WORKSPACE" = 1 || test "$FINAL_PRODUCT" = 1 || test "$FOUNDING_MEMORY" = 1 || test "$SELF_SERVICE" = 1 || test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-assistant-workstream.php"; sudo test -f "$RELEASE/hub/migrations/005_assistant_workstream.sql"; fi; if test "$WORKSPACE_CONTINUITY" = 1 || test "$UNIFIED_WORKSPACE" = 1 || test "$FINAL_PRODUCT" = 1 || test "$FOUNDING_MEMORY" = 1 || test "$SELF_SERVICE" = 1 || test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-workspace-continuity.php"; sudo test -f "$RELEASE/hub/migrations/006_workspace_continuity.sql"; fi; if test "$UNIFIED_WORKSPACE" = 1 || test "$FINAL_PRODUCT" = 1 || test "$FOUNDING_MEMORY" = 1 || test "$SELF_SERVICE" = 1 || test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-unified-workspace.php"; sudo test -f "$RELEASE/hub/migrations/007_unified_workspace.sql"; fi; if test "$FINAL_PRODUCT" = 1 || test "$FOUNDING_MEMORY" = 1 || test "$SELF_SERVICE" = 1 || test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-final-product.php"; sudo test -f "$RELEASE/hub/migrations/008_final_product.sql"; sudo test -f "$RELEASE/hub/src/HubAttachmentStore.php"; sudo test -f "$RELEASE/hub/src/HubNativeAgentService.php"; fi; if test "$FOUNDING_MEMORY" = 1 || test "$SELF_SERVICE" = 1 || test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-founding-memory.php"; sudo test -f "$RELEASE/hub/migrations/009_founding_memory.sql"; sudo test -f "$RELEASE/hub/src/HubFoundingMemorySeed.php"; sudo test -f "$RELEASE/hub/src/HubFoundingMemoryMigration.php"; sudo test -f "$RELEASE/hub/src/HubFoundingMemoryService.php"; fi; if test "$SELF_SERVICE" = 1 || test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-self-service.php"; sudo test -f "$RELEASE/hub/migrations/010_self_service.sql"; sudo test -f "$RELEASE/hub/src/HubSelfServiceMigration.php"; sudo test -f "$RELEASE/hub/src/HubProviderCredentialStore.php"; fi; if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-central-project-authority.php"; sudo test -f "$RELEASE/hub/bin/awh-native-executor.php"; sudo test -f "$RELEASE/hub/bin/sync-deployed-source-vault.php"; sudo test -s "$RELEASE/.awh-build/awh-source.zip"; sudo test -f "$RELEASE/hub/migrations/011_central_project_authority.sql"; sudo test -f "$RELEASE/hub/src/HubCentralProjectAuthorityMigration.php"; sudo test -f "$RELEASE/hub/src/HubProjectVault.php"; sudo test -f "$RELEASE/hub/src/HubProjectVaultService.php"; sudo test -f "$RELEASE/hub/src/HubDurableExecutionService.php"; sudo test -f "$RELEASE/deploy/systemd/awh-native-executor.service"; sudo test -f "$RELEASE/deploy/systemd/awh-native-executor.timer"; fi; sudo -u awh-hub test -r "$RELEASE/hub/src/HubControlPlaneService.php"; stage RELEASE_STAGED
+if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1; then sudo test -f "$RELEASE/hub/src/HubArtifactStore.php"; fi
+if test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-anywhere-execution.php"; sudo test -f "$RELEASE/hub/migrations/012_anywhere_execution_fabric.sql"; sudo test -f "$RELEASE/hub/src/HubAnywhereExecutionMigration.php"; sudo test -f "$RELEASE/hub/src/HubCapabilityRegistryService.php"; fi
+if test "$COST_AWARE_AI" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-cost-aware-ai.php"; sudo test -f "$RELEASE/hub/migrations/013_cost_aware_ai.sql"; sudo test -f "$RELEASE/hub/src/HubCostAwareAiMigration.php"; sudo test -f "$RELEASE/hub/src/HubProviderPricingService.php"; fi
+OWNER_AUTH_SETUP=$RELEASE/hub/bin/setup-owner-auth.php; OWNER_AUTH_RUNTIME=$RELEASE/hub/bin/verify-owner-auth-runtime.php; ASSISTANT_MIGRATION=$RELEASE/hub/bin/migrate-assistant-workstream.php; WORKSPACE_MIGRATION=$RELEASE/hub/bin/migrate-workspace-continuity.php; UNIFIED_MIGRATION=$RELEASE/hub/bin/migrate-unified-workspace.php; FINAL_MIGRATION=$RELEASE/hub/bin/migrate-final-product.php; FOUNDING_MIGRATION=$RELEASE/hub/bin/migrate-founding-memory.php; SELF_SERVICE_MIGRATION=$RELEASE/hub/bin/migrate-self-service.php; CENTRAL_PROJECT_MIGRATION=$RELEASE/hub/bin/migrate-central-project-authority.php; ANYWHERE_MIGRATION=$RELEASE/hub/bin/migrate-anywhere-execution.php; COST_AWARE_MIGRATION=$RELEASE/hub/bin/migrate-cost-aware-ai.php; OWNER_AUTH_TRANSFORM=$RELEASE/deploy/nginx/transform-owner-auth.php; CONTROL_ORIGIN_RENDER=$RELEASE/deploy/nginx/render-control-plane-include.php; CONTROL_INCLUDE=$RELEASE/deploy/nginx/awh-control-plane.conf; CONTROL_INCLUDE_TMP=/tmp/awh-control-include-$RELEASE_ID.conf
 stage CONTROL_ORIGIN_RENDER; sudo /usr/bin/php "$CONTROL_ORIGIN_RENDER" "$CONTROL_INCLUDE" "$CONTROL_INCLUDE_TMP" "$HOSTNAME" "$AWH_FPM_SOCKET" >/dev/null; sudo test -s "$CONTROL_INCLUDE_TMP"; sudo install -o awh-hub -g awh-hub -m 0644 "$CONTROL_INCLUDE_TMP" "$CONTROL_INCLUDE"; sudo rm -f "$CONTROL_INCLUDE_TMP"; CONTROL_INCLUDE_TMP=
 stage NGINX_CUTOVER_PREPARE; sudo /usr/bin/php "$OWNER_AUTH_TRANSFORM" "$NGINX_CONFIG" "$NGINX_CANDIDATE" "$HOSTNAME" "$AWH_FPM_SOCKET" >/dev/null; sudo test -s "$NGINX_CANDIDATE"; sudo chown root:root "$NGINX_CANDIDATE"; sudo chmod 0644 "$NGINX_CANDIDATE"
-if test "$ANYWHERE_EXECUTION" = 1; then
+if test "$COST_AWARE_AI" = 1; then
+  # M14 is additive over M13. Personal devices remain optional; the managed
+  # Cloud executor is quiesced before schema/source mutation.
+  stage WORKSPACE_PRESERVED
+  M14_START_VERSION=$(sudo sqlite3 "$DB" 'PRAGMA user_version;')
+  case "$M14_START_VERSION" in 13|14) ;; *) exit 20 ;; esac
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm13-anywhere-execution-fabric' AND schema_version = 13;")" = 1
+  if test "$M14_START_VERSION" = 14; then M14_REFRESH=1; test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm14-cost-aware-ai' AND schema_version = 14;")" = 1; fi
+  sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$OWNER_AUTH_RUNTIME" >/dev/null
+  test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok; test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
+  stage PROJECT_VAULT_RUNTIME_READY; sudo -u awh-hub /usr/bin/php -r 'exit((extension_loaded("pdo_sqlite") && class_exists("ZipArchive")) ? 0 : 1);'
+  stage PROJECT_VAULT_STORAGE_READY; sudo -u awh-hub test -w /var/lib/awh-hub/project-vault; sudo -u awh-hub test -w /var/lib/awh-hub/task-workspaces; sudo -u awh-hub test -w /var/lib/awh-hub/task-transfers; sudo -u awh-hub test -w /var/lib/awh-hub/artifacts
+  test -f "$EXECUTOR_SERVICE_UNIT" && test -f "$EXECUTOR_TIMER_UNIT"; test "$PREVIOUS_POINTER" = PRESENT
+  sudo cmp -s "$EXECUTOR_SERVICE_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-native-executor.service"; sudo cmp -s "$EXECUTOR_TIMER_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-native-executor.timer"
+  sudo install -d -o root -g root -m 0750 "$EXECUTOR_BACKUP_ROOT"; sudo test ! -e "$EXECUTOR_SERVICE_BACKUP"; sudo test ! -e "$EXECUTOR_TIMER_BACKUP"
+  sudo cp -p "$EXECUTOR_SERVICE_UNIT" "$EXECUTOR_SERVICE_BACKUP"; sudo cp -p "$EXECUTOR_TIMER_UNIT" "$EXECUTOR_TIMER_BACKUP"; sudo chown root:root "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP"; sudo chmod 0600 "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP"
+  EXECUTOR_UNITS_PREEXISTING=1; sudo systemctl stop awh-native-executor.timer; sudo systemctl stop awh-native-executor.service >/dev/null 2>&1 || true; EXECUTOR_TIMER_STOPPED=1
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM control_task_executions WHERE state IN ('LEASED','RUNNING');")" = 0; stage NATIVE_EXECUTOR_QUIESCED
+  DB_MUTATED=1
+  if test "$M14_REFRESH" -eq 0; then stage COST_AWARE_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$COST_AWARE_MIGRATION" "$DB" >/dev/null; fi
+  stage COST_AWARE_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$COST_AWARE_MIGRATION" "$DB" >/dev/null
+  test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 14; test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm14-cost-aware-ai' AND schema_version = 14;")" = 1
+  test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok; test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"; stage COST_AWARE_MIGRATION_VERIFIED; stage PROJECTS_READY
+elif test "$ANYWHERE_EXECUTION" = 1; then
   # M13 is additive over the canonical M12 authority. Both v12 activation and
   # v13 source refresh prove the managed executor before touching schema/source.
   stage WORKSPACE_PRESERVED
@@ -541,9 +569,9 @@ else
   sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/register-m4-projects.php" >/dev/null; stage PROJECTS_READY
 fi
 sudo rm -f "$POINTER_TMP"; sudo ln -s "$RELEASE" "$POINTER_TMP"; sudo mv -Tf "$POINTER_TMP" "$POINTER"; POINTER_CHANGED=1; test "$(readlink "$POINTER")" = "$RELEASE"; stage CONTROL_POINTER
-if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1; then
+if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1; then
   # M12 first activation may create units; all refreshes and M13 require proven managed units.
-  if test "$ANYWHERE_EXECUTION" = 1; then test "$EXECUTOR_UNITS_PREEXISTING" -eq 1; elif test "$M12_REFRESH" -eq 0; then test ! -e "$EXECUTOR_SERVICE_UNIT" && test ! -e "$EXECUTOR_TIMER_UNIT"; else test "$EXECUTOR_UNITS_PREEXISTING" -eq 1; fi
+  if test "$COST_AWARE_AI" = 1 || test "$ANYWHERE_EXECUTION" = 1; then test "$EXECUTOR_UNITS_PREEXISTING" -eq 1; elif test "$M12_REFRESH" -eq 0; then test ! -e "$EXECUTOR_SERVICE_UNIT" && test ! -e "$EXECUTOR_TIMER_UNIT"; else test "$EXECUTOR_UNITS_PREEXISTING" -eq 1; fi
   sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-native-executor.service" "$EXECUTOR_SERVICE_UNIT"
   sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-native-executor.timer" "$EXECUTOR_TIMER_UNIT"
   EXECUTOR_UNITS_INSTALLED=1
@@ -591,7 +619,8 @@ elif test "$FOUNDING_MEMORY" = 1; then
   stage FINAL_PRODUCT_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/provider" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403
   stage FOUNDING_MEMORY_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/memory" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403
 fi
-if test "$ANYWHERE_EXECUTION" = 1; then stage ANYWHERE_EXECUTION_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/capabilities" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; fi
+if test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1; then stage ANYWHERE_EXECUTION_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/capabilities" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; fi
+if test "$COST_AWARE_AI" = 1; then stage COST_AWARE_AI_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/provider" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; fi
 if test "$CENTRAL_PROJECT_AUTHORITY" = 1; then
   # Authentication-only probes prove the staged release owns new central
   # authority routes without ingesting content or exposing Vault metadata.
@@ -609,5 +638,5 @@ if test "$FINAL_PRODUCT" = 1; then
   code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/attachments/423b45c0-23e1-408d-ae0f-ac5eca7f6900/download" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403
 fi
 stage CONTROL_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/session" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403
-if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1; then DB_MUTATED=1; stage PROJECT_VAULT_SOURCE_SYNC; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_PROJECT_VAULT_ROOT=/var/lib/awh-hub/project-vault /usr/bin/php "$RELEASE/hub/bin/sync-deployed-source-vault.php" "$DB" "$RELEASE/.awh-build/awh-source.zip" "$RELEASE_COMMIT" >/dev/null; fi
+if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1; then DB_MUTATED=1; stage PROJECT_VAULT_SOURCE_SYNC; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_PROJECT_VAULT_ROOT=/var/lib/awh-hub/project-vault /usr/bin/php "$RELEASE/hub/bin/sync-deployed-source-vault.php" "$DB" "$RELEASE/.awh-build/awh-source.zip" "$RELEASE_COMMIT" >/dev/null; fi
 SUCCESS=1; printf '%s\n' 'DEPLOY_RESULT=PASS'; trap - EXIT HUP INT TERM; sudo rm -f "$REMOTE_STAGE" "$NGINX_BACKUP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" "$CONTROL_INCLUDE_TMP" "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP"; exit 0
