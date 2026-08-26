@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { DEFAULT_AWH_HUB_API_BASE } from '../src/config.js';
 import { PRODUCT } from '../src/product.js';
+import { DESKTOP_UPDATE_FOUNDATION, updateIsApplicable, validateDesktopUpdateManifest } from '../src/desktop-update-policy.js';
 
 const ROOT = process.cwd();
 
@@ -29,6 +30,7 @@ test('desktop release contract is install-once ready without pretending updater 
   assert.equal(contract.release.evergreenDesktopRequired, true);
   assert.equal(contract.release.updaterStatus, 'FOUNDATION_LOCKED_NOT_ACTIVATED');
   assert.equal(contract.release.desktopCompatibility, 'current-and-previous-minor');
+  assert.equal(DESKTOP_UPDATE_FOUNDATION.status, contract.release.updaterStatus);
   for (const gate of ['ci', 'hub-test', 'package-runtime', 'backup-verified', 'migration-plan', 'rollback-plan']) {
     assert.ok(contract.release.stableRequires.includes(gate), `missing stable release gate ${gate}`);
   }
@@ -42,6 +44,25 @@ test('desktop packaging preserves one stable app identity for future in-place up
   assert.match(forge, /name:\s*'AWH'/);
   assert.match(forge, /setupExe:\s*'AWHSetup\.exe'/);
   assert.doesNotMatch(forge, /com\.[\w.-]*art-agent/i);
+});
+
+test('update manifest contract accepts only bounded HTTPS releases and compatible versions', () => {
+  const manifest = validateDesktopUpdateManifest({
+    schemaVersion: 1,
+    channel: 'stable',
+    version: '1.1.0',
+    gitSha: 'a'.repeat(40),
+    publishedAt: '2026-08-26T12:00:00Z',
+    url: 'https://updates.example.invalid/AWH-1.1.0.nupkg',
+    sha256: 'b'.repeat(64),
+    bytes: 1024,
+    minimumDesktopVersion: '1.0.0',
+  });
+  assert.equal(updateIsApplicable('1.0.0', manifest, 'stable'), true);
+  assert.equal(updateIsApplicable('1.0.0', manifest, 'preview'), false);
+  assert.equal(updateIsApplicable('1.1.0', manifest, 'stable'), false);
+  assert.throws(() => validateDesktopUpdateManifest({ ...manifest, url: 'http://updates.example.invalid/AWH.nupkg' }), /UPDATE_MANIFEST_INVALID/);
+  assert.throws(() => validateDesktopUpdateManifest({ ...manifest, sha256: 'short' }), /UPDATE_MANIFEST_INVALID/);
 });
 
 test('sustainability contract never embeds credential material', async () => {
