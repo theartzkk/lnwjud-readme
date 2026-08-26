@@ -1,0 +1,448 @@
+import { loadControlData } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+
+const DASHBOARD_ID = 'product-dashboard';
+const IMAGE_MAX_BYTES = 30 * 1024 * 1024;
+const ACTIVE_STATES = new Set(['QUEUED', 'WAITING_FOR_WORKER', 'PREPARING', 'RUNNING', 'QA', 'WAITING_FOR_APPROVAL']);
+const STATUS_LABELS = {
+  QUEUED: 'กำลังจัดการ',
+  WAITING_FOR_WORKER: 'กำลังหาเครื่องที่เหมาะ',
+  PREPARING: 'กำลังเตรียม',
+  RUNNING: 'กำลังทำงาน',
+  QA: 'กำลังตรวจคุณภาพ',
+  WAITING_FOR_APPROVAL: 'รออนุมัติ',
+  COMPLETED: 'เสร็จแล้ว',
+  FAILED: 'ต้องตรวจสอบ',
+  CANCELLED: 'ยกเลิกแล้ว',
+};
+
+const state = {
+  control: null,
+  mounted: false,
+  imageFile: null,
+  imageUrl: null,
+  refreshTimer: null,
+};
+
+const $ = (id) => document.getElementById(id);
+
+function safeText(value, fallback = '') {
+  return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+}
+
+function formatDate(value) {
+  const time = Date.parse(value || '');
+  return Number.isFinite(time) ? new Date(time).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+}
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function compareRecent(a, b) {
+  const left = Date.parse(a?.updatedAt || a?.createdAt || a?.completedAt || '') || 0;
+  const right = Date.parse(b?.updatedAt || b?.createdAt || b?.completedAt || '') || 0;
+  return right - left;
+}
+
+function button(label, className, onClick) {
+  const node = document.createElement('button');
+  node.type = 'button';
+  node.className = className;
+  node.textContent = label;
+  node.addEventListener('click', onClick);
+  return node;
+}
+
+function openWork(prompt = '', submit = false) {
+  document.body.classList.remove('product-dashboard-active');
+  const dashboard = $(DASHBOARD_ID);
+  if (dashboard) dashboard.hidden = true;
+  const input = $('goal-input');
+  if (input && typeof prompt === 'string') {
+    input.value = prompt;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.focus();
+  }
+  if (submit && prompt.trim() && $('goal-form')?.requestSubmit) $('goal-form').requestSubmit();
+}
+
+function returnHome() {
+  if (!state.control?.authenticated) return;
+  const dashboard = $(DASHBOARD_ID);
+  if (!dashboard) return;
+  dashboard.hidden = false;
+  document.body.classList.add('product-dashboard-active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  refreshDashboard().catch(() => undefined);
+}
+
+function openAccountTab(tab = null) {
+  $('account-open')?.click();
+  if (!tab) return;
+  window.setTimeout(() => {
+    const target = document.querySelector(`[data-settings-tab="${tab}"]`);
+    if (target instanceof HTMLButtonElement && !target.hidden) target.click();
+  }, 0);
+}
+
+function createToolCard({ icon, title, copy, badge = '', disabled = false, action }) {
+  const card = document.createElement('button');
+  card.type = 'button';
+  card.className = 'awh-tool-card';
+  card.disabled = disabled;
+  const iconNode = document.createElement('span');
+  iconNode.className = 'awh-tool-icon';
+  iconNode.textContent = icon;
+  const body = document.createElement('span');
+  body.className = 'awh-tool-copy';
+  const name = document.createElement('strong');
+  name.textContent = title;
+  const description = document.createElement('small');
+  description.textContent = copy;
+  body.append(name, description);
+  card.append(iconNode, body);
+  if (badge) {
+    const chip = document.createElement('span');
+    chip.className = 'awh-tool-badge';
+    chip.textContent = badge;
+    card.append(chip);
+  }
+  if (!disabled && typeof action === 'function') card.addEventListener('click', action);
+  return card;
+}
+
+function mountDashboard() {
+  if (state.mounted || $(DASHBOARD_ID)) return;
+  const main = document.querySelector('.app-main');
+  if (!(main instanceof HTMLElement)) return;
+
+  const dashboard = document.createElement('section');
+  dashboard.id = DASHBOARD_ID;
+  dashboard.className = 'product-dashboard';
+  dashboard.hidden = true;
+
+  const hero = document.createElement('section');
+  hero.className = 'awh-home-hero';
+  hero.innerHTML = '<div class="awh-home-kicker">AWH · ผู้ช่วยงานโรงเรียน</div><h1>วันนี้อยากให้ AWH ช่วยอะไร?</h1><p>บอกเป็นภาษาปกติได้เลย AWH จะเลือกวิธีที่เหมาะให้เอง</p>';
+  const commandForm = document.createElement('form');
+  commandForm.className = 'awh-command-form';
+  commandForm.id = 'dashboard-command-form';
+  const command = document.createElement('textarea');
+  command.id = 'dashboard-command';
+  command.rows = 2;
+  command.maxLength = 2000;
+  command.placeholder = 'เช่น ช่วยทำบันทึกข้อความ, สรุปรายงาน, จัดการไฟล์ หรือถามอะไรก็ได้…';
+  const commandActions = document.createElement('div');
+  commandActions.className = 'awh-command-actions';
+  const hint = document.createElement('span');
+  hint.textContent = 'ไม่ต้องเขียน Prompt ให้เป็น';
+  const send = document.createElement('button');
+  send.type = 'submit';
+  send.className = 'awh-command-send';
+  send.textContent = 'ให้ AWH ช่วย ✦';
+  commandActions.append(hint, send);
+  commandForm.append(command, commandActions);
+  commandForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const value = command.value.trim();
+    if (!value) { command.focus(); return; }
+    openWork(value, true);
+  });
+  hero.append(commandForm);
+
+  const tools = document.createElement('section');
+  tools.className = 'awh-home-section';
+  const toolsHeading = document.createElement('div');
+  toolsHeading.className = 'awh-section-heading';
+  toolsHeading.innerHTML = '<div><span>เครื่องมือยอดนิยม</span><h2>เริ่มงานได้ทันที</h2></div><small>เครื่องมือทั่วไปพยายามทำบนอุปกรณ์ก่อน เพื่อเร็วและประหยัด AI</small>';
+  const toolGrid = document.createElement('div');
+  toolGrid.className = 'awh-tool-grid';
+  toolGrid.append(
+    createToolCard({ icon: '✦', title: 'AI ช่วยงาน', copy: 'ถาม เขียน สรุป คิด และช่วยจัดการงาน', badge: 'ฉลาด', action: () => openWork() }),
+    createToolCard({ icon: '▤', title: 'สร้างเอกสาร', copy: 'บันทึกข้อความ รายงาน หนังสือ และงานโรงเรียน', badge: 'AI ช่วย', action: () => openWork('ช่วยฉันสร้างเอกสารงานโรงเรียน โดยถามเฉพาะข้อมูลที่จำเป็น', true) }),
+    createToolCard({ icon: '▧', title: 'จัดการรูปภาพ', copy: 'ย่อขนาด บีบอัด และแปลงไฟล์รูป', badge: 'ฟรี', action: openImageTool }),
+    createToolCard({ icon: 'PDF', title: 'จัดการ PDF', copy: 'รวม แยก บีบอัด หมุน และแปลงไฟล์', badge: 'กำลังเพิ่ม', disabled: true }),
+    createToolCard({ icon: 'QR', title: 'สร้าง QR', copy: 'สร้าง QR จากลิงก์หรือข้อความแบบง่าย', badge: 'กำลังเพิ่ม', disabled: true }),
+    createToolCard({ icon: '＋', title: 'แนบไฟล์ให้ AI', copy: 'ส่งไฟล์แล้วบอก AWH ว่าอยากให้ช่วยอะไร', action: () => { openWork(); window.setTimeout(() => $('attachment-open')?.click(), 0); } }),
+  );
+  tools.append(toolsHeading, toolGrid);
+
+  const overview = document.createElement('section');
+  overview.className = 'awh-home-overview';
+  overview.innerHTML = '<section class="awh-home-section awh-recent-panel"><div class="awh-section-heading"><div><span>ทำงานต่อ</span><h2>งานล่าสุดของฉัน</h2></div><button id="dashboard-open-work" class="awh-text-action" type="button">เปิด AI Workspace</button></div><div id="dashboard-recent-work" class="awh-recent-list"></div></section><section class="awh-home-section awh-side-panel"><div class="awh-section-heading"><div><span>สถานะ</span><h2>งานที่กำลังทำ</h2></div></div><div id="dashboard-active-tasks" class="awh-status-list"></div><div id="dashboard-approval-banner" class="awh-approval-banner" hidden></div></section>';
+
+  const files = document.createElement('section');
+  files.className = 'awh-home-section';
+  files.innerHTML = '<div class="awh-section-heading"><div><span>ไฟล์และผลงาน</span><h2>ล่าสุด</h2></div></div><div id="dashboard-artifacts" class="awh-artifact-grid"></div>';
+
+  const owner = document.createElement('section');
+  owner.id = 'dashboard-owner-center';
+  owner.className = 'awh-home-section awh-owner-center';
+  owner.hidden = true;
+  owner.innerHTML = '<div class="awh-section-heading"><div><span>OWNER</span><h2>ศูนย์รวมทุกอย่างของเรา</h2></div><small>งาน ระบบ AI และอุปกรณ์อยู่ที่เดียว</small></div>';
+  const ownerGrid = document.createElement('div');
+  ownerGrid.className = 'awh-owner-grid';
+  ownerGrid.append(
+    createToolCard({ icon: '◫', title: 'Projects', copy: 'โปรเจกต์ทั้งหมดและบริบทงาน', action: () => { openWork(); window.setTimeout(() => $('project-open')?.click(), 0); } }),
+    createToolCard({ icon: '☰', title: 'Multi Chat', copy: 'การสนทนาแยกตามโปรเจกต์', action: () => { openWork(); window.setTimeout(() => $('conversation-open')?.click(), 0); } }),
+    createToolCard({ icon: '◎', title: 'Memory', copy: 'ความจำและความต่อเนื่องของ AWH', action: () => openAccountTab('data') }),
+    createToolCard({ icon: '↻', title: 'Tasks & Executions', copy: 'ติดตามงาน การทำงาน และผลลัพธ์', action: () => openWork() }),
+    createToolCard({ icon: '◇', title: 'Devices', copy: 'Mac, Windows และอุปกรณ์ที่เชื่อมต่อ', action: () => openAccountTab('devices') }),
+    createToolCard({ icon: '⚙', title: 'System', copy: 'สุขภาพระบบและ Database Studio', action: () => openAccountTab('system') }),
+  );
+  owner.append(ownerGrid);
+
+  const imageTool = createImageTool();
+  dashboard.append(hero, tools, overview, files, owner, imageTool);
+  main.append(dashboard);
+
+  $('dashboard-open-work')?.addEventListener('click', () => openWork());
+  installHomeButton();
+  state.mounted = true;
+}
+
+function installHomeButton() {
+  if ($('dashboard-home-button')) return;
+  const heading = document.querySelector('.workspace-heading');
+  if (!(heading instanceof HTMLElement)) return;
+  const home = button('⌂ หน้าแรก', 'dashboard-home-button', returnHome);
+  home.id = 'dashboard-home-button';
+  heading.prepend(home);
+}
+
+function createImageTool() {
+  const dialog = document.createElement('section');
+  dialog.id = 'dashboard-image-tool';
+  dialog.className = 'awh-tool-dialog';
+  dialog.hidden = true;
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-labelledby', 'dashboard-image-title');
+  dialog.innerHTML = '<div class="awh-tool-dialog-backdrop" data-image-close></div><div class="awh-tool-dialog-card"><div class="awh-tool-dialog-head"><div><span>รูปภาพ</span><h2 id="dashboard-image-title">ย่อ บีบอัด และแปลงรูป</h2><p>ประมวลผลในเครื่องนี้ ไม่อัปโหลดรูปไปที่เซิร์ฟเวอร์</p></div><button type="button" data-image-close>ปิด</button></div><label class="awh-image-drop"><input id="dashboard-image-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /><strong>เลือกรูปภาพ</strong><span id="dashboard-image-file">PNG, JPG, WebP หรือ GIF ที่เบราว์เซอร์เปิดได้</span></label><div class="awh-image-options"><label>ขนาดด้านยาวสูงสุด<select id="dashboard-image-size"><option value="1920">1920 px</option><option value="1600" selected>1600 px</option><option value="1280">1280 px</option><option value="960">960 px</option><option value="720">720 px</option></select></label><label>รูปแบบไฟล์<select id="dashboard-image-format"><option value="image/jpeg">JPG</option><option value="image/webp">WebP</option><option value="image/png">PNG</option></select></label><label>คุณภาพ<select id="dashboard-image-quality"><option value="0.9">สูง</option><option value="0.8" selected>สมดุล</option><option value="0.68">ไฟล์เล็ก</option></select></label></div><div id="dashboard-image-preview" class="awh-image-preview" hidden><img alt="ตัวอย่างรูปที่เลือก" /><div><strong id="dashboard-image-dimensions"></strong><span id="dashboard-image-original-size"></span></div></div><button id="dashboard-image-process" class="awh-command-send" type="button" disabled>สร้างไฟล์ใหม่</button><p id="dashboard-image-message" class="awh-local-note">✓ ทำบนอุปกรณ์นี้ · ไม่ใช้ AI token</p></div>';
+  dialog.querySelectorAll('[data-image-close]').forEach((node) => node.addEventListener('click', closeImageTool));
+  dialog.querySelector('#dashboard-image-input')?.addEventListener('change', selectImageFile);
+  dialog.querySelector('#dashboard-image-process')?.addEventListener('click', processImage);
+  return dialog;
+}
+
+function openImageTool() {
+  const dialog = $('dashboard-image-tool');
+  if (dialog) dialog.hidden = false;
+}
+
+function closeImageTool() {
+  const dialog = $('dashboard-image-tool');
+  if (dialog) dialog.hidden = true;
+}
+
+async function selectImageFile(event) {
+  const input = event.currentTarget;
+  const file = input instanceof HTMLInputElement ? input.files?.[0] : null;
+  const process = $('dashboard-image-process');
+  const preview = $('dashboard-image-preview');
+  if (!(process instanceof HTMLButtonElement) || !preview) return;
+  process.disabled = true;
+  if (state.imageUrl) URL.revokeObjectURL(state.imageUrl);
+  state.imageUrl = null;
+  state.imageFile = null;
+  preview.hidden = true;
+  if (!file) return;
+  if (!file.type.startsWith('image/') || file.size > IMAGE_MAX_BYTES) {
+    $('dashboard-image-message').textContent = file.size > IMAGE_MAX_BYTES ? 'ไฟล์ใหญ่เกิน 30 MB' : 'ไฟล์นี้ไม่ใช่รูปภาพที่รองรับ';
+    return;
+  }
+  const url = URL.createObjectURL(file);
+  state.imageFile = file;
+  state.imageUrl = url;
+  const image = preview.querySelector('img');
+  if (image instanceof HTMLImageElement) image.src = url;
+  $('dashboard-image-file').textContent = file.name;
+  $('dashboard-image-original-size').textContent = `ต้นฉบับ ${formatBytes(file.size)}`;
+  $('dashboard-image-message').textContent = '✓ ทำบนอุปกรณ์นี้ · ไม่ใช้ AI token';
+  preview.hidden = false;
+  if (image instanceof HTMLImageElement) {
+    try {
+      await image.decode();
+      $('dashboard-image-dimensions').textContent = `${image.naturalWidth} × ${image.naturalHeight} px`;
+      process.disabled = false;
+    } catch {
+      $('dashboard-image-message').textContent = 'เบราว์เซอร์นี้เปิดรูปดังกล่าวไม่ได้ กรุณาใช้ JPG, PNG หรือ WebP';
+    }
+  }
+}
+
+async function processImage() {
+  const file = state.imageFile;
+  const previewImage = $('dashboard-image-preview')?.querySelector('img');
+  const process = $('dashboard-image-process');
+  if (!file || !(previewImage instanceof HTMLImageElement) || !(process instanceof HTMLButtonElement)) return;
+  process.disabled = true;
+  $('dashboard-image-message').textContent = 'กำลังสร้างไฟล์ใหม่…';
+  try {
+    const maxSize = Number.parseInt($('dashboard-image-size')?.value || '1600', 10);
+    const format = $('dashboard-image-format')?.value || 'image/jpeg';
+    const quality = Number.parseFloat($('dashboard-image-quality')?.value || '0.8');
+    const sourceWidth = previewImage.naturalWidth;
+    const sourceHeight = previewImage.naturalHeight;
+    const ratio = Math.min(1, maxSize / Math.max(sourceWidth, sourceHeight));
+    const width = Math.max(1, Math.round(sourceWidth * ratio));
+    const height = Math.max(1, Math.round(sourceHeight * ratio));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { alpha: format === 'image/png' });
+    if (!context) throw new Error('ไม่สามารถประมวลผลรูปได้');
+    if (format === 'image/jpeg') {
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, width, height);
+    }
+    context.drawImage(previewImage, 0, 0, width, height);
+    const blob = await new Promise((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error('ไม่สามารถสร้างไฟล์รูปได้')), format, quality));
+    const extension = format === 'image/png' ? 'png' : format === 'image/webp' ? 'webp' : 'jpg';
+    const base = file.name.replace(/\.[^.]+$/, '').replace(/[^\p{L}\p{N}._ -]+/gu, '_').slice(0, 80) || 'awh-image';
+    const outputUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = outputUrl;
+    link.download = `${base}-AWH-${width}x${height}.${extension}`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(outputUrl), 1500);
+    $('dashboard-image-message').textContent = `เสร็จแล้ว · ${width} × ${height} px · ${formatBytes(blob.size)}`;
+  } catch (error) {
+    $('dashboard-image-message').textContent = error instanceof Error ? error.message : 'ไม่สามารถสร้างไฟล์รูปได้';
+  } finally {
+    process.disabled = false;
+  }
+}
+
+function renderRecentWork() {
+  const host = $('dashboard-recent-work');
+  if (!host) return;
+  host.replaceChildren();
+  const projects = Array.isArray(state.control?.projects) ? [...state.control.projects] : [];
+  const tasks = Array.isArray(state.control?.tasks) ? [...state.control.tasks].sort(compareRecent) : [];
+  const items = [];
+  for (const task of tasks.slice(0, 4)) {
+    const project = projects.find((entry) => entry.projectId === task.projectId);
+    items.push({ title: safeText(task.goal, 'งานใน AWH'), meta: `${safeText(project?.name, 'โปรเจกต์')} · ${STATUS_LABELS[task.state] || 'อัปเดตแล้ว'}`, date: formatDate(task.updatedAt || task.createdAt), action: () => openWork() });
+  }
+  if (!items.length) {
+    for (const project of projects.slice(0, 4)) items.push({ title: safeText(project.name, 'โปรเจกต์'), meta: 'โปรเจกต์ของฉัน', date: '', action: () => { openWork(); window.setTimeout(() => $('project-open')?.click(), 0); } });
+  }
+  if (!items.length) {
+    const empty = document.createElement('div');
+    empty.className = 'awh-empty-card';
+    empty.textContent = 'เริ่มงานแรกได้จากช่อง “วันนี้อยากให้ AWH ช่วยอะไร?” ด้านบน';
+    host.append(empty);
+    return;
+  }
+  for (const item of items) {
+    const row = button('', 'awh-recent-item', item.action);
+    const text = document.createElement('span');
+    const title = document.createElement('strong'); title.textContent = item.title;
+    const meta = document.createElement('small'); meta.textContent = item.meta;
+    text.append(title, meta);
+    const dateNode = document.createElement('time'); dateNode.textContent = item.date;
+    row.append(text, dateNode);
+    host.append(row);
+  }
+}
+
+function renderTaskStatus() {
+  const host = $('dashboard-active-tasks');
+  if (!host) return;
+  host.replaceChildren();
+  const tasks = (Array.isArray(state.control?.tasks) ? state.control.tasks : []).filter((task) => ACTIVE_STATES.has(task.state)).sort(compareRecent).slice(0, 4);
+  if (!tasks.length) {
+    const ready = document.createElement('div'); ready.className = 'awh-ready-state'; ready.textContent = '✓ ไม่มีงานค้าง · พร้อมรับงานใหม่'; host.append(ready);
+  } else {
+    for (const task of tasks) {
+      const row = document.createElement('div'); row.className = 'awh-status-item';
+      const dot = document.createElement('span'); dot.className = 'awh-status-dot';
+      const text = document.createElement('span');
+      const title = document.createElement('strong'); title.textContent = safeText(task.goal, 'งาน AWH');
+      const meta = document.createElement('small'); meta.textContent = STATUS_LABELS[task.state] || 'กำลังอัปเดต';
+      text.append(title, meta); row.append(dot, text); host.append(row);
+    }
+  }
+  const approvals = (Array.isArray(state.control?.approvals) ? state.control.approvals : []).filter((item) => ['PENDING', 'WAITING'].includes(item.state || item.status));
+  const banner = $('dashboard-approval-banner');
+  if (banner) {
+    banner.hidden = approvals.length === 0;
+    banner.replaceChildren();
+    if (approvals.length) {
+      const text = document.createElement('span'); text.textContent = `มี ${approvals.length} รายการรออนุมัติ`;
+      banner.append(text, button('เปิดดู', 'awh-text-action', () => openWork()));
+    }
+  }
+}
+
+function renderArtifacts() {
+  const host = $('dashboard-artifacts');
+  if (!host) return;
+  host.replaceChildren();
+  const artifacts = (Array.isArray(state.control?.artifacts) ? [...state.control.artifacts] : []).sort(compareRecent).slice(0, 6);
+  if (!artifacts.length) {
+    const empty = document.createElement('div'); empty.className = 'awh-empty-card'; empty.textContent = 'ผลงานและไฟล์ที่ AWH สร้างจะกลับมาอยู่ตรงนี้'; host.append(empty); return;
+  }
+  for (const artifact of artifacts) {
+    const card = document.createElement('div'); card.className = 'awh-artifact-card';
+    const icon = document.createElement('span'); icon.textContent = '▤';
+    const copy = document.createElement('span');
+    const title = document.createElement('strong'); title.textContent = safeText(artifact.name || artifact.displayName || artifact.filename, 'ผลงานจาก AWH');
+    const meta = document.createElement('small'); meta.textContent = [safeText(artifact.kind || artifact.type, 'ไฟล์'), formatDate(artifact.updatedAt || artifact.createdAt)].filter(Boolean).join(' · ');
+    copy.append(title, meta); card.append(icon, copy); host.append(card);
+  }
+}
+
+function renderRole() {
+  const owner = $('dashboard-owner-center');
+  if (owner) owner.hidden = state.control?.role !== 'OWNER';
+}
+
+async function refreshDashboard() {
+  if ($('workspace-view')?.hidden !== false) return;
+  const control = await loadControlData();
+  state.control = control;
+  renderRole();
+  renderRecentWork();
+  renderTaskStatus();
+  renderArtifacts();
+}
+
+async function syncSurface() {
+  mountDashboard();
+  const workspace = $('workspace-view');
+  const authenticated = workspace?.hidden === false;
+  if (!authenticated) {
+    document.body.classList.remove('product-dashboard-active');
+    const dashboard = $(DASHBOARD_ID); if (dashboard) dashboard.hidden = true;
+    state.control = null;
+    return;
+  }
+  const dashboard = $(DASHBOARD_ID);
+  if (dashboard && !document.body.classList.contains('product-dashboard-active') && !document.body.dataset.awhDashboardVisited) {
+    document.body.dataset.awhDashboardVisited = '1';
+    dashboard.hidden = false;
+    document.body.classList.add('product-dashboard-active');
+  }
+  if (!state.control) {
+    try { await refreshDashboard(); } catch { return; }
+  }
+}
+
+function start() {
+  mountDashboard();
+  const workspace = $('workspace-view');
+  if (workspace) new MutationObserver(() => syncSurface().catch(() => undefined)).observe(workspace, { attributes: true, attributeFilter: ['hidden'] });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && document.body.classList.contains('product-dashboard-active')) refreshDashboard().catch(() => undefined); });
+  state.refreshTimer = window.setInterval(() => { if (document.body.classList.contains('product-dashboard-active')) refreshDashboard().catch(() => undefined); }, 30000);
+  syncSurface().catch(() => undefined);
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
+else start();
