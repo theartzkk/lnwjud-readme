@@ -28,12 +28,15 @@ $expectedOrigin = 'fastcgi_param AWH_CONTROL_ORIGIN ' . $originPlaceholder . ';'
 $expectedSocket = 'fastcgi_pass unix:' . $socketPlaceholder . ';';
 $originLineCount = preg_match_all('/^\s*' . preg_quote($expectedOrigin, '/') . '\s*$/m', $template, $matches);
 $socketLineCount = preg_match_all('/^\s*' . preg_quote($expectedSocket, '/') . '\s*$/m', $template, $matches);
-if ($originLineCount !== 1 || $socketLineCount !== 1 || substr_count($template, 'AWH_CONTROL_ORIGIN') !== 1 || substr_count($template, $originPlaceholder) !== 1 || substr_count($template, $socketPlaceholder) !== 1) {
+$originPlaceholderCount = substr_count($template, $originPlaceholder);
+$socketPlaceholderCount = substr_count($template, $socketPlaceholder);
+if (!is_int($originLineCount) || !is_int($socketLineCount) || $originLineCount < 1 || $socketLineCount < 1 || $originLineCount !== $socketLineCount || substr_count($template, 'AWH_CONTROL_ORIGIN') !== $originLineCount || $originPlaceholderCount !== $originLineCount || $socketPlaceholderCount !== $socketLineCount) {
     exit(2);
 }
 
 $rendered = str_replace([$originPlaceholder, $socketPlaceholder], ['https://' . $hostname, $fpmSocket], $template, $replacements);
-if ($replacements !== 2 || str_contains($rendered, 'PREVIEW_HOSTNAME') || str_contains($rendered, $socketPlaceholder) || substr_count($rendered, 'https://' . $hostname) !== 1 || substr_count($rendered, 'unix:' . $fpmSocket) !== 1) {
+$expectedReplacements = $originLineCount + $socketLineCount;
+if ($replacements !== $expectedReplacements || str_contains($rendered, 'PREVIEW_HOSTNAME') || str_contains($rendered, $socketPlaceholder) || substr_count($rendered, 'https://' . $hostname) !== $originLineCount || substr_count($rendered, 'unix:' . $fpmSocket) !== $socketLineCount) {
     exit(2);
 }
 if (@file_put_contents($outputPath, $rendered, LOCK_EX) === false || @file_get_contents($outputPath) !== $rendered) {

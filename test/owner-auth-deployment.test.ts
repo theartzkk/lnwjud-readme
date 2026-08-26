@@ -166,7 +166,8 @@ test('owner-auth release renders the real origin into the staged control include
     await writeFile(input, await readFile(join(ROOT, 'deploy/nginx/awh-control-plane.conf'), 'utf8'));
     await execFileAsync(PHP, [originRenderer, input, output, HOST, AWH_FPM_SOCKET]);
     const rendered = await readFile(output, 'utf8');
-    assert.equal((rendered.match(new RegExp(`https://${HOST.replaceAll('.', '\\.')}`, 'g')) ?? []).length, 1);
+    assert.equal((rendered.match(new RegExp(`https://${HOST.replaceAll('.', '\\.')}`, 'g')) ?? []).length, 2);
+    assert.equal((rendered.match(/fastcgi_pass unix:\\/run\\/php\\/php8\.3-fpm-awh\.sock;/g) ?? []).length, 2);
     assert.match(rendered, /fastcgi_pass unix:\/run\/php\/php8\.3-fpm-awh\.sock;/);
     assert.doesNotMatch(rendered, /PREVIEW_HOSTNAME/);
     await assert.rejects(execFileAsync(PHP, [originRenderer, input, output, 'localhost', AWH_FPM_SOCKET]));
