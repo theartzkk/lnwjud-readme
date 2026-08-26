@@ -21,6 +21,8 @@ const tests = [
   'hub/tests/m12-central-project-authority.php',
   'hub/tests/m13-anywhere-execution.php',
   'hub/tests/m16-office-provider.php',
+  'hub/tests/m17-database-studio.php',
+
 ];
 
 const php = await resolveExecutable('php');
