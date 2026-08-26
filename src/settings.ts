@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { AwhUpdateChannel } from './product.js';
 
 export interface StoredSettings {
   defaultWorkspace?: string;
@@ -14,6 +15,8 @@ export interface StoredSettings {
    * remote work without removing the local capability policy.
    */
   controlPlaneWorker?: boolean;
+  /** Stable keeps production releases; Preview opts this same installation into earlier verified releases. */
+  updateChannel?: AwhUpdateChannel;
 }
 
 export function settingsPath(dataDir: string): string {
@@ -32,6 +35,7 @@ export function loadStoredSettings(dataDir: string): StoredSettings {
     if (typeof parsed.allowExec === 'boolean') out.allowExec = parsed.allowExec;
     if (typeof parsed.allowCodex === 'boolean') out.allowCodex = parsed.allowCodex;
     if (typeof parsed.controlPlaneWorker === 'boolean') out.controlPlaneWorker = parsed.controlPlaneWorker;
+    if (parsed.updateChannel === 'stable' || parsed.updateChannel === 'preview') out.updateChannel = parsed.updateChannel;
     return out;
   } catch {
     return {};
@@ -48,5 +52,6 @@ export async function saveStoredSettings(dataDir: string, settings: StoredSettin
   if (typeof settings.allowExec === 'boolean') normalized.allowExec = settings.allowExec;
   if (typeof settings.allowCodex === 'boolean') normalized.allowCodex = settings.allowCodex;
   if (typeof settings.controlPlaneWorker === 'boolean') normalized.controlPlaneWorker = settings.controlPlaneWorker;
+  if (settings.updateChannel === 'stable' || settings.updateChannel === 'preview') normalized.updateChannel = settings.updateChannel;
   await writeFile(target, `${JSON.stringify(normalized, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
 }
