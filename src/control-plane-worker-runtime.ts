@@ -11,6 +11,7 @@ import { ControlPlaneWorkerClient, type WorkerTask } from './control-plane-worke
 import { createUnsyncedWorkspaceCheckpoint, createWorkspaceWipCheckpoint, reconstructWorkspaceWip } from './workspace-continuity.js';
 import { createVaultCandidateArchive } from './vault-transfer.js';
 import { composeWorkerHeartbeatCapabilities, discoverWorkerTools } from './worker-capability-discovery.js';
+import { exportOfficeFileToPdf } from './windows-office-export.js';
 
 const MUTATION_GOAL = /(?:\b(?:fix|edit|change|modify|write|render|publish|deploy|delete|remove)\b|แก้|เพิ่ม|ลบ|สร้าง|เรนเดอร์|เผยแพร่|deploy)/iu;
 
@@ -55,17 +56,27 @@ export function buildCodexTaskInstruction(ownerProtocol: string, goal: string): 
   ].join('\n\n');
 }
 
+export function officeExecutionCapabilities(platform: NodeJS.Platform | string, tools: readonly string[]): string[] {
+  if (platform !== 'win32') return [];
+  return [
+    ...(tools.includes('tool.office.word') ? ['office.word.pdf'] : []),
+    ...(tools.includes('tool.office.excel') ? ['office.excel.pdf'] : []),
+    ...(tools.includes('tool.office.powerpoint') ? ['office.powerpoint.pdf'] : []),
+  ];
+}
+
 export async function workerCapabilities(dataDir: string, allowCodex = true): Promise<string[]> {
   const local = await detectLocalCapabilities(dataDir).catch(() => ({ git: false, node: false, php: false, ffmpeg: false, remotion: false, browsers: [] }));
   const codex = allowCodex ? await codexStatus(dataDir).catch(() => ({ available: false, version: null })) : { available: false, version: null };
+  const tools = await discoverWorkerTools().catch((): string[] => []);
   const executable = [
     'autopilot:local', 'project:context', 'qa:bounded',
     ...(local.git ? ['git:read'] : []), ...(local.node ? ['node'] : []),
     ...(local.php ? ['php:lint'] : []), ...(local.ffmpeg ? ['ffmpeg:probe'] : []),
     ...(local.remotion ? ['remotion'] : []),
+    ...officeExecutionCapabilities(process.platform, tools),
     ...(codex.available ? ['codex:cli'] : []),
   ];
-  const tools = await discoverWorkerTools().catch((): string[] => []);
   if (codex.available) tools.push('tool.codex');
   return composeWorkerHeartbeatCapabilities(executable, tools);
 }
@@ -90,6 +101,7 @@ export class ControlPlaneWorkerRuntime {
 
   private async execute(task: WorkerTask, deviceId: string, capabilities: string[]): Promise<WorkerRunResult> {
     if (task.execution?.executorKind === 'CODEX' && task.execution.requiredCapability === 'codex:cli' && task.execution.vaultRevisionId !== null) return this.executeCentralCodex(task, capabilities);
+    if (task.execution?.executorKind === 'DEVICE' && /^office\.(?:word|excel|powerpoint)\.pdf$/.test(task.execution.requiredCapability)) return this.executeOfficePdf(task, capabilities);
     // A bounded lease is what prevents two workers from mutating one task. A
     // Codex run can legitimately exceed the initial five-minute lease, so the
     // already-authenticated worker renews it while it owns the task. Failure
@@ -215,6 +227,34 @@ export class ControlPlaneWorkerRuntime {
       await this.safeUpdate(task, 'FAILED', 0, 'Worker execution failed safely', 'WORKER_EXECUTION_FAILED');
       return { status: 'FAILED', taskId: task.taskId, projectId: task.projectId, reason: boundedSummary(error instanceof Error ? error.message : 'WORKER_EXECUTION_FAILED') };
     } finally { clearInterval(leaseHeartbeat); }
+  }
+
+  /** Office export is a non-mutating device capability. The source file is
+   * downloaded from private Hub attachment storage, converted in a disposable
+   * directory, and the PDF is uploaded back to Hub object storage. */
+  private async executeOfficePdf(task: WorkerTask, capabilities: string[]): Promise<WorkerRunResult> {
+    const execution = task.execution;
+    if (!execution || execution.executorKind !== 'DEVICE') return { status: 'FAILED', taskId: task.taskId, projectId: task.projectId, reason: 'OFFICE_EXECUTION_INVALID' };
+    if (!this.options.allowExec || process.platform !== 'win32' || !capabilities.includes(execution.requiredCapability)) {
+      await this.client.deferCentralExecution(execution.executionId, 'OFFICE_UNAVAILABLE').catch(() => undefined);
+      return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason: 'OFFICE_UNAVAILABLE' };
+    }
+    const root = join(this.options.dataDir, 'office-task-workspaces', execution.executionId);
+    const heartbeat = setInterval(() => { void this.client.heartbeat(capabilities, 'WORKING').catch(() => undefined); }, 60_000); heartbeat.unref?.();
+    try {
+      const materialized = await this.client.materializeOfficeExecutionInput(execution.executionId, root);
+      if (materialized.taskId !== task.taskId || materialized.projectId !== task.projectId) throw new Error('OFFICE_EXECUTION_MISMATCH');
+      await this.client.update(task.taskId, 'RUNNING', 25, 'AWH กำลังแปลงเอกสารด้วย Office บนอุปกรณ์ที่พร้อม');
+      const converted = await exportOfficeFileToPdf(materialized.inputPath, materialized.inputName, root);
+      await this.client.update(task.taskId, 'QA', 80, 'AWH กำลังตรวจไฟล์ PDF ก่อนส่งกลับ Cloud');
+      const result = await this.client.uploadOfficeExecutionArtifact(execution.executionId, converted.outputPath);
+      return { status: 'COMPLETED', taskId: task.taskId, projectId: task.projectId, artifact: null };
+    } catch (error) {
+      const reason = boundedSummary(error instanceof Error ? error.message : 'OFFICE_EXECUTION_FAILED');
+      const code = reason.includes('MISMATCH') ? 'OFFICE_EXECUTION_MISMATCH' : 'OFFICE_EXECUTION_FAILED';
+      await this.client.deferCentralExecution(execution.executionId, code).catch(() => undefined);
+      return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason: code };
+    } finally { clearInterval(heartbeat); await rm(root, { recursive: true, force: true }).catch(() => undefined); }
   }
 
   /** Central Vault tasks deliberately bypass device-local project bindings.

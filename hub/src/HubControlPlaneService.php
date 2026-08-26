@@ -494,6 +494,7 @@ final class HubControlPlaneService
                 $taskId = self::uuidFromBytes(random_bytes(16));
                 $taskKey = 'conversation-' . $idempotency;
                 $effectiveGoal = $this->resolveConversationGoal((string) $conversation['conversation_id'], $message);
+                $officeRequest = $this->officeExportRequest($effectiveGoal, $attachmentIds, $userId, $projectId, $messageId);
                 $vaultRevision = $this->centralVaultRevision($projectId);
                 $serverInspection = $vaultRevision !== null && self::isServerInspection($effectiveGoal);
                 $serverTextMutation = $vaultRevision !== null && self::isServerTextNormalization($effectiveGoal);
@@ -501,8 +502,12 @@ final class HubControlPlaneService
                 $taskState = ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'QUEUED' : 'WAITING_FOR_WORKER';
                 $insert = $this->pdo->prepare('INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, :state, NULL, NULL, 0, NULL, NULL, :key, :conversation, :created, :updated, NULL)');
                 $insert->execute(['id' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $effectiveGoal, 'state' => $taskState, 'key' => $taskKey, 'conversation' => $conversation['conversation_id'], 'created' => $at, 'updated' => $at]);
-                if ($vaultRevision !== null) $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverAssistedEdit ? 'project.mutate.assisted' : ($serverInspection ? 'project.read' : 'codex:cli')), ['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverAssistedEdit ? 'PROJECT_ASSISTED_EDIT' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST'))], $at);
-                $this->event($taskId, $taskState, 0, $serverInspection ? 'server inspection queued' : ($serverTextMutation ? 'server text transform queued' : 'specialist execution recorded'), $at);
+                if ($officeRequest !== null && $this->centralProjectAuthoritySchemaPresent()) {
+                    $this->execution->enqueue($taskId, $projectId, null, 'DEVICE', $officeRequest['capability'], ['mode' => 'OFFICE_TO_PDF', 'attachmentId' => $officeRequest['attachmentId']], $at);
+                } elseif ($vaultRevision !== null) {
+                    $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverAssistedEdit ? 'project.mutate.assisted' : ($serverInspection ? 'project.read' : 'codex:cli')), ['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverAssistedEdit ? 'PROJECT_ASSISTED_EDIT' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST'))], $at);
+                }
+                $this->event($taskId, $taskState, 0, $officeRequest !== null ? 'waiting for Office PDF capability' : ($serverInspection ? 'server inspection queued' : ($serverTextMutation ? 'server text transform queued' : 'specialist execution recorded')), $at);
                 $this->pdo->prepare('UPDATE control_conversations SET last_task_id = :task, updated_at = :at WHERE conversation_id = :conversation')->execute(['task' => $taskId, 'at' => $at, 'conversation' => $conversation['conversation_id']]);
             }
 
@@ -964,6 +969,45 @@ final class HubControlPlaneService
         return ['name' => 'awh-task-' . substr((string) $row['execution_id'], 0, 8) . '.zip', 'mimeType' => 'application/zip', 'sizeBytes' => (int) $meta['sizeBytes'], 'path' => $path];
     }
 
+    public function workerOfficeExecutionPacket(string $token, string $deviceId, string $executionId, ?string $now = null): array
+    {
+        $row = $this->ownedOfficeExecution($token, $deviceId, $executionId, $now);
+        return ['schemaVersion' => 1, 'execution' => ['executionId' => (string) $row['execution_id'], 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'inputName' => (string) $row['input_name'], 'inputMimeType' => (string) $row['input_mime'], 'sizeBytes' => (int) $row['input_size']]];
+    }
+
+    /** @return array{name:string,mimeType:string,sizeBytes:int,path:string} */
+    public function workerOfficeExecutionInput(string $token, string $deviceId, string $executionId, ?string $now = null): array
+    {
+        $row = $this->ownedOfficeExecution($token, $deviceId, $executionId, $now);
+        try { $path = $this->attachments->read((string) $row['storage_key']); } catch (HubAttachmentStoreException $error) { throw new HubControlPlaneException('Office input is unavailable', $error->codeName); }
+        return ['name' => (string) $row['input_name'], 'mimeType' => (string) $row['input_mime'], 'sizeBytes' => (int) $row['input_size'], 'path' => $path];
+    }
+
+    /** Accepts one validated PDF from the currently leased Office provider and stores it in Cloud artifact storage. */
+    public function acceptOfficeExecutionArtifact(string $token, string $deviceId, string $executionId, array $file, ?string $now = null): array
+    {
+        $at = self::timestamp($now ?? gmdate('c')); $row = $this->ownedOfficeExecution($token, $deviceId, $executionId, $at); $store = $this->artifactStore;
+        if ($store === null) throw new HubControlPlaneException('Artifact object storage is unavailable', 'ARTIFACT_STORAGE_UNAVAILABLE');
+        $tmp = $file['tmp_name'] ?? null; $size = $file['size'] ?? null;
+        if (!is_string($tmp) || $tmp === '' || !is_file($tmp) || is_link($tmp) || !is_int($size) || $size < 5 || $size > 50 * 1024 * 1024 || @filesize($tmp) !== $size) throw new HubControlPlaneException('Office PDF artifact is invalid', 'ARTIFACT_INVALID');
+        $handle = @fopen($tmp, 'rb'); $magic = is_resource($handle) ? fread($handle, 5) : false; if (is_resource($handle)) fclose($handle); if ($magic !== '%PDF-') throw new HubControlPlaneException('Office PDF artifact is invalid', 'ARTIFACT_INVALID');
+        $artifactId = self::uuidFromBytes(random_bytes(16)); $stored = null;
+        try {
+            $stored = $store->storeFile($artifactId, $tmp); $base = pathinfo((string) $row['input_name'], PATHINFO_FILENAME); $name = self::portableText(($base === '' ? 'document' : $base) . '.pdf', 'name', 160);
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $done = $this->pdo->prepare("UPDATE control_task_executions SET state = 'COMPLETED', lease_expires_at = NULL, last_error_code = NULL, updated_at = :at WHERE execution_id = :execution AND state = 'RUNNING' AND lease_owner = :device"); $done->execute(['at' => $at, 'execution' => $row['execution_id'], 'device' => strtolower($deviceId)]); if ($done->rowCount() !== 1) throw new HubControlPlaneException('Office execution lease was lost', 'TASK_UPDATE_RACE');
+            $this->pdo->prepare('INSERT INTO control_artifacts(artifact_id, task_id, project_id, kind, name, sha256, size_bytes, relative_ref, created_at) VALUES(:id, :task, :project, :kind, :name, :sha, :size, NULL, :at)')->execute(['id' => $artifactId, 'task' => $row['task_id'], 'project' => $row['project_id'], 'kind' => 'pdf', 'name' => $name, 'sha' => $stored['sha256'], 'size' => $stored['sizeBytes'], 'at' => $at]);
+            $this->pdo->prepare('INSERT INTO control_artifact_objects(artifact_id, storage_key, mime_type, retained_until, deleted_at) VALUES(:id, :key, :mime, NULL, NULL)')->execute(['id' => $artifactId, 'key' => $stored['storageKey'], 'mime' => 'application/pdf']);
+            $summary = 'แปลงเอกสารเป็น PDF เรียบร้อยและเก็บผลลัพธ์ไว้ใน AWH Cloud แล้ว';
+            $this->pdo->prepare("UPDATE control_tasks SET state = 'COMPLETED', assigned_device_id = NULL, lease_expires_at = NULL, progress = 100, failure_code = NULL, result_summary = :summary, updated_at = :at WHERE task_id = :task")->execute(['summary' => $summary, 'at' => $at, 'task' => $row['task_id']]);
+            $this->pdo->prepare("UPDATE control_workers SET state = 'READY', busy_task_id = NULL, last_seen_at = :at WHERE device_id = :device")->execute(['at' => $at, 'device' => strtolower($deviceId)]);
+            $eventId = $this->event((string) $row['task_id'], 'COMPLETED', 100, 'Office PDF stored in AWH Cloud', $at); $this->syncConversationEvent((string) $row['task_id'], $eventId, 'COMPLETED', 100, 'แปลงเอกสารเป็น PDF เรียบร้อย', $summary, $at);
+            if ($this->capabilities !== null) $this->capabilities->updateEnvelopeState((string) $row['execution_id'], 'RELEASED', null, $at);
+            $this->pdo->exec('COMMIT');
+        } catch (Throwable $error) { self::rollbackImmediate($this->pdo); if (is_array($stored)) $store->remove($stored['storageKey'] ?? null); if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Office PDF artifact could not be stored', 'ARTIFACT_STORAGE_FAILED'); }
+        return $this->taskById((string) $row['task_id'], (string) $row['user_id']);
+    }
+
     /** Accepts one raw ZIP only from its currently leased Codex executor.
      * Hub validates the archive, stores an immutable candidate, and creates
      * the existing approval record; the executor never promotes source. */
@@ -993,18 +1037,50 @@ final class HubControlPlaneService
     public function deferWorkerExecution(string $token, string $deviceId, string $executionId, array $payload, ?string $now = null): array
     {
         self::exactKeys($payload, ['code', 'deviceId', 'schemaVersion']); if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Unsupported execution schema', 'SCHEMA_VERSION');
-        $at = self::timestamp($now ?? gmdate('c')); $row = $this->ownedCentralExecution($token, $deviceId, $executionId, $at); $code = self::portableText((string) ($payload['code'] ?? ''), 'code', 80);
+        $at = self::timestamp($now ?? gmdate('c')); $row = $this->ownedLeasedSpecialistExecution($token, $deviceId, $executionId, $at); $code = self::portableText((string) ($payload['code'] ?? ''), 'code', 80);
         try {
             $this->pdo->exec('BEGIN IMMEDIATE');
-            $terminal = (int) $row['attempt_count'] >= 3 && $code !== 'CODEX_UNAVAILABLE';
+            $terminal = (int) $row['attempt_count'] >= 3 && !in_array($code, ['CODEX_UNAVAILABLE', 'OFFICE_UNAVAILABLE'], true);
+            $office = (string) $row['executor_kind'] === 'DEVICE';
             $q = $this->pdo->prepare("UPDATE control_task_executions SET state = :state, lease_owner = NULL, lease_expires_at = NULL, last_error_code = :code, updated_at = :at WHERE execution_id = :execution AND state = 'RUNNING' AND lease_owner = :device"); $q->execute(['state' => $terminal ? 'FAILED' : 'WAITING_FOR_CAPABILITY', 'code' => $code, 'at' => $at, 'execution' => $row['execution_id'], 'device' => strtolower($deviceId)]);
             if ($q->rowCount() !== 1) throw new HubControlPlaneException('Central task lease was lost', 'TASK_UPDATE_RACE');
-            $this->pdo->prepare("UPDATE control_tasks SET state = :state, assigned_device_id = NULL, lease_expires_at = NULL, progress = 0, failure_code = :code, result_summary = :summary, updated_at = :at WHERE task_id = :task")->execute(['state' => $terminal ? 'FAILED' : 'WAITING_FOR_WORKER', 'code' => $code, 'summary' => $terminal ? 'Codex ทำงานไม่สำเร็จหลังจากลองอย่างปลอดภัยครบขีดจำกัด Project Vault หลักยังไม่ถูกเปลี่ยน' : 'งานถูกเก็บไว้และกำลังรอ Codex/worker ที่พร้อม', 'at' => $at, 'task' => $row['task_id']]);
+            $summary = $terminal ? ($office ? 'การแปลงเอกสารไม่สำเร็จหลังจากลองอย่างปลอดภัยครบขีดจำกัด ไฟล์ต้นฉบับไม่ได้ถูกเปลี่ยน' : 'Codex ทำงานไม่สำเร็จหลังจากลองอย่างปลอดภัยครบขีดจำกัด Project Vault หลักยังไม่ถูกเปลี่ยน') : ($office ? 'งานถูกเก็บไว้และกำลังรออุปกรณ์ Windows ที่มี Office พร้อมใช้งาน' : 'งานถูกเก็บไว้และกำลังรอ Codex/worker ที่พร้อม');
+            $this->pdo->prepare("UPDATE control_tasks SET state = :state, assigned_device_id = NULL, lease_expires_at = NULL, progress = 0, failure_code = :code, result_summary = :summary, updated_at = :at WHERE task_id = :task")->execute(['state' => $terminal ? 'FAILED' : 'WAITING_FOR_WORKER', 'code' => $code, 'summary' => $summary, 'at' => $at, 'task' => $row['task_id']]);
             $this->pdo->prepare("UPDATE control_workers SET state = 'READY', busy_task_id = NULL, last_seen_at = :at WHERE device_id = :device")->execute(['at' => $at, 'device' => strtolower($deviceId)]);
-            $eventState = $terminal ? 'FAILED' : 'WAITING_FOR_WORKER'; $eventId = $this->event((string) $row['task_id'], $eventState, 0, $terminal ? 'Codex execution failed safely' : 'waiting for Codex capability', $at); $this->syncConversationEvent((string) $row['task_id'], $eventId, $eventState, 0, $terminal ? 'Codex ทำงานไม่สำเร็จอย่างปลอดภัย และไม่ได้เปลี่ยน Project หลัก' : 'Codex ยังไม่พร้อม งานถูกเก็บไว้และจะทำต่ออัตโนมัติเมื่อ worker ที่เหมาะสมกลับมา', null, $at);
+            if ($this->capabilities !== null) $this->capabilities->updateEnvelopeState((string) $row['execution_id'], $terminal ? 'RELEASED' : 'WAITING', null, $at);
+            $eventState = $terminal ? 'FAILED' : 'WAITING_FOR_WORKER'; $eventId = $this->event((string) $row['task_id'], $eventState, 0, $terminal ? 'specialist execution failed safely' : 'waiting for specialist capability', $at); $this->syncConversationEvent((string) $row['task_id'], $eventId, $eventState, 0, $terminal ? ($office ? 'การแปลงเอกสารหยุดอย่างปลอดภัย และต้นฉบับไม่ถูกเปลี่ยน' : 'Codex ทำงานไม่สำเร็จอย่างปลอดภัย และไม่ได้เปลี่ยน Project หลัก') : ($office ? 'กำลังรออุปกรณ์ Windows ที่มี Office แล้ว AWH จะทำงานต่ออัตโนมัติ' : 'Codex ยังไม่พร้อม งานถูกเก็บไว้และจะทำต่ออัตโนมัติเมื่อ worker ที่เหมาะสมกลับมา'), null, $at);
             $this->pdo->exec('COMMIT');
         } catch (Throwable $error) { self::rollbackImmediate($this->pdo); if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Central task could not be deferred', 'TASK_UPDATE_FAILED'); }
         return $this->taskById((string) $row['task_id'], (string) $row['user_id']);
+    }
+
+    /** @return array<string,mixed> */
+    private function ownedLeasedSpecialistExecution(string $token, string $deviceId, string $executionId, ?string $now = null): array
+    {
+        $deviceId = self::uuid($deviceId); $executionId = self::uuid($executionId); $auth = $this->enrollment->authenticateForControlPlane($token, $deviceId, $now); $this->assertCentralProjectAuthorityReady();
+        $q = $this->pdo->prepare("SELECT e.*, t.goal, t.user_id, t.conversation_id, t.assigned_device_id FROM control_task_executions e JOIN control_tasks t ON t.task_id = e.task_id JOIN device_project_memberships m ON m.project_id = e.project_id AND m.device_id = :device AND m.revoked_at IS NULL WHERE e.execution_id = :execution AND e.state = 'RUNNING' AND e.lease_owner = :device AND e.lease_expires_at > :now AND t.assigned_device_id = :device AND t.user_id = :user");
+        $q->execute(['device' => $auth['deviceId'], 'execution' => $executionId, 'now' => self::timestamp($now ?? gmdate('c')), 'user' => $auth['userId']]); $row = $q->fetch();
+        if (!is_array($row)) throw new HubControlPlaneException('Specialist task is not assigned to this worker', 'TASK_FORBIDDEN');
+        $kind = (string) $row['executor_kind']; $required = (string) $row['required_capability'];
+        if (!(($kind === 'CODEX' && $required === 'codex:cli') || ($kind === 'DEVICE' && preg_match('/^office\.(?:word|excel|powerpoint)\.pdf$/', $required) === 1))) throw new HubControlPlaneException('Specialist task capability is invalid', 'TASK_FORBIDDEN');
+        return $row;
+    }
+
+    /** @return array<string,mixed> */
+    private function ownedOfficeExecution(string $token, string $deviceId, string $executionId, ?string $now = null): array
+    {
+        $row = $this->ownedLeasedSpecialistExecution($token, $deviceId, $executionId, $now);
+        if ((string) $row['executor_kind'] !== 'DEVICE' || preg_match('/^office\.(?:word|excel|powerpoint)\.pdf$/', (string) $row['required_capability']) !== 1) throw new HubControlPlaneException('Office task is not assigned to this worker', 'TASK_FORBIDDEN');
+        try { $checkpoint = json_decode((string) $row['checkpoint_json'], true, 16, JSON_THROW_ON_ERROR); } catch (Throwable) { throw new HubControlPlaneException('Office task checkpoint is invalid', 'TASK_FORBIDDEN'); }
+        if (!is_array($checkpoint) || ($checkpoint['mode'] ?? null) !== 'OFFICE_TO_PDF' || !is_string($checkpoint['attachmentId'] ?? null) || preg_match(self::UUID, (string) $checkpoint['attachmentId']) !== 1) throw new HubControlPlaneException('Office task checkpoint is invalid', 'TASK_FORBIDDEN');
+        $attachmentId = strtolower((string) $checkpoint['attachmentId']);
+        $q = $this->pdo->prepare('SELECT display_name, mime_type, size_bytes, storage_key FROM control_conversation_attachments WHERE attachment_id = :attachment AND project_id = :project AND uploaded_by_user_id = :user AND deleted_at IS NULL');
+        $q->execute(['attachment' => $attachmentId, 'project' => $row['project_id'], 'user' => $row['user_id']]); $attachment = $q->fetch();
+        if (!is_array($attachment)) throw new HubControlPlaneException('Office input is unavailable', 'ATTACHMENT_NOT_FOUND');
+        $extension = strtolower((string) pathinfo((string) $attachment['display_name'], PATHINFO_EXTENSION));
+        $expected = match ($extension) { 'doc', 'docx' => 'office.word.pdf', 'xls', 'xlsx' => 'office.excel.pdf', 'ppt', 'pptx' => 'office.powerpoint.pdf', default => null };
+        if ($expected === null || $expected !== (string) $row['required_capability']) throw new HubControlPlaneException('Office input does not match the leased capability', 'TASK_FORBIDDEN');
+        return $row + ['input_name' => (string) $attachment['display_name'], 'input_mime' => (string) $attachment['mime_type'], 'input_size' => (int) $attachment['size_bytes'], 'storage_key' => (string) $attachment['storage_key']];
     }
 
     /** @return array<string,mixed> */
@@ -1181,7 +1257,18 @@ final class HubControlPlaneService
             // materialised from the immutable Vault revision rather than a
             // device-local project binding.
             $caps = []; try { $caps = json_decode((string) $workerRow['capabilities_json'], true, 16, JSON_THROW_ON_ERROR); } catch (Throwable) {}
-            if ($this->centralProjectAuthoritySchemaPresent() && is_array($caps) && in_array('codex:cli', $caps, true)) {
+            if ($this->centralProjectAuthoritySchemaPresent() && is_array($caps)) {
+                $deviceWork = $this->pdo->prepare("SELECT t.*, e.execution_id, e.required_capability FROM control_tasks t JOIN control_task_executions e ON e.task_id = t.task_id JOIN device_project_memberships m ON m.project_id = t.project_id AND m.device_id = :device AND m.revoked_at IS NULL WHERE t.user_id = :user AND t.state = 'WAITING_FOR_WORKER' AND t.assigned_device_id IS NULL AND e.state = 'WAITING_FOR_CAPABILITY' AND e.executor_kind = 'DEVICE' ORDER BY e.created_at, e.execution_id LIMIT 20");
+                $deviceWork->execute(['device' => $auth['deviceId'], 'user' => $auth['userId']]);
+                foreach ($deviceWork->fetchAll() as $candidate) {
+                    $required = (string) ($candidate['required_capability'] ?? '');
+                    if (!in_array($required, $caps, true)) continue;
+                    $lease = $this->pdo->prepare("UPDATE control_task_executions SET state = 'RUNNING', lease_owner = :device, lease_expires_at = :expires, attempt_count = attempt_count + 1, last_error_code = NULL, updated_at = :at WHERE task_id = :task AND state = 'WAITING_FOR_CAPABILITY' AND executor_kind = 'DEVICE' AND required_capability = :capability");
+                    $lease->execute(['device' => $auth['deviceId'], 'expires' => $expires, 'at' => $at, 'task' => $candidate['task_id'], 'capability' => $required]);
+                    if ($lease->rowCount() === 1) { if ($this->capabilities !== null) $this->capabilities->updateEnvelopeState((string) $candidate['execution_id'], 'ACTIVE', $expires, $at); $row = $candidate; break; }
+                }
+            }
+            if (!is_array($row) && $this->centralProjectAuthoritySchemaPresent() && is_array($caps) && in_array('codex:cli', $caps, true)) {
                 $central = $this->pdo->prepare("SELECT t.* FROM control_tasks t JOIN control_task_executions e ON e.task_id = t.task_id JOIN device_project_memberships m ON m.project_id = t.project_id AND m.device_id = :device AND m.revoked_at IS NULL WHERE t.state = 'WAITING_FOR_WORKER' AND t.assigned_device_id IS NULL AND e.state = 'WAITING_FOR_CAPABILITY' AND e.executor_kind = 'CODEX' AND e.required_capability = 'codex:cli' AND e.vault_revision_id IS NOT NULL ORDER BY e.created_at, e.execution_id LIMIT 1");
                 $central->execute(['device' => $auth['deviceId']]); $candidate = $central->fetch();
                 if (is_array($candidate)) {
@@ -1686,12 +1773,25 @@ final class HubControlPlaneService
         if (!is_array($value) || array_is_list($value) === false || count($value) > 6) throw new HubControlPlaneException('Starter prompts are invalid', 'FIELD_INVALID'); $out = []; foreach ($value as $prompt) { if (!is_string($prompt) || trim($prompt) === '' || strlen($prompt) > 120 || preg_match('/[\x00-\x1f\x7f<>]/', $prompt)) throw new HubControlPlaneException('Starter prompt is invalid', 'FIELD_INVALID'); $out[] = trim($prompt); } return $out;
     }
 
+    /** @param list<string> $attachmentIds @return array{attachmentId:string,capability:string}|null */
+    private function officeExportRequest(string $message, array $attachmentIds, string $userId, string $projectId, string $messageId): ?array
+    {
+        if (count($attachmentIds) !== 1 || preg_match('/(?:(?:แปลง|ส่งออก|convert|export|save)[^\n]{0,120}(?:pdf)|(?:pdf)[^\n]{0,120}(?:แปลง|ส่งออก|convert|export|save))/iu', $message) !== 1) return null;
+        $attachmentId = self::uuid((string) $attachmentIds[0]);
+        $q = $this->pdo->prepare('SELECT display_name FROM control_conversation_attachments WHERE attachment_id = :attachment AND message_id = :message AND project_id = :project AND uploaded_by_user_id = :user AND deleted_at IS NULL');
+        $q->execute(['attachment' => $attachmentId, 'message' => $messageId, 'project' => $projectId, 'user' => $userId]); $name = $q->fetchColumn();
+        if (!is_string($name)) return null;
+        $extension = strtolower((string) pathinfo($name, PATHINFO_EXTENSION));
+        $capability = match ($extension) { 'doc', 'docx' => 'office.word.pdf', 'xls', 'xlsx' => 'office.excel.pdf', 'ppt', 'pptx' => 'office.powerpoint.pdf', default => null };
+        return $capability === null ? null : ['attachmentId' => $attachmentId, 'capability' => $capability];
+    }
+
     /** Conversation is the default.  A background task is created only for an explicit action request at the start of the turn. */
     private static function isConversationOnly(string $message, bool $hasAttachments = false): bool
     {
         $value = trim($message);
         $value = preg_replace('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)+/iu', '', $value) ?? $value;
-        $action = preg_match('/^(?:ตรวจ|วิเคราะห์|ดู|ค้นหา|อ่าน|ทำต่อ|จัดการ|แก้|เขียน|สร้าง|เพิ่ม|ปรับ|ลบ|เปลี่ยน|รัน|ทดสอบ|deploy|commit|push|build|render|inspect|review|search|read|continue|fix|edit|write|create|add|update|delete|modify|run|test)(?:หน่อย|ให้|ที|ดู)?(?:\s|$|[ก-๙])/iu', $value) === 1;
+        $action = preg_match('/^(?:ตรวจ|วิเคราะห์|ดู|ค้นหา|อ่าน|ทำต่อ|จัดการ|แก้|เขียน|สร้าง|เพิ่ม|ปรับ|ลบ|เปลี่ยน|แปลง|ส่งออก|รัน|ทดสอบ|deploy|commit|push|build|render|convert|export|inspect|review|search|read|continue|fix|edit|write|create|add|update|delete|modify|run|test)(?:หน่อย|ให้|ที|ดู)?(?:\s|$|[ก-๙])/iu', $value) === 1;
         $summaryAction = preg_match('/^(?:สรุป|summari[sz]e)(?:หน่อย|ให้|ที|ดู)?(?:\s|$|[ก-๙])/iu', $value) === 1
             && preg_match('/(?:source|repo|repository|project|โปรเจกต์|ไฟล์|โค้ด|code|folder|โฟลเดอร์)/iu', $value) === 1;
         if (!$action && !$summaryAction) return true;

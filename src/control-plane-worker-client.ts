@@ -32,6 +32,8 @@ export interface WorkerTask {
   execution?: { executionId: string; executorKind: 'VPS' | 'DEVICE' | 'CODEX'; requiredCapability: string; vaultRevisionId: string | null; state: string } | null;
 }
 
+export interface OfficeExecutionPacket { executionId: string; taskId: string; projectId: string; inputName: string; inputMimeType: string; sizeBytes: number; }
+
 function apiRoot(value: string): URL {
   let url: URL;
   try { url = new URL(value); } catch { throw new ControlPlaneWorkerError('Worker API URL is invalid', 'API_URL_INVALID'); }
@@ -157,6 +159,35 @@ export class ControlPlaneWorkerClient {
     const body = await response.text(); if (body.length > MAX_RESPONSE_BYTES) throw new ControlPlaneWorkerError('Worker response is too large', 'RESPONSE_TOO_LARGE'); let value: unknown; try { value = JSON.parse(body); } catch { throw new ControlPlaneWorkerError('Worker response is invalid', 'RESPONSE_INVALID'); }
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ControlPlaneWorkerError('Worker response is invalid', 'RESPONSE_INVALID'); const result = value as Record<string, unknown>;
     if (!response.ok) throw new ControlPlaneWorkerError(typeof result.message === 'string' ? result.message : 'Worker candidate was rejected', typeof result.code === 'string' ? result.code : 'WORKER_REJECTED'); return boundedTask(result);
+  }
+
+  async officeExecutionPacket(executionId: string): Promise<OfficeExecutionPacket> {
+    if (!UUID_V4.test(executionId)) throw new ControlPlaneWorkerError('Office execution reference is invalid', 'PAYLOAD_INVALID');
+    const response = await this.get(`/control/worker/executions/${executionId}/office-packet`, true);
+    const item = response.execution;
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new ControlPlaneWorkerError('Office execution packet is invalid', 'RESPONSE_INVALID');
+    const row = item as Record<string, unknown>;
+    if (row.executionId !== executionId || !UUID_V4.test(String(row.taskId)) || !UUID_V4.test(String(row.projectId)) || typeof row.inputName !== 'string' || row.inputName.length < 1 || row.inputName.length > 160 || typeof row.inputMimeType !== 'string' || !Number.isSafeInteger(row.sizeBytes) || Number(row.sizeBytes) < 1 || Number(row.sizeBytes) > 50 * 1024 * 1024) throw new ControlPlaneWorkerError('Office execution packet is invalid', 'RESPONSE_INVALID');
+    return { executionId, taskId: String(row.taskId), projectId: String(row.projectId), inputName: row.inputName, inputMimeType: row.inputMimeType, sizeBytes: Number(row.sizeBytes) };
+  }
+
+  async materializeOfficeExecutionInput(executionId: string, root: string): Promise<OfficeExecutionPacket & { inputPath: string }> {
+    const packet = await this.officeExecutionPacket(executionId);
+    const safe = packet.inputName.replace(/[\\/\u0000-\u001f\u007f]/g, '_');
+    const inputPath = join(root, `${executionId}-${safe}`);
+    await mkdir(root, { recursive: true, mode: 0o700 }); await rm(inputPath, { force: true });
+    await this.downloadExecutionFile(`/control/worker/executions/${executionId}/office-input`, inputPath, packet.sizeBytes, 'application/octet-stream');
+    return { ...packet, inputPath };
+  }
+
+  async uploadOfficeExecutionArtifact(executionId: string, pdfPath: string): Promise<WorkerTask> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir); if (!UUID_V4.test(executionId)) throw new ControlPlaneWorkerError('Office execution reference is invalid', 'PAYLOAD_INVALID');
+    const info = await stat(pdfPath); if (!info.isFile() || info.size < 5 || info.size > 50 * 1024 * 1024) throw new ControlPlaneWorkerError('Office PDF artifact is invalid', 'PAYLOAD_INVALID');
+    const token = await this.credentialStore.get(DEVICE_TOKEN_CREDENTIAL_KEY); if (!token) throw new ControlPlaneWorkerError('Worker is not enrolled', 'DEVICE_NOT_ENROLLED');
+    const response = await this.fetchImpl(new URL(`/api/v1/control/worker/executions/${executionId}/office-artifact`, this.root), { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/pdf', 'Content-Length': String(info.size), Authorization: `Bearer ${token}`, 'X-AWH-Device': identity.deviceId }, body: createReadStream(pdfPath) as unknown as BodyInit, duplex: 'half' as never, credentials: 'omit', cache: 'no-store' } as RequestInit);
+    const body = await response.text(); if (body.length > MAX_RESPONSE_BYTES) throw new ControlPlaneWorkerError('Worker response is too large', 'RESPONSE_TOO_LARGE'); let value: unknown; try { value = JSON.parse(body); } catch { throw new ControlPlaneWorkerError('Worker response is invalid', 'RESPONSE_INVALID'); }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ControlPlaneWorkerError('Worker response is invalid', 'RESPONSE_INVALID'); const result = value as Record<string, unknown>;
+    if (!response.ok) throw new ControlPlaneWorkerError(typeof result.message === 'string' ? result.message : 'Office artifact was rejected', typeof result.code === 'string' ? result.code : 'WORKER_REJECTED'); return boundedTask(result);
   }
 
   async deferCentralExecution(executionId: string, code: string): Promise<WorkerTask> {
@@ -295,6 +326,18 @@ export class ControlPlaneWorkerClient {
     const result = value as Record<string, unknown>;
     if (!response.ok) throw new ControlPlaneWorkerError(typeof result.message === 'string' ? result.message : 'Worker request was rejected', typeof result.code === 'string' ? result.code : 'WORKER_REJECTED');
     return result;
+  }
+
+  private async downloadExecutionFile(path: string, destination: string, expectedBytes: number, accept: string): Promise<void> {
+    if (!path.startsWith('/control/worker/executions/') || path.includes('..') || /[?#]/.test(path) || !Number.isSafeInteger(expectedBytes) || expectedBytes < 1 || expectedBytes > 50 * 1024 * 1024 || typeof accept !== 'string' || accept.length < 1 || accept.length > 120) throw new ControlPlaneWorkerError('Worker execution download is invalid', 'PAYLOAD_INVALID');
+    const token = await this.credentialStore.get(DEVICE_TOKEN_CREDENTIAL_KEY); const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    if (!token) throw new ControlPlaneWorkerError('Worker is not enrolled', 'DEVICE_NOT_ENROLLED');
+    const response = await this.fetchImpl(new URL(`/api/v1${path}`, this.root), { method: 'GET', headers: { Accept: accept, Authorization: `Bearer ${token}`, 'X-AWH-Device': identity.deviceId }, credentials: 'omit', cache: 'no-store' });
+    const length = Number(response.headers.get('content-length'));
+    if (!response.ok || !response.body || !Number.isSafeInteger(length) || length !== expectedBytes) throw new ControlPlaneWorkerError('Worker execution download was rejected', 'WORKSPACE_DOWNLOAD_FAILED');
+    await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
+    try { await pipeline(Readable.fromWeb(response.body as import('node:stream/web').ReadableStream), createWriteStream(destination, { flags: 'wx', mode: 0o600 })); const info = await stat(destination); if (!info.isFile() || info.size !== expectedBytes) throw new ControlPlaneWorkerError('Worker execution download is incomplete', 'WORKSPACE_DOWNLOAD_FAILED'); }
+    catch (error) { await rm(destination, { force: true }); throw error; }
   }
 
   private async download(path: string, destination: string): Promise<void> {

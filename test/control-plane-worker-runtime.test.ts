@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { ControlPlaneWorkerClient, type WorkerTask } from '../src/control-plane-worker-client.js';
-import { buildCodexTaskInstruction, ControlPlaneWorkerRuntime } from '../src/control-plane-worker-runtime.js';
+import { buildCodexTaskInstruction, ControlPlaneWorkerRuntime, officeExecutionCapabilities } from '../src/control-plane-worker-runtime.js';
 import { loadOrCreateDeviceIdentity } from '../src/device-identity.js';
 import type { CredentialStore } from '../src/credential-store.js';
 
@@ -30,6 +30,13 @@ class FixtureWorkerClient extends ControlPlaneWorkerClient {
     return this.nextTask ?? { taskId, projectId: '423b45c0-23e1-408d-ae0f-ac5eca7f6900', conversationId: null, goal: 'fixture', state, progress: 0, assignedDevice: null, approvalStatus: null };
   }
 }
+
+test('Office inventory becomes executable only for the matching Windows handler', () => {
+  assert.deepEqual(officeExecutionCapabilities('darwin', ['tool.office.word', 'tool.office.excel']), []);
+  assert.deepEqual(officeExecutionCapabilities('win32', ['tool.office.word']), ['office.word.pdf']);
+  assert.deepEqual(officeExecutionCapabilities('win32', ['tool.office.excel', 'tool.office.powerpoint']).sort(), ['office.excel.pdf', 'office.powerpoint.pdf']);
+  assert.deepEqual(officeExecutionCapabilities('win32', ['tool.office.word', 'tool.browser.edge']), ['office.word.pdf']);
+});
 
 test('desktop worker runtime is wired to heartbeat and truthful idle state', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'awh-worker-runtime-'));
