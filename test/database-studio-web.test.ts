@@ -34,3 +34,21 @@ test('M17 Database Studio web release is owner-first, read-only, and emitted by 
     assert.doesNotMatch(`${html}\n${app}`, /DELETE FROM|DROP TABLE|UPDATE .* SET|INSERT INTO/i);
   } finally { await rm(output, { recursive: true, force: true }); }
 });
+
+test('M17 Database Studio is wired into the production deployment surface', async () => {
+  const [deploy, remote, nginx] = await Promise.all([
+    readFile(join(ROOT, 'deploy/awh-control-plane/deploy-control-plane.sh'), 'utf8'),
+    readFile(join(ROOT, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'), 'utf8'),
+    readFile(join(ROOT, 'deploy/nginx/awh-control-plane.conf'), 'utf8'),
+  ]);
+  for (const asset of ['dist-web/database.html', 'dist-web/database.css', 'dist-web/database.js']) assert.match(deploy, new RegExp(asset.replace('.', '\\.')));
+  for (const backend of ['hub/public/database-studio.php', 'hub/src/HubDatabaseStudioService.php', 'hub/src/HubDatabaseStudioRouter.php']) assert.ok(deploy.includes(backend), `deployment bundle missing ${backend}`);
+  assert.ok(deploy.includes('hub/migrations/001_m3e_enrollment.sql'), 'Migration Center must ship the full migration catalog');
+  assert.match(nginx, /location = \/database-studio\.php \{/);
+  assert.match(nginx, /Hub session|Owner-only Database Studio/);
+  assert.match(nginx, /HTTP_COOKIE \$http_cookie/);
+  assert.match(nginx, /HTTP_X_AWH_CSRF \$http_x_awh_csrf/);
+  assert.match(remote, /database_html_code=.*database\.html/);
+  assert.match(remote, /database_api_code=.*database-studio\.php\?action=overview/);
+  assert.match(remote, /test "\$database_api_code" = 401/);
+});
