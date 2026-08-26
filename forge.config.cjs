@@ -67,6 +67,7 @@ module.exports = {
   packagerConfig: {
     name: 'AWH',
     executableName: 'AWH',
+    appBundleId: 'com.artworkspacehub.awh',
     icon,
     ...(electronZipDir ? { electronZipDir } : {}),
     asar: true,

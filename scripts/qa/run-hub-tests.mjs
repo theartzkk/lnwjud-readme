@@ -22,7 +22,7 @@ const tests = [
   'hub/tests/m13-anywhere-execution.php',
   'hub/tests/m16-office-provider.php',
   'hub/tests/m17-database-studio.php',
-
+  'hub/tests/sustainability-foundation.php',
 ];
 
 const php = await resolveExecutable('php');

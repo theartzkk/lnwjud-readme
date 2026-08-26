@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "product": {
+    "id": "awh",
+    "name": "Art’s Workspace Hub",
+    "shortName": "AWH",
+    "desktopName": "AWH Desktop",
+    "desktopBundleId": "com.artworkspacehub.awh",
+    "windowsPackageId": "AWH"
+  },
+  "authority": {
+    "cloudRole": "READYIDC_CONTROL_PLANE",
+    "apiMajor": "v1",
+    "defaultApiBase": "https://157-85-108-142.sslip.io/api/v1",
+    "defaultApiBaseStatus": "PROVISIONAL_IP_BOUND",
+    "databaseEngine": "SQLite",
+    "databaseAuthority": "hub/migrations",
+    "projectIdentityAuthority": "Hub canonical project UUID"
+  },
+  "release": {
+    "defaultChannel": "stable",
+    "channels": ["stable", "preview"],
+    "evergreenDesktopRequired": true,
+    "updaterStatus": "FOUNDATION_LOCKED_NOT_ACTIVATED",
+    "desktopCompatibility": "current-and-previous-minor",
+    "stableRequires": ["ci", "hub-test", "package-runtime", "backup-verified", "migration-plan", "rollback-plan"]
+  },
+  "data": {
+    "principle": "Everything replaceable except identity and data",
+    "backupBeforeMigration": true,
+    "restoreDrillRequired": true,
+    "destructiveSchemaChangesRequireVersionedMigration": true
+  }
+}
