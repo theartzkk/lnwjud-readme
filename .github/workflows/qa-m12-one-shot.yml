@@ -16,17 +16,26 @@ jobs:
         with:
           ref: awh/qa-m12-contract-sync
           fetch-depth: 0
-      - name: Synchronize the legacy fixture with the conversation-bound contract
+      - name: Synchronize legacy fixture contracts
         shell: python
         run: |
           from pathlib import Path
           path = Path('hub/tests/m12-central-project-authority.php')
           text = path.read_text(encoding='utf-8')
+
           old = "$historyAgent->respond($owner, $project, null, null, 'คำถามล่าสุด'"
           new = "$historyAgent->respond($owner, $project, $conversation, $message, 'คำถามล่าสุด'"
           if text.count(old) != 1:
-              raise SystemExit(f'expected exactly one stale fixture call, found {text.count(old)}')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+              raise SystemExit(f'expected exactly one stale history call, found {text.count(old)}')
+          text = text.replace(old, new, 1)
+
+          old = "$agentExecutor = new HubDurableExecutionService($pdo, $vaults, $agent, HubArtifactStore::fromEnvironment());"
+          new = "$conversationAgent = new HubNativeAgentService($pdo, static fn (array $_payload, string $_key): array => ['id' => 'resp_native_success_1234', 'output_text' => 'ตรวจจาก Vault แล้ว พบ README และยังไม่ได้แก้ source', 'usage' => ['input_tokens' => 3, 'output_tokens' => 4]], 'fixture-key');\n    $agentExecutor = new HubDurableExecutionService($pdo, $vaults, $conversationAgent, HubArtifactStore::fromEnvironment());"
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one shared success agent use, found {text.count(old)}')
+          text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
       - name: Install dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Run complete Hub regression suite
@@ -38,5 +47,5 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add hub/tests/m12-central-project-authority.php .github/workflows/qa-m12-one-shot.yml
           git diff --cached --check
-          git commit -m 'test: sync M12 native conversation fixture'
+          git commit -m 'test: sync M12 native conversation fixtures'
           git push origin HEAD:awh/qa-m12-contract-sync
