@@ -1,21 +1,40 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { PRODUCT } from '../src/product.js';
+import { PRODUCT, normalizeUpdateChannel } from '../src/product.js';
 import { compatibilityEnv, DEFAULT_AWH_HUB_API_BASE, loadConfig } from '../src/config.js';
 import { saveStoredSettings } from '../src/settings.js';
 
-test('AWH product identity is centralized while legacy compatibility identity remains explicit', () => {
+test('AWH product identity is centralized and evergreen desktop identifiers are stable', () => {
   assert.deepEqual(PRODUCT, {
     productName: 'Art’s Workspace Hub',
     shortName: 'AWH',
     desktopName: 'AWH Desktop',
     tagline: 'Your Projects. One Workspace. Anywhere.',
+    productId: 'awh',
+    desktopBundleId: 'com.artworkspacehub.awh',
+    windowsPackageId: 'AWH',
+    evergreenDesktop: true,
+    defaultUpdateChannel: 'stable',
+    updateChannels: ['stable', 'preview'],
     legacyCodename: 'Art Agent',
     legacyPackageId: 'art-agent',
   });
+  assert.equal(normalizeUpdateChannel('stable'), 'stable');
+  assert.equal(normalizeUpdateChannel('preview'), 'preview');
+  assert.equal(normalizeUpdateChannel('development'), 'stable');
+});
+
+test('desktop packager keeps one OS identity for future in-place updates', () => {
+  const forge = readFileSync(join(process.cwd(), 'forge.config.cjs'), 'utf8');
+  assert.match(forge, /DESKTOP_BUNDLE_ID = 'com\.artworkspacehub\.awh'/);
+  assert.match(forge, /WINDOWS_PACKAGE_ID = 'AWH'/);
+  assert.match(forge, /appBundleId: DESKTOP_BUNDLE_ID/);
+  assert.match(forge, /name: WINDOWS_PACKAGE_ID/);
+  assert.doesNotMatch(forge, /AWHPreview|AWHStable|com\.artworkspacehub\.preview/);
 });
 
 test('AWH environment aliases take precedence over ART_AGENT compatibility values', () => {
