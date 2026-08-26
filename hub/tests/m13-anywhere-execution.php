@@ -64,11 +64,12 @@ try {
     m13_assert(($cloudRoute['providerId'] ?? null) === 'vps-native' && ($cloudRoute['availabilityMode'] ?? null) === 'ALWAYS_ON', 'Cloud provider is preferred for a core read capability');
 
     $pdo->prepare('INSERT INTO devices(device_id,display_name,platform,arch,app_version,last_seen_at,revoked_at) VALUES(:id,:name,:platform,:arch,:version,:at,NULL)')->execute(['id'=>$device,'name'=>'Optional Mac','platform'=>'darwin','arch'=>'arm64','version'=>'1.0.0','at'=>$now]);
-    $registry->syncDeviceWorker($device, ['project.read','codex:cli','git','browser_debug_context','office'], 'READY', $now);
+    $registry->syncDeviceWorker($device, ['project.read','codex:cli','git','browser_debug_context','tool.office.word','tool.office.excel'], 'READY', $now);
     $stillCloud = $registry->route('project.read', $now);
     m13_assert(($stillCloud['providerId'] ?? null) === 'vps-native', 'optional device never becomes a hidden dependency for cloud-capable work');
     $specialist = $registry->route('code.specialist', $now);
     m13_assert(($specialist['providerId'] ?? null) === 'device:' . $device, 'Codex CLI is exposed only as the human-facing specialist capability');
+    m13_assert($registry->route('document.office', $now) === null, 'detected Office inventory never grants an executable Office route');
 
     $specialistTask = m13_uuid(); $specialistExecution = m13_uuid();
     $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'specialist','WAITING_FOR_WORKER',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$specialistTask,'user'=>$owner,'project'=>$project,'key'=>'m13-specialist-task-0001','at'=>$now]);

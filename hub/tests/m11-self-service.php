@@ -36,7 +36,7 @@ mkdir($root, 0700, true);
 $db = $root . '/awh.sqlite'; $attachments = $root . '/attachments'; $credentials = $root . '/provider-credentials'; $vaults = $root . '/project-vault';
 mkdir($attachments, 0750, true); mkdir($vaults, 0700, true);
 $base = dirname(__DIR__); $now = gmdate('c');
-$owner = '223b45c0-23e1-408d-ae0f-ac5eca7f6900'; $device = '423b45c0-23e1-408d-ae0f-ac5eca7f6900'; $otherDevice = '523b45c0-23e1-408d-ae0f-ac5eca7f6900';
+$owner = '223b45c0-23e1-408d-ae0f-ac5eca7f6900'; $device = '423b45c0-23e1-408d-ae0f-ac5eca7f6900'; $otherDevice = '523b45c0-23e1-408d-ae0f-ac5eca7f6900'; $visibleDevice = '623b45c0-23e1-408d-ae0f-ac5eca7f6900';
 $project = '113b45c0-23e1-408d-ae0f-ac5eca7f6900'; $otherProject = '723b45c0-23e1-408d-ae0f-ac5eca7f6900';
 $ownerPassword = 'owner-fixture-' . bin2hex(random_bytes(12)); $collaboratorPassword = 'collaborator-fixture-' . bin2hex(random_bytes(12));
 putenv('AWH_CONTROL_ORIGIN=https://awh.test'); putenv('AWH_ATTACHMENT_ROOT=' . $attachments); putenv('AWH_PROVIDER_CREDENTIAL_ROOT=' . $credentials); putenv('AWH_PROJECT_VAULT_ROOT=' . $vaults);
@@ -106,11 +106,16 @@ try {
     m11_assert(m11_control($control, 'POST', '/api/v1/control/provider/credential', $collabWrite, ['schemaVersion' => 1, 'action' => 'REMOVE', 'secret' => null])['status'] === 403, 'collaborator cannot modify provider credentials');
     m11_assert(m11_control($control, 'GET', '/api/v1/control/settings', $collabRead)['status'] === 200, 'collaborator can read shared product presentation metadata');
     m11_assert(m11_control($control, 'POST', '/api/v1/control/settings', $collabWrite, ['schemaVersion' => 2, 'settingKey' => 'tagline', 'value' => 'not allowed'])['status'] === 403, 'collaborator cannot modify product metadata');
+    $pdo->prepare('INSERT INTO devices(device_id, display_name, platform, arch, app_version, last_seen_at, revoked_at) VALUES(:id, :name, :platform, :arch, :version, :seen, NULL)')->execute(['id' => $visibleDevice, 'name' => 'AY-TEACHER', 'platform' => 'win32', 'arch' => 'x64', 'version' => '1', 'seen' => $now]);
+    $pdo->prepare("INSERT INTO device_project_memberships(device_id, project_id, role, created_at, revoked_at) VALUES(:device, :project, 'owner', :at, NULL)")->execute(['device' => $visibleDevice, 'project' => $project, 'at' => $now]);
+    $pdo->prepare("INSERT INTO control_workers(device_id, state, capabilities_json, last_seen_at, busy_task_id) VALUES(:device, 'READY', '[\"tool.office.word\",\"tool.office.excel\",\"git:read\"]', :at, NULL)")->execute(['device' => $visibleDevice, 'at' => $now]);
     $pdo->prepare('INSERT INTO devices(device_id, display_name, platform, arch, app_version, last_seen_at, revoked_at) VALUES(:id, :name, :platform, :arch, :version, :seen, NULL)')->execute(['id' => $otherDevice, 'name' => 'Private Worker', 'platform' => 'win32', 'arch' => 'x64', 'version' => '1', 'seen' => $now]);
     $pdo->prepare("INSERT INTO device_project_memberships(device_id, project_id, role, created_at, revoked_at) VALUES(:device, :project, 'owner', :at, NULL)")->execute(['device' => $otherDevice, 'project' => $otherProject, 'at' => $now]);
     $pdo->prepare("INSERT INTO control_workers(device_id, state, capabilities_json, last_seen_at, busy_task_id) VALUES(:device, 'READY', '[\"git\"]', :at, NULL)")->execute(['device' => $otherDevice, 'at' => $now]);
     $workers = m11_body(m11_control($control, 'GET', '/api/v1/control/workers', $collabRead));
     m11_assert(!str_contains(json_encode($workers, JSON_THROW_ON_ERROR), $otherDevice), 'worker list excludes devices that have only unrelated project bindings');
+    $visibleWorkers = array_values(array_filter($workers['workers'] ?? [], static fn(array $worker): bool => ($worker['deviceId'] ?? null) === $visibleDevice));
+    m11_assert(count($visibleWorkers) === 1 && ($visibleWorkers[0]['detectedTools'] ?? null) === ['Word', 'Excel'], 'worker inventory is returned as friendly metadata without exposing tool ids to the normal device summary');
 
     $ownerStatus = m11_body(m11_control($control, 'GET', '/api/v1/control/owner/status', m11_read_browser($ownerSession['sessionToken'])));
     m11_assert(($ownerStatus['database']['state'] ?? null) === 'HEALTHY' && ($ownerStatus['export']['secretsIncluded'] ?? true) === false && ($ownerStatus['backup']['state'] ?? null) === 'DEPLOYMENT_MANAGED', 'owner self-service status is high-level, healthy and secret-free');

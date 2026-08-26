@@ -1093,8 +1093,22 @@ final class HubControlPlaneService
         return array_map(static function (array $row) use ($nowAt): array {
             $state = strtotime((string) $row['last_seen_at']) < $nowAt - self::WORKER_STALE_TTL ? 'OFFLINE' : (in_array($row['state'], ['READY', 'WORKING', 'OFFLINE'], true) ? $row['state'] : 'OFFLINE');
             $capabilities = []; try { $raw = json_decode((string) $row['capabilities_json'], true, 32, JSON_THROW_ON_ERROR); if (is_array($raw) && array_is_list($raw)) foreach ($raw as $capability) if (is_string($capability) && preg_match('/^[a-z][a-z0-9:._-]{0,63}$/', $capability)) $capabilities[] = $capability; } catch (Throwable) {}
-            return ['deviceId' => (string) $row['device_id'], 'displayName' => (string) $row['display_name'], 'platform' => (string) $row['platform'], 'arch' => (string) $row['arch'], 'state' => $state, 'lastSeenAt' => (string) $row['last_seen_at'], 'capabilities' => array_values(array_unique($capabilities)), 'boundProjectCount' => (int) $row['project_count'], 'activity' => $state === 'WORKING' ? 'WORKING' : ($state === 'READY' ? 'READY' : 'OFFLINE')];
+            $capabilities = array_values(array_unique($capabilities));
+            return ['deviceId' => (string) $row['device_id'], 'displayName' => (string) $row['display_name'], 'platform' => (string) $row['platform'], 'arch' => (string) $row['arch'], 'state' => $state, 'lastSeenAt' => (string) $row['last_seen_at'], 'capabilities' => $capabilities, 'detectedTools' => self::workerToolLabels($capabilities), 'boundProjectCount' => (int) $row['project_count'], 'activity' => $state === 'WORKING' ? 'WORKING' : ($state === 'READY' ? 'READY' : 'OFFLINE')];
         }, $q->fetchAll());
+    }
+
+    /** @param list<string> $capabilities @return list<string> */
+    private static function workerToolLabels(array $capabilities): array
+    {
+        $labels = [
+            'tool.git' => 'Git', 'tool.node' => 'Node.js', 'tool.php' => 'PHP', 'tool.python' => 'Python',
+            'tool.ffmpeg' => 'FFmpeg', 'tool.ffprobe' => 'FFprobe', 'tool.codex' => 'ผู้เชี่ยวชาญโค้ด',
+            'tool.office.word' => 'Word', 'tool.office.excel' => 'Excel', 'tool.office.powerpoint' => 'PowerPoint',
+            'tool.browser.chrome' => 'Chrome', 'tool.browser.edge' => 'Edge', 'tool.browser.safari' => 'Safari',
+        ];
+        $out = []; foreach ($capabilities as $capability) if (isset($labels[$capability])) $out[] = $labels[$capability];
+        return array_values(array_unique($out));
     }
 
     public function heartbeat(string $token, array $payload, ?string $now = null): array

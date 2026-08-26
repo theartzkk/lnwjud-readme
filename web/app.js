@@ -287,8 +287,15 @@ import {
     message('settings-device-summary', workers.length ? `${workers.filter((worker) => worker.state === 'READY' || worker.state === 'WORKING').length} เครื่องพร้อมทำงาน` : 'ยังไม่มี AWH Desktop ที่พร้อมทำงาน');
     const list = $('settings-worker-list'); if (list) {
       list.replaceChildren();
-      for (const worker of workers) { const item = document.createElement('div'); item.className = 'session-item'; const name = document.createElement('strong'); name.textContent = worker.displayName || 'AWH Desktop'; const detail = document.createElement('span'); detail.textContent = `${workerStateLabel(worker)} · รองรับ ${worker.boundProjectCount || 0} โปรเจกต์`; item.append(name, detail); list.append(item); }
-      if (!list.childElementCount) list.textContent = 'ยังไม่มี Desktop ที่เข้าถึง source ของโปรเจกต์ได้';
+      for (const worker of workers) {
+        const item = document.createElement('div'); item.className = 'session-item';
+        const name = document.createElement('strong'); name.textContent = worker.displayName || 'อุปกรณ์เสริม AWH';
+        const tools = Array.isArray(worker.detectedTools) ? worker.detectedTools.filter((value) => typeof value === 'string').slice(0, 5) : [];
+        const toolSummary = tools.length ? ` · พบ ${tools.join(', ')}` : '';
+        const detail = document.createElement('span'); detail.textContent = `${workerStateLabel(worker)}${toolSummary} · ${worker.boundProjectCount || 0} โปรเจกต์`;
+        item.append(name, detail); list.append(item);
+      }
+      if (!list.childElementCount) list.textContent = 'ยังไม่มีอุปกรณ์เสริมที่เชื่อมกับโปรเจกต์';
     }
     const online = workers.filter((worker) => worker?.online || ['READY', 'WORKING', 'ONLINE'].includes(worker?.state)).length;
     message('settings-worker-message', online > 0 ? `มีอุปกรณ์เสริมพร้อมรับงาน ${online} เครื่อง · งาน Cloud ทำต่อได้โดยไม่ต้องเปิดเครื่อง` : 'งาน Cloud ทำต่อได้ตามปกติ · เปิด AWH Desktop เฉพาะงานที่ต้องใช้ไฟล์หรือแอปบนเครื่อง');

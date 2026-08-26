@@ -10,6 +10,7 @@ import { buildProjectContext, resolveRegisteredProject, PROJECT_MEMORY_FILES } f
 import { ControlPlaneWorkerClient, type WorkerTask } from './control-plane-worker-client.js';
 import { createUnsyncedWorkspaceCheckpoint, createWorkspaceWipCheckpoint, reconstructWorkspaceWip } from './workspace-continuity.js';
 import { createVaultCandidateArchive } from './vault-transfer.js';
+import { composeWorkerHeartbeatCapabilities, discoverWorkerTools } from './worker-capability-discovery.js';
 
 const MUTATION_GOAL = /(?:\b(?:fix|edit|change|modify|write|render|publish|deploy|delete|remove)\b|แก้|เพิ่ม|ลบ|สร้าง|เรนเดอร์|เผยแพร่|deploy)/iu;
 
@@ -57,13 +58,16 @@ export function buildCodexTaskInstruction(ownerProtocol: string, goal: string): 
 export async function workerCapabilities(dataDir: string, allowCodex = true): Promise<string[]> {
   const local = await detectLocalCapabilities(dataDir).catch(() => ({ git: false, node: false, php: false, ffmpeg: false, remotion: false, browsers: [] }));
   const codex = allowCodex ? await codexStatus(dataDir).catch(() => ({ available: false, version: null })) : { available: false, version: null };
-  return [
+  const executable = [
     'autopilot:local', 'project:context', 'qa:bounded',
     ...(local.git ? ['git:read'] : []), ...(local.node ? ['node'] : []),
     ...(local.php ? ['php:lint'] : []), ...(local.ffmpeg ? ['ffmpeg:probe'] : []),
     ...(local.remotion ? ['remotion'] : []),
     ...(codex.available ? ['codex:cli'] : []),
-  ].slice(0, 24);
+  ];
+  const tools = await discoverWorkerTools().catch((): string[] => []);
+  if (codex.available) tools.push('tool.codex');
+  return composeWorkerHeartbeatCapabilities(executable, tools);
 }
 
 export class ControlPlaneWorkerRuntime {
