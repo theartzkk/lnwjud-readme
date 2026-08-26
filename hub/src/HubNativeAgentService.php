@@ -237,7 +237,7 @@ final class HubNativeAgentService
         if (!is_array($row)) {
             // Status/read paths must stay read-only.  The owner explicitly saves
             // the first policy; until then this in-memory default fails closed.
-            return ['enabled' => false, 'modelFast' => 'gpt-5.4-mini', 'modelBalanced' => 'gpt-5.4', 'modelStrong' => 'gpt-5.4', 'monthlyBudgetMicrounits' => 0, 'warningMicrounits' => 0, 'inputMicrounitsPerMillion' => 0, 'outputMicrounitsPerMillion' => 0];
+            return ['enabled' => false, 'modelFast' => 'gpt-5.6-luna', 'modelBalanced' => 'gpt-5.6-terra', 'modelStrong' => 'gpt-5.6-sol', 'monthlyBudgetMicrounits' => 0, 'warningMicrounits' => 0, 'inputMicrounitsPerMillion' => 0, 'outputMicrounitsPerMillion' => 0];
         }
         return ['enabled' => (int) $row['enabled'] === 1, 'modelFast' => (string) $row['model_fast'], 'modelBalanced' => (string) $row['model_balanced'], 'modelStrong' => (string) $row['model_strong'], 'monthlyBudgetMicrounits' => (int) $row['monthly_budget_microunits'], 'warningMicrounits' => (int) $row['warning_microunits'], 'inputMicrounitsPerMillion' => (int) $row['input_microunits_per_million'], 'outputMicrounitsPerMillion' => (int) $row['output_microunits_per_million']];
     }

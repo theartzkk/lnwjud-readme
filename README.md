@@ -6,11 +6,11 @@
 
 **Your Projects. One Workspace. Anywhere.**
 
-AWH Desktop turns one selected local project folder into a tightly scoped MCP workspace so an AI can inspect the current source of truth, review Git state, patch files with recovery checkpoints, run approved verification tasks, inspect bounded process logs, and optionally delegate to a local Codex CLI.
+AWH is an Anywhere-first, Cloud-first workspace: the ReadyIDC control plane owns durable Projects, conversations, memory, tasks, approvals and capability routing so the same work can continue from iPhone, Mac, Windows or any modern browser. AWH Desktop remains an optional execution provider for work that genuinely needs a personal device; it is never required for normal Cloud work.
 
 > Compatibility note: Art Agent is the legacy codename. Package, installer, MCP protocol, data-directory, and `ART_AGENT_*` identifiers remain temporarily for upgrade and runtime compatibility.
 
-> Status: **v1.0.0-rc.1 feature-complete local release candidate**. AWH Desktop, the installable CONTROL/PWA surface, canonical Projects/Tasks/Workers/Results/Approvals contracts, bounded local worker runtime, and real-project profiles are prepared for one reviewed ReadyIDC activation. Production activation and physical iPhone/Mac/Windows field testing remain intentionally pending.
+> Current architecture: **M13 Anywhere Execution & Capability Fabric candidate** over the canonical M12 Project Authority. ReadyIDC is the always-on control plane; OpenAI API is the native AI provider; optional Desktop/lnwjud/Codex/burst workers plug into one capability fabric. Production activation remains approval-gated until deployment, rollback and field QA pass.
 
 ## Security posture
 

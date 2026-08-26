@@ -9,6 +9,8 @@ require_once __DIR__ . '/HubFinalProductMigration.php';
 require_once __DIR__ . '/HubFoundingMemoryMigration.php';
 require_once __DIR__ . '/HubSelfServiceMigration.php';
 require_once __DIR__ . '/HubCentralProjectAuthorityMigration.php';
+require_once __DIR__ . '/HubAnywhereExecutionMigration.php';
+require_once __DIR__ . '/HubCapabilityRegistryService.php';
 require_once __DIR__ . '/HubAttachmentStore.php';
 require_once __DIR__ . '/HubArtifactStore.php';
 require_once __DIR__ . '/HubProjectVault.php';
@@ -54,6 +56,7 @@ final class HubControlPlaneService
     private readonly HubOwnerAuthService $ownerAuth;
     private readonly HubProjectVaultService $vaults;
     private readonly HubDurableExecutionService $execution;
+    private readonly ?HubCapabilityRegistryService $capabilities;
 
     private function __construct(private readonly PDO $pdo, private readonly HubEnrollmentService $enrollment)
     {
@@ -64,6 +67,7 @@ final class HubControlPlaneService
         $this->vaults = HubProjectVaultService::fromEnvironment($pdo);
         $this->artifactStore = $this->centralProjectAuthoritySchemaPresent() ? HubArtifactStore::fromEnvironment() : null;
         $this->execution = new HubDurableExecutionService($pdo, $this->vaults, $this->agent, $this->artifactStore);
+        $this->capabilities = HubCapabilityRegistryService::schemaPresent($pdo) ? new HubCapabilityRegistryService($pdo) : null;
     }
 
     public static function openExisting(string $databasePath): self
@@ -604,8 +608,17 @@ final class HubControlPlaneService
         $schema = (int) $this->pdo->query('PRAGMA user_version')->fetchColumn(); $integrity = $this->pdo->query('PRAGMA integrity_check')->fetchColumn() === 'ok' && $this->pdo->query('PRAGMA foreign_key_check')->fetchAll() === [];
         $vaults = $this->pdo->query("SELECT COUNT(*) FROM control_project_vaults WHERE storage_mode = 'VAULT' AND sync_state = 'SYNCED'")->fetchColumn(); $waiting = $this->pdo->query("SELECT COUNT(*) FROM control_task_executions WHERE state = 'WAITING_FOR_CAPABILITY'")->fetchColumn();
         $executor = $this->pdo->prepare("SELECT 1 FROM control_executor_capabilities WHERE executor_id = 'vps-native' AND capability = 'agent.conversation' AND expires_at > :now LIMIT 1"); $executor->execute(['now' => self::timestamp($now ?? gmdate('c'))]); $nativeReady = $executor->fetchColumn() !== false;
+        $fabric = $this->anywhereExecutionSchemaPresent() ? 'READY' : 'NOT_ACTIVATED';
         $state = !$integrity ? 'ACTION_REQUIRED' : (!$nativeReady || (int) $waiting > 0 ? 'PARTIALLY_READY' : 'READY');
-        return ['schemaVersion' => 1, 'state' => $state, 'checks' => ['hub' => $integrity ? 'READY' : 'ACTION_REQUIRED', 'projectVault' => (int) $vaults > 0 ? 'READY' : 'NOT_CONFIGURED', 'nativeExecutor' => $nativeReady ? 'READY' : 'ACTION_REQUIRED', 'waitingCapabilityCount' => (int) $waiting, 'schemaVersion' => $schema], 'message' => !$nativeReady ? 'ยังไม่พบ native executor ที่พร้อมทำงาน งานที่รับไว้จะไม่สูญหาย' : ((int) $waiting > 0 ? 'งานบางรายการกำลังรอ capability ที่เหมาะสมและยังไม่สูญหาย' : 'AWH control-plane readiness check completed')];
+        return ['schemaVersion' => 1, 'state' => $state, 'checks' => ['hub' => $integrity ? 'READY' : 'ACTION_REQUIRED', 'projectVault' => (int) $vaults > 0 ? 'READY' : 'NOT_CONFIGURED', 'nativeExecutor' => $nativeReady ? 'READY' : 'ACTION_REQUIRED', 'anywhereExecution' => $fabric, 'waitingCapabilityCount' => (int) $waiting, 'schemaVersion' => $schema], 'message' => !$nativeReady ? 'ยังไม่พบ native executor ที่พร้อมทำงาน งานที่รับไว้จะไม่สูญหาย' : ((int) $waiting > 0 ? 'งานบางรายการกำลังรอ capability ที่เหมาะสมและยังไม่สูญหาย' : 'AWH control-plane readiness check completed')];
+    }
+
+    public function capabilityStatus(string $sessionToken, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now);
+        if ($this->capabilities === null) return ['schemaVersion' => 1, 'anywhereFirst' => false, 'deviceRequired' => false, 'summary' => ['ready' => 0, 'cloudReady' => 0, 'optional' => 0, 'planned' => 0], 'capabilities' => [], 'providers' => []];
+        try { return $this->capabilities->status(false, $now); }
+        catch (HubCapabilityRegistryException $error) { throw new HubControlPlaneException('Capability status is unavailable', $error->codeName); }
     }
 
     public function providerStatus(string $sessionToken, ?string $now = null): array
@@ -1095,6 +1108,7 @@ final class HubControlPlaneService
         $at = self::timestamp($now ?? gmdate('c'));
         $q = $this->pdo->prepare('INSERT INTO control_workers(device_id, state, capabilities_json, last_seen_at, busy_task_id) VALUES(:device, :state, :caps, :at, NULL) ON CONFLICT(device_id) DO UPDATE SET state=excluded.state, capabilities_json=excluded.capabilities_json, last_seen_at=excluded.last_seen_at');
         $q->execute(['device' => $auth['deviceId'], 'state' => $state, 'caps' => json_encode(array_values(array_unique($caps)), JSON_THROW_ON_ERROR), 'at' => $at]);
+        if ($this->capabilities !== null) { try { $this->capabilities->syncDeviceWorker((string) $auth['deviceId'], $caps, $state, $at); } catch (HubCapabilityRegistryException) {} }
         if ($state === 'WORKING') {
             $renew = $this->pdo->prepare("UPDATE control_tasks SET lease_expires_at = :expires WHERE task_id = (SELECT busy_task_id FROM control_workers WHERE device_id = :device) AND assigned_device_id = :device AND state IN ('PREPARING', 'RUNNING', 'QA')");
             $renew->execute(['expires' => gmdate('c', strtotime($at) + self::LEASE_TTL), 'device' => $auth['deviceId']]);
@@ -1705,6 +1719,7 @@ final class HubControlPlaneService
     private function foundingMemorySchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 10 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_memory_records'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
     private function selfServiceSchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 11 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_provider_credentials'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
     private function centralProjectAuthoritySchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 12 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_project_vaults'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
+    private function anywhereExecutionSchemaPresent(): bool { return HubCapabilityRegistryService::schemaPresent($this->pdo); }
     private function assertFinalReady(): void { HubFinalProductMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/008_final_product.sql'); }
     private function assertFoundingReady(): void { HubFoundingMemoryMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/009_founding_memory.sql'); }
     private function assertSelfServiceReady(): void { HubSelfServiceMigration::assertCapabilityReady($this->pdo, dirname(__DIR__) . '/migrations/010_self_service.sql'); }

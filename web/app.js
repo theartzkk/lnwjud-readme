@@ -3,7 +3,7 @@ import {
   cancelTask, changePassword, changeUsername, createConversation, createMemory, createProject, createRecoveryCodes, decideApproval,
   exportWorkspace, invitePerson, listAuthSessions, listPeople, loadAuthProfile, loadControlData, loadConversation,
   loadConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus,
-  loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadSystemReadiness, loadWorkspaceContinuity, login, logout,
+  loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadCapabilities, loadSystemReadiness, loadWorkspaceContinuity, login, logout,
   recover, resetPassword, resetProductSetting, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage,
   testProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
   updateProviderCredential, updateProviderPolicy, updateProviderProjectRouting, uploadConversationAttachments,
@@ -13,7 +13,7 @@ import {
   const $ = (id) => document.getElementById(id);
   const MAX_ATTACHMENT_BYTES = 60 * 1024 * 1024;
   const MICRO_BAHT = 1000000;
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, systemReadiness: null, people: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, systemReadiness: null, capabilities: null, people: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null };
   const taskLabels = {
     QUEUED: 'กำลังจัดการบน AWH', WAITING_FOR_WORKER: 'กำลังจัดเส้นทางงาน', PREPARING: 'กำลังเตรียมงาน', RUNNING: 'กำลังทำงาน',
     QA: 'กำลังตรวจคุณภาพ', WAITING_FOR_APPROVAL: 'ต้องอนุมัติ', COMPLETED: 'เสร็จแล้ว',
@@ -109,6 +109,26 @@ import {
     if ($('provider-project-routing')) $('provider-project-routing').value = state.providerRouting?.routingMode || 'AUTO';
     const usage = $('provider-usage'); if (usage) { usage.replaceChildren(); const rows = Array.isArray(provider.usageByProject) ? provider.usageByProject : []; for (const row of rows) { const item = document.createElement('li'); item.textContent = `${row.projectName || 'Project'} · ${baht(row.estimatedMicrounits || 0)}`; usage.append(item); } if (!usage.childElementCount) usage.textContent = 'ยังไม่มีการใช้งานที่คิดค่าใช้จ่าย'; }
   }
+  function renderCapabilitySurface() {
+    const data = state.capabilities; if (!data) return;
+    const host = $('settings-panel-ai'); if (!host) return;
+    let section = $('capability-overview');
+    if (!section) {
+      section = document.createElement('section'); section.id = 'capability-overview'; section.className = 'account-form';
+      section.innerHTML = '<h3>AWH ทำอะไรได้บ้าง</h3><p id="capability-summary" class="muted"></p><div id="capability-list" class="session-list"></div>';
+      host.append(section);
+    }
+    const summary = data.summary || {}; message('capability-summary', `พร้อมจากระบบกลาง ${summary.cloudReady || 0} · อุปกรณ์เสริม ${summary.optional || 0} · กำลังพัฒนา ${summary.planned || 0}`);
+    const list = $('capability-list'); list.replaceChildren();
+    for (const capability of data.capabilities || []) {
+      const item = document.createElement('div'); item.className = 'session-item';
+      const name = document.createElement('strong'); name.textContent = capability.displayName || 'ความสามารถ AWH';
+      const stateLabel = capability.state === 'READY' ? (capability.cloudReady ? 'พร้อมใช้จาก AWH Cloud' : 'พร้อมใช้งาน') : capability.state === 'OPTIONAL' ? 'ใช้ได้เมื่อมีอุปกรณ์เสริม' : capability.state === 'PLANNED' ? 'กำลังพัฒนา' : 'ยังไม่พร้อม';
+      const detail = document.createElement('span'); detail.textContent = `${stateLabel} · ${capability.description || ''}`; item.append(name, detail); list.append(item);
+    }
+    if (!list.childElementCount) list.textContent = 'Capability Fabric ยังไม่เปิดใช้งานบนระบบนี้';
+  }
+
   function renderPeople() {
     const select = $('invite-project'); if (!select) return; select.replaceChildren();
     const projects = state.control?.projects || [];
@@ -187,13 +207,13 @@ import {
     const existing = $('provider-credential-form'); if (existing) return existing;
     const policy = $('provider-policy-form'); if (!policy) throw new Error('AWH provider settings surface is unavailable');
     const models = document.createElement('details'); models.className = 'technical-entry provider-advanced';
-    models.innerHTML = '<summary>โมเดล การกำหนดโปรเจกต์ และค่าใช้จ่ายขั้นสูง</summary><div class="advanced-ai-fields"><label for="provider-model-fast">โมเดลเร็ว</label><input id="provider-model-fast" maxlength="120" autocomplete="off" /><label for="provider-model-balanced">โมเดลสมดุล</label><input id="provider-model-balanced" maxlength="120" autocomplete="off" /><label for="provider-model-strong">โมเดลละเอียด</label><input id="provider-model-strong" maxlength="120" autocomplete="off" /><ul id="provider-usage" class="session-list"></ul></div>';
+    models.innerHTML = '<summary>โมเดล การกำหนดโปรเจกต์ และค่าใช้จ่ายขั้นสูง</summary><div class="advanced-ai-fields"><label for="provider-model-fast">ประหยัด · Luna</label><input id="provider-model-fast" maxlength="120" autocomplete="off" /><label for="provider-model-balanced">สมดุล · Terra</label><input id="provider-model-balanced" maxlength="120" autocomplete="off" /><label for="provider-model-strong">งานสำคัญ · Sol</label><input id="provider-model-strong" maxlength="120" autocomplete="off" /><ul id="provider-usage" class="session-list"></ul></div>';
     const enabled = $('provider-enabled');
     const enabledRow = enabled?.closest('label');
     if (!enabledRow || enabledRow.parentElement !== policy) throw new Error('AWH provider settings surface is unavailable');
     policy.insertBefore(models, enabledRow);
     const section = document.createElement('section'); section.className = 'account-form'; section.id = 'provider-credential-settings';
-    section.innerHTML = '<h3>การเชื่อมต่อ AI</h3><p class="muted">API key จะถูกส่งครั้งเดียวผ่าน HTTPS และเก็บเฉพาะฝั่ง server; AWH จะไม่แสดงหรือส่งคืน key นี้</p><form id="provider-credential-form" class="compact-form"><label for="provider-api-key">OpenAI API key</label><input id="provider-api-key" type="password" maxlength="512" autocomplete="off" spellcheck="false" /><div class="form-actions"><button class="secondary-button" type="submit">บันทึกหรือแทนที่ key</button><button id="provider-credential-remove" class="text-button" type="button">ลบ key</button><button id="provider-connection-test" class="text-button" type="button">ทดสอบการเชื่อมต่อ</button></div></form><form id="provider-project-routing-form" class="compact-form"><label for="provider-project-routing">AI สำหรับโปรเจกต์ที่เลือก</label><select id="provider-project-routing"><option value="AUTO">Auto (ตามค่า AWH)</option><option value="FAST">เร็ว</option><option value="BALANCED">สมดุล</option><option value="STRONG">ละเอียด</option></select><button class="secondary-button" type="submit">บันทึกการเลือกของโปรเจกต์</button></form><p id="provider-credential-message" class="form-message" role="status"></p>';
+    section.innerHTML = '<h3>การเชื่อมต่อ AI</h3><p class="muted">API key จะถูกส่งครั้งเดียวผ่าน HTTPS และเก็บเฉพาะฝั่ง server; AWH จะไม่แสดงหรือส่งคืน key นี้</p><form id="provider-credential-form" class="compact-form"><label for="provider-api-key">OpenAI API key</label><input id="provider-api-key" type="password" maxlength="512" autocomplete="off" spellcheck="false" /><div class="form-actions"><button class="secondary-button" type="submit">บันทึกหรือแทนที่ key</button><button id="provider-credential-remove" class="text-button" type="button">ลบ key</button><button id="provider-connection-test" class="text-button" type="button">ทดสอบการเชื่อมต่อ</button></div></form><form id="provider-project-routing-form" class="compact-form"><label for="provider-project-routing">AI สำหรับโปรเจกต์ที่เลือก</label><select id="provider-project-routing"><option value="AUTO">Auto (ตามค่า AWH)</option><option value="FAST">ประหยัด · Luna</option><option value="BALANCED">สมดุล · Terra</option><option value="STRONG">งานสำคัญ · Sol</option></select><button class="secondary-button" type="submit">บันทึกการเลือกของโปรเจกต์</button></form><p id="provider-credential-message" class="form-message" role="status"></p>';
     // Credential setup is the only prerequisite for a first-time owner. Keep it
     // before routing and budget controls so it is reachable immediately on mobile.
     policy.before(section);
@@ -268,7 +288,8 @@ import {
       if (!list.childElementCount) list.textContent = 'ยังไม่มี Desktop ที่เข้าถึง source ของโปรเจกต์ได้';
     }
     const online = workers.filter((worker) => worker?.online || ['READY', 'WORKING', 'ONLINE'].includes(worker?.state)).length;
-    message('settings-worker-message', online > 0 ? `มีอุปกรณ์ทำงานพร้อมรับงาน ${online} เครื่อง` : 'เปิด AWH Desktop บนอุปกรณ์ที่ผูกกับโปรเจกต์เพื่อรับงานที่ต้องใช้เครื่องมือท้องถิ่น');
+    message('settings-worker-message', online > 0 ? `มีอุปกรณ์เสริมพร้อมรับงาน ${online} เครื่อง · งาน Cloud ทำต่อได้โดยไม่ต้องเปิดเครื่อง` : 'งาน Cloud ทำต่อได้ตามปกติ · เปิด AWH Desktop เฉพาะงานที่ต้องใช้ไฟล์หรือแอปบนเครื่อง');
+    renderCapabilitySurface();
     void loadDesktopRelease();
     const readiness = state.systemReadiness;
     if (readiness) {
@@ -553,10 +574,11 @@ import {
     catch { message('product-settings-message', 'ยังโหลดการตั้งค่าลักษณะของ AWH ไม่ได้'); }
     if (isOwner()) {
       ensureOwnerSelfServiceSurface(); ensureProviderSelfServiceSurface();
-      const project = selectedProject(); const requests = [loadProviderStatus(), listPeople(), loadAuthProfile(), loadOwnerSelfServiceStatus(), project ? loadProviderProjectRouting(project.projectId) : Promise.resolve(null)];
-      const [providerResult, peopleResult, profileResult, ownerStatusResult, routingResult] = await Promise.allSettled(requests);
+      const project = selectedProject(); const requests = [loadProviderStatus(), loadCapabilities(), listPeople(), loadAuthProfile(), loadOwnerSelfServiceStatus(), project ? loadProviderProjectRouting(project.projectId) : Promise.resolve(null)];
+      const [providerResult, capabilitiesResult, peopleResult, profileResult, ownerStatusResult, routingResult] = await Promise.allSettled(requests);
       if (providerResult.status === 'fulfilled') { state.provider = providerResult.value.provider; renderProvider(); }
       else message('provider-status', 'ยังโหลดสถานะ AI ไม่ได้ ลองรีเฟรชอีกครั้ง');
+      if (capabilitiesResult.status === 'fulfilled') { state.capabilities = capabilitiesResult.value; renderCapabilitySurface(); }
       if (peopleResult.status === 'fulfilled') { state.people = Array.isArray(peopleResult.value.people) ? peopleResult.value.people : []; renderPeople(); }
       else message('people-message', 'ยังโหลดผู้ร่วมงานไม่ได้ ลองรีเฟรชอีกครั้ง');
       if (profileResult.status === 'fulfilled') state.profile = profileResult.value;
@@ -690,7 +712,7 @@ import {
   $('provider-policy-form').addEventListener('submit', async (event) => {
     event.preventDefault(); if (!isOwner()) return; message('provider-message', 'กำลังบันทึกงบ AI…');
     try {
-      const models = state.provider?.models || { fast: 'gpt-5.4-mini', balanced: 'gpt-5.4', strong: 'gpt-5.4' };
+      const models = state.provider?.models || { fast: 'gpt-5.6-luna', balanced: 'gpt-5.6-terra', strong: 'gpt-5.6-sol' };
       const result = await updateProviderPolicy({ enabled: $('provider-enabled').checked, modelFast: $('provider-model-fast')?.value.trim() || models.fast, modelBalanced: $('provider-model-balanced')?.value.trim() || models.balanced, modelStrong: $('provider-model-strong')?.value.trim() || models.strong, monthlyBudgetMicrounits: micros('provider-budget'), warningMicrounits: micros('provider-warning'), inputMicrounitsPerMillion: micros('provider-input-rate'), outputMicrounitsPerMillion: micros('provider-output-rate') });
       state.provider = result.provider; renderProvider(); renderSettingsOverview(); message('provider-message', 'บันทึกงบ AI แล้ว');
     } catch (error) { message('provider-message', error instanceof Error ? error.message : 'ยังบันทึกงบ AI ไม่ได้'); }
