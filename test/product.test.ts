@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { PRODUCT, normalizeUpdateChannel } from '../src/product.js';
+import { compareReleaseVersions, DesktopUpdatePolicyError, updateManifestPath, validateDesktopUpdateManifest } from '../src/desktop-update-policy.js';
 import { compatibilityEnv, DEFAULT_AWH_HUB_API_BASE, loadConfig } from '../src/config.js';
 import { saveStoredSettings } from '../src/settings.js';
 
@@ -35,6 +36,31 @@ test('desktop packager keeps one OS identity for future in-place updates', () =>
   assert.match(forge, /appBundleId: DESKTOP_BUNDLE_ID/);
   assert.match(forge, /name: WINDOWS_PACKAGE_ID/);
   assert.doesNotMatch(forge, /AWHPreview|AWHStable|com\.artworkspacehub\.preview/);
+});
+
+test('desktop update manifest is identity-bound, hash-bound and upgrade-only', () => {
+  const manifest = {
+    schemaVersion: 1,
+    productId: 'awh',
+    desktopBundleId: 'com.artworkspacehub.awh',
+    windowsPackageId: 'AWH',
+    channel: 'stable',
+    version: '1.1.0',
+    sha256: 'a'.repeat(64),
+    bytes: 42_000_000,
+    publishedAt: '2026-08-26T12:00:00Z',
+    downloadPath: '/desktop-updates/v1/stable/win32/x64/AWHSetup.exe',
+    minHubApiMajor: 1,
+  };
+  assert.equal(validateDesktopUpdateManifest(manifest, '1.0.0', 'stable').version, '1.1.0');
+  assert.equal(compareReleaseVersions('1.0.0', '1.0.0-rc.1'), 1);
+  assert.equal(updateManifestPath('preview', 'darwin', 'arm64'), '/desktop-updates/v1/preview/darwin/arm64/manifest.json');
+
+  assert.throws(() => validateDesktopUpdateManifest({ ...manifest, desktopBundleId: 'com.attacker.app' }, '1.0.0', 'stable'), (error) => error instanceof DesktopUpdatePolicyError && error.code === 'UPDATE_IDENTITY_MISMATCH');
+  assert.throws(() => validateDesktopUpdateManifest({ ...manifest, sha256: 'bad' }, '1.0.0', 'stable'), (error) => error instanceof DesktopUpdatePolicyError && error.code === 'UPDATE_CHECKSUM_INVALID');
+  assert.throws(() => validateDesktopUpdateManifest({ ...manifest, version: '0.9.0' }, '1.0.0', 'stable'), (error) => error instanceof DesktopUpdatePolicyError && error.code === 'UPDATE_NOT_NEWER');
+  assert.throws(() => validateDesktopUpdateManifest({ ...manifest, downloadPath: '/desktop-updates/v1/stable/../../evil.exe' }, '1.0.0', 'stable'), (error) => error instanceof DesktopUpdatePolicyError && error.code === 'UPDATE_PATH_INVALID');
+  assert.throws(() => validateDesktopUpdateManifest({ ...manifest, channel: 'preview' }, '1.0.0', 'stable'), (error) => error instanceof DesktopUpdatePolicyError && error.code === 'UPDATE_CHANNEL_MISMATCH');
 });
 
 test('AWH environment aliases take precedence over ART_AGENT compatibility values', () => {
