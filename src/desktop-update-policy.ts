@@ -31,12 +31,15 @@ export function parseVersion(value: string): readonly [number, number, number, s
 }
 
 export function compareVersions(left: string, right: string): number {
-  const a = parseVersion(left); const b = parseVersion(right);
-  for (let index = 0; index < 3; index += 1) if (a[index] !== b[index]) return a[index] < b[index] ? -1 : 1;
-  if (a[3] === b[3]) return 0;
-  if (a[3] === null) return 1;
-  if (b[3] === null) return -1;
-  return a[3].localeCompare(b[3]);
+  const [leftMajor, leftMinor, leftPatch, leftPre] = parseVersion(left);
+  const [rightMajor, rightMinor, rightPatch, rightPre] = parseVersion(right);
+  if (leftMajor !== rightMajor) return leftMajor < rightMajor ? -1 : 1;
+  if (leftMinor !== rightMinor) return leftMinor < rightMinor ? -1 : 1;
+  if (leftPatch !== rightPatch) return leftPatch < rightPatch ? -1 : 1;
+  if (leftPre === rightPre) return 0;
+  if (leftPre === null) return 1;
+  if (rightPre === null) return -1;
+  return leftPre.localeCompare(rightPre);
 }
 
 export function validateDesktopUpdateManifest(value: unknown): DesktopUpdateManifest {
@@ -58,6 +61,7 @@ export function updateIsApplicable(currentVersion: string, manifest: DesktopUpda
   if (manifest.channel !== channel) return false;
   if (compareVersions(currentVersion, manifest.version) >= 0) return false;
   if (compareVersions(currentVersion, manifest.minimumDesktopVersion) < 0) return false;
-  const current = parseVersion(currentVersion); const next = parseVersion(manifest.version);
-  return current[0] === next[0];
+  const [currentMajor] = parseVersion(currentVersion);
+  const [nextMajor] = parseVersion(manifest.version);
+  return currentMajor === nextMajor;
 }
