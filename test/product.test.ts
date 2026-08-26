@@ -32,9 +32,8 @@ test('AWH product identity is centralized and evergreen desktop identifiers are 
 test('desktop packager keeps one OS identity for future in-place updates', () => {
   const forge = readFileSync(join(process.cwd(), 'forge.config.cjs'), 'utf8');
   assert.match(forge, /DESKTOP_BUNDLE_ID = 'com\.artworkspacehub\.awh'/);
-  assert.match(forge, /WINDOWS_PACKAGE_ID = 'AWH'/);
   assert.match(forge, /appBundleId: DESKTOP_BUNDLE_ID/);
-  assert.match(forge, /name: WINDOWS_PACKAGE_ID/);
+  assert.match(forge, /name:\s*'AWH'/);
   assert.doesNotMatch(forge, /AWHPreview|AWHStable|com\.artworkspacehub\.preview/);
 });
 
