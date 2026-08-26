@@ -20,6 +20,7 @@ const tests = [
   'hub/tests/m11-self-service.php',
   'hub/tests/m12-central-project-authority.php',
   'hub/tests/m13-anywhere-execution.php',
+  'hub/tests/m17-database-studio.php',
 ];
 
 const php = await resolveExecutable('php');

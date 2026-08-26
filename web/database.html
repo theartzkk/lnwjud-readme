@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0d10" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'" />
+  <title>AWH Database Studio</title>
+  <link rel="stylesheet" href="./database.css?release=__AWH_WEB_RELEASE_ID__" />
+</head>
+<body>
+  <div class="studio-shell">
+    <header class="studio-header">
+      <a class="brand" href="./"><span class="brand-mark">A</span><span><strong>AWH Database Studio</strong><small>Owner · SQLite Control Plane</small></span></a>
+      <div class="header-actions"><span id="connection-state" class="pill">กำลังตรวจสอบ</span><a class="back-link" href="./">กลับ AWH</a></div>
+    </header>
+
+    <main>
+      <section id="access-gate" class="gate-card">
+        <p class="eyebrow">DATABASE</p><h1>ศูนย์จัดการฐานข้อมูล AWH</h1>
+        <p id="gate-message">กำลังตรวจสอบสิทธิ์ Owner และฐานข้อมูลจริง…</p>
+        <a class="primary-link" href="./">เข้าสู่ AWH</a>
+      </section>
+
+      <section id="studio" hidden>
+        <div class="hero-row">
+          <div><p class="eyebrow">DATABASE</p><h1>ฐานข้อมูล AWH</h1><p class="subtle">ดูโครงสร้าง ตรวจสุขภาพ ค้นข้อมูล และรัน SELECT โดยไม่เปิดสิทธิ์แก้ฐานข้อมูล</p></div>
+          <button id="refresh-all" class="secondary-button" type="button">รีเฟรช</button>
+        </div>
+
+        <section id="overview-cards" class="metric-grid" aria-label="ภาพรวมฐานข้อมูล"></section>
+        <div id="health-banner" class="health-banner" aria-live="polite"></div>
+
+        <nav class="tabs" aria-label="Database Studio">
+          <button class="tab active" type="button" data-tab="tables">ตาราง</button>
+          <button class="tab" type="button" data-tab="sql">SQL อ่านอย่างเดียว</button>
+          <button class="tab" type="button" data-tab="health">สุขภาพ</button>
+          <button class="tab" type="button" data-tab="migrations">Migration</button>
+          <button class="tab" type="button" data-tab="audit">Audit</button>
+        </nav>
+
+        <section id="tab-tables" class="tab-panel">
+          <div class="database-layout">
+            <aside class="table-sidebar">
+              <label for="table-filter">ค้นหาตาราง</label>
+              <input id="table-filter" type="search" autocomplete="off" placeholder="เช่น control_tasks" />
+              <div id="table-list" class="table-list"></div>
+            </aside>
+            <section class="browser-card">
+              <div class="browser-heading">
+                <div><p class="eyebrow">TABLE</p><h2 id="table-title">เลือกตาราง</h2><p id="table-meta" class="subtle"></p></div>
+                <div id="export-actions" class="button-row" hidden><button id="export-csv" class="secondary-button" type="button">CSV</button><button id="export-json" class="secondary-button" type="button">JSON</button></div>
+              </div>
+              <div id="locked-table" class="locked-card" hidden><strong>🔒 ตารางถูกล็อก</strong><p>มีข้อมูลยืนยันตัวตน credential หรือ bearer material จึงไม่อนุญาตให้ Browse/Export จาก Database Studio</p></div>
+              <div id="table-browser" hidden>
+                <form id="browse-form" class="browse-tools">
+                  <input id="browse-search" type="search" placeholder="ค้นหาในตาราง…" />
+                  <select id="browse-sort" aria-label="เรียงตามคอลัมน์"></select>
+                  <select id="browse-direction" aria-label="ทิศทาง"><option value="ASC">น้อย → มาก</option><option value="DESC">มาก → น้อย</option></select>
+                  <button class="secondary-button" type="submit">ค้นหา</button>
+                </form>
+                <div id="browse-grid" class="data-grid-wrap"></div>
+                <div class="pager"><button id="page-prev" type="button">ก่อนหน้า</button><span id="page-label"></span><button id="page-next" type="button">ถัดไป</button></div>
+                <details class="structure-panel" open><summary>โครงสร้าง / Index / Foreign Key</summary><div id="schema-view"></div></details>
+              </div>
+              <div id="table-empty" class="empty-state"><span>▦</span><p>เลือกตารางด้านซ้ายเพื่อดูข้อมูลและโครงสร้าง</p></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="tab-sql" class="tab-panel" hidden>
+          <div class="panel-card">
+            <div class="panel-heading"><div><p class="eyebrow">ADVANCED · READ ONLY</p><h2>SQL Console</h2></div><span class="safety-badge">query_only ON</span></div>
+            <p class="notice">อนุญาตเฉพาะ <code>SELECT</code> และ <code>EXPLAIN QUERY PLAN</code> เท่านั้น คำสั่ง INSERT / UPDATE / DELETE / DROP / PRAGMA ถูกบล็อกทั้งระดับ policy และ SQLite</p>
+            <textarea id="sql-input" rows="8" spellcheck="false" placeholder="SELECT task_id, state, updated_at FROM control_tasks ORDER BY updated_at DESC LIMIT 20"></textarea>
+            <div class="button-row"><button id="sql-run" class="primary-button" type="button">รัน SELECT</button><button id="sql-explain" class="secondary-button" type="button">Query Plan</button></div>
+            <p id="sql-status" class="form-status"></p><div id="sql-result" class="data-grid-wrap"></div>
+          </div>
+        </section>
+
+        <section id="tab-health" class="tab-panel" hidden><div class="panel-card"><div class="panel-heading"><div><p class="eyebrow">HEALTH</p><h2>ตรวจสุขภาพฐานข้อมูล</h2></div><button id="health-refresh" class="secondary-button" type="button">ตรวจใหม่</button></div><div id="health-view"></div></div></section>
+        <section id="tab-migrations" class="tab-panel" hidden><div class="panel-card"><div class="panel-heading"><div><p class="eyebrow">SOURCE OF TRUTH</p><h2>Migration Center</h2></div><button id="migration-refresh" class="secondary-button" type="button">รีเฟรช</button></div><div id="migration-view"></div></div></section>
+        <section id="tab-audit" class="tab-panel" hidden><div class="panel-card"><div class="panel-heading"><div><p class="eyebrow">AUDIT</p><h2>ประวัติการทำงาน</h2></div><button id="audit-refresh" class="secondary-button" type="button">รีเฟรช</button></div><div id="audit-view"></div></div></section>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="./database.js?release=__AWH_WEB_RELEASE_ID__"></script>
+</body>
+</html>
