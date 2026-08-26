@@ -541,7 +541,7 @@ import {
     catch (error) { message('goal-message', error instanceof Error ? error.message : 'AWH ไม่สามารถรีเฟรชข้อมูลได้'); }
   }
 
-  const settingsSections = ['start', 'ai', 'account', 'devices', 'data', 'people'];
+  const settingsSections = ['start', 'ai', 'account', 'devices', 'data', 'system', 'people'];
   function showSettingsSection(section = 'start') {
     const selected = settingsSections.includes(section) ? section : 'start';
     for (const name of settingsSections) {
@@ -554,11 +554,11 @@ import {
   }
   function configureSettingsVisibility() {
     const owner = isOwner();
-    for (const section of ['ai', 'devices', 'data', 'people']) {
+    for (const section of ['ai', 'devices', 'data', 'system', 'people']) {
       const button = document.querySelector(`.settings-tab[data-settings-tab="${section}"]`);
       if (button) button.hidden = !owner;
     }
-    const people = document.querySelector('.owner-settings-tab'); if (people) people.hidden = !owner;
+    document.querySelectorAll('.owner-settings-tab, .owner-settings-action').forEach((element) => { element.hidden = !owner; });
     if (!owner && !['start', 'account'].includes(document.querySelector('.settings-tab.active')?.dataset.settingsTab || '')) showSettingsSection('account');
   }
   function openSheet(id) { show(id); }
@@ -674,6 +674,7 @@ import {
     finally { button.disabled = false; }
   });
   document.querySelectorAll('[data-settings-tab]').forEach((button) => button.addEventListener('click', () => showSettingsSection(button.dataset.settingsTab)));
+  $('system-check-inline')?.addEventListener('click', () => $('system-check')?.click());
   $('recovery-open').addEventListener('click', openPasswordRecovery);
   document.querySelectorAll('[data-close-sheet]').forEach((button) => button.addEventListener('click', () => closeSheet(button.dataset.closeSheet)));
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape') document.querySelectorAll('.sheet:not([hidden])').forEach((sheet) => { sheet.hidden = true; }); });
