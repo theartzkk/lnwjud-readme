@@ -32,6 +32,8 @@ jobs:
         run: npm run test:windows
       - if: runner.os != 'Windows'
         run: npm test
+      - if: runner.os != 'Windows'
+        run: npm run hub:test
       - run: npm run build
 
   desktop-runtime-linux:
