@@ -43,6 +43,7 @@ test('M17 Database Studio is wired into the production deployment surface', asyn
   ]);
   for (const asset of ['dist-web/database.html', 'dist-web/database.css', 'dist-web/database.js']) assert.match(deploy, new RegExp(asset.replace('.', '\\.')));
   for (const backend of ['hub/public/database-studio.php', 'hub/src/HubDatabaseStudioService.php', 'hub/src/HubDatabaseStudioRouter.php']) assert.ok(deploy.includes(backend), `deployment bundle missing ${backend}`);
+  assert.ok(deploy.includes('hub/migrations/001_m3e_enrollment.sql'), 'Migration Center must ship the full migration catalog');
   assert.match(nginx, /location = \/database-studio\.php \{/);
   assert.match(nginx, /Hub session|Owner-only Database Studio/);
   assert.match(nginx, /HTTP_COOKIE \$http_cookie/);
