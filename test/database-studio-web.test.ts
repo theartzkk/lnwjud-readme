@@ -48,6 +48,10 @@ test('M17 Database Studio is wired into the production deployment surface', asyn
   assert.match(nginx, /Hub session|Owner-only Database Studio/);
   assert.match(nginx, /HTTP_COOKIE \$http_cookie/);
   assert.match(nginx, /HTTP_X_AWH_CSRF \$http_x_awh_csrf/);
+  assert.match(nginx, /AWH_HUB_BACKUP_ROOT \/var\/backups\/awh-hub/);
+  assert.match(remote, /install -d -o root -g awh-hub -m 0750 \/var\/backups\/awh-hub/);
+  assert.match(remote, /chown root:root \"\$BACKUP\"/);
+  assert.match(remote, /chmod 0600 \"\$BACKUP\"/);
   assert.match(remote, /database_html_code=.*database\.html/);
   assert.match(remote, /database_api_code=.*database-studio\.php\?action=overview/);
   assert.match(remote, /test "\$database_api_code" = 401/);
