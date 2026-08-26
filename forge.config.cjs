@@ -2,6 +2,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+const DESKTOP_BUNDLE_ID = 'com.artworkspacehub.awh';
+const WINDOWS_PACKAGE_ID = 'AWH';
+
 function requestedOption(name) {
   const equals = process.argv.find((value) => value.startsWith(`--${name}=`));
   if (equals) return equals.slice(name.length + 3);
@@ -65,8 +68,10 @@ const icon = targetPlatform === 'darwin' ? macIcon : windowsIcon;
 
 module.exports = {
   packagerConfig: {
-    name: 'AWH',
+    name: WINDOWS_PACKAGE_ID,
     executableName: 'AWH',
+    appBundleId: DESKTOP_BUNDLE_ID,
+    appCategoryType: 'public.app-category.productivity',
     icon,
     ...(electronZipDir ? { electronZipDir } : {}),
     asar: true,
@@ -86,10 +91,10 @@ module.exports = {
     {
       name: '@electron-forge/maker-squirrel',
       config: {
-        name: 'AWH',
+        name: WINDOWS_PACKAGE_ID,
         title: 'Art’s Workspace Hub',
         authors: 'Art’s Workspace Hub',
-        description: 'Art’s Workspace Hub — a safe-by-default local workspace for projects, memory and approved automation.',
+        description: 'Art’s Workspace Hub — an anywhere-first cloud workspace with optional Desktop capabilities.',
         exe: 'AWH.exe',
         setupExe: 'AWHSetup.exe',
         setupIcon: windowsIcon,
