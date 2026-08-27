@@ -35,3 +35,16 @@ test('worker client rejects unsafe API bases and malformed claim responses', asy
   const client = new ControlPlaneWorkerClient('https://hub.example/api/v1', root, credentials, async () => new Response(JSON.stringify({ schemaVersion: 1, task: { taskId: 'bad' } }), { status: 200 }));
   await assert.rejects(() => client.claim(), /response is invalid/i);
 });
+
+test('worker conversation client accepts current Hub schema 3 and rejects unknown schemas', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awh-worker-conversation-'));
+  const credentials = new MemoryCredentials(); credentials.values.set(DEVICE_TOKEN_CREDENTIAL_KEY, 'fixture-token');
+  const projectId = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
+  const current = { schemaVersion: 3, conversation: null, messages: [], tasks: [], artifacts: [], approvals: [] };
+  const client = new ControlPlaneWorkerClient('https://hub.example/api/v1', root, credentials, async () => new Response(JSON.stringify(current), { status: 200 }));
+  assert.equal((await client.readConversation(projectId)).conversation, null);
+  assert.equal((await client.submitConversation(projectId, 'ทดสอบ schema ปัจจุบัน', 'schema-v3-test')).tasks.length, 0);
+
+  const future = new ControlPlaneWorkerClient('https://hub.example/api/v1', root, credentials, async () => new Response(JSON.stringify({ ...current, schemaVersion: 4 }), { status: 200 }));
+  await assert.rejects(() => future.readConversation(projectId), /response is invalid/i);
+});
