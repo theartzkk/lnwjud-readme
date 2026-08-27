@@ -1,0 +1,39 @@
+.awh-owner-center-launch {
+  margin-left: auto;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 999px;
+  padding: .65rem .95rem;
+  background: rgba(255,255,255,.06);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.awh-owner-center-launch:hover { background: rgba(255,255,255,.1); }
+.awh-owner-command-center { position: fixed; inset: 0; z-index: 80; display: grid; place-items: stretch; }
+.awh-owner-command-center[hidden] { display: none; }
+.awh-owner-command-backdrop { position: absolute; inset: 0; border: 0; background: rgba(3,5,8,.72); backdrop-filter: blur(10px); }
+.awh-owner-command-card { position: relative; margin-left: auto; width: min(760px, 100%); height: 100%; overflow: auto; padding: max(1.25rem, env(safe-area-inset-top)) 1.25rem max(1.5rem, env(safe-area-inset-bottom)); background: #11151b; box-shadow: -24px 0 80px rgba(0,0,0,.36); }
+.awh-owner-command-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.awh-owner-command-head span { display: block; margin-bottom: .35rem; color: var(--accent, #ff7a1a); font-size: .76rem; font-weight: 700; letter-spacing: .08em; }
+.awh-owner-command-head h2 { margin: 0; font-size: clamp(1.6rem, 4vw, 2.25rem); }
+.awh-owner-command-head p { margin: .45rem 0 0; color: rgba(255,255,255,.62); }
+.awh-owner-command-summary { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: .7rem; margin: 1rem 0 1.35rem; }
+.awh-owner-command-summary span { padding: .75rem .9rem; border: 1px solid rgba(255,255,255,.1); border-radius: 14px; background: rgba(255,255,255,.04); color: rgba(255,255,255,.76); font-size: .88rem; }
+.awh-owner-command-group + .awh-owner-command-group { margin-top: 1.35rem; }
+.awh-owner-command-group h3 { margin: 0 0 .65rem; font-size: .9rem; color: rgba(255,255,255,.58); }
+.awh-owner-command-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: .7rem; }
+.awh-owner-command-item { position: relative; display: grid; grid-template-columns: 42px 1fr auto; gap: .8rem; align-items: center; min-height: 84px; padding: .9rem; border: 1px solid rgba(255,255,255,.1); border-radius: 16px; background: rgba(255,255,255,.035); color: inherit; text-align: left; cursor: pointer; }
+.awh-owner-command-item:hover:not(:disabled) { border-color: rgba(255,122,26,.45); background: rgba(255,122,26,.07); }
+.awh-owner-command-item:disabled { cursor: default; opacity: .58; }
+.awh-owner-command-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; background: rgba(255,255,255,.07); font-weight: 700; }
+.awh-owner-command-copy { min-width: 0; }
+.awh-owner-command-copy strong { display: block; font-size: .96rem; }
+.awh-owner-command-copy small { display: block; margin-top: .25rem; color: rgba(255,255,255,.58); line-height: 1.35; }
+.awh-owner-command-badge { align-self: start; padding: .22rem .45rem; border-radius: 999px; background: rgba(255,255,255,.08); color: rgba(255,255,255,.62); font-size: .68rem; white-space: nowrap; }
+@media (max-width: 620px) {
+  .awh-owner-center-launch { width: 100%; margin: .75rem 0 0; }
+  .awh-owner-command-card { width: 100%; padding-inline: 1rem; }
+  .awh-owner-command-head { align-items: center; }
+  .awh-owner-command-summary, .awh-owner-command-grid { grid-template-columns: 1fr; }
+  .awh-owner-command-item { min-height: 76px; }
+}
