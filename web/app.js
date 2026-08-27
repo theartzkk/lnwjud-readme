@@ -39,6 +39,24 @@ import {
     form.append(title, copy, label, password, submit, result); before.before(form); return form;
   }
   function selectedProject() { return state.control?.projects?.find((project) => project.projectId === state.selectedProjectId) || null; }
+  function preferredProjectId(projects) {
+    const available = new Set(projects.map((project) => project.projectId));
+    const recentTask = [...(Array.isArray(state.control?.tasks) ? state.control.tasks : [])]
+      .filter((task) => available.has(task.projectId))
+      .sort((a, b) => (Date.parse(b.updatedAt || b.createdAt || '') || 0) - (Date.parse(a.updatedAt || a.createdAt || '') || 0))[0];
+    return recentTask?.projectId || projects[0]?.projectId || null;
+  }
+  function publishWorkContext() {
+    const project = selectedProject();
+    const conversation = state.conversations.find((item) => item.conversationId === state.selectedConversationId) || state.conversation?.conversation || null;
+    window.dispatchEvent(new CustomEvent('awh:work-context', { detail: {
+      schemaVersion: 1,
+      project: project ? { projectId: project.projectId, name: project.name, memoryReady: project.memoryReady === true } : null,
+      conversation: conversation ? { conversationId: conversation.conversationId, title: conversation.title || 'Work', updatedAt: conversation.updatedAt || null } : null,
+      conversationCount: state.conversations.length,
+      workspace: state.workspaceContinuity,
+    } }));
+  }
   function stateText(task) {
     const providerState = ({
       PROVIDER_UNAVAILABLE: 'AI ยังตอบไม่ได้ในขณะนี้ · งานยังถูกเก็บไว้',
@@ -488,7 +506,7 @@ import {
     const control = state.control;
     if (!control?.authenticated) return;
     const projects = Array.isArray(control.projects) ? control.projects : [];
-    if (!projects.some((project) => project.projectId === state.selectedProjectId)) state.selectedProjectId = projects[0]?.projectId || null;
+    if (!projects.some((project) => project.projectId === state.selectedProjectId)) state.selectedProjectId = preferredProjectId(projects);
     const project = selectedProject();
     message('selected-project-name', project?.name || 'ยังไม่มีโปรเจกต์');
     message('selected-conversation-name', state.conversation?.conversation?.title || 'Work');
@@ -504,6 +522,7 @@ import {
     renderProjectSheet(projects);
     renderConversationSheet();
     renderThread(state.conversation, state.conversation?.approvals || control.approvals);
+    publishWorkContext();
   }
 
   function render(data) {
@@ -607,6 +626,22 @@ import {
       state.control = await loadControlData(); render({ product: { shortName: 'AWH' }, control: state.control }); await refreshConversation();
       message('login-message', '');
     } catch (error) { message('login-message', error instanceof Error ? error.message : 'เข้าสู่ AWH ไม่สำเร็จ'); }
+  });
+
+  window.addEventListener('awh:navigate-work', async (event) => {
+    const detail = event instanceof CustomEvent && event.detail && typeof event.detail === 'object' ? event.detail : {};
+    const project = state.control?.projects?.find((item) => item.projectId === detail.projectId);
+    if (!project) return;
+    const projectChanged = state.selectedProjectId !== project.projectId;
+    if (projectChanged) {
+      state.selectedProjectId = project.projectId; state.selectedConversationId = null; state.conversations = []; state.conversation = null; state.conversationAvailable = false; state.workspaceContinuity = null;
+      renderWorkspace(); await refreshConversation();
+    }
+    if (typeof detail.conversationId === 'string' && state.conversations.some((item) => item.conversationId === detail.conversationId) && state.selectedConversationId !== detail.conversationId) {
+      state.selectedConversationId = detail.conversationId; await refreshConversation(false);
+    }
+    if (detail.openConversations === true) openSheet('conversation-sheet');
+    $('goal-input')?.focus();
   });
 
   $('attachment-open').addEventListener('click', () => { if (!$('attachment-input').disabled) $('attachment-input').click(); });

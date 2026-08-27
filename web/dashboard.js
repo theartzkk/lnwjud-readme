@@ -23,6 +23,7 @@ const state = {
   imageFile: null,
   imageUrl: null,
   refreshTimer: null,
+  workContext: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -69,6 +70,31 @@ function openWork(prompt = '', submit = false) {
     input.focus();
   }
   if (submit && prompt.trim() && $('goal-form')?.requestSubmit) $('goal-form').requestSubmit();
+}
+
+function navigateWork(projectId, conversationId = null, openConversations = false) {
+  openWork();
+  window.dispatchEvent(new CustomEvent('awh:navigate-work', { detail: { schemaVersion: 1, projectId, conversationId, openConversations } }));
+}
+
+function executionPlace(task) {
+  const kind = task?.execution?.executorKind;
+  if (kind === 'VPS') return 'ระบบกลาง AWH';
+  if (kind === 'CODEX') return 'ผู้เชี่ยวชาญโค้ด';
+  if (kind === 'DEVICE') {
+    const worker = (Array.isArray(state.control?.workers) ? state.control.workers : []).find((item) => item.deviceId === task?.assignedDevice);
+    return safeText(worker?.displayName, 'อุปกรณ์ที่เหมาะกับงาน');
+  }
+  return '';
+}
+
+function workspaceSummary(workspace) {
+  const status = workspace?.syncStatus;
+  if (status === 'SYNCED') return 'บริบทงานถูกบันทึกไว้แล้ว พร้อมทำต่อจากอุปกรณ์อื่น';
+  if (status === 'HANDOFF_REQUIRED') return `มีงานเปิดอยู่บน ${safeText(workspace?.lease?.owner?.displayName, 'อีกอุปกรณ์หนึ่ง')} · AWH รักษาความต่อเนื่องไว้ให้`;
+  if (status === 'SOURCE_OFFLINE') return 'อุปกรณ์ต้นทางออฟไลน์ แต่สถานะที่บันทึกไว้ยังพร้อมให้ทำต่อ';
+  if (status === 'UNSYNCED_CHANGES') return 'มีงานจากอุปกรณ์ที่ยังต้องบันทึกสถานะให้สมบูรณ์ก่อนส่งต่อ';
+  return 'AWH จะจำ Project, Chat และสถานะงานให้เมื่อเริ่มทำงาน';
 }
 
 function returnHome() {
@@ -155,6 +181,11 @@ function mountDashboard() {
   });
   hero.append(commandForm);
 
+  const continuity = document.createElement('section');
+  continuity.id = 'dashboard-continuity';
+  continuity.className = 'awh-home-section awh-continuity';
+  continuity.innerHTML = '<div class="awh-section-heading"><div><span>ทำต่อจากเดิม</span><h2>กลับมาทำงานได้ทันที</h2></div><small id="dashboard-continuity-memory">AWH จำบริบทของงานให้</small></div><div class="awh-continuity-card"><div class="awh-continuity-copy"><span id="dashboard-continuity-project" class="awh-context-chip">Project</span><h3 id="dashboard-continuity-title">กำลังเตรียมงานล่าสุด…</h3><p id="dashboard-continuity-summary">AWH กำลังเชื่อมงานล่าสุดกับ Dashboard</p><div id="dashboard-continuity-meta" class="awh-context-meta"></div></div><div class="awh-continuity-actions"><button id="dashboard-continue-work" class="awh-command-send" type="button">ทำงานต่อ</button><button id="dashboard-open-chats" class="awh-secondary-action" type="button">Multi Chat</button></div></div>';
+
   const tools = document.createElement('section');
   tools.className = 'awh-home-section';
   const toolsHeading = document.createElement('div');
@@ -190,7 +221,7 @@ function mountDashboard() {
   ownerGrid.className = 'awh-owner-grid';
   const ownerActions = {
     projects: () => { openWork(); window.setTimeout(() => $('project-open')?.click(), 0); },
-    'multi-chat': () => { openWork(); window.setTimeout(() => $('conversation-open')?.click(), 0); },
+    'multi-chat': () => { const context = state.workContext; const projectId = context?.project?.projectId; if (projectId) navigateWork(projectId, context?.conversation?.conversationId || null, true); else { openWork(); window.setTimeout(() => $('conversation-open')?.click(), 0); } },
     memory: () => openAccountTab('data'),
     tasks: () => openWork(),
     devices: () => openAccountTab('devices'),
@@ -200,11 +231,13 @@ function mountDashboard() {
   owner.append(ownerGrid);
 
   const imageTool = createImageTool();
-  dashboard.append(hero, tools, overview, files, owner, imageTool);
+  dashboard.append(hero, continuity, tools, overview, files, owner, imageTool);
   mountSchoolTools(dashboard);
   main.append(dashboard);
 
   $('dashboard-open-work')?.addEventListener('click', () => openWork());
+  $('dashboard-continue-work')?.addEventListener('click', () => { const context = state.workContext; const projectId = context?.project?.projectId; if (projectId) navigateWork(projectId, context?.conversation?.conversationId || null); else openWork(); });
+  $('dashboard-open-chats')?.addEventListener('click', () => { const context = state.workContext; const projectId = context?.project?.projectId; if (projectId) navigateWork(projectId, context?.conversation?.conversationId || null, true); else { openWork(); window.setTimeout(() => $('conversation-open')?.click(), 0); } });
   installHomeButton();
   state.mounted = true;
 }
@@ -324,6 +357,47 @@ async function processImage() {
   }
 }
 
+function renderContinuity() {
+  const context = state.workContext;
+  const tasks = Array.isArray(state.control?.tasks) ? [...state.control.tasks].sort(compareRecent) : [];
+  const projects = Array.isArray(state.control?.projects) ? state.control.projects : [];
+  const fallbackTask = tasks[0] || null;
+  const fallbackProject = fallbackTask ? projects.find((item) => item.projectId === fallbackTask.projectId) : projects[0] || null;
+  const project = context?.project || fallbackProject;
+  const conversation = context?.conversation || null;
+  const workspace = context?.workspace || null;
+  const title = $('dashboard-continuity-title');
+  const projectNode = $('dashboard-continuity-project');
+  const summary = $('dashboard-continuity-summary');
+  const meta = $('dashboard-continuity-meta');
+  const memory = $('dashboard-continuity-memory');
+  const continueButton = $('dashboard-continue-work');
+  const chatsButton = $('dashboard-open-chats');
+  if (!title || !projectNode || !summary || !meta || !memory) return;
+  if (!project) {
+    projectNode.textContent = 'AWH';
+    title.textContent = 'พร้อมเริ่มงานแรก';
+    summary.textContent = 'บอกสิ่งที่ต้องการด้านบนได้เลย AWH จะสร้างความต่อเนื่องให้จากงานแรก';
+    meta.textContent = '';
+    memory.textContent = 'ยังไม่มี Project';
+    if (continueButton instanceof HTMLButtonElement) continueButton.disabled = false;
+    if (chatsButton instanceof HTMLButtonElement) chatsButton.disabled = true;
+    return;
+  }
+  projectNode.textContent = safeText(project.name, 'Project');
+  title.textContent = safeText(conversation?.title, safeText(fallbackTask?.goal, 'ทำงานต่อในโปรเจกต์นี้'));
+  summary.textContent = workspaceSummary(workspace);
+  const details = [];
+  if (conversation) details.push(`Multi Chat · ${Math.max(1, Number(context?.conversationCount) || 1)} ห้อง`);
+  if (conversation?.updatedAt) details.push(`อัปเดต ${formatDate(conversation.updatedAt)}`);
+  else if (fallbackTask?.updatedAt || fallbackTask?.createdAt) details.push(`อัปเดต ${formatDate(fallbackTask.updatedAt || fallbackTask.createdAt)}`);
+  if (workspace?.checkpoint?.createdAt) details.push(`บันทึกงาน ${formatDate(workspace.checkpoint.createdAt)}`);
+  meta.textContent = details.join(' · ');
+  memory.textContent = project.memoryReady === true ? 'Memory พร้อม · AWH จำบริบทของ Project นี้' : 'Project + Chat + สถานะงานเชื่อมต่อกัน';
+  if (continueButton instanceof HTMLButtonElement) continueButton.disabled = false;
+  if (chatsButton instanceof HTMLButtonElement) chatsButton.disabled = !context?.project?.projectId;
+}
+
 function renderRecentWork() {
   const host = $('dashboard-recent-work');
   if (!host) return;
@@ -333,10 +407,10 @@ function renderRecentWork() {
   const items = [];
   for (const task of tasks.slice(0, 4)) {
     const project = projects.find((entry) => entry.projectId === task.projectId);
-    items.push({ title: safeText(task.goal, 'งานใน AWH'), meta: `${safeText(project?.name, 'โปรเจกต์')} · ${STATUS_LABELS[task.state] || 'อัปเดตแล้ว'}`, date: formatDate(task.updatedAt || task.createdAt), action: () => openWork() });
+    items.push({ title: safeText(task.goal, 'งานใน AWH'), meta: [safeText(project?.name, 'โปรเจกต์'), STATUS_LABELS[task.state] || 'อัปเดตแล้ว', executionPlace(task)].filter(Boolean).join(' · '), date: formatDate(task.updatedAt || task.createdAt), action: () => navigateWork(task.projectId, task.conversationId || null) });
   }
   if (!items.length) {
-    for (const project of projects.slice(0, 4)) items.push({ title: safeText(project.name, 'โปรเจกต์'), meta: 'โปรเจกต์ของฉัน', date: '', action: () => { openWork(); window.setTimeout(() => $('project-open')?.click(), 0); } });
+    for (const project of projects.slice(0, 4)) items.push({ title: safeText(project.name, 'โปรเจกต์'), meta: project.memoryReady === true ? 'Memory พร้อม · โปรเจกต์ของฉัน' : 'โปรเจกต์ของฉัน', date: '', action: () => navigateWork(project.projectId) });
   }
   if (!items.length) {
     const empty = document.createElement('div');
@@ -370,7 +444,7 @@ function renderTaskStatus() {
       const dot = document.createElement('span'); dot.className = 'awh-status-dot';
       const text = document.createElement('span');
       const title = document.createElement('strong'); title.textContent = safeText(task.goal, 'งาน AWH');
-      const meta = document.createElement('small'); meta.textContent = STATUS_LABELS[task.state] || 'กำลังอัปเดต';
+      const meta = document.createElement('small'); meta.textContent = [STATUS_LABELS[task.state] || 'กำลังอัปเดต', executionPlace(task), Number.isFinite(task.progress) && task.progress > 0 ? `${task.progress}%` : ''].filter(Boolean).join(' · ');
       text.append(title, meta); row.append(dot, text); host.append(row);
     }
   }
@@ -414,6 +488,7 @@ async function refreshDashboard() {
   const control = await loadControlData();
   state.control = control;
   renderRole();
+  renderContinuity();
   renderRecentWork();
   renderTaskStatus();
   renderArtifacts();
@@ -442,6 +517,10 @@ async function syncSurface() {
 
 function start() {
   mountDashboard();
+  window.addEventListener('awh:work-context', (event) => {
+    if (!(event instanceof CustomEvent) || !event.detail || typeof event.detail !== 'object' || event.detail.schemaVersion !== 1) return;
+    state.workContext = event.detail; renderContinuity();
+  });
   const workspace = $('workspace-view');
   if (workspace) new MutationObserver(() => syncSurface().catch(() => undefined)).observe(workspace, { attributes: true, attributeFilter: ['hidden'] });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && document.body.classList.contains('product-dashboard-active')) refreshDashboard().catch(() => undefined); });
