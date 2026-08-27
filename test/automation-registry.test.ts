@@ -33,6 +33,8 @@ test('M15 automation registry is additive over M14 and stores definitions only',
   assert.match(service, /AUTOMATION_FREQUENCY_TOO_HIGH/);
   assert.match(service, /AUTOMATION_GOAL_SECRET/);
   assert.match(service, /AUTOMATION_CONDITION_EXECUTABLE_FORBIDDEN/);
+  assert.match(service, /if \(\$enabled\)[\s\S]*assertProjectAccess/);
+  assert.match(service, /CONTROL_CHARS/);
   assert.match(service, /UPDATE control_automations SET enabled=0,archived_at=/);
   assert.doesNotMatch(service, /INSERT\s+INTO\s+control_tasks|UPDATE\s+control_tasks|DELETE\s+FROM\s+control_tasks/i);
   assert.doesNotMatch(service, /(?:^|[^\w>])(?:shell_exec|proc_open|exec|system|passthru)\s*\(/im);
@@ -52,9 +54,12 @@ test('M15 scheduling validation mirrors the canonical data-only contract', async
     readFile(join(root, 'hub/src/HubAutomationRegistryService.php'), 'utf8'),
     readFile(join(root, 'src/automation-contract.ts'), 'utf8'),
   ]);
-  for (const token of ['BEGIN:VEVENT', 'END:VEVENT', 'RRULE:FREQ=', 'DTSTART', 'SECONDLY|MINUTELY', 'HOURLY|DAILY|WEEKLY|MONTHLY|YEARLY']) {
-    assert.match(service, new RegExp(token.replace(/[+]/g, '\\+')));
-  }
+  assert.match(service, /BEGIN:VEVENT/);
+  assert.match(service, /END:VEVENT/);
+  assert.match(service, /private const RRULE =/);
+  assert.match(service, /private const DTSTART =/);
+  assert.match(service, /FREQ=\(\?:SECONDLY\|MINUTELY\)/);
+  assert.match(service, /FREQ=\(\?:HOURLY\|DAILY\|WEEKLY\|MONTHLY\|YEARLY\)/);
   assert.match(service, /DEFINITION_INPUT_KEYS/);
   assert.match(service, /CONDITION_KEYS/);
   assert.match(service, /AUTOMATION_FIELDS_INVALID/);
