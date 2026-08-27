@@ -84,7 +84,7 @@ try {
         'projectId'=>$project,'name'=>'Worker availability','goal'=>'แจ้งเมื่อ worker ที่ต้องใช้พร้อม','timingMode'=>'condition_watch',
         'scheduleIcal'=>"BEGIN:VEVENT\nRRULE:FREQ=HOURLY\nEND:VEVENT",'conditionKey'=>'worker.ready','conditionDescription'=>'worker ที่เหมาะกับงานกลับมาออนไลน์','enabled'=>true,
     ], '2026-08-27T15:32:00+00:00');
-    m15_assert(($watch['conditionKey'] ?? null) === 'worker.ready' && ($watch['conversationId'] ?? 'not-null') === null, 'condition watch created');
+    m15_assert(($watch['conditionKey'] ?? null) === 'worker.ready' && array_key_exists('conversationId', $watch) && $watch['conversationId'] === null, 'condition watch created');
 
     $disabled = $registry->setEnabled($owner, $watch['automationId'], false, '2026-08-27T15:33:00+00:00');
     m15_assert(($disabled['enabled'] ?? true) === false, 'automation disabled');
