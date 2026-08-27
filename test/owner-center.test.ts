@@ -35,9 +35,9 @@ test('V1.3 dashboard guardrails reset Home after sign-out and reject animated GI
   const source = await readFile(join(ROOT, 'web', 'dashboard-guardrails.js'), 'utf8');
   assert.match(source, /delete document\.body\.dataset\.awhDashboardVisited/);
   assert.match(source, /workspace\?\.hidden === true/);
-  assert.match(source, /image\/png,image\/jpeg,image\/webp/);
-  assert.doesNotMatch(source, /image\/gif["']/);
+  assert.match(source, /input\.accept = 'image\/png,image\/jpeg,image\/webp'/);
   assert.match(source, /file\.type === 'image\/gif'/);
+  assert.match(source, /\/\\\.gif\$\/i\.test\(file\.name\)/);
   assert.match(source, /stopImmediatePropagation/);
   assert.match(source, /เหลือเพียงเฟรมแรก/);
   assert.match(source, /capture: true/);
