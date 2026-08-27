@@ -1,10 +1,13 @@
 (() => {
   const SHEET_ID = 'dashboard-owner-command-center';
   const LAUNCH_ID = 'dashboard-owner-center-open';
+  const PREVIEW_CLASS = 'awh-teacher-preview';
+  const PREVIEW_BAR_ID = 'awh-teacher-preview-bar';
   const $ = (id) => document.getElementById(id);
 
   const GROUPS = Object.freeze([
     { title: 'งานและความต่อเนื่อง', items: [
+      ['teacher-preview', '◉', 'ดูในมุมครู', 'Preview หน้าแรกแบบที่ครูเห็น โดยไม่เปลี่ยนสิทธิ์จริง', 'Preview'],
       ['projects', '◫', 'Projects', 'โปรเจกต์ บริบท และ Source of Truth'],
       ['multi-chat', '☰', 'Multi Chat', 'การสนทนาที่แยกตามโปรเจกต์'],
       ['tasks', '↻', 'Tasks & Executions', 'งานที่กำลังทำ ประวัติ และผลลัพธ์'],
@@ -45,8 +48,33 @@
     if (sheet) sheet.hidden = true;
   }
 
+  function exitTeacherPreview() {
+    document.body.classList.remove(PREVIEW_CLASS);
+    $(PREVIEW_BAR_ID)?.remove();
+  }
+
+  function enterTeacherPreview() {
+    closeCenter();
+    document.body.classList.add(PREVIEW_CLASS);
+    if (!$(PREVIEW_BAR_ID)) {
+      const bar = document.createElement('aside');
+      bar.id = PREVIEW_BAR_ID;
+      bar.className = 'awh-teacher-preview-bar';
+      bar.setAttribute('role', 'status');
+      const copy = document.createElement('span');
+      const title = document.createElement('strong'); title.textContent = 'กำลังดูมุมครู';
+      const detail = document.createElement('small'); detail.textContent = 'Preview หน้าแรกเท่านั้น · สิทธิ์ Owner ไม่เปลี่ยน';
+      copy.append(title, detail);
+      const back = document.createElement('button');
+      back.type = 'button'; back.className = 'awh-command-send'; back.textContent = 'กลับ Owner'; back.addEventListener('click', exitTeacherPreview);
+      bar.append(copy, back); document.body.append(bar);
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   function runAction(action) {
     if (action === 'automations') return;
+    if (action === 'teacher-preview') { enterTeacherPreview(); return; }
     closeCenter();
     if (action === 'projects') { $('project-open')?.click(); return; }
     if (action === 'multi-chat') { $('conversation-open')?.click(); return; }
@@ -86,6 +114,16 @@
     if (approvals) approvals.textContent = approvalBanner && !approvalBanner.hidden ? approvalBanner.textContent?.replace(/\s+/g, ' ').trim() || 'มีรายการรออนุมัติ' : 'ไม่มีรายการอนุมัติค้าง';
   }
 
+  function installPreviewReset() {
+    if (document.body.dataset.awhTeacherPreviewReset === '1') return;
+    const workspace = $('workspace-view');
+    if (!(workspace instanceof HTMLElement)) return;
+    document.body.dataset.awhTeacherPreviewReset = '1';
+    const resetIfSignedOut = () => { if (workspace.hidden) exitTeacherPreview(); };
+    new MutationObserver(resetIfSignedOut).observe(workspace, { attributes: true, attributeFilter: ['hidden'] });
+    resetIfSignedOut();
+  }
+
   function mount() {
     const owner = $('dashboard-owner-center');
     if (!(owner instanceof HTMLElement) || $(SHEET_ID)) return false;
@@ -120,13 +158,14 @@
       for (const item of group.items) grid.append(createItem(item));
       section.append(title, grid); body.append(section);
     }
-    card.append(head, summary, body); sheet.append(backdrop, card); document.body.append(sheet); refreshSummary();
+    card.append(head, summary, body); sheet.append(backdrop, card); document.body.append(sheet); refreshSummary(); installPreviewReset();
     return true;
   }
 
   function start() {
+    installPreviewReset();
     if (mount()) return;
-    const observer = new MutationObserver(() => { if (mount()) observer.disconnect(); });
+    const observer = new MutationObserver(() => { installPreviewReset(); if (mount()) observer.disconnect(); });
     observer.observe(document.documentElement, { childList: true, subtree: true });
   }
 
