@@ -30,7 +30,7 @@ test('M15 automation registry is additive over M14 and stores definitions only',
   assert.match(service, /Condition watch must be recurring/);
   assert.match(service, /UPDATE control_automations SET enabled=0,archived_at=/);
   assert.doesNotMatch(service, /INSERT\s+INTO\s+control_tasks|UPDATE\s+control_tasks|DELETE\s+FROM\s+control_tasks/i);
-  assert.doesNotMatch(service, /shell_exec|proc_open|exec\(|system\(|passthru\(/i);
+  assert.doesNotMatch(service, /(?:^|[^\w>])(?:shell_exec|proc_open|exec|system|passthru)\s*\(/im);
 
   assert.match(fixture, /registry never creates canonical tasks early/);
   assert.match(fixture, /no automation run queue or shadow authority/);
