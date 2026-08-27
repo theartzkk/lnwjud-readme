@@ -9,8 +9,10 @@ on:
 permissions:
   contents: read
 
+# Push and pull_request events for the same feature branch share one lane.
+# Opening/updating a PR therefore cancels the redundant feature-push run.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -92,7 +94,10 @@ jobs:
           console.log(`Electron runtime smoke passed: ${JSON.stringify(smoke)}`);
           NODE
 
+  # Desktop packaging is intentionally a release gate, not a per-commit feature gate.
+  # It still runs for every PR, canonical branch merge, main, and manual release check.
   desktop-installer-windows:
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/awh/api-independence' || github.ref == 'refs/heads/main' }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -210,6 +215,7 @@ jobs:
           retention-days: 14
 
   desktop-package-macos:
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/awh/api-independence' || github.ref == 'refs/heads/main' }}
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
