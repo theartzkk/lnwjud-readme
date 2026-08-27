@@ -28,8 +28,8 @@ async function main(): Promise<void> {
   const releaseId = process.env.AWH_WEB_RELEASE_ID ?? process.env.AWH_RELEASE_ID ?? 'local';
   if (!/^[A-Za-z0-9._-]{1,80}$/.test(releaseId)) throw new Error('AWH web release identity is invalid');
   const data = { schemaVersion: 1, generatedAt: generatedAt(), surface: { mode: webMode, label: 'AWH', status: webMode === 'CONTROL' ? 'Sign in to continue' : 'AWH release is not active' }, product: { name: PRODUCT.productName, shortName: PRODUCT.shortName, tagline: PRODUCT.tagline }, message: webMode === 'CONTROL' ? 'Sign in to access your projects and work.' : 'This AWH release is not configured for Control.' };
-  const [index, styles, app, dashboardCss, dashboardJs, toolRegistry, schoolTools, hubAdapter, controlAdapter, manifest, serviceWorker, databaseHtml, databaseCss, databaseJs, pdfLib, qrCode] = await Promise.all([
-    asset('index.html'), asset('styles.css'), asset('app.js'), asset('dashboard.css'), asset('dashboard.js'), asset('tool-registry.js'), asset('school-tools.js'), asset('hub-read-adapter.js'), asset('control-plane-adapter.js'), asset('manifest.webmanifest'), asset('sw.js'), asset('database.html'), asset('database.css'), asset('database.js'),
+  const [index, styles, app, dashboardCss, dashboardJs, executionUx, toolRegistry, schoolTools, hubAdapter, controlAdapter, manifest, serviceWorker, databaseHtml, databaseCss, databaseJs, pdfLib, qrCode] = await Promise.all([
+    asset('index.html'), asset('styles.css'), asset('app.js'), asset('dashboard.css'), asset('dashboard.js'), asset('execution-ux.js'), asset('tool-registry.js'), asset('school-tools.js'), asset('hub-read-adapter.js'), asset('control-plane-adapter.js'), asset('manifest.webmanifest'), asset('sw.js'), asset('database.html'), asset('database.css'), asset('database.js'),
     readFile(join(ROOT, 'node_modules', 'pdf-lib', 'dist', 'pdf-lib.min.js'), 'utf8'),
     readFile(join(ROOT, 'node_modules', 'qrcode-generator', 'qrcode.js'), 'utf8'),
   ]);
@@ -41,6 +41,7 @@ async function main(): Promise<void> {
     writeFile(join(OUTPUT, 'app.js'), renderReleaseAsset(app, releaseId), 'utf8'),
     writeFile(join(OUTPUT, 'dashboard.css'), dashboardCss, 'utf8'),
     writeFile(join(OUTPUT, 'dashboard.js'), renderReleaseAsset(dashboardJs, releaseId), 'utf8'),
+    writeFile(join(OUTPUT, 'execution-ux.js'), renderReleaseAsset(executionUx, releaseId), 'utf8'),
     writeFile(join(OUTPUT, 'tool-registry.js'), renderReleaseAsset(toolRegistry, releaseId), 'utf8'),
     writeFile(join(OUTPUT, 'school-tools.js'), renderReleaseAsset(schoolTools, releaseId), 'utf8'),
     writeFile(join(OUTPUT, 'vendor', 'pdf-lib.min.js'), pdfLib, 'utf8'),

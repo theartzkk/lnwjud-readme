@@ -1,22 +1,11 @@
 import { loadControlData } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 import { SCHOOL_TOOLS, OWNER_TOOLS } from './tool-registry.js?release=__AWH_WEB_RELEASE_ID__';
 import { LOCAL_TOOL_ACTIONS, mountSchoolTools } from './school-tools.js?release=__AWH_WEB_RELEASE_ID__';
+import { executionStatus } from './execution-ux.js?release=__AWH_WEB_RELEASE_ID__';
 
 const DASHBOARD_ID = 'product-dashboard';
 const IMAGE_MAX_BYTES = 30 * 1024 * 1024;
 const ACTIVE_STATES = new Set(['QUEUED', 'WAITING_FOR_WORKER', 'PREPARING', 'RUNNING', 'QA', 'WAITING_FOR_APPROVAL']);
-const STATUS_LABELS = {
-  QUEUED: 'กำลังจัดการ',
-  WAITING_FOR_WORKER: 'กำลังหาเครื่องที่เหมาะ',
-  PREPARING: 'กำลังเตรียม',
-  RUNNING: 'กำลังทำงาน',
-  QA: 'กำลังตรวจคุณภาพ',
-  WAITING_FOR_APPROVAL: 'รออนุมัติ',
-  COMPLETED: 'เสร็จแล้ว',
-  FAILED: 'ต้องตรวจสอบ',
-  CANCELLED: 'ยกเลิกแล้ว',
-};
-
 const state = {
   control: null,
   mounted: false,
@@ -75,17 +64,6 @@ function openWork(prompt = '', submit = false) {
 function navigateWork(projectId, conversationId = null, openConversations = false) {
   openWork();
   window.dispatchEvent(new CustomEvent('awh:navigate-work', { detail: { schemaVersion: 1, projectId, conversationId, openConversations } }));
-}
-
-function executionPlace(task) {
-  const kind = task?.execution?.executorKind;
-  if (kind === 'VPS') return 'ระบบกลาง AWH';
-  if (kind === 'CODEX') return 'ผู้เชี่ยวชาญโค้ด';
-  if (kind === 'DEVICE') {
-    const worker = (Array.isArray(state.control?.workers) ? state.control.workers : []).find((item) => item.deviceId === task?.assignedDevice);
-    return safeText(worker?.displayName, 'อุปกรณ์ที่เหมาะกับงาน');
-  }
-  return '';
 }
 
 function workspaceSummary(workspace) {
@@ -431,10 +409,23 @@ function renderRecentWork() {
   }
 }
 
+function renderMiniExecutionJourney(status) {
+  const journey = document.createElement('div');
+  journey.className = 'awh-execution-journey';
+  for (const step of status.journey) {
+    const item = document.createElement('span');
+    item.className = `awh-execution-step ${step.state}`;
+    item.textContent = step.label;
+    journey.append(item);
+  }
+  return journey;
+}
+
 function renderTaskStatus() {
   const host = $('dashboard-active-tasks');
   if (!host) return;
   host.replaceChildren();
+  const workers = Array.isArray(state.control?.workers) ? state.control.workers : [];
   const tasks = (Array.isArray(state.control?.tasks) ? state.control.tasks : []).filter((task) => ACTIVE_STATES.has(task.state)).sort(compareRecent).slice(0, 4);
   if (!tasks.length) {
     const ready = document.createElement('div'); ready.className = 'awh-ready-state'; ready.textContent = '✓ ไม่มีงานค้าง · พร้อมรับงานใหม่'; host.append(ready);
@@ -444,8 +435,10 @@ function renderTaskStatus() {
       const dot = document.createElement('span'); dot.className = 'awh-status-dot';
       const text = document.createElement('span');
       const title = document.createElement('strong'); title.textContent = safeText(task.goal, 'งาน AWH');
-      const meta = document.createElement('small'); meta.textContent = [STATUS_LABELS[task.state] || 'กำลังอัปเดต', executionPlace(task), Number.isFinite(task.progress) && task.progress > 0 ? `${task.progress}%` : ''].filter(Boolean).join(' · ');
-      text.append(title, meta); row.append(dot, text); host.append(row);
+      const status = executionStatus(task, workers);
+      const meta = document.createElement('small'); meta.textContent = [status.title, status.actor, Number.isFinite(status.progress) && status.progress > 0 ? `${status.progress}%` : ''].filter(Boolean).join(' · ');
+      const journey = renderMiniExecutionJourney(status);
+      text.append(title, meta, journey); row.append(dot, text); host.append(row);
     }
   }
   const approvals = (Array.isArray(state.control?.approvals) ? state.control.approvals : []).filter((item) => ['PENDING', 'WAITING'].includes(item.state || item.status));

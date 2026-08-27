@@ -49,10 +49,32 @@ test('provider failures remain truthful and preserve the task', () => {
   assert.equal(status.title, 'ต้องตรวจสอบ');
   assert.match(status.detail, /โควตา AI/);
   assert.match(status.detail, /งานยังถูกเก็บไว้/);
+  assert.equal(status.journey.some((step: { state: string }) => step.state === 'halted'), true);
+  assert.equal(status.journey.every((step: { state: string }) => step.state === 'done'), false);
 });
 
 test('execution UX module is presentation-only and has no network or storage authority', async () => {
   const source = await readFile(join(ROOT, 'web', 'execution-ux.js'), 'utf8');
   assert.doesNotMatch(source, /fetch\(|XMLHttpRequest|WebSocket|localStorage|sessionStorage|Authorization|Bearer/);
   assert.doesNotMatch(source, /api\/v1|controlRequest|submitWorkMessage|decideApproval/);
+});
+
+
+test('execution UX is mounted into Work, Dashboard, release build and deployment', async () => {
+  const [app, dashboard, build, sw, deploy, manifest] = await Promise.all([
+    readFile(join(ROOT, 'web', 'app.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'dashboard.js'), 'utf8'),
+    readFile(join(ROOT, 'scripts', 'build-web-preview.ts'), 'utf8'),
+    readFile(join(ROOT, 'web', 'sw.js'), 'utf8'),
+    readFile(join(ROOT, 'deploy', 'awh-control-plane', 'deploy-control-plane.sh'), 'utf8'),
+    readFile(join(ROOT, 'scripts', 'create-web-release-manifest.mjs'), 'utf8'),
+  ]);
+  assert.match(app, /executionStatus/);
+  assert.match(app, /execution-journey/);
+  assert.match(dashboard, /executionStatus/);
+  assert.match(dashboard, /awh-execution-journey/);
+  assert.match(build, /execution-ux\.js/);
+  assert.match(sw, /execution-ux\.js/);
+  assert.match(deploy, /dist-web\/execution-ux\.js/);
+  assert.match(manifest, /execution-ux\.js/);
 });

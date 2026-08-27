@@ -64,9 +64,16 @@ function stageIndex(stage) {
 }
 
 export function executionJourney(task) {
+  const taskState = clean(task?.state) || 'QUEUED';
+  if (taskState === 'FAILED' || taskState === 'CANCELLED') {
+    const progress = Number.isInteger(task?.progress) ? Math.max(0, Math.min(100, task.progress)) : 0;
+    const haltedStage = progress >= 80 ? 'qa' : progress >= 10 ? 'working' : 'accepted';
+    const haltedIndex = stageIndex(haltedStage);
+    return STAGES.map((stage, index) => ({ ...stage, state: index < haltedIndex ? 'done' : index === haltedIndex ? 'halted' : 'upcoming' }));
+  }
   const activeStage = executionStage(task);
   const activeIndex = stageIndex(activeStage);
-  const terminal = TERMINAL.has(clean(task?.state));
+  const terminal = TERMINAL.has(taskState);
   return STAGES.map((stage, index) => ({
     ...stage,
     state: terminal && index <= activeIndex ? 'done' : index < activeIndex ? 'done' : index === activeIndex ? 'active' : 'upcoming',

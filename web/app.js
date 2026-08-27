@@ -1,4 +1,5 @@
 import { loadWebData } from './hub-read-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { executionStatus } from './execution-ux.js?release=__AWH_WEB_RELEASE_ID__';
 import {
   cancelTask, changePassword, changeUsername, createConversation, createMemory, createProject, createRecoveryCodes, decideApproval,
   exportWorkspace, invitePerson, listAuthSessions, listPeople, loadAuthProfile, loadControlData, loadConversation,
@@ -14,12 +15,6 @@ import {
   const MAX_ATTACHMENT_BYTES = 60 * 1024 * 1024;
   const MICRO_BAHT = 1000000;
   const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, systemReadiness: null, capabilities: null, people: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null };
-  const taskLabels = {
-    QUEUED: 'กำลังจัดการบน AWH', WAITING_FOR_WORKER: 'กำลังจัดเส้นทางงาน', PREPARING: 'กำลังเตรียมงาน', RUNNING: 'กำลังทำงาน',
-    QA: 'กำลังตรวจคุณภาพ', WAITING_FOR_APPROVAL: 'ต้องอนุมัติ', COMPLETED: 'เสร็จแล้ว',
-    FAILED: 'ต้องตรวจสอบ', CANCELLED: 'ยกเลิกแล้ว',
-  };
-
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => undefined);
 
   function message(id, value = '') { const node = $(id); if (node) node.textContent = value; }
@@ -57,25 +52,10 @@ import {
       workspace: state.workspaceContinuity,
     } }));
   }
-  function stateText(task) {
-    const providerState = ({
-      PROVIDER_UNAVAILABLE: 'AI ยังตอบไม่ได้ในขณะนี้ · งานยังถูกเก็บไว้',
-      PROVIDER_RATE_LIMITED: 'OpenAI จำกัดการเรียกใช้ชั่วคราว · งานยังถูกเก็บไว้',
-      PROVIDER_QUOTA_EXHAUSTED: 'โควตาหรือวงเงิน OpenAI ยังไม่พร้อม · งานยังถูกเก็บไว้',
-      BUDGET_EXHAUSTED: 'งบ AI ของ AWH ถึงขีดจำกัด · งานยังถูกเก็บไว้',
-      PROVIDER_AUTH_FAILED: 'การเชื่อมต่อ OpenAI ถูกปฏิเสธ',
-      PROVIDER_PERMISSION_DENIED: 'OpenAI ยังไม่อนุญาตคำขอนี้',
-      PROVIDER_MODEL_UNAVAILABLE: 'โมเดล AI ที่ตั้งไว้ยังใช้ไม่ได้',
-      PROVIDER_REQUEST_INVALID: 'คำขอ AI ไม่ถูกต้อง · งานไม่ได้ถูกอ้างว่าเสร็จแล้ว',
-    })[task?.failureCode];
-    return providerState || taskLabels[task?.state] || 'กำลังอัปเดต';
-  }
+  function taskExecutionStatus(task) { return executionStatus(task, Array.isArray(state.control?.workers) ? state.control.workers : []); }
+  function stateText(task) { return taskExecutionStatus(task).title; }
   function stateClass(task) { return task?.state === 'COMPLETED' ? 'completed' : task?.state === 'FAILED' ? 'failed' : task?.state === 'WAITING_FOR_APPROVAL' ? 'approval' : ''; }
-  function progressText(task) {
-    const raw = typeof task?.lastEvent?.message === 'string' ? task.lastEvent.message.trim() : '';
-    if (/[ก-๙]/u.test(raw)) return raw;
-    return task?.execution?.executorKind === 'VPS' && task?.state === 'RUNNING' ? 'AWH กำลังทำงานบนระบบกลาง' : stateText(task);
-  }
+  function progressText(task) { return taskExecutionStatus(task).detail; }
 
   function size(bytes) { if (!Number.isFinite(bytes) || bytes < 0) return ''; if (bytes < 1024) return `${bytes} B`; if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`; return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; }
   function renderPendingAttachments() {
@@ -441,6 +421,18 @@ import {
     actions.append(button); return actions;
   }
 
+  function renderExecutionJourney(task) {
+    const status = taskExecutionStatus(task);
+    const list = document.createElement('ol'); list.className = 'execution-journey';
+    for (const step of status.journey) {
+      const item = document.createElement('li'); item.className = `execution-step ${step.state}`;
+      const dot = document.createElement('span'); dot.className = 'execution-step-dot';
+      const label = document.createElement('span'); label.textContent = step.label;
+      item.append(dot, label); list.append(item);
+    }
+    return list;
+  }
+
   function renderThread(conversation, approvals) {
     const thread = $('work-thread'); const stickToBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 140; thread.replaceChildren();
     const messages = Array.isArray(conversation?.messages) ? conversation.messages : [];
@@ -475,7 +467,7 @@ import {
       if (task && !['COMPLETED','FAILED','CANCELLED'].includes(task.state)) {
         const progressRow = document.createElement('div'); progressRow.className = 'task-progress-row';
         const bar = document.createElement('progress'); bar.max = 100; bar.value = Number.isInteger(task.progress) ? task.progress : 0; bar.setAttribute('aria-label', progressText(task));
-        const text = document.createElement('span'); text.textContent = progressText(task); progressRow.append(bar, text); response.append(progressRow);
+        const text = document.createElement('span'); text.textContent = progressText(task); progressRow.append(bar, text); response.append(progressRow, renderExecutionJourney(task));
       }
       if (task) {
         const actions = renderApproval(task, approvals) || renderCancellation(task); if (actions) response.append(actions);
