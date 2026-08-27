@@ -76,6 +76,7 @@ test('schedule and condition fields remain data-only and fail closed on executab
   assert.throws(() => validateAutomationDefinition(exact({ schedule: 'BEGIN:VEVENT\nDTSTART:20260828T080000\nCOMMAND:curl example\nEND:VEVENT' })), /AUTOMATION_SCHEDULE_FIELD_FORBIDDEN/);
   assert.throws(() => validateAutomationDefinition(exact({ timingMode: 'condition_watch', schedule: 'BEGIN:VEVENT\nRRULE:FREQ=HOURLY\nEND:VEVENT', condition: { schemaVersion: 1, key: 'watch.test', description: 'check', expression: 'process.exit()' } })), /AUTOMATION_FIELDS_INVALID/);
   assert.throws(() => validateAutomationDefinition(exact({ timingMode: 'condition_watch', schedule: 'BEGIN:VEVENT\nRRULE:FREQ=HOURLY\nEND:VEVENT', condition: { schemaVersion: 1, key: 'watch.test', description: 'shell: rm -rf' } })), /AUTOMATION_CONDITION_EXECUTABLE_FORBIDDEN/);
+  assert.throws(() => validateAutomationDefinition(exact({ timingMode: 'condition_watch', schedule: 'BEGIN:VEVENT\nRRULE:FREQ=HOURLY\nEND:VEVENT', condition: { schemaVersion: 1, key: 'watch.test', description: 'ตรวจ token=abcd ทุกชั่วโมง' } })), /AUTOMATION_CONDITION_SECRET/);
 });
 
 test('disabled definitions and secret-looking goals cannot create canonical work', () => {
