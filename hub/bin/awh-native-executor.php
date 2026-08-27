@@ -11,8 +11,8 @@ require_once dirname(__DIR__) . '/src/HubAutomationSchedulerService.php';
 
 /**
  * One bounded, unprivileged executor tick. A service manager invokes this
- * repeatedly; it never daemonizes, reads browser credentials, executes shell
- * commands, or enables network access itself. Schema-15 automations reuse this
+ * repeatedly; each invocation stays one-shot, reads no browser credentials, executes
+ * no shell commands, and enables no network access itself. Schema-15 automations reuse this
  * same timer and materialize only through HubControlPlaneService authorities.
  */
 $database = getenv('AWH_HUB_DB_PATH');

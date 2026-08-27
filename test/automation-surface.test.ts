@@ -33,3 +33,11 @@ test('Owner automation form hides VEVENT implementation details from ordinary us
   assert.doesNotMatch(surface, /textContent\s*=\s*['"`][^'"`]*(?:VEVENT|RRULE)/);
   assert.doesNotMatch(surface, /innerHTML\s*=\s*['"`][^'"`]*(?:VEVENT|RRULE)/);
 });
+
+test('editing automation preserves enable state and restores one-time wall clock', async () => {
+  const [surface, service] = await Promise.all([read('web/automation-surface.js'), read('hub/src/HubControlPlaneService.php')]);
+  assert.match(surface, /function onceLocalValue\(schedule\)/);
+  assert.match(surface, /namedItem\('onceAt'\)\.value=onceLocalValue\(def\.schedule\)/);
+  assert.match(service, /\$definition\['enabled'\] = \(bool\)\$current\['definition'\]\['enabled'\]/);
+  assert.match(service, /setAutomationEnabled/);
+});

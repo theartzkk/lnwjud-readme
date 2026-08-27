@@ -17,6 +17,7 @@ function button(label, className = 'awh-secondary-action') { const node = docume
 function localTz() { const value = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; return /^[A-Za-z0-9_+\/-]{1,64}$/.test(value) ? value : 'UTC'; }
 function compactDate(value) { const date = new Date(value); if (!Number.isFinite(date.getTime())) throw new Error('วันเวลาไม่ถูกต้อง'); const pad = (n) => String(n).padStart(2,'0'); return `${date.getFullYear()}${pad(date.getMonth()+1)}${pad(date.getDate())}T${pad(date.getHours())}${pad(date.getMinutes())}00`; }
 function clockParts(value) { const [h,m] = String(value || '08:00').split(':').map(Number); if (!Number.isInteger(h) || h<0 || h>23 || !Number.isInteger(m) || m<0 || m>59) throw new Error('เวลาไม่ถูกต้อง'); return [h,m]; }
+function onceLocalValue(schedule) { const match=String(schedule||'').match(/DTSTART(?:;TZID=[A-Za-z0-9_+\/-]{1,64})?:(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})\d{2}/); return match?`${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}`:''; }
 function scheduleFor(form) {
   const kind = form.elements.namedItem('scheduleKind').value;
   if (kind === 'once') { const dt = form.elements.namedItem('onceAt').value; if (!dt) throw new Error('เลือกวันและเวลา'); return { timingMode:'exact_schedule', schedule:`BEGIN:VEVENT\nDTSTART;TZID=${localTz()}:${compactDate(dt)}\nEND:VEVENT`, condition:null }; }
@@ -81,6 +82,7 @@ async function editAutomation(record) {
   form.elements.namedItem('name').value=def.name; form.elements.namedItem('goal').value=def.goal;
   let kind='once'; if (def.timingMode==='condition_watch') kind='condition'; else if (/FREQ=DAILY/.test(def.schedule)) kind='daily'; else if (/FREQ=WEEKLY/.test(def.schedule)) kind='weekly'; form.elements.namedItem('scheduleKind').value=kind;
   const h=def.schedule.match(/BYHOUR=(\d{1,2})/)?.[1] || '08'; const m=def.schedule.match(/BYMINUTE=(\d{1,2})/)?.[1] || '00'; form.elements.namedItem('timeAt').value=`${h.padStart(2,'0')}:${m.padStart(2,'0')}`;
+  if (kind==='once') form.elements.namedItem('onceAt').value=onceLocalValue(def.schedule);
   const day=def.schedule.match(/BYDAY=(MO|TU|WE|TH|FR|SA|SU)/)?.[1]; if (day) form.elements.namedItem('weekDay').value=day;
   if (def.condition?.key && CONDITIONS[def.condition.key]) form.elements.namedItem('conditionKey').value=def.condition.key;
   $('awh-automation-submit').textContent='บันทึกการแก้ไข'; $('awh-automation-cancel-edit').hidden=false; syncScheduleFields(); form.scrollIntoView({behavior:'smooth',block:'start'});

@@ -379,7 +379,12 @@ final class HubControlPlaneService
     {
         $session = $this->authorizeSession($sessionToken, $csrfToken, $now); $this->assertOwner((string)$session['user_id']); self::exactKeys($payload, ['definition','schemaVersion']);
         if (($payload['schemaVersion'] ?? null) !== 1 || !is_array($payload['definition'] ?? null)) throw new HubControlPlaneException('Automation payload is invalid', 'AUTOMATION_INVALID');
-        return ['schemaVersion'=>1,'automation'=>$this->automationCall(fn(HubAutomationRegistryService $r) => $r->replace((string)$session['user_id'], self::uuid($automationId), $payload['definition'], $now))];
+        $automationId = self::uuid($automationId); $userId = (string)$session['user_id'];
+        $current = $this->automationCall(fn(HubAutomationRegistryService $r) => $r->get($userId, $automationId));
+        $definition = $payload['definition'];
+        if (!is_array($current['definition'] ?? null) || !is_bool($current['definition']['enabled'] ?? null)) throw new HubControlPlaneException('Automation definition is unavailable', 'AUTOMATION_INVALID');
+        $definition['enabled'] = (bool)$current['definition']['enabled'];
+        return ['schemaVersion'=>1,'automation'=>$this->automationCall(fn(HubAutomationRegistryService $r) => $r->replace($userId, $automationId, $definition, $now))];
     }
 
     public function setAutomationEnabled(string $sessionToken, string $csrfToken, string $automationId, array $payload, ?string $now = null): array
