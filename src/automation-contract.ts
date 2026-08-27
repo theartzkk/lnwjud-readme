@@ -28,6 +28,9 @@ export type CanonicalAutomationSubmission =
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CONDITION_KEY = /^[a-z][a-z0-9]*(?:[._:-][a-z0-9]+)*$/;
 const IDEMPOTENCY = /^[A-Za-z0-9._-]{8,120}$/;
+const OCCURRENCE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/;
+const DTSTART = /^DTSTART(?:;TZID=[A-Za-z0-9_+\/-]{1,64})?:\d{8}T\d{6}$/;
+const RRULE = /^RRULE:[A-Z0-9=;,+-]{1,500}$/;
 const TIMING = new Set<AutomationTimingMode>(['exact_schedule', 'flexible_schedule', 'condition_watch']);
 const DEFINITION_KEYS = ['automationId', 'condition', 'conversationId', 'enabled', 'goal', 'name', 'projectId', 'schedule', 'schemaVersion', 'timingMode'];
 const CONDITION_KEYS = ['description', 'key', 'schemaVersion'];
@@ -59,15 +62,16 @@ function uuid(value: unknown, nullable = false): string | null {
 function schedule(value: unknown, timingMode: AutomationTimingMode): string {
   const input = text(value, 1, 4096, 'AUTOMATION_SCHEDULE_INVALID').replace(/\r\n?/g, '\n');
   const lines = input.split('\n');
-  if (lines[0] !== 'BEGIN:VEVENT' || lines.at(-1) !== 'END:VEVENT' || lines.length > 64 || lines.some((line) => line.length > 512)) throw new Error('AUTOMATION_SCHEDULE_INVALID');
-  if (lines.some((line) => /^(?:SUMMARY|DTEND):/i.test(line))) throw new Error('AUTOMATION_SCHEDULE_FIELD_FORBIDDEN');
-  const dtstart = lines.some((line) => /^DTSTART(?:;[^:]*)?:\d{8}T\d{6}$/i.test(line));
-  const rrule = lines.find((line) => /^RRULE:/i.test(line));
-  if (!dtstart && !rrule) throw new Error('AUTOMATION_SCHEDULE_START_REQUIRED');
-  if (lines.filter((line) => /^RRULE:/i.test(line)).length > 1 || lines.filter((line) => /^DTSTART(?:;[^:]*)?:/i.test(line)).length > 1) throw new Error('AUTOMATION_SCHEDULE_INVALID');
+  if (lines[0] !== 'BEGIN:VEVENT' || lines.at(-1) !== 'END:VEVENT' || lines.length < 3 || lines.length > 10 || lines.some((line) => line.length > 512)) throw new Error('AUTOMATION_SCHEDULE_INVALID');
+  const body = lines.slice(1, -1);
+  if (body.some((line) => !DTSTART.test(line) && !RRULE.test(line))) throw new Error('AUTOMATION_SCHEDULE_FIELD_FORBIDDEN');
+  const dtstarts = body.filter((line) => DTSTART.test(line));
+  const rrules = body.filter((line) => RRULE.test(line));
+  if (dtstarts.length > 1 || rrules.length > 1 || (dtstarts.length === 0 && rrules.length === 0)) throw new Error('AUTOMATION_SCHEDULE_INVALID');
+  const rrule = rrules[0] ?? null;
   if (rrule) {
-    if (/FREQ=(?:SECONDLY|MINUTELY)(?:;|$)/i.test(rrule)) throw new Error('AUTOMATION_FREQUENCY_TOO_HIGH');
-    if (!/FREQ=(?:HOURLY|DAILY|WEEKLY|MONTHLY|YEARLY)(?:;|$)/i.test(rrule)) throw new Error('AUTOMATION_RRULE_INVALID');
+    if (/FREQ=(?:SECONDLY|MINUTELY)(?:;|$)/.test(rrule)) throw new Error('AUTOMATION_FREQUENCY_TOO_HIGH');
+    if (!/FREQ=(?:HOURLY|DAILY|WEEKLY|MONTHLY|YEARLY)(?:;|$)/.test(rrule)) throw new Error('AUTOMATION_RRULE_INVALID');
   }
   if (timingMode === 'condition_watch' && !rrule) throw new Error('AUTOMATION_CONDITION_REQUIRES_RECURRENCE');
   return input;
@@ -111,6 +115,7 @@ export function validateAutomationDefinition(value: unknown): AutomationDefiniti
 
 export function automationOccurrenceKey(automationId: string, occurrenceAt: string): string {
   const id = uuid(automationId)!;
+  if (!OCCURRENCE.test(occurrenceAt)) throw new Error('AUTOMATION_OCCURRENCE_INVALID');
   const epoch = Date.parse(occurrenceAt);
   if (!Number.isFinite(epoch)) throw new Error('AUTOMATION_OCCURRENCE_INVALID');
   const digest = createHash('sha256').update(`${id}\n${new Date(epoch).toISOString()}`, 'utf8').digest('hex').slice(0, 40);
