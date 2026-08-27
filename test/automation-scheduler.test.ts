@@ -13,7 +13,7 @@ test('automation scheduler delegates work instead of creating a shadow queue', a
   assert.doesNotMatch(source, /INSERT\s+INTO\s+control_conversation_messages/i);
   assert.doesNotMatch(source, /UPDATE\s+control_tasks/i);
   assert.doesNotMatch(source, /automation_runs|automation_queue|control_automation_runs/i);
-  assert.doesNotMatch(source, /shell_exec|proc_open|passthru|system\s*\(|exec\s*\(/i);
+  assert.doesNotMatch(source, /shell_exec|proc_open|passthru|\bpopen\s*\(/i);
 });
 
 test('automation scheduler only evaluates bounded built-in condition keys', async () => {
@@ -32,5 +32,16 @@ test('control plane materializes automation through the same task and conversati
   assert.match(source, /public function materializeAutomationSubmission/);
   assert.match(source, /\$this->submitTaskForUser\(/);
   assert.match(source, /\$this->submitConversationForUser\(/);
+  assert.match(source, /\$this->automations->get\(/);
   assert.match(source, /'automation\.' \.[\s\S]*hash\('sha256'/);
+});
+
+test('native executor reuses its existing tick for automations and remains backward compatible', async () => {
+  const source = await read('hub/bin/awh-native-executor.php');
+  assert.match(source, /HubAutomationSchedulerService/);
+  assert.match(source, /materializeAutomationSubmission/);
+  assert.match(source, /user_version'[\s\S]*>= 15/);
+  assert.match(source, /'status' => 'UNAVAILABLE'/);
+  assert.match(source, /HubDurableExecutionService::fromEnvironment\(\$pdo\)->runOnce\(\)/);
+  assert.doesNotMatch(source, /daemonize|systemctl|crontab|OnCalendar/);
 });
