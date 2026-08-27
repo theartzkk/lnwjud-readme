@@ -114,9 +114,10 @@ test('CONTROL shell uses authenticated canonical data and presents a truthful si
 });
 
 test('control UI is work-first, server-first, mobile-first, and never blocks chat on device state', async () => {
-  const [html, app, adapter, css] = await Promise.all([
+  const [html, app, executionUx, adapter, css] = await Promise.all([
     readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
     readFile(join(ROOT, 'web', 'app.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'execution-ux.js'), 'utf8'),
     readFile(join(ROOT, 'web', 'control-plane-adapter.js'), 'utf8'),
     readFile(join(ROOT, 'web', 'styles.css'), 'utf8'),
   ]);
@@ -124,7 +125,7 @@ test('control UI is work-first, server-first, mobile-first, and never blocks cha
   assert.match(html, /id="goal-input"/);
   assert.match(html, /id="goal-submit"/);
   assert.match(app, /selectedProjectId/);
-  assert.match(app, /WAITING_FOR_WORKER/);
+  assert.match(executionUx, /WAITING_FOR_WORKER/);
   assert.match(html, /AWH Server · Online/);
   assert.match(html, /AI · Ready/);
   assert.doesNotMatch(`${html}\n${app}`, /ยังไม่มีอุปกรณ์ทำงานออนไลน์|กำลังรออุปกรณ์ทำงาน|งานจะรอ/);
@@ -164,9 +165,10 @@ test('CONTROL work composer keeps attachment previews, camera-capable file picki
 });
 
 test('owner self-service is a focused settings hub whose independent projections cannot hide AI setup', async () => {
-  const [html, app, css, fixture] = await Promise.all([
+  const [html, app, executionUx, css, fixture] = await Promise.all([
     readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
     readFile(join(ROOT, 'web', 'app.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'execution-ux.js'), 'utf8'),
     readFile(join(ROOT, 'web', 'styles.css'), 'utf8'),
     readFile(join(ROOT, 'scripts', 'qa', 'control-web-fixture.mjs'), 'utf8'),
   ]);
@@ -188,7 +190,7 @@ test('owner self-service is a focused settings hub whose independent projections
   assert.match(app, /ลืมรหัสผ่าน\?/);
   assert.match(app, /resetPassword\(/);
   assert.match(app, /loadDesktopRelease/);
-  assert.match(app, /WAITING_FOR_WORKER: 'กำลังจัดเส้นทางงาน'/);
+  assert.match(executionUx, /WAITING_FOR_WORKER/);
   assert.doesNotMatch(app, /กำลังรออุปกรณ์ทำงาน/);
   assert.doesNotMatch(app, /กำลังรอ capability/);
   assert.doesNotMatch(app, /schema v\$\{database\.schemaVersion/);

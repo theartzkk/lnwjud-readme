@@ -89,9 +89,10 @@ test('local school-tool registry is modular and production deployment bundles ev
   assert.equal(parsed.dependencies['qrcode-generator'], '1.4.4');
 });
 test('V1.1 continuity keeps Dashboard and canonical Work on one project/chat authority', async () => {
-  const [dashboard, app, css] = await Promise.all([
+  const [dashboard, app, executionUx, css] = await Promise.all([
     readFile(join(ROOT, 'web', 'dashboard.js'), 'utf8'),
     readFile(join(ROOT, 'web', 'app.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'execution-ux.js'), 'utf8'),
     readFile(join(ROOT, 'web', 'dashboard.css'), 'utf8'),
   ]);
   assert.match(app, /awh:work-context/);
@@ -102,8 +103,8 @@ test('V1.1 continuity keeps Dashboard and canonical Work on one project/chat aut
   assert.match(dashboard, /ทำต่อจากเดิม/);
   assert.match(dashboard, /กลับมาทำงานได้ทันที/);
   assert.match(dashboard, /navigateWork\(task\.projectId, task\.conversationId/);
-  assert.match(dashboard, /ระบบกลาง AWH/);
-  assert.match(dashboard, /ผู้เชี่ยวชาญโค้ด/);
+  assert.match(dashboard, /executionStatus/);
+  assert.match(executionUx, /ระบบกลาง AWH/);
   assert.match(dashboard, /Memory พร้อม/);
   assert.match(css, /\.awh-continuity-card/);
   assert.match(css, /@media\(max-width:620px\)/);

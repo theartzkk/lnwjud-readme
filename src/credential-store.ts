@@ -265,7 +265,15 @@ export class PrivateFileCredentialStore implements CredentialStore {
   async delete(key: string): Promise<void> { await this.ready(); await rm(this.path(key), { force: true }); }
 }
 
-export function createDesktopCredentialStore(dataDir: string): CredentialStore {
+export function createDesktopCredentialStore(
+  dataDir: string,
+  platformName: NodeJS.Platform = process.platform,
+  runner: CredentialProcessRunner = runCredentialProcess,
+): CredentialStore {
+  // Windows does not expose trustworthy POSIX mode bits for a private file
+  // store. Use the native Credential Manager instead of weakening the 0700/0600
+  // invariant that protects the file-backed desktop session on POSIX systems.
+  if (platformName === 'win32') return new WindowsCredentialManagerStore(runner);
   return new PrivateFileCredentialStore(join(dataDir, 'session-credentials'));
 }
 

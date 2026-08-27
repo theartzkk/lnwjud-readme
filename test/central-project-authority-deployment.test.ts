@@ -23,10 +23,10 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(result.stdout, /M12_ROLLBACK=restore-db-only-if-migrated,pointer,web-pointer,managed-executor-units,nginx,service-health,m3d-m3e-control-regression/);
   assert.match(result.stdout, /M12_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL/);
 
-  const [local, remoteSource, migration, vault, vaultService, durable, sourceSync, artifactStore, controlService, controlRouter, nativeAgent, webAdapter, webApp, serviceUnit, timerUnit] = await Promise.all([
+  const [local, remoteSource, migration, vault, vaultService, durable, sourceSync, artifactStore, controlService, controlRouter, nativeAgent, webAdapter, webApp, executionUx, serviceUnit, timerUnit] = await Promise.all([
     readFile(deploy, 'utf8'), readFile(remote, 'utf8'), readFile(join(root, 'hub/migrations/011_central_project_authority.sql'), 'utf8'),
     readFile(join(root, 'hub/src/HubProjectVault.php'), 'utf8'), readFile(join(root, 'hub/src/HubProjectVaultService.php'), 'utf8'), readFile(join(root, 'hub/src/HubDurableExecutionService.php'), 'utf8'), readFile(join(root, 'hub/bin/sync-deployed-source-vault.php'), 'utf8'), readFile(join(root, 'hub/src/HubArtifactStore.php'), 'utf8'), readFile(join(root, 'hub/src/HubControlPlaneService.php'), 'utf8'), readFile(join(root, 'hub/src/HubControlPlaneRouter.php'), 'utf8'),
-    readFile(join(root, 'hub/src/HubNativeAgentService.php'), 'utf8'), readFile(join(root, 'web/control-plane-adapter.js'), 'utf8'), readFile(join(root, 'web/app.js'), 'utf8'),
+    readFile(join(root, 'hub/src/HubNativeAgentService.php'), 'utf8'), readFile(join(root, 'web/control-plane-adapter.js'), 'utf8'), readFile(join(root, 'web/app.js'), 'utf8'), readFile(join(root, 'web/execution-ux.js'), 'utf8'),
     readFile(join(root, 'deploy/systemd/awh-native-executor.service'), 'utf8'), readFile(join(root, 'deploy/systemd/awh-native-executor.timer'), 'utf8'),
   ]);
   assert.match(local, /--central-project-authority/);
@@ -94,8 +94,8 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(durable, /bounded retry queued on the same task/);
   assert.doesNotMatch(durable, /conversationFallback/);
   assert.match(webAdapter, /PROVIDER_REQUEST_INVALID/);
-  assert.match(webApp, /PROVIDER_RATE_LIMITED: 'OpenAI จำกัดการเรียกใช้ชั่วคราว · งานยังถูกเก็บไว้'/);
-  assert.match(webApp, /BUDGET_EXHAUSTED: 'งบ AI ของ AWH ถึงขีดจำกัด · งานยังถูกเก็บไว้'/);
+  assert.match(executionUx, /PROVIDER_RATE_LIMITED: 'OpenAI จำกัดการเรียกใช้ชั่วคราว · งานยังถูกเก็บไว้'/);
+  assert.match(executionUx, /BUDGET_EXHAUSTED: 'งบ AI ของ AWH ถึงขีดจำกัด · งานยังถูกเก็บไว้'/);
   assert.match(vault, /ingestDirectory/);
   assert.match(vaultService, /awh_vault_promote/);
   assert.match(vaultService, /function savepoint/);

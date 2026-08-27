@@ -73,11 +73,24 @@ test('production adapter selection is platform-specific and Linux remains fail-c
   assert.equal(createProductionCredentialStore('linux') instanceof InMemoryCredentialStore, false);
 });
 
+test('desktop session store uses Windows Credential Manager instead of POSIX permission emulation', async () => {
+  const calls: string[] = [];
+  const runner: CredentialProcessRunner = async (_executable, _args, stdin) => {
+    const request = JSON.parse(stdin ?? '{}') as { action?: string };
+    calls.push(request.action ?? '');
+    return { exitCode: request.action === 'get' ? 44 : 0, stdout: '' };
+  };
+  const store = createDesktopCredentialStore('C:\\Users\\Teacher\\.awh', 'win32', runner);
+  assert.equal(store instanceof WindowsCredentialManagerStore, true);
+  assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY), null);
+  assert.deepEqual(calls, ['get']);
+});
 
-test('desktop session store avoids OS Keychain and keeps only a private revocable token file', async () => {
+
+test('desktop session store avoids OS Keychain and keeps only a private revocable token file', { skip: process.platform === 'win32' ? 'POSIX permission semantics are not available on Windows' : false }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'awh-session-store-'));
   try {
-    const store = createDesktopCredentialStore(root);
+    const store = createDesktopCredentialStore(root, 'darwin');
     assert.equal(store instanceof PrivateFileCredentialStore, true);
     assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY), null);
     await store.set(DEVICE_TOKEN_CREDENTIAL_KEY, 'revocable-session-token');
