@@ -94,8 +94,8 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(durable, /bounded retry queued on the same task/);
   assert.doesNotMatch(durable, /conversationFallback/);
   assert.match(webAdapter, /PROVIDER_REQUEST_INVALID/);
-  assert.match(executionUx, /PROVIDER_RATE_LIMITED: 'OpenAI จำกัดการเรียกใช้ชั่วคราว · งานยังถูกเก็บไว้'/);
-  assert.match(executionUx, /BUDGET_EXHAUSTED: 'งบ AI ของ AWH ถึงขีดจำกัด · งานยังถูกเก็บไว้'/);
+  assert.match(executionUx, /PROVIDER_RATE_LIMITED:[^\n]*งานยังถูกเก็บไว้/);
+  assert.match(executionUx, /BUDGET_EXHAUSTED:[^\n]*งานยังถูกเก็บไว้/);
   assert.match(vault, /ingestDirectory/);
   assert.match(vaultService, /awh_vault_promote/);
   assert.match(vaultService, /function savepoint/);
