@@ -43,6 +43,24 @@ test('V1.3 dashboard guardrails reset Home after sign-out and reject animated GI
   assert.match(source, /capture: true/);
 });
 
+test('V1.6 owner can preview the teacher Home without mutating auth, role or durable state', async () => {
+  const [source, css] = await Promise.all([
+    readFile(join(ROOT, 'web', 'owner-center.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'owner-center.css'), 'utf8'),
+  ]);
+  assert.match(source, /ดูในมุมครู/);
+  assert.match(source, /PREVIEW_CLASS = 'awh-teacher-preview'/);
+  assert.match(source, /Preview หน้าแรกเท่านั้น · สิทธิ์ Owner ไม่เปลี่ยน/);
+  assert.match(source, /action === 'teacher-preview'/);
+  assert.match(source, /back\.textContent = 'กลับ Owner'/);
+  assert.match(source, /workspace\.hidden\) exitTeacherPreview\(\)/);
+  assert.match(source, /attributeFilter: \['hidden'\]/);
+  assert.match(css, /body\.awh-teacher-preview #dashboard-owner-center/);
+  assert.match(css, /\.awh-teacher-preview-bar/);
+  assert.doesNotMatch(source, /fetch\(|XMLHttpRequest|WebSocket|localStorage|sessionStorage|Authorization|Bearer|\/api\//i);
+  assert.doesNotMatch(source, /setRole|updateRole|impersonat|roleOverride/i);
+});
+
 test('V1.3 owner center is bundled into existing dashboard assets and stays mobile-first', async () => {
   await build();
   const [dashboard, css, html, worker] = await Promise.all([
@@ -54,7 +72,10 @@ test('V1.3 owner center is bundled into existing dashboard assets and stays mobi
   assert.match(dashboard, /dashboard-owner-command-center/);
   assert.match(dashboard, /Dashboard correctness guardrails/);
   assert.match(dashboard, /GIF แบบเคลื่อนไหวยังไม่รองรับ/);
+  assert.match(dashboard, /ดูในมุมครู/);
+  assert.match(dashboard, /awh-teacher-preview-bar/);
   assert.match(css, /\.awh-owner-command-center/);
+  assert.match(css, /\.awh-teacher-preview-bar/);
   assert.match(css, /@media \(max-width: 620px\)/);
   assert.match(html, /dashboard\.js\?release=owner-center-fixture/);
   assert.match(worker, /dashboard\.js\?release=owner-center-fixture/);
