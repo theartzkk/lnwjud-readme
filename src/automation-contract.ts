@@ -31,6 +31,7 @@ const IDEMPOTENCY = /^[A-Za-z0-9._-]{8,120}$/;
 const OCCURRENCE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/;
 const DTSTART = /^DTSTART(?:;TZID=[A-Za-z0-9_+\/-]{1,64})?:\d{8}T\d{6}$/;
 const RRULE = /^RRULE:[A-Z0-9=;,+-]{1,500}$/;
+const SECRET = /(?:^|\s)(?:Bearer\s+|password\s*[=:]|secret\s*[=:]|token\s*[=:]|api[_-]?key\s*[=:])/i;
 const TIMING = new Set<AutomationTimingMode>(['exact_schedule', 'flexible_schedule', 'condition_watch']);
 const DEFINITION_KEYS = ['automationId', 'condition', 'conversationId', 'enabled', 'goal', 'name', 'projectId', 'schedule', 'schemaVersion', 'timingMode'];
 const CONDITION_KEYS = ['description', 'key', 'schemaVersion'];
@@ -49,7 +50,7 @@ function text(value: unknown, min: number, max: number, code: string): string {
 
 function safeGoal(value: unknown): string {
   const goal = text(value, 1, 2000, 'AUTOMATION_GOAL_INVALID').replace(/\r\n?/g, '\n');
-  if (/(?:^|\s)(?:Bearer\s+|password\s*[=:]|secret\s*[=:]|token\s*[=:]|api[_-]?key\s*[=:])/i.test(goal)) throw new Error('AUTOMATION_GOAL_SECRET');
+  if (SECRET.test(goal)) throw new Error('AUTOMATION_GOAL_SECRET');
   return goal;
 }
 
@@ -88,6 +89,7 @@ function condition(value: unknown, timingMode: AutomationTimingMode): Automation
   const key = text(row.key, 3, 80, 'AUTOMATION_CONDITION_KEY_INVALID');
   if (!CONDITION_KEY.test(key)) throw new Error('AUTOMATION_CONDITION_KEY_INVALID');
   const description = text(row.description, 1, 500, 'AUTOMATION_CONDITION_DESCRIPTION_INVALID');
+  if (SECRET.test(description)) throw new Error('AUTOMATION_CONDITION_SECRET');
   if (/(?:javascript:|\beval\s*\(|\bexec\s*\(|\bsql\s*:|\bshell\s*:)/i.test(description)) throw new Error('AUTOMATION_CONDITION_EXECUTABLE_FORBIDDEN');
   return { schemaVersion: 1, key, description };
 }
