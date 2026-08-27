@@ -28,6 +28,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - if: runner.os != 'Windows'
+        name: Verify CI cost and release-gate policy
+        run: node scripts/qa/verify-ci-policy.mjs
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run typecheck
       - if: runner.os == 'Windows'
