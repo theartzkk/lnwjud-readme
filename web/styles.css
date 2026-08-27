@@ -305,3 +305,11 @@ body.work-active .form-message { min-height: 0; }
 .system-health-dot { width: 9px; height: 9px; border-radius: 50%; background: #63d893; box-shadow: 0 0 0 4px rgba(99, 216, 147, .09); }
 .system-advanced { margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--line); }
 @media (max-width: 680px) { .system-action-grid { grid-template-columns: 1fr; } .system-feature-card, .system-health-card { min-height: auto; } }
+
+.execution-journey { display: flex; gap: 6px; list-style: none; margin: 10px 0 0; padding: 0; overflow-x: auto; }
+.execution-step { display: flex; align-items: center; gap: 5px; flex: 0 0 auto; font-size: 11px; opacity: .42; white-space: nowrap; }
+.execution-step-dot { width: 7px; height: 7px; border: 1px solid currentColor; border-radius: 50%; }
+.execution-step.done { opacity: .68; }
+.execution-step.done .execution-step-dot, .execution-step.active .execution-step-dot { background: currentColor; }
+.execution-step.active { opacity: 1; font-weight: 700; }
+.execution-step.halted { opacity: .82; font-weight: 700; }

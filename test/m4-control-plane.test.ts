@@ -72,12 +72,13 @@ test('M6 assistant Work stream is an additive ordered view over canonical M4 tas
 test('mobile control UI is phone-first and truthful when no worker is online', async () => {
   const html = await readFile(new URL('../web/index.html', import.meta.url), 'utf8');
   const app = await readFile(new URL('../web/app.js', import.meta.url), 'utf8');
+  const executionUx = await readFile(new URL('../web/execution-ux.js', import.meta.url), 'utf8');
   const css = await readFile(new URL('../web/styles.css', import.meta.url), 'utf8');
   assert.match(html, /id="login-form"/);
   assert.match(html, /id="project-open"/);
   assert.match(html, /id="goal-form"/);
   assert.match(html, /id="work-thread"/);
-  assert.match(app, /WAITING_FOR_WORKER/);
+  assert.match(executionUx, /WAITING_FOR_WORKER/);
   assert.match(app, /selectedProjectId/);
   assert.match(app, /memoryReady/);
   assert.match(html, /id="project-empty"/);

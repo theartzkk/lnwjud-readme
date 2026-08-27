@@ -13,7 +13,8 @@ export const BOOTSTRAP_NONCE_CREDENTIAL_KEY = 'awh/bootstrap-nonce';
 export const OWNER_AUTH_PASSWORD_CREDENTIAL_KEY = 'awh/owner-password';
 export const AWH_CREDENTIAL_SERVICE = 'Art’s Workspace Hub';
 export const AWH_CREDENTIAL_ACCOUNT = 'awh-device-token-v1';
-export const WINDOWS_CREDENTIAL_TARGET = `${AWH_CREDENTIAL_SERVICE}/${DEVICE_TOKEN_CREDENTIAL_KEY}`;
+export const WINDOWS_CREDENTIAL_PREFIX = 'AWH';
+export const WINDOWS_CREDENTIAL_TARGET = `${WINDOWS_CREDENTIAL_PREFIX}/${DEVICE_TOKEN_CREDENTIAL_KEY}`;
 
 export class CredentialStoreError extends Error {
   constructor(message: string, readonly code = 'CREDENTIAL_STORE_UNAVAILABLE') {
@@ -155,7 +156,7 @@ public static class AwhNativeCredential {
 '@
 $request = [Console]::In.ReadToEnd() | ConvertFrom-Json
 $target = [string]$request.target
-if ($target -notmatch '^Art’s Workspace Hub/awh/[a-z][a-z0-9._/-]{1,127}$') { throw 'Invalid credential target' }
+if ($target -notmatch '^AWH/awh/[a-z][a-z0-9._/-]{1,127}$') { throw 'Invalid credential target' }
 $action = [string]$request.action
 if ($action -eq 'set') {
   $secret = [string]$request.secret
@@ -214,7 +215,7 @@ export class WindowsCredentialManagerStore implements CredentialStore {
   private async invoke(action: 'get' | 'set' | 'delete', key: string, secret?: string): Promise<CredentialProcessResult> {
     validateKey(key);
     if (secret !== undefined) validateSecret(secret);
-    const target = key === DEVICE_TOKEN_CREDENTIAL_KEY ? WINDOWS_CREDENTIAL_TARGET : `${AWH_CREDENTIAL_SERVICE}/${key}`;
+    const target = key === DEVICE_TOKEN_CREDENTIAL_KEY ? WINDOWS_CREDENTIAL_TARGET : `${WINDOWS_CREDENTIAL_PREFIX}/${key}`;
     const input = JSON.stringify({ action, target, username: 'AWH Device', ...(secret === undefined ? {} : { secret }) });
     return this.runner(this.executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', WINDOWS_POWERSHELL], input);
   }
@@ -265,7 +266,15 @@ export class PrivateFileCredentialStore implements CredentialStore {
   async delete(key: string): Promise<void> { await this.ready(); await rm(this.path(key), { force: true }); }
 }
 
-export function createDesktopCredentialStore(dataDir: string): CredentialStore {
+export function createDesktopCredentialStore(
+  dataDir: string,
+  platformName: NodeJS.Platform = process.platform,
+  runner: CredentialProcessRunner = runCredentialProcess,
+): CredentialStore {
+  // Windows does not expose trustworthy POSIX mode bits for a private file
+  // store. Use the native Credential Manager instead of weakening the 0700/0600
+  // invariant that protects the file-backed desktop session on POSIX systems.
+  if (platformName === 'win32') return new WindowsCredentialManagerStore(runner);
   return new PrivateFileCredentialStore(join(dataDir, 'session-credentials'));
 }
 
