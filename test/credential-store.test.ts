@@ -12,6 +12,7 @@ import {
   PrivateFileCredentialStore,
   UnavailableCredentialStore,
   WindowsCredentialManagerStore,
+  WINDOWS_CREDENTIAL_TARGET,
   createDesktopCredentialStore,
   createProductionCredentialStore,
 } from '../src/credential-store.js';
@@ -74,6 +75,8 @@ test('production adapter selection is platform-specific and Linux remains fail-c
 });
 
 test('desktop session store uses Windows Credential Manager instead of POSIX permission emulation', async () => {
+  assert.equal(WINDOWS_CREDENTIAL_TARGET, 'AWH/awh/device-token');
+  assert.doesNotMatch(WINDOWS_CREDENTIAL_TARGET, /[^\x20-\x7E]/);
   const calls: string[] = [];
   const runner: CredentialProcessRunner = async (_executable, _args, stdin) => {
     const request = JSON.parse(stdin ?? '{}') as { action?: string };
