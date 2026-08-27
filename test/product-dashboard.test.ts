@@ -6,6 +6,8 @@ import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import test, { after } from 'node:test';
+import * as PDFLib from 'pdf-lib';
+import { imagesToPdf } from '../web/school-tools.js';
 
 const runFile = promisify(execFile);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -70,9 +72,36 @@ test('teacher home is outcome-first, role-aware and exposes real zero-token scho
   assert.match(schoolTools, /copyPages/);
   assert.match(schoolTools, /setRotation/);
   assert.match(schoolTools, /qrcodeLib/);
+  assert.match(schoolTools, /value="images">รวมรูปเป็น PDF/);
+  assert.match(schoolTools, /embedPng/);
+  assert.match(schoolTools, /embedJpg/);
+  assert.match(schoolTools, /JPG\/PNG/);
+  assert.match(registry, /รวมรูปเป็น PDF/);
   assert.match(schoolTools, /ไม่ใช้ AI token/);
   assert.doesNotMatch(schoolTools, /fetch\(|XMLHttpRequest|WebSocket|localStorage|sessionStorage|Authorization|Bearer/i);
   assert.match(css, /@media\(max-width:540px\)/);
+});
+
+test('local image-to-PDF creates one real A4 page per PNG without uploading files', async () => {
+  Object.assign(globalThis, { PDFLib });
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQ6sAAAAASUVORK5CYII=', 'base64');
+  const file = (name: string) => ({
+    name,
+    type: 'image/png',
+    size: png.byteLength,
+    arrayBuffer: async () => png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength),
+  });
+  const result = await imagesToPdf([file('01.png'), file('02.png')]);
+  assert.equal(result.filename, 'AWH-images.pdf');
+  const document = await PDFLib.PDFDocument.load(result.bytes);
+  assert.equal(document.getPageCount(), 2);
+  for (const page of document.getPages()) {
+    const { width, height } = page.getSize();
+    assert.ok(Math.abs(width - 595.28) < 0.1);
+    assert.ok(Math.abs(height - 841.89) < 0.1);
+  }
+  const gif = { name: 'animated.gif', type: 'image/gif', size: 8, arrayBuffer: async () => new ArrayBuffer(8) };
+  await assert.rejects(() => imagesToPdf([gif]), /รองรับรูป JPG และ PNG/);
 });
 
 test('local school-tool registry is modular and production deployment bundles every required asset', async () => {
