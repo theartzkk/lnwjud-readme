@@ -19,6 +19,7 @@ final class HubAutomationRegistryService
     private const RRULE = '/^RRULE:[A-Z0-9=;,+-]{1,500}$/';
     private const SECRET = '/(?:^|\s)(?:Bearer\s+|password\s*[=:]|secret\s*[=:]|token\s*[=:]|api[_-]?key\s*[=:])/i';
     private const EXECUTABLE_CONDITION = '/(?:javascript:|\beval\s*\(|\bexec\s*\(|\bsql\s*:|\bshell\s*:)/i';
+    private const CONTROL_CHARS = '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/';
     private const MODES = ['exact_schedule', 'flexible_schedule', 'condition_watch'];
     private const DEFINITION_INPUT_KEYS = ['condition', 'conversationId', 'enabled', 'goal', 'name', 'projectId', 'schedule', 'schemaVersion', 'timingMode'];
     private const CONDITION_KEYS = ['description', 'key', 'schemaVersion'];
@@ -114,6 +115,11 @@ final class HubAutomationRegistryService
         $automationId = $this->uuid($automationId, 'automation');
         $current = $this->get($userId, $automationId);
         if ($current['archivedAt'] !== null) throw new HubAutomationRegistryException('Archived automation cannot be enabled', 'AUTOMATION_ARCHIVED');
+        if ($enabled) {
+            $definition = $current['definition'];
+            $this->assertProjectAccess($userId, (string) $definition['projectId']);
+            if (is_string($definition['conversationId'] ?? null)) $this->assertConversation($userId, (string) $definition['projectId'], (string) $definition['conversationId']);
+        }
         $at = self::timestamp($now ?? gmdate('c'));
         $q = $this->pdo->prepare('UPDATE control_automations SET enabled=:enabled,updated_at=:at WHERE automation_id=:id AND user_id=:user AND archived_at IS NULL');
         $q->execute(['enabled' => $enabled ? 1 : 0, 'at' => $at, 'id' => $automationId, 'user' => strtolower($userId)]);
@@ -139,7 +145,6 @@ final class HubAutomationRegistryService
     {
         self::exactKeys($input, self::DEFINITION_INPUT_KEYS, 'AUTOMATION_FIELDS_INVALID');
         if (($input['schemaVersion'] ?? null) !== 1) throw new HubAutomationRegistryException('Automation schema is invalid', 'AUTOMATION_SCHEMA');
-
         $projectId = $this->uuid($input['projectId'] ?? null, 'project');
         $this->assertProjectAccess($userId, $projectId);
         $conversationId = $input['conversationId'] ?? null;
@@ -147,29 +152,16 @@ final class HubAutomationRegistryService
             $conversationId = $this->uuid($conversationId, 'conversation');
             $this->assertConversation($userId, $projectId, $conversationId);
         }
-
         $name = self::text($input['name'] ?? null, 1, 120, 'AUTOMATION_NAME_INVALID');
         $goal = self::text($input['goal'] ?? null, 1, 2000, 'AUTOMATION_GOAL_INVALID', true);
         if (preg_match(self::SECRET, $goal)) throw new HubAutomationRegistryException('Automation goal appears to contain a secret', 'AUTOMATION_GOAL_SECRET');
-
         $timingMode = $input['timingMode'] ?? null;
         if (!is_string($timingMode) || !in_array($timingMode, self::MODES, true)) throw new HubAutomationRegistryException('Automation timing mode is invalid', 'AUTOMATION_TIMING_MODE_INVALID');
         $schedule = self::schedule($input['schedule'] ?? null, $timingMode);
         $condition = self::condition($input['condition'] ?? null, $timingMode);
         $enabled = $input['enabled'] ?? null;
         if (!is_bool($enabled)) throw new HubAutomationRegistryException('Automation enabled state is invalid', 'AUTOMATION_ENABLED_INVALID');
-
-        return [
-            'schemaVersion' => 1,
-            'projectId' => $projectId,
-            'conversationId' => $conversationId,
-            'name' => $name,
-            'goal' => $goal,
-            'timingMode' => $timingMode,
-            'schedule' => $schedule,
-            'condition' => $condition,
-            'enabled' => $enabled,
-        ];
+        return ['schemaVersion'=>1,'projectId'=>$projectId,'conversationId'=>$conversationId,'name'=>$name,'goal'=>$goal,'timingMode'=>$timingMode,'schedule'=>$schedule,'condition'=>$condition,'enabled'=>$enabled];
     }
 
     private function assertProjectAccess(string $userId, string $projectId): void
@@ -203,21 +195,16 @@ final class HubAutomationRegistryService
     /** @param array<string,mixed> $value @param list<string> $expected */
     private static function exactKeys(array $value, array $expected, string $code): void
     {
-        $keys = array_keys($value);
-        sort($keys);
-        $wanted = $expected;
-        sort($wanted);
+        $keys = array_keys($value); sort($keys); $wanted = $expected; sort($wanted);
         if ($keys !== $wanted) throw new HubAutomationRegistryException('Automation fields are invalid', $code);
     }
 
     private static function text(mixed $value, int $minimum, int $maximumBytes, string $code, bool $normalizeNewlines = false): string
     {
-        if (!is_string($value)) throw new HubAutomationRegistryException('Automation text field is invalid', $code);
+        if (!is_string($value) || preg_match(self::CONTROL_CHARS, $value)) throw new HubAutomationRegistryException('Automation text field is invalid', $code);
         $value = trim($value);
         if ($normalizeNewlines) $value = str_replace(["\r\n", "\r"], "\n", $value);
-        if (strlen($value) < $minimum || strlen($value) > $maximumBytes || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $value)) {
-            throw new HubAutomationRegistryException('Automation text field is invalid', $code);
-        }
+        if (strlen($value) < $minimum || strlen($value) > $maximumBytes) throw new HubAutomationRegistryException('Automation text field is invalid', $code);
         return $value;
     }
 
@@ -225,21 +212,15 @@ final class HubAutomationRegistryService
     {
         $input = self::text($value, 1, 4096, 'AUTOMATION_SCHEDULE_INVALID', true);
         $lines = explode("\n", $input);
-        if (($lines[0] ?? null) !== 'BEGIN:VEVENT' || ($lines[count($lines) - 1] ?? null) !== 'END:VEVENT' || count($lines) < 3 || count($lines) > 10) {
-            throw new HubAutomationRegistryException('Automation schedule must be one bounded VEVENT', 'AUTOMATION_SCHEDULE_INVALID');
-        }
+        if (($lines[0] ?? null) !== 'BEGIN:VEVENT' || ($lines[count($lines)-1] ?? null) !== 'END:VEVENT' || count($lines) < 3 || count($lines) > 10) throw new HubAutomationRegistryException('Automation schedule must be one bounded VEVENT', 'AUTOMATION_SCHEDULE_INVALID');
         foreach ($lines as $line) if (strlen($line) > 512) throw new HubAutomationRegistryException('Automation schedule line is too long', 'AUTOMATION_SCHEDULE_INVALID');
-        $body = array_slice($lines, 1, -1);
-        $starts = [];
-        $rules = [];
-        foreach ($body as $line) {
+        $starts = []; $rules = [];
+        foreach (array_slice($lines, 1, -1) as $line) {
             if (preg_match(self::DTSTART, $line)) { $starts[] = $line; continue; }
             if (preg_match(self::RRULE, $line)) { $rules[] = $line; continue; }
             throw new HubAutomationRegistryException('Automation schedule contains a forbidden field', 'AUTOMATION_SCHEDULE_FIELD_FORBIDDEN');
         }
-        if (count($starts) > 1 || count($rules) > 1 || (count($starts) === 0 && count($rules) === 0)) {
-            throw new HubAutomationRegistryException('Automation schedule is invalid', 'AUTOMATION_SCHEDULE_INVALID');
-        }
+        if (count($starts) > 1 || count($rules) > 1 || (count($starts) === 0 && count($rules) === 0)) throw new HubAutomationRegistryException('Automation schedule is invalid', 'AUTOMATION_SCHEDULE_INVALID');
         $rule = $rules[0] ?? null;
         if (is_string($rule)) {
             if (preg_match('/FREQ=(?:SECONDLY|MINUTELY)(?:;|$)/', $rule)) throw new HubAutomationRegistryException('Automation frequency is too high', 'AUTOMATION_FREQUENCY_TOO_HIGH');
@@ -264,32 +245,23 @@ final class HubAutomationRegistryService
         $description = self::text($value['description'] ?? null, 1, 500, 'AUTOMATION_CONDITION_DESCRIPTION_INVALID');
         if (preg_match(self::SECRET, $description)) throw new HubAutomationRegistryException('Condition appears to contain a secret', 'AUTOMATION_CONDITION_SECRET');
         if (preg_match(self::EXECUTABLE_CONDITION, $description)) throw new HubAutomationRegistryException('Condition contains executable-like content', 'AUTOMATION_CONDITION_EXECUTABLE_FORBIDDEN');
-        return ['schemaVersion' => 1, 'key' => $key, 'description' => $description];
+        return ['schemaVersion'=>1,'key'=>$key,'description'=>$description];
     }
 
     /** @param array<string,mixed> $row @return array<string,mixed> */
     private static function present(array $row): array
     {
         $condition = null;
-        if (($row['timing_mode'] ?? null) === 'condition_watch') {
-            $condition = ['schemaVersion' => 1, 'key' => (string) $row['condition_key'], 'description' => (string) $row['condition_description']];
-        }
+        if (($row['timing_mode'] ?? null) === 'condition_watch') $condition = ['schemaVersion'=>1,'key'=>(string)$row['condition_key'],'description'=>(string)$row['condition_description']];
         return [
             'definition' => [
-                'schemaVersion' => 1,
-                'automationId' => (string) $row['automation_id'],
-                'projectId' => (string) $row['project_id'],
-                'conversationId' => is_string($row['conversation_id'] ?? null) ? $row['conversation_id'] : null,
-                'name' => (string) $row['name'],
-                'goal' => (string) $row['goal'],
-                'timingMode' => (string) $row['timing_mode'],
-                'schedule' => (string) $row['schedule_ical'],
-                'condition' => $condition,
-                'enabled' => (int) $row['enabled'] === 1,
+                'schemaVersion'=>1,'automationId'=>(string)$row['automation_id'],'projectId'=>(string)$row['project_id'],
+                'conversationId'=>is_string($row['conversation_id'] ?? null) ? $row['conversation_id'] : null,
+                'name'=>(string)$row['name'],'goal'=>(string)$row['goal'],'timingMode'=>(string)$row['timing_mode'],
+                'schedule'=>(string)$row['schedule_ical'],'condition'=>$condition,'enabled'=>(int)$row['enabled'] === 1,
             ],
-            'createdAt' => (string) $row['created_at'],
-            'updatedAt' => (string) $row['updated_at'],
-            'archivedAt' => is_string($row['archived_at'] ?? null) ? $row['archived_at'] : null,
+            'createdAt'=>(string)$row['created_at'],'updatedAt'=>(string)$row['updated_at'],
+            'archivedAt'=>is_string($row['archived_at'] ?? null) ? $row['archived_at'] : null,
         ];
     }
 
@@ -301,7 +273,7 @@ final class HubAutomationRegistryService
 
     private static function newUuid(): string
     {
-        $bytes = random_bytes(16); $bytes[6] = chr((ord($bytes[6]) & 15) | 64); $bytes[8] = chr((ord($bytes[8]) & 63) | 128);
-        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4));
+        $bytes=random_bytes(16); $bytes[6]=chr((ord($bytes[6])&15)|64); $bytes[8]=chr((ord($bytes[8])&63)|128);
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes),4));
     }
 }
