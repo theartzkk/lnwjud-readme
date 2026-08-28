@@ -113,8 +113,12 @@ try {
     $pdo->prepare("INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:task, :user, :project, :goal, 'QUEUED', NULL, NULL, 0, NULL, NULL, :key, :conversation, :at, :at, NULL)")->execute(['task' => $conversationTask, 'user' => $owner, 'project' => $project, 'goal' => 'สรุปสถานะโปรเจกต์นี้ให้หน่อย', 'key' => 'native-m12-conversation-0001', 'conversation' => $conversation, 'at' => $now]);
     $executor->enqueue($conversationTask, $project, (string) $promoted['activeRevisionId'], 'VPS', 'agent.conversation', ['mode' => 'NATIVE_CONVERSATION', 'messageId' => $message], $now);
     m12_assert(($executor->runOnce($now)['state'] ?? null) === 'QUEUED', 'temporary provider failure requeues the same native task');
-    m12_assert(($executor->runOnce($now)['state'] ?? null) === 'QUEUED', 'temporary provider retry stays bounded on the same task');
-    m12_assert(($executor->runOnce($now)['state'] ?? null) === 'WAITING_FOR_CAPABILITY', 'temporary provider retry pauses after the third attempt');
+    m12_assert($executor->runOnce($now) === null, 'temporary provider retry observes deterministic backoff instead of hot-looping');
+    $retry2 = gmdate('c', strtotime($now) + 61);
+    m12_assert(($executor->runOnce($retry2)['state'] ?? null) === 'QUEUED', 'temporary provider retry stays bounded on the same task after first backoff');
+    m12_assert($executor->runOnce($retry2) === null, 'second provider retry observes the longer deterministic backoff');
+    $retry3 = gmdate('c', strtotime($retry2) + 301);
+    m12_assert(($executor->runOnce($retry3)['state'] ?? null) === 'WAITING_FOR_CAPABILITY', 'temporary provider retry pauses after the third attempt');
     $failedConversation = $pdo->prepare('SELECT t.state AS task_state, t.failure_code, e.state AS execution_state, e.attempt_count FROM control_tasks t JOIN control_task_executions e ON e.task_id=t.task_id WHERE t.task_id=:task'); $failedConversation->execute(['task' => $conversationTask]); $failedConversationRow = $failedConversation->fetch();
     m12_assert(is_array($failedConversationRow) && $failedConversationRow['task_state'] === 'WAITING_FOR_WORKER' && $failedConversationRow['execution_state'] === 'WAITING_FOR_CAPABILITY' && (int) $failedConversationRow['attempt_count'] === 3 && $failedConversationRow['failure_code'] === 'PROVIDER_UNAVAILABLE', 'retry exhaustion is truthful and preserves the task');
     $fakeSuccess = $pdo->prepare("SELECT COUNT(*) FROM control_conversation_messages WHERE conversation_id=:conversation AND task_id=:task AND message_kind IN ('ASSISTANT','RESULT')"); $fakeSuccess->execute(['conversation' => $conversation, 'task' => $conversationTask]); m12_assert((int) $fakeSuccess->fetchColumn() === 0, 'provider failure never emits a successful assistant result');
@@ -146,10 +150,11 @@ try {
     m12_assert(is_array($failedUsage) && $failedUsage['status'] === 'FAILED' && (int) $failedUsage['input_tokens'] === 11 && (int) $failedUsage['output_tokens'] === 3 && (int) $failedUsage['estimated_microunits'] === 14, 'billable failed response is recorded as FAILED with known usage');
     m12_assert((int) $invalidAgent->status($owner, $now)['budget']['usedMicrounits'] >= $failedUsageBefore + 14, 'failed billable usage remains inside the budget guard');
 
-    $failureMethod = (new ReflectionClass(HubNativeAgentService::class))->getMethod('providerFailure'); $failureMethod->setAccessible(true);
-    $quotaFailure = $failureMethod->invoke(null, 429, ['error' => ['type' => 'insufficient_quota', 'code' => 'insufficient_quota', 'message' => 'raw message must never persist']], 'fixture-fast');
-    $rateFailure = $failureMethod->invoke(null, 429, ['error' => ['type' => 'rate_limit_error', 'code' => 'rate_limit_exceeded']], 'fixture-fast');
-    $permissionFailure = $failureMethod->invoke(null, 403, ['error' => ['type' => 'permission_error', 'code' => 'project_forbidden']], 'fixture-fast');
+    $failureAdapter = new HubOpenAiProviderAdapter();
+    $failureMethod = (new ReflectionClass(HubOpenAiProviderAdapter::class))->getMethod('failure'); $failureMethod->setAccessible(true);
+    $quotaFailure = $failureMethod->invoke($failureAdapter, 429, ['error' => ['type' => 'insufficient_quota', 'code' => 'insufficient_quota', 'message' => 'raw message must never persist']], 'fixture-fast');
+    $rateFailure = $failureMethod->invoke($failureAdapter, 429, ['error' => ['type' => 'rate_limit_error', 'code' => 'rate_limit_exceeded']], 'fixture-fast');
+    $permissionFailure = $failureMethod->invoke($failureAdapter, 403, ['error' => ['type' => 'permission_error', 'code' => 'project_forbidden']], 'fixture-fast');
     m12_assert($quotaFailure['code'] === 'PROVIDER_QUOTA_EXHAUSTED' && $rateFailure['code'] === 'PROVIDER_RATE_LIMITED' && $permissionFailure['code'] === 'PROVIDER_PERMISSION_DENIED', 'provider diagnostics distinguish quota, rate limit, and permission failures');
     m12_assert(!str_contains(json_encode([$quotaFailure, $rateFailure, $permissionFailure], JSON_THROW_ON_ERROR), 'raw message'), 'sanitized provider diagnostic never retains raw provider messages');
     $toolUsed = false; $agentResult = $agent->respondWithTools($owner, $project, null, null, 'ตรวจ README', [], [], ['vaultRevision' => $promoted['activeRevisionId']], [['type' => 'function', 'name' => 'project_search', 'description' => 'read only', 'parameters' => ['type' => 'object', 'additionalProperties' => false, 'properties' => ['query' => ['type' => 'string']], 'required' => ['query']]]], static function (string $name, array $arguments) use (&$toolUsed): array { $toolUsed = $name === 'project_search' && ($arguments['query'] ?? null) === 'readme'; return ['files' => [['path' => 'README.md']]]; }, $now);
