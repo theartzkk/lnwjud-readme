@@ -110,6 +110,7 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(nativeAgent, /https:\/\/api\.openai\.com\/v1\/responses/);
   assert.match(serviceUnit, /AWH_ARTIFACT_ROOT/);
   assert.match(serviceUnit, /NoNewPrivileges=true/);
+  assert.match(timerUnit, /OnActiveSec=5s/);
   assert.match(timerUnit, /OnUnitActiveSec=15s/);
   assert.doesNotMatch(`${local}\n${remoteSource}\n${migration}\n${vault}\n${durable}`, /(?:BEGIN [A-Z ]+PRIVATE KEY|AWH_OPENAI_API_KEY\s*=|Authorization: Bearer sk-[A-Za-z0-9_-]{20,})/i);
 });
