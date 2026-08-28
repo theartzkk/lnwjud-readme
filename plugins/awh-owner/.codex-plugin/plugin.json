@@ -1,0 +1,18 @@
+{
+  "name": "awh-owner",
+  "version": "0.1.0",
+  "description": "Owner control workflow for Art’s Workspace Hub using bounded, evidence-first AWH capabilities.",
+  "author": {
+    "name": "Art’s Workspace Hub"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "AWH Owner",
+    "shortDescription": "Control AWH safely from AI chat.",
+    "longDescription": "AWH Owner turns natural-language owner requests into bounded AWH inspection and control workflows, preferring the AWH Safe Bridge and existing control-plane authorities over raw shell access.",
+    "developerName": "Art’s Workspace Hub",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Inspect AWH live state, explain what needs attention, and use only approved bounded capabilities."
+  }
+}
