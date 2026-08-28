@@ -1,0 +1,205 @@
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -106,8 +106,11 @@
+             // Now we can send regular logging messages
+             transport.sendLog('info', 'Server connected successfully');
+             transport.sendLog('info', 'MCP fully initialized, all startup messages sent');
+-            // Preemptively check/download Chrome for PDF generation (runs in background)
+-            ensureChromeAvailable();
++            // Remote workers must stay network-light at startup. PDF generation still
++            // resolves Chrome lazily when the PDF tool is actually called.
++            if (process.env.DC_REMOTE_DEVICE !== 'true') {
++                ensureChromeAvailable();
++            }
+         };
+         await server.connect(transport);
+     }
+--- a/dist/remote-device/device.js
++++ b/dist/remote-device/device.js
+@@ -15,6 +15,16 @@
+  * (the device process, not the shared server).
+  */
+ const SEEN_CALL_IDS_MAX = 100;
++const REMOTE_LOG_PREVIEW_CHARS = 4000;
++function previewForRemoteLog(value, maxChars = REMOTE_LOG_PREVIEW_CHARS) {
++    try {
++        const text = JSON.stringify(value);
++        return text.length > maxChars ? `${text.slice(0, maxChars)}…[truncated ${text.length - maxChars} chars]` : text;
++    }
++    catch {
++        return '[unserializable]';
++    }
++}
+ export class MCPDevice {
+     constructor(options = {}) {
+         /** Call ids already handled by THIS process (insertion-ordered, bounded). */
+@@ -242,7 +252,7 @@
+             console.debug('[DEBUG] Ignoring tool call for different device');
+             return;
+         }
+-        console.log(`🔧 Received tool call ${call_id}: ${tool_name} ${JSON.stringify(tool_args)} metadata: ${JSON.stringify(metadata)}`);
++        console.log(`🔧 Received tool call ${call_id}: ${tool_name} ${previewForRemoteLog(tool_args, 2000)} metadata: ${previewForRemoteLog(metadata, 1000)}`);
+         // LOCAL claim first — this is the authoritative guard against executing
+         // a call twice. During the transition both transports deliver every call
+         // to THIS SAME PROCESS, so an in-memory check is sufficient and, unlike
+@@ -292,7 +302,7 @@
+                 // Execute other tools using desktop integration
+                 result = await this.desktop.callClientTool(tool_name, tool_args, metadata);
+             }
+-            console.log(`✅ Tool call ${tool_name} completed:\r\n ${JSON.stringify(result)}`);
++            console.log(`✅ Tool call ${tool_name} completed: ${previewForRemoteLog(result)}`);
+             // Update database with result, THEN ring the doorbell — the server
+             // fetches the row by id on the doorbell, so the write must land first.
+             await this.remoteChannel.updateCallResult(call_id, 'completed', result);
+--- a/dist/remote-device/remote-channel.js
++++ b/dist/remote-device/remote-channel.js
+@@ -929,13 +929,13 @@
+         this.heartbeatDeviceId = deviceId;
+         this.connectionCheckInterval = setInterval(() => {
+             this.checkConnectionHealth();
+-        }, 10000);
++        }, 5000);
+         // Bookkeeping last_seen write. Self-rescheduling rather than a fixed
+         // setInterval so the cadence can follow the tier: a device that
+         // withdraws the capability flag must fall back to the fast legacy
+         // cadence immediately, not 30 minutes later.
+         this.scheduleHeartbeat();
+-        console.debug(`[DEBUG] Heartbeat started - connectionCheck: 10s, last_seen: ${this.heartbeatIntervalMs()}ms`);
++        console.debug(`[DEBUG] Heartbeat started - connectionCheck: 5s, last_seen: ${this.heartbeatIntervalMs()}ms`);
+     }
+     /** Arm (or re-arm) the last_seen timer at the current tier's cadence. */
+     scheduleHeartbeat() {
+--- a/dist/remote-device/desktop-commander-integration.js
++++ b/dist/remote-device/desktop-commander-integration.js
+@@ -12,6 +12,33 @@
+         this.mcpClient = null;
+         this.mcpTransport = null;
+         this.isReady = false;
++        this.isShuttingDown = false;
++        this.reinitPromise = null;
++    }
++    get ready() {
++        return this.isReady && this.mcpClient !== null;
++    }
++    handleLocalDisconnect(reason) {
++        if (this.isShuttingDown || !this.isReady)
++            return;
++        this.isReady = false;
++        this.mcpClient = null;
++        this.mcpTransport = null;
++        console.error(` - ❌ Local Desktop Commander MCP disconnected (${reason}); recovery armed`);
++        captureRemote('desktop_integration_local_disconnected', { reason }).catch(() => { });
++    }
++    async ensureReady() {
++        if (this.ready)
++            return;
++        if (this.isShuttingDown)
++            throw new Error('Desktop Commander integration is shutting down');
++        if (!this.reinitPromise) {
++            console.log(' - ♻️ Local Desktop Commander MCP is not running; restarting...');
++            this.reinitPromise = this.initialize().finally(() => {
++                this.reinitPromise = null;
++            });
++        }
++        await this.reinitPromise;
+     }
+     async initialize() {
+         console.debug('[DEBUG] DesktopCommanderIntegration.initialize() called');
+@@ -39,6 +66,10 @@
+             }, {
+                 capabilities: {}
+             });
++            // Attach supervision BEFORE connect so the SDK keeps its own close handler;
++            // this makes in-flight calls reject immediately instead of waiting 60s.
++            this.mcpTransport.onclose = () => this.handleLocalDisconnect('stdio transport closed');
++            this.mcpTransport.onerror = (err) => this.handleLocalDisconnect(`stdio transport error: ${err?.message ?? String(err)}`);
+             // Connect to Desktop Commander
+             console.debug('[DEBUG] Connecting MCP client to transport');
+             await this.mcpClient.connect(this.mcpTransport);
+@@ -49,6 +80,15 @@
+         catch (error) {
+             console.error(' - ❌ Failed to connect to Desktop Commander MCP:', error);
+             console.debug('[DEBUG] MCP connection error:', error);
++            this.isReady = false;
++            this.mcpClient = null;
++            if (this.mcpTransport) {
++                try {
++                    await this.mcpTransport.close();
++                }
++                catch { }
++                this.mcpTransport = null;
++            }
+             await captureRemote('desktop_integration_init_failed', { error });
+             throw error;
+         }
+@@ -106,14 +146,15 @@
+         return null;
+     }
+     async callClientTool(toolName, args, metadata) {
+-        if (!this.isReady || !this.mcpClient) {
+-            console.debug('[DEBUG] callClientTool() failed - not ready or no client');
+-            throw new Error('DesktopIntegration not initialized');
++        await this.ensureReady();
++        const client = this.mcpClient;
++        if (!client) {
++            throw new Error('Local Desktop Commander MCP connection was lost while dispatching; retry on the recovered child');
+         }
+         // Proxy other tools to MCP server
+         try {
+             console.debug('[DEBUG] Calling MCP tool:', toolName, 'args:', JSON.stringify(args).substring(0, 100));
+-            const result = await this.mcpClient.callTool({
++            const result = await client.callTool({
+                 name: toolName,
+                 arguments: args,
+                 _meta: { remote: true, ...metadata || {} }
+@@ -150,6 +191,7 @@
+     }
+     async shutdown() {
+         console.debug('[DEBUG] DesktopCommanderIntegration.shutdown() called');
++        this.isShuttingDown = true;
+         const closeWithTimeout = async (operation, name, timeoutMs = 3000) => {
+             return Promise.race([
+                 operation(),
+--- a/dist/terminal-manager.js
++++ b/dist/terminal-manager.js
+@@ -203,6 +203,19 @@
+         // Spawn the process with appropriate arguments
+         const childProcess = spawn(spawnConfig.executable, spawnConfig.args, spawnOptions);
+         let output = '';
++        // spawn() reports bad executables asynchronously via 'error'. Attach the
++        // listener immediately so a failed spawn can never crash the MCP child.
++        let forwardProcessError = null;
++        let pendingProcessError = null;
++        childProcess.on('error', (err) => {
++            if (forwardProcessError) {
++                forwardProcessError(err);
++            }
++            else {
++                pendingProcessError = err;
++                console.error(`Process error for "${command}": ${err.message}`);
++            }
++        });
+         // Ensure childProcess.pid is defined before proceeding
+         if (!childProcess.pid) {
+             // Return a consistent error object instead of throwing
+@@ -257,6 +270,20 @@
+                 }
+                 resolve(result);
+             };
++            // Route later process errors into the same one-shot completion path so
++            // callers fail promptly instead of waiting for the full timeout.
++            forwardProcessError = (err) => {
++                this.sessions.delete(childProcess.pid);
++                exitReason = 'process_exit';
++                resolveOnce({
++                    pid: childProcess.pid,
++                    output: output + `\nProcess error: ${err.message}`,
++                    isBlocked: false
++                });
++            };
++            if (pendingProcessError) {
++                forwardProcessError(pendingProcessError);
++            }
+             childProcess.stdout.on('data', (data) => {
+                 const text = data.toString();
+                 const now = Date.now();

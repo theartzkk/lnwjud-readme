@@ -114,3 +114,23 @@ test('backup activation is exact-revision, approval-gated, and rollback-capable'
   assert.match(remote, /AWH_BACKUP_ROLLBACK=PASS/);
   assert.doesNotMatch(`${local}\n${remote}`, /StrictHostKeyChecking=no|password=|token=|secret=/i);
 });
+
+
+test('mac remote worker recovery is pinned, persistent, and reproducible', async () => {
+  const dir = join(ROOT, 'deploy/remote-worker/macos');
+  const installer = await readFile(join(dir, 'install.sh'), 'utf8');
+  const supervisor = await readFile(join(dir, 'awh-remote-worker.sh'), 'utf8');
+  const verifier = await readFile(join(dir, 'verify.sh'), 'utf8');
+  const patch = await readFile(join(dir, 'runtime-hardening.patch'), 'utf8');
+  const plist = await readFile(join(dir, 'com.awh.remote-worker.plist.template'), 'utf8');
+  assert.match(installer, /EXPECTED=0\.2\.47/);
+  assert.match(installer, /runtime hardening patch does not match pinned package; refusing partial install/);
+  assert.doesNotMatch(supervisor, /\bnpx\b/);
+  assert.match(supervisor, /remote --persist-session/);
+  assert.match(supervisor, /sleep 5/);
+  assert.match(plist, /<key>KeepAlive<\/key><true\/>/);
+  assert.match(verifier, /session_stored=yes/);
+  for (const marker of ['REMOTE_LOG_PREVIEW_CHARS', 'ensureReady', 'pendingProcessError', 'DC_REMOTE_DEVICE']) assert.match(patch, new RegExp(marker));
+  const combined = `${installer}\n${supervisor}\n${verifier}\n${patch}\n${plist}`;
+  assert.doesNotMatch(combined, /\/Users\/mac|@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|access_token\s*[:=]\s*['"][^'"]+/i);
+});

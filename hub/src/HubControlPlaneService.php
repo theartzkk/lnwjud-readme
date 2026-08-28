@@ -626,15 +626,20 @@ final class HubControlPlaneService
                 $answer = $this->pdo->prepare("SELECT 1 FROM control_conversation_messages WHERE conversation_id = :conversation AND idempotency_key = :key");
                 $answer->execute(['conversation' => $conversation['conversation_id'], 'key' => 'native-answer-' . (string) $existingMessageId]);
                 $needsNativeRetry = $this->finalProductSchemaPresent() && $answer->fetchColumn() === false;
+                $legacyNativeRetry = $needsNativeRetry && !$this->centralProjectAuthoritySchemaPresent();
+                if ($needsNativeRetry && !$legacyNativeRetry && self::isConversationOnly($message, $attachmentIds !== [])) {
+                    $this->queueNativeConversationTask($userId, $projectId, (string) $conversation['conversation_id'], (string) $existingMessageId, $message, $at);
+                }
                 $this->pdo->exec('COMMIT'); $transactionOpen = false;
-                if ($needsNativeRetry) $this->completeNativeConversation($userId, ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => (string) $existingMessageId, 'projectId' => $projectId, 'request' => $message, 'taskId' => null], $at);
+                if ($legacyNativeRetry) $this->completeNativeConversation($userId, ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => (string) $existingMessageId, 'projectId' => $projectId, 'request' => $message, 'taskId' => null], $at);
                 return $schema >= 2 ? $this->conversationByIdForUser($userId, (string) $conversation['conversation_id']) : $this->conversationForUser($userId, $projectId);
             }
             $messageId = $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'USER', $message, $at, $idempotency);
             if ($attachmentIds !== []) $this->bindAttachments($userId, $projectId, (string) $conversation['conversation_id'], $messageId, $attachmentIds);
 
             $taskId = null;
-            if (!self::isConversationOnly($message, $attachmentIds !== [])) {
+            $conversationOnly = self::isConversationOnly($message, $attachmentIds !== []);
+            if (!$conversationOnly) {
                 $taskId = self::uuidFromBytes(random_bytes(16));
                 $taskKey = 'conversation-' . $idempotency;
                 $effectiveGoal = $this->resolveConversationGoal((string) $conversation['conversation_id'], $message);
@@ -656,7 +661,15 @@ final class HubControlPlaneService
             }
 
             if ($this->finalProductSchemaPresent()) {
-                $nativeRequest = ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => $messageId, 'projectId' => $projectId, 'request' => $message, 'taskId' => $taskId];
+                if ($this->centralProjectAuthoritySchemaPresent()) {
+                    if ($conversationOnly) {
+                        $taskId = $this->queueNativeConversationTask($userId, $projectId, (string) $conversation['conversation_id'], $messageId, $message, $at);
+                    }
+                } else {
+                    // Historical pre-M12 schemas have no durable execution table.
+                    // Keep their compatibility path isolated from current production.
+                    $nativeRequest = ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => $messageId, 'projectId' => $projectId, 'request' => $message, 'taskId' => $taskId];
+                }
             } else {
                 $this->appendConversationMessage((string) $conversation['conversation_id'], $taskId, 'ASSISTANT', $this->conversationAnswer($userId, $projectId, $message), $at);
             }
@@ -824,6 +837,26 @@ final class HubControlPlaneService
         try { HubOwnerAuthService::assertRecentStepUpSession($session, $now); } catch (HubOwnerAuthException) { throw new HubControlPlaneException('A recent password confirmation is required', 'STEP_UP_REQUIRED'); }
         try { return ['schemaVersion' => 1, 'projectId' => $projectId, 'routing' => $this->agent->updateProjectRouting($userId, $projectId, $payload['routingMode'], $now)]; }
         catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Provider routing could not be changed', $error->codeName); }
+    }
+
+    /** Persist one AI turn as the canonical task/execution authority before any provider I/O. */
+    private function queueNativeConversationTask(string $userId, string $projectId, string $conversationId, string $messageId, string $message, string $at): string
+    {
+        $taskKey = 'native.' . substr(hash('sha256', $conversationId . "\n" . $messageId), 0, 48);
+        $existing = $this->pdo->prepare('SELECT task_id FROM control_tasks WHERE user_id = :user AND idempotency_key = :key LIMIT 1');
+        $existing->execute(['user' => $userId, 'key' => $taskKey]);
+        $taskId = $existing->fetchColumn();
+        $created = false;
+        if (!is_string($taskId)) {
+            $taskId = self::uuidFromBytes(random_bytes(16));
+            $this->pdo->prepare("INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, 'QUEUED', NULL, NULL, 5, NULL, NULL, :key, :conversation, :at, :at, NULL)")->execute(['id' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $message, 'key' => $taskKey, 'conversation' => $conversationId, 'at' => $at]);
+            $created = true;
+        }
+        $this->execution->enqueue($taskId, $projectId, $this->centralVaultRevision($projectId), 'VPS', 'agent.conversation', ['mode' => 'NATIVE_CONVERSATION', 'messageId' => $messageId], $at);
+        $this->pdo->prepare('UPDATE control_conversation_messages SET task_id = :task WHERE message_id = :message AND conversation_id = :conversation AND task_id IS NULL')->execute(['task' => $taskId, 'message' => $messageId, 'conversation' => $conversationId]);
+        $this->pdo->prepare('UPDATE control_conversations SET last_task_id = :task, updated_at = :at WHERE conversation_id = :conversation')->execute(['task' => $taskId, 'at' => $at, 'conversation' => $conversationId]);
+        if ($created) $this->event($taskId, 'QUEUED', 5, 'AI response accepted for durable AWH Server execution', $at);
+        return $taskId;
     }
 
     private function completeNativeConversation(string $userId, array $request, string $at): void
