@@ -293,10 +293,14 @@ async function gitCheck() {
   const branch = await runGit(['branch', '--show-current']);
   const head = await runGit(['rev-parse', 'HEAD']);
   const status = await runGit(['status', '--porcelain']);
+  const upstream = await runGit(['rev-parse', '@{u}']);
   const branchName = branch.stdout;
-  const valid = branch.code === 0 && head.code === 0 && status.code === 0 && branchName === 'awh/v0.1-migration';
-  check('git-state', valid ? 'PASS' : 'FAIL', valid ? `branch=${branchName}; HEAD=${head.stdout}; dirty=${Boolean(status.stdout)}` : 'local Git state could not be verified or branch is not awh/v0.1-migration', started);
-  return { branch: branchName || null, head: head.stdout || null, dirty: Boolean(status.stdout) };
+  const clean = status.code === 0 && status.stdout === '';
+  const tracked = upstream.code === 0 && upstream.stdout !== '';
+  const exactRemote = tracked && head.stdout === upstream.stdout;
+  const valid = branch.code === 0 && branchName !== '' && head.code === 0 && clean && exactRemote;
+  check('git-state', valid ? 'PASS' : 'FAIL', valid ? `branch=${branchName}; HEAD=${head.stdout}; clean=true; upstreamExact=true` : `Git release state is not clean/exact (branch=${branchName || 'DETACHED'}; clean=${clean}; upstreamExact=${exactRemote})`, started);
+  return { branch: branchName || null, head: head.stdout || null, dirty: !clean, upstream: tracked ? upstream.stdout : null, upstreamExact: exactRemote };
 }
 
 async function runGit(args) {
