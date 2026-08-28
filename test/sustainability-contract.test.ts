@@ -69,3 +69,18 @@ test('sustainability contract never embeds credential material', async () => {
   const text = await readFile(join(ROOT, 'config/awh-product-contract.json'), 'utf8');
   assert.doesNotMatch(text, /api[_-]?key|password|bearer|private[_-]?key|refresh[_-]?token/i);
 });
+
+
+test('automatic backup scheduler reuses the canonical verified backup authority', async () => {
+  const service = await readFile(join(ROOT, 'deploy/systemd/awh-backup.service'), 'utf8');
+  const timer = await readFile(join(ROOT, 'deploy/systemd/awh-backup.timer'), 'utf8');
+  assert.match(service, /ExecStart=\/usr\/bin\/php \/opt\/awh-hub\/control-plane-current\/hub\/bin\/backup\.php create \/var\/lib\/awh-hub\/awh\.sqlite \/var\/backups\/awh-hub/);
+  assert.match(service, /PrivateNetwork=true/);
+  assert.match(service, /ProtectSystem=strict/);
+  assert.match(service, /ReadOnlyPaths=\/var\/lib\/awh-hub \/opt\/awh-hub/);
+  assert.match(service, /ReadWritePaths=\/var\/backups\/awh-hub/);
+  assert.doesNotMatch(service, /DELETE|rm\s|find\s.*-delete/i);
+  assert.match(timer, /OnCalendar=\*-\*-\* 03:30:00/);
+  assert.match(timer, /Persistent=true/);
+  assert.match(timer, /RandomizedDelaySec=10m/);
+});

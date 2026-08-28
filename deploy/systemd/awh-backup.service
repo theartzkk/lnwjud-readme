@@ -1,0 +1,26 @@
+[Unit]
+Description=AWH verified SQLite backup
+After=local-fs.target
+ConditionPathExists=/var/lib/awh-hub/awh.sqlite
+ConditionPathIsDirectory=/var/backups/awh-hub
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+ExecStart=/usr/bin/php /opt/awh-hub/control-plane-current/hub/bin/backup.php create /var/lib/awh-hub/awh.sqlite /var/backups/awh-hub
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadOnlyPaths=/var/lib/awh-hub /opt/awh-hub
+ReadWritePaths=/var/backups/awh-hub

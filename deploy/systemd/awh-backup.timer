@@ -1,0 +1,12 @@
+[Unit]
+Description=Create a verified AWH backup every day
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+AccuracySec=1m
+RandomizedDelaySec=10m
+Persistent=true
+Unit=awh-backup.service
+
+[Install]
+WantedBy=timers.target
