@@ -23,6 +23,7 @@ require_once __DIR__ . '/HubFoundingMemoryService.php';
 require_once __DIR__ . '/HubAutomationRegistryService.php';
 require_once __DIR__ . '/HubBackupService.php';
 require_once __DIR__ . '/HubInfrastructureService.php';
+require_once __DIR__ . '/HubAiGovernanceService.php';
 
 final class HubControlPlaneException extends RuntimeException
 {
@@ -62,6 +63,7 @@ final class HubControlPlaneService
     private readonly HubDurableExecutionService $execution;
     private readonly ?HubCapabilityRegistryService $capabilities;
     private readonly ?HubAutomationRegistryService $automations;
+    private readonly ?HubAiGovernanceService $aiGovernance;
 
     private function __construct(private readonly PDO $pdo, private readonly HubEnrollmentService $enrollment, private readonly string $databasePath)
     {
@@ -74,6 +76,7 @@ final class HubControlPlaneService
         $this->execution = new HubDurableExecutionService($pdo, $this->vaults, $this->agent, $this->artifactStore);
         $this->capabilities = HubCapabilityRegistryService::schemaPresent($pdo) ? new HubCapabilityRegistryService($pdo) : null;
         $this->automations = $this->automationSchemaPresent() ? new HubAutomationRegistryService($pdo) : null;
+        $this->aiGovernance = HubAiGovernanceService::schemaPresent($pdo) ? new HubAiGovernanceService($pdo) : null;
     }
 
     public static function openExisting(string $databasePath): self
@@ -781,6 +784,14 @@ final class HubControlPlaneService
         if ($this->capabilities === null) return ['schemaVersion' => 1, 'anywhereFirst' => false, 'deviceRequired' => false, 'summary' => ['ready' => 0, 'cloudReady' => 0, 'optional' => 0, 'planned' => 0], 'capabilities' => [], 'providers' => []];
         try { return $this->capabilities->status(false, $now); }
         catch (HubCapabilityRegistryException $error) { throw new HubControlPlaneException('Capability status is unavailable', $error->codeName); }
+    }
+
+    public function aiGovernanceStatus(string $sessionToken, ?string $now = null): array
+    {
+        $session=$this->sessionRow($sessionToken,$now); $this->assertOwner((string)$session['user_id']);
+        if ($this->aiGovernance===null) return ['schemaVersion'=>1,'status'=>'NOT_READY','models'=>[],'savings'=>['successfulOrAttemptedTasks'=>0,'actualMicrounits'=>0,'premiumBaselineMicrounits'=>0,'savedMicrounits'=>0]];
+        $catalog=$this->aiGovernance->catalog();
+        return ['schemaVersion'=>1,'status'=>'READY','models'=>$catalog['models'],'savings'=>$this->aiGovernance->savingsSummary((string)$session['user_id'])];
     }
 
     public function providerStatus(string $sessionToken, ?string $now = null): array

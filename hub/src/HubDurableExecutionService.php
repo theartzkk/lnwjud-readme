@@ -235,7 +235,7 @@ final class HubDurableExecutionService
                 if ($name === 'project_search') { $query = $arguments['query'] ?? null; if (!is_string($query)) throw new HubDurableExecutionException('Native tool input is invalid', 'EXECUTION_INVALID'); return ['files' => $this->vaults->vault()->search($project, $revision, $query)]; }
                 if ($name === 'project_read_text') { $path = $arguments['path'] ?? null; if (!is_string($path)) throw new HubDurableExecutionException('Native tool input is invalid', 'EXECUTION_INVALID'); return $this->vaults->vault()->readText($project, $revision, $path); }
                 throw new HubDurableExecutionException('Native tool is forbidden', 'EXECUTION_INVALID');
-            }, $at);
+            }, $at, ['executionId'=>(string)$claimed['execution_id'],'taskId'=>(string)$claimed['task_id'],'capability'=>(string)$claimed['required_capability'],'dataClassification'=>'INTERNAL','retryCount'=>(int)$claimed['attempt_count'],'routingPolicyVersion'=>'m16-v1','promptPolicyVersion'=>'native-v1','toolPolicyVersion'=>'bounded-v1']);
             return is_string($result['summary'] ?? null) ? $result['summary'] : null;
         } catch (HubNativeAgentException $error) {
             // An unavailable provider must not make an ordinary safe
@@ -257,7 +257,7 @@ final class HubDurableExecutionService
         $context = $this->conversationContext((string) $claimed['user_id'], (string) $claimed['project_id'], (string) $claimed['goal']);
         if ($this->agent === null) throw new HubDurableExecutionException('Native conversation provider is unavailable', 'PROVIDER_UNAVAILABLE', ['provider' => 'openai', 'operation' => 'responses', 'category' => 'unavailable', 'retryable' => true]);
         try {
-            $result = $this->agent->respond((string) $claimed['user_id'], (string) $claimed['project_id'], $conversationId, $messageId, (string) $claimed['goal'], $turns, $attachments, $at, $context);
+            $result = $this->agent->respond((string) $claimed['user_id'], (string) $claimed['project_id'], $conversationId, $messageId, (string) $claimed['goal'], $turns, $attachments, $at, $context, ['executionId'=>(string)$claimed['execution_id'],'taskId'=>(string)$claimed['task_id'],'capability'=>(string)$claimed['required_capability'],'dataClassification'=>'INTERNAL','retryCount'=>(int)$claimed['attempt_count'],'routingPolicyVersion'=>'m16-v1','promptPolicyVersion'=>'native-v1','toolPolicyVersion'=>'bounded-v1']);
             $summary = trim((string) ($result['summary'] ?? ''));
             if ($summary === '') throw new HubDurableExecutionException('Native conversation provider returned no usable answer', 'PROVIDER_FAILED', ['provider' => 'openai', 'operation' => 'responses', 'category' => 'invalid_response', 'retryable' => true]);
             return function_exists('mb_substr') ? mb_substr($summary, 0, 6000) : substr($summary, 0, 6000);
@@ -304,7 +304,7 @@ final class HubDurableExecutionService
                         return ['path' => $safe, 'sizeBytes' => $bytes, 'changedFiles' => count($writes), 'totalWrittenBytes' => $writtenBytes];
                     }
                     throw new HubDurableExecutionException('Native tool is forbidden', 'EXECUTION_INVALID');
-                }, $at);
+                }, $at, ['executionId'=>(string)$claimed['execution_id'],'taskId'=>(string)$claimed['task_id'],'capability'=>(string)$claimed['required_capability'],'dataClassification'=>'INTERNAL','retryCount'=>(int)$claimed['attempt_count'],'routingPolicyVersion'=>'m16-v1','promptPolicyVersion'=>'native-v1','toolPolicyVersion'=>'bounded-v1']);
             } catch (HubNativeAgentException $error) { throw new HubDurableExecutionException('Native editing provider failed', $error->codeName, $error->diagnostic); }
             $summary = trim((string) ($result['summary'] ?? ''));
             if ($writes === []) { $this->complete($claimed, $summary !== '' ? $summary . "\n\nAWH ไม่พบการแก้ไฟล์ที่จำเป็น จึงไม่ได้สร้าง candidate revision" : 'ตรวจงานแล้ว ไม่พบการแก้ไฟล์ที่จำเป็น จึงไม่ได้สร้าง candidate revision', 'RESULT', $at); return; }
