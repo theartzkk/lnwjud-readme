@@ -3,6 +3,7 @@ Description=Run AWH bounded native executor frequently
 
 [Timer]
 OnBootSec=30s
+OnActiveSec=5s
 OnUnitActiveSec=15s
 AccuracySec=5s
 Persistent=true
