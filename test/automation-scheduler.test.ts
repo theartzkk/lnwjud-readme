@@ -43,6 +43,6 @@ test('native executor reuses its existing tick for automations and remains backw
   assert.match(source, /materializeAutomationSubmission/);
   assert.match(source, /user_version'[\s\S]*>= 15/);
   assert.match(source, /'status' => 'UNAVAILABLE'/);
-  assert.match(source, /HubDurableExecutionService::fromEnvironment\(\$pdo\)->runOnce\(\)/);
+  assert.match(source, /HubDurableExecutionService::fromEnvironment\(\$pdo\)->runBatch\(4\)/);
   assert.doesNotMatch(source, /daemonize|systemctl|crontab|OnCalendar/);
 });

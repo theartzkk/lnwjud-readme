@@ -33,6 +33,7 @@ final class HubDurableExecutionService
     private const EXECUTOR_ID = 'vps-native';
     private const LEASE_SECONDS = 300;
     private const MAX_ATTEMPTS = 3;
+    private const MAX_BATCH_ITEMS = 4;
     private const MAX_ASSISTED_EDIT_FILES = 4;
     private const MAX_ASSISTED_EDIT_FILE_BYTES = 131072;
     private const MAX_ASSISTED_EDIT_TOTAL_BYTES = 262144;
@@ -61,6 +62,29 @@ final class HubDurableExecutionService
         $q = $this->pdo->prepare('INSERT INTO control_task_executions(execution_id, task_id, project_id, vault_revision_id, executor_kind, required_capability, state, lease_owner, lease_expires_at, attempt_count, cancellation_requested_at, checkpoint_json, last_error_code, created_at, updated_at) VALUES(:id, :task, :project, :revision, :kind, :capability, :state, NULL, NULL, 0, NULL, :checkpoint, NULL, :at, :at) ON CONFLICT(task_id) DO NOTHING');
         $q->execute(['id' => $executionId, 'task' => $taskId, 'project' => $projectId, 'revision' => $revisionId, 'kind' => $executorKind, 'capability' => $requiredCapability, 'state' => $state, 'checkpoint' => $json, 'at' => $at]);
         if ($q->rowCount() === 1 && HubCapabilityRegistryService::schemaPresent($this->pdo)) (new HubCapabilityRegistryService($this->pdo))->ensureExecutionEnvelope($executionId, $at);
+    }
+
+    /**
+     * Drain a small bounded amount of canonical work in one service tick.
+     * This is not a second queue: every item is still claimed through runOnce()
+     * and the existing one-to-one control_task_executions authority.
+     *
+     * @return array{processed:int,completed:int,waiting:int,failed:int,results:list<array<string,mixed>>}
+     */
+    public function runBatch(int $maxItems = self::MAX_BATCH_ITEMS, ?string $now = null): array
+    {
+        if ($maxItems < 1 || $maxItems > self::MAX_BATCH_ITEMS) throw new HubDurableExecutionException('Execution batch bound is invalid', 'EXECUTION_INVALID');
+        $results = []; $completed = 0; $waiting = 0; $failed = 0;
+        for ($i = 0; $i < $maxItems; $i++) {
+            $result = $this->runOnce($now);
+            if ($result === null) break;
+            $results[] = $result;
+            $state = (string) ($result['state'] ?? '');
+            if ($state === 'COMPLETED') $completed++;
+            elseif ($state === 'FAILED') $failed++;
+            else $waiting++;
+        }
+        return ['processed' => count($results), 'completed' => $completed, 'waiting' => $waiting, 'failed' => $failed, 'results' => $results];
     }
 
     /** Claims and completes at most one persisted server-native task. */
@@ -122,8 +146,18 @@ final class HubDurableExecutionService
     /** @return list<array<string,mixed>> */
     public function recoverExpired(?string $now = null): array
     {
-        $this->assertReady(); $at = self::timestamp($now ?? gmdate('c')); $q = $this->pdo->prepare("SELECT execution_id, task_id FROM control_task_executions WHERE state IN ('LEASED', 'RUNNING') AND (lease_expires_at IS NULL OR lease_expires_at <= :at) LIMIT 50"); $q->execute(['at' => $at]); $released = [];
-        foreach ($q->fetchAll() as $row) { $update = $this->pdo->prepare("UPDATE control_task_executions SET state = CASE WHEN attempt_count >= :max THEN 'FAILED' ELSE 'QUEUED' END, lease_owner = NULL, lease_expires_at = NULL, last_error_code = 'LEASE_EXPIRED', updated_at = :at WHERE execution_id = :id AND state IN ('LEASED', 'RUNNING') AND (lease_expires_at IS NULL OR lease_expires_at <= :at)"); $update->execute(['max' => self::MAX_ATTEMPTS, 'at' => $at, 'id' => $row['execution_id']]); if ($update->rowCount() === 1) { if (HubCapabilityRegistryService::schemaPresent($this->pdo)) (new HubCapabilityRegistryService($this->pdo))->updateEnvelopeState((string) $row['execution_id'], 'WAITING', null, $at); $released[] = ['executionId' => (string) $row['execution_id'], 'taskId' => (string) $row['task_id']]; } }
+        $this->assertReady(); $at = self::timestamp($now ?? gmdate('c')); $q = $this->pdo->prepare("SELECT execution_id, task_id, attempt_count FROM control_task_executions WHERE state IN ('LEASED', 'RUNNING') AND (lease_expires_at IS NULL OR lease_expires_at <= :at) LIMIT 50"); $q->execute(['at' => $at]); $released = [];
+        foreach ($q->fetchAll() as $row) {
+            $failed = (int) $row['attempt_count'] >= self::MAX_ATTEMPTS;
+            $update = $this->pdo->prepare("UPDATE control_task_executions SET state = CASE WHEN attempt_count >= :max THEN 'FAILED' ELSE 'QUEUED' END, lease_owner = NULL, lease_expires_at = NULL, last_error_code = 'LEASE_EXPIRED', updated_at = :at WHERE execution_id = :id AND state IN ('LEASED', 'RUNNING') AND (lease_expires_at IS NULL OR lease_expires_at <= :at)");
+            $update->execute(['max' => self::MAX_ATTEMPTS, 'at' => $at, 'id' => $row['execution_id']]);
+            if ($update->rowCount() !== 1) continue;
+            $taskState = $failed ? 'FAILED' : 'WAITING_FOR_WORKER';
+            $this->pdo->prepare('UPDATE control_tasks SET state=:state, progress=0, failure_code=:code, lease_expires_at=NULL, updated_at=:at WHERE task_id=:task')->execute(['state'=>$taskState,'code'=>'LEASE_EXPIRED','at'=>$at,'task'=>$row['task_id']]);
+            $this->event((string) $row['task_id'], $taskState, 0, $failed ? 'expired execution lease reached retry limit' : 'expired execution lease recovered; bounded retry delayed', $at);
+            if (HubCapabilityRegistryService::schemaPresent($this->pdo)) (new HubCapabilityRegistryService($this->pdo))->updateEnvelopeState((string) $row['execution_id'], $failed ? 'RELEASED' : 'WAITING', null, $at);
+            $released[] = ['executionId' => (string) $row['execution_id'], 'taskId' => (string) $row['task_id'], 'state' => $failed ? 'FAILED' : 'QUEUED'];
+        }
         return $released;
     }
 
@@ -132,12 +166,30 @@ final class HubDurableExecutionService
         $this->recoverExpired($at); $expires = gmdate('c', strtotime($at) + self::LEASE_SECONDS);
         try {
             $this->pdo->exec('BEGIN IMMEDIATE');
-            $q = $this->pdo->prepare("SELECT e.*, t.goal, t.conversation_id, t.user_id FROM control_task_executions e JOIN control_tasks t ON t.task_id = e.task_id WHERE e.state = 'QUEUED' AND e.executor_kind = 'VPS' AND e.required_capability IN ('agent.conversation', 'project.read', 'project.mutate.text', 'project.mutate.assisted') AND t.state IN ('QUEUED', 'WAITING_FOR_WORKER') ORDER BY e.created_at, e.execution_id LIMIT 1"); $q->execute(); $row = $q->fetch();
+            $q = $this->pdo->prepare("SELECT e.*, t.goal, t.conversation_id, t.user_id FROM control_task_executions e JOIN control_tasks t ON t.task_id = e.task_id WHERE e.state = 'QUEUED' AND e.executor_kind = 'VPS' AND e.required_capability IN ('agent.conversation', 'project.read', 'project.mutate.text', 'project.mutate.assisted') AND t.state IN ('QUEUED', 'WAITING_FOR_WORKER') ORDER BY e.created_at, e.execution_id LIMIT 25"); $q->execute();
+            $row = null;
+            foreach ($q->fetchAll() as $candidate) { if ($this->retryEligible($candidate, $at)) { $row = $candidate; break; } }
             if (!is_array($row)) { $this->pdo->exec('COMMIT'); return null; }
             $update = $this->pdo->prepare("UPDATE control_task_executions SET state = 'RUNNING', lease_owner = :owner, lease_expires_at = :expires, attempt_count = attempt_count + 1, updated_at = :at WHERE execution_id = :id AND state = 'QUEUED'"); $update->execute(['owner' => self::EXECUTOR_ID, 'expires' => $expires, 'at' => $at, 'id' => $row['execution_id']]);
             if ($update->rowCount() !== 1) { $this->pdo->exec('ROLLBACK'); return null; }
             $this->pdo->prepare("UPDATE control_tasks SET state = 'RUNNING', progress = 15, updated_at = :at WHERE task_id = :task AND state IN ('QUEUED', 'WAITING_FOR_WORKER')")->execute(['at' => $at, 'task' => $row['task_id']]); $this->event((string) $row['task_id'], 'RUNNING', 15, str_starts_with((string) $row['required_capability'], 'project.mutate.') ? 'server-native candidate workspace started' : 'server-native inspection started', $at); if (HubCapabilityRegistryService::schemaPresent($this->pdo)) (new HubCapabilityRegistryService($this->pdo))->updateEnvelopeState((string) $row['execution_id'], 'ACTIVE', $expires, $at); $this->pdo->exec('COMMIT'); return $row;
         } catch (Throwable $error) { $this->rollbackImmediate(); if ($error instanceof HubDurableExecutionException) throw $error; throw new HubDurableExecutionException('Server execution claim failed', 'EXECUTION_CLAIM_FAILED'); }
+    }
+
+    /** @param array<string,mixed> $row */
+    private function retryEligible(array $row, string $at): bool
+    {
+        $code = is_string($row['last_error_code'] ?? null) ? (string) $row['last_error_code'] : '';
+        if ($code === '') return true;
+        $attempts = max(0, (int) ($row['attempt_count'] ?? 0));
+        $delay = match ($code) {
+            'PROVIDER_RATE_LIMITED' => $attempts <= 1 ? 30 : 120,
+            'PROVIDER_UNAVAILABLE', 'PROVIDER_FAILED', 'LEASE_EXPIRED' => $attempts <= 1 ? 60 : 300,
+            default => $attempts <= 1 ? 15 : 60,
+        };
+        $updated = strtotime((string) ($row['updated_at'] ?? ''));
+        $current = strtotime($at);
+        return $updated !== false && $current !== false && ($updated + $delay) <= $current;
     }
 
     private function complete(array $claimed, string $summary, string $messageKind, string $at): void

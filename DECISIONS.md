@@ -1,3 +1,11 @@
+# Current supersession — 2026-08-29
+
+- ReadyIDC Production truth is M15 / SQLite v15, not the older M12/v12 or M5 snapshots retained below for history. Current continuation must always verify Production read-only before using historical memory.
+- Continuous Work Supervisor V1 is an orchestration behavior of the existing `HubDurableExecutionService` and native systemd tick, **not** a new scheduler, daemon, queue or task authority.
+- A timer interval is not a retry policy. Retry eligibility is deterministic from the existing execution attempt/error/update state so transient provider outages and lease expiry cannot hot-loop.
+- Lease recovery is cross-authority consistency work: if an execution lease expires, `control_task_executions` and its canonical `control_tasks` row must be reconciled together. A terminal execution cannot leave the user-visible task falsely RUNNING.
+- Backlog throughput is bounded per one-shot tick. The service remains `Type=oneshot`, preserves systemd non-overlap and all existing approval/revision gates, and never becomes an unbounded background shell/process runner.
+
 # Decisions
 
 ## Current production supersession (2026-08-22)

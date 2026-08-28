@@ -1,3 +1,17 @@
+# Authoritative task supersession — 2026-08-29
+
+## NOW
+
+- Close Continuous Work Supervisor V1 on the existing durable execution authority: fixed bounded batch drain, deterministic transient retry backoff, truthful stale-lease recovery, no daemon loop, no new queue/schema authority.
+- Keep M16 activation separate and approval-gated. Production remains M15/v15 until an exact reviewed SHA passes release gates and receives required approval.
+- Required closure evidence: Supervisor focused fixture, Hub integration suite, full product regression, `git diff --check`, clean exact commit/push, then CI where available.
+- Production, billing, credentials, permissions, Google Cloud legacy and BAY production remain untouched in this source milestone.
+
+## NEXT
+
+- After Supervisor V1 source closure, advance VPS-first self-sufficient execution using the same canonical task/execution/approval/memory authorities; prefer capability expansion over new orchestration systems.
+- Field activation/verification of M16 remains a distinct reviewed Production milestone.
+
 # Tasks
 
 ## NOW
