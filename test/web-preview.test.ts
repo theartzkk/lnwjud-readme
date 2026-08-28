@@ -180,6 +180,9 @@ test('owner self-service is a focused settings hub whose independent projections
   assert.match(html, /id="desktop-release-list"/);
   assert.match(html, /id="memory-host"/);
   assert.match(html, /id="my-awh-host"/);
+  assert.match(html, /id="system-health-details"/);
+  assert.match(app, /const health = \$\('system-health-details'\)/);
+  for (const key of ['backup', 'storage', 'queue', 'aiBudget', 'workerSummary']) assert.match(app, new RegExp(`status\.${key}|status\[.${key}.\]`));
   assert.match(app, /Promise\.allSettled\(requests\)/);
   assert.match(app, /function showSettingsSection/);
   assert.match(app, /const host = \$\('memory-host'\)/);

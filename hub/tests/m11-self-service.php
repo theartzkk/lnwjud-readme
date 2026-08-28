@@ -33,13 +33,13 @@ if (!in_array('sqlite', PDO::getAvailableDrivers(), true)) { fwrite(STDOUT, "AWH
 
 $root = rtrim(sys_get_temp_dir(), '/') . '/awh-m11-' . bin2hex(random_bytes(6));
 mkdir($root, 0700, true);
-$db = $root . '/awh.sqlite'; $attachments = $root . '/attachments'; $credentials = $root . '/provider-credentials'; $vaults = $root . '/project-vault';
-mkdir($attachments, 0750, true); mkdir($vaults, 0700, true);
+$db = $root . '/awh.sqlite'; $attachments = $root . '/attachments'; $credentials = $root . '/provider-credentials'; $vaults = $root . '/project-vault'; $backups = $root . '/backups';
+mkdir($attachments, 0750, true); mkdir($vaults, 0700, true); mkdir($backups, 0700, true);
 $base = dirname(__DIR__); $now = gmdate('c');
 $owner = '223b45c0-23e1-408d-ae0f-ac5eca7f6900'; $device = '423b45c0-23e1-408d-ae0f-ac5eca7f6900'; $otherDevice = '523b45c0-23e1-408d-ae0f-ac5eca7f6900'; $visibleDevice = '623b45c0-23e1-408d-ae0f-ac5eca7f6900';
 $project = '113b45c0-23e1-408d-ae0f-ac5eca7f6900'; $otherProject = '723b45c0-23e1-408d-ae0f-ac5eca7f6900';
 $ownerPassword = 'owner-fixture-' . bin2hex(random_bytes(12)); $collaboratorPassword = 'collaborator-fixture-' . bin2hex(random_bytes(12));
-putenv('AWH_CONTROL_ORIGIN=https://awh.test'); putenv('AWH_ATTACHMENT_ROOT=' . $attachments); putenv('AWH_PROVIDER_CREDENTIAL_ROOT=' . $credentials); putenv('AWH_PROJECT_VAULT_ROOT=' . $vaults);
+putenv('AWH_CONTROL_ORIGIN=https://awh.test'); putenv('AWH_ATTACHMENT_ROOT=' . $attachments); putenv('AWH_PROVIDER_CREDENTIAL_ROOT=' . $credentials); putenv('AWH_PROJECT_VAULT_ROOT=' . $vaults); putenv('AWH_HUB_BACKUP_ROOT=' . $backups);
 
 try {
     $pdo = new PDO('sqlite:' . $db, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]); $pdo->exec('PRAGMA foreign_keys = ON'); $pdo->exec(file_get_contents($base . '/schema.sql'));
@@ -118,11 +118,13 @@ try {
     m11_assert(count($visibleWorkers) === 1 && ($visibleWorkers[0]['detectedTools'] ?? null) === ['Word', 'Excel'], 'worker inventory is returned as friendly metadata without exposing tool ids to the normal device summary');
 
     $ownerStatus = m11_body(m11_control($control, 'GET', '/api/v1/control/owner/status', m11_read_browser($ownerSession['sessionToken'])));
-    m11_assert(($ownerStatus['database']['state'] ?? null) === 'HEALTHY' && ($ownerStatus['export']['secretsIncluded'] ?? true) === false && ($ownerStatus['backup']['state'] ?? null) === 'DEPLOYMENT_MANAGED', 'owner self-service status is high-level, healthy and secret-free');
+    m11_assert(($ownerStatus['database']['state'] ?? null) === 'HEALTHY' && ($ownerStatus['export']['secretsIncluded'] ?? true) === false && ($ownerStatus['backup']['state'] ?? null) === 'MISSING', 'owner self-service status is high-level, healthy and secret-free');
+    m11_assert(($ownerStatus['queue']['activeTaskCount'] ?? null) === 0 && ($ownerStatus['queue']['waitingCapabilityCount'] ?? null) === 0 && ($ownerStatus['workerSummary']['ready'] ?? null) === 2 && ($ownerStatus['workerSummary']['total'] ?? null) === 2 && ($ownerStatus['storage']['state'] ?? null) === 'HEALTHY' && ($ownerStatus['aiBudget']['state'] ?? null) === 'DISABLED', 'owner system health exposes bounded operational summaries');
+    m11_assert(!str_contains(json_encode($ownerStatus, JSON_THROW_ON_ERROR), $root), 'owner system health never exposes filesystem paths');
     $export = m11_body(m11_control($control, 'GET', '/api/v1/control/export', $collabRead));
     m11_assert(($export['security']['ownerPrivateMemoryIncluded'] ?? true) === false && !isset($export['memory']), 'collaborator export excludes owner-private memory');
     m11_assert($pdo->query('PRAGMA integrity_check')->fetchColumn() === 'ok' && $pdo->query('PRAGMA foreign_key_check')->fetchAll() === [], 'M11 preserves integrity and foreign keys');
     fwrite(STDOUT, "AWH M11 Self Service: PASS\n");
 } finally {
-    putenv('AWH_PROVIDER_CREDENTIAL_ROOT'); putenv('AWH_ATTACHMENT_ROOT'); putenv('AWH_PROJECT_VAULT_ROOT');
+    putenv('AWH_PROVIDER_CREDENTIAL_ROOT'); putenv('AWH_ATTACHMENT_ROOT'); putenv('AWH_PROJECT_VAULT_ROOT'); putenv('AWH_HUB_BACKUP_ROOT');
 }

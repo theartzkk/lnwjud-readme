@@ -9,7 +9,10 @@ Type=oneshot
 User=root
 Group=root
 UMask=0077
-ExecStart=/usr/bin/php /opt/awh-hub/control-plane-current/hub/bin/backup.php create /var/lib/awh-hub/awh.sqlite /var/backups/awh-hub
+Environment=AWH_HUB_DB_PATH=/var/lib/awh-hub/awh.sqlite
+Environment=AWH_HUB_BACKUP_ROOT=/var/backups/awh-hub
+Environment=AWH_HUB_BACKUP_READ_GROUP=awh-hub
+ExecStart=/usr/bin/php /opt/awh-hub/control-plane-current/hub/bin/scheduled-backup.php
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
