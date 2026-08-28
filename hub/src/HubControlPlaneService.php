@@ -20,6 +20,7 @@ require_once __DIR__ . '/HubNativeAgentService.php';
 require_once __DIR__ . '/HubOwnerAuthService.php';
 require_once __DIR__ . '/HubFoundingMemoryService.php';
 require_once __DIR__ . '/HubAutomationRegistryService.php';
+require_once __DIR__ . '/HubBackupService.php';
 
 final class HubControlPlaneException extends RuntimeException
 {
@@ -60,7 +61,7 @@ final class HubControlPlaneService
     private readonly ?HubCapabilityRegistryService $capabilities;
     private readonly ?HubAutomationRegistryService $automations;
 
-    private function __construct(private readonly PDO $pdo, private readonly HubEnrollmentService $enrollment)
+    private function __construct(private readonly PDO $pdo, private readonly HubEnrollmentService $enrollment, private readonly string $databasePath)
     {
         $this->attachments = HubAttachmentStore::fromEnvironment();
         $this->agent = new HubNativeAgentService($pdo);
@@ -84,7 +85,7 @@ final class HubControlPlaneService
             $pdo->exec('PRAGMA synchronous = NORMAL');
             $ready = (int) $pdo->query('PRAGMA user_version')->fetchColumn() >= 4 && $pdo->query("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'control_tasks'")->fetchColumn() === 1;
             if (!$ready) throw new HubControlPlaneException('Control-plane migration is not ready', 'CONTROL_SCHEMA_NOT_READY');
-            return new self($pdo, HubEnrollmentService::openExisting($databasePath));
+            return new self($pdo, HubEnrollmentService::openExisting($databasePath), $databasePath);
         } catch (HubControlPlaneException $error) {
             throw $error;
         } catch (Throwable) {
@@ -327,14 +328,37 @@ final class HubControlPlaneService
         return $export;
     }
 
-    /** Owner-facing health/recovery view; it exposes no database path or backup material. */
+    /** Owner-facing health/recovery view; it exposes no filesystem paths or backup payloads. */
     public function ownerSelfServiceStatus(string $sessionToken, ?string $now = null): array
     {
         $session = $this->sessionRow($sessionToken, $now); $this->assertSelfServiceReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId);
         $identity = $this->ownerIdentity($userId);
         $integrity = $this->pdo->query('PRAGMA integrity_check')->fetchColumn() === 'ok'; $foreignKeys = $this->pdo->query('PRAGMA foreign_key_check')->fetchAll() === [];
         $recovery = $this->pdo->prepare('SELECT COUNT(*) FROM auth_recovery_codes WHERE user_id = :user AND used_at IS NULL'); $recovery->execute(['user' => $userId]);
-        return ['schemaVersion' => 1, 'owner' => $identity, 'product' => $this->productIdentity(), 'database' => ['state' => $integrity && $foreignKeys ? 'HEALTHY' : 'NEEDS_ATTENTION', 'schemaVersion' => (int) $this->pdo->query('PRAGMA user_version')->fetchColumn()], 'backup' => ['state' => 'DEPLOYMENT_MANAGED', 'message' => 'AWH verifies a recoverable backup before every approved production activation.'], 'recovery' => ['state' => (int) $recovery->fetchColumn() > 0 ? 'READY' : 'NEEDS_REGENERATION', 'message' => 'Use recovery codes only for account recovery; they are never included in exports.'], 'export' => ['available' => true, 'secretsIncluded' => false, 'sourceFilesIncluded' => false], 'workers' => $this->workersForUser($userId)];
+        $workers = $this->workersForUser($userId); $readyWorkers = count(array_filter($workers, static fn (array $worker): bool => in_array((string) ($worker['state'] ?? ''), ['READY', 'WORKING'], true)));
+        $activeTasks = (int) $this->pdo->query("SELECT COUNT(*) FROM control_tasks WHERE state NOT IN ('COMPLETED','FAILED','CANCELLED')")->fetchColumn();
+        $waitingCapability = $this->centralProjectAuthoritySchemaPresent() ? (int) $this->pdo->query("SELECT COUNT(*) FROM control_task_executions WHERE state = 'WAITING_FOR_CAPABILITY'")->fetchColumn() : 0;
+
+        $backupRoot = getenv('AWH_HUB_BACKUP_ROOT') ?: '/var/backups/awh-hub';
+        try { $backupMetadata = HubBackupService::latestMetadata($backupRoot); } catch (Throwable) { $backupMetadata = ['configured' => false, 'latest' => null]; }
+        $latest = is_array($backupMetadata['latest'] ?? null) ? $backupMetadata['latest'] : null;
+        $backupState = !($backupMetadata['configured'] ?? false) ? 'NOT_CONFIGURED' : ($latest === null ? 'MISSING' : (($latest['status'] ?? null) === 'VERIFIED' ? 'VERIFIED' : 'NEEDS_ATTENTION'));
+        $backup = ['state' => $backupState, 'latest' => $latest === null ? null : ['name' => (string) ($latest['name'] ?? ''), 'sizeBytes' => (int) ($latest['sizeBytes'] ?? 0), 'verifiedAt' => (string) ($latest['modifiedAt'] ?? ''), 'databaseSchemaVersion' => (int) ($latest['databaseUserVersion'] ?? 0)]];
+
+        $totalRaw = @disk_total_space(dirname($this->databasePath)); $freeRaw = @disk_free_space(dirname($this->databasePath));
+        $totalBytes = is_int($totalRaw) || is_float($totalRaw) ? (int) $totalRaw : 0; $freeBytes = is_int($freeRaw) || is_float($freeRaw) ? (int) $freeRaw : 0;
+        $freeRatio = $totalBytes > 0 ? max(0.0, min(1.0, $freeBytes / $totalBytes)) : null;
+        $storageState = $freeRatio === null ? 'UNKNOWN' : ($freeRatio < 0.10 ? 'CRITICAL' : ($freeRatio < 0.20 ? 'WARNING' : 'HEALTHY'));
+        $storage = ['state' => $storageState, 'totalBytes' => $totalBytes, 'freeBytes' => $freeBytes, 'usedPercent' => $freeRatio === null ? null : round((1.0 - $freeRatio) * 100, 1)];
+
+        $ai = ['state' => 'UNAVAILABLE', 'monthlyMicrounits' => 0, 'usedMicrounits' => 0, 'remainingMicrounits' => 0];
+        try {
+            $provider = $this->agent->status($userId, $now); $budget = is_array($provider['budget'] ?? null) ? $provider['budget'] : [];
+            $aiState = !($provider['keyConfigured'] ?? false) ? 'NOT_CONFIGURED' : (!($provider['enabled'] ?? false) ? 'DISABLED' : (($budget['hardStop'] ?? false) ? 'LIMIT_REACHED' : (($provider['available'] ?? false) ? 'READY' : 'NEEDS_ATTENTION')));
+            $ai = ['state' => $aiState, 'monthlyMicrounits' => (int) ($budget['monthlyMicrounits'] ?? 0), 'usedMicrounits' => (int) ($budget['usedMicrounits'] ?? 0), 'remainingMicrounits' => (int) ($budget['remainingMicrounits'] ?? 0)];
+        } catch (Throwable) { /* Owner health remains available when provider metadata is unavailable. */ }
+
+        return ['schemaVersion' => 1, 'owner' => $identity, 'product' => $this->productIdentity(), 'database' => ['state' => $integrity && $foreignKeys ? 'HEALTHY' : 'NEEDS_ATTENTION', 'schemaVersion' => (int) $this->pdo->query('PRAGMA user_version')->fetchColumn()], 'backup' => $backup, 'storage' => $storage, 'queue' => ['activeTaskCount' => $activeTasks, 'waitingCapabilityCount' => $waitingCapability], 'aiBudget' => $ai, 'recovery' => ['state' => (int) $recovery->fetchColumn() > 0 ? 'READY' : 'NEEDS_REGENERATION', 'message' => 'Use recovery codes only for account recovery; they are never included in exports.'], 'export' => ['available' => true, 'secretsIncluded' => false, 'sourceFilesIncluded' => false], 'workerSummary' => ['total' => count($workers), 'ready' => $readyWorkers], 'workers' => $workers];
     }
 
     /** A trusted enrolled Owner device may open one short-lived browser reset link. */

@@ -74,13 +74,40 @@ test('sustainability contract never embeds credential material', async () => {
 test('automatic backup scheduler reuses the canonical verified backup authority', async () => {
   const service = await readFile(join(ROOT, 'deploy/systemd/awh-backup.service'), 'utf8');
   const timer = await readFile(join(ROOT, 'deploy/systemd/awh-backup.timer'), 'utf8');
-  assert.match(service, /ExecStart=\/usr\/bin\/php \/opt\/awh-hub\/control-plane-current\/hub\/bin\/backup\.php create \/var\/lib\/awh-hub\/awh\.sqlite \/var\/backups\/awh-hub/);
+  const wrapper = await readFile(join(ROOT, 'hub/bin/scheduled-backup.php'), 'utf8');
+  const deploy = await readFile(join(ROOT, 'deploy/awh-control-plane/deploy-control-plane.sh'), 'utf8');
+  assert.match(service, /ExecStart=\/usr\/bin\/php \/opt\/awh-hub\/control-plane-current\/hub\/bin\/scheduled-backup\.php/);
+  assert.match(service, /AWH_HUB_BACKUP_READ_GROUP=awh-hub/);
   assert.match(service, /PrivateNetwork=true/);
   assert.match(service, /ProtectSystem=strict/);
   assert.match(service, /ReadOnlyPaths=\/var\/lib\/awh-hub \/opt\/awh-hub/);
   assert.match(service, /ReadWritePaths=\/var\/backups\/awh-hub/);
-  assert.doesNotMatch(service, /DELETE|rm\s|find\s.*-delete/i);
+  assert.match(wrapper, /HubBackupService::create/);
+  assert.match(wrapper, /chgrp\(\$path, \$readGroup\)/);
+  assert.match(wrapper, /chmod\(\$path, 0640\)/);
+  assert.match(wrapper, /HubBackupService::verify/);
+  assert.doesNotMatch(`${service}\n${wrapper}`, /DELETE|rm\s|find\s.*-delete/i);
+  assert.match(deploy, /hub\/bin\/scheduled-backup\.php/);
+  assert.match(deploy, /deploy\/systemd\/awh-backup\.service/);
+  assert.match(deploy, /deploy\/systemd\/awh-backup\.timer/);
   assert.match(timer, /OnCalendar=\*-\*-\* 03:30:00/);
   assert.match(timer, /Persistent=true/);
   assert.match(timer, /RandomizedDelaySec=10m/);
+});
+
+
+test('backup activation is exact-revision, approval-gated, and rollback-capable', async () => {
+  const local = await readFile(join(ROOT, 'deploy/awh-backup/activate-backup.sh'), 'utf8');
+  const remote = await readFile(join(ROOT, 'deploy/awh-backup/remote-activate-backup.sh'), 'utf8');
+  assert.match(local, /AWH_RELEASE_COMMIT/);
+  assert.match(local, /DIRTY_TREE/);
+  assert.match(local, /--approve/);
+  assert.match(local, /StrictHostKeyChecking=yes/);
+  assert.match(remote, /systemd-analyze verify/);
+  assert.match(remote, /backup-activate-\$SHORT/);
+  assert.match(remote, /systemctl enable --now awh-backup\.timer/);
+  assert.match(remote, /systemctl start awh-backup\.service/);
+  assert.match(remote, /sudo -u awh-hub .*backup\.php.* verify/);
+  assert.match(remote, /AWH_BACKUP_ROLLBACK=PASS/);
+  assert.doesNotMatch(`${local}\n${remote}`, /StrictHostKeyChecking=no|password=|token=|secret=/i);
 });

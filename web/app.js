@@ -305,6 +305,21 @@ import {
       const waiting = Number.isInteger(checks.waitingCapabilityCount) && checks.waitingCapabilityCount > 0 ? ` · งานใช้ความสามารถเพิ่มเติม ${checks.waitingCapabilityCount} งาน` : '';
       message('system-check-message', readiness.state === 'READY' ? 'AWH พร้อมทำงาน' : readiness.state === 'PARTIALLY_READY' ? `AWH พร้อมบางส่วน${waiting}` : 'AWH ต้องตรวจสอบบางรายการก่อนเริ่มงาน');
     }
+    const health = $('system-health-details');
+    if (health) {
+      health.replaceChildren(); const status = state.ownerStatus || {};
+      const db = status.database || {}; const backup = status.backup || {}; const storage = status.storage || {}; const queue = status.queue || {}; const aiBudget = status.aiBudget || {}; const workerSummary = status.workerSummary || {};
+      const latest = backup.latest || null; const aiTotal = Number(aiBudget.monthlyMicrounits || 0); const aiUsed = Number(aiBudget.usedMicrounits || 0); const aiPercent = aiTotal > 0 ? Math.min(100, Math.round((aiUsed / aiTotal) * 100)) : null;
+      const rows = [
+        ['ฐานข้อมูล', db.state === 'HEALTHY' ? `ปกติ · Schema ${db.schemaVersion || '—'}` : 'ต้องตรวจสอบ'],
+        ['Backup', backup.state === 'VERIFIED' && latest ? `ยืนยันแล้ว · ${date(latest.verifiedAt)} · ${size(latest.sizeBytes)}` : backup.state === 'MISSING' ? 'ยังไม่มี backup ที่ยืนยันแล้ว' : backup.state === 'NOT_CONFIGURED' ? 'ยังไม่ได้ตั้งค่า' : 'ต้องตรวจสอบ'],
+        ['พื้นที่จัดเก็บ', Number.isFinite(storage.usedPercent) ? `${storage.state === 'HEALTHY' ? 'ปกติ' : storage.state === 'WARNING' ? 'ใกล้เต็ม' : storage.state === 'CRITICAL' ? 'พื้นที่ต่ำ' : 'กำลังตรวจ'} · ใช้ ${storage.usedPercent}%` : 'กำลังตรวจ'],
+        ['คิวงาน', `${Number(queue.activeTaskCount || 0)} งานกำลังทำ · ${Number(queue.waitingCapabilityCount || 0)} งานรอความสามารถ`],
+        ['AI Budget', aiBudget.state === 'READY' ? `พร้อม${aiPercent === null ? '' : ` · ใช้ ${aiPercent}%`}` : aiBudget.state === 'NOT_CONFIGURED' ? 'ยังไม่เชื่อม' : aiBudget.state === 'DISABLED' ? 'ปิดอยู่' : aiBudget.state === 'LIMIT_REACHED' ? 'ถึงวงเงินแล้ว' : 'ต้องตรวจสอบ'],
+        ['อุปกรณ์เสริม', `${Number(workerSummary.ready || 0)}/${Number(workerSummary.total || 0)} เครื่องพร้อมรับงาน`],
+      ];
+      for (const [label, value] of rows) { const item = document.createElement('div'); item.className = 'session-item'; const strong = document.createElement('strong'); strong.textContent = label; const detail = document.createElement('span'); detail.textContent = value; item.append(strong, detail); health.append(item); }
+    }
   }
   async function changeMemory(record, action) {
     let content = null; let tags = null; let pinned = null;
