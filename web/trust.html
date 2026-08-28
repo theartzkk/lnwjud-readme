@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0d10" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <title>Trust Center · AWH</title>
+  <link rel="stylesheet" href="./trust.css?release=__AWH_WEB_RELEASE_ID__" />
+</head>
+<body>
+  <header class="trust-header"><a href="./" class="back">← AWH</a><div><span>OWNER</span><strong>Trust Center</strong></div><button id="trust-refresh" type="button">รีเฟรช</button></header>
+  <main class="trust-main">
+    <section class="hero"><div><p class="eyebrow">TRUST & CONTROL</p><h1>AI ทำอะไรไปบ้าง<br />ตรวจสอบได้จากที่เดียว</h1><p>AWH สรุปหลักฐานการทำงาน การอนุมัติ ผลลัพธ์ Undo และสุขภาพข้อมูล โดยไม่แสดง secret หรือ path ภายในระบบ</p></div><div class="trust-state"><span id="trust-dot"></span><strong id="trust-overall">กำลังตรวจสอบ</strong><small id="trust-freshness">—</small></div></section>
+    <section class="metric-grid" aria-label="สรุปความน่าเชื่อถือ">
+      <article><span>กิจกรรมงาน 24 ชม.</span><strong id="metric-tasks">—</strong><small>Task events</small></article>
+      <article><span>รอการอนุมัติ</span><strong id="metric-approvals">—</strong><small>Pending approvals</small></article>
+      <article><span>ผลลัพธ์ใหม่</span><strong id="metric-artifacts">—</strong><small id="metric-artifact-size">Artifacts</small></article>
+      <article><span>Undo evidence</span><strong id="metric-undo">—</strong><small>Checkpoint events</small></article>
+    </section>
+    <section class="two-col">
+      <article class="panel"><div class="panel-head"><div><p class="eyebrow">DATA SAFETY</p><h2>ข้อมูลและการกู้คืน</h2></div></div><div id="data-safety" class="entity-list"></div></article>
+      <article class="panel"><div class="panel-head"><div><p class="eyebrow">EXECUTION</p><h2>การทำงานของ AI</h2></div></div><div id="execution-safety" class="entity-list"></div></article>
+    </section>
+    <section class="panel"><div class="panel-head"><div><p class="eyebrow">ACCOUNT & SECURITY</p><h2>เหตุการณ์ล่าสุด</h2></div><span id="auth-count" class="quiet">—</span></div><div id="auth-events" class="event-list"></div></section>
+    <section id="attention" class="panel attention" hidden><div class="panel-head"><div><p class="eyebrow">ATTENTION</p><h2>สิ่งที่ควรตรวจ</h2></div></div><div id="attention-list" class="event-list"></div></section>
+    <nav class="links"><a href="./infrastructure.html">Infrastructure</a><a href="./database.html">Database Studio</a><a href="./">กลับหน้าแรก</a></nav>
+  </main>
+  <script type="module" src="./trust.js?release=__AWH_WEB_RELEASE_ID__"></script>
+</body>
+</html>

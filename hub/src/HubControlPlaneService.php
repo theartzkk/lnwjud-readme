@@ -362,6 +362,24 @@ final class HubControlPlaneService
         return ['schemaVersion' => 1, 'owner' => $identity, 'product' => $this->productIdentity(), 'database' => ['state' => $integrity && $foreignKeys ? 'HEALTHY' : 'NEEDS_ATTENTION', 'schemaVersion' => (int) $this->pdo->query('PRAGMA user_version')->fetchColumn()], 'backup' => $backup, 'storage' => $storage, 'queue' => ['activeTaskCount' => $activeTasks, 'waitingCapabilityCount' => $waitingCapability], 'aiBudget' => $ai, 'recovery' => ['state' => (int) $recovery->fetchColumn() > 0 ? 'READY' : 'NEEDS_REGENERATION', 'message' => 'Use recovery codes only for account recovery; they are never included in exports.'], 'export' => ['available' => true, 'secretsIncluded' => false, 'sourceFilesIncluded' => false], 'workerSummary' => ['total' => count($workers), 'ready' => $readyWorkers], 'workers' => $workers];
     }
 
+    /** Owner-only trust projection over existing audit, approval, artifact and checkpoint authorities. */
+    public function trustCenter(string $sessionToken, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertSelfServiceReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId);
+        $reference = new DateTimeImmutable($now ?? 'now', new DateTimeZone('UTC')); $generatedAt = $reference->format('c'); $since = $reference->sub(new DateInterval('P1D'))->format('c');
+        $scalar = function (string $sql, array $args = []): int { $q = $this->pdo->prepare($sql); $q->execute($args); return (int) $q->fetchColumn(); };
+        $authCount = $scalar('SELECT COUNT(*) FROM auth_audit_events WHERE occurred_at >= :since', ['since' => $since]);
+        $taskEvents = $scalar('SELECT COUNT(*) FROM control_task_events WHERE occurred_at >= :since', ['since' => $since]);
+        $pending = $scalar("SELECT COUNT(*) FROM control_approvals WHERE status = 'PENDING' AND expires_at > :now", ['now' => $generatedAt]);
+        $failed = $scalar("SELECT COUNT(*) FROM control_task_executions WHERE state = 'FAILED' AND updated_at >= :since", ['since' => $since]);
+        $checkpoints = $scalar('SELECT COUNT(*) FROM control_workspace_events WHERE checkpoint_id IS NOT NULL AND occurred_at >= :since', ['since' => $since]);
+        $artifacts = $this->pdo->prepare('SELECT COUNT(*) AS amount, COALESCE(SUM(size_bytes),0) AS bytes FROM control_artifacts WHERE created_at >= :since'); $artifacts->execute(['since' => $since]); $artifact = $artifacts->fetch() ?: ['amount' => 0, 'bytes' => 0];
+        $recent = $this->pdo->prepare('SELECT event_name, occurred_at FROM auth_audit_events WHERE occurred_at >= :since ORDER BY occurred_at DESC LIMIT 20'); $recent->execute(['since' => $since]); $recentEvents = [];
+        foreach ($recent->fetchAll() as $row) { $name = strtoupper((string) ($row['event_name'] ?? 'AUTH_EVENT')); if (preg_match('/^[A-Z0-9_.:-]{1,64}$/', $name) !== 1) $name = 'AUTH_EVENT'; $recentEvents[] = ['eventName' => $name, 'occurredAt' => (string) ($row['occurred_at'] ?? '')]; }
+        $health = $this->ownerSelfServiceStatus($sessionToken, $now);
+        return ['schemaVersion' => 1, 'generatedAt' => $generatedAt, 'summary' => ['authEventCount' => $authCount, 'taskEventCount' => $taskEvents, 'pendingApprovalCount' => $pending, 'failedExecutionCount' => $failed, 'checkpointEventCount' => $checkpoints, 'artifactCount' => (int) $artifact['amount'], 'artifactBytes' => (int) $artifact['bytes']], 'recentAuthEvents' => $recentEvents, 'health' => ['database' => $health['database'], 'backup' => $health['backup']], 'dataPolicy' => ['secretsExposed' => false, 'rawPathsExposed' => false, 'metadataHashesExposed' => false]];
+    }
+
     /** Owner-only VPS/Control Plane projection. No paths, secrets or raw command output cross this boundary. */
     public function infrastructure(string $sessionToken, ?string $now = null): array
     {
