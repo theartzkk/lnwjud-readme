@@ -1,0 +1,114 @@
+/* AWH Experience V2 — mobile-first product shell. Presentation only; no new authority. */
+:root{--v2-bg:#0a0b0e;--v2-panel:#111319;--v2-panel-2:#171a21;--v2-line:rgba(255,255,255,.075);--v2-muted:#929aa8;--v2-text:#f7f8fa;--v2-orange:#ff7a1a;--v2-orange-soft:rgba(255,122,26,.12);--v2-green:#63dc98;--v2-radius:26px}
+body.awh-experience-v2{overflow-x:hidden;background:radial-gradient(850px 440px at 50% -180px,rgba(255,122,26,.11),transparent 68%),var(--v2-bg);color:var(--v2-text)}
+body.awh-experience-v2 .app-shell{background:transparent}
+body.awh-experience-v2 .app-header{width:min(100% - 30px,1080px);min-height:calc(66px + env(safe-area-inset-top));padding-inline:2px}
+body.awh-experience-v2 .brand{gap:9px}
+body.awh-experience-v2 .brand-mark{width:38px;height:38px;flex-basis:38px;border-radius:13px;background:linear-gradient(145deg,#ff8d3a,#ff6b0b);box-shadow:0 8px 24px rgba(255,122,26,.22)}
+body.awh-experience-v2 .brand strong{font-size:14px;font-weight:800}
+body.awh-experience-v2 .header-actions .icon-button{border-color:transparent;background:rgba(255,255,255,.055);border-radius:12px}
+body.awh-experience-v2.product-dashboard-active .app-main{width:100%;max-width:none;display:block;overflow:auto}
+body.awh-experience-v2 .product-dashboard{width:min(100% - 28px,1080px);padding:18px 0 112px}
+body.awh-experience-v2 .awh-v2-welcome{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 2px 16px}
+body.awh-experience-v2 .awh-v2-welcome-copy{display:grid;gap:2px}
+body.awh-experience-v2 .awh-v2-welcome-copy small{color:var(--v2-muted);font-size:12px}
+body.awh-experience-v2 .awh-v2-welcome-copy strong{font-size:20px;letter-spacing:-.025em}
+body.awh-experience-v2 .awh-v2-cloud{display:inline-flex;align-items:center;gap:7px;padding:8px 11px;border:1px solid rgba(99,220,152,.16);border-radius:999px;background:rgba(99,220,152,.07);color:#b9efd0;font-size:11px;font-weight:750}
+body.awh-experience-v2 .awh-v2-cloud:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--v2-green);box-shadow:0 0 11px rgba(99,220,152,.55)}
+body.awh-experience-v2 .awh-home-hero{position:relative;overflow:hidden;padding:38px;border:1px solid var(--v2-line);border-radius:32px;background:radial-gradient(circle at 92% -8%,rgba(255,122,26,.24),transparent 34%),linear-gradient(145deg,#171a21,#0f1116 65%);box-shadow:0 24px 80px rgba(0,0,0,.27);text-align:left}
+body.awh-experience-v2 .awh-home-hero:after{content:"✦";position:absolute;right:38px;top:24px;color:rgba(255,122,26,.18);font-size:88px;line-height:1;pointer-events:none}
+body.awh-experience-v2 .awh-home-kicker{margin-bottom:9px;color:#ff9a55;font-size:11px;letter-spacing:.13em}
+body.awh-experience-v2 .awh-home-hero h1{max-width:690px;margin:0;font-size:clamp(34px,6vw,58px);line-height:1.02;letter-spacing:-.045em}
+body.awh-experience-v2 .awh-home-hero>p{max-width:620px;margin:14px 0 24px;color:#aeb5c0;font-size:16px;line-height:1.55}
+body.awh-experience-v2 .awh-command-form{position:relative;max-width:800px;margin:0;padding:10px;border:1px solid rgba(255,255,255,.11);border-radius:24px;background:rgba(7,8,11,.58);box-shadow:inset 0 1px rgba(255,255,255,.035),0 16px 42px rgba(0,0,0,.2);backdrop-filter:blur(18px)}
+body.awh-experience-v2 .awh-command-form textarea{min-height:90px;padding:14px 15px;border:0;background:transparent;font-size:17px;line-height:1.5}
+body.awh-experience-v2 .awh-command-actions{align-items:center;padding:3px 4px 2px}
+body.awh-experience-v2 .awh-command-send{min-height:42px;border-radius:14px;padding:0 17px;background:linear-gradient(145deg,#ff8d36,#ff6c0c);box-shadow:0 8px 24px rgba(255,122,26,.2)}
+body.awh-experience-v2 .awh-v2-prompts{display:flex;gap:8px;margin-top:13px;overflow-x:auto;scrollbar-width:none}
+body.awh-experience-v2 .awh-v2-prompts::-webkit-scrollbar{display:none}
+body.awh-experience-v2 .awh-v2-prompt{flex:0 0 auto;min-height:34px;padding:0 11px;border:1px solid rgba(255,255,255,.08);border-radius:999px;background:rgba(255,255,255,.045);color:#cbd0d7;font:inherit;font-size:11px;font-weight:700;cursor:pointer}
+body.awh-experience-v2 .awh-home-section{margin-top:24px}
+body.awh-experience-v2 .awh-section-heading{align-items:center;margin-bottom:12px}
+body.awh-experience-v2 .awh-section-heading span{margin-bottom:5px;font-size:10px;letter-spacing:.12em}
+body.awh-experience-v2 .awh-section-heading h2{font-size:21px;letter-spacing:-.025em}
+body.awh-experience-v2 .awh-tool-grid{grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
+body.awh-experience-v2 .awh-tool-card{min-width:0;min-height:126px;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;gap:12px;padding:15px;border:1px solid var(--v2-line);border-radius:22px;background:linear-gradient(160deg,#171a20,#121419);box-shadow:none}
+body.awh-experience-v2 .awh-tool-card:hover{border-color:rgba(255,122,26,.24);transform:translateY(-2px)}
+body.awh-experience-v2 .awh-tool-icon{width:42px;height:42px;flex-basis:42px;border-radius:14px;background:var(--v2-orange-soft);font-size:15px}
+body.awh-experience-v2 .awh-tool-copy{gap:4px}
+body.awh-experience-v2 .awh-tool-copy strong{font-size:14px}
+body.awh-experience-v2 .awh-tool-copy small{font-size:11px;line-height:1.35}
+body.awh-experience-v2 .awh-tool-badge{top:11px;right:11px;background:rgba(255,255,255,.06)}
+body.awh-experience-v2 .awh-continuity{padding:20px;border:1px solid rgba(255,122,26,.12);border-radius:24px;background:linear-gradient(145deg,rgba(255,122,26,.055),#111319 56%)}
+body.awh-experience-v2 .awh-continuity-card{padding:0;border-radius:0}
+body.awh-experience-v2 .awh-recent-panel,body.awh-experience-v2 .awh-side-panel,body.awh-experience-v2 .awh-owner-center{border-color:var(--v2-line);background:var(--v2-panel);border-radius:24px}
+body.awh-experience-v2 .awh-recent-item,body.awh-experience-v2 .awh-ready-state,body.awh-experience-v2 .awh-empty-card{background:var(--v2-panel-2);border:1px solid rgba(255,255,255,.035)}
+body.awh-experience-v2 .awh-owner-center{opacity:.9}
+body.awh-experience-v2 .awh-mobile-home-nav{left:50%;right:auto;width:min(calc(100vw - 20px),520px);max-width:calc(100vw - 20px);box-sizing:border-box;transform:translateX(-50%);grid-template-columns:repeat(5,minmax(0,1fr));bottom:max(8px,env(safe-area-inset-bottom));padding:7px;border:1px solid rgba(255,255,255,.1);border-radius:22px;background:rgba(19,21,26,.9);box-shadow:0 18px 48px rgba(0,0,0,.42);backdrop-filter:blur(24px)}
+body.awh-experience-v2 .awh-mobile-nav-item{min-width:0;min-height:52px;overflow:hidden;border-radius:16px;transition:background .16s ease,opacity .16s ease}
+body.awh-experience-v2 .awh-mobile-nav-item span{font-size:18px}
+body.awh-experience-v2 .awh-mobile-nav-item strong{font-size:10px}
+body.awh-experience-v2 .awh-mobile-nav-item.is-active{opacity:1;background:rgba(255,122,26,.12);color:#ff9d59}
+/* Work / chat */
+body.awh-experience-v2.work-active{background:var(--v2-bg)}
+body.awh-experience-v2.work-active .app-header{width:min(100% - 24px,900px)}
+body.awh-experience-v2.work-active .app-main{width:min(100% - 24px,900px)}
+body.awh-experience-v2.work-active .workspace-heading{min-height:58px;border-bottom-color:rgba(255,255,255,.065)}
+body.awh-experience-v2.work-active .project-trigger{font-weight:780}
+body.awh-experience-v2.work-active .hub-status-row{color:#7f8996}
+body.awh-experience-v2.work-active .work-thread{max-width:760px;padding-top:22px}
+body.awh-experience-v2.work-active .task-goal{padding:12px 15px;border:1px solid rgba(255,122,26,.1);border-radius:19px 19px 6px 19px;background:linear-gradient(145deg,#292017,#211914)}
+body.awh-experience-v2.work-active .task-summary{font-size:15px;line-height:1.68;color:#dfe3e8}
+body.awh-experience-v2.work-active .composer{max-width:780px;padding:9px 0 calc(10px + env(safe-area-inset-bottom));border-top:0;background:linear-gradient(to bottom,transparent,var(--v2-bg) 20%)}
+body.awh-experience-v2.work-active .composer textarea{min-height:54px;border-color:rgba(255,255,255,.1);border-radius:20px;background:#14171d;box-shadow:0 10px 34px rgba(0,0,0,.18)}
+body.awh-experience-v2.work-active .composer textarea:focus{border-color:rgba(255,122,26,.65)}
+body.awh-experience-v2 .sheet-backdrop{background:rgba(0,0,0,.72);backdrop-filter:blur(6px)}
+body.awh-experience-v2 .sheet-card{border-color:rgba(255,255,255,.09);background:#111319;box-shadow:0 28px 80px rgba(0,0,0,.46)}
+/* Login */
+body.awh-experience-v2 .sign-in-copy h1{letter-spacing:-.05em}
+body.awh-experience-v2 .auth-card{border-color:var(--v2-line);border-radius:24px;background:linear-gradient(155deg,#15181e,#101217);box-shadow:0 28px 80px rgba(0,0,0,.3)}
+@media(max-width:820px){body.awh-experience-v2 .awh-tool-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:620px){
+ body.awh-experience-v2 .app-header{width:calc(100% - 24px);min-height:calc(58px + env(safe-area-inset-top))}
+ body.awh-experience-v2 .brand small{display:none}
+ body.awh-experience-v2.product-dashboard-active .app-header{border-bottom:0}
+ body.awh-experience-v2 .product-dashboard{width:100%;padding:8px 12px 106px}
+ body.awh-experience-v2 .awh-v2-welcome{margin:4px 3px 13px}
+ body.awh-experience-v2 .awh-v2-welcome-copy strong{font-size:18px}
+ body.awh-experience-v2 .awh-v2-cloud{padding:7px 9px;font-size:10px}
+ body.awh-experience-v2 .awh-home-hero{padding:22px 15px 16px;border-radius:25px}
+ body.awh-experience-v2 .awh-home-hero:after{right:12px;top:14px;font-size:58px}
+ body.awh-experience-v2 .awh-home-kicker{font-size:10px}
+ body.awh-experience-v2 .awh-home-hero h1{max-width:88%;font-size:32px;text-align:left}
+ body.awh-experience-v2 .awh-home-hero>p{margin:10px 0 16px;font-size:13px;text-align:left}
+ body.awh-experience-v2 .awh-command-form{padding:9px;border-radius:20px}
+ body.awh-experience-v2 .awh-command-form textarea{min-height:92px;padding:10px 9px;font-size:16px}
+ body.awh-experience-v2 .awh-command-actions{display:flex;min-width:0;flex-direction:row;align-items:center}
+ body.awh-experience-v2 .awh-command-actions>span{display:none}
+ body.awh-experience-v2 .awh-command-attach strong{display:none}
+ body.awh-experience-v2 .awh-command-attach{min-width:36px;flex:0 0 36px;padding:4px}
+ body.awh-experience-v2 .awh-command-send{width:auto;max-width:calc(100% - 48px);flex:0 1 auto;margin-left:auto;min-height:38px;padding-inline:12px;font-size:12px;white-space:nowrap}
+ body.awh-experience-v2 .awh-home-section{margin-top:18px}
+ body.awh-experience-v2 .awh-section-heading h2{font-size:18px}
+ body.awh-experience-v2 .awh-tool-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+ body.awh-experience-v2 .awh-tool-card{min-height:96px;align-items:center;justify-content:center;gap:7px;padding:10px 4px;border-radius:18px;text-align:center}
+ body.awh-experience-v2 .awh-tool-icon{width:40px;height:40px;flex-basis:40px;margin:0;font-size:13px}
+ body.awh-experience-v2 .awh-tool-copy strong{font-size:11px;line-height:1.2}
+ body.awh-experience-v2 .awh-tool-copy small{display:none}
+ body.awh-experience-v2 .awh-tool-badge{top:5px;right:5px;font-size:8px}
+ body.awh-experience-v2 .awh-continuity{padding:15px;border-radius:21px}
+ body.awh-experience-v2 .awh-continuity-actions{grid-template-columns:1fr 1fr}
+ body.awh-experience-v2 .awh-home-overview{display:block}
+ body.awh-experience-v2 .awh-home-overview>.awh-side-panel{display:none}
+ body.awh-experience-v2 .awh-recent-panel,body.awh-experience-v2 .awh-owner-center{padding:14px;border-radius:20px}
+ body.awh-experience-v2 .awh-artifact-grid{grid-template-columns:1fr 1fr}
+ body.awh-experience-v2.work-active .app-header,body.awh-experience-v2.work-active .app-main{width:calc(100% - 16px)}
+ body.awh-experience-v2.work-active .brand{display:none}
+ body.awh-experience-v2.work-active .app-header{min-height:calc(42px + env(safe-area-inset-top));justify-content:flex-end}
+ body.awh-experience-v2.work-active .workspace-heading{min-height:52px}
+ body.awh-experience-v2.work-active .project-trigger{font-size:15px}
+ body.awh-experience-v2.work-active .work-thread{padding:14px 2px 18px}
+ body.awh-experience-v2.work-active .task-goal{max-width:90%}
+ body.awh-experience-v2.work-active .composer{padding-bottom:calc(8px + env(safe-area-inset-bottom))}
+ body.awh-experience-v2 .sheet-card{border-radius:26px 26px 0 0}
+}
