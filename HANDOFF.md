@@ -4,6 +4,7 @@
 - Canonical source checkpoint before Supervisor work: `779a5d2348f354bbb8f5705fc97e081866d9309e` on `awh/self-sufficient-foundation`. M16 guarded release path is source-complete but not Production-activated; activation remains an approval-gated schema/service cutover.
 - Current isolated source branch: `awh/continuous-work-supervisor`. Supervisor V1 **reuses** `control_tasks`, `control_task_executions`, existing leases, Automation materialization and the native executor timer. It must never introduce a shadow queue/task/memory/approval authority.
 - Continuous-work rule: one service-manager tick may drain only a fixed small batch of canonical work. Transient provider/lease failures use deterministic same-task backoff; they must not hot-loop every timer interval. Expired leases must reconcile both execution state and canonical task state, including terminal failure after the retry limit.
+- Candidate QA Truthfulness V1 is the next isolated source milestone on top of Supervisor V1: candidate artifacts must distinguish deterministic PASS from `REVIEW_REQUIRED`, malformed PHP/JSON fails closed before approval, and no new shell/process authority is introduced.
 - Next continuation must re-check branch/HEAD/remote and Production read-only evidence before mutation. Source truth supersedes the historical M12 sections below.
 
 # Handoff

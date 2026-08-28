@@ -9,7 +9,8 @@
 
 ## NEXT
 
-- After Supervisor V1 source closure, advance VPS-first self-sufficient execution using the same canonical task/execution/approval/memory authorities; prefer capability expansion over new orchestration systems.
+- Close Candidate QA Truthfulness V1 on top of Supervisor V1: deterministic in-process syntax validation for PHP/JSON, explicit `REVIEW_REQUIRED` for unsupported syntax, fail-closed malformed candidates, and truthful candidate artifacts before approval creation.
+- After that source closure, continue VPS-first self-sufficient execution using the same canonical task/execution/approval/memory authorities; prefer capability expansion over new orchestration systems.
 - Field activation/verification of M16 remains a distinct reviewed Production milestone.
 
 # Tasks

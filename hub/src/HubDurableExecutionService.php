@@ -364,9 +364,11 @@ final class HubDurableExecutionService
             if (!$candidate['changed']) { $this->complete($claimed, 'ตรวจ candidate แล้วเนื้อหาเท่ากับ Project Vault revision เดิม จึงไม่ได้สร้างการเปลี่ยนแปลงใหม่', 'RESULT', $at); return; }
             $diff = $this->revisionDiff($projectId, $revision, (string) $candidate['revisionId']);
             if ($diff['deleted'] !== []) throw new HubDurableExecutionException('Native editing cannot delete project files', 'WAITING_FOR_CAPABILITY');
-            $artifactId = $this->storeCandidateReport($claimed, $candidate, $diff, $workspace, $at);
+            $qa = $this->candidateQa($diff, $workspace);
+            $artifactId = $this->storeCandidateReport($claimed, $candidate, $diff, $qa, $workspace, $at);
             $modelSummary = $summary !== '' ? (function_exists('mb_substr') ? mb_substr($summary, 0, 1800) : substr($summary, 0, 1800)) : 'แก้ source ตามคำขอแล้ว';
-            $final = $modelSummary . "\n\nAWH Server สร้าง candidate revision จาก " . count($writes) . ' ไฟล์แล้ว และยังไม่ได้แทนที่ Project Vault หลักจนกว่าจะผ่าน promotion policy';
+            $qaSummary = $qa['status'] === 'PASS' ? 'deterministic candidate QA ผ่าน' : 'deterministic candidate QA ผ่านเฉพาะ structural checks และยังต้อง review syntax ของไฟล์บางประเภท';
+            $final = $modelSummary . "\n\nAWH Server สร้าง candidate revision จาก " . count($writes) . ' ไฟล์แล้ว; ' . $qaSummary . ' และยังไม่ได้แทนที่ Project Vault หลักจนกว่าจะผ่าน promotion policy';
             $this->completeCandidate($claimed, $candidate, $artifactId, $final, $at); $candidateRecorded = true;
         } catch (Throwable $error) {
             if (is_array($candidate) && ($candidate['changed'] ?? false) === true && !$candidateRecorded) { try { $this->vaults->rejectCandidate($projectId, (string) $candidate['revisionId'], $at); } catch (Throwable) {} }
@@ -410,8 +412,10 @@ final class HubDurableExecutionService
                 return;
             }
             $diff = $this->revisionDiff($projectId, $revision, (string) $candidate['revisionId']);
-            $artifactId = $this->storeCandidateReport($claimed, $candidate, $diff, $workspace, $at);
-            $summary = 'จัดระเบียบข้อความใน `' . $source['path'] . '` แล้ว สร้าง revision ผู้สมัครและตรวจความสมบูรณ์ของไฟล์เรียบร้อย ต้องอนุมัติก่อนแทนที่ Project Vault หลัก';
+            $qa = $this->candidateQa($diff, $workspace);
+            $artifactId = $this->storeCandidateReport($claimed, $candidate, $diff, $qa, $workspace, $at);
+            $qaSummary = $qa['status'] === 'PASS' ? 'deterministic candidate QA ผ่าน' : 'structural QA ผ่านและยังต้อง review syntax ของไฟล์ประเภทนี้';
+            $summary = 'จัดระเบียบข้อความใน `' . $source['path'] . '` แล้ว สร้าง revision ผู้สมัคร; ' . $qaSummary . ' ต้องอนุมัติก่อนแทนที่ Project Vault หลัก';
             $this->completeCandidate($claimed, $candidate, $artifactId, $summary, $at);
             $candidateRecorded = true;
         } catch (Throwable $error) {
@@ -430,13 +434,43 @@ final class HubDurableExecutionService
         return $match[1];
     }
 
-    /** @param array{revisionId:string,contentSha256:string,contentBytes:int,fileCount:int,parentRevisionId:string,changed:bool} $candidate @param array{added:list<string>,changed:list<string>,deleted:list<string>} $diff */
-    private function storeCandidateReport(array $claimed, array $candidate, array $diff, string $workspace, string $at): string
+    /** @param array{added:list<string>,changed:list<string>,deleted:list<string>} $diff @return array<string,mixed> */
+    private function candidateQa(array $diff, string $workspace): array
+    {
+        if ($diff['deleted'] !== []) throw new HubDurableExecutionException('Candidate QA rejected deleted files', 'CANDIDATE_QA_FAILED');
+        $paths = array_values(array_unique(array_merge($diff['added'], $diff['changed'])));
+        $results = []; $reviewRequired = false;
+        foreach ($paths as $relative) {
+            $path = $this->vaults->vault()->toolTextPath($relative); $file = rtrim($workspace, '/') . '/' . $path;
+            if (!is_file($file) || is_link($file) || !is_readable($file)) throw new HubDurableExecutionException('Candidate QA could not read a changed file', 'CANDIDATE_QA_FAILED');
+            $size = @filesize($file); $content = @file_get_contents($file);
+            if (!is_int($size) || !is_string($content)) throw new HubDurableExecutionException('Candidate QA rejected an unsafe changed file', 'CANDIDATE_QA_FAILED');
+            $validation = self::validateCandidateText($path, $content);
+            if ($validation['reviewRequired']) $reviewRequired = true;
+            $results[] = ['path' => $path, 'sizeBytes' => $size, 'syntax' => $validation['syntax']];
+        }
+        return ['status' => $reviewRequired ? 'REVIEW_REQUIRED' : 'PASS', 'structural' => 'PASS', 'files' => $results];
+    }
+
+    /** @return array{syntax:string,reviewRequired:bool} */
+    private static function validateCandidateText(string $path, string $content): array
+    {
+        if (strlen($content) > self::MAX_ASSISTED_EDIT_FILE_BYTES || str_contains($content, "\0")) throw new HubDurableExecutionException('Candidate QA rejected unsafe text content', 'CANDIDATE_QA_FAILED');
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        try {
+            if ($extension === 'php') { token_get_all($content, TOKEN_PARSE); return ['syntax' => 'PASS', 'reviewRequired' => false]; }
+            if ($extension === 'json') { json_decode($content, true, 64, JSON_THROW_ON_ERROR); return ['syntax' => 'PASS', 'reviewRequired' => false]; }
+        } catch (Throwable) { throw new HubDurableExecutionException('Candidate QA found invalid syntax', 'CANDIDATE_QA_FAILED'); }
+        return ['syntax' => 'NOT_RUN', 'reviewRequired' => true];
+    }
+
+    /** @param array{revisionId:string,contentSha256:string,contentBytes:int,fileCount:int,parentRevisionId:string,changed:bool} $candidate @param array{added:list<string>,changed:list<string>,deleted:list<string>} $diff @param array<string,mixed> $qa */
+    private function storeCandidateReport(array $claimed, array $candidate, array $diff, array $qa, string $workspace, string $at): string
     {
         $store = $this->artifacts;
         if ($store === null) throw new HubDurableExecutionException('Artifact object storage is unavailable', 'ARTIFACT_STORAGE_UNAVAILABLE');
         $artifactId = self::uuidFromBytes(random_bytes(16));
-        $report = ['schemaVersion' => 1, 'kind' => 'project-candidate', 'projectId' => (string) $claimed['project_id'], 'taskId' => (string) $claimed['task_id'], 'baseRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'contentSha256' => $candidate['contentSha256'], 'diff' => $diff, 'qa' => ['workspaceCapture' => 'PASS', 'manifestIntegrity' => 'PASS'], 'createdAt' => $at];
+        $report = ['schemaVersion' => 2, 'kind' => 'project-candidate', 'projectId' => (string) $claimed['project_id'], 'taskId' => (string) $claimed['task_id'], 'baseRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'contentSha256' => $candidate['contentSha256'], 'diff' => $diff, 'qa' => ['workspaceCapture' => 'PASS', 'manifestIntegrity' => 'PASS', 'candidate' => $qa], 'createdAt' => $at];
         $file = $workspace . '/.awh-candidate-report.json';
         if (@file_put_contents($file, json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), LOCK_EX) === false) throw new HubDurableExecutionException('Candidate report could not be created', 'ARTIFACT_STORAGE_FAILED');
         try { $stored = $store->storeFile($artifactId, $file); } catch (HubArtifactStoreException $error) { throw new HubDurableExecutionException('Candidate artifact storage is unavailable', $error->codeName); }
