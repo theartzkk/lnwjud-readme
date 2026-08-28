@@ -23,11 +23,11 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(result.stdout, /M12_ROLLBACK=restore-db-only-if-migrated,pointer,web-pointer,managed-executor-units,nginx,service-health,m3d-m3e-control-regression/);
   assert.match(result.stdout, /M12_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL/);
 
-  const [local, remoteSource, migration, vault, vaultService, durable, sourceSync, artifactStore, controlService, controlRouter, nativeAgent, webAdapter, webApp, executionUx, serviceUnit, timerUnit] = await Promise.all([
+  const [local, remoteSource, migration, vault, vaultService, durable, sourceSync, artifactStore, controlService, controlRouter, nativeAgent, webAdapter, webApp, executionUx, serviceUnit, timerUnit, openAiAdapter] = await Promise.all([
     readFile(deploy, 'utf8'), readFile(remote, 'utf8'), readFile(join(root, 'hub/migrations/011_central_project_authority.sql'), 'utf8'),
     readFile(join(root, 'hub/src/HubProjectVault.php'), 'utf8'), readFile(join(root, 'hub/src/HubProjectVaultService.php'), 'utf8'), readFile(join(root, 'hub/src/HubDurableExecutionService.php'), 'utf8'), readFile(join(root, 'hub/bin/sync-deployed-source-vault.php'), 'utf8'), readFile(join(root, 'hub/src/HubArtifactStore.php'), 'utf8'), readFile(join(root, 'hub/src/HubControlPlaneService.php'), 'utf8'), readFile(join(root, 'hub/src/HubControlPlaneRouter.php'), 'utf8'),
     readFile(join(root, 'hub/src/HubNativeAgentService.php'), 'utf8'), readFile(join(root, 'web/control-plane-adapter.js'), 'utf8'), readFile(join(root, 'web/app.js'), 'utf8'), readFile(join(root, 'web/execution-ux.js'), 'utf8'),
-    readFile(join(root, 'deploy/systemd/awh-native-executor.service'), 'utf8'), readFile(join(root, 'deploy/systemd/awh-native-executor.timer'), 'utf8'),
+    readFile(join(root, 'deploy/systemd/awh-native-executor.service'), 'utf8'), readFile(join(root, 'deploy/systemd/awh-native-executor.timer'), 'utf8'), readFile(join(root, 'hub/src/HubOpenAiProviderAdapter.php'), 'utf8'),
   ]);
   assert.match(local, /--central-project-authority/);
   assert.match(local, /migrate-central-project-authority\.php/);
@@ -49,7 +49,7 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(local, /git -C "\$ROOT" archive --format=zip/);
   assert.match(sourceSync, /Art’s Workspace Hub/);
   assert.match(sourceSync, /release-vault:/);
-  assert.match(sourceSync, /in_array\(\$schemaVersion, \[12, 13, 14, 15\], true\)/);
+  assert.match(sourceSync, /in_array\(\$schemaVersion, \[12, 13, 14, 15, 16\], true\)/);
   assert.match(remoteSource, /class_exists\("ZipArchive"\).*\? 0 : 1\);/);
   assert.match(remoteSource, /awh-native-executor\.timer/);
   assert.match(migration, /control_project_vaults/);
@@ -87,11 +87,11 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(durable, /Native conversation provider failed/);
   assert.doesNotMatch(durable, /catch \(HubNativeAgentException \$error\) \{\s*if \(\$error->codeName === 'BUDGET_EXHAUSTED'\)[\s\S]{0,240}conversationFallback/);
   assert.match(nativeAgent, /Reply with OK only/);
-  assert.match(nativeAgent, /providerFailure/);
+  assert.match(openAiAdapter, /private function failure/);
   assert.match(nativeAgent, /assistant' \? 'output_text' : 'input_text'/);
-  assert.match(nativeAgent, /PROVIDER_MODEL_UNAVAILABLE/);
-  assert.match(nativeAgent, /PROVIDER_QUOTA_EXHAUSTED/);
-  assert.match(nativeAgent, /PROVIDER_PERMISSION_DENIED/);
+  assert.match(openAiAdapter, /PROVIDER_MODEL_UNAVAILABLE/);
+  assert.match(openAiAdapter, /PROVIDER_QUOTA_EXHAUSTED/);
+  assert.match(openAiAdapter, /PROVIDER_PERMISSION_DENIED/);
   assert.match(durable, /bounded retry queued on the same task/);
   assert.doesNotMatch(durable, /conversationFallback/);
   assert.match(webAdapter, /PROVIDER_REQUEST_INVALID/);
@@ -107,7 +107,8 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(serviceUnit, /User=awh-hub/);
   assert.match(serviceUnit, /PrivateNetwork=false/);
   assert.match(serviceUnit, /RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6/);
-  assert.match(nativeAgent, /https:\/\/api\.openai\.com\/v1\/responses/);
+  assert.match(openAiAdapter, /https:\/\/api\.openai\.com\/v1\/responses/);
+  assert.doesNotMatch(nativeAgent, /https:\/\/api\.openai\.com/);
   assert.match(serviceUnit, /AWH_ARTIFACT_ROOT/);
   assert.match(serviceUnit, /NoNewPrivileges=true/);
   assert.match(timerUnit, /OnActiveSec=5s/);

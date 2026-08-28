@@ -45,7 +45,7 @@ test('M11 self-service activation is one v7-to-v11 release with write-only provi
   assert.match(migration, /control_provider_credentials/);
   assert.match(migration, /control_project_provider_overrides/);
   assert.match(credentials, /DEFAULT_ROOT = '\/var\/lib\/awh-hub\/provider-credentials'/);
-  assert.match(credentials, /chmod\(\$temporary, 0600\)/);
+  assert.match(credentials, /@chmod\(\$temporary,\s*0600\)/);
   assert.match(credentials, /is_link\(\$path\)/);
   assert.match(service, /Provider secrets are write-only/);
   assert.match(service, /workersForUser/);

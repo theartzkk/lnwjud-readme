@@ -22,12 +22,13 @@ test('M9 final product release is one bounded v7-to-v8-to-v9 activation with att
   assert.match(result.stdout, /M9_ROLLBACK=restore-db-v7,pointer,web-pointer,nginx,service-health,m3d-m3e-m4-m7-regression/);
   assert.match(result.stdout, /M9_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL/);
 
-  const [local, remoteSource, include, migration, agent, control] = await Promise.all([
+  const [local, remoteSource, include, migration, agent, providerAdapter, control] = await Promise.all([
     readFile(deploy, 'utf8'),
     readFile(remote, 'utf8'),
     readFile(join(root, 'deploy/nginx/awh-control-plane.conf'), 'utf8'),
     readFile(join(root, 'hub/migrations/008_final_product.sql'), 'utf8'),
     readFile(join(root, 'hub/src/HubNativeAgentService.php'), 'utf8'),
+    readFile(join(root, 'hub/src/HubOpenAiProviderAdapter.php'), 'utf8'),
     readFile(join(root, 'hub/src/HubControlPlaneService.php'), 'utf8'),
   ]);
   assert.match(local, /--final-product/);
@@ -52,7 +53,7 @@ test('M9 final product release is one bounded v7-to-v8-to-v9 activation with att
   assert.match(include, /client_max_body_size 64m/);
   assert.match(migration, /control_provider_policies/);
   assert.match(migration, /control_project_capabilities/);
-  assert.match(agent, /https:\/\/api\.openai\.com\/v1\/responses/);
+  assert.match(providerAdapter, /https:\/\/api\.openai\.com\/v1\/responses/);
   assert.match(agent, /'store' => false/);
   assert.match(control, /'projectDirectory' => \$directory/);
   assert.match(control, /state <> 'CANCELLED'/);
