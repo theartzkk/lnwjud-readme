@@ -49,6 +49,7 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(local, /git -C "\$ROOT" archive --format=zip/);
   assert.match(sourceSync, /Art’s Workspace Hub/);
   assert.match(sourceSync, /release-vault:/);
+  assert.match(sourceSync, /in_array\(\$schemaVersion, \[12, 13\], true\)/);
   assert.match(remoteSource, /class_exists\("ZipArchive"\).*\? 0 : 1\);/);
   assert.match(remoteSource, /awh-native-executor\.timer/);
   assert.match(migration, /control_project_vaults/);
