@@ -27,6 +27,7 @@ test('automation scheduler only evaluates bounded built-in condition keys', asyn
 
 test('control plane materializes automation through the same task and conversation authorities', async () => {
   const source = await read('hub/src/HubControlPlaneService.php');
+  assert.match(source, /require_once __DIR__ \. \'\/HubEnrollmentService\.php\';/);
   assert.match(source, /private function submitTaskForUser/);
   assert.match(source, /submitTaskForUser\(\(string\) \$session\['user_id'\]/);
   assert.match(source, /public function materializeAutomationSubmission/);
