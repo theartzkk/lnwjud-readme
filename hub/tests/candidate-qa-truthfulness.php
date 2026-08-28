@@ -24,5 +24,5 @@ foreach ([['bad.php', "<?php function broken( {"], ['bad.json', '{bad'] ] as [$p
     }
 }
 $source = file_get_contents(dirname(__DIR__) . '/src/HubDurableExecutionService.php');
-candidate_qa_assert(is_string($source) && str_contains($source, "'schemaVersion' => 2") && str_contains($source, "'candidate' => $qa"), 'candidate report must persist truthful QA evidence');
+candidate_qa_assert(is_string($source) && str_contains($source, "'schemaVersion' => 2") && str_contains($source, "'candidate' => \$qa"), 'candidate report must persist truthful QA evidence');
 fwrite(STDOUT, "AWH Candidate QA Truthfulness: PASS\n");
