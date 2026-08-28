@@ -41,6 +41,7 @@ test('M14 Cost-Aware AI is additive and rollback-safe', async () => {
   assert.match(remoteSource, /COST_AWARE_AI_ROUTE/);
   assert.match(remoteSource, /NATIVE_EXECUTOR_QUIESCED/);
   assert.match(remoteSource, /m14-cost-aware-ai/);
+  assert.match(remoteSource, /test "\$ANYWHERE_EXECUTION" = 0 && test "\$COST_AWARE_AI" = 0; then/);
   assert.match(pricing, /cacheWrite/);
   assert.match(pricing, /longContext/);
   assert.match(migration, /gpt-5\.6-luna/);
