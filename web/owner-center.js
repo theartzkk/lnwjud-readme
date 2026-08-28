@@ -19,6 +19,7 @@
       ['devices', '◇', 'Devices & Workers', 'Mac Windows และความสามารถของ Worker'],
       ['people', '♙', 'Users & Roles', 'ผู้ร่วมงาน สิทธิ์ และการเข้าถึงโปรเจกต์'],
       ['security', '⌾', 'Security', 'บัญชี session การกู้คืน และความปลอดภัย'],
+      ['trust', '◎', 'Trust Center', 'หลักฐาน AI, Approvals, Artifacts, Undo และความปลอดภัย'],
     ] },
     { title: 'ระบบและการขยาย', items: [
       ['infrastructure', '⌘', 'Infrastructure', 'VPS, Services, Domains, SSL, Backup และ Deployments'],
@@ -84,6 +85,7 @@
     if (action === 'devices') { openSettings('devices'); return; }
     if (action === 'people') { openSettings('people'); return; }
     if (action === 'security') { openSettings('account'); return; }
+    if (action === 'trust') { window.location.assign('./trust.html'); return; }
     if (action === 'infrastructure') { window.location.assign('./infrastructure.html'); return; }
     if (action === 'runtime') { openSettings('system'); return; }
     if (action === 'database') window.location.assign('./database.html');
