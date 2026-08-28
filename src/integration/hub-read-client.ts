@@ -31,7 +31,7 @@ const DEFAULT_MAX_RESPONSE_BYTES = 1_000_000;
  * - no arbitrary paths or methods;
  * - HTTPS required except loopback development;
  * - redirects rejected (avoids bearer forwarding to a different origin);
- * - bounded response size and timeout;
+ * - streamed response-size enforcement plus timeout;
  * - bearer token injected internally and never returned in tool output.
  *
  * This does not make the current global Hub read token suitable for multi-user
@@ -91,13 +91,11 @@ export class HubReadClient {
 
     const declaredLength = parseContentLength(response.headers.get('content-length'));
     if (declaredLength !== null && declaredLength > this.maxResponseBytes) {
+      await response.body?.cancel().catch(() => undefined);
       throw new Error('Hub read response exceeds size limit');
     }
 
-    const body = await response.text();
-    if (Buffer.byteLength(body, 'utf8') > this.maxResponseBytes) {
-      throw new Error('Hub read response exceeds size limit');
-    }
+    const body = await readBoundedBody(response, this.maxResponseBytes);
 
     try {
       return JSON.parse(body) as unknown;
@@ -142,6 +140,33 @@ function parseContentLength(value: string | null): number | null {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed)) throw new Error('Hub read response has invalid content length');
   return parsed;
+}
+
+async function readBoundedBody(response: Response, maxBytes: number): Promise<string> {
+  if (response.body === null) return '';
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value === undefined) continue;
+
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error('Hub read response exceeds size limit');
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), total).toString('utf8');
 }
 
 function boundedPositiveInteger(value: number, min: number, max: number, name: string): number {
