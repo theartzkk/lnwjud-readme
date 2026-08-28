@@ -73,9 +73,10 @@ export async function createSafeBridgeRuntime(): Promise<SafeBridgeRuntime> {
 
 export async function executeSafeBridge(
   command: SafeBridgeCommand,
-  runtime: SafeBridgeRuntime = await createSafeBridgeRuntime(),
+  runtime?: SafeBridgeRuntime,
 ): Promise<SafeBridgeEnvelope> {
-  const generatedAt = (runtime.now ?? (() => new Date()))().toISOString();
+  const activeRuntime = runtime ?? await createSafeBridgeRuntime();
+  const generatedAt = (activeRuntime.now ?? (() => new Date()))().toISOString();
   let data: unknown;
 
   switch (command.kind) {
@@ -83,15 +84,15 @@ export async function executeSafeBridge(
       data = capabilityDocument();
       break;
     case 'status':
-      data = await statusDocument(runtime);
+      data = await statusDocument(activeRuntime);
       break;
     case 'projects':
-      assertAuthenticatedReadReady(runtime);
-      data = { projects: sanitize(await runtime.worker.projects()) };
+      assertAuthenticatedReadReady(activeRuntime);
+      data = { projects: sanitize(await activeRuntime.worker.projects()) };
       break;
     case 'results': {
-      assertAuthenticatedReadReady(runtime);
-      const result = await runtime.worker.readResults();
+      assertAuthenticatedReadReady(activeRuntime);
+      const result = await activeRuntime.worker.readResults();
       data = {
         tasks: result.results.map(taskSummary),
         artifacts: sanitize(result.artifacts),
@@ -100,8 +101,8 @@ export async function executeSafeBridge(
       break;
     }
     case 'workspace':
-      assertAuthenticatedReadReady(runtime);
-      data = { workspace: sanitize(await runtime.worker.workspace(command.projectId)) };
+      assertAuthenticatedReadReady(activeRuntime);
+      data = { workspace: sanitize(await activeRuntime.worker.workspace(command.projectId)) };
       break;
   }
 
