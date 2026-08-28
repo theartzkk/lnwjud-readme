@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "name": "AWH Integration Gateway",
+  "status": "M1_READ_ONLY_FOUNDATION",
+  "sourceOfTruth": {
+    "tasks": "existing AWH control_tasks + durable execution authority",
+    "capabilities": "HubCapabilityRegistryService",
+    "projects": "existing AWH project authority",
+    "workers": "existing authenticated worker heartbeat + device identity",
+    "artifacts": "existing AWH artifact store",
+    "memory": "existing AWH founding/project memory authority",
+    "approvals": "existing AWH approval authority"
+  },
+  "securityDefaults": {
+    "defaultDeny": true,
+    "remoteReadOnly": true,
+    "outboundOnlyWorkers": true,
+    "rawShellExposed": false,
+    "productionMutationEnabled": false,
+    "restrictedExternalTransferEnabled": false
+  },
+  "trustTiers": [
+    "observe",
+    "safe",
+    "privileged",
+    "break-glass"
+  ],
+  "m1ExposedTools": [
+    "awh.health",
+    "awh.workspace.info",
+    "awh.workspace.tree",
+    "awh.file.read",
+    "awh.workspace.search",
+    "awh.git.status",
+    "awh.git.diff",
+    "awh.git.log"
+  ],
+  "hubReadAdaptersPending": [
+    "awh.hub.status",
+    "awh.projects.list",
+    "awh.devices.list",
+    "awh.builds.list",
+    "awh.releases.list"
+  ],
+  "disabledMutationTools": [
+    "awh.project.register",
+    "awh.workspace.write",
+    "awh.workspace.patch",
+    "awh.project.command"
+  ],
+  "routing": {
+    "providerSelectionAuthority": "HubCapabilityRegistryService",
+    "localProviderScoringAllowed": false,
+    "costPreferenceIsAdvisory": true
+  },
+  "evidence": {
+    "commandSuccessIsFieldReadySuccess": false,
+    "requiresExactRevisionWhenApplicable": true,
+    "requiresAuditReferences": true,
+    "requiresRollbackReferenceForPrivilegedMutation": true
+  },
+  "convergence": {
+    "productionDeployFromThisBranch": false,
+    "mergeRequiresSyncWithActiveProductionBranch": true,
+    "duplicateTaskQueueAllowed": false,
+    "duplicateCapabilityRegistryAllowed": false,
+    "duplicateAuthAuthorityAllowed": false
+  }
+}
