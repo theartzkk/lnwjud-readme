@@ -2,7 +2,7 @@
 
 - Art Agent is a legacy codename only.
 - There is one AWH product; no parallel ArtAgent product is created.
-- AWH is local-first.
+- AWH was originally local-first. **Architecture Decision 2026-08-29 supersedes local-first as the target product direction: AWH is VPS-first, device-optional, and AI-provider-independent.** Local-first behavior remains only where it is technically appropriate for edge/device-specific execution and offline recovery.
 - GitHub is optional and is not critical infrastructure.
 - Portable project identity lives in `.awh/project.json`.
 - `projectId` is stable across devices.
@@ -12,7 +12,7 @@
 - Large assets use a separate future asset layer.
 - AI providers are adapters/components, not the AWH product.
 - Remote execution remains restricted.
-- AWH Hub must not become a single point of failure.
+- AWH Hub must not become an unrecoverable single point of failure; ReadyIDC is the primary authority and must be protected by verified backup/restore, health monitoring, rollback, and portable recovery paths rather than by creating competing authorities.
 - M3C1 uses PHP-FPM-compatible routing with SQLite metadata because the M3A contract targets a lightweight Ubuntu deployment; the repository's Node tooling remains the local development/QA toolchain.
 - Hub HTTP reads are fail-closed, Bearer-authenticated except health, query-only, bounded, and free of arbitrary paths, SQL, shell, MCP, and execution capabilities.
 - Project Memory is not duplicated into a second editable database; only rebuildable status/hash/size/provenance metadata may be indexed.
@@ -51,3 +51,16 @@
 - A task submitted while no eligible worker is online remains `WAITING_FOR_WORKER`; the UI must not claim running or completed execution. The local fixture proves session → real canonical project → Goal → queue → claim → bounded completion, while live iPhone/task execution remains an M4 activation and field-validation gate.
 - M4 v1 RC keeps Results, Artifacts and scoped Approval decisions in the same canonical control-plane service. The browser uses HttpOnly session cookies plus CSRF/origin checks; the Desktop worker uses the existing device credential boundary. A bounded Codex adapter receives a Goal as one argv value inside the existing sandbox policy; it never exposes shell commands as the product contract.
 - The M4 deployment package is executable only after an explicit `--deploy --approve` release lock. It creates a verified SQLite backup, stages the exact release, applies migration 003 idempotently, verifies an empty project-onboarding input, switches exact pointers, inserts the control route only into the authoritative HTTPS server, validates M3D/control health, and restores the verified baseline on failure. It never seeds a user project; later Add Project/onboarding passes validated portable manifest metadata to the same reusable registration service. This package is prepared locally and has not been run against ReadyIDC.
+
+## Architecture Decision — 2026-08-29: VPS-first AWH
+
+- **ReadyIDC VPS is the AWH headquarters and primary control-plane authority.** Users/sessions, canonical project/task/execution state, approvals, worker registry, audit, automation state, AI usage/routing state, monitoring, backup/restore coordination, and durable continuity metadata should converge on the VPS rather than on a Mac or Windows machine.
+- **VPS execution is preferred whenever the workload does not require a specific edge device.** Git orchestration, source inspection, tests/builds, server-side document/image/PDF processing, database jobs, deployment, logs, monitoring, backups, API/MCP integrations, and scheduled automation should execute on the VPS where safe and practical.
+- **Mac and Windows are optional edge workers, not authorities.** They are used only for device-local files, macOS/Windows applications, GUI/computer control, school-LAN resources, Office/NetSupport, hardware, or other OS-specific capabilities. AWH must remain available and retain task/project/control state when those workers are offline.
+- **AWH is AI-provider-independent.** ChatGPT, Codex, local/free models, and future providers are interchangeable reasoning adapters behind AWH policy. Codex quota exhaustion must not halt routine operations that the AWH VPS/tool layer can perform safely.
+- **AWH Capability Gateway is the long-term capability boundary.** VPS tools, GitHub/Drive/BAY/School Website integrations, Mac/Windows workers, and external MCP servers should register through one policy/audit/approval/capability layer instead of becoming parallel agent products.
+- **Endeavor/Endeavor Hands is a reference pattern for Mac edge capability only.** Useful ideas such as outbound-only connectivity, compact/deep tool vocabulary, computer control, background jobs, sandboxing, activity logs, and MCP bridging may be absorbed into AWH Mac Worker. Endeavor must not become a second AWH authority, memory system, permission system, or task engine.
+- **lnwjud remains a Windows/runtime capability source, not a competing control plane.** Its useful execution capabilities should converge behind the same AWH worker/capability contracts.
+- **Safety stays centralized.** Source-of-Truth resolution, project/branch/revision checks, active-execution locking, checkpoints, approvals, destructive-action policy, audit, rollback, and post-action verification are AWH-level invariants and must not be delegated to provider-specific prompts alone.
+- **Primary-authority resilience is mandatory.** VPS-first does not mean fragile VPS-only: verified backups, restore drills, health monitoring, bounded rollback, exportable Project Memory/identity, and recovery procedures must prevent ReadyIDC failure from becoming unrecoverable data or control loss.
+- Target workload bias: **roughly 70–85% VPS, 10–20% Windows edge, 5–10% Mac edge**, adjusted by real workloads rather than treated as a hard quota.
