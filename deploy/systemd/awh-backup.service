@@ -12,7 +12,7 @@ UMask=0077
 Environment=AWH_HUB_DB_PATH=/var/lib/awh-hub/awh.sqlite
 Environment=AWH_HUB_BACKUP_ROOT=/var/backups/awh-hub
 Environment=AWH_HUB_BACKUP_READ_GROUP=awh-hub
-ExecStart=/usr/bin/php /opt/awh-hub/control-plane-current/hub/bin/scheduled-backup.php
+ExecStart=/usr/bin/php -d pcre.jit=0 /opt/awh-hub/control-plane-current/hub/bin/scheduled-backup.php
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
@@ -25,5 +25,5 @@ ProtectControlGroups=true
 RestrictNamespaces=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
-ReadOnlyPaths=/var/lib/awh-hub /opt/awh-hub
-ReadWritePaths=/var/backups/awh-hub
+ReadOnlyPaths=/opt/awh-hub /var/lib/awh-hub/awh.sqlite
+ReadWritePaths=/var/backups/awh-hub /var/lib/awh-hub

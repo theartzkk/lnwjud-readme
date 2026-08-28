@@ -74,13 +74,16 @@ test('sustainability contract never embeds credential material', async () => {
 test('automatic backup scheduler reuses the canonical verified backup authority', async () => {
   const service = await readFile(join(ROOT, 'deploy/systemd/awh-backup.service'), 'utf8');
   const timer = await readFile(join(ROOT, 'deploy/systemd/awh-backup.timer'), 'utf8');
+  const backupSource = await readFile(join(ROOT, 'hub/src/HubBackupService.php'), 'utf8');
+  assert.match(backupSource, /PDO::SQLITE_ATTR_OPEN_FLAGS\s*=>\s*PDO::SQLITE_OPEN_READONLY/);
   const wrapper = await readFile(join(ROOT, 'hub/bin/scheduled-backup.php'), 'utf8');
   const deploy = await readFile(join(ROOT, 'deploy/awh-control-plane/deploy-control-plane.sh'), 'utf8');
-  assert.match(service, /ExecStart=\/usr\/bin\/php \/opt\/awh-hub\/control-plane-current\/hub\/bin\/scheduled-backup\.php/);
+  assert.match(service, /ExecStart=\/usr\/bin\/php -d pcre\.jit=0 \/opt\/awh-hub\/control-plane-current\/hub\/bin\/scheduled-backup\.php/);
   assert.match(service, /AWH_HUB_BACKUP_READ_GROUP=awh-hub/);
   assert.match(service, /PrivateNetwork=true/);
   assert.match(service, /ProtectSystem=strict/);
-  assert.match(service, /ReadOnlyPaths=\/var\/lib\/awh-hub \/opt\/awh-hub/);
+  assert.match(service, /ReadOnlyPaths=\/opt\/awh-hub \/var\/lib\/awh-hub\/awh\.sqlite/);
+  assert.match(service, /ReadWritePaths=\/var\/backups\/awh-hub \/var\/lib\/awh-hub/);
   assert.match(service, /ReadWritePaths=\/var\/backups\/awh-hub/);
   assert.match(wrapper, /HubBackupService::create/);
   assert.match(wrapper, /chgrp\(\$path, \$readGroup\)/);
