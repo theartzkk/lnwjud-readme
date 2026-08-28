@@ -2,9 +2,9 @@
 
 ## NOW
 
-- Close Candidate Secret Gate V1 on top of Supervisor + Candidate QA + Promotion Evidence: high-confidence provider-generated credential material must fail closed before candidate Vault capture and again during candidate QA, without creating a new task/queue/approval authority.
+- Close VPS Native Code Context V1 on top of Candidate Secret Gate: extend the existing immutable Project Vault `project_search` read path to bounded source-content discovery with line evidence; do not add an index/database/search authority or any shell/process/network capability.
 - Keep M16 activation separate and approval-gated. Production remains M15/v15 until an exact reviewed SHA passes release gates and receives required approval.
-- Required closure evidence: extension-independent secret policy fixture, assisted-edit integration guard, deployment bundling guard, Hub integration suite, full product regression, `git diff --check`, clean exact commit/push, then Linux CI for the locally skipped M12 extension-dependent fixture.
+- Required closure evidence: extension-independent Vault search fixture, M12 integration guard, Hub integration suite, full product regression, `git diff --check`, clean exact commit/push, then Linux CI for the locally skipped extension-dependent fixture.
 - Production, billing, credentials, permissions, Google Cloud legacy and BAY production remain untouched in this source milestone.
 
 ## NEXT

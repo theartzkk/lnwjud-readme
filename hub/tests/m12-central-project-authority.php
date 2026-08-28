@@ -50,6 +50,11 @@ try {
     m12_assert(($first['storageMode'] ?? null) === 'VAULT' && ($first['syncState'] ?? null) === 'SYNCED' && is_string($first['activeRevisionId'] ?? null), 'initial archive becomes canonical only after verification');
     $context = $vaults->context($project, 'ตรวจ README'); m12_assert(count($context['files']) >= 1, 'bounded project context finds canonical file');
     $read = $vaults->vault()->readText($project, $context['revisionId'], 'README.md'); m12_assert(str_contains($read['content'], 'Data only'), 'bounded canonical read works');
+    $contentMatches = $vaults->vault()->search($project, $context['revisionId'], 'fixture');
+    $contentHit = null; foreach ($contentMatches as $match) if (($match['path'] ?? null) === 'src/main.php' && ($match['match'] ?? null) === 'content') $contentHit = $match;
+    m12_assert(is_array($contentHit) && ($contentHit['line'] ?? null) === 1 && str_contains((string) ($contentHit['snippet'] ?? ''), 'fixture'), 'Vault search finds bounded source content across files with line evidence');
+    $pathMatches = $vaults->vault()->search($project, $context['revisionId'], 'README');
+    m12_assert(($pathMatches[0]['path'] ?? null) === 'README.md' && ($pathMatches[0]['match'] ?? null) === 'path', 'Vault search keeps deterministic filename matches first');
     $zip = new ZipArchive(); m12_assert($zip->open($archive, ZipArchive::OVERWRITE) === true, 'zip overwrite'); $zip->addFromString('README.md', "# Fixture v2  \r\n"); $zip->addFromString('src/main.php', "<?php echo 'fixture-v2';\n"); $zip->close();
     $second = $vaults->ingestArchive($project, $archive, $owner, null, $first['activeRevisionId'], $now); m12_assert(($second['promotionRequired'] ?? false) === true && ($second['syncState'] ?? null) === 'STALE', 'subsequent archive is an explicit candidate');
     $promoted = $vaults->promote($project, (string) $second['createdRevisionId'], (string) $first['activeRevisionId'], $now); m12_assert(($promoted['activeRevisionId'] ?? null) === $second['createdRevisionId'] && ($promoted['syncState'] ?? null) === 'SYNCED', 'revision precondition promotion prevents silent overwrite');
