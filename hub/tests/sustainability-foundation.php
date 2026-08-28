@@ -38,8 +38,10 @@ try {
     $pdo->exec('CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER NOT NULL REFERENCES parent(id), value TEXT NOT NULL)');
     $pdo->exec("INSERT INTO parent(id,name) VALUES(1,'authority')");
     $pdo->exec("INSERT INTO child(id,parent_id,value) VALUES(1,1,'durable')");
+    $pdo = null;
     $sourceHash = hash_file('sha256', $db);
     expect(is_string($sourceHash), 'source hash missing');
+    chmod($db, 0400);
 
     $created = HubBackupService::create($db, $backupRoot, '2026-08-26T12:00:00Z');
     expect(is_file($created['backupPath']), 'backup payload missing');
