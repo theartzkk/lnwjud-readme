@@ -15,12 +15,12 @@
         <div><strong>Art’s Workspace Hub</strong><span id="version">AWH Desktop</span></div>
       </div>
       <nav aria-label="AWH primary navigation">
-        <button class="nav active" data-section="autopilot">Work</button>
-        <button class="nav" data-section="overview">หน้าแรก</button>
-        <button class="nav" data-section="projects">Projects</button>
-        <button class="nav" data-section="artifacts">Results</button>
-        <button class="nav" data-section="enrollment">อุปกรณ์</button>
-        <details class="advanced-nav"><summary>Advanced</summary>
+        <button class="nav active" data-section="overview"><span aria-hidden="true">⌂</span><span>หน้าแรก</span></button>
+        <button class="nav" data-section="autopilot"><span aria-hidden="true">✦</span><span>AI / แชท</span></button>
+        <button class="nav" data-section="projects"><span aria-hidden="true">◫</span><span>Projects</span></button>
+        <button class="nav" data-section="artifacts"><span aria-hidden="true">▤</span><span>ไฟล์และผลลัพธ์</span></button>
+        <button class="nav" data-section="enrollment"><span aria-hidden="true">◇</span><span>อุปกรณ์</span></button>
+        <details class="advanced-nav"><summary>เพิ่มเติม</summary>
           <button class="nav" data-section="memory">Project Memory</button>
           <button class="nav" data-section="git">Git</button>
           <button class="nav" data-section="permissions">Permissions</button>
@@ -43,12 +43,12 @@
         <button id="refresh" class="btn secondary">รีเฟรช</button>
       </header>
 
-      <section id="section-overview" class="section">
+      <section id="section-overview" class="section active">
         <div class="card home-work-card">
-          <p class="eyebrow">WELCOME BACK</p>
-          <h2>เริ่มจากเรื่องที่อยากทำได้เลย</h2>
+          <p class="eyebrow">AWH · YOUR WORKSPACE</p>
+          <h2>วันนี้อยากให้ AWH ช่วยอะไร?</h2>
           <p id="home-project-summary" class="muted">AWH กำลังตรวจโปรเจกต์ที่พร้อมทำงานบนอุปกรณ์นี้</p>
-          <div class="actions"><button id="home-open-work" class="btn">เปิด Work</button><button id="home-open-projects" class="btn secondary">เลือกโปรเจกต์</button></div>
+          <div class="home-actions"><button id="home-open-work" class="btn">เริ่มคุยกับ AWH</button><button id="home-open-projects" class="btn secondary">ดูโปรเจกต์</button></div><div class="home-quick-grid"><button type="button" class="home-quick" data-home-section="autopilot"><span>✦</span><strong>AI ช่วยงาน</strong><small>ถาม เขียน สรุป และสั่งงาน</small></button><button type="button" class="home-quick" data-home-section="projects"><span>◫</span><strong>Projects</strong><small>งานและบริบททั้งหมด</small></button><button type="button" class="home-quick" data-home-section="artifacts"><span>▤</span><strong>ไฟล์ผลลัพธ์</strong><small>งานที่ AWH ทำเสร็จแล้ว</small></button><button type="button" class="home-quick" data-home-section="enrollment"><span>◇</span><strong>อุปกรณ์</strong><small>Mac / Windows workers</small></button></div>
         </div>
       </section>
 
@@ -61,8 +61,8 @@
         <div id="project-list" class="project-list"></div>
       </section>
 
-      <section id="section-autopilot" class="section active">
-        <div class="work-header"><div><p class="eyebrow">AWH</p><button id="desktop-work-project" class="work-project" type="button">AWH</button><div class="desktop-hub-status" aria-live="polite"><span><span class="desktop-status-dot"></span>AWH Server · Online</span><span id="desktop-work-status">AI · Ready</span></div></div><button id="refresh-autopilot" class="btn secondary small" aria-label="รีเฟรช Work">↻</button></div>
+      <section id="section-autopilot" class="section">
+        <div class="work-header"><div><p class="eyebrow">AI WORKSPACE</p><button id="desktop-work-project" class="work-project" type="button">เลือกโปรเจกต์</button><div class="desktop-hub-status" aria-live="polite"><span><span class="desktop-status-dot"></span>AWH Server · Online</span><span id="desktop-work-status">AI · Ready</span></div></div><button id="refresh-autopilot" class="btn secondary small" aria-label="รีเฟรช Work">↻</button></div>
         <div class="workspace-continuity" aria-live="polite"><div><strong>ทำงานต่อได้ทุกอุปกรณ์</strong><p id="workspace-continuity-status" class="muted">กำลังตรวจสถานะ workspace…</p></div><div class="actions"><button id="workspace-sync" class="btn secondary small" type="button">บันทึกเพื่อทำต่อเครื่องอื่น</button><button id="workspace-takeover" class="btn secondary small" type="button">รับงานต่อบนเครื่องนี้</button></div></div>
         <div class="desktop-workstream"><div id="desktop-work-empty" class="empty-work"><h2>เริ่มคุยกับ AWH ได้เลย</h2><p>ถามหรือสั่งงานเป็นภาษาปกติ AWH จะตอบและจัดการส่วนที่ทำได้บนระบบกลางให้ต่อเนื่อง</p></div><ol id="desktop-work-thread" class="desktop-work-thread" aria-live="polite"></ol></div>
         <form id="desktop-work-form" class="desktop-composer"><label class="sr-only" for="desktop-work-input">พิมพ์สิ่งที่อยากให้ AWH ช่วย</label><textarea id="desktop-work-input" maxlength="2000" rows="3" placeholder="พิมพ์สิ่งที่อยากให้ AWH ช่วย…"></textarea><div class="composer-actions"><p id="desktop-work-message" class="muted" role="status"></p><button id="desktop-work-submit" class="btn" type="submit">ส่ง <span aria-hidden="true">↑</span></button></div></form>

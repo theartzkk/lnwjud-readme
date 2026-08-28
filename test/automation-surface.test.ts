@@ -21,7 +21,7 @@ test('Owner automation surface uses the canonical control request boundary', asy
   assert.match(css, /awh-automation-panel/);
   assert.match(build, /asset\('automation-surface\.js'\)/);
   assert.match(build, /asset\('automation-surface\.css'\)/);
-  assert.match(build, /Automations V1\.8/);
+  assert.match(build, /\/\* Automations \*\//);
 });
 
 test('Owner automation form hides VEVENT implementation details from ordinary users', async () => {

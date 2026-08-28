@@ -1,17 +1,14 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import test from 'node:test';
-const read=(p:string)=>readFile(new URL(`../${p}`,import.meta.url),'utf8');
+const root=new URL('../',import.meta.url);
+const read=(p:string)=>readFile(new URL(p,root),'utf8');
 
-test('Experience V2 is a presentation layer over the canonical dashboard',async()=>{
-  const [css,js,build]=await Promise.all([read('web/experience-v2.css'),read('web/experience-v2.js'),read('scripts/build-web-preview.ts')]);
-  assert.match(css,/awh-experience-v2/);
-  assert.match(css,/grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);
-  assert.match(css,/work-active/);
-  for(const label of ['หน้าแรก','AI','แชท','เครื่องมือ','เพิ่มเติม']) assert.match(js,new RegExp(label));
-  assert.match(js,/Multi Chat/);
-  assert.doesNotMatch(js,/fetch\s*\(|XMLHttpRequest|WebSocket|localStorage|sessionStorage|Authorization|Bearer\s/);
-  assert.match(build,/asset\('experience-v2\.css'\)/);
-  assert.match(build,/asset\('experience-v2\.js'\)/);
-  assert.match(build,/AWH Experience V2/);
+test('AWH presentation overlays are removed from the canonical web build',async()=>{
+ const [build,dashboard,styles]=await Promise.all([read('scripts/build-web-preview.ts'),read('web/dashboard.js'),read('web/styles.css')]);
+ for(const file of ['web/experience-v2.css','web/experience-v2.js','web/experience-v3.css','web/experience-v3.js','web/final-home-polish.css','web/final-home-polish.js']) await assert.rejects(access(new URL(file,root)));
+ assert.doesNotMatch(build,/experience-v[23]|final-home-polish|AWH Experience V[23]|Final Home V1/);
+ assert.match(dashboard,/mountMobileNavigation/);
+ assert.match(dashboard,/mountWelcome/);
+ assert.match(styles,/Canonical Work surface/);
 });

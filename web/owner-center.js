@@ -21,7 +21,7 @@
       ['security', '⌾', 'Security', 'บัญชี session การกู้คืน และความปลอดภัย'],
     ] },
     { title: 'ระบบและการขยาย', items: [
-      ['system', '⚙', 'System', 'สุขภาพระบบ Runtime และ Database Studio'],
+      ['infrastructure', '⌘', 'Infrastructure', 'VPS, Services, Domains, SSL, Backup และ Deployments'],
       ['database', '▦', 'Database Studio', 'ตรวจข้อมูล โครงสร้าง และ migration แบบปลอดภัย'],
       ['automations', '↯', 'Automations', 'งานตามเวลาและเงื่อนไข', 'กำลังพัฒนา'],
       ['runtime', '⌘', 'Runtime / lnwjud', 'Capability Fabric และรายละเอียดการทำงานขั้นสูง', 'Advanced'],
@@ -84,7 +84,8 @@
     if (action === 'devices') { openSettings('devices'); return; }
     if (action === 'people') { openSettings('people'); return; }
     if (action === 'security') { openSettings('account'); return; }
-    if (action === 'system' || action === 'runtime') { openSettings('system'); return; }
+    if (action === 'infrastructure') { window.location.assign('./infrastructure.html'); return; }
+    if (action === 'runtime') { openSettings('system'); return; }
     if (action === 'database') window.location.assign('./database.html');
   }
 
