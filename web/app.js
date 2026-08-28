@@ -452,6 +452,15 @@ import {
     const thread = $('work-thread'); const stickToBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 140; thread.replaceChildren();
     const messages = Array.isArray(conversation?.messages) ? conversation.messages : [];
     const taskById = new Map((conversation?.tasks || []).map((task) => [task.taskId, task]));
+    const visibleMessages = [];
+    let previousCancelledKey = '';
+    for (const turn of visibleMessages) {
+      const task = turn?.taskId ? taskById.get(turn.taskId) : null;
+      const cancelledKey = turn?.kind !== 'user' && task?.state === 'CANCELLED' ? `${turn.kind}|${String(turn.body || '').trim()}` : '';
+      if (cancelledKey && cancelledKey === previousCancelledKey) continue;
+      visibleMessages.push(turn);
+      previousCancelledKey = cancelledKey;
+    }
     const artifactsByTask = new Map();
     for (const artifact of conversation?.artifacts || []) {
       if (!artifact?.taskId) continue;
@@ -459,7 +468,7 @@ import {
     }
     const attachmentsByMessage = new Map();
     for (const attachment of conversation?.attachments || []) { if (!attachment?.messageId) continue; const list = attachmentsByMessage.get(attachment.messageId) || []; list.push(attachment); attachmentsByMessage.set(attachment.messageId, list); }
-    $('empty-work').hidden = messages.length > 0 || !state.selectedProjectId;
+    $('empty-work').hidden = visibleMessages.length > 0 || !state.selectedProjectId;
     for (const turn of messages) {
       if (turn.kind === 'progress') {
         if (String(turn.messageId || '').startsWith('local-progress-')) {

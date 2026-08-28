@@ -21,6 +21,7 @@ require_once __DIR__ . '/HubOwnerAuthService.php';
 require_once __DIR__ . '/HubFoundingMemoryService.php';
 require_once __DIR__ . '/HubAutomationRegistryService.php';
 require_once __DIR__ . '/HubBackupService.php';
+require_once __DIR__ . '/HubInfrastructureService.php';
 
 final class HubControlPlaneException extends RuntimeException
 {
@@ -359,6 +360,33 @@ final class HubControlPlaneService
         } catch (Throwable) { /* Owner health remains available when provider metadata is unavailable. */ }
 
         return ['schemaVersion' => 1, 'owner' => $identity, 'product' => $this->productIdentity(), 'database' => ['state' => $integrity && $foreignKeys ? 'HEALTHY' : 'NEEDS_ATTENTION', 'schemaVersion' => (int) $this->pdo->query('PRAGMA user_version')->fetchColumn()], 'backup' => $backup, 'storage' => $storage, 'queue' => ['activeTaskCount' => $activeTasks, 'waitingCapabilityCount' => $waitingCapability], 'aiBudget' => $ai, 'recovery' => ['state' => (int) $recovery->fetchColumn() > 0 ? 'READY' : 'NEEDS_REGENERATION', 'message' => 'Use recovery codes only for account recovery; they are never included in exports.'], 'export' => ['available' => true, 'secretsIncluded' => false, 'sourceFilesIncluded' => false], 'workerSummary' => ['total' => count($workers), 'ready' => $readyWorkers], 'workers' => $workers];
+    }
+
+    /** Owner-only VPS/Control Plane projection. No paths, secrets or raw command output cross this boundary. */
+    public function infrastructure(string $sessionToken, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertSelfServiceReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId);
+        $health = $this->ownerSelfServiceStatus($sessionToken, $now);
+        $telemetry = HubInfrastructureService::fromEnvironment()->status($now);
+        $projects = array_map(static fn (array $project): array => [
+            'projectId' => (string) $project['projectId'],
+            'name' => (string) $project['name'],
+            'type' => (string) $project['type'],
+            'sourceRevision' => is_string($project['sourceRevision'] ?? null) ? $project['sourceRevision'] : null,
+            'memoryReady' => ($project['memoryReady'] ?? false) === true,
+        ], $this->projectsForUser($userId));
+        return [
+            'schemaVersion' => 1,
+            'telemetry' => $telemetry,
+            'deployment' => ['releaseId' => HubInfrastructureService::currentReleaseId()],
+            'projects' => array_slice($projects, 0, 200),
+            'database' => $health['database'],
+            'backup' => $health['backup'],
+            'storage' => $health['storage'],
+            'queue' => $health['queue'],
+            'aiBudget' => $health['aiBudget'],
+            'workerSummary' => $health['workerSummary'],
+        ];
     }
 
     /** A trusted enrolled Owner device may open one short-lived browser reset link. */

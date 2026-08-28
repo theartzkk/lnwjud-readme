@@ -64,6 +64,7 @@ final class HubControlPlaneRouter
                 if ($path === '/api/v1/control/memory/imports') return self::response(200, $service->memoryImportReport($sessionToken) + ['requestId' => $requestId], $headers);
                 if ($path === '/api/v1/control/export') return self::response(200, $service->exportWorkspace($sessionToken) + ['requestId' => $requestId], $headers);
                 if ($path === '/api/v1/control/owner/status') return self::response(200, $service->ownerSelfServiceStatus($sessionToken) + ['requestId' => $requestId], $headers);
+                if ($path === '/api/v1/control/infrastructure') return self::response(200, $service->infrastructure($sessionToken) + ['requestId' => $requestId], $headers);
                 if ($path === '/api/v1/control/provider') return self::response(200, $service->providerStatus($sessionToken) + ['requestId' => $requestId], $headers);
                 if (preg_match('#^/api/v1/control/provider/projects/(' . self::UUID . ')$#i', $path, $match) === 1) return self::response(200, $service->providerProjectRouting($sessionToken, $match[1]) + ['requestId' => $requestId], $headers);
                 if (preg_match('#^/api/v1/control/attachments/(' . self::UUID . ')/download$#i', $path, $match) === 1) return self::downloadResponse($service->attachmentDownload($sessionToken, $match[1]), $headers);

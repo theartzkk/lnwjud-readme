@@ -1,5 +1,5 @@
 const CACHE_NAME = 'awh-shell-__AWH_WEB_RELEASE_ID__';
-const APP_SHELL = ['./', './index.html', './styles.css?release=__AWH_WEB_RELEASE_ID__', './dashboard.css?release=__AWH_WEB_RELEASE_ID__', './app.js?release=__AWH_WEB_RELEASE_ID__', './dashboard.js?release=__AWH_WEB_RELEASE_ID__', './execution-ux.js?release=__AWH_WEB_RELEASE_ID__', './tool-registry.js?release=__AWH_WEB_RELEASE_ID__', './school-tools.js?release=__AWH_WEB_RELEASE_ID__', './vendor/pdf-lib.min.js?release=__AWH_WEB_RELEASE_ID__', './vendor/qrcode.js?release=__AWH_WEB_RELEASE_ID__', './hub-read-adapter.js?release=__AWH_WEB_RELEASE_ID__', './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__', './manifest.webmanifest?release=__AWH_WEB_RELEASE_ID__', './logo-256x256.png?release=__AWH_WEB_RELEASE_ID__'];
+const APP_SHELL = ['./', './index.html', './styles.css?release=__AWH_WEB_RELEASE_ID__', './dashboard.css?release=__AWH_WEB_RELEASE_ID__', './app.js?release=__AWH_WEB_RELEASE_ID__', './dashboard.js?release=__AWH_WEB_RELEASE_ID__', './execution-ux.js?release=__AWH_WEB_RELEASE_ID__', './tool-registry.js?release=__AWH_WEB_RELEASE_ID__', './school-tools.js?release=__AWH_WEB_RELEASE_ID__', './vendor/pdf-lib.min.js?release=__AWH_WEB_RELEASE_ID__', './vendor/qrcode.js?release=__AWH_WEB_RELEASE_ID__', './hub-read-adapter.js?release=__AWH_WEB_RELEASE_ID__', './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__', './database.html', './database.css?release=__AWH_WEB_RELEASE_ID__', './database.js?release=__AWH_WEB_RELEASE_ID__', './infrastructure.html', './infrastructure.css?release=__AWH_WEB_RELEASE_ID__', './infrastructure.js?release=__AWH_WEB_RELEASE_ID__', './manifest.webmanifest?release=__AWH_WEB_RELEASE_ID__', './logo-256x256.png?release=__AWH_WEB_RELEASE_ID__'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
@@ -16,7 +16,7 @@ self.addEventListener('fetch', (event) => {
   const staticAsset = ['document', 'script', 'style', 'image', 'manifest'].includes(request.destination);
   if (!staticAsset) return;
   if (request.destination === 'document') {
-    event.respondWith(fetch(request).catch(() => caches.match('./index.html')));
+    event.respondWith(fetch(request).catch(async () => (await caches.match(request)) || caches.match('./index.html')));
     return;
   }
   event.respondWith(fetch(request).then((response) => {

@@ -48,6 +48,68 @@ function button(label, className, onClick) {
   return node;
 }
 
+function tapTool(title) {
+  const cards = [...document.querySelectorAll('.awh-tool-card')];
+  const target = cards.find((card) => card.querySelector('strong')?.textContent?.trim() === title);
+  if (target instanceof HTMLButtonElement && !target.disabled) target.click();
+}
+
+function mountWelcome(dashboard) {
+  const welcome = document.createElement('div');
+  welcome.className = 'awh-home-welcome';
+  welcome.innerHTML = '<span><small>ART’S WORKSPACE HUB</small><strong>Workspace ของคุณ</strong></span><span class="awh-cloud-chip"><i aria-hidden="true"></i> Cloud พร้อมใช้งาน</span>';
+  dashboard.prepend(welcome);
+}
+
+function mountPromptShortcuts(hero) {
+  const row = document.createElement('div');
+  row.id = 'awh-home-prompts';
+  row.className = 'awh-home-prompts';
+  const choices = [
+    ['↻ งานล่าสุด', () => $('dashboard-continue-work')?.click()],
+    ['☰ Multi Chat', () => $('dashboard-open-chats')?.click()],
+    ['▤ สร้างเอกสาร', () => tapTool('สร้างเอกสาร')],
+    ['PDF จัดการ PDF', () => tapTool('จัดการ PDF')],
+    ['QR สร้าง QR', () => tapTool('สร้าง QR')],
+  ];
+  for (const [label, action] of choices) row.append(button(label, 'awh-home-prompt', action));
+  hero.append(row);
+}
+
+function updateMobileNavigation() {
+  const nav = $('awh-mobile-nav');
+  if (!(nav instanceof HTMLElement)) return;
+  const home = document.body.classList.contains('product-dashboard-active');
+  for (const item of nav.querySelectorAll('[data-mobile-destination]')) {
+    const destination = item.dataset.mobileDestination;
+    item.classList.toggle('is-active', home ? destination === 'home' : destination === 'chat');
+  }
+}
+
+function mountMobileNavigation() {
+  if ($('awh-mobile-nav')) return;
+  const nav = document.createElement('nav');
+  nav.id = 'awh-mobile-nav';
+  nav.className = 'awh-mobile-nav';
+  nav.setAttribute('aria-label', 'เมนูหลัก AWH');
+  const make = (icon, label, destination, action) => {
+    const item = button('', 'awh-mobile-nav-item', action);
+    item.dataset.mobileDestination = destination;
+    item.innerHTML = `<span aria-hidden="true">${icon}</span><strong>${label}</strong>`;
+    return item;
+  };
+  nav.append(
+    make('⌂', 'หน้าแรก', 'home', returnHome),
+    make('✦', 'AI', 'ai', () => openWork()),
+    make('☰', 'แชท', 'chat', () => { const context = state.workContext; if (context?.project?.projectId) navigateWork(context.project.projectId, context?.conversation?.conversationId || null, true); else openWork(); }),
+    make('▦', 'เครื่องมือ', 'tools', () => { returnHome(); window.setTimeout(() => $('awh-home-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40); }),
+    make('•••', 'เพิ่มเติม', 'more', () => { returnHome(); window.setTimeout(() => { const owner = $('dashboard-owner-center-open'); if (owner instanceof HTMLElement && !owner.hidden) owner.click(); else $('account-open')?.click(); }, 40); }),
+  );
+  document.body.append(nav);
+  new MutationObserver(updateMobileNavigation).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  updateMobileNavigation();
+}
+
 function openWork(prompt = '', submit = false) {
   document.body.classList.remove('product-dashboard-active');
   const dashboard = $(DASHBOARD_ID);
@@ -132,7 +194,7 @@ function mountDashboard() {
 
   const hero = document.createElement('section');
   hero.className = 'awh-home-hero';
-  hero.innerHTML = '<div class="awh-home-kicker">AWH · ผู้ช่วยงานโรงเรียน</div><h1>วันนี้อยากให้ AWH ช่วยอะไร?</h1><p>บอกเป็นภาษาปกติได้เลย AWH จะเลือกวิธีที่เหมาะให้เอง</p>';
+  hero.innerHTML = '<div class="awh-home-kicker">AWH · AI WORKSPACE</div><h1>ทุกงาน เริ่มจากตรงนี้</h1><p>คุยกับ AI · ทำเอกสาร · จัดการไฟล์ · ใช้เครื่องมือฟรี · ทำงานต่อจากทุกอุปกรณ์</p>';
   const commandForm = document.createElement('form');
   commandForm.className = 'awh-command-form';
   commandForm.id = 'dashboard-command-form';
@@ -158,6 +220,7 @@ function mountDashboard() {
     openWork(value, true);
   });
   hero.append(commandForm);
+  mountPromptShortcuts(hero);
 
   const continuity = document.createElement('section');
   continuity.id = 'dashboard-continuity';
@@ -165,6 +228,7 @@ function mountDashboard() {
   continuity.innerHTML = '<div class="awh-section-heading"><div><span>ทำต่อจากเดิม</span><h2>กลับมาทำงานได้ทันที</h2></div><small id="dashboard-continuity-memory">AWH จำบริบทของงานให้</small></div><div class="awh-continuity-card"><div class="awh-continuity-copy"><span id="dashboard-continuity-project" class="awh-context-chip">Project</span><h3 id="dashboard-continuity-title">กำลังเตรียมงานล่าสุด…</h3><p id="dashboard-continuity-summary">AWH กำลังเชื่อมงานล่าสุดกับ Dashboard</p><div id="dashboard-continuity-meta" class="awh-context-meta"></div></div><div class="awh-continuity-actions"><button id="dashboard-continue-work" class="awh-command-send" type="button">ทำงานต่อ</button><button id="dashboard-open-chats" class="awh-secondary-action" type="button">Multi Chat</button></div></div>';
 
   const tools = document.createElement('section');
+  tools.id = 'awh-home-tools';
   tools.className = 'awh-home-section';
   const toolsHeading = document.createElement('div');
   toolsHeading.className = 'awh-section-heading';
@@ -187,6 +251,7 @@ function mountDashboard() {
   overview.innerHTML = '<section class="awh-home-section awh-recent-panel"><div class="awh-section-heading"><div><span>ทำงานต่อ</span><h2>งานล่าสุดของฉัน</h2></div><button id="dashboard-open-work" class="awh-text-action" type="button">เปิด AI Workspace</button></div><div id="dashboard-recent-work" class="awh-recent-list"></div></section><section class="awh-home-section awh-side-panel"><div class="awh-section-heading"><div><span>สถานะ</span><h2>งานที่กำลังทำ</h2></div></div><div id="dashboard-active-tasks" class="awh-status-list"></div><div id="dashboard-approval-banner" class="awh-approval-banner" hidden></div></section>';
 
   const files = document.createElement('section');
+  files.id = 'awh-home-files';
   files.className = 'awh-home-section';
   files.innerHTML = '<div class="awh-section-heading"><div><span>ไฟล์และผลงาน</span><h2>ล่าสุด</h2></div></div><div id="dashboard-artifacts" class="awh-artifact-grid"></div>';
 
@@ -210,6 +275,7 @@ function mountDashboard() {
 
   const imageTool = createImageTool();
   dashboard.append(hero, continuity, tools, overview, files, owner, imageTool);
+  mountWelcome(dashboard);
   mountSchoolTools(dashboard);
   main.append(dashboard);
 
@@ -217,15 +283,21 @@ function mountDashboard() {
   $('dashboard-continue-work')?.addEventListener('click', () => { const context = state.workContext; const projectId = context?.project?.projectId; if (projectId) navigateWork(projectId, context?.conversation?.conversationId || null); else openWork(); });
   $('dashboard-open-chats')?.addEventListener('click', () => { const context = state.workContext; const projectId = context?.project?.projectId; if (projectId) navigateWork(projectId, context?.conversation?.conversationId || null, true); else { openWork(); window.setTimeout(() => $('conversation-open')?.click(), 0); } });
   installHomeButton();
+  mountMobileNavigation();
   state.mounted = true;
 }
 
 function installHomeButton() {
-  if ($('dashboard-home-button')) return;
+  const existing = $('dashboard-home-button');
+  if (existing instanceof HTMLButtonElement) {
+    if (existing.dataset.awhBound !== '1') { existing.dataset.awhBound = '1'; existing.addEventListener('click', returnHome); }
+    return;
+  }
   const heading = document.querySelector('.workspace-heading');
   if (!(heading instanceof HTMLElement)) return;
-  const home = button('⌂ หน้าแรก', 'dashboard-home-button', returnHome);
+  const home = button('⌂ หน้าแรก', 'workspace-home', returnHome);
   home.id = 'dashboard-home-button';
+  home.dataset.awhBound = '1';
   heading.prepend(home);
 }
 

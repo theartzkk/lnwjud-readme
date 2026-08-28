@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0c0f" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <title>Infrastructure · AWH</title>
+  <link rel="stylesheet" href="./infrastructure.css?release=__AWH_WEB_RELEASE_ID__" />
+</head>
+<body>
+  <header class="infra-header"><a class="infra-brand" href="./"><span>A</span><strong>AWH</strong></a><div class="infra-actions"><span id="infra-freshness">กำลังตรวจ VPS…</span><button id="infra-refresh" type="button">รีเฟรช</button></div></header>
+  <main class="infra-main">
+    <section class="infra-hero"><div><p class="eyebrow">OWNER · INFRASTRUCTURE</p><h1>ศูนย์ควบคุมระบบ</h1><p>ดู VPS, โปรเจกต์, โดเมน, SSL, Backup และบริการทั้งหมดจากหน้าจอเดียว โดยไม่ต้องใช้ Ubuntu Terminal</p></div><div id="infra-overall" class="overall-state">กำลังตรวจระบบ</div></section>
+
+    <section class="server-card"><div class="server-head"><div><span id="server-dot" class="health-dot"></span><div><strong id="server-name">ReadyIDC VPS</strong><small id="server-os">กำลังอ่านข้อมูล…</small></div></div><span id="server-uptime">—</span></div><div class="metric-grid"><article><small>CPU</small><strong id="metric-cpu">—</strong><span id="metric-load">Load —</span></article><article><small>Memory</small><strong id="metric-memory">—</strong><span id="metric-memory-detail">—</span></article><article><small>Storage</small><strong id="metric-storage">—</strong><span id="metric-storage-detail">—</span></article><article><small>Deployment</small><strong id="metric-release">—</strong><span>Production</span></article></div></section>
+
+    <section id="attention-section" class="infra-section" hidden><div class="section-heading"><div><span>ATTENTION</span><h2>รายการที่ควรดู</h2></div></div><div id="attention-list" class="attention-list"></div></section>
+
+    <div class="infra-columns">
+      <section class="infra-section"><div class="section-heading"><div><span>SERVICES</span><h2>บริการบน VPS</h2></div><small>สถานะจริงจาก Ubuntu</small></div><div id="service-list" class="entity-list"></div></section>
+      <section class="infra-section"><div class="section-heading"><div><span>SECURITY</span><h2>ความปลอดภัย</h2></div></div><div id="security-list" class="entity-list"></div></section>
+    </div>
+
+    <section class="infra-section"><div class="section-heading"><div><span>PROJECTS</span><h2>ระบบและโปรเจกต์</h2></div><small>ReadyIDC เป็น Control Plane กลาง</small></div><div id="project-grid" class="project-grid"></div></section>
+
+    <section class="infra-section"><div class="section-heading"><div><span>DOMAINS & SSL</span><h2>โดเมนที่เข้ามายัง VPS</h2></div><small>หลายโดเมนใช้ IP เดียวกันได้ · Nginx แยกปลายทางให้</small></div><div id="domain-list" class="entity-list"></div><div class="domain-explainer"><strong>เวลามีโดเมนใหม่</strong><span>จดโดเมน → ชี้ A record มาที่ VPS → ผูกกับ Project → เปิด HTTPS → AWH ตรวจสุขภาพให้</span></div></section>
+
+    <div class="infra-columns">
+      <section class="infra-section"><div class="section-heading"><div><span>DATA & RECOVERY</span><h2>ฐานข้อมูลและ Backup</h2></div></div><div id="recovery-list" class="entity-list"></div><a class="action-link" href="./database.html">เปิด Database Studio →</a></section>
+      <section class="infra-section"><div class="section-heading"><div><span>WORK & AI</span><h2>งาน อุปกรณ์ และ AI</h2></div></div><div id="runtime-list" class="entity-list"></div></section>
+    </div>
+
+    <section class="infra-note"><strong>ออกแบบให้ปลอดภัยตั้งแต่ฐาน</strong><p>หน้านี้อ่าน snapshot ที่ถูก sanitize เท่านั้น ไม่มีช่องรันคำสั่ง Linux และไม่มี secret หรือ path ของเซิร์ฟเวอร์ถูกส่งมาที่ browser การเปลี่ยนแปลงสำคัญ เช่น Deploy, Restore หรือแก้ Domain จะใช้ approval และ guarded action แยกต่างหาก</p></section>
+  </main>
+  <script type="module" src="./infrastructure.js?release=__AWH_WEB_RELEASE_ID__"></script>
+</body>
+</html>

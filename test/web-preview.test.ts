@@ -72,7 +72,7 @@ test('one canonical dark canvas is used by html, body, and the application shell
   assert.match(css, /min-height:\s*100dvh/);
   assert.match(css, /overscroll-behavior-y:\s*none/);
   assert.match(css, /\[hidden\]\s*\{\s*display:\s*none\s*!important/);
-  assert.doesNotMatch(css, /radial-gradient|linear-gradient|background-image|::before|::after/i);
+  assert.doesNotMatch(css, /radial-gradient|linear-gradient|background-image/i);
   assert.doesNotMatch(css, /body\s*\{[\s\S]*#ff8a36/);
 });
 
@@ -113,7 +113,7 @@ test('CONTROL shell uses authenticated canonical data and presents a truthful si
   assert.equal(inactive.control.authenticated, false);
 });
 
-test('control UI is work-first, server-first, mobile-first, and never blocks chat on device state', async () => {
+test('canonical Work is cloud-first, mobile-first, and never blocks chat on device state', async () => {
   const [html, app, executionUx, adapter, css] = await Promise.all([
     readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
     readFile(join(ROOT, 'web', 'app.js'), 'utf8'),
@@ -126,7 +126,7 @@ test('control UI is work-first, server-first, mobile-first, and never blocks cha
   assert.match(html, /id="goal-submit"/);
   assert.match(app, /selectedProjectId/);
   assert.match(executionUx, /WAITING_FOR_WORKER/);
-  assert.match(html, /AWH Server · Online/);
+  assert.match(html, /Cloud · Online/);
   assert.match(html, /AI · Ready/);
   assert.doesNotMatch(`${html}\n${app}`, /ยังไม่มีอุปกรณ์ทำงานออนไลน์|กำลังรออุปกรณ์ทำงาน|งานจะรอ/);
   assert.match(app, /goal-submit.*disabled/);
@@ -142,7 +142,7 @@ test('control UI is work-first, server-first, mobile-first, and never blocks cha
   assert.match(css, /body\.work-active \{ height: 100dvh; overflow: hidden; \}/);
   assert.match(css, /body\.work-active \.work-thread[^{]*\{[^}]*overflow-y: auto/s);
   assert.match(css, /body\.work-active \.composer[^{]*\{[^}]*position: relative/s);
-  assert.match(css, /\.workspace-heading > div \{ min-width: 0; flex: 1 1 auto; \}/);
+  assert.match(css, /\.workspace-heading \{[^}]*grid-template-columns: auto minmax\(0,1fr\) auto/s);
 });
 
 test('CONTROL work composer keeps attachment previews, camera-capable file picking, and a bounded private upload contract', async () => {

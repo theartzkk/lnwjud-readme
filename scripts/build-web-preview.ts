@@ -28,15 +28,30 @@ async function main(): Promise<void> {
   const releaseId = process.env.AWH_WEB_RELEASE_ID ?? process.env.AWH_RELEASE_ID ?? 'local';
   if (!/^[A-Za-z0-9._-]{1,80}$/.test(releaseId)) throw new Error('AWH web release identity is invalid');
   const data = { schemaVersion: 1, generatedAt: generatedAt(), surface: { mode: webMode, label: 'AWH', status: webMode === 'CONTROL' ? 'Sign in to continue' : 'AWH release is not active' }, product: { name: PRODUCT.productName, shortName: PRODUCT.shortName, tagline: PRODUCT.tagline }, message: webMode === 'CONTROL' ? 'Sign in to access your projects and work.' : 'This AWH release is not configured for Control.' };
-  const [index, styles, app, dashboardCss, ownerCenterCss, automationCss, finalHomeCss, experienceV2Css, experienceV3Css, dashboardJs, ownerCenterJs, automationJs, finalHomeJs, experienceV2Js, experienceV3Js, dashboardGuardrails, executionUx, toolRegistry, schoolTools, hubAdapter, controlAdapter, manifest, serviceWorker, databaseHtml, databaseCss, databaseJs, pdfLib, qrCode] = await Promise.all([
-    asset('index.html'), asset('styles.css'), asset('app.js'), asset('dashboard.css'), asset('owner-center.css'), asset('automation-surface.css'), asset('final-home-polish.css'), asset('experience-v2.css'), asset('experience-v3.css'), asset('dashboard.js'), asset('owner-center.js'), asset('automation-surface.js'), asset('final-home-polish.js'), asset('experience-v2.js'), asset('experience-v3.js'), asset('dashboard-guardrails.js'), asset('execution-ux.js'), asset('tool-registry.js'), asset('school-tools.js'), asset('hub-read-adapter.js'), asset('control-plane-adapter.js'), asset('manifest.webmanifest'), asset('sw.js'), asset('database.html'), asset('database.css'), asset('database.js'),
+  const [index, styles, app, dashboardCss, ownerCenterCss, automationCss, dashboardJs, ownerCenterJs, automationJs, dashboardGuardrails, executionUx, toolRegistry, schoolTools, hubAdapter, controlAdapter, manifest, serviceWorker, databaseHtml, databaseCss, databaseJs, infrastructureHtml, infrastructureCss, infrastructureJs, pdfLib, qrCode] = await Promise.all([
+    asset('index.html'), asset('styles.css'), asset('app.js'), asset('dashboard.css'), asset('owner-center.css'), asset('automation-surface.css'), asset('dashboard.js'), asset('owner-center.js'), asset('automation-surface.js'), asset('dashboard-guardrails.js'), asset('execution-ux.js'), asset('tool-registry.js'), asset('school-tools.js'), asset('hub-read-adapter.js'), asset('control-plane-adapter.js'), asset('manifest.webmanifest'), asset('sw.js'), asset('database.html'), asset('database.css'), asset('database.js'), asset('infrastructure.html'), asset('infrastructure.css'), asset('infrastructure.js'),
     readFile(join(ROOT, 'node_modules', 'pdf-lib', 'dist', 'pdf-lib.min.js'), 'utf8'),
     readFile(join(ROOT, 'node_modules', 'qrcode-generator', 'qrcode.js'), 'utf8'),
   ]);
   await mkdir(OUTPUT, { recursive: true });
   await mkdir(join(OUTPUT, 'vendor'), { recursive: true });
-  const bundledDashboardCss = `${dashboardCss}\n\n/* Owner Center V1.3 */\n${ownerCenterCss}\n\n/* Automations V1.8 */\n${automationCss}\n\n/* Final Home V1 */\n${finalHomeCss}\n\n/* AWH Experience V2 */\n${experienceV2Css}\n\n/* AWH Experience V3 */\n${experienceV3Css}`;
-  const bundledDashboardJs = `${dashboardJs}\n\n/* Owner Center V1.3 */\n${ownerCenterJs}\n\n/* Automations V1.8 */\n${automationJs}\n\n/* Final Home V1 */\n${finalHomeJs}\n\n/* AWH Experience V2 */\n${experienceV2Js}\n\n/* AWH Experience V3 */\n${experienceV3Js}\n\n/* Dashboard correctness guardrails */\n${dashboardGuardrails}`;
+  const bundledDashboardCss = `${dashboardCss}
+
+/* Owner Center */
+${ownerCenterCss}
+
+/* Automations */
+${automationCss}`;
+  const bundledDashboardJs = `${dashboardJs}
+
+/* Owner Center */
+${ownerCenterJs}
+
+/* Automations */
+${automationJs}
+
+/* Dashboard correctness guardrails */
+${dashboardGuardrails}`;
   await Promise.all([
     writeFile(join(OUTPUT, 'index.html'), renderReleaseAsset(withDashboard(index), releaseId), 'utf8'),
     writeFile(join(OUTPUT, 'styles.css'), styles, 'utf8'),
@@ -53,6 +68,9 @@ async function main(): Promise<void> {
     writeFile(join(OUTPUT, 'database.html'), renderReleaseAsset(databaseHtml, releaseId), 'utf8'),
     writeFile(join(OUTPUT, 'database.css'), databaseCss, 'utf8'),
     writeFile(join(OUTPUT, 'database.js'), renderReleaseAsset(databaseJs, releaseId), 'utf8'),
+    writeFile(join(OUTPUT, 'infrastructure.html'), renderReleaseAsset(infrastructureHtml, releaseId), 'utf8'),
+    writeFile(join(OUTPUT, 'infrastructure.css'), infrastructureCss, 'utf8'),
+    writeFile(join(OUTPUT, 'infrastructure.js'), renderReleaseAsset(infrastructureJs, releaseId), 'utf8'),
     writeFile(join(OUTPUT, 'manifest.webmanifest'), manifest, 'utf8'),
     writeFile(join(OUTPUT, 'sw.js'), renderReleaseAsset(serviceWorker, releaseId), 'utf8'),
     copyFile(join(ROOT, 'logo-256x256.png'), join(OUTPUT, 'logo-256x256.png')),

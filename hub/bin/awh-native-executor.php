@@ -8,12 +8,13 @@ require_once dirname(__DIR__) . '/src/HubProjectVaultService.php';
 require_once dirname(__DIR__) . '/src/HubDurableExecutionService.php';
 require_once dirname(__DIR__) . '/src/HubControlPlaneService.php';
 require_once dirname(__DIR__) . '/src/HubAutomationSchedulerService.php';
+require_once __DIR__ . '/system-telemetry.php';
 
 /**
  * One bounded, unprivileged executor tick. A service manager invokes this
  * repeatedly; each invocation stays one-shot, reads no browser credentials, executes
- * no shell commands, and enables no network access itself. Schema-15 automations reuse this
- * same timer and materialize only through HubControlPlaneService authorities.
+ * no arbitrary shell input, and exposes no network listener. Schema-15 automations and
+ * bounded infrastructure telemetry reuse this same timer and existing authorities.
  */
 $database = getenv('AWH_HUB_DB_PATH');
 if (!is_string($database) || $database === '' || str_contains($database, "\0")) { fwrite(STDERR, "DATABASE_CONFIG_INVALID\n"); exit(2); }
@@ -34,7 +35,17 @@ try {
         }
     }
 
+
+    $telemetry = ['status' => 'UNAVAILABLE'];
+    try {
+        $refresh = telemetryRefreshIfStale(null, 60);
+        $telemetry = ['status' => 'READY', 'refresh' => (string) ($refresh['status'] ?? 'UNKNOWN')];
+    } catch (Throwable) {
+        // Infrastructure visibility is advisory and must never stop task execution.
+        $telemetry = ['status' => 'DEGRADED'];
+    }
+
     $result = HubDurableExecutionService::fromEnvironment($pdo)->runOnce();
-    fwrite(STDOUT, json_encode(['status' => $result === null ? 'IDLE' : 'PROCESSED', 'automation' => $automation, 'execution' => $result], JSON_UNESCAPED_SLASHES) . "\n");
+    fwrite(STDOUT, json_encode(['status' => $result === null ? 'IDLE' : 'PROCESSED', 'automation' => $automation, 'telemetry' => $telemetry, 'execution' => $result], JSON_UNESCAPED_SLASHES) . "\n");
 } catch (HubDurableExecutionException|HubProjectVaultException|HubCentralProjectAuthorityMigrationException $error) { fwrite(STDERR, $error->codeName . "\n"); exit(1); }
 catch (Throwable) { fwrite(STDERR, "EXECUTOR_UNAVAILABLE\n"); exit(1); }

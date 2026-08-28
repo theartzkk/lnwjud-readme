@@ -2,7 +2,6 @@ const $ = (id) => document.getElementById(id);
 let overview = null;
 let projectsData = null;
 let activeProjectId = null;
-document.body.classList.add('work-mode');
 
 function escapeText(value) { return value == null ? '—' : String(value); }
 function renderList(container, items, emptyText, render) {
@@ -445,6 +444,8 @@ $('open-data-dir').addEventListener('click', () => window.artAgent.openDataDir()
 
 document.addEventListener('keydown', (event) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); showSection('autopilot'); $('desktop-work-input').focus(); } });
 
+showSection('overview');
+document.querySelectorAll('[data-home-section]').forEach((button) => button.addEventListener('click', () => showSection(button.dataset.homeSection)));
 void refresh();
 setInterval(() => { if (!document.hidden) void refresh(); }, 10000);
 setInterval(() => { if (!document.hidden && document.body.classList.contains('work-mode')) void refreshWork(); }, 2000);
