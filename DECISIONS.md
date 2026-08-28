@@ -6,6 +6,7 @@
 - Lease recovery is cross-authority consistency work: if an execution lease expires, `control_task_executions` and its canonical `control_tasks` row must be reconciled together. A terminal execution cannot leave the user-visible task falsely RUNNING.
 - Backlog throughput is bounded per one-shot tick. The service remains `Type=oneshot`, preserves systemd non-overlap and all existing approval/revision gates, and never becomes an unbounded background shell/process runner.
 - Candidate QA must never infer PASS from workspace capture alone. VPS-native edits may claim deterministic syntax PASS only for formats validated in-process; unsupported syntax is explicitly `NOT_RUN`/`REVIEW_REQUIRED`, and malformed PHP/JSON fails closed before any promotion approval is created.
+- Promotion approval must re-verify the candidate evidence at decision time. New evidence-v2 approvals bind task, project, base revision, candidate revision, QA status, artifact metadata and object checksum; missing/tampered/mismatched evidence fails closed before Vault promotion. Legacy approval scopes remain compatible without silently inventing evidence.
 
 # Decisions
 

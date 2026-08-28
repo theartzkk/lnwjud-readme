@@ -369,7 +369,7 @@ final class HubDurableExecutionService
             $modelSummary = $summary !== '' ? (function_exists('mb_substr') ? mb_substr($summary, 0, 1800) : substr($summary, 0, 1800)) : 'แก้ source ตามคำขอแล้ว';
             $qaSummary = $qa['status'] === 'PASS' ? 'deterministic candidate QA ผ่าน' : 'deterministic candidate QA ผ่านเฉพาะ structural checks และยังต้อง review syntax ของไฟล์บางประเภท';
             $final = $modelSummary . "\n\nAWH Server สร้าง candidate revision จาก " . count($writes) . ' ไฟล์แล้ว; ' . $qaSummary . ' และยังไม่ได้แทนที่ Project Vault หลักจนกว่าจะผ่าน promotion policy';
-            $this->completeCandidate($claimed, $candidate, $artifactId, $final, $at); $candidateRecorded = true;
+            $this->completeCandidate($claimed, $candidate, $artifactId, (string) $qa['status'], $final, $at); $candidateRecorded = true;
         } catch (Throwable $error) {
             if (is_array($candidate) && ($candidate['changed'] ?? false) === true && !$candidateRecorded) { try { $this->vaults->rejectCandidate($projectId, (string) $candidate['revisionId'], $at); } catch (Throwable) {} }
             throw $error;
@@ -416,7 +416,7 @@ final class HubDurableExecutionService
             $artifactId = $this->storeCandidateReport($claimed, $candidate, $diff, $qa, $workspace, $at);
             $qaSummary = $qa['status'] === 'PASS' ? 'deterministic candidate QA ผ่าน' : 'structural QA ผ่านและยังต้อง review syntax ของไฟล์ประเภทนี้';
             $summary = 'จัดระเบียบข้อความใน `' . $source['path'] . '` แล้ว สร้าง revision ผู้สมัคร; ' . $qaSummary . ' ต้องอนุมัติก่อนแทนที่ Project Vault หลัก';
-            $this->completeCandidate($claimed, $candidate, $artifactId, $summary, $at);
+            $this->completeCandidate($claimed, $candidate, $artifactId, (string) $qa['status'], $summary, $at);
             $candidateRecorded = true;
         } catch (Throwable $error) {
             if (is_array($candidate) && ($candidate['changed'] ?? false) === true && !$candidateRecorded) {
@@ -486,13 +486,14 @@ final class HubDurableExecutionService
     }
 
     /** @param array{revisionId:string,contentSha256:string,contentBytes:int,fileCount:int,parentRevisionId:string,changed:bool} $candidate */
-    private function completeCandidate(array $claimed, array $candidate, string $artifactId, string $summary, string $at): void
+    private function completeCandidate(array $claimed, array $candidate, string $artifactId, string $qaStatus, string $summary, string $at): void
     {
+        if (!in_array($qaStatus, ['PASS', 'REVIEW_REQUIRED'], true)) throw new HubDurableExecutionException('Candidate QA status is invalid', 'CANDIDATE_QA_FAILED');
         try {
             $this->pdo->exec('BEGIN IMMEDIATE');
             $done = $this->pdo->prepare("UPDATE control_task_executions SET state = 'COMPLETED', lease_expires_at = NULL, updated_at = :at, last_error_code = NULL WHERE execution_id = :id AND state = 'RUNNING' AND lease_owner = :owner"); $done->execute(['at' => $at, 'id' => $claimed['execution_id'], 'owner' => self::EXECUTOR_ID]); if ($done->rowCount() !== 1) throw new HubDurableExecutionException('Server execution lease was lost', 'EXECUTION_LEASE_LOST');
             $this->pdo->prepare("UPDATE control_tasks SET state = 'WAITING_FOR_APPROVAL', progress = 90, result_summary = :summary, failure_code = NULL, lease_expires_at = NULL, updated_at = :at WHERE task_id = :task")->execute(['summary' => $summary, 'at' => $at, 'task' => $claimed['task_id']]);
-            $scope = json_encode(['taskId' => (string) $claimed['task_id'], 'projectId' => (string) $claimed['project_id'], 'expectedActiveRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'artifactId' => $artifactId], JSON_THROW_ON_ERROR);
+            $scope = json_encode(['taskId' => (string) $claimed['task_id'], 'projectId' => (string) $claimed['project_id'], 'expectedActiveRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'artifactId' => $artifactId, 'evidenceSchemaVersion' => 2, 'qaStatus' => $qaStatus], JSON_THROW_ON_ERROR);
             $this->pdo->prepare("INSERT INTO control_approvals(approval_id, task_id, action, scope_json, status, expires_at, decided_at) VALUES(:id, :task, 'project.revision.promote', :scope, 'PENDING', :expires, NULL)")->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'task' => $claimed['task_id'], 'scope' => $scope, 'expires' => gmdate('c', strtotime($at) + 86400)]);
             $this->event((string) $claimed['task_id'], 'WAITING_FOR_APPROVAL', 90, 'candidate revision is ready for owner approval', $at);
             $this->appendConversationMessage((string) $claimed['conversation_id'], (string) $claimed['task_id'], 'RESULT', $summary . ' [ดูรายงาน candidate]', $at);

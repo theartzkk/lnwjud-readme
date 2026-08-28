@@ -2,15 +2,14 @@
 
 ## NOW
 
-- Close Continuous Work Supervisor V1 on the existing durable execution authority: fixed bounded batch drain, deterministic transient retry backoff, truthful stale-lease recovery, no daemon loop, no new queue/schema authority.
+- Close Promotion Evidence Gate V1 on top of Supervisor + Candidate QA: new native promotion approvals must bind and re-verify the exact candidate QA artifact before Vault promotion, while legacy approval scopes remain compatible.
 - Keep M16 activation separate and approval-gated. Production remains M15/v15 until an exact reviewed SHA passes release gates and receives required approval.
-- Required closure evidence: Supervisor focused fixture, Hub integration suite, full product regression, `git diff --check`, clean exact commit/push, then CI where available.
+- Required closure evidence: focused evidence/tamper fixture, Hub integration suite, full product regression, `git diff --check`, clean exact commit/push, then CI where available.
 - Production, billing, credentials, permissions, Google Cloud legacy and BAY production remain untouched in this source milestone.
 
 ## NEXT
 
-- Close Candidate QA Truthfulness V1 on top of Supervisor V1: deterministic in-process syntax validation for PHP/JSON, explicit `REVIEW_REQUIRED` for unsupported syntax, fail-closed malformed candidates, and truthful candidate artifacts before approval creation.
-- After that source closure, continue VPS-first self-sufficient execution using the same canonical task/execution/approval/memory authorities; prefer capability expansion over new orchestration systems.
+- Continue VPS-first self-sufficient execution using the same canonical task/execution/approval/memory authorities; prioritize expanding safe server-native project capability without shell/process authority or a shadow orchestration system.
 - Field activation/verification of M16 remains a distinct reviewed Production milestone.
 
 # Tasks
