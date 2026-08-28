@@ -1,6 +1,6 @@
 /* AWH Experience V2 — mobile-first product shell. Presentation only; no new authority. */
 :root{--v2-bg:#0a0b0e;--v2-panel:#111319;--v2-panel-2:#171a21;--v2-line:rgba(255,255,255,.075);--v2-muted:#929aa8;--v2-text:#f7f8fa;--v2-orange:#ff7a1a;--v2-orange-soft:rgba(255,122,26,.12);--v2-green:#63dc98;--v2-radius:26px}
-body.awh-experience-v2{background:radial-gradient(850px 440px at 50% -180px,rgba(255,122,26,.11),transparent 68%),var(--v2-bg);color:var(--v2-text)}
+body.awh-experience-v2{overflow-x:hidden;background:radial-gradient(850px 440px at 50% -180px,rgba(255,122,26,.11),transparent 68%),var(--v2-bg);color:var(--v2-text)}
 body.awh-experience-v2 .app-shell{background:transparent}
 body.awh-experience-v2 .app-header{width:min(100% - 30px,1080px);min-height:calc(66px + env(safe-area-inset-top));padding-inline:2px}
 body.awh-experience-v2 .brand{gap:9px}
@@ -32,7 +32,7 @@ body.awh-experience-v2 .awh-section-heading{align-items:center;margin-bottom:12p
 body.awh-experience-v2 .awh-section-heading span{margin-bottom:5px;font-size:10px;letter-spacing:.12em}
 body.awh-experience-v2 .awh-section-heading h2{font-size:21px;letter-spacing:-.025em}
 body.awh-experience-v2 .awh-tool-grid{grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
-body.awh-experience-v2 .awh-tool-card{min-height:126px;display:flex;flex-direction:column;justify-content:space-between;gap:12px;padding:15px;border:1px solid var(--v2-line);border-radius:22px;background:linear-gradient(160deg,#171a20,#121419);box-shadow:none}
+body.awh-experience-v2 .awh-tool-card{min-width:0;min-height:126px;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;gap:12px;padding:15px;border:1px solid var(--v2-line);border-radius:22px;background:linear-gradient(160deg,#171a20,#121419);box-shadow:none}
 body.awh-experience-v2 .awh-tool-card:hover{border-color:rgba(255,122,26,.24);transform:translateY(-2px)}
 body.awh-experience-v2 .awh-tool-icon{width:42px;height:42px;flex-basis:42px;border-radius:14px;background:var(--v2-orange-soft);font-size:15px}
 body.awh-experience-v2 .awh-tool-copy{gap:4px}
@@ -44,8 +44,8 @@ body.awh-experience-v2 .awh-continuity-card{padding:0;border-radius:0}
 body.awh-experience-v2 .awh-recent-panel,body.awh-experience-v2 .awh-side-panel,body.awh-experience-v2 .awh-owner-center{border-color:var(--v2-line);background:var(--v2-panel);border-radius:24px}
 body.awh-experience-v2 .awh-recent-item,body.awh-experience-v2 .awh-ready-state,body.awh-experience-v2 .awh-empty-card{background:var(--v2-panel-2);border:1px solid rgba(255,255,255,.035)}
 body.awh-experience-v2 .awh-owner-center{opacity:.9}
-body.awh-experience-v2 .awh-mobile-home-nav{left:50%;right:auto;width:min(calc(100% - 20px),520px);transform:translateX(-50%);grid-template-columns:repeat(5,1fr);bottom:max(8px,env(safe-area-inset-bottom));padding:7px;border:1px solid rgba(255,255,255,.1);border-radius:22px;background:rgba(19,21,26,.9);box-shadow:0 18px 48px rgba(0,0,0,.42);backdrop-filter:blur(24px)}
-body.awh-experience-v2 .awh-mobile-nav-item{min-height:52px;border-radius:16px;transition:background .16s ease,opacity .16s ease}
+body.awh-experience-v2 .awh-mobile-home-nav{left:50%;right:auto;width:min(calc(100vw - 20px),520px);max-width:calc(100vw - 20px);box-sizing:border-box;transform:translateX(-50%);grid-template-columns:repeat(5,minmax(0,1fr));bottom:max(8px,env(safe-area-inset-bottom));padding:7px;border:1px solid rgba(255,255,255,.1);border-radius:22px;background:rgba(19,21,26,.9);box-shadow:0 18px 48px rgba(0,0,0,.42);backdrop-filter:blur(24px)}
+body.awh-experience-v2 .awh-mobile-nav-item{min-width:0;min-height:52px;overflow:hidden;border-radius:16px;transition:background .16s ease,opacity .16s ease}
 body.awh-experience-v2 .awh-mobile-nav-item span{font-size:18px}
 body.awh-experience-v2 .awh-mobile-nav-item strong{font-size:10px}
 body.awh-experience-v2 .awh-mobile-nav-item.is-active{opacity:1;background:rgba(255,122,26,.12);color:#ff9d59}
@@ -83,11 +83,11 @@ body.awh-experience-v2 .auth-card{border-color:var(--v2-line);border-radius:24px
  body.awh-experience-v2 .awh-home-hero>p{margin:10px 0 16px;font-size:13px;text-align:left}
  body.awh-experience-v2 .awh-command-form{padding:9px;border-radius:20px}
  body.awh-experience-v2 .awh-command-form textarea{min-height:92px;padding:10px 9px;font-size:16px}
- body.awh-experience-v2 .awh-command-actions{display:flex;flex-direction:row;align-items:center}
+ body.awh-experience-v2 .awh-command-actions{display:flex;min-width:0;flex-direction:row;align-items:center}
  body.awh-experience-v2 .awh-command-actions>span{display:none}
  body.awh-experience-v2 .awh-command-attach strong{display:none}
- body.awh-experience-v2 .awh-command-attach{padding:4px}
- body.awh-experience-v2 .awh-command-send{width:auto;margin-left:auto;min-height:38px;font-size:12px}
+ body.awh-experience-v2 .awh-command-attach{min-width:36px;flex:0 0 36px;padding:4px}
+ body.awh-experience-v2 .awh-command-send{width:auto;max-width:calc(100% - 48px);flex:0 1 auto;margin-left:auto;min-height:38px;padding-inline:12px;font-size:12px;white-space:nowrap}
  body.awh-experience-v2 .awh-home-section{margin-top:18px}
  body.awh-experience-v2 .awh-section-heading h2{font-size:18px}
  body.awh-experience-v2 .awh-tool-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
