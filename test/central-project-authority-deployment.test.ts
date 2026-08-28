@@ -23,11 +23,11 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(result.stdout, /M12_ROLLBACK=restore-db-only-if-migrated,pointer,web-pointer,managed-executor-units,nginx,service-health,m3d-m3e-control-regression/);
   assert.match(result.stdout, /M12_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL/);
 
-  const [local, remoteSource, migration, vault, vaultService, durable, sourceSync, artifactStore, controlService, controlRouter, nativeAgent, webAdapter, webApp, executionUx, serviceUnit, timerUnit, openAiAdapter] = await Promise.all([
+  const [local, remoteSource, migration, vault, vaultService, durable, sourceSync, artifactStore, controlService, controlRouter, nativeAgent, webAdapter, webApp, executionUx, serviceUnit, timerUnit, openAiAdapter, secretPolicy] = await Promise.all([
     readFile(deploy, 'utf8'), readFile(remote, 'utf8'), readFile(join(root, 'hub/migrations/011_central_project_authority.sql'), 'utf8'),
     readFile(join(root, 'hub/src/HubProjectVault.php'), 'utf8'), readFile(join(root, 'hub/src/HubProjectVaultService.php'), 'utf8'), readFile(join(root, 'hub/src/HubDurableExecutionService.php'), 'utf8'), readFile(join(root, 'hub/bin/sync-deployed-source-vault.php'), 'utf8'), readFile(join(root, 'hub/src/HubArtifactStore.php'), 'utf8'), readFile(join(root, 'hub/src/HubControlPlaneService.php'), 'utf8'), readFile(join(root, 'hub/src/HubControlPlaneRouter.php'), 'utf8'),
     readFile(join(root, 'hub/src/HubNativeAgentService.php'), 'utf8'), readFile(join(root, 'web/control-plane-adapter.js'), 'utf8'), readFile(join(root, 'web/app.js'), 'utf8'), readFile(join(root, 'web/execution-ux.js'), 'utf8'),
-    readFile(join(root, 'deploy/systemd/awh-native-executor.service'), 'utf8'), readFile(join(root, 'deploy/systemd/awh-native-executor.timer'), 'utf8'), readFile(join(root, 'hub/src/HubOpenAiProviderAdapter.php'), 'utf8'),
+    readFile(join(root, 'deploy/systemd/awh-native-executor.service'), 'utf8'), readFile(join(root, 'deploy/systemd/awh-native-executor.timer'), 'utf8'), readFile(join(root, 'hub/src/HubOpenAiProviderAdapter.php'), 'utf8'), readFile(join(root, 'hub/src/HubSecretContentPolicy.php'), 'utf8'),
   ]);
   assert.match(local, /--central-project-authority/);
   assert.match(local, /migrate-central-project-authority\.php/);
@@ -83,6 +83,11 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(durable, /PROJECT_ASSISTED_EDIT/);
   assert.match(durable, /project_write_text/);
   assert.match(durable, /MAX_ASSISTED_EDIT_FILES/);
+  assert.match(durable, /CANDIDATE_SECRET_CONTENT/);
+  assert.match(durable, /HubSecretContentPolicy::containsCredential/);
+  assert.match(secretPolicy, /BEGIN \(\?:RSA \|EC \|OPENSSH \|DSA \)\?PRIVATE KEY/);
+  assert.match(secretPolicy, /Bearer/);
+  assert.match(local, /hub\/src\/HubSecretContentPolicy\.php/);
   assert.match(durable, /project\.revision\.promote/);
   assert.match(durable, /Native conversation provider failed/);
   assert.doesNotMatch(durable, /catch \(HubNativeAgentException \$error\) \{\s*if \(\$error->codeName === 'BUDGET_EXHAUSTED'\)[\s\S]{0,240}conversationFallback/);

@@ -102,6 +102,20 @@ try {
     $assistedRead = $vaults->vault()->readText($project, (string) $assistedCandidate['revision_id'], 'src/main.php'); m12_assert(str_contains($assistedRead['content'], 'vps-assisted'), 'assisted edit writes only the candidate workspace');
     m12_assert($vaults->activeRevision($project) === $activeForAssisted, 'assisted edit never silently replaces canonical Vault source');
     $unsafeToolPath = false; try { $vaults->vault()->toolTextPath('../secret.txt'); } catch (HubProjectVaultException) { $unsafeToolPath = true; } m12_assert($unsafeToolPath, 'assisted edit tool path traversal fails closed');
+
+    $secretCalls = 0; $fakeSecret = 'sk-' . str_repeat('A', 24);
+    $secretAgent = new HubNativeAgentService($pdo, static function (array $payload, string $_key) use (&$secretCalls, $fakeSecret): array {
+        $secretCalls++;
+        if ($secretCalls === 1) return ['id' => 'resp_secret_write_1234', 'output' => [['type' => 'function_call', 'call_id' => 'call_secret_write_1234', 'name' => 'project_write_text', 'arguments' => json_encode(['path' => 'src/secret-test.php', 'content' => "<?php \$token='" . $fakeSecret . "';\n"], JSON_THROW_ON_ERROR)]], 'usage' => ['input_tokens' => 3, 'output_tokens' => 2]];
+        return ['id' => 'resp_secret_done_1234', 'output_text' => 'should not complete', 'usage' => ['input_tokens' => 1, 'output_tokens' => 1]];
+    }, 'fixture-key');
+    $secretTask = m12_uuid();
+    $pdo->prepare("INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:task, :user, :project, 'แก้ไฟล์ทดสอบ credential gate', 'QUEUED', NULL, NULL, 0, NULL, NULL, :key, NULL, :at, :at, NULL)")->execute(['task' => $secretTask, 'user' => $owner, 'project' => $project, 'key' => 'm12-task-secret-gate-0001', 'at' => $now]);
+    $secretExecutor = new HubDurableExecutionService($pdo, $vaults, $secretAgent, HubArtifactStore::fromEnvironment());
+    $secretExecutor->enqueue($secretTask, $project, $activeForAssisted, 'VPS', 'project.mutate.assisted', ['mode' => 'PROJECT_ASSISTED_EDIT'], $now);
+    $secretRun = $secretExecutor->runOnce($now); m12_assert(($secretRun['state'] ?? null) === 'FAILED' && $secretCalls === 1, 'credential-like assisted edit fails closed without retrying provider output');
+    $secretCandidate = $pdo->prepare('SELECT count(*) FROM control_project_vault_revisions WHERE task_id=:task'); $secretCandidate->execute(['task' => $secretTask]); m12_assert((int) $secretCandidate->fetchColumn() === 0, 'credential-like assisted edit never creates a candidate revision');
+    $secretTaskState = $pdo->prepare('SELECT state,failure_code FROM control_tasks WHERE task_id=:task'); $secretTaskState->execute(['task' => $secretTask]); $secretState = $secretTaskState->fetch(); m12_assert(($secretState['state'] ?? null) === 'FAILED' && ($secretState['failure_code'] ?? null) === 'CANDIDATE_SECRET_CONTENT', 'credential gate records a terminal canonical task failure');
     $pdo->exec("DELETE FROM control_provider_policies WHERE provider_id='openai'");
 
     // Native conversation provider failures must never become a successful

@@ -9,6 +9,7 @@ require_once __DIR__ . '/HubAttachmentStore.php';
 require_once __DIR__ . '/HubArtifactStore.php';
 require_once __DIR__ . '/HubFoundingMemoryService.php';
 require_once __DIR__ . '/HubCapabilityRegistryService.php';
+require_once __DIR__ . '/HubSecretContentPolicy.php';
 
 /**
  * Durable server-side execution projection for existing control_tasks.  It is
@@ -207,7 +208,7 @@ final class HubDurableExecutionService
         $attempt = (int) $claimed['attempt_count'] + 1;
         $retryableProvider = in_array($code, ['PROVIDER_UNAVAILABLE', 'PROVIDER_RATE_LIMITED'], true);
         $manualWait = in_array($code, ['WAITING_FOR_CAPABILITY', 'PROJECT_VAULT_EMPTY', 'BUDGET_EXHAUSTED', 'PROVIDER_QUOTA_EXHAUSTED'], true);
-        $nonRetryable = in_array($code, ['PROVIDER_AUTH_FAILED', 'PROVIDER_PERMISSION_DENIED', 'PROVIDER_MODEL_UNAVAILABLE', 'PROVIDER_REQUEST_INVALID'], true);
+        $nonRetryable = in_array($code, ['PROVIDER_AUTH_FAILED', 'PROVIDER_PERMISSION_DENIED', 'PROVIDER_MODEL_UNAVAILABLE', 'PROVIDER_REQUEST_INVALID', 'CANDIDATE_SECRET_CONTENT'], true);
         if ($nonRetryable) $state = 'FAILED';
         elseif ($manualWait) $state = 'WAITING_FOR_CAPABILITY';
         elseif ($retryableProvider) $state = $attempt < self::MAX_ATTEMPTS ? 'QUEUED' : 'WAITING_FOR_CAPABILITY';
@@ -350,6 +351,7 @@ final class HubDurableExecutionService
                         if (!is_string($path) || !is_string($content)) throw new HubDurableExecutionException('Native tool input is invalid', 'EXECUTION_INVALID');
                         $safe = $this->vaults->vault()->toolTextPath($path); $bytes = strlen($content);
                         if ($bytes > self::MAX_ASSISTED_EDIT_FILE_BYTES || str_contains($content, "\0")) throw new HubDurableExecutionException('Native text edit exceeds the safe limit', 'WAITING_FOR_CAPABILITY');
+                        if (HubSecretContentPolicy::containsCredential($content)) throw new HubDurableExecutionException('Native text edit contains credential material', 'CANDIDATE_SECRET_CONTENT');
                         $next = $writes; $next[$safe] = $bytes; $nextBytes = array_sum($next);
                         if (count($next) > self::MAX_ASSISTED_EDIT_FILES || $nextBytes > self::MAX_ASSISTED_EDIT_TOTAL_BYTES) throw new HubDurableExecutionException('Native text edit exceeds the safe change set', 'WAITING_FOR_CAPABILITY');
                         $this->workspaceWriteText($workspace, $safe, $content); $writes = $next; $writtenBytes = $nextBytes;
@@ -456,6 +458,7 @@ final class HubDurableExecutionService
     private static function validateCandidateText(string $path, string $content): array
     {
         if (strlen($content) > self::MAX_ASSISTED_EDIT_FILE_BYTES || str_contains($content, "\0")) throw new HubDurableExecutionException('Candidate QA rejected unsafe text content', 'CANDIDATE_QA_FAILED');
+        if (HubSecretContentPolicy::containsCredential($content)) throw new HubDurableExecutionException('Candidate QA rejected credential material', 'CANDIDATE_SECRET_CONTENT');
         $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
         try {
             if ($extension === 'php') { token_get_all($content, TOKEN_PARSE); return ['syntax' => 'PASS', 'reviewRequired' => false]; }

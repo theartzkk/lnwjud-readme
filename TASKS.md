@@ -2,14 +2,14 @@
 
 ## NOW
 
-- Close Promotion Evidence Gate V1 on top of Supervisor + Candidate QA: new native promotion approvals must bind and re-verify the exact candidate QA artifact before Vault promotion, while legacy approval scopes remain compatible.
+- Close Candidate Secret Gate V1 on top of Supervisor + Candidate QA + Promotion Evidence: high-confidence provider-generated credential material must fail closed before candidate Vault capture and again during candidate QA, without creating a new task/queue/approval authority.
 - Keep M16 activation separate and approval-gated. Production remains M15/v15 until an exact reviewed SHA passes release gates and receives required approval.
-- Required closure evidence: focused evidence/tamper fixture, Hub integration suite, full product regression, `git diff --check`, clean exact commit/push, then CI where available.
+- Required closure evidence: extension-independent secret policy fixture, assisted-edit integration guard, deployment bundling guard, Hub integration suite, full product regression, `git diff --check`, clean exact commit/push, then Linux CI for the locally skipped M12 extension-dependent fixture.
 - Production, billing, credentials, permissions, Google Cloud legacy and BAY production remain untouched in this source milestone.
 
 ## NEXT
 
-- Continue VPS-first self-sufficient execution using the same canonical task/execution/approval/memory authorities; prioritize expanding safe server-native project capability without shell/process authority or a shadow orchestration system.
+- Continue VPS-first self-sufficient execution using the same canonical task/execution/approval/memory authorities; next safe expansion should improve server-native project capability only after Candidate Secret Gate CI is green.
 - Field activation/verification of M16 remains a distinct reviewed Production milestone.
 
 # Tasks

@@ -19,6 +19,7 @@ const tests = [
   'hub/tests/m10-founding-memory.php',
   'hub/tests/m11-self-service.php',
   'hub/tests/m12-central-project-authority.php',
+  'hub/tests/candidate-secret-policy.php',
   'hub/tests/m12-async-conversation.php',
   'hub/tests/m13-anywhere-execution.php',
   'hub/tests/m14-cost-aware-ai.php',
