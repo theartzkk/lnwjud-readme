@@ -2,9 +2,9 @@
 
 ## NOW
 
-- Close VPS Root-Cause Inspection V1 on top of VPS Native Code Context: route new read-only inspections through existing `project.search`, require source-content search → exact bounded read → evidence-backed conclusion, and preserve `project.read` backward compatibility. Do not add an index/database/search authority or any shell/process/network/mutation capability.
+- Close Durable Multi-file Inspection Evidence V1 on top of the existing root-cause inspection flow: persist one bounded object-backed `project-inspection` artifact per completed inspection, bound to the exact task/execution/project/Vault revision/content hash, without copying whole source files or creating a second evidence/task authority.
 - Keep M16 activation separate and approval-gated. Production remains M15/v15 until an exact reviewed SHA passes release gates and receives required approval.
-- Required closure evidence: root-cause search/read provider fixture, M12 deployment contract, Hub integration suite, full product regression, PHP syntax, `git diff --check`, clean exact commit/push, then Linux CI for the locally skipped extension-dependent M12 fixture.
+- Required closure evidence: artifact record/object retrieval + search/read binding fixture, M12 deployment contract, Hub integration suite, full product regression, PHP syntax, `git diff --check`, clean exact commit/push, then Linux CI for the extension-dependent M12 fixture.
 - Production, billing, credentials, permissions, Google Cloud legacy and BAY production remain untouched in this source milestone.
 
 ## NEXT

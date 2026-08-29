@@ -98,8 +98,12 @@ final class HubDurableExecutionService
             if (!is_array($checkpoint)) throw new HubDurableExecutionException('Execution checkpoint is invalid', 'EXECUTION_INVALID');
             if (($checkpoint['mode'] ?? null) === 'PROJECT_INSPECTION') {
                 $context = $this->vaults->context((string) $claimed['project_id'], (string) $claimed['goal']);
-                $summary = $this->agentInspection($claimed, $context, $at) ?? $this->inspectionSummary($context, (string) $claimed['goal']);
-                $this->complete($claimed, $summary, 'RESULT', $at);
+                $inspection = $this->agentInspection($claimed, $context, $at);
+                $summary = is_array($inspection) ? (string) $inspection['summary'] : $this->inspectionSummary($context, (string) $claimed['goal']);
+                if (HubSecretContentPolicy::containsCredential($summary)) $summary = 'Inspection พบข้อมูลที่อาจเป็น credential จึงไม่แสดงเนื้อหานั้นในผลลัพธ์ กรุณาตรวจหลักฐาน path/line ที่บันทึกไว้แทน';
+                $evidence = is_array($inspection) ? $inspection['evidence'] : ['searches' => [], 'reads' => [], 'fallbackFiles' => array_slice($context['files'], 0, 12)];
+                $this->storeInspectionReport($claimed, $context, $summary, $evidence, $at);
+                $this->complete($claimed, $summary . "\n\nAWH เก็บหลักฐาน inspection แบบอ่านอย่างเดียวไว้กับงานนี้แล้ว", 'RESULT', $at);
             } elseif (($checkpoint['mode'] ?? null) === 'NATIVE_CONVERSATION') {
                 $summary = $this->nativeConversation($claimed, $checkpoint, $at);
                 $this->complete($claimed, $summary, 'ASSISTANT', $at);
@@ -274,22 +278,31 @@ final class HubDurableExecutionService
         return $prefix . ($names === [] ? ' ไม่พบไฟล์ที่ตรงกับคำขอโดยตรง' : ' พบไฟล์ที่เกี่ยวข้อง: ' . implode(', ', $names)) . ' งานนี้เป็นการตรวจแบบอ่านอย่างเดียว จึงไม่ได้แก้ source หรือสร้าง release candidate.';
     }
 
-    /** @param array<string,mixed> $claimed @param array{revisionId:string,contentSha256:string,files:list<array{path:string,sizeBytes:int}>} $context */
-    private function agentInspection(array $claimed, array $context, string $at): ?string
+    /** @param array<string,mixed> $claimed @param array{revisionId:string,contentSha256:string,files:list<array{path:string,sizeBytes:int}>} $context @return null|array{summary:string,evidence:array<string,mixed>} */
+    private function agentInspection(array $claimed, array $context, string $at): ?array
     {
         if ($this->agent === null) return null;
-        $revision = (string) $context['revisionId']; $project = (string) $claimed['project_id'];
+        $revision = (string) $context['revisionId']; $project = (string) $claimed['project_id']; $evidence = ['searches' => [], 'reads' => []];
         $tools = [
             ['type' => 'function', 'name' => 'project_search', 'description' => 'Search canonical Project Vault paths and bounded source content. Returns path-first matches plus line/snippet evidence for content hits. Read-only.', 'parameters' => ['type' => 'object', 'additionalProperties' => false, 'properties' => ['query' => ['type' => 'string', 'maxLength' => 120]], 'required' => ['query']]],
             ['type' => 'function', 'name' => 'project_read_text', 'description' => 'Read a bounded text file from the immutable canonical revision. Read-only.', 'parameters' => ['type' => 'object', 'additionalProperties' => false, 'properties' => ['path' => ['type' => 'string', 'maxLength' => 900]], 'required' => ['path']]],
         ];
         try {
-            $result = $this->agent->respondWithTools((string) $claimed['user_id'], $project, is_string($claimed['conversation_id']) ? $claimed['conversation_id'] : null, null, (string) $claimed['goal'], [], [], ['vaultRevision' => $revision, 'contentSha256' => $context['contentSha256'], 'candidateFiles' => $context['files'], 'inspectionPolicy' => 'For root-cause analysis, search source content for the relevant symbol/error/behavior first, then read the exact matching files before concluding. Cite concrete paths and line evidence from tool results. Do not claim execution, mutation, deployment, or device work.'], $tools, function (string $name, array $arguments) use ($project, $revision): array {
-                if ($name === 'project_search') { $query = $arguments['query'] ?? null; if (!is_string($query)) throw new HubDurableExecutionException('Native tool input is invalid', 'EXECUTION_INVALID'); return ['files' => $this->vaults->vault()->search($project, $revision, $query)]; }
-                if ($name === 'project_read_text') { $path = $arguments['path'] ?? null; if (!is_string($path)) throw new HubDurableExecutionException('Native tool input is invalid', 'EXECUTION_INVALID'); return $this->vaults->vault()->readText($project, $revision, $path); }
+            $result = $this->agent->respondWithTools((string) $claimed['user_id'], $project, is_string($claimed['conversation_id']) ? $claimed['conversation_id'] : null, null, (string) $claimed['goal'], [], [], ['vaultRevision' => $revision, 'contentSha256' => $context['contentSha256'], 'candidateFiles' => $context['files'], 'inspectionPolicy' => 'For root-cause analysis, search source content for the relevant symbol/error/behavior first, then read the exact matching files before concluding. Cite concrete paths and line evidence from tool results. Do not claim execution, mutation, deployment, or device work.'], $tools, function (string $name, array $arguments) use ($project, $revision, &$evidence): array {
+                if ($name === 'project_search') {
+                    $query = $arguments['query'] ?? null; if (!is_string($query)) throw new HubDurableExecutionException('Native tool input is invalid', 'EXECUTION_INVALID');
+                    $matches = $this->vaults->vault()->search($project, $revision, $query); $safe = [];
+                    foreach (array_slice($matches, 0, 20) as $match) { if (!is_array($match) || !is_string($match['path'] ?? null)) continue; $item = ['path' => $match['path'], 'match' => $match['match'] ?? 'path']; if (is_int($match['line'] ?? null)) $item['line'] = $match['line']; $snippet = $match['snippet'] ?? null; if (is_string($snippet) && $snippet !== '') { if (HubSecretContentPolicy::containsCredential($snippet)) $item['snippetRedacted'] = true; else $item['snippet'] = function_exists('mb_substr') ? mb_substr($snippet, 0, 240) : substr($snippet, 0, 240); } $safe[] = $item; }
+                    $evidence['searches'][] = ['query' => function_exists('mb_substr') ? mb_substr($query, 0, 120) : substr($query, 0, 120), 'matches' => $safe]; return ['files' => $matches];
+                }
+                if ($name === 'project_read_text') {
+                    $path = $arguments['path'] ?? null; if (!is_string($path)) throw new HubDurableExecutionException('Native tool input is invalid', 'EXECUTION_INVALID');
+                    $read = $this->vaults->vault()->readText($project, $revision, $path); $content = (string) ($read['content'] ?? '');
+                    $evidence['reads'][] = ['path' => (string) ($read['path'] ?? $path), 'sizeBytes' => strlen($content), 'sha256' => hash('sha256', $content), 'lineCount' => substr_count($content, "\n") + 1]; return $read;
+                }
                 throw new HubDurableExecutionException('Native tool is forbidden', 'EXECUTION_INVALID');
             }, $at, ['executionId'=>(string)$claimed['execution_id'],'taskId'=>(string)$claimed['task_id'],'capability'=>(string)$claimed['required_capability'],'dataClassification'=>'INTERNAL','retryCount'=>(int)$claimed['attempt_count'],'routingPolicyVersion'=>'m16-v1','promptPolicyVersion'=>'native-v1','toolPolicyVersion'=>'bounded-v1']);
-            return is_string($result['summary'] ?? null) ? $result['summary'] : null;
+            return is_string($result['summary'] ?? null) ? ['summary' => $result['summary'], 'evidence' => $evidence] : null;
         } catch (HubNativeAgentException $error) {
             // An unavailable provider must not make an ordinary safe
             // inspection vanish: use the deterministic canonical summary.
@@ -465,6 +478,18 @@ final class HubDurableExecutionService
             if ($extension === 'json') { json_decode($content, true, 64, JSON_THROW_ON_ERROR); return ['syntax' => 'PASS', 'reviewRequired' => false]; }
         } catch (Throwable) { throw new HubDurableExecutionException('Candidate QA found invalid syntax', 'CANDIDATE_QA_FAILED'); }
         return ['syntax' => 'NOT_RUN', 'reviewRequired' => true];
+    }
+
+    /** @param array<string,mixed> $claimed @param array<string,mixed> $context @param array<string,mixed> $evidence */
+    private function storeInspectionReport(array $claimed, array $context, string $summary, array $evidence, string $at): string
+    {
+        $store = $this->artifacts; if ($store === null) throw new HubDurableExecutionException('Inspection evidence storage is unavailable', 'ARTIFACT_STORAGE_UNAVAILABLE');
+        $artifactId = self::uuidFromBytes(random_bytes(16)); $file = sys_get_temp_dir() . '/awh-inspection-' . strtolower($artifactId) . '.json';
+        $report = ['schemaVersion'=>1,'kind'=>'project-inspection','projectId'=>(string)$claimed['project_id'],'taskId'=>(string)$claimed['task_id'],'executionId'=>(string)$claimed['execution_id'],'vaultRevisionId'=>(string)$context['revisionId'],'contentSha256'=>(string)$context['contentSha256'],'goalSha256'=>hash('sha256',(string)$claimed['goal']),'readOnly'=>true,'summary'=>$summary,'evidence'=>['searches'=>array_slice(is_array($evidence['searches']??null)?$evidence['searches']:[],0,8),'reads'=>array_slice(is_array($evidence['reads']??null)?$evidence['reads']:[],0,16),'fallbackFiles'=>array_slice(is_array($evidence['fallbackFiles']??null)?$evidence['fallbackFiles']:[],0,12)],'createdAt'=>$at];
+        if (@file_put_contents($file,json_encode($report,JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),LOCK_EX)===false || !@chmod($file,0600)) throw new HubDurableExecutionException('Inspection evidence could not be created','ARTIFACT_STORAGE_FAILED');
+        try { $stored=$store->storeFile($artifactId,$file); } catch (HubArtifactStoreException $error) { @unlink($file); throw new HubDurableExecutionException('Inspection evidence storage is unavailable',$error->codeName); } @unlink($file);
+        try { $this->pdo->exec('BEGIN IMMEDIATE'); $this->pdo->prepare('INSERT INTO control_artifacts(artifact_id,task_id,project_id,kind,name,sha256,size_bytes,relative_ref,created_at) VALUES(:id,:task,:project,:kind,:name,:sha,:size,NULL,:at)')->execute(['id'=>$artifactId,'task'=>$claimed['task_id'],'project'=>$claimed['project_id'],'kind'=>'project-inspection','name'=>'inspection-'.substr((string)$claimed['task_id'],0,8).'.json','sha'=>$stored['sha256'],'size'=>$stored['sizeBytes'],'at'=>$at]); $this->pdo->prepare('INSERT INTO control_artifact_objects(artifact_id,storage_key,mime_type,retained_until,deleted_at) VALUES(:id,:key,:mime,NULL,NULL)')->execute(['id'=>$artifactId,'key'=>$stored['storageKey'],'mime'=>'application/json']); $this->pdo->exec('COMMIT'); return $artifactId; }
+        catch (Throwable $error) { $this->rollbackImmediate(); $store->remove($stored['storageKey']); throw $error instanceof HubDurableExecutionException ? $error : new HubDurableExecutionException('Inspection evidence could not be saved','ARTIFACT_STORAGE_FAILED'); }
     }
 
     /** @param array{revisionId:string,contentSha256:string,contentBytes:int,fileCount:int,parentRevisionId:string,changed:bool} $candidate @param array{added:list<string>,changed:list<string>,deleted:list<string>} $diff @param array<string,mixed> $qa */
