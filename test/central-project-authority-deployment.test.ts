@@ -79,6 +79,9 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(durable, /one-to-one FK/);
   assert.match(durable, /NATIVE_CONVERSATION/);
   assert.match(durable, /PROJECT_INSPECTION/);
+  assert.match(durable, /'project\.search'/);
+  assert.match(durable, /Search canonical Project Vault paths and bounded source content/);
+  assert.match(durable, /For root-cause analysis, search source content/);
   assert.match(durable, /PROJECT_TEXT_NORMALIZE/);
   assert.match(durable, /PROJECT_ASSISTED_EDIT/);
   assert.match(durable, /project_write_text/);

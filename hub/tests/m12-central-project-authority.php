@@ -71,6 +71,25 @@ try {
     $executor = new HubDurableExecutionService($pdo, $vaults, null); $executor->enqueue($task, $project, (string) $promoted['activeRevisionId'], 'VPS', 'project.read', ['mode' => 'PROJECT_INSPECTION'], $now); $run = $executor->runOnce($now); m12_assert(($run['state'] ?? null) === 'COMPLETED', 'durable VPS inspection is claimed and completed');
     $taskRow = $pdo->prepare('SELECT state, result_summary FROM control_tasks WHERE task_id = :task'); $taskRow->execute(['task' => $task]); $finished = $taskRow->fetch(); m12_assert(($finished['state'] ?? null) === 'COMPLETED' && str_contains((string) ($finished['result_summary'] ?? ''), 'ไม่ได้แก้ source'), 'read-only execution returns a natural non-mutating result');
 
+    // Root-cause inspection must use the same immutable Vault evidence path:
+    // content search first, then an exact bounded file read, with no mutation.
+    $pdo->prepare("INSERT INTO control_provider_policies(provider_id, enabled, model_fast, model_balanced, model_strong, monthly_budget_microunits, warning_microunits, input_microunits_per_million, output_microunits_per_million, updated_by_user_id, updated_at) VALUES('openai', 1, 'fixture-fast', 'fixture-balanced', 'fixture-strong', 100000000, 90000000, 1000000, 1000000, :owner, :at)")->execute(['owner' => $owner, 'at' => $now]);
+    $inspectionCalls = 0;
+    $inspectionAgent = new HubNativeAgentService($pdo, static function (array $payload, string $_key) use (&$inspectionCalls): array {
+        $inspectionCalls++;
+        if ($inspectionCalls === 1) return ['id' => 'resp_inspect_search_1234', 'output' => [['type' => 'function_call', 'call_id' => 'call_inspect_search_1234', 'name' => 'project_search', 'arguments' => '{"query":"fixture-v2"}']], 'usage' => ['input_tokens' => 3, 'output_tokens' => 2]];
+        if ($inspectionCalls === 2) return ['id' => 'resp_inspect_read_1234', 'output' => [['type' => 'function_call', 'call_id' => 'call_inspect_read_1234', 'name' => 'project_read_text', 'arguments' => '{"path":"src/main.php"}']], 'usage' => ['input_tokens' => 3, 'output_tokens' => 2]];
+        return ['id' => 'resp_inspect_done_1234', 'output_text' => 'Root cause evidence: src/main.php line 1 contains fixture-v2; no mutation performed.', 'usage' => ['input_tokens' => 3, 'output_tokens' => 3]];
+    }, 'fixture-key');
+    $inspectionTask = m12_uuid();
+    $pdo->prepare("INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:task, :user, :project, 'หาสาเหตุ fixture-v2 จาก source จริง', 'QUEUED', NULL, NULL, 0, NULL, NULL, :key, NULL, :at, :at, NULL)")->execute(['task' => $inspectionTask, 'user' => $owner, 'project' => $project, 'key' => 'm12-task-root-cause-0001', 'at' => $now]);
+    $inspector = new HubDurableExecutionService($pdo, $vaults, $inspectionAgent); $inspector->enqueue($inspectionTask, $project, (string) $promoted['activeRevisionId'], 'VPS', 'project.search', ['mode' => 'PROJECT_INSPECTION'], $now);
+    $inspectionRun = $inspector->runOnce($now); m12_assert(($inspectionRun['state'] ?? null) === 'COMPLETED' && $inspectionCalls === 3, 'root-cause inspection performs bounded content search then exact source read');
+    $inspectionRow = $pdo->prepare('SELECT state,result_summary FROM control_tasks WHERE task_id=:task'); $inspectionRow->execute(['task' => $inspectionTask]); $inspectionDone = $inspectionRow->fetch();
+    m12_assert(($inspectionDone['state'] ?? null) === 'COMPLETED' && str_contains((string) ($inspectionDone['result_summary'] ?? ''), 'src/main.php line 1'), 'root-cause inspection returns concrete source evidence');
+    m12_assert($vaults->activeRevision($project) === $promoted['activeRevisionId'], 'root-cause inspection leaves canonical source unchanged');
+    $pdo->exec("DELETE FROM control_provider_policies WHERE provider_id='openai'");
+
     // A bounded server-native mutation always starts from an immutable Vault
     // revision, captures a separate candidate, writes an opaque artifact, and
     // stops at the existing approval boundary. Canonical content is not

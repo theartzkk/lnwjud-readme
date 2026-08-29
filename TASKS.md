@@ -2,14 +2,14 @@
 
 ## NOW
 
-- Close VPS Native Code Context V1 on top of Candidate Secret Gate: extend the existing immutable Project Vault `project_search` read path to bounded source-content discovery with line evidence; do not add an index/database/search authority or any shell/process/network capability.
+- Close VPS Root-Cause Inspection V1 on top of VPS Native Code Context: route new read-only inspections through existing `project.search`, require source-content search → exact bounded read → evidence-backed conclusion, and preserve `project.read` backward compatibility. Do not add an index/database/search authority or any shell/process/network/mutation capability.
 - Keep M16 activation separate and approval-gated. Production remains M15/v15 until an exact reviewed SHA passes release gates and receives required approval.
-- Required closure evidence: extension-independent Vault search fixture, M12 integration guard, Hub integration suite, full product regression, `git diff --check`, clean exact commit/push, then Linux CI for the locally skipped extension-dependent fixture.
+- Required closure evidence: root-cause search/read provider fixture, M12 deployment contract, Hub integration suite, full product regression, PHP syntax, `git diff --check`, clean exact commit/push, then Linux CI for the locally skipped extension-dependent M12 fixture.
 - Production, billing, credentials, permissions, Google Cloud legacy and BAY production remain untouched in this source milestone.
 
 ## NEXT
 
-- Continue VPS-first self-sufficient execution using the same canonical task/execution/approval/memory authorities; next safe expansion should improve server-native project capability only after Candidate Secret Gate CI is green.
+- Continue VPS-first self-sufficient execution using the same canonical task/execution/approval/memory authorities. After read-only root-cause inspection is closed, the next safe expansion should improve evidence packaging or bounded multi-file diagnosis without granting new execution authority.
 - Field activation/verification of M16 remains a distinct reviewed Production milestone.
 
 # Tasks
