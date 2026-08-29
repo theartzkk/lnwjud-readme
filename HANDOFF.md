@@ -1,3 +1,11 @@
+# Authoritative supersession — 2026-08-29 Continuous Auto-Chain canonical closure
+
+- Canonical source is now `awh/api-independence` @ `070f61386da1f4203b7a20b255ba5f9aeecfe393`, merged from PR #51 after CI #646 succeeded across Ubuntu, Windows, Linux runtime, macOS package and Windows installer jobs.
+- The canonical line retains `677cf8a` QA-operation hardening plus qualified multi-provider routing/execution and Continuous Auto-Chain V1. Local rebase regression: 307 tests = 306 PASS / 0 FAIL / 1 platform SKIP; Hub integration and PHP syntax PASS.
+- ReadyIDC Production remains unchanged at M15 / SQLite v15 with active pointer `m15-402ff72ba41d`; integrity `ok`, foreign-key violations `0`, Nginx valid, native executor/backup timers active, latest verified backup SHA-256 `7603bc7384dec8d84b2610245eab135e0f78dcdaa0975050637d9bb293f1c128`.
+- Production activation was explicitly approved for superseded source SHA `1a2261bf...`, but canonical advanced before mutation. That approval MUST NOT be reused for the new exact SHA. Remote execution safety also blocked the approved deployment/preflight command, and no bypass was attempted.
+- Next Production attempt must re-audit canonical/Production and obtain explicit approval for the final exact deployment SHA before M15→M16 mutation.
+
 # Authoritative supersession — 2026-08-29 Continuous Auto-Chain V1
 
 - Canonical source was re-based from `awh/api-independence` @ `eb78779d...` and the already-CI-green multi-provider qualification/execution commits were cleanly converged before this milestone. Working branch: `awh/continuous-autochain-v1`.

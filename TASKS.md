@@ -1,3 +1,15 @@
+# Authoritative task supersession — 2026-08-29 canonical Auto-Chain closure
+
+## NOW
+
+- Source milestone is closed on canonical `awh/api-independence` @ `070f61386da1f4203b7a20b255ba5f9aeecfe393`; do not repeat qualification/provider-fabric/Auto-Chain implementation.
+- Keep ReadyIDC Production at M15/v15 until a fresh exact-SHA approval is granted. The earlier approval is stale because canonical advanced before mutation.
+- Treat remote safety-layer deployment blocking as a hard gate; never bypass it. Continue reversible source/QA work if that gate remains blocked.
+
+## NEXT
+
+- Re-audit canonical HEAD + Production immediately before any deployment attempt, generate exact M16 dry-run evidence from the final SHA, then request one explicit approval for that exact SHA. After approval, run the guarded M15→M16 activation with verified backup/rollback and field verification.
+
 # Authoritative task supersession — 2026-08-29 Continuous Auto-Chain V1
 
 ## NOW
