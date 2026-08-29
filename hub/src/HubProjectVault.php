@@ -208,7 +208,7 @@ final class HubProjectVault
         $size = @filesize($file); if (!is_int($size) || $size > 2 * 1024 * 1024 || self::binary($file)) throw new HubProjectVaultException('Project file is not readable text', 'PROJECT_CONTEXT_FORBIDDEN');
         $handle = @fopen($file, 'rb'); if ($handle === false) throw new HubProjectVaultException('Project file was not found', 'PROJECT_FILE_NOT_FOUND');
         $content = stream_get_contents($handle, self::MAX_FILE_READ_BYTES + 1); fclose($handle);
-        if (!is_string($content)) throw new HubProjectVaultException('Project file could not be read', 'PROJECT_CONTEXT_FORBIDDEN');
+        if (!is_string($content) || preg_match('//u', $content) !== 1) throw new HubProjectVaultException('Project file is not readable text', 'PROJECT_CONTEXT_FORBIDDEN');
         $truncated = strlen($content) > self::MAX_FILE_READ_BYTES; if ($truncated) $content = substr($content, 0, self::MAX_FILE_READ_BYTES);
         return ['path' => $path, 'content' => $content, 'truncated' => $truncated];
     }
