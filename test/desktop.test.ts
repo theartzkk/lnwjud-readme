@@ -172,6 +172,7 @@ test('desktop enrollment UX uses fixed IPC and never exposes credentials', async
   assert.match(main, /if \(!hasExplicitWorkspace\(config\.dataDir\)\) return \[\]/);
   assert.match(main, /issuePairingCode/);
   assert.match(main, /issuePairingCode\(projectIds, 600\)/);
+  assert.match(main, /new URL\('\/#awh-recovery', config\.hubApiBase\)/);
   assert.match(renderer, /window\.artAgent\.loginDevice/);
   assert.match(renderer, /window\.artAgent\.pairDevice/);
   assert.match(renderer, /window\.artAgent\.createDeviceCode/);
@@ -230,6 +231,10 @@ test('desktop keeps legacy trusted-device setup out of the primary Work surface'
   assert.doesNotMatch(renderer, /accessToken|Authorization|tokenHash/i);
   const styles = await readFile(new URL('../desktop/styles.css', import.meta.url), 'utf8');
   assert.match(renderer, /loginDevice/);
+  assert.match(renderer, /enrollmentNotice/);
+  assert.match(renderer, /enrollmentActionInFlight/);
+  assert.match(renderer, /refreshEnrollment\(true\)/);
+  assert.match(renderer, /ข้อผิดพลาด|Enrollment action was rejected/);
   assert.match(renderer, /enrollment-password-toggle/);
   assert.match(renderer, /input\.type = reveal \? 'text' : 'password'/);
   assert.match(styles, /\.auth-field input \{ width: 100%; min-height: 48px/);

@@ -620,13 +620,15 @@ import {
   function closeSheet(id) { hide(id); }
   function openPasswordRecovery() {
     let token = null;
-    if (window.location.hash.startsWith('#awh-reset=')) {
-      try { const candidate = decodeURIComponent(window.location.hash.slice('#awh-reset='.length)); if (/^[A-Za-z0-9_-]{43}$/.test(candidate)) token = candidate; } catch { token = null; }
+    const recoveryHash = window.location.hash;
+    const recoveryRequested = recoveryHash === '#awh-recovery';
+    if (recoveryHash.startsWith('#awh-reset=')) {
+      try { const candidate = decodeURIComponent(recoveryHash.slice('#awh-reset='.length)); if (/^[A-Za-z0-9_-]{43}$/.test(candidate)) token = candidate; } catch { token = null; }
       window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
-    }
+    } else if (recoveryRequested) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
     state.resetToken = token;
     $('reset-password-form').hidden = token === null;
-    message('reset-instructions', token ? 'ลิงก์นี้ใช้ได้ครั้งเดียวและจะหมดอายุในเวลาอันสั้น เลือกรหัสผ่านใหม่ที่คุณจำได้' : 'กด “ลืมรหัสผ่าน?” จากหน้าเข้าสู่ระบบ แล้วเปิดลิงก์กู้คืนจาก AWH Desktop ที่เชื่อถือได้ ลิงก์มีอายุสั้นและใช้ได้ครั้งเดียว');
+    message('reset-instructions', token ? 'ลิงก์นี้ใช้ได้ครั้งเดียวและจะหมดอายุในเวลาอันสั้น เลือกรหัสผ่านใหม่ที่คุณจำได้' : state.control?.authenticated && recoveryRequested ? 'คุณยังเข้าสู่ระบบอยู่ เปิดแท็บ “บัญชีและความปลอดภัย” เพื่อจัดการรหัสผ่านหรือเตรียมรหัสกู้คืน หากกำลังแก้ปัญหาการเข้าสู่ระบบ ให้ใช้รหัสกู้คืนฉุกเฉินที่เตรียมไว้เท่านั้น' : 'กด “ลืมรหัสผ่าน?” จากหน้าเข้าสู่ระบบ แล้วเปิดลิงก์กู้คืนจาก AWH Desktop ที่เชื่อถือได้ ลิงก์มีอายุสั้นและใช้ได้ครั้งเดียว');
     openSheet('recovery-sheet');
   }
   async function openAccount(section = 'start') {
@@ -736,6 +738,7 @@ import {
     finally { $('conversation-archive').disabled = false; }
   });
   $('account-open').addEventListener('click', () => { void openAccount(); });
+  $('account-open-work').addEventListener('click', () => { void openAccount('account'); });
   $('account-open-inline').addEventListener('click', () => { void openAccount(); });
   $('system-check').addEventListener('click', async () => {
     if (!isOwner()) { message('system-check-message', 'เฉพาะเจ้าของ AWH เท่านั้นที่ตรวจความพร้อมของระบบได้'); return; }
@@ -861,5 +864,5 @@ import {
 
   $('logout-button').addEventListener('click', async () => { await logout().catch(() => undefined); window.location.reload(); });
 
-  loadWebData().then(async (data) => { render(data); if (window.location.hash.startsWith('#awh-reset=')) openPasswordRecovery(); if (data?.control?.authenticated) { await refreshConversation(); try { state.productSettings = (await loadProductSettings()).settings; applyProductSettings(); } catch {} state.conversationTimer = window.setInterval(() => { if (!document.hidden && state.selectedConversationId) void loadConversation(state.selectedConversationId).then((value) => { state.conversation = value; renderWorkspace(); }).catch(() => undefined); }, 2000); state.refreshTimer = window.setInterval(() => { if (!document.hidden) void refreshWorkspace(false); }, 15_000); } }).catch(() => render({ product: { shortName: 'AWH' }, control: { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' } }));
+  loadWebData().then(async (data) => { render(data); if (window.location.hash === '#awh-recovery' || window.location.hash.startsWith('#awh-reset=')) openPasswordRecovery(); if (data?.control?.authenticated) { await refreshConversation(); try { state.productSettings = (await loadProductSettings()).settings; applyProductSettings(); } catch {} state.conversationTimer = window.setInterval(() => { if (!document.hidden && state.selectedConversationId) void loadConversation(state.selectedConversationId).then((value) => { state.conversation = value; renderWorkspace(); }).catch(() => undefined); }, 2000); state.refreshTimer = window.setInterval(() => { if (!document.hidden) void refreshWorkspace(false); }, 15_000); } }).catch(() => render({ product: { shortName: 'AWH' }, control: { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' } }));
 })();

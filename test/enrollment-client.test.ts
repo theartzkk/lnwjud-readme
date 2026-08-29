@@ -179,3 +179,13 @@ test('local enrollment client revokes its own credential without exposing it in 
     assert.equal('accessToken' in state, false);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('enrollment requests fail with a bounded, secret-free timeout', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awh-enroll-timeout-'));
+  try {
+    const client = new EnrollmentClient('https://hub.example/api/v1', root, new InMemoryCredentialStore(), async (_input, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true });
+    }), 1_000);
+    await assert.rejects(() => client.login('theartzkk', 'correct-password'), (error: unknown) => error instanceof EnrollmentClientError && error.code === 'REQUEST_TIMEOUT' && error.message.includes('ใช้เวลานานเกินไป'));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

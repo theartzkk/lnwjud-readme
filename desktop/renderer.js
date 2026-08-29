@@ -2,6 +2,9 @@ const $ = (id) => document.getElementById(id);
 let overview = null;
 let projectsData = null;
 let activeProjectId = null;
+let enrollmentNotice = null;
+let enrollmentActionInFlight = false;
+let enrollmentRefreshSequence = 0;
 
 function escapeText(value) { return value == null ? '—' : String(value); }
 function renderList(container, items, emptyText, render) {
@@ -159,7 +162,7 @@ function renderEnrollment(data) {
   $('enrollment-device-name').textContent = data?.displayName || '—';
   $('enrollment-device-id').textContent = data?.deviceId || '—';
   $('enrollment-platform').textContent = data?.platform || '—';
-  $('enrollment-message').textContent = data?.ok === false ? data.message : enrolled ? 'เข้าสู่ระบบแล้ว เครื่องนี้พร้อมใช้สิทธิ์ของบัญชี AWH' : 'เข้าสู่ระบบด้วยชื่อผู้ใช้และรหัสผ่าน AWH ได้เลย';
+  $('enrollment-message').textContent = enrollmentNotice || (data?.ok === false ? data.message : enrolled ? 'เข้าสู่ระบบแล้ว เครื่องนี้พร้อมใช้สิทธิ์ของบัญชี AWH' : 'เข้าสู่ระบบด้วยชื่อผู้ใช้และรหัสผ่าน AWH ได้เลย');
   $('enrollment-login').disabled = !connected || enrolled;
   $('enrollment-username').disabled = !connected || enrolled;
   $('enrollment-password').disabled = !connected || enrolled;
@@ -171,22 +174,34 @@ function renderEnrollment(data) {
   if (!enrolled) clearOwnerCode();
 }
 
-async function refreshEnrollment() {
-  try { renderEnrollment(await window.artAgent.getEnrollmentState()); }
-  catch (error) { renderEnrollment({ ok: false, message: 'ยังตรวจสถานะอุปกรณ์นี้ไม่ได้ ลองรีเฟรชอีกครั้ง' }); }
+async function refreshEnrollment(force = false) {
+  if (enrollmentActionInFlight && !force) return;
+  const sequence = ++enrollmentRefreshSequence;
+  try {
+    const state = await window.artAgent.getEnrollmentState();
+    if (sequence !== enrollmentRefreshSequence || (enrollmentActionInFlight && !force)) return;
+    renderEnrollment(state);
+  } catch {
+    if (sequence !== enrollmentRefreshSequence || (enrollmentActionInFlight && !force)) return;
+    renderEnrollment({ ok: false, message: 'ยังตรวจสถานะอุปกรณ์นี้ไม่ได้ ลองรีเฟรชอีกครั้ง' });
+  }
 }
 
 async function runEnrollmentAction(action) {
   clearOwnerCode();
+  enrollmentNotice = null;
+  enrollmentActionInFlight = true;
   for (const id of ['enrollment-login', 'enrollment-pair', 'enrollment-issue-pairing', 'owner-access-reset', 'enrollment-rotate', 'enrollment-revoke']) $(id).disabled = true;
   try {
     const result = await action();
-    if (result?.ok !== true) $('enrollment-message').textContent = result?.message || 'Enrollment action was rejected';
-    await refreshEnrollment();
+    enrollmentNotice = result?.ok === true ? null : result?.message || 'Enrollment action was rejected';
+    await refreshEnrollment(true);
     if (result?.ok === true) { await refreshProjects(); await refreshAutopilot(); }
   } catch (error) {
-    $('enrollment-message').textContent = 'Enrollment action was rejected';
-    await refreshEnrollment();
+    enrollmentNotice = error instanceof Error && error.message ? error.message : 'Enrollment action was rejected';
+    await refreshEnrollment(true);
+  } finally {
+    enrollmentActionInFlight = false;
   }
 }
 
@@ -422,10 +437,12 @@ $('remote-stop').addEventListener('click', () => runRemoteAction('stop'));
 $('enrollment-login-form').addEventListener('submit', (event) => {
   event.preventDefault();
   const username = $('enrollment-username').value.trim(); const password = $('enrollment-password').value;
-  if (!username || !password) { $('enrollment-message').textContent = 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน'; return; }
+  if (!username || !password) { enrollmentNotice = 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน'; $('enrollment-message').textContent = enrollmentNotice; return; }
   $('enrollment-message').textContent = 'กำลังเข้าสู่ AWH…';
   void runEnrollmentAction(async () => { const result = await window.artAgent.loginDevice(username, password); $('enrollment-password').value = ''; return result; });
 });
+$('enrollment-username').addEventListener('input', () => { enrollmentNotice = null; });
+$('enrollment-password').addEventListener('input', () => { enrollmentNotice = null; });
 $('enrollment-password-toggle').addEventListener('click', () => {
   const input = $('enrollment-password'); const reveal = input.type === 'password';
   input.type = reveal ? 'text' : 'password';

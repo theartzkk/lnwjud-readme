@@ -4,6 +4,7 @@ import { DeviceIdentity, loadOrCreateDeviceIdentity } from './device-identity.js
 import { RELEASE_VERSION } from './version.js';
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
+const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const BOOTSTRAP_NONCE = /^[A-Za-z0-9_-]{43}$/;
 
@@ -75,8 +76,9 @@ async function deleteDeviceToken(credentialStore: CredentialStore): Promise<void
 export class EnrollmentClient {
   private readonly root: URL;
 
-  constructor(private readonly apiBase: string, private readonly dataDir: string, private readonly credentialStore: CredentialStore, private readonly fetchImpl: typeof fetch = fetch) {
+  constructor(private readonly apiBase: string, private readonly dataDir: string, private readonly credentialStore: CredentialStore, private readonly fetchImpl: typeof fetch = fetch, private readonly requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS) {
     this.root = apiRoot(apiBase);
+    if (!Number.isInteger(requestTimeoutMs) || requestTimeoutMs < 1_000 || requestTimeoutMs > 120_000) throw new EnrollmentClientError('Enrollment request timeout is invalid', 'REQUEST_TIMEOUT_INVALID');
   }
 
   async state(): Promise<SanitizedEnrollmentState> {
@@ -192,8 +194,17 @@ export class EnrollmentClient {
   private async post(path: string, payload: Record<string, unknown>, token?: string, extraHeaders: Record<string, string> = {}): Promise<Record<string, unknown>> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extraHeaders };
     if (token) headers.Authorization = `Bearer ${token}`;
-    const response = await this.fetchImpl(new URL(`${this.root.toString()}/${path.replace(/^\//, '')}`), { method: 'POST', headers, body: JSON.stringify(payload), credentials: 'omit', cache: 'no-store' });
-    return jsonResponse(response);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    try {
+      const response = await this.fetchImpl(new URL(`${this.root.toString()}/${path.replace(/^\//, '')}`), { method: 'POST', headers, body: JSON.stringify(payload), credentials: 'omit', cache: 'no-store', signal: controller.signal });
+      return await jsonResponse(response);
+    } catch (error) {
+      if (controller.signal.aborted) throw new EnrollmentClientError('การเชื่อมต่อ AWH ใช้เวลานานเกินไป กรุณาตรวจอินเทอร์เน็ตแล้วลองใหม่', 'REQUEST_TIMEOUT');
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   private sanitize(identity: DeviceIdentity, response: Record<string, unknown>): SanitizedEnrollmentState {

@@ -252,6 +252,8 @@ body.work-active .workspace-home { min-width: 42px; padding-right: 9px; }
 body.work-active .workspace-home > span:last-child { font-size: 12px; }
 body.work-active .workspace-heading .eyebrow { display: none; }
 body.work-active .workspace-project { min-width: 0; }
+body.work-active .workspace-actions { display: inline-flex; align-items: center; gap: 4px; }
+body.work-active .workspace-account { display: inline-flex; min-height: 34px; padding: 6px 9px; font-size: 12px; }
 body.work-active .project-trigger { max-width: 100%; font-size: 16px; letter-spacing: -.02em; }
 body.work-active .conversation-trigger { margin-top: 3px; font-size: 11px; }
 body.work-active .work-advanced-links, body.work-active .advanced-panel { display: none !important; }
@@ -282,6 +284,7 @@ body.work-active .form-message { min-height: 0; }
   body.work-active .app-main { width: calc(100% - 20px); padding-bottom: 74px; }
   body.work-active .workspace-heading { min-height: 58px; grid-template-columns: auto minmax(0,1fr) auto; }
   body.work-active .workspace-home { padding-right: 5px; }
+  body.work-active .workspace-account { padding-inline: 7px; }
   body.work-active .workspace-home > span:last-child { display: none; }
   body.work-active .project-trigger { font-size: 14px; }
   body.work-active .conversation-trigger { font-size: 10px; }

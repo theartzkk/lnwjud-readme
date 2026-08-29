@@ -143,6 +143,10 @@ test('canonical Work is cloud-first, mobile-first, and never blocks chat on devi
   assert.match(css, /body\.work-active \.work-thread[^{]*\{[^}]*overflow-y: auto/s);
   assert.match(css, /body\.work-active \.composer[^{]*\{[^}]*position: relative/s);
   assert.match(css, /\.workspace-heading \{[^}]*grid-template-columns: auto minmax\(0,1fr\) auto/s);
+  assert.match(html, /id="account-open-work"/);
+  assert.match(app, /awh-recovery/);
+  assert.match(app, /account-open-work/);
+  assert.match(css, /body\.work-active \.workspace-account/);
 });
 
 test('CONTROL work composer keeps attachment previews, camera-capable file picking, and a bounded private upload contract', async () => {

@@ -335,9 +335,9 @@ async function openOwnerPasswordReset() {
     const config = loadConfig();
     const state = await readLocalEnrollmentState(config.dataDir, createDesktopCredentialStore(config.dataDir));
     if (!state.enrolled) {
-      const url = new URL('/', config.hubApiBase);
+      const url = new URL('/#awh-recovery', config.hubApiBase);
       await shell.openExternal(url.toString());
-      return { ok: true, message: 'เปิดหน้าเข้าสู่ระบบ AWH แล้ว เลือก “ลืมรหัสผ่าน?” เพื่อกู้บัญชี' };
+      return { ok: true, message: 'เปิดหน้ากู้คืนบัญชี AWH แล้ว หาก browser มี session อยู่จะเปิดแผนกู้คืนให้ทันที' };
     }
     const link = await new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createDesktopCredentialStore(config.dataDir)).issueOwnerPasswordResetLink();
     const url = new URL(link.resetPath, config.hubApiBase);
