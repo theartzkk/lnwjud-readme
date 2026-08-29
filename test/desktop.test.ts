@@ -71,9 +71,10 @@ test('desktop HTML has a restrictive CSP, remote controls and no inline script',
   assert.match(html, /id="enrollment-code"/);
   assert.match(html, /id="enrollment-issue-pairing"/);
   assert.match(html, /id="perm-worker"/);
-  assert.match(html, /เข้าสู่ AWH Desktop/);
-  assert.match(html, /ไม่ต้องใช้ Keychain/);
-  assert.match(html, /เข้าสู่ระบบและเชื่อมต่อเครื่องนี้/);
+  assert.match(html, /เข้าสู่ระบบ AWH/);
+  assert.match(html, /เชื่อม Mac เครื่องนี้ให้อัตโนมัติ/);
+  assert.match(html, /id="enrollment-password-toggle"/);
+  assert.match(html, /ลืมรหัสผ่าน\?/);
   assert.match(html, /ต่ออายุ session/);
   assert.match(html, /ออกจากระบบเครื่องนี้/);
   assert.match(html, /Register Existing Project/);
@@ -184,7 +185,7 @@ test('desktop enrollment UX uses fixed IPC and never exposes credentials', async
   assert.doesNotMatch(renderer, /accessToken|Authorization|tokenHash/);
   assert.doesNotMatch(preload, /process\.env|readFile|writeFile|spawn|shell\.openPath/);
   assert.match(html, /type="password"/i);
-  assert.match(html, /ไม่ต้องใช้ Keychain/);
+  assert.match(html, /ใช้บัญชีเดียวกับ AWH บน iPhone\/Browser/);
 });
 
 test('desktop Work is conversation-first, project-bound, and never exposes raw process access', async () => {
@@ -227,8 +228,13 @@ test('desktop keeps legacy trusted-device setup out of the primary Work surface'
   assert.match(html, /id="section-autopilot"/);
   assert.doesNotMatch(html.slice(html.indexOf('section id="section-overview"'), html.indexOf('section id="section-projects"')), /trusted device|Workspace write|Codex CLI/i);
   assert.doesNotMatch(renderer, /accessToken|Authorization|tokenHash/i);
+  const styles = await readFile(new URL('../desktop/styles.css', import.meta.url), 'utf8');
   assert.match(renderer, /loginDevice/);
-  assert.match(renderer, /enrollment-password/);
+  assert.match(renderer, /enrollment-password-toggle/);
+  assert.match(renderer, /input\.type = reveal \? 'text' : 'password'/);
+  assert.match(styles, /\.auth-field input \{ width: 100%; min-height: 48px/);
+  assert.doesNotMatch(html, /class="toggle-row"[^>]*>[^<]*<span[^>]*>.*enrollment-(?:username|password)/s);
+  assert.match(main, /if \(config\.controlPlaneWorker\) void runWorkerOnce\(\)/);
 });
 
 test('desktop smoke bootstrap activates a clean AWH data directory before writing its first marker', async () => {

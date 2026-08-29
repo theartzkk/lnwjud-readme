@@ -98,6 +98,15 @@ h3 { font-size: 14px; }
 .toggle-row span { display: grid; gap: 4px; }
 .toggle-row small { max-width: 560px; color: var(--muted); }
 .toggle-row input { width: 40px; height: 21px; accent-color: var(--accent); }
+.auth-form { display: grid; gap: 16px; }
+.auth-field { display: grid; gap: 8px; }
+.auth-field > strong { font-size: 12px; }
+.auth-field input { width: 100%; min-height: 48px; font-size: 15px; }
+.password-field { position: relative; display: block; }
+.password-field input { padding-right: 72px; }
+.password-toggle { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); border: 0; background: transparent; color: var(--accent); padding: 8px; cursor: pointer; font: inherit; }
+.auth-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.link-button { border: 0; background: transparent; color: var(--accent); padding: 8px 0; cursor: pointer; font: inherit; }
 input, textarea { width: 100%; border: 1px solid var(--line); border-radius: 12px; outline: 0; background: #0f1318; color: var(--text); padding: 11px 12px; }
 input:focus, textarea:focus { border-color: rgba(255,122,26,.65); box-shadow: 0 0 0 3px rgba(255,122,26,.09); }
 .kv { display: grid; grid-template-columns: 150px minmax(0,1fr); gap: 9px 14px; margin: 0; }

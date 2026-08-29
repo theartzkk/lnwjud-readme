@@ -94,14 +94,13 @@
             <dt>ชื่ออุปกรณ์</dt><dd id="enrollment-device-name">—</dd>
             <dt>ระบบ</dt><dd id="enrollment-platform">—</dd>
           </dl>
-          <form id="enrollment-login-form" class="owner-tools">
-            <div class="card-head"><div><h3>เข้าสู่ AWH Desktop</h3><p class="muted">ใช้บัญชี AWH เดียวกับบน iPhone/Browser ไม่ต้องใช้ Keychain และ AWH จะไม่บันทึกรหัสผ่าน</p></div></div>
-            <label class="toggle-row"><span><strong>ชื่อผู้ใช้</strong><small>เช่น art</small></span><input id="enrollment-username" type="text" autocomplete="username" maxlength="64" /></label>
-            <label class="toggle-row"><span><strong>รหัสผ่าน</strong><small>รหัสผ่านบัญชี AWH ปกติ</small></span><input id="enrollment-password" type="password" autocomplete="current-password" maxlength="512" /></label>
-            <button id="enrollment-login" class="btn" type="submit" disabled>เข้าสู่ระบบและเชื่อมต่อเครื่องนี้</button>
+          <form id="enrollment-login-form" class="owner-tools auth-form">
+            <div class="card-head"><div><h3>เข้าสู่ระบบ AWH</h3><p class="muted">ใช้บัญชีเดียวกับ AWH บน iPhone/Browser หลังเข้าสู่ระบบ AWH จะเชื่อม Mac เครื่องนี้ให้อัตโนมัติ</p></div></div>
+            <label class="auth-field"><strong>ชื่อผู้ใช้</strong><input id="enrollment-username" type="text" autocomplete="username" maxlength="64" placeholder="ชื่อผู้ใช้" /></label>
+            <label class="auth-field"><strong>รหัสผ่าน</strong><span class="password-field"><input id="enrollment-password" type="password" autocomplete="current-password" maxlength="512" placeholder="รหัสผ่าน" /><button id="enrollment-password-toggle" class="password-toggle" type="button" aria-label="แสดงรหัสผ่าน">แสดง</button></span></label>
+            <div class="auth-actions"><button id="enrollment-login" class="btn" type="submit" disabled>เข้าสู่ระบบ</button><button id="owner-access-reset" class="link-button" type="button">ลืมรหัสผ่าน?</button></div>
           </form>
           <div class="actions">
-            <button id="owner-access-reset" class="btn secondary" disabled>เปลี่ยน/กู้รหัสผ่าน</button>
             <button id="enrollment-rotate" class="btn secondary" disabled>ต่ออายุ session</button>
             <button id="enrollment-revoke" class="btn danger" disabled>ออกจากระบบเครื่องนี้</button>
           </div>
