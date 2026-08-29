@@ -1,3 +1,14 @@
+# Authoritative supersession — 2026-08-29 P1-C Files surface checkpoint
+
+- P1-C is implemented in local candidate commit `33d1946` on `codex/finish-first-p0`. Home artifact cards, the result pulse and “เปิดคลังไฟล์” now converge on one responsive Files surface over the existing canonical `control.artifacts` projection.
+- The real artifact library supports bounded search by name/type, project/task provenance, size/time metadata and downloads only when the server-provided path matches the canonical artifact route. No file storage, upload authority, API route or mock data was added; existing Tools remain local/deterministic on Home.
+- P1-C focused Home + Tasks + Files regression `6/6 PASS`; full product suite `317 PASS / 0 FAIL / 1 platform SKIP` across 318 tests; build and `git diff --check` PASS. This remains source/build evidence, not visual browser or iPhone UAT.
+- Candidate remains local-only and undeployed. P0 field proof remains blocked at `DEVICE_NOT_ENROLLED`; push/CI/review authorization is still absent and no credential or Production mutation was performed.
+
+## Next action
+
+Keep the exact-SHA/push/field gates explicit. Continue the next bounded visible priority (Owner Control Tower/mobile verification) only on this candidate while preserving the canonical Work, Tasks, Files and Tools authorities; do not claim Production v1 complete from local evidence.
+
 # Authoritative supersession — 2026-08-29 P1-B Tasks and Executions checkpoint
 
 - P1-B is implemented in local candidate commit `e9055e8` on `codex/finish-first-p0`. The canonical Home now opens one Tasks/Executions surface over the existing `control.tasks`, `control.artifacts`, `control.approvals`, `control.workers` and `executionStatus()` projections; no new route, table, queue, execution or activity authority was added.

@@ -1,3 +1,20 @@
+# Authoritative task supersession — 2026-08-29 P1-C Files surface checkpoint
+
+## NOW
+
+- P1-C is closed in source at candidate commit `33d1946`. Home artifact cards, pulse and file CTA open the canonical Files library; no duplicate artifact authority was introduced.
+- Files are searchable by bounded name/type query and show real project/task provenance, metadata and validated downloads. Empty and no-match states are explicit; Tools remain the existing deterministic local surface.
+
+## VERIFIED
+
+- Focused Home + Tasks + Files regression `6/6 PASS`.
+- Full product suite `318 tests = 317 PASS / 0 FAIL / 1 platform SKIP`; typecheck/build and `git diff --check` PASS.
+- Browser/iPhone UAT, Desktop enrollment, Auto-Chain field proof, push/CI/review and Production deployment remain open gates. Primary checkout remains untouched.
+
+## NEXT
+
+- Preserve `DEVICE_NOT_ENROLLED` and push safety blockers. Continue bounded Owner Control Tower/mobile work only in the isolated candidate; do not deploy or bypass release approval.
+
 # Authoritative task supersession — 2026-08-29 P1-B Tasks and Executions checkpoint
 
 ## NOW

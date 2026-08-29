@@ -1,5 +1,10 @@
 # Art’s Workspace Hub — AWH
 
+## Current visible product checkpoint — 2026-08-29 P1-C Files
+
+- Candidate `codex/finish-first-p0` advances to `33d1946` with a bounded real-data Files library layered on the canonical artifact projection. Home and Tasks now provide direct paths to search, provenance and validated artifact downloads; deterministic Tools remain on Home.
+- Evidence: focused Home + Tasks + Files `6/6 PASS`; full product `317 PASS / 0 FAIL / 1 platform SKIP` across 318 tests; typecheck/build/diff checks PASS. Visual browser/iPhone UAT, Desktop field proof, CI/review, push and Production deployment are not claimed.
+
 ## Current visible product checkpoint — 2026-08-29 P1-B Tasks and Executions
 
 - The isolated candidate `codex/finish-first-p0` is now at `e9055e8` after a bounded P1-B Tasks/Executions slice. Home uses the existing canonical control projections to show a human-readable task list/detail view with filters, truthful execution journey, result/continuation context, approval handoff and validated artifact downloads.
