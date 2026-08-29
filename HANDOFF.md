@@ -1,3 +1,14 @@
+# Authoritative supersession — 2026-08-29 finish-first continuation / backup authority
+
+- Candidate `codex/finish-first-p0` is pushed at `c427d9dd575dd53556ee6a7e184916e7a971cbc3` in PR [#57](https://github.com/theartzkk/lnwjud-readme/pull/57) against `awh/api-independence`; CI run `33248726861` is terminal `5/5 PASS`. PR remains open/unmerged and no Production mutation occurred.
+- Foundation-now fix: Database Studio no longer selects arbitrary newest files for backup display. It delegates to `HubBackupService::latestMetadata()`, so the Owner surface uses the same verified SQLite integrity, FK, manifest hash and schema evidence as the canonical Control Plane.
+- Verification: full product `319 tests`, `318 PASS / 0 FAIL / 1 platform SKIP`; focused backup-authority `1/1 PASS`; typecheck/build/CONTROL preview/`qa:fast`/diff check PASS.
+- Field gates remain open: `npm run ops:autochain:field-test` returns `BLOCKED DEVICE_NOT_ENROLLED`; no credential was invented, copied or logged. Browser/iPhone visual UAT remains manual; local `file://` preview navigation was blocked by browser policy and was not bypassed.
+
+## Next action
+
+Complete normal Desktop enrollment on the target device, then rerun the bounded Auto-Chain proof and real browser/iPhone journey. After fresh exact-SHA review/approval, use the typed release authority for Production activation; do not merge or deploy from this checkpoint alone.
+
 # Authoritative supersession — 2026-08-29 P1-C Files surface checkpoint
 
 - P1-C is implemented in local candidate commit `33d1946` on `codex/finish-first-p0`. Home artifact cards, the result pulse and “เปิดคลังไฟล์” now converge on one responsive Files surface over the existing canonical `control.artifacts` projection.

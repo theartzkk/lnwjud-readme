@@ -1,5 +1,12 @@
 # Art’s Workspace Hub — AWH
 
+## Current finish-first continuation checkpoint — 2026-08-29
+
+- Candidate `codex/finish-first-p0` is pushed at exact HEAD `c427d9dd575dd53556ee6a7e184916e7a971cbc3` and is under PR [#57](https://github.com/theartzkk/lnwjud-readme/pull/57) against `awh/api-independence`. CI run `33248726861` reached terminal `5/5 PASS` for Ubuntu/Windows tests, Linux runtime, Windows installer and macOS package; the PR remains open and unmerged.
+- Foundation slice `c427d9d` removes the duplicate backup metadata parser from Database Studio and reuses canonical `HubBackupService::latestMetadata()`. The behavioral regression proves verified manifest/hash/integrity metadata and backup schema reach the Database Studio overview without creating a second backup authority.
+- Candidate evidence after the slice: full product `319 tests = 318 PASS / 0 FAIL / 1 platform SKIP`; focused backup-authority `1/1 PASS`; typecheck, build, CONTROL preview, `qa:fast` and `git diff --check` PASS. This is source/CI evidence, not browser/iPhone UAT or Production evidence.
+- Real field proof remains fail-closed at `BLOCKED DEVICE_NOT_ENROLLED`; this machine has no persisted Desktop enrollment credential. Browser UAT is also `MANUAL UAT REQUIRED` because the available browser policy blocked local `file://` preview navigation; no workaround was attempted. Production was not mutated or deployed.
+
 ## Current visible product checkpoint — 2026-08-29 P1-C Files
 
 - Candidate `codex/finish-first-p0` advances to `33d1946` with a bounded real-data Files library layered on the canonical artifact projection. Home and Tasks now provide direct paths to search, provenance and validated artifact downloads; deterministic Tools remain on Home.

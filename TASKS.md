@@ -1,3 +1,20 @@
+# Authoritative task supersession — 2026-08-29 finish-first continuation / backup authority
+
+## NOW
+
+- Candidate `codex/finish-first-p0` is pushed at `c427d9dd575dd53556ee6a7e184916e7a971cbc3`; PR [#57](https://github.com/theartzkk/lnwjud-readme/pull/57) is open against `awh/api-independence` and CI run `33248726861` is `5/5 PASS`.
+- Foundation-now card is closed: Database Studio reuses `HubBackupService::latestMetadata()` as the one verified backup authority. No schema, route, storage or backup subsystem was added.
+
+## VERIFIED
+
+- Full product: `319 tests = 318 PASS / 0 FAIL / 1 platform SKIP`.
+- Focused backup-authority regression: `1/1 PASS`; typecheck, build, CONTROL preview, `qa:fast` and `git diff --check` PASS.
+- `npm run ops:autochain:field-test`: `BLOCKED DEVICE_NOT_ENROLLED`, fail-closed with no secret exposure. Browser UAT remains manual because local `file://` preview navigation was blocked by browser policy.
+
+## NEXT
+
+- Complete normal Desktop enrollment, rerun Auto-Chain lineage proof, and perform real browser/iPhone UAT. Keep PR open for review; Production deploy requires fresh exact-SHA approval and remains unperformed.
+
 # Authoritative task supersession — 2026-08-29 P1-C Files surface checkpoint
 
 ## NOW

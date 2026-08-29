@@ -1,3 +1,8 @@
+# Authoritative supersession — 2026-08-29 finish-first continuation / backup authority
+
+- `HubBackupService::latestMetadata()` is the single backup metadata authority for Owner Control Plane and Database Studio. Database Studio must not independently scan backup directories or select a file by timestamp, because that can display an unverified/corrupt snapshot and drift from the Control Plane evidence contract.
+- Candidate `c427d9dd575dd53556ee6a7e184916e7a971cbc3` is pushed in PR #57 with CI run `33248726861` terminal `5/5 PASS`; the PR is not merged and Production is not deployed. Field proof remains blocked at `DEVICE_NOT_ENROLLED`, and browser local-preview UAT is blocked by the browser URL policy without workaround.
+
 # Authoritative supersession — 2026-08-29 Finish-First / Visible Production
 
 - Until Production v1 closes, architecture expansion is frozen unless it directly reduces Production Complete FAILs. Existing authorities are extended before any CREATE.
