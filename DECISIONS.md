@@ -1,3 +1,10 @@
+# Authoritative supersession — 2026-08-29 Finish-First / Visible Production
+
+- Until Production v1 closes, architecture expansion is frozen unless it directly reduces Production Complete FAILs. Existing authorities are extended before any CREATE.
+- Owner Control Tower is the existing Infrastructure surface, not a new dashboard authority. It reads sanitized projections from canonical telemetry, tasks/executions/events, M16 AI governance, backup/database state and release pointers.
+- Production Complete is deliberately truthful: source capability alone does not turn Mobile, Deploy or Smoke Test into PASS; live visible evidence is required.
+- A healthy Production DB16 must not be downgraded merely because Control/Web remain M15 during a partial cutover. Complete-forward is preferred when compatibility evidence remains healthy.
+
 # Current supersession — 2026-08-29 Continuous Auto-Chain V1
 
 - Continuous execution is an opt-in behavior over the existing `control_tasks` / `control_task_executions` authority, not a scheduler or shadow queue. Explicit autonomy wording is required; ordinary tasks never silently become continuous.

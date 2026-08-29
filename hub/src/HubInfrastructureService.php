@@ -44,6 +44,42 @@ final class HubInfrastructureService
         return preg_match('/^[A-Za-z0-9._-]{1,80}$/', $name) ? $name : null;
     }
 
+    /** Sanitized release inventory over the existing release roots; never exposes paths. */
+    public static function releaseState(): array
+    {
+        $control = self::pointerRelease('/opt/awh-hub/control-plane-current');
+        $web = self::pointerRelease('/var/www/awh-web/current');
+        $releases = self::releaseNames('/opt/awh-hub/control-releases');
+        $staged = array_values(array_filter($releases, static fn (string $id): bool => $id !== $control));
+        $rollback = null;
+        if ($control !== null && preg_match('/^m(\d+)-/', $control, $match) === 1) {
+            $currentMajor = (int) $match[1];
+            foreach ($staged as $id) {
+                if (preg_match('/^m(\d+)-/', $id, $candidate) === 1 && (int) $candidate[1] <= $currentMajor) { $rollback = $id; break; }
+            }
+        }
+        return ['controlReleaseId' => $control, 'webReleaseId' => $web, 'pointersMatch' => $control !== null && hash_equals($control, (string) $web), 'stagedCandidates' => array_slice($staged, 0, 5), 'rollbackReleaseId' => $rollback];
+    }
+
+    private static function pointerRelease(string $pointer): ?string
+    {
+        $target = @readlink($pointer); if (!is_string($target) || $target === '') return null;
+        $name = basename($target); return preg_match('/^m[0-9]+-[A-Za-z0-9._-]{6,72}$/', $name) === 1 ? $name : null;
+    }
+
+    /** @return list<string> */
+    private static function releaseNames(string $root): array
+    {
+        $items = @scandir($root); if (!is_array($items)) return [];
+        $rows = [];
+        foreach ($items as $name) {
+            if (preg_match('/^m[0-9]+-[A-Za-z0-9._-]{6,72}$/', $name) !== 1 || !is_dir($root . '/' . $name) || is_link($root . '/' . $name)) continue;
+            $time = @filemtime($root . '/' . $name); $rows[] = ['id' => $name, 'time' => is_int($time) ? $time : 0];
+        }
+        usort($rows, static fn (array $a, array $b): int => $b['time'] <=> $a['time'] ?: strcmp($b['id'], $a['id']));
+        return array_map(static fn (array $row): string => $row['id'], $rows);
+    }
+
     private function sanitize(mixed $value): array
     {
         if (!is_array($value) || array_is_list($value) || ($value['schemaVersion'] ?? null) !== 1) throw new RuntimeException('Invalid telemetry schema');

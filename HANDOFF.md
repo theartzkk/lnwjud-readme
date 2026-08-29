@@ -1,3 +1,10 @@
+# Authoritative supersession — 2026-08-29 Finish-First Owner Control Tower Production V1
+
+- Current Product milestone reuses the canonical Infrastructure page/API and existing M16 AI/task/release authorities. It adds no parallel control plane.
+- Visible Owner surface now includes Production Complete %, AI provider/model health and fallback counts, autonomous work, activity/incidents, and release/candidate/rollback state. PASS/FAIL is evidence-based; Mobile and Smoke stay FAIL until field-proven.
+- Source branch `awh/finish-first-control-tower` is based on canonical `6781e35af616af993657bce88ad25d79e93987a7`. Focused Infrastructure QA and Hub integration are green; exact final full regression must be green before commit/push.
+- Production is still a healthy partial M16 state: SQLite schema 16, Control/Web pointers M15, native executor active. The staged exact M16 candidate exists, but Remote Desktop Commander blocks the bounded activation invocation. No safety bypass and no DB downgrade are allowed.
+
 # Authoritative supersession — 2026-08-29 Continuous Auto-Chain canonical closure
 
 - Canonical source is now `awh/api-independence` @ `070f61386da1f4203b7a20b255ba5f9aeecfe393`, merged from PR #51 after CI #646 succeeded across Ubuntu, Windows, Linux runtime, macOS package and Windows installer jobs.
