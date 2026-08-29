@@ -1,3 +1,16 @@
+# Authoritative task supersession — 2026-08-29 Finish-First Owner Control Tower Production V1
+
+## NOW
+
+- Finish-First Product lane extends the existing Owner Infrastructure surface and `/api/v1/control/infrastructure`; no new task, execution, approval, memory, route, table, scheduler or telemetry authority is created.
+- Owner Control Tower now projects Production Complete PASS/FAIL evidence, provider/model health and fallback evidence, current autonomous executions, recent task activity/incidents, and sanitized production/candidate/rollback release state from existing authorities.
+- Mobile and end-to-end Smoke Test remain truthful FAIL until visible Production field verification. Deploy remains FAIL until Control/Web pointers match an M16 release.
+- ReadyIDC Production remains DB schema 16 with Control/Web still on M15 while the external remote execution safety boundary blocks the bounded typed activation invocation. Do not bypass that boundary or downgrade healthy DB16.
+
+## NEXT
+
+- Close exact source QA/CI and merge this visible Control Tower milestone. Re-refresh canonical before any Production mutation, freeze the resulting exact release SHA, then complete M16 forward when the bounded remote activation path is available.
+
 # Authoritative task supersession — 2026-08-29 canonical Auto-Chain closure
 
 ## NOW

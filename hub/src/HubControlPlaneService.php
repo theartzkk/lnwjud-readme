@@ -397,17 +397,56 @@ final class HubControlPlaneService
             'sourceRevision' => is_string($project['sourceRevision'] ?? null) ? $project['sourceRevision'] : null,
             'memoryReady' => ($project['memoryReady'] ?? false) === true,
         ], $this->projectsForUser($userId));
+        $release = HubInfrastructureService::releaseState();
+        $aiModels = [];
+        if ($this->aiGovernance !== null) { try { $aiModels = array_slice($this->aiGovernance->catalog()['models'] ?? [], 0, 40); } catch (Throwable) { $aiModels = []; } }
+        $routes = ['recent' => 0, 'fallback' => 0];
+        if ($this->aiGovernance !== null) { try { $since = gmdate('c', strtotime($now ?? 'now') - 86400); $q = $this->pdo->prepare("SELECT COUNT(*) AS recent, SUM(CASE WHEN decision_state='FALLBACK' THEN 1 ELSE 0 END) AS fallback FROM control_ai_route_decisions WHERE user_id=:user AND created_at>=:since"); $q->execute(['user' => $userId, 'since' => $since]); $r = $q->fetch() ?: []; $routes = ['recent' => (int)($r['recent'] ?? 0), 'fallback' => (int)($r['fallback'] ?? 0)]; } catch (Throwable) { /* M16 visibility is optional on older compatible schemas. */ } }
+        $active = $this->pdo->prepare("SELECT e.execution_id,e.executor_kind,e.required_capability,e.state,e.updated_at,e.checkpoint_json,t.task_id,t.goal,t.progress FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE t.user_id=:user AND e.state IN ('QUEUED','LEASED','RUNNING','WAITING_FOR_CAPABILITY') ORDER BY e.updated_at DESC LIMIT 12");
+        $active->execute(['user' => $userId]); $autonomous = [];
+        foreach ($active->fetchAll() as $row) { $checkpoint = json_decode((string)($row['checkpoint_json'] ?? '{}'), true); $continuous = is_array($checkpoint) && is_array($checkpoint['continuation'] ?? null) && ($checkpoint['continuation']['enabled'] ?? false) === true; $autonomous[] = ['taskId'=>(string)$row['task_id'],'executionId'=>(string)$row['execution_id'],'executorKind'=>(string)$row['executor_kind'],'requiredCapability'=>(string)$row['required_capability'],'state'=>(string)$row['state'],'progress'=>(int)$row['progress'],'goal'=>(string)$row['goal'],'continuous'=>$continuous,'updatedAt'=>(string)$row['updated_at']]; }
+        $incident = $this->pdo->prepare("SELECT e.task_id,e.executor_kind,e.last_error_code,e.updated_at FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE t.user_id=:user AND e.state='FAILED' ORDER BY e.updated_at DESC LIMIT 12"); $incident->execute(['user'=>$userId]);
+        $incidents = array_map(static fn(array $row): array => ['taskId'=>(string)$row['task_id'],'executorKind'=>(string)$row['executor_kind'],'code'=>(string)($row['last_error_code'] ?? 'EXECUTION_FAILED'),'occurredAt'=>(string)$row['updated_at']], $incident->fetchAll());
+        $events = $this->pdo->prepare('SELECT e.state,e.progress,e.occurred_at,t.task_id FROM control_task_events e JOIN control_tasks t ON t.task_id=e.task_id WHERE t.user_id=:user ORDER BY e.occurred_at DESC LIMIT 20'); $events->execute(['user'=>$userId]);
+        $activity = array_map(static fn(array $row): array => ['taskId'=>(string)$row['task_id'],'state'=>(string)$row['state'],'progress'=>(int)$row['progress'],'occurredAt'=>(string)$row['occurred_at']], $events->fetchAll());
+        $serviceState = static function(array $telemetry, string $key): string { foreach (($telemetry['server']['services'] ?? []) as $service) if (($service['key'] ?? null) === $key) return (string)($service['state'] ?? 'UNKNOWN'); return 'UNKNOWN'; };
+        $dist = dirname(__DIR__, 2) . '/dist-web';
+        $checks = [
+            ['key'=>'login','label'=>'Login','pass'=>true,'evidence'=>'authenticated owner session'],
+            ['key'=>'home','label'=>'Home','pass'=>is_file($dist.'/index.html'),'evidence'=>'canonical Control shell'],
+            ['key'=>'ai-chat','label'=>'AI Chat','pass'=>($health['aiBudget']['state'] ?? null)==='READY','evidence'=>'provider and budget ready'],
+            ['key'=>'durable-task','label'=>'Durable Task','pass'=>$this->centralProjectAuthoritySchemaPresent() && $serviceState($telemetry,'native-executor')==='ACTIVE','evidence'=>'canonical execution + native executor'],
+            ['key'=>'files','label'=>'Files','pass'=>$this->artifactStore !== null,'evidence'=>'private artifact authority'],
+            ['key'=>'tools','label'=>'Tools','pass'=>is_file($dist.'/tool-registry.js'),'evidence'=>'bundled tool registry'],
+            ['key'=>'users-roles','label'=>'Users/Roles','pass'=>$this->finalProductSchemaPresent(),'evidence'=>'canonical role/capability schema'],
+            ['key'=>'control-tower','label'=>'Owner Control Tower','pass'=>true,'evidence'=>'owner infrastructure API'],
+            ['key'=>'vps-ai','label'=>'VPS/AI status','pass'=>($telemetry['state'] ?? null)==='READY' && $aiModels!==[],'evidence'=>'fresh telemetry + AI catalog'],
+            ['key'=>'tasks-executions','label'=>'Tasks/Executions','pass'=>$this->centralProjectAuthoritySchemaPresent(),'evidence'=>'canonical task execution schema'],
+            ['key'=>'mobile','label'=>'Mobile','pass'=>false,'evidence'=>'visible field verification required'],
+            ['key'=>'backup-recovery','label'=>'Backup/Recovery','pass'=>($health['backup']['state'] ?? null)==='VERIFIED' && ($health['recovery']['state'] ?? null)==='READY','evidence'=>'verified backup + recovery codes'],
+            ['key'=>'security','label'=>'Security','pass'=>(($telemetry['server']['security']['fail2ban'] ?? null)==='ACTIVE') && (($telemetry['server']['security']['automaticUpdates'] ?? null)==='ACTIVE'),'evidence'=>'host protection telemetry'],
+            ['key'=>'deploy','label'=>'Deploy','pass'=>($release['pointersMatch'] ?? false) && str_starts_with((string)($release['controlReleaseId'] ?? ''),'m16-'),'evidence'=>'matching M16 control/web pointers'],
+            ['key'=>'smoke','label'=>'Smoke Test','pass'=>false,'evidence'=>'visible end-to-end field verification required'],
+        ];
+        $passed = count(array_filter($checks, static fn(array $item): bool => $item['pass'] === true));
         return [
             'schemaVersion' => 1,
             'telemetry' => $telemetry,
-            'deployment' => ['releaseId' => HubInfrastructureService::currentReleaseId()],
+            'deployment' => ['releaseId' => HubInfrastructureService::currentReleaseId()] + $release,
             'projects' => array_slice($projects, 0, 200),
             'database' => $health['database'],
             'backup' => $health['backup'],
             'storage' => $health['storage'],
             'queue' => $health['queue'],
             'aiBudget' => $health['aiBudget'],
+            'aiModels' => $aiModels,
+            'aiRoutes24h' => $routes,
             'workerSummary' => $health['workerSummary'],
+            'workers' => $health['workers'] ?? [],
+            'autonomousWork' => $autonomous,
+            'activity' => $activity,
+            'incidents' => $incidents,
+            'productionComplete' => ['passed'=>$passed,'total'=>count($checks),'percent'=>(int)round($passed*100/count($checks)),'checks'=>$checks],
         ];
     }
 
