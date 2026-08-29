@@ -1,3 +1,10 @@
+# Authoritative supersession — 2026-08-29 Responses tool-loop contract
+
+- The shared native-agent Responses payload must contain only fields supported by the provider contract. `max_tool_calls` is not supported by the current Responses API and is therefore removed from both initial and follow-up tool-loop requests.
+- Tool-call safety remains enforced locally: the service bounds the loop to three rounds and rejects more than six accumulated function calls. Removing the unsupported provider hint does not widen executor, tool, capability, credential or deployment authority.
+- The regression uses a fixture adapter to execute one bounded `project_read_text` call followed by a final response and asserts that both captured payloads omit `max_tool_calls`. This protects sibling tool-mediated governance routes without weakening fail-closed capability registration.
+- Production remains pinned to the previously approved and deployed `903d128…` until a new exact candidate is pushed, CI-reviewed, readiness-verified and separately approved for typed M16 activation.
+
 # Authoritative supersession — 2026-08-29 Auto-Chain governance-routing contract
 
 - Provider capability registration is an interface contract, not a replacement for canonical task capability. For bounded tool-mediated project work, governance may match `project.read`, `project.search` or `project.mutate.assisted` to a tool-capable `agent.conversation` provider row; it must preserve the canonical capability in route evidence and continue enforcing executor/tool allowlists.

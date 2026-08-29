@@ -1,3 +1,16 @@
+# Authoritative supersession — 2026-08-29 Auto-Chain Responses request contract
+
+- Production was refreshed through the typed M16 authority to exact SHA `903d128f9b6160e011936b681a69656789b45a09`; the active Control/Web pointers, schema 16 database, Nginx/PHP-FPM route and worker timer were verified healthy after cutover.
+- The governance/routing fix is proven in the live field attempt: the canonical `project.read` execution selected the OpenAI `agent.conversation` interface through the bounded alias, so the earlier `AUTOCHAIN_FIELD_TIMEOUT` route mismatch is closed.
+- The next field attempt failed truthfully at the provider boundary with `PROVIDER_REQUEST_INVALID`. Source audit found the shared Responses payload emitted unsupported `max_tool_calls` in both the initial tool request and the follow-up tool-loop request; the service already enforces the six-call bound locally.
+- Source commit `02bb176` removes that unsupported request field from both payload paths and adds an M16 fixture regression that executes a two-turn tool loop and asserts neither payload contains `max_tool_calls`. Canonical capability identity, tool allowlists and local call bounds remain unchanged.
+- Verification: full product `320 tests = 319 PASS / 0 FAIL / 1 platform SKIP`; M16 self-sufficient-AI fixture PASS; Continuous Auto-Chain fixture PASS; typecheck PASS; `qa:fast` PASS; diff check PASS. `hub:test` remains non-green only at the pre-existing M11 fixture assertion (`owner system health exposes bounded operational summaries`), reproduced on the prior baseline; no M11 source changed.
+- The `02bb176` source candidate is not deployed. No credential was exposed, copied or injected, and no direct Production DB mutation occurred. Production remains preserved at `903d128…` while this candidate is prepared for exact-SHA review.
+
+## Next action
+
+Update this checkpoint in the final candidate, push and verify PR/CI truth, then run the read-only revision/lease, schema-16 integrity/FK, backup/recovery, current-release and typed M16 dry-run gates. Request one fresh approval for the resulting exact SHA before any new Production refresh; after approval rerun the bounded Desktop/worker/Auto-Chain proof and continue the remaining UAT/completion gates. Do not claim Auto-Chain or Production completion from source evidence alone.
+
 # Authoritative supersession — 2026-08-29 Auto-Chain governance-routing contract
 
 - Root cause closed in source commit `832e909`: M16 governance required an exact provider capability row for `project.read`, while the live OpenAI provider advertises the bounded tool-mediated path as `agent.conversation`. The planner therefore received `PROVIDER_UNAVAILABLE`, its defensive catch hid the route failure, and no continuation task materialized before the field-proof timeout.

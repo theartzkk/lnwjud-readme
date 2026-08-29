@@ -1,3 +1,14 @@
+# Authoritative supersession — 2026-08-29 Auto-Chain provider request contract
+
+- Current Production is exact SHA `903d128f9b6160e011936b681a69656789b45a09`, activated through the typed M16 authority with schema 16, integrity/FK, backup, Nginx/PHP-FPM and worker health verified. This is the runtime truth; the new source candidate is not deployed.
+- The live field attempt confirmed the governance/routing alias for canonical `project.read` and then exposed the next root cause as a truthful `PROVIDER_REQUEST_INVALID`: the Responses adapter sent unsupported `max_tool_calls` in both tool-loop payload forms.
+- Source commit `02bb176` removes that field and adds a bounded two-turn M16 tool-loop regression. The existing local call-count limit, canonical capability identity and fail-closed governance policy remain in force.
+- Source evidence is green for the Node suite (`320 tests`, `319 PASS`, `0 FAIL`, `1 platform SKIP`), M16/Continuous Auto-Chain fixtures, typecheck, `qa:fast` and diff check. The PHP hub aggregate still reports the known baseline M11 fixture assertion only; it is not evidence of this candidate's provider fix.
+
+## Next checkpoint
+
+Push and verify the final exact candidate/CI, recheck release readiness, and obtain a fresh exact-SHA approval before Production mutation. Then rerun enrollment persistence, worker reuse, Auto-Chain lineage and the remaining UAT/smoke/completion gates. Never infer field or Production PASS from static evidence.
+
 # Art’s Workspace Hub — AWH
 
 ## Current root-cause checkpoint — 2026-08-29 Auto-Chain governance routing

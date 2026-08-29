@@ -1,3 +1,15 @@
+# Authoritative supersession — 2026-08-29 Auto-Chain provider request contract
+
+## NOW
+
+- Exact Production SHA `903d128f9b6160e011936b681a69656789b45a09` is active after the typed M16 refresh. The governance alias fix is field-proven to select canonical `project.read` through the bounded OpenAI `agent.conversation` provider interface.
+- The remaining field blocker is `PROVIDER_REQUEST_INVALID`: OpenAI Responses rejects the unsupported `max_tool_calls` request field. Source commit `02bb176` removes it from initial and follow-up tool-loop payloads while preserving the existing local six-call bound.
+- M16 and Continuous Auto-Chain fixtures, full Node product tests, typecheck, `qa:fast` and diff check pass. `hub:test` retains only the pre-existing M11 fixture failure, reproduced on baseline and unrelated to this change.
+
+## NEXT
+
+- Finish the checkpoint docs, push the exact candidate, verify PR/CI and all release-readiness evidence, then request one fresh exact-SHA Production approval. Until then keep Production at `903d128…`; after approval rerun the real field proof and continue UAT/15-of-15 without bypassing the typed authority.
+
 # Authoritative supersession — 2026-08-29 Auto-Chain governance-routing contract
 
 ## NOW
