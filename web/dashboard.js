@@ -13,6 +13,8 @@ const state = {
   imageUrl: null,
   refreshTimer: null,
   workContext: null,
+  taskFilter: 'all',
+  selectedTaskId: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -56,6 +58,7 @@ function tapTool(title) {
 
 function mountWelcome(dashboard) {
   const welcome = document.createElement('div');
+  welcome.id = 'dashboard-welcome';
   welcome.className = 'awh-home-welcome';
   welcome.innerHTML = '<span><small>ART’S WORKSPACE HUB</small><strong>Workspace ของคุณ</strong></span><span class="awh-cloud-chip"><i aria-hidden="true"></i> Cloud พร้อมใช้งาน</span>';
   dashboard.prepend(welcome);
@@ -108,6 +111,20 @@ function mountMobileNavigation() {
   document.body.append(nav);
   new MutationObserver(updateMobileNavigation).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   updateMobileNavigation();
+}
+
+function setDashboardView(view) {
+  const dashboard = $(DASHBOARD_ID);
+  if (!dashboard) return;
+  const taskSurface = $('dashboard-tasks');
+  const homeIds = ['dashboard-welcome', 'dashboard-hero', 'dashboard-continuity', 'dashboard-pulse', 'awh-home-tools', 'dashboard-overview', 'awh-home-files', 'dashboard-owner-center'];
+  const showingTasks = view === 'tasks';
+  for (const id of homeIds) {
+    const node = $(id);
+    if (node) node.hidden = showingTasks;
+  }
+  if (taskSurface) taskSurface.hidden = !showingTasks;
+  dashboard.dataset.view = showingTasks ? 'tasks' : 'home';
 }
 
 function openWork(prompt = '', submit = false) {
@@ -179,10 +196,143 @@ function returnHome() {
   if (!state.control?.authenticated) return;
   const dashboard = $(DASHBOARD_ID);
   if (!dashboard) return;
+  setDashboardView('home');
   dashboard.hidden = false;
   document.body.classList.add('product-dashboard-active');
   window.scrollTo({ top: 0, behavior: 'smooth' });
   refreshDashboard().catch(() => undefined);
+}
+
+function taskFilterMatches(task, filter) {
+  if (filter === 'active') return ACTIVE_STATES.has(task?.state);
+  if (filter === 'attention') return task?.state === 'FAILED' || task?.state === 'WAITING_FOR_APPROVAL';
+  if (filter === 'completed') return task?.state === 'COMPLETED';
+  return true;
+}
+
+function safeArtifactDownloadUrl(value) {
+  return typeof value === 'string' && /^\/api\/v1\/control\/artifacts\/[0-9a-f-]{36}\/download$/i.test(value) ? value : null;
+}
+
+function appendTaskDetailRow(host, label, value) {
+  if (!value) return;
+  const row = document.createElement('div');
+  row.className = 'awh-task-detail-row';
+  const labelNode = document.createElement('small');
+  labelNode.textContent = label;
+  const valueNode = document.createElement('span');
+  valueNode.textContent = value;
+  row.append(labelNode, valueNode);
+  host.append(row);
+}
+
+function renderTaskSurface() {
+  const list = $('dashboard-task-list');
+  const detail = $('dashboard-task-detail');
+  const count = $('dashboard-task-count');
+  if (!list || !detail) return;
+  const tasks = Array.isArray(state.control?.tasks) ? [...state.control.tasks].sort(compareRecent) : [];
+  const workers = Array.isArray(state.control?.workers) ? state.control.workers : [];
+  const projects = Array.isArray(state.control?.projects) ? state.control.projects : [];
+  const filtered = tasks.filter((task) => taskFilterMatches(task, state.taskFilter));
+  if (count) count.textContent = `${filtered.length} งาน`;
+  document.querySelectorAll('[data-task-filter]').forEach((node) => {
+    const active = node.dataset.taskFilter === state.taskFilter;
+    node.classList.toggle('active', active);
+    node.setAttribute('aria-selected', String(active));
+  });
+  list.replaceChildren();
+  if (!filtered.length) {
+    const empty = document.createElement('div');
+    empty.className = 'awh-empty-card';
+    empty.textContent = state.taskFilter === 'attention' ? 'ไม่มีงานที่ต้องตัดสินใจหรือแก้ไข' : state.taskFilter === 'active' ? 'ไม่มีงานที่กำลังดำเนินการ' : state.taskFilter === 'completed' ? 'ยังไม่มีงานที่เสร็จแล้ว' : 'ยังไม่มีงานใน AWH';
+    list.append(empty);
+    state.selectedTaskId = null;
+  } else {
+    if (!filtered.some((task) => task.taskId === state.selectedTaskId)) state.selectedTaskId = filtered[0].taskId;
+    for (const task of filtered) {
+      const status = executionStatus(task, workers);
+      const project = projects.find((entry) => entry.projectId === task.projectId);
+      const item = button('', `awh-task-item${task.taskId === state.selectedTaskId ? ' selected' : ''}`, () => { state.selectedTaskId = task.taskId; renderTaskSurface(); });
+      item.setAttribute('aria-label', `${safeText(task.goal, 'งาน AWH')} · ${status.title}`);
+      const copy = document.createElement('span');
+      const title = document.createElement('strong'); title.textContent = safeText(task.goal, 'งาน AWH');
+      const meta = document.createElement('small'); meta.textContent = [safeText(project?.name, 'โปรเจกต์'), status.title].join(' · ');
+      copy.append(title, meta);
+      const updated = document.createElement('time'); updated.textContent = formatDate(task.updatedAt || task.createdAt);
+      item.append(copy, updated);
+      list.append(item);
+    }
+  }
+
+  detail.replaceChildren();
+  const task = filtered.find((entry) => entry.taskId === state.selectedTaskId) || null;
+  if (!task) {
+    const empty = document.createElement('div');
+    empty.className = 'awh-task-detail-empty';
+    empty.textContent = 'เลือกงานเพื่อดูสถานะ ผลลัพธ์ และหลักฐานที่ผูกกับงาน';
+    detail.append(empty);
+    return;
+  }
+  const project = projects.find((entry) => entry.projectId === task.projectId);
+  const status = executionStatus(task, workers);
+  const heading = document.createElement('div'); heading.className = 'awh-task-detail-heading';
+  const eyebrow = document.createElement('span'); eyebrow.textContent = safeText(project?.name, 'โปรเจกต์');
+  const title = document.createElement('h3'); title.textContent = safeText(task.goal, 'งาน AWH');
+  const badge = document.createElement('strong'); badge.className = `awh-task-status status-${String(task.state || '').toLowerCase()}`; badge.textContent = status.title;
+  heading.append(eyebrow, title, badge);
+  detail.append(heading);
+  const journey = renderMiniExecutionJourney(status); detail.append(journey);
+  const summary = document.createElement('p'); summary.className = 'awh-task-detail-summary'; summary.textContent = status.detail; detail.append(summary);
+  const facts = document.createElement('div'); facts.className = 'awh-task-detail-facts';
+  appendTaskDetailRow(facts, 'ผู้ดูแลงาน', status.actor);
+  appendTaskDetailRow(facts, 'อัปเดตล่าสุด', formatDate(task.updatedAt || task.createdAt));
+  appendTaskDetailRow(facts, 'ความคืบหน้า', status.progress > 0 ? `${status.progress}%` : null);
+  if (task.execution?.continuation && Number.isInteger(task.execution.continuation.step) && Number.isInteger(task.execution.continuation.maxSteps)) appendTaskDetailRow(facts, 'การทำต่ออัตโนมัติ', `ขั้นที่ ${task.execution.continuation.step} จาก ${task.execution.continuation.maxSteps}`);
+  detail.append(facts);
+  if (task.lastEvent?.message) {
+    const event = document.createElement('p'); event.className = 'awh-task-detail-note'; event.textContent = `อัปเดตจาก AWH: ${safeText(task.lastEvent.message)}`; detail.append(event);
+  }
+  if (task.resultSummary) {
+    const result = document.createElement('section'); result.className = 'awh-task-result';
+    const resultTitle = document.createElement('strong'); resultTitle.textContent = task.state === 'FAILED' ? 'สิ่งที่ต้องทราบ' : 'ผลลัพธ์';
+    const resultCopy = document.createElement('p'); resultCopy.textContent = safeText(task.resultSummary);
+    result.append(resultTitle, resultCopy); detail.append(result);
+  }
+  const artifacts = (Array.isArray(state.control?.artifacts) ? state.control.artifacts : []).filter((artifact) => artifact?.taskId === task.taskId);
+  if (artifacts.length) {
+    const artifactSection = document.createElement('section'); artifactSection.className = 'awh-task-artifacts';
+    const artifactTitle = document.createElement('strong'); artifactTitle.textContent = `ไฟล์ผลลัพธ์ที่ผูกกับงาน (${artifacts.length})`; artifactSection.append(artifactTitle);
+    for (const artifact of artifacts) {
+      const row = document.createElement('div'); row.className = 'awh-task-artifact-row';
+      const name = document.createElement('span'); name.textContent = safeText(artifact.name, 'ไฟล์จาก AWH'); row.append(name);
+      const url = safeArtifactDownloadUrl(artifact.downloadUrl);
+      if (url) { const link = document.createElement('a'); link.href = url; link.download = safeText(artifact.name, 'awh-artifact'); link.textContent = 'ดาวน์โหลด'; row.append(link); }
+      artifactSection.append(row);
+    }
+    detail.append(artifactSection);
+  }
+  const pendingApproval = (Array.isArray(state.control?.approvals) ? state.control.approvals : []).find((approval) => approval?.taskId === task.taskId && ['PENDING', 'WAITING'].includes(approval.state || approval.status));
+  if (pendingApproval) {
+    const approval = document.createElement('section'); approval.className = 'awh-task-attention';
+    const copy = document.createElement('span'); copy.textContent = 'งานนี้รอการตัดสินใจจากคุณ';
+    const action = button('เปิด Work', 'awh-secondary-action', () => navigateWork(task.projectId, task.conversationId || null));
+    approval.append(copy, action); detail.append(approval);
+  } else if (task.conversationId) {
+    detail.append(button('เปิดบทสนทนานี้', 'awh-secondary-action', () => navigateWork(task.projectId, task.conversationId)));
+  }
+}
+
+function openTaskSurface(filter = 'all', taskId = null) {
+  if (!state.control?.authenticated) return;
+  state.taskFilter = ['all', 'active', 'attention', 'completed'].includes(filter) ? filter : 'all';
+  state.selectedTaskId = taskId;
+  setDashboardView('tasks');
+  const dashboard = $(DASHBOARD_ID);
+  if (dashboard) dashboard.hidden = false;
+  document.body.classList.add('product-dashboard-active');
+  renderTaskSurface();
+  $('dashboard-tasks')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function openAccountTab(tab = null) {
@@ -231,6 +381,7 @@ function mountDashboard() {
   dashboard.hidden = true;
 
   const hero = document.createElement('section');
+  hero.id = 'dashboard-hero';
   hero.className = 'awh-home-hero';
   hero.innerHTML = '<div class="awh-home-kicker">AWH · AI WORKSPACE</div><h1>ทุกงาน เริ่มจากตรงนี้</h1><p>คุยกับ AI · ทำเอกสาร · จัดการไฟล์ · ใช้เครื่องมือฟรี · ทำงานต่อจากทุกอุปกรณ์</p>';
   const commandForm = document.createElement('form');
@@ -270,6 +421,12 @@ function mountDashboard() {
   pulse.className = 'awh-home-section awh-pulse';
   pulse.innerHTML = '<div class="awh-section-heading"><div><span>ภาพรวมตอนนี้</span><h2>รู้ทันงานในไม่กี่วินาที</h2></div><small>ข้อมูลล่าสุดจาก AWH · กดการ์ดเพื่อไปต่อ</small></div><div class="awh-pulse-grid"><button id="dashboard-pulse-projects-card" class="awh-pulse-card" type="button" data-pulse-target="projects"><span class="awh-pulse-icon">◫</span><span><strong id="dashboard-pulse-projects">—</strong><small>โปรเจกต์</small><em id="dashboard-pulse-projects-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-active-card" class="awh-pulse-card" type="button" data-pulse-target="work"><span class="awh-pulse-icon">↻</span><span><strong id="dashboard-pulse-active">—</strong><small>กำลังทำอยู่</small><em id="dashboard-pulse-active-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-artifacts-card" class="awh-pulse-card" type="button" data-pulse-target="files"><span class="awh-pulse-icon">▤</span><span><strong id="dashboard-pulse-artifacts">—</strong><small>ผลลัพธ์</small><em id="dashboard-pulse-artifacts-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-attention-card" class="awh-pulse-card attention" type="button" data-pulse-target="work"><span class="awh-pulse-icon">!</span><span><strong id="dashboard-pulse-attention">—</strong><small>ต้องดู</small><em id="dashboard-pulse-attention-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-workers-card" class="awh-pulse-card owner-pulse" type="button" data-pulse-target="devices" hidden><span class="awh-pulse-icon">◇</span><span><strong id="dashboard-pulse-workers">—</strong><small>อุปกรณ์พร้อม</small><em id="dashboard-pulse-workers-detail">กำลังตรวจข้อมูล…</em></span></button></div>';
 
+  const taskSurface = document.createElement('section');
+  taskSurface.id = 'dashboard-tasks';
+  taskSurface.className = 'awh-home-section awh-task-surface';
+  taskSurface.hidden = true;
+  taskSurface.innerHTML = '<div class="awh-task-surface-header"><div><span>งานและการดำเนินการ</span><h2>ติดตามงานแบบเข้าใจง่าย</h2><p>ดูสถานะจริงของงาน ผลลัพธ์ และสิ่งที่ต้องทำต่อจากข้อมูล AWH</p></div><button id="dashboard-tasks-close" class="awh-secondary-action" type="button">กลับหน้าแรก</button></div><div class="awh-task-toolbar"><div class="awh-task-filters" role="tablist" aria-label="กรองงาน"><button type="button" class="awh-task-filter active" data-task-filter="all" role="tab" aria-selected="true">ทั้งหมด</button><button type="button" class="awh-task-filter" data-task-filter="active" role="tab" aria-selected="false">กำลังทำ</button><button type="button" class="awh-task-filter" data-task-filter="attention" role="tab" aria-selected="false">ต้องดู</button><button type="button" class="awh-task-filter" data-task-filter="completed" role="tab" aria-selected="false">เสร็จแล้ว</button></div><small id="dashboard-task-count" aria-live="polite">กำลังอ่านข้อมูล…</small></div><div class="awh-task-layout"><div id="dashboard-task-list" class="awh-task-list" role="list" aria-label="รายการงาน"></div><article id="dashboard-task-detail" class="awh-task-detail" aria-live="polite"></article></div>';
+
   const tools = document.createElement('section');
   tools.id = 'awh-home-tools';
   tools.className = 'awh-home-section';
@@ -290,8 +447,9 @@ function mountDashboard() {
   tools.append(toolsHeading, toolGrid);
 
   const overview = document.createElement('section');
+  overview.id = 'dashboard-overview';
   overview.className = 'awh-home-overview';
-  overview.innerHTML = '<section class="awh-home-section awh-recent-panel"><div class="awh-section-heading"><div><span>ทำงานต่อ</span><h2>งานล่าสุดของฉัน</h2></div><button id="dashboard-open-work" class="awh-text-action" type="button">เปิด AI Workspace</button></div><div id="dashboard-recent-work" class="awh-recent-list"></div></section><section class="awh-home-section awh-side-panel"><div class="awh-section-heading"><div><span>สถานะ</span><h2>งานที่กำลังทำ</h2></div></div><div id="dashboard-active-tasks" class="awh-status-list"></div><div id="dashboard-approval-banner" class="awh-approval-banner" hidden></div></section>';
+  overview.innerHTML = '<section class="awh-home-section awh-recent-panel"><div class="awh-section-heading"><div><span>ทำงานต่อ</span><h2>งานล่าสุดของฉัน</h2></div><div class="awh-heading-actions"><button id="dashboard-open-tasks" class="awh-text-action" type="button">ดูงานทั้งหมด</button><button id="dashboard-open-work" class="awh-text-action" type="button">เปิด AI Workspace</button></div></div><div id="dashboard-recent-work" class="awh-recent-list"></div></section><section class="awh-home-section awh-side-panel"><div class="awh-section-heading"><div><span>สถานะ</span><h2>งานที่กำลังทำ</h2></div></div><div id="dashboard-active-tasks" class="awh-status-list"></div><div id="dashboard-approval-banner" class="awh-approval-banner" hidden></div></section>';
 
   const files = document.createElement('section');
   files.id = 'awh-home-files';
@@ -309,7 +467,7 @@ function mountDashboard() {
     projects: () => { openWork(); window.setTimeout(() => $('project-open')?.click(), 0); },
     'multi-chat': () => { const context = state.workContext; const projectId = context?.project?.projectId; if (projectId) navigateWork(projectId, context?.conversation?.conversationId || null, true); else { openWork(); window.setTimeout(() => $('conversation-open')?.click(), 0); } },
     memory: () => openAccountTab('data'),
-    tasks: () => openWork(),
+    tasks: () => openTaskSurface(),
     devices: () => openAccountTab('devices'),
     system: () => openAccountTab('system'),
   };
@@ -317,18 +475,21 @@ function mountDashboard() {
   owner.append(ownerGrid);
 
   const imageTool = createImageTool();
-  dashboard.append(hero, continuity, pulse, tools, overview, files, owner, imageTool);
+  dashboard.append(hero, continuity, pulse, taskSurface, tools, overview, files, owner, imageTool);
   mountWelcome(dashboard);
   mountSchoolTools(dashboard);
   main.append(dashboard);
 
   $('dashboard-open-work')?.addEventListener('click', () => openWork());
+  $('dashboard-open-tasks')?.addEventListener('click', () => openTaskSurface());
+  $('dashboard-tasks-close')?.addEventListener('click', returnHome);
+  taskSurface.querySelectorAll('[data-task-filter]').forEach((node) => node.addEventListener('click', () => { state.taskFilter = node.dataset.taskFilter || 'all'; state.selectedTaskId = null; renderTaskSurface(); }));
   $('dashboard-continue-work')?.addEventListener('click', () => { const context = state.workContext; const projectId = context?.project?.projectId; if (projectId) navigateWork(projectId, context?.conversation?.conversationId || null); else openWork(); });
   $('dashboard-open-chats')?.addEventListener('click', () => { const context = state.workContext; const projectId = context?.project?.projectId; if (projectId) navigateWork(projectId, context?.conversation?.conversationId || null, true); else { openWork(); window.setTimeout(() => $('conversation-open')?.click(), 0); } });
   $('dashboard-pulse-projects-card')?.addEventListener('click', () => { openWork(); window.setTimeout(() => $('project-open')?.click(), 0); });
-  $('dashboard-pulse-active-card')?.addEventListener('click', () => openWork());
-  $('dashboard-pulse-attention-card')?.addEventListener('click', () => openWork());
-  $('dashboard-pulse-artifacts-card')?.addEventListener('click', () => $('awh-home-files')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  $('dashboard-pulse-active-card')?.addEventListener('click', () => openTaskSurface('active'));
+  $('dashboard-pulse-attention-card')?.addEventListener('click', () => openTaskSurface('attention'));
+  $('dashboard-pulse-artifacts-card')?.addEventListener('click', () => openTaskSurface());
   $('dashboard-pulse-workers-card')?.addEventListener('click', () => openAccountTab('devices'));
   installHomeButton();
   mountMobileNavigation();
@@ -501,11 +662,13 @@ function renderRecentWork() {
   if (!host) return;
   host.replaceChildren();
   const projects = Array.isArray(state.control?.projects) ? [...state.control.projects] : [];
+  const workers = Array.isArray(state.control?.workers) ? state.control.workers : [];
   const tasks = Array.isArray(state.control?.tasks) ? [...state.control.tasks].sort(compareRecent) : [];
   const items = [];
   for (const task of tasks.slice(0, 4)) {
     const project = projects.find((entry) => entry.projectId === task.projectId);
-    items.push({ title: safeText(task.goal, 'งานใน AWH'), meta: [safeText(project?.name, 'โปรเจกต์'), STATUS_LABELS[task.state] || 'อัปเดตแล้ว', executionPlace(task)].filter(Boolean).join(' · '), date: formatDate(task.updatedAt || task.createdAt), action: () => navigateWork(task.projectId, task.conversationId || null) });
+    const status = executionStatus(task, workers);
+    items.push({ title: safeText(task.goal, 'งานใน AWH'), meta: [safeText(project?.name, 'โปรเจกต์'), status.title, status.actor].filter(Boolean).join(' · '), date: formatDate(task.updatedAt || task.createdAt), action: () => openTaskSurface('all', task.taskId) });
   }
   if (!items.length) {
     for (const project of projects.slice(0, 4)) items.push({ title: safeText(project.name, 'โปรเจกต์'), meta: project.memoryReady === true ? 'Memory พร้อม · โปรเจกต์ของฉัน' : 'โปรเจกต์ของฉัน', date: '', action: () => navigateWork(project.projectId) });
@@ -551,7 +714,7 @@ function renderTaskStatus() {
     const ready = document.createElement('div'); ready.className = 'awh-ready-state'; ready.textContent = '✓ ไม่มีงานค้าง · พร้อมรับงานใหม่'; host.append(ready);
   } else {
     for (const task of tasks) {
-      const row = document.createElement('div'); row.className = 'awh-status-item';
+      const row = button('', 'awh-status-item awh-status-item-button', () => openTaskSurface('all', task.taskId));
       const dot = document.createElement('span'); dot.className = 'awh-status-dot';
       const text = document.createElement('span');
       const title = document.createElement('strong'); title.textContent = safeText(task.goal, 'งาน AWH');
@@ -606,6 +769,7 @@ async function refreshDashboard() {
   renderRecentWork();
   renderTaskStatus();
   renderArtifacts();
+  renderTaskSurface();
 }
 
 async function syncSurface() {
