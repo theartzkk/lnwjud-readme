@@ -137,6 +137,44 @@ function workspaceSummary(workspace) {
   return 'AWH จะจำ Project, Chat และสถานะงานให้เมื่อเริ่มทำงาน';
 }
 
+function pulseAttentionItems() {
+  const tasks = Array.isArray(state.control?.tasks) ? state.control.tasks : [];
+  const approvals = Array.isArray(state.control?.approvals) ? state.control.approvals : [];
+  return {
+    failed: tasks.filter((task) => task?.state === 'FAILED').length,
+    approvals: approvals.filter((item) => ['PENDING', 'WAITING'].includes(item?.state || item?.status)).length,
+  };
+}
+
+function renderHomePulse() {
+  const control = state.control;
+  const set = (id, value, detail) => {
+    const valueNode = $(id);
+    if (valueNode) valueNode.textContent = value;
+    const detailNode = $(`${id}-detail`);
+    if (detailNode) detailNode.textContent = detail;
+  };
+  if (!control) return;
+  const projects = Array.isArray(control.projects) ? control.projects : [];
+  const tasks = Array.isArray(control.tasks) ? control.tasks : [];
+  const artifacts = Array.isArray(control.artifacts) ? control.artifacts : [];
+  const active = tasks.filter((task) => ACTIVE_STATES.has(task?.state)).length;
+  const attention = pulseAttentionItems();
+  const attentionCount = attention.failed + attention.approvals;
+  set('dashboard-pulse-projects', String(projects.length), projects.length ? 'พร้อมเปิดดูบริบทและงานต่อ' : 'เพิ่มโปรเจกต์เพื่อเริ่มงาน');
+  set('dashboard-pulse-active', String(active), active ? 'AWH กำลังจัดการงานของคุณ' : 'ไม่มีงานค้างในขณะนี้');
+  set('dashboard-pulse-artifacts', String(artifacts.length), artifacts.length ? 'เปิดดูผลงานล่าสุดได้ด้านล่าง' : 'ผลงานที่เสร็จแล้วจะมาอยู่ตรงนี้');
+  set('dashboard-pulse-attention', String(attentionCount), attentionCount ? `${attention.approvals} รออนุมัติ · ${attention.failed} ต้องตรวจสอบ` : 'ไม่มีรายการที่ต้องดู');
+
+  const workerCard = $('dashboard-pulse-workers-card');
+  if (workerCard) {
+    const workers = Array.isArray(control.workers) ? control.workers : [];
+    const ready = workers.filter((worker) => ['READY', 'WORKING'].includes(worker?.state)).length;
+    workerCard.hidden = control.role !== 'OWNER';
+    set('dashboard-pulse-workers', String(ready), workers.length ? `${ready} จาก ${workers.length} เครื่องพร้อมรับงาน` : 'ยังไม่มีอุปกรณ์ที่เชื่อมต่อ');
+  }
+}
+
 function returnHome() {
   if (!state.control?.authenticated) return;
   const dashboard = $(DASHBOARD_ID);
@@ -227,6 +265,11 @@ function mountDashboard() {
   continuity.className = 'awh-home-section awh-continuity';
   continuity.innerHTML = '<div class="awh-section-heading"><div><span>ทำต่อจากเดิม</span><h2>กลับมาทำงานได้ทันที</h2></div><small id="dashboard-continuity-memory">AWH จำบริบทของงานให้</small></div><div class="awh-continuity-card"><div class="awh-continuity-copy"><span id="dashboard-continuity-project" class="awh-context-chip">Project</span><h3 id="dashboard-continuity-title">กำลังเตรียมงานล่าสุด…</h3><p id="dashboard-continuity-summary">AWH กำลังเชื่อมงานล่าสุดกับ Dashboard</p><div id="dashboard-continuity-meta" class="awh-context-meta"></div></div><div class="awh-continuity-actions"><button id="dashboard-continue-work" class="awh-command-send" type="button">ทำงานต่อ</button><button id="dashboard-open-chats" class="awh-secondary-action" type="button">Multi Chat</button></div></div>';
 
+  const pulse = document.createElement('section');
+  pulse.id = 'dashboard-pulse';
+  pulse.className = 'awh-home-section awh-pulse';
+  pulse.innerHTML = '<div class="awh-section-heading"><div><span>ภาพรวมตอนนี้</span><h2>รู้ทันงานในไม่กี่วินาที</h2></div><small>ข้อมูลล่าสุดจาก AWH · กดการ์ดเพื่อไปต่อ</small></div><div class="awh-pulse-grid"><button id="dashboard-pulse-projects-card" class="awh-pulse-card" type="button" data-pulse-target="projects"><span class="awh-pulse-icon">◫</span><span><strong id="dashboard-pulse-projects">—</strong><small>โปรเจกต์</small><em id="dashboard-pulse-projects-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-active-card" class="awh-pulse-card" type="button" data-pulse-target="work"><span class="awh-pulse-icon">↻</span><span><strong id="dashboard-pulse-active">—</strong><small>กำลังทำอยู่</small><em id="dashboard-pulse-active-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-artifacts-card" class="awh-pulse-card" type="button" data-pulse-target="files"><span class="awh-pulse-icon">▤</span><span><strong id="dashboard-pulse-artifacts">—</strong><small>ผลลัพธ์</small><em id="dashboard-pulse-artifacts-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-attention-card" class="awh-pulse-card attention" type="button" data-pulse-target="work"><span class="awh-pulse-icon">!</span><span><strong id="dashboard-pulse-attention">—</strong><small>ต้องดู</small><em id="dashboard-pulse-attention-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-workers-card" class="awh-pulse-card owner-pulse" type="button" data-pulse-target="devices" hidden><span class="awh-pulse-icon">◇</span><span><strong id="dashboard-pulse-workers">—</strong><small>อุปกรณ์พร้อม</small><em id="dashboard-pulse-workers-detail">กำลังตรวจข้อมูล…</em></span></button></div>';
+
   const tools = document.createElement('section');
   tools.id = 'awh-home-tools';
   tools.className = 'awh-home-section';
@@ -274,7 +317,7 @@ function mountDashboard() {
   owner.append(ownerGrid);
 
   const imageTool = createImageTool();
-  dashboard.append(hero, continuity, tools, overview, files, owner, imageTool);
+  dashboard.append(hero, continuity, pulse, tools, overview, files, owner, imageTool);
   mountWelcome(dashboard);
   mountSchoolTools(dashboard);
   main.append(dashboard);
@@ -282,6 +325,11 @@ function mountDashboard() {
   $('dashboard-open-work')?.addEventListener('click', () => openWork());
   $('dashboard-continue-work')?.addEventListener('click', () => { const context = state.workContext; const projectId = context?.project?.projectId; if (projectId) navigateWork(projectId, context?.conversation?.conversationId || null); else openWork(); });
   $('dashboard-open-chats')?.addEventListener('click', () => { const context = state.workContext; const projectId = context?.project?.projectId; if (projectId) navigateWork(projectId, context?.conversation?.conversationId || null, true); else { openWork(); window.setTimeout(() => $('conversation-open')?.click(), 0); } });
+  $('dashboard-pulse-projects-card')?.addEventListener('click', () => { openWork(); window.setTimeout(() => $('project-open')?.click(), 0); });
+  $('dashboard-pulse-active-card')?.addEventListener('click', () => openWork());
+  $('dashboard-pulse-attention-card')?.addEventListener('click', () => openWork());
+  $('dashboard-pulse-artifacts-card')?.addEventListener('click', () => $('awh-home-files')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  $('dashboard-pulse-workers-card')?.addEventListener('click', () => openAccountTab('devices'));
   installHomeButton();
   mountMobileNavigation();
   state.mounted = true;
@@ -553,6 +601,7 @@ async function refreshDashboard() {
   const control = await loadControlData();
   state.control = control;
   renderRole();
+  renderHomePulse();
   renderContinuity();
   renderRecentWork();
   renderTaskStatus();

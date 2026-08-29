@@ -8,8 +8,34 @@
 .awh-execution-step.active { opacity: 1; font-weight: 700; }
 .awh-execution-step.halted { opacity: .82; font-weight: 700; }
 
+/* P1-A Home pulse: a compact, real-data overview before the deeper surfaces. */
+.awh-pulse { scroll-margin-top: 18px; }
+.awh-pulse-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.awh-pulse-card { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr); gap: 11px; align-items: start; min-height: 104px; padding: 15px; border: 1px solid rgba(255,255,255,.075); border-radius: 18px; background: #14171c; color: #eef1f5; text-align: left; font: inherit; cursor: pointer; }
+.awh-pulse-card:hover, .awh-pulse-card:focus-visible { border-color: rgba(255,122,26,.42); background: #191b20; outline: none; }
+.awh-pulse-card:focus-visible { box-shadow: 0 0 0 3px rgba(255,122,26,.16); }
+.awh-pulse-card.attention { border-color: rgba(241,194,103,.17); }
+.awh-pulse-card.owner-pulse { border-color: rgba(111,166,255,.16); }
+.awh-pulse-icon { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 11px; background: rgba(255,122,26,.11); color: var(--accent,#ff7a1a); font-size: 15px; font-weight: 900; }
+.awh-pulse-card.attention .awh-pulse-icon { background: rgba(241,194,103,.11); color: #f1c267; }
+.awh-pulse-card.owner-pulse .awh-pulse-icon { background: rgba(111,166,255,.1); color: #8bb7ff; }
+.awh-pulse-card > span:last-child { display: grid; min-width: 0; gap: 3px; }
+.awh-pulse-card strong, .awh-pulse-card small, .awh-pulse-card em { overflow-wrap: anywhere; }
+.awh-pulse-card strong { color: #f4f6f8; font-size: 23px; line-height: 1; }
+.awh-pulse-card small { color: #d1d6dd; font-size: 12px; font-weight: 750; }
+.awh-pulse-card em { min-height: 2.7em; color: #858e9a; font-size: 10px; font-style: normal; line-height: 1.35; }
+
 /* Canonical AWH Home + mobile navigation. These classes are part of the base dashboard, not an overlay layer. */
 .awh-home-welcome{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 14px;padding:2px 2px 0}.awh-home-welcome>span:first-child{display:grid;gap:2px}.awh-home-welcome small{color:#737d89;font-size:10px;font-weight:800;letter-spacing:.13em}.awh-home-welcome strong{color:#eef1f5;font-size:15px}.awh-cloud-chip{display:inline-flex;align-items:center;gap:7px;color:#9ea7b2;font-size:11px}.awh-cloud-chip i{width:7px;height:7px;border-radius:50%;background:#63d99a;box-shadow:0 0 10px rgba(99,217,154,.4)}
 .awh-home-prompts{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.awh-home-prompt{min-height:34px;border:1px solid rgba(255,255,255,.075);border-radius:999px;padding:6px 11px;background:#14181d;color:#aeb6c0;font:inherit;font-size:11px;font-weight:700;cursor:pointer}.awh-home-prompt:hover{border-color:rgba(255,122,26,.25);color:#f0f2f5;background:rgba(255,122,26,.05)}
 .awh-mobile-nav{display:none}.awh-mobile-nav-item{border:0;background:transparent;color:#9aa2ad;font:inherit;cursor:pointer}.awh-mobile-nav-item.is-active{color:#ff9950}
 @media(max-width:760px){body{padding-bottom:calc(76px + env(safe-area-inset-bottom))}.product-dashboard{width:calc(100% - 20px);padding-top:12px;padding-bottom:90px}.awh-home-welcome{margin-bottom:10px}.awh-home-welcome strong{font-size:14px}.awh-cloud-chip{font-size:10px}.awh-home-hero{padding:22px 15px 17px;border-radius:20px}.awh-home-hero h1{font-size:31px}.awh-home-hero>p{margin:11px 0 18px;font-size:14px;line-height:1.5}.awh-command-form{padding:9px;border-radius:18px}.awh-command-form textarea{min-height:96px;font-size:16px}.awh-command-actions{align-items:center;flex-direction:row}.awh-command-actions>span{display:none}.awh-command-send{width:auto;min-height:40px;margin-left:auto}.awh-home-prompts{gap:6px;margin-top:11px}.awh-home-prompt{min-height:31px;padding:5px 9px;font-size:10px}.awh-home-section{scroll-margin-top:12px;margin-top:24px}.awh-tool-grid,.awh-owner-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.awh-tool-card{min-height:110px;padding:13px;border-radius:17px}.awh-tool-copy strong{font-size:13px}.awh-tool-copy small{font-size:10.5px}.awh-home-overview{grid-template-columns:1fr}.awh-side-panel{margin-top:10px}.awh-artifact-grid{grid-template-columns:1fr}.awh-mobile-nav{position:fixed;z-index:75;left:8px;right:8px;bottom:calc(7px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(5,minmax(0,1fr));min-height:64px;padding:6px;border:1px solid rgba(255,255,255,.085);border-radius:21px;background:rgba(17,20,24,.96);box-shadow:0 16px 50px rgba(0,0,0,.34);backdrop-filter:blur(18px)}.awh-mobile-nav-item{display:flex;min-width:0;align-items:center;justify-content:center;flex-direction:column;gap:3px;border-radius:15px;padding:5px 2px}.awh-mobile-nav-item span{font-size:16px;line-height:1}.awh-mobile-nav-item strong{font-size:9px;font-weight:700;white-space:nowrap}.awh-mobile-nav-item.is-active{background:rgba(255,122,26,.11)}.sheet{padding-bottom:calc(86px + env(safe-area-inset-bottom))}}
+
+@media(max-width:760px) {
+  .awh-pulse-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .awh-pulse-card { min-height: 98px; padding: 13px; }
+}
+@media(max-width:420px) {
+  .awh-pulse-grid { grid-template-columns: 1fr; }
+  .awh-pulse-card { min-height: 82px; grid-template-columns: 36px minmax(0, 1fr); }
+}
