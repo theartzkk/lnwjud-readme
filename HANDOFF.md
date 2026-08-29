@@ -1,3 +1,11 @@
+# Authoritative supersession — 2026-08-30 Product completion candidate / Web-Desktop parity
+
+- Source candidate `awh/api-independence` is `533185e`; it is not deployed. ReadyIDC remains read-only verified at Control/Web `m16-06a7277063f8`, DB16/integrity/FK PASS, Nginx/PHP-FPM/native executor/backup active.
+- The candidate consolidates Web/Desktop visual tokens and product terminology, adds Desktop Home command + Tasks/Executions, adds Web product navigation with active states, hardens PWA asset caching, and enriches the existing Owner Infrastructure activity projection with a truthful non-persisted Morning Brief snapshot.
+- Automated evidence: `npm test` 320 PASS / 0 FAIL / 1 platform SKIP; Hub supported fixtures PASS; typecheck/build/web CONTROL build/Desktop smoke/diff check PASS. Screenshot-level Web/Desktop/iPhone parity remains MANUAL UAT REQUIRED because browser screenshot tooling is unavailable in this run; Desktop smoke is DOM/runtime evidence, not a visual sign-off.
+
+Next action: push/review the exact candidate if source delivery is authorized, then perform real browser/iPhone/AI field UAT and request one exact-SHA Production approval. Do not activate Production or claim 15-of-15 completion from this candidate alone.
+
 # Authoritative supersession — 2026-08-30 Source/Production reconciliation
 
 - Canonical source `awh/api-independence` is clean and pushed at exact SHA `74556a1951fe51f2ca95326b25148b690695bfb5`; it fast-forwarded the production-forward `codex/finish-first-p0` history into the canonical line. Home command-center, Tasks/Executions, Files, provider boundary and Auto-Chain changes are now represented in the canonical source.

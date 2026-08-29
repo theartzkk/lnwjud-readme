@@ -1,3 +1,20 @@
+# Authoritative supersession — 2026-08-30 Product completion candidate
+
+## NOW
+
+- Candidate `533185e` aligns Web and Desktop around `web/awh-design-system.css`, shared navigation language, Home command entry and canonical Tasks/Executions. The existing Control/Infrastructure/Database/Trust authorities remain the only backend sources.
+- Owner Activity now carries task goal, project, phase/state, message/result and blocker metadata. Infrastructure also shows a clearly marked `SNAPSHOT_ONLY` Morning Brief; it is not presented as persisted or as an autonomous scheduler result.
+
+## VERIFIED
+
+- Full Node: `321 tests`, `320 PASS`, `0 FAIL`, `1 platform SKIP`.
+- Hub supported fixtures, typecheck, build, CONTROL web build, focused parity/infrastructure/desktop tests, Desktop smoke and diff check: PASS.
+- Production read-only: pointer `m16-06a7277063f8`, schema 16, integrity `ok`, FK `0`, Nginx/PHP-FPM/executor/backup active; no mutation.
+
+## OPEN
+
+- Web/Desktop rendered screenshot comparison, iPhone manual UAT, live AI/provider proof, exact-SHA deploy approval, school Document AI, generic managed-site hosting operations, persisted Morning Brief and storage cleanup/recovery proof remain open. Keep these as FAIL/REQUIRED rather than inventing PASS evidence.
+
 # Authoritative supersession — 2026-08-30 Source/Production reconciliation
 
 ## NOW

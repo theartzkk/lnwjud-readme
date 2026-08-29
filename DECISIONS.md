@@ -1,3 +1,10 @@
+# Authoritative supersession — 2026-08-30 Product completion candidate
+
+- Web and Desktop are one AWH product surface. Common visual tokens and semantic aliases belong in `web/awh-design-system.css`; platform-specific markup may adapt layout but must not introduce a competing palette or navigation vocabulary.
+- The canonical Tasks/Executions authority is reused on Desktop. Home command submission only transfers the command into the existing Work composer; it does not create a second task queue.
+- Owner Activity and Morning Brief are projections over existing task/event/artifact/health authorities. A brief without durable persistence or scheduler evidence must be labeled `SNAPSHOT_ONLY`; unknown recovery counts remain unknown, and absent progress is rendered as phase/state rather than `0%`.
+- Candidate `533185e` is source/QA-ready only. Production remains at `m16-06a7277063f8`; exact-SHA approval is required before any activation. Visual parity and iPhone behavior cannot be certified by source tests or Desktop DOM smoke alone.
+
 # Authoritative supersession — 2026-08-30 Source/Production reconciliation
 
 - The canonical branch must include the source line that Production actually runs. Because `codex/finish-first-p0` was a fast-forward descendant of `awh/api-independence` and ReadyIDC pointed to `m16-06a7277063f8`, the safe reconciliation was a fast-forward, not a duplicate implementation or a cherry-picked parallel authority.
