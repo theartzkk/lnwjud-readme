@@ -4,7 +4,7 @@
 
 - P1-A Home now has a compact real-data command-center pulse for projects, active work, results and attention. It is additive over the existing canonical control projections and gives each card an obvious next action.
 - Role-aware rule: device readiness is an Owner-only detail; teacher/staff Home remains outcome-first and does not expose runtime/provider controls. The cards are mobile-safe and keyboard-focusable.
-- Candidate is `codex/finish-first-p0` at `e39bd0ed9e95f161bf5b7aab46e38899b821f9e7`; focused `2/2` and full `313/0/1` source evidence passed. Browser/iPhone UAT, push/CI/review, Desktop enrollment and Production deployment remain open gates.
+- P1-A implementation is `e39bd0ed9e95f161bf5b7aab46e38899b821f9e7`; current candidate tip including durable docs is `94fbfb26dd964ea31b069002e811e86508ccea09` on `codex/finish-first-p0`. Focused `2/2` and full `313/0/1` source evidence passed. Browser/iPhone UAT, push/CI/review, Desktop enrollment and Production deployment remain open gates.
 
 ## Current verified checkpoint — 2026-08-29
 

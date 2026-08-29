@@ -4,7 +4,7 @@
 - Worker readiness is shown only to Owner and uses the existing `control.workers` projection. No endpoint, table, task queue, event database, mock data or second authority was added.
 - The pulse cards are keyboard-focusable buttons, use readable overflow behavior, and collapse from four columns to two/one at mobile breakpoints. A focused source regression and web preview build cover the new surface.
 - P1-A evidence: focused Home regression `2/2 PASS`; full product suite `313 PASS / 0 FAIL / 1 platform SKIP`; `npm run build` and `node --import tsx scripts/build-web-preview.ts --control` PASS. This is source/build evidence, not visual browser UAT.
-- Candidate source is `codex/finish-first-p0` at `e39bd0ed9e95f161bf5b7aab46e38899b821f9e7` and has not been pushed or deployed. P0 field proof remains blocked at `DEVICE_NOT_ENROLLED`, and the push/PR safety gate remains unresolved.
+- P1-A implementation is `e39bd0ed9e95f161bf5b7aab46e38899b821f9e7`; current candidate tip including the durable checkpoint docs is `94fbfb26dd964ea31b069002e811e86508ccea09`. It has not been pushed or deployed. P0 field proof remains blocked at `DEVICE_NOT_ENROLLED`, and the push/PR safety gate remains unresolved.
 
 ## Next action
 
