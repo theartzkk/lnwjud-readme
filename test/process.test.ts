@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import test from 'node:test';
-import { execFile, resolveExecutable, runPackageScript } from '../src/process.js';
+import { approvedProjectScript, execFile, resolveApprovedProjectInvocation, resolveExecutable, runPackageScript } from '../src/process.js';
 
 test('executable resolution returns an absolute PATH target', async () => {
   const nodePath = await resolveExecutable('node');
@@ -57,4 +57,14 @@ test('approved package script launcher works without free-form user commands', a
   const result = await runPackageScript(root, undefined, 'test');
   assert.equal(result.code, 0, result.stderr);
   assert.match(result.stdout, /ART_AGENT_SMOKE/);
+});
+
+
+test('approved QA operation ids map to fixed package scripts without free-form shell', async () => {
+  assert.equal(approvedProjectScript('qa-fast'), 'qa:fast');
+  assert.equal(approvedProjectScript('qa-local'), 'qa:local');
+  assert.equal(approvedProjectScript('qa-full'), 'qa:full');
+  const invocation = await resolveApprovedProjectInvocation(undefined, 'qa-fast');
+  assert.equal(invocation.args.includes('qa:fast'), true);
+  assert.equal(invocation.args.some((value) => /[;&|`$]/.test(value)), false);
 });

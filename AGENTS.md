@@ -19,3 +19,11 @@ Precedence:
 5. current source/device/runtime evidence
 
 Project-specific rules may be stricter but must not silently weaken the owner protocol.
+
+## Block-Free execution rule
+
+- Prefer typed/approved operations over free-form shell. For repository QA use `project_task_start` with `qa-fast`, `qa-local`, or `qa-full`, then poll task status/logs.
+- When only a terminal boundary is available, prefer the canonical short package scripts (`npm run qa:fast`, `npm run qa:local`, `npm run qa:full`, `npm run typecheck`, `npm run build`) instead of composing raw `node`, shell pipelines, or compound deploy commands.
+- A platform safety/security gate is terminal for that attempted action: never bypass, disguise, or blind-retry it. Decompose the work into supported typed actions, connected tools, or the reviewed deployment authority.
+- Long-running work must use start + poll/checkpoint semantics rather than one synchronous tool request.
+- Production mutation keeps its existing explicit approval, backup, exact-revision, and rollback requirements.
