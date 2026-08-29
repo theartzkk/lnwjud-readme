@@ -123,7 +123,7 @@ requireFile($release . '/hub/src/HubControlPlaneService.php', 'CONTROL_RELEASE_I
 requireFile($release . '/.awh-build/awh-source.zip', 'SOURCE_SNAPSHOT_MISSING');
 $webConfig = readJson($webSource . '/web-config.json', 'WEB_CONFIG_INVALID');
 $data = readJson($webSource . '/data.json', 'WEB_DATA_INVALID');
-if (($webConfig['mode'] ?? null) !== 'CONTROL' || ($data['mode'] ?? null) !== 'CONTROL') activateFail('WEB_MODE_INVALID');
+if (($webConfig['mode'] ?? null) !== 'CONTROL' || (($data['surface'] ?? null)['mode'] ?? null) !== 'CONTROL') activateFail('WEB_MODE_INVALID');
 if (str_contains((string) file_get_contents(requireFile($webSource . '/sw.js', 'WEB_SW_INVALID')), 'awh-shell-' . $releaseId) === false) activateFail('WEB_SW_RELEASE_MISMATCH');
 verifyWebManifest($webSource, $releaseId);
 verifyDatabase();
