@@ -13,7 +13,6 @@ require_once __DIR__ . '/HubStorageGovernanceService.php';
  */
 final class HubStaffOperationsService
 {
-    private const VPS_CAPABILITIES = ['agent.conversation', 'project.read', 'project.search', 'project.mutate.text', 'project.mutate.assisted'];
     private const STAFF_ROLES = ['SRE / Operations', 'Storage / Housekeeping', 'Database Steward', 'Release Guardian', 'Recovery', 'Security', 'AI Provider Ops', 'Performance / Capacity', 'Cost', 'Product / UX backlog'];
 
     public function __construct(private readonly PDO $pdo, private readonly string $databasePath, ?HubStorageGovernanceService $storage = null)

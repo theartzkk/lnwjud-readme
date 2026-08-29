@@ -20,7 +20,7 @@ supervisor_assert($eligible->invoke($service, ['last_error_code'=>'PROVIDER_UNAV
 $serviceSource = file_get_contents(dirname(__DIR__) . '/src/HubDurableExecutionService.php');
 $executorSource = file_get_contents(dirname(__DIR__) . '/bin/awh-native-executor.php');
 supervisor_assert(is_string($serviceSource) && str_contains($serviceSource, 'public function runBatch'), 'bounded batch API is required');
-supervisor_assert(is_string($serviceSource) && str_contains($serviceSource, "'recovered' => $recovered"), 'batch must report bounded lease recovery');
+supervisor_assert(is_string($serviceSource) && str_contains($serviceSource, "'recovered' => ".'$recovered'), 'batch must report bounded lease recovery');
 supervisor_assert(substr_count($serviceSource, 'control_task_executions') > 0 && !str_contains($serviceSource, 'CREATE TABLE'), 'supervisor must reuse canonical execution authority');
 supervisor_assert(str_contains($serviceSource, 'LIMIT 25') && str_contains($serviceSource, 'retryEligible'), 'claim must skip temporarily ineligible retries without blocking later work');
 supervisor_assert(str_contains($serviceSource, "expired execution lease recovered; bounded retry delayed"), 'stale lease recovery must update canonical task truthfully');
