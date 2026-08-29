@@ -15,6 +15,7 @@ const state = {
   workContext: null,
   taskFilter: 'all',
   selectedTaskId: null,
+  filesQuery: '',
 };
 
 const $ = (id) => document.getElementById(id);
@@ -117,14 +118,17 @@ function setDashboardView(view) {
   const dashboard = $(DASHBOARD_ID);
   if (!dashboard) return;
   const taskSurface = $('dashboard-tasks');
+  const filesSurface = $('dashboard-files');
   const homeIds = ['dashboard-welcome', 'dashboard-hero', 'dashboard-continuity', 'dashboard-pulse', 'awh-home-tools', 'dashboard-overview', 'awh-home-files', 'dashboard-owner-center'];
   const showingTasks = view === 'tasks';
+  const showingFiles = view === 'files';
   for (const id of homeIds) {
     const node = $(id);
-    if (node) node.hidden = showingTasks;
+    if (node) node.hidden = showingTasks || showingFiles;
   }
   if (taskSurface) taskSurface.hidden = !showingTasks;
-  dashboard.dataset.view = showingTasks ? 'tasks' : 'home';
+  if (filesSurface) filesSurface.hidden = !showingFiles;
+  dashboard.dataset.view = showingTasks ? 'tasks' : showingFiles ? 'files' : 'home';
 }
 
 function openWork(prompt = '', submit = false) {
@@ -335,6 +339,53 @@ function openTaskSurface(filter = 'all', taskId = null) {
   $('dashboard-tasks')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+function renderFilesSurface() {
+  const list = $('dashboard-file-list');
+  const count = $('dashboard-file-count');
+  if (!list) return;
+  const projects = Array.isArray(state.control?.projects) ? state.control.projects : [];
+  const tasks = Array.isArray(state.control?.tasks) ? state.control.tasks : [];
+  const artifacts = (Array.isArray(state.control?.artifacts) ? [...state.control.artifacts] : []).sort(compareRecent);
+  const query = state.filesQuery.trim().toLocaleLowerCase('th-TH');
+  const filtered = query ? artifacts.filter((artifact) => [artifact?.name, artifact?.kind].some((value) => safeText(value).toLocaleLowerCase('th-TH').includes(query))) : artifacts;
+  if (count) count.textContent = `${filtered.length} จาก ${artifacts.length} ไฟล์`;
+  const input = $('dashboard-files-search');
+  if (input instanceof HTMLInputElement && input.value !== state.filesQuery) input.value = state.filesQuery;
+  list.replaceChildren();
+  if (!filtered.length) {
+    const empty = document.createElement('div'); empty.className = 'awh-empty-card';
+    empty.textContent = artifacts.length ? 'ไม่พบไฟล์ที่ตรงกับคำค้น' : 'ยังไม่มีไฟล์ผลลัพธ์ที่บันทึกไว้ ลองส่งงานหรือใช้เครื่องมือบน Home';
+    list.append(empty); return;
+  }
+  for (const artifact of filtered) {
+    const project = projects.find((entry) => entry.projectId === artifact.projectId);
+    const task = tasks.find((entry) => entry.taskId === artifact.taskId);
+    const row = document.createElement('article'); row.className = 'awh-file-item';
+    const icon = document.createElement('span'); icon.className = 'awh-file-icon'; icon.textContent = '▤'; icon.setAttribute('aria-hidden', 'true');
+    const copy = document.createElement('span'); copy.className = 'awh-file-copy';
+    const name = document.createElement('strong'); name.textContent = safeText(artifact.name, 'ไฟล์จาก AWH');
+    const meta = document.createElement('small'); meta.textContent = [safeText(artifact.kind, 'ไฟล์'), safeText(project?.name, 'โปรเจกต์'), formatBytes(Number(artifact.sizeBytes)), formatDate(artifact.createdAt)].filter(Boolean).join(' · ');
+    copy.append(name, meta);
+    if (task?.goal) { const source = document.createElement('em'); source.textContent = `จากงาน: ${safeText(task.goal)}`; copy.append(source); }
+    const actions = document.createElement('span'); actions.className = 'awh-file-actions';
+    const url = safeArtifactDownloadUrl(artifact.downloadUrl);
+    if (url) { const link = document.createElement('a'); link.href = url; link.download = safeText(artifact.name, 'awh-artifact'); link.textContent = 'ดาวน์โหลด'; actions.append(link); }
+    if (task?.conversationId) actions.append(button('เปิดงาน', 'awh-file-open-task', () => navigateWork(task.projectId, task.conversationId)));
+    row.append(icon, copy, actions); list.append(row);
+  }
+}
+
+function openFilesSurface(query = '') {
+  if (!state.control?.authenticated) return;
+  state.filesQuery = typeof query === 'string' ? query.slice(0, 120) : '';
+  setDashboardView('files');
+  const dashboard = $(DASHBOARD_ID);
+  if (dashboard) dashboard.hidden = false;
+  document.body.classList.add('product-dashboard-active');
+  renderFilesSurface();
+  $('dashboard-files')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function openAccountTab(tab = null) {
   $('account-open')?.click();
   if (!tab) return;
@@ -427,6 +478,12 @@ function mountDashboard() {
   taskSurface.hidden = true;
   taskSurface.innerHTML = '<div class="awh-task-surface-header"><div><span>งานและการดำเนินการ</span><h2>ติดตามงานแบบเข้าใจง่าย</h2><p>ดูสถานะจริงของงาน ผลลัพธ์ และสิ่งที่ต้องทำต่อจากข้อมูล AWH</p></div><button id="dashboard-tasks-close" class="awh-secondary-action" type="button">กลับหน้าแรก</button></div><div class="awh-task-toolbar"><div class="awh-task-filters" role="tablist" aria-label="กรองงาน"><button type="button" class="awh-task-filter active" data-task-filter="all" role="tab" aria-selected="true">ทั้งหมด</button><button type="button" class="awh-task-filter" data-task-filter="active" role="tab" aria-selected="false">กำลังทำ</button><button type="button" class="awh-task-filter" data-task-filter="attention" role="tab" aria-selected="false">ต้องดู</button><button type="button" class="awh-task-filter" data-task-filter="completed" role="tab" aria-selected="false">เสร็จแล้ว</button></div><small id="dashboard-task-count" aria-live="polite">กำลังอ่านข้อมูล…</small></div><div class="awh-task-layout"><div id="dashboard-task-list" class="awh-task-list" role="list" aria-label="รายการงาน"></div><article id="dashboard-task-detail" class="awh-task-detail" aria-live="polite"></article></div>';
 
+  const filesSurface = document.createElement('section');
+  filesSurface.id = 'dashboard-files';
+  filesSurface.className = 'awh-home-section awh-files-surface';
+  filesSurface.hidden = true;
+  filesSurface.innerHTML = '<div class="awh-task-surface-header"><div><span>ไฟล์และผลงาน</span><h2>คลังไฟล์ของ AWH</h2><p>ไฟล์ที่อัปโหลดหรือสร้างจากงานของคุณ พร้อมที่มาและผลลัพธ์ที่ดาวน์โหลดได้</p></div><button id="dashboard-files-close" class="awh-secondary-action" type="button">กลับหน้าแรก</button></div><form id="dashboard-files-form" class="awh-files-search"><label for="dashboard-files-search">ค้นหาไฟล์</label><div><input id="dashboard-files-search" type="search" maxlength="120" placeholder="ค้นหาจากชื่อหรือประเภทไฟล์" autocomplete="off" /><button class="awh-secondary-action" type="submit">ค้นหา</button><button id="dashboard-files-clear" class="awh-text-action" type="button">ล้าง</button></div><small id="dashboard-file-count" aria-live="polite">กำลังอ่านข้อมูล…</small></form><div id="dashboard-file-list" class="awh-file-list" role="list" aria-label="คลังไฟล์"></div>';
+
   const tools = document.createElement('section');
   tools.id = 'awh-home-tools';
   tools.className = 'awh-home-section';
@@ -454,7 +511,7 @@ function mountDashboard() {
   const files = document.createElement('section');
   files.id = 'awh-home-files';
   files.className = 'awh-home-section';
-  files.innerHTML = '<div class="awh-section-heading"><div><span>ไฟล์และผลงาน</span><h2>ล่าสุด</h2></div></div><div id="dashboard-artifacts" class="awh-artifact-grid"></div>';
+  files.innerHTML = '<div class="awh-section-heading"><div><span>ไฟล์และผลงาน</span><h2>ล่าสุด</h2></div><button id="dashboard-open-files" class="awh-text-action" type="button">เปิดคลังไฟล์</button></div><div id="dashboard-artifacts" class="awh-artifact-grid"></div>';
 
   const owner = document.createElement('section');
   owner.id = 'dashboard-owner-center';
@@ -475,7 +532,7 @@ function mountDashboard() {
   owner.append(ownerGrid);
 
   const imageTool = createImageTool();
-  dashboard.append(hero, continuity, pulse, taskSurface, tools, overview, files, owner, imageTool);
+  dashboard.append(hero, continuity, pulse, taskSurface, filesSurface, tools, overview, files, owner, imageTool);
   mountWelcome(dashboard);
   mountSchoolTools(dashboard);
   main.append(dashboard);
@@ -484,12 +541,16 @@ function mountDashboard() {
   $('dashboard-open-tasks')?.addEventListener('click', () => openTaskSurface());
   $('dashboard-tasks-close')?.addEventListener('click', returnHome);
   taskSurface.querySelectorAll('[data-task-filter]').forEach((node) => node.addEventListener('click', () => { state.taskFilter = node.dataset.taskFilter || 'all'; state.selectedTaskId = null; renderTaskSurface(); }));
+  $('dashboard-open-files')?.addEventListener('click', () => openFilesSurface());
+  $('dashboard-files-close')?.addEventListener('click', returnHome);
+  $('dashboard-files-form')?.addEventListener('submit', (event) => { event.preventDefault(); state.filesQuery = $('dashboard-files-search')?.value || ''; renderFilesSurface(); });
+  $('dashboard-files-clear')?.addEventListener('click', () => { state.filesQuery = ''; renderFilesSurface(); $('dashboard-files-search')?.focus(); });
   $('dashboard-continue-work')?.addEventListener('click', () => { const context = state.workContext; const projectId = context?.project?.projectId; if (projectId) navigateWork(projectId, context?.conversation?.conversationId || null); else openWork(); });
   $('dashboard-open-chats')?.addEventListener('click', () => { const context = state.workContext; const projectId = context?.project?.projectId; if (projectId) navigateWork(projectId, context?.conversation?.conversationId || null, true); else { openWork(); window.setTimeout(() => $('conversation-open')?.click(), 0); } });
   $('dashboard-pulse-projects-card')?.addEventListener('click', () => { openWork(); window.setTimeout(() => $('project-open')?.click(), 0); });
   $('dashboard-pulse-active-card')?.addEventListener('click', () => openTaskSurface('active'));
   $('dashboard-pulse-attention-card')?.addEventListener('click', () => openTaskSurface('attention'));
-  $('dashboard-pulse-artifacts-card')?.addEventListener('click', () => openTaskSurface());
+  $('dashboard-pulse-artifacts-card')?.addEventListener('click', () => openFilesSurface());
   $('dashboard-pulse-workers-card')?.addEventListener('click', () => openAccountTab('devices'));
   installHomeButton();
   mountMobileNavigation();
@@ -745,7 +806,7 @@ function renderArtifacts() {
     const empty = document.createElement('div'); empty.className = 'awh-empty-card'; empty.textContent = 'ผลงานและไฟล์ที่ AWH สร้างจะกลับมาอยู่ตรงนี้'; host.append(empty); return;
   }
   for (const artifact of artifacts) {
-    const card = document.createElement('div'); card.className = 'awh-artifact-card';
+    const card = button('', 'awh-artifact-card awh-artifact-card-button', () => openFilesSurface(artifact.name || ''));
     const icon = document.createElement('span'); icon.textContent = '▤';
     const copy = document.createElement('span');
     const title = document.createElement('strong'); title.textContent = safeText(artifact.name || artifact.displayName || artifact.filename, 'ผลงานจาก AWH');
@@ -770,6 +831,7 @@ async function refreshDashboard() {
   renderTaskStatus();
   renderArtifacts();
   renderTaskSurface();
+  renderFilesSurface();
 }
 
 async function syncSurface() {
