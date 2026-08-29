@@ -1,3 +1,13 @@
+# Art’s Workspace Hub — current checkpoint — 2026-08-30
+
+- Production is currently exact SHA `06a7277063f891d0d29ad5bdbed7db7541dbb807` via typed M16 release `m16-06a7277063f8`; schema 16, integrity/FK, backup, Control/Web, Nginx/PHP-FPM and worker readiness were verified after activation.
+- The latest real field proof still fails closed at `AUTOCHAIN_FIELD_TIMEOUT` with read-only task metadata `PROVIDER_FAILED`. The current shared-boundary diagnosis is that provider-facing Project Vault/workspace reads can exceed the native agent's 64 KiB serialized tool-result limit even though the internal Vault contract allows 256 KiB.
+- The uncommitted three-file repair adds one provider-facing 24 KiB UTF-8-safe read boundary and routes inspection, continuation and assisted-edit reads through it, with a JSON-size regression. Focused tests, typecheck, serial full Node tests and build pass; no new candidate SHA exists and no new Production deployment is authorized yet.
+
+## Next
+
+Review, commit, push and CI-verify the repair; run read-only M16 readiness/dry-run; request fresh exact-SHA approval before any Production refresh. Then rerun the real field proof and continue remaining UAT, smoke and completion gates without treating source/CI evidence as field proof.
+
 # Authoritative supersession — 2026-08-29 Auto-Chain provider request contract
 
 - Current Production is exact SHA `903d128f9b6160e011936b681a69656789b45a09`, activated through the typed M16 authority with schema 16, integrity/FK, backup, Nginx/PHP-FPM and worker health verified. This is the runtime truth; the new source candidate is not deployed.

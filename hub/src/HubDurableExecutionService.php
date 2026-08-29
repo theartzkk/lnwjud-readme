@@ -305,7 +305,7 @@ final class HubDurableExecutionService
                 }
                 if ($name === 'project_read_text') {
                     $path = $arguments['path'] ?? null; if (!is_string($path)) throw new HubDurableExecutionException('Native tool input is invalid', 'EXECUTION_INVALID');
-                    $read = $this->vaults->vault()->readText($project, $revision, $path); $content = (string) ($read['content'] ?? '');
+                    $read = $this->vaults->vault()->toolReadText($project, $revision, $path); $content = (string) ($read['content'] ?? '');
                     $evidence['reads'][] = ['path' => (string) ($read['path'] ?? $path), 'sizeBytes' => strlen($content), 'sha256' => hash('sha256', $content), 'lineCount' => substr_count($content, "\n") + 1]; return $read;
                 }
                 throw new HubDurableExecutionException('Native tool is forbidden', 'EXECUTION_INVALID');
@@ -351,7 +351,7 @@ final class HubDurableExecutionService
         $request = "Choose exactly one largest safe coherent NEXT milestone for this project after the completed work. Return exactly one line: NEXT: <goal> or STOP: <reason>. Never request production deployment, destructive/data changes, billing, permission, credential/secret changes, or bypass approval. Prefer ReadyIDC/VPS-safe reversible source work and reuse existing authorities. Do not repeat the completed goal.";
         $context = ['completedGoal'=>(string)$claimed['goal'],'completedSummary'=>function_exists('mb_substr')?mb_substr($summary,0,3000):substr($summary,0,3000),'sourceTruth'=>$memory];
         $tools = [['type'=>'function','name'=>'project_read_text','description'=>'Read one bounded text file from the immutable canonical Project Vault. Read-only.','parameters'=>['type'=>'object','additionalProperties'=>false,'properties'=>['path'=>['type'=>'string','maxLength'=>900]],'required'=>['path']]]];
-        try { $result = $this->agent->respondWithTools((string)$claimed['user_id'],$projectId,null,null,$request,[],[],$context,$tools,function(string $name,array $arguments) use($projectId,$revision): array { if ($name !== 'project_read_text' || !is_string($arguments['path'] ?? null)) throw new HubDurableExecutionException('Continuous planner tool input is invalid','EXECUTION_INVALID'); return $this->vaults->vault()->readText($projectId,$revision,(string)$arguments['path']); },$at,['executionId'=>(string)$claimed['execution_id'],'taskId'=>(string)$claimed['task_id'],'capability'=>'project.read','dataClassification'=>'INTERNAL','retryCount'=>(int)$claimed['attempt_count'],'routingPolicyVersion'=>'m16-v1','promptPolicyVersion'=>'continuous-v1','toolPolicyVersion'=>'read-only-v1']); }
+        try { $result = $this->agent->respondWithTools((string)$claimed['user_id'],$projectId,null,null,$request,[],[],$context,$tools,function(string $name,array $arguments) use($projectId,$revision): array { if ($name !== 'project_read_text' || !is_string($arguments['path'] ?? null)) throw new HubDurableExecutionException('Continuous planner tool input is invalid','EXECUTION_INVALID'); return $this->vaults->vault()->toolReadText($projectId,$revision,(string)$arguments['path']); },$at,['executionId'=>(string)$claimed['execution_id'],'taskId'=>(string)$claimed['task_id'],'capability'=>'project.read','dataClassification'=>'INTERNAL','retryCount'=>(int)$claimed['attempt_count'],'routingPolicyVersion'=>'m16-v1','promptPolicyVersion'=>'continuous-v1','toolPolicyVersion'=>'read-only-v1']); }
         catch (Throwable) { return null; }
         $text = trim((string)($result['summary'] ?? ''));
         if (preg_match('/^NEXT:\s*(.{8,2000})$/us', $text, $m) !== 1) return null;
@@ -595,9 +595,11 @@ final class HubDurableExecutionService
         $path = $this->vaults->vault()->toolTextPath($relativePath); $file = $workspace . '/' . $path;
         if (!is_file($file) || is_link($file) || !is_readable($file)) throw new HubDurableExecutionException('Candidate workspace file was not found', 'PROJECT_FILE_NOT_FOUND');
         $size = @filesize($file); if (!is_int($size) || $size > HubProjectVault::MAX_FILE_READ_BYTES) throw new HubDurableExecutionException('Candidate workspace file is too large to read safely', 'WAITING_FOR_CAPABILITY');
-        $content = @file_get_contents($file);
-        if (!is_string($content) || strlen($content) > HubProjectVault::MAX_FILE_READ_BYTES || str_contains($content, "\0")) throw new HubDurableExecutionException('Candidate workspace file is not readable text', 'WAITING_FOR_CAPABILITY');
-        return ['path' => $path, 'content' => $content, 'truncated' => false];
+        $content = @file_get_contents($file, false, null, 0, HubProjectVault::MAX_TOOL_READ_BYTES + 1);
+        if (!is_string($content)) throw new HubDurableExecutionException('Candidate workspace file is not readable text', 'WAITING_FOR_CAPABILITY');
+        $bounded = HubProjectVault::boundedToolText($content);
+        if ($bounded === null) throw new HubDurableExecutionException('Candidate workspace file is not readable text', 'WAITING_FOR_CAPABILITY');
+        return ['path' => $path, ...$bounded];
     }
 
     private function workspaceWriteText(string $workspace, string $relativePath, string $content): void

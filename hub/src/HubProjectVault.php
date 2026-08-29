@@ -19,6 +19,8 @@ final class HubProjectVault
     public const MAX_CONTENT_BYTES = 2 * 1024 * 1024 * 1024;
     public const MAX_FILES = 10000;
     public const MAX_FILE_READ_BYTES = 256 * 1024;
+    /** Native provider tool results must stay well below the 64 KiB boundary. */
+    public const MAX_TOOL_READ_BYTES = 24 * 1024;
     public const MAX_SEARCH_FILES = 512;
     public const MAX_SEARCH_BYTES = 16 * 1024 * 1024;
 
@@ -202,14 +204,40 @@ final class HubProjectVault
     /** @return array{path:string,content:string,truncated:bool} */
     public function readText(string $projectId, string $revisionId, string $relativePath): array
     {
+        return $this->readTextWithLimit($projectId, $revisionId, $relativePath, self::MAX_FILE_READ_BYTES);
+    }
+
+    /** @return array{path:string,content:string,truncated:bool} */
+    public function toolReadText(string $projectId, string $revisionId, string $relativePath): array
+    {
+        return $this->readTextWithLimit($projectId, $revisionId, $relativePath, self::MAX_TOOL_READ_BYTES);
+    }
+
+    /** @return array{content:string,truncated:bool}|null */
+    public static function boundedToolText(string $content): ?array
+    {
+        $truncated = strlen($content) > self::MAX_TOOL_READ_BYTES;
+        if ($truncated) {
+            $content = self::validUtf8Prefix(substr($content, 0, self::MAX_TOOL_READ_BYTES));
+            if ($content === null) return null;
+        }
+        if (str_contains($content, "\0") || @preg_match('//u', $content) !== 1) return null;
+        return ['content' => $content, 'truncated' => $truncated];
+    }
+
+    /** @return array{path:string,content:string,truncated:bool} */
+    private function readTextWithLimit(string $projectId, string $revisionId, string $relativePath, int $limit): array
+    {
         $path = self::archivePath($relativePath); if ($path === null || self::sensitivePath($path)) throw new HubProjectVaultException('Project file is not available to tools', 'PROJECT_CONTEXT_FORBIDDEN');
         $base = $this->revisionDirectory($projectId, $revisionId); $file = $base . '/' . $path;
         if (!is_file($file) || is_link($file) || !is_readable($file)) throw new HubProjectVaultException('Project file was not found', 'PROJECT_FILE_NOT_FOUND');
         $size = @filesize($file); if (!is_int($size) || $size > 2 * 1024 * 1024 || self::binary($file)) throw new HubProjectVaultException('Project file is not readable text', 'PROJECT_CONTEXT_FORBIDDEN');
         $handle = @fopen($file, 'rb'); if ($handle === false) throw new HubProjectVaultException('Project file was not found', 'PROJECT_FILE_NOT_FOUND');
-        $content = stream_get_contents($handle, self::MAX_FILE_READ_BYTES + 1); fclose($handle);
-        if (!is_string($content) || preg_match('//u', $content) !== 1) throw new HubProjectVaultException('Project file is not readable text', 'PROJECT_CONTEXT_FORBIDDEN');
-        $truncated = strlen($content) > self::MAX_FILE_READ_BYTES; if ($truncated) $content = substr($content, 0, self::MAX_FILE_READ_BYTES);
+        $content = stream_get_contents($handle, $limit + 1); fclose($handle);
+        if (!is_string($content) || str_contains($content, "\0")) throw new HubProjectVaultException('Project file is not readable text', 'PROJECT_CONTEXT_FORBIDDEN');
+        $truncated = strlen($content) > $limit;
+        if ($truncated) $content = self::validUtf8Prefix(substr($content, 0, $limit));
+        if ($content === null || @preg_match('//u', $content) !== 1) throw new HubProjectVaultException('Project file is not readable text', 'PROJECT_CONTEXT_FORBIDDEN');
         return ['path' => $path, 'content' => $content, 'truncated' => $truncated];
     }
 
@@ -279,5 +307,6 @@ final class HubProjectVault
     private static function archivePath(string $value): ?string { $path = str_replace('\\', '/', $value); if ($path === '' || str_contains($path, "\0") || str_starts_with($path, '/') || preg_match('#^[A-Za-z]:/#', $path) === 1) throw new HubProjectVaultException('Project archive path is unsafe', 'PROJECT_ARCHIVE_UNSAFE'); $parts = explode('/', rtrim($path, '/')); if ($parts === ['']) return null; foreach ($parts as $part) if ($part === '' || $part === '.' || $part === '..' || strlen($part) > 180 || preg_match('/[\x00-\x1f\x7f]/', $part)) throw new HubProjectVaultException('Project archive path is unsafe', 'PROJECT_ARCHIVE_UNSAFE'); $normalized = implode('/', $parts); if (strlen($normalized) > 900) throw new HubProjectVaultException('Project archive path is unsafe', 'PROJECT_ARCHIVE_UNSAFE'); return $normalized; }
     private static function sensitivePath(string $path): bool { $base = strtolower((string) basename($path)); if ($base === '.env' || str_contains(strtolower($path), '/.ssh/') || preg_match('/(?:^|[._-])(?:id_rsa|id_ed25519|private[_-]?key)(?:[._-]|$)|\.(?:pem|key|p12|pfx)$/', $base) === 1) return true; return preg_match('/(?:^|[._-])(?:credentials?|secrets?|tokens?)(?:[._-]|$)/', $base) === 1 && preg_match('/\.(?:json|ya?ml|txt|ini|conf|cfg|properties|db|sqlite)$/', $base) === 1; }
     private static function binary(string $path): bool { $handle = @fopen($path, 'rb'); if ($handle === false) return true; $chunk = fread($handle, 4096); fclose($handle); return !is_string($chunk) || str_contains($chunk, "\0"); }
+    private static function validUtf8Prefix(string $value): ?string { if (@preg_match('//u', $value) === 1) return $value; for ($trim = 1; $trim <= 3 && strlen($value) >= $trim; $trim++) { $candidate = substr($value, 0, -$trim); if (@preg_match('//u', $candidate) === 1) return $candidate; } return null; }
     private static function boundedUtf8Snippet(string $value): string { while ($value !== '' && @preg_match('//u', $value) !== 1) $value = substr($value, 0, -1); return trim($value); }
 }

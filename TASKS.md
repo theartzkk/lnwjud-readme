@@ -1,3 +1,14 @@
+# Authoritative task supersession — 2026-08-30 Auto-Chain Project Vault tool-result boundary
+
+- Current Production truth is typed M16 release `m16-06a7277063f8`, exact SHA `06a7277063f891d0d29ad5bdbed7db7541dbb807`, with schema 16 and post-cutover health/readiness verified. The bounded field proof still reports `AUTOCHAIN_FIELD_TIMEOUT`; latest read-only task metadata is `WAITING_FOR_WORKER`/`PROVIDER_FAILED` after canonical `project.read` routing.
+- The current root-cause repair is bounded provider-facing data normalization, not another routing alias: keep internal Vault reads at 256 KiB, cap provider-facing reads at 24 KiB with valid UTF-8 truncation, and apply the same cap to inspection, continuation and assisted-edit tool callbacks.
+- Regression is added for large escaped UTF-8 text and asserts the serialized tool result stays below 64 KiB. Focused fixtures, typecheck, serial full Node tests and build passed; the known aggregate exceptions are dirty-tree status before commit and the unrelated pre-existing M11 fixture assertion.
+- The repair is not committed, pushed, assigned a candidate SHA, CI-verified, or deployed. No credential value was read/printed, no direct Production DB mutation occurred, and the deployed `06a7277…` release must remain the rollback baseline.
+
+## Next unfinished checkpoint
+
+Finish review and commit the three-file repair, push and verify PR #57/CI for the resulting exact SHA, re-run read-only source/revision/lease/DB16/backup checks and typed M16 dry-run, then request one new exact-SHA Production approval. After approval, deploy only that SHA and rerun enrollment/restart, worker reuse, Auto-Chain lineage and the remaining UAT/15-of-15 gates.
+
 # Authoritative supersession — 2026-08-29 Auto-Chain provider request contract
 
 ## NOW

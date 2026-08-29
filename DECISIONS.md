@@ -1,3 +1,9 @@
+# Authoritative decision — 2026-08-30 provider-facing Project Vault boundary
+
+- The native provider tool-result contract is narrower than the internal Project Vault read contract. Keep `HubProjectVault::MAX_FILE_READ_BYTES` at 256 KiB for internal canonical reads, but expose provider callbacks through a separate bounded 24 KiB UTF-8-safe read contract so serialized tool results remain below the existing 64 KiB fail-closed limit.
+- This shared boundary applies to canonical inspection, continuous-work planning and assisted-edit workspace reads. It does not add a queue, widen capability policy, expose credentials, or change executor authority. Large text is explicitly marked `truncated` and must remain valid UTF-8.
+- Production remains on exact SHA `06a7277063f891d0d29ad5bdbed7db7541dbb807` until the new repair is committed, CI/readiness verified and separately approved through typed M16. No direct Production DB mutation or manual credential injection is permitted.
+
 # Authoritative supersession — 2026-08-29 Responses tool-loop contract
 
 - The shared native-agent Responses payload must contain only fields supported by the provider contract. `max_tool_calls` is not supported by the current Responses API and is therefore removed from both initial and follow-up tool-loop requests.

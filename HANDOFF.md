@@ -1,3 +1,15 @@
+# Authoritative supersession — 2026-08-30 Auto-Chain Project Vault tool-result boundary
+
+- Production was refreshed successfully through the typed M16 authority to exact SHA `06a7277063f891d0d29ad5bdbed7db7541dbb807`; post-cutover preflight, Control/Web pointers, schema 16 integrity/FK, backup readiness, Nginx/PHP-FPM and worker timer were healthy. No direct Production DB mutation occurred and no credential value was exposed, copied or injected.
+- The real bounded Auto-Chain field proof was rerun after this refresh and remains blocked truthfully at `AUTOCHAIN_FIELD_TIMEOUT`. Read-only Production metadata shows the latest task reached `WAITING_FOR_WORKER` with `PROVIDER_FAILED`; the route was canonical `project.read` through OpenAI `agent.conversation`, so the earlier governance alias mismatch and the later `max_tool_calls` request defect are not the current failure.
+- The revised diagnosis is a shared data boundary: `HubProjectVault::readText()` permits up to 256 KiB while `HubNativeAgentService` rejects a JSON tool result above 64 KiB. Inspection, continuation planning and assisted editing could therefore pass an oversized file result into the provider loop and fail before the next provider request.
+- The bounded source repair is currently uncommitted in exactly three files: `HubProjectVault` adds a provider-facing 24 KiB valid-UTF-8 read contract while preserving the internal 256 KiB read contract; `HubDurableExecutionService` uses it for all provider-facing Vault/workspace reads; `project-vault-search.php` covers large, escaped, UTF-8 content and the JSON result boundary. No new candidate SHA exists yet and Production remains at `06a7277…`.
+- Verification after the repair: Project Vault, M16, Continuous Auto-Chain and M12 focused fixtures passed; typecheck passed; serial `npm test` passed `319/0/1`; build and `qa:fast` passed. `qa:local/full` reports only dirty-tree status plus the pre-existing M11 assertion `owner system health exposes bounded operational summaries`; no M11 source was changed. A prior parallel QA invocation also exposed a generated `dist-web` race; the serial rerun passed the full Node suite.
+
+## Next action
+
+Run final diff/security review, commit and push the exact new candidate, verify PR/CI and read-only M16 readiness/dry-run, then request one fresh exact-SHA Production approval. Do not deploy the new source before that approval; after approval rerun the bounded field proof and continue UAT/Production completion. Preserve `06a7277…` and the existing rollback assets until the new release passes public verification.
+
 # Authoritative supersession — 2026-08-29 Auto-Chain Responses request contract
 
 - Production was refreshed through the typed M16 authority to exact SHA `903d128f9b6160e011936b681a69656789b45a09`; the active Control/Web pointers, schema 16 database, Nginx/PHP-FPM route and worker timer were verified healthy after cutover.
