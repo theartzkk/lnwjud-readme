@@ -228,3 +228,17 @@ test('CONTROL build stays deterministic and has a safe PWA cache boundary', asyn
   assert.match(worker, /skipWaiting/);
   assert.match(worker, /clients\.claim/);
 });
+
+test('Work renders inspection evidence through the existing same-origin artifact authority', async () => {
+  const app = await readFile(join(ROOT, 'web/app.js'), 'utf8');
+  assert.match(app, /function renderInspectionEvidence\(artifact\)/);
+  assert.match(app, /artifact\.kind === 'project-inspection'/);
+  assert.match(app, /credentials: 'same-origin'/);
+  assert.match(app, /data\?\.kind !== 'project-inspection'/);
+  assert.match(app, /data\?\.readOnly !== true/);
+  assert.match(app, /Source revision/);
+  assert.match(app, /ดูหลักฐานที่ AWH ใช้วิเคราะห์/);
+  assert.match(app, /for \(const turn of messages\)[\s\S]{0,420}visibleMessages\.push\(turn\)/);
+  assert.match(app, /empty-work[\s\S]{0,180}for \(const turn of visibleMessages\)/);
+  assert.doesNotMatch(app, /inspection-evidence[^\n]*(?:localStorage|sessionStorage|Authorization|Bearer)/);
+});

@@ -74,6 +74,26 @@ import {
     return list;
   }
 
+  function renderInspectionEvidence(artifact) {
+    const details = document.createElement('details'); details.className = 'inspection-evidence';
+    const heading = document.createElement('summary'); heading.textContent = '↳ ดูหลักฐานที่ AWH ใช้วิเคราะห์'; details.append(heading);
+    const body = document.createElement('div'); body.textContent = 'กำลังโหลดหลักฐาน…'; details.append(body); let loaded = false;
+    details.addEventListener('toggle', async () => {
+      if (!details.open || loaded) return; loaded = true;
+      try {
+        const response = await fetch(artifact.downloadUrl, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        if (!response.ok) throw new Error('EVIDENCE_UNAVAILABLE'); const data = await response.json();
+        if (data?.kind !== 'project-inspection' || data?.readOnly !== true || !data?.evidence) throw new Error('EVIDENCE_INVALID');
+        body.replaceChildren(); const meta = document.createElement('p'); meta.textContent = `Source revision ${String(data.vaultRevisionId || '').slice(0, 8)} · read-only`;
+        const list = document.createElement('ul');
+        for (const search of (data.evidence.searches || []).slice(0, 8)) { const item = document.createElement('li'); const matches = (search.matches || []).slice(0, 6).map((match) => `${match.path}${Number.isInteger(match.line) ? `:${match.line}` : ''}`).join(', '); item.textContent = `ค้นหา “${search.query || ''}” → ${matches || 'ไม่พบผล'}`; list.append(item); }
+        for (const read of (data.evidence.reads || []).slice(0, 16)) { const item = document.createElement('li'); item.textContent = `อ่าน ${read.path || 'ไฟล์'} · ${Number.isInteger(read.lineCount) ? `${read.lineCount} บรรทัด` : 'ตรวจ hash แล้ว'} · SHA ${String(read.sha256 || '').slice(0, 12)}`; list.append(item); }
+        body.append(meta, list);
+      } catch { body.textContent = 'เปิดหลักฐานไม่ได้ในขณะนี้ แต่ไฟล์หลักฐานยังผูกกับงานเดิมอยู่'; }
+    });
+    return details;
+  }
+
   function setSurface(data) {
     document.title = data?.product?.shortName ? `${data.product.shortName} — Work` : 'AWH';
     const control = data?.control;
@@ -454,7 +474,7 @@ import {
     const taskById = new Map((conversation?.tasks || []).map((task) => [task.taskId, task]));
     const visibleMessages = [];
     let previousCancelledKey = '';
-    for (const turn of visibleMessages) {
+    for (const turn of messages) {
       const task = turn?.taskId ? taskById.get(turn.taskId) : null;
       const cancelledKey = turn?.kind !== 'user' && task?.state === 'CANCELLED' ? `${turn.kind}|${String(turn.body || '').trim()}` : '';
       if (cancelledKey && cancelledKey === previousCancelledKey) continue;
@@ -469,7 +489,7 @@ import {
     const attachmentsByMessage = new Map();
     for (const attachment of conversation?.attachments || []) { if (!attachment?.messageId) continue; const list = attachmentsByMessage.get(attachment.messageId) || []; list.push(attachment); attachmentsByMessage.set(attachment.messageId, list); }
     $('empty-work').hidden = visibleMessages.length > 0 || !state.selectedProjectId;
-    for (const turn of messages) {
+    for (const turn of visibleMessages) {
       if (turn.kind === 'progress') {
         if (String(turn.messageId || '').startsWith('local-progress-')) {
           const typing = document.createElement('li'); typing.className = 'task-turn assistant-turn typing-turn';
@@ -496,7 +516,7 @@ import {
       if (task) {
         const actions = renderApproval(task, approvals) || renderCancellation(task); if (actions) response.append(actions);
         const artifacts = artifactsByTask.get(task.taskId) || [];
-        if (artifacts.length) { const list = document.createElement('ul'); list.className = 'artifact-links'; for (const artifact of artifacts) { const item = document.createElement('li'); if (typeof artifact.downloadUrl === 'string' && /^\/api\/v1\/control\/artifacts\/[0-9a-f-]{36}\/download$/i.test(artifact.downloadUrl)) { const link = document.createElement('a'); link.href = artifact.downloadUrl; link.textContent = `↳ ดาวน์โหลด ${artifact.name || 'ไฟล์ผลลัพธ์'}`; item.append(link); } else item.textContent = `↳ ${artifact.name || 'ไฟล์ผลลัพธ์'}`; list.append(item); } response.append(list); }
+        if (artifacts.length) { const list = document.createElement('ul'); list.className = 'artifact-links'; for (const artifact of artifacts) { const item = document.createElement('li'); if (artifact.kind === 'project-inspection' && typeof artifact.downloadUrl === 'string' && /^\/api\/v1\/control\/artifacts\/[0-9a-f-]{36}\/download$/i.test(artifact.downloadUrl)) { item.append(renderInspectionEvidence(artifact)); } else if (typeof artifact.downloadUrl === 'string' && /^\/api\/v1\/control\/artifacts\/[0-9a-f-]{36}\/download$/i.test(artifact.downloadUrl)) { const link = document.createElement('a'); link.href = artifact.downloadUrl; link.textContent = `↳ ดาวน์โหลด ${artifact.name || 'ไฟล์ผลลัพธ์'}`; item.append(link); } else item.textContent = `↳ ${artifact.name || 'ไฟล์ผลลัพธ์'}`; list.append(item); } response.append(list); }
       }
       row.append(response); thread.append(row);
     }

@@ -2,9 +2,10 @@
 
 ## NOW
 
-- Close Durable Multi-file Inspection Evidence V1 on top of the existing root-cause inspection flow: persist one bounded object-backed `project-inspection` artifact per completed inspection, bound to the exact task/execution/project/Vault revision/content hash, without copying whole source files or creating a second evidence/task authority.
+- Close Work Inspection Evidence Surface V1 on top of the existing durable `project-inspection` artifact authority: let Owner expand the evidence inside Work and see exact source revision plus bounded search/read provenance without a new API, evidence store or permission surface.
+- Repair adjacent Work rendering regressions discovered during the pass rather than carrying them forward; cancelled-message dedupe must operate on canonical messages and render the filtered `visibleMessages` list.
 - Keep M16 activation separate and approval-gated. Production remains M15/v15 until an exact reviewed SHA passes release gates and receives required approval.
-- Required closure evidence: artifact record/object retrieval + search/read binding fixture, M12 deployment contract, Hub integration suite, full product regression, PHP syntax, `git diff --check`, clean exact commit/push, then Linux CI for the extension-dependent M12 fixture.
+- Required closure evidence: same-origin artifact retrieval guard, read-only evidence validation, visible-message regression guard, focused Web tests, `git diff --check`, clean exact commit/push, then stacked CI on top of the Linux-fixture fix.
 - Production, billing, credentials, permissions, Google Cloud legacy and BAY production remain untouched in this source milestone.
 
 ## NEXT
