@@ -1,3 +1,18 @@
+# Authoritative supersession — 2026-08-29 Desktop enrollment P0 + Auto-Chain field-proof checkpoint
+
+- Canonical source was re-verified from `awh/api-independence` at `2caf9242d589d6f1463b8d063045eb86e5084c40`. The isolated candidate is `codex/finish-first-p0` at `f1844b6447c039c5e4c4f4f0d2d94e32bfe0f0df`; the primary checkout remained untouched.
+- Desktop enrollment now writes the returned device credential and reads it back before returning success. Login/pair/rotate fail closed with `CREDENTIAL_PERSISTENCE_FAILED` if the exact value cannot be read back; revoke also verifies deletion. A fresh-store regression proves restart-equivalent persistence without storing passwords.
+- Hub task responses now project validated Auto-Chain lineage from the existing `control_task_executions.checkpoint_json` authority (`rootTaskId`, bounded `step`, `maxSteps`). The new bounded operation `npm run ops:autochain:field-test` proves credential reuse, VPS `project.read`, root completion, continuation materialization and same-root lineage without human Continue.
+- The shared server inspection predicate now ignores mutation words inside explicit prohibition clauses while still rejecting unnegated mutation. This fixes the field request routing root cause rather than adding a phrase-only exception.
+- Source evidence: focused credential/enrollment/worker/operation tests `21/21 PASS`; full product suite `311 PASS / 0 FAIL / 1 platform SKIP`; `npm run hub:test`, `npm run qa:fast`, typecheck, build and PHP Auto-Chain contract PASS. `qa:local`/`qa:full` ran all source gates but remain non-green only because the candidate is not pushed (`upstreamExact=false`); full desktop smoke is `GUI_SANDBOX_BLOCKED` in Codex and requires a logged-in macOS GUI session outside Codex.
+- Actual field operation stopped fail-closed at `DEVICE_NOT_ENROLLED`; no credential was invented and no DB/production mutation occurred. The current local `~/.awh/session-credentials` directory is private but empty.
+- Read-only ReadyIDC evidence on 2026-08-29: enrollment pointer `m3e2-457696d`; Control/Web pointer `m16-6e8217ab6cd5`; SQLite schema `16`, integrity `ok`, foreign-key violations `0`, migration ledger through `m16-self-sufficient-ai`, Nginx topology/config PASS, PHP-FPM active, internal sanitized health PASS, public protected read routes `401`. The exact deployed Git SHA is not exposed by the observed release marker and must not be inferred from the release ID.
+- Candidate is not deployed. Push/PR was blocked by the external safety gate because repository ownership/authorization for `theartzkk/lnwjud-readme` was not verified. Do not use this candidate for production until it is pushed/CI-reviewed and the exact SHA receives fresh approval.
+
+## Next action
+
+Explicitly authorize the reviewed push destination (if intended), then push/CI-review `f1844b6...`; after exact-SHA approval, deploy through the guarded release path and rerun Desktop login plus the bounded Auto-Chain field proof. Do not copy credentials, mutate production DB, or bypass the safety gate.
+
 # Authoritative supersession — 2026-08-29 Finish-First Owner Control Tower Production V1
 
 - Current Product milestone reuses the canonical Infrastructure page/API and existing M16 AI/task/release authorities. It adds no parallel control plane.

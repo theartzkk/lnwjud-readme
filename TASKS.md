@@ -1,3 +1,23 @@
+# Authoritative task supersession — 2026-08-29 Desktop enrollment P0 + Auto-Chain field-proof checkpoint
+
+## NOW
+
+- Candidate source is isolated on `codex/finish-first-p0` at `f1844b6447c039c5e4c4f4f0d2d94e32bfe0f0df`, based on freshly verified canonical `awh/api-independence` `2caf9242d589d6f1463b8d063045eb86e5084c40`.
+- Review the shared enrollment persistence fix: a successful server response is not reported as enrolled until the exact device credential is read back from the desktop store. Keep the worker dependent on the same persisted credential after a fresh store instance/restart.
+- Review the canonical execution projection and bounded operation proof: `control_task_executions.checkpoint_json` is the only lineage authority; field evidence must show VPS `project.read`, completed root, automatic continuation, and identical `rootTaskId`.
+
+## VERIFIED
+
+- Focused tests `21/21 PASS`; full product `311 PASS / 0 FAIL / 1 platform SKIP`; Hub suite, PHP contract, typecheck, build and `qa:fast` PASS.
+- `qa:local`/`qa:full` source checks PASS, but overall command status remains FAIL because the unpushed branch cannot satisfy exact-upstream QA; full desktop smoke is blocked by Codex GUI sandbox (`GUI_SANDBOX_BLOCKED`).
+- Real field operation is truthfully blocked at `DEVICE_NOT_ENROLLED` because the current desktop session store is empty. No token/password/secret was printed or created.
+- Production was audited read-only only: active enrollment `m3e2-457696d`, Control/Web `m16-6e8217ab6cd5`, DB v16/integrity ok/FK 0, Nginx topology PASS, internal health PASS, protected public read routes 401. Candidate is not deployed.
+
+## NEXT
+
+- Obtain explicit destination authorization if the owner wants the candidate pushed to `theartzkk/lnwjud-readme`; safety rejection must not be bypassed. Then obtain CI/review and fresh exact-SHA production approval before guarded deployment.
+- After deployment, sign in on the target Desktop, verify `enrolled=true` and `credentialStored=true` after a fresh app/store instance, then run `npm run ops:autochain:field-test` and record root/continuation IDs and VPS executor evidence without human Continue.
+
 # Authoritative task supersession — 2026-08-29 Finish-First Owner Control Tower Production V1
 
 ## NOW

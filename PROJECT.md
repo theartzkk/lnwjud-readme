@@ -1,5 +1,14 @@
 # Art’s Workspace Hub — AWH
 
+## Current verified checkpoint — 2026-08-29
+
+- Canonical source was freshly verified at `awh/api-independence` `2caf9242d589d6f1463b8d063045eb86e5084c40`; the isolated P0 candidate is `codex/finish-first-p0` `f1844b6447c039c5e4c4f4f0d2d94e32bfe0f0df` and has not been deployed.
+- Desktop enrollment now fails closed unless the device credential can be read back exactly after login/pair/rotate. The worker and restart-equivalent fresh-store check use that same credential boundary; passwords are never persisted.
+- The existing `control_task_executions.checkpoint_json` is projected as bounded continuation metadata so field verification can prove VPS `project.read`, root completion, automatic continuation, and same `rootTaskId` without a second queue or authority. Negated high-impact words no longer misclassify an explicitly read-only inspection request.
+- Local proof: focused `21/21 PASS`, full product `311 PASS / 0 FAIL / 1 platform SKIP`, Hub/PHP contract, typecheck, build and `qa:fast` PASS. `qa:local`/`qa:full` source gates pass but overall status remains blocked by unpushed exact-upstream state; Electron smoke is `GUI_SANDBOX_BLOCKED` under Codex.
+- Field/production boundary: the real Auto-Chain operation stopped at `DEVICE_NOT_ENROLLED` because this machine's private session-credential directory is empty. ReadyIDC read-only evidence is enrollment `m3e2-457696d`, Control/Web `m16-6e8217ab6cd5`, SQLite v16 with integrity `ok` and FK 0, Nginx topology PASS, internal health PASS and public read routes 401. These observations do not prove the candidate is deployed.
+- Push/PR was not completed because the safety gate could not verify authorization to send source to `theartzkk/lnwjud-readme`; no workaround is allowed. Production mutation remains blocked pending exact-SHA review/approval.
+
 ## Purpose
 
 Art’s Workspace Hub is a personal multi-project workspace hub. It gives an AI
