@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AWH Desktop — Art’s Workspace Hub</title>
   <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="../web/awh-design-system.css" />
 </head>
 <body>
   <div class="shell">
@@ -16,9 +17,10 @@
       </div>
       <nav aria-label="AWH primary navigation">
         <button class="nav active" data-section="overview"><span aria-hidden="true">⌂</span><span>หน้าแรก</span></button>
-        <button class="nav" data-section="autopilot"><span aria-hidden="true">✦</span><span>AI / แชท</span></button>
-        <button class="nav" data-section="projects"><span aria-hidden="true">◫</span><span>Projects</span></button>
-        <button class="nav" data-section="artifacts"><span aria-hidden="true">▤</span><span>ไฟล์และผลลัพธ์</span></button>
+        <button class="nav" data-section="autopilot"><span aria-hidden="true">✦</span><span>AI Work</span></button>
+        <button class="nav" data-section="projects"><span aria-hidden="true">◫</span><span>โปรเจกต์</span></button>
+        <button class="nav" data-section="tasks"><span aria-hidden="true">↻</span><span>Tasks</span></button>
+        <button class="nav" data-section="artifacts"><span aria-hidden="true">▤</span><span>Files</span></button>
         <button class="nav" data-section="enrollment"><span aria-hidden="true">◇</span><span>อุปกรณ์</span></button>
         <details class="advanced-nav"><summary>เพิ่มเติม</summary>
           <button class="nav" data-section="memory">Project Memory</button>
@@ -45,10 +47,11 @@
 
       <section id="section-overview" class="section active">
         <div class="card home-work-card">
-          <p class="eyebrow">AWH · YOUR WORKSPACE</p>
-          <h2>วันนี้อยากให้ AWH ช่วยอะไร?</h2>
-          <p id="home-project-summary" class="muted">AWH กำลังตรวจโปรเจกต์ที่พร้อมทำงานบนอุปกรณ์นี้</p>
-          <div class="home-actions"><button id="home-open-work" class="btn">เริ่มคุยกับ AWH</button><button id="home-open-projects" class="btn secondary">ดูโปรเจกต์</button></div><div class="home-quick-grid"><button type="button" class="home-quick" data-home-section="autopilot"><span>✦</span><strong>AI ช่วยงาน</strong><small>ถาม เขียน สรุป และสั่งงาน</small></button><button type="button" class="home-quick" data-home-section="projects"><span>◫</span><strong>Projects</strong><small>งานและบริบททั้งหมด</small></button><button type="button" class="home-quick" data-home-section="artifacts"><span>▤</span><strong>ไฟล์ผลลัพธ์</strong><small>งานที่ AWH ทำเสร็จแล้ว</small></button><button type="button" class="home-quick" data-home-section="enrollment"><span>◇</span><strong>อุปกรณ์</strong><small>Mac / Windows workers</small></button></div>
+          <p class="eyebrow">AWH · AI WORKSPACE</p>
+          <h2>ทุกงาน เริ่มจากตรงนี้</h2>
+          <p id="home-project-summary" class="muted">คุยกับ AI · จัดการไฟล์ · ทำงานต่อจากทุกอุปกรณ์</p>
+          <form id="home-command-form" class="home-command-form"><label class="sr-only" for="home-command-input">สิ่งที่อยากให้ AWH ช่วย</label><textarea id="home-command-input" rows="2" maxlength="2000" placeholder="เช่น สรุปรายงาน, เตรียมเอกสาร หรือถามอะไรก็ได้…"></textarea><div class="home-command-actions"><span>ไม่ต้องเขียน Prompt ให้เป็น</span><button id="home-command-submit" class="btn" type="submit">ให้ AWH ช่วย ✦</button></div></form>
+          <div class="home-actions"><button id="home-open-work" class="btn secondary">เปิด AI Work</button><button id="home-open-projects" class="btn secondary">ดูโปรเจกต์</button></div><div class="home-quick-grid"><button type="button" class="home-quick" data-home-section="autopilot"><span>✦</span><strong>AI Work</strong><small>ถาม เขียน สรุป และสั่งงาน</small></button><button type="button" class="home-quick" data-home-section="projects"><span>◫</span><strong>โปรเจกต์</strong><small>งานและบริบททั้งหมด</small></button><button type="button" class="home-quick" data-home-section="tasks"><span>↻</span><strong>Tasks</strong><small>สถานะจริงและสิ่งที่ต้องทำต่อ</small></button><button type="button" class="home-quick" data-home-section="artifacts"><span>▤</span><strong>Files</strong><small>ผลลัพธ์ที่พร้อมตรวจ</small></button></div>
         </div>
       </section>
 
@@ -70,7 +73,11 @@
       </section>
 
       <section id="section-artifacts" class="section">
-        <div class="card"><div class="card-head"><div><p class="eyebrow">RESULTS</p><h2>ผลลัพธ์ที่พร้อมตรวจ</h2></div><button id="refresh-artifacts" class="btn secondary small">Refresh</button></div><p class="muted">แสดงเฉพาะผลลัพธ์และ metadata ที่ผูกกับโปรเจกต์ ไม่แสดง source path หรือ credential</p><div id="remote-result-list" class="list"></div><div id="artifact-list" class="list"></div><div class="card-head card-head-spaced"><h3>ต้องการการอนุมัติ</h3><span class="badge">SCOPED</span></div><div id="approval-list" class="list"></div></div>
+        <div class="card"><div class="card-head"><div><p class="eyebrow">FILES</p><h2>ไฟล์และผลลัพธ์</h2></div><button id="refresh-artifacts" class="btn secondary small">รีเฟรช</button></div><p class="muted">แสดงเฉพาะผลลัพธ์และ metadata ที่ผูกกับโปรเจกต์ ไม่แสดง source path หรือ credential</p><div id="remote-result-list" class="list"></div><div id="artifact-list" class="list"></div><div class="card-head card-head-spaced"><h3>ต้องการการอนุมัติ</h3><span class="badge">SCOPED</span></div><div id="approval-list" class="list"></div></div>
+      </section>
+
+      <section id="section-tasks" class="section">
+        <div class="card tasks-surface"><div class="card-head"><div><p class="eyebrow">TASKS & EXECUTIONS</p><h2>ติดตามงานแบบเข้าใจง่าย</h2><p class="muted">สถานะมาจากงานและผลลัพธ์จริงของ AWH Cloud / Desktop โดยไม่สร้างคิวใหม่</p></div><span id="desktop-task-count" class="badge">กำลังอ่าน</span></div><div id="desktop-task-list" class="desktop-task-list"></div></div>
       </section>
 
       <section id="section-memory" class="section">

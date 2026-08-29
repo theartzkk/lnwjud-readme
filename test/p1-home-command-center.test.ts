@@ -15,6 +15,8 @@ test('P1 Home command center presents real control data with role-aware worker d
   assert.match(dashboard, /control\.role !== 'OWNER'/);
   assert.match(dashboard, /data-pulse-target="work"/);
   assert.match(dashboard, /data-pulse-target="files"/);
+  assert.match(dashboard, /data-product-destination/);
+  assert.match(dashboard, /aria-current/);
   assert.match(css, /\.awh-pulse-grid/);
   assert.match(css, /\.awh-pulse-card/);
   assert.match(css, /@media\(max-width:540px\)/);

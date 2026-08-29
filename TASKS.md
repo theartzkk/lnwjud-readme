@@ -1,4 +1,38 @@
+# Authoritative task supersession — 2026-08-30 Overnight VPS autonomy foundation
+
+## NOW
+
+- Candidate `codex/finish-first-p0` is pushed at exact HEAD `f787c21237773be1dd9e9be8cd2751bcd8199b28`; it contains the bounded Staff loop, ten role projections, storage classification audit, backup/recovery/DB-locking reporting and executor full-telemetry correction. Existing Project/Task/Execution/Artifact/Approval/Release authorities remain the only authorities.
+- Production remains exact SHA `06a7277063f891d0d29ad5bdbed7db7541dbb807` / release `m16-06a7277063f8`; no deploy is performed until exact-head CI/review and a fresh exact-SHA approval.
+
+## VERIFIED
+
+- `qa:local` PASS and `qa:full` PASS on the exact pushed candidate; targeted PHP/Node/staff/sustainability/infrastructure checks PASS.
+- Read-only live baseline: DB schema 16, integrity/FK PASS, Nginx/PHP-FPM and executor/backup timers active, latest backup verified with bounded restore drill PASS, no active leases, two capability-waiting executions, and no AWH-managed temporary debris eligible for purge. Broad `/tmp` remains outside managed purge scope.
+
+## NEXT UNFINISHED CHECKPOINT
+
+- Verify PR #58 exact-head CI/review, M16 dry-run, production preflight and final storage/backup evidence. Request one exact-SHA approval, then deploy only that exact candidate and rerun Desktop persistence, worker reuse, Auto-Chain lineage, UAT, smoke and 15/15 gates.
+
 # Authoritative task supersession — 2026-08-30 Auto-Chain Project Vault tool-result boundary
+# Authoritative supersession — 2026-08-30 Product completion candidate
+
+## NOW
+
+- Candidate `533185e` aligns Web and Desktop around `web/awh-design-system.css`, shared navigation language, Home command entry and canonical Tasks/Executions. The existing Control/Infrastructure/Database/Trust authorities remain the only backend sources.
+- Owner Activity now carries task goal, project, phase/state, message/result and blocker metadata. Infrastructure also shows a clearly marked `SNAPSHOT_ONLY` Morning Brief; it is not presented as persisted or as an autonomous scheduler result.
+
+## VERIFIED
+
+- Full Node: `321 tests`, `320 PASS`, `0 FAIL`, `1 platform SKIP`.
+- Hub supported fixtures, typecheck, build, CONTROL web build, focused parity/infrastructure/desktop tests, Desktop smoke and diff check: PASS.
+- Production read-only: pointer `m16-06a7277063f8`, schema 16, integrity `ok`, FK `0`, Nginx/PHP-FPM/executor/backup active; no mutation.
+
+## OPEN
+
+- Web/Desktop rendered screenshot comparison, iPhone manual UAT, live AI/provider proof, exact-SHA deploy approval, school Document AI, generic managed-site hosting operations, persisted Morning Brief and storage cleanup/recovery proof remain open. Keep these as FAIL/REQUIRED rather than inventing PASS evidence.
+
+# Authoritative supersession — 2026-08-30 Source/Production reconciliation
 
 - Current Production truth is typed M16 release `m16-06a7277063f8`, exact SHA `06a7277063f891d0d29ad5bdbed7db7541dbb807`, with schema 16 and post-cutover health/readiness verified. The bounded field proof still reports `AUTOCHAIN_FIELD_TIMEOUT`; latest read-only task metadata is `WAITING_FOR_WORKER`/`PROVIDER_FAILED` after canonical `project.read` routing.
 - The current root-cause repair is committed in `72d06691d96b1139a001021c5cf88e6afdda7378` and is included in the current candidate branch tip. It is bounded provider-facing data normalization, not another routing alias: keep internal Vault reads at 256 KiB, cap provider-facing reads at 24 KiB with valid UTF-8 truncation, and apply the same cap to inspection, continuation and assisted-edit tool callbacks.

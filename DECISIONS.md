@@ -1,8 +1,22 @@
+# Authoritative decision — 2026-08-30 Overnight Staff and storage governance
+
+- The VPS Staff loop is a read/report projection over existing canonical Project, Task, Execution, Artifact, Approval and Release authorities. The systemd timer remains a bounded wake-up mechanism; no duplicate scheduler, queue, memory or report table is allowed.
+- Storage governance is classification-first and audit-only in this milestone. Managed roots report ACTIVE, RETAIN, QUARANTINE, SAFE_TO_PURGE or PROTECTED with bounded sizes where known; no purge or quarantine move occurs without a future explicit authority. Broad `/tmp` is not implicitly owned by AWH.
+- Backup truth is newest-manifest-first: an invalid newest backup reports REVIEW while older valid evidence is retained only as `lastVerified`; a timer being active is not sufficient for recovery PASS. SQLite keeps existing busy timeout/WAL/transaction policy and bounded `BEGIN IMMEDIATE` writes.
+- Morning Brief and Staff report remain projections (`SNAPSHOT_ONLY` where not durably persisted) and durable activity continues to live in canonical task/event authorities. Unknown values remain UNKNOWN; no recovery, cost, provider or progress value is invented.
+
 # Authoritative decision — 2026-08-30 provider-facing Project Vault boundary
 
 - The native provider tool-result contract is narrower than the internal Project Vault read contract. Keep `HubProjectVault::MAX_FILE_READ_BYTES` at 256 KiB for internal canonical reads, but expose provider callbacks through a separate bounded 24 KiB UTF-8-safe read contract so serialized tool results remain below the existing 64 KiB fail-closed limit.
 - This shared boundary applies to canonical inspection, continuous-work planning and assisted-edit workspace reads. It does not add a queue, widen capability policy, expose credentials, or change executor authority. Large text is explicitly marked `truncated` and must remain valid UTF-8.
 - Production remains on exact SHA `06a7277063f891d0d29ad5bdbed7db7541dbb807` until the canonical-synced repair is CI/readiness verified and separately approved through typed M16. No direct Production DB mutation or manual credential injection is permitted.
+# Authoritative supersession — 2026-08-30 Product completion candidate
+
+- Web and Desktop are one AWH product surface. Common visual tokens and semantic aliases belong in `web/awh-design-system.css`; platform-specific markup may adapt layout but must not introduce a competing palette or navigation vocabulary.
+- The canonical Tasks/Executions authority is reused on Desktop. Home command submission only transfers the command into the existing Work composer; it does not create a second task queue.
+- Owner Activity and Morning Brief are projections over existing task/event/artifact/health authorities. A brief without durable persistence or scheduler evidence must be labeled `SNAPSHOT_ONLY`; unknown recovery counts remain unknown, and absent progress is rendered as phase/state rather than `0%`.
+- Candidate `533185e` is source/QA-ready only. Production remains at `m16-06a7277063f8`; exact-SHA approval is required before any activation. Visual parity and iPhone behavior cannot be certified by source tests or Desktop DOM smoke alone.
+
 # Authoritative supersession — 2026-08-30 Source/Production reconciliation
 
 - The canonical branch must include the source line that Production actually runs. Because `codex/finish-first-p0` was a fast-forward descendant of `awh/api-independence` and ReadyIDC pointed to `m16-06a7277063f8`, the safe reconciliation was a fast-forward, not a duplicate implementation or a cherry-picked parallel authority.

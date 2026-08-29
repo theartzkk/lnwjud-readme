@@ -27,6 +27,31 @@ function renderArtifacts(data) {
   renderList($('approval-list'), data?.approvals || [], 'ยังไม่มีสิ่งที่ต้องอนุมัติ', (approval) => item(approval.status === 'PENDING' ? 'ต้องการการอนุมัติ' : 'การอนุมัติ', `หมดอายุ ${dateText(approval.expiresAt)}`, 'timeline-item'));
 }
 
+function renderTasks(tasks) {
+  const list = $('desktop-task-list');
+  const count = $('desktop-task-count');
+  if (!list) return;
+  const unique = new Map();
+  for (const task of Array.isArray(tasks) ? tasks : []) {
+    const id = task?.taskId || task?.id || `${task?.goal || 'task'}-${task?.createdAt || ''}`;
+    if (!unique.has(id)) unique.set(id, task);
+  }
+  const entries = [...unique.values()].sort((a, b) => Date.parse(b?.updatedAt || b?.createdAt || '') - Date.parse(a?.updatedAt || a?.createdAt || ''));
+  if (count) count.textContent = `${entries.length} งาน`;
+  renderList(list, entries, 'ยังไม่มีงานใน AWH', (task) => {
+    const state = workState(task);
+    const stateClass = ['เสร็จแล้ว'].includes(state) ? 'success' : ['ต้องตรวจสอบ', 'ต้องอนุมัติ'].includes(state) ? 'warning' : '';
+    const root = document.createElement('article'); root.className = 'desktop-task-item';
+    const head = document.createElement('div'); head.className = 'desktop-task-head';
+    const title = document.createElement('strong'); title.textContent = task.goal || 'งาน AWH';
+    const badge = document.createElement('span'); badge.className = `badge ${stateClass}`.trim(); badge.textContent = state; head.append(title, badge);
+    const meta = document.createElement('small'); meta.textContent = [task.projectName || task.projectId || 'โปรเจกต์', task.executor || task.executorKind, dateText(task.updatedAt || task.createdAt)].filter(Boolean).join(' · ');
+    const detail = document.createElement('p'); detail.textContent = task.resultSummary || task.lastEvent?.message || (state === 'เสร็จแล้ว' ? 'ผลลัพธ์พร้อมตรวจ' : 'AWH กำลังดำเนินการต่อ');
+    root.append(head, meta, detail);
+    return root;
+  });
+}
+
 async function refreshWorker() {
   try {
     const state = await window.artAgent.getWorkerState();
@@ -39,8 +64,10 @@ async function refreshWorker() {
 async function refreshAutopilot() {
   await refreshWork();
   const remote = await window.artAgent.getAutopilotRemoteResults().catch(() => ({ results: [], artifacts: [], approvals: [] }));
+  const localTasks = await window.artAgent.getAutopilotTasks().catch(() => ({ tasks: [] }));
   const data = await window.artAgent.getAutopilotOverview().catch(() => null);
   if (data) renderAutopilotOverview(data);
+  renderTasks([...(remote.results || []), ...(localTasks.tasks || [])]);
   renderArtifacts({ results: remote.results || [], artifacts: [...(data?.artifacts || []), ...(remote.artifacts || [])], approvals: remote.approvals || [] });
   await refreshWorker();
 }
@@ -412,6 +439,12 @@ async function runRemoteAction(action) {
 document.querySelectorAll('.nav').forEach((button) => button.addEventListener('click', () => showSection(button.dataset.section)));
 
 $('refresh').addEventListener('click', refresh);
+$('home-command-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const input = $('home-command-input'); const value = input.value.trim();
+  if (!value) { input.focus(); return; }
+  $('desktop-work-input').value = value; input.value = ''; showSection('autopilot'); $('desktop-work-input').focus();
+});
 $('home-open-projects').addEventListener('click', () => showSection('projects'));
 $('home-open-work').addEventListener('click', () => showSection('autopilot'));
 $('register-project').addEventListener('click', () => runProjectAction(() => window.artAgent.registerProject(), 'ลงทะเบียนโปรเจกต์แล้ว'));

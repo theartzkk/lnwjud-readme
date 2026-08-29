@@ -1,0 +1,72 @@
+/*
+ * AWH Design System
+ *
+ * This file is the shared visual contract for Web, Desktop and future mobile
+ * surfaces. Components may adapt layout per platform, but they must consume
+ * these semantic tokens instead of introducing a second product palette.
+ */
+:root {
+  color-scheme: dark;
+  --awh-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --awh-canvas: #0b0d10;
+  --awh-rail: #101318;
+  --awh-surface: #12151b;
+  --awh-surface-raised: #181c23;
+  --awh-surface-soft: #202631;
+  --awh-line: #2b313c;
+  --awh-line-soft: rgba(255, 255, 255, .065);
+  --awh-text: #f4f6f8;
+  --awh-muted: #98a1af;
+  --awh-accent: #ff8a36;
+  --awh-accent-strong: #ff9a50;
+  --awh-accent-ink: #221207;
+  --awh-accent-soft: rgba(255, 138, 54, .12);
+  --awh-success: #63d99a;
+  --awh-warning: #f1c267;
+  --awh-danger: #ff7770;
+  --awh-radius-sm: 10px;
+  --awh-radius-md: 14px;
+  --awh-radius-lg: 20px;
+  --awh-radius-xl: 26px;
+  --awh-shadow-panel: 0 18px 48px rgba(0, 0, 0, .18);
+  --awh-shadow-float: 0 24px 70px rgba(0, 0, 0, .3);
+  --awh-space-1: 4px;
+  --awh-space-2: 8px;
+  --awh-space-3: 12px;
+  --awh-space-4: 16px;
+  --awh-space-5: 20px;
+  --awh-space-6: 24px;
+
+  /* Compatibility aliases for existing canonical component CSS. */
+  --canvas: var(--awh-canvas);
+  --bg: var(--awh-canvas);
+  --rail: var(--awh-rail);
+  --surface: var(--awh-surface);
+  --panel: var(--awh-surface);
+  --surface-raised: var(--awh-surface-raised);
+  --panel-2: var(--awh-surface-raised);
+  --panel2: var(--awh-surface-raised);
+  --surface-soft: var(--awh-surface-soft);
+  --panel-3: var(--awh-surface-soft);
+  --line: var(--awh-line);
+  --line-soft: var(--awh-line-soft);
+  --text: var(--awh-text);
+  --muted: var(--awh-muted);
+  --accent: var(--awh-accent);
+  --accent-strong: var(--awh-accent-strong);
+  --accent-ink: var(--awh-accent-ink);
+  --accent-soft: var(--awh-accent-soft);
+  --good: var(--awh-success);
+  --warn: var(--awh-warning);
+  --danger: var(--awh-danger);
+  --bad: var(--awh-danger);
+  --radius: var(--awh-radius-lg);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+button, input, textarea, select { font: inherit; }
+button { -webkit-tap-highlight-color: transparent; }
+:where(button, a, input, textarea, select):focus-visible {
+  outline: 2px solid var(--awh-accent-strong);
+  outline-offset: 2px;
+}

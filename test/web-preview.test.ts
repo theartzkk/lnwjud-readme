@@ -59,13 +59,15 @@ test('web build is a generic authenticated Control shell, never a serialized pro
 });
 
 test('one canonical dark canvas is used by html, body, and the application shell', async () => {
-  const [html, css] = await Promise.all([
+  const [html, css, designSystem] = await Promise.all([
     readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
     readFile(join(ROOT, 'web', 'styles.css'), 'utf8'),
+    readFile(join(ROOT, 'web', 'awh-design-system.css'), 'utf8'),
   ]);
   assert.match(html, /theme-color" content="#0b0d10"/);
   assert.match(html, /apple-mobile-web-app-status-bar-style" content="black-translucent"/);
-  assert.match(css, /--canvas:\s*#0b0d10/);
+  assert.match(designSystem, /--awh-canvas:\s*#0b0d10/);
+  assert.match(css, /--canvas:\s*var\(--awh-canvas\)/);
   assert.match(css, /html\s*\{[\s\S]*background-color:\s*var\(--canvas\)/);
   assert.match(css, /body\s*\{[\s\S]*background:\s*var\(--canvas\)/);
   assert.match(css, /\.app-shell\s*\{[\s\S]*background-color:\s*var\(--canvas\)/);
@@ -74,6 +76,29 @@ test('one canonical dark canvas is used by html, body, and the application shell
   assert.match(css, /\[hidden\]\s*\{\s*display:\s*none\s*!important/);
   assert.doesNotMatch(css, /radial-gradient|linear-gradient|background-image/i);
   assert.doesNotMatch(css, /body\s*\{[\s\S]*#ff8a36/);
+});
+
+test('Web and Desktop consume one AWH design contract and expose the same primary product language', async () => {
+  const [designSystem, webHtml, desktopHtml, desktopCss, renderer, smoke] = await Promise.all([
+    readFile(join(ROOT, 'web', 'awh-design-system.css'), 'utf8'),
+    readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
+    readFile(join(ROOT, 'desktop', 'index.html'), 'utf8'),
+    readFile(join(ROOT, 'desktop', 'styles.css'), 'utf8'),
+    readFile(join(ROOT, 'desktop', 'renderer.js'), 'utf8'),
+    readFile(join(ROOT, 'src', 'desktop', 'main.ts'), 'utf8'),
+  ]);
+  for (const token of ['--awh-canvas', '--awh-surface', '--awh-accent', '--awh-success', '--awh-radius-lg', '--awh-space-4']) assert.match(designSystem, new RegExp(token));
+  assert.match(webHtml, /awh-design-system\.css/);
+  assert.match(desktopHtml, /\.\.\/web\/awh-design-system\.css/);
+  for (const token of ['--bg: var(--awh-canvas)', '--panel: var(--awh-surface)', '--accent: var(--awh-accent)']) assert.ok(desktopCss.includes(token), `desktop token missing: ${token}`);
+  for (const label of ['AI Work', 'Tasks', 'Files']) {
+    assert.match(webHtml + desktopHtml + renderer, new RegExp(label));
+  }
+  assert.match(desktopHtml, /id="home-command-form"/);
+  assert.match(desktopHtml, /id="section-tasks"/);
+  assert.match(renderer, /function renderTasks/);
+  assert.match(smoke, /home-command-form/);
+  assert.match(smoke, /'tasks'/);
 });
 
 test('web shell uses same-origin cookies only and never stores credentials or bearer state', async () => {

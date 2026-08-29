@@ -1,5 +1,11 @@
 # Architecture
 
+## CURRENT PRODUCT SURFACE — 2026-08-30
+
+- Web and Desktop consume the shared `web/awh-design-system.css` contract for palette, typography, radii, spacing, elevation and status semantics. Desktop keeps native Electron behavior and fixed IPC; Web keeps same-origin session/CSRF behavior.
+- Home, Work, Tasks/Executions and Files are presentation surfaces over the existing canonical Hub authorities. The Desktop Home command routes to the existing Work composer; no new queue or execution authority is introduced.
+- Owner Infrastructure remains the sanitized control-tower projection. Activity and the non-persisted Morning Brief snapshot are derived from canonical task/event/artifact/health data. Persisted briefs, generic managed sites, typed hosting operations and school document generation require separate bounded authorities and are not implied by this candidate.
+
 ## DOMAIN TRUTH
 
 - AWH is a durable personal multi-project workspace hub: ReadyIDC owns canonical Hub task/project/memory/revision state, while trusted Mac/Windows workers provide device-bound execution when needed.

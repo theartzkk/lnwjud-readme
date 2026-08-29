@@ -68,6 +68,13 @@ test('desktop HTML has a restrictive CSP, remote controls and no inline script',
   assert.match(html, /id="remote-result-list"/);
   assert.match(html, /data-section="overview"/);
   assert.match(html, /id="home-open-work"/);
+  assert.match(html, /id="home-command-form"/);
+  assert.match(html, /id="home-command-input"/);
+  assert.match(html, /data-section="tasks"/);
+  assert.match(html, /id="section-tasks"/);
+  assert.match(html, /id="desktop-task-list"/);
+  assert.match(html, /<span>AI Work<\/span>/);
+  assert.match(html, /<span>Files<\/span>/);
   assert.match(html, /id="enrollment-code"/);
   assert.match(html, /id="enrollment-issue-pairing"/);
   assert.match(html, /id="perm-worker"/);
@@ -216,6 +223,10 @@ test('desktop Work is conversation-first, project-bound, and never exposes raw p
   assert.match(html, /id="workspace-takeover"/);
   assert.match(html, /id="section-autopilot"/);
   assert.match(html, /id="section-artifacts"/);
+  assert.match(html, /id="section-tasks"/);
+  assert.match(renderer, /function renderTasks/);
+  assert.match(renderer, /getAutopilotTasks/);
+  assert.match(renderer, /home-command-form/);
   assert.doesNotMatch(renderer, /child_process|spawn\(|execFile|process\.env|Authorization|accessToken|tokenHash/);
   assert.doesNotMatch(preload, /readFile|writeFile|readdir|spawn|process\.env|shell\.openPath/);
 });

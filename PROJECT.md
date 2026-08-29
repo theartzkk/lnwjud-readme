@@ -1,3 +1,14 @@
+# AWH overnight VPS autonomy foundation — 2026-08-30
+
+- Candidate `codex/finish-first-p0` is source-clean and pushed at exact HEAD `f787c21237773be1dd9e9be8cd2751bcd8199b28`. It adds a bounded Staff operations projection and storage-governance audit over existing canonical authorities; it adds no queue, task, execution, memory, artifact, report or schema authority.
+- Production remains unchanged at typed M16 release `m16-06a7277063f8`, exact SHA `06a7277063f891d0d29ad5bdbed7db7541dbb807`; DB16 integrity/FK, Nginx/PHP-FPM, executor/backup timers and worker readiness were rechecked. No Production mutation, credential access or direct DB mutation occurred.
+- The candidate exposes OBSERVE → DIAGNOSE → PRIORITIZE → CANONICAL_TASK → EXECUTE → VERIFY → REPORT → CONTINUE, all ten requested Staff roles, bounded self-heal evidence, DB locking evidence, backup/recovery readiness and ACTIVE/RETAIN/QUARANTINE/SAFE_TO_PURGE/PROTECTED storage classification. Purge remains `AUDIT_ONLY`.
+- `qa:local` and `qa:full` PASS on the exact pushed candidate; exact-head hosted CI/review and live deployment/field proof remain separate gates.
+
+## Next
+
+Verify exact-head PR #58 CI/review and M16 dry-run/readiness on this candidate. Then request one fresh exact-SHA Production approval; until that approval, keep Production on `06a7277…` and do not claim live 24/7 Staff or Auto-Chain field PASS.
+
 # Art’s Workspace Hub — current checkpoint — 2026-08-30
 
 - Production is currently exact SHA `06a7277063f891d0d29ad5bdbed7db7541dbb807` via typed M16 release `m16-06a7277063f8`; schema 16, integrity/FK, backup, Control/Web, Nginx/PHP-FPM and worker readiness were verified after activation.
@@ -7,6 +18,17 @@
 ## Next
 
 After exact-head CI, request fresh exact-SHA Production approval for the current branch tip, then rerun the real field proof and continue remaining UAT, smoke and completion gates without treating source/CI evidence as field proof.
+# Authoritative supersession — 2026-08-30 Product completion candidate / Web-Desktop parity
+
+- Canonical source branch `awh/api-independence` now contains candidate commit `533185e` (`feat: align web and desktop product surfaces`). Production remains unchanged at Control/Web `m16-06a7277063f8`, SQLite schema 16, integrity `ok`, foreign-key violations `0`; no Production, credential, billing, RBAC, BAY or deployment mutation occurred.
+- Web and Desktop now load one `web/awh-design-system.css` token contract, use the same primary language (`หน้าแรก`, `AI Work`, `Tasks`, `Files`), expose a Home command entry point, and surface canonical Tasks/Executions on both products. Web PWA shell caching includes the design contract.
+- Owner Infrastructure projection now exposes richer canonical activity context and a truthful `Morning Brief` snapshot. It never invents a percentage or reports recovery without evidence; the brief explicitly remains `SNAPSHOT_ONLY` and non-persisted until a durable automation/report authority is implemented.
+- Evidence after the candidate: full Node regression `321 tests = 320 PASS / 0 FAIL / 1 platform SKIP`; Hub supported fixtures PASS with only known PHP-extension skips; typecheck, build, CONTROL web build, Infrastructure/desktop/parity focused tests, `qa:fast`-equivalent checks, `git diff --check`, and Desktop smoke PASS. Rendered Web/iPhone screenshots and browser/mobile manual UAT are not claimed.
+
+## Remaining product gates
+
+- Production Complete remains FAIL because exact-SHA deployment approval, Web/iPhone visual UAT, live AI/provider field proof, and the 15-of-15 smoke/deploy gates are not closed. School Document AI, generic Managed Websites/typed Hosting operations, and a persisted Morning Brief are not claimed complete. No cleanup/purge was performed; storage before/after evidence is therefore not available.
+
 # Authoritative supersession — 2026-08-30 Source/Production reconciliation
 
 - Canonical source branch `awh/api-independence` is now exact and clean at `74556a1951fe51f2ca95326b25148b690695bfb5`, matching `origin/awh/api-independence`. It fast-forwarded from `2caf924` through the already-deployed `codex/finish-first-p0` line, so the visible Home, Tasks/Executions, Files, provider-boundary and Auto-Chain work is no longer stranded on a separate source branch.

@@ -28,8 +28,8 @@ async function main(): Promise<void> {
   const releaseId = process.env.AWH_WEB_RELEASE_ID ?? process.env.AWH_RELEASE_ID ?? 'local';
   if (!/^[A-Za-z0-9._-]{1,80}$/.test(releaseId)) throw new Error('AWH web release identity is invalid');
   const data = { schemaVersion: 1, generatedAt: generatedAt(), surface: { mode: webMode, label: 'AWH', status: webMode === 'CONTROL' ? 'Sign in to continue' : 'AWH release is not active' }, product: { name: PRODUCT.productName, shortName: PRODUCT.shortName, tagline: PRODUCT.tagline }, message: webMode === 'CONTROL' ? 'Sign in to access your projects and work.' : 'This AWH release is not configured for Control.' };
-  const [index, styles, app, dashboardCss, ownerCenterCss, automationCss, dashboardJs, ownerCenterJs, automationJs, dashboardGuardrails, executionUx, toolRegistry, schoolTools, hubAdapter, controlAdapter, manifest, serviceWorker, databaseHtml, databaseCss, databaseJs, infrastructureHtml, infrastructureCss, infrastructureJs, trustHtml, trustCss, trustJs, pdfLib, qrCode] = await Promise.all([
-    asset('index.html'), asset('styles.css'), asset('app.js'), asset('dashboard.css'), asset('owner-center.css'), asset('automation-surface.css'), asset('dashboard.js'), asset('owner-center.js'), asset('automation-surface.js'), asset('dashboard-guardrails.js'), asset('execution-ux.js'), asset('tool-registry.js'), asset('school-tools.js'), asset('hub-read-adapter.js'), asset('control-plane-adapter.js'), asset('manifest.webmanifest'), asset('sw.js'), asset('database.html'), asset('database.css'), asset('database.js'), asset('infrastructure.html'), asset('infrastructure.css'), asset('infrastructure.js'), asset('trust.html'), asset('trust.css'), asset('trust.js'),
+  const [index, styles, designSystem, app, dashboardCss, ownerCenterCss, automationCss, dashboardJs, ownerCenterJs, automationJs, dashboardGuardrails, executionUx, toolRegistry, schoolTools, hubAdapter, controlAdapter, manifest, serviceWorker, databaseHtml, databaseCss, databaseJs, infrastructureHtml, infrastructureCss, infrastructureJs, trustHtml, trustCss, trustJs, pdfLib, qrCode] = await Promise.all([
+    asset('index.html'), asset('styles.css'), asset('awh-design-system.css'), asset('app.js'), asset('dashboard.css'), asset('owner-center.css'), asset('automation-surface.css'), asset('dashboard.js'), asset('owner-center.js'), asset('automation-surface.js'), asset('dashboard-guardrails.js'), asset('execution-ux.js'), asset('tool-registry.js'), asset('school-tools.js'), asset('hub-read-adapter.js'), asset('control-plane-adapter.js'), asset('manifest.webmanifest'), asset('sw.js'), asset('database.html'), asset('database.css'), asset('database.js'), asset('infrastructure.html'), asset('infrastructure.css'), asset('infrastructure.js'), asset('trust.html'), asset('trust.css'), asset('trust.js'),
     readFile(join(ROOT, 'node_modules', 'pdf-lib', 'dist', 'pdf-lib.min.js'), 'utf8'),
     readFile(join(ROOT, 'node_modules', 'qrcode-generator', 'qrcode.js'), 'utf8'),
   ]);
@@ -55,6 +55,7 @@ ${dashboardGuardrails}`;
   await Promise.all([
     writeFile(join(OUTPUT, 'index.html'), renderReleaseAsset(withDashboard(index), releaseId), 'utf8'),
     writeFile(join(OUTPUT, 'styles.css'), styles, 'utf8'),
+    writeFile(join(OUTPUT, 'awh-design-system.css'), designSystem, 'utf8'),
     writeFile(join(OUTPUT, 'app.js'), renderReleaseAsset(app, releaseId), 'utf8'),
     writeFile(join(OUTPUT, 'dashboard.css'), bundledDashboardCss, 'utf8'),
     writeFile(join(OUTPUT, 'dashboard.js'), renderReleaseAsset(bundledDashboardJs, releaseId), 'utf8'),

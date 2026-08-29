@@ -1,4 +1,23 @@
+# Authoritative handoff — 2026-08-30 Overnight VPS autonomy foundation
+
+- Candidate `codex/finish-first-p0` is pushed at exact HEAD `f787c21237773be1dd9e9be8cd2751bcd8199b28`; the Staff loop, storage audit, backup/recovery truth and executor full-telemetry feed are source-ready. Production remains at `m16-06a7277063f8` / `06a7277063f891d0d29ad5bdbed7db7541dbb807`.
+- `qa:local` and `qa:full` are PASS on the exact upstream candidate. No credentials were read, printed, copied or injected; no direct Production DB mutation occurred.
+- Live read-only baseline is healthy for DB16 integrity/FK, Nginx/PHP-FPM, worker/executor/backup timers and bounded backup drill. Current queue still has two capability-waiting executions; no active or expired leases. AWH-managed temp patterns are absent; no purge was attempted.
+
+## Next action
+
+Verify exact PR #58 CI/review and M16 readiness, then request one exact-SHA Production approval. After approval, use only typed M16, verify live Staff/Control Tower projections, rerun Desktop persistence/worker/Auto-Chain and continue UAT/15-of-15. Do not claim live 24/7 PASS from source evidence alone.
+
 # Authoritative supersession — 2026-08-30 Auto-Chain Project Vault tool-result boundary
+# Authoritative supersession — 2026-08-30 Product completion candidate / Web-Desktop parity
+
+- Source candidate `awh/api-independence` is `533185e`; it is not deployed. ReadyIDC remains read-only verified at Control/Web `m16-06a7277063f8`, DB16/integrity/FK PASS, Nginx/PHP-FPM/native executor/backup active.
+- The candidate consolidates Web/Desktop visual tokens and product terminology, adds Desktop Home command + Tasks/Executions, adds Web product navigation with active states, hardens PWA asset caching, and enriches the existing Owner Infrastructure activity projection with a truthful non-persisted Morning Brief snapshot.
+- Automated evidence: `npm test` 320 PASS / 0 FAIL / 1 platform SKIP; Hub supported fixtures PASS; typecheck/build/web CONTROL build/Desktop smoke/diff check PASS. Screenshot-level Web/Desktop/iPhone parity remains MANUAL UAT REQUIRED because browser screenshot tooling is unavailable in this run; Desktop smoke is DOM/runtime evidence, not a visual sign-off.
+
+Next action: push/review the exact candidate if source delivery is authorized, then perform real browser/iPhone/AI field UAT and request one exact-SHA Production approval. Do not activate Production or claim 15-of-15 completion from this candidate alone.
+
+# Authoritative supersession — 2026-08-30 Source/Production reconciliation
 
 - Production was refreshed successfully through the typed M16 authority to exact SHA `06a7277063f891d0d29ad5bdbed7db7541dbb807`; post-cutover preflight, Control/Web pointers, schema 16 integrity/FK, backup readiness, Nginx/PHP-FPM and worker timer were healthy. No direct Production DB mutation occurred and no credential value was exposed, copied or injected.
 - The real bounded Auto-Chain field proof was rerun after this refresh and remains blocked truthfully at `AUTOCHAIN_FIELD_TIMEOUT`. Read-only Production metadata shows the latest task reached `WAITING_FOR_WORKER` with `PROVIDER_FAILED`; the route was canonical `project.read` through OpenAI `agent.conversation`, so the earlier governance alias mismatch and the later `max_tool_calls` request defect are not the current failure.

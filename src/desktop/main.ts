@@ -861,8 +861,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
     await writeSmokeMarker({ ok: false, stage: 'renderer-check' });
     const result = await win.webContents.executeJavaScript(`(async () => {
       const apiReady = typeof window.artAgent?.getOverview === 'function';
-      const requiredDom = ['desktop-work-thread', 'desktop-work-input', 'desktop-work-form', 'desktop-work-submit', 'desktop-work-project', 'desktop-work-status', 'project-list', 'artifact-list', 'enrollment-state'].every((id) => Boolean(document.getElementById(id)));
-      const uiPaths = Object.fromEntries(['overview', 'projects', 'autopilot', 'artifacts', 'memory'].map((section) => {
+      const requiredDom = ['home-command-form', 'home-command-input', 'desktop-work-thread', 'desktop-work-input', 'desktop-work-form', 'desktop-work-submit', 'desktop-work-project', 'desktop-work-status', 'project-list', 'desktop-task-list', 'artifact-list', 'enrollment-state'].every((id) => Boolean(document.getElementById(id)));
+      const uiPaths = Object.fromEntries(['overview', 'projects', 'autopilot', 'tasks', 'artifacts', 'memory'].map((section) => {
         document.querySelector('.nav[data-section="' + section + '"]')?.click();
         return [section, document.getElementById('section-' + section)?.classList.contains('active') === true];
       }));

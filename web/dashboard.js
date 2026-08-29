@@ -114,6 +114,53 @@ function mountMobileNavigation() {
   updateMobileNavigation();
 }
 
+function mountProductNavigation(dashboard) {
+  if ($('awh-product-nav')) return;
+  const nav = document.createElement('nav');
+  nav.id = 'awh-product-nav';
+  nav.className = 'awh-product-nav';
+  nav.setAttribute('aria-label', 'เมนูหลัก AWH');
+  const brand = document.createElement('div');
+  brand.className = 'awh-product-nav-brand';
+  brand.innerHTML = '<span class="awh-product-nav-mark" aria-hidden="true">A</span><span><strong>AWH</strong><small>Workspace</small></span>';
+  nav.append(brand);
+  const entries = [
+    ['home', '⌂', 'หน้าแรก', returnHome],
+    ['work', '✦', 'AI Work', () => openWork()],
+    ['tasks', '↻', 'Tasks', () => openTaskSurface()],
+    ['files', '▤', 'Files', () => openFilesSurface()],
+    ['tools', '▦', 'เครื่องมือ', () => { returnHome(); window.setTimeout(() => $('awh-home-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40); }],
+    ['owner', '⌘', 'Owner Center', () => { returnHome(); window.setTimeout(() => $('dashboard-owner-center-open')?.click(), 40); }],
+  ];
+  for (const [destination, icon, label, action] of entries) {
+    const item = button('', 'awh-product-nav-item', action);
+    item.dataset.productDestination = destination;
+    item.innerHTML = `<span aria-hidden="true">${icon}</span><strong>${label}</strong>`;
+    nav.append(item);
+  }
+  const note = document.createElement('p');
+  note.className = 'awh-product-nav-note';
+  note.textContent = 'ทำงานต่อได้ทุกอุปกรณ์';
+  nav.append(note);
+  dashboard.prepend(nav);
+}
+
+function updateProductNavigation() {
+  const nav = $('awh-product-nav');
+  if (!nav) return;
+  const dashboard = $(DASHBOARD_ID);
+  const activeDestination = document.body.classList.contains('product-dashboard-active')
+    ? (dashboard?.dataset.view === 'tasks' ? 'tasks' : dashboard?.dataset.view === 'files' ? 'files' : 'home')
+    : 'work';
+  for (const item of nav.querySelectorAll('[data-product-destination]')) {
+    const active = item.dataset.productDestination === activeDestination;
+    item.classList.toggle('is-active', active);
+    item.setAttribute('aria-current', active ? 'page' : 'false');
+  }
+  const owner = nav.querySelector('[data-product-destination="owner"]');
+  if (owner instanceof HTMLElement) owner.hidden = state.control?.role !== 'OWNER';
+}
+
 function setDashboardView(view) {
   const dashboard = $(DASHBOARD_ID);
   if (!dashboard) return;
@@ -129,12 +176,14 @@ function setDashboardView(view) {
   if (taskSurface) taskSurface.hidden = !showingTasks;
   if (filesSurface) filesSurface.hidden = !showingFiles;
   dashboard.dataset.view = showingTasks ? 'tasks' : showingFiles ? 'files' : 'home';
+  updateProductNavigation();
 }
 
 function openWork(prompt = '', submit = false) {
   document.body.classList.remove('product-dashboard-active');
   const dashboard = $(DASHBOARD_ID);
   if (dashboard) dashboard.hidden = true;
+  updateProductNavigation();
   const input = $('goal-input');
   if (input && typeof prompt === 'string') {
     input.value = prompt;
@@ -203,6 +252,7 @@ function returnHome() {
   setDashboardView('home');
   dashboard.hidden = false;
   document.body.classList.add('product-dashboard-active');
+  updateProductNavigation();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   refreshDashboard().catch(() => undefined);
 }
@@ -533,6 +583,7 @@ function mountDashboard() {
 
   const imageTool = createImageTool();
   dashboard.append(hero, continuity, pulse, taskSurface, filesSurface, tools, overview, files, owner, imageTool);
+  mountProductNavigation(dashboard);
   mountWelcome(dashboard);
   mountSchoolTools(dashboard);
   main.append(dashboard);
@@ -818,6 +869,7 @@ function renderArtifacts() {
 function renderRole() {
   const owner = $('dashboard-owner-center');
   if (owner) owner.hidden = state.control?.role !== 'OWNER';
+  updateProductNavigation();
 }
 
 async function refreshDashboard() {
