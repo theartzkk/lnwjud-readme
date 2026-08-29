@@ -50,6 +50,11 @@ try {
     m12_assert(($first['storageMode'] ?? null) === 'VAULT' && ($first['syncState'] ?? null) === 'SYNCED' && is_string($first['activeRevisionId'] ?? null), 'initial archive becomes canonical only after verification');
     $context = $vaults->context($project, 'ตรวจ README'); m12_assert(count($context['files']) >= 1, 'bounded project context finds canonical file');
     $read = $vaults->vault()->readText($project, $context['revisionId'], 'README.md'); m12_assert(str_contains($read['content'], 'Data only'), 'bounded canonical read works');
+    $contentMatches = $vaults->vault()->search($project, $context['revisionId'], 'fixture');
+    $contentHit = null; foreach ($contentMatches as $match) if (($match['path'] ?? null) === 'src/main.php' && ($match['match'] ?? null) === 'content') $contentHit = $match;
+    m12_assert(is_array($contentHit) && ($contentHit['line'] ?? null) === 1 && str_contains((string) ($contentHit['snippet'] ?? ''), 'fixture'), 'Vault search finds bounded source content across files with line evidence');
+    $pathMatches = $vaults->vault()->search($project, $context['revisionId'], 'README');
+    m12_assert(($pathMatches[0]['path'] ?? null) === 'README.md' && ($pathMatches[0]['match'] ?? null) === 'path', 'Vault search keeps deterministic filename matches first');
     $zip = new ZipArchive(); m12_assert($zip->open($archive, ZipArchive::OVERWRITE) === true, 'zip overwrite'); $zip->addFromString('README.md', "# Fixture v2  \r\n"); $zip->addFromString('src/main.php', "<?php echo 'fixture-v2';\n"); $zip->close();
     $second = $vaults->ingestArchive($project, $archive, $owner, null, $first['activeRevisionId'], $now); m12_assert(($second['promotionRequired'] ?? false) === true && ($second['syncState'] ?? null) === 'STALE', 'subsequent archive is an explicit candidate');
     $promoted = $vaults->promote($project, (string) $second['createdRevisionId'], (string) $first['activeRevisionId'], $now); m12_assert(($promoted['activeRevisionId'] ?? null) === $second['createdRevisionId'] && ($promoted['syncState'] ?? null) === 'SYNCED', 'revision precondition promotion prevents silent overwrite');
@@ -63,8 +68,34 @@ try {
     $workerCandidate = $vaults->captureTaskArchive($project, $workerArchive, $owner, $workerCandidateTask, (string) $promoted['activeRevisionId'], $now); m12_assert($workerCandidate['changed'] === true && $workerCandidate['parentRevisionId'] === $promoted['activeRevisionId'], 'worker archive becomes a separate revision-checked candidate'); $vaults->rejectCandidate($project, (string) $workerCandidate['revisionId'], $now);
 
     $task = m12_uuid(); $pdo->prepare("INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:task, :user, :project, 'ตรวจ README อย่างเดียว ห้ามแก้', 'QUEUED', NULL, NULL, 0, NULL, NULL, :key, NULL, :at, :at, NULL)")->execute(['task' => $task, 'user' => $owner, 'project' => $project, 'key' => 'm12-task-0001', 'at' => $now]);
-    $executor = new HubDurableExecutionService($pdo, $vaults, null); $executor->enqueue($task, $project, (string) $promoted['activeRevisionId'], 'VPS', 'project.read', ['mode' => 'PROJECT_INSPECTION'], $now); $run = $executor->runOnce($now); m12_assert(($run['state'] ?? null) === 'COMPLETED', 'durable VPS inspection is claimed and completed');
+    $executor = new HubDurableExecutionService($pdo, $vaults, null, HubArtifactStore::fromEnvironment()); $executor->enqueue($task, $project, (string) $promoted['activeRevisionId'], 'VPS', 'project.read', ['mode' => 'PROJECT_INSPECTION'], $now); $run = $executor->runOnce($now); m12_assert(($run['state'] ?? null) === 'COMPLETED', 'durable VPS inspection is claimed and completed');
     $taskRow = $pdo->prepare('SELECT state, result_summary FROM control_tasks WHERE task_id = :task'); $taskRow->execute(['task' => $task]); $finished = $taskRow->fetch(); m12_assert(($finished['state'] ?? null) === 'COMPLETED' && str_contains((string) ($finished['result_summary'] ?? ''), 'ไม่ได้แก้ source'), 'read-only execution returns a natural non-mutating result');
+
+    // Root-cause inspection must use the same immutable Vault evidence path:
+    // content search first, then an exact bounded file read, with no mutation.
+    $pdo->prepare("INSERT INTO control_provider_policies(provider_id, enabled, model_fast, model_balanced, model_strong, monthly_budget_microunits, warning_microunits, input_microunits_per_million, output_microunits_per_million, updated_by_user_id, updated_at) VALUES('openai', 1, 'fixture-fast', 'fixture-balanced', 'fixture-strong', 100000000, 90000000, 1000000, 1000000, :owner, :at)")->execute(['owner' => $owner, 'at' => $now]);
+    $inspectionCalls = 0;
+    $inspectionAgent = new HubNativeAgentService($pdo, static function (array $payload, string $_key) use (&$inspectionCalls): array {
+        $inspectionCalls++;
+        if ($inspectionCalls === 1) return ['id' => 'resp_inspect_search_1234', 'output' => [['type' => 'function_call', 'call_id' => 'call_inspect_search_1234', 'name' => 'project_search', 'arguments' => '{"query":"fixture-v2"}']], 'usage' => ['input_tokens' => 3, 'output_tokens' => 2]];
+        if ($inspectionCalls === 2) return ['id' => 'resp_inspect_read_1234', 'output' => [['type' => 'function_call', 'call_id' => 'call_inspect_read_1234', 'name' => 'project_read_text', 'arguments' => '{"path":"src/main.php"}']], 'usage' => ['input_tokens' => 3, 'output_tokens' => 2]];
+        return ['id' => 'resp_inspect_done_1234', 'output_text' => 'Root cause evidence: src/main.php line 1 contains fixture-v2; no mutation performed.', 'usage' => ['input_tokens' => 3, 'output_tokens' => 3]];
+    }, 'fixture-key');
+    $inspectionTask = m12_uuid();
+    $pdo->prepare("INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:task, :user, :project, 'หาสาเหตุ fixture-v2 จาก source จริง', 'QUEUED', NULL, NULL, 0, NULL, NULL, :key, NULL, :at, :at, NULL)")->execute(['task' => $inspectionTask, 'user' => $owner, 'project' => $project, 'key' => 'm12-task-root-cause-0001', 'at' => $now]);
+    $inspector = new HubDurableExecutionService($pdo, $vaults, $inspectionAgent, HubArtifactStore::fromEnvironment()); $inspector->enqueue($inspectionTask, $project, (string) $promoted['activeRevisionId'], 'VPS', 'project.search', ['mode' => 'PROJECT_INSPECTION'], $now);
+    $inspectionRun = $inspector->runOnce($now); m12_assert(($inspectionRun['state'] ?? null) === 'COMPLETED' && $inspectionCalls === 3, 'root-cause inspection performs bounded content search then exact source read');
+    $inspectionRow = $pdo->prepare('SELECT state,result_summary FROM control_tasks WHERE task_id=:task'); $inspectionRow->execute(['task' => $inspectionTask]); $inspectionDone = $inspectionRow->fetch();
+    m12_assert(($inspectionDone['state'] ?? null) === 'COMPLETED' && str_contains((string) ($inspectionDone['result_summary'] ?? ''), 'src/main.php line 1'), 'root-cause inspection returns concrete source evidence');
+    $inspectionArtifact = $pdo->prepare("SELECT a.kind,o.storage_key FROM control_artifacts a JOIN control_artifact_objects o ON o.artifact_id=a.artifact_id WHERE a.task_id=:task AND a.kind='project-inspection'"); $inspectionArtifact->execute(['task'=>$inspectionTask]); $inspectionObject=$inspectionArtifact->fetch();
+    m12_assert(is_array($inspectionObject) && ($inspectionObject['kind']??null)==='project-inspection', 'root-cause inspection persists one canonical artifact record');
+    $inspectionEvidence=json_decode((string)file_get_contents(HubArtifactStore::fromEnvironment()->read((string)$inspectionObject['storage_key'])),true,64,JSON_THROW_ON_ERROR);
+    m12_assert(($inspectionEvidence['readOnly']??null)===true && ($inspectionEvidence['vaultRevisionId']??null)===$promoted['activeRevisionId'] && ($inspectionEvidence['evidence']['searches'][0]['query']??null)==='fixture-v2' && ($inspectionEvidence['evidence']['reads'][0]['path']??null)==='src/main.php', 'inspection artifact binds search/read evidence to the exact immutable revision');
+    $inspectionReadEvidence=$inspectionEvidence['evidence']['reads'][0]??null; $inspectionSearchMatch=$inspectionEvidence['evidence']['searches'][0]['matches'][0]??null;
+    m12_assert(is_array($inspectionReadEvidence) && !array_key_exists('content',$inspectionReadEvidence) && is_string($inspectionReadEvidence['sha256']??null) && strlen((string)$inspectionReadEvidence['sha256'])===64, 'inspection read evidence records hashes and metadata, not copied source payloads');
+    m12_assert(!is_array($inspectionSearchMatch) || !isset($inspectionSearchMatch['snippet']) || strlen((string)$inspectionSearchMatch['snippet'])<=240, 'inspection search evidence keeps snippets bounded');
+    m12_assert($vaults->activeRevision($project) === $promoted['activeRevisionId'], 'root-cause inspection leaves canonical source unchanged');
+    $pdo->exec("DELETE FROM control_provider_policies WHERE provider_id='openai'");
 
     // A bounded server-native mutation always starts from an immutable Vault
     // revision, captures a separate candidate, writes an opaque artifact, and
@@ -102,6 +133,20 @@ try {
     $assistedRead = $vaults->vault()->readText($project, (string) $assistedCandidate['revision_id'], 'src/main.php'); m12_assert(str_contains($assistedRead['content'], 'vps-assisted'), 'assisted edit writes only the candidate workspace');
     m12_assert($vaults->activeRevision($project) === $activeForAssisted, 'assisted edit never silently replaces canonical Vault source');
     $unsafeToolPath = false; try { $vaults->vault()->toolTextPath('../secret.txt'); } catch (HubProjectVaultException) { $unsafeToolPath = true; } m12_assert($unsafeToolPath, 'assisted edit tool path traversal fails closed');
+
+    $secretCalls = 0; $fakeSecret = 'sk-' . str_repeat('A', 24);
+    $secretAgent = new HubNativeAgentService($pdo, static function (array $payload, string $_key) use (&$secretCalls, $fakeSecret): array {
+        $secretCalls++;
+        if ($secretCalls === 1) return ['id' => 'resp_secret_write_1234', 'output' => [['type' => 'function_call', 'call_id' => 'call_secret_write_1234', 'name' => 'project_write_text', 'arguments' => json_encode(['path' => 'src/secret-test.php', 'content' => "<?php \$token='" . $fakeSecret . "';\n"], JSON_THROW_ON_ERROR)]], 'usage' => ['input_tokens' => 3, 'output_tokens' => 2]];
+        return ['id' => 'resp_secret_done_1234', 'output_text' => 'should not complete', 'usage' => ['input_tokens' => 1, 'output_tokens' => 1]];
+    }, 'fixture-key');
+    $secretTask = m12_uuid();
+    $pdo->prepare("INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:task, :user, :project, 'แก้ไฟล์ทดสอบ credential gate', 'QUEUED', NULL, NULL, 0, NULL, NULL, :key, NULL, :at, :at, NULL)")->execute(['task' => $secretTask, 'user' => $owner, 'project' => $project, 'key' => 'm12-task-secret-gate-0001', 'at' => $now]);
+    $secretExecutor = new HubDurableExecutionService($pdo, $vaults, $secretAgent, HubArtifactStore::fromEnvironment());
+    $secretExecutor->enqueue($secretTask, $project, $activeForAssisted, 'VPS', 'project.mutate.assisted', ['mode' => 'PROJECT_ASSISTED_EDIT'], $now);
+    $secretRun = $secretExecutor->runOnce($now); m12_assert(($secretRun['state'] ?? null) === 'FAILED' && $secretCalls === 1, 'credential-like assisted edit fails closed without retrying provider output');
+    $secretCandidate = $pdo->prepare('SELECT count(*) FROM control_project_vault_revisions WHERE task_id=:task'); $secretCandidate->execute(['task' => $secretTask]); m12_assert((int) $secretCandidate->fetchColumn() === 0, 'credential-like assisted edit never creates a candidate revision');
+    $secretTaskState = $pdo->prepare('SELECT state,failure_code FROM control_tasks WHERE task_id=:task'); $secretTaskState->execute(['task' => $secretTask]); $secretState = $secretTaskState->fetch(); m12_assert(($secretState['state'] ?? null) === 'FAILED' && ($secretState['failure_code'] ?? null) === 'CANDIDATE_SECRET_CONTENT', 'credential gate records a terminal canonical task failure');
     $pdo->exec("DELETE FROM control_provider_policies WHERE provider_id='openai'");
 
     // Native conversation provider failures must never become a successful
@@ -113,8 +158,12 @@ try {
     $pdo->prepare("INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:task, :user, :project, :goal, 'QUEUED', NULL, NULL, 0, NULL, NULL, :key, :conversation, :at, :at, NULL)")->execute(['task' => $conversationTask, 'user' => $owner, 'project' => $project, 'goal' => 'สรุปสถานะโปรเจกต์นี้ให้หน่อย', 'key' => 'native-m12-conversation-0001', 'conversation' => $conversation, 'at' => $now]);
     $executor->enqueue($conversationTask, $project, (string) $promoted['activeRevisionId'], 'VPS', 'agent.conversation', ['mode' => 'NATIVE_CONVERSATION', 'messageId' => $message], $now);
     m12_assert(($executor->runOnce($now)['state'] ?? null) === 'QUEUED', 'temporary provider failure requeues the same native task');
-    m12_assert(($executor->runOnce($now)['state'] ?? null) === 'QUEUED', 'temporary provider retry stays bounded on the same task');
-    m12_assert(($executor->runOnce($now)['state'] ?? null) === 'WAITING_FOR_CAPABILITY', 'temporary provider retry pauses after the third attempt');
+    m12_assert($executor->runOnce($now) === null, 'temporary provider retry observes deterministic backoff instead of hot-looping');
+    $retry2 = gmdate('c', strtotime($now) + 61);
+    m12_assert(($executor->runOnce($retry2)['state'] ?? null) === 'QUEUED', 'temporary provider retry stays bounded on the same task after first backoff');
+    m12_assert($executor->runOnce($retry2) === null, 'second provider retry observes the longer deterministic backoff');
+    $retry3 = gmdate('c', strtotime($retry2) + 301);
+    m12_assert(($executor->runOnce($retry3)['state'] ?? null) === 'WAITING_FOR_CAPABILITY', 'temporary provider retry pauses after the third attempt');
     $failedConversation = $pdo->prepare('SELECT t.state AS task_state, t.failure_code, e.state AS execution_state, e.attempt_count FROM control_tasks t JOIN control_task_executions e ON e.task_id=t.task_id WHERE t.task_id=:task'); $failedConversation->execute(['task' => $conversationTask]); $failedConversationRow = $failedConversation->fetch();
     m12_assert(is_array($failedConversationRow) && $failedConversationRow['task_state'] === 'WAITING_FOR_WORKER' && $failedConversationRow['execution_state'] === 'WAITING_FOR_CAPABILITY' && (int) $failedConversationRow['attempt_count'] === 3 && $failedConversationRow['failure_code'] === 'PROVIDER_UNAVAILABLE', 'retry exhaustion is truthful and preserves the task');
     $fakeSuccess = $pdo->prepare("SELECT COUNT(*) FROM control_conversation_messages WHERE conversation_id=:conversation AND task_id=:task AND message_kind IN ('ASSISTANT','RESULT')"); $fakeSuccess->execute(['conversation' => $conversation, 'task' => $conversationTask]); m12_assert((int) $fakeSuccess->fetchColumn() === 0, 'provider failure never emits a successful assistant result');
@@ -146,10 +195,11 @@ try {
     m12_assert(is_array($failedUsage) && $failedUsage['status'] === 'FAILED' && (int) $failedUsage['input_tokens'] === 11 && (int) $failedUsage['output_tokens'] === 3 && (int) $failedUsage['estimated_microunits'] === 14, 'billable failed response is recorded as FAILED with known usage');
     m12_assert((int) $invalidAgent->status($owner, $now)['budget']['usedMicrounits'] >= $failedUsageBefore + 14, 'failed billable usage remains inside the budget guard');
 
-    $failureMethod = (new ReflectionClass(HubNativeAgentService::class))->getMethod('providerFailure'); $failureMethod->setAccessible(true);
-    $quotaFailure = $failureMethod->invoke(null, 429, ['error' => ['type' => 'insufficient_quota', 'code' => 'insufficient_quota', 'message' => 'raw message must never persist']], 'fixture-fast');
-    $rateFailure = $failureMethod->invoke(null, 429, ['error' => ['type' => 'rate_limit_error', 'code' => 'rate_limit_exceeded']], 'fixture-fast');
-    $permissionFailure = $failureMethod->invoke(null, 403, ['error' => ['type' => 'permission_error', 'code' => 'project_forbidden']], 'fixture-fast');
+    $failureAdapter = new HubOpenAiProviderAdapter();
+    $failureMethod = (new ReflectionClass(HubOpenAiProviderAdapter::class))->getMethod('failure'); $failureMethod->setAccessible(true);
+    $quotaFailure = $failureMethod->invoke($failureAdapter, 429, ['error' => ['type' => 'insufficient_quota', 'code' => 'insufficient_quota', 'message' => 'raw message must never persist']], 'fixture-fast');
+    $rateFailure = $failureMethod->invoke($failureAdapter, 429, ['error' => ['type' => 'rate_limit_error', 'code' => 'rate_limit_exceeded']], 'fixture-fast');
+    $permissionFailure = $failureMethod->invoke($failureAdapter, 403, ['error' => ['type' => 'permission_error', 'code' => 'project_forbidden']], 'fixture-fast');
     m12_assert($quotaFailure['code'] === 'PROVIDER_QUOTA_EXHAUSTED' && $rateFailure['code'] === 'PROVIDER_RATE_LIMITED' && $permissionFailure['code'] === 'PROVIDER_PERMISSION_DENIED', 'provider diagnostics distinguish quota, rate limit, and permission failures');
     m12_assert(!str_contains(json_encode([$quotaFailure, $rateFailure, $permissionFailure], JSON_THROW_ON_ERROR), 'raw message'), 'sanitized provider diagnostic never retains raw provider messages');
     $toolUsed = false; $agentResult = $agent->respondWithTools($owner, $project, null, null, 'ตรวจ README', [], [], ['vaultRevision' => $promoted['activeRevisionId']], [['type' => 'function', 'name' => 'project_search', 'description' => 'read only', 'parameters' => ['type' => 'object', 'additionalProperties' => false, 'properties' => ['query' => ['type' => 'string']], 'required' => ['query']]]], static function (string $name, array $arguments) use (&$toolUsed): array { $toolUsed = $name === 'project_search' && ($arguments['query'] ?? null) === 'readme'; return ['files' => [['path' => 'README.md']]]; }, $now);

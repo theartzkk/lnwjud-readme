@@ -1,3 +1,18 @@
+# Authoritative task supersession — 2026-08-29
+
+## NOW
+
+- Close Work Inspection Evidence Surface V1 on top of the existing durable `project-inspection` artifact authority: let Owner expand the evidence inside Work and see exact source revision plus bounded search/read provenance without a new API, evidence store or permission surface.
+- Repair adjacent Work rendering regressions discovered during the pass rather than carrying them forward; cancelled-message dedupe must operate on canonical messages and render the filtered `visibleMessages` list.
+- Keep M16 activation separate and approval-gated. Production remains M15/v15 until an exact reviewed SHA passes release gates and receives required approval.
+- Required closure evidence: same-origin artifact retrieval guard, read-only evidence validation, visible-message regression guard, focused Web tests, `git diff --check`, clean exact commit/push, then stacked CI on top of the Linux-fixture fix.
+- Production, billing, credentials, permissions, Google Cloud legacy and BAY production remain untouched in this source milestone.
+
+## NEXT
+
+- Continue VPS-first self-sufficient execution using the same canonical task/execution/approval/memory authorities. After read-only root-cause inspection is closed, the next safe expansion should improve evidence packaging or bounded multi-file diagnosis without granting new execution authority.
+- Field activation/verification of M16 remains a distinct reviewed Production milestone.
+
 # Tasks
 
 ## NOW

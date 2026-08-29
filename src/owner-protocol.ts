@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 
-export const OWNER_PROTOCOL_VERSION = '1.1' as const;
+export const OWNER_PROTOCOL_VERSION = '1.2' as const;
 export const OWNER_PROTOCOL_FILENAME = 'ART_AI_WORKING_PROTOCOL.md' as const;
 const MAX_OWNER_PROTOCOL_BYTES = 96 * 1024;
 

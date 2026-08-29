@@ -19,6 +19,8 @@ final class HubProjectVault
     public const MAX_CONTENT_BYTES = 2 * 1024 * 1024 * 1024;
     public const MAX_FILES = 10000;
     public const MAX_FILE_READ_BYTES = 256 * 1024;
+    public const MAX_SEARCH_FILES = 512;
+    public const MAX_SEARCH_BYTES = 16 * 1024 * 1024;
 
     public function __construct(private readonly string $root) {}
 
@@ -171,11 +173,29 @@ final class HubProjectVault
         usort($manifest, static fn (array $left, array $right): int => strcmp($left['path'], $right['path'])); return $manifest;
     }
 
-    /** @return list<array{path:string,sizeBytes:int}> */
+    /** @return list<array{path:string,sizeBytes:int,match:string,line?:int,snippet?:string}> */
     public function search(string $projectId, string $revisionId, string $query, int $limit = 20): array
     {
-        $needle = strtolower(trim($query)); if ($needle === '' || strlen($needle) > 120) throw new HubProjectVaultException('Project search query is invalid', 'PROJECT_CONTEXT_INVALID');
-        $matches = []; foreach ($this->manifest($projectId, $revisionId) as $file) if (str_contains(strtolower($file['path']), $needle)) { $matches[] = ['path' => $file['path'], 'sizeBytes' => $file['sizeBytes']]; if (count($matches) >= max(1, min($limit, 50))) break; }
+        $needle = trim($query);
+        if ($needle === '' || strlen($needle) > 120 || str_contains($needle, "\0")) throw new HubProjectVaultException('Project search query is invalid', 'PROJECT_CONTEXT_INVALID');
+        $cap = max(1, min($limit, 50)); $lowerNeedle = strtolower($needle); $matches = []; $contentCandidates = []; $candidateBytes = 0;
+        foreach ($this->manifest($projectId, $revisionId) as $file) {
+            if (str_contains(strtolower($file['path']), $lowerNeedle)) {
+                $matches[] = ['path' => $file['path'], 'sizeBytes' => $file['sizeBytes'], 'match' => 'path'];
+                if (count($matches) >= $cap) return $matches;
+            }
+            if ($file['sizeBytes'] <= self::MAX_FILE_READ_BYTES && count($contentCandidates) < self::MAX_SEARCH_FILES && ($candidateBytes + $file['sizeBytes']) <= self::MAX_SEARCH_BYTES) { $contentCandidates[] = $file; $candidateBytes += $file['sizeBytes']; }
+        }
+        foreach ($contentCandidates as $file) {
+            try { $read = $this->readText($projectId, $revisionId, $file['path']); } catch (HubProjectVaultException) { continue; }
+            $offset = stripos($read['content'], $needle); if ($offset === false) continue;
+            $before = substr($read['content'], 0, $offset); $line = substr_count($before, "\n") + 1;
+            $lineStart = strrpos($before, "\n"); $lineStart = $lineStart === false ? 0 : $lineStart + 1;
+            $lineEnd = strpos($read['content'], "\n", $offset); if ($lineEnd === false) $lineEnd = strlen($read['content']);
+            $snippet = trim(substr($read['content'], $lineStart, min(240, $lineEnd - $lineStart)));
+            $matches[] = ['path' => $file['path'], 'sizeBytes' => $file['sizeBytes'], 'match' => 'content', 'line' => $line, 'snippet' => $snippet];
+            if (count($matches) >= $cap) break;
+        }
         return $matches;
     }
 

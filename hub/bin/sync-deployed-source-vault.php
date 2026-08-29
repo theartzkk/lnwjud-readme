@@ -18,7 +18,7 @@ $pdo = new PDO('sqlite:' . $databasePath, null, null, [PDO::ATTR_ERRMODE => PDO:
 $pdo->exec('PRAGMA foreign_keys = ON');
 $pdo->exec('PRAGMA busy_timeout = 5000');
 $schemaVersion = (int) $pdo->query('PRAGMA user_version')->fetchColumn();
-if (!in_array($schemaVersion, [12, 13, 14, 15], true)) {
+if (!in_array($schemaVersion, [12, 13, 14, 15, 16], true)) {
     fwrite(STDERR, "Central Project Authority schema is not ready\n");
     exit(4);
 }

@@ -15,6 +15,8 @@ require_once __DIR__ . '/system-telemetry.php';
  * repeatedly; each invocation stays one-shot, reads no browser credentials, executes
  * no arbitrary shell input, and exposes no network listener. Schema-15 automations and
  * bounded infrastructure telemetry reuse this same timer and existing authorities.
+ * Each tick drains only a small fixed batch so backlog progresses without turning
+ * the timer into an unbounded daemon or bypassing canonical leases/approvals.
  */
 $database = getenv('AWH_HUB_DB_PATH');
 if (!is_string($database) || $database === '' || str_contains($database, "\0")) { fwrite(STDERR, "DATABASE_CONFIG_INVALID\n"); exit(2); }
@@ -45,7 +47,7 @@ try {
         $telemetry = ['status' => 'DEGRADED'];
     }
 
-    $result = HubDurableExecutionService::fromEnvironment($pdo)->runOnce();
-    fwrite(STDOUT, json_encode(['status' => $result === null ? 'IDLE' : 'PROCESSED', 'automation' => $automation, 'telemetry' => $telemetry, 'execution' => $result], JSON_UNESCAPED_SLASHES) . "\n");
+    $batch = HubDurableExecutionService::fromEnvironment($pdo)->runBatch(4);
+    fwrite(STDOUT, json_encode(['status' => $batch['processed'] === 0 ? 'IDLE' : 'PROCESSED', 'automation' => $automation, 'telemetry' => $telemetry, 'executionBatch' => $batch], JSON_UNESCAPED_SLASHES) . "\n");
 } catch (HubDurableExecutionException|HubProjectVaultException|HubCentralProjectAuthorityMigrationException $error) { fwrite(STDERR, $error->codeName . "\n"); exit(1); }
 catch (Throwable) { fwrite(STDERR, "EXECUTOR_UNAVAILABLE\n"); exit(1); }

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/HubProviderCredentialStore.php';
 require_once __DIR__ . '/HubProviderPricingService.php';
+require_once __DIR__ . '/HubAiProviderAdapter.php';
+require_once __DIR__ . '/HubOpenAiProviderAdapter.php';
+require_once __DIR__ . '/HubAiGovernanceService.php';
 
 /**
  * Provider-independent native reasoning boundary.  OpenAI is the first adapter
@@ -22,43 +25,46 @@ final class HubNativeAgentException extends RuntimeException
 
 final class HubNativeAgentService
 {
-    private const PROVIDER = 'openai';
     private const ROUTES = ['FAST', 'BALANCED', 'STRONG'];
-    /** @var null|callable(array<string,mixed>, string):array<string,mixed> */
-    private $transport;
+    private readonly HubAiProviderAdapter $adapter;
+    private readonly string $providerId;
     private readonly HubProviderCredentialStore $credentials;
     private readonly ?HubProviderPricingService $pricing;
+    private readonly ?HubAiGovernanceService $governance;
     private readonly ?string $fixtureKey;
 
-    public function __construct(private readonly PDO $pdo, ?callable $transport = null, ?string $key = null, ?HubProviderCredentialStore $credentials = null)
+    public function __construct(private readonly PDO $pdo, ?callable $transport = null, ?string $key = null, ?HubProviderCredentialStore $credentials = null, ?HubAiProviderAdapter $adapter = null)
     {
-        $this->transport = $transport;
+        $this->adapter = $adapter ?? new HubOpenAiProviderAdapter($transport);
+        $this->providerId = $this->adapter->providerId();
         $this->fixtureKey = $key;
-        $this->credentials = $credentials ?? HubProviderCredentialStore::fromEnvironment();
+        $this->credentials = $credentials ?? HubProviderCredentialStore::fromEnvironment($this->providerId);
+        if (!hash_equals($this->credentials->providerId(), $this->providerId)) throw new HubNativeAgentException('Provider credential authority does not match the adapter', 'PROVIDER_CREDENTIAL_STATE_UNCERTAIN');
         $this->pricing = HubProviderPricingService::schemaPresent($pdo) ? new HubProviderPricingService($pdo) : null;
+        $this->governance = HubAiGovernanceService::schemaPresent($pdo) ? new HubAiGovernanceService($pdo) : null;
     }
 
     /** @return array<string,mixed> */
     public function status(string $userId, ?string $now = null): array
     {
         $policy = $this->policy($userId, $now); $month = substr(self::timestamp($now ?? gmdate('c')), 0, 7) . '%';
-        $q = $this->pdo->prepare("SELECT COALESCE(SUM(estimated_microunits), 0) FROM control_provider_usage WHERE provider_id = :provider AND created_at LIKE :month"); $q->execute(['provider' => self::PROVIDER, 'month' => $month]); $used = (int) $q->fetchColumn();
+        $q = $this->pdo->prepare("SELECT COALESCE(SUM(estimated_microunits), 0) FROM control_provider_usage WHERE provider_id = :provider AND created_at LIKE :month"); $q->execute(['provider' => $this->providerId, 'month' => $month]); $used = (int) $q->fetchColumn();
         $key = $this->credential(); $metadata = $this->credentialMetadata();
         $usage = $this->pdo->prepare("SELECT u.project_id, p.name, COALESCE(SUM(u.estimated_microunits), 0) AS estimated FROM control_provider_usage u JOIN projects p ON p.project_id = u.project_id WHERE u.provider_id = :provider AND u.created_at LIKE :month GROUP BY u.project_id, p.name ORDER BY estimated DESC, p.name LIMIT 50");
-        $usage->execute(['provider' => self::PROVIDER, 'month' => $month]);
+        $usage->execute(['provider' => $this->providerId, 'month' => $month]);
         $byProject = array_map(static fn (array $row): array => ['projectId' => (string) $row['project_id'], 'projectName' => (string) $row['name'], 'estimatedMicrounits' => (int) $row['estimated']], $usage->fetchAll());
-        $catalog = $this->pricing?->catalog([$policy['modelFast'],$policy['modelBalanced'],$policy['modelStrong']], self::PROVIDER, $policy['serviceTier'], $now) ?? [];
-        return ['available' => $policy['enabled'] && $key !== null && (function_exists('curl_init') || $this->transport !== null), 'enabled' => $policy['enabled'], 'keyConfigured' => $key !== null, 'provider' => self::PROVIDER, 'currency' => 'THB', 'budget' => ['monthlyMicrounits' => $policy['monthlyBudgetMicrounits'], 'warningMicrounits' => $policy['warningMicrounits'], 'usedMicrounits' => $used, 'remainingMicrounits' => max(0, $policy['monthlyBudgetMicrounits'] - $used), 'hardStop' => $used >= $policy['monthlyBudgetMicrounits']], 'models' => ['fast' => $policy['modelFast'], 'balanced' => $policy['modelBalanced'], 'strong' => $policy['modelStrong']], 'routingStrategy' => $policy['routingStrategy'], 'pricing' => ['mode' => $policy['pricingMode'], 'serviceTier' => $policy['serviceTier'], 'catalog' => $catalog], 'rates' => ['inputMicrounitsPerMillion' => $policy['inputMicrounitsPerMillion'], 'outputMicrounitsPerMillion' => $policy['outputMicrounitsPerMillion']], 'credential' => ['configured' => $key !== null, 'storage' => 'SERVER_MANAGED', 'lastTestedAt' => $metadata['lastTestedAt'], 'lastTestStatus' => $metadata['lastTestStatus']], 'usageByProject' => $byProject];
+        $catalog = $this->pricing?->catalog([$policy['modelFast'],$policy['modelBalanced'],$policy['modelStrong']], $this->providerId, $policy['serviceTier'], $now) ?? [];
+        return ['available' => $policy['enabled'] && $key !== null, 'enabled' => $policy['enabled'], 'keyConfigured' => $key !== null, 'provider' => $this->providerId, 'currency' => 'THB', 'budget' => ['monthlyMicrounits' => $policy['monthlyBudgetMicrounits'], 'warningMicrounits' => $policy['warningMicrounits'], 'usedMicrounits' => $used, 'remainingMicrounits' => max(0, $policy['monthlyBudgetMicrounits'] - $used), 'hardStop' => $used >= $policy['monthlyBudgetMicrounits']], 'models' => ['fast' => $policy['modelFast'], 'balanced' => $policy['modelBalanced'], 'strong' => $policy['modelStrong']], 'routingStrategy' => $policy['routingStrategy'], 'pricing' => ['mode' => $policy['pricingMode'], 'serviceTier' => $policy['serviceTier'], 'catalog' => $catalog], 'rates' => ['inputMicrounitsPerMillion' => $policy['inputMicrounitsPerMillion'], 'outputMicrounitsPerMillion' => $policy['outputMicrounitsPerMillion']], 'credential' => ['configured' => $key !== null, 'storage' => 'SERVER_MANAGED', 'lastTestedAt' => $metadata['lastTestedAt'], 'lastTestStatus' => $metadata['lastTestStatus']], 'usageByProject' => $byProject];
     }
 
     /** @param list<array{role:string,body:string}> $turns @param list<array{name:string,mimeType:string,path:string,sizeBytes:int}> $attachments @param array<string,mixed> $context */
-    public function respond(string $userId, string $projectId, string $conversationId, string $messageId, string $request, array $turns, array $attachments, ?string $now = null, array $context = []): array
+    public function respond(string $userId, string $projectId, string $conversationId, string $messageId, string $request, array $turns, array $attachments, ?string $now = null, array $context = [], array $executionContext = []): array
     {
-        $at = self::timestamp($now ?? gmdate('c')); $policy = $this->policy($userId, $at); $route = $this->routeForProject($projectId, self::route($request, $policy['routingStrategy'])); $model = $policy['model' . ucfirst(strtolower($route))];
+        $at = self::timestamp($now ?? gmdate('c')); $policy = $this->policy($userId, $at); [$route,$model,$governanceRouteId] = $this->modelForExecution($userId,$projectId,$request,$policy,$executionContext,$at,1200); $startedAt = microtime(true);
         $status = $this->status($userId, $at);
         $zeroQuote = $this->quote($policy,$model,0,0,0,0,$at);
         $key = $this->credential();
-        if (!$policy['enabled'] || $key === null || (!function_exists('curl_init') && $this->transport === null)) {
+        if (!$policy['enabled'] || $key === null) {
             $this->record($userId,$projectId,$conversationId,$messageId,$model,$route,0,0,0,0,0,'UNAVAILABLE',$at,$zeroQuote['snapshot']);
             throw new HubNativeAgentException('Native provider is not configured', 'PROVIDER_UNAVAILABLE');
         }
@@ -80,10 +86,12 @@ final class HubNativeAgentService
             $usage = is_array($response) ? self::usageOrZero($response) : ['inputTokens' => 0, 'cachedInputTokens' => 0, 'cacheWriteTokens' => 0, 'outputTokens' => 0];
             $quote = $this->quote($policy,$model,$usage['inputTokens'],$usage['cachedInputTokens'],$usage['cacheWriteTokens'],$usage['outputTokens'],$at); $cost = $quote['estimatedMicrounits'];
             $this->record($userId,$projectId,$conversationId,$messageId,$model,$route,$usage['inputTokens'],$usage['cachedInputTokens'],$usage['cacheWriteTokens'],$usage['outputTokens'],$cost,$error->codeName === 'BUDGET_EXHAUSTED' ? 'BUDGET_EXHAUSTED' : 'FAILED',$at,$quote['snapshot']);
+            $this->governanceOutcome($governanceRouteId,'FAILED','NOT_RUN',(int)($executionContext['retryCount']??0),(int)round((microtime(true)-$startedAt)*1000),$cost,$error->diagnostic);
             throw $error;
         }
         $this->record($userId,$projectId,$conversationId,$messageId,$model,$route,$usage['inputTokens'],$usage['cachedInputTokens'],$usage['cacheWriteTokens'],$usage['outputTokens'],$cost,'COMPLETED',$at,$quote['snapshot']);
-        return ['summary' => $text, 'provider' => self::PROVIDER, 'route' => strtolower($route), 'model' => $model, 'usage' => $usage, 'estimatedMicrounits' => $cost];
+        $this->governanceOutcome($governanceRouteId,'PASSED','NOT_RUN',(int)($executionContext['retryCount']??0),(int)round((microtime(true)-$startedAt)*1000),$cost);
+        return ['summary' => $text, 'provider' => $this->providerId, 'route' => strtolower($route), 'model' => $model, 'usage' => $usage, 'estimatedMicrounits' => $cost, 'routeDecisionId' => $governanceRouteId];
     }
 
     /**
@@ -96,7 +104,7 @@ final class HubNativeAgentService
      * @param callable(string,array<string,mixed>):array<string,mixed> $toolExecutor
      * @return array<string,mixed>
      */
-    public function respondWithTools(string $userId, string $projectId, ?string $conversationId, ?string $messageId, string $request, array $turns, array $attachments, array $context, array $tools, callable $toolExecutor, ?string $now = null): array
+    public function respondWithTools(string $userId, string $projectId, ?string $conversationId, ?string $messageId, string $request, array $turns, array $attachments, array $context, array $tools, callable $toolExecutor, ?string $now = null, array $executionContext = []): array
     {
         if ($tools === [] || count($tools) > 8) throw new HubNativeAgentException('Native tool policy is invalid', 'PROVIDER_POLICY_INVALID');
         $allowed = [];
@@ -104,8 +112,8 @@ final class HubNativeAgentService
             if (!is_array($tool) || ($tool['type'] ?? null) !== 'function' || !is_string($tool['name'] ?? null) || preg_match('/^[a-z][a-z0-9_]{1,48}$/', $tool['name']) !== 1 || !is_array($tool['parameters'] ?? null)) throw new HubNativeAgentException('Native tool policy is invalid', 'PROVIDER_POLICY_INVALID');
             $allowed[$tool['name']] = true;
         }
-        $at = self::timestamp($now ?? gmdate('c')); $policy = $this->policy($userId, $at); $route = $this->routeForProject($projectId, self::route($request, $policy['routingStrategy'])); $model = $policy['model' . ucfirst(strtolower($route))]; $status = $this->status($userId, $at); $zeroQuote = $this->quote($policy,$model,0,0,0,0,$at); $key = $this->credential();
-        if (!$policy['enabled'] || $key === null || (!function_exists('curl_init') && $this->transport === null)) { $this->record($userId,$projectId,$conversationId,$messageId,$model,$route,0,0,0,0,0,'UNAVAILABLE',$at,$zeroQuote['snapshot']); throw new HubNativeAgentException('Native provider is not configured', 'PROVIDER_UNAVAILABLE'); }
+        $at = self::timestamp($now ?? gmdate('c')); $policy = $this->policy($userId, $at); [$route,$model,$governanceRouteId] = $this->modelForExecution($userId,$projectId,$request,$policy,$executionContext,$at,1200); $startedAt = microtime(true); $status = $this->status($userId, $at); $zeroQuote = $this->quote($policy,$model,0,0,0,0,$at); $key = $this->credential();
+        if (!$policy['enabled'] || $key === null) { $this->record($userId,$projectId,$conversationId,$messageId,$model,$route,0,0,0,0,0,'UNAVAILABLE',$at,$zeroQuote['snapshot']); throw new HubNativeAgentException('Native provider is not configured', 'PROVIDER_UNAVAILABLE'); }
         if ($status['budget']['usedMicrounits'] >= $policy['monthlyBudgetMicrounits']) { $this->record($userId,$projectId,$conversationId,$messageId,$model,$route,0,0,0,0,0,'BUDGET_EXHAUSTED',$at,$zeroQuote['snapshot']); throw new HubNativeAgentException('The owner AI budget is exhausted', 'BUDGET_EXHAUSTED'); }
         $payload = $this->requestPayload($model, $request, $turns, $attachments, $userId, $context) + ['tools' => $tools, 'tool_choice' => 'auto', 'max_tool_calls' => 6, 'include' => ['reasoning.encrypted_content']];
         $conversationInput = is_array($payload['input'] ?? null) ? $payload['input'] : [];
@@ -119,7 +127,8 @@ final class HubNativeAgentService
                 $functionCalls = self::functionCalls($response);
                 if ($functionCalls === []) {
                     $text = self::outputText($response); $quote = $this->quote($policy,$model,$total['inputTokens'],$total['cachedInputTokens'],$total['cacheWriteTokens'],$total['outputTokens'],$at); $cost = $quote['estimatedMicrounits']; $this->record($userId,$projectId,$conversationId,$messageId,$model,$route,$total['inputTokens'],$total['cachedInputTokens'],$total['cacheWriteTokens'],$total['outputTokens'],$cost,'COMPLETED',$at,$quote['snapshot']);
-                    return ['summary' => $text, 'provider' => self::PROVIDER, 'route' => strtolower($route), 'model' => $model, 'usage' => $total, 'estimatedMicrounits' => $cost, 'toolCalls' => $calls];
+                    $this->governanceOutcome($governanceRouteId,'PASSED','NOT_RUN',(int)($executionContext['retryCount']??0),(int)round((microtime(true)-$startedAt)*1000),$cost);
+                    return ['summary' => $text, 'provider' => $this->providerId, 'route' => strtolower($route), 'model' => $model, 'usage' => $total, 'estimatedMicrounits' => $cost, 'toolCalls' => $calls, 'routeDecisionId' => $governanceRouteId];
                 }
                 if ($calls + count($functionCalls) > 6 || !is_string($response['id'] ?? null) || !preg_match('/^[A-Za-z0-9_-]{4,200}$/', $response['id'])) throw new HubNativeAgentException('Native provider tool response is invalid', 'PROVIDER_FAILED');
                 $outputs = [];
@@ -137,7 +146,8 @@ final class HubNativeAgentService
                 $reserved += $nextReserve; $response = $this->call($payload, $key);
             }
             throw new HubNativeAgentException('Native provider exceeded the safe tool loop', 'PROVIDER_FAILED');
-        } catch (HubNativeAgentException $error) { $quote = $this->quote($policy,$model,$total['inputTokens'],$total['cachedInputTokens'],$total['cacheWriteTokens'],$total['outputTokens'],$at); $cost = $quote['estimatedMicrounits']; $this->record($userId,$projectId,$conversationId,$messageId,$model,$route,$total['inputTokens'],$total['cachedInputTokens'],$total['cacheWriteTokens'],$total['outputTokens'],$cost,$error->codeName === 'BUDGET_EXHAUSTED' ? 'BUDGET_EXHAUSTED' : 'FAILED',$at,$quote['snapshot']); throw $error; }
+        } catch (HubNativeAgentException $error) { $quote = $this->quote($policy,$model,$total['inputTokens'],$total['cachedInputTokens'],$total['cacheWriteTokens'],$total['outputTokens'],$at); $cost = $quote['estimatedMicrounits']; $this->record($userId,$projectId,$conversationId,$messageId,$model,$route,$total['inputTokens'],$total['cachedInputTokens'],$total['cacheWriteTokens'],$total['outputTokens'],$cost,$error->codeName === 'BUDGET_EXHAUSTED' ? 'BUDGET_EXHAUSTED' : 'FAILED',$at,$quote['snapshot']);             $this->governanceOutcome($governanceRouteId,'FAILED','NOT_RUN',(int)($executionContext['retryCount']??0),(int)round((microtime(true)-$startedAt)*1000),0,$error->diagnostic);
+            throw $error; }
     }
 
     /** A write-only key save has compensation if metadata cannot be committed. */
@@ -175,7 +185,7 @@ final class HubNativeAgentService
     public function testConnection(string $userId, ?string $now = null): array
     {
         $at = self::timestamp($now ?? gmdate('c')); $key = $this->credential();
-        if ($key === null) return ['provider' => self::PROVIDER, 'status' => 'NOT_CONFIGURED'];
+        if ($key === null) return ['provider' => $this->providerId, 'status' => 'NOT_CONFIGURED'];
         try {
             $policy = $this->policy($userId, $at);
             $response = $this->call([
@@ -188,20 +198,20 @@ final class HubNativeAgentService
             ], $key);
             self::outputText($response);
             $this->recordCredentialState($userId, true, 'PASS', $at, $at);
-            return ['provider' => self::PROVIDER, 'status' => 'PASS', 'model' => $policy['modelFast'], 'path' => 'responses'];
+            return ['provider' => $this->providerId, 'status' => 'PASS', 'model' => $policy['modelFast'], 'path' => 'responses'];
         } catch (Throwable $error) {
             try { $this->recordCredentialState($userId, true, 'FAILED', $at, $at); } catch (Throwable) {}
             if ($error instanceof HubNativeAgentException) throw $error;
-            throw new HubNativeAgentException('Provider connection test failed', 'PROVIDER_TEST_FAILED', ['provider' => self::PROVIDER, 'operation' => 'responses', 'category' => 'unknown', 'retryable' => false]);
+            throw new HubNativeAgentException('Provider connection test failed', 'PROVIDER_TEST_FAILED', ['provider' => $this->providerId, 'operation' => 'responses', 'category' => 'unknown', 'retryable' => false]);
         }
     }
 
     /** @return array{provider:string,routingMode:string,overridden:bool} */
     public function projectRouting(string $projectId): array
     {
-        self::uuid($projectId); if (!$this->selfServiceTablePresent('control_project_provider_overrides')) return ['provider' => self::PROVIDER, 'routingMode' => 'AUTO', 'overridden' => false];
-        $q = $this->pdo->prepare('SELECT routing_mode FROM control_project_provider_overrides WHERE project_id = :project AND provider_id = :provider'); $q->execute(['project' => $projectId, 'provider' => self::PROVIDER]); $mode = $q->fetchColumn();
-        return ['provider' => self::PROVIDER, 'routingMode' => is_string($mode) ? $mode : 'AUTO', 'overridden' => is_string($mode) && $mode !== 'AUTO'];
+        self::uuid($projectId); if (!$this->selfServiceTablePresent('control_project_provider_overrides')) return ['provider' => $this->providerId, 'routingMode' => 'AUTO', 'overridden' => false];
+        $q = $this->pdo->prepare('SELECT routing_mode FROM control_project_provider_overrides WHERE project_id = :project AND provider_id = :provider'); $q->execute(['project' => $projectId, 'provider' => $this->providerId]); $mode = $q->fetchColumn();
+        return ['provider' => $this->providerId, 'routingMode' => is_string($mode) ? $mode : 'AUTO', 'overridden' => is_string($mode) && $mode !== 'AUTO'];
     }
 
     public function updateProjectRouting(string $userId, string $projectId, string $routingMode, ?string $now = null): array
@@ -209,8 +219,8 @@ final class HubNativeAgentService
         $projectId = self::uuid($projectId); $mode = strtoupper(trim($routingMode)); if (!in_array($mode, array_merge(['AUTO'], self::ROUTES), true)) throw new HubNativeAgentException('Provider route is invalid', 'PROVIDER_POLICY_INVALID');
         if (!$this->selfServiceTablePresent('control_project_provider_overrides')) throw new HubNativeAgentException('Provider routing is not ready', 'SELF_SERVICE_SCHEMA_NOT_READY');
         $at = self::timestamp($now ?? gmdate('c'));
-        if ($mode === 'AUTO') $this->pdo->prepare('DELETE FROM control_project_provider_overrides WHERE project_id = :project AND provider_id = :provider')->execute(['project' => $projectId, 'provider' => self::PROVIDER]);
-        else $this->pdo->prepare('INSERT INTO control_project_provider_overrides(project_id, provider_id, routing_mode, updated_by_user_id, updated_at) VALUES(:project, :provider, :mode, :user, :at) ON CONFLICT(project_id) DO UPDATE SET provider_id=excluded.provider_id, routing_mode=excluded.routing_mode, updated_by_user_id=excluded.updated_by_user_id, updated_at=excluded.updated_at')->execute(['project' => $projectId, 'provider' => self::PROVIDER, 'mode' => $mode, 'user' => $userId, 'at' => $at]);
+        if ($mode === 'AUTO') $this->pdo->prepare('DELETE FROM control_project_provider_overrides WHERE project_id = :project AND provider_id = :provider')->execute(['project' => $projectId, 'provider' => $this->providerId]);
+        else $this->pdo->prepare('INSERT INTO control_project_provider_overrides(project_id, provider_id, routing_mode, updated_by_user_id, updated_at) VALUES(:project, :provider, :mode, :user, :at) ON CONFLICT(project_id) DO UPDATE SET provider_id=excluded.provider_id, routing_mode=excluded.routing_mode, updated_by_user_id=excluded.updated_by_user_id, updated_at=excluded.updated_at')->execute(['project' => $projectId, 'provider' => $this->providerId, 'mode' => $mode, 'user' => $userId, 'at' => $at]);
         return $this->projectRouting($projectId);
     }
 
@@ -242,15 +252,15 @@ final class HubNativeAgentService
         if ($policy['enabled'] && $policy['monthlyBudgetMicrounits'] < 1) throw new HubNativeAgentException('An enabled provider requires a positive budget', 'PROVIDER_POLICY_INVALID');
         if ($policy['enabled'] && $policy['pricingMode'] === 'LEGACY' && ($policy['inputMicrounitsPerMillion'] < 1 || $policy['outputMicrounitsPerMillion'] < 1)) throw new HubNativeAgentException('Legacy pricing requires positive cost rates', 'PROVIDER_POLICY_INVALID');
         if ($policy['pricingMode'] === 'CATALOG') {
-            $priced = $this->pricing?->catalog([$policy['modelFast'],$policy['modelBalanced'],$policy['modelStrong']],self::PROVIDER,$policy['serviceTier'],$now) ?? [];
+            $priced = $this->pricing?->catalog([$policy['modelFast'],$policy['modelBalanced'],$policy['modelStrong']],$this->providerId,$policy['serviceTier'],$now) ?? [];
             if (count($priced) !== 3) throw new HubNativeAgentException('One or more selected models do not have an active catalog price', 'PROVIDER_PRICING_UNAVAILABLE');
         }
         $at = self::timestamp($now ?? gmdate('c'));
         if ($this->pricing !== null) {
             $sql = 'INSERT INTO control_provider_policies(provider_id,enabled,model_fast,model_balanced,model_strong,monthly_budget_microunits,warning_microunits,input_microunits_per_million,output_microunits_per_million,routing_strategy,pricing_mode,service_tier,updated_by_user_id,updated_at) VALUES(:provider,:enabled,:fast,:balanced,:strong,:budget,:warning,:input,:output,:strategy,:pricing,:tier,:user,:at) ON CONFLICT(provider_id) DO UPDATE SET enabled=excluded.enabled,model_fast=excluded.model_fast,model_balanced=excluded.model_balanced,model_strong=excluded.model_strong,monthly_budget_microunits=excluded.monthly_budget_microunits,warning_microunits=excluded.warning_microunits,input_microunits_per_million=excluded.input_microunits_per_million,output_microunits_per_million=excluded.output_microunits_per_million,routing_strategy=excluded.routing_strategy,pricing_mode=excluded.pricing_mode,service_tier=excluded.service_tier,updated_by_user_id=excluded.updated_by_user_id,updated_at=excluded.updated_at';
-            $this->pdo->prepare($sql)->execute(['provider'=>self::PROVIDER,'enabled'=>$policy['enabled']?1:0,'fast'=>$policy['modelFast'],'balanced'=>$policy['modelBalanced'],'strong'=>$policy['modelStrong'],'budget'=>$policy['monthlyBudgetMicrounits'],'warning'=>$policy['warningMicrounits'],'input'=>$policy['inputMicrounitsPerMillion'],'output'=>$policy['outputMicrounitsPerMillion'],'strategy'=>$policy['routingStrategy'],'pricing'=>$policy['pricingMode'],'tier'=>$policy['serviceTier'],'user'=>$userId,'at'=>$at]);
+            $this->pdo->prepare($sql)->execute(['provider'=>$this->providerId,'enabled'=>$policy['enabled']?1:0,'fast'=>$policy['modelFast'],'balanced'=>$policy['modelBalanced'],'strong'=>$policy['modelStrong'],'budget'=>$policy['monthlyBudgetMicrounits'],'warning'=>$policy['warningMicrounits'],'input'=>$policy['inputMicrounitsPerMillion'],'output'=>$policy['outputMicrounitsPerMillion'],'strategy'=>$policy['routingStrategy'],'pricing'=>$policy['pricingMode'],'tier'=>$policy['serviceTier'],'user'=>$userId,'at'=>$at]);
         } else {
-            $this->pdo->prepare('INSERT INTO control_provider_policies(provider_id, enabled, model_fast, model_balanced, model_strong, monthly_budget_microunits, warning_microunits, input_microunits_per_million, output_microunits_per_million, updated_by_user_id, updated_at) VALUES(:provider, :enabled, :fast, :balanced, :strong, :budget, :warning, :input, :output, :user, :at) ON CONFLICT(provider_id) DO UPDATE SET enabled=excluded.enabled, model_fast=excluded.model_fast, model_balanced=excluded.model_balanced, model_strong=excluded.model_strong, monthly_budget_microunits=excluded.monthly_budget_microunits, warning_microunits=excluded.warning_microunits, input_microunits_per_million=excluded.input_microunits_per_million, output_microunits_per_million=excluded.output_microunits_per_million, updated_by_user_id=excluded.updated_by_user_id, updated_at=excluded.updated_at')->execute(['provider'=>self::PROVIDER,'enabled'=>$policy['enabled']?1:0,'fast'=>$policy['modelFast'],'balanced'=>$policy['modelBalanced'],'strong'=>$policy['modelStrong'],'budget'=>$policy['monthlyBudgetMicrounits'],'warning'=>$policy['warningMicrounits'],'input'=>$policy['inputMicrounitsPerMillion'],'output'=>$policy['outputMicrounitsPerMillion'],'user'=>$userId,'at'=>$at]);
+            $this->pdo->prepare('INSERT INTO control_provider_policies(provider_id, enabled, model_fast, model_balanced, model_strong, monthly_budget_microunits, warning_microunits, input_microunits_per_million, output_microunits_per_million, updated_by_user_id, updated_at) VALUES(:provider, :enabled, :fast, :balanced, :strong, :budget, :warning, :input, :output, :user, :at) ON CONFLICT(provider_id) DO UPDATE SET enabled=excluded.enabled, model_fast=excluded.model_fast, model_balanced=excluded.model_balanced, model_strong=excluded.model_strong, monthly_budget_microunits=excluded.monthly_budget_microunits, warning_microunits=excluded.warning_microunits, input_microunits_per_million=excluded.input_microunits_per_million, output_microunits_per_million=excluded.output_microunits_per_million, updated_by_user_id=excluded.updated_by_user_id, updated_at=excluded.updated_at')->execute(['provider'=>$this->providerId,'enabled'=>$policy['enabled']?1:0,'fast'=>$policy['modelFast'],'balanced'=>$policy['modelBalanced'],'strong'=>$policy['modelStrong'],'budget'=>$policy['monthlyBudgetMicrounits'],'warning'=>$policy['warningMicrounits'],'input'=>$policy['inputMicrounitsPerMillion'],'output'=>$policy['outputMicrounitsPerMillion'],'user'=>$userId,'at'=>$at]);
         }
         return $this->status($userId,$at);
     }
@@ -258,7 +268,7 @@ final class HubNativeAgentService
     /** @return array<string,mixed> */
     private function policy(string $userId, ?string $now): array
     {
-        $q=$this->pdo->prepare('SELECT * FROM control_provider_policies WHERE provider_id=:provider'); $q->execute(['provider'=>self::PROVIDER]); $row=$q->fetch();
+        $q=$this->pdo->prepare('SELECT * FROM control_provider_policies WHERE provider_id=:provider'); $q->execute(['provider'=>$this->providerId]); $row=$q->fetch();
         if (!is_array($row)) return ['enabled'=>false,'modelFast'=>'gpt-5.6-luna','modelBalanced'=>'gpt-5.6-terra','modelStrong'=>'gpt-5.6-sol','monthlyBudgetMicrounits'=>0,'warningMicrounits'=>0,'inputMicrounitsPerMillion'=>0,'outputMicrounitsPerMillion'=>0,'routingStrategy'=>'BALANCED','pricingMode'=>$this->pricing===null?'LEGACY':'CATALOG','serviceTier'=>'DEFAULT'];
         return ['enabled'=>(int)$row['enabled']===1,'modelFast'=>(string)$row['model_fast'],'modelBalanced'=>(string)$row['model_balanced'],'modelStrong'=>(string)$row['model_strong'],'monthlyBudgetMicrounits'=>(int)$row['monthly_budget_microunits'],'warningMicrounits'=>(int)$row['warning_microunits'],'inputMicrounitsPerMillion'=>(int)$row['input_microunits_per_million'],'outputMicrounitsPerMillion'=>(int)$row['output_microunits_per_million'],'routingStrategy'=>isset($row['routing_strategy'])?(string)$row['routing_strategy']:'BALANCED','pricingMode'=>isset($row['pricing_mode'])?(string)$row['pricing_mode']:'LEGACY','serviceTier'=>isset($row['service_tier'])?(string)$row['service_tier']:'DEFAULT'];
     }
@@ -291,58 +301,8 @@ final class HubNativeAgentService
 
     private function call(array $payload, string $key): array
     {
-        if ($this->transport !== null) return ($this->transport)($payload, $key);
-        $model = is_string($payload['model'] ?? null) ? $payload['model'] : null;
-        $curl = curl_init('https://api.openai.com/v1/responses');
-        if ($curl === false) throw new HubNativeAgentException('Native provider is unavailable', 'PROVIDER_UNAVAILABLE', self::providerDiagnostic('network', true, null, null, null, $model));
-        $encoded = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-        curl_setopt_array($curl, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => $encoded, CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 10, CURLOPT_TIMEOUT => 45, CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . $key, 'Accept: application/json']]);
-        $body = curl_exec($curl); $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE); $curlError = curl_errno($curl); curl_close($curl);
-        if ($curlError !== 0 || !is_string($body)) throw new HubNativeAgentException('Native provider is unavailable', 'PROVIDER_UNAVAILABLE', self::providerDiagnostic('network', true, null, null, null, $model, $curlError));
-        if (strlen($body) > 2 * 1024 * 1024) throw new HubNativeAgentException('Native provider response exceeded the safe limit', 'PROVIDER_FAILED', self::providerDiagnostic('invalid_response', true, $status, null, null, $model));
-        $value = null; try { $value = json_decode($body, true, 64, JSON_THROW_ON_ERROR); } catch (Throwable) {}
-        if ($status < 200 || $status >= 300) {
-            $failure = self::providerFailure($status, is_array($value) ? $value : null, $model);
-            throw new HubNativeAgentException('Native provider rejected the request', $failure['code'], $failure['diagnostic']);
-        }
-        if (!is_array($value)) throw new HubNativeAgentException('Native provider did not return a usable response', 'PROVIDER_FAILED', self::providerDiagnostic('invalid_response', true, $status, null, null, $model));
-        return $value;
-    }
-
-    /** @return array{code:string,diagnostic:array<string,mixed>} */
-    private static function providerFailure(int $status, ?array $body, ?string $model): array
-    {
-        $error = is_array($body['error'] ?? null) ? $body['error'] : [];
-        $type = self::diagnosticToken($error['type'] ?? null);
-        $providerCode = self::diagnosticToken($error['code'] ?? null);
-        $needle = strtolower(($type ?? '') . ' ' . ($providerCode ?? ''));
-        $code = 'PROVIDER_FAILED'; $category = 'provider_error'; $retryable = false;
-        if ($status === 401) { $code = 'PROVIDER_AUTH_FAILED'; $category = 'auth'; }
-        elseif ($status === 403) { $code = 'PROVIDER_PERMISSION_DENIED'; $category = 'permission'; }
-        elseif ($status === 429 && preg_match('/quota|billing|credit|insufficient/', $needle) === 1) { $code = 'PROVIDER_QUOTA_EXHAUSTED'; $category = 'quota'; }
-        elseif ($status === 429) { $code = 'PROVIDER_RATE_LIMITED'; $category = 'rate_limit'; $retryable = true; }
-        elseif ($status === 404 || preg_match('/model/', $needle) === 1) { $code = 'PROVIDER_MODEL_UNAVAILABLE'; $category = 'model'; }
-        elseif ($status === 408 || $status >= 500) { $code = 'PROVIDER_UNAVAILABLE'; $category = 'temporary'; $retryable = true; }
-        elseif ($status >= 400) { $code = 'PROVIDER_REQUEST_INVALID'; $category = 'invalid_request'; }
-        return ['code' => $code, 'diagnostic' => self::providerDiagnostic($category, $retryable, $status, $type, $providerCode, $model)];
-    }
-
-    /** @return array<string,mixed> */
-    private static function providerDiagnostic(string $category, bool $retryable, ?int $status, ?string $type, ?string $code, ?string $model, ?int $transportCode = null): array
-    {
-        $out = ['provider' => self::PROVIDER, 'operation' => 'responses', 'category' => $category, 'retryable' => $retryable];
-        if ($status !== null && $status >= 100 && $status <= 599) { $out['httpStatus'] = $status; $out['httpStatusClass'] = intdiv($status, 100) . 'xx'; }
-        if ($type !== null) $out['providerType'] = $type;
-        if ($code !== null) $out['providerCode'] = $code;
-        if (is_string($model) && preg_match('/^[A-Za-z0-9._:-]{2,100}$/', $model) === 1) $out['model'] = $model;
-        if ($transportCode !== null && $transportCode > 0 && $transportCode < 1000) $out['transportCode'] = $transportCode;
-        return $out;
-    }
-
-    private static function diagnosticToken(mixed $value): ?string
-    {
-        if (!is_string($value)) return null; $value = trim($value);
-        return preg_match('/^[A-Za-z0-9._:-]{1,80}$/', $value) === 1 ? $value : null;
+        try { return $this->adapter->call($payload, $key); }
+        catch (HubAiProviderAdapterException $error) { throw new HubNativeAgentException($error->getMessage(), $error->codeName, $error->diagnostic); }
     }
 
     private function record(string $user, string $project, ?string $conversation, ?string $message, string $model, string $route, int $input, int $cached, int $cacheWrite, int $output, int $cost, string $status, string $at, ?array $snapshot = null): void
@@ -353,16 +313,16 @@ final class HubNativeAgentService
                 if ($this->pricing !== null) {
                     $snap=$snapshot ?? ['rateId'=>null,'mode'=>'LEGACY','currency'=>'THB','inputRateMicrounitsPerMillion'=>0,'cachedInputRateMicrounitsPerMillion'=>0,'cacheWriteRateMicrounitsPerMillion'=>0,'outputRateMicrounitsPerMillion'=>0,'effectiveAt'=>null,'sourceUri'=>null,'longContextMultiplierApplied'=>false];
                     $sql='INSERT INTO control_provider_usage(usage_id,provider_id,user_id,project_id,conversation_id,message_id,model,route,input_tokens,cached_input_tokens,cache_write_tokens,output_tokens,estimated_microunits,status,created_at,pricing_rate_id,pricing_mode,pricing_currency,input_rate_microunits_per_million,cached_input_rate_microunits_per_million,cache_write_rate_microunits_per_million,output_rate_microunits_per_million,pricing_effective_at,pricing_source_uri,long_context_multiplier_applied) VALUES(:id,:provider,:user,:project,:conversation,:message,:model,:route,:input,:cached,:cacheWrite,:output,:cost,:status,:at,:rateId,:pricingMode,:currency,:inputRate,:cachedRate,:cacheWriteRate,:outputRate,:effective,:source,:longContext)';
-                    $this->pdo->prepare($sql)->execute(['id'=>$id,'provider'=>self::PROVIDER,'user'=>$user,'project'=>$project,'conversation'=>$conversation,'message'=>$message,'model'=>$model,'route'=>$route,'input'=>$input,'cached'=>$cached,'cacheWrite'=>$cacheWrite,'output'=>$output,'cost'=>$cost,'status'=>$status,'at'=>$at,'rateId'=>$snap['rateId']??null,'pricingMode'=>$snap['mode']??'LEGACY','currency'=>$snap['currency']??'THB','inputRate'=>$snap['inputRateMicrounitsPerMillion']??0,'cachedRate'=>$snap['cachedInputRateMicrounitsPerMillion']??0,'cacheWriteRate'=>$snap['cacheWriteRateMicrounitsPerMillion']??0,'outputRate'=>$snap['outputRateMicrounitsPerMillion']??0,'effective'=>$snap['effectiveAt']??null,'source'=>$snap['sourceUri']??null,'longContext'=>($snap['longContextMultiplierApplied']??false)?1:0]);
+                    $this->pdo->prepare($sql)->execute(['id'=>$id,'provider'=>$this->providerId,'user'=>$user,'project'=>$project,'conversation'=>$conversation,'message'=>$message,'model'=>$model,'route'=>$route,'input'=>$input,'cached'=>$cached,'cacheWrite'=>$cacheWrite,'output'=>$output,'cost'=>$cost,'status'=>$status,'at'=>$at,'rateId'=>$snap['rateId']??null,'pricingMode'=>$snap['mode']??'LEGACY','currency'=>$snap['currency']??'THB','inputRate'=>$snap['inputRateMicrounitsPerMillion']??0,'cachedRate'=>$snap['cachedInputRateMicrounitsPerMillion']??0,'cacheWriteRate'=>$snap['cacheWriteRateMicrounitsPerMillion']??0,'outputRate'=>$snap['outputRateMicrounitsPerMillion']??0,'effective'=>$snap['effectiveAt']??null,'source'=>$snap['sourceUri']??null,'longContext'=>($snap['longContextMultiplierApplied']??false)?1:0]);
                 } else {
-                    $this->pdo->prepare('INSERT INTO control_provider_usage(usage_id, provider_id, user_id, project_id, conversation_id, message_id, model, route, input_tokens, cached_input_tokens, output_tokens, estimated_microunits, status, created_at) VALUES(:id, :provider, :user, :project, :conversation, :message, :model, :route, :input, :cached, :output, :cost, :status, :at)')->execute(['id'=>$id,'provider'=>self::PROVIDER,'user'=>$user,'project'=>$project,'conversation'=>$conversation,'message'=>$message,'model'=>$model,'route'=>$route,'input'=>$input,'cached'=>$cached,'output'=>$output,'cost'=>$cost,'status'=>$status,'at'=>$at]);
+                    $this->pdo->prepare('INSERT INTO control_provider_usage(usage_id, provider_id, user_id, project_id, conversation_id, message_id, model, route, input_tokens, cached_input_tokens, output_tokens, estimated_microunits, status, created_at) VALUES(:id, :provider, :user, :project, :conversation, :message, :model, :route, :input, :cached, :output, :cost, :status, :at)')->execute(['id'=>$id,'provider'=>$this->providerId,'user'=>$user,'project'=>$project,'conversation'=>$conversation,'message'=>$message,'model'=>$model,'route'=>$route,'input'=>$input,'cached'=>$cached,'output'=>$output,'cost'=>$cost,'status'=>$status,'at'=>$at]);
                 }
                 return;
             } catch (PDOException $error) {
                 $last=$error; if (!str_contains(strtolower($error->getMessage()),'locked') && !str_contains(strtolower($error->getMessage()),'busy')) throw $error; if ($attempt<7) usleep(50000*(1<<min($attempt,4)));
             }
         }
-        throw new HubNativeAgentException('Provider usage could not be recorded durably','PROVIDER_USAGE_PERSIST_FAILED',['provider'=>self::PROVIDER,'operation'=>'usage','category'=>'storage','retryable'=>true]);
+        throw new HubNativeAgentException('Provider usage could not be recorded durably','PROVIDER_USAGE_PERSIST_FAILED',['provider'=>$this->providerId,'operation'=>'usage','category'=>'storage','retryable'=>true]);
     }
 
     private function credential(): ?string { return $this->fixtureKey ?? $this->credentials->read(); }
@@ -371,7 +331,7 @@ final class HubNativeAgentService
     private function credentialMetadata(): array
     {
         if (!$this->selfServiceTablePresent('control_provider_credentials')) return ['lastTestedAt' => null, 'lastTestStatus' => 'NOT_TESTED'];
-        $q = $this->pdo->prepare('SELECT last_tested_at, last_test_status FROM control_provider_credentials WHERE provider_id = :provider'); $q->execute(['provider' => self::PROVIDER]); $row = $q->fetch();
+        $q = $this->pdo->prepare('SELECT last_tested_at, last_test_status FROM control_provider_credentials WHERE provider_id = :provider'); $q->execute(['provider' => $this->providerId]); $row = $q->fetch();
         return is_array($row) ? ['lastTestedAt' => $row['last_tested_at'] === null ? null : (string) $row['last_tested_at'], 'lastTestStatus' => (string) $row['last_test_status']] : ['lastTestedAt' => null, 'lastTestStatus' => 'NOT_TESTED'];
     }
 
@@ -381,7 +341,7 @@ final class HubNativeAgentService
         if (!in_array($testStatus, ['NOT_TESTED', 'PASS', 'FAILED'], true)) throw new HubNativeAgentException('Provider credential state is invalid', 'PROVIDER_CREDENTIAL_FAILED');
         try {
             $this->pdo->beginTransaction();
-            $this->pdo->prepare('INSERT INTO control_provider_credentials(provider_id, configured, storage_version, updated_by_user_id, updated_at, last_tested_at, last_test_status) VALUES(:provider, :configured, 1, :user, :at, :tested, :status) ON CONFLICT(provider_id) DO UPDATE SET configured=excluded.configured, storage_version=excluded.storage_version, updated_by_user_id=excluded.updated_by_user_id, updated_at=excluded.updated_at, last_tested_at=excluded.last_tested_at, last_test_status=excluded.last_test_status')->execute(['provider' => self::PROVIDER, 'configured' => $configured ? 1 : 0, 'user' => $userId, 'at' => $at, 'tested' => $testedAt, 'status' => $testStatus]);
+            $this->pdo->prepare('INSERT INTO control_provider_credentials(provider_id, configured, storage_version, updated_by_user_id, updated_at, last_tested_at, last_test_status) VALUES(:provider, :configured, 1, :user, :at, :tested, :status) ON CONFLICT(provider_id) DO UPDATE SET configured=excluded.configured, storage_version=excluded.storage_version, updated_by_user_id=excluded.updated_by_user_id, updated_at=excluded.updated_at, last_tested_at=excluded.last_tested_at, last_test_status=excluded.last_test_status')->execute(['provider' => $this->providerId, 'configured' => $configured ? 1 : 0, 'user' => $userId, 'at' => $at, 'tested' => $testedAt, 'status' => $testStatus]);
             $this->pdo->commit();
         } catch (Throwable $error) {
             if ($this->pdo->inTransaction()) $this->pdo->rollBack();
@@ -393,6 +353,33 @@ final class HubNativeAgentService
     {
         try { if ($previous === null) $this->credentials->remove(); else $this->credentials->replace($previous); }
         catch (HubProviderCredentialStoreException) { throw new HubNativeAgentException('Provider credential state needs attention', 'PROVIDER_CREDENTIAL_STATE_UNCERTAIN'); }
+    }
+
+    /** @return array{0:string,1:string,2:?string} */
+    private function modelForExecution(string $userId,string $projectId,string $request,array $policy,array $executionContext,string $at,int $maxOutputTokens): array
+    {
+        $route=$this->routeForProject($projectId,self::route($request,$policy['routingStrategy']));
+        $model=$policy['model'.ucfirst(strtolower($route))];
+        if ($this->governance===null || !is_string($executionContext['executionId']??null) || !is_string($executionContext['taskId']??null)) return [$route,$model,null];
+        $inputEstimate=max(1,(int)ceil((strlen($request)+strlen(json_encode($executionContext,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)))/4));
+        $baseline=$this->quote($policy,$policy['modelStrong'],$inputEstimate,0,0,$maxOutputTokens,$at)['estimatedMicrounits'];
+        try {
+            $selected=$this->governance->selectModel($userId,$projectId,(string)$executionContext['executionId'],(string)$executionContext['taskId'],$this->providerId,(string)($executionContext['capability']??'agent.conversation'),(string)($executionContext['dataClassification']??'INTERNAL'),$policy['routingStrategy'],[$policy['modelFast'],$policy['modelBalanced'],$policy['modelStrong']],$inputEstimate,$maxOutputTokens,$baseline,['routing'=>(string)($executionContext['routingPolicyVersion']??'m16-v1'),'prompt'=>(string)($executionContext['promptPolicyVersion']??'native-v1'),'tool'=>(string)($executionContext['toolPolicyVersion']??'bounded-v1')],$at);
+        } catch (HubAiGovernanceException $error) {
+            $code=str_starts_with($error->codeName,'AI_BUDGET_')?'BUDGET_EXHAUSTED':'PROVIDER_UNAVAILABLE';
+            throw new HubNativeAgentException('AI governance did not authorize an eligible route',$code,['provider'=>$this->providerId,'operation'=>'route','category'=>'governance','retryable'=>$code!=='BUDGET_EXHAUSTED']);
+        }
+        $model=(string)$selected['modelId'];
+        $route=$model===$policy['modelFast']?'FAST':($model===$policy['modelStrong']?'STRONG':'BALANCED');
+        return [$route,$model,(string)$selected['routeId']];
+    }
+
+    private function governanceOutcome(?string $routeId,string $status,string $qa,int $retryCount,int $latencyMs,int $cost,?array $diagnostic=null): void
+    {
+        if ($routeId===null || $this->governance===null) return;
+        $metadata=[]; if (is_array($diagnostic) && is_string($diagnostic['category']??null)) $metadata['failureCategory']=$diagnostic['category'];
+        try { $this->governance->recordOutcome($routeId,$status,$qa,max(0,$retryCount),max(0,$latencyMs),max(0,$cost),false,false,$metadata); }
+        catch (Throwable) { /* Provider usage remains canonical billing evidence; governance reconciliation is non-blocking. */ }
     }
 
     private function routeForProject(string $projectId, string $inferred): string
@@ -431,7 +418,7 @@ final class HubNativeAgentService
     private function quote(array $policy, string $model, int $input, int $cached, int $cacheWrite, int $output, string $at): array
     {
         try {
-            if ($this->pricing !== null) return $this->pricing->quoteForPolicy($policy,self::PROVIDER,$model,$input,$cached,$cacheWrite,$output,$at);
+            if ($this->pricing !== null) return $this->pricing->quoteForPolicy($policy,$this->providerId,$model,$input,$cached,$cacheWrite,$output,$at);
         } catch (HubProviderPricingException $error) { throw new HubNativeAgentException('Provider pricing is unavailable',$error->codeName); }
         $cost=intdiv($input*$policy['inputMicrounitsPerMillion']+$output*$policy['outputMicrounitsPerMillion'],1000000);
         return ['estimatedMicrounits'=>$cost,'snapshot'=>['rateId'=>null,'mode'=>'LEGACY','currency'=>'THB','inputRateMicrounitsPerMillion'=>$policy['inputMicrounitsPerMillion'],'cachedInputRateMicrounitsPerMillion'=>$policy['inputMicrounitsPerMillion'],'cacheWriteRateMicrounitsPerMillion'=>$policy['inputMicrounitsPerMillion'],'outputRateMicrounitsPerMillion'=>$policy['outputMicrounitsPerMillion'],'effectiveAt'=>null,'sourceUri'=>null,'longContextMultiplierApplied'=>false]];
@@ -441,7 +428,7 @@ final class HubNativeAgentService
     {
         $encoded=json_encode($payload,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
         $input=max(1,(int)ceil(strlen($encoded)/4)); $output=max(1,(int)($payload['max_output_tokens']??0));
-        try { if ($this->pricing !== null) return $this->pricing->reserveForPolicy($policy,self::PROVIDER,$model,$input,$output,$at); }
+        try { if ($this->pricing !== null) return $this->pricing->reserveForPolicy($policy,$this->providerId,$model,$input,$output,$at); }
         catch (HubProviderPricingException $error) { throw new HubNativeAgentException('Provider pricing is unavailable',$error->codeName); }
         return $this->quote($policy,$model,$input,0,0,$output,$at);
     }
