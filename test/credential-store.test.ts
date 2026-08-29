@@ -98,6 +98,8 @@ test('desktop session store avoids OS Keychain and keeps only a private revocabl
     assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY), null);
     await store.set(DEVICE_TOKEN_CREDENTIAL_KEY, 'revocable-session-token');
     assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY), 'revocable-session-token');
+    const restartedStore = createDesktopCredentialStore(root, 'darwin');
+    assert.equal(await restartedStore.get(DEVICE_TOKEN_CREDENTIAL_KEY), 'revocable-session-token');
     const directory = await stat(join(root, 'session-credentials'));
     assert.equal(directory.mode & 0o077, 0);
     await store.delete(DEVICE_TOKEN_CREDENTIAL_KEY);

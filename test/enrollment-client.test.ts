@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { EnrollmentClient, EnrollmentClientError } from '../src/enrollment-client.js';
-import { BOOTSTRAP_NONCE_CREDENTIAL_KEY, DEVICE_TOKEN_CREDENTIAL_KEY, InMemoryCredentialStore } from '../src/credential-store.js';
+import { BOOTSTRAP_NONCE_CREDENTIAL_KEY, DEVICE_TOKEN_CREDENTIAL_KEY, CredentialStoreError, InMemoryCredentialStore, type CredentialStore } from '../src/credential-store.js';
 
 test('local enrollment client closes bootstrap into first-device enrollment and removes the temporary nonce', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awh-enroll-bootstrap-'));
@@ -64,6 +64,19 @@ test('local enrollment client pairs with the existing device UUID and never retu
     assert.equal(requests[0]?.url, 'https://hub.example/api/v1/enrollment/devices');
     assert.equal(new URL(requests[0]?.url ?? '').search, '');
     assert.match(await store.get('awh/device-token') ?? '', /local-secret-token/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('password login fails closed when the credential store does not retain the returned token', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awh-enroll-persistence-'));
+  const store: CredentialStore = {
+    get: async () => null,
+    set: async () => undefined,
+    delete: async () => undefined,
+  };
+  try {
+    const client = new EnrollmentClient('https://hub.example/api/v1', root, store, async () => new Response(JSON.stringify({ accessToken: 'server-token-not-retained', expiresAt: '2026-09-01T00:00:00.000Z' }), { status: 200 }));
+    await assert.rejects(() => client.login('theartzkk', 'correct-password'), (error: unknown) => error instanceof CredentialStoreError && error.code === 'CREDENTIAL_PERSISTENCE_FAILED');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

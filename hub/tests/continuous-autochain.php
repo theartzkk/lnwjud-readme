@@ -16,6 +16,10 @@ $impact = new ReflectionMethod(HubDurableExecutionService::class, 'highImpactGoa
 chain_assert($impact->invoke(null, 'Deploy this candidate to production') === true, 'production deployment must stop the chain');
 chain_assert($impact->invoke(null, 'แก้ regression ใน source แล้วรัน QA') === false, 'reversible source work may continue');
 
+$inspection = new ReflectionMethod(HubControlPlaneService::class, 'isServerInspection');
+chain_assert($inspection->invoke(null, 'ตรวจ Source of Truth ต่อเนื่องแบบ read-only เท่านั้น ห้ามแก้ source deploy secret billing หรือ permission') === true, 'negated high-impact words must remain a read-only VPS inspection');
+chain_assert($inspection->invoke(null, 'ตรวจ source แล้วแก้ source') === false, 'an unnegated mutation must not route as read-only inspection');
+
 $same = new ReflectionMethod(HubDurableExecutionService::class, 'sameGoal');
 chain_assert($same->invoke(null, ' Inspect   source ', 'inspect source') === true, 'same-goal loop detection must normalize whitespace/case');
 
@@ -27,5 +31,6 @@ chain_assert(str_contains($control, "fetchColumn() !== 'COMPLETED'"), 'only a co
 chain_assert(is_string($durable) && str_contains($durable, '$maxSteps > 8'), 'continuous chain must have a hard step bound');
 chain_assert(str_contains($durable, 'sourceTruth') && str_contains($durable, "TASKS.md"), 'planner must consult bounded project source of truth');
 chain_assert(is_string($executor) && str_contains($executor, 'materializeContinuationSubmission'), 'native executor must route follow-up creation through canonical control plane');
+chain_assert(is_string($control) && str_contains($control, 'checkpoint_json') && str_contains($control, 'executionContinuation'), 'worker task projection must expose validated continuation lineage from the canonical execution checkpoint');
 
 fwrite(STDOUT, "AWH Continuous Auto-Chain: PASS\n");

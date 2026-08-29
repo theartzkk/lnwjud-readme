@@ -20,6 +20,8 @@ export class ControlPlaneWorkerError extends Error {
 
 export interface WorkerProject { projectId: string; name: string; type: string; sourceRevision: string | null; vaultReady: boolean; }
 
+export interface WorkerContinuation { rootTaskId: string; step: number; maxSteps: number; }
+
 export interface WorkerTask {
   taskId: string;
   projectId: string;
@@ -29,7 +31,7 @@ export interface WorkerTask {
   progress: number;
   assignedDevice: string | null;
   approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | null;
-  execution?: { executionId: string; executorKind: 'VPS' | 'DEVICE' | 'CODEX'; requiredCapability: string; vaultRevisionId: string | null; state: string } | null;
+  execution?: { executionId: string; executorKind: 'VPS' | 'DEVICE' | 'CODEX'; requiredCapability: string; vaultRevisionId: string | null; state: string; continuation: WorkerContinuation | null } | null;
 }
 
 export interface OfficeExecutionPacket { executionId: string; taskId: string; projectId: string; inputName: string; inputMimeType: string; sizeBytes: number; }
@@ -52,7 +54,15 @@ function boundedTask(value: unknown): WorkerTask {
     if (!rawExecution || typeof rawExecution !== 'object' || Array.isArray(rawExecution)) throw new ControlPlaneWorkerError('Worker task response is invalid', 'RESPONSE_INVALID');
     const item = rawExecution as Record<string, unknown>;
     if (typeof item.executionId !== 'string' || !UUID_V4.test(item.executionId) || !['VPS', 'DEVICE', 'CODEX'].includes(String(item.executorKind)) || typeof item.requiredCapability !== 'string' || !CAPABILITY.test(item.requiredCapability) || (item.vaultRevisionId !== null && (typeof item.vaultRevisionId !== 'string' || !UUID_V4.test(item.vaultRevisionId))) || typeof item.state !== 'string') throw new ControlPlaneWorkerError('Worker task response is invalid', 'RESPONSE_INVALID');
-    execution = { executionId: item.executionId, executorKind: item.executorKind as 'VPS' | 'DEVICE' | 'CODEX', requiredCapability: item.requiredCapability, vaultRevisionId: item.vaultRevisionId === null ? null : item.vaultRevisionId, state: item.state };
+    const rawContinuation = item.continuation;
+    let continuation: WorkerContinuation | null = null;
+    if (rawContinuation !== undefined && rawContinuation !== null) {
+      if (!rawContinuation || typeof rawContinuation !== 'object' || Array.isArray(rawContinuation)) throw new ControlPlaneWorkerError('Worker task response is invalid', 'RESPONSE_INVALID');
+      const value = rawContinuation as Record<string, unknown>;
+      if (typeof value.rootTaskId !== 'string' || !UUID_V4.test(value.rootTaskId) || !Number.isInteger(value.step) || Number(value.step) < 0 || !Number.isInteger(value.maxSteps) || Number(value.maxSteps) < 1 || Number(value.maxSteps) > 8 || Number(value.step) >= Number(value.maxSteps)) throw new ControlPlaneWorkerError('Worker task response is invalid', 'RESPONSE_INVALID');
+      continuation = { rootTaskId: value.rootTaskId, step: value.step as number, maxSteps: value.maxSteps as number };
+    }
+    execution = { executionId: item.executionId, executorKind: item.executorKind as 'VPS' | 'DEVICE' | 'CODEX', requiredCapability: item.requiredCapability, vaultRevisionId: item.vaultRevisionId === null ? null : item.vaultRevisionId, state: item.state, continuation };
   }
   return { taskId: task.taskId, projectId: task.projectId, conversationId: task.conversationId === undefined || task.conversationId === null ? null : task.conversationId, goal: task.goal, state: task.state, progress: task.progress, assignedDevice: task.assignedDevice, approvalStatus: task.approvalStatus === undefined ? null : task.approvalStatus as WorkerTask['approvalStatus'], execution };
 }

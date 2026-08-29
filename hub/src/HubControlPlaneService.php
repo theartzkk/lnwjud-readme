@@ -1576,6 +1576,17 @@ final class HubControlPlaneService
     }
 
     private function taskById(string $taskId, string $userId): array { $taskId = self::uuid($taskId); $q = $this->pdo->prepare('SELECT * FROM control_tasks WHERE task_id = :task AND user_id = :user'); $q->execute(['task' => $taskId, 'user' => $userId]); $row = $q->fetch(); if (!is_array($row)) throw new HubControlPlaneException('Task was not found', 'TASK_NOT_FOUND'); return $this->taskRow($row); }
+    private static function executionContinuation(?string $checkpointJson): ?array
+    {
+        if ($checkpointJson === null) return null;
+        try { $checkpoint = json_decode($checkpointJson, true, 16, JSON_THROW_ON_ERROR); } catch (Throwable) { return null; }
+        $value = is_array($checkpoint) && is_array($checkpoint['continuation'] ?? null) ? $checkpoint['continuation'] : null;
+        $rootTaskId = is_array($value) && is_string($value['rootTaskId'] ?? null) ? (string) $value['rootTaskId'] : null;
+        $step = is_array($value) && is_int($value['step'] ?? null) ? (int) $value['step'] : null;
+        $maxSteps = is_array($value) && is_int($value['maxSteps'] ?? null) ? (int) $value['maxSteps'] : null;
+        if ($rootTaskId === null || preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $rootTaskId) !== 1 || $step === null || $step < 0 || $maxSteps === null || $maxSteps < 1 || $maxSteps > 8 || $step >= $maxSteps) return null;
+        return ['rootTaskId' => $rootTaskId, 'step' => $step, 'maxSteps' => $maxSteps];
+    }
     private function taskRow(array $row): array
     {
         $q = $this->pdo->prepare('SELECT artifact_id FROM control_artifacts WHERE task_id = :task ORDER BY created_at, artifact_id LIMIT 20'); $q->execute(['task' => $row['task_id']]);
@@ -1584,8 +1595,8 @@ final class HubControlPlaneService
         $event = $this->pdo->prepare('SELECT state, progress, message FROM control_task_events WHERE task_id = :task ORDER BY occurred_at DESC, event_id DESC LIMIT 1'); $event->execute(['task' => $row['task_id']]); $eventRow = $event->fetch();
         $execution = null;
         if ($this->centralProjectAuthoritySchemaPresent()) {
-            $executionQuery = $this->pdo->prepare('SELECT execution_id, executor_kind, required_capability, vault_revision_id, state FROM control_task_executions WHERE task_id = :task'); $executionQuery->execute(['task' => $row['task_id']]); $executionRow = $executionQuery->fetch();
-            if (is_array($executionRow)) $execution = ['executionId' => (string) $executionRow['execution_id'], 'executorKind' => (string) $executionRow['executor_kind'], 'requiredCapability' => (string) $executionRow['required_capability'], 'vaultRevisionId' => $executionRow['vault_revision_id'] === null ? null : (string) $executionRow['vault_revision_id'], 'state' => (string) $executionRow['state']];
+            $executionQuery = $this->pdo->prepare('SELECT execution_id, executor_kind, required_capability, vault_revision_id, state, checkpoint_json FROM control_task_executions WHERE task_id = :task'); $executionQuery->execute(['task' => $row['task_id']]); $executionRow = $executionQuery->fetch();
+            if (is_array($executionRow)) $execution = ['executionId' => (string) $executionRow['execution_id'], 'executorKind' => (string) $executionRow['executor_kind'], 'requiredCapability' => (string) $executionRow['required_capability'], 'vaultRevisionId' => $executionRow['vault_revision_id'] === null ? null : (string) $executionRow['vault_revision_id'], 'state' => (string) $executionRow['state'], 'continuation' => self::executionContinuation((string) ($executionRow['checkpoint_json'] ?? '{}'))];
         }
         return ['schemaVersion' => 1, 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'conversationId' => isset($row['conversation_id']) && $row['conversation_id'] !== null ? (string) $row['conversation_id'] : null, 'projectName' => is_array($projectRow) ? (string) $projectRow['name'] : null, 'projectType' => is_array($projectRow) ? (string) $projectRow['type'] : null, 'goal' => (string) $row['goal'], 'state' => (string) $row['state'], 'progress' => (int) $row['progress'], 'assignedDevice' => $row['assigned_device_id'] === null ? null : (string) $row['assigned_device_id'], 'approvalStatus' => $approvalStatus === false ? null : (string) $approvalStatus, 'createdAt' => (string) $row['created_at'], 'updatedAt' => (string) $row['updated_at'], 'resultSummary' => $row['result_summary'] === null ? null : (string) $row['result_summary'], 'failureCode' => $row['failure_code'] === null ? null : (string) $row['failure_code'], 'lastEvent' => is_array($eventRow) ? ['state' => (string) $eventRow['state'], 'progress' => (int) $eventRow['progress'], 'message' => $eventRow['message'] === null ? null : (string) $eventRow['message']] : null, 'artifactRefs' => array_map(static fn (array $item): string => (string) $item['artifact_id'], $q->fetchAll()), 'execution' => $execution];
     }
@@ -2070,7 +2081,17 @@ final class HubControlPlaneService
     /** Read-only Vault work can use the bounded VPS executor.  Any request
      * that might modify content waits for an explicit specialist capability. */
     private static function isContinuousAutonomyRequest(string $message): bool { return preg_match('/(?:autonomously|continuous(?:ly)?|without\s+stopping|keep\s+going\s+until|อัตโนมัติ|ไม่ต้องหยุด|ต่อเนื่องจน|ทำต่อเนื่อง)/iu', trim($message)) === 1; }
-    private static function isServerInspection(string $message): bool { $value = preg_replace('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)+/iu', '', trim($message)) ?? trim($message); return preg_match('/^(?:ตรวจ|วิเคราะห์|ดู|สรุป|สถานะ|ค้นหา|อ่าน|inspect|review|summari[sz]e|status|search|read)(?:หน่อย|ให้|ที|ดู)?(?:\s|$|[ก-๙])/iu', $value) === 1 && preg_match('/(?:แก้|เขียน|สร้าง|ลบ|เปลี่ยน|deploy|commit|push|render|edit|write|create|delete|modify|build)/iu', $value) !== 1; }
+    /** Mutation words inside an explicit prohibition must not downgrade a read-only request. */
+    private static function hasUnnegatedMutationSignal(string $value): bool
+    {
+        $clauses = preg_split('/(?:[\n.!?;]|\s+(?:เมื่อ|จากนั้น|แล้ว|แต่|then|and\s+then|but)\s+)/iu', $value) ?: [$value];
+        foreach ($clauses as $clause) {
+            $withoutProhibition = preg_replace('/(?:^|[\s,])(?:ห้าม|ไม่ต้อง|ไม่ให้|ไม่|never|do\s+not|don\'t)\s*.*$/iu', ' ', trim($clause)) ?? trim($clause);
+            if (preg_match('/(?:แก้|เขียน|สร้าง|ลบ|เปลี่ยน|เพิ่ม|ปรับ|deploy|commit|push|render|edit|write|create|delete|modify|build|run|test|ทดสอบ|รัน)/iu', $withoutProhibition) === 1) return true;
+        }
+        return false;
+    }
+    private static function isServerInspection(string $message): bool { $value = preg_replace('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)+/iu', '', trim($message)) ?? trim($message); return preg_match('/^(?:ตรวจ|วิเคราะห์|ดู|สรุป|สถานะ|ค้นหา|อ่าน|inspect|review|summari[sz]e|status|search|read)(?:หน่อย|ให้|ที|ดู)?(?:\s|$|[ก-๙])/iu', $value) === 1 && !self::hasUnnegatedMutationSignal($value); }
     /** Safe text/code changes can run on the canonical VPS Vault without a local device. */
     private static function isServerAssistedEdit(string $message): bool
     {

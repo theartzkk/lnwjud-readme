@@ -48,3 +48,17 @@ test('worker conversation client accepts current Hub schema 3 and rejects unknow
   const future = new ControlPlaneWorkerClient('https://hub.example/api/v1', root, credentials, async () => new Response(JSON.stringify({ ...current, schemaVersion: 4 }), { status: 200 }));
   await assert.rejects(() => future.readConversation(projectId), /response is invalid/i);
 });
+
+test('worker conversation client preserves bounded continuation lineage from the canonical execution projection', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awh-worker-lineage-'));
+  const credentials = new MemoryCredentials(); credentials.values.set(DEVICE_TOKEN_CREDENTIAL_KEY, 'fixture-token');
+  const projectId = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
+  const taskId = '213b45c0-23e1-408d-ae0f-ac5eca7f6900';
+  const rootTaskId = '313b45c0-23e1-408d-ae0f-ac5eca7f6900';
+  const executionId = '413b45c0-23e1-408d-ae0f-ac5eca7f6900';
+  const payload = { schemaVersion: 3, conversation: null, messages: [], tasks: [{ taskId, projectId, conversationId: null, goal: 'read-only continuation', state: 'COMPLETED', progress: 100, assignedDevice: null, approvalStatus: null, execution: { executionId, executorKind: 'VPS', requiredCapability: 'project.read', vaultRevisionId: null, state: 'COMPLETED', continuation: { rootTaskId, step: 1, maxSteps: 6 } } }], artifacts: [], approvals: [] };
+  const client = new ControlPlaneWorkerClient('https://hub.example/api/v1', root, credentials, async () => new Response(JSON.stringify(payload), { status: 200 }));
+  const task = (await client.readConversation(projectId)).tasks[0];
+  assert.deepEqual(task?.execution?.continuation, { rootTaskId, step: 1, maxSteps: 6 });
+  assert.equal(task?.execution?.executorKind, 'VPS');
+});

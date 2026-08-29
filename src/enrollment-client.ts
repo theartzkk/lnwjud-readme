@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { BOOTSTRAP_NONCE_CREDENTIAL_KEY, DEVICE_TOKEN_CREDENTIAL_KEY, CredentialStore } from './credential-store.js';
+import { BOOTSTRAP_NONCE_CREDENTIAL_KEY, DEVICE_TOKEN_CREDENTIAL_KEY, CredentialStore, CredentialStoreError } from './credential-store.js';
 import { DeviceIdentity, loadOrCreateDeviceIdentity } from './device-identity.js';
 import { RELEASE_VERSION } from './version.js';
 
@@ -58,6 +58,20 @@ async function jsonResponse(response: Response): Promise<Record<string, unknown>
   return value as Record<string, unknown>;
 }
 
+/** A successful HTTP response is not enough: the worker must be able to
+ * retrieve the exact credential after the store reports a successful write. */
+async function persistDeviceToken(credentialStore: CredentialStore, token: string): Promise<void> {
+  await credentialStore.set(DEVICE_TOKEN_CREDENTIAL_KEY, token);
+  const persisted = await credentialStore.get(DEVICE_TOKEN_CREDENTIAL_KEY);
+  if (persisted !== token) throw new CredentialStoreError('Enrollment credential could not be verified after saving', 'CREDENTIAL_PERSISTENCE_FAILED');
+}
+
+async function deleteDeviceToken(credentialStore: CredentialStore): Promise<void> {
+  await credentialStore.delete(DEVICE_TOKEN_CREDENTIAL_KEY);
+  const remaining = await credentialStore.get(DEVICE_TOKEN_CREDENTIAL_KEY);
+  if (remaining !== null) throw new CredentialStoreError('Enrollment credential could not be removed', 'CREDENTIAL_PERSISTENCE_FAILED');
+}
+
 export class EnrollmentClient {
   private readonly root: URL;
 
@@ -92,7 +106,7 @@ export class EnrollmentClient {
       schemaVersion: 1, username: normalized, password, deviceId: identity.deviceId, displayName: identity.displayName, platform: identity.platform, arch: identity.arch, appVersion: 'desktop',
     });
     if (typeof response.accessToken !== 'string' || typeof response.expiresAt !== 'string') throw new EnrollmentClientError('AWH login response did not contain a session token', 'RESPONSE_INVALID');
-    await this.credentialStore.set(DEVICE_TOKEN_CREDENTIAL_KEY, response.accessToken);
+    await persistDeviceToken(this.credentialStore, response.accessToken);
     return this.sanitize(identity, response);
   }
 
@@ -103,7 +117,7 @@ export class EnrollmentClient {
       schemaVersion: 1, pairingCode, deviceId: identity.deviceId, displayName: identity.displayName, platform: identity.platform, arch: identity.arch, appVersion: RELEASE_VERSION,
     });
     if (typeof response.accessToken !== 'string' || typeof response.expiresAt !== 'string') throw new EnrollmentClientError('Enrollment response did not contain a credential', 'RESPONSE_INVALID');
-    await this.credentialStore.set(DEVICE_TOKEN_CREDENTIAL_KEY, response.accessToken);
+    await persistDeviceToken(this.credentialStore, response.accessToken);
     return this.sanitize(identity, response);
   }
 
@@ -161,7 +175,7 @@ export class EnrollmentClient {
     if (!token) throw new EnrollmentClientError('Device is not enrolled', 'DEVICE_NOT_ENROLLED');
     const response = await this.post('/enrollment/token/rotate', { schemaVersion: 1, deviceId: identity.deviceId }, token);
     if (typeof response.accessToken !== 'string' || typeof response.expiresAt !== 'string') throw new EnrollmentClientError('Rotation response did not contain a credential', 'RESPONSE_INVALID');
-    await this.credentialStore.set(DEVICE_TOKEN_CREDENTIAL_KEY, response.accessToken);
+    await persistDeviceToken(this.credentialStore, response.accessToken);
     return this.sanitize(identity, response);
   }
 
@@ -171,7 +185,7 @@ export class EnrollmentClient {
     if (!token) throw new EnrollmentClientError('Device is not enrolled', 'DEVICE_NOT_ENROLLED');
     const response = await this.post('/enrollment/token/revoke', { schemaVersion: 1, deviceId: identity.deviceId }, token);
     if (response.revoked !== true) throw new EnrollmentClientError('Credential revocation was not confirmed', 'RESPONSE_INVALID');
-    await this.credentialStore.delete(DEVICE_TOKEN_CREDENTIAL_KEY);
+    await deleteDeviceToken(this.credentialStore);
     return { enrolled: false, deviceId: identity.deviceId, displayName: identity.displayName, platform: identity.platform, credentialStored: false, expiresAt: null, projectCount: null };
   }
 
