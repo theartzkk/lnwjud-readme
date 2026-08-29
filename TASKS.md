@@ -2,7 +2,7 @@
 
 ## NOW
 
-- P1-A Home implementation is `e39bd0ed9e95f161bf5b7aab46e38899b821f9e7`; current candidate tip including the durable checkpoint docs is `94fbfb26dd964ea31b069002e811e86508ccea09` on `codex/finish-first-p0`, extending the canonical dashboard without a new authority.
+- P1-A Home implementation is `e39bd0ed9e95f161bf5b7aab46e38899b821f9e7` on `codex/finish-first-p0`; subsequent docs-only checkpoints keep the candidate unpushed and extend the canonical dashboard without a new authority.
 - Home’s real-data pulse shows project, active work, artifact and attention counts. Owner-only device readiness uses the existing worker projection; ordinary roles do not receive runtime/provider controls.
 
 ## VERIFIED
