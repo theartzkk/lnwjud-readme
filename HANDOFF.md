@@ -81,3 +81,10 @@ The owner-protocol integration is isolated on `awh/clean-foundation` / PR #8 for
 ## Next action
 
 Complete the current source candidate and QA. If clean, commit/push it on `awh/v0.1-migration`, report the exact SHA, and stop before production deployment for explicit approval. Do not reopen M12 architecture, do not replay old v5→v7 migration steps, and do not touch Google Cloud legacy or BAY production.
+## 2026-08-29 — Multi-Provider Qualification V1
+- Base/source: `04545661c222576d90e07fce2d57445e65415d33` (`awh/self-sufficient-continuous-release`, CI #633 SUCCESS).
+- Production re-audit: control/web pointers still `m15-402ff72ba41d`; no Production mutation. Remote DB introspection was blocked by the safety gate and was not bypassed.
+- Added qualification lifecycle service and capability-bound cross-provider routing over existing M16 authorities. Focused M16 + deployment QA PASS; `npm run hub:test` PASS with only known extension-dependent skips.
+- Next: full product regression + CI on the checkpoint SHA; provider adapters/credentials remain separate and no provider should be activated in Production without explicit approval.
+- Full product regression completed on this candidate: 306 tests / 305 PASS / 0 FAIL / 1 platform SKIP. `git diff --check` PASS.
+- An unrelated incomplete untracked `HubGeminiProviderAdapter.php` appeared during the run and was intentionally excluded from this checkpoint because its provenance was not established and it did not parse; do not treat it as canonical work.

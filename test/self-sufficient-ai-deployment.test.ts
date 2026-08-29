@@ -15,4 +15,6 @@ test('M16 self-sufficient AI activation is additive, guarded and rollback-safe',
  assert.match(result.stdout,/^M16_DRY_RUN=PASS$/m); assert.match(result.stdout,new RegExp(`^M16_RELEASE=${release}$`,'m'));
  assert.match(result.stdout,/verify-v15-or-v16-authority/); assert.match(result.stdout,/migrate-015-only-from-v15/); assert.match(result.stdout,/source-refresh-without-migration-on-v16/);
  assert.match(result.stdout,/restore-exact-db-baseline/); assert.match(result.stdout,/M16_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL/);
+ const local=await readFile(deploy,'utf8');
+ assert.match(local,/hub\/src\/HubAiQualificationService\.php/);
 });
