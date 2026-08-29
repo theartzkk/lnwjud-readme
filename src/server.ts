@@ -7,7 +7,7 @@ import { buildCodexArgs, codexEnvironment, codexStatus, resolveCodexExecutable }
 import { listWorkspace, readTextFile, readTextPage, searchText, writeTextFile } from './files.js';
 import { gitDiffPage, gitLog, gitStatus } from './git.js';
 import { detectProject } from './project.js';
-import { resolvePackageInvocation, runPackageScript, type PackageCommand } from './process.js';
+import { approvedProjectScript, resolveApprovedProjectInvocation, resolvePackageInvocation, runPackageScript, type ApprovedProjectOperation, type PackageCommand } from './process.js';
 import { SecurityError } from './security.js';
 import { ManagedTaskRegistry } from './tasks.js';
 import { ART_AGENT_VERSION } from './version.js';
@@ -317,18 +317,20 @@ export function createServer(
     server.registerTool(
       'project_task_start',
       {
-        description: `Start an approved project script in the background and return a ${PRODUCT.productName} task id.`,
-        inputSchema: z.object({ command: z.enum(['test', 'lint', 'typecheck', 'build']) }),
+        description: `Start one approved project operation in the background and return a ${PRODUCT.productName} task id. Prefer qa-fast/qa-local/qa-full over composing raw Node or shell test commands.`,
+        inputSchema: z.object({ command: z.enum(['test', 'typecheck', 'build', 'qa-fast', 'qa-local', 'qa-full']) }),
       },
       async ({ command }) => {
         if (!config.allowExec) return text({ error: 'EXEC_DISABLED', message: 'Approved execution is disabled.' }, true);
         try {
+          const operation = command as ApprovedProjectOperation;
           const packageJson = await packageMetadata(workspace);
-          if (!packageJson.scripts?.[command]) return text({ error: 'SCRIPT_NOT_FOUND', command }, true);
-          const invocation = await resolvePackageInvocation(packageJson.packageManager, command as PackageCommand);
+          const script = approvedProjectScript(operation);
+          if (!packageJson.scripts?.[script]) return text({ error: 'SCRIPT_NOT_FOUND', command, script }, true);
+          const invocation = await resolveApprovedProjectInvocation(packageJson.packageManager, operation);
           const task = tasks.start({ ...invocation, cwd: workspace, label: `project:${command}`, timeoutMs: 15 * 60_000 });
           await audit.write({ tool: 'project_task_start', outcome: 'allowed', detail: `${command}: ${task.id}` });
-          return text(task);
+          return text({ ...task, operation: command, script });
         } catch (error) {
           await audit.write({ tool: 'project_task_start', outcome: 'error', detail: `${command}: ${error instanceof Error ? error.message : String(error)}` });
           return errorText(error);

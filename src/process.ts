@@ -10,6 +10,16 @@ export interface ExecResult {
 }
 
 export type PackageCommand = 'test' | 'lint' | 'typecheck' | 'build' | 'check';
+export type ApprovedProjectOperation = 'test' | 'typecheck' | 'build' | 'qa-fast' | 'qa-local' | 'qa-full';
+
+const APPROVED_PROJECT_SCRIPTS: Record<ApprovedProjectOperation, string> = {
+  test: 'test',
+  typecheck: 'typecheck',
+  build: 'build',
+  'qa-fast': 'qa:fast',
+  'qa-local': 'qa:local',
+  'qa-full': 'qa:full',
+};
 
 export interface ProcessInvocation {
   executable: string;
@@ -152,23 +162,41 @@ async function resolveWindowsPackageCli(manager: 'npm' | 'pnpm' | 'yarn', manage
   return cli;
 }
 
-export async function resolvePackageInvocation(
+export function approvedProjectScript(operation: ApprovedProjectOperation): string {
+  return APPROVED_PROJECT_SCRIPTS[operation];
+}
+
+async function resolvePackageScriptInvocation(
   packageManager: string | undefined,
-  command: PackageCommand,
+  script: string,
 ): Promise<ProcessInvocation> {
+  if (!/^[A-Za-z0-9:_-]+$/.test(script)) throw new Error(`Package script name is unsafe: ${script}`);
   const manager: 'npm' | 'pnpm' | 'yarn' = packageManager?.startsWith('pnpm@')
     ? 'pnpm'
     : packageManager?.startsWith('yarn@')
       ? 'yarn'
       : 'npm';
   const managerPath = await resolveExecutable(manager);
-  const managerArgs = manager === 'npm' ? ['run', command] : [command];
-
+  const managerArgs = manager === 'npm' ? ['run', script] : [script];
   if (process.platform === 'win32' && ['.cmd', '.bat'].includes(extname(managerPath).toLowerCase())) {
     const cli = await resolveWindowsPackageCli(manager, managerPath);
     return { executable: process.execPath, args: [cli, ...managerArgs] };
   }
   return { executable: managerPath, args: managerArgs };
+}
+
+export async function resolvePackageInvocation(
+  packageManager: string | undefined,
+  command: PackageCommand,
+): Promise<ProcessInvocation> {
+  return resolvePackageScriptInvocation(packageManager, command);
+}
+
+export async function resolveApprovedProjectInvocation(
+  packageManager: string | undefined,
+  operation: ApprovedProjectOperation,
+): Promise<ProcessInvocation> {
+  return resolvePackageScriptInvocation(packageManager, approvedProjectScript(operation));
 }
 
 export async function runPackageScript(

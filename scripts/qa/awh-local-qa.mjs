@@ -298,8 +298,14 @@ async function gitCheck() {
   const clean = status.code === 0 && status.stdout === '';
   const tracked = upstream.code === 0 && upstream.stdout !== '';
   const exactRemote = tracked && head.stdout === upstream.stdout;
-  const valid = branch.code === 0 && branchName !== '' && head.code === 0 && clean && exactRemote;
-  check('git-state', valid ? 'PASS' : 'FAIL', valid ? `branch=${branchName}; HEAD=${head.stdout}; clean=true; upstreamExact=true` : `Git release state is not clean/exact (branch=${branchName || 'DETACHED'}; clean=${clean}; upstreamExact=${exactRemote})`, started);
+  const validHead = /^[0-9a-f]{40}$/i.test(head.stdout);
+  const validBranch = branchName.length > 0 && branchName.length <= 200 && !/[\s\0]/.test(branchName);
+  const baseValid = branch.code === 0 && head.code === 0 && status.code === 0 && validHead && validBranch;
+  const valid = mode === 'fast' ? baseValid : baseValid && clean && exactRemote;
+  const detail = mode === 'fast'
+    ? `branch=${branchName}; HEAD=${head.stdout}; dirty=${!clean}; fastMode=true`
+    : `branch=${branchName}; HEAD=${head.stdout}; clean=${clean}; upstreamExact=${exactRemote}`;
+  check('git-state', valid ? 'PASS' : 'FAIL', valid ? detail : `Git state is not valid for ${mode} QA (branch=${branchName || 'DETACHED'}; clean=${clean}; upstreamExact=${exactRemote})`, started);
   return { branch: branchName || null, head: head.stdout || null, dirty: !clean, upstream: tracked ? upstream.stdout : null, upstreamExact: exactRemote };
 }
 
@@ -388,6 +394,22 @@ async function phpHubCheck() {
   check('php-hub', central.code === 0 || central.code === 77 ? 'PASS' : 'FAIL', central.code === 0 || central.code === 77 ? 'PHP Hub, M3E/M4/M6/M7/M8/M9/M10/M11/M12 migration and workspace fixtures passed' : 'PHP M12 central Project Authority tests failed', started);
 }
 
+async function fastQaCheck() {
+  const started = Date.now();
+  const files = [
+    'test/security.test.ts',
+    'test/process.test.ts',
+    'test/platform-contract.test.ts',
+    'test/sustainability-contract.test.ts',
+    'test/control-plane-worker-runtime.test.ts',
+    'test/central-project-authority-deployment.test.ts',
+    'test/automation-deployment.test.ts',
+    'test/release-readiness.test.ts',
+  ];
+  const result = await runNodeTest(files, 90_000);
+  check('fast-contracts', result.code === 0 ? 'PASS' : 'FAIL', result.code === 0 ? 'bounded core security/execution/release contracts passed' : `bounded core contract suite failed with exit code ${result.code}`, started);
+}
+
 async function desktopReadinessCheck(dependenciesReady) {
   const started = Date.now();
   if (!dependenciesReady) {
@@ -462,12 +484,16 @@ async function main() {
   const dependenciesReady = await dependencyCheck();
   if (dependenciesReady) {
     await scriptCheck('typescript', 'typecheck', 'TypeScript typecheck passed');
-    await scriptCheck('tests', 'test', 'unit and security test suite passed');
-    await scriptCheck('build', 'build', 'production TypeScript build passed');
+    if (mode === 'fast') {
+      await fastQaCheck();
+    } else {
+      await scriptCheck('tests', 'test', 'unit and security test suite passed');
+      await scriptCheck('build', 'build', 'production TypeScript build passed');
+    }
   } else {
     blockedCheck('typescript', 'TypeScript requires installed npm dependencies');
-    blockedCheck('tests', 'Tests require installed npm dependencies');
-    blockedCheck('build', 'Build requires installed npm dependencies');
+    if (mode === 'fast') blockedCheck('fast-contracts', 'Core contract tests require installed npm dependencies');
+    else { blockedCheck('tests', 'Tests require installed npm dependencies'); blockedCheck('build', 'Build requires installed npm dependencies'); }
   }
 
   let git = { branch: null, head: null, dirty: false };
