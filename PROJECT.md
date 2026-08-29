@@ -1,9 +1,9 @@
 # AWH overnight VPS autonomy foundation — 2026-08-30
 
-- Candidate `codex/finish-first-p0` is source-clean and pushed at exact HEAD `f787c21237773be1dd9e9be8cd2751bcd8199b28`. It adds a bounded Staff operations projection and storage-governance audit over existing canonical authorities; it adds no queue, task, execution, memory, artifact, report or schema authority.
+- Candidate `codex/finish-first-p0` contains the canonical-synced source merge `190e1426e09a5e85910eadcc10a2b7e20b035dbf` and is pushed. It adds a bounded Staff operations projection and storage-governance audit over existing canonical authorities; it adds no queue, task, execution, memory, artifact, report or schema authority.
 - Production remains unchanged at typed M16 release `m16-06a7277063f8`, exact SHA `06a7277063f891d0d29ad5bdbed7db7541dbb807`; DB16 integrity/FK, Nginx/PHP-FPM, executor/backup timers and worker readiness were rechecked. No Production mutation, credential access or direct DB mutation occurred.
 - The candidate exposes OBSERVE → DIAGNOSE → PRIORITIZE → CANONICAL_TASK → EXECUTE → VERIFY → REPORT → CONTINUE, all ten requested Staff roles, bounded self-heal evidence, DB locking evidence, backup/recovery readiness and ACTIVE/RETAIN/QUARANTINE/SAFE_TO_PURGE/PROTECTED storage classification. Purge remains `AUDIT_ONLY`.
-- `qa:local` and `qa:full` PASS on the exact pushed candidate; exact-head hosted CI/review and live deployment/field proof remain separate gates.
+- `qa:local` and `qa:full` PASS after the canonical sync; exact-head hosted CI/review and live deployment/field proof remain separate gates.
 
 ## Next
 

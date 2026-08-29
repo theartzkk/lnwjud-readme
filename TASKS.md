@@ -2,7 +2,7 @@
 
 ## NOW
 
-- Candidate `codex/finish-first-p0` is pushed at exact HEAD `f787c21237773be1dd9e9be8cd2751bcd8199b28`; it contains the bounded Staff loop, ten role projections, storage classification audit, backup/recovery/DB-locking reporting and executor full-telemetry correction. Existing Project/Task/Execution/Artifact/Approval/Release authorities remain the only authorities.
+- Candidate `codex/finish-first-p0` contains source merge `190e1426e09a5e85910eadcc10a2b7e20b035dbf` and is pushed; the checkpoint docs follow in the current release-gate commit. It contains the bounded Staff loop, ten role projections, storage classification audit, backup/recovery/DB-locking reporting and executor full-telemetry correction. Existing Project/Task/Execution/Artifact/Approval/Release authorities remain the only authorities.
 - Production remains exact SHA `06a7277063f891d0d29ad5bdbed7db7541dbb807` / release `m16-06a7277063f8`; no deploy is performed until exact-head CI/review and a fresh exact-SHA approval.
 
 ## VERIFIED

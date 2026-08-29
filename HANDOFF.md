@@ -1,6 +1,6 @@
 # Authoritative handoff — 2026-08-30 Overnight VPS autonomy foundation
 
-- Candidate `codex/finish-first-p0` is pushed at exact HEAD `f787c21237773be1dd9e9be8cd2751bcd8199b28`; the Staff loop, storage audit, backup/recovery truth and executor full-telemetry feed are source-ready. Production remains at `m16-06a7277063f8` / `06a7277063f891d0d29ad5bdbed7db7541dbb807`.
+- Candidate `codex/finish-first-p0` contains source merge `190e1426e09a5e85910eadcc10a2b7e20b035dbf` and is pushed; the Staff loop, storage audit, backup/recovery truth and executor full-telemetry feed are source-ready. Production remains at `m16-06a7277063f8` / `06a7277063f891d0d29ad5bdbed7db7541dbb807`.
 - `qa:local` and `qa:full` are PASS on the exact upstream candidate. No credentials were read, printed, copied or injected; no direct Production DB mutation occurred.
 - Live read-only baseline is healthy for DB16 integrity/FK, Nginx/PHP-FPM, worker/executor/backup timers and bounded backup drill. Current queue still has two capability-waiting executions; no active or expired leases. AWH-managed temp patterns are absent; no purge was attempted.
 
