@@ -539,6 +539,7 @@ final class HubControlPlaneService
         $auth = $this->enrollment->authenticateForControlPlane($token, $deviceId, $now);
         $projectId = self::uuid((string) ($payload['projectId'] ?? ''));
         $this->assertDeviceProjectMember((string) $auth['deviceId'], $projectId);
+        unset($payload['deviceId']);
         return $this->submitConversationForUser((string) $auth['userId'], $payload, $now);
     }
 
