@@ -15,15 +15,15 @@ test('Infrastructure is an Owner-only sanitized projection and canonical web sur
   const [html,css,js,router,service,collector,deploy,executor,manifest,sw]=await Promise.all(['infrastructure.html','infrastructure.css','infrastructure.js'].map(f=>readFile(join(output,f),'utf8')).concat([
    readFile(join(ROOT,'hub/src/HubControlPlaneRouter.php'),'utf8'),readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),readFile(join(ROOT,'hub/bin/system-telemetry.php'),'utf8'),readFile(join(ROOT,'deploy/awh-control-plane/deploy-control-plane.sh'),'utf8'),readFile(join(ROOT,'hub/bin/awh-native-executor.php'),'utf8'),readFile(join(ROOT,'scripts/create-web-release-manifest.mjs'),'utf8'),readFile(join(ROOT,'web/sw.js'),'utf8')
   ]) as Promise<string[]>);
-  assert.match(html,/ศูนย์ควบคุมระบบ/); assert.match(html,/DOMAINS & SSL/); assert.match(html,/Production Complete/); assert.match(html,/AUTONOMOUS AI 24\/7/); assert.match(html,/Models · Health · Fallback/); assert.match(css,/--accent:#ff7a1a/); assert.match(css,/checklist-grid/); assert.match(js,/\/api\/v1\/control\/infrastructure/);
-  for(const projection of ['productionComplete','aiModels','autonomousWork','incidents','stagedCandidates']) assert.match(js,new RegExp(projection));
+  assert.match(html,/ศูนย์ควบคุมระบบ/); assert.match(html,/DOMAINS & SSL/); assert.match(html,/Production Complete/); assert.match(html,/AUTONOMOUS AI 24\/7/); assert.match(html,/Models · Health · Fallback/); assert.match(html,/STAFF CONTROL LOOP/); assert.match(html,/MORNING BRIEF/); assert.match(html,/STORAGE GOVERNANCE/); assert.match(css,/--accent:#ff7a1a/); assert.match(css,/checklist-grid/); assert.match(js,/\/api\/v1\/control\/infrastructure/);
+  for(const projection of ['productionComplete','aiModels','autonomousWork','incidents','stagedCandidates','staff','morningBrief','storageGovernance']) assert.match(js,new RegExp(projection));
   assert.match(router,/\/api\/v1\/control\/infrastructure/); assert.match(service,/assertOwner\(\$userId\)/); assert.match(service,/HubInfrastructureService::fromEnvironment/); assert.match(service,/HubInfrastructureService::releaseState/);
   for(const authority of ['control_ai_route_decisions','control_task_executions','control_task_events']) assert.match(service,new RegExp(authority));
-  assert.match(service,/'productionComplete'/); assert.doesNotMatch(service,/CREATE TABLE|ALTER TABLE/);
+  assert.match(service,/'productionComplete'/); assert.match(service,/HubStaffOperationsService/); assert.doesNotMatch(service,/CREATE TABLE|ALTER TABLE/);
   assert.doesNotMatch(`${html}\n${js}`,/localStorage|sessionStorage|Authorization|Bearer\s|shell_exec|<textarea[^>]*(?:terminal|command)|innerHTML/i);
   assert.doesNotMatch(collector,/shell_exec\s*\(|\bexec\s*\(|\bsystem\s*\(/);
-  for(const asset of ['dist-web/infrastructure.html','dist-web/infrastructure.css','dist-web/infrastructure.js','hub/bin/system-telemetry.php','hub/src/HubInfrastructureService.php']) assert.ok(deploy.includes(asset),`deployment missing ${asset}`);
-  assert.match(executor,/telemetryRefreshIfStale\(null, 60\)/); assert.match(executor,/'telemetry' => \$telemetry/);
+  for(const asset of ['dist-web/infrastructure.html','dist-web/infrastructure.css','dist-web/infrastructure.js','hub/bin/system-telemetry.php','hub/src/HubInfrastructureService.php','hub/src/HubStaffOperationsService.php','hub/src/HubStorageGovernanceService.php']) assert.ok(deploy.includes(asset),`deployment missing ${asset}`);
+  assert.match(executor,/telemetryRefreshIfStale\(null, 60\)/); assert.match(executor,/'telemetry' => \$telemetry/); assert.match(executor,/HubStaffOperationsService/); assert.match(executor,/'recovered'/);
   assert.doesNotMatch(deploy,/awh-system-telemetry\.(?:service|timer)/);
   const remote=await readFile(join(ROOT,'deploy/awh-control-plane/remote-deploy-control-plane.sh'),'utf8');
   assert.match(remote,/HubInfrastructureService\.php/); assert.match(remote,/system-telemetry\.php/);

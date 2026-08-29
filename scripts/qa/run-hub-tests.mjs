@@ -34,6 +34,7 @@ const tests = [
   'hub/tests/m16-office-provider.php',
   'hub/tests/m17-database-studio.php',
   'hub/tests/sustainability-foundation.php',
+  'hub/tests/staff-operations.php',
 ];
 
 const php = await resolveExecutable('php');

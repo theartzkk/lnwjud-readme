@@ -55,6 +55,18 @@ try {
     $latest = HubBackupService::latestMetadata($backupRoot);
     expect(($latest['latest']['status'] ?? null) === 'VERIFIED', 'latest backup not verified');
 
+    $newerBackup = $backupRoot . '/awh-20260826T120100Z.sqlite';
+    $newerManifest = $newerBackup . '.json';
+    expect(copy($created['backupPath'], $newerBackup), 'newer backup fixture missing');
+    $newer = $created['manifest'];
+    $newer['file'] = basename($newerBackup);
+    $newer['sha256'] = str_repeat('0', 64);
+    file_put_contents($newerManifest, json_encode($newer, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+    touch($newerManifest, time() + 2);
+    $review = HubBackupService::latestMetadata($backupRoot);
+    expect(($review['latest']['status'] ?? null) === 'REVIEW', 'invalid newest backup must remain visible as review');
+    expect(($review['latest']['lastVerified']['name'] ?? null) === basename($created['backupPath']), 'older verified fallback evidence missing');
+
     $drill = HubBackupService::restoreDrill($created['backupPath'], $created['manifestPath'], $scratchRoot);
     expect($drill['status'] === 'PASS', 'restore drill did not pass');
 

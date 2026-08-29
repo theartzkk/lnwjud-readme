@@ -8,6 +8,7 @@ require_once dirname(__DIR__) . '/src/HubProjectVaultService.php';
 require_once dirname(__DIR__) . '/src/HubDurableExecutionService.php';
 require_once dirname(__DIR__) . '/src/HubControlPlaneService.php';
 require_once dirname(__DIR__) . '/src/HubAutomationSchedulerService.php';
+require_once dirname(__DIR__) . '/src/HubStaffOperationsService.php';
 require_once __DIR__ . '/system-telemetry.php';
 
 /**
@@ -50,6 +51,7 @@ try {
     $control ??= HubControlPlaneService::openExisting($database);
     $execution = HubDurableExecutionService::fromEnvironment($pdo, static fn(array $request): array => $control->materializeContinuationSubmission($request));
     $batch = $execution->runBatch(4);
-    fwrite(STDOUT, json_encode(['status' => $batch['processed'] === 0 ? 'IDLE' : 'PROCESSED', 'automation' => $automation, 'telemetry' => $telemetry, 'executionBatch' => $batch], JSON_UNESCAPED_SLASHES) . "\n");
+    $staff = (new HubStaffOperationsService($pdo, $database))->snapshot(null, $batch, $telemetry, HubInfrastructureService::releaseState());
+    fwrite(STDOUT, json_encode(['status' => $batch['processed'] === 0 ? 'IDLE' : 'PROCESSED', 'automation' => $automation, 'telemetry' => $telemetry, 'executionBatch' => $batch, 'recoveredExecutions' => (int) ($batch['recovered'] ?? 0), 'staff' => ['loop' => $staff['loop'], 'report' => $staff['report'], 'morningBrief' => $staff['morningBrief']],], JSON_UNESCAPED_SLASHES) . "\n");
 } catch (HubDurableExecutionException|HubProjectVaultException|HubCentralProjectAuthorityMigrationException $error) { fwrite(STDERR, $error->codeName . "\n"); exit(1); }
 catch (Throwable) { fwrite(STDERR, "EXECUTOR_UNAVAILABLE\n"); exit(1); }

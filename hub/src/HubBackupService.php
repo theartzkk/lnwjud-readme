@@ -85,23 +85,36 @@ final class HubBackupService
         $manifests = glob(rtrim($backupRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'awh-*.sqlite.json');
         if (!is_array($manifests) || $manifests === []) return ['configured' => true, 'latest' => null];
         usort($manifests, static fn (string $a, string $b): int => ((int) (@filemtime($b) ?: 0)) <=> ((int) (@filemtime($a) ?: 0)));
-        foreach ($manifests as $manifestPath) {
-            if (!is_file($manifestPath) || is_link($manifestPath)) continue;
-            $backupPath = substr($manifestPath, 0, -5);
-            try {
-                $verified = self::verify($backupPath, $manifestPath);
-                $raw = self::readManifest($manifestPath);
-                return ['configured' => true, 'latest' => [
-                    'name' => basename($backupPath),
-                    'sizeBytes' => $verified['bytes'],
-                    'modifiedAt' => is_string($raw['createdAt'] ?? null) ? $raw['createdAt'] : gmdate('c', (int) (@filemtime($manifestPath) ?: time())),
-                    'status' => 'VERIFIED',
-                    'sha256' => $verified['sha256'],
-                    'databaseUserVersion' => $verified['databaseUserVersion'],
-                ]];
-            } catch (Throwable) { continue; }
+        $newest = $manifests[0];
+        if (!is_file($newest) || is_link($newest)) return ['configured' => true, 'latest' => ['status' => 'REVIEW', 'reason' => 'LATEST_MANIFEST_UNAVAILABLE']];
+        $newestBackup = substr($newest, 0, -5);
+        try {
+            $verified = self::verify($newestBackup, $newest);
+            $raw = self::readManifest($newest);
+            return ['configured' => true, 'latest' => [
+                'name' => basename($newestBackup),
+                'sizeBytes' => $verified['bytes'],
+                'modifiedAt' => is_string($raw['createdAt'] ?? null) ? $raw['createdAt'] : gmdate('c', (int) (@filemtime($newest) ?: time())),
+                'status' => 'VERIFIED',
+                'sha256' => $verified['sha256'],
+                'databaseUserVersion' => $verified['databaseUserVersion'],
+            ]];
+        } catch (Throwable) {
+            // The newest snapshot must remain visible as REVIEW. Falling back
+            // to an older verified file would misreport recovery freshness.
+            $review = ['status' => 'REVIEW', 'name' => basename($newestBackup), 'sizeBytes' => is_file($newestBackup) ? max(0, (int) (@filesize($newestBackup) ?: 0)) : 0, 'modifiedAt' => gmdate('c', (int) (@filemtime($newest) ?: time())), 'reason' => 'LATEST_BACKUP_INVALID'];
+            foreach (array_slice($manifests, 1) as $manifestPath) {
+                if (!is_file($manifestPath) || is_link($manifestPath)) continue;
+                $backupPath = substr($manifestPath, 0, -5);
+                try {
+                    $verified = self::verify($backupPath, $manifestPath);
+                    $raw = self::readManifest($manifestPath);
+                    $review['lastVerified'] = ['name' => basename($backupPath), 'sizeBytes' => $verified['bytes'], 'modifiedAt' => is_string($raw['createdAt'] ?? null) ? $raw['createdAt'] : gmdate('c', (int) (@filemtime($manifestPath) ?: time())), 'databaseUserVersion' => $verified['databaseUserVersion']];
+                    break;
+                } catch (Throwable) { continue; }
+            }
+            return ['configured' => true, 'latest' => $review];
         }
-        return ['configured' => true, 'latest' => ['status' => 'REVIEW']];
     }
 
     private static function open(string $path): PDO

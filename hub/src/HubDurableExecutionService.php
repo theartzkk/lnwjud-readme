@@ -75,11 +75,12 @@ final class HubDurableExecutionService
      * This is not a second queue: every item is still claimed through runOnce()
      * and the existing one-to-one control_task_executions authority.
      *
-     * @return array{processed:int,completed:int,waiting:int,failed:int,results:list<array<string,mixed>>}
+     * @return array{processed:int,completed:int,waiting:int,failed:int,recovered:int,results:list<array<string,mixed>>}
      */
     public function runBatch(int $maxItems = self::MAX_BATCH_ITEMS, ?string $now = null): array
     {
         if ($maxItems < 1 || $maxItems > self::MAX_BATCH_ITEMS) throw new HubDurableExecutionException('Execution batch bound is invalid', 'EXECUTION_INVALID');
+        $recovered = count($this->recoverExpired($now));
         $results = []; $completed = 0; $waiting = 0; $failed = 0;
         for ($i = 0; $i < $maxItems; $i++) {
             $result = $this->runOnce($now);
@@ -90,7 +91,7 @@ final class HubDurableExecutionService
             elseif ($state === 'FAILED') $failed++;
             else $waiting++;
         }
-        return ['processed' => count($results), 'completed' => $completed, 'waiting' => $waiting, 'failed' => $failed, 'results' => $results];
+        return ['processed' => count($results), 'completed' => $completed, 'waiting' => $waiting, 'failed' => $failed, 'recovered' => $recovered, 'results' => $results];
     }
 
     /** Claims and completes at most one persisted server-native task. */

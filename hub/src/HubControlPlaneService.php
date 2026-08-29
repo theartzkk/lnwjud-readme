@@ -24,6 +24,7 @@ require_once __DIR__ . '/HubAutomationRegistryService.php';
 require_once __DIR__ . '/HubBackupService.php';
 require_once __DIR__ . '/HubInfrastructureService.php';
 require_once __DIR__ . '/HubAiGovernanceService.php';
+require_once __DIR__ . '/HubStaffOperationsService.php';
 
 final class HubControlPlaneException extends RuntimeException
 {
@@ -67,6 +68,7 @@ final class HubControlPlaneService
     private readonly ?HubCapabilityRegistryService $capabilities;
     private readonly ?HubAutomationRegistryService $automations;
     private readonly ?HubAiGovernanceService $aiGovernance;
+    private readonly HubStaffOperationsService $staff;
 
     private function __construct(private readonly PDO $pdo, private readonly HubEnrollmentService $enrollment, private readonly string $databasePath)
     {
@@ -80,6 +82,7 @@ final class HubControlPlaneService
         $this->capabilities = HubCapabilityRegistryService::schemaPresent($pdo) ? new HubCapabilityRegistryService($pdo) : null;
         $this->automations = $this->automationSchemaPresent() ? new HubAutomationRegistryService($pdo) : null;
         $this->aiGovernance = HubAiGovernanceService::schemaPresent($pdo) ? new HubAiGovernanceService($pdo) : null;
+        $this->staff = new HubStaffOperationsService($pdo, $databasePath);
     }
 
     public static function openExisting(string $databasePath): self
@@ -401,6 +404,7 @@ final class HubControlPlaneService
             'memoryReady' => ($project['memoryReady'] ?? false) === true,
         ], $this->projectsForUser($userId));
         $release = HubInfrastructureService::releaseState();
+        $staff = $this->staff->snapshot($now, null, $telemetry, $release);
         $aiModels = [];
         if ($this->aiGovernance !== null) { try { $aiModels = array_slice($this->aiGovernance->catalog()['models'] ?? [], 0, 40); } catch (Throwable) { $aiModels = []; } }
         $routes = ['recent' => 0, 'fallback' => 0];
@@ -449,6 +453,9 @@ final class HubControlPlaneService
             'autonomousWork' => $autonomous,
             'activity' => $activity,
             'incidents' => $incidents,
+            'staff' => $staff,
+            'morningBrief' => $staff['morningBrief'],
+            'storageGovernance' => $staff['storageGovernance'],
             'productionComplete' => ['passed'=>$passed,'total'=>count($checks),'percent'=>(int)round($passed*100/count($checks)),'checks'=>$checks],
         ];
     }
