@@ -2081,7 +2081,7 @@ final class HubControlPlaneService
     private static function isConversationFollowUp(string $message): bool { return preg_match('/^(?:ทำต่อ|ต่อจาก|ต่อเลย|เอาอัน(?:นี้|นั้น|ล่าสุด)|ยังไม่ใช่|ตรวจอีกที|continue|keep going|that one)(?:\s|$|[.!?])/iu', trim($message)) === 1; }
     /** Read-only Vault work can use the bounded VPS executor.  Any request
      * that might modify content waits for an explicit specialist capability. */
-    private static function isContinuousAutonomyRequest(string $message): bool { return preg_match('/(?:autonomously|continuous(?:ly)?|without\s+stopping|keep\s+going\s+until|อัตโนมัติ|ไม่ต้องหยุด|ต่อเนื่องจน|ทำต่อเนื่อง)/iu', trim($message)) === 1; }
+    private static function isContinuousAutonomyRequest(string $message): bool { return preg_match('/(?:autonomously|continuous(?:ly)?|without\s+stopping|keep\s+going\s+until|อัตโนมัติ|ไม่ต้องหยุด|ต่อเนื่อง|ทำต่อ)/iu', trim($message)) === 1; }
     /** Mutation words inside an explicit prohibition must not downgrade a read-only request. */
     private static function hasUnnegatedMutationSignal(string $value): bool
     {

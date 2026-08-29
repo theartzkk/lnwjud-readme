@@ -9,7 +9,7 @@ function chain_assert(bool $condition, string $message): void { if (!$condition)
 
 $continuous = new ReflectionMethod(HubControlPlaneService::class, 'isContinuousAutonomyRequest');
 chain_assert($continuous->invoke(null, 'Continue the main project autonomously from canonical source') === true, 'explicit autonomous intent must opt in');
-chain_assert($continuous->invoke(null, 'ทำต่อเนื่องจนถึงจุดที่ปลอดภัย') === true, 'Thai continuous intent must opt in');
+chain_assert($continuous->invoke(null, 'ตรวจ Source of Truth ของ AWH ต่อเนื่องบน VPS แบบ read-only เท่านั้น ห้ามแก้ source deploy secret billing หรือ permission เมื่อขั้นแรกเสร็จให้เลือกหัวข้อ read-only ที่ปลอดภัยถัดไปเอง') === true, 'Thai field-proof continuous intent must opt in');
 chain_assert($continuous->invoke(null, 'ตรวจโปรเจกต์ล่าสุด') === false, 'ordinary work must not silently become continuous');
 
 $impact = new ReflectionMethod(HubDurableExecutionService::class, 'highImpactGoal');
