@@ -2,7 +2,12 @@
 
 - The native provider tool-result contract is narrower than the internal Project Vault read contract. Keep `HubProjectVault::MAX_FILE_READ_BYTES` at 256 KiB for internal canonical reads, but expose provider callbacks through a separate bounded 24 KiB UTF-8-safe read contract so serialized tool results remain below the existing 64 KiB fail-closed limit.
 - This shared boundary applies to canonical inspection, continuous-work planning and assisted-edit workspace reads. It does not add a queue, widen capability policy, expose credentials, or change executor authority. Large text is explicitly marked `truncated` and must remain valid UTF-8.
-- Production remains on exact SHA `06a7277063f891d0d29ad5bdbed7db7541dbb807` until the new repair is committed, CI/readiness verified and separately approved through typed M16. No direct Production DB mutation or manual credential injection is permitted.
+- Production remains on exact SHA `06a7277063f891d0d29ad5bdbed7db7541dbb807` until the canonical-synced repair is CI/readiness verified and separately approved through typed M16. No direct Production DB mutation or manual credential injection is permitted.
+# Authoritative supersession — 2026-08-30 Source/Production reconciliation
+
+- The canonical branch must include the source line that Production actually runs. Because `codex/finish-first-p0` was a fast-forward descendant of `awh/api-independence` and ReadyIDC pointed to `m16-06a7277063f8`, the safe reconciliation was a fast-forward, not a duplicate implementation or a cherry-picked parallel authority.
+- Production disk health remains evidence-based: the shared policy reports `HEALTHY` at 20% or more free space, `WARNING` below 20%, and `CRITICAL` below 10%. M11 tests must validate that policy contract rather than assume the developer machine is healthy.
+- The reconciliation commit `74556a1` is test-only and was pushed to `origin/awh/api-independence`; it does not authorize a Production deployment or alter the active M16 runtime.
 
 # Authoritative supersession — 2026-08-29 Responses tool-loop contract
 
