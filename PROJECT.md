@@ -1,5 +1,11 @@
 # Art’s Workspace Hub — AWH
 
+## Current visible product checkpoint — 2026-08-29 P1-B Tasks and Executions
+
+- The isolated candidate `codex/finish-first-p0` is now at `e9055e8` after a bounded P1-B Tasks/Executions slice. Home uses the existing canonical control projections to show a human-readable task list/detail view with filters, truthful execution journey, result/continuation context, approval handoff and validated artifact downloads.
+- The slice also fixes the task-present Home refresh defect caused by undefined `STATUS_LABELS` and `executionPlace` references; it now reuses `executionStatus()` rather than introducing another status vocabulary.
+- Evidence: focused P1 checks `4/4 PASS`; full product `315 PASS / 0 FAIL / 1 platform SKIP` across 316 tests; typecheck/build/CONTROL preview/`qa:fast`/diff check PASS. Browser/iPhone UAT, Desktop enrollment/field proof, CI/review, push and Production deployment are not claimed.
+
 ## Current visible product checkpoint — 2026-08-29
 
 - P1-A Home now has a compact real-data command-center pulse for projects, active work, results and attention. It is additive over the existing canonical control projections and gives each card an obvious next action.

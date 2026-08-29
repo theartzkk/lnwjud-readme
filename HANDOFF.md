@@ -1,3 +1,15 @@
+# Authoritative supersession — 2026-08-29 P1-B Tasks and Executions checkpoint
+
+- P1-B is implemented in local candidate commit `e9055e8` on `codex/finish-first-p0`. The canonical Home now opens one Tasks/Executions surface over the existing `control.tasks`, `control.artifacts`, `control.approvals`, `control.workers` and `executionStatus()` projections; no new route, table, queue, execution or activity authority was added.
+- The surface gives the owner human-readable filters (`ทั้งหมด`, `กำลังทำ`, `ต้องดู`, `เสร็จแล้ว`), a selected-task detail, truthful execution journey, worker/result/continuation context, pending-approval handoff back to Work, and only validated same-origin artifact download links. Home recent/active/attention actions now converge on this surface.
+- A real Home runtime defect was fixed at its source: `renderRecentWork()` referenced undefined `STATUS_LABELS` and `executionPlace`, which could abort Home refresh when tasks existed. It now uses the canonical presentation projection `executionStatus(task, workers)`.
+- P1-B regression `4/4 PASS`; full product suite `315 PASS / 0 FAIL / 1 platform SKIP` across 316 tests; `npm run typecheck`, `npm run build`, CONTROL web preview and `npm run qa:fast` PASS; `git diff --check` PASS. This is source/build evidence, not visual browser or iPhone UAT.
+- Candidate remains local-only, clean after the checkpoint commit, ahead of `origin/awh/api-independence`, not pushed, not in CI, and not deployed. P0 field proof remains blocked at `DEVICE_NOT_ENROLLED`; no credential was invented or printed.
+
+## Next action
+
+Preserve the P0 and release gates: obtain explicit destination authorization before any push, enroll the target Desktop through normal auth before the Auto-Chain field proof, then require CI/review and fresh exact-SHA Production approval. In parallel, continue the next safe visible slice (Files/Tools) only on this isolated candidate; do not claim browser UAT, field PASS, or Production v1 complete from source/build evidence.
+
 # Authoritative supersession — 2026-08-29 P1-A Home command-center checkpoint
 
 - The first Visible Product Pass card is implemented on top of the existing canonical Web/PWA Home and Work surfaces. Home now exposes a compact “ภาพรวมตอนนี้” pulse for real project, active-task, artifact and approval counts, with actions that return to the existing Projects, Work and results surfaces.

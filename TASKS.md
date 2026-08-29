@@ -1,3 +1,21 @@
+# Authoritative task supersession — 2026-08-29 P1-B Tasks and Executions checkpoint
+
+## NOW
+
+- P1-B is closed in source at candidate commit `e9055e8` on `codex/finish-first-p0`. Home recent work, active work, attention and Owner Tasks actions converge on the new canonical Tasks/Executions surface.
+- The surface is a presentation projection over existing control data only. It shows task filters, truthful phase/journey, result summary, continuation metadata, approval handoff and validated artifact download links without adding an authority or exposing raw secrets/paths.
+- The Home task-list runtime reference error from undefined `STATUS_LABELS`/`executionPlace` is permanently removed; status/actor now come from `executionStatus()`.
+
+## VERIFIED
+
+- Focused P1 Home + Tasks regression `4/4 PASS`.
+- Full product suite `316 tests = 315 PASS / 0 FAIL / 1 platform SKIP`; typecheck, build, CONTROL web preview and `qa:fast` PASS; diff check PASS.
+- Browser/iPhone UAT, Desktop credential enrollment, Auto-Chain field proof, push/CI/review and Production deployment remain open gates. Primary checkout remains untouched.
+
+## NEXT
+
+- Keep P0 `DEVICE_NOT_ENROLLED` and push safety authorization explicit. Continue the next bounded P1 surface only on the candidate; do not bypass safety or promote this local commit to Production.
+
 # Authoritative task supersession — 2026-08-29 P1-A Home command-center checkpoint
 
 ## NOW
