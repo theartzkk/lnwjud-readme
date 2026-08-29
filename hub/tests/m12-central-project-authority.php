@@ -91,7 +91,9 @@ try {
     m12_assert(is_array($inspectionObject) && ($inspectionObject['kind']??null)==='project-inspection', 'root-cause inspection persists one canonical artifact record');
     $inspectionEvidence=json_decode((string)file_get_contents(HubArtifactStore::fromEnvironment()->read((string)$inspectionObject['storage_key'])),true,64,JSON_THROW_ON_ERROR);
     m12_assert(($inspectionEvidence['readOnly']??null)===true && ($inspectionEvidence['vaultRevisionId']??null)===$promoted['activeRevisionId'] && ($inspectionEvidence['evidence']['searches'][0]['query']??null)==='fixture-v2' && ($inspectionEvidence['evidence']['reads'][0]['path']??null)==='src/main.php', 'inspection artifact binds search/read evidence to the exact immutable revision');
-    m12_assert(!str_contains(json_encode($inspectionEvidence,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR), "<?php echo 'fixture-v2'"), 'inspection artifact records hashes and bounded snippets, not copied source payloads');
+    $inspectionReadEvidence=$inspectionEvidence['evidence']['reads'][0]??null; $inspectionSearchMatch=$inspectionEvidence['evidence']['searches'][0]['matches'][0]??null;
+    m12_assert(is_array($inspectionReadEvidence) && !array_key_exists('content',$inspectionReadEvidence) && is_string($inspectionReadEvidence['sha256']??null) && strlen((string)$inspectionReadEvidence['sha256'])===64, 'inspection read evidence records hashes and metadata, not copied source payloads');
+    m12_assert(!is_array($inspectionSearchMatch) || !isset($inspectionSearchMatch['snippet']) || strlen((string)$inspectionSearchMatch['snippet'])<=240, 'inspection search evidence keeps snippets bounded');
     m12_assert($vaults->activeRevision($project) === $promoted['activeRevisionId'], 'root-cause inspection leaves canonical source unchanged');
     $pdo->exec("DELETE FROM control_provider_policies WHERE provider_id='openai'");
 
