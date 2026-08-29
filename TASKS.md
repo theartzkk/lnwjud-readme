@@ -1,3 +1,21 @@
+# Authoritative supersession — 2026-08-30 Source/Production reconciliation
+
+## NOW
+
+- Source/release drift is closed in the canonical branch: `awh/api-independence` and `origin/awh/api-independence` both point to `74556a1951fe51f2ca95326b25148b690695bfb5`; the deployed runtime code is preserved from `m16-06a7277063f8` and no Production mutation occurred.
+- The M11 storage fixture is closed permanently at the test authority. It now follows the actual disk policy (`HEALTHY`, `WARNING`, or `CRITICAL` with bounded usage) instead of assuming every test host has more than 20% free space.
+
+## VERIFIED
+
+- Full Node suite: `320 tests`, `319 PASS`, `0 FAIL`, `1 platform SKIP`.
+- Hub integration: all supported M3E–M17, provider, Auto-Chain, supervisor, secret/promotion and sustainability fixtures PASS; only the known macOS extension-dependent fixtures SKIP.
+- `npm run qa:fast`, `npm run qa:local`, typecheck, build and `git diff --check`: PASS.
+- ReadyIDC read-only: DB16/integrity/FK PASS, Nginx topology PASS, and native executor/backup/Nginx/PHP-FPM active.
+
+## NEXT
+
+- Keep Production at `m16-06a7277063f8` until CI/review and a fresh exact-SHA Production approval exist. Continue with real browser/iPhone Mobile/Smoke/AI field gates; do not infer them from source QA.
+
 # Authoritative supersession — 2026-08-29 Auto-Chain provider request contract
 
 ## NOW

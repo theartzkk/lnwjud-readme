@@ -1,3 +1,14 @@
+# Authoritative supersession — 2026-08-30 Source/Production reconciliation
+
+- Canonical source `awh/api-independence` is clean and pushed at exact SHA `74556a1951fe51f2ca95326b25148b690695bfb5`; it fast-forwarded the production-forward `codex/finish-first-p0` history into the canonical line. Home command-center, Tasks/Executions, Files, provider boundary and Auto-Chain changes are now represented in the canonical source.
+- ReadyIDC was inspected read-only: Control/Web pointers are `m16-06a7277063f8`, SQLite schema 16 with integrity `ok` and FK 0, Nginx topology PASS, and native executor/backup/Nginx/PHP-FPM active. No Production, credential, billing, permission, Google Cloud or BAY mutation was performed.
+- Full product regression is `320 tests = 319 PASS / 0 FAIL / 1 platform SKIP`; Hub integration, `qa:fast`, `qa:local`, typecheck, build and diff check pass. The Hub skips are limited to macOS extension-dependent fixtures.
+- The only new source change after the deployed code is the M11 test guard: real disk policy may return `WARNING` below 20% free space, so the fixture now checks policy-valid states and bounded usage rather than demanding `HEALTHY`.
+
+## Next action
+
+Use CI/review and manual browser/iPhone field verification to close Mobile/Smoke/AI evidence. Any Production refresh requires a new exact-SHA approval; do not deploy this test-only reconciliation merely to change the release pointer.
+
 # Authoritative supersession — 2026-08-29 Auto-Chain Responses request contract
 
 - Production was refreshed through the typed M16 authority to exact SHA `903d128f9b6160e011936b681a69656789b45a09`; the active Control/Web pointers, schema 16 database, Nginx/PHP-FPM route and worker timer were verified healthy after cutover.

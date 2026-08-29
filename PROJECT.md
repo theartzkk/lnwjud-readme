@@ -1,3 +1,14 @@
+# Authoritative supersession — 2026-08-30 Source/Production reconciliation
+
+- Canonical source branch `awh/api-independence` is now exact and clean at `74556a1951fe51f2ca95326b25148b690695bfb5`, matching `origin/awh/api-independence`. It fast-forwarded from `2caf924` through the already-deployed `codex/finish-first-p0` line, so the visible Home, Tasks/Executions, Files, provider-boundary and Auto-Chain work is no longer stranded on a separate source branch.
+- ReadyIDC read-only evidence remains Production Control/Web `m16-06a7277063f8`, SQLite schema 16, integrity `ok`, foreign-key violations `0`, Nginx topology PASS, and active `awh-native-executor.timer`, `awh-backup.timer`, Nginx and PHP-FPM. Production was not mutated in this continuation; the new HEAD differs from the deployed runtime only by a test-fixture guard.
+- QA closure: full Node regression `320 tests = 319 PASS / 0 FAIL / 1 platform SKIP`; Hub integration passes all supported fixtures with only the known macOS extension-dependent skips; `qa:fast`, `qa:local`, typecheck, build and `git diff --check` pass.
+- Permanent fixture fix: M11 previously required `storage.state=HEALTHY`, although the real policy correctly reports `WARNING` below 20% free disk. The fixture now verifies the allowed policy states and bounded 0–100 usage value without weakening the production threshold or turning a disk warning into PASS.
+
+## Next checkpoint
+
+Production remains unchanged and no deployment approval is implied by this source/test reconciliation. The next safe gates are CI/review and explicit field UAT for Mobile/Smoke/AI, followed by a fresh exact-SHA approval before any Production refresh.
+
 # Authoritative supersession — 2026-08-29 Auto-Chain provider request contract
 
 - Current Production is exact SHA `903d128f9b6160e011936b681a69656789b45a09`, activated through the typed M16 authority with schema 16, integrity/FK, backup, Nginx/PHP-FPM and worker health verified. This is the runtime truth; the new source candidate is not deployed.

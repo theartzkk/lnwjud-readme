@@ -1,3 +1,9 @@
+# Authoritative supersession — 2026-08-30 Source/Production reconciliation
+
+- The canonical branch must include the source line that Production actually runs. Because `codex/finish-first-p0` was a fast-forward descendant of `awh/api-independence` and ReadyIDC pointed to `m16-06a7277063f8`, the safe reconciliation was a fast-forward, not a duplicate implementation or a cherry-picked parallel authority.
+- Production disk health remains evidence-based: the shared policy reports `HEALTHY` at 20% or more free space, `WARNING` below 20%, and `CRITICAL` below 10%. M11 tests must validate that policy contract rather than assume the developer machine is healthy.
+- The reconciliation commit `74556a1` is test-only and was pushed to `origin/awh/api-independence`; it does not authorize a Production deployment or alter the active M16 runtime.
+
 # Authoritative supersession — 2026-08-29 Responses tool-loop contract
 
 - The shared native-agent Responses payload must contain only fields supported by the provider contract. `max_tool_calls` is not supported by the current Responses API and is therefore removed from both initial and follow-up tool-loop requests.
