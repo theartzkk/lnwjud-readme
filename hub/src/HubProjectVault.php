@@ -192,7 +192,7 @@ final class HubProjectVault
             $before = substr($read['content'], 0, $offset); $line = substr_count($before, "\n") + 1;
             $lineStart = strrpos($before, "\n"); $lineStart = $lineStart === false ? 0 : $lineStart + 1;
             $lineEnd = strpos($read['content'], "\n", $offset); if ($lineEnd === false) $lineEnd = strlen($read['content']);
-            $snippet = trim(substr($read['content'], $lineStart, min(240, $lineEnd - $lineStart)));
+            $snippet = self::boundedUtf8Snippet(substr($read['content'], $lineStart, min(240, $lineEnd - $lineStart)));
             $matches[] = ['path' => $file['path'], 'sizeBytes' => $file['sizeBytes'], 'match' => 'content', 'line' => $line, 'snippet' => $snippet];
             if (count($matches) >= $cap) break;
         }
@@ -279,4 +279,5 @@ final class HubProjectVault
     private static function archivePath(string $value): ?string { $path = str_replace('\\', '/', $value); if ($path === '' || str_contains($path, "\0") || str_starts_with($path, '/') || preg_match('#^[A-Za-z]:/#', $path) === 1) throw new HubProjectVaultException('Project archive path is unsafe', 'PROJECT_ARCHIVE_UNSAFE'); $parts = explode('/', rtrim($path, '/')); if ($parts === ['']) return null; foreach ($parts as $part) if ($part === '' || $part === '.' || $part === '..' || strlen($part) > 180 || preg_match('/[\x00-\x1f\x7f]/', $part)) throw new HubProjectVaultException('Project archive path is unsafe', 'PROJECT_ARCHIVE_UNSAFE'); $normalized = implode('/', $parts); if (strlen($normalized) > 900) throw new HubProjectVaultException('Project archive path is unsafe', 'PROJECT_ARCHIVE_UNSAFE'); return $normalized; }
     private static function sensitivePath(string $path): bool { $base = strtolower((string) basename($path)); if ($base === '.env' || str_contains(strtolower($path), '/.ssh/') || preg_match('/(?:^|[._-])(?:id_rsa|id_ed25519|private[_-]?key)(?:[._-]|$)|\.(?:pem|key|p12|pfx)$/', $base) === 1) return true; return preg_match('/(?:^|[._-])(?:credentials?|secrets?|tokens?)(?:[._-]|$)/', $base) === 1 && preg_match('/\.(?:json|ya?ml|txt|ini|conf|cfg|properties|db|sqlite)$/', $base) === 1; }
     private static function binary(string $path): bool { $handle = @fopen($path, 'rb'); if ($handle === false) return true; $chunk = fread($handle, 4096); fclose($handle); return !is_string($chunk) || str_contains($chunk, "\0"); }
+    private static function boundedUtf8Snippet(string $value): string { while ($value !== '' && @preg_match('//u', $value) !== 1) $value = substr($value, 0, -1); return trim($value); }
 }

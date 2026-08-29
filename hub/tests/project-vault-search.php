@@ -15,12 +15,17 @@ try {
     file_put_contents($dir . '/main.php', "<?php\nfunction durableSymbol(): void {}\n");
     file_put_contents($dir . '/invalid.txt', "prefix \xC3\x28 durableSymbol\n");
     file_put_contents($dir . '/blob.bin', "abc\0durableSymbol");
+    file_put_contents($dir . '/utf8-boundary.txt', 'UTF8_BOUNDARY_NEEDLEX ' . str_repeat('ก', 80) . "\n");
     $vault = new HubProjectVault($root); $hits = $vault->search($project, $revision, 'durableSymbol');
     search_assert(count($hits) === 1 && $hits[0]['path'] === 'src/main.php' && $hits[0]['match'] === 'content' && $hits[0]['line'] === 2, 'content search must find text symbol and skip binary data');
     search_assert(str_contains((string) $hits[0]['snippet'], 'durableSymbol'), 'content search returns bounded line evidence');
     json_encode(['candidateFiles' => $hits], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
     $invalidText = false; try { $vault->readText($project, $revision, 'src/invalid.txt'); } catch (HubProjectVaultException $e) { $invalidText = $e->codeName === 'PROJECT_CONTEXT_FORBIDDEN'; }
     search_assert($invalidText, 'invalid UTF-8 must be rejected as non-text');
+    $utf8Hits = $vault->search($project, $revision, 'UTF8_BOUNDARY_NEEDLEX');
+    search_assert(count($utf8Hits) === 1 && ($utf8Hits[0]['path'] ?? null) === 'src/utf8-boundary.txt' && ($utf8Hits[0]['match'] ?? null) === 'content', 'UTF-8 boundary fixture must produce content evidence');
+    search_assert(preg_match('//u', (string) ($utf8Hits[0]['snippet'] ?? '')) === 1, 'bounded UTF-8 snippet must remain valid text');
+    json_encode(['candidateFiles' => $utf8Hits], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
     $pathHits = $vault->search($project, $revision, 'README', 1); search_assert(count($pathHits) === 1 && $pathHits[0]['match'] === 'path', 'path match remains first and respects result cap');
     $invalid = false; try { $vault->search($project, $revision, str_repeat('x', 121)); } catch (HubProjectVaultException $e) { $invalid = $e->codeName === 'PROJECT_CONTEXT_INVALID'; }
     search_assert($invalid, 'oversized search query fails closed');
