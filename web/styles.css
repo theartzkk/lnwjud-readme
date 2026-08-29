@@ -1,17 +1,17 @@
 :root {
   color-scheme: dark;
-  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--awh-font-sans);
   font-synthesis: none;
-  --canvas: #0b0d10;
-  --surface: #12151b;
-  --surface-raised: #181c23;
-  --surface-soft: #202631;
-  --line: #2b313c;
-  --text: #f4f6f8;
-  --muted: #98a1af;
-  --accent: #ff8a36;
-  --accent-ink: #221207;
-  --danger: #ff6b63;
+  --canvas: var(--awh-canvas);
+  --surface: var(--awh-surface);
+  --surface-raised: var(--awh-surface-raised);
+  --surface-soft: var(--awh-surface-soft);
+  --line: var(--awh-line);
+  --text: var(--awh-text);
+  --muted: var(--awh-muted);
+  --accent: var(--awh-accent);
+  --accent-ink: var(--awh-accent-ink);
+  --danger: var(--awh-danger);
 }
 
 html {

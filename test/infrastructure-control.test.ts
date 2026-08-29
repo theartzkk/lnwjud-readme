@@ -16,7 +16,8 @@ test('Infrastructure is an Owner-only sanitized projection and canonical web sur
    readFile(join(ROOT,'hub/src/HubControlPlaneRouter.php'),'utf8'),readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),readFile(join(ROOT,'hub/bin/system-telemetry.php'),'utf8'),readFile(join(ROOT,'deploy/awh-control-plane/deploy-control-plane.sh'),'utf8'),readFile(join(ROOT,'hub/bin/awh-native-executor.php'),'utf8'),readFile(join(ROOT,'scripts/create-web-release-manifest.mjs'),'utf8'),readFile(join(ROOT,'web/sw.js'),'utf8')
   ]) as Promise<string[]>);
   assert.match(html,/ศูนย์ควบคุมระบบ/); assert.match(html,/DOMAINS & SSL/); assert.match(html,/Production Complete/); assert.match(html,/AUTONOMOUS AI 24\/7/); assert.match(html,/Models · Health · Fallback/); assert.match(css,/--accent:#ff7a1a/); assert.match(css,/checklist-grid/); assert.match(js,/\/api\/v1\/control\/infrastructure/);
-  for(const projection of ['productionComplete','aiModels','autonomousWork','incidents','stagedCandidates']) assert.match(js,new RegExp(projection));
+  for(const projection of ['productionComplete','aiModels','autonomousWork','incidents','morningBrief','stagedCandidates']) assert.match(js,new RegExp(projection));
+  assert.match(js,/stateLabel/); assert.match(js,/progressLabel/); assert.doesNotMatch(js,/Number\(event\.progress\|\|0\)/);
   assert.match(router,/\/api\/v1\/control\/infrastructure/); assert.match(service,/assertOwner\(\$userId\)/); assert.match(service,/HubInfrastructureService::fromEnvironment/); assert.match(service,/HubInfrastructureService::releaseState/);
   for(const authority of ['control_ai_route_decisions','control_task_executions','control_task_events']) assert.match(service,new RegExp(authority));
   assert.match(service,/'productionComplete'/); assert.doesNotMatch(service,/CREATE TABLE|ALTER TABLE/);
