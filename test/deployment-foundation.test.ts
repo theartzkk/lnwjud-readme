@@ -180,6 +180,9 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(deploy, /--compat-refresh/);
   assert.match(deploy, /Refusing deployment from a dirty or uncommitted working tree/);
   assert.match(deploy, /DB_WRITE_READY|DB_WRITE_PROVISION_REQUIRED/);
+  assert.ok(deploy.includes('effective_enrollment_fastcgi=fastcgi_pass unix:'));
+  assert.ok(deploy.includes('-fpm\\(-awh\\)\\{0,1\\}\\.sock'));
+  assert.ok(deploy.includes('/run/php/php*-fpm.sock|/run/php/php*-fpm-awh.sock'));
   assert.match(remoteDeploy, /PRAGMA user_version/);
   assert.match(remoteDeploy, /rollback\(\)/);
   assert.match(remoteDeploy, /\.restore/);

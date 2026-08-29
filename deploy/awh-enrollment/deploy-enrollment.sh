@@ -123,15 +123,15 @@ printf '%s\n' "$PREFLIGHT_OUTPUT" | grep -q '^nginx_topology=PASS$' || {
 }
 DB_PATH=$(printf '%s\n' "$PREFLIGHT_OUTPUT" | sed -n 's/^db_resolution_path=//p' | tail -n 1)
 NGINX_CONFIG_PATH=$(printf '%s\n' "$PREFLIGHT_OUTPUT" | sed -n 's/^effective_nginx_server_config=//p' | tail -n 1)
-PHP_SOCKET=$(printf '%s\n' "$PREFLIGHT_OUTPUT" | sed -n 's/^effective_fastcgi=fastcgi_pass unix:\([^;]*\);$/\1/p' | tail -n 1)
-PHP_VERSION=$(basename "$PHP_SOCKET" | sed -n 's/^php\([0-9][0-9.]*\)-fpm\.sock$/\1/p')
+PHP_SOCKET=$(printf '%s\n' "$PREFLIGHT_OUTPUT" | sed -n 's/^effective_enrollment_fastcgi=fastcgi_pass unix:\([^;]*\);$/\1/p' | tail -n 1)
+PHP_VERSION=$(basename "$PHP_SOCKET" | sed -n 's/^php\([0-9][0-9.]*\)-fpm\(-awh\)\{0,1\}\.sock$/\1/p')
 BOOTSTRAP_HASH_FILE=${AWH_ENROLLMENT_BOOTSTRAP_HASH_FILE:-/etc/awh-hub/enrollment-bootstrap.sha256}
 case "$DB_PATH" in
   /var/lib/awh-hub/*|/opt/awh-hub/*|/srv/awh/*) ;;
   *) echo "Production deployment blocked: resolved DB path is outside bounded AWH roots" >&2; exit 1 ;;
 esac
 case "$NGINX_CONFIG_PATH" in /etc/nginx/sites-enabled/*) ;; *) echo "Production deployment blocked: effective Nginx server config is unresolved" >&2; exit 1 ;; esac
-case "$PHP_SOCKET" in /run/php/php*-fpm.sock) ;; *) echo "Production deployment blocked: effective PHP-FPM socket is unresolved" >&2; exit 1 ;; esac
+case "$PHP_SOCKET" in /run/php/php*-fpm.sock|/run/php/php*-fpm-awh.sock) ;; *) echo "Production deployment blocked: effective PHP-FPM socket is unresolved" >&2; exit 1 ;; esac
 case "$PHP_VERSION" in [0-9]*.[0-9]*) ;; *) echo "Production deployment blocked: PHP-FPM version is unresolved" >&2; exit 1 ;; esac
 case "$BOOTSTRAP_HASH_FILE" in /etc/awh-hub/*) ;; *) echo "AWH_ENROLLMENT_BOOTSTRAP_HASH_FILE must stay under /etc/awh-hub" >&2; exit 2 ;; esac
 
