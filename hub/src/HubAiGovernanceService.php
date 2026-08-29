@@ -43,15 +43,42 @@ final class HubAiGovernanceService
         if (!isset(self::DATA_RANK[$dataClassification])) throw new HubAiGovernanceException('Data classification is invalid','AI_ROUTE_INVALID');
         if (!in_array($strategy,self::STRATEGIES,true)) throw new HubAiGovernanceException('Routing strategy is invalid','AI_ROUTE_INVALID');
         foreach ([$estimatedInputTokens,$estimatedOutputTokens,$premiumBaselineMicrounits] as $value) if ($value<0) throw new HubAiGovernanceException('Routing estimate is invalid','AI_ROUTE_INVALID');
-        $context=$this->executionContext($userId,$projectId,$executionId,$taskId);
+        $context=$this->executionContext($userId,$projectId,$executionId,$taskId,$capability);
         $this->assertBudget($userId,$projectId,$providerId,$estimatedInputTokens,$estimatedOutputTokens,$at);
-        $candidates=$this->candidates($providerId,$dataClassification,$preferredModels,$estimatedInputTokens,$estimatedOutputTokens,$at);
+        $candidates=$this->candidates($providerId,$capability,$dataClassification,$preferredModels,$estimatedInputTokens,$estimatedOutputTokens,$at);
         if ($candidates===[]) throw new HubAiGovernanceException('No qualified AI model is currently eligible','AI_ROUTE_UNAVAILABLE');
         usort($candidates,fn(array $a,array $b):int=>$this->score($b,$strategy)<=>$this->score($a,$strategy) ?: strcmp((string)$a['model_id'],(string)$b['model_id']));
         $selected=$candidates[0]; $routeId=self::uuid(); $estimated=(int)$selected['estimated_microunits'];
         $reason=$this->reason($selected,$strategy,$preferredModels);
         $this->pdo->prepare("INSERT INTO control_ai_route_decisions(route_id,execution_id,task_id,project_id,user_id,route_kind,required_capability,data_classification,provider_id,model_id,routing_strategy,reason_code,estimated_microunits,premium_baseline_microunits,routing_policy_version,prompt_policy_version,tool_policy_version,decision_state,created_at,metadata_json) VALUES(:id,:execution,:task,:project,:user,'AI_PROVIDER',:capability,:class,:provider,:model,:strategy,:reason,:estimated,:baseline,:routing,:prompt,:tool,'SELECTED',:at,:meta)")->execute(['id'=>$routeId,'execution'=>$executionId,'task'=>$taskId,'project'=>$projectId,'user'=>$userId,'capability'=>$capability,'class'=>$dataClassification,'provider'=>$providerId,'model'=>$selected['model_id'],'strategy'=>$strategy,'reason'=>$reason,'estimated'=>$estimated,'baseline'=>$premiumBaselineMicrounits,'routing'=>$this->version($versions['routing']??'m16-v1'),'prompt'=>$this->version($versions['prompt']??'native-v1'),'tool'=>$this->version($versions['tool']??'bounded-v1'),'at'=>$at,'meta'=>json_encode(['vaultRevisionId'=>$context['vault_revision_id']],JSON_THROW_ON_ERROR)]);
         return ['schemaVersion'=>1,'routeId'=>$routeId,'providerId'=>$providerId,'modelId'=>(string)$selected['model_id'],'estimatedMicrounits'=>$estimated,'premiumBaselineMicrounits'=>$premiumBaselineMicrounits,'reasonCode'=>$reason,'strategy'=>strtolower($strategy)];
+    }
+
+    /**
+     * Route across already-registered providers using the same M16 evidence,
+     * budget, circuit and canonical execution authorities.
+     * @param list<string> $providerIds @param list<string> $preferredModels
+     * @return array<string,mixed>
+     */
+    public function selectAcrossProviders(string $userId,string $projectId,string $executionId,string $taskId,array $providerIds,string $capability,string $dataClassification,string $strategy,array $preferredModels,int $estimatedInputTokens,int $estimatedOutputTokens,int $premiumBaselineMicrounits,array $versions,?string $now=null): array
+    {
+        $at=self::timestamp($now??gmdate('c')); $strategy=strtoupper(trim($strategy)); $dataClassification=strtoupper(trim($dataClassification));
+        if (!isset(self::DATA_RANK[$dataClassification]) || !in_array($strategy,self::STRATEGIES,true) || $providerIds===[] || count($providerIds)>16) throw new HubAiGovernanceException('Cross-provider route is invalid','AI_ROUTE_INVALID');
+        foreach ([$estimatedInputTokens,$estimatedOutputTokens,$premiumBaselineMicrounits] as $value) if ($value<0) throw new HubAiGovernanceException('Routing estimate is invalid','AI_ROUTE_INVALID');
+        $context=$this->executionContext($userId,$projectId,$executionId,$taskId,$capability); $providers=[]; $candidates=[];
+        foreach ($providerIds as $provider) {
+            if (!is_string($provider) || preg_match('/^[a-z0-9][a-z0-9._-]{1,63}$/i',$provider)!==1) throw new HubAiGovernanceException('Provider identity is invalid','AI_ROUTE_INVALID');
+            $provider=strtolower($provider); if (isset($providers[$provider])) continue; $providers[$provider]=true;
+            foreach ($this->candidates($provider,$capability,$dataClassification,$preferredModels,$estimatedInputTokens,$estimatedOutputTokens,$at) as $candidate) $candidates[]=$candidate;
+        }
+        if ($candidates===[]) throw new HubAiGovernanceException('No qualified AI provider is currently eligible','AI_ROUTE_UNAVAILABLE');
+        usort($candidates,fn(array $a,array $b):int=>$this->score($b,$strategy)<=>$this->score($a,$strategy) ?: strcmp((string)$a['provider_id'].':'.(string)$a['model_id'],(string)$b['provider_id'].':'.(string)$b['model_id']));
+        $selected=null; $budgetError=null;
+        foreach ($candidates as $candidate) { try { $this->assertBudget($userId,$projectId,(string)$candidate['provider_id'],$estimatedInputTokens,$estimatedOutputTokens,$at); $selected=$candidate; break; } catch (HubAiGovernanceException $error) { if (!str_starts_with($error->codeName,'AI_BUDGET_')) throw $error; $budgetError=$error; } }
+        if (!is_array($selected)) { if ($budgetError instanceof HubAiGovernanceException) throw $budgetError; throw new HubAiGovernanceException('No provider fits the configured budget','AI_BUDGET_TASK_LIMIT'); }
+        $routeId=self::uuid(); $providerId=(string)$selected['provider_id']; $modelId=(string)$selected['model_id']; $estimated=(int)$selected['estimated_microunits']; $reason=$this->reason($selected,$strategy,$preferredModels);
+        $this->pdo->prepare("INSERT INTO control_ai_route_decisions(route_id,execution_id,task_id,project_id,user_id,route_kind,required_capability,data_classification,provider_id,model_id,routing_strategy,reason_code,estimated_microunits,premium_baseline_microunits,routing_policy_version,prompt_policy_version,tool_policy_version,decision_state,created_at,metadata_json) VALUES(:id,:execution,:task,:project,:user,'AI_PROVIDER',:capability,:class,:provider,:model,:strategy,:reason,:estimated,:baseline,:routing,:prompt,:tool,'SELECTED',:at,:meta)")->execute(['id'=>$routeId,'execution'=>$executionId,'task'=>$taskId,'project'=>$projectId,'user'=>$userId,'capability'=>$capability,'class'=>$dataClassification,'provider'=>$providerId,'model'=>$modelId,'strategy'=>$strategy,'reason'=>$reason,'estimated'=>$estimated,'baseline'=>$premiumBaselineMicrounits,'routing'=>$this->version($versions['routing']??'m16-multiprovider-v1'),'prompt'=>$this->version($versions['prompt']??'native-v1'),'tool'=>$this->version($versions['tool']??'bounded-v1'),'at'=>$at,'meta'=>json_encode(['vaultRevisionId'=>$context['vault_revision_id'],'candidateProviders'=>array_keys($providers)],JSON_THROW_ON_ERROR)]);
+        return ['schemaVersion'=>1,'routeId'=>$routeId,'providerId'=>$providerId,'modelId'=>$modelId,'estimatedMicrounits'=>$estimated,'premiumBaselineMicrounits'=>$premiumBaselineMicrounits,'reasonCode'=>$reason,'strategy'=>strtolower($strategy)];
     }
 
     /** @param array<string,mixed> $metadata */
@@ -81,13 +108,13 @@ final class HubAiGovernanceService
     }
 
     /** @return list<array<string,mixed>> */
-    private function candidates(string $provider,string $dataClass,array $preferred,int $input,int $output,string $at): array
+    private function candidates(string $provider,string $capability,string $dataClass,array $preferred,int $input,int $output,string $at): array
     {
-        $q=$this->pdo->prepare("SELECT m.*,p.current_availability,p.max_data_classification AS provider_data_class,h.attempts,h.successes,h.timeouts,h.rate_limits,h.malformed_responses,h.tool_failures,h.circuit_state,h.circuit_until FROM control_ai_models m JOIN control_ai_provider_profiles p ON p.provider_id=m.provider_id LEFT JOIN control_ai_model_health h ON h.provider_id=m.provider_id AND h.model_id=m.model_id WHERE m.provider_id=:provider AND m.enabled=1 AND m.lifecycle='PRODUCTION' AND p.lifecycle='PRODUCTION' AND p.current_availability<>'UNAVAILABLE'"); $q->execute(['provider'=>$provider]); $rows=[];
+        $q=$this->pdo->prepare("SELECT m.*,p.current_availability,p.max_data_classification AS provider_data_class,h.attempts,h.successes,h.timeouts,h.rate_limits,h.malformed_responses,h.tool_failures,h.circuit_state,h.circuit_until FROM control_ai_models m JOIN control_ai_provider_profiles p ON p.provider_id=m.provider_id LEFT JOIN control_ai_model_health h ON h.provider_id=m.provider_id AND h.model_id=m.model_id WHERE m.provider_id=:provider AND m.enabled=1 AND m.lifecycle='PRODUCTION' AND p.lifecycle='PRODUCTION' AND p.current_availability<>'UNAVAILABLE' AND EXISTS(SELECT 1 FROM control_execution_provider_capabilities pc WHERE pc.provider_id=m.provider_id AND pc.capability=:capability AND pc.enabled=1)"); $q->execute(['provider'=>$provider,'capability'=>$capability]); $rows=[];
         foreach ($q->fetchAll() as $row) {
             if (!$this->allowsData((string)$row['max_data_classification'],$dataClass) || !$this->allowsData((string)$row['provider_data_class'],$dataClass)) continue;
             if (($row['circuit_state']??'CLOSED')==='OPEN' && ($row['circuit_until']===null || strtotime((string)$row['circuit_until'])>strtotime($at))) continue;
-            if ($preferred!==[] && !in_array((string)$row['model_id'],$preferred,true)) continue;
+            if (!$this->preferredCandidate((string)$row['provider_id'],(string)$row['model_id'],$preferred)) continue;
             $row['estimated_microunits']=$this->estimate((string)$row['provider_id'],(string)$row['model_id'],$input,$output,$at);
             $row['quality_evidence']=$this->qualityEvidence((string)$row['provider_id'],(string)$row['model_id']);
             $rows[]=$row;
@@ -108,6 +135,17 @@ final class HubAiGovernanceService
         if (($row['quality_evidence']??50)!==50) return 'QUALIFICATION_EVIDENCE';
         if ($preferred!==[]) return 'CURRENT_POLICY_COMPATIBILITY';
         return $strategy==='SAVER'?'LOWEST_SAFE_COST':'CAPABILITY_POLICY';
+    }
+
+    /** @param list<string> $preferred */
+    private function preferredCandidate(string $provider,string $model,array $preferred): bool
+    {
+        if ($preferred===[]) return true;
+        foreach ($preferred as $value) {
+            if (!is_string($value)) continue;
+            if ($value===$model || strtolower($value)===strtolower($provider.':'.$model)) return true;
+        }
+        return false;
     }
 
     private function estimate(string $provider,string $model,int $input,int $output,string $at): int
@@ -135,11 +173,12 @@ final class HubAiGovernanceService
         $q=$this->pdo->prepare("SELECT model_id FROM control_ai_models WHERE provider_id=:provider AND enabled=1 AND lifecycle='PRODUCTION'"); $q->execute(['provider'=>$provider]); $values=[]; foreach($q->fetchAll() as $row)$values[]=$this->estimate($provider,(string)$row['model_id'],$input,$output,$at); return $values===[]?PHP_INT_MAX>>10:min($values);
     }
 
-    private function executionContext(string $user,string $project,string $execution,string $task): array
+    private function executionContext(string $user,string $project,string $execution,string $task,string $capability): array
     {
         foreach ([$user,$project,$execution,$task] as $id) self::uuidValue($id);
-        $q=$this->pdo->prepare('SELECT e.vault_revision_id FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE e.execution_id=:execution AND e.task_id=:task AND e.project_id=:project AND t.user_id=:user'); $q->execute(['execution'=>$execution,'task'=>$task,'project'=>$project,'user'=>$user]); $row=$q->fetch();
-        if (!is_array($row)) throw new HubAiGovernanceException('AI route does not match canonical execution','AI_ROUTE_CONTEXT_INVALID'); return $row;
+        if (preg_match('/^[a-z0-9][a-z0-9._:-]{2,120}$/i',$capability)!==1) throw new HubAiGovernanceException('Capability is invalid','AI_ROUTE_INVALID');
+        $q=$this->pdo->prepare('SELECT e.vault_revision_id,e.required_capability FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE e.execution_id=:execution AND e.task_id=:task AND e.project_id=:project AND t.user_id=:user'); $q->execute(['execution'=>$execution,'task'=>$task,'project'=>$project,'user'=>$user]); $row=$q->fetch();
+        if (!is_array($row) || !is_string($row['required_capability']??null) || !hash_equals((string)$row['required_capability'],$capability)) throw new HubAiGovernanceException('AI route does not match canonical execution capability','AI_ROUTE_CONTEXT_INVALID'); return $row;
     }
 
     private function updateHealth(string $provider,string $model,string $status,int $latency,int $cost,array $metadata,string $at): void
