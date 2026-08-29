@@ -1,5 +1,11 @@
 # Art’s Workspace Hub — AWH
 
+## Current visible product checkpoint — 2026-08-29
+
+- P1-A Home now has a compact real-data command-center pulse for projects, active work, results and attention. It is additive over the existing canonical control projections and gives each card an obvious next action.
+- Role-aware rule: device readiness is an Owner-only detail; teacher/staff Home remains outcome-first and does not expose runtime/provider controls. The cards are mobile-safe and keyboard-focusable.
+- Candidate is `codex/finish-first-p0` at `e39bd0ed9e95f161bf5b7aab46e38899b821f9e7`; focused `2/2` and full `313/0/1` source evidence passed. Browser/iPhone UAT, push/CI/review, Desktop enrollment and Production deployment remain open gates.
+
 ## Current verified checkpoint — 2026-08-29
 
 - Canonical source was freshly verified at `awh/api-independence` `2caf9242d589d6f1463b8d063045eb86e5084c40`; the isolated P0 candidate is `codex/finish-first-p0` `f1844b6447c039c5e4c4f4f0d2d94e32bfe0f0df` and has not been deployed.

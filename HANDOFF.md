@@ -1,3 +1,15 @@
+# Authoritative supersession — 2026-08-29 P1-A Home command-center checkpoint
+
+- The first Visible Product Pass card is implemented on top of the existing canonical Web/PWA Home and Work surfaces. Home now exposes a compact “ภาพรวมตอนนี้” pulse for real project, active-task, artifact and approval counts, with actions that return to the existing Projects, Work and results surfaces.
+- Worker readiness is shown only to Owner and uses the existing `control.workers` projection. No endpoint, table, task queue, event database, mock data or second authority was added.
+- The pulse cards are keyboard-focusable buttons, use readable overflow behavior, and collapse from four columns to two/one at mobile breakpoints. A focused source regression and web preview build cover the new surface.
+- P1-A evidence: focused Home regression `2/2 PASS`; full product suite `313 PASS / 0 FAIL / 1 platform SKIP`; `npm run build` and `node --import tsx scripts/build-web-preview.ts --control` PASS. This is source/build evidence, not visual browser UAT.
+- Candidate source is `codex/finish-first-p0` at `e39bd0ed9e95f161bf5b7aab46e38899b821f9e7` and has not been pushed or deployed. P0 field proof remains blocked at `DEVICE_NOT_ENROLLED`, and the push/PR safety gate remains unresolved.
+
+## Next action
+
+Preserve the original P0 order: obtain explicit destination authorization before retrying push, then CI/review and fresh exact-SHA Production approval; separately enroll the target Desktop through the normal auth flow before running the Auto-Chain field proof. Continue the next visible P1 card only on this candidate/source boundary; do not claim browser UAT, field PASS or Production deployment from static/build evidence.
+
 # Authoritative supersession — 2026-08-29 Desktop enrollment P0 + Auto-Chain field-proof checkpoint
 
 - Canonical source was re-verified from `awh/api-independence` at `2caf9242d589d6f1463b8d063045eb86e5084c40`. The isolated candidate is `codex/finish-first-p0` at `f1844b6447c039c5e4c4f4f0d2d94e32bfe0f0df`; the primary checkout remained untouched.

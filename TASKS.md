@@ -1,3 +1,20 @@
+# Authoritative task supersession — 2026-08-29 P1-A Home command-center checkpoint
+
+## NOW
+
+- P1-A Home is implemented on `codex/finish-first-p0` at `e39bd0ed9e95f161bf5b7aab46e38899b821f9e7`, extending the canonical dashboard without a new authority.
+- Home’s real-data pulse shows project, active work, artifact and attention counts. Owner-only device readiness uses the existing worker projection; ordinary roles do not receive runtime/provider controls.
+
+## VERIFIED
+
+- Focused Home regression `2/2 PASS`; full product `313 PASS / 0 FAIL / 1 platform SKIP`; TypeScript build and controlled web preview build PASS.
+- Mobile/keyboard source invariants are covered, but browser/iPhone visual UAT remains required. No Production mutation occurred.
+
+## NEXT
+
+- Keep P0 field proof and push/PR gates explicit. Do not invent a Desktop credential or bypass the push safety rejection.
+- After those gates are authorized and field-ready, resume Auto-Chain proof and then continue P1-B Work using the same canonical control data.
+
 # Authoritative task supersession — 2026-08-29 Desktop enrollment P0 + Auto-Chain field-proof checkpoint
 
 ## NOW
