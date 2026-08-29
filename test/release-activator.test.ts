@@ -20,6 +20,8 @@ test('typed release activator is bounded and fail-closed', async () => {
   assert.match(source, /EXECUTIONS_ACTIVE/);
   assert.match(source, /verifyWebManifest/);
   assert.match(source, /WEB_SW_RELEASE_MISMATCH/);
+  assert.match(source, /\$data\['surface'\].*\['mode'\]/);
+  assert.doesNotMatch(source, /\$data\['mode'\]/);
   assert.match(source, /swapPointer\(AWH_CONTROL_POINTER/);
   assert.match(source, /restorePointer\(AWH_CONTROL_POINTER/);
 });
