@@ -1,3 +1,11 @@
+# Authoritative supersession — 2026-08-29 Continuous Auto-Chain V1
+
+- Canonical source was re-based from `awh/api-independence` @ `eb78779d...` and the already-CI-green multi-provider qualification/execution commits were cleanly converged before this milestone. Working branch: `awh/continuous-autochain-v1`.
+- ReadyIDC read-only service audit before mutation: host `awh-hub-01`; `awh-native-executor.timer`, `awh-backup.timer`, and `nginx` active; root disk 58% used. Production pointers/schema were not guessed when direct evidence was unavailable, and Production was not mutated.
+- Continuous Auto-Chain V1 is source-only: explicit autonomous intent adds bounded continuation metadata to the existing execution checkpoint. After a completed VPS inspection/conversation, the planner reads bounded Vault Source of Truth and may materialize one next canonical task through `HubControlPlaneService`. It stops for approval/high-impact/repeat/max-step/provider failure.
+- No deployment, DB migration, credential/provider activation, billing, permission or Production change has been performed. Production activation remains approval-gated on an exact reviewed SHA.
+- Source QA closure: focused `AWH Continuous Auto-Chain` PASS; Hub integration PASS (only the known Mac PHP-extension skips); full product regression 306 tests = 305 PASS / 0 FAIL / 1 platform SKIP; `git diff --check` PASS. The automation regression fixture was updated from a stale implementation-specific constructor regex to the actual invariant: same native tick, canonical continuation materializer, bounded `runBatch(4)`, no daemon/scheduler duplication.
+
 # Authoritative supersession — 2026-08-29
 
 - Read-only Production audit: ReadyIDC is live at SQLite **schema v15** with migration ledger through `m15-automation-registry`; DB integrity is `ok`, foreign-key violations `0`, Nginx topology `PASS`, backup state `BACKUP_READY`. Active web pointer remains the M15 release. Production was not mutated during the M16/Supervisor source work.

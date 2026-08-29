@@ -1,3 +1,10 @@
+# Current supersession — 2026-08-29 Continuous Auto-Chain V1
+
+- Continuous execution is an opt-in behavior over the existing `control_tasks` / `control_task_executions` authority, not a scheduler or shadow queue. Explicit autonomy wording is required; ordinary tasks never silently become continuous.
+- A completed VPS task may ask the existing provider fabric for exactly one next safe milestone using bounded Project Vault Source of Truth. Follow-up creation is delegated back to `HubControlPlaneService`, preserving canonical task/idempotency/lease rules.
+- Auto-chain is hard-bounded to at most 8 steps (default 6), stops on repeated goals, pending approvals, high-impact Production/destructive/billing/permission/secret/schema goals, or planner/provider failure. The existing systemd timer remains only the wake-up/recovery mechanism.
+- Planner access is read-only Project Vault context/tools; it receives no shell, deploy, credential, permission, billing or canonical promotion authority.
+
 # Current supersession — 2026-08-29
 
 - ReadyIDC Production truth is M15 / SQLite v15, not the older M12/v12 or M5 snapshots retained below for history. Current continuation must always verify Production read-only before using historical memory.

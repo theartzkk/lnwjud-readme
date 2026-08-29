@@ -1,3 +1,14 @@
+# Authoritative task supersession — 2026-08-29 Continuous Auto-Chain V1
+
+## NOW
+
+- Close Continuous Auto-Chain V1 source QA on the converged canonical line: explicit autonomy intent, bounded next-milestone planning, canonical follow-up materialization, approval/high-impact/repeat/max-step stop gates, and no parallel scheduler/task authority.
+- Focused fixture, Hub integration suite, full product regression (306 = 305 PASS / 0 FAIL / 1 platform SKIP) and diff check are closed. Finish exact commit/push and CI. Keep Production unchanged until an exact reviewed SHA receives required approval.
+
+## NEXT
+
+- After source/CI closure, prepare a guarded ReadyIDC activation plan that first re-audits exact Production schema/pointers/backup/rollback and requires explicit Production approval.
+
 # Authoritative task supersession — 2026-08-29
 
 ## NOW

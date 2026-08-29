@@ -28,6 +28,7 @@ const tests = [
   'hub/tests/m15-automation-scheduler.php',
   'hub/tests/m16-self-sufficient-ai.php',
   'hub/tests/continuous-work-supervisor.php',
+  'hub/tests/continuous-autochain.php',
   'hub/tests/candidate-qa-truthfulness.php',
   'hub/tests/promotion-evidence-gate.php',
   'hub/tests/m16-office-provider.php',
