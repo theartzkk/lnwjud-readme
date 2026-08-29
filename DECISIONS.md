@@ -1,3 +1,9 @@
+# Current supersession — 2026-08-29 Retry Release Identity V1
+
+- A production retry must resolve its final release identity before any web artifact is built. `AWH_RELEASE_ATTEMPT=r1..r999` is the only supported retry suffix; the same final ID binds service-worker cache identity, remote tarball, control/web release directories, backup names, temporary pointers and rollback assets.
+- Remote deployment independently validates the exact release-ID grammar. Renaming only the remote target after build is forbidden because it creates an unverifiable web/cache identity and guaranteed rollback.
+- Incident evidence: an M16 retry targeted `m16-677cf8a2cb8b-r1` while its already-built `sw.js` still contained `awh-shell-m16-677cf8a2cb8b`; `verify_web_access` failed before web pointer switch and rollback restored a v16 retry backup. Permanent regression now covers the retry identity contract.
+
 # Current supersession — 2026-08-29 Continuous Auto-Chain V1
 
 - Continuous execution is an opt-in behavior over the existing `control_tasks` / `control_task_executions` authority, not a scheduler or shadow queue. Explicit autonomy wording is required; ordinary tasks never silently become continuous.

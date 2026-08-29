@@ -54,6 +54,15 @@ HOSTNAME=${AWH_HUB_HOSTNAME:-157-85-108-142.sslip.io}
 OWNER_USERNAME=${AWH_OWNER_AUTH_USERNAME:-art}
 REMOTE_ROOT=/opt/awh-hub
 if test "$SELF_SUFFICIENT_AI" -eq 1; then RELEASE_ID=m16-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$AUTOMATIONS" -eq 1; then RELEASE_ID=m15-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$COST_AWARE_AI" -eq 1; then RELEASE_ID=m14-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$ANYWHERE_EXECUTION" -eq 1; then RELEASE_ID=m13-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$CENTRAL_PROJECT_AUTHORITY" -eq 1; then RELEASE_ID=m12-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$SELF_SERVICE" -eq 1; then RELEASE_ID=m11-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$FOUNDING_MEMORY" -eq 1; then RELEASE_ID=m10-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$FINAL_PRODUCT" -eq 1; then RELEASE_ID=m9-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$UNIFIED_WORKSPACE" -eq 1; then RELEASE_ID=m8-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$WORKSPACE_CONTINUITY" -eq 1; then RELEASE_ID=m7-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$ASSISTANT_WORKSTREAM" -eq 1; then RELEASE_ID=m6-$(printf '%s' "$RELEASE" | cut -c1-12); else RELEASE_ID=m4-$(printf '%s' "$RELEASE" | cut -c1-12); fi
+# A retry identity must be resolved before any web artifact is built.  This keeps
+# the release directory, service-worker cache key, backup names and rollback
+# markers on one immutable identity instead of renaming only the remote target.
+RELEASE_ATTEMPT=${AWH_RELEASE_ATTEMPT:-}
+case "$RELEASE_ATTEMPT" in
+  '') : ;;
+  r[1-9]|r[1-9][0-9]|r[1-9][0-9][0-9]) RELEASE_ID="$RELEASE_ID-$RELEASE_ATTEMPT" ;;
+  *) echo "AWH_RELEASE_ATTEMPT must be empty or r1..r999" >&2; exit 2 ;;
+esac
 REMOTE_STAGE=/tmp/awh-control-plane-$RELEASE_ID.tar.gz
 PREFLIGHT=$ROOT/deploy/awh-enrollment/preflight-production.sh
 REMOTE_DEPLOY=$ROOT/deploy/awh-control-plane/remote-deploy-control-plane.sh

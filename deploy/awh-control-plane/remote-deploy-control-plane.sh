@@ -23,7 +23,10 @@ case "$SELF_SUFFICIENT_AI" in 0|1) ;; *) exit 20 ;; esac
 case "$RELEASE_COMMIT" in ''|*[!0-9a-fA-F]*) exit 20 ;; esac
 test "${#RELEASE_COMMIT}" -ge 40 && test "${#RELEASE_COMMIT}" -le 64 || exit 20
 if test $((COMPAT_REFRESH + ASSISTANT_WORKSTREAM + WORKSPACE_CONTINUITY + UNIFIED_WORKSPACE + FINAL_PRODUCT + FOUNDING_MEMORY + SELF_SERVICE + CENTRAL_PROJECT_AUTHORITY + ANYWHERE_EXECUTION + COST_AWARE_AI + AUTOMATIONS + SELF_SUFFICIENT_AI)) -gt 1; then exit 20; fi
-if test "$SELF_SUFFICIENT_AI" = 1; then case "$RELEASE_ID" in m16-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$AUTOMATIONS" = 1; then case "$RELEASE_ID" in m15-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$COST_AWARE_AI" = 1; then case "$RELEASE_ID" in m14-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ANYWHERE_EXECUTION" = 1; then case "$RELEASE_ID" in m13-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$CENTRAL_PROJECT_AUTHORITY" = 1; then case "$RELEASE_ID" in m12-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$SELF_SERVICE" = 1; then case "$RELEASE_ID" in m11-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$FOUNDING_MEMORY" = 1; then case "$RELEASE_ID" in m10-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$FINAL_PRODUCT" = 1; then case "$RELEASE_ID" in m9-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$UNIFIED_WORKSPACE" = 1; then case "$RELEASE_ID" in m8-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$WORKSPACE_CONTINUITY" = 1; then case "$RELEASE_ID" in m7-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ASSISTANT_WORKSTREAM" = 1; then case "$RELEASE_ID" in m6-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; else case "$RELEASE_ID" in m4-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; fi
+# Release identity is a trust boundary: exactly 12 source-SHA hex characters,
+# optionally followed by a predeclared retry attempt.  Remote code must never
+# invent a suffix after the web artifact has already been built.
+printf '%s\n' "$RELEASE_ID" | grep -Eq '^m(4|6|7|8|9|10|11|12|13|14|15|16)-[0-9a-fA-F]{12}(-r[1-9][0-9]{0,2})?$' || exit 20
 case "$NGINX_CONFIG" in /etc/nginx/sites-enabled/*) ;; *) exit 20 ;; esac
 case "$HOSTNAME" in ''|*[!A-Za-z0-9.-]*|.*|*.) exit 20 ;; esac
 printf '%s' "$AWH_FPM_SOCKET" | grep -Eq '^/run/php/php[0-9]+\.[0-9]+-fpm-awh\.sock$' || exit 20

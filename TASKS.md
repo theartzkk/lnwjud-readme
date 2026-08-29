@@ -1,3 +1,14 @@
+# Authoritative task supersession — 2026-08-29 Retry Release Identity V1
+
+## NOW
+
+- Close the retry release-identity defect in source and regression: final attempt suffix must be known before web build and shared by all release/backup/pointer/rollback artifacts.
+- Keep Production read-only while the mixed v16-DB/M15-pointer state is healthy; do not manually flip pointers or replay M16 migration.
+
+## NEXT
+
+- After focused/full QA and exact CI closure, merge the permanent fix, re-audit canonical + Production, run an M16 **v16 source-refresh** dry-run from the final exact SHA, and request fresh exact-SHA Production approval.
+
 # Authoritative task supersession — 2026-08-29 canonical Auto-Chain closure
 
 ## NOW

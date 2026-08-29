@@ -1,3 +1,10 @@
+# Authoritative supersession — 2026-08-29 M16 partial-activation diagnosis
+
+- Production is currently a safe-but-mixed state: SQLite v16 (integrity `ok`, FK 0) with control/web pointers still on `m15-402ff72ba41d`; native executor/backup timers and Nginx are healthy. Do not infer Production generation from DB schema alone.
+- Root cause evidence: first M16 attempt staged `m16-677cf8a2cb8b` and migrated v15→v16 before pointer completion. Retry `m16-677cf8a2cb8b-r1` built/transported a target suffix that did not match the prebuilt service-worker identity, failed `verify_web_access` before web pointer switch, then restored its own pre-retry backup—which was already v16.
+- Source fix is isolated on `awh/retry-release-identity-v1`: resolve an optional `AWH_RELEASE_ATTEMPT` before web build and use that immutable ID everywhere; remote validates the same grammar. No Production mutation was performed while diagnosing/fixing this source defect.
+- Any next Production action must be a v16 source-refresh/cutover from a fresh exact canonical SHA after CI and fresh explicit approval; never replay migration 015 or reuse the stale approval for `1a2261bf...`.
+
 # Authoritative supersession — 2026-08-29 Continuous Auto-Chain canonical closure
 
 - Canonical source is now `awh/api-independence` @ `070f61386da1f4203b7a20b255ba5f9aeecfe393`, merged from PR #51 after CI #646 succeeded across Ubuntu, Windows, Linux runtime, macOS package and Windows installer jobs.
