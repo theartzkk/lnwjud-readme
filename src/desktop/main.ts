@@ -306,8 +306,12 @@ async function enrollmentState() {
 
 async function loginDevice(username: unknown, password: unknown) {
   if (typeof username !== 'string' || typeof password !== 'string') return { ok: false, error: 'AUTH_FAILED', message: 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน' };
-  try { return { ok: true, hubConfigured: true, ...(await enrollmentClient(loadConfig()).login(username, password)) }; }
-  catch (error) { return enrollmentError(error); }
+  try {
+    const config = loadConfig();
+    const state = await enrollmentClient(config).login(username, password);
+    if (config.controlPlaneWorker) void runWorkerOnce().catch(() => undefined);
+    return { ok: true, hubConfigured: true, ...state };
+  } catch (error) { return enrollmentError(error); }
 }
 
 async function pairDevice(pairingCode: unknown) {
@@ -329,6 +333,12 @@ async function revokeDevice() {
 async function openOwnerPasswordReset() {
   try {
     const config = loadConfig();
+    const state = await readLocalEnrollmentState(config.dataDir, createDesktopCredentialStore(config.dataDir));
+    if (!state.enrolled) {
+      const url = new URL('/', config.hubApiBase);
+      await shell.openExternal(url.toString());
+      return { ok: true, message: 'เปิดหน้าเข้าสู่ระบบ AWH แล้ว เลือก “ลืมรหัสผ่าน?” เพื่อกู้บัญชี' };
+    }
     const link = await new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createDesktopCredentialStore(config.dataDir)).issueOwnerPasswordResetLink();
     const url = new URL(link.resetPath, config.hubApiBase);
     if (!['https:', 'http:'].includes(url.protocol) || url.origin !== new URL(config.hubApiBase).origin || url.search) throw new Error('Reset link origin is invalid');

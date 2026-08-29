@@ -165,7 +165,7 @@ function renderEnrollment(data) {
   $('enrollment-password').disabled = !connected || enrolled;
   $('enrollment-pair').disabled = !connected || enrolled;
   $('enrollment-issue-pairing').disabled = !connected || !enrolled;
-  $('owner-access-reset').disabled = !connected || !enrolled;
+  $('owner-access-reset').disabled = !connected;
   $('enrollment-rotate').disabled = !connected || !enrolled;
   $('enrollment-revoke').disabled = !connected || !enrolled;
   if (!enrolled) clearOwnerCode();
@@ -425,6 +425,12 @@ $('enrollment-login-form').addEventListener('submit', (event) => {
   if (!username || !password) { $('enrollment-message').textContent = 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน'; return; }
   $('enrollment-message').textContent = 'กำลังเข้าสู่ AWH…';
   void runEnrollmentAction(async () => { const result = await window.artAgent.loginDevice(username, password); $('enrollment-password').value = ''; return result; });
+});
+$('enrollment-password-toggle').addEventListener('click', () => {
+  const input = $('enrollment-password'); const reveal = input.type === 'password';
+  input.type = reveal ? 'text' : 'password';
+  $('enrollment-password-toggle').textContent = reveal ? 'ซ่อน' : 'แสดง';
+  $('enrollment-password-toggle').setAttribute('aria-label', reveal ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน');
 });
 $('enrollment-pair').addEventListener('click', () => runEnrollmentAction(() => window.artAgent.pairDevice($('enrollment-code').value.trim())));
 $('enrollment-issue-pairing').addEventListener('click', issueOwnerCode);
