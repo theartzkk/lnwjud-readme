@@ -1,3 +1,14 @@
+# Authoritative supersession — 2026-08-29 Auto-Chain governance-routing contract
+
+- Root cause closed in source commit `832e909`: M16 governance required an exact provider capability row for `project.read`, while the live OpenAI provider advertises the bounded tool-mediated path as `agent.conversation`. The planner therefore received `PROVIDER_UNAVAILABLE`, its defensive catch hid the route failure, and no continuation task materialized before the field-proof timeout.
+- The fix is at the shared governance eligibility layer. `project.read`, `project.search` and `project.mutate.assisted` may use the provider's `agent.conversation` interface only when tool calling is enabled; route decisions and executor rows retain the canonical task capability. Unregistered capabilities such as `project.mutate.text` and `artifact.object` remain fail-closed.
+- Regression evidence: M16 self-sufficient-AI fixture PASS, Continuous Auto-Chain fixture PASS, full product `320 tests = 319 PASS / 0 FAIL / 1 platform SKIP`, typecheck PASS, build PASS, diff check PASS. `qa:full` still reports the pre-existing M11 fixture assertion plus dirty-tree status before this checkpoint commit; no M11 source was changed.
+- Last verified ReadyIDC state remains Production Control/Web `m16-ea3ac9f28986`, exact active SHA `ea3ac9f289867f6026c22a1b28ae0115e59df9ba`, DB schema 16 with integrity/FK PASS, Nginx/PHP-FPM/worker healthy, and no credential value exposed. The new source fix is not deployed.
+
+## Next action
+
+Push the exact candidate from the current branch, verify CI/review truth in the current remote repository, then request one fresh approval for that exact SHA before any typed M16 Production refresh. After approval, rerun Desktop restart/enrollment, worker reuse, Auto-Chain lineage and remaining UAT; do not deploy a different SHA or bypass the safety gate.
+
 # Authoritative supersession — 2026-08-29 finish-first continuation / backup authority
 
 - Candidate `codex/finish-first-p0` is pushed at `c427d9dd575dd53556ee6a7e184916e7a971cbc3` in PR [#57](https://github.com/theartzkk/lnwjud-readme/pull/57) against `awh/api-independence`; CI run `33248726861` is terminal `5/5 PASS`. PR remains open/unmerged and no Production mutation occurred.

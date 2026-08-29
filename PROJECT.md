@@ -1,5 +1,15 @@
 # Art’s Workspace Hub — AWH
 
+## Current root-cause checkpoint — 2026-08-29 Auto-Chain governance routing
+
+- Source commit `832e909` closes the `AUTOCHAIN_FIELD_TIMEOUT` root cause: the planner's canonical `project.read` capability is now eligible through the registered bounded provider interface `agent.conversation` when tool calling is enabled. The route decision still records `project.read`, so task/execution lineage and executor policy are unchanged.
+- Regression covers positive `project.read`, `project.search`, `project.mutate.assisted` paths and negative `project.mutate.text`/`artifact.object` paths. M16 and Continuous Auto-Chain fixtures pass; full product is `319 PASS / 0 FAIL / 1 platform SKIP`.
+- Production is unchanged at exact SHA `ea3ac9f289867f6026c22a1b28ae0115e59df9ba`; the new source candidate is not deployed. Current remote is `engasnm111/lnwjud-readme`; stale references to another owner/PR number are not current evidence.
+
+## Next
+
+Push and verify CI for the exact candidate, then obtain fresh exact-SHA Production approval before any typed M16 refresh. Preserve DB16, rollback, credentials and existing worker/enrollment state.
+
 ## Current finish-first continuation checkpoint — 2026-08-29
 
 - Candidate `codex/finish-first-p0` is pushed at exact HEAD `c427d9dd575dd53556ee6a7e184916e7a971cbc3` and is under PR [#57](https://github.com/theartzkk/lnwjud-readme/pull/57) against `awh/api-independence`. CI run `33248726861` reached terminal `5/5 PASS` for Ubuntu/Windows tests, Linux runtime, Windows installer and macOS package; the PR remains open and unmerged.

@@ -1,3 +1,14 @@
+# Authoritative supersession — 2026-08-29 Auto-Chain governance-routing contract
+
+## NOW
+
+- Source root cause is fixed in `832e909`: the shared M16 provider-eligibility query now maps only bounded tool-mediated project capabilities to the registered `agent.conversation` provider interface while preserving canonical `project.read`/`project.search`/`project.mutate.assisted` route identity and executor policy.
+- Sibling regression is explicit: the three bounded tool paths route; `project.mutate.text` and `artifact.object` remain `AI_ROUTE_UNAVAILABLE`. M16 and Continuous Auto-Chain fixtures pass; Production remains at `ea3ac9f289867f6026c22a1b28ae0115e59df9ba` and has not been mutated.
+
+## NEXT
+
+- Push this exact candidate, verify current remote CI/review state, and obtain one fresh exact-SHA approval before typed M16 deployment. Then rerun the real Desktop/worker/Auto-Chain proof and continue remaining UAT and Production completion.
+
 # Authoritative task supersession — 2026-08-29 finish-first continuation / backup authority
 
 ## NOW

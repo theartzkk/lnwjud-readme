@@ -1,3 +1,9 @@
+# Authoritative supersession — 2026-08-29 Auto-Chain governance-routing contract
+
+- Provider capability registration is an interface contract, not a replacement for canonical task capability. For bounded tool-mediated project work, governance may match `project.read`, `project.search` or `project.mutate.assisted` to a tool-capable `agent.conversation` provider row; it must preserve the canonical capability in route evidence and continue enforcing executor/tool allowlists.
+- No blanket alias is allowed for deterministic mutation, artifact, specialist or other unregistered capabilities. Those routes remain fail-closed until explicitly registered by the existing authority.
+- The permanent fix belongs in shared governance candidate eligibility so both single-provider and cross-provider routing obey the same contract. Planner failure must not be “fixed” by a second queue or by weakening continuation safety.
+
 # Authoritative supersession — 2026-08-29 finish-first continuation / backup authority
 
 - `HubBackupService::latestMetadata()` is the single backup metadata authority for Owner Control Plane and Database Studio. Database Studio must not independently scan backup directories or select a file by timestamp, because that can display an unverified/corrupt snapshot and drift from the Control Plane evidence contract.
