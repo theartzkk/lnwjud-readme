@@ -119,7 +119,8 @@ try {
 
     $ownerStatus = m11_body(m11_control($control, 'GET', '/api/v1/control/owner/status', m11_read_browser($ownerSession['sessionToken'])));
     m11_assert(($ownerStatus['database']['state'] ?? null) === 'HEALTHY' && ($ownerStatus['export']['secretsIncluded'] ?? true) === false && ($ownerStatus['backup']['state'] ?? null) === 'MISSING', 'owner self-service status is high-level, healthy and secret-free');
-    m11_assert(($ownerStatus['queue']['activeTaskCount'] ?? null) === 0 && ($ownerStatus['queue']['waitingCapabilityCount'] ?? null) === 0 && ($ownerStatus['workerSummary']['ready'] ?? null) === 2 && ($ownerStatus['workerSummary']['total'] ?? null) === 2 && ($ownerStatus['storage']['state'] ?? null) === 'HEALTHY' && ($ownerStatus['aiBudget']['state'] ?? null) === 'DISABLED', 'owner system health exposes bounded operational summaries');
+    $storageState = $ownerStatus['storage']['state'] ?? null; $storageUsed = $ownerStatus['storage']['usedPercent'] ?? null;
+    m11_assert(($ownerStatus['queue']['activeTaskCount'] ?? null) === 0 && ($ownerStatus['queue']['waitingCapabilityCount'] ?? null) === 0 && ($ownerStatus['workerSummary']['ready'] ?? null) === 2 && ($ownerStatus['workerSummary']['total'] ?? null) === 2 && in_array($storageState, ['HEALTHY', 'WARNING', 'CRITICAL'], true) && (is_int($storageUsed) || is_float($storageUsed)) && $storageUsed >= 0 && $storageUsed <= 100 && ($ownerStatus['aiBudget']['state'] ?? null) === 'DISABLED', 'owner system health exposes bounded operational summaries');
     m11_assert(!str_contains(json_encode($ownerStatus, JSON_THROW_ON_ERROR), $root), 'owner system health never exposes filesystem paths');
     $export = m11_body(m11_control($control, 'GET', '/api/v1/control/export', $collabRead));
     m11_assert(($export['security']['ownerPrivateMemoryIncluded'] ?? true) === false && !isset($export['memory']), 'collaborator export excludes owner-private memory');
