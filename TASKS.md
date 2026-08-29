@@ -1,13 +1,13 @@
 # Authoritative task supersession — 2026-08-30 Auto-Chain Project Vault tool-result boundary
 
 - Current Production truth is typed M16 release `m16-06a7277063f8`, exact SHA `06a7277063f891d0d29ad5bdbed7db7541dbb807`, with schema 16 and post-cutover health/readiness verified. The bounded field proof still reports `AUTOCHAIN_FIELD_TIMEOUT`; latest read-only task metadata is `WAITING_FOR_WORKER`/`PROVIDER_FAILED` after canonical `project.read` routing.
-- The current root-cause repair is committed in `72d06691d96b1139a001021c5cf88e6afdda7378` and candidate `61bbece02b6e54ca410cb68fa7d1cd403e902888` is CI-verified. It is bounded provider-facing data normalization, not another routing alias: keep internal Vault reads at 256 KiB, cap provider-facing reads at 24 KiB with valid UTF-8 truncation, and apply the same cap to inspection, continuation and assisted-edit tool callbacks.
+- The current root-cause repair is committed in `72d06691d96b1139a001021c5cf88e6afdda7378` and is included in the current candidate branch tip. It is bounded provider-facing data normalization, not another routing alias: keep internal Vault reads at 256 KiB, cap provider-facing reads at 24 KiB with valid UTF-8 truncation, and apply the same cap to inspection, continuation and assisted-edit tool callbacks.
 - Regression is added for large escaped UTF-8 text and asserts the serialized tool result stays below 64 KiB. Focused fixtures, typecheck, serial full Node tests and build passed; the known aggregate exceptions are dirty-tree status before commit and the unrelated pre-existing M11 fixture assertion.
-- The repair is committed and pushed as candidate `61bbece02b6e54ca410cb68fa7d1cd403e902888` in PR #58, with CI 5/5 PASS, M16 dry-run PASS and Production preflight PASS. No credential value was read/printed, no direct Production DB mutation occurred, and the deployed `06a7277…` release must remain the rollback baseline.
+- The repair is committed and pushed in PR #58, with the source candidate's CI 5/5 PASS, M16 dry-run PASS and Production preflight PASS. This docs-only checkpoint requires exact-head CI before approval. No credential value was read/printed, no direct Production DB mutation occurred, and the deployed `06a7277…` release must remain the rollback baseline.
 
 ## Next unfinished checkpoint
 
-Request one new exact-SHA Production approval for `61bbece02b6e54ca410cb68fa7d1cd403e902888`. PR #57 is already merged at the prior deployed SHA; PR #58 is the current review state. After approval, deploy only that SHA and rerun enrollment/restart, worker reuse, Auto-Chain lineage and the remaining UAT/15-of-15 gates.
+Request one new exact-SHA Production approval for the exact PR #58 head after its docs-only checkpoint CI completes. PR #57 is already merged at the prior deployed SHA; PR #58 is the current review state. After approval, deploy only that SHA and rerun enrollment/restart, worker reuse, Auto-Chain lineage and the remaining UAT/15-of-15 gates.
 # Canonical `awh/api-independence` is now `e0fa5cc…`, which includes the environment-aware M11 test guard. The candidate must include this current canonical line before CI/release readiness is treated as final; Production remains on `m16-06a7277063f8`.
 
 # Authoritative supersession — 2026-08-29 Auto-Chain provider request contract

@@ -2,11 +2,11 @@
 
 - Production is currently exact SHA `06a7277063f891d0d29ad5bdbed7db7541dbb807` via typed M16 release `m16-06a7277063f8`; schema 16, integrity/FK, backup, Control/Web, Nginx/PHP-FPM and worker readiness were verified after activation.
 - The latest real field proof still fails closed at `AUTOCHAIN_FIELD_TIMEOUT` with read-only task metadata `PROVIDER_FAILED`. The current shared-boundary diagnosis is that provider-facing Project Vault/workspace reads can exceed the native agent's 64 KiB serialized tool-result limit even though the internal Vault contract allows 256 KiB.
-- The three-file repair is committed in `72d06691d96b1139a001021c5cf88e6afdda7378`; final candidate `61bbece02b6e54ca410cb68fa7d1cd403e902888` includes it and current canonical `e0fa5cc…`. CI 5/5, serial `qa:full`, M16 dry-run and Production preflight passed; no new Production deployment is authorized yet.
+- The three-file repair is committed in `72d06691d96b1139a001021c5cf88e6afdda7378`; the current candidate branch tip includes it and canonical `e0fa5cc…`. Source CI 5/5, serial `qa:full`, M16 dry-run and Production preflight passed; exact-head CI for this docs-only checkpoint is still required and no new Production deployment is authorized yet.
 
 ## Next
 
-Request fresh exact-SHA Production approval for `61bbece02b6e54ca410cb68fa7d1cd403e902888`, then rerun the real field proof and continue remaining UAT, smoke and completion gates without treating source/CI evidence as field proof.
+After exact-head CI, request fresh exact-SHA Production approval for the current branch tip, then rerun the real field proof and continue remaining UAT, smoke and completion gates without treating source/CI evidence as field proof.
 # Authoritative supersession — 2026-08-30 Source/Production reconciliation
 
 - Canonical source branch `awh/api-independence` is now exact and clean at `74556a1951fe51f2ca95326b25148b690695bfb5`, matching `origin/awh/api-independence`. It fast-forwarded from `2caf924` through the already-deployed `codex/finish-first-p0` line, so the visible Home, Tasks/Executions, Files, provider-boundary and Auto-Chain work is no longer stranded on a separate source branch.
