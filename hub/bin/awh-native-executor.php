@@ -47,7 +47,9 @@ try {
         $telemetry = ['status' => 'DEGRADED'];
     }
 
-    $batch = HubDurableExecutionService::fromEnvironment($pdo)->runBatch(4);
+    $control ??= HubControlPlaneService::openExisting($database);
+    $execution = HubDurableExecutionService::fromEnvironment($pdo, static fn(array $request): array => $control->materializeContinuationSubmission($request));
+    $batch = $execution->runBatch(4);
     fwrite(STDOUT, json_encode(['status' => $batch['processed'] === 0 ? 'IDLE' : 'PROCESSED', 'automation' => $automation, 'telemetry' => $telemetry, 'executionBatch' => $batch], JSON_UNESCAPED_SLASHES) . "\n");
 } catch (HubDurableExecutionException|HubProjectVaultException|HubCentralProjectAuthorityMigrationException $error) { fwrite(STDERR, $error->codeName . "\n"); exit(1); }
 catch (Throwable) { fwrite(STDERR, "EXECUTOR_UNAVAILABLE\n"); exit(1); }

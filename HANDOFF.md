@@ -1,3 +1,11 @@
+# Authoritative supersession — 2026-08-29 Continuous Auto-Chain V1
+
+- Canonical source was re-based from `awh/api-independence` @ `eb78779d...` and the already-CI-green multi-provider qualification/execution commits were cleanly converged before this milestone. Working branch: `awh/continuous-autochain-v1`.
+- ReadyIDC read-only service audit before mutation: host `awh-hub-01`; `awh-native-executor.timer`, `awh-backup.timer`, and `nginx` active; root disk 58% used. Production pointers/schema were not guessed when direct evidence was unavailable, and Production was not mutated.
+- Continuous Auto-Chain V1 is source-only: explicit autonomous intent adds bounded continuation metadata to the existing execution checkpoint. After a completed VPS inspection/conversation, the planner reads bounded Vault Source of Truth and may materialize one next canonical task through `HubControlPlaneService`. It stops for approval/high-impact/repeat/max-step/provider failure.
+- No deployment, DB migration, credential/provider activation, billing, permission or Production change has been performed. Production activation remains approval-gated on an exact reviewed SHA.
+- Source QA closure: focused `AWH Continuous Auto-Chain` PASS; Hub integration PASS (only the known Mac PHP-extension skips); full product regression 306 tests = 305 PASS / 0 FAIL / 1 platform SKIP; `git diff --check` PASS. The automation regression fixture was updated from a stale implementation-specific constructor regex to the actual invariant: same native tick, canonical continuation materializer, bounded `runBatch(4)`, no daemon/scheduler duplication.
+
 # Authoritative supersession — 2026-08-29
 
 - Read-only Production audit: ReadyIDC is live at SQLite **schema v15** with migration ledger through `m15-automation-registry`; DB integrity is `ok`, foreign-key violations `0`, Nginx topology `PASS`, backup state `BACKUP_READY`. Active web pointer remains the M15 release. Production was not mutated during the M16/Supervisor source work.
@@ -81,3 +89,17 @@ The owner-protocol integration is isolated on `awh/clean-foundation` / PR #8 for
 ## Next action
 
 Complete the current source candidate and QA. If clean, commit/push it on `awh/v0.1-migration`, report the exact SHA, and stop before production deployment for explicit approval. Do not reopen M12 architecture, do not replay old v5→v7 migration steps, and do not touch Google Cloud legacy or BAY production.
+## 2026-08-29 — Multi-Provider Qualification V1
+- Base/source: `04545661c222576d90e07fce2d57445e65415d33` (`awh/self-sufficient-continuous-release`, CI #633 SUCCESS).
+- Production re-audit: control/web pointers still `m15-402ff72ba41d`; no Production mutation. Remote DB introspection was blocked by the safety gate and was not bypassed.
+- Added qualification lifecycle service and capability-bound cross-provider routing over existing M16 authorities. Focused M16 + deployment QA PASS; `npm run hub:test` PASS with only known extension-dependent skips.
+- Next: full product regression + CI on the checkpoint SHA; provider adapters/credentials remain separate and no provider should be activated in Production without explicit approval.
+- Full product regression completed on this candidate: 306 tests / 305 PASS / 0 FAIL / 1 platform SKIP. `git diff --check` PASS.
+- An unrelated incomplete untracked `HubGeminiProviderAdapter.php` appeared during the run and was intentionally excluded from this checkpoint because its provenance was not established and it did not parse; do not treat it as canonical work.
+
+## 2026-08-29 — Provider Execution Fabric V1
+- Base: `e5557621f2df02275b416aa0de073b126acd6de1` (PR #47; CI #636 SUCCESS).
+- Extended the existing `HubNativeAgentService` runtime boundary so a provider selected by M16 governance is dispatched through its matching injected adapter + provider credential store, priced under that provider, and recorded under that provider in canonical usage evidence.
+- Root cause fixed: when the only eligible runtime provider was non-primary, the old single-provider fast path incorrectly forced selection back to primary. The fast path now applies only when the sole provider is actually primary.
+- Focused M16 provider-dispatch fixture and full Hub regression PASS. Production remained untouched; no real secondary provider adapter or credential was activated.
+- QA closure: focused M16 dispatch fixture PASS; `npm run hub:test` PASS with known extension-only skips; full product regression 306 tests / 305 PASS / 0 FAIL / 1 platform SKIP; `git diff --check` PASS.

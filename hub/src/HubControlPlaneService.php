@@ -509,7 +509,8 @@ final class HubControlPlaneService
         return $this->submitTaskForUser((string) $session['user_id'], $payload, $now);
     }
 
-    private function submitTaskForUser(string $userId, array $payload, ?string $now = null): array
+    /** @param null|array{enabled:bool,rootTaskId:string,step:int,maxSteps:int} $continuation */
+    private function submitTaskForUser(string $userId, array $payload, ?string $now = null, ?array $continuation = null): array
     {
         self::exactKeys($payload, ['goal', 'idempotencyKey', 'projectId', 'schemaVersion']);
         if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Unsupported task schema', 'SCHEMA_VERSION');
@@ -523,10 +524,11 @@ final class HubControlPlaneService
         $row = $existing->fetch();
         if (is_array($row)) return $this->taskRow($row);
         $taskId = self::uuidFromBytes(random_bytes(16)); $vaultRevision = $this->centralVaultRevision($projectId); $serverInspection = $vaultRevision !== null && self::isServerInspection($goal); $serverTextMutation = $vaultRevision !== null && self::isServerTextNormalization($goal); $serverAssistedEdit = $vaultRevision !== null && self::isServerAssistedEdit($goal);
+        if ($continuation === null && self::isContinuousAutonomyRequest($goal)) $continuation = ['enabled'=>true,'rootTaskId'=>$taskId,'step'=>0,'maxSteps'=>6];
         try {
             $insert = $this->pdo->prepare('INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, :state, NULL, NULL, 0, NULL, NULL, :key, :created, :updated, NULL)');
             $state = ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'QUEUED' : 'WAITING_FOR_WORKER'; $insert->execute(['id' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $goal, 'state' => $state, 'key' => $idempotency, 'created' => $now, 'updated' => $now]);
-            if ($vaultRevision !== null) $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverAssistedEdit ? 'project.mutate.assisted' : ($serverInspection ? 'project.read' : 'codex:cli')), ['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverAssistedEdit ? 'PROJECT_ASSISTED_EDIT' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST'))], $now);
+            if ($vaultRevision !== null) { $checkpoint = ['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverAssistedEdit ? 'PROJECT_ASSISTED_EDIT' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST'))]; if ($continuation !== null) $checkpoint['continuation'] = $continuation; $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverAssistedEdit ? 'project.mutate.assisted' : ($serverInspection ? 'project.read' : 'codex:cli')), $checkpoint, $now); }
             $this->event($taskId, $state, 0, $vaultRevision !== null && !$serverInspection && !$serverTextMutation ? 'waiting for an engineering specialist capability' : 'received', $now);
         } catch (Throwable) { throw new HubControlPlaneException('Task could not be queued', 'TASK_CREATE_FAILED'); }
         return $this->taskById($taskId, $userId);
@@ -554,6 +556,24 @@ final class HubControlPlaneService
         }
         $result = $this->submitTaskForUser($userId, ['schemaVersion'=>1,'projectId'=>$projectId,'goal'=>$goal,'idempotencyKey'=>$key], $now);
         return ['schemaVersion'=>1,'kind'=>'TASK','idempotencyKey'=>$key,'result'=>$result];
+    }
+
+
+    /** Materialize one planner-selected continuation through the canonical task authority. */
+    public function materializeContinuationSubmission(array $request): array
+    {
+        self::exactKeys($request, ['at','conversationId','goal','maxSteps','parentTaskId','projectId','rootTaskId','step','userId']);
+        $userId = self::uuid((string)($request['userId'] ?? '')); $projectId = self::uuid((string)($request['projectId'] ?? ''));
+        $parentTaskId = self::uuid((string)($request['parentTaskId'] ?? '')); $rootTaskId = self::uuid((string)($request['rootTaskId'] ?? ''));
+        $step = $request['step'] ?? null; $maxSteps = $request['maxSteps'] ?? null;
+        if (!is_int($step) || !is_int($maxSteps) || $step < 1 || $step >= $maxSteps || $maxSteps < 1 || $maxSteps > 8) throw new HubControlPlaneException('Continuous work bound is invalid', 'FIELD_INVALID');
+        $goal = self::goal((string)($request['goal'] ?? '')); $at = self::timestamp((string)($request['at'] ?? gmdate('c')));
+        $parent = $this->pdo->prepare("SELECT state FROM control_tasks WHERE task_id=:task AND user_id=:user AND project_id=:project"); $parent->execute(['task'=>$parentTaskId,'user'=>$userId,'project'=>$projectId]);
+        if ($parent->fetchColumn() !== 'COMPLETED') throw new HubControlPlaneException('Continuous work parent is not complete', 'TASK_STATE_INVALID');
+        $pending = $this->pdo->prepare("SELECT 1 FROM control_approvals a JOIN control_tasks t ON t.task_id=a.task_id WHERE t.user_id=:user AND t.project_id=:project AND a.status='PENDING' AND a.expires_at>:at LIMIT 1"); $pending->execute(['user'=>$userId,'project'=>$projectId,'at'=>$at]);
+        if ($pending->fetchColumn() !== false) throw new HubControlPlaneException('Continuous work paused for approval', 'APPROVAL_REQUIRED');
+        $key = 'continuous.' . substr(hash('sha256', $rootTaskId . "\n" . $step . "\n" . $goal), 0, 48);
+        return $this->submitTaskForUser($userId, ['schemaVersion'=>1,'projectId'=>$projectId,'goal'=>$goal,'idempotencyKey'=>$key], $at, ['enabled'=>true,'rootTaskId'=>$rootTaskId,'step'=>$step,'maxSteps'=>$maxSteps]);
     }
 
 
@@ -657,7 +677,7 @@ final class HubControlPlaneService
                 if ($officeRequest !== null && $this->centralProjectAuthoritySchemaPresent()) {
                     $this->execution->enqueue($taskId, $projectId, null, 'DEVICE', $officeRequest['capability'], ['mode' => 'OFFICE_TO_PDF', 'attachmentId' => $officeRequest['attachmentId']], $at);
                 } elseif ($vaultRevision !== null) {
-                    $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverAssistedEdit ? 'project.mutate.assisted' : ($serverInspection ? 'project.read' : 'codex:cli')), ['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverAssistedEdit ? 'PROJECT_ASSISTED_EDIT' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST'))], $at);
+                    $checkpoint = ['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverAssistedEdit ? 'PROJECT_ASSISTED_EDIT' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST'))]; if (self::isContinuousAutonomyRequest($effectiveGoal)) $checkpoint['continuation'] = ['enabled'=>true,'rootTaskId'=>$taskId,'step'=>0,'maxSteps'=>6]; $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverAssistedEdit ? 'project.mutate.assisted' : ($serverInspection ? 'project.read' : 'codex:cli')), $checkpoint, $at);
                 }
                 $this->event($taskId, $taskState, 0, $officeRequest !== null ? 'waiting for Office PDF capability' : ($serverInspection ? 'server inspection queued' : ($serverTextMutation ? 'server text transform queued' : 'specialist execution recorded')), $at);
                 $this->pdo->prepare('UPDATE control_conversations SET last_task_id = :task, updated_at = :at WHERE conversation_id = :conversation')->execute(['task' => $taskId, 'at' => $at, 'conversation' => $conversation['conversation_id']]);
@@ -2010,6 +2030,7 @@ final class HubControlPlaneService
     private static function isConversationFollowUp(string $message): bool { return preg_match('/^(?:ทำต่อ|ต่อจาก|ต่อเลย|เอาอัน(?:นี้|นั้น|ล่าสุด)|ยังไม่ใช่|ตรวจอีกที|continue|keep going|that one)(?:\s|$|[.!?])/iu', trim($message)) === 1; }
     /** Read-only Vault work can use the bounded VPS executor.  Any request
      * that might modify content waits for an explicit specialist capability. */
+    private static function isContinuousAutonomyRequest(string $message): bool { return preg_match('/(?:autonomously|continuous(?:ly)?|without\s+stopping|keep\s+going\s+until|อัตโนมัติ|ไม่ต้องหยุด|ต่อเนื่องจน|ทำต่อเนื่อง)/iu', trim($message)) === 1; }
     private static function isServerInspection(string $message): bool { $value = preg_replace('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)+/iu', '', trim($message)) ?? trim($message); return preg_match('/^(?:ตรวจ|วิเคราะห์|ดู|สรุป|สถานะ|ค้นหา|อ่าน|inspect|review|summari[sz]e|status|search|read)(?:หน่อย|ให้|ที|ดู)?(?:\s|$|[ก-๙])/iu', $value) === 1 && preg_match('/(?:แก้|เขียน|สร้าง|ลบ|เปลี่ยน|deploy|commit|push|render|edit|write|create|delete|modify|build)/iu', $value) !== 1; }
     /** Safe text/code changes can run on the canonical VPS Vault without a local device. */
     private static function isServerAssistedEdit(string $message): bool

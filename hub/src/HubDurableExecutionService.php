@@ -39,8 +39,13 @@ final class HubDurableExecutionService
     private const MAX_ASSISTED_EDIT_FILE_BYTES = 131072;
     private const MAX_ASSISTED_EDIT_TOTAL_BYTES = 262144;
 
-    public function __construct(private readonly PDO $pdo, private readonly HubProjectVaultService $vaults, private readonly ?HubNativeAgentService $agent = null, private readonly ?HubArtifactStore $artifacts = null) {}
-    public static function fromEnvironment(PDO $pdo): self { return new self($pdo, HubProjectVaultService::fromEnvironment($pdo), new HubNativeAgentService($pdo), HubArtifactStore::fromEnvironment()); }
+    /** @var null|Closure(array<string,mixed>):array<string,mixed> */
+    private readonly ?Closure $continuationMaterializer;
+
+    /** @param null|callable(array<string,mixed>):array<string,mixed> $continuationMaterializer */
+    public function __construct(private readonly PDO $pdo, private readonly HubProjectVaultService $vaults, private readonly ?HubNativeAgentService $agent = null, private readonly ?HubArtifactStore $artifacts = null, ?callable $continuationMaterializer = null) { $this->continuationMaterializer = $continuationMaterializer === null ? null : Closure::fromCallable($continuationMaterializer); }
+    /** @param null|callable(array<string,mixed>):array<string,mixed> $continuationMaterializer */
+    public static function fromEnvironment(PDO $pdo, ?callable $continuationMaterializer = null): self { return new self($pdo, HubProjectVaultService::fromEnvironment($pdo), new HubNativeAgentService($pdo), HubArtifactStore::fromEnvironment(), $continuationMaterializer); }
 
     /** Registers only bounded server-native capabilities.  This is an
      * observation, not a blanket authorization to execute arbitrary commands. */
@@ -103,10 +108,13 @@ final class HubDurableExecutionService
                 if (HubSecretContentPolicy::containsCredential($summary)) $summary = 'Inspection พบข้อมูลที่อาจเป็น credential จึงไม่แสดงเนื้อหานั้นในผลลัพธ์ กรุณาตรวจหลักฐาน path/line ที่บันทึกไว้แทน';
                 $evidence = is_array($inspection) ? $inspection['evidence'] : ['searches' => [], 'reads' => [], 'fallbackFiles' => array_slice($context['files'], 0, 12)];
                 $this->storeInspectionReport($claimed, $context, $summary, $evidence, $at);
-                $this->complete($claimed, $summary . "\n\nAWH เก็บหลักฐาน inspection แบบอ่านอย่างเดียวไว้กับงานนี้แล้ว", 'RESULT', $at);
+                $finalSummary = $summary . "\n\nAWH เก็บหลักฐาน inspection แบบอ่านอย่างเดียวไว้กับงานนี้แล้ว";
+                $this->complete($claimed, $finalSummary, 'RESULT', $at);
+                $this->continueIfRequested($claimed, $checkpoint, $finalSummary, $at);
             } elseif (($checkpoint['mode'] ?? null) === 'NATIVE_CONVERSATION') {
                 $summary = $this->nativeConversation($claimed, $checkpoint, $at);
                 $this->complete($claimed, $summary, 'ASSISTANT', $at);
+                $this->continueIfRequested($claimed, $checkpoint, $summary, $at);
             } elseif (($checkpoint['mode'] ?? null) === 'PROJECT_TEXT_NORMALIZE') {
                 $this->nativeTextNormalize($claimed, $at);
             } elseif (($checkpoint['mode'] ?? null) === 'PROJECT_ASSISTED_EDIT') {
@@ -311,6 +319,47 @@ final class HubDurableExecutionService
             throw new HubDurableExecutionException('Native inspection provider failed', $error->codeName, $error->diagnostic);
         }
     }
+
+    /** @param array<string,mixed> $claimed @param array<string,mixed> $checkpoint */
+    private function continueIfRequested(array $claimed, array $checkpoint, string $summary, string $at): void
+    {
+        $continuation = $checkpoint['continuation'] ?? null;
+        if (!is_array($continuation) || ($continuation['enabled'] ?? false) !== true || $this->continuationMaterializer === null || $this->agent === null) return;
+        $rootTaskId = is_string($continuation['rootTaskId'] ?? null) ? (string) $continuation['rootTaskId'] : '';
+        $step = is_int($continuation['step'] ?? null) ? (int) $continuation['step'] : -1;
+        $maxSteps = is_int($continuation['maxSteps'] ?? null) ? (int) $continuation['maxSteps'] : 0;
+        if (preg_match('/^[0-9a-f-]{36}$/i', $rootTaskId) !== 1 || $step < 0 || $maxSteps < 1 || $maxSteps > 8 || $step + 1 >= $maxSteps) return;
+        try {
+            $nextGoal = $this->planContinuation($claimed, $summary, $at);
+            if ($nextGoal === null || self::sameGoal($nextGoal, (string) $claimed['goal']) || self::highImpactGoal($nextGoal)) return;
+            ($this->continuationMaterializer)(['userId'=>(string)$claimed['user_id'],'projectId'=>(string)$claimed['project_id'],'conversationId'=>is_string($claimed['conversation_id'] ?? null)?(string)$claimed['conversation_id']:null,'parentTaskId'=>(string)$claimed['task_id'],'rootTaskId'=>$rootTaskId,'step'=>$step + 1,'maxSteps'=>$maxSteps,'goal'=>$nextGoal,'at'=>$at]);
+        } catch (Throwable) {
+            // Continuation is an optimization, never a reason to falsify or roll
+            // back an already-completed canonical task.
+        }
+    }
+
+    /** @param array<string,mixed> $claimed */
+    private function planContinuation(array $claimed, string $summary, string $at): ?string
+    {
+        $projectId = (string) $claimed['project_id']; $revision = (string) ($claimed['vault_revision_id'] ?? '');
+        if (preg_match('/^[0-9a-f-]{36}$/i', $revision) !== 1) return null;
+        $memory = [];
+        foreach (['TASKS.md','HANDOFF.md','PROJECT.md','DECISIONS.md','ARCHITECTURE.md'] as $path) {
+            try { $read = $this->vaults->vault()->readText($projectId, $revision, $path); $text = (string)($read['content'] ?? ''); if ($text !== '') $memory[$path] = function_exists('mb_substr') ? mb_substr($text, 0, 6000) : substr($text, 0, 6000); } catch (Throwable) {}
+        }
+        $request = "Choose exactly one largest safe coherent NEXT milestone for this project after the completed work. Return exactly one line: NEXT: <goal> or STOP: <reason>. Never request production deployment, destructive/data changes, billing, permission, credential/secret changes, or bypass approval. Prefer ReadyIDC/VPS-safe reversible source work and reuse existing authorities. Do not repeat the completed goal.";
+        $context = ['completedGoal'=>(string)$claimed['goal'],'completedSummary'=>function_exists('mb_substr')?mb_substr($summary,0,3000):substr($summary,0,3000),'sourceTruth'=>$memory];
+        $tools = [['type'=>'function','name'=>'project_read_text','description'=>'Read one bounded text file from the immutable canonical Project Vault. Read-only.','parameters'=>['type'=>'object','additionalProperties'=>false,'properties'=>['path'=>['type'=>'string','maxLength'=>900]],'required'=>['path']]]];
+        try { $result = $this->agent->respondWithTools((string)$claimed['user_id'],$projectId,null,null,$request,[],[],$context,$tools,function(string $name,array $arguments) use($projectId,$revision): array { if ($name !== 'project_read_text' || !is_string($arguments['path'] ?? null)) throw new HubDurableExecutionException('Continuous planner tool input is invalid','EXECUTION_INVALID'); return $this->vaults->vault()->readText($projectId,$revision,(string)$arguments['path']); },$at,['executionId'=>(string)$claimed['execution_id'],'taskId'=>(string)$claimed['task_id'],'capability'=>'project.read','dataClassification'=>'INTERNAL','retryCount'=>(int)$claimed['attempt_count'],'routingPolicyVersion'=>'m16-v1','promptPolicyVersion'=>'continuous-v1','toolPolicyVersion'=>'read-only-v1']); }
+        catch (Throwable) { return null; }
+        $text = trim((string)($result['summary'] ?? ''));
+        if (preg_match('/^NEXT:\s*(.{8,2000})$/us', $text, $m) !== 1) return null;
+        return trim($m[1]);
+    }
+
+    private static function sameGoal(string $a, string $b): bool { $normal = static fn(string $v): string => strtolower(preg_replace('/\s+/u',' ',trim($v)) ?? trim($v)); return $normal($a) === $normal($b); }
+    private static function highImpactGoal(string $goal): bool { return preg_match('/(?:deploy|production|prod\b|ลบข้อมูล|delete\b|drop\b|billing|ซื้อ|ชำระ|permission|สิทธิ์|secret|credential|api\s*key|rotate|migration|migrate|schema\s+change|ฐานข้อมูล)/iu', $goal) === 1; }
 
     /** @param array<string,mixed> $claimed @param array<string,mixed> $checkpoint */
     private function nativeConversation(array $claimed, array $checkpoint, string $at): string
