@@ -17,6 +17,17 @@ final class HubAiGovernanceService
 {
     private const DATA_RANK = ['PUBLIC'=>0,'INTERNAL'=>1,'CONFIDENTIAL'=>2,'SECRET'=>3];
     private const STRATEGIES = ['SAVER','BALANCED','QUALITY','OWNER_OVERRIDE'];
+    /**
+     * A provider may expose bounded tool-mediated project work through its
+     * general agent conversation interface. The canonical task capability is
+     * still preserved in the route decision and executor contract.
+     * @var array<string,string>
+     */
+    private const TOOL_PROVIDER_CAPABILITY_ALIASES = [
+        'project.read' => 'agent.conversation',
+        'project.search' => 'agent.conversation',
+        'project.mutate.assisted' => 'agent.conversation',
+    ];
 
     public function __construct(private readonly PDO $pdo) { $this->assertReady(); }
 
@@ -110,7 +121,12 @@ final class HubAiGovernanceService
     /** @return list<array<string,mixed>> */
     private function candidates(string $provider,string $capability,string $dataClass,array $preferred,int $input,int $output,string $at): array
     {
-        $q=$this->pdo->prepare("SELECT m.*,p.current_availability,p.max_data_classification AS provider_data_class,h.attempts,h.successes,h.timeouts,h.rate_limits,h.malformed_responses,h.tool_failures,h.circuit_state,h.circuit_until FROM control_ai_models m JOIN control_ai_provider_profiles p ON p.provider_id=m.provider_id LEFT JOIN control_ai_model_health h ON h.provider_id=m.provider_id AND h.model_id=m.model_id WHERE m.provider_id=:provider AND m.enabled=1 AND m.lifecycle='PRODUCTION' AND p.lifecycle='PRODUCTION' AND p.current_availability<>'UNAVAILABLE' AND EXISTS(SELECT 1 FROM control_execution_provider_capabilities pc WHERE pc.provider_id=m.provider_id AND pc.capability=:capability AND pc.enabled=1)"); $q->execute(['provider'=>$provider,'capability'=>$capability]); $rows=[];
+        $providerCapability=self::TOOL_PROVIDER_CAPABILITY_ALIASES[$capability]??null;
+        $capabilityPredicate=$providerCapability===null?'pc.capability=:capability':'(pc.capability=:capability OR (pc.capability=:providerCapability AND m.tool_calling=1))';
+        $q=$this->pdo->prepare("SELECT m.*,p.current_availability,p.max_data_classification AS provider_data_class,h.attempts,h.successes,h.timeouts,h.rate_limits,h.malformed_responses,h.circuit_state,h.circuit_until FROM control_ai_models m JOIN control_ai_provider_profiles p ON p.provider_id=m.provider_id LEFT JOIN control_ai_model_health h ON h.provider_id=m.provider_id AND h.model_id=m.model_id WHERE m.provider_id=:provider AND m.enabled=1 AND m.lifecycle='PRODUCTION' AND p.lifecycle='PRODUCTION' AND p.current_availability<>'UNAVAILABLE' AND EXISTS(SELECT 1 FROM control_execution_provider_capabilities pc WHERE pc.provider_id=m.provider_id AND {$capabilityPredicate} AND pc.enabled=1)");
+        $params=['provider'=>$provider,'capability'=>$capability];
+        if ($providerCapability!==null) $params['providerCapability']=$providerCapability;
+        $q->execute($params); $rows=[];
         foreach ($q->fetchAll() as $row) {
             if (!$this->allowsData((string)$row['max_data_classification'],$dataClass) || !$this->allowsData((string)$row['provider_data_class'],$dataClass)) continue;
             if (($row['circuit_state']??'CLOSED')==='OPEN' && ($row['circuit_until']===null || strtotime((string)$row['circuit_until'])>strtotime($at))) continue;
