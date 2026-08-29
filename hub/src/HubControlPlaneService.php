@@ -50,6 +50,9 @@ final class HubControlPlaneService
     private const WORKER_STALE_TTL = 120;
     private const LEASE_TTL = 300;
     private const WORKSPACE_LEASE_TTL = 300;
+    // The Desktop worker client rejects responses at 64 KiB.  Keep headroom
+    // for the router request id and headers without weakening that client cap.
+    private const WORKER_CONVERSATION_MAX_BYTES = 60 * 1024;
     private const STATES = ['QUEUED', 'WAITING_FOR_WORKER', 'PREPARING', 'RUNNING', 'QA', 'WAITING_FOR_APPROVAL', 'COMPLETED', 'FAILED', 'CANCELLED'];
     private const CONVERSATION_KINDS = ['USER', 'ASSISTANT', 'PROGRESS', 'APPROVAL', 'RESULT', 'FAILURE'];
     private const WORKSPACE_SYNC_STATES = ['CLEAN', 'SYNCED', 'UNSYNCED'];
@@ -529,7 +532,7 @@ final class HubControlPlaneService
         $auth = $this->enrollment->authenticateForControlPlane($token, self::uuid($deviceId), $now);
         $projectId = self::uuid($projectId);
         $this->assertDeviceProjectMember((string) $auth['deviceId'], $projectId);
-        return $this->conversationForUser((string) $auth['userId'], $projectId);
+        return $this->conversationForUser((string) $auth['userId'], $projectId, true);
     }
 
     public function submitWorkerConversation(string $token, array $payload, ?string $now = null): array
@@ -540,7 +543,7 @@ final class HubControlPlaneService
         $projectId = self::uuid((string) ($payload['projectId'] ?? ''));
         $this->assertDeviceProjectMember((string) $auth['deviceId'], $projectId);
         unset($payload['deviceId']);
-        return $this->submitConversationForUser((string) $auth['userId'], $payload, $now);
+        return $this->submitConversationForUser((string) $auth['userId'], $payload, $now, true);
     }
 
     public function submitTask(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
@@ -618,7 +621,7 @@ final class HubControlPlaneService
 
 
     /** @return array{schemaVersion:int,conversation:?array,messages:list<array>,tasks:list<array>,artifacts:list<array>,attachments:list<array>,approvals:list<array>} */
-    private function conversationForUser(string $userId, string $projectId): array
+    private function conversationForUser(string $userId, string $projectId, bool $worker = false): array
     {
         $this->assertAssistantReady();
         $this->assertProjectMember($userId, $projectId);
@@ -627,16 +630,16 @@ final class HubControlPlaneService
         $conversation = $conversationQuery->fetch();
         if (!is_array($conversation)) return ['schemaVersion' => 1, 'conversation' => null, 'messages' => [], 'tasks' => [], 'artifacts' => [], 'attachments' => [], 'approvals' => []];
 
-        return $this->conversationPayload($conversation, $userId);
+        return $this->conversationPayload($conversation, $userId, $worker);
     }
 
-    private function conversationByIdForUser(string $userId, string $conversationId): array
+    private function conversationByIdForUser(string $userId, string $conversationId, bool $worker = false): array
     {
         $this->assertUnifiedReady();
-        return $this->conversationPayload($this->conversationRowForUser($userId, $conversationId), $userId);
+        return $this->conversationPayload($this->conversationRowForUser($userId, $conversationId), $userId, $worker);
     }
 
-    private function conversationPayload(array $conversation, string $userId): array
+    private function conversationPayload(array $conversation, string $userId, bool $worker = false): array
     {
 
         $messageQuery = $this->pdo->prepare('SELECT message_id, task_id, message_kind, sequence_no, body, created_at FROM control_conversation_messages WHERE conversation_id = :conversation ORDER BY sequence_no ASC LIMIT 250');
@@ -653,14 +656,32 @@ final class HubControlPlaneService
         $artifacts = $this->conversationArtifacts($taskIds);
         $attachments = $this->finalProductSchemaPresent() ? $this->conversationAttachments((string) $conversation['conversation_id'], $userId) : [];
         $approvals = $this->conversationApprovals($taskIds);
-        return [
+        $payload = [
             'schemaVersion' => $this->finalProductSchemaPresent() ? 3 : (isset($conversation['title']) ? 2 : 1),
             'conversation' => ['conversationId' => (string) $conversation['conversation_id'], 'projectId' => (string) $conversation['project_id'], 'title' => isset($conversation['title']) ? (string) $conversation['title'] : 'Work', 'archivedAt' => isset($conversation['archived_at']) && $conversation['archived_at'] !== null ? (string) $conversation['archived_at'] : null, 'origin' => isset($conversation['origin']) ? (string) $conversation['origin'] : 'native', 'createdAt' => (string) $conversation['created_at'], 'updatedAt' => (string) $conversation['updated_at'], 'lastTaskId' => $conversation['last_task_id'] === null ? null : (string) $conversation['last_task_id']],
             'messages' => $messages, 'tasks' => $tasks, 'artifacts' => $artifacts, 'attachments' => $attachments, 'approvals' => $approvals,
         ];
+        return $worker ? self::boundWorkerConversation($payload) : $payload;
     }
 
-    private function submitConversationForUser(string $userId, array $payload, ?string $now): array
+    private static function boundWorkerConversation(array $payload): array
+    {
+        $encode = static fn (array $value): string => json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        while (strlen($encode($payload)) > self::WORKER_CONVERSATION_MAX_BYTES) {
+            $removed = false;
+            foreach (['messages', 'artifacts', 'attachments', 'approvals', 'tasks'] as $key) {
+                if (is_array($payload[$key] ?? null) && $payload[$key] !== []) {
+                    array_shift($payload[$key]);
+                    $removed = true;
+                    break;
+                }
+            }
+            if (!$removed) throw new HubControlPlaneException('Worker conversation response is too large', 'RESPONSE_TOO_LARGE');
+        }
+        return $payload;
+    }
+
+    private function submitConversationForUser(string $userId, array $payload, ?string $now, bool $worker = false): array
     {
         $schema = $payload['schemaVersion'] ?? null;
         if ($schema === 1) self::exactKeys($payload, ['idempotencyKey', 'message', 'projectId', 'schemaVersion']);
@@ -695,7 +716,7 @@ final class HubControlPlaneService
                 }
                 $this->pdo->exec('COMMIT'); $transactionOpen = false;
                 if ($legacyNativeRetry) $this->completeNativeConversation($userId, ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => (string) $existingMessageId, 'projectId' => $projectId, 'request' => $message, 'taskId' => null], $at);
-                return $schema >= 2 ? $this->conversationByIdForUser($userId, (string) $conversation['conversation_id']) : $this->conversationForUser($userId, $projectId);
+                return $schema >= 2 ? $this->conversationByIdForUser($userId, (string) $conversation['conversation_id'], $worker) : $this->conversationForUser($userId, $projectId, $worker);
             }
             $messageId = $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'USER', $message, $at, $idempotency);
             if ($attachmentIds !== []) $this->bindAttachments($userId, $projectId, (string) $conversation['conversation_id'], $messageId, $attachmentIds);
@@ -745,7 +766,7 @@ final class HubControlPlaneService
             throw new HubControlPlaneException('Conversation could not be saved', 'CONVERSATION_CREATE_FAILED');
         }
         if (is_array($nativeRequest)) $this->completeNativeConversation($userId, $nativeRequest, $at);
-        return $schema >= 2 ? $this->conversationByIdForUser($userId, (string) $conversation['conversation_id']) : $this->conversationForUser($userId, $projectId);
+        return $schema >= 2 ? $this->conversationByIdForUser($userId, (string) $conversation['conversation_id'], $worker) : $this->conversationForUser($userId, $projectId, $worker);
     }
 
     /** Uploads are private, bounded, and initially unattached until the next idempotent message submit binds them. */
