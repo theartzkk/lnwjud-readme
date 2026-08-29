@@ -88,3 +88,10 @@ Complete the current source candidate and QA. If clean, commit/push it on `awh/v
 - Next: full product regression + CI on the checkpoint SHA; provider adapters/credentials remain separate and no provider should be activated in Production without explicit approval.
 - Full product regression completed on this candidate: 306 tests / 305 PASS / 0 FAIL / 1 platform SKIP. `git diff --check` PASS.
 - An unrelated incomplete untracked `HubGeminiProviderAdapter.php` appeared during the run and was intentionally excluded from this checkpoint because its provenance was not established and it did not parse; do not treat it as canonical work.
+
+## 2026-08-29 — Provider Execution Fabric V1
+- Base: `e5557621f2df02275b416aa0de073b126acd6de1` (PR #47; CI #636 SUCCESS).
+- Extended the existing `HubNativeAgentService` runtime boundary so a provider selected by M16 governance is dispatched through its matching injected adapter + provider credential store, priced under that provider, and recorded under that provider in canonical usage evidence.
+- Root cause fixed: when the only eligible runtime provider was non-primary, the old single-provider fast path incorrectly forced selection back to primary. The fast path now applies only when the sole provider is actually primary.
+- Focused M16 provider-dispatch fixture and full Hub regression PASS. Production remained untouched; no real secondary provider adapter or credential was activated.
+- QA closure: focused M16 dispatch fixture PASS; `npm run hub:test` PASS with known extension-only skips; full product regression 306 tests / 305 PASS / 0 FAIL / 1 platform SKIP; `git diff --check` PASS.
