@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/HubBackupService.php';
+
 final class HubDatabaseStudioException extends RuntimeException
 {
     public function __construct(string $message, public readonly string $codeName = 'DATABASE_STUDIO_FAILED') { parent::__construct($message); }
@@ -186,8 +188,10 @@ final class HubDatabaseStudioService
     private function boundedPragma(string $sql, int $limit): array { $out = []; $q = $this->pdo->query($sql); if (!$q instanceof PDOStatement) return ['unavailable']; while (($value = $q->fetchColumn()) !== false && count($out) < $limit) $out[] = is_scalar($value) ? (string) $value : 'unknown'; return $out; }
     private function backupMetadata(): array
     {
-        $root = getenv('AWH_HUB_BACKUP_ROOT'); if (!is_string($root) || $root === '' || !is_dir($root) || is_link($root)) return ['configured' => false, 'latest' => null]; $candidates = glob(rtrim($root, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . '*'); if (!is_array($candidates)) return ['configured' => true, 'latest' => null]; $latestPath = null; $latestAt = 0;
-        foreach ($candidates as $path) { if (!is_file($path) || is_link($path)) continue; $time = (int) (@filemtime($path) ?: 0); if ($time > $latestAt) { $latestAt = $time; $latestPath = $path; } } if ($latestPath === null) return ['configured' => true, 'latest' => null]; return ['configured' => true, 'latest' => ['name' => basename($latestPath), 'sizeBytes' => (int) (@filesize($latestPath) ?: 0), 'modifiedAt' => gmdate('c', $latestAt)]];
+        $root = getenv('AWH_HUB_BACKUP_ROOT');
+        if (!is_string($root) || $root === '') return ['configured' => false, 'latest' => null];
+        try { return HubBackupService::latestMetadata($root); }
+        catch (Throwable) { return ['configured' => true, 'latest' => ['status' => 'REVIEW']]; }
     }
     private function preferredTimeColumn(array $columns): string { $safe = array_values(array_filter($columns, static fn (array $column): bool => !$column['redacted'])); $names = array_column($safe, 'name'); foreach (['occurred_at', 'created_at', 'updated_at', 'applied_at'] as $candidate) if (in_array($candidate, $names, true)) return $candidate; if ($names === []) throw new HubDatabaseStudioException('Audit table is protected', 'DATABASE_TABLE_RESTRICTED'); return $names[0]; }
     private static function searchText(?string $value): ?string { if ($value === null) return null; $value = trim($value); if ($value === '') return null; if (strlen($value) > 160 || preg_match('/[\x00-\x1f\x7f]/', $value)) throw new HubDatabaseStudioException('Search text is invalid', 'DATABASE_REQUEST_INVALID'); return $value; }
