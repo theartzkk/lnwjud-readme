@@ -272,3 +272,21 @@ Request one new exact-SHA Production approval for the exact PR #58 head after it
   include-composition helper was hardened; later activation and the current
   owner-auth compatibility refresh are recorded in the production handoff.
 - Durable owner working protocol authored, agent entry contract added, Project Context injection implemented, and Desktop worker → Codex instruction precedence guarded on PR #8.
+# Authoritative supersession — 2026-08-30 live reconciliation and provider-failure continuity
+
+## CURRENT CHECKPOINT
+
+- Live ReadyIDC was re-read, not inferred from historical notes. Control/Web currently point to typed M16 release `m16-12fb67a09d4b`, source marker `12fb67a09d4b87e942c8aa120e40e9c8d33d1f9f`; Nginx, PHP-FPM, executor timer and backup timer are active. DB is schema 16 with integrity/FK PASS and the latest verified backup is ready for a bounded restore drill.
+- Desktop credential reuse is working through the existing OS credential store: the authenticated read-only `projects` probe returned HTTP 200 and four projects without printing the credential. The real Auto-Chain proof still timed out because the live `project.read` executor repeatedly reached `PROVIDER_FAILED` after bounded provider attempts; no task or credential was deleted/injected.
+- Canonical `awh/api-independence` advanced to `bd6acaa664043d8fc26e26975f526482e9fc3159`, which adds the root-cause continuity fix: safe read-only inspection falls back to bounded deterministic Vault evidence for `PROVIDER_FAILED`, `PROVIDER_UNAVAILABLE` and rate-limit failures, while provider failure remains recorded truthfully. Morning Brief persistence now creates a new revision when material daily state changes.
+- Candidate `codex/finish-first-p0` is a clean merge candidate at `66c86584f299433f791c0fceb8e24b4348b94aef` before this checkpoint-doc update; it contains the current canonical source and prior visible-product/VPS foundation work. Production has not been mutated in this continuation.
+
+## VERIFIED
+
+- Full Node regression: 321 tests, 320 PASS, 0 FAIL, 1 platform SKIP; typecheck PASS; Hub/M16/Continuous Work/Continuous Auto-Chain/Staff Operations/Project Vault fixtures PASS; `qa:fast` PASS after candidate push.
+- Hosted CI for canonical `bd6acaa...`: 5/5 PASS. Hosted CI for candidate `66c8658...` was observed in progress before this docs checkpoint and must be rechecked after the final candidate hash is created.
+- The typed M16 dry-run remains approval-gated and reports `M11_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL`. No direct Production DB mutation, credential exposure/injection, force-push or safety-gate bypass occurred.
+
+## NEXT UNFINISHED CHECKPOINT
+
+Complete this docs checkpoint, rerun exact-head CI and final read-only preflight/M16 dry-run. Then request one fresh exact-SHA Owner approval if Production activation is still required. After approval, use only typed M16, rerun enrollment/restart, worker reuse and Auto-Chain lineage, then continue real Web/Desktop/iPhone UAT, backup/restore evidence and the 15/15 acceptance gates. Keep all unsupported or unobserved gates FAIL/REQUIRED rather than inventing PASS.

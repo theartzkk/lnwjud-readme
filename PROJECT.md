@@ -179,3 +179,15 @@ local control, explicit permissions, and recoverable changes.
 - AWH is locally usable for bounded routine work on the two real projects. Production publish, DB/control-plane migration, destructive operations, credential changes, and Project Memory writes remain explicit human-approval work.
 - iPhone control is live as a public AWH login/PWA shell. Field confirmation still requires Art to sign in on iPhone, select the existing project, submit one safe Goal, and observe the truthful worker state. The browser never stores a permanent device credential; it uses a Secure/HttpOnly server session.
 - The normal browser owner path is username/password plus Remember this device. After the first sign-in, the owner should change the bootstrap password to a memorable value in Account; Keychain is a bootstrap delivery boundary, not normal daily login. Basic Auth remains only on technical routes.
+# Art’s Workspace Hub — current live checkpoint — 2026-08-30
+
+## Finish-first status
+
+- The live authority was reconciled read-only. ReadyIDC currently serves typed M16 Control/Web release `m16-12fb67a09d4b` from source marker `12fb67a09d4b87e942c8aa120e40e9c8d33d1f9f`; Nginx, PHP-FPM, executor and backup timers are active. Database schema 16, integrity/FK and verified backup readiness are healthy.
+- Product/source work is carried on the isolated `codex/finish-first-p0` candidate. Canonical source advanced to `bd6acaa664043d8fc26e26975f526482e9fc3159`; the candidate currently contains it at `66c86584f299433f791c0fceb8e24b4348b94aef` before this documentation checkpoint.
+- The current root cause is provider-failure continuity for safe `project.read`: the provider may fail after the task is correctly routed, and the executor must still complete from bounded immutable Vault evidence without claiming provider success. The canonical fix preserves that distinction and adds regression coverage.
+
+## Truthful completion boundary
+
+- Automated source gates are green, but this is not yet a claim of live Auto-Chain, Web/Desktop/iPhone visual parity, backup restore execution, or Production Complete 15/15. Exact-head CI, final read-only release preflight and any required exact-SHA Owner approval remain separate gates.
+- One coherent release remains the target. No Production DB mutation, credential exposure/injection, force-push, unrelated-site change or safety-gate bypass is permitted.

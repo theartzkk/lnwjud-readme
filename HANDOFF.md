@@ -251,3 +251,21 @@ Complete the current source candidate and QA. If clean, commit/push it on `awh/v
 - Root cause fixed: when the only eligible runtime provider was non-primary, the old single-provider fast path incorrectly forced selection back to primary. The fast path now applies only when the sole provider is actually primary.
 - Focused M16 provider-dispatch fixture and full Hub regression PASS. Production remained untouched; no real secondary provider adapter or credential was activated.
 - QA closure: focused M16 dispatch fixture PASS; `npm run hub:test` PASS with known extension-only skips; full product regression 306 tests / 305 PASS / 0 FAIL / 1 platform SKIP; `git diff --check` PASS.
+# Authoritative handoff — 2026-08-30 live reconciliation and provider-failure continuity
+
+## Current state
+
+- ReadyIDC live truth was verified read-only: typed M16 Control/Web release `m16-12fb67a09d4b`, source marker `12fb67a09d4b87e942c8aa120e40e9c8d33d1f9f`; Nginx/PHP-FPM, `awh-native-executor.timer` and `awh-backup.timer` are active. SQLite is schema 16 with integrity/FK PASS and verified backup/recovery readiness.
+- The existing Desktop OS credential store was read by a fresh store instance without exposing its value. Authenticated `projects` returned HTTP 200 and four projects. The real Auto-Chain attempt created canonical work but timed out because repeated `project.read` executions ended in `PROVIDER_FAILED`; this is a live provider-failure continuity issue, not a missing enrollment proof.
+- Canonical source is now `bd6acaa664043d8fc26e26975f526482e9fc3159`. Its bounded fallback completes safe read-only inspections from immutable Vault evidence when provider failure/unavailability/rate limiting occurs, while retaining the failed provider outcome and never pretending AI ran. It also fixes stale same-day Morning Brief persistence when material state changes.
+- The isolated candidate branch merged that canonical line at `66c86584f299433f791c0fceb8e24b4348b94aef` and remains the only release candidate lane. The primary checkout remains clean and was not edited.
+
+## Evidence and gate
+
+- Full Node: 321 tests, 320 PASS, 0 FAIL, 1 platform SKIP; typecheck/build/Hub/M16/Continuous Work/Continuous Auto-Chain/Staff Operations/Project Vault fixtures PASS; `qa:fast` PASS; typed M16 dry-run PASS and remains approval-gated.
+- Candidate hosted CI was exact-head and in progress at `66c8658...` before this checkpoint update; after the docs update, re-push and recheck the new exact SHA. Do not reuse prior SHA approval because any docs/source change creates a new exact candidate.
+- No Production mutation, direct DB write, credential copy/injection, force-push or bypass occurred. Do not claim live Auto-Chain, visual/iPhone UAT, restore drill or 15/15 Production Complete without their real evidence.
+
+## Next action
+
+Finish the final candidate docs/CI/preflight evidence, request one exact-SHA Owner approval if activation remains necessary, then deploy only that exact SHA through typed M16. Immediately verify release identity, services, DB/backup, Desktop persistence, worker reuse, deterministic/provider-backed Auto-Chain continuation and rollback readiness before continuing remaining UAT.
