@@ -188,11 +188,15 @@ deduplicate_desktop_artifacts() {
     else
       sudo ln "$file" "$object"
     fi
-    temp="$file.awh-artifact-link"
-    sudo rm -f "$temp"
-    sudo ln "$object" "$temp"
-    sudo cmp -s "$file" "$temp"
-    sudo mv -Tf "$temp" "$file"
+    if test "$(sudo stat -c %i "$file")" != "$(sudo stat -c %i "$object")"; then
+      temp="$file.awh-artifact-link"
+      sudo rm -f "$temp"
+      sudo ln "$object" "$temp"
+      sudo cmp -s "$file" "$temp"
+      sudo mv -Tf "$temp" "$file"
+    fi
+    sudo chown awh-hub:www-data "$object"
+    sudo chmod 0640 "$object"
     sudo test "$(sudo stat -c %i "$file")" = "$(sudo stat -c %i "$object")"
   done
 }
