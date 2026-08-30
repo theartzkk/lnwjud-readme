@@ -217,12 +217,16 @@ final class HubProjectVault
     public static function boundedToolText(string $content): ?array
     {
         $truncated = strlen($content) > self::MAX_TOOL_READ_BYTES;
-        if ($truncated) {
-            $content = self::validUtf8Prefix(substr($content, 0, self::MAX_TOOL_READ_BYTES));
-            if ($content === null) return null;
+        if (str_contains($content, "\0")) return null;
+        if ($truncated) $content = substr($content, 0, self::MAX_TOOL_READ_BYTES);
+        $normalised = self::normaliseUtf8($content);
+        if ($normalised === null) return null;
+        if (strlen($normalised) > self::MAX_TOOL_READ_BYTES) {
+            $normalised = self::validUtf8Prefix(substr($normalised, 0, self::MAX_TOOL_READ_BYTES));
+            if ($normalised === null) return null;
+            $truncated = true;
         }
-        if (str_contains($content, "\0") || @preg_match('//u', $content) !== 1) return null;
-        return ['content' => $content, 'truncated' => $truncated];
+        return ['content' => $normalised, 'truncated' => $truncated];
     }
 
     /** @return array{path:string,content:string,truncated:bool} */
@@ -235,6 +239,11 @@ final class HubProjectVault
         $handle = @fopen($file, 'rb'); if ($handle === false) throw new HubProjectVaultException('Project file was not found', 'PROJECT_FILE_NOT_FOUND');
         $content = stream_get_contents($handle, $limit + 1); fclose($handle);
         if (!is_string($content) || str_contains($content, "\0")) throw new HubProjectVaultException('Project file is not readable text', 'PROJECT_CONTEXT_FORBIDDEN');
+        if ($limit === self::MAX_TOOL_READ_BYTES) {
+            $bounded = self::boundedToolText($content);
+            if ($bounded === null) throw new HubProjectVaultException('Project file is not readable text', 'PROJECT_CONTEXT_FORBIDDEN');
+            return ['path' => $path, 'content' => $bounded['content'], 'truncated' => $bounded['truncated']];
+        }
         $truncated = strlen($content) > $limit;
         if ($truncated) $content = self::validUtf8Prefix(substr($content, 0, $limit));
         if ($content === null || @preg_match('//u', $content) !== 1) throw new HubProjectVaultException('Project file is not readable text', 'PROJECT_CONTEXT_FORBIDDEN');
@@ -307,6 +316,26 @@ final class HubProjectVault
     private static function archivePath(string $value): ?string { $path = str_replace('\\', '/', $value); if ($path === '' || str_contains($path, "\0") || str_starts_with($path, '/') || preg_match('#^[A-Za-z]:/#', $path) === 1) throw new HubProjectVaultException('Project archive path is unsafe', 'PROJECT_ARCHIVE_UNSAFE'); $parts = explode('/', rtrim($path, '/')); if ($parts === ['']) return null; foreach ($parts as $part) if ($part === '' || $part === '.' || $part === '..' || strlen($part) > 180 || preg_match('/[\x00-\x1f\x7f]/', $part)) throw new HubProjectVaultException('Project archive path is unsafe', 'PROJECT_ARCHIVE_UNSAFE'); $normalized = implode('/', $parts); if (strlen($normalized) > 900) throw new HubProjectVaultException('Project archive path is unsafe', 'PROJECT_ARCHIVE_UNSAFE'); return $normalized; }
     private static function sensitivePath(string $path): bool { $base = strtolower((string) basename($path)); if ($base === '.env' || str_contains(strtolower($path), '/.ssh/') || preg_match('/(?:^|[._-])(?:id_rsa|id_ed25519|private[_-]?key)(?:[._-]|$)|\.(?:pem|key|p12|pfx)$/', $base) === 1) return true; return preg_match('/(?:^|[._-])(?:credentials?|secrets?|tokens?)(?:[._-]|$)/', $base) === 1 && preg_match('/\.(?:json|ya?ml|txt|ini|conf|cfg|properties|db|sqlite)$/', $base) === 1; }
     private static function binary(string $path): bool { $handle = @fopen($path, 'rb'); if ($handle === false) return true; $chunk = fread($handle, 4096); fclose($handle); return !is_string($chunk) || str_contains($chunk, "\0"); }
+    private static function normaliseUtf8(string $value): ?string
+    {
+        if (@preg_match('//u', $value) === 1) return $value;
+        $replacement = "\xEF\xBF\xBD"; $length = strlen($value); $output = '';
+        for ($index = 0; $index < $length;) {
+            $first = ord($value[$index]);
+            if ($first <= 0x7F) { $output .= $value[$index]; $index++; continue; }
+            $sequence = 0;
+            if ($first >= 0xC2 && $first <= 0xDF && $index + 1 < $length && (ord($value[$index + 1]) & 0xC0) === 0x80) $sequence = 2;
+            elseif ($first === 0xE0 && $index + 2 < $length && ord($value[$index + 1]) >= 0xA0 && ord($value[$index + 1]) <= 0xBF && (ord($value[$index + 2]) & 0xC0) === 0x80) $sequence = 3;
+            elseif ($first >= 0xE1 && $first <= 0xEC && $index + 2 < $length && (ord($value[$index + 1]) & 0xC0) === 0x80 && (ord($value[$index + 2]) & 0xC0) === 0x80) $sequence = 3;
+            elseif ($first === 0xED && $index + 2 < $length && ord($value[$index + 1]) >= 0x80 && ord($value[$index + 1]) <= 0x9F && (ord($value[$index + 2]) & 0xC0) === 0x80) $sequence = 3;
+            elseif ($first >= 0xEE && $first <= 0xEF && $index + 2 < $length && (ord($value[$index + 1]) & 0xC0) === 0x80 && (ord($value[$index + 2]) & 0xC0) === 0x80) $sequence = 3;
+            elseif ($first === 0xF0 && $index + 3 < $length && ord($value[$index + 1]) >= 0x90 && ord($value[$index + 1]) <= 0xBF && (ord($value[$index + 2]) & 0xC0) === 0x80 && (ord($value[$index + 3]) & 0xC0) === 0x80) $sequence = 4;
+            elseif ($first >= 0xF1 && $first <= 0xF3 && $index + 3 < $length && (ord($value[$index + 1]) & 0xC0) === 0x80 && (ord($value[$index + 2]) & 0xC0) === 0x80 && (ord($value[$index + 3]) & 0xC0) === 0x80) $sequence = 4;
+            elseif ($first === 0xF4 && $index + 3 < $length && ord($value[$index + 1]) >= 0x80 && ord($value[$index + 1]) <= 0x8F && (ord($value[$index + 2]) & 0xC0) === 0x80 && (ord($value[$index + 3]) & 0xC0) === 0x80) $sequence = 4;
+            if ($sequence === 0) { $output .= $replacement; $index++; } else { $output .= substr($value, $index, $sequence); $index += $sequence; }
+        }
+        return @preg_match('//u', $output) === 1 ? $output : null;
+    }
     private static function validUtf8Prefix(string $value): ?string { if (@preg_match('//u', $value) === 1) return $value; for ($trim = 1; $trim <= 3 && strlen($value) >= $trim; $trim++) { $candidate = substr($value, 0, -$trim); if (@preg_match('//u', $candidate) === 1) return $candidate; } return null; }
     private static function boundedUtf8Snippet(string $value): string { while ($value !== '' && @preg_match('//u', $value) !== 1) $value = substr($value, 0, -1); return trim($value); }
 }

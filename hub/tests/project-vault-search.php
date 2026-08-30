@@ -23,6 +23,9 @@ try {
     json_encode(['candidateFiles' => $hits], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
     $invalidText = false; try { $vault->readText($project, $revision, 'src/invalid.txt'); } catch (HubProjectVaultException $e) { $invalidText = $e->codeName === 'PROJECT_CONTEXT_FORBIDDEN'; }
     search_assert($invalidText, 'invalid UTF-8 must be rejected as non-text');
+    $toolInvalid = $vault->toolReadText($project, $revision, 'src/invalid.txt');
+    search_assert($toolInvalid['truncated'] === false && preg_match('//u', $toolInvalid['content']) === 1 && str_contains($toolInvalid['content'], "\xEF\xBF\xBD"), 'provider tool read repairs invalid UTF-8 without changing canonical bytes');
+    json_encode(['data' => $toolInvalid], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
     $utf8Hits = $vault->search($project, $revision, 'UTF8_BOUNDARY_NEEDLEX');
     search_assert(count($utf8Hits) === 1 && ($utf8Hits[0]['path'] ?? null) === 'src/utf8-boundary.txt' && ($utf8Hits[0]['match'] ?? null) === 'content', 'UTF-8 boundary fixture must produce content evidence');
     search_assert(preg_match('//u', (string) ($utf8Hits[0]['snippet'] ?? '')) === 1, 'bounded UTF-8 snippet must remain valid text');
