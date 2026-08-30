@@ -1,5 +1,9 @@
 import { controlRequest } from './control-plane-adapter.js';
 
+// This file is bundled into dashboard.js alongside other product surfaces.
+// Keep its private helpers scoped so one product shell cannot fail at parse
+// time when another surface uses the same short local names.
+(() => {
 const SHEET_ID = 'awh-automation-sheet';
 const FORM_ID = 'awh-automation-form';
 const $ = (id) => document.getElementById(id);
@@ -118,3 +122,4 @@ async function activate() {
 }
 function start() { if (activate()) return; const observer=new MutationObserver(()=>{ if (activate()) observer.disconnect(); }); observer.observe(document.documentElement,{childList:true,subtree:true}); }
 if (document.readyState==='loading') document.addEventListener('DOMContentLoaded',start,{once:true}); else start();
+})();
