@@ -1,5 +1,9 @@
 # AWH overnight VPS autonomy foundation — 2026-08-30
 
+- Post-approval typed M16 activation completed successfully at `m16-13acbb573c40` from exact SHA `13acbb573c406d17ef56e538db4327e6caf43134`. Nginx/PHP-FPM, schema 16, backup/recovery, executor restore and route regressions passed; no credential value was exposed or injected.
+- The first post-deploy Auto-Chain field proof timed out after two bounded provider attempts. Read-only VPS audit found 8 invalid-UTF-8 Vault file contents; strict internal reads were correct, but provider tool reads could fail during serialization when the planner selected one of those files.
+- Root fix is candidate commit `38c7db668093905ddd559b823fed92f3fcfe66d8`: provider-facing reads repair malformed UTF-8 only in the bounded in-memory tool result, retain the 24 KiB/64 KiB safety bound, and leave canonical Vault bytes and strict internal reads unchanged. Project Vault regression, full local QA and exact hosted CI 5/5 pass.
+
 - Candidate `codex/finish-first-p0` contains the canonical-synced source merge `190e1426e09a5e85910eadcc10a2b7e20b035dbf` and is pushed. It adds a bounded Staff operations projection and storage-governance audit over existing canonical authorities; it adds no queue, task, execution, memory, artifact, report or schema authority.
 - Production remains unchanged at typed M16 release `m16-06a7277063f8`, exact SHA `06a7277063f891d0d29ad5bdbed7db7541dbb807`; DB16 integrity/FK, Nginx/PHP-FPM, executor/backup timers and worker readiness were rechecked. No Production mutation, credential access or direct DB mutation occurred.
 - The candidate exposes OBSERVE → DIAGNOSE → PRIORITIZE → CANONICAL_TASK → EXECUTE → VERIFY → REPORT → CONTINUE, all ten requested Staff roles, bounded self-heal evidence, DB locking evidence, backup/recovery readiness and ACTIVE/RETAIN/QUARANTINE/SAFE_TO_PURGE/PROTECTED storage classification. Purge remains `AUDIT_ONLY`.
@@ -7,7 +11,7 @@
 
 ## Next
 
-Verify exact-head PR #58 CI/review and M16 dry-run/readiness on this candidate. Then request one fresh exact-SHA Production approval; until that approval, keep Production on `06a7277…` and do not claim live 24/7 Staff or Auto-Chain field PASS.
+Verify the docs-following exact candidate and M16 readiness, then request one fresh exact-SHA Production approval for that final candidate. Until then keep Production on `m16-13acbb573c40`, and do not claim the Auto-Chain field proof as PASS.
 
 # Art’s Workspace Hub — current checkpoint — 2026-08-30
 

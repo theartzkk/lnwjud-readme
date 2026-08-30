@@ -1,5 +1,15 @@
 # Authoritative task supersession — 2026-08-30 Overnight VPS autonomy foundation
 
+## NOW — post-deploy Auto-Chain boundary
+
+- Typed M16 deployed exact candidate `13acbb573c406d17ef56e538db4327e6caf43134` successfully; DB16 integrity/FK, backup/restore readiness, Nginx/PHP-FPM, executor recovery and route health remain PASS.
+- Real Auto-Chain proof ran with the persisted Desktop credential and stopped at bounded `AUTOCHAIN_FIELD_TIMEOUT`. The task remains canonical and preserved; it was not deleted or manually retried with injected credentials.
+- Root cause is narrowed to 8 malformed-UTF-8 Vault file contents selected through provider tool reads. Candidate `38c7db668093905ddd559b823fed92f3fcfe66d8` repairs only provider-facing in-memory text and adds regression coverage; local QA and exact CI 5/5 are PASS.
+
+## NEXT UNFINISHED CHECKPOINT
+
+- Verify the final docs-following candidate exact SHA and obtain one exact-SHA approval before typed M16 refresh. After activation, rerun the bounded Auto-Chain proof, prove rootTaskId continuation, then continue UAT and Production completion without claiming field PASS from source evidence.
+
 ## NOW
 
 - Candidate `codex/finish-first-p0` contains source merge `190e1426e09a5e85910eadcc10a2b7e20b035dbf` and is pushed; the checkpoint docs follow in the current release-gate commit. It contains the bounded Staff loop, ten role projections, storage classification audit, backup/recovery/DB-locking reporting and executor full-telemetry correction. Existing Project/Task/Execution/Artifact/Approval/Release authorities remain the only authorities.

@@ -1,5 +1,11 @@
 # Authoritative decision — 2026-08-30 Overnight Staff and storage governance
 
+# Authoritative decision — 2026-08-30 provider-tool UTF-8 repair
+
+- Provider-facing Project Vault reads are a separate representation boundary from strict internal reads. When bounded text contains malformed UTF-8, the provider tool may receive a deterministic replacement-character representation only in memory; canonical Vault bytes, revision hashes, manifests and internal `readText()` behavior remain unchanged.
+- The repaired representation is still rejected for NUL/binary content, bounded to the existing 24 KiB tool read and serialized-result safety limits, and covered by the Project Vault regression. No provider, task, execution, queue, memory, credential or deployment authority is widened.
+- Production remains on `m16-13acbb573c40` until the final candidate receives its own exact-SHA approval through typed M16. The timeout evidence is retained in canonical task/execution history; no direct DB mutation or credential injection is permitted.
+
 - The VPS Staff loop is a read/report projection over existing canonical Project, Task, Execution, Artifact, Approval and Release authorities. The systemd timer remains a bounded wake-up mechanism; no duplicate scheduler, queue, memory or report table is allowed.
 - Storage governance is classification-first and audit-only in this milestone. Managed roots report ACTIVE, RETAIN, QUARANTINE, SAFE_TO_PURGE or PROTECTED with bounded sizes where known; no purge or quarantine move occurs without a future explicit authority. Broad `/tmp` is not implicitly owned by AWH.
 - Backup truth is newest-manifest-first: an invalid newest backup reports REVIEW while older valid evidence is retained only as `lastVerified`; a timer being active is not sufficient for recovery PASS. SQLite keeps existing busy timeout/WAL/transaction policy and bounded `BEGIN IMMEDIATE` writes.

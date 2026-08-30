@@ -1,5 +1,15 @@
 # Authoritative handoff — 2026-08-30 Overnight VPS autonomy foundation
 
+## Current handoff — post-deploy provider boundary
+
+- Production is active at typed M16 release `m16-13acbb573c40` from approved exact SHA `13acbb573c406d17ef56e538db4327e6caf43134`. Activation completed with backup, schema/idempotence, pointer, PHP-FPM, Nginx, executor restore and regression stages passing.
+- The bounded real field proof used the existing Desktop credential store without printing its value, but timed out. Live metadata shows `project.read` routed through the existing VPS/provider authority, two provider attempts were recorded, and no continuation was materialized.
+- The shared root cause is malformed UTF-8 in 8 active Vault files. The internal strict read contract remains fail-closed; candidate `38c7db668093905ddd559b823fed92f3fcfe66d8` makes only provider tool serialization UTF-8-safe and preserves byte-level canonical content.
+
+## Next action
+
+Run final exact-candidate readiness and request approval for that exact SHA only. Do not deploy this new source candidate, mutate Production DB, or inject credentials before that approval. If approved, rerun field proof and continue all remaining safe UAT/smoke/completion lanes.
+
 - Candidate `codex/finish-first-p0` contains source merge `190e1426e09a5e85910eadcc10a2b7e20b035dbf` and is pushed; the Staff loop, storage audit, backup/recovery truth and executor full-telemetry feed are source-ready. Production remains at `m16-06a7277063f8` / `06a7277063f891d0d29ad5bdbed7db7541dbb807`.
 - `qa:local` and `qa:full` are PASS on the exact upstream candidate. No credentials were read, printed, copied or injected; no direct Production DB mutation occurred.
 - Live read-only baseline is healthy for DB16 integrity/FK, Nginx/PHP-FPM, worker/executor/backup timers and bounded backup drill. Current queue still has two capability-waiting executions; no active or expired leases. AWH-managed temp patterns are absent; no purge was attempted.
