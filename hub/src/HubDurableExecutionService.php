@@ -313,10 +313,11 @@ final class HubDurableExecutionService
             }, $at, ['executionId'=>(string)$claimed['execution_id'],'taskId'=>(string)$claimed['task_id'],'capability'=>(string)$claimed['required_capability'],'dataClassification'=>'INTERNAL','retryCount'=>(int)$claimed['attempt_count'],'routingPolicyVersion'=>'m16-v1','promptPolicyVersion'=>'native-v1','toolPolicyVersion'=>'bounded-v1']);
             return is_string($result['summary'] ?? null) ? ['summary' => $result['summary'], 'evidence' => $evidence] : null;
         } catch (HubNativeAgentException $error) {
-            // An unavailable provider must not make an ordinary safe
-            // inspection vanish: use the deterministic canonical summary.
-            // A budget stop remains durable and visible to the Owner.
-            if ($error->codeName === 'PROVIDER_UNAVAILABLE') return null;
+            // A provider failure must not block an otherwise safe, read-only
+            // inspection.  The provider outcome remains recorded as failed,
+            // while the canonical task completes with bounded Vault evidence.
+            // This keeps the VPS loop moving without pretending that AI ran.
+            if (self::inspectionFallbackEligible($error->codeName)) return ['summary' => $this->inspectionSummary($context, (string) $claimed['goal']) . "\n\nAWH ใช้ deterministic read-only fallback เพราะ AI provider ตอบงานนี้ไม่ได้ (" . $error->codeName . ')', 'evidence' => ['searches' => [], 'reads' => [], 'fallbackFiles' => array_slice($context['files'], 0, 12), 'providerFallback' => $error->codeName]];
             throw new HubDurableExecutionException('Native inspection provider failed', $error->codeName, $error->diagnostic);
         }
     }
@@ -353,6 +354,7 @@ final class HubDurableExecutionService
         $context = ['completedGoal'=>(string)$claimed['goal'],'completedSummary'=>function_exists('mb_substr')?mb_substr($summary,0,3000):substr($summary,0,3000),'sourceTruth'=>$memory];
         $tools = [['type'=>'function','name'=>'project_read_text','description'=>'Read one bounded text file from the immutable canonical Project Vault. Read-only.','parameters'=>['type'=>'object','additionalProperties'=>false,'properties'=>['path'=>['type'=>'string','maxLength'=>900]],'required'=>['path']]]];
         try { $result = $this->agent->respondWithTools((string)$claimed['user_id'],$projectId,null,null,$request,[],[],$context,$tools,function(string $name,array $arguments) use($projectId,$revision): array { if ($name !== 'project_read_text' || !is_string($arguments['path'] ?? null)) throw new HubDurableExecutionException('Continuous planner tool input is invalid','EXECUTION_INVALID'); return $this->vaults->vault()->toolReadText($projectId,$revision,(string)$arguments['path']); },$at,['executionId'=>(string)$claimed['execution_id'],'taskId'=>(string)$claimed['task_id'],'capability'=>'project.read','dataClassification'=>'INTERNAL','retryCount'=>(int)$claimed['attempt_count'],'routingPolicyVersion'=>'m16-v1','promptPolicyVersion'=>'continuous-v1','toolPolicyVersion'=>'read-only-v1']); }
+        catch (HubNativeAgentException $error) { if (self::inspectionFallbackEligible($error->codeName)) return ['summary' => 'NEXT: ตรวจ Project Vault revision ต่อแบบ read-only และทบทวนงาน stale ที่ยังไม่ปิด']; return null; }
         catch (Throwable) { return null; }
         $text = trim((string)($result['summary'] ?? ''));
         if (preg_match('/^NEXT:\s*(.{8,2000})$/us', $text, $m) !== 1) return null;
@@ -360,6 +362,7 @@ final class HubDurableExecutionService
     }
 
     private static function sameGoal(string $a, string $b): bool { $normal = static fn(string $v): string => strtolower(preg_replace('/\s+/u',' ',trim($v)) ?? trim($v)); return $normal($a) === $normal($b); }
+    private static function inspectionFallbackEligible(string $code): bool { return in_array($code, ['PROVIDER_UNAVAILABLE', 'PROVIDER_RATE_LIMITED', 'PROVIDER_FAILED'], true); }
     private static function highImpactGoal(string $goal): bool { return preg_match('/(?:deploy|production|prod\b|ลบข้อมูล|delete\b|drop\b|billing|ซื้อ|ชำระ|permission|สิทธิ์|secret|credential|api\s*key|rotate|migration|migrate|schema\s+change|ฐานข้อมูล)/iu', $goal) === 1; }
 
     /** @param array<string,mixed> $claimed @param array<string,mixed> $checkpoint */

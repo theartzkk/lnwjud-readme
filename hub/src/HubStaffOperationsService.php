@@ -255,7 +255,7 @@ final class HubStaffOperationsService
             $encoded = json_encode($brief, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
             if (strlen($encoded) > 60 * 1024) return ['state' => 'FAILED', 'persisted' => false, 'reason' => 'brief exceeds bounded size'];
             $existing = $this->latestMorningBrief();
-            if (($existing['state'] ?? null) === 'PERSISTED' && (($existing['brief']['briefDate'] ?? null) === $brief['briefDate'])) return $existing;
+            if (($existing['state'] ?? null) === 'PERSISTED' && (($existing['brief']['briefDate'] ?? null) === $brief['briefDate']) && self::briefFingerprint($existing['brief']) === self::briefFingerprint($brief)) return $existing;
             $this->pdo->exec('BEGIN IMMEDIATE');
             $revision = $this->scalar('SELECT COALESCE(MAX(revision_no), 0) + 1 FROM control_product_setting_revisions WHERE setting_key = ' . $this->pdo->quote(self::MORNING_BRIEF_KEY));
             $this->pdo->prepare('INSERT INTO control_product_setting_revisions(revision_id, setting_key, revision_no, value_json, updated_by_user_id, created_at) VALUES(:id, :key, :revision, :value, :user, :at)')->execute(['id' => $this->uuid(), 'key' => self::MORNING_BRIEF_KEY, 'revision' => $revision, 'value' => $encoded, 'user' => $owner, 'at' => $at]);
@@ -278,6 +278,15 @@ final class HubStaffOperationsService
             if (!is_array($brief)) return ['state' => 'INVALID', 'persisted' => false];
             return ['state' => 'PERSISTED', 'persisted' => true, 'revision' => (int) $row['revision_no'], 'createdAt' => (string) $row['created_at'], 'briefDate' => (string) ($brief['briefDate'] ?? ''), 'brief' => $brief];
         } catch (Throwable) { return ['state' => 'INVALID', 'persisted' => false]; }
+    }
+
+    /** Keep one durable revision per material daily state, not one stale snapshot forever. */
+    private static function briefFingerprint(array $brief): string
+    {
+        $stable = [];
+        foreach (['overnight', 'visibleChanges', 'vps', 'release', 'database', 'backup', 'workers', 'providers', 'canonicalAuthorities', 'staff', 'nextPlannedWork'] as $key) if (array_key_exists($key, $brief)) $stable[$key] = $brief[$key];
+        if (is_array($brief['storage'] ?? null)) $stable['storage'] = ['state' => $brief['storage']['state'] ?? null, 'summary' => $brief['storage']['summary'] ?? null];
+        return hash('sha256', json_encode($stable, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
     }
 
     private function table(string $name): bool { try { $q = $this->pdo->prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=:name"); $q->execute(['name' => $name]); return $q->fetchColumn() === 1; } catch (Throwable) { return false; } }

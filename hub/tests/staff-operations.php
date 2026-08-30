@@ -50,6 +50,9 @@ try {
     staff_expect(($persisted['state'] ?? null) === 'PERSISTED', 'morning brief must persist in the existing revision ledger');
     $again = $service->persistMorningBrief($snapshot['morningBrief']);
     staff_expect(($again['revision'] ?? null) === ($persisted['revision'] ?? null), 'morning brief persistence must be idempotent per day');
+    $changed = $snapshot['morningBrief']; $changed['release']['web'] = 'm16-next'; $changed['release']['pointersMatch'] = false;
+    $updated = $service->persistMorningBrief($changed, '2026-08-30T00:01:00Z');
+    staff_expect(($updated['state'] ?? null) === 'PERSISTED' && (int) ($updated['revision'] ?? 0) === (int) ($persisted['revision'] ?? 0) + 1, 'material morning brief changes must create a new durable revision');
     staff_expect(($service->latestMorningBrief()['state'] ?? null) === 'PERSISTED', 'latest morning brief must survive as durable state');
     fwrite(STDOUT, "AWH Staff Operations: PASS\n");
 } finally {
