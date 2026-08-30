@@ -1,3 +1,13 @@
+# Art’s Workspace Hub — current checkpoint — 2026-08-30 Auto-Chain continuation fallback
+
+- The live control plane currently resolves to `m16-bd6acaa66404` / source `bd6acaa664043d8fc26e26975f526482e9fc3159`; authenticated read-only worker access and core service/DB checks are healthy. This is observed live truth, not a deployment performed in this run.
+- The current candidate closes the provider-failure continuation root cause by restoring the declared `?string` planner contract. It preserves deterministic read-only fallback, canonical task/execution authority, bounded lineage, and fail-closed high-impact/provider-auth behavior.
+- Source, local full QA, focused continuity tests and exact-head hosted CI are green. Live Auto-Chain field proof is not yet PASS because the required fix is not active in the live release.
+
+## Next
+
+Request one exact-SHA Production approval for the final candidate. After typed M16 activation, rerun real field proof and continue truthful UAT, smoke and Production completion; do not claim field PASS from source evidence alone.
+
 # AWH overnight VPS autonomy foundation — 2026-08-30
 
 ## Current superseding finish-first checkpoint

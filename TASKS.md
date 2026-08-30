@@ -1,3 +1,20 @@
+# Authoritative task supersession — 2026-08-30 Auto-Chain continuation fallback
+
+## NOW
+
+- Live ReadyIDC was re-reconciled after an external pointer change: Control/Web currently resolve to `m16-bd6acaa66404`, source marker `bd6acaa664043d8fc26e26975f526482e9fc3159`, with Nginx, PHP-FPM, executor/backup timers, schema 16, integrity and foreign-key checks healthy. This run did not perform that activation.
+- The real field proof against that live source still timed out after the root task completed. Source audit found the root cause in `planContinuation()`: the provider-failure fallback returned an array from a `?string` planner, so the continuation materializer was skipped by the throwable boundary.
+- The candidate branch fixes the shared fallback to return one bounded scalar `NEXT:` goal and covers `PROVIDER_FAILED`, `PROVIDER_UNAVAILABLE` and `PROVIDER_RATE_LIMITED` without weakening high-impact/provider-auth blocking.
+
+## VERIFIED
+
+- Candidate branch is clean/upstream-exact after the source fix, `qa:fast` and serial `qa:full` pass, focused M16/Continuous Work/Auto-Chain/Staff/Project Vault tests pass, and exact-head CI is green 5/5 on the latest candidate before this documentation checkpoint.
+- No credential value was read, printed, copied or injected; no Production DB was directly mutated; no BAY cutover or unrelated Production change was performed.
+
+## NEXT UNFINISHED CHECKPOINT
+
+- Finish this durable checkpoint, re-run exact-head CI, then request one exact-SHA approval before deploying the candidate through typed M16. After approval, rerun the real Desktop/worker/Auto-Chain lineage proof and continue the remaining UAT/15-of-15 gates.
+
 # Authoritative task supersession — 2026-08-30 Overnight VPS autonomy foundation
 
 ## Finish-first run status

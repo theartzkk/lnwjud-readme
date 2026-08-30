@@ -1,3 +1,9 @@
+# Authoritative decision — 2026-08-30 provider-failure continuation contract
+
+- `planContinuation()` must return either a bounded scalar `NEXT:` goal or `null`; provider-failure fallback must never return a planner-result array. This is a shared contract fix, not a phrase-specific workaround.
+- `PROVIDER_FAILED`, `PROVIDER_UNAVAILABLE` and `PROVIDER_RATE_LIMITED` remain eligible for deterministic read-only continuation planning. Authentication, permission, model and request-invalid failures remain blocked; high-impact goals remain approval-gated.
+- Production activation remains exclusively through typed M16 with a fresh exact-SHA approval. The current live release and rollback assets remain protected; no direct DB mutation or credential injection is allowed.
+
 # Authoritative decision — 2026-08-30 Overnight Staff and storage governance
 
 ## Finish-first decisions — 2026-08-30
