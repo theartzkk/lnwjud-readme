@@ -1,4 +1,5 @@
 import { controlRequest, createProjectFactory, createSchoolDocument } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { closeAwhDialog, openAwhDialog } from './navigation.js?release=__AWH_WEB_RELEASE_ID__';
 
 const PDF_FILE_LIMIT = 40 * 1024 * 1024;
 const PDF_TOTAL_LIMIT = 100 * 1024 * 1024;
@@ -91,7 +92,7 @@ function parsePageSpec(spec, pageCount) {
 
 function closeDialog(id) {
   const dialog = $(id);
-  if (dialog) dialog.hidden = true;
+  if (dialog) closeAwhDialog(dialog);
 }
 
 function requestKey(prefix) {
@@ -157,7 +158,7 @@ async function populateDocumentProjects(select) {
 export async function openSchoolDocumentTool() {
   const dialog = $('dashboard-school-document-tool');
   if (!(dialog instanceof HTMLElement)) return;
-  dialog.hidden = false;
+  openAwhDialog(dialog);
   const select = dialog.querySelector('#dashboard-document-project');
   const message = dialog.querySelector('[data-generated-message]');
   if (message) message.textContent = 'เลือกโปรเจกต์และกรอกข้อมูลที่ทราบจริง ระบบจะทำเครื่องหมายข้อมูลที่ยังขาดให้';
@@ -168,7 +169,7 @@ export async function openSchoolDocumentTool() {
 
 export function openProjectFactoryTool() {
   const dialog = $('dashboard-project-factory-tool');
-  if (dialog) dialog.hidden = false;
+  if (dialog) openAwhDialog(dialog);
 }
 
 function createSchoolDocumentDialog() {
@@ -218,12 +219,12 @@ function createProjectFactoryDialog() {
 
 export function openPdfTool() {
   const dialog = $('dashboard-pdf-tool');
-  if (dialog) dialog.hidden = false;
+  if (dialog) openAwhDialog(dialog);
 }
 
 export function openQrTool() {
   const dialog = $('dashboard-qr-tool');
-  if (dialog) dialog.hidden = false;
+  if (dialog) openAwhDialog(dialog);
 }
 
 function createPdfDialog() {

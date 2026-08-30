@@ -1,5 +1,6 @@
 import { loadWebData } from './hub-read-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 import { executionStatus } from './execution-ux.js?release=__AWH_WEB_RELEASE_ID__';
+import { closeAwhDialog, openAwhDialog } from './navigation.js?release=__AWH_WEB_RELEASE_ID__';
 import {
   cancelTask, changePassword, changeUsername, createConversation, createMemory, createProject, createRecoveryCodes, decideApproval,
   exportWorkspace, invitePerson, listAuthSessions, listPeople, loadAuthProfile, loadControlData, loadConversation,
@@ -14,12 +15,12 @@ import {
   const $ = (id) => document.getElementById(id);
   const MAX_ATTACHMENT_BYTES = 60 * 1024 * 1024;
   const MICRO_BAHT = 1000000;
+  const DESKTOP_PACKAGES = [['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
   const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, systemReadiness: null, capabilities: null, people: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null };
+  let desktopReleasePromise = null;
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => undefined);
 
   function message(id, value = '') { const node = $(id); if (node) node.textContent = value; }
-  function show(id) { $(id).hidden = false; }
-  function hide(id) { $(id).hidden = true; }
   function date(value) { const time = Date.parse(value || ''); return Number.isFinite(time) ? new Date(time).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : ''; }
   function ensureStepUpForm() {
     const existing = $('step-up-form'); if (existing) return existing;
@@ -271,20 +272,49 @@ import {
   }
 
   function workerStateLabel(worker) { return worker.state === 'READY' ? 'พร้อมทำงาน' : worker.state === 'WORKING' ? 'กำลังทำงาน' : 'ออฟไลน์'; }
-  async function loadDesktopRelease() {
-    const list = $('desktop-release-list'); if (!list) return;
-    try {
+  async function loadVerifiedDesktopRelease() {
+    if (desktopReleasePromise) return desktopReleasePromise;
+    desktopReleasePromise = (async () => {
       const response = await fetch('./release.json', { credentials: 'same-origin', cache: 'no-store' });
       if (!response.ok) throw new Error('release metadata unavailable');
       const manifest = await response.json();
-      if (!manifest || typeof manifest.releaseId !== 'string' || !Array.isArray(manifest.files)) throw new Error('release metadata invalid');
-      const files = new Map(manifest.files.filter((entry) => entry && typeof entry.path === 'string' && typeof entry.sha256 === 'string' && Number.isSafeInteger(entry.sizeBytes)).map((entry) => [entry.path, entry]));
-      const packages = [['downloads/AWH-macOS-x64.zip', 'macOS Intel'], ['downloads/AWH-Windows-x64.zip', 'Windows x64']].filter(([path]) => files.has(path));
+      if (!manifest || manifest.schemaVersion !== 1 || typeof manifest.releaseId !== 'string' || !/^[A-Za-z0-9._-]{1,80}$/.test(manifest.releaseId) || !Array.isArray(manifest.files)) throw new Error('release metadata invalid');
+      const files = new Map();
+      for (const entry of manifest.files) {
+        if (!entry || typeof entry.path !== 'string' || !/^(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+$/.test(entry.path) || typeof entry.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(entry.sha256) || !Number.isSafeInteger(entry.sizeBytes) || entry.sizeBytes < 1 || entry.sizeBytes > 1024 * 1024 * 1024 || files.has(entry.path)) throw new Error('release metadata invalid');
+        files.set(entry.path, entry);
+      }
+      return { releaseId: manifest.releaseId, files };
+    })().catch((error) => { desktopReleasePromise = null; throw error; });
+    return desktopReleasePromise;
+  }
+
+  async function loadPublicDesktopRelease() {
+    const container = document.querySelector('.login-downloads');
+    if (!(container instanceof HTMLElement)) return;
+    container.hidden = true;
+    try {
+      const release = await loadVerifiedDesktopRelease(); let available = 0;
+      for (const [path, , platform] of DESKTOP_PACKAGES) {
+        const link = document.querySelector(`[data-desktop-package="${platform}"]`); if (!(link instanceof HTMLAnchorElement)) continue;
+        const entry = release.files.get(path); link.hidden = !entry;
+        if (entry) { link.href = `./${path}`; link.dataset.release = release.releaseId; available += 1; }
+        else { link.removeAttribute('href'); delete link.dataset.release; }
+      }
+      container.hidden = available === 0;
+    } catch { container.hidden = true; }
+  }
+
+  async function loadDesktopRelease() {
+    const list = $('desktop-release-list'); if (!list) return;
+    try {
+      const release = await loadVerifiedDesktopRelease(); const files = release.files;
+      const packages = DESKTOP_PACKAGES.filter(([path]) => files.has(path));
       list.replaceChildren();
       if (!packages.length) throw new Error('verified desktop packages unavailable');
-      message('desktop-release-status', `release ${manifest.releaseId} · เลือก installer ที่ตรวจสอบ checksum แล้ว`);
-      for (const [path, , platform] of [['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']]) {
-        const link = document.querySelector(`[data-desktop-package="${platform}"]`); if (link && files.has(path)) { link.href = `./${path}`; link.dataset.release = manifest.releaseId; }
+      message('desktop-release-status', `release ${release.releaseId} · เลือก installer ที่ตรวจสอบ checksum แล้ว`);
+      for (const [path, , platform] of DESKTOP_PACKAGES) {
+        const link = document.querySelector(`[data-desktop-package="${platform}"]`); if (link && files.has(path)) { link.href = `./${path}`; link.dataset.release = release.releaseId; link.hidden = false; }
       }
       for (const [path, label] of packages) {
         const entry = files.get(path); const item = document.createElement('div'); item.className = 'session-item';
@@ -625,9 +655,17 @@ import {
     for (const name of settingsSections) {
       const panel = $(`settings-panel-${name}`); if (panel) panel.hidden = name !== selected;
     }
+    let activeButton = null;
     document.querySelectorAll('[data-settings-tab]').forEach((button) => {
       const active = button.dataset.settingsTab === selected;
       button.classList.toggle('active', active); button.setAttribute('aria-current', active ? 'page' : 'false');
+      if (active) activeButton = button;
+    });
+    window.requestAnimationFrame(() => {
+      const strip = activeButton?.parentElement;
+      if (!activeButton || !strip) return;
+      const left = Math.max(0, activeButton.offsetLeft - ((strip.clientWidth - activeButton.offsetWidth) / 2));
+      strip.scrollLeft = left;
     });
   }
   function configureSettingsVisibility() {
@@ -639,8 +677,8 @@ import {
     document.querySelectorAll('.owner-settings-tab, .owner-settings-action').forEach((element) => { element.hidden = !owner; });
     if (!owner && !['start', 'account'].includes(document.querySelector('.settings-tab.active')?.dataset.settingsTab || '')) showSettingsSection('account');
   }
-  function openSheet(id) { show(id); }
-  function closeSheet(id) { hide(id); }
+  function openSheet(id) { const sheet = $(id); if (sheet) openAwhDialog(sheet); }
+  function closeSheet(id, options = {}) { const sheet = $(id); if (sheet) closeAwhDialog(sheet, options); }
   function openPasswordRecovery() {
     let token = null;
     const recoveryHash = window.location.hash;
@@ -774,7 +812,6 @@ import {
   $('system-check-inline')?.addEventListener('click', () => $('system-check')?.click());
   $('recovery-open').addEventListener('click', openPasswordRecovery);
   document.querySelectorAll('[data-close-sheet]').forEach((button) => button.addEventListener('click', () => closeSheet(button.dataset.closeSheet)));
-  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') document.querySelectorAll('.sheet:not([hidden])').forEach((sheet) => { sheet.hidden = true; }); });
 
   $('username-form').addEventListener('submit', async (event) => {
     event.preventDefault(); message('username-message', 'กำลังบันทึกชื่อผู้ใช้…');
@@ -887,5 +924,6 @@ import {
 
   $('logout-button').addEventListener('click', async () => { await logout().catch(() => undefined); window.location.reload(); });
 
+  void loadPublicDesktopRelease();
   loadWebData().then(async (data) => { render(data); if (window.location.hash === '#awh-recovery' || window.location.hash.startsWith('#awh-reset=')) openPasswordRecovery(); if (data?.control?.authenticated) { await refreshConversation(); try { state.productSettings = (await loadProductSettings()).settings; applyProductSettings(); } catch {} state.conversationTimer = window.setInterval(() => { if (!document.hidden && state.selectedConversationId) void loadConversation(state.selectedConversationId).then((value) => { state.conversation = value; renderWorkspace(); }).catch(() => undefined); }, 2000); state.refreshTimer = window.setInterval(() => { if (!document.hidden) void refreshWorkspace(false); }, 15_000); } }).catch(() => render({ product: { shortName: 'AWH' }, control: { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' } }));
 })();

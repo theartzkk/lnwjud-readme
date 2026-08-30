@@ -36,6 +36,13 @@
   --awh-space-4: 16px;
   --awh-space-5: 20px;
   --awh-space-6: 24px;
+  --awh-space-7: 32px;
+  --awh-space-8: 40px;
+  --awh-touch-target: 44px;
+  --awh-content-wide: 1180px;
+  --awh-motion-fast: 140ms;
+  --awh-motion-standard: 220ms;
+  --awh-ease: cubic-bezier(.2, .8, .2, 1);
 
   /* Compatibility aliases for existing canonical component CSS. */
   --canvas: var(--awh-canvas);
@@ -64,9 +71,34 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-rendering: optimizeLegibility; }
+body { font-family: var(--awh-font-sans); -webkit-font-smoothing: antialiased; }
 button, input, textarea, select { font: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
+:where(button, a, input, textarea, select):not(:disabled) {
+  transition: color var(--awh-motion-fast) var(--awh-ease), background-color var(--awh-motion-fast) var(--awh-ease), border-color var(--awh-motion-fast) var(--awh-ease), box-shadow var(--awh-motion-fast) var(--awh-ease), transform var(--awh-motion-fast) var(--awh-ease);
+}
+:where(button, [role="button"]):not(:disabled):active { transform: translateY(1px); }
 :where(button, a, input, textarea, select):focus-visible {
   outline: 2px solid var(--awh-accent-strong);
   outline-offset: 2px;
+}
+
+.awh-back-link {
+  display: inline-flex;
+  min-height: var(--awh-touch-target);
+  align-items: center;
+  gap: var(--awh-space-2);
+  border: 1px solid var(--awh-line-soft);
+  border-radius: var(--awh-radius-md);
+  padding: 8px 12px;
+  color: var(--awh-text);
+  background: rgba(255, 255, 255, .035);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.awh-back-link:hover { border-color: rgba(255, 138, 54, .32); background: var(--awh-accent-soft); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }

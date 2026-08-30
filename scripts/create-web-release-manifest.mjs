@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 const root = resolve(process.cwd());
 const input = resolve(root, process.argv[2] ?? 'dist-web');
 const output = resolve(root, process.argv[3] ?? join(input, 'release.json'));
-const files = ['index.html', 'styles.css', 'awh-design-system.css', 'app.js', 'dashboard.css', 'dashboard.js', 'execution-ux.js', 'tool-registry.js', 'school-tools.js', 'vendor/pdf-lib.min.js', 'vendor/qrcode.js', 'hub-read-adapter.js', 'control-plane-adapter.js', 'database.html', 'database.css', 'database.js', 'infrastructure.html', 'infrastructure.css', 'infrastructure.js', 'trust.html', 'trust.css', 'trust.js', 'manifest.webmanifest', 'sw.js', 'logo-256x256.png', 'web-config.json', 'data.json'];
+const files = ['index.html', 'styles.css', 'awh-design-system.css', 'app.js', 'navigation.js', 'dashboard.css', 'dashboard.js', 'execution-ux.js', 'tool-registry.js', 'school-tools.js', 'vendor/pdf-lib.min.js', 'vendor/qrcode.js', 'hub-read-adapter.js', 'control-plane-adapter.js', 'database.html', 'database.css', 'database.js', 'infrastructure.html', 'infrastructure.css', 'infrastructure.js', 'trust.html', 'trust.css', 'trust.js', 'manifest.webmanifest', 'sw.js', 'logo-256x256.png', 'web-config.json', 'data.json'];
 const optionalFiles = ['downloads/AWH-macOS-x64.zip', 'downloads/AWH-Windows-x64.zip', 'downloads/SHA256SUMS.txt'];
 const releaseId = process.env.AWH_RELEASE_ID ?? new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
 

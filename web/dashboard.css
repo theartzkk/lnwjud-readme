@@ -64,3 +64,36 @@
   .awh-product-nav-note{margin:auto 7px 3px;color:#737d89;font-size:10px;line-height:1.45}
 }
 @media(max-width:760px){.awh-product-nav{display:none}.product-dashboard{display:block}.product-dashboard> :not(#awh-product-nav){grid-column:auto}}
+
+/* Shared mobile overlay and viewport contract. */
+body.awh-overlay-open { overflow: hidden !important; overscroll-behavior: none; }
+body.awh-overlay-open .awh-mobile-nav { display: none !important; }
+body.awh-overlay-open .sheet { padding-bottom: max(0px,env(safe-area-inset-bottom)); }
+.awh-tool-dialog { padding-top: max(18px, env(safe-area-inset-top)); padding-bottom: max(18px, env(safe-area-inset-bottom)); }
+.awh-tool-dialog-card { max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 36px); overscroll-behavior: contain; scrollbar-gutter: stable; }
+.awh-tool-dialog-head > button { min-width: var(--awh-touch-target,44px); min-height: var(--awh-touch-target,44px); cursor: pointer; }
+.awh-tool-card:hover,.awh-tool-card:focus-visible,.awh-recent-item:hover,.awh-recent-item:focus-visible { border-color: rgba(255,138,54,.32); background: #191d23; outline: none; }
+.awh-home-hero,.awh-recent-panel,.awh-side-panel,.awh-owner-center,.awh-task-surface,.awh-files-surface { box-shadow: var(--awh-shadow-panel,0 18px 48px rgba(0,0,0,.18)); }
+@media(max-width:540px){
+  .awh-tool-dialog { padding: env(safe-area-inset-top) 0 0; }
+  .awh-tool-dialog-card { max-height: calc(100dvh - env(safe-area-inset-top)); padding-bottom: calc(22px + env(safe-area-inset-bottom)); }
+  .awh-mobile-nav-item { min-height: var(--awh-touch-target,44px); }
+}
+
+/* Shared interaction sizing: compact visual treatments still retain a full touch target. */
+.awh-text-action,.dashboard-home-button,.awh-home-prompt {
+  display: inline-flex;
+  min-height: var(--awh-touch-target,44px);
+  align-items: center;
+}
+.awh-text-action,.dashboard-home-button,.awh-home-prompt { justify-content: center; }
+.awh-product-nav-item { min-height: var(--awh-touch-target,44px); }
+.awh-task-filter,.awh-task-attention .awh-secondary-action,.awh-task-detail>.awh-secondary-action,.awh-file-open-task {
+  min-height: var(--awh-touch-target,44px);
+}
+@media(max-width:760px){
+  .awh-command-send,.awh-home-prompt,.awh-heading-actions .awh-text-action,.awh-files-search .awh-text-action {
+    min-height: var(--awh-touch-target,44px);
+  }
+  .awh-home-prompt { padding: 8px 10px; }
+}

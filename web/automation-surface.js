@@ -96,8 +96,8 @@ async function submitForm(event) { event.preventDefault(); const form=event.curr
 function field(label,name,kind='input') { const wrap=document.createElement('label'); wrap.className='awh-automation-field'; const text=document.createElement('span'); text.textContent=label; const control=document.createElement(kind); control.name=name; wrap.append(text,control); return [wrap,control]; }
 function mountSheet() {
   if ($(SHEET_ID)) return; const sheet=document.createElement('section'); sheet.id=SHEET_ID; sheet.className='awh-automation-sheet'; sheet.hidden=true; sheet.setAttribute('role','dialog'); sheet.setAttribute('aria-modal','true');
-  const backdrop=button('','awh-automation-backdrop'); backdrop.setAttribute('aria-label','ปิด Automations'); backdrop.addEventListener('click',()=>sheet.hidden=true);
-  const panel=document.createElement('div'); panel.className='awh-automation-panel'; const head=document.createElement('header'); head.className='awh-automation-head'; const h=document.createElement('div'); h.innerHTML='<span>AUTOMATIONS</span><h2>งานอัตโนมัติ</h2><p>บอกงานและเวลา AWH จะส่งเข้าระบบงานเดิมให้อัตโนมัติ</p>'; const close=button('ปิด'); close.addEventListener('click',()=>sheet.hidden=true); head.append(h,close);
+  const backdrop=button('','awh-automation-backdrop'); backdrop.setAttribute('aria-label','ปิด Automations'); backdrop.addEventListener('click',()=>closeAwhDialog(sheet));
+  const panel=document.createElement('div'); panel.className='awh-automation-panel'; const head=document.createElement('header'); head.className='awh-automation-head'; const h=document.createElement('div'); h.innerHTML='<span>AUTOMATIONS</span><h2>งานอัตโนมัติ</h2><p>บอกงานและเวลา AWH จะส่งเข้าระบบงานเดิมให้อัตโนมัติ</p>'; const close=button('ปิด'); close.addEventListener('click',()=>closeAwhDialog(sheet)); head.append(h,close);
   const form=document.createElement('form'); form.id=FORM_ID; form.className='awh-automation-form'; form.addEventListener('submit',submitForm);
   const [nameWrap,name]=field('ชื่อ Automation','name'); name.required=true; name.maxLength=120;
   const [goalWrap,goal]=field('อยากให้ AWH ทำอะไร','goal','textarea'); goal.required=true; goal.maxLength=2000; goal.rows=3;
@@ -118,7 +118,7 @@ async function activate() {
   try { const available=await refresh(); if (!available) { trigger.disabled=true; const badge=trigger.querySelector('.awh-owner-command-badge'); if (badge) badge.textContent='รอเปิดใช้'; return true; } }
   catch { return true; }
   trigger.disabled=false; const badge=trigger.querySelector('.awh-owner-command-badge'); if (badge) badge.textContent='พร้อมใช้';
-  trigger.addEventListener('click',(event)=>{ event.preventDefault(); event.stopImmediatePropagation(); const sheet=$(SHEET_ID); if (sheet) { sheet.hidden=false; refresh().catch(()=>{}); } },true); return true;
+  trigger.addEventListener('click',(event)=>{ event.preventDefault(); event.stopImmediatePropagation(); const sheet=$(SHEET_ID); if (sheet) { openAwhDialog(sheet); refresh().catch(()=>{}); } },true); return true;
 }
 function start() { if (activate()) return; const observer=new MutationObserver(()=>{ if (activate()) observer.disconnect(); }); observer.observe(document.documentElement,{childList:true,subtree:true}); }
 if (document.readyState==='loading') document.addEventListener('DOMContentLoaded',start,{once:true}); else start();

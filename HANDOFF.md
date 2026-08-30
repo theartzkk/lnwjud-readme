@@ -1,4 +1,22 @@
-# Authoritative handoff — 2026-08-30 Final user-operable closure candidate
+# Authoritative handoff — 2026-08-30 Final full-use UAT closure
+
+## Current truth
+
+- Baseline source/origin and live Production were exact `5f8f6dd226b6db6e23426573a15d99cf207c24f4`. Production remains on that release; this run performed no deploy, credential handling, direct DB mutation or destructive storage action.
+- The current batch is one shared-system closure: mobile viewport/scroll, overlay and navigation history/focus, Design System interaction sizing and responsive overflow, standalone Owner Back controls, strict typed deploy-manifest output, Web navigation asset checksum gates, and immutable objective execution-triage classification.
+- No-Trash found the ignored 24 August `out/` and Desktop ZIPs fail the current packaged owner-protocol identity gate. They are preserved under `.awh-local/quarantine/stale-desktop-release-20260830-baseline-5f8/`; the login now fails closed and reveals only packages listed by a structurally valid same-origin release manifest.
+- Automated evidence is green: typecheck; full Node `322/321/0/1`; supported Hub/PHP fixtures; CONTROL Web build; `WEB_RELEASE_MANIFEST=PASS files=31`; Desktop smoke; final UAT shell/deploy parser tests. Rendered 390x844 proof reaches `scrollY=2672` at max `2672`, with zero horizontal overflow, zero nav overlap and zero visible sub-44px controls; simulated viewport contraction/restore does not retain a scroll lock.
+- Browser-responsive evidence does not replace physical iPhone Safari, installed candidate Desktop or real Production authentication/file-picker UAT. Those remain explicit Owner/manual gates, and no 100% claim is authorized yet.
+
+## Resume from here
+
+1. Review/stage only the named final-batch files and these four checkpoint documents; commit and push one coherent candidate.
+2. Verify hosted CI for the exact pushed HEAD, refresh ignored release evidence from those real facts, pass `ops:release:check` and clean-origin `qa:local`, then package/verify fresh Desktop artifacts from that frozen source.
+3. Stop at one exact-SHA typed M16 approval. Do not activate another SHA, e62 or an intermediate build.
+4. After approval, verify exact pointers/SHA, DB16/integrity/FK, services/timers, manifest asset HTTP/checksum, authenticated smoke, triage, Staff/Governor, Document AI and Project Factory.
+5. Finish with one compact Owner UAT covering real login/logout/wrong password/session, physical iPhone Safari portrait/keyboard/back/scroll, installed Desktop, file-picker/PDF/Image/QR export and generated artifacts.
+
+# Previous handoff — 2026-08-30 Final user-operable closure candidate
 
 ## Current truth
 

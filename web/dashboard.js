@@ -2,6 +2,7 @@ import { loadControlData } from './control-plane-adapter.js?release=__AWH_WEB_RE
 import { SCHOOL_TOOLS, OWNER_TOOLS } from './tool-registry.js?release=__AWH_WEB_RELEASE_ID__';
 import { LOCAL_TOOL_ACTIONS, mountSchoolTools, openProjectFactoryTool, openSchoolDocumentTool } from './school-tools.js?release=__AWH_WEB_RELEASE_ID__';
 import { executionStatus } from './execution-ux.js?release=__AWH_WEB_RELEASE_ID__';
+import { closeAwhDialog, commitAwhSurface, onAwhSurfaceChange, openAwhDialog } from './navigation.js?release=__AWH_WEB_RELEASE_ID__';
 
 const DASHBOARD_ID = 'product-dashboard';
 const IMAGE_MAX_BYTES = 30 * 1024 * 1024;
@@ -16,6 +17,7 @@ const state = {
   taskFilter: 'all',
   selectedTaskId: null,
   filesQuery: '',
+  restoringSurface: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -184,6 +186,7 @@ function openWork(prompt = '', submit = false) {
   const dashboard = $(DASHBOARD_ID);
   if (dashboard) dashboard.hidden = true;
   updateProductNavigation();
+  if (!state.restoringSurface) commitAwhSurface('work');
   const input = $('goal-input');
   if (input && typeof prompt === 'string') {
     input.value = prompt;
@@ -253,7 +256,8 @@ function returnHome() {
   dashboard.hidden = false;
   document.body.classList.add('product-dashboard-active');
   updateProductNavigation();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (!state.restoringSurface) commitAwhSurface('home');
+  window.scrollTo({ top: 0, behavior: state.restoringSurface ? 'auto' : 'smooth' });
   refreshDashboard().catch(() => undefined);
 }
 
@@ -385,6 +389,7 @@ function openTaskSurface(filter = 'all', taskId = null) {
   const dashboard = $(DASHBOARD_ID);
   if (dashboard) dashboard.hidden = false;
   document.body.classList.add('product-dashboard-active');
+  if (!state.restoringSurface) commitAwhSurface('tasks');
   renderTaskSurface();
   $('dashboard-tasks')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -432,6 +437,7 @@ function openFilesSurface(query = '') {
   const dashboard = $(DASHBOARD_ID);
   if (dashboard) dashboard.hidden = false;
   document.body.classList.add('product-dashboard-active');
+  if (!state.restoringSurface) commitAwhSurface('files');
   renderFilesSurface();
   $('dashboard-files')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -640,12 +646,12 @@ function createImageTool() {
 
 function openImageTool() {
   const dialog = $('dashboard-image-tool');
-  if (dialog) dialog.hidden = false;
+  if (dialog) openAwhDialog(dialog);
 }
 
 function closeImageTool() {
   const dialog = $('dashboard-image-tool');
-  if (dialog) dialog.hidden = true;
+  if (dialog) closeAwhDialog(dialog);
 }
 
 async function selectImageFile(event) {
@@ -902,6 +908,7 @@ async function syncSurface() {
     document.body.dataset.awhDashboardVisited = '1';
     dashboard.hidden = false;
     document.body.classList.add('product-dashboard-active');
+    commitAwhSurface('home', { replace: true, scrollY: 0 });
   }
   if (!state.control) {
     try { await refreshDashboard(); } catch { return; }
@@ -910,6 +917,16 @@ async function syncSurface() {
 
 function start() {
   mountDashboard();
+  onAwhSurfaceChange((surface, navigationState) => {
+    state.restoringSurface = true;
+    try {
+      if (surface === 'work') openWork();
+      else if (surface === 'tasks') openTaskSurface(state.taskFilter, state.selectedTaskId);
+      else if (surface === 'files') openFilesSurface(state.filesQuery);
+      else returnHome();
+    } finally { state.restoringSurface = false; }
+    window.requestAnimationFrame(() => window.scrollTo({ top: Math.max(0, Number(navigationState?.awhScrollY) || 0), behavior: 'auto' }));
+  });
   window.addEventListener('awh:work-context', (event) => {
     if (!(event instanceof CustomEvent) || !event.detail || typeof event.detail !== 'object' || event.detail.schemaVersion !== 1) return;
     state.workContext = event.detail; renderContinuity();
@@ -919,6 +936,8 @@ function start() {
   document.addEventListener('visibilitychange', () => { if (!document.hidden && document.body.classList.contains('product-dashboard-active')) refreshDashboard().catch(() => undefined); });
   state.refreshTimer = window.setInterval(() => { if (document.body.classList.contains('product-dashboard-active')) refreshDashboard().catch(() => undefined); }, 30000);
   syncSurface().catch(() => undefined);
+  const initialSurface = document.body.classList.contains('product-dashboard-active') ? 'home' : 'work';
+  commitAwhSurface(initialSurface, { replace: true, scrollY: window.scrollY });
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });

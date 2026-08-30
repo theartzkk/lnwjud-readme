@@ -13,7 +13,7 @@
   <div class="studio-shell">
     <header class="studio-header">
       <a class="brand" href="./"><span class="brand-mark">A</span><span><strong>AWH Database Studio</strong><small>Owner · SQLite Control Plane</small></span></a>
-      <div class="header-actions"><span id="connection-state" class="pill">กำลังตรวจสอบ</span><a class="back-link" href="./">กลับ AWH</a></div>
+      <div class="header-actions"><span id="connection-state" class="pill">กำลังตรวจสอบ</span><a class="back-link awh-back-link" data-awh-back href="./"><span aria-hidden="true">←</span><span>กลับ AWH</span></a></div>
     </header>
 
     <main>
@@ -85,6 +85,7 @@
       </section>
     </main>
   </div>
+  <script type="module" src="./navigation.js?release=__AWH_WEB_RELEASE_ID__"></script>
   <script type="module" src="./database.js?release=__AWH_WEB_RELEASE_ID__"></script>
 </body>
 </html>

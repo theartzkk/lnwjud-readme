@@ -38,6 +38,9 @@ jobs:
       - if: runner.os != 'Windows'
         run: npm test
       - if: runner.os != 'Windows'
+        name: Verify final mobile shell and typed deploy contracts
+        run: node --import tsx --test test/final-uat-shell.test.ts
+      - if: runner.os != 'Windows'
         run: npm run hub:test
       - run: npm run build
 

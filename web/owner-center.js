@@ -33,13 +33,13 @@
     $('account-open')?.click();
     window.setTimeout(() => {
       const target = document.querySelector(`[data-settings-tab="${tab}"]`);
-      if (target instanceof HTMLButtonElement && !target.hidden) target.click();
+      if (target instanceof HTMLButtonElement && !target.hidden) { target.click(); target.focus(); }
     }, 0);
   }
 
-  function closeCenter() {
+  function closeCenter(options = {}) {
     const sheet = $(SHEET_ID);
-    if (sheet) sheet.hidden = true;
+    if (sheet) closeAwhDialog(sheet, options);
   }
 
   function exitTeacherPreview() {
@@ -48,7 +48,7 @@
   }
 
   function enterTeacherPreview() {
-    closeCenter();
+    closeCenter({ history: false });
     document.body.classList.add(PREVIEW_CLASS);
     if (!$(PREVIEW_BAR_ID)) {
       const bar = document.createElement('aside');
@@ -69,7 +69,7 @@
   function runAction(action) {
     if (action === 'automations') return;
     if (action === 'teacher-preview') { enterTeacherPreview(); return; }
-    closeCenter();
+    closeCenter({ history: false });
     if (action === 'projects') { $('project-open')?.click(); return; }
     if (action === 'multi-chat') { $('conversation-open')?.click(); return; }
     if (action === 'tasks') { $('dashboard-open-tasks')?.click(); return; }
@@ -130,7 +130,7 @@
     launch.type = 'button';
     launch.className = 'awh-owner-center-launch';
     launch.textContent = 'เปิด Owner Center';
-    launch.addEventListener('click', () => { const sheet = $(SHEET_ID); if (sheet) { sheet.hidden = false; refreshSummary(); } });
+    launch.addEventListener('click', () => { const sheet = $(SHEET_ID); if (sheet) { openAwhDialog(sheet); refreshSummary(); } });
     heading?.append(launch);
 
     const sheet = document.createElement('section');

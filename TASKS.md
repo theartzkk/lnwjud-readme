@@ -1,4 +1,26 @@
-# Authoritative task supersession — 2026-08-30 Final user-operable closure candidate
+# Authoritative task supersession — 2026-08-30 Final full-use UAT closure
+
+## Closed in this coherent source batch
+
+- [x] Reconcile exact source/origin/Production `5f8f6dd226b6db6e23426573a15d99cf207c24f4`, worktrees, active processes and disk before mutation; preserve unrelated dirty or active work.
+- [x] Reproduce and repair the authenticated iPhone-width Dashboard scroll lock at the shared Work/Dashboard shell boundary.
+- [x] Add one shared dialog/surface/Back contract with browser history, focus restore, Tab trap, Escape, deep-page fallback and safe scroll restoration.
+- [x] Harden shared Design System touch targets, responsive Settings/System overflow, safe-area overlays, reduced motion and premium interaction feedback without adding a competing shell.
+- [x] Accept the bounded 30/31-file Web manifest PASS line through a strict typed deploy-output validator; keep unknown output fail-closed.
+- [x] Classify objectively superseded execution failures as stale while preserving audit rows and truthful current defects/capability blockers.
+- [x] Detect and quarantine stale ignored Desktop outputs whose current packaged identity verification fails; fail closed by hiding public installer links until the verified release manifest contains eligible packages.
+- [x] Pass typecheck, full Node regression `322/321/0/1`, supported Hub/PHP fixtures, CONTROL build, 31-file checksum verifier, Desktop smoke and final rendered responsive checks.
+
+## First unfinished checkpoint
+
+- [ ] Freeze and push one exact candidate; verify origin exact and hosted CI.
+- [ ] Refresh ignored `release-evidence.json` only from the real exact SHA/CI facts; pass `ops:release:check` and clean-origin `qa:local`.
+- [ ] Build and verify fresh macOS x64 and Windows x64 artifacts from the frozen exact SHA before exposing installer links; keep the stale artifacts recoverable in quarantine.
+- [ ] Request one exact-SHA typed M16 Production approval; do not deploy any other SHA or create a micro-release.
+- [ ] After activation run authenticated Production smoke and Owner UAT: real login/logout/session/wrong password, physical iPhone Safari, installed Desktop rendering, actual PDF/Image/file-picker flows, Document AI artifact and Project Factory preview.
+- [ ] Keep Production Complete FAIL until post-deploy field evidence and Owner rendered UAT are both complete.
+
+# Previous task supersession — 2026-08-30 Final user-operable closure candidate
 
 ## Closed in the coherent candidate
 

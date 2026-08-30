@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="./awh-design-system.css?release=__AWH_WEB_RELEASE_ID__" />
 </head>
 <body>
-  <header class="trust-header"><a href="./" class="back">← AWH</a><div><span>OWNER</span><strong>Trust Center</strong></div><button id="trust-refresh" type="button">รีเฟรช</button></header>
+  <header class="trust-header"><a href="./" class="back awh-back-link" data-awh-back><span aria-hidden="true">←</span><span>กลับ AWH</span></a><div><span>OWNER</span><strong>Trust Center</strong></div><button id="trust-refresh" type="button">รีเฟรช</button></header>
   <main class="trust-main">
     <section class="hero"><div><p class="eyebrow">TRUST & CONTROL</p><h1>AI ทำอะไรไปบ้าง<br />ตรวจสอบได้จากที่เดียว</h1><p>AWH สรุปหลักฐานการทำงาน การอนุมัติ ผลลัพธ์ Undo และสุขภาพข้อมูล โดยไม่แสดง secret หรือ path ภายในระบบ</p></div><div class="trust-state"><span id="trust-dot"></span><strong id="trust-overall">กำลังตรวจสอบ</strong><small id="trust-freshness">—</small></div></section>
     <section class="metric-grid" aria-label="สรุปความน่าเชื่อถือ">
@@ -27,6 +27,7 @@
     <section id="attention" class="panel attention" hidden><div class="panel-head"><div><p class="eyebrow">ATTENTION</p><h2>สิ่งที่ควรตรวจ</h2></div></div><div id="attention-list" class="event-list"></div></section>
     <nav class="links"><a href="./infrastructure.html">Infrastructure</a><a href="./database.html">Database Studio</a><a href="./">กลับหน้าแรก</a></nav>
   </main>
+  <script type="module" src="./navigation.js?release=__AWH_WEB_RELEASE_ID__"></script>
   <script type="module" src="./trust.js?release=__AWH_WEB_RELEASE_ID__"></script>
 </body>
 </html>

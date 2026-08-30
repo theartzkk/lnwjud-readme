@@ -23,7 +23,10 @@ final class HubExecutionTriageService
         $reference = strtotime($now ?? 'now');
         if ($reference === false) return self::unknown('TRIAGE_TIME_INVALID');
         try {
-            $query = $this->pdo->query("SELECT e.execution_id,e.task_id,e.state,e.required_capability,e.attempt_count,e.last_error_code,e.updated_at,t.goal,p.name AS project_name FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id JOIN projects p ON p.project_id=t.project_id WHERE e.state IN ('FAILED','WAITING_FOR_CAPABILITY') ORDER BY e.updated_at DESC,e.execution_id LIMIT " . ($limit + 1));
+            $query = $this->pdo->query("SELECT e.execution_id,e.task_id,e.project_id,e.state,e.required_capability,e.attempt_count,e.last_error_code,e.updated_at,t.goal,p.name AS project_name,
+                (SELECT successor.execution_id FROM control_task_executions successor WHERE successor.project_id=e.project_id AND successor.required_capability=e.required_capability AND successor.state='COMPLETED' AND successor.updated_at>e.updated_at ORDER BY successor.updated_at ASC,successor.execution_id ASC LIMIT 1) AS superseded_execution_id,
+                (SELECT successor.updated_at FROM control_task_executions successor WHERE successor.project_id=e.project_id AND successor.required_capability=e.required_capability AND successor.state='COMPLETED' AND successor.updated_at>e.updated_at ORDER BY successor.updated_at ASC,successor.execution_id ASC LIMIT 1) AS superseded_at
+                FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id JOIN projects p ON p.project_id=t.project_id WHERE e.state IN ('FAILED','WAITING_FOR_CAPABILITY') ORDER BY e.updated_at DESC,e.execution_id LIMIT " . ($limit + 1));
             $rows = $query === false ? [] : $query->fetchAll();
         } catch (Throwable) {
             return self::unknown('TRIAGE_UNAVAILABLE');
@@ -41,10 +44,14 @@ final class HubExecutionTriageService
             $updated = strtotime((string) ($row['updated_at'] ?? ''));
             $ageSeconds = $updated === false ? null : max(0, $reference - $updated);
             $goal = (string) ($row['goal'] ?? '');
+            $supersededBy = (string) ($row['superseded_execution_id'] ?? '');
+            $supersededAt = (string) ($row['superseded_at'] ?? '');
             if ($state === 'WAITING_FOR_CAPABILITY') {
                 $classification = 'BLOCKED_CAPABILITY'; $summary['blockedCapability']++; $reason = 'รอ provider/worker/capability; ไม่ blind retry';
             } elseif (preg_match('/(?:field proof|fixture|expected failure|negative test|ทดสอบ|หลักฐานภาคสนาม)/iu', $goal) === 1) {
                 $classification = 'HISTORICAL_EXPECTED'; $summary['historicalExpected']++; $reason = 'goal ระบุ test/field-proof evidence; เก็บไว้เป็น audit';
+            } elseif ($supersededBy !== '') {
+                $classification = 'OBSOLETE_STALE'; $summary['obsoleteStale']++; $reason = 'มี execution ที่สำเร็จภายหลังใน project/capability เดียวกัน; เก็บ failure เดิมเป็น audit';
             } elseif (in_array($code, self::RETRYABLE_CODES, true) && $attempts < 3) {
                 $classification = 'RETRYABLE'; $summary['retryable']++; $reason = 'transient code และยังไม่ถึง bounded retry limit';
             } elseif ($ageSeconds !== null && $ageSeconds >= 604800) {
@@ -64,6 +71,8 @@ final class HubExecutionTriageService
                 'ageSeconds'=>$ageSeconds,
                 'classification'=>$classification,
                 'reason'=>$reason,
+                'supersededByExecutionId'=>$supersededBy !== '' ? $supersededBy : null,
+                'supersededAt'=>$supersededAt !== '' ? $supersededAt : null,
             ];
         }
         return [
@@ -74,7 +83,7 @@ final class HubExecutionTriageService
             'total'=>count($items),
             'items'=>$items,
             'bounded'=>$bounded,
-            'policyVersion'=>'execution-triage-v1',
+            'policyVersion'=>'execution-triage-v2',
             'auditHistoryPreserved'=>true,
             'blindRetry'=>false,
             'nextAction'=>$summary['currentDefect'] > 0 ? 'ตรวจ current defect ก่อนเลือก bounded retry' : ($summary['retryable'] > 0 ? 'ให้ canonical retry policy พิจารณาใน tick ถัดไป' : 'คง blocker/history ตามหลักฐาน'),
@@ -84,6 +93,6 @@ final class HubExecutionTriageService
     /** @return array<string,mixed> */
     private static function unknown(string $reason): array
     {
-        return ['schemaVersion'=>1,'state'=>'UNKNOWN','observedAt'=>null,'summary'=>['historicalExpected'=>0,'obsoleteStale'=>0,'retryable'=>0,'blockedCapability'=>0,'currentDefect'=>0],'total'=>0,'items'=>[],'bounded'=>true,'policyVersion'=>'execution-triage-v1','auditHistoryPreserved'=>true,'blindRetry'=>false,'reason'=>$reason,'nextAction'=>'ตรวจ canonical execution schema/read authority'];
+        return ['schemaVersion'=>1,'state'=>'UNKNOWN','observedAt'=>null,'summary'=>['historicalExpected'=>0,'obsoleteStale'=>0,'retryable'=>0,'blockedCapability'=>0,'currentDefect'=>0],'total'=>0,'items'=>[],'bounded'=>true,'policyVersion'=>'execution-triage-v2','auditHistoryPreserved'=>true,'blindRetry'=>false,'reason'=>$reason,'nextAction'=>'ตรวจ canonical execution schema/read authority'];
     }
 }

@@ -1,4 +1,14 @@
-# Authoritative decision — 2026-08-30 Final closure boundaries
+# Authoritative decision — 2026-08-30 Final full-use UAT boundaries
+
+- Work may retain a fixed conversation viewport, but authenticated Dashboard pages must use document scrolling. Only the shared overlay authority may temporarily lock body scroll; it must restore scroll/focus and hide mobile navigation while a dialog is open.
+- Browser history is product state for Home/Work/Tasks/Files and dialogs, not a second task or navigation authority. Standalone Owner pages use same-origin history when valid and a canonical Home fallback otherwise.
+- Touch targets, safe areas, focus, reduced motion, typography and responsive overflow belong in the shared Design System/shell selectors. Local page hacks are not accepted when a shared root selector owns the defect.
+- Typed Production output remains fail-closed. Manifest PASS evidence is accepted only in the bounded form `WEB_RELEASE_MANIFEST=PASS files=N` with `1 <= N <= 100`; arbitrary output or secret-like lines remain rejected.
+- Execution triage is immutable/read-only. A later canonical success for the same project/capability is objective stale evidence, not deletion; unresolved failures remain current and WAITING_FOR_CAPABILITY remains blocked.
+- Installer links are fail-closed product actions. Ignored packages are not eligible merely because their own checksum file matches; if the current package verifier fails or the package is absent from the current Web manifest, the UI must not expose its link. Stale outputs move to recoverable quarantine before any purge decision.
+- Production stays exact `5f8f6dd226b6db6e23426573a15d99cf207c24f4` until one final candidate has exact origin, hosted CI, release evidence, clean QA and explicit exact-SHA typed M16 approval. Responsive Chrome evidence cannot be relabeled as physical iPhone Safari or Owner authentication acceptance.
+
+# Previous decision — 2026-08-30 Final closure boundaries
 
 - A Web release is valid only when every `release.json` entry is present, regular, inside the release root, size-exact and SHA-256-exact before pointer movement. `awh-design-system.css` is a required product contract, not an optional cosmetic asset; public post-cutover verification must return 200 for it.
 - Owner Center navigation must invoke the existing Dashboard task/files/settings authorities. Hiding the Dashboard is not a Tasks implementation; Tasks and Approvals reuse `dashboard-open-tasks` and `dashboard-pulse-attention-card` respectively.

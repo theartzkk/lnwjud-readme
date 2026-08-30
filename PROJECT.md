@@ -1,4 +1,21 @@
-# AWH final user-operable closure candidate — 2026-08-30
+# AWH final full-use UAT closure batch — 2026-08-30
+
+## Authoritative current checkpoint
+
+- This coherent batch started from clean source/origin and live Production exact SHA `5f8f6dd226b6db6e23426573a15d99cf207c24f4`. Production was inspected read-only and remains unchanged; no credential, direct database mutation, release activation or rollback occurred.
+- The shared mobile-shell root cause is closed in source: authenticated Dashboard pages release the Work-only fixed viewport, overlays own one safe scroll lock, bottom navigation yields to dialogs, and dynamic viewport/safe-area behavior remains reachable. One navigation module now owns dialog history, Escape/Tab focus behavior, Dashboard surface history and standalone Owner-page Back fallback.
+- The Design System batch standardizes 44 px interaction targets, typography rendering, motion/reduced-motion, focus, spacing and mobile overflow contracts without creating a second shell or page-specific state authority. Settings/System overflow and narrow-screen tab visibility are fixed at their shared selectors.
+- The typed M16 output parser now accepts bounded verified evidence such as `WEB_RELEASE_MANIFEST=PASS files=30` while rejecting unknown output. `navigation.js` is manifest/checksum/service-worker/deployment verified before a Web pointer may move.
+- Failed/waiting execution history remains immutable. A later canonical COMPLETED execution with the same project and capability marks an older failure `OBSOLETE_STALE`; unresolved failures and capability blockers remain visible and are never blindly retried.
+- No-Trash inspection proved the ignored 24 August macOS/Windows packages were stale: both failed the current packaged owner-protocol verifier even though their ZIP checksums matched. They were moved intact into governed local `QUARANTINE`; public download actions now stay hidden unless the same-origin verified release manifest contains valid bounded package entries.
+
+## Evidence and truthful boundary
+
+- Automated: TypeScript typecheck PASS; Node regression `322 total / 321 PASS / 0 FAIL / 1 platform SKIP`; supported Hub/PHP fixtures PASS; CONTROL build and 31-file SHA-256 manifest verification PASS; Desktop smoke PASS; final mobile/navigation/deploy-parser regressions PASS.
+- Rendered local candidate at 390x844 reaches the true scroll bottom (`2672/2672`), has no horizontal overflow, no bottom-nav overlap and no visible sub-44px control. Responsive desktop, Work, Tasks, Files, Settings, Owner pages, School Document AI and Project Factory forms were inspected through the authenticated fixture. This is real browser evidence, not physical Safari or Production candidate evidence.
+- Still open: clean freeze/push, exact-head CI, exact-SHA release evidence and clean-origin QA; then one typed M16 approval. Fresh exact-source Desktop package generation/verification, physical iPhone Safari keyboard/swipe-back, installed candidate Desktop visual review, real username/password/logout/wrong-password, file-picker transforms and post-deploy Production UAT remain gates. Production Complete therefore remains FAIL until those gates and deployment pass.
+
+# Previous checkpoint — AWH final user-operable closure candidate — 2026-08-30
 
 ## Authoritative live reconciliation and candidate scope
 
