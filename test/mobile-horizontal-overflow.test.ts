@@ -33,6 +33,11 @@ test('Web surfaces keep page width bounded while allowing scoped content scrolli
   assert.match(responsiveLayout, /\.product-dashboard,[\s\S]*\.awh-command-form,[\s\S]*\.awh-mobile-nav/);
   assert.match(responsiveLayout, /min-width:\s*0;\s*max-width:\s*100%/);
   assert.match(responsiveLayout, /\.awh-mobile-nav\)\s*\{\s*max-width:\s*calc\(100% - 16px\)/s);
+  assert.match(responsiveLayout, /\.awh-home-overview,[\s\S]*\.awh-task-layout[\s\S]*> \* \{ min-width: 0; max-width: 100%; \}/);
+  assert.match(responsiveLayout, /\.awh-recent-panel,[\s\S]*\.awh-status-item,[\s\S]*min-width: 0; max-width: 100%/);
+  assert.match(responsiveLayout, /\.awh-heading-actions\) \{ display: flex; flex-wrap: wrap; \}/);
+  assert.match(responsiveLayout, /\.awh-recent-item > span,[\s\S]*flex: 1 1 auto/);
+  assert.match(responsiveLayout, /\.awh-status-item strong,[\s\S]*\.awh-tool-copy strong,[\s\S]*\.awh-artifact-card small,[\s\S]*overflow-wrap: anywhere/);
   assert.match(build, /responsive-layout\.css\?release=__AWH_WEB_RELEASE_ID__/);
   assert.match(manifest, /'responsive-layout\.css'/);
   assert.match(serviceWorker, /responsive-layout\.css\?release=__AWH_WEB_RELEASE_ID__/);

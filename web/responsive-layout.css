@@ -58,3 +58,35 @@ body { overflow-x: clip; }
   overflow-wrap: anywhere;
   word-break: break-word;
 }
+
+/* Dashboard grid/section items must be shrinkable too. Grid children default to
+ * min-width:auto, so production task/artifact text can otherwise expand a 1fr
+ * mobile track far beyond the visual viewport even when the shell is bounded. */
+:where(
+  .awh-home-overview,
+  .awh-tool-grid,
+  .awh-owner-grid,
+  .awh-artifact-grid,
+  .awh-pulse-grid,
+  .awh-task-layout,
+  .awh-task-detail-facts
+) > * { min-width: 0; max-width: 100%; }
+
+:where(
+  .awh-home-section,
+  .awh-recent-panel,
+  .awh-side-panel,
+  .awh-owner-center,
+  .awh-section-heading,
+  .awh-heading-actions,
+  .awh-recent-list,
+  .awh-status-list,
+  .awh-recent-item,
+  .awh-status-item,
+  .awh-artifact-card,
+  .awh-pulse-card
+) { min-width: 0; max-width: 100%; }
+
+:where(.awh-heading-actions) { display: flex; flex-wrap: wrap; }
+:where(.awh-recent-item > span, .awh-status-item > span:last-child, .awh-artifact-card > span:last-child, .awh-pulse-card > span:last-child) { min-width: 0; max-width: 100%; flex: 1 1 auto; }
+:where(.awh-status-item strong, .awh-status-item small, .awh-recent-item strong, .awh-recent-item small, .awh-tool-copy strong, .awh-tool-copy small, .awh-artifact-card strong, .awh-artifact-card small, .awh-owner-command-copy strong, .awh-owner-command-copy small, .awh-pulse-card strong, .awh-pulse-card small, .awh-pulse-card em) { overflow-wrap: anywhere; word-break: break-word; }
