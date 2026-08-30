@@ -355,9 +355,9 @@ final class HubDurableExecutionService
         $tools = [['type'=>'function','name'=>'project_read_text','description'=>'Read one bounded text file from the immutable canonical Project Vault. Read-only.','parameters'=>['type'=>'object','additionalProperties'=>false,'properties'=>['path'=>['type'=>'string','maxLength'=>900]],'required'=>['path']]]];
         try { $result = $this->agent->respondWithTools((string)$claimed['user_id'],$projectId,null,null,$request,[],[],$context,$tools,function(string $name,array $arguments) use($projectId,$revision): array { if ($name !== 'project_read_text' || !is_string($arguments['path'] ?? null)) throw new HubDurableExecutionException('Continuous planner tool input is invalid','EXECUTION_INVALID'); return $this->vaults->vault()->toolReadText($projectId,$revision,(string)$arguments['path']); },$at,['executionId'=>(string)$claimed['execution_id'],'taskId'=>(string)$claimed['task_id'],'capability'=>'project.read','dataClassification'=>'INTERNAL','retryCount'=>(int)$claimed['attempt_count'],'routingPolicyVersion'=>'m16-v1','promptPolicyVersion'=>'continuous-v1','toolPolicyVersion'=>'read-only-v1']); }
         catch (HubNativeAgentException $error) { return self::continuationFallback($error->codeName); }
-        catch (Throwable) { return null; }
+        catch (Throwable) { return self::continuationFallback('PROVIDER_FAILED'); }
         $text = trim((string)($result['summary'] ?? ''));
-        if (preg_match('/^NEXT:\s*(.{8,2000})$/us', $text, $m) !== 1) return null;
+        if (preg_match('/^NEXT:\s*(.{8,2000})$/us', $text, $m) !== 1) return str_starts_with($text, 'STOP:') ? null : 'ตรวจ Project Vault revision ต่อแบบ read-only และทบทวนงาน stale ที่ยังไม่ปิด';
         return trim($m[1]);
     }
 
