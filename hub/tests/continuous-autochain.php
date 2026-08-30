@@ -23,6 +23,13 @@ chain_assert($inspection->invoke(null, 'ตรวจ source แล้วแก�
 $same = new ReflectionMethod(HubDurableExecutionService::class, 'sameGoal');
 chain_assert($same->invoke(null, ' Inspect   source ', 'inspect source') === true, 'same-goal loop detection must normalize whitespace/case');
 
+$continuationFallback = new ReflectionMethod(HubDurableExecutionService::class, 'continuationFallback');
+foreach (['PROVIDER_FAILED', 'PROVIDER_UNAVAILABLE', 'PROVIDER_RATE_LIMITED'] as $providerFailure) {
+    $next = $continuationFallback->invoke(null, $providerFailure);
+    chain_assert(is_string($next) && str_starts_with($next, 'NEXT:'), $providerFailure . ' must preserve a bounded scalar continuation fallback');
+}
+chain_assert($continuationFallback->invoke(null, 'PROVIDER_AUTH_FAILED') === null, 'non-fallback provider failures must remain blocked');
+
 $control = file_get_contents(dirname(__DIR__) . '/src/HubControlPlaneService.php');
 $durable = file_get_contents(dirname(__DIR__) . '/src/HubDurableExecutionService.php');
 $executor = file_get_contents(dirname(__DIR__) . '/bin/awh-native-executor.php');
@@ -30,6 +37,7 @@ chain_assert(is_string($control) && str_contains($control, "a.status='PENDING'")
 chain_assert(str_contains($control, "fetchColumn() !== 'COMPLETED'"), 'only a completed canonical parent may materialize continuation');
 chain_assert(is_string($durable) && str_contains($durable, '$maxSteps > 8'), 'continuous chain must have a hard step bound');
 chain_assert(str_contains($durable, 'sourceTruth') && str_contains($durable, "TASKS.md"), 'planner must consult bounded project source of truth');
+chain_assert(is_string($durable) && !str_contains($durable, "return ['summary' => 'NEXT:"), 'continuation fallback must not return an invalid array from a scalar planner');
 chain_assert(is_string($executor) && str_contains($executor, 'materializeContinuationSubmission'), 'native executor must route follow-up creation through canonical control plane');
 chain_assert(is_string($control) && str_contains($control, 'checkpoint_json') && str_contains($control, 'executionContinuation'), 'worker task projection must expose validated continuation lineage from the canonical execution checkpoint');
 

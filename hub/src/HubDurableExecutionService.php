@@ -354,7 +354,7 @@ final class HubDurableExecutionService
         $context = ['completedGoal'=>(string)$claimed['goal'],'completedSummary'=>function_exists('mb_substr')?mb_substr($summary,0,3000):substr($summary,0,3000),'sourceTruth'=>$memory];
         $tools = [['type'=>'function','name'=>'project_read_text','description'=>'Read one bounded text file from the immutable canonical Project Vault. Read-only.','parameters'=>['type'=>'object','additionalProperties'=>false,'properties'=>['path'=>['type'=>'string','maxLength'=>900]],'required'=>['path']]]];
         try { $result = $this->agent->respondWithTools((string)$claimed['user_id'],$projectId,null,null,$request,[],[],$context,$tools,function(string $name,array $arguments) use($projectId,$revision): array { if ($name !== 'project_read_text' || !is_string($arguments['path'] ?? null)) throw new HubDurableExecutionException('Continuous planner tool input is invalid','EXECUTION_INVALID'); return $this->vaults->vault()->toolReadText($projectId,$revision,(string)$arguments['path']); },$at,['executionId'=>(string)$claimed['execution_id'],'taskId'=>(string)$claimed['task_id'],'capability'=>'project.read','dataClassification'=>'INTERNAL','retryCount'=>(int)$claimed['attempt_count'],'routingPolicyVersion'=>'m16-v1','promptPolicyVersion'=>'continuous-v1','toolPolicyVersion'=>'read-only-v1']); }
-        catch (HubNativeAgentException $error) { if (self::inspectionFallbackEligible($error->codeName)) return ['summary' => 'NEXT: ตรวจ Project Vault revision ต่อแบบ read-only และทบทวนงาน stale ที่ยังไม่ปิด']; return null; }
+        catch (HubNativeAgentException $error) { return self::continuationFallback($error->codeName); }
         catch (Throwable) { return null; }
         $text = trim((string)($result['summary'] ?? ''));
         if (preg_match('/^NEXT:\s*(.{8,2000})$/us', $text, $m) !== 1) return null;
@@ -363,6 +363,7 @@ final class HubDurableExecutionService
 
     private static function sameGoal(string $a, string $b): bool { $normal = static fn(string $v): string => strtolower(preg_replace('/\s+/u',' ',trim($v)) ?? trim($v)); return $normal($a) === $normal($b); }
     private static function inspectionFallbackEligible(string $code): bool { return in_array($code, ['PROVIDER_UNAVAILABLE', 'PROVIDER_RATE_LIMITED', 'PROVIDER_FAILED'], true); }
+    private static function continuationFallback(string $code): ?string { return self::inspectionFallbackEligible($code) ? 'NEXT: ตรวจ Project Vault revision ต่อแบบ read-only และทบทวนงาน stale ที่ยังไม่ปิด' : null; }
     private static function highImpactGoal(string $goal): bool { return preg_match('/(?:deploy|production|prod\b|ลบข้อมูล|delete\b|drop\b|billing|ซื้อ|ชำระ|permission|สิทธิ์|secret|credential|api\s*key|rotate|migration|migrate|schema\s+change|ฐานข้อมูล)/iu', $goal) === 1; }
 
     /** @param array<string,mixed> $claimed @param array<string,mixed> $checkpoint */
