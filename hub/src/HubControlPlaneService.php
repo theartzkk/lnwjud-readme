@@ -423,7 +423,11 @@ final class HubControlPlaneService
         $artifact24h = $countSince('SELECT COUNT(*) FROM control_artifacts a JOIN control_tasks t ON t.task_id=a.task_id WHERE t.user_id=:user AND a.created_at>=:since');
         $approvalCountQuery = $this->pdo->prepare("SELECT COUNT(*) FROM control_approvals a JOIN control_tasks t ON t.task_id=a.task_id WHERE t.user_id=:user AND a.status='PENDING'"); $approvalCountQuery->execute(['user' => $userId]); $pendingApprovals = (int) $approvalCountQuery->fetchColumn();
         $morningNext = $failed24h > 0 ? 'ตรวจงานที่ล้มเหลวและตัดสินใจ retry ที่อนุญาต' : ($pendingApprovals > 0 ? 'ตรวจรายการที่รอการอนุมัติ' : 'ทำงาน eligible ถัดไปตาม policy และ capability ที่พร้อม');
-        $morningBrief = ['schemaVersion'=>1,'state'=>'SNAPSHOT_ONLY','persisted'=>false,'generatedAt'=>gmdate('c'),'overnight'=>['completedTasks'=>$completed24h,'failedTasks'=>$failed24h,'recoveredFailures'=>null,'activityEvents'=>count($activity),'artifactsCreated'=>$artifact24h],'attention'=>['pendingApprovals'=>$pendingApprovals,'incidents'=>count($incidents)],'health'=>['database'=>$health['database'],'backup'=>$health['backup'],'storage'=>$health['storage'],'workers'=>$health['workerSummary']],'nextAction'=>$morningNext];
+        $snapshotBrief = ['schemaVersion'=>1,'state'=>'SNAPSHOT_ONLY','persisted'=>false,'generatedAt'=>gmdate('c'),'overnight'=>['completedTasks'=>$completed24h,'failedTasks'=>$failed24h,'recoveredFailures'=>null,'activityEvents'=>count($activity),'artifactsCreated'=>$artifact24h],'attention'=>['pendingApprovals'=>$pendingApprovals,'incidents'=>count($incidents)],'health'=>['database'=>$health['database'],'backup'=>$health['backup'],'storage'=>$health['storage'],'workers'=>$health['workerSummary']],'nextAction'=>$morningNext];
+        $persistedBrief = is_array($staff['persistedMorningBrief'] ?? null) ? $staff['persistedMorningBrief'] : [];
+        $morningBrief = (($persistedBrief['state'] ?? null) === 'PERSISTED' && is_array($persistedBrief['brief'] ?? null))
+            ? ['schemaVersion'=>1,'state'=>'PERSISTED','persisted'=>true,'revision'=>(int)($persistedBrief['revision'] ?? 0),'createdAt'=>(string)($persistedBrief['createdAt'] ?? ''),'brief'=>$persistedBrief['brief']]
+            : $snapshotBrief;
         $serviceState = static function(array $telemetry, string $key): string { foreach (($telemetry['server']['services'] ?? []) as $service) if (($service['key'] ?? null) === $key) return (string)($service['state'] ?? 'UNKNOWN'); return 'UNKNOWN'; };
         $dist = dirname(__DIR__, 2) . '/dist-web';
         $checks = [
@@ -462,6 +466,11 @@ final class HubControlPlaneService
             'activity' => $activity,
             'incidents' => $incidents,
             'staff' => $staff,
+            'governor' => $staff['governor'] ?? ['state'=>'UNKNOWN','decision'=>'UNKNOWN'],
+            'selfHealing' => $staff['selfHealing'] ?? ['state'=>'UNKNOWN'],
+            'housekeeping' => $staff['housekeeping'] ?? ['state'=>'UNKNOWN'],
+            'hostingCenter' => $staff['hostingCenter'] ?? ['state'=>'UNKNOWN'],
+            'managedSites' => $staff['managedSites'] ?? [],
             'morningBrief' => $morningBrief,
             'storageGovernance' => $staff['storageGovernance'],
             'productionComplete' => ['passed'=>$passed,'total'=>count($checks),'percent'=>(int)round($passed*100/count($checks)),'checks'=>$checks],

@@ -1,10 +1,17 @@
 # Authoritative decision — 2026-08-30 Overnight Staff and storage governance
 
+## Finish-first decisions — 2026-08-30
+
+- Morning Brief persistence reuses `control_product_setting_revisions` under reserved key `system.morningBrief`; this preserves one audit/revision authority and avoids a duplicate report table.
+- Storage/Garbage remains a read/audit projection until a typed quarantine operation proves release, backup, database, lease, branch, worktree, artifact-reference and audit-evidence exclusions. `UNKNOWN` is never auto-purgeable.
+- Governor may select only existing eligible `control_tasks`/`control_task_executions`; automation/control-plane materialization remains the only task-creation path. VPS self-healing is reported only when bounded recovery/retry evidence is observed.
+- Managed Site rows are explicitly `DERIVED_READ_ONLY` until a canonical site authority exists; observed Nginx domains are not silently bound to a Project.
+
 # Authoritative decision — 2026-08-30 provider-tool UTF-8 repair
 
-- Provider-facing Project Vault reads are a separate representation boundary from strict internal reads. When bounded text contains malformed UTF-8, the provider tool may receive a deterministic replacement-character representation only in memory; canonical Vault bytes, revision hashes, manifests and internal `readText()` behavior remain unchanged.
-- The repaired representation is still rejected for NUL/binary content, bounded to the existing 24 KiB tool read and serialized-result safety limits, and covered by the Project Vault regression. No provider, task, execution, queue, memory, credential or deployment authority is widened.
-- Production remains on `m16-13acbb573c40` until the final candidate receives its own exact-SHA approval through typed M16. The timeout evidence is retained in canonical task/execution history; no direct DB mutation or credential injection is permitted.
+- Provider-facing Project Vault reads are a separate representation boundary from strict internal reads. Malformed bytes are repaired only in the bounded in-memory provider result; canonical Vault bytes, revision hashes, manifests and internal `readText()` behavior remain unchanged.
+- The repaired result rejects NUL/binary content, remains bounded to the existing 24 KiB tool read and serialization safety limits, and is covered by regression. No provider, task, execution, queue, memory, credential or deployment authority is widened.
+- Production remains on `m16-13acbb573c40` until a canonical-synced final candidate receives its own exact-SHA approval through typed M16. The timeout evidence remains in canonical task/execution history; no direct Production DB mutation or credential injection is permitted.
 
 - The VPS Staff loop is a read/report projection over existing canonical Project, Task, Execution, Artifact, Approval and Release authorities. The systemd timer remains a bounded wake-up mechanism; no duplicate scheduler, queue, memory or report table is allowed.
 - Storage governance is classification-first and audit-only in this milestone. Managed roots report ACTIVE, RETAIN, QUARANTINE, SAFE_TO_PURGE or PROTECTED with bounded sizes where known; no purge or quarantine move occurs without a future explicit authority. Broad `/tmp` is not implicitly owned by AWH.

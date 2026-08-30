@@ -1,14 +1,20 @@
 # Authoritative handoff — 2026-08-30 Overnight VPS autonomy foundation
 
+## Superseding finish-first checkpoint
+
+- Current source work is on `awh/api-independence` at `38c7db668093905ddd559b823fed92f3fcfe66d8` plus uncommitted bounded Staff/Storage/Control Panel changes; Production remains read-only at M16 `m16-13acbb573c40` with schema 16 healthy.
+- Source now records disk measurement, six storage classes including `UNKNOWN`, no-safe-purge evidence, generic derived Managed Site fields, Governor/self-healing/housekeeping projections, 14 requested Staff role names, and idempotent per-day Morning Brief persistence through the existing revision ledger.
+- Do not report full 24/7 Staff, Managed Websites operations, School Document AI, Web/Desktop/mobile visual parity, restore proof, CI or Production Complete as PASS until their real evidence exists. Do not downgrade healthy Production DB16.
+
 ## Current handoff — post-deploy provider boundary
 
-- Production is active at typed M16 release `m16-13acbb573c40` from approved exact SHA `13acbb573c406d17ef56e538db4327e6caf43134`. Activation completed with backup, schema/idempotence, pointer, PHP-FPM, Nginx, executor restore and regression stages passing.
-- The bounded real field proof used the existing Desktop credential store without printing its value, but timed out. Live metadata shows `project.read` routed through the existing VPS/provider authority, two provider attempts were recorded, and no continuation was materialized.
-- The shared root cause is malformed UTF-8 in 8 active Vault files. The internal strict read contract remains fail-closed; candidate `38c7db668093905ddd559b823fed92f3fcfe66d8` makes only provider tool serialization UTF-8-safe and preserves byte-level canonical content.
+- Production is active at typed M16 release `m16-13acbb573c40` from approved exact SHA `13acbb573c406d17ef56e538db4327e6caf43134`; activation completed with backup, schema/idempotence, pointer, PHP-FPM, Nginx, executor restore and regression stages passing.
+- The bounded real field proof used the existing Desktop credential store without printing its value, but timed out. Live metadata recorded canonical `project.read` routing, two provider attempts and no continuation materialization.
+- The shared root cause is malformed UTF-8 in 8 active Vault files. The canonical branch now includes the bounded provider-facing repair and additional Staff/Storage/Morning Brief/release-lock hardening. Candidate `acabea5` is stale because canonical advanced to `d665fb8` and PR #58 is conflicting.
 
 ## Next action
 
-Run final exact-candidate readiness and request approval for that exact SHA only. Do not deploy this new source candidate, mutate Production DB, or inject credentials before that approval. If approved, rerun field proof and continue all remaining safe UAT/smoke/completion lanes.
+Reconcile the candidate with canonical `d665fb8`, verify the resulting exact SHA/CI/M16 readiness, and request fresh approval for that exact SHA. Do not deploy the stale candidate, mutate Production DB, or inject credentials. If approved, rerun field proof and continue all remaining safe UAT/smoke/completion lanes.
 
 - Candidate `codex/finish-first-p0` contains source merge `190e1426e09a5e85910eadcc10a2b7e20b035dbf` and is pushed; the Staff loop, storage audit, backup/recovery truth and executor full-telemetry feed are source-ready. Production remains at `m16-06a7277063f8` / `06a7277063f891d0d29ad5bdbed7db7541dbb807`.
 - `qa:local` and `qa:full` are PASS on the exact upstream candidate. No credentials were read, printed, copied or injected; no direct Production DB mutation occurred.

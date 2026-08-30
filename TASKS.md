@@ -1,14 +1,24 @@
 # Authoritative task supersession — 2026-08-30 Overnight VPS autonomy foundation
 
+## Finish-first run status
+
+- [x] Add truthful bounded Storage/Garbage inventory fields and disk measurement.
+- [x] Add Governor, self-healing and housekeeping projections without a second queue.
+- [x] Add durable idempotent Morning Brief persistence through existing audited revisions.
+- [x] Expose derived generic Managed Site topology in the Owner Control Panel without inventing domain/runtime/database authority.
+- [ ] Close real School Document AI and Project Factory vertical slices.
+- [ ] Obtain rendered Web/Desktop/iPhone evidence and exact-head CI/restore proof.
+- [ ] Enable quarantine/purge only after explicit policy and reference-proof implementation.
+
 ## NOW — post-deploy Auto-Chain boundary
 
-- Typed M16 deployed exact candidate `13acbb573c406d17ef56e538db4327e6caf43134` successfully; DB16 integrity/FK, backup/restore readiness, Nginx/PHP-FPM, executor recovery and route health remain PASS.
-- Real Auto-Chain proof ran with the persisted Desktop credential and stopped at bounded `AUTOCHAIN_FIELD_TIMEOUT`. The task remains canonical and preserved; it was not deleted or manually retried with injected credentials.
-- Root cause is narrowed to 8 malformed-UTF-8 Vault file contents selected through provider tool reads. Candidate `38c7db668093905ddd559b823fed92f3fcfe66d8` repairs only provider-facing in-memory text and adds regression coverage; local QA and exact CI 5/5 are PASS.
+- Typed M16 deployed exact SHA `13acbb573c406d17ef56e538db4327e6caf43134` successfully; DB16 integrity/FK, backup/restore readiness, Nginx/PHP-FPM, executor recovery and route health remain PASS.
+- The real Auto-Chain proof stopped at bounded `AUTOCHAIN_FIELD_TIMEOUT` after two provider attempts. The canonical task/execution history remains intact; no credential was injected and no task was deleted.
+- Read-only VPS audit found 8 malformed-UTF-8 Vault file contents. The canonical line now contains the provider-facing in-memory UTF-8 repair plus the latest Staff/Storage/Morning Brief/release-lock hardening. The previously approved `acabea5` candidate is stale because PR #58 is conflicting and must not be deployed.
 
 ## NEXT UNFINISHED CHECKPOINT
 
-- Verify the final docs-following candidate exact SHA and obtain one exact-SHA approval before typed M16 refresh. After activation, rerun the bounded Auto-Chain proof, prove rootTaskId continuation, then continue UAT and Production completion without claiming field PASS from source evidence.
+- Finish canonical sync, verify the resulting exact candidate/CI/M16 readiness, then obtain fresh exact-SHA approval. After activation, rerun Auto-Chain, prove rootTaskId continuation, and continue UAT/Production completion without claiming field PASS from source evidence.
 
 ## NOW
 
