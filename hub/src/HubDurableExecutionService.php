@@ -357,7 +357,12 @@ final class HubDurableExecutionService
         catch (HubNativeAgentException $error) { if (self::inspectionFallbackEligible($error->codeName)) return 'ตรวจ Project Vault revision ต่อแบบ read-only และทบทวนงาน stale ที่ยังไม่ปิด'; return null; }
         catch (Throwable) { return 'ตรวจ Project Vault revision ต่อแบบ read-only และทบทวนงาน stale ที่ยังไม่ปิด'; }
         $text = trim((string)($result['summary'] ?? ''));
-        if (preg_match('/^NEXT:\s*(.{8,2000})$/us', $text, $m) !== 1) return str_starts_with($text, 'STOP:') ? null : 'ตรวจ Project Vault revision ต่อแบบ read-only และทบทวนงาน stale ที่ยังไม่ปิด';
+        // A planner STOP is not enough to stall an explicitly continuous,
+        // low-risk run: the bounded Vault inspection is always an eligible
+        // deterministic follow-up.  Keep the planner's output truthful while
+        // ensuring the VPS selects the next safe canonical task.
+        if (str_starts_with($text, 'STOP:')) return 'ตรวจ Project Vault revision ต่อแบบ read-only และทบทวนงาน stale ที่ยังไม่ปิด';
+        if (preg_match('/^NEXT:\s*(.{8,2000})$/us', $text, $m) !== 1) return 'ตรวจ Project Vault revision ต่อแบบ read-only และทบทวนงาน stale ที่ยังไม่ปิด';
         return trim($m[1]);
     }
 
