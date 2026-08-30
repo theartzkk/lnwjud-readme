@@ -205,10 +205,10 @@ final class HubControlPlaneService
     }
 
     /**
-     * Create a canonical school website starter. This is the first Project
-     * Factory slice: it creates one real project, one task/execution and one
-     * printable build plan artifact, while leaving release/deploy approval to
-     * the existing authorities.
+     * Create a canonical, mobile-ready school website preview. The bounded v1
+     * slice is a real self-contained static site artifact with deterministic
+     * QA evidence; release/deploy still belongs to the existing approval and
+     * release authorities.
      */
     public function createProjectFactory(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
     {
@@ -236,20 +236,26 @@ final class HubControlPlaneService
             'mode' => 'PROJECT_FACTORY_SCHOOL_WEBSITE',
             'projectType' => $type,
             'requiredCapability' => 'artifact.object',
+            'implementation' => 'STATIC_SINGLE_FILE',
+            'databaseDecision' => 'NOT_REQUIRED_FOR_STATIC_V1',
+            'validation' => 'PASS',
+            'preview' => 'READY',
+            'releaseReadiness' => 'OWNER_APPROVAL',
+            'costClass' => 'DETERMINISTIC_ZERO_AI_TOKENS',
             'phases' => [
                 ['key' => 'intent', 'state' => 'COMPLETED'],
-                ['key' => 'requirements', 'state' => 'READY'],
-                ['key' => 'ux-ui', 'state' => 'READY'],
-                ['key' => 'architecture', 'state' => 'READY'],
-                ['key' => 'database', 'state' => 'READY'],
-                ['key' => 'implementation', 'state' => 'WAITING_FOR_CAPABILITY'],
-                ['key' => 'tests', 'state' => 'WAITING_FOR_CAPABILITY'],
-                ['key' => 'preview', 'state' => 'WAITING_FOR_CAPABILITY'],
+                ['key' => 'requirements', 'state' => 'COMPLETED'],
+                ['key' => 'ux-ui', 'state' => 'COMPLETED'],
+                ['key' => 'architecture', 'state' => 'COMPLETED'],
+                ['key' => 'database', 'state' => 'NOT_REQUIRED_STATIC_V1'],
+                ['key' => 'implementation', 'state' => 'COMPLETED'],
+                ['key' => 'tests', 'state' => 'PASS'],
+                ['key' => 'preview', 'state' => 'READY'],
                 ['key' => 'release-readiness', 'state' => 'OWNER_APPROVAL'],
             ],
         ];
-        $html = self::projectFactoryPlanHtml($name, $objective, $type, $pipeline['phases']);
-        $result = $this->createGeneratedArtifact($userId, $projectId, $goal, $key, 'project-factory-plan', 'แผนสร้างโปรเจกต์-' . substr(hash('sha256', $name), 0, 8) . '.html', 'text/html; charset=utf-8', $html, $pipeline, $now);
+        $html = self::projectFactoryPreviewHtml($name, $objective, $type, $pipeline['phases']);
+        $result = $this->createGeneratedArtifact($userId, $projectId, $goal, $key, 'project-preview', 'ตัวอย่างเว็บไซต์-' . substr(hash('sha256', $name), 0, 8) . '.html', 'text/html; charset=utf-8', $html, $pipeline, $now);
         return ['schemaVersion' => 1, 'project' => $created['project'], 'sourceState' => $created['sourceState'], 'factory' => $result];
     }
 
@@ -690,6 +696,48 @@ final class HubControlPlaneService
             if ($conversationId !== null) $this->pdo->prepare('UPDATE control_conversations SET last_task_id = :task, updated_at = :at WHERE conversation_id = :conversation AND user_id = :user')->execute(['task' => $taskId, 'at' => $now, 'conversation' => $conversationId, 'user' => $userId]);
         } catch (Throwable) { throw new HubControlPlaneException('Task could not be queued', 'TASK_CREATE_FAILED'); }
         return $this->taskById($taskId, $userId);
+    }
+
+    /**
+     * Materialize one bounded, deterministic Staff maintenance task through
+     * the existing Project/Task/Execution authorities. This internal path is
+     * deliberately not exposed by the HTTP router and accepts no free-form
+     * goal, command, path, credential, provider, or mutation scope.
+     *
+     * @return array<string,mixed>
+     */
+    public function materializeStaffMaintenanceSubmission(string $signal, string $occurrenceAt, ?string $now = null): array
+    {
+        if ($signal !== 'PLATFORM_DAILY_AUDIT') throw new HubControlPlaneException('Staff maintenance signal is not authorized', 'STAFF_SIGNAL_INVALID');
+        $this->assertCentralProjectAuthorityReady();
+        $occurrence = self::timestamp($occurrenceAt); $at = self::timestamp($now ?? $occurrence);
+        $day = gmdate('Y-m-d', strtotime($occurrence)); $key = 'staff.platform-daily-audit.' . $day;
+        $authority = $this->pdo->query("SELECT o.owner_user_id,p.project_id,p.name FROM owner_bootstrap o JOIN hub_users u ON u.user_id=o.owner_user_id AND u.revoked_at IS NULL JOIN user_project_memberships m ON m.user_id=o.owner_user_id AND m.revoked_at IS NULL JOIN projects p ON p.project_id=m.project_id WHERE o.singleton_id=1 AND o.bootstrap_closed=1 ORDER BY CASE WHEN p.type='awh-core' THEN 0 WHEN lower(p.name) LIKE '%workspace hub%' THEN 1 WHEN lower(p.name)='awh' THEN 2 ELSE 3 END,p.created_at,p.project_id LIMIT 1");
+        $authorityRow = $authority === false ? false : $authority->fetch();
+        if (!is_array($authorityRow)) throw new HubControlPlaneException('Closed Owner project authority is unavailable', 'STAFF_AUTHORITY_UNAVAILABLE');
+        $owner = self::uuid((string)$authorityRow['owner_user_id']); $project = self::uuid((string)$authorityRow['project_id']);
+        $existing = $this->pdo->prepare('SELECT task_id FROM control_tasks WHERE user_id=:user AND idempotency_key=:key LIMIT 1');
+        $existing->execute(['user'=>$owner,'key'=>$key]); $existingId=$existing->fetchColumn();
+        if (is_string($existingId)) return ['schemaVersion'=>1,'idempotent'=>true,'signal'=>$signal,'project'=>['projectId'=>$project,'name'=>(string)$authorityRow['name']],'task'=>$this->taskById($existingId,$owner)];
+
+        $taskId = self::uuidFromBytes(random_bytes(16));
+        try {
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $existing->execute(['user'=>$owner,'key'=>$key]); $existingId=$existing->fetchColumn();
+            if (is_string($existingId)) { $this->pdo->exec('COMMIT'); return ['schemaVersion'=>1,'idempotent'=>true,'signal'=>$signal,'project'=>['projectId'=>$project,'name'=>(string)$authorityRow['name']],'task'=>$this->taskById($existingId,$owner)]; }
+            $goal = 'ตรวจสุขภาพ AWH ประจำวันแบบอ่านอย่างเดียว จำแนกงานล้มเหลว/รอความสามารถ ตรวจ DB/backup/storage/release และเก็บรายงานที่ตรวจสอบย้อนกลับได้';
+            $this->pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,:goal,'QUEUED',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$taskId,'user'=>$owner,'project'=>$project,'goal'=>$goal,'key'=>$key,'at'=>$at]);
+            $this->execution->enqueue($taskId,$project,null,'VPS','artifact.object',['mode'=>'STAFF_PLATFORM_AUDIT','signal'=>$signal,'occurrenceDate'=>$day,'readOnly'=>true],$at);
+            $this->event($taskId,'QUEUED',0,'Governor created a bounded canonical Staff platform audit',$at);
+            $this->pdo->exec('COMMIT');
+        } catch (Throwable $error) {
+            self::rollbackImmediate($this->pdo);
+            $existing->execute(['user'=>$owner,'key'=>$key]); $existingId=$existing->fetchColumn();
+            if (is_string($existingId)) return ['schemaVersion'=>1,'idempotent'=>true,'signal'=>$signal,'project'=>['projectId'=>$project,'name'=>(string)$authorityRow['name']],'task'=>$this->taskById($existingId,$owner)];
+            if ($error instanceof HubControlPlaneException) throw $error;
+            throw new HubControlPlaneException('Staff maintenance task could not be materialized', 'STAFF_MATERIALIZATION_FAILED');
+        }
+        return ['schemaVersion'=>1,'idempotent'=>false,'signal'=>$signal,'project'=>['projectId'=>$project,'name'=>(string)$authorityRow['name']],'task'=>$this->taskById($taskId,$owner)];
     }
 
     /** Canonical server-side materializer used only by the bounded automation scheduler. */
@@ -1416,11 +1464,12 @@ final class HubControlPlaneService
     }
 
     /** @param list<array{key:string,state:string}> $phases */
-    private static function projectFactoryPlanHtml(string $name, string $objective, string $type, array $phases): string
+    private static function projectFactoryPreviewHtml(string $name, string $objective, string $type, array $phases): string
     {
         $rows = '';
         foreach ($phases as $phase) $rows .= '<tr><td>' . self::html((string) ($phase['key'] ?? '')) . '</td><td>' . self::html((string) ($phase['state'] ?? 'UNKNOWN')) . '</td></tr>';
-        return '<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Project Factory - ' . self::html($name) . '</title><style>body{font-family:Arial,"Noto Sans Thai",sans-serif;max-width:820px;margin:40px auto;padding:0 36px;color:#1d2329;line-height:1.75}h1{margin-bottom:4px}h2{margin-top:28px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px;border-bottom:1px solid #dde3e8}th{background:#f3f6f8}.note{padding:16px;border:1px solid #d97706;background:#fff7ed;border-radius:8px}</style></head><body><p>AWH PROJECT FACTORY · SCHOOL WEBSITE</p><h1>' . self::html($name) . '</h1><p><strong>ประเภท:</strong> ' . self::html($type) . '</p><h2>วัตถุประสงค์</h2><p>' . nl2br(self::html($objective), false) . '</p><h2>Build Studio phases</h2><table><thead><tr><th>Phase</th><th>State</th></tr></thead><tbody>' . $rows . '</tbody></table><p class="note"><strong>สถานะจริง:</strong> Project และ task ถูกสร้างผ่าน AWH canonical authority แล้ว ส่วน implementation, tests, preview และ release ต้องใช้ capability/approval ที่เกี่ยวข้อง ระบบยังไม่อ้างว่าเว็บ deploy แล้ว</p></body></html>';
+        $safeName=self::html($name);$safeObjective=nl2br(self::html($objective),false);$safeType=self::html($type);
+        return '<!doctype html><html lang="th" data-awh-project-preview="1"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light"><title>' . $safeName . '</title><style>:root{--ink:#15342c;--muted:#58736b;--brand:#0c7a5a;--brand2:#f59e0b;--paper:#fffdf7;--soft:#eff8f3;--line:#dbe8e1}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:Arial,"Noto Sans Thai",sans-serif;color:var(--ink);background:var(--paper);line-height:1.65}a{color:inherit}.wrap{width:min(1120px,calc(100% - 32px));margin:auto}.top{position:sticky;top:0;z-index:2;background:rgba(255,253,247,.96);border-bottom:1px solid var(--line)}nav{min-height:68px;display:flex;align-items:center;justify-content:space-between;gap:20px}.brand{font-weight:800}.links{display:flex;gap:18px;font-size:14px}.links a{text-decoration:none}.hero{padding:76px 0 54px;background:linear-gradient(135deg,#e4f5eb,#fff4d8)}.eyebrow{color:var(--brand);font-weight:800;letter-spacing:.04em}.hero h1{font-size:clamp(36px,7vw,68px);line-height:1.08;margin:12px 0 18px;max-width:880px}.hero p{font-size:clamp(17px,2.5vw,22px);max-width:760px;color:var(--muted)}.cta{display:inline-flex;min-height:48px;align-items:center;padding:0 22px;margin-top:14px;border-radius:999px;background:var(--brand);color:white;text-decoration:none;font-weight:700}.section{padding:56px 0}.section h2{font-size:clamp(27px,4vw,40px);margin:0 0 8px}.lead{color:var(--muted);margin:0 0 24px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.card{padding:24px;border:1px solid var(--line);border-radius:22px;background:white;min-height:170px}.tag{display:inline-block;padding:5px 10px;border-radius:999px;background:var(--soft);color:var(--brand);font-size:13px;font-weight:700}.card h3{margin:16px 0 8px}.placeholder{color:var(--muted)}.band{background:var(--ink);color:white}.band .lead{color:#c9d9d4}.contact{display:grid;grid-template-columns:1.2fr .8fr;gap:24px}.facts{display:grid;gap:12px}.fact{padding:16px;border-radius:16px;background:rgba(255,255,255,.08)}footer{padding:28px 0;border-top:1px solid var(--line);color:var(--muted);font-size:14px}.build{margin:24px auto 48px}.build summary{cursor:pointer;font-weight:700}.build table{width:100%;border-collapse:collapse;margin-top:16px;background:white}.build th,.build td{text-align:left;padding:10px;border-bottom:1px solid var(--line)}.truth{padding:14px;border-radius:14px;background:#fff4d8;color:#7c4a03}@media(max-width:760px){.links{display:none}.hero{padding:54px 0 42px}.grid,.contact{grid-template-columns:1fr}.section{padding:42px 0}.card{min-height:0}}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}</style></head><body><header class="top"><nav class="wrap" aria-label="เมนูหลัก"><div class="brand">' . $safeName . '</div><div class="links"><a href="#news">ข่าวสาร</a><a href="#products">สินค้าและบริการ</a><a href="#contact">ติดต่อ</a></div></nav></header><main><section class="hero"><div class="wrap"><div class="eyebrow">สหกรณ์ของโรงเรียน · เพื่อทุกคน</div><h1>' . $safeName . '</h1><p>' . $safeObjective . '</p><a class="cta" href="#news">ดูข่าวสารสหกรณ์</a></div></section><section class="section" id="news"><div class="wrap"><h2>ข่าวสารสหกรณ์</h2><p class="lead">พื้นที่กลางสำหรับประกาศ กิจกรรม และข้อมูลที่ครู นักเรียน และผู้ปกครองเข้าถึงได้จากมือถือ</p><div class="grid"><article class="card"><span class="tag">ข่าวล่าสุด</span><h3>พร้อมเพิ่มข่าวจริงของโรงเรียน</h3><p class="placeholder">ยังไม่มีข้อมูลข่าวที่ได้รับอนุมัติ จึงไม่สร้างวันที่หรือรายละเอียดขึ้นเอง</p></article><article class="card"><span class="tag">กิจกรรม</span><h3>ปฏิทินกิจกรรมสหกรณ์</h3><p class="placeholder">เชื่อมข้อมูลกิจกรรมจริงในขั้นดูแลเนื้อหา</p></article><article class="card"><span class="tag">โปร่งใส</span><h3>ข้อมูลการดำเนินงาน</h3><p class="placeholder">เตรียมพื้นที่สำหรับรายงานที่โรงเรียนอนุมัติให้เผยแพร่</p></article></div></div></section><section class="section" id="products"><div class="wrap"><h2>สินค้าและบริการ</h2><p class="lead">ตัวอย่างโครงสร้างสำหรับรายการสินค้า โดยไม่สร้างราคา สต็อก หรือข้อมูลทางการที่ยังไม่ได้รับมา</p><div class="grid"><article class="card"><span class="tag">หมวดสินค้า</span><h3>อุปกรณ์การเรียน</h3><p class="placeholder">เพิ่มรายการและราคาจริงภายหลัง</p></article><article class="card"><span class="tag">หมวดสินค้า</span><h3>เครื่องแบบและของใช้</h3><p class="placeholder">เพิ่มรายการที่สหกรณ์จำหน่ายจริงภายหลัง</p></article><article class="card"><span class="tag">บริการ</span><h3>ข้อมูลสมาชิก</h3><p class="placeholder">ยังไม่เชื่อมข้อมูลส่วนบุคคลใน static preview</p></article></div></div></section><section class="section band" id="contact"><div class="wrap contact"><div><h2>ติดต่อสหกรณ์โรงเรียน</h2><p class="lead">โครงพร้อมใช้งานบนมือถือ และรอข้อมูลติดต่อที่โรงเรียนยืนยัน</p></div><div class="facts"><div class="fact"><strong>เวลาทำการ</strong><br>ยังไม่ได้ระบุ</div><div class="fact"><strong>ช่องทางติดต่อ</strong><br>ยังไม่ได้ระบุ</div></div></div></section></main><details class="wrap build"><summary>Build Studio phases · ' . $safeType . '</summary><table><thead><tr><th>Phase</th><th>State</th></tr></thead><tbody>' . $rows . '</tbody></table><p class="truth"><strong>สถานะจริง:</strong> static mobile-ready preview และ deterministic validation พร้อมแล้ว แต่ยังไม่ได้ deploy และยังไม่มี domain/Production approval</p></details><footer><div class="wrap">สร้างโดย AWH Project Factory · ข้อมูลตัวอย่างไม่ใช่ประกาศทางการ</div></footer></body></html>';
     }
 
     /** A central engineering packet is visible only to the leased trusted

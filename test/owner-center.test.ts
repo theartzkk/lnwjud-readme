@@ -26,6 +26,9 @@ test('V1.3 owner center unifies existing owner surfaces without a new authority'
   for (const tab of ['data', 'ai', 'devices', 'people', 'account', 'system']) assert.match(source, new RegExp(`openSettings\\('${tab}'\\)`));
   assert.match(source, /project-open/);
   assert.match(source, /conversation-open/);
+  assert.match(source, /action === 'tasks'.*dashboard-open-tasks/);
+  assert.match(source, /action === 'approvals'.*dashboard-pulse-attention-card/);
+  assert.doesNotMatch(source, /action === 'tasks' \|\| action === 'approvals'/);
   assert.match(source, /window\.location\.assign\('\.\/database\.html'\)/);
   assert.match(source, /window\.location\.assign\('\.\/infrastructure\.html'\)/);
   assert.match(source, /action === 'automations'.*return/);

@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/HubBackupService.php';
 require_once __DIR__ . '/HubInfrastructureService.php';
 require_once __DIR__ . '/HubStorageGovernanceService.php';
+require_once __DIR__ . '/HubExecutionTriageService.php';
 
 /**
  * Read/report projection for the always-on Staff loop.  Execution and
@@ -27,8 +28,8 @@ final class HubStaffOperationsService
 
     private readonly HubStorageGovernanceService $storage;
 
-    /** @param array<string,mixed>|null $batch @param array<string,mixed>|null $telemetry @param array<string,mixed>|null $release */
-    public function snapshot(?string $now = null, ?array $batch = null, ?array $telemetry = null, ?array $release = null): array
+    /** @param array<string,mixed>|null $batch @param array<string,mixed>|null $telemetry @param array<string,mixed>|null $release @param array<string,mixed>|null $governorRun */
+    public function snapshot(?string $now = null, ?array $batch = null, ?array $telemetry = null, ?array $release = null, ?array $governorRun = null): array
     {
         $at = gmdate('c', strtotime($now ?? 'now') ?: time());
         $since = gmdate('c', (strtotime($at) ?: time()) - 86400);
@@ -39,6 +40,7 @@ final class HubStaffOperationsService
         $authorities = $this->authorities($since);
         $workers = $this->workers();
         $providers = $this->providers($since);
+        $executionTriage = (new HubExecutionTriageService($this->pdo))->snapshot($at);
         $backup = $this->backup();
         $storage = $this->storage->audit($at, [
             'control' => (string) ($release['controlReleaseId'] ?? ''),
@@ -46,10 +48,10 @@ final class HubStaffOperationsService
         ]);
         $managedSites = $this->managedSites($telemetry, $release, $backup, $storage);
         $roles = $this->roles($telemetry, $release, $database, $backup, $storage, $providers, $queue);
-        $governor = $this->governor($telemetry, $queue, $storage, $backup, $providers);
+        $governor = $this->governor($telemetry, $queue, $storage, $backup, $providers, $governorRun);
         $loop = $this->loop($telemetry, $queue, $batch, $governor);
-        $report = $this->activityReport($queue, $loop);
-        $morningBrief = $this->morningBrief($at, $since, $telemetry, $release, $database, $backup, $storage, $queue, $workers, $providers, $roles, $authorities, $batch);
+        $report = $this->activityReport($queue, $loop, $governor, $batch);
+        $morningBrief = $this->morningBrief($at, $since, $telemetry, $release, $database, $backup, $storage, $queue, $workers, $providers, $roles, $authorities, $batch, $executionTriage);
         return [
             'schemaVersion' => 2,
             'generatedAt' => $at,
@@ -63,6 +65,7 @@ final class HubStaffOperationsService
             'queue' => $queue,
             'workers' => $workers,
             'providers' => $providers,
+            'executionTriage' => $executionTriage,
             'database' => $database,
             'backupRecovery' => $backup,
             'storageGovernance' => $storage,
@@ -91,7 +94,7 @@ final class HubStaffOperationsService
         $waiting = $this->scalar("SELECT COUNT(*) FROM control_task_executions WHERE state='WAITING_FOR_CAPABILITY'");
         $stuck = $this->scalar("SELECT COUNT(*) FROM control_task_executions WHERE state IN ('LEASED','RUNNING') AND (lease_expires_at IS NULL OR lease_expires_at <= :at)", ['at' => $at]);
         $failed = $this->group("SELECT COALESCE(last_error_code,'EXECUTION_FAILED') AS name, COUNT(*) AS amount FROM control_task_executions WHERE state='FAILED' AND updated_at >= :since GROUP BY COALESCE(last_error_code,'EXECUTION_FAILED') ORDER BY amount DESC", ['since' => $since]);
-        $eligible = $this->pdo->prepare("SELECT e.execution_id,e.task_id,e.required_capability,t.project_id,p.name AS project_name FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id JOIN projects p ON p.project_id=t.project_id WHERE e.state='QUEUED' AND e.executor_kind='VPS' AND e.required_capability IN ('agent.conversation','project.read','project.search','project.mutate.text','project.mutate.assisted') AND t.state IN ('QUEUED','WAITING_FOR_WORKER') ORDER BY e.created_at,e.execution_id LIMIT 1");
+        $eligible = $this->pdo->prepare("SELECT e.execution_id,e.task_id,e.required_capability,t.project_id,p.name AS project_name FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id JOIN projects p ON p.project_id=t.project_id WHERE e.state='QUEUED' AND e.executor_kind='VPS' AND e.required_capability IN ('agent.conversation','project.read','project.search','project.mutate.text','project.mutate.assisted','artifact.object') AND t.state IN ('QUEUED','WAITING_FOR_WORKER') ORDER BY e.created_at,e.execution_id LIMIT 1");
         $eligible->execute(); $next = $eligible->fetch();
         return ['tasksByState' => $tasks, 'executionsByState' => $executions, 'waitingCapabilityCount' => $waiting, 'stuckExecutionCount' => $stuck, 'failedLast24h' => $failed, 'activeLeaseCount' => $this->scalar("SELECT COUNT(*) FROM control_task_executions WHERE lease_expires_at > :at", ['at' => $at]), 'nextEligible' => is_array($next) ? ['taskId' => (string) $next['task_id'], 'executionId' => (string) $next['execution_id'], 'projectId' => (string) $next['project_id'], 'project' => (string) $next['project_name'], 'requiredCapability' => (string) $next['required_capability']] : null];
     }
@@ -173,14 +176,17 @@ final class HubStaffOperationsService
     private function loop(array $telemetry, array $queue, ?array $batch, array $governor): array
     {
         $processed = is_array($batch) ? (int) ($batch['processed'] ?? 0) : 0;
+        $completed = is_array($batch) ? (int) ($batch['completed'] ?? 0) : 0;
+        $failed = is_array($batch) ? (int) ($batch['failed'] ?? 0) : 0;
         $execute = is_array($batch) ? ($processed > 0 ? 'PASS' : 'IDLE') : 'NOT_RUN';
+        $selected = is_array($governor['selectedWork'] ?? null);
         return ['state' => ($telemetry['state'] ?? 'UNKNOWN') === 'READY' ? 'READY' : 'UNKNOWN', 'authority' => 'HubDurableExecutionService/control_task_executions', 'phases' => [
-            ['name' => 'OBSERVE', 'state' => 'PASS'], ['name' => 'DIAGNOSE', 'state' => 'PASS'], ['name' => 'PRIORITIZE', 'state' => $governor['decision'] === 'WAIT_FOR_ELIGIBLE_WORK' ? 'IDLE' : 'PASS'], ['name' => 'CANONICAL_TASK', 'state' => $governor['decision'] === 'SELECT_EXISTING_CANONICAL_TASK' ? 'PASS' : 'NOT_RUN'], ['name' => 'EXECUTE', 'state' => $execute], ['name' => 'VERIFY', 'state' => $processed > 0 ? 'PASS' : 'NOT_RUN'], ['name' => 'REPORT', 'state' => 'PASS'], ['name' => 'CONTINUE', 'state' => 'READY'],
+            ['name' => 'OBSERVE', 'state' => 'PASS'], ['name' => 'DIAGNOSE', 'state' => 'PASS'], ['name' => 'PRIORITIZE', 'state' => $selected ? 'PASS' : 'IDLE'], ['name' => 'CANONICAL_TASK', 'state' => $selected ? 'PASS' : 'NOT_RUN'], ['name' => 'EXECUTE', 'state' => $execute], ['name' => 'VERIFY', 'state' => $completed > 0 && $failed === 0 ? 'PASS' : ($processed > 0 ? 'FAIL' : 'NOT_RUN')], ['name' => 'REPORT', 'state' => 'PASS'], ['name' => 'CONTINUE', 'state' => 'READY'],
         ], 'nextEligible' => $queue['nextEligible'], 'batch' => is_array($batch) ? ['processed' => $processed, 'completed' => (int) ($batch['completed'] ?? 0), 'waiting' => (int) ($batch['waiting'] ?? 0), 'failed' => (int) ($batch['failed'] ?? 0), 'recovered' => (int) ($batch['recovered'] ?? 0)] : null];
     }
 
-    /** @param array<string,mixed> $telemetry @param array<string,mixed> $queue @param array<string,mixed> $storage @param array<string,mixed> $backup @param array<string,mixed> $providers */
-    private function governor(array $telemetry, array $queue, array $storage, array $backup, array $providers): array
+    /** @param array<string,mixed> $telemetry @param array<string,mixed> $queue @param array<string,mixed> $storage @param array<string,mixed> $backup @param array<string,mixed> $providers @param array<string,mixed>|null $governorRun */
+    private function governor(array $telemetry, array $queue, array $storage, array $backup, array $providers, ?array $governorRun = null): array
     {
         $signals = [];
         if (($queue['nextEligible'] ?? null) !== null) $signals[] = ['source' => 'canonical_queue', 'state' => 'ELIGIBLE_WORK'];
@@ -191,6 +197,9 @@ final class HubStaffOperationsService
         if (($backup['state'] ?? 'UNKNOWN') !== 'VERIFIED') $signals[] = ['source' => 'backup', 'state' => (string) ($backup['state'] ?? 'UNKNOWN')];
         if (($telemetry['state'] ?? 'UNKNOWN') !== 'READY') $signals[] = ['source' => 'telemetry', 'state' => (string) ($telemetry['state'] ?? 'UNKNOWN')];
         if (($providers['state'] ?? 'UNKNOWN') !== 'OBSERVED') $signals[] = ['source' => 'provider', 'state' => (string) ($providers['state'] ?? 'UNKNOWN')];
+        if (is_array($governorRun) && is_string($governorRun['decision'] ?? null)) return [
+            'schemaVersion'=>1,'state'=>(string)($governorRun['state']??'UNKNOWN'),'decision'=>(string)$governorRun['decision'],'selectedWork'=>is_array($governorRun['selectedWork']??null)?$governorRun['selectedWork']:null,'created'=>(bool)($governorRun['created']??false),'signals'=>is_array($governorRun['signals']??null)?array_slice($governorRun['signals'],0,20):$signals,'queueAuthority'=>'control_tasks/control_task_executions','taskCreation'=>'CONTROL_PLANE_TYPED_MATERIALIZER','riskPolicy'=>['lowRiskAutoContinue'=>true,'mediumRisk'=>'CANDIDATE_OR_APPROVAL','highRisk'=>'OWNER_APPROVAL','killSwitch'=>'POLICY_REQUIRED'],'blockedWorkDoesNotStopLoop'=>true,'reason'=>(string)($governorRun['reason']??''),'nextAction'=>'ตรวจผล execution แล้วเลือกงาน eligible ถัดไปใน tick ต่อไป','arbitraryShell'=>false,
+        ];
         $next = is_array($queue['nextEligible'] ?? null) ? $queue['nextEligible'] : null;
         return ['schemaVersion' => 1, 'state' => $next === null ? (count($signals) ? 'REVIEW_OR_WAITING' : 'IDLE') : 'READY', 'decision' => $next === null ? 'WAIT_FOR_ELIGIBLE_WORK' : 'SELECT_EXISTING_CANONICAL_TASK', 'selectedWork' => $next, 'signals' => array_slice($signals, 0, 20), 'queueAuthority' => 'control_tasks/control_task_executions', 'taskCreation' => 'AUTOMATION_OR_CONTROL_PLANE_ONLY', 'riskPolicy' => ['lowRiskAutoContinue' => true, 'mediumRisk' => 'CANDIDATE_OR_APPROVAL', 'highRisk' => 'OWNER_APPROVAL', 'killSwitch' => 'POLICY_REQUIRED'], 'blockedWorkDoesNotStopLoop' => true, 'nextAction' => $next === null ? 'รอ tick ถัดไปและเลือกงาน canonical ที่ eligible' : 'ส่งงานเดิมเข้า HubDurableExecutionService claim/lease'];
     }
@@ -227,20 +236,22 @@ final class HubStaffOperationsService
         return $sites;
     }
 
-    /** @param array<string,mixed> $queue @param array<string,mixed> $loop */
-    private function activityReport(array $queue, array $loop): array
+    /** @param array<string,mixed> $queue @param array<string,mixed> $loop @param array<string,mixed> $governor @param array<string,mixed>|null $batch */
+    private function activityReport(array $queue, array $loop, array $governor, ?array $batch = null): array
     {
-        $next = is_array($queue['nextEligible'] ?? null) ? $queue['nextEligible'] : null;
-        return ['WHAT' => $next === null ? 'ตรวจสถานะและรอ canonical work ที่ eligible' : 'เลือก canonical task ที่พร้อมให้ VPS executor ทำต่อ', 'WHY' => 'รักษา Staff loop แบบ bounded และไม่สร้าง queue ซ้ำ', 'PROJECT' => $next['project'] ?? null, 'REAL_STATE' => $next === null ? 'IDLE_OR_WAITING' : 'ELIGIBLE', 'RESULT_OR_BLOCKER' => (int) ($queue['waitingCapabilityCount'] ?? 0) > 0 ? 'มีงานรอ capability แต่ไม่หยุดงานที่ eligible' : 'ไม่มี blocker จาก capability ใน projection นี้', 'NEXT_ACTION' => $next === null ? 'ตรวจใหม่ใน tick ถัดไป' : 'ใช้ HubDurableExecutionService claim ผ่าน lease เดิม'];
+        $next = is_array($governor['selectedWork'] ?? null) ? $governor['selectedWork'] : (is_array($queue['nextEligible'] ?? null) ? $queue['nextEligible'] : null);
+        $processed=is_array($batch)?(int)($batch['processed']??0):0;$completed=is_array($batch)?(int)($batch['completed']??0):0;$failed=is_array($batch)?(int)($batch['failed']??0):0;
+        $realState=$completed>0&&$failed===0?'COMPLETED':($processed>0?'EXECUTED_WITH_REVIEW':($next===null?'IDLE_OR_WAITING':'ELIGIBLE'));
+        return ['WHAT' => $next === null ? 'ตรวจสถานะและรอ canonical work ที่ eligible' : (($governor['decision']??null)==='CREATE_CANONICAL_TASK'?'สร้างและทำ canonical Staff audit':'เลือก canonical task ที่พร้อมให้ VPS executor ทำต่อ'), 'WHY' => 'รักษา Staff loop แบบ bounded และไม่สร้าง queue ซ้ำ', 'PROJECT' => $next['project'] ?? null, 'REAL_STATE' => $realState, 'RESULT_OR_BLOCKER' => $completed>0?'execution และ artifact verification สำเร็จ':((int) ($queue['waitingCapabilityCount'] ?? 0) > 0 ? 'มีงานรอ capability แต่ไม่หยุดงานที่ eligible' : 'ไม่มี blocker จาก capability ใน projection นี้'), 'NEXT_ACTION' => $completed>0?'เลือกงาน eligible ถัดไปใน tick ต่อไป':($next === null ? 'ตรวจใหม่ใน tick ถัดไป' : 'ใช้ HubDurableExecutionService claim ผ่าน lease เดิม')];
     }
 
     /** @param array<string,mixed> $authorities */
-    private function morningBrief(string $at, string $since, array $telemetry, array $release, array $database, array $backup, array $storage, array $queue, array $workers, array $providers, array $roles, array $authorities, ?array $batch = null): array
+    private function morningBrief(string $at, string $since, array $telemetry, array $release, array $database, array $backup, array $storage, array $queue, array $workers, array $providers, array $roles, array $authorities, ?array $batch = null, array $executionTriage = []): array
     {
         $passed = count(array_filter($roles, static fn (array $role): bool => ($role['state'] ?? '') === 'PASS'));
         $completed = (int) ($queue['tasksByState']['COMPLETED'] ?? 0);
         $failed = array_sum(array_map(static fn (array $item): int => (int) ($item['amount'] ?? 0), is_array($queue['failedLast24h'] ?? null) ? $queue['failedLast24h'] : []));
-        return ['schemaVersion' => 1, 'briefDate' => substr($at, 0, 10), 'generatedAt' => $at, 'window' => ['since' => $since, 'until' => $at], 'overnight' => ['tasks' => $queue['tasksByState'] ?? [], 'executions' => $queue['executionsByState'] ?? [], 'completedTasks' => $completed, 'failedTasks' => $failed, 'failed' => $queue['failedLast24h'] ?? [], 'recoveredFailures' => is_array($batch) ? (int) ($batch['recovered'] ?? 0) : null, 'stuck' => $queue['stuckExecutionCount'] ?? 0], 'visibleChanges' => ['artifactsCreatedLast24h' => $authorities['activeArtifacts'] ?? 0], 'vps' => ['state' => $telemetry['state'] ?? 'UNKNOWN', 'services' => array_map(static fn (array $service): array => ['key' => (string) ($service['key'] ?? ''), 'state' => (string) ($service['state'] ?? 'UNKNOWN')], is_array($telemetry['server']['services'] ?? null) ? $telemetry['server']['services'] : [])], 'release' => ['control' => $release['controlReleaseId'] ?? null, 'web' => $release['webReleaseId'] ?? null, 'pointersMatch' => (bool) ($release['pointersMatch'] ?? false)], 'database' => $database, 'backup' => $backup, 'storage' => ['state' => $storage['state'] ?? 'UNKNOWN', 'summary' => $storage['summary'] ?? [], 'disk' => $storage['disk'] ?? null], 'workers' => $workers, 'providers' => $providers, 'canonicalAuthorities' => $authorities, 'staff' => ['rolesPass' => $passed, 'rolesTotal' => count($roles), 'next' => $queue['nextEligible'] ?? null], 'nextPlannedWork' => $queue['nextEligible'] ?? null];
+        return ['schemaVersion' => 1, 'briefDate' => substr($at, 0, 10), 'generatedAt' => $at, 'window' => ['since' => $since, 'until' => $at], 'overnight' => ['tasks' => $queue['tasksByState'] ?? [], 'executions' => $queue['executionsByState'] ?? [], 'completedTasks' => $completed, 'failedTasks' => $failed, 'failed' => $queue['failedLast24h'] ?? [], 'recoveredFailures' => is_array($batch) ? (int) ($batch['recovered'] ?? 0) : null, 'stuck' => $queue['stuckExecutionCount'] ?? 0, 'executionTriage' => $executionTriage['summary'] ?? []], 'visibleChanges' => ['artifactsCreatedLast24h' => $authorities['activeArtifacts'] ?? 0], 'vps' => ['state' => $telemetry['state'] ?? 'UNKNOWN', 'services' => array_map(static fn (array $service): array => ['key' => (string) ($service['key'] ?? ''), 'state' => (string) ($service['state'] ?? 'UNKNOWN')], is_array($telemetry['server']['services'] ?? null) ? $telemetry['server']['services'] : [])], 'release' => ['control' => $release['controlReleaseId'] ?? null, 'web' => $release['webReleaseId'] ?? null, 'pointersMatch' => (bool) ($release['pointersMatch'] ?? false)], 'database' => $database, 'backup' => $backup, 'storage' => ['state' => $storage['state'] ?? 'UNKNOWN', 'summary' => $storage['summary'] ?? [], 'disk' => $storage['disk'] ?? null], 'workers' => $workers, 'providers' => $providers, 'canonicalAuthorities' => $authorities, 'staff' => ['rolesPass' => $passed, 'rolesTotal' => count($roles), 'next' => $queue['nextEligible'] ?? null], 'nextPlannedWork' => $queue['nextEligible'] ?? null];
     }
 
     /** Persist one brief per UTC day in the existing audited settings revision ledger. */

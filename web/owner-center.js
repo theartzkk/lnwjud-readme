@@ -37,13 +37,6 @@
     }, 0);
   }
 
-  function leaveDashboardForWork() {
-    document.body.classList.remove('product-dashboard-active');
-    const dashboard = $('product-dashboard');
-    if (dashboard) dashboard.hidden = true;
-    $('goal-input')?.focus();
-  }
-
   function closeCenter() {
     const sheet = $(SHEET_ID);
     if (sheet) sheet.hidden = true;
@@ -79,7 +72,8 @@
     closeCenter();
     if (action === 'projects') { $('project-open')?.click(); return; }
     if (action === 'multi-chat') { $('conversation-open')?.click(); return; }
-    if (action === 'tasks' || action === 'approvals') { leaveDashboardForWork(); return; }
+    if (action === 'tasks') { $('dashboard-open-tasks')?.click(); return; }
+    if (action === 'approvals') { $('dashboard-pulse-attention-card')?.click(); return; }
     if (action === 'memory') { openSettings('data'); return; }
     if (action === 'ai') { openSettings('ai'); return; }
     if (action === 'devices') { openSettings('devices'); return; }

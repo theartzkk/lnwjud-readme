@@ -35,6 +35,7 @@ const tests = [
   'hub/tests/m17-database-studio.php',
   'hub/tests/sustainability-foundation.php',
   'hub/tests/staff-operations.php',
+  'hub/tests/staff-governor-loop.php',
 ];
 
 const php = await resolveExecutable('php');

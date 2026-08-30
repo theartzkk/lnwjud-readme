@@ -28,10 +28,10 @@ try {
     $pdo->exec("CREATE TABLE projects(project_id TEXT PRIMARY KEY, name TEXT NOT NULL);
         CREATE TABLE owner_bootstrap(singleton_id INTEGER PRIMARY KEY, owner_user_id TEXT NOT NULL, initialized_at TEXT NOT NULL, bootstrap_closed INTEGER NOT NULL);
         CREATE TABLE control_product_setting_revisions(revision_id TEXT PRIMARY KEY, setting_key TEXT NOT NULL, revision_no INTEGER NOT NULL, value_json TEXT NOT NULL, updated_by_user_id TEXT NOT NULL, created_at TEXT NOT NULL);
-        CREATE TABLE control_tasks(task_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, state TEXT NOT NULL, updated_at TEXT NOT NULL);
-        CREATE TABLE control_task_executions(execution_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, project_id TEXT NOT NULL, executor_kind TEXT NOT NULL, required_capability TEXT NOT NULL, state TEXT NOT NULL, lease_expires_at TEXT, last_error_code TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE TABLE control_tasks(task_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, goal TEXT NOT NULL, state TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE TABLE control_task_executions(execution_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, project_id TEXT NOT NULL, executor_kind TEXT NOT NULL, required_capability TEXT NOT NULL, state TEXT NOT NULL, lease_expires_at TEXT, attempt_count INTEGER NOT NULL, last_error_code TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
         CREATE TABLE control_workers(device_id TEXT PRIMARY KEY, state TEXT NOT NULL);");
-    $pdo->exec("INSERT INTO projects VALUES('p1','AWH test project'); INSERT INTO owner_bootstrap VALUES(1,'owner-1','2026-08-30T00:00:00Z',1); INSERT INTO control_tasks VALUES('t1','p1','QUEUED','2026-08-30T00:00:00Z'); INSERT INTO control_task_executions VALUES('e1','t1','p1','VPS','project.read','QUEUED',NULL,NULL,'2026-08-30T00:00:00Z','2026-08-30T00:00:00Z'); INSERT INTO control_workers VALUES('w1','READY');");
+    $pdo->exec("INSERT INTO projects VALUES('p1','AWH test project'); INSERT INTO owner_bootstrap VALUES(1,'owner-1','2026-08-30T00:00:00Z',1); INSERT INTO control_tasks VALUES('t1','p1','fixture queued task','QUEUED','2026-08-30T00:00:00Z'); INSERT INTO control_task_executions VALUES('e1','t1','p1','VPS','project.read','QUEUED',NULL,0,NULL,'2026-08-30T00:00:00Z','2026-08-30T00:00:00Z'); INSERT INTO control_workers VALUES('w1','READY');");
     $telemetry = ['state' => 'READY', 'server' => ['services' => [['key' => 'nginx', 'state' => 'ACTIVE'], ['key' => 'php-fpm', 'state' => 'ACTIVE']], 'security' => ['fail2ban' => 'ACTIVE', 'automaticUpdates' => 'ACTIVE']]];
     $release = ['controlReleaseId' => 'm16-test', 'webReleaseId' => 'm16-test', 'pointersMatch' => true];
     $storage = new HubStorageGovernanceService(['hubData' => $root, 'backups' => $backup]);
@@ -40,6 +40,7 @@ try {
     staff_expect(count($snapshot['roles']) === 14, 'all Staff roles must be projected');
     staff_expect(($snapshot['governor']['decision'] ?? null) === 'SELECT_EXISTING_CANONICAL_TASK', 'Governor must select existing canonical work');
     staff_expect(($snapshot['database']['state'] ?? null) === 'HEALTHY', 'database projection must be healthy');
+    staff_expect(($snapshot['executionTriage']['total'] ?? -1) === 0 && ($snapshot['executionTriage']['auditHistoryPreserved'] ?? false) === true, 'Owner Staff projection must expose bounded canonical execution triage');
     staff_expect(($snapshot['safety']['canonicalAuthoritiesOnly'] ?? false) === true && ($snapshot['safety']['newTables'] ?? true) === false, 'staff must not create a shadow authority');
     staff_expect(($snapshot['morningBrief']['canonicalAuthorities']['projects'] ?? 0) === 1, 'morning brief must expose canonical project count');
     staff_expect(($snapshot['storageGovernance']['actions']['purged'] ?? -1) === 0, 'storage audit must not purge');

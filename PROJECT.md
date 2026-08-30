@@ -1,3 +1,18 @@
+# AWH final user-operable closure candidate — 2026-08-30
+
+## Authoritative live reconciliation and candidate scope
+
+- Reconciled source/origin before mutation at exact SHA `af961def22356fdbeab0a27693377283e80fbbfd` on `awh/api-independence`; live Production remains Control/Web `m16-af961def2235`, DB schema 16, integrity `ok`, FK 0, with Nginx/PHP-FPM/executor/backup services healthy. No Production, credential, RBAC, billing, BAY or direct database mutation occurred in this candidate run.
+- Rendered Production UAT proved the current Web release references `awh-design-system.css` but does not serve a usable stylesheet. The browser falls back to Times and undefined shared color tokens, making Settings translucent/overlapping. The same 390x844 run proved Home, canonical Tasks, Files, Infrastructure and Database surfaces are responsive without horizontal page overflow; current Owner Center `Tasks & Executions` incorrectly opens Work chat.
+- The coherent candidate fixes the shared release boundary: every manifest asset, including the design system, is packaged; a new fail-closed PHP verifier checks every declared path, size and SHA-256 before the Web pointer can move; post-cutover smoke requires the design stylesheet to return 200. Owner Center Tasks and Approvals now reuse the existing Dashboard task filters instead of hiding Dashboard and falling into chat.
+- The candidate also completes one bounded VPS Staff field-loop implementation through existing canonical authorities: Governor selects eligible work or asks the typed Control Plane materializer for one idempotent daily read-only audit; the existing executor produces one canonical artifact; failed/waiting executions are classified by one shared read-only triage service without retrying, deleting or hiding audit history.
+- Project Factory now emits a real self-contained, mobile-ready static preview artifact with deterministic validation, truthful placeholders and an explicit Owner release gate. It remains one Project/Task/Execution/Artifact flow and does not claim a domain or Production deployment.
+
+## Candidate evidence and remaining gates
+
+- Automated evidence on the uncommitted candidate: full Node regression `322 total / 321 PASS / 0 FAIL / 1 platform SKIP`; Hub fixtures including the Staff Governor loop PASS; typecheck, CONTROL Web build, 30-file release-manifest verification, `qa:fast`, Desktop smoke, POSIX syntax and diff checks PASS. Local rendered 390x844 evidence loads the shared Inter/token contract with no horizontal page overflow.
+- Still open by design: freeze/push the exact candidate, hosted CI, exact-SHA release evidence and `qa:local`; then one typed M16 Production approval, post-deploy Staff/triage/Project Factory field proof and compact Owner manual login/logout/wrong-password/iPhone/tool UAT. Local AI, local Thai TTS, Claude handoff and fully executable plugin integrations remain readiness/deferred capabilities and are not represented as Product v1 field PASS.
+
 # AWH overnight VPS autonomy foundation — 2026-08-30
 
 ## Authoritative superseding closure checkpoint — 2026-08-30

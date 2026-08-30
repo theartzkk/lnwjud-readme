@@ -1,3 +1,24 @@
+# Authoritative task supersession — 2026-08-30 Final user-operable closure candidate
+
+## Closed in the coherent candidate
+
+- [x] Reconcile canonical HEAD/origin, clean baseline and live Production `m16-af961def2235` before edits; preserve unrelated dirty worktrees and leases.
+- [x] Reproduce rendered Production design-token failure and mobile Owner/Tasks/Files/Infrastructure/Database behavior without exposing credentials or mutating Production.
+- [x] Package every manifest-declared Web asset and verify path/size/SHA-256 before pointer switch; require the shared design-system asset in public smoke.
+- [x] Route Owner Center Tasks and Approvals to the existing canonical task surface/filter instead of Work chat; add sibling regression coverage.
+- [x] Implement bounded Governor → canonical daily audit Task/Execution → executor → artifact → report/continue loop without a new queue, daemon, table or shell authority.
+- [x] Add one shared read-only execution triage for historical/stale/retryable/capability-blocked/current-defect truth; preserve every audit row and prohibit blind retry.
+- [x] Upgrade Project Factory from a plan to a deterministic mobile-ready preview artifact with truthful release readiness.
+- [x] Pass full regression `322/321/0/1`, Hub tests, typecheck, Web build/manifest verification, `qa:fast`, Desktop smoke and rendered local mobile evidence.
+
+## First unfinished checkpoint
+
+- [ ] Review final diff, update exact release checkpoint, commit and push one candidate to `origin/awh/api-independence`.
+- [ ] Obtain hosted CI for that exact SHA, refresh ignored `release-evidence.json`, pass `ops:release:check` and `qa:local` on clean exact origin.
+- [ ] Request one exact-SHA typed M16 Production approval only after all source gates are green.
+- [ ] After activation, prove design-system HTTP/load, Owner task routing, DB16/integrity/FK, services, Staff full loop/artifact, execution triage, School Document AI, Project Factory and Production smoke.
+- [ ] Keep final Owner UAT separate: username/password, wrong password, logout/session, iPhone keyboard/touch, PDF/image upload, and rendered final sign-off.
+
 # Authoritative task supersession — 2026-08-30 Overnight VPS autonomy foundation
 
 ## Authoritative superseding closure checkpoint — 2026-08-30

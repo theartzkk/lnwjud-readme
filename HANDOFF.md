@@ -1,3 +1,19 @@
+# Authoritative handoff — 2026-08-30 Final user-operable closure candidate
+
+## Current truth
+
+- Baseline source/origin and live Production were exact `af961def22356fdbeab0a27693377283e80fbbfd` / `m16-af961def2235` before this candidate. Production was observed only; no credential value was read or printed and no Production/DB mutation occurred.
+- Current worktree contains one coherent closure set: fail-closed Web manifest deployment verification and missing shared CSS packaging, Owner Center task/approval routing, canonical Staff Governor daily audit, shared execution triage, Project Factory preview, Owner UI projection and regressions.
+- Current automated proof is green: Node `322 total / 321 PASS / 0 FAIL / 1 platform SKIP`; Hub/Staff fixtures, typecheck, CONTROL build, 30-file manifest verifier, `qa:fast`, Desktop smoke and shell syntax PASS. Production rendered evidence remains a baseline defect proof, not candidate Production UAT.
+
+## Resume from here
+
+1. Review the complete diff and ensure only the listed candidate files plus these checkpoint documents are staged.
+2. Commit/push one final candidate, wait for exact-head hosted CI, update ignored release evidence, then run clean-origin `ops:release:check` and `qa:local`.
+3. If green, stop only at one exact-SHA typed M16 approval. Do not deploy `e62` or any SHA other than the frozen candidate.
+4. After approval, verify pointer/SHA, DB16/integrity/FK, Nginx/PHP-FPM/executor/backup, shared CSS 200 and computed styles, canonical Staff loop artifact/triage, Project Factory, Document AI and smoke. Preserve rollback and AUDIT_ONLY storage policy.
+5. Finish with one compact Owner manual UAT for actual login/logout/wrong-password and iPhone/file-upload interaction. Do not upgrade readiness-only local AI/TTS/Claude/plugin capabilities into PASS without field evidence.
+
 # Authoritative handoff — 2026-08-30 Overnight VPS autonomy foundation
 
 ## Authoritative superseding handoff — 2026-08-30

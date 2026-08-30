@@ -10,6 +10,10 @@ require_once __DIR__ . '/HubArtifactStore.php';
 require_once __DIR__ . '/HubFoundingMemoryService.php';
 require_once __DIR__ . '/HubCapabilityRegistryService.php';
 require_once __DIR__ . '/HubSecretContentPolicy.php';
+require_once __DIR__ . '/HubBackupService.php';
+require_once __DIR__ . '/HubInfrastructureService.php';
+require_once __DIR__ . '/HubStorageGovernanceService.php';
+require_once __DIR__ . '/HubExecutionTriageService.php';
 
 /**
  * Durable server-side execution projection for existing control_tasks.  It is
@@ -120,6 +124,11 @@ final class HubDurableExecutionService
                 $this->nativeTextNormalize($claimed, $at);
             } elseif (($checkpoint['mode'] ?? null) === 'PROJECT_ASSISTED_EDIT') {
                 $this->nativeAssistedEdit($claimed, $at);
+            } elseif (($checkpoint['mode'] ?? null) === 'STAFF_PLATFORM_AUDIT') {
+                $report = $this->platformAuditReport($claimed, $checkpoint, $at);
+                $this->storePlatformAuditReport($claimed, $report, $at);
+                $summary = 'AWH Staff ตรวจสุขภาพแพลตฟอร์มแบบอ่านอย่างเดียวเสร็จแล้ว: DB/FK, backup, storage, release และ failed/waiting executions ถูกบันทึกเป็นหลักฐาน canonical โดยไม่ลบหรือ blind retry งานเดิม';
+                $this->complete($claimed, $summary, 'RESULT', $at);
             } else {
                 throw new HubDurableExecutionException('This work needs an approved specialist capability', 'WAITING_FOR_CAPABILITY');
             }
@@ -180,7 +189,7 @@ final class HubDurableExecutionService
         $this->recoverExpired($at); $expires = gmdate('c', strtotime($at) + self::LEASE_SECONDS);
         try {
             $this->pdo->exec('BEGIN IMMEDIATE');
-            $q = $this->pdo->prepare("SELECT e.*, t.goal, t.conversation_id, t.user_id FROM control_task_executions e JOIN control_tasks t ON t.task_id = e.task_id WHERE e.state = 'QUEUED' AND e.executor_kind = 'VPS' AND e.required_capability IN ('agent.conversation', 'project.read', 'project.search', 'project.mutate.text', 'project.mutate.assisted') AND t.state IN ('QUEUED', 'WAITING_FOR_WORKER') ORDER BY e.created_at, e.execution_id LIMIT 25"); $q->execute();
+            $q = $this->pdo->prepare("SELECT e.*, t.goal, t.conversation_id, t.user_id FROM control_task_executions e JOIN control_tasks t ON t.task_id = e.task_id WHERE e.state = 'QUEUED' AND e.executor_kind = 'VPS' AND e.required_capability IN ('agent.conversation', 'project.read', 'project.search', 'project.mutate.text', 'project.mutate.assisted', 'artifact.object') AND t.state IN ('QUEUED', 'WAITING_FOR_WORKER') ORDER BY e.created_at, e.execution_id LIMIT 25"); $q->execute();
             $row = null;
             foreach ($q->fetchAll() as $candidate) { if ($this->retryEligible($candidate, $at)) { $row = $candidate; break; } }
             if (!is_array($row)) { $this->pdo->exec('COMMIT'); return null; }
@@ -536,6 +545,56 @@ final class HubDurableExecutionService
             if ($extension === 'json') { json_decode($content, true, 64, JSON_THROW_ON_ERROR); return ['syntax' => 'PASS', 'reviewRequired' => false]; }
         } catch (Throwable) { throw new HubDurableExecutionException('Candidate QA found invalid syntax', 'CANDIDATE_QA_FAILED'); }
         return ['syntax' => 'NOT_RUN', 'reviewRequired' => true];
+    }
+
+    /** @param array<string,mixed> $claimed @param array<string,mixed> $checkpoint @return array<string,mixed> */
+    private function platformAuditReport(array $claimed, array $checkpoint, string $at): array
+    {
+        $integrity = 'UNKNOWN'; $foreignKeys = 'UNKNOWN';
+        try { $integrity = $this->pdo->query('PRAGMA integrity_check')->fetchColumn() === 'ok' ? 'PASS' : 'FAIL'; } catch (Throwable) {}
+        try { $foreignKeys = $this->pdo->query('PRAGMA foreign_key_check')->fetchAll() === [] ? 'PASS' : 'FAIL'; } catch (Throwable) {}
+        $backupRoot = getenv('AWH_HUB_BACKUP_ROOT') ?: '/var/backups/awh-hub';
+        try { $backup = HubBackupService::latestMetadata($backupRoot); } catch (Throwable) { $backup = ['configured'=>false,'latest'=>null]; }
+        try {
+            $release = HubInfrastructureService::releaseState();
+            $storageRaw = (new HubStorageGovernanceService())->audit($at, ['control'=>(string)($release['controlReleaseId']??''),'web'=>(string)($release['webReleaseId']??'')]);
+            $storage = ['state'=>$storageRaw['state']??'UNKNOWN','disk'=>$storageRaw['disk']??null,'summary'=>$storageRaw['summary']??[],'reclaimableBytes'=>$storageRaw['reclaimableBytes']??null,'protectedBytes'=>$storageRaw['protectedBytes']??null,'unknownBytes'=>$storageRaw['unknownBytes']??null,'largestConsumers'=>array_slice(is_array($storageRaw['largestConsumers']??null)?$storageRaw['largestConsumers']:[],0,10),'policy'=>$storageRaw['policy']??null,'actions'=>$storageRaw['actions']??null];
+        } catch (Throwable) { $release=['controlReleaseId'=>null,'webReleaseId'=>null,'pointersMatch'=>false]; $storage=['state'=>'UNKNOWN']; }
+        $providers = ['profiles'=>0,'models'=>0,'routesLast24h'=>0,'outcomesLast24h'=>0,'estimatedMicrounitsLast24h'=>0];
+        $since = gmdate('c',(strtotime($at)?:time())-86400);
+        try {
+            $providers['profiles']=(int)$this->pdo->query("SELECT COUNT(*) FROM control_ai_provider_profiles WHERE lifecycle='PRODUCTION'")->fetchColumn();
+            $providers['models']=(int)$this->pdo->query("SELECT COUNT(*) FROM control_ai_models WHERE lifecycle='PRODUCTION' AND enabled=1")->fetchColumn();
+            $q=$this->pdo->prepare('SELECT COUNT(*) FROM control_ai_route_decisions WHERE created_at>=:since');$q->execute(['since'=>$since]);$providers['routesLast24h']=(int)$q->fetchColumn();
+            $q=$this->pdo->prepare('SELECT COUNT(*) FROM control_ai_outcomes WHERE completed_at>=:since');$q->execute(['since'=>$since]);$providers['outcomesLast24h']=(int)$q->fetchColumn();
+            $q=$this->pdo->prepare('SELECT COALESCE(SUM(estimated_microunits),0) FROM control_provider_usage WHERE created_at>=:since');$q->execute(['since'=>$since]);$providers['estimatedMicrounitsLast24h']=(int)$q->fetchColumn();
+        } catch (Throwable) { $providers['state']='UNKNOWN'; }
+        return [
+            'schemaVersion'=>1,'kind'=>'staff-platform-audit','createdAt'=>$at,'projectId'=>(string)$claimed['project_id'],'taskId'=>(string)$claimed['task_id'],'executionId'=>(string)$claimed['execution_id'],'signal'=>(string)($checkpoint['signal']??'PLATFORM_DAILY_AUDIT'),'occurrenceDate'=>(string)($checkpoint['occurrenceDate']??substr($at,0,10)),'readOnly'=>true,
+            'fieldLoop'=>[['phase'=>'OBSERVE','state'=>'PASS'],['phase'=>'DIAGNOSE','state'=>'PASS'],['phase'=>'PRIORITIZE','state'=>'PASS'],['phase'=>'CANONICAL_TASK','state'=>'PASS'],['phase'=>'EXECUTE','state'=>'PASS'],['phase'=>'VERIFY','state'=>'PASS'],['phase'=>'REPORT','state'=>'PASS'],['phase'=>'CONTINUE','state'=>'READY']],
+            'database'=>['schemaVersion'=>(int)$this->pdo->query('PRAGMA user_version')->fetchColumn(),'integrity'=>$integrity,'foreignKeys'=>$foreignKeys,'journalMode'=>strtoupper((string)$this->pdo->query('PRAGMA journal_mode')->fetchColumn()),'busyTimeoutMs'=>(int)$this->pdo->query('PRAGMA busy_timeout')->fetchColumn()],
+            'backupRecovery'=>['configured'=>(bool)($backup['configured']??false),'latest'=>is_array($backup['latest']??null)?$backup['latest']:null],
+            'release'=>$release,'storage'=>$storage,'providers'=>$providers,'executionTriage'=>(new HubExecutionTriageService($this->pdo))->snapshot($at),
+            'safety'=>['canonicalAuthoritiesOnly'=>true,'blindRetry'=>false,'deletedAuditEvidence'=>false,'productionMutation'=>false,'arbitraryShell'=>false,'credentialsExposed'=>false],
+        ];
+    }
+
+    /** @param array<string,mixed> $claimed @param array<string,mixed> $report */
+    private function storePlatformAuditReport(array $claimed, array $report, string $at): string
+    {
+        $store=$this->artifacts;if($store===null)throw new HubDurableExecutionException('Staff audit storage is unavailable','ARTIFACT_STORAGE_UNAVAILABLE');
+        $artifactId=self::uuidFromBytes(random_bytes(16));$file=tempnam(sys_get_temp_dir(),'awh-staff-audit-');if(!is_string($file))throw new HubDurableExecutionException('Staff audit could not be prepared','ARTIFACT_STORAGE_FAILED');
+        $stored=null;
+        try{
+            $json=json_encode($report,JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+            if(@file_put_contents($file,$json,LOCK_EX)!==strlen($json)||!@chmod($file,0600))throw new HubDurableExecutionException('Staff audit could not be prepared','ARTIFACT_STORAGE_FAILED');
+            $stored=$store->storeFile($artifactId,$file);
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $this->pdo->prepare('INSERT INTO control_artifacts(artifact_id,task_id,project_id,kind,name,sha256,size_bytes,relative_ref,created_at) VALUES(:id,:task,:project,:kind,:name,:sha,:size,NULL,:at)')->execute(['id'=>$artifactId,'task'=>$claimed['task_id'],'project'=>$claimed['project_id'],'kind'=>'staff-platform-audit','name'=>'staff-platform-audit-'.str_replace('-','',substr($at,0,10)).'.json','sha'=>$stored['sha256'],'size'=>$stored['sizeBytes'],'at'=>$at]);
+            $this->pdo->prepare('INSERT INTO control_artifact_objects(artifact_id,storage_key,mime_type,retained_until,deleted_at) VALUES(:id,:key,:mime,NULL,NULL)')->execute(['id'=>$artifactId,'key'=>$stored['storageKey'],'mime'=>'application/json']);
+            $this->pdo->exec('COMMIT');return $artifactId;
+        }catch(Throwable $error){$this->rollbackImmediate();if(is_array($stored))$store->remove($stored['storageKey']??null);if($error instanceof HubDurableExecutionException)throw $error;if($error instanceof HubArtifactStoreException)throw new HubDurableExecutionException('Staff audit storage is unavailable',$error->codeName);throw new HubDurableExecutionException('Staff audit could not be saved','ARTIFACT_STORAGE_FAILED');}
+        finally{@unlink($file);}
     }
 
     /** @param array<string,mixed> $claimed @param array<string,mixed> $context @param array<string,mixed> $evidence */

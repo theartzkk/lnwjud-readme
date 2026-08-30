@@ -8,6 +8,7 @@ require_once dirname(__DIR__) . '/src/HubProjectVaultService.php';
 require_once dirname(__DIR__) . '/src/HubDurableExecutionService.php';
 require_once dirname(__DIR__) . '/src/HubControlPlaneService.php';
 require_once dirname(__DIR__) . '/src/HubAutomationSchedulerService.php';
+require_once dirname(__DIR__) . '/src/HubStaffGovernorService.php';
 require_once dirname(__DIR__) . '/src/HubStaffOperationsService.php';
 require_once __DIR__ . '/system-telemetry.php';
 
@@ -50,12 +51,18 @@ try {
 
     $control ??= HubControlPlaneService::openExisting($database);
     $execution = HubDurableExecutionService::fromEnvironment($pdo, static fn(array $request): array => $control->materializeContinuationSubmission($request));
+    try {
+        $governorRun = (new HubStaffGovernorService($pdo, static fn(string $signal, string $occurrenceAt): array => $control->materializeStaffMaintenanceSubmission($signal, $occurrenceAt)))->tick();
+    } catch (HubStaffGovernorException|HubControlPlaneException $error) {
+        // A Governor projection failure must not strand already-queued work.
+        $governorRun = ['schemaVersion'=>1,'state'=>'DEGRADED','decision'=>'GOVERNOR_DEGRADED','created'=>false,'selectedWork'=>null,'signals'=>[],'reason'=>$error->codeName,'blockedWorkDoesNotStopLoop'=>true,'arbitraryShell'=>false];
+    }
     $batch = $execution->runBatch(4);
     $staffTelemetry = HubInfrastructureService::fromEnvironment()->status();
     $staffService = new HubStaffOperationsService($pdo, $database);
-    $staff = $staffService->snapshot(null, $batch, $staffTelemetry, HubInfrastructureService::releaseState());
+    $staff = $staffService->snapshot(null, $batch, $staffTelemetry, HubInfrastructureService::releaseState(), $governorRun);
     $persistedBrief = $staffService->persistMorningBrief($staff['morningBrief']);
     $staff['persistedMorningBrief'] = $persistedBrief;
-    fwrite(STDOUT, json_encode(['status' => $batch['processed'] === 0 ? 'IDLE' : 'PROCESSED', 'automation' => $automation, 'telemetry' => $telemetry, 'executionBatch' => $batch, 'recoveredExecutions' => (int) ($batch['recovered'] ?? 0), 'staff' => ['loop' => $staff['loop'], 'governor' => $staff['governor'], 'selfHealing' => $staff['selfHealing'], 'housekeeping' => $staff['housekeeping'], 'report' => $staff['report'], 'morningBrief' => $staff['morningBrief'], 'persistedMorningBrief' => $persistedBrief]], JSON_UNESCAPED_SLASHES) . "\n");
+    fwrite(STDOUT, json_encode(['status' => $batch['processed'] === 0 ? 'IDLE' : 'PROCESSED', 'automation' => $automation, 'telemetry' => $telemetry, 'governorRun' => $governorRun, 'executionBatch' => $batch, 'recoveredExecutions' => (int) ($batch['recovered'] ?? 0), 'staff' => ['loop' => $staff['loop'], 'governor' => $staff['governor'], 'selfHealing' => $staff['selfHealing'], 'housekeeping' => $staff['housekeeping'], 'report' => $staff['report'], 'morningBrief' => $staff['morningBrief'], 'persistedMorningBrief' => $persistedBrief]], JSON_UNESCAPED_SLASHES) . "\n");
 } catch (HubDurableExecutionException|HubProjectVaultException|HubCentralProjectAuthorityMigrationException $error) { fwrite(STDERR, $error->codeName . "\n"); exit(1); }
 catch (Throwable) { fwrite(STDERR, "EXECUTOR_UNAVAILABLE\n"); exit(1); }

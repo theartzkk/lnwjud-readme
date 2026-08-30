@@ -1,3 +1,12 @@
+# Authoritative decision — 2026-08-30 Final closure boundaries
+
+- A Web release is valid only when every `release.json` entry is present, regular, inside the release root, size-exact and SHA-256-exact before pointer movement. `awh-design-system.css` is a required product contract, not an optional cosmetic asset; public post-cutover verification must return 200 for it.
+- Owner Center navigation must invoke the existing Dashboard task/files/settings authorities. Hiding the Dashboard is not a Tasks implementation; Tasks and Approvals reuse `dashboard-open-tasks` and `dashboard-pulse-attention-card` respectively.
+- The Product Governor may create only one fixed, low-risk, idempotent daily platform-audit task through `HubControlPlaneService`. It cannot accept a free-form goal/path/command/provider, create a shadow queue or execute arbitrary shell. The existing executor, task/event/artifact and Morning Brief authorities remain canonical.
+- Failed/waiting execution triage is a read-only interpretation shared by the Staff artifact and Owner projection. It may classify audit evidence but never delete, hide or blind-retry it. Unknown/current defects stay visible.
+- Project Factory v1 may complete a deterministic static, mobile-ready preview without a database. It must state that domain/deployment still requires Owner approval and must not invent price, contact, event or official school data.
+- Current Production stays `m16-af961def2235` until one final candidate is clean, pushed, CI/release-evidence verified and explicitly approved by exact SHA. Automated/local rendered evidence does not close Owner login, iPhone keyboard/touch or Production field UAT.
+
 # Authoritative decision — 2026-08-30 Overnight Staff and storage governance
 
 ## Authoritative superseding decision — 2026-08-30
