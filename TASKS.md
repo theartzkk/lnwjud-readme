@@ -2,13 +2,13 @@
 
 ## NOW
 
-- Live ReadyIDC was re-reconciled after an external pointer change: Control/Web currently resolve to `m16-bd6acaa66404`, source marker `bd6acaa664043d8fc26e26975f526482e9fc3159`, with Nginx, PHP-FPM, executor/backup timers, schema 16, integrity and foreign-key checks healthy. This run did not perform that activation.
+- Live ReadyIDC was re-reconciled after external pointer changes: Control/Web currently resolve to `m16-f47a7eb3691b`, source marker `f47a7eb3691b67de513c1e12fbc880397608f503`; current canonical source is `07b7871e489753c0b9c10094c98258b1e4f56dce`. Nginx, PHP-FPM, executor/backup timers, schema 16, integrity and foreign-key checks are healthy. This run did not perform those activations.
 - The real field proof against that live source still timed out after the root task completed. Source audit found the root cause in `planContinuation()`: the provider-failure fallback returned an array from a `?string` planner, so the continuation materializer was skipped by the throwable boundary.
 - The candidate branch fixes the shared fallback to return one bounded scalar `NEXT:` goal and covers `PROVIDER_FAILED`, `PROVIDER_UNAVAILABLE` and `PROVIDER_RATE_LIMITED` without weakening high-impact/provider-auth blocking.
 
 ## VERIFIED
 
-- Candidate branch is clean/upstream-exact after the source fix, `qa:fast` and serial `qa:full` pass, focused M16/Continuous Work/Auto-Chain/Staff/Project Vault tests pass, and exact-head CI is green 5/5 on the latest candidate before this documentation checkpoint.
+- Before reconciling with the newly advanced canonical source, the candidate's `qa:fast`/serial `qa:full` and exact-head CI were green 5/5. The merge with current canonical now requires a fresh QA/CI run before release approval.
 - No credential value was read, printed, copied or injected; no Production DB was directly mutated; no BAY cutover or unrelated Production change was performed.
 
 ## NEXT UNFINISHED CHECKPOINT

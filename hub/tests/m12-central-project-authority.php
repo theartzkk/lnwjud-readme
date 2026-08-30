@@ -204,7 +204,6 @@ try {
     m12_assert(!str_contains(json_encode([$quotaFailure, $rateFailure, $permissionFailure], JSON_THROW_ON_ERROR), 'raw message'), 'sanitized provider diagnostic never retains raw provider messages');
     $toolUsed = false; $agentResult = $agent->respondWithTools($owner, $project, null, null, 'ตรวจ README', [], [], ['vaultRevision' => $promoted['activeRevisionId']], [['type' => 'function', 'name' => 'project_search', 'description' => 'read only', 'parameters' => ['type' => 'object', 'additionalProperties' => false, 'properties' => ['query' => ['type' => 'string']], 'required' => ['query']]]], static function (string $name, array $arguments) use (&$toolUsed): array { $toolUsed = $name === 'project_search' && ($arguments['query'] ?? null) === 'readme'; return ['files' => [['path' => 'README.md']]]; }, $now);
     m12_assert($toolUsed && $calls === 2 && $statelessContinuation && str_contains((string) ($agentResult['summary'] ?? ''), 'Vault'), 'bounded provider-independent tool loop uses stateless continuation and returns a natural answer');
-
     m12_assert($pdo->query('PRAGMA integrity_check')->fetchColumn() === 'ok' && $pdo->query('PRAGMA foreign_key_check')->fetchAll() === [], 'M12 preserves database integrity and foreign keys');
     fwrite(STDOUT, "AWH M12 Central Project Authority: PASS\n");
 } finally { putenv('AWH_PROJECT_VAULT_ROOT'); putenv('AWH_ATTACHMENT_ROOT'); putenv('AWH_PROVIDER_CREDENTIAL_ROOT'); putenv('AWH_ARTIFACT_ROOT'); putenv('AWH_TASK_WORKSPACE_ROOT'); m12_clean($root); }

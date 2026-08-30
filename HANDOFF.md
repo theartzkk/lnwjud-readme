@@ -1,8 +1,8 @@
 # Authoritative handoff — 2026-08-30 Auto-Chain continuation fallback
 
-- Current live Production evidence is Control/Web `m16-bd6acaa66404`, source `bd6acaa664043d8fc26e26975f526482e9fc3159`; services/routes are healthy and the authenticated worker project read returns HTTP 200 with 4 projects. The pointer change was observed externally, not performed by this run.
+- Current live Production evidence is Control/Web `m16-f47a7eb3691b`, source `f47a7eb3691b67de513c1e12fbc880397608f503`; current canonical source is `07b7871e489753c0b9c10094c98258b1e4f56dce`. Services/routes are healthy and the authenticated worker project read returns HTTP 200 with 4 projects. These pointer changes were observed externally, not performed by this run.
 - The bounded field proof remains blocked on the live source: root `project.read` tasks complete, but no canonical continuation appears. Root cause is now isolated to the scalar contract violation in the planner fallback. Candidate source changes are in `HubDurableExecutionService.php` with deterministic sibling regression coverage.
-- Candidate QA/CI is green on the latest source candidate, while the typed M16 dry-run correctly reports `M11_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL`. `ops:release:check` remains a truthful readiness failure because `release-evidence.json` is intentionally absent; do not fabricate it or bypass that gate.
+- The pre-reconciliation candidate QA/CI was green, while the typed M16 dry-run correctly reports `M11_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL`. The current-canonical merge must be revalidated. `ops:release:check` remains a truthful readiness failure because `release-evidence.json` is intentionally absent; do not fabricate it or bypass that gate.
 
 ## Next action
 

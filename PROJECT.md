@@ -1,8 +1,8 @@
 # Art’s Workspace Hub — current checkpoint — 2026-08-30 Auto-Chain continuation fallback
 
-- The live control plane currently resolves to `m16-bd6acaa66404` / source `bd6acaa664043d8fc26e26975f526482e9fc3159`; authenticated read-only worker access and core service/DB checks are healthy. This is observed live truth, not a deployment performed in this run.
+- The live control plane currently resolves to `m16-f47a7eb3691b` / source `f47a7eb3691b67de513c1e12fbc880397608f503`; current canonical source is `07b7871e489753c0b9c10094c98258b1e4f56dce`. Authenticated read-only worker access and core service/DB checks are healthy. This is observed live truth, not a deployment performed in this run.
 - The current candidate closes the provider-failure continuation root cause by restoring the declared `?string` planner contract. It preserves deterministic read-only fallback, canonical task/execution authority, bounded lineage, and fail-closed high-impact/provider-auth behavior.
-- Source, local full QA, focused continuity tests and exact-head hosted CI are green. Live Auto-Chain field proof is not yet PASS because the required fix is not active in the live release.
+- Source, local full QA, focused continuity tests and exact-head hosted CI were green before the canonical reconciliation; the merged candidate now needs fresh QA/CI. Live Auto-Chain field proof is not yet PASS because the canonical continuation fix is not active in the live release.
 
 ## Next
 
