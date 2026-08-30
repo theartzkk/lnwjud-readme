@@ -1,4 +1,18 @@
-# Authoritative handoff — 2026-08-30 Final full-use UAT closure
+# Authoritative handoff — 2026-08-30 P0 responsive-width closure
+
+## Current truth
+
+- Baseline source/origin and Production were reconciled at `704ba9c2950577dcec896ab7047fb25def583e33` / `m16-704ba9c29505`. Production is unchanged and must not be treated as containing the source repair.
+- The physical iPhone horizontal-pan defect is repaired in one shared responsive contract, not with a Chat-only `overflow-x:hidden`: direct negative composer gutters are removed; shared app/card/form/grid selectors receive shrink limits; long code, paths and attachments wrap or use internal bounded scrolling.
+- `responsive-layout.css` is now built, checksummed, cached and deployment-verified as a required asset for the PWA and standalone Owner pages. The deploy verifier and remote access check fail closed if it is missing or altered.
+- Local evidence: focused width regression PASS; existing final UAT/navigation/manifest tests PASS; full `qa:local` functional suite PASS except the expected dirty-tree release gate before commit; typecheck, CONTROL build/32-file verifier and Desktop smoke PASS. No physical iPhone/authenticated Production visual PASS is claimed.
+
+## Resume from here
+
+1. Review/stage only this coherent responsive batch and durable checkpoint documents, then freeze/push one exact candidate and obtain exact-head CI/release evidence.
+2. Do not deploy from this checkpoint. After any future approved activation, run the real iPhone `documentElement.scrollWidth <= clientWidth` check and compact rendered UAT across Home, Chat, Work, Tasks, Files, Tools, Settings and Owner surfaces.
+
+# Previous authoritative handoff — 2026-08-30 Final full-use UAT closure
 
 ## Current truth
 

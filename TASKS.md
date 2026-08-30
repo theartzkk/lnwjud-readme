@@ -1,4 +1,18 @@
-# Authoritative task supersession — 2026-08-30 Final full-use UAT closure
+# Authoritative task supersession — 2026-08-30 P0 mobile horizontal-overflow closure
+
+## Closed in this source batch
+
+- [x] Fix the shared document-width root cause rather than hiding Chat overflow: remove the composer’s negative horizontal margins, shrink shared flex/grid tracks, and bound long text/path/code/attachment content.
+- [x] Require the shared responsive-width asset in build, manifest, service worker, standalone Owner pages, typed deployment staging and checksum verification.
+- [x] Add the `scrollWidth <= clientWidth` regression and include it in `qa:fast` / `qa:local` final-UAT shell contracts.
+- [x] Preserve vertical scrolling, existing navigation/overlay behavior and desktop smoke.
+
+## First unfinished checkpoint
+
+- [ ] Freeze this coherent UAT fix batch with exact source/origin/CI/release evidence; do not deploy until a future exact-SHA approval.
+- [ ] Obtain physical authenticated iPhone Safari evidence for Home, Chat, Work, Tasks, Files, Tools, Settings and Owner pages; no source test substitutes for that gate.
+
+# Previous authoritative task supersession — 2026-08-30 Final full-use UAT closure
 
 ## Closed in this coherent source batch
 

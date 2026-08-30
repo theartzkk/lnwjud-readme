@@ -1,5 +1,12 @@
 # AWH final full-use UAT closure batch — 2026-08-30
 
+## Authoritative P0 responsive-width checkpoint
+
+- Production remains read-only at `m16-704ba9c29505` / `704ba9c2950577dcec896ab7047fb25def583e33`; this source pass has not activated, rolled back, migrated or directly changed Production data.
+- Physical iPhone Safari evidence of sideways panning is addressed at the shared shell boundary: the negative composer gutters that widened the document are removed, common flex/grid/card tracks can shrink, and long paths/code/attachments wrap or use bounded internal scrolling.
+- The responsive-width contract ships as a required, checksummed Web asset across the main PWA and standalone Owner pages; pointer activation fails closed if the asset is absent or altered.
+- Automated evidence is source-only: focused width regression, existing final UAT shell regression, full local Node/PHP suite, typecheck, CONTROL build/32-file verifier and Desktop smoke pass. Physical iPhone Safari and authenticated rendered Production evidence remain required before any mobile PASS claim.
+
 ## Authoritative current checkpoint
 
 - This coherent batch started from clean source/origin and live Production exact SHA `5f8f6dd226b6db6e23426573a15d99cf207c24f4`. Production was inspected read-only and remains unchanged; no credential, direct database mutation, release activation or rollback occurred.

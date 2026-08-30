@@ -1,0 +1,60 @@
+/*
+ * Shared responsive-width contract.
+ *
+ * Individual surfaces must make their own flex and grid tracks shrinkable. This
+ * stylesheet keeps the common shell, overlays, long machine-readable strings,
+ * and bottom navigation within the visual viewport as a final safety boundary.
+ */
+html,
+body { max-width: 100%; }
+
+body { overflow-x: clip; }
+
+:where(
+  .app-shell,
+  .app-header,
+  .app-main,
+  .workspace-view,
+  .workstream,
+  .work-thread,
+  .task-turn,
+  .task-response,
+  .composer,
+  .product-dashboard,
+  .awh-command-form,
+  .awh-command-actions,
+  .awh-files-search > div,
+  .awh-tool-dialog-card,
+  .awh-owner-command-card,
+  .awh-automation-panel,
+  .infra-header,
+  .infra-main,
+  .studio-shell,
+  .studio-header,
+  .trust-header,
+  .trust-main
+) { min-width: 0; max-width: 100%; }
+
+:where(.awh-command-actions > *, .awh-files-search > div > *, .awh-tool-dialog-head > *, .awh-owner-command-item > *, .awh-automation-head > *, .awh-automation-item > *) { min-width: 0; }
+
+:where(.awh-owner-command-item) { grid-template-columns: 42px minmax(0, 1fr) auto; }
+
+:where(.awh-mobile-nav) { max-width: calc(100% - 16px); }
+
+:where(.pending-attachments li, .message-attachments a, .message-attachments span, .awh-file-copy, .awh-task-artifact-row span, .awh-owner-command-copy small, .awh-automation-item p, .entity-copy small, .activity-note) {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+:where(pre) {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+:where(code) {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}

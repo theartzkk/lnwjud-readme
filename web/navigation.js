@@ -7,6 +7,12 @@ function hasDom() {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
 }
 
+export function isViewportWidthBounded(root = hasDom() ? document.documentElement : null) {
+  const clientWidth = Number(root?.clientWidth);
+  const scrollWidth = Number(root?.scrollWidth);
+  return Number.isFinite(clientWidth) && clientWidth > 0 && Number.isFinite(scrollWidth) && scrollWidth <= clientWidth;
+}
+
 function isElement(value) {
   return typeof HTMLElement !== 'undefined' && value instanceof HTMLElement;
 }

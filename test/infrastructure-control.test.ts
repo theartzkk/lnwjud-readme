@@ -29,11 +29,13 @@ test('Infrastructure is an Owner-only sanitized projection and canonical web sur
   assert.doesNotMatch(collector,/shell_exec\s*\(|\bexec\s*\(|\bsystem\s*\(/);
   const release=JSON.parse(await readFile(join(output,'release.json'),'utf8')) as {files:Array<{path:string}>};
   for(const entry of release.files) assert.ok(deploy.includes(`dist-web/${entry.path}`),`deployment missing manifest web asset ${entry.path}`);
-  for(const asset of ['dist-web/awh-design-system.css','dist-web/infrastructure.html','dist-web/infrastructure.css','dist-web/infrastructure.js','hub/bin/system-telemetry.php','hub/src/HubInfrastructureService.php','hub/src/HubExecutionTriageService.php','hub/src/HubStaffGovernorService.php','hub/src/HubStaffOperationsService.php','hub/src/HubStorageGovernanceService.php','deploy/awh-control-plane/verify-web-release.php']) assert.ok(deploy.includes(asset),`deployment missing ${asset}`);
+  for(const asset of ['dist-web/awh-design-system.css','dist-web/responsive-layout.css','dist-web/infrastructure.html','dist-web/infrastructure.css','dist-web/infrastructure.js','hub/bin/system-telemetry.php','hub/src/HubInfrastructureService.php','hub/src/HubExecutionTriageService.php','hub/src/HubStaffGovernorService.php','hub/src/HubStaffOperationsService.php','hub/src/HubStorageGovernanceService.php','deploy/awh-control-plane/verify-web-release.php']) assert.ok(deploy.includes(asset),`deployment missing ${asset}`);
   assert.match(executor,/telemetryRefreshIfStale\(null, 60\)/); assert.match(executor,/'telemetry' => \$telemetry/); assert.match(executor,/HubStaffGovernorService/); assert.match(executor,/materializeStaffMaintenanceSubmission/); assert.match(executor,/HubStaffOperationsService/); assert.match(executor,/persistMorningBrief/); assert.match(executor,/'recovered'/);
   assert.doesNotMatch(deploy,/awh-system-telemetry\.(?:service|timer)/);
   const remote=await readFile(join(ROOT,'deploy/awh-control-plane/remote-deploy-control-plane.sh'),'utf8');
   assert.match(remote,/test -r "\$WEB_RELEASE\/awh-design-system\.css"/);
+  assert.match(remote,/test -r "\$WEB_RELEASE\/responsive-layout\.css"/);
+  assert.match(remote,/Shared responsive-width contract/);
   assert.match(remote,/--awh-font-sans/);
   assert.match(remote,/design_system_code=.*awh-design-system\.css/);
   assert.match(remote,/test "\$design_system_code" = 200/);

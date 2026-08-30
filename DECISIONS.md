@@ -1,4 +1,11 @@
-# Authoritative decision — 2026-08-30 Final full-use UAT boundaries
+# Authoritative decision — 2026-08-30 responsive-width contract
+
+- Document-width correctness is a shared product invariant: on phone portrait `document.documentElement.scrollWidth` must not exceed `clientWidth`. A global horizontal overflow guard is only a final containment layer, never the sole repair.
+- Width offenders are fixed where they originate: no negative page-expanding composer gutters; shrinkable flex/grid tracks use `min-width: 0` / `minmax(0, 1fr)`; long paths, code and artifact names wrap, while semantically preformatted content may use an internal bounded scroller.
+- The contract is a required checksummed/cached release asset shared by the PWA and standalone Owner pages. The typed release manifest, deployment file list and verifier must reject a release that omits it.
+- Source regression checks both the exact `scrollWidth` predicate and asset-release path. Physical authenticated iPhone Safari evidence remains a separate acceptance gate.
+
+# Previous authoritative decision — 2026-08-30 Final full-use UAT boundaries
 
 - Work may retain a fixed conversation viewport, but authenticated Dashboard pages must use document scrolling. Only the shared overlay authority may temporarily lock body scroll; it must restore scroll/focus and hide mobile navigation while a dialog is open.
 - Browser history is product state for Home/Work/Tasks/Files and dialogs, not a second task or navigation authority. Standalone Owner pages use same-origin history when valid and a canonical Home fallback otherwise.
