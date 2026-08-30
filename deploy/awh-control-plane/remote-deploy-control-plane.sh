@@ -173,6 +173,29 @@ verify_owner_auth_login() {
   grep -q 'awh_csrf' "$OWNER_AUTH_COOKIE_JAR"
   OWNER_PASSWORD=
 }
+deduplicate_desktop_artifacts() {
+  store=/var/www/awh-web/desktop-artifacts
+  sudo install -d -o awh-hub -g www-data -m 0750 "$store"
+  for name in AWH-macOS-x64.zip AWH-Windows-x64.zip SHA256SUMS.txt; do
+    file="$WEB_RELEASE/downloads/$name"
+    sudo test -f "$file" || continue
+    digest=$(sudo sha256sum "$file" | cut -d' ' -f1)
+    case "$digest" in [0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]*) ;; *) return 1 ;; esac
+    object="$store/$digest-$name"
+    if sudo test -e "$object" || sudo test -L "$object"; then
+      sudo test -f "$object"
+      sudo cmp -s "$file" "$object"
+    else
+      sudo ln "$file" "$object"
+    fi
+    temp="$file.awh-artifact-link"
+    sudo rm -f "$temp"
+    sudo ln "$object" "$temp"
+    sudo cmp -s "$file" "$temp"
+    sudo mv -Tf "$temp" "$file"
+    sudo test "$(sudo stat -c %i "$file")" = "$(sudo stat -c %i "$object")"
+  done
+}
 verify_web_access() { sudo -n -u www-data test -x /var; sudo -n -u www-data test -x /var/www; sudo -n -u www-data test -x /var/www/awh-web; sudo -n -u www-data test -x /var/www/awh-web/releases; sudo -n -u www-data test -x "$WEB_RELEASE"; sudo -n -u www-data test -r "$WEB_RELEASE/index.html"; sudo -n -u www-data test -r "$WEB_RELEASE/database.html"; sudo -n -u www-data test -r "$WEB_RELEASE/database.css"; sudo -n -u www-data test -r "$WEB_RELEASE/database.js"; sudo grep -q '"mode": "CONTROL"' "$WEB_RELEASE/web-config.json"; sudo grep -q '"mode": "CONTROL"' "$WEB_RELEASE/data.json"; ! sudo grep -q 'Remote Preview\|Preview only\|static build' "$WEB_RELEASE/data.json"; sudo grep -q "awh-shell-$RELEASE_ID" "$WEB_RELEASE/sw.js"; }
 pointer_capture() { PREVIOUS_POINTER=ABSENT; PREVIOUS_TARGET=; if test -L "$POINTER"; then PREVIOUS_TARGET=$(readlink "$POINTER"); case "$PREVIOUS_TARGET" in /opt/awh-hub/control-releases/*) test -d "$PREVIOUS_TARGET" || return 1 ;; *) return 1 ;; esac; PREVIOUS_POINTER=PRESENT; elif test -e "$POINTER"; then return 1; fi; }
 pointer_restore() { if test "$PREVIOUS_POINTER" = ABSENT; then sudo rm -f "$POINTER"; test ! -e "$POINTER" && test ! -L "$POINTER"; else sudo rm -f "$POINTER"; sudo ln -s "$PREVIOUS_TARGET" "$POINTER"; test "$(readlink "$POINTER")" = "$PREVIOUS_TARGET"; fi; }
@@ -639,7 +662,7 @@ if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || te
   stage NATIVE_EXECUTOR_UNITS_READY
 fi
 stage PHP_FPM_RELOAD; reload_awh_php_fpm
-web_pointer_capture; sudo install -d -o awh-hub -g www-data -m 0750 /var/www/awh-web/releases; if sudo test -e "$WEB_RELEASE" || sudo test -L "$WEB_RELEASE"; then exit 20; fi; sudo install -d -o awh-hub -g www-data -m 0750 "$WEB_RELEASE"; WEB_CREATED=1; stage WEB_RELEASE_COPY; sudo cp -a "$RELEASE/dist-web/." "$WEB_RELEASE/"; sudo chown -R awh-hub:www-data "$WEB_RELEASE"; sudo find "$WEB_RELEASE" -type d -exec chmod 0750 {} +; sudo find "$WEB_RELEASE" -type f -exec chmod 0640 {} +; stage WEB_ACCESS_READY; verify_web_access; stage WEB_POINTER_SWITCH; sudo rm -f "$WEB_POINTER_TMP"; sudo ln -s "$WEB_RELEASE" "$WEB_POINTER_TMP"; sudo mv -Tf "$WEB_POINTER_TMP" "$WEB_POINTER"; WEB_POINTER_CHANGED=1; test "$(readlink "$WEB_POINTER")" = "$WEB_RELEASE"; stage WEB_RELEASE_STAGED
+web_pointer_capture; sudo install -d -o awh-hub -g www-data -m 0750 /var/www/awh-web/releases; if sudo test -e "$WEB_RELEASE" || sudo test -L "$WEB_RELEASE"; then exit 20; fi; sudo install -d -o awh-hub -g www-data -m 0750 "$WEB_RELEASE"; WEB_CREATED=1; stage WEB_RELEASE_COPY; sudo cp -a "$RELEASE/dist-web/." "$WEB_RELEASE/"; deduplicate_desktop_artifacts; sudo chown -R awh-hub:www-data "$WEB_RELEASE"; sudo find "$WEB_RELEASE" -type d -exec chmod 0750 {} +; sudo find "$WEB_RELEASE" -type f -exec chmod 0640 {} +; stage WEB_ACCESS_READY; verify_web_access; stage WEB_POINTER_SWITCH; sudo rm -f "$WEB_POINTER_TMP"; sudo ln -s "$WEB_RELEASE" "$WEB_POINTER_TMP"; sudo mv -Tf "$WEB_POINTER_TMP" "$WEB_POINTER"; WEB_POINTER_CHANGED=1; test "$(readlink "$WEB_POINTER")" = "$WEB_RELEASE"; stage WEB_RELEASE_STAGED
 stage NGINX_CUTOVER_INSTALL; sudo install -o root -g root -m 0644 "$NGINX_CANDIDATE" "$NGINX_CONFIG"; NGINX_CHANGED=1; stage NGINX_CONFIGURED; sudo nginx -t >/dev/null
 stage SERVICE_RELOAD; sudo systemctl reload nginx
 stage OWNER_AUTH_EFFECTIVE_CONFIG; verify_owner_auth_effective_config
