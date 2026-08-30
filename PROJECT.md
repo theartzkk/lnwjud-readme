@@ -1,5 +1,13 @@
 # AWH overnight VPS autonomy foundation — 2026-08-30
 
+## Authoritative superseding closure checkpoint — 2026-08-30
+
+- Live reconciliation: canonical `awh/api-independence` is `cc1584dce543cbe628fb4382ddf72f42b7055a58`, origin matches, and the worktree is clean. Production is independently observed at Control/Web release `m16-975e4de135ef`; the historical `e62e6fb2350f560dd69a942c98bdf8c152cf14c4` is not deployed or reactivated.
+- Candidate `cc1584dce543cbe628fb4382ddf72f42b7055a58` adds one bounded School Document AI memorandum path and one Project Factory school-website starter path using the existing Project/Task/Execution/Artifact/Approval authorities. No new queue, database table, credential path or Production mutation was introduced.
+- Candidate evidence: `npm test` 322 tests / 321 PASS / 0 FAIL / 1 platform SKIP; `typecheck`, `qa:local`, CONTROL web build, Desktop smoke, PHP M17 fixture, and `ops:release:check` PASS. Hosted CI run `33297008976` passed all five jobs for the exact candidate.
+- Live read-only evidence after reconciliation: DB schema 16, integrity `ok`, FK empty; Nginx/PHP-FPM/native-executor/backup timers active and enabled; latest backup is verified and the bounded restore drill remains PASS; current disk is approximately 51% used. Auto-Chain current field proof remains PASS on VPS with canonical root/continuation metadata.
+- Manual UAT and exact candidate Production activation remain open. Until one exact-SHA approval is granted, keep Production on `m16-975e4de135ef`; do not claim the new Document AI/Project Factory paths as live.
+
 ## Current superseding finish-first checkpoint
 
 - Active source is `awh/api-independence` at `38c7db668093905ddd559b823fed92f3fcfe66d8` before this run's uncommitted bounded changes. The supplied `6781e35…` is an ancestor, not the current canonical tip.

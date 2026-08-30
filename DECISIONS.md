@@ -1,5 +1,12 @@
 # Authoritative decision — 2026-08-30 Overnight Staff and storage governance
 
+## Authoritative superseding decision — 2026-08-30
+
+- Treat `cc1584dce543cbe628fb4382ddf72f42b7055a58` as the single closure candidate for the bounded School Document AI and Project Factory gaps. Production remains `m16-975e4de135ef` until exact-SHA approval; e62 remains historical only.
+- Generated product work must use a valid catalog capability (`artifact.object`) for execution envelopes while retaining a separate pipeline mode for product classification. This prevents uppercase product labels from crossing the capability registry grammar and being misreported as artifact-storage failure.
+- Generated artifacts are private, content-addressed and linked to the existing canonical task/execution/artifact tables. Idempotent retries return the existing task, artifact download reference and pipeline metadata; unknown official fields remain explicit completion fields.
+- Release evidence is exact-SHA scoped. It is READY only when the evidence SHA equals the current HEAD, DB16/backup/rollback facts are real, and hosted CI has passed; local/manual/Production gates remain separately labeled.
+
 ## Finish-first decisions — 2026-08-30
 
 - Morning Brief persistence reuses `control_product_setting_revisions` under reserved key `system.morningBrief`; this preserves one audit/revision authority and avoids a duplicate report table.

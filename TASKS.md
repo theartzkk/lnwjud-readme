@@ -1,5 +1,12 @@
 # Authoritative task supersession — 2026-08-30 Overnight VPS autonomy foundation
 
+## Authoritative superseding closure checkpoint — 2026-08-30
+
+- Source candidate: `cc1584dce543cbe628fb4382ddf72f42b7055a58`; origin exact and worktree clean. Current Production remains `m16-975e4de135ef`; no rollback to e62 and no Production mutation occurred in this run.
+- Closed in this candidate: genuine deterministic Thai memorandum artifact flow with explicit unknown completion fields; canonical Project Factory starter flow with visible phases and truthful release/approval blockers; idempotent artifact read-back; catalog-safe capability envelopes; UI adapters/dialogs; regression coverage.
+- Verified: full Node regression 322/321/0/1, typecheck, serial `qa:local`, PHP Hub/M17, CONTROL web build, Desktop smoke, release readiness, and hosted CI run `33297008976` all green for the candidate.
+- Remaining: deploy approval for this exact candidate, authenticated Web/Desktop/iPhone manual UAT, live Document AI/Project Factory field proof, and final 15/15 Production acceptance. These are not closed by source or CI evidence alone.
+
 ## Finish-first run status
 
 - [x] Add truthful bounded Storage/Garbage inventory fields and disk measurement.

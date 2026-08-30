@@ -1,5 +1,11 @@
 # Authoritative handoff — 2026-08-30 Overnight VPS autonomy foundation
 
+## Authoritative superseding handoff — 2026-08-30
+
+- Reconciled live truth: source/origin `cc1584dce543cbe628fb4382ddf72f42b7055a58`; Production Control/Web `m16-975e4de135ef`; DB16 integrity/FK PASS; services and timers active; backup/restore readiness PASS; storage about 51% used with no purge performed.
+- The candidate adds the two remaining bounded visible vertical slices through existing canonical authorities. It is source/QA/CI ready but not deployed. Auto-Chain remains field PASS on the current live release.
+- Next single high-impact boundary: obtain approval to activate exact candidate `cc1584dce543cbe628fb4382ddf72f42b7055a58` through the typed M16 authority, then perform live smoke/UAT. Do not deploy e62 or infer live feature success from local evidence.
+
 ## Superseding finish-first checkpoint
 
 - Current source work is on `awh/api-independence` at `38c7db668093905ddd559b823fed92f3fcfe66d8` plus uncommitted bounded Staff/Storage/Control Panel changes; Production remains read-only at M16 `m16-13acbb573c40` with schema 16 healthy.
