@@ -357,7 +357,7 @@ final class HubDurableExecutionService
         catch (HubNativeAgentException $error) { if (self::inspectionFallbackEligible($error->codeName)) return ['summary' => 'NEXT: ตรวจ Project Vault revision ต่อแบบ read-only และทบทวนงาน stale ที่ยังไม่ปิด']; return null; }
         catch (Throwable) { return null; }
         $text = trim((string)($result['summary'] ?? ''));
-        if (preg_match('/^NEXT:\s*(.{8,2000})$/us', $text, $m) !== 1) return null;
+        if (preg_match('/^NEXT:\s*(.{8,2000})$/us', $text, $m) !== 1) return str_starts_with($text, 'STOP:') ? null : 'ตรวจ Project Vault revision ต่อแบบ read-only และทบทวนงาน stale ที่ยังไม่ปิด';
         return trim($m[1]);
     }
 
