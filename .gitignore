@@ -9,6 +9,7 @@ dist-web/
 .awh-build/
 out/
 .awh-local/
+release-evidence.json
 *.log
 .DS_Store
 Thumbs.db
