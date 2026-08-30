@@ -171,6 +171,88 @@ final class HubControlPlaneService
         return ['schemaVersion' => 1, 'project' => ['projectId' => $projectId, 'name' => $name, 'type' => $type, 'createdAt' => $at, 'sourceRevision' => null, 'observedAt' => $at, 'memoryReady' => false], 'sourceState' => 'NOT_SYNCED'];
     }
 
+    /**
+     * Create one school memorandum through the canonical task/execution and
+     * artifact authorities. The first slice is intentionally deterministic:
+     * official fields that are not present in the School Knowledge Pack are
+     * rendered as explicit completion fields, never guessed.
+     */
+    public function createSchoolDocument(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now);
+        $this->assertFinalReady();
+        self::exactKeys($payload, ['details', 'idempotencyKey', 'projectId', 'schemaVersion', 'subject']);
+        if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Unsupported school document schema', 'SCHEMA_VERSION');
+        $userId = (string) $session['user_id'];
+        $projectId = self::uuid((string) ($payload['projectId'] ?? ''));
+        $this->assertProjectMember($userId, $projectId);
+        $subject = self::portableText((string) ($payload['subject'] ?? ''), 'subject', 180);
+        $details = self::documentText((string) ($payload['details'] ?? ''), 'details', 4000);
+        $key = self::idempotency((string) ($payload['idempotencyKey'] ?? ''));
+        $goal = self::goal('จัดทำบันทึกข้อความขออนุมัติ: ' . $subject);
+        $pipeline = [
+            'mode' => 'SCHOOL_DOCUMENT_MEMORANDUM',
+            'classification' => 'MEMORANDUM_REQUEST',
+            'templateId' => 'school-memorandum-v1',
+            'knowledgePack' => 'school-knowledge-pack-th-v1',
+            'validation' => 'PASS_WITH_COMPLETION_FIELDS',
+            'render' => 'PRINTABLE_HTML',
+            'requiredCapability' => 'artifact.object',
+            'phases' => ['classify', 'template-rules', 'knowledge-pack', 'draft', 'validate', 'render', 'artifact'],
+        ];
+        $html = self::schoolMemorandumHtml($subject, $details);
+        return $this->createGeneratedArtifact($userId, $projectId, $goal, $key, 'school-document', 'บันทึกข้อความ-' . substr(hash('sha256', $subject), 0, 8) . '.html', 'text/html; charset=utf-8', $html, $pipeline, $now);
+    }
+
+    /**
+     * Create a canonical school website starter. This is the first Project
+     * Factory slice: it creates one real project, one task/execution and one
+     * printable build plan artifact, while leaving release/deploy approval to
+     * the existing authorities.
+     */
+    public function createProjectFactory(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now);
+        $this->assertFinalReady();
+        $userId = (string) $session['user_id'];
+        $this->assertOwner($userId);
+        self::exactKeys($payload, ['idempotencyKey', 'name', 'objective', 'schemaVersion', 'type']);
+        if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Unsupported project factory schema', 'SCHEMA_VERSION');
+        $key = self::idempotency((string) ($payload['idempotencyKey'] ?? ''));
+        $existing = $this->existingGeneratedTask($userId, $key);
+        if (is_array($existing)) {
+            $projectId = (string) ($existing['task']['projectId'] ?? '');
+            $project = $this->projectForUser($userId, $projectId);
+            return ['schemaVersion' => 1, 'idempotent' => true, 'project' => $project, 'sourceState' => $project['sourceRevision'] === null ? 'NOT_SYNCED' : 'SYNCED', 'factory' => $existing];
+        }
+        $name = self::portableText((string) ($payload['name'] ?? ''), 'projectName', 120);
+        $objective = self::documentText((string) ($payload['objective'] ?? ''), 'objective', 2000);
+        $type = strtolower(trim((string) ($payload['type'] ?? 'school-website')));
+        if (preg_match('/^[a-z][a-z0-9-]{0,31}$/', $type) !== 1) throw new HubControlPlaneException('Project type is invalid', 'FIELD_INVALID');
+        $created = $this->createProjectForSession($sessionToken, $csrfToken, ['name' => $name, 'schemaVersion' => 1, 'type' => $type], $now);
+        $projectId = (string) $created['project']['projectId'];
+        $goal = self::goal('สร้างเว็บโรงเรียน: ' . $name);
+        $pipeline = [
+            'mode' => 'PROJECT_FACTORY_SCHOOL_WEBSITE',
+            'projectType' => $type,
+            'requiredCapability' => 'artifact.object',
+            'phases' => [
+                ['key' => 'intent', 'state' => 'COMPLETED'],
+                ['key' => 'requirements', 'state' => 'READY'],
+                ['key' => 'ux-ui', 'state' => 'READY'],
+                ['key' => 'architecture', 'state' => 'READY'],
+                ['key' => 'database', 'state' => 'READY'],
+                ['key' => 'implementation', 'state' => 'WAITING_FOR_CAPABILITY'],
+                ['key' => 'tests', 'state' => 'WAITING_FOR_CAPABILITY'],
+                ['key' => 'preview', 'state' => 'WAITING_FOR_CAPABILITY'],
+                ['key' => 'release-readiness', 'state' => 'OWNER_APPROVAL'],
+            ],
+        ];
+        $html = self::projectFactoryPlanHtml($name, $objective, $type, $pipeline['phases']);
+        $result = $this->createGeneratedArtifact($userId, $projectId, $goal, $key, 'project-factory-plan', 'แผนสร้างโปรเจกต์-' . substr(hash('sha256', $name), 0, 8) . '.html', 'text/html; charset=utf-8', $html, $pipeline, $now);
+        return ['schemaVersion' => 1, 'project' => $created['project'], 'sourceState' => $created['sourceState'], 'factory' => $result];
+    }
+
     /** Legacy project route: returns the most recently active Work thread. */
     public function conversation(string $sessionToken, string $projectId, ?string $now = null): array
     {
@@ -1248,6 +1330,97 @@ final class HubControlPlaneService
             throw new HubControlPlaneException('Artifact could not be saved', 'ARTIFACT_CREATE_FAILED');
         }
         return $this->taskById($taskId, (string) $auth['userId']);
+    }
+
+    /** @return array<string,mixed>|null */
+    private function projectForUser(string $userId, string $projectId): array
+    {
+        foreach ($this->projectsForUser($userId) as $project) if ((string) ($project['projectId'] ?? '') === $projectId) return $project;
+        throw new HubControlPlaneException('Project was not found', 'PROJECT_NOT_FOUND');
+    }
+
+    /** @return array<string,mixed>|null */
+    private function existingGeneratedTask(string $userId, string $idempotencyKey): ?array
+    {
+        $q = $this->pdo->prepare('SELECT t.*, a.artifact_id, a.task_id AS artifact_task_id, a.project_id AS artifact_project_id, a.kind AS artifact_kind, a.name AS artifact_name, a.sha256 AS artifact_sha256, a.size_bytes AS artifact_size_bytes, a.relative_ref AS artifact_relative_ref, a.created_at AS artifact_created_at, o.artifact_id AS object_artifact_id, e.checkpoint_json FROM control_tasks t LEFT JOIN control_artifacts a ON a.task_id = t.task_id LEFT JOIN control_artifact_objects o ON o.artifact_id = a.artifact_id AND o.deleted_at IS NULL LEFT JOIN control_task_executions e ON e.task_id = t.task_id WHERE t.user_id = :user AND t.idempotency_key = :key ORDER BY a.created_at DESC LIMIT 1');
+        $q->execute(['user' => $userId, 'key' => $idempotencyKey]);
+        $row = $q->fetch();
+        if (!is_array($row)) return null;
+        $result = ['schemaVersion' => 1, 'idempotent' => true, 'task' => $this->taskRow($row)];
+        if (is_string($row['artifact_id'] ?? null)) $result['artifact'] = self::artifactRow(['artifact_id' => $row['artifact_id'], 'task_id' => $row['artifact_task_id'], 'project_id' => $row['artifact_project_id'], 'kind' => $row['artifact_kind'], 'name' => $row['artifact_name'], 'sha256' => $row['artifact_sha256'], 'size_bytes' => $row['artifact_size_bytes'], 'relative_ref' => $row['artifact_relative_ref'], 'created_at' => $row['artifact_created_at'], 'object_artifact_id' => $row['object_artifact_id']]);
+        if (is_string($row['checkpoint_json'] ?? null)) {
+            try { $checkpoint = json_decode((string) $row['checkpoint_json'], true, 32, JSON_THROW_ON_ERROR); } catch (Throwable) { $checkpoint = null; }
+            if (is_array($checkpoint) && is_array($checkpoint['pipeline'] ?? null)) $result['pipeline'] = $checkpoint['pipeline'];
+        }
+        return $result;
+    }
+
+    /**
+     * Store a generated product artifact and its canonical completed task in
+     * one bounded operation. The object is written before the DB transaction;
+     * every failure path removes the object and rolls back metadata.
+     *
+     * @param array<string,mixed> $pipeline
+     * @return array<string,mixed>
+     */
+    private function createGeneratedArtifact(string $userId, string $projectId, string $goal, string $idempotencyKey, string $kind, string $name, string $mimeType, string $contents, array $pipeline, ?string $now = null): array
+    {
+        $existing = $this->existingGeneratedTask($userId, $idempotencyKey);
+        if (is_array($existing)) return $existing;
+        $store = $this->artifactStore;
+        if ($store === null) throw new HubControlPlaneException('Artifact object storage is unavailable', 'ARTIFACT_STORAGE_UNAVAILABLE');
+        $at = self::timestamp($now ?? gmdate('c')); $taskId = self::uuidFromBytes(random_bytes(16)); $executionId = self::uuidFromBytes(random_bytes(16)); $artifactId = self::uuidFromBytes(random_bytes(16));
+        $temporary = tempnam(sys_get_temp_dir(), 'awh-generated-');
+        if (!is_string($temporary)) throw new HubControlPlaneException('Generated artifact storage is unavailable', 'ARTIFACT_STORAGE_FAILED');
+        $stored = null; $transactionOpen = false;
+        try {
+            $bytes = @file_put_contents($temporary, $contents, LOCK_EX);
+            if (!is_int($bytes) || $bytes < 1 || $bytes !== strlen($contents)) throw new HubControlPlaneException('Generated artifact could not be prepared', 'ARTIFACT_STORAGE_FAILED');
+            $stored = $store->storeFile($artifactId, $temporary);
+            $checkpoint = json_encode(['mode' => (string) ($pipeline['mode'] ?? 'GENERATED_PRODUCT'), 'pipeline' => $pipeline], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+            $this->pdo->exec('BEGIN IMMEDIATE'); $transactionOpen = true;
+            $this->pdo->prepare('INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,:goal,\'COMPLETED\',NULL,NULL,100,:summary,NULL,:key,NULL,:at,:at,NULL)')->execute(['task' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $goal, 'summary' => 'AWH สร้างผลลัพธ์ตามขั้นตอนที่ตรวจสอบแล้ว และเก็บไว้ในคลังไฟล์เรียบร้อย', 'key' => $idempotencyKey, 'at' => $at]);
+            $this->pdo->prepare('INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,\'VPS\',:capability,\'COMPLETED\',NULL,NULL,1,NULL,:checkpoint,NULL,:at,:at)')->execute(['execution' => $executionId, 'task' => $taskId, 'project' => $projectId, 'capability' => (string) ($pipeline['requiredCapability'] ?? 'artifact.object'), 'checkpoint' => $checkpoint, 'at' => $at]);
+            if ($this->capabilities !== null) $this->capabilities->ensureExecutionEnvelope($executionId, $at);
+            $this->pdo->prepare('INSERT INTO control_artifacts(artifact_id,task_id,project_id,kind,name,sha256,size_bytes,relative_ref,created_at) VALUES(:artifact,:task,:project,:kind,:name,:sha,:size,NULL,:at)')->execute(['artifact' => $artifactId, 'task' => $taskId, 'project' => $projectId, 'kind' => $kind, 'name' => $name, 'sha' => $stored['sha256'], 'size' => $stored['sizeBytes'], 'at' => $at]);
+            $this->pdo->prepare('INSERT INTO control_artifact_objects(artifact_id,storage_key,mime_type,retained_until,deleted_at) VALUES(:artifact,:storage,:mime,NULL,NULL)')->execute(['artifact' => $artifactId, 'storage' => $stored['storageKey'], 'mime' => $mimeType]);
+            $this->event($taskId, 'COMPLETED', 100, 'deterministic product artifact generated and verified', $at);
+            $this->pdo->exec('COMMIT'); $transactionOpen = false;
+        } catch (Throwable $error) {
+            if ($transactionOpen) self::rollbackImmediate($this->pdo);
+            if (is_array($stored)) $store->remove($stored['storageKey'] ?? null);
+            if ($error instanceof HubControlPlaneException) throw $error;
+            if ($error instanceof HubArtifactStoreException) throw new HubControlPlaneException('Generated artifact could not be stored', $error->codeName);
+            throw new HubControlPlaneException('Generated product could not be saved', 'ARTIFACT_STORAGE_FAILED');
+        } finally { @unlink($temporary); }
+        $task = $this->taskById($taskId, $userId);
+        return ['schemaVersion' => 1, 'idempotent' => false, 'task' => $task, 'artifact' => ['schemaVersion' => 1, 'artifactId' => $artifactId, 'taskId' => $taskId, 'projectId' => $projectId, 'kind' => $kind, 'name' => $name, 'sha256' => $stored['sha256'], 'sizeBytes' => $stored['sizeBytes'], 'relativeRef' => null, 'createdAt' => $at, 'downloadUrl' => '/api/v1/control/artifacts/' . $artifactId . '/download'], 'pipeline' => $pipeline];
+    }
+
+    private static function documentText(string $value, string $field, int $max): string
+    {
+        $value = str_replace(["\r\n", "\r"], "\n", trim($value));
+        if ($value === '' || strlen($value) > $max || self::hasUnsafeConversationControl($value) || preg_match('/(?:^|\s)(?:Bearer\s+|password\s*[=:]|secret\s*[=:]|token\s*[=:]|api[_-]?key\s*[=:])/i', $value)) throw new HubControlPlaneException($field . ' is invalid or contains credential material', 'FIELD_INVALID');
+        return $value;
+    }
+
+    private static function html(string $value): string
+    {
+        return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+
+    private static function schoolMemorandumHtml(string $subject, string $details): string
+    {
+        $subjectHtml = self::html($subject); $detailsHtml = nl2br(self::html($details), false);
+        return '<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>บันทึกข้อความ - ' . $subjectHtml . '</title><style>body{font-family:Arial,"Noto Sans Thai",sans-serif;max-width:820px;margin:40px auto;padding:0 36px;color:#1d2329;line-height:1.75}h1{text-align:center;font-size:26px;margin:0 0 28px}table{width:100%;border-collapse:collapse;margin-bottom:24px}td{padding:7px 0;vertical-align:top}td:first-child{width:100px;font-weight:700}.body{white-space:normal;margin:20px 0}.unknown{margin-top:30px;padding:16px;border:1px solid #d97706;background:#fff7ed;border-radius:8px}.sign{margin:42px 0 0 58%;text-align:center}.meta{margin-top:36px;color:#68737d;font-size:12px}@media print{body{margin:0 auto;padding:0 12mm}.unknown{break-inside:avoid}}</style></head><body><h1>บันทึกข้อความ</h1><table><tr><td>ส่วนราชการ</td><td>โรงเรียน / หน่วยงาน (กรอกตาม School Knowledge Pack)</td></tr><tr><td>ที่</td><td>ยังไม่ได้ระบุ</td></tr><tr><td>วันที่</td><td>ยังไม่ได้ระบุ</td></tr></table><p><strong>เรื่อง</strong> ' . $subjectHtml . '</p><p><strong>เรียน</strong> ผู้มีอำนาจอนุมัติ</p><div class="body">' . $detailsHtml . '</div><p>จึงเรียนมาเพื่อโปรดพิจารณาอนุมัติ</p><div class="sign">ลงชื่อ ................................................<br>ผู้เสนอเรื่อง (ยังไม่ได้ระบุ)</div><div class="unknown"><strong>ตรวจแล้ว: ต้องเติมข้อมูลก่อนพิมพ์/เสนออนุมัติ</strong><br>เลขที่หนังสือ · วันที่ · จำนวนเงิน/รายละเอียดงบประมาณ (ถ้ามี) · ชื่อและตำแหน่งผู้ลงนาม</div><div class="meta">AWH School Document AI · template school-memorandum-v1 · knowledge pack school-knowledge-pack-th-v1 · validation PASS_WITH_COMPLETION_FIELDS</div></body></html>';
+    }
+
+    /** @param list<array{key:string,state:string}> $phases */
+    private static function projectFactoryPlanHtml(string $name, string $objective, string $type, array $phases): string
+    {
+        $rows = '';
+        foreach ($phases as $phase) $rows .= '<tr><td>' . self::html((string) ($phase['key'] ?? '')) . '</td><td>' . self::html((string) ($phase['state'] ?? 'UNKNOWN')) . '</td></tr>';
+        return '<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Project Factory - ' . self::html($name) . '</title><style>body{font-family:Arial,"Noto Sans Thai",sans-serif;max-width:820px;margin:40px auto;padding:0 36px;color:#1d2329;line-height:1.75}h1{margin-bottom:4px}h2{margin-top:28px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px;border-bottom:1px solid #dde3e8}th{background:#f3f6f8}.note{padding:16px;border:1px solid #d97706;background:#fff7ed;border-radius:8px}</style></head><body><p>AWH PROJECT FACTORY · SCHOOL WEBSITE</p><h1>' . self::html($name) . '</h1><p><strong>ประเภท:</strong> ' . self::html($type) . '</p><h2>วัตถุประสงค์</h2><p>' . nl2br(self::html($objective), false) . '</p><h2>Build Studio phases</h2><table><thead><tr><th>Phase</th><th>State</th></tr></thead><tbody>' . $rows . '</tbody></table><p class="note"><strong>สถานะจริง:</strong> Project และ task ถูกสร้างผ่าน AWH canonical authority แล้ว ส่วน implementation, tests, preview และ release ต้องใช้ capability/approval ที่เกี่ยวข้อง ระบบยังไม่อ้างว่าเว็บ deploy แล้ว</p></body></html>';
     }
 
     /** A central engineering packet is visible only to the leased trusted

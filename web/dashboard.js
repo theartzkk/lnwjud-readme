@@ -1,6 +1,6 @@
 import { loadControlData } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 import { SCHOOL_TOOLS, OWNER_TOOLS } from './tool-registry.js?release=__AWH_WEB_RELEASE_ID__';
-import { LOCAL_TOOL_ACTIONS, mountSchoolTools } from './school-tools.js?release=__AWH_WEB_RELEASE_ID__';
+import { LOCAL_TOOL_ACTIONS, mountSchoolTools, openProjectFactoryTool, openSchoolDocumentTool } from './school-tools.js?release=__AWH_WEB_RELEASE_ID__';
 import { executionStatus } from './execution-ux.js?release=__AWH_WEB_RELEASE_ID__';
 
 const DASHBOARD_ID = 'product-dashboard';
@@ -544,7 +544,8 @@ function mountDashboard() {
   toolGrid.className = 'awh-tool-grid';
   const schoolActions = {
     ai: () => openWork(),
-    documents: () => openWork('ช่วยฉันสร้างเอกสารงานโรงเรียน โดยถามเฉพาะข้อมูลที่จำเป็น', true),
+    documents: openSchoolDocumentTool,
+    'project-factory': openProjectFactoryTool,
     image: openImageTool,
     pdf: LOCAL_TOOL_ACTIONS.pdf,
     qr: LOCAL_TOOL_ACTIONS.qr,

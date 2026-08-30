@@ -102,6 +102,16 @@ export async function createProject(name, type = 'general') {
   return controlRequest('/api/v1/control/projects', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, name: name.trim(), type }) });
 }
 
+export async function createSchoolDocument({ projectId, subject, details, idempotencyKey }) {
+  if (!UUID.test(projectId) || typeof subject !== 'string' || !subject.trim() || subject.length > 180 || typeof details !== 'string' || !details.trim() || details.length > 4000 || typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey)) throw new Error('ข้อมูลบันทึกข้อความไม่ถูกต้อง');
+  return controlRequest('/api/v1/control/school/documents', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, subject: subject.trim(), details: details.trim(), idempotencyKey }) });
+}
+
+export async function createProjectFactory({ name, objective, type = 'school-website', idempotencyKey }) {
+  if (typeof name !== 'string' || !name.trim() || name.length > 120 || typeof objective !== 'string' || !objective.trim() || objective.length > 2000 || typeof type !== 'string' || !/^[a-z][a-z0-9-]{0,31}$/.test(type) || typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey)) throw new Error('ข้อมูล Project Factory ไม่ถูกต้อง');
+  return controlRequest('/api/v1/control/project-factory', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, name: name.trim(), objective: objective.trim(), type, idempotencyKey }) });
+}
+
 export async function loadConversations(projectId, query = '') {
   if (!UUID.test(projectId) || (typeof query !== 'string' || query.length > 120)) throw new Error('โปรเจกต์ไม่ถูกต้อง');
   const value = await controlRequest(`/api/v1/control/conversations?projectId=${encodeURIComponent(projectId)}${query ? `&q=${encodeURIComponent(query)}` : ''}`);

@@ -1,3 +1,5 @@
+import { controlRequest, createProjectFactory, createSchoolDocument } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+
 const PDF_FILE_LIMIT = 40 * 1024 * 1024;
 const PDF_TOTAL_LIMIT = 100 * 1024 * 1024;
 const IMAGE_PDF_MAX_FILES = 30;
@@ -90,6 +92,128 @@ function parsePageSpec(spec, pageCount) {
 function closeDialog(id) {
   const dialog = $(id);
   if (dialog) dialog.hidden = true;
+}
+
+function requestKey(prefix) {
+  const suffix = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}-${suffix}`.slice(0, 120);
+}
+
+function generatedResult(dialog, result, label) {
+  const message = dialog.querySelector('[data-generated-message]');
+  const output = dialog.querySelector('[data-generated-output]');
+  if (output) output.replaceChildren();
+  const task = result?.task || result?.factory?.task;
+  const artifact = result?.artifact || result?.factory?.artifact;
+  if (message) message.textContent = result?.idempotent ? 'งานเดิมถูกนำกลับมาแสดงโดยไม่สร้างซ้ำ' : `${label}เสร็จแล้ว · งานและผลลัพธ์ถูกบันทึกใน AWH`;
+  if (!output) return;
+  if (task?.taskId) {
+    const taskLine = document.createElement('p');
+    taskLine.textContent = `Task: ${task.taskId} · สถานะ ${task.state || 'UNKNOWN'}`;
+    output.append(taskLine);
+  }
+  if (artifact?.downloadUrl) {
+    const link = document.createElement('a');
+    link.href = artifact.downloadUrl;
+    link.download = artifact.name || 'awh-artifact.html';
+    link.textContent = `ดาวน์โหลด ${artifact.name || 'ผลลัพธ์'}`;
+    link.className = 'awh-command-send';
+    output.append(link);
+  }
+  const pipeline = result?.pipeline || result?.factory?.pipeline;
+  const phases = Array.isArray(pipeline?.phases) ? pipeline.phases : [];
+  if (phases.length) {
+    const phaseLine = document.createElement('p');
+    phaseLine.textContent = `Pipeline: ${phases.map((phase) => typeof phase === 'string' ? phase : `${phase.key}=${phase.state}`).join(' · ')}`;
+    output.append(phaseLine);
+  }
+}
+
+async function populateDocumentProjects(select) {
+  select.replaceChildren();
+  const pending = document.createElement('option');
+  pending.value = '';
+  pending.textContent = 'กำลังอ่านโปรเจกต์…';
+  select.append(pending);
+  const value = await controlRequest('/api/v1/control/projects');
+  const projects = Array.isArray(value?.projects) ? value.projects : [];
+  select.replaceChildren();
+  if (!projects.length) {
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = 'ยังไม่มีโปรเจกต์ที่ใช้ได้';
+    select.append(empty);
+    return;
+  }
+  for (const project of projects) {
+    if (typeof project?.projectId !== 'string') continue;
+    const option = document.createElement('option');
+    option.value = project.projectId;
+    option.textContent = `${project.name || 'โปรเจกต์'} · ${project.type || 'ทั่วไป'}`;
+    select.append(option);
+  }
+}
+
+export async function openSchoolDocumentTool() {
+  const dialog = $('dashboard-school-document-tool');
+  if (!(dialog instanceof HTMLElement)) return;
+  dialog.hidden = false;
+  const select = dialog.querySelector('#dashboard-document-project');
+  const message = dialog.querySelector('[data-generated-message]');
+  if (message) message.textContent = 'เลือกโปรเจกต์และกรอกข้อมูลที่ทราบจริง ระบบจะทำเครื่องหมายข้อมูลที่ยังขาดให้';
+  if (select instanceof HTMLSelectElement) {
+    try { await populateDocumentProjects(select); } catch (error) { if (message) message.textContent = error instanceof Error ? error.message : 'อ่านโปรเจกต์ไม่ได้'; }
+  }
+}
+
+export function openProjectFactoryTool() {
+  const dialog = $('dashboard-project-factory-tool');
+  if (dialog) dialog.hidden = false;
+}
+
+function createSchoolDocumentDialog() {
+  const dialog = document.createElement('section');
+  dialog.id = 'dashboard-school-document-tool';
+  dialog.className = 'awh-tool-dialog';
+  dialog.hidden = true;
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.innerHTML = '<div class="awh-tool-dialog-backdrop" data-school-document-close></div><div class="awh-tool-dialog-card"><div class="awh-tool-dialog-head"><div><span>DOCUMENT AI</span><h2>ทำบันทึกข้อความขออนุมัติ</h2><p>ใช้ template และ School Knowledge Pack ของ AWH · ไม่เดาข้อมูลราชการที่ยังไม่ทราบ</p></div><button type="button" data-school-document-close>ปิด</button></div><label>โปรเจกต์<select id="dashboard-document-project"></select></label><label>เรื่อง<input id="dashboard-document-subject" maxlength="180" placeholder="เช่น ขออนุมัติจัดกิจกรรมวันวิทยาศาสตร์" /></label><label>รายละเอียดที่ทราบ<textarea id="dashboard-document-details" rows="7" maxlength="4000" placeholder="อธิบายวัตถุประสงค์ เหตุผล กิจกรรม หรือรายละเอียดงบประมาณที่ทราบจริง"></textarea></label><button id="dashboard-document-create" class="awh-command-send" type="button">สร้างร่างที่พิมพ์ได้</button><p class="awh-local-note" data-generated-message>ข้อมูลที่ไม่ทราบจะถูกแสดงเป็นช่องให้เติม ไม่ถูกแต่งขึ้นเอง</p><div data-generated-output></div></div>';
+  dialog.querySelectorAll('[data-school-document-close]').forEach((node) => node.addEventListener('click', () => closeDialog('dashboard-school-document-tool')));
+  dialog.querySelector('#dashboard-document-create')?.addEventListener('click', async () => {
+    const button = dialog.querySelector('#dashboard-document-create');
+    const projectId = dialog.querySelector('#dashboard-document-project')?.value || '';
+    const subject = dialog.querySelector('#dashboard-document-subject')?.value || '';
+    const details = dialog.querySelector('#dashboard-document-details')?.value || '';
+    if (!(button instanceof HTMLButtonElement)) return;
+    button.disabled = true;
+    try { generatedResult(dialog, await createSchoolDocument({ projectId, subject, details, idempotencyKey: requestKey('school-document') }), 'บันทึกข้อความ'); }
+    catch (error) { const message = dialog.querySelector('[data-generated-message]'); if (message) message.textContent = error instanceof Error ? error.message : 'สร้างบันทึกข้อความไม่ได้'; }
+    finally { button.disabled = false; }
+  });
+  return dialog;
+}
+
+function createProjectFactoryDialog() {
+  const dialog = document.createElement('section');
+  dialog.id = 'dashboard-project-factory-tool';
+  dialog.className = 'awh-tool-dialog';
+  dialog.hidden = true;
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.innerHTML = '<div class="awh-tool-dialog-backdrop" data-project-factory-close></div><div class="awh-tool-dialog-card"><div class="awh-tool-dialog-head"><div><span>PROJECT FACTORY</span><h2>เริ่มเว็บโรงเรียน</h2><p>สร้าง Project, Task, Execution และแผน Build Studio ผ่าน AWH authority เดียว</p></div><button type="button" data-project-factory-close>ปิด</button></div><label>ชื่อโปรเจกต์<input id="dashboard-factory-name" maxlength="120" placeholder="เช่น เว็บไซต์สหกรณ์โรงเรียน" /></label><label>วัตถุประสงค์<textarea id="dashboard-factory-objective" rows="6" maxlength="2000" placeholder="บอกว่าเว็บนี้มีไว้ทำอะไรและใครจะใช้งาน"></textarea></label><button id="dashboard-factory-create" class="awh-command-send" type="button">สร้าง Project Factory plan</button><p class="awh-local-note" data-generated-message>ระบบจะไม่อ้างว่าเว็บ deploy แล้วจนกว่าจะผ่าน implementation, tests, preview และ approval</p><div data-generated-output></div></div>';
+  dialog.querySelectorAll('[data-project-factory-close]').forEach((node) => node.addEventListener('click', () => closeDialog('dashboard-project-factory-tool')));
+  dialog.querySelector('#dashboard-factory-create')?.addEventListener('click', async () => {
+    const button = dialog.querySelector('#dashboard-factory-create');
+    const name = dialog.querySelector('#dashboard-factory-name')?.value || '';
+    const objective = dialog.querySelector('#dashboard-factory-objective')?.value || '';
+    if (!(button instanceof HTMLButtonElement)) return;
+    button.disabled = true;
+    try { generatedResult(dialog, await createProjectFactory({ name, objective, type: 'school-website', idempotencyKey: requestKey('project-factory') }), 'Project Factory'); }
+    catch (error) { const message = dialog.querySelector('[data-generated-message]'); if (message) message.textContent = error instanceof Error ? error.message : 'สร้าง Project Factory ไม่ได้'; }
+    finally { button.disabled = false; }
+  });
+  return dialog;
 }
 
 export function openPdfTool() {
@@ -304,6 +428,8 @@ export function mountSchoolTools(host) {
   if (!(host instanceof HTMLElement)) return;
   if (!$('dashboard-pdf-tool')) host.append(createPdfDialog());
   if (!$('dashboard-qr-tool')) host.append(createQrDialog());
+  if (!$('dashboard-school-document-tool')) host.append(createSchoolDocumentDialog());
+  if (!$('dashboard-project-factory-tool')) host.append(createProjectFactoryDialog());
 }
 
 export const LOCAL_TOOL_ACTIONS = Object.freeze({
