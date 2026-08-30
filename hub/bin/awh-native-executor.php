@@ -52,7 +52,10 @@ try {
     $execution = HubDurableExecutionService::fromEnvironment($pdo, static fn(array $request): array => $control->materializeContinuationSubmission($request));
     $batch = $execution->runBatch(4);
     $staffTelemetry = HubInfrastructureService::fromEnvironment()->status();
-    $staff = (new HubStaffOperationsService($pdo, $database))->snapshot(null, $batch, $staffTelemetry, HubInfrastructureService::releaseState());
-    fwrite(STDOUT, json_encode(['status' => $batch['processed'] === 0 ? 'IDLE' : 'PROCESSED', 'automation' => $automation, 'telemetry' => $telemetry, 'executionBatch' => $batch, 'recoveredExecutions' => (int) ($batch['recovered'] ?? 0), 'staff' => ['loop' => $staff['loop'], 'report' => $staff['report'], 'morningBrief' => $staff['morningBrief']],], JSON_UNESCAPED_SLASHES) . "\n");
+    $staffService = new HubStaffOperationsService($pdo, $database);
+    $staff = $staffService->snapshot(null, $batch, $staffTelemetry, HubInfrastructureService::releaseState());
+    $persistedBrief = $staffService->persistMorningBrief($staff['morningBrief']);
+    $staff['persistedMorningBrief'] = $persistedBrief;
+    fwrite(STDOUT, json_encode(['status' => $batch['processed'] === 0 ? 'IDLE' : 'PROCESSED', 'automation' => $automation, 'telemetry' => $telemetry, 'executionBatch' => $batch, 'recoveredExecutions' => (int) ($batch['recovered'] ?? 0), 'staff' => ['loop' => $staff['loop'], 'governor' => $staff['governor'], 'selfHealing' => $staff['selfHealing'], 'housekeeping' => $staff['housekeeping'], 'report' => $staff['report'], 'morningBrief' => $staff['morningBrief'], 'persistedMorningBrief' => $persistedBrief]], JSON_UNESCAPED_SLASHES) . "\n");
 } catch (HubDurableExecutionException|HubProjectVaultException|HubCentralProjectAuthorityMigrationException $error) { fwrite(STDERR, $error->codeName . "\n"); exit(1); }
 catch (Throwable) { fwrite(STDERR, "EXECUTOR_UNAVAILABLE\n"); exit(1); }

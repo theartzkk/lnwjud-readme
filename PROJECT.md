@@ -1,5 +1,12 @@
 # AWH overnight VPS autonomy foundation — 2026-08-30
 
+## Current superseding finish-first checkpoint
+
+- Active source is `awh/api-independence` at `38c7db668093905ddd559b823fed92f3fcfe66d8` before this run's uncommitted bounded changes. The supplied `6781e35…` is an ancestor, not the current canonical tip.
+- Fresh read-only Production evidence is already M16 `m16-13acbb573c40`; SQLite schema 16, integrity `ok`, foreign-key violations `0`, Nginx/PHP-FPM and the native executor timer are active. No Production mutation occurred in this run.
+- Finish-first changes add bounded Storage/Garbage measurement with `UNKNOWN` retention, generic derived Managed Site visibility, 14 truthful Staff role projections, Governor selection over existing canonical executions, bounded self-healing evidence, and durable Morning Brief persistence through the existing audited settings-revision ledger. No new queue or database authority is created.
+- Storage actions remain `AUDIT_ONLY`; visual Web/Desktop/iPhone evidence, full field proof, CI evidence, restore proof and School Document AI/real Managed Site operations remain open gates.
+
 - Candidate `codex/finish-first-p0` contains the canonical-synced source merge `190e1426e09a5e85910eadcc10a2b7e20b035dbf` and is pushed. It adds a bounded Staff operations projection and storage-governance audit over existing canonical authorities; it adds no queue, task, execution, memory, artifact, report or schema authority.
 - Production remains unchanged at typed M16 release `m16-06a7277063f8`, exact SHA `06a7277063f891d0d29ad5bdbed7db7541dbb807`; DB16 integrity/FK, Nginx/PHP-FPM, executor/backup timers and worker readiness were rechecked. No Production mutation, credential access or direct DB mutation occurred.
 - The candidate exposes OBSERVE → DIAGNOSE → PRIORITIZE → CANONICAL_TASK → EXECUTE → VERIFY → REPORT → CONTINUE, all ten requested Staff roles, bounded self-heal evidence, DB locking evidence, backup/recovery readiness and ACTIVE/RETAIN/QUARANTINE/SAFE_TO_PURGE/PROTECTED storage classification. Purge remains `AUDIT_ONLY`.

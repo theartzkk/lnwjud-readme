@@ -1,5 +1,15 @@
 # Authoritative task supersession — 2026-08-30 Overnight VPS autonomy foundation
 
+## Finish-first run status
+
+- [x] Add truthful bounded Storage/Garbage inventory fields and disk measurement.
+- [x] Add Governor, self-healing and housekeeping projections without a second queue.
+- [x] Add durable idempotent Morning Brief persistence through existing audited revisions.
+- [x] Expose derived generic Managed Site topology in the Owner Control Panel without inventing domain/runtime/database authority.
+- [ ] Close real School Document AI and Project Factory vertical slices.
+- [ ] Obtain rendered Web/Desktop/iPhone evidence and exact-head CI/restore proof.
+- [ ] Enable quarantine/purge only after explicit policy and reference-proof implementation.
+
 ## NOW
 
 - Candidate `codex/finish-first-p0` contains source merge `190e1426e09a5e85910eadcc10a2b7e20b035dbf` and is pushed; the checkpoint docs follow in the current release-gate commit. It contains the bounded Staff loop, ten role projections, storage classification audit, backup/recovery/DB-locking reporting and executor full-telemetry correction. Existing Project/Task/Execution/Artifact/Approval/Release authorities remain the only authorities.

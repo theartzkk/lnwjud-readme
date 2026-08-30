@@ -26,11 +26,11 @@
     </div>
 
     <div class="infra-columns">
-      <section class="infra-section"><div class="section-heading"><div><span>STAFF CONTROL LOOP</span><h2>OBSERVE → CONTINUE</h2></div><small>canonical task/execution authority</small></div><div id="staff-list" class="entity-list"></div><div id="staff-report" class="staff-report"></div></section>
+      <section class="infra-section"><div class="section-heading"><div><span>STAFF CONTROL LOOP</span><h2>OBSERVE → CONTINUE</h2></div><small>canonical task/execution authority</small></div><div id="staff-list" class="entity-list"></div><div id="staff-report" class="staff-report"></div><div id="staff-governor" class="staff-report"></div></section>
       <section class="infra-section"><div class="section-heading"><div><span>MORNING BRIEF</span><h2>สรุปให้เจ้าของตื่นมาเห็น</h2></div></div><div id="morning-list" class="entity-list"></div></section>
     </div>
 
-    <section class="infra-section"><div class="section-heading"><div><span>STORAGE GOVERNANCE</span><h2>Garbage · Retention · Recovery</h2></div><small>audit-only · ไม่ purge อัตโนมัติ</small></div><div id="storage-governance-list" class="entity-list"></div></section>
+    <section class="infra-section"><div class="section-heading"><div><span>STORAGE & GARBAGE CENTER</span><h2>Garbage · Retention · Recovery</h2></div><small>scan จริงแบบ bounded · UNKNOWN จะไม่ถูกลบ</small></div><div id="storage-governance-list" class="entity-list"></div></section>
 
     <div class="infra-columns">
       <section class="infra-section"><div class="section-heading"><div><span>RELEASE</span><h2>Production · Candidate · Rollback</h2></div></div><div id="release-list" class="entity-list"></div></section>
@@ -45,6 +45,8 @@
     </div>
 
     <section class="infra-section"><div class="section-heading"><div><span>PROJECTS</span><h2>ระบบและโปรเจกต์</h2></div><small>ReadyIDC เป็น Control Plane กลาง</small></div><div id="project-grid" class="project-grid"></div></section>
+
+    <section class="infra-section"><div class="section-heading"><div><span>HOSTING CENTER · MANAGED WEBSITES</span><h2>เว็บไซต์และระบบที่ดูแล</h2></div><small>generic site model · binding ที่ยังไม่มีหลักฐานจะแสดง UNKNOWN</small></div><div id="hosting-list" class="entity-list"></div></section>
 
     <section class="infra-section"><div class="section-heading"><div><span>DOMAINS & SSL</span><h2>โดเมนที่เข้ามายัง VPS</h2></div><small>หลายโดเมนใช้ IP เดียวกันได้ · Nginx แยกปลายทางให้</small></div><div id="domain-list" class="entity-list"></div><div class="domain-explainer"><strong>เวลามีโดเมนใหม่</strong><span>จดโดเมน → ชี้ A record มาที่ VPS → ผูกกับ Project → เปิด HTTPS → AWH ตรวจสุขภาพให้</span></div></section>
 

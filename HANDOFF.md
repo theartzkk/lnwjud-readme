@@ -1,5 +1,11 @@
 # Authoritative handoff — 2026-08-30 Overnight VPS autonomy foundation
 
+## Superseding finish-first checkpoint
+
+- Current source work is on `awh/api-independence` at `38c7db668093905ddd559b823fed92f3fcfe66d8` plus uncommitted bounded Staff/Storage/Control Panel changes; Production remains read-only at M16 `m16-13acbb573c40` with schema 16 healthy.
+- Source now records disk measurement, six storage classes including `UNKNOWN`, no-safe-purge evidence, generic derived Managed Site fields, Governor/self-healing/housekeeping projections, 14 requested Staff role names, and idempotent per-day Morning Brief persistence through the existing revision ledger.
+- Do not report full 24/7 Staff, Managed Websites operations, School Document AI, Web/Desktop/mobile visual parity, restore proof, CI or Production Complete as PASS until their real evidence exists. Do not downgrade healthy Production DB16.
+
 - Candidate `codex/finish-first-p0` contains source merge `190e1426e09a5e85910eadcc10a2b7e20b035dbf` and is pushed; the Staff loop, storage audit, backup/recovery truth and executor full-telemetry feed are source-ready. Production remains at `m16-06a7277063f8` / `06a7277063f891d0d29ad5bdbed7db7541dbb807`.
 - `qa:local` and `qa:full` are PASS on the exact upstream candidate. No credentials were read, printed, copied or injected; no direct Production DB mutation occurred.
 - Live read-only baseline is healthy for DB16 integrity/FK, Nginx/PHP-FPM, worker/executor/backup timers and bounded backup drill. Current queue still has two capability-waiting executions; no active or expired leases. AWH-managed temp patterns are absent; no purge was attempted.

@@ -1,5 +1,12 @@
 # Authoritative decision — 2026-08-30 Overnight Staff and storage governance
 
+## Finish-first decisions — 2026-08-30
+
+- Morning Brief persistence reuses `control_product_setting_revisions` under reserved key `system.morningBrief`; this preserves one audit/revision authority and avoids a duplicate report table.
+- Storage/Garbage remains a read/audit projection until a typed quarantine operation proves release, backup, database, lease, branch, worktree, artifact-reference and audit-evidence exclusions. `UNKNOWN` is never auto-purgeable.
+- Governor may select only existing eligible `control_tasks`/`control_task_executions`; automation/control-plane materialization remains the only task-creation path. VPS self-healing is reported only when bounded recovery/retry evidence is observed.
+- Managed Site rows are explicitly `DERIVED_READ_ONLY` until a canonical site authority exists; observed Nginx domains are not silently bound to a Project.
+
 - The VPS Staff loop is a read/report projection over existing canonical Project, Task, Execution, Artifact, Approval and Release authorities. The systemd timer remains a bounded wake-up mechanism; no duplicate scheduler, queue, memory or report table is allowed.
 - Storage governance is classification-first and audit-only in this milestone. Managed roots report ACTIVE, RETAIN, QUARANTINE, SAFE_TO_PURGE or PROTECTED with bounded sizes where known; no purge or quarantine move occurs without a future explicit authority. Broad `/tmp` is not implicitly owned by AWH.
 - Backup truth is newest-manifest-first: an invalid newest backup reports REVIEW while older valid evidence is retained only as `lastVerified`; a timer being active is not sufficient for recovery PASS. SQLite keeps existing busy timeout/WAL/transaction policy and bounded `BEGIN IMMEDIATE` writes.
