@@ -37,8 +37,9 @@ async function hashTree(root) {
       return;
     }
     if (info.isFile()) {
+      size += info.size;
+      assert(size < MAX_BUNDLE_BYTES, `packaged bundle exceeds the ${MAX_BUNDLE_BYTES}-byte safety boundary before hashing`);
       const data = await readFile(path);
-      size += data.length;
       hash.update(data);
     }
   }
@@ -121,6 +122,7 @@ assert(hasEntry(OWNER_PROTOCOL_FILENAME), 'packaged Art AI Working Constitution 
 assert(hasEntry('desktop/index.html'), 'packaged owner Control Panel renderer is missing');
 assert(hasEntry('dist/desktop/main.js'), 'packaged Desktop main process is missing');
 assert(!normalizedListing.some((entry) => /^\/?(?:dist-web|out)(?:\/|$)/.test(entry)), 'packaged bundle contains generated release/output directories');
+assert(!normalizedListing.some((entry) => /^\/?\.awh(?:-local)?(?:\/|$)/.test(entry)), 'packaged bundle contains workspace-local AWH state');
 const sourceProtocol = await readFile(join(ROOT, OWNER_PROTOCOL_FILENAME), 'utf8');
 const expectedProtocolVersion = /^Version:\s*([0-9]+\.[0-9]+)\s*$/m.exec(sourceProtocol)?.[1];
 assert(expectedProtocolVersion, 'source owner working protocol version is invalid');
