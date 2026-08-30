@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "channel": "stable",
+  "version": "1.0.0-rc.1",
+  "gitSha": "54fcfe1ef76864e81c4d58db8c6f58aaec671a0f",
+  "databaseSchemaVersion": 16,
+  "backup": "VERIFIED",
+  "restoreDrill": "PASS",
+  "migrationPlan": "READY",
+  "rollbackPlan": "READY",
+  "hostKeyVerification": "VERIFIED"
+}
