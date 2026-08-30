@@ -577,11 +577,13 @@ final class HubControlPlaneService
     }
 
     /** @param null|array{enabled:bool,rootTaskId:string,step:int,maxSteps:int} $continuation */
-    private function submitTaskForUser(string $userId, array $payload, ?string $now = null, ?array $continuation = null): array
+    private function submitTaskForUser(string $userId, array $payload, ?string $now = null, ?array $continuation = null, ?string $conversationId = null): array
     {
         self::exactKeys($payload, ['goal', 'idempotencyKey', 'projectId', 'schemaVersion']);
         if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Unsupported task schema', 'SCHEMA_VERSION');
         $projectId = self::uuid((string) ($payload['projectId'] ?? ''));
+        $conversationId = $conversationId === null ? null : self::uuid($conversationId);
+        if ($conversationId !== null && (string) $this->conversationRowForUser($userId, $conversationId)['project_id'] !== $projectId) throw new HubControlPlaneException('Conversation does not belong to this project', 'PROJECT_FORBIDDEN');
         $goal = self::goal((string) ($payload['goal'] ?? ''));
         $idempotency = self::idempotency((string) ($payload['idempotencyKey'] ?? ''));
         $this->assertProjectMember($userId, $projectId);
@@ -593,10 +595,11 @@ final class HubControlPlaneService
         $taskId = self::uuidFromBytes(random_bytes(16)); $vaultRevision = $this->centralVaultRevision($projectId); $serverInspection = $vaultRevision !== null && self::isServerInspection($goal); $serverTextMutation = $vaultRevision !== null && self::isServerTextNormalization($goal); $serverAssistedEdit = $vaultRevision !== null && self::isServerAssistedEdit($goal);
         if ($continuation === null && self::isContinuousAutonomyRequest($goal)) $continuation = ['enabled'=>true,'rootTaskId'=>$taskId,'step'=>0,'maxSteps'=>6];
         try {
-            $insert = $this->pdo->prepare('INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, :state, NULL, NULL, 0, NULL, NULL, :key, :created, :updated, NULL)');
-            $state = ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'QUEUED' : 'WAITING_FOR_WORKER'; $insert->execute(['id' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $goal, 'state' => $state, 'key' => $idempotency, 'created' => $now, 'updated' => $now]);
+            $insert = $this->pdo->prepare('INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, :state, NULL, NULL, 0, NULL, NULL, :key, :conversation, :created, :updated, NULL)');
+            $state = ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'QUEUED' : 'WAITING_FOR_WORKER'; $insert->execute(['id' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $goal, 'state' => $state, 'key' => $idempotency, 'conversation' => $conversationId, 'created' => $now, 'updated' => $now]);
             if ($vaultRevision !== null) { $checkpoint = ['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverAssistedEdit ? 'PROJECT_ASSISTED_EDIT' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST'))]; if ($continuation !== null) $checkpoint['continuation'] = $continuation; $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverAssistedEdit ? 'project.mutate.assisted' : ($serverInspection ? 'project.read' : 'codex:cli')), $checkpoint, $now); }
             $this->event($taskId, $state, 0, $vaultRevision !== null && !$serverInspection && !$serverTextMutation ? 'waiting for an engineering specialist capability' : 'received', $now);
+            if ($conversationId !== null) $this->pdo->prepare('UPDATE control_conversations SET last_task_id = :task, updated_at = :at WHERE conversation_id = :conversation AND user_id = :user')->execute(['task' => $taskId, 'at' => $now, 'conversation' => $conversationId, 'user' => $userId]);
         } catch (Throwable) { throw new HubControlPlaneException('Task could not be queued', 'TASK_CREATE_FAILED'); }
         return $this->taskById($taskId, $userId);
     }
@@ -634,13 +637,14 @@ final class HubControlPlaneService
         $parentTaskId = self::uuid((string)($request['parentTaskId'] ?? '')); $rootTaskId = self::uuid((string)($request['rootTaskId'] ?? ''));
         $step = $request['step'] ?? null; $maxSteps = $request['maxSteps'] ?? null;
         if (!is_int($step) || !is_int($maxSteps) || $step < 1 || $step >= $maxSteps || $maxSteps < 1 || $maxSteps > 8) throw new HubControlPlaneException('Continuous work bound is invalid', 'FIELD_INVALID');
+        $conversationId = $request['conversationId'] === null ? null : self::uuid((string)$request['conversationId']);
         $goal = self::goal((string)($request['goal'] ?? '')); $at = self::timestamp((string)($request['at'] ?? gmdate('c')));
         $parent = $this->pdo->prepare("SELECT state FROM control_tasks WHERE task_id=:task AND user_id=:user AND project_id=:project"); $parent->execute(['task'=>$parentTaskId,'user'=>$userId,'project'=>$projectId]);
         if ($parent->fetchColumn() !== 'COMPLETED') throw new HubControlPlaneException('Continuous work parent is not complete', 'TASK_STATE_INVALID');
         $pending = $this->pdo->prepare("SELECT 1 FROM control_approvals a JOIN control_tasks t ON t.task_id=a.task_id WHERE t.user_id=:user AND t.project_id=:project AND a.status='PENDING' AND a.expires_at>:at LIMIT 1"); $pending->execute(['user'=>$userId,'project'=>$projectId,'at'=>$at]);
         if ($pending->fetchColumn() !== false) throw new HubControlPlaneException('Continuous work paused for approval', 'APPROVAL_REQUIRED');
         $key = 'continuous.' . substr(hash('sha256', $rootTaskId . "\n" . $step . "\n" . $goal), 0, 48);
-        return $this->submitTaskForUser($userId, ['schemaVersion'=>1,'projectId'=>$projectId,'goal'=>$goal,'idempotencyKey'=>$key], $at, ['enabled'=>true,'rootTaskId'=>$rootTaskId,'step'=>$step,'maxSteps'=>$maxSteps]);
+        return $this->submitTaskForUser($userId, ['schemaVersion'=>1,'projectId'=>$projectId,'goal'=>$goal,'idempotencyKey'=>$key], $at, ['enabled'=>true,'rootTaskId'=>$rootTaskId,'step'=>$step,'maxSteps'=>$maxSteps], $conversationId);
     }
 
 
