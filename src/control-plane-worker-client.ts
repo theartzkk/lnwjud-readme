@@ -161,6 +161,18 @@ export class ControlPlaneWorkerClient {
     finally { await rm(archive, { force: true }); }
   }
 
+  async uploadProjectSource(projectId: string, sourceRevision: string, archive: string): Promise<Record<string, unknown>> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    if (!UUID_V4.test(projectId) || !/^[0-9a-f]{40,64}$/i.test(sourceRevision)) throw new ControlPlaneWorkerError('Project source identity is invalid', 'PAYLOAD_INVALID');
+    const info = await stat(archive); if (!info.isFile() || info.size < 1 || info.size > 1024 * 1024 * 1024) throw new ControlPlaneWorkerError('Project source archive is invalid', 'PAYLOAD_INVALID');
+    const token = await this.credentialStore.get(DEVICE_TOKEN_CREDENTIAL_KEY); if (!token) throw new ControlPlaneWorkerError('Worker is not enrolled', 'DEVICE_NOT_ENROLLED');
+    const response = await this.fetchImpl(new URL(`/api/v1/control/worker/projects/${projectId}/source/${sourceRevision.toLowerCase()}`, this.root), { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/zip', 'Content-Length': String(info.size), Authorization: `Bearer ${token}`, 'X-AWH-Device': identity.deviceId }, body: createReadStream(archive) as unknown as BodyInit, duplex: 'half' as never, credentials: 'omit', cache: 'no-store' } as RequestInit);
+    const body = await response.text(); if (body.length > MAX_RESPONSE_BYTES) throw new ControlPlaneWorkerError('Worker response is too large', 'RESPONSE_TOO_LARGE'); let value: unknown; try { value = JSON.parse(body); } catch { throw new ControlPlaneWorkerError('Worker response is invalid', 'RESPONSE_INVALID'); }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ControlPlaneWorkerError('Worker response is invalid', 'RESPONSE_INVALID'); const result = value as Record<string, unknown>;
+    if (!response.ok) throw new ControlPlaneWorkerError(typeof result.message === 'string' ? result.message : 'Project source was rejected', typeof result.code === 'string' ? result.code : 'WORKER_REJECTED');
+    return result;
+  }
+
   async uploadCentralExecutionCandidate(executionId: string, archive: string): Promise<WorkerTask> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir); if (!UUID_V4.test(executionId)) throw new ControlPlaneWorkerError('Central execution reference is invalid', 'PAYLOAD_INVALID');
     const info = await stat(archive); if (!info.isFile() || info.size < 1 || info.size > 1024 * 1024 * 1024) throw new ControlPlaneWorkerError('Central candidate archive is invalid', 'PAYLOAD_INVALID');
@@ -265,6 +277,14 @@ export class ControlPlaneWorkerClient {
     if (!project || !UUID_V4.test(project.projectId) || typeof project.name !== 'string' || !project.name.trim() || project.name.trim().length > 120 || /[\\/\u0000-\u001f\u007f]/.test(project.name) || typeof project.type !== 'string' || !/^[a-z][a-z0-9-]{0,31}$/.test(project.type) || (project.sourceRevision !== null && !/^[0-9a-f]{40,64}$/i.test(project.sourceRevision))) throw new ControlPlaneWorkerError('Project registration is invalid', 'PAYLOAD_INVALID');
     const response = await this.post('/control/worker/projects/register', { schemaVersion: 2, deviceId: identity.deviceId, project: { projectId: project.projectId, name: project.name.trim(), type: project.type, sourceRevision: project.sourceRevision } });
     if (response.schemaVersion !== 2 || !response.project || typeof response.project !== 'object') throw new ControlPlaneWorkerError('Project registration response is invalid', 'RESPONSE_INVALID');
+  }
+
+  async publishProjectMemory(projectId: string, files: Array<{ name: string; status: 'present' | 'missing'; sha256: string | null; sizeBytes: number }>): Promise<void> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    const expected = new Set(['PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md']);
+    if (!UUID_V4.test(projectId) || !Array.isArray(files) || files.length !== expected.size || new Set(files.map((file) => file.name)).size !== expected.size || files.some((file) => !expected.has(file.name) || !['present', 'missing'].includes(file.status) || !Number.isSafeInteger(file.sizeBytes) || file.sizeBytes < 0 || file.sizeBytes > 32 * 1024 || (file.status === 'present' ? (typeof file.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(file.sha256)) : (file.sha256 !== null || file.sizeBytes !== 0)))) throw new ControlPlaneWorkerError('Project memory metadata is invalid', 'PAYLOAD_INVALID');
+    const response = await this.post('/control/worker/projects/memory', { schemaVersion: 1, deviceId: identity.deviceId, projectId, files });
+    if (response.schemaVersion !== 1 || response.projectId !== projectId || typeof response.memoryReady !== 'boolean') throw new ControlPlaneWorkerError('Project memory metadata response is invalid', 'RESPONSE_INVALID');
   }
 
   async publishWorkspaceCheckpoint(checkpoint: WorkspaceWipCheckpoint): Promise<WorkerWorkspace> {

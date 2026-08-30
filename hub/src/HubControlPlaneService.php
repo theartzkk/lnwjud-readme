@@ -190,16 +190,7 @@ final class HubControlPlaneService
         $details = self::documentText((string) ($payload['details'] ?? ''), 'details', 4000);
         $key = self::idempotency((string) ($payload['idempotencyKey'] ?? ''));
         $goal = self::goal('จัดทำบันทึกข้อความขออนุมัติ: ' . $subject);
-        $pipeline = [
-            'mode' => 'SCHOOL_DOCUMENT_MEMORANDUM',
-            'classification' => 'MEMORANDUM_REQUEST',
-            'templateId' => 'school-memorandum-v1',
-            'knowledgePack' => 'school-knowledge-pack-th-v1',
-            'validation' => 'PASS_WITH_COMPLETION_FIELDS',
-            'render' => 'PRINTABLE_HTML',
-            'requiredCapability' => 'artifact.object',
-            'phases' => ['classify', 'template-rules', 'knowledge-pack', 'draft', 'validate', 'render', 'artifact'],
-        ];
+        $pipeline = self::schoolMemorandumPipeline();
         $html = self::schoolMemorandumHtml($subject, $details);
         return $this->createGeneratedArtifact($userId, $projectId, $goal, $key, 'school-document', 'บันทึกข้อความ-' . substr(hash('sha256', $subject), 0, 8) . '.html', 'text/html; charset=utf-8', $html, $pipeline, $now);
     }
@@ -861,6 +852,10 @@ final class HubControlPlaneService
         $attachmentIds = $schema === 3 ? self::attachmentIds($payload['attachmentIds'] ?? null) : [];
         if ($schema === 3) $this->assertFinalReady();
         $at = self::timestamp($now ?? gmdate('c'));
+        if ($schema >= 2 && $attachmentIds === [] && self::isSchoolDocumentIntent($message)) {
+            $conversationId = self::uuid((string) ($payload['conversationId'] ?? ''));
+            return $this->submitSchoolDocumentConversation($userId, $projectId, $conversationId, $message, $idempotency, $at, $worker);
+        }
         $transactionOpen = false;
         $nativeRequest = null;
         try {
@@ -1122,8 +1117,9 @@ final class HubControlPlaneService
             $turns = $this->recentConversationTurns((string) $request['conversationId'], (string) $request['messageId']);
             $attachments = $this->nativeAttachments((string) $request['messageId'], $userId);
             $context = $this->nativeProjectContext($userId, (string) $request['projectId'], (string) $request['request']);
-            $result = $this->agent->respond($userId, (string) $request['projectId'], (string) $request['conversationId'], (string) $request['messageId'], (string) $request['request'], $turns, $attachments, $at, $context);
-            $body = trim((string) $result['summary']);
+            $recovery = $this->projectContextRecoveryMessage($userId, (string) $request['projectId'], (string) $request['request']);
+            if ($recovery !== null) $body = $recovery;
+            else { $result = $this->agent->respond($userId, (string) $request['projectId'], (string) $request['conversationId'], (string) $request['messageId'], (string) $request['request'], $turns, $attachments, $at, $context); $body = trim((string) $result['summary']); }
         } catch (HubNativeAgentException $error) {
             $kind = 'FAILURE'; $body = self::providerUserMessage($error->codeName);
         } catch (Throwable) {
@@ -1199,8 +1195,34 @@ final class HubControlPlaneService
             'memoryFiles' => array_map(static fn (array $file): array => ['name' => (string) $file['memory_file'], 'status' => (string) $file['status'], 'observedAt' => (string) $file['observed_at']], $memory->fetchAll()),
             'latestTask' => is_array($latest) ? ['state' => (string) $latest['state'], 'summary' => $latest['result_summary'] === null ? null : self::conversationText((string) $latest['result_summary']), 'updatedAt' => (string) $latest['updated_at']] : null,
             'currentView' => is_array($current) ? ['kind' => (string) $current['view_kind'], 'selectedRef' => $current['selected_ref'] === null ? null : (string) $current['selected_ref'], 'sourceRevision' => $current['source_revision'] === null ? null : (string) $current['source_revision'], 'observedAt' => (string) $current['observed_at']] : null,
+            'contextHealth' => $this->projectContextHealth($userId, $projectId),
             'durableMemory' => $durableMemory,
         ];
+    }
+
+    /** Project context recovery is observational: it never invents a source revision or local path. */
+    private function projectContextHealth(string $userId, string $projectId): array
+    {
+        $vaultRevision = $this->centralVaultRevision($projectId);
+        $project = $this->pdo->prepare('SELECT source_revision FROM projects WHERE project_id=:project'); $project->execute(['project'=>$projectId]); $sourceRevision=$project->fetchColumn(); $sourceRevision=is_string($sourceRevision)&&$sourceRevision!==''?strtolower($sourceRevision):null;
+        $workers = $this->workersForUser($userId);
+        $bound = [];
+        $q = $this->pdo->prepare('SELECT device_id FROM device_project_memberships WHERE project_id=:project AND revoked_at IS NULL'); $q->execute(['project'=>$projectId]);
+        $ids = array_fill_keys(array_map('strval', $q->fetchAll(PDO::FETCH_COLUMN)), true);
+        foreach ($workers as $worker) if (isset($ids[(string)$worker['deviceId']])) $bound[] = ['displayName'=>(string)$worker['displayName'],'state'=>(string)$worker['state'],'lastSeenAt'=>(string)$worker['lastSeenAt']];
+        return ['state'=>$vaultRevision !== null ? 'READY' : ($sourceRevision !== null ? 'SOURCE_KNOWN_VAULT_REQUIRED' : 'SOURCE_DISCOVERY_REQUIRED'),'sourceRevision'=>$sourceRevision,'vaultRevision'=>$vaultRevision,'boundWorkers'=>$bound,'nonSourceWorkAvailable'=>true];
+    }
+
+    private function projectContextRecoveryMessage(string $userId, string $projectId, string $request): ?string
+    {
+        if (preg_match('/(?:ดึงข้อมูล|source|repo|repository|vault|ซอร์ส|โค้ด|ข้อมูลโปรเจกต์)/iu', $request) !== 1) return null;
+        $health = $this->projectContextHealth($userId, $projectId);
+        if (($health['state'] ?? '') === 'READY') return null;
+        $workers = $health['boundWorkers'] ?? []; $parts = [];
+        foreach ($workers as $worker) $parts[] = (string)$worker['displayName'] . ' ' . ((string)$worker['state'] === 'READY' ? 'ออนไลน์' : ((string)$worker['state'] === 'WORKING' ? 'กำลังทำงาน' : ((string)$worker['state'] === 'STALE' ? 'สัญญาณเก่า' : 'ออฟไลน์')));
+        $workerText = $parts === [] ? 'ยังไม่พบอุปกรณ์ที่ผูกกับโปรเจกต์' : implode(' · ', $parts);
+        $source = is_string($health['sourceRevision'] ?? null) ? 'พบ Source revision ที่ยืนยันแล้ว ' . substr((string)$health['sourceRevision'],0,12) : 'ยังไม่พบ Source revision ที่ยืนยันได้';
+        return 'AWH พบโปรเจกต์และบริบทการสนทนาแล้ว และตรวจ Project record, Source metadata, Project Vault และ Worker binding ให้แล้ว: ' . $source . ' · ' . $workerText . '. ตอนนี้ Project Vault ยังไม่มี Source ที่พร้อมอ่าน จึงไม่เดา repository หรือไฟล์ขึ้นเอง งานทั่วไป เช่น Chat, เอกสาร, PDF, QR, รูปภาพ, Memory และ Files ยังทำได้ตามปกติ; งานแก้ Source จะเริ่มเมื่อ Source ถูกยืนยันใน Vault.';
     }
 
     /** @return list<array{name:string,mimeType:string,path:string,sizeBytes:int}> */
@@ -1411,13 +1433,24 @@ final class HubControlPlaneService
      * @param array<string,mixed> $pipeline
      * @return array<string,mixed>
      */
-    private function createGeneratedArtifact(string $userId, string $projectId, string $goal, string $idempotencyKey, string $kind, string $name, string $mimeType, string $contents, array $pipeline, ?string $now = null): array
+    private function createGeneratedArtifact(string $userId, string $projectId, string $goal, string $idempotencyKey, string $kind, string $name, string $mimeType, string $contents, array $pipeline, ?string $now = null, ?array $conversation = null): array
     {
         $existing = $this->existingGeneratedTask($userId, $idempotencyKey);
         if (is_array($existing)) return $existing;
         $store = $this->artifactStore;
         if ($store === null) throw new HubControlPlaneException('Artifact object storage is unavailable', 'ARTIFACT_STORAGE_UNAVAILABLE');
         $at = self::timestamp($now ?? gmdate('c')); $taskId = self::uuidFromBytes(random_bytes(16)); $executionId = self::uuidFromBytes(random_bytes(16)); $artifactId = self::uuidFromBytes(random_bytes(16));
+        $conversationId = null; $conversationMessage = null; $conversationKey = null; $conversationResult = null;
+        if (is_array($conversation)) {
+            self::exactKeys($conversation, ['conversationId', 'message', 'messageIdempotencyKey', 'resultText']);
+            $conversationId = self::uuid((string) ($conversation['conversationId'] ?? ''));
+            $conversationRow = $this->conversationRowForUser($userId, $conversationId);
+            if ((string) $conversationRow['project_id'] !== $projectId) throw new HubControlPlaneException('Conversation does not belong to this project', 'PROJECT_FORBIDDEN');
+            $conversationMessage = self::goal((string) ($conversation['message'] ?? ''));
+            $conversationKey = self::idempotency((string) ($conversation['messageIdempotencyKey'] ?? ''));
+            $conversationResult = self::conversationText((string) ($conversation['resultText'] ?? ''));
+            if ($conversationResult === '') throw new HubControlPlaneException('Generated result message is invalid', 'FIELD_INVALID');
+        }
         $temporary = tempnam(sys_get_temp_dir(), 'awh-generated-');
         if (!is_string($temporary)) throw new HubControlPlaneException('Generated artifact storage is unavailable', 'ARTIFACT_STORAGE_FAILED');
         $stored = null; $transactionOpen = false;
@@ -1427,12 +1460,17 @@ final class HubControlPlaneService
             $stored = $store->storeFile($artifactId, $temporary);
             $checkpoint = json_encode(['mode' => (string) ($pipeline['mode'] ?? 'GENERATED_PRODUCT'), 'pipeline' => $pipeline], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
             $this->pdo->exec('BEGIN IMMEDIATE'); $transactionOpen = true;
-            $this->pdo->prepare('INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,:goal,\'COMPLETED\',NULL,NULL,100,:summary,NULL,:key,NULL,:at,:at,NULL)')->execute(['task' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $goal, 'summary' => 'AWH สร้างผลลัพธ์ตามขั้นตอนที่ตรวจสอบแล้ว และเก็บไว้ในคลังไฟล์เรียบร้อย', 'key' => $idempotencyKey, 'at' => $at]);
+            $this->pdo->prepare('INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,:goal,\'COMPLETED\',NULL,NULL,100,:summary,NULL,:key,:conversation,:at,:at,NULL)')->execute(['task' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $goal, 'summary' => 'AWH สร้างผลลัพธ์ตามขั้นตอนที่ตรวจสอบแล้ว และเก็บไว้ในคลังไฟล์เรียบร้อย', 'key' => $idempotencyKey, 'conversation' => $conversationId, 'at' => $at]);
+            if ($conversationId !== null && $conversationMessage !== null && $conversationKey !== null) $this->appendConversationMessage($conversationId, $taskId, 'USER', $conversationMessage, $at, $conversationKey);
             $this->pdo->prepare('INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,\'VPS\',:capability,\'COMPLETED\',NULL,NULL,1,NULL,:checkpoint,NULL,:at,:at)')->execute(['execution' => $executionId, 'task' => $taskId, 'project' => $projectId, 'capability' => (string) ($pipeline['requiredCapability'] ?? 'artifact.object'), 'checkpoint' => $checkpoint, 'at' => $at]);
             if ($this->capabilities !== null) $this->capabilities->ensureExecutionEnvelope($executionId, $at);
             $this->pdo->prepare('INSERT INTO control_artifacts(artifact_id,task_id,project_id,kind,name,sha256,size_bytes,relative_ref,created_at) VALUES(:artifact,:task,:project,:kind,:name,:sha,:size,NULL,:at)')->execute(['artifact' => $artifactId, 'task' => $taskId, 'project' => $projectId, 'kind' => $kind, 'name' => $name, 'sha' => $stored['sha256'], 'size' => $stored['sizeBytes'], 'at' => $at]);
             $this->pdo->prepare('INSERT INTO control_artifact_objects(artifact_id,storage_key,mime_type,retained_until,deleted_at) VALUES(:artifact,:storage,:mime,NULL,NULL)')->execute(['artifact' => $artifactId, 'storage' => $stored['storageKey'], 'mime' => $mimeType]);
             $this->event($taskId, 'COMPLETED', 100, 'deterministic product artifact generated and verified', $at);
+            if ($conversationId !== null && $conversationResult !== null) {
+                $this->appendConversationMessage($conversationId, $taskId, 'RESULT', $conversationResult, $at, 'generated-result-' . $idempotencyKey);
+                $this->pdo->prepare('UPDATE control_conversations SET last_task_id = :task, updated_at = :at WHERE conversation_id = :conversation AND user_id = :user')->execute(['task' => $taskId, 'at' => $at, 'conversation' => $conversationId, 'user' => $userId]);
+            }
             $this->pdo->exec('COMMIT'); $transactionOpen = false;
         } catch (Throwable $error) {
             if ($transactionOpen) self::rollbackImmediate($this->pdo);
@@ -1443,6 +1481,51 @@ final class HubControlPlaneService
         } finally { @unlink($temporary); }
         $task = $this->taskById($taskId, $userId);
         return ['schemaVersion' => 1, 'idempotent' => false, 'task' => $task, 'artifact' => ['schemaVersion' => 1, 'artifactId' => $artifactId, 'taskId' => $taskId, 'projectId' => $projectId, 'kind' => $kind, 'name' => $name, 'sha256' => $stored['sha256'], 'sizeBytes' => $stored['sizeBytes'], 'relativeRef' => null, 'createdAt' => $at, 'downloadUrl' => '/api/v1/control/artifacts/' . $artifactId . '/download'], 'pipeline' => $pipeline];
+    }
+
+    private function submitSchoolDocumentConversation(string $userId, string $projectId, string $conversationId, string $message, string $idempotency, string $at, bool $worker): array
+    {
+        $conversation = $this->conversationRowForUser($userId, $conversationId);
+        if ((string) $conversation['project_id'] !== $projectId || (isset($conversation['archived_at']) && $conversation['archived_at'] !== null)) throw new HubControlPlaneException('Conversation is not available for this project', 'PROJECT_FORBIDDEN');
+        $subject = self::schoolDocumentSubject($message);
+        $pipeline = self::schoolMemorandumPipeline();
+        $goal = self::goal('จัดทำบันทึกข้อความ: ' . $subject);
+        $this->createGeneratedArtifact($userId, $projectId, $goal, 'conversation-' . $idempotency, 'school-document', 'บันทึกข้อความ-' . substr(hash('sha256', $subject), 0, 8) . '.html', 'text/html; charset=utf-8', self::schoolMemorandumHtml($subject, $message), $pipeline, $at, [
+            'conversationId' => $conversationId,
+            'message' => $message,
+            'messageIdempotencyKey' => $idempotency,
+            'resultText' => 'สร้างบันทึกข้อความให้แล้ว และเก็บไฟล์ไว้ในคลังไฟล์ของ AWH พร้อมตรวจข้อมูลที่ยังต้องเติมก่อนเสนออนุมัติ',
+        ]);
+        return $this->conversationByIdForUser($userId, $conversationId, $worker);
+    }
+
+    private static function isSchoolDocumentIntent(string $message): bool
+    {
+        return preg_match('/(?:^|\s)(?:ช่วย\s*)?(?:สร้าง|ทำ|เขียน|จัดทำ)\s*(?:เอกสาร\s*)?บันทึกข้อความ(?:\s|$|ขอ|เรื่อง)/u', trim($message)) === 1;
+    }
+
+    private static function schoolDocumentSubject(string $message): string
+    {
+        $value = trim($message);
+        $value = preg_replace('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)*(?:สร้าง|ทำ|เขียน|จัดทำ)\s*(?:เอกสาร\s*)?บันทึกข้อความ\s*/u', '', $value) ?? $value;
+        $value = preg_replace('/^เรื่อง\s*/u', '', $value) ?? $value;
+        if ($value === '') $value = 'ตามคำขอใน AWH';
+        return self::portableText($value, 'subject', 180);
+    }
+
+    /** @return array<string,mixed> */
+    private static function schoolMemorandumPipeline(): array
+    {
+        return [
+            'mode' => 'SCHOOL_DOCUMENT_MEMORANDUM',
+            'classification' => 'MEMORANDUM_REQUEST',
+            'templateId' => 'school-memorandum-v1',
+            'knowledgePack' => 'school-knowledge-pack-th-v1',
+            'validation' => 'PASS_WITH_COMPLETION_FIELDS',
+            'render' => 'PRINTABLE_HTML',
+            'requiredCapability' => 'artifact.object',
+            'phases' => ['classify', 'template-rules', 'knowledge-pack', 'draft', 'validate', 'render', 'artifact'],
+        ];
     }
 
     private static function documentText(string $value, string $field, int $max): string
@@ -1532,6 +1615,29 @@ final class HubControlPlaneService
             $this->pdo->exec('COMMIT');
         } catch (Throwable $error) { self::rollbackImmediate($this->pdo); if (is_array($stored)) $store->remove($stored['storageKey'] ?? null); if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Office PDF artifact could not be stored', 'ARTIFACT_STORAGE_FAILED'); }
         return $this->taskById((string) $row['task_id'], (string) $row['user_id']);
+    }
+
+    /** Bootstrap a missing Project Vault from one enrolled Owner device after
+     * portable source identity and the same-device binding fingerprint agree.
+     * This is initial-source recovery only: an existing Vault can never be
+     * replaced through this route and local filesystem paths never cross it. */
+    public function acceptWorkerProjectSource(string $token, string $deviceId, string $projectId, string $sourceRevision, array $file, ?string $now = null): array
+    {
+        $at = self::timestamp($now ?? gmdate('c')); $deviceId = self::uuid($deviceId); $projectId = self::uuid($projectId); $sourceRevision = self::gitSha($sourceRevision);
+        $auth = $this->enrollment->authenticateForControlPlane($token, $deviceId, $at); $this->assertCentralProjectAuthorityReady(); $this->assertDeviceProjectMember((string)$auth['deviceId'], $projectId);
+        $owner = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id=1 AND bootstrap_closed=1')->fetchColumn();
+        if (!is_string($owner) || !hash_equals($owner, (string)$auth['userId'])) throw new HubControlPlaneException('Only the AWH owner may recover project source', 'PROJECT_FORBIDDEN');
+        $project = $this->pdo->prepare('SELECT name,source_revision FROM projects WHERE project_id=:project'); $project->execute(['project'=>$projectId]); $row=$project->fetch();
+        if (!is_array($row) || !is_string($row['source_revision']) || !hash_equals(strtolower((string)$row['source_revision']), $sourceRevision)) throw new HubControlPlaneException('Project source identity changed before recovery', 'PROJECT_REVISION_CONFLICT');
+        $binding = $this->pdo->prepare('SELECT source_fingerprint,observed_at FROM control_project_device_bindings WHERE project_id=:project AND device_id=:device AND revoked_at IS NULL'); $binding->execute(['project'=>$projectId,'device'=>$deviceId]); $bound=$binding->fetch();
+        if (!is_array($bound) || !is_string($bound['source_fingerprint']) || !hash_equals(strtolower((string)$bound['source_fingerprint']), $sourceRevision) || strtotime((string)$bound['observed_at']) < strtotime($at)-86400) throw new HubControlPlaneException('Verified project source binding is unavailable', 'PROJECT_CONTEXT_INVALID');
+        $before = $this->vaults->state($projectId); if ($before['activeRevisionId'] !== null) throw new HubControlPlaneException('Project Vault already has an active source', 'PROJECT_REVISION_CONFLICT');
+        $tmp=$file['tmp_name']??null; $size=$file['size']??null;
+        if (!is_string($tmp)||$tmp===''||!is_file($tmp)||is_link($tmp)||!is_int($size)||$size<1||$size>HubProjectVault::MAX_ARCHIVE_BYTES||@filesize($tmp)!==$size) throw new HubControlPlaneException('Project source archive is invalid', 'PROJECT_ARCHIVE_INVALID');
+        try { $vault=$this->vaults->ingestArchive($projectId,$tmp,(string)$auth['userId'],$deviceId,null,$at); }
+        catch (HubProjectVaultException $error) { throw new HubControlPlaneException('Project source could not be recovered', $error->codeName); }
+        if (!is_string($vault['activeRevisionId']??null) || ($vault['syncState']??null)!=='SYNCED') throw new HubControlPlaneException('Project source recovery could not be verified', 'PROJECT_VAULT_FAILED');
+        return ['schemaVersion'=>1,'projectId'=>$projectId,'sourceRevision'=>$sourceRevision,'contextState'=>'READY','vault'=>$vault];
     }
 
     /** Accepts one raw ZIP only from its currently leased Codex executor.
@@ -1693,10 +1799,10 @@ final class HubControlPlaneService
         $sql = "SELECT w.device_id, w.state, w.last_seen_at, w.capabilities_json, w.busy_task_id, d.display_name, d.platform, d.arch, COUNT(DISTINCT dpm.project_id) AS project_count FROM control_workers w JOIN devices d ON d.device_id = w.device_id JOIN device_project_memberships dpm ON dpm.device_id = w.device_id AND dpm.revoked_at IS NULL JOIN user_project_memberships upm ON upm.project_id = dpm.project_id AND upm.user_id = :user AND upm.revoked_at IS NULL WHERE d.revoked_at IS NULL GROUP BY w.device_id, w.state, w.last_seen_at, w.capabilities_json, w.busy_task_id, d.display_name, d.platform, d.arch ORDER BY d.display_name, w.device_id LIMIT 100";
         $q = $this->pdo->prepare($sql); $q->execute(['user' => $userId]); $nowAt = time();
         return array_map(static function (array $row) use ($nowAt): array {
-            $state = strtotime((string) $row['last_seen_at']) < $nowAt - self::WORKER_STALE_TTL ? 'OFFLINE' : (in_array($row['state'], ['READY', 'WORKING', 'OFFLINE'], true) ? $row['state'] : 'OFFLINE');
+            $lastSeen = strtotime((string) $row['last_seen_at']); $age = $lastSeen === false ? PHP_INT_MAX : max(0, $nowAt - $lastSeen); $state = $age > self::WORKER_STALE_TTL ? 'STALE' : (in_array($row['state'], ['READY', 'WORKING', 'OFFLINE'], true) ? $row['state'] : 'OFFLINE');
             $capabilities = []; try { $raw = json_decode((string) $row['capabilities_json'], true, 32, JSON_THROW_ON_ERROR); if (is_array($raw) && array_is_list($raw)) foreach ($raw as $capability) if (is_string($capability) && preg_match('/^[a-z][a-z0-9:._-]{0,63}$/', $capability)) $capabilities[] = $capability; } catch (Throwable) {}
             $capabilities = array_values(array_unique($capabilities));
-            return ['deviceId' => (string) $row['device_id'], 'displayName' => (string) $row['display_name'], 'platform' => (string) $row['platform'], 'arch' => (string) $row['arch'], 'state' => $state, 'lastSeenAt' => (string) $row['last_seen_at'], 'capabilities' => $capabilities, 'detectedTools' => self::workerToolLabels($capabilities), 'boundProjectCount' => (int) $row['project_count'], 'activity' => $state === 'WORKING' ? 'WORKING' : ($state === 'READY' ? 'READY' : 'OFFLINE')];
+            return ['deviceId' => (string) $row['device_id'], 'displayName' => (string) $row['display_name'], 'platform' => (string) $row['platform'], 'arch' => (string) $row['arch'], 'state' => $state, 'lastSeenAt' => (string) $row['last_seen_at'], 'capabilities' => $capabilities, 'detectedTools' => self::workerToolLabels($capabilities), 'boundProjectCount' => (int) $row['project_count'], 'activity' => $state === 'WORKING' ? 'BUSY' : ($state === 'READY' ? 'ONLINE' : ($state === 'STALE' ? 'STALE' : 'OFFLINE'))];
         }, $q->fetchAll());
     }
 
@@ -1948,6 +2054,20 @@ final class HubControlPlaneService
         $at = self::timestamp($now ?? gmdate('c'));
         $this->pdo->prepare('INSERT INTO control_project_device_bindings(binding_id, project_id, device_id, workspace_label, source_fingerprint, capabilities_json, observed_at, revoked_at) VALUES(:id, :project, :device, :label, :fingerprint, :caps, :at, NULL) ON CONFLICT(project_id, device_id) DO UPDATE SET workspace_label=excluded.workspace_label, source_fingerprint=excluded.source_fingerprint, capabilities_json=excluded.capabilities_json, observed_at=excluded.observed_at, revoked_at=NULL')->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'project' => $projectId, 'device' => $auth['deviceId'], 'label' => $label, 'fingerprint' => $fingerprint, 'caps' => json_encode(array_values(array_unique($caps)), JSON_THROW_ON_ERROR), 'at' => $at]);
         return ['schemaVersion' => 2, 'binding' => ['projectId' => $projectId, 'deviceId' => (string) $auth['deviceId'], 'workspaceLabel' => $label, 'sourceFingerprint' => $fingerprint, 'capabilities' => array_values(array_unique($caps)), 'observedAt' => $at]];
+    }
+
+    /** Publish only bounded Project Memory file metadata from a trusted Owner device. */
+    public function publishProjectMemoryFromDevice(string $token, array $payload, ?string $now = null): array
+    {
+        self::exactKeys($payload, ['deviceId', 'files', 'projectId', 'schemaVersion']);
+        if (($payload['schemaVersion'] ?? null) !== 1 || !is_array($payload['files'])) throw new HubControlPlaneException('Project memory metadata is invalid', 'PAYLOAD_INVALID');
+        $deviceId=self::uuid((string)($payload['deviceId']??'')); $projectId=self::uuid((string)($payload['projectId']??'')); $auth=$this->enrollment->authenticateForControlPlane($token,$deviceId,$now); $this->assertDeviceProjectMember((string)$auth['deviceId'],$projectId);
+        $owner=$this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id=1 AND bootstrap_closed=1')->fetchColumn(); if(!is_string($owner)||!hash_equals($owner,(string)$auth['userId'])) throw new HubControlPlaneException('Only the AWH owner may publish project memory metadata','PROJECT_FORBIDDEN');
+        $expected=['ARCHITECTURE.md','DECISIONS.md','HANDOFF.md','PROJECT.md','TASKS.md']; $files=[];
+        foreach($payload['files'] as $file){ if(!is_array($file)){ throw new HubControlPlaneException('Project memory metadata is invalid','PAYLOAD_INVALID'); } self::exactKeys($file,['name','sha256','sizeBytes','status']); $name=(string)($file['name']??''); $status=(string)($file['status']??''); $sha=$file['sha256']??null; $size=$file['sizeBytes']??null; if(!in_array($name,$expected,true)||!in_array($status,['present','missing'],true)||!is_int($size)||$size<0||$size>32768||($status==='present'&&(!is_string($sha)||preg_match('/^[0-9a-f]{64}$/i',$sha)!==1))||($status==='missing'&&($sha!==null||$size!==0))) throw new HubControlPlaneException('Project memory metadata is invalid','FIELD_INVALID'); $files[$name]=['status'=>$status,'sha256'=>$sha===null?null:strtolower($sha),'size'=>$size]; }
+        if(array_keys(array_intersect_key(array_fill_keys($expected,true),$files))!==$expected||count($files)!==count($expected)) throw new HubControlPlaneException('Project memory metadata is incomplete','PAYLOAD_INVALID');
+        $at=self::timestamp($now??gmdate('c')); try{$this->pdo->exec('BEGIN IMMEDIATE'); $this->pdo->prepare('DELETE FROM project_memory WHERE project_id=:project')->execute(['project'=>$projectId]); $q=$this->pdo->prepare('INSERT INTO project_memory(project_id,memory_file,status,sha256,size_bytes,observed_at,provenance) VALUES(:project,:file,:status,:sha,:size,:at,:provenance)'); foreach($expected as $name){$item=$files[$name];$q->execute(['project'=>$projectId,'file'=>$name,'status'=>$item['status'],'sha'=>$item['sha256'],'size'=>$item['status']==='present'?$item['size']:null,'at'=>$at,'provenance'=>'owner-device:canonical-memory-metadata']);} $this->pdo->exec('COMMIT');}catch(Throwable $error){self::rollbackImmediate($this->pdo); if($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Project memory metadata could not be stored','MEMORY_CREATE_FAILED');}
+        return ['schemaVersion'=>1,'projectId'=>$projectId,'memoryReady'=>count(array_filter($files,static fn(array $item):bool=>$item['status']==='present'))===5,'observedAt'=>$at];
     }
 
     /**

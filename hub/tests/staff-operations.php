@@ -46,6 +46,14 @@ try {
     staff_expect(($snapshot['storageGovernance']['actions']['purged'] ?? -1) === 0, 'storage audit must not purge');
     staff_expect(array_key_exists('UNKNOWN', $snapshot['storageGovernance']['summary'] ?? []), 'storage audit must retain an UNKNOWN classification');
     staff_expect(($snapshot['storageGovernance']['disk']['state'] ?? null) === 'READY', 'storage audit must measure filesystem capacity');
+    $oldTemp = $root . '/old-worker.part'; file_put_contents($oldTemp, 'bounded stale temp'); touch($oldTemp, strtotime('2026-08-28T00:00:00Z'));
+    $retain = $root . '/candidate-review'; mkdir($retain, 0700, true); file_put_contents($retain . '/evidence.txt', 'retain me');
+    $housekeepingRun = $storage->housekeep('2026-08-30T00:00:30Z', ['control' => 'm16-test', 'web' => 'm16-test']);
+    staff_expect(($housekeepingRun['state'] ?? null) === 'CLEANED' && ($housekeepingRun['purged'] ?? 0) === 1, 'bounded housekeeping must purge exactly one verified stale temp');
+    staff_expect(!file_exists($oldTemp) && is_file($retain . '/evidence.txt'), 'housekeeping must not touch quarantine/review evidence or retained content');
+    staff_expect(($housekeepingRun['referenceChecked'] ?? 0) === 1 && ($housekeepingRun['verified'] ?? 0) === 1 && ($housekeepingRun['unknownRetained'] ?? false) === true, 'housekeeping must prove reference-check and quarantine verification before purge');
+    $withRun = (new HubStaffOperationsService($pdo, $dbPath, $storage))->snapshot('2026-08-30T00:00:31Z', null, $telemetry, $release, null, $housekeepingRun);
+    staff_expect(($withRun['housekeeping']['state'] ?? null) === 'CLEANED' && ($withRun['morningBrief']['storage']['housekeeping']['purge'] ?? 0) === 1, 'Morning Brief must retain verified housekeeping evidence');
     $pdo->exec("INSERT INTO control_tasks VALUES
         ('failed-old','p1','production provider request','FAILED','2026-08-30T00:01:00Z'),
         ('success-new','p1','provider request recovered','COMPLETED','2026-08-30T00:02:00Z'),

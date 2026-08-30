@@ -30,6 +30,9 @@ function safeErrorMessage(value) {
     ORIGIN_FORBIDDEN: 'ไม่สามารถยืนยันความปลอดภัยของหน้านี้ได้ กรุณารีเฟรชแล้วลองใหม่',
     CSRF_REJECTED: 'ไม่สามารถยืนยันคำขอได้ กรุณารีเฟรชแล้วลองใหม่',
     PROJECT_FORBIDDEN: 'โปรเจกต์นี้ไม่พร้อมใช้งานสำหรับบัญชีของคุณ',
+    PROJECT_CONTEXT_REJECTED: 'AWH ยังเชื่อม Source ของโปรเจกต์นี้ไม่ครบ และกำลังตรวจบริบทให้ งานที่ไม่ต้องใช้ Source ยังทำต่อได้',
+    PROJECT_VAULT_EMPTY: 'AWH พบโปรเจกต์แล้ว แต่ Source ล่าสุดยังไม่ถูกเก็บใน Project Vault งานทั่วไป เอกสาร PDF QR และ AI ยังใช้ได้ตามปกติ',
+    PROJECT_CONTEXT_INVALID: 'บริบทของโปรเจกต์ยังไม่สมบูรณ์ AWH จะใช้เฉพาะข้อมูลที่ยืนยันได้และไม่เดา Source',
     MEMORY_FORBIDDEN: 'ความจำนี้ไม่พร้อมใช้งานสำหรับบัญชีของคุณ',
     MEMORY_SENSITIVE_EXCLUDED: 'AWH ไม่เก็บข้อมูลลับหรือข้อมูลอ่อนไหวไว้ในความจำปกติ',
     MEMORY_NOT_FOUND: 'ไม่พบความจำที่ต้องการ',
@@ -180,6 +183,7 @@ export async function testProviderConnection() { return controlRequest('/api/v1/
 export async function loadProviderProjectRouting(projectId) { if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง'); const value = await controlRequest(`/api/v1/control/provider/projects/${projectId}`); if (value.schemaVersion !== 1 || !value.routing || typeof value.routing !== 'object') throw new Error('การกำหนด AI ของโปรเจกต์ไม่ถูกต้อง'); return value.routing; }
 export async function updateProviderProjectRouting(projectId, routingMode) { if (!UUID.test(projectId) || !['AUTO', 'FAST', 'BALANCED', 'STRONG'].includes(routingMode)) throw new Error('การกำหนด AI ของโปรเจกต์ไม่ถูกต้อง'); const value = await controlRequest('/api/v1/control/provider/project', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, routingMode }) }); if (value.schemaVersion !== 1 || !value.routing || typeof value.routing !== 'object') throw new Error('การกำหนด AI ของโปรเจกต์ไม่ถูกต้อง'); return value.routing; }
 export async function loadOwnerSelfServiceStatus() { return controlRequest('/api/v1/control/owner/status'); }
+export async function loadInfrastructure() { return controlRequest('/api/v1/control/infrastructure'); }
 export async function loadSystemReadiness() {
   const value = await controlRequest('/api/v1/control/system/readiness');
   if (value.schemaVersion !== 1 || !['READY', 'PARTIALLY_READY', 'ACTION_REQUIRED'].includes(value.state) || !value.checks || typeof value.checks !== 'object') throw new Error('สถานะความพร้อมของ AWH ไม่ถูกต้อง');

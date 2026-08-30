@@ -13,8 +13,9 @@ try {
     $path = (string) (parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?: '');
     $workerCandidate = preg_match('#^/api/v1/control/worker/executions/[0-9a-f-]{36}/candidate$#i', $path) === 1 && (string) ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
     $workerOfficeArtifact = preg_match('#^/api/v1/control/worker/executions/[0-9a-f-]{36}/office-artifact$#i', $path) === 1 && (string) ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
-    $candidateFile = []; $officeArtifactFile = [];
-    if ($workerCandidate || $workerOfficeArtifact) {
+    $workerProjectSource = preg_match('#^/api/v1/control/worker/projects/[0-9a-f-]{36}/source/[0-9a-f]{40,64}$#i', $path) === 1 && (string) ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
+    $candidateFile = []; $officeArtifactFile = []; $projectSourceFile = [];
+    if ($workerCandidate || $workerOfficeArtifact || $workerProjectSource) {
         $maxUpload = $workerOfficeArtifact ? 50 * 1024 * 1024 : 1024 * 1024 * 1024;
         $length = isset($_SERVER['CONTENT_LENGTH']) ? filter_var($_SERVER['CONTENT_LENGTH'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => $maxUpload]]) : false;
         if (!is_int($length)) throw new RuntimeException('Candidate content length is invalid');
@@ -26,6 +27,7 @@ try {
         if (!is_int($copied) || $copied !== $length || !is_string($tmpPath) || !is_file($tmpPath)) { fclose($temporary); throw new RuntimeException('Worker upload is incomplete'); }
         fflush($temporary);
         if ($workerOfficeArtifact) $officeArtifactFile = ['officeArtifact' => ['tmp_name' => $tmpPath, 'size' => $length]];
+        elseif ($workerProjectSource) $projectSourceFile = ['projectSource' => ['tmp_name' => $tmpPath, 'size' => $length]];
         else $candidateFile = ['candidate' => ['tmp_name' => $tmpPath, 'size' => $length]];
         $body = '';
     } else $body = file_get_contents('php://input', false, null, 0, 16385);
@@ -34,7 +36,7 @@ try {
         $response = HubOwnerAuthRouter::dispatch((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'), (string) ($_SERVER['REQUEST_URI'] ?? '/'), $_SERVER, $auth, is_string($body) ? $body : '');
     } else {
         $control = HubControlPlaneService::openExisting($database);
-        $uploadFiles = $workerCandidate ? $candidateFile : ($workerOfficeArtifact ? $officeArtifactFile : $_FILES);
+        $uploadFiles = $workerCandidate ? $candidateFile : ($workerOfficeArtifact ? $officeArtifactFile : ($workerProjectSource ? $projectSourceFile : $_FILES));
         $response = HubControlPlaneRouter::dispatch((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'), (string) ($_SERVER['REQUEST_URI'] ?? '/'), $_SERVER, $control, is_string($body) ? $body : '', $uploadFiles);
     }
     if (isset($temporary) && is_resource($temporary)) fclose($temporary);

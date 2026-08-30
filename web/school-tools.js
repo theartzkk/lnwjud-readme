@@ -155,15 +155,22 @@ async function populateDocumentProjects(select) {
   }
 }
 
-export async function openSchoolDocumentTool() {
+export async function openSchoolDocumentTool(options = {}) {
   const dialog = $('dashboard-school-document-tool');
   if (!(dialog instanceof HTMLElement)) return;
   openAwhDialog(dialog);
   const select = dialog.querySelector('#dashboard-document-project');
+  const subject = dialog.querySelector('#dashboard-document-subject');
+  const details = dialog.querySelector('#dashboard-document-details');
   const message = dialog.querySelector('[data-generated-message]');
-  if (message) message.textContent = 'เลือกโปรเจกต์และกรอกข้อมูลที่ทราบจริง ระบบจะทำเครื่องหมายข้อมูลที่ยังขาดให้';
+  if (subject instanceof HTMLInputElement && typeof options.subject === 'string') subject.value = options.subject.slice(0, 180);
+  if (details instanceof HTMLTextAreaElement && typeof options.details === 'string') details.value = options.details.slice(0, 4000);
+  if (message) message.textContent = 'AWH เลือก Document AI ให้แล้ว · ตรวจข้อมูลที่ทราบจริงก่อนสร้างร่าง';
   if (select instanceof HTMLSelectElement) {
-    try { await populateDocumentProjects(select); } catch (error) { if (message) message.textContent = error instanceof Error ? error.message : 'อ่านโปรเจกต์ไม่ได้'; }
+    try {
+      await populateDocumentProjects(select);
+      if (typeof options.projectId === 'string' && [...select.options].some((option) => option.value === options.projectId)) select.value = options.projectId;
+    } catch (error) { if (message) message.textContent = error instanceof Error ? error.message : 'อ่านโปรเจกต์ไม่ได้'; }
   }
 }
 

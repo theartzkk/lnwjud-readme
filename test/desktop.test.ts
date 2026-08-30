@@ -279,6 +279,8 @@ test('desktop smoke harness isolates data, uses normal macOS LaunchServices, and
   assert.match(smoke, /SIGABRT\|AppKit/);
   assert.match(smoke, /_RegisterApplication|GetCurrentProcess/);
   assert.match(smoke, /marker === null/);
+  assert.match(smoke, /marker\?\.ok === true && marker\?\.stage === 'passed'/);
+  assert.doesNotMatch(smoke, /result\.code === 0 && marker\?\.ok === true/);
   assert.match(smoke, /--smoke-data-dir/);
   assert.match(qa, /result\.code === 2/);
   assert.match(qa, /GUI_SANDBOX_BLOCKED/);

@@ -1,6 +1,6 @@
-import { loadControlData } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { loadControlData, loadInfrastructure } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 import { SCHOOL_TOOLS, OWNER_TOOLS } from './tool-registry.js?release=__AWH_WEB_RELEASE_ID__';
-import { LOCAL_TOOL_ACTIONS, mountSchoolTools, openProjectFactoryTool, openSchoolDocumentTool } from './school-tools.js?release=__AWH_WEB_RELEASE_ID__';
+import { LOCAL_TOOL_ACTIONS, mountSchoolTools, openPdfTool, openProjectFactoryTool, openQrTool, openSchoolDocumentTool } from './school-tools.js?release=__AWH_WEB_RELEASE_ID__';
 import { executionStatus } from './execution-ux.js?release=__AWH_WEB_RELEASE_ID__';
 import { closeAwhDialog, commitAwhSurface, onAwhSurfaceChange, openAwhDialog } from './navigation.js?release=__AWH_WEB_RELEASE_ID__';
 
@@ -18,6 +18,7 @@ const state = {
   selectedTaskId: null,
   filesQuery: '',
   restoringSurface: false,
+  infrastructure: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -59,6 +60,57 @@ function tapTool(title) {
   if (target instanceof HTMLButtonElement && !target.disabled) target.click();
 }
 
+function classifyUniversalIntent(message, files = []) {
+  const text = String(message || '').trim();
+  const lower = text.toLowerCase();
+  const fileList = Array.isArray(files) ? files : [];
+  if (/(?:สร้าง|ทำ|จัดทำ|เขียน).{0,40}(?:บันทึกข้อความ|หนังสือราชการ|ขออนุมัติ|ขอเบิก)/iu.test(text) || /(?:บันทึกข้อความ|หนังสือราชการ).{0,40}(?:สร้าง|ทำ|จัดทำ|เขียน)/iu.test(text)) return { kind: 'DOCUMENT' };
+  if (/(?:รวม|merge).{0,30}(?:pdf)|(?:pdf).{0,30}(?:รวม|merge)/iu.test(text) || (fileList.length > 1 && fileList.every((file) => String(file?.name || '').toLowerCase().endsWith('.pdf')))) return { kind: 'PDF' };
+  if (/(?:สร้าง|ทำ).{0,24}(?:qr)|(?:qr).{0,24}(?:สร้าง|ทำ)/iu.test(text)) return { kind: 'QR' };
+  if (/(?:ย่อ|บีบอัด|resize|compress|แปลง).{0,30}(?:รูป|ภาพ|image)/iu.test(text) || (fileList.length === 1 && String(fileList[0]?.type || '').startsWith('image/'))) return { kind: 'IMAGE' };
+  if (/(?:vps|server|เซิร์ฟเวอร์|พื้นที่|disk|storage|ram|cpu|backup|production)/iu.test(lower) && /(?:ดู|ตรวจ|เหลือ|สถานะ|เท่าไร|เท่าไหร่|health|status)/iu.test(lower)) return { kind: 'INFRASTRUCTURE' };
+  return { kind: 'WORK' };
+}
+
+function attachFilesToInput(input, files) {
+  if (!(input instanceof HTMLInputElement) || !Array.isArray(files) || !files.length || typeof DataTransfer !== 'function') return;
+  const transfer = new DataTransfer();
+  for (const file of files) if (file instanceof File) transfer.items.add(file);
+  input.files = transfer.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+async function routeUniversalCommand(message, options = {}) {
+  const files = Array.isArray(options.files) ? options.files : [];
+  const intent = classifyUniversalIntent(message, files);
+  const projectId = typeof options.projectId === 'string' ? options.projectId : state.workContext?.project?.projectId;
+  if (intent.kind === 'DOCUMENT') {
+    if (options.source === 'work') return false;
+    openWork(message, true);
+    return true;
+  }
+  if (intent.kind === 'PDF') {
+    returnHome(); openPdfTool();
+    window.setTimeout(() => { const operation = $('dashboard-pdf-operation'); if (operation instanceof HTMLSelectElement) { operation.value = 'merge'; operation.dispatchEvent(new Event('change', { bubbles: true })); } attachFilesToInput($('dashboard-pdf-input'), files); }, 0);
+    return true;
+  }
+  if (intent.kind === 'QR') {
+    returnHome(); openQrTool();
+    const url = String(message).match(/https?:\/\/[^\s]+/i)?.[0] || '';
+    window.setTimeout(() => { const input = $('dashboard-qr-text'); if (input instanceof HTMLTextAreaElement) { input.value = url || message.replace(/^(?:ช่วย|กรุณา|โปรด)?\s*(?:สร้าง|ทำ)?\s*qr(?:\s*code)?\s*(?:ให้|จาก|ของ)?\s*/iu, '').trim(); input.focus(); } }, 0);
+    return true;
+  }
+  if (intent.kind === 'IMAGE') {
+    returnHome(); openImageTool();
+    window.setTimeout(() => attachFilesToInput($('dashboard-image-input'), files.slice(0, 1)), 0);
+    return true;
+  }
+  if (intent.kind === 'INFRASTRUCTURE' && state.control?.role === 'OWNER') { location.assign('./infrastructure.html'); return true; }
+  return false;
+}
+
+globalThis.AWH_ROUTE_COMMAND = routeUniversalCommand;
+
 function mountWelcome(dashboard) {
   const welcome = document.createElement('div');
   welcome.id = 'dashboard-welcome';
@@ -88,7 +140,7 @@ function updateMobileNavigation() {
   const home = document.body.classList.contains('product-dashboard-active');
   for (const item of nav.querySelectorAll('[data-mobile-destination]')) {
     const destination = item.dataset.mobileDestination;
-    item.classList.toggle('is-active', home ? destination === 'home' : destination === 'chat');
+    item.classList.toggle('is-active', home ? destination === 'home' : destination === 'work');
   }
 }
 
@@ -106,8 +158,8 @@ function mountMobileNavigation() {
   };
   nav.append(
     make('⌂', 'หน้าแรก', 'home', returnHome),
-    make('✦', 'AI', 'ai', () => openWork()),
-    make('☰', 'แชท', 'chat', () => { const context = state.workContext; if (context?.project?.projectId) navigateWork(context.project.projectId, context?.conversation?.conversationId || null, true); else openWork(); }),
+    make('✦', 'งาน/AI', 'work', () => openWork()),
+    make('↻', 'งาน', 'tasks', () => openTaskSurface()),
     make('▦', 'เครื่องมือ', 'tools', () => { returnHome(); window.setTimeout(() => $('awh-home-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40); }),
     make('•••', 'เพิ่มเติม', 'more', () => { returnHome(); window.setTimeout(() => { const owner = $('dashboard-owner-center-open'); if (owner instanceof HTMLElement && !owner.hidden) owner.click(); else $('account-open')?.click(); }, 40); }),
   );
@@ -248,6 +300,25 @@ function renderHomePulse() {
   }
 }
 
+function renderOwnerSystemSummary() {
+  const card = $('dashboard-owner-system-card');
+  if (!(card instanceof HTMLElement)) return;
+  const owner = state.control?.role === 'OWNER';
+  card.hidden = !owner;
+  if (!owner) return;
+  const infra = state.infrastructure;
+  const server = infra?.telemetry?.server;
+  const setText = (id, text) => { const node = $(id); if (node) node.textContent = text; };
+  if (!server) { setText('dashboard-owner-system-state', 'VPS ต้องตรวจสอบ'); setText('dashboard-owner-system-detail', 'แตะเพื่อเปิด Owner Control Tower'); return; }
+  const cpu = Math.round(Number(server.cpu?.usedPercent || 0));
+  const ram = Math.round(Number(server.memory?.usedPercent || 0));
+  const disk = Math.round(Number(server.storage?.usedPercent || 0));
+  const active = Array.isArray(infra?.autonomousWork) ? infra.autonomousWork.length : 0;
+  const healthy = infra?.telemetry?.state === 'READY' && infra?.database?.state === 'HEALTHY';
+  setText('dashboard-owner-system-state', healthy ? 'VPS Healthy · AI Ready' : 'VPS ต้องตรวจสอบ');
+  setText('dashboard-owner-system-detail', `CPU ${cpu}% · RAM ${ram}% · Disk ${disk}% · ${active} งาน · ${infra?.deployment?.controlReleaseId || 'Production'}`);
+}
+
 function returnHome() {
   if (!state.control?.authenticated) return;
   const dashboard = $(DASHBOARD_ID);
@@ -348,8 +419,15 @@ function renderTaskSurface() {
   appendTaskDetailRow(facts, 'ความคืบหน้า', status.progress > 0 ? `${status.progress}%` : null);
   if (task.execution?.continuation && Number.isInteger(task.execution.continuation.step) && Number.isInteger(task.execution.continuation.maxSteps)) appendTaskDetailRow(facts, 'การทำต่ออัตโนมัติ', `ขั้นที่ ${task.execution.continuation.step} จาก ${task.execution.continuation.maxSteps}`);
   detail.append(facts);
-  if (task.lastEvent?.message) {
+  if (task.lastEvent?.message && /[ก-๙]/u.test(task.lastEvent.message)) {
     const event = document.createElement('p'); event.className = 'awh-task-detail-note'; event.textContent = `อัปเดตจาก AWH: ${safeText(task.lastEvent.message)}`; detail.append(event);
+  }
+  const technical = [task.failureCode, task.execution?.lastErrorCode, task.lastEvent?.message && !/[ก-๙]/u.test(task.lastEvent.message) ? task.lastEvent.message : null].filter(Boolean);
+  if (technical.length && state.control?.role === 'OWNER') {
+    const details = document.createElement('details'); details.className = 'technical-entry awh-task-technical';
+    const summaryNode = document.createElement('summary'); summaryNode.textContent = 'รายละเอียดสำหรับผู้ดูแลระบบ';
+    const code = document.createElement('code'); code.textContent = technical.join(' · ');
+    details.append(summaryNode, code); detail.append(details);
   }
   if (task.resultSummary) {
     const result = document.createElement('section'); result.className = 'awh-task-result';
@@ -509,10 +587,11 @@ function mountDashboard() {
   send.textContent = 'ให้ AWH ช่วย ✦';
   commandActions.append(hint, send);
   commandForm.append(command, commandActions);
-  commandForm.addEventListener('submit', (event) => {
+  commandForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const value = command.value.trim();
     if (!value) { command.focus(); return; }
+    if (await routeUniversalCommand(value)) { command.value = ''; return; }
     openWork(value, true);
   });
   hero.append(commandForm);
@@ -526,7 +605,7 @@ function mountDashboard() {
   const pulse = document.createElement('section');
   pulse.id = 'dashboard-pulse';
   pulse.className = 'awh-home-section awh-pulse';
-  pulse.innerHTML = '<div class="awh-section-heading"><div><span>ภาพรวมตอนนี้</span><h2>รู้ทันงานในไม่กี่วินาที</h2></div><small>ข้อมูลล่าสุดจาก AWH · กดการ์ดเพื่อไปต่อ</small></div><div class="awh-pulse-grid"><button id="dashboard-pulse-projects-card" class="awh-pulse-card" type="button" data-pulse-target="projects"><span class="awh-pulse-icon">◫</span><span><strong id="dashboard-pulse-projects">—</strong><small>โปรเจกต์</small><em id="dashboard-pulse-projects-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-active-card" class="awh-pulse-card" type="button" data-pulse-target="work"><span class="awh-pulse-icon">↻</span><span><strong id="dashboard-pulse-active">—</strong><small>กำลังทำอยู่</small><em id="dashboard-pulse-active-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-artifacts-card" class="awh-pulse-card" type="button" data-pulse-target="files"><span class="awh-pulse-icon">▤</span><span><strong id="dashboard-pulse-artifacts">—</strong><small>ผลลัพธ์</small><em id="dashboard-pulse-artifacts-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-attention-card" class="awh-pulse-card attention" type="button" data-pulse-target="work"><span class="awh-pulse-icon">!</span><span><strong id="dashboard-pulse-attention">—</strong><small>ต้องดู</small><em id="dashboard-pulse-attention-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-workers-card" class="awh-pulse-card owner-pulse" type="button" data-pulse-target="devices" hidden><span class="awh-pulse-icon">◇</span><span><strong id="dashboard-pulse-workers">—</strong><small>อุปกรณ์พร้อม</small><em id="dashboard-pulse-workers-detail">กำลังตรวจข้อมูล…</em></span></button></div>';
+  pulse.innerHTML = '<div class="awh-section-heading"><div><span>ภาพรวมตอนนี้</span><h2>รู้ทันงานในไม่กี่วินาที</h2></div><small>ข้อมูลล่าสุดจาก AWH · กดการ์ดเพื่อไปต่อ</small></div><div class="awh-pulse-grid"><button id="dashboard-pulse-projects-card" class="awh-pulse-card" type="button" data-pulse-target="projects"><span class="awh-pulse-icon">◫</span><span><strong id="dashboard-pulse-projects">—</strong><small>โปรเจกต์</small><em id="dashboard-pulse-projects-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-active-card" class="awh-pulse-card" type="button" data-pulse-target="work"><span class="awh-pulse-icon">↻</span><span><strong id="dashboard-pulse-active">—</strong><small>กำลังทำอยู่</small><em id="dashboard-pulse-active-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-artifacts-card" class="awh-pulse-card" type="button" data-pulse-target="files"><span class="awh-pulse-icon">▤</span><span><strong id="dashboard-pulse-artifacts">—</strong><small>ผลลัพธ์</small><em id="dashboard-pulse-artifacts-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-attention-card" class="awh-pulse-card attention" type="button" data-pulse-target="work"><span class="awh-pulse-icon">!</span><span><strong id="dashboard-pulse-attention">—</strong><small>ต้องดู</small><em id="dashboard-pulse-attention-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-workers-card" class="awh-pulse-card owner-pulse" type="button" data-pulse-target="devices" hidden><span class="awh-pulse-icon">◇</span><span><strong id="dashboard-pulse-workers">—</strong><small>อุปกรณ์พร้อม</small><em id="dashboard-pulse-workers-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-owner-system-card" class="awh-pulse-card owner-pulse awh-system-pulse" type="button" data-pulse-target="system" hidden><span class="awh-pulse-icon">⌘</span><span><strong id="dashboard-owner-system">AWH System</strong><small id="dashboard-owner-system-state">กำลังตรวจ VPS…</small><em id="dashboard-owner-system-detail">CPU · RAM · Disk · Production</em></span></button></div>';
 
   const taskSurface = document.createElement('section');
   taskSurface.id = 'dashboard-tasks';
@@ -610,6 +689,7 @@ function mountDashboard() {
   $('dashboard-pulse-attention-card')?.addEventListener('click', () => openTaskSurface('attention'));
   $('dashboard-pulse-artifacts-card')?.addEventListener('click', () => openFilesSurface());
   $('dashboard-pulse-workers-card')?.addEventListener('click', () => openAccountTab('devices'));
+  $('dashboard-owner-system-card')?.addEventListener('click', () => { location.assign('./infrastructure.html'); });
   installHomeButton();
   mountMobileNavigation();
   state.mounted = true;
@@ -883,8 +963,10 @@ async function refreshDashboard() {
   if ($('workspace-view')?.hidden !== false) return;
   const control = await loadControlData();
   state.control = control;
+  state.infrastructure = control.role === 'OWNER' ? await loadInfrastructure().catch(() => null) : null;
   renderRole();
   renderHomePulse();
+  renderOwnerSystemSummary();
   renderContinuity();
   renderRecentWork();
   renderTaskStatus();

@@ -29,7 +29,7 @@ final class HubStaffOperationsService
     private readonly HubStorageGovernanceService $storage;
 
     /** @param array<string,mixed>|null $batch @param array<string,mixed>|null $telemetry @param array<string,mixed>|null $release @param array<string,mixed>|null $governorRun */
-    public function snapshot(?string $now = null, ?array $batch = null, ?array $telemetry = null, ?array $release = null, ?array $governorRun = null): array
+    public function snapshot(?string $now = null, ?array $batch = null, ?array $telemetry = null, ?array $release = null, ?array $governorRun = null, ?array $housekeepingRun = null): array
     {
         $at = gmdate('c', strtotime($now ?? 'now') ?: time());
         $since = gmdate('c', (strtotime($at) ?: time()) - 86400);
@@ -51,14 +51,15 @@ final class HubStaffOperationsService
         $governor = $this->governor($telemetry, $queue, $storage, $backup, $providers, $governorRun);
         $loop = $this->loop($telemetry, $queue, $batch, $governor);
         $report = $this->activityReport($queue, $loop, $governor, $batch);
-        $morningBrief = $this->morningBrief($at, $since, $telemetry, $release, $database, $backup, $storage, $queue, $workers, $providers, $roles, $authorities, $batch, $executionTriage);
+        $housekeeping = $this->housekeeping($storage, $housekeepingRun);
+        $morningBrief = $this->morningBrief($at, $since, $telemetry, $release, $database, $backup, $storage, $queue, $workers, $providers, $roles, $authorities, $batch, $executionTriage, $housekeeping);
         return [
             'schemaVersion' => 2,
             'generatedAt' => $at,
             'loop' => $loop,
             'governor' => $governor,
             'selfHealing' => $this->selfHealing($batch, $telemetry, $providers, $storage),
-            'housekeeping' => $this->housekeeping($storage),
+            'housekeeping' => $housekeeping,
             'roles' => $roles,
             'report' => $report,
             'canonicalAuthorities' => $authorities,
@@ -73,7 +74,7 @@ final class HubStaffOperationsService
             'managedSites' => $managedSites,
             'morningBrief' => $morningBrief,
             'persistedMorningBrief' => $this->latestMorningBrief(),
-            'safety' => ['canonicalAuthoritiesOnly' => true, 'newTables' => false, 'arbitraryShell' => false, 'credentialsExposed' => false, 'purgeMode' => 'AUDIT_ONLY'],
+            'safety' => ['canonicalAuthoritiesOnly' => true, 'newTables' => false, 'arbitraryShell' => false, 'credentialsExposed' => false, 'purgeMode' => $housekeepingRun === null ? 'AUDIT_ONLY' : 'VERIFIED_QUARANTINE_ONLY'],
         ];
     }
 
@@ -214,11 +215,13 @@ final class HubStaffOperationsService
         return ['schemaVersion' => 1, 'state' => $recovered > 0 || $retryQueued > 0 ? 'BOUNDED_ACTION_OBSERVED' : 'OBSERVE_ONLY', 'operations' => ['expiredLeaseRecovery' => $recovered > 0 ? 'PASS' : 'NOT_OBSERVED', 'policyQualifiedRetry' => $retryQueued > 0 ? 'PASS' : 'NOT_OBSERVED', 'serviceReload' => 'NOT_CONFIGURED', 'providerFallback' => count($providers['routesLast24h'] ?? []) > 0 ? 'OBSERVED' : 'NOT_OBSERVED', 'storagePressure' => in_array($storage['state'] ?? 'UNKNOWN', ['GOVERNED', 'BOUNDED_REVIEW'], true) ? 'OBSERVED' : 'UNKNOWN'], 'processed' => $processed, 'arbitraryShell' => false, 'nextAction' => ($telemetry['state'] ?? 'UNKNOWN') === 'READY' ? 'ตรวจ bounded recovery/retry ใน tick ถัดไป' : 'คง UNKNOWN จน telemetry สดพอ'];
     }
 
-    /** @param array<string,mixed> $storage */
-    private function housekeeping(array $storage): array
+    /** @param array<string,mixed> $storage @param array<string,mixed>|null $run */
+    private function housekeeping(array $storage, ?array $run = null): array
     {
         $actions = is_array($storage['actions'] ?? null) ? $storage['actions'] : [];
-        return ['schemaVersion' => 1, 'state' => 'AUDIT_ONLY', 'authority' => 'HubStorageGovernanceService', 'lifecycle' => 'ACTIVE → RETAIN → QUARANTINE → PURGE', 'scan' => ($actions['scanned'] ?? false) === true ? 'PASS' : 'NOT_RUN', 'classification' => 'PASS', 'referenceCheck' => 'NOT_RUN', 'quarantine' => (string) ($actions['quarantine'] ?? 'NOT_ENABLED'), 'verify' => (string) ($actions['verifyQuarantine'] ?? 'NOT_ENABLED'), 'purge' => (string) ($actions['purge'] ?? 'AUDIT_ONLY'), 'unknownItemsRetained' => true, 'nextAction' => (int) ($storage['unknownBytes'] ?? 0) > 0 || ($storage['unknownBytes'] ?? null) === null ? 'review UNKNOWN ก่อนเสนอ quarantine' : 'รอ policy ที่เปิดใช้งานอย่างชัดเจน'];
+        if ($run === null) return ['schemaVersion' => 1, 'state' => 'AUDIT_ONLY', 'authority' => 'HubStorageGovernanceService', 'lifecycle' => 'DISCOVER → CLASSIFY → REFERENCE_CHECK → QUARANTINE → VERIFY → PURGE', 'scan' => ($actions['scanned'] ?? false) === true ? 'PASS' : 'NOT_RUN', 'classification' => 'PASS', 'referenceCheck' => 'NOT_RUN', 'quarantine' => (string) ($actions['quarantine'] ?? 'SAFE_TO_PURGE_ONLY'), 'verify' => (string) ($actions['verifyQuarantine'] ?? 'HASH_AND_SIZE_REQUIRED'), 'purge' => (string) ($actions['purge'] ?? 'EXPLICIT_VERIFIED_QUARANTINE_ONLY'), 'unknownItemsRetained' => true, 'nextAction' => 'executor tick เท่านั้นที่มีสิทธิ์ทำ bounded housekeeping'];
+        $state = (string) ($run['state'] ?? 'UNKNOWN');
+        return ['schemaVersion' => 1, 'state' => $state, 'authority' => 'HubStorageGovernanceService', 'lifecycle' => 'DISCOVER → CLASSIFY → REFERENCE_CHECK → QUARANTINE → VERIFY → PURGE', 'scan' => 'PASS', 'classification' => 'PASS', 'referenceCheck' => (int) ($run['referenceChecked'] ?? 0) >= (int) ($run['quarantined'] ?? 0) ? 'PASS' : 'REVIEW', 'quarantine' => (int) ($run['quarantined'] ?? 0), 'verify' => (int) ($run['verified'] ?? 0), 'purge' => (int) ($run['purged'] ?? 0), 'reclaimedBytes' => (int) ($run['reclaimedBytes'] ?? 0), 'blocked' => (int) ($run['blocked'] ?? 0), 'unknownItemsRetained' => ($run['unknownRetained'] ?? false) === true, 'nextAction' => $state === 'QUARANTINED_REVIEW' ? 'คงไฟล์ไว้ใน quarantine และตรวจรอบถัดไป ห้าม purge เพิ่ม' : 'ตรวจใหม่ใน executor tick ถัดไป'];
     }
 
     /** A generic, derived Managed Site view. It is deliberately not a site database or a fake domain binding. */
@@ -246,12 +249,12 @@ final class HubStaffOperationsService
     }
 
     /** @param array<string,mixed> $authorities */
-    private function morningBrief(string $at, string $since, array $telemetry, array $release, array $database, array $backup, array $storage, array $queue, array $workers, array $providers, array $roles, array $authorities, ?array $batch = null, array $executionTriage = []): array
+    private function morningBrief(string $at, string $since, array $telemetry, array $release, array $database, array $backup, array $storage, array $queue, array $workers, array $providers, array $roles, array $authorities, ?array $batch = null, array $executionTriage = [], array $housekeeping = []): array
     {
         $passed = count(array_filter($roles, static fn (array $role): bool => ($role['state'] ?? '') === 'PASS'));
         $completed = (int) ($queue['tasksByState']['COMPLETED'] ?? 0);
         $failed = array_sum(array_map(static fn (array $item): int => (int) ($item['amount'] ?? 0), is_array($queue['failedLast24h'] ?? null) ? $queue['failedLast24h'] : []));
-        return ['schemaVersion' => 1, 'briefDate' => substr($at, 0, 10), 'generatedAt' => $at, 'window' => ['since' => $since, 'until' => $at], 'overnight' => ['tasks' => $queue['tasksByState'] ?? [], 'executions' => $queue['executionsByState'] ?? [], 'completedTasks' => $completed, 'failedTasks' => $failed, 'failed' => $queue['failedLast24h'] ?? [], 'recoveredFailures' => is_array($batch) ? (int) ($batch['recovered'] ?? 0) : null, 'stuck' => $queue['stuckExecutionCount'] ?? 0, 'executionTriage' => $executionTriage['summary'] ?? []], 'visibleChanges' => ['artifactsCreatedLast24h' => $authorities['activeArtifacts'] ?? 0], 'vps' => ['state' => $telemetry['state'] ?? 'UNKNOWN', 'services' => array_map(static fn (array $service): array => ['key' => (string) ($service['key'] ?? ''), 'state' => (string) ($service['state'] ?? 'UNKNOWN')], is_array($telemetry['server']['services'] ?? null) ? $telemetry['server']['services'] : [])], 'release' => ['control' => $release['controlReleaseId'] ?? null, 'web' => $release['webReleaseId'] ?? null, 'pointersMatch' => (bool) ($release['pointersMatch'] ?? false)], 'database' => $database, 'backup' => $backup, 'storage' => ['state' => $storage['state'] ?? 'UNKNOWN', 'summary' => $storage['summary'] ?? [], 'disk' => $storage['disk'] ?? null], 'workers' => $workers, 'providers' => $providers, 'canonicalAuthorities' => $authorities, 'staff' => ['rolesPass' => $passed, 'rolesTotal' => count($roles), 'next' => $queue['nextEligible'] ?? null], 'nextPlannedWork' => $queue['nextEligible'] ?? null];
+        return ['schemaVersion' => 1, 'briefDate' => substr($at, 0, 10), 'generatedAt' => $at, 'window' => ['since' => $since, 'until' => $at], 'overnight' => ['tasks' => $queue['tasksByState'] ?? [], 'executions' => $queue['executionsByState'] ?? [], 'completedTasks' => $completed, 'failedTasks' => $failed, 'failed' => $queue['failedLast24h'] ?? [], 'recoveredFailures' => is_array($batch) ? (int) ($batch['recovered'] ?? 0) : null, 'stuck' => $queue['stuckExecutionCount'] ?? 0, 'executionTriage' => $executionTriage['summary'] ?? []], 'visibleChanges' => ['artifactsCreatedLast24h' => $authorities['activeArtifacts'] ?? 0], 'vps' => ['state' => $telemetry['state'] ?? 'UNKNOWN', 'services' => array_map(static fn (array $service): array => ['key' => (string) ($service['key'] ?? ''), 'state' => (string) ($service['state'] ?? 'UNKNOWN')], is_array($telemetry['server']['services'] ?? null) ? $telemetry['server']['services'] : [])], 'release' => ['control' => $release['controlReleaseId'] ?? null, 'web' => $release['webReleaseId'] ?? null, 'pointersMatch' => (bool) ($release['pointersMatch'] ?? false)], 'database' => $database, 'backup' => $backup, 'storage' => ['state' => $storage['state'] ?? 'UNKNOWN', 'summary' => $storage['summary'] ?? [], 'disk' => $storage['disk'] ?? null, 'housekeeping' => $housekeeping], 'workers' => $workers, 'providers' => $providers, 'canonicalAuthorities' => $authorities, 'staff' => ['rolesPass' => $passed, 'rolesTotal' => count($roles), 'next' => $queue['nextEligible'] ?? null], 'nextPlannedWork' => $queue['nextEligible'] ?? null];
     }
 
     /** Persist one brief per UTC day in the existing audited settings revision ledger. */

@@ -2,11 +2,11 @@ const TERMINAL = new Set(['COMPLETED', 'FAILED', 'CANCELLED']);
 
 const STAGES = [
   { id: 'accepted', label: 'รับงานแล้ว' },
-  { id: 'preparing', label: 'กำลังเตรียม' },
-  { id: 'working', label: 'กำลังทำงาน' },
+  { id: 'preparing', label: 'กำลังวิเคราะห์' },
+  { id: 'working', label: 'กำลังทำ' },
   { id: 'qa', label: 'กำลังตรวจ' },
   { id: 'approval', label: 'รออนุมัติ' },
-  { id: 'done', label: 'เสร็จแล้ว' },
+  { id: 'done', label: 'พร้อมใช้' },
 ];
 
 const FAILURE_COPY = {
@@ -91,12 +91,12 @@ export function executionStatus(task, workers = []) {
   let title = 'AWH รับงานแล้ว';
   let detail = 'กำลังจัดเส้นทางให้เหมาะกับงานนี้';
   if (state === 'WAITING_FOR_WORKER') detail = 'กำลังเลือกเครื่องมือหรืออุปกรณ์ที่เหมาะกับงาน';
-  else if (state === 'PREPARING') { title = 'กำลังเตรียมงาน'; detail = `กำลังเตรียมบริบทให้ ${actor}`; }
-  else if (state === 'RUNNING') { title = 'กำลังทำงาน'; detail = `${actor} กำลังดำเนินงาน`; }
+  else if (state === 'PREPARING') { title = 'กำลังวิเคราะห์'; detail = `${actor} กำลังรวบรวมข้อมูลที่เกี่ยวข้องและเลือกวิธีทำที่เหมาะสม`; }
+  else if (state === 'RUNNING') { title = 'กำลังทำ'; detail = `${actor} กำลังดำเนินงาน`; }
   else if (state === 'QA') { title = 'กำลังตรวจคุณภาพ'; detail = 'AWH กำลังตรวจผลลัพธ์ก่อนส่งกลับ'; }
   else if (state === 'WAITING_FOR_APPROVAL') { title = 'รอการอนุมัติ'; detail = 'มีการเปลี่ยนแปลงสำคัญที่ต้องยืนยันก่อนดำเนินการต่อ'; }
-  else if (state === 'COMPLETED') { title = 'เสร็จแล้ว'; detail = result || 'งานเสร็จและผลลัพธ์ถูกบันทึกไว้แล้ว'; }
-  else if (state === 'FAILED') { title = 'ต้องตรวจสอบ'; detail = failure || result || 'AWH ยังทำงานนี้ไม่สำเร็จ และไม่ได้อ้างว่าเสร็จแล้ว'; }
+  else if (state === 'COMPLETED') { title = 'พร้อมใช้'; detail = result || 'งานเสร็จและผลลัพธ์พร้อมใช้งานแล้ว'; }
+  else if (state === 'FAILED') { title = 'กำลังแก้ไข'; detail = failure || result || 'AWH เก็บสถานะไว้แล้วและกำลังหาวิธีทำต่ออย่างปลอดภัย'; }
   else if (state === 'CANCELLED') { title = 'ยกเลิกแล้ว'; detail = 'งานนี้ถูกยกเลิกแล้ว'; }
 
   if (eventMessage && /[ก-๙]/u.test(eventMessage) && !TERMINAL.has(state)) detail = eventMessage;

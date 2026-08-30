@@ -1,17 +1,18 @@
 import { createHash } from 'node:crypto';
-import { readFile, rm, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { lstat, mkdir, readFile, rm, stat } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { AutopilotRunner, detectLocalCapabilities } from './autopilot.js';
 import { codexStatus, runCodexGoal } from './codex.js';
 import { loadOrCreateDeviceIdentity } from './device-identity.js';
 import { createCheckpoint } from './changes.js';
 import { createContinuityCheckpoint } from './continuity.js';
-import { buildProjectContext, resolveRegisteredProject, PROJECT_MEMORY_FILES } from './project-registry.js';
-import { ControlPlaneWorkerClient, type WorkerTask } from './control-plane-worker-client.js';
+import { buildProjectContext, listProjects, readProjectManifest, resolveRegisteredProject, PROJECT_MEMORY_FILES } from './project-registry.js';
+import { ControlPlaneWorkerClient, type WorkerProject, type WorkerTask } from './control-plane-worker-client.js';
 import { createUnsyncedWorkspaceCheckpoint, createWorkspaceWipCheckpoint, reconstructWorkspaceWip } from './workspace-continuity.js';
 import { createVaultCandidateArchive } from './vault-transfer.js';
 import { composeWorkerHeartbeatCapabilities, discoverWorkerTools } from './worker-capability-discovery.js';
 import { exportOfficeFileToPdf } from './windows-office-export.js';
+import { execCommand } from './process.js';
 
 const MUTATION_GOAL = /(?:\b(?:fix|edit|change|modify|write|render|publish|deploy|delete|remove)\b|แก้|เพิ่ม|ลบ|สร้าง|เรนเดอร์|เผยแพร่|deploy)/iu;
 
@@ -35,6 +36,44 @@ function boundedSummary(value: string): string {
 }
 
 export function isMutationGoal(goal: string): boolean { return MUTATION_GOAL.test(goal); }
+
+const PROJECT_MEMORY_MAX_BYTES = 32 * 1024;
+
+function sameProjectName(left: string, right: string): boolean { return left.trim().toLocaleLowerCase('en-US') === right.trim().toLocaleLowerCase('en-US'); }
+
+async function localProjectMemoryMetadata(workspace: string): Promise<Array<{ name: string; status: 'present' | 'missing'; sha256: string | null; sizeBytes: number }>> {
+  const output: Array<{ name: string; status: 'present' | 'missing'; sha256: string | null; sizeBytes: number }> = [];
+  for (const name of PROJECT_MEMORY_FILES) {
+    const path = join(workspace, name);
+    try {
+      const info = await lstat(path);
+      if (info.isSymbolicLink() || !info.isFile() || info.size > PROJECT_MEMORY_MAX_BYTES) throw new Error('PROJECT_MEMORY_INVALID');
+      const data = await readFile(path);
+      output.push({ name, status: 'present', sha256: createHash('sha256').update(data).digest('hex'), sizeBytes: data.length });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') output.push({ name, status: 'missing', sha256: null, sizeBytes: 0 });
+      else throw error;
+    }
+  }
+  return output;
+}
+
+async function committedProjectRevision(workspace: string, preferred: string | null): Promise<string | null> {
+  const target = preferred ? `${preferred}^{commit}` : 'HEAD^{commit}';
+  const result = await execCommand('git', ['--no-pager', '-c', 'core.fsmonitor=false', '-c', 'submodule.recurse=false', 'rev-parse', '--verify', target], workspace, 30_000);
+  if (result.code !== 0) return null;
+  const revision = result.stdout.trim().toLowerCase();
+  return /^[0-9a-f]{40,64}$/.test(revision) ? revision : null;
+}
+
+async function createCommittedSourceArchive(workspace: string, revision: string, destination: string): Promise<void> {
+  await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
+  await rm(destination, { force: true });
+  const result = await execCommand('git', ['--no-pager', '-c', 'core.fsmonitor=false', '-c', 'submodule.recurse=false', 'archive', '--format=zip', `--output=${destination}`, revision], workspace, 120_000);
+  if (result.code !== 0) throw new Error('PROJECT_SOURCE_ARCHIVE_FAILED');
+  const info = await stat(destination);
+  if (!info.isFile() || info.size < 1 || info.size > 1024 * 1024 * 1024) throw new Error('PROJECT_SOURCE_ARCHIVE_INVALID');
+}
 
 /**
  * Canonical AI instruction order for AWH workers. Project memory remains in the
@@ -83,6 +122,7 @@ export async function workerCapabilities(dataDir: string, allowCodex = true): Pr
 
 export class ControlPlaneWorkerRuntime {
   private running = false;
+  private readonly contextRecoveryAttempts = new Set<string>();
 
   constructor(private readonly client: ControlPlaneWorkerClient, private readonly options: WorkerRuntimeOptions) {}
 
@@ -93,10 +133,51 @@ export class ControlPlaneWorkerRuntime {
     try {
       const capabilities = await workerCapabilities(this.options.dataDir, this.options.allowCodex);
       await this.client.heartbeat(capabilities, 'READY');
+      await this.recoverMissingProjectContexts(capabilities).catch(() => undefined);
       const task = await this.client.claim();
       if (!task) return { status: 'IDLE', deviceId: identity.deviceId };
       return await this.execute(task, identity.deviceId, capabilities);
     } finally { this.running = false; }
+  }
+
+  private async localWorkspaceForHubProject(project: WorkerProject): Promise<string | null> {
+    const records = await listProjects(this.options.dataDir);
+    const matches: string[] = [];
+    for (const record of records) {
+      try {
+        const manifest = await readProjectManifest(record.workspacePath);
+        if (sameProjectName(manifest.name, project.name)) matches.push(record.workspacePath);
+      } catch { /* unavailable/stale local registry entries are not recovery candidates */ }
+    }
+    return matches.length === 1 ? matches[0]! : null;
+  }
+
+  /** Recover an empty canonical Hub Vault from one uniquely matched trusted local workspace.
+   * Only committed Git bytes are uploaded; WIP remains local and Project Memory crosses
+   * the boundary as bounded metadata only. One runtime attempts each revision once. */
+  private async recoverMissingProjectContexts(capabilities: string[]): Promise<void> {
+    const projects = await this.client.projects();
+    for (const project of projects) {
+      if (project.vaultReady) continue;
+      const workspace = await this.localWorkspaceForHubProject(project);
+      if (!workspace) continue;
+      const revision = await committedProjectRevision(workspace, project.sourceRevision);
+      if (!revision) continue;
+      const key = `${project.projectId}:${revision}`;
+      if (this.contextRecoveryAttempts.has(key)) continue;
+      this.contextRecoveryAttempts.add(key);
+      const archive = join(this.options.dataDir, 'project-source-recovery', `${project.projectId}-${revision.slice(0, 12)}.zip`);
+      try {
+        await this.client.registerProject({ projectId: project.projectId, name: project.name, type: project.type, sourceRevision: revision });
+        await this.client.registerProjectBinding(project.projectId, project.name, capabilities, revision);
+        await createCommittedSourceArchive(workspace, revision, archive);
+        await this.client.uploadProjectSource(project.projectId, revision, archive);
+        await this.client.publishProjectMemory(project.projectId, await localProjectMemoryMetadata(workspace));
+      } catch {
+        // Recovery is opportunistic and bounded. The Hub keeps truthful SOURCE/Vault state,
+        // while ordinary work continues and a future process restart may retry once.
+      } finally { await rm(archive, { force: true }).catch(() => undefined); }
+    }
   }
 
   private async execute(task: WorkerTask, deviceId: string, capabilities: string[]): Promise<WorkerRunResult> {

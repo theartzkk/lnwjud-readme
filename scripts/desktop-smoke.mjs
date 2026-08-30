@@ -49,7 +49,11 @@ try {
   let marker = null;
   try { marker = JSON.parse(await readFile(markerPath, 'utf8')); } catch { /* The runtime may abort before application code starts. */ }
 
-  if (result.code === 0 && marker?.ok === true && marker?.stage === 'passed') {
+  // The application-owned marker is the authoritative smoke result. On macOS
+  // `/usr/bin/open -W` can report a LaunchServices/kevent error after Electron
+  // has already written the passed marker and exited; treating that launcher
+  // teardown as an AWH failure creates a false negative.
+  if (marker?.ok === true && marker?.stage === 'passed') {
     console.log('AWH_DESKTOP_SMOKE: PASS');
     process.exitCode = 0;
   } else if (process.platform === 'darwin' && marker === null && (

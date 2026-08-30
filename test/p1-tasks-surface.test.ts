@@ -14,6 +14,9 @@ test('P1 Tasks surface uses canonical control data and exposes a human-readable 
   for (const field of ['control\.tasks', 'control\.artifacts', 'control\.approvals', 'control\.workers', 'executionStatus']) assert.match(dashboard, new RegExp(field));
   for (const field of ['dashboard-task-list', 'dashboard-task-detail', 'dashboard-task-count', 'dashboard-open-tasks']) assert.match(dashboard, new RegExp(field));
   assert.match(dashboard, /task\.execution\?\.continuation/);
+  assert.match(dashboard, /รายละเอียดสำหรับผู้ดูแลระบบ/);
+  assert.match(dashboard, /\/\[ก-๙\]\/u\.test\(task\.lastEvent\.message\)/);
+  assert.match(dashboard, /technical\.join/);
   assert.match(dashboard, /safeArtifactDownloadUrl/);
   assert.doesNotMatch(dashboard, /\bSTATUS_LABELS\b|\bexecutionPlace\b/);
   assert.doesNotMatch(dashboard, /demo|mock|fake/i);

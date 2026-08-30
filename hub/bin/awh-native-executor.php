@@ -59,10 +59,19 @@ try {
     }
     $batch = $execution->runBatch(4);
     $staffTelemetry = HubInfrastructureService::fromEnvironment()->status();
-    $staffService = new HubStaffOperationsService($pdo, $database);
-    $staff = $staffService->snapshot(null, $batch, $staffTelemetry, HubInfrastructureService::releaseState(), $governorRun);
+    $releaseState = HubInfrastructureService::releaseState();
+    $storageService = new HubStorageGovernanceService();
+    try {
+        $housekeepingRun = $storageService->housekeep(null, ['control' => (string) ($releaseState['controlReleaseId'] ?? ''), 'web' => (string) ($releaseState['webReleaseId'] ?? '')]);
+    } catch (Throwable) {
+        // Housekeeping is bounded and advisory; failures retain quarantine and
+        // must never stop canonical execution or trigger an unverified purge.
+        $housekeepingRun = ['schemaVersion'=>1,'state'=>'QUARANTINED_REVIEW','referenceChecked'=>0,'quarantined'=>0,'verified'=>0,'purged'=>0,'reclaimedBytes'=>0,'blocked'=>1,'unknownRetained'=>true];
+    }
+    $staffService = new HubStaffOperationsService($pdo, $database, $storageService);
+    $staff = $staffService->snapshot(null, $batch, $staffTelemetry, $releaseState, $governorRun, $housekeepingRun);
     $persistedBrief = $staffService->persistMorningBrief($staff['morningBrief']);
     $staff['persistedMorningBrief'] = $persistedBrief;
-    fwrite(STDOUT, json_encode(['status' => $batch['processed'] === 0 ? 'IDLE' : 'PROCESSED', 'automation' => $automation, 'telemetry' => $telemetry, 'governorRun' => $governorRun, 'executionBatch' => $batch, 'recoveredExecutions' => (int) ($batch['recovered'] ?? 0), 'staff' => ['loop' => $staff['loop'], 'governor' => $staff['governor'], 'selfHealing' => $staff['selfHealing'], 'housekeeping' => $staff['housekeeping'], 'report' => $staff['report'], 'morningBrief' => $staff['morningBrief'], 'persistedMorningBrief' => $persistedBrief]], JSON_UNESCAPED_SLASHES) . "\n");
+    fwrite(STDOUT, json_encode(['status' => $batch['processed'] === 0 ? 'IDLE' : 'PROCESSED', 'automation' => $automation, 'telemetry' => $telemetry, 'governorRun' => $governorRun, 'executionBatch' => $batch, 'recoveredExecutions' => (int) ($batch['recovered'] ?? 0), 'staff' => ['loop' => $staff['loop'], 'governor' => $staff['governor'], 'selfHealing' => $staff['selfHealing'], 'housekeeping' => $staff['housekeeping'], 'housekeepingRun' => $housekeepingRun, 'report' => $staff['report'], 'morningBrief' => $staff['morningBrief'], 'persistedMorningBrief' => $persistedBrief]], JSON_UNESCAPED_SLASHES) . "\n");
 } catch (HubDurableExecutionException|HubProjectVaultException|HubCentralProjectAuthorityMigrationException $error) { fwrite(STDERR, $error->codeName . "\n"); exit(1); }
 catch (Throwable) { fwrite(STDERR, "EXECUTOR_UNAVAILABLE\n"); exit(1); }

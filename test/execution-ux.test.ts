@@ -10,7 +10,7 @@ const ux = await import(moduleUrl);
 
 test('execution UX translates internal executors into plain Thai', () => {
   const vps = ux.executionStatus({ state: 'RUNNING', progress: 42, execution: { executorKind: 'VPS' } });
-  assert.equal(vps.title, 'กำลังทำงาน');
+  assert.equal(vps.title, 'กำลังทำ');
   assert.equal(vps.actor, 'ระบบกลาง AWH');
   assert.equal(vps.progress, 42);
   assert.doesNotMatch(`${vps.title} ${vps.detail} ${vps.actor}`, /VPS|executor|capability/i);
@@ -46,7 +46,7 @@ test('journey is deterministic from accepted through approval and completion', (
 
 test('provider failures remain truthful and preserve the task', () => {
   const status = ux.executionStatus({ state: 'FAILED', failureCode: 'PROVIDER_QUOTA_EXHAUSTED', progress: 0 });
-  assert.equal(status.title, 'ต้องตรวจสอบ');
+  assert.equal(status.title, 'กำลังแก้ไข');
   assert.match(status.detail, /โควตา AI/);
   assert.match(status.detail, /งานยังถูกเก็บไว้/);
   assert.equal(status.journey.some((step: { state: string }) => step.state === 'halted'), true);
@@ -77,4 +77,14 @@ test('execution UX is mounted into Work, Dashboard, release build and deployment
   assert.match(sw, /execution-ux\.js/);
   assert.match(deploy, /dist-web\/execution-ux\.js/);
   assert.match(manifest, /execution-ux\.js/);
+});
+
+
+test('Finish-First task phases are human-first and failure UX does not lead with raw codes', async () => {
+  const source = await readFile(new URL('../web/execution-ux.js', import.meta.url), 'utf8');
+  assert.match(source, /กำลังวิเคราะห์/);
+  assert.match(source, /กำลังทำ/);
+  assert.match(source, /กำลังตรวจ/);
+  assert.match(source, /พร้อมใช้/);
+  assert.match(source, /กำลังแก้ไข/);
 });

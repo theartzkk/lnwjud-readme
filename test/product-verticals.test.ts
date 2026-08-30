@@ -23,6 +23,16 @@ test('school document and project factory surfaces use the existing canonical au
   assert.match(tools, /openSchoolDocumentTool/);
   assert.match(tools, /openProjectFactoryTool/);
   assert.match(registry, /project-factory/);
+  const dashboard = await readFile(new URL('../web/dashboard.js', import.meta.url), 'utf8');
+  const app = await readFile(new URL('../web/app.js', import.meta.url), 'utf8');
+  assert.match(dashboard, /classifyUniversalIntent/);
+  assert.match(dashboard, /kind: 'DOCUMENT'/);
+  assert.match(dashboard, /kind: 'PDF'/);
+  assert.match(dashboard, /kind: 'QR'/);
+  assert.match(dashboard, /kind: 'IMAGE'/);
+  assert.match(dashboard, /globalThis\.AWH_ROUTE_COMMAND/);
+  assert.match(app, /AWH_ROUTE_COMMAND/);
+  assert.match(app, /files: \[\.\.\.state\.pendingAttachments\]/);
   const generatedService = service.match(/public function createSchoolDocument[\s\S]*?private static function documentText/)?.[0] ?? '';
   const generatedUi = tools.match(/export async function openSchoolDocumentTool[\s\S]*?export function mountSchoolTools/)?.[0] ?? '';
   assert.notEqual(generatedService, '');

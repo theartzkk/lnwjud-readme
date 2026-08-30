@@ -3,10 +3,11 @@
 declare(strict_types=1);
 
 /**
- * Read-only storage governance over the bounded AWH roots.  This is a
- * projection, not a garbage collector: it never moves or deletes anything.
- * Unknown items are retained so a housekeeping pass cannot remove user work,
- * rollback material, audit evidence or credentials by inference.
+ * Bounded storage governance over the known AWH roots. Normal audit calls are
+ * read-only. The explicit housekeep() path may move and purge only old regular
+ * temp files that are still classified SAFE_TO_PURGE after a second reference
+ * check. UNKNOWN, rollback, backup, Vault, artifact and active release material
+ * is retained; quarantine is verified by hash+size before any purge.
  */
 final class HubStorageGovernanceService
 {
@@ -87,7 +88,7 @@ final class HubStorageGovernanceService
             'generatedAt' => gmdate('c', $at),
             'policy' => [
                 'classification' => implode('/', self::CATEGORIES),
-                'purgeMode' => 'AUDIT_ONLY',
+                'purgeMode' => 'EXPLICIT_VERIFIED_QUARANTINE_ONLY',
                 'unknownItems' => 'UNKNOWN_AND_RETAINED',
                 'maxChildrenPerRoot' => self::MAX_CHILDREN,
                 'maxMeasuredNodesPerItem' => self::MAX_NODES,
@@ -108,13 +109,98 @@ final class HubStorageGovernanceService
                 'scanned' => true,
                 'preview' => $reclaimable > 0 ? 'READY' : 'NO_SAFE_ITEMS',
                 'quarantined' => 0,
-                'quarantine' => 'NOT_ENABLED',
-                'verifyQuarantine' => 'NOT_ENABLED',
+                'quarantine' => 'SAFE_TO_PURGE_ONLY',
+                'verifyQuarantine' => 'HASH_AND_SIZE_REQUIRED',
                 'purged' => 0,
-                'purge' => 'AUDIT_ONLY',
+                'purge' => 'EXPLICIT_VERIFIED_QUARANTINE_ONLY',
                 'reclaimableBytes' => $reclaimable,
             ],
         ];
+    }
+
+    /**
+     * Explicit bounded housekeeping. Only direct-child regular temp files that
+     * remain SAFE_TO_PURGE on a second classification pass are eligible. Each
+     * item is moved into an owned quarantine batch, verified there by size and
+     * SHA-256, then unlinked from quarantine. No recursive purge is used.
+     *
+     * @param array<string,string> $activeReleaseIds
+     * @return array<string,mixed>
+     */
+    public function housekeep(?string $now = null, array $activeReleaseIds = []): array
+    {
+        $at = strtotime($now ?? gmdate('c')) ?: time();
+        $audit = $this->audit(gmdate('c', $at), $activeReleaseIds);
+        $candidates = array_values(array_filter($audit['items'] ?? [], static fn (array $item): bool =>
+            ($item['classification'] ?? null) === 'SAFE_TO_PURGE'
+            && ($item['sizeKnown'] ?? false) === true
+            && in_array((string) ($item['rootId'] ?? ''), ['hubData', 'backups'], true)
+        ));
+        $identity = array_map(static fn (array $item): string => (string) ($item['rootId'] ?? '') . '/' . (string) ($item['name'] ?? ''), $candidates);
+        sort($identity);
+        $batchId = gmdate('Ymd\\THis\\Z', $at) . '-' . substr(hash('sha256', implode("\n", $identity)), 0, 12);
+        $result = ['schemaVersion' => 1, 'generatedAt' => gmdate('c', $at), 'batchId' => $batchId, 'discovered' => count($candidates), 'referenceChecked' => 0, 'quarantined' => 0, 'verified' => 0, 'purged' => 0, 'reclaimedBytes' => 0, 'blocked' => 0, 'unknownRetained' => true, 'state' => count($candidates) === 0 ? 'NO_SAFE_ITEMS' : 'RUNNING'];
+        if ($candidates === []) return $result;
+
+        $moved = [];
+        foreach ($candidates as $item) {
+            $rootId = (string) $item['rootId']; $name = (string) $item['name'];
+            $root = $this->roots[$rootId] ?? null;
+            if (!is_string($root) || !$this->referenceSafeCandidate($rootId, $root, $name, $at, $activeReleaseIds)) { $result['blocked']++; continue; }
+            $result['referenceChecked']++;
+            $source = $root . DIRECTORY_SEPARATOR . $name;
+            $size = @filesize($source); $sha = @hash_file('sha256', $source);
+            if (!is_int($size) || $size < 0 || !is_string($sha) || preg_match('/^[0-9a-f]{64}$/', $sha) !== 1) { $result['blocked']++; continue; }
+            $parent = $root . DIRECTORY_SEPARATOR . '.awh-quarantine';
+            $batch = $parent . DIRECTORY_SEPARATOR . $batchId;
+            if (!$this->ensureOwnedDirectory($parent) || !$this->ensureOwnedDirectory($batch)) { $result['blocked']++; continue; }
+            $target = $batch . DIRECTORY_SEPARATOR . $name;
+            if (file_exists($target) || is_link($target) || !@rename($source, $target)) { $result['blocked']++; continue; }
+            $moved[] = ['rootId' => $rootId, 'name' => $name, 'source' => $source, 'target' => $target, 'batch' => $batch, 'parent' => $parent, 'sizeBytes' => $size, 'sha256' => $sha];
+            $result['quarantined']++;
+        }
+        if ($moved === []) { $result['state'] = 'NO_VERIFIED_CANDIDATES'; return $result; }
+
+        $allVerified = true;
+        foreach ($moved as $entry) {
+            $sourceGone = !file_exists($entry['source']) && !is_link($entry['source']);
+            $targetInfo = @lstat($entry['target']);
+            $size = @filesize($entry['target']); $sha = @hash_file('sha256', $entry['target']);
+            $ok = $sourceGone && is_array($targetInfo) && (($targetInfo['mode'] ?? 0) & 0170000) === 0100000 && !is_link($entry['target']) && is_int($size) && $size === $entry['sizeBytes'] && is_string($sha) && hash_equals($entry['sha256'], $sha);
+            if ($ok) $result['verified']++; else { $allVerified = false; $result['blocked']++; }
+        }
+        if (!$allVerified || $result['verified'] !== count($moved)) { $result['state'] = 'QUARANTINED_REVIEW'; return $result; }
+
+        foreach ($moved as $entry) {
+            if (!@unlink($entry['target'])) { $result['state'] = 'QUARANTINED_REVIEW'; $result['blocked']++; return $result; }
+            $result['purged']++; $result['reclaimedBytes'] += $entry['sizeBytes'];
+        }
+        foreach (array_unique(array_column($moved, 'batch')) as $batch) @rmdir((string) $batch);
+        foreach (array_unique(array_column($moved, 'parent')) as $parent) @rmdir((string) $parent);
+        $result['state'] = 'CLEANED';
+        return $result;
+    }
+
+    /** @param array<string,string> $activeReleaseIds */
+    private function referenceSafeCandidate(string $rootId, string $root, string $name, int $at, array $activeReleaseIds): bool
+    {
+        if (!in_array($rootId, ['hubData', 'backups'], true) || $this->safeName($name) !== $name || str_starts_with($name, '.awh-quarantine')) return false;
+        if (!is_dir($root) || is_link($root)) return false;
+        $path = $root . DIRECTORY_SEPARATOR . $name;
+        $parent = @realpath(dirname($path)); $canonicalRoot = @realpath($root);
+        if (!is_string($parent) || !is_string($canonicalRoot) || !hash_equals($canonicalRoot, $parent) || is_link($path) || !is_file($path)) return false;
+        if ($this->classify($rootId, $name, $path, $at, $activeReleaseIds) !== 'SAFE_TO_PURGE') return false;
+        if (in_array($name, array_values($activeReleaseIds), true)) return false;
+        if ($rootId === 'backups' && preg_match('/^awh-[0-9]{8}T[0-9]{6}Z\\.sqlite(?:\\.json)?$/', $name) === 1) return false;
+        return true;
+    }
+
+    private function ensureOwnedDirectory(string $path): bool
+    {
+        if (is_link($path)) return false;
+        if (is_dir($path)) return is_writable($path);
+        if (file_exists($path)) return false;
+        return @mkdir($path, 0700, true) && !is_link($path) && is_dir($path);
     }
 
     /** @param list<array<string,mixed>> $items @param array<string,array{items:int,bytes:int}> $summary */

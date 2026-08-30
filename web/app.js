@@ -271,7 +271,7 @@ import {
     renderSettingsOverview();
   }
 
-  function workerStateLabel(worker) { return worker.state === 'READY' ? 'พร้อมทำงาน' : worker.state === 'WORKING' ? 'กำลังทำงาน' : 'ออฟไลน์'; }
+  function workerStateLabel(worker) { return worker.state === 'READY' ? 'ออนไลน์' : worker.state === 'WORKING' ? 'กำลังทำงาน' : worker.state === 'STALE' ? 'สัญญาณเก่า' : 'ออฟไลน์'; }
   async function loadVerifiedDesktopRelease() {
     if (desktopReleasePromise) return desktopReleasePromise;
     desktopReleasePromise = (async () => {
@@ -756,8 +756,14 @@ import {
   });
 
   $('goal-form').addEventListener('submit', async (event) => {
-    event.preventDefault(); const goal = $('goal-input').value.trim(); const project = selectedProject();
-    if (!project || !goal) { message('goal-message', 'เลือกโปรเจกต์และพิมพ์สิ่งที่อยากให้ AWH ช่วยก่อน'); return; }
+    event.preventDefault(); const goal = $('goal-input').value.trim();
+    if (!goal) { message('goal-message', 'พิมพ์สิ่งที่อยากให้ AWH ช่วยก่อน'); return; }
+    const project = selectedProject();
+    const universalRouter = globalThis.AWH_ROUTE_COMMAND;
+    if (typeof universalRouter === 'function' && await universalRouter(goal, { projectId: project?.projectId || null, files: [...state.pendingAttachments], source: 'work' })) {
+      state.pendingAttachments = []; renderPendingAttachments(); $('goal-input').value = ''; message('goal-message', ''); return;
+    }
+    if (!project) { message('goal-message', 'งานนี้ต้องใช้บริบทโปรเจกต์ เลือกโปรเจกต์ที่ต้องการก่อน'); return; }
     const conversationId = state.selectedConversationId;
     if (!conversationId) { message('goal-message', 'กำลังเตรียมการสนทนา กรุณาลองใหม่อีกครั้ง'); return; }
     const idempotencyKey = `web-${crypto.randomUUID()}`;
