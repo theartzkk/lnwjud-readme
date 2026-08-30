@@ -15,6 +15,9 @@ test('Infrastructure is an Owner-only sanitized projection and canonical web sur
   const [html,css,js,router,service,collector,deploy,executor,manifest,sw]=await Promise.all(['infrastructure.html','infrastructure.css','infrastructure.js'].map(f=>readFile(join(output,f),'utf8')).concat([
    readFile(join(ROOT,'hub/src/HubControlPlaneRouter.php'),'utf8'),readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),readFile(join(ROOT,'hub/bin/system-telemetry.php'),'utf8'),readFile(join(ROOT,'deploy/awh-control-plane/deploy-control-plane.sh'),'utf8'),readFile(join(ROOT,'hub/bin/awh-native-executor.php'),'utf8'),readFile(join(ROOT,'scripts/create-web-release-manifest.mjs'),'utf8'),readFile(join(ROOT,'web/sw.js'),'utf8')
   ]) as Promise<string[]>);
+  const automation=await readFile(join(ROOT,'web/automation-surface.js'),'utf8');
+  await run(process.execPath,['--check',join(output,'dashboard.js')],{cwd:ROOT,shell:false});
+  assert.match(automation,/^\(\(\) => \{/m); assert.match(automation,/\}\)\(\);\s*$/);
   assert.match(html,/ศูนย์ควบคุมระบบ/); assert.match(html,/DOMAINS & SSL/); assert.match(html,/Production Complete/); assert.match(html,/AUTONOMOUS AI 24\/7/); assert.match(html,/Models · Health · Fallback/); assert.match(html,/STAFF CONTROL LOOP/); assert.match(html,/MORNING BRIEF/); assert.match(html,/STORAGE & GARBAGE CENTER/); assert.match(css,/--accent:#ff7a1a/); assert.match(css,/checklist-grid/); assert.match(js,/\/api\/v1\/control\/infrastructure/);
   for(const projection of ['productionComplete','aiModels','autonomousWork','incidents','stagedCandidates','staff','governor','selfHealing','morningBrief','storageGovernance','managedSites','hostingCenter','UNKNOWN']) assert.match(js,new RegExp(projection));
   assert.match(js,/stateLabel/); assert.match(js,/progressLabel/); assert.doesNotMatch(js,/Number\(event\.progress\|\|0\)/);

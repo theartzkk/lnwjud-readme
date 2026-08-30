@@ -471,11 +471,19 @@ import {
   function renderThread(conversation, approvals) {
     const thread = $('work-thread'); const stickToBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 140; thread.replaceChildren();
     const messages = Array.isArray(conversation?.messages) ? conversation.messages : [];
-    const taskById = new Map((conversation?.tasks || []).map((task) => [task.taskId, task]));
+    const tasks = Array.isArray(conversation?.tasks) ? conversation.tasks : [];
+    const taskById = new Map(tasks.map((task) => [task.taskId, task]));
+    const taskForTurn = (turn) => {
+      if (turn?.taskId) return taskById.get(turn.taskId) || null;
+      if (turn?.kind !== 'user') return null;
+      const body = String(turn.body || '').trim();
+      return tasks.filter((task) => String(task?.goal || '').trim() === body)
+        .sort((left, right) => (Date.parse(right?.updatedAt || right?.createdAt || '') || 0) - (Date.parse(left?.updatedAt || left?.createdAt || '') || 0))[0] || null;
+    };
     const visibleMessages = [];
     let previousCancelledKey = '';
     for (const turn of messages) {
-      const task = turn?.taskId ? taskById.get(turn.taskId) : null;
+      const task = taskForTurn(turn);
       const cancelledKey = turn?.kind !== 'user' && task?.state === 'CANCELLED' ? `${turn.kind}|${String(turn.body || '').trim()}` : '';
       if (cancelledKey && cancelledKey === previousCancelledKey) continue;
       visibleMessages.push(turn);
@@ -498,10 +506,25 @@ import {
         continue;
       }
       if (turn.kind === 'assistant' && /(?:เครื่องมือที่เหมาะสม|เตรียมบริบทของโปรเจกต์|เก็บคำขอนี้ไว้แล้ว)/u.test(turn.body || '')) continue;
-      const task = turn.taskId ? taskById.get(turn.taskId) : null;
+      const task = taskForTurn(turn);
       const row = document.createElement('li'); row.className = `task-turn ${turn.kind === 'user' ? 'user-turn' : 'assistant-turn'}`;
       const body = document.createElement('p'); body.className = turn.kind === 'user' ? 'task-goal' : 'task-summary'; body.textContent = turn.body;
-      if (turn.kind === 'user') { row.append(body); const attachments = renderMessageAttachments(attachmentsByMessage.get(turn.messageId)); if (attachments) row.append(attachments); thread.append(row); continue; }
+      if (turn.kind === 'user') {
+        row.append(body); const attachments = renderMessageAttachments(attachmentsByMessage.get(turn.messageId)); if (attachments) row.append(attachments);
+        if (task) {
+          const status = document.createElement('div'); status.className = 'task-response user-task-status';
+          const meta = document.createElement('div'); meta.className = 'task-meta';
+          const chip = document.createElement('span'); chip.className = `state-chip ${stateClass(task)}`.trim(); chip.textContent = stateText(task);
+          const time = document.createElement('span'); time.textContent = date(task.updatedAt || task.createdAt); meta.append(chip, time); status.append(meta);
+          if (!['COMPLETED', 'FAILED', 'CANCELLED'].includes(task.state)) {
+            const progressRow = document.createElement('div'); progressRow.className = 'task-progress-row';
+            if (Number.isInteger(task.progress) && task.progress > 0) { const bar = document.createElement('progress'); bar.max = 100; bar.value = task.progress; bar.setAttribute('aria-label', progressText(task)); progressRow.append(bar); }
+            const text = document.createElement('span'); text.textContent = progressText(task); progressRow.append(text); status.append(progressRow, renderExecutionJourney(task));
+          }
+          row.append(status);
+        }
+        thread.append(row); continue;
+      }
       const response = document.createElement('div'); response.className = 'task-response';
       const meta = document.createElement('div'); meta.className = 'task-meta';
       const chip = document.createElement('span'); chip.className = `state-chip ${stateClass(task)}`.trim();
