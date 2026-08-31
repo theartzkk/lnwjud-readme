@@ -111,14 +111,6 @@ async function routeUniversalCommand(message, options = {}) {
 
 globalThis.AWH_ROUTE_COMMAND = routeUniversalCommand;
 
-function mountWelcome(dashboard) {
-  const welcome = document.createElement('div');
-  welcome.id = 'dashboard-welcome';
-  welcome.className = 'awh-home-welcome';
-  welcome.innerHTML = '<span><small>ART’S WORKSPACE HUB</small><strong>วันนี้อยากให้ AWH ช่วยอะไร?</strong></span>';
-  dashboard.prepend(welcome);
-}
-
 function mountPromptShortcuts(hero) {
   const row = document.createElement('div');
   row.id = 'awh-home-prompts';
@@ -607,7 +599,7 @@ function mountDashboard() {
   const continuity = document.createElement('section');
   continuity.id = 'dashboard-continuity';
   continuity.className = 'awh-home-section awh-continuity';
-  continuity.innerHTML = '<div class="awh-section-heading"><div><span>ทำต่อจากเดิม</span><h2>กลับมาทำงานได้ทันที</h2></div><small id="dashboard-continuity-memory">AWH จำบริบทของงานให้</small></div><div class="awh-continuity-card"><div class="awh-continuity-copy"><span id="dashboard-continuity-project" class="awh-context-chip">Project</span><h3 id="dashboard-continuity-title">กำลังเตรียมงานล่าสุด…</h3><p id="dashboard-continuity-summary">AWH กำลังเชื่อมงานล่าสุดกับ Dashboard</p><div id="dashboard-continuity-meta" class="awh-context-meta"></div></div><div class="awh-continuity-actions"><button id="dashboard-continue-work" class="awh-command-send" type="button">ทำงานต่อ</button><button id="dashboard-open-chats" class="awh-secondary-action" type="button">Multi Chat</button></div></div>';
+  continuity.innerHTML = '<div class="awh-section-heading"><div><span>ทำต่อจากเดิม</span><h2>กลับมาทำงานได้ทันที</h2></div><small id="dashboard-continuity-memory">AWH จำบริบทของงานให้</small></div><div class="awh-continuity-card"><div class="awh-continuity-copy"><span id="dashboard-continuity-project" class="awh-context-chip">โปรเจกต์</span><h3 id="dashboard-continuity-title">กำลังเตรียมงานล่าสุด…</h3><p id="dashboard-continuity-summary">AWH กำลังเชื่อมงานล่าสุดกับ Dashboard</p><div id="dashboard-continuity-meta" class="awh-context-meta"></div></div><div class="awh-continuity-actions"><button id="dashboard-continue-work" class="awh-command-send" type="button">ทำงานต่อ</button><button id="dashboard-open-chats" class="awh-secondary-action" type="button">ห้องงาน</button></div></div>';
 
   const pulse = document.createElement('section');
   pulse.id = 'dashboard-pulse';
@@ -683,7 +675,6 @@ function mountDashboard() {
   const imageTool = createImageTool();
   dashboard.append(hero, continuity, pulse, taskSurface, filesSurface, tools, overview, files, owner, imageTool);
   mountProductNavigation(dashboard);
-  mountWelcome(dashboard);
   mountSchoolTools(dashboard);
   main.append(dashboard);
 
@@ -859,7 +850,7 @@ function renderContinuity() {
   title.textContent = safeText(conversation?.title, safeText(fallbackTask?.goal, 'ทำงานต่อในโปรเจกต์นี้'));
   summary.textContent = workspaceSummary(workspace);
   const details = [];
-  if (conversation) details.push(`Multi Chat · ${Math.max(1, Number(context?.conversationCount) || 1)} ห้อง`);
+  if (conversation) details.push(`${Math.max(1, Number(context?.conversationCount) || 1)} ห้องงาน`);
   if (conversation?.updatedAt) details.push(`อัปเดต ${formatDate(conversation.updatedAt)}`);
   else if (fallbackTask?.updatedAt || fallbackTask?.createdAt) details.push(`อัปเดต ${formatDate(fallbackTask.updatedAt || fallbackTask.createdAt)}`);
   if (workspace?.checkpoint?.createdAt) details.push(`บันทึกงาน ${formatDate(workspace.checkpoint.createdAt)}`);

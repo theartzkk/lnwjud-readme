@@ -525,7 +525,7 @@ import {
     for (const project of projects) {
       const button = document.createElement('button'); button.type = 'button'; button.className = `project-choice${project.projectId === state.selectedProjectId ? ' selected' : ''}`;
       const name = document.createElement('strong'); name.textContent = project.name;
-      const detail = document.createElement('span'); detail.textContent = project.memoryReady ? 'พร้อมใช้ context ของโปรเจกต์' : 'Project Memory ยังต้องตรวจสอบบน worker';
+      const detail = document.createElement('span'); detail.textContent = project.memoryReady ? 'พร้อมใช้บริบทของโปรเจกต์' : 'กำลังเตรียมบริบทของโปรเจกต์';
       button.append(name, detail);
       button.addEventListener('click', async () => { state.selectedProjectId = project.projectId; state.selectedConversationId = null; state.conversations = []; state.conversation = null; state.conversationAvailable = false; state.workspaceContinuity = null; renderWorkspace(); closeSheet('project-sheet'); await refreshConversation(); });
       list.append(button);
@@ -539,7 +539,7 @@ import {
 
   function continuitySummary(workspace) {
     if (!workspace) return '';
-    if (workspace.syncStatus === 'SYNCED') return ' · Source ล่าสุดพร้อมใช้งาน';
+    if (workspace.syncStatus === 'SYNCED') return ' · ข้อมูลล่าสุดพร้อมใช้งาน';
     if (workspace.syncStatus === 'HANDOFF_REQUIRED') return ' · มีงานจากเครื่องอื่นที่เชื่อมไว้';
     if (workspace.syncStatus === 'SOURCE_OFFLINE') return ' · ใช้ checkpoint ล่าสุดบน AWH';
     if (workspace.syncStatus === 'UNSYNCED_CHANGES') return ' · มีงานที่ยัง sync ไม่ครบ';
@@ -563,9 +563,9 @@ import {
   }
 
   function renderCancellation(task) {
-    if (!task || task.state !== 'WAITING_FOR_APPROVAL') return null;
+    if (!task || !['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL'].includes(task.state)) return null;
     const actions = document.createElement('div'); actions.className = 'task-actions';
-    const button = document.createElement('button'); button.type = 'button'; button.className = 'secondary-button'; button.textContent = 'ยกเลิกงานนี้';
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'secondary-button'; button.textContent = 'หยุดงานนี้';
     button.addEventListener('click', async () => {
       button.disabled = true;
       try { await cancelTask(task.taskId); await refreshWorkspace(); }
@@ -587,6 +587,18 @@ import {
     box.append(renderExecutionJourney(task));
     const updated = document.createElement('small'); updated.className = 'live-activity-updated'; updated.textContent = `อัปเดต ${date(task.updatedAt || task.createdAt)}`; box.append(updated);
     return box;
+  }
+
+  function renderRetry(task) {
+    if (!task || task.state !== 'FAILED') return null;
+    const actions = document.createElement('div'); actions.className = 'task-actions';
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'secondary-button'; button.textContent = 'แก้แล้วลองใหม่';
+    button.addEventListener('click', () => {
+      const input = $('goal-input'); if (!(input instanceof HTMLTextAreaElement)) return;
+      input.value = String(task.goal || ''); resizeGoalInput(); input.focus();
+      message('goal-message', 'ตรวจข้อความแล้วกดส่งเพื่อเริ่มงานใหม่อย่างปลอดภัย');
+    });
+    actions.append(button); return actions;
   }
 
   function renderExecutionJourney(task) {
@@ -651,6 +663,7 @@ import {
           const statusTurn = document.createElement('li'); statusTurn.className = 'task-turn assistant-turn status-turn';
           const status = document.createElement('div'); status.className = 'task-response active-task-response';
           status.append(renderLiveActivity(task));
+          const taskActions = renderCancellation(task); if (taskActions) status.append(taskActions);
           statusTurn.append(status); thread.append(statusTurn);
         }
         continue;
@@ -666,7 +679,7 @@ import {
       response.append(body);
       if (task && !['COMPLETED','FAILED','CANCELLED'].includes(task.state)) response.append(renderLiveActivity(task));
       if (task) {
-        const actions = renderApproval(task, approvals) || renderCancellation(task); if (actions) response.append(actions);
+        const actions = renderApproval(task, approvals) || renderCancellation(task) || renderRetry(task); if (actions) response.append(actions);
         if (artifacts.length) { const list = document.createElement('div'); list.className = 'artifact-results'; for (const artifact of artifacts) { if (artifact.kind === 'project-inspection' && artifactUrl(artifact)) list.append(renderInspectionEvidence(artifact)); else list.append(renderArtifactCard(artifact)); } response.append(list); }
       }
       row.append(response); thread.append(row);
