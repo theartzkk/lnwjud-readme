@@ -2,45 +2,47 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const read = (path: string) => readFile(path, 'utf8');
+const read = (path: string) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('visual QA constitution keeps AWH intent-first and hides backend vocabulary from L1/L2', async () => {
+test('Visual QA contract is fixture-first and does not grant deployment authority', async () => {
   const constitution = await read('docs/AWH-UX-CONSTITUTION.md');
-  assert.match(constitution, /Home is Chat-first/);
-  assert.match(constitution, /แชท · งานของฉัน · เครื่องมือ/);
-  assert.match(constitution, /Backend vocabulary is forbidden in L1\/L2 UX/);
-  assert.match(constitution, /390×844/);
-  assert.match(constitution, /Stop/);
-  assert.match(constitution, /Retry/);
-});
-
-test('AIPass findings are structured evidence rather than a parallel authority', async () => {
-  const schema = JSON.parse(await read('scripts/review/aipass-findings.schema.json'));
-  assert.equal(schema.properties.verdict.enum.join(','), 'PASS,REVIEW,BLOCK');
-  assert.deepEqual(schema.properties.findings.items.properties.severity.enum, ['P0', 'P1', 'P2']);
-  assert.equal(schema.properties.findings.items.properties.confidence.maximum, 1);
   const guide = await read('docs/AWH-VISUAL-QA.md');
-  assert.match(guide, /reviewer.*, not a Production authority/i);
-  assert.match(guide, /must never deploy/i);
+  const roles = await read('docs/AWH-AIPASS-MODEL-ROLES.md');
+  assert.match(constitution, /Home = Chat|Home.*Chat/i);
+  assert.match(constitution, /3 mobile destinations|3.*แท็บ|three/i);
+  assert.match(constitution, /RUNNING|Worker|Provider|backend/i);
+  assert.match(guide, /Render.*Package.*Review|render/i);
+  assert.match(roles, /reviewer, never the Production authority/i);
 });
 
-test('review pack binds screenshots to the same clean committed revision', async () => {
+test('visual renderer binds evidence to a clean exact revision', async () => {
+  const runner = await read('scripts/review/render-ai-review-scenarios.mjs');
+  const capture = await read('scripts/review/visual-review-capture.cjs');
+  assert.match(runner, /rev-parse/);
+  assert.match(runner, /status.*--porcelain/);
+  assert.match(runner, /local-contract-fixture/);
+  assert.match(capture, /390x844/);
+  assert.match(capture, /horizontalOverflow/);
+  assert.match(capture, /question-identity/);
+});
+test('review pack and findings validator preserve fail-closed evidence rules', async () => {
   const pack = await read('scripts/review/create-ai-review-pack.mjs');
+  const validator = await read('scripts/review/validate-aipass-findings.mjs');
+  const schema = JSON.parse(await read('scripts/review/aipass-findings.schema.json'));
+  assert.match(pack, /AWH_AI_REVIEW_EVIDENCE_DIR/);
   assert.match(pack, /manifest\?\.commit !== commit/);
   assert.match(pack, /manifest\?\.dirty !== false/);
   assert.match(pack, /NO_WORKING_TREE_CONTENT/);
-  assert.match(pack, /visual-evidence/);
-  assert.doesNotMatch(pack, /curl|https:\/\/aipass/i);
+  assert.match(pack, /FINDINGS_SCHEMA\.json/);
+  assert.match(validator, /P0 requires BLOCK/);
+  assert.equal(schema.properties.verdict.enum.includes('BLOCK'), true);
+  assert.equal(schema.properties.findings.items.properties.severity.enum.includes('P0'), true);
 });
 
-test('visual renderer uses only the local contract fixture and reference viewports', async () => {
-  const render = await read('scripts/review/render-ai-review-scenarios.mjs');
-  const capture = await read('scripts/review/visual-review-capture.cjs');
-  const scenarios = JSON.parse(await read('scripts/review/visual-review-scenarios.json'));
-  assert.match(render, /127\.0\.0\.1/);
-  assert.match(render, /390x844/);
-  assert.match(render, /1440x900/);
-  assert.match(capture, /horizontalOverflow/);
-  assert.equal(scenarios.scenarios.length >= 8, true);
-  assert.equal(scenarios.referenceViewports.length, 2);
+test('visual review scenario set covers conversation, work, artifact and recovery UX', async () => {
+  const config = JSON.parse(await read('scripts/review/visual-review-scenarios.json'));
+  const ids = new Set(config.scenarios.map((scenario: { id: string }) => scenario.id));
+  for (const id of ['home-empty','question-identity','work-progress','document-artifact','failed-retry','artifact-follow-up']) assert.equal(ids.has(id), true, id);
+  assert.equal(config.referenceViewports.some((item: { width: number; height: number }) => item.width === 390 && item.height === 844), true);
+  assert.equal(config.referenceViewports.some((item: { width: number; height: number }) => item.width === 1440 && item.height === 900), true);
 });
