@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "accessBoundary": "official-ui-only",
+  "dailyCreditBudget": 10000,
+  "catalogReviewCadenceDays": 30,
+  "roles": {
+    "visual-primary": {
+      "mission": "UX/Product critique from rendered evidence",
+      "preferred": "Claude Opus 5",
+      "alternatives": ["Claude Sonnet 5", "Gemini 3.1 Pro"],
+      "suggestedCredits": 2500
+    },
+    "visual-second-opinion": {
+      "mission": "Independent visual/mobile regression review",
+      "preferred": "Gemini 3.1 Pro",
+      "alternatives": ["Claude Sonnet 5", "GPT-5.6 Terra"],
+      "suggestedCredits": 2000
+    },
+    "architecture-judge": {
+      "mission": "Root-cause and architecture review after visual findings",
+      "preferred": "GPT-5.6 Sol",
+      "alternatives": ["Claude Opus 5"],
+      "suggestedCredits": 2000
+    },
+    "final-adversarial": {
+      "mission": "Final candidate product critique before release",
+      "preferred": "Claude Opus 5",
+      "alternatives": ["GPT-5.6 Sol", "Gemini 3.1 Pro"],
+      "suggestedCredits": 3500
+    }
+  },
+  "deepResearch": {
+    "useOnlyWhenNeeded": true,
+    "preferred": ["Sonar Deep Research", "o3 Deep Research"],
+    "monthlyUseRequiresOwnerChoice": true
+  }
+}

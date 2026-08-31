@@ -11,6 +11,7 @@ const dirty = git(['status', '--porcelain']).trim() !== '';
 const output = resolve(process.argv[2] || join(ROOT, '..', `AWH-AI-REVIEW-${commit.slice(0, 12)}.zip`));
 const stage = resolve(ROOT, '.tmp-ai-review-pack');
 const evidenceDir = process.env.AWH_AI_REVIEW_EVIDENCE_DIR ? resolve(process.env.AWH_AI_REVIEW_EVIDENCE_DIR) : null;
+const compareDir = process.env.AWH_AI_REVIEW_COMPARE_DIR ? resolve(process.env.AWH_AI_REVIEW_COMPARE_DIR) : null;
 const allowRoots = new Set(['web', 'hub', 'src', 'scripts', 'test', 'docs', 'deploy']);
 const allowRootFiles = new Set(['README.md', 'package.json', 'package-lock.json', 'tsconfig.json', 'electron-builder.yml']);
 const denyPath = /(^|\/)(?:\.env(?:\.|$)|node_modules|\.git|\.awh-|dist|coverage|vendor|uploads?|backups?|secrets?|credentials?|private)(?:\/|$)|\.(?:pem|key|p12|pfx|sqlite|sqlite3|db|dump|zip|tar|gz|7z)$/i;
@@ -74,7 +75,7 @@ const revision = {
 writeStage('CURRENT_REVISION.json', JSON.stringify(revision, null, 2));
 writeStage('SOURCE_TREE.txt', included.join('\n') + '\n');
 writeStage('SAFETY_MANIFEST.json', JSON.stringify({ schemaVersion: 1, includedCount: included.length, skipped, policies: ['NO_WORKING_TREE_CONTENT', 'NO_ENV_FILES', 'NO_DATABASES', 'NO_BACKUPS', 'NO_PRIVATE_KEYS', 'SECRET_PATTERN_SCAN'] }, null, 2));
-for (const [target, source] of [['AWH-UX-CONSTITUTION.md','docs/AWH-UX-CONSTITUTION.md'],['VISUAL_SCENARIOS.json','scripts/review/visual-review-scenarios.json'],['FINDINGS_SCHEMA.json','scripts/review/aipass-findings.schema.json']]) {
+for (const [target, source] of [['AWH-UX-CONSTITUTION.md','docs/AWH-UX-CONSTITUTION.md'],['AWH-VISUAL-QA.md','docs/AWH-VISUAL-QA.md'],['REVIEWER_POLICY.json','scripts/review/reviewer-policy.json'],['VISUAL_SCENARIOS.json','scripts/review/visual-review-scenarios.json'],['FINDINGS_SCHEMA.json','scripts/review/aipass-findings.schema.json']]) {
   const content = readFileSync(join(ROOT, source));
   if (containsSecret(content)) throw new Error(`${source} unexpectedly contains a secret pattern`);
   writeStage(target, content);
@@ -103,6 +104,27 @@ if (evidenceDir !== null) {
     }
   };
   copyEvidence(evidenceDir);
+}
+
+if (compareDir !== null) {
+  if (!existsSync(compareDir) || !statSync(compareDir).isDirectory()) throw new Error('comparison evidence directory is invalid');
+  const rootReal = realpathSync(compareDir); const manifestPath = join(compareDir, 'COMPARE_MANIFEST.json');
+  if (!existsSync(manifestPath)) throw new Error('comparison manifest is missing');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  if (manifest?.schemaVersion !== 1 || manifest?.kind !== 'visual-before-after' || manifest?.afterCommit !== commit) throw new Error('comparison evidence does not target current revision');
+  const copyCompare = (directory, prefix = '') => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const source = join(directory, entry.name); const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isSymbolicLink()) throw new Error(`comparison evidence contains symlink: ${relative}`);
+      const real = realpathSync(source); if (real !== rootReal && !real.startsWith(`${rootReal}/`)) throw new Error('comparison evidence escaped its root');
+      if (entry.isDirectory()) { copyCompare(source, relative); continue; }
+      if (!/^[A-Za-z0-9._/-]+$/.test(relative) || !/\.(?:png|json|md)$/i.test(relative)) continue;
+      const info = lstatSync(source); if (!info.isFile() || info.size < 1 || info.size > 8 * 1024 * 1024) throw new Error(`comparison evidence file is invalid: ${relative}`);
+      const content = readFileSync(source); if (!relative.toLowerCase().endsWith('.png') && containsSecret(content)) throw new Error(`comparison evidence text contains a secret pattern: ${relative}`);
+      writeStage(join('comparison-evidence', relative), content);
+    }
+  };
+  copyCompare(compareDir);
 }
 
 const crcTable = Array.from({ length: 256 }, (_, n) => {

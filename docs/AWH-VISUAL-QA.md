@@ -54,3 +54,26 @@ AiPASS itself is used only through its official user interface. AWH must not aut
 The automated boundary stops at the sanitized ZIP. The Owner uploads that pack in the official AiPASS UI, selects the reviewer model, and saves/copies the returned JSON. AWH automation resumes only after that JSON is back on the AWH side and has passed `review:validate`.
 
 This keeps the free AiPASS entitlement useful for product review without making AiPASS a runtime dependency or violating its access conditions.
+
+## Long-term evidence history
+
+`npm run review:visual` stores rendered evidence under `.awh-local/review/history/<commit-prefix>/` before building the sanitized ZIP. A new candidate therefore does not overwrite the previous visual baseline.
+
+Use `npm run review:compare -- <before-dir> <after-dir>` to build a paired Before/After evidence set. Comparisons require clean exact-revision manifests and pair screenshots by scenario plus viewport. This is the preferred verification path after a UX fix because it asks the reviewer to identify regressions and unresolved defects instead of re-auditing unchanged screens.
+
+`npm run review:retention` is intentionally audit-only. It reports history/compare entries beyond the configured retention windows but never deletes them. Purging evidence is a separate Owner-approved operation.
+
+## Reviewer policy lifecycle
+
+`scripts/review/reviewer-policy.json` defines reviewer roles, daily credit allocation and fallback choices. Model names are recommendations, not runtime dependencies. Review the catalog at least every 30 days and change the role mapping rather than embedding a specific model into source or Product UX.
+
+The daily budget is capped at 10,000 review credits by policy. Deep Research is reserved for genuinely research-heavy audits and requires an Owner choice because its availability and monthly quota may differ from normal chat models.
+
+## Findings lifecycle
+
+1. Generate a clean exact-SHA visual pack.
+2. Upload it through the official AiPASS UI and request JSON only.
+3. Validate with `npm run review:validate -- findings.json <candidate-sha>`.
+4. Generate a human triage report with `npm run review:triage -- findings.json <candidate-sha>`.
+5. Fix through the canonical engineering workflow, render a new SHA, then run Before/After compare.
+6. Deterministic QA, CI and Owner acceptance remain the release authority.
