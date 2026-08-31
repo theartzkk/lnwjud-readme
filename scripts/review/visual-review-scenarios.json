@@ -72,6 +72,12 @@
       "surface": "hosting",
       "action": "open Owner managed hosting",
       "expected": "site state, public URL, runtime, database, backup, deploy and rollback are understandable without VPS command exposure"
+    },
+    {
+      "id": "owner-accounts",
+      "surface": "account",
+      "action": "open Owner people settings with a pending request",
+      "expected": "Owner can create accounts and review pending requests while role/project assignment remains Owner-controlled"
     }
   ]
 }

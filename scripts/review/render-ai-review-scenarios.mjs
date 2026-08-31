@@ -55,7 +55,7 @@ try {
   for (const viewport of ['390x844', '1440x900']) runs.push(await runCapture(viewport));
   const manifest = { schemaVersion: 1, generatedAt: new Date().toISOString(), source: 'local-contract-fixture', commit, dirty, baseUrl, viewports: runs.map((run) => run.viewport) };
   writeFileSync(join(output, 'VISUAL_EVIDENCE.json'), JSON.stringify(manifest, null, 2) + '\n', { mode: 0o600 });
-  process.stdout.write(JSON.stringify({ status: 'PASS', output, commit, dirty, screenshots: 14, viewports: manifest.viewports }, null, 2) + '\n');
+  process.stdout.write(JSON.stringify({ status: 'PASS', output, commit, dirty, screenshots: 16, viewports: manifest.viewports }, null, 2) + '\n');
 } finally {
   fixture.kill('SIGTERM');
   await new Promise((resolveExit) => { const timer = setTimeout(resolveExit, 1500); fixture.once('exit', () => { clearTimeout(timer); resolveExit(); }); });

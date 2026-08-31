@@ -64,7 +64,7 @@ img, svg, canvas, video { max-width: 100%; }
   gap: 16px;
 }
 
-.brand { display: inline-flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; min-width: 0; }
+.brand { display: inline-flex; min-height: 44px; align-items: center; gap: 10px; color: inherit; text-decoration: none; min-width: 0; }
 .brand-mark { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; border-radius: 10px; color: var(--accent-ink); background: var(--accent); font-size: 18px; font-weight: 900; }
 .brand strong, .brand small { display: block; }
 .brand strong { font-size: 14px; letter-spacing: -.01em; }
@@ -106,9 +106,9 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); box-sha
 .primary-button, .secondary-button, .danger-button, .refresh-button, .icon-button, .text-button, .project-trigger, .conversation-trigger { border: 0; cursor: pointer; }
 .primary-button { min-height: 46px; border-radius: 12px; padding: 11px 16px; color: var(--accent-ink); background: var(--accent); font-weight: 800; }
 .primary-button:disabled { cursor: not-allowed; opacity: .48; }
-.secondary-button, .danger-button, .refresh-button, .icon-button { min-height: 40px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; color: var(--text); background: var(--surface-raised); font-weight: 700; }
+.secondary-button, .danger-button, .refresh-button, .icon-button { min-height: 44px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; color: var(--text); background: var(--surface-raised); font-weight: 700; }
 .danger-button { width: 100%; margin-top: 18px; color: #ffd6d2; border-color: #743a38; background: #2a1719; }
-.text-button { width: fit-content; padding: 4px 0; color: var(--muted); background: transparent; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
+.text-button { display: inline-flex; min-height: 44px; align-items: center; width: fit-content; padding: 4px 0; color: var(--muted); background: transparent; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
 .technical-entry { color: var(--muted); font-size: 13px; line-height: 1.55; }
 .technical-entry summary { cursor: pointer; color: var(--muted); }
 .technical-entry[open] { display: grid; gap: 9px; padding-top: 8px; }

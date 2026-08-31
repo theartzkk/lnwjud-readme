@@ -61,6 +61,13 @@ app.whenReady().then(async () => {
     evidence.push(await shot(win, 'registration-request', 'self-service access request is readable and touch-safe; no privilege choice is exposed', 'open public account request form'));
     await login(win);
     evidence.push(await shot(win, 'home-empty', 'real composer immediately usable; no backend language; three mobile destinations maximum', 'authenticated home'));
+    await win.webContents.executeJavaScript(`document.querySelector('#account-open').click()`, true);
+    await waitFor(win, `document.querySelector('#account-sheet') && !document.querySelector('#account-sheet').hidden`);
+    await win.webContents.executeJavaScript(`document.querySelector('[data-settings-tab=\"people\"]').click()`, true);
+    await waitFor(win, `document.querySelector('#settings-panel-people') && !document.querySelector('#settings-panel-people').hidden && document.querySelector('#account-request-list')`, 10000);
+    evidence.push(await shot(win, 'owner-accounts', 'Owner can create people and review pending requests with role/project assignment in one bounded settings surface', 'open Owner people settings'));
+    await win.loadURL(baseUrl);
+    await login(win);
     await submitHome(win, 'นายคือใคร');
     evidence.push(await shot(win, 'question-identity', 'direct conversational answer; no task-status substitute', 'ask a normal identity question'));
     await returnHome(win);
