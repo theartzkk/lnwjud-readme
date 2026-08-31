@@ -32,6 +32,15 @@ jobs:
         name: Verify CI cost and release-gate policy
         run: node scripts/qa/verify-ci-policy.mjs
       - run: npm ci --ignore-scripts --no-audit --no-fund
+      - if: runner.os != 'Windows'
+        name: Verify Cloud artifact import with ZipArchive
+        run: |
+          if ! php -r 'exit(class_exists("ZipArchive") ? 0 : 1);'; then
+            sudo apt-get update -qq
+            sudo apt-get install -y php-zip
+          fi
+          php -r 'exit(class_exists("ZipArchive") ? 0 : 1);'
+          php hub/tests/m18-cloud-first-control.php
       - run: npm run typecheck
       - if: runner.os == 'Windows'
         run: npm run test:windows

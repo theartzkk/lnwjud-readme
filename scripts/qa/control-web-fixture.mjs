@@ -8,7 +8,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 
-const root = resolve(process.cwd(), 'dist-web');
+const root = resolve(process.env.AWH_WEB_FIXTURE_ROOT ?? resolve(process.cwd(), 'dist-web'));
 const host = '127.0.0.1';
 const port = Number.parseInt(process.env.AWH_WEB_FIXTURE_PORT ?? '4174', 10);
 const now = '2026-08-22T00:00:00.000Z';
@@ -18,6 +18,8 @@ const conversations = [];
 const attachments = [];
 const artifacts = [];
 const tasks = [];
+const cloudRevision = 'a'.repeat(40);
+let cloudConfigured = true;
 const fixtureResetToken = 'a'.repeat(43);
 let fixtureResetUsed = false;
 let counter = 0;
@@ -81,6 +83,11 @@ const server = createServer(async (request, response) => {
       return send(response, 200, { schemaVersion: 1, authenticated: false });
     }
     if (url.pathname === '/api/v1/auth/session') return session(request) ? send(response, 200, { csrfToken: csrf, username: 'fixture', role: 'OWNER' }) : send(response, 401, { code: 'SESSION_INVALID' });
+    if (url.pathname === '/api/v1/auth/step-up' && request.method === 'POST') {
+      if (!session(request) || !requireCsrf(request, response)) return;
+      const value = await readJson(request); if (value.schemaVersion !== 1 || typeof value.password !== 'string' || !value.password) return send(response, 401, { code: 'STEP_UP_FAILED' });
+      return send(response, 200, { schemaVersion: 1, verified: true });
+    }
     if (url.pathname === '/api/v1/auth/logout' && request.method === 'POST') {
       if (!session(request) || !requireCsrf(request, response)) return;
       return send(response, 200, { ok: true }, { 'Set-Cookie': 'awh_fixture_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict' });
@@ -99,6 +106,21 @@ const server = createServer(async (request, response) => {
     if (url.pathname === '/api/v1/control/results') return send(response, 200, { results: tasks.filter((task) => task.state === 'COMPLETED') });
     if (url.pathname === '/api/v1/control/artifacts') return send(response, 200, { artifacts });
     if (url.pathname === '/api/v1/control/approvals') return send(response, 200, { approvals: [] });
+    if (url.pathname === '/api/v1/control/cloud' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, state: 'READY', configured: cloudConfigured, capabilities: [{ capability: 'qa.cloud', state: 'READY' }, { capability: 'review.visual', state: 'READY' }], recent: tasks.filter((task) => task.capability === 'qa.cloud' || task.capability === 'review.visual').map((task) => ({ taskId: task.taskId, capability: task.capability, state: task.state, revision: task.revision, profile: task.profile, updatedAt: task.updatedAt })) });
+    if (url.pathname === '/api/v1/control/cloud/revision' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, revision: cloudRevision });
+    if (url.pathname === '/api/v1/control/cloud/credential' && request.method === 'POST') {
+      if (!requireCsrf(request, response)) return; const value = await readJson(request);
+      if (value.schemaVersion !== 1 || !['SET','REMOVE'].includes(value.action) || (value.action === 'SET' && typeof value.secret !== 'string')) return send(response, 400, { code: 'PAYLOAD_INVALID' });
+      cloudConfigured = value.action === 'SET'; return send(response, 200, { schemaVersion: 1, configured: cloudConfigured });
+    }
+    if (url.pathname === '/api/v1/control/cloud/tasks' && request.method === 'POST') {
+      if (!requireCsrf(request, response)) return; const value = await readJson(request);
+      if (value.schemaVersion !== 1 || value.projectId !== project.projectId || !['QA','VISUAL_REVIEW'].includes(value.kind) || value.revision !== cloudRevision) return send(response, 400, { code: 'PAYLOAD_INVALID' });
+      const capability = value.kind === 'VISUAL_REVIEW' ? 'review.visual' : 'qa.cloud';
+      const existing = tasks.find((task) => task.idempotencyKey === value.idempotencyKey); if (existing) return send(response, 201, existing);
+      const task = { taskId: taskId(), projectId: project.projectId, conversationId: null, goal: value.kind === 'VISUAL_REVIEW' ? 'Product Review · Visual' : 'Product Review · QA', state: 'RUNNING', progress: 35, capability, revision: cloudRevision, profile: value.kind === 'VISUAL_REVIEW' ? value.profile : null, idempotencyKey: value.idempotencyKey, createdAt: now, updatedAt: now, lastEvent: { message: 'AWH Cloud เริ่มตรวจแล้ว' } };
+      tasks.unshift(task); return send(response, 201, task);
+    }
     if (url.pathname === '/api/v1/control/settings' && request.method === 'GET') return send(response, 200, { settings: { productName: { value: 'Art’s Workspace Hub' }, shortName: { value: 'AWH' }, tagline: { value: 'Your Projects. One Workspace. Anywhere.' }, welcome: { value: 'เริ่มคุยกับ Art’s Workspace Hub ได้เลย' }, accent: { value: '#ff8a36' }, founderName: { value: 'Art' }, founderCredit: { value: 'Founder · Product Creator · System Concept' } } });
     if (url.pathname === '/api/v1/control/provider' && request.method === 'GET') return send(response, 200, { schemaVersion: 3, provider: { enabled: false, available: false, keyConfigured: false, credential: { lastTestStatus: 'NOT_TESTED' }, budget: { usedMicrounits: 0, monthlyMicrounits: 0, remainingMicrounits: 0, warningMicrounits: 0 }, rates: { inputMicrounitsPerMillion: 0, outputMicrounitsPerMillion: 0 }, models: { fast: 'gpt-5.6-luna', balanced: 'gpt-5.6-terra', strong: 'gpt-5.6-sol' }, usageByProject: [] } });
     if (url.pathname === '/api/v1/control/provider/projects/' + project.projectId && request.method === 'GET') return send(response, 200, { schemaVersion: 1, projectId: project.projectId, routing: { routingMode: 'AUTO' } });
@@ -150,6 +172,11 @@ const server = createServer(async (request, response) => {
         artifact.downloadUrl = `/api/v1/control/artifacts/${artifact.artifactId}/download`; artifacts.unshift(artifact); message(conversation, 'result', 'สร้างไฟล์ Word แบบบันทึกข้อความราชการไทยให้แล้ว เปิดหรือดาวน์โหลดจากการ์ดไฟล์ด้านล่างได้ทันที', task);
       } else message(conversation, 'progress', 'กำลังรออุปกรณ์ทำงาน…', task);
       return send(response, 201, thread(conversation));
+    }
+    const cancelTaskMatch = /^\/api\/v1\/control\/tasks\/([0-9a-f-]{36})\/cancel$/i.exec(url.pathname);
+    if (cancelTaskMatch && request.method === 'POST') {
+      if (!requireCsrf(request, response)) return; const task = tasks.find((item) => item.taskId === cancelTaskMatch[1]); if (!task) return send(response, 404, { code: 'NOT_FOUND' });
+      task.state = 'CANCELLED'; task.progress = 0; task.updatedAt = now; return send(response, 200, task);
     }
     const artifactDownloadMatch = /^\/api\/v1\/control\/artifacts\/([0-9a-f-]{36})\/download$/i.exec(url.pathname);
     if (artifactDownloadMatch) { const artifact = artifacts.find((item) => item.artifactId === artifactDownloadMatch[1]); if (!artifact) return send(response, 404, { code: 'NOT_FOUND' }); response.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'Content-Disposition': `attachment; filename="${artifact.name}"`, 'Cache-Control': 'private, no-store' }); return response.end('PKfixture-docx'); }

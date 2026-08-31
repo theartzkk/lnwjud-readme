@@ -53,3 +53,14 @@ test('daily review pack carries reviewer policy without granting AiPASS runtime 
   assert.match(verify, /AWH_AI_REVIEW_COMPARE_DIR/);
   assert.match(verify, /visual verification requires a clean committed working tree/);
 });
+
+
+test('visual review scenarios permanently cover Owner Product Review on the iPhone reference viewport', async () => {
+  const scenarios = JSON.parse(await read('scripts/review/visual-review-scenarios.json'));
+  assert.ok(scenarios.referenceViewports.some((viewport: any) => viewport.id === 'iphone' && viewport.width === 390 && viewport.height === 844));
+  const review = scenarios.scenarios.find((scenario: any) => scenario.id === 'product-review-cloud');
+  assert.equal(review?.surface, 'review');
+  assert.match(String(review?.expected || ''), /390x844/);
+  assert.match(String(review?.expected || ''), /Stop/);
+  assert.match(String(review?.expected || ''), /Owner step-up/);
+});
