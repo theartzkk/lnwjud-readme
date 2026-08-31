@@ -6,6 +6,9 @@ import { join, resolve } from 'node:path';
 const ROOT = resolve(import.meta.dirname, '../..');
 const commit = execFileSync('git', ['-C', ROOT, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 const dirty = execFileSync('git', ['-C', ROOT, 'status', '--porcelain'], { encoding: 'utf8' }).trim() !== '';
+if (dirty && process.env.AWH_VISUAL_QA_ALLOW_DIRTY !== '1') throw new Error('visual review requires a clean committed revision');
+const commit = execFileSync('git', ['-C', ROOT, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+const dirty = execFileSync('git', ['-C', ROOT, 'status', '--porcelain'], { encoding: 'utf8' }).trim() !== '';
 const output = resolve(process.argv[2] || join(ROOT, '.awh-local/review/visual'));
 const port = Number.parseInt(process.env.AWH_VISUAL_QA_PORT || '4197', 10);
 const baseUrl = `http://127.0.0.1:${port}/`;
@@ -54,7 +57,7 @@ try {
   for (const viewport of ['390x844', '1440x900']) runs.push(await runCapture(viewport));
   const manifest = { schemaVersion: 1, generatedAt: new Date().toISOString(), source: 'local-contract-fixture', commit, dirty, baseUrl, viewports: runs.map((run) => run.viewport) };
   writeFileSync(join(output, 'VISUAL_EVIDENCE.json'), JSON.stringify(manifest, null, 2) + '\n', { mode: 0o600 });
-  process.stdout.write(JSON.stringify({ status: 'PASS', output, screenshots: 10, viewports: manifest.viewports }, null, 2) + '\n');
+  process.stdout.write(JSON.stringify({ status: 'PASS', output, commit, dirty, screenshots: 10, viewports: manifest.viewports }, null, 2) + '\n');
 } finally {
   fixture.kill('SIGTERM');
   await new Promise((resolveExit) => { const timer = setTimeout(resolveExit, 1500); fixture.once('exit', () => { clearTimeout(timer); resolveExit(); }); });
