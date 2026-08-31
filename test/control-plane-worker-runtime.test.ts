@@ -85,6 +85,23 @@ test('Codex task instruction preserves owner protocol precedence before project 
   assert.match(instruction, new RegExp(goal));
 });
 
+function zipEntryNames(bytes: Buffer): string[] {
+  const entries: string[] = [];
+  for (let offset = 0; offset + 46 <= bytes.length;) {
+    const signature = bytes.readUInt32LE(offset);
+    if (signature === 0x06054b50) break;
+    if (signature !== 0x02014b50) { offset += 1; continue; }
+    const nameLength = bytes.readUInt16LE(offset + 28);
+    const extraLength = bytes.readUInt16LE(offset + 30);
+    const commentLength = bytes.readUInt16LE(offset + 32);
+    const end = offset + 46 + nameLength + extraLength + commentLength;
+    if (nameLength < 1 || end > bytes.length) throw new Error('ZIP_CENTRAL_DIRECTORY_INVALID');
+    entries.push(bytes.subarray(offset + 46, offset + 46 + nameLength).toString('utf8'));
+    offset = end;
+  }
+  return entries;
+}
+
 class RecoveryWorkerClient extends FixtureWorkerClient {
   readonly canonical: WorkerProject = { projectId: '723b45c0-23e1-408d-ae0f-ac5eca7f6900', name: 'BAY EXCUSE X', type: 'school-system', sourceRevision: null, vaultReady: false };
   registered: Array<{ projectId: string; name: string; type: string; sourceRevision: string | null }> = [];
@@ -94,7 +111,7 @@ class RecoveryWorkerClient extends FixtureWorkerClient {
   override async projects(): Promise<WorkerProject[]> { return [this.canonical]; }
   override async registerProject(project: { projectId: string; name: string; type: string; sourceRevision: string | null }): Promise<void> { this.registered.push(project); }
   override async registerProjectBinding(projectId: string, label: string, _capabilities: string[], fingerprint: string | null): Promise<void> { this.bindings.push({ projectId, label, fingerprint }); }
-  override async uploadProjectSource(_projectId: string, _sourceRevision: string, archive: string): Promise<Record<string, unknown>> { const list = await execCommand('unzip', ['-Z1', archive], process.cwd(), 30_000); assert.equal(list.code, 0); this.archiveEntries = list.stdout.split(/\r?\n/).filter(Boolean); return { schemaVersion: 1 }; }
+  override async uploadProjectSource(_projectId: string, _sourceRevision: string, archive: string): Promise<Record<string, unknown>> { this.archiveEntries = zipEntryNames(await readFile(archive)); return { schemaVersion: 1 }; }
   override async publishProjectMemory(_projectId: string, files: Array<{ name: string; status: 'present' | 'missing'; sha256: string | null; sizeBytes: number }>): Promise<void> { this.memoryFiles = files; }
 }
 

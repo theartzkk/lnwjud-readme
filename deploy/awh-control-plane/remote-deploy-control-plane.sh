@@ -173,6 +173,22 @@ verify_owner_auth_login() {
   grep -q 'awh_csrf' "$OWNER_AUTH_COOKIE_JAR"
   OWNER_PASSWORD=
 }
+rehydrate_desktop_artifacts() {
+  store=/var/www/awh-web/desktop-artifacts
+  sudo install -d -o awh-hub -g www-data -m 0750 "$WEB_RELEASE/downloads"
+  for name in AWH-macOS-x64.zip AWH-Windows-x64.zip SHA256SUMS.txt; do
+    file="$WEB_RELEASE/downloads/$name"
+    test -f "$file" && continue
+    expected=$(/usr/bin/php -r '$j=json_decode(file_get_contents($argv[1]),true,32,JSON_THROW_ON_ERROR); foreach(($j["files"]??[]) as $f){ if(($f["path"]??null)===$argv[2]){ $h=strtolower((string)($f["sha256"]??"")); if(!preg_match("/^[0-9a-f]{64}$/",$h)) exit(2); echo $h; exit(0); }} exit(3);' "$WEB_RELEASE/release.json" "downloads/$name")
+    case "$expected" in *[!0-9a-f]*|'') return 1 ;; esac
+    test "${#expected}" -eq 64 || return 1
+    object="$store/$expected-$name"
+    sudo test -f "$object"
+    actual=$(sudo sha256sum "$object" | cut -d' ' -f1)
+    test "$actual" = "$expected"
+    sudo ln "$object" "$file"
+  done
+}
 deduplicate_desktop_artifacts() {
   store=/var/www/awh-web/desktop-artifacts
   sudo install -d -o awh-hub -g www-data -m 0750 "$store"
@@ -666,7 +682,7 @@ if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || te
   stage NATIVE_EXECUTOR_UNITS_READY
 fi
 stage PHP_FPM_RELOAD; reload_awh_php_fpm
-web_pointer_capture; sudo install -d -o awh-hub -g www-data -m 0750 /var/www/awh-web/releases; if sudo test -e "$WEB_RELEASE" || sudo test -L "$WEB_RELEASE"; then exit 20; fi; sudo install -d -o awh-hub -g www-data -m 0750 "$WEB_RELEASE"; WEB_CREATED=1; stage WEB_RELEASE_COPY; sudo cp -a "$RELEASE/dist-web/." "$WEB_RELEASE/"; deduplicate_desktop_artifacts; sudo chown -R awh-hub:www-data "$WEB_RELEASE"; sudo find "$WEB_RELEASE" -type d -exec chmod 0750 {} +; sudo find "$WEB_RELEASE" -type f -exec chmod 0640 {} +; sudo -n -u awh-hub php "$RELEASE/deploy/awh-control-plane/verify-web-release.php" "$WEB_RELEASE"; stage WEB_MANIFEST_VERIFIED; stage WEB_ACCESS_READY; verify_web_access; stage WEB_POINTER_SWITCH; sudo rm -f "$WEB_POINTER_TMP"; sudo ln -s "$WEB_RELEASE" "$WEB_POINTER_TMP"; sudo mv -Tf "$WEB_POINTER_TMP" "$WEB_POINTER"; WEB_POINTER_CHANGED=1; test "$(readlink "$WEB_POINTER")" = "$WEB_RELEASE"; stage WEB_RELEASE_STAGED
+web_pointer_capture; sudo install -d -o awh-hub -g www-data -m 0750 /var/www/awh-web/releases; if sudo test -e "$WEB_RELEASE" || sudo test -L "$WEB_RELEASE"; then exit 20; fi; sudo install -d -o awh-hub -g www-data -m 0750 "$WEB_RELEASE"; WEB_CREATED=1; stage WEB_RELEASE_COPY; sudo cp -a "$RELEASE/dist-web/." "$WEB_RELEASE/"; rehydrate_desktop_artifacts; deduplicate_desktop_artifacts; sudo chown -R awh-hub:www-data "$WEB_RELEASE"; sudo find "$WEB_RELEASE" -type d -exec chmod 0750 {} +; sudo find "$WEB_RELEASE" -type f -exec chmod 0640 {} +; sudo -n -u awh-hub php "$RELEASE/deploy/awh-control-plane/verify-web-release.php" "$WEB_RELEASE"; stage WEB_MANIFEST_VERIFIED; stage WEB_ACCESS_READY; verify_web_access; stage WEB_POINTER_SWITCH; sudo rm -f "$WEB_POINTER_TMP"; sudo ln -s "$WEB_RELEASE" "$WEB_POINTER_TMP"; sudo mv -Tf "$WEB_POINTER_TMP" "$WEB_POINTER"; WEB_POINTER_CHANGED=1; test "$(readlink "$WEB_POINTER")" = "$WEB_RELEASE"; stage WEB_RELEASE_STAGED
 stage NGINX_CUTOVER_INSTALL; sudo install -o root -g root -m 0644 "$NGINX_CANDIDATE" "$NGINX_CONFIG"; NGINX_CHANGED=1; stage NGINX_CONFIGURED; sudo nginx -t >/dev/null
 stage SERVICE_RELOAD; sudo systemctl reload nginx
 stage OWNER_AUTH_EFFECTIVE_CONFIG; verify_owner_auth_effective_config

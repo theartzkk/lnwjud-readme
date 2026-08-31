@@ -35,6 +35,7 @@ test('M4 control-plane activation package is executable in a local dry-run witho
   assert.equal(controlBuild.stderr, '');
   await execFile(process.execPath, ['scripts/create-web-release-manifest.mjs', 'dist-web'], { cwd: ROOT, env: { ...process.env, AWH_RELEASE_ID: 'fixture-m4-release', AWH_PREVIEW_GENERATED_AT: '2026-08-21T00:00:00.000Z' } });
   const deploy = join(ROOT, 'deploy/awh-control-plane/deploy-control-plane.sh');
+  const deployText = await readText(deploy);
   const result = await execFile('sh', [deploy, '--dry-run'], { cwd: ROOT, env: { ...process.env, AWH_SOURCE_ROOT: ROOT, AWH_DEPLOY_TARGET: 'awh-ready', AWH_RELEASE_COMMIT: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', AWH_HUB_HOSTNAME: 'awh.example' } });
   assert.match(result.stdout, /M4_DRY_RUN=PASS/);
   assert.match(result.stdout, /php-fpm-reload/);
@@ -53,6 +54,12 @@ test('M4 control-plane activation package is executable in a local dry-run witho
   assert.match(remote, /stage OWNER_AUTH_MIGRATION_IDEMPOTENT/);
   assert.match(remote, /stage OWNER_AUTH_VERIFIED/);
   assert.match(remote, /stage WEB_RELEASE_COPY/);
+  assert.match(deployText, /DESKTOP_ARTIFACT_REUSE=/);
+  assert.match(deployText, /desktop-artifacts\/\$digest-\$name/);
+  assert.match(remote, /rehydrate_desktop_artifacts\(\)/);
+  assert.match(remote, /release\.json.*downloads\/\$name/s);
+  assert.match(remote, /rehydrate_desktop_artifacts; deduplicate_desktop_artifacts/);
+  assert.match(remote, /sha256sum \"\$object\"/);
   assert.match(remote, /stage WEB_ACCESS_READY; verify_web_access/);
   assert.match(remote, /chown -R awh-hub:www-data/);
   assert.match(remote, /sudo -n -u www-data test -r/);

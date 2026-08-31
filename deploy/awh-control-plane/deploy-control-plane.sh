@@ -112,12 +112,29 @@ FILES="$FILES dist-web/responsive-layout.css"
 DESKTOP_ARTIFACTS=
 desktop_artifact_count=0
 for file in $DESKTOP_ARTIFACT_FILES; do
-  if test -f "$ROOT/$file"; then desktop_artifact_count=$((desktop_artifact_count + 1)); DESKTOP_ARTIFACTS="$DESKTOP_ARTIFACTS $file"; fi
+  if test -f "$ROOT/$file"; then desktop_artifact_count=$((desktop_artifact_count + 1)); fi
 done
 case "$MODE:$desktop_artifact_count" in
   dry-run:0|*:3) : ;;
   *) echo "Desktop release artifacts must be complete for production deploy" >&2; exit 1 ;;
 esac
+# Desktop packages are content-addressed on ReadyIDC. A backend/web refresh
+# reuses an already-verified object instead of retransmitting the large bytes.
+for file in $DESKTOP_ARTIFACT_FILES; do
+  test -f "$ROOT/$file" || continue
+  if test "$MODE" = deploy; then
+    digest=$(node -e 'const fs=require("node:fs"),c=require("node:crypto");const b=fs.readFileSync(process.argv[1]);process.stdout.write(c.createHash("sha256").update(b).digest("hex"))' "$ROOT/$file")
+    case "$digest" in *[!0-9a-f]*|'') echo "Desktop artifact checksum is invalid" >&2; exit 1 ;; esac
+    test "${#digest}" -eq 64 || { echo "Desktop artifact checksum is invalid" >&2; exit 1; }
+    name=$(basename "$file")
+    remote_digest=$(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" "sudo test -f '/var/www/awh-web/desktop-artifacts/$digest-$name' && sudo sha256sum '/var/www/awh-web/desktop-artifacts/$digest-$name' | cut -d' ' -f1" 2>/dev/null || true)
+    if test "$remote_digest" = "$digest"; then
+      printf '%s\n' "DESKTOP_ARTIFACT_REUSE=$name"
+      continue
+    fi
+  fi
+  DESKTOP_ARTIFACTS="$DESKTOP_ARTIFACTS $file"
+done
 FILES="$FILES$DESKTOP_ARTIFACTS"
 for file in $FILES; do test -f "$ROOT/$file" || { echo "Missing reviewed M4 asset: $file" >&2; exit 1; }; done
 test -f "$PREFLIGHT" || { echo "Missing read-only production preflight" >&2; exit 1; }
