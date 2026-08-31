@@ -28,6 +28,7 @@ require_once __DIR__ . '/HubStaffOperationsService.php';
 require_once __DIR__ . '/HubThaiGovernmentDocumentService.php';
 require_once __DIR__ . '/HubActionGraphService.php';
 require_once __DIR__ . '/HubConversationReferentService.php';
+require_once __DIR__ . '/HubManagedHostingService.php';
 
 final class HubControlPlaneException extends RuntimeException
 {
@@ -72,6 +73,7 @@ final class HubControlPlaneService
     private readonly ?HubAutomationRegistryService $automations;
     private readonly ?HubAiGovernanceService $aiGovernance;
     private readonly HubStaffOperationsService $staff;
+    private readonly HubManagedHostingService $hosting;
 
     private function __construct(private readonly PDO $pdo, private readonly HubEnrollmentService $enrollment, private readonly string $databasePath)
     {
@@ -86,6 +88,7 @@ final class HubControlPlaneService
         $this->automations = $this->automationSchemaPresent() ? new HubAutomationRegistryService($pdo) : null;
         $this->aiGovernance = HubAiGovernanceService::schemaPresent($pdo) ? new HubAiGovernanceService($pdo) : null;
         $this->staff = new HubStaffOperationsService($pdo, $databasePath);
+        $this->hosting = HubManagedHostingService::fromPdo($pdo);
     }
 
     public static function openExisting(string $databasePath): self
@@ -152,6 +155,32 @@ final class HubControlPlaneService
     }
 
     public function listProjectsForSession(string $sessionToken, ?string $now = null): array { $row = $this->sessionRow($sessionToken, $now); return ['schemaVersion' => 1, 'projects' => $this->projectsForUser((string) $row['user_id'])]; }
+
+    public function managedSitesForSession(string $sessionToken): array
+    {
+        try { return $this->hosting->sites($sessionToken); }
+        catch (HubManagedHostingException $error) { throw new HubControlPlaneException('Hosting request was rejected',$error->codeName); }
+    }
+    public function createManagedSiteForSession(string $sessionToken,string $csrf,array $payload): array
+    {
+        try { return ['schemaVersion'=>1]+$this->hosting->createSite($sessionToken,$csrf,$payload); }
+        catch (HubManagedHostingException $error) { throw new HubControlPlaneException('Hosting request was rejected',$error->codeName); }
+    }
+    public function deployManagedSiteForSession(string $sessionToken,string $csrf,string $siteId,array $payload): array
+    {
+        try { return ['schemaVersion'=>1]+$this->hosting->deploySite($sessionToken,$csrf,$siteId,$payload); }
+        catch (HubManagedHostingException $error) { throw new HubControlPlaneException('Hosting request was rejected',$error->codeName); }
+    }
+    public function rollbackManagedSiteForSession(string $sessionToken,string $csrf,string $siteId,array $payload): array
+    {
+        try { return ['schemaVersion'=>1]+$this->hosting->rollbackSite($sessionToken,$csrf,$siteId,$payload); }
+        catch (HubManagedHostingException $error) { throw new HubControlPlaneException('Hosting request was rejected',$error->codeName); }
+    }
+    public function disableManagedSiteForSession(string $sessionToken,string $csrf,string $siteId,array $payload): array
+    {
+        try { return ['schemaVersion'=>1]+$this->hosting->disableSite($sessionToken,$csrf,$siteId,$payload); }
+        catch (HubManagedHostingException $error) { throw new HubControlPlaneException('Hosting request was rejected',$error->codeName); }
+    }
 
 
     /** Browser-first project creation. Source can be attached later from Desktop/Vault. */
@@ -2692,7 +2721,7 @@ final class HubControlPlaneService
     private function assertProjectCapability(string $userId, string $projectId, string $capability): void { if ($this->finalProductSchemaPresent()) { $q = $this->pdo->prepare('SELECT 1 FROM control_project_capabilities c JOIN control_user_profiles p ON p.user_id = c.user_id WHERE c.user_id = :user AND c.project_id = :project AND c.capability = :capability AND c.revoked_at IS NULL AND p.status = \'ACTIVE\''); $q->execute(['user' => $userId, 'project' => $projectId, 'capability' => $capability]); if ($q->fetchColumn() !== false) return; } else { $q = $this->pdo->prepare('SELECT 1 FROM user_project_memberships WHERE user_id = :user AND project_id = :project AND revoked_at IS NULL'); $q->execute(['user' => $userId, 'project' => $projectId]); if ($q->fetchColumn() !== false) return; } throw new HubControlPlaneException('Project is not authorized', 'PROJECT_FORBIDDEN'); }
     private function assertOwner(string $userId): void { $q = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1'); if (!hash_equals((string) $q->fetchColumn(), $userId)) throw new HubControlPlaneException('Owner access is required', 'OWNER_FORBIDDEN'); }
     private function isOwnerUser(string $userId): bool { $q = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1'); $owner = $q->fetchColumn(); return is_string($owner) && hash_equals($owner, $userId); }
-    private function profileRole(string $userId): string { $q = $this->pdo->prepare('SELECT system_role FROM control_user_profiles WHERE user_id = :user AND status = \'ACTIVE\''); $q->execute(['user' => $userId]); $role = $q->fetchColumn(); return is_string($role) && in_array($role, ['OWNER', 'COLLABORATOR', 'VIEWER', 'APPROVER'], true) ? $role : 'COLLABORATOR'; }
+    private function profileRole(string $userId): string { $q = $this->pdo->prepare('SELECT system_role FROM control_user_profiles WHERE user_id = :user AND status = \'ACTIVE\''); $q->execute(['user' => $userId]); $role = $q->fetchColumn(); return is_string($role) && in_array($role, ['OWNER','ADMIN','DIRECTOR','TEACHER','STAFF','VIEWER'], true) ? $role : 'STAFF'; }
 
     /** @return array{displayName:string,username:string} */
     private function ownerIdentity(string $userId): array

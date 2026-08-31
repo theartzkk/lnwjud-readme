@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="theme-color" content="#0a0c0f" />
+<title>Hosting · AWH</title>
+<link rel="stylesheet" href="./awh-design-system.css?release=__AWH_WEB_RELEASE_ID__" />
+<link rel="stylesheet" href="./hosting.css?release=__AWH_WEB_RELEASE_ID__" />
+</head>
+<body>
+<header class="hosting-header"><a class="hosting-brand" href="./"><span>A</span><strong>AWH</strong></a><div class="hosting-actions"><span id="hosting-state">กำลังตรวจ Hosting…</span><a href="./">← กลับ AWH</a><button id="hosting-refresh" type="button">รีเฟรช</button></div></header>
+<main class="hosting-main">
+<section class="hosting-hero"><div><p class="eyebrow">OWNER · MANAGED HOSTING</p><h1>เว็บไซต์ของ AWH</h1><p>เลือก Project แล้วให้ AWH จัดการ Runtime, Database, HTTPS, Health, Backup และ Rollback ให้เป็นระบบเดียว</p></div><div id="hosting-summary" class="hosting-summary">กำลังโหลด</div></section>
+<section class="hosting-panel create-panel"><div class="section-heading"><div><span>NEW WEBSITE</span><h2>เพิ่มเว็บไซต์</h2></div><small>ใช้ IP ของ VPS ก่อน และเพิ่ม Domain ภายหลังได้</small></div>
+<form id="hosting-create-form" class="hosting-form"><label>ชื่อเว็บไซต์<input id="site-name" maxlength="120" required placeholder="เช่น เว็บลงเรียน" /></label><label>ชื่อย่อ<input id="site-slug" maxlength="48" required placeholder="registration" /></label><label>Project<select id="site-project" required></select></label><label>Runtime<select id="site-runtime"><option value="AUTO">ตรวจอัตโนมัติ</option><option value="PHP">PHP</option><option value="NODE">Node</option><option value="STATIC">Static</option></select></label><label>Database<select id="site-database"><option value="AUTO">ตรวจอัตโนมัติ</option><option value="NONE">ไม่ใช้ฐานข้อมูล</option><option value="SQLITE">SQLite</option><option value="MARIADB">MariaDB</option></select></label><label class="check-row"><input id="site-backup" type="checkbox" checked /><span>เปิด Backup</span></label><button class="primary-button" type="submit">สร้างเว็บไซต์</button><p id="hosting-message" class="form-message" role="status"></p></form></section>
+<section class="hosting-panel"><div class="section-heading"><div><span>MANAGED SITES</span><h2>เว็บไซต์ที่ดูแล</h2></div><small>Deploy และ Rollback ผ่าน canonical AWH Task/Execution</small></div><div id="site-list" class="site-list"></div></section>
+<section class="hosting-note"><strong>ไม่ต้องตั้ง VPS เอง</strong><p>AWH แยก release, runtime, database และ public route ของแต่ละเว็บไซต์ให้โดยอัตโนมัติ หาก HTTPS identity ยังไม่ครอบคลุม IP ระบบจะไม่เปิดเว็บแบบลดความปลอดภัยเงียบ ๆ</p></section>
+</main>
+<script type="module" src="./hosting.js?release=__AWH_WEB_RELEASE_ID__"></script>
+</body></html>

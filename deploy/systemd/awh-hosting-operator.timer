@@ -1,0 +1,12 @@
+[Unit]
+Description=Run AWH typed managed-hosting operator continuously
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=30s
+AccuracySec=5s
+Persistent=true
+Unit=awh-hosting-operator.service
+
+[Install]
+WantedBy=timers.target

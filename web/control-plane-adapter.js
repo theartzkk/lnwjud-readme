@@ -46,6 +46,14 @@ function safeErrorMessage(value) {
     PROVIDER_RATE_LIMITED: 'OpenAI จำกัดการเรียกใช้ชั่วคราว กรุณาลองใหม่ภายหลัง',
     PROVIDER_UNAVAILABLE: 'OpenAI ยังไม่พร้อมตอบในขณะนี้ งานของคุณจะไม่ถูกอ้างว่าเสร็จแล้ว',
     PROVIDER_TEST_FAILED: 'ทดสอบ OpenAI ไม่ผ่าน กรุณาตรวจการเชื่อมต่อแล้วลองใหม่',
+    REGISTRATION_PENDING: 'คำขอใช้งานนี้อยู่ระหว่างการพิจารณาแล้ว',
+    USERNAME_UNAVAILABLE: 'ชื่อผู้ใช้นี้ถูกใช้แล้ว กรุณาเลือกชื่อใหม่',
+    REGISTRATION_NOT_FOUND: 'ไม่พบคำขอใช้งานนี้ หรือมีการพิจารณาไปแล้ว',
+    PROJECT_SOURCE_NOT_READY: 'โปรเจกต์นี้ยังไม่มี Source ที่พร้อม Deploy AWH จะรอและทำต่อเมื่อ Source พร้อม',
+    HOSTING_TLS_UNAVAILABLE: 'HTTPS ของ VPS ยังไม่พร้อมสำหรับที่อยู่นี้ AWH จะไม่เปิดเว็บแบบไม่ปลอดภัย',
+    HOSTING_CAPACITY_FULL: 'พื้นที่สำหรับเว็บไซต์บน VPS เต็ม กรุณาตรวจ Hosting capacity',
+    SITE_SLUG_UNAVAILABLE: 'ชื่อย่อเว็บไซต์นี้ถูกใช้แล้ว',
+    ROLLBACK_NOT_READY: 'เว็บไซต์นี้ยังไม่มีรุ่นก่อนหน้าที่พร้อมย้อนกลับ',
   })[code] || 'AWH ไม่สามารถดำเนินการได้ในขณะนี้';
 }
 
@@ -68,6 +76,11 @@ export async function openMobileSession(pairingCode, displayName = 'AWH iPhone',
 export async function login(username, password, remember = false) {
   if (typeof username !== 'string' || typeof password !== 'string' || !username.trim() || password.length < 1) throw new Error('กรุณากรอกชื่อผู้ใช้และรหัสผ่าน');
   return controlRequest('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, username: username.trim(), password, remember: Boolean(remember) }) });
+}
+
+export async function registerAccessRequest({ displayName, username, password, email = null, phone = null, personType, requestedArea = null, note = null }) {
+  if (typeof displayName !== 'string' || !displayName.trim() || typeof username !== 'string' || !username.trim() || typeof password !== 'string' || password.length < 8 || !['DIRECTOR','TEACHER','STAFF','PARENT','STUDENT','OTHER'].includes(personType)) throw new Error('กรอกข้อมูลสมัครขอใช้งานให้ครบ');
+  return controlRequest('/api/v1/auth/register', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, displayName: displayName.trim(), username: username.trim(), password, email: email?.trim() || null, phone: phone?.trim() || null, personType, requestedArea: requestedArea?.trim() || null, note: note?.trim() || null }) });
 }
 
 export async function loadAuthSession() { return controlRequest('/api/v1/auth/session'); }
@@ -190,12 +203,26 @@ export async function loadSystemReadiness() {
   return value;
 }
 export async function listPeople() { return controlRequest('/api/v1/auth/people'); }
-export async function invitePerson({ displayName, username, email = null, role, projectIds }) { return controlRequest('/api/v1/auth/people/invite', { method: 'POST', body: JSON.stringify({ displayName, username, email, role, projectIds }) }); }
+export async function listAccountRequests() { return controlRequest('/api/v1/auth/requests'); }
+export async function createPerson({ displayName, username, password, email = null, phone = null, personType, role, projectIds = [], mustChangePassword = false }) {
+  if (!['ADMIN','DIRECTOR','TEACHER','STAFF','VIEWER'].includes(role) || !['DIRECTOR','TEACHER','STAFF','PARENT','STUDENT','OTHER'].includes(personType) || !Array.isArray(projectIds) || projectIds.some((id) => !UUID.test(id))) throw new Error('ข้อมูลบัญชีไม่ถูกต้อง');
+  return controlRequest('/api/v1/auth/people/create', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, displayName, username, password, email, phone, personType, role, projectIds, mustChangePassword: Boolean(mustChangePassword) }) });
+}
+export async function reviewAccountRequest(requestId, decision, role = 'VIEWER', projectIds = []) {
+  if (!UUID.test(requestId) || !['APPROVE','REJECT'].includes(decision) || !['ADMIN','DIRECTOR','TEACHER','STAFF','VIEWER'].includes(role) || !Array.isArray(projectIds) || projectIds.some((id) => !UUID.test(id))) throw new Error('ข้อมูลการพิจารณาไม่ถูกต้อง');
+  return controlRequest(`/api/v1/auth/requests/${requestId}/review`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1, decision, role, projectIds }) });
+}
 export async function revokePerson(userId) { if (!UUID.test(userId)) throw new Error('บัญชีไม่ถูกต้อง'); return controlRequest(`/api/v1/auth/people/${userId}/revoke`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
 export async function updatePersonAccess(userId, role, projectIds) {
-  if (!UUID.test(userId) || !['COLLABORATOR', 'VIEWER', 'APPROVER'].includes(role) || !Array.isArray(projectIds) || projectIds.length < 1 || projectIds.some((id) => !UUID.test(id))) throw new Error('สิทธิ์ผู้ใช้ไม่ถูกต้อง');
+  if (!UUID.test(userId) || !['ADMIN','DIRECTOR','TEACHER','STAFF','VIEWER'].includes(role) || !Array.isArray(projectIds) || projectIds.some((id) => !UUID.test(id))) throw new Error('สิทธิ์ผู้ใช้ไม่ถูกต้อง');
   return controlRequest(`/api/v1/auth/people/${userId}/access`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1, role, projectIds }) });
 }
+export async function listManagedSites() { return controlRequest('/api/v1/control/hosting/sites'); }
+export async function createManagedSite({ name, slug, projectId, runtimeType = 'AUTO', databaseMode = 'AUTO', backupEnabled = true }) {
+  if (!UUID.test(projectId) || typeof name !== 'string' || !name.trim() || typeof slug !== 'string' || !/^[a-z0-9][a-z0-9-]{1,47}$/.test(slug)) throw new Error('ข้อมูลเว็บไซต์ไม่ถูกต้อง');
+  return controlRequest('/api/v1/control/hosting/sites', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, name: name.trim(), slug, projectId, environment: 'PRODUCTION', runtimeType, databaseMode, publicMode: 'IP_PORT', healthPath: '/', backupEnabled: Boolean(backupEnabled) }) });
+}
+export async function managedSiteAction(siteId, action) { if (!UUID.test(siteId) || !['deploy','rollback','disable'].includes(action)) throw new Error('เว็บไซต์ไม่ถูกต้อง'); return controlRequest(`/api/v1/control/hosting/sites/${siteId}/${action}`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
 
 export async function loadWorkspaceContinuity(projectId) {
   if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง');

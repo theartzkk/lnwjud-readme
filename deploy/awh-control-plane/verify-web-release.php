@@ -35,5 +35,5 @@ foreach ($manifest['files'] as $entry) {
     if (!is_int($actualSize) || $actualSize !== $size || !is_string($actualSha) || !hash_equals($sha, $actualSha)) awh_web_release_fail('WEB_RELEASE_FILE_MISMATCH');
     $seen[$path] = true;
 }
-foreach (['index.html','styles.css','awh-design-system.css','responsive-layout.css','app.js','navigation.js','dashboard.css','dashboard.js','web-config.json','data.json','sw.js'] as $required) if (!isset($seen[$required])) awh_web_release_fail('WEB_RELEASE_REQUIRED_FILE_MISSING');
+foreach (['index.html','styles.css','awh-design-system.css','responsive-layout.css','app.js','navigation.js','dashboard.css','dashboard.js', 'hosting.html', 'hosting.css', 'hosting.js','web-config.json','data.json','sw.js'] as $required) if (!isset($seen[$required])) awh_web_release_fail('WEB_RELEASE_REQUIRED_FILE_MISSING');
 fwrite(STDOUT, 'WEB_RELEASE_MANIFEST=PASS files=' . count($seen) . "\n");

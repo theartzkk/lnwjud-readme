@@ -1,0 +1,31 @@
+[Unit]
+Description=AWH typed managed-hosting operator tick
+Wants=network-online.target
+After=network-online.target nginx.service
+ConditionPathExists=/var/lib/awh-hub/awh.sqlite
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+Environment=AWH_HUB_DB_PATH=/var/lib/awh-hub/awh.sqlite
+Environment=AWH_PROJECT_VAULT_ROOT=/var/lib/awh-hub/project-vault
+Environment=AWH_MANAGED_SITE_ROOT=/srv/awh-sites
+Environment=AWH_SITE_CONFIG_ROOT=/etc/awh-sites
+Environment=AWH_NGINX_SITES_AVAILABLE=/etc/nginx/sites-available
+Environment=AWH_NGINX_SITES_ENABLED=/etc/nginx/sites-enabled
+ExecStart=/usr/bin/php /opt/awh-hub/control-plane-current/hub/bin/awh-hosting-operator.php
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/awh-hub /srv/awh-sites /etc/awh-sites /etc/nginx/sites-available /etc/nginx/sites-enabled /etc/php /etc/systemd/system /etc/passwd /etc/shadow /etc/group /etc/gshadow /run/php
+UMask=0077
