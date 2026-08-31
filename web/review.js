@@ -1,0 +1,98 @@
+import { cancelTask, loadCloudRevision, loadCloudStatus, loadControlData, stepUp, submitCloudTask, updateCloudCredential } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+
+const $ = (id) => document.getElementById(id);
+const ACTIVE = new Set(['QUEUED', 'WAITING_FOR_CAPABILITY', 'WAITING_FOR_WORKER', 'RUNNING', 'LEASED']);
+const state = { control: null, cloud: null, revision: null, busy: false, timer: null };
+
+function message(id, text = '', kind = '') { const node = $(id); if (!node) return; node.textContent = text; node.className = `review-message${kind ? ` ${kind}` : ''}`; }
+function shortSha(value) { return typeof value === 'string' && /^[0-9a-f]{40}$/.test(value) ? value.slice(0, 12) : '—'; }
+function humanState(value) {
+  if (['QUEUED', 'WAITING_FOR_CAPABILITY', 'WAITING_FOR_WORKER', 'LEASED'].includes(value)) return ['รับเรื่องแล้ว', ''];
+  if (value === 'RUNNING') return ['กำลังตรวจบน Cloud', 'attention'];
+  if (value === 'COMPLETED') return ['พร้อมแล้ว', 'ready'];
+  if (value === 'CANCELLED') return ['ยกเลิกแล้ว', ''];
+  if (value === 'FAILED') return ['ต้องตรวจสอบ', 'attention'];
+  return ['กำลังตรวจสถานะ', ''];
+}
+function humanKind(capability) { return capability === 'review.visual' ? 'ตรวจหน้าจอ + Review Pack' : 'ตรวจระบบ'; }
+
+function renderProjects() {
+  const select = $('review-project'); if (!(select instanceof HTMLSelectElement)) return;
+  const previous = select.value; select.replaceChildren();
+  const projects = [...(state.control?.projects || [])].sort((a, b) => (a.type === 'awh-core' ? -1 : 0) - (b.type === 'awh-core' ? -1 : 0) || String(a.name).localeCompare(String(b.name), 'th'));
+  for (const project of projects) { const option = document.createElement('option'); option.value = project.projectId; option.textContent = project.name || 'Project'; select.append(option); }
+  if (previous && projects.some((project) => project.projectId === previous)) select.value = previous;
+}
+
+function renderCloud() {
+  const cloud = state.cloud; const dot = $('cloud-dot'); const title = $('cloud-state'); const detail = $('cloud-detail'); const setup = $('cloud-setup');
+  dot?.classList.remove('ready', 'attention');
+  if (!cloud || cloud.state === 'NOT_READY') { title.textContent = 'Product Review ยังไม่เปิดใช้'; detail.textContent = 'M18 Cloud-first ยังไม่ถูก activate ในระบบนี้'; dot?.classList.add('attention'); }
+  else if (!cloud.configured) { title.textContent = 'AWH Cloud ยังไม่ได้เชื่อม'; detail.textContent = 'ยืนยัน Owner และเพิ่ม credential เพียงครั้งเดียว'; dot?.classList.add('attention'); if (setup instanceof HTMLDetailsElement) setup.open = true; }
+  else { title.textContent = 'AWH Cloud พร้อมตรวจ'; detail.textContent = 'งานและไฟล์ผลลัพธ์ยังอยู่ภายใต้ AWH'; dot?.classList.add('ready'); }
+  const revision = $('review-revision'); if (revision) { revision.textContent = shortSha(state.revision); revision.title = state.revision || ''; }
+  const enabled = Boolean(cloud?.configured && state.control?.role === 'OWNER' && state.control?.projects?.length);
+  for (const id of ['run-cloud-qa', 'run-visual-review']) { const button = $(id); if (button instanceof HTMLButtonElement) button.disabled = state.busy || !enabled; }
+}
+
+function renderRecent() {
+  const host = $('review-recent'); if (!host) return; host.replaceChildren(); const items = Array.isArray(state.cloud?.recent) ? state.cloud.recent : [];
+  if (!items.length) { const empty = document.createElement('div'); empty.className = 'review-empty'; empty.textContent = 'ยังไม่มีงานตรวจบน Cloud'; host.append(empty); return; }
+  for (const item of items.slice(0, 8)) {
+    const row = document.createElement('article'); row.className = 'review-job';
+    const copy = document.createElement('div'); copy.className = 'review-job-copy'; const title = document.createElement('strong'); title.textContent = humanKind(item.capability); const meta = document.createElement('span'); meta.textContent = `${shortSha(item.revision)}${item.profile === 'final' ? ' · Candidate สุดท้าย' : item.profile === 'daily' ? ' · ตรวจประจำวัน' : ''}`; copy.append(title, meta);
+    const right = document.createElement('div'); right.className = 'review-job-state'; const [label, cls] = humanState(item.state); const badge = document.createElement('b'); badge.textContent = label; if (cls) badge.classList.add(cls); right.append(badge);
+    if (ACTIVE.has(item.state) && typeof item.taskId === 'string') { const stop = document.createElement('button'); stop.type = 'button'; stop.className = 'review-stop'; stop.textContent = 'หยุด'; stop.addEventListener('click', () => stopTask(item.taskId, stop)); right.append(stop); }
+    row.append(copy, right); host.append(row);
+  }
+}
+
+async function refresh({ quiet = false } = {}) {
+  if (state.busy && quiet) return;
+  try {
+    const [control, cloud] = await Promise.all([loadControlData(), loadCloudStatus()]); state.control = control; state.cloud = cloud;
+    if (control.role !== 'OWNER') { window.location.replace('./'); return; }
+    renderProjects();
+    if (cloud.configured) { try { state.revision = await loadCloudRevision(); } catch { state.revision = null; } } else state.revision = null;
+    renderCloud(); renderRecent(); if (!quiet) message('review-action-message');
+  } catch (error) {
+    renderCloud(); if (!quiet) message('review-action-message', error instanceof Error ? error.message : 'AWH ไม่สามารถโหลด Product Review ได้', 'error');
+  }
+}
+
+async function run(kind) {
+  if (state.busy) return; const projectId = $('review-project')?.value; if (!projectId) { message('review-action-message', 'เลือกโปรเจกต์ก่อน', 'error'); return; }
+  state.busy = true; renderCloud(); message('review-action-message', 'กำลังยืนยัน Source revision ล่าสุด…');
+  try {
+    const revision = await loadCloudRevision(); state.revision = revision; const profile = kind === 'VISUAL_REVIEW' ? $('review-profile')?.value || 'daily' : null;
+    await submitCloudTask({ projectId, kind, revision, profile, idempotencyKey: `product-review-${kind.toLowerCase()}-${revision.slice(0, 12)}-${Date.now()}` });
+    message('review-action-message', kind === 'VISUAL_REVIEW' ? 'รับงานแล้ว · AWH Cloud กำลังสร้างหลักฐานและ Review Pack' : 'รับงานแล้ว · AWH Cloud กำลังตรวจระบบ', 'success');
+    await refresh({ quiet: true });
+  } catch (error) { message('review-action-message', error instanceof Error ? error.message : 'เริ่มงานตรวจไม่สำเร็จ', 'error'); }
+  finally { state.busy = false; renderCloud(); }
+}
+
+async function stopTask(taskId, button) {
+  if (button instanceof HTMLButtonElement) button.disabled = true;
+  try { await cancelTask(taskId); message('review-action-message', 'รับคำขอหยุดแล้ว · AWH จะไม่รับผลลัพธ์ที่มาถึงภายหลัง', 'success'); await refresh({ quiet: true }); }
+  catch (error) { message('review-action-message', error instanceof Error ? error.message : 'หยุดงานไม่สำเร็จ', 'error'); if (button instanceof HTMLButtonElement) button.disabled = false; }
+}
+
+async function saveCredential() {
+  const password = $('cloud-owner-password')?.value || ''; const secret = $('cloud-credential')?.value || '';
+  if (!password || !secret) { message('cloud-setup-message', 'กรอกรหัสผ่าน Owner และ credential ให้ครบ', 'error'); return; }
+  const button = $('save-cloud-credential'); if (button instanceof HTMLButtonElement) button.disabled = true;
+  try {
+    await stepUp(password); await updateCloudCredential('SET', secret);
+    if ($('cloud-owner-password')) $('cloud-owner-password').value = ''; if ($('cloud-credential')) $('cloud-credential').value = '';
+    message('cloud-setup-message', 'เชื่อม AWH Cloud แล้ว', 'success'); if ($('cloud-setup') instanceof HTMLDetailsElement) $('cloud-setup').open = false; await refresh({ quiet: true });
+  } catch (error) { message('cloud-setup-message', error instanceof Error ? error.message : 'เชื่อม AWH Cloud ไม่สำเร็จ', 'error'); }
+  finally { if (button instanceof HTMLButtonElement) button.disabled = false; }
+}
+
+$('refresh-review')?.addEventListener('click', () => refresh());
+$('run-cloud-qa')?.addEventListener('click', () => run('QA'));
+$('run-visual-review')?.addEventListener('click', () => run('VISUAL_REVIEW'));
+$('save-cloud-credential')?.addEventListener('click', saveCredential);
+window.addEventListener('pagehide', () => { if (state.timer) clearInterval(state.timer); });
+await refresh(); state.timer = window.setInterval(() => refresh({ quiet: true }), 8000);

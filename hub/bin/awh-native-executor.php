@@ -10,6 +10,8 @@ require_once dirname(__DIR__) . '/src/HubControlPlaneService.php';
 require_once dirname(__DIR__) . '/src/HubAutomationSchedulerService.php';
 require_once dirname(__DIR__) . '/src/HubStaffGovernorService.php';
 require_once dirname(__DIR__) . '/src/HubStaffOperationsService.php';
+require_once dirname(__DIR__) . '/src/HubCloudFirstMigration.php';
+require_once dirname(__DIR__) . '/src/HubCloudWorkflowService.php';
 require_once __DIR__ . '/system-telemetry.php';
 
 /**
@@ -50,6 +52,21 @@ try {
     }
 
     $control ??= HubControlPlaneService::openExisting($database);
+    $cloud = ['status'=>'NOT_READY','summary'=>null];
+    try {
+        $migration = dirname(__DIR__) . '/migrations/017_cloud_first_control.sql';
+        HubCloudFirstMigration::assertCapabilityReady($pdo, $migration);
+        $cloudService = HubCloudWorkflowService::fromEnvironment($pdo);
+        $cloudSummary = $cloudService->tick();
+        $cloud = ['status'=>(string)($cloudSummary['state'] ?? 'READY'),'summary'=>$cloudSummary];
+    } catch (HubCloudFirstMigrationException) {
+        // Pre-M17 deployments remain compatible. No Cloud provider is inferred.
+        $cloud = ['status'=>'NOT_READY','summary'=>null];
+    } catch (HubCloudWorkflowException $error) {
+        // Cloud degradation must never strand server-native work. Canonical
+        // execution rows keep their checkpoint/lease for the next safe tick.
+        $cloud = ['status'=>'DEGRADED','summary'=>['schemaVersion'=>1,'code'=>$error->codeName]];
+    }
     $execution = HubDurableExecutionService::fromEnvironment($pdo, static fn(array $request): array => $control->materializeContinuationSubmission($request));
     try {
         $governorRun = (new HubStaffGovernorService($pdo, static fn(string $signal, string $occurrenceAt): array => $control->materializeStaffMaintenanceSubmission($signal, $occurrenceAt)))->tick();
@@ -72,6 +89,6 @@ try {
     $staff = $staffService->snapshot(null, $batch, $staffTelemetry, $releaseState, $governorRun, $housekeepingRun);
     $persistedBrief = $staffService->persistMorningBrief($staff['morningBrief']);
     $staff['persistedMorningBrief'] = $persistedBrief;
-    fwrite(STDOUT, json_encode(['status' => $batch['processed'] === 0 ? 'IDLE' : 'PROCESSED', 'automation' => $automation, 'telemetry' => $telemetry, 'governorRun' => $governorRun, 'executionBatch' => $batch, 'recoveredExecutions' => (int) ($batch['recovered'] ?? 0), 'staff' => ['loop' => $staff['loop'], 'governor' => $staff['governor'], 'selfHealing' => $staff['selfHealing'], 'housekeeping' => $staff['housekeeping'], 'housekeepingRun' => $housekeepingRun, 'report' => $staff['report'], 'morningBrief' => $staff['morningBrief'], 'persistedMorningBrief' => $persistedBrief]], JSON_UNESCAPED_SLASHES) . "\n");
+    fwrite(STDOUT, json_encode(['status' => ($batch['processed'] === 0 && (int)($cloud['summary']['processed'] ?? 0) === 0) ? 'IDLE' : 'PROCESSED', 'automation' => $automation, 'telemetry' => $telemetry, 'cloud' => $cloud, 'governorRun' => $governorRun, 'executionBatch' => $batch, 'recoveredExecutions' => (int) ($batch['recovered'] ?? 0), 'staff' => ['loop' => $staff['loop'], 'governor' => $staff['governor'], 'selfHealing' => $staff['selfHealing'], 'housekeeping' => $staff['housekeeping'], 'housekeepingRun' => $housekeepingRun, 'report' => $staff['report'], 'morningBrief' => $staff['morningBrief'], 'persistedMorningBrief' => $persistedBrief]], JSON_UNESCAPED_SLASHES) . "\n");
 } catch (HubDurableExecutionException|HubProjectVaultException|HubCentralProjectAuthorityMigrationException $error) { fwrite(STDERR, $error->codeName . "\n"); exit(1); }
 catch (Throwable) { fwrite(STDERR, "EXECUTOR_UNAVAILABLE\n"); exit(1); }

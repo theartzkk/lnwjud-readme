@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0c0f" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'" />
+  <title>Product Review · AWH</title>
+  <link rel="stylesheet" href="./awh-design-system.css?release=__AWH_WEB_RELEASE_ID__" />
+  <link rel="stylesheet" href="./responsive-layout.css?release=__AWH_WEB_RELEASE_ID__" />
+  <link rel="stylesheet" href="./review.css?release=__AWH_WEB_RELEASE_ID__" />
+</head>
+<body>
+  <header class="review-header">
+    <a class="review-brand" href="./"><span>A</span><strong>AWH</strong></a>
+    <a class="review-back awh-back-link" data-awh-back href="./">← หน้าแรก</a>
+  </header>
+  <main class="review-main">
+    <section class="review-hero">
+      <p class="review-kicker">OWNER · PRODUCT REVIEW</p>
+      <h1>ตรวจ AWH จากมือถือ</h1>
+      <p>ให้ Cloud ตรวจระบบหรือสร้างภาพหน้าจอจาก Source revision ที่ยืนยันแล้ว ผลลัพธ์กลับมาอยู่ใน AWH โดยไม่ต้องเปิด Mac หรือ Windows</p>
+      <div class="review-health" aria-live="polite">
+        <span id="cloud-dot" class="review-dot"></span>
+        <div><strong id="cloud-state">กำลังตรวจ AWH Cloud</strong><small id="cloud-detail">ตรวจการเชื่อมต่อและ Source revision</small></div>
+      </div>
+    </section>
+
+    <section class="review-panel" aria-labelledby="review-run-title">
+      <div class="review-panel-head"><div><p>ตรวจ Candidate</p><h2 id="review-run-title">เลือกสิ่งที่ต้องการตรวจ</h2></div><button id="refresh-review" class="review-ghost" type="button">รีเฟรช</button></div>
+      <label class="review-field">โปรเจกต์<select id="review-project"></select></label>
+      <div class="review-revision"><span>Source ที่จะตรวจ</span><strong id="review-revision">—</strong><small id="review-revision-note">AWH จะยืนยัน exact SHA ก่อนเริ่มทุกครั้ง</small></div>
+      <div class="review-choice-grid">
+        <article class="review-choice"><div><span class="review-choice-icon">✓</span><div><strong>ตรวจระบบ</strong><p>Typecheck · tests · Hub · build · mobile/release contracts</p></div></div><button id="run-cloud-qa" type="button">เริ่มตรวจระบบ</button></article>
+        <article class="review-choice"><div><span class="review-choice-icon">◈</span><div><strong>ตรวจหน้าจอ</strong><p>มือถือ 390×844 + Desktop พร้อม Review Pack สำหรับ AiPASS</p></div></div><label>ระดับ<select id="review-profile"><option value="daily">ตรวจประจำวัน</option><option value="final">ตรวจ Candidate สุดท้าย</option></select></label><button id="run-visual-review" type="button">สร้าง Review Pack</button></article>
+      </div>
+      <p id="review-action-message" class="review-message" aria-live="polite"></p>
+    </section>
+
+    <section class="review-panel" aria-labelledby="recent-review-title">
+      <div class="review-panel-head"><div><p>งานล่าสุด</p><h2 id="recent-review-title">ความคืบหน้าการตรวจ</h2></div><a class="review-ghost review-link" href="./">ดูไฟล์ทั้งหมด</a></div>
+      <div id="review-recent" class="review-recent" aria-live="polite"></div>
+    </section>
+
+    <details id="cloud-setup" class="review-panel review-setup">
+      <summary><span><small>ตั้งค่า Owner</small><strong>เชื่อม AWH Cloud</strong></span><span>›</span></summary>
+      <div class="review-setup-body">
+        <p>Credential ถูกส่งตรงเข้า secret store ของ AWH และจะไม่ถูกเก็บในงาน, checkpoint, log หรือไฟล์ผลลัพธ์</p>
+        <label class="review-field">ยืนยันรหัสผ่าน Owner<input id="cloud-owner-password" type="password" autocomplete="current-password" /></label>
+        <label class="review-field">GitHub credential<input id="cloud-credential" type="password" autocomplete="off" spellcheck="false" /></label>
+        <button id="save-cloud-credential" type="button">บันทึกการเชื่อม</button>
+        <p id="cloud-setup-message" class="review-message" aria-live="polite"></p>
+      </div>
+    </details>
+  </main>
+  <script type="module" src="./navigation.js?release=__AWH_WEB_RELEASE_ID__"></script>
+  <script type="module" src="./review.js?release=__AWH_WEB_RELEASE_ID__"></script>
+</body>
+</html>

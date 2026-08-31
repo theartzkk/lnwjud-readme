@@ -24,6 +24,7 @@
     { title: 'ระบบและการขยาย', items: [
       ['infrastructure', '⌘', 'Infrastructure', 'VPS, Services, Domains, SSL, Backup และ Deployments'],
       ['database', '▦', 'Database Studio', 'ตรวจข้อมูล โครงสร้าง และ migration แบบปลอดภัย'],
+      ['product-review', '◈', 'Product Review', 'ตรวจระบบและหน้าจอบน Cloud แล้วรับ Review Pack กลับเข้า AWH', 'Cloud'],
       ['automations', '↯', 'Automations', 'งานตามเวลาและเงื่อนไข', 'กำลังพัฒนา'],
       ['runtime', '⌘', 'Runtime / lnwjud', 'Capability Fabric และรายละเอียดการทำงานขั้นสูง', 'Advanced'],
     ] },
@@ -82,6 +83,7 @@
     if (action === 'trust') { window.location.assign('./trust.html'); return; }
     if (action === 'infrastructure') { window.location.assign('./infrastructure.html'); return; }
     if (action === 'runtime') { openSettings('system'); return; }
+    if (action === 'product-review') { window.location.assign('./review.html'); return; }
     if (action === 'database') window.location.assign('./database.html');
   }
 

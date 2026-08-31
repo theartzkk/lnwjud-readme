@@ -29,6 +29,8 @@ require_once __DIR__ . '/HubThaiGovernmentDocumentService.php';
 require_once __DIR__ . '/HubActionGraphService.php';
 require_once __DIR__ . '/HubConversationReferentService.php';
 require_once __DIR__ . '/HubManagedHostingService.php';
+require_once __DIR__ . '/HubCloudFirstMigration.php';
+require_once __DIR__ . '/HubCloudWorkflowService.php';
 
 final class HubControlPlaneException extends RuntimeException
 {
@@ -74,6 +76,7 @@ final class HubControlPlaneService
     private readonly ?HubAiGovernanceService $aiGovernance;
     private readonly HubStaffOperationsService $staff;
     private readonly HubManagedHostingService $hosting;
+    private readonly ?HubCloudWorkflowService $cloud;
 
     private function __construct(private readonly PDO $pdo, private readonly HubEnrollmentService $enrollment, private readonly string $databasePath)
     {
@@ -89,6 +92,14 @@ final class HubControlPlaneService
         $this->aiGovernance = HubAiGovernanceService::schemaPresent($pdo) ? new HubAiGovernanceService($pdo) : null;
         $this->staff = new HubStaffOperationsService($pdo, $databasePath);
         $this->hosting = HubManagedHostingService::fromPdo($pdo);
+        $cloud = null;
+        if ($this->artifactStore !== null) {
+            try {
+                HubCloudFirstMigration::assertCapabilityReady($pdo, dirname(__DIR__) . '/migrations/017_cloud_first_control.sql');
+                $cloud = HubCloudWorkflowService::fromEnvironment($pdo);
+            } catch (Throwable) { $cloud = null; }
+        }
+        $this->cloud = $cloud;
     }
 
     public static function openExisting(string $databasePath): self
@@ -1071,6 +1082,70 @@ final class HubControlPlaneService
         return ['schemaVersion'=>1,'status'=>'READY','models'=>$catalog['models'],'savings'=>$this->aiGovernance->savingsSummary((string)$session['user_id'])];
     }
 
+    /** Owner-facing Cloud review/QA status. No token, run URL or raw provider payload is exposed. */
+    public function cloudStatus(string $sessionToken, ?string $now = null): array
+    {
+        $session=$this->sessionRow($sessionToken,$now); $this->assertOwner((string)$session['user_id']);
+        if ($this->cloud===null) return ['schemaVersion'=>1,'state'=>'NOT_READY','configured'=>false,'provider'=>'AWH Cloud','capabilities'=>['qa.cloud','review.visual'],'recent'=>[]];
+        try { return $this->cloud->status($now); }
+        catch (HubCloudWorkflowException $error) { throw new HubControlPlaneException('AWH Cloud status is unavailable',$error->codeName); }
+    }
+
+    /** Resolve the exact canonical Git revision through the configured Cloud provider. */
+    public function cloudRevision(string $sessionToken, ?string $now = null): array
+    {
+        $session=$this->sessionRow($sessionToken,$now); $this->assertOwner((string)$session['user_id']); $cloud=$this->cloudService();
+        try { return ['schemaVersion'=>1,'revision'=>$cloud->canonicalRevision()]; }
+        catch (HubCloudWorkflowException $error) { throw new HubControlPlaneException('AWH Cloud revision is unavailable',$error->codeName); }
+    }
+
+    /** GitHub credential is write-only and never persisted in SQLite/browser state. */
+    public function updateCloudCredential(string $sessionToken,string $csrfToken,array $payload,?string $now=null):array
+    {
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now); self::exactKeys($payload,['action','schemaVersion','secret']);
+        if(($payload['schemaVersion']??null)!==1 || !is_string($payload['action']??null) || (!is_null($payload['secret']??null)&&!is_string($payload['secret']))) throw new HubControlPlaneException('Cloud credential request is invalid','CLOUD_CREDENTIAL_INVALID');
+        $this->assertOwner((string)$session['user_id']);
+        try { HubOwnerAuthService::assertRecentStepUpSession($session,$now); } catch(HubOwnerAuthException){ throw new HubControlPlaneException('A recent password confirmation is required','STEP_UP_REQUIRED'); }
+        $cloud=$this->cloudService(); $action=strtoupper((string)$payload['action']);
+        try {
+            if($action==='SET'&&is_string($payload['secret'])) return ['schemaVersion'=>1]+$cloud->saveCredential($payload['secret'],$now);
+            if($action==='REMOVE'&&$payload['secret']===null) return ['schemaVersion'=>1]+$cloud->removeCredential($now);
+            throw new HubCloudWorkflowException('Cloud credential request is invalid','CLOUD_CREDENTIAL_INVALID');
+        } catch(HubCloudWorkflowException|HubProviderCredentialStoreException $error){ $code=property_exists($error,'codeName')?$error->codeName:'CLOUD_CREDENTIAL_INVALID'; throw new HubControlPlaneException('Cloud credential could not be changed',$code); }
+    }
+
+    /**
+     * Materialize Cloud QA/Visual Review through the existing Task/Execution authorities.
+     * The exact Git SHA is checkpoint evidence, not a new project/source authority.
+     */
+    public function submitCloudTask(string $sessionToken,string $csrfToken,array $payload,?string $now=null):array
+    {
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now); self::exactKeys($payload,['idempotencyKey','kind','profile','projectId','revision','schemaVersion']);
+        if(($payload['schemaVersion']??null)!==1 || !is_string($payload['kind']??null) || !is_string($payload['revision']??null) || !is_string($payload['idempotencyKey']??null) || !is_string($payload['projectId']??null)) throw new HubControlPlaneException('Cloud task request is invalid','CLOUD_TASK_INVALID');
+        $userId=(string)$session['user_id']; $this->assertOwner($userId); $this->cloudService();
+        $projectId=self::uuid((string)$payload['projectId']); $this->assertProjectMember($userId,$projectId);
+        $kind=strtoupper(trim((string)$payload['kind'])); $capability=match($kind){'QA'=>'qa.cloud','VISUAL_REVIEW'=>'review.visual',default=>throw new HubControlPlaneException('Cloud task kind is invalid','CLOUD_TASK_INVALID')};
+        $revision=strtolower(trim((string)$payload['revision'])); if(preg_match('/^[0-9a-f]{40}$/',$revision)!==1) throw new HubControlPlaneException('Cloud revision is invalid','CLOUD_TASK_INVALID');
+        $profile=$payload['profile']??null; if($capability==='review.visual'){ if(!is_string($profile)||!in_array($profile,['daily','final'],true)) throw new HubControlPlaneException('Cloud review profile is invalid','CLOUD_TASK_INVALID'); } elseif($profile!==null) throw new HubControlPlaneException('Cloud QA profile must be empty','CLOUD_TASK_INVALID');
+        $idempotency=self::idempotency((string)$payload['idempotencyKey']); $at=self::timestamp($now??gmdate('c'));
+        $existing=$this->pdo->prepare('SELECT * FROM control_tasks WHERE user_id=:user AND idempotency_key=:key');$existing->execute(['user'=>$userId,'key'=>$idempotency]);$row=$existing->fetch();if(is_array($row))return $this->taskRow($row);
+        $taskId=self::uuidFromBytes(random_bytes(16)); $goal=$capability==='review.visual'?'ตรวจประสบการณ์ใช้งาน AWH บน Cloud และสร้าง Review Pack':'ตรวจระบบ AWH บน Cloud จาก revision ที่ยืนยันแล้ว';
+        $checkpoint=['mode'=>$capability==='review.visual'?'CLOUD_VISUAL_REVIEW':'CLOUD_QA','revision'=>$revision]; if($capability==='review.visual')$checkpoint['profile']=$profile;
+        try {
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $this->pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,:goal,'QUEUED',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$taskId,'user'=>$userId,'project'=>$projectId,'goal'=>$goal,'key'=>$idempotency,'at'=>$at]);
+            $this->execution->enqueue($taskId,$projectId,null,'VPS',$capability,$checkpoint,$at);
+            $this->event($taskId,'QUEUED',0,$capability==='review.visual'?'รับงานตรวจหน้าจอบน Cloud แล้ว':'รับงานตรวจระบบบน Cloud แล้ว',$at);
+            $this->pdo->exec('COMMIT');
+        } catch(Throwable $error){ self::rollbackImmediate($this->pdo); $existing->execute(['user'=>$userId,'key'=>$idempotency]);$row=$existing->fetch();if(is_array($row))return $this->taskRow($row); throw $error instanceof HubControlPlaneException?$error:new HubControlPlaneException('Cloud task could not be queued','CLOUD_TASK_CREATE_FAILED'); }
+        return $this->taskById($taskId,$userId);
+    }
+
+    private function cloudService():HubCloudWorkflowService
+    {
+        if($this->cloud===null) throw new HubControlPlaneException('AWH Cloud is not activated','CLOUD_NOT_READY'); return $this->cloud;
+    }
+
     public function providerStatus(string $sessionToken, ?string $now = null): array
     {
         $session = $this->sessionRow($sessionToken, $now); $this->assertFinalReady(); $this->assertOwner((string) $session['user_id']);
@@ -1288,9 +1363,25 @@ final class HubControlPlaneService
         $session = $this->authorizeSession($sessionToken, $csrfToken, $now); $taskId = self::uuid($taskId); $at = self::timestamp($now ?? gmdate('c')); $transactionOpen = false;
         try {
             $this->pdo->exec('BEGIN IMMEDIATE'); $transactionOpen = true;
-            $q = $this->pdo->prepare('SELECT state FROM control_tasks WHERE task_id = :task AND user_id = :user'); $q->execute(['task' => $taskId, 'user' => $session['user_id']]); $state = $q->fetchColumn();
-            if (!is_string($state)) throw new HubControlPlaneException('Task was not found', 'TASK_NOT_FOUND');
+            $q = $this->pdo->prepare('SELECT state, progress FROM control_tasks WHERE task_id = :task AND user_id = :user'); $q->execute(['task' => $taskId, 'user' => $session['user_id']]); $task = $q->fetch();
+            if (!is_array($task)) throw new HubControlPlaneException('Task was not found', 'TASK_NOT_FOUND');
+            $state = (string)$task['state'];
             if ($state === 'CANCELLED') { $this->pdo->exec('COMMIT'); $transactionOpen = false; return $this->taskById($taskId, (string) $session['user_id']); }
+            if ($state === 'RUNNING' && $this->centralProjectAuthoritySchemaPresent()) {
+                $execution = $this->pdo->prepare("SELECT execution_id,state,required_capability,lease_owner,cancellation_requested_at FROM control_task_executions WHERE task_id=:task LIMIT 1");
+                $execution->execute(['task'=>$taskId]); $row=$execution->fetch();
+                $cloudRunning = is_array($row) && (string)$row['state']==='RUNNING' && in_array((string)$row['required_capability'],['qa.cloud','review.visual'],true) && is_string($row['lease_owner']??null) && str_starts_with((string)$row['lease_owner'],'cloud:github-actions:');
+                if (!$cloudRunning) throw new HubControlPlaneException('Task can no longer be stopped safely', 'TASK_NOT_CANCELLABLE');
+                if (!is_string($row['cancellation_requested_at']??null)) {
+                    $request=$this->pdo->prepare("UPDATE control_task_executions SET cancellation_requested_at=:at,updated_at=:at WHERE execution_id=:execution AND state='RUNNING' AND lease_owner=:owner AND cancellation_requested_at IS NULL");
+                    $request->execute(['at'=>$at,'execution'=>$row['execution_id'],'owner'=>$row['lease_owner']]);
+                    if ($request->rowCount() !== 1) throw new HubControlPlaneException('Task cancellation raced with Cloud execution', 'TASK_CANCEL_RACE');
+                    $eventId=$this->event($taskId,'RUNNING',(int)$task['progress'],'owner requested AWH Cloud cancellation',$at);
+                    $this->syncConversationEvent($taskId,$eventId,'RUNNING',(int)$task['progress'],'owner requested AWH Cloud cancellation','กำลังยกเลิกงานบน AWH Cloud ผลลัพธ์ที่มาถึงภายหลังจะไม่ถูกนำเข้า',$at);
+                }
+                $this->pdo->exec('COMMIT'); $transactionOpen=false;
+                return $this->taskById($taskId,(string)$session['user_id']);
+            }
             if (!in_array($state, ['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL'], true)) throw new HubControlPlaneException('Task can no longer be stopped safely', 'TASK_NOT_CANCELLABLE');
             $update = $this->pdo->prepare("UPDATE control_tasks SET state = 'CANCELLED', assigned_device_id = NULL, lease_expires_at = NULL, cancelled_at = :at, updated_at = :at WHERE task_id = :task AND user_id = :user AND state IN ('QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL')");
             $update->execute(['at' => $at, 'task' => $taskId, 'user' => $session['user_id']]);
