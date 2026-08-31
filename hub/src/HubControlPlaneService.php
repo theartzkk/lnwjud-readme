@@ -25,6 +25,7 @@ require_once __DIR__ . '/HubBackupService.php';
 require_once __DIR__ . '/HubInfrastructureService.php';
 require_once __DIR__ . '/HubAiGovernanceService.php';
 require_once __DIR__ . '/HubStaffOperationsService.php';
+require_once __DIR__ . '/HubThaiGovernmentDocumentService.php';
 
 final class HubControlPlaneException extends RuntimeException
 {
@@ -189,10 +190,12 @@ final class HubControlPlaneService
         $subject = self::portableText((string) ($payload['subject'] ?? ''), 'subject', 180);
         $details = self::documentText((string) ($payload['details'] ?? ''), 'details', 4000);
         $key = self::idempotency((string) ($payload['idempotencyKey'] ?? ''));
+        $at = self::timestamp($now ?? gmdate('c'));
         $goal = self::goal('จัดทำบันทึกข้อความขออนุมัติ: ' . $subject);
         $pipeline = self::schoolMemorandumPipeline();
-        $html = self::schoolMemorandumHtml($subject, $details);
-        return $this->createGeneratedArtifact($userId, $projectId, $goal, $key, 'school-document', 'บันทึกข้อความ-' . substr(hash('sha256', $subject), 0, 8) . '.html', 'text/html; charset=utf-8', $html, $pipeline, $now);
+        $fields = $this->schoolMemorandumFields($userId, $projectId, $subject, $details, $at);
+        $docx = HubThaiGovernmentDocumentService::memorandumDocx($fields);
+        return $this->createGeneratedArtifact($userId, $projectId, $goal, $key, 'school-document', 'บันทึกข้อความ-' . substr(hash('sha256', $subject), 0, 8) . '.docx', HubThaiGovernmentDocumentService::DOCX_MIME, $docx, $pipeline, $at);
     }
 
     /**
@@ -852,9 +855,12 @@ final class HubControlPlaneService
         $attachmentIds = $schema === 3 ? self::attachmentIds($payload['attachmentIds'] ?? null) : [];
         if ($schema === 3) $this->assertFinalReady();
         $at = self::timestamp($now ?? gmdate('c'));
-        if ($schema >= 2 && $attachmentIds === [] && self::isSchoolDocumentIntent($message)) {
+        if ($schema >= 2 && $attachmentIds === []) {
             $conversationId = self::uuid((string) ($payload['conversationId'] ?? ''));
-            return $this->submitSchoolDocumentConversation($userId, $projectId, $conversationId, $message, $idempotency, $at, $worker);
+            $artifactFormat = self::documentArtifactFollowUpFormat($message);
+            if ($artifactFormat === 'DOCX') return $this->submitSchoolDocumentDocxFollowUp($userId, $projectId, $conversationId, $message, $idempotency, $at, $worker);
+            if ($artifactFormat === 'PDF') return $this->submitOfficeArtifactPdfFollowUp($userId, $projectId, $conversationId, $message, $idempotency, $at, $worker);
+            if (self::isSchoolDocumentIntent($message)) return $this->submitSchoolDocumentConversation($userId, $projectId, $conversationId, $message, $idempotency, $at, $worker);
         }
         $transactionOpen = false;
         $nativeRequest = null;
@@ -1490,24 +1496,98 @@ final class HubControlPlaneService
         $subject = self::schoolDocumentSubject($message);
         $pipeline = self::schoolMemorandumPipeline();
         $goal = self::goal('จัดทำบันทึกข้อความ: ' . $subject);
-        $this->createGeneratedArtifact($userId, $projectId, $goal, 'conversation-' . $idempotency, 'school-document', 'บันทึกข้อความ-' . substr(hash('sha256', $subject), 0, 8) . '.html', 'text/html; charset=utf-8', self::schoolMemorandumHtml($subject, $message), $pipeline, $at, [
+        $fields = $this->schoolMemorandumFields($userId, $projectId, $subject, $message, $at);
+        $docx = HubThaiGovernmentDocumentService::memorandumDocx($fields);
+        $this->createGeneratedArtifact($userId, $projectId, $goal, 'conversation-' . $idempotency, 'school-document', 'บันทึกข้อความ-' . substr(hash('sha256', $subject), 0, 8) . '.docx', HubThaiGovernmentDocumentService::DOCX_MIME, $docx, $pipeline, $at, [
             'conversationId' => $conversationId,
             'message' => $message,
             'messageIdempotencyKey' => $idempotency,
-            'resultText' => 'สร้างบันทึกข้อความให้แล้ว และเก็บไฟล์ไว้ในคลังไฟล์ของ AWH พร้อมตรวจข้อมูลที่ยังต้องเติมก่อนเสนออนุมัติ',
+            'resultText' => 'สร้างไฟล์ Word แบบบันทึกข้อความราชการไทยให้แล้ว เปิดหรือดาวน์โหลดจากการ์ดไฟล์ด้านล่างได้ทันที',
         ]);
         return $this->conversationByIdForUser($userId, $conversationId, $worker);
     }
 
+    private function submitSchoolDocumentDocxFollowUp(string $userId, string $projectId, string $conversationId, string $message, string $idempotency, string $at, bool $worker): array
+    {
+        $conversation = $this->conversationRowForUser($userId, $conversationId);
+        if ((string)$conversation['project_id'] !== $projectId || (isset($conversation['archived_at']) && $conversation['archived_at'] !== null)) throw new HubControlPlaneException('Conversation is not available for this project', 'PROJECT_FORBIDDEN');
+        $artifact = $this->pdo->prepare("SELECT a.task_id,a.name FROM control_artifacts a JOIN control_tasks t ON t.task_id=a.task_id WHERE t.user_id=:user AND t.project_id=:project AND t.conversation_id=:conversation AND a.kind='school-document' AND lower(a.name) LIKE '%.docx' ORDER BY a.created_at DESC,a.artifact_id DESC LIMIT 1");
+        $artifact->execute(['user'=>$userId,'project'=>$projectId,'conversation'=>$conversationId]); $existingArtifact=$artifact->fetch();
+        if (is_array($existingArtifact)) {
+            $taskId=(string)$existingArtifact['task_id']; $resultKey='artifact-reuse-' . substr(hash('sha256',$idempotency),0,40);
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            try {
+                $existing=$this->pdo->prepare('SELECT 1 FROM control_conversation_messages WHERE conversation_id=:conversation AND idempotency_key=:key');
+                $existing->execute(['conversation'=>$conversationId,'key'=>$idempotency]);
+                if ($existing->fetchColumn() === false) $this->appendConversationMessage($conversationId,$taskId,'USER',$message,$at,$idempotency);
+                $existing->execute(['conversation'=>$conversationId,'key'=>$resultKey]);
+                if ($existing->fetchColumn() === false) $this->appendConversationMessage($conversationId,$taskId,'RESULT','ไฟล์ Word แบบราชการไทยมีอยู่แล้ว ผมนำไฟล์เดิมที่ตรวจแล้วกลับมาให้ด้านล่างโดยไม่สร้างสำเนาซ้ำ',$at,$resultKey);
+                $this->pdo->prepare('UPDATE control_conversations SET last_task_id=:task,updated_at=:at WHERE conversation_id=:conversation AND user_id=:user')->execute(['task'=>$taskId,'at'=>$at,'conversation'=>$conversationId,'user'=>$userId]);
+                $this->pdo->exec('COMMIT');
+            } catch (Throwable $error) { self::rollbackImmediate($this->pdo); throw $error; }
+            return $this->conversationByIdForUser($userId,$conversationId,$worker);
+        }
+        $q = $this->pdo->prepare("SELECT body FROM control_conversation_messages WHERE conversation_id=:conversation AND message_kind='USER' ORDER BY sequence_no DESC LIMIT 24");
+        $q->execute(['conversation'=>$conversationId]); $source = null;
+        foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $candidate) {
+            if (!is_string($candidate) || trim($candidate) === '' || self::documentArtifactFollowUpFormat($candidate) !== null) continue;
+            $source = trim($candidate); break;
+        }
+        if ($source === null) throw new HubControlPlaneException('ยังไม่มีเนื้อหาเอกสารก่อนหน้าให้สร้างเป็น Word', 'DOCUMENT_SOURCE_REQUIRED');
+        $subject = self::schoolDocumentSubject($source); $pipeline = self::schoolMemorandumPipeline();
+        $pipeline['requestedFormat'] = 'DOCX'; $pipeline['sourceContext'] = 'PREVIOUS_USER_TURN';
+        $fields = $this->schoolMemorandumFields($userId, $projectId, $subject, $source, $at);
+        $docx = HubThaiGovernmentDocumentService::memorandumDocx($fields);
+        $this->createGeneratedArtifact($userId, $projectId, self::goal('สร้างไฟล์ Word จากเอกสารก่อนหน้า: ' . $subject), 'conversation-' . $idempotency, 'school-document', 'บันทึกข้อความ-' . substr(hash('sha256', $subject), 0, 8) . '.docx', HubThaiGovernmentDocumentService::DOCX_MIME, $docx, $pipeline, $at, [
+            'conversationId'=>$conversationId, 'message'=>$message, 'messageIdempotencyKey'=>$idempotency,
+            'resultText'=>'สร้างไฟล์ Word แบบราชการไทยจากงานก่อนหน้าให้แล้ว เปิดหรือดาวน์โหลดจากการ์ดไฟล์ด้านล่างได้ทันที',
+        ]);
+        return $this->conversationByIdForUser($userId, $conversationId, $worker);
+    }
+
+    private function submitOfficeArtifactPdfFollowUp(string $userId, string $projectId, string $conversationId, string $message, string $idempotency, string $at, bool $worker): array
+    {
+        $conversation = $this->conversationRowForUser($userId, $conversationId);
+        if ((string)$conversation['project_id'] !== $projectId || (isset($conversation['archived_at']) && $conversation['archived_at'] !== null)) throw new HubControlPlaneException('Conversation is not available for this project', 'PROJECT_FORBIDDEN');
+        if (!$this->centralProjectAuthoritySchemaPresent()) throw new HubControlPlaneException('Document conversion is not available yet', 'CAPABILITY_UNAVAILABLE');
+        $existing = $this->pdo->prepare('SELECT task_id FROM control_tasks WHERE user_id=:user AND idempotency_key=:key LIMIT 1');
+        $existing->execute(['user'=>$userId,'key'=>'conversation-' . $idempotency]);
+        if (is_string($existing->fetchColumn())) return $this->conversationByIdForUser($userId,$conversationId,$worker);
+        $q = $this->pdo->prepare("SELECT a.artifact_id,a.name,o.mime_type FROM control_artifacts a JOIN control_artifact_objects o ON o.artifact_id=a.artifact_id AND o.deleted_at IS NULL JOIN control_tasks t ON t.task_id=a.task_id WHERE t.user_id=:user AND t.project_id=:project AND t.conversation_id=:conversation AND lower(a.name) GLOB '*.[dD][oO][cC][xX]' ORDER BY a.created_at DESC,a.artifact_id DESC LIMIT 1");
+        $q->execute(['user'=>$userId,'project'=>$projectId,'conversation'=>$conversationId]); $artifact=$q->fetch();
+        if (!is_array($artifact)) throw new HubControlPlaneException('ยังไม่มีไฟล์ Word ก่อนหน้าให้ทำเป็น PDF', 'DOCUMENT_SOURCE_REQUIRED');
+        $taskId=self::uuidFromBytes(random_bytes(16)); $taskKey='conversation-' . $idempotency; $goal=self::goal('ทำ ' . (string)$artifact['name'] . ' เป็น PDF');
+        try {
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $this->pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,:goal,'WAITING_FOR_WORKER',NULL,NULL,0,NULL,NULL,:key,:conversation,:at,:at,NULL)")->execute(['task'=>$taskId,'user'=>$userId,'project'=>$projectId,'goal'=>$goal,'key'=>$taskKey,'conversation'=>$conversationId,'at'=>$at]);
+            $this->appendConversationMessage($conversationId,$taskId,'USER',$message,$at,$idempotency);
+            $this->execution->enqueue($taskId,$projectId,null,'DEVICE','office.word.pdf',['mode'=>'OFFICE_TO_PDF','artifactId'=>(string)$artifact['artifact_id']],$at);
+            $this->event($taskId,'WAITING_FOR_WORKER',0,'waiting for Office PDF capability using existing artifact',$at);
+            $this->pdo->prepare('UPDATE control_conversations SET last_task_id=:task,updated_at=:at WHERE conversation_id=:conversation AND user_id=:user')->execute(['task'=>$taskId,'at'=>$at,'conversation'=>$conversationId,'user'=>$userId]);
+            $this->pdo->exec('COMMIT');
+        } catch (Throwable $error) { self::rollbackImmediate($this->pdo); if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Document conversion could not be queued', 'TASK_CREATE_FAILED'); }
+        return $this->conversationByIdForUser($userId,$conversationId,$worker);
+    }
+
+    private static function documentArtifactFollowUpFormat(string $message): ?string
+    {
+        $value = trim($message);
+        if (preg_match('/(?:(?:ขอ|เอา|ทำ|แปลง|เปลี่ยน|ส่งออก|export|convert)[^\n]{0,36}(?:docx|word|เวิร์ด)|(?:docx|word|เวิร์ด)[^\n]{0,24}(?:ให้|หน่อย|ที|please))/iu', $value) === 1) return 'DOCX';
+        if (preg_match('/(?:(?:ขอ|เอา|ทำ|แปลง|เปลี่ยน|ส่งออก|export|convert)[^\n]{0,36}(?:pdf)|(?:pdf)[^\n]{0,24}(?:ให้|หน่อย|ที|please))/iu', $value) === 1) return 'PDF';
+        return null;
+    }
+
     private static function isSchoolDocumentIntent(string $message): bool
     {
-        return preg_match('/(?:^|\s)(?:ช่วย\s*)?(?:สร้าง|ทำ|เขียน|จัดทำ)\s*(?:เอกสาร\s*)?บันทึกข้อความ(?:\s|$|ขอ|เรื่อง)/u', trim($message)) === 1;
+        $value = trim($message);
+        if (preg_match('/(?:^|\s)(?:ช่วย\s*)?(?:สร้าง|ทำ|เขียน|จัดทำ)\s*(?:เอกสาร\s*)?บันทึกข้อความ(?:\s|$|ขอ|เรื่อง)/u', $value) === 1) return true;
+        return preg_match('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)*(?:สร้าง|ทำ|เขียน|จัดทำ)\s*(?:เอกสาร|หนังสือราชการ|หนังสือ)?\s*(?:ขออนุมัติ|ขอเบิก|ขอไปราชการ|ขอเดินทางไปราชการ)/u', $value) === 1;
     }
 
     private static function schoolDocumentSubject(string $message): string
     {
         $value = trim($message);
-        $value = preg_replace('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)*(?:สร้าง|ทำ|เขียน|จัดทำ)\s*(?:เอกสาร\s*)?บันทึกข้อความ\s*/u', '', $value) ?? $value;
+        $value = preg_replace('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)*(?:สร้าง|ทำ|เขียน|จัดทำ)\s*(?:(?:เอกสาร|หนังสือราชการ|หนังสือ)\s*)?(?:บันทึกข้อความ\s*)?/u', '', $value) ?? $value;
         $value = preg_replace('/^เรื่อง\s*/u', '', $value) ?? $value;
         if ($value === '') $value = 'ตามคำขอใน AWH';
         return self::portableText($value, 'subject', 180);
@@ -1516,16 +1596,38 @@ final class HubControlPlaneService
     /** @return array<string,mixed> */
     private static function schoolMemorandumPipeline(): array
     {
-        return [
-            'mode' => 'SCHOOL_DOCUMENT_MEMORANDUM',
-            'classification' => 'MEMORANDUM_REQUEST',
-            'templateId' => 'school-memorandum-v1',
+        return HubThaiGovernmentDocumentService::memorandumPipeline() + [
             'knowledgePack' => 'school-knowledge-pack-th-v1',
-            'validation' => 'PASS_WITH_COMPLETION_FIELDS',
-            'render' => 'PRINTABLE_HTML',
-            'requiredCapability' => 'artifact.object',
-            'phases' => ['classify', 'template-rules', 'knowledge-pack', 'draft', 'validate', 'render', 'artifact'],
+            'render' => 'DOCX_OOXML',
+            'phases' => ['classify', 'official-template-rules', 'knowledge-pack', 'draft-first', 'validate', 'render-docx', 'artifact'],
         ];
+    }
+
+    /** @return array<string,string> */
+    private function schoolMemorandumFields(string $userId, string $projectId, string $subject, string $details, string $at): array
+    {
+        $organization = null;
+        try {
+            $context = $this->memory->promptContext($userId, $this->isOwnerUser($userId), $projectId, 'โรงเรียน หน่วยงาน ส่วนราชการ school organization');
+            foreach (is_array($context['records'] ?? null) ? $context['records'] : [] as $record) {
+                $content = is_array($record) ? (string)($record['content'] ?? '') : '';
+                if (preg_match('/โรงเรียน[ก-๙A-Za-z0-9._-]{3,80}/u', $content, $match) === 1) { $organization = $match[0]; break; }
+            }
+        } catch (Throwable) {}
+        if ($organization === null) {
+            $q = $this->pdo->prepare('SELECT name,type FROM projects WHERE project_id=:project'); $q->execute(['project'=>$projectId]); $project=$q->fetch();
+            if (is_array($project) && preg_match('/school|โรงเรียน/iu', (string)($project['type'] ?? '') . ' ' . (string)($project['name'] ?? '')) === 1) $organization = (string)$project['name'];
+        }
+        $recipient = $organization !== null && preg_match('/^(?:โรงเรียน)/u', $organization) === 1 && preg_match('/(?:ขออนุมัติ|ขอเบิก|ไปราชการ|เดินทางไปราชการ)/u', $subject) === 1 ? 'ผู้อำนวยการ' . $organization : null;
+        return ['organization'=>$organization ?? '', 'referenceNo'=>'', 'date'=>self::thaiOfficialDate($at), 'subject'=>$subject, 'recipient'=>$recipient ?? '', 'body'=>$details, 'signerName'=>'', 'signerPosition'=>''];
+    }
+
+    private static function thaiOfficialDate(string $at): string
+    {
+        try { $date = (new DateTimeImmutable($at))->setTimezone(new DateTimeZone('Asia/Bangkok')); }
+        catch (Throwable) { $date = new DateTimeImmutable('now', new DateTimeZone('Asia/Bangkok')); }
+        $months = [1=>'มกราคม',2=>'กุมภาพันธ์',3=>'มีนาคม',4=>'เมษายน',5=>'พฤษภาคม',6=>'มิถุนายน',7=>'กรกฎาคม',8=>'สิงหาคม',9=>'กันยายน',10=>'ตุลาคม',11=>'พฤศจิกายน',12=>'ธันวาคม'];
+        return (int)$date->format('j') . ' ' . $months[(int)$date->format('n')] . ' ' . ((int)$date->format('Y') + 543);
     }
 
     private static function documentText(string $value, string $field, int $max): string
@@ -1538,12 +1640,6 @@ final class HubControlPlaneService
     private static function html(string $value): string
     {
         return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    }
-
-    private static function schoolMemorandumHtml(string $subject, string $details): string
-    {
-        $subjectHtml = self::html($subject); $detailsHtml = nl2br(self::html($details), false);
-        return '<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>บันทึกข้อความ - ' . $subjectHtml . '</title><style>body{font-family:Arial,"Noto Sans Thai",sans-serif;max-width:820px;margin:40px auto;padding:0 36px;color:#1d2329;line-height:1.75}h1{text-align:center;font-size:26px;margin:0 0 28px}table{width:100%;border-collapse:collapse;margin-bottom:24px}td{padding:7px 0;vertical-align:top}td:first-child{width:100px;font-weight:700}.body{white-space:normal;margin:20px 0}.unknown{margin-top:30px;padding:16px;border:1px solid #d97706;background:#fff7ed;border-radius:8px}.sign{margin:42px 0 0 58%;text-align:center}.meta{margin-top:36px;color:#68737d;font-size:12px}@media print{body{margin:0 auto;padding:0 12mm}.unknown{break-inside:avoid}}</style></head><body><h1>บันทึกข้อความ</h1><table><tr><td>ส่วนราชการ</td><td>โรงเรียน / หน่วยงาน (กรอกตาม School Knowledge Pack)</td></tr><tr><td>ที่</td><td>ยังไม่ได้ระบุ</td></tr><tr><td>วันที่</td><td>ยังไม่ได้ระบุ</td></tr></table><p><strong>เรื่อง</strong> ' . $subjectHtml . '</p><p><strong>เรียน</strong> ผู้มีอำนาจอนุมัติ</p><div class="body">' . $detailsHtml . '</div><p>จึงเรียนมาเพื่อโปรดพิจารณาอนุมัติ</p><div class="sign">ลงชื่อ ................................................<br>ผู้เสนอเรื่อง (ยังไม่ได้ระบุ)</div><div class="unknown"><strong>ตรวจแล้ว: ต้องเติมข้อมูลก่อนพิมพ์/เสนออนุมัติ</strong><br>เลขที่หนังสือ · วันที่ · จำนวนเงิน/รายละเอียดงบประมาณ (ถ้ามี) · ชื่อและตำแหน่งผู้ลงนาม</div><div class="meta">AWH School Document AI · template school-memorandum-v1 · knowledge pack school-knowledge-pack-th-v1 · validation PASS_WITH_COMPLETION_FIELDS</div></body></html>';
     }
 
     /** @param list<array{key:string,state:string}> $phases */
@@ -1588,7 +1684,12 @@ final class HubControlPlaneService
     public function workerOfficeExecutionInput(string $token, string $deviceId, string $executionId, ?string $now = null): array
     {
         $row = $this->ownedOfficeExecution($token, $deviceId, $executionId, $now);
-        try { $path = $this->attachments->read((string) $row['storage_key']); } catch (HubAttachmentStoreException $error) { throw new HubControlPlaneException('Office input is unavailable', $error->codeName); }
+        if (($row['input_store'] ?? 'attachment') === 'artifact') {
+            $store = $this->artifactStore; if ($store === null) throw new HubControlPlaneException('Office input is unavailable', 'ARTIFACT_STORAGE_UNAVAILABLE');
+            try { $path = $store->read((string) $row['storage_key']); } catch (HubArtifactStoreException $error) { throw new HubControlPlaneException('Office input is unavailable', $error->codeName); }
+        } else {
+            try { $path = $this->attachments->read((string) $row['storage_key']); } catch (HubAttachmentStoreException $error) { throw new HubControlPlaneException('Office input is unavailable', $error->codeName); }
+        }
         return ['name' => (string) $row['input_name'], 'mimeType' => (string) $row['input_mime'], 'sizeBytes' => (int) $row['input_size'], 'path' => $path];
     }
 
@@ -1704,15 +1805,25 @@ final class HubControlPlaneService
         $row = $this->ownedLeasedSpecialistExecution($token, $deviceId, $executionId, $now);
         if ((string) $row['executor_kind'] !== 'DEVICE' || preg_match('/^office\.(?:word|excel|powerpoint)\.pdf$/', (string) $row['required_capability']) !== 1) throw new HubControlPlaneException('Office task is not assigned to this worker', 'TASK_FORBIDDEN');
         try { $checkpoint = json_decode((string) $row['checkpoint_json'], true, 16, JSON_THROW_ON_ERROR); } catch (Throwable) { throw new HubControlPlaneException('Office task checkpoint is invalid', 'TASK_FORBIDDEN'); }
-        if (!is_array($checkpoint) || ($checkpoint['mode'] ?? null) !== 'OFFICE_TO_PDF' || !is_string($checkpoint['attachmentId'] ?? null) || preg_match(self::UUID, (string) $checkpoint['attachmentId']) !== 1) throw new HubControlPlaneException('Office task checkpoint is invalid', 'TASK_FORBIDDEN');
-        $attachmentId = strtolower((string) $checkpoint['attachmentId']);
-        $q = $this->pdo->prepare('SELECT display_name, mime_type, size_bytes, storage_key FROM control_conversation_attachments WHERE attachment_id = :attachment AND project_id = :project AND uploaded_by_user_id = :user AND deleted_at IS NULL');
-        $q->execute(['attachment' => $attachmentId, 'project' => $row['project_id'], 'user' => $row['user_id']]); $attachment = $q->fetch();
-        if (!is_array($attachment)) throw new HubControlPlaneException('Office input is unavailable', 'ATTACHMENT_NOT_FOUND');
-        $extension = strtolower((string) pathinfo((string) $attachment['display_name'], PATHINFO_EXTENSION));
+        if (!is_array($checkpoint) || ($checkpoint['mode'] ?? null) !== 'OFFICE_TO_PDF') throw new HubControlPlaneException('Office task checkpoint is invalid', 'TASK_FORBIDDEN');
+        $attachmentId = is_string($checkpoint['attachmentId'] ?? null) ? strtolower((string)$checkpoint['attachmentId']) : null;
+        $artifactId = is_string($checkpoint['artifactId'] ?? null) ? strtolower((string)$checkpoint['artifactId']) : null;
+        if (($attachmentId === null) === ($artifactId === null)) throw new HubControlPlaneException('Office task checkpoint is invalid', 'TASK_FORBIDDEN');
+        if ($attachmentId !== null) {
+            if (preg_match(self::UUID, $attachmentId) !== 1) throw new HubControlPlaneException('Office task checkpoint is invalid', 'TASK_FORBIDDEN');
+            $q = $this->pdo->prepare('SELECT display_name AS input_name,mime_type AS input_mime,size_bytes AS input_size,storage_key FROM control_conversation_attachments WHERE attachment_id=:attachment AND project_id=:project AND uploaded_by_user_id=:user AND deleted_at IS NULL');
+            $q->execute(['attachment'=>$attachmentId,'project'=>$row['project_id'],'user'=>$row['user_id']]); $input=$q->fetch(); $storeKind='attachment';
+            if (!is_array($input)) throw new HubControlPlaneException('Office input is unavailable', 'ATTACHMENT_NOT_FOUND');
+        } else {
+            if (preg_match(self::UUID, (string)$artifactId) !== 1) throw new HubControlPlaneException('Office task checkpoint is invalid', 'TASK_FORBIDDEN');
+            $q = $this->pdo->prepare('SELECT a.name AS input_name,o.mime_type AS input_mime,a.size_bytes AS input_size,o.storage_key FROM control_artifacts a JOIN control_artifact_objects o ON o.artifact_id=a.artifact_id AND o.deleted_at IS NULL JOIN control_tasks t ON t.task_id=a.task_id WHERE a.artifact_id=:artifact AND a.project_id=:project AND t.user_id=:user');
+            $q->execute(['artifact'=>$artifactId,'project'=>$row['project_id'],'user'=>$row['user_id']]); $input=$q->fetch(); $storeKind='artifact';
+            if (!is_array($input)) throw new HubControlPlaneException('Office input is unavailable', 'ARTIFACT_NOT_FOUND');
+        }
+        $extension = strtolower((string) pathinfo((string) $input['input_name'], PATHINFO_EXTENSION));
         $expected = match ($extension) { 'doc', 'docx' => 'office.word.pdf', 'xls', 'xlsx' => 'office.excel.pdf', 'ppt', 'pptx' => 'office.powerpoint.pdf', default => null };
         if ($expected === null || $expected !== (string) $row['required_capability']) throw new HubControlPlaneException('Office input does not match the leased capability', 'TASK_FORBIDDEN');
-        return $row + ['input_name' => (string) $attachment['display_name'], 'input_mime' => (string) $attachment['mime_type'], 'input_size' => (int) $attachment['size_bytes'], 'storage_key' => (string) $attachment['storage_key']];
+        return $row + ['input_name'=>(string)$input['input_name'],'input_mime'=>(string)$input['input_mime'],'input_size'=>(int)$input['input_size'],'storage_key'=>(string)$input['storage_key'],'input_store'=>$storeKind];
     }
 
     /** @return array<string,mixed> */

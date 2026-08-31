@@ -16,6 +16,7 @@ const project = { projectId: '11111111-1111-4111-8111-111111111111', name: 'โ�
 const csrf = 'fixturecsrffixturecsrffixturecsrffixture';
 const conversations = [];
 const attachments = [];
+const artifacts = [];
 const tasks = [];
 const fixtureResetToken = 'a'.repeat(43);
 let fixtureResetUsed = false;
@@ -29,11 +30,12 @@ function session(request) { return /(?:^|;\s*)awh_fixture_session=1(?:;|$)/.test
 function jsonRequest(request) { return String(request.headers['content-type'] ?? '').toLowerCase().startsWith('application/json'); }
 function requireCsrf(request, response) { if (request.headers['x-awh-csrf'] !== csrf) { send(response, 403, { code: 'CSRF_REJECTED' }); return false; } return true; }
 function summary(conversation) { return { conversationId: conversation.conversationId, projectId: project.projectId, title: conversation.title, archivedAt: null, origin: 'native', createdAt: conversation.createdAt, updatedAt: conversation.updatedAt, lastTaskId: conversation.lastTaskId }; }
-function thread(conversation) { return { schemaVersion: 3, conversation: summary(conversation), messages: conversation.messages, tasks: tasks.filter((task) => task.conversationId === conversation.conversationId), artifacts: [], attachments: attachments.filter((attachment) => attachment.conversationId === conversation.conversationId), approvals: [] }; }
+function thread(conversation) { return { schemaVersion: 3, conversation: summary(conversation), messages: conversation.messages, tasks: tasks.filter((task) => task.conversationId === conversation.conversationId), artifacts: artifacts.filter((artifact) => artifact.conversationId === conversation.conversationId), attachments: attachments.filter((attachment) => attachment.conversationId === conversation.conversationId), approvals: [] }; }
 function attachmentId() { return uuid('33333333-3333-4333-8333'); }
 function conversationId() { return uuid('22222222-2222-4222-8222'); }
 function messageId() { return uuid('44444444-4444-4444-8444'); }
 function taskId() { return uuid('55555555-5555-4555-8555'); }
+function artifactId() { return uuid('88888888-8888-4888-8888'); }
 
 async function rawBody(request, maximum = 60 * 1024 * 1024) {
   const chunks = []; let bytes = 0;
@@ -94,8 +96,8 @@ const server = createServer(async (request, response) => {
     if (url.pathname === '/api/v1/control/projects') return send(response, 200, { projects: [project] });
     if (url.pathname === '/api/v1/control/tasks') return send(response, 200, { tasks });
     if (url.pathname === '/api/v1/control/workers') return send(response, 200, { workers: [{ deviceId: '66666666-6666-4666-8666-666666666666', displayName: 'AWH Desktop ตัวอย่าง', platform: 'darwin', arch: 'arm64', state: 'READY', lastSeenAt: now, boundProjectCount: 1, capabilities: ['project:context'] }] });
-    if (url.pathname === '/api/v1/control/results') return send(response, 200, { results: [] });
-    if (url.pathname === '/api/v1/control/artifacts') return send(response, 200, { artifacts: [] });
+    if (url.pathname === '/api/v1/control/results') return send(response, 200, { results: tasks.filter((task) => task.state === 'COMPLETED') });
+    if (url.pathname === '/api/v1/control/artifacts') return send(response, 200, { artifacts });
     if (url.pathname === '/api/v1/control/approvals') return send(response, 200, { approvals: [] });
     if (url.pathname === '/api/v1/control/settings' && request.method === 'GET') return send(response, 200, { settings: { productName: { value: 'Art’s Workspace Hub' }, shortName: { value: 'AWH' }, tagline: { value: 'Your Projects. One Workspace. Anywhere.' }, welcome: { value: 'เริ่มคุยกับ Art’s Workspace Hub ได้เลย' }, accent: { value: '#ff8a36' }, founderName: { value: 'Art' }, founderCredit: { value: 'Founder · Product Creator · System Concept' } } });
     if (url.pathname === '/api/v1/control/provider' && request.method === 'GET') return send(response, 200, { schemaVersion: 3, provider: { enabled: false, available: false, keyConfigured: false, credential: { lastTestStatus: 'NOT_TESTED' }, budget: { usedMicrounits: 0, monthlyMicrounits: 0, remainingMicrounits: 0, warningMicrounits: 0 }, rates: { inputMicrounitsPerMillion: 0, outputMicrounitsPerMillion: 0 }, models: { fast: 'gpt-5.6-luna', balanced: 'gpt-5.6-terra', strong: 'gpt-5.6-sol' }, usageByProject: [] } });
@@ -132,9 +134,17 @@ const server = createServer(async (request, response) => {
       if (!conversation || value.schemaVersion !== 3 || value.projectId !== project.projectId || typeof value.message !== 'string' || !value.message.trim() || !Array.isArray(value.attachmentIds)) return send(response, 400, { code: 'PAYLOAD_INVALID' });
       const user = message(conversation, 'user', value.message.trim());
       for (const attachment of attachments) if (value.attachmentIds.includes(attachment.attachmentId) && attachment.conversationId === conversation.conversationId && attachment.messageId === null) attachment.messageId = user.messageId;
-      const task = { taskId: taskId(), projectId: project.projectId, conversationId: conversation.conversationId, goal: value.message.trim(), state: 'WAITING_FOR_WORKER', createdAt: now, updatedAt: now, lastEvent: { message: 'AWH บันทึกงานแล้ว และกำลังรออุปกรณ์ทำงาน' } }; tasks.unshift(task); conversation.lastTaskId = task.taskId; conversation.updatedAt = now; message(conversation, 'progress', 'กำลังรออุปกรณ์ทำงาน…', task);
+      const documentOutcome = /(?:บันทึกข้อความ|docx|word|เวิร์ด)/iu.test(value.message);
+      const task = { taskId: taskId(), projectId: project.projectId, conversationId: conversation.conversationId, goal: value.message.trim(), state: documentOutcome ? 'COMPLETED' : 'WAITING_FOR_WORKER', progress: documentOutcome ? 100 : 0, createdAt: now, updatedAt: now, lastEvent: { message: documentOutcome ? 'สร้างไฟล์ Word แบบราชการไทยเรียบร้อย' : 'AWH บันทึกงานแล้ว และกำลังรออุปกรณ์ทำงาน' } };
+      tasks.unshift(task); conversation.lastTaskId = task.taskId; conversation.updatedAt = now;
+      if (documentOutcome) {
+        const artifact = { artifactId: artifactId(), taskId: task.taskId, projectId: project.projectId, conversationId: conversation.conversationId, kind: 'school-document', name: 'บันทึกข้อความ-ตัวอย่าง.docx', sizeBytes: 37778, createdAt: now };
+        artifact.downloadUrl = `/api/v1/control/artifacts/${artifact.artifactId}/download`; artifacts.unshift(artifact); message(conversation, 'result', 'สร้างไฟล์ Word แบบบันทึกข้อความราชการไทยให้แล้ว เปิดหรือดาวน์โหลดจากการ์ดไฟล์ด้านล่างได้ทันที', task);
+      } else message(conversation, 'progress', 'กำลังรออุปกรณ์ทำงาน…', task);
       return send(response, 201, thread(conversation));
     }
+    const artifactDownloadMatch = /^\/api\/v1\/control\/artifacts\/([0-9a-f-]{36})\/download$/i.exec(url.pathname);
+    if (artifactDownloadMatch) { const artifact = artifacts.find((item) => item.artifactId === artifactDownloadMatch[1]); if (!artifact) return send(response, 404, { code: 'NOT_FOUND' }); response.writeHead(200, { 'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'Content-Disposition': `attachment; filename="${artifact.name}"`, 'Cache-Control': 'private, no-store' }); return response.end('PKfixture-docx'); }
     const downloadMatch = /^\/api\/v1\/control\/attachments\/([0-9a-f-]{36})\/download$/i.exec(url.pathname);
     if (downloadMatch) { const attachment = attachments.find((item) => item.attachmentId === downloadMatch[1]); if (!attachment) return send(response, 404, { code: 'NOT_FOUND' }); response.writeHead(200, { 'Content-Type': attachment.mimeType, 'Content-Disposition': `attachment; filename="${attachment.name}"`, 'Cache-Control': 'private, no-store' }); return response.end('fixture attachment'); }
     const contextMatch = /^\/api\/v1\/control\/contexts\/([0-9a-f-]{36})$/i.exec(url.pathname);

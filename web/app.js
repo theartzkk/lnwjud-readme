@@ -75,6 +75,49 @@ import {
     return list;
   }
 
+  function artifactUrl(artifact) {
+    const value = typeof artifact?.downloadUrl === 'string' ? artifact.downloadUrl : '';
+    return /^\/api\/v1\/control\/artifacts\/[0-9a-f-]{36}\/download$/i.test(value) ? value : null;
+  }
+  function suggestWork(prompt, submit = false) {
+    const input = $('goal-input'); if (!(input instanceof HTMLTextAreaElement)) return;
+    input.value = prompt; input.dispatchEvent(new Event('input', { bubbles: true })); input.focus();
+    if (submit && $('goal-form')?.requestSubmit) $('goal-form').requestSubmit();
+  }
+  function renderArtifactCard(artifact) {
+    const card = document.createElement('article'); card.className = 'result-file-card';
+    const icon = document.createElement('span'); icon.className = 'result-file-icon';
+    const name = String(artifact?.name || 'ไฟล์ผลลัพธ์'); const extension = name.includes('.') ? name.split('.').pop().toUpperCase() : 'FILE';
+    icon.textContent = extension === 'DOCX' ? 'W' : extension === 'PDF' ? 'PDF' : '▤';
+    const copy = document.createElement('span'); copy.className = 'result-file-copy';
+    const title = document.createElement('strong'); title.textContent = name;
+    const meta = document.createElement('small'); meta.textContent = [extension, Number.isFinite(artifact?.sizeBytes) ? size(artifact.sizeBytes) : '', 'พร้อมใช้'].filter(Boolean).join(' · ');
+    copy.append(title, meta); card.append(icon, copy);
+    const url = artifactUrl(artifact);
+    if (url) {
+      const actions = document.createElement('span'); actions.className = 'result-file-actions';
+      const open = document.createElement('a'); open.href = url; open.target = '_blank'; open.rel = 'noopener'; open.textContent = 'เปิด';
+      const download = document.createElement('a'); download.href = url; download.setAttribute('download', name); download.textContent = 'ดาวน์โหลด';
+      actions.append(open, download);
+      if (extension === 'DOCX') {
+        const pdf = document.createElement('button'); pdf.type = 'button'; pdf.textContent = 'ทำ PDF'; pdf.addEventListener('click', () => suggestWork('ทำไฟล์นี้เป็น PDF', true)); actions.append(pdf);
+        }
+      card.append(actions);
+    }
+    return card;
+  }
+  function localProgressLabel(goal) {
+    const value = String(goal || '');
+    if (/(?:docx|word|เวิร์ด)/iu.test(value)) return 'AWH · กำลังเตรียมไฟล์ Word…';
+    if (/(?:บันทึกข้อความ|หนังสือราชการ|ขออนุมัติ|ขอเบิก|ไปราชการ)/u.test(value)) return 'AWH · กำลังจัดทำเอกสารราชการ…';
+    if (/pdf/iu.test(value)) return 'AWH · กำลังจัดการ PDF…';
+    return 'AWH · กำลังจัดการงาน…';
+  }
+  function resizeGoalInput() {
+    const input = $('goal-input'); if (!(input instanceof HTMLTextAreaElement)) return;
+    input.style.height = 'auto'; input.style.height = `${Math.min(140, Math.max(52, input.scrollHeight))}px`;
+  }
+
   function renderInspectionEvidence(artifact) {
     const details = document.createElement('details'); details.className = 'inspection-evidence';
     const heading = document.createElement('summary'); heading.textContent = '↳ ดูหลักฐานที่ AWH ใช้วิเคราะห์'; details.append(heading);
@@ -488,6 +531,8 @@ import {
 
   function renderExecutionJourney(task) {
     const status = taskExecutionStatus(task);
+    const details = document.createElement('details'); details.className = 'execution-details';
+    const summary = document.createElement('summary'); summary.textContent = 'ดูขั้นตอน';
     const list = document.createElement('ol'); list.className = 'execution-journey';
     for (const step of status.journey) {
       const item = document.createElement('li'); item.className = `execution-step ${step.state}`;
@@ -495,7 +540,7 @@ import {
       const label = document.createElement('span'); label.textContent = step.label;
       item.append(dot, label); list.append(item);
     }
-    return list;
+    details.append(summary, list); return details;
   }
 
   function renderThread(conversation, approvals) {
@@ -531,18 +576,20 @@ import {
       if (turn.kind === 'progress') {
         if (String(turn.messageId || '').startsWith('local-progress-')) {
           const typing = document.createElement('li'); typing.className = 'task-turn assistant-turn typing-turn';
-          const text = document.createElement('p'); text.className = 'typing-indicator'; text.textContent = 'AWH · กำลังตอบ'; typing.append(text); thread.append(typing);
+          const text = document.createElement('p'); text.className = 'typing-indicator'; text.textContent = turn.body || 'AWH · กำลังจัดการงาน…'; typing.append(text); thread.append(typing);
         }
         continue;
       }
       if (turn.kind === 'assistant' && /(?:เครื่องมือที่เหมาะสม|เตรียมบริบทของโปรเจกต์|เก็บคำขอนี้ไว้แล้ว)/u.test(turn.body || '')) continue;
       const task = taskForTurn(turn);
-      const row = document.createElement('li'); row.className = `task-turn ${turn.kind === 'user' ? 'user-turn' : 'assistant-turn'}`;
+      const row = document.createElement('li'); row.className = `task-turn ${turn.kind === 'user' ? 'user-turn' : 'assistant-turn'} ${turn.kind}-turn`;
       const body = document.createElement('p'); body.className = turn.kind === 'user' ? 'task-goal' : 'task-summary'; body.textContent = turn.body;
       if (turn.kind === 'user') {
         row.append(body); const attachments = renderMessageAttachments(attachmentsByMessage.get(turn.messageId)); if (attachments) row.append(attachments);
-        if (task) {
-          const status = document.createElement('div'); status.className = 'task-response user-task-status';
+        thread.append(row);
+        if (task && task.state !== 'COMPLETED') {
+          const statusTurn = document.createElement('li'); statusTurn.className = 'task-turn assistant-turn status-turn';
+          const status = document.createElement('div'); status.className = 'task-response active-task-response';
           const meta = document.createElement('div'); meta.className = 'task-meta';
           const chip = document.createElement('span'); chip.className = `state-chip ${stateClass(task)}`.trim(); chip.textContent = stateText(task);
           const time = document.createElement('span'); time.textContent = date(task.updatedAt || task.createdAt); meta.append(chip, time); status.append(meta);
@@ -551,14 +598,15 @@ import {
             if (Number.isInteger(task.progress) && task.progress > 0) { const bar = document.createElement('progress'); bar.max = 100; bar.value = task.progress; bar.setAttribute('aria-label', progressText(task)); progressRow.append(bar); }
             const text = document.createElement('span'); text.textContent = progressText(task); progressRow.append(text); status.append(progressRow, renderExecutionJourney(task));
           }
-          row.append(status);
+          statusTurn.append(status); thread.append(statusTurn);
         }
-        thread.append(row); continue;
+        continue;
       }
       const response = document.createElement('div'); response.className = 'task-response';
+      const artifacts = task ? (artifactsByTask.get(task.taskId) || []) : [];
       const meta = document.createElement('div'); meta.className = 'task-meta';
       const chip = document.createElement('span'); chip.className = `state-chip ${stateClass(task)}`.trim();
-      chip.textContent = turn.kind === 'approval' ? 'ต้องอนุมัติ' : turn.kind === 'result' ? 'เสร็จแล้ว' : turn.kind === 'failure' ? 'ต้องตรวจสอบ' : task ? stateText(task) : 'AWH';
+      chip.textContent = turn.kind === 'approval' ? 'ต้องอนุมัติ' : turn.kind === 'result' && artifacts.length ? 'ไฟล์พร้อมใช้' : turn.kind === 'result' ? 'เสร็จแล้ว' : turn.kind === 'failure' ? 'ต้องตรวจสอบ' : task ? stateText(task) : 'AWH';
       const time = document.createElement('span'); time.textContent = date(turn.createdAt);
       meta.append(chip, time); response.append(meta, body);
       if (task && !['COMPLETED','FAILED','CANCELLED'].includes(task.state)) {
@@ -568,8 +616,7 @@ import {
       }
       if (task) {
         const actions = renderApproval(task, approvals) || renderCancellation(task); if (actions) response.append(actions);
-        const artifacts = artifactsByTask.get(task.taskId) || [];
-        if (artifacts.length) { const list = document.createElement('ul'); list.className = 'artifact-links'; for (const artifact of artifacts) { const item = document.createElement('li'); if (artifact.kind === 'project-inspection' && typeof artifact.downloadUrl === 'string' && /^\/api\/v1\/control\/artifacts\/[0-9a-f-]{36}\/download$/i.test(artifact.downloadUrl)) { item.append(renderInspectionEvidence(artifact)); } else if (typeof artifact.downloadUrl === 'string' && /^\/api\/v1\/control\/artifacts\/[0-9a-f-]{36}\/download$/i.test(artifact.downloadUrl)) { const link = document.createElement('a'); link.href = artifact.downloadUrl; link.textContent = `↳ ดาวน์โหลด ${artifact.name || 'ไฟล์ผลลัพธ์'}`; item.append(link); } else item.textContent = `↳ ${artifact.name || 'ไฟล์ผลลัพธ์'}`; list.append(item); } response.append(list); }
+        if (artifacts.length) { const list = document.createElement('div'); list.className = 'artifact-results'; for (const artifact of artifacts) { if (artifact.kind === 'project-inspection' && artifactUrl(artifact)) list.append(renderInspectionEvidence(artifact)); else list.append(renderArtifactCard(artifact)); } response.append(list); }
       }
       row.append(response); thread.append(row);
     }
@@ -743,6 +790,7 @@ import {
     $('goal-input')?.focus();
   });
 
+  $('goal-input').addEventListener('input', resizeGoalInput); resizeGoalInput();
   $('attachment-open').addEventListener('click', () => { if (!$('attachment-input').disabled) $('attachment-input').click(); });
   $('attachment-input').addEventListener('change', () => {
     const incoming = Array.from($('attachment-input').files || []);
@@ -770,8 +818,8 @@ import {
     const pending = [...state.pendingAttachments];
     const localMessageId = `local-${idempotencyKey}`;
     const localAttachments = pending.map((file, index) => ({ attachmentId: `local-${idempotencyKey}-${index}`, messageId: localMessageId, name: file.name, sizeBytes: file.size, pending: true }));
-    state.conversation = { ...(state.conversation || {}), messages: [...(state.conversation?.messages || []), { messageId: localMessageId, taskId: null, kind: 'user', sequence: Number.MAX_SAFE_INTEGER - 1, body: goal, createdAt: new Date().toISOString() }, { messageId: `local-progress-${idempotencyKey}`, taskId: null, kind: 'progress', sequence: Number.MAX_SAFE_INTEGER, body: 'AWH · กำลังตอบ', createdAt: new Date().toISOString() }], tasks: state.conversation?.tasks || [], artifacts: state.conversation?.artifacts || [], attachments: [...(state.conversation?.attachments || []), ...localAttachments], approvals: state.conversation?.approvals || [] };
-    renderWorkspace(); message('goal-message', ''); $('goal-input').value = ''; $('goal-input').focus();
+    state.conversation = { ...(state.conversation || {}), messages: [...(state.conversation?.messages || []), { messageId: localMessageId, taskId: null, kind: 'user', sequence: Number.MAX_SAFE_INTEGER - 1, body: goal, createdAt: new Date().toISOString() }, { messageId: `local-progress-${idempotencyKey}`, taskId: null, kind: 'progress', sequence: Number.MAX_SAFE_INTEGER, body: localProgressLabel(goal), createdAt: new Date().toISOString() }], tasks: state.conversation?.tasks || [], artifacts: state.conversation?.artifacts || [], attachments: [...(state.conversation?.attachments || []), ...localAttachments], approvals: state.conversation?.approvals || [] };
+    renderWorkspace(); message('goal-message', ''); $('goal-input').value = ''; resizeGoalInput(); $('goal-input').focus();
     try {
       const uploaded = pending.length ? await uploadConversationAttachments(conversationId, pending) : [];
       await submitWorkMessage(project.projectId, conversationId, goal, uploaded.map((attachment) => attachment.attachmentId), idempotencyKey);
