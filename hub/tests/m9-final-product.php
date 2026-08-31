@@ -99,7 +99,10 @@ try {
     $storage = $pdo->query("SELECT storage_key FROM control_conversation_attachments WHERE attachment_id = '$attachmentId'")->fetchColumn();
     $documentStorage = $pdo->query("SELECT storage_key FROM control_conversation_attachments WHERE attachment_id = '$documentId'")->fetchColumn();
     $documentPath = (new HubAttachmentStore($attachmentRoot))->read((string) $documentStorage);
-    $nativeContext = ['project' => ['name' => 'Final Product Project', 'sourceRevision' => '0123456789abcdef0123456789abcdef01234567'], 'memoryFiles' => [['name' => 'HANDOFF.md', 'status' => 'present']]];
+    $referentContext = (new HubConversationReferentService($pdo))->project($owner, $project, $conversation);
+    $referentNames = array_map(static fn(array $item): string => (string)$item['name'], $referentContext['recentAttachments']); sort($referentNames);
+    m9_assert($referentNames === ['brief.txt','preview.png'] && ($referentContext['latestAttachment'] ?? null) === ($referentContext['recentAttachments'][0] ?? null), 'SecondBrain referent projects the latest authorized attachments without storage paths');
+    $nativeContext = ['project' => ['name' => 'Final Product Project', 'sourceRevision' => '0123456789abcdef0123456789abcdef01234567'], 'memoryFiles' => [['name' => 'HANDOFF.md', 'status' => 'present']], 'conversationReferent' => $referentContext];
     $reply = $agent->respond($owner, $project, $conversation, $submittedBody['messages'][0]['messageId'], 'ภาพนี้เป็นอย่างไร', [['role' => 'user', 'body' => 'ภาพนี้เป็นอย่างไร']], [['name' => 'preview.png', 'mimeType' => 'image/png', 'path' => (new HubAttachmentStore($attachmentRoot))->read((string) $storage), 'sizeBytes' => 70], ['name' => 'brief.txt', 'mimeType' => 'text/plain', 'path' => $documentPath, 'sizeBytes' => filesize($documentPath)]], $now, $nativeContext);
     $fileInput = null; foreach (($captured['input'] ?? []) as $input) foreach (($input['content'] ?? []) as $item) if (($item['type'] ?? null) === 'input_file') $fileInput = $item;
     $capturedJson = json_encode($captured, JSON_THROW_ON_ERROR);

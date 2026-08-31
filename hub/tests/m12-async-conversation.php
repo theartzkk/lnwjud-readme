@@ -57,7 +57,7 @@ try {
     $submit = (new ReflectionClass(HubControlPlaneService::class))->getMethod('submitConversationForUser'); $submit->setAccessible(true);
     $payload = ['schemaVersion'=>1,'projectId'=>$project,'message'=>'สวัสดี ช่วยเล่าสถานะตอนนี้ให้หน่อย','idempotencyKey'=>'blockfree-chat-0001'];
     $submit->invoke($service, $owner, $payload, $now);
-    $q = $pdo->prepare("SELECT m.message_id,m.task_id,t.state AS task_state,e.executor_kind,e.required_capability,e.state AS execution_state,e.checkpoint_json FROM control_conversation_messages m JOIN control_tasks t ON t.task_id=m.task_id JOIN control_task_executions e ON e.task_id=t.task_id WHERE m.idempotency_key=:key AND m.message_kind='USER'");
+    $q = $pdo->prepare("SELECT m.message_id,m.task_id,m.conversation_id,t.state AS task_state,e.executor_kind,e.required_capability,e.state AS execution_state,e.checkpoint_json FROM control_conversation_messages m JOIN control_tasks t ON t.task_id=m.task_id JOIN control_task_executions e ON e.task_id=t.task_id WHERE m.idempotency_key=:key AND m.message_kind='USER'");
     $q->execute(['key'=>'blockfree-chat-0001']); $row = $q->fetch();
     bf_assert(is_array($row), 'durable conversation row missing');
     bf_assert($row['task_state'] === 'QUEUED' && $row['executor_kind'] === 'VPS' && $row['required_capability'] === 'agent.conversation' && $row['execution_state'] === 'QUEUED', 'conversation did not enter durable VPS execution');
@@ -69,6 +69,10 @@ try {
     $submit->invoke($service, $owner, $payload, $now);
     $count = $pdo->prepare('SELECT COUNT(*) FROM control_task_executions WHERE task_id=:task'); $count->execute(['task'=>$row['task_id']]);
     bf_assert((int)$count->fetchColumn() === 1, 'idempotent resubmit duplicated native execution');
+    $durable = new HubDurableExecutionService($pdo, HubProjectVaultService::fromEnvironment($pdo));
+    $contextMethod = new ReflectionMethod(HubDurableExecutionService::class, 'conversationContext');
+    $durableContext = $contextMethod->invoke($durable, $owner, $project, 'ใช้ไฟล์ล่าสุด', (string)$row['conversation_id']);
+    bf_assert(($durableContext['conversationReferent']['latestTask']['taskId'] ?? null) === $row['task_id'], 'durable native context must use the same canonical conversation referent projection');
     bf_assert($pdo->query('PRAGMA integrity_check')->fetchColumn() === 'ok' && $pdo->query('PRAGMA foreign_key_check')->fetchAll() === [], 'database integrity');
     fwrite(STDOUT, "AWH Async Conversation: PASS\n");
 } finally {
