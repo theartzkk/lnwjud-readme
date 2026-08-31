@@ -42,3 +42,7 @@ A visual review may block a candidate only when at least one P0 finding contains
 ## Review artifacts
 
 Each pack contains the committed revision identity, UX Constitution, scenario manifest, findings JSON schema, screenshots, screen metadata, source snapshot, and safety manifest. Before/after screenshots should use the same viewport and scenario ID so regressions can be compared directly.
+
+## Importing AIPass findings
+
+Save the model response as `findings.json`, then run `npm run review:validate -- findings.json <candidate-sha>`. Invalid severity, revision, score, or P0/verdict combinations fail closed. Valid findings may be converted into normal AWH engineering work, but the JSON file itself is never a new source of truth.

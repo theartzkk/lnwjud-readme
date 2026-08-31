@@ -53,7 +53,8 @@
     "test:desktop-native": "node --test-concurrency=1 --import tsx --test test/product.test.ts test/sustainability-contract.test.ts test/release-readiness.test.ts test/security.test.ts test/files.test.ts test/process.test.ts test/tasks.test.ts test/project.test.ts test/project-registry.test.ts test/owner-protocol.test.ts test/hub-contract.test.ts test/device-identity.test.ts test/credential-store.test.ts test/enrollment-client.test.ts test/control-plane-worker-client.test.ts test/control-plane-worker-runtime.test.ts test/worker-capability-discovery.test.ts test/windows-office-export.test.ts test/windows-office-provider-deployment.test.ts test/vault-transfer.test.ts test/stdio.test.ts test/tunnel.test.ts test/codex.test.ts test/settings.test.ts test/data-migration.test.ts test/desktop.test.ts test/desktop-projects.test.ts test/autopilot.test.ts test/first-run.test.ts test/version.test.ts test/installer.test.ts test/release-identity.test.ts",
     "review:render": "npm run web:build:control && node scripts/review/render-ai-review-scenarios.mjs",
     "review:pack": "node scripts/review/create-ai-review-pack.mjs",
-    "review:visual": "node scripts/review/create-visual-review-pack.mjs"
+    "review:visual": "node scripts/review/create-visual-review-pack.mjs",
+    "review:validate": "node scripts/review/validate-aipass-findings.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",
