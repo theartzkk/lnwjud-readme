@@ -101,7 +101,7 @@ export function executionStatus(task, workers = []) {
 
   let title = 'AWH รับงานแล้ว';
   let detail = 'กำลังจัดเส้นทางให้เหมาะกับงานนี้';
-  if (state === 'WAITING_FOR_WORKER') detail = 'กำลังเลือกเครื่องมือหรืออุปกรณ์ที่เหมาะกับงาน';
+  if (state === 'WAITING_FOR_WORKER') detail = 'AWH กำลังเตรียมขั้นตอนถัดไปและจะทำต่ออัตโนมัติเมื่อพร้อม';
   else if (state === 'PREPARING') { title = 'กำลังวิเคราะห์'; detail = `${actor} กำลังรวบรวมข้อมูลที่เกี่ยวข้องและเลือกวิธีทำที่เหมาะสม`; }
   else if (state === 'RUNNING') { title = 'กำลังทำ'; detail = `${actor} กำลังดำเนินงาน`; }
   else if (state === 'QA') { title = 'กำลังตรวจคุณภาพ'; detail = 'AWH กำลังตรวจผลลัพธ์ก่อนส่งกลับ'; }
@@ -110,7 +110,8 @@ export function executionStatus(task, workers = []) {
   else if (state === 'FAILED') { title = 'กำลังแก้ไข'; detail = failure || result || 'AWH เก็บสถานะไว้แล้วและกำลังหาวิธีทำต่ออย่างปลอดภัย'; }
   else if (state === 'CANCELLED') { title = 'ยกเลิกแล้ว'; detail = 'งานนี้ถูกยกเลิกแล้ว'; }
 
-  if (eventMessage && /[ก-๙]/u.test(eventMessage) && !TERMINAL.has(state)) detail = eventMessage;
+  const eventLooksInternal = eventMessage ? /(?:worker|device|capability|executor|VPS|Codex|อุปกรณ์|เครื่องมือ|เซิร์ฟเวอร์|server)/iu.test(eventMessage) : false;
+  if (eventMessage && /[ก-๙]/u.test(eventMessage) && !eventLooksInternal && !TERMINAL.has(state)) detail = eventMessage;
 
   return {
     state,

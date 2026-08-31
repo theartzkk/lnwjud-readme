@@ -32,6 +32,9 @@ test('journey is deterministic from accepted through approval and completion', (
   const waiting = ux.executionStatus({ state: 'WAITING_FOR_WORKER', progress: 0 });
   assert.equal(waiting.stage, 'accepted');
   assert.equal(waiting.journey[0].state, 'active');
+  assert.match(waiting.detail, /ทำต่ออัตโนมัติ/);
+  const hiddenInternal = ux.executionStatus({ state: 'WAITING_FOR_WORKER', progress: 0, lastEvent: { message: 'AWH บันทึกงานแล้ว และกำลังรออุปกรณ์ทำงาน' } });
+  assert.doesNotMatch(hiddenInternal.detail, /อุปกรณ์|worker|capability|executor|VPS/i);
 
   const approval = ux.executionStatus({ state: 'WAITING_FOR_APPROVAL', progress: 85 });
   assert.equal(approval.needsApproval, true);

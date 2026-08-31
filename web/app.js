@@ -574,6 +574,21 @@ import {
     actions.append(button); return actions;
   }
 
+  function renderLiveActivity(task) {
+    const status = taskExecutionStatus(task);
+    const activeStep = status.journey.find((step) => step.state === 'active');
+    const box = document.createElement('div'); box.className = 'live-activity'; box.setAttribute('role', 'status'); box.setAttribute('aria-live', 'polite');
+    const headline = document.createElement('div'); headline.className = 'live-activity-headline';
+    const pulse = document.createElement('span'); pulse.className = 'live-activity-pulse'; pulse.setAttribute('aria-hidden', 'true');
+    const title = document.createElement('strong'); title.textContent = activeStep?.label || status.title; headline.append(pulse, title);
+    const detail = document.createElement('p'); detail.textContent = status.detail;
+    box.append(headline, detail);
+    if (status.progress > 0 && status.progress < 100) { const bar = document.createElement('progress'); bar.max = 100; bar.value = status.progress; bar.setAttribute('aria-label', status.detail); box.append(bar); }
+    box.append(renderExecutionJourney(task));
+    const updated = document.createElement('small'); updated.className = 'live-activity-updated'; updated.textContent = `อัปเดต ${date(task.updatedAt || task.createdAt)}`; box.append(updated);
+    return box;
+  }
+
   function renderExecutionJourney(task) {
     const status = taskExecutionStatus(task);
     const details = document.createElement('details'); details.className = 'execution-details';
@@ -635,14 +650,7 @@ import {
         if (task && task.state !== 'COMPLETED') {
           const statusTurn = document.createElement('li'); statusTurn.className = 'task-turn assistant-turn status-turn';
           const status = document.createElement('div'); status.className = 'task-response active-task-response';
-          const meta = document.createElement('div'); meta.className = 'task-meta';
-          const chip = document.createElement('span'); chip.className = `state-chip ${stateClass(task)}`.trim(); chip.textContent = stateText(task);
-          const time = document.createElement('span'); time.textContent = date(task.updatedAt || task.createdAt); meta.append(chip, time); status.append(meta);
-          if (!['COMPLETED', 'FAILED', 'CANCELLED'].includes(task.state)) {
-            const progressRow = document.createElement('div'); progressRow.className = 'task-progress-row';
-            if (Number.isInteger(task.progress) && task.progress > 0) { const bar = document.createElement('progress'); bar.max = 100; bar.value = task.progress; bar.setAttribute('aria-label', progressText(task)); progressRow.append(bar); }
-            const text = document.createElement('span'); text.textContent = progressText(task); progressRow.append(text); status.append(progressRow, renderExecutionJourney(task));
-          }
+          status.append(renderLiveActivity(task));
           statusTurn.append(status); thread.append(statusTurn);
         }
         continue;
@@ -654,11 +662,7 @@ import {
       chip.textContent = turn.kind === 'approval' ? 'ต้องอนุมัติ' : turn.kind === 'result' && artifacts.length ? 'ไฟล์พร้อมใช้' : turn.kind === 'result' ? 'เสร็จแล้ว' : turn.kind === 'failure' ? 'ต้องตรวจสอบ' : task ? stateText(task) : 'AWH';
       const time = document.createElement('span'); time.textContent = date(turn.createdAt);
       meta.append(chip, time); response.append(meta, body);
-      if (task && !['COMPLETED','FAILED','CANCELLED'].includes(task.state)) {
-        const progressRow = document.createElement('div'); progressRow.className = 'task-progress-row';
-        const bar = document.createElement('progress'); bar.max = 100; bar.value = Number.isInteger(task.progress) ? task.progress : 0; bar.setAttribute('aria-label', progressText(task));
-        const text = document.createElement('span'); text.textContent = progressText(task); progressRow.append(bar, text); response.append(progressRow, renderExecutionJourney(task));
-      }
+      if (task && !['COMPLETED','FAILED','CANCELLED'].includes(task.state)) response.append(renderLiveActivity(task));
       if (task) {
         const actions = renderApproval(task, approvals) || renderCancellation(task); if (actions) response.append(actions);
         if (artifacts.length) { const list = document.createElement('div'); list.className = 'artifact-results'; for (const artifact of artifacts) { if (artifact.kind === 'project-inspection' && artifactUrl(artifact)) list.append(renderInspectionEvidence(artifact)); else list.append(renderArtifactCard(artifact)); } response.append(list); }
