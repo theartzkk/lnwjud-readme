@@ -16,16 +16,22 @@ test('Office exporter uses a fixed PowerShell file and validates PDF output', as
   const root = await mkdtemp(join(tmpdir(), 'awh-office-'));
   const input = join(root, 'report.docx'); await writeFile(input, 'fixture');
   let argv: string[] = [];
+  let scriptText = '';
   try {
     const result = await exportOfficeFileToPdf(input, 'report.docx', root, {
       platform: 'win32', powershellPath: 'powershell.exe',
       execute: async (_exe, args, _cwd, _timeout, env) => {
-        argv = args; await writeFile(String(env?.AWH_OFFICE_OUTPUT), Buffer.from('%PDF-1.7\nfixture'));
+        argv = args; scriptText = await readFile(String(args[6]), 'utf8'); await writeFile(String(env?.AWH_OFFICE_OUTPUT), Buffer.from('%PDF-1.7\nfixture'));
         return { code: 0, stdout: '', stderr: '' };
       },
     });
     assert.match(result.outputPath, /\.pdf$/i);
     assert.deepEqual(argv.slice(0, 5), ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass']);
+    assert.match(scriptText, /Microsoft Print to PDF/);
+    assert.match(scriptText, /Microsoft XPS Document Writer/);
+    assert.match(scriptText, /AWH_OFFICE_LAYOUT_PRINTER_UNAVAILABLE/);
+    assert.match(scriptText, /\$oldPrinter = \$app\.ActivePrinter/);
+    assert.match(scriptText, /\$app\.ActivePrinter = \$oldPrinter/);
     const script = argv[6]; assert.equal(typeof script, 'string');
     assert.equal(await readFile(String(script), 'utf8').then(() => 'exists').catch(() => 'removed'), 'removed');
   } finally { await rm(root, { recursive: true, force: true }); }

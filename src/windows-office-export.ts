@@ -25,10 +25,14 @@ $inputPath = $env:AWH_OFFICE_INPUT
 $outputPath = $env:AWH_OFFICE_OUTPUT
 $kind = $env:AWH_OFFICE_KIND
 if ([string]::IsNullOrWhiteSpace($inputPath) -or [string]::IsNullOrWhiteSpace($outputPath)) { throw 'AWH_OFFICE_PATH_INVALID' }
-$app = $null; $document = $null
+$app = $null; $document = $null; $oldPrinter = $null
 try {
   if ($kind -eq 'word') {
     $app = New-Object -ComObject Word.Application; $app.Visible = $false; $app.DisplayAlerts = 0
+    $oldPrinter = $app.ActivePrinter
+    $layoutPrinterReady = $false
+    foreach ($candidate in @('Microsoft Print to PDF', 'Microsoft XPS Document Writer')) { try { $app.ActivePrinter = $candidate; $layoutPrinterReady = $true; break } catch {} }
+    if (-not $layoutPrinterReady) { throw 'AWH_OFFICE_LAYOUT_PRINTER_UNAVAILABLE' }
     $document = $app.Documents.Open($inputPath, $false, $true); $document.ExportAsFixedFormat($outputPath, 17)
   } elseif ($kind -eq 'excel') {
     $app = New-Object -ComObject Excel.Application; $app.Visible = $false; $app.DisplayAlerts = $false
@@ -39,6 +43,7 @@ try {
   } else { throw 'AWH_OFFICE_KIND_INVALID' }
 } finally {
   if ($document -ne $null) { try { $document.Close() } catch {} }
+  if ($app -ne $null -and $kind -eq 'word' -and $oldPrinter -ne $null) { try { $app.ActivePrinter = $oldPrinter } catch {} }
   if ($app -ne $null) { try { $app.Quit() } catch {} }
 }
 `;
