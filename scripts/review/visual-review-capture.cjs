@@ -62,9 +62,11 @@ app.whenReady().then(async () => {
     await login(win);
     evidence.push(await shot(win, 'home-empty', 'real composer immediately usable; no backend language; three mobile destinations maximum', 'authenticated home'));
     await win.webContents.executeJavaScript(`document.querySelector('#account-open').click()`, true);
-    await waitFor(win, `document.querySelector('#account-sheet') && !document.querySelector('#account-sheet').hidden`);
+    await waitFor(win, `document.querySelector('#account-sheet') && !document.querySelector('#account-sheet').hidden && document.querySelector('[data-settings-tab=\"people\"]') && !document.querySelector('[data-settings-tab=\"people\"]').hidden`, 10000);
+    await waitFor(win, `document.querySelector('#account-request-list') && document.querySelector('#account-request-list').children.length > 0`, 10000);
     await win.webContents.executeJavaScript(`document.querySelector('[data-settings-tab=\"people\"]').click()`, true);
-    await waitFor(win, `document.querySelector('#settings-panel-people') && !document.querySelector('#settings-panel-people').hidden && document.querySelector('#account-request-list')`, 10000);
+    await waitFor(win, `document.querySelector('#settings-panel-people') && !document.querySelector('#settings-panel-people').hidden && document.querySelector('#settings-panel-start').hidden`, 10000);
+    await win.webContents.executeJavaScript(`document.querySelector('#settings-panel-people').scrollIntoView({block:'start'})`, true);
     evidence.push(await shot(win, 'owner-accounts', 'Owner can create people and review pending requests with role/project assignment in one bounded settings surface', 'open Owner people settings'));
     await win.loadURL(baseUrl);
     await login(win);
