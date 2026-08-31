@@ -67,6 +67,17 @@ try {
     expect(($review['latest']['status'] ?? null) === 'REVIEW', 'invalid newest backup must remain visible as review');
     expect(($review['latest']['lastVerified']['name'] ?? null) === basename($created['backupPath']), 'older verified fallback evidence missing');
 
+    if (function_exists('posix_getgrgid') && function_exists('posix_getegid')) {
+        $group = posix_getgrgid(posix_getegid());
+        if (is_array($group) && is_string($group['name'] ?? null) && $group['name'] !== '') {
+            $published = HubBackupService::create($db, $backupRoot, '2026-08-26T12:02:00Z', $group['name']);
+            expect((fileperms($published['backupPath']) & 0777) === 0640, 'published backup permissions mismatch');
+            expect((fileperms($published['manifestPath']) & 0777) === 0640, 'published manifest permissions mismatch');
+            expect(filegroup($published['backupPath']) === posix_getegid(), 'published backup group mismatch');
+            expect(filegroup($published['manifestPath']) === posix_getegid(), 'published manifest group mismatch');
+        }
+    }
+
     $drill = HubBackupService::restoreDrill($created['backupPath'], $created['manifestPath'], $scratchRoot);
     expect($drill['status'] === 'PASS', 'restore drill did not pass');
 

@@ -11,7 +11,7 @@ final class HubBackupService
 {
     private const MAX_MANIFEST_BYTES = 65536;
 
-    public static function create(string $databasePath, string $backupRoot, ?string $now = null): array
+    public static function create(string $databasePath, string $backupRoot, ?string $now = null, ?string $readGroup = null): array
     {
         self::assertSource($databasePath);
         self::assertBackupRoot($backupRoot);
@@ -28,6 +28,7 @@ final class HubBackupService
         try { $pdo->exec('VACUUM INTO ' . $quoted); }
         catch (Throwable) { throw new HubBackupException('SQLite snapshot could not be created', 'BACKUP_CREATE_FAILED'); }
         @chmod($backupPath, 0600);
+        if ($readGroup !== null) self::publishReadAccess($backupPath, $readGroup);
 
         $verified = self::verify($backupPath);
         $manifest = [
@@ -40,7 +41,7 @@ final class HubBackupService
             'integrity' => 'PASS',
             'foreignKeys' => 'PASS',
         ];
-        self::writeManifest($manifestPath, $manifest);
+        self::writeManifest($manifestPath, $manifest, $readGroup);
         return ['backupPath' => $backupPath, 'manifestPath' => $manifestPath, 'manifest' => $manifest];
     }
 
@@ -156,15 +157,22 @@ final class HubBackupService
         if ($root === '' || str_contains($root, "\0") || !is_dir($root) || is_link($root) || !is_writable($root)) throw new HubBackupException('Backup root is invalid', 'BACKUP_ROOT_INVALID');
     }
 
-    private static function writeManifest(string $path, array $manifest): void
+    private static function writeManifest(string $path, array $manifest, ?string $readGroup = null): void
     {
         $json = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
         $temporary = $path . '.tmp-' . bin2hex(random_bytes(6));
         try {
             if (file_put_contents($temporary, $json, LOCK_EX) !== strlen($json)) throw new HubBackupException('Backup manifest could not be written', 'BACKUP_MANIFEST_WRITE_FAILED');
             @chmod($temporary, 0600);
+            if ($readGroup !== null) self::publishReadAccess($temporary, $readGroup);
             if (!rename($temporary, $path)) throw new HubBackupException('Backup manifest could not be activated', 'BACKUP_MANIFEST_WRITE_FAILED');
         } finally { if (is_file($temporary) && !is_link($temporary)) @unlink($temporary); }
+    }
+
+    private static function publishReadAccess(string $path, string $readGroup): void
+    {
+        if (!preg_match('/^[a-z_][a-z0-9_-]{0,31}$/D', $readGroup)) throw new HubBackupException('Backup read group is invalid', 'BACKUP_GROUP_INVALID');
+        if (!is_file($path) || is_link($path) || !@chgrp($path, $readGroup) || !@chmod($path, 0640)) throw new HubBackupException('Backup read permissions failed', 'BACKUP_PERMISSION_FAILED');
     }
 
     private static function readManifest(string $path): array

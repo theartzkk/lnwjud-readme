@@ -12,15 +12,7 @@ try {
     if (!preg_match('/^[a-z_][a-z0-9_-]{0,31}$/D', $readGroup)) {
         throw new HubBackupException('Backup read group is invalid', 'BACKUP_GROUP_INVALID');
     }
-    $created = HubBackupService::create($database, $backupRoot);
-    foreach ([$created['backupPath'], $created['manifestPath']] as $path) {
-        if (!is_string($path) || !is_file($path) || is_link($path)) {
-            throw new HubBackupException('Scheduled backup output is invalid', 'BACKUP_PERMISSION_FAILED');
-        }
-        if (!@chgrp($path, $readGroup) || !@chmod($path, 0640)) {
-            throw new HubBackupException('Scheduled backup permissions failed', 'BACKUP_PERMISSION_FAILED');
-        }
-    }
+    $created = HubBackupService::create($database, $backupRoot, null, $readGroup);
     $verified = HubBackupService::verify($created['backupPath'], $created['manifestPath']);
     fwrite(STDOUT, json_encode([
         'status' => 'VERIFIED',

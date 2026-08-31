@@ -9,6 +9,15 @@ import test from 'node:test';
 const run = promisify(execFile);
 const ROOT = process.cwd();
 
+test('Owner and Staff backup projections never fabricate schema zero when metadata is unreadable', async () => {
+  const staff = await readFile(join(ROOT, 'hub/src/HubStaffOperationsService.php'), 'utf8');
+  const control = await readFile(join(ROOT, 'hub/src/HubControlPlaneService.php'), 'utf8');
+  assert.match(staff, /array_key_exists\('databaseUserVersion', \$latest\) \? \(int\) \$latest\['databaseUserVersion'\] : null/);
+  assert.match(control, /array_key_exists\('databaseUserVersion', \$latest\) \? \(int\) \$latest\['databaseUserVersion'\] : null/);
+  assert.doesNotMatch(staff, /databaseUserVersion'\s*=>\s*\(int\)\s*\(\$latest\['databaseUserVersion'\]\s*\?\?\s*0\)/);
+  assert.doesNotMatch(control, /databaseSchemaVersion'\s*=>\s*\(int\)\s*\(\$latest\['databaseUserVersion'\]\s*\?\?\s*0\)/);
+});
+
 test('Database Studio reuses the canonical verified backup authority', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'awh-backup-authority-'));
   const database = join(directory, 'control.sqlite');

@@ -86,8 +86,10 @@ test('automatic backup scheduler reuses the canonical verified backup authority'
   assert.match(service, /ReadWritePaths=\/var\/backups\/awh-hub \/var\/lib\/awh-hub/);
   assert.match(service, /ReadWritePaths=\/var\/backups\/awh-hub/);
   assert.match(wrapper, /HubBackupService::create/);
-  assert.match(wrapper, /chgrp\(\$path, \$readGroup\)/);
-  assert.match(wrapper, /chmod\(\$path, 0640\)/);
+  assert.match(wrapper, /HubBackupService::create\(\$database, \$backupRoot, null, \$readGroup\)/);
+  assert.match(backupSource, /publishReadAccess/);
+  assert.match(backupSource, /chgrp\(\$path, \$readGroup\)/);
+  assert.match(backupSource, /chmod\(\$path, 0640\)/);
   assert.match(wrapper, /HubBackupService::verify/);
   assert.doesNotMatch(`${service}\n${wrapper}`, /DELETE|rm\s|find\s.*-delete/i);
   assert.match(deploy, /hub\/bin\/scheduled-backup\.php/);
