@@ -16,7 +16,7 @@ import {
   const MAX_ATTACHMENT_BYTES = 60 * 1024 * 1024;
   const MICRO_BAHT = 1000000;
   const DESKTOP_PACKAGES = [['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, systemReadiness: null, capabilities: null, people: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, systemReadiness: null, capabilities: null, people: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null };
   let desktopReleasePromise = null;
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => undefined);
 
@@ -96,7 +96,7 @@ import {
     const url = artifactUrl(artifact);
     if (url) {
       const actions = document.createElement('span'); actions.className = 'result-file-actions';
-      const open = document.createElement('a'); open.href = url; open.target = '_blank'; open.rel = 'noopener'; open.textContent = 'เปิด';
+      const open = document.createElement('button'); open.type = 'button'; open.textContent = 'เปิด'; open.addEventListener('click', () => void openArtifactWorkspace(artifact));
       const download = document.createElement('a'); download.href = url; download.setAttribute('download', name); download.textContent = 'ดาวน์โหลด';
       actions.append(open, download);
       if (extension === 'DOCX') {
@@ -105,6 +105,51 @@ import {
       card.append(actions);
     }
     return card;
+  }
+  function clearArtifactWorkspace() {
+    if (state.artifactPreviewUrl) { URL.revokeObjectURL(state.artifactPreviewUrl); state.artifactPreviewUrl = null; }
+    state.selectedArtifact = null;
+    $('artifact-preview')?.replaceChildren(); $('artifact-workspace-actions')?.replaceChildren();
+  }
+  function artifactWorkspaceMessage(title, detail = '') {
+    const box = document.createElement('div'); box.className = 'artifact-preview-message';
+    const heading = document.createElement('strong'); heading.textContent = title; box.append(heading);
+    if (detail) { const copy = document.createElement('p'); copy.textContent = detail; box.append(copy); }
+    return box;
+  }
+  async function openArtifactWorkspace(artifact) {
+    clearArtifactWorkspace(); state.selectedArtifact = artifact;
+    const name = String(artifact?.name || 'ไฟล์ผลลัพธ์'); const extension = name.includes('.') ? name.split('.').pop().toUpperCase() : 'FILE';
+    const url = artifactUrl(artifact); $('artifact-sheet-title').textContent = name;
+    $('artifact-sheet-meta').textContent = [extension, Number.isFinite(artifact?.sizeBytes) ? size(artifact.sizeBytes) : '', 'อยู่ในงานนี้'].filter(Boolean).join(' · ');
+    const preview = $('artifact-preview'); const actions = $('artifact-workspace-actions');
+    const download = document.createElement('a'); download.className = 'secondary-button'; download.textContent = 'ดาวน์โหลด'; if (url) { download.href = url; download.setAttribute('download', name); }
+    const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'secondary-button'; edit.textContent = 'แก้ด้วย AWH'; edit.addEventListener('click', () => { closeSheet('artifact-sheet'); suggestWork('แก้ไฟล์นี้ ', false); });
+    actions.append(download, edit);
+    if (extension === 'DOCX') { const pdf = document.createElement('button'); pdf.type = 'button'; pdf.className = 'secondary-button'; pdf.textContent = 'ทำ PDF'; pdf.addEventListener('click', () => { closeSheet('artifact-sheet'); suggestWork('ทำไฟล์นี้เป็น PDF', true); }); actions.append(pdf); }
+    openSheet('artifact-sheet');
+    if (!url) { preview.replaceChildren(artifactWorkspaceMessage('ยังไม่มีไฟล์สำหรับเปิดดู', 'ผลลัพธ์ยังผูกกับงานเดิมและจะไม่ถูกสร้างซ้ำ')); return; }
+    if (['DOCX','DOC','XLSX','XLS','PPTX','PPT','ZIP'].includes(extension)) { preview.replaceChildren(artifactWorkspaceMessage(extension === 'DOCX' ? 'ไฟล์ Word พร้อมใช้' : `ไฟล์ ${extension} พร้อมใช้`, extension === 'DOCX' ? 'ดาวน์โหลด ทำ PDF หรือสั่ง AWH แก้ต่อได้จากหน้านี้' : 'ไฟล์ชนิดนี้ยังไม่ถูกฝังในหน้าเว็บเพื่อรักษาความถูกต้องของต้นฉบับ')); return; }
+    preview.replaceChildren(artifactWorkspaceMessage('กำลังเปิดไฟล์…'));
+    try {
+      const response = await fetch(url, { credentials: 'same-origin', headers: { Accept: '*/*' } });
+      if (!response.ok) throw new Error('ARTIFACT_PREVIEW_UNAVAILABLE');
+      const mime = String(response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
+      const length = Number(response.headers.get('Content-Length') || artifact?.sizeBytes || 0);
+      if (length > 12 * 1024 * 1024 && mime !== 'application/pdf' && !/^image\/(?:png|jpeg|webp|gif)$/.test(mime)) { preview.replaceChildren(artifactWorkspaceMessage('ไฟล์พร้อมดาวน์โหลด', 'ไฟล์นี้ใหญ่เกินขนาด preview ที่ปลอดภัย')); return; }
+      if (mime === 'application/pdf') {
+        const blob = await response.blob(); state.artifactPreviewUrl = URL.createObjectURL(blob);
+        const frame = document.createElement('iframe'); frame.className = 'artifact-preview-frame'; frame.title = `ตัวอย่าง ${name}`; frame.src = state.artifactPreviewUrl; preview.replaceChildren(frame); return;
+      }
+      if (/^image\/(?:png|jpeg|webp|gif)$/.test(mime)) {
+        const blob = await response.blob(); state.artifactPreviewUrl = URL.createObjectURL(blob);
+        const image = document.createElement('img'); image.className = 'artifact-preview-image'; image.alt = name; image.src = state.artifactPreviewUrl; preview.replaceChildren(image); return;
+      }
+      if (['text/plain','text/csv','text/markdown','application/json'].includes(mime)) {
+        const text = (await response.text()).slice(0, 250000); const pre = document.createElement('pre'); pre.className = 'artifact-preview-text'; pre.textContent = text; preview.replaceChildren(pre); return;
+      }
+      preview.replaceChildren(artifactWorkspaceMessage('ไฟล์พร้อมใช้', 'AWH ไม่ฝัง HTML, SVG หรือไฟล์ active content ลงใน workspace เพื่อป้องกันโค้ดจากไฟล์ทำงานในหน้า AWH'));
+    } catch { preview.replaceChildren(artifactWorkspaceMessage('เปิดตัวอย่างไม่ได้ในขณะนี้', 'ไฟล์เดิมยังอยู่ครบและดาวน์โหลดได้จากปุ่มด้านล่าง')); }
   }
   function localProgressLabel(goal) {
     const value = String(goal || '');
@@ -725,7 +770,7 @@ import {
     if (!owner && !['start', 'account'].includes(document.querySelector('.settings-tab.active')?.dataset.settingsTab || '')) showSettingsSection('account');
   }
   function openSheet(id) { const sheet = $(id); if (sheet) openAwhDialog(sheet); }
-  function closeSheet(id, options = {}) { const sheet = $(id); if (sheet) closeAwhDialog(sheet, options); }
+  function closeSheet(id, options = {}) { const sheet = $(id); if (sheet) closeAwhDialog(sheet, options); if (id === 'artifact-sheet') clearArtifactWorkspace(); }
   function openPasswordRecovery() {
     let token = null;
     const recoveryHash = window.location.hash;

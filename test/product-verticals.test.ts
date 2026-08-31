@@ -39,6 +39,8 @@ test('school document and project factory surfaces use the existing canonical au
   assert.match(registry, /project-factory/);
   const dashboard = await readFile(new URL('../web/dashboard.js', import.meta.url), 'utf8');
   const app = await readFile(new URL('../web/app.js', import.meta.url), 'utf8');
+  const html = await readFile(new URL('../web/index.html', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../web/styles.css', import.meta.url), 'utf8');
   assert.match(dashboard, /classifyUniversalIntent/);
   assert.match(dashboard, /kind: 'DOCUMENT'/);
   assert.match(dashboard, /kind: 'PDF'/);
@@ -50,6 +52,18 @@ test('school document and project factory surfaces use the existing canonical au
   assert.match(app, /textContent = 'เปิด'/);
   assert.match(app, /ดาวน์โหลด/);
   assert.match(app, /ทำ PDF/);
+  assert.match(html, /id="artifact-sheet"/);
+  assert.match(css, /artifact-sheet-card/);
+  assert.match(app, /openArtifactWorkspace/);
+  assert.equal(app.includes('URL.revokeObjectURL'), true);
+  assert.equal(app.includes('png|jpeg|webp|gif'), true);
+  assert.match(app, /AWH ไม่ฝัง HTML, SVG หรือไฟล์ active content/);
+  const artifactStart = app.indexOf('function renderArtifactCard');
+  const artifactEnd = app.indexOf('function localProgressLabel');
+  const artifactWorkspace = artifactStart >= 0 && artifactEnd > artifactStart ? app.slice(artifactStart, artifactEnd) : '';
+  assert.notEqual(artifactWorkspace, '');
+  assert.equal(artifactWorkspace.includes("target = '_blank'"), false);
+  assert.equal(artifactWorkspace.includes('innerHTML ='), false);
   assert.match(app, /localProgressLabel/);
   assert.doesNotMatch(app, /textContent = 'AWH · กำลังตอบ'/);
   assert.match(app, /files: \[\.\.\.state\.pendingAttachments\]/);
