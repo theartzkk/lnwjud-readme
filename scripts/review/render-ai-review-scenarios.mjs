@@ -7,8 +7,6 @@ const ROOT = resolve(import.meta.dirname, '../..');
 const commit = execFileSync('git', ['-C', ROOT, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 const dirty = execFileSync('git', ['-C', ROOT, 'status', '--porcelain'], { encoding: 'utf8' }).trim() !== '';
 if (dirty && process.env.AWH_VISUAL_QA_ALLOW_DIRTY !== '1') throw new Error('visual review requires a clean committed revision');
-const commit = execFileSync('git', ['-C', ROOT, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-const dirty = execFileSync('git', ['-C', ROOT, 'status', '--porcelain'], { encoding: 'utf8' }).trim() !== '';
 const output = resolve(process.argv[2] || join(ROOT, '.awh-local/review/visual'));
 const port = Number.parseInt(process.env.AWH_VISUAL_QA_PORT || '4197', 10);
 const baseUrl = `http://127.0.0.1:${port}/`;
