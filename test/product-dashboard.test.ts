@@ -61,8 +61,8 @@ test('teacher home is outcome-first, role-aware and exposes real zero-token scho
     readFile(join(ROOT, 'web', 'school-tools.js'), 'utf8'),
     readFile(join(ROOT, 'web', 'dashboard.css'), 'utf8'),
   ]);
-  for (const label of ['AI ช่วยงาน', 'สร้างเอกสาร', 'จัดการรูปภาพ', 'จัดการ PDF', 'สร้าง QR', 'แนบไฟล์ให้ AI']) assert.match(registry, new RegExp(label));
-  assert.match(dashboard, /ไม่ต้องเขียน Prompt ให้เป็น/);
+  for (const label of ['แชทกับ AWH', 'สร้างเอกสาร', 'จัดการรูปภาพ', 'จัดการ PDF', 'สร้าง QR', 'แนบไฟล์ให้ AWH']) assert.match(registry, new RegExp(label));
+  assert.match(dashboard, /บอกเป็นภาษาปกติได้เลย/);
   assert.match(dashboard, /ประมวลผลในเครื่องนี้ ไม่อัปโหลดรูปไปที่เซิร์ฟเวอร์/);
   assert.match(dashboard, /canvas\.toBlob/);
   assert.match(dashboard, /state\.control\?\.role !== 'OWNER'/);

@@ -443,3 +443,8 @@ body.work-active .result-turn .task-meta { display: none; }
   body.work-active .assistant-turn .task-response { padding: 4px 0; }
   body.work-active .composer { margin-bottom: calc(6px + env(safe-area-inset-bottom)); }
 }
+
+/* AiPASS UX P0 — compact one-line composer; details stay progressively disclosed. */
+body.work-active .composer textarea{min-height:44px}
+body.work-active .assistant-turn:not(.approval-turn):not(.failure-turn) .task-meta{display:none}
+@media(max-width:680px){body.work-active .composer textarea{min-height:44px}}

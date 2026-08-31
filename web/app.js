@@ -160,7 +160,7 @@ import {
   }
   function resizeGoalInput() {
     const input = $('goal-input'); if (!(input instanceof HTMLTextAreaElement)) return;
-    input.style.height = 'auto'; input.style.height = `${Math.min(140, Math.max(52, input.scrollHeight))}px`;
+    input.style.height = 'auto'; input.style.height = `${Math.min(140, Math.max(44, input.scrollHeight))}px`;
   }
 
   function renderInspectionEvidence(artifact) {
@@ -637,7 +637,7 @@ import {
           const status = document.createElement('div'); status.className = 'task-response active-task-response';
           const meta = document.createElement('div'); meta.className = 'task-meta';
           const chip = document.createElement('span'); chip.className = `state-chip ${stateClass(task)}`.trim(); chip.textContent = stateText(task);
-          const time = document.createElement('span'); time.textContent = date(task.updatedAt || task.createdAt); meta.append(chip, time); status.append(meta);
+          meta.append(chip); status.append(meta);
           if (!['COMPLETED', 'FAILED', 'CANCELLED'].includes(task.state)) {
             const progressRow = document.createElement('div'); progressRow.className = 'task-progress-row';
             if (Number.isInteger(task.progress) && task.progress > 0) { const bar = document.createElement('progress'); bar.max = 100; bar.value = task.progress; bar.setAttribute('aria-label', progressText(task)); progressRow.append(bar); }
@@ -653,7 +653,9 @@ import {
       const chip = document.createElement('span'); chip.className = `state-chip ${stateClass(task)}`.trim();
       chip.textContent = turn.kind === 'approval' ? 'ต้องอนุมัติ' : turn.kind === 'result' && artifacts.length ? 'ไฟล์พร้อมใช้' : turn.kind === 'result' ? 'เสร็จแล้ว' : turn.kind === 'failure' ? 'ต้องตรวจสอบ' : task ? stateText(task) : 'AWH';
       const time = document.createElement('span'); time.textContent = date(turn.createdAt);
-      meta.append(chip, time); response.append(meta, body);
+      meta.append(chip, time);
+      if (turn.kind === 'approval' || turn.kind === 'failure') response.append(meta);
+      response.append(body);
       if (task && !['COMPLETED','FAILED','CANCELLED'].includes(task.state)) {
         const progressRow = document.createElement('div'); progressRow.className = 'task-progress-row';
         const bar = document.createElement('progress'); bar.max = 100; bar.value = Number.isInteger(task.progress) ? task.progress : 0; bar.setAttribute('aria-label', progressText(task));
@@ -836,6 +838,9 @@ import {
   });
 
   $('goal-input').addEventListener('input', resizeGoalInput); resizeGoalInput();
+  $('goal-input').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); $('goal-form')?.requestSubmit(); }
+  });
   $('attachment-open').addEventListener('click', () => { if (!$('attachment-input').disabled) $('attachment-input').click(); });
   $('attachment-input').addEventListener('change', () => {
     const incoming = Array.from($('attachment-input').files || []);

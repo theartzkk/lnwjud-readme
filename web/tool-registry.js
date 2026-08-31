@@ -1,11 +1,11 @@
 export const SCHOOL_TOOLS = Object.freeze([
-  { id: 'ai', icon: '✦', title: 'AI ช่วยงาน', copy: 'ถาม เขียน สรุป คิด และช่วยจัดการงาน', badge: 'ฉลาด', mode: 'ai' },
-  { id: 'documents', icon: '▤', title: 'สร้างเอกสาร', copy: 'บันทึกข้อความ รายงาน หนังสือ และงานโรงเรียน', badge: 'AI ช่วย', mode: 'ai-document' },
-  { id: 'project-factory', icon: '⌘', title: 'สร้างโปรเจกต์', copy: 'เริ่มเว็บโรงเรียนจาก Project, Task และแผนงานจริง', badge: 'Factory', mode: 'project-factory' },
-  { id: 'image', icon: '▧', title: 'จัดการรูปภาพ', copy: 'ย่อขนาด บีบอัด และแปลงไฟล์รูป', badge: 'ฟรี', mode: 'local' },
+  { id: 'documents', icon: '▤', title: 'สร้างเอกสาร', copy: 'บันทึกข้อความ รายงาน หนังสือ และงานโรงเรียน', badge: '', mode: 'ai-document' },
   { id: 'pdf', icon: 'PDF', title: 'จัดการ PDF', copy: 'รวม แยก/เลือกหน้า หมุน และรวมรูปเป็น PDF', badge: 'ฟรี', mode: 'local' },
   { id: 'qr', icon: 'QR', title: 'สร้าง QR', copy: 'สร้าง QR จากลิงก์หรือข้อความพร้อมดาวน์โหลด', badge: 'ฟรี', mode: 'local' },
-  { id: 'attach', icon: '＋', title: 'แนบไฟล์ให้ AI', copy: 'ส่งไฟล์แล้วบอก AWH ว่าอยากให้ช่วยอะไร', badge: '', mode: 'ai-attach' },
+  { id: 'image', icon: '▧', title: 'จัดการรูปภาพ', copy: 'ย่อขนาด บีบอัด และแปลงไฟล์รูป', badge: 'ฟรี', mode: 'local' },
+  { id: 'ai', icon: '✦', title: 'แชทกับ AWH', copy: 'ถาม เขียน สรุป คิด และสั่งงานด้วยภาษาปกติ', badge: '', mode: 'ai' },
+  { id: 'attach', icon: '＋', title: 'แนบไฟล์ให้ AWH', copy: 'ส่งไฟล์แล้วบอกว่าอยากให้ช่วยอะไร', badge: '', mode: 'ai-attach' },
+  { id: 'project-factory', icon: '⌘', title: 'สร้างโปรเจกต์', copy: 'เริ่มงานโปรเจกต์ใหม่จากเป้าหมายที่บอก AWH', badge: '', mode: 'project-factory' },
 ]);
 
 export const OWNER_TOOLS = Object.freeze([

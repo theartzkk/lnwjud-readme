@@ -115,7 +115,7 @@ function mountWelcome(dashboard) {
   const welcome = document.createElement('div');
   welcome.id = 'dashboard-welcome';
   welcome.className = 'awh-home-welcome';
-  welcome.innerHTML = '<span><small>ART’S WORKSPACE HUB</small><strong>Workspace ของคุณ</strong></span><span class="awh-cloud-chip"><i aria-hidden="true"></i> Cloud พร้อมใช้งาน</span>';
+  welcome.innerHTML = '<span><small>ART’S WORKSPACE HUB</small><strong>วันนี้อยากให้ AWH ช่วยอะไร?</strong></span>';
   dashboard.prepend(welcome);
 }
 
@@ -124,11 +124,10 @@ function mountPromptShortcuts(hero) {
   row.id = 'awh-home-prompts';
   row.className = 'awh-home-prompts';
   const choices = [
-    ['↻ งานล่าสุด', () => $('dashboard-continue-work')?.click()],
-    ['☰ Multi Chat', () => $('dashboard-open-chats')?.click()],
     ['▤ สร้างเอกสาร', () => tapTool('สร้างเอกสาร')],
-    ['PDF จัดการ PDF', () => tapTool('จัดการ PDF')],
-    ['QR สร้าง QR', () => tapTool('สร้าง QR')],
+    ['◫ จัดการ PDF', () => tapTool('จัดการ PDF')],
+    ['▦ สร้าง QR', () => tapTool('สร้าง QR')],
+    ['▧ จัดการรูปภาพ', () => tapTool('จัดการรูปภาพ')],
   ];
   for (const [label, action] of choices) row.append(button(label, 'awh-home-prompt', action));
   hero.append(row);
@@ -137,10 +136,15 @@ function mountPromptShortcuts(hero) {
 function updateMobileNavigation() {
   const nav = $('awh-mobile-nav');
   if (!(nav instanceof HTMLElement)) return;
+  const dashboard = $(DASHBOARD_ID);
   const home = document.body.classList.contains('product-dashboard-active');
+  const activeDestination = home && dashboard?.dataset.view === 'tasks' ? 'tasks'
+    : home && nav.dataset.activeDestination === 'tools' ? 'tools'
+    : 'work';
   for (const item of nav.querySelectorAll('[data-mobile-destination]')) {
-    const destination = item.dataset.mobileDestination;
-    item.classList.toggle('is-active', home ? destination === 'home' : destination === 'work');
+    const active = item.dataset.mobileDestination === activeDestination;
+    item.classList.toggle('is-active', active);
+    item.setAttribute('aria-current', active ? 'page' : 'false');
   }
 }
 
@@ -157,11 +161,9 @@ function mountMobileNavigation() {
     return item;
   };
   nav.append(
-    make('⌂', 'หน้าแรก', 'home', returnHome),
-    make('✦', 'งาน/AI', 'work', () => openWork()),
-    make('↻', 'งาน', 'tasks', () => openTaskSurface()),
-    make('▦', 'เครื่องมือ', 'tools', () => { returnHome(); window.setTimeout(() => $('awh-home-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40); }),
-    make('•••', 'เพิ่มเติม', 'more', () => { returnHome(); window.setTimeout(() => { const owner = $('dashboard-owner-center-open'); if (owner instanceof HTMLElement && !owner.hidden) owner.click(); else $('account-open')?.click(); }, 40); }),
+    make('✦', 'แชท', 'work', () => openWork()),
+    make('↻', 'งานของฉัน', 'tasks', () => openTaskSurface()),
+    make('▦', 'เครื่องมือ', 'tools', () => { returnHome(); nav.dataset.activeDestination = 'tools'; updateMobileNavigation(); window.setTimeout(() => $('awh-home-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40); }),
   );
   document.body.append(nav);
   new MutationObserver(updateMobileNavigation).observe(document.body, { attributes: true, attributeFilter: ['class'] });
@@ -179,12 +181,11 @@ function mountProductNavigation(dashboard) {
   brand.innerHTML = '<span class="awh-product-nav-mark" aria-hidden="true">A</span><span><strong>AWH</strong><small>Workspace</small></span>';
   nav.append(brand);
   const entries = [
-    ['home', '⌂', 'หน้าแรก', returnHome],
-    ['work', '✦', 'AI Work', () => openWork()],
-    ['tasks', '↻', 'Tasks', () => openTaskSurface()],
-    ['files', '▤', 'Files', () => openFilesSurface()],
+    ['work', '✦', 'แชท', () => openWork()],
+    ['tasks', '↻', 'งานของฉัน', () => openTaskSurface()],
+    ['files', '▤', 'ไฟล์', () => openFilesSurface()],
     ['tools', '▦', 'เครื่องมือ', () => { returnHome(); window.setTimeout(() => $('awh-home-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40); }],
-    ['owner', '⌘', 'Owner Center', () => { returnHome(); window.setTimeout(() => $('dashboard-owner-center-open')?.click(), 40); }],
+    ['owner', '⌘', 'ตั้งค่า', () => { returnHome(); window.setTimeout(() => $('dashboard-owner-center-open')?.click(), 40); }],
   ];
   for (const [destination, icon, label, action] of entries) {
     const item = button('', 'awh-product-nav-item', action);
@@ -204,7 +205,7 @@ function updateProductNavigation() {
   if (!nav) return;
   const dashboard = $(DASHBOARD_ID);
   const activeDestination = document.body.classList.contains('product-dashboard-active')
-    ? (dashboard?.dataset.view === 'tasks' ? 'tasks' : dashboard?.dataset.view === 'files' ? 'files' : 'home')
+    ? (dashboard?.dataset.view === 'tasks' ? 'tasks' : dashboard?.dataset.view === 'files' ? 'files' : 'work')
     : 'work';
   for (const item of nav.querySelectorAll('[data-product-destination]')) {
     const active = item.dataset.productDestination === activeDestination;
@@ -321,6 +322,8 @@ function renderOwnerSystemSummary() {
 
 function returnHome() {
   if (!state.control?.authenticated) return;
+  const mobileNav = $('awh-mobile-nav');
+  if (mobileNav instanceof HTMLElement) delete mobileNav.dataset.activeDestination;
   const dashboard = $(DASHBOARD_ID);
   if (!dashboard) return;
   setDashboardView('home');
@@ -469,6 +472,7 @@ function openTaskSurface(filter = 'all', taskId = null) {
   document.body.classList.add('product-dashboard-active');
   if (!state.restoringSurface) commitAwhSurface('tasks');
   renderTaskSurface();
+  updateMobileNavigation();
   $('dashboard-tasks')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -568,25 +572,28 @@ function mountDashboard() {
   const hero = document.createElement('section');
   hero.id = 'dashboard-hero';
   hero.className = 'awh-home-hero';
-  hero.innerHTML = '<div class="awh-home-kicker">AWH · AI WORKSPACE</div><h1>ทุกงาน เริ่มจากตรงนี้</h1><p>คุยกับ AI · ทำเอกสาร · จัดการไฟล์ · ใช้เครื่องมือฟรี · ทำงานต่อจากทุกอุปกรณ์</p>';
+  hero.innerHTML = '<div class="awh-home-kicker">AWH</div><h1>วันนี้อยากให้ช่วยอะไร?</h1><p>พิมพ์สิ่งที่ต้องการได้เลย AWH จะเลือกวิธีทำงานที่เหมาะสมให้เอง</p>';
   const commandForm = document.createElement('form');
   commandForm.className = 'awh-command-form';
   commandForm.id = 'dashboard-command-form';
   const command = document.createElement('textarea');
   command.id = 'dashboard-command';
-  command.rows = 2;
+  command.rows = 1;
   command.maxLength = 2000;
-  command.placeholder = 'เช่น ช่วยทำบันทึกข้อความ, สรุปรายงาน, จัดการไฟล์ หรือถามอะไรก็ได้…';
+  command.placeholder = 'พิมพ์สิ่งที่อยากให้ช่วย…';
   const commandActions = document.createElement('div');
   commandActions.className = 'awh-command-actions';
   const hint = document.createElement('span');
-  hint.textContent = 'ไม่ต้องเขียน Prompt ให้เป็น';
+  hint.textContent = 'บอกเป็นภาษาปกติได้เลย';
   const send = document.createElement('button');
   send.type = 'submit';
   send.className = 'awh-command-send';
-  send.textContent = 'ให้ AWH ช่วย ✦';
+  send.textContent = 'ส่ง ↑';
   commandActions.append(hint, send);
   commandForm.append(command, commandActions);
+  command.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); commandForm.requestSubmit(); }
+  });
   commandForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const value = command.value.trim();
@@ -637,7 +644,13 @@ function mountDashboard() {
     attach: () => { openWork(); window.setTimeout(() => $('attachment-open')?.click(), 0); },
   };
   for (const tool of SCHOOL_TOOLS) toolGrid.append(createToolCard({ ...tool, action: schoolActions[tool.id] }));
-  tools.append(toolsHeading, toolGrid);
+  const allTools = button('ดูเครื่องมือทั้งหมด', 'awh-tools-more', () => {
+    const expanded = toolGrid.classList.toggle('show-all');
+    allTools.textContent = expanded ? 'แสดงน้อยลง' : 'ดูเครื่องมือทั้งหมด';
+    allTools.setAttribute('aria-expanded', String(expanded));
+  });
+  allTools.setAttribute('aria-expanded', 'false');
+  tools.append(toolsHeading, toolGrid, allTools);
 
   const overview = document.createElement('section');
   overview.id = 'dashboard-overview';
