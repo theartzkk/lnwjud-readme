@@ -151,8 +151,8 @@ test('canonical Work is cloud-first, mobile-first, and never blocks chat on devi
   assert.match(html, /id="goal-submit"/);
   assert.match(app, /selectedProjectId/);
   assert.match(executionUx, /WAITING_FOR_WORKER/);
-  assert.match(html, /Cloud · Online/);
-  assert.match(html, /AI · Ready/);
+  assert.match(html, /id="worker-summary"[^>]*hidden/);
+  assert.doesNotMatch(html, /Cloud · Online|AI · Ready|AWH Server · Online/);
   assert.doesNotMatch(`${html}\n${app}`, /ยังไม่มีอุปกรณ์ทำงานออนไลน์|กำลังรออุปกรณ์ทำงาน|งานจะรอ/);
   assert.match(app, /goal-submit.*disabled/);
   assert.match(app, /conversationAvailable/);

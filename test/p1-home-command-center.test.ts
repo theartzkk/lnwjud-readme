@@ -21,7 +21,8 @@ test('P1 Home command center presents real control data with role-aware worker d
   assert.match(dashboard, /dashboard-owner-system-card/);
   assert.match(dashboard, /VPS Healthy · AI Ready/);
   assert.match(dashboard, /CPU \${cpu}% · RAM \${ram}% · Disk \${disk}%/);
-  assert.match(dashboard, /make\('✦', 'งาน\/AI', 'work'/);
+  assert.match(dashboard, /make\('✦', 'แชท', 'work'/);
+  assert.doesNotMatch(dashboard, /งาน\/AI/);
   assert.doesNotMatch(dashboard, /make\('✦', 'AI', 'ai'/);
   assert.doesNotMatch(dashboard, /make\('☰', 'แชท', 'chat'/);
   assert.match(css, /\.awh-pulse-grid/);

@@ -9,6 +9,8 @@ test('AWH presentation overlays are removed from the canonical web build',async(
  for(const file of ['web/experience-v2.css','web/experience-v2.js','web/experience-v3.css','web/experience-v3.js','web/final-home-polish.css','web/final-home-polish.js']) await assert.rejects(access(new URL(file,root)));
  assert.doesNotMatch(build,/experience-v[23]|final-home-polish|AWH Experience V[23]|Final Home V1/);
  assert.match(dashboard,/mountMobileNavigation/);
- assert.match(dashboard,/mountWelcome/);
+ assert.doesNotMatch(dashboard,/mountWelcome/);
+ assert.match(dashboard,/วันนี้อยากให้ช่วยอะไร\?/);
+ assert.match(dashboard,/make\('✦', 'แชท', 'work'/);
  assert.match(styles,/Canonical Work surface/);
 });
