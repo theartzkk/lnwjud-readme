@@ -25,7 +25,7 @@ test('M17 Account + Managed Hosting activation is additive, typed and approval-g
 });
 
 test('M17 PHP authority and web package are regression-checked',async()=>{
- const php=await execFileAsync('/opt/local/bin/php',['hub/tests/m17-account-hosting.php'],{cwd:root});
+ const php=await execFileAsync('php',['hub/tests/m17-account-hosting.php'],{cwd:root});
  assert.match(php.stdout,/AWH M17 Account Hosting: PASS/);
  await execFileAsync(process.execPath,['--import','tsx','scripts/build-web-preview.ts','--control'],{cwd:root,env:{...process.env,AWH_WEB_RELEASE_ID:'m17-test'}});
  for(const name of ['hosting.html','hosting.css','hosting.js']) assert.match(await readFile(join(root,'dist-web',name),'utf8'),/AWH|Hosting|hosting/i);
