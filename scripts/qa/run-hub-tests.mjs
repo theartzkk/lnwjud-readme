@@ -27,6 +27,7 @@ const tests = [
   'hub/tests/m15-automation-registry.php',
   'hub/tests/m15-automation-scheduler.php',
   'hub/tests/m16-self-sufficient-ai.php',
+  'hub/tests/m18-cloud-first-control.php',
   'hub/tests/continuous-work-supervisor.php',
   'hub/tests/continuous-autochain.php',
   'hub/tests/action-graph-projection.php',

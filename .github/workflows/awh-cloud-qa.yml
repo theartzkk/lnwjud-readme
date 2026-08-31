@@ -1,0 +1,56 @@
+name: AWH Cloud QA
+run-name: AWH Cloud QA ${{ inputs.execution_id }} ${{ inputs.revision }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Exact commit SHA to verify
+        required: true
+        type: string
+      execution_id:
+        description: Canonical AWH execution UUID used only for correlation
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: awh-cloud-qa-${{ inputs.execution_id }}
+  cancel-in-progress: true
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.revision }}
+      - name: Verify exact revision
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ inputs.revision }}"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run hub:test
+      - run: npm run build
+      - name: Verify mobile and release contracts
+        run: node --import tsx --test test/final-uat-shell.test.ts test/visual-review-loop.test.ts test/visual-review-longterm.test.ts
+      - name: Write exact-SHA QA evidence
+        run: |
+          revision="${{ inputs.revision }}"
+          node -e "const fs=require('fs');fs.writeFileSync('AWH-CLOUD-QA.json',JSON.stringify({schemaVersion:1,revision:'${revision}',executionId:'${{ inputs.execution_id }}',status:'PASS',workflow:'awh-cloud-qa.yml'},null,2)+'\n')"
+      - name: Upload QA evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: AWH-CLOUD-QA-${{ inputs.revision }}
+          path: AWH-CLOUD-QA.json
+          if-no-files-found: error
+          retention-days: 14

@@ -87,11 +87,19 @@ final class HubCapabilityRegistryService
         $this->assertReady(); self::uuid($executionId); $at = self::timestamp($now ?? gmdate('c'));
         $q = $this->pdo->prepare('SELECT e.execution_id,e.task_id,e.project_id,e.vault_revision_id,e.executor_kind,e.required_capability,t.conversation_id FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE e.execution_id=:id');
         $q->execute(['id'=>$executionId]); $row = $q->fetch(); if (!is_array($row)) throw new HubCapabilityRegistryException('Execution was not found', 'EXECUTION_NOT_FOUND');
-        $existing = $this->pdo->prepare('SELECT * FROM control_execution_envelopes WHERE execution_id=:id'); $existing->execute(['id'=>$executionId]); $value = $existing->fetch(); if (is_array($value)) return self::envelopeRow($value);
         $required = (string)$row['required_capability']; $scope = str_starts_with($required,'project.mutate.') ? 'PROJECT_CANDIDATE' : (in_array((string)$row['executor_kind'],['DEVICE','CODEX'],true) ? 'DEVICE_WORKSPACE' : (preg_match('/^(?:agent\.conversation|project\.(?:read|search)|artifact\.object)$/',$required) ? 'READ' : 'EXTERNAL'));
         $conversation = is_string($row['conversation_id'] ?? null) ? (string)$row['conversation_id'] : null; $sessionKey = $conversation === null ? 'task:'.$row['task_id'] : 'conversation:'.$conversation;
         $routeCapability = $required === 'codex:cli' ? 'code.specialist' : $required;
-        $route = $this->route($routeCapability,$at); $provider = is_array($route) ? $route['providerId'] : null; $envelopeId = self::uuid();
+        $route = $this->route($routeCapability,$at); $provider = is_array($route) ? $route['providerId'] : null;
+        $existing = $this->pdo->prepare('SELECT * FROM control_execution_envelopes WHERE execution_id=:id'); $existing->execute(['id'=>$executionId]); $value = $existing->fetch();
+        if (is_array($value)) {
+            if (($value['provider_id'] ?? null) === null && $provider !== null && in_array((string)($value['state'] ?? ''),['OPEN','WAITING'],true)) {
+                $this->pdo->prepare("UPDATE control_execution_envelopes SET provider_id=:provider,updated_at=:at WHERE execution_id=:id AND provider_id IS NULL AND state IN ('OPEN','WAITING')")->execute(['provider'=>$provider,'at'=>$at,'id'=>$executionId]);
+                $existing->execute(['id'=>$executionId]); $refreshed=$existing->fetch(); if (is_array($refreshed)) $value=$refreshed;
+            }
+            return self::envelopeRow($value);
+        }
+        $envelopeId = self::uuid();
         $insert = $this->pdo->prepare('INSERT OR IGNORE INTO control_execution_envelopes(envelope_id,execution_id,task_id,project_id,conversation_id,base_revision_id,session_key,mutation_scope,state,provider_id,lease_expires_at,created_at,updated_at) VALUES(:envelope,:execution,:task,:project,:conversation,:revision,:session,:scope,\'OPEN\',:provider,NULL,:at,:at)');
         $insert->execute(['envelope'=>$envelopeId,'execution'=>$executionId,'task'=>$row['task_id'],'project'=>$row['project_id'],'conversation'=>$conversation,'revision'=>$row['vault_revision_id'],'session'=>$sessionKey,'scope'=>$scope,'provider'=>$provider,'at'=>$at]);
         $existing->execute(['id'=>$executionId]); $value = $existing->fetch(); if (!is_array($value)) throw new HubCapabilityRegistryException('Execution envelope could not be created', 'EXECUTION_ENVELOPE_FAILED');

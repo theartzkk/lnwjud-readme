@@ -195,6 +195,25 @@ export async function updateProviderCredential(action, secret = null) { if (!['S
 export async function testProviderConnection() { return controlRequest('/api/v1/control/provider/test', { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
 export async function loadProviderProjectRouting(projectId) { if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง'); const value = await controlRequest(`/api/v1/control/provider/projects/${projectId}`); if (value.schemaVersion !== 1 || !value.routing || typeof value.routing !== 'object') throw new Error('การกำหนด AI ของโปรเจกต์ไม่ถูกต้อง'); return value.routing; }
 export async function updateProviderProjectRouting(projectId, routingMode) { if (!UUID.test(projectId) || !['AUTO', 'FAST', 'BALANCED', 'STRONG'].includes(routingMode)) throw new Error('การกำหนด AI ของโปรเจกต์ไม่ถูกต้อง'); const value = await controlRequest('/api/v1/control/provider/project', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, routingMode }) }); if (value.schemaVersion !== 1 || !value.routing || typeof value.routing !== 'object') throw new Error('การกำหนด AI ของโปรเจกต์ไม่ถูกต้อง'); return value.routing; }
+export async function loadCloudStatus() {
+  const value = await controlRequest('/api/v1/control/cloud');
+  if (value.schemaVersion !== 1 || !['READY', 'NOT_CONFIGURED', 'NOT_READY'].includes(value.state) || !Array.isArray(value.capabilities) || !Array.isArray(value.recent)) throw new Error('สถานะ AWH Cloud ไม่ถูกต้อง');
+  return value;
+}
+export async function loadCloudRevision() {
+  const value = await controlRequest('/api/v1/control/cloud/revision');
+  if (value.schemaVersion !== 1 || typeof value.revision !== 'string' || !/^[0-9a-f]{40}$/.test(value.revision)) throw new Error('AWH Cloud ไม่สามารถยืนยัน Source revision ได้');
+  return value.revision;
+}
+export async function updateCloudCredential(action, secret = null) {
+  if (!['SET', 'REMOVE'].includes(action) || (action === 'SET' && (typeof secret !== 'string' || !secret.trim() || secret.length > 4096)) || (action === 'REMOVE' && secret !== null)) throw new Error('ข้อมูลเชื่อม AWH Cloud ไม่ถูกต้อง');
+  return controlRequest('/api/v1/control/cloud/credential', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, action, secret: action === 'SET' ? secret.trim() : null }) });
+}
+export async function submitCloudTask({ projectId, kind, revision, profile = null, idempotencyKey = `cloud-${crypto.randomUUID()}` }) {
+  if (!UUID.test(projectId) || !['QA', 'VISUAL_REVIEW'].includes(kind) || typeof revision !== 'string' || !/^[0-9a-f]{40}$/.test(revision) || !/^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey)) throw new Error('งานตรวจบน Cloud ไม่ถูกต้อง');
+  if ((kind === 'VISUAL_REVIEW' && !['daily', 'final'].includes(profile)) || (kind === 'QA' && profile !== null)) throw new Error('รูปแบบการตรวจบน Cloud ไม่ถูกต้อง');
+  return controlRequest('/api/v1/control/cloud/tasks', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, kind, revision, profile, idempotencyKey }) });
+}
 export async function loadOwnerSelfServiceStatus() { return controlRequest('/api/v1/control/owner/status'); }
 export async function loadInfrastructure() { return controlRequest('/api/v1/control/infrastructure'); }
 export async function loadSystemReadiness() {

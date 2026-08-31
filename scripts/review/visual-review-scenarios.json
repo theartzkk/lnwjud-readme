@@ -78,6 +78,12 @@
       "surface": "account",
       "action": "open Owner people settings with a pending request",
       "expected": "Owner can create accounts and review pending requests while role/project assignment remains Owner-controlled"
+    },
+    {
+      "id": "product-review-cloud",
+      "surface": "review",
+      "action": "open Owner Product Review on iPhone viewport",
+      "expected": "390x844 has no horizontal overflow; exact revision and Cloud readiness are clear; QA/Visual Review actions are touch-safe; active work exposes Stop; credentials remain Owner step-up only"
     }
   ]
 }
