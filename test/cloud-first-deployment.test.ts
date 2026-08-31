@@ -19,7 +19,7 @@ test('M18 Cloud-first activation contract is additive, rollback-safe and approva
  const [local,remoteText,validator]=await Promise.all([readFile(deploy,'utf8'),readFile(remote,'utf8'),readFile(join(root,'deploy/awh-control-plane/validate-remote-output.sh'),'utf8')]);
  assert.match(local,/--cloud-first/); assert.match(local,/RELEASE_ID=m18-/); assert.match(local,/017_cloud_first_control\.sql/);
  assert.match(remoteText,/CLOUD_FIRST_MIGRATION_FIRST/); assert.match(remoteText,/CLOUD_FIRST_MIGRATION_IDEMPOTENT/); assert.match(remoteText,/CLOUD_FIRST_MIGRATION_VERIFIED/);
- assert.match(remoteText,/M18_TABLE_COUNT_BEFORE/); assert.match(remoteText,/m18-cloud-first-control/); assert.match(remoteText,/CLOUD_FIRST_ROUTE/); assert.match(remoteText,/test \"\$CLOUD_FIRST\" = 1; then DB_MUTATED=1; stage PROJECT_VAULT_SOURCE_SYNC/);
- assert.match(remoteText,/control_capability_catalog WHERE capability IN \('qa\.cloud','review\.visual'\)/);
+ assert.match(remoteText,/M18_TABLE_COUNT_BEFORE/); assert.match(remoteText,/class_exists\(\"ZipArchive\"\)/); assert.match(remoteText,/provider-credentials/); assert.match(remoteText,/m18-cloud-first-control/); assert.match(remoteText,/CLOUD_FIRST_ROUTE/); assert.match(remoteText,/test \"\$CLOUD_FIRST\" = 1; then DB_MUTATED=1; stage PROJECT_VAULT_SOURCE_SYNC/);
+ assert.match(remoteText,/control_capability_catalog WHERE capability IN \('qa\.cloud','review\.visual'\)/); assert.match(remoteText,/api\/v1\/control\/cloud/);
  assert.match(validator,/CLOUD_FIRST_MIGRATION_FIRST/); assert.match(validator,/CLOUD_FIRST_ROUTE/);
 });
