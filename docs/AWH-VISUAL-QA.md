@@ -46,3 +46,11 @@ Each pack contains the committed revision identity, UX Constitution, scenario ma
 ## Importing AIPass findings
 
 Save the model response as `findings.json`, then run `npm run review:validate -- findings.json <candidate-sha>`. Invalid severity, revision, score, or P0/verdict combinations fail closed. Valid findings may be converted into normal AWH engineering work, but the JSON file itself is never a new source of truth.
+
+## AiPASS handoff boundary
+
+AiPASS itself is used only through its official user interface. AWH must not automate login, emulate user actions, scrape authenticated sessions, or connect to undocumented AiPASS API/API-key/token endpoints.
+
+The automated boundary stops at the sanitized ZIP. The Owner uploads that pack in the official AiPASS UI, selects the reviewer model, and saves/copies the returned JSON. AWH automation resumes only after that JSON is back on the AWH side and has passed `review:validate`.
+
+This keeps the free AiPASS entitlement useful for product review without making AiPASS a runtime dependency or violating its access conditions.
