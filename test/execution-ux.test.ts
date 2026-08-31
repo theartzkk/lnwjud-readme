@@ -44,6 +44,19 @@ test('journey is deterministic from accepted through approval and completion', (
   assert.equal(done.journey.every((step: { state: string }) => step.state === 'done'), true);
 });
 
+test('live Action Graph projection replaces generic progress without exposing capabilities', () => {
+  const status = ux.executionStatus({ state: 'RUNNING', progress: 55, actionGraph: { nodes: [
+    { nodeId: 'plan', title: 'วางแผนงาน', state: 'COMPLETED', capability: 'agent.plan' },
+    { nodeId: 'research', title: 'ค้นและอ่านข้อมูลที่จำเป็น', state: 'COMPLETED', capability: 'project.search' },
+    { nodeId: 'execute', title: 'ลงมือทำงาน', state: 'RUNNING', capability: 'codex:cli' },
+    { nodeId: 'verify', title: 'ตรวจผลลัพธ์', state: 'PLANNED', capability: 'task.verify' },
+  ] } });
+  assert.deepEqual(status.journey.map((step: { id: string; state: string }) => [step.id, step.state]), [
+    ['plan', 'done'], ['research', 'done'], ['execute', 'active'], ['verify', 'upcoming'],
+  ]);
+  assert.doesNotMatch(status.journey.map((step: { label: string }) => step.label).join(' '), /codex|capability|project\.search/i);
+});
+
 test('provider failures remain truthful and preserve the task', () => {
   const status = ux.executionStatus({ state: 'FAILED', failureCode: 'PROVIDER_QUOTA_EXHAUSTED', progress: 0 });
   assert.equal(status.title, 'กำลังแก้ไข');

@@ -12,6 +12,19 @@ chain_assert($continuous->invoke(null, 'Continue the main project autonomously f
 chain_assert($continuous->invoke(null, 'ตรวจ Source of Truth ของ AWH ต่อเนื่องบน VPS แบบ read-only เท่านั้น ห้ามแก้ source deploy secret billing หรือ permission เมื่อขั้นแรกเสร็จให้เลือกหัวข้อ read-only ที่ปลอดภัยถัดไปเอง') === true, 'Thai field-proof continuous intent must opt in');
 chain_assert($continuous->invoke(null, 'ตรวจโปรเจกต์ล่าสุด') === false, 'ordinary work must not silently become continuous');
 
+$agentLoop = new ReflectionMethod(HubControlPlaneService::class, 'agentLoopSteps');
+chain_assert($agentLoop->invoke(null, 'ตรวจไฟล์ล่าสุด แล้วสรุปประเด็นสำคัญ') === 4, 'safe multi-step read work should get bounded default autonomy');
+chain_assert($agentLoop->invoke(null, 'วิเคราะห์ source จากนั้นสรุปความเสี่ยง') === 4, 'safe research workflow should auto-chain without a magic phrase');
+chain_assert($agentLoop->invoke(null, 'ตรวจ source แล้วแก้ source') === null, 'mutation workflow must not auto-chain by default');
+chain_assert($agentLoop->invoke(null, 'ตรวจ production แล้วสรุปสถานะ') === null, 'production-sensitive workflow must not auto-chain by default');
+chain_assert($agentLoop->invoke(null, 'ตรวจ Source of Truth ต่อเนื่องแบบ read-only') === 6, 'explicit continuous request keeps the larger bounded chain');
+
+$agentLoop = new ReflectionMethod(HubControlPlaneService::class, 'agentLoopSteps');
+chain_assert($agentLoop->invoke(null, 'ตรวจ source ล่าสุด แล้วสรุปสิ่งที่ต้องทำต่อ') === 4, 'safe multi-step read work should get bounded default autonomy');
+chain_assert($agentLoop->invoke(null, 'ตรวจ source ล่าสุด') === null, 'single-step read work should remain single-step');
+chain_assert($agentLoop->invoke(null, 'ตรวจ source แล้วแก้ source') === null, 'mutation must not receive implicit autonomy');
+chain_assert($agentLoop->invoke(null, 'ตรวจ source ต่อเนื่องจนจบ') === 6, 'explicit continuous work keeps the larger bound');
+
 $impact = new ReflectionMethod(HubDurableExecutionService::class, 'highImpactGoal');
 chain_assert($impact->invoke(null, 'Deploy this candidate to production') === true, 'production deployment must stop the chain');
 chain_assert($impact->invoke(null, 'แก้ regression ใน source แล้วรัน QA') === false, 'reversible source work may continue');

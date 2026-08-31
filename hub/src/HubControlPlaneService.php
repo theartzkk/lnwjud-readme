@@ -26,6 +26,7 @@ require_once __DIR__ . '/HubInfrastructureService.php';
 require_once __DIR__ . '/HubAiGovernanceService.php';
 require_once __DIR__ . '/HubStaffOperationsService.php';
 require_once __DIR__ . '/HubThaiGovernmentDocumentService.php';
+require_once __DIR__ . '/HubActionGraphService.php';
 
 final class HubControlPlaneException extends RuntimeException
 {
@@ -675,7 +676,7 @@ final class HubControlPlaneService
         $row = $existing->fetch();
         if (is_array($row)) return $this->taskRow($row);
         $taskId = self::uuidFromBytes(random_bytes(16)); $vaultRevision = $this->centralVaultRevision($projectId); $serverInspection = $vaultRevision !== null && self::isServerInspection($goal); $serverTextMutation = $vaultRevision !== null && self::isServerTextNormalization($goal); $serverAssistedEdit = $vaultRevision !== null && self::isServerAssistedEdit($goal);
-        if ($continuation === null && self::isContinuousAutonomyRequest($goal)) $continuation = ['enabled'=>true,'rootTaskId'=>$taskId,'step'=>0,'maxSteps'=>6];
+        if ($continuation === null) { $autoSteps = self::agentLoopSteps($goal); if ($autoSteps !== null) $continuation = ['enabled'=>true,'rootTaskId'=>$taskId,'step'=>0,'maxSteps'=>$autoSteps]; }
         try {
             $state = ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'QUEUED' : 'WAITING_FOR_WORKER';
             if ($conversationId === null) {
@@ -903,7 +904,7 @@ final class HubControlPlaneService
                 if ($officeRequest !== null && $this->centralProjectAuthoritySchemaPresent()) {
                     $this->execution->enqueue($taskId, $projectId, null, 'DEVICE', $officeRequest['capability'], ['mode' => 'OFFICE_TO_PDF', 'attachmentId' => $officeRequest['attachmentId']], $at);
                 } elseif ($vaultRevision !== null) {
-                    $checkpoint = ['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverAssistedEdit ? 'PROJECT_ASSISTED_EDIT' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST'))]; if (self::isContinuousAutonomyRequest($effectiveGoal)) $checkpoint['continuation'] = ['enabled'=>true,'rootTaskId'=>$taskId,'step'=>0,'maxSteps'=>6]; $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverAssistedEdit ? 'project.mutate.assisted' : ($serverInspection ? 'project.read' : 'codex:cli')), $checkpoint, $at);
+                    $checkpoint = ['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverAssistedEdit ? 'PROJECT_ASSISTED_EDIT' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST'))]; $autoSteps = self::agentLoopSteps($effectiveGoal); if ($autoSteps !== null) $checkpoint['continuation'] = ['enabled'=>true,'rootTaskId'=>$taskId,'step'=>0,'maxSteps'=>$autoSteps]; $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverAssistedEdit ? 'project.mutate.assisted' : ($serverInspection ? 'project.read' : 'codex:cli')), $checkpoint, $at);
                 }
                 $this->event($taskId, $taskState, 0, $officeRequest !== null ? 'waiting for Office PDF capability' : ($serverInspection ? 'server inspection queued' : ($serverTextMutation ? 'server text transform queued' : 'specialist execution recorded')), $at);
                 $this->pdo->prepare('UPDATE control_conversations SET last_task_id = :task, updated_at = :at WHERE conversation_id = :conversation')->execute(['task' => $taskId, 'at' => $at, 'conversation' => $conversation['conversation_id']]);
@@ -2084,16 +2085,23 @@ final class HubControlPlaneService
     }
     private function taskRow(array $row): array
     {
-        $q = $this->pdo->prepare('SELECT artifact_id FROM control_artifacts WHERE task_id = :task ORDER BY created_at, artifact_id LIMIT 20'); $q->execute(['task' => $row['task_id']]);
-        $approval = $this->pdo->prepare('SELECT status FROM control_approvals WHERE task_id = :task ORDER BY expires_at DESC, approval_id DESC LIMIT 1'); $approval->execute(['task' => $row['task_id']]); $approvalStatus = $approval->fetchColumn();
-        $project = $this->pdo->prepare('SELECT name, type FROM projects WHERE project_id = :project'); $project->execute(['project' => $row['project_id']]); $projectRow = $project->fetch();
-        $event = $this->pdo->prepare('SELECT state, progress, message FROM control_task_events WHERE task_id = :task ORDER BY occurred_at DESC, event_id DESC LIMIT 1'); $event->execute(['task' => $row['task_id']]); $eventRow = $event->fetch();
-        $execution = null;
+        $q = $this->pdo->prepare('SELECT artifact_id FROM control_artifacts WHERE task_id = :task ORDER BY created_at, artifact_id LIMIT 20');
+        $q->execute(['task' => $row['task_id']]);
+        $artifactRows = $q->fetchAll();
+        $approval = $this->pdo->prepare('SELECT status FROM control_approvals WHERE task_id = :task ORDER BY expires_at DESC, approval_id DESC LIMIT 1');
+        $approval->execute(['task' => $row['task_id']]); $approvalStatus = $approval->fetchColumn();
+        $project = $this->pdo->prepare('SELECT name, type FROM projects WHERE project_id = :project');
+        $project->execute(['project' => $row['project_id']]); $projectRow = $project->fetch();
+        $event = $this->pdo->prepare('SELECT state, progress, message FROM control_task_events WHERE task_id = :task ORDER BY occurred_at DESC, event_id DESC LIMIT 1');
+        $event->execute(['task' => $row['task_id']]); $eventRow = $event->fetch();
+        $execution = null; $executionRow = null;
         if ($this->centralProjectAuthoritySchemaPresent()) {
-            $executionQuery = $this->pdo->prepare('SELECT execution_id, executor_kind, required_capability, vault_revision_id, state, checkpoint_json FROM control_task_executions WHERE task_id = :task'); $executionQuery->execute(['task' => $row['task_id']]); $executionRow = $executionQuery->fetch();
+            $executionQuery = $this->pdo->prepare('SELECT execution_id, executor_kind, required_capability, vault_revision_id, state, checkpoint_json FROM control_task_executions WHERE task_id = :task');
+            $executionQuery->execute(['task' => $row['task_id']]); $executionRow = $executionQuery->fetch();
             if (is_array($executionRow)) $execution = ['executionId' => (string) $executionRow['execution_id'], 'executorKind' => (string) $executionRow['executor_kind'], 'requiredCapability' => (string) $executionRow['required_capability'], 'vaultRevisionId' => $executionRow['vault_revision_id'] === null ? null : (string) $executionRow['vault_revision_id'], 'state' => (string) $executionRow['state'], 'continuation' => self::executionContinuation((string) ($executionRow['checkpoint_json'] ?? '{}'))];
         }
-        return ['schemaVersion' => 1, 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'conversationId' => isset($row['conversation_id']) && $row['conversation_id'] !== null ? (string) $row['conversation_id'] : null, 'projectName' => is_array($projectRow) ? (string) $projectRow['name'] : null, 'projectType' => is_array($projectRow) ? (string) $projectRow['type'] : null, 'goal' => (string) $row['goal'], 'state' => (string) $row['state'], 'progress' => (int) $row['progress'], 'assignedDevice' => $row['assigned_device_id'] === null ? null : (string) $row['assigned_device_id'], 'approvalStatus' => $approvalStatus === false ? null : (string) $approvalStatus, 'createdAt' => (string) $row['created_at'], 'updatedAt' => (string) $row['updated_at'], 'resultSummary' => $row['result_summary'] === null ? null : (string) $row['result_summary'], 'failureCode' => $row['failure_code'] === null ? null : (string) $row['failure_code'], 'lastEvent' => is_array($eventRow) ? ['state' => (string) $eventRow['state'], 'progress' => (int) $eventRow['progress'], 'message' => $eventRow['message'] === null ? null : (string) $eventRow['message']] : null, 'artifactRefs' => array_map(static fn (array $item): string => (string) $item['artifact_id'], $q->fetchAll()), 'execution' => $execution];
+        $actionGraph = HubActionGraphService::project($row, is_array($executionRow) ? $executionRow : null, $approvalStatus === false ? null : (string) $approvalStatus, count($artifactRows));
+        return ['schemaVersion' => 1, 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'conversationId' => isset($row['conversation_id']) && $row['conversation_id'] !== null ? (string) $row['conversation_id'] : null, 'projectName' => is_array($projectRow) ? (string) $projectRow['name'] : null, 'projectType' => is_array($projectRow) ? (string) $projectRow['type'] : null, 'goal' => (string) $row['goal'], 'state' => (string) $row['state'], 'progress' => (int) $row['progress'], 'assignedDevice' => $row['assigned_device_id'] === null ? null : (string) $row['assigned_device_id'], 'approvalStatus' => $approvalStatus === false ? null : (string) $approvalStatus, 'createdAt' => (string) $row['created_at'], 'updatedAt' => (string) $row['updated_at'], 'resultSummary' => $row['result_summary'] === null ? null : (string) $row['result_summary'], 'failureCode' => $row['failure_code'] === null ? null : (string) $row['failure_code'], 'lastEvent' => is_array($eventRow) ? ['state' => (string) $eventRow['state'], 'progress' => (int) $eventRow['progress'], 'message' => $eventRow['message'] === null ? null : (string) $eventRow['message']] : null, 'artifactRefs' => array_map(static fn (array $item): string => (string) $item['artifact_id'], $artifactRows), 'execution' => $execution, 'actionGraph' => $actionGraph];
     }
     private static function artifactRow(array $row): array { $id = (string) $row['artifact_id']; return ['schemaVersion' => 1, 'artifactId' => $id, 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'kind' => (string) $row['kind'], 'name' => (string) $row['name'], 'sha256' => $row['sha256'] === null ? null : (string) $row['sha256'], 'sizeBytes' => (int) $row['size_bytes'], 'relativeRef' => $row['relative_ref'] === null ? null : (string) $row['relative_ref'], 'createdAt' => (string) $row['created_at'], 'downloadUrl' => isset($row['object_artifact_id']) && $row['object_artifact_id'] !== null ? '/api/v1/control/artifacts/' . $id . '/download' : null]; }
     private static function approvalRow(array $row, ?string $status = null): array
@@ -2589,7 +2597,18 @@ final class HubControlPlaneService
     private static function isConversationFollowUp(string $message): bool { return preg_match('/^(?:ทำต่อ|ต่อจาก|ต่อเลย|เอาอัน(?:นี้|นั้น|ล่าสุด)|ยังไม่ใช่|ตรวจอีกที|continue|keep going|that one)(?:\s|$|[.!?])/iu', trim($message)) === 1; }
     /** Read-only Vault work can use the bounded VPS executor.  Any request
      * that might modify content waits for an explicit specialist capability. */
-    private static function isContinuousAutonomyRequest(string $message): bool { return preg_match('/(?:autonomously|continuous(?:ly)?|without\s+stopping|keep\s+going\s+until|อัตโนมัติ|ไม่ต้องหยุด|ต่อเนื่อง|ทำต่อ)/iu', trim($message)) === 1; }
+    private static function isContinuousAutonomyRequest(string $message): bool { $value = trim($message); return preg_match('/(?:autonomously|continuous(?:ly)?|without\s+stopping|keep\s+going\s+until|อัตโนมัติ|ไม่ต้องหยุด|ต่อเนื่อง)/iu', $value) === 1 || preg_match('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)*ทำต่อ(?:\s|$|[ก-๙])/iu', $value) === 1; }
+    /** Normal multi-step read/research work gets bounded autonomy without a magic phrase. */
+    private static function agentLoopSteps(string $message): ?int
+    {
+        $value = trim($message);
+        if (self::isContinuousAutonomyRequest($value)) return 6;
+        if ($value === '' || strlen($value) > 2000 || self::hasUnnegatedMutationSignal($value)) return null;
+        if (preg_match('/(?:deploy|production|prod\b|billing|permission|สิทธิ์|secret|credential|api\s*key|migration|migrate|schema|ฐานข้อมูล)/iu', $value) === 1) return null;
+        $startsSafe = preg_match('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)*(?:ตรวจ|วิเคราะห์|ดู|ค้นหา|อ่าน|สรุป|inspect|review|search|read|summari[sz]e)(?:หน่อย|ให้|ที|ดู)?(?:\s|$|[ก-๙])/iu', $value) === 1;
+        $multiStep = preg_match('/(?:จากนั้น|แล้ว(?:ช่วย)?|ต่อด้วย|แล้วค่อย|\band\s+then\b|\bthen\b|\bafter\s+that\b)/iu', $value) === 1;
+        return $startsSafe && $multiStep ? 4 : null;
+    }
     /** Mutation words inside an explicit prohibition must not downgrade a read-only request. */
     private static function hasUnnegatedMutationSignal(string $value): bool
     {

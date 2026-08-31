@@ -64,6 +64,17 @@ function stageIndex(stage) {
 }
 
 export function executionJourney(task) {
+  const projected = Array.isArray(task?.actionGraph?.nodes) ? task.actionGraph.nodes : [];
+  if (projected.length > 0 && projected.length <= 8) {
+    return projected.map((node) => ({
+      id: clean(node?.nodeId) || 'step',
+      label: clean(node?.title) || 'กำลังดำเนินงาน',
+      state: node?.state === 'COMPLETED' ? 'done'
+        : node?.state === 'RUNNING' || node?.state === 'READY' ? 'active'
+        : node?.state === 'FAILED' || node?.state === 'BLOCKED' || node?.state === 'CANCELLED' ? 'halted'
+        : 'upcoming',
+    }));
+  }
   const taskState = clean(task?.state) || 'QUEUED';
   if (taskState === 'FAILED' || taskState === 'CANCELLED') {
     const progress = Number.isInteger(task?.progress) ? Math.max(0, Math.min(100, task.progress)) : 0;
