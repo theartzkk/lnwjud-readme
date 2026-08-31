@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://awh.local/schema/aipass-findings-v1.json",
+  "title": "AWH AIPass Visual Findings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "revision", "reviewer", "verdict", "scores", "findings"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "revision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "reviewer": { "type": "string", "minLength": 2, "maxLength": 80 },
+    "verdict": { "enum": ["PASS", "REVIEW", "BLOCK"] },
+    "scores": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chat", "mobile", "agentic", "artifact", "recovery"],
+      "properties": {
+        "chat": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "mobile": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "agentic": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "artifact": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "recovery": { "type": "integer", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "maxItems": 30,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "severity", "scenario", "problem", "evidence", "expected", "fixLayer", "confidence"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]{3,64}$" },
+          "severity": { "enum": ["P0", "P1", "P2"] },
+          "scenario": { "type": "string", "minLength": 2, "maxLength": 80 },
+          "problem": { "type": "string", "minLength": 5, "maxLength": 600 },
+          "evidence": { "type": "string", "minLength": 5, "maxLength": 600 },
+          "expected": { "type": "string", "minLength": 5, "maxLength": 600 },
+          "fixLayer": { "enum": ["intent-router", "conversation", "task-execution", "artifact", "navigation", "composer", "copy", "mobile-layout", "recovery", "accessibility", "architecture", "unknown"] },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "sourcePaths": {
+            "type": "array",
+            "maxItems": 8,
+            "items": { "type": "string", "maxLength": 240 }
+          }
+        }
+      }
+    }
+  }
+}

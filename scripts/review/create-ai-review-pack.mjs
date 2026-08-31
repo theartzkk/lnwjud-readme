@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, realpathSync, rmSync, writeFileSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { deflateRawSync } from 'node:zlib';
 
@@ -10,6 +10,7 @@ const branch = git(['branch', '--show-current']).trim() || 'detached';
 const dirty = git(['status', '--porcelain']).trim() !== '';
 const output = resolve(process.argv[2] || join(ROOT, '..', `AWH-AI-REVIEW-${commit.slice(0, 12)}.zip`));
 const stage = resolve(ROOT, '.tmp-ai-review-pack');
+const evidenceDir = process.env.AWH_AI_REVIEW_EVIDENCE_DIR ? resolve(process.env.AWH_AI_REVIEW_EVIDENCE_DIR) : null;
 const allowRoots = new Set(['web', 'hub', 'src', 'scripts', 'test', 'docs', 'deploy']);
 const allowRootFiles = new Set(['README.md', 'package.json', 'package-lock.json', 'tsconfig.json', 'electron-builder.yml']);
 const denyPath = /(^|\/)(?:\.env(?:\.|$)|node_modules|\.git|\.awh-|dist|coverage|vendor|uploads?|backups?|secrets?|credentials?|private)(?:\/|$)|\.(?:pem|key|p12|pfx|sqlite|sqlite3|db|dump|zip|tar|gz|7z)$/i;
@@ -73,8 +74,36 @@ const revision = {
 writeStage('CURRENT_REVISION.json', JSON.stringify(revision, null, 2));
 writeStage('SOURCE_TREE.txt', included.join('\n') + '\n');
 writeStage('SAFETY_MANIFEST.json', JSON.stringify({ schemaVersion: 1, includedCount: included.length, skipped, policies: ['NO_WORKING_TREE_CONTENT', 'NO_ENV_FILES', 'NO_DATABASES', 'NO_BACKUPS', 'NO_PRIVATE_KEYS', 'SECRET_PATTERN_SCAN'] }, null, 2));
-writeStage('PROJECT_CONTEXT.md', `# AWH AI Review Pack\n\nThis pack is a sanitized, committed-source snapshot of Art’s Workspace Hub.\n\n## Review contract\n- Treat CURRENT_REVISION.json as the revision authority for this pack.\n- Inspect source/ before making architectural claims.\n- Do not assume production runtime state from source alone.\n- Prefer root-cause fixes and preserve existing data contracts.\n- User-facing UX should describe intent and outcomes, not Agent/Executor/Worker/Provider/Job internals.\n- Do not propose a parallel source of truth or duplicate project data.\n\n## Safety\nThe generator excludes working-tree changes, environment files, databases, backups, private-key material, and files matching known live-secret patterns.\n`);
-writeStage('REVIEW_PROMPT.md', `# Suggested review prompt\n\nAudit this AWH snapshot as a Senior Product Designer, UX Architect and Software Architect.\n\nGoal: AWH should feel as simple as ChatGPT for normal conversation while completing multi-step deliverables with the breadth of Genspark. Users should not need to understand model, agent, tool, executor, worker or provider internals.\n\nReview information architecture, Home, chat composer, task progress, artifacts, recovery, mobile safe areas, accessibility, architecture, data integrity and migration risk. Separate findings into P0/P1/P2. Cite exact source paths for every implementation-specific claim.\n`);
+for (const [target, source] of [['AWH-UX-CONSTITUTION.md','docs/AWH-UX-CONSTITUTION.md'],['VISUAL_SCENARIOS.json','scripts/review/visual-review-scenarios.json'],['FINDINGS_SCHEMA.json','scripts/review/aipass-findings.schema.json']]) {
+  const content = readFileSync(join(ROOT, source));
+  if (containsSecret(content)) throw new Error(`${source} unexpectedly contains a secret pattern`);
+  writeStage(target, content);
+}
+writeStage('PROJECT_CONTEXT.md', `# AWH AI Review Pack\n\nThis pack is a sanitized, committed-source snapshot plus optional rendered evidence.\n\n## Review contract\n- CURRENT_REVISION.json is the source revision authority.\n- AWH-UX-CONSTITUTION.md is the UX contract.\n- Screenshots are visual evidence, not production-runtime proof.\n- Do not infer runtime health from source or fixture screenshots.\n- Prefer root-cause fixes and preserve canonical task/artifact/project authorities.\n- Never propose a parallel queue, issue database, project store, or memory authority.\n`);
+writeStage('REVIEW_PROMPT.md', `# AIPass visual review prompt\n\nReview AWH from five perspectives: ChatGPT simplicity, Genspark agentic UX, Thai mobile usability, accessibility/recovery, and adversarial product critique. Treat screenshots and scenario metadata as primary UX evidence; request source snippets only when needed.\n\nFocus on defects and regressions, not praise. A normal question must receive a conversational answer; work should plan/execute/deliver in one conversation; artifacts should be first-class; L1/L2 must not expose backend vocabulary. Check 390x844 safe areas, navigation obstruction, composer friction, Stop/Retry, and artifact continuation.\n\nReturn JSON only and conform to FINDINGS_SCHEMA.json. A BLOCK verdict requires at least one reproducible P0 finding. Include exact sourcePaths only when the pack supports the implementation claim.\n`);
+
+if (evidenceDir !== null) {
+  if (!existsSync(evidenceDir) || !statSync(evidenceDir).isDirectory()) throw new Error('AWH_AI_REVIEW_EVIDENCE_DIR is not a directory');
+  const rootReal = realpathSync(evidenceDir);
+  const manifestPath = join(evidenceDir, 'VISUAL_EVIDENCE.json');
+  if (!existsSync(manifestPath)) throw new Error('visual evidence manifest is missing');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  if (manifest?.schemaVersion !== 1 || manifest?.commit !== commit || manifest?.dirty !== false) throw new Error('visual evidence does not match the clean committed revision');
+  const copyEvidence = (directory, prefix = '') => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const source = join(directory, entry.name); const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isSymbolicLink()) throw new Error(`visual evidence contains symlink: ${relative}`);
+      const real = realpathSync(source); if (real !== rootReal && !real.startsWith(`${rootReal}/`)) throw new Error('visual evidence escaped its root');
+      if (entry.isDirectory()) { copyEvidence(source, relative); continue; }
+      if (!/^[A-Za-z0-9._/-]+$/.test(relative) || !/\.(?:png|json)$/i.test(relative)) continue;
+      const info = lstatSync(source); const limit = relative.toLowerCase().endsWith('.png') ? 8 * 1024 * 1024 : 1024 * 1024;
+      if (!info.isFile() || info.size < 1 || info.size > limit) throw new Error(`visual evidence file is invalid: ${relative}`);
+      const content = readFileSync(source); if (relative.toLowerCase().endsWith('.json') && containsSecret(content)) throw new Error(`visual evidence metadata contains a secret pattern: ${relative}`);
+      writeStage(join('visual-evidence', relative), content);
+    }
+  };
+  copyEvidence(evidenceDir);
+}
 
 const crcTable = Array.from({ length: 256 }, (_, n) => {
   let c = n;

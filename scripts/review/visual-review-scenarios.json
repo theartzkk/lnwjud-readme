@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "referenceViewports": [
+    {
+      "id": "iphone",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "id": "desktop",
+      "width": 1440,
+      "height": 900
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "home-empty",
+      "surface": "home",
+      "action": "open authenticated AWH with no active work",
+      "expected": "real composer is immediately usable; no backend status language; three mobile destinations maximum"
+    },
+    {
+      "id": "question-identity",
+      "surface": "work",
+      "prompt": "นายคือใคร",
+      "expected": "direct conversational answer; no work task is created solely for this question"
+    },
+    {
+      "id": "work-progress",
+      "surface": "work",
+      "prompt": "ตรวจข้อมูลนี้แล้วสรุปประเด็นสำคัญให้หน่อย",
+      "expected": "one concise human progress surface with expandable steps and a stop action while cancellable"
+    },
+    {
+      "id": "document-artifact",
+      "surface": "work",
+      "prompt": "ทำบันทึกข้อความขออนุมัติเป็นไฟล์ Word",
+      "expected": "artifact card appears in the same conversation with open/download/continue actions"
+    },
+    {
+      "id": "failed-retry",
+      "surface": "work",
+      "action": "show a failed work task",
+      "expected": "human error copy preserves work and offers edit/retry without raw provider/capability codes"
+    },
+    {
+      "id": "resume-work",
+      "surface": "home",
+      "action": "open with a recent active task",
+      "expected": "one compact resume card points back to the original conversation and does not duplicate history"
+    },
+    {
+      "id": "artifact-follow-up",
+      "surface": "work",
+      "prompt": "ทำไฟล์เมื่อกี้เป็น PDF ด้วย",
+      "expected": "previous artifact is resolved from conversation context without re-upload or asking which file when unambiguous"
+    },
+    {
+      "id": "tools-shortcuts",
+      "surface": "tools",
+      "action": "open tools surface",
+      "expected": "tools are shortcuts only; user can still request the same outcomes from chat without selecting a tool"
+    }
+  ]
+}

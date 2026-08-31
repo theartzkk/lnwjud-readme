@@ -134,6 +134,12 @@ const server = createServer(async (request, response) => {
       if (!conversation || value.schemaVersion !== 3 || value.projectId !== project.projectId || typeof value.message !== 'string' || !value.message.trim() || !Array.isArray(value.attachmentIds)) return send(response, 400, { code: 'PAYLOAD_INVALID' });
       const user = message(conversation, 'user', value.message.trim());
       for (const attachment of attachments) if (value.attachmentIds.includes(attachment.attachmentId) && attachment.conversationId === conversation.conversationId && attachment.messageId === null) attachment.messageId = user.messageId;
+      const conversationalQuestion = /^(?:นายคือใคร|คุณคือใคร|AWH คืออะไร|สร้าง AWH มาทำไม)[?？ ]*$/iu.test(value.message.trim());
+      if (conversationalQuestion) {
+        message(conversation, 'assistant', 'ผมคือ AWH ผู้ช่วยใน Workspace นี้ครับ คุณถาม คุย หรือสั่งงานเป็นภาษาปกติได้เลย ถ้าเป็นงานที่ต้องสร้างไฟล์หรือทำหลายขั้น ผมจะจัดการต่อให้ในบทสนทนาเดียว');
+        conversation.updatedAt = now;
+        return send(response, 201, thread(conversation));
+      }
       const documentOutcome = /(?:บันทึกข้อความ|docx|word|เวิร์ด)/iu.test(value.message);
       const task = { taskId: taskId(), projectId: project.projectId, conversationId: conversation.conversationId, goal: value.message.trim(), state: documentOutcome ? 'COMPLETED' : 'WAITING_FOR_WORKER', progress: documentOutcome ? 100 : 0, createdAt: now, updatedAt: now, lastEvent: { message: documentOutcome ? 'สร้างไฟล์ Word แบบราชการไทยเรียบร้อย' : 'AWH บันทึกงานแล้ว และกำลังรออุปกรณ์ทำงาน' } };
       tasks.unshift(task); conversation.lastTaskId = task.taskId; conversation.updatedAt = now;
