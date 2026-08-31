@@ -14,6 +14,7 @@ require_once __DIR__ . '/HubBackupService.php';
 require_once __DIR__ . '/HubInfrastructureService.php';
 require_once __DIR__ . '/HubStorageGovernanceService.php';
 require_once __DIR__ . '/HubExecutionTriageService.php';
+require_once __DIR__ . '/HubConversationReferentService.php';
 
 /**
  * Durable server-side execution projection for existing control_tasks.  It is
@@ -387,7 +388,7 @@ final class HubDurableExecutionService
         if (!preg_match('/^[0-9a-f-]{36}$/i', $conversationId) || !is_string($messageId) || preg_match('/^[0-9a-f-]{36}$/i', $messageId) !== 1) throw new HubDurableExecutionException('Native conversation checkpoint is invalid', 'EXECUTION_INVALID');
         $turns = $this->recentConversationTurns($conversationId, $messageId);
         $attachments = $this->attachmentsForMessage($conversationId, $messageId, (string) $claimed['user_id']);
-        $context = $this->conversationContext((string) $claimed['user_id'], (string) $claimed['project_id'], (string) $claimed['goal']);
+        $context = $this->conversationContext((string) $claimed['user_id'], (string) $claimed['project_id'], (string) $claimed['goal'], $conversationId);
         if ($this->agent === null) throw new HubDurableExecutionException('Native conversation provider is unavailable', 'PROVIDER_UNAVAILABLE', ['provider' => 'openai', 'operation' => 'responses', 'category' => 'unavailable', 'retryable' => true]);
         try {
             $result = $this->agent->respond((string) $claimed['user_id'], (string) $claimed['project_id'], $conversationId, $messageId, (string) $claimed['goal'], $turns, $attachments, $at, $context, ['executionId'=>(string)$claimed['execution_id'],'taskId'=>(string)$claimed['task_id'],'capability'=>(string)$claimed['required_capability'],'dataClassification'=>'INTERNAL','retryCount'=>(int)$claimed['attempt_count'],'routingPolicyVersion'=>'m16-v1','promptPolicyVersion'=>'native-v1','toolPolicyVersion'=>'bounded-v1']);
@@ -721,7 +722,7 @@ final class HubDurableExecutionService
     }
 
     /** @return array<string,mixed> */
-    private function conversationContext(string $userId, string $projectId, string $request): array
+    private function conversationContext(string $userId, string $projectId, string $request, ?string $conversationId = null): array
     {
         $project = $this->pdo->prepare('SELECT name, type, source_revision, observed_at FROM projects WHERE project_id = :project'); $project->execute(['project' => $projectId]); $row = $project->fetch();
         $latest = $this->pdo->prepare("SELECT state, result_summary, updated_at FROM control_tasks WHERE project_id = :project AND user_id = :user AND state <> 'CANCELLED' ORDER BY updated_at DESC, task_id DESC LIMIT 2"); $latest->execute(['project' => $projectId, 'user' => $userId]);
@@ -732,7 +733,7 @@ final class HubDurableExecutionService
         } catch (Throwable) { $memory = null; }
         $revision = null;
         try { $revision = $this->vaults->activeRevision($projectId); } catch (HubProjectVaultException) { $revision = null; }
-        return ['project' => is_array($row) ? ['name' => (string) $row['name'], 'type' => (string) $row['type'], 'sourceRevision' => $row['source_revision'] === null ? null : (string) $row['source_revision'], 'observedAt' => (string) $row['observed_at']] : null, 'vaultRevision' => $revision, 'recentTasks' => array_map(static fn (array $task): array => ['state' => (string) $task['state'], 'summary' => $task['result_summary'] === null ? null : (string) $task['result_summary'], 'updatedAt' => (string) $task['updated_at']], $latest->fetchAll()), 'durableMemory' => $memory];
+        return ['project' => is_array($row) ? ['name' => (string) $row['name'], 'type' => (string) $row['type'], 'sourceRevision' => $row['source_revision'] === null ? null : (string) $row['source_revision'], 'observedAt' => (string) $row['observed_at']] : null, 'vaultRevision' => $revision, 'recentTasks' => array_map(static fn (array $task): array => ['state' => (string) $task['state'], 'summary' => $task['result_summary'] === null ? null : (string) $task['result_summary'], 'updatedAt' => (string) $task['updated_at']], $latest->fetchAll()), 'durableMemory' => $memory, 'conversationReferent' => $conversationId !== null ? (new HubConversationReferentService($this->pdo))->project($userId, $projectId, $conversationId) : null];
     }
 
 

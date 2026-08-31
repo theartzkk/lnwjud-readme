@@ -27,6 +27,7 @@ require_once __DIR__ . '/HubAiGovernanceService.php';
 require_once __DIR__ . '/HubStaffOperationsService.php';
 require_once __DIR__ . '/HubThaiGovernmentDocumentService.php';
 require_once __DIR__ . '/HubActionGraphService.php';
+require_once __DIR__ . '/HubConversationReferentService.php';
 
 final class HubControlPlaneException extends RuntimeException
 {
@@ -1123,7 +1124,7 @@ final class HubControlPlaneService
         try {
             $turns = $this->recentConversationTurns((string) $request['conversationId'], (string) $request['messageId']);
             $attachments = $this->nativeAttachments((string) $request['messageId'], $userId);
-            $context = $this->nativeProjectContext($userId, (string) $request['projectId'], (string) $request['request']);
+            $context = $this->nativeProjectContext($userId, (string) $request['projectId'], (string) $request['request'], (string) $request['conversationId']);
             $recovery = $this->projectContextRecoveryMessage($userId, (string) $request['projectId'], (string) $request['request']);
             if ($recovery !== null) $body = $recovery;
             else { $result = $this->agent->respond($userId, (string) $request['projectId'], (string) $request['conversationId'], (string) $request['messageId'], (string) $request['request'], $turns, $attachments, $at, $context); $body = trim((string) $result['summary']); }
@@ -1182,7 +1183,7 @@ final class HubControlPlaneService
      * duplicating source files, local paths, or private memory blobs into the
      * control plane.
      */
-    private function nativeProjectContext(string $userId, string $projectId, string $request = ''): array
+    private function nativeProjectContext(string $userId, string $projectId, string $request = '', ?string $conversationId = null): array
     {
         $this->assertProjectCapability($userId, $projectId, 'project.read');
         $project = $this->pdo->prepare('SELECT name, type, source_revision, observed_at FROM projects WHERE project_id = :project'); $project->execute(['project' => $projectId]); $row = $project->fetch();
@@ -1204,6 +1205,7 @@ final class HubControlPlaneService
             'currentView' => is_array($current) ? ['kind' => (string) $current['view_kind'], 'selectedRef' => $current['selected_ref'] === null ? null : (string) $current['selected_ref'], 'sourceRevision' => $current['source_revision'] === null ? null : (string) $current['source_revision'], 'observedAt' => (string) $current['observed_at']] : null,
             'contextHealth' => $this->projectContextHealth($userId, $projectId),
             'durableMemory' => $durableMemory,
+            'conversationReferent' => $conversationId !== null ? (new HubConversationReferentService($this->pdo))->project($userId, $projectId, $conversationId) : null,
         ];
     }
 
@@ -2594,7 +2596,7 @@ final class HubControlPlaneService
         if ($hasAttachments && preg_match('/^(?:ดู|อ่าน|สรุป|อธิบาย)(?:หน่อย|ให้|ที|ดู)?(?:\s|$|[ก-๙])/iu', $value) === 1) return true;
         return false;
     }
-    private static function isConversationFollowUp(string $message): bool { return preg_match('/^(?:ทำต่อ|ต่อจาก|ต่อเลย|เอาอัน(?:นี้|นั้น|ล่าสุด)|ยังไม่ใช่|ตรวจอีกที|continue|keep going|that one)(?:\s|$|[.!?])/iu', trim($message)) === 1; }
+    private static function isConversationFollowUp(string $message): bool { return preg_match('/^(?:(?:ทำต่อ|ต่อจาก|ต่อเลย|ยังไม่ใช่|ตรวจอีกที|continue|keep going|that one|latest file)|(?:เอา|ใช้|แก้|ปรับ|เปลี่ยน|ทำ|ส่ง|เปิด|ตรวจ|ดู)\s*(?:(?:ไฟล์|งาน|อัน|แบบ)\s*)?(?:นี้|นั้น|เมื่อกี้|ล่าสุด|เดิม)|(?:ไฟล์|งาน|อัน)(?:นี้|นั้น|เมื่อกี้|ล่าสุด))(?:\s|$|[.!?]|[ก-๙])/iu', trim($message)) === 1; }
     /** Read-only Vault work can use the bounded VPS executor.  Any request
      * that might modify content waits for an explicit specialist capability. */
     private static function isContinuousAutonomyRequest(string $message): bool { $value = trim($message); return preg_match('/(?:autonomously|continuous(?:ly)?|without\s+stopping|keep\s+going\s+until|อัตโนมัติ|ไม่ต้องหยุด|ต่อเนื่อง)/iu', $value) === 1 || preg_match('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)*ทำต่อ(?:\s|$|[ก-๙])/iu', $value) === 1; }

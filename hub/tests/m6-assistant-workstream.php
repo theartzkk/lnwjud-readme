@@ -80,6 +80,10 @@ try {
     m6_assert(m6_response($control, 'POST', '/api/v1/control/tasks/' . $taskId . '/update', $firstAuth, ['schemaVersion' => 1, 'deviceId' => $mac, 'state' => 'COMPLETED', 'progress' => 100, 'message' => 'ตรวจ source และ QA เสร็จแล้ว', 'resultSummary' => 'ไม่พบการแก้ไข source'])['status'] === 200, 'worker completion');
     $thread = m6_response($control, 'GET', '/api/v1/control/conversations/' . $project, ['HTTP_COOKIE' => '__Host-awh_control_session=' . $cookie, 'HTTP_SEC_FETCH_SITE' => 'same-origin']); $threadBody = json_decode($thread['body'], true, 32, JSON_THROW_ON_ERROR);
     m6_assert($thread['status'] === 200 && ($threadBody['messages'][count($threadBody['messages']) - 1]['kind'] ?? null) === 'result' && count($threadBody['artifacts']) === 1, 'browser sees the same ordered result and artifact');
+    $referent = (new HubConversationReferentService($pdo))->project($owner, $project, $conversationId);
+    m6_assert(($referent['latestTask']['taskId'] ?? null) === $taskId && ($referent['recentArtifacts'][0]['name'] ?? null) === 'source-review.json' && ($referent['authority'] ?? null) === 'CONVERSATION_REFERENT_PROJECTION', 'SecondBrain referent must resolve canonical latest task and artifact through one read-only projection');
+    $followUpMethod = new ReflectionMethod(HubControlPlaneService::class, 'isConversationFollowUp');
+    m6_assert($followUpMethod->invoke(null, 'แก้ไฟล์เมื่อกี้ให้สั้นลง') === true && $followUpMethod->invoke(null, 'ใช้แบบเดิมต่อ') === true, 'natural Thai referents must resolve as continuation intent');
     $sequence = (int) $pdo->query("SELECT COALESCE(MAX(sequence_no), 0) + 1 FROM control_conversation_messages WHERE conversation_id = '$conversationId'")->fetchColumn();
     $filler = $pdo->prepare('INSERT INTO control_conversation_messages(message_id, conversation_id, task_id, message_kind, sequence_no, body, idempotency_key, source_event_id, metadata_json, created_at) VALUES(:id, :conversation, NULL, \'PROGRESS\', :sequence, :body, NULL, NULL, NULL, :at)');
     for ($i = 0; $i < 120; $i++) {
