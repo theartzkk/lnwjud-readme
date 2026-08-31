@@ -21,10 +21,13 @@ async function waitFor(win, expression, timeout = 10000) {
 }
 async function shot(win, id, expected, action) {
   await sleep(250);
-  const metrics = await win.webContents.executeJavaScript(`({innerWidth,clientWidth:document.documentElement.clientWidth,scrollWidth:document.documentElement.scrollWidth,bodyText:document.body.innerText.slice(0,4000)})`, true);
+  await win.webContents.executeJavaScript(`document.documentElement.offsetHeight`, true);
+  if (typeof win.webContents.invalidate === 'function') win.webContents.invalidate();
+  await sleep(100);
+  const metrics = await win.webContents.executeJavaScript(`({innerWidth,clientWidth:document.documentElement.clientWidth,scrollWidth:document.documentElement.scrollWidth,bodyText:document.body.innerText.slice(0,4000),activeSettings:[...document.querySelectorAll('.settings-panel')].find((el)=>!el.hidden)?.id||null,hostingSummary:document.querySelector('#hosting-summary')?.textContent||null,siteCount:document.querySelector('#site-list')?.children.length??null})`, true);
   const png = await win.webContents.capturePage();
   fs.writeFileSync(path.join(outputDir, `${id}-${width}x${height}.png`), png.toPNG(), { mode: 0o600 });
-  return { id, viewport: { width, height }, expected, action, horizontalOverflow: metrics.scrollWidth > metrics.clientWidth, capturedAt: new Date().toISOString() };
+  return { id, viewport: { width, height }, expected, action, horizontalOverflow: metrics.scrollWidth > metrics.clientWidth, activeSettings: metrics.activeSettings, hostingSummary: metrics.hostingSummary, siteCount: metrics.siteCount, capturedAt: new Date().toISOString() };
 }
 async function login(win) {
   await win.loadURL(baseUrl);
@@ -51,7 +54,7 @@ async function returnHome(win) {
   await sleep(250);
 }
 app.whenReady().then(async () => {
-  const win = new BrowserWindow({ width, height, show: false, webPreferences: { sandbox: true, contextIsolation: true } });
+  const win = new BrowserWindow({ width, height, show: false, webPreferences: { sandbox: true, contextIsolation: true, backgroundThrottling: false } });
   const evidence = [];
   try {
     await win.loadURL(baseUrl);
