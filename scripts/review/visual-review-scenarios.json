@@ -60,6 +60,18 @@
       "surface": "tools",
       "action": "open tools surface",
       "expected": "tools are shortcuts only; user can still request the same outcomes from chat without selecting a tool"
+    },
+    {
+      "id": "registration-request",
+      "surface": "account",
+      "action": "open public access request form",
+      "expected": "applicant chooses identity and password but cannot choose a platform role or project capability"
+    },
+    {
+      "id": "managed-hosting",
+      "surface": "hosting",
+      "action": "open Owner managed hosting",
+      "expected": "site state, public URL, runtime, database, backup, deploy and rollback are understandable without VPS command exposure"
     }
   ]
 }

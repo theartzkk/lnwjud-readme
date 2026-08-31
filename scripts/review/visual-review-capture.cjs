@@ -54,6 +54,11 @@ app.whenReady().then(async () => {
   const win = new BrowserWindow({ width, height, show: false, webPreferences: { sandbox: true, contextIsolation: true } });
   const evidence = [];
   try {
+    await win.loadURL(baseUrl);
+    await waitFor(win, `document.querySelector('#registration-open')`);
+    await win.webContents.executeJavaScript(`document.querySelector('#registration-open').click()`, true);
+    await waitFor(win, `document.querySelector('#registration-sheet') && !document.querySelector('#registration-sheet').hidden`);
+    evidence.push(await shot(win, 'registration-request', 'self-service access request is readable and touch-safe; no privilege choice is exposed', 'open public account request form'));
     await login(win);
     evidence.push(await shot(win, 'home-empty', 'real composer immediately usable; no backend language; three mobile destinations maximum', 'authenticated home'));
     await submitHome(win, 'นายคือใคร');
@@ -66,6 +71,9 @@ app.whenReady().then(async () => {
     await returnHome(win);
     await win.webContents.executeJavaScript(`document.querySelector('#awh-home-tools')?.scrollIntoView({block:'start'})`, true);
     evidence.push(await shot(win, 'tools-shortcuts', 'tools are shortcuts; chat remains the primary path', 'inspect tools shortcuts'));
+    await win.loadURL(baseUrl + 'hosting.html');
+    await waitFor(win, `document.querySelector('#site-list') && document.querySelector('#hosting-state')?.textContent.includes('เชื่อมต่อแล้ว')`, 10000);
+    evidence.push(await shot(win, 'managed-hosting', 'Owner can see managed site state, URL, runtime, database, backup and bounded actions without VPS commands', 'open managed hosting'));
     fs.writeFileSync(path.join(outputDir, `evidence-${width}x${height}.json`), JSON.stringify({ schemaVersion: 1, source: 'local-contract-fixture', baseUrl, viewport: { width, height }, evidence }, null, 2) + '\n', { mode: 0o600 });
     if (evidence.some((item) => item.horizontalOverflow)) process.exitCode = 2;
   } finally {
