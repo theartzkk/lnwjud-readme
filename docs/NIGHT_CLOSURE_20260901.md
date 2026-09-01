@@ -75,3 +75,15 @@ Next safe action: freeze the active Project Source Authority checkpoint, transpl
 - A new isolated harvest was opened from exact canonical `3ccd18a` as `awh/project-source-authority-m20-closure`. The harvested feature is being reconciled as migration file `019_project_source_authority.sql`, migration id `m20-project-source-authority`, and schema/user_version 20 while preserving all canonical M19 Conversation Lifecycle/HEIC/trust/mobile/storage logic. No Production activation is authorized from that candidate.
 
 Next safe action: complete the isolated M20 conflict resolution and focused/full QA, re-read canonical origin before publishing a candidate, then open a review PR only if the exact base is still current. Production M20 migration and hard-link compaction remain separate explicit mutation gates.
+
+## 2026-09-02 01:3x ICT — run 1 continuation
+
+- Canonical GitHub authority remains `awh/api-independence` at exact SHA `3ccd18a725a9821ae3ea71d5847f5b48ea3122fe` (PR #74 merge). No newer canonical commit was observed before this checkpoint update.
+- Production reverified at `m19-b66ef39cc986` for both Control and Web pointers. SQLite remains `user_version=19`, `integrity_check=ok`, zero FK violations; nginx, PHP 8.3 FPM, native executor timer and backup timer are active.
+- Exact pre-M19 rollback database exists at `/var/backups/awh-hub/awh.sqlite.pre-m19-b66ef39cc986`, size `52,834,304` bytes, timestamp `2026-09-02 00:02:50 +0700`; it is schema 18 with `integrity_check=ok` and zero FK violations. Release rollback `m18-2f393e3b2341` is also retained.
+- Fresh read-only retention audit: 37 Control + 33 Web releases; 174 matched desktop/checksum paths, 134 already linked to the central store. Guaranteed physical reclaim remains `9,701,990,589` bytes Control-only and `10,640,730,340` bytes Control+Web; predicted root usage after both is about 42.5%. No Production filesystem mutation was performed.
+- Focused canonical-equivalent regression for HEIC provider input, Conversation Lifecycle/delete semantics, mobile navigation/shell, system coherence and visual-review contracts PASS `11/11`.
+- Repository hygiene has no remaining clean+merged non-Production/non-evidence worktree that can be removed safely by the current policy. Further pruning would cross into unmerged, dirty, detached rollback or active evidence and is intentionally blocked.
+- Two isolated M20 Project Source Authority reconciliation agents are still active in separate worktrees. Neither worktree is being touched by Night Closure while active. The original dirty M19 worktree remains protected evidence.
+
+Next safe action remains: wait for the active M20 reconciliations to freeze, choose one coherent candidate only, re-read canonical, then run migration/schema uniqueness, focused/full regression, Hub/PHP fixtures and deploy dry-run before any review PR. Production M20 migration and release hard-link compaction remain separate mutation gates.
