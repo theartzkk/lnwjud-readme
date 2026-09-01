@@ -108,7 +108,7 @@ async function runSql(explain) {
     $('sql-status').className = 'form-status good'; $('sql-status').textContent = `${data.mode} · ${number(data.rowCount)} แถว · ${number(data.durationMs)} ms${data.truncated ? ' · แสดงสูงสุด 200 แถว' : ''}`;
     renderGrid($('sql-result'), data.columns || [], data.rows || []);
   } catch (error) {
-    $('sql-status').className = 'form-status error'; $('sql-status').textContent = error?.code === 'STEP_UP_REQUIRED' ? 'ต้องยืนยันรหัสผ่าน Owner อีกครั้งใน AWH ก่อนใช้ SQL Console' : (error?.message || 'SQL ทำงานไม่สำเร็จ'); $('sql-result').replaceChildren();
+    $('sql-status').className = 'form-status error'; $('sql-status').textContent = error?.message || 'SQL ทำงานไม่สำเร็จ'; $('sql-result').replaceChildren();
   } finally { $('sql-run').disabled = false; $('sql-explain').disabled = false; }
 }
 

@@ -107,7 +107,7 @@ final class HubDatabaseStudioRouter
         return match ($code) {
             'SESSION_INVALID', 'SESSION_EXPIRED' => 'กรุณาเข้าสู่ AWH ด้วยบัญชี Owner อีกครั้ง',
             'OWNER_FORBIDDEN' => 'Database Studio ใช้ได้เฉพาะ Owner',
-            'STEP_UP_REQUIRED' => 'กรุณายืนยันรหัสผ่านอีกครั้งก่อนใช้ SQL แบบอ่านอย่างเดียว',
+            'STEP_UP_REQUIRED' => 'รายการความเสี่ยงสูงนี้ต้องยืนยันตัวตนผู้ดูแลเพิ่มเติม',
             'DATABASE_TABLE_RESTRICTED' => 'ตารางนี้มีข้อมูลยืนยันตัวตนหรือ credential จึงถูกล็อก',
             'DATABASE_QUERY_REJECTED' => 'SQL Console อนุญาตเฉพาะ SELECT แบบอ่านอย่างเดียว',
             'DATABASE_QUERY_FAILED' => 'คำสั่งอ่านฐานข้อมูลทำงานไม่สำเร็จ',

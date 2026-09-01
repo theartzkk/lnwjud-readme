@@ -27,7 +27,8 @@ test('M17 Database Studio web release is owner-first, read-only, and emitted by 
     assert.match(app, /\/database-studio\.php/);
     assert.match(app, /\/api\/v1\/auth\/session/);
     assert.match(app, /credentials:\s*'include'/);
-    assert.match(app, /DATABASE_TABLE_RESTRICTED|STEP_UP_REQUIRED/);
+    assert.match(app, /studioApi\('query'/);
+    assert.doesNotMatch(app, /ยืนยันรหัสผ่าน.*SQL|STEP_UP_REQUIRED/);
     assert.match(css, /--accent:#ff7a1a/);
     assert.doesNotMatch(`${html}\n${app}`, /localStorage|sessionStorage|document\.cookie|Authorization|Bearer\s+/i);
     assert.doesNotMatch(app, /innerHTML|outerHTML|insertAdjacentHTML/);
