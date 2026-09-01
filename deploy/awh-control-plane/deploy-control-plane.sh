@@ -206,7 +206,10 @@ fi
 
 test "$APPROVED" -eq 1 || { echo "M4 deployment requires explicit --approve" >&2; exit 3; }
 test "$OWNER_AUTH" -eq 1 || { echo "Owner-auth activation requires --owner-auth" >&2; exit 3; }
-if test $((COMPAT_REFRESH + ASSISTANT_WORKSTREAM + WORKSPACE_CONTINUITY + UNIFIED_WORKSPACE + FINAL_PRODUCT + FOUNDING_MEMORY + SELF_SERVICE + CENTRAL_PROJECT_AUTHORITY + ANYWHERE_EXECUTION + COST_AWARE_AI + AUTOMATIONS + SELF_SUFFICIENT_AI + ACCOUNT_HOSTING + CLOUD_FIRST)) -gt 1; then echo "Choose one bounded activation mode" >&2; exit 2; fi
+EXTENSION_MODE_COUNT=$((ASSISTANT_WORKSTREAM + WORKSPACE_CONTINUITY + UNIFIED_WORKSPACE + FINAL_PRODUCT + FOUNDING_MEMORY + SELF_SERVICE + CENTRAL_PROJECT_AUTHORITY + ANYWHERE_EXECUTION + COST_AWARE_AI + AUTOMATIONS + SELF_SUFFICIENT_AI + ACCOUNT_HOSTING + CLOUD_FIRST))
+if test $((COMPAT_REFRESH + EXTENSION_MODE_COUNT)) -gt 1; then echo "Choose one bounded activation mode" >&2; exit 2; fi
+OWNER_LOGIN_PROOF_REQUIRED=0
+if test "$EXTENSION_MODE_COUNT" -eq 0; then OWNER_LOGIN_PROOF_REQUIRED=1; fi
 if test "$COMPAT_REFRESH" -eq 1; then test "$OWNER_AUTH" -eq 1 || { echo "Owner-auth compatibility refresh requires --owner-auth" >&2; exit 3; }; fi
 test -z "$(git -C "$ROOT" status --porcelain --untracked-files=all)" || { echo "M4 deployment requires a clean committed tree" >&2; exit 1; }
 test "$(git -C "$ROOT" rev-parse HEAD)" = "$RELEASE" || { echo "M4 release lock does not match local HEAD" >&2; exit 1; }
@@ -237,7 +240,7 @@ case "$OWNER_USERNAME" in [A-Za-z][A-Za-z0-9._-][A-Za-z0-9._-]* ) ;; *) echo "Ow
 test "${#OWNER_USERNAME}" -ge 3 && test "${#OWNER_USERNAME}" -le 64 || { echo "Owner username is invalid" >&2; exit 1; }
 
 OWNER_PASSWORD=
-if test "$ASSISTANT_WORKSTREAM" -eq 0 && test "$WORKSPACE_CONTINUITY" -eq 0 && test "$UNIFIED_WORKSPACE" -eq 0 && test "$FINAL_PRODUCT" -eq 0 && test "$FOUNDING_MEMORY" -eq 0 && test "$SELF_SERVICE" -eq 0 && test "$CENTRAL_PROJECT_AUTHORITY" -eq 0 && test "$ANYWHERE_EXECUTION" -eq 0 && test "$COST_AWARE_AI" -eq 0 && test "$AUTOMATIONS" -eq 0 && test "$SELF_SUFFICIENT_AI" -eq 0 && test "$ACCOUNT_HOSTING" -eq 0 && test "$CLOUD_FIRST" -eq 0; then
+if test "$OWNER_LOGIN_PROOF_REQUIRED" -eq 1; then
   IFS= read -r OWNER_PASSWORD || { echo "Owner password input is required on stdin" >&2; exit 1; }
   test "${#OWNER_PASSWORD}" -ge 12 || { echo "Owner password input is too short" >&2; exit 1; }
   test "${#OWNER_PASSWORD}" -le 512 || { echo "Owner password input is too long" >&2; exit 1; }
@@ -258,7 +261,7 @@ tar -czf "$BUNDLE" -C "$ROOT" $FILES $EXTRA_FILES
 scp -o BatchMode=yes -o StrictHostKeyChecking=yes "$BUNDLE" "$TARGET:$REMOTE_STAGE"
 scp -o BatchMode=yes -o StrictHostKeyChecking=yes "$REMOTE_DEPLOY" "$TARGET:$REMOTE_SCRIPT"
 set +e
-if test "$ASSISTANT_WORKSTREAM" -eq 1 || test "$WORKSPACE_CONTINUITY" -eq 1 || test "$UNIFIED_WORKSPACE" -eq 1 || test "$FINAL_PRODUCT" -eq 1 || test "$FOUNDING_MEMORY" -eq 1 || test "$SELF_SERVICE" -eq 1 || test "$CENTRAL_PROJECT_AUTHORITY" -eq 1 || test "$ANYWHERE_EXECUTION" -eq 1 || test "$COST_AWARE_AI" -eq 1 || test "$AUTOMATIONS" -eq 1 || test "$SELF_SUFFICIENT_AI" -eq 1 || test "$ACCOUNT_HOSTING" -eq 1 || test "$CLOUD_FIRST" -eq 1; then
+if test "$OWNER_LOGIN_PROOF_REQUIRED" -eq 0; then
   REMOTE_OUTPUT=$(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" sh "$REMOTE_SCRIPT" "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "/opt/awh-hub/control-releases/$RELEASE_ID" "$RELEASE_ID" "$NGINX_CONFIG" "$HOSTNAME" "$AWH_FPM_SOCKET" "$AWH_FPM_SERVICE" "$CLEANUP_TOPOLOGY" "$OWNER_USERNAME" "$OWNER_AUTH" "$REMOTE_SCRIPT" "$COMPAT_REFRESH" "$ASSISTANT_WORKSTREAM" "$WORKSPACE_CONTINUITY" "$UNIFIED_WORKSPACE" "$FINAL_PRODUCT" "$FOUNDING_MEMORY" "$SELF_SERVICE" "$CENTRAL_PROJECT_AUTHORITY" "$RELEASE" "$ANYWHERE_EXECUTION" "$COST_AWARE_AI" "$AUTOMATIONS" "$SELF_SUFFICIENT_AI" "$ACCOUNT_HOSTING" "$CLOUD_FIRST")
 else
   REMOTE_OUTPUT=$(printf '%s\n' "$OWNER_PASSWORD" | ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" sh "$REMOTE_SCRIPT" "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "/opt/awh-hub/control-releases/$RELEASE_ID" "$RELEASE_ID" "$NGINX_CONFIG" "$HOSTNAME" "$AWH_FPM_SOCKET" "$AWH_FPM_SERVICE" "$CLEANUP_TOPOLOGY" "$OWNER_USERNAME" "$OWNER_AUTH" "$REMOTE_SCRIPT" "$COMPAT_REFRESH" "$ASSISTANT_WORKSTREAM" "$WORKSPACE_CONTINUITY" "$UNIFIED_WORKSPACE" "$FINAL_PRODUCT" "$FOUNDING_MEMORY" "$SELF_SERVICE" "$CENTRAL_PROJECT_AUTHORITY" "$RELEASE" "$ANYWHERE_EXECUTION" "$COST_AWARE_AI" "$AUTOMATIONS" "$SELF_SUFFICIENT_AI" "$ACCOUNT_HOSTING" "$CLOUD_FIRST")
