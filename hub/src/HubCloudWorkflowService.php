@@ -91,6 +91,7 @@ final class HubCloudWorkflowService
     private const MAX_REVIEW_OUTER_BYTES = 67108864;
     private const MAX_REVIEW_PACK_BYTES = 50331648;
     private const MAX_REVIEW_UNCOMPRESSED_BYTES = 209715200;
+    private const MAX_PROJECT_ARCHIVE_DOWNLOAD_BYTES = 134217728;
     private const CAPABILITIES = ['qa.cloud', 'review.visual'];
     private const WORKFLOWS = [
         'qa.cloud' => 'awh-cloud-qa.yml',
@@ -155,11 +156,48 @@ final class HubCloudWorkflowService
 
     public function canonicalRevision(): string
     {
+        return $this->canonicalRepositoryRevision($this->repository(), $this->ref());
+    }
+
+    /** Canonical source identity of the AWH Cloud workflow repository itself. */
+    public function sourceIdentity(): array
+    {
+        return ['provider'=>'GITHUB','repository'=>$this->repository(),'ref'=>$this->ref()];
+    }
+
+    /** Resolve one exact GitHub revision without changing project/source authority. */
+    public function canonicalRepositoryRevision(string $repository, string $ref): string
+    {
         if (!$this->configured()) throw new HubCloudWorkflowException('AWH Cloud is not configured','CLOUD_NOT_CONFIGURED');
-        $response = $this->api('GET', '/commits/' . rawurlencode($this->ref()));
-        if (($response['status'] ?? 0) !== 200) throw new HubCloudWorkflowException('Cloud source revision is unavailable', self::httpCode((int)($response['status'] ?? 0)));
+        $repository = self::repositoryValue($repository); $ref = self::refValue($ref);
+        $response = $this->apiForRepository($repository, 'GET', '/commits/' . rawurlencode($ref));
+        if (($response['status'] ?? 0) !== 200) throw new HubCloudWorkflowException('Project source revision is unavailable', self::httpCode((int)($response['status'] ?? 0)));
         $body = self::jsonObject((string)($response['body'] ?? ''));
         return self::revision((string)($body['sha'] ?? ''));
+    }
+
+    /** Resolve GitHub's declared default branch for a bounded repository identity. */
+    public function repositoryDefaultRef(string $repository): string
+    {
+        if (!$this->configured()) throw new HubCloudWorkflowException('AWH Cloud is not configured','CLOUD_NOT_CONFIGURED');
+        $repository = self::repositoryValue($repository);
+        $response = $this->apiForRepository($repository, 'GET', '');
+        if (($response['status'] ?? 0) !== 200) throw new HubCloudWorkflowException('Project repository metadata is unavailable', self::httpCode((int)($response['status'] ?? 0)));
+        $body = self::jsonObject((string)($response['body'] ?? ''));
+        return self::refValue((string)($body['default_branch'] ?? ''));
+    }
+
+    /** Download a bounded GitHub ZIP snapshot pinned to one exact commit. */
+    public function downloadRepositoryArchive(string $repository, string $revision): string
+    {
+        if (!$this->configured()) throw new HubCloudWorkflowException('AWH Cloud is not configured','CLOUD_NOT_CONFIGURED');
+        $repository = self::repositoryValue($repository); $revision = self::revision($revision);
+        $response = $this->apiForRepository($repository, 'GET', '/zipball/' . rawurlencode($revision), null, true);
+        $status = (int)($response['status'] ?? 0); $body = $response['body'] ?? null;
+        if ($status !== 200 || !is_string($body)) throw new HubCloudWorkflowException('Project source archive is unavailable', self::httpCode($status));
+        $bytes = strlen($body);
+        if ($bytes < 100 || $bytes > self::MAX_PROJECT_ARCHIVE_DOWNLOAD_BYTES) throw new HubCloudWorkflowException('Project source archive exceeds the safe limit','PROJECT_ARCHIVE_TOO_LARGE');
+        return $body;
     }
 
     public function advertise(?string $now = null): void
@@ -524,7 +562,14 @@ final class HubCloudWorkflowService
     /** @param array<string,mixed>|null $payload @return array<string,mixed> */
     private function api(string $method, string $path, ?array $payload = null, bool $binary = false): array
     {
-        $request = ['method'=>$method,'url'=>'https://api.github.com/repos/'.$this->repository().$path,'headers'=>['Accept'=>'application/vnd.github+json','Authorization'=>'Bearer '.$this->credentials->read(),'X-GitHub-Api-Version'=>'2022-11-28','User-Agent'=>'AWH-Cloud-Control'],'body'=>$payload===null?null:json_encode($payload,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'binary'=>$binary];
+        return $this->apiForRepository($this->repository(), $method, $path, $payload, $binary);
+    }
+
+    /** @param array<string,mixed>|null $payload @return array<string,mixed> */
+    private function apiForRepository(string $repository, string $method, string $path, ?array $payload = null, bool $binary = false): array
+    {
+        $repository = self::repositoryValue($repository);
+        $request = ['method'=>$method,'url'=>'https://api.github.com/repos/'.$repository.$path,'headers'=>['Accept'=>'application/vnd.github+json','Authorization'=>'Bearer '.$this->credentials->read(),'X-GitHub-Api-Version'=>'2022-11-28','User-Agent'=>'AWH-Cloud-Control'],'body'=>$payload===null?null:json_encode($payload,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'binary'=>$binary];
         if ($this->transport !== null) return ($this->transport)($request);
         return self::curl($request);
     }
@@ -585,13 +630,25 @@ final class HubCloudWorkflowService
     private function repository(): string
     {
         $value = getenv('AWH_GITHUB_REPOSITORY'); if (!is_string($value) || $value === '') $value = 'theartzkk/lnwjud-readme';
-        if (preg_match('#^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$#',$value)!==1) throw new HubCloudWorkflowException('Cloud repository configuration is invalid','CLOUD_CONFIG_INVALID');
-        return $value;
+        return self::repositoryValue($value);
     }
 
     private function ref(): string
     {
         $value = getenv('AWH_GITHUB_REF'); if (!is_string($value) || $value === '') $value = 'awh/api-independence';
+        return self::refValue($value);
+    }
+
+    private static function repositoryValue(string $value): string
+    {
+        $value=trim($value);
+        if (preg_match('#^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$#',$value)!==1) throw new HubCloudWorkflowException('Cloud repository configuration is invalid','CLOUD_CONFIG_INVALID');
+        return $value;
+    }
+
+    private static function refValue(string $value): string
+    {
+        $value=trim($value);
         if (preg_match('/^[A-Za-z0-9._\/-]{1,160}$/',$value)!==1 || str_contains($value,'..')) throw new HubCloudWorkflowException('Cloud ref configuration is invalid','CLOUD_CONFIG_INVALID');
         return $value;
     }

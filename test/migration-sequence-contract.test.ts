@@ -38,12 +38,17 @@ test('schema migrations have one monotonic authority per user_version', async ()
   assert.equal(new Set(ids).size, ids.length, 'MIGRATION_ID must be globally unique');
   authorities.sort((a, b) => a.version - b.version);
   assert.equal(authorities.at(-1)?.version, prefixes.at(-1)! + 1, 'latest SQL prefix must map to the latest user_version');
-  assert.equal(authorities.at(-1)?.id, 'm19-conversation-lifecycle', 'schema 19 is already owned by conversation lifecycle');
+  assert.equal(authorities.at(-1)?.id, 'm20-project-source-authority', 'schema 20 is owned by project source authority');
+  const lifecycle = authorities.find((item) => item.version === 19);
+  assert.equal(lifecycle?.id, 'm19-conversation-lifecycle', 'schema 19 remains owned by conversation lifecycle');
 });
 
-test('future project source authority must advance beyond schema 19', async () => {
+test('project source authority advances beyond schema 19 without replacing conversation lifecycle', async () => {
   const lifecycle = await readFile(new URL('../hub/src/HubConversationLifecycleMigration.php', import.meta.url), 'utf8');
   assert.match(lifecycle, /TARGET_USER_VERSION\s*=\s*19/);
   assert.match(lifecycle, /MIGRATION_ID\s*=\s*['"]m19-conversation-lifecycle['"]/);
   assert.doesNotMatch(lifecycle, /project-source-authority/i);
+  const projectSource = await readFile(new URL('../hub/src/HubProjectSourceAuthorityMigration.php', import.meta.url), 'utf8');
+  assert.match(projectSource, /TARGET_USER_VERSION\s*=\s*20/);
+  assert.match(projectSource, /MIGRATION_ID\s*=\s*['"]m20-project-source-authority['"]/);
 });

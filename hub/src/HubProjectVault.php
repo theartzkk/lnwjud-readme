@@ -21,6 +21,8 @@ final class HubProjectVault
     public const MAX_FILE_READ_BYTES = 256 * 1024;
     /** Native provider tool results must stay well below the 64 KiB boundary. */
     public const MAX_TOOL_READ_BYTES = 24 * 1024;
+    /** Owner-review export may read larger text files while remaining bounded. */
+    public const MAX_REVIEW_READ_BYTES = 1024 * 1024;
     public const MAX_SEARCH_FILES = 512;
     public const MAX_SEARCH_BYTES = 16 * 1024 * 1024;
 
@@ -211,6 +213,12 @@ final class HubProjectVault
     public function toolReadText(string $projectId, string $revisionId, string $relativePath): array
     {
         return $this->readTextWithLimit($projectId, $revisionId, $relativePath, self::MAX_TOOL_READ_BYTES);
+    }
+
+    /** Owner-only export read; larger than provider tool reads, still text-only and bounded. */
+    public function reviewReadText(string $projectId, string $revisionId, string $relativePath): array
+    {
+        return $this->readTextWithLimit($projectId, $revisionId, $relativePath, self::MAX_REVIEW_READ_BYTES);
     }
 
     /** @return array{content:string,truncated:bool}|null */

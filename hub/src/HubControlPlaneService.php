@@ -32,6 +32,10 @@ require_once __DIR__ . '/HubManagedHostingService.php';
 require_once __DIR__ . '/HubTrustPolicy.php';
 require_once __DIR__ . '/HubCloudFirstMigration.php';
 require_once __DIR__ . '/HubCloudWorkflowService.php';
+require_once __DIR__ . '/HubProjectSourceAuthorityMigration.php';
+require_once __DIR__ . '/HubProjectSourceAuthorityService.php';
+require_once __DIR__ . '/HubProjectSourceSyncService.php';
+require_once __DIR__ . '/HubAiPassProjectExportService.php';
 
 final class HubControlPlaneException extends RuntimeException
 {
@@ -78,6 +82,7 @@ final class HubControlPlaneService
     private readonly HubStaffOperationsService $staff;
     private readonly HubManagedHostingService $hosting;
     private readonly ?HubCloudWorkflowService $cloud;
+    private readonly ?HubProjectSourceAuthorityService $projectSources;
 
     private function __construct(private readonly PDO $pdo, private readonly HubEnrollmentService $enrollment, private readonly string $databasePath)
     {
@@ -101,6 +106,9 @@ final class HubControlPlaneService
             } catch (Throwable) { $cloud = null; }
         }
         $this->cloud = $cloud;
+        $projectSources = null;
+        try { HubProjectSourceAuthorityMigration::assertCapabilityReady($pdo, dirname(__DIR__) . '/migrations/019_project_source_authority.sql'); $projectSources = new HubProjectSourceAuthorityService($pdo, $cloud); } catch (Throwable) { $projectSources = null; }
+        $this->projectSources = $projectSources;
     }
 
     public static function openExisting(string $databasePath): self
@@ -1131,6 +1139,45 @@ final class HubControlPlaneService
         catch (HubCloudWorkflowException $error) { throw new HubControlPlaneException('AWH Cloud revision is unavailable',$error->codeName); }
     }
 
+    /** Selected-project source authority. Local checkout and canonical remote revision remain deliberately separate. */
+    public function projectSourceAuthority(string $sessionToken, string $projectId, ?string $now = null): array
+    {
+        $session=$this->sessionRow($sessionToken,$now); $projectId=self::uuid($projectId); $this->assertProjectMember((string)$session['user_id'],$projectId);
+        try { return $this->projectSourceService()->state($projectId,true,$now); }
+        catch(HubProjectSourceAuthorityException $error){ throw new HubControlPlaneException('Project source authority is unavailable',$error->codeName); }
+    }
+
+    /** Owner-only bounded source binding. This extends the existing project authority; it does not create another registry. */
+    public function updateProjectSourceAuthority(string $sessionToken,string $csrfToken,array $payload,?string $now=null):array
+    {
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now); $this->assertOwner((string)$session['user_id']);
+        self::exactKeys($payload,['action','projectId','provider','ref','repository','schemaVersion']);
+        if(($payload['schemaVersion']??null)!==1 || !is_string($payload['action']??null) || !is_string($payload['projectId']??null)) throw new HubControlPlaneException('Project source request is invalid','PROJECT_SOURCE_INVALID');
+        $projectId=self::uuid((string)$payload['projectId']); $this->assertProjectMember((string)$session['user_id'],$projectId); $action=strtoupper(trim((string)$payload['action']));
+        try {
+            if($action==='BIND' && ($payload['provider']??null)==='GITHUB' && is_string($payload['repository']??null) && (is_string($payload['ref']??null)||($payload['ref']??null)===null)) return $this->projectSourceService()->bindGitHub($projectId,(string)$payload['repository'],$payload['ref'],$now,true);
+            if($action==='CLEAR' && ($payload['provider']??null)===null && ($payload['repository']??null)===null && ($payload['ref']??null)===null) return $this->projectSourceService()->clear($projectId,$now);
+            throw new HubProjectSourceAuthorityException('Project source request is invalid','PROJECT_SOURCE_INVALID');
+        } catch(HubProjectSourceAuthorityException $error){ throw new HubControlPlaneException('Project source could not be changed',$error->codeName); }
+    }
+
+    /** Owner one-click manual bridge: canonical GitHub -> immutable Vault cache -> sanitized AiPASS package artifact. */
+    public function createAiPassProjectExport(string $sessionToken,string $csrfToken,array $payload,?string $now=null):array
+    {
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now); self::exactKeys($payload,['idempotencyKey','projectId','schemaVersion']);
+        if(($payload['schemaVersion']??null)!==1 || !is_string($payload['projectId']??null) || !is_string($payload['idempotencyKey']??null)) throw new HubControlPlaneException('AiPASS export request is invalid','AIPASS_EXPORT_INVALID');
+        $userId=(string)$session['user_id']; $this->assertOwner($userId); $projectId=self::uuid((string)$payload['projectId']); $this->assertProjectMember($userId,$projectId); $idempotency=self::idempotency((string)$payload['idempotencyKey']);
+        $existing=$this->existingGeneratedTask($userId,$idempotency); if(is_array($existing)) return $existing;
+        $cloud=$this->cloudService(); $source=$this->projectSourceService();
+        try {
+            $sync=(new HubProjectSourceSyncService($this->pdo,$cloud,$source,$this->vaults))->sync($projectId,$now);
+            $export=(new HubAiPassProjectExportService($this->vaults))->build($projectId,$sync,$now);
+        } catch(HubProjectSourceSyncException|HubAiPassProjectExportException|HubProjectSourceAuthorityException|HubProjectVaultException $error){$code=property_exists($error,'codeName')?$error->codeName:'AIPASS_EXPORT_FAILED';throw new HubControlPlaneException('AiPASS review package could not be prepared',$code);}
+        $revision=(string)$sync['canonicalRevision']; $projectName=self::portableText((string)$sync['projectName'],'projectName',120);
+        $pipeline=['mode'=>'AIPASS_MANUAL_REVIEW_EXPORT','requiredCapability'=>'artifact.object','transport'=>'MANUAL_HUMAN_IN_THE_LOOP','provider'=>'TH_AI_PASSPORT','reviewerRecommendation'=>'CLAUDE_OPUS_5','projectName'=>$projectName,'repository'=>$sync['repository'],'ref'=>$sync['ref'],'canonicalRevision'=>$revision,'canonicalVaultRevisionId'=>$sync['canonicalVaultRevisionId'],'sourcePartCount'=>(int)($export['manifest']['sourcePartCount']??0),'redactions'=>$export['manifest']['redactions']??[],'policies'=>$export['manifest']['policies']??[]];
+        return $this->createGeneratedArtifact($userId,$projectId,self::goal('เตรียมแพ็กตรวจอิสระสำหรับ AiPASS: '.$projectName),$idempotency,'aipass-review-export',(string)$export['fileName'],'application/zip',(string)$export['bytes'],$pipeline,$now);
+    }
+
     /** GitHub credential is write-only and never persisted in SQLite/browser state. */
     public function updateCloudCredential(string $sessionToken,string $csrfToken,array $payload,?string $now=null):array
     {
@@ -1160,9 +1207,14 @@ final class HubControlPlaneService
         $revision=strtolower(trim((string)$payload['revision'])); if(preg_match('/^[0-9a-f]{40}$/',$revision)!==1) throw new HubControlPlaneException('Cloud revision is invalid','CLOUD_TASK_INVALID');
         $profile=$payload['profile']??null; if($capability==='review.visual'){ if(!is_string($profile)||!in_array($profile,['daily','final'],true)) throw new HubControlPlaneException('Cloud review profile is invalid','CLOUD_TASK_INVALID'); } elseif($profile!==null) throw new HubControlPlaneException('Cloud QA profile must be empty','CLOUD_TASK_INVALID');
         $idempotency=self::idempotency((string)$payload['idempotencyKey']); $at=self::timestamp($now??gmdate('c'));
+        try { $source=$this->projectSourceService()->state($projectId,true,$at); } catch(HubProjectSourceAuthorityException $error){ throw new HubControlPlaneException('Project source could not be verified',$error->codeName); }
+        $canonical=$source['canonicalRevision']??null; if(!is_string($canonical)||preg_match('/^[0-9a-f]{40}$/',$canonical)!==1) throw new HubControlPlaneException('Project canonical source is not ready','PROJECT_SOURCE_UNRESOLVED');
+        if(!hash_equals(strtolower($canonical),$revision)) throw new HubControlPlaneException('Project revision changed before Cloud review started','CLOUD_PROJECT_REVISION_STALE');
+        if(($source['workflowCompatible']??false)!==true) throw new HubControlPlaneException('This Cloud workflow belongs to a different project source','CLOUD_PROJECT_SOURCE_MISMATCH');
         $existing=$this->pdo->prepare('SELECT * FROM control_tasks WHERE user_id=:user AND idempotency_key=:key');$existing->execute(['user'=>$userId,'key'=>$idempotency]);$row=$existing->fetch();if(is_array($row))return $this->taskRow($row);
-        $taskId=self::uuidFromBytes(random_bytes(16)); $goal=$capability==='review.visual'?'ตรวจประสบการณ์ใช้งาน AWH บน Cloud และสร้าง Review Pack':'ตรวจระบบ AWH บน Cloud จาก revision ที่ยืนยันแล้ว';
-        $checkpoint=['mode'=>$capability==='review.visual'?'CLOUD_VISUAL_REVIEW':'CLOUD_QA','revision'=>$revision]; if($capability==='review.visual')$checkpoint['profile']=$profile;
+        $projectName=self::portableText((string)($source['projectName']??'Project'),'projectName',120);
+        $taskId=self::uuidFromBytes(random_bytes(16)); $goal=$capability==='review.visual'?'ตรวจประสบการณ์ใช้งาน '.$projectName.' บน Cloud และสร้าง Review Pack':'ตรวจระบบ '.$projectName.' บน Cloud จาก revision ที่ยืนยันแล้ว';
+        $checkpoint=['mode'=>$capability==='review.visual'?'CLOUD_VISUAL_REVIEW':'CLOUD_QA','revision'=>$revision,'projectName'=>$projectName,'repository'=>$source['repository'],'ref'=>$source['ref']]; if($capability==='review.visual')$checkpoint['profile']=$profile;
         try {
             $this->pdo->exec('BEGIN IMMEDIATE');
             $this->pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,:goal,'QUEUED',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$taskId,'user'=>$userId,'project'=>$projectId,'goal'=>$goal,'key'=>$idempotency,'at'=>$at]);
@@ -1176,6 +1228,11 @@ final class HubControlPlaneService
     private function cloudService():HubCloudWorkflowService
     {
         if($this->cloud===null) throw new HubControlPlaneException('AWH Cloud is not activated','CLOUD_NOT_READY'); return $this->cloud;
+    }
+
+    private function projectSourceService():HubProjectSourceAuthorityService
+    {
+        if($this->projectSources===null) throw new HubControlPlaneException('Project Source Authority is not activated','PROJECT_SOURCE_SCHEMA_NOT_READY'); return $this->projectSources;
     }
 
     public function providerStatus(string $sessionToken, ?string $now = null): array
@@ -1881,6 +1938,13 @@ final class HubControlPlaneService
         if (!is_string($owner) || !hash_equals($owner, (string)$auth['userId'])) throw new HubControlPlaneException('Only the AWH owner may recover project source', 'PROJECT_FORBIDDEN');
         $project = $this->pdo->prepare('SELECT name,source_revision FROM projects WHERE project_id=:project'); $project->execute(['project'=>$projectId]); $row=$project->fetch();
         if (!is_array($row) || !is_string($row['source_revision']) || !hash_equals(strtolower((string)$row['source_revision']), $sourceRevision)) throw new HubControlPlaneException('Project source identity changed before recovery', 'PROJECT_REVISION_CONFLICT');
+        if ($this->projectSources !== null) {
+            try { $canonical=$this->projectSources->state($projectId,true,$at); } catch(HubProjectSourceAuthorityException $error){ throw new HubControlPlaneException('Canonical project source could not be verified',$error->codeName); }
+            if (($canonical['provider']??null)==='GITHUB') {
+                $remote=$canonical['canonicalRevision']??null; if(!is_string($remote)) throw new HubControlPlaneException('Canonical project source is unresolved','PROJECT_SOURCE_UNRESOLVED');
+                if(!hash_equals(strtolower($remote),$sourceRevision)) throw new HubControlPlaneException('Local project source is stale relative to canonical remote source','PROJECT_REVISION_CONFLICT');
+            }
+        }
         $binding = $this->pdo->prepare('SELECT source_fingerprint,observed_at FROM control_project_device_bindings WHERE project_id=:project AND device_id=:device AND revoked_at IS NULL'); $binding->execute(['project'=>$projectId,'device'=>$deviceId]); $bound=$binding->fetch();
         if (!is_array($bound) || !is_string($bound['source_fingerprint']) || !hash_equals(strtolower((string)$bound['source_fingerprint']), $sourceRevision) || strtotime((string)$bound['observed_at']) < strtotime($at)-86400) throw new HubControlPlaneException('Verified project source binding is unavailable', 'PROJECT_CONTEXT_INVALID');
         $before = $this->vaults->state($projectId); if ($before['activeRevisionId'] !== null) throw new HubControlPlaneException('Project Vault already has an active source', 'PROJECT_REVISION_CONFLICT');
@@ -2347,29 +2411,42 @@ final class HubControlPlaneService
     public function registerProjectFromDevice(string $token, array $payload, ?string $now = null): array
     {
         self::exactKeys($payload, ['deviceId', 'project', 'schemaVersion']);
-        if (($payload['schemaVersion'] ?? null) !== 2 || !is_array($payload['project'])) throw new HubControlPlaneException('Project registration is invalid', 'PAYLOAD_INVALID');
-        self::exactKeys($payload['project'], ['name', 'projectId', 'sourceRevision', 'type']);
-        $deviceId = self::uuid((string) ($payload['deviceId'] ?? '')); $auth = $this->enrollment->authenticateForControlPlane($token, $deviceId, $now);
-        $owner = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1')->fetchColumn();
-        if (!is_string($owner) || !hash_equals($owner, (string) $auth['userId'])) throw new HubControlPlaneException('Only the AWH owner may register a project', 'PROJECT_FORBIDDEN');
-        $project = $payload['project']; $projectId = self::uuid((string) ($project['projectId'] ?? '')); $name = self::portableText((string) ($project['name'] ?? ''), 'projectName', 120); $type = strtolower(trim((string) ($project['type'] ?? '')));
-        if (!preg_match('/^[a-z][a-z0-9-]{0,31}$/', $type)) throw new HubControlPlaneException('Project type is invalid', 'FIELD_INVALID');
-        $revision = $project['sourceRevision'] === null ? null : self::gitSha((string) $project['sourceRevision']); $at = self::timestamp($now ?? gmdate('c'));
-        try {
-            $this->pdo->exec('BEGIN IMMEDIATE');
-            $existing = $this->pdo->prepare('SELECT name, type FROM projects WHERE project_id = :project'); $existing->execute(['project' => $projectId]); $row = $existing->fetch();
-            if (is_array($row) && ((string) $row['name'] !== $name || (string) $row['type'] !== $type)) throw new HubControlPlaneException('Project identity conflicts with the Hub registry', 'PROJECT_ID_CONFLICT');
-            if (!is_array($row)) $this->pdo->prepare('INSERT INTO projects(project_id, name, type, created_at, source_revision, observed_at, provenance) VALUES(:project, :name, :type, :at, :revision, :at, :provenance)')->execute(['project' => $projectId, 'name' => $name, 'type' => $type, 'at' => $at, 'revision' => $revision, 'provenance' => 'portable-owner-device']);
-            elseif ($revision !== null) $this->pdo->prepare('UPDATE projects SET source_revision = :revision, observed_at = :at WHERE project_id = :project')->execute(['project' => $projectId, 'revision' => $revision, 'at' => $at]);
-            $this->pdo->prepare("INSERT INTO user_project_memberships(user_id, project_id, role, created_at, revoked_at) VALUES(:user, :project, 'owner', :at, NULL) ON CONFLICT(user_id, project_id) DO UPDATE SET role='owner', revoked_at=NULL")->execute(['user' => $auth['userId'], 'project' => $projectId, 'at' => $at]);
-            $this->pdo->prepare("INSERT INTO device_project_memberships(device_id, project_id, role, created_at, revoked_at) VALUES(:device, :project, 'owner', :at, NULL) ON CONFLICT(device_id, project_id) DO UPDATE SET role='owner', revoked_at=NULL")->execute(['device' => $auth['deviceId'], 'project' => $projectId, 'at' => $at]);
-            if ($this->foundingMemorySchemaPresent()) {
-                HubFoundingMemoryMigration::bindSeedProjectsForCurrentSchema($this->pdo, $at);
-                HubFoundingMemoryMigration::reconcileProjectSourceTruth($this->pdo, $projectId, $at);
+        $schema=$payload['schemaVersion']??null; if(!in_array($schema,[2,3],true)||!is_array($payload['project'])) throw new HubControlPlaneException('Project registration is invalid','PAYLOAD_INVALID');
+        $project=$payload['project']; $source=null;
+        if($schema===2) self::exactKeys($project,['name','projectId','sourceRevision','type']);
+        else {
+            self::exactKeys($project,['name','projectId','source','sourceRevision','type']);
+            $rawSource=$project['source']??null;
+            if($rawSource!==null){
+                if(!is_array($rawSource)){throw new HubControlPlaneException('Project source provenance is invalid','PAYLOAD_INVALID');}
+                self::exactKeys($rawSource,['provider','ref','repository']);
+                if(($rawSource['provider']??null)!=='GITHUB'||!is_string($rawSource['repository']??null)||(!is_string($rawSource['ref']??null)&&($rawSource['ref']??null)!==null)) throw new HubControlPlaneException('Project source provenance is invalid','PAYLOAD_INVALID');
+                $source=['repository'=>(string)$rawSource['repository'],'ref'=>$rawSource['ref']];
             }
+        }
+        $deviceId=self::uuid((string)($payload['deviceId']??''));$auth=$this->enrollment->authenticateForControlPlane($token,$deviceId,$now);
+        $owner=$this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id=1 AND bootstrap_closed=1')->fetchColumn();
+        if(!is_string($owner)||!hash_equals($owner,(string)$auth['userId'])) throw new HubControlPlaneException('Only the AWH owner may register a project','PROJECT_FORBIDDEN');
+        $projectId=self::uuid((string)($project['projectId']??''));$name=self::portableText((string)($project['name']??''),'projectName',120);$type=strtolower(trim((string)($project['type']??'')));
+        if(!preg_match('/^[a-z][a-z0-9-]{0,31}$/',$type)) throw new HubControlPlaneException('Project type is invalid','FIELD_INVALID');
+        $revision=$project['sourceRevision']===null?null:self::gitSha((string)$project['sourceRevision']);$at=self::timestamp($now??gmdate('c'));
+        try{
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $existing=$this->pdo->prepare('SELECT name,type FROM projects WHERE project_id=:project');$existing->execute(['project'=>$projectId]);$row=$existing->fetch();
+            if(is_array($row)&&((string)$row['name']!==$name||(string)$row['type']!==$type)) throw new HubControlPlaneException('Project identity conflicts with the Hub registry','PROJECT_ID_CONFLICT');
+            if(!is_array($row))$this->pdo->prepare('INSERT INTO projects(project_id,name,type,created_at,source_revision,observed_at,provenance) VALUES(:project,:name,:type,:at,:revision,:at,:provenance)')->execute(['project'=>$projectId,'name'=>$name,'type'=>$type,'at'=>$at,'revision'=>$revision,'provenance'=>'portable-owner-device']);
+            elseif($revision!==null)$this->pdo->prepare('UPDATE projects SET source_revision=:revision,observed_at=:at WHERE project_id=:project')->execute(['project'=>$projectId,'revision'=>$revision,'at'=>$at]);
+            $this->pdo->prepare("INSERT INTO user_project_memberships(user_id,project_id,role,created_at,revoked_at) VALUES(:user,:project,'owner',:at,NULL) ON CONFLICT(user_id,project_id) DO UPDATE SET role='owner',revoked_at=NULL")->execute(['user'=>$auth['userId'],'project'=>$projectId,'at'=>$at]);
+            $this->pdo->prepare("INSERT INTO device_project_memberships(device_id,project_id,role,created_at,revoked_at) VALUES(:device,:project,'owner',:at,NULL) ON CONFLICT(device_id,project_id) DO UPDATE SET role='owner',revoked_at=NULL")->execute(['device'=>$auth['deviceId'],'project'=>$projectId,'at'=>$at]);
+            if($this->foundingMemorySchemaPresent()){HubFoundingMemoryMigration::bindSeedProjectsForCurrentSchema($this->pdo,$at);HubFoundingMemoryMigration::reconcileProjectSourceTruth($this->pdo,$projectId,$at);}
             $this->pdo->exec('COMMIT');
-        } catch (Throwable $error) { self::rollbackImmediate($this->pdo); if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Project could not be registered', 'PROJECT_REGISTER_FAILED'); }
-        return ['schemaVersion' => 2, 'project' => ['projectId' => $projectId, 'name' => $name, 'type' => $type, 'sourceRevision' => $revision, 'observedAt' => $at]];
+        }catch(Throwable $error){self::rollbackImmediate($this->pdo);if($error instanceof HubControlPlaneException)throw $error;throw new HubControlPlaneException('Project could not be registered','PROJECT_REGISTER_FAILED');}
+        $authority=null;
+        if($source!==null){
+            try{$authority=$this->projectSourceService()->observeGitHub($projectId,$source['repository'],$source['ref'],$at);}
+            catch(HubProjectSourceAuthorityException $error){throw new HubControlPlaneException('Project source provenance conflicts with canonical authority',$error->codeName);}
+        }
+        return ['schemaVersion'=>$schema,'project'=>['projectId'=>$projectId,'name'=>$name,'type'=>$type,'sourceRevision'=>$revision,'observedAt'=>$at],'sourceAuthority'=>$authority];
     }
 
     public function projectBindings(string $sessionToken, string $projectId, ?string $now = null): array
