@@ -24,7 +24,10 @@ case "$ACCOUNT_HOSTING" in 0|1) ;; *) exit 20 ;; esac
 case "$CLOUD_FIRST" in 0|1) ;; *) exit 20 ;; esac
 case "$RELEASE_COMMIT" in ''|*[!0-9a-fA-F]*) exit 20 ;; esac
 test "${#RELEASE_COMMIT}" -ge 40 && test "${#RELEASE_COMMIT}" -le 64 || exit 20
-if test $((COMPAT_REFRESH + ASSISTANT_WORKSTREAM + WORKSPACE_CONTINUITY + UNIFIED_WORKSPACE + FINAL_PRODUCT + FOUNDING_MEMORY + SELF_SERVICE + CENTRAL_PROJECT_AUTHORITY + ANYWHERE_EXECUTION + COST_AWARE_AI + AUTOMATIONS + SELF_SUFFICIENT_AI + ACCOUNT_HOSTING + CLOUD_FIRST)) -gt 1; then exit 20; fi
+EXTENSION_MODE_COUNT=$((ASSISTANT_WORKSTREAM + WORKSPACE_CONTINUITY + UNIFIED_WORKSPACE + FINAL_PRODUCT + FOUNDING_MEMORY + SELF_SERVICE + CENTRAL_PROJECT_AUTHORITY + ANYWHERE_EXECUTION + COST_AWARE_AI + AUTOMATIONS + SELF_SUFFICIENT_AI + ACCOUNT_HOSTING + CLOUD_FIRST))
+if test $((COMPAT_REFRESH + EXTENSION_MODE_COUNT)) -gt 1; then exit 20; fi
+OWNER_LOGIN_PROOF_REQUIRED=0
+if test "$EXTENSION_MODE_COUNT" -eq 0; then OWNER_LOGIN_PROOF_REQUIRED=1; fi
 if test "$CLOUD_FIRST" = 1; then case "$RELEASE_ID" in m18-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ACCOUNT_HOSTING" = 1; then case "$RELEASE_ID" in m17-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$SELF_SUFFICIENT_AI" = 1; then case "$RELEASE_ID" in m16-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$AUTOMATIONS" = 1; then case "$RELEASE_ID" in m15-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$COST_AWARE_AI" = 1; then case "$RELEASE_ID" in m14-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ANYWHERE_EXECUTION" = 1; then case "$RELEASE_ID" in m13-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$CENTRAL_PROJECT_AUTHORITY" = 1; then case "$RELEASE_ID" in m12-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$SELF_SERVICE" = 1; then case "$RELEASE_ID" in m11-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$FOUNDING_MEMORY" = 1; then case "$RELEASE_ID" in m10-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$FINAL_PRODUCT" = 1; then case "$RELEASE_ID" in m9-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$UNIFIED_WORKSPACE" = 1; then case "$RELEASE_ID" in m8-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$WORKSPACE_CONTINUITY" = 1; then case "$RELEASE_ID" in m7-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ASSISTANT_WORKSTREAM" = 1; then case "$RELEASE_ID" in m6-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; else case "$RELEASE_ID" in m4-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; fi
 case "$NGINX_CONFIG" in /etc/nginx/sites-enabled/*) ;; *) exit 20 ;; esac
 case "$HOSTNAME" in ''|*[!A-Za-z0-9.-]*|.*|*.) exit 20 ;; esac
@@ -38,7 +41,7 @@ case "$REMOTE_SCRIPT" in /tmp/awh-control-plane-*.sh) ;; *) exit 20 ;; esac
 case "$COMPAT_REFRESH" in 0|1) ;; *) exit 20 ;; esac
 if test "$COMPAT_REFRESH" = 1 && test "$ASSISTANT_WORKSTREAM" = 1; then exit 20; fi
 OWNER_PASSWORD=
-if test "$ASSISTANT_WORKSTREAM" = 0 && test "$WORKSPACE_CONTINUITY" = 0 && test "$UNIFIED_WORKSPACE" = 0 && test "$FINAL_PRODUCT" = 0 && test "$FOUNDING_MEMORY" = 0 && test "$SELF_SERVICE" = 0 && test "$CENTRAL_PROJECT_AUTHORITY" = 0 && test "$ANYWHERE_EXECUTION" = 0 && test "$COST_AWARE_AI" = 0 && test "$AUTOMATIONS" = 0 && test "$SELF_SUFFICIENT_AI" = 0 && test "$ACCOUNT_HOSTING" = 0 && test "$CLOUD_FIRST" = 0; then IFS= read -r OWNER_PASSWORD || exit 20; case "$OWNER_PASSWORD" in ''|*[!A-Za-z0-9._~-]*) exit 20 ;; esac; fi
+if test "$OWNER_LOGIN_PROOF_REQUIRED" -eq 1; then IFS= read -r OWNER_PASSWORD || exit 20; case "$OWNER_PASSWORD" in ''|*[!A-Za-z0-9._~-]*) exit 20 ;; esac; fi
 
 BACKUP=/var/backups/awh-hub/awh.sqlite.pre-$RELEASE_ID
 POINTER=$REMOTE_ROOT/control-plane-current
@@ -825,7 +828,7 @@ stage NGINX_CUTOVER_INSTALL; sudo install -o root -g root -m 0644 "$NGINX_CANDID
 stage SERVICE_RELOAD; sudo systemctl reload nginx
 stage OWNER_AUTH_EFFECTIVE_CONFIG; verify_owner_auth_effective_config
 stage OWNER_AUTH_SURFACE; verify_owner_auth_surface
-if test "$ASSISTANT_WORKSTREAM" = 0 && test "$WORKSPACE_CONTINUITY" = 0 && test "$UNIFIED_WORKSPACE" = 0 && test "$FINAL_PRODUCT" = 0 && test "$FOUNDING_MEMORY" = 0 && test "$SELF_SERVICE" = 0 && test "$CENTRAL_PROJECT_AUTHORITY" = 0 && test "$ANYWHERE_EXECUTION" = 0 && test "$COST_AWARE_AI" = 0 && test "$AUTOMATIONS" = 0 && test "$SELF_SUFFICIENT_AI" = 0 && test "$ACCOUNT_HOSTING" = 0; then
+if test "$OWNER_LOGIN_PROOF_REQUIRED" -eq 1; then
   stage OWNER_AUTH_LOGIN; verify_owner_auth_login
   stage OWNER_AUTH_SESSION; session_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H 'Sec-Fetch-Site: same-origin' -b "$OWNER_AUTH_COOKIE_JAR" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/auth/session" 2>/dev/null || printf 000); test "$session_code" = 200
   stage OWNER_AUTH_CONTROL; projects_code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H 'Sec-Fetch-Site: same-origin' -b "$OWNER_AUTH_COOKIE_JAR" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/projects" 2>/dev/null || printf 000); test "$projects_code" = 200; cleanup_owner_auth_cookie_files
