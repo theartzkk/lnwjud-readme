@@ -122,3 +122,5 @@ Next safe action: publish this converged M20 branch for PR/CI review against `aw
 - Current canonical focused QA PASS: TypeScript typecheck plus 15/15 tests covering HEIC provider-safe input, Conversation Lifecycle/delete semantics, three-destination mobile shell, Tasks/Files surfaces, policy-paused readiness, release dedup contract, and visual-review authority.
 
 Next safe action: keep Production at schema 19 until explicit M20 activation approval. The highest-value independent safe work is repository/worktree classification plus continued rendered/field QA on canonical. Release hard-link compaction is ready by evidence but remains a separate Production mutation gate.
+
+- Post-merge rendered QA also PASS on clean checkpoint commit `29f0d157326b66a219df6c7bc438902ee5370ec7`: 16 screenshots across 390×844 and 1440×900, with the renderer reporting `dirty=false`.
