@@ -22,6 +22,9 @@ test('M18 Cloud-first activation contract is additive, rollback-safe and approva
  assert.match(remoteText,/CLOUD_FIRST_MIGRATION_FIRST/); assert.match(remoteText,/CLOUD_FIRST_MIGRATION_IDEMPOTENT/); assert.match(remoteText,/CLOUD_FIRST_MIGRATION_VERIFIED/);
  assert.match(remoteText,/EXTENSION_MODE_COUNT=.*CLOUD_FIRST/); assert.match(remoteText,/if test \"\$OWNER_LOGIN_PROOF_REQUIRED\" -eq 1; then IFS= read -r OWNER_PASSWORD/); assert.match(remoteText,/stage OWNER_AUTH_LOGIN; verify_owner_auth_login/); assert.doesNotMatch(remoteText,/ACCOUNT_HOSTING\" = 0; then\n  stage OWNER_AUTH_LOGIN/);
  assert.match(remoteText,/M18_TABLE_COUNT_BEFORE/); assert.match(remoteText,/class_exists\(\"ZipArchive\"\)/); assert.match(remoteText,/provider-credentials/); assert.match(remoteText,/m18-cloud-first-control/); assert.match(remoteText,/CLOUD_FIRST_ROUTE/); assert.match(remoteText,/test \"\$CLOUD_FIRST\" = 1; then DB_MUTATED=1; stage PROJECT_VAULT_SOURCE_SYNC/);
+ assert.ok(remoteText.includes("case \"$DEPLOY_BASE_VERSION\" in 4|5|6|7|8|9|10|11|12|13|14|15|16|17|18)"));
+ assert.ok(remoteText.includes("test \"$ACCOUNT_HOSTING\" = 1 || test \"$CLOUD_FIRST\" = 1; } && test \"$DB_MUTATED\" -eq 1; then"));
+ assert.match(remoteText,/\n\s*18\).*m18-cloud-first-control.*schema_version = 18/);
  assert.match(remoteText,/control_capability_catalog WHERE capability IN \('qa\.cloud','review\.visual'\)/); assert.match(remoteText,/api\/v1\/control\/cloud/);
  assert.match(validator,/CLOUD_FIRST_MIGRATION_FIRST/); assert.match(validator,/CLOUD_FIRST_ROUTE/);
 });

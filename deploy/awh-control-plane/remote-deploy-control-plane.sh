@@ -317,7 +317,7 @@ rollback() {
       test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')" || ok=0
       verify_m3e_after_m4 || ok=0
     fi
-    if test "$ok" -eq 1 && { test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1 || test "$AUTOMATIONS" = 1 || test "$SELF_SUFFICIENT_AI" = 1 || test "$ACCOUNT_HOSTING" = 1; } && test "$DB_MUTATED" -eq 1; then
+    if test "$ok" -eq 1 && { test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1 || test "$AUTOMATIONS" = 1 || test "$SELF_SUFFICIENT_AI" = 1 || test "$ACCOUNT_HOSTING" = 1 || test "$CLOUD_FIRST" = 1; } && test "$DB_MUTATED" -eq 1; then
       test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = "$DEPLOY_BASE_VERSION" || ok=0
       case "$DEPLOY_BASE_VERSION" in
         11) test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm11-self-service' AND schema_version = 11;")" = 1 || ok=0 ;;
@@ -327,6 +327,7 @@ rollback() {
         15) test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm15-automation-registry' AND schema_version = 15;")" = 1 || ok=0 ;;
         16) test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm16-self-sufficient-ai' AND schema_version = 16;")" = 1 || ok=0 ;;
         17) test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm17-account-hosting' AND schema_version = 17;")" = 1 || ok=0 ;;
+        18) test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm18-cloud-first-control' AND schema_version = 18;")" = 1 || ok=0 ;;
         *) ok=0 ;;
       esac
       test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok || ok=0
@@ -346,7 +347,7 @@ rollback() {
 }
 trap rollback EXIT HUP INT TERM
 
-sudo test -f "$DB"; sudo test -f "$REMOTE_STAGE"; pointer_capture; cleanup_loaded_topology; DEPLOY_BASE_VERSION=$(sudo sqlite3 "$DB" 'PRAGMA user_version;'); case "$DEPLOY_BASE_VERSION" in 4|5|6|7|8|9|10|11|12|13|14|15|16|17) ;; *) exit 20 ;; esac; stage PREMUTATION_READY
+sudo test -f "$DB"; sudo test -f "$REMOTE_STAGE"; pointer_capture; cleanup_loaded_topology; DEPLOY_BASE_VERSION=$(sudo sqlite3 "$DB" 'PRAGMA user_version;'); case "$DEPLOY_BASE_VERSION" in 4|5|6|7|8|9|10|11|12|13|14|15|16|17|18) ;; *) exit 20 ;; esac; stage PREMUTATION_READY
 sudo install -d -o root -g awh-hub -m 0750 /var/backups/awh-hub
 sudo sqlite3 "$DB" ".backup '$BACKUP'"; sudo chown root:root "$BACKUP"; sudo chmod 0600 "$BACKUP"; test "$(sudo sqlite3 "$BACKUP" 'PRAGMA integrity_check;')" = ok; test -z "$(sudo sqlite3 "$BACKUP" 'PRAGMA foreign_key_check;')"; sudo install -d -m 0750 -o root -g root "$CONFIG_BACKUP_ROOT/nginx"; sudo test ! -e "$NGINX_BACKUP"; sudo cp -p "$NGINX_CONFIG" "$NGINX_BACKUP"; sudo chown root:root "$NGINX_BACKUP"; sudo chmod 0600 "$NGINX_BACKUP"; sudo cmp -s "$NGINX_CONFIG" "$NGINX_BACKUP"; NGINX_BACKUP_CREATED=1; stage BACKUP_VERIFIED
 if sudo test -e "$RELEASE" || sudo test -L "$RELEASE"; then exit 20; fi
