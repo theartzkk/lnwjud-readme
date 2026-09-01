@@ -22,3 +22,17 @@
 ## Isolated implementation stream
 
 Implementation work for this closure is isolated on `awh/night-closure-20260901`. First deliverable: reference-aware release-retention audit and tests. Production mutation remains gated behind exact-SHA readiness and post-change rollback evidence.
+
+## Night Closure checkpoint — schema/retention guard
+
+- Canonical GitHub authority reverified at `awh/api-independence` `b66ef39cc9860fd3b6f9787a703bee763cd19663`.
+- Production reverified unchanged at `m18-2f393e3b2341` for both Control and Web pointers; SQLite `user_version=18`, `integrity_check=ok`, zero FK violations.
+- Production root filesystem observed at 78% used with about 6.3 GB free; 36 Control releases and 32 Web releases remain.
+- Read-only release compaction preview scanned 93 desktop artifact files and found 32 linkable duplicates with `12,518,209,842` reclaimable bytes. No Production mutation was performed; apply remains approval-gated.
+- Active Project Source Authority worktree remains dirty (23 paths) at `7fdeba9d479476a2d18da57ab91576510687ea7a` and still carries an obsolete `018_project_source_authority.sql`/schema-19 assumption.
+- Canonical now owns migration 018 as Conversation Lifecycle at schema/user_version 19. A regression contract now requires one monotonic migration authority per user_version and requires future Project Source Authority work to advance to migration/schema 20 or later.
+- Targeted QA PASS: conversation lifecycle, deploy authority, migration-sequence contract, and release artifact compaction (5/5); TypeScript typecheck PASS.
+- Repository hygiene removed only eight dead Git worktree metadata entries whose gitdir targets no longer existed; live worktrees were untouched. Registered worktrees reduced from 51 to 43.
+- Large local generated outputs remain intentionally retained pending a separate safe cache policy: `.awh-local` ~2.4 GB, `out` ~715 MB, `dist-web` ~275 MB, `node_modules` ~534 MB.
+
+Next safe action: freeze the active Project Source Authority checkpoint, transplant it onto current canonical, renumber its migration to M20/schema 20, run full migration/regression QA, and only then consider a Production candidate. Release compaction apply remains a separate explicit Production approval gate.
