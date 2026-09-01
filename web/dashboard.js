@@ -65,9 +65,9 @@ function classifyUniversalIntent(message, files = []) {
   const lower = text.toLowerCase();
   const fileList = Array.isArray(files) ? files : [];
   if (/(?:สร้าง|ทำ|จัดทำ|เขียน).{0,40}(?:บันทึกข้อความ|หนังสือราชการ|ขออนุมัติ|ขอเบิก)/iu.test(text) || /(?:บันทึกข้อความ|หนังสือราชการ).{0,40}(?:สร้าง|ทำ|จัดทำ|เขียน)/iu.test(text)) return { kind: 'DOCUMENT' };
-  if (/(?:รวม|merge).{0,30}(?:pdf)|(?:pdf).{0,30}(?:รวม|merge)/iu.test(text) || (fileList.length > 1 && fileList.every((file) => String(file?.name || '').toLowerCase().endsWith('.pdf')))) return { kind: 'PDF' };
+  if (/(?:รวม|merge).{0,30}(?:pdf)|(?:pdf).{0,30}(?:รวม|merge)/iu.test(text)) return { kind: 'PDF' };
   if (/(?:สร้าง|ทำ).{0,24}(?:qr)|(?:qr).{0,24}(?:สร้าง|ทำ)/iu.test(text)) return { kind: 'QR' };
-  if (/(?:ย่อ|บีบอัด|resize|compress|แปลง).{0,30}(?:รูป|ภาพ|image)/iu.test(text) || (fileList.length === 1 && String(fileList[0]?.type || '').startsWith('image/'))) return { kind: 'IMAGE' };
+  if (/(?:ย่อ|บีบอัด|resize|compress|แปลง|convert|ลดขนาด|ปรับขนาด).{0,36}(?:รูป|ภาพ|image)|(?:รูป|ภาพ|image).{0,36}(?:ย่อ|บีบอัด|resize|compress|แปลง|convert|ลดขนาด|ปรับขนาด)/iu.test(text)) return { kind: 'IMAGE' };
   if (/(?:vps|server|เซิร์ฟเวอร์|พื้นที่|disk|storage|ram|cpu|backup|production)/iu.test(lower) && /(?:ดู|ตรวจ|เหลือ|สถานะ|เท่าไร|เท่าไหร่|health|status)/iu.test(lower)) return { kind: 'INFRASTRUCTURE' };
   return { kind: 'WORK' };
 }
@@ -130,9 +130,10 @@ function updateMobileNavigation() {
   if (!(nav instanceof HTMLElement)) return;
   const dashboard = $(DASHBOARD_ID);
   const home = document.body.classList.contains('product-dashboard-active');
-  const activeDestination = home && dashboard?.dataset.view === 'tasks' ? 'tasks'
-    : home && nav.dataset.activeDestination === 'tools' ? 'tools'
-    : 'work';
+  const activeDestination = !home ? 'work'
+    : dashboard?.dataset.view === 'tasks' ? 'tasks'
+    : dashboard?.dataset.view === 'files' ? 'files'
+    : 'home';
   for (const item of nav.querySelectorAll('[data-mobile-destination]')) {
     const active = item.dataset.mobileDestination === activeDestination;
     item.classList.toggle('is-active', active);
@@ -153,11 +154,20 @@ function mountMobileNavigation() {
     return item;
   };
   nav.append(
+    make('⌂', 'หน้าแรก', 'home', () => returnHome()),
     make('✦', 'แชท', 'work', () => openWork()),
-    make('↻', 'งานของฉัน', 'tasks', () => openTaskSurface()),
-    make('▦', 'เครื่องมือ', 'tools', () => { returnHome(); nav.dataset.activeDestination = 'tools'; updateMobileNavigation(); window.setTimeout(() => $('awh-home-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40); }),
+    make('↻', 'งาน', 'tasks', () => openTaskSurface()),
+    make('▤', 'ไฟล์', 'files', () => openFilesSurface()),
   );
   document.body.append(nav);
+  const updateKeyboardViewport = () => {
+    const viewport = window.visualViewport;
+    const keyboardOpen = viewport ? window.innerHeight - viewport.height > 140 : false;
+    document.body.classList.toggle('awh-keyboard-open', keyboardOpen);
+  };
+  window.visualViewport?.addEventListener('resize', updateKeyboardViewport, { passive: true });
+  window.visualViewport?.addEventListener('scroll', updateKeyboardViewport, { passive: true });
+  updateKeyboardViewport();
   new MutationObserver(updateMobileNavigation).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   updateMobileNavigation();
 }
@@ -206,6 +216,24 @@ function updateProductNavigation() {
   }
   const owner = nav.querySelector('[data-product-destination="owner"]');
   if (owner instanceof HTMLElement) owner.hidden = state.control?.role !== 'OWNER';
+}
+
+const DEEP_LINK_SURFACES = new Set(['home', 'work', 'tasks', 'files']);
+
+function requestedDeepLinkSurface() {
+  try {
+    const value = new URL(window.location.href).searchParams.get('awh-surface');
+    return DEEP_LINK_SURFACES.has(value) ? value : null;
+  } catch { return null; }
+}
+
+function consumeDeepLinkSurface() {
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('awh-surface')) return;
+    url.searchParams.delete('awh-surface');
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  } catch { /* keep current URL when browser URL parsing is unavailable */ }
 }
 
 function setDashboardView(view) {
@@ -990,14 +1018,28 @@ async function syncSurface() {
     return;
   }
   const dashboard = $(DASHBOARD_ID);
+  if (!state.control) {
+    try { await refreshDashboard(); } catch { return; }
+  }
+  const requestedSurface = requestedDeepLinkSurface();
+  if (requestedSurface && !document.body.dataset.awhDeepLinkConsumed) {
+    document.body.dataset.awhDeepLinkConsumed = '1';
+    state.restoringSurface = true;
+    try {
+      if (requestedSurface === 'work') openWork();
+      else if (requestedSurface === 'tasks') openTaskSurface();
+      else if (requestedSurface === 'files') openFilesSurface();
+      else returnHome();
+    } finally { state.restoringSurface = false; }
+    consumeDeepLinkSurface();
+    commitAwhSurface(requestedSurface, { replace: true, scrollY: 0 });
+    return;
+  }
   if (dashboard && !document.body.classList.contains('product-dashboard-active') && !document.body.dataset.awhDashboardVisited) {
     document.body.dataset.awhDashboardVisited = '1';
     dashboard.hidden = false;
     document.body.classList.add('product-dashboard-active');
     commitAwhSurface('home', { replace: true, scrollY: 0 });
-  }
-  if (!state.control) {
-    try { await refreshDashboard(); } catch { return; }
   }
 }
 

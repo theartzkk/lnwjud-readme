@@ -36,6 +36,9 @@ test('school document and project factory surfaces use the existing canonical au
   assert.match(adapter, /createProjectFactory/);
   assert.match(tools, /openSchoolDocumentTool/);
   assert.match(tools, /openProjectFactoryTool/);
+  assert.match(tools, /safeGeneratedArtifactUrl/);
+  assert.match(tools, /\/api\\\/v1\\\/control\\\/artifacts\\\//);
+  assert.doesNotMatch(tools, /link\.href = artifact\.downloadUrl/);
   assert.match(registry, /project-factory/);
   const dashboard = await readFile(new URL('../web/dashboard.js', import.meta.url), 'utf8');
   const app = await readFile(new URL('../web/app.js', import.meta.url), 'utf8');
@@ -46,6 +49,9 @@ test('school document and project factory surfaces use the existing canonical au
   assert.match(dashboard, /kind: 'PDF'/);
   assert.match(dashboard, /kind: 'QR'/);
   assert.match(dashboard, /kind: 'IMAGE'/);
+  assert.doesNotMatch(dashboard, /fileList\.length === 1[^\n]+startsWith\('image\/'\)/);
+  assert.doesNotMatch(dashboard, /fileList\.length > 1[^\n]+endsWith\('\.pdf'\)/);
+  assert.match(dashboard, /ลดขนาด\|ปรับขนาด/);
   assert.match(dashboard, /globalThis\.AWH_ROUTE_COMMAND/);
   assert.match(app, /AWH_ROUTE_COMMAND/);
   assert.match(app, /renderArtifactCard/);
