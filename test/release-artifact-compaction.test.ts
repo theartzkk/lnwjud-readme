@@ -10,10 +10,12 @@ const script=new URL('../deploy/awh-control-plane/compact-control-release-artifa
 test('release artifact compaction preserves rollback history and requires approval to mutate',async()=>{
  const text=await readFile(script,'utf8');
  const result=await execFileAsync('/bin/sh',[script.pathname,'--dry-run']);
- assert.match(result.stdout,/hard-link-only,rollback-history-preserved,bounded-12/);
+ assert.match(result.stdout,/hard-link-only,control\+web,rollback-history-preserved,bounded-12/);
  assert.match(result.stdout,/RELEASE_COMPACTION_APPLY_REQUIRES_APPROVAL/);
  assert.match(text,/--preview/); assert.match(text,/--apply/); assert.match(text,/--approve/);
- assert.match(text,/\/opt\/awh-hub\/control-releases/); assert.match(text,/\/var\/www\/awh-web\/desktop-artifacts/);
+ assert.match(text,/audit-release-retention\.sh/); assert.match(text,/BLOCK_AWARE_RETENTION_AUDIT/);
+ assert.match(text,/\/opt\/awh-hub\/control-releases/); assert.match(text,/\/var\/www\/awh-web\/releases/); assert.match(text,/\/var\/www\/awh-web\/desktop-artifacts/);
+ assert.match(text,/compact_root \"\$CONTROL_ROOT\" dist-web\/downloads CONTROL/); assert.match(text,/compact_root \"\$WEB_ROOT\" downloads WEB/);
  assert.match(text,/ln "\$object" "\$temp"/); assert.match(text,/cmp -s "\$file" "\$temp"/); assert.match(text,/mv -Tf "\$temp" "\$file"/);
  assert.doesNotMatch(text,/rm\s+-rf|find[^\n]*-delete/);
 });
