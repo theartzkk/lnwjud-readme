@@ -7,6 +7,7 @@ import { loadOrCreateDeviceIdentity } from './device-identity.js';
 import { createCheckpoint } from './changes.js';
 import { createContinuityCheckpoint } from './continuity.js';
 import { buildProjectContext, listProjects, readProjectManifest, resolveRegisteredProject, PROJECT_MEMORY_FILES } from './project-registry.js';
+import { discoverGitHubProjectSource } from './project-source.js';
 import { ControlPlaneWorkerClient, type WorkerProject, type WorkerTask } from './control-plane-worker-client.js';
 import { createUnsyncedWorkspaceCheckpoint, createWorkspaceWipCheckpoint, reconstructWorkspaceWip } from './workspace-continuity.js';
 import { createVaultCandidateArchive } from './vault-transfer.js';
@@ -168,7 +169,7 @@ export class ControlPlaneWorkerRuntime {
       this.contextRecoveryAttempts.add(key);
       const archive = join(this.options.dataDir, 'project-source-recovery', `${project.projectId}-${revision.slice(0, 12)}.zip`);
       try {
-        await this.client.registerProject({ projectId: project.projectId, name: project.name, type: project.type, sourceRevision: revision });
+        await this.client.registerProject({ projectId: project.projectId, name: project.name, type: project.type, sourceRevision: revision, source: await discoverGitHubProjectSource(workspace) });
         await this.client.registerProjectBinding(project.projectId, project.name, capabilities, revision);
         await createCommittedSourceArchive(workspace, revision, archive);
         await this.client.uploadProjectSource(project.projectId, revision, archive);

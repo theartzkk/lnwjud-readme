@@ -4,7 +4,7 @@
 # only. Raw stderr and all secret-bearing diagnostics are intentionally hidden.
 set -eu
 exec 2>/dev/null
-DB=$1; REMOTE_ROOT=$2; REMOTE_STAGE=$3; RELEASE=$4; RELEASE_ID=$5; NGINX_CONFIG=$6; HOSTNAME=$7; AWH_FPM_SOCKET=$8; AWH_FPM_SERVICE=$9; CLEANUP_TOPOLOGY=${10}; OWNER_USERNAME=${11}; OWNER_AUTH_ENABLED=${12}; REMOTE_SCRIPT=${13}; COMPAT_REFRESH=${14}; ASSISTANT_WORKSTREAM=${15}; WORKSPACE_CONTINUITY=${16}; UNIFIED_WORKSPACE=${17}; FINAL_PRODUCT=${18}; FOUNDING_MEMORY=${19}; SELF_SERVICE=${20}; CENTRAL_PROJECT_AUTHORITY=${21}; RELEASE_COMMIT=${22}; ANYWHERE_EXECUTION=${23}; COST_AWARE_AI=${24}; AUTOMATIONS=${25}; SELF_SUFFICIENT_AI=${26}; ACCOUNT_HOSTING=${27}; CLOUD_FIRST=${28}; CONVERSATION_LIFECYCLE=${29}
+DB=$1; REMOTE_ROOT=$2; REMOTE_STAGE=$3; RELEASE=$4; RELEASE_ID=$5; NGINX_CONFIG=$6; HOSTNAME=$7; AWH_FPM_SOCKET=$8; AWH_FPM_SERVICE=$9; CLEANUP_TOPOLOGY=${10}; OWNER_USERNAME=${11}; OWNER_AUTH_ENABLED=${12}; REMOTE_SCRIPT=${13}; COMPAT_REFRESH=${14}; ASSISTANT_WORKSTREAM=${15}; WORKSPACE_CONTINUITY=${16}; UNIFIED_WORKSPACE=${17}; FINAL_PRODUCT=${18}; FOUNDING_MEMORY=${19}; SELF_SERVICE=${20}; CENTRAL_PROJECT_AUTHORITY=${21}; RELEASE_COMMIT=${22}; ANYWHERE_EXECUTION=${23}; COST_AWARE_AI=${24}; AUTOMATIONS=${25}; SELF_SUFFICIENT_AI=${26}; ACCOUNT_HOSTING=${27}; CLOUD_FIRST=${28}; CONVERSATION_LIFECYCLE=${29}; PROJECT_SOURCE_AUTHORITY=${30}
 case "$DB" in /var/lib/awh-hub/*|/opt/awh-hub/*|/srv/awh/*) ;; *) exit 20 ;; esac
 case "$REMOTE_ROOT" in /opt/awh-hub) ;; *) exit 20 ;; esac
 case "$REMOTE_STAGE" in /tmp/awh-control-plane-*.tar.gz) ;; *) exit 20 ;; esac
@@ -23,13 +23,14 @@ case "$SELF_SUFFICIENT_AI" in 0|1) ;; *) exit 20 ;; esac
 case "$ACCOUNT_HOSTING" in 0|1) ;; *) exit 20 ;; esac
 case "$CLOUD_FIRST" in 0|1) ;; *) exit 20 ;; esac
 case "$CONVERSATION_LIFECYCLE" in 0|1) ;; *) exit 20 ;; esac
+case "$PROJECT_SOURCE_AUTHORITY" in 0|1) ;; *) exit 20 ;; esac
 case "$RELEASE_COMMIT" in ''|*[!0-9a-fA-F]*) exit 20 ;; esac
 test "${#RELEASE_COMMIT}" -ge 40 && test "${#RELEASE_COMMIT}" -le 64 || exit 20
-EXTENSION_MODE_COUNT=$((ASSISTANT_WORKSTREAM + WORKSPACE_CONTINUITY + UNIFIED_WORKSPACE + FINAL_PRODUCT + FOUNDING_MEMORY + SELF_SERVICE + CENTRAL_PROJECT_AUTHORITY + ANYWHERE_EXECUTION + COST_AWARE_AI + AUTOMATIONS + SELF_SUFFICIENT_AI + ACCOUNT_HOSTING + CLOUD_FIRST + CONVERSATION_LIFECYCLE))
+EXTENSION_MODE_COUNT=$((ASSISTANT_WORKSTREAM + WORKSPACE_CONTINUITY + UNIFIED_WORKSPACE + FINAL_PRODUCT + FOUNDING_MEMORY + SELF_SERVICE + CENTRAL_PROJECT_AUTHORITY + ANYWHERE_EXECUTION + COST_AWARE_AI + AUTOMATIONS + SELF_SUFFICIENT_AI + ACCOUNT_HOSTING + CLOUD_FIRST + CONVERSATION_LIFECYCLE + PROJECT_SOURCE_AUTHORITY))
 if test $((COMPAT_REFRESH + EXTENSION_MODE_COUNT)) -gt 1; then exit 20; fi
 OWNER_LOGIN_PROOF_REQUIRED=0
 if test "$EXTENSION_MODE_COUNT" -eq 0; then OWNER_LOGIN_PROOF_REQUIRED=1; fi
-if test "$CONVERSATION_LIFECYCLE" = 1; then case "$RELEASE_ID" in m19-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$CLOUD_FIRST" = 1; then case "$RELEASE_ID" in m18-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ACCOUNT_HOSTING" = 1; then case "$RELEASE_ID" in m17-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$SELF_SUFFICIENT_AI" = 1; then case "$RELEASE_ID" in m16-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$AUTOMATIONS" = 1; then case "$RELEASE_ID" in m15-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$COST_AWARE_AI" = 1; then case "$RELEASE_ID" in m14-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ANYWHERE_EXECUTION" = 1; then case "$RELEASE_ID" in m13-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$CENTRAL_PROJECT_AUTHORITY" = 1; then case "$RELEASE_ID" in m12-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$SELF_SERVICE" = 1; then case "$RELEASE_ID" in m11-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$FOUNDING_MEMORY" = 1; then case "$RELEASE_ID" in m10-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$FINAL_PRODUCT" = 1; then case "$RELEASE_ID" in m9-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$UNIFIED_WORKSPACE" = 1; then case "$RELEASE_ID" in m8-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$WORKSPACE_CONTINUITY" = 1; then case "$RELEASE_ID" in m7-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ASSISTANT_WORKSTREAM" = 1; then case "$RELEASE_ID" in m6-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; else case "$RELEASE_ID" in m4-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; fi
+if test "$PROJECT_SOURCE_AUTHORITY" = 1; then case "$RELEASE_ID" in m20-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$CONVERSATION_LIFECYCLE" = 1; then case "$RELEASE_ID" in m19-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$CLOUD_FIRST" = 1; then case "$RELEASE_ID" in m18-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ACCOUNT_HOSTING" = 1; then case "$RELEASE_ID" in m17-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$SELF_SUFFICIENT_AI" = 1; then case "$RELEASE_ID" in m16-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$AUTOMATIONS" = 1; then case "$RELEASE_ID" in m15-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$COST_AWARE_AI" = 1; then case "$RELEASE_ID" in m14-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ANYWHERE_EXECUTION" = 1; then case "$RELEASE_ID" in m13-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$CENTRAL_PROJECT_AUTHORITY" = 1; then case "$RELEASE_ID" in m12-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$SELF_SERVICE" = 1; then case "$RELEASE_ID" in m11-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$FOUNDING_MEMORY" = 1; then case "$RELEASE_ID" in m10-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$FINAL_PRODUCT" = 1; then case "$RELEASE_ID" in m9-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$UNIFIED_WORKSPACE" = 1; then case "$RELEASE_ID" in m8-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$WORKSPACE_CONTINUITY" = 1; then case "$RELEASE_ID" in m7-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ASSISTANT_WORKSTREAM" = 1; then case "$RELEASE_ID" in m6-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; else case "$RELEASE_ID" in m4-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; fi
 case "$NGINX_CONFIG" in /etc/nginx/sites-enabled/*) ;; *) exit 20 ;; esac
 case "$HOSTNAME" in ''|*[!A-Za-z0-9.-]*|.*|*.) exit 20 ;; esac
 printf '%s' "$AWH_FPM_SOCKET" | grep -Eq '^/run/php/php[0-9]+\.[0-9]+-fpm-awh\.sock$' || exit 20
@@ -65,6 +66,7 @@ M16_REFRESH=0
 M17_REFRESH=0
 M18_REFRESH=0
 M19_REFRESH=0
+M20_REFRESH=0
 HOSTING_UNITS_INSTALLED=0
 HOSTING_UNITS_PREEXISTING=0
 DEPLOY_BASE_VERSION=
@@ -97,6 +99,7 @@ SELF_SUFFICIENT_MIGRATION=
 ACCOUNT_HOSTING_MIGRATION=
 CLOUD_FIRST_MIGRATION=
 CONVERSATION_MIGRATION=
+PROJECT_SOURCE_MIGRATION=
 OWNER_AUTH_COOKIE_JAR=
 OWNER_AUTH_COOKIE_HEADERS=
 OWNER_AUTH_SURFACE_HEADERS=
@@ -338,7 +341,7 @@ rollback() {
       test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')" || ok=0
       verify_m3e_after_m4 || ok=0
     fi
-    if test "$ok" -eq 1 && { test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1 || test "$AUTOMATIONS" = 1 || test "$SELF_SUFFICIENT_AI" = 1 || test "$ACCOUNT_HOSTING" = 1 || test "$CLOUD_FIRST" = 1 || test "$CONVERSATION_LIFECYCLE" = 1; } && test "$DB_MUTATED" -eq 1; then
+    if test "$ok" -eq 1 && { test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1 || test "$AUTOMATIONS" = 1 || test "$SELF_SUFFICIENT_AI" = 1 || test "$ACCOUNT_HOSTING" = 1 || test "$CLOUD_FIRST" = 1 || test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1; } && test "$DB_MUTATED" -eq 1; then
       test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = "$DEPLOY_BASE_VERSION" || ok=0
       case "$DEPLOY_BASE_VERSION" in
         11) test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm11-self-service' AND schema_version = 11;")" = 1 || ok=0 ;;
@@ -350,6 +353,7 @@ rollback() {
         17) test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm17-account-hosting' AND schema_version = 17;")" = 1 || ok=0 ;;
         18) test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm18-cloud-first-control' AND schema_version = 18;")" = 1 || ok=0 ;;
         19) test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm19-conversation-lifecycle' AND schema_version = 19;")" = 1 || ok=0 ;;
+        20) test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm20-project-source-authority' AND schema_version = 20;")" = 1 || ok=0 ;;
         *) ok=0 ;;
       esac
       test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok || ok=0
@@ -369,7 +373,7 @@ rollback() {
 }
 trap rollback EXIT HUP INT TERM
 
-sudo test -f "$DB"; sudo test -f "$REMOTE_STAGE"; pointer_capture; cleanup_loaded_topology; DEPLOY_BASE_VERSION=$(sudo sqlite3 "$DB" 'PRAGMA user_version;'); case "$DEPLOY_BASE_VERSION" in 4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19) ;; *) exit 20 ;; esac; stage PREMUTATION_READY
+sudo test -f "$DB"; sudo test -f "$REMOTE_STAGE"; pointer_capture; cleanup_loaded_topology; DEPLOY_BASE_VERSION=$(sudo sqlite3 "$DB" 'PRAGMA user_version;'); case "$DEPLOY_BASE_VERSION" in 4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20) ;; *) exit 20 ;; esac; stage PREMUTATION_READY
 sudo install -d -o root -g awh-hub -m 0750 /var/backups/awh-hub
 sudo sqlite3 "$DB" ".backup '$BACKUP'"; sudo chown root:root "$BACKUP"; sudo chmod 0600 "$BACKUP"; test "$(sudo sqlite3 "$BACKUP" 'PRAGMA integrity_check;')" = ok; test -z "$(sudo sqlite3 "$BACKUP" 'PRAGMA foreign_key_check;')"; sudo install -d -m 0750 -o root -g root "$CONFIG_BACKUP_ROOT/nginx"; sudo test ! -e "$NGINX_BACKUP"; sudo cp -p "$NGINX_CONFIG" "$NGINX_BACKUP"; sudo chown root:root "$NGINX_BACKUP"; sudo chmod 0600 "$NGINX_BACKUP"; sudo cmp -s "$NGINX_CONFIG" "$NGINX_BACKUP"; NGINX_BACKUP_CREATED=1; stage BACKUP_VERIFIED
 if sudo test -e "$RELEASE" || sudo test -L "$RELEASE"; then exit 20; fi
@@ -380,12 +384,40 @@ if test "$COST_AWARE_AI" = 1 || test "$AUTOMATIONS" = 1 || test "$CLOUD_FIRST" =
 if test "$AUTOMATIONS" = 1 || test "$SELF_SUFFICIENT_AI" = 1 || test "$CLOUD_FIRST" = 1 || test "$CONVERSATION_LIFECYCLE" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-automations.php"; sudo test -f "$RELEASE/hub/migrations/014_automations.sql"; sudo test -f "$RELEASE/hub/src/HubAutomationMigration.php"; sudo test -f "$RELEASE/hub/src/HubAutomationRegistryService.php"; sudo test -f "$RELEASE/hub/src/HubAutomationSchedulerService.php"; fi
 if test "$CLOUD_FIRST" = 1 || test "$CONVERSATION_LIFECYCLE" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-cloud-first.php"; sudo test -f "$RELEASE/hub/migrations/017_cloud_first_control.sql"; sudo test -f "$RELEASE/hub/src/HubCloudFirstMigration.php"; sudo test -f "$RELEASE/hub/src/HubCloudWorkflowService.php"; sudo test -s "$RELEASE/.awh-build/awh-source.zip"; fi
 if test "$CONVERSATION_LIFECYCLE" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-conversation-lifecycle.php"; sudo test -f "$RELEASE/hub/migrations/018_conversation_lifecycle.sql"; sudo test -f "$RELEASE/hub/src/HubConversationLifecycleMigration.php"; sudo test -f "$RELEASE/hub/src/HubAiAttachmentPreparer.php"; fi
+if test "$PROJECT_SOURCE_AUTHORITY" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-project-source-authority.php"; sudo test -f "$RELEASE/hub/bin/project-source-authority.php"; sudo test -f "$RELEASE/hub/migrations/019_project_source_authority.sql"; sudo test -f "$RELEASE/hub/src/HubProjectSourceAuthorityMigration.php"; sudo test -f "$RELEASE/hub/src/HubProjectSourceAuthorityService.php"; sudo test -f "$RELEASE/hub/src/HubProjectSourceSyncService.php"; sudo test -f "$RELEASE/hub/src/HubAiPassProjectExportService.php"; fi
 if test "$ACCOUNT_HOSTING" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-account-hosting.php"; sudo test -f "$RELEASE/hub/migrations/016_account_hosting.sql"; sudo test -f "$RELEASE/hub/src/HubAccountHostingMigration.php"; sudo test -f "$RELEASE/hub/src/HubTrustPolicy.php"; sudo test -f "$RELEASE/hub/src/HubManagedHostingService.php"; sudo test -f "$RELEASE/hub/src/HubManagedHostingOperator.php"; sudo test -f "$RELEASE/hub/bin/awh-hosting-operator.php"; sudo test -f "$RELEASE/deploy/systemd/awh-hosting-operator.service"; sudo test -f "$RELEASE/deploy/systemd/awh-hosting-operator.timer"; sudo test -s "$RELEASE/.awh-build/awh-source.zip"; fi
 if test "$SELF_SUFFICIENT_AI" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-self-sufficient-ai.php"; sudo test -f "$RELEASE/hub/migrations/015_self_sufficient_ai.sql"; sudo test -f "$RELEASE/hub/src/HubSelfSufficientAiMigration.php"; sudo test -f "$RELEASE/hub/src/HubAiGovernanceService.php"; sudo test -f "$RELEASE/hub/src/HubAiProviderAdapter.php"; sudo test -f "$RELEASE/hub/src/HubOpenAiProviderAdapter.php"; sudo test -f "$RELEASE/hub/src/HubDurableExecutionService.php"; sudo test -f "$RELEASE/hub/src/HubExecutionTriageService.php"; sudo test -f "$RELEASE/hub/src/HubStaffGovernorService.php"; sudo test -f "$RELEASE/hub/src/HubStaffOperationsService.php"; sudo test -f "$RELEASE/deploy/systemd/awh-native-executor.service"; sudo test -f "$RELEASE/deploy/systemd/awh-native-executor.timer"; sudo test -s "$RELEASE/.awh-build/awh-source.zip"; fi
-OWNER_AUTH_SETUP=$RELEASE/hub/bin/setup-owner-auth.php; OWNER_AUTH_RUNTIME=$RELEASE/hub/bin/verify-owner-auth-runtime.php; ASSISTANT_MIGRATION=$RELEASE/hub/bin/migrate-assistant-workstream.php; WORKSPACE_MIGRATION=$RELEASE/hub/bin/migrate-workspace-continuity.php; UNIFIED_MIGRATION=$RELEASE/hub/bin/migrate-unified-workspace.php; FINAL_MIGRATION=$RELEASE/hub/bin/migrate-final-product.php; FOUNDING_MIGRATION=$RELEASE/hub/bin/migrate-founding-memory.php; SELF_SERVICE_MIGRATION=$RELEASE/hub/bin/migrate-self-service.php; CENTRAL_PROJECT_MIGRATION=$RELEASE/hub/bin/migrate-central-project-authority.php; ANYWHERE_MIGRATION=$RELEASE/hub/bin/migrate-anywhere-execution.php; COST_AWARE_MIGRATION=$RELEASE/hub/bin/migrate-cost-aware-ai.php; AUTOMATION_MIGRATION=$RELEASE/hub/bin/migrate-automations.php; SELF_SUFFICIENT_MIGRATION=$RELEASE/hub/bin/migrate-self-sufficient-ai.php; ACCOUNT_HOSTING_MIGRATION=$RELEASE/hub/bin/migrate-account-hosting.php; CLOUD_FIRST_MIGRATION=$RELEASE/hub/bin/migrate-cloud-first.php; CONVERSATION_MIGRATION=$RELEASE/hub/bin/migrate-conversation-lifecycle.php; OWNER_AUTH_TRANSFORM=$RELEASE/deploy/nginx/transform-owner-auth.php; CONTROL_ORIGIN_RENDER=$RELEASE/deploy/nginx/render-control-plane-include.php; CONTROL_INCLUDE=$RELEASE/deploy/nginx/awh-control-plane.conf; CONTROL_INCLUDE_TMP=/tmp/awh-control-include-$RELEASE_ID.conf
+OWNER_AUTH_SETUP=$RELEASE/hub/bin/setup-owner-auth.php; OWNER_AUTH_RUNTIME=$RELEASE/hub/bin/verify-owner-auth-runtime.php; ASSISTANT_MIGRATION=$RELEASE/hub/bin/migrate-assistant-workstream.php; WORKSPACE_MIGRATION=$RELEASE/hub/bin/migrate-workspace-continuity.php; UNIFIED_MIGRATION=$RELEASE/hub/bin/migrate-unified-workspace.php; FINAL_MIGRATION=$RELEASE/hub/bin/migrate-final-product.php; FOUNDING_MIGRATION=$RELEASE/hub/bin/migrate-founding-memory.php; SELF_SERVICE_MIGRATION=$RELEASE/hub/bin/migrate-self-service.php; CENTRAL_PROJECT_MIGRATION=$RELEASE/hub/bin/migrate-central-project-authority.php; ANYWHERE_MIGRATION=$RELEASE/hub/bin/migrate-anywhere-execution.php; COST_AWARE_MIGRATION=$RELEASE/hub/bin/migrate-cost-aware-ai.php; AUTOMATION_MIGRATION=$RELEASE/hub/bin/migrate-automations.php; SELF_SUFFICIENT_MIGRATION=$RELEASE/hub/bin/migrate-self-sufficient-ai.php; ACCOUNT_HOSTING_MIGRATION=$RELEASE/hub/bin/migrate-account-hosting.php; CLOUD_FIRST_MIGRATION=$RELEASE/hub/bin/migrate-cloud-first.php; CONVERSATION_MIGRATION=$RELEASE/hub/bin/migrate-conversation-lifecycle.php; PROJECT_SOURCE_MIGRATION=$RELEASE/hub/bin/migrate-project-source-authority.php; OWNER_AUTH_TRANSFORM=$RELEASE/deploy/nginx/transform-owner-auth.php; CONTROL_ORIGIN_RENDER=$RELEASE/deploy/nginx/render-control-plane-include.php; CONTROL_INCLUDE=$RELEASE/deploy/nginx/awh-control-plane.conf; CONTROL_INCLUDE_TMP=/tmp/awh-control-include-$RELEASE_ID.conf
 stage CONTROL_ORIGIN_RENDER; sudo /usr/bin/php "$CONTROL_ORIGIN_RENDER" "$CONTROL_INCLUDE" "$CONTROL_INCLUDE_TMP" "$HOSTNAME" "$AWH_FPM_SOCKET" >/dev/null; sudo test -s "$CONTROL_INCLUDE_TMP"; sudo install -o awh-hub -g awh-hub -m 0644 "$CONTROL_INCLUDE_TMP" "$CONTROL_INCLUDE"; sudo rm -f "$CONTROL_INCLUDE_TMP"; CONTROL_INCLUDE_TMP=
 stage NGINX_CUTOVER_PREPARE; sudo /usr/bin/php "$OWNER_AUTH_TRANSFORM" "$NGINX_CONFIG" "$NGINX_CANDIDATE" "$HOSTNAME" "$AWH_FPM_SOCKET" >/dev/null; sudo test -s "$NGINX_CANDIDATE"; sudo chown root:root "$NGINX_CANDIDATE"; sudo chmod 0644 "$NGINX_CANDIDATE"
-if test "$CONVERSATION_LIFECYCLE" = 1; then
+if test "$PROJECT_SOURCE_AUTHORITY" = 1; then
+  # M20 extends the proven M19 conversation schema with canonical remote
+  # source provenance on the existing projects authority.
+  stage WORKSPACE_PRESERVED
+  M20_START_VERSION=$(sudo sqlite3 "$DB" 'PRAGMA user_version;'); case "$M20_START_VERSION" in 19|20) ;; *) exit 20 ;; esac
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm19-conversation-lifecycle' AND schema_version = 19;")" = 1
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM pragma_table_info('control_conversations') WHERE name IN ('deleted_at','deleted_by_user_id');")" = 2
+  if test "$M20_START_VERSION" = 20; then M20_REFRESH=1; test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm20-project-source-authority' AND schema_version = 20;")" = 1; fi
+  M20_TABLE_COUNT_BEFORE=$(sudo sqlite3 "$DB" "SELECT count(*) FROM sqlite_master WHERE type='table';")
+  stage PROJECT_VAULT_RUNTIME_READY; sudo -u awh-hub /usr/bin/php -r 'exit((extension_loaded("pdo_sqlite") && class_exists("ZipArchive")) ? 0 : 1);'
+  stage PROJECT_VAULT_STORAGE_READY; sudo -u awh-hub test -w /var/lib/awh-hub/project-vault; sudo -u awh-hub test -w /var/lib/awh-hub/task-workspaces; sudo -u awh-hub test -w /var/lib/awh-hub/task-transfers; sudo -u awh-hub test -w /var/lib/awh-hub/artifacts
+  stage PROVIDER_CREDENTIAL_STORAGE_READY; sudo test -d /var/lib/awh-hub/provider-credentials; test "$(sudo stat -c '%U:%G:%a' /var/lib/awh-hub/provider-credentials)" = 'awh-hub:awh-hub:700'; sudo -u awh-hub test -w /var/lib/awh-hub/provider-credentials
+  test -f "$EXECUTOR_SERVICE_UNIT" && test -f "$EXECUTOR_TIMER_UNIT" && test -f "$HOSTING_SERVICE_UNIT" && test -f "$HOSTING_TIMER_UNIT"; test "$PREVIOUS_POINTER" = PRESENT
+  sudo cmp -s "$EXECUTOR_SERVICE_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-native-executor.service"; sudo cmp -s "$EXECUTOR_TIMER_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-native-executor.timer"
+  sudo install -d -o root -g root -m 0750 "$EXECUTOR_BACKUP_ROOT"; sudo test ! -e "$EXECUTOR_SERVICE_BACKUP"; sudo test ! -e "$EXECUTOR_TIMER_BACKUP"; sudo test ! -e "$HOSTING_SERVICE_BACKUP"; sudo test ! -e "$HOSTING_TIMER_BACKUP"
+  sudo cp -p "$EXECUTOR_SERVICE_UNIT" "$EXECUTOR_SERVICE_BACKUP"; sudo cp -p "$EXECUTOR_TIMER_UNIT" "$EXECUTOR_TIMER_BACKUP"; sudo cp -p "$HOSTING_SERVICE_UNIT" "$HOSTING_SERVICE_BACKUP"; sudo cp -p "$HOSTING_TIMER_UNIT" "$HOSTING_TIMER_BACKUP"
+  sudo chown root:root "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP"; sudo chmod 0600 "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP"
+  sudo systemctl stop awh-native-executor.timer; sudo systemctl stop awh-native-executor.service >/dev/null 2>&1 || true; EXECUTOR_TIMER_STOPPED=1; EXECUTOR_UNITS_PREEXISTING=1
+  sudo systemctl stop awh-hosting-operator.timer; sudo systemctl stop awh-hosting-operator.service >/dev/null 2>&1 || true; HOSTING_UNITS_PREEXISTING=1
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM control_task_executions WHERE state IN ('LEASED','RUNNING');")" = 0; stage NATIVE_EXECUTOR_QUIESCED; stage HOSTING_OPERATOR_QUIESCED
+  DB_MUTATED=1
+  if test "$M20_REFRESH" -eq 0; then stage PROJECT_SOURCE_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$PROJECT_SOURCE_MIGRATION" "$DB" >/dev/null; fi
+  stage PROJECT_SOURCE_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$PROJECT_SOURCE_MIGRATION" "$DB" >/dev/null
+  test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;')" = 20; test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm20-project-source-authority' AND schema_version = 20;")" = 1
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM sqlite_master WHERE type='table';")" = "$M20_TABLE_COUNT_BEFORE"
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM pragma_table_info('projects') WHERE name IN ('canonical_source_provider','canonical_source_repository','canonical_source_ref','canonical_source_revision','canonical_source_observed_at','canonical_source_vault_revision_id');")" = 6
+  test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok; test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"; stage PROJECT_SOURCE_MIGRATION_VERIFIED; stage PROJECTS_READY
+elif test "$CONVERSATION_LIFECYCLE" = 1; then
   # M19 adds reversible visibility markers to the canonical conversation authority.
   stage WORKSPACE_PRESERVED
   M19_START_VERSION=$(sudo sqlite3 "$DB" 'PRAGMA user_version;'); case "$M19_START_VERSION" in 18|19) ;; *) exit 20 ;; esac
@@ -845,9 +877,9 @@ else
   sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$RELEASE/hub/bin/register-m4-projects.php" >/dev/null; stage PROJECTS_READY
 fi
 sudo rm -f "$POINTER_TMP"; sudo ln -s "$RELEASE" "$POINTER_TMP"; sudo mv -Tf "$POINTER_TMP" "$POINTER"; POINTER_CHANGED=1; test "$(readlink "$POINTER")" = "$RELEASE"; stage CONTROL_POINTER
-if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1 || test "$AUTOMATIONS" = 1 || test "$SELF_SUFFICIENT_AI" = 1 || test "$ACCOUNT_HOSTING" = 1 || test "$CLOUD_FIRST" = 1 || test "$CONVERSATION_LIFECYCLE" = 1; then
+if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1 || test "$AUTOMATIONS" = 1 || test "$SELF_SUFFICIENT_AI" = 1 || test "$ACCOUNT_HOSTING" = 1 || test "$CLOUD_FIRST" = 1 || test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1; then
   # M12 first activation may create units; all later authority refreshes require proven managed units.
-  if test "$CONVERSATION_LIFECYCLE" = 1 || test "$CLOUD_FIRST" = 1 || test "$ACCOUNT_HOSTING" = 1 || test "$SELF_SUFFICIENT_AI" = 1 || test "$AUTOMATIONS" = 1 || test "$COST_AWARE_AI" = 1 || test "$ANYWHERE_EXECUTION" = 1; then test "$EXECUTOR_UNITS_PREEXISTING" -eq 1; elif test "$M12_REFRESH" -eq 0; then test ! -e "$EXECUTOR_SERVICE_UNIT" && test ! -e "$EXECUTOR_TIMER_UNIT"; else test "$EXECUTOR_UNITS_PREEXISTING" -eq 1; fi
+  if test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$CLOUD_FIRST" = 1 || test "$ACCOUNT_HOSTING" = 1 || test "$SELF_SUFFICIENT_AI" = 1 || test "$AUTOMATIONS" = 1 || test "$COST_AWARE_AI" = 1 || test "$ANYWHERE_EXECUTION" = 1; then test "$EXECUTOR_UNITS_PREEXISTING" -eq 1; elif test "$M12_REFRESH" -eq 0; then test ! -e "$EXECUTOR_SERVICE_UNIT" && test ! -e "$EXECUTOR_TIMER_UNIT"; else test "$EXECUTOR_UNITS_PREEXISTING" -eq 1; fi
   sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-native-executor.service" "$EXECUTOR_SERVICE_UNIT"
   sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-native-executor.timer" "$EXECUTOR_TIMER_UNIT"
   EXECUTOR_UNITS_INSTALLED=1
@@ -857,7 +889,7 @@ if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || te
   sudo systemctl is-active --quiet awh-native-executor.timer
   stage NATIVE_EXECUTOR_UNITS_READY
 fi
-if test "$CONVERSATION_LIFECYCLE" = 1 || test "$CLOUD_FIRST" = 1; then
+if test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$CLOUD_FIRST" = 1; then
   test "$HOSTING_UNITS_PREEXISTING" -eq 1
   sudo systemctl enable --now awh-hosting-operator.timer >/dev/null
   sudo systemctl is-active --quiet awh-hosting-operator.timer
@@ -935,8 +967,9 @@ fi
 if test "$AUTOMATIONS" = 1 || test "$SELF_SUFFICIENT_AI" = 1; then stage AUTOMATION_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/automations" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; fi
 if test "$ACCOUNT_HOSTING" = 1; then stage ACCOUNT_HOSTING_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/hosting/sites" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; fi
 if test "$CONVERSATION_LIFECYCLE" = 1; then stage CONVERSATION_LIFECYCLE_ROUTE; test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM pragma_table_info('control_conversations') WHERE name IN ('deleted_at','deleted_by_user_id');")" = 2; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/conversations/trash?projectId=423b45c0-23e1-408d-ae0f-ac5eca7f6900" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; fi
+if test "$PROJECT_SOURCE_AUTHORITY" = 1; then stage PROJECT_SOURCE_ROUTE; test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM pragma_table_info('projects') WHERE name IN ('canonical_source_provider','canonical_source_repository','canonical_source_ref','canonical_source_revision','canonical_source_observed_at','canonical_source_vault_revision_id');")" = 6; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/projects/423b45c0-23e1-408d-ae0f-ac5eca7f6900/source" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; fi
 if test "$CLOUD_FIRST" = 1; then stage CLOUD_FIRST_ROUTE; test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM control_capability_catalog WHERE capability IN ('qa.cloud','review.visual') AND enabled=1;")" = 2; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/cloud" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; fi
 if test "$SELF_SUFFICIENT_AI" = 1; then stage AI_GOVERNANCE_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/ai" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; fi
 stage CONTROL_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/session" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403
-if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1 || test "$AUTOMATIONS" = 1 || test "$SELF_SUFFICIENT_AI" = 1 || test "$ACCOUNT_HOSTING" = 1 || test "$CLOUD_FIRST" = 1 || test "$CONVERSATION_LIFECYCLE" = 1; then DB_MUTATED=1; stage PROJECT_VAULT_SOURCE_SYNC; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_PROJECT_VAULT_ROOT=/var/lib/awh-hub/project-vault /usr/bin/php "$RELEASE/hub/bin/sync-deployed-source-vault.php" "$DB" "$RELEASE/.awh-build/awh-source.zip" "$RELEASE_COMMIT" >/dev/null; fi
+if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1 || test "$AUTOMATIONS" = 1 || test "$SELF_SUFFICIENT_AI" = 1 || test "$ACCOUNT_HOSTING" = 1 || test "$CLOUD_FIRST" = 1 || test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1; then DB_MUTATED=1; stage PROJECT_VAULT_SOURCE_SYNC; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_PROJECT_VAULT_ROOT=/var/lib/awh-hub/project-vault /usr/bin/php "$RELEASE/hub/bin/sync-deployed-source-vault.php" "$DB" "$RELEASE/.awh-build/awh-source.zip" "$RELEASE_COMMIT" >/dev/null; fi
 SUCCESS=1; printf '%s\n' 'DEPLOY_RESULT=PASS'; trap - EXIT HUP INT TERM; sudo rm -f "$REMOTE_STAGE" "$NGINX_BACKUP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" "$CONTROL_INCLUDE_TMP" "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP"; exit 0

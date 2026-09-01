@@ -45,6 +45,7 @@ import {
   resolveRegisteredProject,
   PROJECT_MEMORY_FILES,
 } from '../project-registry.js';
+import { discoverGitHubProjectSource } from '../project-source.js';
 import {
   connectTunnelRuntime,
   inspectTunnelReadiness,
@@ -229,7 +230,7 @@ async function currentLocalWorkClient(): Promise<{ projectId: string; workspace:
 async function syncPortableProjectToHub(config: ReturnType<typeof loadConfig>, workspace: string): Promise<boolean> {
   if (!config.hubApiBase) return false;
   const manifest = await readProjectManifest(workspace);
-  await new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createDesktopCredentialStore(config.dataDir)).registerProject({ projectId: manifest.projectId, name: manifest.name, type: manifest.type, sourceRevision: null });
+  await new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createDesktopCredentialStore(config.dataDir)).registerProject({ projectId: manifest.projectId, name: manifest.name, type: manifest.type, sourceRevision: null, source: await discoverGitHubProjectSource(workspace) });
   return true;
 }
 

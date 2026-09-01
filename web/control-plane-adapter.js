@@ -209,6 +209,22 @@ export async function updateProviderCredential(action, secret = null) { if (!['S
 export async function testProviderConnection() { return controlRequest('/api/v1/control/provider/test', { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
 export async function loadProviderProjectRouting(projectId) { if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง'); const value = await controlRequest(`/api/v1/control/provider/projects/${projectId}`); if (value.schemaVersion !== 1 || !value.routing || typeof value.routing !== 'object') throw new Error('การกำหนด AI ของโปรเจกต์ไม่ถูกต้อง'); return value.routing; }
 export async function updateProviderProjectRouting(projectId, routingMode) { if (!UUID.test(projectId) || !['AUTO', 'FAST', 'BALANCED', 'STRONG'].includes(routingMode)) throw new Error('การกำหนด AI ของโปรเจกต์ไม่ถูกต้อง'); const value = await controlRequest('/api/v1/control/provider/project', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, routingMode }) }); if (value.schemaVersion !== 1 || !value.routing || typeof value.routing !== 'object') throw new Error('การกำหนด AI ของโปรเจกต์ไม่ถูกต้อง'); return value.routing; }
+export async function loadProjectSourceAuthority(projectId) {
+  if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง');
+  const value = await controlRequest(`/api/v1/control/projects/${projectId}/source`);
+  if (value.schemaVersion !== 1 || value.projectId !== projectId || !['NOT_CONFIGURED','UNRESOLVED','CURRENT','REMOTE_AHEAD_OR_DIFFERENT'].includes(value.state)) throw new Error('AWH ไม่สามารถยืนยัน Source ของโปรเจกต์นี้ได้');
+  return value;
+}
+export async function createAiPassProjectExport(projectId, idempotencyKey = `aipass-${crypto.randomUUID()}`) {
+  if (!UUID.test(projectId) || typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey)) throw new Error('คำขอสร้าง AiPASS Export ไม่ถูกต้อง');
+  const value = await controlRequest('/api/v1/control/projects/aipass-export', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, idempotencyKey }) });
+  if (value.schemaVersion !== 1 || !value.artifact || typeof value.artifact.downloadUrl !== 'string') throw new Error('AWH สร้าง AiPASS Export ไม่สมบูรณ์');
+  return value;
+}
+export async function updateProjectSourceAuthority({ projectId, action, repository = null, ref = null }) {
+  if (!UUID.test(projectId) || !['BIND','CLEAR'].includes(action)) throw new Error('การกำหนด Source ไม่ถูกต้อง');
+  return controlRequest('/api/v1/control/projects/source', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, action, provider: action === 'BIND' ? 'GITHUB' : null, repository: action === 'BIND' ? repository : null, ref: action === 'BIND' ? ref : null }) });
+}
 export async function loadCloudStatus() {
   const value = await controlRequest('/api/v1/control/cloud');
   if (value.schemaVersion !== 1 || !['READY', 'NOT_CONFIGURED', 'NOT_READY'].includes(value.state) || !Array.isArray(value.capabilities) || !Array.isArray(value.recent)) throw new Error('สถานะ AWH Cloud ไม่ถูกต้อง');

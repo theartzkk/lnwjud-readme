@@ -272,11 +272,20 @@ export class ControlPlaneWorkerClient {
     if (response.schemaVersion !== 2 || !response.binding || typeof response.binding !== 'object') throw new ControlPlaneWorkerError('Project binding response is invalid', 'RESPONSE_INVALID');
   }
 
-  async registerProject(project: { projectId: string; name: string; type: string; sourceRevision: string | null }): Promise<void> {
+  async registerProject(project: { projectId: string; name: string; type: string; sourceRevision: string | null; source?: { provider: 'GITHUB'; repository: string; ref: string | null } | null }): Promise<void> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir);
-    if (!project || !UUID_V4.test(project.projectId) || typeof project.name !== 'string' || !project.name.trim() || project.name.trim().length > 120 || /[\\/\u0000-\u001f\u007f]/.test(project.name) || typeof project.type !== 'string' || !/^[a-z][a-z0-9-]{0,31}$/.test(project.type) || (project.sourceRevision !== null && !/^[0-9a-f]{40,64}$/i.test(project.sourceRevision))) throw new ControlPlaneWorkerError('Project registration is invalid', 'PAYLOAD_INVALID');
-    const response = await this.post('/control/worker/projects/register', { schemaVersion: 2, deviceId: identity.deviceId, project: { projectId: project.projectId, name: project.name.trim(), type: project.type, sourceRevision: project.sourceRevision } });
-    if (response.schemaVersion !== 2 || !response.project || typeof response.project !== 'object') throw new ControlPlaneWorkerError('Project registration response is invalid', 'RESPONSE_INVALID');
+    const source = project.source ?? null;
+    if (!project || !UUID_V4.test(project.projectId) || typeof project.name !== 'string' || !project.name.trim() || project.name.trim().length > 120 || /[\\/\u0000-\u001f\u007f]/.test(project.name) || typeof project.type !== 'string' || !/^[a-z][a-z0-9-]{0,31}$/.test(project.type) || (project.sourceRevision !== null && !/^[0-9a-f]{40,64}$/i.test(project.sourceRevision)) || (source !== null && (source.provider !== 'GITHUB' || !/^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/.test(source.repository) || (source.ref !== null && (!/^[A-Za-z0-9._\/-]{1,160}$/.test(source.ref) || source.ref.includes('..')))))) throw new ControlPlaneWorkerError('Project registration is invalid', 'PAYLOAD_INVALID');
+    const legacy = { schemaVersion: 2, deviceId: identity.deviceId, project: { projectId: project.projectId, name: project.name.trim(), type: project.type, sourceRevision: project.sourceRevision } };
+    if (source === null) { const response = await this.post('/control/worker/projects/register', legacy); if (response.schemaVersion !== 2 || !response.project || typeof response.project !== 'object') throw new ControlPlaneWorkerError('Project registration response is invalid', 'RESPONSE_INVALID'); return; }
+    try {
+      const response = await this.post('/control/worker/projects/register', { schemaVersion: 3, deviceId: identity.deviceId, project: { ...legacy.project, source } });
+      if (response.schemaVersion !== 3 || !response.project || typeof response.project !== 'object') throw new ControlPlaneWorkerError('Project registration response is invalid', 'RESPONSE_INVALID');
+    } catch (error) {
+      if (!(error instanceof ControlPlaneWorkerError) || !['SCHEMA_VERSION','SCHEMA_FIELDS','PAYLOAD_INVALID'].includes(error.code)) throw error;
+      const response = await this.post('/control/worker/projects/register', legacy);
+      if (response.schemaVersion !== 2 || !response.project || typeof response.project !== 'object') throw new ControlPlaneWorkerError('Project registration response is invalid', 'RESPONSE_INVALID');
+    }
   }
 
   async publishProjectMemory(projectId: string, files: Array<{ name: string; status: 'present' | 'missing'; sha256: string | null; sizeBytes: number }>): Promise<void> {
