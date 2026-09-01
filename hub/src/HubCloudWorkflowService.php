@@ -250,7 +250,7 @@ final class HubCloudWorkflowService
             return ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'state'=>'RUNNING','phase'=>'DISPATCHED'];
         }
         if ($runId === null) {
-            $run = $this->discoverRun($workflow, $executionId, $revision, (string)$checkpoint['dispatchedAt']);
+            $run = $this->discoverRun($workflow, $executionId, $revision, $profile, (string)$checkpoint['dispatchedAt']);
             if ($run === null) {
                 $this->updateRunning($row, $checkpoint, $at, 25, 'AWH Cloud กำลังเริ่มงาน');
                 return ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'state'=>'RUNNING','phase'=>'DISCOVERING'];
@@ -258,7 +258,7 @@ final class HubCloudWorkflowService
             $runId = (int)$run['id']; $checkpoint['runId'] = $runId;
             $this->updateRunning($row, $checkpoint, $at, 35, 'AWH Cloud เริ่มตรวจแล้ว');
         } else $run = $this->workflowRun($runId);
-        $this->assertRunIdentity($run, $executionId, $revision);
+        $this->assertRunIdentity($run, $workflow, $executionId, $revision, $profile);
         if ($this->cancellationRequested($executionId)) return $this->cancelExecution($row, $checkpoint, $workflow, $executionId, $revision, $at, $run);
         $status = strtolower((string)($run['status'] ?? ''));
         if ($status !== 'completed') {
@@ -286,17 +286,17 @@ final class HubCloudWorkflowService
     }
 
     /** @return array<string,mixed>|null */
-    private function discoverRun(string $workflow, string $executionId, string $revision, string $dispatchedAt): ?array
+    private function discoverRun(string $workflow, string $executionId, string $revision, string $profile, string $dispatchedAt): ?array
     {
         $response = $this->api('GET', '/actions/workflows/' . rawurlencode($workflow) . '/runs?event=workflow_dispatch&branch=' . rawurlencode($this->ref()) . '&per_page=30');
         if (($response['status'] ?? 0) !== 200) throw new HubCloudWorkflowException('Cloud workflow discovery failed', self::httpCode((int)($response['status'] ?? 0)));
-        $body = self::jsonObject((string)($response['body'] ?? '')); $matches = [];
+        $body = self::jsonObject((string)($response['body'] ?? '')); $matches = []; $expectedTitle = self::runTitle($workflow, $executionId, $revision, $profile);
         foreach (($body['workflow_runs'] ?? []) as $run) {
             if (!is_array($run) || !is_int($run['id'] ?? null)) continue;
             $title = is_string($run['display_title'] ?? null) ? (string)$run['display_title'] : '';
             $created = is_string($run['created_at'] ?? null) ? strtotime((string)$run['created_at']) : false;
             $dispatch = strtotime($dispatchedAt);
-            if (!str_contains($title, $executionId) || !str_contains($title, $revision)) continue;
+            if (!hash_equals($expectedTitle, $title)) continue;
             if ($created !== false && $dispatch !== false && $created < $dispatch - 30) continue;
             $matches[] = $run;
         }
@@ -422,6 +422,7 @@ final class HubCloudWorkflowService
     /** @param array<string,mixed> $row @param array<string,mixed> $checkpoint @param null|array<string,mixed> $knownRun @return array<string,mixed> */
     private function cancelExecution(array $row, array $checkpoint, string $workflow, string $executionId, string $revision, string $at, ?array $knownRun = null): array
     {
+        $profile = in_array(($checkpoint['profile'] ?? null), ['daily','final'], true) ? (string)$checkpoint['profile'] : 'daily';
         $runId = isset($checkpoint['runId']) && is_int($checkpoint['runId']) ? $checkpoint['runId'] : null;
         if (!is_string($checkpoint['dispatchedAt'] ?? null)) {
             $this->markCancelled($row,$at);
@@ -429,7 +430,7 @@ final class HubCloudWorkflowService
         }
         $run = $knownRun;
         if ($runId === null) {
-            $run = $this->discoverRun($workflow,$executionId,$revision,(string)$checkpoint['dispatchedAt']);
+            $run = $this->discoverRun($workflow,$executionId,$revision,$profile,(string)$checkpoint['dispatchedAt']);
             if ($run === null) {
                 $checkpoint['cancelObservedAt']=$at;
                 $this->updateRunning($row,$checkpoint,$at,25,'AWH Cloud กำลังยกเลิกงาน');
@@ -437,7 +438,7 @@ final class HubCloudWorkflowService
             }
             $runId=(int)$run['id']; $checkpoint['runId']=$runId;
         } elseif ($run === null) $run=$this->workflowRun($runId);
-        $this->assertRunIdentity($run,$executionId,$revision);
+        $this->assertRunIdentity($run,$workflow,$executionId,$revision,$profile);
         if (strtolower((string)($run['status']??'')) !== 'completed') {
             $response=$this->api('POST','/actions/runs/'.$runId.'/cancel');
             $status=(int)($response['status']??0);
@@ -511,11 +512,18 @@ final class HubCloudWorkflowService
     }
 
     /** @param array<string,mixed> $run */
-    private function assertRunIdentity(array $run, string $executionId, string $revision): void
+    private function assertRunIdentity(array $run, string $workflow, string $executionId, string $revision, string $profile): void
     {
         if (($run['event'] ?? null) !== 'workflow_dispatch') throw new HubCloudWorkflowException('Cloud run identity is invalid','CLOUD_RUN_MISMATCH');
         $title = is_string($run['display_title'] ?? null) ? (string)$run['display_title'] : '';
-        if (!str_contains($title, $executionId) || !str_contains($title, $revision)) throw new HubCloudWorkflowException('Cloud run identity is invalid','CLOUD_RUN_MISMATCH');
+        if (!hash_equals(self::runTitle($workflow, $executionId, $revision, $profile), $title)) throw new HubCloudWorkflowException('Cloud run identity is invalid','CLOUD_RUN_MISMATCH');
+    }
+
+    private static function runTitle(string $workflow, string $executionId, string $revision, string $profile): string
+    {
+        if ($workflow === self::WORKFLOWS['qa.cloud']) return 'AWH Cloud QA ' . $executionId . ' ' . $revision;
+        if ($workflow === self::WORKFLOWS['review.visual']) return 'AWH Cloud Review ' . $executionId . ' ' . $profile . ' ' . $revision;
+        throw new HubCloudWorkflowException('Cloud workflow identity is invalid','CLOUD_CAPABILITY_INVALID');
     }
 
     private static function validateReviewPackArchive(string $path): void
