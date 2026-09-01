@@ -16,7 +16,7 @@ async function json(response) {
   let value;
   try { value = JSON.parse(body); } catch { throw new Error('AWH response is invalid'); }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('AWH response is invalid');
-  if (!response.ok) throw new Error(safeErrorMessage(value));
+  if (!response.ok) { const error = new Error(safeErrorMessage(value)); if (typeof value.code === 'string' && /^[A-Z0-9_]{2,80}$/.test(value.code)) Object.defineProperty(error, 'code', { value: value.code, enumerable: false }); throw error; }
   return value;
 }
 

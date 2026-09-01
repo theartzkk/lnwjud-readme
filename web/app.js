@@ -27,7 +27,7 @@ import {
     const before = $('username-form'); if (!before) throw new Error('AWH account surface is unavailable');
     const form = document.createElement('form'); form.id = 'step-up-form'; form.className = 'account-form';
     const title = document.createElement('h3'); title.textContent = 'ยืนยันการเปลี่ยนแปลงสำคัญ';
-    const copy = document.createElement('p'); copy.className = 'muted'; copy.textContent = 'สำหรับการตั้งค่า AI การจัดการผู้ใช้ และรหัสกู้คืน AWH จะขอรหัสผ่านอีกครั้งทุก 15 นาที';
+    const copy = document.createElement('p'); copy.className = 'muted'; copy.textContent = 'AWH ขอรหัสผ่านซ้ำเฉพาะงานความเสี่ยงสูง เช่น ยกระดับเป็น Admin, จัดการ Secret หรือ Recovery เมื่อยืนยันแล้วโหมดผู้ดูแลขั้นสูงจะใช้ได้ 30 นาที';
     const label = document.createElement('label'); label.htmlFor = 'step-up-password'; label.textContent = 'รหัสผ่านปัจจุบัน';
     const password = document.createElement('input'); password.id = 'step-up-password'; password.type = 'password'; password.autocomplete = 'current-password';
     const submit = document.createElement('button'); submit.type = 'submit'; submit.className = 'secondary-button'; submit.textContent = 'ยืนยันรหัสผ่าน';

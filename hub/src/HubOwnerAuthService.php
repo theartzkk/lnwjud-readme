@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/HubOwnerAuthMigration.php';
 require_once __DIR__ . '/HubFinalProductMigration.php';
 require_once __DIR__ . '/HubAccountHostingMigration.php';
+require_once __DIR__ . '/HubTrustPolicy.php';
 
 final class HubOwnerAuthException extends RuntimeException
 {
@@ -21,8 +22,8 @@ final class HubOwnerAuthService
     private const RATE_WINDOW = 600;
     private const RATE_MAX = 5;
     private const RESET_TOKEN_TTL = 900;
-    /** Fresh password verification window for account and security changes. */
-    private const STEP_UP_TTL = 900;
+    /** Privileged mode window for genuinely high-risk changes only. */
+    private const STEP_UP_TTL = 1800;
 
     private function __construct(private readonly PDO $pdo) {}
 
@@ -167,7 +168,7 @@ final class HubOwnerAuthService
 
     public function createRecoveryCodesForSession(string $token, string $csrf, ?string $now = null): array
     {
-        $row = $this->authorize($token, $csrf, $now); $at = self::timestamp($now ?? gmdate('c')); self::assertRecentStepUpSession($row, $at);
+        $row = $this->authorize($token, $csrf, $now); $at = self::timestamp($now ?? gmdate('c')); self::assertTrustStepUp('auth.recovery.codes', $row, [], $at);
         return $this->createRecoveryCodes((string) $row['user_id'], $at);
     }
 
@@ -312,9 +313,9 @@ final class HubOwnerAuthService
         $owner=$this->authorize($token,$csrf,$now); $this->assertAccountHostingReady(); $this->assertOwner((string)$owner['user_id']);
         self::exactPayloadKeys($payload,['displayName','email','mustChangePassword','password','personType','phone','projectIds','role','schemaVersion','username']);
         if (($payload['schemaVersion']??null)!==1 || !is_bool($payload['mustChangePassword']??null)) throw new HubOwnerAuthException('Account request is invalid','PAYLOAD_INVALID');
-        $at=self::timestamp($now??gmdate('c')); self::assertRecentStepUpSession($owner,$at);
+        $at=self::timestamp($now??gmdate('c'));
         $display=self::displayName($payload['displayName']??null); $username=self::username((string)($payload['username']??'')); self::password((string)($payload['password']??''));
-        $email=self::optionalEmail($payload['email']??null); $phone=self::optionalPhone($payload['phone']??null); $person=self::personType($payload['personType']??null); $role=self::platformRole($payload['role']??null); $projects=self::projectIds($payload['projectIds']??null,true);
+        $email=self::optionalEmail($payload['email']??null); $phone=self::optionalPhone($payload['phone']??null); $person=self::personType($payload['personType']??null); $role=self::platformRole($payload['role']??null); $projects=self::projectIds($payload['projectIds']??null,true); self::assertTrustStepUp('account.user.create',$owner,['targetRole'=>$role],$at);
         foreach($projects as $project) $this->assertOwnerProject((string)$owner['user_id'],$project);
         $id=self::uuid();
         try { $this->pdo->beginTransaction(); $this->createAccountRecord($id,$display,$username,self::hashPassword((string)$payload['password']),$email,$phone,$person,$role,$projects,(bool)$payload['mustChangePassword'],(string)$owner['user_id'],$at); $this->audit((string)$owner['user_id'],'user_created',$at); $this->pdo->commit(); }
@@ -334,7 +335,7 @@ final class HubOwnerAuthService
     {
         $owner=$this->authorize($token,$csrf,$now);$this->assertAccountHostingReady();$this->assertOwner((string)$owner['user_id']);if(!self::isUuid($requestId))throw new HubOwnerAuthException('Registration request is invalid','REGISTRATION_NOT_FOUND');
         self::exactPayloadKeys($payload,['decision','projectIds','role','schemaVersion']); if(($payload['schemaVersion']??null)!==1 || !in_array($payload['decision']??null,['APPROVE','REJECT'],true))throw new HubOwnerAuthException('Review request is invalid','PAYLOAD_INVALID');
-        $at=self::timestamp($now??gmdate('c'));self::assertRecentStepUpSession($owner,$at);$role=self::platformRole($payload['role']??'VIEWER');$projects=self::projectIds($payload['projectIds']??[],true);foreach($projects as $project)$this->assertOwnerProject((string)$owner['user_id'],$project);
+        $at=self::timestamp($now??gmdate('c'));$role=self::platformRole($payload['role']??'VIEWER');self::assertTrustStepUp('account.request.review',$owner,['targetRole'=>$role,'decision'=>(string)$payload['decision']],$at);$projects=self::projectIds($payload['projectIds']??[],true);foreach($projects as $project)$this->assertOwnerProject((string)$owner['user_id'],$project);
         try{$this->pdo->beginTransaction();$q=$this->pdo->prepare("SELECT * FROM control_account_requests WHERE request_id=:id AND state='PENDING'");$q->execute(['id'=>strtolower($requestId)]);$request=$q->fetch();if(!is_array($request))throw new HubOwnerAuthException('Registration request was not found','REGISTRATION_NOT_FOUND');
             if($payload['decision']==='REJECT'){$this->pdo->prepare("UPDATE control_account_requests SET state='REJECTED',password_hash=NULL,reviewed_at=:at,reviewed_by_user_id=:owner WHERE request_id=:id AND state='PENDING'")->execute(['at'=>$at,'owner'=>$owner['user_id'],'id'=>$requestId]);$this->audit((string)$owner['user_id'],'account_request_rejected',$at);$this->pdo->commit();return ['requestId'=>strtolower($requestId),'state'=>'REJECTED'];}
             if(!is_string($request['password_hash'])||$request['password_hash']==='')throw new HubOwnerAuthException('Registration password is unavailable','REGISTRATION_FAILED');$id=self::uuid();$this->createAccountRecord($id,(string)$request['display_name'],(string)$request['username'],(string)$request['password_hash'],$request['email']===null?null:(string)$request['email'],$request['phone']===null?null:(string)$request['phone'],(string)$request['person_type'],$role,$projects,false,(string)$owner['user_id'],$at);
@@ -361,7 +362,7 @@ final class HubOwnerAuthService
         $owner = $this->authorize($token, $csrf, $now); $this->assertFinalReady(); $this->assertOwner((string) $owner['user_id']);
         if (!self::isUuid($userId) || hash_equals((string) $owner['user_id'], strtolower($userId))) throw new HubOwnerAuthException('Owner access cannot be edited here', 'USER_ACCESS_FORBIDDEN');
         self::exactPayloadKeys($payload, ['projectIds', 'role', 'schemaVersion']); if (($payload['schemaVersion'] ?? null) !== 1) throw new HubOwnerAuthException('User access request is invalid', 'PAYLOAD_INVALID');
-        $role = self::platformRole($payload['role'] ?? null); $projects = self::projectIds($payload['projectIds'] ?? null, true); $at = self::timestamp($now ?? gmdate('c')); self::assertRecentStepUpSession($owner, $at);
+        $role = self::platformRole($payload['role'] ?? null); $projects = self::projectIds($payload['projectIds'] ?? null, true); $at = self::timestamp($now ?? gmdate('c')); self::assertTrustStepUp('account.user.access', $owner, ['targetRole'=>$role], $at);
         foreach ($projects as $project) $this->assertOwnerProject((string) $owner['user_id'], $project);
         $profile = $this->pdo->prepare("SELECT status, system_role FROM control_user_profiles WHERE user_id = :user"); $profile->execute(['user' => strtolower($userId)]); $current = $profile->fetch();
         if (!is_array($current) || (string) $current['status'] !== 'ACTIVE') throw new HubOwnerAuthException('User was not found', 'USER_NOT_FOUND');
@@ -382,13 +383,14 @@ final class HubOwnerAuthService
 
     public function revokeUser(string $token, string $csrf, string $userId, ?string $now = null): void
     {
-        $owner = $this->authorize($token, $csrf, $now); $this->assertFinalReady(); $this->assertOwner((string) $owner['user_id']); if (!self::isUuid($userId) || hash_equals((string) $owner['user_id'], strtolower($userId))) throw new HubOwnerAuthException('This account cannot be revoked', 'USER_REVOKE_FORBIDDEN'); $at = self::timestamp($now ?? gmdate('c')); self::assertRecentStepUpSession($owner, $at);
+        $owner = $this->authorize($token, $csrf, $now); $this->assertFinalReady(); $this->assertOwner((string) $owner['user_id']); if (!self::isUuid($userId) || hash_equals((string) $owner['user_id'], strtolower($userId))) throw new HubOwnerAuthException('This account cannot be revoked', 'USER_REVOKE_FORBIDDEN'); $at = self::timestamp($now ?? gmdate('c'));
         try { $this->pdo->beginTransaction(); $this->pdo->prepare('UPDATE control_user_profiles SET status = \'REVOKED\', updated_at = :at WHERE user_id = :user AND system_role != \'OWNER\' AND status = \'ACTIVE\'')->execute(['at' => $at, 'user' => strtolower($userId)]); if ($this->pdo->query('SELECT changes()')->fetchColumn() !== 1) throw new HubOwnerAuthException('User was not found', 'USER_NOT_FOUND'); $this->pdo->prepare('UPDATE hub_users SET revoked_at = :at WHERE user_id = :user')->execute(['at' => $at, 'user' => strtolower($userId)]); $this->pdo->prepare('UPDATE user_project_memberships SET revoked_at = :at WHERE user_id = :user AND revoked_at IS NULL')->execute(['at' => $at, 'user' => strtolower($userId)]); $this->pdo->prepare('UPDATE control_project_capabilities SET revoked_at = :at WHERE user_id = :user AND revoked_at IS NULL')->execute(['at' => $at, 'user' => strtolower($userId)]); $this->pdo->prepare('UPDATE control_sessions SET revoked_at = :at WHERE user_id = :user AND revoked_at IS NULL')->execute(['at' => $at, 'user' => strtolower($userId)]); $this->audit((string) $owner['user_id'], 'user_revoked', $at); $this->pdo->commit(); } catch (Throwable $error) { if ($this->pdo->inTransaction()) $this->pdo->rollBack(); if ($error instanceof HubOwnerAuthException) throw $error; throw new HubOwnerAuthException('User could not be revoked', 'USER_REVOKE_FAILED'); }
     }
 
     public function authorize(string $token, string $csrf, ?string $now = null): array { $row = $this->sessionRow($token, $now); if ($csrf === '' || !hash_equals((string) $row['csrf_hash'], hash('sha256', $csrf))) throw new HubOwnerAuthException('Request could not be verified', 'CSRF_REJECTED'); return $row; }
 
     private function sessionRow(string $token, ?string $now = null): array { if ($token === '' || strlen($token) > 512 || preg_match('/[\x00-\x1F\x7F]/', $token)) throw new HubOwnerAuthException('Session is invalid', 'SESSION_INVALID'); $q = $this->pdo->prepare("SELECT s.* FROM control_sessions s JOIN hub_users u ON u.user_id = s.user_id AND u.revoked_at IS NULL WHERE s.session_hash = :hash AND s.session_kind = 'password'"); $q->execute(['hash' => hash('sha256', $token)]); $row = $q->fetch(); $at = strtotime(self::timestamp($now ?? gmdate('c'))); $inactivity = is_array($row) && $row['remembered_until'] !== null ? self::REMEMBER_TTL : self::INACTIVITY_TTL; if (!is_array($row) || $row['revoked_at'] !== null || strtotime((string) $row['expires_at']) <= $at || strtotime((string) $row['last_seen_at']) + $inactivity <= $at) throw new HubOwnerAuthException('Session is expired', 'SESSION_EXPIRED'); return $row; }
+    private static function assertTrustStepUp(string $action, array $session, array $context = [], ?string $now = null): void { if (HubTrustPolicy::requiresStepUp($action, $context)) self::assertRecentStepUpSession($session, $now); }
     private function assertRate(string $key, string $now): void { $q = $this->pdo->prepare('SELECT window_started_at, attempts, blocked_until FROM auth_login_rate_limits WHERE rate_key = :key'); $q->execute(['key' => $key]); $row = $q->fetch(); if (!is_array($row)) return; $at = strtotime($now); if ($row['blocked_until'] !== null && strtotime((string) $row['blocked_until']) > $at) throw new HubOwnerAuthException('Too many attempts', 'RATE_LIMITED'); if (strtotime((string) $row['window_started_at']) + self::RATE_WINDOW <= $at) $this->clearRate($key); }
     private function failedRate(string $key, string $now): void { $q = $this->pdo->prepare('SELECT attempts, window_started_at FROM auth_login_rate_limits WHERE rate_key = :key'); $q->execute(['key' => $key]); $row = $q->fetch(); $attempts = is_array($row) && strtotime((string) $row['window_started_at']) + self::RATE_WINDOW > strtotime($now) ? (int) $row['attempts'] + 1 : 1; $blocked = $attempts >= self::RATE_MAX ? gmdate('c', strtotime($now) + 900) : null; $this->pdo->prepare('INSERT INTO auth_login_rate_limits(rate_key, window_started_at, attempts, blocked_until) VALUES(:key, :at, :attempts, :blocked) ON CONFLICT(rate_key) DO UPDATE SET window_started_at = excluded.window_started_at, attempts = excluded.attempts, blocked_until = excluded.blocked_until')->execute(['key' => $key, 'at' => is_array($row) && strtotime((string) $row['window_started_at']) + self::RATE_WINDOW > strtotime($now) ? $row['window_started_at'] : $now, 'attempts' => $attempts, 'blocked' => $blocked]); }
     private function clearRate(string $key): void { $this->pdo->prepare('DELETE FROM auth_login_rate_limits WHERE rate_key = :key')->execute(['key' => $key]); }

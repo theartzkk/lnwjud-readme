@@ -29,6 +29,7 @@ require_once __DIR__ . '/HubThaiGovernmentDocumentService.php';
 require_once __DIR__ . '/HubActionGraphService.php';
 require_once __DIR__ . '/HubConversationReferentService.php';
 require_once __DIR__ . '/HubManagedHostingService.php';
+require_once __DIR__ . '/HubTrustPolicy.php';
 require_once __DIR__ . '/HubCloudFirstMigration.php';
 require_once __DIR__ . '/HubCloudWorkflowService.php';
 
@@ -1105,7 +1106,7 @@ final class HubControlPlaneService
         $session=$this->authorizeSession($sessionToken,$csrfToken,$now); self::exactKeys($payload,['action','schemaVersion','secret']);
         if(($payload['schemaVersion']??null)!==1 || !is_string($payload['action']??null) || (!is_null($payload['secret']??null)&&!is_string($payload['secret']))) throw new HubControlPlaneException('Cloud credential request is invalid','CLOUD_CREDENTIAL_INVALID');
         $this->assertOwner((string)$session['user_id']);
-        try { HubOwnerAuthService::assertRecentStepUpSession($session,$now); } catch(HubOwnerAuthException){ throw new HubControlPlaneException('A recent password confirmation is required','STEP_UP_REQUIRED'); }
+        try { if (HubTrustPolicy::requiresStepUp('cloud.credential')) HubOwnerAuthService::assertRecentStepUpSession($session,$now); } catch(HubOwnerAuthException){ throw new HubControlPlaneException('A recent password confirmation is required','STEP_UP_REQUIRED'); }
         $cloud=$this->cloudService(); $action=strtoupper((string)$payload['action']);
         try {
             if($action==='SET'&&is_string($payload['secret'])) return ['schemaVersion'=>1]+$cloud->saveCredential($payload['secret'],$now);
@@ -1156,8 +1157,6 @@ final class HubControlPlaneService
     public function updateProviderPolicy(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
     {
         $session = $this->authorizeSession($sessionToken, $csrfToken, $now); $this->assertFinalReady(); $this->assertOwner((string) $session['user_id']);
-        try { HubOwnerAuthService::assertRecentStepUpSession($session, $now); }
-        catch (HubOwnerAuthException) { throw new HubControlPlaneException('A recent password confirmation is required', 'STEP_UP_REQUIRED'); }
         try { return ['schemaVersion' => 3, 'provider' => $this->agent->updatePolicy((string) $session['user_id'], $payload, $now)]; }
         catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Provider policy is invalid', $error->codeName); }
     }
@@ -1168,7 +1167,7 @@ final class HubControlPlaneService
         $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['action', 'schemaVersion', 'secret']);
         if (($payload['schemaVersion'] ?? null) !== 1 || !is_string($payload['action'] ?? null) || (!is_null($payload['secret'] ?? null) && !is_string($payload['secret']))) throw new HubControlPlaneException('Provider credential request is invalid', 'PROVIDER_CREDENTIAL_INVALID');
         $this->assertSelfServiceReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId);
-        try { HubOwnerAuthService::assertRecentStepUpSession($session, $now); } catch (HubOwnerAuthException) { throw new HubControlPlaneException('A recent password confirmation is required', 'STEP_UP_REQUIRED'); }
+        try { if (HubTrustPolicy::requiresStepUp('provider.credential')) HubOwnerAuthService::assertRecentStepUpSession($session, $now); } catch (HubOwnerAuthException) { throw new HubControlPlaneException('A recent password confirmation is required', 'STEP_UP_REQUIRED'); }
         $action = strtoupper((string) $payload['action']);
         try {
             if ($action === 'SET' && is_string($payload['secret'])) return ['schemaVersion' => 1, 'provider' => $this->agent->saveCredential($userId, $payload['secret'], $now)];
@@ -1181,7 +1180,6 @@ final class HubControlPlaneService
     {
         $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['schemaVersion']); if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Provider test request is invalid', 'PROVIDER_POLICY_INVALID');
         $this->assertSelfServiceReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId);
-        try { HubOwnerAuthService::assertRecentStepUpSession($session, $now); } catch (HubOwnerAuthException) { throw new HubControlPlaneException('A recent password confirmation is required', 'STEP_UP_REQUIRED'); }
         try { return ['schemaVersion' => 1, 'connection' => $this->agent->testConnection($userId, $now)]; }
         catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Provider connection test failed', $error->codeName, $error->diagnostic); }
     }
@@ -1197,7 +1195,6 @@ final class HubControlPlaneService
     {
         $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['projectId', 'routingMode', 'schemaVersion']); if (($payload['schemaVersion'] ?? null) !== 1 || !is_string($payload['projectId'] ?? null) || !is_string($payload['routingMode'] ?? null)) throw new HubControlPlaneException('Provider routing request is invalid', 'PROVIDER_POLICY_INVALID');
         $this->assertSelfServiceReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId); $projectId = self::uuid($payload['projectId']); $this->assertProjectMember($userId, $projectId);
-        try { HubOwnerAuthService::assertRecentStepUpSession($session, $now); } catch (HubOwnerAuthException) { throw new HubControlPlaneException('A recent password confirmation is required', 'STEP_UP_REQUIRED'); }
         try { return ['schemaVersion' => 1, 'projectId' => $projectId, 'routing' => $this->agent->updateProjectRouting($userId, $projectId, $payload['routingMode'], $now)]; }
         catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Provider routing could not be changed', $error->codeName); }
     }
