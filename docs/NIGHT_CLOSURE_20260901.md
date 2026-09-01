@@ -97,3 +97,17 @@ Next safe action remains: wait for the active M20 reconciliations to freeze, cho
 - Active local M19/M20 worktree state likewise could not be safely re-inspected in this run. Existing dirty M19 and M20 reconciliation work remains protected and untouched; no integration is attempted until current local activity can be observed again.
 
 Next safe action: re-establish read-only Mac/VPS inspection, verify whether the M20 reconciliation agents have frozen, then select one candidate on the latest canonical `9cb23b2` only after migration uniqueness, full regression, Hub/PHP fixtures and deploy dry-run. Production compaction remains an explicit mutation gate despite the merged source support.
+
+## 2026-09-02 03:xx ICT — M20 canonical convergence
+
+- GitHub canonical was re-read before mutation and remains `awh/api-independence` at `5f6771123095b75804d07838001420b42702d73b` (PR #77). Production was independently reverified at `m19-b66ef39cc986` for Control/Web with SQLite `user_version=19`, `integrity_check=ok`, zero FK violations, and 78% root-disk usage.
+- The original M19 worktree and both uncommitted M20 source-authority worktrees were left untouched. A new isolated worktree/branch `awh/m20-canonical-convergence` was created from exact canonical and only the frozen implementation commit was transplanted.
+- Converged M20 code revision is `72ee6e0508c2007dfcfc3cffc9ac02a84c9f738f`. It retains migration `019_project_source_authority.sql`, migration id `m20-project-source-authority`, and SQLite schema 20 without replacing M19 Conversation Lifecycle.
+- Exact-revision TypeScript typecheck PASS; focused migration/Conversation Lifecycle/Cloud-first/mobile/HEIC/storage regression PASS 8/8.
+- Full Node regression at `72ee6e0508c2007dfcfc3cffc9ac02a84c9f738f`: 353 tests, 352 PASS, 1 Windows-only skip, 0 FAIL.
+- Hub/PHP regression PASS through M20 Project Source Authority. Extension-dependent local fixtures remain truthful skips where PHP lacks ZipArchive; Production capability had already been verified available.
+- M20 deployment dry-run PASS at exact code revision with v19→v20 migration gating, source refresh on v20, operator quiesce/resume, exact DB/pointer rollback, Project Source route and AiPASS export route. Production activation still requires explicit approval.
+- Rendered review PASS at exact code revision: clean tree, 16 screenshots across 390×844 and 1440×900.
+- Production rollback evidence remains `/var/backups/awh-hub/awh.sqlite.pre-m19-b66ef39cc986`; no Production migration, release compaction, release deletion, or pointer movement was performed in this convergence step.
+
+Next safe action: publish this converged M20 branch for PR/CI review against `awh/api-independence`. Keep Production M20 activation and release-artifact compaction as separate explicit mutation gates.
