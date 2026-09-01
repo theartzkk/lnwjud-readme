@@ -100,6 +100,10 @@ function requestKey(prefix) {
   return `${prefix}-${suffix}`.slice(0, 120);
 }
 
+function safeGeneratedArtifactUrl(value) {
+  return typeof value === 'string' && /^\/api\/v1\/control\/artifacts\/[0-9a-f-]{36}\/download$/i.test(value) ? value : null;
+}
+
 function generatedResult(dialog, result, label) {
   const message = dialog.querySelector('[data-generated-message]');
   const output = dialog.querySelector('[data-generated-output]');
@@ -113,9 +117,10 @@ function generatedResult(dialog, result, label) {
     taskLine.textContent = `Task: ${task.taskId} · สถานะ ${task.state || 'UNKNOWN'}`;
     output.append(taskLine);
   }
-  if (artifact?.downloadUrl) {
+  const artifactUrl = safeGeneratedArtifactUrl(artifact?.downloadUrl);
+  if (artifactUrl) {
     const link = document.createElement('a');
-    link.href = artifact.downloadUrl;
+    link.href = artifactUrl;
     link.download = artifact.name || 'awh-artifact.html';
     link.textContent = `ดาวน์โหลด ${artifact.name || 'ผลลัพธ์'}`;
     link.className = 'awh-command-send';

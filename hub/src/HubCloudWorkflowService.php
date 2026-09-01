@@ -86,6 +86,8 @@ final class HubCloudWorkflowService
     private const PROVIDER_ID = 'github-actions';
     private const LEASE_SECONDS = 1800;
     private const MAX_BATCH = 4;
+    private const MAX_QA_OUTER_BYTES = 1048576;
+    private const MAX_QA_EVIDENCE_BYTES = 65536;
     private const MAX_REVIEW_OUTER_BYTES = 67108864;
     private const MAX_REVIEW_PACK_BYTES = 50331648;
     private const MAX_REVIEW_UNCOMPRESSED_BYTES = 209715200;
@@ -269,7 +271,8 @@ final class HubCloudWorkflowService
         $conclusion = strtolower((string)($run['conclusion'] ?? ''));
         if ($conclusion !== 'success') throw new HubCloudWorkflowException('Cloud review failed', 'CLOUD_RUN_FAILED', ['conclusion'=>$conclusion]);
         if ($capability === 'review.visual') $this->storeReviewArtifact($row, $runId, $executionId, $workflow, $revision, $profile, $at);
-        $summary = (string)$row['required_capability'] === 'review.visual' ? 'AWH ตรวจหน้าจอบน Cloud เสร็จแล้ว และเก็บ Review Pack ไว้ในไฟล์ของงานนี้' : 'AWH ตรวจระบบบน Cloud เสร็จแล้ว';
+        elseif ($capability === 'qa.cloud') $this->storeQaArtifact($row, $runId, $executionId, $workflow, $revision, $at);
+        $summary = (string)$row['required_capability'] === 'review.visual' ? 'AWH ตรวจหน้าจอบน Cloud เสร็จแล้ว และเก็บ Review Pack ไว้ในไฟล์ของงานนี้' : 'AWH ตรวจระบบบน Cloud เสร็จแล้ว และเก็บหลักฐาน QA ไว้ในไฟล์ของงานนี้';
         $this->complete($row, $summary, $at);
         return ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'state'=>'COMPLETED','phase'=>'COMPLETED'];
     }
@@ -312,6 +315,39 @@ final class HubCloudWorkflowService
         $response = $this->api('GET', '/actions/runs/' . $runId);
         if (($response['status'] ?? 0) !== 200) throw new HubCloudWorkflowException('Cloud run status is unavailable', self::httpCode((int)($response['status'] ?? 0)));
         return self::jsonObject((string)($response['body'] ?? ''));
+    }
+
+    /** @param array<string,mixed> $row */
+    private function storeQaArtifact(array $row, int $runId, string $executionId, string $workflow, string $revision, string $at): void
+    {
+        $response = $this->api('GET', '/actions/runs/' . $runId . '/artifacts');
+        if (($response['status'] ?? 0) !== 200) throw new HubCloudWorkflowException('Cloud QA artifact list is unavailable', self::httpCode((int)($response['status'] ?? 0)));
+        $body = self::jsonObject((string)($response['body'] ?? ''));
+        $wanted = 'AWH-CLOUD-QA-' . $revision; $artifactRef = null;
+        foreach (($body['artifacts'] ?? []) as $item) if (is_array($item) && ($item['name'] ?? null) === $wanted && is_int($item['id'] ?? null) && ($item['expired'] ?? false) !== true) { $artifactRef = (int)$item['id']; break; }
+        if ($artifactRef === null) throw new HubCloudWorkflowException('Cloud QA artifact is missing', 'CLOUD_ARTIFACT_MISSING');
+        $download = $this->api('GET', '/actions/artifacts/' . $artifactRef . '/zip', null, true);
+        $outerBytes = is_string($download['body'] ?? null) ? strlen((string)$download['body']) : 0;
+        if (($download['status'] ?? 0) !== 200 || $outerBytes < 100 || $outerBytes > self::MAX_QA_OUTER_BYTES) throw new HubCloudWorkflowException('Cloud QA artifact download failed', self::httpCode((int)($download['status'] ?? 0)));
+        $outer = tempnam(sys_get_temp_dir(), 'awh-cloud-qa-'); $evidence = null;
+        if (!is_string($outer)) throw new HubCloudWorkflowException('Cloud QA artifact staging failed', 'CLOUD_ARTIFACT_INVALID');
+        try {
+            if (@file_put_contents($outer, (string)$download['body'], LOCK_EX) === false) throw new HubCloudWorkflowException('Cloud QA artifact staging failed', 'CLOUD_ARTIFACT_INVALID');
+            $zip = new ZipArchive(); if ($zip->open($outer) !== true) throw new HubCloudWorkflowException('Cloud QA artifact archive is invalid', 'CLOUD_ARTIFACT_INVALID');
+            if ($zip->numFiles < 1 || $zip->numFiles > 4) { $zip->close(); throw new HubCloudWorkflowException('Cloud QA artifact archive is invalid', 'CLOUD_ARTIFACT_INVALID'); }
+            $entry = 'AWH-CLOUD-QA.json'; $index = $zip->locateName($entry, ZipArchive::FL_NOCASE);
+            if ($index === false) { $zip->close(); throw new HubCloudWorkflowException('Cloud QA evidence is missing', 'CLOUD_ARTIFACT_INVALID'); }
+            $stat = $zip->statIndex((int)$index); $entrySize = is_array($stat) && is_int($stat['size'] ?? null) ? (int)$stat['size'] : 0;
+            if ($entrySize < 1 || $entrySize > self::MAX_QA_EVIDENCE_BYTES) { $zip->close(); throw new HubCloudWorkflowException('Cloud QA evidence is invalid', 'CLOUD_ARTIFACT_INVALID'); }
+            $raw = $zip->getFromIndex((int)$index, self::MAX_QA_EVIDENCE_BYTES + 1); $zip->close();
+            if (!is_string($raw) || strlen($raw) !== $entrySize) throw new HubCloudWorkflowException('Cloud QA evidence is invalid', 'CLOUD_ARTIFACT_INVALID');
+            $metadata = self::jsonObject($raw); $keys = array_keys($metadata); sort($keys); $expected = ['executionId','revision','schemaVersion','status','workflow']; sort($expected);
+            if ($keys !== $expected || ($metadata['schemaVersion'] ?? null) !== 1 || ($metadata['revision'] ?? null) !== $revision || ($metadata['executionId'] ?? null) !== $executionId || ($metadata['status'] ?? null) !== 'PASS' || ($metadata['workflow'] ?? null) !== $workflow) throw new HubCloudWorkflowException('Cloud QA evidence does not match the execution', 'CLOUD_ARTIFACT_INVALID');
+            $evidence = tempnam(sys_get_temp_dir(), 'awh-cloud-qa-evidence-');
+            if (!is_string($evidence) || @file_put_contents($evidence, $raw, LOCK_EX) === false || !@chmod($evidence, 0600)) throw new HubCloudWorkflowException('Cloud QA evidence staging failed', 'CLOUD_ARTIFACT_INVALID');
+            if ($this->cancellationRequested((string)$row['execution_id'])) throw new HubCloudWorkflowException('Cloud result arrived after cancellation','CLOUD_CANCELLED');
+            $this->persistArtifactBundle($row, [['file'=>$evidence,'name'=>'AWH-CLOUD-QA-'.$revision.'.json','kind'=>'cloud-qa-evidence','mime'=>'application/json']], $at);
+        } finally { @unlink($outer); if (is_string($evidence) && is_file($evidence)) @unlink($evidence); }
     }
 
     /** @param array<string,mixed> $row */

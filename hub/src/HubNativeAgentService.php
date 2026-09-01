@@ -7,6 +7,7 @@ require_once __DIR__ . '/HubProviderPricingService.php';
 require_once __DIR__ . '/HubAiProviderAdapter.php';
 require_once __DIR__ . '/HubOpenAiProviderAdapter.php';
 require_once __DIR__ . '/HubAiGovernanceService.php';
+require_once __DIR__ . '/HubAiAttachmentPreparer.php';
 
 /**
  * Provider-independent native reasoning boundary.  OpenAI is the first adapter
@@ -32,17 +33,19 @@ final class HubNativeAgentService
     private readonly ?HubProviderPricingService $pricing;
     private readonly ?HubAiGovernanceService $governance;
     private readonly ?string $fixtureKey;
+    private readonly HubAiAttachmentPreparer $attachmentPreparer;
     /** @var array<string,HubAiProviderAdapter> */
     private array $runtimeAdapters = [];
     /** @var array<string,HubProviderCredentialStore> */
     private array $runtimeCredentials = [];
 
     /** @param list<HubAiProviderAdapter> $additionalAdapters @param array<string,HubProviderCredentialStore> $additionalCredentials */
-    public function __construct(private readonly PDO $pdo, ?callable $transport = null, ?string $key = null, ?HubProviderCredentialStore $credentials = null, ?HubAiProviderAdapter $adapter = null, array $additionalAdapters = [], array $additionalCredentials = [])
+    public function __construct(private readonly PDO $pdo, ?callable $transport = null, ?string $key = null, ?HubProviderCredentialStore $credentials = null, ?HubAiProviderAdapter $adapter = null, array $additionalAdapters = [], array $additionalCredentials = [], ?HubAiAttachmentPreparer $attachmentPreparer = null)
     {
         $this->adapter = $adapter ?? new HubOpenAiProviderAdapter($transport);
         $this->providerId = $this->adapter->providerId();
         $this->fixtureKey = $key;
+        $this->attachmentPreparer = $attachmentPreparer ?? new HubAiAttachmentPreparer();
         $this->credentials = $credentials ?? HubProviderCredentialStore::fromEnvironment($this->providerId);
         if (!hash_equals($this->credentials->providerId(), $this->providerId)) throw new HubNativeAgentException('Provider credential authority does not match the adapter', 'PROVIDER_CREDENTIAL_STATE_UNCERTAIN');
         $this->runtimeAdapters[$this->providerId] = $this->adapter; $this->runtimeCredentials[$this->providerId] = $this->credentials;
@@ -293,14 +296,18 @@ final class HubNativeAgentService
     /** @param list<array{role:string,body:string}> $turns @param list<array{name:string,mimeType:string,path:string,sizeBytes:int}> $attachments @param array<string,mixed> $context */
     private function requestPayload(string $model, string $request, array $turns, array $attachments, string $userId, array $context): array
     {
-        $content = [['type' => 'input_text', 'text' => $request]];
+        $content = [['type' => 'input_text', 'text' => $request]]; $preparedDocumentBytes = 0;
         foreach (array_slice($attachments, 0, 4) as $attachment) {
-            if (($attachment['sizeBytes'] ?? 0) > 8 * 1024 * 1024) continue;
-            $raw = @file_get_contents((string) $attachment['path']); if (!is_string($raw)) continue;
-            $mime = (string) $attachment['mimeType'];
+            try { $prepared = $this->attachmentPreparer->prepare($attachment); }
+            catch (HubAiAttachmentPreparerException $error) { throw new HubNativeAgentException($error->getMessage(), $error->codeName, ['category' => 'attachment', 'retryable' => $error->codeName === 'IMAGE_INPUT_RUNTIME_UNAVAILABLE']); }
+            if (($prepared['kind'] ?? '') === 'document') {
+                $preparedDocumentBytes += $prepared['sizeBytes'];
+                if ($preparedDocumentBytes > HubAiAttachmentPreparer::MAX_DOCUMENT_BYTES) throw new HubNativeAgentException('Attached files exceed the direct AI file limit', 'ATTACHMENT_AI_INPUT_TOO_LARGE', ['category' => 'attachment', 'retryable' => false]);
+            }
+            $mime = $prepared['mimeType']; $raw = $prepared['bytes'];
             $content[] = str_starts_with($mime, 'image/')
                 ? ['type' => 'input_image', 'image_url' => 'data:' . $mime . ';base64,' . base64_encode($raw)]
-                : ['type' => 'input_file', 'filename' => (string) $attachment['name'], 'file_data' => base64_encode($raw)];
+                : ['type' => 'input_file', 'filename' => $prepared['name'], 'file_data' => base64_encode($raw)];
         }
         $recent = [];
         if ($context !== []) {

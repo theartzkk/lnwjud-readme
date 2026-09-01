@@ -307,13 +307,24 @@ final class HubControlPlaneService
     public function conversations(string $sessionToken, ?string $projectId = null, ?string $query = null, ?string $now = null): array
     {
         $session = $this->sessionRow($sessionToken, $now); $this->assertUnifiedReady();
-        $userId = (string) $session['user_id']; $params = ['user' => $userId];
-        $sql = 'SELECT c.conversation_id, c.project_id, c.title, c.archived_at, c.origin, c.created_at, c.updated_at, c.last_task_id, p.name AS project_name FROM control_conversations c JOIN projects p ON p.project_id = c.project_id WHERE c.user_id = :user';
+        $userId = (string) $session['user_id']; $params = ['user' => $userId]; $lifecycle = $this->conversationLifecycleSchemaPresent();
+        $sql = 'SELECT c.conversation_id, c.project_id, c.title, c.archived_at, c.origin, c.created_at, c.updated_at, c.last_task_id, p.name AS project_name' . ($lifecycle ? ', c.deleted_at, c.deleted_by_user_id' : '') . ' FROM control_conversations c JOIN projects p ON p.project_id = c.project_id WHERE c.user_id = :user';
+        if ($lifecycle) $sql .= ' AND c.deleted_at IS NULL';
         if ($projectId !== null && $projectId !== '') { $projectId = self::uuid($projectId); $this->assertProjectMember($userId, $projectId); $sql .= ' AND c.project_id = :project'; $params['project'] = $projectId; }
         if ($query !== null && trim($query) !== '') { $needle = self::searchText($query); $sql .= ' AND (c.title LIKE :needle ESCAPE \'\\\' OR EXISTS (SELECT 1 FROM control_conversation_messages m WHERE m.conversation_id = c.conversation_id AND m.body LIKE :needle ESCAPE \'\\\'))'; $params['needle'] = '%' . self::escapeLike($needle) . '%'; }
         $sql .= ' ORDER BY c.archived_at IS NOT NULL, c.updated_at DESC, c.conversation_id DESC LIMIT 100';
         $q = $this->pdo->prepare($sql); $q->execute($params);
         return ['schemaVersion' => 2, 'conversations' => array_map(fn (array $row): array => $this->conversationSummaryRow($row), $q->fetchAll())];
+    }
+
+    public function deletedConversations(string $sessionToken, ?string $projectId = null, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertConversationLifecycleReady();
+        $userId = (string)$session['user_id']; $params = ['user'=>$userId];
+        $sql = 'SELECT c.conversation_id,c.project_id,c.title,c.archived_at,c.origin,c.created_at,c.updated_at,c.last_task_id,c.deleted_at,c.deleted_by_user_id,p.name AS project_name FROM control_conversations c JOIN projects p ON p.project_id=c.project_id WHERE c.user_id=:user AND c.deleted_at IS NOT NULL';
+        if ($projectId !== null && $projectId !== '') { $projectId=self::uuid($projectId); $this->assertProjectMember($userId,$projectId); $sql.=' AND c.project_id=:project'; $params['project']=$projectId; }
+        $sql .= ' ORDER BY c.deleted_at DESC,c.conversation_id DESC LIMIT 100'; $q=$this->pdo->prepare($sql); $q->execute($params);
+        return ['schemaVersion'=>1,'conversations'=>array_map(fn(array $row):array=>$this->conversationSummaryRow($row),$q->fetchAll())];
     }
 
     public function conversationById(string $sessionToken, string $conversationId, ?string $now = null): array
@@ -341,6 +352,23 @@ final class HubControlPlaneService
         $title = self::conversationTitle((string) ($payload['title'] ?? $current['title'] ?? 'Work')); $at = self::timestamp($now ?? gmdate('c'));
         $this->pdo->prepare('UPDATE control_conversations SET title = :title, archived_at = :archived, updated_at = :at WHERE conversation_id = :id AND user_id = :user')->execute(['title' => $title, 'archived' => $payload['archived'] ? $at : null, 'at' => $at, 'id' => $conversationId, 'user' => $userId]);
         return $this->conversationByIdForUser($userId, $conversationId);
+    }
+
+
+    public function updateConversationLifecycle(string $sessionToken, string $csrfToken, string $conversationId, array $payload, ?string $now = null): array
+    {
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now); self::exactKeys($payload,['action','schemaVersion']);
+        if (($payload['schemaVersion']??null)!==1 || !in_array($payload['action']??null,['DELETE','RESTORE'],true)) throw new HubControlPlaneException('Conversation lifecycle request is invalid','SCHEMA_VERSION');
+        $this->assertConversationLifecycleReady(); $conversationId=self::uuid($conversationId); $userId=(string)$session['user_id']; $row=$this->conversationRowForUser($userId,$conversationId,true); $at=self::timestamp($now??gmdate('c')); $action=(string)$payload['action'];
+        if ($action==='DELETE' && $row['deleted_at']===null) {
+            $active=$this->pdo->prepare("SELECT 1 FROM control_tasks WHERE conversation_id=:conversation AND user_id=:user AND state NOT IN ('COMPLETED','FAILED','CANCELLED') LIMIT 1"); $active->execute(['conversation'=>$conversationId,'user'=>$userId]);
+            if ($active->fetchColumn()!==false) throw new HubControlPlaneException('Conversation has work that is still active','CONVERSATION_ACTIVE_TASKS');
+            try { $this->pdo->beginTransaction(); $this->pdo->prepare('UPDATE control_conversations SET deleted_at=:at,deleted_by_user_id=:user,updated_at=:at WHERE conversation_id=:id AND user_id=:user')->execute(['at'=>$at,'user'=>$userId,'id'=>$conversationId]); $this->pdo->prepare('UPDATE control_project_contexts SET conversation_id=NULL,observed_at=:at WHERE user_id=:user AND conversation_id=:conversation')->execute(['at'=>$at,'user'=>$userId,'conversation'=>$conversationId]); $this->pdo->commit(); }
+            catch(Throwable $error){ if($this->pdo->inTransaction())$this->pdo->rollBack(); throw $error; }
+            return ['schemaVersion'=>1,'conversationId'=>$conversationId,'state'=>'DELETED','deletedAt'=>$at];
+        }
+        if ($action==='RESTORE' && $row['deleted_at']!==null) { $this->pdo->prepare('UPDATE control_conversations SET deleted_at=NULL,deleted_by_user_id=NULL,updated_at=:at WHERE conversation_id=:id AND user_id=:user')->execute(['at'=>$at,'id'=>$conversationId,'user'=>$userId]); return ['schemaVersion'=>1,'conversationId'=>$conversationId,'state'=>'ACTIVE','deletedAt'=>null]; }
+        return ['schemaVersion'=>1,'conversationId'=>$conversationId,'state'=>$row['deleted_at']===null?'ACTIVE':'DELETED','deletedAt'=>$row['deleted_at']===null?null:(string)$row['deleted_at']];
     }
 
     /** Structured current-view metadata is bounded and excludes workspace paths/source content. */
@@ -473,7 +501,8 @@ final class HubControlPlaneService
         $recovery = $this->pdo->prepare('SELECT COUNT(*) FROM auth_recovery_codes WHERE user_id = :user AND used_at IS NULL'); $recovery->execute(['user' => $userId]);
         $workers = $this->workersForUser($userId); $readyWorkers = count(array_filter($workers, static fn (array $worker): bool => in_array((string) ($worker['state'] ?? ''), ['READY', 'WORKING'], true)));
         $activeTasks = (int) $this->pdo->query("SELECT COUNT(*) FROM control_tasks WHERE state NOT IN ('COMPLETED','FAILED','CANCELLED')")->fetchColumn();
-        $waitingCapability = $this->centralProjectAuthoritySchemaPresent() ? (int) $this->pdo->query("SELECT COUNT(*) FROM control_task_executions WHERE state = 'WAITING_FOR_CAPABILITY'")->fetchColumn() : 0;
+        $waitingCapability = $this->centralProjectAuthoritySchemaPresent() ? (int) $this->pdo->query("SELECT COUNT(*) FROM control_task_executions WHERE state = 'WAITING_FOR_CAPABILITY' AND COALESCE(last_error_code,'') NOT IN ('BUDGET_EXHAUSTED','PROVIDER_QUOTA_EXHAUSTED')")->fetchColumn() : 0;
+        $policyPaused = $this->centralProjectAuthoritySchemaPresent() ? (int) $this->pdo->query("SELECT COUNT(*) FROM control_task_executions WHERE state = 'WAITING_FOR_CAPABILITY' AND last_error_code IN ('BUDGET_EXHAUSTED','PROVIDER_QUOTA_EXHAUSTED')")->fetchColumn() : 0;
 
         $backupRoot = getenv('AWH_HUB_BACKUP_ROOT') ?: '/var/backups/awh-hub';
         try { $backupMetadata = HubBackupService::latestMetadata($backupRoot); } catch (Throwable) { $backupMetadata = ['configured' => false, 'latest' => null]; }
@@ -494,7 +523,7 @@ final class HubControlPlaneService
             $ai = ['state' => $aiState, 'monthlyMicrounits' => (int) ($budget['monthlyMicrounits'] ?? 0), 'usedMicrounits' => (int) ($budget['usedMicrounits'] ?? 0), 'remainingMicrounits' => (int) ($budget['remainingMicrounits'] ?? 0)];
         } catch (Throwable) { /* Owner health remains available when provider metadata is unavailable. */ }
 
-        return ['schemaVersion' => 1, 'owner' => $identity, 'product' => $this->productIdentity(), 'database' => ['state' => $integrity && $foreignKeys ? 'HEALTHY' : 'NEEDS_ATTENTION', 'schemaVersion' => (int) $this->pdo->query('PRAGMA user_version')->fetchColumn()], 'backup' => $backup, 'storage' => $storage, 'queue' => ['activeTaskCount' => $activeTasks, 'waitingCapabilityCount' => $waitingCapability], 'aiBudget' => $ai, 'recovery' => ['state' => (int) $recovery->fetchColumn() > 0 ? 'READY' : 'NEEDS_REGENERATION', 'message' => 'Use recovery codes only for account recovery; they are never included in exports.'], 'export' => ['available' => true, 'secretsIncluded' => false, 'sourceFilesIncluded' => false], 'workerSummary' => ['total' => count($workers), 'ready' => $readyWorkers], 'workers' => $workers];
+        return ['schemaVersion' => 1, 'owner' => $identity, 'product' => $this->productIdentity(), 'database' => ['state' => $integrity && $foreignKeys ? 'HEALTHY' : 'NEEDS_ATTENTION', 'schemaVersion' => (int) $this->pdo->query('PRAGMA user_version')->fetchColumn()], 'backup' => $backup, 'storage' => $storage, 'queue' => ['activeTaskCount' => $activeTasks, 'waitingCapabilityCount' => $waitingCapability, 'policyPausedCount' => $policyPaused], 'aiBudget' => $ai, 'recovery' => ['state' => (int) $recovery->fetchColumn() > 0 ? 'READY' : 'NEEDS_REGENERATION', 'message' => 'Use recovery codes only for account recovery; they are never included in exports.'], 'export' => ['available' => true, 'secretsIncluded' => false, 'sourceFilesIncluded' => false], 'workerSummary' => ['total' => count($workers), 'ready' => $readyWorkers], 'workers' => $workers];
     }
 
     /** Owner-only trust projection over existing audit, approval, artifact and checkpoint authorities. */
@@ -826,7 +855,7 @@ final class HubControlPlaneService
     {
         $this->assertAssistantReady();
         $this->assertProjectMember($userId, $projectId);
-        $conversationQuery = $this->pdo->prepare($this->unifiedSchemaPresent() ? 'SELECT * FROM control_conversations WHERE user_id = :user AND project_id = :project AND archived_at IS NULL ORDER BY updated_at DESC, conversation_id DESC LIMIT 1' : 'SELECT * FROM control_conversations WHERE user_id = :user AND project_id = :project LIMIT 1');
+        $conversationQuery = $this->pdo->prepare($this->unifiedSchemaPresent() ? 'SELECT * FROM control_conversations WHERE user_id = :user AND project_id = :project AND archived_at IS NULL' . ($this->conversationLifecycleSchemaPresent() ? ' AND deleted_at IS NULL' : '') . ' ORDER BY updated_at DESC, conversation_id DESC LIMIT 1' : 'SELECT * FROM control_conversations WHERE user_id = :user AND project_id = :project LIMIT 1');
         $conversationQuery->execute(['user' => $userId, 'project' => $projectId]);
         $conversation = $conversationQuery->fetch();
         if (!is_array($conversation)) return ['schemaVersion' => 1, 'conversation' => null, 'messages' => [], 'tasks' => [], 'artifacts' => [], 'attachments' => [], 'approvals' => []];
@@ -1060,11 +1089,13 @@ final class HubControlPlaneService
     {
         $session = $this->sessionRow($sessionToken, $now); $this->assertCentralProjectAuthorityReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId);
         $schema = (int) $this->pdo->query('PRAGMA user_version')->fetchColumn(); $integrity = $this->pdo->query('PRAGMA integrity_check')->fetchColumn() === 'ok' && $this->pdo->query('PRAGMA foreign_key_check')->fetchAll() === [];
-        $vaults = $this->pdo->query("SELECT COUNT(*) FROM control_project_vaults WHERE storage_mode = 'VAULT' AND sync_state = 'SYNCED'")->fetchColumn(); $waiting = $this->pdo->query("SELECT COUNT(*) FROM control_task_executions WHERE state = 'WAITING_FOR_CAPABILITY'")->fetchColumn();
+        $vaults = $this->pdo->query("SELECT COUNT(*) FROM control_project_vaults WHERE storage_mode = 'VAULT' AND sync_state = 'SYNCED'")->fetchColumn();
+        $waiting = $this->pdo->query("SELECT COUNT(*) FROM control_task_executions WHERE state = 'WAITING_FOR_CAPABILITY' AND COALESCE(last_error_code,'') NOT IN ('BUDGET_EXHAUSTED','PROVIDER_QUOTA_EXHAUSTED')")->fetchColumn();
+        $policyPaused = $this->pdo->query("SELECT COUNT(*) FROM control_task_executions WHERE state = 'WAITING_FOR_CAPABILITY' AND last_error_code IN ('BUDGET_EXHAUSTED','PROVIDER_QUOTA_EXHAUSTED')")->fetchColumn();
         $executor = $this->pdo->prepare("SELECT 1 FROM control_executor_capabilities WHERE executor_id = 'vps-native' AND capability = 'agent.conversation' AND expires_at > :now LIMIT 1"); $executor->execute(['now' => self::timestamp($now ?? gmdate('c'))]); $nativeReady = $executor->fetchColumn() !== false;
         $fabric = $this->anywhereExecutionSchemaPresent() ? 'READY' : 'NOT_ACTIVATED';
         $state = !$integrity ? 'ACTION_REQUIRED' : (!$nativeReady || (int) $waiting > 0 ? 'PARTIALLY_READY' : 'READY');
-        return ['schemaVersion' => 1, 'state' => $state, 'checks' => ['hub' => $integrity ? 'READY' : 'ACTION_REQUIRED', 'projectVault' => (int) $vaults > 0 ? 'READY' : 'NOT_CONFIGURED', 'nativeExecutor' => $nativeReady ? 'READY' : 'ACTION_REQUIRED', 'anywhereExecution' => $fabric, 'waitingCapabilityCount' => (int) $waiting, 'schemaVersion' => $schema], 'message' => !$nativeReady ? 'ยังไม่พบ native executor ที่พร้อมทำงาน งานที่รับไว้จะไม่สูญหาย' : ((int) $waiting > 0 ? 'งานบางรายการกำลังรอ capability ที่เหมาะสมและยังไม่สูญหาย' : 'AWH control-plane readiness check completed')];
+        return ['schemaVersion' => 1, 'state' => $state, 'checks' => ['hub' => $integrity ? 'READY' : 'ACTION_REQUIRED', 'projectVault' => (int) $vaults > 0 ? 'READY' : 'NOT_CONFIGURED', 'nativeExecutor' => $nativeReady ? 'READY' : 'ACTION_REQUIRED', 'anywhereExecution' => $fabric, 'waitingCapabilityCount' => (int) $waiting, 'policyPausedCount' => (int) $policyPaused, 'schemaVersion' => $schema], 'message' => !$nativeReady ? 'ยังไม่พบ native executor ที่พร้อมทำงาน งานที่รับไว้จะไม่สูญหาย' : ((int) $waiting > 0 ? 'งานบางรายการกำลังรอ capability ที่เหมาะสมและยังไม่สูญหาย' : 'AWH control-plane readiness check completed')];
     }
 
     public function capabilityStatus(string $sessionToken, ?string $now = null): array
@@ -2469,7 +2500,7 @@ final class HubControlPlaneService
 
     private function getOrCreateConversation(string $userId, string $projectId, string $at): array
     {
-        $q = $this->pdo->prepare($this->unifiedSchemaPresent() ? 'SELECT * FROM control_conversations WHERE user_id = :user AND project_id = :project AND archived_at IS NULL ORDER BY updated_at DESC, conversation_id DESC LIMIT 1' : 'SELECT * FROM control_conversations WHERE user_id = :user AND project_id = :project LIMIT 1'); $q->execute(['user' => $userId, 'project' => $projectId]); $row = $q->fetch();
+        $q = $this->pdo->prepare($this->unifiedSchemaPresent() ? 'SELECT * FROM control_conversations WHERE user_id = :user AND project_id = :project AND archived_at IS NULL' . ($this->conversationLifecycleSchemaPresent() ? ' AND deleted_at IS NULL' : '') . ' ORDER BY updated_at DESC, conversation_id DESC LIMIT 1' : 'SELECT * FROM control_conversations WHERE user_id = :user AND project_id = :project LIMIT 1'); $q->execute(['user' => $userId, 'project' => $projectId]); $row = $q->fetch();
         if (is_array($row)) return $row;
         $id = self::uuidFromBytes(random_bytes(16));
         if ($this->unifiedSchemaPresent()) {
@@ -2622,16 +2653,16 @@ final class HubControlPlaneService
         return "สถานะล่าสุดของ $name: " . self::workStateMessage((string) $latest['state'], 0, null) . $summary;
     }
 
-    private function conversationRowForUser(string $userId, string $conversationId): array
+    private function conversationRowForUser(string $userId, string $conversationId, bool $allowDeleted = false): array
     {
         $q = $this->pdo->prepare('SELECT * FROM control_conversations WHERE conversation_id = :id AND user_id = :user'); $q->execute(['id' => $conversationId, 'user' => $userId]); $row = $q->fetch();
-        if (!is_array($row)) throw new HubControlPlaneException('Conversation was not found', 'CONVERSATION_NOT_FOUND');
+        if (!is_array($row) || (!$allowDeleted && $this->conversationLifecycleSchemaPresent() && ($row['deleted_at'] ?? null) !== null)) throw new HubControlPlaneException('Conversation was not found', 'CONVERSATION_NOT_FOUND');
         $this->assertProjectMember($userId, (string) $row['project_id']); return $row;
     }
 
     private function conversationSummaryRow(array $row): array
     {
-        return ['conversationId' => (string) $row['conversation_id'], 'projectId' => (string) $row['project_id'], 'projectName' => (string) $row['project_name'], 'title' => (string) $row['title'], 'archivedAt' => $row['archived_at'] === null ? null : (string) $row['archived_at'], 'origin' => (string) $row['origin'], 'createdAt' => (string) $row['created_at'], 'updatedAt' => (string) $row['updated_at'], 'lastTaskId' => $row['last_task_id'] === null ? null : (string) $row['last_task_id']];
+        return ['conversationId' => (string) $row['conversation_id'], 'projectId' => (string) $row['project_id'], 'projectName' => (string) $row['project_name'], 'title' => (string) $row['title'], 'archivedAt' => $row['archived_at'] === null ? null : (string) $row['archived_at'], 'deletedAt' => array_key_exists('deleted_at',$row) && $row['deleted_at'] !== null ? (string)$row['deleted_at'] : null, 'origin' => (string) $row['origin'], 'createdAt' => (string) $row['created_at'], 'updatedAt' => (string) $row['updated_at'], 'lastTaskId' => $row['last_task_id'] === null ? null : (string) $row['last_task_id']];
     }
 
     private function currentContextForUser(string $userId, string $projectId): array
@@ -2766,6 +2797,8 @@ final class HubControlPlaneService
 
     private function assistantSchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 6 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_conversation_messages'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
     private function unifiedSchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 8 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_product_settings'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
+    private function conversationLifecycleSchemaPresent(): bool { try { if ((int)$this->pdo->query('PRAGMA user_version')->fetchColumn() < 19) return false; foreach ($this->pdo->query("PRAGMA table_info('control_conversations')")->fetchAll() as $row) if (($row['name'] ?? null) === 'deleted_at') return true; return false; } catch (Throwable) { return false; } }
+    private function assertConversationLifecycleReady(): void { if (!$this->conversationLifecycleSchemaPresent()) throw new HubControlPlaneException('Conversation lifecycle migration is not ready','CONVERSATION_LIFECYCLE_NOT_READY'); }
     private function finalProductSchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 9 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_provider_policies'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
     private function foundingMemorySchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 10 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_memory_records'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
     private function selfServiceSchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 11 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_provider_credentials'")->fetchColumn() === 1; } catch (Throwable) { return false; } }

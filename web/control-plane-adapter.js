@@ -54,6 +54,8 @@ function safeErrorMessage(value) {
     HOSTING_CAPACITY_FULL: 'พื้นที่สำหรับเว็บไซต์บน VPS เต็ม กรุณาตรวจ Hosting capacity',
     SITE_SLUG_UNAVAILABLE: 'ชื่อย่อเว็บไซต์นี้ถูกใช้แล้ว',
     ROLLBACK_NOT_READY: 'เว็บไซต์นี้ยังไม่มีรุ่นก่อนหน้าที่พร้อมย้อนกลับ',
+    CONVERSATION_ACTIVE_TASKS: 'แชทนี้ยังมีงานที่กำลังทำอยู่ กรุณายกเลิกหรือรอให้งานจบก่อนลบ',
+    CONVERSATION_LIFECYCLE_NOT_READY: 'ระบบลบและกู้คืนแชทยังไม่พร้อมบน release นี้',
   })[code] || 'AWH ไม่สามารถดำเนินการได้ในขณะนี้';
 }
 
@@ -142,6 +144,13 @@ export async function loadConversation(conversationId) {
   return value;
 }
 
+export async function loadDeletedConversations(projectId) {
+  if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง');
+  const value = await controlRequest(`/api/v1/control/conversations/trash?projectId=${encodeURIComponent(projectId)}`);
+  if (value.schemaVersion !== 1 || !Array.isArray(value.conversations)) throw new Error('ถังขยะแชทของ AWH ไม่ถูกต้อง');
+  return value.conversations.filter((conversation) => conversation && UUID.test(conversation.conversationId) && conversation.projectId === projectId && typeof conversation.deletedAt === 'string');
+}
+
 export async function createConversation(projectId, title = 'การสนทนาใหม่') {
   if (!UUID.test(projectId) || typeof title !== 'string' || !title.trim() || title.length > 120) throw new Error('ชื่อการสนทนาไม่ถูกต้อง');
   return controlRequest('/api/v1/control/conversations/new', { method: 'POST', body: JSON.stringify({ schemaVersion: 2, projectId, title: title.trim() }) });
@@ -150,6 +159,11 @@ export async function createConversation(projectId, title = 'การสนท�
 export async function updateConversation(conversationId, title, archived = false) {
   if (!UUID.test(conversationId) || typeof title !== 'string' || !title.trim() || title.length > 120 || typeof archived !== 'boolean') throw new Error('การสนทนาไม่ถูกต้อง');
   return controlRequest(`/api/v1/control/conversations/thread/${conversationId}`, { method: 'POST', body: JSON.stringify({ schemaVersion: 2, title: title.trim(), archived }) });
+}
+
+export async function updateConversationLifecycle(conversationId, action) {
+  if (!UUID.test(conversationId) || !['DELETE','RESTORE'].includes(action)) throw new Error('การจัดการแชทไม่ถูกต้อง');
+  return controlRequest(`/api/v1/control/conversations/thread/${conversationId}/lifecycle`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1, action }) });
 }
 
 export async function loadCurrentContext(projectId) {

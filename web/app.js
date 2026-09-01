@@ -4,11 +4,11 @@ import { closeAwhDialog, openAwhDialog } from './navigation.js?release=__AWH_WEB
 import {
   cancelTask, changePassword, changeUsername, createConversation, createMemory, createPerson, createProject, createRecoveryCodes, decideApproval,
   exportWorkspace, listAccountRequests, listAuthSessions, listPeople, loadAuthProfile, loadControlData, loadConversation,
-  loadConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus,
+  loadConversations, loadDeletedConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus,
   loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadCapabilities, loadSystemReadiness, loadWorkspaceContinuity, login, logout,
   recover, registerAccessRequest, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage,
   testProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
-  updateProviderCredential, updateProviderPolicy, updateProviderProjectRouting, uploadConversationAttachments,
+  updateProviderCredential, updateProviderPolicy, updateProviderProjectRouting, updateConversationLifecycle, uploadConversationAttachments,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 (() => {
@@ -16,7 +16,7 @@ import {
   const MAX_ATTACHMENT_BYTES = 60 * 1024 * 1024;
   const MICRO_BAHT = 1000000;
   const DESKTOP_PACKAGES = [['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, systemReadiness: null, capabilities: null, people: [], accountRequests: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, systemReadiness: null, capabilities: null, people: [], accountRequests: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadFollowLatest: true };
   let desktopReleasePromise = null;
   let pendingPrivilegedAction = null;
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => undefined);
@@ -660,7 +660,20 @@ import {
   }
 
   function renderThread(conversation, approvals) {
-    const thread = $('work-thread'); const stickToBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 140; thread.replaceChildren();
+    const thread = $('work-thread');
+    const conversationId = conversation?.conversation?.conversationId || state.selectedConversationId || null;
+    const sameConversation = conversationId !== null && state.renderedConversationId === conversationId;
+    const distanceFromBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight;
+    const stickToBottom = !sameConversation || distanceFromBottom < 140 || state.threadFollowLatest;
+    let anchorKey = null; let anchorOffset = 0;
+    if (sameConversation && !stickToBottom) {
+      for (const child of thread.children) {
+        if (!(child instanceof HTMLElement) || !child.dataset.scrollKey) continue;
+        if (child.offsetTop + child.offsetHeight >= thread.scrollTop) { anchorKey = child.dataset.scrollKey; anchorOffset = child.offsetTop - thread.scrollTop; break; }
+      }
+    }
+    const previousMessageCount = sameConversation ? state.threadMessageCount : 0;
+    thread.replaceChildren();
     const messages = Array.isArray(conversation?.messages) ? conversation.messages : [];
     const tasks = Array.isArray(conversation?.tasks) ? conversation.tasks : [];
     const taskById = new Map(tasks.map((task) => [task.taskId, task]));
@@ -692,19 +705,19 @@ import {
       if (turn.kind === 'progress') {
         if (String(turn.messageId || '').startsWith('local-progress-')) {
           const typing = document.createElement('li'); typing.className = 'task-turn assistant-turn typing-turn';
-          const text = document.createElement('p'); text.className = 'typing-indicator'; text.textContent = turn.body || 'AWH · กำลังจัดการงาน…'; typing.append(text); thread.append(typing);
+          const text = document.createElement('p'); text.className = 'typing-indicator'; text.textContent = turn.body || 'AWH · กำลังจัดการงาน…'; typing.dataset.scrollKey = `message:${turn.messageId || 'progress'}`; typing.append(text); thread.append(typing);
         }
         continue;
       }
       if (turn.kind === 'assistant' && /(?:เครื่องมือที่เหมาะสม|เตรียมบริบทของโปรเจกต์|เก็บคำขอนี้ไว้แล้ว)/u.test(turn.body || '')) continue;
       const task = taskForTurn(turn);
-      const row = document.createElement('li'); row.className = `task-turn ${turn.kind === 'user' ? 'user-turn' : 'assistant-turn'} ${turn.kind}-turn`;
+      const row = document.createElement('li'); row.className = `task-turn ${turn.kind === 'user' ? 'user-turn' : 'assistant-turn'} ${turn.kind}-turn`; row.dataset.scrollKey = `message:${turn.messageId || turn.sequence || 'turn'}`;
       const body = document.createElement('p'); body.className = turn.kind === 'user' ? 'task-goal' : 'task-summary'; body.textContent = turn.body;
       if (turn.kind === 'user') {
         row.append(body); const attachments = renderMessageAttachments(attachmentsByMessage.get(turn.messageId)); if (attachments) row.append(attachments);
         thread.append(row);
         if (task && task.state !== 'COMPLETED') {
-          const statusTurn = document.createElement('li'); statusTurn.className = 'task-turn assistant-turn status-turn';
+          const statusTurn = document.createElement('li'); statusTurn.className = 'task-turn assistant-turn status-turn'; statusTurn.dataset.scrollKey = `status:${turn.messageId || task?.taskId || 'task'}`;
           const status = document.createElement('div'); status.className = 'task-response active-task-response';
           status.append(renderLiveActivity(task));
           const taskActions = renderCancellation(task); if (taskActions) status.append(taskActions);
@@ -728,7 +741,20 @@ import {
       }
       row.append(response); thread.append(row);
     }
-    if (stickToBottom) requestAnimationFrame(() => { thread.scrollTop = thread.scrollHeight; });
+    state.renderedConversationId = conversationId;
+    state.threadMessageCount = visibleMessages.length;
+    requestAnimationFrame(() => {
+      const latest = $('conversation-latest');
+      if (!sameConversation || stickToBottom) {
+        thread.scrollTop = thread.scrollHeight; state.threadFollowLatest = true; if (latest) latest.hidden = true; return;
+      }
+      if (anchorKey) {
+        const anchor = [...thread.children].find((node) => node instanceof HTMLElement && node.dataset.scrollKey === anchorKey);
+        if (anchor instanceof HTMLElement) thread.scrollTop = Math.max(0, anchor.offsetTop - anchorOffset);
+      }
+      state.threadFollowLatest = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 140;
+      if (latest) latest.hidden = state.threadFollowLatest || visibleMessages.length <= previousMessageCount;
+    });
   }
 
   function renderConversationSheet() {
@@ -744,7 +770,18 @@ import {
     $('conversation-title-input').value = selected?.title || 'Work';
     $('conversation-title-input').disabled = !selected;
     $('conversation-archive').disabled = !selected;
+    $('conversation-delete').disabled = !selected;
+    const trash = $('conversation-trash-list'); if (trash) { trash.replaceChildren(); for (const conversation of state.deletedConversations) { const row=document.createElement('div'); row.className='conversation-trash-row'; const copy=document.createElement('span'); const title=document.createElement('strong'); title.textContent=conversation.title||'Work'; const detail=document.createElement('small'); detail.textContent=`ลบเมื่อ ${date(conversation.deletedAt)}`; copy.append(title,detail); const restore=document.createElement('button'); restore.type='button'; restore.className='secondary-button'; restore.textContent='กู้คืน'; restore.addEventListener('click',async()=>{ restore.disabled=true; try{ await updateConversationLifecycle(conversation.conversationId,'RESTORE'); await refreshDeletedConversations(); await refreshConversation(); message('conversation-trash-message','กู้คืนแชทแล้ว'); }catch(error){ message('conversation-trash-message',error instanceof Error?error.message:'ยังกู้คืนแชทไม่ได้'); restore.disabled=false; } }); row.append(copy,restore); trash.append(row); } if(!trash.childElementCount){ const empty=document.createElement('p'); empty.className='muted'; empty.textContent='ไม่มีแชทในถังขยะ'; trash.append(empty); } }
   }
+
+  async function refreshDeletedConversations() {
+    const project=selectedProject(); if(!project){ state.deletedConversations=[]; renderConversationSheet(); return; }
+    try { state.deletedConversations=await loadDeletedConversations(project.projectId); }
+    catch { state.deletedConversations=[]; }
+    renderConversationSheet();
+  }
+
+  function openConversationSheet() { openSheet('conversation-sheet'); void refreshDeletedConversations(); }
 
   function renderWorkspace() {
     const control = state.control;
@@ -754,6 +791,7 @@ import {
     const project = selectedProject();
     message('selected-project-name', project?.name || 'ยังไม่มีโปรเจกต์');
     message('selected-conversation-name', state.conversation?.conversation?.title || 'Work');
+    if ($('conversation-open')) $('conversation-open').hidden = project === null;
     message('worker-summary', workerSummary());
     message('work-context', project ? `คุยและสั่งงานได้จากทุกอุปกรณ์${continuitySummary(state.workspaceContinuity)}` : 'เพิ่มโปรเจกต์เพื่อเริ่มคุยกับ AWH');
     message('advanced-status', `${workerSummary()} · งานและผลลัพธ์แสดงตามสิทธิ์ของบัญชีคุณ`);
@@ -773,6 +811,7 @@ import {
     setSurface(data);
     state.control = data?.control || { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน' };
     const authenticated = state.control.authenticated === true;
+    if ($('session-check-view')) $('session-check-view').hidden = true;
     $('sign-in-view').hidden = authenticated;
     $('workspace-view').hidden = !authenticated;
     document.body.classList.toggle('work-active', authenticated);
@@ -906,8 +945,17 @@ import {
     if (typeof detail.conversationId === 'string' && state.conversations.some((item) => item.conversationId === detail.conversationId) && state.selectedConversationId !== detail.conversationId) {
       state.selectedConversationId = detail.conversationId; await refreshConversation(false);
     }
-    if (detail.openConversations === true) openSheet('conversation-sheet');
+    if (detail.openConversations === true) openConversationSheet();
     $('goal-input')?.focus();
+  });
+
+  $('work-thread')?.addEventListener('scroll', () => {
+    const thread = $('work-thread'); const latest = $('conversation-latest');
+    state.threadFollowLatest = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 140;
+    if (state.threadFollowLatest && latest) latest.hidden = true;
+  }, { passive: true });
+  $('conversation-latest')?.addEventListener('click', () => {
+    const thread = $('work-thread'); state.threadFollowLatest = true; thread.scrollTo({ top: thread.scrollHeight, behavior: 'smooth' }); $('conversation-latest').hidden = true;
   });
 
   $('goal-input').addEventListener('input', resizeGoalInput); resizeGoalInput();
@@ -955,13 +1003,16 @@ import {
   $('refresh-work').addEventListener('click', () => { void refreshWorkspace(true); });
   $('project-open').addEventListener('click', () => openSheet('project-sheet'));
   $('project-create-form').addEventListener('submit', async (event) => { event.preventDefault(); if (!isOwner()) { message('project-create-message', 'เฉพาะเจ้าของ AWH เท่านั้นที่เพิ่มโปรเจกต์ได้'); return; } const name = $('project-create-name').value.trim(); if (!name) { message('project-create-message', 'กรอกชื่อโปรเจกต์ก่อน'); return; } const button = $('project-create-form').querySelector('button[type="submit"]'); button.disabled = true; message('project-create-message', 'กำลังเพิ่มโปรเจกต์…'); try { const result = await createProject(name, $('project-create-type').value); state.control = await loadControlData(); state.selectedProjectId = result.project.projectId; $('project-create-name').value = ''; renderWorkspace(); await refreshConversation(); message('project-create-message', 'เพิ่มโปรเจกต์แล้ว เริ่มคุยได้ทันที'); } catch (error) { message('project-create-message', error instanceof Error ? error.message : 'ยังเพิ่มโปรเจกต์ไม่ได้'); } finally { button.disabled = false; } });
-  $('conversation-open').addEventListener('click', () => openSheet('conversation-sheet'));
-  $('conversation-new').addEventListener('click', async () => {
-    const project = selectedProject(); if (!project) return; const button = $('conversation-new'); button.disabled = true;
-    try { const created = await createConversation(project.projectId, 'การสนทนาใหม่'); state.selectedConversationId = created.conversation.conversationId; state.conversation = created; await refreshConversation(); closeSheet('conversation-sheet'); }
+  $('conversation-open').addEventListener('click', openConversationSheet);
+  $('conversation-more-work')?.addEventListener('click', openConversationSheet);
+  async function createNewConversationFrom(button) {
+    const project = selectedProject(); if (!project || !(button instanceof HTMLButtonElement)) return; button.disabled = true;
+    try { const created = await createConversation(project.projectId, 'การสนทนาใหม่'); state.selectedConversationId = created.conversation.conversationId; state.conversation = created; state.threadFollowLatest = true; await refreshConversation(); closeSheet('conversation-sheet'); }
     catch (error) { message('goal-message', error instanceof Error ? error.message : 'AWH ยังสร้างการสนทนาใหม่ไม่ได้'); }
     finally { button.disabled = false; }
-  });
+  }
+  $('conversation-new').addEventListener('click', () => { void createNewConversationFrom($('conversation-new')); });
+  $('conversation-new-work')?.addEventListener('click', () => { void createNewConversationFrom($('conversation-new-work')); });
   $('conversation-title-form').addEventListener('submit', async (event) => {
     event.preventDefault(); const conversationId = state.selectedConversationId; if (!conversationId) return;
     message('conversation-title-message', 'กำลังบันทึก…');
@@ -974,6 +1025,14 @@ import {
     try { await updateConversation(conversationId, current.title || 'Work', true); state.selectedConversationId = null; await refreshConversation(); message('conversation-title-message', 'เก็บการสนทนาแล้ว'); }
     catch (error) { message('conversation-title-message', error instanceof Error ? error.message : 'ยังเก็บการสนทนาไม่ได้'); }
     finally { $('conversation-archive').disabled = false; }
+  });
+  $('conversation-delete').addEventListener('click', async () => {
+    const conversationId=state.selectedConversationId; const current=state.conversation?.conversation; if(!conversationId||!current)return;
+    if(!window.confirm(`ลบแชท “${current.title||'Work'}” หรือไม่? งานและไฟล์ผลลัพธ์ที่สร้างแล้วจะยังอยู่ และกู้คืนแชทได้จากถังขยะ`)) return;
+    const button=$('conversation-delete'); button.disabled=true; message('conversation-title-message','กำลังลบแชท…');
+    try { await updateConversationLifecycle(conversationId,'DELETE'); state.selectedConversationId=null; state.conversation=null; state.threadFollowLatest=true; await refreshDeletedConversations(); await refreshConversation(); message('conversation-title-message','ลบแชทแล้ว กู้คืนได้จากถังขยะ'); }
+    catch(error){ message('conversation-title-message',error instanceof Error?error.message:'ยังลบแชทไม่ได้'); }
+    finally{ button.disabled=false; }
   });
   $('account-open').addEventListener('click', () => { void openAccount(); });
   $('account-open-work').addEventListener('click', () => { void openAccount('account'); });
