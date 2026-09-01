@@ -111,3 +111,14 @@ Next safe action: re-establish read-only Mac/VPS inspection, verify whether the 
 - Production rollback evidence remains `/var/backups/awh-hub/awh.sqlite.pre-m19-b66ef39cc986`; no Production migration, release compaction, release deletion, or pointer movement was performed in this convergence step.
 
 Next safe action: publish this converged M20 branch for PR/CI review against `awh/api-independence`. Keep Production M20 activation and release-artifact compaction as separate explicit mutation gates.
+## 2026-09-02 03:3x ICT — automation closure checkpoint 3
+
+- Canonical was re-read before mutation at `awh/api-independence` `5f6771123095b75804d07838001420b42702d73b`; PR #78 head `414c0fc2b291a7991fd1f8d0be7a705bb9344b5a` then completed cross-platform CI successfully in run `33555414818`.
+- PR #78 was promoted from draft and merged. Canonical is now exact merge SHA `7246e21f0f55e094ebcf6912d6efa06cc8418988`, with Project Source Authority integrated as `019_project_source_authority.sql`, migration id `m20-project-source-authority`, schema target 20. Production was not migrated or redeployed.
+- Production was freshly reverified after source convergence: Control/Web pointers both remain `m19-b66ef39cc986`; SQLite remains `user_version=19`, `integrity_check=ok`, zero foreign-key violations. nginx, PHP 8.3 FPM, native executor timer and backup timer are active.
+- Exact pre-M19 rollback database remains present at `/var/backups/awh-hub/awh.sqlite.pre-m19-b66ef39cc986`, size `52,834,304` bytes, timestamp `2026-09-02 00:02:50 +0700`.
+- Fresh read-only release-retention audit after the M20 merge: 37 Control + 33 Web releases, 174 matched desktop/checksum paths, 134 already linked. Guaranteed physical reclaim remains `9,701,990,589` bytes Control-only and `10,640,730,340` bytes Control+Web. Root filesystem is ~78% used; predicted usage after verified both-side compaction remains ~42.5%. No Production filesystem mutation occurred.
+- Repository hygiene removed only three clean, fully merged, reproducible temporary worktrees: `awh/m20-canonical-convergence`, `awh/night-closure-20260901`, and `awh/night-closure-storage-both`; dirty M19/M20 evidence and rollback worktrees remain protected. Registered worktrees are now 35.
+- Current canonical focused QA PASS: TypeScript typecheck plus 15/15 tests covering HEIC provider-safe input, Conversation Lifecycle/delete semantics, three-destination mobile shell, Tasks/Files surfaces, policy-paused readiness, release dedup contract, and visual-review authority.
+
+Next safe action: keep Production at schema 19 until explicit M20 activation approval. The highest-value independent safe work is repository/worktree classification plus continued rendered/field QA on canonical. Release hard-link compaction is ready by evidence but remains a separate Production mutation gate.
