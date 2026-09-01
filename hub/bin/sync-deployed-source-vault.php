@@ -17,8 +17,9 @@ if ($databasePath === '' || str_contains($databasePath, "\0") || $archivePath ==
 $pdo = new PDO('sqlite:' . $databasePath, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES => false]);
 $pdo->exec('PRAGMA foreign_keys = ON');
 $pdo->exec('PRAGMA busy_timeout = 5000');
-$schemaVersion = (int) $pdo->query('PRAGMA user_version')->fetchColumn();
-if (!in_array($schemaVersion, [12, 13, 14, 15, 16], true)) {
+try {
+    HubCentralProjectAuthorityMigration::assertCapabilityReady($pdo, dirname(__DIR__) . '/migrations/011_central_project_authority.sql');
+} catch (Throwable) {
     fwrite(STDERR, "Central Project Authority schema is not ready\n");
     exit(4);
 }
