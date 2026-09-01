@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, realpathSync, rmSync, writeFileSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { deflateRawSync } from 'node:zlib';
+import { writeAipassCompatibleExports } from './aipass-compatible-export.mjs';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const commit = git(['rev-parse', 'HEAD']).trim();
@@ -127,6 +128,8 @@ if (compareDir !== null) {
   copyCompare(compareDir);
 }
 
+const compatible = await writeAipassCompatibleExports({ stage, commit, branch, includedFiles: included.length });
+
 const crcTable = Array.from({ length: 256 }, (_, n) => {
   let c = n;
   for (let k = 0; k < 8; k += 1) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
@@ -168,7 +171,7 @@ function collect(dir, prefix = '') {
 }
 
 const entries = collect(stage);
-if (entries.length < 10 || included.length < 5) throw new Error('AI review pack is unexpectedly empty');
+if (entries.length < 13 || included.length < 5) throw new Error('AI review pack is unexpectedly empty');
 mkdirSync(dirname(output), { recursive: true });
 writeFileSync(output, zipEntries(entries), { mode: 0o600 });
 rmSync(stage, { recursive: true, force: true });
@@ -180,4 +183,5 @@ process.stdout.write(JSON.stringify({
   includedFiles: included.length,
   skippedFiles: skipped.length,
   bytes: statSync(output).size,
+  aipassCompatible: compatible.map(({ name, bytes }) => ({ name, bytes })),
 }, null, 2) + '\n');
