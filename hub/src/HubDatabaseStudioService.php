@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/HubBackupService.php';
+require_once __DIR__ . '/HubOwnerAuthService.php';
+require_once __DIR__ . '/HubTrustPolicy.php';
 
 final class HubDatabaseStudioException extends RuntimeException
 {
@@ -18,7 +20,6 @@ final class HubDatabaseStudioService
     private const MAX_SQL_BYTES = 4000;
     private const MAX_EXPORT_BYTES = 5_242_880;
     private const SESSION_INACTIVITY_TTL = 43200;
-    private const STEP_UP_TTL = 900;
 
     private function __construct(private readonly PDO $pdo, private readonly string $databasePath, private readonly string $migrationDir) {}
 
@@ -38,18 +39,18 @@ final class HubDatabaseStudioService
 
     public function overview(string $sessionToken, ?string $now = null): array
     {
-        $this->ownerSession($sessionToken, null, false, $now); $tables = $this->tableCatalog(); $visibleRows = 0;
+        $this->ownerSession($sessionToken, null, null, $now); $tables = $this->tableCatalog(); $visibleRows = 0;
         foreach ($tables as $table) if (!$table['locked'] && is_int($table['rowCount'])) $visibleRows += $table['rowCount'];
         $pageSize = (int) $this->pdo->query('PRAGMA page_size')->fetchColumn(); $pageCount = (int) $this->pdo->query('PRAGMA page_count')->fetchColumn(); $freePages = (int) $this->pdo->query('PRAGMA freelist_count')->fetchColumn();
         $quick = $this->boundedPragma('PRAGMA quick_check', 20); $databaseBytes = @filesize($this->databasePath); $walBytes = @filesize($this->databasePath . '-wal');
         return ['schemaVersion' => 1, 'database' => ['engine' => 'SQLite', 'schemaVersion' => (int) $this->pdo->query('PRAGMA user_version')->fetchColumn(), 'sizeBytes' => is_int($databaseBytes) ? $databaseBytes : $pageCount * $pageSize, 'walBytes' => is_int($walBytes) ? $walBytes : 0, 'pageSize' => $pageSize, 'pageCount' => $pageCount, 'freePages' => $freePages, 'journalMode' => strtolower((string) $this->pdo->query('PRAGMA journal_mode')->fetchColumn()), 'foreignKeysEnabled' => (int) $this->pdo->query('PRAGMA foreign_keys')->fetchColumn() === 1], 'summary' => ['tables' => count($tables), 'browseableTables' => count(array_filter($tables, static fn (array $row): bool => !$row['locked'])), 'lockedTables' => count(array_filter($tables, static fn (array $row): bool => $row['locked'])), 'visibleRows' => $visibleRows], 'health' => ['quickCheck' => $quick === ['ok'] ? 'ok' : 'review', 'quickCheckMessages' => $quick], 'backup' => $this->backupMetadata()];
     }
 
-    public function tables(string $sessionToken, ?string $now = null): array { $this->ownerSession($sessionToken, null, false, $now); return ['schemaVersion' => 1, 'tables' => $this->tableCatalog()]; }
+    public function tables(string $sessionToken, ?string $now = null): array { $this->ownerSession($sessionToken, null, null, $now); return ['schemaVersion' => 1, 'tables' => $this->tableCatalog()]; }
 
     public function browse(string $sessionToken, string $table, ?string $search = null, int $page = 1, int $limit = 50, ?string $sort = null, string $direction = 'ASC', ?string $now = null): array
     {
-        $this->ownerSession($sessionToken, null, false, $now); $table = $this->assertBrowseableTable($table);
+        $this->ownerSession($sessionToken, null, null, $now); $table = $this->assertBrowseableTable($table);
         if ($page < 1 || $page > 10000 || $limit < 1 || $limit > self::MAX_PAGE_SIZE) throw new HubDatabaseStudioException('Pagination is invalid', 'DATABASE_REQUEST_INVALID');
         $search = self::searchText($search); $columns = $this->columns($table); [$sort, $direction] = $this->sortContract($columns, $sort, $direction); $offset = ($page - 1) * $limit;
         $total = $this->countRows($table, $columns, $search); $rows = $this->readRows($table, $columns, $search, $sort, $direction, $limit, $offset);
@@ -58,7 +59,7 @@ final class HubDatabaseStudioService
 
     public function schema(string $sessionToken, string $table, ?string $now = null): array
     {
-        $this->ownerSession($sessionToken, null, false, $now); $table = $this->assertKnownTable($table);
+        $this->ownerSession($sessionToken, null, null, $now); $table = $this->assertKnownTable($table);
         if ($this->isSensitiveTable($table)) return ['schemaVersion' => 1, 'table' => $table, 'locked' => true, 'columns' => [], 'indexes' => [], 'foreignKeys' => []];
         $columns = $this->columns($table); $indexes = [];
         foreach ($this->pdo->query('PRAGMA index_list(' . self::quoteIdentifier($table) . ')')->fetchAll() as $row) { $name = (string) ($row['name'] ?? ''); if ($name === '') continue; $parts = []; foreach ($this->pdo->query('PRAGMA index_info(' . self::quoteIdentifier($name) . ')')->fetchAll() as $part) if (is_string($part['name'] ?? null)) $parts[] = (string) $part['name']; $indexes[] = ['name' => $name, 'unique' => (int) ($row['unique'] ?? 0) === 1, 'origin' => (string) ($row['origin'] ?? ''), 'columns' => $parts]; }
@@ -68,7 +69,7 @@ final class HubDatabaseStudioService
 
     public function runReadOnlySql(string $sessionToken, string $csrfToken, string $sql, bool $explain = false, ?string $now = null): array
     {
-        $this->ownerSession($sessionToken, $csrfToken, true, $now); $sql = $this->validatedSelect($sql); $statementSql = $explain ? 'EXPLAIN QUERY PLAN ' . $sql : 'SELECT * FROM (' . $sql . ') LIMIT ' . (self::MAX_SQL_ROWS + 1); $started = microtime(true); $rows = []; $columns = [];
+        $this->ownerSession($sessionToken, $csrfToken, 'database.read.sql', $now); $sql = $this->validatedSelect($sql); $statementSql = $explain ? 'EXPLAIN QUERY PLAN ' . $sql : 'SELECT * FROM (' . $sql . ') LIMIT ' . (self::MAX_SQL_ROWS + 1); $started = microtime(true); $rows = []; $columns = [];
         try {
             $this->pdo->exec('PRAGMA query_only = ON'); $statement = $this->pdo->query($statementSql); if (!$statement instanceof PDOStatement) throw new RuntimeException('query unavailable');
             for ($index = 0; $index < $statement->columnCount(); $index++) { $meta = $statement->getColumnMeta($index); $columns[] = is_array($meta) && is_string($meta['name'] ?? null) ? (string) $meta['name'] : 'column_' . ($index + 1); }
@@ -82,7 +83,7 @@ final class HubDatabaseStudioService
 
     public function export(string $sessionToken, string $table, string $format, ?string $search = null, ?string $sort = null, string $direction = 'ASC', ?string $now = null): array
     {
-        $this->ownerSession($sessionToken, null, false, $now); $table = $this->assertBrowseableTable($table); $format = strtolower(trim($format));
+        $this->ownerSession($sessionToken, null, null, $now); $table = $this->assertBrowseableTable($table); $format = strtolower(trim($format));
         if (!in_array($format, ['csv', 'json'], true)) throw new HubDatabaseStudioException('Export format is invalid', 'DATABASE_REQUEST_INVALID');
         $search = self::searchText($search); $columns = $this->columns($table); [$sort, $direction] = $this->sortContract($columns, $sort, $direction); $rows = $this->readRows($table, $columns, $search, $sort, $direction, self::MAX_EXPORT_ROWS + 1, 0); $truncated = count($rows) > self::MAX_EXPORT_ROWS; if ($truncated) array_pop($rows);
         $safeColumns = array_values(array_filter($columns, static fn (array $column): bool => !$column['redacted'])); $names = array_column($safeColumns, 'name'); if ($names === []) throw new HubDatabaseStudioException('No exportable columns are available', 'DATABASE_TABLE_RESTRICTED');
@@ -94,14 +95,14 @@ final class HubDatabaseStudioService
 
     public function health(string $sessionToken, ?string $now = null): array
     {
-        $this->ownerSession($sessionToken, null, false, $now); $integrity = $this->boundedPragma('PRAGMA integrity_check', 100); $foreignRows = []; $statement = $this->pdo->query('PRAGMA foreign_key_check');
+        $this->ownerSession($sessionToken, null, null, $now); $integrity = $this->boundedPragma('PRAGMA integrity_check', 100); $foreignRows = []; $statement = $this->pdo->query('PRAGMA foreign_key_check');
         if ($statement instanceof PDOStatement) while (($row = $statement->fetch()) !== false && count($foreignRows) < 101) $foreignRows[] = $this->normalizeRow($row); $foreignTruncated = count($foreignRows) > 100; if ($foreignTruncated) array_pop($foreignRows);
         return ['schemaVersion' => 1, 'integrity' => ['status' => $integrity === ['ok'] ? 'PASS' : 'REVIEW', 'messages' => $integrity], 'foreignKeys' => ['status' => $foreignRows === [] ? 'PASS' : 'REVIEW', 'violations' => $foreignRows, 'truncated' => $foreignTruncated], 'journalMode' => strtolower((string) $this->pdo->query('PRAGMA journal_mode')->fetchColumn()), 'foreignKeysEnabled' => (int) $this->pdo->query('PRAGMA foreign_keys')->fetchColumn() === 1];
     }
 
     public function migrations(string $sessionToken, ?string $now = null): array
     {
-        $this->ownerSession($sessionToken, null, false, $now); $ledger = [];
+        $this->ownerSession($sessionToken, null, null, $now); $ledger = [];
         if (self::tableExists($this->pdo, 'awh_schema_migrations')) { $q = $this->pdo->query('SELECT migration_id, schema_version, checksum, applied_at FROM awh_schema_migrations ORDER BY schema_version, migration_id'); foreach ($q->fetchAll() as $row) $ledger[] = ['migrationId' => (string) $row['migration_id'], 'schemaVersion' => (int) $row['schema_version'], 'checksum' => (string) $row['checksum'], 'appliedAt' => (string) $row['applied_at']]; }
         $files = []; $paths = is_dir($this->migrationDir) ? glob(rtrim($this->migrationDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . '*.sql') : false;
         if (is_array($paths)) { sort($paths, SORT_STRING); foreach ($paths as $path) { if (!is_file($path) || is_link($path)) continue; $checksum = hash_file('sha256', $path); $files[] = ['file' => basename($path), 'sha256' => is_string($checksum) ? $checksum : null, 'sizeBytes' => (int) (@filesize($path) ?: 0)]; } }
@@ -110,19 +111,23 @@ final class HubDatabaseStudioService
 
     public function audit(string $sessionToken, int $limit = 50, ?string $now = null): array
     {
-        $this->ownerSession($sessionToken, null, false, $now); if ($limit < 1 || $limit > 100) throw new HubDatabaseStudioException('Audit limit is invalid', 'DATABASE_REQUEST_INVALID'); $tables = [];
+        $this->ownerSession($sessionToken, null, null, $now); if ($limit < 1 || $limit > 100) throw new HubDatabaseStudioException('Audit limit is invalid', 'DATABASE_REQUEST_INVALID'); $tables = [];
         foreach ($this->tableCatalog() as $table) if (!$table['locked'] && str_contains(strtolower($table['name']), 'audit')) $tables[] = $table['name'];
         $streams = []; foreach ($tables as $table) { $columns = $this->columns($table); $sort = $this->preferredTimeColumn($columns); $rows = $this->readRows($table, $columns, null, $sort, 'DESC', $limit, 0); $streams[] = ['table' => $table, 'columns' => $this->publicColumns($columns), 'rows' => $rows]; }
         return ['schemaVersion' => 1, 'streams' => $streams];
     }
 
-    private function ownerSession(string $token, ?string $csrf, bool $requireStepUp, ?string $now): array
+    private function ownerSession(string $token, ?string $csrf, ?string $action, ?string $now): array
     {
         if ($token === '' || strlen($token) > 512 || preg_match('/[\x00-\x1f\x7f]/', $token)) throw new HubDatabaseStudioException('Owner session is invalid', 'SESSION_INVALID'); $at = strtotime($now ?? gmdate('c')); if ($at === false) throw new HubDatabaseStudioException('Time is invalid', 'DATABASE_REQUEST_INVALID');
         $q = $this->pdo->prepare("SELECT s.session_id, s.user_id, s.csrf_hash, s.expires_at, s.last_seen_at, s.revoked_at, s.session_kind, s.step_up_at FROM control_sessions s JOIN hub_users u ON u.user_id = s.user_id AND u.revoked_at IS NULL JOIN owner_bootstrap o ON o.owner_user_id = s.user_id AND o.singleton_id = 1 AND o.bootstrap_closed = 1 WHERE s.session_hash = :hash"); $q->execute(['hash' => hash('sha256', $token)]); $row = $q->fetch();
         if (!is_array($row) || $row['revoked_at'] !== null || (string) $row['session_kind'] !== 'password' || strtotime((string) $row['expires_at']) <= $at || strtotime((string) $row['last_seen_at']) < $at - self::SESSION_INACTIVITY_TTL) throw new HubDatabaseStudioException('Owner session has expired', 'SESSION_EXPIRED');
         if ($csrf !== null && ($csrf === '' || strlen($csrf) > 256 || !hash_equals((string) $row['csrf_hash'], hash('sha256', $csrf)))) throw new HubDatabaseStudioException('Request verification failed', 'CSRF_REJECTED');
-        if ($requireStepUp) { $step = is_string($row['step_up_at']) ? strtotime((string) $row['step_up_at']) : false; if ($step === false || $step < $at - self::STEP_UP_TTL) throw new HubDatabaseStudioException('Fresh password confirmation is required', 'STEP_UP_REQUIRED'); }
+        if ($action !== null) {
+            try { if (HubTrustPolicy::requiresStepUp($action)) HubOwnerAuthService::assertRecentStepUpSession($row, $now); }
+            catch (HubOwnerAuthException) { throw new HubDatabaseStudioException('Privileged confirmation is required', 'STEP_UP_REQUIRED'); }
+            catch (HubTrustPolicyException) { throw new HubDatabaseStudioException('Database trust policy is unavailable', 'DATABASE_REQUEST_INVALID'); }
+        }
         return $row;
     }
 

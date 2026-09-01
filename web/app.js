@@ -18,6 +18,7 @@ import {
   const DESKTOP_PACKAGES = [['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
   const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, systemReadiness: null, capabilities: null, people: [], accountRequests: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null };
   let desktopReleasePromise = null;
+  let pendingPrivilegedAction = null;
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => undefined);
 
   function message(id, value = '') { const node = $(id); if (node) node.textContent = value; }
@@ -26,13 +27,26 @@ import {
     const existing = $('step-up-form'); if (existing) return existing;
     const before = $('username-form'); if (!before) throw new Error('AWH account surface is unavailable');
     const form = document.createElement('form'); form.id = 'step-up-form'; form.className = 'account-form';
-    const title = document.createElement('h3'); title.textContent = 'ยืนยันการเปลี่ยนแปลงสำคัญ';
+    const title = document.createElement('h3'); title.textContent = 'โหมดผู้ดูแลขั้นสูง';
     const copy = document.createElement('p'); copy.className = 'muted'; copy.textContent = 'AWH ขอรหัสผ่านซ้ำเฉพาะงานความเสี่ยงสูง เช่น ยกระดับเป็น Admin, จัดการ Secret หรือ Recovery เมื่อยืนยันแล้วโหมดผู้ดูแลขั้นสูงจะใช้ได้ 30 นาที';
     const label = document.createElement('label'); label.htmlFor = 'step-up-password'; label.textContent = 'รหัสผ่านปัจจุบัน';
     const password = document.createElement('input'); password.id = 'step-up-password'; password.type = 'password'; password.autocomplete = 'current-password';
-    const submit = document.createElement('button'); submit.type = 'submit'; submit.className = 'secondary-button'; submit.textContent = 'ยืนยันรหัสผ่าน';
+    const actions = document.createElement('div'); actions.className = 'form-actions';
+    const submit = document.createElement('button'); submit.type = 'submit'; submit.className = 'secondary-button'; submit.textContent = 'เปิดโหมดผู้ดูแลขั้นสูง';
+    const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'text-button'; cancel.id = 'step-up-cancel'; cancel.textContent = 'ยกเลิก';
+    actions.append(submit, cancel);
     const result = document.createElement('p'); result.id = 'step-up-message'; result.className = 'form-message'; result.setAttribute('role', 'status');
-    form.append(title, copy, label, password, submit, result); before.before(form); return form;
+    form.append(title, copy, label, password, actions, result); before.before(form); return form;
+  }
+  async function withPrivilegedRetry(action, label = 'รายการสำคัญ') {
+    try { return await action(); }
+    catch (error) {
+      if (error?.code !== 'STEP_UP_REQUIRED') throw error;
+      await openAccount('account'); ensureStepUpForm();
+      message('step-up-message', `${label} ต้องยืนยันตัวตนเพิ่มเพียงครั้งเดียว จากนั้นโหมดผู้ดูแลขั้นสูงจะใช้ได้ 30 นาที`);
+      $('step-up-password')?.focus();
+      return await new Promise((resolve, reject) => { pendingPrivilegedAction = { action, resolve, reject, label }; });
+    }
   }
   function selectedProject() { return state.control?.projects?.find((project) => project.projectId === state.selectedProjectId) || null; }
   function preferredProjectId(projects) {
@@ -264,8 +278,8 @@ import {
         const projectBox = document.createElement('div'); projectBox.className='person-projects'; projectBox.dataset.user=person.userId;
         for (const project of state.control?.projects || []) { const row=document.createElement('label'); row.className='check-row'; const input=document.createElement('input'); input.type='checkbox'; input.value=project.projectId; input.checked=Array.isArray(person.projectIds)&&person.projectIds.includes(project.projectId); const text=document.createElement('span'); text.textContent=project.name; row.append(input,text); projectBox.append(row); }
         const actions=document.createElement('div'); actions.className='task-actions'; const save=document.createElement('button'); save.type='button'; save.className='secondary-button'; save.textContent='บันทึกสิทธิ์'; const revoke=document.createElement('button'); revoke.type='button'; revoke.className='text-button'; revoke.textContent='ปิดบัญชี';
-        save.addEventListener('click', async()=>{ const projectIds=[...projectBox.querySelectorAll('input:checked')].map(n=>n.value); save.disabled=true; try { await updatePersonAccess(person.userId,role.value,projectIds); state.people=(await listPeople()).people||[]; renderPeople(); message('people-message','บันทึกสิทธิ์แล้ว'); } catch(error){ message('people-message',error instanceof Error?error.message:'ยังบันทึกสิทธิ์ไม่ได้'); } finally { save.disabled=false; } });
-        revoke.addEventListener('click', async()=>{ revoke.disabled=true; try { await revokePerson(person.userId); state.people=(await listPeople()).people||[]; renderPeople(); message('people-message','ปิดบัญชีแล้ว'); } catch(error){ message('people-message',error instanceof Error?error.message:'ยังปิดบัญชีไม่ได้'); revoke.disabled=false; } });
+        save.addEventListener('click', async()=>{ const projectIds=[...projectBox.querySelectorAll('input:checked')].map(n=>n.value); save.disabled=true; try { await withPrivilegedRetry(()=>updatePersonAccess(person.userId,role.value,projectIds),'การเปลี่ยนสิทธิ์ผู้ใช้งาน'); state.people=(await listPeople()).people||[]; renderPeople(); message('people-message','บันทึกสิทธิ์แล้ว'); } catch(error){ message('people-message',error instanceof Error?error.message:'ยังบันทึกสิทธิ์ไม่ได้'); } finally { save.disabled=false; } });
+        revoke.addEventListener('click', async()=>{ revoke.disabled=true; try { if(!window.confirm(`ปิดบัญชี “${person.displayName}” ใช่หรือไม่? เซสชันที่ใช้งานอยู่จะถูกเพิกถอนทันที`)){revoke.disabled=false;return;} await revokePerson(person.userId); state.people=(await listPeople()).people||[]; renderPeople(); message('people-message','ปิดบัญชีแล้ว'); } catch(error){ message('people-message',error instanceof Error?error.message:'ยังปิดบัญชีไม่ได้'); revoke.disabled=false; } });
         actions.append(save,revoke); editor.append(role,projectBox,actions); item.append(editor);
       }
       list.append(item);
@@ -284,7 +298,7 @@ import {
       const role=document.createElement('select'); for(const [value,text] of [['TEACHER','ครู'],['STAFF','บุคลากร'],['DIRECTOR','ผู้บริหาร / ผู้อนุมัติ'],['VIEWER','ดูอย่างเดียว'],['ADMIN','ผู้ดูแลระบบ']]){const option=document.createElement('option');option.value=value;option.textContent=text;option.selected=(request.personType==='TEACHER'&&value==='TEACHER')||(request.personType==='DIRECTOR'&&value==='DIRECTOR')||(request.personType==='STAFF'&&value==='STAFF')||(['PARENT','STUDENT','OTHER'].includes(request.personType)&&value==='VIEWER');role.append(option);}
       const projects=document.createElement('div'); projects.className='person-projects'; for(const project of state.control?.projects||[]){const row=document.createElement('label');row.className='check-row';const input=document.createElement('input');input.type='checkbox';input.value=project.projectId;const text=document.createElement('span');text.textContent=project.name;row.append(input,text);projects.append(row);}
       const actions=document.createElement('div'); actions.className='task-actions'; const approve=document.createElement('button');approve.type='button';approve.className='secondary-button';approve.textContent='อนุมัติ';const reject=document.createElement('button');reject.type='button';reject.className='text-button';reject.textContent='ปฏิเสธ';
-      approve.addEventListener('click',async()=>{approve.disabled=true;try{await reviewAccountRequest(request.requestId,'APPROVE',role.value,[...projects.querySelectorAll('input:checked')].map(n=>n.value));state.accountRequests=(await listAccountRequests()).requests||[];state.people=(await listPeople()).people||[];renderPeople();message('people-message','อนุมัติบัญชีแล้ว ผู้สมัครใช้รหัสผ่านที่ตั้งไว้เข้าสู่ระบบได้ทันที');}catch(error){message('people-message',error instanceof Error?error.message:'ยังอนุมัติไม่ได้');approve.disabled=false;}});
+      approve.addEventListener('click',async()=>{approve.disabled=true;try{await withPrivilegedRetry(()=>reviewAccountRequest(request.requestId,'APPROVE',role.value,[...projects.querySelectorAll('input:checked')].map(n=>n.value)),'การอนุมัติสิทธิ์ผู้ใช้งาน');state.accountRequests=(await listAccountRequests()).requests||[];state.people=(await listPeople()).people||[];renderPeople();message('people-message','อนุมัติบัญชีแล้ว ผู้สมัครใช้รหัสผ่านที่ตั้งไว้เข้าสู่ระบบได้ทันที');}catch(error){message('people-message',error instanceof Error?error.message:'ยังอนุมัติไม่ได้');approve.disabled=false;}});
       reject.addEventListener('click',async()=>{reject.disabled=true;try{await reviewAccountRequest(request.requestId,'REJECT','VIEWER',[]);state.accountRequests=(await listAccountRequests()).requests||[];renderAccountRequests();message('people-message','ปฏิเสธคำขอแล้ว');}catch(error){message('people-message',error instanceof Error?error.message:'ยังปฏิเสธไม่ได้');reject.disabled=false;}});
       actions.append(approve,reject);controls.append(role,projects,actions);item.append(title,meta,controls);list.append(item);
     }
@@ -359,14 +373,14 @@ import {
     policy.before(section);
     $('provider-credential-form').addEventListener('submit', async (event) => {
       event.preventDefault(); const field = $('provider-api-key'); message('provider-credential-message', 'กำลังบันทึก key อย่างปลอดภัย…');
-      try { const data = await updateProviderCredential('SET', field.value); state.provider = data.provider; renderProvider(); message('provider-credential-message', 'บันทึก key แล้ว'); }
+      try { const data = await withPrivilegedRetry(()=>updateProviderCredential('SET', field.value),'การเปลี่ยน API credential'); state.provider = data.provider; renderProvider(); message('provider-credential-message', 'บันทึก key แล้ว'); }
       catch (error) { message('provider-credential-message', error instanceof Error ? error.message : 'ยังบันทึก key ไม่ได้'); }
       finally { field.value = ''; }
     });
     $('provider-credential-remove').addEventListener('click', async () => {
       if (!window.confirm('ลบ API key ที่เชื่อมต่อกับ AWH ใช่หรือไม่?')) return;
       message('provider-credential-message', 'กำลังลบ key…');
-      try { const data = await updateProviderCredential('REMOVE'); state.provider = data.provider; renderProvider(); message('provider-credential-message', 'ลบ key แล้ว'); }
+      try { const data = await withPrivilegedRetry(()=>updateProviderCredential('REMOVE'),'การลบ API credential'); state.provider = data.provider; renderProvider(); message('provider-credential-message', 'ลบ key แล้ว'); }
       catch (error) { message('provider-credential-message', error instanceof Error ? error.message : 'ยังลบ key ไม่ได้'); }
     });
     $('provider-connection-test').addEventListener('click', async () => {
@@ -819,7 +833,10 @@ import {
     if (!owner && !['start', 'account'].includes(document.querySelector('.settings-tab.active')?.dataset.settingsTab || '')) showSettingsSection('account');
   }
   function openSheet(id) { const sheet = $(id); if (sheet) openAwhDialog(sheet); }
-  function closeSheet(id, options = {}) { const sheet = $(id); if (sheet) closeAwhDialog(sheet, options); if (id === 'artifact-sheet') clearArtifactWorkspace(); }
+  function closeSheet(id, options = {}) {
+    if (id === 'account-sheet' && pendingPrivilegedAction) { const pending = pendingPrivilegedAction; pendingPrivilegedAction = null; pending.reject(new Error('ยกเลิกรายการแล้ว')); }
+    const sheet = $(id); if (sheet) closeAwhDialog(sheet, options); if (id === 'artifact-sheet') clearArtifactWorkspace();
+  }
   function openPasswordRecovery() {
     let token = null;
     const recoveryHash = window.location.hash;
@@ -991,9 +1008,20 @@ import {
 
   const stepUpForm = ensureStepUpForm();
   stepUpForm.addEventListener('submit', async (event) => {
-    event.preventDefault(); const password = $('step-up-password'); message('step-up-message', 'กำลังยืนยันรหัสผ่าน…');
-    try { const data = await stepUp(password.value); password.value = ''; message('step-up-message', `ยืนยันแล้ว ใช้ได้ถึง ${date(data.stepUpUntil)}`); }
-    catch (error) { message('step-up-message', error instanceof Error ? error.message : 'ยืนยันรหัสผ่านไม่สำเร็จ'); }
+    event.preventDefault(); const password = $('step-up-password'); message('step-up-message', 'กำลังยืนยันตัวตน…');
+    try {
+      const data = await stepUp(password.value); password.value = '';
+      const pending = pendingPrivilegedAction; pendingPrivilegedAction = null;
+      if (pending) {
+        message('step-up-message', `ยืนยันแล้ว · กำลังทำ ${pending.label} ต่อ…`);
+        try { pending.resolve(await pending.action()); } catch (error) { pending.reject(error); }
+      } else message('step-up-message', `เปิดโหมดผู้ดูแลขั้นสูงแล้ว ใช้ได้ถึง ${date(data.stepUpUntil)}`);
+    } catch (error) { message('step-up-message', error instanceof Error ? error.message : 'ยืนยันตัวตนไม่สำเร็จ'); }
+  });
+  $('step-up-cancel')?.addEventListener('click', () => {
+    const pending = pendingPrivilegedAction; pendingPrivilegedAction = null;
+    if (pending) pending.reject(new Error('ยกเลิกรายการแล้ว'));
+    $('step-up-password').value = ''; message('step-up-message', '');
   });
 
   $('product-settings-form').addEventListener('submit', async (event) => {
@@ -1028,7 +1056,7 @@ import {
     const password=$('person-create-password').value; if(password!==$('person-create-confirm').value){message('people-message','ยืนยันรหัสผ่านให้ตรงกัน');return;}
     const projectIds=[...$('people-create-projects').querySelectorAll('input:checked')].map(node=>node.value);
     const button=$('people-create-form').querySelector('button[type="submit"]'); button.disabled=true; message('people-message','กำลังสร้างบัญชี…');
-    try { await createPerson({displayName:$('person-create-name').value.trim(),username:$('person-create-username').value.trim(),password,email:$('person-create-email').value.trim()||null,phone:$('person-create-phone').value.trim()||null,personType:$('person-create-type').value,role:$('person-create-role').value,projectIds,mustChangePassword:false}); $('people-create-form').reset(); projectChecks('people-create-projects'); state.people=(await listPeople()).people||[]; renderPeople(); message('people-message','สร้างบัญชีแล้ว ใช้ชื่อผู้ใช้และรหัสผ่านนี้เข้าสู่ AWH ได้ทันที'); }
+    try { await withPrivilegedRetry(()=>createPerson({displayName:$('person-create-name').value.trim(),username:$('person-create-username').value.trim(),password,email:$('person-create-email').value.trim()||null,phone:$('person-create-phone').value.trim()||null,personType:$('person-create-type').value,role:$('person-create-role').value,projectIds,mustChangePassword:false}),'การสร้างบัญชีสิทธิ์สูง'); $('people-create-form').reset(); projectChecks('people-create-projects'); state.people=(await listPeople()).people||[]; renderPeople(); message('people-message','สร้างบัญชีแล้ว ใช้ชื่อผู้ใช้และรหัสผ่านนี้เข้าสู่ AWH ได้ทันที'); }
     catch(error){message('people-message',error instanceof Error?error.message:'ยังสร้างบัญชีไม่ได้');} finally{button.disabled=false;}
   });
 
@@ -1061,7 +1089,7 @@ import {
 
   $('recovery-codes-create').addEventListener('click', async () => {
     const output = $('recovery-codes'); output.hidden = false; output.textContent = 'กำลังสร้างรหัสกู้คืน…';
-    try { const data = await createRecoveryCodes(); output.textContent = Array.isArray(data.recoveryCodes) ? data.recoveryCodes.join('\n') : 'ไม่สามารถสร้างรหัสกู้คืนได้'; }
+    try { const data = await withPrivilegedRetry(()=>createRecoveryCodes(),'การสร้างรหัสกู้คืน'); output.textContent = Array.isArray(data.recoveryCodes) ? data.recoveryCodes.join('\n') : 'ไม่สามารถสร้างรหัสกู้คืนได้'; }
     catch (error) { output.textContent = error instanceof Error ? error.message : 'ไม่สามารถสร้างรหัสกู้คืนได้'; }
   });
 
