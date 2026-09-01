@@ -36,3 +36,21 @@ Implementation work for this closure is isolated on `awh/night-closure-20260901`
 - Large local generated outputs remain intentionally retained pending a separate safe cache policy: `.awh-local` ~2.4 GB, `out` ~715 MB, `dist-web` ~275 MB, `node_modules` ~534 MB.
 
 Next safe action: freeze the active Project Source Authority checkpoint, transplant it onto current canonical, renumber its migration to M20/schema 20, run full migration/regression QA, and only then consider a Production candidate. Release compaction apply remains a separate explicit Production approval gate.
+
+## 2026-09-01 23:xx ICT — live closure findings
+
+- Canonical advanced during the closure stream: `awh/api-independence` now contains M19 Conversation Lifecycle, HEIC/image-input preparation, mobile workspace coherence and release-artifact compaction. Night Closure must re-read origin before every integration step.
+- M19 Conversation Lifecycle owns SQLite `user_version=19` and migration id `m19-conversation-lifecycle` through `hub/migrations/018_conversation_lifecycle.sql`.
+- The active `/private/tmp/awh-project-source-authority-m19` worktree still proposes its own `018_project_source_authority.sql`, `TARGET_USER_VERSION=19` and `m19-project-source-authority`. This is a provable schema-authority collision.
+- Integration invariant: do not merge that migration as-is. Harvest the Project Source Authority implementation only after its active checkpoint freezes, rebase onto current canonical, and advance it to the next unique migration/user_version (M20/schema 20 unless canonical advances again first).
+- A repository regression guard now verifies unique migration prefixes, unique `TARGET_USER_VERSION`, unique `MIGRATION_ID`, and that schema 19 is owned by Conversation Lifecycle.
+
+## Storage evidence — read-only manifest/inode audit
+
+- Live pointer remains `m18-2f393e3b2341` for both Control and Web during this audit.
+- Central desktop artifact store is present and already deduplicates a large share of release binaries.
+- 171 release desktop/checksum paths matched canonical store objects; 131 paths are already linked to the store inode.
+- Remaining Control-only candidates represent ~12.52 GB logical bytes, but inode-aware guaranteed physical reclaim is ~9.70 GB; shared-inode uncertainty is ~0.94 GB.
+- Considering both Control and Web release copies, inode-aware guaranteed physical reclaim is ~10.64 GB with no remaining shared-inode uncertainty in the matched set.
+- Therefore release-directory deletion is not the first storage action. Preferred first mutation is content-preserving hard-link compaction against verified SHA-256 store objects, then re-audit disk usage before any release-retention purge.
+- `audit-release-retention.sh` is read-only and reports block-aware reclaim potential so future Night Closure runs do not confuse logical duplicate bytes with guaranteed physical reclaim.
