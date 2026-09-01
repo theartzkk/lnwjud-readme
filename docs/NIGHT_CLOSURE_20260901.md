@@ -124,3 +124,15 @@ Next safe action: publish this converged M20 branch for PR/CI review against `aw
 Next safe action: keep Production at schema 19 until explicit M20 activation approval. The highest-value independent safe work is repository/worktree classification plus continued rendered/field QA on canonical. Release hard-link compaction is ready by evidence but remains a separate Production mutation gate.
 
 - Post-merge rendered QA also PASS on clean checkpoint commit `29f0d157326b66a219df6c7bc438902ee5370ec7`: 16 screenshots across 390×844 and 1440×900, with the renderer reporting `dirty=false`.
+
+## 2026-09-02 05:0x ICT — automation closure checkpoint 5
+
+- Canonical GitHub Source of Truth was re-read first and remains `awh/api-independence` at exact SHA `253160a7ec7009b7db973160e722589326e4435b` (PR #79 merge); no newer canonical commit was present.
+- Local worktree inspection found five pre-existing registered worktrees before this checkpoint. The only dirty feature worktree is `/Users/mac/Desktop/AWH-project-source-authority` on `fix/project-source-authority-20260901` at `4a6b91da1a6ac20afd9a43abb8cd33cf6e44f364`, with seven tracked files modified plus untracked `node_modules`; it was treated as active evidence and not edited, reset, merged, or removed.
+- A new isolated clean QA worktree was created from exact canonical SHA at `/Users/mac/Desktop/AWH-night-closure-253160a`; this avoids collision with the dirty Project Source Authority/M19 evidence worktree.
+- Fresh Production read-only verification: Control pointer `/opt/awh-hub/control-plane-current` and Web pointer `/var/www/awh-web/current` both resolve to `m19-b66ef39cc986`; SQLite remains schema 19 with `integrity_check=ok` and zero FK violations. nginx, PHP 8.3 FPM, native executor timer, and backup timer are active.
+- Exact pre-M19 rollback database remains `/var/backups/awh-hub/awh.sqlite.pre-m19-b66ef39cc986`, size `52,834,304` bytes, timestamp `2026-09-02 00:02:50 +0700`.
+- Fresh canonical release-retention preview: 37 Control + 33 Web releases, 174 matched artifact paths, 134 already store-linked. Guaranteed physical reclaim is `9,701,990,589` bytes Control-only and `10,640,730,340` bytes Control+Web. Root filesystem currently uses `23,501,127,680 / 30,083,776,512` bytes (~79%); predicted used after verified both-side compaction is `12,860,397,340` bytes (~42.7%). No Production filesystem mutation was performed.
+- Current canonical focused QA PASS: TypeScript typecheck plus 13/13 tests covering HEIC provider-safe input, conversation lifecycle/delete semantics, Home/Tasks/Files surfaces, release-retention audit, and visual-review evidence rules.
+
+Next safe action: keep Production at M19/schema 19 until explicit approval for M20 activation. The verified ~10.64 GB hard-link compaction remains the highest-value Production disk-recovery mutation but still requires its separate approval gate. Keep the dirty Project Source Authority worktree untouched until its owner/agent state is explicitly reconciled against canonical.
