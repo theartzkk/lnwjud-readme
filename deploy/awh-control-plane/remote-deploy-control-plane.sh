@@ -231,6 +231,24 @@ deduplicate_desktop_artifacts() {
 verify_web_access() { sudo -n -u www-data test -x /var; sudo -n -u www-data test -x /var/www; sudo -n -u www-data test -x /var/www/awh-web; sudo -n -u www-data test -x /var/www/awh-web/releases; sudo -n -u www-data test -x "$WEB_RELEASE"; sudo -n -u www-data test -r "$WEB_RELEASE/index.html"; sudo -n -u www-data test -r "$WEB_RELEASE/awh-design-system.css"; sudo -n -u www-data test -r "$WEB_RELEASE/responsive-layout.css"; sudo -n -u www-data test -r "$WEB_RELEASE/navigation.js"; sudo grep -q -- '--awh-font-sans' "$WEB_RELEASE/awh-design-system.css"; sudo grep -q -- 'Shared responsive-width contract' "$WEB_RELEASE/responsive-layout.css"; sudo -n -u www-data test -r "$WEB_RELEASE/database.html"; sudo -n -u www-data test -r "$WEB_RELEASE/database.css"; sudo -n -u www-data test -r "$WEB_RELEASE/database.js"; sudo -n -u www-data test -r "$WEB_RELEASE/hosting.html"; sudo -n -u www-data test -r "$WEB_RELEASE/hosting.css"; sudo -n -u www-data test -r "$WEB_RELEASE/hosting.js"; sudo grep -q '"mode": "CONTROL"' "$WEB_RELEASE/web-config.json"; sudo grep -q '"mode": "CONTROL"' "$WEB_RELEASE/data.json"; ! sudo grep -q 'Remote Preview\|Preview only\|static build' "$WEB_RELEASE/data.json"; sudo grep -q "awh-shell-$RELEASE_ID" "$WEB_RELEASE/sw.js"; }
 pointer_capture() { PREVIOUS_POINTER=ABSENT; PREVIOUS_TARGET=; if test -L "$POINTER"; then PREVIOUS_TARGET=$(readlink "$POINTER"); case "$PREVIOUS_TARGET" in /opt/awh-hub/control-releases/*) test -d "$PREVIOUS_TARGET" || return 1 ;; *) return 1 ;; esac; PREVIOUS_POINTER=PRESENT; elif test -e "$POINTER"; then return 1; fi; }
 pointer_restore() { if test "$PREVIOUS_POINTER" = ABSENT; then sudo rm -f "$POINTER"; test ! -e "$POINTER" && test ! -L "$POINTER"; else sudo rm -f "$POINTER"; sudo ln -s "$PREVIOUS_TARGET" "$POINTER"; test "$(readlink "$POINTER")" = "$PREVIOUS_TARGET"; fi; }
+restore_previous_control_include() {
+  test "$PREVIOUS_POINTER" = PRESENT || return 0
+  previous_include="$PREVIOUS_TARGET/deploy/nginx/awh-control-plane.conf"
+  previous_renderer="$PREVIOUS_TARGET/deploy/nginx/render-control-plane-include.php"
+  sudo test -f "$previous_include" && sudo test -f "$previous_renderer" || return 1
+  origin_placeholders=$(sudo grep -cF 'fastcgi_param AWH_CONTROL_ORIGIN https://PREVIEW_HOSTNAME;' "$previous_include" || true)
+  socket_placeholders=$(sudo grep -cF 'fastcgi_pass unix:PREVIEW_AWH_FPM_SOCKET;' "$previous_include" || true)
+  if test "$origin_placeholders" -gt 0 || test "$socket_placeholders" -gt 0; then
+    test "$origin_placeholders" -gt 0 && test "$origin_placeholders" = "$socket_placeholders" || return 1
+    rollback_include_tmp=$(mktemp /tmp/awh-control-rollback.XXXXXX) || return 1
+    if ! sudo /usr/bin/php "$previous_renderer" "$previous_include" "$rollback_include_tmp" "$HOSTNAME" "$AWH_FPM_SOCKET"; then sudo rm -f "$rollback_include_tmp"; return 1; fi
+    if ! sudo install -o awh-hub -g awh-hub -m 0644 "$rollback_include_tmp" "$previous_include"; then sudo rm -f "$rollback_include_tmp"; return 1; fi
+    sudo rm -f "$rollback_include_tmp" || return 1
+  fi
+  sudo grep -F "fastcgi_param AWH_CONTROL_ORIGIN https://$HOSTNAME;" "$previous_include" >/dev/null || return 1
+  sudo grep -F "fastcgi_pass unix:$AWH_FPM_SOCKET;" "$previous_include" >/dev/null || return 1
+  ! sudo grep -Eq 'PREVIEW_HOSTNAME|PREVIEW_AWH_FPM_SOCKET' "$previous_include"
+}
 web_pointer_capture() { WEB_PREVIOUS=ABSENT; WEB_TARGET=; if test -L "$WEB_POINTER"; then WEB_TARGET=$(readlink "$WEB_POINTER"); case "$WEB_TARGET" in /var/www/awh-web/releases/*) test -d "$WEB_TARGET" || return 1 ;; *) return 1 ;; esac; WEB_PREVIOUS=PRESENT; elif test -e "$WEB_POINTER"; then return 1; fi; }
 web_pointer_restore() { if test "$WEB_PREVIOUS" = ABSENT; then sudo rm -f "$WEB_POINTER"; test ! -e "$WEB_POINTER" && test ! -L "$WEB_POINTER"; else sudo rm -f "$WEB_POINTER"; sudo ln -s "$WEB_TARGET" "$WEB_POINTER"; test "$(readlink "$WEB_POINTER")" = "$WEB_TARGET"; fi; }
 rollback() {
@@ -242,7 +260,7 @@ rollback() {
       sudo sqlite3 "$BACKUP" 'PRAGMA foreign_key_check;' >/dev/null || ok=0
       sudo sqlite3 "$DB" ".restore '$BACKUP'" >/dev/null || ok=0
     fi
-    if test "$POINTER_CHANGED" -eq 1; then pointer_restore || ok=0; fi
+    if test "$POINTER_CHANGED" -eq 1; then pointer_restore || ok=0; if test "$ok" -eq 1; then restore_previous_control_include || ok=0; fi; fi
     if test "$WEB_POINTER_CHANGED" -eq 1; then web_pointer_restore || ok=0; fi
     if test "$NGINX_CHANGED" -eq 1; then sudo cp -p "$NGINX_BACKUP" "$NGINX_CONFIG" || ok=0; fi
     if test "$EXECUTOR_UNITS_INSTALLED" -eq 1; then
@@ -282,7 +300,7 @@ rollback() {
       sudo nginx -t >/dev/null || ok=0
     fi
     if test "$ok" -eq 1 && test "$POINTER_CHANGED" -eq 1; then reload_awh_php_fpm || ok=0; fi
-    if test "$ok" -eq 1 && { test "$NGINX_CHANGED" -eq 1 || test "$TOPOLOGY_ARCHIVED" -eq 1; }; then sudo systemctl reload nginx || ok=0; fi
+    if test "$ok" -eq 1 && { test "$NGINX_CHANGED" -eq 1 || test "$POINTER_CHANGED" -eq 1 || test "$TOPOLOGY_ARCHIVED" -eq 1; }; then sudo systemctl reload nginx || ok=0; fi
     if test "$ok" -eq 1; then verify_m3d || ok=0; fi
     # M9/M10 are all-or-nothing v7 extensions. A successful rollback
     # must prove the original M7 authority, not merely that SQLite restored a
