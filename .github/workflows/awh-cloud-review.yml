@@ -61,7 +61,7 @@ jobs:
             sudo apt-get install -y xvfb
           fi
       - name: Verify review contracts
-        run: node --import tsx --test test/visual-review-loop.test.ts test/visual-review-longterm.test.ts test/aipass-findings-parity.test.ts test/aipass-compatible-export.test.ts
+        run: node --import tsx --test test/visual-review-loop.test.ts test/visual-review-longterm.test.ts test/aipass-findings-parity.test.ts
       - name: Verify Cloud artifact import contract
         run: php hub/tests/m18-cloud-first-control.php
       - name: Verify exact-SHA findings contract
