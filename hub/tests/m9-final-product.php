@@ -72,7 +72,7 @@ try {
     m9_assert($blockedSecret['status'] === 400 && str_contains($blockedSecret['body'], 'ATTACHMENT_TYPE_FORBIDDEN'), 'private-key-like files are never normal conversation attachments');
 
     $invitePayload = ['displayName' => 'Collaborator', 'email' => null, 'projectIds' => [$project], 'role' => 'COLLABORATOR', 'username' => 'collaborator'];
-    $pdo->prepare('UPDATE control_sessions SET step_up_at = :at WHERE session_hash = :hash')->execute(['at' => gmdate('c', strtotime($now) - 901), 'hash' => hash('sha256', $ownerSession['sessionToken'])]);
+    $pdo->prepare('UPDATE control_sessions SET step_up_at = :at WHERE session_hash = :hash')->execute(['at' => gmdate('c', strtotime($now) - 1801), 'hash' => hash('sha256', $ownerSession['sessionToken'])]);
     try { $auth->inviteUser($ownerSession['sessionToken'], $ownerSession['csrfToken'], $invitePayload, $now); throw new RuntimeException('stale session invited a user'); } catch (HubOwnerAuthException $error) { m9_assert($error->codeName === 'STEP_UP_REQUIRED', 'stale owner session cannot change people'); }
     $stepUp = $auth->stepUp($ownerSession['sessionToken'], $ownerSession['csrfToken'], $ownerPassword);
     m9_assert(isset($stepUp['stepUpUntil']), 'password confirmation restores a bounded step-up window');
@@ -92,10 +92,8 @@ try {
     $disabledWithoutBudget = ['enabled' => true, 'modelFast' => 'gpt-5.4-mini', 'modelBalanced' => 'gpt-5.4', 'modelStrong' => 'gpt-5.4', 'monthlyBudgetMicrounits' => 0, 'warningMicrounits' => 0, 'inputMicrounitsPerMillion' => 0, 'outputMicrounitsPerMillion' => 0];
     try { $agent->updatePolicy($owner, $disabledWithoutBudget, $now); throw new RuntimeException('unbounded provider policy was accepted'); } catch (HubNativeAgentException $error) { m9_assert($error->codeName === 'PROVIDER_POLICY_INVALID', 'enabled provider always requires a positive cost budget'); }
     $policy = ['enabled' => true, 'modelFast' => 'gpt-5.4-mini', 'modelBalanced' => 'gpt-5.4', 'modelStrong' => 'gpt-5.4', 'monthlyBudgetMicrounits' => 10000, 'warningMicrounits' => 5000, 'inputMicrounitsPerMillion' => 1000000, 'outputMicrounitsPerMillion' => 1000000];
-    $pdo->prepare('UPDATE control_sessions SET step_up_at = :at WHERE session_hash = :hash')->execute(['at' => gmdate('c', strtotime($now) - 901), 'hash' => hash('sha256', $ownerSession['sessionToken'])]);
-    try { $control->updateProviderPolicy($ownerSession['sessionToken'], $ownerSession['csrfToken'], $policy, $now); throw new RuntimeException('stale session changed provider policy'); } catch (HubControlPlaneException $error) { m9_assert($error->codeName === 'STEP_UP_REQUIRED', 'stale owner session cannot change AI spend policy'); }
-    $auth->stepUp($ownerSession['sessionToken'], $ownerSession['csrfToken'], $ownerPassword);
-    m9_assert(($control->updateProviderPolicy($ownerSession['sessionToken'], $ownerSession['csrfToken'], $policy, $now)['provider']['enabled'] ?? false) === true, 'fresh step-up is required for owner AI spend policy');
+    $pdo->prepare('UPDATE control_sessions SET step_up_at = :at WHERE session_hash = :hash')->execute(['at' => gmdate('c', strtotime($now) - 3600), 'hash' => hash('sha256', $ownerSession['sessionToken'])]);
+    m9_assert(($control->updateProviderPolicy($ownerSession['sessionToken'], $ownerSession['csrfToken'], $policy, $now)['provider']['enabled'] ?? false) === true, 'routine AI spend policy uses the authenticated Owner session without repeated password entry');
     $storage = $pdo->query("SELECT storage_key FROM control_conversation_attachments WHERE attachment_id = '$attachmentId'")->fetchColumn();
     $documentStorage = $pdo->query("SELECT storage_key FROM control_conversation_attachments WHERE attachment_id = '$documentId'")->fetchColumn();
     $documentPath = (new HubAttachmentStore($attachmentRoot))->read((string) $documentStorage);
