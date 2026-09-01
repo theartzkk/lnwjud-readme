@@ -129,11 +129,11 @@ function updateMobileNavigation() {
   const nav = $('awh-mobile-nav');
   if (!(nav instanceof HTMLElement)) return;
   const dashboard = $(DASHBOARD_ID);
-  const home = document.body.classList.contains('product-dashboard-active');
-  const activeDestination = !home ? 'work'
-    : dashboard?.dataset.view === 'tasks' ? 'tasks'
-    : dashboard?.dataset.view === 'files' ? 'files'
-    : 'home';
+  const dashboardActive = document.body.classList.contains('product-dashboard-active');
+  const explicit = nav.dataset.activeDestination;
+  const activeDestination = explicit === 'tools' ? 'tools'
+    : dashboardActive && ['tasks', 'files'].includes(dashboard?.dataset.view || '') ? 'tasks'
+    : 'work';
   for (const item of nav.querySelectorAll('[data-mobile-destination]')) {
     const active = item.dataset.mobileDestination === activeDestination;
     item.classList.toggle('is-active', active);
@@ -154,10 +154,17 @@ function mountMobileNavigation() {
     return item;
   };
   nav.append(
-    make('⌂', 'หน้าแรก', 'home', () => returnHome()),
-    make('✦', 'แชท', 'work', () => openWork()),
-    make('↻', 'งาน', 'tasks', () => openTaskSurface()),
-    make('▤', 'ไฟล์', 'files', () => openFilesSurface()),
+    make('✦', 'แชท', 'work', () => {
+      if (document.body.classList.contains('product-dashboard-active')) returnHome();
+      else openWork();
+    }),
+    make('↻', 'งานของฉัน', 'tasks', () => openTaskSurface()),
+    make('▦', 'เครื่องมือ', 'tools', () => {
+      returnHome();
+      nav.dataset.activeDestination = 'tools';
+      updateMobileNavigation();
+      window.setTimeout(() => $('awh-home-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40);
+    }),
   );
   document.body.append(nav);
   const updateKeyboardViewport = () => {
@@ -255,6 +262,8 @@ function setDashboardView(view) {
 }
 
 function openWork(prompt = '', submit = false) {
+  const mobileNav = $('awh-mobile-nav');
+  if (mobileNav instanceof HTMLElement) delete mobileNav.dataset.activeDestination;
   document.body.classList.remove('product-dashboard-active');
   const dashboard = $(DASHBOARD_ID);
   if (dashboard) dashboard.hidden = true;
@@ -484,6 +493,8 @@ function renderTaskSurface() {
 
 function openTaskSurface(filter = 'all', taskId = null) {
   if (!state.control?.authenticated) return;
+  const mobileNav = $('awh-mobile-nav');
+  if (mobileNav instanceof HTMLElement) delete mobileNav.dataset.activeDestination;
   state.taskFilter = ['all', 'active', 'attention', 'completed'].includes(filter) ? filter : 'all';
   state.selectedTaskId = taskId;
   setDashboardView('tasks');
@@ -534,6 +545,8 @@ function renderFilesSurface() {
 
 function openFilesSurface(query = '') {
   if (!state.control?.authenticated) return;
+  const mobileNav = $('awh-mobile-nav');
+  if (mobileNav instanceof HTMLElement) delete mobileNav.dataset.activeDestination;
   state.filesQuery = typeof query === 'string' ? query.slice(0, 120) : '';
   setDashboardView('files');
   const dashboard = $(DASHBOARD_ID);
@@ -638,13 +651,13 @@ function mountDashboard() {
   taskSurface.id = 'dashboard-tasks';
   taskSurface.className = 'awh-home-section awh-task-surface';
   taskSurface.hidden = true;
-  taskSurface.innerHTML = '<div class="awh-task-surface-header"><div><span>งานและการดำเนินการ</span><h2>ติดตามงานแบบเข้าใจง่าย</h2><p>ดูสถานะจริงของงาน ผลลัพธ์ และสิ่งที่ต้องทำต่อจากข้อมูล AWH</p></div><button id="dashboard-tasks-close" class="awh-secondary-action" type="button">กลับหน้าแรก</button></div><div class="awh-task-toolbar"><div class="awh-task-filters" role="tablist" aria-label="กรองงาน"><button type="button" class="awh-task-filter active" data-task-filter="all" role="tab" aria-selected="true">ทั้งหมด</button><button type="button" class="awh-task-filter" data-task-filter="active" role="tab" aria-selected="false">กำลังทำ</button><button type="button" class="awh-task-filter" data-task-filter="attention" role="tab" aria-selected="false">ต้องดู</button><button type="button" class="awh-task-filter" data-task-filter="completed" role="tab" aria-selected="false">เสร็จแล้ว</button></div><small id="dashboard-task-count" aria-live="polite">กำลังอ่านข้อมูล…</small></div><div class="awh-task-layout"><div id="dashboard-task-list" class="awh-task-list" role="list" aria-label="รายการงาน"></div><article id="dashboard-task-detail" class="awh-task-detail" aria-live="polite"></article></div>';
+  taskSurface.innerHTML = '<div class="awh-task-surface-header"><div><span>งานและการดำเนินการ</span><h2>ติดตามงานแบบเข้าใจง่าย</h2><p>ดูสถานะจริงของงาน ผลลัพธ์ และสิ่งที่ต้องทำต่อจากข้อมูล AWH</p></div><div class="awh-surface-actions"><button id="dashboard-tasks-files" class="awh-secondary-action" type="button">ไฟล์</button><button id="dashboard-tasks-close" class="awh-secondary-action" type="button">กลับแชท</button></div></div><div class="awh-task-toolbar"><div class="awh-task-filters" role="tablist" aria-label="กรองงาน"><button type="button" class="awh-task-filter active" data-task-filter="all" role="tab" aria-selected="true">ทั้งหมด</button><button type="button" class="awh-task-filter" data-task-filter="active" role="tab" aria-selected="false">กำลังทำ</button><button type="button" class="awh-task-filter" data-task-filter="attention" role="tab" aria-selected="false">ต้องดู</button><button type="button" class="awh-task-filter" data-task-filter="completed" role="tab" aria-selected="false">เสร็จแล้ว</button></div><small id="dashboard-task-count" aria-live="polite">กำลังอ่านข้อมูล…</small></div><div class="awh-task-layout"><div id="dashboard-task-list" class="awh-task-list" role="list" aria-label="รายการงาน"></div><article id="dashboard-task-detail" class="awh-task-detail" aria-live="polite"></article></div>';
 
   const filesSurface = document.createElement('section');
   filesSurface.id = 'dashboard-files';
   filesSurface.className = 'awh-home-section awh-files-surface';
   filesSurface.hidden = true;
-  filesSurface.innerHTML = '<div class="awh-task-surface-header"><div><span>ไฟล์และผลงาน</span><h2>คลังไฟล์ของ AWH</h2><p>ไฟล์ที่อัปโหลดหรือสร้างจากงานของคุณ พร้อมที่มาและผลลัพธ์ที่ดาวน์โหลดได้</p></div><button id="dashboard-files-close" class="awh-secondary-action" type="button">กลับหน้าแรก</button></div><form id="dashboard-files-form" class="awh-files-search"><label for="dashboard-files-search">ค้นหาไฟล์</label><div><input id="dashboard-files-search" type="search" maxlength="120" placeholder="ค้นหาจากชื่อหรือประเภทไฟล์" autocomplete="off" /><button class="awh-secondary-action" type="submit">ค้นหา</button><button id="dashboard-files-clear" class="awh-text-action" type="button">ล้าง</button></div><small id="dashboard-file-count" aria-live="polite">กำลังอ่านข้อมูล…</small></form><div id="dashboard-file-list" class="awh-file-list" role="list" aria-label="คลังไฟล์"></div>';
+  filesSurface.innerHTML = '<div class="awh-task-surface-header"><div><span>ไฟล์และผลงาน</span><h2>คลังไฟล์ของ AWH</h2><p>ไฟล์ที่อัปโหลดหรือสร้างจากงานของคุณ พร้อมที่มาและผลลัพธ์ที่ดาวน์โหลดได้</p></div><div class="awh-surface-actions"><button id="dashboard-files-tasks" class="awh-secondary-action" type="button">งานของฉัน</button><button id="dashboard-files-close" class="awh-secondary-action" type="button">กลับแชท</button></div></div><form id="dashboard-files-form" class="awh-files-search"><label for="dashboard-files-search">ค้นหาไฟล์</label><div><input id="dashboard-files-search" type="search" maxlength="120" placeholder="ค้นหาจากชื่อหรือประเภทไฟล์" autocomplete="off" /><button class="awh-secondary-action" type="submit">ค้นหา</button><button id="dashboard-files-clear" class="awh-text-action" type="button">ล้าง</button></div><small id="dashboard-file-count" aria-live="polite">กำลังอ่านข้อมูล…</small></form><div id="dashboard-file-list" class="awh-file-list" role="list" aria-label="คลังไฟล์"></div>';
 
   const tools = document.createElement('section');
   tools.id = 'awh-home-tools';
@@ -708,9 +721,11 @@ function mountDashboard() {
 
   $('dashboard-open-work')?.addEventListener('click', () => openWork());
   $('dashboard-open-tasks')?.addEventListener('click', () => openTaskSurface());
+  $('dashboard-tasks-files')?.addEventListener('click', () => openFilesSurface());
   $('dashboard-tasks-close')?.addEventListener('click', returnHome);
   taskSurface.querySelectorAll('[data-task-filter]').forEach((node) => node.addEventListener('click', () => { state.taskFilter = node.dataset.taskFilter || 'all'; state.selectedTaskId = null; renderTaskSurface(); }));
   $('dashboard-open-files')?.addEventListener('click', () => openFilesSurface());
+  $('dashboard-files-tasks')?.addEventListener('click', () => openTaskSurface());
   $('dashboard-files-close')?.addEventListener('click', returnHome);
   $('dashboard-files-form')?.addEventListener('submit', (event) => { event.preventDefault(); state.filesQuery = $('dashboard-files-search')?.value || ''; renderFilesSurface(); });
   $('dashboard-files-clear')?.addEventListener('click', () => { state.filesQuery = ''; renderFilesSurface(); $('dashboard-files-search')?.focus(); });

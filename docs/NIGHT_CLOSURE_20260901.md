@@ -54,3 +54,10 @@ Next safe action: freeze the active Project Source Authority checkpoint, transpl
 - Considering both Control and Web release copies, inode-aware guaranteed physical reclaim is ~10.64 GB with no remaining shared-inode uncertainty in the matched set.
 - Therefore release-directory deletion is not the first storage action. Preferred first mutation is content-preserving hard-link compaction against verified SHA-256 store objects, then re-audit disk usage before any release-retention purge.
 - `audit-release-retention.sh` is read-only and reports block-aware reclaim potential so future Night Closure runs do not confuse logical duplicate bytes with guaranteed physical reclaim.
+
+## Mobile UX authority convergence
+
+- Rendered 390×844 baseline confirmed the M19 mobile coherence build had four primary destinations: หน้าแรก / แชท / งาน / ไฟล์.
+- `docs/AWH-UX-CONSTITUTION.md` is the declared product-level UX authority and requires at most three mobile primary destinations: แชท / งานของฉัน / เครื่องมือ. The four-item regression test introduced by M19 therefore conflicted with the higher-level product contract.
+- Night Closure restores the three-destination mobile contract without deleting Files. Home is treated as the Chat-first landing surface; Tasks and Files share the งานของฉัน destination; Files remains reachable from task/file cross-navigation, Home artifacts and artifact/task links; desktop navigation remains richer.
+- The regression test now checks the isolated mobile-navigation block and the UX Constitution together, so a future local test cannot silently redefine the product-level navigation contract.
