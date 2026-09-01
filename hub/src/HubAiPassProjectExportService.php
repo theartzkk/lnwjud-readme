@@ -135,7 +135,17 @@ final class HubAiPassProjectExportService
     /** @param array<string,string> $files */
     private function zipBytes(array $files): string
     {
-        if(!class_exists('ZipArchive'))throw new HubAiPassProjectExportException('ZIP support is unavailable','AIPASS_EXPORT_UNAVAILABLE');$tmp=tempnam(sys_get_temp_dir(),'awh-aipass-');if(!is_string($tmp))throw new HubAiPassProjectExportException('AiPASS staging is unavailable','AIPASS_EXPORT_UNAVAILABLE');@unlink($tmp);$zip=new ZipArchive();if($zip->open($tmp,ZipArchive::CREATE|ZipArchive::EXCL)!==true)throw new HubAiPassProjectExportException('AiPASS staging is unavailable','AIPASS_EXPORT_UNAVAILABLE');try{foreach($files as $name=>$bytes){if(!$zip->addFromString($name,$bytes))throw new HubAiPassProjectExportException('AiPASS file could not be staged','AIPASS_EXPORT_FAILED');}$zip->close();$bytes=file_get_contents($tmp);if(!is_string($bytes)||strlen($bytes)<100)throw new HubAiPassProjectExportException('AiPASS package is invalid','AIPASS_EXPORT_FAILED');return $bytes;}finally{if($zip->status===ZipArchive::ER_OK){@$zip->close();}@unlink($tmp);}
+        if(!class_exists('ZipArchive'))throw new HubAiPassProjectExportException('ZIP support is unavailable','AIPASS_EXPORT_UNAVAILABLE');
+        $tmp=tempnam(sys_get_temp_dir(),'awh-aipass-');if(!is_string($tmp))throw new HubAiPassProjectExportException('AiPASS staging is unavailable','AIPASS_EXPORT_UNAVAILABLE');@unlink($tmp);
+        $zip=new ZipArchive();if($zip->open($tmp,ZipArchive::CREATE|ZipArchive::EXCL)!==true)throw new HubAiPassProjectExportException('AiPASS staging is unavailable','AIPASS_EXPORT_UNAVAILABLE');$open=true;
+        try{
+            foreach($files as $name=>$bytes){if(!$zip->addFromString($name,$bytes))throw new HubAiPassProjectExportException('AiPASS file could not be staged','AIPASS_EXPORT_FAILED');}
+            if(!$zip->close())throw new HubAiPassProjectExportException('AiPASS package could not be finalized','AIPASS_EXPORT_FAILED');$open=false;
+            $bytes=file_get_contents($tmp);if(!is_string($bytes)||strlen($bytes)<100)throw new HubAiPassProjectExportException('AiPASS package is invalid','AIPASS_EXPORT_FAILED');return $bytes;
+        }finally{
+            if($open){try{$zip->close();}catch(Throwable){}}
+            @unlink($tmp);
+        }
     }
 
     private static function xmlText(string $value): string { $value=str_replace("\0",'',$value);return preg_replace('/[^\x09\x0A\x0D\x20-\x{D7FF}\x{E000}-\x{FFFD}\x{10000}-\x{10FFFF}]/u','�',$value)??''; }
