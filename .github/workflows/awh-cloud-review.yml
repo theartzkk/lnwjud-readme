@@ -1,0 +1,95 @@
+name: AWH Cloud Review
+run-name: AWH Cloud Review ${{ inputs.execution_id }} ${{ inputs.review_profile }} ${{ inputs.revision }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Exact commit SHA to review
+        required: true
+        type: string
+      execution_id:
+        description: Canonical AWH execution UUID used only for correlation
+        required: true
+        type: string
+      review_profile:
+        description: Visual review profile
+        required: true
+        default: daily
+        type: choice
+        options:
+          - daily
+          - final
+
+permissions:
+  contents: read
+
+concurrency:
+  group: awh-cloud-review-${{ inputs.execution_id }}
+  cancel-in-progress: true
+
+jobs:
+  visual-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.revision }}
+      - name: Verify exact revision
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ inputs.revision }}"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install Electron runtime
+        run: |
+          node node_modules/electron/install.js
+          test -x node_modules/electron/dist/electron
+      - name: Configure Chromium sandbox
+        run: |
+          sandbox='node_modules/electron/dist/chrome-sandbox'
+          sudo chown root:root "$sandbox"
+          sudo chmod 4755 "$sandbox"
+      - name: Ensure virtual display
+        run: |
+          if ! command -v xvfb-run >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y xvfb
+          fi
+      - name: Verify review contracts
+        run: node --import tsx --test test/visual-review-loop.test.ts test/visual-review-longterm.test.ts test/aipass-findings-parity.test.ts
+      - name: Verify Cloud artifact import contract
+        run: php hub/tests/m18-cloud-first-control.php
+      - name: Verify exact-SHA findings contract
+        shell: bash
+        run: |
+          fixture="$RUNNER_TEMP/aipass-findings-contract.json"
+          node -e "const fs=require('fs');fs.writeFileSync(process.argv[1],JSON.stringify({schemaVersion:1,revision:'${{ inputs.revision }}',reviewer:'Cloud contract fixture',verdict:'PASS',scores:{chat:100,mobile:100,agentic:100,artifact:100,recovery:100},findings:[]})+'\n')" "$fixture"
+          node scripts/review/validate-aipass-findings.mjs "$fixture" "${{ inputs.revision }}"
+          rm -f "$fixture"
+      - name: Create exact-SHA visual review pack
+        env:
+          AWH_ELECTRON_BIN: node_modules/electron/dist/electron
+        run: |
+          revision="${{ inputs.revision }}"
+          out="$RUNNER_TEMP/AWH-AIPASS-REVIEW-${revision}.zip"
+          xvfb-run -a npm run review:visual -- "$out"
+          test -s "$out"
+          shasum -a 256 "$out"
+          cp "$out" "AWH-AIPASS-REVIEW-${revision}.zip"
+      - name: Write cloud review metadata
+        run: |
+          node -e "const fs=require('fs');fs.writeFileSync('AWH-CLOUD-REVIEW.json',JSON.stringify({schemaVersion:1,revision:'${{ inputs.revision }}',executionId:'${{ inputs.execution_id }}',profile:'${{ inputs.review_profile }}',workflow:'awh-cloud-review.yml'},null,2)+'\n')"
+      - name: Upload review bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: AWH-AIPASS-REVIEW-${{ inputs.revision }}
+          path: |
+            AWH-AIPASS-REVIEW-${{ inputs.revision }}.zip
+            AWH-CLOUD-REVIEW.json
+          if-no-files-found: error
+          retention-days: 14
