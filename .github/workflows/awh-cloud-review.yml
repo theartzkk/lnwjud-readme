@@ -61,7 +61,7 @@ jobs:
             sudo apt-get install -y xvfb
           fi
       - name: Verify review contracts
-        run: node --import tsx --test test/visual-review-loop.test.ts test/visual-review-longterm.test.ts test/aipass-findings-parity.test.ts
+        run: node --import tsx --test test/visual-review-loop.test.ts test/visual-review-longterm.test.ts test/aipass-findings-parity.test.ts test/aipass-compatible-export.test.ts
       - name: Verify Cloud artifact import contract
         run: php hub/tests/m18-cloud-first-control.php
       - name: Verify exact-SHA findings contract
@@ -81,6 +81,28 @@ jobs:
           test -s "$out"
           shasum -a 256 "$out"
           cp "$out" "AWH-AIPASS-REVIEW-${revision}.zip"
+      - name: Verify AiPASS-compatible attachments
+        shell: bash
+        run: |
+          revision="${{ inputs.revision }}"
+          pack="AWH-AIPASS-REVIEW-${revision}.zip"
+          for entry in \
+            AIPASS-COMPATIBLE/01_AIPASS_REVIEW_CONTEXT.docx \
+            AIPASS-COMPATIBLE/02_AIPASS_SOURCE_EVIDENCE.docx \
+            AIPASS-COMPATIBLE/03_AIPASS_VISUAL_EVIDENCE.pdf; do
+            unzip -Z1 "$pack" | grep -Fx "$entry" >/dev/null
+          done
+          tmp="$RUNNER_TEMP/aipass-compatible-check"
+          mkdir -p "$tmp"
+          unzip -p "$pack" AIPASS-COMPATIBLE/01_AIPASS_REVIEW_CONTEXT.docx > "$tmp/context.docx"
+          unzip -p "$pack" AIPASS-COMPATIBLE/02_AIPASS_SOURCE_EVIDENCE.docx > "$tmp/source.docx"
+          unzip -p "$pack" AIPASS-COMPATIBLE/03_AIPASS_VISUAL_EVIDENCE.pdf > "$tmp/visual.pdf"
+          unzip -t "$tmp/context.docx" >/dev/null
+          unzip -t "$tmp/source.docx" >/dev/null
+          test "$(head -c 5 "$tmp/visual.pdf")" = "%PDF-"
+          test "$(stat -c %s "$tmp/context.docx")" -lt 29360128
+          test "$(stat -c %s "$tmp/source.docx")" -lt 29360128
+          test "$(stat -c %s "$tmp/visual.pdf")" -lt 29360128
       - name: Write cloud review metadata
         run: |
           node -e "const fs=require('fs');fs.writeFileSync('AWH-CLOUD-REVIEW.json',JSON.stringify({schemaVersion:1,revision:'${{ inputs.revision }}',executionId:'${{ inputs.execution_id }}',profile:'${{ inputs.review_profile }}',workflow:'awh-cloud-review.yml'},null,2)+'\n')"
