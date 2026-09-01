@@ -1,3 +1,11 @@
+# Authoritative decision — 2026-09-01 Cloud-first supersedes local-first
+
+- **Cloud-first supersedes local-first** as the current AWH product architecture. ReadyIDC/AWH Control Plane is the durable authority for identity, projects, conversations, tasks, executions, memory, artifacts, approvals, automation and release state.
+- iPhone/Web is a first-class control surface. Mac and Windows are optional capability workers only for OS-specific work; their local queues, files or process state cannot become product truth.
+- GitHub Actions is ON_DEMAND compute for exact-SHA QA/Visual Review. Workflow/run ids are execution observations only; successful user-facing evidence returns to the canonical AWH Artifact Store.
+- The root-only Managed Hosting operator remains a **privilege-separated capability adapter**, not a second scheduler or control plane. It may claim only pre-existing typed `hosting.*` executions and must never create user work independently.
+- Historical local-first, Hub-preview, pairing-bootstrap and Desktop-first decisions remain compatibility/history context only where they are still required by packaged clients or rollback. They must not be used to introduce new product authority or duplicate UX.
+
 # Authoritative decision — 2026-08-30 responsive-width contract
 
 - Document-width correctness is a shared product invariant: on phone portrait `document.documentElement.scrollWidth` must not exceed `clientWidth`. A global horizontal overflow guard is only a final containment layer, never the sole repair.

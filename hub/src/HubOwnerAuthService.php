@@ -323,9 +323,9 @@ final class HubOwnerAuthService
         return ['userId'=>$id,'username'=>$username,'role'=>$role,'projectIds'=>$projects,'status'=>'ACTIVE'];
     }
 
-    public function accountRequests(string $token): array
+    public function accountRequests(string $token, ?string $now = null): array
     {
-        $row=$this->sessionRow($token); $this->assertAccountHostingReady(); $this->assertOwner((string)$row['user_id']);
+        $row=$this->sessionRow($token, $now); $this->assertAccountHostingReady(); $this->assertOwner((string)$row['user_id']);
         $q=$this->pdo->query("SELECT request_id,display_name,username,email,phone,person_type,requested_area,note,state,submitted_at,reviewed_at FROM control_account_requests ORDER BY CASE state WHEN 'PENDING' THEN 0 ELSE 1 END,submitted_at DESC LIMIT 100");
         return ['schemaVersion'=>1,'requests'=>array_map(static fn(array $r):array=>['requestId'=>(string)$r['request_id'],'displayName'=>(string)$r['display_name'],'username'=>(string)$r['username'],'email'=>$r['email'],'phone'=>$r['phone'],'personType'=>(string)$r['person_type'],'requestedArea'=>$r['requested_area'],'note'=>$r['note'],'state'=>(string)$r['state'],'submittedAt'=>(string)$r['submitted_at'],'reviewedAt'=>$r['reviewed_at']],$q->fetchAll())];
     }

@@ -20,9 +20,9 @@ final class HubManagedHostingService
     private function __construct(private readonly PDO $pdo, private readonly HubOwnerAuthService $auth) {}
     public static function fromPdo(PDO $pdo): self { return new self($pdo, HubOwnerAuthService::fromPdo($pdo)); }
 
-    public function sites(string $token): array
+    public function sites(string $token, ?string $now = null): array
     {
-        $owner=$this->ownerSession($token); $q=$this->pdo->prepare("SELECT s.*,p.name AS project_name,b.binding_kind,b.host AS binding_host,b.port AS binding_port,b.tls_mode,b.state AS binding_state,d.engine AS db_engine,d.state AS db_state FROM control_managed_sites s JOIN projects p ON p.project_id=s.project_id LEFT JOIN control_site_bindings b ON b.site_id=s.site_id AND b.is_primary=1 AND b.state<>'DISABLED' LEFT JOIN control_site_database_bindings d ON d.site_id=s.site_id WHERE s.created_by_user_id=:owner ORDER BY CASE s.state WHEN 'READY' THEN 0 WHEN 'PROVISIONING' THEN 1 WHEN 'QUEUED' THEN 2 ELSE 3 END,s.updated_at DESC LIMIT 200");
+        $owner=$this->ownerSession($token, $now); $q=$this->pdo->prepare("SELECT s.*,p.name AS project_name,b.binding_kind,b.host AS binding_host,b.port AS binding_port,b.tls_mode,b.state AS binding_state,d.engine AS db_engine,d.state AS db_state FROM control_managed_sites s JOIN projects p ON p.project_id=s.project_id LEFT JOIN control_site_bindings b ON b.site_id=s.site_id AND b.is_primary=1 AND b.state<>'DISABLED' LEFT JOIN control_site_database_bindings d ON d.site_id=s.site_id WHERE s.created_by_user_id=:owner ORDER BY CASE s.state WHEN 'READY' THEN 0 WHEN 'PROVISIONING' THEN 1 WHEN 'QUEUED' THEN 2 ELSE 3 END,s.updated_at DESC LIMIT 200");
         $q->execute(['owner'=>$owner['user_id']]); return ['schemaVersion'=>1,'sites'=>array_map([self::class,'siteRow'],$q->fetchAll())];
     }
 
@@ -63,7 +63,7 @@ final class HubManagedHostingService
         $owner=$this->ownerMutation($token,$csrf,$now);self::keys($payload,['schemaVersion']);if(($payload['schemaVersion']??null)!==1)throw new HubManagedHostingException('Disable request is invalid','HOSTING_INVALID');$site=$this->siteForOwner($siteId,(string)$owner['user_id']);$at=self::time($now??gmdate('c'));$task=self::uuid();$execution=self::uuid();try{$this->pdo->exec('BEGIN IMMEDIATE');$this->insertTask($task,$execution,(string)$owner['user_id'],(string)$site['project_id'],null,'ปิดการเผยแพร่ '.$site['name'],'hosting.site.disable',['mode'=>'HOSTING_DISABLE','siteId'=>$site['site_id']],$at);$this->event((string)$site['site_id'],$task,'DISABLE_REQUESTED','QUEUED','AWH กำลังปิด public route อย่างปลอดภัย',$at);$this->pdo->exec('COMMIT');}catch(Throwable $error){$this->rollback();if($error instanceof HubManagedHostingException)throw $error;throw new HubManagedHostingException('Disable could not be queued','HOSTING_DISABLE_FAILED');}return ['siteId'=>$site['site_id'],'taskId'=>$task,'state'=>'QUEUED'];
     }
 
-    private function ownerSession(string $token): array { $this->ready();$session=$this->auth->authenticatedUser($token);$this->assertOwner((string)$session['userId']);return ['user_id'=>$session['userId']]; }
+    private function ownerSession(string $token, ?string $now = null): array { $this->ready();$session=$this->auth->authenticatedUser($token, $now);$this->assertOwner((string)$session['userId']);return ['user_id'=>$session['userId']]; }
     private function ownerMutation(string $token,string $csrf,?string $now): array { $this->ready();$row=$this->auth->authorize($token,$csrf,$now);$this->assertOwner((string)$row['user_id']);HubOwnerAuthService::assertRecentStepUpSession($row,$now);return $row; }
     private function ready(): void { HubAccountHostingMigration::assertCapabilityReady($this->pdo,dirname(__DIR__).'/migrations/016_account_hosting.sql'); }
     private function assertOwner(string $user): void { $owner=$this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id=1 AND bootstrap_closed=1')->fetchColumn();if(!is_string($owner)||!hash_equals($owner,$user))throw new HubManagedHostingException('Owner access is required','OWNER_FORBIDDEN'); }

@@ -55,6 +55,10 @@ Hosting is **a capability set and project projection on the existing control pla
 9. A provider outage cannot corrupt canonical project/task state. Fail closed and preserve the last verified Production/release identity.
 10. Billing/plan metadata, if later introduced, must not silently become user authorization or execution authority.
 
+## Privilege-separated adapters
+
+A separate OS process is allowed when privilege isolation requires it, but separation of process is **not** separation of product authority. The root-only Managed Hosting operator is the reference case: it may claim only existing typed `hosting.*` executions, writes results back to canonical task/execution/site projections, and cannot create an independent queue, login, project, approval, artifact store, or release truth. This keeps the unprivileged native executor small while preserving one AWH control plane.
+
 ## Cloud-first invariants
 
 1. GitHub Actions is ON_DEMAND compute only.
