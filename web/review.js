@@ -15,6 +15,8 @@ function humanState(value) {
   return ['กำลังตรวจสถานะ', ''];
 }
 function humanKind(capability) { return capability === 'review.visual' ? 'ตรวจหน้าจอ + Review Pack' : 'ตรวจระบบ'; }
+function selectedProject() { const id = $('review-project')?.value; return state.control?.projects?.find((project) => project.projectId === id) || null; }
+function cloudReviewEligible(project = selectedProject()) { return project?.cloudReviewEligible === true; }
 
 function renderProjects() {
   const select = $('review-project'); if (!(select instanceof HTMLSelectElement)) return;
@@ -31,8 +33,10 @@ function renderCloud() {
   else if (!cloud.configured) { title.textContent = 'AWH Cloud ยังไม่ได้เชื่อม'; detail.textContent = 'ยืนยัน Owner และเพิ่ม credential เพียงครั้งเดียว'; dot?.classList.add('attention'); if (setup instanceof HTMLDetailsElement) setup.open = true; }
   else { title.textContent = 'AWH Cloud พร้อมตรวจ'; detail.textContent = 'งานและไฟล์ผลลัพธ์ยังอยู่ภายใต้ AWH'; dot?.classList.add('ready'); }
   const revision = $('review-revision'); if (revision) { revision.textContent = shortSha(state.revision); revision.title = state.revision || ''; }
-  const enabled = Boolean(cloud?.configured && state.control?.role === 'OWNER' && state.control?.projects?.length);
+  const project = selectedProject(); const eligible = cloudReviewEligible(project);
+  const enabled = Boolean(cloud?.configured && state.control?.role === 'OWNER' && project && eligible);
   for (const id of ['run-cloud-qa', 'run-visual-review']) { const button = $(id); if (button instanceof HTMLButtonElement) button.disabled = state.busy || !enabled; }
+  if (revision && !eligible) { revision.textContent = '—'; revision.title = ''; }
 }
 
 function renderRecent() {
@@ -53,8 +57,13 @@ async function refresh({ quiet = false } = {}) {
     const [control, cloud] = await Promise.all([loadControlData(), loadCloudStatus()]); state.control = control; state.cloud = cloud;
     if (control.role !== 'OWNER') { window.location.replace('./'); return; }
     renderProjects();
-    if (cloud.configured) { try { state.revision = await loadCloudRevision(); } catch { state.revision = null; } } else state.revision = null;
-    renderCloud(); renderRecent(); if (!quiet) message('review-action-message');
+    const project = selectedProject();
+    if (cloud.configured && cloudReviewEligible(project)) { try { state.revision = await loadCloudRevision(); } catch { state.revision = null; } } else state.revision = null;
+    renderCloud(); renderRecent();
+    if (!quiet) {
+      if (project && !cloudReviewEligible(project)) message('review-action-message', `หยุดไว้เพื่อป้องกัน Source ผิดโปรเจกต์ · ${project.name || 'โปรเจกต์นี้'} จะไม่ถูกส่งเข้า AWH Cloud Review จนกว่าจะใช้ Project Source Authority ของโปรเจกต์นั้น`, 'error');
+      else message('review-action-message');
+    }
   } catch (error) {
     renderCloud(); if (!quiet) message('review-action-message', error instanceof Error ? error.message : 'AWH ไม่สามารถโหลด Product Review ได้', 'error');
   }
@@ -62,6 +71,7 @@ async function refresh({ quiet = false } = {}) {
 
 async function run(kind) {
   if (state.busy) return; const projectId = $('review-project')?.value; if (!projectId) { message('review-action-message', 'เลือกโปรเจกต์ก่อน', 'error'); return; }
+  const project = selectedProject(); if (!cloudReviewEligible(project)) { message('review-action-message', 'AWH หยุดไว้เพื่อป้องกันการตรวจ Source ผิดโปรเจกต์', 'error'); return; }
   state.busy = true; renderCloud(); message('review-action-message', 'กำลังยืนยัน Source revision ล่าสุด…');
   try {
     const revision = await loadCloudRevision(); state.revision = revision; const profile = kind === 'VISUAL_REVIEW' ? $('review-profile')?.value || 'daily' : null;
@@ -90,6 +100,7 @@ async function saveCredential() {
   finally { if (button instanceof HTMLButtonElement) button.disabled = false; }
 }
 
+$('review-project')?.addEventListener('change', () => refresh());
 $('refresh-review')?.addEventListener('click', () => refresh());
 $('run-cloud-qa')?.addEventListener('click', () => run('QA'));
 $('run-visual-review')?.addEventListener('click', () => run('VISUAL_REVIEW'));
