@@ -17,5 +17,7 @@ requirePattern(/desktop-installer-windows:\n\s+if:/, 'Windows installer must rem
 requirePattern(/desktop-package-macos:\n\s+if:/, 'macOS packaging must remain behind the release gate');
 requirePattern(/desktop-runtime-linux:\n\s+runs-on: ubuntu-latest/, 'Linux runtime smoke must remain on every CI run');
 requirePattern(/matrix:\n\s+os: \[windows-latest, ubuntu-latest\]/, 'Cross-platform test matrix must remain enabled');
+requirePattern(/if: runner\.os != 'Windows'\n\s+name: Verify production runtime dependency security\n\s+run: npm audit --omit=dev --audit-level=high/,
+  'CI must fail closed on high or critical advisories in production runtime dependencies without conflating dev-only packaging debt');
 
-console.log('CI policy verified: feature pushes stay lightweight; PR/canonical release gates stay full.');
+console.log('CI policy verified: feature pushes stay lightweight; PR/canonical release gates stay full; runtime dependencies stay audit-gated.');
