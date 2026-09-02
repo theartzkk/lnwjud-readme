@@ -7,6 +7,7 @@ const ROOT = process.env.AWH_SOURCE_ROOT || process.cwd();
 const CANONICAL_BRANCH = 'awh/api-independence';
 const CANONICAL_REMOTE = 'origin';
 const CANONICAL_REPOSITORY = 'theartzkk/lnwjud-readme';
+const SHA = /^[0-9a-f]{40}$/;
 const deployScript = join(ROOT, 'deploy/awh-control-plane/deploy-control-plane.sh');
 const canonicalSourceScript = join(ROOT, 'scripts/ops/canonical-source-preflight.mjs');
 const operatorCommand = "security find-generic-password -a 'awh-device-token-v1:awh/owner-password' -s 'Art’s Workspace Hub' -w";
@@ -56,9 +57,15 @@ async function runCanonicalSourcePreflight() {
   return boundedSpawn(process.execPath, preflightArgs);
 }
 
-function runDeploy(password) {
+function canonicalShaFrom(output) {
+  const line = output.split(/\r?\n/).find((candidate) => candidate.startsWith('CANONICAL_LIVE_SHA='));
+  const sha = line?.slice('CANONICAL_LIVE_SHA='.length).trim().toLowerCase() ?? '';
+  return SHA.test(sha) ? sha : null;
+}
+
+function runDeploy(password, canonicalSha) {
   return boundedSpawn('/bin/sh', [deployScript, ...deployArgs], {
-    env: { AWH_OWNER_AUTH_USERNAME: ownerUsername },
+    env: { AWH_OWNER_AUTH_USERNAME: ownerUsername, AWH_RELEASE_COMMIT: canonicalSha },
     stdin: `${password}\n`,
   });
 }
@@ -79,8 +86,9 @@ let keychainOwned = false;
 try {
   const sourcePreflight = await runCanonicalSourcePreflight();
   for (const line of safeCanonicalLines(sourcePreflight.stdout)) process.stdout.write(`${line}\n`);
+  const canonicalSha = canonicalShaFrom(sourcePreflight.stdout);
   if (sourcePreflight.overflow) throw new Error('CANONICAL_SOURCE_PREFLIGHT_OUTPUT_BOUND_EXCEEDED');
-  if (sourcePreflight.code !== 0) throw new Error('CANONICAL_SOURCE_PREFLIGHT_BLOCKED');
+  if (sourcePreflight.code !== 0 || canonicalSha === null) throw new Error('CANONICAL_SOURCE_PREFLIGHT_BLOCKED');
 
   const existing = await store.get(OWNER_AUTH_PASSWORD_CREDENTIAL_KEY);
   if (compatibilityRefresh) {
@@ -90,7 +98,7 @@ try {
     if (existing) throw new Error('OWNER_AUTH_KEYCHAIN_ALREADY_PRESENT');
     password = randomBytes(32).toString('base64url');
   }
-  const result = await runDeploy(password);
+  const result = await runDeploy(password, canonicalSha);
   for (const line of safeLines(result.stdout)) process.stdout.write(`${line}\n`);
   if (result.overflow) throw new Error('OWNER_AUTH_OUTPUT_BOUND_EXCEEDED');
   if (result.code !== 0) {
