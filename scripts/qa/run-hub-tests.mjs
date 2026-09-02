@@ -32,6 +32,7 @@ const tests = [
   'hub/tests/m19-conversation-lifecycle.php',
   'hub/tests/ai-attachment-preparer.php',
   'hub/tests/m20-project-source-authority.php',
+  'hub/tests/aipass-docx-boundaries.php',
   'hub/tests/continuous-work-supervisor.php',
   'hub/tests/continuous-autochain.php',
   'hub/tests/action-graph-projection.php',
