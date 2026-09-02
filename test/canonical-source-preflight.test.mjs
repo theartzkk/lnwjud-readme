@@ -10,6 +10,8 @@ import test from 'node:test';
 const execFileAsync = promisify(execFile);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const script = join(repoRoot, 'scripts/ops/canonical-source-preflight.mjs');
+const canonicalRepository = 'theartzkk/lnwjud-readme';
+const canonicalUrl = `https://github.com/${canonicalRepository}.git`;
 
 async function run(command, args, options = {}) {
   const result = await execFileAsync(command, args, {
@@ -26,7 +28,7 @@ async function git(root, ...args) {
 
 async function preflight(root, expectedSha, extra = []) {
   try {
-    const stdout = await run(process.execPath, [script, '--root', root, '--branch', 'awh/api-independence', '--repository', '*', '--expected-sha', expectedSha, '--require-mutation-ready', ...extra]);
+    const stdout = await run(process.execPath, [script, '--root', root, '--branch', 'awh/api-independence', '--repository', canonicalRepository, '--expected-sha', expectedSha, '--require-mutation-ready', ...extra]);
     const report = JSON.parse(stdout.split(/\r?\n/, 1)[0]);
     return { code: 0, stdout, report };
   } catch (error) {
@@ -54,6 +56,8 @@ async function fixture() {
   await git(seed, 'push', '-u', 'origin', 'awh/api-independence');
   const first = (await git(seed, 'rev-parse', 'HEAD')).trim().toLowerCase();
   await run('git', ['clone', '--branch', 'awh/api-independence', remote, work]);
+  await git(work, 'remote', 'set-url', 'origin', canonicalUrl);
+  await git(work, 'config', `url.file://${remote}.insteadOf`, canonicalUrl);
   return { root, remote, seed, work, first };
 }
 
@@ -64,6 +68,7 @@ test('canonical source preflight passes only for live exact clean source', async
     assert.equal(result.code, 0);
     assert.equal(result.report.state, 'PASS');
     assert.equal(result.report.reason, 'PASS');
+    assert.equal(result.report.remoteRepository, canonicalRepository);
     assert.equal(result.report.liveSha, fx.first);
     assert.equal(result.report.headSha, fx.first);
     assert.equal(result.report.mutationReady, true);
@@ -118,16 +123,12 @@ test('dirty source and stale approval SHA fail closed', async () => {
 test('repository identity mismatch blocks before remote authority lookup', async () => {
   const fx = await fixture();
   try {
-    let stdout = '';
-    try {
-      await run(process.execPath, [script, '--root', fx.work, '--expected-sha', fx.first, '--require-mutation-ready']);
-    } catch (error) {
-      stdout = typeof error?.stdout === 'string' ? error.stdout : '';
-    }
-    const report = JSON.parse(stdout.split(/\r?\n/, 1)[0]);
-    assert.equal(report.state, 'BLOCKED');
-    assert.equal(report.reason, 'REMOTE_IDENTITY_MISMATCH');
-    assert.equal(report.liveSha, null);
+    await git(fx.work, 'remote', 'set-url', 'origin', 'https://github.com/example/not-awh.git');
+    const result = await preflight(fx.work, fx.first);
+    assert.equal(result.code, 2);
+    assert.equal(result.report.state, 'BLOCKED');
+    assert.equal(result.report.reason, 'REMOTE_IDENTITY_MISMATCH');
+    assert.equal(result.report.liveSha, null);
   } finally {
     await rm(fx.root, { recursive: true, force: true });
   }
@@ -142,7 +143,10 @@ test('owner auth activation runs canonical source proof before credentials or de
   assert.ok(credential > preflight, 'credential access must happen after canonical source proof');
   assert.ok(deploy > credential, 'production deploy must happen after source proof and credential gate');
   assert.match(source, /--require-mutation-ready/);
-  assert.match(source, /theartzkk\/lnwjud-readme/);
+  assert.match(source, /const CANONICAL_BRANCH = 'awh\/api-independence'/);
+  assert.match(source, /const CANONICAL_REMOTE = 'origin'/);
+  assert.match(source, /const CANONICAL_REPOSITORY = 'theartzkk\/lnwjud-readme'/);
+  assert.doesNotMatch(source, /AWH_CANONICAL_(?:BRANCH|REMOTE|REPOSITORY)/);
 });
 
 test('guarded deployment wrapper proves canonical source before mutation', async () => {
@@ -154,6 +158,10 @@ test('guarded deployment wrapper proves canonical source before mutation', async
   assert.ok(preflight > mutationGate);
   assert.ok(deploy > preflight);
   assert.match(source, /--require-mutation-ready/);
+  assert.match(source, /const CANONICAL_BRANCH = 'awh\/api-independence'/);
+  assert.match(source, /const CANONICAL_REMOTE = 'origin'/);
+  assert.match(source, /const CANONICAL_REPOSITORY = 'theartzkk\/lnwjud-readme'/);
+  assert.doesNotMatch(source, /AWH_CANONICAL_(?:BRANCH|REMOTE|REPOSITORY)/);
   assert.match(source, /CANONICAL_SOURCE_PREFLIGHT_BLOCKED/);
 });
 
