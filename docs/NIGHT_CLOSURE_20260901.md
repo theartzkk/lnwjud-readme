@@ -215,3 +215,14 @@ Next safe action: do not merge unique legacy PRs wholesale. Reconcile only their
 - M20 Project Source Authority remains source-ready with prior clean build/typecheck, focused regression, Hub M20 PASS, and `awh-ready` deploy dry-run/rollback evidence; Production schema-20 activation remains blocked specifically at the owner-auth execution safety gate.
 
 Next safe action: keep Production at the healthy M19/schema-19 state. Complete the remaining ~1.23 GB Web hard-link pass only when the normal execution gate permits, and activate M20 only through the canonical owner-auth deployment path without bypassing safety controls.
+
+## 2026-09-02 10:5x ICT — UX/M19 closure verification
+
+- Exact-canonical focused UX regression at `49a313cb2391e543990538e578828d04c41ccda1` passed 15/15 across HEIC provider-safe input, Conversation Lifecycle/delete authority, canonical Work/mobile Chat markup, three-item mobile navigation, Home/Tasks/Files surfaces and fail-closed visual-review contracts.
+- Exact-canonical rendered visual review passed with `dirty=false`, 16 screenshots at 390x844 and 1440x900. Manual spot-checks of Home, Work/Chat progress and document artifact states found the composer/nav/artifact actions bounded on mobile and desktop without the prior header/navigation obstruction.
+- M19 source convergence is complete: published M19 activation head `fb36b16227b6edc1dbd5738ad71606170499f65b` is an ancestor of canonical, while canonical still owns `018_conversation_lifecycle.sql`, migration id `m19-conversation-lifecycle`, target schema 19 and its deployment/regression contracts. No M19 re-merge is required.
+- Local committed snapshot branches `awh/v0.1-migration`, `awh/production-surface-rc1`, `fix/project-source-authority-20260901` and detached Production evidence `954cfa0` are all commit ancestors of canonical; dirty/uncommitted evidence remains protected rather than reset or removed.
+- Production remains healthy at Control/Web `m19-b66ef39cc986`, schema 19/integrity OK with managed services active. Approved hard-link compaction has reduced root usage from ~79% to ~46%; remaining guaranteed Web-side reclaim is `1,225,431,703` bytes and remains execution-gated.
+- M20 remains source-ready and exact-canonical dry-run ready, but Production activation is still blocked at the normal owner-auth execution safety gate; the gate was not bypassed.
+
+Next safe action: preserve the healthy M19 Production state while the execution gates remain closed. When a normal gate opens, complete the remaining bounded Web compaction and then activate M20 only through the canonical owner-auth deployment path, followed immediately by schema/pointer/service/rollback verification.
