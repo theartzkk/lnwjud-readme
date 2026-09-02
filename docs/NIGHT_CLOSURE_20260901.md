@@ -192,3 +192,14 @@ Next safe action: merge this evidence-only checkpoint, then keep M20 Production 
 - Post-compaction Production verification remained Control/Web `m19-b66ef39cc986`, schema 19, integrity OK, services/timers active. M20 Production activation remains pending because the owner-auth execution path is safety-gated despite a clean exact-canonical dry-run.
 
 Next safe action: preserve the current healthy 48% Production state, complete the remaining ~1.51 GB bounded hard-link compaction only when the execution gate permits, and activate M20/schema 20 only through the approved owner-auth deployment path without bypassing the safety gate.
+
+## 2026-09-02 10:4x ICT — stale PR hygiene classification
+
+- Canonical after the approved compaction checkpoint is `awh/api-independence` `ac2edf1aaa07fb5edaba123ad89eea198a1a2dc2`.
+- Open legacy PR heads were compared against canonical using both ancestry and patch-equivalence rather than age/title heuristics.
+- PR #6 head `35b5e87446647faf2d542f0cd49d4dc508f7d34c` is already an exact ancestor of canonical and was closed as superseded.
+- PR #47 head `e5557621f2df02275b416aa0de073b126acd6de1` has 1/1 patch-equivalent commit in canonical; PR #48 head `a9fde482207cb2841d09a14f7af3eae3f087e0dd` has 2/2 patch-equivalent commits. Both were closed as superseded without deleting their branches/history.
+- PRs #58, #53, #35, #33, #10, #9 and #7 still contain one or more unique patches relative to canonical and remain open/protected for later reconciliation.
+- The five retained local worktrees remain protected: dirty `awh/v0.1-migration`, dirty `awh/sustainability-foundation`, detached Production evidence `954cfa0`, dirty Project Source Authority evidence, and clean release snapshot `awh/production-surface-rc1`.
+
+Next safe action: do not merge unique legacy PRs wholesale. Reconcile only their still-unique patches against current canonical when they become relevant, while preserving active Sustainability Foundation work. Production remains healthy on M19/schema 19 at 48% disk usage; M20 owner-auth activation and the final ~1.51 GB compaction remainder remain execution-gated.
