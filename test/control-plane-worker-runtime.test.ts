@@ -129,6 +129,9 @@ test('Vault-ready existing project reconciles six-file memory metadata without s
   const dataDir = await mkdtemp(join(tmpdir(), 'awh-memory-reconcile-'));
   const workspace = await createRegisteredMemoryWorkspace(dataDir, 'AWH Memory Fixture', true, 'a');
   try {
+    // Real long-lived AWH memory files can exceed the 32 KiB AI context-read bound.
+    // Metadata reconciliation must still hash/report them without uploading content.
+    await writeFile(join(workspace, 'PROJECT.md'), Buffer.alloc(40 * 1024, 0x61));
     await writeFile(join(dataDir, 'projects.json'), JSON.stringify({ schemaVersion: 1, projects: [{ projectId: '813b45c0-23e1-408d-ae0f-ac5eca7f6900', workspacePath: workspace, lastOpenedAt: '2026-09-02T00:00:00.000Z', lastUsedAt: '2026-09-02T00:00:00.000Z', pinned: false, available: true }] }));
     const client = new MemoryReconcileWorkerClient(dataDir, null);
     const runtime = new ControlPlaneWorkerRuntime(client, { dataDir, maxReadBytes: 32_000, allowExec: false, allowWrite: false, allowCodex: false });
@@ -136,6 +139,8 @@ test('Vault-ready existing project reconciles six-file memory metadata without s
     assert.equal((await runtime.runOnce()).status, 'IDLE');
     assert.equal(client.memoryPublishes.length, 1);
     assert.deepEqual(client.memoryPublishes[0]?.map((file) => file.name).sort(), ['ARCHITECTURE.md', 'CURRENT_STATE.md', 'DECISIONS.md', 'HANDOFF.md', 'PROJECT.md', 'TASKS.md']);
+    assert.equal(client.memoryPublishes[0]?.find((file) => file.name === 'PROJECT.md')?.sizeBytes, 40 * 1024);
+    assert.match(client.memoryPublishes[0]?.find((file) => file.name === 'PROJECT.md')?.sha256 ?? '', /^[0-9a-f]{64}$/);
     assert.equal(client.sourceUploads, 0);
     assert.equal(client.registrations, 0);
     assert.equal(client.bindings, 0);

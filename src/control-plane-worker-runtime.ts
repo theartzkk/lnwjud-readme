@@ -38,7 +38,9 @@ function boundedSummary(value: string): string {
 
 export function isMutationGoal(goal: string): boolean { return MUTATION_GOAL.test(goal); }
 
-const PROJECT_MEMORY_MAX_BYTES = 32 * 1024;
+// Metadata reconciliation hashes existing canonical memory files but never uploads their contents.
+// Keep this bounded independently from the smaller AI context-read limit.
+const PROJECT_MEMORY_METADATA_MAX_BYTES = 256 * 1024;
 
 function sameProjectName(left: string, right: string): boolean { return left.trim().toLocaleLowerCase('en-US') === right.trim().toLocaleLowerCase('en-US'); }
 
@@ -48,7 +50,7 @@ async function localProjectMemoryMetadata(workspace: string): Promise<Array<{ na
     const path = join(workspace, name);
     try {
       const info = await lstat(path);
-      if (info.isSymbolicLink() || !info.isFile() || info.size > PROJECT_MEMORY_MAX_BYTES) throw new Error('PROJECT_MEMORY_INVALID');
+      if (info.isSymbolicLink() || !info.isFile() || info.size > PROJECT_MEMORY_METADATA_MAX_BYTES) throw new Error('PROJECT_MEMORY_INVALID');
       const data = await readFile(path);
       output.push({ name, status: 'present', sha256: createHash('sha256').update(data).digest('hex'), sizeBytes: data.length });
     } catch (error) {
