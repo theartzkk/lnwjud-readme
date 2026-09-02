@@ -28,6 +28,8 @@ failure_policy_assert(HubExecutionFailurePolicy::eligible($row, (string)$rate['n
 
 $exhausted = HubExecutionFailurePolicy::decide('PROVIDER_UNAVAILABLE', 3, [], $at, 3, 'seed');
 failure_policy_assert($exhausted['state'] === 'WAITING_FOR_CAPABILITY' && $exhausted['automaticRetry'] === false, 'provider transient exhausts to preserved capability wait');
+$notConfigured = HubExecutionFailurePolicy::decide('PROVIDER_UNAVAILABLE', 1, ['retryable'=>false,'category'=>'credential'], $at, 3, 'seed');
+failure_policy_assert($notConfigured['category'] === 'CAPABILITY_WAIT' && $notConfigured['state'] === 'WAITING_FOR_CAPABILITY' && $notConfigured['automaticRetry'] === false, 'explicit provider non-retryable diagnostic prevents pointless retry');
 $leaseExhausted = HubExecutionFailurePolicy::decide('LEASE_EXPIRED', 3, [], $at, 3, 'seed');
 failure_policy_assert($leaseExhausted['state'] === 'FAILED', 'internal lease exhaustion remains terminal at bounded limit');
 $auth = HubExecutionFailurePolicy::decide('PROVIDER_AUTH_FAILED', 1, [], $at, 3, 'seed');
