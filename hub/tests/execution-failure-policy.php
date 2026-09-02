@@ -44,7 +44,7 @@ $base = dirname(__DIR__);
 $adapterSource = file_get_contents($base . '/src/HubOpenAiProviderAdapter.php');
 $durableSource = file_get_contents($base . '/src/HubDurableExecutionService.php');
 failure_policy_assert(is_string($adapterSource) && str_contains($adapterSource, 'CURLOPT_HEADERFUNCTION') && str_contains($adapterSource, 'Retry-After'), 'provider adapter captures Retry-After through bounded header callback');
-failure_policy_assert(str_contains((string)$adapterSource, "strlen($candidate) <= 100"), 'provider header capture is bounded');
+failure_policy_assert(str_contains((string)$adapterSource, 'strlen($candidate) <= 100'), 'provider header capture is bounded');
 failure_policy_assert(str_contains((string)$durableSource, 'HubExecutionFailurePolicy::eligible'), 'durable claim consumes central eligibility policy');
 failure_policy_assert(str_contains((string)$durableSource, 'HubExecutionFailurePolicy::checkpointWithDecision'), 'durable defer persists central schedule in existing checkpoint');
 failure_policy_assert(!str_contains((string)$durableSource, '$retryableProvider = in_array'), 'legacy duplicate retry classifier is removed');
