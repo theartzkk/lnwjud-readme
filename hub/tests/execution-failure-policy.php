@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/src/HubExecutionTriageService.php';
+require_once dirname(__DIR__) . '/src/HubOpenAiProviderAdapter.php';
 
 function failure_policy_assert(bool $condition, string $message): void
 {
@@ -43,6 +44,25 @@ failure_policy_assert(HubExecutionFailurePolicy::retryAfterSeconds('0') === null
 failure_policy_assert(HubExecutionFailurePolicy::retryAfterSeconds('secret') === null, 'non-numeric retry-after is rejected by persisted policy boundary');
 
 $base = dirname(__DIR__);
+$adapter = new HubOpenAiProviderAdapter();
+$adapterReflection = new ReflectionClass(HubOpenAiProviderAdapter::class);
+$retryAfterMethod = $adapterReflection->getMethod('retryAfterSeconds'); $retryAfterMethod->setAccessible(true);
+failure_policy_assert($retryAfterMethod->invoke($adapter, '75') === 75, 'provider retry-after delta seconds parse exactly');
+$httpDate = gmdate('D, d M Y H:i:s \G\M\T', time() + 120);
+$httpDelay = $retryAfterMethod->invoke($adapter, $httpDate);
+failure_policy_assert(is_int($httpDelay) && $httpDelay >= 100 && $httpDelay <= 120, 'provider retry-after HTTP-date becomes a bounded future delay');
+$httpCapped = $retryAfterMethod->invoke($adapter, gmdate('D, d M Y H:i:s \G\M\T', time() + 7200));
+failure_policy_assert($httpCapped === 3600, 'provider retry-after HTTP-date is capped at one hour');
+failure_policy_assert($retryAfterMethod->invoke($adapter, gmdate('D, d M Y H:i:s \G\M\T', time() - 60)) === null, 'past provider retry-after HTTP-date is rejected');
+failure_policy_assert($retryAfterMethod->invoke($adapter, 'not-a-provider-date') === null, 'invalid provider retry-after HTTP-date is rejected');
+$failureMethod = $adapterReflection->getMethod('failure'); $failureMethod->setAccessible(true);
+$rateWithDate = $failureMethod->invoke($adapter, 429, ['error'=>['type'=>'rate_limit_error','code'=>'rate_limit_exceeded']], 'fixture-fast', $httpDelay);
+$quotaWithDate = $failureMethod->invoke($adapter, 429, ['error'=>['type'=>'insufficient_quota','code'=>'insufficient_quota']], 'fixture-fast', $httpDelay);
+$temporaryWithDate = $failureMethod->invoke($adapter, 503, ['error'=>['type'=>'server_error','code'=>'temporarily_unavailable']], 'fixture-fast', $httpDelay);
+failure_policy_assert(($rateWithDate['diagnostic']['retryAfterSeconds'] ?? null) === $httpDelay, 'rate-limit diagnostic preserves sanitized HTTP-date delay');
+failure_policy_assert(($temporaryWithDate['diagnostic']['retryAfterSeconds'] ?? null) === $httpDelay, 'temporary provider diagnostic preserves sanitized HTTP-date delay');
+failure_policy_assert(!array_key_exists('retryAfterSeconds', $quotaWithDate['diagnostic'] ?? []), 'non-retryable quota diagnostic never inherits Retry-After scheduling');
+
 $adapterSource = file_get_contents($base . '/src/HubOpenAiProviderAdapter.php');
 $durableSource = file_get_contents($base . '/src/HubDurableExecutionService.php');
 failure_policy_assert(is_string($adapterSource) && str_contains($adapterSource, 'CURLOPT_HEADERFUNCTION') && str_contains($adapterSource, 'Retry-After'), 'provider adapter captures Retry-After through bounded header callback');
