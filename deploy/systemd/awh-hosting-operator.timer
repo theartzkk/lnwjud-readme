@@ -3,6 +3,7 @@ Description=Run AWH typed managed-hosting operator continuously
 
 [Timer]
 OnBootSec=45s
+OnActiveSec=5s
 OnUnitActiveSec=30s
 AccuracySec=5s
 Persistent=true
