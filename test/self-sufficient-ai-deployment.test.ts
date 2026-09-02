@@ -18,3 +18,14 @@ test('M16 self-sufficient AI activation is additive, guarded and rollback-safe',
  const local=await readFile(deploy,'utf8');
  assert.match(local,/hub\/src\/HubAiQualificationService\.php/);
 });
+
+
+test('release retry identity is bound before the web build and strictly bounded',async()=>{
+ const release='1616161616161616161616161616161616161616';
+ await execFileAsync('/bin/sh',[deploy,'--dry-run','--owner-auth','--self-sufficient-ai'],{cwd:root,env:{...process.env,AWH_SOURCE_ROOT:root,AWH_RELEASE_COMMIT:release,AWH_HUB_HOSTNAME:'awh.example',AWH_RELEASE_ATTEMPT:'r2'}});
+ const sw=await readFile(join(root,'dist-web/sw.js'),'utf8');
+ assert.match(sw,/awh-shell-m16-161616161616-r2/);
+ await assert.rejects(execFileAsync('/bin/sh',[deploy,'--dry-run','--owner-auth','--self-sufficient-ai'],{cwd:root,env:{...process.env,AWH_SOURCE_ROOT:root,AWH_RELEASE_COMMIT:release,AWH_HUB_HOSTNAME:'awh.example',AWH_RELEASE_ATTEMPT:'r0'}}),/AWH_RELEASE_ATTEMPT must be empty or r1\.\.r999/);
+ const remoteSource=await readFile(remote,'utf8');
+ assert.match(remoteSource,/m\(4\|6\|7\|8\|9\|10\|11\|12\|13\|14\|15\|16\|17\|18\|19\|20\).*12.*r\[1-9\]/s);
+});
