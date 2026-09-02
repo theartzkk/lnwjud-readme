@@ -84,6 +84,7 @@ final class HubExecutionFailurePolicy
         $retryThenWait = in_array($code, self::RETRY_THEN_WAIT, true);
         $retryThenFail = in_array($code, self::RETRY_THEN_FAIL, true);
         if (!$retryThenWait && !$retryThenFail) return self::terminal('TERMINAL_DEFECT', 'FAILED', 'unclassified failure is never blind-retried');
+        if ($retryThenWait && ($diagnostic['retryable'] ?? null) === false) return self::terminal('CAPABILITY_WAIT', 'WAITING_FOR_CAPABILITY', 'provider explicitly reported this condition as non-retryable; work is preserved without a retry storm');
 
         if ($attemptNumber >= $maxAttempts) {
             return self::terminal(
