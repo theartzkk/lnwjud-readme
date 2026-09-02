@@ -47,6 +47,9 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(remoteSource, /PROJECT_VAULT_SOURCE_SYNC/);
   assert.match(remoteSource, /sync-deployed-source-vault\.php/);
   assert.match(local, /git -C "\$ROOT" archive --format=zip/);
+  const trackedCurrentState = await execFileAsync('git', ['ls-tree', '-r', '--name-only', 'HEAD', '--', 'CURRENT_STATE.md'], { cwd: root });
+  assert.equal(trackedCurrentState.stdout.trim(), 'CURRENT_STATE.md');
+  assert.match(await readFile(join(root, 'CURRENT_STATE.md'), 'utf8'), /current-state authority/i);
   assert.match(sourceSync, /Art’s Workspace Hub/);
   assert.match(sourceSync, /release-vault:/);
   assert.match(sourceSync, /HubCentralProjectAuthorityMigration::assertCapabilityReady/);
