@@ -181,3 +181,14 @@ Next safe action: review/merge this source-only authority convergence, then re-r
 - The first isolated QA attempt produced one dependency-resolution false failure because a shared `node_modules` symlink did not contain the required `pdf-lib` runtime asset. A clean `npm ci --ignore-scripts` eliminated the environment defect and the identical focused suite then passed 14/14; no source patch was made for this false failure.
 
 Next safe action: merge this evidence-only checkpoint, then keep M20 Production activation and the verified ~10.64 GB hard-link compaction as separate explicit mutation gates. Continue source/repository hygiene without touching the active Sustainability Foundation or obsolete M20 evidence worktrees.
+
+## 2026-09-02 10:xx ICT — approved release compaction checkpoint
+
+- Canonical was re-read before mutation at `awh/api-independence` `7289c2d9adc314f437b9580796ddab3e3c6a0630`; active dirty Sustainability Foundation and Project Source Authority worktrees were preserved untouched.
+- Production preflight remained Control/Web `m19-b66ef39cc986`, SQLite schema 19 with `integrity_check=ok`, zero FK output, and nginx/PHP 8.3 FPM/native-executor/backup timers active. Exact pre-M19 rollback DB remains `/var/backups/awh-hub/awh.sqlite.pre-m19-b66ef39cc986` at 52,834,304 bytes.
+- Approved hard-link-only Control+Web compaction ran in two bounded passes from exact canonical. Pass 1: 12 linkable paths, `5,983,596,990` reclaimable bytes, PASS. Pass 2: 12 linkable paths, `5,021,969,692` reclaimable bytes, PASS. Release directories were not deleted and Control/Web pointers were not moved.
+- Root filesystem improved from `23,520,772,096 / 30,083,776,512` bytes used (~79%) before compaction to `14,376,230,912 / 30,083,776,512` bytes used (48%) after the two completed passes, a measured reduction of `9,144,541,184` bytes.
+- Fresh post-pass retention preview shows 158 artifact paths already store-linked and `1,512,643,160` guaranteed physical reclaim bytes remaining, with predicted final usage ~42.8%. A third bounded apply attempt was blocked by the execution safety gate and was not bypassed.
+- Post-compaction Production verification remained Control/Web `m19-b66ef39cc986`, schema 19, integrity OK, services/timers active. M20 Production activation remains pending because the owner-auth execution path is safety-gated despite a clean exact-canonical dry-run.
+
+Next safe action: preserve the current healthy 48% Production state, complete the remaining ~1.51 GB bounded hard-link compaction only when the execution gate permits, and activate M20/schema 20 only through the approved owner-auth deployment path without bypassing the safety gate.
