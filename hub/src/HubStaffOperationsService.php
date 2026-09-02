@@ -41,7 +41,7 @@ final class HubStaffOperationsService
         $workers = $this->workers();
         $providers = $this->providers($since);
         $executionTriage = (new HubExecutionTriageService($this->pdo))->snapshot($at);
-        $backup = $this->backup();
+        $backup = $this->backup($at);
         $storage = $this->storage->audit($at, [
             'control' => (string) ($release['controlReleaseId'] ?? ''),
             'web' => (string) ($release['webReleaseId'] ?? ''),
@@ -140,11 +140,11 @@ final class HubStaffOperationsService
     }
 
     /** @return array<string,mixed> */
-    private function backup(): array
+    private function backup(string $at): array
     {
         try {
-            $root = getenv('AWH_HUB_BACKUP_ROOT') ?: '/var/backups/awh-hub'; $meta = HubBackupService::latestMetadata($root); $latest = is_array($meta['latest'] ?? null) ? $meta['latest'] : null; $state = !($meta['configured'] ?? false) ? 'UNKNOWN' : (($latest['status'] ?? null) === 'VERIFIED' ? 'VERIFIED' : ($latest === null ? 'MISSING' : 'REVIEW')); return ['state' => $state, 'latest' => $latest === null ? null : ['status' => (string) ($latest['status'] ?? 'REVIEW'), 'name' => (string) ($latest['name'] ?? ''), 'sizeBytes' => (int) ($latest['sizeBytes'] ?? 0), 'databaseUserVersion' => array_key_exists('databaseUserVersion', $latest) ? (int) $latest['databaseUserVersion'] : null, 'modifiedAt' => (string) ($latest['modifiedAt'] ?? '')], 'restoreReadiness' => $state === 'VERIFIED' ? 'READY_FOR_BOUNDED_DRILL' : 'NOT_READY'];
-        } catch (Throwable) { return ['state' => 'UNKNOWN', 'latest' => null, 'restoreReadiness' => 'UNKNOWN']; }
+            $root = getenv('AWH_HUB_BACKUP_ROOT') ?: '/var/backups/awh-hub'; $meta = HubBackupService::latestMetadata($root); $latest = is_array($meta['latest'] ?? null) ? $meta['latest'] : null; $state = !($meta['configured'] ?? false) ? 'UNKNOWN' : (($latest['status'] ?? null) === 'VERIFIED' ? 'VERIFIED' : ($latest === null ? 'MISSING' : 'REVIEW')); $freshness = HubBackupService::freshness($latest, $at); return ['state' => $state, 'freshness' => $freshness, 'latest' => $latest === null ? null : ['status' => (string) ($latest['status'] ?? 'REVIEW'), 'name' => (string) ($latest['name'] ?? ''), 'sizeBytes' => (int) ($latest['sizeBytes'] ?? 0), 'databaseUserVersion' => array_key_exists('databaseUserVersion', $latest) ? (int) $latest['databaseUserVersion'] : null, 'modifiedAt' => (string) ($latest['modifiedAt'] ?? '')], 'restoreReadiness' => $state === 'VERIFIED' ? 'READY_FOR_BOUNDED_DRILL' : 'NOT_READY'];
+        } catch (Throwable) { return ['state' => 'UNKNOWN', 'freshness' => ['state'=>'UNKNOWN','ageSeconds'=>null,'maxAgeSeconds'=>HubBackupService::FRESHNESS_MAX_AGE_SECONDS], 'latest' => null, 'restoreReadiness' => 'UNKNOWN']; }
     }
 
     /** @param array<string,mixed> $telemetry @param array<string,mixed> $release @param array<string,mixed> $database @param array<string,mixed> $backup @param array<string,mixed> $storage @param array<string,mixed> $providers @param array<string,mixed> $queue @return list<array<string,mixed>> */
@@ -166,7 +166,7 @@ final class HubStaffOperationsService
             $role(self::STAFF_ROLES[7], in_array($storage['state'] ?? 'UNKNOWN', ['GOVERNED', 'BOUNDED_REVIEW'], true) ? 'PASS' : 'REVIEW', 'bounded roots ถูกจัดประเภทโดยไม่ทำลายข้อมูล', 'review quarantine และ retain unknown items'),
             $role(self::STAFF_ROLES[8], $security ? 'PASS' : 'UNKNOWN', 'อ่าน host protection telemetry เท่านั้น', $security ? 'continue monitoring' : 'คง UNKNOWN จน telemetry สดพอ'),
             $role(self::STAFF_ROLES[9], ($release['pointersMatch'] ?? false) ? 'PASS' : 'REVIEW', 'control/web pointers จาก release authority', 'keep rollback pointer available'),
-            $role(self::STAFF_ROLES[10], ($backup['state'] ?? '') === 'VERIFIED' && ($database['state'] ?? '') === 'HEALTHY' ? 'PASS' : 'REVIEW', 'verified backup และ healthy DB', 'run bounded restore drill เมื่อถึงกำหนด'),
+            $role(self::STAFF_ROLES[10], ($backup['state'] ?? '') === 'VERIFIED' && ($backup['freshness']['state'] ?? '') === 'FRESH' && ($database['state'] ?? '') === 'HEALTHY' ? 'PASS' : 'REVIEW', 'verified + fresh backup และ healthy DB', 'ตรวจ backup scheduler/freshness แล้ว run bounded restore drill เมื่อถึงกำหนด'),
             $role(self::STAFF_ROLES[11], ($providers['state'] ?? 'UNKNOWN') === 'OBSERVED' ? 'PASS' : 'UNKNOWN', 'provider/model/routes/outcomes จาก M16 governance', 'fallback หรือ wait ตาม provider policy'),
             $role(self::STAFF_ROLES[12], (int) ($database['locking']['busyTimeoutMs'] ?? 0) > 0 ? 'PASS' : 'UNKNOWN', 'bounded transactions และ SQLite busy timeout', 'watch stuck leases และ lock evidence'),
             $role(self::STAFF_ROLES[13], $this->table('control_provider_usage') ? 'PASS' : 'UNKNOWN', 'usage ถูกวัดโดยไม่เปิด credential', 'respect budget และ route policy'),
@@ -196,6 +196,7 @@ final class HubStaffOperationsService
         if (($queue['failedLast24h'] ?? []) !== []) $signals[] = ['source' => 'execution', 'state' => 'FAILED_EXECUTION'];
         if (($storage['state'] ?? 'UNKNOWN') === 'BOUNDED_REVIEW') $signals[] = ['source' => 'storage', 'state' => 'UNKNOWN_REVIEW'];
         if (($backup['state'] ?? 'UNKNOWN') !== 'VERIFIED') $signals[] = ['source' => 'backup', 'state' => (string) ($backup['state'] ?? 'UNKNOWN')];
+        elseif (($backup['freshness']['state'] ?? 'UNKNOWN') !== 'FRESH') $signals[] = ['source' => 'backup', 'state' => 'STALE_OR_UNKNOWN_FRESHNESS'];
         if (($telemetry['state'] ?? 'UNKNOWN') !== 'READY') $signals[] = ['source' => 'telemetry', 'state' => (string) ($telemetry['state'] ?? 'UNKNOWN')];
         if (($providers['state'] ?? 'UNKNOWN') !== 'OBSERVED') $signals[] = ['source' => 'provider', 'state' => (string) ($providers['state'] ?? 'UNKNOWN')];
         if (is_array($governorRun) && is_string($governorRun['decision'] ?? null)) return [
@@ -254,7 +255,7 @@ final class HubStaffOperationsService
         $passed = count(array_filter($roles, static fn (array $role): bool => ($role['state'] ?? '') === 'PASS'));
         $completed = (int) ($queue['tasksByState']['COMPLETED'] ?? 0);
         $failed = array_sum(array_map(static fn (array $item): int => (int) ($item['amount'] ?? 0), is_array($queue['failedLast24h'] ?? null) ? $queue['failedLast24h'] : []));
-        return ['schemaVersion' => 1, 'briefDate' => substr($at, 0, 10), 'generatedAt' => $at, 'window' => ['since' => $since, 'until' => $at], 'overnight' => ['tasks' => $queue['tasksByState'] ?? [], 'executions' => $queue['executionsByState'] ?? [], 'completedTasks' => $completed, 'failedTasks' => $failed, 'failed' => $queue['failedLast24h'] ?? [], 'recoveredFailures' => is_array($batch) ? (int) ($batch['recovered'] ?? 0) : null, 'stuck' => $queue['stuckExecutionCount'] ?? 0, 'executionTriage' => $executionTriage['summary'] ?? []], 'visibleChanges' => ['artifactsCreatedLast24h' => $authorities['activeArtifacts'] ?? 0], 'vps' => ['state' => $telemetry['state'] ?? 'UNKNOWN', 'services' => array_map(static fn (array $service): array => ['key' => (string) ($service['key'] ?? ''), 'state' => (string) ($service['state'] ?? 'UNKNOWN')], is_array($telemetry['server']['services'] ?? null) ? $telemetry['server']['services'] : [])], 'release' => ['control' => $release['controlReleaseId'] ?? null, 'web' => $release['webReleaseId'] ?? null, 'pointersMatch' => (bool) ($release['pointersMatch'] ?? false)], 'database' => $database, 'backup' => $backup, 'storage' => ['state' => $storage['state'] ?? 'UNKNOWN', 'summary' => $storage['summary'] ?? [], 'disk' => $storage['disk'] ?? null, 'housekeeping' => $housekeeping], 'workers' => $workers, 'providers' => $providers, 'canonicalAuthorities' => $authorities, 'staff' => ['rolesPass' => $passed, 'rolesTotal' => count($roles), 'next' => $queue['nextEligible'] ?? null], 'nextPlannedWork' => $queue['nextEligible'] ?? null];
+        return ['schemaVersion' => 1, 'briefDate' => substr($at, 0, 10), 'generatedAt' => $at, 'window' => ['since' => $since, 'until' => $at], 'overnight' => ['tasks' => $queue['tasksByState'] ?? [], 'executions' => $queue['executionsByState'] ?? [], 'completedTasks' => $completed, 'failedTasks' => $failed, 'failed' => $queue['failedLast24h'] ?? [], 'recoveredFailures' => is_array($batch) ? (int) ($batch['recovered'] ?? 0) : null, 'stuck' => $queue['stuckExecutionCount'] ?? 0, 'executionTriage' => is_array($executionTriage['current']['summary'] ?? null) ? $executionTriage['current']['summary'] : []], 'visibleChanges' => ['artifactsCreatedLast24h' => $authorities['activeArtifacts'] ?? 0], 'vps' => ['state' => $telemetry['state'] ?? 'UNKNOWN', 'services' => array_map(static fn (array $service): array => ['key' => (string) ($service['key'] ?? ''), 'state' => (string) ($service['state'] ?? 'UNKNOWN')], is_array($telemetry['server']['services'] ?? null) ? $telemetry['server']['services'] : [])], 'release' => ['control' => $release['controlReleaseId'] ?? null, 'web' => $release['webReleaseId'] ?? null, 'pointersMatch' => (bool) ($release['pointersMatch'] ?? false)], 'database' => $database, 'backup' => $backup, 'storage' => ['state' => $storage['state'] ?? 'UNKNOWN', 'summary' => $storage['summary'] ?? [], 'disk' => $storage['disk'] ?? null, 'housekeeping' => $housekeeping], 'workers' => $workers, 'providers' => $providers, 'canonicalAuthorities' => $authorities, 'staff' => ['rolesPass' => $passed, 'rolesTotal' => count($roles), 'next' => $queue['nextEligible'] ?? null], 'nextPlannedWork' => $queue['nextEligible'] ?? null];
     }
 
     /** Persist one brief per UTC day in the existing audited settings revision ledger. */

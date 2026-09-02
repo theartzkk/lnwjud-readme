@@ -47,6 +47,64 @@ try {
     echo "{\"schemaVersion\":1,\"error\":\"ERROR\",\"code\":\"CONTROL_PLANE_UNAVAILABLE\",\"message\":\"AWH control plane is unavailable\"}\n";
     exit;
 }
+
+// AiPASS delivery is a presentation of an already-authorized Artifact object.
+// HubControlPlaneRouter + artifactDownload have already validated the session,
+// same-origin read policy and project.read capability before streamPath exists.
+if ((string) ($_SERVER['REQUEST_METHOD'] ?? '') === 'GET'
+    && (int) ($response['status'] ?? 0) === 200
+    && isset($response['streamPath'])
+    && preg_match('#^/api/v1/control/artifacts/[0-9a-f-]{36}/download$#i', $path) === 1) {
+    $query = (string) (parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_QUERY) ?: '');
+    parse_str($query, $queryValues);
+    $mode = $queryValues['aipass'] ?? null;
+    $bundlePath = $response['streamPath'];
+    $isAiPassBundle = false;
+    if (is_string($bundlePath) && $bundlePath !== '' && is_file($bundlePath) && !is_link($bundlePath)) {
+        try { HubAiPassBundleDelivery::manifest($bundlePath); $isAiPassBundle = true; }
+        catch (HubAiPassProjectExportException) { $isAiPassBundle = false; }
+    }
+    if ($mode === null && $isAiPassBundle) $mode = 'page';
+    if ($mode !== null) {
+        try {
+            if (!$isAiPassBundle || !is_string($bundlePath)) throw new HubAiPassProjectExportException('AiPASS bundle is unavailable', 'AIPASS_EXPORT_FAILED');
+            if ($mode === 'page' && !array_key_exists('index', $queryValues)) {
+                $html = HubAiPassBundleDelivery::landingPage($bundlePath, $path);
+                http_response_code(200);
+                header('Content-Type: text/html; charset=utf-8');
+                header('Cache-Control: no-store');
+                header('X-Content-Type-Options: nosniff');
+                header('Referrer-Policy: no-referrer');
+                header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+                echo $html;
+                exit;
+            }
+            if ($mode === 'docx') {
+                $index = $queryValues['index'] ?? null;
+                if (!is_string($index) || preg_match('/^(?:0|[1-9][0-9]?)$/', $index) !== 1) throw new HubAiPassProjectExportException('AiPASS DOCX index is invalid', 'AIPASS_EXPORT_INVALID');
+                $file = HubAiPassBundleDelivery::document($bundlePath, (int) $index);
+                http_response_code(200);
+                header('Content-Type: ' . HubAiPassProjectExportService::DOCX_MIME);
+                header('Content-Length: ' . (int) $file['sizeBytes']);
+                header('Content-Disposition: attachment; filename="' . (string) $file['name'] . '"');
+                header('Cache-Control: no-store');
+                header('X-Content-Type-Options: nosniff');
+                header('Referrer-Policy: no-referrer');
+                echo $file['bytes'];
+                exit;
+            }
+            throw new HubAiPassProjectExportException('AiPASS delivery mode is invalid', 'AIPASS_EXPORT_INVALID');
+        } catch (Throwable) {
+            http_response_code(400);
+            header('Content-Type: application/json; charset=utf-8');
+            header('Cache-Control: no-store');
+            header('X-Content-Type-Options: nosniff');
+            echo "{\"schemaVersion\":1,\"error\":\"ERROR\",\"code\":\"AIPASS_DELIVERY_INVALID\",\"message\":\"AiPASS DOCX delivery could not be verified\"}\n";
+            exit;
+        }
+    }
+}
+
 http_response_code($response['status']);
 foreach ($response['headers'] as $name => $value) {
     if (is_array($value)) foreach ($value as $line) header($name . ': ' . $line, false);

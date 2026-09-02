@@ -38,3 +38,25 @@ test('P1 Home command center keeps critical cards keyboard and touch usable', as
   assert.match(css, /min-height:.*44px|padding:.*14px/);
   assert.match(css, /overflow-wrap|word-break/);
 });
+
+
+test('Owner Night Shift reuses existing canonical work projections without a shadow authority', async () => {
+  const dashboard = await read('web/dashboard.js');
+  const css = await read('web/dashboard.css');
+  assert.match(dashboard, /nightShift\.id = 'dashboard-night-shift'/);
+  assert.match(dashboard, /homeIds = \[[^\]]*'dashboard-night-shift'/);
+  assert.match(dashboard, /state\.control\?\.role === 'OWNER'/);
+  assert.match(dashboard, /state\.infrastructure/);
+  assert.match(dashboard, /morningBrief/);
+  assert.match(dashboard, /executionTriage/);
+  assert.match(dashboard, /WAITING_FOR_APPROVAL/);
+  assert.match(dashboard, /WAITING_FOR_WORKER/);
+  assert.match(dashboard, /WAITING_FOR_CAPABILITY/);
+  assert.match(dashboard, /currentDefect/);
+  assert.match(dashboard, /nextAction/);
+  assert.match(dashboard, /\.\/infrastructure\.html/);
+  assert.doesNotMatch(dashboard, /\/api\/v1\/control\/night/i);
+  assert.doesNotMatch(dashboard, /localStorage|sessionStorage|indexedDB|fetch\(/);
+  assert.match(css, /\.awh-night-grid/);
+  assert.match(css, /@media\(max-width:760px\).*\.awh-night-grid\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/s);
+});

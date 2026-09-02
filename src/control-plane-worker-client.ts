@@ -18,7 +18,7 @@ export class ControlPlaneWorkerError extends Error {
   constructor(message: string, readonly code = 'CONTROL_PLANE_WORKER_FAILED') { super(message); this.name = 'ControlPlaneWorkerError'; }
 }
 
-export interface WorkerProject { projectId: string; name: string; type: string; sourceRevision: string | null; vaultReady: boolean; }
+export interface WorkerProject { projectId: string; name: string; type: string; sourceRevision: string | null; vaultReady: boolean; memoryReady: boolean; }
 
 export interface WorkerContinuation { rootTaskId: string; step: number; maxSteps: number; }
 
@@ -224,8 +224,9 @@ export class ControlPlaneWorkerClient {
     return response.projects.map((value): WorkerProject => {
       if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ControlPlaneWorkerError('Worker project response is invalid', 'RESPONSE_INVALID');
       const item = value as Record<string, unknown>;
-      if (typeof item.projectId !== 'string' || !UUID_V4.test(item.projectId) || typeof item.name !== 'string' || item.name.length < 1 || item.name.length > 120 || typeof item.type !== 'string' || item.type.length < 1 || item.type.length > 32 || (item.sourceRevision !== null && typeof item.sourceRevision !== 'string') || typeof item.vaultReady !== 'boolean') throw new ControlPlaneWorkerError('Worker project response is invalid', 'RESPONSE_INVALID');
-      return { projectId: item.projectId, name: item.name, type: item.type, sourceRevision: item.sourceRevision === null ? null : item.sourceRevision as string, vaultReady: item.vaultReady };
+      const memoryReady = item.memoryReady === undefined ? false : item.memoryReady;
+      if (typeof item.projectId !== 'string' || !UUID_V4.test(item.projectId) || typeof item.name !== 'string' || item.name.length < 1 || item.name.length > 120 || typeof item.type !== 'string' || item.type.length < 1 || item.type.length > 32 || (item.sourceRevision !== null && typeof item.sourceRevision !== 'string') || typeof item.vaultReady !== 'boolean' || typeof memoryReady !== 'boolean') throw new ControlPlaneWorkerError('Worker project response is invalid', 'RESPONSE_INVALID');
+      return { projectId: item.projectId, name: item.name, type: item.type, sourceRevision: item.sourceRevision === null ? null : item.sourceRevision as string, vaultReady: item.vaultReady, memoryReady };
     });
   }
 

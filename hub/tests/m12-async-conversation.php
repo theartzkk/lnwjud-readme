@@ -29,6 +29,7 @@ $root = rtrim(sys_get_temp_dir(), '/') . '/awh-blockfree-' . bin2hex(random_byte
 $base = dirname(__DIR__); $now = gmdate('c');
 $owner = '223b45c0-23e1-408d-ae0f-ac5eca7f6900';
 $project = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
+$device = '423b45c0-23e1-408d-ae0f-ac5eca7f6900';
 try {
     mkdir($root, 0700, true);
     foreach (['vault','attachments','credentials','artifacts','workspaces','transfers'] as $dir) mkdir($root . '/' . $dir, 0700, true);
@@ -45,7 +46,8 @@ try {
     $pdo->prepare('INSERT INTO projects(project_id,name,type,created_at,source_revision,observed_at,provenance) VALUES(:id,:name,:type,:at,NULL,:at,:source)')->execute(['id'=>$project,'name'=>'Block-Free Fixture','type'=>'php','at'=>$now,'source'=>'fixture']);
     bf_assert(HubSchemaMigration::apply($db, $base . '/migrations/001_m3e_enrollment.sql', $now, false, $base . '/schema.sql') === 'applied', 'M3E');
     bf_assert(HubEnrollmentApiMigration::apply($db, $base . '/migrations/002_m3e2_enrollment_api.sql', $now) === 'applied', 'M3E2');
-    HubEnrollmentService::openExisting($db)->initializeOwner($owner, 'Art', [$project], $now);
+    $enrollment = HubEnrollmentService::openExisting($db); $initial = $enrollment->initializeOwner($owner, 'Art', [$project], $now);
+    $enrolled = $enrollment->enrollDevice(['schemaVersion'=>1,'pairingCode'=>$initial['initialPairingCode'],'deviceId'=>$device,'displayName'=>'Memory Worker','platform'=>'darwin','arch'=>'x64','appVersion'=>'1.0.0-rc.1'], $now);
     foreach ([[HubControlPlaneMigration::class,'003_m4_control_plane.sql'],[HubOwnerAuthMigration::class,'004_owner_auth.sql'],[HubAssistantWorkstreamMigration::class,'005_assistant_workstream.sql'],[HubWorkspaceContinuityMigration::class,'006_workspace_continuity.sql'],[HubUnifiedWorkspaceMigration::class,'007_unified_workspace.sql']] as [$migration,$sql]) {
         bf_assert($migration::apply($db, $base . '/migrations/' . $sql, $now) === 'applied', $sql);
     }
@@ -54,6 +56,13 @@ try {
     bf_assert(HubSelfServiceMigration::apply($db, $base . '/migrations/010_self_service.sql', $now) === 'applied', 'M11');
     bf_assert(HubCentralProjectAuthorityMigration::apply($db, $base . '/migrations/011_central_project_authority.sql', $now) === 'applied', 'M12');
     $service = HubControlPlaneService::openExisting($db);
+    $memoryInsert = $pdo->prepare("INSERT INTO project_memory(project_id,memory_file,status,sha256,size_bytes,observed_at,provenance) VALUES(:project,:file,'present',:sha,12,:at,'m12-memory-fixture')");
+    foreach (['PROJECT.md','HANDOFF.md','TASKS.md','ARCHITECTURE.md','DECISIONS.md'] as $file) $memoryInsert->execute(['project'=>$project,'file'=>$file,'sha'=>str_repeat('a',64),'at'=>$now]);
+    $legacyWorkerProjects = $service->workerProjects((string)$enrolled['accessToken'], $device, $now);
+    bf_assert(($legacyWorkerProjects['projects'][0]['memoryReady'] ?? null) === false, 'worker projection must expose legacy five-file metadata as not ready');
+    $memoryInsert->execute(['project'=>$project,'file'=>'CURRENT_STATE.md','sha'=>str_repeat('b',64),'at'=>$now]);
+    $readyWorkerProjects = $service->workerProjects((string)$enrolled['accessToken'], $device, $now);
+    bf_assert(($readyWorkerProjects['projects'][0]['memoryReady'] ?? null) === true, 'worker projection must expose canonical six-file metadata as ready');
     $submit = (new ReflectionClass(HubControlPlaneService::class))->getMethod('submitConversationForUser'); $submit->setAccessible(true);
     $payload = ['schemaVersion'=>1,'projectId'=>$project,'message'=>'สวัสดี ช่วยเล่าสถานะตอนนี้ให้หน่อย','idempotencyKey'=>'blockfree-chat-0001'];
     $submit->invoke($service, $owner, $payload, $now);

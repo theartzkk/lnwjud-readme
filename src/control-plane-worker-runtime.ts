@@ -38,7 +38,9 @@ function boundedSummary(value: string): string {
 
 export function isMutationGoal(goal: string): boolean { return MUTATION_GOAL.test(goal); }
 
-const PROJECT_MEMORY_MAX_BYTES = 32 * 1024;
+// Metadata reconciliation hashes existing canonical memory files but never uploads their contents.
+// Keep this bounded independently from the smaller AI context-read limit.
+const PROJECT_MEMORY_METADATA_MAX_BYTES = 256 * 1024;
 
 function sameProjectName(left: string, right: string): boolean { return left.trim().toLocaleLowerCase('en-US') === right.trim().toLocaleLowerCase('en-US'); }
 
@@ -48,7 +50,7 @@ async function localProjectMemoryMetadata(workspace: string): Promise<Array<{ na
     const path = join(workspace, name);
     try {
       const info = await lstat(path);
-      if (info.isSymbolicLink() || !info.isFile() || info.size > PROJECT_MEMORY_MAX_BYTES) throw new Error('PROJECT_MEMORY_INVALID');
+      if (info.isSymbolicLink() || !info.isFile() || info.size > PROJECT_MEMORY_METADATA_MAX_BYTES) throw new Error('PROJECT_MEMORY_INVALID');
       const data = await readFile(path);
       output.push({ name, status: 'present', sha256: createHash('sha256').update(data).digest('hex'), sizeBytes: data.length });
     } catch (error) {
@@ -124,6 +126,7 @@ export async function workerCapabilities(dataDir: string, allowCodex = true): Pr
 export class ControlPlaneWorkerRuntime {
   private running = false;
   private readonly contextRecoveryAttempts = new Set<string>();
+  private readonly memoryReconciliationAttempts = new Set<string>();
 
   constructor(private readonly client: ControlPlaneWorkerClient, private readonly options: WorkerRuntimeOptions) {}
 
@@ -134,7 +137,9 @@ export class ControlPlaneWorkerRuntime {
     try {
       const capabilities = await workerCapabilities(this.options.dataDir, this.options.allowCodex);
       await this.client.heartbeat(capabilities, 'READY');
-      await this.recoverMissingProjectContexts(capabilities).catch(() => undefined);
+      const projects = await this.client.projects().catch((): WorkerProject[] => []);
+      await this.reconcileProjectMemoryMetadata(projects).catch(() => undefined);
+      await this.recoverMissingProjectContexts(capabilities, projects).catch(() => undefined);
       const task = await this.client.claim();
       if (!task) return { status: 'IDLE', deviceId: identity.deviceId };
       return await this.execute(task, identity.deviceId, capabilities);
@@ -153,11 +158,28 @@ export class ControlPlaneWorkerRuntime {
     return matches.length === 1 ? matches[0]! : null;
   }
 
+  /** Existing Vault-ready projects can predate CURRENT_STATE metadata. Reconcile only
+   * bounded file metadata from one uniquely matched registered workspace. This path never
+   * registers/uploads source, mutates local files, or changes Vault state. */
+  private async reconcileProjectMemoryMetadata(projects: WorkerProject[]): Promise<void> {
+    for (const project of projects) {
+      if (!project.vaultReady || project.memoryReady) continue;
+      const workspace = await this.localWorkspaceForHubProject(project);
+      if (!workspace) continue;
+      let files: Awaited<ReturnType<typeof localProjectMemoryMetadata>>;
+      try { files = await localProjectMemoryMetadata(workspace); } catch { continue; }
+      const digest = createHash('sha256').update(JSON.stringify(files)).digest('hex');
+      const key = `${project.projectId}:${digest}`;
+      if (this.memoryReconciliationAttempts.has(key)) continue;
+      this.memoryReconciliationAttempts.add(key);
+      try { await this.client.publishProjectMemory(project.projectId, files); } catch { /* metadata reconciliation is opportunistic and must not block ordinary work */ }
+    }
+  }
+
   /** Recover an empty canonical Hub Vault from one uniquely matched trusted local workspace.
    * Only committed Git bytes are uploaded; WIP remains local and Project Memory crosses
    * the boundary as bounded metadata only. One runtime attempts each revision once. */
-  private async recoverMissingProjectContexts(capabilities: string[]): Promise<void> {
-    const projects = await this.client.projects();
+  private async recoverMissingProjectContexts(capabilities: string[], projects: WorkerProject[]): Promise<void> {
     for (const project of projects) {
       if (project.vaultReady) continue;
       const workspace = await this.localWorkspaceForHubProject(project);

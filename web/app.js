@@ -494,7 +494,7 @@ import {
       const latest = backup.latest || null; const aiTotal = Number(aiBudget.monthlyMicrounits || 0); const aiUsed = Number(aiBudget.usedMicrounits || 0); const aiPercent = aiTotal > 0 ? Math.min(100, Math.round((aiUsed / aiTotal) * 100)) : null;
       const rows = [
         ['ฐานข้อมูล', db.state === 'HEALTHY' ? `ปกติ · Schema ${db.schemaVersion || '—'}` : 'ต้องตรวจสอบ'],
-        ['Backup', backup.state === 'VERIFIED' && latest ? `ยืนยันแล้ว · ${date(latest.verifiedAt)} · ${size(latest.sizeBytes)}` : backup.state === 'MISSING' ? 'ยังไม่มี backup ที่ยืนยันแล้ว' : backup.state === 'NOT_CONFIGURED' ? 'ยังไม่ได้ตั้งค่า' : 'ต้องตรวจสอบ'],
+        ['Backup', backup.state === 'VERIFIED' && latest ? `${backup.freshness?.state === 'STALE' ? 'ยืนยันแล้วแต่เก่าเกิน 36 ชม.' : backup.freshness?.state === 'FRESH' ? 'ยืนยันแล้ว · สดใหม่' : 'ยืนยันแล้ว · ยังประเมินอายุไม่ได้'} · ${date(latest.verifiedAt)} · ${size(latest.sizeBytes)}` : backup.state === 'MISSING' ? 'ยังไม่มี backup ที่ยืนยันแล้ว' : backup.state === 'NOT_CONFIGURED' ? 'ยังไม่ได้ตั้งค่า' : 'ต้องตรวจสอบ'],
         ['พื้นที่จัดเก็บ', Number.isFinite(storage.usedPercent) ? `${storage.state === 'HEALTHY' ? 'ปกติ' : storage.state === 'WARNING' ? 'ใกล้เต็ม' : storage.state === 'CRITICAL' ? 'พื้นที่ต่ำ' : 'กำลังตรวจ'} · ใช้ ${storage.usedPercent}%` : 'กำลังตรวจ'],
         ['คิวงาน', `${Number(queue.activeTaskCount || 0)} งานกำลังทำ · ${Number(queue.waitingCapabilityCount || 0)} งานรอความสามารถ`],
         ['AI Budget', aiBudget.state === 'READY' ? `พร้อม${aiPercent === null ? '' : ` · ใช้ ${aiPercent}%`}` : aiBudget.state === 'NOT_CONFIGURED' ? 'ยังไม่เชื่อม' : aiBudget.state === 'DISABLED' ? 'ปิดอยู่' : aiBudget.state === 'LIMIT_REACHED' ? 'ถึงวงเงินแล้ว' : 'ต้องตรวจสอบ'],

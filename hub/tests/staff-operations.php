@@ -58,12 +58,14 @@ try {
         ('failed-old','p1','production provider request','FAILED','2026-08-30T00:01:00Z'),
         ('success-new','p1','provider request recovered','COMPLETED','2026-08-30T00:02:00Z'),
         ('failed-current','p1','current schema defect','FAILED','2026-08-30T00:03:00Z'),
-        ('waiting','p1','requires unavailable provider','WAITING_FOR_CAPABILITY','2026-08-30T00:04:00Z');
+        ('waiting','p1','budget paused provider work','WAITING_FOR_CAPABILITY','2026-08-30T00:04:00Z'),
+        ('waiting-source','p1','managed hosting source setup','WAITING_FOR_CAPABILITY','2026-08-30T00:05:00Z');
         INSERT INTO control_task_executions VALUES
         ('failed-old-ex','failed-old','p1','VPS','project.read','FAILED',NULL,3,'PROVIDER_FAILED','2026-08-30T00:01:00Z','2026-08-30T00:01:00Z'),
         ('success-new-ex','success-new','p1','VPS','project.read','COMPLETED',NULL,1,NULL,'2026-08-30T00:02:00Z','2026-08-30T00:02:00Z'),
         ('failed-current-ex','failed-current','p1','VPS','document.generate','FAILED',NULL,3,'SCHEMA_FIELDS','2026-08-30T00:03:00Z','2026-08-30T00:03:00Z'),
-        ('waiting-ex','waiting','p1','VPS','provider.invoke','WAITING_FOR_CAPABILITY',NULL,1,'BUDGET_EXHAUSTED','2026-08-30T00:04:00Z','2026-08-30T00:04:00Z');");
+        ('waiting-ex','waiting','p1','VPS','provider.invoke','WAITING_FOR_CAPABILITY',NULL,1,'BUDGET_EXHAUSTED','2026-08-30T00:04:00Z','2026-08-30T00:04:00Z'),
+        ('waiting-source-ex','waiting-source','p1','VPS','hosting.site.provision','WAITING_FOR_CAPABILITY',NULL,0,'PROJECT_SOURCE_NOT_READY','2026-08-30T00:05:00Z','2026-08-30T00:05:00Z');");
     $rowsBeforeTriage = (int) $pdo->query('SELECT COUNT(*) FROM control_task_executions')->fetchColumn();
     $triage = (new HubExecutionTriageService($pdo))->snapshot('2026-08-30T00:10:00Z');
     $byId = [];
@@ -71,10 +73,17 @@ try {
     staff_expect(($byId['failed-old-ex']['classification'] ?? null) === 'OBSOLETE_STALE', 'a later successful execution for the same project/capability must supersede old failure noise');
     staff_expect(($byId['failed-old-ex']['supersededByExecutionId'] ?? null) === 'success-new-ex', 'triage must show the objective superseding execution');
     staff_expect(($byId['failed-current-ex']['classification'] ?? null) === 'CURRENT_DEFECT', 'unresolved recent failure must remain a current defect');
-    staff_expect(($byId['waiting-ex']['classification'] ?? null) === 'BLOCKED_CAPABILITY', 'waiting capability must remain a truthful blocker');
+    staff_expect(($byId['waiting-ex']['classification'] ?? null) === 'POLICY_PAUSED' && ($byId['waiting-ex']['active'] ?? true) === false, 'budget pause must remain visible without becoming an alerting blocker');
+    staff_expect(($byId['waiting-source-ex']['classification'] ?? null) === 'SETUP_REQUIRED' && ($byId['waiting-source-ex']['active'] ?? false) === true, 'missing canonical source must be an actionable setup requirement');
     staff_expect(($triage['policyVersion'] ?? null) === 'execution-triage-v2', 'triage policy version must identify objective supersession support');
+    staff_expect(($triage['current']['total'] ?? null) === 2, 'current triage must exclude superseded audit-only failures');
+    staff_expect(($triage['current']['summary']['currentDefect'] ?? null) === 1 && ($triage['current']['summary']['setupRequired'] ?? null) === 1 && ($triage['current']['summary']['blockedCapability'] ?? null) === 0, 'current triage must retain only alerting defect/setup blockers');
+    staff_expect(($triage['nonAlerting']['policyPausedCount'] ?? null) === 1, 'current budget pause must stay visible in the non-alerting projection');
     staff_expect((int) $pdo->query('SELECT COUNT(*) FROM control_task_executions')->fetchColumn() === $rowsBeforeTriage, 'triage must preserve every canonical audit row');
     $service = new HubStaffOperationsService($pdo, $dbPath, $storage);
+    $postTriage = $service->snapshot('2026-08-30T00:10:00Z', null, $telemetry, $release);
+    staff_expect(($postTriage['morningBrief']['overnight']['executionTriage']['currentDefect'] ?? null) === 1 && ($postTriage['morningBrief']['overnight']['executionTriage']['setupRequired'] ?? null) === 1 && ($postTriage['morningBrief']['overnight']['executionTriage']['blockedCapability'] ?? null) === 0, 'Morning Brief must project current alerting execution blockers rather than policy pauses or audit history');
+    staff_expect(!array_key_exists('historicalExpected', $postTriage['morningBrief']['overnight']['executionTriage'] ?? []) && !array_key_exists('obsoleteStale', $postTriage['morningBrief']['overnight']['executionTriage'] ?? []), 'Morning Brief current blocker summary must not present historical audit classifications as live state');
     $persisted = $service->persistMorningBrief($snapshot['morningBrief']);
     staff_expect(($persisted['state'] ?? null) === 'PERSISTED', 'morning brief must persist in the existing revision ledger');
     $again = $service->persistMorningBrief($snapshot['morningBrief']);

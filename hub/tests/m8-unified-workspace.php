@@ -59,7 +59,7 @@ try {
     m8_assert(m8_response($control, 'POST', '/api/v1/control/settings/reset', $browser, ['schemaVersion' => 2, 'settingKey' => 'tagline'])['status'] === 200, 'settings reset is reversible');
     $deviceAuth = ['HTTP_AUTHORIZATION' => 'Bearer ' . $enrolled['accessToken'], 'CONTENT_TYPE' => 'application/json'];
     m8_assert(m8_response($control, 'POST', '/api/v1/control/worker/projects/bindings', $deviceAuth, ['schemaVersion' => 2, 'deviceId' => $device, 'projectId' => $project, 'workspaceLabel' => 'Unified Project', 'sourceFingerprint' => null, 'capabilities' => ['project:context', 'git:read']])['status'] === 200, 'device binding has no path');
-    $memoryFiles = array_map(static fn (string $name): array => ['name' => $name, 'status' => 'present', 'sha256' => str_repeat('a', 64), 'sizeBytes' => 12], ['CURRENT_STATE.md', 'PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md']);
+    $memoryFiles = array_map(static fn (string $name): array => ['name' => $name, 'status' => 'present', 'sha256' => str_repeat('a', 64), 'sizeBytes' => $name === 'PROJECT.md' ? 40000 : 12], ['CURRENT_STATE.md', 'PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md']);
     $legacyMemoryFiles = array_values(array_filter($memoryFiles, static fn (array $file): bool => $file['name'] !== 'CURRENT_STATE.md'));
     $legacyFirstPublish = m8_response($control, 'POST', '/api/v1/control/worker/projects/memory', $deviceAuth, ['schemaVersion' => 1, 'deviceId' => $device, 'projectId' => $project, 'files' => $legacyMemoryFiles]);
     m8_assert($legacyFirstPublish['status'] === 200 && str_contains($legacyFirstPublish['body'], '"memoryReady":false'), 'legacy five-file worker remains accepted but cannot claim current-state readiness');
