@@ -223,7 +223,7 @@ final class HubExecutionTriageService
         $reference = strtotime($now ?? 'now');
         if ($reference === false) return self::unknown('TRIAGE_TIME_INVALID');
         try {
-            $query = $this->pdo->query("SELECT e.execution_id,e.task_id,e.project_id,e.state,e.required_capability,e.attempt_count,e.last_error_code,e.checkpoint_json,e.updated_at,t.goal,p.name AS project_name,
+            $query = $this->pdo->query("SELECT e.execution_id,e.task_id,e.project_id,e.state,e.required_capability,e.attempt_count,e.last_error_code,e.updated_at,t.goal,p.name AS project_name,
                 (SELECT successor.execution_id FROM control_task_executions successor WHERE successor.project_id=e.project_id AND successor.required_capability=e.required_capability AND successor.state='COMPLETED' AND successor.updated_at>e.updated_at ORDER BY successor.updated_at ASC,successor.execution_id ASC LIMIT 1) AS superseded_execution_id,
                 (SELECT successor.updated_at FROM control_task_executions successor WHERE successor.project_id=e.project_id AND successor.required_capability=e.required_capability AND successor.state='COMPLETED' AND successor.updated_at>e.updated_at ORDER BY successor.updated_at ASC,successor.execution_id ASC LIMIT 1) AS superseded_at
                 FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id JOIN projects p ON p.project_id=t.project_id WHERE e.state IN ('FAILED','WAITING_FOR_CAPABILITY') ORDER BY e.updated_at DESC,e.execution_id LIMIT " . ($limit + 1));
@@ -311,7 +311,7 @@ final class HubExecutionTriageService
             : ($currentSummary['blockedCapability'] > 0 ? 'คงงานไว้จน capability/quota/budget พร้อม' : 'ไม่มี current blocker'))));
 
         return [
-            'schemaVersion'=>2,
+            'schemaVersion'=>1,
             'state'=>$items === [] ? 'CLEAR' : 'TRIAGED',
             'observedAt'=>gmdate('c', $reference),
             'summary'=>$summary,
@@ -319,7 +319,9 @@ final class HubExecutionTriageService
             'items'=>$items,
             'current'=>['state'=>$currentItems === [] ? 'CLEAR' : 'BLOCKED','total'=>count($currentItems),'summary'=>$currentSummary,'items'=>$currentItems],
             'bounded'=>$bounded,
-            'policyVersion'=>HubExecutionFailurePolicy::VERSION . '+execution-triage-v3',
+            'policyVersion'=>'execution-triage-v2',
+            'failurePolicyVersion'=>HubExecutionFailurePolicy::VERSION,
+            'currentProjectionVersion'=>'execution-triage-current-v1',
             'auditHistoryPreserved'=>true,
             'blindRetry'=>false,
             'nextAction'=>$nextAction,
@@ -331,6 +333,6 @@ final class HubExecutionTriageService
     {
         $summary=['historicalExpected'=>0,'obsoleteStale'=>0,'retryable'=>0,'blockedCapability'=>0,'authRequired'=>0,'externalPolicy'=>0,'currentDefect'=>0,'active'=>0];
         $current=['retryable'=>0,'blockedCapability'=>0,'authRequired'=>0,'externalPolicy'=>0,'currentDefect'=>0];
-        return ['schemaVersion'=>2,'state'=>'UNKNOWN','observedAt'=>null,'summary'=>$summary,'total'=>0,'items'=>[],'current'=>['state'=>'UNKNOWN','total'=>0,'summary'=>$current,'items'=>[]],'bounded'=>true,'policyVersion'=>HubExecutionFailurePolicy::VERSION . '+execution-triage-v3','auditHistoryPreserved'=>true,'blindRetry'=>false,'reason'=>$reason,'nextAction'=>'ตรวจ canonical execution schema/read authority'];
+        return ['schemaVersion'=>1,'state'=>'UNKNOWN','observedAt'=>null,'summary'=>$summary,'total'=>0,'items'=>[],'current'=>['state'=>'UNKNOWN','total'=>0,'summary'=>$current,'items'=>[]],'bounded'=>true,'policyVersion'=>'execution-triage-v2','failurePolicyVersion'=>HubExecutionFailurePolicy::VERSION,'currentProjectionVersion'=>'execution-triage-current-v1','auditHistoryPreserved'=>true,'blindRetry'=>false,'reason'=>$reason,'nextAction'=>'ตรวจ canonical execution schema/read authority'];
     }
 }
