@@ -161,6 +161,11 @@ jobs:
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           "version=$version" >> $env:GITHUB_OUTPUT
           Write-Host "AWH release version: $version"
+      - name: Create portable Windows release evidence
+        shell: pwsh
+        run: |
+          node scripts/release/create-desktop-release-evidence.mjs --platform win32 --architecture x64 --package AWH-Windows-x64.zip --source-sha $env:GITHUB_SHA --output AWH-Windows-x64.release.json
+          Get-Content AWH-Windows-x64.release.json -Raw | Write-Host
       - name: Verify packaged app and Squirrel installer set
         shell: pwsh
         run: |
@@ -228,7 +233,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: AWH-Windows-x64
-          path: AWH-Windows-x64.zip
+          path: |
+            AWH-Windows-x64.zip
+            AWH-Windows-x64.release.json
           if-no-files-found: error
           retention-days: 14
 
@@ -255,10 +262,16 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent out/AWH-darwin-x64/AWH.app AWH-macOS-x64.zip
           test -s AWH-macOS-x64.zip
           shasum -a 256 AWH-macOS-x64.zip
+      - name: Create portable macOS release evidence
+        run: |
+          node scripts/release/create-desktop-release-evidence.mjs --platform darwin --architecture x64 --package AWH-macOS-x64.zip --source-sha "$GITHUB_SHA" --output AWH-macOS-x64.release.json
+          cat AWH-macOS-x64.release.json
       - name: Upload macOS portable artifact
         uses: actions/upload-artifact@v7
         with:
           name: AWH-macOS-x64
-          path: AWH-macOS-x64.zip
+          path: |
+            AWH-macOS-x64.zip
+            AWH-macOS-x64.release.json
           if-no-files-found: error
           retention-days: 14
