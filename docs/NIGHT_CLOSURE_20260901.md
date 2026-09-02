@@ -226,3 +226,16 @@ Next safe action: keep Production at the healthy M19/schema-19 state. Complete t
 - M20 remains source-ready and exact-canonical dry-run ready, but Production activation is still blocked at the normal owner-auth execution safety gate; the gate was not bypassed.
 
 Next safe action: preserve the healthy M19 Production state while the execution gates remain closed. When a normal gate opens, complete the remaining bounded Web compaction and then activate M20 only through the canonical owner-auth deployment path, followed immediately by schema/pointer/service/rollback verification.
+
+## 2026-09-02 11:3x ICT — retry-identity and compaction closure
+
+- Canonical source before this checkpoint is `awh/api-independence` `f0dfeb5f2811f9f0684b6854febcf02135e15a41`, merge of PR #89. The harvested retry-identity fix binds optional `AWH_RELEASE_ATTEMPT=r1..r999` before CONTROL web build, backup and rollback naming; remote validation covers typed releases through M20.
+- PR #89 exact head passed hosted CI run `33589916206`, local full Node regression 354 tests / 353 PASS / 1 platform SKIP / 0 FAIL, full Hub/PHP regression through M20, and exact-merge focused QA 13/13 plus typecheck. M20 dry-run with retry identity `r1` PASS and generated `awh-shell-m20-f0dfeb5f2811-r1`.
+- Legacy PRs #9, #10, #33, #53 and #58 were closed as superseded after ancestry/semantic evidence; branches/history were preserved. Only intentional architecture drafts #35 and #7 remain open.
+- Approved release-artifact compaction completed its final bounded Web pass from exact canonical: 7 Web paths linked, reported `2,164,171,454` logical reclaimable bytes. Post-audit is now 180 matched / 180 store-linked with Control and Control+Web guaranteed reclaim both `0` bytes.
+- Production root disk is now ~42% used (`12,579,168,256 / 30,083,776,512` bytes observed immediately after compaction), down from ~79% before compaction. No historical release directory was deleted.
+- Post-compaction Production verification remains Control/Web `m19-b66ef39cc986`, SQLite schema 19 with integrity `ok` and no FK output; nginx, PHP 8.3 FPM, native-executor timer and backup timer are active.
+- Exact rollback DB `/var/backups/awh-hub/awh.sqlite.pre-m19-b66ef39cc986` remains protected; daily backup authority is active.
+- M20 Production activation is source/QA/dry-run ready with verified current desktop artifacts, but the normal `--deploy --approve --owner-auth --project-source-authority` invocation is blocked by the execution safety gate. The gate was not bypassed and Production remains healthy on M19.
+
+Next safe action: keep M19 Production stable until the normal owner-auth execution gate permits M20 activation. When it opens, use only the canonical exact-SHA path, then immediately verify schema 20, migration ledger, Control/Web pointers, services, project-source/AiPASS routes, backup and rollback evidence.
