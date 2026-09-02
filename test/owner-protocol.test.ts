@@ -21,7 +21,7 @@ test('injects owner protocol into every bounded project context before project-s
     await initializeProject(root, { name: 'Protocol Fixture', type: 'general' });
     const context = await buildProjectContext(root);
     assert.match(context.ownerProtocol, /Art ↔ AI Working Constitution/);
-    assert.deepEqual(Object.keys(context.memory), ['PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md']);
+    assert.deepEqual(Object.keys(context.memory), ['CURRENT_STATE.md', 'PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md']);
     assert.equal(context.project.name, 'Protocol Fixture');
   } finally {
     await rm(root, { recursive: true, force: true });

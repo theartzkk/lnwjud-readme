@@ -290,7 +290,7 @@ export class ControlPlaneWorkerClient {
 
   async publishProjectMemory(projectId: string, files: Array<{ name: string; status: 'present' | 'missing'; sha256: string | null; sizeBytes: number }>): Promise<void> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir);
-    const expected = new Set(['PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md']);
+    const expected = new Set(['CURRENT_STATE.md', 'PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md']);
     if (!UUID_V4.test(projectId) || !Array.isArray(files) || files.length !== expected.size || new Set(files.map((file) => file.name)).size !== expected.size || files.some((file) => !expected.has(file.name) || !['present', 'missing'].includes(file.status) || !Number.isSafeInteger(file.sizeBytes) || file.sizeBytes < 0 || file.sizeBytes > 32 * 1024 || (file.status === 'present' ? (typeof file.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(file.sha256)) : (file.sha256 !== null || file.sizeBytes !== 0)))) throw new ControlPlaneWorkerError('Project memory metadata is invalid', 'PAYLOAD_INVALID');
     const response = await this.post('/control/worker/projects/memory', { schemaVersion: 1, deviceId: identity.deviceId, projectId, files });
     if (response.schemaVersion !== 1 || response.projectId !== projectId || typeof response.memoryReady !== 'boolean') throw new ControlPlaneWorkerError('Project memory metadata response is invalid', 'RESPONSE_INVALID');

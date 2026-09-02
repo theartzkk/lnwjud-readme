@@ -4,7 +4,7 @@ Before planning, editing, delegating, testing, deploying, or reporting work for 
 
 1. Read `ART_AI_WORKING_PROTOCOL.md` and treat it as the durable owner-level working contract.
 2. Read `CURRENT_STATE.md` and treat it as the current operational-state authority; resolve exact Source of Truth/live state again before mutation.
-3. Read the active project's portable identity and Project Memory (`PROJECT.md`, `HANDOFF.md`, `TASKS.md`, `ARCHITECTURE.md`, `DECISIONS.md`) when available. Dated checkpoint claims are historical unless `CURRENT_STATE.md` or fresh evidence confirms them.
+3. Read the active project's portable identity and Project Memory (`CURRENT_STATE.md`, `PROJECT.md`, `HANDOFF.md`, `TASKS.md`, `ARCHITECTURE.md`, `DECISIONS.md`) when available. Dated checkpoint claims are historical unless `CURRENT_STATE.md` or fresh evidence confirms them.
 4. Inspect the current Source of Truth/runtime state relevant to the task before choosing implementation.
 5. Treat the user's prompt as the desired outcome/symptom, **not as a restriction on analysis scope**.
 6. Follow system-first/root-cause-first analysis and avoid micro-fix loops or parallel systems.

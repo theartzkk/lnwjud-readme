@@ -99,6 +99,8 @@ test('memory revisions and conflict responses are explicit, bounded schemas', ()
   const contentHash = createHash('sha256').update(content).digest('hex');
   const memory = validateMemoryRevision({ schemaVersion: 1, revisionId, projectId, memoryFile: 'HANDOFF.md', parentRevisionId: parentRevisionId, deviceId, createdAt: now, sha256: contentHash, size: Buffer.byteLength(content), content });
   assert.equal(memory.memoryFile, 'HANDOFF.md');
+  const current = validateMemoryRevision({ schemaVersion: 1, revisionId: parentRevisionId, projectId, memoryFile: 'CURRENT_STATE.md', parentRevisionId: null, deviceId, createdAt: now, sha256: contentHash, size: Buffer.byteLength(content), content });
+  assert.equal(current.memoryFile, 'CURRENT_STATE.md');
   const conflict = validateConflictResponse({ schemaVersion: 1, error: 'CONFLICT', code: 'REVISION_CONFLICT', requestId: revisionId, projectId, current: { revisionId, parentRevisionId: null, deviceId, createdAt: now, manifestHash: hash }, submitted: { revisionId: parentRevisionId, parentRevisionId: revisionId, deviceId, createdAt: now, manifestHash: hash } });
   assert.equal(conflict.code, 'REVISION_CONFLICT');
 });

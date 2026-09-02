@@ -10,7 +10,7 @@
 
 - AWH is a durable personal multi-project workspace hub: ReadyIDC owns canonical Hub task/project/memory/revision state, while trusted Mac/Windows workers provide device-bound execution when needed.
 - `.awh/project.json` is portable project identity and display metadata.
-- `PROJECT.md`, `HANDOFF.md`, `TASKS.md`, `ARCHITECTURE.md`, and `DECISIONS.md` are portable Project Memory truth.
+- `CURRENT_STATE.md`, `PROJECT.md`, `HANDOFF.md`, `TASKS.md`, `ARCHITECTURE.md`, and `DECISIONS.md` are portable Project Memory truth.
 - Canonical workspace paths, local availability, and UI state are device-local.
 - `.git` is local project history and is never synchronized by AWH.
 

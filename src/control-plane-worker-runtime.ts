@@ -88,7 +88,7 @@ export function buildCodexTaskInstruction(ownerProtocol: string, goal: string): 
     'AWH OWNER-LEVEL WORKING CONTRACT — MANDATORY',
     ownerProtocol.trim(),
     'PROJECT CONTEXT CONTRACT',
-    `Before implementation, inspect the canonical project identity and relevant Project Memory in this workspace (${memoryFiles}). Inspect current source/runtime state and treat those files as project-specific Source of Truth beneath the owner-level contract. Do not assume the user\'s wording limits analysis scope.`,
+    `Before implementation, inspect the canonical project identity and relevant Project Memory in this workspace (${memoryFiles}). CURRENT_STATE.md is the current operational-state authority: fresh observed source/runtime evidence outranks it, and it outranks dated checkpoint prose in the other memory files. Inspect current source/runtime state before acting. Do not assume the user\'s wording limits analysis scope.`,
     'CURRENT OWNER GOAL',
     goal.trim(),
     'EXECUTION REQUIREMENT',
