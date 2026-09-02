@@ -261,13 +261,11 @@ final class HubAiPassProjectExportService
         $title = 'AiPASS Source Evidence — ' . $project . ' — Part ' . $number . ' of ' . $total;
         $subtitle = 'Exact canonical revision: ' . $revision;
         $body = $this->paragraph($title, 'Title') . $this->paragraph($subtitle, 'Subtitle');
-        $plain = $title . "\n" . $subtitle . "\n";
         foreach ($part as $section) {
             $heading = (string)$section['path'] . ' · segment ' . (int)$section['segment'];
             $body .= $this->paragraph($heading, 'Heading1') . $this->paragraphsFromText((string)$section['text'], 'Code');
-            $plain .= $heading . "\n" . (string)$section['text'] . "\n";
         }
-        return ['bytes'=>$this->docx($body, $title),'textBytes'=>strlen(self::xmlText($plain))];
+        return $this->docx($body, $title);
     }
 
     /** @param list<array<string,mixed>> $skipped @param list<array<string,mixed>> $redactions @param list<int> $partsInBatch @return array{bytes:string,textBytes:int} */
@@ -279,8 +277,7 @@ final class HubAiPassProjectExportService
         $title = 'AiPASS Independent Review Context — ' . $project . ' — Batch ' . $batch . ' of ' . $batchCount;
         $subtitle = 'Exact canonical Git SHA: ' . $revision;
         $body = $this->paragraph($title, 'Title') . $this->paragraph($subtitle, 'Subtitle') . $this->paragraphsFromText($prompt, 'Normal') . $this->paragraph($safety, 'Note');
-        $plain = $title . "\n" . $subtitle . "\n" . $prompt . "\n" . $safety;
-        return ['bytes'=>$this->docx($body, $title),'textBytes'=>strlen(self::xmlText($plain))];
+        return $this->docx($body, $title);
     }
 
     /** @return array{index:int,name:string,batch:int,role:string,mimeType:string,sizeBytes:int,sha256:string,extractedTextBytes:int} */
@@ -334,14 +331,25 @@ final class HubAiPassProjectExportService
         return '<w:p><w:pPr><w:pStyle w:val="' . $style . '"/></w:pPr>' . $runs . '</w:p>';
     }
 
-    private function docx(string $body, string $title): string
+    /** @return array{bytes:string,textBytes:int} */
+    private function docx(string $body, string $title): array
     {
         $document = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' . $body . '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="900" w:right="900" w:bottom="900" w:left="900"/></w:sectPr></w:body></w:document>';
         $styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Arial"/><w:lang w:val="en-US" w:eastAsia="th-TH"/></w:rPr></w:rPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:rPr><w:sz w:val="19"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:rPr><w:b/><w:sz w:val="34"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:basedOn w:val="Normal"/><w:rPr><w:sz w:val="20"/><w:color w:val="555555"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="Heading 1"/><w:basedOn w:val="Normal"/><w:rPr><w:b/><w:sz w:val="24"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Code"><w:name w:val="Code"/><w:basedOn w:val="Normal"/><w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New" w:eastAsia="Arial"/><w:sz w:val="15"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Note"><w:name w:val="Note"/><w:basedOn w:val="Normal"/><w:rPr><w:i/><w:color w:val="666666"/></w:rPr></w:style></w:styles>';
         $types = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>';
         $rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>';
         $docrels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
-        return $this->zipBytes(['[Content_Types].xml'=>$types,'_rels/.rels'=>$rels,'word/document.xml'=>$document,'word/styles.xml'=>$styles,'word/_rels/document.xml.rels'=>$docrels]);
+        $bytes = $this->zipBytes(['[Content_Types].xml'=>$types,'_rels/.rels'=>$rels,'word/document.xml'=>$document,'word/styles.xml'=>$styles,'word/_rels/document.xml.rels'=>$docrels]);
+        return ['bytes'=>$bytes,'textBytes'=>self::documentXmlTextBytes($document)];
+    }
+
+    public static function documentXmlTextBytes(string $xml): int
+    {
+        if ($xml === '' || preg_match('//u', $xml) !== 1) throw new HubAiPassProjectExportException('AiPASS DOCX document XML is invalid', 'AIPASS_EXPORT_FAILED');
+        $xml = preg_replace('/<w:(?:br|cr)\s*\/?>/i', "\n", $xml) ?? $xml;
+        $plain = html_entity_decode(strip_tags($xml), ENT_QUOTES|ENT_XML1, 'UTF-8');
+        if (preg_match('//u', $plain) !== 1) throw new HubAiPassProjectExportException('AiPASS DOCX text is invalid UTF-8', 'AIPASS_EXPORT_FAILED');
+        return strlen($plain);
     }
 
     /** @param array<string,string> $files */
@@ -403,7 +411,7 @@ final class HubAiPassBundleDelivery
                 $stat = $zip->statName($name);
                 $bytes = $zip->getFromName($name);
                 if (!is_array($stat) || (int)($stat['size'] ?? -1) !== (int)$file['sizeBytes'] || !is_string($bytes) || strlen($bytes) !== (int)$file['sizeBytes'] || !hash_equals((string)$file['sha256'], hash('sha256', $bytes))) throw new HubAiPassProjectExportException('AiPASS DOCX integrity check failed', 'AIPASS_EXPORT_FAILED');
-                if (self::verifyDocxTextBudget($bytes) > (int)$file['extractedTextBytes']) throw new HubAiPassProjectExportException('AiPASS DOCX text exceeds its declared conservative budget', 'AIPASS_EXPORT_FAILED');
+                if (self::verifyDocxTextBudget($bytes) !== (int)$file['extractedTextBytes']) throw new HubAiPassProjectExportException('AiPASS DOCX text budget metadata does not match the document', 'AIPASS_EXPORT_FAILED');
                 $names[$name] = true;
             }
             $allowedEntries = $names + ['SAFETY_MANIFEST.json'=>true];
@@ -444,7 +452,7 @@ final class HubAiPassBundleDelivery
         try { $bytes = $zip->getFromName((string)$file['name']); }
         finally { $zip->close(); }
         if (!is_string($bytes) || strlen($bytes) !== (int)$file['sizeBytes'] || !hash_equals((string)$file['sha256'], hash('sha256', $bytes))) throw new HubAiPassProjectExportException('AiPASS DOCX integrity check failed', 'AIPASS_EXPORT_FAILED');
-        if (self::verifyDocxTextBudget($bytes) > (int)$file['extractedTextBytes']) throw new HubAiPassProjectExportException('AiPASS DOCX text exceeds its declared conservative budget', 'AIPASS_EXPORT_FAILED');
+        if (self::verifyDocxTextBudget($bytes) !== (int)$file['extractedTextBytes']) throw new HubAiPassProjectExportException('AiPASS DOCX text budget metadata does not match the document', 'AIPASS_EXPORT_FAILED');
         return ['name'=>(string)$file['name'],'mimeType'=>HubAiPassProjectExportService::DOCX_MIME,'bytes'=>$bytes,'sizeBytes'=>strlen($bytes),'batch'=>(int)$file['batch'],'extractedTextBytes'=>(int)$file['extractedTextBytes']];
     }
 
@@ -497,9 +505,7 @@ final class HubAiPassBundleDelivery
             $opened = true;
             $xml = $doc->getFromName('word/document.xml');
             if (!is_string($xml) || strlen($xml) < 20) throw new HubAiPassProjectExportException('AiPASS DOCX has no document body', 'AIPASS_EXPORT_FAILED');
-            $xml = preg_replace('/<w:(?:br|cr)\s*\/?>/i', "\n", $xml) ?? $xml;
-            $plain = html_entity_decode(strip_tags($xml), ENT_QUOTES|ENT_XML1, 'UTF-8');
-            $textBytes = strlen($plain);
+            $textBytes = HubAiPassProjectExportService::documentXmlTextBytes($xml);
             if ($textBytes < 1 || $textBytes > HubAiPassProjectExportService::FILE_TEXT_BYTE_CEILING) throw new HubAiPassProjectExportException('AiPASS DOCX exceeds the verified text budget', 'AIPASS_SOURCE_FILE_TOO_LARGE');
             return $textBytes;
         } finally { if ($opened) $doc->close(); @unlink($tmp); }

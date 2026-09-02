@@ -67,8 +67,8 @@ $verifyDoc = $deliveryReflection->getMethod('verifyDocxTextBudget');
 if (method_exists($verifyDoc, 'setAccessible')) $verifyDoc->setAccessible(true);
 $contextActual = (int)$verifyDoc->invoke(null, (string)$contextDoc['bytes']);
 $sourceActual = (int)$verifyDoc->invoke(null, (string)$sourceDoc['bytes']);
-aipass_bound_assert($contextActual > 1 && $contextActual <= (int)$contextDoc['textBytes'], 'context actual text must fit declared conservative budget');
-aipass_bound_assert($sourceActual > 1 && $sourceActual <= (int)$sourceDoc['textBytes'], 'source actual text must fit declared conservative budget');
+aipass_bound_assert($contextActual > 1 && $contextActual === (int)$contextDoc['textBytes'], 'context actual text must fit declared conservative budget');
+aipass_bound_assert($sourceActual > 1 && $sourceActual === (int)$sourceDoc['textBytes'], 'source actual text must fit declared conservative budget');
 
 $contextName = 'B01_01_AIPASS_REVIEW_CONTEXT.docx';
 $sourceName = 'B01_02_AIPASS_SOURCE_EVIDENCE_PART_001_OF_001.docx';
