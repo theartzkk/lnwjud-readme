@@ -2,6 +2,9 @@ import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 
 const ROOT = process.env.AWH_SOURCE_ROOT || process.cwd();
+const CANONICAL_BRANCH = 'awh/api-independence';
+const CANONICAL_REMOTE = 'origin';
+const CANONICAL_REPOSITORY = 'theartzkk/lnwjud-readme';
 const deployScript = join(ROOT, 'deploy/awh-control-plane/deploy-control-plane.sh');
 const sourcePreflight = join(ROOT, 'scripts/ops/canonical-source-preflight.mjs');
 const args = process.argv.slice(2);
@@ -45,9 +48,9 @@ if (mutation) {
   const preflightArgs = [
     sourcePreflight,
     '--root', ROOT,
-    '--branch', process.env.AWH_CANONICAL_BRANCH || 'awh/api-independence',
-    '--remote', process.env.AWH_CANONICAL_REMOTE || 'origin',
-    '--repository', process.env.AWH_CANONICAL_REPOSITORY || 'theartzkk/lnwjud-readme',
+    '--branch', CANONICAL_BRANCH,
+    '--remote', CANONICAL_REMOTE,
+    '--repository', CANONICAL_REPOSITORY,
     '--require-mutation-ready',
   ];
   if (process.env.AWH_RELEASE_COMMIT) preflightArgs.push('--expected-sha', process.env.AWH_RELEASE_COMMIT);
