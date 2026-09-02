@@ -134,11 +134,11 @@ test('repository identity mismatch blocks before remote authority lookup', async
   }
 });
 
-test('owner auth activation runs canonical source proof before credentials or deploy', async () => {
+test('owner auth activation proves source before credentials and binds the proven SHA into deploy', async () => {
   const source = await readFile(join(repoRoot, 'scripts/ops/activate-owner-auth.mjs'), 'utf8');
   const preflight = source.indexOf('await runCanonicalSourcePreflight()');
   const credential = source.indexOf('await store.get(OWNER_AUTH_PASSWORD_CREDENTIAL_KEY)');
-  const deploy = source.indexOf('await runDeploy(password)');
+  const deploy = source.indexOf('await runDeploy(password, canonicalSha)');
   assert.ok(preflight >= 0, 'canonical preflight call must exist');
   assert.ok(credential > preflight, 'credential access must happen after canonical source proof');
   assert.ok(deploy > credential, 'production deploy must happen after source proof and credential gate');
@@ -146,10 +146,11 @@ test('owner auth activation runs canonical source proof before credentials or de
   assert.match(source, /const CANONICAL_BRANCH = 'awh\/api-independence'/);
   assert.match(source, /const CANONICAL_REMOTE = 'origin'/);
   assert.match(source, /const CANONICAL_REPOSITORY = 'theartzkk\/lnwjud-readme'/);
+  assert.match(source, /AWH_RELEASE_COMMIT: canonicalSha/);
   assert.doesNotMatch(source, /AWH_CANONICAL_(?:BRANCH|REMOTE|REPOSITORY)/);
 });
 
-test('guarded deployment wrapper proves canonical source before mutation', async () => {
+test('guarded deployment wrapper proves canonical source and binds the proven SHA before mutation', async () => {
   const source = await readFile(join(repoRoot, 'scripts/ops/guarded-control-plane-deploy.mjs'), 'utf8');
   const mutationGate = source.indexOf("if (mutation) {");
   const preflight = source.indexOf('const proof = await run(process.execPath, preflightArgs)');
@@ -161,6 +162,7 @@ test('guarded deployment wrapper proves canonical source before mutation', async
   assert.match(source, /const CANONICAL_BRANCH = 'awh\/api-independence'/);
   assert.match(source, /const CANONICAL_REMOTE = 'origin'/);
   assert.match(source, /const CANONICAL_REPOSITORY = 'theartzkk\/lnwjud-readme'/);
+  assert.match(source, /AWH_RELEASE_COMMIT: provenCanonicalSha/);
   assert.doesNotMatch(source, /AWH_CANONICAL_(?:BRANCH|REMOTE|REPOSITORY)/);
   assert.match(source, /CANONICAL_SOURCE_PREFLIGHT_BLOCKED/);
 });
