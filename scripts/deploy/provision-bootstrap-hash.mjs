@@ -79,7 +79,7 @@ if (process.argv[1] && resolve(fileURLToPath(import.meta.url)) === resolve(proce
     usage();
     process.exit(2);
   }
-  const target = targetName(process.env.AWH_DEPLOY_TARGET || 'awh-vps');
+  const target = targetName(process.env.AWH_DEPLOY_TARGET || 'awh-ready');
   const store = createProductionCredentialStore();
   provisionBootstrapHash({ store, target }).then((result) => {
     process.stdout.write(`Bootstrap hash provisioned to ${result.target}:${result.path}\n`);

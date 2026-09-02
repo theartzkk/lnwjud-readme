@@ -12,7 +12,7 @@ case "${1:-}" in
 esac
 test -n "$RELEASE_ID" || { echo "A release ID is required" >&2; exit 2; }
 
-DEPLOY_TARGET=${AWH_DEPLOY_TARGET:-awh-vps}
+DEPLOY_TARGET=${AWH_DEPLOY_TARGET:-awh-ready}
 REMOTE_ROOT=/var/www/awh-web
 
 case "$RELEASE_ID" in

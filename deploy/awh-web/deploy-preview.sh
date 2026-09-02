@@ -10,7 +10,7 @@ case "${1:-}" in
 esac
 
 LOCAL_DIR=${AWH_BUILD_DIR:-dist-web}
-DEPLOY_TARGET=${AWH_DEPLOY_TARGET:-awh-vps}
+DEPLOY_TARGET=${AWH_DEPLOY_TARGET:-awh-ready}
 RELEASE_ID=${AWH_RELEASE_ID:-m3c1-$(date -u +%Y%m%dT%H%M%SZ)}
 REMOTE_ROOT=/var/www/awh-web
 REMOTE_STAGE="/tmp/awh-web-$RELEASE_ID"

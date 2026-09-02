@@ -17,10 +17,10 @@ test('local deployment assets are dry-run by default and require explicit review
   const caddy = await readFile(join(ROOT, 'deploy/caddy/awh-preview.Caddyfile'), 'utf8');
   const health = await readFile(join(ROOT, 'deploy/awh-web/health-check.sh'), 'utf8');
   assert.match(deploy, /MODE=dry-run/);
-  assert.match(deploy, /AWH_DEPLOY_TARGET:-awh-vps/);
+  assert.match(deploy, /AWH_DEPLOY_TARGET:-awh-ready/);
   assert.match(deploy, /--deploy/);
   assert.match(rollback, /MODE=dry-run/);
-  assert.match(rollback, /AWH_DEPLOY_TARGET:-awh-vps/);
+  assert.match(rollback, /AWH_DEPLOY_TARGET:-awh-ready/);
   assert.match(rollback, /--deploy/);
   assert.match(deploy, /StrictHostKeyChecking=yes/);
   assert.doesNotMatch(`${deploy}\n${rollback}\n${caddy}`, /(?:1\.2\.3\.4|BEGIN [A-Z ]+PRIVATE KEY|password\s*[:=]\s*[^<{\s]+)/i);
@@ -180,7 +180,7 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(pool, /REPLACE_WITH_SHA256_HASH_PROVISIONED_OUT_OF_BAND/);
   assert.match(deploy, /MODE=dry-run/);
   assert.match(deploy, /--deploy/);
-  assert.match(deploy, /AWH_DEPLOY_TARGET:-awh-vps/);
+  assert.match(deploy, /AWH_DEPLOY_TARGET:-awh-ready/);
   assert.match(deploy, /PRODUCTION_DEPLOY_APPROVAL_REQUIRED/);
   assert.match(deploy, /StrictHostKeyChecking=yes/);
   assert.match(deploy, /migrate-m3e2\.php/);
@@ -254,7 +254,7 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(remoteDeploy, /enrollment\/devices/);
   assert.match(remoteDeploy, /\.restore/);
   assert.doesNotMatch(remoteDeploy, /echo .*BOOTSTRAP|printf .*BOOTSTRAP|cat .*bootstrap/i);
-  assert.match(preflight, /AWH_DEPLOY_TARGET|awh-vps/);
+  assert.match(preflight, /AWH_DEPLOY_TARGET|awh-ready/);
   assert.match(preflight, /DB_AUTHORITY_RESOLVED/);
   assert.match(preflight, /DB_NOT_FOUND/);
   assert.match(preflight, /DB_AMBIGUOUS/);

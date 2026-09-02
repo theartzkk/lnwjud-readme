@@ -350,7 +350,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const result = await runBootstrapOrchestration({
       client,
       store,
-      target: safeTarget(process.env.AWH_DEPLOY_TARGET || 'awh-vps'),
+      target: safeTarget(process.env.AWH_DEPLOY_TARGET || 'awh-ready'),
       projectIds: await currentProjectIds(config),
       apiBase,
     });

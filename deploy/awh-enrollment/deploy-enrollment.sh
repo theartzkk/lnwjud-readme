@@ -18,7 +18,7 @@ done
 
 ROOT=${AWH_SOURCE_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}
 RELEASE_ID=${AWH_ENROLLMENT_RELEASE_ID:-m3e2-$(date -u +%Y%m%dT%H%M%SZ)}
-DEPLOY_TARGET=${AWH_DEPLOY_TARGET:-awh-vps}
+DEPLOY_TARGET=${AWH_DEPLOY_TARGET:-awh-ready}
 PREFLIGHT_SCRIPT=$ROOT/deploy/awh-enrollment/preflight-production.sh
 REMOTE_ROOT=/opt/awh-hub
 REMOTE_STAGE=/tmp/awh-enrollment-$RELEASE_ID.tar.gz
