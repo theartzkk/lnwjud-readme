@@ -1,0 +1,30 @@
+name: AWH Canonical Source Authority
+
+on:
+  pull_request:
+    branches:
+      - awh/api-independence
+    paths:
+      - 'scripts/ops/canonical-source-preflight.mjs'
+      - 'test/canonical-source-preflight.test.mjs'
+      - '.github/workflows/awh-canonical-source.yml'
+      - 'deploy/awh-control-plane/**'
+      - 'scripts/ops/activate-owner-auth.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canonical-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run canonical source regression
+        run: node --test test/canonical-source-preflight.test.mjs
