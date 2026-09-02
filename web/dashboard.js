@@ -248,7 +248,7 @@ function setDashboardView(view) {
   if (!dashboard) return;
   const taskSurface = $('dashboard-tasks');
   const filesSurface = $('dashboard-files');
-  const homeIds = ['dashboard-welcome', 'dashboard-hero', 'dashboard-continuity', 'dashboard-pulse', 'awh-home-tools', 'dashboard-overview', 'awh-home-files', 'dashboard-owner-center'];
+  const homeIds = ['dashboard-welcome', 'dashboard-hero', 'dashboard-continuity', 'dashboard-pulse', 'dashboard-night-shift', 'awh-home-tools', 'dashboard-overview', 'awh-home-files', 'dashboard-owner-center'];
   const showingTasks = view === 'tasks';
   const showingFiles = view === 'files';
   for (const id of homeIds) {
@@ -347,6 +347,43 @@ function renderOwnerSystemSummary() {
   const healthy = infra?.telemetry?.state === 'READY' && infra?.database?.state === 'HEALTHY';
   setText('dashboard-owner-system-state', healthy ? 'VPS Healthy · AI Ready' : 'VPS ต้องตรวจสอบ');
   setText('dashboard-owner-system-detail', `CPU ${cpu}% · RAM ${ram}% · Disk ${disk}% · ${active} งาน · ${infra?.deployment?.controlReleaseId || 'Production'}`);
+}
+
+function renderOwnerNightShift() {
+  const section = $('dashboard-night-shift');
+  if (!(section instanceof HTMLElement)) return;
+  const owner = state.control?.role === 'OWNER';
+  section.hidden = !owner;
+  if (!owner) return;
+
+  const tasks = Array.isArray(state.control?.tasks) ? state.control.tasks : [];
+  const approvals = Array.isArray(state.control?.approvals) ? state.control.approvals : [];
+  const infra = state.infrastructure || {};
+  const envelope = infra?.morningBrief && typeof infra.morningBrief === 'object' ? infra.morningBrief : {};
+  const brief = envelope?.persisted === true && envelope?.brief && typeof envelope.brief === 'object' ? envelope.brief : envelope;
+  const overnight = brief?.overnight && typeof brief.overnight === 'object' ? brief.overnight : {};
+  const triage = infra?.staff?.executionTriage && typeof infra.staff.executionTriage === 'object' ? infra.staff.executionTriage : {};
+
+  const running = tasks.filter((task) => ['PREPARING', 'RUNNING', 'QA'].includes(task?.state)).length;
+  const completed = Math.max(0, Number(overnight.completedTasks || 0));
+  const approvalIds = new Set();
+  tasks.forEach((task, index) => { if (task?.state === 'WAITING_FOR_APPROVAL') approvalIds.add(typeof task.taskId === 'string' ? task.taskId : `task-${index}`); });
+  approvals.forEach((approval, index) => { if (['PENDING', 'WAITING'].includes(approval?.state || approval?.status)) approvalIds.add(typeof approval.taskId === 'string' ? approval.taskId : `approval-${index}`); });
+  const waitingIds = new Set();
+  tasks.forEach((task, index) => { if (task?.state === 'WAITING_FOR_WORKER') waitingIds.add(typeof task.taskId === 'string' ? task.taskId : `worker-${index}`); });
+  (Array.isArray(infra?.autonomousWork) ? infra.autonomousWork : []).forEach((execution, index) => { if (execution?.state === 'WAITING_FOR_CAPABILITY') waitingIds.add(typeof execution.taskId === 'string' ? execution.taskId : `capability-${index}`); });
+  const currentDefect = Math.max(0, Number(triage?.current?.summary?.currentDefect || 0));
+  const nextAction = safeText(brief?.nextAction) || safeText(triage?.nextAction) || safeText(infra?.selfHealing?.nextAction) || 'ยังไม่มี next action ที่ยืนยันได้';
+
+  const set = (id, value) => { const node = $(id); if (node) node.textContent = String(value); };
+  set('dashboard-night-running', running);
+  set('dashboard-night-completed', completed);
+  set('dashboard-night-approvals', approvalIds.size);
+  set('dashboard-night-waiting', waitingIds.size);
+  set('dashboard-night-defects', currentDefect);
+  set('dashboard-night-next', nextAction);
+  const meta = $('dashboard-night-meta');
+  if (meta) meta.textContent = envelope?.persisted === true ? `Morning Brief revision ${Number(envelope.revision || 0)} · ข้อมูลที่บันทึกแล้ว` : 'สถานะสดจาก AWH · เสร็จแล้วนับย้อนหลัง 24 ชั่วโมง';
 }
 
 function returnHome() {
@@ -647,6 +684,12 @@ function mountDashboard() {
   pulse.className = 'awh-home-section awh-pulse';
   pulse.innerHTML = '<div class="awh-section-heading"><div><span>ภาพรวมตอนนี้</span><h2>รู้ทันงานในไม่กี่วินาที</h2></div><small>ข้อมูลล่าสุดจาก AWH · กดการ์ดเพื่อไปต่อ</small></div><div class="awh-pulse-grid"><button id="dashboard-pulse-projects-card" class="awh-pulse-card" type="button" data-pulse-target="projects"><span class="awh-pulse-icon">◫</span><span><strong id="dashboard-pulse-projects">—</strong><small>โปรเจกต์</small><em id="dashboard-pulse-projects-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-active-card" class="awh-pulse-card" type="button" data-pulse-target="work"><span class="awh-pulse-icon">↻</span><span><strong id="dashboard-pulse-active">—</strong><small>กำลังทำอยู่</small><em id="dashboard-pulse-active-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-artifacts-card" class="awh-pulse-card" type="button" data-pulse-target="files"><span class="awh-pulse-icon">▤</span><span><strong id="dashboard-pulse-artifacts">—</strong><small>ผลลัพธ์</small><em id="dashboard-pulse-artifacts-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-attention-card" class="awh-pulse-card attention" type="button" data-pulse-target="work"><span class="awh-pulse-icon">!</span><span><strong id="dashboard-pulse-attention">—</strong><small>ต้องดู</small><em id="dashboard-pulse-attention-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-workers-card" class="awh-pulse-card owner-pulse" type="button" data-pulse-target="devices" hidden><span class="awh-pulse-icon">◇</span><span><strong id="dashboard-pulse-workers">—</strong><small>อุปกรณ์พร้อม</small><em id="dashboard-pulse-workers-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-owner-system-card" class="awh-pulse-card owner-pulse awh-system-pulse" type="button" data-pulse-target="system" hidden><span class="awh-pulse-icon">⌘</span><span><strong id="dashboard-owner-system">AWH System</strong><small id="dashboard-owner-system-state">กำลังตรวจ VPS…</small><em id="dashboard-owner-system-detail">CPU · RAM · Disk · Production</em></span></button></div>';
 
+  const nightShift = document.createElement('section');
+  nightShift.id = 'dashboard-night-shift';
+  nightShift.className = 'awh-home-section awh-night-shift';
+  nightShift.hidden = true;
+  nightShift.innerHTML = '<div class="awh-night-head"><div><span>NIGHT SHIFT</span><h2>งานกลางคืนของ AWH</h2><small id="dashboard-night-meta">กำลังอ่าน Morning Brief…</small></div><button id="dashboard-night-control" class="awh-secondary-action" type="button">เปิด Control Tower</button></div><div class="awh-night-grid"><button class="awh-night-stat" type="button" data-night-filter="active"><strong id="dashboard-night-running">—</strong><span>กำลังทำ</span></button><button class="awh-night-stat" type="button" data-night-filter="completed"><strong id="dashboard-night-completed">—</strong><span>เสร็จ 24 ชม.</span></button><button class="awh-night-stat attention" type="button" data-night-filter="attention"><strong id="dashboard-night-approvals">—</strong><span>รออนุมัติ</span></button><button class="awh-night-stat" type="button" data-night-filter="active"><strong id="dashboard-night-waiting">—</strong><span>รอ Worker / AI</span></button><button class="awh-night-stat attention" type="button" data-night-filter="attention"><strong id="dashboard-night-defects">—</strong><span>Current defect</span></button></div><div class="awh-night-next"><small>Next safe action</small><strong id="dashboard-night-next">กำลังตรวจ…</strong></div>';
+
   const taskSurface = document.createElement('section');
   taskSurface.id = 'dashboard-tasks';
   taskSurface.className = 'awh-home-section awh-task-surface';
@@ -714,7 +757,7 @@ function mountDashboard() {
   owner.append(ownerGrid);
 
   const imageTool = createImageTool();
-  dashboard.append(hero, continuity, pulse, taskSurface, filesSurface, tools, overview, files, owner, imageTool);
+  dashboard.append(hero, continuity, pulse, nightShift, taskSurface, filesSurface, tools, overview, files, owner, imageTool);
   mountProductNavigation(dashboard);
   mountSchoolTools(dashboard);
   main.append(dashboard);
@@ -737,6 +780,8 @@ function mountDashboard() {
   $('dashboard-pulse-artifacts-card')?.addEventListener('click', () => openFilesSurface());
   $('dashboard-pulse-workers-card')?.addEventListener('click', () => openAccountTab('devices'));
   $('dashboard-owner-system-card')?.addEventListener('click', () => { location.assign('./infrastructure.html'); });
+  $('dashboard-night-control')?.addEventListener('click', () => { location.assign('./infrastructure.html'); });
+  nightShift.querySelectorAll('[data-night-filter]').forEach((node) => node.addEventListener('click', () => openTaskSurface(node.dataset.nightFilter || 'all')));
   installHomeButton();
   mountMobileNavigation();
   state.mounted = true;
@@ -1014,6 +1059,7 @@ async function refreshDashboard() {
   renderRole();
   renderHomePulse();
   renderOwnerSystemSummary();
+  renderOwnerNightShift();
   renderContinuity();
   renderRecentWork();
   renderTaskStatus();
