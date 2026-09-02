@@ -11,7 +11,7 @@
     { title: 'งานและความต่อเนื่อง', items: [
       ['teacher-preview', '◉', 'ดูในมุมครู', 'Preview หน้าแรกแบบที่ครูเห็น โดยไม่เปลี่ยนสิทธิ์จริง', 'Preview'],
       ['projects', '◫', 'Projects', 'โปรเจกต์ บริบท และ Source of Truth'],
-      ['source-authority', '⌘', 'Source Authority', 'GitHub canonical source, exact SHA และ Project Vault', 'Owner'],
+      ['source-authority', '⌘', 'Source Authority', 'GitHub canonical source, exact SHA, Project Vault และ AiPASS DOCX', 'Owner'],
       ['multi-chat', '☰', 'Multi Chat', 'การสนทนาที่แยกตามโปรเจกต์'],
       ['tasks', '↻', 'Tasks & Executions', 'งานที่กำลังทำ ประวัติ และผลลัพธ์'],
       ['memory', '◎', 'Memory', 'ความจำและข้อมูลที่ใช้ทำงานต่อ'],
@@ -104,6 +104,12 @@
     if (clear instanceof HTMLButtonElement) clear.hidden = state.state === 'NOT_CONFIGURED';
     const bind = $('owner-source-bind');
     if (bind instanceof HTMLButtonElement) bind.textContent = state.state === 'NOT_CONFIGURED' ? 'เชื่อม GitHub' : 'อัปเดต Source';
+    const aipass = $('owner-source-aipass');
+    if (aipass instanceof HTMLButtonElement) {
+      const ready = state.state !== 'NOT_CONFIGURED' && typeof state.canonicalRevision === 'string' && /^[0-9a-f]{40}$/i.test(state.canonicalRevision);
+      aipass.disabled = !ready;
+      aipass.title = ready ? 'สร้าง DOCX จาก exact canonical Source สำหรับอัปโหลดเข้า AiPASS' : 'เชื่อม canonical GitHub Source ให้สำเร็จก่อน';
+    }
   }
 
   async function refreshSourceState() {
@@ -166,6 +172,28 @@
     sourceMessage('ล้าง Source binding แล้ว โดยไม่ลบ Vault history');
   }
 
+  async function prepareAiPassReview() {
+    const select = $('owner-source-project');
+    const button = $('owner-source-aipass');
+    if (!(select instanceof HTMLSelectElement) || !select.value) return;
+    if (button instanceof HTMLButtonElement) button.disabled = true;
+    sourceMessage('กำลังสร้าง DOCX จาก exact canonical Source และตรวจขนาดทุก Batch…');
+    try {
+      const api = await sourceApi();
+      const result = await api.createAiPassProjectExport(select.value);
+      const downloadUrl = result?.artifact?.downloadUrl;
+      if (typeof downloadUrl !== 'string') throw new Error('AWH ไม่พบไฟล์ AiPASS ที่ตรวจแล้ว');
+      const target = new URL(downloadUrl, window.location.origin);
+      if (target.origin !== window.location.origin || !/^\/api\/v1\/control\/artifacts\/[0-9a-f-]{36}\/download$/i.test(target.pathname)) throw new Error('เส้นทางไฟล์ AiPASS ไม่ถูกต้อง');
+      target.search = '';
+      target.searchParams.set('aipass', 'page');
+      sourceMessage('เตรียม DOCX เรียบร้อย กำลังเปิดรายการ Batch…');
+      window.location.assign(`${target.pathname}${target.search}`);
+    } finally {
+      if (button instanceof HTMLButtonElement && document.contains(button)) button.disabled = false;
+    }
+  }
+
   function ensureSourceCenter() {
     const existing = $(SOURCE_SHEET_ID);
     if (existing) return existing;
@@ -191,12 +219,13 @@
     const repository = document.createElement('input'); repository.id = 'owner-source-repository'; repository.maxLength = 201; repository.autocomplete = 'off'; repository.placeholder = 'owner/repository';
     const refLabel = document.createElement('label'); refLabel.htmlFor = 'owner-source-ref'; refLabel.textContent = 'Git ref';
     const ref = document.createElement('input'); ref.id = 'owner-source-ref'; ref.maxLength = 160; ref.autocomplete = 'off'; ref.placeholder = 'เช่น main หรือ awh/api-independence';
-    const note = document.createElement('p'); note.className = 'muted'; note.textContent = 'การเชื่อมจะเปลี่ยน canonical Source metadata เท่านั้น ไม่แก้ local checkout และไม่ลบ Project Vault history';
+    const note = document.createElement('p'); note.className = 'muted'; note.textContent = 'Source binding ไม่แก้ local checkout และไม่ลบ Project Vault history · AiPASS จะได้รับ DOCX แยกเป็น Batch เท่านั้น AWH จะไม่ให้คุณอัปโหลด internal ZIP';
     const actions = document.createElement('div'); actions.className = 'form-actions';
     const bind = document.createElement('button'); bind.id = 'owner-source-bind'; bind.type = 'submit'; bind.className = 'secondary-button'; bind.textContent = 'เชื่อม GitHub';
     const refresh = document.createElement('button'); refresh.id = 'owner-source-refresh'; refresh.type = 'button'; refresh.className = 'text-button'; refresh.textContent = 'รีเฟรชสถานะ'; refresh.addEventListener('click', () => { void refreshSourceState().catch((error) => sourceMessage(error?.message || 'ตรวจ Source ไม่สำเร็จ')); });
+    const aipass = document.createElement('button'); aipass.id = 'owner-source-aipass'; aipass.type = 'button'; aipass.className = 'secondary-button'; aipass.textContent = 'เตรียมไฟล์ AiPASS (DOCX)'; aipass.disabled = true; aipass.addEventListener('click', () => { void prepareAiPassReview().catch((error) => sourceMessage(error?.message || 'เตรียมไฟล์ AiPASS ไม่สำเร็จ')); });
     const clear = document.createElement('button'); clear.id = 'owner-source-clear'; clear.type = 'button'; clear.className = 'text-button'; clear.textContent = 'ล้าง Source binding'; clear.hidden = true; clear.addEventListener('click', () => { void clearSource().catch((error) => sourceMessage(error?.message || 'ล้าง Source ไม่สำเร็จ')); });
-    actions.append(bind, refresh, clear);
+    actions.append(bind, refresh, aipass, clear);
     const message = document.createElement('p'); message.id = 'owner-source-message'; message.className = 'form-message'; message.setAttribute('role', 'status');
     form.append(projectLabel, project, state, repositoryLabel, repository, refLabel, ref, note, actions, message);
     form.addEventListener('submit', (event) => { void bindSource(event).catch((error) => sourceMessage(error?.message || 'เชื่อม Source ไม่สำเร็จ')); });
