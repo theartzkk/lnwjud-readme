@@ -40,11 +40,7 @@ async function git(root, args, { optional = false } = {}) {
       encoding: 'utf8',
       timeout: 15000,
       maxBuffer: 128 * 1024,
-      env: {
-        ...process.env,
-        GIT_TERMINAL_PROMPT: '0',
-        GIT_CONFIG_NOSYSTEM: process.env.GIT_CONFIG_NOSYSTEM ?? '0',
-      },
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
     });
     return result.stdout.trim();
   } catch (error) {
@@ -62,9 +58,9 @@ function liveShaFrom(output, branch) {
 }
 
 const requestedRoot = resolve(value('--root') ?? process.cwd());
-const branch = value('--branch') ?? process.env.AWH_CANONICAL_BRANCH ?? DEFAULT_BRANCH;
-const remote = value('--remote') ?? process.env.AWH_CANONICAL_REMOTE ?? DEFAULT_REMOTE;
-const expectedRepository = (value('--repository') ?? process.env.AWH_CANONICAL_REPOSITORY ?? DEFAULT_REPOSITORY).toLowerCase();
+const branch = value('--branch') ?? DEFAULT_BRANCH;
+const remote = value('--remote') ?? DEFAULT_REMOTE;
+const expectedRepository = (value('--repository') ?? DEFAULT_REPOSITORY).toLowerCase();
 const expectedShaRaw = value('--expected-sha') ?? process.env.AWH_RELEASE_COMMIT;
 const expectedSha = expectedShaRaw ? expectedShaRaw.toLowerCase() : null;
 const requireMutationReady = flag('--require-mutation-ready');
@@ -72,7 +68,7 @@ const requireMutationReady = flag('--require-mutation-ready');
 if (!/^[A-Za-z0-9._/-]{1,200}$/.test(branch) || branch.startsWith('/') || branch.includes('..')) throw new Error('CANONICAL_BRANCH_INVALID');
 if (!/^[A-Za-z0-9._-]{1,80}$/.test(remote)) throw new Error('CANONICAL_REMOTE_INVALID');
 if (expectedSha !== null && !SHA.test(expectedSha)) throw new Error('EXPECTED_SHA_INVALID');
-if (expectedRepository !== '*' && !/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(expectedRepository)) throw new Error('CANONICAL_REPOSITORY_INVALID');
+if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(expectedRepository)) throw new Error('CANONICAL_REPOSITORY_INVALID');
 
 let report;
 try {
@@ -82,7 +78,7 @@ try {
   const dirty = (await git(root, ['status', '--porcelain=v1', '--untracked-files=all'])).length > 0;
   const remoteUrl = await git(root, ['remote', 'get-url', remote]);
   const remoteRepository = normalizeRepository(remoteUrl);
-  const repositoryMatches = expectedRepository === '*' || remoteRepository === expectedRepository;
+  const repositoryMatches = remoteRepository === expectedRepository;
   let liveSha = null;
   let remoteReachable = false;
   if (repositoryMatches) {
