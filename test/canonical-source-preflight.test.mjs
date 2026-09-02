@@ -144,3 +144,24 @@ test('owner auth activation runs canonical source proof before credentials or de
   assert.match(source, /--require-mutation-ready/);
   assert.match(source, /theartzkk\/lnwjud-readme/);
 });
+
+test('guarded deployment wrapper proves canonical source before mutation', async () => {
+  const source = await readFile(join(repoRoot, 'scripts/ops/guarded-control-plane-deploy.mjs'), 'utf8');
+  const mutationGate = source.indexOf("if (mutation) {");
+  const preflight = source.indexOf('const proof = await run(process.execPath, preflightArgs)');
+  const deploy = source.indexOf("const result = await run('/bin/sh', [deployScript, ...args]");
+  assert.ok(mutationGate >= 0);
+  assert.ok(preflight > mutationGate);
+  assert.ok(deploy > preflight);
+  assert.match(source, /--require-mutation-ready/);
+  assert.match(source, /CANONICAL_SOURCE_PREFLIGHT_BLOCKED/);
+});
+
+test('standard production package entrypoints use canonical guarded paths', async () => {
+  const pkg = JSON.parse(await readFile(join(repoRoot, 'package.json'), 'utf8'));
+  assert.match(pkg.scripts['ops:final-self-service:activate'], /guarded-control-plane-deploy\.mjs --deploy --approve/);
+  assert.match(pkg.scripts['ops:project-source:refresh'], /guarded-control-plane-deploy\.mjs --deploy --approve/);
+  assert.match(pkg.scripts['ops:owner-auth:activate'], /activate-owner-auth\.mjs --deploy --approve/);
+  assert.doesNotMatch(pkg.scripts['ops:final-self-service:activate'], /\bsh deploy\/awh-control-plane\/deploy-control-plane\.sh\b/);
+  assert.doesNotMatch(pkg.scripts['ops:project-source:refresh'], /\bsh deploy\/awh-control-plane\/deploy-control-plane\.sh\b/);
+});
