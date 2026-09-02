@@ -97,7 +97,7 @@ final class HubExecutionFailurePolicy
         $base = self::baseDelaySeconds($code, $attemptNumber);
         $retryAfter = self::retryAfterSeconds($diagnostic['retryAfterSeconds'] ?? null);
         $notBefore = max($base, $retryAfter ?? 0);
-        $jitter = self::deterministicJitter($notBefore, $seed, $code, $attemptNumber);
+        $jitter = self::deterministicJitter($seed, $code, $attemptNumber);
         $delay = min(self::MAX_RETRY_AFTER_SECONDS, $notBefore + $jitter);
         $next = gmdate('c', $timestamp + $delay);
         return [
@@ -108,7 +108,7 @@ final class HubExecutionFailurePolicy
             'delaySeconds' => $delay,
             'retryAfterSeconds' => $retryAfter,
             'nextEligibleAt' => $next,
-            'reason' => $retryAfter !== null && $retryAfter > $base ? 'provider retry-after respected with bounded jitter' : 'bounded transient backoff with deterministic jitter',
+            'reason' => $retryAfter !== null && $retryAfter > $base ? 'provider retry-after respected with bounded deterministic spread' : 'bounded transient backoff with deterministic spread',
             'policyVersion' => self::VERSION,
         ];
     }
@@ -186,12 +186,11 @@ final class HubExecutionFailurePolicy
         };
     }
 
-    private static function deterministicJitter(int $base, ?string $seed, string $code, int $attempt): int
+    private static function deterministicJitter(?string $seed, string $code, int $attempt): int
     {
         if (!is_string($seed) || $seed === '') return 0;
-        $window = min(30, max(1, (int) ceil($base * 0.10)));
         $hash = hash('sha256', $seed . '|' . $code . '|' . $attempt);
-        return hexdec(substr($hash, 0, 8)) % ($window + 1);
+        return hexdec(substr($hash, 0, 8)) % 2;
     }
 
     private static function persistedSchedule(string $checkpointJson, string $code): ?int
