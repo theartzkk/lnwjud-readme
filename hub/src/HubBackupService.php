@@ -10,6 +10,7 @@ final class HubBackupException extends RuntimeException
 final class HubBackupService
 {
     private const MAX_MANIFEST_BYTES = 65536;
+    public const FRESHNESS_MAX_AGE_SECONDS = 129600; // 36h: daily backup + bounded scheduler drift
 
     public static function create(string $databasePath, string $backupRoot, ?string $now = null, ?string $readGroup = null): array
     {
@@ -78,6 +79,17 @@ final class HubBackupService
         } finally {
             if (is_file($drillPath) && !is_link($drillPath)) @unlink($drillPath);
         }
+    }
+
+    /** @param array<string,mixed>|null $latest @return array{state:string,ageSeconds:?int,maxAgeSeconds:int} */
+    public static function freshness(?array $latest, ?string $now = null): array
+    {
+        $maxAge = self::FRESHNESS_MAX_AGE_SECONDS;
+        if (!is_array($latest) || ($latest['status'] ?? null) !== 'VERIFIED' || !is_string($latest['modifiedAt'] ?? null)) return ['state'=>'UNKNOWN','ageSeconds'=>null,'maxAgeSeconds'=>$maxAge];
+        $reference = strtotime($now ?? 'now'); $modified = strtotime((string) $latest['modifiedAt']);
+        if ($reference === false || $modified === false || $modified > $reference + 300) return ['state'=>'UNKNOWN','ageSeconds'=>null,'maxAgeSeconds'=>$maxAge];
+        $age = max(0, $reference - $modified);
+        return ['state'=>$age <= $maxAge ? 'FRESH' : 'STALE','ageSeconds'=>$age,'maxAgeSeconds'=>$maxAge];
     }
 
     public static function latestMetadata(string $backupRoot): array
