@@ -74,7 +74,10 @@ $insertTask->execute(['task'=>'t-auth','goal'=>'owner conversation auth']);
 $insertExecution->execute(['id'=>'e-auth','task'=>'t-auth','state'=>'FAILED','capability'=>'agent.conversation','attempts'=>1,'code'=>'PROVIDER_AUTH_FAILED','checkpoint'=>'{}','updated'=>'2026-09-02T09:10:00+00:00']);
 
 $snapshot = (new HubExecutionTriageService($pdo))->snapshot($at);
-failure_policy_assert(($snapshot['schemaVersion'] ?? null) === 2, 'triage projection schema v2');
+failure_policy_assert(($snapshot['schemaVersion'] ?? null) === 1, 'triage keeps the existing schema version because P1 is additive');
+failure_policy_assert(($snapshot['policyVersion'] ?? null) === 'execution-triage-v2', 'existing triage policy version remains compatible');
+failure_policy_assert(($snapshot['failurePolicyVersion'] ?? null) === HubExecutionFailurePolicy::VERSION, 'central failure policy version is exposed separately');
+failure_policy_assert(($snapshot['currentProjectionVersion'] ?? null) === 'execution-triage-current-v1', 'current blocker projection has an explicit additive version');
 failure_policy_assert(($snapshot['total'] ?? null) === 3, 'triage audit retains three failed/waiting rows');
 failure_policy_assert(($snapshot['current']['total'] ?? null) === 2, 'current blocker projection excludes superseded ghost failure');
 failure_policy_assert(($snapshot['summary']['obsoleteStale'] ?? null) === 1, 'superseded failure remains audit-only stale evidence');
