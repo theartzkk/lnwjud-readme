@@ -22,9 +22,12 @@ test('M17 Account + Managed Hosting activation is additive, typed and approval-g
  assert.match(local,/--account-hosting/); assert.match(local,/hub\/migrations\/016_account_hosting\.sql/); assert.match(local,/dist-web\/hosting\.html/);
  assert.match(local,/HubActionGraphService\.php/); assert.match(local,/HubConversationReferentService\.php/); assert.match(local,/verify-control-plane-bundle-closure\.mjs/);
  assert.match(remoteText,/ACCOUNT_HOSTING_MIGRATION_FIRST/); assert.match(remoteText,/HOSTING_OPERATOR_UNITS_READY/); assert.match(remoteText,/ACCOUNT_HOSTING_ROUTE/);
+ const refreshStart=remoteText.indexOf('if test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$CLOUD_FIRST" = 1; then');
+ const refreshEnd=remoteText.indexOf('elif test "$ACCOUNT_HOSTING" = 1; then',refreshStart); const refreshHosting=remoteText.slice(refreshStart,refreshEnd);
+ assert.ok(refreshStart>=0&&refreshEnd>refreshStart); assert.match(refreshHosting,/install -o root -g root -m 0644 "\$RELEASE\/deploy\/systemd\/awh-hosting-operator\.timer" "\$HOSTING_TIMER_UNIT"/); assert.match(refreshHosting,/HOSTING_UNITS_INSTALLED=1/); assert.match(refreshHosting,/systemctl daemon-reload/);
  assert.match(remoteText,/restore_previous_control_include\(\)/); assert.match(remoteText,/PREVIEW_AWH_FPM_SOCKET/); assert.match(remoteText,/POINTER_CHANGED[\s\S]*restore_previous_control_include/);
  assert.match(service,/^\[Unit\]/m); assert.doesNotMatch(service,/AWH_PUBLIC_HOST=157\.85\.108\.142/); assert.match(service,/ExecStart=\/usr\/bin\/php .*awh-hosting-operator\.php/); assert.doesNotMatch(service,/sh -c|bash -c/);
- assert.match(timer,/OnUnitActiveSec=30s/); assert.match(operator,/does match certificate/); assert.match(operator,/letsencrypt\/live/); assert.match(build,/asset\('hosting\.html'\)/); assert.match(verifier,/'hosting\.html'/);
+ assert.match(timer,/OnActiveSec=5s/); assert.match(timer,/OnUnitActiveSec=30s/); assert.match(operator,/does match certificate/); assert.match(operator,/letsencrypt\/live/); assert.match(build,/asset\('hosting\.html'\)/); assert.match(verifier,/'hosting\.html'/);
  assert.match(hostingHtml,/id="site-url-preview"/); assert.match(hostingHtml,/id="hosting-confirm-submit"/); assert.match(hostingJs,/renderUrlPreview/); assert.match(hostingJs,/confirmAction/); assert.doesNotMatch(hostingJs,/requestStepUp|stepUp\(|hosting-stepup-password/); assert.match(trustPolicy,/hosting\.site\.create/); assert.match(trustPolicy,/hosting\.site\.deploy/); assert.match(trustPolicy,/account\.user\.access/);
 });
 

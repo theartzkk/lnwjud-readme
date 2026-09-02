@@ -892,7 +892,12 @@ if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || te
 fi
 if test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$CLOUD_FIRST" = 1; then
   test "$HOSTING_UNITS_PREEXISTING" -eq 1
+  sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-hosting-operator.service" "$HOSTING_SERVICE_UNIT"
+  sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-hosting-operator.timer" "$HOSTING_TIMER_UNIT"
+  HOSTING_UNITS_INSTALLED=1
+  sudo systemctl daemon-reload
   sudo systemctl enable --now awh-hosting-operator.timer >/dev/null
+  sudo systemctl is-enabled --quiet awh-hosting-operator.timer
   sudo systemctl is-active --quiet awh-hosting-operator.timer
   stage HOSTING_OPERATOR_UNITS_READY
 elif test "$ACCOUNT_HOSTING" = 1; then
