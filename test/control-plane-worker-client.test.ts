@@ -63,6 +63,18 @@ test('worker conversation client preserves bounded continuation lineage from the
   assert.equal(task?.execution?.executorKind, 'VPS');
 });
 
+test('worker project projection carries memory readiness and treats an older Hub omission as not ready', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awh-worker-projects-memory-'));
+  const credentials = new MemoryCredentials(); credentials.values.set(DEVICE_TOKEN_CREDENTIAL_KEY, 'fixture-token');
+  const projectId = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
+  const base = { projectId, name: 'AWH', type: 'node', sourceRevision: null, vaultReady: true };
+  let response = { schemaVersion: 1, projects: [{ ...base, memoryReady: true }] } as Record<string, unknown>;
+  const client = new ControlPlaneWorkerClient('https://hub.example/api/v1', root, credentials, async () => new Response(JSON.stringify(response), { status: 200 }));
+  assert.equal((await client.projects())[0]?.memoryReady, true);
+  response = { schemaVersion: 1, projects: [base] };
+  assert.equal((await client.projects())[0]?.memoryReady, false);
+});
+
 test('worker client publishes bounded Project Memory metadata without paths or contents', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awh-worker-memory-'));
   const credentials = new MemoryCredentials(); credentials.values.set(DEVICE_TOKEN_CREDENTIAL_KEY, 'fixture-token');
