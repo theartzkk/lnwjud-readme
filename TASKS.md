@@ -1,3 +1,5 @@
+> **Current-state authority:** Read `CURRENT_STATE.md` first. Sections below are historical checkpoint/audit records; words such as “current”, “live”, or “Production remains” are scoped to their dated checkpoint unless freshly revalidated.
+
 # Authoritative task supersession — 2026-08-30 P0 mobile horizontal-overflow closure
 
 ## Closed in this source batch

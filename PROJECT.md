@@ -1,3 +1,5 @@
+> **Current-state authority:** Read `CURRENT_STATE.md` first. Sections below are historical checkpoint/audit records; words such as “current”, “live”, or “Production remains” are scoped to their dated checkpoint unless freshly revalidated.
+
 # AWH final full-use UAT closure batch — 2026-08-30
 
 ## Authoritative P0 responsive-width checkpoint
