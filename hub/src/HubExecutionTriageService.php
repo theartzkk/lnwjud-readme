@@ -213,6 +213,8 @@ final class HubExecutionFailurePolicy
 final class HubExecutionTriageService
 {
     private const MAX_ITEMS = 100;
+    private const POLICY_PAUSED_CODES = ['BUDGET_EXHAUSTED', 'PROVIDER_QUOTA_EXHAUSTED'];
+    private const SETUP_REQUIRED_CODES = ['PROJECT_SOURCE_NOT_READY', 'PROJECT_VAULT_EMPTY', 'CLOUD_NOT_CONFIGURED', 'AIPASS_SOURCE_NOT_READY'];
 
     public function __construct(private readonly PDO $pdo) {}
 
@@ -234,9 +236,9 @@ final class HubExecutionTriageService
 
         $bounded = count($rows) > $limit;
         $rows = array_slice($rows, 0, $limit);
-        $summary = ['historicalExpected'=>0,'obsoleteStale'=>0,'retryable'=>0,'blockedCapability'=>0,'authRequired'=>0,'externalPolicy'=>0,'currentDefect'=>0,'active'=>0];
-        $currentSummary = ['retryable'=>0,'blockedCapability'=>0,'authRequired'=>0,'externalPolicy'=>0,'currentDefect'=>0];
-        $items = []; $currentItems = [];
+        $summary = ['historicalExpected'=>0,'obsoleteStale'=>0,'retryable'=>0,'setupRequired'=>0,'blockedCapability'=>0,'policyPaused'=>0,'authRequired'=>0,'externalPolicy'=>0,'currentDefect'=>0,'active'=>0];
+        $currentSummary = ['retryable'=>0,'setupRequired'=>0,'blockedCapability'=>0,'authRequired'=>0,'externalPolicy'=>0,'currentDefect'=>0];
+        $items = []; $currentItems = []; $nonAlertingItems = [];
         foreach ($rows as $row) {
             if (!is_array($row)) continue;
             $state = (string) ($row['state'] ?? 'FAILED');
@@ -251,7 +253,15 @@ final class HubExecutionTriageService
             $policyDecision = HubExecutionFailurePolicy::decide($code, max(1, $attempts), [], (string) ($row['updated_at'] ?? gmdate('c', $reference)), 3, (string) ($row['execution_id'] ?? ''));
 
             $active = false;
-            if ($state === 'WAITING_FOR_CAPABILITY') {
+            if ($state === 'WAITING_FOR_CAPABILITY' && in_array($code, self::POLICY_PAUSED_CODES, true)) {
+                $classification = 'POLICY_PAUSED';
+                $summary['policyPaused']++;
+                $reason = 'งานยังถูกเก็บไว้ แต่หยุดตาม budget/quota policy; ไม่ใช่ current defect และไม่ blind retry';
+            } elseif ($state === 'WAITING_FOR_CAPABILITY' && in_array($code, self::SETUP_REQUIRED_CODES, true)) {
+                $classification = 'SETUP_REQUIRED';
+                $reason = 'งานยังถูกเก็บไว้และต้องเติม Owner-controlled project/source configuration ก่อนทำต่อ';
+                $active = true;
+            } elseif ($state === 'WAITING_FOR_CAPABILITY') {
                 $classification = 'BLOCKED_CAPABILITY';
                 $reason = 'งานยังถูกเก็บไว้และรอ provider/worker/capability; ไม่ blind retry';
                 $active = true;
@@ -275,6 +285,7 @@ final class HubExecutionTriageService
                 $summary['active']++;
                 $key = match ($classification) {
                     'RETRYABLE' => 'retryable',
+                    'SETUP_REQUIRED' => 'setupRequired',
                     'BLOCKED_CAPABILITY' => 'blockedCapability',
                     'AUTH_REQUIRED' => 'authRequired',
                     'EXTERNAL_POLICY' => 'externalPolicy',
@@ -303,13 +314,15 @@ final class HubExecutionTriageService
             ];
             $items[] = $item;
             if ($active) $currentItems[] = $item;
+            elseif ($classification === 'POLICY_PAUSED') $nonAlertingItems[] = $item;
         }
 
         $nextAction = $currentSummary['currentDefect'] > 0 ? 'ตรวจ current defect ก่อนทำ attempt ใหม่'
             : ($currentSummary['authRequired'] > 0 ? 'แก้ provider credential/authentication ผ่าน Owner authority'
             : ($currentSummary['externalPolicy'] > 0 ? 'ตรวจ provider/account/model policy'
+            : ($currentSummary['setupRequired'] > 0 ? 'เติม project/source configuration ผ่าน Owner authority'
             : ($currentSummary['retryable'] > 0 ? 'ให้ canonical retry policy พิจารณาหลัง nextEligibleAt'
-            : ($currentSummary['blockedCapability'] > 0 ? 'คงงานไว้จน capability/quota/budget พร้อม' : 'ไม่มี current blocker'))));
+            : ($currentSummary['blockedCapability'] > 0 ? 'คงงานไว้จน capability พร้อม' : 'ไม่มี current blocker')))));
 
         return [
             'schemaVersion'=>1,
@@ -319,10 +332,11 @@ final class HubExecutionTriageService
             'total'=>count($items),
             'items'=>$items,
             'current'=>['state'=>$currentItems === [] ? 'CLEAR' : 'BLOCKED','total'=>count($currentItems),'summary'=>$currentSummary,'items'=>$currentItems],
+            'nonAlerting'=>['state'=>$nonAlertingItems === [] ? 'CLEAR' : 'PAUSED','policyPausedCount'=>count($nonAlertingItems),'items'=>$nonAlertingItems],
             'bounded'=>$bounded,
             'policyVersion'=>'execution-triage-v2',
             'failurePolicyVersion'=>HubExecutionFailurePolicy::VERSION,
-            'currentProjectionVersion'=>'execution-triage-current-v1',
+            'currentProjectionVersion'=>'execution-triage-current-v2',
             'auditHistoryPreserved'=>true,
             'blindRetry'=>false,
             'nextAction'=>$nextAction,
@@ -332,8 +346,8 @@ final class HubExecutionTriageService
     /** @return array<string,mixed> */
     private static function unknown(string $reason): array
     {
-        $summary=['historicalExpected'=>0,'obsoleteStale'=>0,'retryable'=>0,'blockedCapability'=>0,'authRequired'=>0,'externalPolicy'=>0,'currentDefect'=>0,'active'=>0];
-        $current=['retryable'=>0,'blockedCapability'=>0,'authRequired'=>0,'externalPolicy'=>0,'currentDefect'=>0];
-        return ['schemaVersion'=>1,'state'=>'UNKNOWN','observedAt'=>null,'summary'=>$summary,'total'=>0,'items'=>[],'current'=>['state'=>'UNKNOWN','total'=>0,'summary'=>$current,'items'=>[]],'bounded'=>true,'policyVersion'=>'execution-triage-v2','failurePolicyVersion'=>HubExecutionFailurePolicy::VERSION,'currentProjectionVersion'=>'execution-triage-current-v1','auditHistoryPreserved'=>true,'blindRetry'=>false,'reason'=>$reason,'nextAction'=>'ตรวจ canonical execution schema/read authority'];
+        $summary=['historicalExpected'=>0,'obsoleteStale'=>0,'retryable'=>0,'setupRequired'=>0,'blockedCapability'=>0,'policyPaused'=>0,'authRequired'=>0,'externalPolicy'=>0,'currentDefect'=>0,'active'=>0];
+        $current=['retryable'=>0,'setupRequired'=>0,'blockedCapability'=>0,'authRequired'=>0,'externalPolicy'=>0,'currentDefect'=>0];
+        return ['schemaVersion'=>1,'state'=>'UNKNOWN','observedAt'=>null,'summary'=>$summary,'total'=>0,'items'=>[],'current'=>['state'=>'UNKNOWN','total'=>0,'summary'=>$current,'items'=>[]],'nonAlerting'=>['state'=>'UNKNOWN','policyPausedCount'=>0,'items'=>[]],'bounded'=>true,'policyVersion'=>'execution-triage-v2','failurePolicyVersion'=>HubExecutionFailurePolicy::VERSION,'currentProjectionVersion'=>'execution-triage-current-v2','auditHistoryPreserved'=>true,'blindRetry'=>false,'reason'=>$reason,'nextAction'=>'ตรวจ canonical execution schema/read authority'];
     }
 }
