@@ -76,7 +76,9 @@ try {
   const headSha = (await git(root, ['rev-parse', 'HEAD'])).toLowerCase();
   const currentBranch = await git(root, ['symbolic-ref', '--short', '-q', 'HEAD'], { optional: true }) ?? 'DETACHED';
   const dirty = (await git(root, ['status', '--porcelain=v1', '--untracked-files=all'])).length > 0;
-  const remoteUrl = await git(root, ['remote', 'get-url', remote]);
+  // Read the configured remote URL, not `git remote get-url`: get-url expands
+  // url.*.insteadOf rewrites and can hide the repository identity we need to audit.
+  const remoteUrl = await git(root, ['config', '--get', `remote.${remote}.url`]);
   const remoteRepository = normalizeRepository(remoteUrl);
   const repositoryMatches = remoteRepository === expectedRepository;
   let liveSha = null;
