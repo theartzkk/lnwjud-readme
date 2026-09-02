@@ -73,8 +73,13 @@ try {
     staff_expect(($byId['failed-current-ex']['classification'] ?? null) === 'CURRENT_DEFECT', 'unresolved recent failure must remain a current defect');
     staff_expect(($byId['waiting-ex']['classification'] ?? null) === 'BLOCKED_CAPABILITY', 'waiting capability must remain a truthful blocker');
     staff_expect(($triage['policyVersion'] ?? null) === 'execution-triage-v2', 'triage policy version must identify objective supersession support');
+    staff_expect(($triage['current']['total'] ?? null) === 2, 'current triage must exclude superseded audit-only failures');
+    staff_expect(($triage['current']['summary']['currentDefect'] ?? null) === 1 && ($triage['current']['summary']['blockedCapability'] ?? null) === 1, 'current triage must retain only active defect and capability blocker counts');
     staff_expect((int) $pdo->query('SELECT COUNT(*) FROM control_task_executions')->fetchColumn() === $rowsBeforeTriage, 'triage must preserve every canonical audit row');
     $service = new HubStaffOperationsService($pdo, $dbPath, $storage);
+    $postTriage = $service->snapshot('2026-08-30T00:10:00Z', null, $telemetry, $release);
+    staff_expect(($postTriage['morningBrief']['overnight']['executionTriage']['currentDefect'] ?? null) === 1 && ($postTriage['morningBrief']['overnight']['executionTriage']['blockedCapability'] ?? null) === 1, 'Morning Brief must project current execution blockers rather than audit history');
+    staff_expect(!array_key_exists('historicalExpected', $postTriage['morningBrief']['overnight']['executionTriage'] ?? []) && !array_key_exists('obsoleteStale', $postTriage['morningBrief']['overnight']['executionTriage'] ?? []), 'Morning Brief current blocker summary must not present historical audit classifications as live state');
     $persisted = $service->persistMorningBrief($snapshot['morningBrief']);
     staff_expect(($persisted['state'] ?? null) === 'PERSISTED', 'morning brief must persist in the existing revision ledger');
     $again = $service->persistMorningBrief($snapshot['morningBrief']);
