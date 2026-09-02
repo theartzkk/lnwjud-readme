@@ -124,7 +124,7 @@ export async function workerCapabilities(dataDir: string, allowCodex = true): Pr
 export class ControlPlaneWorkerRuntime {
   private running = false;
   private readonly contextRecoveryAttempts = new Set<string>();
-  private readonly memoryReconciliationDigests = new Map<string, string>();
+  private readonly memoryReconciliationAttempts = new Set<string>();
 
   constructor(private readonly client: ControlPlaneWorkerClient, private readonly options: WorkerRuntimeOptions) {}
 
@@ -135,8 +135,9 @@ export class ControlPlaneWorkerRuntime {
     try {
       const capabilities = await workerCapabilities(this.options.dataDir, this.options.allowCodex);
       await this.client.heartbeat(capabilities, 'READY');
-      await this.reconcileProjectMemoryMetadata().catch(() => undefined);
-      await this.recoverMissingProjectContexts(capabilities).catch(() => undefined);
+      const projects = await this.client.projects().catch((): WorkerProject[] => []);
+      await this.reconcileProjectMemoryMetadata(projects).catch(() => undefined);
+      await this.recoverMissingProjectContexts(capabilities, projects).catch(() => undefined);
       const task = await this.client.claim();
       if (!task) return { status: 'IDLE', deviceId: identity.deviceId };
       return await this.execute(task, identity.deviceId, capabilities);
@@ -155,32 +156,28 @@ export class ControlPlaneWorkerRuntime {
     return matches.length === 1 ? matches[0]! : null;
   }
 
-  /** Republish bounded six-file Project Memory metadata for already-registered projects.
-   * This lane never initializes or writes memory files, uploads source, changes Vault state,
-   * or creates a second authority. Unchanged metadata is published once per runtime process. */
-  private async reconcileProjectMemoryMetadata(): Promise<void> {
-    const projects = await this.client.projects();
+  /** Existing Vault-ready projects can predate CURRENT_STATE metadata. Reconcile only
+   * bounded file metadata from one uniquely matched registered workspace. This path never
+   * registers/uploads source, mutates local files, or changes Vault state. */
+  private async reconcileProjectMemoryMetadata(projects: WorkerProject[]): Promise<void> {
     for (const project of projects) {
+      if (!project.vaultReady || project.memoryReady) continue;
       const workspace = await this.localWorkspaceForHubProject(project);
       if (!workspace) continue;
-      try {
-        const files = await localProjectMemoryMetadata(workspace);
-        const digest = createHash('sha256').update(JSON.stringify(files)).digest('hex');
-        if (this.memoryReconciliationDigests.get(project.projectId) === digest) continue;
-        await this.client.publishProjectMemory(project.projectId, files);
-        this.memoryReconciliationDigests.set(project.projectId, digest);
-      } catch {
-        // Metadata reconciliation is opportunistic. Invalid/missing local context remains
-        // truthful and ordinary work continues without mutating source or Vault state.
-      }
+      let files: Awaited<ReturnType<typeof localProjectMemoryMetadata>>;
+      try { files = await localProjectMemoryMetadata(workspace); } catch { continue; }
+      const digest = createHash('sha256').update(JSON.stringify(files)).digest('hex');
+      const key = `${project.projectId}:${digest}`;
+      if (this.memoryReconciliationAttempts.has(key)) continue;
+      this.memoryReconciliationAttempts.add(key);
+      try { await this.client.publishProjectMemory(project.projectId, files); } catch { /* metadata reconciliation is opportunistic and must not block ordinary work */ }
     }
   }
 
   /** Recover an empty canonical Hub Vault from one uniquely matched trusted local workspace.
    * Only committed Git bytes are uploaded; WIP remains local and Project Memory crosses
    * the boundary as bounded metadata only. One runtime attempts each revision once. */
-  private async recoverMissingProjectContexts(capabilities: string[]): Promise<void> {
-    const projects = await this.client.projects();
+  private async recoverMissingProjectContexts(capabilities: string[], projects: WorkerProject[]): Promise<void> {
     for (const project of projects) {
       if (project.vaultReady) continue;
       const workspace = await this.localWorkspaceForHubProject(project);
@@ -196,7 +193,7 @@ export class ControlPlaneWorkerRuntime {
         await this.client.registerProjectBinding(project.projectId, project.name, capabilities, revision);
         await createCommittedSourceArchive(workspace, revision, archive);
         await this.client.uploadProjectSource(project.projectId, revision, archive);
-        if (!this.memoryReconciliationDigests.has(project.projectId)) await this.client.publishProjectMemory(project.projectId, await localProjectMemoryMetadata(workspace));
+        await this.client.publishProjectMemory(project.projectId, await localProjectMemoryMetadata(workspace));
       } catch {
         // Recovery is opportunistic and bounded. The Hub keeps truthful SOURCE/Vault state,
         // while ordinary work continues and a future process restart may retry once.

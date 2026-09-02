@@ -102,8 +102,79 @@ function zipEntryNames(bytes: Buffer): string[] {
   return entries;
 }
 
+class MemoryReconcileWorkerClient extends FixtureWorkerClient {
+  readonly canonical: WorkerProject = { projectId: '713b45c0-23e1-408d-ae0f-ac5eca7f6900', name: 'AWH Memory Fixture', type: 'node', sourceRevision: 'a'.repeat(40), vaultReady: true, memoryReady: false };
+  memoryPublishes: Array<Array<{ name: string; status: 'present' | 'missing'; sha256: string | null; sizeBytes: number }>> = [];
+  sourceUploads = 0;
+  registrations = 0;
+  bindings = 0;
+  override async projects(): Promise<WorkerProject[]> { return [this.canonical]; }
+  override async publishProjectMemory(_projectId: string, files: Array<{ name: string; status: 'present' | 'missing'; sha256: string | null; sizeBytes: number }>): Promise<void> { this.memoryPublishes.push(files); }
+  override async uploadProjectSource(): Promise<Record<string, unknown>> { this.sourceUploads += 1; return { schemaVersion: 1 }; }
+  override async registerProject(): Promise<void> { this.registrations += 1; }
+  override async registerProjectBinding(): Promise<void> { this.bindings += 1; }
+}
+
+async function createRegisteredMemoryWorkspace(dataDir: string, name: string, includeCurrentState = true, suffix = ''): Promise<string> {
+  const workspace = await mkdtemp(join(tmpdir(), `awh-memory-workspace-${suffix}`));
+  await mkdir(join(workspace, '.awh'), { recursive: true });
+  const projectId = suffix === 'b' ? '913b45c0-23e1-408d-ae0f-ac5eca7f6900' : '813b45c0-23e1-408d-ae0f-ac5eca7f6900';
+  await writeFile(join(workspace, '.awh', 'project.json'), JSON.stringify({ schemaVersion: 1, projectId, name, type: 'node', createdAt: '2026-09-02T00:00:00.000Z' }));
+  for (const file of ['PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md']) await writeFile(join(workspace, file), `# ${file}\nmetadata fixture\n`);
+  if (includeCurrentState) await writeFile(join(workspace, 'CURRENT_STATE.md'), '# Current State\nverified fixture\n');
+  return workspace;
+}
+
+test('Vault-ready existing project reconciles six-file memory metadata without source or Vault upload and without repeated churn', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'awh-memory-reconcile-'));
+  const workspace = await createRegisteredMemoryWorkspace(dataDir, 'AWH Memory Fixture', true, 'a');
+  try {
+    await writeFile(join(dataDir, 'projects.json'), JSON.stringify({ schemaVersion: 1, projects: [{ projectId: '813b45c0-23e1-408d-ae0f-ac5eca7f6900', workspacePath: workspace, lastOpenedAt: '2026-09-02T00:00:00.000Z', lastUsedAt: '2026-09-02T00:00:00.000Z', pinned: false, available: true }] }));
+    const client = new MemoryReconcileWorkerClient(dataDir, null);
+    const runtime = new ControlPlaneWorkerRuntime(client, { dataDir, maxReadBytes: 32_000, allowExec: false, allowWrite: false, allowCodex: false });
+    assert.equal((await runtime.runOnce()).status, 'IDLE');
+    assert.equal((await runtime.runOnce()).status, 'IDLE');
+    assert.equal(client.memoryPublishes.length, 1);
+    assert.deepEqual(client.memoryPublishes[0]?.map((file) => file.name).sort(), ['ARCHITECTURE.md', 'CURRENT_STATE.md', 'DECISIONS.md', 'HANDOFF.md', 'PROJECT.md', 'TASKS.md']);
+    assert.equal(client.sourceUploads, 0);
+    assert.equal(client.registrations, 0);
+    assert.equal(client.bindings, 0);
+  } finally { await rm(dataDir, { recursive: true, force: true }); await rm(workspace, { recursive: true, force: true }); }
+});
+
+test('memory reconciliation reports a missing CURRENT_STATE truthfully without uploading source', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'awh-memory-missing-current-'));
+  const workspace = await createRegisteredMemoryWorkspace(dataDir, 'AWH Memory Fixture', false, 'a');
+  try {
+    await writeFile(join(dataDir, 'projects.json'), JSON.stringify({ schemaVersion: 1, projects: [{ projectId: '813b45c0-23e1-408d-ae0f-ac5eca7f6900', workspacePath: workspace, lastOpenedAt: '2026-09-02T00:00:00.000Z', lastUsedAt: '2026-09-02T00:00:00.000Z', pinned: false, available: true }] }));
+    const client = new MemoryReconcileWorkerClient(dataDir, null);
+    const runtime = new ControlPlaneWorkerRuntime(client, { dataDir, maxReadBytes: 32_000, allowExec: false, allowWrite: false, allowCodex: false });
+    await runtime.runOnce();
+    const current = client.memoryPublishes[0]?.find((file) => file.name === 'CURRENT_STATE.md');
+    assert.deepEqual(current, { name: 'CURRENT_STATE.md', status: 'missing', sha256: null, sizeBytes: 0 });
+    assert.equal(client.sourceUploads, 0);
+  } finally { await rm(dataDir, { recursive: true, force: true }); await rm(workspace, { recursive: true, force: true }); }
+});
+
+test('memory reconciliation does nothing when two local registered workspaces ambiguously match one Hub project', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'awh-memory-ambiguous-'));
+  const first = await createRegisteredMemoryWorkspace(dataDir, 'AWH Memory Fixture', true, 'a');
+  const second = await createRegisteredMemoryWorkspace(dataDir, 'AWH Memory Fixture', true, 'b');
+  try {
+    await writeFile(join(dataDir, 'projects.json'), JSON.stringify({ schemaVersion: 1, projects: [
+      { projectId: '813b45c0-23e1-408d-ae0f-ac5eca7f6900', workspacePath: first, lastOpenedAt: '2026-09-02T00:00:00.000Z', lastUsedAt: '2026-09-02T00:00:00.000Z', pinned: false, available: true },
+      { projectId: '913b45c0-23e1-408d-ae0f-ac5eca7f6900', workspacePath: second, lastOpenedAt: '2026-09-02T00:00:00.000Z', lastUsedAt: '2026-09-02T00:00:00.000Z', pinned: false, available: true }
+    ] }));
+    const client = new MemoryReconcileWorkerClient(dataDir, null);
+    const runtime = new ControlPlaneWorkerRuntime(client, { dataDir, maxReadBytes: 32_000, allowExec: false, allowWrite: false, allowCodex: false });
+    await runtime.runOnce();
+    assert.equal(client.memoryPublishes.length, 0);
+    assert.equal(client.sourceUploads, 0);
+  } finally { await rm(dataDir, { recursive: true, force: true }); await rm(first, { recursive: true, force: true }); await rm(second, { recursive: true, force: true }); }
+});
+
 class RecoveryWorkerClient extends FixtureWorkerClient {
-  readonly canonical: WorkerProject = { projectId: '723b45c0-23e1-408d-ae0f-ac5eca7f6900', name: 'BAY EXCUSE X', type: 'school-system', sourceRevision: null, vaultReady: false };
+  readonly canonical: WorkerProject = { projectId: '723b45c0-23e1-408d-ae0f-ac5eca7f6900', name: 'BAY EXCUSE X', type: 'school-system', sourceRevision: null, vaultReady: false, memoryReady: false };
   registered: Array<{ projectId: string; name: string; type: string; sourceRevision: string | null }> = [];
   bindings: Array<{ projectId: string; label: string; fingerprint: string | null }> = [];
   archiveEntries: string[] = [];
@@ -114,39 +185,6 @@ class RecoveryWorkerClient extends FixtureWorkerClient {
   override async uploadProjectSource(_projectId: string, _sourceRevision: string, archive: string): Promise<Record<string, unknown>> { this.archiveEntries = zipEntryNames(await readFile(archive)); return { schemaVersion: 1 }; }
   override async publishProjectMemory(_projectId: string, files: Array<{ name: string; status: 'present' | 'missing'; sha256: string | null; sizeBytes: number }>): Promise<void> { this.memoryFiles = files; }
 }
-
-
-test('worker republishes six-file metadata for an existing Vault-ready project without source or Working-file mutation', async () => {
-  const dataDir = await mkdtemp(join(tmpdir(), 'awh-worker-memory-reconcile-'));
-  const workspace = await mkdtemp(join(tmpdir(), 'awh-memory-workspace-'));
-  try {
-    await mkdir(join(workspace, '.awh'), { recursive: true });
-    const localProjectId = '823b45c0-23e1-408d-ae0f-ac5eca7f6900';
-    await writeFile(join(workspace, '.awh', 'project.json'), JSON.stringify({ schemaVersion: 1, projectId: localProjectId, name: 'BAY EXCUSE X', type: 'php', createdAt: '2026-08-21T00:00:00.000Z' }));
-    const existing = new Map<string, string>();
-    for (const name of ['PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md']) {
-      const content = `existing ${name} truth\n`;
-      existing.set(name, content);
-      await writeFile(join(workspace, name), content);
-    }
-    await mkdir(dataDir, { recursive: true });
-    await writeFile(join(dataDir, 'projects.json'), JSON.stringify({ schemaVersion: 1, projects: [{ projectId: localProjectId, workspacePath: workspace, lastOpenedAt: '2026-08-31T00:00:00.000Z', lastUsedAt: '2026-08-31T00:00:00.000Z', pinned: false, available: true }] }));
-    const client = new RecoveryWorkerClient(dataDir, null);
-    client.canonical.vaultReady = true;
-    const runtime = new ControlPlaneWorkerRuntime(client, { dataDir, maxReadBytes: 32_000, allowExec: false, allowWrite: false, allowCodex: false });
-    assert.equal((await runtime.runOnce()).status, 'IDLE');
-    assert.deepEqual(client.memoryFiles.map((file) => file.name), ['CURRENT_STATE.md', 'PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md']);
-    assert.deepEqual(client.memoryFiles.find((file) => file.name === 'CURRENT_STATE.md'), { name: 'CURRENT_STATE.md', status: 'missing', sha256: null, sizeBytes: 0 });
-    assert.equal(client.registered.length, 0, 'metadata-only reconciliation must not register/upload source');
-    assert.equal(client.bindings.length, 0, 'metadata-only reconciliation must not change project binding');
-    assert.deepEqual(client.archiveEntries, [], 'metadata-only reconciliation must not create/upload a source archive');
-    for (const [name, content] of existing) assert.equal(await readFile(join(workspace, name), 'utf8'), content, `${name} must not be overwritten`);
-    await assert.rejects(readFile(join(workspace, 'CURRENT_STATE.md'), 'utf8'), /ENOENT/, 'metadata-only reconciliation must not initialize CURRENT_STATE.md');
-    client.memoryFiles = [];
-    assert.equal((await runtime.runOnce()).status, 'IDLE');
-    assert.deepEqual(client.memoryFiles, [], 'unchanged metadata is not republished repeatedly in one runtime');
-  } finally { await rm(dataDir, { recursive: true, force: true }); await rm(workspace, { recursive: true, force: true }); }
-});
 
 test('worker self-heals a canonical empty Vault from one uniquely named local project without uploading WIP', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'awh-worker-recovery-'));
