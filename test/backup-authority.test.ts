@@ -54,3 +54,27 @@ test('Database Studio reuses the canonical verified backup authority', async () 
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('verified backup freshness is one canonical bounded health signal', async () => {
+  const backupService = join(ROOT, 'hub/src/HubBackupService.php');
+  const code = `
+    require ${JSON.stringify(join(process.cwd(), 'hub/src/HubBackupService.php'))};
+    echo json_encode([
+      'fresh' => HubBackupService::freshness(['status'=>'VERIFIED','modifiedAt'=>'2026-09-02T08:00:00Z'], '2026-09-03T08:00:00Z'),
+      'stale' => HubBackupService::freshness(['status'=>'VERIFIED','modifiedAt'=>'2026-09-01T00:00:00Z'], '2026-09-03T08:00:01Z'),
+      'review' => HubBackupService::freshness(['status'=>'REVIEW','modifiedAt'=>'2026-09-03T08:00:00Z'], '2026-09-03T08:00:01Z'),
+      'future' => HubBackupService::freshness(['status'=>'VERIFIED','modifiedAt'=>'2026-09-04T08:00:00Z'], '2026-09-03T08:00:01Z')
+    ], JSON_THROW_ON_ERROR);
+  `;
+  const { stdout } = await run('php', ['-r', code], { cwd: ROOT, shell: false });
+  const value = JSON.parse(stdout) as Record<string,{state:string,ageSeconds:number|null,maxAgeSeconds:number}>;
+  assert.equal(value.fresh.state, 'FRESH'); assert.equal(value.fresh.ageSeconds, 86400);
+  assert.equal(value.stale.state, 'STALE'); assert.equal(value.stale.maxAgeSeconds, 129600);
+  assert.equal(value.review.state, 'UNKNOWN'); assert.equal(value.future.state, 'UNKNOWN');
+  const source = await readFile(backupService, 'utf8');
+  assert.match(source, /FRESHNESS_MAX_AGE_SECONDS = 129600/);
+  const staff = await readFile(join(ROOT, 'hub/src/HubStaffOperationsService.php'), 'utf8');
+  const infra = await readFile(join(ROOT, 'web/infrastructure.js'), 'utf8');
+  assert.match(staff, /\['freshness'\]\['state'\].*'FRESH'/);
+  assert.match(infra, /เก่าเกิน 36 ชั่วโมง/);
+});

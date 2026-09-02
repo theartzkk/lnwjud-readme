@@ -516,7 +516,8 @@ final class HubControlPlaneService
         try { $backupMetadata = HubBackupService::latestMetadata($backupRoot); } catch (Throwable) { $backupMetadata = ['configured' => false, 'latest' => null]; }
         $latest = is_array($backupMetadata['latest'] ?? null) ? $backupMetadata['latest'] : null;
         $backupState = !($backupMetadata['configured'] ?? false) ? 'NOT_CONFIGURED' : ($latest === null ? 'MISSING' : (($latest['status'] ?? null) === 'VERIFIED' ? 'VERIFIED' : 'NEEDS_ATTENTION'));
-        $backup = ['state' => $backupState, 'latest' => $latest === null ? null : ['name' => (string) ($latest['name'] ?? ''), 'sizeBytes' => (int) ($latest['sizeBytes'] ?? 0), 'verifiedAt' => (string) ($latest['modifiedAt'] ?? ''), 'databaseSchemaVersion' => array_key_exists('databaseUserVersion', $latest) ? (int) $latest['databaseUserVersion'] : null]];
+        $backupFreshness = HubBackupService::freshness($latest, $now ?? gmdate('c'));
+        $backup = ['state' => $backupState, 'freshness' => $backupFreshness, 'latest' => $latest === null ? null : ['name' => (string) ($latest['name'] ?? ''), 'sizeBytes' => (int) ($latest['sizeBytes'] ?? 0), 'verifiedAt' => (string) ($latest['modifiedAt'] ?? ''), 'databaseSchemaVersion' => array_key_exists('databaseUserVersion', $latest) ? (int) $latest['databaseUserVersion'] : null]];
 
         $totalRaw = @disk_total_space(dirname($this->databasePath)); $freeRaw = @disk_free_space(dirname($this->databasePath));
         $totalBytes = is_int($totalRaw) || is_float($totalRaw) ? (int) $totalRaw : 0; $freeBytes = is_int($freeRaw) || is_float($freeRaw) ? (int) $freeRaw : 0;
