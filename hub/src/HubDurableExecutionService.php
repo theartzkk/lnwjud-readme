@@ -203,17 +203,7 @@ final class HubDurableExecutionService
     /** @param array<string,mixed> $row */
     private function retryEligible(array $row, string $at): bool
     {
-        $code = is_string($row['last_error_code'] ?? null) ? (string) $row['last_error_code'] : '';
-        if ($code === '') return true;
-        $attempts = max(0, (int) ($row['attempt_count'] ?? 0));
-        $delay = match ($code) {
-            'PROVIDER_RATE_LIMITED' => $attempts <= 1 ? 30 : 120,
-            'PROVIDER_UNAVAILABLE', 'PROVIDER_FAILED', 'LEASE_EXPIRED' => $attempts <= 1 ? 60 : 300,
-            default => $attempts <= 1 ? 15 : 60,
-        };
-        $updated = strtotime((string) ($row['updated_at'] ?? ''));
-        $current = strtotime($at);
-        return $updated !== false && $current !== false && ($updated + $delay) <= $current;
+        return HubExecutionFailurePolicy::eligible($row, $at, self::MAX_ATTEMPTS);
     }
 
     private function complete(array $claimed, string $summary, string $messageKind, string $at): void
@@ -229,27 +219,28 @@ final class HubDurableExecutionService
     private function deferOrFail(array $claimed, string $code, string $at, array $diagnostic = []): string
     {
         $attempt = (int) $claimed['attempt_count'] + 1;
-        $retryableProvider = in_array($code, ['PROVIDER_UNAVAILABLE', 'PROVIDER_RATE_LIMITED'], true);
-        $manualWait = in_array($code, ['WAITING_FOR_CAPABILITY', 'PROJECT_VAULT_EMPTY', 'BUDGET_EXHAUSTED', 'PROVIDER_QUOTA_EXHAUSTED'], true);
-        $nonRetryable = in_array($code, ['PROVIDER_AUTH_FAILED', 'PROVIDER_PERMISSION_DENIED', 'PROVIDER_MODEL_UNAVAILABLE', 'PROVIDER_REQUEST_INVALID', 'CANDIDATE_SECRET_CONTENT'], true);
-        if ($nonRetryable) $state = 'FAILED';
-        elseif ($manualWait) $state = 'WAITING_FOR_CAPABILITY';
-        elseif ($retryableProvider) $state = $attempt < self::MAX_ATTEMPTS ? 'QUEUED' : 'WAITING_FOR_CAPABILITY';
-        else $state = $attempt < self::MAX_ATTEMPTS ? 'QUEUED' : 'FAILED';
+        $safeDiagnostic = self::safeDiagnostic($diagnostic);
+        $decision = HubExecutionFailurePolicy::decide($code, $attempt, $safeDiagnostic, $at, self::MAX_ATTEMPTS, (string) ($claimed['execution_id'] ?? ''));
+        $state = (string) $decision['state'];
         $terminal = $state === 'FAILED';
         $waiting = $state === 'WAITING_FOR_CAPABILITY';
         $retrying = $state === 'QUEUED';
-        $safeDiagnostic = self::safeDiagnostic($diagnostic);
+        $checkpoint = HubExecutionFailurePolicy::checkpointWithDecision((string) ($claimed['checkpoint_json'] ?? '{}'), $code, $decision);
         try {
             $this->pdo->exec('BEGIN IMMEDIATE');
-            $this->pdo->prepare('UPDATE control_task_executions SET state = :state, lease_owner = NULL, lease_expires_at = NULL, last_error_code = :code, updated_at = :at WHERE execution_id = :id')->execute(['state' => $state, 'code' => $code, 'at' => $at, 'id' => $claimed['execution_id']]);
+            $this->pdo->prepare('UPDATE control_task_executions SET state = :state, lease_owner = NULL, lease_expires_at = NULL, checkpoint_json = :checkpoint, last_error_code = :code, updated_at = :at WHERE execution_id = :id')->execute(['state' => $state, 'checkpoint' => $checkpoint, 'code' => $code, 'at' => $at, 'id' => $claimed['execution_id']]);
             $taskState = $terminal ? 'FAILED' : 'WAITING_FOR_WORKER';
             $summary = $terminal ? self::providerFailureSummary($code) : null;
             $this->pdo->prepare('UPDATE control_tasks SET state = :state, progress = 0, failure_code = :code, result_summary = COALESCE(:summary, result_summary), lease_expires_at = NULL, updated_at = :at WHERE task_id = :task')->execute(['state' => $taskState, 'code' => $code, 'summary' => $summary, 'at' => $at, 'task' => $claimed['task_id']]);
             $eventMessage = $retrying ? 'bounded retry queued on the same task' : ($waiting ? 'work preserved; automatic retry paused' : 'server-native execution failed');
+            $policyEvidence = ['version'=>$decision['policyVersion'],'category'=>$decision['category'],'automaticRetry'=>$decision['automaticRetry']];
+            if (is_int($decision['delaySeconds'] ?? null)) $policyEvidence['delaySeconds'] = $decision['delaySeconds'];
+            if (is_int($decision['retryAfterSeconds'] ?? null)) $policyEvidence['retryAfterSeconds'] = $decision['retryAfterSeconds'];
+            if (is_string($decision['nextEligibleAt'] ?? null)) $policyEvidence['nextEligibleAt'] = $decision['nextEligibleAt'];
+            $eventMessage .= ' failure_policy=' . json_encode($policyEvidence, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
             if ($safeDiagnostic !== []) $eventMessage .= ' provider_failure=' . json_encode(['code' => $code] + $safeDiagnostic, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
             $this->event((string) $claimed['task_id'], $taskState, 0, $eventMessage, $at);
-            $userMessage = $terminal ? (self::providerFailureSummary($code) ?? 'งานนี้หยุดไว้โดยปลอดภัย และยังไม่ได้เลื่อนผลลัพธ์ทับ Project หลัก') : 'ส่วนนี้ถูกเก็บไว้ในเบื้องหลัง บทสนทนาและงานที่ AWH Server ทำได้ยังดำเนินต่อได้ตามปกติ';
+            $userMessage = $terminal ? (self::providerFailureSummary($code) ?? 'งานนี้หยุดไว้โดยปลอดภัย และยังไม่ได้เลื่อนผลลัพธ์ทับ Project หลัก') : self::providerWaitSummary($code, $retrying);
             $this->appendConversationMessage((string) $claimed['conversation_id'], (string) $claimed['task_id'], $terminal ? 'FAILURE' : 'PROGRESS', $userMessage, $at);
             if (HubCapabilityRegistryService::schemaPresent($this->pdo)) (new HubCapabilityRegistryService($this->pdo))->updateEnvelopeState((string) $claimed['execution_id'], $terminal ? 'RELEASED' : 'WAITING', null, $at);
             $this->pdo->exec('COMMIT');
@@ -285,6 +276,7 @@ final class HubDurableExecutionService
         foreach ($allowed as $key) if (is_string($diagnostic[$key] ?? null) && preg_match('/^[A-Za-z0-9._:-]{1,100}$/', (string) $diagnostic[$key]) === 1) $out[$key] = (string) $diagnostic[$key];
         if (is_int($diagnostic['httpStatus'] ?? null) && $diagnostic['httpStatus'] >= 100 && $diagnostic['httpStatus'] <= 599) $out['httpStatus'] = $diagnostic['httpStatus'];
         if (is_int($diagnostic['transportCode'] ?? null) && $diagnostic['transportCode'] > 0 && $diagnostic['transportCode'] < 1000) $out['transportCode'] = $diagnostic['transportCode'];
+        if (is_int($diagnostic['retryAfterSeconds'] ?? null) && $diagnostic['retryAfterSeconds'] >= 1 && $diagnostic['retryAfterSeconds'] <= HubExecutionFailurePolicy::MAX_RETRY_AFTER_SECONDS) $out['retryAfterSeconds'] = $diagnostic['retryAfterSeconds'];
         if (is_bool($diagnostic['retryable'] ?? null)) $out['retryable'] = $diagnostic['retryable'];
         return $out;
     }
