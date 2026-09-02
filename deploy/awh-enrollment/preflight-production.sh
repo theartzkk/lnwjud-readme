@@ -8,7 +8,7 @@
 # bounded candidate search as corroborating evidence.
 set -eu
 
-TARGET=$(printenv AWH_DEPLOY_TARGET 2>/dev/null || printf awh-vps)
+TARGET=$(printenv AWH_DEPLOY_TARGET 2>/dev/null || printf awh-ready)
 
 case "$TARGET" in
   ''|*[!A-Za-z0-9._-]*) echo "AWH_DEPLOY_TARGET must be an SSH config alias" >&2; exit 2 ;;

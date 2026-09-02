@@ -159,3 +159,14 @@ Next safe action: preserve Production at M19/schema 19 until explicit M20 activa
 - The stale local `awh-vps` remote cannot simply be removed as a hygiene fix yet: current source still contains legacy enrollment/web-preview/bootstrap paths whose default deploy target is `awh-vps`, while current Production authority is ReadyIDC `awh-ready`. This is now classified as a source-level legacy-target convergence issue, not merely a broken Git remote.
 
 Next safe action: keep Production on M19/schema 19 pending explicit M20 activation approval, and keep the verified ~10.64 GB hard-link compaction as a separate approval-gated mutation. Independently, reconcile legacy `awh-vps` default-target code paths onto an explicit current/legacy authority model before removing the stale Git remote; do not touch the still-running obsolete M20 agent worktrees.
+
+## 2026-09-02 10:07 ICT — legacy deployment target convergence
+
+- Re-read GitHub canonical before mutation: `awh/api-independence` = `c501a5cc15b4c981bbb5cd28652e4fc1db2688de`.
+- Re-read Production: Control/Web both `m19-b66ef39cc986`; SQLite schema 19, integrity `ok`, FK violations 0; root disk 79% used. Daily backup authority is `awh-backup.timer` (next run 2026-09-03 03:38 ICT) with a fresh 2026-09-02 03:38 SQLite backup; the previously queried `awh-hub-backup.timer` unit name is obsolete/not present.
+- Protected the still-running obsolete M20 Codex PID 29261 and dirty Project Source Authority worktrees; no reset/kill/removal was performed.
+- Root-cause source convergence: current ReadyIDC Production SSH authority is `awh-ready`, while six live deploy/bootstrap defaults still selected legacy Google Cloud `awh-vps`. Defaults now select `awh-ready`; `AWH_DEPLOY_TARGET` remains the explicit override for legacy/recovery targets. No Production deployment or pointer/schema mutation was performed.
+- QA on the isolated exact-canonical worktree: TypeScript typecheck/build PASS; focused deployment/bootstrap regression 34/34 PASS after a clean `npm ci --ignore-scripts`. Initial dependency-reuse attempt was discarded because that checkout lacked complete runtime dependencies; it did not mutate Production.
+- Dependency install surfaced 24 audit findings (3 low, 20 high, 1 critical); no blind `npm audit fix` or breaking upgrade was applied during closure.
+
+Next safe action: review/merge this source-only authority convergence, then re-read canonical and Production. Keep M20 Production activation and verified release hard-link compaction as separate Production mutation gates.
