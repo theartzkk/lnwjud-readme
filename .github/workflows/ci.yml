@@ -33,6 +33,9 @@ jobs:
         run: node scripts/qa/verify-ci-policy.mjs
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - if: runner.os != 'Windows'
+        name: Verify production runtime dependency security
+        run: npm audit --omit=dev --audit-level=high
+      - if: runner.os != 'Windows'
         name: Verify Cloud artifact import with ZipArchive
         run: |
           if ! php -r 'exit(class_exists("ZipArchive") ? 0 : 1);'; then
