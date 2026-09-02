@@ -251,15 +251,16 @@ final class HubExecutionTriageService
             $policyDecision = HubExecutionFailurePolicy::decide($code, max(1, $attempts), [], (string) ($row['updated_at'] ?? gmdate('c', $reference)), 3, (string) ($row['execution_id'] ?? ''));
 
             $active = false;
-            if (preg_match('/(?:field proof|fixture|expected failure|negative test|ทดสอบ|หลักฐานภาคสนาม)/iu', $goal) === 1) {
+            if ($state === 'WAITING_FOR_CAPABILITY') {
+                $classification = 'BLOCKED_CAPABILITY';
+                $reason = 'งานยังถูกเก็บไว้และรอ provider/worker/capability; ไม่ blind retry';
+                $active = true;
+            } elseif (preg_match('/(?:field proof|fixture|expected failure|negative test|ทดสอบ|หลักฐานภาคสนาม)/iu', $goal) === 1) {
                 $classification = 'HISTORICAL_EXPECTED'; $summary['historicalExpected']++; $reason = 'goal ระบุ test/field-proof evidence; เก็บไว้เป็น audit';
             } elseif ($supersededBy !== '') {
                 $classification = 'OBSOLETE_STALE'; $summary['obsoleteStale']++; $reason = 'มี execution ที่สำเร็จภายหลังใน project/capability เดียวกัน; failure เดิมคงอยู่เฉพาะ audit';
             } elseif ($state === 'FAILED' && $ageSeconds !== null && $ageSeconds >= 604800) {
                 $classification = 'OBSOLETE_STALE'; $summary['obsoleteStale']++; $reason = 'terminal failure เกิน 7 วันและไม่มีหลักฐานใหม่; ต้อง review ก่อนนำกลับมาเป็น incident';
-            } elseif ($state === 'WAITING_FOR_CAPABILITY') {
-                $classification = $policyCategory === 'AUTH_REQUIRED' ? 'AUTH_REQUIRED' : ($policyCategory === 'EXTERNAL_POLICY' ? 'EXTERNAL_POLICY' : 'BLOCKED_CAPABILITY');
-                $reason = 'งานยังถูกเก็บไว้และรอเงื่อนไขภายนอก/ความสามารถที่จำเป็น; ไม่ blind retry'; $active = true;
             } elseif ($policyCategory === 'TRANSIENT' && $attempts < 3) {
                 $classification = 'RETRYABLE'; $reason = 'transient code และยังอยู่ใน bounded retry policy'; $active = true;
             } elseif ($policyCategory === 'AUTH_REQUIRED') {
