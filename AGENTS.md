@@ -21,10 +21,18 @@ Precedence:
 
 Project-specific rules may be stricter but must not silently weaken the owner protocol.
 
+## Canonical source rule
+
+- `awh/api-independence` on the reviewed `theartzkk/lnwjud-readme` GitHub repository is the AWH canonical source branch unless a newer durable authority explicitly replaces it.
+- Before any source or Production mutation, resolve the branch through the live remote authority. A cached `refs/remotes/origin/...`, historical worktree, local folder name, or dated Project Memory statement is diagnostic evidence only.
+- Use `scripts/ops/canonical-source-preflight.mjs --require-mutation-ready` for the bounded proof. A mutation source must be clean and its `HEAD` must equal the live canonical SHA; an explicitly approved release SHA must equal that same live SHA.
+- If the live remote cannot be resolved, stop that mutation. Never fall back to a stale remote-tracking ref, another worktree, or manual replay.
+- Multiple worktrees are allowed only as explicit operator/candidate/evidence/protected work. Never reset or repurpose a dirty/protected worktree to satisfy the canonical-source gate.
+
 ## Block-Free execution rule
 
 - Prefer typed/approved operations over free-form shell. For repository QA use `project_task_start` with `qa-fast`, `qa-local`, or `qa-full`, then poll task status/logs.
 - When only a terminal boundary is available, prefer the canonical short package scripts (`npm run qa:fast`, `npm run qa:local`, `npm run qa:full`, `npm run typecheck`, `npm run build`) instead of composing raw `node`, shell pipelines, or compound deploy commands.
 - A platform safety/security gate is terminal for that attempted action: never bypass, disguise, or blind-retry it. Decompose the work into supported typed actions, connected tools, or the reviewed deployment authority.
 - Long-running work must use start + poll/checkpoint semantics rather than one synchronous tool request.
-- Production mutation keeps its existing explicit approval, backup, exact-revision, and rollback requirements.
+- Production mutation keeps its existing explicit approval, backup, exact-revision, live-canonical-source, and rollback requirements.
