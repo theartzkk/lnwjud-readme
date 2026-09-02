@@ -58,10 +58,16 @@ if ((string) ($_SERVER['REQUEST_METHOD'] ?? '') === 'GET'
     $query = (string) (parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_QUERY) ?: '');
     parse_str($query, $queryValues);
     $mode = $queryValues['aipass'] ?? null;
+    $bundlePath = $response['streamPath'];
+    $isAiPassBundle = false;
+    if (is_string($bundlePath) && $bundlePath !== '' && is_file($bundlePath) && !is_link($bundlePath)) {
+        try { HubAiPassBundleDelivery::manifest($bundlePath); $isAiPassBundle = true; }
+        catch (HubAiPassProjectExportException) { $isAiPassBundle = false; }
+    }
+    if ($mode === null && $isAiPassBundle) $mode = 'page';
     if ($mode !== null) {
-        $bundlePath = $response['streamPath'];
         try {
-            if (!is_string($bundlePath) || $bundlePath === '' || !is_file($bundlePath) || is_link($bundlePath)) throw new HubAiPassProjectExportException('AiPASS bundle is unavailable', 'AIPASS_EXPORT_FAILED');
+            if (!$isAiPassBundle || !is_string($bundlePath)) throw new HubAiPassProjectExportException('AiPASS bundle is unavailable', 'AIPASS_EXPORT_FAILED');
             if ($mode === 'page' && !array_key_exists('index', $queryValues)) {
                 $html = HubAiPassBundleDelivery::landingPage($bundlePath, $path);
                 http_response_code(200);
