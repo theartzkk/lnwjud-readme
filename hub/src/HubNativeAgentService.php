@@ -80,38 +80,47 @@ final class HubNativeAgentService
     /** @param list<array{role:string,body:string}> $turns @param list<array{name:string,mimeType:string,path:string,sizeBytes:int}> $attachments @param array<string,mixed> $context */
     public function respond(string $userId, string $projectId, string $conversationId, string $messageId, string $request, array $turns, array $attachments, ?string $now = null, array $context = [], array $executionContext = []): array
     {
-        $at = self::timestamp($now ?? gmdate('c')); $routingPolicy = $this->policy($userId, $at); [$providerId,$route,$model,$governanceRouteId] = $this->modelForExecution($userId,$projectId,$request,$routingPolicy,$executionContext,$at,1200); $policy=$this->policy($userId,$at,$providerId); $startedAt = microtime(true);
-        $status = $this->statusForProvider($userId,$providerId,$at);
-        $zeroQuote = $this->quote($policy,$model,0,0,0,0,$at,$providerId);
-        $key = $this->credential($providerId);
-        if (!$policy['enabled'] || $key === null) {
-            $this->record($userId,$projectId,$conversationId,$messageId,$model,$route,0,0,0,0,0,'UNAVAILABLE',$at,$zeroQuote['snapshot'],$providerId);
-            throw new HubNativeAgentException('Native provider is not configured','PROVIDER_UNAVAILABLE',['provider'=>$providerId,'operation'=>'dispatch','category'=>$policy['enabled']?'credential':'policy','retryable'=>false]);
+        $at = self::timestamp($now ?? gmdate('c')); $routingPolicy = $this->policy($userId, $at); [$providerId,$route,$model,$governanceRouteId] = $this->modelForExecution($userId,$projectId,$request,$routingPolicy,$executionContext,$at,1200);
+        $attemptedProviders = [];
+        for ($providerAttempt = 0; $providerAttempt < 2; $providerAttempt++) {
+            $attemptedProviders[] = $providerId; $policy=$this->policy($userId,$at,$providerId); $startedAt = microtime(true);
+            $status = $this->statusForProvider($userId,$providerId,$at);
+            $zeroQuote = $this->quote($policy,$model,0,0,0,0,$at,$providerId);
+            $key = $this->credential($providerId);
+            if (!$policy['enabled'] || $key === null) {
+                $this->record($userId,$projectId,$conversationId,$messageId,$model,$route,0,0,0,0,0,'UNAVAILABLE',$at,$zeroQuote['snapshot'],$providerId);
+                throw new HubNativeAgentException('Native provider is not configured','PROVIDER_UNAVAILABLE',['provider'=>$providerId,'operation'=>'dispatch','category'=>$policy['enabled']?'credential':'policy','retryable'=>false]);
+            }
+            if ($status['budget']['usedMicrounits'] >= $policy['monthlyBudgetMicrounits']) {
+                $this->record($userId,$projectId,$conversationId,$messageId,$model,$route,0,0,0,0,0,'BUDGET_EXHAUSTED',$at,$zeroQuote['snapshot'],$providerId);
+                throw new HubNativeAgentException('The owner AI budget is exhausted', 'BUDGET_EXHAUSTED');
+            }
+            $payload = $this->requestPayload($model, $request, $turns, $attachments, $userId, $context);
+            $reserveQuote = $this->maximumRequestQuote($payload,$policy,$model,$at,$providerId);
+            if ($status['budget']['usedMicrounits'] + $reserveQuote['estimatedMicrounits'] > $policy['monthlyBudgetMicrounits']) {
+                $this->record($userId,$projectId,$conversationId,$messageId,$model,$route,0,0,0,0,0,'BUDGET_EXHAUSTED',$at,$reserveQuote['snapshot'],$providerId);
+                throw new HubNativeAgentException('The owner AI budget is exhausted', 'BUDGET_EXHAUSTED');
+            }
+            $response = null;
+            try {
+                $response = $this->call($payload, $key, $providerId);
+                $usage = self::usage($response); $text = self::outputText($response); $quote = $this->quote($policy,$model,$usage['inputTokens'],$usage['cachedInputTokens'],$usage['cacheWriteTokens'],$usage['outputTokens'],$at,$providerId); $cost = $quote['estimatedMicrounits'];
+            } catch (HubNativeAgentException $error) {
+                $usage = is_array($response) ? self::usageOrZero($response) : ['inputTokens' => 0, 'cachedInputTokens' => 0, 'cacheWriteTokens' => 0, 'outputTokens' => 0];
+                $quote = $this->quote($policy,$model,$usage['inputTokens'],$usage['cachedInputTokens'],$usage['cacheWriteTokens'],$usage['outputTokens'],$at,$providerId); $cost = $quote['estimatedMicrounits'];
+                $this->record($userId,$projectId,$conversationId,$messageId,$model,$route,$usage['inputTokens'],$usage['cachedInputTokens'],$usage['cacheWriteTokens'],$usage['outputTokens'],$cost,$error->codeName === 'BUDGET_EXHAUSTED' ? 'BUDGET_EXHAUSTED' : 'FAILED',$at,$quote['snapshot'],$providerId);
+                $this->governanceOutcome($governanceRouteId,'FAILED','NOT_RUN',(int)($executionContext['retryCount']??0),(int)round((microtime(true)-$startedAt)*1000),$cost,$error->diagnostic);
+                if ($providerAttempt === 0 && self::providerFailoverEligible($error)) {
+                    $fallback = $this->fallbackModelForExecution($userId,$projectId,$request,$routingPolicy,$executionContext,$at,1200,$attemptedProviders);
+                    if (is_array($fallback)) { [$providerId,$route,$model,$governanceRouteId] = $fallback; continue; }
+                }
+                throw $error;
+            }
+            $this->record($userId,$projectId,$conversationId,$messageId,$model,$route,$usage['inputTokens'],$usage['cachedInputTokens'],$usage['cacheWriteTokens'],$usage['outputTokens'],$cost,'COMPLETED',$at,$quote['snapshot'],$providerId);
+            $this->governanceOutcome($governanceRouteId,'PASSED','NOT_RUN',(int)($executionContext['retryCount']??0),(int)round((microtime(true)-$startedAt)*1000),$cost);
+            return ['summary' => $text, 'provider' => $providerId, 'route' => strtolower($route), 'model' => $model, 'usage' => $usage, 'estimatedMicrounits' => $cost, 'routeDecisionId' => $governanceRouteId, 'providerAttempts' => count($attemptedProviders), 'failoverUsed' => count($attemptedProviders) > 1];
         }
-        if ($status['budget']['usedMicrounits'] >= $policy['monthlyBudgetMicrounits']) {
-            $this->record($userId,$projectId,$conversationId,$messageId,$model,$route,0,0,0,0,0,'BUDGET_EXHAUSTED',$at,$zeroQuote['snapshot'],$providerId);
-            throw new HubNativeAgentException('The owner AI budget is exhausted', 'BUDGET_EXHAUSTED');
-        }
-        $payload = $this->requestPayload($model, $request, $turns, $attachments, $userId, $context);
-        $reserveQuote = $this->maximumRequestQuote($payload,$policy,$model,$at,$providerId);
-        if ($status['budget']['usedMicrounits'] + $reserveQuote['estimatedMicrounits'] > $policy['monthlyBudgetMicrounits']) {
-            $this->record($userId,$projectId,$conversationId,$messageId,$model,$route,0,0,0,0,0,'BUDGET_EXHAUSTED',$at,$reserveQuote['snapshot'],$providerId);
-            throw new HubNativeAgentException('The owner AI budget is exhausted', 'BUDGET_EXHAUSTED');
-        }
-        $response = null;
-        try {
-            $response = $this->call($payload, $key, $providerId);
-            $usage = self::usage($response); $text = self::outputText($response); $quote = $this->quote($policy,$model,$usage['inputTokens'],$usage['cachedInputTokens'],$usage['cacheWriteTokens'],$usage['outputTokens'],$at,$providerId); $cost = $quote['estimatedMicrounits'];
-        } catch (HubNativeAgentException $error) {
-            $usage = is_array($response) ? self::usageOrZero($response) : ['inputTokens' => 0, 'cachedInputTokens' => 0, 'cacheWriteTokens' => 0, 'outputTokens' => 0];
-            $quote = $this->quote($policy,$model,$usage['inputTokens'],$usage['cachedInputTokens'],$usage['cacheWriteTokens'],$usage['outputTokens'],$at,$providerId); $cost = $quote['estimatedMicrounits'];
-            $this->record($userId,$projectId,$conversationId,$messageId,$model,$route,$usage['inputTokens'],$usage['cachedInputTokens'],$usage['cacheWriteTokens'],$usage['outputTokens'],$cost,$error->codeName === 'BUDGET_EXHAUSTED' ? 'BUDGET_EXHAUSTED' : 'FAILED',$at,$quote['snapshot'],$providerId);
-            $this->governanceOutcome($governanceRouteId,'FAILED','NOT_RUN',(int)($executionContext['retryCount']??0),(int)round((microtime(true)-$startedAt)*1000),$cost,$error->diagnostic);
-            throw $error;
-        }
-        $this->record($userId,$projectId,$conversationId,$messageId,$model,$route,$usage['inputTokens'],$usage['cachedInputTokens'],$usage['cacheWriteTokens'],$usage['outputTokens'],$cost,'COMPLETED',$at,$quote['snapshot'],$providerId);
-        $this->governanceOutcome($governanceRouteId,'PASSED','NOT_RUN',(int)($executionContext['retryCount']??0),(int)round((microtime(true)-$startedAt)*1000),$cost);
-        return ['summary' => $text, 'provider' => $providerId, 'route' => strtolower($route), 'model' => $model, 'usage' => $usage, 'estimatedMicrounits' => $cost, 'routeDecisionId' => $governanceRouteId];
+        throw new HubNativeAgentException('No eligible provider completed the request', 'PROVIDER_UNAVAILABLE', ['operation'=>'dispatch','category'=>'failover','retryable'=>true]);
     }
 
     /**
@@ -389,7 +398,7 @@ final class HubNativeAgentService
         if ($this->governance===null || !is_string($executionContext['executionId']??null) || !is_string($executionContext['taskId']??null)) return [$this->providerId,$route,$model,null];
         $inputEstimate=max(1,(int)ceil((strlen($request)+strlen(json_encode($executionContext,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)))/4));
         $baseline=$this->quote($policy,$policy['modelStrong'],$inputEstimate,0,0,$maxOutputTokens,$at,$this->providerId)['estimatedMicrounits'];
-        $providers=$this->eligibleRuntimeProviders($userId,$at); $preferred=[]; foreach($providers as $provider) { $p=$this->policy($userId,$at,$provider); foreach(['modelFast','modelBalanced','modelStrong'] as $field) if (is_string($p[$field]??null)) $preferred[]=$provider.':'.$p[$field]; }
+        $providers=$this->eligibleRuntimeProviders($userId,$at); $excluded=self::excludedProviderIds($executionContext['excludedProviderIds']??[]); if ($excluded!==[]) $providers=array_values(array_filter($providers,static fn(string $provider):bool=>!in_array($provider,$excluded,true))); if ($providers===[]) throw new HubNativeAgentException('No eligible alternate provider remains','PROVIDER_UNAVAILABLE',['operation'=>'route','category'=>'failover','retryable'=>true]); $preferred=[]; foreach($providers as $provider) { $p=$this->policy($userId,$at,$provider); foreach(['modelFast','modelBalanced','modelStrong'] as $field) if (is_string($p[$field]??null)) $preferred[]=$provider.':'.$p[$field]; }
         try { $selected=(count($providers)!==1 || $providers[0]!==$this->providerId)
             ? $this->governance->selectAcrossProviders($userId,$projectId,(string)$executionContext['executionId'],(string)$executionContext['taskId'],$providers,(string)($executionContext['capability']??'agent.conversation'),(string)($executionContext['dataClassification']??'INTERNAL'),$policy['routingStrategy'],$preferred,$inputEstimate,$maxOutputTokens,$baseline,['routing'=>(string)($executionContext['routingPolicyVersion']??'m16-runtime-v1'),'prompt'=>(string)($executionContext['promptPolicyVersion']??'native-v1'),'tool'=>(string)($executionContext['toolPolicyVersion']??'bounded-v1')],$at)
             : $this->governance->selectModel($userId,$projectId,(string)$executionContext['executionId'],(string)$executionContext['taskId'],$this->providerId,(string)($executionContext['capability']??'agent.conversation'),(string)($executionContext['dataClassification']??'INTERNAL'),$policy['routingStrategy'],[$policy['modelFast'],$policy['modelBalanced'],$policy['modelStrong']],$inputEstimate,$maxOutputTokens,$baseline,['routing'=>(string)($executionContext['routingPolicyVersion']??'m16-v1'),'prompt'=>(string)($executionContext['promptPolicyVersion']??'native-v1'),'tool'=>(string)($executionContext['toolPolicyVersion']??'bounded-v1')],$at);
@@ -403,6 +412,30 @@ final class HubNativeAgentService
     {
         $out=[]; foreach(array_keys($this->runtimeAdapters) as $provider) { try { $policy=$this->policy($userId,$at,$provider); if (!($policy['enabled']??false) || $this->credential($provider)===null) continue; $out[]=$provider; } catch(Throwable) {} }
         if ($out===[]) $out[]=$this->providerId; return array_values(array_unique($out));
+    }
+
+    /** Fail over only before tool execution and only for explicitly retryable provider/network pressure. */
+    private static function providerFailoverEligible(HubNativeAgentException $error): bool
+    {
+        return in_array($error->codeName,['PROVIDER_UNAVAILABLE','PROVIDER_RATE_LIMITED'],true) && ($error->diagnostic['retryable']??null) === true;
+    }
+
+    /** @param list<string> $attemptedProviders @return array{0:string,1:string,2:string,3:?string}|null */
+    private function fallbackModelForExecution(string $userId,string $projectId,string $request,array $routingPolicy,array $executionContext,string $at,int $maxOutputTokens,array $attemptedProviders): ?array
+    {
+        if ($this->governance===null || !is_string($executionContext['executionId']??null) || !is_string($executionContext['taskId']??null)) return null;
+        $context=$executionContext; $context['excludedProviderIds']=array_values(array_unique(array_merge(self::excludedProviderIds($executionContext['excludedProviderIds']??[]),self::excludedProviderIds($attemptedProviders))));
+        try { $selected=$this->modelForExecution($userId,$projectId,$request,$routingPolicy,$context,$at,$maxOutputTokens); }
+        catch (HubNativeAgentException) { return null; }
+        return in_array($selected[0],$context['excludedProviderIds'],true)?null:$selected;
+    }
+
+    /** @return list<string> */
+    private static function excludedProviderIds(mixed $value): array
+    {
+        if (!is_array($value) || !array_is_list($value) || count($value)>4) return [];
+        $out=[]; foreach($value as $provider) { if (!is_string($provider) || preg_match('/^[a-z0-9][a-z0-9._-]{1,63}$/',$provider)!==1) continue; $out[]=$provider; }
+        return array_values(array_unique($out));
     }
 
     private function governanceOutcome(?string $routeId,string $status,string $qa,int $retryCount,int $latencyMs,int $cost,?array $diagnostic=null): void
