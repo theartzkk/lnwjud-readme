@@ -110,6 +110,10 @@ try {
     aipass_bound_assert(($verified['batchCount'] ?? null) === 1, 'valid direct-DOCX bundle must verify');
     $downloaded = HubAiPassBundleDelivery::document($validBundle, 1);
     aipass_bound_assert(($downloaded['name'] ?? null) === $sourceName && ($downloaded['mimeType'] ?? null) === HubAiPassProjectExportService::DOCX_MIME, 'verified document delivery must return direct DOCX');
+    $landing = HubAiPassBundleDelivery::landingPage($validBundle, '/api/v1/control/artifacts/example/download');
+    aipass_bound_assert(str_contains($landing, 'ผ่านขนาดจำกัด ✓') && str_contains($landing, 'อัปโหลดพร้อมกัน 2 ไฟล์') && str_contains($landing, 'ข้อความแนะนำสำหรับ AiPASS'), 'AiPASS landing page must guide one verified Batch at a time');
+    aipass_bound_assert(str_contains($landing, 'อย่าอัปโหลดหลาย Batch พร้อมกัน') && str_contains($landing, 'conservative safety bound ไม่ใช่ exact token count'), 'AiPASS landing page must explain batch and byte-bound safety correctly');
+    aipass_bound_assert(!str_contains($landing, 'ZIP') && !str_contains($landing, '.zip'), 'AiPASS user-facing landing page must not expose internal bundle format');
 } finally { aipass_bound_clean($validBundle); }
 
 $hiddenBundle = $writeBundle($baseManifest, ['hidden.txt'=>'shadow payload']);

@@ -31,6 +31,13 @@
 .awh-owner-command-copy small { display: block; margin-top: .25rem; color: rgba(255,255,255,.58); line-height: 1.35; }
 .awh-owner-command-badge { align-self: start; padding: .22rem .45rem; border-radius: 999px; background: rgba(255,255,255,.08); color: rgba(255,255,255,.62); font-size: .68rem; white-space: nowrap; }
 
+.awh-source-detail { border: 1px solid rgba(255,255,255,.1); border-radius: 14px; padding: .78rem .9rem; background: rgba(255,255,255,.035); }
+.awh-source-detail + .awh-source-detail { margin-top: .55rem; }
+.awh-source-detail strong { display: block; font-size: .9rem; }
+.awh-source-detail small { display: block; margin-top: .24rem; color: rgba(255,255,255,.62); line-height: 1.4; overflow-wrap: anywhere; }
+.awh-source-detail[data-tone="ready"] { border-color: rgba(78,201,145,.28); background: rgba(78,201,145,.055); }
+.awh-source-detail[data-tone="attention"] { border-color: rgba(255,186,73,.28); background: rgba(255,186,73,.055); }
+
 body.awh-teacher-preview #dashboard-owner-center,
 body.awh-teacher-preview #dashboard-owner-command-center { display: none !important; }
 .awh-teacher-preview-bar {

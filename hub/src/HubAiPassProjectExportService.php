@@ -459,24 +459,41 @@ final class HubAiPassBundleDelivery
     public static function landingPage(string $bundlePath, string $downloadPath): string
     {
         $manifest = self::manifest($bundlePath);
-        $project = self::html((string)($manifest['projectName'] ?? 'Project'));
-        $revision = self::html(substr((string)($manifest['canonicalRevision'] ?? ''), 0, 12));
+        $projectRaw = (string)($manifest['projectName'] ?? 'Project');
+        $project = self::html($projectRaw);
+        $repository = self::html((string)($manifest['repository'] ?? ''));
+        $ref = self::html((string)($manifest['ref'] ?? ''));
+        $revisionRaw = (string)($manifest['canonicalRevision'] ?? '');
+        $revision = self::html(substr($revisionRaw, 0, 12));
+        $vault = self::html(substr((string)($manifest['canonicalVaultRevisionId'] ?? ''), 0, 8));
         $batchCount = (int)$manifest['batchCount'];
+        $fileCount = count($manifest['files']);
         $sections = '';
         foreach ($manifest['batches'] as $batch) {
             $number = (int)$batch['batch'];
+            $batchBytes = (int)$batch['extractedTextBytes'];
+            $batchFiles = (int)$batch['fileCount'];
+            $percent = min(100, max(0, (int)round(($batchBytes / HubAiPassProjectExportService::BATCH_TEXT_BYTE_CEILING) * 100)));
             $links = '';
             foreach ($batch['files'] as $index) {
                 $file = $manifest['files'][$index];
                 $name = self::html((string)$file['name']);
-                $bytes = number_format((int)$file['extractedTextBytes']);
+                $textBytes = (int)$file['extractedTextBytes'];
+                $textKb = number_format($textBytes / 1024, 1);
                 $href = self::html($downloadPath . '?aipass=docx&index=' . (int)$index);
-                $role = ($file['role'] ?? '') === 'CONTEXT' ? 'Context' : 'Source';
-                $links .= '<li><a href="' . $href . '">' . $name . '</a><small>' . self::html($role) . ' · extracted text ' . $bytes . ' bytes</small></li>';
+                $role = ($file['role'] ?? '') === 'CONTEXT' ? 'Context / คำสั่งตรวจ' : 'Source evidence / หลักฐานโค้ด';
+                $links .= '<li><a class="file" href="' . $href . '"><span><strong>' . $name . '</strong><small>' . self::html($role) . ' · ข้อความ ' . $textKb . ' KB</small></span><b>ดาวน์โหลด DOCX</b></a></li>';
             }
-            $sections .= '<section><h2>Batch ' . $number . ' / ' . $batchCount . '</h2><p>อัปโหลดเฉพาะไฟล์ใน Batch นี้เข้า AiPASS ในหนึ่ง review context แล้วเก็บผลลัพธ์ก่อนเริ่ม Batch ถัดไป</p><ul>' . $links . '</ul><p class="meter">รวม extracted text ' . number_format((int)$batch['extractedTextBytes']) . ' / ' . number_format(HubAiPassProjectExportService::BATCH_TEXT_BYTE_CEILING) . ' bytes · ' . (int)$batch['fileCount'] . ' / ' . HubAiPassProjectExportService::MAX_FILES_PER_BATCH . ' files</p></section>';
+            $prompt = self::html(
+                "ตรวจ Batch {$number}/{$batchCount} ของโปรเจกต์ {$projectRaw} จาก canonical revision {$revisionRaw}\n" .
+                "ใช้เฉพาะ DOCX ใน Batch นี้เป็นหลักฐาน ห้ามสมมติข้อมูลที่ไม่มีในเอกสาร\n" .
+                "สรุป: (1) P0 ที่ต้องหยุดก่อนใช้งาน (2) P1 ที่ควรแก้ (3) P2 ที่ควรปรับปรุง (4) จุดแข็งที่ควรรักษา (5) ไฟล์/โมดูลที่เกี่ยวข้องถ้าระบุได้\n" .
+                "อย่าสรุปว่านี่คือผลตรวจทั้งโปรเจกต์จนกว่าจะตรวจครบทุก Batch"
+            );
+            $sections .= '<section class="batch"><div class="batch-head"><div><span class="eyebrow">BATCH ' . $number . '</span><h2>ชุด ' . $number . ' / ' . $batchCount . '</h2><p>อัปโหลดพร้อมกัน ' . $batchFiles . ' ไฟล์ใน review context เดียว</p></div><span class="pass">ผ่านขนาดจำกัด ✓</span></div><ol class="files">' . $links . '</ol><div class="meter"><div class="meter-row"><span>ขนาดข้อความรวม</span><strong>' . number_format($batchBytes) . ' / ' . number_format(HubAiPassProjectExportService::BATCH_TEXT_BYTE_CEILING) . ' bytes</strong></div><div class="bar" aria-hidden="true"><span style="width:' . $percent . '%"></span></div><small>' . $batchFiles . ' / ' . HubAiPassProjectExportService::MAX_FILES_PER_BATCH . ' files · conservative safety bound ไม่ใช่ exact token count</small></div><details><summary>ข้อความแนะนำสำหรับ AiPASS</summary><pre>' . $prompt . '</pre></details></section>';
         }
-        return '<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AiPASS DOCX · ' . $project . '</title><style>body{font-family:system-ui,-apple-system,sans-serif;max-width:860px;margin:0 auto;padding:24px;background:#0b0d10;color:#f5f7fa}h1{font-size:1.55rem}h2{font-size:1.15rem}section{background:#15191f;border:1px solid #2a3038;border-radius:16px;padding:18px;margin:18px 0}a{color:#8fc9ff;overflow-wrap:anywhere}li{margin:12px 0}small{display:block;color:#aeb7c2;margin-top:3px}.warning{background:#2a2112;border:1px solid #72501b;border-radius:12px;padding:14px}.meter{color:#aeb7c2;font-size:.9rem}</style></head><body><h1>AiPASS Review DOCX · ' . $project . '</h1><p>Exact canonical revision <strong>' . $revision . '</strong></p><p class="warning"><strong>AiPASS ไม่รองรับ ZIP:</strong> ใช้เฉพาะ DOCX ด้านล่างเท่านั้น Internal bundle ของ AWH ไม่ใช่ไฟล์สำหรับอัปโหลด แต่ละ DOCX ถูกบังคับ final extracted UTF-8 text ≤ ' . number_format(HubAiPassProjectExportService::FILE_TEXT_BYTE_CEILING) . ' bytes ซึ่งเป็น conservative bound และไม่อ้างว่าเป็น exact provider-token count.</p>' . $sections . '<p>เมื่อครบทุก Batch ให้นำผล review แต่ละ Batch กลับเข้า AWH เพื่อสังเคราะห์ findings รวมก่อนแก้ Source.</p></body></html>';
+        $fileCeiling = number_format(HubAiPassProjectExportService::FILE_TEXT_BYTE_CEILING);
+        return '<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>AiPASS DOCX · ' . $project . '</title><style>:root{color-scheme:dark}*{box-sizing:border-box}body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:900px;margin:0 auto;padding:max(20px,env(safe-area-inset-top)) 16px max(32px,env(safe-area-inset-bottom));background:#0b0d10;color:#f5f7fa;line-height:1.45}h1{font-size:clamp(1.55rem,6vw,2.2rem);margin:.25rem 0 .5rem}h2{font-size:1.2rem;margin:.15rem 0}p{margin:.45rem 0}.eyebrow{font-size:.72rem;font-weight:800;letter-spacing:.1em;color:#ff9b52}.hero{padding:18px;border:1px solid #2a3038;border-radius:18px;background:#11151b}.summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:16px 0}.summary div{padding:12px;border-radius:14px;background:#15191f;border:1px solid #252b33}.summary strong,.summary small{display:block}.summary small{margin-top:3px;color:#aeb7c2;overflow-wrap:anywhere}.steps{padding:14px 16px;border-radius:14px;background:#142018;border:1px solid #284b35;color:#d9f5e4}.steps strong{color:#83e7ad}.batch{background:#15191f;border:1px solid #2a3038;border-radius:18px;padding:16px;margin:18px 0}.batch-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.batch-head p{color:#aeb7c2}.pass{flex:none;padding:6px 9px;border-radius:999px;background:#173425;color:#8ff0b6;font-size:.76rem;font-weight:700}.files{list-style:none;padding:0;margin:14px 0}.files li+li{margin-top:9px}.file{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px;border-radius:14px;background:#0f1318;border:1px solid #2a3038;color:#f5f7fa;text-decoration:none}.file:hover{border-color:#55718c}.file span{min-width:0}.file strong,.file small{display:block;overflow-wrap:anywhere}.file small{margin-top:4px;color:#aeb7c2}.file b{flex:none;color:#9bd2ff;font-size:.82rem}.meter{margin-top:12px;color:#aeb7c2}.meter-row{display:flex;justify-content:space-between;gap:10px;font-size:.82rem}.bar{height:7px;border-radius:999px;background:#262c34;overflow:hidden;margin:7px 0}.bar span{display:block;height:100%;background:#68c994;border-radius:inherit}.meter small{font-size:.76rem}details{margin-top:14px;border-top:1px solid #2a3038;padding-top:12px}summary{cursor:pointer;color:#9bd2ff;font-weight:700}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0d1116;border-radius:12px;padding:12px;color:#e8edf3;font:inherit;font-size:.86rem}.footer{color:#8f9aa7;font-size:.82rem;margin:22px 2px}@media(max-width:620px){.summary{grid-template-columns:1fr}.batch-head{display:block}.pass{display:inline-block;margin-top:8px}.file{align-items:flex-start;flex-direction:column}.file b{font-size:.88rem}.meter-row{display:block}.meter-row strong{display:block;margin-top:2px}}</style></head><body><div class="hero"><span class="eyebrow">AIPASS REVIEW</span><h1>' . $project . '</h1><p>ชุด DOCX นี้สร้างจาก Source ที่ AWH ยืนยันแล้ว</p><div class="summary"><div><strong>' . $batchCount . ' Batch</strong><small>' . $fileCount . ' DOCX ทั้งหมด</small></div><div><strong>' . $revision . '</strong><small>' . $repository . ' · ' . $ref . '</small></div><div><strong>' . $vault . '</strong><small>canonical cache snapshot</small></div></div><div class="steps"><strong>ทำทีละ Batch:</strong> ดาวน์โหลดไฟล์ของชุดเดียวกัน → อัปโหลดพร้อมกันเข้า AiPASS → เก็บผลตอบกลับ → แล้วจึงไป Batch ถัดไป อย่าอัปโหลดหลาย Batch พร้อมกัน</div><p class="footer">AWH แสดงเฉพาะ DOCX ที่ผ่าน integrity check แล้ว · แต่ละไฟล์ถูกจำกัดข้อความไม่เกิน ' . $fileCeiling . ' bytes แบบ conservative เพื่อมี safety headroom โดยไม่อ้างว่าเป็น exact provider-token count</p></div>' . $sections . '<p class="footer">เมื่อครบทุก Batch ให้นำผล review แต่ละชุดกลับเข้า AWH เพื่อสังเคราะห์ findings รวมก่อนแก้ Source</p></body></html>';
     }
 
     /** @return array{0:ZipArchive,1:array<string,mixed>} */
