@@ -51,6 +51,38 @@ test('M20 owner Source Authority reuses the bounded control adapter instead of c
   assert.doesNotMatch(source, /indexedDB|localStorage|sessionStorage/i);
 });
 
+test('M20 AiPASS Owner flow exposes only verified direct DOCX batches', async () => {
+  const [owner, exporter, publicEntry] = await Promise.all([
+    readFile(join(ROOT, 'web', 'owner-center.js'), 'utf8'),
+    readFile(join(ROOT, 'hub', 'src', 'HubAiPassProjectExportService.php'), 'utf8'),
+    readFile(join(ROOT, 'hub', 'public', 'control-plane.php'), 'utf8'),
+  ]);
+  assert.match(owner, /เตรียมไฟล์ AiPASS \(DOCX\)/);
+  assert.match(owner, /api\.createAiPassProjectExport\(select\.value\)/);
+  assert.match(owner, /target\.searchParams\.set\('aipass', 'page'\)/);
+  assert.match(owner, /window\.location\.assign\(`\$\{target\.pathname\}\$\{target\.search\}`\)/);
+  assert.match(owner, /AWH จะไม่ให้คุณอัปโหลด internal ZIP/);
+  assert.doesNotMatch(owner, /fetch\(|XMLHttpRequest|WebSocket|Authorization|Bearer/i);
+
+  assert.match(exporter, /FILE_TEXT_BYTE_CEILING = 350000/);
+  assert.match(exporter, /BATCH_TEXT_BYTE_CEILING = 650000/);
+  assert.match(exporter, /MAX_FILES_PER_BATCH = 16/);
+  assert.match(exporter, /MAX_BATCHES = 16/);
+  assert.match(exporter, /AIPASS_DIRECT_DOCX/);
+  assert.match(exporter, /CONSERVATIVE_UTF8_BYTE_BOUND_NOT_EXACT_PROVIDER_TOKENS/);
+  assert.match(exporter, /AIPASS_INTERNAL_BUNDLE_NEVER_UPLOAD/);
+  assert.match(exporter, /class HubAiPassBundleDelivery/);
+  assert.match(exporter, /verifyDocxTextBudget/);
+  assert.doesNotMatch(exporter, /PART_TEXT_CHARS\s*=\s*750000/);
+
+  assert.match(publicEntry, /HubAiPassBundleDelivery::landingPage/);
+  assert.match(publicEntry, /HubAiPassBundleDelivery::document/);
+  assert.match(publicEntry, /\$mode === 'page'/);
+  assert.match(publicEntry, /\$mode === 'docx'/);
+  assert.match(publicEntry, /AIPASS_DELIVERY_INVALID/);
+  assert.match(publicEntry, /artifactDownload have already validated the session/);
+});
+
 test('V1.3 dashboard guardrails reset Home after sign-out and reject animated GIF flattening', async () => {
   const source = await readFile(join(ROOT, 'web', 'dashboard-guardrails.js'), 'utf8');
   assert.match(source, /delete document\.body\.dataset\.awhDashboardVisited/);
@@ -92,6 +124,7 @@ test('V1.3 owner center is bundled into existing dashboard assets and stays mobi
   assert.match(dashboard, /dashboard-owner-command-center/);
   assert.match(dashboard, /dashboard-owner-source-center/);
   assert.match(dashboard, /control-plane-adapter\.js\?release=owner-center-fixture/);
+  assert.match(dashboard, /เตรียมไฟล์ AiPASS \(DOCX\)/);
   assert.match(dashboard, /Dashboard correctness guardrails/);
   assert.match(dashboard, /GIF แบบเคลื่อนไหวยังไม่รองรับ/);
   assert.match(dashboard, /ดูในมุมครู/);
