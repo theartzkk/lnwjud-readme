@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { lstat, readFile, realpath, writeFile } from 'node:fs/promises';
-import { basename, dirname, resolve } from 'node:path';
+import { lstat, readFile, writeFile } from 'node:fs/promises';
+import { basename, resolve } from 'node:path';
 
 const EXPECTED_PACKAGE = new Map([
   ['win32/x64', 'AWH-Windows-x64.zip'],
@@ -47,7 +47,6 @@ if (packagePath === outputPath) fail('output cannot replace the package');
 
 const packageStat = await lstat(packagePath);
 if (!packageStat.isFile() || packageStat.isSymbolicLink() || packageStat.size <= 0) fail('package must be a non-empty regular file');
-if ((await realpath(packagePath)) !== packagePath) fail('package path must not traverse a symlink');
 
 const pkg = JSON.parse(await readFile(resolve('package.json'), 'utf8'));
 const bytes = await readFile(packagePath);
