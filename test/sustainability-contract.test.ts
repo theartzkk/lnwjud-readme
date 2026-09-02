@@ -1,12 +1,17 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import test from 'node:test';
 import { DEFAULT_AWH_HUB_API_BASE } from '../src/config.js';
 import { PRODUCT } from '../src/product.js';
 import { DESKTOP_UPDATE_FOUNDATION, updateIsApplicable, validateDesktopUpdateManifest } from '../src/desktop-update-policy.js';
 
 const ROOT = process.cwd();
+const execFileAsync = promisify(execFile);
 
 test('AWH sustainability contract locks durable product and authority identity', async () => {
   const contract = JSON.parse(await readFile(join(ROOT, 'config/awh-product-contract.json'), 'utf8'));
@@ -63,6 +68,58 @@ test('update manifest contract accepts only bounded HTTPS releases and compatibl
   assert.equal(updateIsApplicable('1.1.0', manifest, 'stable'), false);
   assert.throws(() => validateDesktopUpdateManifest({ ...manifest, url: 'http://updates.example.invalid/AWH.nupkg' }), /UPDATE_MANIFEST_INVALID/);
   assert.throws(() => validateDesktopUpdateManifest({ ...manifest, sha256: 'short' }), /UPDATE_MANIFEST_INVALID/);
+});
+
+test('desktop release evidence is deterministic, exact-revision-bound, and never publication authority', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'awh-desktop-release-evidence-'));
+  const packagePath = join(dir, 'AWH-Windows-x64.zip');
+  const outputOne = join(dir, 'evidence-one.json');
+  const outputTwo = join(dir, 'evidence-two.json');
+  const payload = Buffer.from('verified portable package fixture\n', 'utf8');
+  const sourceSha = 'a'.repeat(40);
+  const script = join(ROOT, 'scripts/release/create-desktop-release-evidence.mjs');
+  const invoke = (output: string, sha = sourceSha) => execFileAsync(process.execPath, [script, '--platform', 'win32', '--architecture', 'x64', '--package', packagePath, '--source-sha', sha, '--output', output], { cwd: ROOT });
+  try {
+    await writeFile(packagePath, payload);
+    const firstRun = await invoke(outputOne);
+    assert.match(firstRun.stdout, /DESKTOP_RELEASE_EVIDENCE=PASS/);
+    const first = await readFile(outputOne, 'utf8');
+    const evidence = JSON.parse(first);
+    assert.equal(evidence.schemaVersion, 1);
+    assert.equal(evidence.kind, 'AWH_DESKTOP_RELEASE_EVIDENCE');
+    assert.equal(evidence.authority, 'CI_PACKAGE_EVIDENCE_ONLY');
+    assert.equal(evidence.platform, 'win32');
+    assert.equal(evidence.architecture, 'x64');
+    assert.equal(evidence.sourceSha, sourceSha);
+    assert.equal(evidence.packageSha256, createHash('sha256').update(payload).digest('hex'));
+    assert.equal(evidence.sizeBytes, payload.length);
+    assert.equal(evidence.downloadKey, 'AWH-Windows-x64.zip');
+    assert.equal(evidence.packageVerification, 'VERIFIED');
+    assert.equal(evidence.publicationState, 'NOT_PUBLISHED');
+    assert.equal(evidence.updaterStatus, 'FOUNDATION_LOCKED_NOT_ACTIVATED');
+    assert.equal('releaseId' in evidence, false);
+    assert.equal('createdAt' in evidence, false);
+    assert.equal('url' in evidence, false);
+    assert.doesNotMatch(first, new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    await invoke(outputTwo);
+    assert.equal(await readFile(outputTwo, 'utf8'), first);
+    await assert.rejects(invoke(join(dir, 'bad-sha.json'), 'not-a-sha'), /DESKTOP_RELEASE_EVIDENCE_INVALID/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('desktop package CI uploads release evidence without activating an updater feed', async () => {
+  const ci = await readFile(join(ROOT, '.github/workflows/ci.yml'), 'utf8');
+  const script = await readFile(join(ROOT, 'scripts/release/create-desktop-release-evidence.mjs'), 'utf8');
+  assert.match(ci, /create-desktop-release-evidence\.mjs --platform win32 --architecture x64 --package AWH-Windows-x64\.zip/);
+  assert.match(ci, /create-desktop-release-evidence\.mjs --platform darwin --architecture x64 --package AWH-macOS-x64\.zip/);
+  assert.match(ci, /AWH-Windows-x64\.release\.json/);
+  assert.match(ci, /AWH-macOS-x64\.release\.json/);
+  assert.match(script, /CI_PACKAGE_EVIDENCE_ONLY/);
+  assert.match(script, /NOT_PUBLISHED/);
+  assert.match(script, /FOUNDATION_LOCKED_NOT_ACTIVATED/);
+  assert.doesNotMatch(`${ci}\n${script}`, /autoUpdater|publish-desktop-release|control_desktop_releases/);
 });
 
 test('sustainability contract never embeds credential material', async () => {
