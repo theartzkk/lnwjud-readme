@@ -21,6 +21,8 @@ test('Infrastructure is an Owner-only sanitized projection and canonical web sur
   assert.match(automation,/^\(\(\) => \{/m); assert.match(automation,/\}\)\(\);\s*$/);
   assert.match(html,/ศูนย์ควบคุมระบบ/); assert.match(html,/DOMAINS & SSL/); assert.match(html,/Production Complete/); assert.match(html,/AUTONOMOUS AI 24\/7/); assert.match(html,/Models · Health · Fallback/); assert.match(html,/STAFF CONTROL LOOP/); assert.match(html,/MORNING BRIEF/); assert.match(html,/STORAGE & GARBAGE CENTER/); assert.match(css,/--accent:#ff7a1a/); assert.match(css,/checklist-grid/); assert.match(js,/\/api\/v1\/control\/infrastructure/);
   for(const projection of ['productionComplete','aiModels','autonomousWork','incidents','stagedCandidates','staff','governor','selfHealing','executionTriage','CURRENT_DEFECT','BLOCKED_CAPABILITY','morningBrief','storageGovernance','managedSites','hostingCenter','UNKNOWN']) assert.match(js,new RegExp(projection));
+  assert.match(js,/const current=triage\.current/); assert.match(js,/Array\.isArray\(current\.items\)/); assert.doesNotMatch(js,/Array\.isArray\(triage\.items\)/);
+  assert.match(js,/AUTH_REQUIRED/); assert.match(js,/EXTERNAL_POLICY/); assert.match(js,/auditOnly/);
   assert.match(js,/stateLabel/); assert.match(js,/progressLabel/); assert.doesNotMatch(js,/Number\(event\.progress\|\|0\)/);
   assert.match(router,/\/api\/v1\/control\/infrastructure/); assert.match(service,/assertOwner\(\$userId\)/); assert.match(service,/HubInfrastructureService::fromEnvironment/); assert.match(service,/HubInfrastructureService::releaseState/);
   for(const authority of ['control_ai_route_decisions','control_task_executions','control_task_events']) assert.match(service,new RegExp(authority));
