@@ -6,10 +6,12 @@ on:
       - awh/api-independence
     paths:
       - 'scripts/ops/canonical-source-preflight.mjs'
+      - 'scripts/ops/guarded-control-plane-deploy.mjs'
+      - 'scripts/ops/activate-owner-auth.mjs'
       - 'test/canonical-source-preflight.test.mjs'
+      - 'package.json'
       - '.github/workflows/awh-canonical-source.yml'
       - 'deploy/awh-control-plane/**'
-      - 'scripts/ops/activate-owner-auth.mjs'
   workflow_dispatch:
 
 permissions:
