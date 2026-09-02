@@ -1,12 +1,12 @@
 # AWH Current State Authority
 
-Updated: 2026-09-02 22:28 ICT.
+Updated: 2026-09-03 02:55 ICT.
 
 This file is the **current-state authority** for AWH operational status. Resolve the exact current `origin/awh/api-independence` SHA and re-read live runtime evidence before every mutation. Dated "current", "live", or "Production remains" statements in `PROJECT.md`, `HANDOFF.md`, `TASKS.md`, `DECISIONS.md`, and older checkpoint documents are historical evidence unless this file or a fresh inspection confirms them.
 
 ## Source and repository
 
-- Canonical branch authority: `awh/api-independence`; exact SHA must be resolved from `origin` at read time. Last verified pre-checkpoint canonical source baseline: `881dc3bacf8dc453e6bd8e1211278eff81a5d57d`; resolve from origin again before every mutation.
+- Canonical branch authority: `awh/api-independence`; exact SHA must be resolved from `origin` at read time. Last fully verified release-candidate source baseline before this documentation checkpoint: `de683f6251f287ec7b987acbb3f39d01d31b4b7a`; resolve from origin again before every mutation.
 - Five local worktrees are intentionally protected: dirty `awh/v0.1-migration`, dirty `awh/sustainability-foundation`, detached Production evidence `954cfa0`, dirty Project Source Authority evidence, and clean release snapshot `awh/production-surface-rc1`.
 - Do not reset, remove, merge, or kill work associated with a dirty/protected worktree unless its ownership and recoverability are freshly proven.
 - Canonical Project Memory precedence is `CURRENT_STATE.md` first, then `PROJECT.md`, `HANDOFF.md`, `TASKS.md`, `ARCHITECTURE.md`, and `DECISIONS.md`; legacy five-file worker metadata may be accepted during rollout but cannot claim current-state readiness or erase an existing current-state row.
@@ -34,6 +34,18 @@ This file is the **current-state authority** for AWH operational status. Resolve
 - AiPASS user-facing delivery does not expose ZIP uploads. The stored ZIP is an internal atomic bundle only; user-facing delivery is bounded direct DOCX with exact canonical SHA/Vault metadata, secret/PII redaction, per-file and per-batch byte ceilings, and fail-closed manifest/tamper verification.
 - Fresh rollback baseline for the `m20-95503e795c82` refresh is `/var/backups/awh-hub/awh.sqlite.pre-m20-95503e795c82`, SHA-256 `6139d17498fe680c7c2b2ad7e78a8f8bd89b74d6a1e37f31d9d9b9c112496229`, schema 20, integrity `ok`, with zero foreign-key violations. The prior verified scheduled backup `awh-20260902T081712Z.sqlite` remains preserved.
 - Build/typecheck, focused/full regression, Hub M20 fixtures, hosted CI, exact-canonical dry-run/rollback, post-activation route checks, Project Vault source sync, schema20 backup verification, hosting timer restart continuity, Owner Source binding, canonical remote-cache binding, and Production AiPASS DOCX generation have passed.
+
+## 2026-09-03 one-night release-candidate closure
+
+- PR #108 (Owner Source/AiPASS UX), PR #109 (six-file Project Memory metadata reconciliation), PR #110 (Owner Night Shift projection), PR #111 (oversized Project Memory metadata reconciliation), and PR #98 (exact-SHA desktop release evidence) are merged. PR #35 remains intentionally outside this release lane.
+- Release-candidate source baseline `de683f6251f287ec7b987acbb3f39d01d31b4b7a` passed exact-head/push hosted CI run `33675363802`: Ubuntu regression/Hub/runtime dependency security/ZipArchive gate, Windows regression, Linux desktop runtime, macOS package, and Windows installer all succeeded.
+- Exact-source artifacts from that run are: macOS x64 artifact `9864165153` digest `sha256:b2814520e85e32e18bf0ac25f1a34241f144d24e44d4945e51978a0383008133`; Windows installer artifact `9864239524` digest `sha256:95151cd94eed9e88ef211412d899ed06d7ef64771c42a75b10ecc0c059b1ac3a`; Windows x64 artifact `9864243278` digest `sha256:a69822b6c9175ffc469ee005f1cbe67edf76f3992fad6b544a3b1117d44cb7ac`.
+- The exact-source release-readiness evaluator returned `READY` after fresh schema-20 backup verification, isolated restore drill (`integrity=ok`, zero foreign-key violations), migration/rollback contract gates, and strict known-host verification. This is release-candidate evidence only; it is not Production activation authority.
+- Production remained read-only during this closure. Live pointer remains `m20-95503e795c82`; schema is 20, integrity is `ok`, foreign-key check is empty, root filesystem is about 45% used, and Nginx/PHP-FPM plus native-executor/hosting-operator/backup timers are active. The latest scheduled database backup verified in the restore drill is `awh-20260902T081712Z.sqlite`.
+- Production source binding still resolves the historical canonical snapshot `881dc3bacf8dc453e6bd8e1211278eff81a5d57d`; therefore canonical-vs-Production drift is intentional and unresolved until a separately approved deployment/refresh.
+- Hub Project Memory for `Art’s Workspace Hub` is still legacy five-file metadata: `PROJECT.md`, `HANDOFF.md`, `TASKS.md`, `ARCHITECTURE.md`, and `DECISIONS.md`; `CURRENT_STATE.md` is absent and `memoryReady=false`. The installed Mac AWH bundle is `1.0.0-rc.1` and already contains the six-file reconciliation code, but its uniquely registered local AWH workspace is an older local revision (`72ce7e7c7737daf5767a46a578a39c40041fe136`) where `CURRENT_STATE.md` is absent. The worker therefore remains truthfully not ready; no Production metadata was republished and no protected workspace was altered.
+- Hub worker rows last observed Art’s Mac at `2026-09-02T18:44:58+00:00` and Art’s Windows PC at `2026-09-02T08:24:53+00:00`. With the canonical 120-second stale threshold both are stale at this checkpoint even though their stored row state is `READY`; Windows was not touched blindly. Desktop Commander remote bridge remains a separate runtime from the AWH control-plane worker.
+- Daily Workspace source regressions remain green for reversible conversation lifecycle, provider-safe HEIC handling, bounded multi-file/camera attachment flow, canonical mobile Work, and existing Night Shift authority reuse. Physical authenticated iPhone Safari remains a manual field gate and was not fabricated from viewport simulation.
 
 ## Operating rule
 
