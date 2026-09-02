@@ -4,6 +4,9 @@ import { join } from 'node:path';
 import { createProductionCredentialStore, OWNER_AUTH_PASSWORD_CREDENTIAL_KEY } from '../../dist/credential-store.js';
 
 const ROOT = process.env.AWH_SOURCE_ROOT || process.cwd();
+const CANONICAL_BRANCH = 'awh/api-independence';
+const CANONICAL_REMOTE = 'origin';
+const CANONICAL_REPOSITORY = 'theartzkk/lnwjud-readme';
 const deployScript = join(ROOT, 'deploy/awh-control-plane/deploy-control-plane.sh');
 const canonicalSourceScript = join(ROOT, 'scripts/ops/canonical-source-preflight.mjs');
 const operatorCommand = "security find-generic-password -a 'awh-device-token-v1:awh/owner-password' -s 'Art’s Workspace Hub' -w";
@@ -44,9 +47,9 @@ async function runCanonicalSourcePreflight() {
   const preflightArgs = [
     canonicalSourceScript,
     '--root', ROOT,
-    '--branch', process.env.AWH_CANONICAL_BRANCH || 'awh/api-independence',
-    '--remote', process.env.AWH_CANONICAL_REMOTE || 'origin',
-    '--repository', process.env.AWH_CANONICAL_REPOSITORY || 'theartzkk/lnwjud-readme',
+    '--branch', CANONICAL_BRANCH,
+    '--remote', CANONICAL_REMOTE,
+    '--repository', CANONICAL_REPOSITORY,
     '--require-mutation-ready',
   ];
   if (process.env.AWH_RELEASE_COMMIT) preflightArgs.push('--expected-sha', process.env.AWH_RELEASE_COMMIT);
