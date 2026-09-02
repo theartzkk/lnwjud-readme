@@ -69,6 +69,11 @@ test('M4 control-plane activation package is executable in a local dry-run witho
   assert.match(remote, /stage NGINX_CUTOVER_PREPARE/);
   assert.match(remote, /stage NGINX_CUTOVER_INSTALL/);
   assert.match(remote, /transform-owner-auth\.php/);
+  assert.match(deployText, /hub\/public\/web-gateway\.php/);
+  assert.match(deployText, /hub\/src\/HubReadModel\.php/);
+  assert.match(deployText, /hub\/src\/HubReadRouter\.php/);
+  assert.match(deployText, /hub\/src\/HubWebGateway\.php/);
+  assert.match(remote, /\$RELEASE\/hub\/public\/web-gateway\.php/);
   assert.doesNotMatch(remote, /PROJECTS_REGISTERED|d1e48976|dad35312|BAY EXCUSE X|Teacher Evaluation Video/);
   assert.match(remote, /stage CONTROL_ROUTE; code=/);
   assert.doesNotMatch(remote, /curl\s+-k/);
@@ -89,6 +94,7 @@ test('owner-auth cutover keeps the control include focused and renders public au
   assert.match(include, /location \^~ \/api\/v1\/control\/[\s\S]*auth_basic off/);
   assert.doesNotMatch(include, /location \^~ \/api\/v1\/auth\//);
   assert.match(await readText(join(ROOT, 'deploy/nginx/transform-owner-auth.php')), /location \^~ \/api\/v1\/auth\//);
+  assert.match(await readText(join(ROOT, 'deploy/nginx/transform-owner-auth.php')), /control-plane-current\/hub\/public\/web-gateway\.php/);
   assert.match(await readText(join(ROOT, 'deploy/nginx/awh-preview.conf')), /location \^~ \/api\/v1\/[\s\S]*auth_basic "AWH Remote Preview"/);
   assert.match(await readText(join(ROOT, 'deploy/nginx/awh-preview.conf')), /location \^~ \/preview\/[\s\S]*auth_basic "AWH Remote Preview"/);
 });

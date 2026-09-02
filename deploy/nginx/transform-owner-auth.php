@@ -198,6 +198,20 @@ if (count($meta['directAuth']) !== 0 && count($meta['directAuth']) !== 2 && !(co
 }
 $insertBefore[$target['start'] + 1] = array_merge($insertBefore[$target['start'] + 1] ?? [], ['    auth_basic off;']);
 $rewriteLocation($generic, $remove, $insertBefore, $canonicalTechnical, $lines);
+$genericScriptCount = 0;
+for ($index = $generic['start'] + 1; $index < $generic['end']; $index++) {
+    if (preg_match('/^\s*fastcgi_param\s+SCRIPT_FILENAME\s+[^;]+;/i', $lines[$index]) !== 1) continue;
+    $genericScriptCount++;
+    $remove[$index] = true;
+}
+if ($genericScriptCount !== 1) {
+    fwrite(STDERR, "Generic AWH read gateway must have exactly one SCRIPT_FILENAME\n");
+    exit(10);
+}
+$insertBefore[$generic['start'] + 1] = array_merge(
+    $insertBefore[$generic['start'] + 1] ?? [],
+    ['        fastcgi_param SCRIPT_FILENAME /opt/awh-hub/control-plane-current/hub/public/web-gateway.php;'],
+);
 $publicAuth = [
     '    location = /api/v1/auth/login {',
     '        auth_basic off;',
