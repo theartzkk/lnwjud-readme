@@ -56,6 +56,92 @@ foreach ($samples as $label => $text) {
     }
 }
 
+$fixtureText = "FILE: fixture.txt\nSEGMENT: 1 OF 1\n000001 | สวัสดี AiPASS 🙂\n";
+$fixturePart = [['path'=>'fixture.txt','segment'=>1,'text'=>$fixtureText,'bytes'=>strlen($fixtureText)]];
+$contextDoc = $docx->invoke($service, 'AiPASS Tamper Fixture Context', str_repeat('b', 40), 1, 1, $fixturePart);
+$sourceDoc = $docx->invoke($service, 'AiPASS Tamper Fixture Source', str_repeat('b', 40), 1, 1, $fixturePart);
+aipass_bound_assert(is_array($contextDoc) && is_array($sourceDoc), 'tamper fixtures must render');
+
+$deliveryReflection = new ReflectionClass(HubAiPassBundleDelivery::class);
+$verifyDoc = $deliveryReflection->getMethod('verifyDocxTextBudget');
+if (method_exists($verifyDoc, 'setAccessible')) $verifyDoc->setAccessible(true);
+$contextActual = (int)$verifyDoc->invoke(null, (string)$contextDoc['bytes']);
+$sourceActual = (int)$verifyDoc->invoke(null, (string)$sourceDoc['bytes']);
+aipass_bound_assert($contextActual > 1 && $contextActual <= (int)$contextDoc['textBytes'], 'context actual text must fit declared conservative budget');
+aipass_bound_assert($sourceActual > 1 && $sourceActual <= (int)$sourceDoc['textBytes'], 'source actual text must fit declared conservative budget');
+
+$contextName = 'B01_01_AIPASS_REVIEW_CONTEXT.docx';
+$sourceName = 'B01_02_AIPASS_SOURCE_EVIDENCE_PART_001_OF_001.docx';
+$files = [
+    ['index'=>0,'name'=>$contextName,'batch'=>1,'role'=>'CONTEXT','mimeType'=>HubAiPassProjectExportService::DOCX_MIME,'sizeBytes'=>strlen((string)$contextDoc['bytes']),'sha256'=>hash('sha256',(string)$contextDoc['bytes']),'extractedTextBytes'=>(int)$contextDoc['textBytes']],
+    ['index'=>1,'name'=>$sourceName,'batch'=>1,'role'=>'SOURCE','mimeType'=>HubAiPassProjectExportService::DOCX_MIME,'sizeBytes'=>strlen((string)$sourceDoc['bytes']),'sha256'=>hash('sha256',(string)$sourceDoc['bytes']),'extractedTextBytes'=>(int)$sourceDoc['textBytes']],
+];
+$totalText = array_sum(array_column($files, 'extractedTextBytes'));
+$baseManifest = [
+    'schemaVersion'=>2,'format'=>'AIPASS_DIRECT_DOCX','batchCount'=>1,
+    'fileTextByteCeiling'=>HubAiPassProjectExportService::FILE_TEXT_BYTE_CEILING,
+    'batchTextByteCeiling'=>HubAiPassProjectExportService::BATCH_TEXT_BYTE_CEILING,
+    'maxFilesPerBatch'=>HubAiPassProjectExportService::MAX_FILES_PER_BATCH,
+    'files'=>$files,
+    'batches'=>[['batch'=>1,'files'=>[0,1],'fileCount'=>2,'extractedTextBytes'=>$totalText]],
+];
+$writeBundle = static function(array $manifest, array $extra = []) use ($contextName, $sourceName, $contextDoc, $sourceDoc): string {
+    $tmp = tempnam(sys_get_temp_dir(), 'awh-aipass-bundle-');
+    aipass_bound_assert(is_string($tmp), 'bundle temp path');
+    @unlink($tmp);
+    $zip = new ZipArchive();
+    aipass_bound_assert($zip->open($tmp, ZipArchive::CREATE|ZipArchive::EXCL) === true, 'bundle fixture open');
+    $zip->addFromString($contextName, (string)$contextDoc['bytes']);
+    $zip->addFromString($sourceName, (string)$sourceDoc['bytes']);
+    $zip->addFromString('SAFETY_MANIFEST.json', json_encode($manifest, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR));
+    foreach ($extra as $name => $bytes) $zip->addFromString((string)$name, (string)$bytes);
+    aipass_bound_assert($zip->close(), 'bundle fixture close');
+    return $tmp;
+};
+$mustReject = static function(callable $callback, string $message): void {
+    try { $callback(); }
+    catch (HubAiPassProjectExportException) { return; }
+    throw new RuntimeException($message);
+};
+
+$validBundle = $writeBundle($baseManifest);
+try {
+    $verified = HubAiPassBundleDelivery::manifest($validBundle);
+    aipass_bound_assert(($verified['batchCount'] ?? null) === 1, 'valid direct-DOCX bundle must verify');
+    $downloaded = HubAiPassBundleDelivery::document($validBundle, 1);
+    aipass_bound_assert(($downloaded['name'] ?? null) === $sourceName && ($downloaded['mimeType'] ?? null) === HubAiPassProjectExportService::DOCX_MIME, 'verified document delivery must return direct DOCX');
+} finally { aipass_bound_clean($validBundle); }
+
+$hiddenBundle = $writeBundle($baseManifest, ['hidden.txt'=>'shadow payload']);
+try { $mustReject(static fn() => HubAiPassBundleDelivery::manifest($hiddenBundle), 'hidden internal bundle payload must fail closed'); }
+finally { aipass_bound_clean($hiddenBundle); }
+
+$duplicateManifest = $baseManifest;
+$duplicateManifest['batches'][0]['files'] = [0,0];
+$duplicateManifest['batches'][0]['extractedTextBytes'] = 2 * (int)$files[0]['extractedTextBytes'];
+$duplicateBundle = $writeBundle($duplicateManifest);
+try { $mustReject(static fn() => HubAiPassBundleDelivery::manifest($duplicateBundle), 'duplicate batch mapping must fail closed'); }
+finally { aipass_bound_clean($duplicateBundle); }
+
+$totalManifest = $baseManifest;
+$totalManifest['batches'][0]['extractedTextBytes'] = $totalText - 1;
+$totalBundle = $writeBundle($totalManifest);
+try { $mustReject(static fn() => HubAiPassBundleDelivery::manifest($totalBundle), 'forged batch byte total must fail closed'); }
+finally { aipass_bound_clean($totalBundle); }
+
+$contextManifest = $baseManifest;
+$contextManifest['files'][0]['role'] = 'SOURCE';
+$contextBundle = $writeBundle($contextManifest);
+try { $mustReject(static fn() => HubAiPassBundleDelivery::manifest($contextBundle), 'batch without exactly one context DOCX must fail closed'); }
+finally { aipass_bound_clean($contextBundle); }
+
+$understatedManifest = $baseManifest;
+$understatedManifest['files'][0]['extractedTextBytes'] = $contextActual - 1;
+$understatedManifest['batches'][0]['extractedTextBytes'] = ($contextActual - 1) + (int)$files[1]['extractedTextBytes'];
+$understatedBundle = $writeBundle($understatedManifest);
+try { $mustReject(static fn() => HubAiPassBundleDelivery::manifest($understatedBundle), 'DOCX actual text above declared budget must fail closed'); }
+finally { aipass_bound_clean($understatedBundle); }
+
 aipass_bound_assert(HubAiPassProjectExportService::FILE_TEXT_BYTE_CEILING === 350000, 'per-file conservative ceiling');
 aipass_bound_assert(HubAiPassProjectExportService::BATCH_TEXT_BYTE_CEILING === 650000, 'per-batch conservative ceiling');
 aipass_bound_assert(HubAiPassProjectExportService::MAX_FILES_PER_BATCH === 16, 'batch file-count ceiling');

@@ -394,18 +394,40 @@ final class HubAiPassBundleDelivery
             if (($manifest['schemaVersion'] ?? null) !== 2 || ($manifest['format'] ?? null) !== 'AIPASS_DIRECT_DOCX' || !is_array($files) || !array_is_list($files) || !is_array($batches) || !array_is_list($batches)) throw new HubAiPassProjectExportException('AiPASS delivery manifest is invalid', 'AIPASS_EXPORT_FAILED');
             if (($manifest['fileTextByteCeiling'] ?? null) !== HubAiPassProjectExportService::FILE_TEXT_BYTE_CEILING || ($manifest['batchTextByteCeiling'] ?? null) !== HubAiPassProjectExportService::BATCH_TEXT_BYTE_CEILING || ($manifest['maxFilesPerBatch'] ?? null) !== HubAiPassProjectExportService::MAX_FILES_PER_BATCH) throw new HubAiPassProjectExportException('AiPASS delivery policy does not match the active safe boundary', 'AIPASS_EXPORT_FAILED');
             if (count($files) < 1 || count($files) > 100 || count($batches) < 1 || count($batches) > HubAiPassProjectExportService::MAX_BATCHES) throw new HubAiPassProjectExportException('AiPASS delivery manifest is outside the safe bound', 'AIPASS_EXPORT_TOO_LARGE');
+            if (!is_int($manifest['batchCount'] ?? null) || $manifest['batchCount'] !== count($batches)) throw new HubAiPassProjectExportException('AiPASS batch count is invalid', 'AIPASS_EXPORT_FAILED');
             $names = [];
             foreach ($files as $index => $file) {
                 if (!is_array($file) || ($file['index'] ?? null) !== $index || !is_string($file['name'] ?? null) || preg_match('/^[A-Za-z0-9_-]{1,150}\.docx$/', (string)$file['name']) !== 1 || isset($names[(string)$file['name']])) throw new HubAiPassProjectExportException('AiPASS DOCX identity is invalid', 'AIPASS_EXPORT_FAILED');
                 if (!in_array($file['role'] ?? null, ['CONTEXT','SOURCE'], true) || !is_int($file['batch'] ?? null) || $file['batch'] < 1 || $file['batch'] > count($batches) || ($file['mimeType'] ?? null) !== HubAiPassProjectExportService::DOCX_MIME || !is_int($file['sizeBytes'] ?? null) || $file['sizeBytes'] < 100 || $file['sizeBytes'] > self::MAX_DOCX_BYTES || !is_string($file['sha256'] ?? null) || preg_match('/^[0-9a-f]{64}$/', (string)$file['sha256']) !== 1 || !is_int($file['extractedTextBytes'] ?? null) || $file['extractedTextBytes'] < 1 || $file['extractedTextBytes'] > HubAiPassProjectExportService::FILE_TEXT_BYTE_CEILING) throw new HubAiPassProjectExportException('AiPASS DOCX metadata is invalid', 'AIPASS_EXPORT_FAILED');
-                $stat = $zip->statName((string)$file['name']);
-                if (!is_array($stat) || (int)($stat['size'] ?? -1) !== (int)$file['sizeBytes']) throw new HubAiPassProjectExportException('AiPASS DOCX object is missing from the internal bundle', 'AIPASS_EXPORT_FAILED');
-                $names[(string)$file['name']] = true;
+                $name = (string)$file['name'];
+                $stat = $zip->statName($name);
+                $bytes = $zip->getFromName($name);
+                if (!is_array($stat) || (int)($stat['size'] ?? -1) !== (int)$file['sizeBytes'] || !is_string($bytes) || strlen($bytes) !== (int)$file['sizeBytes'] || !hash_equals((string)$file['sha256'], hash('sha256', $bytes))) throw new HubAiPassProjectExportException('AiPASS DOCX integrity check failed', 'AIPASS_EXPORT_FAILED');
+                if (self::verifyDocxTextBudget($bytes) > (int)$file['extractedTextBytes']) throw new HubAiPassProjectExportException('AiPASS DOCX text exceeds its declared conservative budget', 'AIPASS_EXPORT_FAILED');
+                $names[$name] = true;
             }
+            $allowedEntries = $names + ['SAFETY_MANIFEST.json'=>true];
+            if ($zip->numFiles !== count($allowedEntries)) throw new HubAiPassProjectExportException('AiPASS internal bundle contains unexpected entries', 'AIPASS_EXPORT_FAILED');
+            $zipEntries = [];
+            for ($entryIndex = 0; $entryIndex < $zip->numFiles; $entryIndex++) {
+                $entry = $zip->getNameIndex($entryIndex);
+                if (!is_string($entry) || $entry === '' || isset($zipEntries[$entry]) || !isset($allowedEntries[$entry])) throw new HubAiPassProjectExportException('AiPASS internal bundle contains an unexpected or duplicate entry', 'AIPASS_EXPORT_FAILED');
+                $zipEntries[$entry] = true;
+            }
+            $mappedFiles = [];
             foreach ($batches as $offset => $batch) {
-                if (!is_array($batch) || ($batch['batch'] ?? null) !== $offset + 1 || !is_array($batch['files'] ?? null) || !array_is_list($batch['files']) || !is_int($batch['fileCount'] ?? null) || $batch['fileCount'] !== count($batch['files']) || $batch['fileCount'] < 1 || $batch['fileCount'] > HubAiPassProjectExportService::MAX_FILES_PER_BATCH || !is_int($batch['extractedTextBytes'] ?? null) || $batch['extractedTextBytes'] < 1 || $batch['extractedTextBytes'] > HubAiPassProjectExportService::BATCH_TEXT_BYTE_CEILING) throw new HubAiPassProjectExportException('AiPASS batch metadata is invalid', 'AIPASS_EXPORT_FAILED');
-                foreach ($batch['files'] as $fileIndex) if (!is_int($fileIndex) || !isset($files[$fileIndex]) || (int)$files[$fileIndex]['batch'] !== $offset + 1) throw new HubAiPassProjectExportException('AiPASS batch file mapping is invalid', 'AIPASS_EXPORT_FAILED');
+                if (!is_array($batch) || ($batch['batch'] ?? null) !== $offset + 1 || !is_array($batch['files'] ?? null) || !array_is_list($batch['files']) || !is_int($batch['fileCount'] ?? null) || $batch['fileCount'] !== count($batch['files']) || $batch['fileCount'] < 2 || $batch['fileCount'] > HubAiPassProjectExportService::MAX_FILES_PER_BATCH || !is_int($batch['extractedTextBytes'] ?? null) || $batch['extractedTextBytes'] < 1 || $batch['extractedTextBytes'] > HubAiPassProjectExportService::BATCH_TEXT_BYTE_CEILING) throw new HubAiPassProjectExportException('AiPASS batch metadata is invalid', 'AIPASS_EXPORT_FAILED');
+                $batchTextBytes = 0;
+                $contextCount = 0;
+                foreach ($batch['files'] as $fileIndex) {
+                    if (!is_int($fileIndex) || !isset($files[$fileIndex]) || (int)$files[$fileIndex]['batch'] !== $offset + 1 || isset($mappedFiles[$fileIndex])) throw new HubAiPassProjectExportException('AiPASS batch file mapping is invalid or duplicated', 'AIPASS_EXPORT_FAILED');
+                    $mappedFiles[$fileIndex] = true;
+                    $batchTextBytes += (int)$files[$fileIndex]['extractedTextBytes'];
+                    if (($files[$fileIndex]['role'] ?? null) === 'CONTEXT') $contextCount++;
+                }
+                if ($contextCount !== 1 || $batchTextBytes !== (int)$batch['extractedTextBytes']) throw new HubAiPassProjectExportException('AiPASS batch context or text budget does not match its files', 'AIPASS_EXPORT_FAILED');
             }
+            if (count($mappedFiles) !== count($files)) throw new HubAiPassProjectExportException('AiPASS delivery manifest leaves DOCX files unmapped', 'AIPASS_EXPORT_FAILED');
             return $manifest;
         } finally { $zip->close(); }
     }
@@ -422,7 +444,7 @@ final class HubAiPassBundleDelivery
         try { $bytes = $zip->getFromName((string)$file['name']); }
         finally { $zip->close(); }
         if (!is_string($bytes) || strlen($bytes) !== (int)$file['sizeBytes'] || !hash_equals((string)$file['sha256'], hash('sha256', $bytes))) throw new HubAiPassProjectExportException('AiPASS DOCX integrity check failed', 'AIPASS_EXPORT_FAILED');
-        self::verifyDocxTextBudget($bytes);
+        if (self::verifyDocxTextBudget($bytes) > (int)$file['extractedTextBytes']) throw new HubAiPassProjectExportException('AiPASS DOCX text exceeds its declared conservative budget', 'AIPASS_EXPORT_FAILED');
         return ['name'=>(string)$file['name'],'mimeType'=>HubAiPassProjectExportService::DOCX_MIME,'bytes'=>$bytes,'sizeBytes'=>strlen($bytes),'batch'=>(int)$file['batch'],'extractedTextBytes'=>(int)$file['extractedTextBytes']];
     }
 
@@ -463,20 +485,24 @@ final class HubAiPassBundleDelivery
         return [$zip, $manifest];
     }
 
-    private static function verifyDocxTextBudget(string $bytes): void
+    private static function verifyDocxTextBudget(string $bytes): int
     {
         if (strlen($bytes) < 100 || strlen($bytes) > self::MAX_DOCX_BYTES || !str_starts_with($bytes, "PK\x03\x04")) throw new HubAiPassProjectExportException('AiPASS DOCX is invalid', 'AIPASS_EXPORT_FAILED');
         $tmp = tempnam(sys_get_temp_dir(), 'awh-aipass-docx-');
         if (!is_string($tmp) || file_put_contents($tmp, $bytes, LOCK_EX) !== strlen($bytes)) { if (is_string($tmp)) @unlink($tmp); throw new HubAiPassProjectExportException('AiPASS DOCX verification is unavailable', 'AIPASS_EXPORT_FAILED'); }
         $doc = new ZipArchive();
+        $opened = false;
         try {
             if ($doc->open($tmp, ZipArchive::RDONLY|ZipArchive::CHECKCONS) !== true) throw new HubAiPassProjectExportException('AiPASS DOCX is not a valid Office document', 'AIPASS_EXPORT_FAILED');
+            $opened = true;
             $xml = $doc->getFromName('word/document.xml');
             if (!is_string($xml) || strlen($xml) < 20) throw new HubAiPassProjectExportException('AiPASS DOCX has no document body', 'AIPASS_EXPORT_FAILED');
             $xml = preg_replace('/<w:(?:br|cr)\s*\/?>/i', "\n", $xml) ?? $xml;
             $plain = html_entity_decode(strip_tags($xml), ENT_QUOTES|ENT_XML1, 'UTF-8');
-            if (strlen($plain) > HubAiPassProjectExportService::FILE_TEXT_BYTE_CEILING) throw new HubAiPassProjectExportException('AiPASS DOCX exceeds the verified text budget', 'AIPASS_SOURCE_FILE_TOO_LARGE');
-        } finally { if ($doc->status === ZipArchive::ER_OK) $doc->close(); @unlink($tmp); }
+            $textBytes = strlen($plain);
+            if ($textBytes < 1 || $textBytes > HubAiPassProjectExportService::FILE_TEXT_BYTE_CEILING) throw new HubAiPassProjectExportException('AiPASS DOCX exceeds the verified text budget', 'AIPASS_SOURCE_FILE_TOO_LARGE');
+            return $textBytes;
+        } finally { if ($opened) $doc->close(); @unlink($tmp); }
     }
 
     private static function html(string $value): string { return htmlspecialchars($value, ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML5, 'UTF-8'); }
