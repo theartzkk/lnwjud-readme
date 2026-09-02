@@ -124,6 +124,7 @@ export async function workerCapabilities(dataDir: string, allowCodex = true): Pr
 export class ControlPlaneWorkerRuntime {
   private running = false;
   private readonly contextRecoveryAttempts = new Set<string>();
+  private readonly memoryReconciliationDigests = new Map<string, string>();
 
   constructor(private readonly client: ControlPlaneWorkerClient, private readonly options: WorkerRuntimeOptions) {}
 
@@ -134,6 +135,7 @@ export class ControlPlaneWorkerRuntime {
     try {
       const capabilities = await workerCapabilities(this.options.dataDir, this.options.allowCodex);
       await this.client.heartbeat(capabilities, 'READY');
+      await this.reconcileProjectMemoryMetadata().catch(() => undefined);
       await this.recoverMissingProjectContexts(capabilities).catch(() => undefined);
       const task = await this.client.claim();
       if (!task) return { status: 'IDLE', deviceId: identity.deviceId };
@@ -151,6 +153,27 @@ export class ControlPlaneWorkerRuntime {
       } catch { /* unavailable/stale local registry entries are not recovery candidates */ }
     }
     return matches.length === 1 ? matches[0]! : null;
+  }
+
+  /** Republish bounded six-file Project Memory metadata for already-registered projects.
+   * This lane never initializes or writes memory files, uploads source, changes Vault state,
+   * or creates a second authority. Unchanged metadata is published once per runtime process. */
+  private async reconcileProjectMemoryMetadata(): Promise<void> {
+    const projects = await this.client.projects();
+    for (const project of projects) {
+      const workspace = await this.localWorkspaceForHubProject(project);
+      if (!workspace) continue;
+      try {
+        const files = await localProjectMemoryMetadata(workspace);
+        const digest = createHash('sha256').update(JSON.stringify(files)).digest('hex');
+        if (this.memoryReconciliationDigests.get(project.projectId) === digest) continue;
+        await this.client.publishProjectMemory(project.projectId, files);
+        this.memoryReconciliationDigests.set(project.projectId, digest);
+      } catch {
+        // Metadata reconciliation is opportunistic. Invalid/missing local context remains
+        // truthful and ordinary work continues without mutating source or Vault state.
+      }
+    }
   }
 
   /** Recover an empty canonical Hub Vault from one uniquely matched trusted local workspace.
@@ -173,7 +196,7 @@ export class ControlPlaneWorkerRuntime {
         await this.client.registerProjectBinding(project.projectId, project.name, capabilities, revision);
         await createCommittedSourceArchive(workspace, revision, archive);
         await this.client.uploadProjectSource(project.projectId, revision, archive);
-        await this.client.publishProjectMemory(project.projectId, await localProjectMemoryMetadata(workspace));
+        if (!this.memoryReconciliationDigests.has(project.projectId)) await this.client.publishProjectMemory(project.projectId, await localProjectMemoryMetadata(workspace));
       } catch {
         // Recovery is opportunistic and bounded. The Hub keeps truthful SOURCE/Vault state,
         // while ordinary work continues and a future process restart may retry once.

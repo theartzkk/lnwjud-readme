@@ -115,6 +115,39 @@ class RecoveryWorkerClient extends FixtureWorkerClient {
   override async publishProjectMemory(_projectId: string, files: Array<{ name: string; status: 'present' | 'missing'; sha256: string | null; sizeBytes: number }>): Promise<void> { this.memoryFiles = files; }
 }
 
+
+test('worker republishes six-file metadata for an existing Vault-ready project without source or Working-file mutation', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'awh-worker-memory-reconcile-'));
+  const workspace = await mkdtemp(join(tmpdir(), 'awh-memory-workspace-'));
+  try {
+    await mkdir(join(workspace, '.awh'), { recursive: true });
+    const localProjectId = '823b45c0-23e1-408d-ae0f-ac5eca7f6900';
+    await writeFile(join(workspace, '.awh', 'project.json'), JSON.stringify({ schemaVersion: 1, projectId: localProjectId, name: 'BAY EXCUSE X', type: 'php', createdAt: '2026-08-21T00:00:00.000Z' }));
+    const existing = new Map<string, string>();
+    for (const name of ['PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md']) {
+      const content = `existing ${name} truth\n`;
+      existing.set(name, content);
+      await writeFile(join(workspace, name), content);
+    }
+    await mkdir(dataDir, { recursive: true });
+    await writeFile(join(dataDir, 'projects.json'), JSON.stringify({ schemaVersion: 1, projects: [{ projectId: localProjectId, workspacePath: workspace, lastOpenedAt: '2026-08-31T00:00:00.000Z', lastUsedAt: '2026-08-31T00:00:00.000Z', pinned: false, available: true }] }));
+    const client = new RecoveryWorkerClient(dataDir, null);
+    client.canonical.vaultReady = true;
+    const runtime = new ControlPlaneWorkerRuntime(client, { dataDir, maxReadBytes: 32_000, allowExec: false, allowWrite: false, allowCodex: false });
+    assert.equal((await runtime.runOnce()).status, 'IDLE');
+    assert.deepEqual(client.memoryFiles.map((file) => file.name), ['CURRENT_STATE.md', 'PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md']);
+    assert.deepEqual(client.memoryFiles.find((file) => file.name === 'CURRENT_STATE.md'), { name: 'CURRENT_STATE.md', status: 'missing', sha256: null, sizeBytes: 0 });
+    assert.equal(client.registered.length, 0, 'metadata-only reconciliation must not register/upload source');
+    assert.equal(client.bindings.length, 0, 'metadata-only reconciliation must not change project binding');
+    assert.deepEqual(client.archiveEntries, [], 'metadata-only reconciliation must not create/upload a source archive');
+    for (const [name, content] of existing) assert.equal(await readFile(join(workspace, name), 'utf8'), content, `${name} must not be overwritten`);
+    await assert.rejects(readFile(join(workspace, 'CURRENT_STATE.md'), 'utf8'), /ENOENT/, 'metadata-only reconciliation must not initialize CURRENT_STATE.md');
+    client.memoryFiles = [];
+    assert.equal((await runtime.runOnce()).status, 'IDLE');
+    assert.deepEqual(client.memoryFiles, [], 'unchanged metadata is not republished repeatedly in one runtime');
+  } finally { await rm(dataDir, { recursive: true, force: true }); await rm(workspace, { recursive: true, force: true }); }
+});
+
 test('worker self-heals a canonical empty Vault from one uniquely named local project without uploading WIP', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'awh-worker-recovery-'));
   const workspace = await mkdtemp(join(tmpdir(), 'awh-bay-workspace-'));
