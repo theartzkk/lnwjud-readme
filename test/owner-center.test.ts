@@ -43,10 +43,12 @@ test('M20 owner Source Authority reuses the bounded control adapter instead of c
   assert.match(source, /api\.updateProjectSourceAuthority\(\{ projectId: select\.value, action: 'BIND'/);
   assert.match(source, /api\.updateProjectSourceAuthority\(\{ projectId: select\.value, action: 'CLEAR' \}\)/);
   assert.match(source, /canonicalVaultReady === true/);
-  assert.match(source, /Canonical revision/);
-  assert.match(source, /Revision ที่ระบบใช้อยู่/);
-  assert.match(source, /Project Vault/);
-  assert.match(source, /ไม่แก้ local checkout และไม่ลบ Project Vault history/);
+  assert.match(source, /GitHub Source · เชื่อมแล้ว/);
+  assert.match(source, /Source ล่าสุด/);
+  assert.match(source, /Canonical cache สำหรับ AI \/ AiPASS/);
+  assert.match(source, /Working files/);
+  assert.match(source, /ระบบจะไม่ทับอัตโนมัติ/);
+  assert.match(source, /สร้างชุดตรวจ AiPASS ใหม่/);
   assert.doesNotMatch(source, /fetch\(|XMLHttpRequest|WebSocket|Authorization|Bearer|\/api\/v1\/control\//i);
   assert.doesNotMatch(source, /indexedDB|localStorage|sessionStorage/i);
 });
@@ -57,11 +59,11 @@ test('M20 AiPASS Owner flow exposes only verified direct DOCX batches', async ()
     readFile(join(ROOT, 'hub', 'src', 'HubAiPassProjectExportService.php'), 'utf8'),
     readFile(join(ROOT, 'hub', 'public', 'control-plane.php'), 'utf8'),
   ]);
-  assert.match(owner, /เตรียมไฟล์ AiPASS \(DOCX\)/);
+  assert.match(owner, /สร้างชุดตรวจ AiPASS/);
   assert.match(owner, /api\.createAiPassProjectExport\(select\.value\)/);
   assert.match(owner, /target\.searchParams\.set\('aipass', 'page'\)/);
   assert.match(owner, /window\.location\.assign\(`\$\{target\.pathname\}\$\{target\.search\}`\)/);
-  assert.match(owner, /AWH จะไม่ให้คุณอัปโหลด internal ZIP/);
+  assert.match(owner, /AiPASS ใช้เฉพาะ DOCX ที่ AWH แบ่งและตรวจให้เป็น Batch/);
   assert.doesNotMatch(owner, /fetch\(|XMLHttpRequest|WebSocket|Authorization|Bearer/i);
 
   assert.match(exporter, /FILE_TEXT_BYTE_CEILING = 350000/);
@@ -73,6 +75,10 @@ test('M20 AiPASS Owner flow exposes only verified direct DOCX batches', async ()
   assert.match(exporter, /AIPASS_INTERNAL_BUNDLE_NEVER_UPLOAD/);
   assert.match(exporter, /class HubAiPassBundleDelivery/);
   assert.match(exporter, /verifyDocxTextBudget/);
+  assert.match(exporter, /ผ่านขนาดจำกัด ✓/);
+  assert.match(exporter, /อัปโหลดพร้อมกัน/);
+  assert.match(exporter, /ข้อความแนะนำสำหรับ AiPASS/);
+  assert.match(exporter, /อย่าอัปโหลดหลาย Batch พร้อมกัน/);
   assert.doesNotMatch(exporter, /PART_TEXT_CHARS\s*=\s*750000/);
 
   assert.match(publicEntry, /HubAiPassBundleDelivery::landingPage/);
@@ -124,7 +130,7 @@ test('V1.3 owner center is bundled into existing dashboard assets and stays mobi
   assert.match(dashboard, /dashboard-owner-command-center/);
   assert.match(dashboard, /dashboard-owner-source-center/);
   assert.match(dashboard, /control-plane-adapter\.js\?release=owner-center-fixture/);
-  assert.match(dashboard, /เตรียมไฟล์ AiPASS \(DOCX\)/);
+  assert.match(dashboard, /สร้างชุดตรวจ AiPASS/);
   assert.match(dashboard, /Dashboard correctness guardrails/);
   assert.match(dashboard, /GIF แบบเคลื่อนไหวยังไม่รองรับ/);
   assert.match(dashboard, /ดูในมุมครู/);
