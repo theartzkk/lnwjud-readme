@@ -22,7 +22,7 @@ async function build(): Promise<void> {
 
 test('V1.3 owner center unifies existing owner surfaces without a new authority', async () => {
   const source = await readFile(join(ROOT, 'web', 'owner-center.js'), 'utf8');
-  for (const label of ['Projects', 'Multi Chat', 'Tasks & Executions', 'Memory', 'Approvals', 'AI & Costs', 'Devices & Workers', 'Users & Roles', 'Security', 'Infrastructure', 'Database Studio', 'Automations', 'Runtime / lnwjud']) assert.match(source, new RegExp(label.replace(/[&/]/g, '\\$&')));
+  for (const label of ['Projects', 'Source Authority', 'Multi Chat', 'Tasks & Executions', 'Memory', 'Approvals', 'AI & Costs', 'Devices & Workers', 'Users & Roles', 'Security', 'Infrastructure', 'Database Studio', 'Automations', 'Runtime / lnwjud']) assert.match(source, new RegExp(label.replace(/[&/]/g, '\\$&')));
   for (const tab of ['data', 'ai', 'devices', 'people', 'account', 'system']) assert.match(source, new RegExp(`openSettings\\('${tab}'\\)`));
   assert.match(source, /project-open/);
   assert.match(source, /conversation-open/);
@@ -33,6 +33,22 @@ test('V1.3 owner center unifies existing owner surfaces without a new authority'
   assert.match(source, /window\.location\.assign\('\.\/infrastructure\.html'\)/);
   assert.match(source, /action === 'automations'.*return/);
   assert.doesNotMatch(source, /fetch\(|XMLHttpRequest|WebSocket|localStorage|sessionStorage|Authorization|Bearer|\/api\/v1\/control\//i);
+});
+
+test('M20 owner Source Authority reuses the bounded control adapter instead of creating browser authority', async () => {
+  const source = await readFile(join(ROOT, 'web', 'owner-center.js'), 'utf8');
+  assert.match(source, /source-authority/);
+  assert.match(source, /import\('\.\/control-plane-adapter\.js\?release=__AWH_WEB_RELEASE_ID__'\)/);
+  assert.match(source, /api\.loadProjectSourceAuthority\(select\.value\)/);
+  assert.match(source, /api\.updateProjectSourceAuthority\(\{ projectId: select\.value, action: 'BIND'/);
+  assert.match(source, /api\.updateProjectSourceAuthority\(\{ projectId: select\.value, action: 'CLEAR' \}\)/);
+  assert.match(source, /canonicalVaultReady === true/);
+  assert.match(source, /Canonical revision/);
+  assert.match(source, /Revision ที่ระบบใช้อยู่/);
+  assert.match(source, /Project Vault/);
+  assert.match(source, /ไม่แก้ local checkout และไม่ลบ Project Vault history/);
+  assert.doesNotMatch(source, /fetch\(|XMLHttpRequest|WebSocket|Authorization|Bearer|\/api\/v1\/control\//i);
+  assert.doesNotMatch(source, /indexedDB|localStorage|sessionStorage/i);
 });
 
 test('V1.3 dashboard guardrails reset Home after sign-out and reject animated GIF flattening', async () => {
@@ -74,6 +90,8 @@ test('V1.3 owner center is bundled into existing dashboard assets and stays mobi
     readFile(join(OUTPUT, 'sw.js'), 'utf8'),
   ]);
   assert.match(dashboard, /dashboard-owner-command-center/);
+  assert.match(dashboard, /dashboard-owner-source-center/);
+  assert.match(dashboard, /control-plane-adapter\.js\?release=owner-center-fixture/);
   assert.match(dashboard, /Dashboard correctness guardrails/);
   assert.match(dashboard, /GIF แบบเคลื่อนไหวยังไม่รองรับ/);
   assert.match(dashboard, /ดูในมุมครู/);

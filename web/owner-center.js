@@ -1,14 +1,17 @@
 (() => {
   const SHEET_ID = 'dashboard-owner-command-center';
+  const SOURCE_SHEET_ID = 'dashboard-owner-source-center';
   const LAUNCH_ID = 'dashboard-owner-center-open';
   const PREVIEW_CLASS = 'awh-teacher-preview';
   const PREVIEW_BAR_ID = 'awh-teacher-preview-bar';
   const $ = (id) => document.getElementById(id);
+  let sourceApiPromise = null;
 
   const GROUPS = Object.freeze([
     { title: 'งานและความต่อเนื่อง', items: [
       ['teacher-preview', '◉', 'ดูในมุมครู', 'Preview หน้าแรกแบบที่ครูเห็น โดยไม่เปลี่ยนสิทธิ์จริง', 'Preview'],
       ['projects', '◫', 'Projects', 'โปรเจกต์ บริบท และ Source of Truth'],
+      ['source-authority', '⌘', 'Source Authority', 'GitHub canonical source, exact SHA และ Project Vault', 'Owner'],
       ['multi-chat', '☰', 'Multi Chat', 'การสนทนาที่แยกตามโปรเจกต์'],
       ['tasks', '↻', 'Tasks & Executions', 'งานที่กำลังทำ ประวัติ และผลลัพธ์'],
       ['memory', '◎', 'Memory', 'ความจำและข้อมูลที่ใช้ทำงานต่อ'],
@@ -43,6 +46,171 @@
     if (sheet) closeAwhDialog(sheet, options);
   }
 
+  function closeSourceCenter(options = {}) {
+    const sheet = $(SOURCE_SHEET_ID);
+    if (sheet) closeAwhDialog(sheet, options);
+  }
+
+  function sourceApi() {
+    sourceApiPromise ||= import('./control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__');
+    return sourceApiPromise;
+  }
+
+  function sourceMessage(value = '') {
+    const node = $('owner-source-message');
+    if (node) node.textContent = value;
+  }
+
+  function sourceStateLabel(value) {
+    return ({
+      NOT_CONFIGURED: 'ยังไม่ได้เชื่อม GitHub',
+      UNRESOLVED: 'เชื่อมแล้ว แต่ยังยืนยัน revision ไม่ได้',
+      CURRENT: 'Source ตรงกับ revision ที่ระบบใช้อยู่',
+      REMOTE_AHEAD_OR_DIFFERENT: 'Canonical Source ต่างจาก revision ที่ระบบใช้อยู่',
+    })[value] || 'สถานะ Source ไม่พร้อม';
+  }
+
+  function sourceValue(value, fallback = '—') {
+    return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+  }
+
+  function sourceRevision(value) {
+    const revision = sourceValue(value);
+    return revision === '—' ? revision : revision.slice(0, 12);
+  }
+
+  function appendSourceDetail(host, label, value) {
+    const row = document.createElement('div');
+    row.className = 'session-item';
+    const copy = document.createElement('div');
+    const title = document.createElement('strong'); title.textContent = label;
+    const detail = document.createElement('small'); detail.textContent = value;
+    copy.append(title, detail); row.append(copy); host.append(row);
+  }
+
+  function renderSourceState(state) {
+    const host = $('owner-source-state');
+    if (!(host instanceof HTMLElement)) return;
+    host.replaceChildren();
+    appendSourceDetail(host, sourceStateLabel(state.state), state.repository ? `${state.repository}${state.ref ? ` · ${state.ref}` : ''}` : 'Owner ยังไม่ได้กำหนด canonical GitHub source');
+    appendSourceDetail(host, 'Canonical revision', sourceRevision(state.canonicalRevision));
+    appendSourceDetail(host, 'Revision ที่ระบบใช้อยู่', sourceRevision(state.localRevision));
+    appendSourceDetail(host, 'Project Vault', state.canonicalVaultReady === true ? `พร้อม · ${sourceValue(state.canonicalVaultRevisionId)}` : 'ยังไม่มี Vault revision ที่ผูกกับ canonical SHA นี้');
+    const repository = $('owner-source-repository');
+    const ref = $('owner-source-ref');
+    if (repository instanceof HTMLInputElement) repository.value = state.repository || '';
+    if (ref instanceof HTMLInputElement) ref.value = state.ref || '';
+    const clear = $('owner-source-clear');
+    if (clear instanceof HTMLButtonElement) clear.hidden = state.state === 'NOT_CONFIGURED';
+    const bind = $('owner-source-bind');
+    if (bind instanceof HTMLButtonElement) bind.textContent = state.state === 'NOT_CONFIGURED' ? 'เชื่อม GitHub' : 'อัปเดต Source';
+  }
+
+  async function refreshSourceState() {
+    const select = $('owner-source-project');
+    if (!(select instanceof HTMLSelectElement) || !select.value) return;
+    sourceMessage('กำลังยืนยัน Source จากระบบกลาง…');
+    const api = await sourceApi();
+    const state = await api.loadProjectSourceAuthority(select.value);
+    renderSourceState(state);
+    sourceMessage('ยืนยัน Source ล่าสุดแล้ว');
+  }
+
+  async function loadSourceProjects() {
+    const select = $('owner-source-project');
+    if (!(select instanceof HTMLSelectElement)) return;
+    sourceMessage('กำลังโหลดโปรเจกต์…');
+    const api = await sourceApi();
+    const control = await api.loadControlData();
+    if (control.role !== 'OWNER') throw new Error('Source Authority ใช้ได้เฉพาะ Owner');
+    const previous = select.value;
+    const activeName = $('selected-project-name')?.textContent?.trim() || '';
+    select.replaceChildren();
+    for (const project of control.projects) {
+      const option = document.createElement('option');
+      option.value = project.projectId; option.textContent = project.name; select.append(option);
+    }
+    const preferred = control.projects.find((project) => project.projectId === previous)
+      || control.projects.find((project) => project.name === activeName)
+      || control.projects[0];
+    select.value = preferred?.projectId || '';
+    if (!select.value) { sourceMessage('ยังไม่มีโปรเจกต์ให้กำหนด Source'); $('owner-source-state')?.replaceChildren(); return; }
+    await refreshSourceState();
+  }
+
+  async function bindSource(event) {
+    event.preventDefault();
+    const select = $('owner-source-project');
+    const repository = $('owner-source-repository');
+    const ref = $('owner-source-ref');
+    if (!(select instanceof HTMLSelectElement) || !(repository instanceof HTMLInputElement) || !(ref instanceof HTMLInputElement)) return;
+    const repo = repository.value.trim();
+    const branch = ref.value.trim();
+    if (!/^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/.test(repo)) { sourceMessage('Repository ต้องอยู่ในรูป owner/repository'); repository.focus(); return; }
+    if (branch && (!/^[A-Za-z0-9._\/-]{1,160}$/.test(branch) || branch.includes('..'))) { sourceMessage('Git ref ไม่ถูกต้อง'); ref.focus(); return; }
+    sourceMessage('กำลังเชื่อม canonical GitHub source…');
+    const api = await sourceApi();
+    const state = await api.updateProjectSourceAuthority({ projectId: select.value, action: 'BIND', repository: repo, ref: branch || null });
+    renderSourceState(state);
+    sourceMessage('เชื่อม canonical Source แล้ว');
+  }
+
+  async function clearSource() {
+    const select = $('owner-source-project');
+    if (!(select instanceof HTMLSelectElement) || !select.value) return;
+    if (!window.confirm('ล้าง canonical Source ของโปรเจกต์นี้? Project Vault และประวัติเดิมจะไม่ถูกลบ')) return;
+    sourceMessage('กำลังล้าง Source binding…');
+    const api = await sourceApi();
+    const state = await api.updateProjectSourceAuthority({ projectId: select.value, action: 'CLEAR' });
+    renderSourceState(state);
+    sourceMessage('ล้าง Source binding แล้ว โดยไม่ลบ Vault history');
+  }
+
+  function ensureSourceCenter() {
+    const existing = $(SOURCE_SHEET_ID);
+    if (existing) return existing;
+    const sheet = document.createElement('section');
+    sheet.id = SOURCE_SHEET_ID;
+    sheet.className = 'awh-owner-command-center';
+    sheet.hidden = true;
+    sheet.setAttribute('role', 'dialog');
+    sheet.setAttribute('aria-modal', 'true');
+    sheet.setAttribute('aria-labelledby', 'owner-source-title');
+    const backdrop = document.createElement('button');
+    backdrop.type = 'button'; backdrop.className = 'awh-owner-command-backdrop'; backdrop.setAttribute('aria-label', 'ปิด Source Authority'); backdrop.addEventListener('click', closeSourceCenter);
+    const card = document.createElement('div'); card.className = 'awh-owner-command-card';
+    const head = document.createElement('header'); head.className = 'awh-owner-command-head';
+    head.innerHTML = '<div><span>PROJECT SOURCE AUTHORITY</span><h2 id="owner-source-title">Canonical Source ของโปรเจกต์</h2><p>Owner กำหนด GitHub authority เดิมของ M20 โดยไม่สร้าง registry หรือฐานข้อมูลคู่ขนาน</p></div>';
+    const close = document.createElement('button'); close.type = 'button'; close.className = 'awh-secondary-action'; close.textContent = 'ปิด'; close.addEventListener('click', closeSourceCenter); head.append(close);
+    const body = document.createElement('div'); body.className = 'awh-owner-command-body';
+    const form = document.createElement('form'); form.id = 'owner-source-form'; form.className = 'compact-form';
+    const projectLabel = document.createElement('label'); projectLabel.htmlFor = 'owner-source-project'; projectLabel.textContent = 'โปรเจกต์';
+    const project = document.createElement('select'); project.id = 'owner-source-project'; project.addEventListener('change', () => { void refreshSourceState().catch((error) => sourceMessage(error?.message || 'ตรวจ Source ไม่สำเร็จ')); });
+    const state = document.createElement('div'); state.id = 'owner-source-state'; state.className = 'session-list'; state.setAttribute('aria-live', 'polite');
+    const repositoryLabel = document.createElement('label'); repositoryLabel.htmlFor = 'owner-source-repository'; repositoryLabel.textContent = 'GitHub repository';
+    const repository = document.createElement('input'); repository.id = 'owner-source-repository'; repository.maxLength = 201; repository.autocomplete = 'off'; repository.placeholder = 'owner/repository';
+    const refLabel = document.createElement('label'); refLabel.htmlFor = 'owner-source-ref'; refLabel.textContent = 'Git ref';
+    const ref = document.createElement('input'); ref.id = 'owner-source-ref'; ref.maxLength = 160; ref.autocomplete = 'off'; ref.placeholder = 'เช่น main หรือ awh/api-independence';
+    const note = document.createElement('p'); note.className = 'muted'; note.textContent = 'การเชื่อมจะเปลี่ยน canonical Source metadata เท่านั้น ไม่แก้ local checkout และไม่ลบ Project Vault history';
+    const actions = document.createElement('div'); actions.className = 'form-actions';
+    const bind = document.createElement('button'); bind.id = 'owner-source-bind'; bind.type = 'submit'; bind.className = 'secondary-button'; bind.textContent = 'เชื่อม GitHub';
+    const refresh = document.createElement('button'); refresh.id = 'owner-source-refresh'; refresh.type = 'button'; refresh.className = 'text-button'; refresh.textContent = 'รีเฟรชสถานะ'; refresh.addEventListener('click', () => { void refreshSourceState().catch((error) => sourceMessage(error?.message || 'ตรวจ Source ไม่สำเร็จ')); });
+    const clear = document.createElement('button'); clear.id = 'owner-source-clear'; clear.type = 'button'; clear.className = 'text-button'; clear.textContent = 'ล้าง Source binding'; clear.hidden = true; clear.addEventListener('click', () => { void clearSource().catch((error) => sourceMessage(error?.message || 'ล้าง Source ไม่สำเร็จ')); });
+    actions.append(bind, refresh, clear);
+    const message = document.createElement('p'); message.id = 'owner-source-message'; message.className = 'form-message'; message.setAttribute('role', 'status');
+    form.append(projectLabel, project, state, repositoryLabel, repository, refLabel, ref, note, actions, message);
+    form.addEventListener('submit', (event) => { void bindSource(event).catch((error) => sourceMessage(error?.message || 'เชื่อม Source ไม่สำเร็จ')); });
+    body.append(form); card.append(head, body); sheet.append(backdrop, card); document.body.append(sheet); return sheet;
+  }
+
+  async function openSourceCenter() {
+    closeCenter({ history: false });
+    const sheet = ensureSourceCenter();
+    openAwhDialog(sheet);
+    try { await loadSourceProjects(); }
+    catch (error) { sourceMessage(error?.message || 'เปิด Source Authority ไม่สำเร็จ'); }
+  }
+
   function exitTeacherPreview() {
     document.body.classList.remove(PREVIEW_CLASS);
     $(PREVIEW_BAR_ID)?.remove();
@@ -70,6 +238,7 @@
   function runAction(action) {
     if (action === 'automations') return;
     if (action === 'teacher-preview') { enterTeacherPreview(); return; }
+    if (action === 'source-authority') { void openSourceCenter(); return; }
     closeCenter({ history: false });
     if (action === 'projects') { $('project-open')?.click(); return; }
     if (action === 'multi-chat') { $('conversation-open')?.click(); return; }
