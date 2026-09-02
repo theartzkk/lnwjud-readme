@@ -126,6 +126,7 @@ test('builds bounded context in deterministic project-memory read order', async 
   const f = await fixture();
   try {
     await initializeProject(f.project);
+    await writeFile(join(f.project, 'CURRENT_STATE.md'), 'current truth');
     await writeFile(join(f.project, 'PROJECT.md'), 'project truth');
     await writeFile(join(f.project, 'HANDOFF.md'), 'handoff truth');
     await writeFile(join(f.project, 'TASKS.md'), 'task truth');
@@ -135,7 +136,7 @@ test('builds bounded context in deterministic project-memory read order', async 
     assert.equal(context.project.name, 'project');
     assert.equal(context.project.type, 'general');
     assert.deepEqual(Object.keys(context.memory), [...PROJECT_MEMORY_FILES]);
-    assert.deepEqual(Object.values(context.memory), ['project truth', 'handoff truth', 'task truth', 'architecture truth', 'decision truth']);
+    assert.deepEqual(Object.values(context.memory), ['current truth', 'project truth', 'handoff truth', 'task truth', 'architecture truth', 'decision truth']);
     await writeFile(join(f.project, 'PROJECT.md'), 'x'.repeat(32 * 1024 + 1));
     await assert.rejects(() => buildProjectContext(f.project), /read limit/);
   } finally { await rm(f.root, { recursive: true, force: true }); }

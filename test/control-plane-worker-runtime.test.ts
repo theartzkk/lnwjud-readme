@@ -122,7 +122,7 @@ test('worker self-heals a canonical empty Vault from one uniquely named local pr
     await mkdir(join(workspace, '.awh'), { recursive: true });
     const localProjectId = '823b45c0-23e1-408d-ae0f-ac5eca7f6900';
     await writeFile(join(workspace, '.awh', 'project.json'), JSON.stringify({ schemaVersion: 1, projectId: localProjectId, name: 'BAY EXCUSE X', type: 'php', createdAt: '2026-08-21T00:00:00.000Z' }));
-    for (const name of ['PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md']) await writeFile(join(workspace, name), `# ${name}\ncanonical metadata fixture\n`);
+    for (const name of ['CURRENT_STATE.md', 'PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md']) await writeFile(join(workspace, name), `# ${name}\ncanonical metadata fixture\n`);
     await writeFile(join(workspace, 'tracked.txt'), 'committed source\n');
     for (const args of [['init'], ['config', 'user.email', 'awh-test@example.invalid'], ['config', 'user.name', 'AWH Test'], ['add', 'tracked.txt'], ['commit', '-m', 'fixture source']]) { const result = await execCommand('git', args, workspace, 30_000); assert.equal(result.code, 0, `${args.join(' ')}: ${result.stderr}`); }
     await writeFile(join(workspace, 'wip.txt'), 'must remain local and outside source archive\n');
@@ -140,7 +140,7 @@ test('worker self-heals a canonical empty Vault from one uniquely named local pr
     assert.ok(client.archiveEntries.includes('tracked.txt'));
     assert.equal(client.archiveEntries.includes('wip.txt'), false);
     assert.equal(client.archiveEntries.some((name) => name.startsWith('.git/')), false);
-    assert.deepEqual(client.memoryFiles.map((file) => file.name).sort(), ['ARCHITECTURE.md', 'DECISIONS.md', 'HANDOFF.md', 'PROJECT.md', 'TASKS.md']);
+    assert.deepEqual(client.memoryFiles.map((file) => file.name).sort(), ['ARCHITECTURE.md', 'CURRENT_STATE.md', 'DECISIONS.md', 'HANDOFF.md', 'PROJECT.md', 'TASKS.md']);
     assert.equal(await readFile(join(workspace, 'wip.txt'), 'utf8'), 'must remain local and outside source archive\n');
   } finally { await rm(dataDir, { recursive: true, force: true }); await rm(workspace, { recursive: true, force: true }); }
 });

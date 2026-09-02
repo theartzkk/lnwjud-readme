@@ -11,7 +11,7 @@ import { loadOwnerProtocol } from './owner-protocol.js';
 export const PROJECT_REGISTRY_SCHEMA_VERSION = 1;
 export const PROJECT_MANIFEST_SCHEMA_VERSION = 1;
 export const PROJECT_MANIFEST_PATH = '.awh/project.json';
-export const PROJECT_MEMORY_FILES = ['PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md'] as const;
+export const PROJECT_MEMORY_FILES = ['CURRENT_STATE.md', 'PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md'] as const;
 
 const REGISTRY_FILENAME = 'projects.json';
 const MAX_REGISTRY_BYTES = 1024 * 1024;
@@ -140,6 +140,7 @@ export async function initializeProject(workspace: string, options: ProjectIniti
 }
 
 const MEMORY_TEMPLATES: Record<(typeof PROJECT_MEMORY_FILES)[number], string> = {
+  'CURRENT_STATE.md': '# Current State\n\nRecord only the latest verified source/runtime state here. Fresh observed evidence outranks this snapshot; this snapshot outranks dated checkpoint prose.\n',
   'PROJECT.md': '# Project\n\nPurpose, scope, and stable project constraints.\n',
   'HANDOFF.md': '# Handoff\n\nCurrent state, next action, and known blockers.\n',
   'TASKS.md': '# Tasks\n\n## Now\n\n## Next\n\n## Done\n',

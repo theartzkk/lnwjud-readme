@@ -18,7 +18,7 @@ const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f
 const SHA256 = /^[0-9a-f]{64}$/i;
 const SAFE_TYPE = /^[a-z][a-z0-9-]{0,31}$/;
 const ISO_DATE = (value: unknown): value is string => typeof value === 'string' && Number.isFinite(Date.parse(value));
-const MEMORY_FILE = /^(?:PROJECT|HANDOFF|TASKS|ARCHITECTURE|DECISIONS)\.md$/;
+const MEMORY_FILE = /^(?:CURRENT_STATE|PROJECT|HANDOFF|TASKS|ARCHITECTURE|DECISIONS)\.md$/;
 const EXCLUDED_DIRECTORIES = new Set(['.git', 'node_modules', 'vendor', 'dist', 'build', 'out', '.awh-local']);
 const SECRET_FILE_NAMES = new Set(['.env', 'credentials.json', 'service-account.json', 'id_rsa', 'id_ed25519']);
 const SECRET_SUFFIXES = ['.pem', '.key', '.p12', '.pfx'];

@@ -1,3 +1,5 @@
+> **Current-state authority:** Read `CURRENT_STATE.md` first. Sections below are historical checkpoint/audit records; words such as “current”, “live”, or “Production remains” are scoped to their dated checkpoint unless freshly revalidated.
+
 # Authoritative decision — 2026-08-30 responsive-width contract
 
 - Document-width correctness is a shared product invariant: on phone portrait `document.documentElement.scrollWidth` must not exceed `clientWidth`. A global horizontal overflow guard is only a final containment layer, never the sole repair.

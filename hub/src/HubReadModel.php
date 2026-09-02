@@ -13,7 +13,7 @@ final class HubReadModelException extends RuntimeException
 final class HubReadModel
 {
     public const SCHEMA_VERSION = 1;
-    public const MEMORY_FILES = ['PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md'];
+    public const MEMORY_FILES = ['CURRENT_STATE.md', 'PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md'];
     private const PROJECT_ID = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i';
     private const SAFE_TYPE = '/^[a-z][a-z0-9-]{0,31}$/';
     private const MAX_MEMORY_BYTES = 32768;
@@ -141,7 +141,7 @@ final class HubReadModel
         return [
             'schemaVersion' => self::SCHEMA_VERSION,
             'projectId' => $projectId,
-            'canonicalSource' => 'PROJECT.md, HANDOFF.md, TASKS.md, ARCHITECTURE.md, DECISIONS.md',
+            'canonicalSource' => 'CURRENT_STATE.md, PROJECT.md, HANDOFF.md, TASKS.md, ARCHITECTURE.md, DECISIONS.md',
             'files' => $files,
             'observedAt' => $observed === [] ? null : max($observed),
             'handoffSummary' => null,

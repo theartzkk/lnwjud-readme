@@ -20,7 +20,7 @@ duplicate name or type.
 Canonical Project Memory is portable workspace files, initialized only by an
 explicit action and never overwritten:
 
-`PROJECT.md`, `HANDOFF.md`, `TASKS.md`, `ARCHITECTURE.md`, and `DECISIONS.md`.
+`CURRENT_STATE.md`, `PROJECT.md`, `HANDOFF.md`, `TASKS.md`, `ARCHITECTURE.md`, and `DECISIONS.md`.
 
 The bounded context builder reads `.awh/project.json`, those files in the
 canonical order, then safe project profile and Git status. Missing memory files

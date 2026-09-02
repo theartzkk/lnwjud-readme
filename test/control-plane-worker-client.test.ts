@@ -68,7 +68,7 @@ test('worker client publishes bounded Project Memory metadata without paths or c
   const credentials = new MemoryCredentials(); credentials.values.set(DEVICE_TOKEN_CREDENTIAL_KEY, 'fixture-token');
   const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
   const projectId = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
-  const files = ['PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md'].map((name) => ({ name, status: 'present' as const, sha256: 'a'.repeat(64), sizeBytes: 12 }));
+  const files = ['CURRENT_STATE.md', 'PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md'].map((name) => ({ name, status: 'present' as const, sha256: 'a'.repeat(64), sizeBytes: 12 }));
   const client = new ControlPlaneWorkerClient('https://hub.example/api/v1', root, credentials, async (url, init) => {
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>; calls.push({ url: String(url), body });
     return new Response(JSON.stringify({ schemaVersion: 1, projectId, memoryReady: true, observedAt: '2026-08-31T00:00:00Z' }), { status: 200 });

@@ -357,7 +357,7 @@ final class HubDurableExecutionService
         $projectId = (string) $claimed['project_id']; $revision = (string) ($claimed['vault_revision_id'] ?? '');
         if (preg_match('/^[0-9a-f-]{36}$/i', $revision) !== 1) return null;
         $memory = [];
-        foreach (['TASKS.md','HANDOFF.md','PROJECT.md','DECISIONS.md','ARCHITECTURE.md'] as $path) {
+        foreach (['CURRENT_STATE.md','TASKS.md','HANDOFF.md','PROJECT.md','DECISIONS.md','ARCHITECTURE.md'] as $path) {
             try { $read = $this->vaults->vault()->readText($projectId, $revision, $path); $text = (string)($read['content'] ?? ''); if ($text !== '') $memory[$path] = function_exists('mb_substr') ? mb_substr($text, 0, 6000) : substr($text, 0, 6000); } catch (Throwable) {}
         }
         $request = "Choose exactly one largest safe coherent NEXT milestone for this project after the completed work. Return exactly one line: NEXT: <goal> or STOP: <reason>. Never request production deployment, destructive/data changes, billing, permission, credential/secret changes, or bypass approval. Prefer ReadyIDC/VPS-safe reversible source work and reuse existing authorities. Do not repeat the completed goal.";

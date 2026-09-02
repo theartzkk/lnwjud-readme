@@ -53,6 +53,7 @@ try {
     test_assert($manifest['projectId'] === '113b45c0-23e1-408d-ae0f-ac5eca7f6900', 'current project ID must remain stable');
     test_assert($model->projects()['projects'][0]['name'] === 'Art’s Workspace Hub', 'portable project name must be indexed');
     $memory = $model->memory($manifest['projectId']);
+    test_assert(array_key_first($memory['files']) === 'CURRENT_STATE.md' && $memory['files']['CURRENT_STATE.md']['status'] === 'present', 'CURRENT_STATE metadata must be first and present');
     test_assert($memory['files']['HANDOFF.md']['status'] === 'present', 'HANDOFF metadata must be present');
     test_assert(!array_key_exists('content', $memory) && $memory['handoffSummary'] === null, 'Hub read foundation must not duplicate memory content');
     $encoded = json_encode([$model->projects(), $memory], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

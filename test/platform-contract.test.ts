@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import test from 'node:test';
 import { validateActionGraph, validateArtifactEdge, validateConnectorManifest, validateEvalResult, validateSkillManifest, validateTrustEvent } from '../src/platform-contract.js';
 const a='11111111-1111-4111-8111-111111111111'; const b='22222222-2222-4222-8222-222222222222'; const p='33333333-3333-4333-8333-333333333333';
@@ -28,4 +30,18 @@ test('artifact, trust and eval contracts make provenance, undo and release quali
  assert.throws(()=>validateTrustEvent({schemaVersion:1,eventId:a,projectId:p,action:'deploy',provider:null,mutation:true,approved:null}),/approval decision/);
  assert.equal(validateEvalResult({schemaVersion:1,evalId:'official.doc',capability:'document:official',score:98,releaseBlocking:true,evidenceRef:'fixture-2026'}).score,98);
  assert.throws(()=>validateEvalResult({schemaVersion:1,evalId:'official.doc',capability:'document:official',score:101,releaseBlocking:true,evidenceRef:null}),/score is invalid/);
+});
+
+
+test('current-state authority prevents historical checkpoints from masquerading as live truth',async()=>{
+ const root=process.cwd();
+ const current=await readFile(join(root,'CURRENT_STATE.md'),'utf8');
+ assert.match(current,/current-state authority/i);
+ assert.match(current,/fresh observed runtime\/source evidence outranks this snapshot/i);
+ const agents=await readFile(join(root,'AGENTS.md'),'utf8');
+ assert.ok(agents.indexOf('`CURRENT_STATE.md`')>=0 && agents.indexOf('`CURRENT_STATE.md`')<agents.indexOf('`PROJECT.md`'));
+ for(const name of ['PROJECT.md','HANDOFF.md','TASKS.md','DECISIONS.md']){
+  const memory=await readFile(join(root,name),'utf8');
+  assert.match(memory.slice(0,500),/Current-state authority.*CURRENT_STATE\.md/s);
+ }
 });
