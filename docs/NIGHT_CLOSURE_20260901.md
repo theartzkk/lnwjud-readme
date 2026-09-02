@@ -203,3 +203,15 @@ Next safe action: preserve the current healthy 48% Production state, complete th
 - The five retained local worktrees remain protected: dirty `awh/v0.1-migration`, dirty `awh/sustainability-foundation`, detached Production evidence `954cfa0`, dirty Project Source Authority evidence, and clean release snapshot `awh/production-surface-rc1`.
 
 Next safe action: do not merge unique legacy PRs wholesale. Reconcile only their still-unique patches against current canonical when they become relevant, while preserving active Sustainability Foundation work. Production remains healthy on M19/schema 19 at 48% disk usage; M20 owner-auth activation and the final ~1.51 GB compaction remainder remain execution-gated.
+
+## 2026-09-02 10:5x ICT — post-compaction convergence checkpoint
+
+- Canonical is `awh/api-independence` `e7af1fd929ca98531549f67997a15bcde1acfe14` after stale-PR hygiene checkpoint PR #86.
+- A separately created exact-canonical compaction worktree `/private/tmp/awh-compaction-final-20260902` was discovered with an active bounded compaction process; it was treated as protected concurrent work and not modified or removed. That process completed PASS: 12 linkable paths (8 Control + 4 Web), reported `3,390,122,662` reclaimable bytes.
+- Fresh post-process retention preview: 180 matched artifact paths, 173 already store-linked; Control guaranteed reclaim is now 0. Remaining Control+Web guaranteed physical reclaim is `1,225,431,703` bytes, entirely outside the already-closed Control side.
+- Root filesystem is now `13,802,680,320 / 30,083,776,512` bytes used (46%), down by `9,718,091,776` bytes from the pre-compaction `23,520,772,096` bytes. Predicted final usage after the remaining bounded Web compaction is ~41.9%.
+- Production remains Control/Web `m19-b66ef39cc986`, SQLite schema 19 with integrity OK and no FK output; nginx, PHP 8.3 FPM, native-executor timer and backup timer remain active.
+- A final bounded Web-side apply from exact current canonical was attempted normally and blocked by the execution safety gate. The gate was not bypassed.
+- M20 Project Source Authority remains source-ready with prior clean build/typecheck, focused regression, Hub M20 PASS, and `awh-ready` deploy dry-run/rollback evidence; Production schema-20 activation remains blocked specifically at the owner-auth execution safety gate.
+
+Next safe action: keep Production at the healthy M19/schema-19 state. Complete the remaining ~1.23 GB Web hard-link pass only when the normal execution gate permits, and activate M20 only through the canonical owner-auth deployment path without bypassing safety controls.
