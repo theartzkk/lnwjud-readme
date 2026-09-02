@@ -132,3 +132,15 @@ test('repository identity mismatch blocks before remote authority lookup', async
     await rm(fx.root, { recursive: true, force: true });
   }
 });
+
+test('owner auth activation runs canonical source proof before credentials or deploy', async () => {
+  const source = await readFile(join(repoRoot, 'scripts/ops/activate-owner-auth.mjs'), 'utf8');
+  const preflight = source.indexOf('await runCanonicalSourcePreflight()');
+  const credential = source.indexOf('await store.get(OWNER_AUTH_PASSWORD_CREDENTIAL_KEY)');
+  const deploy = source.indexOf('await runDeploy(password)');
+  assert.ok(preflight >= 0, 'canonical preflight call must exist');
+  assert.ok(credential > preflight, 'credential access must happen after canonical source proof');
+  assert.ok(deploy > credential, 'production deploy must happen after source proof and credential gate');
+  assert.match(source, /--require-mutation-ready/);
+  assert.match(source, /theartzkk\/lnwjud-readme/);
+});
