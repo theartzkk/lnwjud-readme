@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 import { extractVaultWorkspaceArchive } from './vault-transfer.js';
+import { PROJECT_MEMORY_METADATA_MAX_BYTES } from './project-registry.js';
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -292,7 +293,7 @@ export class ControlPlaneWorkerClient {
   async publishProjectMemory(projectId: string, files: Array<{ name: string; status: 'present' | 'missing'; sha256: string | null; sizeBytes: number }>): Promise<void> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir);
     const expected = new Set(['CURRENT_STATE.md', 'PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md']);
-    if (!UUID_V4.test(projectId) || !Array.isArray(files) || files.length !== expected.size || new Set(files.map((file) => file.name)).size !== expected.size || files.some((file) => !expected.has(file.name) || !['present', 'missing'].includes(file.status) || !Number.isSafeInteger(file.sizeBytes) || file.sizeBytes < 0 || file.sizeBytes > 32 * 1024 || (file.status === 'present' ? (typeof file.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(file.sha256)) : (file.sha256 !== null || file.sizeBytes !== 0)))) throw new ControlPlaneWorkerError('Project memory metadata is invalid', 'PAYLOAD_INVALID');
+    if (!UUID_V4.test(projectId) || !Array.isArray(files) || files.length !== expected.size || new Set(files.map((file) => file.name)).size !== expected.size || files.some((file) => !expected.has(file.name) || !['present', 'missing'].includes(file.status) || !Number.isSafeInteger(file.sizeBytes) || file.sizeBytes < 0 || file.sizeBytes > PROJECT_MEMORY_METADATA_MAX_BYTES || (file.status === 'present' ? (typeof file.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(file.sha256)) : (file.sha256 !== null || file.sizeBytes !== 0)))) throw new ControlPlaneWorkerError('Project memory metadata is invalid', 'PAYLOAD_INVALID');
     const response = await this.post('/control/worker/projects/memory', { schemaVersion: 1, deviceId: identity.deviceId, projectId, files });
     if (response.schemaVersion !== 1 || response.projectId !== projectId || typeof response.memoryReady !== 'boolean') throw new ControlPlaneWorkerError('Project memory metadata response is invalid', 'RESPONSE_INVALID');
   }

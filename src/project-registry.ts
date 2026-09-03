@@ -12,6 +12,7 @@ export const PROJECT_REGISTRY_SCHEMA_VERSION = 1;
 export const PROJECT_MANIFEST_SCHEMA_VERSION = 1;
 export const PROJECT_MANIFEST_PATH = '.awh/project.json';
 export const PROJECT_MEMORY_FILES = ['CURRENT_STATE.md', 'PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md'] as const;
+export const PROJECT_MEMORY_METADATA_MAX_BYTES = 256 * 1024;
 
 const REGISTRY_FILENAME = 'projects.json';
 const MAX_REGISTRY_BYTES = 1024 * 1024;

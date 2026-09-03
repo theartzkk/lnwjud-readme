@@ -80,7 +80,7 @@ test('worker client publishes bounded Project Memory metadata without paths or c
   const credentials = new MemoryCredentials(); credentials.values.set(DEVICE_TOKEN_CREDENTIAL_KEY, 'fixture-token');
   const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
   const projectId = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
-  const files = ['CURRENT_STATE.md', 'PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md'].map((name) => ({ name, status: 'present' as const, sha256: 'a'.repeat(64), sizeBytes: 12 }));
+  const files = ['CURRENT_STATE.md', 'PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md'].map((name) => ({ name, status: 'present' as const, sha256: 'a'.repeat(64), sizeBytes: name === 'PROJECT.md' ? 40 * 1024 : 12 }));
   const client = new ControlPlaneWorkerClient('https://hub.example/api/v1', root, credentials, async (url, init) => {
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>; calls.push({ url: String(url), body });
     return new Response(JSON.stringify({ schemaVersion: 1, projectId, memoryReady: true, observedAt: '2026-08-31T00:00:00Z' }), { status: 200 });
@@ -90,4 +90,7 @@ test('worker client publishes bounded Project Memory metadata without paths or c
   assert.equal(calls[0]?.body.projectId, projectId);
   assert.deepEqual((calls[0]?.body.files as typeof files).map((file) => file.name).sort(), files.map((file) => file.name).sort());
   assert.doesNotMatch(JSON.stringify(calls[0]?.body), /workspacePath|\/Users\/|content/i);
+  const oversized = files.map((file) => file.name === 'PROJECT.md' ? { ...file, sizeBytes: 256 * 1024 + 1 } : file);
+  await assert.rejects(() => client.publishProjectMemory(projectId, oversized), /Project memory metadata is invalid/);
+  assert.equal(calls.length, 1);
 });
