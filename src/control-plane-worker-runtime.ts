@@ -6,7 +6,7 @@ import { codexStatus, runCodexGoal } from './codex.js';
 import { loadOrCreateDeviceIdentity } from './device-identity.js';
 import { createCheckpoint } from './changes.js';
 import { createContinuityCheckpoint } from './continuity.js';
-import { buildProjectContext, listProjects, readProjectManifest, resolveRegisteredProject, PROJECT_MEMORY_FILES } from './project-registry.js';
+import { buildProjectContext, listProjects, readProjectManifest, resolveRegisteredProject, PROJECT_MEMORY_FILES, PROJECT_MEMORY_METADATA_MAX_BYTES } from './project-registry.js';
 import { discoverGitHubProjectSource } from './project-source.js';
 import { ControlPlaneWorkerClient, type WorkerProject, type WorkerTask } from './control-plane-worker-client.js';
 import { createUnsyncedWorkspaceCheckpoint, createWorkspaceWipCheckpoint, reconstructWorkspaceWip } from './workspace-continuity.js';
@@ -37,10 +37,6 @@ function boundedSummary(value: string): string {
 }
 
 export function isMutationGoal(goal: string): boolean { return MUTATION_GOAL.test(goal); }
-
-// Metadata reconciliation hashes existing canonical memory files but never uploads their contents.
-// Keep this bounded independently from the smaller AI context-read limit.
-const PROJECT_MEMORY_METADATA_MAX_BYTES = 256 * 1024;
 
 function sameProjectName(left: string, right: string): boolean { return left.trim().toLocaleLowerCase('en-US') === right.trim().toLocaleLowerCase('en-US'); }
 
