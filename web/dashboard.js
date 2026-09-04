@@ -653,14 +653,27 @@ function mountDashboard() {
   command.placeholder = 'พิมพ์สิ่งที่อยากให้ช่วย…';
   const commandActions = document.createElement('div');
   commandActions.className = 'awh-command-actions';
+  const commandTools = document.createElement('div');
+  commandTools.className = 'awh-command-tools';
+  const attach = document.createElement('button');
+  attach.type = 'button';
+  attach.id = 'dashboard-attachment-open';
+  attach.className = 'awh-command-attach';
+  attach.setAttribute('aria-label', 'แนบไฟล์หรือรูปภาพ');
+  attach.textContent = '＋';
   const hint = document.createElement('span');
   hint.textContent = 'บอกเป็นภาษาปกติได้เลย';
+  commandTools.append(attach, hint);
   const send = document.createElement('button');
   send.type = 'submit';
   send.className = 'awh-command-send';
   send.textContent = 'ส่ง ↑';
-  commandActions.append(hint, send);
+  commandActions.append(commandTools, send);
   commandForm.append(command, commandActions);
+  attach.addEventListener('click', () => {
+    openWork(command.value, false);
+    window.setTimeout(() => $('attachment-open')?.click(), 0);
+  });
   command.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); commandForm.requestSubmit(); }
   });

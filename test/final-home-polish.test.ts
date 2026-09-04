@@ -12,5 +12,10 @@ test('canonical Dashboard is intent-first with a three-item mobile navigation',a
  assert.match(constitution,/at most three primary destinations/);
  for(const leaked of ['งาน/AI','Cloud พร้อมใช้งาน','ทุกงาน เริ่มจากตรงนี้']) assert.doesNotMatch(dashboard,new RegExp(leaked));
  assert.match(css,/awh-mobile-nav/); assert.match(css,/repeat\(3,minmax\(0,1fr\)\)/);
+ assert.match(dashboard,/dashboard-attachment-open/);
+ assert.match(dashboard,/แนบไฟล์หรือรูปภาพ/);
+ assert.match(dashboard,/openWork\(command\.value, false\)/);
+ assert.match(dashboard,/\$\('attachment-open'\)\?\.click\(\)/);
+ assert.match(css,/awh-command-attach/);
  assert.match(index,/Infrastructure/); assert.doesNotMatch(`${dashboard}\n${css}`,/awh-experience-v[23]|final-home-polish/);
 });
