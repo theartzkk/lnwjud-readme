@@ -1,16 +1,28 @@
 # AWH Current State Authority
 
-Updated: 2026-09-03 08:50 ICT.
+Updated: 2026-09-04 12:06 ICT.
 
 This file is the **current-state authority** for AWH operational status. Resolve the exact current `origin/awh/api-independence` SHA and re-read live runtime evidence before every mutation. Dated "current", "live", or "Production remains" statements in `PROJECT.md`, `HANDOFF.md`, `TASKS.md`, `DECISIONS.md`, and older checkpoint documents are historical evidence unless this file or a fresh inspection confirms them.
 
 ## Source and repository
 
-- Canonical branch authority: `awh/api-independence`; exact SHA must be resolved from `origin` at read time. Last fully verified executable release-candidate baseline before this documentation commit: `6d6cf0d15850a62115ff8f5998988df88725e054` (post-PR #113 merge), with push CI run `33701662515` fully green. Resolve from origin again before every mutation.
+- Canonical branch authority: `awh/api-independence`; exact SHA must be resolved from `origin` at read time. Last fully verified executable baseline before this documentation commit: `0e3acfe16b02e75ec83d21222d9ea3b326b92d0b` (post-PR #114 merge), with push CI run `33823600218` fully green across all five jobs. Resolve from origin again before every mutation.
 - Five local worktrees are intentionally protected: dirty `awh/v0.1-migration`, dirty `awh/sustainability-foundation`, detached Production evidence `954cfa0`, dirty Project Source Authority evidence, and clean release snapshot `awh/production-surface-rc1`.
 - Do not reset, remove, merge, or kill work associated with a dirty/protected worktree unless its ownership and recoverability are freshly proven.
 - Canonical Project Memory precedence is `CURRENT_STATE.md` first, then `PROJECT.md`, `HANDOFF.md`, `TASKS.md`, `ARCHITECTURE.md`, and `DECISIONS.md`; legacy five-file worker metadata may be accepted during rollout but cannot claim current-state readiness or erase an existing current-state row.
 - Legacy PR #7 is superseded by the canonical Task/Execution/Approval authorities and is closed without deleting history. PR #35 remains a future external-owner integration lane; do not merge its device-credential Safe Bridge as owner identity until principal-scoped external authorization converges with the current Hub trust model.
+
+## 2026-09-04 Mac Desktop field rollout
+
+- The authorized Mac bridge is online again. This supersedes only the prior field statement that the bridge was offline; it does **not** by itself refresh or prove Production state.
+- Exact canonical source `0e3acfe16b02e75ec83d21222d9ea3b326b92d0b` passed push CI run `33823600218`. Its macOS x64 artifact is GitHub Actions artifact `9919156406`, outer digest `sha256:6ba2b1fdb0576fadeef563ae8c3b320ff7020c1ff6f36bc3ff4365d22fa1806b`.
+- The artifact's machine-readable release evidence binds `AWH-macOS-x64.zip` to the same exact source SHA with package SHA-256 `470089c9ac6d3d860f760e64b17586821111c3f730545ebbb839b7d6d8ad9db8`, 129,886,385 bytes and `packageVerification=VERIFIED`.
+- Before rollout, installed AWH Desktop had `app.asar` SHA-256 `351fff880dc7de523ada3842317260217b0a8245f1fa9e1a5626d1ea7482cab7`; the exact-canonical artifact carried `7b24819ee3fb780208207a5cb768db9427c12ebe13ab984c4995dd1f29e62cce`, so a real binary drift was proven rather than inferred from the unchanged `1.0.0-rc.1` version string.
+- A rollback copy of the previous application was preserved under the local AWH Application Support rollback area before replacement. The installed application now matches the exact-canonical `app.asar` SHA, reports bundle id `com.artworkspacehub.awh`, and is running with one visible `AWH Desktop — Art’s Workspace Hub` window.
+- The installed runtime contains the canonical six-file Project Memory list including `CURRENT_STATE.md` and the shared 256 KiB `PROJECT_MEMORY_METADATA_MAX_BYTES` contract. This closes the **installed Mac binary** gap.
+- The macOS package is x86_64 and currently unsigned; code signing/publication/auto-updater activation remain separate unfinished release concerns. Do not reinterpret this local field rollout as signed distribution readiness.
+- Authoritative Production Hub confirmation that this Mac has republished Project Memory as six rows / `memoryReady=true` remains **FIELD VERIFY PENDING**. No Production DB write or deployment was performed in this rollout, and no 6/6 claim is made without the Hub authority evidence.
+- Physical authenticated iPhone Safari remains a separate manual field gate. Installing the latest Mac Desktop artifact does not substitute for iPhone attachment/navigation/scroll verification.
 
 ## Production
 
