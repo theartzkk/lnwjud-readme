@@ -19,3 +19,16 @@ test('canonical Dashboard is intent-first with a three-item mobile navigation',a
  assert.match(css,/awh-command-attach/);
  assert.match(index,/Infrastructure/); assert.doesNotMatch(`${dashboard}\n${css}`,/awh-experience-v[23]|final-home-polish/);
 });
+
+test('Work chat keeps failures human-readable and restores unsent drafts',async()=>{
+ const app=await read('web/app.js');
+ for(const text of ['humanizeWorkError','เชื่อมต่อไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง','ส่งแล้ว · AWH กำลังทำงานให้','ส่งไม่สำเร็จ ข้อความยังอยู่ กดส่งอีกครั้งได้','ระบบพร้อมใช้งาน','AI พร้อม','ใช้ข้อมูลล่าสุดที่บันทึกไว้']) assert.ok(app.includes(text),`missing ${text}`);
+ for(const technical of ['AWH Server · Online','AI · Ready','AI · Connected','ใช้ checkpoint ล่าสุดบน AWH','มีงานที่ยัง sync ไม่ครบ',"title || 'Work'",'>Work<','รีเฟรช Work']) assert.ok(!app.includes(technical),`Work UX leaked technical copy: ${technical}`);
+ assert.match(app,/message\('goal-message', 'กำลังส่ง…'\)/);
+ assert.match(app,/\$\('goal-submit'\)\.disabled = true; \$\('attachment-open'\)\.disabled = true;/);
+ assert.match(app,/const localIds = new Set\(\[localMessageId, `local-progress-\$\{idempotencyKey\}`\]\)/);
+ assert.match(app,/\$\('goal-input'\)\.value = goal; resizeGoalInput\(\); renderPendingAttachments\(\)/);
+ assert.doesNotMatch(app,/message\('goal-message', error instanceof Error \? error\.message : 'ส่งงานไม่สำเร็จ'\)/);
+ assert.match(app,/createConversation\(project\.projectId, 'แชทใหม่'\)/);
+ const index=await read('web/index.html'); assert.match(index,/selected-conversation-name">แชท<\/span>/); assert.doesNotMatch(index,/>Work<|รีเฟรช Work/);
+});

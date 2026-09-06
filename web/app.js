@@ -23,6 +23,18 @@ import {
 
   function message(id, value = '') { const node = $(id); if (node) node.textContent = value; }
   function safeText(value, fallback = '') { return typeof value === 'string' && value.trim() ? value.trim() : fallback; }
+  function humanizeWorkError(error, fallback = 'AWH ยังทำรายการนี้ไม่ได้ ลองอีกครั้งได้') {
+    const code = safeText(error?.code).toUpperCase();
+    const raw = safeText(error instanceof Error ? error.message : '').toUpperCase();
+    const signal = `${code} ${raw}`;
+    if (/401|403|UNAUTHORIZED|AUTH|SESSION|LOGIN/.test(signal)) return 'การเข้าสู่ระบบหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง';
+    if (/NETWORK|OFFLINE|FAILED TO FETCH|ECONN|CONNECTION/.test(signal)) return 'เชื่อมต่อไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง';
+    if (/TIMEOUT|TIMED OUT/.test(signal)) return 'ระบบใช้เวลานานกว่าปกติ ข้อความยังอยู่และลองส่งอีกครั้งได้';
+    if (/429|RATE.?LIMIT|TOO MANY|QUOTA/.test(signal)) return 'ตอนนี้มีงานเข้ามามาก ข้อความยังอยู่และลองใหม่อีกครั้งได้';
+    if (/PROVIDER|MODEL|AI_/.test(signal)) return 'AI ยังไม่พร้อมรับงานนี้ ข้อความยังอยู่และลองใหม่ได้';
+    if (/CONVERSATION|WORKSPACE|PROJECT.*UNAVAILABLE/.test(signal)) return 'พื้นที่งานนี้ยังไม่พร้อม ลองรีเฟรชหรือเปิดห้องงานใหม่';
+    return fallback;
+  }
   function date(value) { const time = Date.parse(value || ''); return Number.isFinite(time) ? new Date(time).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : ''; }
   function ensureStepUpForm() {
     const existing = $('step-up-form'); if (existing) return existing;
@@ -63,7 +75,7 @@ import {
     window.dispatchEvent(new CustomEvent('awh:work-context', { detail: {
       schemaVersion: 1,
       project: project ? { projectId: project.projectId, name: project.name, memoryReady: project.memoryReady === true } : null,
-      conversation: conversation ? { conversationId: conversation.conversationId, title: conversation.title || 'Work', updatedAt: conversation.updatedAt || null } : null,
+      conversation: conversation ? { conversationId: conversation.conversationId, title: conversation.title || 'แชท', updatedAt: conversation.updatedAt || null } : null,
       conversationCount: state.conversations.length,
       workspace: state.workspaceContinuity,
     } }));
@@ -578,16 +590,16 @@ import {
   }
 
   function workerSummary() {
-    const ai = state.provider?.available === true ? ' · AI · Ready' : state.provider?.keyConfigured === true ? ' · AI · Connected' : '';
-    return `AWH Server · Online${ai}`;
+    const ai = state.provider?.available === true ? ' · AI พร้อม' : state.provider?.keyConfigured === true ? ' · AI เชื่อมต่อแล้ว' : '';
+    return `ระบบพร้อมใช้งาน${ai}`;
   }
 
   function continuitySummary(workspace) {
     if (!workspace) return '';
-    if (workspace.syncStatus === 'SYNCED') return ' · ข้อมูลล่าสุดพร้อมใช้งาน';
-    if (workspace.syncStatus === 'HANDOFF_REQUIRED') return ' · มีงานจากเครื่องอื่นที่เชื่อมไว้';
-    if (workspace.syncStatus === 'SOURCE_OFFLINE') return ' · ใช้ checkpoint ล่าสุดบน AWH';
-    if (workspace.syncStatus === 'UNSYNCED_CHANGES') return ' · มีงานที่ยัง sync ไม่ครบ';
+    if (workspace.syncStatus === 'SYNCED') return ' · ข้อมูลล่าสุดพร้อมแล้ว';
+    if (workspace.syncStatus === 'HANDOFF_REQUIRED') return ' · มีงานต่อจากอุปกรณ์อื่น';
+    if (workspace.syncStatus === 'SOURCE_OFFLINE') return ' · ใช้ข้อมูลล่าสุดที่บันทึกไว้';
+    if (workspace.syncStatus === 'UNSYNCED_CHANGES') return ' · กำลังบันทึกการเปลี่ยนแปลง';
     return '';
   }
 
@@ -600,7 +612,7 @@ import {
       button.addEventListener('click', async () => {
         button.disabled = true;
         try { await decideApproval(approval.approvalId, decision); await refreshWorkspace(); }
-        catch (error) { message('goal-message', error instanceof Error ? error.message : 'AWH ไม่สามารถบันทึกการอนุมัติได้'); button.disabled = false; }
+        catch (error) { message('goal-message', humanizeWorkError(error, 'ยังบันทึกการอนุมัติไม่ได้ ลองอีกครั้งได้')); button.disabled = false; }
       });
       actions.append(button);
     }
@@ -614,7 +626,7 @@ import {
     button.addEventListener('click', async () => {
       button.disabled = true;
       try { await cancelTask(task.taskId); await refreshWorkspace(); }
-      catch (error) { message('goal-message', error instanceof Error ? error.message : 'AWH ยังยกเลิกงานนี้ไม่ได้'); button.disabled = false; }
+      catch (error) { message('goal-message', humanizeWorkError(error, 'ยังหยุดงานนี้ไม่ได้ ลองอีกครั้งได้')); button.disabled = false; }
     });
     actions.append(button); return actions;
   }
@@ -762,17 +774,17 @@ import {
     const list = $('conversation-list'); if (!list) return; list.replaceChildren();
     for (const conversation of state.conversations) {
       const button = document.createElement('button'); button.type = 'button'; button.className = `project-choice${conversation.conversationId === state.selectedConversationId ? ' selected' : ''}`;
-      const title = document.createElement('strong'); title.textContent = conversation.title || 'Work';
+      const title = document.createElement('strong'); title.textContent = conversation.title || 'แชท';
       const detail = document.createElement('span'); detail.textContent = date(conversation.updatedAt) || 'ยังไม่มีข้อความ'; button.append(title, detail);
       button.addEventListener('click', async () => { state.selectedConversationId = conversation.conversationId; closeSheet('conversation-sheet'); await refreshConversation(false); }); list.append(button);
     }
     $('conversation-empty').hidden = state.conversations.length > 0;
     const selected = state.conversations.find((conversation) => conversation.conversationId === state.selectedConversationId) || state.conversation?.conversation || null;
-    $('conversation-title-input').value = selected?.title || 'Work';
+    $('conversation-title-input').value = selected?.title || 'แชท';
     $('conversation-title-input').disabled = !selected;
     $('conversation-archive').disabled = !selected;
     $('conversation-delete').disabled = !selected;
-    const trash = $('conversation-trash-list'); if (trash) { trash.replaceChildren(); for (const conversation of state.deletedConversations) { const row=document.createElement('div'); row.className='conversation-trash-row'; const copy=document.createElement('span'); const title=document.createElement('strong'); title.textContent=conversation.title||'Work'; const detail=document.createElement('small'); detail.textContent=`ลบเมื่อ ${date(conversation.deletedAt)}`; copy.append(title,detail); const restore=document.createElement('button'); restore.type='button'; restore.className='secondary-button'; restore.textContent='กู้คืน'; restore.addEventListener('click',async()=>{ restore.disabled=true; try{ await updateConversationLifecycle(conversation.conversationId,'RESTORE'); await refreshDeletedConversations(); await refreshConversation(); message('conversation-trash-message','กู้คืนแชทแล้ว'); }catch(error){ message('conversation-trash-message',error instanceof Error?error.message:'ยังกู้คืนแชทไม่ได้'); restore.disabled=false; } }); row.append(copy,restore); trash.append(row); } if(!trash.childElementCount){ const empty=document.createElement('p'); empty.className='muted'; empty.textContent='ไม่มีแชทในถังขยะ'; trash.append(empty); } }
+    const trash = $('conversation-trash-list'); if (trash) { trash.replaceChildren(); for (const conversation of state.deletedConversations) { const row=document.createElement('div'); row.className='conversation-trash-row'; const copy=document.createElement('span'); const title=document.createElement('strong'); title.textContent=conversation.title||'แชท'; const detail=document.createElement('small'); detail.textContent=`ลบเมื่อ ${date(conversation.deletedAt)}`; copy.append(title,detail); const restore=document.createElement('button'); restore.type='button'; restore.className='secondary-button'; restore.textContent='กู้คืน'; restore.addEventListener('click',async()=>{ restore.disabled=true; try{ await updateConversationLifecycle(conversation.conversationId,'RESTORE'); await refreshDeletedConversations(); await refreshConversation(); message('conversation-trash-message','กู้คืนแชทแล้ว'); }catch(error){ message('conversation-trash-message',error instanceof Error?error.message:'ยังกู้คืนแชทไม่ได้'); restore.disabled=false; } }); row.append(copy,restore); trash.append(row); } if(!trash.childElementCount){ const empty=document.createElement('p'); empty.className='muted'; empty.textContent='ไม่มีแชทในถังขยะ'; trash.append(empty); } }
   }
 
   async function refreshDeletedConversations() {
@@ -791,7 +803,7 @@ import {
     if (!projects.some((project) => project.projectId === state.selectedProjectId)) state.selectedProjectId = preferredProjectId(projects);
     const project = selectedProject();
     message('selected-project-name', project?.name || 'ยังไม่มีโปรเจกต์');
-    message('selected-conversation-name', state.conversation?.conversation?.title || 'Work');
+    message('selected-conversation-name', state.conversation?.conversation?.title || 'แชท');
     if ($('conversation-open')) $('conversation-open').hidden = project === null;
     message('worker-summary', workerSummary());
     message('work-context', project ? `คุยและสั่งงานได้จากทุกอุปกรณ์${continuitySummary(state.workspaceContinuity)}` : 'เพิ่มโปรเจกต์เพื่อเริ่มคุยกับ AWH');
@@ -936,17 +948,17 @@ import {
         state.selectedConversationId = conversations.some((conversation) => conversation.conversationId === remembered) ? remembered : conversations[0]?.conversationId || null;
       }
       if (!state.selectedConversationId) {
-        const created = await createConversation(project.projectId, 'Work'); state.selectedConversationId = created.conversation.conversationId; state.conversations = [created.conversation]; state.conversation = created;
+        const created = await createConversation(project.projectId, 'แชทใหม่'); state.selectedConversationId = created.conversation.conversationId; state.conversations = [created.conversation]; state.conversation = created;
       } else state.conversation = await loadConversation(state.selectedConversationId);
       state.workspaceContinuity = workspaceContinuity; state.conversationAvailable = true; renderWorkspace();
       void saveCurrentContext(project.projectId, state.selectedConversationId, 'work').catch(() => undefined);
-    } catch (error) { state.conversationAvailable = false; state.conversation = { messages: [{ messageId: 'local-unavailable', taskId: null, kind: 'assistant', sequence: 1, body: 'ยังเปิด Work นี้ไม่ได้ จึงยังไม่ส่งคำขอใหม่เพื่อป้องกันงานสูญหาย', createdAt: new Date().toISOString() }], tasks: [], artifacts: [], attachments: [], approvals: [] }; renderWorkspace(); message('goal-message', error instanceof Error ? error.message : 'AWH ยังโหลดการสนทนาไม่ได้'); }
+    } catch (error) { state.conversationAvailable = false; state.conversation = { messages: [{ messageId: 'local-unavailable', taskId: null, kind: 'assistant', sequence: 1, body: 'ยังเปิดห้องงานนี้ไม่ได้ จึงยังไม่ส่งคำขอใหม่เพื่อป้องกันงานสูญหาย', createdAt: new Date().toISOString() }], tasks: [], artifacts: [], attachments: [], approvals: [] }; renderWorkspace(); message('goal-message', humanizeWorkError(error, 'ยังเปิดห้องงานนี้ไม่ได้ ลองรีเฟรชอีกครั้ง')); }
   }
 
   async function refreshWorkspace(showBusy = false) {
     if (showBusy) message('goal-message', 'กำลังรีเฟรช…');
     try { state.control = await loadControlData(); if (state.control?.role === 'OWNER') state.provider = await loadProviderStatus().catch(() => state.provider); renderWorkspace(); await refreshConversation(); if (showBusy) message('goal-message', ''); }
-    catch (error) { message('goal-message', error instanceof Error ? error.message : 'AWH ไม่สามารถรีเฟรชข้อมูลได้'); }
+    catch (error) { message('goal-message', humanizeWorkError(error, 'ยังอัปเดตข้อมูลไม่ได้ ลองอีกครั้งได้')); }
   }
 
   const settingsSections = ['start', 'ai', 'account', 'devices', 'data', 'system', 'people'];
@@ -1116,13 +1128,23 @@ import {
     const localMessageId = `local-${idempotencyKey}`;
     const localAttachments = pending.map((file, index) => ({ attachmentId: `local-${idempotencyKey}-${index}`, messageId: localMessageId, name: file.name, sizeBytes: file.size, pending: true }));
     state.conversation = { ...(state.conversation || {}), messages: [...(state.conversation?.messages || []), { messageId: localMessageId, taskId: null, kind: 'user', sequence: Number.MAX_SAFE_INTEGER - 1, body: goal, createdAt: new Date().toISOString() }, { messageId: `local-progress-${idempotencyKey}`, taskId: null, kind: 'progress', sequence: Number.MAX_SAFE_INTEGER, body: localProgressLabel(goal), createdAt: new Date().toISOString() }], tasks: state.conversation?.tasks || [], artifacts: state.conversation?.artifacts || [], attachments: [...(state.conversation?.attachments || []), ...localAttachments], approvals: state.conversation?.approvals || [] };
-    renderWorkspace(); message('goal-message', ''); $('goal-input').value = ''; resizeGoalInput(); $('goal-input').focus();
+    renderWorkspace(); message('goal-message', 'กำลังส่ง…'); $('goal-input').value = ''; resizeGoalInput();
+    $('goal-submit').disabled = true; $('attachment-open').disabled = true;
     try {
       const uploaded = pending.length ? await uploadConversationAttachments(conversationId, pending) : [];
       await submitWorkMessage(project.projectId, conversationId, goal, uploaded.map((attachment) => attachment.attachmentId), idempotencyKey);
       state.pendingAttachments = []; renderPendingAttachments();
       await refreshConversation();
-    } catch (error) { message('goal-message', error instanceof Error ? error.message : 'ส่งงานไม่สำเร็จ'); }
+      message('goal-message', 'ส่งแล้ว · AWH กำลังทำงานให้');
+      $('goal-input').focus();
+    } catch (error) {
+      const localIds = new Set([localMessageId, `local-progress-${idempotencyKey}`]);
+      const localAttachmentPrefix = `local-${idempotencyKey}-`;
+      state.conversation = { ...(state.conversation || {}), messages: (state.conversation?.messages || []).filter((item) => !localIds.has(item.messageId)), attachments: (state.conversation?.attachments || []).filter((item) => !String(item.attachmentId || '').startsWith(localAttachmentPrefix)) };
+      renderWorkspace(); $('goal-input').value = goal; resizeGoalInput(); renderPendingAttachments();
+      message('goal-message', humanizeWorkError(error, 'ส่งไม่สำเร็จ ข้อความยังอยู่ กดส่งอีกครั้งได้'));
+      $('goal-input').focus();
+    }
     finally { const unavailable = selectedProject() === null || !state.conversationAvailable; $('goal-submit').disabled = unavailable; $('attachment-open').disabled = unavailable; }
   });
 
@@ -1134,7 +1156,7 @@ import {
   async function createNewConversationFrom(button) {
     const project = selectedProject(); if (!project || !(button instanceof HTMLButtonElement)) return; button.disabled = true;
     try { const created = await createConversation(project.projectId, 'การสนทนาใหม่'); state.selectedConversationId = created.conversation.conversationId; state.conversation = created; state.threadFollowLatest = true; await refreshConversation(); closeSheet('conversation-sheet'); }
-    catch (error) { message('goal-message', error instanceof Error ? error.message : 'AWH ยังสร้างการสนทนาใหม่ไม่ได้'); }
+    catch (error) { message('goal-message', humanizeWorkError(error, 'ยังสร้างห้องงานใหม่ไม่ได้ ลองอีกครั้งได้')); }
     finally { button.disabled = false; }
   }
   $('conversation-new').addEventListener('click', () => { void createNewConversationFrom($('conversation-new')); });
@@ -1148,13 +1170,13 @@ import {
   $('conversation-archive').addEventListener('click', async () => {
     const conversationId = state.selectedConversationId; const current = state.conversation?.conversation; if (!conversationId || !current) return;
     $('conversation-archive').disabled = true; message('conversation-title-message', 'กำลังเก็บเข้าคลัง…');
-    try { await updateConversation(conversationId, current.title || 'Work', true); state.selectedConversationId = null; await refreshConversation(); message('conversation-title-message', 'เก็บการสนทนาแล้ว'); }
+    try { await updateConversation(conversationId, current.title || 'แชท', true); state.selectedConversationId = null; await refreshConversation(); message('conversation-title-message', 'เก็บการสนทนาแล้ว'); }
     catch (error) { message('conversation-title-message', error instanceof Error ? error.message : 'ยังเก็บการสนทนาไม่ได้'); }
     finally { $('conversation-archive').disabled = false; }
   });
   $('conversation-delete').addEventListener('click', async () => {
     const conversationId=state.selectedConversationId; const current=state.conversation?.conversation; if(!conversationId||!current)return;
-    if(!window.confirm(`ลบแชท “${current.title||'Work'}” หรือไม่? งานและไฟล์ผลลัพธ์ที่สร้างแล้วจะยังอยู่ และกู้คืนแชทได้จากถังขยะ`)) return;
+    if(!window.confirm(`ลบแชท “${current.title||'แชท'}” หรือไม่? งานและไฟล์ผลลัพธ์ที่สร้างแล้วจะยังอยู่ และกู้คืนแชทได้จากถังขยะ`)) return;
     const button=$('conversation-delete'); button.disabled=true; message('conversation-title-message','กำลังลบแชท…');
     try { await updateConversationLifecycle(conversationId,'DELETE'); state.selectedConversationId=null; state.conversation=null; state.threadFollowLatest=true; await refreshDeletedConversations(); await refreshConversation(); message('conversation-title-message','ลบแชทแล้ว กู้คืนได้จากถังขยะ'); }
     catch(error){ message('conversation-title-message',error instanceof Error?error.message:'ยังลบแชทไม่ได้'); }
