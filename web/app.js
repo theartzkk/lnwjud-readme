@@ -807,6 +807,98 @@ import {
     publishWorkContext();
   }
 
+  function authenticatedSurfaceRequested() {
+    try { return new URL(window.location.href).searchParams.has('awh-surface'); } catch { return false; }
+  }
+
+  function showEcosystemHome({ replace = false } = {}) {
+    if (!state.control?.authenticated) return;
+    const ecosystem = $('ecosystem-home-view');
+    const workspace = $('workspace-view');
+    if (ecosystem) ecosystem.hidden = false;
+    if (workspace) workspace.hidden = true;
+    document.body.classList.remove('work-active', 'product-dashboard-active');
+    document.body.classList.add('ecosystem-home-active');
+    document.body.dataset.awhDashboardVisited = '';
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('awh-surface');
+      const next = `${url.pathname}${url.search}${url.hash}`;
+      window.history[replace ? 'replaceState' : 'pushState'](window.history.state, '', next);
+    } catch {}
+    void renderEcosystemPortfolio();
+    window.scrollTo({ top: 0, behavior: replace ? 'auto' : 'smooth' });
+  }
+
+  function openAwhWorkspace(surface = 'home', { history = true } = {}) {
+    if (!state.control?.authenticated) return;
+    const ecosystem = $('ecosystem-home-view');
+    const workspace = $('workspace-view');
+    if (ecosystem) ecosystem.hidden = true;
+    if (workspace) workspace.hidden = false;
+    document.body.classList.remove('ecosystem-home-active');
+    document.body.classList.add('work-active');
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('awh-surface', surface);
+      if (history) window.history.pushState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    } catch {}
+    if (!state.conversationAvailable) void refreshConversation();
+  }
+
+  async function renderEcosystemPortfolio() {
+    const grid = $('ecosystem-project-grid');
+    const featured = $('ecosystem-featured-grid');
+    if (!grid || !featured || !state.control?.authenticated) return;
+    grid.replaceChildren(); featured.replaceChildren();
+    let projects = [], releases = [];
+    try {
+      const [projectResponse, releaseResponse] = await Promise.all([
+        fetch('/bay/data/projects.json', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } }),
+        fetch('/bay/data/releases.json', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } }),
+      ]);
+      const projectData = projectResponse.ok ? await projectResponse.json() : null;
+      const releaseData = releaseResponse.ok ? await releaseResponse.json() : null;
+      projects = Array.isArray(projectData?.projects) ? projectData.projects : [];
+      releases = Array.isArray(releaseData?.releases) ? releaseData.releases : [];
+    } catch {}
+    const safeUrl = (value) => typeof value === 'string' && (/^https:\/\//.test(value) || /^\/(?!\/)/.test(value)) ? value : null;
+    const labelFor = (status) => ({ active: 'ใช้งาน', pilot: 'Pilot', internal: 'ภายใน' })[status] || 'โปรเจกต์';
+    const openProject = (project) => {
+      if (project.id === 'awh') { openAwhWorkspace('home'); return; }
+      const url = safeUrl(project?.primary_action?.url); if (url) location.assign(url);
+    };
+    const card = (project, prominent = false) => {
+      const article = document.createElement('article'); article.className = prominent ? 'ecosystem-project-card featured' : 'ecosystem-project-card';
+      const head = document.createElement('div'); head.className = 'ecosystem-project-head';
+      const icon = document.createElement('span'); icon.className = 'ecosystem-project-icon'; icon.textContent = safeText(project.icon, '•');
+      const status = document.createElement('span'); status.className = `ecosystem-project-status status-${safeText(project.status, 'project')}`; status.textContent = labelFor(project.status);
+      head.append(icon, status);
+      const title = document.createElement('h3'); title.textContent = safeText(project.name, 'โปรเจกต์');
+      const type = document.createElement('small'); type.textContent = [safeText(project.type), safeText(project.stage)].filter(Boolean).join(' · ');
+      const copy = document.createElement('p'); copy.textContent = safeText(project.summary, '');
+      article.append(head, title, type, copy);
+      const capability = document.createElement('div'); capability.className = 'ecosystem-project-capabilities';
+      for (const item of (Array.isArray(project.capabilities) ? project.capabilities : []).slice(0, 4)) { const chip=document.createElement('span'); chip.textContent=safeText(item); capability.append(chip); }
+      article.append(capability);
+      const actionUrl = project.id === 'awh' || safeUrl(project?.primary_action?.url);
+      if (actionUrl) { const action = document.createElement('button'); action.type='button'; action.className='ecosystem-project-action'; action.textContent = project.id === 'awh' ? 'เปิด AWH Workspace' : safeText(project?.primary_action?.label, 'เปิด'); action.addEventListener('click', () => openProject(project)); article.append(action); }
+      return article;
+    };
+    const query = safeText($('ecosystem-search-input')?.value).toLocaleLowerCase('th-TH');
+    const visibleProjects = query ? projects.filter((project) => [project?.name, project?.type, project?.stage, project?.summary, ...(Array.isArray(project?.capabilities) ? project.capabilities : [])].map((value) => safeText(value).toLocaleLowerCase('th-TH')).join(' ').includes(query)) : projects;
+    const preferredIds = ['bay-excuse-x','bay-learnlab','awh','school-website'];
+    for (const id of preferredIds) { const project=visibleProjects.find((item)=>item?.id===id); if(project) featured.append(card(project,true)); }
+    for (const project of visibleProjects) grid.append(card(project,false));
+    if (!visibleProjects.length) { const empty=document.createElement('div'); empty.className='ecosystem-empty'; empty.textContent='ยังอ่านทะเบียนโปรเจกต์จาก BAY Ecosystem ไม่ได้ โปรดใช้เมนู BAY ชั่วคราว'; grid.append(empty); }
+    const set=(id,value)=>{const node=$(id);if(node)node.textContent=String(value)};
+    set('ecosystem-project-count', projects.length);
+    set('ecosystem-active-count', projects.filter((item)=>item?.status==='active').length);
+    set('ecosystem-pilot-count', projects.filter((item)=>item?.status==='pilot').length);
+    set('ecosystem-release-count', releases.length);
+    const ownerTools=$('ecosystem-owner-tools'); if(ownerTools) ownerTools.hidden=state.control?.role!=='OWNER';
+  }
+
   function render(data) {
     setSurface(data);
     state.control = data?.control || { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน' };
@@ -815,11 +907,21 @@ import {
     const publicHome = $('public-home-view');
     if (publicHome) publicHome.hidden = authenticated;
     $('sign-in-view').hidden = true;
-    $('workspace-view').hidden = !authenticated;
-    document.body.classList.toggle('work-active', authenticated);
-    document.body.classList.toggle('public-home-active', !authenticated);
     $('account-open').hidden = !authenticated;
-    if (authenticated) renderWorkspace();
+    document.body.classList.toggle('public-home-active', !authenticated);
+    if (!authenticated) {
+      if ($('ecosystem-home-view')) $('ecosystem-home-view').hidden = true;
+      $('workspace-view').hidden = true;
+      document.body.classList.remove('work-active', 'ecosystem-home-active');
+      return;
+    }
+    renderWorkspace();
+    if (authenticatedSurfaceRequested()) {
+      if ($('ecosystem-home-view')) $('ecosystem-home-view').hidden = true;
+      $('workspace-view').hidden = false;
+      document.body.classList.add('work-active');
+      document.body.classList.remove('ecosystem-home-active');
+    } else showEcosystemHome({ replace: true });
   }
 
   async function refreshConversation(refreshList = true) {
@@ -923,7 +1025,7 @@ import {
     try {
       await login($('login-username').value, $('login-password').value, $('login-remember').checked);
       $('login-password').value = '';
-      state.control = await loadControlData(); render({ product: { shortName: 'AWH' }, control: state.control }); await refreshConversation();
+      state.control = await loadControlData(); render({ product: { shortName: 'AWH' }, control: state.control }); if (authenticatedSurfaceRequested()) await refreshConversation();
       message('login-message', '');
     } catch (error) { message('login-message', error instanceof Error ? error.message : 'เข้าสู่ AWH ไม่สำเร็จ'); }
   });
@@ -935,11 +1037,18 @@ import {
     window.requestAnimationFrame(() => $('login-username')?.focus());
   });
   $('.brand')?.addEventListener('click', (event) => {
-    if (state.control?.authenticated === true) return;
     event.preventDefault();
+    if (state.control?.authenticated === true) { showEcosystemHome(); return; }
     if ($('public-home-view')) $('public-home-view').hidden = false;
     $('sign-in-view').hidden = true;
     document.body.classList.add('public-home-active');
+  });
+  $('ecosystem-search-input')?.addEventListener('input', () => void renderEcosystemPortfolio());
+  window.addEventListener('awh:return-root-hub', () => showEcosystemHome());
+  window.addEventListener('popstate', () => {
+    if (!state.control?.authenticated) return;
+    if (authenticatedSurfaceRequested()) openAwhWorkspace(new URL(window.location.href).searchParams.get('awh-surface') || 'home', { history: false });
+    else showEcosystemHome({ replace: true });
   });
   $('registration-open')?.addEventListener('click', () => { message('registration-message',''); openSheet('registration-sheet'); });
   $('registration-form')?.addEventListener('submit', async (event) => {
@@ -1190,5 +1299,5 @@ import {
   $('logout-button').addEventListener('click', async () => { await logout().catch(() => undefined); window.location.reload(); });
 
   void loadPublicDesktopRelease();
-  loadWebData().then(async (data) => { render(data); if (window.location.hash === '#awh-recovery' || window.location.hash.startsWith('#awh-reset=')) openPasswordRecovery(); if (data?.control?.authenticated) { await refreshConversation(); try { state.productSettings = (await loadProductSettings()).settings; applyProductSettings(); } catch {} state.conversationTimer = window.setInterval(() => { if (!document.hidden && state.selectedConversationId) void loadConversation(state.selectedConversationId).then((value) => { state.conversation = value; renderWorkspace(); }).catch(() => undefined); }, 2000); state.refreshTimer = window.setInterval(() => { if (!document.hidden) void refreshWorkspace(false); }, 15_000); } }).catch(() => render({ product: { shortName: 'AWH' }, control: { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' } }));
+  loadWebData().then(async (data) => { render(data); if (window.location.hash === '#awh-recovery' || window.location.hash.startsWith('#awh-reset=')) openPasswordRecovery(); if (data?.control?.authenticated) { if (authenticatedSurfaceRequested()) await refreshConversation(); try { state.productSettings = (await loadProductSettings()).settings; applyProductSettings(); } catch {} state.conversationTimer = window.setInterval(() => { if (!document.hidden && state.selectedConversationId) void loadConversation(state.selectedConversationId).then((value) => { state.conversation = value; renderWorkspace(); }).catch(() => undefined); }, 2000); state.refreshTimer = window.setInterval(() => { if (!document.hidden) void refreshWorkspace(false); }, 15_000); } }).catch(() => render({ product: { shortName: 'AWH' }, control: { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' } }));
 })();

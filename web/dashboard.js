@@ -998,14 +998,15 @@ function mountDashboard() {
 }
 
 function installHomeButton() {
+  const goRootHub = () => window.dispatchEvent(new CustomEvent('awh:return-root-hub', { detail: { schemaVersion: 1 } }));
   const existing = $('dashboard-home-button');
   if (existing instanceof HTMLButtonElement) {
-    if (existing.dataset.awhBound !== '1') { existing.dataset.awhBound = '1'; existing.addEventListener('click', returnHome); }
+    if (existing.dataset.awhBound !== '1') { existing.dataset.awhBound = '1'; existing.addEventListener('click', goRootHub); }
     return;
   }
   const heading = document.querySelector('.workspace-heading');
   if (!(heading instanceof HTMLElement)) return;
-  const home = button('⌂ หน้าแรก', 'workspace-home', returnHome);
+  const home = button('⌂ หน้าแรก', 'workspace-home', goRootHub);
   home.id = 'dashboard-home-button';
   home.dataset.awhBound = '1';
   heading.prepend(home);
