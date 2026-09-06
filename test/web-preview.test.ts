@@ -69,6 +69,7 @@ test('one canonical light-first canvas is used by html, body, and the applicatio
   assert.match(designSystem, /--awh-canvas:\s*#f7f8fb/);
   assert.match(css, /--canvas:\s*var\(--awh-canvas\)/);
   assert.match(html, /awh-light-system\.css/);
+  assert.match(await readFile(join(ROOT, 'scripts', 'create-web-release-manifest.mjs'), 'utf8'), /awh-light-system\.css/);
   assert.match(designSystem, /color-scheme:\s*light/);
   assert.match(css, /html\s*\{[\s\S]*background-color:\s*var\(--canvas\)/);
   assert.match(css, /body\s*\{[\s\S]*background:\s*var\(--canvas\)/);
