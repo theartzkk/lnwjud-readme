@@ -22,7 +22,8 @@ test('AWH sustainability contract locks durable product and authority identity',
   assert.equal(contract.product.desktopBundleId, 'com.artworkspacehub.awh');
   assert.equal(contract.product.windowsPackageId, 'AWH');
   assert.equal(contract.authority.defaultApiBase, DEFAULT_AWH_HUB_API_BASE);
-  assert.equal(contract.authority.defaultApiBaseStatus, 'PROVISIONAL_IP_BOUND');
+  assert.equal(contract.authority.canonicalOrigin, 'https://kruart.online');
+  assert.equal(contract.authority.defaultApiBaseStatus, 'CANONICAL_DOMAIN');
   assert.equal(contract.authority.databaseEngine, 'SQLite');
   assert.equal(contract.authority.apiMajor, 'v1');
   assert.equal(contract.data.principle, 'Everything replaceable except identity and data');

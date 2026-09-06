@@ -12,18 +12,29 @@
     "cloudRole": "READYIDC_CONTROL_PLANE",
     "apiMajor": "v1",
     "defaultApiBase": "https://kruart.online/api/v1",
-    "defaultApiBaseStatus": "PROVISIONAL_IP_BOUND",
+    "defaultApiBaseStatus": "CANONICAL_DOMAIN",
     "databaseEngine": "SQLite",
     "databaseAuthority": "hub/migrations",
-    "projectIdentityAuthority": "Hub canonical project UUID"
+    "projectIdentityAuthority": "Hub canonical project UUID",
+    "canonicalOrigin": "https://kruart.online"
   },
   "release": {
     "defaultChannel": "stable",
-    "channels": ["stable", "preview"],
+    "channels": [
+      "stable",
+      "preview"
+    ],
     "evergreenDesktopRequired": true,
     "updaterStatus": "FOUNDATION_LOCKED_NOT_ACTIVATED",
     "desktopCompatibility": "current-and-previous-minor",
-    "stableRequires": ["ci", "hub-test", "package-runtime", "backup-verified", "migration-plan", "rollback-plan"]
+    "stableRequires": [
+      "ci",
+      "hub-test",
+      "package-runtime",
+      "backup-verified",
+      "migration-plan",
+      "rollback-plan"
+    ]
   },
   "data": {
     "principle": "Everything replaceable except identity and data",

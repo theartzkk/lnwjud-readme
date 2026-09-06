@@ -147,7 +147,7 @@ async function runScript(script, timeoutMs = 15 * 60_000) {
   const tsx = join(ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
   const testFiles = [
     'test/security.test.ts', 'test/files.test.ts', 'test/git.test.ts', 'test/process.test.ts',
-    'test/changes.test.ts', 'test/tasks.test.ts', 'test/project.test.ts', 'test/project-registry.test.ts', 'test/hub-contract.test.ts', 'test/device-identity.test.ts', 'test/web-preview.test.ts', 'test/root-portfolio-hub.test.ts', 'test/stdio.test.ts',
+    'test/changes.test.ts', 'test/tasks.test.ts', 'test/project.test.ts', 'test/project-registry.test.ts', 'test/hub-contract.test.ts', 'test/device-identity.test.ts', 'test/web-preview.test.ts', 'test/root-portfolio-hub.test.ts', 'test/canonical-domain.test.ts', 'test/stdio.test.ts',
     'test/tunnel.test.ts', 'test/codex.test.ts', 'test/settings.test.ts', 'test/deployment-foundation.test.ts', 'test/m4-control-plane.test.ts', 'test/control-plane-worker-client.test.ts', 'test/control-plane-worker-runtime.test.ts', 'test/qa-toolchain.test.ts', 'test/desktop.test.ts', 'test/desktop-projects.test.ts', 'test/credential-store.test.ts', 'test/enrollment-client.test.ts', 'test/bootstrap-provisioning.test.ts', 'test/bootstrap-orchestration.test.ts', 'test/autopilot.test.ts', 'test/first-run.test.ts', 'test/video.test.ts', 'test/release-identity.test.ts',
     'test/version.test.ts', 'test/installer.test.ts', 'test/central-project-authority-deployment.test.ts',
   ];
