@@ -11,6 +11,20 @@ final class HubManagedHostingException extends RuntimeException
     public function __construct(string $message, public readonly string $codeName='HOSTING_FAILED') { parent::__construct($message); }
 }
 
+final class HubDnsProviderAdapter
+{
+    public static function plan(string $hostname): array
+    {
+        $provider=strtoupper(trim((string)(getenv('AWH_DNS_PROVIDER')?:'MANUAL')));
+        if(!preg_match('/^[A-Z0-9_-]{2,32}$/',$provider))$provider='MANUAL';
+        $origin=(string)(getenv('AWH_CONTROL_ORIGIN')?:'https://kruart.online');
+        $authority=parse_url($origin,PHP_URL_HOST);$target=null;
+        if(is_string($authority)&&filter_var($authority,FILTER_VALIDATE_IP,FILTER_FLAG_IPV4)!==false)$target=$authority;
+        elseif(is_string($authority)&&$authority!==''){$answers=gethostbynamel($authority)?:[];foreach($answers as $answer)if(filter_var($answer,FILTER_VALIDATE_IP,FILTER_FLAG_IPV4)!==false){$target=$answer;break;}}
+        return ['provider'=>$provider,'mode'=>$provider==='MANUAL'?'MANUAL':'ADAPTER','automatic'=>false,'recordType'=>'A','hostname'=>$hostname,'target'=>$target,'targetAuthority'=>$authority?:null];
+    }
+}
+
 /**
  * Owner-facing Managed Site authority. Mutations materialize into the existing
  * canonical control_tasks/control_task_executions queue; this service is not a
@@ -24,7 +38,7 @@ final class HubManagedHostingService
     public function sites(string $token): array
     {
         $owner=$this->ownerSession($token); $q=$this->pdo->prepare("SELECT s.*,p.name AS project_name,b.binding_kind,b.host AS binding_host,b.port AS binding_port,b.tls_mode,b.state AS binding_state,d.engine AS db_engine,d.state AS db_state,(SELECT host FROM control_site_bindings x WHERE x.site_id=s.site_id AND x.binding_kind='DOMAIN' AND x.state<>'DISABLED' ORDER BY x.updated_at DESC LIMIT 1) AS domain_host,(SELECT state FROM control_site_bindings x WHERE x.site_id=s.site_id AND x.binding_kind='DOMAIN' AND x.state<>'DISABLED' ORDER BY x.updated_at DESC LIMIT 1) AS domain_state FROM control_managed_sites s JOIN projects p ON p.project_id=s.project_id LEFT JOIN control_site_bindings b ON b.site_id=s.site_id AND b.is_primary=1 AND b.state<>'DISABLED' LEFT JOIN control_site_database_bindings d ON d.site_id=s.site_id WHERE s.created_by_user_id=:owner ORDER BY CASE s.state WHEN 'READY' THEN 0 WHEN 'PROVISIONING' THEN 1 WHEN 'QUEUED' THEN 2 ELSE 3 END,s.updated_at DESC LIMIT 200");
-        $q->execute(['owner'=>$owner['user_id']]); return ['schemaVersion'=>1,'sites'=>array_map([self::class,'siteRow'],$q->fetchAll()),'policy'=>HubTrustPolicy::catalog(['hosting.site.create','hosting.site.deploy','hosting.site.rollback','hosting.site.disable','hosting.site.bind_domain'])];
+        $q->execute(['owner'=>$owner['user_id']]); $rows=array_map([self::class,'siteRow'],$q->fetchAll()); $root=strtolower(trim((string)(getenv('AWH_ROOT_DOMAIN')?:'kruart.online'))); return ['schemaVersion'=>1,'sites'=>$rows,'dns'=>HubDnsProviderAdapter::plan($root),'policy'=>HubTrustPolicy::catalog(['hosting.site.create','hosting.site.deploy','hosting.site.rollback','hosting.site.disable','hosting.site.bind_domain'])];
     }
 
     public function createSite(string $token,string $csrf,array $payload,?string $now=null): array
@@ -75,7 +89,7 @@ final class HubManagedHostingService
             $this->insertTask($task,$execution,(string)$owner['user_id'],(string)$site['project_id'],null,'เชื่อมโดเมน '.$hostname.' กับ '.$site['name'],'hosting.site.bind_domain',['mode'=>'HOSTING_BIND_DOMAIN','siteId'=>$site['site_id'],'bindingId'=>$binding,'hostname'=>$hostname],$at);
             $this->event((string)$site['site_id'],$task,'DOMAIN_REQUESTED','WAITING','AWH กำลังตรวจ DNS และ HTTPS ของ '.$hostname,$at);$this->pdo->exec('COMMIT');
         }catch(Throwable $error){$this->rollback();if($error instanceof HubManagedHostingException)throw $error;throw new HubManagedHostingException('Domain binding could not be queued','DOMAIN_BIND_FAILED');}
-        return ['siteId'=>$site['site_id'],'bindingId'=>$binding,'taskId'=>$task,'hostname'=>$hostname,'state'=>'REQUESTED'];
+        return ['siteId'=>$site['site_id'],'bindingId'=>$binding,'taskId'=>$task,'hostname'=>$hostname,'state'=>'REQUESTED','dnsPlan'=>HubDnsProviderAdapter::plan($hostname)];
     }
 
     public function disableSite(string $token,string $csrf,string $siteId,array $payload,?string $now=null): array
