@@ -263,8 +263,12 @@ async function lockCheck() {
 
 async function scriptCheck(id, script, summary, timeoutMs) {
   const started = Date.now();
+  process.stdout.write(`[RUN] ${id}: npm run ${script}\n`);
   const result = await runScript(script, timeoutMs);
-  check(id, result.code === 0 ? 'PASS' : 'FAIL', result.unavailable ? `${id} gate could not run; required local tool is unavailable` : result.timedOut ? `${id} gate timed out` : result.code === 0 ? summary : `${id} gate failed; exit code ${result.code}`, started);
+  const status = result.code === 0 ? 'PASS' : 'FAIL';
+  const detail = result.unavailable ? `${id} gate could not run; required local tool is unavailable` : result.timedOut ? `${id} gate timed out` : result.code === 0 ? summary : `${id} gate failed; exit code ${result.code}`;
+  check(id, status, detail, started);
+  process.stdout.write(`[${status}] ${id}: ${detail} (${durationSince(started)}ms)\n`);
   return result.code === 0;
 }
 
@@ -490,6 +494,8 @@ async function installerCheck() {
 
 async function main() {
   await mkdir(OUTPUT_DIR, { recursive: true });
+  process.stdout.write(`AWH QA ${mode.toUpperCase()} · started ${startedAt.toISOString()}\n`);
+  process.stdout.write('[RUN] environment and toolchain\n');
   await toolchainCheck();
   await lockCheck();
   const dependenciesReady = await dependencyCheck();
@@ -509,8 +515,10 @@ async function main() {
   }
 
   let git = { branch: null, head: null, dirty: false };
+  process.stdout.write('[RUN] git state\n');
   git = await gitCheck();
   if (mode !== 'fast') {
+    process.stdout.write('[RUN] extended local contracts\n');
     await requiredFilesCheck();
     await desktopReadinessCheck(dependenciesReady);
     if (dependenciesReady) {
@@ -523,6 +531,7 @@ async function main() {
     }
   }
   if (mode === 'full') {
+    process.stdout.write('[RUN] full desktop and installer gates\n');
     await desktopSmokeCheck(dependenciesReady);
     await installerCheck();
   }
