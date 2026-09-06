@@ -29,7 +29,7 @@ test('M17 Database Studio web release is owner-first, read-only, and emitted by 
     assert.match(app, /credentials:\s*'include'/);
     assert.match(app, /studioApi\('query'/);
     assert.doesNotMatch(app, /ยืนยันรหัสผ่าน.*SQL|STEP_UP_REQUIRED/);
-    assert.match(css, /--accent:#ff7a1a/);
+    assert.match(css, /--accent:var\(--awh-accent\)/);
     assert.doesNotMatch(`${html}\n${app}`, /localStorage|sessionStorage|document\.cookie|Authorization|Bearer\s+/i);
     assert.doesNotMatch(app, /innerHTML|outerHTML|insertAdjacentHTML/);
     assert.doesNotMatch(`${html}\n${app}`, /DELETE FROM|DROP TABLE|UPDATE .* SET|INSERT INTO/i);
