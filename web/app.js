@@ -22,6 +22,7 @@ import {
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => undefined);
 
   function message(id, value = '') { const node = $(id); if (node) node.textContent = value; }
+  function safeText(value, fallback = '') { return typeof value === 'string' && value.trim() ? value.trim() : fallback; }
   function date(value) { const time = Date.parse(value || ''); return Number.isFinite(time) ? new Date(time).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : ''; }
   function ensureStepUpForm() {
     const existing = $('step-up-form'); if (existing) return existing;
