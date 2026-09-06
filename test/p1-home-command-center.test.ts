@@ -60,3 +60,23 @@ test('Owner Night Shift reuses existing canonical work projections without a sha
   assert.match(css, /\.awh-night-grid/);
   assert.match(css, /@media\(max-width:760px\).*\.awh-night-grid\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/s);
 });
+
+
+test('Universal Search federates existing project, task, artifact and conversation authorities without a shadow index', async () => {
+  const dashboard = await read('web/dashboard.js');
+  const css = await read('web/dashboard.css');
+  assert.match(dashboard, /loadConversations/);
+  assert.match(dashboard, /localSearchResults/);
+  assert.match(dashboard, /dashboard-search-input/);
+  assert.match(dashboard, /ค้นหาทั้ง AWH/);
+  assert.match(dashboard, /project\.projectId/);
+  assert.match(dashboard, /task\.taskId/);
+  assert.match(dashboard, /artifact\.name/);
+  assert.match(dashboard, /conversation\.conversationId/);
+  assert.match(dashboard, /event\.metaKey \|\| event\.ctrlKey/);
+  assert.doesNotMatch(dashboard, /localStorage|sessionStorage|indexedDB/);
+  assert.doesNotMatch(dashboard, /\/api\/v1\/control\/search/);
+  assert.match(css, /\.awh-search-dialog/);
+  assert.match(css, /\.awh-search-result/);
+  assert.match(css, /@media\(max-width:540px\).*\.awh-search-card/s);
+});

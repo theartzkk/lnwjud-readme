@@ -1,4 +1,4 @@
-import { loadControlData, loadInfrastructure } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { loadControlData, loadConversations, loadInfrastructure } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 import { SCHOOL_TOOLS, OWNER_TOOLS } from './tool-registry.js?release=__AWH_WEB_RELEASE_ID__';
 import { LOCAL_TOOL_ACTIONS, mountSchoolTools, openPdfTool, openProjectFactoryTool, openQrTool, openSchoolDocumentTool } from './school-tools.js?release=__AWH_WEB_RELEASE_ID__';
 import { executionStatus } from './execution-ux.js?release=__AWH_WEB_RELEASE_ID__';
@@ -19,6 +19,8 @@ const state = {
   filesQuery: '',
   restoringSurface: false,
   infrastructure: null,
+  searchQuery: '',
+  searchSequence: 0,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -110,6 +112,117 @@ async function routeUniversalCommand(message, options = {}) {
 }
 
 globalThis.AWH_ROUTE_COMMAND = routeUniversalCommand;
+
+function normalizeSearch(value) {
+  return safeText(value).toLocaleLowerCase('th-TH');
+}
+
+function localSearchResults(query) {
+  const needle = normalizeSearch(query);
+  if (!needle) return [];
+  const control = state.control || {};
+  const projects = Array.isArray(control.projects) ? control.projects : [];
+  const tasks = Array.isArray(control.tasks) ? control.tasks : [];
+  const artifacts = Array.isArray(control.artifacts) ? control.artifacts : [];
+  const rows = [];
+  for (const project of projects) {
+    const haystack = [project?.name, project?.type].map(normalizeSearch).join(' ');
+    if (haystack.includes(needle)) rows.push({ kind: 'PROJECT', title: safeText(project.name, 'โปรเจกต์'), meta: 'โปรเจกต์', action: () => navigateWork(project.projectId) });
+  }
+  for (const task of tasks) {
+    const project = projects.find((entry) => entry.projectId === task.projectId);
+    const haystack = [task?.goal, task?.resultSummary, project?.name].map(normalizeSearch).join(' ');
+    if (haystack.includes(needle)) rows.push({ kind: 'TASK', title: safeText(task.goal, 'งาน AWH'), meta: `${safeText(project?.name, 'โปรเจกต์')} · งาน`, action: () => openTaskSurface('all', task.taskId) });
+  }
+  for (const artifact of artifacts) {
+    const project = projects.find((entry) => entry.projectId === artifact.projectId);
+    const haystack = [artifact?.name, artifact?.kind, project?.name].map(normalizeSearch).join(' ');
+    if (haystack.includes(needle)) rows.push({ kind: 'FILE', title: safeText(artifact.name, 'ไฟล์จาก AWH'), meta: `${safeText(project?.name, 'โปรเจกต์')} · ไฟล์`, action: () => openFilesSurface(artifact.name || '') });
+  }
+  const shortcuts = [
+    { terms: 'ระบบ vps server infrastructure backup storage สถานะ', title: 'สถานะระบบ AWH', meta: 'ระบบ', ownerOnly: true, action: () => location.assign('./infrastructure.html') },
+    { terms: 'ฐานข้อมูล database studio', title: 'Database Studio', meta: 'ระบบ', ownerOnly: true, action: () => location.assign('./database.html') },
+    { terms: 'hosting เว็บไซต์ โฮสติ้ง', title: 'Hosting Center', meta: 'ระบบ', ownerOnly: true, action: () => location.assign('./hosting.html') },
+    { terms: 'bay ecosystem โรงเรียน learnlab excuse', title: 'BAY Ecosystem', meta: 'ระบบโรงเรียน', ownerOnly: false, action: () => location.assign('./bay/') },
+  ];
+  for (const shortcut of shortcuts) if ((!shortcut.ownerOnly || control.role === 'OWNER') && normalizeSearch(`${shortcut.terms} ${shortcut.title}`).includes(needle)) rows.push({ kind: 'SYSTEM', title: shortcut.title, meta: shortcut.meta, action: shortcut.action });
+  return rows.slice(0, 18);
+}
+
+function renderSearchResults(rows, query, loading = false) {
+  const host = $('dashboard-search-results');
+  const status = $('dashboard-search-status');
+  if (!host || !status) return;
+  host.replaceChildren();
+  if (!query) { status.textContent = 'ค้นหาจากโปรเจกต์ งาน ไฟล์ ห้องงาน และระบบที่คุณมีสิทธิ์เข้าถึง'; return; }
+  status.textContent = loading ? 'กำลังค้นหาห้องงานเพิ่มเติม…' : `${rows.length} ผลลัพธ์`;
+  if (!rows.length && !loading) {
+    const empty = document.createElement('div'); empty.className = 'awh-search-empty'; empty.textContent = 'ไม่พบสิ่งที่ตรงกับคำค้น ลองใช้คำสั้นลงหรือพิมพ์สิ่งที่ต้องการในช่อง AWH'; host.append(empty); return;
+  }
+  for (const row of rows) {
+    const item = button('', 'awh-search-result', () => { closeUniversalSearch(); row.action(); });
+    const kind = document.createElement('span'); kind.className = 'awh-search-kind'; kind.textContent = ({ PROJECT: 'โปรเจกต์', TASK: 'งาน', FILE: 'ไฟล์', CONVERSATION: 'ห้องงาน', SYSTEM: 'ระบบ' })[row.kind] || 'รายการ';
+    const copy = document.createElement('span');
+    const title = document.createElement('strong'); title.textContent = row.title;
+    const meta = document.createElement('small'); meta.textContent = row.meta;
+    copy.append(title, meta); item.append(kind, copy); host.append(item);
+  }
+}
+
+async function runUniversalSearch(query) {
+  const value = String(query || '').trim().slice(0, 120);
+  state.searchQuery = value;
+  const sequence = ++state.searchSequence;
+  const local = localSearchResults(value);
+  renderSearchResults(local, value, value.length >= 2);
+  if (value.length < 2) return;
+  const projects = (Array.isArray(state.control?.projects) ? state.control.projects : []).slice(0, 8);
+  const conversationGroups = await Promise.all(projects.map(async (project) => {
+    try {
+      const conversations = await loadConversations(project.projectId, value);
+      return conversations.slice(0, 5).map((conversation) => ({ kind: 'CONVERSATION', title: safeText(conversation.title, 'ห้องงาน'), meta: `${safeText(project.name, 'โปรเจกต์')} · ห้องงาน`, action: () => navigateWork(project.projectId, conversation.conversationId) }));
+    } catch { return []; }
+  }));
+  if (sequence !== state.searchSequence) return;
+  const merged = [...local, ...conversationGroups.flat()].slice(0, 24);
+  renderSearchResults(merged, value, false);
+}
+
+function openUniversalSearch() {
+  if (!state.control?.authenticated) return;
+  const dialog = $('dashboard-search');
+  const input = $('dashboard-search-input');
+  if (!(dialog instanceof HTMLElement) || !(input instanceof HTMLInputElement)) return;
+  dialog.hidden = false;
+  document.body.classList.add('awh-overlay-open');
+  input.value = state.searchQuery;
+  renderSearchResults(localSearchResults(state.searchQuery), state.searchQuery, false);
+  window.setTimeout(() => { input.focus(); input.select(); }, 0);
+}
+
+function closeUniversalSearch() {
+  const dialog = $('dashboard-search');
+  if (dialog instanceof HTMLElement) dialog.hidden = true;
+  document.body.classList.remove('awh-overlay-open');
+  state.searchSequence += 1;
+}
+
+function createUniversalSearch() {
+  const dialog = document.createElement('section');
+  dialog.id = 'dashboard-search';
+  dialog.className = 'awh-search-dialog';
+  dialog.hidden = true;
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-labelledby', 'dashboard-search-title');
+  dialog.innerHTML = '<div class="awh-search-backdrop" data-search-close></div><div class="awh-search-card"><div class="awh-search-head"><div><span>ค้นหาทั้ง AWH</span><h2 id="dashboard-search-title">หาอะไรก็ได้จากที่เดียว</h2></div><button type="button" data-search-close aria-label="ปิดการค้นหา">ปิด</button></div><input id="dashboard-search-input" type="search" maxlength="120" autocomplete="off" placeholder="เช่น LearnLab, รายงาน, งานเมื่อคืน…" aria-describedby="dashboard-search-status" /><small id="dashboard-search-status">ค้นหาจากโปรเจกต์ งาน ไฟล์ ห้องงาน และระบบที่คุณมีสิทธิ์เข้าถึง</small><div id="dashboard-search-results" class="awh-search-results" role="list"></div></div>';
+  dialog.querySelectorAll('[data-search-close]').forEach((node) => node.addEventListener('click', closeUniversalSearch));
+  const input = dialog.querySelector('#dashboard-search-input');
+  let timer = null;
+  input?.addEventListener('input', () => { if (timer) clearTimeout(timer); timer = window.setTimeout(() => runUniversalSearch(input.value), 140); });
+  input?.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeUniversalSearch(); });
+  return dialog;
+}
 
 function mountPromptShortcuts(hero) {
   const row = document.createElement('div');
@@ -663,7 +776,14 @@ function mountDashboard() {
   attach.textContent = '＋';
   const hint = document.createElement('span');
   hint.textContent = 'บอกเป็นภาษาปกติได้เลย';
-  commandTools.append(attach, hint);
+  const search = document.createElement('button');
+  search.type = 'button';
+  search.id = 'dashboard-search-open';
+  search.className = 'awh-command-search';
+  search.textContent = 'ค้นหา ⌘K';
+  search.setAttribute('aria-label', 'ค้นหาทั้ง AWH');
+  search.addEventListener('click', openUniversalSearch);
+  commandTools.append(attach, hint, search);
   const send = document.createElement('button');
   send.type = 'submit';
   send.className = 'awh-command-send';
@@ -770,7 +890,8 @@ function mountDashboard() {
   owner.append(ownerGrid);
 
   const imageTool = createImageTool();
-  dashboard.append(hero, continuity, pulse, nightShift, taskSurface, filesSurface, tools, overview, files, owner, imageTool);
+  const searchDialog = createUniversalSearch();
+  dashboard.append(hero, continuity, pulse, nightShift, taskSurface, filesSurface, tools, overview, files, owner, imageTool, searchDialog);
   mountProductNavigation(dashboard);
   mountSchoolTools(dashboard);
   main.append(dashboard);
@@ -797,6 +918,10 @@ function mountDashboard() {
   nightShift.querySelectorAll('[data-night-filter]').forEach((node) => node.addEventListener('click', () => openTaskSurface(node.dataset.nightFilter || 'all')));
   installHomeButton();
   mountMobileNavigation();
+  document.addEventListener('keydown', (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); openUniversalSearch(); }
+    else if (event.key === 'Escape' && !$('dashboard-search')?.hidden) closeUniversalSearch();
+  });
   state.mounted = true;
 }
 
