@@ -194,11 +194,12 @@ $rewriteLocation = static function (array $location, array &$remove, array &$ins
 foreach ($meta['directAuth'] as $index) $remove[$index] = true;
 for ($index = $target['start'] + 1; $index < $target['end']; $index++) {
     if ($beforeDepth[$index] !== $target['startDepth'] + 1) continue;
-    if (preg_match('/^\s*add_header\s+(Strict-Transport-Security|Permissions-Policy)\b[^;]*;/i', $lines[$index]) === 1) $remove[$index] = true;
+    if (preg_match('/^\s*add_header\s+(Strict-Transport-Security|Permissions-Policy|Content-Security-Policy)\b[^;]*;/i', $lines[$index]) === 1) $remove[$index] = true;
 }
 $insertBefore[$target['start'] + 1] = array_merge($insertBefore[$target['start'] + 1] ?? [], [
     '    add_header Strict-Transport-Security "max-age=15552000" always;',
     '    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;',
+    "    add_header Content-Security-Policy \"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'\" always;",
 ]);
 if (count($meta['directAuth']) !== 0 && count($meta['directAuth']) !== 2 && !(count($meta['directAuth']) === 1 && preg_match('/^\s*auth_basic\s+off\s*;/i', $lines[$meta['directAuth'][0]]) === 1)) {
     fwrite(STDERR, "Server-level Basic Auth directives must be a complete reviewed pair\n");

@@ -92,6 +92,9 @@ test('owner-auth transformation matches the real ReadyIDC topology and is idempo
     assert.equal((rendered.match(new RegExp(`include ${CONTROL.replaceAll('/', '\\/')};`, 'g')) ?? []).length, 1);
     assert.match(rendered, /fastcgi_pass unix:\/run\/php\/php8\.3-fpm\.sock;/);
     assert.match(rendered, /AWH_HUB_DB_PATH \/var\/lib\/awh-hub\/awh\.sqlite;/);
+    assert.match(rendered, /Strict-Transport-Security \"max-age=15552000\" always/);
+    assert.ok(rendered.includes('add_header Permissions-Policy \"camera=(), microphone=(), geolocation=(), payment=(), usb=()\" always;'));
+    assert.match(rendered, /Content-Security-Policy .*frame-ancestors 'none'.* always/);
   } finally {
     await rm(firstRoot, { recursive: true, force: true });
   }

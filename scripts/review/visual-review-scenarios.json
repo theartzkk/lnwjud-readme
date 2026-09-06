@@ -14,10 +14,16 @@
   ],
   "scenarios": [
     {
+      "id": "root-portfolio",
+      "surface": "root",
+      "action": "open authenticated Art’s Workspace Hub root",
+      "expected": "project/system portfolio renders from existing registry authority; AWH mobile navigation is not visible; no runtime exception"
+    },
+    {
       "id": "home-empty",
       "surface": "home",
-      "action": "open authenticated AWH with no active work",
-      "expected": "real composer is immediately usable; no backend status language; three mobile destinations maximum"
+      "action": "open AWH Workspace with no active work",
+      "expected": "operational workspace is behind Root Portfolio; real composer remains usable; no backend status language; three mobile destinations maximum"
     },
     {
       "id": "question-identity",

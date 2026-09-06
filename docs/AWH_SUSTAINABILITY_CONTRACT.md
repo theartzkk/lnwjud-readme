@@ -18,7 +18,7 @@ Stable releases require CI, Hub regression tests, packaged runtime verification,
 
 Desktop is install-once/evergreen. Windows keeps one stable Squirrel package identity. macOS keeps one stable bundle identifier. Update channels are `stable` and `preview`; changing channel never creates a second AWH identity.
 
-The current `sslip.io` Hub endpoint is a launch endpoint, not permanent naming. Before the VPS/IP is ever replaced, AWH must gain a durable hostname or endpoint-discovery cutover so already-installed clients can migrate without reinstalling.
+`https://kruart.online` is the durable canonical AWH public origin. The former `sslip.io` endpoint is legacy redirect/recovery infrastructure only and must never reappear as a default client, registry, UI, or release authority. If the VPS/IP changes, DNS and the canonical hostname move while installed clients continue using `kruart.online` without reinstalling.
 
 ## Backup and recovery contract
 
