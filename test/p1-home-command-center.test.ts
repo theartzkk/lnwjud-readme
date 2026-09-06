@@ -80,3 +80,20 @@ test('Universal Search federates existing project, task, artifact and conversati
   assert.match(css, /\.awh-search-result/);
   assert.match(css, /@media\(max-width:540px\).*\.awh-search-card/s);
 });
+
+
+test('Attention Center reuses tasks, approvals and owner infrastructure projections without a notification authority', async () => {
+  const dashboard = await read('web/dashboard.js');
+  const css = await read('web/dashboard.css');
+  assert.match(dashboard, /attentionCenterItems/);
+  assert.match(dashboard, /dashboard-attention-center/);
+  assert.match(dashboard, /WAITING_FOR_APPROVAL/);
+  assert.match(dashboard, /state\.control\?\.approvals/);
+  assert.match(dashboard, /state\.infrastructure/);
+  assert.match(dashboard, /backup\?\.freshness/);
+  assert.match(dashboard, /productionComplete\?\.checks/);
+  assert.match(dashboard, /openTaskSurface\('attention'/);
+  assert.doesNotMatch(dashboard, /notificationQueue|notifications\/create|\/api\/v1\/control\/notifications/);
+  assert.match(css, /\.awh-attention-center/);
+  assert.match(css, /\.awh-attention-action/);
+});

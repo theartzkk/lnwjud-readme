@@ -361,7 +361,7 @@ function setDashboardView(view) {
   if (!dashboard) return;
   const taskSurface = $('dashboard-tasks');
   const filesSurface = $('dashboard-files');
-  const homeIds = ['dashboard-welcome', 'dashboard-hero', 'dashboard-continuity', 'dashboard-pulse', 'dashboard-night-shift', 'awh-home-tools', 'dashboard-overview', 'awh-home-files', 'dashboard-owner-center'];
+  const homeIds = ['dashboard-welcome', 'dashboard-hero', 'dashboard-continuity', 'dashboard-pulse', 'dashboard-attention-center', 'dashboard-night-shift', 'awh-home-tools', 'dashboard-overview', 'awh-home-files', 'dashboard-owner-center'];
   const showingTasks = view === 'tasks';
   const showingFiles = view === 'files';
   for (const id of homeIds) {
@@ -412,6 +412,54 @@ function pulseAttentionItems() {
     failed: tasks.filter((task) => task?.state === 'FAILED').length,
     approvals: approvals.filter((item) => ['PENDING', 'WAITING'].includes(item?.state || item?.status)).length,
   };
+}
+
+function attentionCenterItems() {
+  const tasks = Array.isArray(state.control?.tasks) ? state.control.tasks : [];
+  const approvals = Array.isArray(state.control?.approvals) ? state.control.approvals : [];
+  const projects = Array.isArray(state.control?.projects) ? state.control.projects : [];
+  const rows = [];
+  const approvalTaskIds = new Set(approvals.filter((item) => ['PENDING', 'WAITING'].includes(item?.state || item?.status)).map((item) => item?.taskId).filter(Boolean));
+  for (const task of tasks.filter((item) => item?.state === 'WAITING_FOR_APPROVAL' || approvalTaskIds.has(item?.taskId)).sort(compareRecent).slice(0, 3)) {
+    const project = projects.find((item) => item.projectId === task.projectId);
+    rows.push({ priority: 'DECISION', title: safeText(task.goal, 'งานรอการตัดสินใจ'), detail: `${safeText(project?.name, 'โปรเจกต์')} · รอการอนุมัติ`, actionLabel: 'เปิดงาน', action: () => openTaskSurface('attention', task.taskId) });
+  }
+  for (const task of tasks.filter((item) => item?.state === 'FAILED').sort(compareRecent).slice(0, 3)) {
+    const project = projects.find((item) => item.projectId === task.projectId);
+    rows.push({ priority: 'CHECK', title: safeText(task.goal, 'งานที่ต้องตรวจสอบ'), detail: `${safeText(project?.name, 'โปรเจกต์')} · งานหยุดก่อนเสร็จ`, actionLabel: 'ตรวจสอบ', action: () => openTaskSurface('attention', task.taskId) });
+  }
+  if (state.control?.role === 'OWNER') {
+    const infra = state.infrastructure || {};
+    if (infra?.database?.state && infra.database.state !== 'HEALTHY') rows.push({ priority: 'SYSTEM', title: 'Database ต้องตรวจสอบ', detail: `สถานะ ${infra.database.state}`, actionLabel: 'เปิดระบบ', action: () => location.assign('./infrastructure.html') });
+    const backupState = infra?.backup?.state;
+    const freshness = infra?.backup?.freshness?.state;
+    if (backupState && (backupState !== 'VERIFIED' || freshness === 'STALE')) rows.push({ priority: 'SYSTEM', title: 'Backup ต้องตรวจสอบ', detail: backupState !== 'VERIFIED' ? `สถานะ ${backupState}` : 'Backup ล่าสุดเก่าเกินช่วงที่กำหนด', actionLabel: 'เปิด Recovery', action: () => location.assign('./infrastructure.html') });
+    if (infra?.telemetry?.state && infra.telemetry.state !== 'READY') rows.push({ priority: 'SYSTEM', title: 'ข้อมูล VPS ยังไม่สด', detail: 'ตรวจ Agent Runtime และบริการส่วนกลาง', actionLabel: 'เปิดระบบ', action: () => location.assign('./infrastructure.html') });
+    const failedChecks = (Array.isArray(infra?.productionComplete?.checks) ? infra.productionComplete.checks : []).filter((check) => check?.pass === false).slice(0, 2);
+    for (const check of failedChecks) rows.push({ priority: 'SYSTEM', title: safeText(check.label, 'Production check ต้องตรวจสอบ'), detail: safeText(check.evidence, 'ยังไม่มีหลักฐานผ่าน'), actionLabel: 'ดูหลักฐาน', action: () => location.assign('./infrastructure.html') });
+  }
+  return rows.slice(0, 6);
+}
+
+function renderAttentionCenter() {
+  const section = $('dashboard-attention-center');
+  const host = $('dashboard-attention-list');
+  if (!(section instanceof HTMLElement) || !host) return;
+  const rows = attentionCenterItems();
+  section.hidden = rows.length === 0;
+  host.replaceChildren();
+  const count = $('dashboard-attention-count');
+  if (count) count.textContent = rows.length ? `${rows.length} รายการ` : 'ไม่มีรายการค้าง';
+  for (const row of rows) {
+    const item = document.createElement('article'); item.className = `awh-attention-item priority-${row.priority.toLowerCase()}`;
+    const mark = document.createElement('span'); mark.className = 'awh-attention-mark'; mark.textContent = row.priority === 'DECISION' ? '!' : row.priority === 'CHECK' ? '↻' : '◇'; mark.setAttribute('aria-hidden', 'true');
+    const copy = document.createElement('span');
+    const title = document.createElement('strong'); title.textContent = row.title;
+    const detail = document.createElement('small'); detail.textContent = row.detail;
+    copy.append(title, detail);
+    const action = button(row.actionLabel, 'awh-attention-action', row.action);
+    item.append(mark, copy, action); host.append(item);
+  }
 }
 
 function renderHomePulse() {
@@ -817,6 +865,12 @@ function mountDashboard() {
   pulse.className = 'awh-home-section awh-pulse';
   pulse.innerHTML = '<div class="awh-section-heading"><div><span>ภาพรวมตอนนี้</span><h2>รู้ทันงานในไม่กี่วินาที</h2></div><small>ข้อมูลล่าสุดจาก AWH · กดการ์ดเพื่อไปต่อ</small></div><div class="awh-pulse-grid"><button id="dashboard-pulse-projects-card" class="awh-pulse-card" type="button" data-pulse-target="projects"><span class="awh-pulse-icon">◫</span><span><strong id="dashboard-pulse-projects">—</strong><small>โปรเจกต์</small><em id="dashboard-pulse-projects-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-active-card" class="awh-pulse-card" type="button" data-pulse-target="work"><span class="awh-pulse-icon">↻</span><span><strong id="dashboard-pulse-active">—</strong><small>กำลังทำอยู่</small><em id="dashboard-pulse-active-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-artifacts-card" class="awh-pulse-card" type="button" data-pulse-target="files"><span class="awh-pulse-icon">▤</span><span><strong id="dashboard-pulse-artifacts">—</strong><small>ผลลัพธ์</small><em id="dashboard-pulse-artifacts-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-attention-card" class="awh-pulse-card attention" type="button" data-pulse-target="work"><span class="awh-pulse-icon">!</span><span><strong id="dashboard-pulse-attention">—</strong><small>ต้องดู</small><em id="dashboard-pulse-attention-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-workers-card" class="awh-pulse-card owner-pulse" type="button" data-pulse-target="devices" hidden><span class="awh-pulse-icon">◇</span><span><strong id="dashboard-pulse-workers">—</strong><small>อุปกรณ์พร้อม</small><em id="dashboard-pulse-workers-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-owner-system-card" class="awh-pulse-card owner-pulse awh-system-pulse" type="button" data-pulse-target="system" hidden><span class="awh-pulse-icon">⌘</span><span><strong id="dashboard-owner-system">AWH System</strong><small id="dashboard-owner-system-state">กำลังตรวจ VPS…</small><em id="dashboard-owner-system-detail">CPU · RAM · Disk · Production</em></span></button></div>';
 
+  const attentionCenter = document.createElement('section');
+  attentionCenter.id = 'dashboard-attention-center';
+  attentionCenter.className = 'awh-home-section awh-attention-center';
+  attentionCenter.hidden = true;
+  attentionCenter.innerHTML = '<div class="awh-attention-head"><div><span>ต้องดู</span><h2>สิ่งที่ต้องจัดการก่อน</h2><small>เฉพาะรายการที่ต้องตัดสินใจ แก้ไข หรือมีผลต่อความพร้อมของระบบ</small></div><strong id="dashboard-attention-count">0 รายการ</strong></div><div id="dashboard-attention-list" class="awh-attention-list"></div>';
+
   const nightShift = document.createElement('section');
   nightShift.id = 'dashboard-night-shift';
   nightShift.className = 'awh-home-section awh-night-shift';
@@ -891,7 +945,7 @@ function mountDashboard() {
 
   const imageTool = createImageTool();
   const searchDialog = createUniversalSearch();
-  dashboard.append(hero, continuity, pulse, nightShift, taskSurface, filesSurface, tools, overview, files, owner, imageTool, searchDialog);
+  dashboard.append(hero, continuity, pulse, attentionCenter, nightShift, taskSurface, filesSurface, tools, overview, files, owner, imageTool, searchDialog);
   mountProductNavigation(dashboard);
   mountSchoolTools(dashboard);
   main.append(dashboard);
@@ -1196,6 +1250,7 @@ async function refreshDashboard() {
   state.infrastructure = control.role === 'OWNER' ? await loadInfrastructure().catch(() => null) : null;
   renderRole();
   renderHomePulse();
+  renderAttentionCenter();
   renderOwnerSystemSummary();
   renderOwnerNightShift();
   renderContinuity();
