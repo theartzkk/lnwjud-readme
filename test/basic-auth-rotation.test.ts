@@ -29,7 +29,7 @@ const runCommand = (command: string, env: NodeJS.ProcessEnv, input: string, allo
 test('Basic Auth primitive has a fixed asset, host, user and no secret-bearing shell path', async () => {
   const path = validateAssets();
   const source = await readFile(path, 'utf8');
-  assert.equal(BASIC_AUTH_HOST, '157-85-108-142.sslip.io');
+  assert.equal(BASIC_AUTH_HOST, 'kruart.online');
   assert.equal(BASIC_AUTH_USER, 'awh-preview');
   assert.equal(BASIC_AUTH_KEY, 'awh/preview-basic-auth-password');
   assert.match(source, /test ! -L "\$F"/);

@@ -146,18 +146,18 @@ test('production deployment keeps the longer bounded timeout and preserves stage
 });
 
 test('production deployment receives only a validated public Hub hostname', async () => {
-  assert.equal(validatedHubHostname('https://157-85-108-142.sslip.io/api/v1'), '157-85-108-142.sslip.io');
+  assert.equal(validatedHubHostname('https://kruart.online/api/v1'), 'kruart.online');
   assert.throws(() => validatedHubHostname('https://127.0.0.1/api/v1'), /hostname/i);
   assert.throws(() => validatedHubHostname('https://*.example/api/v1'), /hostname/i);
   let receivedOptions;
   await runGuardedDeployment({
-    hubHostname: '157-85-108-142.sslip.io',
+    hubHostname: 'kruart.online',
     runImpl: async (_executable, _args, options) => {
       receivedOptions = options;
       return { exitCode: 0, stdout: 'DEPLOY_STAGE=RELEASE_STAGED\nDEPLOY_RESULT=PASS\n' };
     },
   });
-  assert.equal(receivedOptions.env.AWH_HUB_HOSTNAME, '157-85-108-142.sslip.io');
+  assert.equal(receivedOptions.env.AWH_HUB_HOSTNAME, 'kruart.online');
 });
 
 test('real deployment timeout is sanitized and retains safe stages received before timeout', { skip: process.platform === 'win32' }, async () => {

@@ -11,7 +11,7 @@
   "authority": {
     "cloudRole": "READYIDC_CONTROL_PLANE",
     "apiMajor": "v1",
-    "defaultApiBase": "https://157-85-108-142.sslip.io/api/v1",
+    "defaultApiBase": "https://kruart.online/api/v1",
     "defaultApiBaseStatus": "PROVISIONAL_IP_BOUND",
     "databaseEngine": "SQLite",
     "databaseAuthority": "hub/migrations",

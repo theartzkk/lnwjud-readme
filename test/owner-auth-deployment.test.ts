@@ -11,7 +11,7 @@ const ROOT = process.cwd();
 const PHP = process.env.AWH_TEST_PHP?.trim() || 'php';
 const helper = join(ROOT, 'deploy/nginx/transform-owner-auth.php');
 const originRenderer = join(ROOT, 'deploy/nginx/render-control-plane-include.php');
-const HOST = '157-85-108-142.sslip.io';
+const HOST = 'kruart.online';
 const AWH_FPM_SOCKET = '/run/php/php8.3-fpm-awh.sock';
 const ENROLLMENT = '/opt/awh-hub/enrollment-current/deploy/nginx/awh-enrollment.conf';
 const CONTROL = '/opt/awh-hub/control-plane-current/deploy/nginx/awh-control-plane.conf';
@@ -84,7 +84,7 @@ test('owner-auth transformation matches the real ReadyIDC topology and is idempo
     assert.match(rendered, /location = \/api\/v1\/auth\/login \{\n        auth_basic off;/);
     assert.match(rendered, /location = \/api\/v1\/auth\/session \{\n        auth_basic off;/);
     assert.ok(rendered.indexOf('location = /api/v1/auth/login {') < rendered.indexOf('location ^~ /api/v1/ {'));
-    assert.match(rendered, /fastcgi_param AWH_CONTROL_ORIGIN https:\/\/157-85-108-142\.sslip\.io;/);
+    assert.match(rendered, /fastcgi_param AWH_CONTROL_ORIGIN https:\/\/kruart\.online;/);
     assert.match(rendered, /fastcgi_pass unix:\/run\/php\/php8\.3-fpm-awh\.sock;/);
     assert.match(rendered, /location \/ \{\n        auth_basic off;/);
     assert.match(rendered, /location \^~ \/preview\/ \{\n        auth_basic "AWH Remote Preview";/);

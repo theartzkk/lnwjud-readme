@@ -49,7 +49,7 @@ engine ใช้ SSH target และ exact release bundle โดยไม่พ
 cd /Users/mac/Documents/ChatGPT/lnwjud-readme
 AWH_SOURCE_ROOT=/Users/mac/Documents/ChatGPT/lnwjud-readme \
 AWH_DEPLOY_TARGET=awh-ready \
-AWH_HUB_HOSTNAME=157-85-108-142.sslip.io \
+AWH_HUB_HOSTNAME=kruart.online \
 AWH_RELEASE_COMMIT=<approved-release-sha> \
 ./deploy/awh-control-plane/deploy-control-plane.sh --deploy --approve --cleanup-topology
 ```

@@ -63,7 +63,7 @@ test('normal packaged runtime defaults to the ReadyIDC authority without a legac
     delete process.env.ART_AGENT_WORKSPACE;
     delete process.env.AWH_HUB_API_BASE;
     delete process.env.ART_AGENT_HUB_API_BASE;
-    assert.equal(DEFAULT_AWH_HUB_API_BASE, 'https://157-85-108-142.sslip.io/api/v1');
+    assert.equal(DEFAULT_AWH_HUB_API_BASE, 'https://kruart.online/api/v1');
     assert.equal(loadConfig().hubApiBase, DEFAULT_AWH_HUB_API_BASE);
     assert.doesNotMatch(loadConfig().hubApiBase, /136-66-217-63|127\.0\.0\.1|localhost/);
   } finally {

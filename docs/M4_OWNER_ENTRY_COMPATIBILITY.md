@@ -22,7 +22,7 @@ this command is documentation and was not run by this change:
 cd /Users/mac/Documents/ChatGPT/lnwjud-readme
 AWH_SOURCE_ROOT=/Users/mac/Documents/ChatGPT/lnwjud-readme \
 AWH_DEPLOY_TARGET=awh-ready \
-AWH_HUB_HOSTNAME=157-85-108-142.sslip.io \
+AWH_HUB_HOSTNAME=kruart.online \
 AWH_ENROLLMENT_RELEASE_ID=m3e2-<release-sha-prefix> \
 AWH_RELEASE_COMMIT=<exact-clean-release-sha> \
 ./deploy/awh-enrollment/deploy-enrollment.sh --deploy --compat-refresh

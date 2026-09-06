@@ -4,7 +4,7 @@ import { loadStoredSettings } from './settings.js';
 
 // Non-secret production authority used by packaged AWH when no explicit
 // environment override is present. Credentials remain OS-store-only.
-export const DEFAULT_AWH_HUB_API_BASE = 'https://157-85-108-142.sslip.io/api/v1';
+export const DEFAULT_AWH_HUB_API_BASE = 'https://kruart.online/api/v1';
 
 export interface ArtAgentConfig {
   workspace: string;

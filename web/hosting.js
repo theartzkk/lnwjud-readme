@@ -3,7 +3,7 @@ const $=(id)=>document.getElementById(id);let control=null;let sites=[];let poli
 const statusLabel=(state)=>({READY:'พร้อมใช้งาน',PROVISIONING:'กำลังเตรียม',QUEUED:'รอดำเนินการ',FAILED:'ต้องตรวจสอบ',DISABLED:'ปิดการเผยแพร่'})[state]||state||'ไม่ทราบ';
 const runtimeLabel=(value)=>({AUTO:'อัตโนมัติ',PHP:'PHP',NODE:'Node',STATIC:'Static'})[value]||value||'—';
 function slugify(value){return value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,48);}
-function previewBase(){const origin=window.location.origin&&window.location.origin!=='null'?window.location.origin:'https://157-85-108-142.sslip.io';return origin.replace(/\/$/,'');}
+function previewBase(){const origin=window.location.origin&&window.location.origin!=='null'?window.location.origin:'https://kruart.online';return origin.replace(/\/$/,'');}
 function renderUrlPreview(){const slug=$('site-slug').value.trim();$('site-url-preview').textContent=slug?`${previewBase()}/${slug}/`:`${previewBase()}/ชื่อย่อ/`;}
 async function mutate(action,retried=false){try{return await action();}catch(error){if(error?.code==='CSRF_REJECTED'&&!retried){await loadAuthSession();return mutate(action,true);}throw error;}}
 function policy(action){return policies[`hosting.site.${action}`]||{risk:'MEDIUM',confirmationRequired:true,stepUpRequired:false};}

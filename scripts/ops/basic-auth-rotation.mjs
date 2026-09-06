@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { createProductionCredentialStore } from '../../dist/credential-store.js';
 
 export const BASIC_AUTH_KEY = 'awh/preview-basic-auth-password';
-export const BASIC_AUTH_HOST = '157-85-108-142.sslip.io';
+export const BASIC_AUTH_HOST = 'kruart.online';
 export const BASIC_AUTH_USER = 'awh-preview';
 export const STAGE_SEQUENCE = ['PRECHECK','HASH_RECEIVED','BACKUP_CREATED','TEMP_CREATED','ATOMIC_REPLACE','NGINX_TEST','RELOAD','PERIMETER_VERIFY','COMPLETE'];
 export const ALLOWED_STAGES = new Set(STAGE_SEQUENCE);

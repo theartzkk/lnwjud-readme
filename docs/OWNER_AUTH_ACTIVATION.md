@@ -9,7 +9,7 @@ The reviewed production command is:
 cd /Users/mac/Documents/ChatGPT/lnwjud-readme
 AWH_SOURCE_ROOT=/Users/mac/Documents/ChatGPT/lnwjud-readme \
 AWH_DEPLOY_TARGET=awh-ready \
-AWH_HUB_HOSTNAME=157-85-108-142.sslip.io \
+AWH_HUB_HOSTNAME=kruart.online \
 AWH_RELEASE_COMMIT=<exact-reviewed-release-sha> \
 npm run ops:owner-auth:activate
 ```
@@ -24,7 +24,7 @@ does not replay a migration, provision a password, or register a project:
 cd /Users/mac/Documents/ChatGPT/lnwjud-readme
 AWH_SOURCE_ROOT=/Users/mac/Documents/ChatGPT/lnwjud-readme \
 AWH_DEPLOY_TARGET=awh-ready \
-AWH_HUB_HOSTNAME=157-85-108-142.sslip.io \
+AWH_HUB_HOSTNAME=kruart.online \
 AWH_RELEASE_COMMIT=<exact-reviewed-release-sha> \
 npm run ops:owner-auth:activate -- --compat-refresh
 ```
