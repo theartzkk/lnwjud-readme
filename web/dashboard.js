@@ -402,7 +402,7 @@ function workspaceSummary(workspace) {
   if (status === 'HANDOFF_REQUIRED') return `มีงานเปิดอยู่บน ${safeText(workspace?.lease?.owner?.displayName, 'อีกอุปกรณ์หนึ่ง')} · AWH รักษาความต่อเนื่องไว้ให้`;
   if (status === 'SOURCE_OFFLINE') return 'อุปกรณ์ต้นทางออฟไลน์ แต่สถานะที่บันทึกไว้ยังพร้อมให้ทำต่อ';
   if (status === 'UNSYNCED_CHANGES') return 'มีงานจากอุปกรณ์ที่ยังต้องบันทึกสถานะให้สมบูรณ์ก่อนส่งต่อ';
-  return 'AWH จะจำ Project, Chat และสถานะงานให้เมื่อเริ่มทำงาน';
+  return 'AWH จะจำโปรเจกต์ ห้องงาน และสถานะล่าสุดให้เมื่อเริ่มทำงาน';
 }
 
 function pulseAttentionItems() {
@@ -856,7 +856,7 @@ function mountDashboard() {
   search.type = 'button';
   search.id = 'dashboard-search-open';
   search.className = 'awh-command-search';
-  search.textContent = 'ค้นหา ⌘K';
+  search.textContent = 'ค้นหา';
   search.setAttribute('aria-label', 'ค้นหาทั้ง AWH');
   search.addEventListener('click', openUniversalSearch);
   commandTools.append(attach, hint, search);
@@ -1153,12 +1153,12 @@ function renderContinuity() {
     title.textContent = 'พร้อมเริ่มงานแรก';
     summary.textContent = 'บอกสิ่งที่ต้องการด้านบนได้เลย AWH จะสร้างความต่อเนื่องให้จากงานแรก';
     meta.textContent = '';
-    memory.textContent = 'ยังไม่มี Project';
+    memory.textContent = 'ยังไม่มีโปรเจกต์';
     if (continueButton instanceof HTMLButtonElement) continueButton.disabled = false;
     if (chatsButton instanceof HTMLButtonElement) chatsButton.disabled = true;
     return;
   }
-  projectNode.textContent = safeText(project.name, 'Project');
+  projectNode.textContent = safeText(project.name, 'โปรเจกต์');
   title.textContent = safeText(conversation?.title, safeText(fallbackTask?.goal, 'ทำงานต่อในโปรเจกต์นี้'));
   summary.textContent = workspaceSummary(workspace);
   const details = [];
@@ -1167,7 +1167,7 @@ function renderContinuity() {
   else if (fallbackTask?.updatedAt || fallbackTask?.createdAt) details.push(`อัปเดต ${formatDate(fallbackTask.updatedAt || fallbackTask.createdAt)}`);
   if (workspace?.checkpoint?.createdAt) details.push(`บันทึกงาน ${formatDate(workspace.checkpoint.createdAt)}`);
   meta.textContent = details.join(' · ');
-  memory.textContent = project.memoryReady === true ? 'Memory พร้อม · AWH จำบริบทของ Project นี้' : 'Project + Chat + สถานะงานเชื่อมต่อกัน';
+  memory.textContent = project.memoryReady === true ? 'AWH จำบริบทของโปรเจกต์นี้ไว้แล้ว' : 'โปรเจกต์ ห้องงาน และสถานะล่าสุดเชื่อมต่อกัน';
   if (continueButton instanceof HTMLButtonElement) continueButton.disabled = false;
   if (chatsButton instanceof HTMLButtonElement) chatsButton.disabled = !context?.project?.projectId;
 }
@@ -1186,7 +1186,7 @@ function renderRecentWork() {
     items.push({ title: safeText(task.goal, 'งานใน AWH'), meta: [safeText(project?.name, 'โปรเจกต์'), status.title, status.actor].filter(Boolean).join(' · '), date: formatDate(task.updatedAt || task.createdAt), action: () => openTaskSurface('all', task.taskId) });
   }
   if (!items.length) {
-    for (const project of projects.slice(0, 4)) items.push({ title: safeText(project.name, 'โปรเจกต์'), meta: project.memoryReady === true ? 'Memory พร้อม · โปรเจกต์ของฉัน' : 'โปรเจกต์ของฉัน', date: '', action: () => navigateWork(project.projectId) });
+    for (const project of projects.slice(0, 4)) items.push({ title: safeText(project.name, 'โปรเจกต์'), meta: project.memoryReady === true ? 'พร้อมทำงานต่อ · โปรเจกต์ของฉัน' : 'โปรเจกต์ของฉัน', date: '', action: () => navigateWork(project.projectId) });
   }
   if (!items.length) {
     const empty = document.createElement('div');

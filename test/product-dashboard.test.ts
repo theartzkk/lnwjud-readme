@@ -134,7 +134,8 @@ test('V1.1 continuity keeps Dashboard and canonical Work on one project/chat aut
   assert.match(dashboard, /navigateWork\(task\.projectId, task\.conversationId/);
   assert.match(dashboard, /executionStatus/);
   assert.match(executionUx, /ระบบกลาง AWH/);
-  assert.match(dashboard, /Memory พร้อม/);
+  assert.match(dashboard, /AWH จำบริบทของโปรเจกต์นี้ไว้แล้ว/);
+  assert.doesNotMatch(dashboard, /Memory พร้อม|Project \+ Chat/);
   assert.match(css, /\.awh-continuity-card/);
   assert.match(css, /@media\(max-width:620px\)/);
   assert.doesNotMatch(dashboard, /fetch\(|XMLHttpRequest|WebSocket/);
