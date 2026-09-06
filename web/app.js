@@ -812,9 +812,12 @@ import {
     state.control = data?.control || { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน' };
     const authenticated = state.control.authenticated === true;
     if ($('session-check-view')) $('session-check-view').hidden = true;
-    $('sign-in-view').hidden = authenticated;
+    const publicHome = $('public-home-view');
+    if (publicHome) publicHome.hidden = authenticated;
+    $('sign-in-view').hidden = true;
     $('workspace-view').hidden = !authenticated;
     document.body.classList.toggle('work-active', authenticated);
+    document.body.classList.toggle('public-home-active', !authenticated);
     $('account-open').hidden = !authenticated;
     if (authenticated) renderWorkspace();
   }
@@ -925,6 +928,19 @@ import {
     } catch (error) { message('login-message', error instanceof Error ? error.message : 'เข้าสู่ AWH ไม่สำเร็จ'); }
   });
 
+  $('public-login-open')?.addEventListener('click', () => {
+    if ($('public-home-view')) $('public-home-view').hidden = true;
+    $('sign-in-view').hidden = false;
+    document.body.classList.remove('public-home-active');
+    window.requestAnimationFrame(() => $('login-username')?.focus());
+  });
+  $('.brand')?.addEventListener('click', (event) => {
+    if (state.control?.authenticated === true) return;
+    event.preventDefault();
+    if ($('public-home-view')) $('public-home-view').hidden = false;
+    $('sign-in-view').hidden = true;
+    document.body.classList.add('public-home-active');
+  });
   $('registration-open')?.addEventListener('click', () => { message('registration-message',''); openSheet('registration-sheet'); });
   $('registration-form')?.addEventListener('submit', async (event) => {
     event.preventDefault(); const password=$('registration-password').value; if(password!==$('registration-confirm').value){message('registration-message','ยืนยันรหัสผ่านให้ตรงกัน');return;}
