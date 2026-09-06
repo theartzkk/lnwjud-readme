@@ -5,9 +5,11 @@ const path = require('node:path');
 const baseUrl = process.argv[2];
 const outputDir = path.resolve(process.argv[3] || '.awh-local/review/screens');
 const viewport = process.argv[4] || '390x844';
-const [width, height] = viewport.split('x').map(Number);
+const [viewportSize, zoomRaw = '1'] = viewport.split('@');
+const [width, height] = viewportSize.split('x').map(Number);
+const zoomFactor = Number(zoomRaw);
 if (!/^http:\/\/127\.0\.0\.1:\d+\/$/.test(baseUrl || '')) throw new Error('review base URL is invalid');
-if (!Number.isInteger(width) || !Number.isInteger(height) || width < 320 || height < 600) throw new Error('review viewport is invalid');
+if (!Number.isInteger(width) || !Number.isInteger(height) || width < 320 || height < 600 || !Number.isFinite(zoomFactor) || zoomFactor < 1 || zoomFactor > 2) throw new Error('review viewport is invalid');
 fs.mkdirSync(outputDir, { recursive: true, mode: 0o700 });
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -26,13 +28,16 @@ async function shot(win, id, expected, action) {
   await sleep(100);
   const metrics = await win.webContents.executeJavaScript(`({innerWidth,clientWidth:document.documentElement.clientWidth,scrollWidth:document.documentElement.scrollWidth,bodyText:document.body.innerText.slice(0,4000),activeSettings:[...document.querySelectorAll('.settings-panel')].find((el)=>!el.hidden)?.id||null,hostingSummary:document.querySelector('#hosting-summary')?.textContent||null,siteCount:document.querySelector('#site-list')?.children.length??null})`, true);
   const png = await win.webContents.capturePage();
-  fs.writeFileSync(path.join(outputDir, `${id}-${width}x${height}.png`), png.toPNG(), { mode: 0o600 });
-  return { id, viewport: { width, height }, expected, action, horizontalOverflow: metrics.scrollWidth > metrics.clientWidth, activeSettings: metrics.activeSettings, hostingSummary: metrics.hostingSummary, siteCount: metrics.siteCount, capturedAt: new Date().toISOString() };
+  const viewportLabel = zoomFactor === 1 ? `${width}x${height}` : `${width}x${height}@${zoomFactor}`;
+  fs.writeFileSync(path.join(outputDir, `${id}-${viewportLabel}.png`), png.toPNG(), { mode: 0o600 });
+  return { id, viewport: { width, height, zoomFactor }, expected, action, horizontalOverflow: metrics.scrollWidth > metrics.clientWidth, activeSettings: metrics.activeSettings, hostingSummary: metrics.hostingSummary, siteCount: metrics.siteCount, capturedAt: new Date().toISOString() };
 }
 async function login(win) {
   await win.loadURL(baseUrl);
   await waitFor(win, `document.querySelector('#login-form')`);
   await win.webContents.executeJavaScript(`(() => { document.querySelector('#login-username').value='reviewer'; document.querySelector('#login-password').value='review-password'; document.querySelector('#login-form').requestSubmit(); })()`, true);
+  await waitFor(win, `document.querySelector('#ecosystem-home-view') && !document.querySelector('#ecosystem-home-view').hidden`, 15000);
+  await win.loadURL(`${baseUrl}?awh-surface=home`);
   await waitFor(win, `document.querySelector('#product-dashboard') && !document.querySelector('#product-dashboard').hidden`, 15000);
   await sleep(350);
 }
@@ -48,13 +53,13 @@ async function submitWork(win, prompt) {
   await sleep(700);
 }
 async function returnHome(win) {
-  const exists = await win.webContents.executeJavaScript(`Boolean(document.querySelector('#dashboard-home-button'))`, true);
-  if (exists) await win.webContents.executeJavaScript(`document.querySelector('#dashboard-home-button').click()`, true);
+  await win.loadURL(`${baseUrl}?awh-surface=home`);
   await waitFor(win, `document.querySelector('#product-dashboard') && !document.querySelector('#product-dashboard').hidden`, 10000);
   await sleep(250);
 }
 app.whenReady().then(async () => {
   const win = new BrowserWindow({ width, height, show: false, webPreferences: { sandbox: true, contextIsolation: true, backgroundThrottling: false } });
+  win.webContents.setZoomFactor(zoomFactor);
   const evidence = [];
   try {
     await win.loadURL(baseUrl);
@@ -86,10 +91,11 @@ app.whenReady().then(async () => {
     await win.loadURL(baseUrl + 'hosting.html');
     await waitFor(win, `document.querySelector('#site-list') && document.querySelector('#hosting-state')?.textContent.includes('เชื่อมต่อแล้ว')`, 10000);
     evidence.push(await shot(win, 'managed-hosting', 'Owner can see managed site state, URL, runtime, database, backup and bounded actions without VPS commands', 'open managed hosting'));
-    fs.writeFileSync(path.join(outputDir, `evidence-${width}x${height}.json`), JSON.stringify({ schemaVersion: 1, source: 'local-contract-fixture', baseUrl, viewport: { width, height }, evidence }, null, 2) + '\n', { mode: 0o600 });
+    const viewportLabel = zoomFactor === 1 ? `${width}x${height}` : `${width}x${height}@${zoomFactor}`;
+    fs.writeFileSync(path.join(outputDir, `evidence-${viewportLabel}.json`), JSON.stringify({ schemaVersion: 1, source: 'local-contract-fixture', baseUrl, viewport: { width, height, zoomFactor }, evidence }, null, 2) + '\n', { mode: 0o600 });
     if (evidence.some((item) => item.horizontalOverflow)) process.exitCode = 2;
   } finally {
     win.destroy();
     app.quit();
   }
-}).catch((error) => { console.error(error?.stack || error); process.exitCode = 1; app.quit(); });
+}).catch((error) => { console.error(error?.stack || error); app.exit(1); });

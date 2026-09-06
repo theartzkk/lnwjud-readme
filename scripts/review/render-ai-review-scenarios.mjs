@@ -52,10 +52,13 @@ fixture.stderr.on('data', (chunk) => { fixtureError += String(chunk).slice(0, 81
 try {
   await waitForFixture(fixture);
   const runs = [];
-  for (const viewport of ['390x844', '1440x900']) runs.push(await runCapture(viewport));
+  for (const viewport of ['390x844', '768x1024', '1366x768', '1920x1080', '1366x768@1.25', '1366x768@1.5']) runs.push(await runCapture(viewport));
   const manifest = { schemaVersion: 1, generatedAt: new Date().toISOString(), source: 'local-contract-fixture', commit, dirty, baseUrl, viewports: runs.map((run) => run.viewport) };
+  const expectedScreenshots = runs.length * 8;
+  const screenshotCount = (await import('node:fs')).readdirSync(output).filter((name) => name.endsWith('.png')).length;
+  if (screenshotCount !== expectedScreenshots) throw new Error(`visual evidence incomplete: expected ${expectedScreenshots} screenshots, found ${screenshotCount}`);
   writeFileSync(join(output, 'VISUAL_EVIDENCE.json'), JSON.stringify(manifest, null, 2) + '\n', { mode: 0o600 });
-  process.stdout.write(JSON.stringify({ status: 'PASS', output, commit, dirty, screenshots: 16, viewports: manifest.viewports }, null, 2) + '\n');
+  process.stdout.write(JSON.stringify({ status: 'PASS', output, commit, dirty, screenshots: screenshotCount, viewports: manifest.viewports }, null, 2) + '\n');
 } finally {
   fixture.kill('SIGTERM');
   await new Promise((resolveExit) => { const timer = setTimeout(resolveExit, 1500); fixture.once('exit', () => { clearTimeout(timer); resolveExit(); }); });
