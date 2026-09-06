@@ -97,3 +97,17 @@ test('Attention Center reuses tasks, approvals and owner infrastructure projecti
   assert.match(css, /\.awh-attention-center/);
   assert.match(css, /\.awh-attention-action/);
 });
+
+
+test('mobile UX consolidates Work and Home with progressive disclosure', async () => {
+  const dashboard = await read('web/dashboard.js');
+  const css = `${await read('web/styles.css')}
+${await read('web/dashboard.css')}`;
+  assert.match(dashboard, /mountWorkStarterShortcuts/);
+  assert.match(dashboard, /dashboard-night-toggle/);
+  assert.match(dashboard, /dashboard-owner-toggle/);
+  assert.match(css, /body\.work-active \.composer\{background:var\(--awh-surface/);
+  assert.match(css, /\.awh-owner-collapsible \.awh-owner-grid\{display:none\}/);
+  assert.match(css, /\.awh-night-grid,\.awh-night-next\{display:none\}/);
+  assert.match(css, /background:rgba\(255,255,255,\.96\)/);
+});

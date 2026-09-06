@@ -790,6 +790,21 @@ function createToolCard({ icon, title, copy, badge = '', disabled = false, actio
   return card;
 }
 
+function mountWorkStarterShortcuts() {
+  const empty = $('empty-work');
+  if (!(empty instanceof HTMLElement) || $('awh-work-starters')) return;
+  const row = document.createElement('div');
+  row.id = 'awh-work-starters';
+  row.className = 'awh-work-starters';
+  const starters = [
+    ['ทำงานต่อ', () => { const c = state.workContext; if (c?.project?.projectId) navigateWork(c.project.projectId, c?.conversation?.conversationId || null); }],
+    ['สร้างเอกสาร', () => { returnHome(); openSchoolDocumentTool(); }],
+    ['แนบไฟล์', () => $('attachment-open')?.click()],
+  ];
+  for (const [label, action] of starters) row.append(button(label, 'awh-work-starter', action));
+  empty.append(row);
+}
+
 function mountDashboard() {
   if (state.mounted || $(DASHBOARD_ID)) return;
   const main = document.querySelector('.app-main');
@@ -875,7 +890,7 @@ function mountDashboard() {
   nightShift.id = 'dashboard-night-shift';
   nightShift.className = 'awh-home-section awh-night-shift';
   nightShift.hidden = true;
-  nightShift.innerHTML = '<div class="awh-night-head"><div><span>NIGHT SHIFT</span><h2>งานกลางคืนของ AWH</h2><small id="dashboard-night-meta">กำลังอ่าน Morning Brief…</small></div><button id="dashboard-night-control" class="awh-secondary-action" type="button">เปิด Control Tower</button></div><div class="awh-night-grid"><button class="awh-night-stat" type="button" data-night-filter="active"><strong id="dashboard-night-running">—</strong><span>กำลังทำ</span></button><button class="awh-night-stat" type="button" data-night-filter="completed"><strong id="dashboard-night-completed">—</strong><span>เสร็จ 24 ชม.</span></button><button class="awh-night-stat attention" type="button" data-night-filter="attention"><strong id="dashboard-night-approvals">—</strong><span>รออนุมัติ</span></button><button class="awh-night-stat" type="button" data-night-filter="active"><strong id="dashboard-night-waiting">—</strong><span>รอ Worker / AI</span></button><button class="awh-night-stat attention" type="button" data-night-filter="attention"><strong id="dashboard-night-defects">—</strong><span>Current defect</span></button></div><div class="awh-night-next"><small>Next safe action</small><strong id="dashboard-night-next">กำลังตรวจ…</strong></div>';
+  nightShift.innerHTML = '<div class="awh-night-head"><div><span>NIGHT SHIFT</span><h2>งานกลางคืนของ AWH</h2><small id="dashboard-night-meta">กำลังอ่าน Morning Brief…</small></div><div class="awh-night-actions"><button id="dashboard-night-toggle" class="awh-secondary-action awh-mobile-only" type="button" aria-expanded="false">ดูรายละเอียด</button><button id="dashboard-night-control" class="awh-secondary-action" type="button">เปิด Control Tower</button></div></div><div class="awh-night-grid"><button class="awh-night-stat" type="button" data-night-filter="active"><strong id="dashboard-night-running">—</strong><span>กำลังทำ</span></button><button class="awh-night-stat" type="button" data-night-filter="completed"><strong id="dashboard-night-completed">—</strong><span>เสร็จ 24 ชม.</span></button><button class="awh-night-stat attention" type="button" data-night-filter="attention"><strong id="dashboard-night-approvals">—</strong><span>รออนุมัติ</span></button><button class="awh-night-stat" type="button" data-night-filter="active"><strong id="dashboard-night-waiting">—</strong><span>รอ Worker / AI</span></button><button class="awh-night-stat attention" type="button" data-night-filter="attention"><strong id="dashboard-night-defects">—</strong><span>Current defect</span></button></div><div class="awh-night-next"><small>Next safe action</small><strong id="dashboard-night-next">กำลังตรวจ…</strong></div>';
 
   const taskSurface = document.createElement('section');
   taskSurface.id = 'dashboard-tasks';
@@ -929,7 +944,8 @@ function mountDashboard() {
   owner.id = 'dashboard-owner-center';
   owner.className = 'awh-home-section awh-owner-center';
   owner.hidden = true;
-  owner.innerHTML = '<div class="awh-section-heading"><div><span>OWNER</span><h2>ศูนย์รวมทุกอย่างของเรา</h2></div><small>งาน ระบบ AI และอุปกรณ์อยู่ที่เดียว</small></div>';
+  owner.innerHTML = '<div class="awh-section-heading"><div><span>สำหรับผู้ดูแล</span><h2>เครื่องมือผู้ดูแล</h2></div><button id="dashboard-owner-toggle" class="awh-text-action awh-mobile-only" type="button" aria-expanded="false">เปิดเครื่องมือ</button></div>';
+  owner.classList.add('awh-owner-collapsible');
   const ownerGrid = document.createElement('div');
   ownerGrid.className = 'awh-owner-grid';
   const ownerActions = {
@@ -969,6 +985,8 @@ function mountDashboard() {
   $('dashboard-pulse-workers-card')?.addEventListener('click', () => openAccountTab('devices'));
   $('dashboard-owner-system-card')?.addEventListener('click', () => { location.assign('./infrastructure.html'); });
   $('dashboard-night-control')?.addEventListener('click', () => { location.assign('./infrastructure.html'); });
+  $('dashboard-night-toggle')?.addEventListener('click', (event) => { const expanded = nightShift.classList.toggle('is-expanded'); event.currentTarget?.setAttribute('aria-expanded', String(expanded)); if (event.currentTarget instanceof HTMLButtonElement) event.currentTarget.textContent = expanded ? 'ย่อรายละเอียด' : 'ดูรายละเอียด'; });
+  $('dashboard-owner-toggle')?.addEventListener('click', (event) => { const expanded = owner.classList.toggle('is-expanded'); event.currentTarget?.setAttribute('aria-expanded', String(expanded)); if (event.currentTarget instanceof HTMLButtonElement) event.currentTarget.textContent = expanded ? 'ย่อเครื่องมือ' : 'เปิดเครื่องมือ'; });
   nightShift.querySelectorAll('[data-night-filter]').forEach((node) => node.addEventListener('click', () => openTaskSurface(node.dataset.nightFilter || 'all')));
   installHomeButton();
   mountMobileNavigation();

@@ -66,7 +66,7 @@ test('teacher home is outcome-first, role-aware and exposes real zero-token scho
   assert.match(dashboard, /ประมวลผลในเครื่องนี้ ไม่อัปโหลดรูปไปที่เซิร์ฟเวอร์/);
   assert.match(dashboard, /canvas\.toBlob/);
   assert.match(dashboard, /state\.control\?\.role !== 'OWNER'/);
-  assert.match(dashboard, /ศูนย์รวมทุกอย่างของเรา/);
+  assert.match(dashboard, /เครื่องมือผู้ดูแล/);
   for (const scope of ['Projects', 'Multi Chat', 'Memory', 'Tasks & Executions', 'Devices', 'System']) assert.match(registry, new RegExp(scope.replace(/[&]/g, '\\&')));
   assert.match(schoolTools, /PDFDocument\.create/);
   assert.match(schoolTools, /copyPages/);
