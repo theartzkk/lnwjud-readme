@@ -6,24 +6,24 @@
  * these semantic tokens instead of introducing a second product palette.
  */
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   --awh-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --awh-canvas: #0b0d10;
-  --awh-rail: #101318;
-  --awh-surface: #12151b;
-  --awh-surface-raised: #181c23;
-  --awh-surface-soft: #202631;
-  --awh-line: #2b313c;
-  --awh-line-soft: rgba(255, 255, 255, .065);
-  --awh-text: #f4f6f8;
-  --awh-muted: #98a1af;
-  --awh-accent: #ff8a36;
-  --awh-accent-strong: #ff9a50;
-  --awh-accent-ink: #221207;
-  --awh-accent-soft: rgba(255, 138, 54, .12);
-  --awh-success: #63d99a;
-  --awh-warning: #f1c267;
-  --awh-danger: #ff7770;
+  --awh-canvas: #f7f8fb;
+  --awh-rail: #ffffff;
+  --awh-surface: #ffffff;
+  --awh-surface-raised: #f2f4f7;
+  --awh-surface-soft: #e9edf3;
+  --awh-line: #d9dee7;
+  --awh-line-soft: rgba(20, 32, 51, .08);
+  --awh-text: #172033;
+  --awh-muted: #667085;
+  --awh-accent: #e96f19;
+  --awh-accent-strong: #d95c0b;
+  --awh-accent-ink: #ffffff;
+  --awh-accent-soft: rgba(233, 111, 25, .10);
+  --awh-success: #16855b;
+  --awh-warning: #a9690d;
+  --awh-danger: #c43d3d;
   --awh-radius-sm: 10px;
   --awh-radius-md: 14px;
   --awh-radius-lg: 20px;

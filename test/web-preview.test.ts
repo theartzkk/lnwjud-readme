@@ -58,16 +58,18 @@ test('web build is a generic authenticated Control shell, never a serialized pro
   assert.match(html, /downloads\/AWH-Windows-x64\.zip/);
 });
 
-test('one canonical dark canvas is used by html, body, and the application shell', async () => {
+test('one canonical light-first canvas is used by html, body, and the application shell', async () => {
   const [html, css, designSystem] = await Promise.all([
     readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
     readFile(join(ROOT, 'web', 'styles.css'), 'utf8'),
     readFile(join(ROOT, 'web', 'awh-design-system.css'), 'utf8'),
   ]);
-  assert.match(html, /theme-color" content="#0b0d10"/);
-  assert.match(html, /apple-mobile-web-app-status-bar-style" content="black-translucent"/);
-  assert.match(designSystem, /--awh-canvas:\s*#0b0d10/);
+  assert.match(html, /theme-color" content="#f7f8fb"/);
+  assert.match(html, /apple-mobile-web-app-status-bar-style" content="default"/);
+  assert.match(designSystem, /--awh-canvas:\s*#f7f8fb/);
   assert.match(css, /--canvas:\s*var\(--awh-canvas\)/);
+  assert.match(html, /awh-light-system\.css/);
+  assert.match(designSystem, /color-scheme:\s*light/);
   assert.match(css, /html\s*\{[\s\S]*background-color:\s*var\(--canvas\)/);
   assert.match(css, /body\s*\{[\s\S]*background:\s*var\(--canvas\)/);
   assert.match(css, /\.app-shell\s*\{[\s\S]*background-color:\s*var\(--canvas\)/);

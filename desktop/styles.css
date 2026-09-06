@@ -1,5 +1,5 @@
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   font-family: var(--awh-font-sans);
   --bg: var(--awh-canvas);
   --rail: var(--awh-rail);
@@ -170,3 +170,10 @@ body.work-mode .workspace-continuity, body.work-mode .desktop-work-advanced { di
   .project-list { grid-template-columns: 1fr; }
   .desktop-user-message { max-width: 86%; }
 }
+
+
+/* AWH desktop light-first compatibility — shared tokens remain authoritative. */
+body,.desktop-shell{background:var(--awh-canvas)!important;color:var(--awh-text)!important}
+.panel,.card,.sidebar,.content-card,.project-card,.task-card{background:var(--awh-surface)!important;color:var(--awh-text)!important;border-color:var(--awh-line)!important}
+input,textarea,select{background:var(--awh-surface)!important;color:var(--awh-text)!important;border-color:var(--awh-line)!important}
+button.secondary,.secondary-button{background:var(--awh-surface-raised)!important;color:var(--awh-text)!important;border-color:var(--awh-line)!important}
