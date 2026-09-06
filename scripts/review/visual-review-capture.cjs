@@ -33,6 +33,12 @@ async function login(win) {
   await win.loadURL(baseUrl);
   await waitFor(win, `document.querySelector('#login-form')`);
   await win.webContents.executeJavaScript(`(() => { document.querySelector('#login-username').value='reviewer'; document.querySelector('#login-password').value='review-password'; document.querySelector('#login-form').requestSubmit(); })()`, true);
+  await waitFor(win, `document.querySelector('#ecosystem-home-view') && !document.querySelector('#ecosystem-home-view').hidden`, 15000);
+  await waitFor(win, `document.querySelectorAll('#ecosystem-project-grid .ecosystem-project-card').length >= 4`, 15000);
+  await sleep(350);
+}
+async function openAwhWorkspace(win) {
+  await win.webContents.executeJavaScript(`(() => { const cards=[...document.querySelectorAll('#ecosystem-project-grid .ecosystem-project-card')]; const card=cards.find((item)=>item.textContent.includes('AWH Workspace')); const button=card?.querySelector('.ecosystem-project-action'); if(!button) throw new Error('AWH Workspace action missing'); button.click(); })()`, true);
   await waitFor(win, `document.querySelector('#product-dashboard') && !document.querySelector('#product-dashboard').hidden`, 15000);
   await sleep(350);
 }
@@ -50,12 +56,15 @@ async function submitWork(win, prompt) {
 async function returnHome(win) {
   const exists = await win.webContents.executeJavaScript(`Boolean(document.querySelector('#dashboard-home-button'))`, true);
   if (exists) await win.webContents.executeJavaScript(`document.querySelector('#dashboard-home-button').click()`, true);
-  await waitFor(win, `document.querySelector('#product-dashboard') && !document.querySelector('#product-dashboard').hidden`, 10000);
+  await waitFor(win, `document.querySelector('#ecosystem-home-view') && !document.querySelector('#ecosystem-home-view').hidden`, 10000);
   await sleep(250);
 }
 app.whenReady().then(async () => {
   const win = new BrowserWindow({ width, height, show: false, webPreferences: { sandbox: true, contextIsolation: true, backgroundThrottling: false } });
   const evidence = [];
+  const runtimeErrors = [];
+  win.webContents.on('console-message', (...args) => { const details=args.at(-1); const level=typeof details==='object' && details ? details.level : args[1]; const message=typeof details==='object' && details ? details.message : args[2]; if (level === 'error' || level === 3) runtimeErrors.push(String(message || 'browser console error')); });
+  win.webContents.on('did-fail-load', (_event, code, description, validatedURL, isMainFrame) => { if (isMainFrame !== false) runtimeErrors.push(`did-fail-load ${code} ${description} ${validatedURL}`); });
   try {
     await win.loadURL(baseUrl);
     await waitFor(win, `document.querySelector('#registration-open')`);
@@ -63,7 +72,9 @@ app.whenReady().then(async () => {
     await waitFor(win, `document.querySelector('#registration-sheet') && !document.querySelector('#registration-sheet').hidden`);
     evidence.push(await shot(win, 'registration-request', 'self-service access request is readable and touch-safe; no privilege choice is exposed', 'open public account request form'));
     await login(win);
-    evidence.push(await shot(win, 'home-empty', 'real composer immediately usable; no backend language; three mobile destinations maximum', 'authenticated home'));
+    evidence.push(await shot(win, 'root-portfolio', 'authenticated root is the project portfolio hub and renders BAY registry cards without runtime errors', 'authenticated portfolio root'));
+    await openAwhWorkspace(win);
+    evidence.push(await shot(win, 'home-empty', 'AWH Workspace keeps its operational dashboard behind the portfolio root', 'open AWH Workspace'));
     await win.webContents.executeJavaScript(`document.querySelector('#account-open').click()`, true);
     await waitFor(win, `document.querySelector('#account-sheet') && !document.querySelector('#account-sheet').hidden && document.querySelector('[data-settings-tab=\"people\"]') && !document.querySelector('[data-settings-tab=\"people\"]').hidden`, 10000);
     await waitFor(win, `document.querySelector('#account-request-list') && document.querySelector('#account-request-list').children.length > 0`, 10000);
@@ -71,23 +82,26 @@ app.whenReady().then(async () => {
     await waitFor(win, `document.querySelector('#settings-panel-people') && !document.querySelector('#settings-panel-people').hidden && document.querySelector('#settings-panel-start').hidden`, 10000);
     await win.webContents.executeJavaScript(`document.querySelector('#settings-panel-people').scrollIntoView({block:'start'})`, true);
     evidence.push(await shot(win, 'owner-accounts', 'Owner can create people and review pending requests with role/project assignment in one bounded settings surface', 'open Owner people settings'));
-    await win.loadURL(baseUrl);
     await login(win);
+    await openAwhWorkspace(win);
     await submitHome(win, 'นายคือใคร');
     evidence.push(await shot(win, 'question-identity', 'direct conversational answer; no task-status substitute', 'ask a normal identity question'));
     await returnHome(win);
+    await openAwhWorkspace(win);
     await submitHome(win, 'ตรวจข้อมูลนี้แล้วสรุปประเด็นสำคัญให้หน่อย');
     evidence.push(await shot(win, 'work-progress', 'one human progress surface with expandable steps and Stop while cancellable', 'start bounded read-only work'));
     await submitWork(win, 'ทำบันทึกข้อความขออนุมัติเป็นไฟล์ Word');
     evidence.push(await shot(win, 'document-artifact', 'artifact card appears in conversation with open/download/continue actions', 'request a Word deliverable'));
     await returnHome(win);
+    await openAwhWorkspace(win);
     await win.webContents.executeJavaScript(`document.querySelector('#awh-home-tools')?.scrollIntoView({block:'start'})`, true);
     evidence.push(await shot(win, 'tools-shortcuts', 'tools are shortcuts; chat remains the primary path', 'inspect tools shortcuts'));
     await win.loadURL(baseUrl + 'hosting.html');
     await waitFor(win, `document.querySelector('#site-list') && document.querySelector('#hosting-state')?.textContent.includes('เชื่อมต่อแล้ว')`, 10000);
     evidence.push(await shot(win, 'managed-hosting', 'Owner can see managed site state, URL, runtime, database, backup and bounded actions without VPS commands', 'open managed hosting'));
-    fs.writeFileSync(path.join(outputDir, `evidence-${width}x${height}.json`), JSON.stringify({ schemaVersion: 1, source: 'local-contract-fixture', baseUrl, viewport: { width, height }, evidence }, null, 2) + '\n', { mode: 0o600 });
-    if (evidence.some((item) => item.horizontalOverflow)) process.exitCode = 2;
+    fs.writeFileSync(path.join(outputDir, `evidence-${width}x${height}.json`), JSON.stringify({ schemaVersion: 1, source: 'local-contract-fixture', baseUrl, viewport: { width, height }, evidence, runtimeErrors }, null, 2) + '\n', { mode: 0o600 });
+    if (runtimeErrors.length) { console.error(`browser runtime errors: ${runtimeErrors.join(' | ')}`); process.exitCode = 3; }
+    else if (evidence.some((item) => item.horizontalOverflow)) process.exitCode = 2;
   } finally {
     win.destroy();
     app.quit();

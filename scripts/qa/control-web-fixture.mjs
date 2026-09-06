@@ -92,6 +92,17 @@ const server = createServer(async (request, response) => {
       if (!session(request) || !requireCsrf(request, response)) return;
       return send(response, 200, { ok: true }, { 'Set-Cookie': 'awh_fixture_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict' });
     }
+    if (url.pathname === '/bay/data/projects.json') return send(response, 200, { schemaVersion: 'bay.hub.projects.v1', projects: [
+      { id: 'bay-excuse-x', name: 'BAY EXCUSE X', type: 'School Platform', icon: '🏫', status: 'active', stage: 'Staging RC', summary: 'ข้อมูลหลักและงานโรงเรียน', primary_action: { label: 'เปิด BAY EXCUSE X', url: 'https://bay.example.invalid/' }, capabilities: ['Identity', 'Students', 'Personnel', 'Classrooms'] },
+      { id: 'bay-learnlab', name: 'BAY LearnLab', type: 'Learning Platform', icon: '🎒', status: 'pilot', stage: '0.8.0-rc.15', summary: 'พื้นที่เรียนรู้สำหรับนักเรียน', primary_action: { label: 'เปิด LearnLab', url: 'https://learn.example.invalid/' }, capabilities: ['Offline-first', 'Student learning'] },
+      { id: 'awh', name: 'AWH Workspace', type: 'AI Workspace', icon: '✦', status: 'active', stage: 'Control Plane', summary: 'AI, Projects, Files, Tasks และ Automations', primary_action: { label: 'เปิด AWH Workspace', url: 'https://kruart.online/?awh-surface=home' }, capabilities: ['AI Workspace', 'Projects', 'Files', 'Tasks'] },
+      { id: 'school-website', name: 'เว็บไซต์โรงเรียน', type: 'Public Website', icon: '🌐', status: 'active', stage: 'Production', summary: 'เว็บไซต์สาธารณะของโรงเรียน', primary_action: { label: 'เปิดเว็บไซต์', url: 'https://school.example.invalid/' }, capabilities: ['Public website'] },
+    ] });
+    if (url.pathname === '/bay/data/releases.json') return send(response, 200, { schemaVersion: 'bay.hub.releases.v1', releases: [
+      { id: 'learnlab-rc15', productId: 'bay-learnlab', channel: 'pilot', version: '0.8.0-rc.15', stable: false },
+      { id: 'awh-win', productId: 'awh', channel: 'current', platform: 'windows', stable: false },
+      { id: 'awh-mac', productId: 'awh', channel: 'current', platform: 'macos', stable: false },
+    ] });
     if (!url.pathname.startsWith('/api/v1/')) {
       const requested = url.pathname === '/' ? 'index.html' : url.pathname.replace(/^\/+/, '');
       const file = resolve(root, normalize(requested));
