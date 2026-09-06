@@ -17,10 +17,9 @@ final class HubDnsProviderAdapter
     {
         $provider=strtoupper(trim((string)(getenv('AWH_DNS_PROVIDER')?:'MANUAL')));
         if(!preg_match('/^[A-Z0-9_-]{2,32}$/',$provider))$provider='MANUAL';
-        $origin=(string)(getenv('AWH_CONTROL_ORIGIN')?:'https://kruart.online');
-        $authority=parse_url($origin,PHP_URL_HOST);$target=null;
-        if(is_string($authority)&&filter_var($authority,FILTER_VALIDATE_IP,FILTER_FLAG_IPV4)!==false)$target=$authority;
-        elseif(is_string($authority)&&$authority!==''){$answers=gethostbynamel($authority)?:[];foreach($answers as $answer)if(filter_var($answer,FILTER_VALIDATE_IP,FILTER_FLAG_IPV4)!==false){$target=$answer;break;}}
+        $configured=getenv('AWH_PUBLIC_IPV4');$root=strtolower(trim((string)(getenv('AWH_ROOT_DOMAIN')?:'kruart.online')));$authority=$root;$target=null;
+        if(is_string($configured)&&filter_var($configured,FILTER_VALIDATE_IP,FILTER_FLAG_IPV4)!==false){$target=$configured;$authority='AWH_PUBLIC_IPV4';}
+        else{$answers=gethostbynamel($root)?:[];foreach($answers as $answer)if(filter_var($answer,FILTER_VALIDATE_IP,FILTER_FLAG_IPV4)!==false){$target=$answer;break;}}
         return ['provider'=>$provider,'mode'=>$provider==='MANUAL'?'MANUAL':'ADAPTER','automatic'=>false,'recordType'=>'A','hostname'=>$hostname,'target'=>$target,'targetAuthority'=>$authority?:null];
     }
 }
