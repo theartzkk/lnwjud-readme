@@ -14,6 +14,9 @@ test('canonical Dashboard is intent-first with a three-item mobile navigation',a
  assert.match(css,/awh-mobile-nav/); assert.match(css,/repeat\(3,minmax\(0,1fr\)\)/);
  assert.match(dashboard,/dashboard-attachment-open/);
  assert.match(dashboard,/แนบไฟล์หรือรูปภาพ/);
+ assert.doesNotMatch(index,/Channel และ SHA-256|Source of Truth ของตัวเอง|AI WORKSPACE/);
+ assert.match(index,/โปรแกรมสำหรับ Windows และ macOS พร้อมติดตั้ง/);
+ assert.match(index,/พื้นที่ทำงาน/);
  assert.match(dashboard,/openWork\(command\.value, false\)/);
  assert.match(dashboard,/\$\('attachment-open'\)\?\.click\(\)/);
  assert.match(css,/awh-command-attach/);

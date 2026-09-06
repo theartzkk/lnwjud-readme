@@ -500,14 +500,12 @@ function renderOwnerSystemSummary() {
   const infra = state.infrastructure;
   const server = infra?.telemetry?.server;
   const setText = (id, text) => { const node = $(id); if (node) node.textContent = text; };
-  if (!server) { setText('dashboard-owner-system-state', 'VPS ต้องตรวจสอบ'); setText('dashboard-owner-system-detail', 'แตะเพื่อเปิด Owner Control Tower'); return; }
-  const cpu = Math.round(Number(server.cpu?.usedPercent || 0));
-  const ram = Math.round(Number(server.memory?.usedPercent || 0));
-  const disk = Math.round(Number(server.storage?.usedPercent || 0));
+  if (!server) { setText('dashboard-owner-system-state', 'ระบบส่วนกลางต้องตรวจสอบ'); setText('dashboard-owner-system-detail', 'แตะเพื่อดูรายละเอียดระบบ'); return; }
+  const storageUsed = Math.round(Number(server.storage?.usedPercent || 0));
   const active = Array.isArray(infra?.autonomousWork) ? infra.autonomousWork.length : 0;
   const healthy = infra?.telemetry?.state === 'READY' && infra?.database?.state === 'HEALTHY';
-  setText('dashboard-owner-system-state', healthy ? 'VPS Healthy · AI Ready' : 'VPS ต้องตรวจสอบ');
-  setText('dashboard-owner-system-detail', `CPU ${cpu}% · RAM ${ram}% · Disk ${disk}% · ${active} งาน · ${infra?.deployment?.controlReleaseId || 'Production'}`);
+  setText('dashboard-owner-system-state', healthy ? 'พร้อมใช้งาน · AI พร้อม' : 'มีส่วนที่ต้องตรวจสอบ');
+  setText('dashboard-owner-system-detail', `พื้นที่ใช้งาน ${storageUsed}% · ${active} งานกำลังดำเนินการ`);
 }
 
 function renderOwnerNightShift() {
@@ -534,7 +532,22 @@ function renderOwnerNightShift() {
   tasks.forEach((task, index) => { if (task?.state === 'WAITING_FOR_WORKER') waitingIds.add(typeof task.taskId === 'string' ? task.taskId : `worker-${index}`); });
   (Array.isArray(infra?.autonomousWork) ? infra.autonomousWork : []).forEach((execution, index) => { if (execution?.state === 'WAITING_FOR_CAPABILITY') waitingIds.add(typeof execution.taskId === 'string' ? execution.taskId : `capability-${index}`); });
   const currentDefect = Math.max(0, Number(triage?.current?.summary?.currentDefect || 0));
-  const nextAction = safeText(brief?.nextAction) || safeText(triage?.nextAction) || safeText(infra?.selfHealing?.nextAction) || 'ยังไม่มี next action ที่ยืนยันได้';
+  const rawNextAction = safeText(brief?.nextAction) || safeText(triage?.nextAction) || safeText(infra?.selfHealing?.nextAction);
+  const humanOwnerAction = (value) => {
+    if (!value) return 'ขณะนี้ยังไม่มีสิ่งที่ต้องทำต่อ';
+    const rules = [
+      [/current defect|ข้อบกพร่อง/i, 'ตรวจปัญหาปัจจุบันก่อนให้ AWH ลองทำงานใหม่'],
+      [/credential|authentication|auth/i, 'ตรวจการเชื่อมต่อ AI ในการตั้งค่าของผู้ดูแล'],
+      [/provider.*policy|account.*policy|model.*policy/i, 'ตรวจเงื่อนไขบัญชีและโมเดล AI'],
+      [/project\/source configuration|canonical execution schema|read authority/i, 'ตรวจข้อมูลโปรเจกต์และแหล่งงานให้พร้อม'],
+      [/retry policy|nextEligibleAt|retry/i, 'ให้ AWH ลองทำงานใหม่เมื่อถึงเวลาที่เหมาะสม'],
+      [/capability/i, 'รอให้ความสามารถที่งานต้องใช้พร้อม แล้ว AWH จะทำต่อ'],
+      [/ไม่มี current blocker|eligible ถัดไปตาม policy/i, 'ตอนนี้ไม่มีสิ่งที่ขวางงาน AWH สามารถทำงานถัดไปได้'],
+    ];
+    for (const [pattern, copy] of rules) if (pattern.test(value)) return copy;
+    return value;
+  };
+  const nextAction = humanOwnerAction(rawNextAction);
 
   const set = (id, value) => { const node = $(id); if (node) node.textContent = String(value); };
   set('dashboard-night-running', running);
@@ -544,7 +557,7 @@ function renderOwnerNightShift() {
   set('dashboard-night-defects', currentDefect);
   set('dashboard-night-next', nextAction);
   const meta = $('dashboard-night-meta');
-  if (meta) meta.textContent = envelope?.persisted === true ? `Morning Brief revision ${Number(envelope.revision || 0)} · ข้อมูลที่บันทึกแล้ว` : 'สถานะสดจาก AWH · เสร็จแล้วนับย้อนหลัง 24 ชั่วโมง';
+  if (meta) meta.textContent = envelope?.persisted === true ? `สรุปล่าสุดที่บันทึกแล้ว · ครั้งที่ ${Number(envelope.revision || 0)}` : 'สถานะล่าสุดจาก AWH · งานที่เสร็จนับย้อนหลัง 24 ชั่วโมง';
 }
 
 function returnHome() {
@@ -873,12 +886,12 @@ function mountDashboard() {
   const continuity = document.createElement('section');
   continuity.id = 'dashboard-continuity';
   continuity.className = 'awh-home-section awh-continuity';
-  continuity.innerHTML = '<div class="awh-section-heading"><div><span>ทำต่อจากเดิม</span><h2>กลับมาทำงานได้ทันที</h2></div><small id="dashboard-continuity-memory">AWH จำบริบทของงานให้</small></div><div class="awh-continuity-card"><div class="awh-continuity-copy"><span id="dashboard-continuity-project" class="awh-context-chip">โปรเจกต์</span><h3 id="dashboard-continuity-title">กำลังเตรียมงานล่าสุด…</h3><p id="dashboard-continuity-summary">AWH กำลังเชื่อมงานล่าสุดกับ Dashboard</p><div id="dashboard-continuity-meta" class="awh-context-meta"></div></div><div class="awh-continuity-actions"><button id="dashboard-continue-work" class="awh-command-send" type="button">ทำงานต่อ</button><button id="dashboard-open-chats" class="awh-secondary-action" type="button">ห้องงาน</button></div></div>';
+  continuity.innerHTML = '<div class="awh-section-heading"><div><span>ทำต่อจากเดิม</span><h2>กลับมาทำงานได้ทันที</h2></div><small id="dashboard-continuity-memory">AWH จำบริบทของงานให้</small></div><div class="awh-continuity-card"><div class="awh-continuity-copy"><span id="dashboard-continuity-project" class="awh-context-chip">โปรเจกต์</span><h3 id="dashboard-continuity-title">กำลังเตรียมงานล่าสุด…</h3><p id="dashboard-continuity-summary">AWH กำลังเตรียมงานล่าสุดให้พร้อม</p><div id="dashboard-continuity-meta" class="awh-context-meta"></div></div><div class="awh-continuity-actions"><button id="dashboard-continue-work" class="awh-command-send" type="button">ทำงานต่อ</button><button id="dashboard-open-chats" class="awh-secondary-action" type="button">ห้องงาน</button></div></div>';
 
   const pulse = document.createElement('section');
   pulse.id = 'dashboard-pulse';
   pulse.className = 'awh-home-section awh-pulse';
-  pulse.innerHTML = '<div class="awh-section-heading"><div><span>ภาพรวมตอนนี้</span><h2>รู้ทันงานในไม่กี่วินาที</h2></div><small>ข้อมูลล่าสุดจาก AWH · กดการ์ดเพื่อไปต่อ</small></div><div class="awh-pulse-grid"><button id="dashboard-pulse-projects-card" class="awh-pulse-card" type="button" data-pulse-target="projects"><span class="awh-pulse-icon">◫</span><span><strong id="dashboard-pulse-projects">—</strong><small>โปรเจกต์</small><em id="dashboard-pulse-projects-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-active-card" class="awh-pulse-card" type="button" data-pulse-target="work"><span class="awh-pulse-icon">↻</span><span><strong id="dashboard-pulse-active">—</strong><small>กำลังทำอยู่</small><em id="dashboard-pulse-active-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-artifacts-card" class="awh-pulse-card" type="button" data-pulse-target="files"><span class="awh-pulse-icon">▤</span><span><strong id="dashboard-pulse-artifacts">—</strong><small>ผลลัพธ์</small><em id="dashboard-pulse-artifacts-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-attention-card" class="awh-pulse-card attention" type="button" data-pulse-target="work"><span class="awh-pulse-icon">!</span><span><strong id="dashboard-pulse-attention">—</strong><small>ต้องดู</small><em id="dashboard-pulse-attention-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-workers-card" class="awh-pulse-card owner-pulse" type="button" data-pulse-target="devices" hidden><span class="awh-pulse-icon">◇</span><span><strong id="dashboard-pulse-workers">—</strong><small>อุปกรณ์พร้อม</small><em id="dashboard-pulse-workers-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-owner-system-card" class="awh-pulse-card owner-pulse awh-system-pulse" type="button" data-pulse-target="system" hidden><span class="awh-pulse-icon">⌘</span><span><strong id="dashboard-owner-system">AWH System</strong><small id="dashboard-owner-system-state">กำลังตรวจ VPS…</small><em id="dashboard-owner-system-detail">CPU · RAM · Disk · Production</em></span></button></div>';
+  pulse.innerHTML = '<div class="awh-section-heading"><div><span>ภาพรวมตอนนี้</span><h2>รู้ทันงานในไม่กี่วินาที</h2></div><small>ข้อมูลล่าสุดจาก AWH · กดการ์ดเพื่อไปต่อ</small></div><div class="awh-pulse-grid"><button id="dashboard-pulse-projects-card" class="awh-pulse-card" type="button" data-pulse-target="projects"><span class="awh-pulse-icon">◫</span><span><strong id="dashboard-pulse-projects">—</strong><small>โปรเจกต์</small><em id="dashboard-pulse-projects-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-active-card" class="awh-pulse-card" type="button" data-pulse-target="work"><span class="awh-pulse-icon">↻</span><span><strong id="dashboard-pulse-active">—</strong><small>กำลังทำอยู่</small><em id="dashboard-pulse-active-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-artifacts-card" class="awh-pulse-card" type="button" data-pulse-target="files"><span class="awh-pulse-icon">▤</span><span><strong id="dashboard-pulse-artifacts">—</strong><small>ผลลัพธ์</small><em id="dashboard-pulse-artifacts-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-attention-card" class="awh-pulse-card attention" type="button" data-pulse-target="work"><span class="awh-pulse-icon">!</span><span><strong id="dashboard-pulse-attention">—</strong><small>ต้องดู</small><em id="dashboard-pulse-attention-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-pulse-workers-card" class="awh-pulse-card owner-pulse" type="button" data-pulse-target="devices" hidden><span class="awh-pulse-icon">◇</span><span><strong id="dashboard-pulse-workers">—</strong><small>อุปกรณ์พร้อม</small><em id="dashboard-pulse-workers-detail">กำลังตรวจข้อมูล…</em></span></button><button id="dashboard-owner-system-card" class="awh-pulse-card owner-pulse awh-system-pulse" type="button" data-pulse-target="system" hidden><span class="awh-pulse-icon">⌘</span><span><strong id="dashboard-owner-system">ระบบส่วนกลาง</strong><small id="dashboard-owner-system-state">กำลังตรวจความพร้อม…</small><em id="dashboard-owner-system-detail">เซิร์ฟเวอร์ · พื้นที่เก็บข้อมูล · เวอร์ชันใช้งาน</em></span></button></div>';
 
   const attentionCenter = document.createElement('section');
   attentionCenter.id = 'dashboard-attention-center';
@@ -890,7 +903,7 @@ function mountDashboard() {
   nightShift.id = 'dashboard-night-shift';
   nightShift.className = 'awh-home-section awh-night-shift';
   nightShift.hidden = true;
-  nightShift.innerHTML = '<div class="awh-night-head"><div><span>NIGHT SHIFT</span><h2>งานกลางคืนของ AWH</h2><small id="dashboard-night-meta">กำลังอ่าน Morning Brief…</small></div><div class="awh-night-actions"><button id="dashboard-night-toggle" class="awh-secondary-action awh-mobile-only" type="button" aria-expanded="false">ดูรายละเอียด</button><button id="dashboard-night-control" class="awh-secondary-action" type="button">เปิด Control Tower</button></div></div><div class="awh-night-grid"><button class="awh-night-stat" type="button" data-night-filter="active"><strong id="dashboard-night-running">—</strong><span>กำลังทำ</span></button><button class="awh-night-stat" type="button" data-night-filter="completed"><strong id="dashboard-night-completed">—</strong><span>เสร็จ 24 ชม.</span></button><button class="awh-night-stat attention" type="button" data-night-filter="attention"><strong id="dashboard-night-approvals">—</strong><span>รออนุมัติ</span></button><button class="awh-night-stat" type="button" data-night-filter="active"><strong id="dashboard-night-waiting">—</strong><span>รอ Worker / AI</span></button><button class="awh-night-stat attention" type="button" data-night-filter="attention"><strong id="dashboard-night-defects">—</strong><span>Current defect</span></button></div><div class="awh-night-next"><small>Next safe action</small><strong id="dashboard-night-next">กำลังตรวจ…</strong></div>';
+  nightShift.innerHTML = '<div class="awh-night-head"><div><span>งานต่อเนื่อง</span><h2>งานที่ AWH กำลังดูแล</h2><small id="dashboard-night-meta">กำลังสรุปสถานะล่าสุด…</small></div><div class="awh-night-actions"><button id="dashboard-night-toggle" class="awh-secondary-action awh-mobile-only" type="button" aria-expanded="false">ดูรายละเอียด</button><button id="dashboard-night-control" class="awh-secondary-action" type="button">ดูงานทั้งหมด</button></div></div><div class="awh-night-grid"><button class="awh-night-stat" type="button" data-night-filter="active"><strong id="dashboard-night-running">—</strong><span>กำลังทำ</span></button><button class="awh-night-stat" type="button" data-night-filter="completed"><strong id="dashboard-night-completed">—</strong><span>เสร็จ 24 ชม.</span></button><button class="awh-night-stat attention" type="button" data-night-filter="attention"><strong id="dashboard-night-approvals">—</strong><span>รออนุมัติ</span></button><button class="awh-night-stat" type="button" data-night-filter="active"><strong id="dashboard-night-waiting">—</strong><span>รอระบบพร้อม</span></button><button class="awh-night-stat attention" type="button" data-night-filter="attention"><strong id="dashboard-night-defects">—</strong><span>มีปัญหา</span></button></div><div class="awh-night-next"><small>ทำอะไรต่อ</small><strong id="dashboard-night-next">กำลังตรวจ…</strong></div>';
 
   const taskSurface = document.createElement('section');
   taskSurface.id = 'dashboard-tasks';
