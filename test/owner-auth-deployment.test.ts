@@ -155,6 +155,8 @@ test('owner-auth deployment assets keep owner identity bootstrap bounded to stdi
   assert.doesNotMatch(remote, /case "\$OWNER_USERNAME" in art\)/);
   const activation = await readFile(join(ROOT, 'scripts/ops/activate-owner-auth.mjs'), 'utf8');
   assert.match(activation, /process\.env\.AWH_OWNER_AUTH_USERNAME \|\| 'art'/);
+  assert.match(activation, /args\.includes\('--project-source-authority'\)/);
+  assert.match(activation, /deployArgs\.push\('--project-source-authority'\)/);
   assert.match(deploy, /scp .*\$REMOTE_DEPLOY.*\$TARGET:\$REMOTE_SCRIPT/);
   assert.match(deploy, /printf '%s\\n' "\$OWNER_PASSWORD" \| ssh/);
   assert.match(remote, /printf '%s\\n' "\$OWNER_PASSWORD" \| sudo/);
