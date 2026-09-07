@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AWH restore drill weekly
+
+[Timer]
+OnCalendar=Sun *-*-* 04:45:00
+RandomizedDelaySec=10m
+Persistent=true
+Unit=awh-restore-drill.service
+
+[Install]
+WantedBy=timers.target

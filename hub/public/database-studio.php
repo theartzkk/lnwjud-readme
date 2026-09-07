@@ -8,7 +8,8 @@ require_once dirname(__DIR__) . '/src/HubDatabaseStudioRouter.php';
 try {
     $database = getenv('AWH_HUB_DB_PATH') ?: '/var/lib/awh-hub/awh.sqlite';
     $body = file_get_contents('php://input', false, null, 0, 16385);
-    $studio = HubDatabaseStudioService::openExisting($database);
+    $fleetSnapshot = getenv('AWH_DATABASE_FLEET_SNAPSHOT') ?: '/var/lib/awh-hub/database-fleet.json';
+    $studio = HubDatabaseStudioService::openExisting($database, null, $fleetSnapshot);
     $response = HubDatabaseStudioRouter::dispatch(
         (string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'),
         (string) ($_SERVER['REQUEST_URI'] ?? '/database-studio.php'),

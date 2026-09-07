@@ -22,9 +22,9 @@ final class HubDatabaseStudioService
     private const MAX_EXPORT_BYTES = 5_242_880;
     private const SESSION_INACTIVITY_TTL = 43200;
 
-    private function __construct(private readonly PDO $pdo, private readonly string $databasePath, private readonly string $migrationDir, private readonly ?HubMariaDbReadClient $maria) {}
+    private function __construct(private readonly PDO $pdo, private readonly string $databasePath, private readonly string $migrationDir, private readonly ?string $fleetSnapshotPath = null, private readonly ?HubMariaDbReadClient $maria = null) {}
 
-    public static function openExisting(string $databasePath, ?string $migrationDir = null, ?HubMariaDbReadClient $maria = null): self
+    public static function openExisting(string $databasePath, ?string $migrationDir = null, ?string $fleetSnapshotPath = null, ?HubMariaDbReadClient $maria = null): self
     {
         if ($databasePath === '' || str_contains($databasePath, "\0") || !is_file($databasePath) || is_link($databasePath)) throw new HubDatabaseStudioException('Database configuration is invalid', 'DATABASE_CONFIG_INVALID');
         try {
@@ -33,7 +33,7 @@ final class HubDatabaseStudioService
             foreach (['control_sessions', 'hub_users', 'owner_bootstrap'] as $table) if (!self::tableExists($pdo, $table)) throw new RuntimeException('owner session schema missing');
             $sessionColumns = array_column($pdo->query('PRAGMA table_info(control_sessions)')->fetchAll(), 'name');
             if (array_diff(['session_hash', 'user_id', 'csrf_hash', 'expires_at', 'last_seen_at', 'revoked_at', 'session_kind', 'step_up_at'], $sessionColumns) !== []) throw new RuntimeException('owner password session schema missing');
-            return new self($pdo, $databasePath, $migrationDir ?? dirname(__DIR__) . '/migrations', $maria ?? HubMariaDbReadClient::fromEnvironment());
+            return new self($pdo, $databasePath, $migrationDir ?? dirname(__DIR__) . '/migrations', $fleetSnapshotPath, $maria ?? HubMariaDbReadClient::fromEnvironment());
         } catch (HubDatabaseStudioException $error) { throw $error; }
         catch (Throwable) { throw new HubDatabaseStudioException('Database Studio is unavailable', 'DATABASE_UNAVAILABLE'); }
     }
@@ -83,9 +83,55 @@ final class HubDatabaseStudioService
                 ];
             }
         }
-        $counts = ['SQLITE' => 0, 'MARIADB' => 0, 'NONE' => 0, 'OTHER' => 0];
+        $snapshot = $this->fleetSnapshot();
+        $known = [];
+        foreach ($databases as $index => $database) {
+            $engine = strtoupper((string) ($database['engine'] ?? 'NONE')); $name = (string) ($database['databaseName'] ?? '');
+            if ($name !== '') $known[$engine . ':' . $name] = $index;
+        }
+        foreach ($snapshot as $row) {
+            $engine = strtoupper((string) ($row['engine'] ?? '')); $name = (string) ($row['name'] ?? ''); if ($name === '') continue;
+            $key = $engine . ':' . $name;
+            if (isset($known[$key])) {
+                $index = $known[$key];
+                $databases[$index]['sizeBytes'] = max(0, (int) ($row['sizeBytes'] ?? 0));
+                $databases[$index]['tableCount'] = max(0, (int) ($row['tableCount'] ?? 0));
+                $databases[$index]['healthState'] = (string) ($row['state'] ?? 'REVIEW');
+                $databases[$index]['authority'] = (string) ($row['authority'] ?? 'UNCLASSIFIED');
+                continue;
+            }
+            if (!in_array($engine, ['MARIADB', 'MYSQL'], true)) continue;
+            $databases[] = [
+                'databaseId' => 'discovered:' . strtolower($engine) . ':' . $name,
+                'siteId' => null, 'siteName' => $name, 'siteSlug' => null, 'engine' => $engine,
+                'databaseName' => $name, 'state' => 'DISCOVERED',
+                'sizeBytes' => max(0, (int) ($row['sizeBytes'] ?? 0)), 'tableCount' => max(0, (int) ($row['tableCount'] ?? 0)),
+                'healthState' => (string) ($row['state'] ?? 'REVIEW'), 'authority' => (string) ($row['authority'] ?? 'UNCLASSIFIED'),
+                'studioMode' => 'DISCOVERED_READ_ONLY', 'updatedAt' => null,
+            ];
+        }
+        $counts = ['SQLITE' => 0, 'MARIADB' => 0, 'MYSQL' => 0, 'NONE' => 0, 'OTHER' => 0];
         foreach ($databases as $database) { $engine = (string) $database['engine']; isset($counts[$engine]) ? $counts[$engine]++ : $counts['OTHER']++; }
-        return ['schemaVersion' => 1, 'databases' => $databases, 'summary' => ['total' => count($databases), 'engines' => $counts], 'safety' => ['credentialsExposed' => false, 'defaultMode' => 'READ_ONLY']];
+        return ['schemaVersion' => 1, 'databases' => $databases, 'summary' => ['total' => count($databases), 'engines' => $counts], 'safety' => ['credentialsExposed' => false, 'defaultMode' => 'READ_ONLY', 'discoveryMode' => 'SANITIZED_METADATA_ONLY']];
+    }
+
+    private function fleetSnapshot(): array
+    {
+        $path = $this->fleetSnapshotPath;
+        if (!is_string($path) || $path === '' || str_contains($path, "\0") || !is_file($path) || is_link($path)) return [];
+        try {
+            $raw = file_get_contents($path, false, null, 0, 262145); if (!is_string($raw) || strlen($raw) > 262144) return [];
+            $data = json_decode($raw, true, 32, JSON_THROW_ON_ERROR); if (!is_array($data) || ($data['schemaVersion'] ?? null) !== 1 || !is_array($data['databases'] ?? null)) return [];
+            $rows = [];
+            foreach (array_slice($data['databases'], 0, 200) as $row) {
+                if (!is_array($row)) continue; $engine = strtoupper((string) ($row['engine'] ?? '')); $name = (string) ($row['name'] ?? '');
+                if (!in_array($engine, ['SQLITE','MARIADB','MYSQL'], true) || $name === '' || strlen($name) > 128 || preg_match('/[^A-Za-z0-9_.-]/', $name)) continue;
+                $authority = (string) ($row['authority'] ?? 'UNCLASSIFIED'); if (!in_array($authority, ['CONTROL','STAGING','PROOF','UNCLASSIFIED'], true)) $authority = 'UNCLASSIFIED';
+                $state = (string) ($row['state'] ?? 'REVIEW'); if (!in_array($state, ['HEALTHY','REVIEW','UNAVAILABLE'], true)) $state = 'REVIEW';
+                $rows[] = ['engine'=>$engine,'name'=>$name,'state'=>$state,'sizeBytes'=>max(0,(int)($row['sizeBytes']??0)),'tableCount'=>max(0,(int)($row['tableCount']??0)),'authority'=>$authority];
+            }
+            return $rows;
+        } catch (Throwable) { return []; }
     }
 
     public function databaseTables(string $sessionToken, string $databaseId, ?string $now = null): array

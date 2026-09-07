@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-07T16:30:00Z",
+  "policy": {
+    "target": "clean-vps-build",
+    "cloneOldDisk": false,
+    "productionCutoverAllowed": false,
+    "dualWriteAllowed": false,
+    "productionDatabaseMutationAllowed": false,
+    "productionDnsMutationAllowed": false,
+    "requiredReleaseRetention": ["current", "previous", "known-good"]
+  },
+  "targetVps": {
+    "class": "ReadyIDC VPS Game Plus LG1XS+ candidate",
+    "vCpu": 2,
+    "memoryGiB": 3,
+    "diskGiB": 30,
+    "layout": {
+      "apps": "/srv/apps/<project>",
+      "data": "/srv/data/<project>",
+      "releases": "/srv/releases/<project>/<release>",
+      "backups": "/srv/backups/<project>",
+      "logs": "/var/log/bay/<project>"
+    },
+    "runtime": ["nginx", "php-fpm", "mariadb", "systemd", "certbot/acme", "logrotate"],
+    "isolation": ["linux-user-per-app", "php-fpm-pool-per-php-app", "database-user-per-app", "localhost-only-database"]
+  },
+  "projects": [
+    {
+      "id": "awh",
+      "name": "Art’s Workspace Hub",
+      "repository": "theartzkk/lnwjud-readme",
+      "canonicalRefCandidate": "awh/api-independence",
+      "sourceRevision": "21f8d087163446552ccd500e1898486ae09d6018",
+      "productionRelease": "m20-21f8d0871634",
+      "runtime": ["php8.3-fpm", "sqlite", "nginx", "systemd"],
+      "database": {"engine": "SQLite", "authority": "/var/lib/awh-hub/awh.sqlite", "schemaVersion": 20},
+      "health": "LIVE_VERIFIED",
+      "migrationState": "PREPARED_NOT_CUTOVER",
+      "blockers": ["AWH projects registry source revision is stale versus live production and must be reconciled through canonical source sync, not direct SQL editing"]
+    },
+    {
+      "id": "bay-excuse-x",
+      "name": "BAY EXCUSE X",
+      "repository": "theartzkk/bay-excuse-x",
+      "canonicalRefCandidate": "main",
+      "sourceRevision": "6a92784d18b4e7b8d10864bca7fc690ee2122025",
+      "runtime": ["php", "mariadb/mysql"],
+      "database": {"engine": "MariaDB/MySQL", "productionAuthority": "InfinityFree production until final cutover", "vpsProofDatabasesAreProduction": false},
+      "migrationState": "SHADOW_ONLY",
+      "blockers": ["production database export/manifest must be captured read-only", "production uploads/file manifest must be captured", "field/production gates remain outside this migration preparation"],
+      "invariants": ["never treat bay_staging/proof/authority databases as production data", "final write freeze before final dump", "no dual write"]
+    },
+    {
+      "id": "bay-learnlab",
+      "name": "BAY LearnLab",
+      "repository": "theartzkk/bay-learnlab",
+      "defaultRevisionObserved": "d1e02e554d211c8f71b954f35d9a027216f8b41c",
+      "candidateRevisionObserved": "354cf53a1edc4cb8bdabc46292b215def41250f9",
+      "runtime": ["php", "mariadb", "offline-classroom-client"],
+      "migrationState": "STAGING_FIELD_GATE",
+      "blockers": ["exact promotion candidate must be frozen after current LearnLab work converges", "physical AY1/classroom acceptance remains a separate gate"]
+    },
+    {
+      "id": "bay-hub",
+      "name": "BAY Hub",
+      "repository": "theartzkk/bay-hub",
+      "canonicalRefCandidate": "main",
+      "sourceRevision": "78ed43fb6d97b2e714ef1e2a28eb796642682afd",
+      "runtime": ["php/static"],
+      "migrationState": "LOW_RISK_PILOT_CANDIDATE",
+      "blockers": []
+    },
+    {
+      "id": "school-website",
+      "name": "เว็บไซต์โรงเรียน",
+      "productionUrl": "https://banauedyai.ac.th/mainpage/",
+      "productionHttpObserved": 200,
+      "prototypeUrl": "https://kru-art.great-site.net/?i=1",
+      "prototypeIsCanonical": false,
+      "runtimeObserved": ["php", "cloudflare-fronted"],
+      "migrationState": "SOURCE_AUTHORITY_REQUIRED",
+      "blockers": ["canonical source repository/revision is not registered in AWH", "production database/file export authority is not yet pinned"],
+      "invariants": ["do not promote the great-site prototype as production source"]
+    }
+  ],
+  "cutoverGate": [
+    "exact-source-revision",
+    "production-db-dump-created-after-write-freeze",
+    "schema-table-row-count-charset-collation-index-fk-trigger-view-manifest",
+    "uploads-file-count-and-checksum-manifest",
+    "shadow-restore-pass",
+    "application-smoke-and-critical-flow-pass",
+    "backup-verified",
+    "restore-rehearsal-pass",
+    "rollback-plan-preserves-post-cutover-writes",
+    "dns-change-only-after-all-gates-pass"
+  ]
+}

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run bounded AWH temp cleanup daily
+
+[Timer]
+OnCalendar=*-*-* 04:15:00
+RandomizedDelaySec=10m
+Persistent=true
+Unit=awh-temp-cleanup.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+count=0
+bytes=0
+while IFS= read -r -d '' f; do
+  if command -v lsof >/dev/null 2>&1 && lsof "$f" >/dev/null 2>&1; then
+    continue
+  fi
+  size=$(stat -c %s "$f" 2>/dev/null || echo 0)
+  rm -f -- "$f"
+  count=$((count+1))
+  bytes=$((bytes+size))
+done < <(find /tmp -xdev -maxdepth 1 -type f \( -name 'awh-*' -o -name 'actions-runner-*.tar.gz' \) -mtime +7 -print0)
+logger -t awh-temp-cleanup "purged_files=$count reclaimed_bytes=$bytes"

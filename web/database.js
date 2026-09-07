@@ -48,8 +48,8 @@ async function loadDatabaseInventory() {
     if (readable) { card.type = 'button'; card.addEventListener('click', () => selectDatabase(database).catch(showError)); }
     const title = database.siteName || database.databaseName || 'ฐานข้อมูล';
     const engine = String(database.engine || 'UNKNOWN');
-    const mode = readable ? 'เปิดดูตาราง / Schema / Export แบบ Read-only ได้' : database.studioMode === 'REGISTERED_READ_ONLY_PENDING' ? 'ลงทะเบียนแล้ว · รอเปิด Read-only adapter' : 'ไม่ต้องใช้ฐานข้อมูล';
-    card.append(el('strong', ready ? 'good-text' : '', `${title} · ${engine}`), el('div', 'subtle', `${database.databaseName || '—'} · ${database.state || 'UNKNOWN'}`), el('div', 'subtle', mode));
+    const mode = readable ? 'เปิดดูตาราง / Schema / Export แบบ Read-only ได้' : database.studioMode === 'REGISTERED_READ_ONLY_PENDING' ? 'ลงทะเบียนแล้ว · รอเปิด Read-only adapter' : database.studioMode === 'DISCOVERED_READ_ONLY' ? 'ค้นพบบน VPS · Metadata เท่านั้น' : 'ไม่ต้องใช้ฐานข้อมูล';
+    const detail = [database.databaseName || '—', database.state || 'UNKNOWN', database.authority || null].filter(Boolean).join(' · '); const metrics = database.sizeBytes !== null && database.sizeBytes !== undefined ? `${bytes(database.sizeBytes)}${Number.isFinite(Number(database.tableCount)) ? ` · ${number(database.tableCount)} ตาราง` : ''}` : null; card.append(el('strong', ready || database.healthState === 'HEALTHY' ? 'good-text' : '', `${title} · ${engine}`), el('div', 'subtle', detail), el('div', 'subtle', mode)); if (metrics) card.append(el('div', 'subtle', metrics));
     host.append(card);
   }
   if (!state.databases.length) host.append(el('div', 'empty-state', 'ยังไม่มีฐานข้อมูลที่ลงทะเบียน'));

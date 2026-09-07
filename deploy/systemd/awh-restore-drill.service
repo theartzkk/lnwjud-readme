@@ -1,0 +1,13 @@
+[Unit]
+Description=AWH weekly verified restore drill
+After=awh-backup.service local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/awh-restore-drill
+NoNewPrivileges=true
+PrivateTmp=false
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/opt/awh-hub /var/backups/awh-hub
+ReadWritePaths=/var/tmp /var/lib/awh-hub

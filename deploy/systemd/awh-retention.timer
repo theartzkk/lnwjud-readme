@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AWH retention daily without ChatGPT automation
+
+[Timer]
+OnCalendar=*-*-* 04:35:00
+RandomizedDelaySec=10m
+Persistent=true
+Unit=awh-retention.service
+
+[Install]
+WantedBy=timers.target
