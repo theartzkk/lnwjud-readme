@@ -4,6 +4,9 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 APPLY="--apply" in sys.argv
+PLAN="--plan" in sys.argv
+if APPLY and PLAN:
+    raise SystemExit("RETENTION_ABORT: choose only one of --plan or --apply")
 NOW=datetime.now(timezone.utc)
 DB=Path("/var/lib/awh-hub/awh.sqlite")
 BACK=Path("/var/backups/awh-hub")
@@ -188,18 +191,19 @@ for _,p,rid,_ in pre_candidates:
 for _,p in manual_candidates:
     add(p,"manual-backup")
 
-CFG.mkdir(parents=True,exist_ok=True)
 stamp=NOW.strftime("%Y%m%dT%H%M%SZ")
 manifest=CFG/f"retention-manifest-{stamp}.json"
 payload={
-    "schemaVersion":1,"generatedAt":NOW.isoformat(),"mode":"APPLY" if APPLY else "DRY_RUN",
+    "schemaVersion":1,"generatedAt":NOW.isoformat(),"mode":"APPLY" if APPLY else ("PLAN" if PLAN else "DRY_RUN"),
     "current":{"web":WEBPTR.resolve().name,"control":CTLPTR.resolve().name},
     "protectedReleaseIds":sorted(protected),"releaseKeep":sorted(release_keep),
     "counts":{"releasePairs":len(release_candidates),"scheduledBackups":len(scheduled_candidates),"preReleaseBackups":len(pre_candidates),"manualBackups":len(manual_candidates),"items":len(items)},
     "candidateBytes":sum(x["bytes"] for x in items),"candidates":items
 }
-manifest.write_text(json.dumps(payload,ensure_ascii=False,indent=2)+"\n")
-os.chmod(manifest,0o600)
+if not PLAN:
+    CFG.mkdir(parents=True,exist_ok=True)
+    manifest.write_text(json.dumps(payload,ensure_ascii=False,indent=2)+"\n")
+    os.chmod(manifest,0o600)
 
 deleted=0
 reclaimed=0
@@ -246,8 +250,8 @@ total=v.f_blocks*v.f_frsize
 result={
     "schemaVersion":1,
     "finishedAt":datetime.now(timezone.utc).isoformat(),
-    "state":"APPLIED" if APPLY else "PREVIEW",
-    "manifest":str(manifest),
+    "state":"APPLIED" if APPLY else ("PLAN" if PLAN else "PREVIEW"),
+    "manifest":None if PLAN else str(manifest),
     "deletedItems":deleted,
     "reclaimedLogicalBytes":reclaimed,
     "disk":{
@@ -258,12 +262,13 @@ result={
     "counts":payload["counts"],
     "candidateBytes":payload["candidateBytes"]
 }
-tmp=Path(str(STATE)+".tmp")
-tmp.write_text(json.dumps(result,ensure_ascii=False,separators=(",",":"))+"\n")
-os.chmod(tmp,0o640)
-os.replace(tmp,STATE)
-with EVENTS.open("a") as f:
-    f.write(json.dumps(result,ensure_ascii=False,separators=(",",":"))+"\n")
-EVENTS.write_text("\n".join(EVENTS.read_text().splitlines()[-100:])+"\n")
-os.chmod(EVENTS,0o640)
+if not PLAN:
+    tmp=Path(str(STATE)+".tmp")
+    tmp.write_text(json.dumps(result,ensure_ascii=False,separators=(",",":"))+"\n")
+    os.chmod(tmp,0o640)
+    os.replace(tmp,STATE)
+    with EVENTS.open("a") as f:
+        f.write(json.dumps(result,ensure_ascii=False,separators=(",",":"))+"\n")
+    EVENTS.write_text("\n".join(EVENTS.read_text().splitlines()[-100:])+"\n")
+    os.chmod(EVENTS,0o640)
 print(json.dumps(result,ensure_ascii=False,indent=2))

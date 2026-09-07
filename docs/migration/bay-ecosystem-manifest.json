@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 1,
-  "generatedAt": "2026-09-07T16:30:00Z",
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-07T17:13:13.696872Z",
   "policy": {
     "target": "clean-vps-build",
     "cloneOldDisk": false,
@@ -8,7 +8,11 @@
     "dualWriteAllowed": false,
     "productionDatabaseMutationAllowed": false,
     "productionDnsMutationAllowed": false,
-    "requiredReleaseRetention": ["current", "previous", "known-good"]
+    "requiredReleaseRetention": [
+      "current",
+      "previous",
+      "known-good"
+    ]
   },
   "targetVps": {
     "class": "ReadyIDC VPS Game Plus LG1XS+ candidate",
@@ -22,8 +26,20 @@
       "backups": "/srv/backups/<project>",
       "logs": "/var/log/bay/<project>"
     },
-    "runtime": ["nginx", "php-fpm", "mariadb", "systemd", "certbot/acme", "logrotate"],
-    "isolation": ["linux-user-per-app", "php-fpm-pool-per-php-app", "database-user-per-app", "localhost-only-database"]
+    "runtime": [
+      "nginx",
+      "php-fpm",
+      "mariadb",
+      "systemd",
+      "certbot/acme",
+      "logrotate"
+    ],
+    "isolation": [
+      "linux-user-per-app",
+      "php-fpm-pool-per-php-app",
+      "database-user-per-app",
+      "localhost-only-database"
+    ]
   },
   "projects": [
     {
@@ -31,35 +47,97 @@
       "name": "Art’s Workspace Hub",
       "repository": "theartzkk/lnwjud-readme",
       "canonicalRefCandidate": "awh/api-independence",
-      "sourceRevision": "21f8d087163446552ccd500e1898486ae09d6018",
-      "productionRelease": "m20-21f8d0871634",
-      "runtime": ["php8.3-fpm", "sqlite", "nginx", "systemd"],
-      "database": {"engine": "SQLite", "authority": "/var/lib/awh-hub/awh.sqlite", "schemaVersion": 20},
-      "health": "LIVE_VERIFIED",
-      "migrationState": "PREPARED_NOT_CUTOVER",
-      "blockers": ["AWH projects registry source revision is stale versus live production and must be reconciled through canonical source sync, not direct SQL editing"]
+      "sourceRevision": "504ac7b986dd5681994c3f66b7d8e78fb2c06070",
+      "productionRelease": "m20-504ac7b986dd",
+      "runtime": [
+        "php8.3-fpm",
+        "sqlite",
+        "nginx",
+        "systemd"
+      ],
+      "database": {
+        "engine": "SQLite",
+        "authority": "/var/lib/awh-hub/awh.sqlite",
+        "schemaVersion": 20,
+        "integrity": "ok",
+        "restoreDrill": "PASS"
+      },
+      "health": "LIVE_VERIFIED_SOURCE_AND_PRODUCTION_MATCH",
+      "migrationState": "CONTROL_PLANE_BASELINE_VERIFIED",
+      "blockers": []
     },
     {
       "id": "bay-excuse-x",
       "name": "BAY EXCUSE X",
       "repository": "theartzkk/bay-excuse-x",
       "canonicalRefCandidate": "main",
-      "sourceRevision": "6a92784d18b4e7b8d10864bca7fc690ee2122025",
-      "runtime": ["php", "mariadb/mysql"],
-      "database": {"engine": "MariaDB/MySQL", "productionAuthority": "InfinityFree production until final cutover", "vpsProofDatabasesAreProduction": false},
-      "migrationState": "SHADOW_ONLY",
-      "blockers": ["production database export/manifest must be captured read-only", "production uploads/file manifest must be captured", "field/production gates remain outside this migration preparation"],
-      "invariants": ["never treat bay_staging/proof/authority databases as production data", "final write freeze before final dump", "no dual write"]
+      "sourceRevision": "b60b13e38f4362a5b4a4011b63aa65a7d4cbf5d0",
+      "runtime": [
+        "PHP 8.1+",
+        "PDO pdo_mysql",
+        "MariaDB/MySQL",
+        "fileinfo",
+        "json"
+      ],
+      "database": {
+        "engine": "MariaDB/MySQL",
+        "productionAuthority": "InfinityFree production until final cutover",
+        "productionExactDatabaseIdentity": "PENDING_READ_ONLY_PRODUCTION_STATE_PROOF",
+        "vpsProofDatabasesAreProduction": false,
+        "shadowRestoreRehearsalOnCompatibleVpsSchema": "PASS_273_TABLES_ZERO_ROWCOUNT_MISMATCH"
+      },
+      "migrationState": "SOURCE_READY_SHADOW_INPUTS_PENDING",
+      "blockers": [
+        "read-only InfinityFree production deploy-state/DB/file manifest still required",
+        "final field/production acceptance remains separate from migration preparation"
+      ],
+      "invariants": [
+        "Personnel/Student/Academic/Identity master data remain BAY authority",
+        "never treat bay_staging/proof/authority databases as production data",
+        "protected writable paths are migrated independently from immutable release source",
+        "final write freeze before final dump",
+        "no dual write"
+      ],
+      "sourceVersion": "2.0.0-RC5.4.6",
+      "writableAuthorities": [
+        "config/app.php",
+        "storage/",
+        "uploads/",
+        "backups/",
+        "updates/"
+      ],
+      "productionExactRevision": "PENDING_READ_ONLY_PRODUCTION_STATE_PROOF"
     },
     {
       "id": "bay-learnlab",
       "name": "BAY LearnLab",
       "repository": "theartzkk/bay-learnlab",
       "defaultRevisionObserved": "d1e02e554d211c8f71b954f35d9a027216f8b41c",
-      "candidateRevisionObserved": "354cf53a1edc4cb8bdabc46292b215def41250f9",
-      "runtime": ["php", "mariadb", "offline-classroom-client"],
-      "migrationState": "STAGING_FIELD_GATE",
-      "blockers": ["exact promotion candidate must be frozen after current LearnLab work converges", "physical AY1/classroom acceptance remains a separate gate"]
+      "candidateRevisionObserved": "f5ce68871290044419282807aa6a5eeb5f17cb70",
+      "runtime": [
+        "PHP web/API",
+        "PWA/offline runtime",
+        "Windows classroom client"
+      ],
+      "migrationState": "STAGING_FIELD_GATE_AND_EXTRACTION_GATE",
+      "blockers": [
+        "direct BAY master-table coupling must remain behind approved compatibility adapter or be moved to BAY projection contract before extraction closes",
+        "exact promotion candidate must be re-resolved after active LearnLab work converges",
+        "physical AY1/classroom acceptance remains a separate gate"
+      ],
+      "sourceVersionObserved": "0.6.0-rc.1",
+      "candidateRefObserved": "feat/learnlab-quick-entry-rc4-20260906",
+      "database": {
+        "ownership": "ll_* learning-domain tables only",
+        "masterDataAuthority": "BAY EXCUSE X",
+        "physicalTopology": "DO_NOT_FORCE_SEPARATE_MASTER_DB_DURING_MIGRATION"
+      },
+      "invariants": [
+        "no duplicate students/classrooms/subjects/users/academic-year/term/permission master",
+        "BAY Settings and MediaCenter stay authority",
+        "BAY PackageManager/Update Center stays production install/rollback authority",
+        "offline classroom use must survive temporary VPS unavailability after provisioning"
+      ]
     },
     {
       "id": "bay-hub",
@@ -67,21 +145,49 @@
       "repository": "theartzkk/bay-hub",
       "canonicalRefCandidate": "main",
       "sourceRevision": "78ed43fb6d97b2e714ef1e2a28eb796642682afd",
-      "runtime": ["php/static"],
+      "runtime": [
+        "static web",
+        "PHP read-only status endpoint"
+      ],
       "migrationState": "LOW_RISK_PILOT_CANDIDATE",
-      "blockers": []
+      "blockers": [
+        "re-resolve exact promotion head immediately before pilot deploy"
+      ],
+      "candidateRevisionObserved": "d3c4864539d0d3ba7957770645b12f2ff5fa0a51",
+      "candidateRefObserved": "ux/ecosystem-ux-integrated-20260906",
+      "invariants": [
+        "registry/navigation only",
+        "no school identity/student/personnel/notification/progress authority"
+      ]
     },
     {
       "id": "school-website",
       "name": "เว็บไซต์โรงเรียน",
-      "productionUrl": "https://banauedyai.ac.th/mainpage/",
-      "productionHttpObserved": 200,
-      "prototypeUrl": "https://kru-art.great-site.net/?i=1",
+      "currentHosting": "InfinityFree (user-confirmed)",
+      "canonicalRepository": null,
+      "canonicalRevision": null,
+      "canonicalUrl": "PENDING_SOURCE_AUTHORITY_PROOF",
+      "historicalObservedUrls": [
+        "https://banauedyai.ac.th/mainpage/",
+        "https://kru-art.great-site.net/",
+        "https://kruart.great-site.net/"
+      ],
       "prototypeIsCanonical": false,
-      "runtimeObserved": ["php", "cloudflare-fronted"],
+      "runtimeObserved": [
+        "PHP",
+        "MySQL/MariaDB likely; must verify from current production rather than historical package"
+      ],
       "migrationState": "SOURCE_AUTHORITY_REQUIRED",
-      "blockers": ["canonical source repository/revision is not registered in AWH", "production database/file export authority is not yet pinned"],
-      "invariants": ["do not promote the great-site prototype as production source"]
+      "blockers": [
+        "canonical source repository/revision must be pinned",
+        "current InfinityFree database identity/schema and persistent upload/file roots must be captured read-only",
+        "canonical public domain/route must be confirmed from current authority"
+      ],
+      "invariants": [
+        "public website remains separate from BAY back-office authority",
+        "do not infer current source from historical InfinityFree installer packages",
+        "do not duplicate BAY student/personnel/identity data"
+      ]
     }
   ],
   "cutoverGate": [
@@ -95,5 +201,61 @@
     "restore-rehearsal-pass",
     "rollback-plan-preserves-post-cutover-writes",
     "dns-change-only-after-all-gates-pass"
-  ]
+  ],
+  "sourceResolution": "LIVE_RESOLVED_2026-09-07_NIGHT_SHIFT",
+  "currentVpsEvidence": {
+    "awhProductionRelease": "m20-504ac7b986dd",
+    "awhSchemaVersion": 20,
+    "awhIntegrity": "ok",
+    "disk": {
+      "totalBytes": 30083776512,
+      "freeBytes": 9611218944,
+      "usedPercent": 68.1
+    },
+    "databaseFleet": {
+      "state": "READY",
+      "databaseCount": 7,
+      "productionClassificationRule": "VPS proof/staging databases are never promoted to InfinityFree production authority"
+    },
+    "restoreEvidence": {
+      "awhSqlite": {
+        "state": "PASS",
+        "schemaVersion": 20,
+        "temporaryFilesRemaining": 0
+      },
+      "mariaDbStaging": {
+        "state": "PASS",
+        "source": "bay_staging",
+        "baseTables": 273,
+        "rowCountMismatch": 0,
+        "missingTables": 0,
+        "extraTables": 0,
+        "temporaryDatabaseRemaining": false,
+        "temporaryDumpRemaining": false
+      }
+    },
+    "storage": {
+      "strictRetentionPlan": {
+        "state": "PLAN",
+        "candidateBytes": 0,
+        "mutatedProductionState": false
+      },
+      "desktopArtifacts": {
+        "objects": 42,
+        "referencedObjects": 18,
+        "orphanObjects": 24,
+        "reclaimableObjectsAt14Days": 3,
+        "reclaimableBytesAt14Days": 1900367219,
+        "actionTonight": "PLAN_ONLY_NO_DELETE"
+      },
+      "temporaryRunner": {
+        "pathClass": "TEMP_BUILD_RUNTIME",
+        "logicalBytesApprox": 745537536,
+        "processReference": false,
+        "systemdReference": false,
+        "openFileReference": false,
+        "migrationPolicy": "DO_NOT_MIGRATE"
+      }
+    }
+  }
 }

@@ -68,3 +68,19 @@ test('migration manifest forbids blind production cutover and disk clone', async
   assert.match(preflight, /Read-only preflight/);
   assert.doesNotMatch(preflight, /apt(-get)? install|rm -rf|systemctl enable|CREATE DATABASE/i);
 });
+
+test('night manifest is pinned to freshly observed source heads and restore evidence', async () => {
+  const manifest=JSON.parse(await text('docs/migration/bay-ecosystem-manifest.json'));
+  assert.equal(manifest.schemaVersion,2);
+  const byId=Object.fromEntries(manifest.projects.map((p:any)=>[p.id,p]));
+  assert.equal(byId.awh.sourceRevision,'504ac7b986dd5681994c3f66b7d8e78fb2c06070');
+  assert.equal(byId.awh.productionRelease,'m20-504ac7b986dd');
+  assert.equal(byId['bay-excuse-x'].sourceRevision,'b60b13e38f4362a5b4a4011b63aa65a7d4cbf5d0');
+  assert.equal(byId['bay-excuse-x'].sourceVersion,'2.0.0-RC5.4.6');
+  assert.equal(byId['bay-excuse-x'].productionExactRevision,'PENDING_READ_ONLY_PRODUCTION_STATE_PROOF');
+  assert.equal(byId['bay-learnlab'].defaultRevisionObserved,'d1e02e554d211c8f71b954f35d9a027216f8b41c');
+  assert.equal(byId['bay-hub'].sourceRevision,'78ed43fb6d97b2e714ef1e2a28eb796642682afd');
+  assert.equal(byId['school-website'].canonicalRevision,null);
+  assert.equal(manifest.currentVpsEvidence.restoreEvidence.awhSqlite.state,'PASS');
+  assert.equal(manifest.currentVpsEvidence.restoreEvidence.mariaDbStaging.rowCountMismatch,0);
+});
