@@ -366,8 +366,8 @@
     launch.id = LAUNCH_ID;
     launch.type = 'button';
     launch.className = 'awh-owner-center-launch';
-    launch.textContent = 'เปิด Owner Center';
-    launch.addEventListener('click', () => { const sheet = $(SHEET_ID); if (sheet) { openAwhDialog(sheet); refreshSummary(); } });
+    launch.textContent = 'เปิด Control Panel';
+    launch.addEventListener('click', () => { window.location.assign('./panel.html'); });
     heading?.append(launch);
 
     const sheet = document.createElement('section');

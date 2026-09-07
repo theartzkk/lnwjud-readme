@@ -821,6 +821,10 @@ import {
     publishWorkContext();
   }
 
+  function requestedOwnerSettings() {
+    try { const value = new URL(window.location.href).searchParams.get('awh-settings'); return ['ai','account','devices','data','system','people'].includes(value) ? value : null; } catch { return null; }
+  }
+
   function authenticatedSurfaceRequested() {
     try { return new URL(window.location.href).searchParams.has('awh-surface'); } catch { return false; }
   }
@@ -1328,5 +1332,5 @@ import {
   $('logout-button').addEventListener('click', async () => { await logout().catch(() => undefined); window.location.reload(); });
 
   void loadPublicDesktopRelease();
-  loadWebData().then(async (data) => { render(data); if (window.location.hash === '#awh-recovery' || window.location.hash.startsWith('#awh-reset=')) openPasswordRecovery(); if (data?.control?.authenticated) { if (authenticatedSurfaceRequested()) await refreshConversation(); try { state.productSettings = (await loadProductSettings()).settings; applyProductSettings(); } catch {} state.conversationTimer = window.setInterval(() => { if (!document.hidden && state.selectedConversationId) void loadConversation(state.selectedConversationId).then((value) => { state.conversation = value; renderWorkspace(); }).catch(() => undefined); }, 2000); state.refreshTimer = window.setInterval(() => { if (!document.hidden) void refreshWorkspace(false); }, 15_000); } }).catch(() => render({ product: { shortName: 'AWH' }, control: { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' } }));
+  loadWebData().then(async (data) => { render(data); const requestedSettings = requestedOwnerSettings(); if (data?.control?.authenticated && requestedSettings) { await openAccount(requestedSettings); } if (window.location.hash === '#awh-recovery' || window.location.hash.startsWith('#awh-reset=')) openPasswordRecovery(); if (data?.control?.authenticated) { if (authenticatedSurfaceRequested()) await refreshConversation(); try { state.productSettings = (await loadProductSettings()).settings; applyProductSettings(); } catch {} state.conversationTimer = window.setInterval(() => { if (!document.hidden && state.selectedConversationId) void loadConversation(state.selectedConversationId).then((value) => { state.conversation = value; renderWorkspace(); }).catch(() => undefined); }, 2000); state.refreshTimer = window.setInterval(() => { if (!document.hidden) void refreshWorkspace(false); }, 15_000); } }).catch(() => render({ product: { shortName: 'AWH' }, control: { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' } }));
 })();

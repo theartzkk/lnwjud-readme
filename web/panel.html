@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#f7f8fb" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <title>AWH Control Panel</title>
+  <link rel="stylesheet" href="./awh-design-system.css?release=__AWH_WEB_RELEASE_ID__" />
+  <link rel="stylesheet" href="./awh-light-system.css?release=__AWH_WEB_RELEASE_ID__" />
+  <link rel="stylesheet" href="./panel.css?release=__AWH_WEB_RELEASE_ID__" />
+</head>
+<body>
+  <div class="cp-shell">
+    <aside class="cp-sidebar" id="cp-sidebar">
+      <a class="cp-brand" href="./panel.html"><span>A</span><div><strong>AWH Control Panel</strong><small>BAY Ecosystem</small></div></a>
+      <label class="cp-search"><span>⌕</span><input id="cp-search" type="search" placeholder="ค้นหาเมนู…  ⌘K" autocomplete="off" /></label>
+      <nav class="cp-nav" aria-label="Control Panel">
+        <a class="is-active" href="#overview" data-cp-keywords="dashboard overview สรุป"><span>⌂</span>ภาพรวม</a>
+        <p>เว็บไซต์และข้อมูล</p>
+        <a href="./hosting.html" data-cp-keywords="website hosting deploy rollback เว็บไซต์ โฮสติ้ง"><span>◎</span>เว็บไซต์</a>
+        <a href="#domains" data-cp-keywords="domain dns ssl https โดเมน"><span>◉</span>Domains & SSL</a>
+        <a href="./?awh-surface=files" data-cp-keywords="files storage artifacts ไฟล์ พื้นที่"><span>▤</span>Files & Storage</a>
+        <a href="./database.html" data-cp-keywords="database sqlite schema ฐานข้อมูล"><span>▦</span>Databases</a>
+        <a href="#backup" data-cp-keywords="backup restore recovery retention สำรอง กู้คืน"><span>↺</span>Backups & Recovery</a>
+        <p>ระบบและความปลอดภัย</p>
+        <a href="./trust.html" data-cp-keywords="security trust session approval ความปลอดภัย"><span>◇</span>Security & Trust</a>
+        <a href="./infrastructure.html" data-cp-keywords="server service cpu memory vps runtime logs เซิร์ฟเวอร์"><span>⌘</span>Server & Services</a>
+        <a href="./?awh-surface=home&awh-settings=people" data-cp-keywords="users roles access people ผู้ใช้ สิทธิ์"><span>♙</span>Users & Access</a>
+        <a href="./?awh-surface=home&awh-settings=ai" data-cp-keywords="ai provider model quota cost automation เอไอ ค่าใช้จ่าย"><span>✦</span>AI & Automations</a>
+        <p>ระบบ BAY</p>
+        <a href="#ecosystem" data-cp-keywords="bay excuse learnlab school ecosystem โรงเรียน"><span>◫</span>BAY Ecosystem</a>
+        <a href="./?awh-surface=home#source" data-cp-keywords="source github vault lnwjud advanced runtime"><span>⌁</span>Advanced</a>
+      </nav>
+      <div class="cp-sidebar-foot"><a href="./">← กลับ AWH</a><span id="cp-release">Release —</span></div>
+    </aside>
+    <main class="cp-main">
+      <header class="cp-topbar">
+        <button id="cp-menu" class="cp-menu" type="button" aria-label="เปิดเมนู">☰</button>
+        <div><span>OWNER</span><strong>Control Panel</strong></div>
+        <div class="cp-top-actions"><span id="cp-updated">กำลังตรวจระบบ…</span><button id="cp-refresh" type="button">รีเฟรช</button></div>
+      </header>
+      <div class="cp-content">
+        <section id="overview" class="cp-hero">
+          <div><span class="cp-eyebrow">AWH · BAY ECOSYSTEM</span><h1>ทุกระบบ อยู่ที่เดียว</h1><p>ดูสุขภาพ จัดการเว็บไซต์ ข้อมูล Backup ผู้ใช้ AI และระบบส่วนกลาง โดยใช้ authority เดิมของแต่ละระบบ</p></div>
+          <div id="cp-overall" class="cp-overall">กำลังตรวจ</div>
+        </section>
+        <section class="cp-metrics" aria-label="ทรัพยากรระบบ">
+          <article><small>CPU</small><strong id="cp-cpu">—</strong><span id="cp-load">Load —</span></article>
+          <article><small>Memory</small><strong id="cp-memory">—</strong><span id="cp-memory-free">—</span></article>
+          <article><small>Storage</small><strong id="cp-storage">—</strong><span id="cp-storage-free">—</span></article>
+          <article><small>Backup</small><strong id="cp-backup">—</strong><span id="cp-backup-time">—</span></article>
+        </section>
+        <section id="cp-attention-wrap" class="cp-section cp-attention" hidden>
+          <div class="cp-section-head"><div><span>ACTION REQUIRED</span><h2>สิ่งที่ควรดูตอนนี้</h2></div><small>แสดงเฉพาะสิ่งที่ต้องลงมือ</small></div>
+          <div id="cp-attention" class="cp-list"></div>
+        </section>
+        <section class="cp-section">
+          <div class="cp-section-head"><div><span>QUICK ACCESS</span><h2>จัดการระบบ</h2></div><small>เหมือน cPanel แต่ใช้ข้อมูลและสิทธิ์เดิมของ AWH</small></div>
+          <div class="cp-tool-grid">
+            <a class="cp-tool" href="./hosting.html" data-cp-keywords="website hosting deploy"><b>◎</b><span><strong>Websites</strong><small id="cp-sites">Managed sites</small></span></a>
+            <a class="cp-tool" href="#domains" data-cp-keywords="domain ssl dns"><b>◉</b><span><strong>Domains & SSL</strong><small id="cp-domains-count">ตรวจ DNS และ HTTPS</small></span></a>
+            <a class="cp-tool" href="./?awh-surface=files" data-cp-keywords="files storage"><b>▤</b><span><strong>Files & Storage</strong><small>ไฟล์ ผลงาน และพื้นที่</small></span></a>
+            <a class="cp-tool" href="./database.html" data-cp-keywords="database schema"><b>▦</b><span><strong>Databases</strong><small id="cp-db">Database Studio</small></span></a>
+            <a class="cp-tool" href="#backup" data-cp-keywords="backup restore recovery"><b>↺</b><span><strong>Backups</strong><small id="cp-backup-card">Backup & recovery</small></span></a>
+            <a class="cp-tool" href="./trust.html" data-cp-keywords="security trust"><b>◇</b><span><strong>Security</strong><small id="cp-security">Trust & protection</small></span></a>
+            <a class="cp-tool" href="./infrastructure.html" data-cp-keywords="server services logs"><b>⌘</b><span><strong>Server & Services</strong><small id="cp-services">VPS runtime</small></span></a>
+            <a class="cp-tool" href="./?awh-surface=home&awh-settings=people" data-cp-keywords="users roles access"><b>♙</b><span><strong>Users & Access</strong><small>บัญชี บทบาท และสิทธิ์</small></span></a>
+            <a class="cp-tool" href="./?awh-surface=home&awh-settings=ai" data-cp-keywords="ai providers costs"><b>✦</b><span><strong>AI & Costs</strong><small id="cp-ai">Provider & routing</small></span></a>
+            <a class="cp-tool" href="./?awh-surface=home#source" data-cp-keywords="source github vault"><b>⌁</b><span><strong>Source Authority</strong><small>GitHub · Vault · exact SHA</small></span></a>
+          </div>
+        </section>
+        <div class="cp-columns">
+          <section id="domains" class="cp-section"><div class="cp-section-head"><div><span>DOMAINS & SSL</span><h2>โดเมน</h2></div><a href="./infrastructure.html">รายละเอียด →</a></div><div id="cp-domain-list" class="cp-list"></div></section>
+          <section id="backup" class="cp-section"><div class="cp-section-head"><div><span>BACKUP & RECOVERY</span><h2>การกู้คืน</h2></div><a href="./database.html">Database Studio →</a></div><div id="cp-recovery-list" class="cp-list"></div></section>
+        </div>
+        <div class="cp-columns">
+          <section class="cp-section"><div class="cp-section-head"><div><span>SERVICES</span><h2>บริการสำคัญ</h2></div><a href="./infrastructure.html">ทั้งหมด →</a></div><div id="cp-service-list" class="cp-list"></div></section>
+          <section id="ecosystem" class="cp-section"><div class="cp-section-head"><div><span>BAY ECOSYSTEM</span><h2>ระบบที่เชื่อมกัน</h2></div><a href="/bay/status.html">สถานะ →</a></div><div id="cp-ecosystem-list" class="cp-list"></div></section>
+        </div>
+        <section class="cp-footnote"><strong>Single Control Plane</strong><p>Control Panel นี้เป็นชั้นควบคุมและนำทางเท่านั้น ไม่สร้างฐานข้อมูล Login Queue Notification หรือ Source of Truth ชุดใหม่</p></section>
+      </div>
+    </main>
+  </div>
+  <script type="module" src="./panel.js?release=__AWH_WEB_RELEASE_ID__"></script>
+</body>
+</html>
