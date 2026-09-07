@@ -11,7 +11,7 @@
 - OpenTelemetry PHP Distro: **0.6.1** (SHA-256 pinned in installer).
 - OTLP receiver binds only to `127.0.0.1:4318`; no public listener is allowed.
 - Only the `awh-hub` PHP-FPM pool exports traces. Other PHP pools are not configured for OTLP export.
-- Phase 1 disables `curl` and `pdo` child-span auto-instrumentation, leaving one bounded server root span per request.
+- Phase 1 asks PHP to disable `curl`/`pdo` auto-instrumentation and also enforces the boundary at the collector: spans without `http.request.method` are dropped before export, leaving bounded HTTP server/root spans even if a PHP child instrumentor ignores the pool-level disable flag.
 - Span and event names are normalized to `awh.http` / `awh.event`.
 
 ## Privacy contract

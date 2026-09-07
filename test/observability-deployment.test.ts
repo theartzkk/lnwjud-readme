@@ -16,6 +16,8 @@ test('AWH observability collector is loopback-only and allowlist based', async (
     assert.match(yaml, /allowed_keys:[\s\S]*?- service\.name[\s\S]*?- service\.namespace[\s\S]*?- deployment\.environment\.name/);
     assert.doesNotMatch(yaml, /keep_keys\(attributes, \["service\.name", "service\.version"/);
     assert.match(yaml, /key:\s*service\.name[\s\S]*?value:\s*awh-control-plane[\s\S]*?action:\s*upsert/);
+    assert.match(yaml, /filter\/awh_http_root:[\s\S]*?http\.request\.method[\s\S]*?== nil/);
+    assert.match(yaml, /processors: \[memory_limiter, resource\/awh, filter\/awh_http_root, transform\/awh_privacy, redaction\/awh, batch\]/);
     assert.match(yaml, /set\(span\.name, "awh\.http"\)/);
     assert.match(yaml, /keep_keys\(spanevent\.attributes, \[\]\)/);
     assert.doesNotMatch(yaml, /url\.full|db\.statement|cookie|request\.body/i);
