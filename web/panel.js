@@ -1,4 +1,4 @@
-import { loadControlData, loadInfrastructure, listManagedSites, loadProviderStatus } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { loadAuthSession, loadInfrastructure, listManagedSites, loadProviderStatus } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $=(id)=>document.getElementById(id);
 const bytes=(value)=>{const n=Number(value||0);if(!Number.isFinite(n)||n<1)return '—';if(n<1024**2)return Math.round(n/1024)+' KB';if(n<1024**3)return (n/1024**2).toFixed(1)+' MB';return (n/1024**3).toFixed(1)+' GB';};
@@ -111,14 +111,22 @@ function installUi(){
 async function load(){
   const refresh=$('cp-refresh');if(refresh)refresh.disabled=true;
   $('cp-attention')?.replaceChildren();if($('cp-attention-wrap'))$('cp-attention-wrap').hidden=true;
+  $('cp-updated').textContent='กำลังโหลดข้อมูลสำคัญ…';
+  const started=performance.now();
   try{
-    const control=await loadControlData();if(control.role!=='OWNER'){location.assign('./');return;}
-    const results=await Promise.allSettled([loadInfrastructure(),listManagedSites(),loadProviderStatus()]);
-    if(results[0].status!=='fulfilled')throw results[0].reason;
-    const data=results[0].value;renderServer(data);renderDomains(data);renderRecovery(data);renderServices(data);renderEcosystem(data);
-    if(results[1].status==='fulfilled')renderSites(results[1].value);
-    if(results[2].status==='fulfilled')renderProvider(results[2].value);
-    $('cp-updated').textContent='อัปเดต '+date(data?.telemetry?.generatedAt||new Date().toISOString());
+    const primary=await Promise.allSettled([loadAuthSession(),loadInfrastructure()]);
+    if(primary[0].status!=='fulfilled')throw primary[0].reason;
+    if(primary[0].value?.role!=='OWNER'){location.assign('./');return;}
+    if(primary[1].status!=='fulfilled')throw primary[1].reason;
+
+    const data=primary[1].value;
+    renderServer(data);renderDomains(data);renderRecovery(data);renderServices(data);renderEcosystem(data);
+    $('cp-updated').textContent='พร้อมใช้ · '+Math.max(1,Math.round(performance.now()-started))+' ms';
+
+    Promise.allSettled([listManagedSites(),loadProviderStatus()]).then((secondary)=>{
+      if(secondary[0].status==='fulfilled')renderSites(secondary[0].value);
+      if(secondary[1].status==='fulfilled')renderProvider(secondary[1].value);
+    });
   }catch(error){
     const overall=$('cp-overall');overall.className='cp-overall bad';overall.textContent='Control Panel ต้องตรวจ';
     attention('ยังโหลด Control Panel ไม่ครบ',error instanceof Error?error.message:'Unknown error','CRITICAL');$('cp-updated').textContent='โหลดข้อมูลไม่สำเร็จ';
