@@ -200,10 +200,11 @@ test('mac remote worker recovery is pinned, persistent, and reproducible', async
 
 
 test('edge hardening compresses text, hides versions, bans scanner patterns, and preserves legacy worker authorization', async () => {
-  const [edge, legacy, jail, installer] = await Promise.all([
+  const [edge, legacy, jail, scanner, installer] = await Promise.all([
     readFile(join(ROOT, 'deploy/nginx/awh-edge-hardening.conf'), 'utf8'),
     readFile(join(ROOT, 'deploy/nginx/awh-legacy-control-compat.conf'), 'utf8'),
     readFile(join(ROOT, 'deploy/fail2ban/awh-nginx-botsearch.local'), 'utf8'),
+    readFile(join(ROOT, 'deploy/fail2ban/awh-nginx-scanner.conf'), 'utf8'),
     readFile(join(ROOT, 'deploy/awh-control-plane/install-edge-hardening.sh'), 'utf8'),
   ]);
   assert.ok(edge.includes('server_tokens off;'));
@@ -220,6 +221,10 @@ test('edge hardening compresses text, hides versions, bans scanner patterns, and
   assert.ok(jail.includes('[nginx-botsearch]'));
   assert.ok(jail.includes('enabled = true'));
   assert.ok(jail.includes('maxretry = 4'));
+  assert.ok(jail.includes('backend = polling'));
+  assert.ok(jail.includes('filter = awh-nginx-scanner'));
+  assert.ok(scanner.includes('credentials'));
+  assert.ok(scanner.includes('phpinfo'));
   assert.ok(installer.includes('EDGE_HARDENING_ROLLBACK=PASS'));
   assert.ok(installer.includes('ssl_protocols TLSv1.2 TLSv1.3;'));
   assert.ok(installer.includes('nginx -t'));
