@@ -960,6 +960,16 @@ import {
     } catch (error) { state.conversationAvailable = false; state.conversation = { messages: [{ messageId: 'local-unavailable', taskId: null, kind: 'assistant', sequence: 1, body: 'ยังเปิด Work นี้ไม่ได้ จึงยังไม่ส่งคำขอใหม่เพื่อป้องกันงานสูญหาย', createdAt: new Date().toISOString() }], tasks: [], artifacts: [], attachments: [], approvals: [] }; renderWorkspace(); message('goal-message', error instanceof Error ? error.message : 'AWH ยังโหลดการสนทนาไม่ได้'); }
   }
 
+  async function hydrateAuthenticatedControl({ refreshConversationOnSurface = true } = {}) {
+    if (!state.control?.authenticated) return null;
+    const full = await loadControlData();
+    state.control = { ...state.control, ...full, authenticated: true, available: true };
+    renderWorkspace();
+    if (state.control?.role === 'OWNER') void loadProviderStatus().then((value) => { state.provider = value?.provider || value; }).catch(() => undefined);
+    if (refreshConversationOnSurface && authenticatedSurfaceRequested()) await refreshConversation();
+    return state.control;
+  }
+
   async function refreshWorkspace(showBusy = false) {
     if (showBusy) message('goal-message', 'กำลังรีเฟรช…');
     try { state.control = await loadControlData(); if (state.control?.role === 'OWNER') state.provider = await loadProviderStatus().catch(() => state.provider); renderWorkspace(); await refreshConversation(); if (showBusy) message('goal-message', ''); }
@@ -1043,10 +1053,11 @@ import {
   $('login-form').addEventListener('submit', async (event) => {
     event.preventDefault(); message('login-message', 'กำลังเข้าสู่ AWH…');
     try {
-      await login($('login-username').value, $('login-password').value, $('login-remember').checked);
+      const session = await login($('login-username').value, $('login-password').value, $('login-remember').checked);
       $('login-password').value = '';
-      state.control = await loadControlData(); render({ product: { shortName: 'AWH' }, control: state.control }); if (authenticatedSurfaceRequested()) await refreshConversation();
+      render({ product: { shortName: 'AWH' }, control: { mode: 'CONTROL', available: true, authenticated: true, ...session } });
       message('login-message', '');
+      void hydrateAuthenticatedControl().catch((error) => message('goal-message', error instanceof Error ? error.message : 'AWH ยังโหลดพื้นที่ทำงานไม่ครบ'));
     } catch (error) { message('login-message', error instanceof Error ? error.message : 'เข้าสู่ AWH ไม่สำเร็จ'); }
   });
 
@@ -1332,5 +1343,22 @@ import {
   $('logout-button').addEventListener('click', async () => { await logout().catch(() => undefined); window.location.reload(); });
 
   void loadPublicDesktopRelease();
-  loadWebData().then(async (data) => { render(data); const requestedSettings = requestedOwnerSettings(); if (data?.control?.authenticated && requestedSettings) { await openAccount(requestedSettings); } if (window.location.hash === '#awh-recovery' || window.location.hash.startsWith('#awh-reset=')) openPasswordRecovery(); if (data?.control?.authenticated) { if (authenticatedSurfaceRequested()) await refreshConversation(); try { state.productSettings = (await loadProductSettings()).settings; applyProductSettings(); } catch {} state.conversationTimer = window.setInterval(() => { if (!document.hidden && state.selectedConversationId) void loadConversation(state.selectedConversationId).then((value) => { state.conversation = value; renderWorkspace(); }).catch(() => undefined); }, 2000); state.refreshTimer = window.setInterval(() => { if (!document.hidden) void refreshWorkspace(false); }, 15_000); } }).catch(() => render({ product: { shortName: 'AWH' }, control: { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' } }));
+  loadWebData().then(async (data) => {
+    render(data);
+    const requestedSettings = requestedOwnerSettings();
+    if (window.location.hash === '#awh-recovery' || window.location.hash.startsWith('#awh-reset=')) openPasswordRecovery();
+    if (!data?.control?.authenticated) return;
+
+    // First paint is already complete. Hydrate heavier workspace state in the background.
+    const hydration = hydrateAuthenticatedControl().catch((error) => {
+      message('goal-message', error instanceof Error ? error.message : 'AWH ยังโหลดพื้นที่ทำงานไม่ครบ');
+      return null;
+    });
+    if (requestedSettings) void openAccount(requestedSettings);
+    void loadProductSettings().then((value) => { state.productSettings = value.settings; applyProductSettings(); }).catch(() => undefined);
+
+    await hydration;
+    state.conversationTimer = window.setInterval(() => { if (!document.hidden && state.selectedConversationId) void loadConversation(state.selectedConversationId).then((value) => { state.conversation = value; renderWorkspace(); }).catch(() => undefined); }, 2000);
+    state.refreshTimer = window.setInterval(() => { if (!document.hidden) void refreshWorkspace(false); }, 15_000);
+  }).catch(() => render({ product: { shortName: 'AWH' }, control: { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' } }));
 })();

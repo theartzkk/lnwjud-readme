@@ -53,7 +53,8 @@ test('web build is a generic authenticated Control shell, never a serialized pro
   assert.match(html, /styles\.css\?release=fixture-control-sha/);
   assert.match(html, /app\.js\?release=fixture-control-sha/);
   assert.match(app, /hub-read-adapter\.js\?release=fixture-control-sha/);
-  assert.match(adapter, /control-plane-adapter\.js\?release=fixture-control-sha/);
+  assert.match(adapter, /\/api\/v1\/auth\/session/);
+  assert.doesNotMatch(adapter, /control-plane-adapter\.js/);
   assert.match(html, /downloads\/AWH-macOS-x64\.zip/);
   assert.match(html, /downloads\/AWH-Windows-x64\.zip/);
 });
@@ -113,6 +114,9 @@ test('web shell uses same-origin cookies only and never stores credentials or be
   ]);
   assert.deepEqual(browserRequestOptions(), { credentials: 'same-origin', cache: 'no-store' });
   assert.match(controlAdapter, /credentials:\s*'include'/);
+  assert.match(adapter, /\/api\/v1\/auth\/session/);
+  assert.doesNotMatch(adapter, /loadControlData|\/api\/v1\/control\/projects/);
+  assert.match(app, /hydrateAuthenticatedControl/);
   assert.match(controlAdapter, /X-AWH-CSRF/);
   assert.doesNotMatch(`${html}\n${app}\n${adapter}\n${controlAdapter}`, /localStorage|sessionStorage|Authorization|Bearer\s+|document\.cookie/i);
   assert.doesNotMatch(`${html}\n${app}`, /pairing-code|pairing-submit|openMobileSession/i);
@@ -120,6 +124,23 @@ test('web shell uses same-origin cookies only and never stores credentials or be
   assert.equal(isSafeRelativePath('https://evil.example/api'), null);
   assert.equal(isSafeRelativePath('//evil.example/api'), null);
   assert.equal(isSafeRelativePath('/api/v1/control/session?token=secret'), null);
+});
+
+test('CONTROL shell restores an existing session with one lightweight auth request before workspace hydration', async () => {
+  const calls: string[] = [];
+  const fastFetch = async (path: string) => {
+    calls.push(path);
+    if (path === '/web-config.json') return { ok: true, text: async () => JSON.stringify({ mode: 'CONTROL', apiBase: '/api/v1' }) } as Response;
+    if (path === '/data.json') return { ok: true, text: async () => JSON.stringify({ product: { shortName: 'AWH', name: 'Art’s Workspace Hub' } }) } as Response;
+    if (path === '/api/v1/auth/session') return { ok: true, text: async () => JSON.stringify({ authenticated: true, expiresAt: '2026-10-07T00:00:00Z', remembered: true, userId: '00000000-0000-4000-8000-000000000001', role: 'OWNER' }) } as Response;
+    throw new Error('unexpected bootstrap request '+path);
+  };
+  const data = await loadWebData(fastFetch);
+  assert.equal(data.control.authenticated, true);
+  assert.equal(data.control.role, 'OWNER');
+  assert.equal(data.control.remembered, true);
+  assert.deepEqual(new Set(calls), new Set(['/web-config.json','/data.json','/api/v1/auth/session']));
+  assert.equal(calls.some((path) => path.startsWith('/api/v1/control/')), false);
 });
 
 test('CONTROL shell uses authenticated canonical data and presents a truthful sign-in fallback', async () => {
