@@ -73,7 +73,9 @@ test('night manifest is pinned to freshly observed source heads and restore evid
   const manifest=JSON.parse(await text('docs/migration/bay-ecosystem-manifest.json'));
   assert.equal(manifest.schemaVersion,2);
   const byId=Object.fromEntries(manifest.projects.map((p:any)=>[p.id,p]));
-  assert.equal(byId.awh.sourceRevision,'504ac7b986dd5681994c3f66b7d8e78fb2c06070');
+  assert.equal(byId.awh.sourceRevision,'6900cf447e966fd093b22ad981d56cdde317d35b');
+  assert.equal(manifest.sourceMergeEvidence.mergeCommit,'6900cf447e966fd093b22ad981d56cdde317d35b');
+  assert.equal(manifest.sourceMergeEvidence.productionActivationAuthorized,false);
   assert.equal(byId.awh.productionRelease,'m20-504ac7b986dd');
   assert.equal(byId['bay-excuse-x'].sourceRevision,'b60b13e38f4362a5b4a4011b63aa65a7d4cbf5d0');
   assert.equal(byId['bay-excuse-x'].sourceVersion,'2.0.0-RC5.4.6');

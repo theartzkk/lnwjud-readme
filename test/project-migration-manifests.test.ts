@@ -6,13 +6,15 @@ const load=async(n:string)=>JSON.parse(await readFile(`docs/migration/projects/$
 
 test('per-project migration manifests preserve authorities and rollback gates', async()=>{
   const [awh,bay,ll,hub,site,index]=await Promise.all(['awh','bay-excuse-x','bay-learnlab','bay-hub','school-website','index'].map(load));
-  assert.equal(awh.source.observedSha,'504ac7b986dd5681994c3f66b7d8e78fb2c06070');
+  assert.equal(awh.source.observedSha,'6900cf447e966fd093b22ad981d56cdde317d35b');
+  assert.equal(awh.currentProduction.sourceMatchesCanonicalAtObservation,false);
   assert.equal(awh.backup.latestRestoreDrill,'PASS_SCHEMA_20');
   assert.equal(bay.source.observedVersion,'2.0.0-RC5.4.6');
   assert.equal(bay.currentProduction.exactDeployRevision,'PENDING_READ_ONLY_PRODUCTION_STATE_PROOF');
   assert.equal(bay.data.vpsProofAndStagingDatabasesAreProduction,false);
   assert.equal(ll.data.masterAuthority,'BAY EXCUSE X');
-  assert.equal(ll.source.activeCandidateShaObserved,'ad0e7fea7bfc056097029ef1669d94ba4d0639c0');
+  assert.equal(ll.source.activeCandidateShaObserved,'bcf21fe6a5e62a15f800a74072abb1101c30ff5a');
+  assert.equal(ll.source.activeCandidateVersionObserved,'0.8.0-rc.25');
   assert.ok(ll.data.forbiddenDuplicateMasters.includes('students'));
   assert.equal(ll.deploy.parallelProductionDeployer,false);
   assert.equal(hub.data.persistentDatabase,false);
