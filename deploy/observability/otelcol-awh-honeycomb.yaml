@@ -46,6 +46,7 @@ exporters:
     endpoint: https://api.honeycomb.io
     headers:
       x-honeycomb-team: ${env:HONEYCOMB_API_KEY}
+      x-honeycomb-dataset: awh-control-plane
 
 service:
   telemetry:
