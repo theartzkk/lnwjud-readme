@@ -893,6 +893,12 @@ fi
 if test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$CLOUD_FIRST" = 1 || test "$ACCOUNT_HOSTING" = 1; then
   stage HOSTING_RUNTIME_READY
   sudo test -x /usr/sbin/nginx; sudo test -x /usr/bin/curl; sudo test -x /usr/bin/openssl; sudo test -x /usr/bin/certbot
+  # AUTO_DOMAIN is only durable when Let's Encrypt renewal is actually scheduled.
+  sudo systemctl cat certbot.timer >/dev/null
+  sudo systemctl enable --now certbot.timer >/dev/null
+  sudo systemctl is-enabled --quiet certbot.timer
+  sudo systemctl is-active --quiet certbot.timer
+  stage HOSTING_TLS_RENEWAL_READY
   sudo install -d -o root -g root -m 0750 /srv/awh-sites /etc/awh-sites
   sudo install -d -o root -g root -m 0755 /var/lib/awh-acme /var/lib/letsencrypt /var/log/letsencrypt /etc/letsencrypt /etc/nginx/sites-available /etc/nginx/sites-enabled
   sudo test -d /var/lib/awh-acme; sudo test -d /etc/letsencrypt
