@@ -28,6 +28,9 @@ test('M17 Database Studio web release is owner-first, read-only, and emitted by 
     assert.match(app, /\/api\/v1\/auth\/session/);
     assert.match(app, /credentials:\s*'include'/);
     assert.match(app, /studioApi\('query'/);
+    assert.match(app, /database_tables/);
+    assert.match(app, /database_browse/);
+    assert.match(html, /ฐานข้อมูลทั้งหมด/);
     assert.doesNotMatch(app, /ยืนยันรหัสผ่าน.*SQL|STEP_UP_REQUIRED/);
     assert.match(css, /--accent:var\(--awh-accent\)/);
     assert.doesNotMatch(`${html}\n${app}`, /localStorage|sessionStorage|document\.cookie|Authorization|Bearer\s+/i);
@@ -43,7 +46,7 @@ test('M17 Database Studio is wired into the production deployment surface', asyn
     readFile(join(ROOT, 'deploy/nginx/awh-control-plane.conf'), 'utf8'),
   ]);
   for (const asset of ['dist-web/database.html', 'dist-web/database.css', 'dist-web/database.js']) assert.match(deploy, new RegExp(asset.replace('.', '\\.')));
-  for (const backend of ['hub/public/database-studio.php', 'hub/src/HubDatabaseStudioService.php', 'hub/src/HubDatabaseStudioRouter.php']) assert.ok(deploy.includes(backend), `deployment bundle missing ${backend}`);
+  for (const backend of ['hub/public/database-studio.php', 'hub/src/HubDatabaseStudioService.php', 'hub/src/HubDatabaseStudioRouter.php', 'hub/src/HubMariaDbReadClient.php']) assert.ok(deploy.includes(backend), `deployment bundle missing ${backend}`);
   assert.ok(deploy.includes('hub/migrations/001_m3e_enrollment.sql'), 'Migration Center must ship the full migration catalog');
   assert.match(nginx, /location = \/database-studio\.php \{/);
   assert.match(nginx, /Hub session|Owner-only Database Studio/);
