@@ -256,7 +256,7 @@
     const repository = document.createElement('input'); repository.id = 'owner-source-repository'; repository.maxLength = 201; repository.autocomplete = 'off'; repository.placeholder = 'owner/repository';
     const refLabel = document.createElement('label'); refLabel.htmlFor = 'owner-source-ref'; refLabel.textContent = 'Branch / Git ref';
     const ref = document.createElement('input'); ref.id = 'owner-source-ref'; ref.maxLength = 160; ref.autocomplete = 'off'; ref.placeholder = 'เช่น main หรือ awh/api-independence';
-    const note = document.createElement('p'); note.className = 'muted'; note.textContent = 'ถ้ามีเว็บไซต์เดิม ให้กู้ไฟล์รุ่นล่าสุดและเก็บไว้ใน GitHub repository ก่อน · AWH จะไม่ทับ Working files หรือประวัติ Project Vault อัตโนมัติ';
+    const note = document.createElement('p'); note.className = 'muted'; note.textContent = 'GitHub ใช้เฉพาะ Source ที่ต้องการให้ AWH build/deploy · เว็บต้นแบบหรือเว็บอ้างอิงไม่จำเป็นต้องผูกเป็น Source · AWH จะไม่ทับ Working files หรือประวัติ Project Vault อัตโนมัติ';
     const actions = document.createElement('div'); actions.className = 'form-actions';
     const bind = document.createElement('button'); bind.id = 'owner-source-bind'; bind.type = 'submit'; bind.className = 'secondary-button'; bind.textContent = 'เชื่อม GitHub';
     const refresh = document.createElement('button'); refresh.id = 'owner-source-refresh'; refresh.type = 'button'; refresh.className = 'text-button'; refresh.textContent = 'รีเฟรชสถานะ'; refresh.addEventListener('click', () => { void refreshSourceState().catch((error) => sourceMessage(error?.message || 'ตรวจ Source ไม่สำเร็จ')); });
