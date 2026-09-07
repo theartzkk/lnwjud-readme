@@ -115,10 +115,14 @@ function renderEcosystem(){
   host.replaceChildren();
   const operator=ecosystem?.operator||{};
   const tasks=ecosystem?.tasks||{};
+  const tls=ecosystem?.tls||{};
+  const renewal=tls.renewal||{};
+  const renewalValue=tls.mode!=='LETS_ENCRYPT'?'ตรวจอัตโนมัติ':renewal.state==='READY'?'ต่ออายุอัตโนมัติพร้อม':operator.state==='ONLINE'?'ต้องตรวจการต่ออายุ':'รอตรวจระบบต่ออายุ';
+  const renewalNote=renewal.state==='READY'?'ใบรับรองจะต่ออายุอัตโนมัติ และระบบตรวจซ้ำทุกไม่กี่นาที':tls.mode==='LETS_ENCRYPT'?'เปิด HTTPS หลังชื่อเว็บและเว็บไซต์ตรวจผ่าน · ระบบต่ออายุยังไม่ยืนยัน':'ตรวจสถานะ HTTPS อัตโนมัติ';
   const cards=[
     ['ระบบเบื้องหลัง',operator.state==='ONLINE'?'พร้อมทำงาน':'กำลังรอ',operator.state==='ONLINE'?`ความสามารถพร้อม ${operator.freshCapabilities||0}/${operator.requiredCapabilities||0}`:'งานใหม่จะรอไว้และทำต่อเมื่อระบบกลับมาพร้อม'],
     ['การเชื่อมชื่อเว็บ',dnsPlan?.automatic?'อัตโนมัติ':'ตั้งค่าตามคำแนะนำ',dnsPlan?.target?`ปลายทาง ${dnsPlan.target}`:'จะแสดงค่าที่ต้องใช้เมื่อจำเป็น'],
-    ['การเชื่อมต่อปลอดภัย',ecosystem?.tls?.mode==='LETS_ENCRYPT'?'เปิดอัตโนมัติ':'ตรวจอัตโนมัติ','เปิดเมื่อชื่อเว็บและเว็บไซต์ตรวจผ่าน'],
+    ['HTTPS และการต่ออายุ',renewalValue,renewalNote],
     ['งานเบื้องหลัง',`${tasks.running||0} กำลังทำ · ${tasks.waiting||0} กำลังรอ`,`${tasks.queued||0} เข้าคิว · ${tasks.failed||0} ต้องตรวจสอบ`],
   ];
   for(const [label,value,note] of cards){
@@ -258,6 +262,12 @@ function renderSites(){
           :'ชื่อเว็บที่ต้องการ';
     desired.textContent=`${domainLabel} · https://${currentHost}`;
     card.append(desired);
+    if(site.domainState==='ACTIVE'){
+      const tlsNote=document.createElement('div');
+      tlsNote.className='site-event';
+      tlsNote.textContent=ecosystem?.tls?.renewal?.state==='READY'?'HTTPS · ต่ออายุอัตโนมัติพร้อม':'HTTPS · ตรวจระบบต่ออายุ';
+      card.append(tlsNote);
+    }
 
     if(site.source?.ready!==true){
       const source=document.createElement('div');
