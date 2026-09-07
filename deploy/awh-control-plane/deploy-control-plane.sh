@@ -130,6 +130,7 @@ FILES="$FILES hub/src/HubCloudFirstMigration.php hub/src/HubCloudWorkflowService
 FILES="$FILES hub/src/HubConversationLifecycleMigration.php hub/migrations/018_conversation_lifecycle.sql hub/bin/migrate-conversation-lifecycle.php"
 FILES="$FILES deploy/observability/README.md deploy/observability/install-awh-observability.sh deploy/observability/install-honeycomb-watcher.sh deploy/observability/sync-honeycomb-credential.sh deploy/observability/otelcol-awh-preflight.yaml deploy/observability/otelcol-awh-honeycomb.yaml deploy/systemd/awh-observability-sync.service deploy/systemd/awh-observability-sync.path"
 FILES="$FILES hub/src/HubProjectSourceAuthorityMigration.php hub/src/HubProjectSourceAuthorityService.php hub/src/HubProjectSourceSyncService.php hub/src/HubAiPassProjectExportService.php hub/migrations/019_project_source_authority.sql hub/bin/migrate-project-source-authority.php hub/bin/project-source-authority.php"
+FILES="$FILES hub/src/HubEcosystemHealthService.php hub/src/HubEcosystemHealthCollector.php hub/src/HubBayEcosystemHealthConnector.php"
 DESKTOP_ARTIFACTS=
 desktop_artifact_count=0
 for file in $DESKTOP_ARTIFACT_FILES; do
