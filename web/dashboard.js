@@ -140,6 +140,7 @@ function localSearchResults(query) {
     if (haystack.includes(needle)) rows.push({ kind: 'FILE', title: safeText(artifact.name, 'ไฟล์จาก AWH'), meta: `${safeText(project?.name, 'โปรเจกต์')} · ไฟล์`, action: () => openFilesSurface(artifact.name || '') });
   }
   const shortcuts = [
+    { terms: 'control panel cpanel ระบบ owner dashboard จัดการ', title: 'Control Panel', meta: 'Owner', ownerOnly: true, action: () => location.assign('./panel.html') },
     { terms: 'ระบบ vps server infrastructure backup storage สถานะ', title: 'สถานะระบบ AWH', meta: 'ระบบ', ownerOnly: true, action: () => location.assign('./infrastructure.html') },
     { terms: 'ฐานข้อมูล database studio', title: 'Database Studio', meta: 'ระบบ', ownerOnly: true, action: () => location.assign('./database.html') },
     { terms: 'hosting เว็บไซต์ โฮสติ้ง', title: 'Hosting Center', meta: 'ระบบ', ownerOnly: true, action: () => location.assign('./hosting.html') },
