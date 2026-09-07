@@ -75,3 +75,11 @@ These are not routine engineering tasks that should be guessed around:
 ## Resume rule
 
 Start from this exact branch/PR, fetch remote, confirm remote head and CI, re-read live VPS state, then continue only work made possible by new authority/evidence. Do not recreate manifests, adapters, shadow runbooks, retention planners, or restore rehearsals already present here.
+## 02:24 closure refresh
+
+- Exact PR head `8ee227e31293571eff0e82ff46464928859129ce` is now confirmed by GitHub with both `CI` SUCCESS and `AWH Canonical Source Authority` SUCCESS.
+- Fresh read-only live audit still reports root disk 29 GiB / 20 GiB used / 9.0 GiB available (69%), about 1.2 GiB RAM available, and `nginx`, `mariadb`, `php8.3-fpm`, `fail2ban` active.
+- Canonical SQLite remains schema 20, integrity `ok`, and zero foreign-key violation rows.
+- Guarded backup + isolated restore rehearsal were repeated successfully without replacing canonical SQLite. Latest proof: `awh-20260907T192458Z.sqlite`, 6434816 bytes, SHA-256 `68a9bdf39ef7a709a67ca78efb48a755f892fa22d896d4319e9c606e6ae2f35b`, integrity `ok`, FK violations `0`, schema `20`; both systemd services returned `Result=success` / `ExecMainStatus=0`.
+- Exact-head local closure QA: migration/database/backup/retention focused tests 11/11 PASS, TypeScript typecheck PASS, `git diff --check` PASS.
+- Storage classification is unchanged: recovery backups remain protected authority; `/opt/bay-gh-runner-temp-20260905` remains reversible `TEMP_BUILD_RUNTIME / DO_NOT_MIGRATE`, not promoted to purge while headroom is healthy.
