@@ -877,7 +877,7 @@ import {
       releases = Array.isArray(releaseData?.releases) ? releaseData.releases : [];
     } catch {}
     const safeUrl = (value) => typeof value === 'string' && (/^https:\/\//.test(value) || /^\/(?!\/)/.test(value)) ? value : null;
-    const labelFor = (status) => ({ active: 'ใช้งาน', pilot: 'Pilot', internal: 'ภายใน' })[status] || 'โปรเจกต์';
+    const labelFor = (status) => ({ active: 'ใช้งาน', pilot: 'Pilot', prototype: 'ต้นแบบ', reference: 'อ้างอิง', internal: 'ภายใน' })[status] || 'โปรเจกต์';
     const openProject = (project) => {
       if (project.id === 'awh') { openAwhWorkspace('home'); return; }
       const url = safeUrl(project?.primary_action?.url); if (url) location.assign(url);
@@ -886,7 +886,7 @@ import {
       const article = document.createElement('article'); article.className = prominent ? 'ecosystem-project-card featured' : 'ecosystem-project-card';
       const head = document.createElement('div'); head.className = 'ecosystem-project-head';
       const icon = document.createElement('span'); icon.className = 'ecosystem-project-icon'; icon.textContent = safeText(project.icon, '•');
-      const status = document.createElement('span'); status.className = `ecosystem-project-status status-${safeText(project.status, 'project')}`; status.textContent = labelFor(project.status);
+      const status = document.createElement('span'); const statusTone=({prototype:'pilot',reference:'internal'})[project.status]||safeText(project.status,'project'); status.className = `ecosystem-project-status status-${statusTone}`; status.textContent = labelFor(project.status);
       head.append(icon, status);
       const title = document.createElement('h3'); title.textContent = safeText(project.name, 'โปรเจกต์');
       const type = document.createElement('small'); type.textContent = [safeText(project.type), safeText(project.stage)].filter(Boolean).join(' · ');

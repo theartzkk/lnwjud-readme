@@ -16,6 +16,9 @@ test('authenticated root is the portfolio hub and reuses BAY registry authority'
   assert.match(app, /showEcosystemHome\(\{ replace: true \}\)/);
   assert.match(app, /if \(authenticatedSurfaceRequested\(\)\)/);
   assert.match(app, /project\.id === 'awh'/);
+  assert.match(app, /prototype: 'ต้นแบบ'/);
+  assert.match(app, /reference: 'อ้างอิง'/);
+  assert.match(app, /prototype:'pilot',reference:'internal'/);
   assert.match(app, /openAwhWorkspace\('home'\)/);
   assert.match(dashboard, /awh:return-root-hub/);
   assert.match(css, /\.ecosystem-project-grid/);
