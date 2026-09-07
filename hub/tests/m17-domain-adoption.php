@@ -26,4 +26,20 @@ $healthOp=new HubManagedHostingOperator($pdo,$vault,$sites,$available,$enabled,$
 a($health->invoke($healthOp,'learn.kruart.online','/')==='204','domain health accepts 2xx');$healthBlocked=false;
 try{$health->invoke($healthOp,'learn.kruart.online','/bad');}catch(Throwable $e){$healthBlocked=$e instanceof HubManagedHostingOperatorException&&$e->codeName==='HOSTING_HEALTH_FAILED';}
 a($healthBlocked,'domain health rejects 4xx');
+$tlsPdo=new PDO('sqlite::memory:');
+$tlsPdo->exec("CREATE TABLE control_executor_capabilities(executor_id TEXT NOT NULL,executor_kind TEXT NOT NULL,capability TEXT NOT NULL,version TEXT NOT NULL,observed_at TEXT NOT NULL,expires_at TEXT NOT NULL,PRIMARY KEY(executor_id,capability))");
+$timerReadyRunner=function(array $cmd,?string $stdin=null): array {
+    if($cmd===['/bin/systemctl','is-enabled','certbot.timer'])return ['code'=>0,'out'=>"enabled\n",'err'=>''];
+    if($cmd===['/bin/systemctl','is-active','certbot.timer'])return ['code'=>0,'out'=>"active\n",'err'=>''];
+    return ['code'=>0,'out'=>'','err'=>''];
+};
+$tlsOp=new HubManagedHostingOperator($tlsPdo,$vault,$sites,$available,$enabled,$config,$timerReadyRunner);$advertise=(new ReflectionClass($tlsOp))->getMethod('advertise');$advertise->setAccessible(true);$advertise->invoke($tlsOp,'2026-09-07T05:30:00Z');
+$tlsRow=$tlsPdo->query("SELECT version FROM control_executor_capabilities WHERE executor_id='vps-hosting' AND capability='hosting.tls.renewal'")->fetchColumn();a($tlsRow==='certbot-timer','renewal capability is advertised only from healthy certbot timer evidence');
+$timerDownRunner=function(array $cmd,?string $stdin=null): array {
+    if($cmd===['/bin/systemctl','is-enabled','certbot.timer'])return ['code'=>0,'out'=>"enabled\n",'err'=>''];
+    if($cmd===['/bin/systemctl','is-active','certbot.timer'])return ['code'=>3,'out'=>"inactive\n",'err'=>''];
+    return ['code'=>0,'out'=>'','err'=>''];
+};
+$tlsDownOp=new HubManagedHostingOperator($tlsPdo,$vault,$sites,$available,$enabled,$config,$timerDownRunner);$advertiseDown=(new ReflectionClass($tlsDownOp))->getMethod('advertise');$advertiseDown->setAccessible(true);$advertiseDown->invoke($tlsDownOp,'2026-09-07T05:31:00Z');
+$tlsCount=(int)$tlsPdo->query("SELECT COUNT(*) FROM control_executor_capabilities WHERE executor_id='vps-hosting' AND capability='hosting.tls.renewal'")->fetchColumn();a($tlsCount===0,'renewal capability is withdrawn immediately when certbot timer is not active');
 echo "AWH M17 Domain Adoption: PASS\n";
