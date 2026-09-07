@@ -5,10 +5,10 @@ import {
   cancelTask, changePassword, changeUsername, createConversation, createMemory, createPerson, createProject, createRecoveryCodes, decideApproval,
   exportWorkspace, listAccountRequests, listAuthSessions, listPeople, loadAuthProfile, loadControlData, loadConversation,
   loadConversations, loadDeletedConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus,
-  loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadCapabilities, loadSystemReadiness, loadWorkspaceContinuity, login, logout,
+  loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadObservabilityStatus, loadCapabilities, loadSystemReadiness, loadWorkspaceContinuity, login, logout,
   recover, registerAccessRequest, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage,
   testProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
-  updateProviderCredential, updateProviderPolicy, updateProviderProjectRouting, updateConversationLifecycle, uploadConversationAttachments,
+  updateProviderCredential, updateProviderPolicy, updateProviderProjectRouting, updateObservabilityCredential, updateConversationLifecycle, uploadConversationAttachments,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 (() => {
@@ -16,7 +16,7 @@ import {
   const MAX_ATTACHMENT_BYTES = 60 * 1024 * 1024;
   const MICRO_BAHT = 1000000;
   const DESKTOP_PACKAGES = [['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, systemReadiness: null, capabilities: null, people: [], accountRequests: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadFollowLatest: true };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, people: [], accountRequests: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadFollowLatest: true };
   let desktopReleasePromise = null;
   let pendingPrivilegedAction = null;
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => undefined);
@@ -395,6 +395,19 @@ import {
       catch (error) { message('provider-credential-message', error instanceof Error ? error.message : 'ยังบันทึกการเลือก AI ไม่ได้'); }
     });
     return section;
+  }
+
+  function renderObservability() {
+    const value = state.observability || {}; const active = value.active === true; const configured = value.credentialConfigured === true; const egress = value.egressConfigured === true;
+    const status = $('observability-status'); const dot = $('observability-dot'); const remove = $('observability-credential-remove');
+    if (status) status.textContent = active ? 'เชื่อม Honeycomb แล้ว · ตรวจปลายทางสำเร็จ' : egress ? 'กำลังส่ง telemetry แบบปกปิดข้อมูล · รอตรวจปลายทาง' : configured ? 'บันทึก key แล้ว · กำลังเปิดการส่ง telemetry' : 'โหมดปลอดภัย · telemetry ยังอยู่ใน VPS และยังไม่ส่งออกภายนอก';
+    if (dot) { dot.classList.toggle('good', active); dot.classList.toggle('attention', configured && !active); }
+    if (remove) remove.disabled = !configured;
+  }
+
+  async function refreshObservabilitySoon() {
+    await new Promise((resolve) => setTimeout(resolve, 2200));
+    try { const data = await loadObservabilityStatus(); state.observability = data.observability; renderObservability(); } catch {}
   }
 
   function renderOwnerSelfService() {
@@ -1005,10 +1018,12 @@ import {
     catch { message('product-settings-message', 'ยังโหลดการตั้งค่าลักษณะของ AWH ไม่ได้'); }
     if (isOwner()) {
       ensureOwnerSelfServiceSurface(); ensureProviderSelfServiceSurface();
-      const project = selectedProject(); const requests = [loadProviderStatus(), loadCapabilities(), listPeople(), listAccountRequests(), loadAuthProfile(), loadOwnerSelfServiceStatus(), project ? loadProviderProjectRouting(project.projectId) : Promise.resolve(null)];
-      const [providerResult, capabilitiesResult, peopleResult, accountRequestsResult, profileResult, ownerStatusResult, routingResult] = await Promise.allSettled(requests);
+      const project = selectedProject(); const requests = [loadProviderStatus(), loadObservabilityStatus(), loadCapabilities(), listPeople(), listAccountRequests(), loadAuthProfile(), loadOwnerSelfServiceStatus(), project ? loadProviderProjectRouting(project.projectId) : Promise.resolve(null)];
+      const [providerResult, observabilityResult, capabilitiesResult, peopleResult, accountRequestsResult, profileResult, ownerStatusResult, routingResult] = await Promise.allSettled(requests);
       if (providerResult.status === 'fulfilled') { state.provider = providerResult.value.provider; renderProvider(); }
       else message('provider-status', 'ยังโหลดสถานะ AI ไม่ได้ ลองรีเฟรชอีกครั้ง');
+      if (observabilityResult.status === 'fulfilled') { state.observability = observabilityResult.value.observability; renderObservability(); }
+      else message('observability-status', 'ยังโหลดสถานะ Honeycomb ไม่ได้');
       if (capabilitiesResult.status === 'fulfilled') { state.capabilities = capabilitiesResult.value; renderCapabilitySurface(); }
       if (peopleResult.status === 'fulfilled') state.people = Array.isArray(peopleResult.value.people) ? peopleResult.value.people : [];
       if (accountRequestsResult.status === 'fulfilled') state.accountRequests = Array.isArray(accountRequestsResult.value.requests) ? accountRequestsResult.value.requests : [];
@@ -1171,6 +1186,19 @@ import {
     finally { button.disabled = false; }
   });
   document.querySelectorAll('[data-settings-tab]').forEach((button) => button.addEventListener('click', () => showSettingsSection(button.dataset.settingsTab)));
+  $('observability-credential-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault(); const field = $('observability-api-key'); const button = event.currentTarget.querySelector('button[type="submit"]'); if (!field?.value.trim()) { message('observability-message', 'วาง Honeycomb API key ก่อน'); return; }
+    button.disabled = true; message('observability-message', 'กำลังบันทึก key อย่างปลอดภัย…');
+    try { const data = await withPrivilegedRetry(()=>updateObservabilityCredential('SET', field.value),'การเชื่อม Honeycomb'); state.observability = data.observability; renderObservability(); message('observability-message', 'บันทึกแล้ว ระบบกำลังเปิด telemetry อัตโนมัติ'); refreshObservabilitySoon(); }
+    catch (error) { message('observability-message', error instanceof Error ? error.message : 'ยังเชื่อม Honeycomb ไม่ได้'); }
+    finally { field.value = ''; button.disabled = false; }
+  });
+  $('observability-credential-remove')?.addEventListener('click', async () => {
+    if (!window.confirm('หยุดส่ง telemetry ไป Honeycomb ใช่หรือไม่?')) return;
+    message('observability-message', 'กำลังหยุดการเชื่อม…');
+    try { const data = await withPrivilegedRetry(()=>updateObservabilityCredential('REMOVE'),'การยกเลิก Honeycomb'); state.observability = data.observability; renderObservability(); message('observability-message', 'หยุดการเชื่อมแล้ว และกำลังกลับสู่ local preflight'); refreshObservabilitySoon(); }
+    catch (error) { message('observability-message', error instanceof Error ? error.message : 'ยังหยุดการเชื่อมไม่ได้'); }
+  });
   $('system-check-inline')?.addEventListener('click', () => $('system-check')?.click());
   $('recovery-open').addEventListener('click', openPasswordRecovery);
   document.querySelectorAll('[data-close-sheet]').forEach((button) => button.addEventListener('click', () => closeSheet(button.dataset.closeSheet)));

@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch AWH Honeycomb credential changes
+
+[Path]
+PathChanged=/var/lib/awh-hub/provider-credentials
+Unit=awh-observability-sync.service
+
+[Install]
+WantedBy=multi-user.target

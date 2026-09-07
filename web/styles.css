@@ -375,6 +375,9 @@ body.work-active.product-dashboard-active .app-main {
 .system-health-details .session-item { min-width: 0; overflow-wrap: anywhere; }
 .system-health-card p { margin: 10px 0 16px; color: var(--muted); font-size: 13px; line-height: 1.55; }
 .system-health-dot { width: 9px; height: 9px; border-radius: 50%; background: #63d893; box-shadow: 0 0 0 4px rgba(99, 216, 147, .09); }
+#observability-dot { background: #89929e; box-shadow: 0 0 0 4px rgba(137, 146, 158, .10); }
+#observability-dot.attention { background: #f1c267; box-shadow: 0 0 0 4px rgba(241, 194, 103, .10); }
+#observability-dot.good { background: #63d893; box-shadow: 0 0 0 4px rgba(99, 216, 147, .09); }
 .system-advanced { margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--line); }
 @media (max-width: 680px) { .system-action-grid { grid-template-columns: minmax(0, 1fr); } .system-feature-card, .system-health-card { min-height: auto; } }
 

@@ -202,6 +202,8 @@ export async function createMemory({ scope, projectId = null, category, content,
   return controlRequest('/api/v1/control/memory/create', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, scope, projectId, category, content: content.trim(), tags }) });
 }
 export async function exportWorkspace() { return controlRequest('/api/v1/control/export'); }
+export async function loadObservabilityStatus() { return controlRequest('/api/v1/control/observability'); }
+export async function updateObservabilityCredential(action, secret = null) { if (!['SET', 'REMOVE'].includes(action) || (action === 'SET' && (typeof secret !== 'string' || !secret.trim() || secret.length > 4096)) || (action === 'REMOVE' && secret !== null)) throw new Error('Honeycomb API key ไม่ถูกต้อง'); return controlRequest('/api/v1/control/observability/credential', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, action, secret: action === 'SET' ? secret.trim() : null }) }); }
 export async function loadProviderStatus() { return controlRequest('/api/v1/control/provider'); }
 export async function loadCapabilities() { const value = await controlRequest('/api/v1/control/capabilities'); if (value.schemaVersion !== 1 || !value.summary || !Array.isArray(value.capabilities)) throw new Error('ข้อมูลความสามารถของ AWH ไม่ถูกต้อง'); return value; }
 export async function updateProviderPolicy(policy) { return controlRequest('/api/v1/control/provider', { method: 'POST', body: JSON.stringify(policy) }); }
