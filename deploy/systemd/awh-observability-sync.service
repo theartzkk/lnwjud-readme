@@ -1,0 +1,10 @@
+[Unit]
+Description=AWH Honeycomb credential sync
+After=otelcol-contrib.service php8.3-fpm.service
+ConditionPathExists=/opt/awh-hub/control-plane-current
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/opt/awh-hub/control-plane-current/deploy/observability/sync-honeycomb-credential.sh
