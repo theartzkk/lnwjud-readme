@@ -30,8 +30,8 @@ try {
         CREATE TABLE control_product_setting_revisions(revision_id TEXT PRIMARY KEY, setting_key TEXT NOT NULL, revision_no INTEGER NOT NULL, value_json TEXT NOT NULL, updated_by_user_id TEXT NOT NULL, created_at TEXT NOT NULL);
         CREATE TABLE control_tasks(task_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, goal TEXT NOT NULL, state TEXT NOT NULL, updated_at TEXT NOT NULL);
         CREATE TABLE control_task_executions(execution_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, project_id TEXT NOT NULL, executor_kind TEXT NOT NULL, required_capability TEXT NOT NULL, state TEXT NOT NULL, lease_expires_at TEXT, attempt_count INTEGER NOT NULL, last_error_code TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-        CREATE TABLE control_workers(device_id TEXT PRIMARY KEY, state TEXT NOT NULL);");
-    $pdo->exec("INSERT INTO projects VALUES('p1','AWH test project'); INSERT INTO owner_bootstrap VALUES(1,'owner-1','2026-08-30T00:00:00Z',1); INSERT INTO control_tasks VALUES('t1','p1','fixture queued task','QUEUED','2026-08-30T00:00:00Z'); INSERT INTO control_task_executions VALUES('e1','t1','p1','VPS','project.read','QUEUED',NULL,0,NULL,'2026-08-30T00:00:00Z','2026-08-30T00:00:00Z'); INSERT INTO control_workers VALUES('w1','READY');");
+        CREATE TABLE control_workers(device_id TEXT PRIMARY KEY, state TEXT NOT NULL, last_seen_at TEXT NOT NULL);");
+    $pdo->exec("INSERT INTO projects VALUES('p1','AWH test project'); INSERT INTO owner_bootstrap VALUES(1,'owner-1','2026-08-30T00:00:00Z',1); INSERT INTO control_tasks VALUES('t1','p1','fixture queued task','QUEUED','2026-08-30T00:00:00Z'); INSERT INTO control_task_executions VALUES('e1','t1','p1','VPS','project.read','QUEUED',NULL,0,NULL,'2026-08-30T00:00:00Z','2026-08-30T00:00:00Z'); INSERT INTO control_workers VALUES('w1','READY','2026-08-30T00:00:00Z'); INSERT INTO control_workers VALUES('w2','READY','2026-08-29T23:50:00Z');");
     $telemetry = ['state' => 'READY', 'server' => ['services' => [['key' => 'nginx', 'state' => 'ACTIVE'], ['key' => 'php-fpm', 'state' => 'ACTIVE']], 'security' => ['fail2ban' => 'ACTIVE', 'automaticUpdates' => 'ACTIVE']]];
     $release = ['controlReleaseId' => 'm16-test', 'webReleaseId' => 'm16-test', 'pointersMatch' => true];
     $storage = new HubStorageGovernanceService(['hubData' => $root, 'backups' => $backup]);
@@ -43,6 +43,7 @@ try {
     staff_expect(($snapshot['executionTriage']['total'] ?? -1) === 0 && ($snapshot['executionTriage']['auditHistoryPreserved'] ?? false) === true, 'Owner Staff projection must expose bounded canonical execution triage');
     staff_expect(($snapshot['safety']['canonicalAuthoritiesOnly'] ?? false) === true && ($snapshot['safety']['newTables'] ?? true) === false, 'staff must not create a shadow authority');
     staff_expect(($snapshot['morningBrief']['canonicalAuthorities']['projects'] ?? 0) === 1, 'morning brief must expose canonical project count');
+    staff_expect(($snapshot['workers']['READY'] ?? 0) === 1 && ($snapshot['workers']['STALE'] ?? 0) === 1, 'worker freshness must derive stale state from last_seen_at rather than raw READY');
     staff_expect(($snapshot['storageGovernance']['actions']['purged'] ?? -1) === 0, 'storage audit must not purge');
     staff_expect(array_key_exists('UNKNOWN', $snapshot['storageGovernance']['summary'] ?? []), 'storage audit must retain an UNKNOWN classification');
     staff_expect(($snapshot['storageGovernance']['disk']['state'] ?? null) === 'READY', 'storage audit must measure filesystem capacity');
@@ -89,8 +90,11 @@ try {
     $again = $service->persistMorningBrief($snapshot['morningBrief']);
     staff_expect(($again['revision'] ?? null) === ($persisted['revision'] ?? null), 'morning brief persistence must be idempotent per day');
     $changed = $snapshot['morningBrief']; $changed['release']['web'] = 'm16-next'; $changed['release']['pointersMatch'] = false;
-    $updated = $service->persistMorningBrief($changed, '2026-08-30T00:01:00Z');
-    staff_expect(($updated['state'] ?? null) === 'PERSISTED' && (int) ($updated['revision'] ?? 0) === (int) ($persisted['revision'] ?? 0) + 1, 'material morning brief changes must create a new durable revision');
+    $sameDay = $service->persistMorningBrief($changed, '2026-08-30T00:01:00Z');
+    staff_expect(($sameDay['revision'] ?? null) === ($persisted['revision'] ?? null), 'same-day telemetry/material changes must not turn Morning Brief into a high-frequency revision ledger');
+    $nextDay = $changed; $nextDay['briefDate'] = '2026-08-31'; $nextDay['generatedAt'] = '2026-08-31T00:01:00Z';
+    $updated = $service->persistMorningBrief($nextDay, '2026-08-31T00:01:00Z');
+    staff_expect(($updated['state'] ?? null) === 'PERSISTED' && (int) ($updated['revision'] ?? 0) === (int) ($persisted['revision'] ?? 0) + 1, 'next UTC day must create exactly one new durable Morning Brief revision');
     staff_expect(($service->latestMorningBrief()['state'] ?? null) === 'PERSISTED', 'latest morning brief must survive as durable state');
     fwrite(STDOUT, "AWH Staff Operations: PASS\n");
 } finally {
