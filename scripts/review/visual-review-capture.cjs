@@ -97,7 +97,7 @@ app.whenReady().then(async () => {
     await win.webContents.executeJavaScript(`document.querySelector('#awh-home-tools')?.scrollIntoView({block:'start'})`, true);
     evidence.push(await shot(win, 'tools-shortcuts', 'tools are shortcuts; chat remains the primary path', 'inspect tools shortcuts'));
     await win.loadURL(baseUrl + 'hosting.html');
-    await waitFor(win, `document.querySelector('#site-list') && document.querySelector('#hosting-state')?.textContent.includes('เชื่อมต่อแล้ว')`, 10000);
+    await waitFor(win, `document.querySelector('#site-list') && ['พร้อมใช้งาน','เชื่อมต่อแล้ว'].some((label)=>document.querySelector('#hosting-state')?.textContent.includes(label))`, 10000);
     evidence.push(await shot(win, 'managed-hosting', 'Owner can see managed site state, URL, runtime, database, backup and bounded actions without VPS commands', 'open managed hosting'));
     fs.writeFileSync(path.join(outputDir, `evidence-${width}x${height}.json`), JSON.stringify({ schemaVersion: 1, source: 'local-contract-fixture', baseUrl, viewport: { width, height }, evidence, runtimeErrors }, null, 2) + '\n', { mode: 0o600 });
     if (runtimeErrors.length) { console.error(`browser runtime errors: ${runtimeErrors.join(' | ')}`); process.exitCode = 3; }
