@@ -452,14 +452,27 @@ body.work-active .composer-actions .primary-button { min-width: 58px; min-height
 
 /* Chat-first mobile Work: keep navigation available on Home, not inside a focused conversation. */
 body.work-active.awh-keyboard-open:not(.product-dashboard-active) .awh-mobile-nav { display: none !important; }
+/* iOS Safari can resize both layout + visual viewports together; focus is the fail-safe keyboard signal. */
+@supports selector(body:has(#goal-input:focus)) {
+  body.work-active:not(.product-dashboard-active):has(#goal-input:focus) .awh-mobile-nav { display: none !important; }
+}
 body.work-active .assistant-turn .task-response { border: 0; background: transparent; padding: 7px 0; }
 body.work-active .result-turn .task-meta { display: none; }
 @media (max-width: 680px) {
   body.work-active:not(.product-dashboard-active) .app-main { padding-bottom: calc(74px + env(safe-area-inset-bottom)); }
   body.work-active.awh-keyboard-open:not(.product-dashboard-active) .app-main { padding-bottom: 0; }
+  @supports selector(body:has(#goal-input:focus)) {
+    body.work-active:not(.product-dashboard-active):has(#goal-input:focus) .app-main { padding-bottom: 0; }
+  }
   body.work-active .work-thread { padding-bottom: 12px; }
   body.work-active .assistant-turn .task-response { padding: 4px 0; }
   body.work-active .composer { margin-bottom: calc(6px + env(safe-area-inset-bottom)); }
+  body.work-active.awh-keyboard-open:not(.product-dashboard-active) .composer { margin-bottom: 2px; padding: 5px 7px 6px; }
+  body.work-active.awh-keyboard-open:not(.product-dashboard-active) .composer textarea { min-height: 40px; max-height: 96px; padding-block: 5px; }
+  @supports selector(body:has(#goal-input:focus)) {
+    body.work-active:not(.product-dashboard-active):has(#goal-input:focus) .composer { margin-bottom: 2px; padding: 5px 7px 6px; }
+    body.work-active:not(.product-dashboard-active):has(#goal-input:focus) .composer textarea { min-height: 40px; max-height: 96px; padding-block: 5px; }
+  }
 }
 
 /* Live Activity: one compact, human-first status surface backed by canonical task/action-graph polling. */

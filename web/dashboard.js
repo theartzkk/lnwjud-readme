@@ -280,13 +280,32 @@ function mountMobileNavigation() {
     }),
   );
   document.body.append(nav);
+  let keyboardViewportBaseline = window.visualViewport?.height || window.innerHeight;
+  const isKeyboardEditing = () => {
+    const active = document.activeElement;
+    return active instanceof HTMLElement && (
+      active.matches('#goal-input, textarea, input:not([type="button"]):not([type="submit"]):not([type="file"])')
+      || active.isContentEditable
+    );
+  };
   const updateKeyboardViewport = () => {
     const viewport = window.visualViewport;
-    const keyboardOpen = viewport ? window.innerHeight - viewport.height > 140 : false;
+    const currentHeight = viewport?.height || window.innerHeight;
+    const editing = isKeyboardEditing();
+    if (!editing) keyboardViewportBaseline = currentHeight;
+    const lostHeight = Math.max(0, keyboardViewportBaseline - currentHeight);
+    const keyboardOpen = editing && (lostHeight > 96 || currentHeight < keyboardViewportBaseline * 0.82);
     document.body.classList.toggle('awh-keyboard-open', keyboardOpen);
+    document.documentElement.style.setProperty('--awh-visual-viewport-height', `${Math.round(currentHeight)}px`);
   };
   window.visualViewport?.addEventListener('resize', updateKeyboardViewport, { passive: true });
   window.visualViewport?.addEventListener('scroll', updateKeyboardViewport, { passive: true });
+  document.addEventListener('focusin', updateKeyboardViewport, { passive: true });
+  document.addEventListener('focusout', () => window.setTimeout(updateKeyboardViewport, 0), { passive: true });
+  window.addEventListener('orientationchange', () => window.setTimeout(() => {
+    keyboardViewportBaseline = window.visualViewport?.height || window.innerHeight;
+    updateKeyboardViewport();
+  }, 120), { passive: true });
   updateKeyboardViewport();
   new MutationObserver(updateMobileNavigation).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   updateMobileNavigation();
