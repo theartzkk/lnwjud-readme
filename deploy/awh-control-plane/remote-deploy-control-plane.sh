@@ -277,7 +277,29 @@ restore_previous_control_include() {
   sudo grep -F "fastcgi_pass unix:$AWH_FPM_SOCKET;" "$previous_include" >/dev/null || return 1
   ! sudo grep -Eq 'PREVIEW_HOSTNAME|PREVIEW_AWH_FPM_SOCKET' "$previous_include"
 }
-web_pointer_capture() { WEB_PREVIOUS=ABSENT; WEB_TARGET=; if test -L "$WEB_POINTER"; then WEB_TARGET=$(readlink "$WEB_POINTER"); case "$WEB_TARGET" in /var/www/awh-web/releases/*) test -d "$WEB_TARGET" || return 1 ;; *) return 1 ;; esac; WEB_PREVIOUS=PRESENT; elif test -e "$WEB_POINTER"; then return 1; fi; }
+web_pointer_capture() {
+  WEB_PREVIOUS=ABSENT
+  WEB_TARGET=
+  if test -L "$WEB_POINTER"; then
+    WEB_TARGET=$(readlink "$WEB_POINTER")
+    case "$WEB_TARGET" in
+      /var/www/awh-web/releases/*)
+        test -d "$WEB_TARGET" || return 1
+        ;;
+      releases/*)
+        WEB_REL=${WEB_TARGET#releases/}
+        case "$WEB_REL" in
+          ''|*/*|*[!A-Za-z0-9._-]*) return 1 ;;
+        esac
+        test -d "/var/www/awh-web/releases/$WEB_REL" || return 1
+        ;;
+      *) return 1 ;;
+    esac
+    WEB_PREVIOUS=PRESENT
+  elif test -e "$WEB_POINTER"; then
+    return 1
+  fi
+}
 web_pointer_restore() { if test "$WEB_PREVIOUS" = ABSENT; then sudo rm -f "$WEB_POINTER"; test ! -e "$WEB_POINTER" && test ! -L "$WEB_POINTER"; else sudo rm -f "$WEB_POINTER"; sudo ln -s "$WEB_TARGET" "$WEB_POINTER"; test "$(readlink "$WEB_POINTER")" = "$WEB_TARGET"; fi; }
 rollback() {
   status=$?
