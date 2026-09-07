@@ -36,8 +36,8 @@ There is no arbitrary command execution, no second secret store exposed to the b
 ## Verification states
 - `LOCAL_PREFLIGHT`: traces stay on the VPS debug exporter.
 - `ACTIVATING`: the key exists but the root sync has not completed.
-- `VERIFYING`: Honeycomb egress is configured; independent Honeycomb-side evidence is still pending.
-- `ACTIVE`: Honeycomb-side data was independently observed and the verified marker was written.
+- `VERIFYING`: Honeycomb egress is configured; independent Honeycomb-side evidence is still pending. The root watcher writes only the egress marker.
+- `ACTIVE`: Honeycomb-side data was independently observed and the verified marker was written separately after that evidence exists.
 
 The root sync deliberately removes the ACTIVE marker whenever the credential changes so a rotated key must be re-verified.
 

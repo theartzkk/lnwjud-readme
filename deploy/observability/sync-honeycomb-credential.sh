@@ -10,6 +10,7 @@ KEY_FILE=/var/lib/awh-hub/provider-credentials/honeycomb.key
 CONFIG=/etc/otelcol-contrib/config.yaml
 ENV_FILE=/etc/otelcol-contrib/awh-honeycomb.env
 STATE_DIR=/var/lib/awh-hub/observability
+EGRESS_MARKER=$STATE_DIR/honeycomb-egress
 ACTIVE_MARKER=$STATE_DIR/honeycomb-active
 PREFLIGHT=$ROOT/deploy/observability/otelcol-awh-preflight.yaml
 HONEYCOMB=$ROOT/deploy/observability/otelcol-awh-honeycomb.yaml
@@ -17,10 +18,10 @@ HONEYCOMB=$ROOT/deploy/observability/otelcol-awh-honeycomb.yaml
 test -r "$PREFLIGHT"
 test -r "$HONEYCOMB"
 install -d -o awh-hub -g awh-hub -m 0755 "$STATE_DIR"
-rm -f "$ACTIVE_MARKER"
+rm -f "$EGRESS_MARKER" "$ACTIVE_MARKER"
 
 activate_preflight() {
-  rm -f "$ENV_FILE" "$ACTIVE_MARKER"
+  rm -f "$ENV_FILE" "$EGRESS_MARKER" "$ACTIVE_MARKER"
   install -o root -g otelcol-contrib -m 0640 "$PREFLIGHT" "$CONFIG"
   /usr/bin/otelcol-contrib validate --config="$CONFIG"
   systemctl restart otelcol-contrib.service
@@ -54,6 +55,6 @@ sleep 1
 systemctl is-active --quiet otelcol-contrib.service
 ss -ltn | grep -q '127.0.0.1:4318'
 ! ss -ltn | grep -Eq '(0\.0\.0\.0|\[::\]):4318'
-printf 'ACTIVE\n' > "$ACTIVE_MARKER"
-chown awh-hub:awh-hub "$ACTIVE_MARKER"
-chmod 0644 "$ACTIVE_MARKER"
+printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$EGRESS_MARKER"
+chown awh-hub:awh-hub "$EGRESS_MARKER"
+chmod 0644 "$EGRESS_MARKER"
