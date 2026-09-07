@@ -13,6 +13,8 @@ test('AWH observability collector is loopback-only and allowlist based', async (
   for (const yaml of files) {
     assert.match(yaml, /endpoint:\s*127\.0\.0\.1:4318/);
     assert.match(yaml, /allow_all_keys:\s*false/);
+    assert.match(yaml, /allowed_keys:[\s\S]*?- service\.name[\s\S]*?- service\.namespace[\s\S]*?- deployment\.environment\.name/);
+    assert.doesNotMatch(yaml, /keep_keys\(attributes, \["service\.name", "service\.version"/);
     assert.match(yaml, /key:\s*service\.name[\s\S]*?value:\s*awh-control-plane[\s\S]*?action:\s*upsert/);
     assert.match(yaml, /set\(span\.name, "awh\.http"\)/);
     assert.match(yaml, /keep_keys\(spanevent\.attributes, \[\]\)/);

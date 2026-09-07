@@ -15,7 +15,7 @@
 - Span and event names are normalized to `awh.http` / `awh.event`.
 
 ## Privacy contract
-Collector redaction is fail-closed. Resource attributes are reduced to service identity/version, namespace and deployment environment. The only allowed span attributes are:
+Collector redaction is fail-closed. Resource attributes are reduced to service identity, namespace and deployment environment. `service.version` is intentionally dropped until the release-stamping path is authoritative. The only allowed span attributes are:
 - `http.request.method`
 - `http.response.status_code`
 - `http.response.body.size`
