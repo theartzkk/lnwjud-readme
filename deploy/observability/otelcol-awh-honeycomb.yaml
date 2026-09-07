@@ -27,6 +27,11 @@ processors:
       - { key: process.command_args, action: delete }
       - { key: process.executable.path, action: delete }
       - { key: process.owner, action: delete }
+  filter/awh_http_root:
+    error_mode: propagate
+    traces:
+      span:
+        - 'attributes["http.request.method"] == nil'
   transform/awh_privacy:
     error_mode: propagate
     trace_statements:
@@ -66,5 +71,5 @@ service:
   pipelines:
     traces/awh:
       receivers: [otlp/awh]
-      processors: [memory_limiter, resource/awh, transform/awh_privacy, redaction/awh, batch]
+      processors: [memory_limiter, resource/awh, filter/awh_http_root, transform/awh_privacy, redaction/awh, batch]
       exporters: [otlphttp/honeycomb]
