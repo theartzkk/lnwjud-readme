@@ -1236,6 +1236,36 @@ final class HubControlPlaneService
         if($this->projectSources===null) throw new HubControlPlaneException('Project Source Authority is not activated','PROJECT_SOURCE_SCHEMA_NOT_READY'); return $this->projectSources;
     }
 
+    public function observabilityStatus(string $sessionToken, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertSelfServiceReady(); $this->assertOwner((string) $session['user_id']);
+        try {
+            $store = HubProviderCredentialStore::fromEnvironment('honeycomb');
+            $configured = $store->configured();
+            $egressConfigured = $configured && is_file('/var/lib/awh-hub/observability/honeycomb-egress');
+            $active = $egressConfigured && is_file('/var/lib/awh-hub/observability/honeycomb-active');
+            $state = $active ? 'ACTIVE' : ($egressConfigured ? 'VERIFYING' : ($configured ? 'ACTIVATING' : 'LOCAL_PREFLIGHT'));
+            return ['schemaVersion' => 1, 'observability' => ['provider' => 'honeycomb', 'credentialConfigured' => $configured, 'egressConfigured' => $egressConfigured, 'active' => $active, 'state' => $state]];
+        } catch (HubProviderCredentialStoreException $error) { throw new HubControlPlaneException('Observability status is unavailable', $error->codeName); }
+    }
+
+    /** Honeycomb ingest secrets are write-only and use the shared provider-secret authority. */
+    public function updateObservabilityCredential(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['action', 'schemaVersion', 'secret']);
+        if (($payload['schemaVersion'] ?? null) !== 1 || !is_string($payload['action'] ?? null) || (!is_null($payload['secret'] ?? null) && !is_string($payload['secret']))) throw new HubControlPlaneException('Observability credential request is invalid', 'PROVIDER_CREDENTIAL_INVALID');
+        $this->assertSelfServiceReady(); $this->assertOwner((string) $session['user_id']);
+        try { if (HubTrustPolicy::requiresStepUp('observability.credential')) HubOwnerAuthService::assertRecentStepUpSession($session, $now); } catch (HubOwnerAuthException) { throw new HubControlPlaneException('A recent password confirmation is required', 'STEP_UP_REQUIRED'); }
+        $action = strtoupper((string) $payload['action']);
+        try {
+            $store = HubProviderCredentialStore::fromEnvironment('honeycomb');
+            if ($action === 'SET' && is_string($payload['secret'])) $store->replace($payload['secret']);
+            elseif ($action === 'REMOVE' && $payload['secret'] === null) $store->remove();
+            else throw new HubProviderCredentialStoreException('Observability credential is invalid', 'PROVIDER_CREDENTIAL_INVALID');
+            return $this->observabilityStatus($sessionToken, $now);
+        } catch (HubProviderCredentialStoreException $error) { throw new HubControlPlaneException('Observability credential could not be changed', $error->codeName); }
+    }
+
     public function providerStatus(string $sessionToken, ?string $now = null): array
     {
         $session = $this->sessionRow($sessionToken, $now); $this->assertFinalReady(); $this->assertOwner((string) $session['user_id']);

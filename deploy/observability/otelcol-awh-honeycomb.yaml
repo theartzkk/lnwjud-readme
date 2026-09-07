@@ -1,0 +1,58 @@
+receivers:
+  otlp/awh:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 128
+    spike_limit_mib: 32
+  resource/awh:
+    attributes:
+      - { key: host.name, action: delete }
+      - { key: service.instance.id, action: delete }
+      - { key: process.pid, action: delete }
+      - { key: process.command, action: delete }
+      - { key: process.command_args, action: delete }
+      - { key: process.executable.path, action: delete }
+      - { key: process.owner, action: delete }
+  transform/awh_privacy:
+    error_mode: propagate
+    trace_statements:
+      - context: resource
+        statements:
+          - keep_keys(attributes, ["service.name", "service.version", "service.namespace", "deployment.environment.name"])
+      - context: span
+        statements: ['set(span.name, "awh.http")']
+      - context: spanevent
+        statements: ['set(spanevent.name, "awh.event")', 'keep_keys(spanevent.attributes, [])']
+  redaction/awh:
+    allow_all_keys: false
+    allowed_keys:
+      - http.request.method
+      - http.response.status_code
+      - http.response.body.size
+      - network.protocol.version
+      - error.type
+    summary: silent
+  batch:
+    send_batch_size: 64
+    timeout: 2s
+
+exporters:
+  otlphttp/honeycomb:
+    endpoint: https://api.honeycomb.io
+    headers:
+      x-honeycomb-team: ${env:HONEYCOMB_API_KEY}
+
+service:
+  telemetry:
+    logs:
+      level: warn
+  pipelines:
+    traces/awh:
+      receivers: [otlp/awh]
+      processors: [memory_limiter, resource/awh, transform/awh_privacy, redaction/awh, batch]
+      exporters: [otlphttp/honeycomb]

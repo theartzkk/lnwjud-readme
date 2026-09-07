@@ -24,7 +24,7 @@ final class HubTrustPolicy
             'account.request.review' => self::policy($decision === 'APPROVE' && $role === 'ADMIN' ? self::HIGH : self::MEDIUM, false, $decision === 'APPROVE' && $role === 'ADMIN'),
             'account.user.access' => self::policy($role === 'ADMIN' ? self::HIGH : self::MEDIUM, true, $role === 'ADMIN'),
             'account.user.revoke' => self::policy(self::MEDIUM, true, false),
-            'auth.recovery.codes', 'auth.owner.identity', 'provider.credential', 'cloud.credential' => self::policy(self::HIGH, true, true),
+            'auth.recovery.codes', 'auth.owner.identity', 'provider.credential', 'cloud.credential', 'observability.credential' => self::policy(self::HIGH, true, true),
             'provider.policy', 'provider.project.routing', 'database.read.sql' => self::policy(self::MEDIUM, true, false),
             default => throw new HubTrustPolicyException('Unknown trust action'),
         };
