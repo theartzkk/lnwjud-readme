@@ -9,14 +9,16 @@ NGINX_MAIN=${AWH_NGINX_MAIN:-/etc/nginx/nginx.conf}
 EDGE_SOURCE="$ROOT/deploy/nginx/awh-edge-hardening.conf"
 LEGACY_SOURCE="$ROOT/deploy/nginx/awh-legacy-control-compat.conf"
 JAIL_SOURCE="$ROOT/deploy/fail2ban/awh-nginx-botsearch.local"
+FILTER_SOURCE="$ROOT/deploy/fail2ban/awh-nginx-scanner.conf"
 EDGE_TARGET=/etc/nginx/conf.d/awh-edge-hardening.conf
 JAIL_TARGET=/etc/fail2ban/jail.d/awh-nginx-botsearch.local
+FILTER_TARGET=/etc/fail2ban/filter.d/awh-nginx-scanner.conf
 BACKUP_ROOT=/var/backups/awh-hub/config
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 BACKUP="$BACKUP_ROOT/edge-$STAMP"
 
 test "$(id -u)" -eq 0 || { echo "EDGE_HARDENING_REQUIRES_ROOT" >&2; exit 2; }
-for f in "$SITE" "$NGINX_MAIN" "$EDGE_SOURCE" "$LEGACY_SOURCE" "$JAIL_SOURCE"; do test -f "$f" || { echo "EDGE_HARDENING_INPUT_MISSING=$f" >&2; exit 2; }; done
+for f in "$SITE" "$NGINX_MAIN" "$EDGE_SOURCE" "$LEGACY_SOURCE" "$JAIL_SOURCE" "$FILTER_SOURCE"; do test -f "$f" || { echo "EDGE_HARDENING_INPUT_MISSING=$f" >&2; exit 2; }; done
 command -v nginx >/dev/null 2>&1 || { echo "EDGE_HARDENING_NGINX_MISSING" >&2; exit 2; }
 command -v python3 >/dev/null 2>&1 || { echo "EDGE_HARDENING_PYTHON_MISSING" >&2; exit 2; }
 
@@ -25,12 +27,14 @@ cp -p "$SITE" "$BACKUP/awh-preview.conf"
 cp -p "$NGINX_MAIN" "$BACKUP/nginx.conf"
 if test -f "$EDGE_TARGET"; then cp -p "$EDGE_TARGET" "$BACKUP/awh-edge-hardening.conf"; else : > "$BACKUP/no-edge"; fi
 if test -f "$JAIL_TARGET"; then cp -p "$JAIL_TARGET" "$BACKUP/awh-nginx-botsearch.local"; else : > "$BACKUP/no-jail"; fi
+if test -f "$FILTER_TARGET"; then cp -p "$FILTER_TARGET" "$BACKUP/awh-nginx-scanner.conf"; else : > "$BACKUP/no-filter"; fi
 
 rollback() {
   cp -p "$BACKUP/awh-preview.conf" "$SITE"
   cp -p "$BACKUP/nginx.conf" "$NGINX_MAIN"
   if test -f "$BACKUP/no-edge"; then rm -f "$EDGE_TARGET"; else cp -p "$BACKUP/awh-edge-hardening.conf" "$EDGE_TARGET"; fi
   if test -f "$BACKUP/no-jail"; then rm -f "$JAIL_TARGET"; else cp -p "$BACKUP/awh-nginx-botsearch.local" "$JAIL_TARGET"; fi
+  if test -f "$BACKUP/no-filter"; then rm -f "$FILTER_TARGET"; else cp -p "$BACKUP/awh-nginx-scanner.conf" "$FILTER_TARGET"; fi
   nginx -t >/dev/null 2>&1 && systemctl reload nginx || true
   fail2ban-client reload >/dev/null 2>&1 || true
 }
@@ -38,6 +42,7 @@ trap 'code=$?; if test "$code" -ne 0; then rollback; echo "EDGE_HARDENING_ROLLBA
 
 install -m 0644 "$EDGE_SOURCE" "$EDGE_TARGET"
 install -m 0644 "$JAIL_SOURCE" "$JAIL_TARGET"
+install -m 0644 "$FILTER_SOURCE" "$FILTER_TARGET"
 
 python3 - "$SITE" "$LEGACY_SOURCE" <<'PY'
 from pathlib import Path

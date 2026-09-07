@@ -1,7 +1,8 @@
 [nginx-botsearch]
 enabled = true
 port = http,https
-filter = nginx-botsearch
+filter = awh-nginx-scanner
+backend = polling
 logpath = /var/log/nginx/access.log
 maxretry = 4
 findtime = 10m
