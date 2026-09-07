@@ -64,3 +64,33 @@ test('M10 deployment assets remain valid POSIX shell', async () => {
   await execFileAsync('/bin/sh', ['-n', deploy]);
   await execFileAsync('/bin/sh', ['-n', remote]);
 });
+
+test('M20 source refresh carries forward the curated Founding Memory seed inside the existing rollback envelope', async () => {
+  const release = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+  const result = await execFileAsync('/bin/sh', [deploy, '--dry-run', '--project-source-authority'], {
+    cwd: root,
+    env: { ...process.env, AWH_SOURCE_ROOT: root, AWH_RELEASE_COMMIT: release, AWH_HUB_HOSTNAME: 'awh.example' },
+  });
+  assert.match(result.stdout, /^M20_DRY_RUN=PASS$/m);
+  assert.match(result.stdout, /founding-seed-refresh,idempotence,verify-seed-version-checksum/);
+
+  const remoteSource = await readFile(remote, 'utf8');
+  const start = remoteSource.indexOf('if test "$PROJECT_SOURCE_AUTHORITY" = 1; then\n  # M20 extends');
+  const end = remoteSource.indexOf('elif test "$CONVERSATION_LIFECYCLE" = 1; then', start);
+  assert.ok(start >= 0 && end > start, 'M20 refresh branch is present');
+  const branch = remoteSource.slice(start, end);
+  assert.match(branch, /DB_MUTATED=1/);
+  assert.match(branch, /FOUNDING_SEED_REFRESH/);
+  assert.match(branch, /FOUNDING_SEED_REFRESH_IDEMPOTENT/);
+  assert.match(branch, /FOUNDING_SEED_REFRESH_VERIFIED/);
+  assert.match(branch, /\$FOUNDING_MIGRATION/);
+  assert.match(branch, /HubFoundingMemorySeed::VERSION/);
+  assert.match(branch, /HubFoundingMemorySeed::checksum/);
+  assert.match(branch, /control_memory_import_batches/);
+  assert.match(branch, /seed_version = '\$FOUNDING_SEED_VERSION'/);
+  assert.match(branch, /seed_checksum = '\$FOUNDING_SEED_CHECKSUM'/);
+  assert.match(branch, /status = 'COMMITTED'/);
+  assert.match(branch, /PRAGMA integrity_check/);
+  assert.match(branch, /PRAGMA foreign_key_check/);
+  assert.match(remoteSource, /\.restore '\$BACKUP'/);
+});
