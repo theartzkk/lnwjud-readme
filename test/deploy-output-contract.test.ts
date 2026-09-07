@@ -25,3 +25,18 @@ test('every remote deploy stage is accepted by the strict output validator', asy
     `strict output validator is missing remote deploy stages: ${missing.join(', ')}`,
   );
 });
+
+
+test('modern production deploys run in a server-side durable systemd unit', async () => {
+  const [deploy, runner] = await Promise.all([
+    read('deploy/awh-control-plane/deploy-control-plane.sh'),
+    read('deploy/awh-control-plane/durable-remote-runner.sh'),
+  ]);
+  assert.match(deploy, /systemd-run/);
+  assert.match(deploy, /REMOTE_RESULT/);
+  assert.match(deploy, /REMOTE_LOG/);
+  assert.match(deploy, /systemctl is-active/);
+  assert.match(deploy, /durable_attempt/);
+  assert.match(runner, /sh "\$SCRIPT" "\$@"/);
+  assert.match(runner, /mv -f "\$TMP_RESULT" "\$RESULT"/);
+});

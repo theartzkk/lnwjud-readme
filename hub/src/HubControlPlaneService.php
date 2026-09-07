@@ -25,6 +25,7 @@ require_once __DIR__ . '/HubBackupService.php';
 require_once __DIR__ . '/HubInfrastructureService.php';
 require_once __DIR__ . '/HubEcosystemHealthService.php';
 require_once __DIR__ . '/HubAiGovernanceService.php';
+require_once __DIR__ . '/HubWorkerHealth.php';
 require_once __DIR__ . '/HubStaffOperationsService.php';
 require_once __DIR__ . '/HubThaiGovernmentDocumentService.php';
 require_once __DIR__ . '/HubActionGraphService.php';
@@ -60,7 +61,6 @@ final class HubControlPlaneService
     private const SESSION_TTL = 28800;
     private const SESSION_RATE_WINDOW = 600;
     private const SESSION_RATE_LIMIT = 5;
-    private const WORKER_STALE_TTL = 120;
     private const LEASE_TTL = 300;
     private const WORKSPACE_LEASE_TTL = 300;
     // The Desktop worker client rejects responses at 64 KiB.  Keep headroom
@@ -2165,7 +2165,7 @@ final class HubControlPlaneService
         $sql = "SELECT w.device_id, w.state, w.last_seen_at, w.capabilities_json, w.busy_task_id, d.display_name, d.platform, d.arch, COUNT(DISTINCT dpm.project_id) AS project_count FROM control_workers w JOIN devices d ON d.device_id = w.device_id JOIN device_project_memberships dpm ON dpm.device_id = w.device_id AND dpm.revoked_at IS NULL JOIN user_project_memberships upm ON upm.project_id = dpm.project_id AND upm.user_id = :user AND upm.revoked_at IS NULL WHERE d.revoked_at IS NULL GROUP BY w.device_id, w.state, w.last_seen_at, w.capabilities_json, w.busy_task_id, d.display_name, d.platform, d.arch ORDER BY d.display_name, w.device_id LIMIT 100";
         $q = $this->pdo->prepare($sql); $q->execute(['user' => $userId]); $nowAt = time();
         return array_map(static function (array $row) use ($nowAt): array {
-            $lastSeen = strtotime((string) $row['last_seen_at']); $age = $lastSeen === false ? PHP_INT_MAX : max(0, $nowAt - $lastSeen); $state = $age > self::WORKER_STALE_TTL ? 'STALE' : (in_array($row['state'], ['READY', 'WORKING', 'OFFLINE'], true) ? $row['state'] : 'OFFLINE');
+            $state = HubWorkerHealth::effectiveState($row['state'] ?? null, $row['last_seen_at'] ?? null, gmdate('c', $nowAt));
             $capabilities = []; try { $raw = json_decode((string) $row['capabilities_json'], true, 32, JSON_THROW_ON_ERROR); if (is_array($raw) && array_is_list($raw)) foreach ($raw as $capability) if (is_string($capability) && preg_match('/^[a-z][a-z0-9:._-]{0,63}$/', $capability)) $capabilities[] = $capability; } catch (Throwable) {}
             $capabilities = array_values(array_unique($capabilities));
             return ['deviceId' => (string) $row['device_id'], 'displayName' => (string) $row['display_name'], 'platform' => (string) $row['platform'], 'arch' => (string) $row['arch'], 'state' => $state, 'lastSeenAt' => (string) $row['last_seen_at'], 'capabilities' => $capabilities, 'detectedTools' => self::workerToolLabels($capabilities), 'boundProjectCount' => (int) $row['project_count'], 'activity' => $state === 'WORKING' ? 'BUSY' : ($state === 'READY' ? 'ONLINE' : ($state === 'STALE' ? 'STALE' : 'OFFLINE'))];

@@ -1,0 +1,8 @@
+[nginx-botsearch]
+enabled = true
+port = http,https
+filter = nginx-botsearch
+logpath = /var/log/nginx/access.log
+maxretry = 4
+findtime = 10m
+bantime = 1h
