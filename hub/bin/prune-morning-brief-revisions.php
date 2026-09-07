@@ -93,7 +93,7 @@ try {
     $pdo->exec('COMMIT');
 } catch (Throwable $error) {
     if ($pdo->inTransaction()) $pdo->rollBack();
-    out($result + ['state'=>'ERROR','code'=>'PRUNE_ABORTED','message'=>$error->getMessage()]);
+    out(array_merge($result, ['state'=>'ERROR','code'=>'PRUNE_ABORTED','message'=>$error->getMessage()]));
 }
 
 if ($vacuum) $pdo->exec('VACUUM');
@@ -101,10 +101,10 @@ $integrity = $pdo->query('PRAGMA integrity_check')->fetchColumn();
 $foreign = $pdo->query('PRAGMA foreign_key_check')->fetchAll();
 $remaining = (int)$pdo->query("SELECT COUNT(*) FROM control_product_setting_revisions WHERE setting_key=" . $pdo->quote(AWH_MORNING_BRIEF_KEY))->fetchColumn();
 
-out($result + [
+out(array_merge($result, [
     'state'=>'APPLIED',
     'deleted'=>count($delete),
     'remaining'=>$remaining,
     'integrity'=>$integrity === 'ok' ? 'PASS' : 'FAIL',
     'foreignKeys'=>$foreign === [] ? 'PASS' : 'FAIL',
-]);
+]));
