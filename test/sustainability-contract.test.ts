@@ -197,3 +197,31 @@ test('mac remote worker recovery is pinned, persistent, and reproducible', async
   const combined = `${installer}\n${supervisor}\n${verifier}\n${patch}\n${plist}`;
   assert.doesNotMatch(combined, /\/Users\/mac|@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|access_token\s*[:=]\s*['"][^'"]+/i);
 });
+
+
+test('edge hardening compresses text, hides versions, bans scanner patterns, and preserves legacy worker authorization', async () => {
+  const [edge, legacy, jail, installer] = await Promise.all([
+    readFile(join(ROOT, 'deploy/nginx/awh-edge-hardening.conf'), 'utf8'),
+    readFile(join(ROOT, 'deploy/nginx/awh-legacy-control-compat.conf'), 'utf8'),
+    readFile(join(ROOT, 'deploy/fail2ban/awh-nginx-botsearch.local'), 'utf8'),
+    readFile(join(ROOT, 'deploy/awh-control-plane/install-edge-hardening.sh'), 'utf8'),
+  ]);
+  assert.ok(edge.includes('server_tokens off;'));
+  assert.ok(edge.includes('gzip_vary on;'));
+  assert.ok(edge.includes('application/javascript'));
+  assert.ok(edge.includes('application/json'));
+  assert.ok(legacy.includes('server_name 157-85-108-142.sslip.io;'));
+  assert.ok(legacy.includes('location ^~ /api/v1/control/'));
+  assert.ok(legacy.includes('HTTP_AUTHORIZATION $http_authorization'));
+  assert.ok(legacy.includes('AWH_CONTROL_ORIGIN https://kruart.online'));
+  assert.ok(legacy.includes('return 308 https://kruart.online$request_uri'));
+  assert.equal(legacy.includes('return 301 https://kruart.online$request_uri'), false);
+  assert.equal(legacy.includes('return 302 https://kruart.online$request_uri'), false);
+  assert.ok(jail.includes('[nginx-botsearch]'));
+  assert.ok(jail.includes('enabled = true'));
+  assert.ok(jail.includes('maxretry = 4'));
+  assert.ok(installer.includes('EDGE_HARDENING_ROLLBACK=PASS'));
+  assert.ok(installer.includes('ssl_protocols TLSv1.2 TLSv1.3;'));
+  assert.ok(installer.includes('nginx -t'));
+  assert.ok(installer.includes('fail2ban-client -t'));
+});
