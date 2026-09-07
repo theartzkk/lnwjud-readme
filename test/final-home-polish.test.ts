@@ -6,6 +6,7 @@ const read=(p:string)=>readFile(new URL(`../${p}`,import.meta.url),'utf8');
 test('canonical Dashboard is intent-first with a three-item mobile navigation',async()=>{
  const [dashboard,css,index,constitution]=await Promise.all([read('web/dashboard.js'),read('web/dashboard.css'),read('web/index.html'),read('docs/AWH-UX-CONSTITUTION.md')]);
  for(const text of ['วันนี้อยากให้ช่วยอะไร?','พิมพ์สิ่งที่อยากให้ช่วย…','สร้างเอกสาร','จัดการ PDF','สร้าง QR','งานของฉัน','เครื่องมือ']) assert.ok(dashboard.includes(text),`missing ${text}`);
+ for(const technical of ['ค้นหา ⌘K','Memory พร้อม','Project + Chat','ยังไม่มี Project']) assert.ok(!dashboard.includes(technical),`primary UX leaked technical copy: ${technical}`);
  const mobileNav=dashboard.match(/function mountMobileNavigation\(\)[\s\S]*?document\.body\.append\(nav\);/)?.[0]||'';
  for(const label of ['แชท','งานของฉัน','เครื่องมือ']) assert.match(mobileNav,new RegExp(label));
  for(const duplicate of ["'หน้าแรก'","'ไฟล์'"]) assert.doesNotMatch(mobileNav,new RegExp(duplicate));
@@ -14,6 +15,9 @@ test('canonical Dashboard is intent-first with a three-item mobile navigation',a
  assert.match(css,/awh-mobile-nav/); assert.match(css,/repeat\(3,minmax\(0,1fr\)\)/);
  assert.match(dashboard,/dashboard-attachment-open/);
  assert.match(dashboard,/แนบไฟล์หรือรูปภาพ/);
+ assert.doesNotMatch(index,/Channel และ SHA-256|Source of Truth ของตัวเอง|AI WORKSPACE/);
+ assert.match(index,/โปรแกรมสำหรับ Windows และ macOS พร้อมติดตั้ง/);
+ assert.match(index,/พื้นที่ทำงาน/);
  assert.match(dashboard,/openWork\(command\.value, false\)/);
  assert.match(dashboard,/\$\('attachment-open'\)\?\.click\(\)/);
  assert.match(css,/awh-command-attach/);

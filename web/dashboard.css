@@ -105,7 +105,7 @@ body.awh-overlay-open .sheet { padding-bottom: max(0px,env(safe-area-inset-botto
   .awh-home-welcome{padding-top:2px}.awh-home-welcome strong{font-size:15px}.awh-cloud-chip{display:none}
   .awh-home-hero{padding:18px 14px 14px;border-radius:18px}.awh-home-kicker{margin-bottom:5px}.awh-home-hero h1{font-size:26px}.awh-home-hero>p{margin:8px 0 13px;font-size:13px}
   .awh-command-form{padding:6px 8px;border-radius:16px}.awh-command-form textarea{min-height:44px;padding:10px 7px;font-size:16px}.awh-command-actions{min-height:38px}.awh-command-send{min-height:38px;padding:0 13px}
-  .awh-home-prompts{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}.awh-home-prompts::-webkit-scrollbar{display:none}.awh-home-prompt{flex:0 0 auto;white-space:nowrap}
+  .awh-home-prompts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;overflow:visible;padding-bottom:0}.awh-home-prompt{width:100%;min-width:0;white-space:normal;line-height:1.25;text-align:center}
   #dashboard-pulse,#dashboard-overview{display:none!important}
   .awh-tool-grid:not(.show-all)>.awh-tool-card:nth-child(n+5){display:none}
   .awh-tools-more{display:flex;align-items:center;justify-content:center}
