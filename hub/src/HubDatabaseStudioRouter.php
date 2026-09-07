@@ -28,8 +28,8 @@ final class HubDatabaseStudioRouter
                 $token = self::cookie($server, '__Host-awh_control_session');
                 $result = match ($action) {
                     'overview' => $service->overview($token),
+                    'databases' => $service->databaseInventory($token),
                     'tables' => $service->tables($token),
-                    'fleet' => $service->fleet($token),
                     'browse' => $service->browse($token, self::queryString($query, 'table', true), self::queryString($query, 'q'), self::queryInt($query, 'page', 1), self::queryInt($query, 'limit', 50), self::queryString($query, 'sort'), self::queryString($query, 'dir') ?? 'ASC'),
                     'schema' => $service->schema($token, self::queryString($query, 'table', true)),
                     'export' => $service->export($token, self::queryString($query, 'table', true), self::queryString($query, 'format', true), self::queryString($query, 'q'), self::queryString($query, 'sort'), self::queryString($query, 'dir') ?? 'ASC'),

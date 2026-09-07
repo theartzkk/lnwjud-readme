@@ -23,9 +23,10 @@ test('database fleet inventory is metadata-only and root-generated', async () =>
   assert.match(service, /User=root/);
   assert.match(service, /ReadWritePaths=\/var\/lib\/awh-hub/);
   assert.match(timer, /OnUnitActiveSec=15m/);
-  assert.match(backend, /public function fleet/);
-  assert.match(router, /'fleet' => \$service->fleet/);
-  assert.match(web, /studioApi\('fleet'/);
+  assert.match(backend, /public function databaseInventory/);
+  assert.match(backend, /private function fleetSnapshot/);
+  assert.match(router, /'databases' => \$service->databaseInventory/);
+  assert.match(web, /studioApi\('databases'/);
 });
 
 test('imported live storage lifecycle stays bounded and protects authorities', async () => {

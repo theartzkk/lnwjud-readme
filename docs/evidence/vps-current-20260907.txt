@@ -1,0 +1,58 @@
+
+=== HOST ===
+hostname=awh-hub-01
+kernel=Linux 6.8.0-138-generic
+cpu_count=1
+
+=== MEMORY ===
+               total        used        free      shared  buff/cache   available
+Mem:           1.9Gi       704Mi       204Mi        25Mi       1.2Gi       1.2Gi
+Swap:          2.0Gi       264Mi       1.7Gi
+
+=== DISK ===
+Filesystem     Type  Size  Used Avail Use% Mounted on
+/dev/sda1      ext4   29G   20G  9.0G  69% /
+
+=== SERVICES ===
+nginx=active
+mariadb=active
+php8.3-fpm=active
+fail2ban=active
+
+=== NGINX_HOSTS ===
+157-85-108-142.sslip.io
+bay-staging-v08.157-85-108-142.sslip.io
+bay.kruart.online
+docs.kruart.online
+download.kruart.online
+excuse.kruart.online
+hub-staging.157-85-108-142.sslip.io
+kruart.online
+learn.kruart.online
+panel.kruart.online
+school.kruart.online
+status.kruart.online
+workspace.kruart.online
+www.kruart.online
+~^(?<unknown>[a-z0-9-]+)\.kruart\.online$
+
+=== MARIADB_DATABASE_SIZES_MIB ===
+bay_ll_authority_force_20260905	48.9
+bay_ll_authority_20260905	41.8
+bay_staging	15.8
+bay_ll_projection_proof_20260905	15.6
+bay_rc531_proof_20260905a	13.3
+bay_rc531_proof_20260905b	13.2
+
+=== STORAGE_CLASSIFICATION_INPUTS ===
+4.7G	/var/backups
+2.0G	/var/www/awh-web/releases
+5.3G	/var/www/awh-web/desktop-artifacts
+1.6G	/opt/awh-hub/control-releases
+573M	/var/lib/awh-hub/project-vault
+579M	/var/lib/mysql
+
+=== JOURNAL ===
+Archived and active journals take up 486.9M in the file system.
+
+AUDIT_MODE=READ_ONLY

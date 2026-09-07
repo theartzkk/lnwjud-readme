@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const state = { csrf: null, overview: null, fleet: null, tables: [], selectedTable: null, browse: null, schema: null, page: 1, search: '', sort: null, direction: 'ASC' };
+const state = { csrf: null, overview: null, databases: [], tables: [], selectedTable: null, browse: null, schema: null, page: 1, search: '', sort: null, direction: 'ASC' };
 
 function el(tag, className = '', text = '') { const node = document.createElement(tag); if (className) node.className = className; if (text !== '') node.textContent = text; return node; }
 function number(value) { return Number.isFinite(Number(value)) ? Number(value).toLocaleString('th-TH') : '—'; }
@@ -39,6 +39,19 @@ function renderOverview() {
   for (const [label, value] of cards) { const card = el('div', 'metric-card'); card.append(el('span', '', label), el('strong', '', value)); host.append(card); }
   const healthy = data.health?.quickCheck === 'ok' && data.database?.foreignKeysEnabled === true;
   const banner = $('health-banner'); banner.className = `health-banner ${healthy ? 'good' : ''}`; banner.textContent = healthy ? `✓ ฐานข้อมูลตอบสนองปกติ · WAL ${bytes(data.database?.walBytes)} · Foreign Key เปิดอยู่` : 'ควรตรวจสุขภาพฐานข้อมูลเพิ่มเติม';
+}
+
+async function loadDatabaseInventory() {
+  const data = await studioApi('databases'); state.databases = data.databases || []; const host = $('database-inventory'); host.replaceChildren();
+  for (const database of state.databases) {
+    const card = el('section', 'status-card'); const ready = database.state === 'READY';
+    const title = database.siteName || database.databaseName || 'ฐานข้อมูล';
+    const engine = String(database.engine || 'UNKNOWN');
+    const mode = database.studioMode === 'FULL_READ_ONLY' ? 'เปิดดูแบบ Read-only ได้' : database.studioMode === 'REGISTERED_READ_ONLY_PENDING' ? 'ลงทะเบียนแล้ว · รอเปิด Browse แบบปลอดภัย' : database.studioMode === 'DISCOVERED_READ_ONLY' ? 'ค้นพบบน VPS · Metadata เท่านั้น' : database.studioMode === 'REGISTERED' ? 'ลงทะเบียนแล้ว' : 'ไม่ต้องใช้ฐานข้อมูล';
+    const detail = [database.databaseName || '—', database.state || 'UNKNOWN', database.authority || null].filter(Boolean).join(' · '); const metrics = database.sizeBytes !== null && database.sizeBytes !== undefined ? `${bytes(database.sizeBytes)}${Number.isFinite(Number(database.tableCount)) ? ` · ${number(database.tableCount)} ตาราง` : ''}` : null; card.append(el('strong', ready || database.healthState === 'HEALTHY' ? 'good-text' : '', `${title} · ${engine}`), el('div', 'subtle', detail), el('div', 'subtle', mode)); if (metrics) card.append(el('div', 'subtle', metrics));
+    host.append(card);
+  }
+  if (!state.databases.length) host.append(el('div', 'empty-state', 'ยังไม่มีฐานข้อมูลที่ลงทะเบียน'));
 }
 
 function renderTableList() {
@@ -112,23 +125,6 @@ async function runSql(explain) {
   } finally { $('sql-run').disabled = false; $('sql-explain').disabled = false; }
 }
 
-async function loadFleet() {
-  const data = await studioApi('fleet'); state.fleet = data; const host = $('fleet-view'); host.replaceChildren();
-  const rows = data.databases || [];
-  const summary = el('p', 'subtle', data.state === 'NOT_CONFIGURED' ? 'ยังไม่ได้เชื่อม Database Inventory บน VPS' : `พบ ${number(rows.length)} ฐานข้อมูล · snapshot ${data.generatedAt ? new Date(data.generatedAt).toLocaleString('th-TH') : 'ยังไม่มีเวลาอ้างอิง'}`); host.append(summary);
-  if (!rows.length) { host.append(el('div', 'empty-state', 'ยังไม่มีฐานข้อมูลใน inventory ที่เปิดเผยได้อย่างปลอดภัย')); return; }
-  const grid = el('div', 'status-grid');
-  for (const row of rows) {
-    const card = el('section', 'status-card');
-    const stateText = row.state === 'HEALTHY' ? '✓ Healthy' : row.state === 'UNAVAILABLE' ? 'Unavailable' : 'Review';
-    const title = el('strong', row.state === 'HEALTHY' ? 'good-text' : 'warn-text', row.label || row.name);
-    const identity = el('div', 'subtle', `${row.engine} · ${row.authority} · ${stateText}`);
-    const metrics = el('div', 'subtle', `${bytes(row.sizeBytes)} · ${number(row.tableCount)} ตาราง · อ่านอย่างเดียว`);
-    card.append(title, identity, metrics); grid.append(card);
-  }
-  host.append(grid);
-}
-
 async function loadHealth() {
   const data = await studioApi('health'); const host = $('health-view'); host.replaceChildren(); const grid = el('div', 'status-grid');
   const integrity = el('div', 'status-card'); integrity.append(el('strong', data.integrity?.status === 'PASS' ? '✓ Integrity PASS' : '⚠ Integrity REVIEW', data.integrity?.status === 'PASS' ? 'good-text' : 'warn-text'), el('div', 'subtle', (data.integrity?.messages || []).join(' · ')));
@@ -158,13 +154,13 @@ async function loadAudit() {
 function showTab(name) {
   for (const button of document.querySelectorAll('.tab')) button.classList.toggle('active', button.dataset.tab === name);
   for (const panel of document.querySelectorAll('.tab-panel')) panel.hidden = panel.id !== `tab-${name}`;
-  if (name === 'fleet') loadFleet().catch(showError); if (name === 'health') loadHealth().catch(showError); if (name === 'migrations') loadMigrations().catch(showError); if (name === 'audit') loadAudit().catch(showError);
+  if (name === 'databases') loadDatabaseInventory().catch(showError); if (name === 'health') loadHealth().catch(showError); if (name === 'migrations') loadMigrations().catch(showError); if (name === 'audit') loadAudit().catch(showError);
 }
 
 function showError(error) { setStatus('ต้องตรวจสอบ'); const banner = $('health-banner'); banner.className = 'health-banner'; banner.textContent = error?.message || 'Database Studio ไม่สามารถโหลดข้อมูลได้'; }
 
 async function refreshAll() {
-  state.overview = await studioApi('overview'); const tables = await studioApi('tables'); state.tables = tables.tables || []; renderOverview(); renderTableList(); await loadFleet();
+  state.overview = await studioApi('overview'); const tables = await studioApi('tables'); state.tables = tables.tables || []; renderOverview(); renderTableList(); await loadDatabaseInventory();
   if (state.selectedTable) { const current = state.tables.find((row) => row.name === state.selectedTable); if (current && !current.locked) await loadTable(); }
 }
 
@@ -177,7 +173,7 @@ async function init() {
   $('page-prev').addEventListener('click', async () => { if (state.page > 1) { state.page--; await loadTable(); } }); $('page-next').addEventListener('click', async () => { if (state.browse && state.page < state.browse.totalPages) { state.page++; await loadTable(); } });
   $('export-csv').addEventListener('click', () => downloadExport('csv').catch(showError)); $('export-json').addEventListener('click', () => downloadExport('json').catch(showError));
   $('sql-run').addEventListener('click', () => runSql(false)); $('sql-explain').addEventListener('click', () => runSql(true));
-  $('refresh-all').addEventListener('click', () => refreshAll().catch(showError)); $('fleet-refresh').addEventListener('click', () => loadFleet().catch(showError)); $('health-refresh').addEventListener('click', () => loadHealth().catch(showError)); $('migration-refresh').addEventListener('click', () => loadMigrations().catch(showError)); $('audit-refresh').addEventListener('click', () => loadAudit().catch(showError));
+  $('refresh-all').addEventListener('click', () => refreshAll().catch(showError)); $('database-inventory-refresh').addEventListener('click', () => loadDatabaseInventory().catch(showError)); $('health-refresh').addEventListener('click', () => loadHealth().catch(showError)); $('migration-refresh').addEventListener('click', () => loadMigrations().catch(showError)); $('audit-refresh').addEventListener('click', () => loadAudit().catch(showError));
   for (const button of document.querySelectorAll('.tab')) button.addEventListener('click', () => showTab(button.dataset.tab));
 }
 
