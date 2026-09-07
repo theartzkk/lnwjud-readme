@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT=/var/backups/awh-hub
+STATE=/var/lib/awh-hub/restore-drill.json
+latest=$(find "$ROOT" -maxdepth 1 -type f -name 'awh-*.sqlite.json' -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)
+if [[ -z "${latest:-}" ]]; then
+  printf '{"schemaVersion":1,"checkedAt":"%s","state":"NO_BACKUP"}\n' "$(date --iso-8601=seconds)" > "$STATE"
+  exit 1
+fi
+backup="${latest%.json}"
+out=$(php -d pcre.jit=0 /opt/awh-hub/control-plane-current/hub/bin/backup.php drill "$backup" "$latest" /var/tmp 2>&1) || rc=$?
+rc=${rc:-0}
+if [[ "$rc" -eq 0 ]]; then
+  state=PASS
+else
+  state=FAIL
+fi
+python3 - "$STATE" "$state" "$backup" "$out" <<'PY'
+import json,sys,datetime,os
+state_path,state,backup,out=sys.argv[1:5]
+payload={"schemaVersion":1,"checkedAt":datetime.datetime.now(datetime.timezone.utc).astimezone().isoformat(),"state":state,"backup":os.path.basename(backup),"detail":out[:2000]}
+tmp=state_path+".tmp"
+open(tmp,"w").write(json.dumps(payload,ensure_ascii=False,separators=(",",":"))+"\n")
+os.chmod(tmp,0o640)
+os.replace(tmp,state_path)
+PY
+chown root:awh-hub "$STATE" 2>/dev/null || true
+logger -t awh-restore-drill "state=$state backup=$(basename "$backup")"
+[[ "$state" == "PASS" ]]

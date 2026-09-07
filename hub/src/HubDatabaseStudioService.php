@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/HubBackupService.php';
+require_once __DIR__ . '/HubMariaDbReadClient.php';
 require_once __DIR__ . '/HubOwnerAuthService.php';
 require_once __DIR__ . '/HubTrustPolicy.php';
 
@@ -21,9 +22,9 @@ final class HubDatabaseStudioService
     private const MAX_EXPORT_BYTES = 5_242_880;
     private const SESSION_INACTIVITY_TTL = 43200;
 
-    private function __construct(private readonly PDO $pdo, private readonly string $databasePath, private readonly string $migrationDir) {}
+    private function __construct(private readonly PDO $pdo, private readonly string $databasePath, private readonly string $migrationDir, private readonly ?string $fleetSnapshotPath = null, private readonly ?HubMariaDbReadClient $maria = null) {}
 
-    public static function openExisting(string $databasePath, ?string $migrationDir = null): self
+    public static function openExisting(string $databasePath, ?string $migrationDir = null, ?string $fleetSnapshotPath = null, ?HubMariaDbReadClient $maria = null): self
     {
         if ($databasePath === '' || str_contains($databasePath, "\0") || !is_file($databasePath) || is_link($databasePath)) throw new HubDatabaseStudioException('Database configuration is invalid', 'DATABASE_CONFIG_INVALID');
         try {
@@ -32,7 +33,7 @@ final class HubDatabaseStudioService
             foreach (['control_sessions', 'hub_users', 'owner_bootstrap'] as $table) if (!self::tableExists($pdo, $table)) throw new RuntimeException('owner session schema missing');
             $sessionColumns = array_column($pdo->query('PRAGMA table_info(control_sessions)')->fetchAll(), 'name');
             if (array_diff(['session_hash', 'user_id', 'csrf_hash', 'expires_at', 'last_seen_at', 'revoked_at', 'session_kind', 'step_up_at'], $sessionColumns) !== []) throw new RuntimeException('owner password session schema missing');
-            return new self($pdo, $databasePath, $migrationDir ?? dirname(__DIR__) . '/migrations');
+            return new self($pdo, $databasePath, $migrationDir ?? dirname(__DIR__) . '/migrations', $fleetSnapshotPath, $maria ?? HubMariaDbReadClient::fromEnvironment());
         } catch (HubDatabaseStudioException $error) { throw $error; }
         catch (Throwable) { throw new HubDatabaseStudioException('Database Studio is unavailable', 'DATABASE_UNAVAILABLE'); }
     }
@@ -47,6 +48,134 @@ final class HubDatabaseStudioService
     }
 
     public function tables(string $sessionToken, ?string $now = null): array { $this->ownerSession($sessionToken, null, null, $now); return ['schemaVersion' => 1, 'tables' => $this->tableCatalog()]; }
+
+    public function databaseInventory(string $sessionToken, ?string $now = null): array
+    {
+        $this->ownerSession($sessionToken, null, null, $now);
+        $databaseBytes = @filesize($this->databasePath);
+        $databases = [[
+            'databaseId' => 'awh-control-plane',
+            'siteId' => null,
+            'siteName' => 'AWH Control Plane',
+            'siteSlug' => 'awh',
+            'engine' => 'SQLITE',
+            'databaseName' => 'awh.sqlite',
+            'state' => 'READY',
+            'sizeBytes' => is_int($databaseBytes) ? $databaseBytes : null,
+            'studioMode' => 'FULL_READ_ONLY',
+            'updatedAt' => null,
+        ]];
+        if (self::tableExists($this->pdo, 'control_site_database_bindings') && self::tableExists($this->pdo, 'control_managed_sites')) {
+            $query = $this->pdo->query("SELECT d.site_id,d.engine,d.database_name,d.state,d.updated_at,s.name AS site_name,s.slug AS site_slug FROM control_site_database_bindings d JOIN control_managed_sites s ON s.site_id=d.site_id ORDER BY lower(s.name),d.site_id");
+            foreach ($query->fetchAll() as $row) {
+                $engine = strtoupper((string) ($row['engine'] ?? 'NONE'));
+                $databases[] = [
+                    'databaseId' => 'site:' . (string) $row['site_id'],
+                    'siteId' => (string) $row['site_id'],
+                    'siteName' => (string) ($row['site_name'] ?? ''),
+                    'siteSlug' => (string) ($row['site_slug'] ?? ''),
+                    'engine' => $engine,
+                    'databaseName' => is_string($row['database_name'] ?? null) ? (string) $row['database_name'] : null,
+                    'state' => (string) ($row['state'] ?? 'UNKNOWN'),
+                    'sizeBytes' => null,
+                    'studioMode' => $engine === 'MARIADB' ? ($this->maria instanceof HubMariaDbReadClient ? 'FULL_READ_ONLY' : 'REGISTERED_READ_ONLY_PENDING') : ($engine === 'SQLITE' ? 'REGISTERED_READ_ONLY_PENDING' : 'NOT_REQUIRED'),
+                    'updatedAt' => is_string($row['updated_at'] ?? null) ? (string) $row['updated_at'] : null,
+                ];
+            }
+        }
+        $snapshot = $this->fleetSnapshot();
+        $known = [];
+        foreach ($databases as $index => $database) {
+            $engine = strtoupper((string) ($database['engine'] ?? 'NONE')); $name = (string) ($database['databaseName'] ?? '');
+            if ($name !== '') $known[$engine . ':' . $name] = $index;
+        }
+        foreach ($snapshot as $row) {
+            $engine = strtoupper((string) ($row['engine'] ?? '')); $name = (string) ($row['name'] ?? ''); if ($name === '') continue;
+            $key = $engine . ':' . $name;
+            if (isset($known[$key])) {
+                $index = $known[$key];
+                $databases[$index]['sizeBytes'] = max(0, (int) ($row['sizeBytes'] ?? 0));
+                $databases[$index]['tableCount'] = max(0, (int) ($row['tableCount'] ?? 0));
+                $databases[$index]['healthState'] = (string) ($row['state'] ?? 'REVIEW');
+                $databases[$index]['authority'] = (string) ($row['authority'] ?? 'UNCLASSIFIED');
+                continue;
+            }
+            if (!in_array($engine, ['MARIADB', 'MYSQL'], true)) continue;
+            $databases[] = [
+                'databaseId' => 'discovered:' . strtolower($engine) . ':' . $name,
+                'siteId' => null, 'siteName' => $name, 'siteSlug' => null, 'engine' => $engine,
+                'databaseName' => $name, 'state' => 'DISCOVERED',
+                'sizeBytes' => max(0, (int) ($row['sizeBytes'] ?? 0)), 'tableCount' => max(0, (int) ($row['tableCount'] ?? 0)),
+                'healthState' => (string) ($row['state'] ?? 'REVIEW'), 'authority' => (string) ($row['authority'] ?? 'UNCLASSIFIED'),
+                'studioMode' => 'DISCOVERED_READ_ONLY', 'updatedAt' => null,
+            ];
+        }
+        $counts = ['SQLITE' => 0, 'MARIADB' => 0, 'MYSQL' => 0, 'NONE' => 0, 'OTHER' => 0];
+        foreach ($databases as $database) { $engine = (string) $database['engine']; isset($counts[$engine]) ? $counts[$engine]++ : $counts['OTHER']++; }
+        return ['schemaVersion' => 1, 'databases' => $databases, 'summary' => ['total' => count($databases), 'engines' => $counts], 'safety' => ['credentialsExposed' => false, 'defaultMode' => 'READ_ONLY', 'discoveryMode' => 'SANITIZED_METADATA_ONLY']];
+    }
+
+    private function fleetSnapshot(): array
+    {
+        $path = $this->fleetSnapshotPath;
+        if (!is_string($path) || $path === '' || str_contains($path, "\0") || !is_file($path) || is_link($path)) return [];
+        try {
+            $raw = file_get_contents($path, false, null, 0, 262145); if (!is_string($raw) || strlen($raw) > 262144) return [];
+            $data = json_decode($raw, true, 32, JSON_THROW_ON_ERROR); if (!is_array($data) || ($data['schemaVersion'] ?? null) !== 1 || !is_array($data['databases'] ?? null)) return [];
+            $rows = [];
+            foreach (array_slice($data['databases'], 0, 200) as $row) {
+                if (!is_array($row)) continue; $engine = strtoupper((string) ($row['engine'] ?? '')); $name = (string) ($row['name'] ?? '');
+                if (!in_array($engine, ['SQLITE','MARIADB','MYSQL'], true) || $name === '' || strlen($name) > 128 || preg_match('/[^A-Za-z0-9_.-]/', $name)) continue;
+                $authority = (string) ($row['authority'] ?? 'UNCLASSIFIED'); if (!in_array($authority, ['CONTROL','STAGING','PROOF','UNCLASSIFIED'], true)) $authority = 'UNCLASSIFIED';
+                $state = (string) ($row['state'] ?? 'REVIEW'); if (!in_array($state, ['HEALTHY','REVIEW','UNAVAILABLE'], true)) $state = 'REVIEW';
+                $rows[] = ['engine'=>$engine,'name'=>$name,'state'=>$state,'sizeBytes'=>max(0,(int)($row['sizeBytes']??0)),'tableCount'=>max(0,(int)($row['tableCount']??0)),'authority'=>$authority];
+            }
+            return $rows;
+        } catch (Throwable) { return []; }
+    }
+
+    public function databaseTables(string $sessionToken, string $databaseId, ?string $now = null): array
+    {
+        $this->ownerSession($sessionToken, null, null, $now);
+        if ($databaseId === 'awh-control-plane') return ['schemaVersion'=>1,'databaseId'=>$databaseId,'engine'=>'SQLITE','tables'=>$this->tableCatalog()];
+        $database=$this->registeredExternalDatabase($databaseId); $reader=$this->mariaReader();
+        return ['schemaVersion'=>1,'databaseId'=>$databaseId,'engine'=>'MARIADB','tables'=>$reader->tables($database['databaseName'])];
+    }
+
+    public function databaseBrowse(string $sessionToken,string $databaseId,string $table,?string $search=null,int $page=1,int $limit=50,?string $sort=null,string $direction='ASC',?string $now=null): array
+    {
+        $this->ownerSession($sessionToken,null,null,$now);
+        if($databaseId==='awh-control-plane') return $this->browse($sessionToken,$table,$search,$page,$limit,$sort,$direction,$now)+['databaseId'=>$databaseId,'engine'=>'SQLITE'];
+        $database=$this->registeredExternalDatabase($databaseId); return $this->mariaReader()->browse($database['databaseName'],$table,$search,$page,$limit,$sort,$direction)+['schemaVersion'=>1,'databaseId'=>$databaseId,'engine'=>'MARIADB'];
+    }
+
+    public function databaseSchema(string $sessionToken,string $databaseId,string $table,?string $now=null): array
+    {
+        $this->ownerSession($sessionToken,null,null,$now);
+        if($databaseId==='awh-control-plane') return $this->schema($sessionToken,$table,$now)+['databaseId'=>$databaseId,'engine'=>'SQLITE'];
+        $database=$this->registeredExternalDatabase($databaseId); return $this->mariaReader()->schema($database['databaseName'],$table)+['schemaVersion'=>1,'databaseId'=>$databaseId,'engine'=>'MARIADB'];
+    }
+
+    public function databaseExport(string $sessionToken,string $databaseId,string $table,string $format,?string $search=null,?string $sort=null,string $direction='ASC',?string $now=null): array
+    {
+        $this->ownerSession($sessionToken,null,null,$now);
+        if($databaseId==='awh-control-plane') return $this->export($sessionToken,$table,$format,$search,$sort,$direction,$now)+['databaseId'=>$databaseId,'engine'=>'SQLITE'];
+        $database=$this->registeredExternalDatabase($databaseId); return $this->mariaReader()->export($database['databaseName'],$table,$format,$search,$sort,$direction)+['schemaVersion'=>1,'databaseId'=>$databaseId,'engine'=>'MARIADB'];
+    }
+
+    public function databaseHealth(string $sessionToken,string $databaseId,?string $now=null): array
+    {
+        $this->ownerSession($sessionToken,null,null,$now);
+        if($databaseId==='awh-control-plane') return $this->health($sessionToken,$now)+['databaseId'=>$databaseId,'engine'=>'SQLITE'];
+        $database=$this->registeredExternalDatabase($databaseId); return $this->mariaReader()->health($database['databaseName'])+['schemaVersion'=>1,'databaseId'=>$databaseId,'engine'=>'MARIADB'];
+    }
+
+    public function databaseMigrationReadiness(string $sessionToken,string $databaseId,?string $now=null): array
+    {
+        $this->ownerSession($sessionToken,null,null,$now);
+        if($databaseId==='awh-control-plane') return ['schemaVersion'=>1,'databaseId'=>$databaseId,'engine'=>'SQLITE','readOnly'=>true,'migration'=>['mode'=>'EXACT_RELEASE_AND_VERIFIED_BACKUP','productionMutationAllowed'=>false,'restoreAuthority'=>'HubBackupService','latestBackup'=>$this->backupMetadata()]];
+        $database=$this->registeredExternalDatabase($databaseId); return $this->mariaReader()->migrationReadiness($database['databaseName'])+['schemaVersion'=>1,'databaseId'=>$databaseId];
+    }
 
     public function browse(string $sessionToken, string $table, ?string $search = null, int $page = 1, int $limit = 50, ?string $sort = null, string $direction = 'ASC', ?string $now = null): array
     {
@@ -115,6 +244,21 @@ final class HubDatabaseStudioService
         foreach ($this->tableCatalog() as $table) if (!$table['locked'] && str_contains(strtolower($table['name']), 'audit')) $tables[] = $table['name'];
         $streams = []; foreach ($tables as $table) { $columns = $this->columns($table); $sort = $this->preferredTimeColumn($columns); $rows = $this->readRows($table, $columns, null, $sort, 'DESC', $limit, 0); $streams[] = ['table' => $table, 'columns' => $this->publicColumns($columns), 'rows' => $rows]; }
         return ['schemaVersion' => 1, 'streams' => $streams];
+    }
+
+    private function registeredExternalDatabase(string $databaseId): array
+    {
+        if (!preg_match('/^site:[A-Za-z0-9_-]{1,128}$/', $databaseId)) throw new HubDatabaseStudioException('Database identifier is invalid','DATABASE_REQUEST_INVALID');
+        if (!self::tableExists($this->pdo,'control_site_database_bindings') || !self::tableExists($this->pdo,'control_managed_sites')) throw new HubDatabaseStudioException('Database is not registered','DATABASE_UNAVAILABLE');
+        $siteId=substr($databaseId,5); $q=$this->pdo->prepare("SELECT d.engine,d.database_name,d.state,s.name AS site_name FROM control_site_database_bindings d JOIN control_managed_sites s ON s.site_id=d.site_id WHERE d.site_id=:site");$q->execute(['site'=>$siteId]);$row=$q->fetch();
+        if(!is_array($row)||strtoupper((string)($row['engine']??''))!=='MARIADB'||(string)($row['state']??'')!=='READY'||!is_string($row['database_name']??null)||!preg_match('/^[A-Za-z0-9_]{1,64}$/',(string)$row['database_name'])) throw new HubDatabaseStudioException('MariaDB database is not ready','DATABASE_UNAVAILABLE');
+        return ['databaseName'=>(string)$row['database_name'],'siteName'=>(string)($row['site_name']??'')];
+    }
+
+    private function mariaReader(): HubMariaDbReadClient
+    {
+        if (!$this->maria instanceof HubMariaDbReadClient) throw new HubDatabaseStudioException('MariaDB read access is not configured','DATABASE_UNAVAILABLE');
+        return $this->maria;
     }
 
     private function ownerSession(string $token, ?string $csrf, ?string $action, ?string $now): array

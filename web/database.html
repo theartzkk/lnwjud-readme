@@ -14,7 +14,7 @@
 <body>
   <div class="studio-shell">
     <header class="studio-header">
-      <a class="brand" href="./"><span class="brand-mark">A</span><span><strong>AWH Database Studio</strong><small>Owner · SQLite Control Plane</small></span></a>
+      <a class="brand" href="./"><span class="brand-mark">A</span><span><strong>AWH Database Studio</strong><small>Owner · Database Control Plane</small></span></a>
       <div class="header-actions"><span id="connection-state" class="pill">กำลังตรวจสอบ</span><a class="back-link awh-back-link" data-awh-back href="./panel.html"><span aria-hidden="true">←</span><span>Control Panel</span></a></div>
     </header>
 
@@ -27,7 +27,7 @@
 
       <section id="studio" hidden>
         <div class="hero-row">
-          <div><p class="eyebrow">DATABASE</p><h1>ฐานข้อมูล AWH</h1><p class="subtle">ดูโครงสร้าง ตรวจสุขภาพ ค้นข้อมูล และรัน SELECT โดยไม่เปิดสิทธิ์แก้ฐานข้อมูล</p></div>
+          <div><p class="eyebrow">DATABASE</p><h1>ศูนย์ฐานข้อมูล</h1><p class="subtle">ดูฐานข้อมูลทั้งหมดบน VPS จากจุดเดียว โดยคงการอ่านข้อมูลและ SQL แบบปลอดภัยเป็นค่าเริ่มต้น</p></div>
           <button id="refresh-all" class="secondary-button" type="button">รีเฟรช</button>
         </div>
 
@@ -35,14 +35,22 @@
         <div id="health-banner" class="health-banner" aria-live="polite"></div>
 
         <nav class="tabs" aria-label="Database Studio">
-          <button class="tab active" type="button" data-tab="tables">ตาราง</button>
-          <button class="tab" type="button" data-tab="sql">SQL อ่านอย่างเดียว</button>
+          <button class="tab active" type="button" data-tab="databases">ฐานข้อมูล</button>
+          <button class="tab" type="button" data-tab="tables">ตาราง</button>
+          <button class="tab" type="button" data-tab="sql">SQL อ่านอย่างเดียว · AWH</button>
           <button class="tab" type="button" data-tab="health">สุขภาพ</button>
-          <button class="tab" type="button" data-tab="migrations">Migration</button>
-          <button class="tab" type="button" data-tab="audit">Audit</button>
+          <button class="tab" type="button" data-tab="migrations">Migration AWH</button>
+          <button class="tab" type="button" data-tab="audit">Audit AWH</button>
         </nav>
 
-        <section id="tab-tables" class="tab-panel">
+        <section id="tab-databases" class="tab-panel">
+          <div class="panel-card">
+            <div class="panel-heading"><div><p class="eyebrow">DATABASE INVENTORY</p><h2>ฐานข้อมูลทั้งหมด</h2><p class="subtle">มองเห็นฐานข้อมูลที่ AWH ดูแลจาก authority เดิม โดยไม่เปิด credential หรือสิทธิ์เขียน</p></div><button id="database-inventory-refresh" class="secondary-button" type="button">รีเฟรช</button></div>
+            <div id="database-inventory" class="status-grid"></div>
+          </div>
+        </section>
+
+        <section id="tab-tables" class="tab-panel" hidden>
           <div class="database-layout">
             <aside class="table-sidebar">
               <label for="table-filter">ค้นหาตาราง</label>

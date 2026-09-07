@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const state = { csrf: null, overview: null, tables: [], selectedTable: null, browse: null, schema: null, page: 1, search: '', sort: null, direction: 'ASC' };
+const state = { csrf: null, overview: null, databases: [], selectedDatabase: 'awh-control-plane', tables: [], selectedTable: null, browse: null, schema: null, page: 1, search: '', sort: null, direction: 'ASC' };
 
 function el(tag, className = '', text = '') { const node = document.createElement(tag); if (className) node.className = className; if (text !== '') node.textContent = text; return node; }
 function number(value) { return Number.isFinite(Number(value)) ? Number(value).toLocaleString('th-TH') : '—'; }
@@ -41,6 +41,32 @@ function renderOverview() {
   const banner = $('health-banner'); banner.className = `health-banner ${healthy ? 'good' : ''}`; banner.textContent = healthy ? `✓ ฐานข้อมูลตอบสนองปกติ · WAL ${bytes(data.database?.walBytes)} · Foreign Key เปิดอยู่` : 'ควรตรวจสุขภาพฐานข้อมูลเพิ่มเติม';
 }
 
+async function loadDatabaseInventory() {
+  const data = await studioApi('databases'); state.databases = data.databases || []; const host = $('database-inventory'); host.replaceChildren();
+  for (const database of state.databases) {
+    const readable = database.studioMode === 'FULL_READ_ONLY'; const card = el(readable ? 'button' : 'section', `status-card database-card ${state.selectedDatabase === database.databaseId ? 'active' : ''}`.trim()); const ready = database.state === 'READY';
+    if (readable) { card.type = 'button'; card.addEventListener('click', () => selectDatabase(database).catch(showError)); }
+    const title = database.siteName || database.databaseName || 'ฐานข้อมูล';
+    const engine = String(database.engine || 'UNKNOWN');
+    const mode = readable ? 'เปิดดูตาราง / Schema / Export แบบ Read-only ได้' : database.studioMode === 'REGISTERED_READ_ONLY_PENDING' ? 'ลงทะเบียนแล้ว · รอเปิด Read-only adapter' : database.studioMode === 'DISCOVERED_READ_ONLY' ? 'ค้นพบบน VPS · Metadata เท่านั้น' : 'ไม่ต้องใช้ฐานข้อมูล';
+    const detail = [database.databaseName || '—', database.state || 'UNKNOWN', database.authority || null].filter(Boolean).join(' · '); const metrics = database.sizeBytes !== null && database.sizeBytes !== undefined ? `${bytes(database.sizeBytes)}${Number.isFinite(Number(database.tableCount)) ? ` · ${number(database.tableCount)} ตาราง` : ''}` : null; card.append(el('strong', ready || database.healthState === 'HEALTHY' ? 'good-text' : '', `${title} · ${engine}`), el('div', 'subtle', detail), el('div', 'subtle', mode)); if (metrics) card.append(el('div', 'subtle', metrics));
+    host.append(card);
+  }
+  if (!state.databases.length) host.append(el('div', 'empty-state', 'ยังไม่มีฐานข้อมูลที่ลงทะเบียน'));
+}
+
+async function selectDatabase(database) {
+  if (database.studioMode !== 'FULL_READ_ONLY') return;
+  state.selectedDatabase = database.databaseId; state.selectedTable = null; state.page = 1; state.search = ''; state.sort = null; state.direction = 'ASC';
+  $('table-title').textContent = database.siteName || database.databaseName || 'ฐานข้อมูล'; $('table-meta').textContent = `${database.engine} · Read-only`;
+  $('table-empty').hidden = false; $('locked-table').hidden = true; $('table-browser').hidden = true; $('export-actions').hidden = true;
+  await loadDatabaseTables(); await loadDatabaseInventory(); showTab('tables'); updateContextControls();
+}
+
+async function loadDatabaseTables() {
+  const data = await studioApi('database_tables', { database: state.selectedDatabase }); state.tables = data.tables || []; renderTableList();
+}
+
 function renderTableList() {
   const filter = $('table-filter').value.trim().toLowerCase(); const host = $('table-list'); host.replaceChildren();
   for (const table of state.tables.filter((row) => row.name.toLowerCase().includes(filter))) {
@@ -52,7 +78,7 @@ function renderTableList() {
 
 async function selectTable(table) {
   state.selectedTable = table.name; state.page = 1; state.search = ''; state.sort = null; state.direction = 'ASC'; renderTableList();
-  $('table-title').textContent = table.name; $('table-meta').textContent = table.locked ? 'ตารางป้องกันข้อมูลอ่อนไหว' : `${number(table.rowCount)} รายการ`;
+  const database = state.databases.find((row) => row.databaseId === state.selectedDatabase); $('table-title').textContent = table.name; $('table-meta').textContent = table.locked ? 'ตารางป้องกันข้อมูลอ่อนไหว' : `${database?.siteName || database?.databaseName || 'ฐานข้อมูล'} · ${number(table.rowCount)} รายการ`;
   $('table-empty').hidden = true; $('locked-table').hidden = !table.locked; $('table-browser').hidden = table.locked; $('export-actions').hidden = table.locked;
   if (table.locked) return;
   $('browse-search').value = ''; await loadTable();
@@ -60,9 +86,9 @@ async function selectTable(table) {
 
 async function loadTable() {
   if (!state.selectedTable) return;
-  const data = await studioApi('browse', { table: state.selectedTable, q: state.search, page: state.page, limit: 50, sort: state.sort, dir: state.direction });
+  const data = await studioApi('database_browse', { database: state.selectedDatabase, table: state.selectedTable, q: state.search, page: state.page, limit: 50, sort: state.sort, dir: state.direction });
   state.browse = data; state.sort = data.sort; state.direction = data.direction;
-  const schema = await studioApi('schema', { table: state.selectedTable }); state.schema = schema;
+  const schema = await studioApi('database_schema', { database: state.selectedDatabase, table: state.selectedTable }); state.schema = schema;
   renderBrowse(); renderSchema();
 }
 
@@ -96,7 +122,7 @@ function renderSchema() {
 
 async function downloadExport(format) {
   if (!state.selectedTable) return;
-  const data = await studioApi('export', { table: state.selectedTable, format, q: state.search, sort: state.sort, dir: state.direction });
+  const data = await studioApi('database_export', { database: state.selectedDatabase, table: state.selectedTable, format, q: state.search, sort: state.sort, dir: state.direction });
   const blob = new Blob([data.content], { type: data.mimeType || 'application/octet-stream' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = data.filename || `${state.selectedTable}.${format}`; document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
 }
 
@@ -113,16 +139,25 @@ async function runSql(explain) {
 }
 
 async function loadHealth() {
-  const data = await studioApi('health'); const host = $('health-view'); host.replaceChildren(); const grid = el('div', 'status-grid');
+  const data = await studioApi('database_health', { database: state.selectedDatabase }); const host = $('health-view'); host.replaceChildren(); const grid = el('div', 'status-grid');
+  if (data.engine === 'MARIADB') {
+    const status = el('div', 'status-card'); status.append(el('strong', data.status === 'PASS' ? '✓ MariaDB PASS' : '⚠ MariaDB REVIEW', data.status === 'PASS' ? 'good-text' : 'warn-text'), el('div', 'subtle', `${data.databaseName || '—'} · ${number(data.tables)} ตาราง`));
+    const access = el('div', 'status-card'); access.append(el('strong', data.readOnly ? '✓ Read-only principal' : '⚠ ตรวจสิทธิ์', data.readOnly ? 'good-text' : 'warn-text'), el('div', 'subtle', data.serverVersion || '')); grid.append(status, access); host.append(grid); return;
+  }
   const integrity = el('div', 'status-card'); integrity.append(el('strong', data.integrity?.status === 'PASS' ? '✓ Integrity PASS' : '⚠ Integrity REVIEW', data.integrity?.status === 'PASS' ? 'good-text' : 'warn-text'), el('div', 'subtle', (data.integrity?.messages || []).join(' · ')));
   const fk = el('div', 'status-card'); fk.append(el('strong', data.foreignKeys?.status === 'PASS' ? '✓ Foreign Key PASS' : '⚠ Foreign Key REVIEW', data.foreignKeys?.status === 'PASS' ? 'good-text' : 'warn-text'), el('div', 'subtle', data.foreignKeys?.status === 'PASS' ? 'ไม่พบ foreign-key violation' : `${number(data.foreignKeys?.violations?.length)} รายการที่ต้องตรวจ`));
-  const journal = el('div', 'status-card'); journal.append(el('strong', '', `Journal · ${String(data.journalMode || '').toUpperCase()}`), el('div', 'subtle', data.foreignKeysEnabled ? 'Foreign keys เปิดใช้งาน' : 'Foreign keys ไม่ได้เปิด'));
-  grid.append(integrity, fk, journal); host.append(grid);
+  const journal = el('div', 'status-card'); journal.append(el('strong', '', `Journal · ${String(data.journalMode || '').toUpperCase()}`), el('div', 'subtle', data.foreignKeysEnabled ? 'Foreign keys เปิดใช้งาน' : 'Foreign keys ไม่ได้เปิด')); grid.append(integrity, fk, journal); host.append(grid);
   if ((data.foreignKeys?.violations || []).length) renderGrid(host, Object.keys(data.foreignKeys.violations[0]), data.foreignKeys.violations);
 }
 
 async function loadMigrations() {
-  const data = await studioApi('migrations'); const host = $('migration-view'); host.replaceChildren();
+  const host = $('migration-view'); host.replaceChildren();
+  const readiness = await studioApi('database_migration', { database: state.selectedDatabase });
+  const mode = readiness.migration?.mode || 'READ_ONLY'; const objects = readiness.objects || {};
+  host.append(el('div', 'status-card', '', el('strong', 'good-text', `Migration readiness · ${mode}`), el('div', 'subtle', `${readiness.engine || '—'} · read-only · ห้าม dual-write / production mutation`)));
+  if (readiness.engine === 'MARIADB') host.append(el('p', 'subtle', `${readiness.databaseName || '—'} · charset ${readiness.charset || '—'} · collation ${readiness.collation || '—'} · tables ${number(objects.baseTables)} · views ${number(objects.views)} · indexes ${number(objects.indexes)} · FK ${number(objects.foreignKeys)} · triggers ${number(objects.triggers)} · events ${number(objects.events)}`));
+  if (state.selectedDatabase !== 'awh-control-plane') { const gates=readiness.migration?.requiredBeforeCutover || []; const list=el('div','migration-list'); for(const gate of gates) list.append(el('div','migration-item','',el('strong','',gate))); host.append(list); return; }
+  const data = await studioApi('migrations');
   host.append(el('p', 'subtle', `SQLite user_version ${data.databaseUserVersion} · ledger ${number(data.ledger?.length)} รายการ · source SQL ${number(data.files?.length)} ไฟล์`));
   const list = el('div', 'migration-list');
   for (const row of data.ledger || []) { const item = el('div', 'migration-item'); item.append(el('strong', '', `${row.migrationId} · schema ${row.schemaVersion}`), el('div', 'subtle', row.appliedAt || ''), el('code', '', row.checksum || '')); list.append(item); }
@@ -141,26 +176,32 @@ async function loadAudit() {
 function showTab(name) {
   for (const button of document.querySelectorAll('.tab')) button.classList.toggle('active', button.dataset.tab === name);
   for (const panel of document.querySelectorAll('.tab-panel')) panel.hidden = panel.id !== `tab-${name}`;
-  if (name === 'health') loadHealth().catch(showError); if (name === 'migrations') loadMigrations().catch(showError); if (name === 'audit') loadAudit().catch(showError);
+  updateContextControls(); if (name === 'databases') loadDatabaseInventory().catch(showError); if (name === 'health') loadHealth().catch(showError); if (name === 'migrations') loadMigrations().catch(showError); if (name === 'audit') loadAudit().catch(showError);
+}
+
+function updateContextControls() {
+  const awh = state.selectedDatabase === 'awh-control-plane'; $('sql-run').disabled = !awh; $('sql-explain').disabled = !awh;
+  if (!awh) { $('sql-status').className = 'form-status'; $('sql-status').textContent = 'SQL Console ถูกจำกัดไว้ที่ AWH SQLite; MariaDB ใช้ Browse / Schema / Export แบบ read-only เพื่อป้องกันข้อมูลจริง'; }
+  else if ($('sql-status').textContent.includes('MariaDB')) $('sql-status').textContent = '';
 }
 
 function showError(error) { setStatus('ต้องตรวจสอบ'); const banner = $('health-banner'); banner.className = 'health-banner'; banner.textContent = error?.message || 'Database Studio ไม่สามารถโหลดข้อมูลได้'; }
 
 async function refreshAll() {
-  state.overview = await studioApi('overview'); const tables = await studioApi('tables'); state.tables = tables.tables || []; renderOverview(); renderTableList();
+  state.overview = await studioApi('overview'); renderOverview(); await loadDatabaseInventory(); await loadDatabaseTables();
   if (state.selectedTable) { const current = state.tables.find((row) => row.name === state.selectedTable); if (current && !current.locked) await loadTable(); }
 }
 
 async function init() {
   try {
-    await authenticate(); await refreshAll(); $('access-gate').hidden = true; $('studio').hidden = false; setStatus('Owner · พร้อม', 'ready');
+    await authenticate(); await refreshAll(); $('access-gate').hidden = true; $('studio').hidden = false; setStatus('Owner · พร้อม', 'ready'); updateContextControls();
   } catch (error) { $('gate-message').textContent = error?.message || 'Database Studio ยังไม่พร้อม'; setStatus('ยังไม่พร้อม'); return; }
   $('table-filter').addEventListener('input', renderTableList);
   $('browse-form').addEventListener('submit', async (event) => { event.preventDefault(); state.search = $('browse-search').value.trim(); state.sort = $('browse-sort').value || null; state.direction = $('browse-direction').value; state.page = 1; try { await loadTable(); } catch (error) { showError(error); } });
   $('page-prev').addEventListener('click', async () => { if (state.page > 1) { state.page--; await loadTable(); } }); $('page-next').addEventListener('click', async () => { if (state.browse && state.page < state.browse.totalPages) { state.page++; await loadTable(); } });
   $('export-csv').addEventListener('click', () => downloadExport('csv').catch(showError)); $('export-json').addEventListener('click', () => downloadExport('json').catch(showError));
   $('sql-run').addEventListener('click', () => runSql(false)); $('sql-explain').addEventListener('click', () => runSql(true));
-  $('refresh-all').addEventListener('click', () => refreshAll().catch(showError)); $('health-refresh').addEventListener('click', () => loadHealth().catch(showError)); $('migration-refresh').addEventListener('click', () => loadMigrations().catch(showError)); $('audit-refresh').addEventListener('click', () => loadAudit().catch(showError));
+  $('refresh-all').addEventListener('click', () => refreshAll().catch(showError)); $('database-inventory-refresh').addEventListener('click', () => loadDatabaseInventory().catch(showError)); $('health-refresh').addEventListener('click', () => loadHealth().catch(showError)); $('migration-refresh').addEventListener('click', () => loadMigrations().catch(showError)); $('audit-refresh').addEventListener('click', () => loadAudit().catch(showError));
   for (const button of document.querySelectorAll('.tab')) button.addEventListener('click', () => showTab(button.dataset.tab));
 }
 

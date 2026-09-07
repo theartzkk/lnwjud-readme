@@ -28,6 +28,13 @@ final class HubDatabaseStudioRouter
                 $token = self::cookie($server, '__Host-awh_control_session');
                 $result = match ($action) {
                     'overview' => $service->overview($token),
+                    'databases' => $service->databaseInventory($token),
+                    'database_tables' => $service->databaseTables($token, self::queryString($query, 'database', true)),
+                    'database_browse' => $service->databaseBrowse($token, self::queryString($query, 'database', true), self::queryString($query, 'table', true), self::queryString($query, 'q'), self::queryInt($query, 'page', 1), self::queryInt($query, 'limit', 50), self::queryString($query, 'sort'), self::queryString($query, 'dir') ?? 'ASC'),
+                    'database_schema' => $service->databaseSchema($token, self::queryString($query, 'database', true), self::queryString($query, 'table', true)),
+                    'database_export' => $service->databaseExport($token, self::queryString($query, 'database', true), self::queryString($query, 'table', true), self::queryString($query, 'format', true), self::queryString($query, 'q'), self::queryString($query, 'sort'), self::queryString($query, 'dir') ?? 'ASC'),
+                    'database_health' => $service->databaseHealth($token, self::queryString($query, 'database', true)),
+                    'database_migration' => $service->databaseMigrationReadiness($token, self::queryString($query, 'database', true)),
                     'tables' => $service->tables($token),
                     'browse' => $service->browse($token, self::queryString($query, 'table', true), self::queryString($query, 'q'), self::queryInt($query, 'page', 1), self::queryInt($query, 'limit', 50), self::queryString($query, 'sort'), self::queryString($query, 'dir') ?? 'ASC'),
                     'schema' => $service->schema($token, self::queryString($query, 'table', true)),

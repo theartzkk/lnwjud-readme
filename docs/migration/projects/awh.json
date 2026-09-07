@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "projectId": "awh",
+  "name": "Art’s Workspace Hub",
+  "source": {
+    "repository": "theartzkk/lnwjud-readme",
+    "canonicalRef": "awh/api-independence",
+    "observedSha": "504ac7b986dd5681994c3f66b7d8e78fb2c06070",
+    "mustReResolveBeforeMutation": true
+  },
+  "currentProduction": {
+    "release": "m20-504ac7b986dd",
+    "sourceMatchesCanonicalAtObservation": true,
+    "databaseSchema": 20,
+    "databaseIntegrity": "ok"
+  },
+  "target": {
+    "runtime": ["nginx", "php8.3-fpm", "sqlite", "systemd"],
+    "candidateDomains": ["panel.kruart.online", "kruart.online"],
+    "healthAuthority": "AWH control-plane health and live service checks"
+  },
+  "data": {
+    "engine": "SQLite",
+    "authority": "/var/lib/awh-hub/awh.sqlite",
+    "persistentRoots": ["Project Vault", "AWH config/credential authorities", "required release metadata"],
+    "neverCopyAsAuthority": ["temporary worktrees", "CI caches", "desktop build cache that has no release reference"]
+  },
+  "secrets": {
+    "valuesInManifest": false,
+    "names": ["owner auth credential authority", "provider credential store", "integration credentials", "database studio observer credential when configured"]
+  },
+  "background": ["native executor", "hosting operator", "scheduled backup", "database fleet inventory", "storage guard/retention", "restore drill", "observability where enabled"],
+  "backup": {"authority": "HubBackupService", "latestRestoreDrill": "PASS_SCHEMA_20"},
+  "restore": {"procedure": "verify manifest -> isolated restore drill -> integrity/FK -> activate only after release gate", "canonicalOverwriteDuringRehearsal": false},
+  "deploy": {"authority": "AWH exact-SHA control-plane release path", "immutableRelease": true},
+  "rollback": {"strategy": "previous/known-good release pointer plus verified SQLite recovery point"},
+  "cutoverGates": ["exact canonical SHA", "backup verified", "restore drill PASS", "nginx/php-fpm/service health", "owner login", "Database Studio", "rollback evidence"],
+  "migrationState": "BASELINE_VERIFIED"
+}

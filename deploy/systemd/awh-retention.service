@@ -1,0 +1,18 @@
+[Unit]
+Description=AWH bounded backup and release retention
+After=awh-backup.service awh-temp-cleanup.service local-fs.target
+ConditionPathExists=/var/lib/awh-hub/awh.sqlite
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/sbin/awh-retention-manager.py --apply
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/backups/awh-hub /var/www/awh-web/releases /opt/awh-hub/control-releases /var/lib/awh-hub
+LockPersonality=true
+RestrictRealtime=true

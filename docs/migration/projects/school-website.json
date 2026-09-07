@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "projectId": "school-website",
+  "name": "เว็บไซต์โรงเรียน",
+  "source": {
+    "currentHosting": "InfinityFree (user-confirmed)",
+    "canonicalRepository": null,
+    "canonicalRevision": null,
+    "state": "SOURCE_AUTHORITY_REQUIRED",
+    "historicalInstallerOrScreenshotEvidenceIsCanonicalSource": false
+  },
+  "observedHistoricalUrls": ["https://banauedyai.ac.th/mainpage/", "https://kru-art.great-site.net/", "https://kruart.great-site.net/"],
+  "target": {
+    "runtimeExpected": ["PHP", "MariaDB/MySQL", "nginx", "php-fpm"],
+    "candidateDomain": "school.kruart.online",
+    "finalPublicDomain": "PENDING_CURRENT_AUTHORITY_PROOF"
+  },
+  "data": {
+    "databaseIdentity": "PENDING_READ_ONLY_INFINITYFREE_PROOF",
+    "persistentUploads": "PENDING_CURRENT_FILE_MANIFEST",
+    "mustNotDuplicate": ["BAY student master", "BAY personnel master", "BAY identity authority"]
+  },
+  "secrets": {"valuesInManifest": false, "names": ["current InfinityFree DB connection", "current upload/storage integration credentials if any"]},
+  "backup": {"requiredBeforeShadow": ["DB dump", "uploads/content archive", "file/checksum manifest"]},
+  "restore": {"strategy": "isolated VPS shadow DB/files -> schema/count/checksum QA -> candidate site"},
+  "deploy": {"strategy": "pilot website migration before BAY EXCUSE X", "sourceMustBePinnedFirst": true},
+  "rollback": {"beforeNewWrites": "old InfinityFree website remains frozen/current authority", "afterNewWrites": "preserve new content before route reversal"},
+  "cutoverGates": ["canonical source proof", "DB/file authority proof", "shadow restore", "admin/content/upload QA", "mobile/public QA", "backup/rollback", "DNS approval"],
+  "migrationState": "BLOCKED_ONLY_ON_SOURCE_AND_PRODUCTION_EXPORT_AUTHORITY"
+}

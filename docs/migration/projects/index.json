@@ -1,0 +1,1 @@
+{"schemaVersion":1,"projects":["awh.json","bay-hub.json","school-website.json","bay-learnlab.json","bay-excuse-x.json"],"recommendedMigrationOrder":["awh","bay-hub","school-website","bay-learnlab","bay-excuse-x"],"rule":"re-resolve every exact source/production authority immediately before mutation"}

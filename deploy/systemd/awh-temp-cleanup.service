@@ -1,0 +1,12 @@
+[Unit]
+Description=AWH bounded old temp cleanup
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/awh-temp-cleanup
+NoNewPrivileges=true
+PrivateTmp=false
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/tmp

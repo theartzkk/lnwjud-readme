@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "projectId": "bay-learnlab",
+  "name": "BAY LearnLab",
+  "source": {
+    "repository": "theartzkk/bay-learnlab",
+    "canonicalMainObservedSha": "d1e02e554d211c8f71b954f35d9a027216f8b41c",
+    "mainObservedVersion": "0.6.0-rc.1",
+    "activeCandidateRefObserved": "feat/learnlab-field-stable-rc24-20260907",
+    "activeCandidateShaObserved": "bcf21fe6a5e62a15f800a74072abb1101c30ff5a",
+    "mustReResolveBeforePromotion": true,
+    "activeCandidateVersionObserved": "0.8.0-rc.25",
+    "candidateArtifactSha256Observed": "d9c08cacf22227711a64e564d403e36898f209b6240fc7b005c2d084f904d0fb"
+  },
+  "target": {
+    "runtime": [
+      "PHP web/API",
+      "PWA/offline runtime",
+      "Windows classroom client"
+    ],
+    "candidateDomain": "learn.kruart.online",
+    "releaseModel": "immutable runtime revisions with pilot/stable channel manifests"
+  },
+  "data": {
+    "owned": [
+      "ll_* learning content/assignment/attempt/progress/mastery/device-session domain"
+    ],
+    "masterAuthority": "BAY EXCUSE X",
+    "forbiddenDuplicateMasters": [
+      "students",
+      "classrooms",
+      "subjects",
+      "users",
+      "academic_years",
+      "terms",
+      "permissions",
+      "settings authority",
+      "media authority"
+    ],
+    "physicalDatabaseDecision": "do not force a separate master database during VPS migration; preserve approved BAY adapter/shared-DB compatibility until extraction gate closes"
+  },
+  "dependencies": {
+    "mustRemainBayOwned": [
+      "AcademicContext",
+      "StudentRosterIntegrity/roster projection",
+      "Settings",
+      "MediaCenter",
+      "CSRF/Auth/Audit",
+      "PackageManager/Update Center"
+    ],
+    "knownExtractionGate": "direct BAY master-table reads must move behind BAY projections/adapters or remain explicitly temporary versioned compatibility adapters"
+  },
+  "secrets": {
+    "valuesInManifest": false,
+    "names": [
+      "BAY-host authenticated session/API authority",
+      "bounded classroom/device credentials",
+      "personal student pass credentials"
+    ]
+  },
+  "background": [
+    "offline sync ingest/drain",
+    "pilot/stable manifest publication",
+    "classroom device update tooling"
+  ],
+  "backup": {
+    "authority": "BAY database policy plus LearnLab release/channel/branding/config metadata",
+    "clientMachinesAreBackupAuthority": false
+  },
+  "restore": {
+    "strategy": "BAY DB restore for owned ll_* data plus immutable runtime/channel restoration"
+  },
+  "deploy": {
+    "authority": "LearnLab builds artifact; BAY PackageManager/Update Center validates and activates",
+    "parallelProductionDeployer": false
+  },
+  "rollback": {
+    "runtime": "publish higher-epoch channel manifest pointing to previous compatible immutable revision",
+    "database": "separate BAY-controlled operation"
+  },
+  "cutoverGates": [
+    "extraction/adapter contract",
+    "exact candidate freeze",
+    "server API/readiness",
+    "offline/sync QA",
+    "Windows field install",
+    "AY1/classroom acceptance",
+    "rollback"
+  ],
+  "migrationState": "RC25_INSTALLED_STAGING_PHYSICAL_ACCEPTANCE_AND_PRODUCTION_PROMOTION_GATES",
+  "stagingEvidence": {
+    "host": "awh-hub-01 / BAY staging only",
+    "installedVersion": "0.8.0-rc.25",
+    "installedSourceRevision": "bcf21fe6a5e62a15f800a74072abb1101c30ff5a",
+    "installedArtifactSha256": "d9c08cacf22227711a64e564d403e36898f209b6240fc7b005c2d084f904d0fb",
+    "installedAt": "2026-09-08T03:15:55+07:00",
+    "previousKnownGood": {
+      "version": "0.8.0-rc.24",
+      "sourceRevision": "ad0e7fea7bfc056097029ef1669d94ba4d0639c0",
+      "artifactSha256": "cf956f0da461336cac23b2f4e2e6e75abda3f279e211820e7101ed29b02be872"
+    },
+    "preInstallLlTablesBackup": {
+      "path": "/var/backups/bay-staging/learnlab-pre-rc25-20260908-031444.sql.gz",
+      "sha256": "bd935613109bf1303f9dd8568ee4b4ca8a7bc427d0568b805837532c116592ad"
+    },
+    "postInstall": {
+      "llTables": 22,
+      "activities": 177,
+      "contentPacks": 10,
+      "devices": 11
+    },
+    "browserQa": "teacher/projector Playwright 9/9 PASS on exact candidate",
+    "channelsPromoted": false,
+    "productionCutover": false
+  }
+}

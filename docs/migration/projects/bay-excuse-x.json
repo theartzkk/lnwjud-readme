@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "projectId": "bay-excuse-x",
+  "name": "BAY EXCUSE X",
+  "source": {
+    "repository": "theartzkk/bay-excuse-x",
+    "canonicalRef": "main",
+    "observedSha": "b60b13e38f4362a5b4a4011b63aa65a7d4cbf5d0",
+    "observedVersion": "2.0.0-RC5.4.6",
+    "mustReResolveBeforeMutation": true,
+    "activeDirtyLocalWorktreeIsAuthority": false,
+    "migrationProofRefObserved": "closure/rc546-mariadb-runtime-proof-20260907",
+    "migrationProofShaObserved": "a852e9dc33732155472ad7db1045468ebe0f76d5",
+    "migrationProofEvidence": {
+      "canonicalReleaseSourceValidation": "PASS",
+      "selfHostedReleaseSafety": "PASS",
+      "githubHostedMariaDbReplay": "BLOCKED_BEFORE_START_BY_ACCOUNT_BILLING_OR_SPENDING_LIMIT",
+      "codeFailureObserved": false,
+      "productionTransportInvoked": false
+    }
+  },
+  "currentProduction": {
+    "hosting": "InfinityFree",
+    "exactDeployRevision": "PENDING_READ_ONLY_PRODUCTION_STATE_PROOF",
+    "writeAuthorityUntilCutover": "InfinityFree Production database"
+  },
+  "target": {
+    "runtime": [
+      "PHP 8.1+",
+      "PDO pdo_mysql",
+      "MariaDB/MySQL",
+      "fileinfo",
+      "json",
+      "nginx",
+      "php-fpm"
+    ],
+    "candidateDomain": "excuse.kruart.online",
+    "databaseExposure": "localhost/socket only"
+  },
+  "data": {
+    "domainAuthority": [
+      "Personnel",
+      "Student",
+      "Academic Context",
+      "Identity and stable school-domain contracts"
+    ],
+    "engine": "MariaDB/MySQL",
+    "protectedPersistentPaths": [
+      "config/app.php",
+      "storage/",
+      "uploads/",
+      "backups/",
+      "updates/"
+    ],
+    "vpsProofAndStagingDatabasesAreProduction": false,
+    "productionDbManifestRequired": [
+      "server version",
+      "database identity",
+      "charset/collation",
+      "tables",
+      "exact row counts",
+      "indexes",
+      "foreign keys",
+      "triggers",
+      "views",
+      "events",
+      "auto_increment"
+    ]
+  },
+  "secrets": {
+    "valuesInManifest": false,
+    "names": [
+      "production DB connection stored in protected config authority",
+      "BAY_FTP_HOST",
+      "BAY_FTP_USERNAME",
+      "BAY_FTP_PASSWORD",
+      "BAY_FTP_REMOTE_DIR",
+      "LINE/integration credentials already owned by BAY configuration"
+    ]
+  },
+  "background": [
+    "notification/outbox delivery under BAY authority",
+    "webhooks/integrations",
+    "backup/update workflow"
+  ],
+  "backup": {
+    "authority": "BAY Update Center/PackageManager plus final migration snapshot",
+    "productionSnapshotCapturedTonight": false
+  },
+  "restore": {
+    "compatibleVpsRehearsal": "PASS_273_TABLES_ZERO_ROWCOUNT_MISMATCH",
+    "productionShadowRestore": "PENDING_FINAL_PRODUCTION_DUMP"
+  },
+  "deploy": {
+    "authority": "BAY Update Center/PackageManager",
+    "directHtdocsOverwrite": false
+  },
+  "rollback": {
+    "beforeNewWrites": "keep/reopen frozen old production",
+    "afterNewWrites": "preserve and reconcile post-cutover writes; DNS-only rollback forbidden"
+  },
+  "cutoverGates": [
+    "read-only production deploy-state proof",
+    "final write freeze",
+    "final DB/file dump and SHA-256",
+    "shadow/final restore reconciliation",
+    "critical school workflows",
+    "A4/print/mobile/LINE/parent/teacher/admin QA",
+    "rollback proof"
+  ],
+  "migrationState": "SHADOW_INPUTS_PENDING_EXTERNAL_GITHUB_HOSTED_REPLAY_GATE"
+}
