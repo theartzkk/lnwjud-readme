@@ -12,10 +12,12 @@ $pdo=new PDO('sqlite::memory:');$vault=(new ReflectionClass(HubProjectVault::cla
 $runner=function(array $cmd,?string $stdin=null) use (&$calls): array {$calls[]=implode(' ',$cmd);return ['code'=>0,'out'=>'','err'=>''];};
 $op=new HubManagedHostingOperator($pdo,$vault,$sites,$available,$enabled,$config,$runner);
 $method=(new ReflectionClass($op))->getMethod('adoptLegacyAlias');$method->setAccessible(true);
-$result=$method->invoke($op,'learn.kruart.online','2026-09-06T16:30:00Z');a($result===true,'redirect alias adopted');
+$result=$method->invoke($op,'learn.kruart.online','2026-09-06T16:30:00Z');a(is_array($result)&&isset($result['target'],$result['original'],$result['backup']),'redirect alias adopted with rollback evidence');
 $after=file_get_contents($alias);a(is_string($after)&&!str_contains($after,'learn.kruart.online')&&str_contains($after,'unknown'),'only exact legacy block removed');
 $backups=glob($config.'/legacy-route-backups/*.conf')?:[];a(count($backups)===1&&file_get_contents($backups[0])===$legacy,'legacy backup retained');
 a(in_array('/usr/sbin/nginx -t',$calls,true)&&in_array('/bin/systemctl reload nginx',$calls,true),'nginx validation and reload executed');
+$restore=(new ReflectionClass($op))->getMethod('restoreLegacyAlias');$restore->setAccessible(true);$restore->invoke($op,$result);a(file_get_contents($alias)===$legacy,'legacy route restored when later activation needs compensation');
+$result2=$method->invoke($op,'learn.kruart.online','2026-09-06T16:30:30Z');a(is_array($result2),'legacy route can be adopted again after compensation');
 $unsafe="server {\n listen 80;\n server_name learn.kruart.online;\n location / { proxy_pass http://127.0.0.1:9999; }\n}\n";file_put_contents($alias,$unsafe);$blocked=false;
 try{$method->invoke($op,'learn.kruart.online','2026-09-06T16:31:00Z');}catch(Throwable $e){$blocked=$e instanceof HubManagedHostingOperatorException&&$e->codeName==='DOMAIN_ROUTE_CONFLICT';}
 a($blocked&&file_get_contents($alias)===$unsafe,'complex legacy route fails closed');
