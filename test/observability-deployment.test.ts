@@ -58,5 +58,6 @@ test('Honeycomb watcher never stores the ingest key in source-controlled config'
   assert.match(sync, /rm -f "\$EGRESS_MARKER" "\$ACTIVE_MARKER"/);
   assert.doesNotMatch(sync, /printf ['"]ACTIVE/);
   assert.match(collector, /\$\{env:HONEYCOMB_API_KEY\}/);
+  assert.match(collector, /x-honeycomb-dataset:\s*awh-control-plane/);
   assert.doesNotMatch(collector, /hcaik_[A-Za-z0-9]/);
 });

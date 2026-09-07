@@ -4,6 +4,7 @@
 - AWH canonical source remains `awh/api-independence`; Honeycomb is an observability sink, never a Source of Truth.
 - Production data authority remains the AWH SQLite/control-plane and existing BAY authorities.
 - Honeycomb receives traces only in Phase 1. Logs, metrics, browser RUM, prompts, files, request bodies and identity data are out of scope.
+- Honeycomb dataset authority for Phase 1 is explicitly `awh-control-plane`; do not rely on the fallback `unknown_service` dataset.
 
 ## Runtime contract
 - OpenTelemetry Collector Contrib: **0.160.0** (SHA-256 pinned in installer).
