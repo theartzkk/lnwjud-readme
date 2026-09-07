@@ -38,7 +38,7 @@ function renderUrlPreview(){
 function friendlyError(error,fallback='ยังทำรายการนี้ไม่ได้ ลองอีกครั้งในอีกสักครู่'){
   const code=String(error?.code||'').toUpperCase();
   const messages={
-    PROJECT_SOURCE_NOT_READY:'ยังไม่พบไฟล์เว็บไซต์ที่พร้อมใช้ เลือกไฟล์เว็บไซต์ก่อน แล้ว AWH จะทำต่อให้',
+    PROJECT_SOURCE_NOT_READY:'ยังไม่พบแหล่งเว็บไซต์ที่พร้อมใช้ ตั้งค่าแหล่งเว็บไซต์ก่อน แล้ว AWH จะทำต่อให้',
     DOMAIN_DNS_NOT_READY:'ชื่อเว็บยังเชื่อมมาไม่ถึง AWH ระบบจะตรวจอีกครั้งเมื่อการตั้งค่าชื่อเว็บพร้อม',
     DOMAIN_BINDING_NOT_READY:'ชื่อเว็บยังไม่พร้อมเชื่อม ลองตรวจอีกครั้งในอีกสักครู่',
     DOMAIN_ROUTE_CONFLICT:'ชื่อเว็บนี้มีการตั้งค่าเดิมที่ต้องตรวจสอบก่อนใช้งาน',
@@ -184,7 +184,7 @@ function sourceInstruction(site){
   if(source.blockerCode==='PROJECT_SOURCE_NOT_READY'||site.state==='DRAFT'){
     return source.syncState==='STALE'
       ?'มีไฟล์เว็บไซต์รุ่นใหม่ที่ยังไม่พร้อมใช้ AWH จะทำต่อเมื่อรุ่นนั้นพร้อม'
-      :'ยังไม่พบไฟล์เว็บไซต์ที่พร้อมใช้ เลือกแหล่งไฟล์ก่อน แล้ว AWH จะทำต่อให้';
+      :'ยังไม่พบแหล่งเว็บไซต์ที่พร้อมใช้ ตั้งค่าแหล่งเว็บไซต์ก่อน แล้ว AWH จะทำต่อให้';
   }
   if(source.syncState&&source.syncState!=='SYNCED')return 'ไฟล์เว็บไซต์ยังเตรียมไม่เสร็จ AWH จะตรวจต่อให้อัตโนมัติ';
   return null;
@@ -263,10 +263,10 @@ function renderSites(){
       const source=document.createElement('div');
       source.className='site-source-action';
       const text=document.createElement('span');
-      text.textContent='ยังไม่พบไฟล์เว็บไซต์ที่พร้อมใช้';
+      text.textContent='ยังไม่พบแหล่งเว็บไซต์ที่พร้อมใช้';
       const link=document.createElement('a');
       link.href=`./owner-center.html?project=${encodeURIComponent(site.projectId)}#source`;
-      link.textContent='เลือกไฟล์เว็บไซต์';
+      link.textContent='ตั้งค่าแหล่งเว็บไซต์';
       link.className='secondary-button';
       source.append(text,link);
       card.append(source);

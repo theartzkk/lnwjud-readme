@@ -9,7 +9,7 @@ declare(strict_types=1);
  */
 final class HubFoundingMemorySeed
 {
-    public const VERSION = '1.0';
+    public const VERSION = '1.1';
 
     /** @return list<array<string,mixed>> */
     public static function records(): array
@@ -43,6 +43,7 @@ final class HubFoundingMemorySeed
 
             self::project('school-website', 'schoolsite.purpose', 'PURPOSE', 'เว็บไซต์สาธารณะของโรงเรียนบ้านเอือดใหญ่ แยกจาก BAY back office เพื่อผู้ปกครอง/สาธารณะ แต่เชื่อมข้อมูลที่เกี่ยวข้องโดยไม่ซ้ำ authority', ['schoolsite', 'public']),
             self::project('school-website', 'schoolsite.design', 'STYLE_RULE', 'ธีมโรงเรียนส้ม+เทา คุณภาพต้อง modern, intelligent, polished, mobile-first; ข่าว กิจกรรม วารสาร PR และการอัปโหลดหลายรูปจากโทรศัพท์สำคัญ; LINE OA ต้องผสานอย่างมีประโยชน์โดยไม่ซ้ำระบบ', ['schoolsite', 'design', 'mobile']),
+            self::project('school-website', 'schoolsite.prototype_reference', 'REFERENCE', 'https://kru-art.great-site.net/?i=1 เป็นเว็บต้นแบบ/เว็บที่เตรียมไว้สำหรับเว็บไซต์โรงเรียนในอนาคต เก็บไว้เป็น reference เพื่อเทียบแนวทางและงานเดิมเท่านั้น ไม่ใช่ production ปัจจุบัน ไม่ใช่ canonical GitHub Source และไม่ใช่ blocker ของ Managed Hosting', ['schoolsite', 'prototype', 'reference', 'legacy-url']),
 
             self::project('teacher-evaluation', 'teacher_eval.purpose', 'PURPOSE', 'งานเอกสารประเมินครูและ video workflow ระยะยาวที่ต้องรักษาความต่อเนื่องของ edits/assets ข้าม session และอุปกรณ์', ['teacher-evaluation', 'video']),
             self::project('teacher-evaluation', 'teacher_eval.video_rules', 'STYLE_RULE', 'หลีกเลี่ยงภาพซ้ำ/overlay โดยไม่ตั้งใจ วิดีโอต้องเป็น moving production ไม่ใช่ static slides ใช้ AI วางแผน/วิเคราะห์ และใช้ Remotion/FFmpeg ทำ deterministic rendering พร้อม preview สั้นก่อน final render', ['teacher-evaluation', 'video', 'remotion', 'ffmpeg']),

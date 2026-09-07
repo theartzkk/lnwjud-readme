@@ -245,7 +245,7 @@
     backdrop.type = 'button'; backdrop.className = 'awh-owner-command-backdrop'; backdrop.setAttribute('aria-label', 'ปิด Source Authority'); backdrop.addEventListener('click', closeSourceCenter);
     const card = document.createElement('div'); card.className = 'awh-owner-command-card';
     const head = document.createElement('header'); head.className = 'awh-owner-command-head';
-    head.innerHTML = '<div><span>SOURCE & AIPASS</span><h2 id="owner-source-title">Source และชุดตรวจ AiPASS</h2><p>เชื่อม GitHub หนึ่งครั้ง แล้ว AWH จะยืนยัน Source ล่าสุดและเตรียม DOCX ที่ปลอดภัยให้เป็น Batch</p></div>';
+    head.innerHTML = '<div><span>SOURCE & AIPASS</span><h2 id="owner-source-title">แหล่งโปรเจกต์และชุดตรวจ AiPASS</h2><p>เชื่อม GitHub หนึ่งครั้ง แล้ว AWH จะยืนยันรุ่นล่าสุดและเตรียมงานต่อให้อัตโนมัติ</p></div>';
     const close = document.createElement('button'); close.type = 'button'; close.className = 'awh-secondary-action'; close.textContent = 'ปิด'; close.addEventListener('click', closeSourceCenter); head.append(close);
     const body = document.createElement('div'); body.className = 'awh-owner-command-body';
     const form = document.createElement('form'); form.id = 'owner-source-form'; form.className = 'compact-form';
@@ -256,7 +256,7 @@
     const repository = document.createElement('input'); repository.id = 'owner-source-repository'; repository.maxLength = 201; repository.autocomplete = 'off'; repository.placeholder = 'owner/repository';
     const refLabel = document.createElement('label'); refLabel.htmlFor = 'owner-source-ref'; refLabel.textContent = 'Branch / Git ref';
     const ref = document.createElement('input'); ref.id = 'owner-source-ref'; ref.maxLength = 160; ref.autocomplete = 'off'; ref.placeholder = 'เช่น main หรือ awh/api-independence';
-    const note = document.createElement('p'); note.className = 'muted'; note.textContent = 'Working files และประวัติ Project Vault จะไม่ถูก GitHub ทับอัตโนมัติ · AiPASS ใช้เฉพาะ DOCX ที่ AWH แบ่งและตรวจให้เป็น Batch';
+    const note = document.createElement('p'); note.className = 'muted'; note.textContent = 'GitHub ใช้เฉพาะ Source ที่ต้องการให้ AWH build/deploy · เว็บต้นแบบหรือเว็บอ้างอิงไม่จำเป็นต้องผูกเป็น Source · AWH จะไม่ทับ Working files หรือประวัติ Project Vault อัตโนมัติ · AiPASS ใช้เฉพาะ DOCX ที่ AWH แบ่งและตรวจให้เป็น Batch';
     const actions = document.createElement('div'); actions.className = 'form-actions';
     const bind = document.createElement('button'); bind.id = 'owner-source-bind'; bind.type = 'submit'; bind.className = 'secondary-button'; bind.textContent = 'เชื่อม GitHub';
     const refresh = document.createElement('button'); refresh.id = 'owner-source-refresh'; refresh.type = 'button'; refresh.className = 'text-button'; refresh.textContent = 'รีเฟรชสถานะ'; refresh.addEventListener('click', () => { void refreshSourceState().catch((error) => sourceMessage(error?.message || 'ตรวจ Source ไม่สำเร็จ')); });

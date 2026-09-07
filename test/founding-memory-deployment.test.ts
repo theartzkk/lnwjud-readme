@@ -54,6 +54,9 @@ test('M10 Founding Memory release is one bounded M7-to-M8-to-M9-to-M10 activatio
   assert.match(service, /OWNER_PRIVATE/);
   assert.match(service, /Sensitive material cannot be stored as ordinary memory/);
   assert.match(seed, /Current source\/runtime evidence always has higher authority/);
+  assert.match(seed, /schoolsite\.prototype_reference/);
+  assert.match(seed, /https:\/\/kru-art\.great-site\.net\/\?i=1/);
+  assert.match(seed, /ไม่ใช่ production ปัจจุบัน.*ไม่ใช่ canonical GitHub Source.*ไม่ใช่ blocker ของ Managed Hosting/);
   assert.doesNotMatch([local, remoteSource, migration, service, seed].join('\n'), /(?:BEGIN [A-Z ]+PRIVATE KEY|AWH_OPENAI_API_KEY\s*=|Authorization: Bearer sk-[A-Za-z0-9_-]{20,})/i);
 });
 
