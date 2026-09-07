@@ -9,4 +9,6 @@ test('retention --plan is a zero-mutation inspection mode', async () => {
   assert.match(s,/if not PLAN:\n\s+tmp=Path\(str\(STATE\)/);
   assert.match(s,/"state":"APPLIED" if APPLY else \("PLAN" if PLAN else "PREVIEW"\)/);
   assert.match(s,/if APPLY:/);
+  assert.match(s,/Path\(str\(p\)\+"\.retain"\)/);
+  assert.match(s,/pinnedScheduledBackups/);
 });

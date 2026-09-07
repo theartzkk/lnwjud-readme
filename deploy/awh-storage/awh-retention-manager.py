@@ -116,6 +116,12 @@ for _,p,m in scheduled[:3]:
         fail("backup verification failed: "+p.name)
 
 scheduled_keep={x[1] for x in scheduled[:3]}
+pinned_scheduled=[]
+for _,p,_ in scheduled:
+    marker=Path(str(p)+".retain")
+    if marker.is_file() and not marker.is_symlink():
+        scheduled_keep.add(p)
+        pinned_scheduled.append(p.name)
 days=set(); weeks=set(); months=set()
 for dt,p,_ in scheduled:
     age=(NOW-dt).total_seconds()/86400
@@ -197,6 +203,7 @@ payload={
     "schemaVersion":1,"generatedAt":NOW.isoformat(),"mode":"APPLY" if APPLY else ("PLAN" if PLAN else "DRY_RUN"),
     "current":{"web":WEBPTR.resolve().name,"control":CTLPTR.resolve().name},
     "protectedReleaseIds":sorted(protected),"releaseKeep":sorted(release_keep),
+    "pinnedScheduledBackups":sorted(pinned_scheduled),
     "counts":{"releasePairs":len(release_candidates),"scheduledBackups":len(scheduled_candidates),"preReleaseBackups":len(pre_candidates),"manualBackups":len(manual_candidates),"items":len(items)},
     "candidateBytes":sum(x["bytes"] for x in items),"candidates":items
 }
