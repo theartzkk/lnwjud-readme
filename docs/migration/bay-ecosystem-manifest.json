@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-07T17:13:13.696872Z",
+  "generatedAt": "2026-09-07T21:20:29Z",
   "policy": {
     "target": "clean-vps-build",
     "cloneOldDisk": false,
@@ -47,7 +47,7 @@
       "name": "Art’s Workspace Hub",
       "repository": "theartzkk/lnwjud-readme",
       "canonicalRefCandidate": "awh/api-independence",
-      "sourceRevision": "504ac7b986dd5681994c3f66b7d8e78fb2c06070",
+      "sourceRevision": "6900cf447e966fd093b22ad981d56cdde317d35b",
       "productionRelease": "m20-504ac7b986dd",
       "runtime": [
         "php8.3-fpm",
@@ -62,8 +62,8 @@
         "integrity": "ok",
         "restoreDrill": "PASS"
       },
-      "health": "LIVE_VERIFIED_SOURCE_AND_PRODUCTION_MATCH",
-      "migrationState": "CONTROL_PLANE_BASELINE_VERIFIED",
+      "health": "SOURCE_MIGRATION_CONTROLS_MERGED_PRODUCTION_BASELINE_UNCHANGED",
+      "migrationState": "MIGRATION_CONTROL_PLANE_MERGED_NON_PRODUCTION",
       "blockers": []
     },
     {
@@ -202,14 +202,14 @@
     "rollback-plan-preserves-post-cutover-writes",
     "dns-change-only-after-all-gates-pass"
   ],
-  "sourceResolution": "LIVE_RESOLVED_2026-09-07_NIGHT_SHIFT",
+  "sourceResolution": "LIVE_RECONCILED_POSTMERGE_2026-09-08",
   "currentVpsEvidence": {
     "awhProductionRelease": "m20-504ac7b986dd",
     "awhSchemaVersion": 20,
     "awhIntegrity": "ok",
     "disk": {
       "totalBytes": 30083776512,
-      "freeBytes": 9611173888,
+      "freeBytes": 9584476160,
       "usedPercent": 68.1
     },
     "databaseFleet": {
@@ -236,9 +236,16 @@
     },
     "storage": {
       "strictRetentionPlan": {
-        "state": "NO_SAFE_CANDIDATES",
+        "state": "NO_SAFE_CANDIDATES_AFTER_APPLY",
         "candidateBytes": 0,
-        "mutatedProductionState": false
+        "mutatedProductionState": false,
+        "lastSafePurge": {
+          "backup": "awh-20260907T161636Z.sqlite",
+          "bytesWithManifest": 6361391,
+          "classification": "SAFE_TO_PURGE_SUPERSEDED_SCHEDULED_BACKUP",
+          "verification": "VERIFIED_SCHEMA20_THREE_NEWER_VERIFIED_PLUS_PINNED_RECOVERY_PAIR",
+          "postPlanCandidates": 0
+        }
       },
       "desktopArtifacts": {
         "objects": 42,
@@ -257,5 +264,13 @@
         "migrationPolicy": "DO_NOT_MIGRATE"
       }
     }
+  },
+  "sourceMergeEvidence": {
+    "repository": "theartzkk/lnwjud-readme",
+    "branch": "awh/api-independence",
+    "mergeCommit": "6900cf447e966fd093b22ad981d56cdde317d35b",
+    "mergedPullRequest": 139,
+    "mergedAt": "2026-09-07T20:35:43Z",
+    "productionActivationAuthorized": false
   }
 }
