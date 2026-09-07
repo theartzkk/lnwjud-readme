@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "projectId": "bay-hub",
+  "name": "BAY Hub",
+  "source": {
+    "repository": "theartzkk/bay-hub",
+    "canonicalMainObservedSha": "78ed43fb6d97b2e714ef1e2a28eb796642682afd",
+    "activeCandidateRefObserved": "ux/ecosystem-ux-integrated-20260906",
+    "activeCandidateShaObserved": "d3c4864539d0d3ba7957770645b12f2ff5fa0a51",
+    "mustReResolveBeforePromotion": true
+  },
+  "target": {
+    "runtime": ["static web", "PHP read-only status endpoint"],
+    "canonicalMount": "https://kruart.online/bay/",
+    "convenienceAlias": "bay.kruart.online"
+  },
+  "data": {"persistentDatabase": false, "authority": "registry/navigation projection only", "forbiddenAuthorities": ["school identity", "student", "personnel", "notifications", "learning progress"]},
+  "secrets": {"valuesInManifest": false, "names": []},
+  "health": {"surface": "/status.html", "mode": "read-only"},
+  "backup": {"strategy": "Git/source + release metadata; no business database"},
+  "restore": {"strategy": "rebuild exact immutable release from reviewed source"},
+  "deploy": {"strategy": "low-risk immutable web release pilot before stateful systems"},
+  "rollback": {"strategy": "previous release pointer"},
+  "cutoverGates": ["exact candidate SHA", "static route/assets", "status endpoint", "canonical root/alias behavior", "mobile UX", "previous pointer"],
+  "migrationState": "PILOT_CANDIDATE"
+}

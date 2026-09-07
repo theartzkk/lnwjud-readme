@@ -151,7 +151,13 @@ async function loadHealth() {
 }
 
 async function loadMigrations() {
-  const data = await studioApi('migrations'); const host = $('migration-view'); host.replaceChildren();
+  const host = $('migration-view'); host.replaceChildren();
+  const readiness = await studioApi('database_migration', { database: state.selectedDatabase });
+  const mode = readiness.migration?.mode || 'READ_ONLY'; const objects = readiness.objects || {};
+  host.append(el('div', 'status-card', '', el('strong', 'good-text', `Migration readiness · ${mode}`), el('div', 'subtle', `${readiness.engine || '—'} · read-only · ห้าม dual-write / production mutation`)));
+  if (readiness.engine === 'MARIADB') host.append(el('p', 'subtle', `${readiness.databaseName || '—'} · charset ${readiness.charset || '—'} · collation ${readiness.collation || '—'} · tables ${number(objects.baseTables)} · views ${number(objects.views)} · indexes ${number(objects.indexes)} · FK ${number(objects.foreignKeys)} · triggers ${number(objects.triggers)} · events ${number(objects.events)}`));
+  if (state.selectedDatabase !== 'awh-control-plane') { const gates=readiness.migration?.requiredBeforeCutover || []; const list=el('div','migration-list'); for(const gate of gates) list.append(el('div','migration-item','',el('strong','',gate))); host.append(list); return; }
+  const data = await studioApi('migrations');
   host.append(el('p', 'subtle', `SQLite user_version ${data.databaseUserVersion} · ledger ${number(data.ledger?.length)} รายการ · source SQL ${number(data.files?.length)} ไฟล์`));
   const list = el('div', 'migration-list');
   for (const row of data.ledger || []) { const item = el('div', 'migration-item'); item.append(el('strong', '', `${row.migrationId} · schema ${row.schemaVersion}`), el('div', 'subtle', row.appliedAt || ''), el('code', '', row.checksum || '')); list.append(item); }

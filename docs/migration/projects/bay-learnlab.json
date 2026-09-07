@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "projectId": "bay-learnlab",
+  "name": "BAY LearnLab",
+  "source": {
+    "repository": "theartzkk/bay-learnlab",
+    "canonicalMainObservedSha": "d1e02e554d211c8f71b954f35d9a027216f8b41c",
+    "mainObservedVersion": "0.6.0-rc.1",
+    "activeCandidateRefObserved": "feat/learnlab-field-stable-rc24-20260907",
+    "activeCandidateShaObserved": "ad0e7fea7bfc056097029ef1669d94ba4d0639c0",
+    "mustReResolveBeforePromotion": true
+  },
+  "target": {
+    "runtime": [
+      "PHP web/API",
+      "PWA/offline runtime",
+      "Windows classroom client"
+    ],
+    "candidateDomain": "learn.kruart.online",
+    "releaseModel": "immutable runtime revisions with pilot/stable channel manifests"
+  },
+  "data": {
+    "owned": [
+      "ll_* learning content/assignment/attempt/progress/mastery/device-session domain"
+    ],
+    "masterAuthority": "BAY EXCUSE X",
+    "forbiddenDuplicateMasters": [
+      "students",
+      "classrooms",
+      "subjects",
+      "users",
+      "academic_years",
+      "terms",
+      "permissions",
+      "settings authority",
+      "media authority"
+    ],
+    "physicalDatabaseDecision": "do not force a separate master database during VPS migration; preserve approved BAY adapter/shared-DB compatibility until extraction gate closes"
+  },
+  "dependencies": {
+    "mustRemainBayOwned": [
+      "AcademicContext",
+      "StudentRosterIntegrity/roster projection",
+      "Settings",
+      "MediaCenter",
+      "CSRF/Auth/Audit",
+      "PackageManager/Update Center"
+    ],
+    "knownExtractionGate": "direct BAY master-table reads must move behind BAY projections/adapters or remain explicitly temporary versioned compatibility adapters"
+  },
+  "secrets": {
+    "valuesInManifest": false,
+    "names": [
+      "BAY-host authenticated session/API authority",
+      "bounded classroom/device credentials",
+      "personal student pass credentials"
+    ]
+  },
+  "background": [
+    "offline sync ingest/drain",
+    "pilot/stable manifest publication",
+    "classroom device update tooling"
+  ],
+  "backup": {
+    "authority": "BAY database policy plus LearnLab release/channel/branding/config metadata",
+    "clientMachinesAreBackupAuthority": false
+  },
+  "restore": {
+    "strategy": "BAY DB restore for owned ll_* data plus immutable runtime/channel restoration"
+  },
+  "deploy": {
+    "authority": "LearnLab builds artifact; BAY PackageManager/Update Center validates and activates",
+    "parallelProductionDeployer": false
+  },
+  "rollback": {
+    "runtime": "publish higher-epoch channel manifest pointing to previous compatible immutable revision",
+    "database": "separate BAY-controlled operation"
+  },
+  "cutoverGates": [
+    "extraction/adapter contract",
+    "exact candidate freeze",
+    "server API/readiness",
+    "offline/sync QA",
+    "Windows field install",
+    "AY1/classroom acceptance",
+    "rollback"
+  ],
+  "migrationState": "FIELD_STABLE_CANDIDATE_PHYSICAL_ACCEPTANCE_GATE"
+}

@@ -34,6 +34,7 @@ final class HubDatabaseStudioRouter
                     'database_schema' => $service->databaseSchema($token, self::queryString($query, 'database', true), self::queryString($query, 'table', true)),
                     'database_export' => $service->databaseExport($token, self::queryString($query, 'database', true), self::queryString($query, 'table', true), self::queryString($query, 'format', true), self::queryString($query, 'q'), self::queryString($query, 'sort'), self::queryString($query, 'dir') ?? 'ASC'),
                     'database_health' => $service->databaseHealth($token, self::queryString($query, 'database', true)),
+                    'database_migration' => $service->databaseMigrationReadiness($token, self::queryString($query, 'database', true)),
                     'tables' => $service->tables($token),
                     'browse' => $service->browse($token, self::queryString($query, 'table', true), self::queryString($query, 'q'), self::queryInt($query, 'page', 1), self::queryInt($query, 'limit', 50), self::queryString($query, 'sort'), self::queryString($query, 'dir') ?? 'ASC'),
                     'schema' => $service->schema($token, self::queryString($query, 'table', true)),

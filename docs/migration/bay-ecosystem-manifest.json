@@ -113,20 +113,20 @@
       "name": "BAY LearnLab",
       "repository": "theartzkk/bay-learnlab",
       "defaultRevisionObserved": "d1e02e554d211c8f71b954f35d9a027216f8b41c",
-      "candidateRevisionObserved": "f5ce68871290044419282807aa6a5eeb5f17cb70",
+      "candidateRevisionObserved": "ad0e7fea7bfc056097029ef1669d94ba4d0639c0",
       "runtime": [
         "PHP web/API",
         "PWA/offline runtime",
         "Windows classroom client"
       ],
-      "migrationState": "STAGING_FIELD_GATE_AND_EXTRACTION_GATE",
+      "migrationState": "FIELD_STABLE_CANDIDATE_PHYSICAL_ACCEPTANCE_GATE",
       "blockers": [
         "direct BAY master-table coupling must remain behind approved compatibility adapter or be moved to BAY projection contract before extraction closes",
         "exact promotion candidate must be re-resolved after active LearnLab work converges",
         "physical AY1/classroom acceptance remains a separate gate"
       ],
       "sourceVersionObserved": "0.6.0-rc.1",
-      "candidateRefObserved": "feat/learnlab-quick-entry-rc4-20260906",
+      "candidateRefObserved": "feat/learnlab-field-stable-rc24-20260907",
       "database": {
         "ownership": "ll_* learning-domain tables only",
         "masterDataAuthority": "BAY EXCUSE X",
@@ -209,7 +209,7 @@
     "awhIntegrity": "ok",
     "disk": {
       "totalBytes": 30083776512,
-      "freeBytes": 9611218944,
+      "freeBytes": 9611173888,
       "usedPercent": 68.1
     },
     "databaseFleet": {
@@ -236,7 +236,7 @@
     },
     "storage": {
       "strictRetentionPlan": {
-        "state": "PLAN",
+        "state": "NO_SAFE_CANDIDATES",
         "candidateBytes": 0,
         "mutatedProductionState": false
       },

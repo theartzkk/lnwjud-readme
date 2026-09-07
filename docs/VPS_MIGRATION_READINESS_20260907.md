@@ -30,10 +30,10 @@ Each PHP app gets a dedicated Linux user, FPM pool, MariaDB database user, and l
 
 ## Live evidence captured before changes
 
-- AWH production points to `m20-21f8d0871634`, matching source head `21f8d087163446552ccd500e1898486ae09d6018` on `awh/api-independence` at audit time.
+- AWH production points to `m20-504ac7b986dd`, matching canonical `awh/api-independence` SHA `504ac7b986dd5681994c3f66b7d8e78fb2c06070` at the latest read-only audit.
 - AWH SQLite quick check passed and schema user_version is 20.
 - MariaDB, Nginx, and PHP 8.3 FPM are active.
-- Current VPS is approximately 29 GiB total, 19 GiB used, 9.1 GiB free (68% used) during this audit.
+- Current VPS is approximately 29 GiB total, 20 GiB used, 9.0 GiB free (69% by `df`; 68.1% by byte accounting) during the latest audit.
 - The server already contains bounded storage guard, temp cleanup, retention, backup, and restore-drill timers. Their live scripts were imported verbatim into this migration branch because they were not represented in the Git source being audited.
 - Sanitized DB fleet QA found AWH SQLite plus six MariaDB databases. MariaDB names are staging/proof/candidate-style; none are promoted to production authority by this inventory.
 - The school production URL `https://banauedyai.ac.th/mainpage/` returned HTTP 200. The great-site school website is only a prototype/reference and is not canonical production source.

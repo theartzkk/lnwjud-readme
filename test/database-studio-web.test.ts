@@ -31,6 +31,8 @@ test('M17 Database Studio web release is owner-first, read-only, and emitted by 
     assert.match(app, /studioApi\('query'/);
     assert.match(app, /database_tables/);
     assert.match(app, /database_browse/);
+    assert.match(app, /database_migration/);
+    assert.match(app, /SHADOW_FIRST|Migration readiness/);
     assert.match(html, /ฐานข้อมูลทั้งหมด/);
     assert.match(app, /studioApi\('databases'/);
     assert.match(app, /Read-only|READ_ONLY|Metadata/);

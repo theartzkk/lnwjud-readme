@@ -100,6 +100,19 @@ final class HubMariaDbReadClient
         $pdo=$this->open($database);$value=(int)$pdo->query('SELECT 1')->fetchColumn();$q=$pdo->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=:db");$q->execute(['db'=>$database]);return ['status'=>$value===1?'PASS':'REVIEW','readOnly'=>true,'databaseName'=>$database,'tables'=>(int)$q->fetchColumn(),'serverVersion'=>(string)$pdo->query('SELECT VERSION()')->fetchColumn()];
     }
 
+    public function migrationReadiness(string $database): array
+    {
+        $pdo=$this->open($database);
+        $schema=$pdo->prepare("SELECT default_character_set_name,default_collation_name FROM information_schema.schemata WHERE schema_name=:db");$schema->execute(['db'=>$database]);$meta=$schema->fetch()?:[];
+        $objects=$pdo->prepare("SELECT table_type,COUNT(*) c,COALESCE(SUM(table_rows),0) rows_estimate FROM information_schema.tables WHERE table_schema=:db GROUP BY table_type");$objects->execute(['db'=>$database]);$types=[];$rowsEstimate=0;foreach($objects->fetchAll() as $r){$types[(string)$r['table_type']]=(int)$r['c'];$rowsEstimate+=(int)$r['rows_estimate'];}
+        $count=function(string $sql)use($pdo,$database):int{$q=$pdo->prepare($sql);$q->execute(['db'=>$database]);return(int)$q->fetchColumn();};
+        $indexes=$count("SELECT COUNT(DISTINCT table_name,index_name) FROM information_schema.statistics WHERE table_schema=:db");
+        $foreign=$count("SELECT COUNT(*) FROM information_schema.key_column_usage WHERE table_schema=:db AND referenced_table_name IS NOT NULL");
+        $triggers=$count("SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema=:db");
+        $events=$count("SELECT COUNT(*) FROM information_schema.events WHERE event_schema=:db");
+        return ['databaseName'=>$database,'engine'=>'MARIADB','readOnly'=>true,'serverVersion'=>(string)$pdo->query('SELECT VERSION()')->fetchColumn(),'charset'=>(string)($meta['default_character_set_name']??''),'collation'=>(string)($meta['default_collation_name']??''),'objects'=>['baseTables'=>(int)($types['BASE TABLE']??0),'views'=>(int)($types['VIEW']??0),'rowsEstimate'=>$rowsEstimate,'indexes'=>$indexes,'foreignKeys'=>$foreign,'triggers'=>$triggers,'events'=>$events],'migration'=>['mode'=>'SHADOW_FIRST','productionMutationAllowed'=>false,'dualWriteAllowed'=>false,'requiredBeforeCutover'=>['immutable-dump-and-sha256','exact-row-count-manifest','schema-object-manifest','uploads-checksum-manifest','shadow-restore-reconciliation','critical-flow-smoke','backup-restore-proof','rollback-preserves-post-cutover-writes']]];
+    }
+
     private function open(string $database): PDO
     {
         self::databaseName($database);

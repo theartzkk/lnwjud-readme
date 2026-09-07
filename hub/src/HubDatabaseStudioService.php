@@ -170,6 +170,13 @@ final class HubDatabaseStudioService
         $database=$this->registeredExternalDatabase($databaseId); return $this->mariaReader()->health($database['databaseName'])+['schemaVersion'=>1,'databaseId'=>$databaseId,'engine'=>'MARIADB'];
     }
 
+    public function databaseMigrationReadiness(string $sessionToken,string $databaseId,?string $now=null): array
+    {
+        $this->ownerSession($sessionToken,null,null,$now);
+        if($databaseId==='awh-control-plane') return ['schemaVersion'=>1,'databaseId'=>$databaseId,'engine'=>'SQLITE','readOnly'=>true,'migration'=>['mode'=>'EXACT_RELEASE_AND_VERIFIED_BACKUP','productionMutationAllowed'=>false,'restoreAuthority'=>'HubBackupService','latestBackup'=>$this->backupMetadata()]];
+        $database=$this->registeredExternalDatabase($databaseId); return $this->mariaReader()->migrationReadiness($database['databaseName'])+['schemaVersion'=>1,'databaseId'=>$databaseId];
+    }
+
     public function browse(string $sessionToken, string $table, ?string $search = null, int $page = 1, int $limit = 50, ?string $sort = null, string $direction = 'ASC', ?string $now = null): array
     {
         $this->ownerSession($sessionToken, null, null, $now); $table = $this->assertBrowseableTable($table);
