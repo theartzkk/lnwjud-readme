@@ -48,6 +48,45 @@ final class HubDatabaseStudioService
 
     public function tables(string $sessionToken, ?string $now = null): array { $this->ownerSession($sessionToken, null, null, $now); return ['schemaVersion' => 1, 'tables' => $this->tableCatalog()]; }
 
+    public function databaseInventory(string $sessionToken, ?string $now = null): array
+    {
+        $this->ownerSession($sessionToken, null, null, $now);
+        $databaseBytes = @filesize($this->databasePath);
+        $databases = [[
+            'databaseId' => 'awh-control-plane',
+            'siteId' => null,
+            'siteName' => 'AWH Control Plane',
+            'siteSlug' => 'awh',
+            'engine' => 'SQLITE',
+            'databaseName' => 'awh.sqlite',
+            'state' => 'READY',
+            'sizeBytes' => is_int($databaseBytes) ? $databaseBytes : null,
+            'studioMode' => 'FULL_READ_ONLY',
+            'updatedAt' => null,
+        ]];
+        if (self::tableExists($this->pdo, 'control_site_database_bindings') && self::tableExists($this->pdo, 'control_managed_sites')) {
+            $query = $this->pdo->query("SELECT d.site_id,d.engine,d.database_name,d.state,d.updated_at,s.name AS site_name,s.slug AS site_slug FROM control_site_database_bindings d JOIN control_managed_sites s ON s.site_id=d.site_id ORDER BY lower(s.name),d.site_id");
+            foreach ($query->fetchAll() as $row) {
+                $engine = strtoupper((string) ($row['engine'] ?? 'NONE'));
+                $databases[] = [
+                    'databaseId' => 'site:' . (string) $row['site_id'],
+                    'siteId' => (string) $row['site_id'],
+                    'siteName' => (string) ($row['site_name'] ?? ''),
+                    'siteSlug' => (string) ($row['site_slug'] ?? ''),
+                    'engine' => $engine,
+                    'databaseName' => is_string($row['database_name'] ?? null) ? (string) $row['database_name'] : null,
+                    'state' => (string) ($row['state'] ?? 'UNKNOWN'),
+                    'sizeBytes' => null,
+                    'studioMode' => $engine === 'SQLITE' ? 'REGISTERED' : ($engine === 'MARIADB' ? 'REGISTERED_READ_ONLY_PENDING' : 'NOT_REQUIRED'),
+                    'updatedAt' => is_string($row['updated_at'] ?? null) ? (string) $row['updated_at'] : null,
+                ];
+            }
+        }
+        $counts = ['SQLITE' => 0, 'MARIADB' => 0, 'NONE' => 0, 'OTHER' => 0];
+        foreach ($databases as $database) { $engine = (string) $database['engine']; isset($counts[$engine]) ? $counts[$engine]++ : $counts['OTHER']++; }
+        return ['schemaVersion' => 1, 'databases' => $databases, 'summary' => ['total' => count($databases), 'engines' => $counts], 'safety' => ['credentialsExposed' => false, 'defaultMode' => 'READ_ONLY']];
+    }
+
     public function browse(string $sessionToken, string $table, ?string $search = null, int $page = 1, int $limit = 50, ?string $sort = null, string $direction = 'ASC', ?string $now = null): array
     {
         $this->ownerSession($sessionToken, null, null, $now); $table = $this->assertBrowseableTable($table);
