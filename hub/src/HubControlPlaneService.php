@@ -23,6 +23,7 @@ require_once __DIR__ . '/HubFoundingMemoryService.php';
 require_once __DIR__ . '/HubAutomationRegistryService.php';
 require_once __DIR__ . '/HubBackupService.php';
 require_once __DIR__ . '/HubInfrastructureService.php';
+require_once __DIR__ . '/HubEcosystemHealthService.php';
 require_once __DIR__ . '/HubAiGovernanceService.php';
 require_once __DIR__ . '/HubStaffOperationsService.php';
 require_once __DIR__ . '/HubThaiGovernmentDocumentService.php';
@@ -572,6 +573,7 @@ final class HubControlPlaneService
             'memoryReady' => ($project['memoryReady'] ?? false) === true,
         ], $this->projectsForUser($userId));
         $release = HubInfrastructureService::releaseState();
+        $ecosystemHealth = HubEcosystemHealthService::fromEnvironment()->status((string)($release['controlReleaseId'] ?? ''), $now);
         $staff = $this->staff->snapshot($now, null, $telemetry, $release);
         $aiModels = [];
         if ($this->aiGovernance !== null) { try { $aiModels = array_slice($this->aiGovernance->catalog()['models'] ?? [], 0, 40); } catch (Throwable) { $aiModels = []; } }
@@ -612,13 +614,15 @@ final class HubControlPlaneService
             ['key'=>'mobile','label'=>'Mobile','pass'=>false,'evidence'=>'visible field verification required'],
             ['key'=>'backup-recovery','label'=>'Backup/Recovery','pass'=>($health['backup']['state'] ?? null)==='VERIFIED' && ($health['recovery']['state'] ?? null)==='READY','evidence'=>'verified backup + recovery codes'],
             ['key'=>'security','label'=>'Security','pass'=>(($telemetry['server']['security']['fail2ban'] ?? null)==='ACTIVE') && (($telemetry['server']['security']['automaticUpdates'] ?? null)==='ACTIVE'),'evidence'=>'host protection telemetry'],
-            ['key'=>'deploy','label'=>'Deploy','pass'=>($release['pointersMatch'] ?? false) && str_starts_with((string)($release['controlReleaseId'] ?? ''),'m16-'),'evidence'=>'matching M16 control/web pointers'],
+            ['key'=>'deploy','label'=>'Deploy','pass'=>($release['pointersMatch'] ?? false) && preg_match('/^m[0-9]+-[A-Za-z0-9._-]{6,72}$/',(string)($release['controlReleaseId'] ?? ''))===1,'evidence'=>'matching canonical control/web release pointers'],
+            ['key'=>'ecosystem-health','label'=>'Ecosystem Health','pass'=>($ecosystemHealth['state'] ?? null)==='READY','evidence'=>'fresh bounded AWH/BAY/LearnLab health snapshot'],
             ['key'=>'smoke','label'=>'Smoke Test','pass'=>false,'evidence'=>'visible end-to-end field verification required'],
         ];
         $passed = count(array_filter($checks, static fn(array $item): bool => $item['pass'] === true));
         return [
             'schemaVersion' => 1,
             'telemetry' => $telemetry,
+            'ecosystemHealth' => $ecosystemHealth,
             'deployment' => ['releaseId' => HubInfrastructureService::currentReleaseId()] + $release,
             'projects' => array_slice($projects, 0, 200),
             'database' => $health['database'],

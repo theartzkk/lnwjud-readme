@@ -78,3 +78,13 @@ test('verified backup freshness is one canonical bounded health signal', async (
   assert.match(staff, /\['freshness'\]\['state'\].*'FRESH'/);
   assert.match(infra, /เก่าเกิน 36 ชั่วโมง/);
 });
+
+test('scheduled backup performs a bounded restore drill and publishes only sanitized proof', async () => {
+  const scheduled = await readFile(join(ROOT, 'hub/bin/scheduled-backup.php'), 'utf8');
+  assert.match(scheduled, /HubBackupService::restoreDrill\(/);
+  assert.match(scheduled, /AWH_RECOVERY_DRILL_PROOF_PATH/);
+  assert.match(scheduled, /'state' => 'PASS'/);
+  assert.match(scheduled, /'state' => 'FAILED'/);
+  assert.match(scheduled, /databaseSchemaVersion/);
+  assert.doesNotMatch(scheduled, /password|secret|credential|payload_json/i);
+});

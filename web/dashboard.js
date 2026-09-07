@@ -435,7 +435,9 @@ function attentionCenterItems() {
     const freshness = infra?.backup?.freshness?.state;
     if (backupState && (backupState !== 'VERIFIED' || freshness === 'STALE')) rows.push({ priority: 'SYSTEM', title: 'Backup ต้องตรวจสอบ', detail: backupState !== 'VERIFIED' ? `สถานะ ${backupState}` : 'Backup ล่าสุดเก่าเกินช่วงที่กำหนด', actionLabel: 'เปิด Recovery', action: () => location.assign('./infrastructure.html') });
     if (infra?.telemetry?.state && infra.telemetry.state !== 'READY') rows.push({ priority: 'SYSTEM', title: 'ข้อมูล VPS ยังไม่สด', detail: 'ตรวจ Agent Runtime และบริการส่วนกลาง', actionLabel: 'เปิดระบบ', action: () => location.assign('./infrastructure.html') });
-    const failedChecks = (Array.isArray(infra?.productionComplete?.checks) ? infra.productionComplete.checks : []).filter((check) => check?.pass === false).slice(0, 2);
+    const ecosystemAlerts = Array.isArray(infra?.ecosystemHealth?.alerts) ? infra.ecosystemHealth.alerts : [];
+    for (const alert of ecosystemAlerts.filter((item) => ['CRITICAL', 'WARNING'].includes(item?.severity)).slice(0, 2)) rows.push({ priority: 'SYSTEM', title: safeText(alert.title, 'สุขภาพระบบต้องตรวจสอบ'), detail: safeText(alert.detail, 'AWH พบความผิดปกติต่อเนื่อง'), actionLabel: 'ดูสุขภาพระบบ', action: () => location.assign('./infrastructure.html') });
+    const failedChecks = (Array.isArray(infra?.productionComplete?.checks) ? infra.productionComplete.checks : []).filter((check) => check?.pass === false).slice(0, 1);
     for (const check of failedChecks) rows.push({ priority: 'SYSTEM', title: safeText(check.label, 'Production check ต้องตรวจสอบ'), detail: safeText(check.evidence, 'ยังไม่มีหลักฐานผ่าน'), actionLabel: 'ดูหลักฐาน', action: () => location.assign('./infrastructure.html') });
   }
   return rows.slice(0, 6);
