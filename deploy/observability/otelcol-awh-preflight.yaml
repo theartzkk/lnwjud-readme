@@ -39,7 +39,7 @@ processors:
     trace_statements:
       - context: resource
         statements:
-          - keep_keys(attributes, ["service.name", "service.version", "service.namespace", "deployment.environment.name"])
+          - keep_keys(attributes, ["service.name", "service.namespace", "deployment.environment.name"])
       - context: span
         statements:
           - set(span.name, "awh.http")
@@ -50,6 +50,9 @@ processors:
   redaction/awh:
     allow_all_keys: false
     allowed_keys:
+      - service.name
+      - service.namespace
+      - deployment.environment.name
       - http.request.method
       - http.response.status_code
       - http.response.body.size
