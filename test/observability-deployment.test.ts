@@ -13,6 +13,7 @@ test('AWH observability collector is loopback-only and allowlist based', async (
   for (const yaml of files) {
     assert.match(yaml, /endpoint:\s*127\.0\.0\.1:4318/);
     assert.match(yaml, /allow_all_keys:\s*false/);
+    assert.match(yaml, /key:\s*service\.name[\s\S]*?value:\s*awh-control-plane[\s\S]*?action:\s*upsert/);
     assert.match(yaml, /set\(span\.name, "awh\.http"\)/);
     assert.match(yaml, /keep_keys\(spanevent\.attributes, \[\]\)/);
     assert.doesNotMatch(yaml, /url\.full|db\.statement|cookie|request\.body/i);
@@ -58,6 +59,6 @@ test('Honeycomb watcher never stores the ingest key in source-controlled config'
   assert.match(sync, /rm -f "\$EGRESS_MARKER" "\$ACTIVE_MARKER"/);
   assert.doesNotMatch(sync, /printf ['"]ACTIVE/);
   assert.match(collector, /\$\{env:HONEYCOMB_API_KEY\}/);
-  assert.match(collector, /x-honeycomb-dataset:\s*awh-control-plane/);
+  assert.doesNotMatch(collector, /x-honeycomb-dataset:/);
   assert.doesNotMatch(collector, /hcaik_[A-Za-z0-9]/);
 });

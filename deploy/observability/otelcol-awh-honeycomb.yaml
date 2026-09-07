@@ -11,6 +11,15 @@ processors:
     spike_limit_mib: 32
   resource/awh:
     attributes:
+      - key: service.name
+        value: awh-control-plane
+        action: upsert
+      - key: service.namespace
+        value: awh
+        action: upsert
+      - key: deployment.environment.name
+        value: test
+        action: upsert
       - { key: host.name, action: delete }
       - { key: service.instance.id, action: delete }
       - { key: process.pid, action: delete }
@@ -46,7 +55,6 @@ exporters:
     endpoint: https://api.honeycomb.io
     headers:
       x-honeycomb-team: ${env:HONEYCOMB_API_KEY}
-      x-honeycomb-dataset: awh-control-plane
 
 service:
   telemetry:

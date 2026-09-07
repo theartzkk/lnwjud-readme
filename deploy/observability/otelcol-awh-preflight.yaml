@@ -11,6 +11,15 @@ processors:
     spike_limit_mib: 32
   resource/awh:
     attributes:
+      - key: service.name
+        value: awh-control-plane
+        action: upsert
+      - key: service.namespace
+        value: awh
+        action: upsert
+      - key: deployment.environment.name
+        value: test
+        action: upsert
       - key: host.name
         action: delete
       - key: service.instance.id
