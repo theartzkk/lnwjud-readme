@@ -1,0 +1,13 @@
+[Unit]
+Description=Refresh AWH database fleet inventory
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec=15m
+AccuracySec=1m
+RandomizedDelaySec=30s
+Persistent=true
+Unit=awh-database-inventory.service
+
+[Install]
+WantedBy=timers.target

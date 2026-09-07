@@ -29,6 +29,7 @@ final class HubDatabaseStudioRouter
                 $result = match ($action) {
                     'overview' => $service->overview($token),
                     'tables' => $service->tables($token),
+                    'fleet' => $service->fleet($token),
                     'browse' => $service->browse($token, self::queryString($query, 'table', true), self::queryString($query, 'q'), self::queryInt($query, 'page', 1), self::queryInt($query, 'limit', 50), self::queryString($query, 'sort'), self::queryString($query, 'dir') ?? 'ASC'),
                     'schema' => $service->schema($token, self::queryString($query, 'table', true)),
                     'export' => $service->export($token, self::queryString($query, 'table', true), self::queryString($query, 'format', true), self::queryString($query, 'q'), self::queryString($query, 'sort'), self::queryString($query, 'dir') ?? 'ASC'),

@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+STATE_DIR=/var/lib/awh-hub
+STATE_FILE="$STATE_DIR/storage-guard.state"
+JSON_FILE="$STATE_DIR/storage-guard.json"
+EVENT_FILE="$STATE_DIR/storage-guard-events.log"
+WARN=80
+CRIT=90
+RECOVER=75
+
+mkdir -p "$STATE_DIR"
+used=$(df -P / | awk 'NR==2{gsub(/%/,"",$5);print $5}')
+avail=$(df -B1 --output=avail / | tail -1 | tr -d ' ')
+total=$(df -B1 --output=size / | tail -1 | tr -d ' ')
+now=$(date --iso-8601=seconds)
+prev=$(cat "$STATE_FILE" 2>/dev/null || echo UNKNOWN)
+
+if (( used >= CRIT )); then
+  state=CRITICAL
+elif (( used >= WARN )); then
+  state=WARNING
+elif [[ "$prev" == "WARNING" || "$prev" == "CRITICAL" ]] && (( used > RECOVER )); then
+  state="$prev"
+else
+  state=NORMAL
+fi
+
+# Bounded low-risk self-healing. Never touches backups/releases/databases/artifacts.
+if [[ "$state" == "WARNING" || "$state" == "CRITICAL" ]]; then
+  /usr/local/sbin/awh-temp-cleanup >/dev/null 2>&1 || true
+fi
+if [[ "$state" == "CRITICAL" ]]; then
+  journalctl --vacuum-size=300M >/dev/null 2>&1 || true
+  apt-get clean >/dev/null 2>&1 || true
+fi
+
+used=$(df -P / | awk 'NR==2{gsub(/%/,"",$5);print $5}')
+avail=$(df -B1 --output=avail / | tail -1 | tr -d ' ')
+if (( used >= CRIT )); then
+  state=CRITICAL
+elif (( used >= WARN )); then
+  state=WARNING
+elif (( used <= RECOVER )); then
+  state=NORMAL
+fi
+
+printf '%s\n' "$state" > "$STATE_FILE"
+tmp="${JSON_FILE}.tmp"
+printf '{"schemaVersion":1,"checkedAt":"%s","state":"%s","usedPercent":%d,"freeBytes":%s,"totalBytes":%s,"warningPercent":%d,"criticalPercent":%d,"recoveryPercent":%d}\n' "$now" "$state" "$used" "$avail" "$total" "$WARN" "$CRIT" "$RECOVER" > "$tmp"
+chmod 0640 "$tmp"
+chown root:awh-hub "$tmp" 2>/dev/null || true
+mv -f "$tmp" "$JSON_FILE"
+
+if [[ "$state" != "$prev" ]]; then
+  msg="state=$state previous=$prev used_percent=$used free_bytes=$avail"
+  logger -t awh-storage-guard "$msg"
+  printf '%s %s\n' "$now" "$msg" >> "$EVENT_FILE"
+  tail -n 100 "$EVENT_FILE" > "${EVENT_FILE}.tmp" && mv -f "${EVENT_FILE}.tmp" "$EVENT_FILE"
+  chmod 0640 "$EVENT_FILE"
+  chown root:awh-hub "$EVENT_FILE" 2>/dev/null || true
+fi

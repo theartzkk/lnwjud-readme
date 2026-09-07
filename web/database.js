@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const state = { csrf: null, overview: null, tables: [], selectedTable: null, browse: null, schema: null, page: 1, search: '', sort: null, direction: 'ASC' };
+const state = { csrf: null, overview: null, fleet: null, tables: [], selectedTable: null, browse: null, schema: null, page: 1, search: '', sort: null, direction: 'ASC' };
 
 function el(tag, className = '', text = '') { const node = document.createElement(tag); if (className) node.className = className; if (text !== '') node.textContent = text; return node; }
 function number(value) { return Number.isFinite(Number(value)) ? Number(value).toLocaleString('th-TH') : '—'; }
@@ -112,6 +112,23 @@ async function runSql(explain) {
   } finally { $('sql-run').disabled = false; $('sql-explain').disabled = false; }
 }
 
+async function loadFleet() {
+  const data = await studioApi('fleet'); state.fleet = data; const host = $('fleet-view'); host.replaceChildren();
+  const rows = data.databases || [];
+  const summary = el('p', 'subtle', data.state === 'NOT_CONFIGURED' ? 'ยังไม่ได้เชื่อม Database Inventory บน VPS' : `พบ ${number(rows.length)} ฐานข้อมูล · snapshot ${data.generatedAt ? new Date(data.generatedAt).toLocaleString('th-TH') : 'ยังไม่มีเวลาอ้างอิง'}`); host.append(summary);
+  if (!rows.length) { host.append(el('div', 'empty-state', 'ยังไม่มีฐานข้อมูลใน inventory ที่เปิดเผยได้อย่างปลอดภัย')); return; }
+  const grid = el('div', 'status-grid');
+  for (const row of rows) {
+    const card = el('section', 'status-card');
+    const stateText = row.state === 'HEALTHY' ? '✓ Healthy' : row.state === 'UNAVAILABLE' ? 'Unavailable' : 'Review';
+    const title = el('strong', row.state === 'HEALTHY' ? 'good-text' : 'warn-text', row.label || row.name);
+    const identity = el('div', 'subtle', `${row.engine} · ${row.authority} · ${stateText}`);
+    const metrics = el('div', 'subtle', `${bytes(row.sizeBytes)} · ${number(row.tableCount)} ตาราง · อ่านอย่างเดียว`);
+    card.append(title, identity, metrics); grid.append(card);
+  }
+  host.append(grid);
+}
+
 async function loadHealth() {
   const data = await studioApi('health'); const host = $('health-view'); host.replaceChildren(); const grid = el('div', 'status-grid');
   const integrity = el('div', 'status-card'); integrity.append(el('strong', data.integrity?.status === 'PASS' ? '✓ Integrity PASS' : '⚠ Integrity REVIEW', data.integrity?.status === 'PASS' ? 'good-text' : 'warn-text'), el('div', 'subtle', (data.integrity?.messages || []).join(' · ')));
@@ -141,13 +158,13 @@ async function loadAudit() {
 function showTab(name) {
   for (const button of document.querySelectorAll('.tab')) button.classList.toggle('active', button.dataset.tab === name);
   for (const panel of document.querySelectorAll('.tab-panel')) panel.hidden = panel.id !== `tab-${name}`;
-  if (name === 'health') loadHealth().catch(showError); if (name === 'migrations') loadMigrations().catch(showError); if (name === 'audit') loadAudit().catch(showError);
+  if (name === 'fleet') loadFleet().catch(showError); if (name === 'health') loadHealth().catch(showError); if (name === 'migrations') loadMigrations().catch(showError); if (name === 'audit') loadAudit().catch(showError);
 }
 
 function showError(error) { setStatus('ต้องตรวจสอบ'); const banner = $('health-banner'); banner.className = 'health-banner'; banner.textContent = error?.message || 'Database Studio ไม่สามารถโหลดข้อมูลได้'; }
 
 async function refreshAll() {
-  state.overview = await studioApi('overview'); const tables = await studioApi('tables'); state.tables = tables.tables || []; renderOverview(); renderTableList();
+  state.overview = await studioApi('overview'); const tables = await studioApi('tables'); state.tables = tables.tables || []; renderOverview(); renderTableList(); await loadFleet();
   if (state.selectedTable) { const current = state.tables.find((row) => row.name === state.selectedTable); if (current && !current.locked) await loadTable(); }
 }
 
@@ -160,7 +177,7 @@ async function init() {
   $('page-prev').addEventListener('click', async () => { if (state.page > 1) { state.page--; await loadTable(); } }); $('page-next').addEventListener('click', async () => { if (state.browse && state.page < state.browse.totalPages) { state.page++; await loadTable(); } });
   $('export-csv').addEventListener('click', () => downloadExport('csv').catch(showError)); $('export-json').addEventListener('click', () => downloadExport('json').catch(showError));
   $('sql-run').addEventListener('click', () => runSql(false)); $('sql-explain').addEventListener('click', () => runSql(true));
-  $('refresh-all').addEventListener('click', () => refreshAll().catch(showError)); $('health-refresh').addEventListener('click', () => loadHealth().catch(showError)); $('migration-refresh').addEventListener('click', () => loadMigrations().catch(showError)); $('audit-refresh').addEventListener('click', () => loadAudit().catch(showError));
+  $('refresh-all').addEventListener('click', () => refreshAll().catch(showError)); $('fleet-refresh').addEventListener('click', () => loadFleet().catch(showError)); $('health-refresh').addEventListener('click', () => loadHealth().catch(showError)); $('migration-refresh').addEventListener('click', () => loadMigrations().catch(showError)); $('audit-refresh').addEventListener('click', () => loadAudit().catch(showError));
   for (const button of document.querySelectorAll('.tab')) button.addEventListener('click', () => showTab(button.dataset.tab));
 }
 

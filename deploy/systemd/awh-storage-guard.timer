@@ -1,0 +1,13 @@
+[Unit]
+Description=Check AWH VPS storage without ChatGPT automation
+
+[Timer]
+OnBootSec=3m
+OnUnitActiveSec=15m
+AccuracySec=1m
+RandomizedDelaySec=30s
+Persistent=true
+Unit=awh-storage-guard.service
+
+[Install]
+WantedBy=timers.target
