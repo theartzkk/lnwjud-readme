@@ -165,13 +165,15 @@
     const control = await api.loadControlData();
     if (control.role !== 'OWNER') throw new Error('Source Authority ใช้ได้เฉพาะ Owner');
     const previous = select.value;
+    const requestedProject = new URLSearchParams(window.location.search).get('project');
     const activeName = $('selected-project-name')?.textContent?.trim() || '';
     select.replaceChildren();
     for (const project of control.projects) {
       const option = document.createElement('option');
       option.value = project.projectId; option.textContent = project.name; select.append(option);
     }
-    const preferred = control.projects.find((project) => project.projectId === previous)
+    const preferred = control.projects.find((project) => project.projectId === requestedProject)
+      || control.projects.find((project) => project.projectId === previous)
       || control.projects.find((project) => project.name === activeName)
       || control.projects[0];
     select.value = preferred?.projectId || '';
@@ -391,6 +393,7 @@
       section.append(title, grid); body.append(section);
     }
     card.append(head, summary, body); sheet.append(backdrop, card); document.body.append(sheet); refreshSummary(); installPreviewReset();
+    if (window.location.hash === '#source') queueMicrotask(() => { void openSourceCenter(); });
     return true;
   }
 

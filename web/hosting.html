@@ -4,19 +4,28 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <meta name="theme-color" content="#f7f8fb" />
-<title>Hosting · AWH</title>
+<title>เว็บและโดเมน · AWH</title>
 <link rel="stylesheet" href="./awh-design-system.css?release=__AWH_WEB_RELEASE_ID__" />
 <link rel="stylesheet" href="./hosting.css?release=__AWH_WEB_RELEASE_ID__" />
-  <link rel="stylesheet" href="./awh-light-system.css?release=__AWH_WEB_RELEASE_ID__" />
+<link rel="stylesheet" href="./awh-light-system.css?release=__AWH_WEB_RELEASE_ID__" />
 </head>
 <body>
-<header class="hosting-header"><a class="hosting-brand" href="./"><span>A</span><strong>AWH</strong></a><div class="hosting-actions"><span id="hosting-state">กำลังตรวจ Hosting…</span><a href="./">← กลับ AWH</a><button id="hosting-refresh" type="button">รีเฟรช</button></div></header>
+<header class="hosting-header"><a class="hosting-brand" href="./"><span>A</span><strong>AWH</strong></a><div class="hosting-actions"><span id="hosting-state">กำลังตรวจระบบ…</span><a href="./">← กลับ AWH</a><button id="hosting-refresh" type="button">รีเฟรช</button></div></header>
 <main class="hosting-main">
-<section class="hosting-hero"><div><p class="eyebrow">OWNER · MANAGED HOSTING</p><h1>เว็บไซต์ของ AWH</h1><p>เลือก Project แล้วให้ AWH จัดการ Runtime, Database, HTTPS, Health, Backup และ Rollback ให้เป็นระบบเดียว</p></div><div id="hosting-summary" class="hosting-summary">กำลังโหลด</div></section>
-<section class="hosting-panel"><div class="section-heading"><div><span>MANAGED SITES</span><h2>เว็บไซต์ที่ดูแล</h2></div><small>Deploy และ Rollback ผ่าน canonical AWH Task/Execution</small></div><div id="site-list" class="site-list"></div></section>
-<section class="hosting-panel create-panel"><div class="section-heading"><div><span>NEW WEBSITE</span><h2>เพิ่มเว็บไซต์</h2></div><small>ใช้ IP ของ VPS ก่อน และเพิ่ม Domain ภายหลังได้</small></div>
-<form id="hosting-create-form" class="hosting-form"><label>ชื่อเว็บไซต์<input id="site-name" maxlength="120" required placeholder="เช่น เว็บลงเรียน" /></label><label>ชื่อย่อ<input id="site-slug" maxlength="48" required placeholder="registration" /></label><div class="url-preview" aria-live="polite"><span>ที่อยู่ตัวอย่าง</span><strong id="site-url-preview">—</strong><small>ที่อยู่จริงจะเปิดเมื่อ AWH เตรียมเว็บไซต์และตรวจความเข้ากันได้ผ่าน</small></div><label>Project<select id="site-project" required></select></label><label>Runtime<select id="site-runtime"><option value="AUTO">ตรวจอัตโนมัติ</option><option value="PHP">PHP</option><option value="NODE">Node</option><option value="STATIC">Static</option></select></label><label>Database<select id="site-database"><option value="AUTO">ตรวจอัตโนมัติ</option><option value="NONE">ไม่ใช้ฐานข้อมูล</option><option value="SQLITE">SQLite</option><option value="MARIADB">MariaDB</option></select></label><label class="check-row"><input id="site-backup" type="checkbox" checked /><span>เปิด Backup</span></label><button class="primary-button" type="submit">สร้างเว็บไซต์</button><p id="hosting-message" class="form-message" role="status"></p></form></section>
-<section class="hosting-note"><strong>ไม่ต้องตั้ง VPS เอง</strong><p>AWH แยก release, runtime, database และ public route ของแต่ละเว็บไซต์ให้โดยอัตโนมัติ หาก HTTPS identity ยังไม่ครอบคลุม IP ระบบจะไม่เปิดเว็บแบบลดความปลอดภัยเงียบ ๆ</p></section>
+<section class="hosting-hero"><div><p class="eyebrow">OWNER · WEB & DOMAIN CONTROL</p><h1>เว็บและโดเมน</h1><p>จัดการเว็บไซต์, ที่อยู่เว็บ, HTTPS, Backup, Deploy และ Rollback จากที่เดียว โดยไม่ต้องเข้า VPS หรือจำคำสั่งระบบ</p></div><div id="hosting-summary" class="hosting-summary">กำลังโหลด</div></section>
+<section id="hosting-ecosystem" class="hosting-ecosystem" aria-label="สถานะระบบ Hosting"></section>
+<section class="hosting-panel create-panel"><div class="section-heading"><div><span>QUICK CREATE</span><h2>เพิ่มเว็บไซต์</h2></div><small>กรอกเฉพาะสิ่งที่จำเป็น ที่เหลือให้ AWH ตรวจอัตโนมัติ</small></div>
+<form id="hosting-create-form" class="hosting-form">
+<label>ชื่อเว็บไซต์<input id="site-name" maxlength="120" required placeholder="เช่น BAY LearnLab" /></label>
+<label>ชื่อเว็บ<input id="site-slug" maxlength="48" required placeholder="learn" /><small>ใช้ตัวอักษรอังกฤษ ตัวเลข และขีดกลาง</small></label>
+<div class="url-preview" aria-live="polite"><span>ชื่อโดเมนที่ต้องการ</span><strong id="site-url-preview">—</strong><small id="site-url-note">AWH จะใช้ชื่อนี้เป็นเป้าหมายและผูกโดเมนเมื่อ DNS/HTTPS พร้อม</small></div>
+<label>ระบบ / Project<select id="site-project" required></select></label>
+<label class="check-row"><input id="site-backup" type="checkbox" checked /><span>เปิด Backup อัตโนมัติ</span></label>
+<details class="hosting-advanced"><summary>ตั้งค่าขั้นสูง</summary><div class="hosting-form"><label>Runtime<select id="site-runtime"><option value="AUTO">ตรวจอัตโนมัติ</option><option value="PHP">PHP</option><option value="NODE">Node</option><option value="STATIC">Static</option></select></label><label>Database<select id="site-database"><option value="AUTO">ตรวจอัตโนมัติ</option><option value="NONE">ไม่ใช้ฐานข้อมูล</option><option value="SQLITE">SQLite</option><option value="MARIADB">MariaDB</option></select></label></div></details>
+<button class="primary-button" type="submit">สร้างเว็บไซต์</button><p id="hosting-message" class="form-message" role="status"></p>
+</form></section>
+<section class="hosting-panel"><div class="section-heading"><div><span>MY WEBSITES</span><h2>เว็บไซต์ที่ดูแล</h2></div><small>แสดงสถานะจริงของ release และ public URL</small></div><div id="site-list" class="site-list"></div></section>
+<section class="hosting-note"><strong>แนวทางของ AWH</strong><p>งานปกติควรจบด้วยชื่อเว็บ + Project + ปุ่มเดียว ส่วน DNS, SSL, Nginx, Runtime, Database และ Health ถูกซ่อนเป็นรายละเอียดขั้นสูงและต้องผ่าน safety check ก่อนเปลี่ยน Production</p></section>
 </main>
 <div id="hosting-confirm" class="hosting-confirm" hidden><div class="hosting-confirm-card" role="dialog" aria-modal="true" aria-labelledby="hosting-confirm-title"><p class="eyebrow">CONFIRM ACTION</p><h2 id="hosting-confirm-title">ยืนยันรายการ</h2><p id="hosting-confirm-copy">ตรวจรายละเอียดก่อนดำเนินการ</p><div class="hosting-confirm-actions"><button id="hosting-confirm-cancel" class="secondary-button" type="button">ยกเลิก</button><button id="hosting-confirm-submit" class="primary-button" type="button">ดำเนินการ</button></div><p id="hosting-confirm-message" class="form-message" role="status"></p></div></div>
 <script type="module" src="./hosting.js?release=__AWH_WEB_RELEASE_ID__"></script>

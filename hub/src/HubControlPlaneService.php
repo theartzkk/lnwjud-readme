@@ -196,6 +196,11 @@ final class HubControlPlaneService
         try { return ['schemaVersion'=>1]+$this->hosting->rollbackSite($sessionToken,$csrf,$siteId,$payload); }
         catch (HubManagedHostingException $error) { throw new HubControlPlaneException('Hosting request was rejected',$error->codeName); }
     }
+    public function bindManagedSiteDomainForSession(string $sessionToken,string $csrf,string $siteId,array $payload): array
+    {
+        try { return ['schemaVersion'=>1]+$this->hosting->bindDomain($sessionToken,$csrf,$siteId,$payload); }
+        catch (HubManagedHostingException $error) { throw new HubControlPlaneException('Hosting request was rejected',$error->codeName); }
+    }
     public function disableManagedSiteForSession(string $sessionToken,string $csrf,string $siteId,array $payload): array
     {
         try { return ['schemaVersion'=>1]+$this->hosting->disableSite($sessionToken,$csrf,$siteId,$payload); }

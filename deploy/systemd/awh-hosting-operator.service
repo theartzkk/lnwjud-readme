@@ -27,5 +27,5 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 RestrictRealtime=true
 LockPersonality=true
 SystemCallArchitectures=native
-ReadWritePaths=/var/lib/awh-hub /srv/awh-sites /etc/awh-sites /etc/nginx/sites-available /etc/nginx/sites-enabled /etc/php /etc/systemd/system /etc/passwd /etc/shadow /etc/group /etc/gshadow /run/php
+ReadWritePaths=/var/lib/awh-hub /var/lib/awh-acme /var/lib/letsencrypt /var/log/letsencrypt /srv/awh-sites /etc/awh-sites /etc/letsencrypt /etc/nginx/sites-available /etc/nginx/sites-enabled /etc/php /etc/systemd/system /etc/passwd /etc/shadow /etc/group /etc/gshadow /run/php
 UMask=0077
