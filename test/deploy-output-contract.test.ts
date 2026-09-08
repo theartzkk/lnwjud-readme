@@ -32,7 +32,7 @@ test('modern production deploys run in a server-side durable systemd unit', asyn
     read('deploy/awh-control-plane/deploy-control-plane.sh'),
     read('deploy/awh-control-plane/durable-remote-runner.sh'),
   ]);
-  assert.match(deploy, /systemd-run/);
+  assert.match(deploy, /sudo -n systemd-run/);
   assert.match(deploy, /REMOTE_RESULT/);
   assert.match(deploy, /REMOTE_LOG/);
   assert.match(deploy, /systemctl is-active/);
