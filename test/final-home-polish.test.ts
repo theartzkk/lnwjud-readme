@@ -23,3 +23,36 @@ test('canonical Dashboard is intent-first with a three-item mobile navigation',a
  assert.match(css,/awh-command-attach/);
  assert.match(index,/Infrastructure/); assert.doesNotMatch(`${dashboard}\n${css}`,/awh-experience-v[23]|final-home-polish/);
 });
+
+
+test('KRUART Golden Home uses LearnLab human cartoon art and keeps mascot art out of the primary home', async () => {
+  const [html, css, build, manifest, sw] = await Promise.all([
+    read('web/index.html'),
+    read('web/awh-light-system.css'),
+    read('scripts/build-web-preview.ts'),
+    read('scripts/create-web-release-manifest.mjs'),
+    read('web/sw.js'),
+  ]);
+  for (const asset of [
+    'kruart-human-student-hero.webp',
+    'kruart-human-teacher-hero.webp',
+    'kruart-human-student-thai.webp',
+    'kruart-human-student-english.webp',
+    'kruart-human-student-math.webp',
+    'kruart-human-student-computer.webp',
+  ]) {
+    assert.ok(html.includes(asset) || css.includes(asset), `human artwork is not used: ${asset}`);
+    assert.ok(build.includes(asset), `human artwork is not copied by web build: ${asset}`);
+    assert.ok(manifest.includes(asset), `human artwork is not release-manifested: ${asset}`);
+    assert.ok(sw.includes(asset), `human artwork is not cached by release-aware PWA shell: ${asset}`);
+  }
+  const publicHome = html.match(/<section id="public-home-view"[\s\S]*?<section id="sign-in-view"/)?.[0] || '';
+  assert.doesNotMatch(publicHome, /kruart-learnlab-mascot\.svg/);
+  assert.doesNotMatch(html, /<img[^>]+kruart-learnlab-mascot\.svg/);
+  assert.match(html, /kruart-login-avatar[^>]*><img src="\.\/kruart-human-student-thai\.webp"/);
+  assert.match(publicHome, /kruart-human-student-english\.webp/);
+  assert.match(publicHome, /kruart-human-teacher-hero\.webp/);
+  assert.match(css, /kruart-role-card\.staff[^\n]*kruart-human-student-computer\.webp/);
+  assert.match(css, /Human-only hero composition/);
+  assert.match(css, /Approved-reference calibration — 1536×864 desktop frame/);
+});

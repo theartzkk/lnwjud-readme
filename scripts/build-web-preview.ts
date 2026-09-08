@@ -110,6 +110,12 @@ ${dashboardGuardrails}`;
     copyFile(join(ROOT, 'web', 'kruart-card-staff.svg'), join(OUTPUT, 'kruart-card-staff.svg')),
     copyFile(join(ROOT, 'web', 'kruart-classroom.svg'), join(OUTPUT, 'kruart-classroom.svg')),
     copyFile(join(ROOT, 'web', 'kruart-learnlab-mascot.svg'), join(OUTPUT, 'kruart-learnlab-mascot.svg')),
+    copyFile(join(ROOT, 'web', 'kruart-human-student-hero.webp'), join(OUTPUT, 'kruart-human-student-hero.webp')),
+    copyFile(join(ROOT, 'web', 'kruart-human-teacher-hero.webp'), join(OUTPUT, 'kruart-human-teacher-hero.webp')),
+    copyFile(join(ROOT, 'web', 'kruart-human-student-thai.webp'), join(OUTPUT, 'kruart-human-student-thai.webp')),
+    copyFile(join(ROOT, 'web', 'kruart-human-student-english.webp'), join(OUTPUT, 'kruart-human-student-english.webp')),
+    copyFile(join(ROOT, 'web', 'kruart-human-student-math.webp'), join(OUTPUT, 'kruart-human-student-math.webp')),
+    copyFile(join(ROOT, 'web', 'kruart-human-student-computer.webp'), join(OUTPUT, 'kruart-human-student-computer.webp')),
     writeFile(join(OUTPUT, 'web-config.json'), `${JSON.stringify({ schemaVersion: 1, mode: webMode, apiBase: webMode === 'CONTROL' ? '/api/v1' : null }, null, 2)}\n`, 'utf8'),
     writeFile(join(OUTPUT, 'data.json'), `${JSON.stringify(data, null, 2)}\n`, 'utf8'),
   ]);

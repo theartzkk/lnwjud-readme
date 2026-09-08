@@ -297,3 +297,181 @@ body{font-family:"Noto Sans Thai","Leelawadee UI",Tahoma,system-ui,-apple-system
   .kruart-shortcut{min-height:58px}
   .kruart-shortcut+.kruart-shortcut{margin-top:6px}
 }
+
+/* Human-cartoon fidelity pass — use LearnLab Golden Reference raster artwork. */
+.kruart-main-hero{
+  background-image:url("./kruart-human-student-hero.webp")!important;
+  background-size:122% auto!important;
+  background-position:left center!important;
+  background-repeat:no-repeat!important;
+}
+.kruart-main-hero::before{
+  content:"";
+  position:absolute;
+  inset:0 0 0 auto;
+  width:32%;
+  z-index:1;
+  pointer-events:none;
+  background:linear-gradient(90deg,rgba(223,243,255,0),rgba(223,243,255,.72) 38%,rgba(223,243,255,.98) 72%);
+}
+.kruart-main-hero::after{
+  content:"";
+  position:absolute;
+  right:18px;
+  bottom:17px;
+  z-index:2;
+  width:25%;
+  height:66%;
+  border-radius:18px;
+  background:url("./kruart-human-student-english.webp") 34% center/cover no-repeat;
+  box-shadow:0 10px 24px rgba(20,61,117,.13);
+  border:3px solid rgba(255,255,255,.78);
+}
+.kruart-main-hero-copy{z-index:3;left:34.5%;width:min(48%,610px)}
+.kruart-hero-tag{z-index:4;right:20px;top:16px;bottom:auto}
+.kruart-login-avatar img{width:100%!important;height:100%!important;object-fit:cover!important;object-position:26% center!important}
+.kruart-role-art{background-size:cover!important;background-repeat:no-repeat!important}
+.kruart-role-card.student .kruart-role-art{background-image:url("./kruart-human-student-thai.webp")!important;background-position:24% center!important}
+.kruart-role-card.teacher .kruart-role-art{background-image:url("./kruart-human-teacher-hero.webp")!important;background-position:16% center!important}
+.kruart-role-card.parent .kruart-role-art{background-image:url("./kruart-human-student-math.webp")!important;background-position:24% center!important}
+.kruart-role-card.staff .kruart-role-art{background-image:url("./kruart-human-student-computer.webp")!important;background-position:24% center!important}
+.news-activity .kruart-news-thumb{background-image:url("./kruart-human-teacher-hero.webp")!important;background-position:18% center!important}
+.news-pride .kruart-news-thumb{background-image:url("./kruart-human-student-math.webp")!important;background-position:25% center!important}
+.kruart-today-message img{
+  right:4px!important;
+  bottom:-8px!important;
+  width:104px!important;
+  height:82px!important;
+  object-fit:cover!important;
+  object-position:25% center!important;
+  border-radius:18px!important;
+}
+.kruart-footer-banner>img{
+  right:5px!important;
+  bottom:-4px!important;
+  width:122px!important;
+  height:82px!important;
+  object-fit:cover!important;
+  object-position:15% center!important;
+  border-radius:18px!important;
+}
+.golden-session-view .session-hero-copy{
+  background-image:url("./kruart-human-student-hero.webp")!important;
+  background-size:122% auto!important;
+  background-position:left center!important;
+}
+@media(max-width:820px){
+  .kruart-main-hero{
+    background-size:auto 100%!important;
+    background-position:17% center!important;
+  }
+  .kruart-main-hero::before{width:100%;background:linear-gradient(180deg,rgba(223,243,255,0) 0 42%,rgba(223,243,255,.68) 63%,rgba(223,243,255,.98) 84%)}
+  .kruart-main-hero::after{
+    right:12px;
+    top:12px;
+    bottom:auto;
+    width:104px;
+    height:132px;
+    border-radius:16px;
+  }
+  .kruart-main-hero-copy{z-index:3}
+  .kruart-hero-tag{display:none}
+}
+
+/* Human-only hero composition — crop Golden Reference so robot areas never enter the visible frame. */
+.kruart-main-hero{
+  background:
+    linear-gradient(180deg,#dff4ff 0%,#cfeeff 56%,#dff1d4 100%)!important;
+}
+.kruart-main-hero::before{
+  content:""!important;
+  position:absolute!important;
+  left:0!important;
+  top:0!important;
+  bottom:0!important;
+  width:39%!important;
+  height:auto!important;
+  z-index:1!important;
+  pointer-events:none!important;
+  border-radius:0!important;
+  border:0!important;
+  box-shadow:none!important;
+  background:url("./kruart-human-student-hero.webp") left center/auto 100% no-repeat!important;
+}
+.kruart-main-hero::after{
+  content:""!important;
+  position:absolute!important;
+  right:0!important;
+  top:0!important;
+  bottom:0!important;
+  width:27%!important;
+  height:auto!important;
+  z-index:1!important;
+  pointer-events:none!important;
+  border-radius:0!important;
+  border:0!important;
+  box-shadow:none!important;
+  background:
+    linear-gradient(90deg,rgba(223,244,255,1) 0%,rgba(223,244,255,.22) 24%,rgba(223,244,255,0) 48%),
+    url("./kruart-human-teacher-hero.webp") left center/auto 100% no-repeat!important;
+}
+.kruart-main-hero-copy{
+  left:31.8%!important;
+  width:min(45%,620px)!important;
+  z-index:3!important;
+  background:rgba(255,255,255,.88)!important;
+}
+.kruart-hero-tag{z-index:4!important}
+@media(max-width:820px){
+  .kruart-main-hero{background:linear-gradient(180deg,#dff4ff 0%,#d5efff 55%,#e8f3dc 100%)!important}
+  .kruart-main-hero::before{
+    width:100%!important;
+    height:56%!important;
+    bottom:auto!important;
+    background:url("./kruart-human-student-hero.webp") left top/auto 100% no-repeat!important;
+  }
+  .kruart-main-hero::after{
+    width:38%!important;
+    height:40%!important;
+    left:auto!important;
+    top:10px!important;
+    bottom:auto!important;
+    background:url("./kruart-human-teacher-hero.webp") left center/auto 100% no-repeat!important;
+    border-radius:16px!important;
+  }
+  .kruart-main-hero-copy{left:14px!important;right:14px!important;width:auto!important}
+}
+
+/* Approved-reference calibration — 1536×864 desktop frame. */
+@media (min-width:1221px) and (max-height:900px){
+  .kruart-gateway{padding-top:10px!important;padding-bottom:0!important}
+  .kruart-main-hero{min-height:290px!important;height:290px!important}
+  .kruart-shortcuts{height:290px!important;padding:9px!important}
+  .kruart-shortcuts .kruart-panel-head{margin-bottom:5px!important;min-height:26px!important}
+  .kruart-shortcut{min-height:52px!important;height:52px!important;padding:5px 8px!important}
+  .kruart-shortcut+.kruart-shortcut{margin-top:4px!important}
+
+  .kruart-section{margin-top:10px!important}
+  .kruart-section-head{min-height:30px!important;height:30px!important;padding-bottom:4px!important}
+  .kruart-role-card{min-height:140px!important;height:140px!important}
+  .kruart-role-grid{height:140px!important}
+
+  .kruart-system-grid>a,.kruart-system-grid>button{min-height:73px!important;height:73px!important;padding:8px!important}
+  .kruart-news-card{min-height:87px!important;height:87px!important}
+
+  .kruart-today{margin-top:10px!important;padding:10px!important;height:238px!important}
+  .kruart-today .kruart-panel-head{margin-bottom:6px!important;height:27px!important}
+  .kruart-today-grid{gap:5px!important}
+  .kruart-today-grid>a{min-height:57px!important;height:57px!important;padding:6px!important}
+  .kruart-today-message{min-height:61px!important;height:61px!important;margin-top:6px!important;padding-block:5px!important}
+
+  .kruart-footer-banner{min-height:60px!important;height:60px!important;margin-top:8px!important;padding-block:4px!important}
+  .kruart-footer-books{height:50px!important}
+  .kruart-footer-banner>img{height:70px!important;width:110px!important}
+}
+
+@media (min-width:1221px) and (max-height:900px){
+  .kruart-today{height:230px!important}
+  .kruart-today-grid>a{min-height:55px!important;height:55px!important}
+  .kruart-today-message{min-height:53px!important;height:53px!important}
+}
