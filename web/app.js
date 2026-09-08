@@ -199,8 +199,8 @@ import {
   }
 
   function setSurface(data) {
-    document.title = data?.product?.shortName ? `${data.product.shortName} — Work` : 'AWH';
     const control = data?.control;
+    document.title = control?.authenticated ? (data?.product?.shortName ? `${data.product.shortName} — Work` : 'AWH — Work') : 'KRUART · Art’s Workspace Hub';
     const status = control?.authenticated ? 'พร้อมทำงาน' : control?.available ? 'เข้าสู่ระบบ' : 'ยังไม่พร้อม';
     message('surface-state', status);
     $('login-form').querySelector('button[type="submit"]').disabled = control?.available !== true;
@@ -1061,12 +1061,13 @@ import {
     } catch (error) { message('login-message', error instanceof Error ? error.message : 'เข้าสู่ AWH ไม่สำเร็จ'); }
   });
 
-  $('public-login-open')?.addEventListener('click', () => {
+  const openPublicLogin = () => {
     if ($('public-home-view')) $('public-home-view').hidden = true;
     $('sign-in-view').hidden = false;
     document.body.classList.remove('public-home-active');
     window.requestAnimationFrame(() => $('login-username')?.focus());
-  });
+  };
+  document.querySelectorAll('[data-open-login]').forEach((node) => node.addEventListener('click', openPublicLogin));
   $('.brand')?.addEventListener('click', (event) => {
     event.preventDefault();
     if (state.control?.authenticated === true) { showEcosystemHome(); return; }
