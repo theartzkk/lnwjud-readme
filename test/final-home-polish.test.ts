@@ -51,7 +51,7 @@ test('KRUART Golden Home uses LearnLab human cartoon art and keeps mascot art ou
   const publicHome = html.match(/<section id="public-home-view"[\s\S]*?<section id="sign-in-view"/)?.[0] || '';
   assert.doesNotMatch(publicHome, /kruart-learnlab-mascot\.svg/);
   assert.doesNotMatch(html, /<img[^>]+kruart-learnlab-mascot\.svg/);
-  assert.match(html, /kruart-login-avatar[^>]*><img src="\.\/kruart-human-student-thai\.webp"/);
+  assert.match(html, /kruart-login-avatar[^>]*><img src="\.\/kruart-reference-role-staff\.webp"/);
   assert.match(publicHome, /kruart-human-student-english\.webp/);
   assert.match(publicHome, /kruart-human-teacher-hero\.webp/);
   assert.match(css, /kruart-role-card\.parent[^\n]*kruart-reference-role-parent\.webp/);
