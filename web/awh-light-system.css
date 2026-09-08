@@ -1,46 +1,49 @@
 /* AWH Light-first visual authority — shared by Home, Work and owner surfaces. */
 :root{
   color-scheme:light!important;
-  --awh-canvas:#f7f8fb!important;--awh-rail:#ffffff!important;--awh-surface:#ffffff!important;
-  --awh-surface-raised:#f2f4f7!important;--awh-surface-soft:#e9edf3!important;
-  --awh-line:#d9dee7!important;--awh-line-soft:rgba(20,32,51,.08)!important;
-  --awh-text:#172033!important;--awh-muted:#667085!important;--awh-accent:#e96f19!important;
-  --awh-accent-strong:#d95c0b!important;--awh-accent-ink:#ffffff!important;
-  --awh-accent-soft:rgba(233,111,25,.10)!important;--awh-success:#16855b!important;
+  --awh-canvas:#f5faff!important;--awh-rail:#ffffff!important;--awh-surface:#ffffff!important;
+  --awh-surface-raised:#f7fbff!important;--awh-surface-soft:#eaf5ff!important;
+  --awh-line:#dbe8f4!important;--awh-line-soft:rgba(11,61,145,.09)!important;
+  --awh-text:#11325f!important;--awh-muted:#657d99!important;--awh-accent:#ff7a00!important;
+  --awh-accent-strong:#e96900!important;--awh-accent-ink:#ffffff!important;
+  --awh-accent-soft:rgba(255,122,0,.10)!important;--awh-success:#16855b!important;
   --awh-warning:#a9690d!important;--awh-danger:#c43d3d!important;
-  --canvas:#f7f8fb!important;--bg:#f7f8fb!important;--panel:#ffffff!important;--panel2:#f2f4f7!important;
-  --surface:#ffffff!important;--surface-raised:#f2f4f7!important;--surface-soft:#e9edf3!important;
-  --line:#d9dee7!important;--text:#172033!important;--muted:#667085!important;--accent:#e96f19!important;
+  --canvas:#f5faff!important;--bg:#f5faff!important;--panel:#ffffff!important;--panel2:#f7fbff!important;
+  --surface:#ffffff!important;--surface-raised:#f7fbff!important;--surface-soft:#eaf5ff!important;
+  --line:#dbe8f4!important;--text:#11325f!important;--muted:#657d99!important;--accent:#ff7a00!important;
   --good:#16855b!important;--warn:#a9690d!important;--danger:#c43d3d!important;--bad:#c43d3d!important;
 }
-html,body,.app-shell{background:#f7f8fb!important;color:#172033!important}
-body{background-image:none!important}.app-header{color:#172033}.brand small,.quiet-status,.muted,.form-message{color:#667085!important}
-.auth-card,.sheet-card,.awh-product-nav,.awh-home-hero,.awh-recent-panel,.awh-side-panel,.awh-owner-center,.awh-task-surface,.awh-files-surface,.awh-continuity{background:#fff!important;border-color:#dfe3ea!important;box-shadow:0 14px 38px rgba(21,35,58,.08)!important}
-input,textarea,select,pre{background:#fff!important;color:#172033!important;border-color:#d3d9e3!important}
-input::placeholder,textarea::placeholder{color:#98a2b3!important}.secondary-button,.refresh-button,.icon-button,.settings-action,.project-choice{background:#f5f7fa!important;color:#344054!important;border-color:#d9dee7!important}
-.primary-button,.awh-command-send{background:#e96f19!important;color:#fff!important}.text-button,.awh-text-action,.action-link{color:#c6530c!important}
-.eyebrow,.awh-home-kicker,.awh-section-heading span,.awh-tool-dialog-head>div>span{color:#c6530c!important}
-.public-home-view{background:#f7f8fb!important}.public-home-card,.public-home-panel{background:#fff!important;color:#172033!important;border-color:#dfe3ea!important}
-.public-home-view h1,.public-home-view h2,.public-home-view strong{color:#172033!important}.public-home-view p,.public-home-view small{color:#667085!important}
-body.work-active .composer{background:#fff!important;border-color:#d9dee7!important;box-shadow:0 -8px 28px rgba(21,35,58,.07)!important}
-body.work-active .assistant-turn .task-response{background:#fff!important;border-color:#dfe3ea!important;color:#344054!important}
-body.work-active .task-goal{background:#fff0e7!important;color:#7a3510!important;border-color:#f0c6aa!important}
-body.work-active .assistant-turn::before,.empty-mark,.system-feature-icon{background:#fff0e7!important;color:#c6530c!important;border-color:#f0c6aa!important}
-.task-summary,.task-response,.task-meta,.worker-summary,.workstream-title p,.empty-work{color:#667085!important}
-.state-chip{background:#f5f7fa!important;color:#475467!important;border-color:#d9dee7!important}.state-chip.completed{background:#ecfdf3!important;color:#067647!important;border-color:#abefc6!important}.state-chip.failed{background:#fef3f2!important;color:#b42318!important;border-color:#fecdca!important}.state-chip.approval{background:#fffaeb!important;color:#b54708!important;border-color:#fedf89!important}
-.awh-tool-card,.awh-pulse-card,.awh-recent-item,.awh-artifact-card,.awh-task-item,.awh-task-detail,.awh-file-item,.awh-ready-state,.awh-empty-card{background:#fff!important;color:#344054!important;border-color:#e1e5ec!important}
-.awh-tool-card:hover,.awh-pulse-card:hover,.awh-recent-item:hover,.awh-task-item:hover{background:#fff8f3!important;border-color:#efb58c!important}
-.awh-tool-copy strong,.awh-pulse-card strong,.awh-recent-item strong,.awh-artifact-card strong,.awh-task-detail-heading h3,.awh-file-copy strong{color:#172033!important}
-.awh-tool-copy small,.awh-pulse-card small,.awh-pulse-card em,.awh-recent-item small,.awh-recent-item time,.awh-artifact-card small,.awh-task-item small,.awh-task-item time,.awh-task-detail p,.awh-file-copy small,.awh-file-copy em{color:#667085!important}
-.awh-product-nav-item{color:#667085!important}.awh-product-nav-item:hover,.awh-product-nav-item.is-active{background:#fff0e7!important;color:#172033!important}
-.awh-mobile-nav{background:rgba(255,255,255,.96)!important;border-color:#d9dee7!important;box-shadow:0 12px 40px rgba(21,35,58,.12)!important}.awh-mobile-nav-item{color:#667085!important}.awh-mobile-nav-item.is-active{background:#fff0e7!important;color:#c6530c!important}
-.sheet-backdrop,.awh-tool-dialog-backdrop,.hosting-confirm{background:rgba(16,24,40,.40)!important}.awh-tool-dialog-card,.hosting-confirm-card{background:#fff!important;color:#172033!important;border-color:#d9dee7!important}
-.system-health-card,.system-feature-card{background:#fff!important;color:#172033!important;border-color:#dfe3ea!important}.system-feature-copy small{color:#667085!important}
+html,body,.app-shell{background:#f5faff!important;color:#11325f!important}
+body{background-image:none!important}.app-header{color:#11325f}.brand small,.quiet-status,.muted,.form-message{color:#657d99!important}
+.auth-card,.sheet-card,.awh-product-nav,.awh-home-hero,.awh-recent-panel,.awh-side-panel,.awh-owner-center,.awh-task-surface,.awh-files-surface,.awh-continuity{background:#fff!important;border-color:#dbe8f4!important;box-shadow:0 14px 38px rgba(21,35,58,.08)!important}
+input,textarea,select,pre{background:#fff!important;color:#11325f!important;border-color:#d3d9e3!important}
+input::placeholder,textarea::placeholder{color:#98a2b3!important}.secondary-button,.refresh-button,.icon-button,.settings-action,.project-choice{background:#f7fbff!important;color:#315577!important;border-color:#dbe8f4!important}
+.primary-button,.awh-command-send{background:#ff7a00!important;color:#fff!important}.text-button,.awh-text-action,.action-link{color:#0b3d91!important}
+.eyebrow,.awh-home-kicker,.awh-section-heading span,.awh-tool-dialog-head>div>span{color:#0b3d91!important}
+.public-home-view{background:#f5faff!important}.public-home-card,.public-home-panel{background:#fff!important;color:#11325f!important;border-color:#dbe8f4!important}
+.public-home-view h1,.public-home-view h2,.public-home-view strong{color:#11325f!important}.public-home-view p,.public-home-view small{color:#657d99!important}
+body.work-active .composer{background:#fff!important;border-color:#dbe8f4!important;box-shadow:0 -8px 28px rgba(21,35,58,.07)!important}
+body.work-active .assistant-turn .task-response{background:#fff!important;border-color:#dbe8f4!important;color:#315577!important}
+body.work-active .task-goal{background:#eef6ff!important;color:#0b3d91!important;border-color:#d7e7f5!important}
+body.work-active .assistant-turn::before,.empty-mark,.system-feature-icon{background:#eef6ff!important;color:#0b3d91!important;border-color:#d7e7f5!important}
+.task-summary,.task-response,.task-meta,.worker-summary,.workstream-title p,.empty-work{color:#657d99!important}
+.state-chip{background:#f7fbff!important;color:#475467!important;border-color:#dbe8f4!important}.state-chip.completed{background:#ecfdf3!important;color:#067647!important;border-color:#abefc6!important}.state-chip.failed{background:#fef3f2!important;color:#b42318!important;border-color:#fecdca!important}.state-chip.approval{background:#fffaeb!important;color:#b54708!important;border-color:#fedf89!important}
+.awh-tool-card,.awh-pulse-card,.awh-recent-item,.awh-artifact-card,.awh-task-item,.awh-task-detail,.awh-file-item,.awh-ready-state,.awh-empty-card{background:#fff!important;color:#315577!important;border-color:#dbe8f4!important}
+.awh-tool-card:hover,.awh-pulse-card:hover,.awh-recent-item:hover,.awh-task-item:hover{background:#fff6ed!important;border-color:#f2cfaa!important}
+.awh-tool-copy strong,.awh-pulse-card strong,.awh-recent-item strong,.awh-artifact-card strong,.awh-task-detail-heading h3,.awh-file-copy strong{color:#11325f!important}
+.awh-tool-copy small,.awh-pulse-card small,.awh-pulse-card em,.awh-recent-item small,.awh-recent-item time,.awh-artifact-card small,.awh-task-item small,.awh-task-item time,.awh-task-detail p,.awh-file-copy small,.awh-file-copy em{color:#657d99!important}
+.awh-product-nav-item{color:#657d99!important}.awh-product-nav-item:hover,.awh-product-nav-item.is-active{background:#eef6ff!important;color:#11325f!important}
+.awh-mobile-nav{background:rgba(255,255,255,.96)!important;border-color:#dbe8f4!important;box-shadow:0 12px 40px rgba(21,35,58,.12)!important}.awh-mobile-nav-item{color:#657d99!important}.awh-mobile-nav-item.is-active{background:#eef6ff!important;color:#0b3d91!important}
+.sheet-backdrop,.awh-tool-dialog-backdrop,.hosting-confirm{background:rgba(16,24,40,.40)!important}.awh-tool-dialog-card,.hosting-confirm-card{background:#fff!important;color:#11325f!important;border-color:#dbe8f4!important}
+.system-health-card,.system-feature-card{background:#fff!important;color:#11325f!important;border-color:#dbe8f4!important}.system-feature-copy small{color:#657d99!important}
 /* Specialist owner surfaces */
-.studio-shell,.hosting-main,.infra-main,.review-main,.trust-main{color:#172033!important}.studio-header,.hosting-header,.infra-header,.review-header,.trust-header{background:rgba(255,255,255,.94)!important;border-color:#e1e5ec!important;color:#172033!important}
-.gate-card,.panel-card,.browser-card,.table-sidebar,.metric-card,.status-card,.migration-item,.audit-stream,.hosting-panel,.site-card,.hosting-summary,.hosting-note,.server-card,.infra-section,.infra-note,.project-card,.entity-row,.check-item,.review-panel,.review-choice,.review-job,.trust-state{background:#fff!important;color:#172033!important;border-color:#dfe3ea!important}
-.health-banner,.schema-box,.url-preview,.site-state,.domain-explainer,.empty,.review-health,.review-revision{background:#f5f7fa!important;color:#667085!important;border-color:#e1e5ec!important}
-.table-item:hover,.table-item.active,.tab.active{background:#fff0e7!important}.data-grid th{background:#f2f4f7!important;color:#344054!important}.data-grid td{border-color:#eaecf0!important;color:#344054!important}
-.hosting-form input,.hosting-form select,.review-field select,.review-field input,.review-choice select{background:#fff!important;color:#172033!important;border-color:#d3d9e3!important}
-.infra-brand,.hosting-brand,.review-brand,.trust-header strong,.back-link,.back,.links a{color:#344054!important}
+.studio-shell,.hosting-main,.infra-main,.review-main,.trust-main{color:#11325f!important}.studio-header,.hosting-header,.infra-header,.review-header,.trust-header{background:rgba(255,255,255,.94)!important;border-color:#dbe8f4!important;color:#11325f!important}
+.gate-card,.panel-card,.browser-card,.table-sidebar,.metric-card,.status-card,.migration-item,.audit-stream,.hosting-panel,.site-card,.hosting-summary,.hosting-note,.server-card,.infra-section,.infra-note,.project-card,.entity-row,.check-item,.review-panel,.review-choice,.review-job,.trust-state{background:#fff!important;color:#11325f!important;border-color:#dbe8f4!important}
+.health-banner,.schema-box,.url-preview,.site-state,.domain-explainer,.empty,.review-health,.review-revision{background:#f7fbff!important;color:#657d99!important;border-color:#dbe8f4!important}
+.table-item:hover,.table-item.active,.tab.active{background:#eef6ff!important}.data-grid th{background:#f2f4f7!important;color:#315577!important}.data-grid td{border-color:#eaecf0!important;color:#315577!important}
+.hosting-form input,.hosting-form select,.review-field select,.review-field input,.review-choice select{background:#fff!important;color:#11325f!important;border-color:#d3d9e3!important}
+.infra-brand,.hosting-brand,.review-brand,.trust-header strong,.back-link,.back,.links a{color:#315577!important}
 @media(prefers-contrast:more){:root{--awh-line:#b4bcc8!important}.auth-card,.sheet-card,.awh-tool-card,.awh-pulse-card{border-width:2px!important}}
+
+/* BAY Ecosystem Golden Theme adapter — approved LearnLab Teacher/Admin family. */
+body{background:radial-gradient(circle at 6% 0,#e5f5ff 0,transparent 24rem),radial-gradient(circle at 96% 4%,#fff0df 0,transparent 22rem),#f5faff!important}.app-header,.studio-header,.hosting-header,.infra-header,.review-header,.trust-header{background:rgba(255,255,255,.98)!important;border-bottom:1px solid #dbe8f4!important;box-shadow:0 5px 18px rgba(20,61,117,.05)!important;backdrop-filter:none!important}.brand-mark,.infra-brand>span,.hosting-brand span,.review-brand span{color:transparent!important;background:#fff url("./bay-golden-mark.svg") center/contain no-repeat!important;border:0!important;box-shadow:none!important}.awh-product-nav,.table-sidebar{background:#fff!important;border-color:#dbe8f4!important;box-shadow:8px 0 30px rgba(20,61,117,.045)!important}.awh-product-nav-mark{color:transparent!important;background:#fff url("./bay-golden-mark.svg") center/contain no-repeat!important}.awh-product-nav-item:hover,.awh-product-nav-item.is-active,.table-item:hover,.table-item.active,.tab.active{background:#eef6ff!important;color:#0b3d91!important}.awh-home-hero,.public-home-card.hero,.infra-hero,.hosting-hero{position:relative;overflow:hidden;border:1px solid #cfe5f7!important;border-radius:28px!important;background:linear-gradient(120deg,#d9f2ff 0,#f1faff 56%,#fff1e2 100%)!important;color:#0b3d91!important;box-shadow:0 18px 46px rgba(20,61,117,.11)!important}.awh-home-hero:after{content:"";position:absolute;right:24px;bottom:-8px;width:180px;height:180px;background:url("./bay-golden-mascot.svg") center/contain no-repeat;filter:drop-shadow(0 12px 18px rgba(20,61,117,.12));pointer-events:none}.awh-home-hero>*{position:relative;z-index:1}.awh-home-hero h1,.infra-hero h1,.hosting-hero h1{color:#0b3d91!important}.awh-home-hero p,.infra-hero p,.hosting-hero p{color:#567492!important}.primary-button,.awh-command-send,.review-choice button,.review-setup-body>button{background:linear-gradient(135deg,#ff7a00,#ff8d2d)!important;color:#fff!important;border-color:transparent!important;box-shadow:0 8px 20px rgba(255,122,0,.18)!important}.secondary-button,.refresh-button,.icon-button,.settings-action,.project-choice,.infra-actions button,.hosting-actions a,.hosting-actions button{background:#fff!important;color:#0b3d91!important;border-color:#dbe8f4!important}.gate-card,.panel-card,.browser-card,.metric-card,.status-card,.migration-item,.audit-stream,.hosting-panel,.site-card,.hosting-summary,.hosting-note,.server-card,.infra-section,.infra-note,.project-card,.entity-row,.check-item,.review-panel,.review-choice,.review-job,.trust-state{border-radius:20px!important;box-shadow:0 8px 24px rgba(20,61,117,.055)!important}.data-grid th{background:#eef6ff!important;color:#0b3d91!important}.hosting-form input,.hosting-form select,.review-field select,.review-field input,.review-choice select,input,textarea,select{background:#fff!important;color:#11325f!important;border-color:#d6e5f2!important}.eyebrow,.awh-home-kicker,.review-kicker,.section-heading span{color:#ff7a00!important}.state-chip.completed,.pill.ready,.overall-state,.safety-badge{color:#08765a!important}.awh-tool-card:hover,.awh-pulse-card:hover,.awh-recent-item:hover,.awh-task-item:hover{background:#f6fbff!important;border-color:#b8d8f1!important}@media(max-width:760px){.awh-home-hero:after{width:120px;height:120px;opacity:.86}.awh-home-hero{padding-bottom:120px!important}}
