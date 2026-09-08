@@ -18,7 +18,7 @@ final class HubTrustPolicy
         $decision = strtoupper((string)($context['decision'] ?? ''));
         return match ($action) {
             'hosting.site.create' => self::policy(self::LOW, false, false),
-            'hosting.site.deploy', 'hosting.site.rollback', 'hosting.site.disable', 'hosting.site.bind_domain' => self::policy(self::MEDIUM, true, false),
+            'hosting.site.deploy', 'hosting.site.rollback', 'hosting.site.disable', 'hosting.site.bind_domain', 'bay.remote_update.install' => self::policy(self::MEDIUM, true, false),
             'hosting.site.delete', 'hosting.database.purge', 'hosting.backup.purge' => self::policy(self::CRITICAL, true, true),
             'account.user.create' => self::policy($role === 'ADMIN' ? self::HIGH : self::MEDIUM, false, $role === 'ADMIN'),
             'account.request.review' => self::policy($decision === 'APPROVE' && $role === 'ADMIN' ? self::HIGH : self::MEDIUM, false, $decision === 'APPROVE' && $role === 'ADMIN'),

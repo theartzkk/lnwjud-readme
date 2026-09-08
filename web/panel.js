@@ -1,4 +1,4 @@
-import { loadAuthSession, loadInfrastructure, listManagedSites, loadProviderStatus } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { loadAuthSession, loadInfrastructure, listManagedSites, loadProviderStatus, loadBayRemoteUpdateStatus, createBayRemoteInstallRelay, relayBayRemoteCommand } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $=(id)=>document.getElementById(id);
 const bytes=(value)=>{const n=Number(value||0);if(!Number.isFinite(n)||n<1)return '—';if(n<1024**2)return Math.round(n/1024)+' KB';if(n<1024**3)return (n/1024**2).toFixed(1)+' MB';return (n/1024**3).toFixed(1)+' GB';};
@@ -20,6 +20,153 @@ function attention(title,detail,state='WARNING'){
   const wrap=$('cp-attention-wrap'),host=$('cp-attention');if(!wrap||!host)return;
   wrap.hidden=false;host.append(row(title,detail,state,state));
 }
+let bayControlState=null;
+let bayActionBusy=false;
+const pause=(ms)=>new Promise(resolve=>setTimeout(resolve,ms));
+const shortSha=(value)=>typeof value==='string'&&/^[0-9a-f]{40}$/i.test(value)?value.slice(0,9):'—';
+
+function bayStep(key,state,note){
+  const node=document.querySelector('[data-bay-step="'+key+'"]');if(!node)return;
+  node.classList.remove('is-good','is-active','is-bad');
+  if(state)node.classList.add('is-'+state);
+  const noteNode=$('cp-bay-'+key+'-note');if(noteNode&&note)noteNode.textContent=note;
+}
+function bayMessage(text,state=''){
+  const node=$('cp-bay-message');if(!node)return;
+  node.className='cp-bay-message'+(state?' is-'+state:'');node.textContent=text;
+}
+function setBayOverall(text,state=''){
+  const node=$('cp-bay-overall');if(!node)return;
+  node.className='cp-bay-state'+(state?' is-'+state:'');node.textContent=text;
+}
+function setBayButton({disabled,label,note}){
+  const button=$('cp-bay-update-button');if(!button)return;
+  button.disabled=Boolean(disabled)||bayActionBusy;
+  const strong=button.querySelector('strong'),small=button.querySelector('small');
+  if(strong)strong.textContent=label;if(small)small.textContent=note;
+}
+function findBayPackage(production){
+  const current=String(production?.currentVersion||'');
+  const packages=Array.isArray(production?.packages)?production.packages:[];
+  return packages.find(item=>item?.installable===true&&item?.fromVersion===current&&typeof item?.version==='string'&&typeof item?.sourceSha==='string'&&/^[0-9a-f]{40}$/i.test(item.sourceSha)&&/^[0-9a-f]{64}$/i.test(item?.packageSha256||''))||null;
+}
+function renderBayState(control,production,error=null){
+  bayControlState={control,production,error};
+  if(error||!production){
+    $('cp-bay-current-version').textContent='ยังไม่เชื่อม';
+    $('cp-bay-current-sha').textContent='ต้อง bootstrap Remote Update bridge ครั้งแรก';
+    $('cp-bay-latest-version').textContent='RC5.4.9';
+    $('cp-bay-latest-sha').textContent='bootstrap release';
+    bayStep('source','good','Signed control พร้อม');
+    bayStep('package','active','รอ bridge');
+    bayStep('backup','','PackageManager');
+    bayStep('install','','รอ bridge');
+    bayStep('verify','','รอ bridge');
+    setBayOverall('Bootstrap 1 ครั้ง','warn');
+    setBayButton({disabled:true,label:'รอติดตั้ง Remote Update bridge',note:'ติดตั้ง RC5.4.9 ผ่าน Update Center ครั้งสุดท้าย'});
+    bayMessage('ครั้งนี้ต้อง bootstrap BAY bridge ผ่าน Update Center เดิมหนึ่งครั้ง หลังจากนั้นอัปเดตจากมือถือได้ทั้งหมด','warn');
+    return;
+  }
+
+  const current=String(production.currentVersion||'—');
+  const deployed=String(production.deployedSha||'');
+  const pkg=findBayPackage(production);
+  const targetVersion=pkg?.version||current;
+  const targetSha=pkg?.sourceSha||deployed;
+  const preflight=production?.preflight?.ready===true&&!production?.maintenance?.active;
+  const sourceKnown=production?.deployedRepository==='theartzkk/bay-excuse-x'&&/^[0-9a-f]{40}$/i.test(deployed);
+
+  $('cp-bay-current-version').textContent=current;
+  $('cp-bay-current-sha').textContent=deployed?'Production · '+shortSha(deployed):'Production baseline';
+  $('cp-bay-latest-version').textContent=targetVersion;
+  $('cp-bay-latest-sha').textContent=targetSha?(pkg?'Verified Inbox · ':'Production · ')+shortSha(targetSha):'Update Inbox';
+
+  bayStep('source',sourceKnown?'good':'bad',sourceKnown?'Exact source known':'Source ไม่ครบ');
+  bayStep('package',pkg?'good':'good',pkg?'CI + checksum ผ่าน':'ไม่มีแพ็กเกจใหม่');
+  bayStep('backup',preflight?'good':'bad',preflight?'พร้อมสร้างอัตโนมัติ':production?.maintenance?.active?'Maintenance Lock':'Preflight ไม่ผ่าน');
+  bayStep('install',pkg?'':'good',pkg?'PackageManager':'รุ่นปัจจุบัน');
+  bayStep('verify',pkg?'':'good',pkg?'Post-check หลังติดตั้ง':'Production พร้อม');
+
+  if(!sourceKnown){
+    setBayOverall('Source ต้องตรวจ','bad');
+    setBayButton({disabled:true,label:'ยังอัปเดตไม่ได้',note:'Production source lineage ไม่สมบูรณ์'});
+    bayMessage('BAY ปฏิเสธการอัปเดตจนกว่าจะยืนยัน source lineage ได้','bad');return;
+  }
+  if(!preflight){
+    setBayOverall('Production ต้องตรวจ','bad');
+    setBayButton({disabled:true,label:'Production ยังไม่พร้อมอัปเดต',note:production?.maintenance?.active?'มี Maintenance Lock':'Preflight ไม่ผ่าน'});
+    bayMessage('BAY safety preflight ยังไม่พร้อม จึงไม่อนุญาตให้ติดตั้ง','bad');return;
+  }
+  if(!pkg){
+    setBayOverall('ล่าสุดแล้ว','');
+    setBayButton({disabled:true,label:'BAY '+current+' พร้อมใช้',note:'ไม่มีแพ็กเกจใหม่ที่ผ่าน Update Inbox'});
+    bayMessage('✅ BAY Production พร้อมใช้ · release ใหม่จะถูก CI ส่งเข้า Update Inbox อัตโนมัติ','good');return;
+  }
+  setBayOverall('พร้อมอัปเดต','');
+  setBayButton({disabled:false,label:'อัปเดตเป็น '+pkg.version,note:'Backup → Install → Verify อัตโนมัติ'});
+  bayMessage('พร้อมแล้ว · แพ็กเกจผ่าน CI, checksum และ lineage ของ BAY Update Inbox แล้ว');
+}
+
+async function loadBayControl(){
+  try{
+    setBayOverall('กำลังตรวจ','loading');
+    const control=await loadBayRemoteUpdateStatus();
+    let production=null,error=null;
+    try{production=await relayBayRemoteCommand(control.endpoint,control.statusRelay);}catch(err){error=err;}
+    renderBayState(control,production,error);return bayControlState;
+  }catch(error){
+    renderBayState(null,null,error);setBayOverall('โหลดไม่สำเร็จ','bad');
+    bayMessage(error instanceof Error?error.message:'โหลด BAY Remote Update ไม่สำเร็จ','bad');return bayControlState;
+  }
+}
+
+async function updateBayProduction(){
+  if(bayActionBusy)return;
+  bayActionBusy=true;
+  try{
+    let state=await loadBayControl();
+    if(!state?.control||!state?.production)throw new Error('ต้อง bootstrap Remote Update bridge บน BAY Production ก่อน');
+    let pkg=findBayPackage(state.production);
+    if(!pkg){
+      setBayOverall('กำลังรอ CI','warn');bayStep('package','active','Auto-stage');
+      bayMessage('กำลังรอ GitHub CI ส่ง release ที่ตรวจแล้วเข้า BAY Update Inbox…','warn');
+      for(let i=0;i<24&&!pkg;i++){
+        await pause(5000);
+        state=await loadBayControl();
+        pkg=findBayPackage(state?.production);
+      }
+      if(!pkg)throw new Error('ยังไม่มีแพ็กเกจใหม่ใน BAY Update Inbox');
+    }
+
+    const expectedVersion=pkg.version,expectedSha=pkg.sourceSha;
+    bayStep('backup','active','กำลังสร้าง');
+    bayStep('install','active','PackageManager');
+    bayStep('verify','','รอ Post-check');
+    setBayOverall('กำลังอัปเดต','warn');
+    bayMessage('BAY กำลัง Backup → Install → Migration → Smoke Test โปรดเปิดหน้านี้ไว้จนเสร็จ','warn');
+
+    const relay=await createBayRemoteInstallRelay({targetVersion:expectedVersion,targetSha:expectedSha,packageSha256:pkg.packageSha256});
+    const result=await relayBayRemoteCommand(relay.endpoint,relay.relay);
+    if(!['INSTALLED','CURRENT'].includes(result.state))throw new Error('BAY ไม่ยืนยันผลการติดตั้ง');
+
+    bayStep('backup','good',result.backup?'สร้างแล้ว':'ผ่าน');
+    bayStep('install','good','ติดตั้งแล้ว');
+    bayStep('verify','active','กำลังยืนยัน exact SHA');
+    await pause(1200);
+    state=await loadBayControl();
+    if(state?.production?.currentVersion!==expectedVersion||state?.production?.deployedSha!==expectedSha)throw new Error('Post-install exact SHA verification ยังไม่ตรง');
+    bayStep('verify','good','exact SHA');
+    setBayOverall('สำเร็จ','');
+    bayMessage('✅ อัปเดต BAY Production สำเร็จและยืนยัน exact SHA แล้ว','good');
+  }catch(error){
+    setBayOverall('หยุดอย่างปลอดภัย','bad');
+    bayMessage(error instanceof Error?error.message:'BAY Remote Update ไม่สำเร็จ','bad');
+  }finally{
+    bayActionBusy=false;
+    await loadBayControl();
+  }
+}
+
 function renderServer(data){
   const server=data?.telemetry?.server||null,storage=data?.storage||server?.storage||{},backup=data?.backup||{},db=data?.database||{};
   if(server){
@@ -107,6 +254,8 @@ function installUi(){
   $('cp-menu')?.addEventListener('click',()=>document.body.classList.toggle('cp-menu-open'));
   document.addEventListener('click',(event)=>{if(window.innerWidth<=840&&document.body.classList.contains('cp-menu-open')&&event.target instanceof HTMLAnchorElement)document.body.classList.remove('cp-menu-open');});
   $('cp-refresh')?.addEventListener('click',()=>void load());
+  $('cp-bay-recheck')?.addEventListener('click',()=>void loadBayControl());
+  $('cp-bay-update-button')?.addEventListener('click',()=>void updateBayProduction());
 }
 async function load(){
   const refresh=$('cp-refresh');if(refresh)refresh.disabled=true;
@@ -122,6 +271,7 @@ async function load(){
     const data=primary[1].value;
     renderServer(data);renderDomains(data);renderRecovery(data);renderServices(data);renderEcosystem(data);
     $('cp-updated').textContent='พร้อมใช้ · '+Math.max(1,Math.round(performance.now()-started))+' ms';
+    void loadBayControl();
 
     Promise.allSettled([listManagedSites(),loadProviderStatus()]).then((secondary)=>{
       if(secondary[0].status==='fulfilled')renderSites(secondary[0].value);
