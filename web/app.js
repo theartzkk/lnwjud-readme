@@ -887,9 +887,9 @@ import {
       const url = safeUrl(project?.primary_action?.url); if (url) location.assign(url);
     };
     const card = (project, prominent = false) => {
-      const article = document.createElement('article'); article.className = prominent ? 'ecosystem-project-card featured' : 'ecosystem-project-card';
+      const article = document.createElement('article'); article.className = prominent ? 'ecosystem-project-card featured' : 'ecosystem-project-card'; article.dataset.projectId = safeText(project.id, 'project');
       const head = document.createElement('div'); head.className = 'ecosystem-project-head';
-      const icon = document.createElement('span'); icon.className = 'ecosystem-project-icon'; icon.textContent = safeText(project.icon, '•');
+      const icon = document.createElement('span'); icon.className = 'ecosystem-project-icon'; icon.textContent = ({ awh: 'AWH', 'bay-excuse-x': 'BAY', 'bay-learnlab': 'LL', 'school-website': 'WEB' })[project.id] || safeText(project.name, '•').slice(0, 2).toUpperCase();
       const status = document.createElement('span'); const statusTone=({prototype:'pilot',reference:'internal'})[project.status]||safeText(project.status,'project'); status.className = `ecosystem-project-status status-${statusTone}`; status.textContent = labelFor(project.status);
       head.append(icon, status);
       const title = document.createElement('h3'); title.textContent = safeText(project.name, 'โปรเจกต์');

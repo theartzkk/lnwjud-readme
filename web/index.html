@@ -19,8 +19,14 @@
 <body>
   <div id="awh-app" class="app-shell">
     <header class="app-header">
-      <a class="brand" href="./" aria-label="Art’s Workspace Hub home"><span class="brand-mark" aria-hidden="true">A</span><span><strong id="product-name">Art’s Workspace Hub</strong><small id="product-tagline">Your Projects. One Workspace. Anywhere.</small></span></a>
-      <div class="header-actions"><span id="surface-state" class="quiet-status" aria-live="polite">กำลังเชื่อมต่อ</span><button id="account-open" class="icon-button" type="button" aria-label="บัญชีและความปลอดภัย" hidden>บัญชี</button></div>
+      <a class="brand" href="./" aria-label="Art’s Workspace Hub home"><span class="brand-mark" aria-hidden="true">A</span><span><strong id="product-name">Art’s Workspace Hub</strong><small id="product-tagline">BAY Ecosystem · One Workspace</small></span></a>
+      <nav class="global-nav" aria-label="ทางลัดหลัก">
+        <a class="global-nav-item is-active" href="./"><img src="./bay-icon-home.svg" alt="" /><span>หน้าแรก</span></a>
+        <a class="global-nav-item" href="/bay/"><img src="./bay-icon-ecosystem.svg" alt="" /><span>BAY</span></a>
+        <a class="global-nav-item" href="/bay/apps.html"><img src="./bay-icon-apps.svg" alt="" /><span>ระบบทั้งหมด</span></a>
+        <a class="global-nav-item" href="/bay/status.html"><img src="./bay-icon-status.svg" alt="" /><span>สถานะ</span></a>
+      </nav>
+      <div class="header-actions"><span id="surface-state" class="quiet-status" aria-live="polite">กำลังเชื่อมต่อ</span><button id="account-open" class="icon-button account-button" type="button" aria-label="บัญชีและความปลอดภัย" hidden>บัญชี</button></div>
     </header>
 
     <main class="app-main">
@@ -29,8 +35,8 @@
         <div class="auth-card"><h2>กำลังเตรียมพื้นที่ทำงาน…</h2><p class="muted">ไม่ต้องเข้าสู่ระบบซ้ำ หากเซสชันบนอุปกรณ์นี้ยังใช้งานได้</p></div>
       </section>
       <section id="public-home-view" class="public-home-view" aria-labelledby="public-home-title" hidden>
-        <div class="public-home-copy"><p class="eyebrow">ART’S WORKSPACE HUB</p><h1 id="public-home-title">ศูนย์กลางงานและระบบ<br />ของเรา</h1><p>เริ่มจากหน้าบ้านเดียว แล้วเลือกว่าจะทำงานกับ AWH เข้า BAY Ecosystem เปิด LearnLab หรือดาวน์โหลดโปรแกรม โดยไม่ต้องจำหลายลิงก์</p><div class="public-home-actions"><button id="public-login-open" class="primary-button" type="button">เข้าสู่พื้นที่ทำงาน AWH</button><a class="secondary-button public-link-button" href="/bay/">เปิด BAY Ecosystem</a></div></div>
-        <div class="public-home-grid" aria-label="ทางเข้าหลัก"><a href="/bay/" class="public-home-card"><span>B</span><strong>BAY Ecosystem</strong><small>ระบบโรงเรียน · LearnLab · ดาวน์โหลด · คู่มือ</small></a><a href="/bay/apps.html" class="public-home-card"><span>▦</span><strong>ระบบทั้งหมด</strong><small>เลือกทางเข้าตามงานและผู้ใช้งาน</small></a><a href="/bay/downloads.html" class="public-home-card"><span>↓</span><strong>ดาวน์โหลด</strong><small>โปรแกรมสำหรับ Windows และ macOS พร้อมติดตั้ง</small></a><a href="/bay/status.html" class="public-home-card"><span>●</span><strong>สถานะระบบ</strong><small>ตรวจบริการส่วนกลางแบบอ่านอย่างเดียว</small></a></div>
+        <div class="public-home-copy"><p class="eyebrow">BAY ECOSYSTEM · ART’S WORKSPACE HUB</p><h1 id="public-home-title">งานทั้งหมดของเรา<br />อยู่ที่เดียว</h1><p>ทำงานกับ AWH เข้า BAY Ecosystem เปิด LearnLab และจัดการระบบโรงเรียนจากหน้าบ้านเดียว โดยไม่ต้องจำหลายลิงก์</p><div class="public-home-actions"><button id="public-login-open" class="primary-button" type="button">เข้าสู่พื้นที่ทำงาน AWH</button><a class="secondary-button public-link-button" href="/bay/">เปิด BAY Ecosystem</a></div><div class="golden-hero-orbit" aria-hidden="true"><span class="orbit-card orbit-work"><img src="./bay-icon-work.svg" alt="" /></span><span class="orbit-card orbit-learn"><img src="./bay-icon-learnlab.svg" alt="" /></span><span class="orbit-card orbit-school"><img src="./bay-icon-school.svg" alt="" /></span></div></div>
+        <div class="public-home-grid" aria-label="ทางเข้าหลัก"><a href="/bay/" class="public-home-card"><span><img src="./bay-icon-ecosystem.svg" alt="" /></span><strong>BAY Ecosystem</strong><small>ระบบโรงเรียน · LearnLab · ดาวน์โหลด · คู่มือ</small></a><a href="/bay/apps.html" class="public-home-card"><span><img src="./bay-icon-apps.svg" alt="" /></span><strong>ระบบทั้งหมด</strong><small>เลือกทางเข้าตามงานและผู้ใช้งาน</small></a><a href="/bay/downloads.html" class="public-home-card"><span><img src="./bay-icon-download.svg" alt="" /></span><strong>ดาวน์โหลด</strong><small>โปรแกรมสำหรับ Windows และ macOS พร้อมติดตั้ง</small></a><a href="/bay/status.html" class="public-home-card"><span><img src="./bay-icon-status.svg" alt="" /></span><strong>สถานะระบบ</strong><small>ตรวจบริการส่วนกลางแบบอ่านอย่างเดียว</small></a></div>
       </section>
       <section id="sign-in-view" class="sign-in-view" aria-labelledby="sign-in-title" hidden>
         <div class="sign-in-copy"><p class="eyebrow">AWH</p><h1 id="sign-in-title">กลับมาทำงานต่อ<br />ได้ทุกที่</h1><p>เข้าสู่ AWH เพื่อเลือกโปรเจกต์ ส่งสิ่งที่อยากทำ และติดตามผลลัพธ์จากอุปกรณ์ที่คุณใช้</p></div>

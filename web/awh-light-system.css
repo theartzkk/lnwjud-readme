@@ -47,3 +47,213 @@ body.work-active .assistant-turn::before,.empty-mark,.system-feature-icon{backgr
 
 /* BAY Ecosystem Golden Theme adapter — approved LearnLab Teacher/Admin family. */
 body{background:radial-gradient(circle at 6% 0,#e5f5ff 0,transparent 24rem),radial-gradient(circle at 96% 4%,#fff0df 0,transparent 22rem),#f5faff!important}.app-header,.studio-header,.hosting-header,.infra-header,.review-header,.trust-header{background:rgba(255,255,255,.98)!important;border-bottom:1px solid #dbe8f4!important;box-shadow:0 5px 18px rgba(20,61,117,.05)!important;backdrop-filter:none!important}.brand-mark,.infra-brand>span,.hosting-brand span,.review-brand span{color:transparent!important;background:#fff url("./bay-golden-mark.svg") center/contain no-repeat!important;border:0!important;box-shadow:none!important}.awh-product-nav,.table-sidebar{background:#fff!important;border-color:#dbe8f4!important;box-shadow:8px 0 30px rgba(20,61,117,.045)!important}.awh-product-nav-mark{color:transparent!important;background:#fff url("./bay-golden-mark.svg") center/contain no-repeat!important}.awh-product-nav-item:hover,.awh-product-nav-item.is-active,.table-item:hover,.table-item.active,.tab.active{background:#eef6ff!important;color:#0b3d91!important}.awh-home-hero,.public-home-card.hero,.infra-hero,.hosting-hero{position:relative;overflow:hidden;border:1px solid #cfe5f7!important;border-radius:28px!important;background:linear-gradient(120deg,#d9f2ff 0,#f1faff 56%,#fff1e2 100%)!important;color:#0b3d91!important;box-shadow:0 18px 46px rgba(20,61,117,.11)!important}.awh-home-hero:after{content:"";position:absolute;right:24px;bottom:-8px;width:180px;height:180px;background:url("./bay-golden-mascot.svg") center/contain no-repeat;filter:drop-shadow(0 12px 18px rgba(20,61,117,.12));pointer-events:none}.awh-home-hero>*{position:relative;z-index:1}.awh-home-hero h1,.infra-hero h1,.hosting-hero h1{color:#0b3d91!important}.awh-home-hero p,.infra-hero p,.hosting-hero p{color:#567492!important}.primary-button,.awh-command-send,.review-choice button,.review-setup-body>button{background:linear-gradient(135deg,#ff7a00,#ff8d2d)!important;color:#fff!important;border-color:transparent!important;box-shadow:0 8px 20px rgba(255,122,0,.18)!important}.secondary-button,.refresh-button,.icon-button,.settings-action,.project-choice,.infra-actions button,.hosting-actions a,.hosting-actions button{background:#fff!important;color:#0b3d91!important;border-color:#dbe8f4!important}.gate-card,.panel-card,.browser-card,.metric-card,.status-card,.migration-item,.audit-stream,.hosting-panel,.site-card,.hosting-summary,.hosting-note,.server-card,.infra-section,.infra-note,.project-card,.entity-row,.check-item,.review-panel,.review-choice,.review-job,.trust-state{border-radius:20px!important;box-shadow:0 8px 24px rgba(20,61,117,.055)!important}.data-grid th{background:#eef6ff!important;color:#0b3d91!important}.hosting-form input,.hosting-form select,.review-field select,.review-field input,.review-choice select,input,textarea,select{background:#fff!important;color:#11325f!important;border-color:#d6e5f2!important}.eyebrow,.awh-home-kicker,.review-kicker,.section-heading span{color:#ff7a00!important}.state-chip.completed,.pill.ready,.overall-state,.safety-badge{color:#08765a!important}.awh-tool-card:hover,.awh-pulse-card:hover,.awh-recent-item:hover,.awh-task-item:hover{background:#f6fbff!important;border-color:#b8d8f1!important}@media(max-width:760px){.awh-home-hero:after{width:120px;height:120px;opacity:.86}.awh-home-hero{padding-bottom:120px!important}}
+/* BAY/AWH Canonical Composition Authority — 2026-09-08 */
+:root{
+  --awh-content-wide:1240px!important;
+  --awh-radius-lg:22px!important;
+  --awh-radius-xl:30px!important;
+  --awh-shadow-panel:0 10px 28px rgba(20,61,117,.07)!important;
+  --awh-shadow-float:0 22px 58px rgba(20,61,117,.14)!important;
+}
+html,body{min-height:100%;background:#f5faff!important}
+body{background:
+  radial-gradient(circle at 4% 0,rgba(116,207,255,.22),transparent 25rem),
+  radial-gradient(circle at 98% 2%,rgba(255,184,111,.20),transparent 24rem),
+  linear-gradient(180deg,#f8fcff 0,#f4f9ff 44%,#f7fbff 100%)!important;
+}
+.app-header,.app-main{width:min(calc(100% - 36px),1240px)!important}
+.app-header{
+  min-height:72px!important;
+  padding:8px 0!important;
+  border-bottom:1px solid #dbe8f4!important;
+  background:rgba(255,255,255,.97)!important;
+  box-shadow:0 5px 18px rgba(20,61,117,.05)!important;
+}
+.brand{gap:11px!important}.brand-mark{width:46px!important;height:46px!important;border-radius:14px!important}
+.brand strong{color:#0b3d91!important;font-size:17px!important;letter-spacing:-.02em}
+.brand small{margin-top:3px!important;color:#6a829c!important;font-size:10px!important}
+.header-actions{gap:8px!important}.quiet-status{border-radius:999px!important;background:#eef9f5!important;border:1px solid #cde9df!important;padding:7px 10px!important;color:#16775b!important;font-weight:800!important}
+.app-header{position:sticky!important;top:0!important;z-index:60!important;display:grid!important;grid-template-columns:auto minmax(360px,1fr) auto!important;align-items:center!important;gap:20px!important}
+.global-nav{height:54px;display:flex;align-items:stretch;justify-content:center;gap:2px;min-width:0}
+.global-nav-item{position:relative;display:flex;align-items:center;gap:7px;padding:0 12px;color:#657d99;text-decoration:none;font-size:12px;font-weight:850;white-space:nowrap;border-radius:12px 12px 0 0}
+.global-nav-item img{width:24px;height:24px}.global-nav-item:hover,.global-nav-item:focus-visible{color:#0b3d91;background:#f5f9ff}
+.global-nav-item.is-active{color:#0b3d91}.global-nav-item.is-active:after{content:"";position:absolute;left:10px;right:10px;bottom:-9px;height:3px;border-radius:999px;background:#0b3d91}
+.header-actions{justify-self:end}.account-button{min-width:64px!important}
+
+/* Public front door — LearnLab family, owner/workspace density. */
+.public-home-view{
+  grid-template-columns:minmax(0,1.48fr) minmax(330px,.72fr)!important;
+  gap:16px!important;
+  align-items:stretch!important;
+  min-height:auto!important;
+  padding:20px 0 42px!important;
+}
+.public-home-copy{
+  position:relative;overflow:hidden;min-height:418px;
+  padding:38px 330px 34px 38px!important;
+  border:1px solid #cfe5f7;border-radius:30px;
+  background:
+    radial-gradient(circle at 74% 13%,rgba(255,224,143,.68),transparent 8rem),
+    linear-gradient(125deg,#d8f2ff 0,#edf9ff 54%,#fff0dd 100%);
+  box-shadow:0 20px 52px rgba(20,61,117,.12);
+}
+.public-home-copy:before{
+  content:"";position:absolute;right:28px;bottom:-14px;width:280px;height:330px;
+  background:url("./bay-golden-mascot.svg") center bottom/contain no-repeat;
+  filter:drop-shadow(0 18px 24px rgba(20,61,117,.18));pointer-events:none;
+}
+.public-home-copy:after{
+  content:"";position:absolute;right:258px;top:42px;width:62px;height:62px;border-radius:20px;
+  background:linear-gradient(145deg,#fff,#eaf7ff);box-shadow:0 10px 28px rgba(20,61,117,.10);
+  transform:rotate(-8deg);opacity:.85;
+}
+.public-home-copy>*{position:relative;z-index:2}
+.golden-hero-orbit{position:absolute!important;inset:0;z-index:1!important;pointer-events:none}
+.orbit-card{position:absolute;display:grid;place-items:center;width:58px;height:58px;border-radius:18px;background:rgba(255,255,255,.94);border:1px solid rgba(205,226,242,.95);box-shadow:0 12px 30px rgba(20,61,117,.12)}
+.orbit-card img{width:42px;height:42px}.orbit-work{right:260px;top:46px;transform:rotate(-8deg)}.orbit-learn{right:42px;top:70px;transform:rotate(7deg)}.orbit-school{right:274px;bottom:48px;transform:rotate(5deg)}
+.public-home-copy .eyebrow{color:#ff7a00!important;font-size:10px!important;letter-spacing:.14em!important}
+.public-home-copy h1{
+  max-width:560px!important;margin:8px 0 14px!important;color:#0b3d91!important;
+  font-size:clamp(42px,5.2vw,64px)!important;line-height:1.02!important;letter-spacing:-.045em!important;
+}
+.public-home-copy>p:last-of-type{max-width:580px!important;color:#567492!important;font-size:15px!important;line-height:1.65!important}
+.public-home-actions{margin-top:22px!important;gap:9px!important}
+.public-home-actions .primary-button,.public-home-actions .secondary-button{min-height:48px!important;padding-inline:17px!important;border-radius:14px!important}
+.public-home-grid{grid-template-columns:1fr 1fr!important;gap:10px!important;align-content:stretch!important}
+.public-home-card{
+  position:relative;overflow:hidden;min-height:196px!important;padding:18px!important;border-radius:22px!important;
+  border:1px solid #dbe8f4!important;box-shadow:0 10px 28px rgba(20,61,117,.07)!important;
+  background:#fff!important;
+}
+.public-home-card:nth-child(1){background:linear-gradient(145deg,#eef8ff,#fff 62%)!important}
+.public-home-card:nth-child(2){background:linear-gradient(145deg,#fff5ea,#fff 62%)!important}
+.public-home-card:nth-child(3){background:linear-gradient(145deg,#f3efff,#fff 62%)!important}
+.public-home-card:nth-child(4){background:linear-gradient(145deg,#edf9f4,#fff 62%)!important}
+.public-home-card:after{content:"";position:absolute;right:-24px;bottom:-28px;width:92px;height:92px;border-radius:50%;background:rgba(23,109,229,.055)}
+.public-home-card>span{width:48px!important;height:48px!important;border-radius:15px!important;background:#fff!important;border:1px solid #e2edf6!important;color:#0b3d91!important;box-shadow:0 6px 16px rgba(20,61,117,.07);display:grid!important;place-items:center!important}.public-home-card>span img{width:40px;height:40px}
+.public-home-card strong{font-size:16px!important;color:#0b3d91!important}
+.public-home-card small{max-width:230px!important;font-size:10.5px!important;line-height:1.55!important}
+.public-home-card:hover,.public-home-card:focus-visible{transform:translateY(-2px);border-color:#9fc8e8!important;box-shadow:0 16px 32px rgba(20,61,117,.11)!important}
+
+/* Auth shares the same visual family. */
+.sign-in-view{gap:22px!important;min-height:calc(100dvh - 92px)!important;padding-block:22px 44px!important}
+.sign-in-copy{min-height:360px;padding:34px 250px 30px 34px;border:1px solid #cfe5f7;border-radius:28px;background:linear-gradient(125deg,#dff4ff,#f6fbff 58%,#fff1df);box-shadow:0 18px 48px rgba(20,61,117,.10);overflow:hidden}
+.sign-in-copy:after{content:"";position:absolute;right:18px;bottom:-14px;width:220px;height:270px;background:url("./bay-golden-mascot.svg") center bottom/contain no-repeat;filter:drop-shadow(0 14px 22px rgba(20,61,117,.16))}
+.sign-in-copy>*{position:relative;z-index:2}.sign-in-copy h1{font-size:clamp(38px,5vw,58px)!important;color:#0b3d91!important}
+.auth-card{border-radius:24px!important;padding:24px!important;box-shadow:0 18px 48px rgba(20,61,117,.12)!important}
+
+/* Authenticated ecosystem home. */
+.ecosystem-home-view{gap:22px!important;padding:4px 0 40px!important}
+.ecosystem-home-hero{
+  position:relative!important;overflow:hidden!important;display:grid!important;grid-template-columns:minmax(0,1fr) 300px!important;
+  align-items:start!important;min-height:255px!important;padding:30px!important;border-radius:30px!important;
+  border:1px solid #cfe5f7!important;background:linear-gradient(125deg,#d9f3ff 0,#eff9ff 55%,#fff0dc 100%)!important;
+  box-shadow:0 18px 48px rgba(20,61,117,.11)!important;
+}
+.ecosystem-home-hero:after{content:"";position:absolute;right:74px;top:12px;width:205px;height:205px;background:url("./bay-golden-mascot.svg") center/contain no-repeat;filter:drop-shadow(0 14px 20px rgba(20,61,117,.14));pointer-events:none}
+.ecosystem-home-hero>div:first-child{position:relative;z-index:2;padding-right:30px}
+.ecosystem-home-hero h1{max-width:660px!important;font-size:clamp(38px,5vw,58px)!important;color:#0b3d91!important}
+.ecosystem-home-hero p:last-child{max-width:650px!important;color:#567492!important}
+.ecosystem-home-actions{position:relative;z-index:3;align-self:end!important;justify-content:stretch!important;flex-direction:column!important;margin-top:130px!important}
+.ecosystem-search-box{min-width:0!important;width:100%!important}.ecosystem-search-box input{min-height:46px!important;border-radius:14px!important;box-shadow:0 8px 22px rgba(20,61,117,.06)!important}
+.ecosystem-home-actions .secondary-button{width:100%!important;text-align:center!important}
+.ecosystem-summary{gap:10px!important}
+.ecosystem-summary>div{position:relative;overflow:hidden;min-height:92px;padding:16px 18px 14px 58px!important;border-radius:19px!important;box-shadow:0 8px 22px rgba(20,61,117,.05)!important}
+.ecosystem-summary>div:before{content:"";position:absolute;left:16px;top:20px;width:30px;height:30px;border-radius:10px;background:#eef6ff;border:1px solid #d9e9f6}
+.ecosystem-summary>div:nth-child(2):before{background:#edf9f4}.ecosystem-summary>div:nth-child(3):before{background:#fff5e8}.ecosystem-summary>div:nth-child(4):before{background:#f3efff}
+.ecosystem-summary strong{font-size:26px!important;color:#0b3d91!important}
+.ecosystem-featured-grid{gap:12px!important}.ecosystem-project-grid{gap:12px!important}
+.ecosystem-project-card{
+  position:relative;overflow:hidden;min-height:238px!important;padding:17px!important;border-radius:22px!important;
+  border:1px solid #dbe8f4!important;background:#fff!important;box-shadow:0 9px 26px rgba(20,61,117,.055)!important;
+}
+.ecosystem-project-card:before{content:"";position:absolute;left:0;right:0;top:0;height:5px;background:linear-gradient(90deg,#176de5,#5fc8f5)}
+.ecosystem-project-card[data-project-id="bay-excuse-x"]:before{background:linear-gradient(90deg,#ff7a00,#ffb05d)}
+.ecosystem-project-card[data-project-id="bay-learnlab"]:before{background:linear-gradient(90deg,#176de5,#7b61e8)}
+.ecosystem-project-card[data-project-id="school-website"]:before{background:linear-gradient(90deg,#18b98b,#5fc8f5)}
+.ecosystem-project-card.featured{min-height:218px!important;background:linear-gradient(160deg,#fff,#f8fcff 78%)!important}
+.ecosystem-project-icon{width:48px!important;height:48px!important;border-radius:15px!important;background:#eef6ff!important;border:1px solid #dbe8f4!important;color:#0b3d91!important;font-size:11px!important;letter-spacing:-.02em}
+.ecosystem-project-card[data-project-id="awh"] .ecosystem-project-icon{color:transparent!important;background:#f4f9ff url("./bay-icon-work.svg") center/38px no-repeat!important}
+.ecosystem-project-card[data-project-id="bay-excuse-x"] .ecosystem-project-icon{color:transparent!important;background:#fff3e8 url("./bay-icon-school.svg") center/38px no-repeat!important}
+.ecosystem-project-card[data-project-id="bay-learnlab"] .ecosystem-project-icon{color:transparent!important;background:#eef3ff url("./bay-icon-learnlab.svg") center/38px no-repeat!important}
+.ecosystem-project-card[data-project-id="school-website"] .ecosystem-project-icon{color:transparent!important;background:#edf9f4 url("./bay-icon-web.svg") center/38px no-repeat!important}
+.ecosystem-project-card h3{font-size:18px!important;color:#0b3d91!important}
+.ecosystem-project-card>p{font-size:11.5px!important;line-height:1.6!important}
+.ecosystem-project-action{min-height:44px!important;border-radius:13px!important;background:linear-gradient(135deg,#ff7a00,#ff8d2d)!important;border:0!important;box-shadow:0 7px 18px rgba(255,122,0,.16)!important}
+.ecosystem-project-capabilities span{background:#f3f8fc!important;color:#5f7893!important;border:1px solid #e3edf5!important}
+.ecosystem-owner-tools details{border-radius:20px!important;box-shadow:0 8px 22px rgba(20,61,117,.05)!important}
+.ecosystem-owner-grid a{background:#f8fcff!important;border-radius:14px!important;color:#0b3d91!important}
+
+/* Workspace — professional sibling of LearnLab Teacher/Admin. */
+.workspace-view{max-width:1040px!important;margin:0 auto!important;padding-top:18px!important}
+.workspace-heading{
+  position:sticky;top:80px;z-index:16;margin-bottom:16px!important;padding:9px 10px!important;
+  border:1px solid #dbe8f4;border-radius:18px;background:rgba(255,255,255,.96);box-shadow:0 9px 28px rgba(20,61,117,.08);
+}
+.workspace-home{border:1px solid #e0ebf4!important;background:#fff!important}.workspace-home:hover{background:#f4f9ff!important}
+.workspace-home-mark{color:transparent!important;background:#fff url("./bay-golden-mark.svg") center/contain no-repeat!important;border:0!important}
+.workspace-project .eyebrow{color:#ff7a00!important}
+.project-trigger,.conversation-trigger{color:#0b3d91!important}
+.workspace-ecosystem-link{background:#eef6ff!important;color:#0b3d91!important;border-color:#d6e7f5!important}
+.workstream{
+  min-height:460px;padding:26px!important;border:1px solid #dbe8f4;border-radius:26px;background:rgba(255,255,255,.88);box-shadow:0 14px 38px rgba(20,61,117,.07)
+}
+.workstream-title h1{color:#0b3d91!important;font-size:clamp(30px,4vw,44px)!important;letter-spacing:-.035em}
+.empty-work{position:relative;overflow:hidden;min-height:245px!important;padding:46px 230px 38px 30px!important;border:1px solid #d6e8f6!important;border-radius:24px!important;background:linear-gradient(125deg,#eef9ff,#fff 62%,#fff3e5)!important;text-align:left!important}
+.empty-work:after{content:"";position:absolute;right:18px;bottom:-20px;width:200px;height:220px;background:url("./bay-golden-mascot.svg") center bottom/contain no-repeat;opacity:.98;filter:drop-shadow(0 12px 18px rgba(20,61,117,.12))}
+.empty-work>*{position:relative;z-index:2}.empty-work h2{color:#0b3d91!important;font-size:22px!important}.empty-work p{max-width:520px!important}
+.empty-mark{width:42px!important;height:42px!important;border-radius:14px!important}
+.composer{
+  margin-top:12px!important;border:1px solid #d4e6f3!important;border-radius:22px!important;background:#fff!important;
+  box-shadow:0 15px 42px rgba(20,61,117,.12)!important;padding:12px!important;
+}
+.composer textarea{min-height:54px!important;padding:13px 14px!important;border-radius:15px!important;background:#f9fcff!important}
+.composer-actions{padding-top:8px!important}.composer .primary-button{min-width:76px!important;border-radius:14px!important}
+.task-goal,.assistant-turn .task-response{border-radius:18px!important}
+
+/* Sheets, settings and owner control surfaces. */
+.sheet-card{width:min(100%,860px)!important;border-radius:28px!important;padding:24px!important;box-shadow:0 28px 80px rgba(20,61,117,.18)!important}
+.settings-tabs{gap:6px!important;padding-bottom:12px!important}.settings-tab{border-radius:12px!important;padding:8px 12px!important}.settings-tab.active{background:#eef6ff!important;color:#0b3d91!important;border-color:#d5e6f4!important}
+.settings-intro{padding:18px 0 8px!important}.settings-intro h3{color:#0b3d91!important;font-size:23px!important}
+.account-form,.system-health-card{border:1px solid #e0ebf4;border-radius:18px;padding:17px;background:#fbfdff}
+.settings-action,.system-feature-card{border-radius:18px!important;box-shadow:0 7px 20px rgba(20,61,117,.045)!important}
+.system-feature-icon{background:#eef6ff!important;color:#0b3d91!important;border-color:#d8e8f5!important}
+
+/* Specialist pages inherit the same professional BAY family. */
+.studio-shell,.hosting-main,.infra-main,.review-main,.trust-main{max-width:1240px!important;margin-inline:auto!important}
+.studio-header,.hosting-header,.infra-header,.review-header,.trust-header{min-height:70px!important}
+.gate-card,.panel-card,.browser-card,.metric-card,.status-card,.migration-item,.audit-stream,.hosting-panel,.site-card,.hosting-summary,.hosting-note,.server-card,.infra-section,.infra-note,.project-card,.entity-row,.check-item,.review-panel,.review-choice,.review-job,.trust-state{
+  border-radius:20px!important;box-shadow:0 8px 24px rgba(20,61,117,.055)!important
+}
+.infra-hero,.hosting-hero{min-height:210px!important;padding:28px 250px 28px 28px!important}
+.infra-hero:after,.hosting-hero:after{content:"";position:absolute;right:24px;bottom:-18px;width:210px;height:220px;background:url("./bay-golden-mascot.svg") center bottom/contain no-repeat;filter:drop-shadow(0 12px 18px rgba(20,61,117,.12))}
+
+/* Old Windows + mobile first responsiveness. */
+@media(max-width:980px){
+  .app-header,.app-main{width:min(calc(100% - 24px),1240px)!important}
+  .app-header{grid-template-columns:auto 1fr!important;gap:8px 12px!important;padding-bottom:0!important}.global-nav{grid-column:1/-1;order:3;height:44px;justify-content:flex-start;overflow-x:auto;scrollbar-width:none}.global-nav::-webkit-scrollbar{display:none}.global-nav-item{padding:0 10px}.global-nav-item.is-active:after{bottom:0}.header-actions{position:absolute;right:12px;top:10px}
+  .public-home-view{grid-template-columns:1fr!important}.public-home-copy{min-height:360px;padding-right:270px!important}
+  .public-home-copy:before{width:230px;height:280px}.public-home-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .ecosystem-home-hero{grid-template-columns:1fr!important;padding-right:250px!important}
+  .ecosystem-home-actions{margin-top:12px!important;max-width:320px!important}.ecosystem-home-hero:after{right:20px;top:28px;width:190px;height:190px}
+  .ecosystem-project-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .workspace-heading{top:72px!important}
+}
+@media(max-width:680px){
+  .app-header,.app-main{width:calc(100% - 16px)!important}.app-header{min-height:62px!important}.brand small{display:none}.brand strong{font-size:15px!important}.brand-mark{width:40px!important;height:40px!important}.global-nav-item span{font-size:10px}.global-nav-item img{width:22px;height:22px}.quiet-status{display:none}.header-actions{top:8px}.account-button{min-width:54px!important}
+  .orbit-card{width:46px;height:46px;border-radius:14px}.orbit-card img{width:34px;height:34px}.orbit-work{right:170px;top:210px}.orbit-learn{right:20px;top:190px}.orbit-school{right:150px;bottom:38px}
+  .public-home-view{padding-top:10px!important}.public-home-copy{min-height:420px;padding:24px 20px 178px!important}
+  .public-home-copy:before{right:12px;bottom:-20px;width:190px;height:210px}.public-home-copy:after{display:none}
+  .public-home-copy h1{font-size:38px!important}.public-home-grid{grid-template-columns:1fr!important}.public-home-card{min-height:132px!important}
+  .sign-in-view{grid-template-columns:1fr!important}.sign-in-copy{min-height:340px;padding:24px 20px 170px!important}.sign-in-copy:after{width:170px;height:190px}
+  .ecosystem-home-hero{min-height:410px!important;padding:23px 18px 175px!important;display:block!important}.ecosystem-home-hero:after{right:6px;top:auto;bottom:-6px;width:180px;height:185px}
+  .ecosystem-home-actions{margin-top:18px!important;max-width:none!important}.ecosystem-summary{grid-template-columns:repeat(2,1fr)!important}
+  .ecosystem-featured-grid,.ecosystem-project-grid{grid-template-columns:1fr!important}.ecosystem-project-card{min-height:210px!important}
+  .workspace-view{padding-top:8px!important}.workspace-heading{position:relative;top:auto!important;grid-template-columns:auto minmax(0,1fr)!important}.workspace-actions{grid-column:1/-1!important;justify-content:flex-end!important}
+  .workstream{padding:16px!important;border-radius:20px!important}.empty-work{min-height:320px!important;padding:25px 18px 165px!important}.empty-work:after{right:6px;width:165px;height:180px}
+  .composer{border-radius:18px!important}.sheet-card{border-radius:22px!important;padding:18px!important}
+  .infra-hero,.hosting-hero{padding:22px 18px 150px!important}.infra-hero:after,.hosting-hero:after{width:150px;height:160px;right:8px}
+}
+@media(prefers-reduced-motion:reduce){
+  .public-home-card:hover,.ecosystem-project-card:hover,.system-feature-card:hover{transform:none!important}
+}
