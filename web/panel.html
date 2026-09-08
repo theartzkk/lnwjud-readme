@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#f7f8fb" />
+  <meta name="theme-color" content="#ffffff" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <title>AWH Control Panel</title>
   <link rel="stylesheet" href="./awh-design-system.css?release=__AWH_WEB_RELEASE_ID__" />
@@ -13,7 +13,7 @@
 <body>
   <div class="cp-shell">
     <aside class="cp-sidebar" id="cp-sidebar">
-      <a class="cp-brand" href="./panel.html"><span>A</span><div><strong>AWH Control Panel</strong><small>BAY Ecosystem</small></div></a>
+      <a class="cp-brand" href="./panel.html"><span><img src="./assets/bay-mark.svg" alt="" aria-hidden="true"></span><div><strong>AWH Control Panel</strong><small>BAY Ecosystem</small></div></a>
       <label class="cp-search"><span>⌕</span><input id="cp-search" type="search" placeholder="ค้นหาเมนู…  ⌘K" autocomplete="off" /></label>
       <nav class="cp-nav" aria-label="Control Panel">
         <a class="is-active" href="#overview" data-cp-keywords="dashboard overview สรุป"><span>⌂</span>ภาพรวม</a>
@@ -43,7 +43,7 @@
       <div class="cp-content">
         <section id="overview" class="cp-hero">
           <div><span class="cp-eyebrow">AWH · BAY ECOSYSTEM</span><h1>ทุกระบบ อยู่ที่เดียว</h1><p>ดูสุขภาพ จัดการเว็บไซต์ ข้อมูล Backup ผู้ใช้ AI และระบบส่วนกลาง โดยใช้ authority เดิมของแต่ละระบบ</p></div>
-          <div id="cp-overall" class="cp-overall">กำลังตรวจ</div>
+          <div class="cp-hero-side"><img src="./assets/bay-mascot.svg" alt="" aria-hidden="true"><div id="cp-overall" class="cp-overall">กำลังตรวจ</div></div>
         </section>
         <section class="cp-metrics" aria-label="ทรัพยากรระบบ">
           <article><small>CPU</small><strong id="cp-cpu">—</strong><span id="cp-load">Load —</span></article>
