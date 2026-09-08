@@ -829,18 +829,50 @@ import {
     try { return new URL(window.location.href).searchParams.has('awh-surface'); } catch { return false; }
   }
 
-  function showEcosystemHome({ replace = false } = {}) {
+  function authenticatedDirectoryRequested() {
+    try { return new URL(window.location.href).searchParams.get('awh-directory') === '1'; } catch { return false; }
+  }
+
+  function showKruartHome({ replace = false } = {}) {
     if (!state.control?.authenticated) return;
+    const publicHome = $('public-home-view');
     const ecosystem = $('ecosystem-home-view');
     const workspace = $('workspace-view');
+    if (publicHome) publicHome.hidden = false;
+    if (ecosystem) ecosystem.hidden = true;
+    if (workspace) workspace.hidden = true;
+    $('sign-in-view').hidden = true;
+    document.body.classList.remove('work-active', 'product-dashboard-active', 'ecosystem-home-active');
+    document.body.classList.add('public-home-active', 'kruart-authenticated-home');
+    document.body.dataset.awhDashboardVisited = '';
+    document.title = 'KRUART · Art’s Workspace Hub';
+    message('kruart-account-caption', 'สวัสดีครับ');
+    message('kruart-account-label', 'พื้นที่ของฉัน');
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('awh-surface');
+      url.searchParams.delete('awh-directory');
+      const next = `${url.pathname}${url.search}${url.hash}`;
+      window.history[replace ? 'replaceState' : 'pushState'](window.history.state, '', next);
+    } catch {}
+    window.scrollTo({ top: 0, behavior: replace ? 'auto' : 'smooth' });
+  }
+
+  function showEcosystemHome({ replace = false } = {}) {
+    if (!state.control?.authenticated) return;
+    const publicHome = $('public-home-view');
+    const ecosystem = $('ecosystem-home-view');
+    const workspace = $('workspace-view');
+    if (publicHome) publicHome.hidden = true;
     if (ecosystem) ecosystem.hidden = false;
     if (workspace) workspace.hidden = true;
-    document.body.classList.remove('work-active', 'product-dashboard-active');
+    document.body.classList.remove('work-active', 'product-dashboard-active', 'public-home-active', 'kruart-authenticated-home');
     document.body.classList.add('ecosystem-home-active');
     document.body.dataset.awhDashboardVisited = '';
     try {
       const url = new URL(window.location.href);
       url.searchParams.delete('awh-surface');
+      url.searchParams.set('awh-directory', '1');
       const next = `${url.pathname}${url.search}${url.hash}`;
       window.history[replace ? 'replaceState' : 'pushState'](window.history.state, '', next);
     } catch {}
@@ -850,14 +882,17 @@ import {
 
   function openAwhWorkspace(surface = 'home', { history = true } = {}) {
     if (!state.control?.authenticated) return;
+    const publicHome = $('public-home-view');
     const ecosystem = $('ecosystem-home-view');
     const workspace = $('workspace-view');
+    if (publicHome) publicHome.hidden = true;
     if (ecosystem) ecosystem.hidden = true;
     if (workspace) workspace.hidden = false;
-    document.body.classList.remove('ecosystem-home-active');
+    document.body.classList.remove('ecosystem-home-active', 'public-home-active', 'kruart-authenticated-home');
     document.body.classList.add('work-active');
     try {
       const url = new URL(window.location.href);
+      url.searchParams.delete('awh-directory');
       url.searchParams.set('awh-surface', surface);
       if (history) window.history.pushState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
     } catch {}
@@ -923,23 +958,30 @@ import {
     const authenticated = state.control.authenticated === true;
     if ($('session-check-view')) $('session-check-view').hidden = true;
     const publicHome = $('public-home-view');
-    if (publicHome) publicHome.hidden = authenticated;
     $('sign-in-view').hidden = true;
     $('account-open').hidden = !authenticated;
-    document.body.classList.toggle('public-home-active', !authenticated);
     if (!authenticated) {
+      if (publicHome) publicHome.hidden = false;
       if ($('ecosystem-home-view')) $('ecosystem-home-view').hidden = true;
       $('workspace-view').hidden = true;
-      document.body.classList.remove('work-active', 'ecosystem-home-active');
+      message('kruart-account-caption', 'สวัสดีครับ');
+      message('kruart-account-label', 'เข้าสู่ระบบ');
+      document.body.classList.add('public-home-active');
+      document.body.classList.remove('work-active', 'ecosystem-home-active', 'kruart-authenticated-home');
       return;
     }
     renderWorkspace();
     if (authenticatedSurfaceRequested()) {
+      if (publicHome) publicHome.hidden = true;
       if ($('ecosystem-home-view')) $('ecosystem-home-view').hidden = true;
       $('workspace-view').hidden = false;
       document.body.classList.add('work-active');
-      document.body.classList.remove('ecosystem-home-active');
-    } else showEcosystemHome({ replace: true });
+      document.body.classList.remove('ecosystem-home-active', 'public-home-active', 'kruart-authenticated-home');
+    } else if (authenticatedDirectoryRequested()) {
+      showEcosystemHome({ replace: true });
+    } else {
+      showKruartHome({ replace: true });
+    }
   }
 
   async function refreshConversation(refreshList = true) {
@@ -1062,25 +1104,30 @@ import {
   });
 
   const openPublicLogin = () => {
+    if (state.control?.authenticated === true) {
+      openAwhWorkspace('home');
+      return;
+    }
     if ($('public-home-view')) $('public-home-view').hidden = true;
     $('sign-in-view').hidden = false;
-    document.body.classList.remove('public-home-active');
+    document.body.classList.remove('public-home-active', 'kruart-authenticated-home');
     window.requestAnimationFrame(() => $('login-username')?.focus());
   };
   document.querySelectorAll('[data-open-login]').forEach((node) => node.addEventListener('click', openPublicLogin));
   document.querySelector('.brand')?.addEventListener('click', (event) => {
     event.preventDefault();
-    if (state.control?.authenticated === true) { showEcosystemHome(); return; }
+    if (state.control?.authenticated === true) { showKruartHome(); return; }
     if ($('public-home-view')) $('public-home-view').hidden = false;
     $('sign-in-view').hidden = true;
     document.body.classList.add('public-home-active');
   });
   $('ecosystem-search-input')?.addEventListener('input', () => void renderEcosystemPortfolio());
-  window.addEventListener('awh:return-root-hub', () => showEcosystemHome());
+  window.addEventListener('awh:return-root-hub', () => showKruartHome());
   window.addEventListener('popstate', () => {
     if (!state.control?.authenticated) return;
     if (authenticatedSurfaceRequested()) openAwhWorkspace(new URL(window.location.href).searchParams.get('awh-surface') || 'home', { history: false });
-    else showEcosystemHome({ replace: true });
+    else if (authenticatedDirectoryRequested()) showEcosystemHome({ replace: true });
+    else showKruartHome({ replace: true });
   });
   $('registration-open')?.addEventListener('click', () => { message('registration-message',''); openSheet('registration-sheet'); });
   $('registration-form')?.addEventListener('submit', async (event) => {
