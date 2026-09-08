@@ -17,7 +17,7 @@
       "id": "root-portfolio",
       "surface": "root",
       "action": "open authenticated Art’s Workspace Hub root",
-      "expected": "project/system portfolio renders from existing registry authority; AWH mobile navigation is not visible; no runtime exception"
+      "expected": "KRUART Golden Home renders as the authenticated root with the approved human-cartoon visual language; legacy project directory and AWH mobile navigation are not visible; no runtime exception or horizontal overflow"
     },
     {
       "id": "home-empty",
