@@ -34,6 +34,7 @@ require_once __DIR__ . '/HubManagedHostingService.php';
 require_once __DIR__ . '/HubTrustPolicy.php';
 require_once __DIR__ . '/HubCloudFirstMigration.php';
 require_once __DIR__ . '/HubCloudWorkflowService.php';
+require_once __DIR__ . '/HubBayRemoteUpdateService.php';
 require_once __DIR__ . '/HubProjectSourceAuthorityMigration.php';
 require_once __DIR__ . '/HubProjectSourceAuthorityService.php';
 require_once __DIR__ . '/HubProjectSourceSyncService.php';
@@ -84,6 +85,7 @@ final class HubControlPlaneService
     private readonly HubManagedHostingService $hosting;
     private readonly ?HubCloudWorkflowService $cloud;
     private readonly ?HubProjectSourceAuthorityService $projectSources;
+    private readonly HubBayRemoteUpdateService $bayRemoteUpdate;
 
     private function __construct(private readonly PDO $pdo, private readonly HubEnrollmentService $enrollment, private readonly string $databasePath)
     {
@@ -110,6 +112,7 @@ final class HubControlPlaneService
         $projectSources = null;
         try { HubProjectSourceAuthorityMigration::assertCapabilityReady($pdo, dirname(__DIR__) . '/migrations/019_project_source_authority.sql'); $projectSources = new HubProjectSourceAuthorityService($pdo, $cloud); } catch (Throwable) { $projectSources = null; }
         $this->projectSources = $projectSources;
+        $this->bayRemoteUpdate = new HubBayRemoteUpdateService();
     }
 
     public static function openExisting(string $databasePath): self
@@ -1147,6 +1150,24 @@ final class HubControlPlaneService
         $session=$this->sessionRow($sessionToken,$now); $this->assertOwner((string)$session['user_id']); $cloud=$this->cloudService();
         try { return ['schemaVersion'=>1,'revision'=>$cloud->canonicalRevision()]; }
         catch (HubCloudWorkflowException $error) { throw new HubControlPlaneException('AWH Cloud revision is unavailable',$error->codeName); }
+    }
+
+    /** Owner-only BAY release status. The browser relays the signed STATUS envelope to BAY itself. */
+    public function bayRemoteUpdateStatus(string $sessionToken, ?string $now = null): array
+    {
+        $session=$this->sessionRow($sessionToken,$now); $this->assertOwner((string)$session['user_id']);
+        try { return $this->bayRemoteUpdate->status($now); }
+        catch(HubBayRemoteUpdateException $error){ throw new HubControlPlaneException('BAY Remote Update status is unavailable',$error->codeName); }
+    }
+
+    /** Owner explicit install relay. AWH signs; BAY PackageManager remains the installer. */
+    public function createBayRemoteInstallRelay(string $sessionToken,string $csrfToken,array $payload,?string $now=null):array
+    {
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now); $this->assertOwner((string)$session['user_id']);
+        self::exactKeys($payload,['packageSha256','schemaVersion','targetSha','targetVersion']);
+        if(($payload['schemaVersion']??null)!==1 || !is_string($payload['targetVersion']??null) || !is_string($payload['targetSha']??null) || !is_string($payload['packageSha256']??null)) throw new HubControlPlaneException('BAY install relay request is invalid','BAY_UPDATE_REQUEST_INVALID');
+        try { return $this->bayRemoteUpdate->installRelay((string)$payload['targetVersion'],(string)$payload['targetSha'],(string)$payload['packageSha256'],$now); }
+        catch(HubBayRemoteUpdateException $error){ throw new HubControlPlaneException('BAY install relay could not be created',$error->codeName); }
     }
 
     /** Selected-project source authority. Local checkout and canonical remote revision remain deliberately separate. */
