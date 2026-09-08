@@ -39,6 +39,9 @@ test('KRUART Golden Home uses LearnLab human cartoon art and keeps mascot art ou
     'kruart-human-student-thai.webp',
     'kruart-human-student-english.webp',
     'kruart-human-student-math.webp',
+    'kruart-reference-role-parent.webp',
+    'kruart-reference-role-staff.webp',
+    'kruart-campus-bg.svg',
   ]) {
     assert.ok(html.includes(asset) || css.includes(asset), `human artwork is not used: ${asset}`);
     assert.ok(build.includes(asset), `human artwork is not copied by web build: ${asset}`);
@@ -51,7 +54,10 @@ test('KRUART Golden Home uses LearnLab human cartoon art and keeps mascot art ou
   assert.match(html, /kruart-login-avatar[^>]*><img src="\.\/kruart-human-student-thai\.webp"/);
   assert.match(publicHome, /kruart-human-student-english\.webp/);
   assert.match(publicHome, /kruart-human-teacher-hero\.webp/);
-  assert.match(css, /kruart-role-card\.staff[^\n]*kruart-human-student-english\.webp/);
+  assert.match(css, /kruart-role-card\.parent[^\n]*kruart-reference-role-parent\.webp/);
+  assert.match(css, /kruart-role-card\.staff[^\n]*kruart-reference-role-staff\.webp/);
+  assert.match(html, /kruart-brand-icon[^>]*src="\.\/bay-icon-learnlab\.svg"/);
+  assert.match(css, /kruart-campus-bg\.svg/);
   assert.doesNotMatch(css, /kruart-role-card\.staff[^\n]*kruart-human-student-computer\.webp/);
   assert.match(css, /Human-only hero composition/);
   assert.match(css, /Approved-reference calibration — 1536×864 desktop frame/);
