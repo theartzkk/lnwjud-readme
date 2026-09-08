@@ -1068,7 +1068,7 @@ import {
     window.requestAnimationFrame(() => $('login-username')?.focus());
   };
   document.querySelectorAll('[data-open-login]').forEach((node) => node.addEventListener('click', openPublicLogin));
-  $('.brand')?.addEventListener('click', (event) => {
+  document.querySelector('.brand')?.addEventListener('click', (event) => {
     event.preventDefault();
     if (state.control?.authenticated === true) { showEcosystemHome(); return; }
     if ($('public-home-view')) $('public-home-view').hidden = false;
