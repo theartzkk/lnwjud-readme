@@ -65,9 +65,9 @@ test('one canonical light-first canvas is used by html, body, and the applicatio
     readFile(join(ROOT, 'web', 'styles.css'), 'utf8'),
     readFile(join(ROOT, 'web', 'awh-design-system.css'), 'utf8'),
   ]);
-  assert.match(html, /theme-color" content="#f7f8fb"/);
+  assert.match(html, /theme-color" content="#f5faff"/);
   assert.match(html, /apple-mobile-web-app-status-bar-style" content="default"/);
-  assert.match(designSystem, /--awh-canvas:\s*#f7f8fb/);
+  assert.match(designSystem, /--awh-canvas:\s*#f5faff/);
   assert.match(css, /--canvas:\s*var\(--awh-canvas\)/);
   assert.match(html, /awh-light-system\.css/);
   assert.match(await readFile(join(ROOT, 'scripts', 'create-web-release-manifest.mjs'), 'utf8'), /awh-light-system\.css/);
