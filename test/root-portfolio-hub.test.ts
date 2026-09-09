@@ -23,6 +23,7 @@ test('authenticated root is the portfolio hub and reuses BAY registry authority'
   assert.match(dashboard, /awh:return-root-hub/);
   assert.match(css, /\.ecosystem-project-grid/);
   assert.match(css, /body\.ecosystem-home-active \.awh-mobile-nav\{display:none!important\}/);
+  assert.match(css, /body\.public-home-active \.awh-mobile-nav\{display:none!important\}/);
   assert.doesNotMatch(app, /localStorage.*ecosystem|indexedDB.*ecosystem/i);
 });
 
