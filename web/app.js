@@ -864,22 +864,54 @@ import {
     if (!state.conversationAvailable) void refreshConversation();
   }
 
+  function openLoginSurface() {
+    if (state.control?.authenticated === true) { showEcosystemHome(); return; }
+    if ($('public-home-view')) $('public-home-view').hidden = true;
+    $('sign-in-view').hidden = false;
+    document.body.classList.remove('public-home-active');
+    window.requestAnimationFrame(() => $('login-username')?.focus());
+  }
+
+  function routeOwnerCommand(value) {
+    const command = typeof value === 'string' ? value.trim() : '';
+    if (!command || !state.control?.authenticated) return;
+    openAwhWorkspace('home');
+    window.requestAnimationFrame(() => {
+      const input = $('goal-input');
+      if (!input) return;
+      input.value = command;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.focus();
+    });
+  }
+
+  const liveProjectService = (projectId) => ({
+    awh: 'awh',
+    'bay-excuse-x': 'bay-production',
+    'bay-learnlab': 'learnlab',
+    'school-website': 'website',
+  })[projectId] || null;
+
   async function renderEcosystemPortfolio() {
     const grid = $('ecosystem-project-grid');
     const featured = $('ecosystem-featured-grid');
     if (!grid || !featured || !state.control?.authenticated) return;
     grid.replaceChildren(); featured.replaceChildren();
-    let projects = [], releases = [];
+    let projects = [], releases = [], liveServices = [];
     try {
-      const [projectResponse, releaseResponse] = await Promise.all([
+      const [projectResponse, releaseResponse, statusResponse] = await Promise.all([
         fetch('/bay/data/projects.json', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } }),
         fetch('/bay/data/releases.json', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } }),
+        fetch('/bay/api/status.php', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } }),
       ]);
       const projectData = projectResponse.ok ? await projectResponse.json() : null;
       const releaseData = releaseResponse.ok ? await releaseResponse.json() : null;
+      const statusData = statusResponse.ok ? await statusResponse.json() : null;
       projects = Array.isArray(projectData?.projects) ? projectData.projects : [];
       releases = Array.isArray(releaseData?.releases) ? releaseData.releases : [];
+      liveServices = Array.isArray(statusData?.services) ? statusData.services : [];
     } catch {}
+    const liveById = new Map(liveServices.map((service) => [service?.id, service]));
     const safeUrl = (value) => typeof value === 'string' && (/^https:\/\//.test(value) || /^\/(?!\/)/.test(value)) ? value : null;
     const labelFor = (status) => ({ active: 'ใช้งาน', pilot: 'Pilot', prototype: 'ต้นแบบ', reference: 'อ้างอิง', internal: 'ภายใน' })[status] || 'โปรเจกต์';
     const openProject = (project) => {
@@ -890,10 +922,10 @@ import {
       const article = document.createElement('article'); article.className = prominent ? 'ecosystem-project-card featured' : 'ecosystem-project-card';
       const head = document.createElement('div'); head.className = 'ecosystem-project-head';
       const icon = document.createElement('span'); icon.className = 'ecosystem-project-icon'; icon.textContent = safeText(project.icon, '•');
-      const status = document.createElement('span'); const statusTone=({prototype:'pilot',reference:'internal'})[project.status]||safeText(project.status,'project'); status.className = `ecosystem-project-status status-${statusTone}`; status.textContent = labelFor(project.status);
+      const status = document.createElement('span'); const serviceId=liveProjectService(project.id); const live=serviceId?liveById.get(serviceId):null; const statusTone=live ? (live.ok===true?'active':'attention') : (({prototype:'pilot',reference:'internal'})[project.status]||safeText(project.status,'project')); status.className = `ecosystem-project-status status-${statusTone}`; status.textContent = live ? (live.ok===true?'พร้อมใช้':'ต้องตรวจ') : labelFor(project.status); if(live) article.dataset.liveState=live.ok===true?'ready':'attention';
       head.append(icon, status);
       const title = document.createElement('h3'); title.textContent = safeText(project.name, 'โปรเจกต์');
-      const type = document.createElement('small'); type.textContent = [safeText(project.type), safeText(project.stage)].filter(Boolean).join(' · ');
+      const type = document.createElement('small'); type.textContent = [safeText(project.type), live ? 'ตรวจสถานะสด' : safeText(project.stage)].filter(Boolean).join(' · ');
       const copy = document.createElement('p'); copy.textContent = safeText(project.summary, '');
       article.append(head, title, type, copy);
       const capability = document.createElement('div'); capability.className = 'ecosystem-project-capabilities';
@@ -910,10 +942,15 @@ import {
     for (const project of visibleProjects) grid.append(card(project,false));
     if (!visibleProjects.length) { const empty=document.createElement('div'); empty.className='ecosystem-empty'; empty.textContent='ยังอ่านทะเบียนโปรเจกต์จาก BAY Ecosystem ไม่ได้ โปรดใช้เมนู BAY ชั่วคราว'; grid.append(empty); }
     const set=(id,value)=>{const node=$(id);if(node)node.textContent=String(value)};
+    const readyServices = liveServices.filter((item)=>item?.ok===true);
+    const attentionServices = liveServices.filter((item)=>item?.ok!==true);
     set('ecosystem-project-count', projects.length);
-    set('ecosystem-active-count', projects.filter((item)=>item?.status==='active').length);
-    set('ecosystem-pilot-count', projects.filter((item)=>item?.status==='pilot').length);
+    set('ecosystem-active-count', liveServices.length ? readyServices.length : projects.filter((item)=>item?.status==='active').length);
+    set('ecosystem-pilot-count', liveServices.length ? attentionServices.length : projects.filter((item)=>item?.status==='pilot').length);
     set('ecosystem-release-count', releases.length);
+    const liveList=$('ecosystem-live-list'); const liveOverall=$('ecosystem-live-overall');
+    if(liveList){ liveList.replaceChildren(); for(const service of liveServices.filter((item)=>item?.critical!==false).slice(0,4)){ const row=document.createElement('div'); row.className=`owner-live-row ${service?.ok===true?'ready':'attention'}`; const dot=document.createElement('i'); const copy=document.createElement('span'); const name=document.createElement('strong'); name.textContent=safeText(service?.name,'ระบบ'); const detail=document.createElement('small'); detail.textContent=service?.ok===true?'พร้อมใช้งาน':safeText(service?.detail,'ต้องตรวจสอบ'); copy.append(name,detail); row.append(dot,copy); liveList.append(row); } if(!liveServices.length){ const p=document.createElement('p'); p.textContent='ยังอ่านสถานะสดไม่ได้ ใช้ Status Center เพื่อตรวจอีกครั้ง'; liveList.append(p); } }
+    if(liveOverall){ const healthy=liveServices.length>0&&attentionServices.length===0; liveOverall.className=`owner-live-overall ${healthy?'ready':liveServices.length?'attention':'checking'}`; liveOverall.textContent=healthy?'ทุกระบบปกติ':liveServices.length?`${attentionServices.length} จุดต้องดู`:'กำลังตรวจ…'; }
     const ownerTools=$('ecosystem-owner-tools'); if(ownerTools) ownerTools.hidden=state.control?.role!=='OWNER';
   }
 
@@ -926,6 +963,10 @@ import {
     if (publicHome) publicHome.hidden = authenticated;
     $('sign-in-view').hidden = true;
     $('account-open').hidden = !authenticated;
+    const publicNav=document.querySelector('.global-nav'); const ownerNav=$('owner-global-nav');
+    if(publicNav) publicNav.hidden=authenticated;
+    if(ownerNav) ownerNav.hidden=!authenticated;
+    document.querySelectorAll('.owner-only-nav').forEach((node)=>{ node.hidden=!(authenticated&&state.control?.role==='OWNER'); });
     document.body.classList.toggle('public-home-active', !authenticated);
     if (!authenticated) {
       if ($('ecosystem-home-view')) $('ecosystem-home-view').hidden = true;
@@ -1061,12 +1102,7 @@ import {
     } catch (error) { message('login-message', error instanceof Error ? error.message : 'เข้าสู่ AWH ไม่สำเร็จ'); }
   });
 
-  $('public-login-open')?.addEventListener('click', () => {
-    if ($('public-home-view')) $('public-home-view').hidden = true;
-    $('sign-in-view').hidden = false;
-    document.body.classList.remove('public-home-active');
-    window.requestAnimationFrame(() => $('login-username')?.focus());
-  });
+  document.querySelectorAll('[data-open-login]').forEach((button) => button.addEventListener('click', openLoginSurface));
   $('.brand')?.addEventListener('click', (event) => {
     event.preventDefault();
     if (state.control?.authenticated === true) { showEcosystemHome(); return; }
@@ -1075,6 +1111,9 @@ import {
     document.body.classList.add('public-home-active');
   });
   $('ecosystem-search-input')?.addEventListener('input', () => void renderEcosystemPortfolio());
+  $('ecosystem-open-awh')?.addEventListener('click', () => openAwhWorkspace('home'));
+  $('ecosystem-command-form')?.addEventListener('submit', (event) => { event.preventDefault(); routeOwnerCommand($('ecosystem-command-input')?.value || ''); if($('ecosystem-command-input')) $('ecosystem-command-input').value=''; });
+  document.querySelectorAll('[data-owner-command]').forEach((button)=>button.addEventListener('click',()=>routeOwnerCommand(button.dataset.ownerCommand||'')));
   window.addEventListener('awh:return-root-hub', () => showEcosystemHome());
   window.addEventListener('popstate', () => {
     if (!state.control?.authenticated) return;

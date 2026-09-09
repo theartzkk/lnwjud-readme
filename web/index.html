@@ -35,6 +35,13 @@
         <a class="global-nav-item" href="https://banauedyai.ac.th/mainpage/"><img src="./bay-icon-web.svg" alt="" /><span>ข่าวสาร</span></a>
         <a class="global-nav-item" href="/bay/apps.html"><img src="./bay-icon-apps.svg" alt="" /><span>เพิ่มเติม</span></a>
       </nav>
+      <nav id="owner-global-nav" class="owner-global-nav" aria-label="พื้นที่ทำงาน" hidden>
+        <a class="owner-nav-item is-active" href="./"><img src="./bay-icon-home.svg" alt="" /><span>หน้าแรก</span></a>
+        <a class="owner-nav-item" href="./?awh-surface=home"><img src="./bay-icon-work.svg" alt="" /><span>AWH</span></a>
+        <a class="owner-nav-item" href="/bay/apps.html"><img src="./bay-icon-apps.svg" alt="" /><span>ระบบ</span></a>
+        <a class="owner-nav-item" href="/bay/status.html"><img src="./bay-icon-status.svg" alt="" /><span>สถานะ</span></a>
+        <a class="owner-nav-item owner-only-nav" href="./panel.html" hidden><img src="./bay-icon-school.svg" alt="" /><span>Control</span></a>
+      </nav>
       <div class="header-actions kruart-header-actions">
         <a class="kruart-header-tool" href="/bay/apps.html" aria-label="ค้นหาระบบ"><span aria-hidden="true">⌕</span></a>
         <a class="kruart-header-tool kruart-bell" href="/bay/status.html" aria-label="สถานะและการแจ้งเตือน"><span aria-hidden="true">♢</span></a>
@@ -120,8 +127,8 @@
       <section id="sign-in-view" class="sign-in-view" aria-labelledby="sign-in-title" hidden>
         <div class="sign-in-copy"><img class="kruart-signin-logo" src="./kruart-logo-final.webp?release=__AWH_WEB_RELEASE_ID__" alt="KRUART · Art’s Workspace Hub · โรงเรียนบ้านเอือดใหญ่" /><p class="eyebrow">AWH</p><h1 id="sign-in-title">กลับมาทำงานต่อ<br />ได้ทุกที่</h1><p>เข้าสู่ AWH เพื่อเลือกโปรเจกต์ ส่งสิ่งที่อยากทำ และติดตามผลลัพธ์จากอุปกรณ์ที่คุณใช้</p></div>
         <form id="login-form" class="auth-card" novalidate>
-          <h2>เข้าสู่ AWH</h2><p class="muted">ใช้ชื่อผู้ใช้หรืออีเมล และรหัสผ่านของคุณ</p>
-          <label for="login-username">ชื่อผู้ใช้หรืออีเมล</label><input id="login-username" autocomplete="username" inputmode="text" required />
+          <h2>เข้าสู่ AWH</h2><p class="muted">ใช้ชื่อผู้ใช้ AWH หรืออีเมลที่ผูกกับบัญชี และรหัสผ่านของคุณ</p>
+          <label for="login-username">ชื่อผู้ใช้ AWH หรืออีเมลที่ผูกกับบัญชี</label><input id="login-username" autocomplete="username" inputmode="text" required />
           <label for="login-password">รหัสผ่าน</label><input id="login-password" type="password" autocomplete="current-password" required />
           <label class="check-row"><input id="login-remember" type="checkbox" checked /> <span>จดจำการเข้าสู่ระบบบนอุปกรณ์นี้</span></label>
           <button class="primary-button" type="submit">เข้าสู่ AWH</button><p id="login-message" class="form-message" role="status"></p>
@@ -134,15 +141,34 @@
         </form>
       </section>
 
-      <section id="ecosystem-home-view" class="ecosystem-home-view" hidden aria-labelledby="ecosystem-home-title">
-        <div class="ecosystem-home-hero">
-          <div><p class="eyebrow">ART’S WORKSPACE HUB</p><h1 id="ecosystem-home-title">งานและระบบทั้งหมดของเรา</h1><p>เลือกงานหรือระบบที่ต้องการจากที่เดียว โดยแต่ละระบบยังใช้ข้อมูลหลักของตัวเองอย่างถูกต้อง</p></div>
-          <div class="ecosystem-home-actions"><label class="ecosystem-search-box"><span class="sr-only">ค้นหาโปรเจกต์</span><input id="ecosystem-search-input" type="search" maxlength="80" autocomplete="off" placeholder="ค้นหาโปรเจกต์หรือระบบ…" /></label><a class="secondary-button public-link-button" href="/bay/downloads.html">ดาวน์โหลด</a></div>
+      <section id="ecosystem-home-view" class="ecosystem-home-view owner-cockpit" hidden aria-labelledby="ecosystem-home-title">
+        <div class="owner-cockpit-grid">
+          <section class="owner-command-card" aria-labelledby="ecosystem-home-title">
+            <p class="eyebrow">ART’S WORKSPACE HUB</p>
+            <h1 id="ecosystem-home-title">วันนี้อยากทำอะไร?</h1>
+            <p>สั่งงาน AWH เป็นภาษาปกติ แล้วค่อยไปดูระบบเมื่อจำเป็น</p>
+            <form id="ecosystem-command-form" class="owner-command-form">
+              <label class="sr-only" for="ecosystem-command-input">สิ่งที่อยากให้ AWH ช่วย</label>
+              <input id="ecosystem-command-input" type="text" maxlength="2000" autocomplete="off" placeholder="พิมพ์สิ่งที่อยากให้ช่วย…" />
+              <button type="submit" aria-label="เปิดงานนี้ใน AWH">ส่ง <span aria-hidden="true">↑</span></button>
+            </form>
+            <div class="owner-command-suggestions" aria-label="คำสั่งแนะนำ">
+              <button type="button" data-owner-command="ช่วยสรุปงานที่ต้องทำวันนี้">งานวันนี้</button>
+              <button type="button" data-owner-command="ช่วยสร้างเอกสารที่ฉันต้องใช้">สร้างเอกสาร</button>
+              <button type="button" data-owner-command="ตรวจสถานะระบบทั้งหมดและบอกเฉพาะสิ่งที่ต้องดู">ตรวจระบบ</button>
+              <button type="button" data-owner-command="เปิดงาน LearnLab ที่เกี่ยวข้องกับวันนี้">LearnLab</button>
+            </div>
+          </section>
+          <aside class="owner-live-card" aria-labelledby="owner-live-title">
+            <div class="owner-live-head"><div><p class="eyebrow">LIVE</p><h2 id="owner-live-title">สถานะวันนี้</h2></div><span id="ecosystem-live-overall" class="owner-live-overall checking">กำลังตรวจ…</span></div>
+            <div id="ecosystem-live-list" class="owner-live-list" aria-live="polite"><p>กำลังอ่านสถานะจาก BAY Ecosystem…</p></div>
+            <a href="/bay/status.html">ดูสถานะทั้งหมด ›</a>
+          </aside>
         </div>
-        <section class="ecosystem-summary" aria-label="ภาพรวมระบบ"><div><strong id="ecosystem-project-count">—</strong><span>โปรเจกต์</span></div><div><strong id="ecosystem-active-count">—</strong><span>กำลังใช้งาน</span></div><div><strong id="ecosystem-pilot-count">—</strong><span>กำลังทดลอง</span></div><div><strong id="ecosystem-release-count">—</strong><span>พร้อมดาวน์โหลด</span></div></section>
-        <section class="ecosystem-recent" aria-labelledby="ecosystem-recent-title"><div class="ecosystem-section-head"><div><span>ใช้งานประจำ</span><h2 id="ecosystem-recent-title">เริ่มจากตรงนี้</h2></div></div><div id="ecosystem-featured-grid" class="ecosystem-featured-grid"></div></section>
-        <section class="ecosystem-projects" aria-labelledby="ecosystem-projects-title"><div class="ecosystem-section-head"><div><span>ระบบและโปรเจกต์</span><h2 id="ecosystem-projects-title">โปรเจกต์ทั้งหมด</h2></div><a href="/bay/projects.html">ดูทั้งหมด</a></div><div id="ecosystem-project-grid" class="ecosystem-project-grid" aria-live="polite"></div></section>
-        <section id="ecosystem-owner-tools" class="ecosystem-owner-tools" hidden><details><summary><span>สำหรับผู้ดูแลระบบ</span><strong>ระบบ · เว็บไซต์ · ข้อมูล · ความปลอดภัย</strong></summary><div class="ecosystem-owner-grid"><a href="./infrastructure.html">Infrastructure</a><a href="./hosting.html">Hosting</a><a href="./database.html">Database Studio</a><a href="./trust.html">Trust Center</a></div></details></section>
+        <section class="ecosystem-summary owner-summary" aria-label="ภาพรวมวันนี้"><div><strong id="ecosystem-project-count">—</strong><span>ระบบและโปรเจกต์</span></div><div><strong id="ecosystem-active-count">—</strong><span>พร้อมใช้งาน</span></div><div><strong id="ecosystem-pilot-count">—</strong><span>ต้องตรวจ</span></div><div><strong id="ecosystem-release-count">—</strong><span>ไฟล์พร้อมดาวน์โหลด</span></div></section>
+        <section class="ecosystem-recent" aria-labelledby="ecosystem-recent-title"><div class="ecosystem-section-head"><div><span>ทำต่อจากล่าสุด</span><h2 id="ecosystem-recent-title">เริ่มจากงานสำคัญ</h2></div><button id="ecosystem-open-awh" class="owner-section-action" type="button">เปิด AWH ›</button></div><div id="ecosystem-featured-grid" class="ecosystem-featured-grid"></div></section>
+        <section class="ecosystem-projects" aria-labelledby="ecosystem-projects-title"><div class="ecosystem-section-head"><div><span>ระบบของเรา</span><h2 id="ecosystem-projects-title">ระบบและโปรเจกต์ทั้งหมด</h2></div><div class="ecosystem-home-actions"><label class="ecosystem-search-box"><span class="sr-only">ค้นหาโปรเจกต์</span><input id="ecosystem-search-input" type="search" maxlength="80" autocomplete="off" placeholder="ค้นหาระบบหรือโปรเจกต์…" /></label><a class="secondary-button public-link-button" href="/bay/apps.html">ดูระบบ</a></div></div><div id="ecosystem-project-grid" class="ecosystem-project-grid" aria-live="polite"></div></section>
+        <section id="ecosystem-owner-tools" class="ecosystem-owner-tools" hidden><div class="ecosystem-section-head"><div><span>OWNER SYSTEM</span><h2>เครื่องมือผู้ดูแลระบบ</h2></div></div><div class="ecosystem-owner-grid"><a href="./infrastructure.html">Infrastructure</a><a href="./hosting.html">Hosting</a><a href="./database.html">Database Studio</a><a href="./trust.html">Trust Center</a><a href="./panel.html">Control Panel</a></div></section>
       </section>
 
       <section id="workspace-view" class="workspace-view" hidden aria-labelledby="work-title">

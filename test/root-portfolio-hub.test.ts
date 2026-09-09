@@ -7,7 +7,7 @@ const read = (path: string) => readFile(new URL(`../${path}`, import.meta.url), 
 test('authenticated root is the portfolio hub and reuses BAY registry authority', async () => {
   const [html, app, css, dashboard] = await Promise.all([read('web/index.html'), read('web/app.js'), read('web/styles.css'), read('web/dashboard.js')]);
   assert.match(html, /id="ecosystem-home-view"/);
-  assert.match(html, /งานและระบบทั้งหมดของเรา/);
+  assert.match(html, /วันนี้อยากทำอะไร\\?/);
   assert.match(html, /id="ecosystem-project-grid"/);
   assert.match(html, /id="ecosystem-search-input"/);
   assert.match(app, /fetch\('\/bay\/data\/projects\.json'/);
@@ -31,4 +31,26 @@ test('root portfolio does not create a second project or release master authorit
   assert.doesNotMatch(app, /POST[^\n]*\/bay\/data\/projects|PUT[^\n]*\/bay\/data\/projects/i);
   assert.doesNotMatch(app, /ecosystemProjects\s*=\s*\[/);
   assert.match(app, /Source of Truth|Source of Truth|BAY Ecosystem|renderEcosystemPortfolio/);
+});
+
+
+test('all KRUART login entry points share the canonical login surface', async () => {
+  const [html, app] = await Promise.all([read('web/index.html'), read('web/app.js')]);
+  const triggers = html.match(/data-open-login/g) || [];
+  assert.ok(triggers.length >= 5);
+  assert.match(app, /function openLoginSurface\(\)/);
+  assert.match(app, /querySelectorAll\('\[data-open-login\]'\)\.forEach/);
+  assert.doesNotMatch(app, /\$\('public-login-open'\)\?\.addEventListener\('click'/);
+  assert.match(html, /ชื่อผู้ใช้ AWH หรืออีเมลที่ผูกกับบัญชี/);
+});
+
+test('authenticated root is an AWH cockpit with live readiness and role-aware navigation', async () => {
+  const [html, app, css] = await Promise.all([read('web/index.html'), read('web/app.js'), read('web/kruart-system.css')]);
+  assert.match(html, /id="ecosystem-command-form"/);
+  assert.match(html, /id="ecosystem-live-list"/);
+  assert.match(html, /id="owner-global-nav"/);
+  assert.match(app, /routeOwnerCommand/);
+  assert.match(app, /liveProjectService/);
+  assert.match(app, /owner-only-nav/);
+  assert.match(css, /KRUART Owner Cockpit/);
 });
