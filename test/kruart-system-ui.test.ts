@@ -66,13 +66,26 @@ test('KRUART visual asset slots are centralized and all deployed fallbacks exist
   ]);
   const manifest = JSON.parse(raw) as {
     version: number;
-    slots: Array<{ id: string; fallback: string | null; status: string }>;
+    slots: Array<{ id: string; fallback: string | null; plannedWebAsset?: string; status: string }>;
   };
   assert.equal(manifest.version, 1);
   assert.ok(manifest.slots.length >= 30);
   assert.equal(new Set(manifest.slots.map((slot) => slot.id)).size, manifest.slots.length);
   for (const slot of manifest.slots) {
     if (slot.fallback) await access('web/' + slot.fallback);
+    for (const asset of [slot.fallback, slot.plannedWebAsset]) {
+      if (!asset?.endsWith('.webp')) continue;
+      const path = 'web/' + asset;
+      try {
+        await access(path);
+      } catch {
+        continue;
+      }
+      const bytes = await readFile(path);
+      assert.ok(bytes.length >= 12, path + ' is truncated');
+      assert.equal(bytes.subarray(0, 4).toString('ascii'), 'RIFF', path + ' is not RIFF WebP');
+      assert.equal(bytes.subarray(8, 12).toString('ascii'), 'WEBP', path + ' is not WebP');
+    }
   }
   assert.match(css, /--kruart-art-public-hero:url\("\.\/kruart-hero-final\.webp"\)/);
   assert.match(css, /background-image:var\(--kruart-art-public-hero\)!important/);
