@@ -67,7 +67,7 @@ test('BAY Remote Update stays inside AWH Owner + BAY Update Inbox + PackageManag
     'hub/src/HubControlPlaneRouter.php','hub/src/HubTrustPolicy.php'
   ].map(name=>readFile(join(ROOT,name),'utf8')));
   assert.match(html,/BAY REMOTE UPDATE CONTROL/);
-  assert.match(html,/bay-golden-mascot\.svg/);
+  assert.match(html,/assets\/bay-mascot\.svg/);
   assert.match(html,/connect-src 'self' https:\/\/kruart\.great-site\.net/);
   assert.match(css,/\.cp-bay-update/);
   assert.match(css,/@media\(max-width:560px\)/);
