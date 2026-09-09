@@ -12,6 +12,8 @@ test('authenticated root is the portfolio hub and reuses BAY registry authority'
   assert.match(html, /id="ecosystem-search-input"/);
   assert.match(app, /fetch\('\/bay\/data\/projects\.json'/);
   assert.match(app, /fetch\('\/bay\/data\/releases\.json'/);
+  assert.match(app, /const statusPromise = fetch\('\/bay\/api\/status\.php'/);
+  assert.match(app, /const \[projectResponse, releaseResponse\] = await Promise\.all/);
   assert.match(app, /function safeText\(value, fallback = ''\)/);
   assert.match(app, /showEcosystemHome\(\{ replace: true \}\)/);
   assert.match(app, /if \(authenticatedSurfaceRequested\(\)\)/);

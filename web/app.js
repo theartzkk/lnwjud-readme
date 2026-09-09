@@ -896,22 +896,23 @@ import {
     const grid = $('ecosystem-project-grid');
     const featured = $('ecosystem-featured-grid');
     if (!grid || !featured || !state.control?.authenticated) return;
-    grid.replaceChildren(); featured.replaceChildren();
     let projects = [], releases = [], liveServices = [];
+    const statusPromise = fetch('/bay/api/status.php', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } })
+      .then(async (response) => response.ok ? await response.json() : null)
+      .catch(() => null);
     try {
-      const [projectResponse, releaseResponse, statusResponse] = await Promise.all([
+      const [projectResponse, releaseResponse] = await Promise.all([
         fetch('/bay/data/projects.json', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } }),
         fetch('/bay/data/releases.json', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } }),
-        fetch('/bay/api/status.php', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } }),
       ]);
       const projectData = projectResponse.ok ? await projectResponse.json() : null;
       const releaseData = releaseResponse.ok ? await releaseResponse.json() : null;
-      const statusData = statusResponse.ok ? await statusResponse.json() : null;
       projects = Array.isArray(projectData?.projects) ? projectData.projects : [];
       releases = Array.isArray(releaseData?.releases) ? releaseData.releases : [];
-      liveServices = Array.isArray(statusData?.services) ? statusData.services : [];
     } catch {}
-    const liveById = new Map(liveServices.map((service) => [service?.id, service]));
+    const paint = () => {
+      grid.replaceChildren(); featured.replaceChildren();
+      const liveById = new Map(liveServices.map((service) => [service?.id, service]));
     const safeUrl = (value) => typeof value === 'string' && (/^https:\/\//.test(value) || /^\/(?!\/)/.test(value)) ? value : null;
     const labelFor = (status) => ({ active: 'ใช้งาน', pilot: 'Pilot', prototype: 'ต้นแบบ', reference: 'อ้างอิง', internal: 'ภายใน' })[status] || 'โปรเจกต์';
     const openProject = (project) => {
@@ -953,6 +954,13 @@ import {
     if(liveList){ liveList.replaceChildren(); for(const service of liveServices.filter((item)=>item?.critical!==false).slice(0,4)){ const row=document.createElement('div'); row.className=`owner-live-row ${service?.ok===true?'ready':'attention'}`; const dot=document.createElement('i'); const copy=document.createElement('span'); const name=document.createElement('strong'); name.textContent=safeText(service?.name,'ระบบ'); const detail=document.createElement('small'); detail.textContent=service?.ok===true?'พร้อมใช้งาน':safeText(service?.detail,'ต้องตรวจสอบ'); copy.append(name,detail); row.append(dot,copy); liveList.append(row); } if(!liveServices.length){ const p=document.createElement('p'); p.textContent='ยังอ่านสถานะสดไม่ได้ ใช้ Status Center เพื่อตรวจอีกครั้ง'; liveList.append(p); } }
     if(liveOverall){ const healthy=liveServices.length>0&&attentionServices.length===0; liveOverall.className=`owner-live-overall ${healthy?'ready':liveServices.length?'attention':'checking'}`; liveOverall.textContent=healthy?'ทุกระบบปกติ':liveServices.length?`${attentionServices.length} จุดต้องดู`:'กำลังตรวจ…'; }
     const ownerTools=$('ecosystem-owner-tools'); if(ownerTools) ownerTools.hidden=state.control?.role!=='OWNER';
+    };
+    paint();
+    const statusData = await statusPromise;
+    if (statusData) {
+      liveServices = Array.isArray(statusData?.services) ? statusData.services : [];
+      paint();
+    }
   }
 
   function render(data) {
