@@ -32,6 +32,15 @@ test('P1 Home command center presents real control data with role-aware worker d
   assert.doesNotMatch(dashboard, /demo|mock|fake/i);
 });
 
+test('P1 Home dashboard never probes protected control data while the public shell is active', async () => {
+  const source = await read('web/dashboard.js');
+  assert.match(source, /function authenticatedWorkspaceActive\(\)/);
+  assert.match(source, /workspace-view'\)\?\.hidden === false/);
+  assert.match(source, /!document\.body\.classList\.contains\('public-home-active'\)/);
+  assert.match(source, /async function refreshDashboard\(\) \{\n  if \(!authenticatedWorkspaceActive\(\)\) return;/);
+  assert.match(source, /const authenticated = authenticatedWorkspaceActive\(\);/);
+});
+
 test('P1 Home command center keeps critical cards keyboard and touch usable', async () => {
   const dashboard = await read('web/dashboard.js');
   const css = await read('web/dashboard.css');

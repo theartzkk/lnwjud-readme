@@ -1302,8 +1302,12 @@ function renderRole() {
   updateProductNavigation();
 }
 
+function authenticatedWorkspaceActive() {
+  return $('workspace-view')?.hidden === false && !document.body.classList.contains('public-home-active');
+}
+
 async function refreshDashboard() {
-  if ($('workspace-view')?.hidden !== false) return;
+  if (!authenticatedWorkspaceActive()) return;
   const control = await loadControlData();
   state.control = control;
   state.infrastructure = control.role === 'OWNER' ? await loadInfrastructure().catch(() => null) : null;
@@ -1323,7 +1327,7 @@ async function refreshDashboard() {
 async function syncSurface() {
   mountDashboard();
   const workspace = $('workspace-view');
-  const authenticated = workspace?.hidden === false;
+  const authenticated = authenticatedWorkspaceActive();
   if (!authenticated) {
     document.body.classList.remove('product-dashboard-active');
     const dashboard = $(DASHBOARD_ID); if (dashboard) dashboard.hidden = true;
