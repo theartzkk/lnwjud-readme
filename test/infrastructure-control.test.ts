@@ -30,7 +30,9 @@ test('Infrastructure is an Owner-only sanitized projection and canonical web sur
   assert.doesNotMatch(`${html}\n${js}`,/localStorage|sessionStorage|Authorization|Bearer\s|shell_exec|<textarea[^>]*(?:terminal|command)|innerHTML/i);
   assert.doesNotMatch(collector,/shell_exec\s*\(|\bexec\s*\(|\bsystem\s*\(/);
   const release=JSON.parse(await readFile(join(output,'release.json'),'utf8')) as {files:Array<{path:string}>};
-  for(const entry of release.files) assert.ok(deploy.includes(`dist-web/${entry.path}`),`deployment missing manifest web asset ${entry.path}`);
+  const releaseContract=JSON.parse(await readFile(join(ROOT,'scripts/web-release-files.json'),'utf8')) as {required:string[]};
+  assert.deepEqual(release.files.map(entry=>entry.path),releaseContract.required);
+  assert.match(deploy,/list-web-release-files\.mjs/);
   for(const asset of ['dist-web/awh-design-system.css','dist-web/responsive-layout.css','dist-web/infrastructure.html','dist-web/infrastructure.css','dist-web/infrastructure.js','hub/bin/system-telemetry.php','hub/src/HubInfrastructureService.php','hub/src/HubEcosystemHealthService.php','hub/src/HubEcosystemHealthCollector.php','hub/src/HubBayEcosystemHealthConnector.php','hub/src/HubExecutionTriageService.php','hub/src/HubStaffGovernorService.php','hub/src/HubStaffOperationsService.php','hub/src/HubStorageGovernanceService.php','deploy/awh-control-plane/verify-web-release.php']) assert.ok(deploy.includes(asset),`deployment missing ${asset}`);
   assert.match(executor,/telemetryRefreshIfStale\(null, 60\)/); assert.match(executor,/'telemetry' => \$telemetry/); assert.match(executor,/HubStaffGovernorService/); assert.match(executor,/materializeStaffMaintenanceSubmission/); assert.match(executor,/HubStaffOperationsService/); assert.match(executor,/persistMorningBrief/); assert.match(executor,/'recovered'/);
   assert.doesNotMatch(deploy,/awh-system-telemetry\.(?:service|timer)/);
@@ -50,7 +52,7 @@ test('Infrastructure is an Owner-only sanitized projection and canonical web sur
   assert.match(remote,/infrastructure_html_code=.*infrastructure\.html/);
   assert.match(remote,/infrastructure_code=.*\/api\/v1\/control\/infrastructure/);
   assert.doesNotMatch(remote,/awh-system-telemetry\.(?:service|timer)/);
-  for(const asset of ['infrastructure.html','infrastructure.css','infrastructure.js']) assert.ok(manifest.includes(`'${asset}'`),`release manifest missing ${asset}`);
+  for(const asset of ['infrastructure.html','infrastructure.css','infrastructure.js']) assert.ok(releaseContract.required.includes(asset),`release contract missing ${asset}`);
   assert.match(sw,/\.\/infrastructure\.html/); assert.match(sw,/\.\/database\.html/);
  }finally{await rm(output,{recursive:true,force:true});}
 });

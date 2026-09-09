@@ -854,6 +854,11 @@ function mountDashboard() {
   hero.id = 'dashboard-hero';
   hero.className = 'awh-home-hero';
   hero.innerHTML = '<div class="awh-home-kicker">AWH</div><h1>วันนี้อยากให้ช่วยอะไร?</h1><p>พิมพ์สิ่งที่ต้องการได้เลย AWH จะเลือกวิธีทำงานที่เหมาะสมให้เอง</p>';
+  const heroArt = document.createElement('picture');
+  heroArt.className = 'awh-home-hero-art';
+  heroArt.setAttribute('aria-hidden', 'true');
+  heroArt.innerHTML = '<source media="(min-resolution: 2dppx)" srcset="./assets/kruart-reference-role-staff-hq.webp"><img src="./assets/kruart-reference-role-staff.webp" width="429" height="423" alt="" decoding="async">';
+  hero.append(heroArt);
   const commandForm = document.createElement('form');
   commandForm.className = 'awh-command-form';
   commandForm.id = 'dashboard-command-form';

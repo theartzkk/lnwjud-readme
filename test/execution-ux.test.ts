@@ -83,7 +83,7 @@ test('execution UX is mounted into Work, Dashboard, release build and deployment
     readFile(join(ROOT, 'scripts', 'build-web-preview.ts'), 'utf8'),
     readFile(join(ROOT, 'web', 'sw.js'), 'utf8'),
     readFile(join(ROOT, 'deploy', 'awh-control-plane', 'deploy-control-plane.sh'), 'utf8'),
-    readFile(join(ROOT, 'scripts', 'create-web-release-manifest.mjs'), 'utf8'),
+    readFile(join(ROOT, 'scripts', 'web-release-files.json'), 'utf8'),
   ]);
   assert.match(app, /executionStatus/);
   assert.match(app, /execution-journey/);

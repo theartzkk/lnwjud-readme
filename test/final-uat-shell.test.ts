@@ -105,12 +105,12 @@ test('every standalone Owner surface has a comfortable shared Back action and sh
       readFile(join(output, 'navigation.js'), 'utf8'),
       readFile(join(output, 'sw.js'), 'utf8'),
       read('deploy/awh-control-plane/deploy-control-plane.sh'),
-      read('scripts/create-web-release-manifest.mjs'),
+      read('scripts/web-release-files.json'),
     ]);
     assert.doesNotMatch(asset, /__AWH_WEB_RELEASE_ID__/);
     assert.match(worker, /navigation\.js\?release=final-uat-fixture/);
     assert.match(deploy, /dist-web\/navigation\.js/);
-    assert.match(manifestBuilder, /'navigation\.js'/);
+    assert.match(manifestBuilder, /"navigation\.js"/);
   } finally {
     await rm(output, { recursive: true, force: true });
   }

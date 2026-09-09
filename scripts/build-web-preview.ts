@@ -34,6 +34,8 @@ async function main(): Promise<void> {
     readFile(join(ROOT, 'node_modules', 'pdf-lib', 'dist', 'pdf-lib.min.js'), 'utf8'),
     readFile(join(ROOT, 'node_modules', 'qrcode-generator', 'qrcode.js'), 'utf8'),
   ]);
+  const releaseContract = JSON.parse(await readFile(join(ROOT, 'scripts', 'web-release-files.json'), 'utf8')) as { sourceCopies: Array<[string,string]> };
+  if (!Array.isArray(releaseContract.sourceCopies)) throw new Error('AWH web source-copy contract is invalid');
   await mkdir(OUTPUT, { recursive: true });
   await mkdir(join(OUTPUT, 'vendor'), { recursive: true });
   await mkdir(join(OUTPUT, 'assets'), { recursive: true });
@@ -92,10 +94,7 @@ ${dashboardGuardrails}`;
     writeFile(join(OUTPUT, 'manifest.webmanifest'), manifest, 'utf8'),
     writeFile(join(OUTPUT, 'sw.js'), renderReleaseAsset(serviceWorker, releaseId), 'utf8'),
     copyFile(join(ROOT, 'logo-256x256.png'), join(OUTPUT, 'logo-256x256.png')),
-    copyFile(join(ROOT, 'web', 'assets', 'bay-mark.svg'), join(OUTPUT, 'assets', 'bay-mark.svg')),
-    copyFile(join(ROOT, 'web', 'assets', 'bay-mascot.svg'), join(OUTPUT, 'assets', 'bay-mascot.svg')),
-    copyFile(join(ROOT, 'web', 'assets', 'bay-computer.svg'), join(OUTPUT, 'assets', 'bay-computer.svg')),
-    copyFile(join(ROOT, 'web', 'assets', 'bay-shield.svg'), join(OUTPUT, 'assets', 'bay-shield.svg')),
+    ...releaseContract.sourceCopies.map(([source, destination]) => copyFile(join(ROOT, source), join(OUTPUT, destination))),
     writeFile(join(OUTPUT, 'web-config.json'), `${JSON.stringify({ schemaVersion: 1, mode: webMode, apiBase: webMode === 'CONTROL' ? '/api/v1' : null }, null, 2)}\n`, 'utf8'),
     writeFile(join(OUTPUT, 'data.json'), `${JSON.stringify(data, null, 2)}\n`, 'utf8'),
   ]);
