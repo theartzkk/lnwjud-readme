@@ -43,9 +43,10 @@ test('Infrastructure is an Owner-only sanitized projection and canonical web sur
   assert.match(remote,/--awh-font-sans/);
   assert.match(remote,/design_system_code=.*awh-design-system\.css/);
   assert.match(remote,/test "\$design_system_code" = 200/);
-  assert.match(remote,/verify-web-release\.php" "\$WEB_RELEASE"/);
+  assert.match(remote,/verify-web-release\.php" "\$WEB_RELEASE" "\$RELEASE_ID"/);
   assert.doesNotMatch(webVerifier,/shell_exec|\bexec\s*\(|\bsystem\s*\(|passthru|proc_open/i);
-  const verified=await run('php',[join(ROOT,'deploy/awh-control-plane/verify-web-release.php'),output],{cwd:ROOT,shell:false}); assert.match(verified.stdout,/WEB_RELEASE_MANIFEST=PASS/);
+  const verified=await run('php',[join(ROOT,'deploy/awh-control-plane/verify-web-release.php'),output,'infra-fixture'],{cwd:ROOT,shell:false}); assert.match(verified.stdout,/WEB_RELEASE_MANIFEST=PASS/);
+  await assert.rejects(run('php',[join(ROOT,'deploy/awh-control-plane/verify-web-release.php'),output,'different-release'],{cwd:ROOT,shell:false}));
   await writeFile(join(output,'awh-design-system.css'),'tampered');
   await assert.rejects(run('php',[join(ROOT,'deploy/awh-control-plane/verify-web-release.php'),output],{cwd:ROOT,shell:false}));
   assert.match(remote,/HubInfrastructureService\.php/); assert.match(remote,/HubEcosystemHealthService\.php/); assert.match(remote,/HubEcosystemHealthCollector\.php/); assert.match(remote,/HubBayEcosystemHealthConnector\.php/); assert.match(remote,/system-telemetry\.php/);

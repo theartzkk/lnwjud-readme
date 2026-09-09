@@ -61,6 +61,10 @@ test('M4 control-plane activation package is executable in a local dry-run witho
   assert.match(remote, /rehydrate_desktop_artifacts; deduplicate_desktop_artifacts/);
   assert.match(remote, /sha256sum \"\$object\"/);
   assert.match(remote, /stage WEB_ACCESS_READY; verify_web_access/);
+  assert.match(remote, /verify-web-release\.php\" \"\$WEB_RELEASE\" \"\$RELEASE_ID\"/);
+  assert.match(deployText, /CONTROL release manifest identity is missing/);
+  assert.match(deployText, /CONTROL HTML release identity is missing/);
+  assert.match(deployText, /CONTROL HTML contains local release identity/);
   assert.match(remote, /chown -R awh-hub:www-data/);
   assert.match(remote, /sudo -n -u www-data test -r/);
   assert.match(remote, /stage WEB_POINTER_SWITCH/);
