@@ -25,59 +25,42 @@ test('canonical Dashboard is intent-first with a three-item mobile navigation',a
 });
 
 
-test('KRUART Golden Home uses LearnLab human cartoon art and keeps mascot art out of the primary home', async () => {
-  const [html, css, build, manifest, sw, humanHero] = await Promise.all([
+test('KRUART Golden Home ships the approved generated human artwork family and app branding', async () => {
+  const [html, css, build, releaseManifest, sw, pwaManifest] = await Promise.all([
     read('web/index.html'),
     read('web/awh-light-system.css'),
     read('scripts/build-web-preview.ts'),
     read('scripts/create-web-release-manifest.mjs'),
     read('web/sw.js'),
-    read('web/kruart-human-hero.svg'),
+    read('web/manifest.webmanifest'),
   ]);
-  for (const asset of [
-    'kruart-human-student-hero.webp',
-    'kruart-human-teacher-hero.webp',
-    'kruart-human-student-thai.webp',
-    'kruart-human-student-english.webp',
-    'kruart-human-student-math.webp',
-    'kruart-reference-role-parent.webp',
-    'kruart-reference-role-staff.webp',
-    'kruart-human-student-hero-hq.webp',
-    'kruart-human-teacher-hero-hq.webp',
-    'kruart-human-student-thai-hq.webp',
-    'kruart-human-student-english-hq.webp',
-    'kruart-human-student-math-hq.webp',
-    'kruart-human-student-computer-hq.webp',
-    'kruart-reference-role-parent-hq.webp',
-    'kruart-reference-role-staff-hq.webp',
-    'kruart-campus-bg.svg',
-    'kruart-human-hero.svg',
-  ]) {
-    if (asset.endsWith('-hq.webp') || asset === 'kruart-campus-bg.svg' || asset === 'kruart-human-hero.svg') assert.ok(html.includes(asset) || css.includes(asset), `retina artwork is not used: ${asset}`);
-    assert.ok(build.includes(asset), `human artwork is not copied by web build: ${asset}`);
-    assert.ok(manifest.includes(asset), `human artwork is not release-manifested: ${asset}`);
-    assert.ok(sw.includes(asset), `human artwork is not cached by release-aware PWA shell: ${asset}`);
+  const finalAssets = [
+    'kruart-hero-final.webp',
+    'kruart-role-student-final.webp',
+    'kruart-role-teacher-final.webp',
+    'kruart-role-parent-final.webp',
+    'kruart-role-staff-final.webp',
+    'kruart-footer-final.webp',
+    'kruart-logo-final.webp',
+    'kruart-app-icon-512.png',
+  ];
+  for (const asset of finalAssets) {
+    assert.ok(build.includes(asset), `final artwork is not copied by web build: ${asset}`);
+    assert.ok(releaseManifest.includes(asset), `final artwork is not release-manifested: ${asset}`);
+    assert.ok(sw.includes(asset), `final artwork is not cached by release-aware PWA shell: ${asset}`);
   }
   const publicHome = html.match(/<section id="public-home-view"[\s\S]*?<section id="sign-in-view"/)?.[0] || '';
-  assert.doesNotMatch(publicHome, /kruart-learnlab-mascot\.svg/);
-  assert.doesNotMatch(html, /<img[^>]+kruart-learnlab-mascot\.svg/);
-  assert.match(html, /kruart-login-avatar[^>]*><img src="\.\/kruart-reference-role-staff\.webp"/);
-  assert.match(publicHome, /kruart-human-student-english\.webp/);
-  assert.match(publicHome, /kruart-human-teacher-hero\.webp/);
-  assert.match(css, /kruart-role-card\.parent[\s\S]{0,260}kruart-reference-role-parent-hq\.webp/);
-  assert.match(css, /kruart-role-card\.staff[\s\S]{0,260}kruart-reference-role-staff-hq\.webp/);
-  assert.match(html, /kruart-brand-icon[^>]*src="\.\/bay-icon-learnlab\.svg"/);
-  assert.match(html, /rel="icon" type="image\/png" href="\.\/logo-256x256\.png\?release=__AWH_WEB_RELEASE_ID__"/);
-  assert.match(css, /kruart-campus-bg\.svg/);
-  assert.match(css, /kruart-human-hero\.svg/);
-  assert.match(humanHero, /KRUART learning campus with student and teacher cartoon characters/);
-  assert.match(humanHero, /translate\(1380 92\) scale\(\.82\)/);
-  assert.doesNotMatch(humanHero, /translate\(1420 180\)|mascot|robot/i);
-  assert.doesNotMatch(css, /kruart-role-card\.staff[^\n]*kruart-human-student-computer\.webp/);
-  assert.match(css, /Human-only hero composition/);
+  assert.doesNotMatch(publicHome, /kruart-learnlab-mascot\.svg|bay-golden-mascot\.svg/);
+  assert.match(html, /kruart-brand-icon[^>]*logo-256x256\.png/);
+  assert.match(html, /kruart-login-avatar[^>]*><img src="\.\/kruart-role-staff-final\.webp/);
+  assert.match(html, /kruart-signin-logo[^>]*kruart-logo-final\.webp/);
+  assert.match(publicHome, /kruart-role-student-final\.webp/);
+  assert.match(css, /KRUART generated final artwork authority/);
+  assert.match(css, /kruart-main-hero[^\n]*kruart-hero-final\.webp/);
+  for (const role of ['student','teacher','parent','staff']) assert.match(css, new RegExp(`kruart-role-card\\.${role}[\\s\\S]{0,180}kruart-role-${role}-final\\.webp`));
+  assert.match(css, /kruart-footer-banner[\s\S]{0,520}kruart-footer-final\.webp/);
+  assert.match(pwaManifest, /"name": "KRUART · Art’s Workspace Hub"/);
+  assert.match(pwaManifest, /kruart-app-icon-512\.png/);
   assert.match(css, /Approved-reference calibration — 1536×864 desktop frame/);
-  assert.match(css, /Retina\/mobile closure/);
   assert.match(css, /body\.public-home-active \.awh-mobile-nav\{display:none!important\}/);
-  assert.doesNotMatch(css, /background-size:(?:350|360)% auto!important/);
-  assert.doesNotMatch(css, /@media\(max-width:820px\)[\s\S]{0,2400}background-size:360% auto!important/);
 });
