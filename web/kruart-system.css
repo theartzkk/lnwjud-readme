@@ -245,3 +245,53 @@ button:not(:disabled){cursor:pointer}
   .owner-reference-hero{min-height:286px}.owner-reference-hero-panel{width:100%}.owner-reference-hero-panel h1 strong{font-size:28px}
   .owner-quick-row{grid-template-columns:34px minmax(0,1fr) auto}.owner-quick-row strong{font-size:10.5px}.owner-quick-row small{font-size:8px}.owner-quick-row b{font-size:8px}
 }
+
+
+/* KRUART Visual Asset Slot Contract v1 — canonical image bindings.
+ * Keep semantic slots stable; replace the variable value when new approved artwork arrives.
+ * The fallbacks below intentionally reproduce the currently deployed m20 visuals.
+ */
+:root{
+  --kruart-art-public-hero:url("./kruart-hero-final.webp");
+  --kruart-art-public-role-student:url("./kruart-role-student-final.webp");
+  --kruart-art-public-role-teacher:url("./kruart-role-teacher-final.webp");
+  --kruart-art-public-role-parent:url("./kruart-role-parent-final.webp");
+  --kruart-art-public-role-staff:url("./kruart-role-staff-final.webp");
+  --kruart-art-public-news-school:url("./kruart-campus-bg.svg");
+  --kruart-art-public-news-activity:url("./kruart-role-teacher-final.webp");
+  --kruart-art-public-news-pride:url("./kruart-role-student-final.webp");
+  --kruart-art-public-footer:url("./kruart-footer-final.webp");
+  --kruart-art-auth-hero:url("./kruart-hero-final.webp");
+  --kruart-art-awh-home:url("./kruart-role-staff-final.webp");
+  --kruart-art-awh-signin:url("./kruart-role-student-final.webp");
+  --kruart-art-owner-hero:url("./kruart-hero-final.webp");
+  --kruart-art-owner-learnlab:url("./kruart-role-student-final.webp");
+  --kruart-art-owner-bay:url("./kruart-role-teacher-final.webp");
+  --kruart-art-owner-awh:url("./kruart-role-staff-final.webp");
+  --kruart-art-owner-school:url("./kruart-hero-final.webp");
+  --kruart-art-owner-control:url("./kruart-role-staff-final.webp");
+  --kruart-art-owner-footer:url("./kruart-footer-final.webp");
+  --kruart-art-system-infrastructure:url("./kruart-role-staff-final.webp");
+  --kruart-art-system-hosting:url("./kruart-role-staff-final.webp");
+}
+.kruart-main-hero{background-image:var(--kruart-art-public-hero)!important}
+.kruart-role-card.student .kruart-role-art{background-image:var(--kruart-art-public-role-student)!important}
+.kruart-role-card.teacher .kruart-role-art{background-image:var(--kruart-art-public-role-teacher)!important}
+.kruart-role-card.parent .kruart-role-art{background-image:var(--kruart-art-public-role-parent)!important}
+.kruart-role-card.staff .kruart-role-art{background-image:var(--kruart-art-public-role-staff)!important}
+.news-school .kruart-news-thumb{background-image:var(--kruart-art-public-news-school)!important}
+.news-activity .kruart-news-thumb{background-image:var(--kruart-art-public-news-activity)!important}
+.news-pride .kruart-news-thumb{background-image:var(--kruart-art-public-news-pride)!important}
+.kruart-footer-banner{background-image:linear-gradient(rgba(239,249,255,.30),rgba(223,243,255,.30)),var(--kruart-art-public-footer)!important}
+.golden-session-view .session-hero-copy{background-image:var(--kruart-art-auth-hero)!important}
+.awh-home-hero:after,.ecosystem-home-hero:after{background-image:var(--kruart-art-awh-home)!important}
+.sign-in-copy:after{background-image:var(--kruart-art-awh-signin)!important}
+.owner-reference-hero{background-image:var(--kruart-art-owner-hero)!important}
+.owner-shortcut-card.product-bay-learnlab:before{background-image:var(--kruart-art-owner-learnlab)!important}
+.owner-shortcut-card.product-bay-excuse-x:before{background-image:var(--kruart-art-owner-bay)!important}
+.owner-shortcut-card.product-awh:before{background-image:var(--kruart-art-owner-awh)!important}
+.owner-shortcut-card.product-school-website:before{background-image:var(--kruart-art-owner-school)!important}
+.owner-control-art{background-image:var(--kruart-art-owner-control)!important}
+.owner-golden-footer{background-image:linear-gradient(90deg,rgba(229,248,255,.94),rgba(255,255,255,.9),rgba(255,240,218,.88)),var(--kruart-art-owner-footer)!important}
+.infra-hero:after{background-image:var(--kruart-art-system-infrastructure)!important}
+.hosting-hero:after{background-image:var(--kruart-art-system-hosting)!important}

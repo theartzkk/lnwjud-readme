@@ -1,0 +1,473 @@
+{
+  "version": 1,
+  "authority": "KRUART System UI / semantic visual slots",
+  "rules": {
+    "embeddedText": "forbidden except approved brand marks",
+    "format": "WebP for raster; SVG only for simple vector/icon art",
+    "mobile": "hero/banner must preserve copy-safe zones; prefer focal-point crop before creating duplicate mobile art",
+    "loading": "only above-fold hero/brand eager; below-fold content art should be lazy when represented by img/picture",
+    "sourceOfTruth": "slot id stays stable; file can change after visual QA"
+  },
+  "slots": [
+    {
+      "id": "public.hero",
+      "surface": "public",
+      "mode": "css-background",
+      "fallback": "kruart-hero-final.webp",
+      "target": "2200x880",
+      "ratio": "5:2",
+      "priority": "P0",
+      "status": "ready",
+      "safeZone": "center 30%-77%; no embedded text"
+    },
+    {
+      "id": "public.role.student",
+      "surface": "public",
+      "mode": "css-background",
+      "fallback": "kruart-role-student-final.webp",
+      "target": "2048x768",
+      "ratio": "8:3",
+      "priority": "P0",
+      "status": "ready",
+      "safeZone": "subject left 0%-42%; copy occupies right"
+    },
+    {
+      "id": "public.role.teacher",
+      "surface": "public",
+      "mode": "css-background",
+      "fallback": "kruart-role-teacher-final.webp",
+      "target": "2048x768",
+      "ratio": "8:3",
+      "priority": "P0",
+      "status": "ready",
+      "safeZone": "subject left 0%-42%; copy occupies right"
+    },
+    {
+      "id": "public.role.parent",
+      "surface": "public",
+      "mode": "css-background",
+      "fallback": "kruart-role-parent-final.webp",
+      "target": "2048x768",
+      "ratio": "8:3",
+      "priority": "P0",
+      "status": "ready",
+      "safeZone": "subject left 0%-42%; copy occupies right"
+    },
+    {
+      "id": "public.role.staff",
+      "surface": "public",
+      "mode": "css-background",
+      "fallback": "kruart-role-staff-final.webp",
+      "target": "2048x768",
+      "ratio": "8:3",
+      "priority": "P0",
+      "status": "ready",
+      "safeZone": "subject left 0%-42%; copy occupies right"
+    },
+    {
+      "id": "public.news.school",
+      "surface": "public",
+      "mode": "css-background",
+      "fallback": "kruart-campus-bg.svg",
+      "target": "960x540",
+      "ratio": "16:9",
+      "priority": "P1",
+      "status": "needs-dedicated",
+      "safeZone": "center-safe thumbnail; no text",
+      "sourceCandidate": "741A35A1-4275-479C-94F3-C6454FB95404.PNG",
+      "plannedWebAsset": "news-school-activity.webp",
+      "sourceAvailable": true
+    },
+    {
+      "id": "public.news.activity",
+      "surface": "public",
+      "mode": "css-background",
+      "fallback": "kruart-role-teacher-final.webp",
+      "target": "960x540",
+      "ratio": "16:9",
+      "priority": "P1",
+      "status": "needs-dedicated",
+      "safeZone": "center-safe thumbnail; no text",
+      "sourceCandidate": "F0FF2AA2-84F2-474E-B79A-E067C6D40CDD.PNG",
+      "plannedWebAsset": "news-learning.webp",
+      "sourceAvailable": true
+    },
+    {
+      "id": "public.news.pride",
+      "surface": "public",
+      "mode": "css-background",
+      "fallback": "kruart-role-student-final.webp",
+      "target": "960x540",
+      "ratio": "16:9",
+      "priority": "P1",
+      "status": "needs-dedicated",
+      "safeZone": "center-safe thumbnail; no text",
+      "sourceCandidate": "9154A422-8DBA-45A8-8979-491644A01A4C.PNG",
+      "plannedWebAsset": "news-pride.webp",
+      "sourceAvailable": true
+    },
+    {
+      "id": "public.today-message",
+      "surface": "public",
+      "mode": "html-img",
+      "fallback": "kruart-role-student-final.webp",
+      "target": "800x600",
+      "ratio": "4:3",
+      "priority": "P1",
+      "status": "needs-dedicated",
+      "safeZone": "subject right; transparent/quiet background preferred",
+      "sourceCandidate": "BAE672AB-B2DA-4CC3-A387-5657BFBA60AD.PNG",
+      "plannedWebAsset": "today-community.webp",
+      "sourceAvailable": true
+    },
+    {
+      "id": "public.footer",
+      "surface": "public",
+      "mode": "css-background",
+      "fallback": "kruart-footer-final.webp",
+      "target": "2400x800",
+      "ratio": "3:1",
+      "priority": "P0",
+      "status": "ready",
+      "safeZone": "center copy/button; decoration at edges"
+    },
+    {
+      "id": "public.account-avatar",
+      "surface": "public",
+      "mode": "html-img",
+      "fallback": "kruart-role-staff-final.webp",
+      "target": "512x512",
+      "ratio": "1:1",
+      "priority": "P1",
+      "status": "needs-dedicated",
+      "safeZone": "center face/mascot; works at 40px",
+      "sourceCandidate": "Awh logo .PNG",
+      "plannedWebAsset": "account-avatar.webp",
+      "sourceAvailable": true
+    },
+    {
+      "id": "brand.logo",
+      "surface": "auth",
+      "mode": "html-img",
+      "fallback": "kruart-logo-final.webp",
+      "target": "2000x800",
+      "ratio": "5:2",
+      "priority": "P0",
+      "status": "ready",
+      "safeZone": "transparent or clean light background"
+    },
+    {
+      "id": "auth.hero",
+      "surface": "auth",
+      "mode": "css-background",
+      "fallback": "kruart-hero-final.webp",
+      "target": "1800x900",
+      "ratio": "2:1",
+      "priority": "P1",
+      "status": "ready",
+      "safeZone": "copy remains readable at desktop/mobile"
+    },
+    {
+      "id": "owner.hero",
+      "surface": "owner",
+      "mode": "css-background",
+      "fallback": "kruart-hero-final.webp",
+      "target": "2200x880",
+      "ratio": "5:2",
+      "priority": "P1",
+      "status": "needs-dedicated",
+      "safeZone": "workspace story; quiet center behind command panel"
+    },
+    {
+      "id": "owner.system.learnlab",
+      "surface": "owner",
+      "mode": "css-background",
+      "fallback": "kruart-role-student-final.webp",
+      "target": "1200x800",
+      "ratio": "3:2",
+      "priority": "P1",
+      "status": "needs-dedicated",
+      "safeZone": "subject/product cue on left",
+      "sourceCandidate": "4C44742F-6405-46FF-9591-33860A253C7B.PNG",
+      "plannedWebAsset": "project-learnlab.webp",
+      "sourceAvailable": true
+    },
+    {
+      "id": "owner.system.bay",
+      "surface": "owner",
+      "mode": "css-background",
+      "fallback": "kruart-role-teacher-final.webp",
+      "target": "1200x800",
+      "ratio": "3:2",
+      "priority": "P1",
+      "status": "needs-dedicated",
+      "safeZone": "subject/product cue on left",
+      "sourceCandidate": "AD6F3BF7-2BA5-49F8-BD42-4ACCA3A1CF8D.PNG",
+      "plannedWebAsset": "project-bay-excuse-x.webp",
+      "sourceAvailable": true
+    },
+    {
+      "id": "owner.system.awh",
+      "surface": "owner",
+      "mode": "css-background",
+      "fallback": "kruart-role-staff-final.webp",
+      "target": "1200x800",
+      "ratio": "3:2",
+      "priority": "P1",
+      "status": "needs-dedicated",
+      "safeZone": "AI/workspace cue on left",
+      "sourceCandidate": "86029A98-FCFB-402D-9AED-16FF3B937FA2.PNG",
+      "plannedWebAsset": "project-awh.webp",
+      "sourceAvailable": true
+    },
+    {
+      "id": "owner.system.school",
+      "surface": "owner",
+      "mode": "css-background",
+      "fallback": "kruart-hero-final.webp",
+      "target": "1200x800",
+      "ratio": "3:2",
+      "priority": "P1",
+      "status": "needs-dedicated",
+      "safeZone": "school/website cue on left",
+      "sourceCandidate": "2A034EC3-2E55-4ED3-884B-A5661A3387DA.PNG",
+      "plannedWebAsset": "project-school.webp",
+      "sourceAvailable": true
+    },
+    {
+      "id": "owner.control",
+      "surface": "owner",
+      "mode": "css-background",
+      "fallback": "kruart-role-staff-final.webp",
+      "target": "1200x900",
+      "ratio": "4:3",
+      "priority": "P1",
+      "status": "needs-dedicated",
+      "safeZone": "operator/control-plane motif; right anchored",
+      "sourceCandidate": "D3DF2A64-BC23-45A0-93DF-1D0B4429692F.PNG",
+      "plannedWebAsset": "owner-control.webp",
+      "sourceAvailable": true
+    },
+    {
+      "id": "owner.footer",
+      "surface": "owner",
+      "mode": "css-background",
+      "fallback": "kruart-footer-final.webp",
+      "target": "2400x800",
+      "ratio": "3:1",
+      "priority": "P2",
+      "status": "reusable",
+      "safeZone": "copy-safe center-left"
+    },
+    {
+      "id": "awh.home.hero",
+      "surface": "awh",
+      "mode": "css-background",
+      "fallback": "kruart-role-staff-final.webp",
+      "target": "1400x900",
+      "ratio": "14:9",
+      "priority": "P1",
+      "status": "needs-dedicated",
+      "safeZone": "workspace/AI motif; avoid role-card crop",
+      "sourceCandidate": "F6C374BF-5EDA-4ED0-81A2-FD2E39C0AC12.PNG",
+      "plannedWebAsset": "awh-home-hero.webp",
+      "sourceAvailable": true
+    },
+    {
+      "id": "awh.signin.side",
+      "surface": "awh",
+      "mode": "css-background",
+      "fallback": "kruart-role-student-final.webp",
+      "target": "1200x1200",
+      "ratio": "1:1",
+      "priority": "P2",
+      "status": "needs-dedicated",
+      "safeZone": "quiet composition; no embedded text"
+    },
+    {
+      "id": "awh.empty.work",
+      "surface": "awh",
+      "mode": "future",
+      "fallback": null,
+      "target": "960x640",
+      "ratio": "3:2",
+      "priority": "P2",
+      "status": "reserved",
+      "safeZone": "small empty-state illustration"
+    },
+    {
+      "id": "awh.empty.tasks",
+      "surface": "awh",
+      "mode": "future",
+      "fallback": null,
+      "target": "960x640",
+      "ratio": "3:2",
+      "priority": "P2",
+      "status": "reserved",
+      "safeZone": "small empty-state illustration"
+    },
+    {
+      "id": "awh.empty.files",
+      "surface": "awh",
+      "mode": "future",
+      "fallback": null,
+      "target": "960x640",
+      "ratio": "3:2",
+      "priority": "P2",
+      "status": "reserved",
+      "safeZone": "small empty-state illustration"
+    },
+    {
+      "id": "system.infrastructure",
+      "surface": "system",
+      "mode": "css-background",
+      "fallback": "kruart-role-staff-final.webp",
+      "target": "1200x900",
+      "ratio": "4:3",
+      "priority": "P1",
+      "status": "needs-dedicated",
+      "safeZone": "VPS/network motif; art on right",
+      "sourceCandidate": "A4028D8F-7C7D-43E7-8DE6-20DFDFC85666.PNG",
+      "plannedWebAsset": "system-infrastructure.webp",
+      "sourceAvailable": true
+    },
+    {
+      "id": "system.hosting",
+      "surface": "system",
+      "mode": "css-background",
+      "fallback": "kruart-role-staff-final.webp",
+      "target": "1200x900",
+      "ratio": "4:3",
+      "priority": "P1",
+      "status": "needs-dedicated",
+      "safeZone": "hosting/site motif; art on right",
+      "sourceCandidate": "AF67C5FD-AC6B-466A-9CAC-FCAE30F94876.PNG",
+      "plannedWebAsset": "system-hosting.webp",
+      "sourceAvailable": true
+    },
+    {
+      "id": "system.control-panel",
+      "surface": "system",
+      "mode": "html-img",
+      "fallback": "kruart-role-staff-final.webp",
+      "target": "1200x900",
+      "ratio": "4:3",
+      "priority": "P1",
+      "status": "needs-dedicated",
+      "safeZone": "control-plane motif; compact crop",
+      "sourceCandidate": "B9259F7C-B3FF-4702-9543-C49B2B94BAA5.PNG",
+      "plannedWebAsset": "system-control-panel.webp",
+      "sourceAvailable": true
+    },
+    {
+      "id": "system.database",
+      "surface": "system",
+      "mode": "future",
+      "fallback": null,
+      "target": "1200x800",
+      "ratio": "3:2",
+      "priority": "P2",
+      "status": "reserved",
+      "safeZone": "abstract data motif; never compete with tables"
+    },
+    {
+      "id": "system.review",
+      "surface": "system",
+      "mode": "future",
+      "fallback": null,
+      "target": "1200x800",
+      "ratio": "3:2",
+      "priority": "P2",
+      "status": "reserved",
+      "safeZone": "review/approval motif; subtle"
+    },
+    {
+      "id": "system.trust",
+      "surface": "system",
+      "mode": "future",
+      "fallback": null,
+      "target": "1200x800",
+      "ratio": "3:2",
+      "priority": "P2",
+      "status": "reserved",
+      "safeZone": "security/trust motif; subtle"
+    }
+  ],
+  "projectSources": {
+    "archives": [
+      {
+        "name": "โลโก้โปรเจคทั้งหมด(2).zip",
+        "role": "official project/brand marks",
+        "imageCount": 11
+      },
+      {
+        "name": "Final ref cartoon awh.zip",
+        "role": "KRUART/AWH character, school, classroom and system visual references",
+        "imageCount": 106
+      },
+      {
+        "name": "Banner project.zip",
+        "role": "approved project banner artwork",
+        "imageCount": 9
+      }
+    ],
+    "exactDuplicates": [
+      [
+        "Kruart online logo.PNG",
+        "kruart_online_logo.png"
+      ],
+      [
+        "AWH_Arts_Workspace_Hub_logo.png",
+        "Awh logo.PNG"
+      ]
+    ],
+    "projectBanners": {
+      "bay-parent-connect": {
+        "source": "27E9C536-1D5D-4874-A72F-D273B886BF50.PNG",
+        "planned": "project-parent-connect.webp"
+      },
+      "school": {
+        "source": "2A034EC3-2E55-4ED3-884B-A5661A3387DA.PNG",
+        "planned": "project-school.webp"
+      },
+      "bay-computer-lab": {
+        "source": "317D5B1F-A988-4F8B-BEC6-AF3A8C45927E.PNG",
+        "planned": "project-computer-lab.webp"
+      },
+      "bay-learnlab": {
+        "source": "4C44742F-6405-46FF-9591-33860A253C7B.PNG",
+        "planned": "project-learnlab.webp"
+      },
+      "kruart-workspace": {
+        "source": "6A986C82-B5FA-4CAE-9ABE-32DE9149F580.PNG",
+        "planned": "project-kruart-workspace.webp"
+      },
+      "bay-learnlab-overview": {
+        "source": "852FC950-AD01-46AA-BE94-E53DBE5721AB.PNG",
+        "planned": "project-learnlab-overview.webp"
+      },
+      "awh": {
+        "source": "86029A98-FCFB-402D-9AED-16FF3B937FA2.PNG",
+        "planned": "project-awh.webp"
+      },
+      "kruart-online": {
+        "source": "98E44FD8-2E68-46C5-A648-1170A05E3BDC.PNG",
+        "planned": "project-kruart-online.webp"
+      },
+      "bay-excuse-x": {
+        "source": "AD6F3BF7-2BA5-49F8-BD42-4ACCA3A1CF8D.PNG",
+        "planned": "project-bay-excuse-x.webp"
+      }
+    },
+    "canonicalLogos": {
+      "school": "BanUatYai_school_emblem.png",
+      "bay-excuse-x": "Bay excuse x logo.png",
+      "bay-learnlab": "BAY_LearnLab_logo.jpg",
+      "bay-computer-lab": "BAY_Computer_Lab_logo.png",
+      "awh": "AWH_Arts_Workspace_Hub_logo.png",
+      "kruart-online": "kruart_online_logo.png",
+      "kruart-workspace": "KRUART_Workspace_Hub_logo.png",
+      "bay-app-icon": "BAY_app_icon_openbook.png"
+    }
+  }
+}

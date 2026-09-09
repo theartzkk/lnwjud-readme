@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 
 const read = (path: string) => readFile(path, 'utf8');
 const pages = ['index.html','database.html','infrastructure.html','hosting.html','trust.html','panel.html','review.html'];
@@ -54,4 +54,31 @@ test('generated build reinserts KRUART system UI after legacy light authority', 
   const build = await read('scripts/build-web-preview.ts');
   assert.match(build, /\(\?:awh-light-system\|kruart-system\)/);
   assert.match(build, /awh-light-system\.css\?release=__AWH_WEB_RELEASE_ID__\" \/>\\n  <link rel=\"stylesheet\" href=\"\.\/kruart-system\.css/);
+});
+
+
+test('KRUART visual asset slots are centralized and all deployed fallbacks exist', async () => {
+  const [raw, css, index, panel] = await Promise.all([
+    read('config/kruart-visual-assets.json'),
+    read('web/kruart-system.css'),
+    read('web/index.html'),
+    read('web/panel.html'),
+  ]);
+  const manifest = JSON.parse(raw) as {
+    version: number;
+    slots: Array<{ id: string; fallback: string | null; status: string }>;
+  };
+  assert.equal(manifest.version, 1);
+  assert.ok(manifest.slots.length >= 30);
+  assert.equal(new Set(manifest.slots.map((slot) => slot.id)).size, manifest.slots.length);
+  for (const slot of manifest.slots) {
+    if (slot.fallback) await access('web/' + slot.fallback);
+  }
+  assert.match(css, /--kruart-art-public-hero:url\("\.\/kruart-hero-final\.webp"\)/);
+  assert.match(css, /background-image:var\(--kruart-art-public-hero\)!important/);
+  assert.match(css, /--kruart-art-system-infrastructure/);
+  assert.match(index, /data-kruart-art-slot="public\.account-avatar"/);
+  assert.match(index, /data-kruart-art-slot="public\.today-message"/);
+  assert.match(panel, /data-kruart-art-slot="system\.control-panel"/);
+  assert.ok(manifest.slots.some((slot) => slot.status === 'needs-dedicated'));
 });
