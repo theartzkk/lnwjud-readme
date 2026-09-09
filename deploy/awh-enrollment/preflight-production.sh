@@ -323,13 +323,16 @@ else
 fi
 
 if test -L "$HUB/enrollment-current"; then
-  ENROLLMENT_TARGET=$(readlink -f "$HUB/enrollment-current" 2>/dev/null || true)
-  if test -n "$ENROLLMENT_TARGET" && test -d "$ENROLLMENT_TARGET" \
-    && test -f "$ENROLLMENT_TARGET/hub/public/enrollment.php" \
-    && test -f "$ENROLLMENT_TARGET/hub/src/HubEnrollmentService.php" \
-    && test -f "$ENROLLMENT_TARGET/hub/src/HubEnrollmentRouter.php" \
-    && test -f "$ENROLLMENT_TARGET/hub/migrations/002_m3e2_enrollment_api.sql" \
-    && test -f "$ENROLLMENT_TARGET/hub/bin/migrate-m3e2.php"; then
+  # The immutable release tree is intentionally owned by awh-hub and may not be
+  # traversable by the deployment operator. Resolve and inspect it through the
+  # existing bounded sudo boundary so a healthy release is not misclassified.
+  ENROLLMENT_TARGET=$(sudo -n readlink -f "$HUB/enrollment-current" 2>/dev/null || true)
+  if test -n "$ENROLLMENT_TARGET" && sudo -n test -d "$ENROLLMENT_TARGET" \
+    && sudo -n test -f "$ENROLLMENT_TARGET/hub/public/enrollment.php" \
+    && sudo -n test -f "$ENROLLMENT_TARGET/hub/src/HubEnrollmentService.php" \
+    && sudo -n test -f "$ENROLLMENT_TARGET/hub/src/HubEnrollmentRouter.php" \
+    && sudo -n test -f "$ENROLLMENT_TARGET/hub/migrations/002_m3e2_enrollment_api.sql" \
+    && sudo -n test -f "$ENROLLMENT_TARGET/hub/bin/migrate-m3e2.php"; then
     say 'enrollment_classification=ENROLLMENT_RELEASE_READY'
   else
     say 'enrollment_classification=ENROLLMENT_RELEASE_INVALID'

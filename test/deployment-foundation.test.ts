@@ -145,6 +145,8 @@ test('M3E and M4 configuration snapshots stay outside Nginx active configuration
   assert.match(preflight, /OPTIONAL_ABSENT/);
   assert.match(preflight, /--resolve \"\$HUB_HOSTNAME:443:127\.0\.0\.1\"/);
   assert.doesNotMatch(preflight, /curl\s+-k/);
+  assert.match(preflight, /sudo -n readlink -f \"\$HUB\/enrollment-current\"/);
+  assert.match(preflight, /sudo -n test -f \"\$ENROLLMENT_TARGET\/hub\/public\/enrollment\.php\"/);
   assert.match(deploy, /--cleanup-topology/);
   assert.match(deploy, /nginx_topology/);
 });
