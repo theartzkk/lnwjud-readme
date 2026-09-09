@@ -56,7 +56,7 @@ test('KRUART Golden Home ships the approved generated human artwork family and a
   const publicHome = html.match(/<section id="public-home-view"[\s\S]*?<section id="sign-in-view"/)?.[0] || '';
   assert.doesNotMatch(publicHome, /kruart-learnlab-mascot\.svg|bay-golden-mascot\.svg/);
   assert.match(html, /kruart-brand-icon[^>]*logo-256x256\.png/);
-  assert.match(html, /kruart-login-avatar[^>]*><img src="\.\/kruart-role-staff-final\.webp/);
+  assert.match(html, /kruart-login-avatar[^>]*><img[^>]*src="\.\/kruart-role-staff-final\.webp/);
   assert.match(html, /kruart-signin-logo[^>]*kruart-logo-final\.webp/);
   assert.match(publicHome, /kruart-role-student-final\.webp/);
   assert.match(css, /KRUART generated final artwork authority/);
