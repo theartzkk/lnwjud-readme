@@ -41,9 +41,17 @@ test('KRUART Golden Home uses LearnLab human cartoon art and keeps mascot art ou
     'kruart-human-student-math.webp',
     'kruart-reference-role-parent.webp',
     'kruart-reference-role-staff.webp',
+    'kruart-human-student-hero-hq.webp',
+    'kruart-human-teacher-hero-hq.webp',
+    'kruart-human-student-thai-hq.webp',
+    'kruart-human-student-english-hq.webp',
+    'kruart-human-student-math-hq.webp',
+    'kruart-human-student-computer-hq.webp',
+    'kruart-reference-role-parent-hq.webp',
+    'kruart-reference-role-staff-hq.webp',
     'kruart-campus-bg.svg',
   ]) {
-    assert.ok(html.includes(asset) || css.includes(asset), `human artwork is not used: ${asset}`);
+    if (asset.endsWith('-hq.webp') || asset === 'kruart-campus-bg.svg') assert.ok(html.includes(asset) || css.includes(asset), `retina artwork is not used: ${asset}`);
     assert.ok(build.includes(asset), `human artwork is not copied by web build: ${asset}`);
     assert.ok(manifest.includes(asset), `human artwork is not release-manifested: ${asset}`);
     assert.ok(sw.includes(asset), `human artwork is not cached by release-aware PWA shell: ${asset}`);
@@ -54,11 +62,15 @@ test('KRUART Golden Home uses LearnLab human cartoon art and keeps mascot art ou
   assert.match(html, /kruart-login-avatar[^>]*><img src="\.\/kruart-reference-role-staff\.webp"/);
   assert.match(publicHome, /kruart-human-student-english\.webp/);
   assert.match(publicHome, /kruart-human-teacher-hero\.webp/);
-  assert.match(css, /kruart-role-card\.parent[^\n]*kruart-reference-role-parent\.webp/);
-  assert.match(css, /kruart-role-card\.staff[^\n]*kruart-reference-role-staff\.webp/);
+  assert.match(css, /kruart-role-card\.parent[\s\S]{0,260}kruart-reference-role-parent-hq\.webp/);
+  assert.match(css, /kruart-role-card\.staff[\s\S]{0,260}kruart-reference-role-staff-hq\.webp/);
   assert.match(html, /kruart-brand-icon[^>]*src="\.\/bay-icon-learnlab\.svg"/);
   assert.match(css, /kruart-campus-bg\.svg/);
   assert.doesNotMatch(css, /kruart-role-card\.staff[^\n]*kruart-human-student-computer\.webp/);
   assert.match(css, /Human-only hero composition/);
   assert.match(css, /Approved-reference calibration — 1536×864 desktop frame/);
+  assert.match(css, /Retina\/mobile closure/);
+  assert.match(css, /body\.public-home-active \.awh-mobile-nav\{display:none!important\}/);
+  assert.doesNotMatch(css, /background-size:(?:350|360)% auto!important/);
+  assert.doesNotMatch(css, /@media\(max-width:820px\)[\s\S]{0,2400}background-size:360% auto!important/);
 });
