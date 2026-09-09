@@ -227,6 +227,24 @@ export async function updateProjectSourceAuthority({ projectId, action, reposito
   if (!UUID.test(projectId) || !['BIND','CLEAR'].includes(action)) throw new Error('การกำหนด Source ไม่ถูกต้อง');
   return controlRequest('/api/v1/control/projects/source', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, action, provider: action === 'BIND' ? 'GITHUB' : null, repository: action === 'BIND' ? repository : null, ref: action === 'BIND' ? ref : null }) });
 }
+export async function loadBayRemoteUpdateStatus() {
+  const value = await controlRequest('/api/v1/control/bay/update');
+  if (value.schemaVersion !== 1 || !value.statusRelay || typeof value.statusRelay !== 'object' || value.transport !== 'browser-relay' || value.packageAuthority !== 'BAY Update Inbox' || value.installAuthority !== 'BAY PackageManager' || typeof value.endpoint !== 'string') throw new Error('สถานะ BAY Remote Update ไม่ถูกต้อง');
+  return value;
+}
+export async function createBayRemoteInstallRelay({ targetVersion, targetSha, packageSha256 }) {
+  if (typeof targetVersion !== 'string' || !targetVersion.trim() || typeof targetSha !== 'string' || !/^[0-9a-f]{40}$/i.test(targetSha) || typeof packageSha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(packageSha256)) throw new Error('ข้อมูล BAY release ไม่ถูกต้อง');
+  return controlRequest('/api/v1/control/bay/update/install-relay', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, targetVersion: targetVersion.trim(), targetSha: targetSha.toLowerCase(), packageSha256: packageSha256.toLowerCase() }) });
+}
+export async function relayBayRemoteCommand(endpoint, relay, fetchImpl = globalThis.fetch) {
+  if (endpoint !== 'https://kruart.great-site.net/remote-update.php' || !relay || typeof relay !== 'object' || Array.isArray(relay)) throw new Error('BAY Remote Update relay ไม่ถูกต้อง');
+  const response = await fetchImpl(endpoint, { method: 'POST', mode: 'cors', credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify(relay) });
+  const body = await response.text();
+  if (body.length > MAX_JSON_BYTES) throw new Error('BAY Remote Update response ใหญ่เกินขอบเขต');
+  let value; try { value = JSON.parse(body); } catch { throw new Error('BAY Remote Update ตอบกลับไม่ถูกต้อง'); }
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !response.ok || value.ok !== true) throw new Error(typeof value?.message === 'string' ? value.message : 'BAY Remote Update ไม่สำเร็จ');
+  return value;
+}
 export async function loadCloudStatus() {
   const value = await controlRequest('/api/v1/control/cloud');
   if (value.schemaVersion !== 1 || !['READY', 'NOT_CONFIGURED', 'NOT_READY'].includes(value.state) || !Array.isArray(value.capabilities) || !Array.isArray(value.recent)) throw new Error('สถานะ AWH Cloud ไม่ถูกต้อง');

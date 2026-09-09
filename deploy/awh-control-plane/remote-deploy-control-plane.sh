@@ -120,6 +120,49 @@ cleanup_owner_auth_cookie_files() {
 }
 
 stage() { printf '%s\n' "DEPLOY_STAGE=$1"; CURRENT_STAGE=$1; }
+reconcile_provider_credential_storage() {
+  CREDENTIAL_DIR=/var/lib/awh-hub/provider-credentials
+  sudo test -d "$CREDENTIAL_DIR"
+  sudo test ! -L "$CREDENTIAL_DIR"
+  CREDENTIAL_STATE=$(sudo stat -c '%U:%G:%a' "$CREDENTIAL_DIR")
+  if test "$CREDENTIAL_STATE" = awh-hub:awh-hub:700; then
+    sudo -u awh-hub test -w "$CREDENTIAL_DIR"
+    return 0
+  fi
+  test "$CREDENTIAL_STATE" = root:awh-hub:750
+  test -z "$(sudo find "$CREDENTIAL_DIR" -mindepth 1 -maxdepth 1 ! -type f -print -quit)"
+  CREDENTIAL_COUNT=$(sudo find "$CREDENTIAL_DIR" -mindepth 1 -maxdepth 1 -type f -name '*.key' | wc -l | tr -d ' ')
+  case "$CREDENTIAL_COUNT" in ''|*[!0-9]*) exit 20 ;; esac
+  test "$CREDENTIAL_COUNT" -ge 1 && test "$CREDENTIAL_COUNT" -le 32
+  for CREDENTIAL_FILE in $(sudo find "$CREDENTIAL_DIR" -mindepth 1 -maxdepth 1 -type f -name '*.key' -printf '%f\n' | sort); do
+    case "$CREDENTIAL_FILE" in *[!a-z0-9._-]*|.*|'') exit 20 ;; esac
+    CREDENTIAL_META=$(sudo stat -c '%U:%G:%a:%s' "$CREDENTIAL_DIR/$CREDENTIAL_FILE")
+    CREDENTIAL_OWNER=$(printf '%s' "$CREDENTIAL_META" | cut -d: -f1-3)
+    CREDENTIAL_SIZE=$(printf '%s' "$CREDENTIAL_META" | cut -d: -f4)
+    test "$CREDENTIAL_OWNER" = root:awh-hub:640
+    case "$CREDENTIAL_SIZE" in ''|*[!0-9]*) exit 20 ;; esac
+    test "$CREDENTIAL_SIZE" -ge 1 && test "$CREDENTIAL_SIZE" -le 4096
+  done
+  CREDENTIAL_BACKUP_ROOT=/var/backups/awh-hub/provider-credentials
+  CREDENTIAL_BACKUP=$CREDENTIAL_BACKUP_ROOT/$RELEASE_ID.tar
+  CREDENTIAL_HASHES=$CREDENTIAL_BACKUP_ROOT/$RELEASE_ID.sha256
+  sudo install -d -o root -g root -m 0700 "$CREDENTIAL_BACKUP_ROOT"
+  sudo test ! -e "$CREDENTIAL_BACKUP"
+  sudo test ! -e "$CREDENTIAL_HASHES"
+  sudo tar -cpf "$CREDENTIAL_BACKUP" -C /var/lib/awh-hub provider-credentials
+  sudo sh -c "cd '$CREDENTIAL_DIR' && sha256sum -- *.key > '$CREDENTIAL_HASHES'"
+  sudo chown root:root "$CREDENTIAL_BACKUP" "$CREDENTIAL_HASHES"
+  sudo chmod 0600 "$CREDENTIAL_BACKUP" "$CREDENTIAL_HASHES"
+  sudo tar -tf "$CREDENTIAL_BACKUP" >/dev/null
+  sudo chown awh-hub:awh-hub "$CREDENTIAL_DIR"
+  sudo chmod 0700 "$CREDENTIAL_DIR"
+  sudo chown awh-hub:awh-hub "$CREDENTIAL_DIR"/*.key
+  sudo chmod 0600 "$CREDENTIAL_DIR"/*.key
+  test "$(sudo stat -c '%U:%G:%a' "$CREDENTIAL_DIR")" = awh-hub:awh-hub:700
+  sudo sh -c "cd '$CREDENTIAL_DIR' && sha256sum -c '$CREDENTIAL_HASHES' >/dev/null"
+  sudo -u awh-hub test -w "$CREDENTIAL_DIR"
+  stage PROVIDER_CREDENTIAL_STORAGE_RECONCILED
+}
 reload_awh_php_fpm() { sudo systemctl reload "$AWH_FPM_SERVICE"; sudo systemctl is-active --quiet "$AWH_FPM_SERVICE"; }
 verify_nginx_topology_clean() {
   TOPOLOGY_CHECK=$(sudo nginx -T 2>&1 || true)
@@ -424,7 +467,7 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1; then
   M20_TABLE_COUNT_BEFORE=$(sudo sqlite3 "$DB" "SELECT count(*) FROM sqlite_master WHERE type='table';")
   stage PROJECT_VAULT_RUNTIME_READY; sudo -u awh-hub /usr/bin/php -r 'exit((extension_loaded("pdo_sqlite") && class_exists("ZipArchive")) ? 0 : 1);'
   stage PROJECT_VAULT_STORAGE_READY; sudo -u awh-hub test -w /var/lib/awh-hub/project-vault; sudo -u awh-hub test -w /var/lib/awh-hub/task-workspaces; sudo -u awh-hub test -w /var/lib/awh-hub/task-transfers; sudo -u awh-hub test -w /var/lib/awh-hub/artifacts
-  stage PROVIDER_CREDENTIAL_STORAGE_READY; sudo test -d /var/lib/awh-hub/provider-credentials; test "$(sudo stat -c '%U:%G:%a' /var/lib/awh-hub/provider-credentials)" = 'awh-hub:awh-hub:700'; sudo -u awh-hub test -w /var/lib/awh-hub/provider-credentials
+  reconcile_provider_credential_storage; stage PROVIDER_CREDENTIAL_STORAGE_READY; sudo test -d /var/lib/awh-hub/provider-credentials; test "$(sudo stat -c '%U:%G:%a' /var/lib/awh-hub/provider-credentials)" = 'awh-hub:awh-hub:700'; sudo -u awh-hub test -w /var/lib/awh-hub/provider-credentials
   test -f "$EXECUTOR_SERVICE_UNIT" && test -f "$EXECUTOR_TIMER_UNIT" && test -f "$HOSTING_SERVICE_UNIT" && test -f "$HOSTING_TIMER_UNIT"; test "$PREVIOUS_POINTER" = PRESENT
   sudo cmp -s "$EXECUTOR_SERVICE_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-native-executor.service"; sudo cmp -s "$EXECUTOR_TIMER_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-native-executor.timer"
   sudo install -d -o root -g root -m 0750 "$EXECUTOR_BACKUP_ROOT"; sudo test ! -e "$EXECUTOR_SERVICE_BACKUP"; sudo test ! -e "$EXECUTOR_TIMER_BACKUP"; sudo test ! -e "$HOSTING_SERVICE_BACKUP"; sudo test ! -e "$HOSTING_TIMER_BACKUP"
@@ -454,7 +497,7 @@ elif test "$CONVERSATION_LIFECYCLE" = 1; then
   M19_TABLE_COUNT_BEFORE=$(sudo sqlite3 "$DB" "SELECT count(*) FROM sqlite_master WHERE type='table';")
   stage PROJECT_VAULT_RUNTIME_READY; sudo -u awh-hub /usr/bin/php -r 'exit((extension_loaded("pdo_sqlite") && class_exists("ZipArchive")) ? 0 : 1);'
   stage PROJECT_VAULT_STORAGE_READY; sudo -u awh-hub test -w /var/lib/awh-hub/project-vault; sudo -u awh-hub test -w /var/lib/awh-hub/task-workspaces; sudo -u awh-hub test -w /var/lib/awh-hub/task-transfers; sudo -u awh-hub test -w /var/lib/awh-hub/artifacts
-  stage PROVIDER_CREDENTIAL_STORAGE_READY; sudo test -d /var/lib/awh-hub/provider-credentials; test "$(sudo stat -c '%U:%G:%a' /var/lib/awh-hub/provider-credentials)" = 'awh-hub:awh-hub:700'; sudo -u awh-hub test -w /var/lib/awh-hub/provider-credentials
+  reconcile_provider_credential_storage; stage PROVIDER_CREDENTIAL_STORAGE_READY; sudo test -d /var/lib/awh-hub/provider-credentials; test "$(sudo stat -c '%U:%G:%a' /var/lib/awh-hub/provider-credentials)" = 'awh-hub:awh-hub:700'; sudo -u awh-hub test -w /var/lib/awh-hub/provider-credentials
   stage IMAGE_INPUT_RUNTIME_READY; sudo test -x /usr/bin/vipsthumbnail; sudo test ! -L /usr/bin/vipsthumbnail; test "$(sudo stat -c '%U:%G:%a' /usr/bin/vipsthumbnail)" = 'root:root:755'
   test -f "$EXECUTOR_SERVICE_UNIT" && test -f "$EXECUTOR_TIMER_UNIT" && test -f "$HOSTING_SERVICE_UNIT" && test -f "$HOSTING_TIMER_UNIT"; test "$PREVIOUS_POINTER" = PRESENT
   sudo cmp -s "$EXECUTOR_SERVICE_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-native-executor.service"; sudo cmp -s "$EXECUTOR_TIMER_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-native-executor.timer"
@@ -482,7 +525,7 @@ elif test "$CLOUD_FIRST" = 1; then
   M18_TABLE_COUNT_BEFORE=$(sudo sqlite3 "$DB" "SELECT count(*) FROM sqlite_master WHERE type='table';")
   stage PROJECT_VAULT_RUNTIME_READY; sudo -u awh-hub /usr/bin/php -r 'exit((extension_loaded("pdo_sqlite") && class_exists("ZipArchive")) ? 0 : 1);'
   stage PROJECT_VAULT_STORAGE_READY; sudo -u awh-hub test -w /var/lib/awh-hub/project-vault; sudo -u awh-hub test -w /var/lib/awh-hub/task-workspaces; sudo -u awh-hub test -w /var/lib/awh-hub/task-transfers; sudo -u awh-hub test -w /var/lib/awh-hub/artifacts
-  stage PROVIDER_CREDENTIAL_STORAGE_READY; sudo test -d /var/lib/awh-hub/provider-credentials; test "$(sudo stat -c '%U:%G:%a' /var/lib/awh-hub/provider-credentials)" = 'awh-hub:awh-hub:700'; sudo -u awh-hub test -w /var/lib/awh-hub/provider-credentials
+  reconcile_provider_credential_storage; stage PROVIDER_CREDENTIAL_STORAGE_READY; sudo test -d /var/lib/awh-hub/provider-credentials; test "$(sudo stat -c '%U:%G:%a' /var/lib/awh-hub/provider-credentials)" = 'awh-hub:awh-hub:700'; sudo -u awh-hub test -w /var/lib/awh-hub/provider-credentials
   test -f "$EXECUTOR_SERVICE_UNIT" && test -f "$EXECUTOR_TIMER_UNIT" && test -f "$HOSTING_SERVICE_UNIT" && test -f "$HOSTING_TIMER_UNIT"; test "$PREVIOUS_POINTER" = PRESENT
   sudo cmp -s "$EXECUTOR_SERVICE_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-native-executor.service"; sudo cmp -s "$EXECUTOR_TIMER_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-native-executor.timer"
   sudo install -d -o root -g root -m 0750 "$EXECUTOR_BACKUP_ROOT"; sudo test ! -e "$EXECUTOR_SERVICE_BACKUP"; sudo test ! -e "$EXECUTOR_TIMER_BACKUP"

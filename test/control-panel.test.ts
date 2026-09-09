@@ -58,3 +58,36 @@ test('Owner entry and standalone admin pages converge on Control Panel',async()=
   assert.match(app,/awh-settings/);
   assert.match(app,/requestedOwnerSettings/);
 });
+
+
+test('BAY Remote Update stays inside AWH Owner + BAY Update Inbox + PackageManager authorities',async()=>{
+  const [html,js,css,adapter,service,control,router,trust]=await Promise.all([
+    'web/panel.html','web/panel.js','web/panel.css','web/control-plane-adapter.js',
+    'hub/src/HubBayRemoteUpdateService.php','hub/src/HubControlPlaneService.php',
+    'hub/src/HubControlPlaneRouter.php','hub/src/HubTrustPolicy.php'
+  ].map(name=>readFile(join(ROOT,name),'utf8')));
+  assert.match(html,/BAY REMOTE UPDATE CONTROL/);
+  assert.match(html,/assets\/bay-mascot\.svg/);
+  assert.match(html,/connect-src 'self' https:\/\/kruart\.great-site\.net/);
+  assert.match(css,/\.cp-bay-update/);
+  assert.match(css,/@media\(max-width:560px\)/);
+  assert.match(js,/loadBayRemoteUpdateStatus/);
+  assert.match(js,/createBayRemoteInstallRelay/);
+  assert.match(js,/relayBayRemoteCommand/);
+  assert.match(js,/Backup → Install → Verify/);
+  assert.match(js,/Auto-stage|auto-stage|Update Inbox/);
+  assert.doesNotMatch(js+adapter,/prepareBayRemoteUpdate|\/bay\/update\/prepare/);
+  assert.match(adapter,/endpoint !== 'https:\/\/kruart\.great-site\.net\/remote-update\.php'/);
+  assert.match(adapter,/credentials: 'omit'/);
+  assert.match(adapter,/redirect: 'error'/);
+  assert.doesNotMatch(html+js+adapter,/PRIVATE KEY|SODIUM_CRYPTO_SIGN_SECRETKEYBYTES|bay-remote-update-signing\.key/);
+  assert.match(service,/HubProviderCredentialStore::fromEnvironment\(self::SIGNING_PROVIDER\)/);
+  assert.match(service,/packageAuthority'=>'BAY Update Inbox'/);
+  assert.match(service,/installAuthority'=>'BAY PackageManager'/);
+  assert.doesNotMatch(service,/HubCloudWorkflowService|dispatchRepositoryWorkflow|canonicalRepositoryRevision|GitHub/);
+  assert.match(control,/assertOwner/);
+  assert.match(control,/authorizeSession/);
+  assert.match(router,/\/api\/v1\/control\/bay\/update/);
+  assert.match(router,/\/api\/v1\/control\/bay\/update\/install-relay/);
+  assert.match(trust,/bay\.remote_update\.install/);
+});
