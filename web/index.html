@@ -141,15 +141,15 @@
         </form>
       </section>
 
-      <section id="ecosystem-home-view" class="ecosystem-home-view owner-cockpit" hidden aria-labelledby="ecosystem-home-title">
-        <div class="owner-cockpit-grid">
-          <section class="owner-command-card" aria-labelledby="ecosystem-home-title">
+      <section id="ecosystem-home-view" class="ecosystem-home-view owner-golden-home" hidden aria-labelledby="ecosystem-home-title">
+        <section class="owner-golden-hero">
+          <div class="owner-golden-hero-copy">
             <p class="eyebrow">ART’S WORKSPACE HUB</p>
-            <h1 id="ecosystem-home-title">วันนี้อยากทำอะไร?</h1>
-            <p>สั่งงาน AWH เป็นภาษาปกติ แล้วค่อยไปดูระบบเมื่อจำเป็น</p>
+            <h1 id="ecosystem-home-title"><span>สวัสดีครับ</span><strong>พื้นที่ทำงานของเรา</strong></h1>
+            <p>ให้ AWH ช่วยคิด จัดการ และพาไปยังระบบที่ต้องใช้ได้จากที่เดียว</p>
             <form id="ecosystem-command-form" class="owner-command-form">
               <label class="sr-only" for="ecosystem-command-input">สิ่งที่อยากให้ AWH ช่วย</label>
-              <input id="ecosystem-command-input" type="text" maxlength="2000" autocomplete="off" placeholder="พิมพ์สิ่งที่อยากให้ช่วย…" />
+              <input id="ecosystem-command-input" type="text" maxlength="2000" autocomplete="off" placeholder="วันนี้อยากให้ AWH ช่วยอะไร…" />
               <button type="submit" aria-label="เปิดงานนี้ใน AWH">ส่ง <span aria-hidden="true">↑</span></button>
             </form>
             <div class="owner-command-suggestions" aria-label="คำสั่งแนะนำ">
@@ -158,17 +158,40 @@
               <button type="button" data-owner-command="ตรวจสถานะระบบทั้งหมดและบอกเฉพาะสิ่งที่ต้องดู">ตรวจระบบ</button>
               <button type="button" data-owner-command="เปิดงาน LearnLab ที่เกี่ยวข้องกับวันนี้">LearnLab</button>
             </div>
+          </div>
+          <div class="owner-golden-hero-art" aria-hidden="true"></div>
+        </section>
+
+        <aside class="owner-today-panel" aria-labelledby="owner-live-title">
+          <div class="owner-today-head"><div><p class="eyebrow">TODAY</p><h2 id="owner-live-title">วันนี้ของฉัน</h2></div><span id="ecosystem-live-overall" class="owner-live-overall checking">กำลังตรวจ…</span></div>
+          <section class="ecosystem-summary owner-summary" aria-label="ภาพรวมวันนี้">
+            <div class="today-blue"><strong id="ecosystem-active-count">—</strong><span>ระบบพร้อมใช้</span></div>
+            <div class="today-orange"><strong id="ecosystem-release-count">—</strong><span>ไฟล์พร้อมดาวน์โหลด</span></div>
+            <div class="today-green"><strong id="ecosystem-project-count">—</strong><span>ระบบและโปรเจกต์</span></div>
+            <div class="today-purple"><strong id="ecosystem-pilot-count">—</strong><span>จุดที่ต้องดู</span></div>
           </section>
-          <aside class="owner-live-card" aria-labelledby="owner-live-title">
-            <div class="owner-live-head"><div><p class="eyebrow">LIVE</p><h2 id="owner-live-title">สถานะวันนี้</h2></div><span id="ecosystem-live-overall" class="owner-live-overall checking">กำลังตรวจ…</span></div>
-            <div id="ecosystem-live-list" class="owner-live-list" aria-live="polite"><p>กำลังอ่านสถานะจาก BAY Ecosystem…</p></div>
-            <a href="/bay/status.html">ดูสถานะทั้งหมด ›</a>
-          </aside>
-        </div>
-        <section class="ecosystem-summary owner-summary" aria-label="ภาพรวมวันนี้"><div><strong id="ecosystem-project-count">—</strong><span>ระบบและโปรเจกต์</span></div><div><strong id="ecosystem-active-count">—</strong><span>พร้อมใช้งาน</span></div><div><strong id="ecosystem-pilot-count">—</strong><span>ต้องตรวจ</span></div><div><strong id="ecosystem-release-count">—</strong><span>ไฟล์พร้อมดาวน์โหลด</span></div></section>
-        <section class="ecosystem-recent" aria-labelledby="ecosystem-recent-title"><div class="ecosystem-section-head"><div><span>ทำต่อจากล่าสุด</span><h2 id="ecosystem-recent-title">เริ่มจากงานสำคัญ</h2></div><button id="ecosystem-open-awh" class="owner-section-action" type="button">เปิด AWH ›</button></div><div id="ecosystem-featured-grid" class="ecosystem-featured-grid"></div></section>
-        <section class="ecosystem-projects" aria-labelledby="ecosystem-projects-title"><div class="ecosystem-section-head"><div><span>ระบบของเรา</span><h2 id="ecosystem-projects-title">ระบบและโปรเจกต์ทั้งหมด</h2></div><div class="ecosystem-home-actions"><label class="ecosystem-search-box"><span class="sr-only">ค้นหาโปรเจกต์</span><input id="ecosystem-search-input" type="search" maxlength="80" autocomplete="off" placeholder="ค้นหาระบบหรือโปรเจกต์…" /></label><a class="secondary-button public-link-button" href="/bay/apps.html">ดูระบบ</a></div></div><div id="ecosystem-project-grid" class="ecosystem-project-grid" aria-live="polite"></div></section>
-        <section id="ecosystem-owner-tools" class="ecosystem-owner-tools" hidden><div class="ecosystem-section-head"><div><span>OWNER SYSTEM</span><h2>เครื่องมือผู้ดูแลระบบ</h2></div></div><div class="ecosystem-owner-grid"><a href="./infrastructure.html">Infrastructure</a><a href="./hosting.html">Hosting</a><a href="./database.html">Database Studio</a><a href="./trust.html">Trust Center</a><a href="./panel.html">Control Panel</a></div></section>
+          <div id="ecosystem-live-list" class="owner-live-list" aria-live="polite"><p>กำลังอ่านสถานะจาก BAY Ecosystem…</p></div>
+          <a class="owner-today-link" href="/bay/status.html">ดูสถานะทั้งหมด ›</a>
+        </aside>
+
+        <section class="owner-shortcuts" aria-labelledby="ecosystem-recent-title">
+          <div class="ecosystem-section-head"><div><span>QUICK ACCESS</span><h2 id="ecosystem-recent-title">ทางลัดวันนี้</h2></div><button id="ecosystem-open-awh" class="owner-section-action" type="button">เปิด AWH ›</button></div>
+          <div id="ecosystem-featured-grid" class="ecosystem-featured-grid"></div>
+        </section>
+
+        <section class="owner-main-grid">
+          <section class="ecosystem-projects owner-systems" aria-labelledby="ecosystem-projects-title">
+            <div class="ecosystem-section-head"><div><span>OUR SYSTEMS</span><h2 id="ecosystem-projects-title">ระบบอื่น ๆ</h2></div><div class="ecosystem-home-actions"><label class="ecosystem-search-box"><span class="sr-only">ค้นหาโปรเจกต์</span><input id="ecosystem-search-input" type="search" maxlength="80" autocomplete="off" placeholder="ค้นหาระบบหรือโปรเจกต์…" /></label><a class="secondary-button public-link-button" href="/bay/apps.html">ดูทั้งหมด</a></div></div>
+            <div id="ecosystem-project-grid" class="ecosystem-project-grid" aria-live="polite"></div>
+          </section>
+          <section id="ecosystem-owner-tools" class="ecosystem-owner-tools owner-control-card" hidden>
+            <div class="owner-control-art" aria-hidden="true"></div>
+            <div><p class="eyebrow">OWNER CONTROL</p><h2>ศูนย์ควบคุมระบบ</h2><p>VPS · Hosting · Database · Security · Devices</p></div>
+            <div class="ecosystem-owner-grid"><a href="./panel.html">เปิด Control Center</a><a href="./infrastructure.html">ดูสุขภาพระบบ</a></div>
+          </section>
+        </section>
+
+        <section class="owner-golden-footer"><div><p class="eyebrow">KRUART · AWH</p><h2>ทำงานให้ง่ายขึ้น แล้วใช้เวลากับสิ่งสำคัญ</h2><p>ทุกระบบของโรงเรียนและงาน AI อยู่ในพื้นที่เดียวกัน</p></div><button type="button" data-owner-command="ช่วยดูว่าวันนี้มีอะไรสำคัญที่ฉันควรทำต่อ">เริ่มงานของวันนี้ ›</button></section>
       </section>
 
       <section id="workspace-view" class="workspace-view" hidden aria-labelledby="work-title">

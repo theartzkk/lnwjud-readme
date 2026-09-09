@@ -919,7 +919,7 @@ import {
       const url = safeUrl(project?.primary_action?.url); if (url) location.assign(url);
     };
     const card = (project, prominent = false) => {
-      const article = document.createElement('article'); article.className = prominent ? 'ecosystem-project-card featured' : 'ecosystem-project-card';
+      const article = document.createElement('article'); article.className = (prominent ? 'ecosystem-project-card featured owner-shortcut-card' : 'ecosystem-project-card') + ' product-' + safeText(project.id,'project').replace(/[^a-z0-9-]/gi,'-');
       const head = document.createElement('div'); head.className = 'ecosystem-project-head';
       const icon = document.createElement('span'); icon.className = 'ecosystem-project-icon'; icon.textContent = safeText(project.icon, '•');
       const status = document.createElement('span'); const serviceId=liveProjectService(project.id); const live=serviceId?liveById.get(serviceId):null; const statusTone=live ? (live.ok===true?'active':'attention') : (({prototype:'pilot',reference:'internal'})[project.status]||safeText(project.status,'project')); status.className = `ecosystem-project-status status-${statusTone}`; status.textContent = live ? (live.ok===true?'พร้อมใช้':'ต้องตรวจ') : labelFor(project.status); if(live) article.dataset.liveState=live.ok===true?'ready':'attention';
@@ -939,7 +939,8 @@ import {
     const visibleProjects = query ? projects.filter((project) => [project?.name, project?.type, project?.stage, project?.summary, ...(Array.isArray(project?.capabilities) ? project.capabilities : [])].map((value) => safeText(value).toLocaleLowerCase('th-TH')).join(' ').includes(query)) : projects;
     const preferredIds = ['bay-excuse-x','bay-learnlab','awh','school-website'];
     for (const id of preferredIds) { const project=visibleProjects.find((item)=>item?.id===id); if(project) featured.append(card(project,true)); }
-    for (const project of visibleProjects) grid.append(card(project,false));
+    const remainingProjects = query ? visibleProjects : visibleProjects.filter((item)=>!preferredIds.includes(item?.id));
+    for (const project of remainingProjects) grid.append(card(project,false));
     if (!visibleProjects.length) { const empty=document.createElement('div'); empty.className='ecosystem-empty'; empty.textContent='ยังอ่านทะเบียนโปรเจกต์จาก BAY Ecosystem ไม่ได้ โปรดใช้เมนู BAY ชั่วคราว'; grid.append(empty); }
     const set=(id,value)=>{const node=$(id);if(node)node.textContent=String(value)};
     const readyServices = liveServices.filter((item)=>item?.ok===true);

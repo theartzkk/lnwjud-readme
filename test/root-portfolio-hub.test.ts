@@ -7,7 +7,7 @@ const read = (path: string) => readFile(new URL(`../${path}`, import.meta.url), 
 test('authenticated root is the portfolio hub and reuses BAY registry authority', async () => {
   const [html, app, css, dashboard] = await Promise.all([read('web/index.html'), read('web/app.js'), read('web/styles.css'), read('web/dashboard.js')]);
   assert.match(html, /id="ecosystem-home-view"/);
-  assert.match(html, /วันนี้อยากทำอะไร\\?/);
+  assert.match(html, /พื้นที่ทำงานของเรา/);
   assert.match(html, /id="ecosystem-project-grid"/);
   assert.match(html, /id="ecosystem-search-input"/);
   assert.match(app, /fetch\('\/bay\/data\/projects\.json'/);
@@ -52,5 +52,5 @@ test('authenticated root is an AWH cockpit with live readiness and role-aware na
   assert.match(app, /routeOwnerCommand/);
   assert.match(app, /liveProjectService/);
   assert.match(app, /owner-only-nav/);
-  assert.match(css, /KRUART Owner Cockpit/);
+  assert.match(css, /KRUART Golden Owner Home/);
 });

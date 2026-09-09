@@ -21,7 +21,7 @@ test('canonical Dashboard is intent-first with a three-item mobile navigation',a
  assert.match(dashboard,/openWork\(command\.value, false\)/);
  assert.match(dashboard,/\$\('attachment-open'\)\?\.click\(\)/);
  assert.match(css,/awh-command-attach/);
- assert.match(index,/Infrastructure/); assert.doesNotMatch(`${dashboard}\n${css}`,/awh-experience-v[23]|final-home-polish/);
+ assert.match(index,/href="\.\/infrastructure\.html"/); assert.doesNotMatch(`${dashboard}\n${css}`,/awh-experience-v[23]|final-home-polish/);
 });
 
 
