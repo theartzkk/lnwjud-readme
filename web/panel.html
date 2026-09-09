@@ -5,15 +5,16 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#ffffff" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://kruart.great-site.net; object-src 'none'; base-uri 'none'; form-action 'none'" />
-  <title>AWH Control Panel</title>
+  <title>Control Panel · KRUART AWH</title>
   <link rel="stylesheet" href="./awh-design-system.css?release=__AWH_WEB_RELEASE_ID__" />
   <link rel="stylesheet" href="./awh-light-system.css?release=__AWH_WEB_RELEASE_ID__" />
   <link rel="stylesheet" href="./panel.css?release=__AWH_WEB_RELEASE_ID__" />
+  <link rel="stylesheet" href="./kruart-system.css?release=__AWH_WEB_RELEASE_ID__" />
 </head>
 <body>
   <div class="cp-shell">
     <aside class="cp-sidebar" id="cp-sidebar">
-      <a class="cp-brand" href="./panel.html"><span><img src="./assets/bay-mark.svg" alt="" aria-hidden="true"></span><div><strong>AWH Control Panel</strong><small>BAY Ecosystem</small></div></a>
+      <a class="cp-brand" href="./panel.html"><img class="system-brand-icon" src="./logo-256x256.png?release=__AWH_WEB_RELEASE_ID__" alt="" /><div><strong>AWH Control Panel</strong><small>BAY Ecosystem</small></div></a>
       <label class="cp-search"><span>⌕</span><input id="cp-search" type="search" placeholder="ค้นหาเมนู…  ⌘K" autocomplete="off" /></label>
       <nav class="cp-nav" aria-label="Control Panel">
         <a class="is-active" href="#overview" data-cp-keywords="dashboard overview สรุป"><span>⌂</span>ภาพรวม</a>
@@ -44,7 +45,7 @@
       <div class="cp-content">
         <section id="overview" class="cp-hero">
           <div><span class="cp-eyebrow">AWH · BAY ECOSYSTEM</span><h1>ทุกระบบ อยู่ที่เดียว</h1><p>ดูสุขภาพ จัดการเว็บไซต์ ข้อมูล Backup ผู้ใช้ AI และระบบส่วนกลาง โดยใช้ authority เดิมของแต่ละระบบ</p></div>
-          <div class="cp-hero-side"><img src="./assets/kruart-reference-role-staff.webp" srcset="./assets/kruart-reference-role-staff.webp 143w, ./assets/kruart-reference-role-staff-hq.webp 429w" sizes="96px" width="429" height="423" alt="" aria-hidden="true"><div id="cp-overall" class="cp-overall">กำลังตรวจ</div></div>
+          <div class="cp-hero-side"><img src="./kruart-role-staff-final.webp?release=__AWH_WEB_RELEASE_ID__" width="2048" height="768" alt="" aria-hidden="true"><div id="cp-overall" class="cp-overall">กำลังตรวจ</div></div>
         </section>
         <section class="cp-metrics" aria-label="ทรัพยากรระบบ">
           <article><small>CPU</small><strong id="cp-cpu">—</strong><span id="cp-load">Load —</span></article>
@@ -80,7 +81,7 @@
           </div>
           <div class="cp-bay-visual" aria-hidden="true">
             <div class="cp-bay-orbit"><span></span><span></span><span></span></div>
-            <img src="./assets/bay-mascot.svg?release=__AWH_WEB_RELEASE_ID__" alt="" />
+            <img src="./kruart-role-staff-final.webp?release=__AWH_WEB_RELEASE_ID__" alt="" />
             <div class="cp-bay-badge"><b>🛡️</b><span><strong>Safe Update</strong><small>PackageManager authority</small></span></div>
           </div>
         </section>
