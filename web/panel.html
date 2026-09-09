@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#ffffff" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://kruart.great-site.net; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <title>AWH Control Panel</title>
   <link rel="stylesheet" href="./awh-design-system.css?release=__AWH_WEB_RELEASE_ID__" />
   <link rel="stylesheet" href="./awh-light-system.css?release=__AWH_WEB_RELEASE_ID__" />
@@ -30,6 +30,7 @@
         <a href="./?awh-surface=home&awh-settings=ai" data-cp-keywords="ai provider model quota cost automation เอไอ ค่าใช้จ่าย"><span>✦</span>AI & Automations</a>
         <p>ระบบ BAY</p>
         <a href="#ecosystem" data-cp-keywords="bay excuse learnlab school ecosystem โรงเรียน"><span>◫</span>BAY Ecosystem</a>
+        <a href="#bay-update" data-cp-keywords="bay update deploy package manager อัปเดต production"><span>⇧</span>BAY Update</a>
         <a href="./?awh-surface=home#source" data-cp-keywords="source github vault lnwjud advanced runtime"><span>⌁</span>Advanced</a>
       </nav>
       <div class="cp-sidebar-foot"><a href="./">← กลับ AWH</a><span id="cp-release">Release —</span></div>
@@ -43,13 +44,45 @@
       <div class="cp-content">
         <section id="overview" class="cp-hero">
           <div><span class="cp-eyebrow">AWH · BAY ECOSYSTEM</span><h1>ทุกระบบ อยู่ที่เดียว</h1><p>ดูสุขภาพ จัดการเว็บไซต์ ข้อมูล Backup ผู้ใช้ AI และระบบส่วนกลาง โดยใช้ authority เดิมของแต่ละระบบ</p></div>
-          <div class="cp-hero-side"><img src="./assets/bay-mascot.svg" alt="" aria-hidden="true"><div id="cp-overall" class="cp-overall">กำลังตรวจ</div></div>
+          <div class="cp-hero-side"><img src="./assets/kruart-reference-role-staff.webp" srcset="./assets/kruart-reference-role-staff.webp 143w, ./assets/kruart-reference-role-staff-hq.webp 429w" sizes="96px" width="429" height="423" alt="" aria-hidden="true"><div id="cp-overall" class="cp-overall">กำลังตรวจ</div></div>
         </section>
         <section class="cp-metrics" aria-label="ทรัพยากรระบบ">
           <article><small>CPU</small><strong id="cp-cpu">—</strong><span id="cp-load">Load —</span></article>
           <article><small>Memory</small><strong id="cp-memory">—</strong><span id="cp-memory-free">—</span></article>
           <article><small>Storage</small><strong id="cp-storage">—</strong><span id="cp-storage-free">—</span></article>
           <article><small>Backup</small><strong id="cp-backup">—</strong><span id="cp-backup-time">—</span></article>
+        </section>
+        <section id="bay-update" class="cp-bay-update" aria-labelledby="cp-bay-title">
+          <div class="cp-bay-glow cp-bay-glow-a"></div><div class="cp-bay-glow cp-bay-glow-b"></div>
+          <div class="cp-bay-body">
+            <div class="cp-bay-kicker"><span class="cp-bay-dot"></span>BAY REMOTE UPDATE CONTROL</div>
+            <div class="cp-bay-title-row">
+              <div><h2 id="cp-bay-title">อัปเดต BAY จากที่ไหนก็ได้</h2><p>ตรวจ Source, CI, Package และ Production ก่อนทุกครั้ง แล้วส่งงานให้ BAY Update Center ตัวเดิมเป็นผู้ติดตั้ง</p></div>
+              <div id="cp-bay-overall" class="cp-bay-state is-loading">กำลังตรวจ</div>
+            </div>
+            <div class="cp-bay-version-card">
+              <div><small>Production</small><strong id="cp-bay-current-version">—</strong><span id="cp-bay-current-sha">กำลังอ่านสถานะ…</span></div>
+              <div class="cp-bay-arrow">→</div>
+              <div><small>Latest verified</small><strong id="cp-bay-latest-version">—</strong><span id="cp-bay-latest-sha">GitHub main</span></div>
+            </div>
+            <div class="cp-bay-checks" aria-label="ขั้นตอน Remote Update">
+              <div class="cp-bay-check" data-bay-step="source"><b>1</b><span><strong>Source</strong><small id="cp-bay-source-note">กำลังตรวจ</small></span></div>
+              <div class="cp-bay-check" data-bay-step="package"><b>2</b><span><strong>Package</strong><small id="cp-bay-package-note">รอ Source</small></span></div>
+              <div class="cp-bay-check" data-bay-step="backup"><b>3</b><span><strong>Backup</strong><small id="cp-bay-backup-note">รอ Production</small></span></div>
+              <div class="cp-bay-check" data-bay-step="install"><b>4</b><span><strong>Install</strong><small id="cp-bay-install-note">PackageManager</small></span></div>
+              <div class="cp-bay-check" data-bay-step="verify"><b>5</b><span><strong>Verify</strong><small id="cp-bay-verify-note">Post-check</small></span></div>
+            </div>
+            <div class="cp-bay-actions">
+              <button id="cp-bay-update-button" class="cp-bay-primary" type="button" disabled><span>⇧</span><span><strong>ตรวจและอัปเดต Production</strong><small id="cp-bay-button-note">กำลังโหลดข้อมูลล่าสุด…</small></span></button>
+              <button id="cp-bay-recheck" class="cp-bay-secondary" type="button">ตรวจใหม่</button>
+            </div>
+            <div id="cp-bay-message" class="cp-bay-message" aria-live="polite">AWH จะไม่ข้าม Backup, Migration, Smoke Test หรือ Rollback ของ BAY</div>
+          </div>
+          <div class="cp-bay-visual" aria-hidden="true">
+            <div class="cp-bay-orbit"><span></span><span></span><span></span></div>
+            <img src="./assets/bay-mascot.svg?release=__AWH_WEB_RELEASE_ID__" alt="" />
+            <div class="cp-bay-badge"><b>🛡️</b><span><strong>Safe Update</strong><small>PackageManager authority</small></span></div>
+          </div>
         </section>
         <section id="cp-attention-wrap" class="cp-section cp-attention" hidden>
           <div class="cp-section-head"><div><span>ACTION REQUIRED</span><h2>สิ่งที่ควรดูตอนนี้</h2></div><small>แสดงเฉพาะสิ่งที่ต้องลงมือ</small></div>

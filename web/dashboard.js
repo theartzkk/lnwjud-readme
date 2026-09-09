@@ -281,13 +281,32 @@ function mountMobileNavigation() {
     }),
   );
   document.body.append(nav);
+  let keyboardViewportBaseline = window.visualViewport?.height || window.innerHeight;
+  const isKeyboardEditing = () => {
+    const active = document.activeElement;
+    return active instanceof HTMLElement && (
+      active.matches('#goal-input, textarea, input:not([type="button"]):not([type="submit"]):not([type="file"])')
+      || active.isContentEditable
+    );
+  };
   const updateKeyboardViewport = () => {
     const viewport = window.visualViewport;
-    const keyboardOpen = viewport ? window.innerHeight - viewport.height > 140 : false;
+    const currentHeight = viewport?.height || window.innerHeight;
+    const editing = isKeyboardEditing();
+    if (!editing) keyboardViewportBaseline = currentHeight;
+    const lostHeight = Math.max(0, keyboardViewportBaseline - currentHeight);
+    const keyboardOpen = editing && (lostHeight > 96 || currentHeight < keyboardViewportBaseline * 0.82);
     document.body.classList.toggle('awh-keyboard-open', keyboardOpen);
+    document.documentElement.style.setProperty('--awh-visual-viewport-height', `${Math.round(currentHeight)}px`);
   };
   window.visualViewport?.addEventListener('resize', updateKeyboardViewport, { passive: true });
   window.visualViewport?.addEventListener('scroll', updateKeyboardViewport, { passive: true });
+  document.addEventListener('focusin', updateKeyboardViewport, { passive: true });
+  document.addEventListener('focusout', () => window.setTimeout(updateKeyboardViewport, 0), { passive: true });
+  window.addEventListener('orientationchange', () => window.setTimeout(() => {
+    keyboardViewportBaseline = window.visualViewport?.height || window.innerHeight;
+    updateKeyboardViewport();
+  }, 120), { passive: true });
   updateKeyboardViewport();
   new MutationObserver(updateMobileNavigation).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   updateMobileNavigation();
@@ -835,6 +854,11 @@ function mountDashboard() {
   hero.id = 'dashboard-hero';
   hero.className = 'awh-home-hero';
   hero.innerHTML = '<div class="awh-home-kicker">AWH</div><h1>วันนี้อยากให้ช่วยอะไร?</h1><p>พิมพ์สิ่งที่ต้องการได้เลย AWH จะเลือกวิธีทำงานที่เหมาะสมให้เอง</p>';
+  const heroArt = document.createElement('picture');
+  heroArt.className = 'awh-home-hero-art';
+  heroArt.setAttribute('aria-hidden', 'true');
+  heroArt.innerHTML = '<source media="(min-resolution: 2dppx)" srcset="./assets/kruart-reference-role-staff-hq.webp"><img src="./assets/kruart-reference-role-staff.webp" width="429" height="423" alt="" decoding="async">';
+  hero.append(heroArt);
   const commandForm = document.createElement('form');
   commandForm.className = 'awh-command-form';
   commandForm.id = 'dashboard-command-form';

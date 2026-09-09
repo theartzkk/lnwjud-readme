@@ -7,8 +7,10 @@ import { join, resolve } from 'node:path';
 const root = resolve(process.cwd());
 const input = resolve(root, process.argv[2] ?? 'dist-web');
 const output = resolve(root, process.argv[3] ?? join(input, 'release.json'));
-// Required runtime assets must include every file referenced by the canonical web shell.
-const files = ['index.html', 'styles.css', 'awh-design-system.css', 'awh-light-system.css', 'responsive-layout.css', 'app.js', 'navigation.js', 'dashboard.css', 'dashboard.js', 'execution-ux.js', 'tool-registry.js', 'school-tools.js', 'vendor/pdf-lib.min.js', 'vendor/qrcode.js', 'hub-read-adapter.js', 'control-plane-adapter.js', 'database.html', 'database.css', 'database.js', 'infrastructure.html', 'infrastructure.css', 'infrastructure.js', 'hosting.html', 'hosting.css', 'hosting.js', 'trust.html', 'trust.css', 'trust.js', 'review.html', 'review.css', 'review.js', 'panel.html', 'panel.css', 'panel.js', 'manifest.webmanifest', 'sw.js', 'logo-256x256.png', 'assets/bay-mark.svg', 'assets/bay-mascot.svg', 'assets/bay-computer.svg', 'assets/bay-shield.svg', 'web-config.json', 'data.json'];
+// Required runtime assets are owned by one shared release contract.
+const releaseContract = JSON.parse(await readFile(join(root, 'scripts', 'web-release-files.json'), 'utf8'));
+const files = releaseContract.required;
+if (!Array.isArray(files) || files.some((name) => typeof name !== 'string' || !name || name.includes('..') || name.startsWith('/'))) throw new Error('AWH web release file contract is invalid');
 const optionalFiles = ['downloads/AWH-macOS-x64.zip', 'downloads/AWH-Windows-x64.zip', 'downloads/SHA256SUMS.txt'];
 const releaseId = process.env.AWH_RELEASE_ID ?? new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
 

@@ -16,7 +16,7 @@ test('Web surfaces keep page width bounded while allowing scoped content scrolli
     read('web/styles.css'),
     read('web/responsive-layout.css'),
     read('scripts/build-web-preview.ts'),
-    read('scripts/create-web-release-manifest.mjs'),
+    read('scripts/web-release-files.json'),
     read('web/sw.js'),
     read('web/infrastructure.html'),
     read('web/database.html'),
@@ -39,7 +39,7 @@ test('Web surfaces keep page width bounded while allowing scoped content scrolli
   assert.match(responsiveLayout, /\.awh-recent-item > span,[\s\S]*flex: 1 1 auto/);
   assert.match(responsiveLayout, /\.awh-status-item strong,[\s\S]*\.awh-tool-copy strong,[\s\S]*\.awh-artifact-card small,[\s\S]*overflow-wrap: anywhere/);
   assert.match(build, /responsive-layout\.css\?release=__AWH_WEB_RELEASE_ID__/);
-  assert.match(manifest, /'responsive-layout\.css'/);
+  assert.match(manifest, /"responsive-layout\.css"/);
   assert.match(serviceWorker, /responsive-layout\.css\?release=__AWH_WEB_RELEASE_ID__/);
   for (const html of [infrastructure, database, trust]) {
     assert.match(html, /responsive-layout\.css\?release=__AWH_WEB_RELEASE_ID__/);
