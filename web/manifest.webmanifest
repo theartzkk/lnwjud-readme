@@ -1,7 +1,7 @@
 {
-  "name": "Art’s Workspace Hub",
-  "short_name": "AWH",
-  "description": "Your Projects. One Workspace. Anywhere.",
+  "name": "KRUART · Art’s Workspace Hub",
+  "short_name": "KRUART",
+  "description": "พื้นที่เรียนรู้ งานโรงเรียน เอกสาร และ AI ใน BAY Ecosystem",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -9,6 +9,7 @@
   "theme_color": "#f7f8fb",
   "orientation": "portrait-primary",
   "icons": [
-    { "src": "./logo-256x256.png", "sizes": "256x256", "type": "image/png", "purpose": "any maskable" }
+    { "src": "./logo-256x256.png", "sizes": "256x256", "type": "image/png", "purpose": "any maskable" },
+    { "src": "./kruart-app-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }
