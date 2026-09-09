@@ -65,6 +65,7 @@ test('KRUART Golden Home uses LearnLab human cartoon art and keeps mascot art ou
   assert.match(css, /kruart-role-card\.parent[\s\S]{0,260}kruart-reference-role-parent-hq\.webp/);
   assert.match(css, /kruart-role-card\.staff[\s\S]{0,260}kruart-reference-role-staff-hq\.webp/);
   assert.match(html, /kruart-brand-icon[^>]*src="\.\/bay-icon-learnlab\.svg"/);
+  assert.match(html, /rel="icon" type="image\/png" href="\.\/logo-256x256\.png\?release=__AWH_WEB_RELEASE_ID__"/);
   assert.match(css, /kruart-campus-bg\.svg/);
   assert.doesNotMatch(css, /kruart-role-card\.staff[^\n]*kruart-human-student-computer\.webp/);
   assert.match(css, /Human-only hero composition/);
