@@ -26,12 +26,13 @@ test('canonical Dashboard is intent-first with a three-item mobile navigation',a
 
 
 test('KRUART Golden Home uses LearnLab human cartoon art and keeps mascot art out of the primary home', async () => {
-  const [html, css, build, manifest, sw] = await Promise.all([
+  const [html, css, build, manifest, sw, humanHero] = await Promise.all([
     read('web/index.html'),
     read('web/awh-light-system.css'),
     read('scripts/build-web-preview.ts'),
     read('scripts/create-web-release-manifest.mjs'),
     read('web/sw.js'),
+    read('web/kruart-human-hero.svg'),
   ]);
   for (const asset of [
     'kruart-human-student-hero.webp',
@@ -50,8 +51,9 @@ test('KRUART Golden Home uses LearnLab human cartoon art and keeps mascot art ou
     'kruart-reference-role-parent-hq.webp',
     'kruart-reference-role-staff-hq.webp',
     'kruart-campus-bg.svg',
+    'kruart-human-hero.svg',
   ]) {
-    if (asset.endsWith('-hq.webp') || asset === 'kruart-campus-bg.svg') assert.ok(html.includes(asset) || css.includes(asset), `retina artwork is not used: ${asset}`);
+    if (asset.endsWith('-hq.webp') || asset === 'kruart-campus-bg.svg' || asset === 'kruart-human-hero.svg') assert.ok(html.includes(asset) || css.includes(asset), `retina artwork is not used: ${asset}`);
     assert.ok(build.includes(asset), `human artwork is not copied by web build: ${asset}`);
     assert.ok(manifest.includes(asset), `human artwork is not release-manifested: ${asset}`);
     assert.ok(sw.includes(asset), `human artwork is not cached by release-aware PWA shell: ${asset}`);
@@ -67,6 +69,10 @@ test('KRUART Golden Home uses LearnLab human cartoon art and keeps mascot art ou
   assert.match(html, /kruart-brand-icon[^>]*src="\.\/bay-icon-learnlab\.svg"/);
   assert.match(html, /rel="icon" type="image\/png" href="\.\/logo-256x256\.png\?release=__AWH_WEB_RELEASE_ID__"/);
   assert.match(css, /kruart-campus-bg\.svg/);
+  assert.match(css, /kruart-human-hero\.svg/);
+  assert.match(humanHero, /KRUART learning campus with student and teacher cartoon characters/);
+  assert.match(humanHero, /translate\(1380 92\) scale\(\.82\)/);
+  assert.doesNotMatch(humanHero, /translate\(1420 180\)|mascot|robot/i);
   assert.doesNotMatch(css, /kruart-role-card\.staff[^\n]*kruart-human-student-computer\.webp/);
   assert.match(css, /Human-only hero composition/);
   assert.match(css, /Approved-reference calibration — 1536×864 desktop frame/);

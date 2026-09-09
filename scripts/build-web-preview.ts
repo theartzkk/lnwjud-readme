@@ -127,6 +127,7 @@ ${dashboardGuardrails}`;
     copyFile(join(ROOT, 'web', 'kruart-reference-role-staff.webp'), join(OUTPUT, 'kruart-reference-role-staff.webp')),
     copyFile(join(ROOT, 'web', 'kruart-reference-role-staff-hq.webp'), join(OUTPUT, 'kruart-reference-role-staff-hq.webp')),
     copyFile(join(ROOT, 'web', 'kruart-campus-bg.svg'), join(OUTPUT, 'kruart-campus-bg.svg')),
+    copyFile(join(ROOT, 'web', 'kruart-human-hero.svg'), join(OUTPUT, 'kruart-human-hero.svg')),
     writeFile(join(OUTPUT, 'web-config.json'), `${JSON.stringify({ schemaVersion: 1, mode: webMode, apiBase: webMode === 'CONTROL' ? '/api/v1' : null }, null, 2)}\n`, 'utf8'),
     writeFile(join(OUTPUT, 'data.json'), `${JSON.stringify(data, null, 2)}\n`, 'utf8'),
   ]);

@@ -539,3 +539,36 @@ body{font-family:"Noto Sans Thai","Leelawadee UI",Tahoma,system-ui,-apple-system
   .kruart-footer-books{height:50px!important}
   .kruart-footer-banner>img{height:70px!important;width:110px!important}
 }
+
+/* Final vector-human hero authority — no raster upscaling, no robot layer. */
+.kruart-main-hero{
+  background:#dff4ff url("./kruart-human-hero.svg") center/cover no-repeat!important;
+}
+.kruart-main-hero::before,.kruart-main-hero::after{display:none!important;content:none!important}
+.kruart-main-hero-copy{
+  left:31%!important;
+  top:20px!important;
+  width:45%!important;
+  padding:6px 12px 9px!important;
+  border:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  backdrop-filter:none!important;
+  text-shadow:0 1px 0 rgba(255,255,255,.95),0 0 18px rgba(255,255,255,.82)!important;
+}
+.kruart-main-hero-copy .kruart-hand-note{opacity:.78}
+.kruart-awh-lockup strong{position:relative;font-style:italic!important;font-size:15px!important;letter-spacing:-.02em}
+.kruart-awh-lockup strong:after{content:"";position:absolute;left:12%;right:0;bottom:-4px;height:2px;border-radius:99px;background:#ff7a00;transform:rotate(-2deg)}
+.kruart-awh-lockup small{display:none!important}
+@media(max-width:820px){
+  .kruart-main-hero{
+    background-position:38% center!important;
+    background-size:auto 100%!important;
+  }
+  .kruart-main-hero-copy{
+    left:10px!important;right:10px!important;top:auto!important;bottom:10px!important;width:auto!important;
+    padding:9px 11px 10px!important;border:1px solid rgba(194,216,235,.82)!important;border-radius:20px!important;
+    background:rgba(255,255,255,.94)!important;box-shadow:0 10px 26px rgba(20,61,117,.10)!important;
+    backdrop-filter:blur(8px)!important;text-shadow:none!important;
+  }
+}
