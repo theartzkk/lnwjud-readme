@@ -41,6 +41,14 @@ test('system UI is build, release, cache and deploy authoritative', async () => 
   assert.match(release, /web-release-files\.json/);
   assert.ok(releaseContract.required.includes('kruart-system.css'));
   assert.match(sw, /kruart-system\.css/);
+  assert.match(sw, /kruart-hero-final\.webp/);
+  assert.match(sw, /kruart-role-student-final\.webp/);
+  assert.match(sw, /kruart-role-teacher-final\.webp/);
+  assert.match(sw, /kruart-role-parent-final\.webp/);
+  assert.match(sw, /kruart-role-staff-final\.webp/);
+  assert.doesNotMatch(sw, /kruart-human-student-hero-hq\.webp/);
+  assert.doesNotMatch(sw, /kruart-human-teacher-hero-hq\.webp/);
+  assert.doesNotMatch(sw, /kruart-reference-role-staff-hq\.webp/);
   assert.match(deploy, /list-web-release-files\.mjs/);
   assert.match(css, /KRUART System UI Authority/);
   assert.match(css, /kruart-role-staff-final\.webp/);
