@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { createProductionCredentialStore, OWNER_AUTH_PASSWORD_CREDENTIAL_KEY } from '../../dist/credential-store.js';
 
 const ROOT = process.env.AWH_SOURCE_ROOT || process.cwd();
-const CANONICAL_BRANCH = 'awh/api-independence';
+const CANONICAL_BRANCH = 'fix/owner-golden-reference-20260909';
 const CANONICAL_REMOTE = 'origin';
 const CANONICAL_REPOSITORY = 'theartzkk/lnwjud-readme';
 const SHA = /^[0-9a-f]{40}$/;
