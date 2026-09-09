@@ -18,6 +18,9 @@ test('Owner automation surface uses the canonical control request boundary', asy
   assert.match(surface, /project\.worker\.offline/);
   assert.doesNotMatch(surface, /localStorage|sessionStorage|Authorization|Bearer\s|XMLHttpRequest|new WebSocket|\.fetch\s*\(/);
   assert.doesNotMatch(surface, /Run now|รันทันที|cron/i);
+  assert.match(surface, /public-home-active/);
+  assert.match(surface, /trigger\.closest\('\[hidden\]'\)/);
+  assert.match(surface, /attributeFilter:\['hidden','class'\]/);
   assert.match(css, /awh-automation-panel/);
   assert.match(build, /asset\('automation-surface\.js'\)/);
   assert.match(build, /asset\('automation-surface\.css'\)/);

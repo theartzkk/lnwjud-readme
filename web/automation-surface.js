@@ -114,12 +114,14 @@ function mountSheet() {
 }
 async function activate() {
   const trigger=document.querySelector('[data-owner-action="automations"]'); if (!(trigger instanceof HTMLButtonElement) || trigger.dataset.awhAutomationReady==='1') return false;
+  // The automation control is Owner-only. Do not probe protected APIs while the public shell is active.
+  if (document.body.classList.contains('public-home-active') || trigger.closest('[hidden]')) return false;
   trigger.dataset.awhAutomationReady='1'; mountSheet();
   try { const available=await refresh(); if (!available) { trigger.disabled=true; const badge=trigger.querySelector('.awh-owner-command-badge'); if (badge) badge.textContent='รอเปิดใช้'; return true; } }
   catch { return true; }
   trigger.disabled=false; const badge=trigger.querySelector('.awh-owner-command-badge'); if (badge) badge.textContent='พร้อมใช้';
   trigger.addEventListener('click',(event)=>{ event.preventDefault(); event.stopImmediatePropagation(); const sheet=$(SHEET_ID); if (sheet) { openAwhDialog(sheet); refresh().catch(()=>{}); } },true); return true;
 }
-function start() { if (activate()) return; const observer=new MutationObserver(()=>{ if (activate()) observer.disconnect(); }); observer.observe(document.documentElement,{childList:true,subtree:true}); }
+function start() { if (activate()) return; const observer=new MutationObserver(()=>{ if (activate()) observer.disconnect(); }); observer.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['hidden','class']}); }
 if (document.readyState==='loading') document.addEventListener('DOMContentLoaded',start,{once:true}); else start();
 })();
