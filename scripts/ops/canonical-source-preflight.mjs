@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
-const DEFAULT_BRANCH = 'fix/owner-golden-reference-20260909';
+const DEFAULT_BRANCH = 'awh/api-independence';
 const DEFAULT_REMOTE = 'origin';
 const DEFAULT_REPOSITORY = 'theartzkk/lnwjud-readme';
 const SHA = /^[0-9a-f]{40}$/;
