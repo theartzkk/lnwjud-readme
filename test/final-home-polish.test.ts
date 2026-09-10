@@ -26,9 +26,10 @@ test('canonical Dashboard is intent-first with a three-item mobile navigation',a
 
 
 test('KRUART Golden Home ships the approved generated human artwork family and app branding', async () => {
-  const [html, css, build, releaseScript, releaseContractRaw, sw, pwaManifest] = await Promise.all([
+  const [html, css, finalCss, build, releaseScript, releaseContractRaw, sw, pwaManifest] = await Promise.all([
     read('web/index.html'),
     read('web/awh-light-system.css'),
+    read('web/kruart-system.css'),
     read('scripts/build-web-preview.ts'),
     read('scripts/create-web-release-manifest.mjs'),
     read('scripts/web-release-files.json'),
@@ -80,4 +81,10 @@ test('KRUART Golden Home ships the approved generated human artwork family and a
   assert.match(pwaManifest, /kruart-app-icon-512\.png/);
   assert.match(css, /Approved-reference calibration — 1536×864 desktop frame/);
   assert.match(css, /body\.public-home-active \.awh-mobile-nav\{display:none!important\}/);
+  assert.match(html, /https:\/\/school\.kruart\.online\/news\//);
+  assert.match(html, /https:\/\/school\.kruart\.online\/parent\//);
+  assert.doesNotMatch(html, /banauedyai\.ac\.th\/mainpage/);
+  assert.match(finalCss, /Public mobile accessibility closure/);
+  assert.match(finalCss, /body\.public-home-active \.kruart-shortcut small\{font-size:11\.5px!important/);
+  assert.match(finalCss, /body\.public-home-active \.kruart-role-copy>b\{font-size:12px!important/);
 });

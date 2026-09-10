@@ -99,6 +99,14 @@ const server = createServer(async (request, response) => {
       { id: 'awh', name: 'AWH Workspace', type: 'AI Workspace', icon: '✦', status: 'active', stage: 'Control Plane', summary: 'AI, Projects, Files, Tasks และ Automations', primary_action: { label: 'เปิด AWH Workspace', url: 'https://kruart.online/?awh-surface=home' }, capabilities: ['AI Workspace', 'Projects', 'Files', 'Tasks'] },
       { id: 'school-website', name: 'เว็บไซต์โรงเรียน', type: 'Public Website', icon: '🌐', status: 'active', stage: 'Production', summary: 'เว็บไซต์สาธารณะของโรงเรียน', primary_action: { label: 'เปิดเว็บไซต์', url: 'https://school.example.invalid/' }, capabilities: ['Public website'] },
     ] });
+    if (url.pathname === '/bay/api/status.php') return send(response, 200, { schema: 'bay.hub.status.v2', services: [
+      { id: 'awh', name: 'AWH', ok: true, state: 'healthy', critical: true, http: 200, latency_ms: 12, detail: 'ตอบสนองปกติ' },
+      { id: 'bay-staging', name: 'BAY EXCUSE X Staging', ok: true, state: 'healthy', critical: false, http: 200, latency_ms: 15, detail: 'ตอบสนองปกติ' },
+      { id: 'learnlab', name: 'BAY LearnLab', ok: true, state: 'healthy', critical: true, http: 200, latency_ms: 11, detail: 'ตอบสนองปกติ', version: '0.8.0-rc.39', revision: 'c50c0bb4cbde5ecc8f16112c3cbb8fef7dad8aa2' },
+      { id: 'computer-lab', name: 'BAY Computer Lab', ok: true, state: 'healthy', critical: true, http: 200, latency_ms: 14, detail: 'ตอบสนองปกติ' },
+      { id: 'website', name: 'เว็บไซต์โรงเรียน', ok: true, state: 'healthy', critical: true, http: 200, latency_ms: 13, detail: 'ตอบสนองปกติ' },
+      { id: 'parent-connect', name: 'BAY Parent Connect', ok: true, state: 'healthy', critical: true, http: 200, latency_ms: 13, detail: 'ตอบสนองปกติ' },
+    ], dns: [], legacy_diagnostics: [] });
     if (url.pathname === '/bay/data/releases.json') return send(response, 200, { schemaVersion: 'bay.hub.releases.v1', releases: [
       { id: 'learnlab-rc15', productId: 'bay-learnlab', channel: 'pilot', version: '0.8.0-rc.15', stable: false },
       { id: 'awh-win', productId: 'awh', channel: 'current', platform: 'windows', stable: false },

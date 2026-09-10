@@ -888,7 +888,7 @@ import {
   const liveProjectService = (project) => {
     if (!project || typeof project !== 'object') return null;
     if (project.id === 'bay-excuse-x') return /staging/i.test(safeText(project.stage)) ? 'bay-staging' : 'bay-production';
-    return ({ awh: 'awh', 'bay-learnlab': 'learnlab', 'school-website': 'website' })[project.id] || null;
+    return ({ awh: 'awh', 'bay-learnlab': 'learnlab', 'school-website': 'website', 'bay-computer-lab': 'computer-lab', 'bay-parent-connect': 'parent-connect' })[project.id] || null;
   };
 
   // Presentation-only mapping. Project metadata remains owned by the canonical BAY registry.
@@ -973,7 +973,7 @@ import {
       if (live) { const health=document.createElement('span'); health.className='ecosystem-project-health ' + (live.ok===true?'ready':'attention'); health.textContent=live.ok===true?'● ปกติ':'● ต้องตรวจ'; badges.append(health); article.dataset.liveState=live.ok===true?'ready':'attention'; }
       head.append(badges);
       const title = document.createElement('h3'); title.textContent = safeText(project.name, 'โปรเจกต์');
-      const type = document.createElement('small'); type.textContent = [safeText(project.type), live ? 'ตรวจสถานะสด' : safeText(project.stage)].filter(Boolean).join(' · ');
+      const type = document.createElement('small'); const liveDetail = safeText(live?.version); type.textContent = [safeText(project.type), liveDetail || (live ? 'ตรวจสถานะสด' : safeText(project.stage))].filter(Boolean).join(' · ');
       const copy = document.createElement('p'); copy.textContent = safeText(project.summary, '');
       body.append(head, title, type, copy);
       const capability = document.createElement('div'); capability.className = 'ecosystem-project-capabilities';

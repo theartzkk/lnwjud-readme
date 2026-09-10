@@ -592,3 +592,17 @@ button:not(:disabled){cursor:pointer}
   body.ecosystem-home-active .kruart-header .global-nav,
   body.work-active .kruart-header .global-nav{display:none!important}
 }
+
+
+/* Public mobile accessibility closure — readable text without inflating the page hierarchy. */
+@media(max-width:560px){
+  body.public-home-active .kruart-main-hero-copy>p:last-of-type{font-size:12px!important;line-height:1.42!important}
+  body.public-home-active .kruart-hero-actions>*{font-size:12.5px!important}
+  body.public-home-active .kruart-shortcut strong{font-size:13.5px!important;line-height:1.2!important}
+  body.public-home-active .kruart-shortcut small{font-size:11.5px!important;line-height:1.25!important}
+  body.public-home-active .kruart-role-copy>small{font-size:12px!important;line-height:1.35!important}
+  body.public-home-active .kruart-role-copy>b{font-size:12px!important;line-height:1.2!important}
+  body.public-home-active .kruart-panel-head>a,
+  body.public-home-active .kruart-section-head>a,
+  body.public-home-active .kruart-section-head>p{font-size:12px!important}
+}
