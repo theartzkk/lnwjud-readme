@@ -26,6 +26,8 @@ test('authenticated root is the portfolio hub and reuses BAY registry authority'
   assert.match(app, /bay-staging/);
   assert.match(app, /ไม่พบระบบหรือโปรเจกต์ที่ตรงกับ/);
   assert.match(app, /openAwhWorkspace\('home'\)/);
+  assert.match(app, /syncOwnerGlobalNavigation\('awh'\)/);
+  assert.match(app, /syncOwnerGlobalNavigation\('home'\)/);
   assert.match(app, /const PROJECT_VISUALS = Object\.freeze/);
   assert.match(app, /'bay-computer-lab': 'computer-lab'/);
   assert.match(app, /'bay-parent-connect': 'parent-connect'/);

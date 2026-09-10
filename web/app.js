@@ -829,6 +829,14 @@ import {
     try { return new URL(window.location.href).searchParams.has('awh-surface'); } catch { return false; }
   }
 
+  function syncOwnerGlobalNavigation(destination = 'home') {
+    document.querySelectorAll('#owner-global-nav [data-owner-destination]').forEach((node) => {
+      const active = node.dataset.ownerDestination === destination;
+      node.classList.toggle('is-active', active);
+      node.setAttribute('aria-current', active ? 'page' : 'false');
+    });
+  }
+
   function showEcosystemHome({ replace = false } = {}) {
     if (!state.control?.authenticated) return;
     const ecosystem = $('ecosystem-home-view');
@@ -838,6 +846,8 @@ import {
     document.body.classList.remove('work-active', 'product-dashboard-active');
     document.body.classList.add('ecosystem-home-active');
     document.body.dataset.awhDashboardVisited = '';
+    const dashboard = $('product-dashboard'); if (dashboard) dashboard.hidden = true;
+    syncOwnerGlobalNavigation('home');
     try {
       const url = new URL(window.location.href);
       url.searchParams.delete('awh-surface');
@@ -856,6 +866,7 @@ import {
     if (workspace) workspace.hidden = false;
     document.body.classList.remove('ecosystem-home-active');
     document.body.classList.add('work-active');
+    syncOwnerGlobalNavigation('awh');
     try {
       const url = new URL(window.location.href);
       url.searchParams.set('awh-surface', surface);
@@ -1024,6 +1035,7 @@ import {
     if(publicNav) publicNav.hidden=authenticated;
     if(ownerNav) ownerNav.hidden=!authenticated;
     document.querySelectorAll('.owner-only-nav').forEach((node)=>{ node.hidden=!(authenticated&&state.control?.role==='OWNER'); });
+    if (authenticated) syncOwnerGlobalNavigation(authenticatedSurfaceRequested() ? 'awh' : 'home');
     document.body.classList.toggle('public-home-active', !authenticated);
     if (!authenticated) {
       if ($('ecosystem-home-view')) $('ecosystem-home-view').hidden = true;
@@ -1169,6 +1181,8 @@ import {
   });
   $('ecosystem-search-input')?.addEventListener('input', () => void renderEcosystemPortfolio());
   $('ecosystem-open-awh')?.addEventListener('click', () => openAwhWorkspace('home'));
+  document.querySelector('#owner-global-nav [data-owner-destination="home"]')?.addEventListener('click', (event) => { event.preventDefault(); showEcosystemHome(); });
+  document.querySelector('#owner-global-nav [data-owner-destination="awh"]')?.addEventListener('click', (event) => { event.preventDefault(); openAwhWorkspace('home'); });
   $('ecosystem-command-form')?.addEventListener('submit', (event) => { event.preventDefault(); routeOwnerCommand($('ecosystem-command-input')?.value || ''); if($('ecosystem-command-input')) $('ecosystem-command-input').value=''; });
   document.querySelectorAll('[data-owner-command]').forEach((button)=>button.addEventListener('click',()=>routeOwnerCommand(button.dataset.ownerCommand||'')));
   window.addEventListener('awh:return-root-hub', () => showEcosystemHome());

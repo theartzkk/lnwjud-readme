@@ -37,6 +37,9 @@ test('named web deployment validates manifest and rendered release identity befo
   assert.match(deploy, /releaseId/);
   assert.match(deploy, /release=\$RELEASE_ID/);
   assert.match(deploy, /release=local/);
+  assert.match(deploy, /REMOTE_SHARED_DOWNLOADS="\$REMOTE_ROOT\/shared\/downloads"/);
+  assert.match(deploy, /sudo test ! -e \$REMOTE_ROOT\/releases\/\$RELEASE_ID\/downloads/);
+  assert.match(deploy, /sudo ln -s \.\.\/\.\.\/shared\/downloads \$REMOTE_ROOT\/releases\/\$RELEASE_ID\/downloads/);
 });
 
 test('web release validator rejects local or mismatched identity for a named release', async () => {

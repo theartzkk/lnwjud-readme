@@ -13,6 +13,7 @@ LOCAL_DIR=${AWH_BUILD_DIR:-dist-web}
 DEPLOY_TARGET=${AWH_DEPLOY_TARGET:-awh-ready}
 RELEASE_ID=${AWH_RELEASE_ID:-m3c1-$(date -u +%Y%m%dT%H%M%SZ)}
 REMOTE_ROOT=/var/www/awh-web
+REMOTE_SHARED_DOWNLOADS="$REMOTE_ROOT/shared/downloads"
 REMOTE_STAGE="/tmp/awh-web-$RELEASE_ID"
 
 case "$RELEASE_ID" in
@@ -29,6 +30,7 @@ if [ "$MODE" = dry-run ]; then
   echo "DRY-RUN: target SSH alias=$DEPLOY_TARGET"
   echo "DRY-RUN: release identity=$RELEASE_ID"
   echo "DRY-RUN: would upload $LOCAL_DIR to $DEPLOY_TARGET:$REMOTE_STAGE"
+  echo "DRY-RUN: would attach $REMOTE_SHARED_DOWNLOADS as the stable /downloads route when the verified shared artifact directory exists"
   echo "DRY-RUN: would re-check release identity, validate Nginx, switch $REMOTE_ROOT/current atomically, and reload the remote service"
   exit 0
 fi
@@ -36,5 +38,5 @@ fi
 command -v scp >/dev/null 2>&1 || { echo "scp is required" >&2; exit 1; }
 command -v ssh >/dev/null 2>&1 || { echo "ssh is required" >&2; exit 1; }
 scp -o BatchMode=yes -o StrictHostKeyChecking=yes -r "$LOCAL_DIR" "$DEPLOY_TARGET:$REMOTE_STAGE"
-ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$DEPLOY_TARGET" "sudo install -d -m 0755 $REMOTE_ROOT/releases/$RELEASE_ID && sudo cp -a $REMOTE_STAGE/. $REMOTE_ROOT/releases/$RELEASE_ID/ && sudo grep -F '\"releaseId\": \"$RELEASE_ID\"' $REMOTE_ROOT/releases/$RELEASE_ID/release.json >/dev/null && sudo grep -F 'release=$RELEASE_ID' $REMOTE_ROOT/releases/$RELEASE_ID/index.html >/dev/null && ! sudo grep -F 'release=local' $REMOTE_ROOT/releases/$RELEASE_ID/index.html >/dev/null && sudo ln -sfnT $REMOTE_ROOT/releases/$RELEASE_ID $REMOTE_ROOT/current && sudo nginx -t && sudo systemctl reload nginx"
+ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$DEPLOY_TARGET" "sudo install -d -m 0755 $REMOTE_ROOT/releases/$RELEASE_ID && sudo cp -a $REMOTE_STAGE/. $REMOTE_ROOT/releases/$RELEASE_ID/ && if sudo test -d $REMOTE_SHARED_DOWNLOADS; then sudo test ! -e $REMOTE_ROOT/releases/$RELEASE_ID/downloads && sudo ln -s ../../shared/downloads $REMOTE_ROOT/releases/$RELEASE_ID/downloads; fi && sudo grep -F '\"releaseId\": \"$RELEASE_ID\"' $REMOTE_ROOT/releases/$RELEASE_ID/release.json >/dev/null && sudo grep -F 'release=$RELEASE_ID' $REMOTE_ROOT/releases/$RELEASE_ID/index.html >/dev/null && ! sudo grep -F 'release=local' $REMOTE_ROOT/releases/$RELEASE_ID/index.html >/dev/null && sudo ln -sfnT $REMOTE_ROOT/releases/$RELEASE_ID $REMOTE_ROOT/current && sudo nginx -t && sudo systemctl reload nginx"
 echo "AWH web release deployed: $RELEASE_ID"

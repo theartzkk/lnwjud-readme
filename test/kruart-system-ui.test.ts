@@ -91,7 +91,7 @@ test('KRUART visual asset slots are centralized and all deployed fallbacks exist
     version: number;
     slots: Array<{ id: string; fallback: string | null; plannedWebAsset?: string; status: string }>;
   };
-  assert.equal(manifest.version, 1);
+  assert.equal(manifest.version, 2);
   assert.ok(manifest.slots.length >= 30);
   assert.equal(new Set(manifest.slots.map((slot) => slot.id)).size, manifest.slots.length);
   for (const slot of manifest.slots) {
@@ -129,4 +129,13 @@ test('KRUART visual asset slots are centralized and all deployed fallbacks exist
     assert.equal(slot?.fallback, fallback, id + ' must bind the approved asset');
   }
   assert.ok(manifest.slots.some((slot) => slot.status === 'needs-dedicated'));
+  const projectSources = (manifest as any).projectSources;
+  assert.equal(projectSources.unifiedArchive.name, 'KRUART-ECOSYSTEM-SOURCES-READY-FINAL.zip');
+  assert.equal(projectSources.unifiedArchive.version, '2026-09-10-final');
+  assert.equal(projectSources.unifiedArchive.schoolName, 'โรงเรียนบ้านเอือดใหญ่');
+  assert.equal(projectSources.unifiedArchive.status, 'approved-project-source');
+  assert.equal(projectSources.unifiedArchive.canonicalRoot, '01_PRODUCTION_READY');
+  assert.equal(projectSources.unifiedArchive.referenceRoot, '02_REFERENCE_ONLY');
+  assert.match(projectSources.ingestPolicy.production, /01_PRODUCTION_READY/);
+  assert.match(projectSources.ingestPolicy.reference, /must never auto-promote/);
 });

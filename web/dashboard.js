@@ -323,6 +323,7 @@ function mountProductNavigation(dashboard) {
   brand.innerHTML = '<span class="awh-product-nav-mark" aria-hidden="true">A</span><span><strong>AWH</strong><small>Workspace</small></span>';
   nav.append(brand);
   const entries = [
+    ['home', '⌂', 'เริ่มงาน', () => returnHome()],
     ['work', '✦', 'แชท', () => openWork()],
     ['tasks', '↻', 'งานของฉัน', () => openTaskSurface()],
     ['files', '▤', 'ไฟล์', () => openFilesSurface()],
@@ -347,7 +348,7 @@ function updateProductNavigation() {
   if (!nav) return;
   const dashboard = $(DASHBOARD_ID);
   const activeDestination = document.body.classList.contains('product-dashboard-active')
-    ? (dashboard?.dataset.view === 'tasks' ? 'tasks' : dashboard?.dataset.view === 'files' ? 'files' : 'work')
+    ? (dashboard?.dataset.view === 'tasks' ? 'tasks' : dashboard?.dataset.view === 'files' ? 'files' : 'home')
     : 'work';
   for (const item of nav.querySelectorAll('[data-product-destination]')) {
     const active = item.dataset.productDestination === activeDestination;
@@ -854,11 +855,6 @@ function mountDashboard() {
   hero.id = 'dashboard-hero';
   hero.className = 'awh-home-hero';
   hero.innerHTML = '<div class="awh-home-kicker">AWH</div><h1>วันนี้อยากให้ช่วยอะไร?</h1><p>พิมพ์สิ่งที่ต้องการได้เลย AWH จะเลือกวิธีทำงานที่เหมาะสมให้เอง</p>';
-  const heroArt = document.createElement('picture');
-  heroArt.className = 'awh-home-hero-art';
-  heroArt.setAttribute('aria-hidden', 'true');
-  heroArt.innerHTML = '<source media="(min-resolution: 2dppx)" srcset="./assets/kruart-reference-role-staff-hq.webp"><img src="./assets/kruart-reference-role-staff.webp" width="429" height="423" alt="" decoding="async">';
-  hero.append(heroArt);
   const commandForm = document.createElement('form');
   commandForm.className = 'awh-command-form';
   commandForm.id = 'dashboard-command-form';

@@ -1,12 +1,12 @@
 {
-  "version": 1,
-  "authority": "KRUART System UI / semantic visual slots",
+  "version": 2,
+  "authority": "KRUART Ecosystem Sources Ready Final / semantic visual slots",
   "rules": {
     "embeddedText": "forbidden except approved brand marks",
     "format": "WebP for raster; SVG only for simple vector/icon art",
     "mobile": "hero/banner must preserve copy-safe zones; prefer focal-point crop before creating duplicate mobile art",
     "loading": "only above-fold hero/brand eager; below-fold content art should be lazy when represented by img/picture",
-    "sourceOfTruth": "slot id stays stable; file can change after visual QA"
+    "sourceOfTruth": "slot id stays stable; KRUART-ECOSYSTEM-SOURCES-READY-FINAL.zip is the Project visual source archive; only curated PRODUCTION_READY derivatives may enter web payloads"
   },
   "slots": [
     {
@@ -177,7 +177,8 @@
       "ratio": "5:2",
       "priority": "P1",
       "status": "needs-dedicated",
-      "safeZone": "workspace story; quiet center behind command panel"
+      "safeZone": "workspace story; quiet center behind command panel",
+      "unifiedSource": "01_PRODUCTION_READY/AWH/awh-banner.webp"
     },
     {
       "id": "owner.system.learnlab",
@@ -191,7 +192,8 @@
       "safeZone": "subject/product cue on left",
       "sourceCandidate": "4C44742F-6405-46FF-9591-33860A253C7B.PNG",
       "plannedWebAsset": "project-learnlab.webp",
-      "sourceAvailable": true
+      "sourceAvailable": true,
+      "unifiedSource": "01_PRODUCTION_READY/SHARED/PROJECT_BANNERS/bay-learnlab-banner.webp"
     },
     {
       "id": "owner.system.bay",
@@ -205,7 +207,8 @@
       "safeZone": "subject/product cue on left",
       "sourceCandidate": "AD6F3BF7-2BA5-49F8-BD42-4ACCA3A1CF8D.PNG",
       "plannedWebAsset": "project-bay-excuse-x.webp",
-      "sourceAvailable": true
+      "sourceAvailable": true,
+      "unifiedSource": "01_PRODUCTION_READY/SHARED/PROJECT_BANNERS/bay-excuse-x-banner.webp"
     },
     {
       "id": "owner.system.awh",
@@ -219,7 +222,8 @@
       "safeZone": "AI/workspace cue on left",
       "sourceCandidate": "86029A98-FCFB-402D-9AED-16FF3B937FA2.PNG",
       "plannedWebAsset": "project-awh.webp",
-      "sourceAvailable": true
+      "sourceAvailable": true,
+      "unifiedSource": "01_PRODUCTION_READY/SHARED/PROJECT_BANNERS/awh-banner.webp"
     },
     {
       "id": "owner.system.school",
@@ -233,7 +237,8 @@
       "safeZone": "school/website cue on left",
       "sourceCandidate": "2A034EC3-2E55-4ED3-884B-A5661A3387DA.PNG",
       "plannedWebAsset": "project-school.webp",
-      "sourceAvailable": true
+      "sourceAvailable": true,
+      "unifiedSource": "01_PRODUCTION_READY/SHARED/PROJECT_BANNERS/school-website-banner.webp"
     },
     {
       "id": "owner.control",
@@ -272,7 +277,8 @@
       "safeZone": "workspace/AI motif; avoid role-card crop",
       "sourceCandidate": "F6C374BF-5EDA-4ED0-81A2-FD2E39C0AC12.PNG",
       "plannedWebAsset": "awh-home-hero.webp",
-      "sourceAvailable": true
+      "sourceAvailable": true,
+      "unifiedSource": "01_PRODUCTION_READY/AWH/awh-banner.webp"
     },
     {
       "id": "awh.signin.side",
@@ -294,7 +300,8 @@
       "ratio": "3:2",
       "priority": "P2",
       "status": "reserved",
-      "safeZone": "small empty-state illustration"
+      "safeZone": "small empty-state illustration",
+      "unifiedSource": "01_PRODUCTION_READY/SHARED_UI_STATES/state-empty-add-panel.webp"
     },
     {
       "id": "awh.empty.tasks",
@@ -305,7 +312,8 @@
       "ratio": "3:2",
       "priority": "P2",
       "status": "reserved",
-      "safeZone": "small empty-state illustration"
+      "safeZone": "small empty-state illustration",
+      "unifiedSource": "01_PRODUCTION_READY/SHARED_UI_STATES/state-ready-teaching.webp"
     },
     {
       "id": "awh.empty.files",
@@ -316,7 +324,8 @@
       "ratio": "3:2",
       "priority": "P2",
       "status": "reserved",
-      "safeZone": "small empty-state illustration"
+      "safeZone": "small empty-state illustration",
+      "unifiedSource": "01_PRODUCTION_READY/SHARED_UI_STATES/state-empty-add-panel.webp"
     },
     {
       "id": "system.infrastructure",
@@ -399,17 +408,20 @@
       {
         "name": "โลโก้โปรเจคทั้งหมด(2).zip",
         "role": "official project/brand marks",
-        "imageCount": 11
+        "imageCount": 11,
+        "status": "superseded-by-unified-final"
       },
       {
         "name": "Final ref cartoon awh.zip",
         "role": "KRUART/AWH character, school, classroom and system visual references",
-        "imageCount": 106
+        "imageCount": 106,
+        "status": "superseded-by-unified-final"
       },
       {
         "name": "Banner project.zip",
         "role": "approved project banner artwork",
-        "imageCount": 9
+        "imageCount": 9,
+        "status": "superseded-by-unified-final"
       }
     ],
     "exactDuplicates": [
@@ -488,6 +500,31 @@
       "kruart-online": "brand-kruart-online.webp",
       "kruart-workspace": "brand-kruart-workspace.webp",
       "bay-app-icon": "logo-bay-app.webp"
+    },
+    "unifiedArchive": {
+      "name": "KRUART-ECOSYSTEM-SOURCES-READY-FINAL.zip",
+      "role": "single visual Source of Truth for KRUART/AWH/BAY ecosystem projects",
+      "version": "2026-09-10-final",
+      "sha256": "d7f0072329ddf6e502c29cf0e4f9107d1213d4cf8b77452a83b62aa455824f04",
+      "bytes": 82960208,
+      "manifestItemCount": 325,
+      "imageCount": 313,
+      "canonicalRoot": "01_PRODUCTION_READY",
+      "referenceRoot": "02_REFERENCE_ONLY",
+      "schoolName": "โรงเรียนบ้านเอือดใหญ่",
+      "supersedes": [
+        "โลโก้โปรเจคทั้งหมด(2).zip",
+        "Final ref cartoon awh.zip",
+        "Banner project.zip"
+      ],
+      "status": "approved-project-source"
+    },
+    "ingestPolicy": {
+      "production": "ingest only curated assets from 01_PRODUCTION_READY and convert/copy only when an existing semantic slot needs a new binary",
+      "reference": "02_REFERENCE_ONLY is identity/style/provenance reference and must never auto-promote to production",
+      "logos": "use exact canonical logos/marks; never redraw with generative AI",
+      "text": "prefer no-text artwork; UI copy remains HTML/CSS",
+      "duplicates": "do not commit duplicate aliases or nested source archives"
     }
   }
 }

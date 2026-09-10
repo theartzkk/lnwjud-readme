@@ -15,6 +15,12 @@ test('canonical Dashboard is intent-first with a three-item mobile navigation',a
  assert.match(css,/awh-mobile-nav/); assert.match(css,/repeat\(3,minmax\(0,1fr\)\)/);
  assert.match(dashboard,/dashboard-attachment-open/);
  assert.match(dashboard,/แนบไฟล์หรือรูปภาพ/);
+ assert.doesNotMatch(dashboard,/kruart-reference-role-staff-hq\.webp/);
+ assert.doesNotMatch(dashboard,/hero\.append\(heroArt\)/);
+ assert.match(dashboard,/\['home', '⌂', 'เริ่มงาน'/);
+ assert.match(dashboard,/dataset\.view === 'files' \? 'files' : 'home'/);
+ assert.match(index,/data-owner-destination="home"/);
+ assert.match(index,/data-owner-destination="awh"/);
  assert.doesNotMatch(index,/Channel และ SHA-256|Source of Truth ของตัวเอง|AI WORKSPACE/);
  assert.match(index,/โปรแกรมสำหรับ Windows และ macOS พร้อมติดตั้ง/);
  assert.match(index,/พื้นที่ทำงาน/);

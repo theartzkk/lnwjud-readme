@@ -52,12 +52,12 @@ P2 — optional enrichment: AWH sign-in side art, empty states, Database/Review/
 7. Build dist-web, then visually compare the real rendered output before deployment.
 
 
-## Approved Project Sources — 2026-09-09
+## Approved Project Source — 2026-09-10
 
-The Project now contains three approved source archives: โลโก้โปรเจคทั้งหมด(2).zip, Final ref cartoon awh.zip, and Banner project.zip. They are source material, not web payloads. Production should ingest only curated WebP derivatives.
+The Project visual authority is now the single archive `KRUART-ECOSYSTEM-SOURCES-READY-FINAL.zip` (manifest version `2026-09-10-final`, SHA-256 `d7f0072329ddf6e502c29cf0e4f9107d1213d4cf8b77452a83b62aa455824f04`). Its manifest indexes 325 items and separates `01_PRODUCTION_READY` from `02_REFERENCE_ONLY`. The earlier logo/cartoon/banner archives remain provenance only and are superseded for new selection work.
 
-Project banner mapping is fixed as follows: Parent Connect → 27E9C536…, school → 2A034EC3…, Computer Lab → 317D5B1F…, LearnLab → 4C44742F…, KRUART Workspace → 6A986C82…, LearnLab overview → 852FC950…, AWH → 86029A98…, kruart.online → 98E44FD8…, and BAY EXCUSE X → AD6F3BF7….
+Production ingest is intentionally selective: use semantic slots in `config/kruart-visual-assets.json`, keep existing verified web binaries when they already satisfy the slot, and import only a curated `01_PRODUCTION_READY` asset when it closes a demonstrated visual gap. Never bulk-copy the archive into the web release. `02_REFERENCE_ONLY` is for identity/style/provenance and must not auto-promote.
 
-The logo archive has two exact binary duplicates. kruart_online_logo.png is the canonical kruart.online copy and AWH_Arts_Workspace_Hub_logo.png is the canonical AWH horizontal copy. Do not commit the duplicate aliases.
+Canonical project logos remain exact source marks and must never be regenerated. UI copy stays HTML/CSS; prefer no-text artwork. The canonical school spelling is **โรงเรียนบ้านเอือดใหญ่**. Parent Connect, Computer Lab, LearnLab, BAY EXCUSE X, School Website, KRUART and AWH visuals are presentation assets only; they must not create duplicate project, identity, login, queue or school-data authorities.
 
-The first curated illustration candidates are also recorded in config/kruart-visual-assets.json; this prevents UUID filenames from being reinterpreted differently by later agents. Parent Connect and Computer Lab banners are prepared as visual assets only and must not create new AWH/BAY project records. The BAY Ecosystem registry remains the project Source of Truth.
+The earlier UUID banner mapping is preserved in the machine-readable registry for provenance. New agents should start from the unified archive paths recorded as `unifiedSource` and the semantic slot ID, not infer meaning from old UUID filenames.
