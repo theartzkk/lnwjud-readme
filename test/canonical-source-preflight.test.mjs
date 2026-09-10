@@ -77,6 +77,26 @@ test('canonical source preflight passes only for live exact clean source', async
   }
 });
 
+test('generated CI evidence directory does not make canonical source dirty', async () => {
+  const fx = await fixture();
+  try {
+    await writeFile(join(fx.work, '.gitignore'), '.ci-artifacts/\n');
+    await git(fx.work, 'add', '.gitignore');
+    await git(fx.work, 'commit', '-m', 'ignore generated ci evidence');
+    await git(fx.work, 'push', 'origin', 'awh/api-independence');
+    const expected = (await git(fx.work, 'rev-parse', 'HEAD')).trim().toLowerCase();
+    await mkdir(join(fx.work, '.ci-artifacts'), { recursive: true });
+    await writeFile(join(fx.work, '.ci-artifacts', 'run.json'), '{\"status\":\"success\"}\n');
+    const result = await preflight(fx.work, expected);
+    assert.equal(result.code, 0);
+    assert.equal(result.report.state, 'PASS');
+    assert.equal(result.report.reason, 'PASS');
+    assert.equal(result.report.dirty, false);
+  } finally {
+    await rm(fx.root, { recursive: true, force: true });
+  }
+});
+
 test('live ls-remote outranks a stale local remote-tracking ref', async () => {
   const fx = await fixture();
   try {
