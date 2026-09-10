@@ -892,6 +892,20 @@ import {
     'school-website': 'website',
   })[projectId] || null;
 
+  // Presentation-only mapping. Project metadata remains owned by the canonical BAY registry.
+  const PROJECT_VISUALS = Object.freeze({
+    'bay-excuse-x': { banner: './project-bay-excuse-x.webp', logo: './logo-bay-excuse-x.webp' },
+    'bay-learnlab': { banner: './project-learnlab.webp', logo: './logo-bay-learnlab.webp' },
+    awh: { banner: './project-awh.webp', logo: './brand-awh.webp' },
+    'school-website': { banner: './project-school.webp', logo: './logo-school.webp' },
+    'school-website-prototype': { banner: './project-school.webp', logo: './logo-school.webp' },
+    'bay-computer-lab': { banner: './project-computer-lab.webp', logo: './logo-bay-computer-lab.webp' },
+    'bay-parent-connect': { banner: './project-parent-connect.webp', logo: './logo-bay-app.webp' },
+    'kruart-online': { banner: './project-kruart-online.webp', logo: './brand-kruart-online.webp' },
+    'bay-ecosystem': { banner: './project-kruart-workspace.webp', logo: './brand-kruart-workspace.webp' },
+  });
+  const visualAsset = (path) => path ? path + '?release=__AWH_WEB_RELEASE_ID__' : null;
+
   async function renderEcosystemPortfolio() {
     const grid = $('ecosystem-project-grid');
     const featured = $('ecosystem-featured-grid');
@@ -920,20 +934,34 @@ import {
       const url = safeUrl(project?.primary_action?.url); if (url) location.assign(url);
     };
     const card = (project, prominent = false) => {
-      const article = document.createElement('article'); article.className = (prominent ? 'ecosystem-project-card featured owner-shortcut-card' : 'ecosystem-project-card') + ' product-' + safeText(project.id,'project').replace(/[^a-z0-9-]/gi,'-');
+      const article = document.createElement('article');
+      article.className = (prominent ? 'ecosystem-project-card featured owner-shortcut-card' : 'ecosystem-project-card') + ' product-' + safeText(project.id,'project').replace(/[^a-z0-9-]/gi,'-');
+      const visual = PROJECT_VISUALS[project.id] || null;
+      if (visual?.banner) {
+        article.classList.add('has-visual');
+        const media = document.createElement('div'); media.className = 'ecosystem-project-media';
+        const banner = document.createElement('img'); banner.className = 'ecosystem-project-banner'; banner.src = visualAsset(visual.banner); banner.alt = ''; banner.width = 1672; banner.height = 941; banner.decoding = 'async'; banner.loading = prominent ? 'eager' : 'lazy'; banner.setAttribute('aria-hidden','true');
+        media.append(banner); article.append(media);
+      }
+      const body = document.createElement('div'); body.className = 'ecosystem-project-body';
       const head = document.createElement('div'); head.className = 'ecosystem-project-head';
-      const icon = document.createElement('span'); icon.className = 'ecosystem-project-icon'; icon.textContent = safeText(project.icon, '•');
-      const status = document.createElement('span'); const serviceId=liveProjectService(project.id); const live=serviceId?liveById.get(serviceId):null; const statusTone=live ? (live.ok===true?'active':'attention') : (({prototype:'pilot',reference:'internal'})[project.status]||safeText(project.status,'project')); status.className = `ecosystem-project-status status-${statusTone}`; status.textContent = live ? (live.ok===true?'พร้อมใช้':'ต้องตรวจ') : labelFor(project.status); if(live) article.dataset.liveState=live.ok===true?'ready':'attention';
-      head.append(icon, status);
+      if (visual?.logo) {
+        const logo = document.createElement('img'); logo.className = 'ecosystem-project-logo'; logo.src = visualAsset(visual.logo); logo.alt = ''; logo.decoding = 'async'; logo.loading = prominent ? 'eager' : 'lazy'; logo.setAttribute('aria-hidden','true'); head.append(logo);
+      } else {
+        const icon = document.createElement('span'); icon.className = 'ecosystem-project-icon'; icon.textContent = safeText(project.icon, '•'); head.append(icon);
+      }
+      const status = document.createElement('span'); const serviceId=liveProjectService(project.id); const live=serviceId?liveById.get(serviceId):null; const statusTone=live ? (live.ok===true?'active':'attention') : (({prototype:'pilot',reference:'internal'})[project.status]||safeText(project.status,'project')); status.className = 'ecosystem-project-status status-' + statusTone; status.textContent = live ? (live.ok===true?'พร้อมใช้':'ต้องตรวจ') : labelFor(project.status); if(live) article.dataset.liveState=live.ok===true?'ready':'attention';
+      head.append(status);
       const title = document.createElement('h3'); title.textContent = safeText(project.name, 'โปรเจกต์');
       const type = document.createElement('small'); type.textContent = [safeText(project.type), live ? 'ตรวจสถานะสด' : safeText(project.stage)].filter(Boolean).join(' · ');
       const copy = document.createElement('p'); copy.textContent = safeText(project.summary, '');
-      article.append(head, title, type, copy);
+      body.append(head, title, type, copy);
       const capability = document.createElement('div'); capability.className = 'ecosystem-project-capabilities';
       for (const item of (Array.isArray(project.capabilities) ? project.capabilities : []).slice(0, 4)) { const chip=document.createElement('span'); chip.textContent=safeText(item); capability.append(chip); }
-      article.append(capability);
+      body.append(capability);
       const actionUrl = project.id === 'awh' || safeUrl(project?.primary_action?.url);
-      if (actionUrl) { const action = document.createElement('button'); action.type='button'; action.className='ecosystem-project-action'; action.textContent = project.id === 'awh' ? 'เปิด AWH Workspace' : safeText(project?.primary_action?.label, 'เปิด'); action.addEventListener('click', () => openProject(project)); article.append(action); }
+      if (actionUrl) { const action = document.createElement('button'); action.type='button'; action.className='ecosystem-project-action'; action.textContent = project.id === 'awh' ? 'เปิด AWH Workspace' : safeText(project?.primary_action?.label, 'เปิด'); action.addEventListener('click', () => openProject(project)); body.append(action); }
+      article.append(body);
       return article;
     };
     const query = safeText($('ecosystem-search-input')?.value).toLocaleLowerCase('th-TH');

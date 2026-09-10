@@ -10,7 +10,7 @@ web/kruart-system.css remains the final visual authority. config/kruart-visual-a
 
 ## Ingest rules
 
-- Do not embed Thai/English copy in illustrations. UI text stays HTML so it remains sharp, accessible and editable.
+- Do not embed new Thai/English UI copy in illustrations. UI text stays HTML so it remains sharp, accessible and editable. Approved project-banner lockups from Banner project.zip are a source-fidelity exception: preserve their pixels exactly and never retype or redraw their branding.
 - Keep logos and official marks exact. Do not redraw or approximate them inside generated art.
 - Use WebP for raster artwork and SVG only for simple vector/icon work.
 - Preserve a copy-safe zone for heroes and banners. Prefer focal-point/crop tuning before creating a second mobile file.

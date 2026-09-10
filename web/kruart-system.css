@@ -295,3 +295,114 @@ button:not(:disabled){cursor:pointer}
 .owner-golden-footer{background-image:linear-gradient(90deg,rgba(229,248,255,.94),rgba(255,255,255,.9),rgba(255,240,218,.88)),var(--kruart-art-owner-footer)!important}
 .infra-hero:after{background-image:var(--kruart-art-system-infrastructure)!important}
 .hosting-hero:after{background-image:var(--kruart-art-system-hosting)!important}
+
+/* KRUART Asset Vault Closure — exact approved logos, project banners and dedicated route art. */
+:root{
+  --kruart-art-public-news-school:url("./news-school-activity.webp");
+  --kruart-art-public-news-activity:url("./news-learning.webp");
+  --kruart-art-public-news-pride:url("./news-pride.webp");
+  --kruart-art-awh-home:url("./awh-home-hero.webp");
+  --kruart-art-awh-signin:url("./awh-home-hero.webp");
+  --kruart-art-owner-learnlab:url("./project-learnlab.webp");
+  --kruart-art-owner-bay:url("./project-bay-excuse-x.webp");
+  --kruart-art-owner-awh:url("./project-awh.webp");
+  --kruart-art-owner-school:url("./project-school.webp");
+  --kruart-art-owner-control:url("./owner-control.webp");
+  --kruart-art-system-infrastructure:url("./system-infrastructure.webp");
+  --kruart-art-system-hosting:url("./system-hosting.webp");
+}
+.kruart-brand{min-width:205px!important;gap:8px!important}
+.kruart-brand-logo{display:block;width:172px;height:auto;max-height:68px;object-fit:contain;object-position:left center;flex:0 0 auto}
+.kruart-login-avatar img{content:url("./account-avatar.webp")!important;object-fit:cover!important;object-position:center!important}
+.kruart-signin-logo{content:url("./brand-kruart-workspace.webp")!important;max-width:min(100%,330px)!important;height:auto!important;object-fit:contain!important}
+.kruart-today-message img[data-kruart-art-slot="public.today-message"]{content:url("./today-community.webp")!important}
+.awh-home-hero:after,.ecosystem-home-hero:after{background-image:var(--kruart-art-awh-home)!important;background-position:center!important}
+.sign-in-copy:after{background-image:var(--kruart-art-awh-signin)!important;background-position:center!important}
+.cp-bay-visual img[data-kruart-art-slot="system.control-panel"],
+.cp-hero-side img[data-kruart-art-slot="system.control-panel"]{content:url("./system-control-panel.webp")!important;object-fit:cover!important;object-position:center!important}
+
+/* Project cards use the approved 16:9 project banner as the primary visual.
+ * Metadata stays HTML and comes only from BAY's canonical registry. */
+.ecosystem-project-card{overflow:hidden!important}
+.ecosystem-project-media{position:relative;overflow:hidden;background:#eaf5ff}
+.ecosystem-project-banner{display:block;width:100%;height:100%;object-fit:cover;object-position:center}
+.ecosystem-project-body{min-width:0;display:flex;flex:1;flex-direction:column}
+.ecosystem-project-logo{display:block;width:auto;max-width:118px;height:30px;object-fit:contain;object-position:left center;flex:0 1 auto}
+.ecosystem-project-head{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important}
+.ecosystem-project-status{flex:0 0 auto}
+.ecosystem-project-body h3{color:var(--k-navy)!important}
+.ecosystem-project-body>small{display:block;color:var(--k-muted)!important}
+.ecosystem-project-body .ecosystem-project-action{position:static!important;transform:none!important;align-self:flex-start!important;margin-top:auto!important;min-height:36px!important;padding:7px 12px!important;border:1px solid #cfe0ef!important;border-radius:11px!important;background:#f8fbff!important;color:var(--k-blue)!important;font-weight:850!important;box-shadow:none!important}
+.ecosystem-project-body .ecosystem-project-action:hover{border-color:#a9cce7!important;background:#eef7ff!important}
+
+/* Featured systems: full-fidelity banner above compact metadata. */
+.owner-featured-systems .ecosystem-featured-grid{align-items:stretch!important}
+.owner-featured-systems .ecosystem-project-card.featured.owner-shortcut-card{
+  display:flex!important;flex-direction:column!important;min-height:0!important;padding:0!important;border-radius:20px!important;background:#fff!important
+}
+.owner-featured-systems .owner-shortcut-card:before{display:none!important}
+.owner-featured-systems .ecosystem-project-media{aspect-ratio:1672/941;border-bottom:1px solid #e4edf5}
+.owner-featured-systems .ecosystem-project-body{padding:11px 12px 12px!important}
+.owner-featured-systems .ecosystem-project-head{min-height:32px!important;margin:0 0 6px!important}
+.owner-featured-systems .ecosystem-project-logo{max-width:100px;height:28px}
+.owner-featured-systems .ecosystem-project-body h3{margin:0 0 2px!important;font-size:14px!important}
+.owner-featured-systems .ecosystem-project-body>small{font-size:8.5px!important}
+.owner-featured-systems .ecosystem-project-body>p{margin:6px 0 9px!important;font-size:9.5px!important;line-height:1.35!important;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.owner-featured-systems .ecosystem-project-capabilities{display:none!important}
+.owner-featured-systems .ecosystem-project-body .ecosystem-project-action{font-size:9px!important}
+
+/* Other systems: keep the list compact while still showing the approved banner. */
+.owner-systems .ecosystem-project-grid{gap:10px!important}
+.owner-systems .ecosystem-project-card:not(.owner-shortcut-card){
+  display:grid!important;grid-template-columns:minmax(180px,32%) minmax(0,1fr)!important;min-height:142px!important;padding:0!important;border-radius:18px!important;background:#fff!important
+}
+.owner-systems .ecosystem-project-card:not(.owner-shortcut-card):not(.has-visual){grid-template-columns:1fr!important}
+.owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-media{min-height:142px;border-right:1px solid #e4edf5}
+.owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-body{padding:12px 14px!important}
+.owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-head{margin:0 0 5px!important}
+.owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-logo{max-width:105px;height:28px}
+.owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-body h3{margin:0 0 2px!important;font-size:13px!important}
+.owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-body>small{font-size:8.5px!important}
+.owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-body>p{display:-webkit-box!important;margin:5px 0 8px!important;font-size:9px!important;line-height:1.35!important;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-capabilities{display:none!important}
+.owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-body .ecosystem-project-action{font-size:8.5px!important}
+
+/* Dedicated P1 art replaces generic role-card reuse on contextual surfaces. */
+.news-school .kruart-news-thumb{background-image:var(--kruart-art-public-news-school)!important;background-position:center!important}
+.news-activity .kruart-news-thumb{background-image:var(--kruart-art-public-news-activity)!important;background-position:center!important}
+.news-pride .kruart-news-thumb{background-image:var(--kruart-art-public-news-pride)!important;background-position:center!important}
+.owner-control-art{background-image:var(--kruart-art-owner-control)!important;background-position:center!important;background-size:cover!important;border-radius:18px 18px 0 0}
+.infra-hero:after{background-image:var(--kruart-art-system-infrastructure)!important;background-position:center!important}
+.hosting-hero:after{background-image:var(--kruart-art-system-hosting)!important;background-position:center!important}
+
+@media(max-width:1220px){
+  .kruart-brand{min-width:170px!important}
+  .kruart-brand-logo{width:158px}
+}
+@media(max-width:760px){
+  .kruart-brand{min-width:0!important}
+  .kruart-brand-logo{width:145px;max-height:58px}
+  .owner-featured-systems .ecosystem-featured-grid{grid-template-columns:1fr!important}
+  .owner-featured-systems .ecosystem-project-card.featured.owner-shortcut-card{min-height:0!important}
+  .owner-featured-systems .ecosystem-project-media{aspect-ratio:1672/941}
+  .owner-featured-systems .ecosystem-project-body{padding:11px 12px 12px!important}
+  .owner-systems .ecosystem-project-card:not(.owner-shortcut-card){display:flex!important;flex-direction:column!important;min-height:0!important}
+  .owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-media{width:100%;min-height:0;aspect-ratio:1672/941;border-right:0;border-bottom:1px solid #e4edf5}
+  .owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-body{padding:11px 12px 12px!important}
+  .ecosystem-project-logo{max-width:104px;height:28px}
+}
+@media(max-width:430px){
+  .kruart-brand-logo{width:132px;max-height:54px}
+  .owner-featured-systems .ecosystem-project-body>p,
+  .owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-body>p{-webkit-line-clamp:2!important}
+}
+
+/* Official logos on the public systems strip. */
+.kruart-system-grid>a,.kruart-system-grid>button{grid-template-columns:72px minmax(0,1fr) 12px!important}
+.kruart-system-grid>a>span,.kruart-system-grid>button>span{width:68px!important;height:48px!important;background:#fff!important}
+.kruart-system-grid img.kruart-system-logo{width:64px!important;height:44px!important;object-fit:contain!important;object-position:center!important}
+@media(max-width:560px){
+  .kruart-system-grid>a,.kruart-system-grid>button{grid-template-columns:64px minmax(0,1fr) 12px!important}
+  .kruart-system-grid>a>span,.kruart-system-grid>button>span{width:60px!important;height:46px!important}
+  .kruart-system-grid img.kruart-system-logo{width:56px!important;height:42px!important}
+}

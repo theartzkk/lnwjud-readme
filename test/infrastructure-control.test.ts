@@ -44,7 +44,7 @@ test('Infrastructure is an Owner-only sanitized projection and canonical web sur
   assert.match(remote,/design_system_code=.*awh-design-system\.css/);
   assert.match(remote,/test "\$design_system_code" = 200/);
   assert.match(remote,/verify-web-release\.php" "\$WEB_RELEASE" "\$RELEASE_ID"/);
-  assert.doesNotMatch(webVerifier,/shell_exec|\bexec\s*\(|\bsystem\s*\(|passthru|proc_open/i);
+  assert.doesNotMatch(webVerifier,/shell_exec|\bexec\s*\(|\bsystem\s*\(|passthru|proc_open/i); assert.match(webVerifier,/count\(\$manifest\['files'\]\) > 160/);
   const verified=await run('php',[join(ROOT,'deploy/awh-control-plane/verify-web-release.php'),output,'infra-fixture'],{cwd:ROOT,shell:false}); assert.match(verified.stdout,/WEB_RELEASE_MANIFEST=PASS/);
   await assert.rejects(run('php',[join(ROOT,'deploy/awh-control-plane/verify-web-release.php'),output,'different-release'],{cwd:ROOT,shell:false}));
   await writeFile(join(output,'awh-design-system.css'),'tampered');

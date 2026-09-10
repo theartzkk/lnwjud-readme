@@ -22,7 +22,7 @@ $manifestBytes = @filesize($manifestPath);
 if (!is_int($manifestBytes) || $manifestBytes < 2 || $manifestBytes > 262144) awh_web_release_fail('WEB_RELEASE_MANIFEST_INVALID');
 try { $manifest = json_decode((string) @file_get_contents($manifestPath), true, 32, JSON_THROW_ON_ERROR); }
 catch (Throwable) { awh_web_release_fail('WEB_RELEASE_MANIFEST_INVALID'); }
-if (!is_array($manifest) || ($manifest['schemaVersion'] ?? null) !== 1 || !is_array($manifest['files'] ?? null) || !array_is_list($manifest['files']) || count($manifest['files']) < 1 || count($manifest['files']) > 100) awh_web_release_fail('WEB_RELEASE_MANIFEST_INVALID');
+if (!is_array($manifest) || ($manifest['schemaVersion'] ?? null) !== 1 || !is_array($manifest['files'] ?? null) || !array_is_list($manifest['files']) || count($manifest['files']) < 1 || count($manifest['files']) > 160) awh_web_release_fail('WEB_RELEASE_MANIFEST_INVALID');
 $manifestReleaseId = $manifest['releaseId'] ?? null;
 if (!is_string($manifestReleaseId) || preg_match('/^[A-Za-z0-9._-]{1,80}$/D', $manifestReleaseId) !== 1) awh_web_release_fail('WEB_RELEASE_MANIFEST_INVALID');
 if ($expectedReleaseId !== null && !hash_equals($expectedReleaseId, $manifestReleaseId)) awh_web_release_fail('WEB_RELEASE_ID_MISMATCH');

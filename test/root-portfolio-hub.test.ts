@@ -22,6 +22,12 @@ test('authenticated root is the portfolio hub and reuses BAY registry authority'
   assert.match(app, /reference: 'อ้างอิง'/);
   assert.match(app, /prototype:'pilot',reference:'internal'/);
   assert.match(app, /openAwhWorkspace\('home'\)/);
+  assert.match(app, /const PROJECT_VISUALS = Object\.freeze/);
+  for (const asset of ['project-bay-excuse-x.webp','project-learnlab.webp','project-awh.webp','project-school.webp','project-parent-connect.webp','project-computer-lab.webp','project-kruart-online.webp']) assert.ok(app.includes(asset));
+  for (const logo of ['logo-bay-excuse-x.webp','logo-bay-learnlab.webp','brand-awh.webp','logo-school.webp','logo-bay-computer-lab.webp','brand-kruart-online.webp']) assert.ok(app.includes(logo));
+  assert.match(app, /ecosystem-project-media/);
+  assert.match(app, /ecosystem-project-banner/);
+  assert.match(app, /ecosystem-project-logo/);
   assert.match(dashboard, /awh:return-root-hub/);
   assert.match(css, /\.ecosystem-project-grid/);
   assert.match(css, /body\.ecosystem-home-active \.awh-mobile-nav\{display:none!important\}/);

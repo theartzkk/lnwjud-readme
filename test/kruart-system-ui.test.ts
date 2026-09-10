@@ -23,7 +23,7 @@ test('owner surfaces use final KRUART branding instead of legacy single-letter m
   for (const html of [database, infra, hosting, trust, panel, review]) {
     assert.match(html, /system-brand-icon[^>]+logo-256x256\.png/);
   }
-  assert.match(panel, /kruart-role-staff-final\.webp/);
+  assert.match(panel, /system-control-panel\.webp/);
   assert.doesNotMatch(panel, /kruart-reference-role-staff\.webp/);
 });
 
@@ -46,6 +46,10 @@ test('system UI is build, release, cache and deploy authoritative', async () => 
   assert.match(sw, /kruart-role-teacher-final\.webp/);
   assert.match(sw, /kruart-role-parent-final\.webp/);
   assert.match(sw, /kruart-role-staff-final\.webp/);
+  for (const dedicated of ['project-awh.webp','project-bay-excuse-x.webp','project-learnlab.webp','project-school.webp','project-parent-connect.webp','project-computer-lab.webp','system-control-panel.webp']) {
+    assert.ok(sw.includes(dedicated), dedicated + ' missing from release-aware cache');
+    assert.ok(releaseContract.required.includes(dedicated), dedicated + ' missing from release contract');
+  }
   assert.doesNotMatch(sw, /kruart-human-student-hero-hq\.webp/);
   assert.doesNotMatch(sw, /kruart-human-teacher-hero-hq\.webp/);
   assert.doesNotMatch(sw, /kruart-reference-role-staff-hq\.webp/);
@@ -98,8 +102,20 @@ test('KRUART visual asset slots are centralized and all deployed fallbacks exist
   assert.match(css, /--kruart-art-public-hero:url\("\.\/kruart-hero-final\.webp"\)/);
   assert.match(css, /background-image:var\(--kruart-art-public-hero\)!important/);
   assert.match(css, /--kruart-art-system-infrastructure/);
-  assert.match(index, /data-kruart-art-slot="public\.account-avatar"/);
-  assert.match(index, /data-kruart-art-slot="public\.today-message"/);
-  assert.match(panel, /data-kruart-art-slot="system\.control-panel"/);
+  assert.match(index, /data-kruart-art-slot="public\.account-avatar"[^>]*account-avatar\.webp/);
+  assert.match(index, /data-kruart-art-slot="public\.today-message"[^>]*today-community\.webp/);
+  assert.match(index, /brand-kruart-workspace\.webp/);
+  assert.match(panel, /data-kruart-art-slot="system\.control-panel"[^>]*system-control-panel\.webp/);
+  const expectedReady = new Map([
+    ['public.news.school','news-school-activity.webp'],['public.news.activity','news-learning.webp'],['public.news.pride','news-pride.webp'],
+    ['owner.system.learnlab','project-learnlab.webp'],['owner.system.bay','project-bay-excuse-x.webp'],['owner.system.awh','project-awh.webp'],
+    ['owner.system.school','project-school.webp'],['owner.control','owner-control.webp'],['awh.home.hero','awh-home-hero.webp'],
+    ['system.infrastructure','system-infrastructure.webp'],['system.hosting','system-hosting.webp'],['system.control-panel','system-control-panel.webp'],
+  ]);
+  for (const [id, fallback] of expectedReady) {
+    const slot = manifest.slots.find((entry) => entry.id === id);
+    assert.equal(slot?.status, 'ready', id + ' must be ready');
+    assert.equal(slot?.fallback, fallback, id + ' must bind the approved asset');
+  }
   assert.ok(manifest.slots.some((slot) => slot.status === 'needs-dedicated'));
 });
