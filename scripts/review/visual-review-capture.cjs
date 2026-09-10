@@ -67,6 +67,8 @@ app.whenReady().then(async () => {
   win.webContents.on('did-fail-load', (_event, code, description, validatedURL, isMainFrame) => { if (isMainFrame !== false) runtimeErrors.push(`did-fail-load ${code} ${description} ${validatedURL}`); });
   try {
     await win.loadURL(baseUrl);
+    await waitFor(win, `document.querySelector('#public-home-view') && !document.querySelector('#public-home-view').hidden`, 15000);
+    evidence.push(await shot(win, 'public-home', 'kruart.online public root preserves the Golden AWH visual hierarchy, readable Thai copy and bounded responsive layout', 'open canonical public AWH root'));
     await waitFor(win, `document.querySelector('#registration-open')`);
     await win.webContents.executeJavaScript(`document.querySelector('#registration-open').click()`, true);
     await waitFor(win, `document.querySelector('#registration-sheet') && !document.querySelector('#registration-sheet').hidden`);

@@ -896,10 +896,23 @@ import {
     });
   }
 
+  const isAwhProduct = (project) => project?.id === 'awh' || project?.id === 'kruart-online';
+  const canonicalProjectId = (project) => project?.id === 'kruart-online' ? 'awh' : safeText(project?.id);
+  const dedupeProjectPresentation = (projects) => {
+    const seen = new Set();
+    return projects.filter((project) => {
+      const id = canonicalProjectId(project);
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  };
+
   const liveProjectService = (project) => {
     if (!project || typeof project !== 'object') return null;
     if (project.id === 'bay-excuse-x') return /staging/i.test(safeText(project.stage)) ? 'bay-staging' : 'bay-production';
-    return ({ awh: 'awh', 'bay-learnlab': 'learnlab', 'school-website': 'website', 'bay-computer-lab': 'computer-lab', 'bay-parent-connect': 'parent-connect' })[project.id] || null;
+    if (isAwhProduct(project)) return 'awh';
+    return ({ 'bay-learnlab': 'learnlab', 'school-website': 'website', 'bay-computer-lab': 'computer-lab', 'bay-parent-connect': 'parent-connect' })[project.id] || null;
   };
 
   // Presentation-only mapping. Project metadata remains owned by the canonical BAY registry.
@@ -911,7 +924,7 @@ import {
     'school-website-prototype': { banner: './project-school.webp', logo: './logo-school.webp' },
     'bay-computer-lab': { banner: './project-computer-lab.webp', logo: './logo-bay-computer-lab.webp' },
     'bay-parent-connect': { banner: './project-parent-connect.webp', logo: './logo-bay-app.webp' },
-    'kruart-online': { banner: './project-kruart-online.webp', logo: './brand-kruart-online.webp' },
+    'kruart-online': { banner: './project-awh.webp', logo: './brand-awh.webp' },
     'bay-ecosystem': { banner: './project-kruart-workspace.webp', logo: './brand-kruart-workspace.webp' },
   });
   const visualAsset = (path) => path ? path + '?release=__AWH_WEB_RELEASE_ID__' : null;
@@ -952,7 +965,7 @@ import {
     const safeUrl = (value) => typeof value === 'string' && (/^https:\/\//.test(value) || /^\/(?!\/)/.test(value)) ? value : null;
     const labelFor = (status) => ({ active: 'ใช้งาน', pilot: 'Pilot', prototype: 'ต้นแบบ', reference: 'อ้างอิง', internal: 'ภายใน' })[status] || 'โปรเจกต์';
     const openProject = (project) => {
-      if (project.id === 'awh') { openAwhWorkspace('home'); return; }
+      if (isAwhProduct(project)) { openAwhWorkspace('home'); return; }
       const url = safeUrl(project?.primary_action?.url); if (url) location.assign(url);
     };
     const card = (project, prominent = false) => {
@@ -990,22 +1003,23 @@ import {
       const capability = document.createElement('div'); capability.className = 'ecosystem-project-capabilities';
       for (const item of (Array.isArray(project.capabilities) ? project.capabilities : []).slice(0, 4)) { const chip=document.createElement('span'); chip.textContent=safeText(item); capability.append(chip); }
       body.append(capability);
-      const actionUrl = project.id === 'awh' || safeUrl(project?.primary_action?.url);
-      if (actionUrl) { const action = document.createElement('button'); action.type='button'; action.className='ecosystem-project-action'; action.textContent = project.id === 'awh' ? 'เปิด AWH Workspace' : safeText(project?.primary_action?.label, 'เปิด'); action.addEventListener('click', () => openProject(project)); body.append(action); }
+      const actionUrl = isAwhProduct(project) || safeUrl(project?.primary_action?.url);
+      if (actionUrl) { const action = document.createElement('button'); action.type='button'; action.className='ecosystem-project-action'; action.textContent = isAwhProduct(project) ? 'เปิดพื้นที่ทำงาน' : safeText(project?.primary_action?.label, 'เปิด'); action.addEventListener('click', () => openProject(project)); body.append(action); }
       article.append(body);
       return article;
     };
+    const presentationProjects = dedupeProjectPresentation(projects);
     const query = safeText($('ecosystem-search-input')?.value).toLocaleLowerCase('th-TH');
-    const visibleProjects = query ? projects.filter((project) => [project?.name, project?.type, project?.stage, project?.summary, ...(Array.isArray(project?.capabilities) ? project.capabilities : [])].map((value) => safeText(value).toLocaleLowerCase('th-TH')).join(' ').includes(query)) : projects;
-    const preferredIds = ['bay-excuse-x','bay-learnlab','awh','school-website'];
+    const visibleProjects = query ? presentationProjects.filter((project) => [project?.name, project?.type, project?.stage, project?.summary, ...(Array.isArray(project?.capabilities) ? project.capabilities : []), isAwhProduct(project) ? 'kruart.online AWH Art Workspace Hub' : ''].map((value) => safeText(value).toLocaleLowerCase('th-TH')).join(' ').includes(query)) : presentationProjects;
+    const preferredIds = ['bay-excuse-x','bay-learnlab','school-website','bay-computer-lab'];
     for (const id of preferredIds) { const project=visibleProjects.find((item)=>item?.id===id); if(project) featured.append(card(project,true)); }
-    const remainingProjects = query ? visibleProjects : visibleProjects.filter((item)=>!preferredIds.includes(item?.id));
+    const remainingProjects = query ? visibleProjects : visibleProjects.filter((item)=>!preferredIds.includes(item?.id) && !isAwhProduct(item));
     for (const project of remainingProjects) grid.append(card(project,false));
     if (!visibleProjects.length) { const empty=document.createElement('div'); empty.className='ecosystem-empty'; empty.textContent = projects.length && query ? `ไม่พบระบบหรือโปรเจกต์ที่ตรงกับ “${safeText($('ecosystem-search-input')?.value)}”` : 'ยังโหลดรายการระบบจาก BAY Ecosystem ไม่ได้ โปรดลองอีกครั้ง'; grid.append(empty); }
     const set=(id,value)=>{const node=$(id);if(node)node.textContent=String(value)};
     const readyServices = liveServices.filter((item)=>item?.ok===true);
     const attentionServices = liveServices.filter((item)=>item?.ok!==true);
-    set('ecosystem-project-count', projects.length);
+    set('ecosystem-project-count', presentationProjects.length);
     set('ecosystem-active-count', liveServices.length ? readyServices.length : projects.filter((item)=>item?.status==='active').length);
     set('ecosystem-pilot-count', liveServices.length ? attentionServices.length : projects.filter((item)=>item?.status==='pilot').length);
     set('ecosystem-release-count', releases.length);

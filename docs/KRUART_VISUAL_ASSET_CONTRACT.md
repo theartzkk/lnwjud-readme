@@ -54,7 +54,9 @@ P2 — optional enrichment: AWH sign-in side art, empty states, Database/Review/
 
 ## Approved Project Source — 2026-09-10
 
-The Project visual authority is now the single archive `KRUART-ECOSYSTEM-SOURCES-READY-FINAL.zip` (manifest version `2026-09-10-final`, SHA-256 `d7f0072329ddf6e502c29cf0e4f9107d1213d4cf8b77452a83b62aa455824f04`). Its manifest indexes 325 items and separates `01_PRODUCTION_READY` from `02_REFERENCE_ONLY`. The earlier logo/cartoon/banner archives remain provenance only and are superseded for new selection work.
+The Project visual authority is now `KRUART-ECOSYSTEM-SOURCES-READY-FINAL-v2.zip` (manifest `2026-09-10-final-v2-ui-authority`, SHA-256 `2cf381c01c0a29b7e0a8d95b6b97426e82e2288658cce46ad79927d7c1c1e52e`). It contains 329 indexed files / 313 images and separates `01_PRODUCTION_READY` from `02_REFERENCE_ONLY`. The v2 rule is explicit: the current live `kruart.online` is the highest Golden UI/UX reference; project folders are curated starting points, not mandatory templates.
+
+Product identity is also explicit: `kruart.online` is the canonical public/root web surface of **Art’s Workspace Hub (AWH)**. The signed-in Workspace is a mode of the same product, not a second product nested inside it. BAY registry IDs may remain backward-compatible, but presentation must deduplicate `kruart-online` and `awh` instead of showing them as two independent systems.
 
 Production ingest is intentionally selective: use semantic slots in `config/kruart-visual-assets.json`, keep existing verified web binaries when they already satisfy the slot, and import only a curated `01_PRODUCTION_READY` asset when it closes a demonstrated visual gap. Never bulk-copy the archive into the web release. `02_REFERENCE_ONLY` is for identity/style/provenance and must not auto-promote.
 

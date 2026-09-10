@@ -1,6 +1,6 @@
 # AWH Current State Authority
 
-Updated: 2026-09-10 19:15 ICT.
+Updated: 2026-09-10 19:42 ICT.
 
 This file is the **current-state authority** for AWH operational status. Re-read the live GitHub branch/HEAD, VPS pointers, database and runtime evidence before every mutation. Dated "current", "live", or "Production remains" statements in `PROJECT.md`, `HANDOFF.md`, `TASKS.md`, `DECISIONS.md`, and older checkpoint documents are historical evidence unless this file or a fresh inspection confirms them.
 
@@ -10,7 +10,7 @@ This file is the **current-state authority** for AWH operational status. Re-read
 - Live Production host is `bay-core-01`. Web pointer is `/var/www/awh-web/releases/m20-kruart-golden-0193b14`; control-plane pointer is `/opt/awh-hub/control-releases/m20-148691d3ec6d`.
 - Production SQLite `/var/lib/awh-hub/awh.sqlite` is schema/user_version 20 with `integrity_check=ok` and no foreign-key violation output in the fresh read-only check. Nginx, PHP-FPM, native-executor, backup, storage-guard and temp-cleanup timers were all active.
 - At the pre-commit closure check, the web worktree contained one coherent navigation/compact-hero/stable-download-route + unified-visual-source patch. Targeted visual/navigation/deploy regressions passed 17/17; `npm run web:build:control` passed; full `qa:local` passed unit/security/build/runtime contracts and reported only the expected git-state failure because the candidate was still uncommitted. Re-run QA after commit/push before treating the branch as clean closure evidence. This is candidate evidence, not a Production deployment claim.
-- Project visual Source of Truth is now `KRUART-ECOSYSTEM-SOURCES-READY-FINAL.zip` (2026-09-10-final). Only curated `01_PRODUCTION_READY` assets may be selectively ingested; `02_REFERENCE_ONLY` must never auto-promote. Existing verified web binaries stay in place unless a semantic slot has a demonstrated gap.
+- Project visual Source of Truth is `KRUART-ECOSYSTEM-SOURCES-READY-FINAL-v2.zip` (manifest `2026-09-10-final-v2-ui-authority`, SHA-256 `2cf381c01c0a29b7e0a8d95b6b97426e82e2288658cce46ad79927d7c1c1e52e`). v2 makes current live `kruart.online` the highest Golden UI/UX authority. `kruart.online` is AWH’s canonical public/root surface, not a parallel product; the UI must deduplicate the backward-compatible `kruart-online` registry entry from the `awh` product. Only curated `01_PRODUCTION_READY` assets may be selectively ingested; `02_REFERENCE_ONLY` must never auto-promote.
 - No Production mutation is authorized by this checkpoint. Any new release still requires exact post-QA SHA, rollback evidence and explicit Production approval.
 
 ## Source and repository

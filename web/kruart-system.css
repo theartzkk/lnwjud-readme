@@ -618,3 +618,15 @@ button:not(:disabled){cursor:pointer}
 @media(min-width:761px){.product-dashboard{grid-template-columns:184px minmax(0,1fr)!important;gap:22px!important}.awh-product-nav{min-height:calc(100vh - 118px)!important}.awh-product-nav-brand{padding-bottom:14px!important}.awh-product-nav-item{min-height:46px!important}}
 @media(max-width:980px) and (min-width:761px){.product-dashboard .awh-home-hero{padding-right:34px!important}.product-dashboard .awh-home-hero:after{display:none!important}}
 @media(max-width:760px){.product-dashboard .awh-home-hero{padding:18px 14px 14px!important}.product-dashboard .awh-home-hero:after{display:none!important}.product-dashboard .awh-home-hero h1{font-size:28px!important}.product-dashboard .awh-home-hero>p{font-size:13px!important}.product-dashboard .awh-command-form textarea{min-height:48px!important}}
+
+/* v2 UI authority — kruart.online is AWH, so signed-in work keeps the public Golden visual DNA without duplicating the public portal. */
+.product-dashboard .awh-home-hero{
+  border-color:#c9e3f4!important;
+  background-image:linear-gradient(104deg,rgba(239,249,255,.97) 0%,rgba(249,253,255,.96) 58%,rgba(255,241,224,.94) 100%),url("./kruart-hero-final.webp")!important;
+  background-position:center!important;background-size:cover!important;
+  box-shadow:0 14px 38px rgba(20,61,117,.08)!important
+}
+.product-dashboard .awh-home-kicker{color:var(--k-orange)!important;font-weight:900!important;letter-spacing:.1em!important}
+.product-dashboard .awh-home-hero h1{color:var(--k-navy)!important;letter-spacing:-.045em!important}
+.product-dashboard .awh-command-form{border-color:#c7deef!important;background:rgba(255,255,255,.96)!important;box-shadow:0 8px 22px rgba(20,61,117,.06)!important}
+.product-dashboard .awh-command-send{background:linear-gradient(135deg,var(--k-orange),var(--k-orange-2))!important;box-shadow:0 8px 18px rgba(255,122,0,.16)!important}

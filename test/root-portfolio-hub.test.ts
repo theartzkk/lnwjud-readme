@@ -17,7 +17,7 @@ test('authenticated root is the portfolio hub and reuses BAY registry authority'
   assert.match(app, /function safeText\(value, fallback = ''\)/);
   assert.match(app, /showEcosystemHome\(\{ replace: true \}\)/);
   assert.match(app, /if \(authenticatedSurfaceRequested\(\)\)/);
-  assert.match(app, /project\.id === 'awh'/);
+  assert.match(app, /const isAwhProduct = \(project\) => project\?\.id === 'awh' \|\| project\?\.id === 'kruart-online'/);
   assert.match(app, /prototype: 'ต้นแบบ'/);
   assert.match(app, /reference: 'อ้างอิง'/);
   assert.match(app, /const projectLifecycle = \(project\) =>/);
@@ -32,14 +32,21 @@ test('authenticated root is the portfolio hub and reuses BAY registry authority'
   assert.match(app, /'bay-computer-lab': 'computer-lab'/);
   assert.match(app, /'bay-parent-connect': 'parent-connect'/);
   assert.match(app, /liveDetail = safeText\(live\?\.version\)/);
-  for (const asset of ['project-bay-excuse-x.webp','project-learnlab.webp','project-awh.webp','project-school.webp','project-parent-connect.webp','project-computer-lab.webp','project-kruart-online.webp']) assert.ok(app.includes(asset));
-  for (const logo of ['logo-bay-excuse-x.webp','logo-bay-learnlab.webp','brand-awh.webp','logo-school.webp','logo-bay-computer-lab.webp','brand-kruart-online.webp']) assert.ok(app.includes(logo));
+  assert.match(app, /dedupeProjectPresentation/);
+  assert.match(app, /const preferredIds = \['bay-excuse-x','bay-learnlab','school-website','bay-computer-lab'\]/);
+  assert.match(app, /!isAwhProduct\(item\)/);
+  assert.match(html, /data-owner-destination="awh"[^>]*>[\s\S]{0,120}<span>ทำงาน<\/span>/);
+  assert.match(html, /พื้นที่ทำงาน AWH/);
+  assert.match(html, /ส่วนทำงานของ kruart\.online/);
+  for (const asset of ['project-bay-excuse-x.webp','project-learnlab.webp','project-awh.webp','project-school.webp','project-parent-connect.webp','project-computer-lab.webp']) assert.ok(app.includes(asset));
+  for (const logo of ['logo-bay-excuse-x.webp','logo-bay-learnlab.webp','brand-awh.webp','logo-school.webp','logo-bay-computer-lab.webp']) assert.ok(app.includes(logo));
   assert.match(app, /ecosystem-project-media/);
   assert.match(app, /ecosystem-project-banner/);
   assert.match(app, /ecosystem-project-logo/);
   assert.match(dashboard, /awh:return-root-hub/);
   assert.match(css, /\.ecosystem-project-grid/);
   assert.match(css, /body\.ecosystem-home-active \.awh-mobile-nav\{display:none!important\}/);
+  assert.match(html, /kruart\.online · Art’s Workspace Hub \(AWH\)/);
   assert.doesNotMatch(app, /localStorage.*ecosystem|indexedDB.*ecosystem/i);
 });
 

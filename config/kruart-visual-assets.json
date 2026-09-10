@@ -502,12 +502,12 @@
       "bay-app-icon": "logo-bay-app.webp"
     },
     "unifiedArchive": {
-      "name": "KRUART-ECOSYSTEM-SOURCES-READY-FINAL.zip",
-      "role": "single visual Source of Truth for KRUART/AWH/BAY ecosystem projects",
-      "version": "2026-09-10-final",
-      "sha256": "d7f0072329ddf6e502c29cf0e4f9107d1213d4cf8b77452a83b62aa455824f04",
-      "bytes": 82960208,
-      "manifestItemCount": 325,
+      "name": "KRUART-ECOSYSTEM-SOURCES-READY-FINAL-v2.zip",
+      "role": "single visual Source of Truth for KRUART/AWH/BAY ecosystem projects; current live kruart.online is the Golden UI/UX authority",
+      "version": "2026-09-10-final-v2-ui-authority",
+      "sha256": "2cf381c01c0a29b7e0a8d95b6b97426e82e2288658cce46ad79927d7c1c1e52e",
+      "bytes": 82964503,
+      "manifestItemCount": 329,
       "imageCount": 313,
       "canonicalRoot": "01_PRODUCTION_READY",
       "referenceRoot": "02_REFERENCE_ONLY",
@@ -517,14 +517,24 @@
         "Final ref cartoon awh.zip",
         "Banner project.zip"
       ],
-      "status": "approved-project-source"
+      "status": "approved-project-source-v2"
     },
     "ingestPolicy": {
-      "production": "ingest only curated assets from 01_PRODUCTION_READY and convert/copy only when an existing semantic slot needs a new binary",
+      "production": "follow current live kruart.online layout/interaction language first; selectively ingest 01_PRODUCTION_READY assets only when they improve an existing semantic slot; never bulk-copy the archive into web payloads",
       "reference": "02_REFERENCE_ONLY is identity/style/provenance reference and must never auto-promote to production",
       "logos": "use exact canonical logos/marks; never redraw with generative AI",
       "text": "prefer no-text artwork; UI copy remains HTML/CSS",
       "duplicates": "do not commit duplicate aliases or nested source archives"
+    },
+    "uiAuthority": {
+      "live": "https://kruart.online/",
+      "product": "Art’s Workspace Hub (AWH)",
+      "relationship": "kruart.online is the canonical public/root web surface of AWH, not a parallel product or second workspace",
+      "precedence": "live kruart.online UX first; then v2 production-ready assets; reference-only assets never auto-promote",
+      "reuse": "cross-project production-ready reuse is allowed when it improves composition, responsive behavior, or task fit"
+    },
+    "presentationAliases": {
+      "kruart-online": "awh"
     }
   }
 }

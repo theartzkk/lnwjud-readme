@@ -20,7 +20,7 @@ test('canonical Dashboard is intent-first with a three-item mobile navigation',a
  assert.match(dashboard,/\['home', '⌂', 'เริ่มงาน'/);
  assert.match(dashboard,/dataset\.view === 'files' \? 'files' : 'home'/);
  assert.match(index,/data-owner-destination="home"/);
- assert.match(index,/data-owner-destination="awh"/);
+ assert.match(index,/data-owner-destination="awh"[^>]*>[\s\S]{0,120}<span>ทำงาน<\/span>/);
  assert.doesNotMatch(index,/Channel และ SHA-256|Source of Truth ของตัวเอง|AI WORKSPACE/);
  assert.match(index,/โปรแกรมสำหรับ Windows และ macOS พร้อมติดตั้ง/);
  assert.match(index,/พื้นที่ทำงาน/);

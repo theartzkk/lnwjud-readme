@@ -130,12 +130,14 @@ test('KRUART visual asset slots are centralized and all deployed fallbacks exist
   }
   assert.ok(manifest.slots.some((slot) => slot.status === 'needs-dedicated'));
   const projectSources = (manifest as any).projectSources;
-  assert.equal(projectSources.unifiedArchive.name, 'KRUART-ECOSYSTEM-SOURCES-READY-FINAL.zip');
-  assert.equal(projectSources.unifiedArchive.version, '2026-09-10-final');
+  assert.equal(projectSources.unifiedArchive.name, 'KRUART-ECOSYSTEM-SOURCES-READY-FINAL-v2.zip');
+  assert.equal(projectSources.unifiedArchive.version, '2026-09-10-final-v2-ui-authority');
   assert.equal(projectSources.unifiedArchive.schoolName, 'โรงเรียนบ้านเอือดใหญ่');
-  assert.equal(projectSources.unifiedArchive.status, 'approved-project-source');
+  assert.equal(projectSources.unifiedArchive.status, 'approved-project-source-v2');
   assert.equal(projectSources.unifiedArchive.canonicalRoot, '01_PRODUCTION_READY');
   assert.equal(projectSources.unifiedArchive.referenceRoot, '02_REFERENCE_ONLY');
   assert.match(projectSources.ingestPolicy.production, /01_PRODUCTION_READY/);
   assert.match(projectSources.ingestPolicy.reference, /must never auto-promote/);
+  assert.match(projectSources.uiAuthority.relationship, /canonical public\/root web surface of AWH/);
+  assert.equal(projectSources.presentationAliases['kruart-online'], 'awh');
 });
