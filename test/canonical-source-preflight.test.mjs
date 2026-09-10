@@ -80,6 +80,8 @@ test('canonical source preflight passes only for live exact clean source', async
 test('generated CI evidence directory does not make canonical source dirty', async () => {
   const fx = await fixture();
   try {
+    await git(fx.work, 'config', 'user.email', 'qa@example.invalid');
+    await git(fx.work, 'config', 'user.name', 'AWH QA');
     await writeFile(join(fx.work, '.gitignore'), '.ci-artifacts/\n');
     await git(fx.work, 'add', '.gitignore');
     await git(fx.work, 'commit', '-m', 'ignore generated ci evidence');
