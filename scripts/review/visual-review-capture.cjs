@@ -38,7 +38,7 @@ async function login(win) {
   await sleep(350);
 }
 async function openAwhWorkspace(win) {
-  await win.webContents.executeJavaScript(`(() => { const cards=[...document.querySelectorAll('#ecosystem-project-grid .ecosystem-project-card')]; const card=cards.find((item)=>item.textContent.includes('AWH Workspace')); const button=card?.querySelector('.ecosystem-project-action'); if(!button) throw new Error('AWH Workspace action missing'); button.click(); })()`, true);
+  await win.webContents.executeJavaScript(`(() => { const button=document.querySelector('#ecosystem-open-awh'); if(!button) throw new Error('canonical AWH workspace entry missing'); button.click(); })()`, true);
   await waitFor(win, `document.querySelector('#product-dashboard') && !document.querySelector('#product-dashboard').hidden`, 15000);
   await sleep(350);
 }
