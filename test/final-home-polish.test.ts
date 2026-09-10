@@ -83,6 +83,7 @@ test('KRUART Golden Home ships the approved generated human artwork family and a
   assert.match(css, /body\.public-home-active \.awh-mobile-nav\{display:none!important\}/);
   assert.match(html, /https:\/\/school\.kruart\.online\/news\//);
   assert.match(html, /https:\/\/school\.kruart\.online\/parent\//);
+  for (const quickLogo of ['brand-awh.webp','logo-bay-learnlab.webp','logo-bay-excuse-x.webp','logo-bay-app.webp']) assert.ok(html.includes(quickLogo), quickLogo+' missing from owner quick access');
   assert.doesNotMatch(html, /banauedyai\.ac\.th\/mainpage/);
   assert.match(finalCss, /Public mobile accessibility closure/);
   assert.match(finalCss, /body\.public-home-active \.kruart-shortcut small\{font-size:11\.5px!important/);

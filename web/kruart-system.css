@@ -179,6 +179,7 @@ button:not(:disabled){cursor:pointer}
 .owner-quick-row{width:100%;min-height:60px;display:grid;grid-template-columns:38px minmax(0,1fr) auto;align-items:center;gap:10px;padding:8px 10px;border:1px solid #dfeaf3;border-radius:14px;background:#fff;color:var(--k-text);text-align:left;text-decoration:none;box-shadow:0 3px 10px rgba(20,61,117,.025)}
 .owner-quick-row:hover{border-color:#bdd8eb;background:#fafdff}
 .owner-quick-icon{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:#eef7ff;color:#176de5;font-size:13px;font-weight:950}
+.owner-quick-icon img{display:block;width:30px;height:30px;object-fit:contain;object-position:center}
 .owner-quick-row:nth-child(2) .owner-quick-icon{background:#fff1e3;color:#ff7a00}.owner-quick-row:nth-child(3) .owner-quick-icon{background:#eaf8f2;color:#16a36f}.owner-quick-row:nth-child(4) .owner-quick-icon{background:#f1edff;color:#7b5ce1}
 .owner-quick-row>span:nth-child(2){display:grid;line-height:1.15}.owner-quick-row strong{font-size:11px}.owner-quick-row small{margin-top:3px;color:#6b8399;font-size:8.5px}.owner-quick-row b{color:#176de5;font-size:9px;white-space:nowrap}
 
