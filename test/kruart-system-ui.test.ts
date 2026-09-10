@@ -53,6 +53,14 @@ test('system UI is build, release, cache and deploy authoritative', async () => 
   assert.doesNotMatch(sw, /kruart-human-student-hero-hq\.webp/);
   assert.doesNotMatch(sw, /kruart-human-teacher-hero-hq\.webp/);
   assert.doesNotMatch(sw, /kruart-reference-role-staff-hq\.webp/);
+  assert.match(sw, /const RUNTIME_VISUALS = new Set/);
+  const shell = sw.match(/const APP_SHELL = \[([\s\S]*?)\];/)?.[0] || '';
+  const runtimeVisuals = sw.match(/const RUNTIME_VISUALS = new Set\(\[([\s\S]*?)\]\);/)?.[0] || '';
+  assert.doesNotMatch(shell, /project-awh\.webp|project-bay-excuse-x\.webp|news-school-activity\.webp/);
+  assert.match(runtimeVisuals, /project-awh\.webp/);
+  assert.match(runtimeVisuals, /project-bay-excuse-x\.webp/);
+  assert.match(runtimeVisuals, /news-school-activity\.webp/);
+  assert.match(sw, /runtimeVisual/);
   assert.match(deploy, /list-web-release-files\.mjs/);
   assert.match(css, /KRUART System UI Authority/);
   assert.match(css, /kruart-role-staff-final\.webp/);

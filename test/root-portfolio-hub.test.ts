@@ -20,7 +20,11 @@ test('authenticated root is the portfolio hub and reuses BAY registry authority'
   assert.match(app, /project\.id === 'awh'/);
   assert.match(app, /prototype: 'ต้นแบบ'/);
   assert.match(app, /reference: 'อ้างอิง'/);
-  assert.match(app, /prototype:'pilot',reference:'internal'/);
+  assert.match(app, /const projectLifecycle = \(project\) =>/);
+  assert.match(app, /lifecycleLabel/);
+  assert.match(app, /ecosystem-project-health/);
+  assert.match(app, /bay-staging/);
+  assert.match(app, /ไม่พบระบบหรือโปรเจกต์ที่ตรงกับ/);
   assert.match(app, /openAwhWorkspace\('home'\)/);
   assert.match(app, /const PROJECT_VISUALS = Object\.freeze/);
   for (const asset of ['project-bay-excuse-x.webp','project-learnlab.webp','project-awh.webp','project-school.webp','project-parent-connect.webp','project-computer-lab.webp','project-kruart-online.webp']) assert.ok(app.includes(asset));
@@ -61,4 +65,9 @@ test('authenticated root is an AWH cockpit with live readiness and role-aware na
   assert.match(app, /liveProjectService/);
   assert.match(app, /owner-only-nav/);
   assert.match(css, /KRUART Golden Owner Home/);
+  assert.match(css, /Final UX closure/);
+  assert.match(css, /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)!important/);
+  assert.match(css, /ecosystem-project-health/);
+  assert.match(css, /min-height:44px!important/);
+  assert.match(html, /owner-system-directory-link[^>]*>ศูนย์ระบบ</);
 });
