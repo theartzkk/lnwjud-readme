@@ -32,6 +32,8 @@ test('V1.3 owner center unifies existing owner surfaces without a new authority'
   assert.match(source, /window\.location\.assign\('\.\/database\.html'\)/);
   assert.match(source, /window\.location\.assign\('\.\/infrastructure\.html'\)/);
   assert.match(source, /action === 'automations'.*return/);
+  assert.match(source, /window\.addEventListener\('awh:open-owner-center', openCenter\)/);
+  assert.match(source, /function openCenter\(\)[\s\S]*openAwhDialog\(sheet\)/);
   assert.doesNotMatch(source, /fetch\(|XMLHttpRequest|WebSocket|localStorage|sessionStorage|Authorization|Bearer|\/api\/v1\/control\//i);
 });
 
@@ -141,4 +143,15 @@ test('V1.3 owner center is bundled into existing dashboard assets and stays mobi
   assert.match(html, /dashboard\.js\?release=owner-center-fixture/);
   assert.match(worker, /dashboard\.js\?release=owner-center-fixture/);
   assert.doesNotMatch(`${dashboard}\n${html}`, /__AWH_WEB_RELEASE_ID__/);
+});
+test('AWH Settings opens the reachable Owner Center while the dedicated Control Panel button stays separate', async () => {
+  const [dashboard, owner] = await Promise.all([
+    readFile(join(ROOT, 'web', 'dashboard.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'owner-center.js'), 'utf8'),
+  ]);
+  assert.match(dashboard, /ตั้งค่า[\s\S]{0,180}awh:open-owner-center/);
+  assert.doesNotMatch(dashboard, /ตั้งค่า[\s\S]{0,180}dashboard-owner-center-open.*click/);
+  assert.match(owner, /launch\.textContent = 'เปิด Control Panel'/);
+  assert.match(owner, /window\.location\.assign\('\.\/panel\.html'\)/);
+  assert.match(owner, /window\.addEventListener\('awh:open-owner-center', openCenter\)/);
 });

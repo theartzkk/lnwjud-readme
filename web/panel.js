@@ -1,4 +1,4 @@
-import { loadAuthSession, loadInfrastructure, listManagedSites, loadProviderStatus, loadBayRemoteUpdateStatus, createBayRemoteInstallRelay, relayBayRemoteCommand } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { requireOwnerSession, loadInfrastructure, listManagedSites, loadProviderStatus, loadBayRemoteUpdateStatus, createBayRemoteInstallRelay, relayBayRemoteCommand } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $=(id)=>document.getElementById(id);
 const bytes=(value)=>{const n=Number(value||0);if(!Number.isFinite(n)||n<1)return '—';if(n<1024**2)return Math.round(n/1024)+' KB';if(n<1024**3)return (n/1024**2).toFixed(1)+' MB';return (n/1024**3).toFixed(1)+' GB';};
@@ -263,12 +263,9 @@ async function load(){
   $('cp-updated').textContent='กำลังโหลดข้อมูลสำคัญ…';
   const started=performance.now();
   try{
-    const primary=await Promise.allSettled([loadAuthSession(),loadInfrastructure()]);
-    if(primary[0].status!=='fulfilled')throw primary[0].reason;
-    if(primary[0].value?.role!=='OWNER'){location.assign('./');return;}
-    if(primary[1].status!=='fulfilled')throw primary[1].reason;
-
-    const data=primary[1].value;
+    const session=await requireOwnerSession();
+    if(!session){location.assign('./');return;}
+    const data=await loadInfrastructure();
     renderServer(data);renderDomains(data);renderRecovery(data);renderServices(data);renderEcosystem(data);
     $('cp-updated').textContent='พร้อมใช้ · '+Math.max(1,Math.round(performance.now()-started))+' ms';
     void loadBayControl();

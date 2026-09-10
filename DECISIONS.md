@@ -1,5 +1,13 @@
 > **Current-state authority:** Read `CURRENT_STATE.md` first. Sections below are historical checkpoint/audit records; words such as “current”, “live”, or “Production remains” are scoped to their dated checkpoint unless freshly revalidated.
 
+# Authoritative decision — 2026-09-10 kruart.online / AWH product identity
+
+- `kruart.online` is the canonical public/root web surface of **Art’s Workspace Hub (AWH)**. It is not a second workspace or a parallel product. Public home, sign-in, authenticated owner home and Work are modes of one product.
+- The BAY registry may retain both `awh` and legacy-compatible `kruart-online` identifiers for integration compatibility, but AWH presentation must canonicalize `kruart-online → awh`, count it once, and never show the two as independent products. This presentation rule does not mutate BAY registry authority.
+- `KRUART-ECOSYSTEM-SOURCES-READY-FINAL-v2.zip` is the visual asset Source of Truth. Its v2 authority makes the current live `kruart.online` the highest UI/UX reference; project folders are curated starting points, not mandatory templates.
+- Visual convergence must preserve information density and task usability. Signed-in AWH may reuse the public Golden palette, spacing, radii, typography and human-first visual language without turning operational screens into decorative public landing pages.
+- Real school/project logos remain exact source assets. `02_REFERENCE_ONLY` never auto-promotes, and production art is selectively ingested from `01_PRODUCTION_READY` only when a semantic slot has a demonstrated need.
+
 # Authoritative decision — 2026-08-30 responsive-width contract
 
 - Document-width correctness is a shared product invariant: on phone portrait `document.documentElement.scrollWidth` must not exceed `clientWidth`. A global horizontal overflow guard is only a final containment layer, never the sole repair.

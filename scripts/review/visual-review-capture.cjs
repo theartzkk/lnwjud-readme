@@ -34,11 +34,11 @@ async function login(win) {
   await waitFor(win, `document.querySelector('#login-form')`);
   await win.webContents.executeJavaScript(`(() => { document.querySelector('#login-username').value='reviewer'; document.querySelector('#login-password').value='review-password'; document.querySelector('#login-form').requestSubmit(); })()`, true);
   await waitFor(win, `document.querySelector('#ecosystem-home-view') && !document.querySelector('#ecosystem-home-view').hidden`, 15000);
-  await waitFor(win, `document.querySelectorAll('#ecosystem-project-grid .ecosystem-project-card').length >= 4`, 15000);
+  await waitFor(win, `(document.querySelectorAll('#ecosystem-featured-grid .ecosystem-project-card').length + document.querySelectorAll('#ecosystem-project-grid .ecosystem-project-card').length) >= 4`, 15000);
   await sleep(350);
 }
 async function openAwhWorkspace(win) {
-  await win.webContents.executeJavaScript(`(() => { const cards=[...document.querySelectorAll('#ecosystem-project-grid .ecosystem-project-card')]; const card=cards.find((item)=>item.textContent.includes('AWH Workspace')); const button=card?.querySelector('.ecosystem-project-action'); if(!button) throw new Error('AWH Workspace action missing'); button.click(); })()`, true);
+  await win.webContents.executeJavaScript(`(() => { const button=document.querySelector('#ecosystem-open-awh'); if(!button) throw new Error('canonical AWH workspace entry missing'); button.click(); })()`, true);
   await waitFor(win, `document.querySelector('#product-dashboard') && !document.querySelector('#product-dashboard').hidden`, 15000);
   await sleep(350);
 }
@@ -67,6 +67,8 @@ app.whenReady().then(async () => {
   win.webContents.on('did-fail-load', (_event, code, description, validatedURL, isMainFrame) => { if (isMainFrame !== false) runtimeErrors.push(`did-fail-load ${code} ${description} ${validatedURL}`); });
   try {
     await win.loadURL(baseUrl);
+    await waitFor(win, `document.querySelector('#public-home-view') && !document.querySelector('#public-home-view').hidden`, 15000);
+    evidence.push(await shot(win, 'public-home', 'kruart.online public root preserves the Golden AWH visual hierarchy, readable Thai copy and bounded responsive layout', 'open canonical public AWH root'));
     await waitFor(win, `document.querySelector('#registration-open')`);
     await win.webContents.executeJavaScript(`document.querySelector('#registration-open').click()`, true);
     await waitFor(win, `document.querySelector('#registration-sheet') && !document.querySelector('#registration-sheet').hidden`);
@@ -104,6 +106,7 @@ app.whenReady().then(async () => {
     else if (evidence.some((item) => item.horizontalOverflow)) process.exitCode = 2;
   } finally {
     win.destroy();
-    app.quit();
+    if (process.exitCode && process.exitCode !== 0) app.exit(process.exitCode);
+    else app.quit();
   }
-}).catch((error) => { console.error(error?.stack || error); process.exitCode = 1; app.quit(); });
+}).catch((error) => { console.error(error?.stack || error); app.exit(1); });

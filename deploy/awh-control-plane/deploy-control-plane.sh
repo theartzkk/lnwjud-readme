@@ -179,6 +179,9 @@ grep -q '"mode": "CONTROL"' "$ROOT/dist-web/web-config.json" || { echo "CONTROL 
 grep -q '"mode": "CONTROL"' "$ROOT/dist-web/data.json" || { echo "CONTROL web data release is required" >&2; exit 1; }
 ! grep -q 'Remote Preview\|Preview only\|static build' "$ROOT/dist-web/data.json" || { echo "CONTROL web release contains stale preview data" >&2; exit 1; }
 grep -q "awh-shell-$RELEASE_ID" "$ROOT/dist-web/sw.js" || { echo "CONTROL service worker release identity is missing" >&2; exit 1; }
+grep -Fq "\"releaseId\": \"$RELEASE_ID\"" "$ROOT/dist-web/release.json" || { echo "CONTROL release manifest identity is missing" >&2; exit 1; }
+grep -Fq "release=$RELEASE_ID" "$ROOT/dist-web/index.html" || { echo "CONTROL HTML release identity is missing" >&2; exit 1; }
+! grep -Fq "release=local" "$ROOT/dist-web/index.html" || { echo "CONTROL HTML contains local release identity" >&2; exit 1; }
 
 if test "$MODE" = dry-run; then
   if test "$PROJECT_SOURCE_AUTHORITY" -eq 1; then echo "M20_ARTIFACT_STORAGE=private-object-root-required"; elif test "$CONVERSATION_LIFECYCLE" -eq 1; then echo "M19_ARTIFACT_STORAGE=private-object-root-required"; elif test "$CLOUD_FIRST" -eq 1; then echo "M18_ARTIFACT_STORAGE=private-object-root-required"; elif test "$ACCOUNT_HOSTING" -eq 1; then echo "M17_ARTIFACT_STORAGE=private-object-root-required"; elif test "$SELF_SUFFICIENT_AI" -eq 1; then echo "M16_ARTIFACT_STORAGE=private-object-root-required"; elif test "$AUTOMATIONS" -eq 1; then echo "M15_ARTIFACT_STORAGE=private-object-root-required"; elif test "$COST_AWARE_AI" -eq 1; then echo "M14_ARTIFACT_STORAGE=private-object-root-required"; elif test "$ANYWHERE_EXECUTION" -eq 1; then echo "M13_ARTIFACT_STORAGE=private-object-root-required"; elif test "$CENTRAL_PROJECT_AUTHORITY" -eq 1; then echo "M12_ARTIFACT_STORAGE=private-object-root-required"; fi

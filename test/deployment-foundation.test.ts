@@ -61,6 +61,10 @@ test('M4 control-plane activation package is executable in a local dry-run witho
   assert.match(remote, /rehydrate_desktop_artifacts; deduplicate_desktop_artifacts/);
   assert.match(remote, /sha256sum \"\$object\"/);
   assert.match(remote, /stage WEB_ACCESS_READY; verify_web_access/);
+  assert.match(remote, /verify-web-release\.php\" \"\$WEB_RELEASE\" \"\$RELEASE_ID\"/);
+  assert.match(deployText, /CONTROL release manifest identity is missing/);
+  assert.match(deployText, /CONTROL HTML release identity is missing/);
+  assert.match(deployText, /CONTROL HTML contains local release identity/);
   assert.match(remote, /chown -R awh-hub:www-data/);
   assert.match(remote, /sudo -n -u www-data test -r/);
   assert.match(remote, /stage WEB_POINTER_SWITCH/);
@@ -141,6 +145,8 @@ test('M3E and M4 configuration snapshots stay outside Nginx active configuration
   assert.match(preflight, /OPTIONAL_ABSENT/);
   assert.match(preflight, /--resolve \"\$HUB_HOSTNAME:443:127\.0\.0\.1\"/);
   assert.doesNotMatch(preflight, /curl\s+-k/);
+  assert.match(preflight, /sudo -n readlink -f \"\$HUB\/enrollment-current\"/);
+  assert.match(preflight, /sudo -n test -f \"\$ENROLLMENT_TARGET\/hub\/public\/enrollment\.php\"/);
   assert.match(deploy, /--cleanup-topology/);
   assert.match(deploy, /nginx_topology/);
 });

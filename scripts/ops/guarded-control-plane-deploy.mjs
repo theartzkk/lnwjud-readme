@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 
 const ROOT = process.env.AWH_SOURCE_ROOT || process.cwd();
-const CANONICAL_BRANCH = 'awh/api-independence';
+const CANONICAL_BRANCH = 'fix/owner-golden-reference-20260909';
 const CANONICAL_REMOTE = 'origin';
 const CANONICAL_REPOSITORY = 'theartzkk/lnwjud-readme';
 const SHA = /^[0-9a-f]{40}$/;

@@ -77,6 +77,28 @@ test('canonical source preflight passes only for live exact clean source', async
   }
 });
 
+test('generated CI evidence directory does not make canonical source dirty', async () => {
+  const fx = await fixture();
+  try {
+    await git(fx.work, 'config', 'user.email', 'qa@example.invalid');
+    await git(fx.work, 'config', 'user.name', 'AWH QA');
+    await writeFile(join(fx.work, '.gitignore'), '.ci-artifacts/\n');
+    await git(fx.work, 'add', '.gitignore');
+    await git(fx.work, 'commit', '-m', 'ignore generated ci evidence');
+    await git(fx.work, 'push', 'origin', 'awh/api-independence');
+    const expected = (await git(fx.work, 'rev-parse', 'HEAD')).trim().toLowerCase();
+    await mkdir(join(fx.work, '.ci-artifacts'), { recursive: true });
+    await writeFile(join(fx.work, '.ci-artifacts', 'run.json'), '{\"status\":\"success\"}\n');
+    const result = await preflight(fx.work, expected);
+    assert.equal(result.code, 0);
+    assert.equal(result.report.state, 'PASS');
+    assert.equal(result.report.reason, 'PASS');
+    assert.equal(result.report.dirty, false);
+  } finally {
+    await rm(fx.root, { recursive: true, force: true });
+  }
+});
+
 test('live ls-remote outranks a stale local remote-tracking ref', async () => {
   const fx = await fixture();
   try {
@@ -143,7 +165,7 @@ test('owner auth activation proves source before credentials and binds the prove
   assert.ok(credential > preflight, 'credential access must happen after canonical source proof');
   assert.ok(deploy > credential, 'production deploy must happen after source proof and credential gate');
   assert.match(source, /--require-mutation-ready/);
-  assert.match(source, /const CANONICAL_BRANCH = 'awh\/api-independence'/);
+  assert.match(source, /const CANONICAL_BRANCH = 'fix\/owner-golden-reference-20260909'/);
   assert.match(source, /const CANONICAL_REMOTE = 'origin'/);
   assert.match(source, /const CANONICAL_REPOSITORY = 'theartzkk\/lnwjud-readme'/);
   assert.match(source, /AWH_RELEASE_COMMIT: canonicalSha/);
@@ -159,7 +181,7 @@ test('guarded deployment wrapper proves canonical source and binds the proven SH
   assert.ok(preflight > mutationGate);
   assert.ok(deploy > preflight);
   assert.match(source, /--require-mutation-ready/);
-  assert.match(source, /const CANONICAL_BRANCH = 'awh\/api-independence'/);
+  assert.match(source, /const CANONICAL_BRANCH = 'fix\/owner-golden-reference-20260909'/);
   assert.match(source, /const CANONICAL_REMOTE = 'origin'/);
   assert.match(source, /const CANONICAL_REPOSITORY = 'theartzkk\/lnwjud-readme'/);
   assert.match(source, /AWH_RELEASE_COMMIT: provenCanonicalSha/);

@@ -19,13 +19,13 @@ test('Owner Control Panel composes existing authorities without a parallel backe
     readFile(join(ROOT,'web/panel.css'),'utf8'),
   ]);
   for(const label of ['Websites','Domains & SSL','Files & Storage','Databases','Backups','Security','Server & Services','Users & Access','AI & Costs','Source Authority'])assert.match(html,new RegExp(label.replace(/[&]/g,'\\&')));
-  assert.match(js,/loadAuthSession/);
+  assert.match(js,/requireOwnerSession/);
   assert.match(js,/loadInfrastructure/);
-  assert.match(js,/Promise\.allSettled\(\[loadAuthSession\(\),loadInfrastructure\(\)\]\)/);
+  assert.doesNotMatch(js,/Promise\.allSettled\(\[.*loadInfrastructure/);
   assert.doesNotMatch(js,/loadControlData\(\)/);
   assert.match(js,/listManagedSites/);
   assert.match(js,/loadProviderStatus/);
-  assert.match(js,/primary\[0\]\.value\?\.role!=='OWNER'/);
+  assert.match(js,/if\(!session\)\{location\.assign/); assert.ok(js.indexOf('requireOwnerSession()')<js.indexOf('loadInfrastructure()'));
   assert.doesNotMatch(js,/localStorage|sessionStorage|indexedDB|Authorization|Bearer/i);
   assert.doesNotMatch(html,/password|api[_ -]?key|secret/i);
   assert.match(css,/\.cp-sidebar/);
@@ -67,7 +67,7 @@ test('BAY Remote Update stays inside AWH Owner + BAY Update Inbox + PackageManag
     'hub/src/HubControlPlaneRouter.php','hub/src/HubTrustPolicy.php'
   ].map(name=>readFile(join(ROOT,name),'utf8')));
   assert.match(html,/BAY REMOTE UPDATE CONTROL/);
-  assert.match(html,/kruart-role-staff-final\.webp/);
+  assert.match(html,/system-control-panel\.webp/);
   assert.match(html,/connect-src 'self' https:\/\/kruart\.great-site\.net/);
   assert.match(css,/\.cp-bay-update/);
   assert.match(css,/@media\(max-width:560px\)/);

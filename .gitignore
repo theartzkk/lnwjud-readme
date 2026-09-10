@@ -9,6 +9,7 @@ dist-web/
 .awh-build/
 out/
 .awh-local/
+.ci-artifacts/
 release-evidence.json
 *.log
 .DS_Store

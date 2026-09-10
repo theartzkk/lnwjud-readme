@@ -86,6 +86,7 @@ export async function registerAccessRequest({ displayName, username, password, e
 }
 
 export async function loadAuthSession() { return controlRequest('/api/v1/auth/session'); }
+export async function requireOwnerSession() { try { const session = await loadAuthSession(); return session?.role === 'OWNER' ? session : null; } catch (error) { if (error?.code === 'SESSION_INVALID' || error?.code === 'SESSION_EXPIRED') return null; throw error; } }
 export async function loadAuthProfile() { return controlRequest('/api/v1/auth/profile'); }
 export async function updateAuthProfile(displayName) { if (typeof displayName !== 'string' || !displayName.trim() || displayName.length > 80) throw new Error('ชื่อที่แสดงไม่ถูกต้อง'); return controlRequest('/api/v1/auth/profile', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, displayName: displayName.trim() }) }); }
 export async function logout() { return controlRequest('/api/v1/auth/logout', { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }

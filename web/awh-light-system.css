@@ -201,7 +201,7 @@ body{background:
 }
 .workstream-title h1{color:#0b3d91!important;font-size:clamp(30px,4vw,44px)!important;letter-spacing:-.035em}
 .empty-work{position:relative;overflow:hidden;min-height:245px!important;padding:46px 230px 38px 30px!important;border:1px solid #d6e8f6!important;border-radius:24px!important;background:linear-gradient(125deg,#eef9ff,#fff 62%,#fff3e5)!important;text-align:left!important}
-.empty-work:after{content:"";position:absolute;right:18px;bottom:-20px;width:200px;height:220px;background-color:transparent;background-image:url("./kruart-human-student-computer.webp");background-image:image-set(url("./kruart-human-student-computer.webp") 1x,url("./kruart-human-student-computer-hq.webp") 3x);background-position:center bottom;background-size:contain;background-repeat:no-repeat;opacity:.98;filter:drop-shadow(0 12px 18px rgba(20,61,117,.12))}
+.empty-work:after{content:"";position:absolute;right:18px;bottom:-20px;width:200px;height:220px;background-color:transparent;background-image:url("./kruart-role-staff-final.webp");background-position:13% center;background-size:cover;background-repeat:no-repeat;border-radius:22px 22px 0 0;opacity:.98;filter:drop-shadow(0 12px 18px rgba(20,61,117,.12))}
 .empty-work>*{position:relative;z-index:2}.empty-work h2{color:#0b3d91!important;font-size:22px!important}.empty-work p{max-width:520px!important}
 .empty-mark{width:42px!important;height:42px!important;border-radius:14px!important}
 .composer{

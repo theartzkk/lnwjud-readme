@@ -18,6 +18,7 @@ const conversations = [];
 const attachments = [];
 const artifacts = [];
 const tasks = [];
+const automations = [];
 const cloudRevision = 'a'.repeat(40);
 let cloudConfigured = true;
 const fixtureResetToken = 'a'.repeat(43);
@@ -82,7 +83,7 @@ const server = createServer(async (request, response) => {
       fixtureResetUsed = true;
       return send(response, 200, { schemaVersion: 1, authenticated: false });
     }
-    if (url.pathname === '/api/v1/auth/session') return session(request) ? send(response, 200, { csrfToken: csrf, username: 'fixture', role: 'OWNER' }) : send(response, 401, { code: 'SESSION_INVALID' });
+    if (url.pathname === '/api/v1/auth/session') return session(request) ? send(response, 200, { schemaVersion: 1, authenticated: true, expiresAt: '2026-12-31T00:00:00.000Z', remembered: true, csrfToken: csrf, userId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', username: 'fixture', role: 'OWNER' }) : send(response, 401, { code: 'SESSION_INVALID' });
     if (url.pathname === '/api/v1/auth/step-up' && request.method === 'POST') {
       if (!session(request) || !requireCsrf(request, response)) return;
       const value = await readJson(request); if (value.schemaVersion !== 1 || typeof value.password !== 'string' || !value.password) return send(response, 401, { code: 'STEP_UP_FAILED' });
@@ -97,7 +98,19 @@ const server = createServer(async (request, response) => {
       { id: 'bay-learnlab', name: 'BAY LearnLab', type: 'Learning Platform', icon: '🎒', status: 'pilot', stage: '0.8.0-rc.15', summary: 'พื้นที่เรียนรู้สำหรับนักเรียน', primary_action: { label: 'เปิด LearnLab', url: 'https://learn.example.invalid/' }, capabilities: ['Offline-first', 'Student learning'] },
       { id: 'awh', name: 'AWH Workspace', type: 'AI Workspace', icon: '✦', status: 'active', stage: 'Control Plane', summary: 'AI, Projects, Files, Tasks และ Automations', primary_action: { label: 'เปิด AWH Workspace', url: 'https://kruart.online/?awh-surface=home' }, capabilities: ['AI Workspace', 'Projects', 'Files', 'Tasks'] },
       { id: 'school-website', name: 'เว็บไซต์โรงเรียน', type: 'Public Website', icon: '🌐', status: 'active', stage: 'Production', summary: 'เว็บไซต์สาธารณะของโรงเรียน', primary_action: { label: 'เปิดเว็บไซต์', url: 'https://school.example.invalid/' }, capabilities: ['Public website'] },
+      { id: 'bay-computer-lab', name: 'BAY Computer Lab', type: 'Classroom Control', icon: '🖥️', status: 'active', stage: 'Production VPS', summary: 'ศูนย์ควบคุมห้องคอมพิวเตอร์และเครื่องนักเรียน', primary_action: { label: 'เปิด Computer Lab', url: 'https://lab.example.invalid/' }, capabilities: ['Classroom Control', 'Device Management'] },
+      { id: 'bay-parent-connect', name: 'BAY Parent Connect', type: 'Parent Experience', icon: '👨‍👩‍👧', status: 'active', stage: 'Production · LINE LIFF', summary: 'พื้นที่ผู้ปกครองที่ใช้ข้อมูลและ Identity จาก BAY', primary_action: { label: 'เปิด Parent Connect', url: 'https://school.example.invalid/parent/' }, capabilities: ['Parent Link', 'Attendance'] },
+      { id: 'kruart-online', name: 'kruart.online', type: 'Unified Workspace', icon: '✦', status: 'active', stage: 'Production VPS', summary: 'public/root surface ของ AWH', primary_action: { label: 'เปิด kruart.online', url: 'https://kruart.online/' }, capabilities: ['Unified Entry', 'AWH'] },
+      { id: 'bay-ecosystem', name: 'BAY Ecosystem Portal', type: 'Access & Release Portal', icon: 'B', status: 'active', stage: 'Portal', summary: 'ประตูรวมระบบและสถานะ', primary_action: { label: 'หน้าแรก', url: '/bay/' }, capabilities: ['Access Center', 'Status'] },
     ] });
+    if (url.pathname === '/bay/api/status.php') return send(response, 200, { schema: 'bay.hub.status.v2', services: [
+      { id: 'awh', name: 'AWH', ok: true, state: 'healthy', critical: true, http: 200, latency_ms: 12, detail: 'ตอบสนองปกติ' },
+      { id: 'bay-staging', name: 'BAY EXCUSE X Staging', ok: true, state: 'healthy', critical: false, http: 200, latency_ms: 15, detail: 'ตอบสนองปกติ' },
+      { id: 'learnlab', name: 'BAY LearnLab', ok: true, state: 'healthy', critical: true, http: 200, latency_ms: 11, detail: 'ตอบสนองปกติ', version: '0.8.0-rc.39', revision: 'c50c0bb4cbde5ecc8f16112c3cbb8fef7dad8aa2' },
+      { id: 'computer-lab', name: 'BAY Computer Lab', ok: true, state: 'healthy', critical: true, http: 200, latency_ms: 14, detail: 'ตอบสนองปกติ' },
+      { id: 'website', name: 'เว็บไซต์โรงเรียน', ok: true, state: 'healthy', critical: true, http: 200, latency_ms: 13, detail: 'ตอบสนองปกติ' },
+      { id: 'parent-connect', name: 'BAY Parent Connect', ok: true, state: 'healthy', critical: true, http: 200, latency_ms: 13, detail: 'ตอบสนองปกติ' },
+    ], dns: [], legacy_diagnostics: [] });
     if (url.pathname === '/bay/data/releases.json') return send(response, 200, { schemaVersion: 'bay.hub.releases.v1', releases: [
       { id: 'learnlab-rc15', productId: 'bay-learnlab', channel: 'pilot', version: '0.8.0-rc.15', stable: false },
       { id: 'awh-win', productId: 'awh', channel: 'current', platform: 'windows', stable: false },
@@ -117,6 +130,14 @@ const server = createServer(async (request, response) => {
     if (url.pathname === '/api/v1/control/results') return send(response, 200, { results: tasks.filter((task) => task.state === 'COMPLETED') });
     if (url.pathname === '/api/v1/control/artifacts') return send(response, 200, { artifacts });
     if (url.pathname === '/api/v1/control/approvals') return send(response, 200, { approvals: [] });
+    if (url.pathname === '/api/v1/control/automations' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, available: true, automations });
+    if (url.pathname === '/api/v1/control/automations' && request.method === 'POST') { if (!requireCsrf(request, response)) return; const value = await readJson(request); const definition = value?.definition; if (value?.schemaVersion !== 1 || !definition || definition.schemaVersion !== 1 || definition.projectId !== project.projectId || typeof definition.name !== 'string' || typeof definition.goal !== 'string') return send(response, 400, { code: 'PAYLOAD_INVALID' }); const automationId = uuid('aaaaaaaa-aaaa-4aaa-8aaa'); const record = { definition: { ...definition, automationId }, state: 'READY', createdAt: now, updatedAt: now }; automations.unshift(record); return send(response, 201, record); }
+    const automationMatch = /^\/api\/v1\/control\/automations\/([0-9a-f-]{36})$/i.exec(url.pathname);
+    if (automationMatch && request.method === 'POST') { if (!requireCsrf(request, response)) return; const record = automations.find((item) => item.definition?.automationId === automationMatch[1]); if (!record) return send(response, 404, { code: 'NOT_FOUND' }); const value = await readJson(request); if (value?.schemaVersion !== 1 || !value.definition) return send(response, 400, { code: 'PAYLOAD_INVALID' }); record.definition = { ...record.definition, ...value.definition, automationId: record.definition.automationId }; record.updatedAt = now; return send(response, 200, record); }
+    const automationEnabledMatch = /^\/api\/v1\/control\/automations\/([0-9a-f-]{36})\/enabled$/i.exec(url.pathname);
+    if (automationEnabledMatch && request.method === 'POST') { if (!requireCsrf(request, response)) return; const record = automations.find((item) => item.definition?.automationId === automationEnabledMatch[1]); if (!record) return send(response, 404, { code: 'NOT_FOUND' }); const value = await readJson(request); if (value?.schemaVersion !== 1 || typeof value.enabled !== 'boolean') return send(response, 400, { code: 'PAYLOAD_INVALID' }); record.definition.enabled = value.enabled; record.updatedAt = now; return send(response, 200, record); }
+    const automationArchiveMatch = /^\/api\/v1\/control\/automations\/([0-9a-f-]{36})\/archive$/i.exec(url.pathname);
+    if (automationArchiveMatch && request.method === 'POST') { if (!requireCsrf(request, response)) return; const index = automations.findIndex((item) => item.definition?.automationId === automationArchiveMatch[1]); if (index < 0) return send(response, 404, { code: 'NOT_FOUND' }); const [record] = automations.splice(index, 1); return send(response, 200, { schemaVersion: 1, archived: true, automationId: record.definition.automationId }); }
     if (url.pathname === '/api/v1/control/cloud' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, state: 'READY', configured: cloudConfigured, capabilities: [{ capability: 'qa.cloud', state: 'READY' }, { capability: 'review.visual', state: 'READY' }], recent: tasks.filter((task) => task.capability === 'qa.cloud' || task.capability === 'review.visual').map((task) => ({ taskId: task.taskId, capability: task.capability, state: task.state, revision: task.revision, profile: task.profile, updatedAt: task.updatedAt })) });
     if (url.pathname === '/api/v1/control/cloud/revision' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, revision: cloudRevision });
     if (url.pathname === '/api/v1/control/cloud/credential' && request.method === 'POST') {
