@@ -586,3 +586,9 @@ button:not(:disabled){cursor:pointer}
   .owner-featured-systems .ecosystem-project-media,
   .owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-media{width:104px!important;min-height:140px!important}
 }
+
+/* Authenticated mobile uses exactly one navigation row; the public four-item row must not reappear. */
+@media(max-width:560px){
+  body.ecosystem-home-active .kruart-header .global-nav,
+  body.work-active .kruart-header .global-nav{display:none!important}
+}
