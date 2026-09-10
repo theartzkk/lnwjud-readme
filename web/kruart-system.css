@@ -406,3 +406,66 @@ button:not(:disabled){cursor:pointer}
   .kruart-system-grid>a>span,.kruart-system-grid>button>span{width:60px!important;height:46px!important}
   .kruart-system-grid img.kruart-system-logo{width:56px!important;height:42px!important}
 }
+
+/* Mobile composition closure — banners become supporting thumbnails, not full-page posters. */
+@media(max-width:760px){
+  .kruart-brand-logo{width:148px!important;max-height:56px!important}
+  .owner-featured-systems .ecosystem-featured-grid,
+  .owner-systems .ecosystem-project-grid{gap:8px!important}
+  .owner-featured-systems .ecosystem-project-card.featured.owner-shortcut-card,
+  .owner-systems .ecosystem-project-card:not(.owner-shortcut-card){
+    display:grid!important;
+    grid-template-columns:118px minmax(0,1fr)!important;
+    min-height:118px!important;
+    border-radius:16px!important;
+    overflow:hidden!important;
+    align-items:stretch!important;
+  }
+  .owner-featured-systems .ecosystem-project-card.featured.owner-shortcut-card:not(.has-visual),
+  .owner-systems .ecosystem-project-card:not(.owner-shortcut-card):not(.has-visual){grid-template-columns:1fr!important;min-height:92px!important}
+  .owner-featured-systems .ecosystem-project-media,
+  .owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-media{
+    width:118px!important;
+    height:100%!important;
+    min-height:118px!important;
+    aspect-ratio:auto!important;
+    border:0!important;
+    border-right:1px solid #e4edf5!important;
+    background:#eef7ff!important;
+  }
+  .owner-featured-systems .ecosystem-project-banner,
+  .owner-systems .ecosystem-project-banner{width:100%!important;height:100%!important;object-fit:cover!important;object-position:center!important}
+  .owner-featured-systems .ecosystem-project-body,
+  .owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-body{padding:10px 10px 9px!important;min-height:0!important}
+  .owner-featured-systems .ecosystem-project-head,
+  .owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-head{min-height:24px!important;margin:0 0 3px!important;gap:5px!important}
+  .owner-featured-systems .ecosystem-project-logo,
+  .owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-logo{max-width:78px!important;height:22px!important}
+  .owner-featured-systems .ecosystem-project-status,
+  .owner-systems .ecosystem-project-status{font-size:7.5px!important;padding:3px 6px!important;white-space:nowrap!important}
+  .owner-featured-systems .ecosystem-project-body h3,
+  .owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-body h3{font-size:11.5px!important;line-height:1.2!important;margin:0 0 1px!important}
+  .owner-featured-systems .ecosystem-project-body>small,
+  .owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-body>small{font-size:7.5px!important;line-height:1.25!important}
+  .owner-featured-systems .ecosystem-project-body>p,
+  .owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-body>p{display:-webkit-box!important;margin:4px 0 6px!important;font-size:8px!important;line-height:1.3!important;-webkit-line-clamp:1!important;-webkit-box-orient:vertical!important;overflow:hidden!important}
+  .owner-featured-systems .ecosystem-project-capabilities,
+  .owner-systems .ecosystem-project-capabilities{display:none!important}
+  .owner-featured-systems .ecosystem-project-body .ecosystem-project-action,
+  .owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-body .ecosystem-project-action{
+    min-height:34px!important;
+    padding:5px 9px!important;
+    margin-top:auto!important;
+    border-radius:9px!important;
+    font-size:8px!important;
+    align-self:flex-start!important;
+  }
+}
+@media(max-width:430px){
+  .owner-featured-systems .ecosystem-project-card.featured.owner-shortcut-card,
+  .owner-systems .ecosystem-project-card:not(.owner-shortcut-card){grid-template-columns:108px minmax(0,1fr)!important;min-height:110px!important}
+  .owner-featured-systems .ecosystem-project-media,
+  .owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-media{width:108px!important;min-height:110px!important}
+  .owner-featured-systems .ecosystem-project-body,
+  .owner-systems .ecosystem-project-card:not(.owner-shortcut-card) .ecosystem-project-body{padding:9px 9px 8px!important}
+}

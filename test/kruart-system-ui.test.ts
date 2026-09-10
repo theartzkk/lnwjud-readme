@@ -58,6 +58,9 @@ test('system UI is build, release, cache and deploy authoritative', async () => 
   assert.match(css, /kruart-role-staff-final\.webp/);
   assert.match(css, /kruart-role-student-final\.webp/);
   assert.match(css, /@media\(max-width:760px\)/);
+  assert.match(css, /Mobile composition closure/);
+  assert.match(css, /grid-template-columns:118px minmax\(0,1fr\)!important/);
+  assert.match(css, /grid-template-columns:108px minmax\(0,1fr\)!important/);
   assert.match(css, /min-width:320px/);
   assert.doesNotMatch(css, /overflow-x:\s*visible/);
 });
