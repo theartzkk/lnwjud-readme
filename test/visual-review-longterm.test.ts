@@ -73,4 +73,7 @@ test('visual render fails closed when screenshot evidence is incomplete', async 
   assert.match(render, /evidence-\$\{run\.viewport\}\.json/);
   assert.match(render, /runtime errors/);
   assert.match(render, /horizontal overflow/);
+  const capture = await read('scripts/review/visual-review-capture.cjs');
+  assert.match(capture, /ecosystem-featured-grid/);
+  assert.match(capture, /app\.exit\(1\)/);
 });

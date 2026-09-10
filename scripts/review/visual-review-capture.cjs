@@ -34,7 +34,7 @@ async function login(win) {
   await waitFor(win, `document.querySelector('#login-form')`);
   await win.webContents.executeJavaScript(`(() => { document.querySelector('#login-username').value='reviewer'; document.querySelector('#login-password').value='review-password'; document.querySelector('#login-form').requestSubmit(); })()`, true);
   await waitFor(win, `document.querySelector('#ecosystem-home-view') && !document.querySelector('#ecosystem-home-view').hidden`, 15000);
-  await waitFor(win, `document.querySelectorAll('#ecosystem-project-grid .ecosystem-project-card').length >= 4`, 15000);
+  await waitFor(win, `(document.querySelectorAll('#ecosystem-featured-grid .ecosystem-project-card').length + document.querySelectorAll('#ecosystem-project-grid .ecosystem-project-card').length) >= 4`, 15000);
   await sleep(350);
 }
 async function openAwhWorkspace(win) {
@@ -106,6 +106,7 @@ app.whenReady().then(async () => {
     else if (evidence.some((item) => item.horizontalOverflow)) process.exitCode = 2;
   } finally {
     win.destroy();
-    app.quit();
+    if (process.exitCode && process.exitCode !== 0) app.exit(process.exitCode);
+    else app.quit();
   }
-}).catch((error) => { console.error(error?.stack || error); process.exitCode = 1; app.quit(); });
+}).catch((error) => { console.error(error?.stack || error); app.exit(1); });
