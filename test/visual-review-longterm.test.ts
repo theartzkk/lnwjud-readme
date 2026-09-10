@@ -64,3 +64,13 @@ test('visual review scenarios permanently cover Owner Product Review on the iPho
   assert.match(String(review?.expected || ''), /Stop/);
   assert.match(String(review?.expected || ''), /Owner step-up/);
 });
+
+
+test('visual render fails closed when screenshot evidence is incomplete', async () => {
+  const render = await read('scripts/review/render-ai-review-scenarios.mjs');
+  assert.match(render, /expectedScenarios = 10/);
+  assert.match(render, /visual screenshot count mismatch/);
+  assert.match(render, /evidence-\$\{run\.viewport\}\.json/);
+  assert.match(render, /runtime errors/);
+  assert.match(render, /horizontal overflow/);
+});
