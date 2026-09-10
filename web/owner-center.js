@@ -28,7 +28,7 @@
       ['infrastructure', '⌘', 'Infrastructure', 'VPS, Services, Domains, SSL, Backup และ Deployments'],
       ['database', '▦', 'Database Studio', 'ตรวจข้อมูล โครงสร้าง และ migration แบบปลอดภัย'],
       ['product-review', '◈', 'Product Review', 'ตรวจระบบและหน้าจอบน Cloud แล้วรับ Review Pack กลับเข้า AWH', 'Cloud'],
-      ['automations', '↯', 'Automations', 'งานตามเวลาและเงื่อนไข', 'กำลังพัฒนา'],
+      ['automations', '↯', 'Automations', 'งานตามเวลาและเงื่อนไข', 'กำลังตรวจ'],
       ['runtime', '⌘', 'Runtime / lnwjud', 'Capability Fabric และรายละเอียดการทำงานขั้นสูง', 'Advanced'],
     ] },
   ]);
@@ -44,6 +44,13 @@
   function closeCenter(options = {}) {
     const sheet = $(SHEET_ID);
     if (sheet) closeAwhDialog(sheet, options);
+  }
+
+  function openCenter() {
+    const sheet = $(SHEET_ID);
+    if (!(sheet instanceof HTMLElement)) return;
+    refreshSummary();
+    openAwhDialog(sheet);
   }
 
   function closeSourceCenter(options = {}) {
@@ -404,5 +411,6 @@
     observer.observe(document.documentElement, { childList: true, subtree: true });
   }
 
+  window.addEventListener('awh:open-owner-center', openCenter);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
 })();

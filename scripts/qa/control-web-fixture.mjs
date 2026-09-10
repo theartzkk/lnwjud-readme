@@ -18,6 +18,7 @@ const conversations = [];
 const attachments = [];
 const artifacts = [];
 const tasks = [];
+const automations = [];
 const cloudRevision = 'a'.repeat(40);
 let cloudConfigured = true;
 const fixtureResetToken = 'a'.repeat(43);
@@ -82,7 +83,7 @@ const server = createServer(async (request, response) => {
       fixtureResetUsed = true;
       return send(response, 200, { schemaVersion: 1, authenticated: false });
     }
-    if (url.pathname === '/api/v1/auth/session') return session(request) ? send(response, 200, { csrfToken: csrf, username: 'fixture', role: 'OWNER' }) : send(response, 401, { code: 'SESSION_INVALID' });
+    if (url.pathname === '/api/v1/auth/session') return session(request) ? send(response, 200, { schemaVersion: 1, authenticated: true, expiresAt: '2026-12-31T00:00:00.000Z', remembered: true, csrfToken: csrf, userId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', username: 'fixture', role: 'OWNER' }) : send(response, 401, { code: 'SESSION_INVALID' });
     if (url.pathname === '/api/v1/auth/step-up' && request.method === 'POST') {
       if (!session(request) || !requireCsrf(request, response)) return;
       const value = await readJson(request); if (value.schemaVersion !== 1 || typeof value.password !== 'string' || !value.password) return send(response, 401, { code: 'STEP_UP_FAILED' });
@@ -117,6 +118,14 @@ const server = createServer(async (request, response) => {
     if (url.pathname === '/api/v1/control/results') return send(response, 200, { results: tasks.filter((task) => task.state === 'COMPLETED') });
     if (url.pathname === '/api/v1/control/artifacts') return send(response, 200, { artifacts });
     if (url.pathname === '/api/v1/control/approvals') return send(response, 200, { approvals: [] });
+    if (url.pathname === '/api/v1/control/automations' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, available: true, automations });
+    if (url.pathname === '/api/v1/control/automations' && request.method === 'POST') { if (!requireCsrf(request, response)) return; const value = await readJson(request); const definition = value?.definition; if (value?.schemaVersion !== 1 || !definition || definition.schemaVersion !== 1 || definition.projectId !== project.projectId || typeof definition.name !== 'string' || typeof definition.goal !== 'string') return send(response, 400, { code: 'PAYLOAD_INVALID' }); const automationId = uuid('aaaaaaaa-aaaa-4aaa-8aaa'); const record = { definition: { ...definition, automationId }, state: 'READY', createdAt: now, updatedAt: now }; automations.unshift(record); return send(response, 201, record); }
+    const automationMatch = /^\/api\/v1\/control\/automations\/([0-9a-f-]{36})$/i.exec(url.pathname);
+    if (automationMatch && request.method === 'POST') { if (!requireCsrf(request, response)) return; const record = automations.find((item) => item.definition?.automationId === automationMatch[1]); if (!record) return send(response, 404, { code: 'NOT_FOUND' }); const value = await readJson(request); if (value?.schemaVersion !== 1 || !value.definition) return send(response, 400, { code: 'PAYLOAD_INVALID' }); record.definition = { ...record.definition, ...value.definition, automationId: record.definition.automationId }; record.updatedAt = now; return send(response, 200, record); }
+    const automationEnabledMatch = /^\/api\/v1\/control\/automations\/([0-9a-f-]{36})\/enabled$/i.exec(url.pathname);
+    if (automationEnabledMatch && request.method === 'POST') { if (!requireCsrf(request, response)) return; const record = automations.find((item) => item.definition?.automationId === automationEnabledMatch[1]); if (!record) return send(response, 404, { code: 'NOT_FOUND' }); const value = await readJson(request); if (value?.schemaVersion !== 1 || typeof value.enabled !== 'boolean') return send(response, 400, { code: 'PAYLOAD_INVALID' }); record.definition.enabled = value.enabled; record.updatedAt = now; return send(response, 200, record); }
+    const automationArchiveMatch = /^\/api\/v1\/control\/automations\/([0-9a-f-]{36})\/archive$/i.exec(url.pathname);
+    if (automationArchiveMatch && request.method === 'POST') { if (!requireCsrf(request, response)) return; const index = automations.findIndex((item) => item.definition?.automationId === automationArchiveMatch[1]); if (index < 0) return send(response, 404, { code: 'NOT_FOUND' }); const [record] = automations.splice(index, 1); return send(response, 200, { schemaVersion: 1, archived: true, automationId: record.definition.automationId }); }
     if (url.pathname === '/api/v1/control/cloud' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, state: 'READY', configured: cloudConfigured, capabilities: [{ capability: 'qa.cloud', state: 'READY' }, { capability: 'review.visual', state: 'READY' }], recent: tasks.filter((task) => task.capability === 'qa.cloud' || task.capability === 'review.visual').map((task) => ({ taskId: task.taskId, capability: task.capability, state: task.state, revision: task.revision, profile: task.profile, updatedAt: task.updatedAt })) });
     if (url.pathname === '/api/v1/control/cloud/revision' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, revision: cloudRevision });
     if (url.pathname === '/api/v1/control/cloud/credential' && request.method === 'POST') {

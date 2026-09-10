@@ -1,4 +1,4 @@
-import { controlRequest } from './control-plane-adapter.js';
+import { controlRequest } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 // This file is bundled into dashboard.js alongside other product surfaces.
 // Keep its private helpers scoped so one product shell cannot fail at parse
@@ -9,6 +9,7 @@ const FORM_ID = 'awh-automation-form';
 const $ = (id) => document.getElementById(id);
 const UUID = /^[0-9a-f-]{36}$/i;
 const DAYS = [['MO','จันทร์'],['TU','อังคาร'],['WE','พุธ'],['TH','พฤหัสบดี'],['FR','ศุกร์'],['SA','เสาร์'],['SU','อาทิตย์']];
+function surfaceMessage(value = '') { const node=$('awh-automation-message'); if (node) node.textContent=value; }
 const CONDITIONS = Object.freeze({
   'project.task.failed': 'มีงานใน Project หยุดด้วยข้อผิดพลาด',
   'project.approval.pending': 'มีรายการรออนุมัติ',
@@ -66,9 +67,9 @@ function renderList() {
     const card=document.createElement('article'); card.className='awh-automation-item';
     const copy=document.createElement('div'); const title=document.createElement('strong'); title.textContent=def.name; const detail=document.createElement('small'); detail.textContent=`${humanTiming(def)} · ${def.enabled?'เปิดอยู่':'ปิดไว้'}`; const goal=document.createElement('p'); goal.textContent=def.goal; copy.append(title,detail,goal);
     const actions=document.createElement('div'); actions.className='awh-automation-actions';
-    const edit=button('แก้ไข'); edit.addEventListener('click',()=>editAutomation(record));
-    const toggle=button(def.enabled?'ปิดชั่วคราว':'เปิดใช้งาน'); toggle.addEventListener('click',()=>toggleAutomation(def));
-    const archive=button('Archive'); archive.addEventListener('click',()=>archiveAutomation(def)); actions.append(edit,toggle,archive);
+    const edit=button('แก้ไข'); edit.addEventListener('click',()=>{ void editAutomation(record).catch((error)=>surfaceMessage(error?.message || 'เปิด Automation ไม่สำเร็จ')); });
+    const toggle=button(def.enabled?'ปิดชั่วคราว':'เปิดใช้งาน'); toggle.addEventListener('click',()=>{ void toggleAutomation(def).catch((error)=>surfaceMessage(error?.message || 'เปลี่ยนสถานะ Automation ไม่สำเร็จ')); });
+    const archive=button('Archive'); archive.addEventListener('click',()=>{ void archiveAutomation(def).catch((error)=>surfaceMessage(error?.message || 'Archive Automation ไม่สำเร็จ')); }); actions.append(edit,toggle,archive);
     card.append(copy,actions); list.append(card);
   }
 }
@@ -92,13 +93,13 @@ async function editAutomation(record) {
   $('awh-automation-submit').textContent='บันทึกการแก้ไข'; $('awh-automation-cancel-edit').hidden=false; syncScheduleFields(); form.scrollIntoView({behavior:'smooth',block:'start'});
 }
 function syncScheduleFields() { const form=$(FORM_ID); if (!(form instanceof HTMLFormElement)) return; const kind=form.elements.namedItem('scheduleKind').value; $('awh-automation-once-wrap').hidden=kind!=='once'; $('awh-automation-time-wrap').hidden=!['daily','weekly'].includes(kind); $('awh-automation-day-wrap').hidden=kind!=='weekly'; $('awh-automation-condition-wrap').hidden=kind!=='condition'; }
-async function submitForm(event) { event.preventDefault(); const form=event.currentTarget; const definition=definitionFromForm(form); const path=state.editing?`/api/v1/control/automations/${state.editing}`:'/api/v1/control/automations'; await controlRequest(path,{method:'POST',body:JSON.stringify({schemaVersion:1,definition})}); resetForm(); await refresh(); }
+async function submitForm(event) { event.preventDefault(); surfaceMessage('กำลังบันทึก…'); const form=event.currentTarget; const definition=definitionFromForm(form); const path=state.editing?`/api/v1/control/automations/${state.editing}`:'/api/v1/control/automations'; await controlRequest(path,{method:'POST',body:JSON.stringify({schemaVersion:1,definition})}); resetForm(); await refresh(); surfaceMessage('บันทึก Automation แล้ว'); }
 function field(label,name,kind='input') { const wrap=document.createElement('label'); wrap.className='awh-automation-field'; const text=document.createElement('span'); text.textContent=label; const control=document.createElement(kind); control.name=name; wrap.append(text,control); return [wrap,control]; }
 function mountSheet() {
   if ($(SHEET_ID)) return; const sheet=document.createElement('section'); sheet.id=SHEET_ID; sheet.className='awh-automation-sheet'; sheet.hidden=true; sheet.setAttribute('role','dialog'); sheet.setAttribute('aria-modal','true');
   const backdrop=button('','awh-automation-backdrop'); backdrop.setAttribute('aria-label','ปิด Automations'); backdrop.addEventListener('click',()=>closeAwhDialog(sheet));
   const panel=document.createElement('div'); panel.className='awh-automation-panel'; const head=document.createElement('header'); head.className='awh-automation-head'; const h=document.createElement('div'); h.innerHTML='<span>AUTOMATIONS</span><h2>งานอัตโนมัติ</h2><p>บอกงานและเวลา AWH จะส่งเข้าระบบงานเดิมให้อัตโนมัติ</p>'; const close=button('ปิด'); close.addEventListener('click',()=>closeAwhDialog(sheet)); head.append(h,close);
-  const form=document.createElement('form'); form.id=FORM_ID; form.className='awh-automation-form'; form.addEventListener('submit',submitForm);
+  const form=document.createElement('form'); form.id=FORM_ID; form.className='awh-automation-form'; form.addEventListener('submit',(event)=>{ void submitForm(event).catch((error)=>surfaceMessage(error?.message || 'บันทึก Automation ไม่สำเร็จ')); });
   const [nameWrap,name]=field('ชื่อ Automation','name'); name.required=true; name.maxLength=120;
   const [goalWrap,goal]=field('อยากให้ AWH ทำอะไร','goal','textarea'); goal.required=true; goal.maxLength=2000; goal.rows=3;
   const [projectWrap,project]=field('Project','projectId','select'); project.id='awh-automation-project'; project.required=true; project.addEventListener('change',()=>loadConversations(project.value));
@@ -109,7 +110,8 @@ function mountSheet() {
   const [dayWrap,day]=field('วัน','weekDay','select'); dayWrap.id='awh-automation-day-wrap'; DAYS.forEach(([v,l])=>day.append(option(v,l)));
   const [conditionWrap,condition]=field('เงื่อนไข','conditionKey','select'); conditionWrap.id='awh-automation-condition-wrap'; Object.entries(CONDITIONS).forEach(([v,l])=>condition.append(option(v,l)));
   const actions=document.createElement('div'); actions.className='awh-automation-form-actions'; const submit=document.createElement('button'); submit.type='submit'; submit.id='awh-automation-submit'; submit.className='awh-command-send'; submit.textContent='สร้าง Automation'; const cancel=button('ยกเลิกการแก้ไข'); cancel.id='awh-automation-cancel-edit'; cancel.hidden=true; cancel.addEventListener('click',resetForm); actions.append(submit,cancel);
-  form.append(nameWrap,goalWrap,projectWrap,conversationWrap,kindWrap,onceWrap,timeWrap,dayWrap,conditionWrap,actions);
+  const message=document.createElement('p'); message.id='awh-automation-message'; message.className='form-message'; message.setAttribute('role','status');
+  form.append(nameWrap,goalWrap,projectWrap,conversationWrap,kindWrap,onceWrap,timeWrap,dayWrap,conditionWrap,actions,message);
   const list=document.createElement('div'); list.id='awh-automation-list'; list.className='awh-automation-list'; panel.append(head,form,list); sheet.append(backdrop,panel); document.body.append(sheet); syncScheduleFields();
 }
 async function activate() {
@@ -122,6 +124,12 @@ async function activate() {
   trigger.disabled=false; const badge=trigger.querySelector('.awh-owner-command-badge'); if (badge) badge.textContent='พร้อมใช้';
   trigger.addEventListener('click',(event)=>{ event.preventDefault(); event.stopImmediatePropagation(); const sheet=$(SHEET_ID); if (sheet) { openAwhDialog(sheet); refresh().catch(()=>{}); } },true); return true;
 }
-function start() { if (activate()) return; const observer=new MutationObserver(()=>{ if (activate()) observer.disconnect(); }); observer.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['hidden','class']}); }
-if (document.readyState==='loading') document.addEventListener('DOMContentLoaded',start,{once:true}); else start();
+async function start() {
+  if (await activate()) return;
+  const observer=new MutationObserver(()=>{
+    void activate().then((ready)=>{ if (ready) observer.disconnect(); }).catch(()=>undefined);
+  });
+  observer.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['hidden','class']});
+}
+if (document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>{ void start(); },{once:true}); else void start();
 })();

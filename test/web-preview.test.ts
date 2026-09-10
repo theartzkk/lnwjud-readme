@@ -256,6 +256,10 @@ test('owner self-service is a focused settings hub whose independent projections
   for (const route of ['/api/v1/control/provider', '/api/v1/control/owner/status', '/api/v1/auth/profile', '/api/v1/control/memory']) assert.match(fixture, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.match(fixture, /api\/v1\/auth\/reset-password/);
   assert.match(fixture, /fixtureResetUsed/);
+  assert.match(fixture, /auth\/session[^\n]*authenticated:\s*true/);
+  assert.match(fixture, /control\/automations[^\n]*available:\s*true/);
+  assert.match(fixture, /automations\\\/\(\[0-9a-f-\]\{36\}\)\\\/enabled/);
+  assert.match(fixture, /automations\\\/\(\[0-9a-f-\]\{36\}\)\\\/archive/);
   assert.doesNotMatch(`${html}\n${app}\n${fixture}`, /localStorage|sessionStorage|document\.cookie|Authorization|Bearer\s+/);
 });
 

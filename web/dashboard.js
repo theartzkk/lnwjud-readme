@@ -327,7 +327,7 @@ function mountProductNavigation(dashboard) {
     ['tasks', '↻', 'งานของฉัน', () => openTaskSurface()],
     ['files', '▤', 'ไฟล์', () => openFilesSurface()],
     ['tools', '▦', 'เครื่องมือ', () => { returnHome(); window.setTimeout(() => $('awh-home-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40); }],
-    ['owner', '⌘', 'ตั้งค่า', () => { returnHome(); window.setTimeout(() => $('dashboard-owner-center-open')?.click(), 40); }],
+    ['owner', '⌘', 'ตั้งค่า', () => { returnHome(); window.setTimeout(() => window.dispatchEvent(new CustomEvent('awh:open-owner-center')), 40); }],
   ];
   for (const [destination, icon, label, action] of entries) {
     const item = button('', 'awh-product-nav-item', action);

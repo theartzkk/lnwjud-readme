@@ -6,7 +6,7 @@ const read = (path: string) => readFile(new URL(`../${path}`, import.meta.url), 
 
 test('Owner automation surface uses the canonical control request boundary', async () => {
   const [surface, css, build] = await Promise.all([read('web/automation-surface.js'), read('web/automation-surface.css'), read('scripts/build-web-preview.ts')]);
-  assert.match(surface, /import \{ controlRequest \} from '\.\/control-plane-adapter\.js'/);
+  assert.match(surface, /import \{ controlRequest \} from '\.\/control-plane-adapter\.js\?release=__AWH_WEB_RELEASE_ID__'/);
   assert.match(surface, /\/api\/v1\/control\/automations/);
   assert.match(surface, /สร้าง Automation/);
   assert.match(surface, /ครั้งเดียว/);
@@ -21,6 +21,13 @@ test('Owner automation surface uses the canonical control request boundary', asy
   assert.match(surface, /public-home-active/);
   assert.match(surface, /trigger\.closest\('\[hidden\]'\)/);
   assert.match(surface, /attributeFilter:\['hidden','class'\]/);
+  assert.match(surface, /awh-automation-message/);
+  assert.match(surface, /บันทึก Automation แล้ว/);
+  assert.match(surface, /submitForm\(event\)\.catch/);
+  assert.match(surface, /async function start\(\)/);
+  assert.match(surface, /if \(await activate\(\)\) return/);
+  assert.match(surface, /activate\(\)\.then\(\(ready\)=>\{ if \(ready\) observer\.disconnect\(\)/);
+  assert.doesNotMatch(surface, /function start\(\) \{ if \(activate\(\)\) return/);
   assert.match(css, /awh-automation-panel/);
   assert.match(build, /asset\('automation-surface\.js'\)/);
   assert.match(build, /asset\('automation-surface\.css'\)/);
