@@ -82,5 +82,5 @@ test('authenticated root is an AWH cockpit with live readiness and role-aware na
   assert.match(css, /ecosystem-project-health/);
   assert.match(css, /min-height:44px!important/);
   assert.match(css, /body\.ecosystem-home-active \.kruart-header \.global-nav[\s\S]{0,180}display:none!important/);
-  assert.match(html, /owner-system-directory-link[^>]*>ศูนย์ระบบ</);
+  assert.match(html, /owner-system-directory-link[^>]*>ระบบและบริการ</);
 });

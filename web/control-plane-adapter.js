@@ -48,6 +48,7 @@ function safeErrorMessage(value) {
     PROVIDER_TEST_FAILED: 'ทดสอบ OpenAI ไม่ผ่าน กรุณาตรวจการเชื่อมต่อแล้วลองใหม่',
     REGISTRATION_PENDING: 'คำขอใช้งานนี้อยู่ระหว่างการพิจารณาแล้ว',
     USERNAME_UNAVAILABLE: 'ชื่อผู้ใช้นี้ถูกใช้แล้ว กรุณาเลือกชื่อใหม่',
+    IDENTITY_OWNED_BY_BAY: 'ผู้ปกครองใช้ BAY Parent Connect และนักเรียนใช้ BAY LearnLab โดยไม่สร้างบัญชี AWH ซ้ำ',
     REGISTRATION_NOT_FOUND: 'ไม่พบคำขอใช้งานนี้ หรือมีการพิจารณาไปแล้ว',
     PROJECT_SOURCE_NOT_READY: 'โปรเจกต์นี้ยังไม่มี Source ที่พร้อม Deploy AWH จะรอและทำต่อเมื่อ Source พร้อม',
     HOSTING_TLS_UNAVAILABLE: 'HTTPS ของ VPS ยังไม่พร้อมสำหรับที่อยู่นี้ AWH จะไม่เปิดเว็บแบบไม่ปลอดภัย',
@@ -81,7 +82,7 @@ export async function login(username, password, remember = false) {
 }
 
 export async function registerAccessRequest({ displayName, username, password, email = null, phone = null, personType, requestedArea = null, note = null }) {
-  if (typeof displayName !== 'string' || !displayName.trim() || typeof username !== 'string' || !username.trim() || typeof password !== 'string' || password.length < 8 || !['DIRECTOR','TEACHER','STAFF','PARENT','STUDENT','OTHER'].includes(personType)) throw new Error('กรอกข้อมูลสมัครขอใช้งานให้ครบ');
+  if (typeof displayName !== 'string' || !displayName.trim() || typeof username !== 'string' || !username.trim() || typeof password !== 'string' || password.length < 8 || !['DIRECTOR','TEACHER','STAFF','OTHER'].includes(personType)) throw new Error('กรอกข้อมูลสมัครขอใช้งานให้ครบ');
   return controlRequest('/api/v1/auth/register', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, displayName: displayName.trim(), username: username.trim(), password, email: email?.trim() || null, phone: phone?.trim() || null, personType, requestedArea: requestedArea?.trim() || null, note: note?.trim() || null }) });
 }
 
@@ -299,7 +300,7 @@ export async function loadSystemReadiness() {
 export async function listPeople() { return controlRequest('/api/v1/auth/people'); }
 export async function listAccountRequests() { return controlRequest('/api/v1/auth/requests'); }
 export async function createPerson({ displayName, username, password, email = null, phone = null, personType, role, projectIds = [], mustChangePassword = false }) {
-  if (!['ADMIN','DIRECTOR','TEACHER','STAFF','VIEWER'].includes(role) || !['DIRECTOR','TEACHER','STAFF','PARENT','STUDENT','OTHER'].includes(personType) || !Array.isArray(projectIds) || projectIds.some((id) => !UUID.test(id))) throw new Error('ข้อมูลบัญชีไม่ถูกต้อง');
+  if (!['ADMIN','DIRECTOR','TEACHER','STAFF','VIEWER'].includes(role) || !['DIRECTOR','TEACHER','STAFF','OTHER'].includes(personType) || !Array.isArray(projectIds) || projectIds.some((id) => !UUID.test(id))) throw new Error('ข้อมูลบัญชีไม่ถูกต้อง');
   return controlRequest('/api/v1/auth/people/create', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, displayName, username, password, email, phone, personType, role, projectIds, mustChangePassword: Boolean(mustChangePassword) }) });
 }
 export async function reviewAccountRequest(requestId, decision, role = 'VIEWER', projectIds = []) {

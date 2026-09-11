@@ -34,15 +34,16 @@
 
     <section class="infra-section morning-brief-section"><div class="section-heading"><div><span>MORNING BRIEF</span><h2>สรุปสถานะสำหรับเจ้าของ</h2></div><small>ภาพรวมจาก canonical task/activity/health ที่อ่านได้ในรอบนี้</small></div><div id="morning-brief" class="morning-brief"></div></section>
 
+    <details class="infra-advanced">
+      <summary><span><strong>รายละเอียดระบบขั้นสูง</strong><small>AI · Runtime · Deployments · Storage · Security · Domains</small></span><b>เปิดดู</b></summary>
+      <div class="infra-advanced-body">
+
     <div class="infra-columns">
       <section class="infra-section"><div class="section-heading"><div><span>AI PROVIDERS</span><h2>Models · Health · Fallback</h2></div><small id="provider-route-summary">—</small></div><div id="provider-list" class="entity-list"></div></section>
       <section class="infra-section"><div class="section-heading"><div><span>AUTONOMOUS AI 24/7</span><h2>งานที่ VPS กำลังทำ</h2></div></div><div id="autonomous-list" class="entity-list"></div></section>
     </div>
 
-    <div class="infra-columns">
-      <section class="infra-section"><div class="section-heading"><div><span>STAFF CONTROL LOOP</span><h2>OBSERVE → CONTINUE</h2></div><small>canonical task/execution authority</small></div><div id="staff-list" class="entity-list"></div><div id="staff-report" class="staff-report"></div><div id="staff-governor" class="staff-report"></div><div id="execution-triage" class="staff-report"></div></section>
-      <section class="infra-section"><div class="section-heading"><div><span>MORNING BRIEF</span><h2>สรุปให้เจ้าของตื่นมาเห็น</h2></div></div><div id="morning-list" class="entity-list"></div></section>
-    </div>
+    <section class="infra-section"><div class="section-heading"><div><span>STAFF CONTROL LOOP</span><h2>OBSERVE → CONTINUE</h2></div><small>canonical task/execution authority</small></div><div id="staff-list" class="entity-list"></div><div id="staff-report" class="staff-report"></div><div id="staff-governor" class="staff-report"></div><div id="execution-triage" class="staff-report"></div></section>
 
     <section class="infra-section"><div class="section-heading"><div><span>STORAGE & GARBAGE CENTER</span><h2>Garbage · Retention · Recovery</h2></div><small>scan จริงแบบ bounded · UNKNOWN จะไม่ถูกลบ</small></div><div id="storage-governance-list" class="entity-list"></div></section>
 
@@ -68,6 +69,9 @@
       <section class="infra-section"><div class="section-heading"><div><span>DATA & RECOVERY</span><h2>ฐานข้อมูลและ Backup</h2></div></div><div id="recovery-list" class="entity-list"></div><a class="action-link" href="./database.html">เปิด Database Studio →</a></section>
       <section class="infra-section"><div class="section-heading"><div><span>WORK & AI</span><h2>งาน อุปกรณ์ และ AI</h2></div></div><div id="runtime-list" class="entity-list"></div></section>
     </div>
+
+      </div>
+    </details>
 
     <section class="infra-note"><strong>ออกแบบให้ปลอดภัยตั้งแต่ฐาน</strong><p>หน้านี้อ่าน snapshot ที่ถูก sanitize เท่านั้น ไม่มีช่องรันคำสั่ง Linux และไม่มี secret หรือ path ของเซิร์ฟเวอร์ถูกส่งมาที่ browser การเปลี่ยนแปลงสำคัญ เช่น Deploy, Restore หรือแก้ Domain จะใช้ approval และ guarded action แยกต่างหาก</p></section>
   </main>
