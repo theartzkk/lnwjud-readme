@@ -28,3 +28,18 @@
 .ecosystem-health-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:15px;color:var(--muted);font-size:12px}
 @media(max-width:900px){.ecosystem-health-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.ecosystem-health-section{padding:17px}.ecosystem-health-head{display:grid}.ecosystem-overall{justify-self:start}.ecosystem-health-grid{grid-template-columns:minmax(0,1fr)}.ecosystem-health-foot{align-items:flex-start;flex-direction:column}}
+
+/* Final owner-first density closure: keep operational truth visible and technical detail available on demand. */
+.infra-advanced{margin-top:16px;border:1px solid var(--line);border-radius:20px;background:var(--panel);overflow:hidden}
+.infra-advanced>summary{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:58px;padding:14px 18px;cursor:pointer;list-style:none;color:var(--text)}
+.infra-advanced>summary::-webkit-details-marker{display:none}
+.infra-advanced>summary span{display:grid;gap:3px}
+.infra-advanced>summary strong{font-size:14px}
+.infra-advanced>summary small{color:var(--muted);font-size:11px;font-weight:600}
+.infra-advanced>summary b{flex:0 0 auto;color:var(--muted);font-size:11px}
+.infra-advanced>summary b:after{content:" ›"}
+.infra-advanced[open]>summary{border-bottom:1px solid var(--line)}
+.infra-advanced[open]>summary b:after{content:" ⌄"}
+.infra-advanced-body{padding:0 16px 16px}
+.infra-advanced-body>.infra-section:first-child,.infra-advanced-body>.infra-columns:first-child{margin-top:0}
+@media(max-width:760px){.infra-advanced{border-radius:17px}.infra-advanced>summary{align-items:flex-start;min-height:52px;padding:13px 14px}.infra-advanced>summary small{font-size:12px}.infra-advanced-body{padding:0 12px 12px}}
