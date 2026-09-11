@@ -94,13 +94,17 @@ export function commitAwhSurface(surface, options = {}) {
   if (!hasDom() || !SURFACES.has(surface)) return false;
   const current = historyState();
   const replace = options.replace === true || current.awhSurface === surface;
+  const currentUrl = new URL(window.location.href);
   if (!replace && SURFACES.has(current.awhSurface)) {
-    window.history.replaceState({ ...current, awhScrollY: Math.max(0, window.scrollY || 0) }, '', window.location.href);
+    window.history.replaceState({ ...current, awhScrollY: Math.max(0, window.scrollY || 0) }, '', currentUrl.href);
   }
   const next = { ...historyState(), awhSurface: surface, awhScrollY: Math.max(0, Number(options.scrollY) || 0) };
   delete next.awhDialogId;
-  if (replace) window.history.replaceState(next, '', window.location.href);
-  else window.history.pushState(next, '', window.location.href);
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.set('awh-surface', surface);
+  const href = `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`;
+  if (replace) window.history.replaceState(next, '', href);
+  else window.history.pushState(next, '', href);
   return true;
 }
 

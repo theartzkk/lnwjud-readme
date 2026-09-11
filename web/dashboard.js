@@ -268,10 +268,7 @@ function mountMobileNavigation() {
     return item;
   };
   nav.append(
-    make('✦', 'แชท', 'work', () => {
-      if (document.body.classList.contains('product-dashboard-active')) returnHome();
-      else openWork();
-    }),
+    make('✦', 'แชท', 'work', () => openWork()),
     make('↻', 'งานของฉัน', 'tasks', () => openTaskSurface()),
     make('▦', 'เครื่องมือ', 'tools', () => {
       returnHome();
@@ -366,15 +363,6 @@ function requestedDeepLinkSurface() {
     const value = new URL(window.location.href).searchParams.get('awh-surface');
     return DEEP_LINK_SURFACES.has(value) ? value : null;
   } catch { return null; }
-}
-
-function consumeDeepLinkSurface() {
-  try {
-    const url = new URL(window.location.href);
-    if (!url.searchParams.has('awh-surface')) return;
-    url.searchParams.delete('awh-surface');
-    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
-  } catch { /* keep current URL when browser URL parsing is unavailable */ }
 }
 
 function setDashboardView(view) {
@@ -1344,7 +1332,6 @@ async function syncSurface() {
       else if (requestedSurface === 'files') openFilesSurface();
       else returnHome();
     } finally { state.restoringSurface = false; }
-    consumeDeepLinkSurface();
     commitAwhSurface(requestedSurface, { replace: true, scrollY: 0 });
     return;
   }
@@ -1377,8 +1364,6 @@ function start() {
   document.addEventListener('visibilitychange', () => { if (!document.hidden && document.body.classList.contains('product-dashboard-active')) refreshDashboard().catch(() => undefined); });
   state.refreshTimer = window.setInterval(() => { if (document.body.classList.contains('product-dashboard-active')) refreshDashboard().catch(() => undefined); }, 30000);
   syncSurface().catch(() => undefined);
-  const initialSurface = document.body.classList.contains('product-dashboard-active') ? 'home' : 'work';
-  commitAwhSurface(initialSurface, { replace: true, scrollY: window.scrollY });
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });

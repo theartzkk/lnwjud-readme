@@ -255,6 +255,36 @@ import {
   }
 
   function roleLabel(role) { return ({ OWNER: 'เจ้าของ', ADMIN: 'ผู้ดูแลระบบ', DIRECTOR: 'ผู้บริหาร', TEACHER: 'ครู', STAFF: 'บุคลากร', VIEWER: 'ดูอย่างเดียว' })[role] || 'ผู้ใช้งาน'; }
+  function currentIdentity() { return state.profile?.identity || state.profile || {}; }
+  function renderProfileIdentity() {
+    const identity = currentIdentity();
+    const displayName = safeText(identity.displayName, 'โปรไฟล์ของฉัน');
+    const username = safeText(identity.username, 'บัญชี AWH');
+    const role = roleLabel(state.control?.role);
+    message('profile-menu-title', displayName);
+    message('profile-menu-meta', `@${username} · ${role}`);
+    message('profile-settings-name', displayName);
+    message('profile-settings-meta', `@${username} · ${role}`);
+    if ($('profile-display-name')) $('profile-display-name').value = identity.displayName || '';
+    const owner = isOwner();
+    document.querySelectorAll('.owner-profile-menu-item').forEach((node) => { node.hidden = !owner; });
+    for (const section of ['devices','data']) {
+      const action = document.querySelector(`[data-profile-section="${section}"]`);
+      if (action) action.hidden = !owner;
+    }
+  }
+  async function refreshProfileIdentity() {
+    const value = await loadAuthProfile();
+    state.profile = value;
+    renderProfileIdentity();
+    return value;
+  }
+  function openProfileMenu() {
+    if (!state.control?.authenticated) return;
+    renderProfileIdentity();
+    openSheet('profile-menu');
+    void refreshProfileIdentity().catch(() => message('profile-menu-meta', roleLabel(state.control?.role)));
+  }
   function personTypeLabel(type) { return ({ DIRECTOR: 'ผู้บริหาร', TEACHER: 'ครู', STAFF: 'บุคลากร', PARENT: 'ผู้ปกครอง', STUDENT: 'นักเรียน', OTHER: 'อื่น ๆ' })[type] || 'ผู้ใช้งาน'; }
   function projectChecks(hostId, selected = []) {
     const host = $(hostId); if (!host) return; host.replaceChildren();
@@ -343,13 +373,8 @@ import {
     const existing = $('my-awh-settings'); if (existing) return existing;
     const host = $('my-awh-host'); if (!host) throw new Error('AWH owner settings surface is unavailable');
     const section = document.createElement('section'); section.id = 'my-awh-settings'; section.className = 'account-form';
-    section.innerHTML = '<h3>My AWH</h3><p class="muted">บอก AWH ว่าคุณอยากทำงานอย่างไร ข้อมูลนี้เป็นส่วนตัวและแยกจากความจำของโปรเจกต์</p><form id="owner-profile-form" class="compact-form"><label for="owner-display-name">ชื่อที่แสดง</label><input id="owner-display-name" maxlength="80" autocomplete="name" /><button class="secondary-button" type="submit">บันทึกโปรไฟล์</button></form><form id="owner-foundation-form" class="compact-form"><label for="founder-name">ผู้ก่อตั้ง / ผู้คิดระบบ</label><input id="founder-name" maxlength="120" autocomplete="off" /><label for="founder-credit">บทบาทในผลิตภัณฑ์</label><input id="founder-credit" maxlength="160" autocomplete="off" /><button class="secondary-button" type="submit">บันทึกข้อมูลผลิตภัณฑ์</button></form><p id="my-awh-message" class="form-message" role="status"></p>';
+    section.innerHTML = '<h3>ข้อมูลผลิตภัณฑ์</h3><p class="muted">ข้อมูล Founder เป็นข้อมูลระดับผลิตภัณฑ์ แยกจากโปรไฟล์ส่วนตัวของบัญชี</p><form id="owner-foundation-form" class="compact-form"><label for="founder-name">ผู้ก่อตั้ง / ผู้คิดระบบ</label><input id="founder-name" maxlength="120" autocomplete="off" /><label for="founder-credit">บทบาทในผลิตภัณฑ์</label><input id="founder-credit" maxlength="160" autocomplete="off" /><button class="secondary-button" type="submit">บันทึกข้อมูลผลิตภัณฑ์</button></form><p id="my-awh-message" class="form-message" role="status"></p>';
     host.append(section);
-    $('owner-profile-form').addEventListener('submit', async (event) => {
-      event.preventDefault(); message('my-awh-message', 'กำลังบันทึกโปรไฟล์…');
-      try { const data = await updateAuthProfile($('owner-display-name').value); state.profile = data.identity || data; message('my-awh-message', 'บันทึกโปรไฟล์แล้ว'); }
-      catch (error) { message('my-awh-message', error instanceof Error ? error.message : 'ยังบันทึกโปรไฟล์ไม่ได้'); }
-    });
     $('owner-foundation-form').addEventListener('submit', async (event) => {
       event.preventDefault(); message('my-awh-message', 'กำลังบันทึกข้อมูลผลิตภัณฑ์…');
       try { state.productSettings = (await updateProductSetting('founderName', $('founder-name').value)).settings; state.productSettings = (await updateProductSetting('founderCredit', $('founder-credit').value)).settings; applyProductSettings(); message('my-awh-message', 'บันทึกข้อมูลผลิตภัณฑ์แล้ว'); }
@@ -411,9 +436,11 @@ import {
   }
 
   function renderOwnerSelfService() {
-    if (!state.profile || !state.ownerStatus) return;
-    ensureOwnerSelfServiceSurface(); const identity = state.profile.identity || state.profile; const product = state.ownerStatus.product || {};
-    $('owner-display-name').value = identity.displayName || ''; $('founder-name').value = product.founderName || settingValue('founderName', 'Art'); $('founder-credit').value = product.founderCredit || settingValue('founderCredit', 'Founder · Product Creator · System Concept');
+    if (!state.ownerStatus) return;
+    ensureOwnerSelfServiceSurface(); const product = state.ownerStatus.product || {};
+    if ($('founder-name')) $('founder-name').value = product.founderName || settingValue('founderName', 'Art');
+    if ($('founder-credit')) $('founder-credit').value = product.founderCredit || settingValue('founderCredit', 'Founder · Product Creator · System Concept');
+    renderProfileIdentity();
     renderSettingsOverview();
   }
 
@@ -737,6 +764,14 @@ import {
       const body = document.createElement('p'); body.className = turn.kind === 'user' ? 'task-goal' : 'task-summary'; body.textContent = turn.body;
       if (turn.kind === 'user') {
         row.append(body); const attachments = renderMessageAttachments(attachmentsByMessage.get(turn.messageId)); if (attachments) row.append(attachments);
+        const userActions = document.createElement('div'); userActions.className = 'user-message-actions';
+        const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'text-button'; edit.textContent = 'แก้ไขแล้วส่งใหม่';
+        edit.addEventListener('click', () => {
+          const input = $('goal-input'); if (!(input instanceof HTMLTextAreaElement)) return;
+          input.value = String(turn.body || ''); resizeGoalInput(); input.focus();
+          message('goal-message', 'แก้ข้อความแล้วกดส่ง ระบบจะเก็บข้อความเดิมไว้ในประวัติ');
+        });
+        userActions.append(edit); row.append(userActions);
         thread.append(row);
         if (task && task.state !== 'COMPLETED') {
           const statusTurn = document.createElement('li'); statusTurn.className = 'task-turn assistant-turn status-turn'; statusTurn.dataset.scrollKey = `status:${turn.messageId || task?.taskId || 'task'}`;
@@ -863,7 +898,7 @@ import {
       window.history[replace ? 'replaceState' : 'pushState'](window.history.state, '', next);
     } catch {}
     void renderEcosystemPortfolio();
-    window.scrollTo({ top: 0, behavior: replace ? 'auto' : 'smooth' });
+    window.scrollTo({ top: 0, behavior: 'auto' });
   }
 
   function openAwhWorkspace(surface = 'home', { history = true } = {}) {
@@ -891,17 +926,18 @@ import {
     window.requestAnimationFrame(() => $('login-username')?.focus());
   }
 
-  function routeOwnerCommand(value) {
+  async function routeOwnerCommand(value) {
     const command = typeof value === 'string' ? value.trim() : '';
     if (!command || !state.control?.authenticated) return;
-    openAwhWorkspace('home');
-    window.requestAnimationFrame(() => {
-      const input = $('goal-input');
-      if (!input) return;
-      input.value = command;
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.focus();
-    });
+    openAwhWorkspace('work');
+    if (!state.conversationAvailable) await refreshConversation(false);
+    const input = $('goal-input');
+    if (!(input instanceof HTMLTextAreaElement)) return;
+    input.value = command;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    resizeGoalInput();
+    input.focus();
+    if (state.conversationAvailable) $('goal-form')?.requestSubmit();
   }
 
   const isAwhProduct = (project) => project?.id === 'awh' || project?.id === 'kruart-online';
@@ -1053,6 +1089,7 @@ import {
     if (publicHome) publicHome.hidden = authenticated;
     $('sign-in-view').hidden = true;
     $('account-open').hidden = !authenticated;
+    if ($('account-open-work')) $('account-open-work').hidden = !authenticated;
     const publicNav=document.querySelector('.global-nav'); const ownerNav=$('owner-global-nav');
     if(publicNav) publicNav.hidden=authenticated;
     if(ownerNav) ownerNav.hidden=!authenticated;
@@ -1063,6 +1100,7 @@ import {
       if ($('ecosystem-home-view')) $('ecosystem-home-view').hidden = true;
       $('workspace-view').hidden = true;
       document.body.classList.remove('work-active', 'ecosystem-home-active');
+      document.body.classList.remove('awh-booting');
       return;
     }
     renderWorkspace();
@@ -1072,6 +1110,7 @@ import {
       document.body.classList.add('work-active');
       document.body.classList.remove('ecosystem-home-active');
     } else showEcosystemHome({ replace: true });
+    document.body.classList.remove('awh-booting');
   }
 
   async function refreshConversation(refreshList = true) {
@@ -1157,15 +1196,19 @@ import {
   async function openAccount(section = 'start') {
     if (!state.control?.authenticated) return;
     openSheet('account-sheet');
-    configureSettingsVisibility(); showSettingsSection(isOwner() ? section : 'account');
+    configureSettingsVisibility();
+    const selected = isOwner() ? section : 'account';
+    showSettingsSection(settingsSections.includes(selected) ? selected : 'account');
     $('owner-only-settings').hidden = !isOwner();
     $('product-settings-form').hidden = !isOwner();
+    try { await refreshProfileIdentity(); }
+    catch { message('profile-message', 'ยังโหลดโปรไฟล์ไม่ได้ ลองอีกครั้ง'); }
     try { state.productSettings = (await loadProductSettings()).settings; applyProductSettings(); }
-    catch { message('product-settings-message', 'ยังโหลดการตั้งค่าลักษณะของ AWH ไม่ได้'); }
+    catch { if (isOwner()) message('product-settings-message', 'ยังโหลดการตั้งค่าลักษณะของ AWH ไม่ได้'); }
     if (isOwner()) {
       ensureOwnerSelfServiceSurface(); ensureProviderSelfServiceSurface();
-      const project = selectedProject(); const requests = [loadProviderStatus(), loadObservabilityStatus(), loadCapabilities(), listPeople(), listAccountRequests(), loadAuthProfile(), loadOwnerSelfServiceStatus(), project ? loadProviderProjectRouting(project.projectId) : Promise.resolve(null)];
-      const [providerResult, observabilityResult, capabilitiesResult, peopleResult, accountRequestsResult, profileResult, ownerStatusResult, routingResult] = await Promise.allSettled(requests);
+      const project = selectedProject(); const requests = [loadProviderStatus(), loadObservabilityStatus(), loadCapabilities(), listPeople(), listAccountRequests(), loadOwnerSelfServiceStatus(), project ? loadProviderProjectRouting(project.projectId) : Promise.resolve(null)];
+      const [providerResult, observabilityResult, capabilitiesResult, peopleResult, accountRequestsResult, ownerStatusResult, routingResult] = await Promise.allSettled(requests);
       if (providerResult.status === 'fulfilled') { state.provider = providerResult.value.provider; renderProvider(); }
       else message('provider-status', 'ยังโหลดสถานะ AI ไม่ได้ ลองรีเฟรชอีกครั้ง');
       if (observabilityResult.status === 'fulfilled') { state.observability = observabilityResult.value.observability; renderObservability(); }
@@ -1174,12 +1217,11 @@ import {
       if (peopleResult.status === 'fulfilled') state.people = Array.isArray(peopleResult.value.people) ? peopleResult.value.people : [];
       if (accountRequestsResult.status === 'fulfilled') state.accountRequests = Array.isArray(accountRequestsResult.value.requests) ? accountRequestsResult.value.requests : [];
       if (peopleResult.status === 'fulfilled') renderPeople(); else message('people-message', 'ยังโหลดผู้ใช้งานไม่ได้ ลองรีเฟรชอีกครั้ง');
-      if (profileResult.status === 'fulfilled') state.profile = profileResult.value;
       if (ownerStatusResult.status === 'fulfilled') state.ownerStatus = ownerStatusResult.value;
       if (routingResult.status === 'fulfilled') state.providerRouting = routingResult.value;
-      if (state.profile && state.ownerStatus) renderOwnerSelfService(); else renderSettingsOverview();
+      if (state.ownerStatus) renderOwnerSelfService(); else renderSettingsOverview();
       try { await refreshMemory(); } catch { message('memory-message', 'ยังโหลดความจำไม่ได้ ลองรีเฟรชอีกครั้ง'); }
-    }
+    } else renderSettingsOverview();
   }
 
   $('login-form').addEventListener('submit', async (event) => {
@@ -1205,7 +1247,7 @@ import {
   $('ecosystem-open-awh')?.addEventListener('click', () => openAwhWorkspace('home'));
   document.querySelector('#owner-global-nav [data-owner-destination="home"]')?.addEventListener('click', (event) => { event.preventDefault(); showEcosystemHome(); });
   document.querySelector('#owner-global-nav [data-owner-destination="awh"]')?.addEventListener('click', (event) => { event.preventDefault(); openAwhWorkspace('home'); });
-  $('ecosystem-command-form')?.addEventListener('submit', (event) => { event.preventDefault(); routeOwnerCommand($('ecosystem-command-input')?.value || ''); if($('ecosystem-command-input')) $('ecosystem-command-input').value=''; });
+  $('ecosystem-command-form')?.addEventListener('submit', (event) => { event.preventDefault(); const field=$('ecosystem-command-input'); const value=field?.value || ''; if(field) field.value=''; void routeOwnerCommand(value); });
   document.querySelectorAll('[data-owner-command]').forEach((button)=>button.addEventListener('click',()=>routeOwnerCommand(button.dataset.ownerCommand||'')));
   window.addEventListener('awh:return-root-hub', () => showEcosystemHome());
   window.addEventListener('popstate', () => {
@@ -1322,9 +1364,27 @@ import {
     catch(error){ message('conversation-title-message',error instanceof Error?error.message:'ยังลบแชทไม่ได้'); }
     finally{ button.disabled=false; }
   });
-  $('account-open').addEventListener('click', () => { void openAccount(); });
-  $('account-open-work').addEventListener('click', () => { void openAccount('account'); });
-  $('account-open-inline').addEventListener('click', () => { void openAccount(); });
+  $('account-open').addEventListener('click', openProfileMenu);
+  $('account-open-work').addEventListener('click', openProfileMenu);
+  $('account-open-inline').addEventListener('click', () => { void openAccount('account'); });
+  document.querySelectorAll('[data-profile-section]').forEach((button) => button.addEventListener('click', async () => {
+    const requested = button.dataset.profileSection || 'account';
+    closeSheet('profile-menu', { history: false });
+    await openAccount(requested === 'profile' ? 'account' : requested);
+    if (requested === 'profile') window.requestAnimationFrame(() => $('profile-display-name')?.focus());
+  }));
+  $('profile-menu-logout')?.addEventListener('click', () => $('logout-button')?.click());
+  $('profile-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const field = $('profile-display-name'); if (!(field instanceof HTMLInputElement)) return;
+    message('profile-message', 'กำลังบันทึกโปรไฟล์…');
+    try {
+      const data = await updateAuthProfile(field.value);
+      state.profile = data;
+      renderProfileIdentity();
+      message('profile-message', 'บันทึกโปรไฟล์แล้ว');
+    } catch (error) { message('profile-message', error instanceof Error ? error.message : 'ยังบันทึกโปรไฟล์ไม่ได้'); }
+  });
   $('system-check').addEventListener('click', async () => {
     if (!isOwner()) { message('system-check-message', 'เฉพาะเจ้าของ AWH เท่านั้นที่ตรวจความพร้อมของระบบได้'); return; }
     const button = $('system-check'); button.disabled = true; message('system-check-message', 'กำลังตรวจความพร้อม…');

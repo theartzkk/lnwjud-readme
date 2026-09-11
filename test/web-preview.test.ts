@@ -188,7 +188,8 @@ test('canonical Work is cloud-first, mobile-first, and never blocks chat on devi
   assert.doesNotMatch(app, /Work stream นี้จะพร้อมทันทีที่ Hub ได้รับ release ล่าสุด/);
   assert.match(css, /@media \(max-width: 680px\)/);
   assert.match(css, /env\(safe-area-inset-bottom\)/);
-  assert.match(css, /body\.work-active \{ height: 100dvh; overflow: hidden; \}/);
+  assert.match(css, /body\.work-active \{ height: var\(--awh-visual-viewport-height,100dvh\); overflow: hidden; \}/);
+  assert.match(await readFile(join(ROOT, 'web', 'dashboard.js'), 'utf8'), /--awh-visual-viewport-height/);
   assert.match(css, /body\.work-active \.work-thread[^{]*\{[^}]*overflow-y: auto/s);
   assert.match(css, /body\.work-active \.composer[^{]*\{[^}]*position: relative/s);
   assert.match(css, /\.workspace-heading \{[^}]*grid-template-columns: auto minmax\(0,1fr\) auto/s);
