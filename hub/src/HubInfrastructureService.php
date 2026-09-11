@@ -58,7 +58,21 @@ final class HubInfrastructureService
                 if (preg_match('/^m(\d+)-/', $id, $candidate) === 1 && (int) $candidate[1] <= $currentMajor) { $rollback = $id; break; }
             }
         }
-        return ['controlReleaseId' => $control, 'webReleaseId' => $web, 'pointersMatch' => $control !== null && hash_equals($control, (string) $web), 'stagedCandidates' => array_slice($staged, 0, 5), 'rollbackReleaseId' => $rollback];
+        $controlSha = self::manifestSource('/opt/awh-hub/control-plane-current/dist-web/release.json', $control);
+        $webSha = self::manifestSource('/var/www/awh-web/current/release.json', $web);
+        return ['controlSourceSha' => $controlSha, 'webSourceSha' => $webSha, 'sourceState' => $controlSha === null || $webSha === null ? 'UNKNOWN' : (hash_equals($controlSha, $webSha) ? 'MATCHED' : 'MISMATCH'), 'controlReleaseId' => $control, 'webReleaseId' => $web, 'pointersMatch' => $control !== null && hash_equals($control, (string) $web), 'stagedCandidates' => array_slice($staged, 0, 5), 'rollbackReleaseId' => $rollback];
+    }
+
+    /** Read only exact committed provenance; never expand a milestone/short SHA. */
+    public static function manifestSource(string $path, ?string $releaseId): ?string
+    {
+        if ($releaseId === null || !is_file($path) || is_link($path)) return null;
+        $size = @filesize($path);
+        if (!is_int($size) || $size < 2 || $size > 262144) return null;
+        $value = json_decode((string) @file_get_contents($path), true);
+        if (!is_array($value) || ($value['schemaVersion'] ?? null) !== 1 || ($value['releaseId'] ?? null) !== $releaseId || ($value['sourceState'] ?? null) !== 'COMMITTED') return null;
+        $sha = $value['sourceSha'] ?? null;
+        return is_string($sha) && preg_match('/^[0-9a-f]{40}$/D', $sha) === 1 ? $sha : null;
     }
 
     private static function pointerRelease(string $pointer): ?string

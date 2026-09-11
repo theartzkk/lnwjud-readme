@@ -237,13 +237,37 @@ export async function createBayRemoteInstallRelay({ targetVersion, targetSha, pa
   if (typeof targetVersion !== 'string' || !targetVersion.trim() || typeof targetSha !== 'string' || !/^[0-9a-f]{40}$/i.test(targetSha) || typeof packageSha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(packageSha256)) throw new Error('ข้อมูล BAY release ไม่ถูกต้อง');
   return controlRequest('/api/v1/control/bay/update/install-relay', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, targetVersion: targetVersion.trim(), targetSha: targetSha.toLowerCase(), packageSha256: packageSha256.toLowerCase() }) });
 }
+function bayRelayError(code, message) {
+  return Object.assign(new Error(message), { code });
+}
 export async function relayBayRemoteCommand(endpoint, relay, fetchImpl = globalThis.fetch) {
   if (endpoint !== 'https://kruart.great-site.net/remote-update.php' || !relay || typeof relay !== 'object' || Array.isArray(relay)) throw new Error('BAY Remote Update relay ไม่ถูกต้อง');
-  const response = await fetchImpl(endpoint, { method: 'POST', mode: 'cors', credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify(relay) });
-  const body = await response.text();
-  if (body.length > MAX_JSON_BYTES) throw new Error('BAY Remote Update response ใหญ่เกินขอบเขต');
-  let value; try { value = JSON.parse(body); } catch { throw new Error('BAY Remote Update ตอบกลับไม่ถูกต้อง'); }
-  if (!value || typeof value !== 'object' || Array.isArray(value) || !response.ok || value.ok !== true) throw new Error(typeof value?.message === 'string' ? value.message : 'BAY Remote Update ไม่สำเร็จ');
+  const installCommand = relay.command === 'INSTALL';
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), installCommand ? 180000 : 15000);
+  timeout?.unref?.();
+  let response, body;
+  try {
+    response = await fetchImpl(endpoint, { method: 'POST', mode: 'cors', credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify(relay), signal: controller.signal });
+    body = await response.text();
+  } catch {
+    if (installCommand) throw bayRelayError('BAY_INSTALL_OUTCOME_UNKNOWN', 'ส่งคำสั่งติดตั้งแล้วแต่การเชื่อมต่อขาดก่อนยืนยันผล AWH จะติดตาม STATUS เท่านั้นและจะไม่ส่ง INSTALL ซ้ำ');
+    throw bayRelayError('BAY_TRANSPORT_UNAVAILABLE', 'ยังติดต่อ BAY ไม่ได้ กรุณาตรวจเครือข่ายแล้วลองตรวจใหม่');
+  } finally {
+    clearTimeout(timeout);
+  }
+  if ([401, 403].includes(response.status)) throw bayRelayError('BAY_AUTH_REJECTED', 'BAY ยังไม่อนุญาตคำขอนี้ กรุณาตรวจสิทธิ์การเชื่อมต่อ');
+  if (body.length > MAX_JSON_BYTES) throw bayRelayError('BAY_RESPONSE_INVALID', 'ข้อมูลตอบกลับจาก BAY เกินขอบเขต');
+  let value;
+  try { value = JSON.parse(body); } catch { throw bayRelayError('BAY_RESPONSE_INVALID', 'BAY ยังไม่ส่งสถานะที่ยืนยันได้ อาจติดหน้าตรวจสอบการเข้าถึง'); }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw bayRelayError('BAY_RESPONSE_INVALID', 'ยังยืนยันรูปแบบสถานะของ BAY ไม่ได้');
+  // A missing page, CORS failure or hosting challenge is never bridge-absence evidence.
+  if (!response.ok || value.ok !== true) {
+    if (value.schemaVersion === 1 && value.authority === 'BAY PackageManager/Update Center' && value.code === 'BRIDGE_NOT_INSTALLED') throw bayRelayError('BAY_BRIDGE_NOT_INSTALLED', 'BAY ยืนยันว่ายังไม่ได้ติดตั้ง Remote Update bridge');
+    throw bayRelayError('BAY_COMMAND_REJECTED', 'BAY ปฏิเสธคำขออย่างปลอดภัย กรุณาตรวจสถานะใน Update Center');
+  }
+  if (value.schemaVersion !== 1) throw bayRelayError('BAY_RESPONSE_INVALID', 'ยังยืนยันรูปแบบสถานะของ BAY ไม่ได้');
+  if (relay.command === 'STATUS' && (value.authority !== 'BAY PackageManager/Update Center' || typeof value.currentVersion !== 'string' || !Array.isArray(value.packages) || typeof value.preflight?.ready !== 'boolean')) throw bayRelayError('BAY_RESPONSE_INVALID', 'ข้อมูลสถานะ BAY ไม่ครบ จึงยังยืนยันความพร้อมไม่ได้');
   return value;
 }
 export async function loadCloudStatus() {

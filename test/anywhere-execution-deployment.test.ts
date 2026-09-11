@@ -11,7 +11,7 @@ const deploy = join(root, 'deploy/awh-control-plane/deploy-control-plane.sh');
 const remote = join(root, 'deploy/awh-control-plane/remote-deploy-control-plane.sh');
 
 test('M13 Anywhere Execution is Cloud-first, additive, and rollback-safe', async () => {
-  const release = 'dddddddddddddddddddddddddddddddddddddddd';
+  const release=(await execFileAsync('git',['rev-parse','HEAD'],{cwd:root})).stdout.trim();
   const result = await execFileAsync('/bin/sh', [deploy, '--dry-run', '--owner-auth', '--anywhere-execution'], {
     cwd: root,
     env: { ...process.env, AWH_SOURCE_ROOT: root, AWH_RELEASE_COMMIT: release, AWH_HUB_HOSTNAME: 'awh.example' },

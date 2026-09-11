@@ -11,12 +11,13 @@ const deploy = join(ROOT, 'deploy/awh-control-plane/deploy-control-plane.sh');
 const remote = join(ROOT, 'deploy/awh-control-plane/remote-deploy-control-plane.sh');
 
 test('M6 workstream activation is a release-locked v5-to-v6 extension with no owner-password transport', async () => {
+  const release=(await execFileAsync('git',['rev-parse','HEAD'],{cwd:ROOT})).stdout.trim();
   const result = await execFileAsync('/bin/sh', [deploy, '--dry-run', '--assistant-workstream'], {
     cwd: ROOT,
-    env: { ...process.env, AWH_SOURCE_ROOT: ROOT, AWH_RELEASE_COMMIT: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+    env: { ...process.env, AWH_SOURCE_ROOT: ROOT, AWH_RELEASE_COMMIT: release },
   });
   assert.match(result.stdout, /^M6_DRY_RUN=PASS$/m);
-  assert.match(result.stdout, /^M6_RELEASE=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa$/m);
+  assert.match(result.stdout, new RegExp(`^M6_RELEASE=${release}$`,'m'));
   assert.match(result.stdout, /migrate-005,idempotence,assistant-workstream-capability/);
   assert.match(result.stdout, /M6_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL/);
 

@@ -11,7 +11,7 @@ const deploy = join(root, 'deploy/awh-control-plane/deploy-control-plane.sh');
 const remote = join(root, 'deploy/awh-control-plane/remote-deploy-control-plane.sh');
 
 test('M8 unified workspace release is an exact v7-to-v8 migration with no owner-password transport or project seeding', async () => {
-  const release = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+  const release=(await execFileAsync('git',['rev-parse','HEAD'],{cwd:root})).stdout.trim();
   const result = await execFileAsync('/bin/sh', [deploy, '--dry-run', '--unified-workspace'], { cwd: root, env: { ...process.env, AWH_SOURCE_ROOT: root, AWH_RELEASE_COMMIT: release } });
   assert.match(result.stdout, /^M8_DRY_RUN=PASS$/m);
   assert.match(result.stdout, new RegExp(`^M8_RELEASE=${release}$`, 'm'));

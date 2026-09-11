@@ -11,7 +11,7 @@ const deploy = join(root, 'deploy/awh-control-plane/deploy-control-plane.sh');
 const remote = join(root, 'deploy/awh-control-plane/remote-deploy-control-plane.sh');
 
 test('M11 self-service activation is one v7-to-v11 release with write-only provider storage and exact rollback', async () => {
-  const release = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+  const release=(await execFileAsync('git',['rev-parse','HEAD'],{cwd:root})).stdout.trim();
   const result = await execFileAsync('/bin/sh', [deploy, '--dry-run', '--self-service'], {
     cwd: root,
     env: { ...process.env, AWH_SOURCE_ROOT: root, AWH_RELEASE_COMMIT: release, AWH_HUB_HOSTNAME: 'awh.example' },

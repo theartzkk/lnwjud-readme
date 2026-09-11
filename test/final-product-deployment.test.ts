@@ -11,7 +11,7 @@ const deploy = join(root, 'deploy/awh-control-plane/deploy-control-plane.sh');
 const remote = join(root, 'deploy/awh-control-plane/remote-deploy-control-plane.sh');
 
 test('M9 final product release is one bounded v7-to-v8-to-v9 activation with attachment and rollback gates', async () => {
-  const release = 'cccccccccccccccccccccccccccccccccccccccc';
+  const release=(await execFileAsync('git',['rev-parse','HEAD'],{cwd:root})).stdout.trim();
   const result = await execFileAsync('/bin/sh', [deploy, '--dry-run', '--final-product'], {
     cwd: root,
     env: { ...process.env, AWH_SOURCE_ROOT: root, AWH_RELEASE_COMMIT: release, AWH_HUB_HOSTNAME: 'awh.example' },

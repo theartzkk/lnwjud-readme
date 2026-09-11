@@ -31,12 +31,15 @@ test('local deployment assets are dry-run by default and require explicit review
 });
 
 test('M4 control-plane activation package is executable in a local dry-run without SSH', { skip: process.platform === 'win32' }, async () => {
-  const controlBuild = await execFile(process.execPath, ['--import', 'tsx', 'scripts/build-web-preview.ts', '--control'], { cwd: ROOT, env: { ...process.env, AWH_PREVIEW_GENERATED_AT: '2026-08-21T00:00:00.000Z' } });
+  const controlBuild = await execFile(process.execPath, ['--import', 'tsx', 'scripts/build-web-preview.ts', '--control'], { cwd: ROOT, env: { ...process.env, AWH_RELEASE_ID: 'fixture-m4-release', AWH_PREVIEW_GENERATED_AT: '2026-08-21T00:00:00.000Z' } });
   assert.equal(controlBuild.stderr, '');
   await execFile(process.execPath, ['scripts/create-web-release-manifest.mjs', 'dist-web'], { cwd: ROOT, env: { ...process.env, AWH_RELEASE_ID: 'fixture-m4-release', AWH_PREVIEW_GENERATED_AT: '2026-08-21T00:00:00.000Z' } });
   const deploy = join(ROOT, 'deploy/awh-control-plane/deploy-control-plane.sh');
   const deployText = await readText(deploy);
-  const result = await execFile('sh', [deploy, '--dry-run'], { cwd: ROOT, env: { ...process.env, AWH_SOURCE_ROOT: ROOT, AWH_DEPLOY_TARGET: 'awh-ready', AWH_RELEASE_COMMIT: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', AWH_HUB_HOSTNAME: 'awh.example' } });
+  const { stdout: headStdout } = await execFile('git', ['rev-parse', 'HEAD'], { cwd: ROOT });
+  const sourceHead = headStdout.trim();
+  assert.match(sourceHead, /^[0-9a-f]{40}$/);
+  const result = await execFile('sh', [deploy, '--dry-run'], { cwd: ROOT, env: { ...process.env, AWH_SOURCE_ROOT: ROOT, AWH_DEPLOY_TARGET: 'awh-ready', AWH_RELEASE_COMMIT: sourceHead, AWH_HUB_HOSTNAME: 'awh.example' } });
   assert.match(result.stdout, /M4_DRY_RUN=PASS/);
   assert.match(result.stdout, /php-fpm-reload/);
   assert.match(result.stdout, /project-onboarding-ready/);

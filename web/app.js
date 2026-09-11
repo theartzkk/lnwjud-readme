@@ -430,7 +430,15 @@ import {
         if (!entry || typeof entry.path !== 'string' || !/^(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+$/.test(entry.path) || typeof entry.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(entry.sha256) || !Number.isSafeInteger(entry.sizeBytes) || entry.sizeBytes < 1 || entry.sizeBytes > 1024 * 1024 * 1024 || files.has(entry.path)) throw new Error('release metadata invalid');
         files.set(entry.path, entry);
       }
-      return { releaseId: manifest.releaseId, files };
+      // Keep legacy packages unavailable until their existing CI lineage is supplied.
+      const desktopReleases = Array.isArray(manifest.desktopReleases) ? manifest.desktopReleases : [];
+      for (const [path, entry] of files) {
+        if (!path.endsWith('.zip')) continue;
+        const proof = desktopReleases.find(item => item?.path === path);
+        if (!proof || proof.packageVerification !== 'VERIFIED' || !/^[0-9a-f]{40}$/.test(proof.sourceSha || '') || proof.packageSha256 !== entry.sha256 || proof.sizeBytes !== entry.sizeBytes) files.delete(path);
+        else entry.sourceSha = proof.sourceSha;
+      }
+      return { releaseId: manifest.releaseId, sourceSha: manifest.sourceSha, files };
     })().catch((error) => { desktopReleasePromise = null; throw error; });
     return desktopReleasePromise;
   }
@@ -458,14 +466,14 @@ import {
       const packages = DESKTOP_PACKAGES.filter(([path]) => files.has(path));
       list.replaceChildren();
       if (!packages.length) throw new Error('verified desktop packages unavailable');
-      message('desktop-release-status', `release ${release.releaseId} · เลือก installer ที่ตรวจสอบ checksum แล้ว`);
+      message('desktop-release-status', `แพ็กเกจที่มีหลักฐาน Source และ checksum · ${release.releaseId}`);
       for (const [path, , platform] of DESKTOP_PACKAGES) {
         const link = document.querySelector(`[data-desktop-package="${platform}"]`); if (link && files.has(path)) { link.href = `./${path}`; link.dataset.release = release.releaseId; link.hidden = false; }
       }
       for (const [path, label] of packages) {
         const entry = files.get(path); const item = document.createElement('div'); item.className = 'session-item';
         const title = document.createElement('strong'); title.textContent = label;
-        const detail = document.createElement('span'); detail.textContent = `${size(entry.sizeBytes)} · SHA-256 ${entry.sha256.slice(0, 12)}…`;
+        const detail = document.createElement('span'); detail.textContent = `${size(entry.sizeBytes)} · Source ${entry.sourceSha.slice(0, 12)} · SHA-256 ${entry.sha256.slice(0, 12)}…`;
         const link = document.createElement('a'); link.href = `./${path}`; link.textContent = `ดาวน์โหลด ${label}`; link.setAttribute('download', '');
         item.append(title, detail, link); list.append(item);
       }
