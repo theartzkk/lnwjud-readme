@@ -20,7 +20,7 @@ $root=rtrim(sys_get_temp_dir(),'/').'/awh-m17-cloud-'.bin2hex(random_bytes(6));$
 $owner='223b45c0-23e1-408d-ae0f-ac5eca7f6900';$project='113b45c0-23e1-408d-ae0f-ac5eca7f6900';$revision=str_repeat('a',40);$secret='github-fixture-secret-1234567890';
 try{
  mkdir($root,0700,true);$db=$root.'/awh.sqlite';$artifactRoot=$root.'/artifacts';$credentialRoot=$root.'/provider-credentials';$vaultRoot=$root.'/project-vault';mkdir($artifactRoot,0700,true);mkdir($credentialRoot,0700,true);mkdir($vaultRoot,0700,true);
- putenv('AWH_ARTIFACT_ROOT='.$artifactRoot);putenv('AWH_PROVIDER_CREDENTIAL_ROOT='.$credentialRoot);putenv('AWH_PROJECT_VAULT_ROOT='.$vaultRoot);putenv('AWH_GITHUB_REPOSITORY=fixture/awh');putenv('AWH_GITHUB_REF=awh/api-independence');
+ putenv('AWH_ARTIFACT_ROOT='.$artifactRoot);putenv('AWH_PROVIDER_CREDENTIAL_ROOT='.$credentialRoot);putenv('AWH_PROJECT_VAULT_ROOT='.$vaultRoot);putenv('AWH_GITHUB_REPOSITORY=fixture/awh');putenv('AWH_GITHUB_REF=main');
  $pdo=new PDO('sqlite:'.$db,null,null,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);$pdo->exec('PRAGMA foreign_keys=ON');$pdo->exec(file_get_contents($base.'/schema.sql'));
  foreach(['enrollment_rate_limits','device_project_memberships','device_tokens','pairing_projects','pairing_codes','user_project_memberships','device_enrollments','owner_bootstrap','hub_users'] as $table)$pdo->exec('DROP TABLE IF EXISTS '.$table);
  $pdo->prepare('INSERT INTO projects(project_id,name,type,created_at,source_revision,observed_at,provenance) VALUES(:id,:name,:type,:at,NULL,:at,:p)')->execute(['id'=>$project,'name'=>'Art’s Workspace Hub','type'=>'awh-core','at'=>$now,'p'=>'m17-cloud-fixture']);

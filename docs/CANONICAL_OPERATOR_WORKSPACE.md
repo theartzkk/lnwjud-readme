@@ -2,22 +2,22 @@
 
 ## Purpose
 
-AWH must never choose a production source from a convenient local folder, a stale remote-tracking ref, a historical worktree, or dated Project Memory. The live GitHub branch `awh/api-independence` is the canonical source authority and must be resolved from the remote at mutation time.
+AWH must never choose a production source from a convenient local folder, a stale remote-tracking ref, a historical worktree, or dated Project Memory. The live GitHub branch `main` is the canonical source authority and must be resolved from the remote at mutation time.
 
-This contract fixes the class of failure where several valid-looking AWH worktrees coexist while `origin/awh/api-independence` in one clone is older than the actual GitHub branch.
+This contract fixes the class of failure where several valid-looking AWH worktrees coexist while `origin/main` in one clone is older than the actual GitHub branch.
 
 ## Authority order
 
 For source mutation and release decisions:
 
-1. live `git ls-remote origin refs/heads/awh/api-independence`;
+1. live `git ls-remote origin refs/heads/main`;
 2. exact local `HEAD` only when it equals that live SHA;
 3. clean working-tree state;
 4. exact approved release SHA when a release approval exists;
 5. local remote-tracking refs only as diagnostics;
 6. historical worktrees and dated documents as evidence only.
 
-A stale `refs/remotes/origin/awh/api-independence` must never override the live remote SHA.
+A stale `refs/remotes/origin/main` must never override the live remote SHA.
 
 ## Mutation-ready definition
 

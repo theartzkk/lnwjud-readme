@@ -4,7 +4,7 @@
   "name": "Art’s Workspace Hub",
   "source": {
     "repository": "theartzkk/lnwjud-readme",
-    "canonicalRef": "awh/api-independence",
+    "canonicalRef": "main",
     "observedSha": "6900cf447e966fd093b22ad981d56cdde317d35b",
     "mustReResolveBeforeMutation": true,
     "mergedPullRequest": 139,

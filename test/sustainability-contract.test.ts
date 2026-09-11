@@ -193,7 +193,7 @@ test('mac remote worker recovery is pinned, persistent, and reproducible', async
   assert.match(supervisor, /sleep 5/);
   assert.match(plist, /<key>KeepAlive<\/key><true\/>/);
   assert.match(verifier, /session_stored=yes/);
-  for (const marker of ['REMOTE_LOG_PREVIEW_CHARS', 'ensureReady', 'pendingProcessError', 'DC_REMOTE_DEVICE']) assert.match(patch, new RegExp(marker));
+  for (const marker of ['REMOTE_LOG_PREVIEW_CHARS', 'TOKEN_REFRESHED', 'Failed to persist refreshed session', 'ensureReady', 'pendingProcessError', 'DC_REMOTE_DEVICE']) assert.match(patch, new RegExp(marker));
   const combined = `${installer}\n${supervisor}\n${verifier}\n${patch}\n${plist}`;
   assert.doesNotMatch(combined, /\/Users\/mac|@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|access_token\s*[:=]\s*['"][^'"]+/i);
 });

@@ -23,7 +23,7 @@ Project-specific rules may be stricter but must not silently weaken the owner pr
 
 ## Canonical source rule
 
-- `awh/api-independence` on the reviewed `theartzkk/lnwjud-readme` GitHub repository is the AWH canonical source branch unless a newer durable authority explicitly replaces it.
+- `main` on the reviewed `theartzkk/lnwjud-readme` GitHub repository is the AWH canonical source branch. `awh/api-independence` is a compatibility ref only and must resolve to the same commit while retained.
 - Before any source or Production mutation, resolve the branch through the live remote authority. A cached `refs/remotes/origin/...`, historical worktree, local folder name, or dated Project Memory statement is diagnostic evidence only.
 - Use `scripts/ops/canonical-source-preflight.mjs --require-mutation-ready` for the bounded proof. A mutation source must be clean and its `HEAD` must equal the live canonical SHA; an explicitly approved release SHA must equal that same live SHA.
 - If the live remote cannot be resolved, stop that mutation. Never fall back to a stale remote-tracking ref, another worktree, or manual replay.
