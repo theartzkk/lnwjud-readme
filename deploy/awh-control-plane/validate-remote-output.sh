@@ -35,7 +35,10 @@ while IFS= read -r line; do
     WEB_RELEASE_MANIFEST=PASS\ files=*)
       count=${line#WEB_RELEASE_MANIFEST=PASS files=}
       case "$count" in ''|0|0*|*[!0-9]*) reject ;; esac
-      test "$count" -le 100 || reject
+      # The typed transport remains bounded, but the current M20 web contract
+      # legitimately contains more than 100 files. Keep headroom for reviewed
+      # release growth while still rejecting unbounded/spoofed output.
+      test "$count" -le 256 || reject
       printf '%s\n' "$line"
       ;;
     DEPLOY_DIAGNOSTIC=OWNER_AUTH_SURFACE_HTTP_[0-9][0-9][0-9]|DEPLOY_DIAGNOSTIC=OWNER_AUTH_LOGIN_HTTP_[0-9][0-9][0-9]|DEPLOY_DIAGNOSTIC=OWNER_AUTH_SURFACE_ATTEMPTS_[1-9]|DEPLOY_DIAGNOSTIC=OWNER_AUTH_SURFACE_ATTEMPTS_10|DEPLOY_DIAGNOSTIC=OWNER_AUTH_SURFACE_BASIC_CHALLENGE|DEPLOY_DIAGNOSTIC=OWNER_AUTH_LOGIN_BASIC_CHALLENGE|DEPLOY_RESULT=PASS|ROLLBACK=PASS|ROLLBACK=FAIL)

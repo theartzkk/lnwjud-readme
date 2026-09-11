@@ -121,7 +121,10 @@ test('typed M16 deploy output contract accepts verified web manifest evidence an
   const accepted = await runWithInput(validator, 'DEPLOY_STAGE=WEB_RELEASE_COPY\nWEB_RELEASE_MANIFEST=PASS files=30\nDEPLOY_STAGE=WEB_MANIFEST_VERIFIED\nDEPLOY_RESULT=PASS\n');
   assert.equal(accepted.code, 0, accepted.stderr);
   assert.match(accepted.stdout, /WEB_RELEASE_MANIFEST=PASS files=30/);
-  const bounded = await runWithInput(validator, 'WEB_RELEASE_MANIFEST=PASS files=101\n');
+  const currentRelease = await runWithInput(validator, 'WEB_RELEASE_MANIFEST=PASS files=122\nDEPLOY_RESULT=PASS\n');
+  assert.equal(currentRelease.code, 0, currentRelease.stderr);
+  assert.match(currentRelease.stdout, /WEB_RELEASE_MANIFEST=PASS files=122/);
+  const bounded = await runWithInput(validator, 'WEB_RELEASE_MANIFEST=PASS files=257\n');
   assert.notEqual(bounded.code, 0);
   const rejected = await runWithInput(validator, 'DEPLOY_STAGE=WEB_RELEASE_COPY\nsecret=value\nDEPLOY_RESULT=PASS\n');
   assert.notEqual(rejected.code, 0);
