@@ -51,6 +51,29 @@
              // Update database with result, THEN ring the doorbell — the server
              // fetches the row by id on the doorbell, so the write must land first.
              await this.remoteChannel.updateCallResult(call_id, 'completed', result);
+--- a/dist/remote-device/device.js
++++ b/dist/remote-device/device.js
+@@ -132,6 +132,20 @@
+             }
+             // Force save the current session immediately to ensure it's persisted
+             await this.savePersistedConfig();
++            // Supabase refresh tokens rotate and may be one-time-use. The upstream
++            // remote channel updates refreshed credentials in memory, but 0.2.47
++            // does not persist the replacement refresh token. Persist immediately
++            // so a supervised restart never reuses an already-consumed token and
++            // falls back to an interactive device-verification browser flow.
++            if (this.persistSession && this.remoteChannel.client) {
++                this.remoteChannel.client.auth.onAuthStateChange((event) => {
++                    if (event === 'TOKEN_REFRESHED') {
++                        this.savePersistedConfig().catch((error) => {
++                            console.error(' - ❌ Failed to persist refreshed session:', error.message);
++                        });
++                    }
++                });
++            }
+             const deviceName = os.hostname();
+             // Register as device
+             await this.remoteChannel.registerDevice(await this.desktop.listClientTools(), this.deviceId, deviceName, (payload) => this.handleNewToolCall(payload));
 --- a/dist/remote-device/remote-channel.js
 +++ b/dist/remote-device/remote-channel.js
 @@ -929,13 +929,13 @@

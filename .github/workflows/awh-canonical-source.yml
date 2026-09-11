@@ -3,6 +3,7 @@ name: AWH Canonical Source Authority
 on:
   pull_request:
     branches:
+      - main
       - awh/api-independence
     paths:
       - 'scripts/ops/canonical-source-preflight.mjs'

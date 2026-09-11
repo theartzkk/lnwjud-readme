@@ -635,7 +635,7 @@ final class HubCloudWorkflowService
 
     private function ref(): string
     {
-        $value = getenv('AWH_GITHUB_REF'); if (!is_string($value) || $value === '') $value = 'awh/api-independence';
+        $value = getenv('AWH_GITHUB_REF'); if (!is_string($value) || $value === '') $value = 'main';
         return self::refValue($value);
     }
 
