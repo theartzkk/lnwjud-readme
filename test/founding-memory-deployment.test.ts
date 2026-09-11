@@ -11,7 +11,7 @@ const deploy = join(root, 'deploy/awh-control-plane/deploy-control-plane.sh');
 const remote = join(root, 'deploy/awh-control-plane/remote-deploy-control-plane.sh');
 
 test('M10 Founding Memory release is one bounded M7-to-M8-to-M9-to-M10 activation with safe import and rollback gates', async () => {
-  const release = 'dddddddddddddddddddddddddddddddddddddddd';
+  const release=(await execFileAsync('git',['rev-parse','HEAD'],{cwd:root})).stdout.trim();
   const result = await execFileAsync('/bin/sh', [deploy, '--dry-run', '--founding-memory'], {
     cwd: root,
     env: { ...process.env, AWH_SOURCE_ROOT: root, AWH_RELEASE_COMMIT: release, AWH_HUB_HOSTNAME: 'awh.example' },
@@ -66,7 +66,7 @@ test('M10 deployment assets remain valid POSIX shell', async () => {
 });
 
 test('M20 source refresh carries forward the curated Founding Memory seed inside the existing rollback envelope', async () => {
-  const release = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+  const release=(await execFileAsync('git',['rev-parse','HEAD'],{cwd:root})).stdout.trim();
   const result = await execFileAsync('/bin/sh', [deploy, '--dry-run', '--project-source-authority'], {
     cwd: root,
     env: { ...process.env, AWH_SOURCE_ROOT: root, AWH_RELEASE_COMMIT: release, AWH_HUB_HOSTNAME: 'awh.example' },

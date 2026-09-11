@@ -9,6 +9,13 @@ case "${1:-}" in
   *) echo "Usage: $0 [--dry-run|--deploy]" >&2; exit 2 ;;
 esac
 
+# This historical web-only transport cannot prove control/source/backup/rollback.
+# All Production activation now belongs to the canonical guarded authority.
+if [ "$MODE" = deploy ]; then
+  echo "Use npm run ops:deploy:guarded with exact approved source SHA; web-only activation is retired" >&2
+  exit 2
+fi
+
 LOCAL_DIR=${AWH_BUILD_DIR:-dist-web}
 DEPLOY_TARGET=${AWH_DEPLOY_TARGET:-awh-ready}
 RELEASE_ID=${AWH_RELEASE_ID:-m3c1-$(date -u +%Y%m%dT%H%M%SZ)}

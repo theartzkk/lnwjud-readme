@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, relative, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -28,6 +29,10 @@ async function main(): Promise<void> {
   const webMode = process.env.AWH_WEB_MODE === 'CONTROL' || process.argv.includes('--control') ? 'CONTROL' : 'UNAVAILABLE';
   const releaseId = process.env.AWH_WEB_RELEASE_ID ?? process.env.AWH_RELEASE_ID ?? 'local';
   if (!/^[A-Za-z0-9._-]{1,80}$/.test(releaseId)) throw new Error('AWH web release identity is invalid');
+  const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
+  const sourceState = execFileSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' }).trim() ? 'DIRTY' : 'COMMITTED';
+  if (!/^[0-9a-f]{40}$/.test(sourceSha)) throw new Error('Web source SHA is invalid');
+  if (process.env.AWH_RELEASE_COMMIT && (process.env.AWH_RELEASE_COMMIT !== sourceSha || sourceState !== 'COMMITTED')) throw new Error('Web release source lock is not clean and exact');
   const data = { schemaVersion: 1, generatedAt: generatedAt(), surface: { mode: webMode, label: 'AWH', status: webMode === 'CONTROL' ? 'Sign in to continue' : 'AWH release is not active' }, product: { name: PRODUCT.productName, shortName: PRODUCT.shortName, tagline: PRODUCT.tagline }, message: webMode === 'CONTROL' ? 'Sign in to access your projects and work.' : 'This AWH release is not configured for Control.' };
   const [index, styles, designSystem, lightSystem, kruartSystem, responsiveLayout, app, navigation, dashboardCss, ownerCenterCss, automationCss, dashboardJs, ownerCenterJs, automationJs, dashboardGuardrails, executionUx, toolRegistry, schoolTools, hubAdapter, controlAdapter, manifest, serviceWorker, databaseHtml, databaseCss, databaseJs, infrastructureHtml, infrastructureCss, infrastructureJs, hostingHtml, hostingCss, hostingJs, trustHtml, trustCss, trustJs, reviewHtml, reviewCss, reviewJs, panelHtml, panelCss, panelJs, pdfLib, qrCode] = await Promise.all([
     asset('index.html'), asset('styles.css'), asset('awh-design-system.css'), asset('awh-light-system.css'), asset('kruart-system.css'), asset('responsive-layout.css'), asset('app.js'), asset('navigation.js'), asset('dashboard.css'), asset('owner-center.css'), asset('automation-surface.css'), asset('dashboard.js'), asset('owner-center.js'), asset('automation-surface.js'), asset('dashboard-guardrails.js'), asset('execution-ux.js'), asset('tool-registry.js'), asset('school-tools.js'), asset('hub-read-adapter.js'), asset('control-plane-adapter.js'), asset('manifest.webmanifest'), asset('sw.js'), asset('database.html'), asset('database.css'), asset('database.js'), asset('infrastructure.html'), asset('infrastructure.css'), asset('infrastructure.js'), asset('hosting.html'), asset('hosting.css'), asset('hosting.js'), asset('trust.html'), asset('trust.css'), asset('trust.js'), asset('review.html'), asset('review.css'), asset('review.js'), asset('panel.html'), asset('panel.css'), asset('panel.js'),
@@ -96,7 +101,7 @@ ${dashboardGuardrails}`;
     writeFile(join(OUTPUT, 'sw.js'), renderReleaseAsset(serviceWorker, releaseId), 'utf8'),
     copyFile(join(ROOT, 'logo-256x256.png'), join(OUTPUT, 'logo-256x256.png')),
     ...releaseContract.sourceCopies.map(([source, destination]) => copyFile(join(ROOT, source), join(OUTPUT, destination))),
-    writeFile(join(OUTPUT, 'web-config.json'), `${JSON.stringify({ schemaVersion: 1, mode: webMode, apiBase: webMode === 'CONTROL' ? '/api/v1' : null }, null, 2)}\n`, 'utf8'),
+    writeFile(join(OUTPUT, 'web-config.json'), `${JSON.stringify({ schemaVersion: 1, releaseId, sourceSha, sourceState, mode: webMode, apiBase: webMode === 'CONTROL' ? '/api/v1' : null }, null, 2)}\n`, 'utf8'),
     writeFile(join(OUTPUT, 'data.json'), `${JSON.stringify(data, null, 2)}\n`, 'utf8'),
   ]);
   console.log(`AWH web preview built at ${OUTPUT}`);

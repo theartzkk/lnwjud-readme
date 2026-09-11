@@ -11,7 +11,7 @@ const deploy=join(root,'deploy/awh-control-plane/deploy-control-plane.sh');
 const remote=join(root,'deploy/awh-control-plane/remote-deploy-control-plane.sh');
 
 test('M17 Account + Managed Hosting activation is additive, typed and approval-gated',async()=>{
- const release='1717171717171717171717171717171717171717';
+ const release=(await execFileAsync('git',['rev-parse','HEAD'],{cwd:root})).stdout.trim();
  const result=await execFileAsync('/bin/sh',[deploy,'--dry-run','--owner-auth','--account-hosting'],{cwd:root,env:{...process.env,AWH_SOURCE_ROOT:root,AWH_RELEASE_COMMIT:release,AWH_HUB_HOSTNAME:'awh.example'}});
  assert.match(result.stdout,/^M17_DRY_RUN=PASS$/m); assert.match(result.stdout,new RegExp(`^M17_RELEASE=${release}$`,'m'));
  assert.match(result.stdout,/verify-v16-or-v17-authority/); assert.match(result.stdout,/migrate-016-only-from-v16/);

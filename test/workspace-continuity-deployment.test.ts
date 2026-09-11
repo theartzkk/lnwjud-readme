@@ -11,9 +11,10 @@ const deploy = join(root, 'deploy/awh-control-plane/deploy-control-plane.sh');
 const remote = join(root, 'deploy/awh-control-plane/remote-deploy-control-plane.sh');
 
 test('M7 continuity activation is release-locked, generic and upgrades accepted v5 through M6 to M7 exactly once', async () => {
-  const result = await execFileAsync('/bin/sh', [deploy, '--dry-run', '--workspace-continuity'], { cwd: root, env: { ...process.env, AWH_SOURCE_ROOT: root, AWH_RELEASE_COMMIT: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' } });
+  const release=(await execFileAsync('git',['rev-parse','HEAD'],{cwd:root})).stdout.trim();
+  const result = await execFileAsync('/bin/sh', [deploy, '--dry-run', '--workspace-continuity'], { cwd: root, env: { ...process.env, AWH_SOURCE_ROOT: root, AWH_RELEASE_COMMIT: release } });
   assert.match(result.stdout, /^M7_DRY_RUN=PASS$/m);
-  assert.match(result.stdout, /^M7_RELEASE=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa$/m);
+  assert.match(result.stdout, new RegExp(`^M7_RELEASE=${release}$`,'m'));
   assert.match(result.stdout, /migrate-005,idempotence,assistant-workstream-capability,migrate-006,idempotence,workspace-continuity-capability/);
   assert.match(result.stdout, /M7_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL/);
   const [localSource, remoteSource] = await Promise.all([readFile(deploy, 'utf8'), readFile(remote, 'utf8')]);

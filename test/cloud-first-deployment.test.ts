@@ -10,7 +10,7 @@ const deploy=join(root,'deploy/awh-control-plane/deploy-control-plane.sh');
 const remote=join(root,'deploy/awh-control-plane/remote-deploy-control-plane.sh');
 
 test('M18 Cloud-first activation contract is additive, rollback-safe and approval-gated',async()=>{
- const release='1818181818181818181818181818181818181818';
+ const release=(await execFileAsync('git',['rev-parse','HEAD'],{cwd:root})).stdout.trim();
  const result=await execFileAsync('/bin/sh',[deploy,'--dry-run','--owner-auth','--cloud-first'],{cwd:root,env:{...process.env,AWH_SOURCE_ROOT:root,AWH_RELEASE_COMMIT:release,AWH_HUB_HOSTNAME:'awh.example'}});
  assert.match(result.stdout,/^M18_DRY_RUN=PASS$/m); assert.match(result.stdout,new RegExp(`^M18_RELEASE=${release}$`,'m'));
  assert.match(result.stdout,/verify-v17-or-v18-authority/); assert.match(result.stdout,/migrate-017-only-from-v17/);

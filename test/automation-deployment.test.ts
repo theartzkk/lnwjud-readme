@@ -10,7 +10,7 @@ const deploy=join(root,'deploy/awh-control-plane/deploy-control-plane.sh');
 const remote=join(root,'deploy/awh-control-plane/remote-deploy-control-plane.sh');
 
 test('M15 Automations activation is additive over M14 and rollback-safe',async()=>{
- const release='1515151515151515151515151515151515151515';
+ const release=(await execFileAsync('git',['rev-parse','HEAD'],{cwd:root})).stdout.trim();
  const result=await execFileAsync('/bin/sh',[deploy,'--dry-run','--owner-auth','--automations'],{cwd:root,env:{...process.env,AWH_SOURCE_ROOT:root,AWH_RELEASE_COMMIT:release,AWH_HUB_HOSTNAME:'awh.example'}});
  assert.match(result.stdout,/^M15_DRY_RUN=PASS$/m); assert.match(result.stdout,new RegExp(`^M15_RELEASE=${release}$`,'m'));
  assert.match(result.stdout,/verify-v14-or-v15-authority/); assert.match(result.stdout,/migrate-014-only-from-v14/); assert.match(result.stdout,/restore-exact-db-baseline/); assert.match(result.stdout,/M15_PRODUCTION_ACTIVATION_REQUIRES_APPROVAL/);

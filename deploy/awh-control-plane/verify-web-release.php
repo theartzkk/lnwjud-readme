@@ -9,9 +9,11 @@ function awh_web_release_fail(string $code): never
     exit(1);
 }
 
-if (PHP_SAPI !== 'cli' || !in_array($argc, [2, 3], true)) awh_web_release_fail('WEB_RELEASE_ARGUMENT_INVALID');
+if (PHP_SAPI !== 'cli' || !in_array($argc, [2, 3, 4], true)) awh_web_release_fail('WEB_RELEASE_ARGUMENT_INVALID');
 $rootInput = $argv[1] ?? '';
 $expectedReleaseId = $argv[2] ?? null;
+$expectedSourceSha = $argv[3] ?? null;
+if ($expectedSourceSha !== null && preg_match('/^[0-9a-f]{40}$/D', $expectedSourceSha) !== 1) awh_web_release_fail('WEB_RELEASE_EXPECTED_SHA_INVALID');
 if ($expectedReleaseId !== null && (!is_string($expectedReleaseId) || preg_match('/^[A-Za-z0-9._-]{1,80}$/D', $expectedReleaseId) !== 1 || strtolower($expectedReleaseId) === 'local')) awh_web_release_fail('WEB_RELEASE_EXPECTED_ID_INVALID');
 if (!is_string($rootInput) || $rootInput === '' || str_contains($rootInput, "\0") || !str_starts_with($rootInput, '/')) awh_web_release_fail('WEB_RELEASE_ROOT_INVALID');
 $root = realpath($rootInput);
@@ -27,6 +29,8 @@ $manifestReleaseId = $manifest['releaseId'] ?? null;
 if (!is_string($manifestReleaseId) || preg_match('/^[A-Za-z0-9._-]{1,80}$/D', $manifestReleaseId) !== 1) awh_web_release_fail('WEB_RELEASE_MANIFEST_INVALID');
 if ($expectedReleaseId !== null && !hash_equals($expectedReleaseId, $manifestReleaseId)) awh_web_release_fail('WEB_RELEASE_ID_MISMATCH');
 
+if ($expectedSourceSha !== null && (($manifest['sourceState'] ?? null) !== 'COMMITTED' || !is_string($manifest['sourceSha'] ?? null) || !hash_equals($expectedSourceSha, $manifest['sourceSha']))) awh_web_release_fail('WEB_RELEASE_SOURCE_MISMATCH');
+
 $seen = [];
 foreach ($manifest['files'] as $entry) {
     if (!is_array($entry)) awh_web_release_fail('WEB_RELEASE_ENTRY_INVALID');
@@ -41,6 +45,10 @@ foreach ($manifest['files'] as $entry) {
     $seen[$path] = true;
 }
 foreach (['index.html','styles.css','awh-design-system.css','responsive-layout.css','app.js','navigation.js','dashboard.css','dashboard.js', 'hosting.html', 'hosting.css', 'hosting.js', 'panel.html', 'panel.css', 'panel.js','web-config.json','data.json','sw.js'] as $required) if (!isset($seen[$required])) awh_web_release_fail('WEB_RELEASE_REQUIRED_FILE_MISSING');
+if ($expectedSourceSha !== null) {
+    $config = json_decode((string) file_get_contents($root . '/web-config.json'), true);
+    if (($config['sourceSha'] ?? null) !== $expectedSourceSha || ($config['sourceState'] ?? null) !== 'COMMITTED' || ($config['releaseId'] ?? null) !== $manifestReleaseId) awh_web_release_fail('WEB_RELEASE_SOURCE_MISMATCH');
+}
 if ($expectedReleaseId !== null) {
     $index = (string) file_get_contents($root . '/index.html');
     $worker = (string) file_get_contents($root . '/sw.js');

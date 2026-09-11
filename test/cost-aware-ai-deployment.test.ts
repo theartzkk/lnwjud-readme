@@ -11,7 +11,7 @@ const deploy = join(root, 'deploy/awh-control-plane/deploy-control-plane.sh');
 const remote = join(root, 'deploy/awh-control-plane/remote-deploy-control-plane.sh');
 
 test('M14 Cost-Aware AI is additive and rollback-safe', async () => {
-  const release = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+  const release=(await execFileAsync('git',['rev-parse','HEAD'],{cwd:root})).stdout.trim();
   const result = await execFileAsync('/bin/sh', [deploy, '--dry-run', '--owner-auth', '--cost-aware-ai'], {
     cwd: root,
     env: { ...process.env, AWH_SOURCE_ROOT: root, AWH_RELEASE_COMMIT: release, AWH_HUB_HOSTNAME: 'awh.example' },
@@ -62,8 +62,9 @@ test('M14 deployment scripts remain valid POSIX shell', async () => {
   await execFileAsync('/bin/sh', ['-n', remote]);
 });
 test('release build lease serializes concurrent M13 and M14 web artifacts', async () => {
-  const m13Release = 'abababababababababababababababababababab';
-  const m14Release = 'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd';
+  const sourceHead=(await execFileAsync('git',['rev-parse','HEAD'],{cwd:root})).stdout.trim();
+  const m13Release = sourceHead;
+  const m14Release = sourceHead;
   const common = { ...process.env, AWH_SOURCE_ROOT: root, AWH_HUB_HOSTNAME: 'awh.example' };
   const [m13, m14] = await Promise.all([
     execFileAsync('/bin/sh', [deploy, '--dry-run', '--owner-auth', '--anywhere-execution'], {
