@@ -199,7 +199,7 @@ for ($index = $target['start'] + 1; $index < $target['end']; $index++) {
 $insertBefore[$target['start'] + 1] = array_merge($insertBefore[$target['start'] + 1] ?? [], [
     '    add_header Strict-Transport-Security "max-age=15552000" always;',
     '    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;',
-    "    add_header Content-Security-Policy \"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'\" always;",
+    "    add_header Content-Security-Policy \"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://kruart.great-site.net; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'\" always;",
 ]);
 if (count($meta['directAuth']) !== 0 && count($meta['directAuth']) !== 2 && !(count($meta['directAuth']) === 1 && preg_match('/^\s*auth_basic\s+off\s*;/i', $lines[$meta['directAuth'][0]]) === 1)) {
     fwrite(STDERR, "Server-level Basic Auth directives must be a complete reviewed pair\n");

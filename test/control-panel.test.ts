@@ -69,6 +69,8 @@ test('BAY Remote Update stays inside AWH Owner + BAY Update Inbox + PackageManag
   assert.match(html,/BAY REMOTE UPDATE CONTROL/);
   assert.match(html,/system-control-panel\.webp/);
   assert.match(html,/connect-src 'self' https:\/\/kruart\.great-site\.net/);
+  const serverCsp=await readFile(join(ROOT,'deploy/nginx/transform-owner-auth.php'),'utf8');
+  assert.match(serverCsp,/connect-src 'self' https:\/\/kruart\.great-site\.net/);
   assert.match(css,/\.cp-bay-update/);
   assert.match(css,/@media\(max-width:560px\)/);
   assert.match(js,/loadBayRemoteUpdateStatus/);
