@@ -77,8 +77,9 @@ final class HubEcosystemHealthCollector
             $checkedAt = $this->isoOrNull($status['checked_at'] ?? null);
             foreach (is_array($status['services'] ?? null) ? $status['services'] : [] as $service) {
                 if (!is_array($service)) continue;
-                $id = is_string($service['id'] ?? null) ? strtolower((string) $service['id']) : '';
-                if (!in_array($id, ['awh', 'bay', 'learnlab', 'website'], true)) continue;
+                $sourceId = is_string($service['id'] ?? null) ? strtolower((string) $service['id']) : '';
+                $id = self::canonicalServiceId($sourceId);
+                if ($id === null) continue;
                 $services[$id] = [
                     'id' => $id,
                     'name' => $this->text($service['name'] ?? $id, 80),
@@ -286,6 +287,15 @@ final class HubEcosystemHealthCollector
         } finally {
             if (is_file($tmp) && !is_link($tmp)) @unlink($tmp);
         }
+    }
+
+    private static function canonicalServiceId(string $id): ?string
+    {
+        return match ($id) {
+            'bay-staging' => 'bay',
+            'awh', 'bay', 'learnlab', 'website' => $id,
+            default => null,
+        };
     }
 
     private function serviceState(mixed $value): string

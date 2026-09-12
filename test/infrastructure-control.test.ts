@@ -70,6 +70,13 @@ test('Infrastructure telemetry service accepts a bounded snapshot without exposi
  }finally{await rm(dir,{recursive:true,force:true});}
 });
 
+test('Ecosystem collector normalizes BAY Hub v2 staging identity without accepting Production as staging',async()=>{
+ const file=join(ROOT,'hub/src/HubEcosystemHealthCollector.php');
+ const code=`require ${JSON.stringify(file)}; $r=new ReflectionClass('HubEcosystemHealthCollector'); $m=$r->getMethod('canonicalServiceId'); echo json_encode([$m->invoke(null,'bay'),$m->invoke(null,'bay-staging'),$m->invoke(null,'awh'),$m->invoke(null,'bay-production'),$m->invoke(null,'unknown')]);`;
+ const {stdout}=await run('php',['-r',code],{cwd:ROOT,shell:false});
+ assert.deepEqual(JSON.parse(stdout),['bay','bay','awh',null,null]);
+});
+
 test('Ecosystem health history is bounded, privacy-safe, and alerts only on sustained evidence',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'awh-ecosystem-health-')), current=join(dir,'current.json'), history=join(dir,'history.jsonl'), recovery=join(dir,'recovery.json');
  try{
