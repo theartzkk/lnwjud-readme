@@ -301,7 +301,7 @@ final class HubEcosystemHealthCollector
     private function serviceState(mixed $value): string
     {
         $value = is_string($value) ? strtolower($value) : 'unknown';
-        return in_array($value, ['healthy', 'protected', 'degraded', 'down', 'unknown'], true) ? $value : 'unknown';
+        return in_array($value, ['healthy', 'reachable', 'protected', 'degraded', 'down', 'unknown'], true) ? $value : 'unknown';
     }
 
     private function text(mixed $value, int $max): string

@@ -9,7 +9,7 @@ final class HubEcosystemHealthService
     private const MAX_HISTORY_LINES = 2300;
     private const CURRENT_STALE_SECONDS = 900;
     private const SERVICE_IDS = ['awh', 'bay', 'learnlab', 'website'];
-    private const SERVICE_STATES = ['healthy', 'protected', 'degraded', 'down', 'unknown'];
+    private const SERVICE_STATES = ['healthy', 'reachable', 'protected', 'degraded', 'down', 'unknown'];
     private const DNS_STATES = ['healthy', 'missing', 'misconfigured', 'unknown'];
     private const DEVICE_STATES = ['healthy', 'warning', 'error', 'offline', 'unknown'];
     private const DEVICE_STATUS = ['ONLINE', 'STALE', 'OFFLINE', 'UNKNOWN'];
@@ -232,7 +232,7 @@ final class HubEcosystemHealthService
                 $samples = [];
                 foreach ($rows as $row) if (isset($row['services'][$id])) $samples[] = $row['services'][$id];
                 $latencies = array_map(static fn(array $sample): int => $sample['latencyMs'], $samples);
-                $okCount = count(array_filter($samples, static fn(array $sample): bool => $sample['ok'] === true));
+                $okCount = count(array_filter($samples, fn(array $sample): bool => $this->isPubliclyReachable($sample)));
                 $services[$id] = [
                     'sampleCount' => count($samples),
                     'availabilityPercent' => $samples === [] ? null : round($okCount * 100 / count($samples), 2),
@@ -250,12 +250,12 @@ final class HubEcosystemHealthService
                 if (isset($row['services'][$id])) $samples[] = $row['services'][$id];
                 if (count($samples) >= 3) break;
             }
-            if (count($samples) === 3 && count(array_filter($samples, static fn(array $sample): bool => $sample['ok'] === false)) === 3) {
+            if (count($samples) === 3 && count(array_filter($samples, fn(array $sample): bool => !$this->isPubliclyReachable($sample))) === 3) {
                 $alerts[] = ['key' => 'service-down-' . $id, 'severity' => 'CRITICAL', 'title' => $this->serviceLabel($id) . ' มีปัญหาต่อเนื่อง', 'detail' => 'ตรวจพบไม่ผ่าน 3 รอบติดกัน จึงแจ้งเตือนแทนการเตือนจาก blip เดียว', 'action' => 'CHECK_SERVICE'];
                 continue;
             }
             $threshold = $id === 'website' ? 2500 : 1500;
-            if (count($samples) === 3 && count(array_filter($samples, static fn(array $sample): bool => $sample['ok'] && $sample['latencyMs'] >= $threshold)) === 3) {
+            if (count($samples) === 3 && count(array_filter($samples, fn(array $sample): bool => $this->isPubliclyReachable($sample) && $sample['latencyMs'] >= $threshold)) === 3) {
                 $alerts[] = ['key' => 'service-slow-' . $id, 'severity' => 'WARNING', 'title' => $this->serviceLabel($id) . ' ช้าต่อเนื่อง', 'detail' => 'Latency สูงกว่าเกณฑ์ 3 รอบติดกัน', 'action' => 'CHECK_LATENCY'];
             }
         }
@@ -345,6 +345,13 @@ final class HubEcosystemHealthService
             $seen[$key] = true; $out[] = $alert;
         }
         return $out;
+    }
+
+    private function isPubliclyReachable(array $sample): bool
+    {
+        $http = $this->boundedInt($sample['http'] ?? 0, 0, 599);
+        $state = $this->enum($sample['state'] ?? 'unknown', self::SERVICE_STATES, 'unknown');
+        return $http >= 200 && $http < 400 && in_array($state, ['healthy', 'reachable', 'protected', 'degraded'], true);
     }
 
     private function serviceLabel(string $id): string

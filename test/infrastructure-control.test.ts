@@ -77,6 +77,22 @@ test('Ecosystem collector normalizes BAY Hub v2 staging identity without accepti
  assert.deepEqual(JSON.parse(stdout),['bay','bay','awh',null,null]);
 });
 
+test('Ecosystem health keeps fail-closed reachable state without raising a false outage',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'awh-ecosystem-reachable-')), current=join(dir,'current.json'), history=join(dir,'history.jsonl'), recovery=join(dir,'recovery.json');
+ try{
+  const services=[{id:'awh',name:'AWH',ok:false,state:'reachable',critical:true,http:206,latencyMs:110,detail:'public reachable; authenticated health unknown'},{id:'bay',name:'BAY',ok:false,state:'reachable',critical:false,http:200,latencyMs:140,detail:'public reachable; authenticated health unknown'},{id:'learnlab',name:'LearnLab',ok:false,state:'reachable',critical:true,http:206,latencyMs:90,detail:'public reachable; authenticated health unknown'},{id:'website',name:'School',ok:false,state:'reachable',critical:true,http:206,latencyMs:95,detail:'public reachable; authenticated health unknown'}];
+  const currentFixture={schemaVersion:1,generatedAt:'2026-09-13T00:10:00Z',bay:{checkedAt:'2026-09-13T00:10:00Z',services,dns:[{host:'learn.kruart.online',ok:true,state:'healthy'},{host:'school.kruart.online',ok:true,state:'healthy'}]},learnlab:{state:'READY',generatedAt:'2026-09-13T00:10:00Z',releaseVersion:'0.8.0-rc.42',offlineWindowHours:24,summary:{deviceCount:12,onlineDevices:0,staleDevices:0,offlineDevices:12,warningDevices:0,errorDevices:0,serverPendingEvents:0,rejectedEvents24h:0,lastSyncAt:'2026-09-11T06:14:51Z'},devices:[]}};
+  await writeFile(current,JSON.stringify(currentFixture)); await writeFile(recovery,JSON.stringify({schemaVersion:1,state:'PASS',verifiedAt:'2026-09-13T00:00:00Z',backupName:'awh.sqlite',databaseSchemaVersion:20}));
+  const rows=[0,1,2].map(i=>({schemaVersion:1,at:`2026-09-13T00:0${i}:00Z`,releaseId:'m20-abcdef123456',services:Object.fromEntries(services.map(service=>[service.id,{ok:false,state:'reachable',http:service.http,latencyMs:service.latencyMs}])),dns:{'learn.kruart.online':'healthy','school.kruart.online':'healthy'},learnlab:{serverPendingEvents:0,errorDevices:0}}));
+  await writeFile(history,rows.map(row=>JSON.stringify(row)).join('\n')+'\n');
+  const code=`require ${JSON.stringify(join(ROOT,'hub/src/HubEcosystemHealthService.php'))}; $s=new HubEcosystemHealthService(${JSON.stringify(current)},${JSON.stringify(history)},${JSON.stringify(recovery)}); echo json_encode($s->status('m20-abcdef123456','2026-09-13T00:11:00Z'));`;
+  const {stdout}=await run('php',['-r',code],{cwd:ROOT,shell:false}); const value=JSON.parse(stdout);
+  assert.equal(value.current.bay.services[0].state,'reachable'); assert.equal(value.current.bay.services[0].ok,false);
+  assert.equal(value.history.windows['24h'].services.awh.availabilityPercent,100);
+  assert.ok(!value.alerts.some((item:any)=>item.key.startsWith('service-down-')));
+ }finally{await rm(dir,{recursive:true,force:true});}
+});
+
 test('Ecosystem health history is bounded, privacy-safe, and alerts only on sustained evidence',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'awh-ecosystem-health-')), current=join(dir,'current.json'), history=join(dir,'history.jsonl'), recovery=join(dir,'recovery.json');
  try{
