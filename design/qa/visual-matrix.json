@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "authority": "design/UX-ACCEPTANCE.md",
+  "viewports": [
+    { "id": "mobile-390", "width": 390, "height": 844, "required": true },
+    { "id": "mobile-430", "width": 430, "height": 932, "required": true },
+    { "id": "tablet-820", "width": 820, "height": 1180, "required": true },
+    { "id": "desktop-1366", "width": 1366, "height": 768, "required": true },
+    { "id": "desktop-1440", "width": 1440, "height": 900, "required": true }
+  ],
+  "universalAssertions": [
+    "http-success",
+    "meaningful-content",
+    "no-page-error",
+    "no-unexpected-console-error",
+    "horizontal-overflow-zero",
+    "thai-not-clipped",
+    "approved-asset-authority",
+    "no-unintended-layout-flash",
+    "navigation-owner-correct"
+  ],
+  "surfaces": {
+    "awh": {
+      "overlay": "design/overlays/awh.md",
+      "scenarios": ["public-root", "authenticated-root-portfolio", "workspace-chat", "tasks", "profile-menu"],
+      "keyboardViewports": ["mobile-390", "mobile-430"]
+    },
+    "bay-excuse-x": {
+      "overlay": "design/overlays/bay-excuse-x.md",
+      "scenarios": ["dashboard", "attendance", "timetable", "student-care", "control-center"]
+    },
+    "bay-learnlab": {
+      "overlay": "design/overlays/bay-learnlab.md",
+      "scenarios": ["student", "teacher-workspace", "classroom-live", "projector"]
+    },
+    "school-website": {
+      "overlay": "design/overlays/school-website.md",
+      "scenarios": ["public-home", "news-content", "parent-connect-entry"]
+    },
+    "bay-hub": {
+      "overlay": "design/overlays/bay-hub.md",
+      "scenarios": ["ecosystem-home", "release-status"]
+    }
+  }
+}

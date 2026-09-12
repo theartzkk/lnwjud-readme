@@ -21,6 +21,13 @@ Precedence:
 
 Project-specific rules may be stricter but must not silently weaken the owner protocol.
 
+## Design governance rule
+
+- For any UI, UX, CSS, component, layout, navigation, typography, logo, illustration, banner, responsive, accessibility or visual-regression work, read `design/DESIGN.md`, `design/UX-ACCEPTANCE.md`, `design/AGENT-DESIGN-RULES.md` and the matching `design/overlays/` file before editing.
+- `config/kruart-visual-assets.json` remains the semantic asset-slot authority; `design/assets.manifest.json` is a governance pointer and must not become a competing registry.
+- Do not reinterpret the Golden KRUART family, regenerate approved logos, change the canonical school spelling, or introduce a second design system/framework merely to achieve visual consistency.
+- Exact-revision rendered evidence and the existing deployment/rollback gates remain required; source inspection alone cannot classify a visual change as PASS.
+
 ## Canonical source rule
 
 - `main` on the reviewed `theartzkk/lnwjud-readme` GitHub repository is the AWH canonical source branch. `awh/api-independence` is a compatibility ref only and must resolve to the same commit while retained.

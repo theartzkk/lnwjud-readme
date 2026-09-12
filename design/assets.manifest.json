@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "kind": "KRUART_DESIGN_ASSET_AUTHORITY",
+  "status": "governance-pointer-not-slot-registry",
+  "canonicalRegistry": "config/kruart-visual-assets.json",
+  "runtimeVisualAuthority": "web/kruart-system.css",
+  "sourceArchive": {
+    "name": "KRUART-ECOSYSTEM-SOURCES-READY-FINAL-v2.zip",
+    "version": "2026-09-10-final-v2-ui-authority",
+    "sha256": "2cf381c01c0a29b7e0a8d95b6b97426e82e2288658cce46ad79927d7c1c1e52e",
+    "indexedFiles": 329,
+    "indexedImages": 313,
+    "productionRoot": "01_PRODUCTION_READY",
+    "referenceRoot": "02_REFERENCE_ONLY"
+  },
+  "identity": {
+    "schoolName": "โรงเรียนบ้านเอือดใหญ่",
+    "publicProduct": "kruart.online",
+    "productIdentity": "Art’s Workspace Hub (AWH)"
+  },
+  "rules": {
+    "slotAuthority": "Do not duplicate semantic slots here; resolve them from canonicalRegistry.",
+    "logos": "Exact approved marks only; never regenerate, redraw, approximate, or substitute.",
+    "textInArt": "Forbidden except approved brand/project banner lockups whose pixels must remain exact.",
+    "referencePromotion": "02_REFERENCE_ONLY must never auto-promote into production.",
+    "newArt": "Map to an existing semantic slot first; create a new slot only when the product has a genuinely new semantic destination.",
+    "schoolSpelling": "The exact canonical spelling is โรงเรียนบ้านเอือดใหญ่.",
+    "operationalSurfaces": "Metrics, tables, logs, security forms, chat messages and database rows remain information-first."
+  },
+  "productionBaseline": {
+    "awhSourceSha": "3acbac97b12774ec973fcef86ba0271d208f656e",
+    "releaseId": "m20-3acbac97b127",
+    "relationship": "This descriptor governs presentation only and does not create a second project, identity, asset-slot, database, login, queue or notification authority."
+  }
+}
