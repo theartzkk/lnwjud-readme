@@ -62,6 +62,10 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(vault, /MAX_ARCHIVE_BYTES/);
   assert.match(vault, /PROJECT_ARCHIVE_UNSAFE/);
   assert.match(vault, /sensitivePath/);
+  const vaultPathProbe = `require ${JSON.stringify(join(root, 'hub/src/HubProjectVault.php'))}; $v=HubProjectVault::fromEnvironment(); echo $v->toolTextPath($argv[1]);`;
+  const safeDesignPath = await execFileAsync('php', ['-r', vaultPathProbe, 'design/foundations.json'], { cwd: root });
+  assert.equal(safeDesignPath.stdout, 'design/foundations.json');
+  await assert.rejects(execFileAsync('php', ['-r', vaultPathProbe, 'design/tokens.json'], { cwd: root }));
   assert.match(vault, /function archive/);
   assert.match(vault, /function toolTextPath/);
   assert.match(controlService, /workerExecutionWorkspace/);

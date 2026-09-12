@@ -34,7 +34,7 @@ function validateTokenNode(node: any, inheritedType?: string, trail = 'root'): v
 test('KRUART design governance files and overlays are complete', async () => {
   const required = [
     'design/DESIGN.md',
-    'design/tokens.json',
+    'design/foundations.json',
     'design/assets.manifest.json',
     'design/UX-ACCEPTANCE.md',
     'design/AGENT-DESIGN-RULES.md',
@@ -54,7 +54,7 @@ test('KRUART design governance files and overlays are complete', async () => {
 });
 
 test('DTCG tokens are typed and preserve the Golden KRUART runtime palette', async () => {
-  const tokens = await json('design/tokens.json');
+  const tokens = await json('design/foundations.json');
   assert.equal(tokens.$schema, 'https://www.designtokens.org/schemas/2025.10/format.json');
   validateTokenNode(tokens);
   const expected = ['#0B3D91','#176DE5','#FF7A00','#F5FAFF','#FFFFFF','#F7FBFF','#EAF5FF','#11325F','#657D99','#DBE8F4','#16855B','#A9690D','#C43D3D'];
