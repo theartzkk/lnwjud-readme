@@ -37,6 +37,14 @@ $auth = HubExecutionFailurePolicy::decide('PROVIDER_AUTH_FAILED', 1, [], $at, 3,
 failure_policy_assert($auth['category'] === 'AUTH_REQUIRED' && $auth['state'] === 'FAILED', 'auth failures are never blind retried');
 $quota = HubExecutionFailurePolicy::decide('PROVIDER_QUOTA_EXHAUSTED', 1, [], $at, 3, 'seed');
 failure_policy_assert($quota['category'] === 'CAPABILITY_WAIT' && $quota['state'] === 'WAITING_FOR_CAPABILITY', 'quota exhaustion preserves work without retry storm');
+$cloudRate = HubExecutionFailurePolicy::decide('CLOUD_RATE_LIMITED', 1, [], $at, 3, 'cloud-seed');
+failure_policy_assert($cloudRate['category'] === 'TRANSIENT' && $cloudRate['state'] === 'QUEUED' && $cloudRate['automaticRetry'] === true, 'Cloud rate limit uses bounded retry instead of terminal failure');
+$cloudQuota = HubExecutionFailurePolicy::decide('CLOUD_QUOTA_EXHAUSTED', 1, [], $at, 3, 'cloud-seed');
+failure_policy_assert($cloudQuota['category'] === 'CAPABILITY_WAIT' && $cloudQuota['state'] === 'WAITING_FOR_CAPABILITY' && $cloudQuota['automaticRetry'] === false, 'Cloud quota pauses work without retry storm');
+$cloudAuth = HubExecutionFailurePolicy::decide('CLOUD_AUTH_FAILED', 1, [], $at, 3, 'cloud-seed');
+failure_policy_assert($cloudAuth['category'] === 'AUTH_REQUIRED' && $cloudAuth['state'] === 'FAILED', 'Cloud authentication failure remains explicit owner action');
+$cloudRun = HubExecutionFailurePolicy::decide('CLOUD_RUN_FAILED', 1, [], $at, 3, 'cloud-seed');
+failure_policy_assert($cloudRun['category'] === 'TERMINAL_DEFECT' && $cloudRun['state'] === 'FAILED', 'a completed Cloud QA failure is not blind retried');
 $unknown = HubExecutionFailurePolicy::decide('SOME_NEW_UNKNOWN_FAILURE', 1, [], $at, 3, 'seed');
 failure_policy_assert($unknown['category'] === 'TERMINAL_DEFECT' && $unknown['state'] === 'FAILED', 'unknown failure fails closed instead of blind retry');
 failure_policy_assert(HubExecutionFailurePolicy::retryAfterSeconds(999999) === 3600, 'retry-after is capped at one hour');
