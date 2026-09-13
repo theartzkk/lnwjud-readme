@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { loadOwnerProtocol, OWNER_PROTOCOL_VERSION } from '../src/owner-protocol.js';
@@ -13,6 +13,19 @@ test('loads the durable Art AI owner working constitution', async () => {
   assert.match(protocol, /System-first, patch-second/i);
   assert.match(protocol, /ChatGPT-direct contract/);
   assert.match(protocol, /AWH-direct contract/);
+  assert.match(protocol, /Execution routing authority/);
+  assert.match(protocol, /AWH_VAULT.*must not be silently stolen/);
+  assert.match(protocol, /GitHub quota\/outage must not block work/);
+  assert.match(protocol, /Remote Desktop \/ Desktop Commander.*only when interactive device-local/s);
+});
+
+test('agent entry contract preserves Vault-first and device-optional routing', async () => {
+  const agents = await readFile(new URL('../AGENTS.md', import.meta.url), 'utf8');
+  assert.match(agents, /Project source authority is singular/);
+  assert.match(agents, /AWH_VAULT/);
+  assert.match(agents, /Remote Desktop is prohibited as a transit hop/);
+  assert.match(agents, /online device must never become a hidden dependency/);
+  assert.doesNotMatch(agents, /`main` on the reviewed .+ is the AWH canonical source branch/);
 });
 
 test('injects owner protocol into every bounded project context before project-specific memory', async () => {
