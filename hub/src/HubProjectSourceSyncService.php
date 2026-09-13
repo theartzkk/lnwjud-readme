@@ -35,7 +35,7 @@ final class HubProjectSourceSyncService
         $at=self::timestamp($now ?? gmdate('c'));
         try { $source=$this->sources->state($projectId,true,$at); }
         catch(HubProjectSourceAuthorityException $error){ throw new HubProjectSourceSyncException('Canonical project source is unavailable',$error->codeName); }
-        if(($source['provider']??null)!=='GITHUB' || !is_string($source['repository']??null) || !is_string($source['ref']??null) || !is_string($source['canonicalRevision']??null)) throw new HubProjectSourceSyncException('Canonical project source is not configured','PROJECT_SOURCE_UNRESOLVED');
+        if(($source['authority']??null)!=='GITHUB' || ($source['provider']??null)!=='GITHUB' || !is_string($source['repository']??null) || !is_string($source['ref']??null) || !is_string($source['canonicalRevision']??null)) throw new HubProjectSourceSyncException('Canonical GitHub project source is not configured','PROJECT_SOURCE_UNRESOLVED');
         $revision=self::gitSha((string)$source['canonicalRevision']);
         $bound=$source['canonicalVaultRevisionId']??null;
         if(is_string($bound) && ($source['canonicalVaultReady']??false)===true){ return $source + ['synced'=>false,'sourceMode'=>'CANONICAL_REMOTE_CACHE']; }
