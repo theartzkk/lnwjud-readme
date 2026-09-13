@@ -383,7 +383,7 @@ function setDashboardView(view) {
   updateProductNavigation();
 }
 
-function openWork(prompt = '', submit = false) {
+function openWork(prompt = null, submit = false) {
   const mobileNav = $('awh-mobile-nav');
   if (mobileNav instanceof HTMLElement) delete mobileNav.dataset.activeDestination;
   document.body.classList.remove('product-dashboard-active');
@@ -395,9 +395,9 @@ function openWork(prompt = '', submit = false) {
   if (input && typeof prompt === 'string') {
     input.value = prompt;
     input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.focus();
+    if (!state.restoringSurface) input.focus({ preventScroll: true });
   }
-  if (submit && prompt.trim() && $('goal-form')?.requestSubmit) $('goal-form').requestSubmit();
+  if (submit && typeof prompt === 'string' && prompt.trim() && $('goal-form')?.requestSubmit) $('goal-form').requestSubmit();
 }
 
 function navigateWork(projectId, conversationId = null, openConversations = false) {
@@ -572,12 +572,13 @@ function renderOwnerNightShift() {
 }
 
 function returnHome() {
-  if (!state.control?.authenticated) return;
+  if (!authenticatedWorkspaceActive()) return;
   const mobileNav = $('awh-mobile-nav');
   if (mobileNav instanceof HTMLElement) delete mobileNav.dataset.activeDestination;
   const dashboard = $(DASHBOARD_ID);
   if (!dashboard) return;
   setDashboardView('home');
+  renderRole(); renderAttentionCenter(); renderOwnerNightShift();
   dashboard.hidden = false;
   document.body.classList.add('product-dashboard-active');
   updateProductNavigation();
@@ -714,7 +715,7 @@ function renderTaskSurface() {
 }
 
 function openTaskSurface(filter = 'all', taskId = null) {
-  if (!state.control?.authenticated) return;
+  if (!authenticatedWorkspaceActive()) return;
   const mobileNav = $('awh-mobile-nav');
   if (mobileNav instanceof HTMLElement) delete mobileNav.dataset.activeDestination;
   state.taskFilter = ['all', 'active', 'attention', 'completed'].includes(filter) ? filter : 'all';
@@ -726,7 +727,7 @@ function openTaskSurface(filter = 'all', taskId = null) {
   if (!state.restoringSurface) commitAwhSurface('tasks');
   renderTaskSurface();
   updateMobileNavigation();
-  $('dashboard-tasks')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (!state.restoringSurface) $('dashboard-tasks')?.scrollIntoView({ behavior: 'auto', block: 'start' });
 }
 
 function renderFilesSurface() {
@@ -766,7 +767,7 @@ function renderFilesSurface() {
 }
 
 function openFilesSurface(query = '') {
-  if (!state.control?.authenticated) return;
+  if (!authenticatedWorkspaceActive()) return;
   const mobileNav = $('awh-mobile-nav');
   if (mobileNav instanceof HTMLElement) delete mobileNav.dataset.activeDestination;
   state.filesQuery = typeof query === 'string' ? query.slice(0, 120) : '';
@@ -776,7 +777,7 @@ function openFilesSurface(query = '') {
   document.body.classList.add('product-dashboard-active');
   if (!state.restoringSurface) commitAwhSurface('files');
   renderFilesSurface();
-  $('dashboard-files')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (!state.restoringSurface) $('dashboard-files')?.scrollIntoView({ behavior: 'auto', block: 'start' });
 }
 
 function openAccountTab(tab = null) {
@@ -849,6 +850,7 @@ function mountDashboard() {
   const command = document.createElement('textarea');
   command.id = 'dashboard-command';
   command.rows = 1;
+  command.setAttribute('aria-label', 'สิ่งที่อยากให้ AWH ช่วย');
   command.maxLength = 2000;
   command.placeholder = 'พิมพ์สิ่งที่อยากให้ช่วย…';
   const commandActions = document.createElement('div');
@@ -968,7 +970,7 @@ function mountDashboard() {
   owner.id = 'dashboard-owner-center';
   owner.className = 'awh-home-section awh-owner-center';
   owner.hidden = true;
-  owner.innerHTML = '<div class="awh-section-heading"><div><span>สำหรับผู้ดูแล</span><h2>เครื่องมือผู้ดูแล</h2></div><button id="dashboard-owner-toggle" class="awh-text-action awh-mobile-only" type="button" aria-expanded="false">เปิดเครื่องมือ</button></div>';
+  owner.innerHTML = '<div class="awh-section-heading"><div><span>สำหรับผู้ดูแล</span><h2>เครื่องมือผู้ดูแล</h2></div><button id="dashboard-owner-toggle" class="awh-text-action" type="button" aria-expanded="false">เปิดเครื่องมือ</button></div>';
   owner.classList.add('awh-owner-collapsible');
   const ownerGrid = document.createElement('div');
   ownerGrid.className = 'awh-owner-grid';
@@ -1290,7 +1292,14 @@ function authenticatedWorkspaceActive() {
   return $('workspace-view')?.hidden === false && !document.body.classList.contains('public-home-active');
 }
 
-async function refreshDashboard() {
+let dashboardRefresh = null;
+function refreshDashboard() {
+  if (dashboardRefresh) return dashboardRefresh;
+  dashboardRefresh = fetchDashboard().finally(() => { dashboardRefresh = null; });
+  return dashboardRefresh;
+}
+
+async function fetchDashboard() {
   if (!authenticatedWorkspaceActive()) return;
   const control = await loadControlData();
   state.control = control;
@@ -1306,6 +1315,8 @@ async function refreshDashboard() {
   renderArtifacts();
   renderTaskSurface();
   renderFilesSurface();
+  const view = $(DASHBOARD_ID)?.dataset.view;
+  if (view === 'tasks' || view === 'files') setDashboardView(view);
 }
 
 async function syncSurface() {
@@ -1319,12 +1330,11 @@ async function syncSurface() {
     return;
   }
   const dashboard = $(DASHBOARD_ID);
-  if (!state.control) {
-    try { await refreshDashboard(); } catch { return; }
-  }
+  if (!state.control) void refreshDashboard().catch(() => undefined);
   const requestedSurface = requestedDeepLinkSurface();
-  if (requestedSurface && !document.body.dataset.awhDeepLinkConsumed) {
-    document.body.dataset.awhDeepLinkConsumed = '1';
+  if (requestedSurface && document.body.dataset.awhDeepLinkConsumed !== requestedSurface) {
+    document.body.dataset.awhDeepLinkConsumed = requestedSurface;
+    document.body.dataset.awhDashboardVisited = '1';
     state.restoringSurface = true;
     try {
       if (requestedSurface === 'work') openWork();

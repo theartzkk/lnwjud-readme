@@ -43,7 +43,7 @@ function syncOverlayState() {
 function focusable(dialog) {
   if (!isElement(dialog)) return [];
   return [...dialog.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
-    .filter((node) => isElement(node) && !node.hidden && node.getAttribute('aria-hidden') !== 'true');
+    .filter((node) => isElement(node) && !node.hidden && !node.closest('[hidden], [inert]') && node.getAttribute('aria-hidden') !== 'true');
 }
 
 function restoreFocus(dialog) {
@@ -65,6 +65,7 @@ export function openAwhDialog(dialog, options = {}) {
     window.history.pushState({ ...current, awhDialogId: dialog.id }, '', window.location.href);
   }
   window.requestAnimationFrame(() => {
+    if (dialog.hidden || dialog.dataset.awhDialogOpen !== '1') return;
     const target = focusable(dialog)[0] || dialog;
     if (isElement(target)) {
       if (target === dialog && !dialog.hasAttribute('tabindex')) dialog.setAttribute('tabindex', '-1');
@@ -136,6 +137,8 @@ function handlePopState(event) {
   for (const dialog of visibleDialogs().reverse()) {
     if (dialog.id !== state.awhDialogId) closeAwhDialog(dialog, { fromHistory: true, history: false });
   }
+  const restoredDialog = state.awhDialogId ? document.getElementById(state.awhDialogId) : null;
+  if (restoredDialog && restoredDialog.hidden) openAwhDialog(restoredDialog, { history: false });
   if (SURFACES.has(state.awhSurface)) {
     for (const listener of surfaceListeners) listener(state.awhSurface, state);
   }
