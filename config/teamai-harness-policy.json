@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "integration": "teamai-cli",
+  "mode": "projection-only",
+  "enabled": false,
+  "upstream": {
+    "repository": "Tencent/teamai-cli",
+    "version": "0.22.0",
+    "exactSha": "6dc1b9919ef1856717c381d6559bb7738089075e"
+  },
+  "authority": {
+    "canonicalSource": "AWH",
+    "projectMemory": "AWH",
+    "taskQueue": "AWH",
+    "execution": "AWH",
+    "approvals": "AWH",
+    "ownerIdentity": "AWH",
+    "schoolIdentityAndData": "BAY EXCUSE X",
+    "secrets": "AWH secret management",
+    "mcpRegistry": "AWH"
+  },
+  "allowedCapabilities": [
+    "rules_projection",
+    "skills_projection",
+    "docs_projection",
+    "read_only_recall_candidate",
+    "learning_candidate_capture_with_provenance"
+  ],
+  "forbiddenCapabilities": [
+    "production_mutation",
+    "automatic_hook_injection",
+    "secret_export",
+    "mcp_reconciliation",
+    "automatic_learning_promotion",
+    "shadow_queue",
+    "shadow_auth",
+    "shadow_memory_authority",
+    "shadow_approval_authority"
+  ],
+  "projection": {
+    "projectId": "awh",
+    "sourceFiles": [
+      "ART_AI_WORKING_PROTOCOL.md",
+      "AGENTS.md",
+      "CURRENT_STATE.md",
+      "ARCHITECTURE.md",
+      "DECISIONS.md",
+      "PROJECT.md",
+      "HANDOFF.md",
+      "TASKS.md"
+    ],
+    "forbiddenTopLevelDirectories": [
+      "env",
+      "mcp",
+      "hooks",
+      "agents",
+      "learnings"
+    ]
+  }
+}
