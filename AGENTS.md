@@ -30,14 +30,18 @@ Project-specific rules may be stricter but must not silently weaken the owner pr
 
 ## Canonical source rule
 
-- `main` on the reviewed `theartzkk/lnwjud-readme` GitHub repository is the AWH canonical source branch. `awh/api-independence` is a compatibility ref only and must resolve to the same commit while retained.
-- Before any source or Production mutation, resolve the branch through the live remote authority. A cached `refs/remotes/origin/...`, historical worktree, local folder name, or dated Project Memory statement is diagnostic evidence only.
-- Use `scripts/ops/canonical-source-preflight.mjs --require-mutation-ready` for the bounded proof. A mutation source must be clean and its `HEAD` must equal the live canonical SHA; an explicitly approved release SHA must equal that same live SHA.
-- If the live remote cannot be resolved, stop that mutation. Never fall back to a stale remote-tracking ref, another worktree, or manual replay.
-- Multiple worktrees are allowed only as explicit operator/candidate/evidence/protected work. Never reset or repurpose a dirty/protected worktree to satisfy the canonical-source gate.
+- Project source authority is singular and must be read from the current AWH Source Authority state. When authority is `AWH_VAULT`, the deliberately bound active Vault revision/content identity is the canonical execution source; GitHub repository/ref data remains mirror/upstream provenance and a later GitHub observation must not steal authority.
+- For GitHub-authority projects, GitHub synchronization, or a release explicitly sourced from GitHub, `main` on the reviewed `theartzkk/lnwjud-readme` repository is the reviewed AWH upstream line. `awh/api-independence` is a compatibility ref only and must resolve to the same commit while retained.
+- Do not require a GitHub network call merely to inspect, QA or execute work against an already-bound canonical Vault revision. GitHub outage/quota must stop only work that genuinely requires GitHub authority or synchronization.
+- Before a GitHub-bound source or Production mutation, resolve the live reviewed upstream and use `scripts/ops/canonical-source-preflight.mjs --require-mutation-ready` where that contract applies. A cached remote-tracking ref, historical worktree, folder name or dated Project Memory statement is diagnostic evidence only.
+- If a GitHub-authority mutation cannot resolve its live upstream, stop that mutation. Never fall back to a stale ref, another worktree, Remote Desktop transit hop, or manual replay.
+- Multiple worktrees are allowed only as explicit operator/candidate/evidence/protected work. Never reset or repurpose a dirty/protected worktree to satisfy a source gate.
 
 ## Block-Free execution rule
 
+- Route work in this order when capabilities permit: AWH server-native/VPS typed execution → direct connected API/connector → central Codex/specialist against a Vault revision → native device-only capability → Remote Desktop only for inherently interactive/device-local work.
+- An online device must never become a hidden dependency for Cloud-capable work. Remote Desktop is prohibited as a transit hop to VPS/GitHub/API/CLI when a direct approved route exists.
+- GitHub and hosted Actions are optional collaboration/verification paths unless the active source authority or requested operation genuinely requires them; local/VPS QA remains valid evidence when the canonical contract supports it.
 - Prefer typed/approved operations over free-form shell. For repository QA use `project_task_start` with `qa-fast`, `qa-local`, or `qa-full`, then poll task status/logs.
 - When only a terminal boundary is available, prefer the canonical short package scripts (`npm run qa:fast`, `npm run qa:local`, `npm run qa:full`, `npm run typecheck`, `npm run build`) instead of composing raw `node`, shell pipelines, or compound deploy commands.
 - A platform safety/security gate is terminal for that attempted action: never bypass, disguise, or blind-retry it. Decompose the work into supported typed actions, connected tools, or the reviewed deployment authority.
