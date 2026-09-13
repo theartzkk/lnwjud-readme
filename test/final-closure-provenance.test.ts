@@ -9,9 +9,30 @@ import test from 'node:test';
 const run = promisify(execFile);
 const root = process.cwd();
 const adapter = await import('../web/control-plane-adapter.js');
-const endpoint = 'https://kruart.great-site.net/remote-update.php';
+const endpoint = 'https://excuse.kruart.online/remote-update.php';
 const relay = {command:'STATUS'};
 const response = (body: unknown, status=200) => async () => new Response(typeof body==='string'?body:JSON.stringify(body), {status});
+
+test('active AWH/BAY surfaces have no executable dependency on the historical host', async () => {
+  const oldHost = ['kruart', 'great-site', 'net'].join('.');
+  const activeFiles = [
+    'hub/src/HubBayRemoteUpdateService.php',
+    'hub/src/HubEcosystemHealthCollector.php',
+    'web/control-plane-adapter.js',
+    'web/panel.html',
+    'deploy/nginx/awh-preview.conf',
+    'deploy/caddy/awh-preview.Caddyfile',
+    'deploy/nginx/transform-owner-auth.php',
+  ];
+  const contents = await Promise.all(activeFiles.map(async (file) => [file, await readFile(file, 'utf8')] as const));
+  for (const [file, content] of contents) assert.doesNotMatch(content, new RegExp(oldHost.replaceAll('.', '\\.'), 'i'), file);
+  for (const file of activeFiles) {
+    const content = contents.find(([name]) => name === file)?.[1] || '';
+    assert.match(content, /excuse\.kruart\.online/, file);
+  }
+  assert.match(contents.find(([name]) => name === 'hub/src/HubBayRemoteUpdateService.php')?.[1] || '', /excuse\.kruart\.online\/remote-update\.php/);
+  assert.match(contents.find(([name]) => name === 'web/control-plane-adapter.js')?.[1] || '', /excuse\.kruart\.online\/remote-update\.php/);
+});
 
 test('BAY transport, auth, challenge and explicit bridge absence remain distinct', async () => {
   const cases: Array<[any,string]> = [
