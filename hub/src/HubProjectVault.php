@@ -79,18 +79,20 @@ final class HubProjectVault
                 $target = $staging . '/' . $path; $this->mkdirFor($target);
                 $input = $zip->getStream($stat['name']); $output = @fopen($target, 'xb');
                 if (!is_resource($input) || $output === false) { if (is_resource($input)) fclose($input); if (is_resource($output)) fclose($output); throw new HubProjectVaultException('Project file could not be extracted', 'PROJECT_ARCHIVE_INVALID'); }
-                $copied = 0; $hash = hash_init('sha256');
+                $copied = 0; $hash = hash_init('sha256'); $pemPrefix = '';
                 try {
                     while (!feof($input)) {
                         $chunk = fread($input, 65536);
                         if ($chunk === false) throw new HubProjectVaultException('Project file could not be read', 'PROJECT_ARCHIVE_INVALID');
                         if ($chunk === '') continue;
+                        if (strlen($pemPrefix) < 8192) $pemPrefix .= substr($chunk, 0, 8192 - strlen($pemPrefix));
                         $copied += strlen($chunk);
                         if ($copied > $size || $copied > self::MAX_FILE_BYTES || fwrite($output, $chunk) !== strlen($chunk)) throw new HubProjectVaultException('Project file could not be verified', 'PROJECT_ARCHIVE_INVALID');
                         hash_update($hash, $chunk);
                     }
                 } finally { fclose($input); fclose($output); }
                 if ($copied !== $size) throw new HubProjectVaultException('Project file size does not match the archive', 'PROJECT_ARCHIVE_INVALID');
+                if (!self::safePemPrefix($path, $pemPrefix)) throw new HubProjectVaultException('Project archive contains unsafe PEM content', 'PROJECT_ARCHIVE_UNSAFE');
                 @chmod($target, 0640);
                 $manifest[] = ['path' => $path, 'sha256' => hash_final($hash), 'sizeBytes' => $copied];
             }
@@ -142,6 +144,7 @@ final class HubProjectVault
                 if ($path === null || self::sensitivePath($path)) throw new HubProjectVaultException('Task workspace contains restricted content', 'TASK_WORKSPACE_INVALID');
                 $size = $file->getSize();
                 if ($size < 0 || $size > self::MAX_FILE_BYTES) throw new HubProjectVaultException('Task workspace exceeds the safe limit', 'TASK_WORKSPACE_INVALID');
+                if (str_ends_with(strtolower($path), '.pem')) { $pemPrefix = @file_get_contents($physical, false, null, 0, 8192); if (!is_string($pemPrefix) || !self::safePemPrefix($path, $pemPrefix)) throw new HubProjectVaultException('Task workspace contains unsafe PEM content', 'TASK_WORKSPACE_INVALID'); }
                 $total += $size;
                 if (count($manifest) >= self::MAX_FILES || $total > self::MAX_CONTENT_BYTES) throw new HubProjectVaultException('Task workspace exceeds the safe limit', 'TASK_WORKSPACE_INVALID');
                 $target = $staging . '/' . $path; $this->mkdirFor($target);
@@ -322,7 +325,8 @@ final class HubProjectVault
     private function removeDirectory(string $directory): void { if (!is_dir($directory) || is_link($directory)) return; $items = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST); foreach ($items as $item) { if (!$item instanceof SplFileInfo) continue; $path = $item->getPathname(); if ($item->isLink() || $item->isFile()) @unlink($path); elseif ($item->isDir()) @rmdir($path); } @rmdir($directory); }
     private static function uuid(string $value): string { if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $value) !== 1) throw new HubProjectVaultException('Project reference is invalid', 'PROJECT_VAULT_INVALID'); return $value; }
     private static function archivePath(string $value): ?string { $path = str_replace('\\', '/', $value); if ($path === '' || str_contains($path, "\0") || str_starts_with($path, '/') || preg_match('#^[A-Za-z]:/#', $path) === 1) throw new HubProjectVaultException('Project archive path is unsafe', 'PROJECT_ARCHIVE_UNSAFE'); $parts = explode('/', rtrim($path, '/')); if ($parts === ['']) return null; foreach ($parts as $part) if ($part === '' || $part === '.' || $part === '..' || strlen($part) > 180 || preg_match('/[\x00-\x1f\x7f]/', $part)) throw new HubProjectVaultException('Project archive path is unsafe', 'PROJECT_ARCHIVE_UNSAFE'); $normalized = implode('/', $parts); if (strlen($normalized) > 900) throw new HubProjectVaultException('Project archive path is unsafe', 'PROJECT_ARCHIVE_UNSAFE'); return $normalized; }
-    private static function sensitivePath(string $path): bool { $base = strtolower((string) basename($path)); if ($base === '.env' || str_contains(strtolower($path), '/.ssh/') || preg_match('/(?:^|[._-])(?:id_rsa|id_ed25519|private[_-]?key)(?:[._-]|$)|\.(?:pem|key|p12|pfx)$/', $base) === 1) return true; return preg_match('/(?:^|[._-])(?:credentials?|secrets?|tokens?)(?:[._-]|$)/', $base) === 1 && preg_match('/\.(?:json|ya?ml|txt|ini|conf|cfg|properties|db|sqlite)$/', $base) === 1; }
+    private static function sensitivePath(string $path): bool { $base = strtolower((string) basename($path)); if ($base === '.env' || str_contains(strtolower($path), '/.ssh/') || preg_match('/(?:^|[._-])(?:id_rsa|id_ed25519|private[_-]?key)(?:[._-]|$)|\.(?:key|p12|pfx)$/', $base) === 1) return true; return preg_match('/(?:^|[._-])(?:credentials?|secrets?|tokens?)(?:[._-]|$)/', $base) === 1 && preg_match('/\.(?:json|ya?ml|txt|ini|conf|cfg|properties|db|sqlite)$/', $base) === 1; }
+    private static function safePemPrefix(string $path, string $prefix): bool { if (!str_ends_with(strtolower($path), '.pem')) return true; if (preg_match('/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/i', $prefix) === 1) return false; return preg_match('/\A\s*-----BEGIN (?:PUBLIC KEY|CERTIFICATE)-----/i', $prefix) === 1; }
     private static function binary(string $path): bool { $handle = @fopen($path, 'rb'); if ($handle === false) return true; $chunk = fread($handle, 4096); fclose($handle); return !is_string($chunk) || str_contains($chunk, "\0"); }
     private static function normaliseUtf8(string $value): ?string
     {
