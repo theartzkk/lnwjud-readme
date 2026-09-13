@@ -65,6 +65,10 @@ try{
  $rateFirst=$rateCloud->tick('2026-08-31T18:00:00+00:00');m17c_assert(($rateFirst['results'][0]['state']??null)==='QUEUED','GitHub 429 becomes bounded queued retry');
  $rateRow=$pdo->query("SELECT state,last_error_code,checkpoint_json FROM control_task_executions WHERE execution_id='$rateExecution'")->fetch();$rateCheckpoint=json_decode((string)$rateRow['checkpoint_json'],true,32,JSON_THROW_ON_ERROR);m17c_assert(is_array($rateRow)&&$rateRow['state']==='QUEUED'&&$rateRow['last_error_code']==='CLOUD_RATE_LIMITED'&&is_string($rateCheckpoint['_executionPolicy']['nextEligibleAt']??null),'GitHub rate limit persists not-before retry evidence');
  $rateEarly=$rateCloud->tick('2026-08-31T18:00:05+00:00');m17c_assert($rateEarly['processed']===0&&$rateDispatches===1,'GitHub rate limit is not redispatched before next eligible time');
+ // Isolate the next fixture after proving the transient not-before gate. The
+ // rate-limited task would legitimately become eligible about one minute later.
+ $pdo->prepare("UPDATE control_task_executions SET state='CANCELLED',lease_owner=NULL,lease_expires_at=NULL WHERE execution_id=:id")->execute(['id'=>$rateExecution]);
+ $pdo->prepare("UPDATE control_tasks SET state='CANCELLED',cancelled_at='2026-08-31T18:00:06+00:00' WHERE task_id=:id")->execute(['id'=>$rateTask]);
 
  [$quotaTask,$quotaExecution]=m17c_task($pdo,$owner,$project,'qa.cloud',$revision,'2026-08-31T18:01:00+00:00');
  $quotaDispatches=0;
