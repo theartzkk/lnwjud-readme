@@ -242,7 +242,7 @@ function bayRelayError(code, message) {
   return Object.assign(new Error(message), { code });
 }
 export async function relayBayRemoteCommand(endpoint, relay, fetchImpl = globalThis.fetch) {
-  if (endpoint !== 'https://kruart.great-site.net/remote-update.php' || !relay || typeof relay !== 'object' || Array.isArray(relay)) throw new Error('BAY Remote Update relay ไม่ถูกต้อง');
+  if (endpoint !== 'https://excuse.kruart.online/remote-update.php' || !relay || typeof relay !== 'object' || Array.isArray(relay)) throw new Error('BAY Remote Update relay ไม่ถูกต้อง');
   const installCommand = relay.command === 'INSTALL';
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), installCommand ? 180000 : 15000);

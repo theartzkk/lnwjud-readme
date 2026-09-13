@@ -250,7 +250,7 @@ body{background:
   .ecosystem-home-hero{min-height:410px!important;padding:23px 18px 175px!important;display:block!important}.ecosystem-home-hero:after{right:6px;top:auto;bottom:-6px;width:180px;height:185px}
   .ecosystem-home-actions{margin-top:18px!important;max-width:none!important}.ecosystem-summary{grid-template-columns:repeat(2,1fr)!important}
   .ecosystem-featured-grid,.ecosystem-project-grid{grid-template-columns:1fr!important}.ecosystem-project-card{min-height:210px!important}
-  .workspace-view{padding-top:8px!important}.workspace-heading{position:relative;top:auto!important;grid-template-columns:auto minmax(0,1fr)!important}.workspace-actions{grid-column:1/-1!important;justify-content:flex-end!important}
+  .workspace-view{padding-top:8px!important}.workspace-heading{position:relative;top:auto!important;grid-template-columns:auto minmax(0,1fr) auto!important}.workspace-actions{grid-column:auto!important;justify-content:flex-end!important}
   .workstream{padding:16px!important;border-radius:20px!important}.empty-work{min-height:320px!important;padding:25px 18px 165px!important}.empty-work:after{right:6px;width:165px;height:180px}
   .composer{border-radius:18px!important}.sheet-card{border-radius:22px!important;padding:18px!important}
   .infra-hero,.hosting-hero{padding:22px 18px 150px!important}.infra-hero:after,.hosting-hero:after{width:150px;height:160px;right:8px}

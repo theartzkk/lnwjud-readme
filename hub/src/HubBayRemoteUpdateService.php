@@ -10,7 +10,7 @@ final class HubBayRemoteUpdateException extends RuntimeException
 
 final class HubBayRemoteUpdateService
 {
-    private const ENDPOINT='https://kruart.great-site.net/remote-update.php';
+    private const ENDPOINT='https://excuse.kruart.online/remote-update.php';
     private const SIGNING_PROVIDER='bay-remote-update-signing';
     private const PROTOCOL='BAY-REMOTE-UPDATE-V1';
 

@@ -37,7 +37,7 @@ test('P1 Home dashboard never probes protected control data while the public she
   assert.match(source, /function authenticatedWorkspaceActive\(\)/);
   assert.match(source, /workspace-view'\)\?\.hidden === false/);
   assert.match(source, /!document\.body\.classList\.contains\('public-home-active'\)/);
-  assert.match(source, /async function refreshDashboard\(\) \{\n  if \(!authenticatedWorkspaceActive\(\)\) return;/);
+  assert.match(source, /async function fetchDashboard\(\) \{\n  if \(!authenticatedWorkspaceActive\(\)\) return;/);
   assert.match(source, /const authenticated = authenticatedWorkspaceActive\(\);/);
 });
 

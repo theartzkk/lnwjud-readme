@@ -68,9 +68,9 @@ test('BAY Remote Update stays inside AWH Owner + BAY Update Inbox + PackageManag
   ].map(name=>readFile(join(ROOT,name),'utf8')));
   assert.match(html,/BAY REMOTE UPDATE CONTROL/);
   assert.match(html,/system-control-panel\.webp/);
-  assert.match(html,/connect-src 'self' https:\/\/kruart\.great-site\.net/);
+  assert.match(html,/connect-src 'self' https:\/\/excuse\.kruart\.online/);
   const serverCsp=await readFile(join(ROOT,'deploy/nginx/transform-owner-auth.php'),'utf8');
-  assert.match(serverCsp,/connect-src 'self' https:\/\/kruart\.great-site\.net/);
+  assert.match(serverCsp,/connect-src 'self' https:\/\/excuse\.kruart\.online/);
   assert.match(css,/\.cp-bay-update/);
   assert.match(css,/@media\(max-width:560px\)/);
   assert.match(js,/loadBayRemoteUpdateStatus/);
@@ -79,7 +79,7 @@ test('BAY Remote Update stays inside AWH Owner + BAY Update Inbox + PackageManag
   assert.match(js,/Backup → Install → Verify/);
   assert.match(js,/Auto-stage|auto-stage|Update Inbox/);
   assert.doesNotMatch(js+adapter,/prepareBayRemoteUpdate|\/bay\/update\/prepare/);
-  assert.match(adapter,/endpoint !== 'https:\/\/kruart\.great-site\.net\/remote-update\.php'/);
+  assert.match(adapter,/endpoint !== 'https:\/\/excuse\.kruart\.online\/remote-update\.php'/);
   assert.match(adapter,/credentials: 'omit'/);
   assert.match(adapter,/redirect: 'error'/);
   assert.doesNotMatch(html+js+adapter,/PRIVATE KEY|SODIUM_CRYPTO_SIGN_SECRETKEYBYTES|bay-remote-update-signing\.key/);

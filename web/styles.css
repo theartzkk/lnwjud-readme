@@ -578,3 +578,6 @@ body.ecosystem-home-active .app-main{width:min(1180px,calc(100% - 32px));padding
 #session-check-view.session-probe-view{visibility:hidden;animation:awh-session-probe-reveal 0s .65s forwards}
 #session-check-view.session-probe-view[hidden]{display:none!important}
 @keyframes awh-session-probe-reveal{to{visibility:visible}}
+
+/* Attachment previews reserve space and never alter the uploaded original. */
+.attachment-thumbnail { width:44px; height:44px; flex:0 0 44px; object-fit:cover; border-radius:var(--awh-radius-sm,12px); }

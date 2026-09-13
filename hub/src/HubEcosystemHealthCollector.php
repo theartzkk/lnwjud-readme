@@ -94,7 +94,7 @@ final class HubEcosystemHealthCollector
         }
 
         // BAY Health v1 referenced the legacy school website. Replace only that
-        // one probe with the current front-site authority until v2 is deployed.
+        // one probe with the current BAY production authority until v2 is deployed.
         if (!isset($services['website']) || ($status['schema'] ?? null) === 'bay.hub.status.v1') {
             $services['website'] = $this->probeCurrentWebsite();
         }
@@ -125,7 +125,7 @@ final class HubEcosystemHealthCollector
 
     private function probeCurrentWebsite(): array
     {
-        $url = 'https://kruart.great-site.net/';
+        $url = 'https://excuse.kruart.online/';
         $started = microtime(true);
         $body = '';
         $code = 0;

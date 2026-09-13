@@ -19,6 +19,27 @@ import {
   const DESKTOP_PACKAGES = [['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
   const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, people: [], accountRequests: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadFollowLatest: true };
   let desktopReleasePromise = null;
+  let conversationRequest = 0;
+  let conversationRefresh = null;
+  let pollingConversation = false;
+  let refreshingWorkspace = false;
+  let sendingMessage = false;
+  let failedSubmission = null;
+  let artifactPreviewRequest = 0;
+  const attachmentPreviews = new Map();
+  const composerDrafts = new Map();
+  let composerDraftKey = null;
+
+  function syncComposerDraft() {
+    const key = `${state.selectedProjectId}:${state.selectedConversationId}`;
+    if (key === composerDraftKey) return;
+    const input = $('goal-input');
+    if (composerDraftKey !== null) composerDrafts.set(composerDraftKey, { text: input.value, attachments: state.pendingAttachments });
+    const draft = composerDrafts.get(key);
+    if (composerDraftKey !== null) { input.value = draft?.text || ''; state.pendingAttachments = draft?.attachments || []; }
+    composerDraftKey = key;
+    resizeGoalInput(); renderPendingAttachments();
+  }
   let pendingPrivilegedAction = null;
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => undefined);
 
@@ -104,7 +125,17 @@ import {
   }
   function renderPendingAttachments() {
     const list = $('pending-attachments'); list.replaceChildren(); list.hidden = state.pendingAttachments.length === 0;
-    state.pendingAttachments.forEach((file, index) => { const item = document.createElement('li'); const name = document.createElement('span'); name.textContent = `${file.name} · ${size(file.size)}`; const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'ลบ'; remove.setAttribute('aria-label', `ลบ ${file.name}`); remove.addEventListener('click', () => { state.pendingAttachments.splice(index, 1); renderPendingAttachments(); }); item.append(name, remove); list.append(item); });
+    for (const [file, url] of attachmentPreviews) {
+      if (!state.pendingAttachments.includes(file)) attachmentPreviews.delete(file);
+    }
+    state.pendingAttachments.forEach((file, index) => { const item = document.createElement('li');
+      if (/^image\/(?:png|jpeg|webp|gif)$/.test(file.type) && file.size <= 12 * 1024 * 1024) {
+        if (!attachmentPreviews.has(file)) attachmentPreviews.set(file, new Promise((resolve) => {
+          const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => resolve(null); reader.readAsDataURL(file);
+        }));
+        const preview = document.createElement('img'); preview.alt = ''; preview.width = 44; preview.height = 44; preview.className = 'attachment-thumbnail'; item.append(preview);
+        void attachmentPreviews.get(file).then((url) => { if (url && preview.isConnected) preview.src = url; });
+      } const name = document.createElement('span'); name.textContent = `${file.name} · ${size(file.size)}`; const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'ลบ'; remove.setAttribute('aria-label', `ลบ ${file.name}`); remove.addEventListener('click', () => { state.pendingAttachments.splice(index, 1); renderPendingAttachments(); }); item.append(name, remove); list.append(item); });
   }
   function renderMessageAttachments(attachments) {
     if (!Array.isArray(attachments) || attachments.length === 0) return null;
@@ -150,6 +181,7 @@ import {
     return card;
   }
   function clearArtifactWorkspace() {
+    ++artifactPreviewRequest;
     if (state.artifactPreviewUrl) { URL.revokeObjectURL(state.artifactPreviewUrl); state.artifactPreviewUrl = null; }
     state.selectedArtifact = null;
     $('artifact-preview')?.replaceChildren(); $('artifact-workspace-actions')?.replaceChildren();
@@ -162,6 +194,7 @@ import {
   }
   async function openArtifactWorkspace(artifact) {
     clearArtifactWorkspace(); state.selectedArtifact = artifact;
+    const previewRequest = artifactPreviewRequest;
     const name = String(artifact?.name || 'ไฟล์ผลลัพธ์'); const extension = name.includes('.') ? name.split('.').pop().toUpperCase() : 'FILE';
     const url = artifactUrl(artifact); $('artifact-sheet-title').textContent = name;
     $('artifact-sheet-meta').textContent = [extension, Number.isFinite(artifact?.sizeBytes) ? size(artifact.sizeBytes) : '', 'อยู่ในงานนี้'].filter(Boolean).join(' · ');
@@ -176,23 +209,22 @@ import {
     preview.replaceChildren(artifactWorkspaceMessage('กำลังเปิดไฟล์…'));
     try {
       const response = await fetch(url, { credentials: 'same-origin', headers: { Accept: '*/*' } });
+      if (previewRequest !== artifactPreviewRequest) return;
       if (!response.ok) throw new Error('ARTIFACT_PREVIEW_UNAVAILABLE');
       const mime = String(response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
       const length = Number(response.headers.get('Content-Length') || artifact?.sizeBytes || 0);
       if (length > 12 * 1024 * 1024 && mime !== 'application/pdf' && !/^image\/(?:png|jpeg|webp|gif)$/.test(mime)) { preview.replaceChildren(artifactWorkspaceMessage('ไฟล์พร้อมดาวน์โหลด', 'ไฟล์นี้ใหญ่เกินขนาด preview ที่ปลอดภัย')); return; }
       if (mime === 'application/pdf') {
-        const blob = await response.blob(); state.artifactPreviewUrl = URL.createObjectURL(blob);
-        const frame = document.createElement('iframe'); frame.className = 'artifact-preview-frame'; frame.title = `ตัวอย่าง ${name}`; frame.src = state.artifactPreviewUrl; preview.replaceChildren(frame); return;
+        const open = document.createElement('a'); open.className = 'secondary-button'; open.textContent = 'ดาวน์โหลด PDF'; open.href = url; open.setAttribute('download', name); preview.replaceChildren(artifactWorkspaceMessage('ไฟล์ PDF พร้อมใช้', 'ดาวน์โหลดต้นฉบับเพื่อเปิดด้วยโปรแกรมอ่าน PDF'), open); return;
       }
       if (/^image\/(?:png|jpeg|webp|gif)$/.test(mime)) {
-        const blob = await response.blob(); state.artifactPreviewUrl = URL.createObjectURL(blob);
-        const image = document.createElement('img'); image.className = 'artifact-preview-image'; image.alt = name; image.src = state.artifactPreviewUrl; preview.replaceChildren(image); return;
+        const image = document.createElement('img'); image.className = 'artifact-preview-image'; image.alt = name; image.src = url; preview.replaceChildren(image); return;
       }
       if (['text/plain','text/csv','text/markdown','application/json'].includes(mime)) {
-        const text = (await response.text()).slice(0, 250000); const pre = document.createElement('pre'); pre.className = 'artifact-preview-text'; pre.textContent = text; preview.replaceChildren(pre); return;
+        const text = (await response.text()).slice(0, 250000); if (previewRequest !== artifactPreviewRequest) return; const pre = document.createElement('pre'); pre.className = 'artifact-preview-text'; pre.textContent = text; preview.replaceChildren(pre); return;
       }
       preview.replaceChildren(artifactWorkspaceMessage('ไฟล์พร้อมใช้', 'AWH ไม่ฝัง HTML, SVG หรือไฟล์ active content ลงใน workspace เพื่อป้องกันโค้ดจากไฟล์ทำงานในหน้า AWH'));
-    } catch { preview.replaceChildren(artifactWorkspaceMessage('เปิดตัวอย่างไม่ได้ในขณะนี้', 'ไฟล์เดิมยังอยู่ครบและดาวน์โหลดได้จากปุ่มด้านล่าง')); }
+    } catch { if (previewRequest !== artifactPreviewRequest) return; preview.replaceChildren(artifactWorkspaceMessage('เปิดตัวอย่างไม่ได้ในขณะนี้', 'ไฟล์เดิมยังอยู่ครบและดาวน์โหลดได้จากปุ่มด้านล่าง')); }
   }
   function localProgressLabel(goal) {
     const value = String(goal || '');
@@ -750,7 +782,7 @@ import {
       }
     }
     const previousMessageCount = sameConversation ? state.threadMessageCount : 0;
-    thread.replaceChildren();
+    const nextThread = document.createElement('ol');
     const messages = Array.isArray(conversation?.messages) ? conversation.messages : [];
     const tasks = Array.isArray(conversation?.tasks) ? conversation.tasks : [];
     const taskById = new Map(tasks.map((task) => [task.taskId, task]));
@@ -782,7 +814,7 @@ import {
       if (turn.kind === 'progress') {
         if (String(turn.messageId || '').startsWith('local-progress-')) {
           const typing = document.createElement('li'); typing.className = 'task-turn assistant-turn typing-turn';
-          const text = document.createElement('p'); text.className = 'typing-indicator'; text.textContent = turn.body || 'AWH · กำลังจัดการงาน…'; typing.dataset.scrollKey = `message:${turn.messageId || 'progress'}`; typing.append(text); thread.append(typing);
+          const text = document.createElement('p'); text.className = 'typing-indicator'; text.textContent = turn.body || 'AWH · กำลังจัดการงาน…'; typing.dataset.scrollKey = `message:${turn.messageId || 'progress'}`; typing.append(text); nextThread.append(typing);
         }
         continue;
       }
@@ -801,13 +833,13 @@ import {
         });
         const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'text-button'; copy.textContent = 'คัดลอก'; copy.addEventListener('click', () => { void copyMessageText(turn.body, copy); });
         userActions.append(edit, copy); row.append(userActions);
-        thread.append(row);
+        nextThread.append(row);
         if (task && task.state !== 'COMPLETED') {
           const statusTurn = document.createElement('li'); statusTurn.className = 'task-turn assistant-turn status-turn'; statusTurn.dataset.scrollKey = `status:${turn.messageId || task?.taskId || 'task'}`;
           const status = document.createElement('div'); status.className = 'task-response active-task-response';
           status.append(renderLiveActivity(task));
           const taskActions = renderCancellation(task); if (taskActions) status.append(taskActions);
-          statusTurn.append(status); thread.append(statusTurn);
+          statusTurn.append(status); nextThread.append(statusTurn);
         }
         continue;
       }
@@ -830,11 +862,28 @@ import {
         const actions = renderApproval(task, approvals) || renderCancellation(task) || renderRetry(task); if (actions) response.append(actions);
         if (artifacts.length) { const list = document.createElement('div'); list.className = 'artifact-results'; for (const artifact of artifacts) { if (artifact.kind === 'project-inspection' && artifactUrl(artifact)) list.append(renderInspectionEvidence(artifact)); else list.append(renderArtifactCard(artifact)); } response.append(list); }
       }
-      row.append(response); thread.append(row);
+      row.append(response); nextThread.append(row);
     }
+    // Keep unchanged message nodes, focus, text selection and open details through polling.
+    const existing = new Map([...thread.children].map((node) => [node.dataset.scrollKey, node]));
+    let cursor = thread.firstElementChild;
+    for (const candidate of [...nextThread.children]) {
+      const previous = sameConversation ? existing.get(candidate.dataset.scrollKey) : null;
+      const markup = candidate.outerHTML;
+      const node = previous?._awhMarkup === markup ? previous : candidate;
+      node._awhMarkup = markup;
+      if (previous && node !== previous) {
+        const oldDetails = previous.querySelectorAll('details');
+        node.querySelectorAll('details').forEach((detail, index) => { detail.open = oldDetails[index]?.open === true; });
+      }
+      if (node !== cursor) thread.insertBefore(node, cursor);
+      else cursor = cursor.nextElementSibling;
+    }
+    while (cursor) { const next = cursor.nextElementSibling; cursor.remove(); cursor = next; }
     state.renderedConversationId = conversationId;
     state.threadMessageCount = visibleMessages.length;
     requestAnimationFrame(() => {
+      if (state.renderedConversationId !== conversationId || thread.closest('[hidden]')) return;
       const latest = $('conversation-latest');
       if (!sameConversation || stickToBottom) {
         thread.scrollTop = thread.scrollHeight; state.threadFollowLatest = true; if (latest) latest.hidden = true; return;
@@ -854,11 +903,11 @@ import {
       const button = document.createElement('button'); button.type = 'button'; button.className = `project-choice${conversation.conversationId === state.selectedConversationId ? ' selected' : ''}`;
       const title = document.createElement('strong'); title.textContent = conversation.title || 'Work';
       const detail = document.createElement('span'); detail.textContent = date(conversation.updatedAt) || 'ยังไม่มีข้อความ'; button.append(title, detail);
-      button.addEventListener('click', async () => { state.selectedConversationId = conversation.conversationId; closeSheet('conversation-sheet'); await refreshConversation(false); }); list.append(button);
+      button.addEventListener('click', async () => { state.selectedConversationId = conversation.conversationId; state.conversation = null; state.conversationAvailable = false; renderWorkspace(); closeSheet('conversation-sheet'); await refreshConversation(false); }); list.append(button);
     }
     $('conversation-empty').hidden = state.conversations.length > 0;
     const selected = state.conversations.find((conversation) => conversation.conversationId === state.selectedConversationId) || state.conversation?.conversation || null;
-    $('conversation-title-input').value = selected?.title || 'Work';
+    if (document.activeElement !== $('conversation-title-input')) $('conversation-title-input').value = selected?.title || 'Work';
     $('conversation-title-input').disabled = !selected;
     $('conversation-archive').disabled = !selected;
     $('conversation-delete').disabled = !selected;
@@ -879,6 +928,7 @@ import {
     if (!control?.authenticated) return;
     const projects = Array.isArray(control.projects) ? control.projects : [];
     if (!projects.some((project) => project.projectId === state.selectedProjectId)) state.selectedProjectId = preferredProjectId(projects);
+    syncComposerDraft();
     const project = selectedProject();
     message('selected-project-name', project?.name || 'ยังไม่มีโปรเจกต์');
     message('selected-conversation-name', state.conversation?.conversation?.title || 'Work');
@@ -887,7 +937,7 @@ import {
     message('work-context', project ? `คุยและสั่งงานได้จากทุกอุปกรณ์${continuitySummary(state.workspaceContinuity)}` : 'เพิ่มโปรเจกต์เพื่อเริ่มคุยกับ AWH');
     message('advanced-status', `${workerSummary()} · งานและผลลัพธ์แสดงตามสิทธิ์ของบัญชีคุณ`);
     const workReady = project !== null && state.conversationAvailable;
-    $('goal-submit').disabled = !workReady;
+    $('goal-submit').disabled = !workReady || sendingMessage;
     $('goal-input').disabled = !workReady;
     $('attachment-open').disabled = !workReady;
     $('attachment-input').disabled = !workReady;
@@ -931,7 +981,9 @@ import {
       const url = new URL(window.location.href);
       url.searchParams.delete('awh-surface');
       const next = `${url.pathname}${url.search}${url.hash}`;
-      window.history[replace ? 'replaceState' : 'pushState'](window.history.state, '', next);
+      const rootState = { ...(window.history.state || {}) };
+      delete rootState.awhSurface; delete rootState.awhDialogId;
+      window.history[replace ? 'replaceState' : 'pushState'](rootState, '', next);
     } catch {}
     void renderEcosystemPortfolio();
     window.scrollTo({ top: 0, behavior: 'auto' });
@@ -949,7 +1001,7 @@ import {
     try {
       const url = new URL(window.location.href);
       url.searchParams.set('awh-surface', surface);
-      if (history) window.history.pushState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+      if (history) window.history.pushState({ ...(window.history.state || {}), awhSurface: surface, awhScrollY: 0 }, '', `${url.pathname}${url.search}${url.hash}`);
     } catch {}
     if (!state.conversationAvailable) void refreshConversation();
   }
@@ -1125,7 +1177,7 @@ import {
     if (publicHome) publicHome.hidden = authenticated;
     $('sign-in-view').hidden = true;
     $('account-open').hidden = !authenticated;
-    if ($('account-open-work')) $('account-open-work').hidden = !authenticated;
+    if ($('account-open-work')) $('account-open-work').hidden = true; // The shared header owns the profile entry.
     const publicNav=document.querySelector('.global-nav'); const ownerNav=$('owner-global-nav');
     if(publicNav) publicNav.hidden=authenticated;
     if(ownerNav) ownerNav.hidden=!authenticated;
@@ -1149,26 +1201,71 @@ import {
     document.body.classList.remove('awh-booting');
   }
 
-  async function refreshConversation(refreshList = true) {
+  function refreshConversation(refreshList = true) {
+    const key = `${state.selectedProjectId}:${state.selectedConversationId}`;
+    if (conversationRefresh?.key === key) return conversationRefresh.promise;
+    const promise = fetchConversation(refreshList).finally(() => {
+      if (conversationRefresh?.promise === promise) conversationRefresh = null;
+    });
+    conversationRefresh = { key, promise };
+    return promise;
+  }
+
+  async function fetchConversation(refreshList = true) {
+    const request = ++conversationRequest;
+    const selectedId = state.selectedConversationId;
     const project = selectedProject();
     if (!project) { state.selectedConversationId = null; state.conversations = []; state.conversation = null; state.conversationAvailable = false; state.workspaceContinuity = null; renderWorkspace(); return; }
     try {
       const [conversations, workspaceContinuity, currentContext] = await Promise.all([loadConversations(project.projectId), loadWorkspaceContinuity(project.projectId), loadCurrentContext(project.projectId)]);
+      if (request !== conversationRequest || project.projectId !== state.selectedProjectId || selectedId !== state.selectedConversationId || sendingMessage) return;
       state.conversations = conversations;
       if (!conversations.some((conversation) => conversation.conversationId === state.selectedConversationId)) {
         const remembered = currentContext?.context?.conversationId;
         state.selectedConversationId = conversations.some((conversation) => conversation.conversationId === remembered) ? remembered : conversations[0]?.conversationId || null;
       }
       if (!state.selectedConversationId) {
-        const created = await createConversation(project.projectId, 'Work'); state.selectedConversationId = created.conversation.conversationId; state.conversations = [created.conversation]; state.conversation = created;
-      } else state.conversation = await loadConversation(state.selectedConversationId);
+        const created = await createConversation(project.projectId, 'Work');
+        if (request !== conversationRequest || project.projectId !== state.selectedProjectId || sendingMessage) return;
+        state.selectedConversationId = created.conversation.conversationId; state.conversations = [created.conversation]; state.conversation = created;
+      } else {
+        const id = state.selectedConversationId;
+        const value = await loadConversation(id);
+        if (request !== conversationRequest || project.projectId !== state.selectedProjectId || id !== state.selectedConversationId || sendingMessage) return;
+        state.conversation = value;
+      }
       state.workspaceContinuity = workspaceContinuity; state.conversationAvailable = true; renderWorkspace();
       void saveCurrentContext(project.projectId, state.selectedConversationId, 'work').catch(() => undefined);
-    } catch (error) { state.conversationAvailable = false; state.conversation = { messages: [{ messageId: 'local-unavailable', taskId: null, kind: 'assistant', sequence: 1, body: 'ยังเปิด Work นี้ไม่ได้ จึงยังไม่ส่งคำขอใหม่เพื่อป้องกันงานสูญหาย', createdAt: new Date().toISOString() }], tasks: [], artifacts: [], attachments: [], approvals: [] }; renderWorkspace(); message('goal-message', error instanceof Error ? error.message : 'AWH ยังโหลดการสนทนาไม่ได้'); }
+    } catch (error) {
+      if (request !== conversationRequest || project.projectId !== state.selectedProjectId || selectedId !== state.selectedConversationId) return;
+      // A failed read must not erase the last confirmed thread or the draft.
+      state.conversationAvailable = state.conversation?.conversation?.conversationId === state.selectedConversationId;
+      renderWorkspace();
+      message('goal-message', error instanceof Error ? error.message : 'การเชื่อมต่อขัดข้อง ประวัติเดิมยังอยู่ กดรีเฟรชเพื่อลองอีกครั้ง');
+    }
+  }
+
+  async function pollConversation() {
+    if (document.hidden || !state.control?.authenticated || !state.selectedConversationId || pollingConversation || conversationRefresh || sendingMessage) return;
+    pollingConversation = true;
+    const id = state.selectedConversationId;
+    const request = ++conversationRequest;
+    try {
+      const value = await loadConversation(id);
+      if (request !== conversationRequest || id !== state.selectedConversationId || sendingMessage) return;
+      state.conversation = value; state.conversationAvailable = true; renderWorkspace();
+    } catch { if (request === conversationRequest && id === state.selectedConversationId) message('work-context', 'การเชื่อมต่อขัดข้อง · ประวัติเดิมยังอยู่ กำลังรอเชื่อมต่อใหม่'); }
+    finally { pollingConversation = false; }
+  }
+
+  function startWorkspacePolling() {
+    if (!state.conversationTimer) state.conversationTimer = window.setInterval(() => void pollConversation(), 2000);
+    if (!state.refreshTimer) state.refreshTimer = window.setInterval(() => { if (!document.hidden) void refreshWorkspace(false); }, 15_000);
   }
 
   async function hydrateAuthenticatedControl({ refreshConversationOnSurface = true } = {}) {
     if (!state.control?.authenticated) return null;
+    startWorkspacePolling();
     const full = await loadControlData();
     state.control = { ...state.control, ...full, authenticated: true, available: true };
     renderWorkspace();
@@ -1178,9 +1275,12 @@ import {
   }
 
   async function refreshWorkspace(showBusy = false) {
+    if (refreshingWorkspace || sendingMessage) return;
+    refreshingWorkspace = true;
     if (showBusy) message('goal-message', 'กำลังรีเฟรช…');
     try { state.control = await loadControlData(); if (state.control?.role === 'OWNER') state.provider = await loadProviderStatus().catch(() => state.provider); renderWorkspace(); await refreshConversation(); if (showBusy) message('goal-message', ''); }
     catch (error) { message('goal-message', error instanceof Error ? error.message : 'AWH ไม่สามารถรีเฟรชข้อมูลได้'); }
+    finally { refreshingWorkspace = false; }
   }
 
   const settingsSections = ['start', 'ai', 'account', 'devices', 'data', 'system', 'people'];
@@ -1272,7 +1372,7 @@ import {
   });
 
   document.querySelectorAll('[data-open-login]').forEach((button) => button.addEventListener('click', openLoginSurface));
-  $('.brand')?.addEventListener('click', (event) => {
+  document.querySelector('.brand')?.addEventListener('click', (event) => {
     event.preventDefault();
     if (state.control?.authenticated === true) { showEcosystemHome(); return; }
     if ($('public-home-view')) $('public-home-view').hidden = false;
@@ -1309,7 +1409,7 @@ import {
       renderWorkspace(); await refreshConversation();
     }
     if (typeof detail.conversationId === 'string' && state.conversations.some((item) => item.conversationId === detail.conversationId) && state.selectedConversationId !== detail.conversationId) {
-      state.selectedConversationId = detail.conversationId; await refreshConversation(false);
+      state.selectedConversationId = detail.conversationId; state.conversation = null; state.conversationAvailable = false; renderWorkspace(); await refreshConversation(false);
     }
     if (detail.openConversations === true) openConversationSheet();
     $('goal-input')?.focus();
@@ -1353,29 +1453,63 @@ import {
   });
 
   $('goal-form').addEventListener('submit', async (event) => {
-    event.preventDefault(); const goal = $('goal-input').value.trim();
+    event.preventDefault();
+    if (sendingMessage) return;
+    const goal = $('goal-input').value.trim();
     if (!goal) { message('goal-message', 'พิมพ์สิ่งที่อยากให้ AWH ช่วยก่อน'); return; }
     const project = selectedProject();
+    const submissionConversationId = state.selectedConversationId;
     const universalRouter = globalThis.AWH_ROUTE_COMMAND;
-    if (typeof universalRouter === 'function' && await universalRouter(goal, { projectId: project?.projectId || null, files: [...state.pendingAttachments], source: 'work' })) {
-      state.pendingAttachments = []; renderPendingAttachments(); $('goal-input').value = ''; message('goal-message', ''); return;
+    if (typeof universalRouter === 'function') {
+      sendingMessage = true;
+      try {
+        if (await universalRouter(goal, { projectId: project?.projectId || null, files: [...state.pendingAttachments], source: 'work' })) {
+          state.pendingAttachments = []; renderPendingAttachments();
+          if ($('goal-input').value.trim() === goal) $('goal-input').value = '';
+          resizeGoalInput(); message('goal-message', ''); return;
+        }
+      } catch (error) { message('goal-message', error instanceof Error ? error.message : 'ยังส่งคำขอไม่ได้'); return; }
+      finally { sendingMessage = false; }
     }
     if (!project) { message('goal-message', 'งานนี้ต้องใช้บริบทโปรเจกต์ เลือกโปรเจกต์ที่ต้องการก่อน'); return; }
     const conversationId = state.selectedConversationId;
+    if (project.projectId !== state.selectedProjectId || conversationId !== submissionConversationId) return;
     if (!conversationId) { message('goal-message', 'กำลังเตรียมการสนทนา กรุณาลองใหม่อีกครั้ง'); return; }
-    const idempotencyKey = `web-${crypto.randomUUID()}`;
+    if (sendingMessage) return;
+    sendingMessage = true; ++conversationRequest;
     const pending = [...state.pendingAttachments];
+    const retry = failedSubmission?.conversationId === conversationId && failedSubmission.goal === goal && pending.length === failedSubmission.pending.length && pending.every((file, index) => file === failedSubmission.pending[index]) ? failedSubmission : null;
+    const idempotencyKey = retry?.idempotencyKey || `web-${crypto.randomUUID()}`;
+    let uploaded = retry?.uploaded || null;
     const localMessageId = `local-${idempotencyKey}`;
     const localAttachments = pending.map((file, index) => ({ attachmentId: `local-${idempotencyKey}-${index}`, messageId: localMessageId, name: file.name, sizeBytes: file.size, pending: true }));
     state.conversation = { ...(state.conversation || {}), messages: [...(state.conversation?.messages || []), { messageId: localMessageId, taskId: null, kind: 'user', sequence: Number.MAX_SAFE_INTEGER - 1, body: goal, createdAt: new Date().toISOString() }, { messageId: `local-progress-${idempotencyKey}`, taskId: null, kind: 'progress', sequence: Number.MAX_SAFE_INTEGER, body: localProgressLabel(goal), createdAt: new Date().toISOString() }], tasks: state.conversation?.tasks || [], artifacts: state.conversation?.artifacts || [], attachments: [...(state.conversation?.attachments || []), ...localAttachments], approvals: state.conversation?.approvals || [] };
-    renderWorkspace(); message('goal-message', ''); $('goal-input').value = ''; resizeGoalInput(); $('goal-input').focus();
+    renderWorkspace(); message('goal-message', ''); if ($('goal-input').value.trim() === goal) $('goal-input').value = ''; resizeGoalInput(); $('goal-input').focus({ preventScroll: true });
     try {
-      const uploaded = pending.length ? await uploadConversationAttachments(conversationId, pending) : [];
+      uploaded = uploaded || (pending.length ? await uploadConversationAttachments(conversationId, pending) : []);
       await submitWorkMessage(project.projectId, conversationId, goal, uploaded.map((attachment) => attachment.attachmentId), idempotencyKey);
-      state.pendingAttachments = []; renderPendingAttachments();
-      await refreshConversation();
-    } catch (error) { message('goal-message', error instanceof Error ? error.message : 'ส่งงานไม่สำเร็จ'); }
-    finally { const unavailable = selectedProject() === null || !state.conversationAvailable; $('goal-submit').disabled = unavailable; $('attachment-open').disabled = unavailable; }
+      failedSubmission = null;
+      const draft = composerDrafts.get(`${project.projectId}:${conversationId}`);
+      if (draft) draft.attachments = draft.attachments.filter((file) => !pending.includes(file));
+      state.pendingAttachments = state.pendingAttachments.filter((file) => !pending.includes(file)); renderPendingAttachments();
+      sendingMessage = false;
+      if (state.selectedConversationId === conversationId) await refreshConversation();
+    } catch (error) {
+      failedSubmission = { conversationId, goal, pending, idempotencyKey, uploaded };
+      if (state.selectedConversationId === conversationId) {
+        state.conversation.messages = state.conversation.messages.filter((turn) => !String(turn.messageId).includes(idempotencyKey));
+        if (!$('goal-input').value) { $('goal-input').value = goal; resizeGoalInput(); }
+        message('goal-message', error instanceof Error ? error.message : 'ส่งงานไม่สำเร็จ');
+        const restore = document.createElement('button'); restore.type = 'button'; restore.className = 'text-button'; restore.textContent = 'คืนข้อความที่ส่งไม่สำเร็จ';
+        restore.addEventListener('click', () => {
+          const input = $('goal-input');
+          if (input.value.trim() !== goal) input.value = input.value ? `${goal}\n\n${input.value}` : goal;
+          resizeGoalInput(); input.focus({ preventScroll: true }); restore.remove();
+        });
+        $('goal-message').append(' ', restore);
+      }
+    }
+    finally { sendingMessage = false; renderWorkspace(); const unavailable = selectedProject() === null || !state.conversationAvailable; $('goal-submit').disabled = unavailable; $('attachment-open').disabled = unavailable; }
   });
 
   $('refresh-work').addEventListener('click', () => { void refreshWorkspace(true); });
@@ -1598,7 +1732,6 @@ import {
     void loadProductSettings().then((value) => { state.productSettings = value.settings; applyProductSettings(); }).catch(() => undefined);
 
     await hydration;
-    state.conversationTimer = window.setInterval(() => { if (!document.hidden && state.selectedConversationId) void loadConversation(state.selectedConversationId).then((value) => { state.conversation = value; renderWorkspace(); }).catch(() => undefined); }, 2000);
-    state.refreshTimer = window.setInterval(() => { if (!document.hidden) void refreshWorkspace(false); }, 15_000);
+    startWorkspacePolling();
   }).catch(() => render({ product: { shortName: 'AWH' }, control: { authenticated: false, available: false, error: 'AWH ยังไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง' } }));
 })();

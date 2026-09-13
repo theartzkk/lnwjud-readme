@@ -169,6 +169,7 @@ const server = createServer(async (request, response) => {
     if (url.pathname === '/api/v1/control/memory' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, memories: [] });
     if (url.pathname === '/api/v1/control/memory/imports' && request.method === 'GET') return send(response, 200, { imports: [] });
     if (url.pathname === '/api/v1/control/conversations' && request.method === 'GET') return send(response, 200, { schemaVersion: 2, conversations: conversations.map(summary) });
+    if (url.pathname === '/api/v1/control/conversations/trash' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, conversations: [] });
     if (url.pathname === '/api/v1/control/conversations/new' && request.method === 'POST') {
       if (!requireCsrf(request, response)) return;
       const value = await readJson(request); if (value.schemaVersion !== 2 || value.projectId !== project.projectId || typeof value.title !== 'string') return send(response, 400, { code: 'PAYLOAD_INVALID' });
