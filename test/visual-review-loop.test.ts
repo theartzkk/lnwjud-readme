@@ -27,6 +27,8 @@ test('visual renderer binds evidence to a clean exact revision', async () => {
   assert.match(capture, /root-portfolio/);
   assert.match(capture, /runtimeErrors/);
   assert.match(capture, /question-identity/);
+  assert.match(capture, /profile-menu/);
+  assert.match(capture, /data-profile-section=.*people/);
 });
 test('review pack and findings validator preserve fail-closed evidence rules', async () => {
   const pack = await read('scripts/review/create-ai-review-pack.mjs');

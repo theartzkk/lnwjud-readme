@@ -14,6 +14,7 @@ import {
 (() => {
   const $ = (id) => document.getElementById(id);
   const MAX_ATTACHMENT_BYTES = 60 * 1024 * 1024;
+  const CANCELLABLE_TASK_STATES = new Set(['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL']);
   const MICRO_BAHT = 1000000;
   const DESKTOP_PACKAGES = [['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
   const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, people: [], accountRequests: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadFollowLatest: true };
@@ -74,6 +75,33 @@ import {
   function progressText(task) { return taskExecutionStatus(task).detail; }
 
   function size(bytes) { if (!Number.isFinite(bytes) || bytes < 0) return ''; if (bytes < 1024) return `${bytes} B`; if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`; return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; }
+  function activeCancellableTask() {
+    const tasks = Array.isArray(state.conversation?.tasks) ? state.conversation.tasks : [];
+    return [...tasks].filter((task) => task && CANCELLABLE_TASK_STATES.has(task.state))
+      .sort((left, right) => (Date.parse(right.updatedAt || right.createdAt || '') || 0) - (Date.parse(left.updatedAt || left.createdAt || '') || 0))[0] || null;
+  }
+  function addPendingAttachments(files) {
+    const incoming = Array.from(files || []).filter((file) => file instanceof File);
+    if (!incoming.length) return 0;
+    const available = 8 - state.pendingAttachments.length;
+    if (incoming.length > available) message('goal-message', 'แนบได้ครั้งละไม่เกิน 8 ไฟล์');
+    let total = state.pendingAttachments.reduce((sum, file) => sum + file.size, 0);
+    const accepted = [];
+    for (const file of incoming.slice(0, Math.max(0, available))) {
+      if (file.size < 1) continue;
+      if (total + file.size > MAX_ATTACHMENT_BYTES) { message('goal-message', 'ไฟล์แนบรวมกันได้ไม่เกิน 60 MB'); break; }
+      total += file.size; accepted.push(file);
+    }
+    if (accepted.length) { state.pendingAttachments.push(...accepted); renderPendingAttachments(); }
+    return accepted.length;
+  }
+  async function copyMessageText(value, button) {
+    const text = String(value || ''); if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      if (button instanceof HTMLButtonElement) { const previous = button.textContent; button.textContent = 'คัดลอกแล้ว'; window.setTimeout(() => { button.textContent = previous; }, 1200); }
+    } catch { message('goal-message', 'อุปกรณ์นี้ยังไม่อนุญาตให้คัดลอกข้อความ'); }
+  }
   function renderPendingAttachments() {
     const list = $('pending-attachments'); list.replaceChildren(); list.hidden = state.pendingAttachments.length === 0;
     state.pendingAttachments.forEach((file, index) => { const item = document.createElement('li'); const name = document.createElement('span'); name.textContent = `${file.name} · ${size(file.size)}`; const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'ลบ'; remove.setAttribute('aria-label', `ลบ ${file.name}`); remove.addEventListener('click', () => { state.pendingAttachments.splice(index, 1); renderPendingAttachments(); }); item.append(name, remove); list.append(item); });
@@ -771,7 +799,8 @@ import {
           input.value = String(turn.body || ''); resizeGoalInput(); input.focus();
           message('goal-message', 'แก้ข้อความแล้วกดส่ง ระบบจะเก็บข้อความเดิมไว้ในประวัติ');
         });
-        userActions.append(edit); row.append(userActions);
+        const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'text-button'; copy.textContent = 'คัดลอก'; copy.addEventListener('click', () => { void copyMessageText(turn.body, copy); });
+        userActions.append(edit, copy); row.append(userActions);
         thread.append(row);
         if (task && task.state !== 'COMPLETED') {
           const statusTurn = document.createElement('li'); statusTurn.className = 'task-turn assistant-turn status-turn'; statusTurn.dataset.scrollKey = `status:${turn.messageId || task?.taskId || 'task'}`;
@@ -791,6 +820,11 @@ import {
       meta.append(chip, time);
       if (turn.kind === 'approval' || turn.kind === 'failure') response.append(meta);
       response.append(body);
+      if (turn.kind === 'assistant' || turn.kind === 'result' || turn.kind === 'failure') {
+        const messageActions = document.createElement('div'); messageActions.className = 'message-actions';
+        const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'text-button'; copy.textContent = 'คัดลอก'; copy.addEventListener('click', () => { void copyMessageText(turn.body, copy); });
+        messageActions.append(copy); response.append(messageActions);
+      }
       if (task && !['COMPLETED','FAILED','CANCELLED'].includes(task.state)) response.append(renderLiveActivity(task));
       if (task) {
         const actions = renderApproval(task, approvals) || renderCancellation(task) || renderRetry(task); if (actions) response.append(actions);
@@ -857,6 +891,8 @@ import {
     $('goal-input').disabled = !workReady;
     $('attachment-open').disabled = !workReady;
     $('attachment-input').disabled = !workReady;
+    const cancellableTask = activeCancellableTask();
+    if ($('goal-stop')) { $('goal-stop').hidden = cancellableTask === null; $('goal-stop').disabled = cancellableTask === null; }
     $('goal-input').placeholder = !project ? 'เลือกหรือเพิ่มโปรเจกต์ก่อน' : 'พิมพ์สิ่งที่อยากให้ AWH ช่วย…';
     renderProjectSheet(projects);
     renderConversationSheet();
@@ -1293,15 +1329,27 @@ import {
     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); $('goal-form')?.requestSubmit(); }
   });
   $('attachment-open').addEventListener('click', () => { if (!$('attachment-input').disabled) $('attachment-input').click(); });
-  $('attachment-input').addEventListener('change', () => {
-    const incoming = Array.from($('attachment-input').files || []);
-    const available = 8 - state.pendingAttachments.length;
-    if (incoming.length > available) message('goal-message', 'แนบได้ครั้งละไม่เกิน 8 ไฟล์');
-    let total = state.pendingAttachments.reduce((sum, file) => sum + file.size, 0);
-    const accepted = [];
-    for (const file of incoming.slice(0, Math.max(0, available))) { if (total + file.size > MAX_ATTACHMENT_BYTES) { message('goal-message', 'ไฟล์แนบรวมกันได้ไม่เกิน 60 MB'); break; } total += file.size; accepted.push(file); }
-    state.pendingAttachments.push(...accepted);
-    $('attachment-input').value = ''; renderPendingAttachments();
+  $('attachment-input').addEventListener('change', () => { addPendingAttachments($('attachment-input').files); $('attachment-input').value = ''; });
+  $('goal-input').addEventListener('paste', (event) => {
+    const files = Array.from(event.clipboardData?.files || []); if (!files.length) return;
+    addPendingAttachments(files); message('goal-message', files.length === 1 ? 'แนบไฟล์จากคลิปบอร์ดแล้ว' : `แนบ ${files.length} ไฟล์จากคลิปบอร์ดแล้ว`);
+  });
+  const composer = $('goal-form');
+  for (const type of ['dragenter', 'dragover']) composer?.addEventListener(type, (event) => {
+    if (!state.conversationAvailable || !selectedProject()) return;
+    event.preventDefault(); composer.classList.add('is-drop-target'); if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  });
+  composer?.addEventListener('dragleave', (event) => { if (!composer.contains(event.relatedTarget)) composer.classList.remove('is-drop-target'); });
+  composer?.addEventListener('drop', (event) => {
+    composer.classList.remove('is-drop-target'); if (!state.conversationAvailable || !selectedProject()) return;
+    event.preventDefault(); const count = addPendingAttachments(event.dataTransfer?.files); if (count) message('goal-message', count === 1 ? 'แนบไฟล์แล้ว' : `แนบ ${count} ไฟล์แล้ว`);
+  });
+  $('goal-stop')?.addEventListener('click', async () => {
+    const task = activeCancellableTask(); if (!task) return;
+    const button = $('goal-stop'); button.disabled = true; message('goal-message', 'กำลังหยุดงาน…');
+    try { await cancelTask(task.taskId); await refreshConversation(false); message('goal-message', 'หยุดงานแล้ว'); }
+    catch (error) { message('goal-message', error instanceof Error ? error.message : 'AWH ยังหยุดงานนี้ไม่ได้'); }
+    finally { renderWorkspace(); }
   });
 
   $('goal-form').addEventListener('submit', async (event) => {
