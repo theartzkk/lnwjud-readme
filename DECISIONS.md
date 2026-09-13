@@ -1,12 +1,3 @@
-# Authoritative decision — 2026-09-13 execution routing authority
-
-- AWH Project Vault/source authority remains singular. When a project is deliberately bound to `AWH_VAULT`, its active bound Vault content identity is the canonical execution source; GitHub is mirror/upstream provenance until authority is deliberately switched.
-- Cloud-capable work must prefer existing AWH server-native/VPS typed capability. Direct connected provider APIs are preferred over device transit. Central Codex/specialist execution is used when engineering work exceeds bounded server-native capability.
-- Mac/Windows workers are optional capabilities, not default infrastructure. Use a device only for a capability that truly requires that OS/hardware/installed application.
-- Remote Desktop/Desktop Commander is a last-resort interactive device path and must never be used merely as a hop to reach VPS, GitHub, an API or CLI when a direct approved path exists.
-- GitHub Actions/hosted CI is supplemental verification, not a runtime gate, whenever the canonical release contract permits equivalent bounded local/VPS QA. GitHub quota/outage must not block work that can safely continue from an already-bound Vault/VPS source.
-- Preserve the existing durable Task/Execution queue, capability fabric, workspace lease, approval, backup and rollback authorities. Do not create a parallel executor or source registry to implement this routing policy.
-
 > **Current-state authority:** Read `CURRENT_STATE.md` first. Sections below are historical checkpoint/audit records; words such as “current”, “live”, or “Production remains” are scoped to their dated checkpoint unless freshly revalidated.
 
 # Authoritative decision — 2026-09-10 kruart.online / AWH product identity
@@ -218,3 +209,12 @@
 
 - M16 Provider Execution Fabric V1 keeps `HubNativeAgentService` as the sole native reasoning boundary while allowing a bounded runtime set of already-qualified provider adapters. The selected provider from M16 governance owns the adapter, credential store, pricing quote and usage evidence for that turn; no provider-specific task or conversation pipeline is created.
 - Runtime fallback must preserve provider identity end-to-end. A single eligible non-primary provider is routed through cross-provider governance rather than the legacy primary-only fast path. The primary-only path is valid only when the sole eligible runtime provider is the configured primary provider.
+
+# Authoritative decision — 2026-09-13 execution routing authority
+
+- AWH Project Vault/source authority remains singular. When a project is deliberately bound to `AWH_VAULT`, its active bound Vault content identity is the canonical execution source; GitHub is mirror/upstream provenance until authority is deliberately switched.
+- Cloud-capable work must prefer existing AWH server-native/VPS typed capability. Direct connected provider APIs are preferred over device transit. Central Codex/specialist execution is used when engineering work exceeds bounded server-native capability.
+- Mac/Windows workers are optional capabilities, not default infrastructure. Use a device only for a capability that truly requires that OS/hardware/installed application.
+- Remote Desktop/Desktop Commander is a last-resort interactive device path and must never be used merely as a hop to reach VPS, GitHub, an API or CLI when a direct approved path exists.
+- GitHub Actions/hosted CI is supplemental verification, not a runtime gate, whenever the canonical release contract permits equivalent bounded local/VPS QA. GitHub quota/outage must not block work that can safely continue from an already-bound Vault/VPS source.
+- Preserve the existing durable Task/Execution queue, capability fabric, workspace lease, approval, backup and rollback authorities. Do not create a parallel executor or source registry to implement this routing policy.
