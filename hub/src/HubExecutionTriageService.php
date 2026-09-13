@@ -23,6 +23,10 @@ final class HubExecutionFailurePolicy
         'PROVIDER_FAILED',
         'PROVIDER_USAGE_PERSIST_FAILED',
         'DATABASE_BUSY',
+        'CLOUD_RATE_LIMITED',
+        'CLOUD_UNAVAILABLE',
+        'CLOUD_HTTP_UNAVAILABLE',
+        'CLOUD_CONFLICT',
     ];
 
     /** @var list<string> */
@@ -43,12 +47,15 @@ final class HubExecutionFailurePolicy
         'ARTIFACT_STORAGE_UNAVAILABLE',
         'IMAGE_INPUT_RUNTIME_UNAVAILABLE',
         'PROVIDER_PRICING_UNAVAILABLE',
+        'CLOUD_QUOTA_EXHAUSTED',
+        'CLOUD_NOT_CONFIGURED',
     ];
 
     /** @var list<string> */
     private const AUTH_REQUIRED = [
         'PROVIDER_AUTH_FAILED',
         'PROVIDER_CREDENTIAL_STATE_UNCERTAIN',
+        'CLOUD_AUTH_FAILED',
     ];
 
     /** @var list<string> */
@@ -56,6 +63,8 @@ final class HubExecutionFailurePolicy
         'PROVIDER_PERMISSION_DENIED',
         'PROVIDER_MODEL_UNAVAILABLE',
         'PROVIDER_POLICY_INVALID',
+        'CLOUD_PERMISSION_DENIED',
+        'CLOUD_WORKFLOW_NOT_FOUND',
     ];
 
     /** @var list<string> */
@@ -66,6 +75,16 @@ final class HubExecutionFailurePolicy
         'EXECUTION_INVALID',
         'PROJECT_CONTEXT_FORBIDDEN',
         'ATTACHMENT_AI_INPUT_TOO_LARGE',
+        'CLOUD_REQUEST_INVALID',
+        'CLOUD_REQUEST_FAILED',
+        'CLOUD_RESPONSE_INVALID',
+        'CLOUD_CHECKPOINT_INVALID',
+        'CLOUD_RUN_MISMATCH',
+        'CLOUD_RUN_FAILED',
+        'CLOUD_ARTIFACT_INVALID',
+        'CLOUD_ARTIFACT_MISSING',
+        'CLOUD_FINDINGS_INVALID',
+        'PROJECT_ARCHIVE_TOO_LARGE',
     ];
 
     /** @return array{category:string,state:string,automaticRetry:bool,retryable:bool,delaySeconds:?int,retryAfterSeconds:?int,nextEligibleAt:?string,reason:string,policyVersion:string} */
@@ -180,7 +199,9 @@ final class HubExecutionFailurePolicy
     {
         return match ($code) {
             'PROVIDER_RATE_LIMITED' => $attempt <= 1 ? 30 : 120,
-            'PROVIDER_UNAVAILABLE', 'PROVIDER_FAILED', 'PROVIDER_USAGE_PERSIST_FAILED', 'LEASE_EXPIRED' => $attempt <= 1 ? 60 : 300,
+            'CLOUD_RATE_LIMITED' => $attempt <= 1 ? 60 : 300,
+            'PROVIDER_UNAVAILABLE', 'PROVIDER_FAILED', 'PROVIDER_USAGE_PERSIST_FAILED', 'CLOUD_UNAVAILABLE', 'CLOUD_HTTP_UNAVAILABLE', 'LEASE_EXPIRED' => $attempt <= 1 ? 60 : 300,
+            'CLOUD_CONFLICT' => $attempt <= 1 ? 30 : 120,
             'DATABASE_BUSY', 'EXECUTION_CLAIM_FAILED', 'ARTIFACT_STORAGE_FAILED', 'EXECUTION_FAILED' => $attempt <= 1 ? 15 : 60,
             default => 60,
         };
