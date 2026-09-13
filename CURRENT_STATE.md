@@ -4,6 +4,14 @@ Updated: 2026-09-10 19:42 ICT.
 
 This file is the **current-state authority** for AWH operational status. Re-read the live GitHub branch/HEAD, VPS pointers, database and runtime evidence before every mutation. Dated "current", "live", or "Production remains" statements in `PROJECT.md`, `HANDOFF.md`, `TASKS.md`, `DECISIONS.md`, and older checkpoint documents are historical evidence unless this file or a fresh inspection confirms them.
 
+## 2026-09-13 M21 source/routing reconciliation
+
+- Fresh reviewed upstream at audit start: `main` = `57d6302210490923069024daf9cd9c623662d126`, which includes PR #153 (M21 Vault Source Authority), PR #154 (Work/Chat UX + M21 Production closure evidence), and PR #155 (public PEM policy). This exact SHA is source evidence, not by itself a Production-deployment claim.
+- PR #153 establishes a **singular deliberate source authority**: an `AWH_VAULT` binding makes the bound active Vault content identity canonical while retaining GitHub only as mirror/upstream provenance; ordinary GitHub observation cannot steal Vault authority.
+- Last retrieved Production closure evidence is PR #154: release `m21-9634d1763aab`, schema 21, SQLite integrity/FK clean, native executor and hosting-operator timers healthy, rollback `m20-b49cc221f698`, and pre-M21 DB backup `/var/backups/awh-hub/awh.sqlite.pre-m21-9634d1763aab`. PR #155 was merged afterward, so resolve live Production again before any later Production mutation.
+- Routing audit found policy drift, not a duplicate runtime: the existing capability fabric already prefers VPS for Cloud-capable work and keeps devices optional, while durable execution/workspace lease authorities already exist. The stale gap was agent governance that still described GitHub live-remote resolution as mandatory for every source mutation and did not explicitly forbid Remote Desktop as a transit hop.
+- The routing-governance candidate updates `ART_AI_WORKING_PROTOCOL.md` and `AGENTS.md` so the default route is AWH typed/VPS → direct connector/API → central specialist/Codex → true device-only capability → Remote Desktop last. GitHub remains required only when the active source authority or requested GitHub operation requires it. This paragraph records the reconciliation; exact merged/deployed revision must always be resolved from live evidence rather than inferred from this dated note.
+
 ## 2026-09-10 live closure checkpoint
 
 - GitHub project-source authority remains `theartzkk/lnwjud-readme` ref `awh/api-independence`, freshly observed at `6f4ee4a401ff16186033b322c8e85f43a51519a5`. The active web-closure branch `fix/owner-golden-reference-20260909` is a strict fast-forward descendant: at inspection it was 24 commits ahead / 0 behind and exact remote HEAD `0193b147185ade96312898e0eab740b91b3673f2`. Do not force-reset either line; converge only by fast-forward after closure QA.
