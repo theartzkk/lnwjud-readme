@@ -60,6 +60,10 @@ TARGET=${AWH_DEPLOY_TARGET:-awh-ready}
 RELEASE=${AWH_RELEASE_COMMIT:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)}
 HOSTNAME=${AWH_HUB_HOSTNAME:-kruart.online}
 OWNER_USERNAME=${AWH_OWNER_AUTH_USERNAME:-art}
+REUSE_REMOTE_DESKTOP_ARTIFACTS=${AWH_REUSE_REMOTE_DESKTOP_ARTIFACTS:-0}
+case "$REUSE_REMOTE_DESKTOP_ARTIFACTS" in 0|1) : ;; *) echo "AWH_REUSE_REMOTE_DESKTOP_ARTIFACTS must be 0 or 1" >&2; exit 2 ;; esac
+DESKTOP_ARTIFACT_FILES="dist-web/downloads/AWH-macOS-x64.zip dist-web/downloads/AWH-Windows-x64.zip dist-web/downloads/SHA256SUMS.txt"
+DESKTOP_BASE_MANIFEST=
 REMOTE_ROOT=/opt/awh-hub
 if test "$PROJECT_SOURCE_AUTHORITY" -eq 1; then RELEASE_ID=m21-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$CONVERSATION_LIFECYCLE" -eq 1; then RELEASE_ID=m19-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$CLOUD_FIRST" -eq 1; then RELEASE_ID=m18-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$ACCOUNT_HOSTING" -eq 1; then RELEASE_ID=m17-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$SELF_SUFFICIENT_AI" -eq 1; then RELEASE_ID=m16-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$AUTOMATIONS" -eq 1; then RELEASE_ID=m15-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$COST_AWARE_AI" -eq 1; then RELEASE_ID=m14-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$ANYWHERE_EXECUTION" -eq 1; then RELEASE_ID=m13-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$CENTRAL_PROJECT_AUTHORITY" -eq 1; then RELEASE_ID=m12-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$SELF_SERVICE" -eq 1; then RELEASE_ID=m11-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$FOUNDING_MEMORY" -eq 1; then RELEASE_ID=m10-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$FINAL_PRODUCT" -eq 1; then RELEASE_ID=m9-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$UNIFIED_WORKSPACE" -eq 1; then RELEASE_ID=m8-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$WORKSPACE_CONTINUITY" -eq 1; then RELEASE_ID=m7-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$ASSISTANT_WORKSTREAM" -eq 1; then RELEASE_ID=m6-$(printf '%s' "$RELEASE" | cut -c1-12); else RELEASE_ID=m4-$(printf '%s' "$RELEASE" | cut -c1-12); fi
 # Bind an optional retry identity before any web artifact, backup name or
@@ -86,6 +90,7 @@ RELEASE_BUILD_LOCK=$ROOT/.awh-build/release-build.lock
 RELEASE_BUILD_LOCK_HELD=0
 cleanup() {
   rm -f "$BUNDLE"
+  test -z "$DESKTOP_BASE_MANIFEST" || rm -f "$DESKTOP_BASE_MANIFEST"
   if test "$RELEASE_BUILD_LOCK_HELD" -eq 1; then
     rm -f "$RELEASE_BUILD_LOCK/owner"
     rmdir "$RELEASE_BUILD_LOCK" 2>/dev/null || true
@@ -124,13 +129,26 @@ case "$HOSTNAME" in *[A-Za-z]*.*) : ;; *) echo "AWH_HUB_HOSTNAME is invalid" >&2
 # The web tree is a release artifact, never a reused local preview. Build it
 # from this exact source lock before checking or bundling any deployment asset.
 command -v node >/dev/null 2>&1 || { echo "node is required to build the CONTROL web release" >&2; exit 1; }
+if test "$REUSE_REMOTE_DESKTOP_ARTIFACTS" -eq 1; then
+  DESKTOP_BASE_MANIFEST=$(mktemp "${TMPDIR:-/tmp}/awh-desktop-release-base.XXXXXX")
+  ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" "sudo -n cat /var/www/awh-web/current/release.json" > "$DESKTOP_BASE_MANIFEST"
+  test -s "$DESKTOP_BASE_MANIFEST" || { echo "Verified production desktop manifest is unavailable" >&2; exit 1; }
+fi
 AWH_RELEASE_COMMIT="$RELEASE" AWH_WEB_RELEASE_ID="$RELEASE_ID" node --import tsx "$ROOT/scripts/build-web-preview.ts" --control >/dev/null
-AWH_RELEASE_ID="$RELEASE_ID" node "$ROOT/scripts/create-web-release-manifest.mjs" "$ROOT/dist-web" >/dev/null
+if test "$REUSE_REMOTE_DESKTOP_ARTIFACTS" -eq 1; then
+  # Never smuggle stale local desktop bytes into a server-only refresh.
+  rm -f "$ROOT/dist-web/downloads/AWH-macOS-x64.zip" "$ROOT/dist-web/downloads/AWH-Windows-x64.zip" "$ROOT/dist-web/downloads/SHA256SUMS.txt"
+  rm -f "$ROOT/dist-web/downloads/AWH-macOS-x64.release.json" "$ROOT/dist-web/downloads/AWH-Windows-x64.release.json"
+  AWH_DESKTOP_RELEASE_REUSE=1 AWH_DESKTOP_RELEASE_BASE_MANIFEST="$DESKTOP_BASE_MANIFEST" AWH_RELEASE_ID="$RELEASE_ID" node "$ROOT/scripts/create-web-release-manifest.mjs" "$ROOT/dist-web" >/dev/null
+else
+  AWH_RELEASE_ID="$RELEASE_ID" node "$ROOT/scripts/create-web-release-manifest.mjs" "$ROOT/dist-web" >/dev/null
+fi
 
 FILES="hub/public/control-plane.php hub/public/web-gateway.php hub/src/HubReadModel.php hub/src/HubReadRouter.php hub/src/HubWebGateway.php hub/src/HubEnrollmentService.php hub/src/HubEnrollmentApiMigration.php hub/src/HubControlPlaneService.php hub/src/HubThaiGovernmentDocumentService.php hub/assets/thai-government-garuda-v7.png hub/src/HubControlPlaneRouter.php hub/src/HubBrowserOriginPolicy.php hub/src/HubControlPlaneMigration.php hub/src/HubControlPlaneProjectRegistration.php hub/src/HubOwnerAuthMigration.php hub/src/HubOwnerAuthService.php hub/src/HubOwnerAuthRouter.php hub/src/HubAssistantWorkstreamMigration.php hub/src/HubWorkspaceContinuityMigration.php hub/src/HubUnifiedWorkspaceMigration.php hub/src/HubFinalProductMigration.php hub/src/HubFoundingMemorySeed.php hub/src/HubFoundingMemoryMigration.php hub/src/HubFoundingMemoryService.php hub/src/HubSelfServiceMigration.php hub/src/HubCentralProjectAuthorityMigration.php hub/src/HubAnywhereExecutionMigration.php hub/src/HubCapabilityRegistryService.php hub/src/HubCostAwareAiMigration.php hub/src/HubProviderPricingService.php hub/src/HubAutomationMigration.php hub/src/HubAutomationRegistryService.php hub/src/HubAutomationSchedulerService.php hub/src/HubAiProviderAdapter.php hub/src/HubOpenAiProviderAdapter.php hub/src/HubAiGovernanceService.php hub/src/HubAiQualificationService.php hub/src/HubSelfSufficientAiMigration.php hub/src/HubAccountHostingMigration.php hub/src/HubTrustPolicy.php hub/src/HubManagedHostingService.php hub/src/HubManagedHostingOperator.php hub/src/HubProjectVault.php hub/src/HubProjectVaultService.php hub/src/HubDurableExecutionService.php hub/src/HubSecretContentPolicy.php hub/src/HubProviderCredentialStore.php hub/src/HubBayRemoteUpdateService.php hub/src/HubAttachmentStore.php hub/src/HubArtifactStore.php hub/src/HubNativeAgentService.php hub/src/HubAiAttachmentPreparer.php hub/src/HubDatabaseStudioService.php hub/src/HubDatabaseStudioRouter.php hub/src/HubMariaDbReadClient.php hub/src/HubBackupService.php deploy/awh-database/awh-database-inventory.py deploy/awh-database/install-database-inventory.sh deploy/systemd/awh-database-inventory.service deploy/systemd/awh-database-inventory.timer deploy/awh-storage/awh-retention-manager.py deploy/awh-storage/awh-temp-cleanup deploy/awh-storage/awh-storage-guard deploy/awh-storage/awh-restore-drill deploy/systemd/awh-retention.service deploy/systemd/awh-retention.timer deploy/systemd/awh-temp-cleanup.service deploy/systemd/awh-temp-cleanup.timer deploy/systemd/awh-storage-guard.service deploy/systemd/awh-storage-guard.timer deploy/systemd/awh-restore-drill.service deploy/systemd/awh-restore-drill.timer hub/src/HubInfrastructureService.php hub/public/database-studio.php hub/bin/backup.php hub/bin/activate-release.php hub/bin/scheduled-backup.php hub/bin/system-telemetry.php deploy/systemd/awh-backup.service deploy/systemd/awh-backup.timer hub/migrations/001_m3e_enrollment.sql hub/migrations/002_m3e2_enrollment_api.sql hub/migrations/003_m4_control_plane.sql hub/migrations/004_owner_auth.sql hub/migrations/005_assistant_workstream.sql hub/migrations/006_workspace_continuity.sql hub/migrations/007_unified_workspace.sql hub/migrations/008_final_product.sql hub/migrations/009_founding_memory.sql hub/migrations/010_self_service.sql hub/migrations/011_central_project_authority.sql hub/migrations/012_anywhere_execution_fabric.sql hub/migrations/013_cost_aware_ai.sql hub/migrations/014_automations.sql hub/migrations/015_self_sufficient_ai.sql hub/migrations/016_account_hosting.sql hub/bin/migrate-m4.php hub/bin/migrate-owner-auth.php hub/bin/migrate-assistant-workstream.php hub/bin/migrate-workspace-continuity.php hub/bin/migrate-unified-workspace.php hub/bin/migrate-final-product.php hub/bin/migrate-founding-memory.php hub/bin/migrate-self-service.php hub/bin/migrate-central-project-authority.php hub/bin/migrate-anywhere-execution.php hub/bin/migrate-cost-aware-ai.php hub/bin/migrate-automations.php hub/bin/migrate-self-sufficient-ai.php hub/bin/migrate-account-hosting.php hub/bin/awh-hosting-operator.php hub/bin/awh-native-executor.php hub/bin/prune-morning-brief-revisions.php hub/bin/sync-deployed-source-vault.php hub/bin/register-m4-projects.php hub/bin/setup-owner-auth.php hub/bin/verify-owner-auth-runtime.php deploy/systemd/awh-native-executor.service deploy/systemd/awh-native-executor.timer deploy/systemd/awh-hosting-operator.service deploy/systemd/awh-hosting-operator.timer deploy/nginx/awh-control-plane.conf deploy/nginx/render-control-plane-include.php deploy/nginx/transform-owner-auth.php deploy/awh-enrollment/insert-nginx-include.php deploy/awh-control-plane/remote-deploy-control-plane.sh deploy/awh-control-plane/provision-image-input-runtime.sh dist-web/index.html dist-web/styles.css dist-web/awh-design-system.css dist-web/awh-light-system.css dist-web/app.js dist-web/dashboard.css dist-web/dashboard.js dist-web/execution-ux.js dist-web/tool-registry.js dist-web/school-tools.js dist-web/vendor/pdf-lib.min.js dist-web/vendor/qrcode.js dist-web/database.html dist-web/database.css dist-web/database.js dist-web/infrastructure.html dist-web/infrastructure.css dist-web/infrastructure.js dist-web/hosting.html dist-web/hosting.css dist-web/hosting.js dist-web/trust.html dist-web/trust.css dist-web/trust.js dist-web/hub-read-adapter.js dist-web/control-plane-adapter.js dist-web/manifest.webmanifest dist-web/sw.js dist-web/logo-256x256.png dist-web/web-config.json dist-web/data.json dist-web/release.json"
 WEB_RELEASE_FILES=$(node "$ROOT/scripts/list-web-release-files.mjs" | tr '\n' ' ')
 FILES="$FILES $WEB_RELEASE_FILES"
-DESKTOP_ARTIFACT_FILES="dist-web/downloads/AWH-macOS-x64.zip dist-web/downloads/AWH-Windows-x64.zip dist-web/downloads/SHA256SUMS.txt"
+# Desktop artifact paths are declared before the build so remote-reuse mode can
+# deliberately exclude stale local packages while preserving verified lineage.
 FILES="$FILES hub/src/HubStorageGovernanceService.php hub/src/HubExecutionTriageService.php hub/src/HubStaffGovernorService.php hub/src/HubWorkerHealth.php hub/src/HubStaffOperationsService.php hub/src/HubActionGraphService.php hub/src/HubConversationReferentService.php deploy/awh-control-plane/verify-web-release.php dist-web/navigation.js"
 FILES="$FILES dist-web/responsive-layout.css dist-web/review.html dist-web/review.css dist-web/review.js dist-web/panel.html dist-web/panel.css dist-web/panel.js"
 FILES="$FILES hub/src/HubCloudFirstMigration.php hub/src/HubCloudWorkflowService.php hub/migrations/017_cloud_first_control.sql hub/bin/migrate-cloud-first.php .github/workflows/awh-cloud-qa.yml .github/workflows/awh-cloud-review.yml"
@@ -142,31 +160,35 @@ FILES="$FILES hub/src/HubProjectSourceAuthorityMigration.php hub/src/HubProjectS
 FILES="$FILES hub/src/HubVaultSourceAuthorityMigration.php hub/migrations/020_vault_source_authority.sql hub/bin/migrate-vault-source-authority.php hub/bin/bind-vault-source-authority.php"
 FILES="$FILES hub/src/HubEcosystemHealthService.php hub/src/HubEcosystemHealthCollector.php hub/src/HubBayEcosystemHealthConnector.php"
 DESKTOP_ARTIFACTS=
-desktop_artifact_count=0
-for file in $DESKTOP_ARTIFACT_FILES; do
-  if test -f "$ROOT/$file"; then desktop_artifact_count=$((desktop_artifact_count + 1)); fi
-done
-case "$MODE:$desktop_artifact_count" in
-  dry-run:0|*:3) : ;;
-  *) echo "Desktop release artifacts must be complete for production deploy" >&2; exit 1 ;;
-esac
-# Desktop packages are content-addressed on ReadyIDC. A backend/web refresh
-# reuses an already-verified object instead of retransmitting the large bytes.
-for file in $DESKTOP_ARTIFACT_FILES; do
-  test -f "$ROOT/$file" || continue
-  if test "$MODE" = deploy; then
-    digest=$(node -e 'const fs=require("node:fs"),c=require("node:crypto");const b=fs.readFileSync(process.argv[1]);process.stdout.write(c.createHash("sha256").update(b).digest("hex"))' "$ROOT/$file")
-    case "$digest" in *[!0-9a-f]*|'') echo "Desktop artifact checksum is invalid" >&2; exit 1 ;; esac
-    test "${#digest}" -eq 64 || { echo "Desktop artifact checksum is invalid" >&2; exit 1; }
-    name=$(basename "$file")
-    remote_digest=$(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" "sudo test -f '/var/www/awh-web/desktop-artifacts/$digest-$name' && sudo sha256sum '/var/www/awh-web/desktop-artifacts/$digest-$name' | cut -d' ' -f1" 2>/dev/null || true)
-    if test "$remote_digest" = "$digest"; then
-      printf '%s\n' "DESKTOP_ARTIFACT_REUSE=$name"
-      continue
+if test "$REUSE_REMOTE_DESKTOP_ARTIFACTS" -eq 1; then
+  printf '%s\n' "DESKTOP_ARTIFACT_REUSE=verified-remote-manifest"
+else
+  desktop_artifact_count=0
+  for file in $DESKTOP_ARTIFACT_FILES; do
+    if test -f "$ROOT/$file"; then desktop_artifact_count=$((desktop_artifact_count + 1)); fi
+  done
+  case "$MODE:$desktop_artifact_count" in
+    dry-run:0|*:3) : ;;
+    *) echo "Desktop release artifacts must be complete for production deploy" >&2; exit 1 ;;
+  esac
+  # Desktop packages are content-addressed on ReadyIDC. A backend/web refresh
+  # reuses an already-verified object instead of retransmitting the large bytes.
+  for file in $DESKTOP_ARTIFACT_FILES; do
+    test -f "$ROOT/$file" || continue
+    if test "$MODE" = deploy; then
+      digest=$(node -e 'const fs=require("node:fs"),c=require("node:crypto");const b=fs.readFileSync(process.argv[1]);process.stdout.write(c.createHash("sha256").update(b).digest("hex"))' "$ROOT/$file")
+      case "$digest" in *[!0-9a-f]*|'') echo "Desktop artifact checksum is invalid" >&2; exit 1 ;; esac
+      test "${#digest}" -eq 64 || { echo "Desktop artifact checksum is invalid" >&2; exit 1; }
+      name=$(basename "$file")
+      remote_digest=$(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" "sudo test -f '/var/www/awh-web/desktop-artifacts/$digest-$name' && sudo sha256sum '/var/www/awh-web/desktop-artifacts/$digest-$name' | cut -d' ' -f1" 2>/dev/null || true)
+      if test "$remote_digest" = "$digest"; then
+        printf '%s\n' "DESKTOP_ARTIFACT_REUSE=$name"
+        continue
+      fi
     fi
-  fi
-  DESKTOP_ARTIFACTS="$DESKTOP_ARTIFACTS $file"
-done
+    DESKTOP_ARTIFACTS="$DESKTOP_ARTIFACTS $file"
+  done
+fi
 FILES="$FILES$DESKTOP_ARTIFACTS"
 BUNDLE_CLOSURE=$ROOT/scripts/deploy/verify-control-plane-bundle-closure.mjs
 test -f "$BUNDLE_CLOSURE" || { echo "Missing control-plane bundle closure verifier" >&2; exit 1; }
