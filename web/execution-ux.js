@@ -76,6 +76,14 @@ export function executionContext(task, workers = []) {
   return items.slice(0, 4);
 }
 
+export function executionCanCancel(task) {
+  const state = clean(task?.state);
+  if (['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL'].includes(state)) return true;
+  if (state !== 'RUNNING') return false;
+  const capability = clean(task?.execution?.requiredCapability);
+  return capability === 'qa.cloud' || capability === 'review.visual';
+}
+
 export function executionStage(task) {
   const state = clean(task?.state) || 'QUEUED';
   if (state === 'PREPARING') return 'preparing';

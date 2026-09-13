@@ -1,5 +1,5 @@
 import { loadWebData } from './hub-read-adapter.js?release=__AWH_WEB_RELEASE_ID__';
-import { executionStatus } from './execution-ux.js?release=__AWH_WEB_RELEASE_ID__';
+import { executionCanCancel, executionStatus } from './execution-ux.js?release=__AWH_WEB_RELEASE_ID__';
 import { closeAwhDialog, openAwhDialog } from './navigation.js?release=__AWH_WEB_RELEASE_ID__';
 import {
   cancelTask, changePassword, changeUsername, createConversation, createMemory, createPerson, createProject, createRecoveryCodes, decideApproval,
@@ -14,7 +14,6 @@ import {
 (() => {
   const $ = (id) => document.getElementById(id);
   const MAX_ATTACHMENT_BYTES = 60 * 1024 * 1024;
-  const CANCELLABLE_TASK_STATES = new Set(['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL']);
   const MICRO_BAHT = 1000000;
   const DESKTOP_PACKAGES = [['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
   const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, people: [], accountRequests: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadFollowLatest: true };
@@ -77,7 +76,7 @@ import {
   function size(bytes) { if (!Number.isFinite(bytes) || bytes < 0) return ''; if (bytes < 1024) return `${bytes} B`; if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`; return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; }
   function activeCancellableTask() {
     const tasks = Array.isArray(state.conversation?.tasks) ? state.conversation.tasks : [];
-    return [...tasks].filter((task) => task && CANCELLABLE_TASK_STATES.has(task.state))
+    return [...tasks].filter((task) => task && executionCanCancel(task))
       .sort((left, right) => (Date.parse(right.updatedAt || right.createdAt || '') || 0) - (Date.parse(left.updatedAt || left.createdAt || '') || 0))[0] || null;
   }
   function addPendingAttachments(files) {
@@ -684,12 +683,15 @@ import {
   }
 
   function renderCancellation(task) {
-    if (!task || !['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL'].includes(task.state)) return null;
+    if (!task || !executionCanCancel(task)) return null;
     const actions = document.createElement('div'); actions.className = 'task-actions';
     const button = document.createElement('button'); button.type = 'button'; button.className = 'secondary-button'; button.textContent = 'หยุดงานนี้';
     button.addEventListener('click', async () => {
       button.disabled = true;
-      try { await cancelTask(task.taskId); await refreshWorkspace(); }
+      try {
+        const result = await cancelTask(task.taskId); await refreshWorkspace();
+        message('goal-message', result?.state === 'RUNNING' ? 'รับคำขอหยุดแล้ว · AWH จะไม่รับผลลัพธ์ Cloud ที่มาถึงภายหลัง' : 'หยุดงานแล้ว');
+      }
       catch (error) { message('goal-message', error instanceof Error ? error.message : 'AWH ยังยกเลิกงานนี้ไม่ได้'); button.disabled = false; }
     });
     actions.append(button); return actions;
@@ -1358,7 +1360,10 @@ import {
   $('goal-stop')?.addEventListener('click', async () => {
     const task = activeCancellableTask(); if (!task) return;
     const button = $('goal-stop'); button.disabled = true; message('goal-message', 'กำลังหยุดงาน…');
-    try { await cancelTask(task.taskId); await refreshConversation(false); message('goal-message', 'หยุดงานแล้ว'); }
+    try {
+      const result = await cancelTask(task.taskId); await refreshConversation(false);
+      message('goal-message', result?.state === 'RUNNING' ? 'รับคำขอหยุดแล้ว · AWH จะไม่รับผลลัพธ์ Cloud ที่มาถึงภายหลัง' : 'หยุดงานแล้ว');
+    }
     catch (error) { message('goal-message', error instanceof Error ? error.message : 'AWH ยังหยุดงานนี้ไม่ได้'); }
     finally { renderWorkspace(); }
   });

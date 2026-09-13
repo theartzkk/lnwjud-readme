@@ -87,6 +87,17 @@ test('unknown execution capability stays generic instead of exposing internal id
   assert.doesNotMatch(JSON.stringify(context), /internal\.secret\.capability/i);
 });
 
+test('Stop is available only where the backend can cancel safely', () => {
+  assert.equal(ux.executionCanCancel({ state: 'QUEUED' }), true);
+  assert.equal(ux.executionCanCancel({ state: 'WAITING_FOR_WORKER' }), true);
+  assert.equal(ux.executionCanCancel({ state: 'WAITING_FOR_APPROVAL' }), true);
+  assert.equal(ux.executionCanCancel({ state: 'RUNNING', execution: { requiredCapability: 'qa.cloud' } }), true);
+  assert.equal(ux.executionCanCancel({ state: 'RUNNING', execution: { requiredCapability: 'review.visual' } }), true);
+  assert.equal(ux.executionCanCancel({ state: 'RUNNING', execution: { requiredCapability: 'project.mutate.assisted' } }), false);
+  assert.equal(ux.executionCanCancel({ state: 'RUNNING', execution: { requiredCapability: 'codex:cli' } }), false);
+  assert.equal(ux.executionCanCancel({ state: 'COMPLETED' }), false);
+});
+
 test('provider failures remain truthful and preserve the task', () => {
   const status = ux.executionStatus({ state: 'FAILED', failureCode: 'PROVIDER_QUOTA_EXHAUSTED', progress: 0 });
   assert.equal(status.title, 'กำลังแก้ไข');
