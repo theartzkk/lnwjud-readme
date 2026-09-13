@@ -16,6 +16,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Package installers only when PR changes can alter the packaged Desktop
+  # runtime. Canonical/main and manual release checks remain full gates.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      desktop: ${{ steps.classify.outputs.desktop }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: classify
+        name: Classify Desktop package impact
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "desktop=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" > "$RUNNER_TEMP/changed-files.txt"
+          cat "$RUNNER_TEMP/changed-files.txt"
+          if grep -Eq '^(src/|desktop/|assets/|logo-256x256\.png$|forge\.config\.cjs$|package\.json$|package-lock\.json$|ART_AI_WORKING_PROTOCOL\.md$|\.github/scripts/verify-packaged-mcp\.ps1$|scripts/package-|scripts/qa/verify-packaged-bundle\.mjs$)' "$RUNNER_TEMP/changed-files.txt"; then
+            echo "desktop=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "desktop=false" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
     strategy:
       fail-fast: false
@@ -115,7 +141,8 @@ jobs:
   # Desktop packaging is intentionally a release gate, not a per-commit feature gate.
   # It still runs for every PR, canonical branch merge, main, and manual release check.
   desktop-installer-windows:
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/awh/api-independence' || github.ref == 'refs/heads/main' }}
+    needs: changes
+    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/awh/api-independence' || github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && needs.changes.outputs.desktop == 'true') }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -240,7 +267,8 @@ jobs:
           retention-days: 14
 
   desktop-package-macos:
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/awh/api-independence' || github.ref == 'refs/heads/main' }}
+    needs: changes
+    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/awh/api-independence' || github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && needs.changes.outputs.desktop == 'true') }}
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v7
