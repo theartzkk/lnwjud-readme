@@ -1,6 +1,6 @@
 # Art ↔ AI Working Constitution
 
-Version: 1.2
+Version: 1.3
 Status: Durable owner-level working protocol
 Applies to: ChatGPT, AWH, Codex, connected AI/tools, workers, and every project operated for Art
 
@@ -95,7 +95,7 @@ Default objective:
 
 > **Art describes the goal once; AI coordinates the work.**
 
-Prefer connected tools, APIs, CI, GitHub, AWH workers, provider consoles and safe automation over manual copy/paste or long Terminal procedures.
+Prefer AWH typed operations, Project Vault/VPS execution, direct connected provider APIs and safe automation over manual copy/paste or long Terminal procedures. GitHub, device workers and remote-control tools are supporting routes, not default execution authorities.
 
 Normal use should hide:
 
@@ -110,6 +110,26 @@ Normal use should hide:
 Expose technical detail under Advanced / Diagnostics or when required for review.
 
 Do not force Art to repeat information that can be recovered from Source of Truth.
+
+### Execution routing authority
+
+For ChatGPT, AWH, Codex and delegated agents, choose the lowest-friction authoritative route that can actually perform the work:
+
+1. **AWH server-native typed operation / durable VPS execution** for capabilities the Hub already owns, against the active Project Vault or other current authority.
+2. **Direct connected provider API/connector** when the work belongs to that service, such as Drive, Gmail, a deployment provider, or another explicitly connected system.
+3. **Central engineering specialist / Codex** against an explicit Vault revision when code-level work requires specialist execution beyond the bounded VPS-native capability.
+4. **Native device worker** only for a capability that truly exists only on that device, operating system, hardware, or installed application, such as Microsoft Office desktop export, school-lab software, Registry/device state, or physical-device verification.
+5. **Remote Desktop / Desktop Commander** only when interactive device-local inspection/action is inherently required or every typed/headless route that preserves the same authority is unavailable. Never choose it merely because a device is online.
+6. **GitHub** is upstream provenance, mirror, collaboration and review unless the active project source authority or the requested action specifically requires GitHub. Hosted CI/Actions must not be a mandatory runtime dependency when equivalent bounded local/VPS QA is available.
+
+Routing invariants:
+
+- `AWH_VAULT` authority must not be silently stolen by GitHub observation.
+- GitHub quota/outage must not block work that can be performed against an already-bound canonical Vault/VPS revision.
+- Remote Desktop may not be used as a transit hop merely to reach a VPS, API or CLI that AWH can call directly through an approved route.
+- An online Mac/Windows worker is optional for Cloud-capable work and must never become a hidden dependency.
+- Do not create a second queue, executor, source authority or data store merely to avoid a blocked route.
+- If a platform safety/security gate blocks one attempted route, do not disguise or blind-retry it. Move only to another already-approved route that preserves the same authority, scope and safety contract.
 
 ## 7. Tool autonomy without losing safety
 
@@ -371,14 +391,14 @@ AWH should:
 - prevent duplicate identity/workspace conflicts;
 - share canonical Projects / Tasks / Memory / Workers / Artifacts / Approvals across surfaces;
 - let ChatGPT and AWH App become equivalent control surfaces over the same backend contract;
-- keep heavy work on trusted workers, not the lightweight VPS control plane;
+- keep heavyweight arbitrary execution on capability-routed trusted specialist workers; use the VPS only for the bounded server-native capabilities it explicitly owns;
 - make normal operation owner-friendly, not developer-console-first.
 
 ## 22. ChatGPT-direct contract
 
 When Art gives an instruction directly to ChatGPT, ChatGPT should apply this Constitution before planning/delegating work.
 
-ChatGPT should treat the prompt as the desired outcome, recover durable project context when available, inspect relevant Source of Truth, and delegate one coherent task to AWH/Codex/tools rather than converting Art's wording into a narrow literal patch.
+ChatGPT should treat the prompt as the desired outcome, recover durable project context when available, inspect relevant Source of Truth, and delegate one coherent task to AWH/Codex/tools rather than converting Art's wording into a narrow literal patch. ChatGPT must follow the Execution routing authority above and must not select Remote Desktop or GitHub merely because those tools are available.
 
 When durable context is not currently accessible, ChatGPT must be transparent rather than pretending to remember or infer critical facts.
 
