@@ -65,19 +65,19 @@ test('M10 deployment assets remain valid POSIX shell', async () => {
   await execFileAsync('/bin/sh', ['-n', remote]);
 });
 
-test('M20 source refresh carries forward the curated Founding Memory seed inside the existing rollback envelope', async () => {
+test('M21 source authority carries forward the curated Founding Memory seed inside the existing rollback envelope', async () => {
   const release=(await execFileAsync('git',['rev-parse','HEAD'],{cwd:root})).stdout.trim();
   const result = await execFileAsync('/bin/sh', [deploy, '--dry-run', '--project-source-authority'], {
     cwd: root,
     env: { ...process.env, AWH_SOURCE_ROOT: root, AWH_RELEASE_COMMIT: release, AWH_HUB_HOSTNAME: 'awh.example' },
   });
-  assert.match(result.stdout, /^M20_DRY_RUN=PASS$/m);
-  assert.match(result.stdout, /founding-seed-refresh,idempotence,verify-seed-version-checksum/);
+  assert.match(result.stdout, /^M21_DRY_RUN=PASS$/m);
+  assert.match(result.stdout, /migrate-020-from-v20,idempotent-m21,founding-seed-refresh,verify-seed-version-checksum/);
 
   const remoteSource = await readFile(remote, 'utf8');
-  const start = remoteSource.indexOf('if test "$PROJECT_SOURCE_AUTHORITY" = 1; then\n  # M20 extends');
+  const start = remoteSource.indexOf('if test "$PROJECT_SOURCE_AUTHORITY" = 1; then\n  # M21 extends');
   const end = remoteSource.indexOf('elif test "$CONVERSATION_LIFECYCLE" = 1; then', start);
-  assert.ok(start >= 0 && end > start, 'M20 refresh branch is present');
+  assert.ok(start >= 0 && end > start, 'M21 source-authority branch is present');
   const branch = remoteSource.slice(start, end);
   assert.match(branch, /DB_MUTATED=1/);
   assert.match(branch, /FOUNDING_SEED_REFRESH/);

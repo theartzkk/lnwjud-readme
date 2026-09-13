@@ -38,9 +38,14 @@ test('schema migrations have one monotonic authority per user_version', async ()
   assert.equal(new Set(ids).size, ids.length, 'MIGRATION_ID must be globally unique');
   authorities.sort((a, b) => a.version - b.version);
   assert.equal(authorities.at(-1)?.version, prefixes.at(-1)! + 1, 'latest SQL prefix must map to the latest user_version');
-  assert.equal(authorities.at(-1)?.id, 'm20-project-source-authority', 'schema 20 is owned by project source authority');
+  assert.equal(authorities.at(-1)?.id, 'm21-vault-source-authority', 'schema 21 is owned by Vault source authority');
+  const projectSource = authorities.find((item) => item.version === 20);
+  assert.equal(projectSource?.id, 'm20-project-source-authority', 'schema 20 remains owned by project source authority');
   const lifecycle = authorities.find((item) => item.version === 19);
   assert.equal(lifecycle?.id, 'm19-conversation-lifecycle', 'schema 19 remains owned by conversation lifecycle');
+  const vaultSource = await readFile(new URL('../hub/src/HubVaultSourceAuthorityMigration.php', import.meta.url), 'utf8');
+  assert.match(vaultSource, /TARGET_USER_VERSION\s*=\s*21/);
+  assert.match(vaultSource, /MIGRATION_ID\s*=\s*['"]m21-vault-source-authority['"]/);
 });
 
 test('project source authority advances beyond schema 19 without replacing conversation lifecycle', async () => {

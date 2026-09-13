@@ -36,6 +36,7 @@ require_once __DIR__ . '/HubCloudFirstMigration.php';
 require_once __DIR__ . '/HubCloudWorkflowService.php';
 require_once __DIR__ . '/HubBayRemoteUpdateService.php';
 require_once __DIR__ . '/HubProjectSourceAuthorityMigration.php';
+require_once __DIR__ . '/HubVaultSourceAuthorityMigration.php';
 require_once __DIR__ . '/HubProjectSourceAuthorityService.php';
 require_once __DIR__ . '/HubProjectSourceSyncService.php';
 require_once __DIR__ . '/HubAiPassProjectExportService.php';
@@ -110,7 +111,7 @@ final class HubControlPlaneService
         }
         $this->cloud = $cloud;
         $projectSources = null;
-        try { HubProjectSourceAuthorityMigration::assertCapabilityReady($pdo, dirname(__DIR__) . '/migrations/019_project_source_authority.sql'); $projectSources = new HubProjectSourceAuthorityService($pdo, $cloud); } catch (Throwable) { $projectSources = null; }
+        try { HubProjectSourceAuthorityMigration::assertCapabilityReady($pdo, dirname(__DIR__) . '/migrations/019_project_source_authority.sql'); HubVaultSourceAuthorityMigration::assertCapabilityReady($pdo, dirname(__DIR__) . '/migrations/020_vault_source_authority.sql'); $projectSources = new HubProjectSourceAuthorityService($pdo, $cloud); } catch (Throwable) { $projectSources = null; }
         $this->projectSources = $projectSources;
         $this->bayRemoteUpdate = new HubBayRemoteUpdateService();
     }
@@ -1182,12 +1183,23 @@ final class HubControlPlaneService
     public function updateProjectSourceAuthority(string $sessionToken,string $csrfToken,array $payload,?string $now=null):array
     {
         $session=$this->authorizeSession($sessionToken,$csrfToken,$now); $this->assertOwner((string)$session['user_id']);
-        self::exactKeys($payload,['action','projectId','provider','ref','repository','schemaVersion']);
         if(($payload['schemaVersion']??null)!==1 || !is_string($payload['action']??null) || !is_string($payload['projectId']??null)) throw new HubControlPlaneException('Project source request is invalid','PROJECT_SOURCE_INVALID');
-        $projectId=self::uuid((string)$payload['projectId']); $this->assertProjectMember((string)$session['user_id'],$projectId); $action=strtoupper(trim((string)$payload['action']));
+        $projectId=self::uuid((string)$payload['projectId']); $this->assertProjectMember((string)$session['user_id'],$projectId); $action=strtoupper(trim((string)$payload['action'])); $provider=$payload['provider']??null;
         try {
-            if($action==='BIND' && ($payload['provider']??null)==='GITHUB' && is_string($payload['repository']??null) && (is_string($payload['ref']??null)||($payload['ref']??null)===null)) return $this->projectSourceService()->bindGitHub($projectId,(string)$payload['repository'],$payload['ref'],$now,true);
-            if($action==='CLEAR' && ($payload['provider']??null)===null && ($payload['repository']??null)===null && ($payload['ref']??null)===null) return $this->projectSourceService()->clear($projectId,$now);
+            if($action==='BIND' && $provider==='GITHUB') {
+                self::exactKeys($payload,['action','projectId','provider','ref','repository','schemaVersion']);
+                if(!is_string($payload['repository']??null) || (!is_string($payload['ref']??null)&&($payload['ref']??null)!==null)) throw new HubProjectSourceAuthorityException('Project source request is invalid','PROJECT_SOURCE_INVALID');
+                return $this->projectSourceService()->bindGitHub($projectId,(string)$payload['repository'],$payload['ref'],$now,true);
+            }
+            if($action==='BIND' && $provider==='AWH_VAULT') {
+                self::exactKeys($payload,['action','projectId','provider','schemaVersion','vaultRevisionId']);
+                if(!is_string($payload['vaultRevisionId']??null)) throw new HubProjectSourceAuthorityException('Project Vault revision is required','PROJECT_SOURCE_INVALID');
+                return $this->projectSourceService()->bindVault($projectId,(string)$payload['vaultRevisionId'],$now);
+            }
+            if($action==='CLEAR') {
+                self::exactKeys($payload,['action','projectId','provider','ref','repository','schemaVersion']);
+                if($provider===null && ($payload['repository']??null)===null && ($payload['ref']??null)===null) return $this->projectSourceService()->clear($projectId,$now);
+            }
             throw new HubProjectSourceAuthorityException('Project source request is invalid','PROJECT_SOURCE_INVALID');
         } catch(HubProjectSourceAuthorityException $error){ throw new HubControlPlaneException('Project source could not be changed',$error->codeName); }
     }
