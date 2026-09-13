@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/HubProviderCredentialStore.php';
 require_once __DIR__ . '/HubCapabilityRegistryService.php';
 require_once __DIR__ . '/HubArtifactStore.php';
+require_once __DIR__ . '/HubExecutionTriageService.php';
 
 final class HubAiPassFindingsException extends RuntimeException
 {
@@ -86,6 +87,7 @@ final class HubCloudWorkflowService
     private const PROVIDER_ID = 'github-actions';
     private const LEASE_SECONDS = 1800;
     private const MAX_BATCH = 4;
+    private const MAX_ATTEMPTS = 3;
     private const MAX_QA_OUTER_BYTES = 1048576;
     private const MAX_QA_EVIDENCE_BYTES = 65536;
     private const MAX_REVIEW_OUTER_BYTES = 67108864;
@@ -171,7 +173,7 @@ final class HubCloudWorkflowService
         if (!$this->configured()) throw new HubCloudWorkflowException('AWH Cloud is not configured','CLOUD_NOT_CONFIGURED');
         $repository = self::repositoryValue($repository); $ref = self::refValue($ref);
         $response = $this->apiForRepository($repository, 'GET', '/commits/' . rawurlencode($ref));
-        if (($response['status'] ?? 0) !== 200) throw new HubCloudWorkflowException('Project source revision is unavailable', self::httpCode((int)($response['status'] ?? 0)));
+        if (($response['status'] ?? 0) !== 200) throw new HubCloudWorkflowException('Project source revision is unavailable', self::httpCode((int)($response['status'] ?? 0), is_string($response['body'] ?? null) ? (string)$response['body'] : null));
         $body = self::jsonObject((string)($response['body'] ?? ''));
         return self::revision((string)($body['sha'] ?? ''));
     }
@@ -182,7 +184,7 @@ final class HubCloudWorkflowService
         if (!$this->configured()) throw new HubCloudWorkflowException('AWH Cloud is not configured','CLOUD_NOT_CONFIGURED');
         $repository = self::repositoryValue($repository);
         $response = $this->apiForRepository($repository, 'GET', '');
-        if (($response['status'] ?? 0) !== 200) throw new HubCloudWorkflowException('Project repository metadata is unavailable', self::httpCode((int)($response['status'] ?? 0)));
+        if (($response['status'] ?? 0) !== 200) throw new HubCloudWorkflowException('Project repository metadata is unavailable', self::httpCode((int)($response['status'] ?? 0), is_string($response['body'] ?? null) ? (string)$response['body'] : null));
         $body = self::jsonObject((string)($response['body'] ?? ''));
         return self::refValue((string)($body['default_branch'] ?? ''));
     }
@@ -194,7 +196,7 @@ final class HubCloudWorkflowService
         $repository = self::repositoryValue($repository); $revision = self::revision($revision);
         $response = $this->apiForRepository($repository, 'GET', '/zipball/' . rawurlencode($revision), null, true);
         $status = (int)($response['status'] ?? 0); $body = $response['body'] ?? null;
-        if ($status !== 200 || !is_string($body)) throw new HubCloudWorkflowException('Project source archive is unavailable', self::httpCode($status));
+        if ($status !== 200 || !is_string($body)) throw new HubCloudWorkflowException('Project source archive is unavailable', self::httpCode($status, is_string($body) ? $body : null));
         $bytes = strlen($body);
         if ($bytes < 100 || $bytes > self::MAX_PROJECT_ARCHIVE_DOWNLOAD_BYTES) throw new HubCloudWorkflowException('Project source archive exceeds the safe limit','PROJECT_ARCHIVE_TOO_LARGE');
         return $body;
@@ -222,8 +224,8 @@ final class HubCloudWorkflowService
                     $this->markCancelled($row, $at);
                     $results[] = ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'state'=>'CANCELLED','code'=>'CANCELLED_BY_OWNER'];
                 } else {
-                    $this->fail($row, $error->codeName, $at);
-                    $results[] = ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'state'=>'FAILED','code'=>$error->codeName];
+                    $state = $this->deferOrFail($row, $error->codeName, $at, $error->diagnostic);
+                    $results[] = ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'state'=>$state,'code'=>$error->codeName];
                 }
             }
         }
@@ -241,11 +243,12 @@ final class HubCloudWorkflowService
     {
         $registry = new HubCapabilityRegistryService($this->pdo);
         $expires = gmdate('c', strtotime($at) + self::LEASE_SECONDS);
-        $q = $this->pdo->prepare("SELECT e.*,t.user_id,t.goal,t.conversation_id,t.state AS task_state FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE e.required_capability IN ('qa.cloud','review.visual') AND ((e.state IN ('QUEUED','WAITING_FOR_CAPABILITY')) OR (e.state='RUNNING' AND e.lease_owner LIKE 'cloud:github-actions:%')) AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY e.created_at,e.execution_id LIMIT 12");
+        $q = $this->pdo->prepare("SELECT e.*,t.user_id,t.goal,t.conversation_id,t.state AS task_state FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE e.required_capability IN ('qa.cloud','review.visual') AND ((e.state='QUEUED') OR (e.state='WAITING_FOR_CAPABILITY' AND e.last_error_code IS NULL) OR (e.state='RUNNING' AND e.lease_owner LIKE 'cloud:github-actions:%')) AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY e.created_at,e.execution_id LIMIT 12");
         $q->execute(); $claimed = [];
         foreach ($q->fetchAll() as $row) {
             if (count($claimed) >= self::MAX_BATCH) break;
             $capability = (string)$row['required_capability'];
+            if ((string)$row['state'] !== 'RUNNING' && !HubExecutionFailurePolicy::eligible($row, $at, self::MAX_ATTEMPTS)) continue;
             $route = $registry->route($capability, $at);
             if (!is_array($route) || ($route['providerId'] ?? null) !== self::PROVIDER_ID) continue;
             $owner = 'cloud:' . self::PROVIDER_ID . ':' . substr(hash('sha256', (string)$row['execution_id'] . "\n" . $at . "\n" . bin2hex(random_bytes(8))), 0, 24);
@@ -323,14 +326,14 @@ final class HubCloudWorkflowService
             'ref' => $this->ref(),
             'inputs' => $inputs,
         ]);
-        if (($response['status'] ?? 0) !== 204) throw new HubCloudWorkflowException('Cloud workflow dispatch failed', self::httpCode((int)($response['status'] ?? 0)));
+        if (($response['status'] ?? 0) !== 204) throw new HubCloudWorkflowException('Cloud workflow dispatch failed', self::httpCode((int)($response['status'] ?? 0), is_string($response['body'] ?? null) ? (string)$response['body'] : null));
     }
 
     /** @return array<string,mixed>|null */
     private function discoverRun(string $workflow, string $executionId, string $revision, string $profile, string $dispatchedAt): ?array
     {
         $response = $this->api('GET', '/actions/workflows/' . rawurlencode($workflow) . '/runs?event=workflow_dispatch&branch=' . rawurlencode($this->ref()) . '&per_page=30');
-        if (($response['status'] ?? 0) !== 200) throw new HubCloudWorkflowException('Cloud workflow discovery failed', self::httpCode((int)($response['status'] ?? 0)));
+        if (($response['status'] ?? 0) !== 200) throw new HubCloudWorkflowException('Cloud workflow discovery failed', self::httpCode((int)($response['status'] ?? 0), is_string($response['body'] ?? null) ? (string)$response['body'] : null));
         $body = self::jsonObject((string)($response['body'] ?? '')); $matches = []; $expectedTitle = self::runTitle($workflow, $executionId, $revision, $profile);
         foreach (($body['workflow_runs'] ?? []) as $run) {
             if (!is_array($run) || !is_int($run['id'] ?? null)) continue;
@@ -351,7 +354,7 @@ final class HubCloudWorkflowService
     {
         if ($runId < 1) throw new HubCloudWorkflowException('Cloud run reference is invalid', 'CLOUD_CHECKPOINT_INVALID');
         $response = $this->api('GET', '/actions/runs/' . $runId);
-        if (($response['status'] ?? 0) !== 200) throw new HubCloudWorkflowException('Cloud run status is unavailable', self::httpCode((int)($response['status'] ?? 0)));
+        if (($response['status'] ?? 0) !== 200) throw new HubCloudWorkflowException('Cloud run status is unavailable', self::httpCode((int)($response['status'] ?? 0), is_string($response['body'] ?? null) ? (string)$response['body'] : null));
         return self::jsonObject((string)($response['body'] ?? ''));
     }
 
@@ -359,14 +362,14 @@ final class HubCloudWorkflowService
     private function storeQaArtifact(array $row, int $runId, string $executionId, string $workflow, string $revision, string $at): void
     {
         $response = $this->api('GET', '/actions/runs/' . $runId . '/artifacts');
-        if (($response['status'] ?? 0) !== 200) throw new HubCloudWorkflowException('Cloud QA artifact list is unavailable', self::httpCode((int)($response['status'] ?? 0)));
+        if (($response['status'] ?? 0) !== 200) throw new HubCloudWorkflowException('Cloud QA artifact list is unavailable', self::httpCode((int)($response['status'] ?? 0), is_string($response['body'] ?? null) ? (string)$response['body'] : null));
         $body = self::jsonObject((string)($response['body'] ?? ''));
         $wanted = 'AWH-CLOUD-QA-' . $revision; $artifactRef = null;
         foreach (($body['artifacts'] ?? []) as $item) if (is_array($item) && ($item['name'] ?? null) === $wanted && is_int($item['id'] ?? null) && ($item['expired'] ?? false) !== true) { $artifactRef = (int)$item['id']; break; }
         if ($artifactRef === null) throw new HubCloudWorkflowException('Cloud QA artifact is missing', 'CLOUD_ARTIFACT_MISSING');
         $download = $this->api('GET', '/actions/artifacts/' . $artifactRef . '/zip', null, true);
         $outerBytes = is_string($download['body'] ?? null) ? strlen((string)$download['body']) : 0;
-        if (($download['status'] ?? 0) !== 200 || $outerBytes < 100 || $outerBytes > self::MAX_QA_OUTER_BYTES) throw new HubCloudWorkflowException('Cloud QA artifact download failed', self::httpCode((int)($download['status'] ?? 0)));
+        if (($download['status'] ?? 0) !== 200 || $outerBytes < 100 || $outerBytes > self::MAX_QA_OUTER_BYTES) throw new HubCloudWorkflowException('Cloud QA artifact download failed', self::httpCode((int)($download['status'] ?? 0), is_string($download['body'] ?? null) ? (string)$download['body'] : null));
         $outer = tempnam(sys_get_temp_dir(), 'awh-cloud-qa-'); $evidence = null;
         if (!is_string($outer)) throw new HubCloudWorkflowException('Cloud QA artifact staging failed', 'CLOUD_ARTIFACT_INVALID');
         try {
@@ -392,14 +395,14 @@ final class HubCloudWorkflowService
     private function storeReviewArtifact(array $row, int $runId, string $executionId, string $workflow, string $revision, string $profile, string $at): void
     {
         $response = $this->api('GET', '/actions/runs/' . $runId . '/artifacts');
-        if (($response['status'] ?? 0) !== 200) throw new HubCloudWorkflowException('Cloud artifact list is unavailable', self::httpCode((int)($response['status'] ?? 0)));
+        if (($response['status'] ?? 0) !== 200) throw new HubCloudWorkflowException('Cloud artifact list is unavailable', self::httpCode((int)($response['status'] ?? 0), is_string($response['body'] ?? null) ? (string)$response['body'] : null));
         $body = self::jsonObject((string)($response['body'] ?? ''));
         $wanted = 'AWH-AIPASS-REVIEW-' . $revision; $artifactRef = null;
         foreach (($body['artifacts'] ?? []) as $item) if (is_array($item) && ($item['name'] ?? null) === $wanted && is_int($item['id'] ?? null) && ($item['expired'] ?? false) !== true) { $artifactRef = (int)$item['id']; break; }
         if ($artifactRef === null) throw new HubCloudWorkflowException('Cloud review artifact is missing', 'CLOUD_ARTIFACT_MISSING');
         $download = $this->api('GET', '/actions/artifacts/' . $artifactRef . '/zip', null, true);
         $outerBytes = is_string($download['body'] ?? null) ? strlen((string)$download['body']) : 0;
-        if (($download['status'] ?? 0) !== 200 || $outerBytes < 100 || $outerBytes > self::MAX_REVIEW_OUTER_BYTES) throw new HubCloudWorkflowException('Cloud review artifact download failed', self::httpCode((int)($download['status'] ?? 0)));
+        if (($download['status'] ?? 0) !== 200 || $outerBytes < 100 || $outerBytes > self::MAX_REVIEW_OUTER_BYTES) throw new HubCloudWorkflowException('Cloud review artifact download failed', self::httpCode((int)($download['status'] ?? 0), is_string($download['body'] ?? null) ? (string)$download['body'] : null));
         $outer = tempnam(sys_get_temp_dir(), 'awh-cloud-'); $innerDir = sys_get_temp_dir() . '/awh-cloud-' . bin2hex(random_bytes(8));
         if (!is_string($outer) || !@mkdir($innerDir, 0700)) throw new HubCloudWorkflowException('Cloud artifact staging failed', 'CLOUD_ARTIFACT_INVALID');
         try {
@@ -542,16 +545,34 @@ final class HubCloudWorkflowService
         if(HubCapabilityRegistryService::schemaPresent($this->pdo))(new HubCapabilityRegistryService($this->pdo))->updateEnvelopeState((string)$row['execution_id'],'CANCELLED',null,$at);
     }
 
-    /** @param array<string,mixed> $row */
-    private function fail(array $row, string $code, string $at): void
+    /** @param array<string,mixed> $row @param array<string,mixed> $diagnostic @return string */
+    private function deferOrFail(array $row, string $code, string $at, array $diagnostic = []): string
     {
+        $attempt = max(1, (int)($row['attempt_count'] ?? 1));
+        $decision = HubExecutionFailurePolicy::decide($code, $attempt, $diagnostic, $at, self::MAX_ATTEMPTS, (string)($row['execution_id'] ?? ''));
+        $state = (string)$decision['state'];
         $owner = (string)($row['lease_owner'] ?? '');
-        $update = $this->pdo->prepare("UPDATE control_task_executions SET state='FAILED',lease_owner=NULL,lease_expires_at=NULL,last_error_code=:code,updated_at=:at WHERE execution_id=:id AND state='RUNNING' AND lease_owner=:owner");
-        $update->execute(['code'=>$code,'at'=>$at,'id'=>$row['execution_id'],'owner'=>$owner]);
-        if ($update->rowCount() !== 1) return;
-        $this->pdo->prepare("UPDATE control_tasks SET state='FAILED',progress=0,failure_code=:code,result_summary='AWH Cloud ตรวจงานนี้ไม่สำเร็จ งานเดิมและ Source of Truth ยังไม่ถูกเปลี่ยน',lease_expires_at=NULL,updated_at=:at WHERE task_id=:task")->execute(['code'=>$code,'at'=>$at,'task'=>$row['task_id']]);
-        $this->event((string)$row['task_id'],'FAILED',0,'AWH Cloud หยุดงานนี้ไว้อย่างปลอดภัย',$at);
-        if (HubCapabilityRegistryService::schemaPresent($this->pdo)) (new HubCapabilityRegistryService($this->pdo))->updateEnvelopeState((string)$row['execution_id'],'RELEASED',null,$at);
+        $checkpoint = HubExecutionFailurePolicy::checkpointWithDecision((string)($row['checkpoint_json'] ?? '{}'), $code, $decision);
+        $update = $this->pdo->prepare("UPDATE control_task_executions SET state=:state,lease_owner=NULL,lease_expires_at=NULL,last_error_code=:code,checkpoint_json=:checkpoint,updated_at=:at WHERE execution_id=:id AND state='RUNNING' AND lease_owner=:owner");
+        $update->execute(['state'=>$state,'code'=>$code,'checkpoint'=>$checkpoint,'at'=>$at,'id'=>$row['execution_id'],'owner'=>$owner]);
+        if ($update->rowCount() !== 1) return $state;
+
+        $terminal = $state === 'FAILED';
+        $paused = $state === 'WAITING_FOR_CAPABILITY';
+        $taskState = $terminal ? 'FAILED' : 'WAITING_FOR_WORKER';
+        $summary = $terminal
+            ? 'AWH Cloud ตรวจงานนี้ไม่สำเร็จ งานเดิมและ Source of Truth ยังไม่ถูกเปลี่ยน'
+            : ($paused
+                ? 'AWH Cloud พักงานนี้ไว้เพราะ capability/quota ยังไม่พร้อม งานเดิมและ Source of Truth ยังปลอดภัย'
+                : 'AWH Cloud เจอปัญหาชั่วคราว ระบบเก็บงานเดิมไว้และจะลองใหม่ตาม backoff policy');
+        $this->pdo->prepare("UPDATE control_tasks SET state=:state,progress=0,failure_code=:code,result_summary=:summary,lease_expires_at=NULL,updated_at=:at WHERE task_id=:task AND state NOT IN ('COMPLETED','CANCELLED')")->execute(['state'=>$taskState,'code'=>$code,'summary'=>$summary,'at'=>$at,'task'=>$row['task_id']]);
+
+        $message = $terminal ? 'AWH Cloud หยุดงานนี้ไว้อย่างปลอดภัย'
+            : ($paused ? 'AWH Cloud พักงานไว้โดยไม่ blind retry' : 'AWH Cloud จัด bounded retry ตาม failure policy กลาง');
+        if (is_string($decision['nextEligibleAt'] ?? null)) $message .= ' nextEligibleAt=' . $decision['nextEligibleAt'];
+        $this->event((string)$row['task_id'],$taskState,0,$message,$at);
+        if (HubCapabilityRegistryService::schemaPresent($this->pdo)) (new HubCapabilityRegistryService($this->pdo))->updateEnvelopeState((string)$row['execution_id'],$terminal?'RELEASED':'WAITING',null,$at);
+        return $state;
     }
 
     private function event(string $taskId, string $state, int $progress, string $message, string $at): void
@@ -679,9 +700,20 @@ final class HubCloudWorkflowService
         if (strtotime($value)===false) throw new HubCloudWorkflowException('Cloud time is invalid','CLOUD_CHECKPOINT_INVALID'); return gmdate('c',strtotime($value));
     }
 
-    private static function httpCode(int $status): string
+    private static function httpCode(int $status, ?string $body = null): string
     {
-        return match ($status) { 401=>'CLOUD_AUTH_FAILED',403=>'CLOUD_PERMISSION_DENIED',404=>'CLOUD_WORKFLOW_NOT_FOUND',409=>'CLOUD_CONFLICT',422=>'CLOUD_REQUEST_INVALID',429=>'CLOUD_RATE_LIMITED',default=>$status>=500?'CLOUD_UNAVAILABLE':'CLOUD_REQUEST_FAILED' };
+        $message = '';
+        if (is_string($body) && $body !== '') {
+            $decoded = json_decode($body, true, 16);
+            if (is_array($decoded) && is_string($decoded['message'] ?? null)) $message = strtolower(substr((string)$decoded['message'], 0, 500));
+            elseif (strlen($body) <= 500) $message = strtolower($body);
+        }
+        if ($status === 403) {
+            if (preg_match('/(?:secondary |abuse |api )?rate limit|too many requests/', $message) === 1) return 'CLOUD_RATE_LIMITED';
+            if (preg_match('/billing|spending limit|payment|quota|included minutes|actions minutes|budget/', $message) === 1) return 'CLOUD_QUOTA_EXHAUSTED';
+            return 'CLOUD_PERMISSION_DENIED';
+        }
+        return match ($status) { 401=>'CLOUD_AUTH_FAILED',402=>'CLOUD_QUOTA_EXHAUSTED',404=>'CLOUD_WORKFLOW_NOT_FOUND',409=>'CLOUD_CONFLICT',422=>'CLOUD_REQUEST_INVALID',429=>'CLOUD_RATE_LIMITED',default=>$status>=500?'CLOUD_UNAVAILABLE':'CLOUD_REQUEST_FAILED' };
     }
 
     private static function uuid(): string
