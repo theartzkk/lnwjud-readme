@@ -60,6 +60,33 @@ test('live Action Graph projection replaces generic progress without exposing ca
   assert.doesNotMatch(status.journey.map((step: { label: string }) => step.label).join(' '), /codex|capability|project\.search/i);
 });
 
+test('execution context exposes bounded human-readable provenance without raw capability or full ids', () => {
+  const task = {
+    state: 'RUNNING',
+    assignedDevice: null,
+    execution: {
+      executorKind: 'VPS',
+      requiredCapability: 'project.mutate.assisted',
+      vaultRevisionId: '12345678-1234-4123-8123-1234567890ab',
+      continuation: { rootTaskId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', step: 2, maxSteps: 5 },
+    },
+  };
+  const context = ux.executionStatus(task).context;
+  assert.deepEqual(context, [
+    { label: 'ทำงานโดย', value: 'ระบบกลาง AWH' },
+    { label: 'วิธีทำ', value: 'แก้ Project แบบมี revision' },
+    { label: 'Project revision', value: '12345678' },
+    { label: 'งานต่อเนื่อง', value: 'ขั้น 3/5' },
+  ]);
+  assert.doesNotMatch(JSON.stringify(context), /project\.mutate\.assisted|12345678-1234|aaaaaaaa-aaaa/i);
+});
+
+test('unknown execution capability stays generic instead of exposing internal identifiers', () => {
+  const context = ux.executionStatus({ state: 'RUNNING', execution: { executorKind: 'VPS', requiredCapability: 'internal.secret.capability' } }).context;
+  assert.equal(context.find((item: { label: string }) => item.label === 'วิธีทำ')?.value, 'ความสามารถที่เหมาะกับงาน');
+  assert.doesNotMatch(JSON.stringify(context), /internal\.secret\.capability/i);
+});
+
 test('provider failures remain truthful and preserve the task', () => {
   const status = ux.executionStatus({ state: 'FAILED', failureCode: 'PROVIDER_QUOTA_EXHAUSTED', progress: 0 });
   assert.equal(status.title, 'กำลังแก้ไข');

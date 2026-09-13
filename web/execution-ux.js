@@ -47,6 +47,35 @@ export function executionActor(task, workers = []) {
   return 'AWH';
 }
 
+function capabilityLabel(capability) {
+  const value = clean(capability)?.toLowerCase();
+  if (!value) return null;
+  if (value === 'agent.conversation' || value.startsWith('agent.')) return 'AI สนทนา';
+  if (value === 'project.read' || value.startsWith('project.search')) return 'อ่าน Project';
+  if (value.startsWith('project.mutate')) return 'แก้ Project แบบมี revision';
+  if (value === 'codex:cli' || value.startsWith('code.')) return 'ผู้เชี่ยวชาญโค้ด';
+  if (value.startsWith('document:') || value.startsWith('office:')) return 'งานเอกสาร';
+  if (value.startsWith('qa.') || value.startsWith('review.')) return 'ตรวจคุณภาพ';
+  if (value.startsWith('artifact.')) return 'จัดการไฟล์ผลลัพธ์';
+  return 'ความสามารถที่เหมาะกับงาน';
+}
+
+export function executionContext(task, workers = []) {
+  const execution = task?.execution;
+  if (!execution || typeof execution !== 'object') return [];
+  const items = [{ label: 'ทำงานโดย', value: executionActor(task, workers) }];
+  const capability = capabilityLabel(execution.requiredCapability);
+  if (capability) items.push({ label: 'วิธีทำ', value: capability });
+  const revision = clean(execution.vaultRevisionId);
+  if (revision && /^[0-9a-f-]{8,64}$/i.test(revision)) items.push({ label: 'Project revision', value: revision.slice(0, 8) });
+  const continuation = execution.continuation;
+  if (continuation && typeof continuation === 'object' && Number.isInteger(continuation.step) && Number.isInteger(continuation.maxSteps)
+      && continuation.step >= 0 && continuation.maxSteps >= 1 && continuation.step < continuation.maxSteps && continuation.maxSteps <= 8) {
+    items.push({ label: 'งานต่อเนื่อง', value: `ขั้น ${continuation.step + 1}/${continuation.maxSteps}` });
+  }
+  return items.slice(0, 4);
+}
+
 export function executionStage(task) {
   const state = clean(task?.state) || 'QUEUED';
   if (state === 'PREPARING') return 'preparing';
@@ -123,6 +152,7 @@ export function executionStatus(task, workers = []) {
     terminal: TERMINAL.has(state),
     needsApproval: state === 'WAITING_FOR_APPROVAL',
     journey: executionJourney(task),
+    context: executionContext(task, workers),
   };
 }
 

@@ -733,7 +733,18 @@ import {
       const label = document.createElement('span'); label.textContent = step.label;
       item.append(dot, label); list.append(item);
     }
-    details.append(summary, list); return details;
+    details.append(summary, list);
+    if (Array.isArray(status.context) && status.context.length) {
+      const context = document.createElement('dl'); context.className = 'execution-context';
+      for (const item of status.context) {
+        if (!item || typeof item.label !== 'string' || typeof item.value !== 'string') continue;
+        const label = document.createElement('dt'); label.textContent = item.label;
+        const value = document.createElement('dd'); value.textContent = item.value;
+        context.append(label, value);
+      }
+      if (context.childElementCount) details.append(context);
+    }
+    return details;
   }
 
   function renderThread(conversation, approvals) {
