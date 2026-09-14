@@ -53,6 +53,8 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(sourceSync, /Art’s Workspace Hub/);
   assert.match(sourceSync, /release-vault:/);
   assert.match(sourceSync, /HubCentralProjectAuthorityMigration::assertCapabilityReady/);
+  assert.match(sourceSync, /expireStalePromotionApprovals/);
+  assert.match(vaultService, /function expireStalePromotionApprovals/);
   assert.doesNotMatch(sourceSync, /in_array\(\$schemaVersion/);
   assert.match(remoteSource, /class_exists\("ZipArchive"\).*\? 0 : 1\);/);
   assert.match(remoteSource, /awh-native-executor\.timer/);

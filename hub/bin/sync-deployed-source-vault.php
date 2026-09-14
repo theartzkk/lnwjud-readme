@@ -48,6 +48,7 @@ try {
         throw new RuntimeException('Duplicate source is not the active canonical revision');
     }
     $state = $service->state($projectId); if (!is_string($state['activeRevisionId'] ?? null)) throw new RuntimeException('Canonical source revision is unavailable');
+    $service->expireStalePromotionApprovals($projectId, (string) $state['activeRevisionId'], $at);
     $pdo->prepare('UPDATE projects SET source_revision=:release, observed_at=:at, provenance=:provenance WHERE project_id=:project')->execute(['release' => strtolower($releaseSha), 'at' => $at, 'provenance' => 'release-vault:' . substr(strtolower($releaseSha), 0, 12), 'project' => $projectId]);
     $pdo->exec('COMMIT');
 } catch (Throwable $error) {

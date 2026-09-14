@@ -135,6 +135,41 @@ final class HubProjectVaultService
         } catch (Throwable $error) { self::rollbackSavepoint($this->pdo, $savepoint); if ($error instanceof HubProjectVaultException) throw $error; throw new HubProjectVaultException('Project candidate could not be rejected', 'PROJECT_VAULT_FAILED'); }
     }
 
+    /** Expire promotion approvals that were created against a canonical revision
+     * that has since been replaced. This keeps stale candidates from remaining
+     * actionable after a trusted deployed-source promotion. */
+    public function expireStalePromotionApprovals(string $projectId, string $activeRevisionId, ?string $now = null): array
+    {
+        $this->assertReady(); $projectId = self::uuid($projectId); $activeRevisionId = self::uuid($activeRevisionId); $at = self::timestamp($now ?? gmdate('c')); $savepoint = 'awh_vault_stale_approval'; $expired = 0;
+        try {
+            self::savepoint($this->pdo, $savepoint);
+            $q = $this->pdo->prepare("SELECT a.approval_id,a.task_id,a.scope_json,t.state FROM control_approvals a JOIN control_tasks t ON t.task_id=a.task_id WHERE t.project_id=:project AND a.action='project.revision.promote' AND a.status='PENDING' ORDER BY a.approval_id");
+            $q->execute(['project' => $projectId]);
+            foreach ($q->fetchAll() as $row) {
+                try { $scope = json_decode((string) $row['scope_json'], true, 16, JSON_THROW_ON_ERROR); } catch (Throwable) { throw new HubProjectVaultException('Promotion approval scope is invalid', 'PROJECT_VAULT_FAILED'); }
+                if (!is_array($scope)) throw new HubProjectVaultException('Promotion approval scope is invalid', 'PROJECT_VAULT_FAILED');
+                $taskId = self::uuid((string) ($scope['taskId'] ?? '')); $scopeProject = self::uuid((string) ($scope['projectId'] ?? '')); $expected = self::uuid((string) ($scope['expectedActiveRevisionId'] ?? '')); $candidate = self::uuid((string) ($scope['candidateRevisionId'] ?? ''));
+                if (!hash_equals($taskId, (string) $row['task_id']) || !hash_equals($scopeProject, $projectId)) throw new HubProjectVaultException('Promotion approval scope does not match its task', 'PROJECT_VAULT_FAILED');
+                if (hash_equals($expected, $activeRevisionId)) continue;
+                $candidateState = $this->pdo->prepare('SELECT state FROM control_project_vault_revisions WHERE project_id=:project AND revision_id=:revision');
+                $candidateState->execute(['project' => $projectId, 'revision' => $candidate]);
+                if ($candidateState->fetchColumn() === 'CANDIDATE') $this->rejectCandidate($projectId, $candidate, $at);
+                $approval = $this->pdo->prepare("UPDATE control_approvals SET status='EXPIRED', decided_at=:at WHERE approval_id=:approval AND status='PENDING'");
+                $approval->execute(['at' => $at, 'approval' => $row['approval_id']]);
+                if ($approval->rowCount() !== 1) continue;
+                if ((string) $row['state'] === 'WAITING_FOR_APPROVAL') {
+                    $summary = 'ยกเลิก candidate อัตโนมัติ เพราะ Project Vault มี canonical revision ใหม่กว่าแล้ว';
+                    $this->pdo->prepare("UPDATE control_tasks SET state='CANCELLED', assigned_device_id=NULL, lease_expires_at=NULL, progress=100, failure_code=NULL, result_summary=:summary, updated_at=:at, cancelled_at=:at WHERE task_id=:task AND state='WAITING_FOR_APPROVAL'")->execute(['summary' => $summary, 'at' => $at, 'task' => $taskId]);
+                    $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:id,:task,'CANCELLED',100,'candidate revision superseded by newer canonical source',:at)")->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'task' => $taskId, 'at' => $at]);
+                    $this->pdo->prepare("UPDATE control_workers SET state='READY', busy_task_id=NULL, last_seen_at=:at WHERE busy_task_id=:task")->execute(['at' => $at, 'task' => $taskId]);
+                }
+                $expired++;
+            }
+            self::release($this->pdo, $savepoint);
+            return ['expiredApprovals' => $expired];
+        } catch (Throwable $error) { self::rollbackSavepoint($this->pdo, $savepoint); if ($error instanceof HubProjectVaultException) throw $error; throw new HubProjectVaultException('Stale promotion approvals could not be reconciled', 'PROJECT_VAULT_FAILED'); }
+    }
+
     /** @return array{revisionId:string,contentSha256:string,files:list<array{path:string,sizeBytes:int}>} */
     public function context(string $projectId, string $request): array
     {
