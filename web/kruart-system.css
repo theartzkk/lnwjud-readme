@@ -100,7 +100,7 @@ button:not(:disabled){cursor:pointer}
 .cp-main{background:transparent!important}
 .cp-topbar{min-height:70px!important;border-color:var(--k-line)!important;background:rgba(255,255,255,.96)!important;box-shadow:0 5px 18px rgba(20,61,117,.045)!important}
 .cp-content{width:min(var(--k-max),calc(100% - 42px))!important}
-.cp-metrics article,.cp-section,.cp-footnote{border-color:var(--k-line)!important;border-radius:var(--k-r-lg)!important;background:#fff!important;box-shadow:var(--k-shadow)!important}
+.cp-metrics article,.cp-section,.cp-footnote{border-color:var(--k-line)!important;border-radius:var(--k-r-md)!important;background:#fff!important;box-shadow:none!important}
 .cp-tool{border-radius:16px!important}.cp-tool:hover{border-color:#a9cce7!important;box-shadow:0 10px 24px rgba(20,61,117,.09)!important}
 .cp-bay-update{border-color:#cfe5f7!important;box-shadow:var(--k-shadow-float)!important}
 .cp-bay-visual img{content:url("./kruart-role-staff-final.webp");width:min(245px,90%)!important;height:235px!important;object-fit:cover!important;object-position:20% center!important;border-radius:24px!important}

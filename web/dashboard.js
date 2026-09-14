@@ -296,6 +296,7 @@ function mountMobileNavigation() {
     document.body.classList.toggle('awh-keyboard-open', keyboardOpen);
     document.documentElement.style.setProperty('--awh-visual-viewport-height', `${Math.round(currentHeight)}px`);
   };
+  window.addEventListener('resize', updateKeyboardViewport, { passive: true });
   window.visualViewport?.addEventListener('resize', updateKeyboardViewport, { passive: true });
   window.visualViewport?.addEventListener('scroll', updateKeyboardViewport, { passive: true });
   document.addEventListener('focusin', updateKeyboardViewport, { passive: true });

@@ -1293,10 +1293,19 @@ import {
     finally { pollingConversation = false; }
   }
 
+  function refreshConversationOnReturn() {
+    if (document.hidden || !state.control?.authenticated || !state.selectedConversationId) return;
+    void pollConversation();
+  }
+
   function startWorkspacePolling() {
     if (!state.conversationTimer) state.conversationTimer = window.setInterval(() => void pollConversation(), 2000);
     if (!state.refreshTimer) state.refreshTimer = window.setInterval(() => { if (!document.hidden) void refreshWorkspace(false); }, 15_000);
   }
+
+  document.addEventListener('visibilitychange', refreshConversationOnReturn);
+  window.addEventListener('pageshow', refreshConversationOnReturn);
+  window.addEventListener('online', refreshConversationOnReturn);
 
   async function hydrateAuthenticatedControl({ refreshConversationOnSurface = true } = {}) {
     if (!state.control?.authenticated) return null;

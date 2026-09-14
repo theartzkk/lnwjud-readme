@@ -73,7 +73,8 @@ test('system UI is build, release, cache and deploy authoritative', async () => 
   assert.doesNotMatch(css, /overflow-x:\s*visible/);
   const light = await read('web/awh-light-system.css');
   assert.doesNotMatch(light, /kruart-human-student-computer/);
-  assert.match(light, /\.empty-work:after[\s\S]{0,420}kruart-role-staff-final\.webp/);
+  // Operational Chat keeps its empty state compact; approved art remains in the registry/cache.
+  assert.doesNotMatch(light, /\.empty-work::?after/);
 });
 
 test('generated build reinserts KRUART system UI after legacy light authority', async () => {

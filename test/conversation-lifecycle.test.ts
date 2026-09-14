@@ -37,7 +37,7 @@ test('conversation lifecycle is reversible and preserves canonical task/artifact
   assert.match(dashboard, /keyboardViewportBaseline/);
   assert.match(dashboard, /lostHeight > 96/);
   assert.match(dashboard, /focusin/);
-  assert.match(styles, /:has\(#goal-input:focus\)[^}]*\.awh-mobile-nav/s);
+  assert.doesNotMatch(styles, /:has\(#goal-input:focus\)/);
   assert.match(styles, /awh-keyboard-open[^}]*\.composer textarea[^}]*min-height:\s*40px/s);
   assert.match(dashboardCss, /repeat\(4,minmax\(0,1fr\)\)/);
   assert.doesNotMatch(styles, /body\.work-active:not\(\.product-dashboard-active\) \.awh-mobile-nav \{ display: none; \}/);
@@ -52,7 +52,7 @@ test('conversation lifecycle is reversible and preserves canonical task/artifact
   assert.match(app, /state\.conversationAvailable = Boolean\(state\.selectedConversationId\)/);
   assert.match(app, /ลองโหลดใหม่/);
   assert.match(styles, /\.composer-count/);
-  assert.match(lightCss, /\.empty-work\{min-height:190px!important/);
+  assert.match(lightCss, /\.empty-work\{min-height:0!important/);
 });
 
 test('long conversation projection keeps the newest messages and remains browser bounded', () => {

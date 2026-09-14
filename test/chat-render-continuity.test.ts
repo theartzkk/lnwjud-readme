@@ -45,6 +45,9 @@ test('newer refresh invalidates an older poll even in the same room', async () =
 test('login hydration installs one polling lifecycle and thread does not clear live DOM', () => {
   assert.match(source, /async function hydrateAuthenticatedControl[^]*?startWorkspacePolling\(\)/);
   assert.match(source, /if \(!state.conversationTimer\)/);
+  assert.match(source, /document\.addEventListener\('visibilitychange', refreshConversationOnReturn\)/);
+  assert.match(source, /window\.addEventListener\('pageshow', refreshConversationOnReturn\)/);
+  assert.match(source, /window\.addEventListener\('online', refreshConversationOnReturn\)/);
   const render = source.slice(source.indexOf('  function renderThread('), source.indexOf('  function renderConversationSheet('));
   assert.doesNotMatch(render, /thread\.replaceChildren/);
   assert.match(render, /previous\?\._awhMarkup === markup/);
