@@ -140,9 +140,12 @@ final class HubProjectVaultService
      * actionable after a trusted deployed-source promotion. */
     public function expireStalePromotionApprovals(string $projectId, string $activeRevisionId, ?string $now = null): array
     {
-        $this->assertReady(); $projectId = self::uuid($projectId); $activeRevisionId = self::uuid($activeRevisionId); $at = self::timestamp($now ?? gmdate('c')); $savepoint = 'awh_vault_stale_approval'; $expired = 0;
+        $this->assertReady(); $projectId = self::uuid($projectId); $activeRevisionId = self::uuid($activeRevisionId); $at = self::timestamp($now ?? gmdate('c')); $savepoint = 'awh_vault_stale_approval'; $expired = 0; $rejected = 0;
         try {
             self::savepoint($this->pdo, $savepoint);
+            $staleCandidates = $this->pdo->prepare("SELECT revision_id FROM control_project_vault_revisions WHERE project_id=:project AND state='CANDIDATE' AND (parent_revision_id IS NULL OR parent_revision_id<>:active) ORDER BY created_at,revision_id");
+            $staleCandidates->execute(['project' => $projectId, 'active' => $activeRevisionId]);
+            foreach ($staleCandidates->fetchAll() as $candidateRow) { $this->rejectCandidate($projectId, (string) $candidateRow['revision_id'], $at); $rejected++; }
             $q = $this->pdo->prepare("SELECT a.approval_id,a.task_id,a.scope_json,t.state FROM control_approvals a JOIN control_tasks t ON t.task_id=a.task_id WHERE t.project_id=:project AND a.action='project.revision.promote' AND a.status='PENDING' ORDER BY a.approval_id");
             $q->execute(['project' => $projectId]);
             foreach ($q->fetchAll() as $row) {
@@ -166,7 +169,7 @@ final class HubProjectVaultService
                 $expired++;
             }
             self::release($this->pdo, $savepoint);
-            return ['expiredApprovals' => $expired];
+            return ['expiredApprovals' => $expired, 'rejectedCandidates' => $rejected];
         } catch (Throwable $error) { self::rollbackSavepoint($this->pdo, $savepoint); if ($error instanceof HubProjectVaultException) throw $error; throw new HubProjectVaultException('Stale promotion approvals could not be reconciled', 'PROJECT_VAULT_FAILED'); }
     }
 
