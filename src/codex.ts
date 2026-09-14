@@ -29,6 +29,7 @@ export function buildCodexArgs(workspace: string, sandbox: CodexSandbox): string
     '--ephemeral',
     '--sandbox',
     sandbox,
+    '--skip-git-repo-check',
     '--cd',
     workspace,
     '--config',

@@ -6,6 +6,7 @@ test('Codex invocation is non-interactive, sandboxed, ephemeral, JSONL, and netw
   const args = buildCodexArgs('/workspace', 'read-only');
   assert.deepEqual(args.slice(0, 2), ['exec', '--experimental-json']);
   assert.ok(args.includes('--ephemeral'));
+  assert.ok(args.includes('--skip-git-repo-check'));
   assert.deepEqual(args.slice(args.indexOf('--sandbox'), args.indexOf('--sandbox') + 2), ['--sandbox', 'read-only']);
   assert.deepEqual(args.slice(args.indexOf('--cd'), args.indexOf('--cd') + 2), ['--cd', '/workspace']);
   assert.ok(args.includes('web_search="disabled"'));
