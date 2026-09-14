@@ -737,7 +737,7 @@ import {
     const selected = Array.isArray(task?.execution?.capabilityPlan?.selected) ? task.execution.capabilityPlan.selected : [];
     if (!selected.length) return null;
     const details = document.createElement('details'); details.className = 'capability-plan';
-    const summary = document.createElement('summary'); summary.textContent = `AWH เลือกใช้ ${selected.length} ความสามารถ`;
+    const summary = document.createElement('summary'); summary.textContent = `AWH กำลังใช้ ${selected.length} เครื่องมือ · ดูรายละเอียด`;
     const chips = document.createElement('div'); chips.className = 'capability-chips';
     for (const item of selected) {
       const chip = document.createElement('span'); chip.className = 'capability-chip'; chip.textContent = item.label || item.id || 'Capability'; chip.title = item.reason || ''; chips.append(chip);
@@ -865,7 +865,6 @@ import {
           const status = document.createElement('div'); status.className = 'task-response active-task-response';
           status.append(renderLiveActivity(task));
           const capabilityPlan = renderCapabilityPlan(task); if (capabilityPlan) status.append(capabilityPlan);
-          const taskActions = renderCancellation(task); if (taskActions) status.append(taskActions);
           statusTurn.append(status); nextThread.append(statusTurn);
         }
         continue;
@@ -879,7 +878,6 @@ import {
       meta.append(chip, time);
       if (turn.kind === 'approval' || turn.kind === 'failure') response.append(meta);
       response.append(body);
-      if (task && ['assistant','result','failure','approval'].includes(turn.kind)) { const capabilityPlan = renderCapabilityPlan(task); if (capabilityPlan) response.append(capabilityPlan); }
       if (turn.kind === 'assistant' || turn.kind === 'result' || turn.kind === 'failure') {
         const messageActions = document.createElement('div'); messageActions.className = 'message-actions';
         const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'text-button'; copy.textContent = 'คัดลอก'; copy.addEventListener('click', () => { void copyMessageText(turn.body, copy); });
@@ -887,7 +885,7 @@ import {
       }
       if (task && !['COMPLETED','FAILED','CANCELLED'].includes(task.state)) response.append(renderLiveActivity(task));
       if (task) {
-        const actions = renderApproval(task, approvals) || renderCancellation(task) || renderRetry(task); if (actions) response.append(actions);
+        const actions = renderApproval(task, approvals) || renderRetry(task); if (actions) response.append(actions);
         if (artifacts.length) { const list = document.createElement('div'); list.className = 'artifact-results'; for (const artifact of artifacts) { if (artifact.kind === 'project-inspection' && artifactUrl(artifact)) list.append(renderInspectionEvidence(artifact)); else list.append(renderArtifactCard(artifact)); } response.append(list); }
       }
       row.append(response); nextThread.append(row);

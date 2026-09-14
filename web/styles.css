@@ -584,3 +584,12 @@ body.ecosystem-home-active .app-main{width:min(1180px,calc(100% - 32px));padding
 
 /* Attachment previews reserve space and never alter the uploaded original. */
 .attachment-thumbnail { width:44px; height:44px; flex:0 0 44px; object-fit:cover; border-radius:var(--awh-radius-sm,12px); }
+
+
+/* Mobile UX Closure 2026-09-15 — compact active task details. */
+body.work-active .capability-plan{max-width:100%;margin-top:4px;padding:5px 8px;border-color:color-mix(in srgb,var(--accent) 14%,var(--line));background:color-mix(in srgb,var(--accent) 2%,var(--surface));font-size:11px}
+body.work-active .capability-plan>summary{font-size:11px;font-weight:750;color:var(--muted)}
+body.work-active .capability-plan:not([open]){width:max-content;max-width:100%;border-color:transparent;background:transparent;padding-inline:0}
+body.work-active .capability-plan:not([open])>summary{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.work-active .capability-plan[open]{padding:8px 10px}
+@media(max-width:680px){body.work-active .live-activity{gap:5px;padding:6px 0 1px}body.work-active .capability-plan{margin-top:2px}body.work-active .composer-stop{min-height:32px;padding:5px 9px;font-size:11px}}
