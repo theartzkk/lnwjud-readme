@@ -72,6 +72,7 @@ final class HubEcosystemHealthCollector
     {
         $status = $this->fetchJson($this->bayStatusUrl);
         $services = [];
+        $servicePriority = [];
         $checkedAt = null;
         if (is_array($status)) {
             $checkedAt = $this->isoOrNull($status['checked_at'] ?? null);
@@ -80,6 +81,9 @@ final class HubEcosystemHealthCollector
                 $sourceId = is_string($service['id'] ?? null) ? strtolower((string) $service['id']) : '';
                 $id = self::canonicalServiceId($sourceId);
                 if ($id === null) continue;
+                $priority = self::canonicalServicePriority($sourceId);
+                if (isset($servicePriority[$id]) && $servicePriority[$id] > $priority) continue;
+                $servicePriority[$id] = $priority;
                 $services[$id] = [
                     'id' => $id,
                     'name' => $this->text($service['name'] ?? $id, 80),
@@ -99,7 +103,7 @@ final class HubEcosystemHealthCollector
             $services['website'] = $this->probeCurrentWebsite();
         }
 
-        foreach (['awh' => 'AWH', 'bay' => 'BAY EXCUSE X Staging', 'learnlab' => 'BAY LearnLab'] as $id => $name) {
+        foreach (['awh' => 'AWH', 'bay' => 'BAY EXCUSE X Production', 'learnlab' => 'BAY LearnLab'] as $id => $name) {
             if (!isset($services[$id])) {
                 $services[$id] = [
                     'id' => $id,
@@ -292,9 +296,19 @@ final class HubEcosystemHealthCollector
     private static function canonicalServiceId(string $id): ?string
     {
         return match ($id) {
-            'bay-staging' => 'bay',
+            'bay-production', 'bay-staging' => 'bay',
             'awh', 'bay', 'learnlab', 'website' => $id,
             default => null,
+        };
+    }
+
+    private static function canonicalServicePriority(string $id): int
+    {
+        return match ($id) {
+            'bay-production' => 30,
+            'bay' => 20,
+            'bay-staging' => 10,
+            default => 20,
         };
     }
 

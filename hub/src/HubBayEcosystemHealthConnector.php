@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 final class HubBayEcosystemHealthConnector
 {
-    public function __construct(private readonly string $adapterPath)
-    {
+    public function __construct(
+        private readonly string $adapterPath,
+        private readonly string $stableManifestPath = '/srv/bay-learnlab/channels/stable.json'
+    ) {
         if (
             $adapterPath === ''
-            || !str_starts_with($adapterPath, '/var/www/bay-staging/')
+            || (!str_starts_with($adapterPath, '/var/www/bay-production-shadow/') && !str_starts_with($adapterPath, '/var/www/bay-staging/'))
             || str_contains($adapterPath, "\0")
+            || $stableManifestPath === ''
+            || !str_starts_with($stableManifestPath, '/srv/bay-learnlab/channels/')
+            || str_contains($stableManifestPath, "\0")
         ) {
             throw new RuntimeException('BAY LearnLab connector path is invalid');
         }
@@ -19,7 +24,9 @@ final class HubBayEcosystemHealthConnector
     {
         return new self(
             getenv('AWH_BAY_LEARNLAB_HOST_ADAPTER')
-                ?: '/var/www/bay-staging/current/learnlab/server/host-adapter.php'
+                ?: '/var/www/bay-production-shadow/current/learnlab/server/host-adapter.php',
+            getenv('AWH_LEARNLAB_STABLE_MANIFEST')
+                ?: '/srv/bay-learnlab/channels/stable.json'
         );
     }
 
@@ -31,7 +38,7 @@ final class HubBayEcosystemHealthConnector
         $real = realpath($this->adapterPath);
         if (
             !is_string($real)
-            || !str_starts_with($real, '/var/www/bay-staging/releases/')
+            || (!str_starts_with($real, '/var/www/bay-production-shadow/releases/') && !str_starts_with($real, '/var/www/bay-staging/releases/'))
             || !is_file($real)
             || is_link($real)
             || !is_readable($real)
@@ -64,12 +71,12 @@ final class HubBayEcosystemHealthConnector
                 $offlineWindow = 24;
             }
 
-            $releaseVersion = 'unknown';
+            $releaseVersion = $this->stableRuntimeVersion() ?? 'unknown';
             $releaseFile = dirname($real, 2) . '/release-runtime.json';
             if (is_file($releaseFile) && !is_link($releaseFile) && filesize($releaseFile) <= 65536) {
                 try {
                     $release = json_decode((string) file_get_contents($releaseFile), true, 16, JSON_THROW_ON_ERROR);
-                    if (is_array($release) && is_string($release['product_version'] ?? null)) {
+                    if ($releaseVersion === 'unknown' && is_array($release) && is_string($release['product_version'] ?? null)) {
                         $candidate = trim((string) $release['product_version']);
                         if (preg_match('/^[A-Za-z0-9._+-]{1,50}$/', $candidate)) $releaseVersion = $candidate;
                     }
@@ -204,6 +211,21 @@ final class HubBayEcosystemHealthConnector
                 'clientOfflineQueueRead' => false,
             ],
         ];
+    }
+
+    private function stableRuntimeVersion(): ?string
+    {
+        if (!is_file($this->stableManifestPath) || is_link($this->stableManifestPath)) return null;
+        $size = @filesize($this->stableManifestPath);
+        if (!is_int($size) || $size < 2 || $size > 65536) return null;
+        try {
+            $manifest = json_decode((string) file_get_contents($this->stableManifestPath), true, 16, JSON_THROW_ON_ERROR);
+            if (!is_array($manifest) || ($manifest['channel'] ?? null) !== 'stable' || !is_string($manifest['runtime_version'] ?? null)) return null;
+            $version = trim((string) $manifest['runtime_version']);
+            return preg_match('/^[A-Za-z0-9._+-]{1,50}$/', $version) ? $version : null;
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     private function text(mixed $value, int $max): string
