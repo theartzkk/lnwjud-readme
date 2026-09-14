@@ -91,6 +91,11 @@ try {
     $registry->updateEnvelopeState($specialistExecution, 'RELEASED', null, $now);
     $secondAuthority = $registry->activateExecutionAuthority($secondExecution, $leaseUntil, $now);
     m13_assert(($secondAuthority['granted'] ?? false) === true, 'waiting mutation acquires authority after the prior lane releases');
+    $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED' WHERE execution_id=:id")->execute(['id'=>$secondExecution]);
+    $pdo->prepare("UPDATE control_tasks SET state='COMPLETED' WHERE task_id=:id")->execute(['id'=>$secondTask]);
+    $pdo->prepare("UPDATE control_execution_envelopes SET state='OPEN',lease_expires_at=NULL WHERE execution_id=:id")->execute(['id'=>$secondExecution]);
+    $terminalFiltered = $registry->executionAuthorityStatus($now);
+    m13_assert(($terminalFiltered['activeMutationCount'] ?? -1) === 0 && ($terminalFiltered['waitingMutationCount'] ?? -1) === 0, 'terminal historical envelopes stay auditable but never appear as waiting authority');
     $registry->syncDeviceWorker($device, [], 'OFFLINE', gmdate('c', strtotime($now) + 30));
     m13_assert($registry->route('code.specialist', gmdate('c', strtotime($now) + 30)) === null, 'offline optional device disappears from routing truthfully');
 
