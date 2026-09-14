@@ -623,6 +623,7 @@ final class HubControlPlaneService
             ['key'=>'smoke','label'=>'Smoke Test','pass'=>false,'evidence'=>'visible end-to-end field verification required'],
         ];
         $passed = count(array_filter($checks, static fn(array $item): bool => $item['pass'] === true));
+        $executionAuthority = $this->capabilities !== null ? $this->capabilities->executionAuthorityStatus($now) : ['schemaVersion'=>1,'mode'=>'UNAVAILABLE','parallelReadsAllowed'=>true,'activeMutationCount'=>0,'waitingMutationCount'=>0,'activeMutations'=>[],'waitingMutations'=>[]];
         return [
             'schemaVersion' => 1,
             'telemetry' => $telemetry,
@@ -639,6 +640,7 @@ final class HubControlPlaneService
             'workerSummary' => $health['workerSummary'],
             'workers' => $health['workers'] ?? [],
             'autonomousWork' => $autonomous,
+            'executionAuthority' => $executionAuthority,
             'activity' => $activity,
             'incidents' => $incidents,
             'staff' => $staff,
@@ -2320,12 +2322,15 @@ final class HubControlPlaneService
                 }
             }
             if (!is_array($row) && $this->centralProjectAuthoritySchemaPresent() && is_array($caps) && in_array('codex:cli', $caps, true)) {
-                $central = $this->pdo->prepare("SELECT t.* FROM control_tasks t JOIN control_task_executions e ON e.task_id = t.task_id JOIN device_project_memberships m ON m.project_id = t.project_id AND m.device_id = :device AND m.revoked_at IS NULL WHERE t.state = 'WAITING_FOR_WORKER' AND t.assigned_device_id IS NULL AND e.state = 'WAITING_FOR_CAPABILITY' AND e.executor_kind = 'CODEX' AND e.required_capability = 'codex:cli' AND e.vault_revision_id IS NOT NULL ORDER BY e.created_at, e.execution_id LIMIT 1");
+                $central = $this->pdo->prepare("SELECT t.*,e.execution_id FROM control_tasks t JOIN control_task_executions e ON e.task_id = t.task_id JOIN device_project_memberships m ON m.project_id = t.project_id AND m.device_id = :device AND m.revoked_at IS NULL WHERE t.state = 'WAITING_FOR_WORKER' AND t.assigned_device_id IS NULL AND e.state = 'WAITING_FOR_CAPABILITY' AND e.executor_kind = 'CODEX' AND e.required_capability = 'codex:cli' AND e.vault_revision_id IS NOT NULL ORDER BY e.created_at, e.execution_id LIMIT 1");
                 $central->execute(['device' => $auth['deviceId']]); $candidate = $central->fetch();
                 if (is_array($candidate)) {
                     $lease = $this->pdo->prepare("UPDATE control_task_executions SET state = 'RUNNING', lease_owner = :device, lease_expires_at = :expires, attempt_count = attempt_count + 1, last_error_code = NULL, updated_at = :at WHERE task_id = :task AND state = 'WAITING_FOR_CAPABILITY' AND executor_kind = 'CODEX' AND required_capability = 'codex:cli'");
                     $lease->execute(['device' => $auth['deviceId'], 'expires' => $expires, 'at' => $at, 'task' => $candidate['task_id']]);
-                    if ($lease->rowCount() === 1) $row = $candidate;
+                    if ($lease->rowCount() === 1) {
+                        if ($this->capabilities !== null) $this->capabilities->updateEnvelopeState((string)$candidate['execution_id'], 'ACTIVE', $expires, $at);
+                        $row = $candidate;
+                    }
                 }
             }
             if (!is_array($row)) {

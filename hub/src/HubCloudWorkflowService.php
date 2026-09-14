@@ -251,6 +251,9 @@ final class HubCloudWorkflowService
             if ((string)$row['state'] !== 'RUNNING' && !HubExecutionFailurePolicy::eligible($row, $at, self::MAX_ATTEMPTS)) continue;
             $route = $registry->route($capability, $at);
             if (!is_array($route) || ($route['providerId'] ?? null) !== self::PROVIDER_ID) continue;
+            $registry->ensureExecutionEnvelope((string)$row['execution_id'], $at);
+            $authority = $registry->activateExecutionAuthority((string)$row['execution_id'], $expires, $at);
+            if (($authority['granted'] ?? false) !== true) continue;
             $owner = 'cloud:' . self::PROVIDER_ID . ':' . substr(hash('sha256', (string)$row['execution_id'] . "\n" . $at . "\n" . bin2hex(random_bytes(8))), 0, 24);
             if ((string)$row['state'] === 'RUNNING') {
                 $claim = $this->pdo->prepare("UPDATE control_task_executions SET lease_owner=:owner,lease_expires_at=:expires,updated_at=:at WHERE execution_id=:id AND state='RUNNING' AND lease_owner=:previous");
@@ -259,9 +262,11 @@ final class HubCloudWorkflowService
                 $claim = $this->pdo->prepare("UPDATE control_task_executions SET state='RUNNING',lease_owner=:owner,lease_expires_at=:expires,attempt_count=attempt_count+1,last_error_code=NULL,updated_at=:at WHERE execution_id=:id AND state=:state AND lease_owner IS NULL");
                 $claim->execute(['owner'=>$owner,'expires'=>$expires,'at'=>$at,'id'=>$row['execution_id'],'state'=>$row['state']]);
             }
-            if ($claim->rowCount() !== 1) continue;
+            if ($claim->rowCount() !== 1) {
+                $registry->updateEnvelopeState((string)$row['execution_id'], 'WAITING', null, $at);
+                continue;
+            }
             $this->pdo->prepare("UPDATE control_tasks SET state='RUNNING',progress=CASE WHEN progress<10 THEN 10 ELSE progress END,failure_code=NULL,updated_at=:at WHERE task_id=:task AND state NOT IN ('COMPLETED','FAILED','CANCELLED')")->execute(['at'=>$at,'task'=>$row['task_id']]);
-            $registry->ensureExecutionEnvelope((string)$row['execution_id'], $at);
             $registry->updateEnvelopeState((string)$row['execution_id'], 'ACTIVE', $expires, $at);
             $wasRunning = (string)$row['state'] === 'RUNNING';
             $row['state'] = 'RUNNING'; $row['lease_owner'] = $owner; $row['lease_expires_at'] = $expires;

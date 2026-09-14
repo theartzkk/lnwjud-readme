@@ -140,3 +140,20 @@ test('V1.1 continuity keeps Dashboard and canonical Work on one project/chat aut
   assert.match(css, /@media\(max-width:620px\)/);
   assert.doesNotMatch(dashboard, /fetch\(|XMLHttpRequest|WebSocket/);
 });
+
+
+test('Daily Workspace and Master Control expose canonical single execution authority', async () => {
+  const [dashboard, css, infrastructure, infrastructureHtml, control] = await Promise.all([
+    readFile(join(ROOT, 'web', 'dashboard.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'dashboard.css'), 'utf8'),
+    readFile(join(ROOT, 'web', 'infrastructure.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'infrastructure.html'), 'utf8'),
+    readFile(join(ROOT, 'hub', 'src', 'HubControlPlaneService.php'), 'utf8'),
+  ]);
+  assert.match(dashboard, /dashboard-execution-authority/);
+  assert.match(dashboard, /mutation lane/);
+  assert.match(css, /\.awh-night-authority/);
+  assert.match(infrastructureHtml, /EXECUTION AUTHORITY/);
+  assert.match(infrastructure, /renderExecutionAuthority/);
+  assert.match(control, /executionAuthorityStatus/);
+});
