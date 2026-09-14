@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildCodexArgs, codexEnvironment, codexInstructionContainsSecretValue } from '../src/codex.js';
+import { buildCodexArgs, codexEnvironment, codexInstructionContainsSecretValue, codexInstructionContainsUnsafeControl } from '../src/codex.js';
 
 test('Codex invocation is non-interactive, sandboxed, ephemeral, JSONL, and network-disabled', () => {
   const args = buildCodexArgs('/workspace', 'read-only');
@@ -36,4 +36,12 @@ test('Codex instruction secret guard allows policy prose but rejects credential-
   assert.equal(codexInstructionContainsSecretValue('Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345'), true);
   assert.equal(codexInstructionContainsSecretValue('token=abcdefghijklmnopqrstuvwxyz012345'), true);
   assert.equal(codexInstructionContainsSecretValue('-----BEGIN PRIVATE KEY-----'), true);
+});
+
+test('Codex instruction control guard allows normal multiline prompt structure only', () => {
+  assert.equal(codexInstructionContainsUnsafeControl('OWNER\n\nGOAL\r\n\titem'), false);
+  assert.equal(codexInstructionContainsUnsafeControl('OWNER\u0000GOAL'), true);
+  assert.equal(codexInstructionContainsUnsafeControl('OWNER\u000bGOAL'), true);
+  assert.equal(codexInstructionContainsUnsafeControl('OWNER\u001fGOAL'), true);
+  assert.equal(codexInstructionContainsUnsafeControl('OWNER\u007fGOAL'), true);
 });

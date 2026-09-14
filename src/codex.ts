@@ -17,6 +17,11 @@ export function codexInstructionContainsSecretValue(value: string): boolean {
   return SECRET_VALUE_TEXT.test(value);
 }
 
+/** Allow normal multi-line prompt structure while rejecting non-text control bytes. */
+export function codexInstructionContainsUnsafeControl(value: string): boolean {
+  return /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value);
+}
+
 export function buildCodexArgs(workspace: string, sandbox: CodexSandbox): string[] {
   return [
     'exec',
@@ -85,7 +90,7 @@ export async function codexStatus(cwd: string): Promise<CodexStatus> {
  * caller must have already passed the task/project approval boundary.
  */
 export async function runCodexGoal(workspace: string, instruction: string, sandbox: CodexSandbox = 'read-only'): Promise<{ code: number; summary: string }> {
-  if (typeof instruction !== 'string' || !instruction.trim() || instruction.length > MAX_CODEX_INSTRUCTION_CHARS || /[\u0000-\u001f\u007f]/.test(instruction) || codexInstructionContainsSecretValue(instruction)) throw new Error('Codex instruction is invalid');
+  if (typeof instruction !== 'string' || !instruction.trim() || instruction.length > MAX_CODEX_INSTRUCTION_CHARS || codexInstructionContainsUnsafeControl(instruction) || codexInstructionContainsSecretValue(instruction)) throw new Error('Codex instruction is invalid');
   const executable = await resolveCodexExecutable();
   const result = await execFile(executable, [...buildCodexArgs(workspace, sandbox), instruction.trim()], workspace, 15 * 60_000, codexEnvironment());
   const output = `${result.stdout}\n${result.stderr}`
