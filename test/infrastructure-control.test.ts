@@ -70,11 +70,19 @@ test('Infrastructure telemetry service accepts a bounded snapshot without exposi
  }finally{await rm(dir,{recursive:true,force:true});}
 });
 
-test('Ecosystem collector normalizes BAY Hub v2 staging identity without accepting Production as staging',async()=>{
+test('Ecosystem collector prefers BAY Production over staging compatibility probes',async()=>{
  const file=join(ROOT,'hub/src/HubEcosystemHealthCollector.php');
- const code=`require ${JSON.stringify(file)}; $r=new ReflectionClass('HubEcosystemHealthCollector'); $m=$r->getMethod('canonicalServiceId'); echo json_encode([$m->invoke(null,'bay'),$m->invoke(null,'bay-staging'),$m->invoke(null,'awh'),$m->invoke(null,'bay-production'),$m->invoke(null,'unknown')]);`;
+ const code=`require ${JSON.stringify(file)}; $r=new ReflectionClass('HubEcosystemHealthCollector'); $m=$r->getMethod('canonicalServiceId'); $p=$r->getMethod('canonicalServicePriority'); echo json_encode([$m->invoke(null,'bay'),$m->invoke(null,'bay-staging'),$m->invoke(null,'awh'),$m->invoke(null,'bay-production'),$m->invoke(null,'unknown'),$p->invoke(null,'bay-staging'),$p->invoke(null,'bay-production')]);`;
  const {stdout}=await run('php',['-r',code],{cwd:ROOT,shell:false});
- assert.deepEqual(JSON.parse(stdout),['bay','bay','awh',null,null]);
+ assert.deepEqual(JSON.parse(stdout),['bay','bay','awh','bay',null,10,30]);
+});
+
+test('LearnLab health reads the production BAY adapter and stable runtime manifest by default',async()=>{
+ const connector=await readFile(join(ROOT,'hub/src/HubBayEcosystemHealthConnector.php'),'utf8');
+ assert.match(connector,/\/var\/www\/bay-production-shadow\/current\/learnlab\/server\/host-adapter\.php/);
+ assert.match(connector,/\/srv\/bay-learnlab\/channels\/stable\.json/);
+ assert.match(connector,/runtime_version/);
+ assert.match(connector,/bay-production-shadow\/releases/);
 });
 
 test('Ecosystem health keeps fail-closed reachable state without raising a false outage',async()=>{
