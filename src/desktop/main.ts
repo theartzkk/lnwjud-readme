@@ -240,7 +240,7 @@ async function workConversation() {
 }
 
 async function submitWorkMessage(message: unknown, idempotencyKey: unknown) {
-  if (typeof message !== 'string' || !message.trim() || message.length > 2_000) return { ok: false, error: 'MESSAGE_INVALID', message: 'กรุณาบอกสิ่งที่อยากให้ AWH ช่วย' };
+  if (typeof message !== 'string' || !message.trim() || message.length > 5_000) return { ok: false, error: 'MESSAGE_INVALID', message: 'กรุณาบอกสิ่งที่อยากให้ AWH ช่วย' };
   const key = typeof idempotencyKey === 'string' && /^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey) ? idempotencyKey : `desktop-${randomUUID()}`;
   try { const current = await currentHubWorkClient(); return { ok: true, projectId: current.projectId, ...(await current.client.submitConversation(current.projectId, message.trim(), key)) }; }
   catch { return { ok: false, error: 'WORK_UNAVAILABLE', message: 'AWH ยังบันทึก Work นี้ไม่ได้ กรุณาตรวจการเชื่อมต่อ Hub' }; }

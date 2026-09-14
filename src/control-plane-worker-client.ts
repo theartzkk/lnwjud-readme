@@ -265,7 +265,7 @@ export class ControlPlaneWorkerClient {
 
   async submitConversation(projectId: string, message: string, idempotencyKey: string): Promise<WorkerConversation> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir);
-    if (!UUID_V4.test(projectId) || typeof message !== 'string' || message.trim().length < 1 || message.length > 2_000 || !/^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey)) throw new ControlPlaneWorkerError('Worker conversation input is invalid', 'PAYLOAD_INVALID');
+    if (!UUID_V4.test(projectId) || typeof message !== 'string' || message.trim().length < 1 || message.length > 5_000 || !/^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey)) throw new ControlPlaneWorkerError('Worker conversation input is invalid', 'PAYLOAD_INVALID');
     const response = await this.post('/control/worker/conversations', { schemaVersion: 1, deviceId: identity.deviceId, projectId, message: message.trim(), idempotencyKey });
     if (typeof response.schemaVersion !== 'number' || ![1, 2, 3].includes(response.schemaVersion)) throw new ControlPlaneWorkerError('Worker conversation response is invalid', 'RESPONSE_INVALID');
     return boundedConversation(response);

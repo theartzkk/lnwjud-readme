@@ -209,6 +209,9 @@ test('desktop Work is conversation-first, project-bound, and never exposes raw p
   assert.match(main, /typeof goal !== 'string'/);
   assert.match(preload, /getWorkConversation/);
   assert.match(preload, /submitWorkMessage/);
+  assert.match(main, /message\.length > 5_000/);
+  assert.match(html, /id="desktop-work-input"[^>]*maxlength="5000"/);
+  assert.match(html, /id="home-command-input"[^>]*maxlength="5000"/);
   assert.match(preload, /getWorkspaceContinuity/);
   assert.match(preload, /syncWorkspaceForHandoff/);
   assert.match(preload, /takeOverWorkspace/);

@@ -44,6 +44,8 @@ test('worker conversation client accepts current Hub schema 3 and rejects unknow
   const client = new ControlPlaneWorkerClient('https://hub.example/api/v1', root, credentials, async () => new Response(JSON.stringify(current), { status: 200 }));
   assert.equal((await client.readConversation(projectId)).conversation, null);
   assert.equal((await client.submitConversation(projectId, 'ทดสอบ schema ปัจจุบัน', 'schema-v3-test')).tasks.length, 0);
+  assert.equal((await client.submitConversation(projectId, 'ก'.repeat(5_000), 'schema-v3-long')).tasks.length, 0);
+  await assert.rejects(() => client.submitConversation(projectId, 'ก'.repeat(5_001), 'schema-v3-too-long'), /input is invalid/i);
 
   const future = new ControlPlaneWorkerClient('https://hub.example/api/v1', root, credentials, async () => new Response(JSON.stringify({ ...current, schemaVersion: 4 }), { status: 200 }));
   await assert.rejects(() => future.readConversation(projectId), /response is invalid/i);
