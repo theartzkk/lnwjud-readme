@@ -30,6 +30,7 @@ import {
   let artifactPreviewRequest = 0;
   const attachmentPreviews = new Map();
   const composerDrafts = new Map();
+  const taskAnnouncementState = new Map();
   let composerDraftKey = null;
 
   function syncComposerDraft() {
@@ -752,7 +753,7 @@ import {
   function renderLiveActivity(task) {
     const status = taskExecutionStatus(task);
     const activeStep = status.journey.find((step) => step.state === 'active');
-    const box = document.createElement('div'); box.className = 'live-activity'; box.setAttribute('role', 'status'); box.setAttribute('aria-live', 'polite');
+    const box = document.createElement('div'); box.className = 'live-activity'; box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'สถานะงาน');
     const headline = document.createElement('div'); headline.className = 'live-activity-headline';
     const pulse = document.createElement('span'); pulse.className = 'live-activity-pulse'; pulse.setAttribute('aria-hidden', 'true');
     const title = document.createElement('strong'); title.textContent = activeStep?.label || status.title; headline.append(pulse, title);
@@ -800,6 +801,27 @@ import {
     const summary = body.length > 180 ? `${body.slice(0, 177)}…` : body;
     announcer.textContent = '';
     window.requestAnimationFrame(() => { announcer.textContent = `AWH: ${summary}`; });
+  }
+
+  function announceTaskMilestones(tasks, sameConversation) {
+    const announcer = $('work-announcer');
+    const currentIds = new Set();
+    for (const task of Array.isArray(tasks) ? tasks : []) {
+      if (!task?.taskId) continue;
+      currentIds.add(task.taskId);
+      const status = taskExecutionStatus(task);
+      const progress = Math.max(0, Math.min(100, Number(status.progress) || 0));
+      const bucket = progress >= 100 ? 100 : progress >= 75 ? 75 : progress >= 50 ? 50 : progress >= 25 ? 25 : 0;
+      const signature = `${task.state || ''}:${bucket}`;
+      const previous = taskAnnouncementState.get(task.taskId);
+      taskAnnouncementState.set(task.taskId, signature);
+      if (!sameConversation || previous === undefined || previous === signature || ['COMPLETED','FAILED','CANCELLED'].includes(task.state)) continue;
+      if (!announcer) continue;
+      const detail = String(status.detail || status.title || 'กำลังทำงาน').trim();
+      announcer.textContent = '';
+      window.requestAnimationFrame(() => { announcer.textContent = `AWH: ${detail}`; });
+    }
+    for (const taskId of [...taskAnnouncementState.keys()]) if (!currentIds.has(taskId)) taskAnnouncementState.delete(taskId);
   }
 
   function renderThread(conversation, approvals) {
@@ -920,6 +942,7 @@ import {
       else cursor = cursor.nextElementSibling;
     }
     while (cursor) { const next = cursor.nextElementSibling; cursor.remove(); cursor = next; }
+    announceTaskMilestones(tasks, sameConversation);
     announceNewAssistantTurn(visibleMessages, previousMessageCount, sameConversation);
     state.renderedConversationId = conversationId;
     state.threadMessageCount = visibleMessages.length;

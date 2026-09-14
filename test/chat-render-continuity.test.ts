@@ -89,3 +89,27 @@ test('screen-reader announcer stays quiet on hydration and announces only newly 
   context.messages = [...messages, { kind: 'user', body: 'ต่อเลย' }]; announcer.textContent = '';
   vm.runInContext('announceNewAssistantTurn(messages, 2, true)', context); assert.equal(announcer.textContent, '');
 });
+
+
+test('task progress announcer is milestone-based and live activity itself stays quiet', () => {
+  const start = source.indexOf('  function announceTaskMilestones(');
+  const end = source.indexOf('  function renderThread(', start);
+  const fn = source.slice(start, end);
+  const liveStart = source.indexOf('  function renderLiveActivity(');
+  const liveEnd = source.indexOf('  function renderRetry(', liveStart);
+  const live = source.slice(liveStart, liveEnd);
+  assert.match(live, /setAttribute\('role', 'group'\)/);
+  assert.doesNotMatch(live, /aria-live/);
+  const announcer = { textContent: '' };
+  const context = vm.createContext({ announcer, $: () => announcer, taskAnnouncementState: new Map(), taskExecutionStatus: (task: any) => ({ progress: task.progress, detail: task.detail, title: task.state }), window: { requestAnimationFrame: (callback: () => void) => callback() } });
+  vm.runInContext(fn, context);
+  context.tasks = [{ taskId: 't1', state: 'RUNNING', progress: 10, detail: 'กำลังเริ่มงาน' }];
+  vm.runInContext('announceTaskMilestones(tasks, false)', context); assert.equal(announcer.textContent, '');
+  vm.runInContext('announceTaskMilestones(tasks, true)', context); assert.equal(announcer.textContent, '');
+  context.tasks[0].progress = 26; context.tasks[0].detail = 'ทำงานแล้ว 26%';
+  vm.runInContext('announceTaskMilestones(tasks, true)', context); assert.equal(announcer.textContent, 'AWH: ทำงานแล้ว 26%');
+  announcer.textContent = ''; context.tasks[0].progress = 30;
+  vm.runInContext('announceTaskMilestones(tasks, true)', context); assert.equal(announcer.textContent, '');
+  context.tasks[0].state = 'WAITING_FOR_APPROVAL'; context.tasks[0].detail = 'รออนุมัติ';
+  vm.runInContext('announceTaskMilestones(tasks, true)', context); assert.equal(announcer.textContent, 'AWH: รออนุมัติ');
+});
