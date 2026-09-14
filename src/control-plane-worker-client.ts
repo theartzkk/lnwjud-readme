@@ -22,6 +22,23 @@ export class ControlPlaneWorkerError extends Error {
 export interface WorkerProject { projectId: string; name: string; type: string; sourceRevision: string | null; vaultReady: boolean; memoryReady: boolean; }
 
 export interface WorkerContinuation { rootTaskId: string; step: number; maxSteps: number; }
+export interface WorkerCapabilityPlanItem { id: 'context.optimize' | 'design.hallmark' | 'design.reference' | 'team.harness'; label: string; mode: string; reason: string; requiredTool: string | null; }
+export interface WorkerCapabilityPlan { schemaVersion: 1; router: 'awh.external-capabilities.v1'; selected: WorkerCapabilityPlanItem[]; }
+
+function boundedCapabilityPlan(value: unknown): WorkerCapabilityPlan | null {
+  if (value === undefined || value === null) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ControlPlaneWorkerError('Worker capability plan is invalid', 'RESPONSE_INVALID');
+  const plan = value as Record<string, unknown>;
+  if (plan.schemaVersion !== 1 || plan.router !== 'awh.external-capabilities.v1' || !Array.isArray(plan.selected) || plan.selected.length > 4) throw new ControlPlaneWorkerError('Worker capability plan is invalid', 'RESPONSE_INVALID');
+  const allowed = new Set(['context.optimize','design.hallmark','design.reference','team.harness']);
+  const selected = plan.selected.map((entry): WorkerCapabilityPlanItem => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new ControlPlaneWorkerError('Worker capability plan is invalid', 'RESPONSE_INVALID');
+    const item = entry as Record<string, unknown>;
+    if (typeof item.id !== 'string' || !allowed.has(item.id) || typeof item.label !== 'string' || item.label.length < 1 || item.label.length > 80 || typeof item.mode !== 'string' || item.mode.length < 1 || item.mode.length > 40 || typeof item.reason !== 'string' || item.reason.length < 1 || item.reason.length > 220 || (item.requiredTool !== null && (typeof item.requiredTool !== 'string' || !/^tool\.[a-z0-9][a-z0-9._-]{0,55}$/.test(item.requiredTool)))) throw new ControlPlaneWorkerError('Worker capability plan is invalid', 'RESPONSE_INVALID');
+    return { id: item.id as WorkerCapabilityPlanItem['id'], label: item.label, mode: item.mode, reason: item.reason, requiredTool: item.requiredTool as string | null };
+  });
+  return { schemaVersion: 1, router: 'awh.external-capabilities.v1', selected };
+}
 
 export interface WorkerTask {
   taskId: string;
@@ -32,7 +49,7 @@ export interface WorkerTask {
   progress: number;
   assignedDevice: string | null;
   approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | null;
-  execution?: { executionId: string; executorKind: 'VPS' | 'DEVICE' | 'CODEX'; requiredCapability: string; vaultRevisionId: string | null; state: string; continuation: WorkerContinuation | null } | null;
+  execution?: { executionId: string; executorKind: 'VPS' | 'DEVICE' | 'CODEX'; requiredCapability: string; vaultRevisionId: string | null; state: string; continuation: WorkerContinuation | null; capabilityPlan: WorkerCapabilityPlan | null } | null;
 }
 
 export interface OfficeExecutionPacket { executionId: string; taskId: string; projectId: string; inputName: string; inputMimeType: string; sizeBytes: number; }
@@ -63,12 +80,12 @@ function boundedTask(value: unknown): WorkerTask {
       if (typeof value.rootTaskId !== 'string' || !UUID_V4.test(value.rootTaskId) || !Number.isInteger(value.step) || Number(value.step) < 0 || !Number.isInteger(value.maxSteps) || Number(value.maxSteps) < 1 || Number(value.maxSteps) > 8 || Number(value.step) >= Number(value.maxSteps)) throw new ControlPlaneWorkerError('Worker task response is invalid', 'RESPONSE_INVALID');
       continuation = { rootTaskId: value.rootTaskId, step: value.step as number, maxSteps: value.maxSteps as number };
     }
-    execution = { executionId: item.executionId, executorKind: item.executorKind as 'VPS' | 'DEVICE' | 'CODEX', requiredCapability: item.requiredCapability, vaultRevisionId: item.vaultRevisionId === null ? null : item.vaultRevisionId, state: item.state, continuation };
+    execution = { executionId: item.executionId, executorKind: item.executorKind as 'VPS' | 'DEVICE' | 'CODEX', requiredCapability: item.requiredCapability, vaultRevisionId: item.vaultRevisionId === null ? null : item.vaultRevisionId, state: item.state, continuation, capabilityPlan: boundedCapabilityPlan(item.capabilityPlan) };
   }
   return { taskId: task.taskId, projectId: task.projectId, conversationId: task.conversationId === undefined || task.conversationId === null ? null : task.conversationId, goal: task.goal, state: task.state, progress: task.progress, assignedDevice: task.assignedDevice, approvalStatus: task.approvalStatus === undefined ? null : task.approvalStatus as WorkerTask['approvalStatus'], execution };
 }
 
-export interface CentralExecutionPacket { executionId: string; taskId: string; projectId: string; vaultRevisionId: string; ownerProtocol: string; }
+export interface CentralExecutionPacket { executionId: string; taskId: string; projectId: string; vaultRevisionId: string; ownerProtocol: string; capabilityPlan: WorkerCapabilityPlan | null; }
 
 export interface WorkerConversationMessage { messageId: string; taskId: string | null; kind: 'user' | 'assistant' | 'progress' | 'approval' | 'result' | 'failure'; sequence: number; body: string; createdAt: string; }
 export interface WorkerConversation { conversation: { conversationId: string; projectId: string; createdAt: string; updatedAt: string; lastTaskId: string | null } | null; messages: WorkerConversationMessage[]; tasks: WorkerTask[]; artifacts: Array<Record<string, unknown>>; approvals: Array<Record<string, unknown>>; }
@@ -151,7 +168,7 @@ export class ControlPlaneWorkerClient {
     const response = await this.get(`/control/worker/executions/${executionId}/packet`, true);
     const item = response.execution;
     if (!item || typeof item !== 'object' || Array.isArray(item) || String((item as Record<string, unknown>).executionId) !== executionId || !UUID_V4.test(String((item as Record<string, unknown>).taskId)) || !UUID_V4.test(String((item as Record<string, unknown>).projectId)) || !UUID_V4.test(String((item as Record<string, unknown>).vaultRevisionId)) || typeof response.ownerProtocol !== 'string' || response.ownerProtocol.length < 1 || response.ownerProtocol.length > 8_000) throw new ControlPlaneWorkerError('Central execution packet is invalid', 'RESPONSE_INVALID');
-    return { executionId, taskId: String((item as Record<string, unknown>).taskId), projectId: String((item as Record<string, unknown>).projectId), vaultRevisionId: String((item as Record<string, unknown>).vaultRevisionId), ownerProtocol: response.ownerProtocol };
+    return { executionId, taskId: String((item as Record<string, unknown>).taskId), projectId: String((item as Record<string, unknown>).projectId), vaultRevisionId: String((item as Record<string, unknown>).vaultRevisionId), ownerProtocol: response.ownerProtocol, capabilityPlan: boundedCapabilityPlan(response.capabilityPlan) };
   }
 
   async materializeCentralExecutionWorkspace(executionId: string, root: string): Promise<CentralExecutionPacket & { workspace: string }> {

@@ -995,9 +995,10 @@ final class HubControlPlaneService
                 $insert = $this->pdo->prepare('INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, :state, NULL, NULL, 0, NULL, NULL, :key, :conversation, :created, :updated, NULL)');
                 $insert->execute(['id' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $effectiveGoal, 'state' => $taskState, 'key' => $taskKey, 'conversation' => $conversation['conversation_id'], 'created' => $at, 'updated' => $at]);
                 if ($officeRequest !== null && $this->centralProjectAuthoritySchemaPresent()) {
-                    $this->execution->enqueue($taskId, $projectId, null, 'DEVICE', $officeRequest['capability'], ['mode' => 'OFFICE_TO_PDF', 'attachmentId' => $officeRequest['attachmentId']], $at);
+                    $officeCheckpoint = self::withCapabilityPlan(['mode' => 'OFFICE_TO_PDF', 'attachmentId' => $officeRequest['attachmentId']], $effectiveGoal, $attachmentIds !== []);
+                    $this->execution->enqueue($taskId, $projectId, null, 'DEVICE', $officeRequest['capability'], $officeCheckpoint, $at);
                 } elseif ($vaultRevision !== null) {
-                    $checkpoint = ['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverAssistedEdit ? 'PROJECT_ASSISTED_EDIT' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST'))]; $autoSteps = self::agentLoopSteps($effectiveGoal); if ($autoSteps !== null) $checkpoint['continuation'] = ['enabled'=>true,'rootTaskId'=>$taskId,'step'=>0,'maxSteps'=>$autoSteps]; $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverAssistedEdit ? 'project.mutate.assisted' : ($serverInspection ? 'project.read' : 'codex:cli')), $checkpoint, $at);
+                    $checkpoint = self::withCapabilityPlan(['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverAssistedEdit ? 'PROJECT_ASSISTED_EDIT' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST'))], $effectiveGoal, $attachmentIds !== []); $autoSteps = self::agentLoopSteps($effectiveGoal); if ($autoSteps !== null) $checkpoint['continuation'] = ['enabled'=>true,'rootTaskId'=>$taskId,'step'=>0,'maxSteps'=>$autoSteps]; $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverAssistedEdit ? 'project.mutate.assisted' : ($serverInspection ? 'project.read' : 'codex:cli')), $checkpoint, $at);
                 }
                 $this->event($taskId, $taskState, 0, $officeRequest !== null ? 'waiting for Office PDF capability' : ($serverInspection ? 'server inspection queued' : ($serverTextMutation ? 'server text transform queued' : 'specialist execution recorded')), $at);
                 $this->pdo->prepare('UPDATE control_conversations SET last_task_id = :task, updated_at = :at WHERE conversation_id = :conversation')->execute(['task' => $taskId, 'at' => $at, 'conversation' => $conversation['conversation_id']]);
@@ -1373,7 +1374,8 @@ final class HubControlPlaneService
             $this->pdo->prepare("INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, 'QUEUED', NULL, NULL, 5, NULL, NULL, :key, :conversation, :at, :at, NULL)")->execute(['id' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $message, 'key' => $taskKey, 'conversation' => $conversationId, 'at' => $at]);
             $created = true;
         }
-        $this->execution->enqueue($taskId, $projectId, $this->centralVaultRevision($projectId), 'VPS', 'agent.conversation', ['mode' => 'NATIVE_CONVERSATION', 'messageId' => $messageId], $at);
+        $checkpoint = self::withCapabilityPlan(['mode' => 'NATIVE_CONVERSATION', 'messageId' => $messageId], $message);
+        $this->execution->enqueue($taskId, $projectId, $this->centralVaultRevision($projectId), 'VPS', 'agent.conversation', $checkpoint, $at);
         $this->pdo->prepare('UPDATE control_conversation_messages SET task_id = :task WHERE message_id = :message AND conversation_id = :conversation AND task_id IS NULL')->execute(['task' => $taskId, 'message' => $messageId, 'conversation' => $conversationId]);
         $this->pdo->prepare('UPDATE control_conversations SET last_task_id = :task, updated_at = :at WHERE conversation_id = :conversation')->execute(['task' => $taskId, 'at' => $at, 'conversation' => $conversationId]);
         if ($created) $this->event($taskId, 'QUEUED', 5, 'AI response accepted for durable AWH Server execution', $at);
@@ -1942,7 +1944,7 @@ final class HubControlPlaneService
         try { $context = $this->memory->promptContext((string) $row['user_id'], $this->isOwnerUser((string) $row['user_id']), (string) $row['project_id'], (string) $row['goal']); } catch (Throwable) { $context = ['records' => [], 'authorityOrder' => ['live-source', 'active-task-context', 'project-memory']]; }
         $records = [];
         foreach (is_array($context['records'] ?? null) ? $context['records'] : [] as $record) if (is_array($record) && is_string($record['content'] ?? null)) $records[] = ['scope' => (string) ($record['scope'] ?? 'project'), 'category' => (string) ($record['category'] ?? 'MEMORY'), 'content' => substr((string) $record['content'], 0, 700)];
-        return ['schemaVersion' => 1, 'execution' => ['executionId' => (string) $row['execution_id'], 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'vaultRevisionId' => (string) $row['vault_revision_id'], 'requiredCapability' => (string) $row['required_capability']], 'ownerProtocol' => $this->engineeringProtocol($records), 'sourceTruth' => is_array($context['sourceTruth'] ?? null) ? $context['sourceTruth'] : null];
+        return ['schemaVersion' => 1, 'execution' => ['executionId' => (string) $row['execution_id'], 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'vaultRevisionId' => (string) $row['vault_revision_id'], 'requiredCapability' => (string) $row['required_capability']], 'ownerProtocol' => $this->engineeringProtocol($records), 'capabilityPlan' => self::executionCapabilityPlan((string) ($row['checkpoint_json'] ?? '{}')), 'sourceTruth' => is_array($context['sourceTruth'] ?? null) ? $context['sourceTruth'] : null];
     }
 
     /** @return array{name:string,mimeType:string,sizeBytes:int,path:string} */
@@ -2042,9 +2044,11 @@ final class HubControlPlaneService
         if (!$candidate['changed']) { $this->completeCentralWorkerExecution($row, null, null, 'Codex ตรวจและ QA ความสมบูรณ์ของ workspace แล้ว แต่ไม่พบการเปลี่ยนแปลงจาก Project Vault revision เดิม', $at); return $this->taskById((string) $row['task_id'], (string) $row['user_id']); }
         try {
             $diff = $this->vaultRevisionDiff((string) $row['project_id'], (string) $candidate['parentRevisionId'], (string) $candidate['revisionId']);
-            $artifactId = $this->storeCentralCandidateReport($row, $candidate, $diff, $at);
-            $summary = 'Codex ทำงานใน workspace ที่แยกจาก Project Vault แล้ว ตรวจความสมบูรณ์ของ candidate และสร้างรายงานเรียบร้อย รออนุมัติก่อนแทนที่ Project หลัก';
-            $this->completeCentralWorkerExecution($row, $candidate, $artifactId, $summary, $at);
+            $qa = self::centralCandidateQa($diff);
+            $artifactId = $this->storeCentralCandidateReport($row, $candidate, $diff, $qa, $at);
+            $visualNote = ($qa['status'] ?? null) === 'REVIEW_REQUIRED' ? ' UI/visual changes ต้องผ่าน KRUART Golden UI + Hallmark review ก่อนถือว่า visual ผ่าน;' : '';
+            $summary = 'Codex ทำงานใน workspace ที่แยกจาก Project Vault แล้ว ตรวจความสมบูรณ์ของ candidate และสร้างรายงานเรียบร้อย;' . $visualNote . ' รออนุมัติก่อนแทนที่ Project หลัก';
+            $this->completeCentralWorkerExecution($row, $candidate, $artifactId, $summary, $at, (string) $qa['status']);
         } catch (Throwable $error) {
             try { $this->vaults->rejectCandidate((string) $row['project_id'], (string) $candidate['revisionId'], $at); } catch (Throwable) {}
             if ($error instanceof HubControlPlaneException) throw $error;
@@ -2139,14 +2143,29 @@ final class HubControlPlaneService
         return implode("\n", $lines);
     }
 
-    /** @param array{revisionId:string,contentSha256:string,contentBytes:int,fileCount:int,parentRevisionId:string,changed:bool} $candidate @param array{added:list<string>,changed:list<string>,deleted:list<string>} $diff */
-    private function storeCentralCandidateReport(array $row, array $candidate, array $diff, string $at): string
+    /** @param array{added:list<string>,changed:list<string>,deleted:list<string>} $diff @return array{status:string,visualReview:array<string,mixed>} */
+    private static function centralCandidateQa(array $diff): array
+    {
+        $visual = [];
+        foreach (array_values(array_unique(array_merge($diff['added'], $diff['changed']))) as $path) {
+            $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION)); $normalized = strtolower(str_replace('\\', '/', $path));
+            $intrinsic = in_array($extension, ['html','htm','css','scss','sass','less','jsx','tsx','vue','svelte','svg'], true);
+            $uiPath = preg_match('#(?:^|/)(?:web|public|frontend|views?|templates?|components?|pages?)/#', $normalized) === 1;
+            $uiScript = $uiPath && in_array($extension, ['js','ts','php','twig','blade'], true);
+            if ($intrinsic || $uiScript) $visual[] = $path;
+        }
+        $visual = array_slice($visual, 0, 40); $required = $visual !== [];
+        return ['status' => $required ? 'REVIEW_REQUIRED' : 'PASS', 'visualReview' => ['status' => $required ? 'REVIEW_REQUIRED' : 'NOT_APPLICABLE', 'policy' => 'KRUART_GOLDEN_UI_HALLMARK', 'reference' => 'design.hallmark', 'files' => $visual, 'claimPolicy' => 'Source inspection alone never proves visual PASS']];
+    }
+
+    /** @param array{revisionId:string,contentSha256:string,contentBytes:int,fileCount:int,parentRevisionId:string,changed:bool} $candidate @param array{added:list<string>,changed:list<string>,deleted:list<string>} $diff @param array{status:string,visualReview:array<string,mixed>} $qa */
+    private function storeCentralCandidateReport(array $row, array $candidate, array $diff, array $qa, string $at): string
     {
         $store = $this->artifactStore; if ($store === null) throw new HubControlPlaneException('Artifact object storage is unavailable', 'ARTIFACT_STORAGE_UNAVAILABLE');
         $artifactId = self::uuidFromBytes(random_bytes(16)); $file = tempnam(sys_get_temp_dir(), 'awh-candidate-');
         if (!is_string($file)) throw new HubControlPlaneException('Candidate report storage is unavailable', 'ARTIFACT_STORAGE_FAILED');
         try {
-            $report = ['schemaVersion' => 1, 'kind' => 'project-candidate', 'projectId' => (string) $row['project_id'], 'taskId' => (string) $row['task_id'], 'executor' => 'codex:cli', 'baseRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'contentSha256' => $candidate['contentSha256'], 'diff' => $diff, 'qa' => ['workerWorkspaceIsolation' => 'PASS', 'candidateArchiveValidation' => 'PASS', 'manifestIntegrity' => 'PASS', 'projectDefinedTests' => 'NOT_CONFIGURED'], 'createdAt' => $at];
+            $report = ['schemaVersion' => 2, 'kind' => 'project-candidate', 'projectId' => (string) $row['project_id'], 'taskId' => (string) $row['task_id'], 'executor' => 'codex:cli', 'baseRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'contentSha256' => $candidate['contentSha256'], 'diff' => $diff, 'qa' => ['candidate' => ['status' => (string) $qa['status'], 'workerWorkspaceIsolation' => 'PASS', 'candidateArchiveValidation' => 'PASS', 'manifestIntegrity' => 'PASS', 'projectDefinedTests' => 'NOT_CONFIGURED', 'visualReview' => $qa['visualReview']]], 'createdAt' => $at];
             if (@file_put_contents($file, json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), LOCK_EX) === false) throw new HubControlPlaneException('Candidate report could not be created', 'ARTIFACT_STORAGE_FAILED');
             $stored = $store->storeFile($artifactId, $file);
             $this->pdo->exec('BEGIN IMMEDIATE');
@@ -2157,7 +2176,7 @@ final class HubControlPlaneService
     }
 
     /** @param array{revisionId:string,contentSha256:string,contentBytes:int,fileCount:int,parentRevisionId:string,changed:bool}|null $candidate */
-    private function completeCentralWorkerExecution(array $row, ?array $candidate, ?string $artifactId, string $summary, string $at): void
+    private function completeCentralWorkerExecution(array $row, ?array $candidate, ?string $artifactId, string $summary, string $at, ?string $qaStatus = null): void
     {
         try {
             $this->pdo->exec('BEGIN IMMEDIATE');
@@ -2168,7 +2187,8 @@ final class HubControlPlaneService
                 $eventId = $this->event((string) $row['task_id'], 'COMPLETED', 100, 'Codex completed without source change', $at); $this->syncConversationEvent((string) $row['task_id'], $eventId, 'COMPLETED', 100, 'Codex completed without source change', $summary, $at);
             } else {
                 $this->pdo->prepare("UPDATE control_tasks SET state = 'WAITING_FOR_APPROVAL', progress = 90, result_summary = :summary, failure_code = NULL, assigned_device_id = NULL, lease_expires_at = NULL, updated_at = :at WHERE task_id = :task")->execute(['summary' => $summary, 'at' => $at, 'task' => $row['task_id']]);
-                $scope = json_encode(['taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'expectedActiveRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'artifactId' => $artifactId], JSON_THROW_ON_ERROR);
+                if (!in_array($qaStatus, ['PASS','REVIEW_REQUIRED'], true)) throw new HubControlPlaneException('Candidate QA status is unavailable', 'APPROVAL_EVIDENCE_INVALID');
+                $scope = json_encode(['taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'expectedActiveRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'artifactId' => $artifactId, 'evidenceSchemaVersion' => 2, 'qaStatus' => $qaStatus], JSON_THROW_ON_ERROR);
                 $this->pdo->prepare("INSERT INTO control_approvals(approval_id, task_id, action, scope_json, status, expires_at, decided_at) VALUES(:id, :task, 'project.revision.promote', :scope, 'PENDING', :expires, NULL)")->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'task' => $row['task_id'], 'scope' => $scope, 'expires' => gmdate('c', strtotime($at) + 86400)]);
                 $eventId = $this->event((string) $row['task_id'], 'WAITING_FOR_APPROVAL', 90, 'Codex candidate revision is ready for owner approval', $at); $this->syncConversationEvent((string) $row['task_id'], $eventId, 'WAITING_FOR_APPROVAL', 90, 'Codex candidate พร้อมตรวจและรออนุมัติ', $summary, $at);
             }
@@ -2210,7 +2230,7 @@ final class HubControlPlaneService
     {
         $labels = [
             'tool.git' => 'Git', 'tool.node' => 'Node.js', 'tool.php' => 'PHP', 'tool.python' => 'Python',
-            'tool.ffmpeg' => 'FFmpeg', 'tool.ffprobe' => 'FFprobe', 'tool.codex' => 'ผู้เชี่ยวชาญโค้ด',
+            'tool.ffmpeg' => 'FFmpeg', 'tool.ffprobe' => 'FFprobe', 'tool.codex' => 'ผู้เชี่ยวชาญโค้ด', 'tool.context-mode' => 'Context Optimizer', 'tool.teamai' => 'TeamAI',
             'tool.office.word' => 'Word', 'tool.office.excel' => 'Excel', 'tool.office.powerpoint' => 'PowerPoint',
             'tool.browser.chrome' => 'Chrome', 'tool.browser.edge' => 'Edge', 'tool.browser.safari' => 'Safari',
         ];
@@ -2385,7 +2405,7 @@ final class HubControlPlaneService
         if ($this->centralProjectAuthoritySchemaPresent()) {
             $executionQuery = $this->pdo->prepare('SELECT execution_id, executor_kind, required_capability, vault_revision_id, state, checkpoint_json FROM control_task_executions WHERE task_id = :task');
             $executionQuery->execute(['task' => $row['task_id']]); $executionRow = $executionQuery->fetch();
-            if (is_array($executionRow)) $execution = ['executionId' => (string) $executionRow['execution_id'], 'executorKind' => (string) $executionRow['executor_kind'], 'requiredCapability' => (string) $executionRow['required_capability'], 'vaultRevisionId' => $executionRow['vault_revision_id'] === null ? null : (string) $executionRow['vault_revision_id'], 'state' => (string) $executionRow['state'], 'continuation' => self::executionContinuation((string) ($executionRow['checkpoint_json'] ?? '{}'))];
+            if (is_array($executionRow)) $execution = ['executionId' => (string) $executionRow['execution_id'], 'executorKind' => (string) $executionRow['executor_kind'], 'requiredCapability' => (string) $executionRow['required_capability'], 'vaultRevisionId' => $executionRow['vault_revision_id'] === null ? null : (string) $executionRow['vault_revision_id'], 'state' => (string) $executionRow['state'], 'continuation' => self::executionContinuation((string) ($executionRow['checkpoint_json'] ?? '{}')), 'capabilityPlan' => self::executionCapabilityPlan((string) ($executionRow['checkpoint_json'] ?? '{}'))];
         }
         $actionGraph = HubActionGraphService::project($row, is_array($executionRow) ? $executionRow : null, $approvalStatus === false ? null : (string) $approvalStatus, count($artifactRows));
         return ['schemaVersion' => 1, 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'conversationId' => isset($row['conversation_id']) && $row['conversation_id'] !== null ? (string) $row['conversation_id'] : null, 'projectName' => is_array($projectRow) ? (string) $projectRow['name'] : null, 'projectType' => is_array($projectRow) ? (string) $projectRow['type'] : null, 'goal' => (string) $row['goal'], 'state' => (string) $row['state'], 'progress' => (int) $row['progress'], 'assignedDevice' => $row['assigned_device_id'] === null ? null : (string) $row['assigned_device_id'], 'approvalStatus' => $approvalStatus === false ? null : (string) $approvalStatus, 'createdAt' => (string) $row['created_at'], 'updatedAt' => (string) $row['updated_at'], 'resultSummary' => $row['result_summary'] === null ? null : (string) $row['result_summary'], 'failureCode' => $row['failure_code'] === null ? null : (string) $row['failure_code'], 'lastEvent' => is_array($eventRow) ? ['state' => (string) $eventRow['state'], 'progress' => (int) $eventRow['progress'], 'message' => $eventRow['message'] === null ? null : (string) $eventRow['message']] : null, 'artifactRefs' => array_map(static fn (array $item): string => (string) $item['artifact_id'], $artifactRows), 'execution' => $execution, 'actionGraph' => $actionGraph];
@@ -2880,6 +2900,48 @@ final class HubControlPlaneService
         $extension = strtolower((string) pathinfo($name, PATHINFO_EXTENSION));
         $capability = match ($extension) { 'doc', 'docx' => 'office.word.pdf', 'xls', 'xlsx' => 'office.excel.pdf', 'ppt', 'pptx' => 'office.powerpoint.pdf', default => null };
         return $capability === null ? null : ['attachmentId' => $attachmentId, 'capability' => $capability];
+    }
+
+    /** External integrations stay advisory/optional metadata under the existing AWH execution authority. */
+    private static function externalCapabilityPlan(string $goal, bool $hasAttachments = false): array
+    {
+        $value = trim($goal); $selected = [];
+        $add = static function (string $id, string $label, string $mode, string $reason, ?string $requiredTool = null) use (&$selected): void {
+            foreach ($selected as $item) if (($item['id'] ?? null) === $id) return;
+            $selected[] = ['id'=>$id,'label'=>$label,'mode'=>$mode,'reason'=>$reason,'requiredTool'=>$requiredTool];
+        };
+        $large = $hasAttachments || preg_match('/(?:\b(?:log|logs|diff|tests?|audit|repository|repo|research|analysis|review|overnight|large|full|final|closure)\b|วิเคราะห์|ตรวจสอบ|ละเอียด|ทั้งระบบ|ทั้งหมด|ทั้งโปรเจกต์|ข้ามคืน|รอบสุดท้าย|ปิดงาน)/iu', $value) === 1;
+        $design = preg_match('/(?:\b(?:ui|ux|design|visual|layout|responsive|mobile|css|html|banner|theme|typography)\b|ออกแบบ|ดีไซน์|หน้าตา|หน้าเว็บ|ธีม|สวย|สี|ตัวหนังสือ|ฟอนต์|มือถือ|โมบาย|แบนเนอร์)/iu', $value) === 1;
+        $team = preg_match('/(?:\b(?:audit|security|architecture|deploy|deployment|recovery|release|migration|final|closure|ecosystem|system-wide)\b|ทั้งระบบ|ทุกระบบ|สถาปัตยกรรม|ความปลอดภัย|ดีพลอย|กู้คืน|ย้ายระบบ|ปิดงาน|อีโคซิสเต็ม)/iu', $value) === 1;
+        if ($large) $add('context.optimize','Context Optimizer','OPTIONAL_LOCAL_ADAPTER','ลดบริบทซ้ำจาก log/diff/test/research ขนาดใหญ่โดยไม่เปลี่ยน Source of Truth','tool.context-mode');
+        if ($design) {
+            $add('design.hallmark','Design Critic','REFERENCE_SKILL','ตรวจ hierarchy, spacing, typography, responsive และความเป็น generic AI ก่อน release');
+            $add('design.reference','Design Reference','REFERENCE_CORPUS','ใช้ pattern และ DESIGN.md เป็น reference โดย KRUART Golden UI ยังเป็น authority');
+        }
+        if ($team) $add('team.harness','Team Review','OPTIONAL_LOCAL_ADAPTER','ตรวจหลายมุมมองภายใน Task/Execution เดิม ไม่สร้างทีม/คิว/control plane ชุดใหม่','tool.teamai');
+        return ['schemaVersion'=>1,'router'=>'awh.external-capabilities.v1','selected'=>$selected];
+    }
+
+    private static function withCapabilityPlan(array $checkpoint, string $goal, bool $hasAttachments = false): array
+    {
+        $plan = self::externalCapabilityPlan($goal, $hasAttachments);
+        if (($plan['selected'] ?? []) !== []) $checkpoint['capabilityPlan'] = $plan;
+        return $checkpoint;
+    }
+
+    private static function executionCapabilityPlan(?string $checkpointJson): ?array
+    {
+        if ($checkpointJson === null || $checkpointJson === '') return null;
+        try { $checkpoint = json_decode($checkpointJson, true, 20, JSON_THROW_ON_ERROR); } catch (Throwable) { return null; }
+        $plan = is_array($checkpoint) && is_array($checkpoint['capabilityPlan'] ?? null) ? $checkpoint['capabilityPlan'] : null;
+        if (!is_array($plan) || ($plan['schemaVersion'] ?? null) !== 1 || ($plan['router'] ?? null) !== 'awh.external-capabilities.v1' || !is_array($plan['selected'] ?? null)) return null;
+        $allowed = ['context.optimize','design.hallmark','design.reference','team.harness']; $out = [];
+        foreach (array_slice($plan['selected'],0,4) as $item) {
+            if (!is_array($item) || !in_array($item['id'] ?? null,$allowed,true) || !is_string($item['label'] ?? null) || !is_string($item['mode'] ?? null) || !is_string($item['reason'] ?? null)) continue;
+            $tool = $item['requiredTool'] ?? null; if ($tool !== null && (!is_string($tool) || preg_match('/^tool\.[a-z0-9][a-z0-9._-]{0,55}$/',$tool)!==1)) $tool = null;
+            $out[] = ['id'=>(string)$item['id'],'label'=>substr((string)$item['label'],0,80),'mode'=>substr((string)$item['mode'],0,40),'reason'=>substr((string)$item['reason'],0,220),'requiredTool'=>$tool];
+        }
+        return $out === [] ? null : ['schemaVersion'=>1,'router'=>'awh.external-capabilities.v1','selected'=>$out];
     }
 
     /** Conversation is the default.  A background task is created only for an explicit action request at the start of the turn. */

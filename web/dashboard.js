@@ -535,6 +535,7 @@ function renderOwnerNightShift() {
   const triage = infra?.staff?.executionTriage && typeof infra.staff.executionTriage === 'object' ? infra.staff.executionTriage : {};
 
   const running = tasks.filter((task) => ['PREPARING', 'RUNNING', 'QA'].includes(task?.state)).length;
+  const routedCapabilities = [...new Set(tasks.filter((task) => !['COMPLETED','FAILED','CANCELLED'].includes(task?.state)).flatMap((task) => Array.isArray(task?.execution?.capabilityPlan?.selected) ? task.execution.capabilityPlan.selected.map((item) => item?.label).filter(Boolean) : []))].slice(0, 4);
   const completed = Math.max(0, Number(overnight.completedTasks || 0));
   const approvalIds = new Set();
   tasks.forEach((task, index) => { if (task?.state === 'WAITING_FOR_APPROVAL') approvalIds.add(typeof task.taskId === 'string' ? task.taskId : `task-${index}`); });
@@ -568,7 +569,7 @@ function renderOwnerNightShift() {
   set('dashboard-night-defects', currentDefect);
   set('dashboard-night-next', nextAction);
   const meta = $('dashboard-night-meta');
-  if (meta) meta.textContent = envelope?.persisted === true ? `สรุปล่าสุดที่บันทึกแล้ว · ครั้งที่ ${Number(envelope.revision || 0)}` : 'สถานะล่าสุดจาก AWH · งานที่เสร็จนับย้อนหลัง 24 ชั่วโมง';
+  if (meta) { const base = envelope?.persisted === true ? `สรุปล่าสุดที่บันทึกแล้ว · ครั้งที่ ${Number(envelope.revision || 0)}` : 'สถานะล่าสุดจาก AWH · งานที่เสร็จนับย้อนหลัง 24 ชั่วโมง'; meta.textContent = routedCapabilities.length ? `${base} · AWH ใช้ ${routedCapabilities.join(' · ')}` : `${base} · Auto capability routing พร้อม`; }
 }
 
 function returnHome() {

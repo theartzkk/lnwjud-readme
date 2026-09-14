@@ -8,7 +8,7 @@ import { createCheckpoint } from './changes.js';
 import { createContinuityCheckpoint } from './continuity.js';
 import { buildProjectContext, listProjects, readProjectManifest, resolveRegisteredProject, PROJECT_MEMORY_FILES, PROJECT_MEMORY_METADATA_MAX_BYTES } from './project-registry.js';
 import { discoverGitHubProjectSource } from './project-source.js';
-import { ControlPlaneWorkerClient, type WorkerProject, type WorkerTask } from './control-plane-worker-client.js';
+import { ControlPlaneWorkerClient, type WorkerCapabilityPlan, type WorkerProject, type WorkerTask } from './control-plane-worker-client.js';
 import { createUnsyncedWorkspaceCheckpoint, createWorkspaceWipCheckpoint, reconstructWorkspaceWip } from './workspace-continuity.js';
 import { createVaultCandidateArchive } from './vault-transfer.js';
 import { composeWorkerHeartbeatCapabilities, discoverWorkerTools } from './worker-capability-discovery.js';
@@ -92,6 +92,20 @@ export function buildCodexTaskInstruction(ownerProtocol: string, goal: string): 
     'EXECUTION REQUIREMENT',
     'Apply the owner contract: system-first and root-cause-first analysis, search for shared/legacy/duplicate paths, preserve validated core and unrelated work, make one coherent bounded change, run architecture-relevant QA, and report only what is proven. Do not create a parallel system or broaden permissions.',
   ].join('\n\n');
+}
+
+export function capabilityPlanInstruction(plan: WorkerCapabilityPlan | null, workerCapabilities: readonly string[]): string {
+  if (!plan || plan.selected.length === 0) return '';
+  const lines = ['AWH AUTO CAPABILITY PLAN — ADVISORY, NOT AUTHORITY'];
+  for (const item of plan.selected) {
+    const availability = item.requiredTool === null ? 'REFERENCE' : workerCapabilities.includes(item.requiredTool) ? 'LOCAL_RUNTIME_DETECTED' : 'NATIVE_FALLBACK';
+    lines.push(`- ${item.label} [${item.id}] ${availability}: ${item.reason}`);
+    if (item.id === 'context.optimize') lines.push('  A local Context Mode runtime may be detected, but use it only when the current Codex/plugin tool surface explicitly exposes the adapter. Never guess opaque CLI flags. Its cache is temporary optimization; current Vault source and raw evidence remain authoritative. Otherwise continue with bounded native context without retry loops.');
+    if (item.id === 'design.hallmark') lines.push('  Apply a Hallmark-style design critique: hierarchy, spacing, typography, contrast, responsive behavior, clutter, excessive badges/cards/gradients, and generic AI-template appearance. Never claim visual PASS from source inspection alone.');
+    if (item.id === 'design.reference') lines.push('  Use design-system and DESIGN.md patterns as reference only. KRUART Golden UI, existing product identity, Thai typography, accessibility, and current validated components override external recipes.');
+    if (item.id === 'team.harness') lines.push('  Review architecture, security, UX, runtime/deployment and recovery perspectives inside this one AWH execution. Do not create another queue, login, memory, database, approval system or control plane.');
+  }
+  return lines.join('\n');
 }
 
 export function officeExecutionCapabilities(platform: NodeJS.Platform | string, tools: readonly string[]): string[] {
@@ -374,7 +388,9 @@ export class ControlPlaneWorkerRuntime {
       const materialized = await this.client.materializeCentralExecutionWorkspace(execution.executionId, root); workspace = materialized.workspace;
       if (materialized.taskId !== task.taskId || materialized.projectId !== task.projectId || materialized.vaultRevisionId !== execution.vaultRevisionId) throw new Error('CENTRAL_REVISION_MISMATCH');
       await this.client.update(task.taskId, 'RUNNING', 20, 'Codex is working in an isolated AWH Vault workspace');
-      const codex = await runCodexGoal(workspace, `${materialized.ownerProtocol}\n\nCURRENT OWNER GOAL\n${task.goal}`, 'workspace-write');
+      const advisory = capabilityPlanInstruction(materialized.capabilityPlan, capabilities);
+      const instruction = [materialized.ownerProtocol, advisory, 'CURRENT OWNER GOAL', task.goal].filter((value) => value.trim() !== '').join('\n\n');
+      const codex = await runCodexGoal(workspace, instruction, 'workspace-write');
       if (codex.code !== 0) throw new Error('CODEX_EXECUTION_FAILED');
       await this.client.update(task.taskId, 'QA', 70, 'AWH is verifying the candidate workspace before any promotion');
       archive = join(root, `${execution.executionId}.candidate.zip`); await createVaultCandidateArchive(workspace, archive);

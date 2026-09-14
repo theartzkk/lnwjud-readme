@@ -148,6 +148,13 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); box-sha
 .state-chip.completed { color: #b7efcc; border-color: #2d6747; background: #14231a; }
 .state-chip.failed { color: #ffd2cf; border-color: #713d3b; background: #29191a; }
 .state-chip.approval { color: #ffd4a9; border-color: #775132; background: #261b13; }
+.capability-plan { max-width: 650px; margin: 4px 0 0; border: 1px solid color-mix(in srgb,var(--accent) 22%,var(--line)); border-radius: 12px; padding: 8px 10px; color: var(--muted); background: color-mix(in srgb,var(--accent) 5%,var(--surface)); font-size: 12px; }
+.capability-plan > summary { width: max-content; max-width: 100%; cursor: pointer; color: var(--text); font-size: 12px; font-weight: 800; }
+.capability-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.capability-chip { display: inline-flex; align-items: center; min-height: 24px; max-width: 100%; border: 1px solid color-mix(in srgb,var(--accent) 28%,var(--line)); border-radius: 999px; padding: 3px 8px; color: var(--text); background: var(--surface); font-size: 11px; font-weight: 750; }
+.capability-reasons { display: grid; gap: 5px; margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+body.work-active .capability-plan { max-width: none; background: #fffaf6; }
+@media (max-width: 640px) { .capability-plan { padding: 8px; } .capability-chip { white-space: normal; } }
 .task-summary { max-width: 650px; color: #d5dae2; font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .task-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .task-actions .secondary-button { min-height: 36px; padding: 7px 10px; font-size: 12px; }

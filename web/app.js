@@ -727,6 +727,20 @@ import {
     actions.append(button); return actions;
   }
 
+  function renderCapabilityPlan(task) {
+    const selected = Array.isArray(task?.execution?.capabilityPlan?.selected) ? task.execution.capabilityPlan.selected : [];
+    if (!selected.length) return null;
+    const details = document.createElement('details'); details.className = 'capability-plan';
+    const summary = document.createElement('summary'); summary.textContent = `AWH เลือกใช้ ${selected.length} ความสามารถ`;
+    const chips = document.createElement('div'); chips.className = 'capability-chips';
+    for (const item of selected) {
+      const chip = document.createElement('span'); chip.className = 'capability-chip'; chip.textContent = item.label || item.id || 'Capability'; chip.title = item.reason || ''; chips.append(chip);
+    }
+    const reasons = document.createElement('ul'); reasons.className = 'capability-reasons';
+    for (const item of selected) { const li = document.createElement('li'); li.textContent = `${item.label || item.id}: ${item.reason || 'AWH เลือกให้เหมาะกับงานนี้'}`; reasons.append(li); }
+    details.append(summary, chips, reasons); return details;
+  }
+
   function renderLiveActivity(task) {
     const status = taskExecutionStatus(task);
     const activeStep = status.journey.find((step) => step.state === 'active');
@@ -838,6 +852,7 @@ import {
           const statusTurn = document.createElement('li'); statusTurn.className = 'task-turn assistant-turn status-turn'; statusTurn.dataset.scrollKey = `status:${turn.messageId || task?.taskId || 'task'}`;
           const status = document.createElement('div'); status.className = 'task-response active-task-response';
           status.append(renderLiveActivity(task));
+          const capabilityPlan = renderCapabilityPlan(task); if (capabilityPlan) status.append(capabilityPlan);
           const taskActions = renderCancellation(task); if (taskActions) status.append(taskActions);
           statusTurn.append(status); nextThread.append(statusTurn);
         }
@@ -852,6 +867,7 @@ import {
       meta.append(chip, time);
       if (turn.kind === 'approval' || turn.kind === 'failure') response.append(meta);
       response.append(body);
+      if (task && ['assistant','result','failure','approval'].includes(turn.kind)) { const capabilityPlan = renderCapabilityPlan(task); if (capabilityPlan) response.append(capabilityPlan); }
       if (turn.kind === 'assistant' || turn.kind === 'result' || turn.kind === 'failure') {
         const messageActions = document.createElement('div'); messageActions.className = 'message-actions';
         const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'text-button'; copy.textContent = 'คัดลอก'; copy.addEventListener('click', () => { void copyMessageText(turn.body, copy); });
