@@ -77,9 +77,9 @@ test('Ecosystem collector prefers BAY Production over staging compatibility prob
  assert.deepEqual(JSON.parse(stdout),['bay','bay','awh','bay',null,10,30]);
 });
 
-test('LearnLab health reads the production BAY adapter and stable runtime manifest by default',async()=>{
+test('LearnLab health keeps bounded telemetry on the readable adapter and stable runtime authority separate',async()=>{
  const connector=await readFile(join(ROOT,'hub/src/HubBayEcosystemHealthConnector.php'),'utf8');
- assert.match(connector,/\/var\/www\/bay-production-shadow\/current\/learnlab\/server\/host-adapter\.php/);
+ assert.match(connector,/\/var\/www\/bay-staging\/current\/learnlab\/server\/host-adapter\.php/);
  assert.match(connector,/\/srv\/bay-learnlab\/channels\/stable\.json/);
  assert.match(connector,/runtime_version/);
  assert.match(connector,/bay-production-shadow\/releases/);

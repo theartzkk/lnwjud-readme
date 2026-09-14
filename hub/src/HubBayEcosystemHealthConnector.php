@@ -24,7 +24,7 @@ final class HubBayEcosystemHealthConnector
     {
         return new self(
             getenv('AWH_BAY_LEARNLAB_HOST_ADAPTER')
-                ?: '/var/www/bay-production-shadow/current/learnlab/server/host-adapter.php',
+                ?: '/var/www/bay-staging/current/learnlab/server/host-adapter.php',
             getenv('AWH_LEARNLAB_STABLE_MANIFEST')
                 ?: '/srv/bay-learnlab/channels/stable.json'
         );
