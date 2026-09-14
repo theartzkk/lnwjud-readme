@@ -55,10 +55,10 @@ These repositories are deliberately recorded here so they cannot disappear when 
 
 | External repository | Status | Integration policy | Target capability |
 |---|---|---|---|
-| Tencent/teamai-cli | BACKLOG | ADAPT only; no second orchestration plane | specialist/team patterns, reusable skills, shared project knowledge |
-| Nutlope/hallmark | BACKLOG | ADOPT/ADAPT as bounded QA tooling | Golden Visual QA, design audit, redesign/study workflow |
-| mksglu/context-mode | BACKLOG | ADOPT as optimization only; never Memory/Queue/Source Authority | large-output/context compression for Codex, logs, diffs, tests and research |
-| rohitg00/awesome-claude-design | BACKLOG | REFERENCE/ADAPT; no competing design authority | codebase → design-system extraction, DESIGN.md workflow, reusable design recipes |
+| Tencent/teamai-cli | CLOSED | Integrated as opt-in `team.harness` / `tool.teamai` adapter metadata at `c23fd70380a3ae528dce227f9afbeaff8ad7bdc6`; no second orchestration plane | skills/rules/shared-knowledge patterns through existing AWH Task/Execution authority |
+| Nutlope/hallmark | CLOSED | Integrated as MIT reference skill `design.hallmark` at `13ac0ec7e148655948100b6396439e481361d690` | Golden Visual QA/design audit/redesign/study reference; KRUART remains design authority |
+| mksglu/context-mode | CLOSED | Integrated as opt-in local `context.optimize` / `tool.context-mode` metadata at `ba5f5dfd1a0cd3e8a8f812c219d50390ed0a61c8`; ELv2 keeps it local/non-hosted | local context optimization only; never Memory/Queue/Source Authority |
+| rohitg00/awesome-claude-design | CLOSED | Integrated as MIT reference corpus `design.reference` at `7f60ee56b9340f8c2671a08c2d8aab4037546a64`; no competing design authority | DESIGN.md workflow and reusable design recipes/reference |
 
 ### Integration invariants
 
@@ -128,4 +128,4 @@ A missing handoff means the lane is **not** safe to assume closed.
 2. Reconcile PR #159 / any open AWH closure lane against live Production before another AWH mutation.
 3. Reconcile all other open project lanes into this registry.
 4. After migration/closure reconciliation, run ecosystem integration from the Main Orchestration Chat only.
-5. Evaluate and integrate the four external GitHub capabilities one by one, with no duplicate authority.
+5. Keep the four external GitHub integrations pinned and opt-in; refresh revisions only through reviewed AWH capability updates.

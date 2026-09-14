@@ -288,6 +288,23 @@ function renderSites(sitesData){
   $('cp-sites').textContent=sites.length?ready+'/'+sites.length+' sites ready':'ยังไม่มี Managed Site';
 }
 function renderProvider(providerData){const provider=providerData?.provider||{};$('cp-ai').textContent=provider.state==='READY'?'AI พร้อม · Auto routing':provider.state||'ยังไม่พร้อม';}
+async function renderExternalCapabilities(){
+  const host=$('cp-external-capabilities');if(!host)return;
+  try{
+    const response=await fetch('./external-capabilities.json?release=__AWH_WEB_RELEASE_ID__',{cache:'no-store'});
+    if(!response.ok)throw new Error('External capability registry unavailable');
+    const data=await response.json();
+    if(data?.schemaVersion!==1||data?.registryId!=='awh.external-capabilities.v1'||data?.controlPlaneAuthority!=='AWH'||!Array.isArray(data.entries))throw new Error('External capability registry invalid');
+    host.replaceChildren();
+    for(const item of data.entries){
+      const short=typeof item.revision==='string'?item.revision.slice(0,9):'—';
+      const local=item.integrationMode==='OPTIONAL_LOCAL_ADAPTER';
+      const detail=(local?'Optional local adapter':'Reference only')+' · '+item.repository+' @ '+short+' · '+item.license;
+      host.append(row(item.displayName,detail,local?'Adapter':'Reference','AVAILABLE'));
+    }
+    if(!data.entries.length)empty(host,'ยังไม่มี external capability ที่ลงทะเบียน');
+  }catch(error){empty(host,error instanceof Error?error.message:'โหลด external capabilities ไม่สำเร็จ');}
+}
 function filterMenus(query){
   const q=String(query||'').trim().toLowerCase();
   for(const node of document.querySelectorAll('[data-cp-keywords]')){
@@ -315,6 +332,7 @@ async function load(){
     renderServer(data);renderDomains(data);renderRecovery(data);renderServices(data);renderEcosystem(data);
     $('cp-updated').textContent='ตรวจข้อมูลแล้ว · '+Math.max(1,Math.round(performance.now()-started))+' ms';
     void loadBayControl();
+    void renderExternalCapabilities();
 
     Promise.allSettled([listManagedSites(),loadProviderStatus()]).then((secondary)=>{
       if(secondary[0].status==='fulfilled')renderSites(secondary[0].value);

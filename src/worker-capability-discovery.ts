@@ -61,6 +61,8 @@ export async function discoverWorkerTools(options: WorkerToolProbeOptions = {}):
   await addCommand('php', 'tool.php');
   await addCommand('ffmpeg', 'tool.ffmpeg');
   await addCommand('ffprobe', 'tool.ffprobe');
+  await addCommand('teamai', 'tool.teamai');
+  await addCommand('context-mode', 'tool.context-mode');
   if (await commandAvailable('python3') || await commandAvailable('python')) tools.push('tool.python');
 
   if (platform === 'win32') {

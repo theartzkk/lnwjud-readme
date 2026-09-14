@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { validateActionGraph, validateArtifactEdge, validateConnectorManifest, validateEvalResult, validateSkillManifest, validateTrustEvent } from '../src/platform-contract.js';
+import { loadExternalCapabilityRegistry } from '../src/external-capability-registry.js';
 const a='11111111-1111-4111-8111-111111111111'; const b='22222222-2222-4222-8222-222222222222'; const p='33333333-3333-4333-8333-333333333333';
 
 test('world-class platform contracts share one bounded Action Graph authority',()=>{
@@ -43,5 +44,22 @@ test('current-state authority prevents historical checkpoints from masquerading 
  for(const name of ['PROJECT.md','HANDOFF.md','TASKS.md','DECISIONS.md']){
   const memory=await readFile(join(root,name),'utf8');
   assert.match(memory.slice(0,500),/Current-state authority.*CURRENT_STATE\.md/s);
+ }
+});
+
+test('external capability registry pins sources without creating parallel authority', async () => {
+ const registry=await loadExternalCapabilityRegistry(join(process.cwd(),'config','external-capabilities.json'));
+ assert.equal(registry.controlPlaneAuthority,'AWH');
+ assert.equal(registry.entries.length,4);
+ const byId=new Map(registry.entries.map((entry)=>[entry.id,entry]));
+ assert.equal(byId.get('teamai-cli')?.workerTool,'tool.teamai');
+ assert.equal(byId.get('context-mode')?.license,'Elastic-2.0');
+ assert.equal(byId.get('context-mode')?.hostedServiceAllowed,false);
+ assert.equal(byId.get('hallmark')?.integrationMode,'REFERENCE_SKILL');
+ assert.equal(byId.get('awesome-claude-design')?.integrationMode,'REFERENCE_CORPUS');
+ for(const entry of registry.entries){
+   assert.equal(entry.authorityBoundary,'AWH_EXISTING_CONTROL_PLANE');
+   assert.equal(entry.enabledByDefault,false);
+   assert.equal(entry.hostedServiceAllowed,false);
  }
 });

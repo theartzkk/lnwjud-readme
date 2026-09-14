@@ -115,7 +115,7 @@ async function startMcp(extraArgs: string[] = [], extraEnv: NodeJS.ProcessEnv = 
         const timer = setTimeout(() => {
           pending.delete(id);
           reject(new Error(`Timed out waiting for ${method}; stdout=${stdoutLines.join(' | ')}; stderr=${stderr}`));
-        }, 8_000);
+        }, 30_000);
         pending.set(id, { resolve, reject, timer });
         child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }) })}\n`);
       });

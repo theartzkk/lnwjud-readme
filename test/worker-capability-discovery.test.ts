@@ -57,3 +57,13 @@ test('heartbeat composition rejects an invalid limit and drops malformed identif
   const heartbeat = composeWorkerHeartbeatCapabilities(['git:read', 'bad value'], ['tool.git', 'TOOL.BAD']);
   assert.deepEqual(heartbeat, ['git:read', 'tool.git']);
 });
+
+test('external CLI discovery reports inventory only and never grants an execution capability', async () => {
+  const tools = await discoverWorkerTools({
+    platform: 'linux', env: {},
+    commandAvailable: async (command) => ['git', 'teamai', 'context-mode'].includes(command),
+    pathAvailable: async () => false,
+  });
+  assert.deepEqual(tools, ['tool.context-mode', 'tool.git', 'tool.teamai']);
+  assert.equal(tools.some((value) => value === 'team.harness' || value === 'context.optimize'), false);
+});
