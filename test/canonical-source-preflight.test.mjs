@@ -189,6 +189,23 @@ test('guarded deployment wrapper proves canonical source and binds the proven SH
   assert.match(source, /CANONICAL_SOURCE_PREFLIGHT_BLOCKED/);
 });
 
+test('guarded remote deploy holds canonical execution authority through mutation and rollback', async () => {
+  const remote = await readFile(join(repoRoot, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'), 'utf8');
+  const validator = await readFile(join(repoRoot, 'deploy/awh-control-plane/validate-remote-output.sh'), 'utf8');
+  const staged = remote.indexOf('stage RELEASE_STAGED');
+  const acquire = remote.indexOf('stage EXECUTION_AUTHORITY_ACQUIRE');
+  const cutover = remote.indexOf('stage CONTROL_ORIGIN_RENDER');
+  const release = remote.lastIndexOf('stage EXECUTION_AUTHORITY_RELEASE;');
+  const success = remote.lastIndexOf('SUCCESS=1;');
+  assert.ok(staged >= 0 && acquire > staged && cutover > acquire, 'deploy authority must be acquired before control mutation');
+  assert.ok(release > cutover && success > release, 'deploy authority must be released before success');
+  assert.match(remote, /release_deploy_authority failure/);
+  assert.match(remote, /deploy-execution-authority\.php" acquire/);
+  assert.match(remote, /deploy-execution-authority\.php" release/);
+  assert.match(validator, /EXECUTION_AUTHORITY_ACQUIRE/);
+  assert.match(validator, /EXECUTION_AUTHORITY_RELEASED/);
+});
+
 test('standard production package entrypoints use canonical guarded paths', async () => {
   const pkg = JSON.parse(await readFile(join(repoRoot, 'package.json'), 'utf8'));
   assert.match(pkg.scripts['ops:final-self-service:activate'], /guarded-control-plane-deploy\.mjs --deploy --approve/);

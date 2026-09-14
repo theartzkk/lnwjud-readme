@@ -96,6 +96,8 @@ try {
     $pdo->prepare("UPDATE control_execution_envelopes SET state='OPEN',lease_expires_at=NULL WHERE execution_id=:id")->execute(['id'=>$secondExecution]);
     $terminalFiltered = $registry->executionAuthorityStatus($now);
     m13_assert(($terminalFiltered['activeMutationCount'] ?? -1) === 0 && ($terminalFiltered['waitingMutationCount'] ?? -1) === 0, 'terminal historical envelopes stay auditable but never appear as waiting authority');
+    $terminalEnvelope=$pdo->prepare("SELECT state FROM control_execution_envelopes WHERE execution_id=:id");$terminalEnvelope->execute(['id'=>$secondExecution]);
+    m13_assert($terminalEnvelope->fetchColumn()==='RELEASED','terminal historical envelope is reconciled to released state');
     $registry->syncDeviceWorker($device, [], 'OFFLINE', gmdate('c', strtotime($now) + 30));
     m13_assert($registry->route('code.specialist', gmdate('c', strtotime($now) + 30)) === null, 'offline optional device disappears from routing truthfully');
 

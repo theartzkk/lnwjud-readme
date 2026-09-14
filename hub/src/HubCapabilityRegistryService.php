@@ -106,6 +106,24 @@ final class HubCapabilityRegistryService
         return self::envelopeRow($value);
     }
 
+    /** @return array{releasedTerminal:int,releasedExpired:int} */
+    public function reconcileExecutionAuthority(?string $now = null): array
+    {
+        $this->assertReady(); $at = self::timestamp($now ?? gmdate('c'));
+        try {
+            // Keep reconciliation transaction-neutral so callers that already
+            // hold BEGIN IMMEDIATE (for example DurableExecution::claim) do not
+            // attempt a nested SQLite transaction. Each UPDATE is idempotent.
+            $terminal = $this->pdo->prepare("UPDATE control_execution_envelopes SET state='RELEASED',lease_expires_at=NULL,updated_at=:at WHERE mutation_scope<>'READ' AND state NOT IN ('RELEASED','CANCELLED') AND (execution_id IN (SELECT execution_id FROM control_task_executions WHERE state IN ('COMPLETED','FAILED','CANCELLED')) OR task_id IN (SELECT task_id FROM control_tasks WHERE state IN ('COMPLETED','FAILED','CANCELLED')))");
+            $terminal->execute(['at'=>$at]);
+            $expired = $this->pdo->prepare("UPDATE control_execution_envelopes SET state='WAITING',lease_expires_at=NULL,updated_at=:at WHERE mutation_scope<>'READ' AND state='ACTIVE' AND lease_expires_at IS NOT NULL AND lease_expires_at<=:at");
+            $expired->execute(['at'=>$at]);
+            return ['releasedTerminal'=>$terminal->rowCount(),'releasedExpired'=>$expired->rowCount()];
+        } catch (Throwable $error) {
+            throw new HubCapabilityRegistryException('Execution authority reconciliation failed','EXECUTION_ENVELOPE_FAILED');
+        }
+    }
+
     /**
      * Single Execution Authority: reads may run in parallel, but each Project
      * may have only one live mutating/external workspace lane at a time.  The
@@ -117,6 +135,7 @@ final class HubCapabilityRegistryService
     public function activateExecutionAuthority(string $executionId, ?string $leaseExpiresAt = null, ?string $now = null): array
     {
         $this->assertReady(); self::uuid($executionId); $at = self::timestamp($now ?? gmdate('c')); $lease = $leaseExpiresAt === null ? null : self::timestamp($leaseExpiresAt);
+        $this->reconcileExecutionAuthority($at);
         $envelope = $this->ensureExecutionEnvelope($executionId, $at); $project = (string)$envelope['projectId']; $scope = (string)$envelope['mutationScope'];
         if ($scope === 'READ') {
             $this->pdo->prepare("UPDATE control_execution_envelopes SET state='ACTIVE',lease_expires_at=:lease,updated_at=:at WHERE execution_id=:execution AND state IN ('OPEN','WAITING','ACTIVE')")->execute(['lease'=>$lease,'at'=>$at,'execution'=>$executionId]);
@@ -139,6 +158,7 @@ final class HubCapabilityRegistryService
     public function executionAuthorityStatus(?string $now = null): array
     {
         $this->assertReady(); $at = self::timestamp($now ?? gmdate('c'));
+        $this->reconcileExecutionAuthority($at);
         $q = $this->pdo->prepare("SELECT x.execution_id,x.task_id,x.project_id,x.mutation_scope,x.state,x.provider_id,x.lease_expires_at,x.updated_at,t.goal,p.name AS project_name,e.required_capability FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id JOIN control_tasks t ON t.task_id=x.task_id JOIN projects p ON p.project_id=x.project_id WHERE x.mutation_scope<>'READ' AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND ((x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at)) OR x.state IN ('OPEN','WAITING','CONFLICT')) ORDER BY CASE x.state WHEN 'ACTIVE' THEN 0 ELSE 1 END,x.updated_at DESC LIMIT 40");
         $q->execute(['at'=>$at]); $active=[]; $waiting=[];
         foreach ($q->fetchAll() as $row) {

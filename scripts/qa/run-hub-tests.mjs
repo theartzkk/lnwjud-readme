@@ -34,6 +34,7 @@ const tests = [
   'hub/tests/ai-attachment-preparer.php',
   'hub/tests/m20-project-source-authority.php',
   'hub/tests/m21-vault-source-authority.php',
+  'hub/tests/deploy-execution-authority.php',
   'hub/tests/aipass-docx-boundaries.php',
   'hub/tests/continuous-work-supervisor.php',
   'hub/tests/continuous-autochain.php',
