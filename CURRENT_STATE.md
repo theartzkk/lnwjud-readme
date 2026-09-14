@@ -1,8 +1,19 @@
 # AWH Current State Authority
 
-Updated: 2026-09-10 19:42 ICT.
+Updated: 2026-09-14 ICT.
 
 This file is the **current-state authority** for AWH operational status. Re-read the live GitHub branch/HEAD, VPS pointers, database and runtime evidence before every mutation. Dated "current", "live", or "Production remains" statements in `PROJECT.md`, `HANDOFF.md`, `TASKS.md`, `DECISIONS.md`, and older checkpoint documents are historical evidence unless this file or a fresh inspection confirms them.
+
+## 2026-09-14 source/Production split and ecosystem orchestration supersession
+
+- Cross-project lane ownership/status is recorded in `KRUART_ECOSYSTEM_MASTER_CONTROL.md`. Every ecosystem chat/agent must read that registry before cross-project planning or mutation. It coordinates ownership; it does not replace fresh per-project Source of Truth/runtime inspection.
+- Current reviewed GitHub `main` at this checkpoint is `128a9413800843bc83a8681303bdb28fb378f1a3`, merge of PR #159. That source includes the AWH final-closure/chat-continuity/UI work and changes the BAY remote/status authority away from the legacy InfinityFree host toward `https://excuse.kruart.online`.
+- The last independently verified Production before PR #159 merged remains release `m21-77573a7738ef`, whose manifest source is `77573a7738efacfbb57b2dcc9944dd5fd8c3c1f7`. Do **not** infer that `128a941...` is deployed until a later handoff or fresh live pointer proves it.
+- At that last verified Production checkpoint, SQLite was schema/user_version 21 with `integrity_check=ok` and no foreign-key violation output; Nginx, PHP-FPM, `awh-native-executor.timer`, and `awh-hosting-operator.timer` were active. The guarded activation completed with `DEPLOY_RESULT=PASS`; rollback database `/var/backups/awh-hub/awh.sqlite.pre-m21-77573a7738ef` was present.
+- Cloud workflow failure handling on the verified M21 Production uses the central bounded failure policy: transient rate limits/temporary failures back off; quota/billing exhaustion waits without hot-looping; auth/policy defects remain explicit owner-action failures.
+- Guarded backend/web refresh can reuse verified Desktop package provenance from ReadyIDC's content-addressed store; routine backend refresh no longer requires stale local ZIPs. PR CI is path-aware for Desktop packaging while canonical/manual release gates remain full.
+- The existing BAY EXCUSE X → VPS migration chat/lane remains the mutation owner for that migration until it emits a FINAL HANDOFF. Other chats must not repeat DB capture/restore, source deploy, DNS cutover, or LINE/LIFF migration mutations for that lane.
+- External integration backlog is durably recorded in the Master Control: `Tencent/teamai-cli`, `Nutlope/hallmark`, `mksglu/context-mode`, and `rohitg00/awesome-claude-design`. They are capability/reference inputs only and must not create a second control plane, queue, memory, source authority, or design authority.
 
 ## 2026-09-13 M21 source/routing reconciliation
 
