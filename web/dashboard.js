@@ -560,6 +560,9 @@ function renderOwnerNightShift() {
     return value;
   };
   const nextAction = humanOwnerAction(rawNextAction);
+  const authority = infra?.executionAuthority && typeof infra.executionAuthority === 'object' ? infra.executionAuthority : {};
+  const activeMutations = Math.max(0, Number(authority.activeMutationCount || 0));
+  const waitingMutations = Math.max(0, Number(authority.waitingMutationCount || 0));
 
   const set = (id, value) => { const node = $(id); if (node) node.textContent = String(value); };
   set('dashboard-night-running', running);
@@ -568,6 +571,8 @@ function renderOwnerNightShift() {
   set('dashboard-night-waiting', waitingIds.size);
   set('dashboard-night-defects', currentDefect);
   set('dashboard-night-next', nextAction);
+  set('dashboard-authority-state', activeMutations ? `${activeMutations} mutation lane กำลังทำงาน` : 'พร้อมรับ mutation ใหม่');
+  set('dashboard-authority-detail', waitingMutations ? `${waitingMutations} งานกำลังรอ authority · อ่านงานยังทำพร้อมกันได้` : 'อ่านงานพร้อมกันได้ · mutation ของ project เดียวกันทำทีละหนึ่ง');
   const meta = $('dashboard-night-meta');
   if (meta) { const base = envelope?.persisted === true ? `สรุปล่าสุดที่บันทึกแล้ว · ครั้งที่ ${Number(envelope.revision || 0)}` : 'สถานะล่าสุดจาก AWH · งานที่เสร็จนับย้อนหลัง 24 ชั่วโมง'; meta.textContent = routedCapabilities.length ? `${base} · AWH ใช้ ${routedCapabilities.join(' · ')}` : `${base} · Auto capability routing พร้อม`; }
 }
@@ -917,7 +922,7 @@ function mountDashboard() {
   nightShift.id = 'dashboard-night-shift';
   nightShift.className = 'awh-home-section awh-night-shift';
   nightShift.hidden = true;
-  nightShift.innerHTML = '<div class="awh-night-head"><div><span>งานต่อเนื่อง</span><h2>งานที่ AWH กำลังดูแล</h2><small id="dashboard-night-meta">กำลังสรุปสถานะล่าสุด…</small></div><div class="awh-night-actions"><button id="dashboard-night-toggle" class="awh-secondary-action awh-mobile-only" type="button" aria-expanded="false">ดูรายละเอียด</button><button id="dashboard-night-control" class="awh-secondary-action" type="button">ดูงานทั้งหมด</button></div></div><div class="awh-night-grid"><button class="awh-night-stat" type="button" data-night-filter="active"><strong id="dashboard-night-running">—</strong><span>กำลังทำ</span></button><button class="awh-night-stat" type="button" data-night-filter="completed"><strong id="dashboard-night-completed">—</strong><span>เสร็จ 24 ชม.</span></button><button class="awh-night-stat attention" type="button" data-night-filter="attention"><strong id="dashboard-night-approvals">—</strong><span>รออนุมัติ</span></button><button class="awh-night-stat" type="button" data-night-filter="active"><strong id="dashboard-night-waiting">—</strong><span>รอระบบพร้อม</span></button><button class="awh-night-stat attention" type="button" data-night-filter="attention"><strong id="dashboard-night-defects">—</strong><span>มีปัญหา</span></button></div><div class="awh-night-next"><small>ทำอะไรต่อ</small><strong id="dashboard-night-next">กำลังตรวจ…</strong></div>';
+  nightShift.innerHTML = '<div class="awh-night-head"><div><span>งานต่อเนื่อง</span><h2>งานที่ AWH กำลังดูแล</h2><small id="dashboard-night-meta">กำลังสรุปสถานะล่าสุด…</small></div><div class="awh-night-actions"><button id="dashboard-night-toggle" class="awh-secondary-action awh-mobile-only" type="button" aria-expanded="false">ดูรายละเอียด</button><button id="dashboard-night-control" class="awh-secondary-action" type="button">ดูงานทั้งหมด</button></div></div><div class="awh-night-grid"><button class="awh-night-stat" type="button" data-night-filter="active"><strong id="dashboard-night-running">—</strong><span>กำลังทำ</span></button><button class="awh-night-stat" type="button" data-night-filter="completed"><strong id="dashboard-night-completed">—</strong><span>เสร็จ 24 ชม.</span></button><button class="awh-night-stat attention" type="button" data-night-filter="attention"><strong id="dashboard-night-approvals">—</strong><span>รออนุมัติ</span></button><button class="awh-night-stat" type="button" data-night-filter="active"><strong id="dashboard-night-waiting">—</strong><span>รอระบบพร้อม</span></button><button class="awh-night-stat attention" type="button" data-night-filter="attention"><strong id="dashboard-night-defects">—</strong><span>มีปัญหา</span></button></div><button id="dashboard-execution-authority" class="awh-night-authority" type="button"><span><small>EXECUTION AUTHORITY</small><strong id="dashboard-authority-state">กำลังตรวจ mutation lane…</strong></span><em id="dashboard-authority-detail">อ่านงานพร้อมกันได้ · งานที่แก้ project เดียวกันจะเรียงคิวให้อัตโนมัติ</em><b>ดู Master Control ›</b></button><div class="awh-night-next"><small>ทำอะไรต่อ</small><strong id="dashboard-night-next">กำลังตรวจ…</strong></div>';
 
   const taskSurface = document.createElement('section');
   taskSurface.id = 'dashboard-tasks';
@@ -1011,6 +1016,7 @@ function mountDashboard() {
   $('dashboard-pulse-artifacts-card')?.addEventListener('click', () => openFilesSurface());
   $('dashboard-pulse-workers-card')?.addEventListener('click', () => openAccountTab('devices'));
   $('dashboard-owner-system-card')?.addEventListener('click', () => { location.assign('./infrastructure.html'); });
+  $('dashboard-execution-authority')?.addEventListener('click', () => { location.assign('./infrastructure.html#execution-authority'); });
   $('dashboard-night-control')?.addEventListener('click', () => { location.assign('./infrastructure.html'); });
   $('dashboard-night-toggle')?.addEventListener('click', (event) => { const expanded = nightShift.classList.toggle('is-expanded'); event.currentTarget?.setAttribute('aria-expanded', String(expanded)); if (event.currentTarget instanceof HTMLButtonElement) event.currentTarget.textContent = expanded ? 'ย่อรายละเอียด' : 'ดูรายละเอียด'; });
   $('dashboard-owner-toggle')?.addEventListener('click', (event) => { const expanded = owner.classList.toggle('is-expanded'); event.currentTarget?.setAttribute('aria-expanded', String(expanded)); if (event.currentTarget instanceof HTMLButtonElement) event.currentTarget.textContent = expanded ? 'ย่อเครื่องมือ' : 'เปิดเครื่องมือ'; });

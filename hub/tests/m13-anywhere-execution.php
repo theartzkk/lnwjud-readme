@@ -76,6 +76,21 @@ try {
     $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'CODEX','codex:cli','WAITING_FOR_CAPABILITY',NULL,NULL,0,NULL,'{}',NULL,:at,:at)")->execute(['execution'=>$specialistExecution,'task'=>$specialistTask,'project'=>$project,'at'=>$now]);
     $specialistEnvelope = $registry->ensureExecutionEnvelope($specialistExecution, $now);
     m13_assert(($specialistEnvelope['providerId'] ?? null) === 'device:' . $device && ($specialistEnvelope['mutationScope'] ?? null) === 'DEVICE_WORKSPACE', 'legacy codex:cli contract resolves through the specialist alias without changing the execution row');
+    $leaseUntil = gmdate('c', strtotime($now) + 300);
+    $firstAuthority = $registry->activateExecutionAuthority($specialistExecution, $leaseUntil, $now);
+    m13_assert(($firstAuthority['granted'] ?? false) === true, 'first mutating execution owns project authority');
+    $secondTask = m13_uuid(); $secondExecution = m13_uuid();
+    $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'second mutation','WAITING_FOR_WORKER',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$secondTask,'user'=>$owner,'project'=>$project,'key'=>'m13-second-mutation-0001','at'=>$now]);
+    $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','project.mutate.assisted','QUEUED',NULL,NULL,0,NULL,'{}',NULL,:at,:at)")->execute(['execution'=>$secondExecution,'task'=>$secondTask,'project'=>$project,'at'=>$now]);
+    $blockedAuthority = $registry->activateExecutionAuthority($secondExecution, $leaseUntil, $now);
+    m13_assert(($blockedAuthority['granted'] ?? true) === false && ($blockedAuthority['blockingExecutionId'] ?? null) === $specialistExecution, 'second mutation waits behind the active project authority');
+    $readAuthority = $registry->activateExecutionAuthority($legacyExecution, $leaseUntil, $now);
+    m13_assert(($readAuthority['granted'] ?? false) === true && ($readAuthority['mutationScope'] ?? null) === 'READ', 'read execution remains parallel while mutation authority is active');
+    $authorityStatus = $registry->executionAuthorityStatus($now);
+    m13_assert(($authorityStatus['activeMutationCount'] ?? 0) === 1 && ($authorityStatus['waitingMutationCount'] ?? 0) >= 1, 'authority status exposes active and waiting mutation lanes');
+    $registry->updateEnvelopeState($specialistExecution, 'RELEASED', null, $now);
+    $secondAuthority = $registry->activateExecutionAuthority($secondExecution, $leaseUntil, $now);
+    m13_assert(($secondAuthority['granted'] ?? false) === true, 'waiting mutation acquires authority after the prior lane releases');
     $registry->syncDeviceWorker($device, [], 'OFFLINE', gmdate('c', strtotime($now) + 30));
     m13_assert($registry->route('code.specialist', gmdate('c', strtotime($now) + 30)) === null, 'offline optional device disappears from routing truthfully');
 

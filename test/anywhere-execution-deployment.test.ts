@@ -42,6 +42,8 @@ test('M13 Anywhere Execution is Cloud-first, additive, and rollback-safe', async
   assert.match(migrationService, /video\.render/);
   assert.match(registry, /syncDeviceWorker/);
   assert.match(registry, /code\.specialist/);
+  assert.match(registry, /activateExecutionAuthority/);
+  assert.match(registry, /SINGLE_MUTATION_PER_PROJECT/);
   assert.match(control, /capabilityStatus/);
   assert.match(control, /syncDeviceWorker/);
   assert.match(durable, /ensureExecutionEnvelope/);
