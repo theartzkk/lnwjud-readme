@@ -76,18 +76,22 @@ test('return refresh coalesces duplicate lifecycle events and refreshes full wor
 });
 
 test('screen-reader announcer stays quiet on hydration and announces only newly added assistant work', () => {
-  const start = source.indexOf('  function announceNewAssistantTurn(');
+  const start = source.indexOf('  function persistedMessageSequence(');
   const end = source.indexOf('  function renderThread(', start);
   const fn = source.slice(start, end);
   const announcer = { textContent: '' };
   const context = vm.createContext({ announcer, $: () => announcer, window: { requestAnimationFrame: (callback: () => void) => callback() } });
   vm.runInContext(fn, context);
-  const messages = [{ kind: 'user', body: 'hello' }, { kind: 'assistant', body: 'พร้อมทำงาน' }];
+  const messages = [{ messageId: 'm1', sequence: 1, kind: 'user', body: 'hello' }, { messageId: 'm2', sequence: 2, kind: 'assistant', body: 'พร้อมทำงาน' }];
   context.messages = messages;
   vm.runInContext('announceNewAssistantTurn(messages, 0, false)', context); assert.equal(announcer.textContent, '');
   vm.runInContext('announceNewAssistantTurn(messages, 1, true)', context); assert.equal(announcer.textContent, 'AWH: พร้อมทำงาน');
-  context.messages = [...messages, { kind: 'user', body: 'ต่อเลย' }]; announcer.textContent = '';
+  context.messages = [{ messageId: 'old', sequence: 0, kind: 'assistant', body: 'ข้อความเก่า' }, ...messages]; announcer.textContent = '';
   vm.runInContext('announceNewAssistantTurn(messages, 2, true)', context); assert.equal(announcer.textContent, '');
+  context.messages = [...messages, { messageId: 'm3', sequence: 3, kind: 'user', body: 'ต่อเลย' }]; announcer.textContent = '';
+  vm.runInContext('announceNewAssistantTurn(messages, 2, true)', context); assert.equal(announcer.textContent, '');
+  context.messages = [...messages, { messageId: 'local-progress-x', sequence: Number.MAX_SAFE_INTEGER, kind: 'assistant', body: 'local optimistic' }];
+  vm.runInContext('announceNewAssistantTurn(messages, 3, true)', context); assert.equal(announcer.textContent, '');
 });
 
 

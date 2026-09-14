@@ -35,7 +35,10 @@ test('conversation lifecycle is reversible and preserves canonical task/artifact
   assert.match(html, /id="work-thread"[^>]*role="log"[^>]*aria-live="off"/);
   assert.match(html, /id="work-announcer"[^>]*role="status"[^>]*aria-live="polite"/);
   assert.match(app, /function announceNewAssistantTurn/);
-  assert.match(app, /messages\.slice\(previousCount\)/);
+  assert.match(app, /function persistedMessageSequence/);
+  assert.match(app, /persistedMessageSequence\(turn\) > previousSequence/);
+  assert.match(app, /threadAnnouncementSequence/);
+  assert.doesNotMatch(app, /messages\.slice\(previousCount\)/);
   assert.match(app, /body\.length > 180/);
   assert.match(styles, /safe-area-inset-top/);
   assert.match(dashboard, /visualViewport/);
@@ -61,6 +64,7 @@ test('conversation lifecycle is reversible and preserves canonical task/artifact
   assert.match(adapter, /function loadConversationHistory/);
   assert.match(app, /function loadOlderConversationMessages/);
   assert.match(app, /โหลดข้อความก่อนหน้า/);
+  assert.match(app, /latestPersistedMessageSequence\(visibleMessages\)/);
   assert.match(app, /state\.conversationAvailable = Boolean\(state\.selectedConversationId\)/);
   assert.match(app, /ลองโหลดใหม่/);
   assert.match(styles, /\.composer-count/);

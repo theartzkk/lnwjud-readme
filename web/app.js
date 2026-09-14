@@ -17,7 +17,7 @@ import {
   const CANCELLABLE_TASK_STATES = new Set(['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL']);
   const MICRO_BAHT = 1000000;
   const DESKTOP_PACKAGES = [['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, people: [], accountRequests: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadFollowLatest: true };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, people: [], accountRequests: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
   let desktopReleasePromise = null;
   let conversationRequest = 0;
   let conversationRefresh = null;
@@ -808,10 +808,19 @@ import {
     details.append(summary, list); return details;
   }
 
-  function announceNewAssistantTurn(messages, previousCount, sameConversation) {
+  function persistedMessageSequence(turn) {
+    if (!turn || String(turn.messageId || '').startsWith('local-')) return 0;
+    return Number.isInteger(turn.sequence) && turn.sequence > 0 ? turn.sequence : 0;
+  }
+
+  function latestPersistedMessageSequence(messages) {
+    return (Array.isArray(messages) ? messages : []).reduce((latest, turn) => Math.max(latest, persistedMessageSequence(turn)), 0);
+  }
+
+  function announceNewAssistantTurn(messages, previousSequence, sameConversation) {
     const announcer = $('work-announcer');
-    if (!announcer || !sameConversation || messages.length <= previousCount) return;
-    const added = messages.slice(previousCount).filter((turn) => ['assistant', 'result', 'failure', 'approval'].includes(turn?.kind));
+    if (!announcer || !sameConversation) return;
+    const added = messages.filter((turn) => persistedMessageSequence(turn) > previousSequence && ['assistant', 'result', 'failure', 'approval'].includes(turn?.kind));
     const latest = added[added.length - 1];
     const body = String(latest?.body || '').trim();
     if (!body) return;
@@ -855,6 +864,7 @@ import {
       }
     }
     const previousMessageCount = sameConversation ? state.threadMessageCount : 0;
+    const previousAnnouncementSequence = sameConversation ? state.threadAnnouncementSequence : 0;
     const nextThread = document.createElement('ol');
     const messages = Array.isArray(conversation?.messages) ? conversation.messages : [];
     const tasks = Array.isArray(conversation?.tasks) ? conversation.tasks : [];
@@ -962,9 +972,10 @@ import {
     }
     while (cursor) { const next = cursor.nextElementSibling; cursor.remove(); cursor = next; }
     announceTaskMilestones(tasks, sameConversation);
-    announceNewAssistantTurn(visibleMessages, previousMessageCount, sameConversation);
+    announceNewAssistantTurn(visibleMessages, previousAnnouncementSequence, sameConversation);
     state.renderedConversationId = conversationId;
     state.threadMessageCount = visibleMessages.length;
+    state.threadAnnouncementSequence = latestPersistedMessageSequence(visibleMessages);
     requestAnimationFrame(() => {
       if (state.renderedConversationId !== conversationId || thread.closest('[hidden]')) return;
       const latest = $('conversation-latest');
