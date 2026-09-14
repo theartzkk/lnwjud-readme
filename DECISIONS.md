@@ -218,3 +218,13 @@
 - Remote Desktop/Desktop Commander is a last-resort interactive device path and must never be used merely as a hop to reach VPS, GitHub, an API or CLI when a direct approved path exists.
 - GitHub Actions/hosted CI is supplemental verification, not a runtime gate, whenever the canonical release contract permits equivalent bounded local/VPS QA. GitHub quota/outage must not block work that can safely continue from an already-bound Vault/VPS source.
 - Preserve the existing durable Task/Execution queue, capability fabric, workspace lease, approval, backup and rollback authorities. Do not create a parallel executor or source registry to implement this routing policy.
+
+# Authoritative decision — 2026-09-14 ecosystem master orchestration
+
+- `KRUART_ECOSYSTEM_MASTER_CONTROL.md` is the durable cross-project lane registry. It prevents conversational memory, stale handoffs, or parallel chats from becoming accidental orchestration authority.
+- One Main Orchestration Chat coordinates the ecosystem, while each active lane may have only one mutation owner at a time. Other chats may inspect or prepare evidence but must not mutate that lane until ownership is handed off.
+- A lane is not closed without a safe checkpoint plus FINAL HANDOFF or an equivalent durable Master Control update containing exact source/runtime/QA/backup/blocker/next-action evidence.
+- `CURRENT_STATE.md` remains the AWH operational-state authority and fresh live evidence still overrides dated records; the Master Control coordinates ownership/status rather than replacing per-project Source of Truth.
+- Source and Production identities must remain separate. A newer merged `main` commit is not a Production deployment claim until the live release pointer/manifest proves it.
+- The four recorded external GitHub projects — TeamAI CLI, Hallmark, context-mode, and awesome-claude-design — remain integration backlog items. They may be adapted through existing AWH capability/skills/provider/QA boundaries but may not introduce a second Core/Auth/DB/Queue/Memory/Source Authority or competing Golden UI authority.
+- While the BAY EXCUSE X → VPS migration lane is ACTIVE, that lane alone owns migration mutations. Other chats must consume its handoff rather than repeat capture, restore, deploy, DNS cutover, database mutation, or LINE/LIFF migration work.
