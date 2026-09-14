@@ -113,3 +113,41 @@ test('task progress announcer is milestone-based and live activity itself stays 
   context.tasks[0].state = 'WAITING_FOR_APPROVAL'; context.tasks[0].detail = 'รออนุมัติ';
   vm.runInContext('announceTaskMilestones(tasks, true)', context); assert.equal(announcer.textContent, 'AWH: รออนุมัติ');
 });
+
+
+test('failed submission is recovered into the originating room draft after navigation', () => {
+  const start = source.indexOf('  function rememberFailedSubmissionDraft(');
+  const end = source.indexOf('  let pendingPrivilegedAction', start);
+  const fn = source.slice(start, end);
+  const file = { name: 'evidence.png' };
+  const context = vm.createContext({ composerDrafts: new Map([['p:a', { text: '', attachments: [] }]]), composerDraftKey: 'p:b', projectId: 'p', conversationId: 'a', goal: 'ข้อความที่ส่งไม่สำเร็จ', files: [file] });
+  vm.runInContext(fn, context);
+  assert.equal(vm.runInContext('rememberFailedSubmissionDraft(projectId, conversationId, goal, files)', context), true);
+  const recovered = context.composerDrafts.get('p:a');
+  assert.equal(recovered.text, 'ข้อความที่ส่งไม่สำเร็จ');
+  assert.equal(recovered.attachments.length, 1);
+  assert.equal(recovered.attachments[0], file);
+  context.composerDrafts.set('p:a', { text: 'ร่างใหม่ที่พิมพ์ไว้', attachments: [] });
+  vm.runInContext('rememberFailedSubmissionDraft(projectId, conversationId, goal, files)', context);
+  assert.equal(context.composerDrafts.get('p:a').text, 'ข้อความที่ส่งไม่สำเร็จ\n\nร่างใหม่ที่พิมพ์ไว้');
+  context.composerDraftKey = 'p:a';
+  assert.equal(vm.runInContext('rememberFailedSubmissionDraft(projectId, conversationId, goal, files)', context), false);
+  assert.equal(context.composerDrafts.get('p:a').text, 'ข้อความที่ส่งไม่สำเร็จ\n\nร่างใหม่ที่พิมพ์ไว้');
+});
+
+test('submission catch preserves failed work for a room that is no longer selected', () => {
+  const submit = source.slice(source.indexOf("  $('goal-form').addEventListener('submit'"), source.indexOf("  $('refresh-work').addEventListener", source.indexOf("  $('goal-form').addEventListener('submit'")));
+  assert.match(submit, /failedSubmission = \{ conversationId, goal, pending, idempotencyKey, uploaded \};[^]*?rememberFailedSubmissionDraft\(project\.projectId, conversationId, goal, pending\);/);
+});
+
+
+test('composer stop follows canonical canCancel while retaining legacy pre-claim fallback', () => {
+  const start = source.indexOf('  function taskCanCancel(');
+  const end = source.indexOf('  function addPendingAttachments(', start);
+  const fn = source.slice(start, end);
+  const context = vm.createContext({ CANCELLABLE_TASK_STATES: new Set(['QUEUED','WAITING_FOR_WORKER','WAITING_FOR_APPROVAL']), state: { conversation: { tasks: [] } } });
+  vm.runInContext(fn, context);
+  context.task = { state: 'RUNNING', canCancel: true }; assert.equal(vm.runInContext('taskCanCancel(task)', context), true);
+  context.task = { state: 'RUNNING', canCancel: false }; assert.equal(vm.runInContext('taskCanCancel(task)', context), false);
+  context.task = { state: 'QUEUED' }; assert.equal(vm.runInContext('taskCanCancel(task)', context), true);
+});

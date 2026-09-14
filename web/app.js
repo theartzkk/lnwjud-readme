@@ -43,6 +43,17 @@ import {
     composerDraftKey = key;
     resizeGoalInput(); renderPendingAttachments();
   }
+  function rememberFailedSubmissionDraft(projectId, conversationId, goal, attachments) {
+    const key = `${projectId}:${conversationId}`;
+    if (key === composerDraftKey) return false;
+    const existing = composerDrafts.get(key) || { text: '', attachments: [] };
+    const currentText = String(existing.text || '');
+    const recoveredText = currentText.trim() && currentText.trim() !== goal.trim() ? `${goal}\n\n${currentText}` : currentText || goal;
+    const recoveredAttachments = [...(Array.isArray(existing.attachments) ? existing.attachments : [])];
+    for (const file of attachments || []) if (!recoveredAttachments.includes(file)) recoveredAttachments.push(file);
+    composerDrafts.set(key, { text: recoveredText, attachments: recoveredAttachments });
+    return true;
+  }
   let pendingPrivilegedAction = null;
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => undefined);
 
@@ -99,9 +110,14 @@ import {
   function progressText(task) { return taskExecutionStatus(task).detail; }
 
   function size(bytes) { if (!Number.isFinite(bytes) || bytes < 0) return ''; if (bytes < 1024) return `${bytes} B`; if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`; return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; }
+  function taskCanCancel(task) {
+    if (!task) return false;
+    if (typeof task.canCancel === 'boolean') return task.canCancel;
+    return CANCELLABLE_TASK_STATES.has(task.state);
+  }
   function activeCancellableTask() {
     const tasks = Array.isArray(state.conversation?.tasks) ? state.conversation.tasks : [];
-    return [...tasks].filter((task) => task && CANCELLABLE_TASK_STATES.has(task.state))
+    return [...tasks].filter((task) => taskCanCancel(task))
       .sort((left, right) => (Date.parse(right.updatedAt || right.createdAt || '') || 0) - (Date.parse(left.updatedAt || left.createdAt || '') || 0))[0] || null;
   }
   function addPendingAttachments(files) {
@@ -725,7 +741,7 @@ import {
   }
 
   function renderCancellation(task) {
-    if (!task || !['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL'].includes(task.state)) return null;
+    if (!taskCanCancel(task)) return null;
     const actions = document.createElement('div'); actions.className = 'task-actions';
     const button = document.createElement('button'); button.type = 'button'; button.className = 'secondary-button'; button.textContent = 'หยุดงานนี้';
     button.addEventListener('click', async () => {
@@ -1584,6 +1600,7 @@ import {
       if (state.selectedConversationId === conversationId) await refreshConversation();
     } catch (error) {
       failedSubmission = { conversationId, goal, pending, idempotencyKey, uploaded };
+      rememberFailedSubmissionDraft(project.projectId, conversationId, goal, pending);
       if (state.selectedConversationId === conversationId) {
         state.conversation.messages = state.conversation.messages.filter((turn) => !String(turn.messageId).includes(idempotencyKey));
         if (!$('goal-input').value) { $('goal-input').value = goal; resizeGoalInput(); }
