@@ -1,8 +1,21 @@
 # AWH Current State Authority
 
-Updated: 2026-09-10 19:42 ICT.
+Updated: 2026-09-14 ICT.
 
 This file is the **current-state authority** for AWH operational status. Re-read the live GitHub branch/HEAD, VPS pointers, database and runtime evidence before every mutation. Dated "current", "live", or "Production remains" statements in `PROJECT.md`, `HANDOFF.md`, `TASKS.md`, `DECISIONS.md`, and older checkpoint documents are historical evidence unless this file or a fresh inspection confirms them.
+
+## 2026-09-14 canonical production and ecosystem orchestration supersession
+
+- Cross-project lane ownership/status is now recorded in `KRUART_ECOSYSTEM_MASTER_CONTROL.md`. Every ecosystem chat/agent must read that registry before cross-project planning or mutation. It coordinates ownership; it does not replace fresh per-project Source of Truth/runtime inspection.
+- AWH canonical reviewed main is `77573a7738efacfbb57b2dcc9944dd5fd8c3c1f7`.
+- Verified Production control and web release is `m21-77573a7738ef`, with release manifest source SHA exactly matching `77573a7738efacfbb57b2dcc9944dd5fd8c3c1f7`.
+- Production SQLite is schema/user_version 21 with `integrity_check=ok` and no foreign-key violation output. Nginx, PHP-FPM, `awh-native-executor.timer`, and `awh-hosting-operator.timer` were all verified active after activation.
+- The guarded activation completed with `DEPLOY_RESULT=PASS`. Pre-activation rollback database is preserved at `/var/backups/awh-hub/awh.sqlite.pre-m21-77573a7738ef`.
+- Cloud workflow failure handling now uses bounded central failure policy: transient GitHub/API rate limits and temporary failures back off instead of hot-looping; quota/billing exhaustion pauses work without converting canonical work into a false terminal failure; auth/policy defects remain explicit owner-action failures.
+- Guarded backend/web refresh can carry forward verified Desktop package provenance from the active ReadyIDC release and rehydrate exact content-addressed artifacts server-side; a routine backend refresh no longer depends on stale local ZIPs.
+- PR CI is path-aware for Desktop packaging: non-Desktop pull requests keep cross-platform/runtime/security tests while macOS/Windows package jobs are skipped; canonical/manual release gates remain full.
+- The existing BAY EXCUSE X → VPS migration chat/lane is the current mutation owner for that migration until it emits a FINAL HANDOFF. AWH or other project chats must not perform a competing DB/source/deploy/cutover mutation for that lane.
+- External integration backlog is durably recorded in the Master Control: `Tencent/teamai-cli`, `Nutlope/hallmark`, `mksglu/context-mode`, and `rohitg00/awesome-claude-design`. They are capability/reference inputs only and must not create a second control plane, queue, memory, source authority, or design authority.
 
 ## 2026-09-13 M21 source/routing reconciliation
 
