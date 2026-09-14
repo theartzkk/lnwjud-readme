@@ -355,6 +355,55 @@ final class HubControlPlaneService
         return $this->conversationByIdForUser((string) $session['user_id'], self::uuid($conversationId));
     }
 
+    /** @return array{schemaVersion:int,messages:list<array>,attachments:list<array>,history:array} */
+    public function conversationHistoryPage(string $sessionToken, string $conversationId, ?string $beforeSequence, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertUnifiedReady();
+        $userId = (string) $session['user_id']; $conversationId = self::uuid($conversationId);
+        $this->conversationRowForUser($userId, $conversationId);
+        if ($beforeSequence === null || preg_match('/^[1-9][0-9]{0,9}$/', $beforeSequence) !== 1) throw new HubControlPlaneException('Conversation history cursor is invalid', 'FIELD_INVALID');
+        $before = (int) $beforeSequence;
+        $q = $this->pdo->prepare('SELECT message_id,task_id,message_kind,sequence_no,body,created_at FROM control_conversation_messages WHERE conversation_id=:conversation AND sequence_no<:before ORDER BY sequence_no DESC LIMIT 80');
+        $q->execute(['conversation' => $conversationId, 'before' => $before]);
+        $messages = array_map(static fn(array $row): array => ['messageId'=>(string)$row['message_id'],'taskId'=>$row['task_id']===null?null:(string)$row['task_id'],'kind'=>strtolower((string)$row['message_kind']),'sequence'=>(int)$row['sequence_no'],'body'=>(string)$row['body'],'createdAt'=>(string)$row['created_at']], array_reverse($q->fetchAll()));
+        $messageIds = array_values(array_unique(array_map(static fn(array $message): string => (string)$message['messageId'], $messages)));
+        $taskIds = array_values(array_unique(array_filter(array_map(static fn(array $message): ?string => is_string($message['taskId'] ?? null) ? (string)$message['taskId'] : null, $messages))));
+        $tasks = [];
+        if ($taskIds !== []) {
+            $marks = implode(',', array_fill(0, count($taskIds), '?'));
+            $taskQuery = $this->pdo->prepare("SELECT * FROM control_tasks WHERE user_id=? AND task_id IN ($marks) ORDER BY created_at,task_id");
+            $taskQuery->execute(array_merge([$userId], $taskIds));
+            $tasks = array_map(fn(array $row): array => $this->taskRow($row), $taskQuery->fetchAll());
+        }
+        $attachments = [];
+        if ($this->finalProductSchemaPresent() && $messageIds !== []) {
+            $marks = implode(',', array_fill(0, count($messageIds), '?'));
+            $attachmentQuery = $this->pdo->prepare("SELECT a.attachment_id,a.message_id,a.kind,a.display_name,a.mime_type,a.size_bytes,a.sha256,a.created_at FROM control_conversation_attachments a JOIN control_conversations c ON c.conversation_id=a.conversation_id WHERE c.user_id=? AND a.conversation_id=? AND a.message_id IN ($marks) AND a.deleted_at IS NULL ORDER BY a.created_at,a.attachment_id LIMIT 100");
+            $attachmentQuery->execute(array_merge([$userId, $conversationId], $messageIds));
+            $attachments = array_map([self::class, 'attachmentRow'], $attachmentQuery->fetchAll());
+        }
+        $payload = ['schemaVersion'=>1,'messages'=>$messages,'tasks'=>$tasks,'artifacts'=>$this->conversationArtifacts($taskIds),'attachments'=>$attachments,'approvals'=>$this->conversationApprovals($taskIds),'history'=>['beforeSequence'=>$before,'hasMore'=>false,'nextBeforeSequence'=>null]];
+        $encode = static fn(array $value): string => json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        while (strlen($encode($payload)) > 160 * 1024 && count($payload['messages']) > 1) {
+            $removed = array_shift($payload['messages']);
+            if (is_array($removed) && isset($removed['messageId'])) {
+                $payload['attachments'] = array_values(array_filter($payload['attachments'], static fn(array $attachment): bool => $attachment['messageId'] !== $removed['messageId']));
+                $remainingTaskIds = array_fill_keys(array_values(array_filter(array_map(static fn(array $message): ?string => is_string($message['taskId'] ?? null) ? (string)$message['taskId'] : null, $payload['messages']))), true);
+                $payload['tasks'] = array_values(array_filter($payload['tasks'], static fn(array $task): bool => isset($remainingTaskIds[(string)($task['taskId'] ?? '')])));
+                $payload['artifacts'] = array_values(array_filter($payload['artifacts'], static fn(array $artifact): bool => isset($remainingTaskIds[(string)($artifact['taskId'] ?? '')])));
+                $payload['approvals'] = array_values(array_filter($payload['approvals'], static fn(array $approval): bool => isset($remainingTaskIds[(string)($approval['taskId'] ?? '')])));
+            }
+        }
+        if ($payload['messages'] !== []) {
+            $first = (int)$payload['messages'][0]['sequence'];
+            $older = $this->pdo->prepare('SELECT 1 FROM control_conversation_messages WHERE conversation_id=:conversation AND sequence_no<:before LIMIT 1');
+            $older->execute(['conversation'=>$conversationId,'before'=>$first]);
+            $payload['history']['hasMore'] = $older->fetchColumn() !== false;
+            $payload['history']['nextBeforeSequence'] = $first;
+        }
+        return $payload;
+    }
+
     public function createConversation(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
     {
         $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['projectId', 'schemaVersion', 'title']);

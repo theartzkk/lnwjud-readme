@@ -3,7 +3,7 @@ import { executionStatus } from './execution-ux.js?release=__AWH_WEB_RELEASE_ID_
 import { closeAwhDialog, openAwhDialog } from './navigation.js?release=__AWH_WEB_RELEASE_ID__';
 import {
   cancelTask, changePassword, changeUsername, createConversation, createMemory, createPerson, createProject, createRecoveryCodes, decideApproval,
-  exportWorkspace, listAccountRequests, listAuthSessions, listPeople, loadAuthProfile, loadControlData, loadConversation,
+  exportWorkspace, listAccountRequests, listAuthSessions, listPeople, loadAuthProfile, loadControlData, loadConversation, loadConversationHistory,
   loadConversations, loadDeletedConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus,
   loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadObservabilityStatus, loadCapabilities, loadSystemReadiness, loadWorkspaceContinuity, login, logout,
   recover, registerAccessRequest, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage,
@@ -26,6 +26,7 @@ import {
   let workspaceReturnRefresh = null;
   let lastWorkspaceReturnRefreshAt = 0;
   let sendingMessage = false;
+  let loadingConversationHistory = false;
   let failedSubmission = null;
   let artifactPreviewRequest = 0;
   const attachmentPreviews = new Map();
@@ -877,8 +878,10 @@ import {
     if (conversation?.history?.truncated === true) {
       const note = document.createElement('li'); note.className = 'conversation-history-note'; note.dataset.scrollKey = 'history:truncated';
       const total = Number(conversation.history.messageCount || 0); const visible = Number(conversation.history.visibleMessageCount || visibleMessages.length);
-      note.textContent = total > visible ? `แสดง ${visible} ข้อความล่าสุดจาก ${total} ข้อความ · ประวัติก่อนหน้ายังเก็บไว้อยู่` : 'กำลังแสดงช่วงล่าสุดของการสนทนา · ประวัติก่อนหน้ายังเก็บไว้อยู่';
-      nextThread.append(note);
+      const copy = document.createElement('span'); copy.textContent = total > visible ? `แสดง ${visible} ข้อความล่าสุดจาก ${total} ข้อความ` : 'กำลังแสดงช่วงล่าสุดของการสนทนา';
+      const loadOlder = document.createElement('button'); loadOlder.type = 'button'; loadOlder.className = 'text-button'; loadOlder.textContent = loadingConversationHistory ? 'กำลังโหลด…' : 'โหลดข้อความก่อนหน้า'; loadOlder.disabled = loadingConversationHistory;
+      loadOlder.addEventListener('click', () => { void loadOlderConversationMessages(); });
+      note.append(copy, document.createTextNode(' · '), loadOlder); nextThread.append(note);
     }
     const artifactsByTask = new Map();
     for (const artifact of conversation?.artifacts || []) {
@@ -975,6 +978,32 @@ import {
       state.threadFollowLatest = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 140;
       if (latest) latest.hidden = state.threadFollowLatest || visibleMessages.length <= previousMessageCount;
     });
+  }
+
+  async function loadOlderConversationMessages() {
+    if (loadingConversationHistory || !state.selectedConversationId || !state.conversation) return;
+    const messages = Array.isArray(state.conversation.messages) ? state.conversation.messages : [];
+    const firstSequence = messages.reduce((min, turn) => Number.isInteger(turn?.sequence) && turn.sequence > 0 ? Math.min(min, turn.sequence) : min, Number.POSITIVE_INFINITY);
+    if (!Number.isFinite(firstSequence) || firstSequence <= 1) return;
+    loadingConversationHistory = true; renderWorkspace();
+    const conversationId = state.selectedConversationId;
+    try {
+      const page = await loadConversationHistory(conversationId, firstSequence);
+      if (conversationId !== state.selectedConversationId || !state.conversation) return;
+      const knownMessages = new Set((state.conversation.messages || []).map((turn) => turn.messageId));
+      const knownTasks = new Set((state.conversation.tasks || []).map((item) => item.taskId));
+      const knownArtifacts = new Set((state.conversation.artifacts || []).map((item) => item.artifactId));
+      const knownAttachments = new Set((state.conversation.attachments || []).map((item) => item.attachmentId));
+      const knownApprovals = new Set((state.conversation.approvals || []).map((item) => item.approvalId));
+      state.conversation.messages = [...page.messages.filter((turn) => !knownMessages.has(turn.messageId)), ...(state.conversation.messages || [])];
+      state.conversation.tasks = [...page.tasks.filter((item) => !knownTasks.has(item.taskId)), ...(state.conversation.tasks || [])];
+      state.conversation.artifacts = [...page.artifacts.filter((item) => !knownArtifacts.has(item.artifactId)), ...(state.conversation.artifacts || [])];
+      state.conversation.attachments = [...page.attachments.filter((item) => !knownAttachments.has(item.attachmentId)), ...(state.conversation.attachments || [])];
+      state.conversation.approvals = [...page.approvals.filter((item) => !knownApprovals.has(item.approvalId)), ...(state.conversation.approvals || [])];
+      const history = state.conversation.history || {};
+      state.conversation.history = { ...history, truncated: page.history.hasMore, visibleMessageCount: state.conversation.messages.length };
+    } catch (error) { message('goal-message', error instanceof Error ? error.message : 'ยังโหลดข้อความก่อนหน้าไม่ได้'); }
+    finally { loadingConversationHistory = false; if (conversationId === state.selectedConversationId) renderWorkspace(); }
   }
 
   function renderConversationSheet() {

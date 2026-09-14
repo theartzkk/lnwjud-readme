@@ -151,3 +151,18 @@ test('composer stop follows canonical canCancel while retaining legacy pre-claim
   context.task = { state: 'RUNNING', canCancel: false }; assert.equal(vm.runInContext('taskCanCancel(task)', context), false);
   context.task = { state: 'QUEUED' }; assert.equal(vm.runInContext('taskCanCancel(task)', context), true);
 });
+
+
+test('older history merges into the current room without replacing newer state', () => {
+  const start = source.indexOf('  async function loadOlderConversationMessages(');
+  const end = source.indexOf('  function renderConversationSheet(', start);
+  const fn = source.slice(start, end);
+  assert.match(fn, /conversationId !== state\.selectedConversationId/);
+  assert.match(fn, /knownMessages/);
+  assert.match(fn, /knownTasks/);
+  assert.match(fn, /knownArtifacts/);
+  assert.match(fn, /knownAttachments/);
+  assert.match(fn, /knownApprovals/);
+  assert.match(fn, /truncated: page\.history\.hasMore/);
+  assert.match(fn, /visibleMessageCount: state\.conversation\.messages\.length/);
+});

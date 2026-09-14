@@ -88,6 +88,7 @@ final class HubControlPlaneRouter
                 // Keep the M6 project route stable for already-packaged desktop
                 // clients. M8 thread identity has an explicit `thread` segment,
                 // so a project UUID can never be misread as a conversation UUID.
+                if (preg_match('#^/api/v1/control/conversations/thread/(' . self::UUID . ')/history$#i', $path, $match) === 1) return self::response(200, $service->conversationHistoryPage($sessionToken, $match[1], self::queryValue($query, 'beforeSequence')) + ['requestId' => $requestId], $headers);
                 if (preg_match('#^/api/v1/control/conversations/thread/(' . self::UUID . ')$#i', $path, $match) === 1) return self::response(200, $service->conversationById($sessionToken, $match[1]) + ['requestId' => $requestId], $headers);
                 if (preg_match('#^/api/v1/control/conversations(?:/project)?/(' . self::UUID . ')$#i', $path, $match) === 1) return self::response(200, $service->conversation($sessionToken, $match[1]) + ['requestId' => $requestId], $headers);
                 if (preg_match('#^/api/v1/control/contexts/(' . self::UUID . ')$#i', $path, $match) === 1) return self::response(200, $service->currentContext($sessionToken, $match[1]) + ['requestId' => $requestId], $headers);

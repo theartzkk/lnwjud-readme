@@ -54,6 +54,13 @@ test('conversation lifecycle is reversible and preserves canonical task/artifact
   assert.match(html, /id="goal-input"[^>]*maxlength="5000"/);
   assert.match(adapter, /message\.length > 5000/);
   assert.match(app, /conversation-history-note/);
+  assert.match(router, /conversations\/thread\/.*\/history/);
+  assert.match(service, /function conversationHistoryPage/);
+  assert.match(service, /sequence_no<:before/);
+  assert.match(service, /160 \* 1024/);
+  assert.match(adapter, /function loadConversationHistory/);
+  assert.match(app, /function loadOlderConversationMessages/);
+  assert.match(app, /โหลดข้อความก่อนหน้า/);
   assert.match(app, /state\.conversationAvailable = Boolean\(state\.selectedConversationId\)/);
   assert.match(app, /ลองโหลดใหม่/);
   assert.match(styles, /\.composer-count/);

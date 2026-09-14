@@ -148,6 +148,13 @@ export async function loadConversation(conversationId) {
   return value;
 }
 
+export async function loadConversationHistory(conversationId, beforeSequence) {
+  if (!UUID.test(conversationId) || !Number.isInteger(beforeSequence) || beforeSequence < 1) throw new Error('ตำแหน่งประวัติแชทไม่ถูกต้อง');
+  const value = await controlRequest(`/api/v1/control/conversations/thread/${conversationId}/history?beforeSequence=${beforeSequence}`);
+  if (value.schemaVersion !== 1 || !Array.isArray(value.messages) || !Array.isArray(value.tasks) || !Array.isArray(value.artifacts) || !Array.isArray(value.attachments) || !Array.isArray(value.approvals) || !value.history || typeof value.history.hasMore !== 'boolean' || (value.history.nextBeforeSequence !== null && (!Number.isInteger(value.history.nextBeforeSequence) || value.history.nextBeforeSequence < 1))) throw new Error('ประวัติแชทก่อนหน้าไม่ถูกต้อง');
+  return value;
+}
+
 export async function loadDeletedConversations(projectId) {
   if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง');
   const value = await controlRequest(`/api/v1/control/conversations/trash?projectId=${encodeURIComponent(projectId)}`);
