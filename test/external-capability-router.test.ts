@@ -48,7 +48,7 @@ test('worker advisory prompt never turns an external capability into execution a
 
 test('Work and Night Shift expose capability routing without a parallel control surface', async () => {
   const [app,dashboard,styles,service]=await Promise.all(['web/app.js','web/dashboard.js','web/styles.css','hub/src/HubControlPlaneService.php'].map((f)=>readFile(join(ROOT,f),'utf8')));
-  assert.match(app,/AWH เลือกใช้/);
+  assert.match(app,/AWH กำลังใช้ .*เครื่องมือ/);
   assert.match(app,/capability-plan/);
   assert.match(styles,/\.capability-chip/);
   assert.match(dashboard,/routedCapabilities/);
