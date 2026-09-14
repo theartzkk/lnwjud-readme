@@ -32,6 +32,11 @@ test('conversation lifecycle is reversible and preserves canonical task/artifact
   assert.match(app, /data\.scrollKey|dataset\.scrollKey/);
   assert.match(app, /threadFollowLatest/);
   assert.match(html, /id="conversation-latest"/);
+  assert.match(html, /id="work-thread"[^>]*role="log"[^>]*aria-live="off"/);
+  assert.match(html, /id="work-announcer"[^>]*role="status"[^>]*aria-live="polite"/);
+  assert.match(app, /function announceNewAssistantTurn/);
+  assert.match(app, /messages\.slice\(previousCount\)/);
+  assert.match(app, /body\.length > 180/);
   assert.match(styles, /safe-area-inset-top/);
   assert.match(dashboard, /visualViewport/);
   assert.match(dashboard, /keyboardViewportBaseline/);

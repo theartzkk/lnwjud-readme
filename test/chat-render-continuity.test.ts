@@ -45,10 +45,47 @@ test('newer refresh invalidates an older poll even in the same room', async () =
 test('login hydration installs one polling lifecycle and thread does not clear live DOM', () => {
   assert.match(source, /async function hydrateAuthenticatedControl[^]*?startWorkspacePolling\(\)/);
   assert.match(source, /if \(!state.conversationTimer\)/);
-  assert.match(source, /document\.addEventListener\('visibilitychange', refreshConversationOnReturn\)/);
-  assert.match(source, /window\.addEventListener\('pageshow', refreshConversationOnReturn\)/);
-  assert.match(source, /window\.addEventListener\('online', refreshConversationOnReturn\)/);
+  assert.match(source, /document\.addEventListener\('visibilitychange', refreshWorkspaceOnReturn\)/);
+  assert.match(source, /window\.addEventListener\('pageshow', refreshWorkspaceOnReturn\)/);
+  assert.match(source, /window\.addEventListener\('online', refreshWorkspaceOnReturn\)/);
+  assert.match(source, /workspaceReturnRefresh = refreshWorkspace\(false\)\.finally/);
+  assert.match(source, /now - lastWorkspaceReturnRefreshAt < 1500/);
   const render = source.slice(source.indexOf('  function renderThread('), source.indexOf('  function renderConversationSheet('));
   assert.doesNotMatch(render, /thread\.replaceChildren/);
   assert.match(render, /previous\?\._awhMarkup === markup/);
+});
+
+
+test('return refresh coalesces duplicate lifecycle events and refreshes full workspace state', async () => {
+  const start = source.indexOf('  function refreshWorkspaceOnReturn(');
+  const end = source.indexOf('  function startWorkspacePolling(', start);
+  const fn = source.slice(start, end);
+  let resolveRefresh: () => void = () => {};
+  let refreshes = 0;
+  let now = 2000;
+  const context = vm.createContext({
+    document: { hidden: false }, state: { control: { authenticated: true } }, workspaceReturnRefresh: null, lastWorkspaceReturnRefreshAt: 0,
+    Date: { now: () => now }, refreshWorkspace: () => { refreshes++; return new Promise<void>((resolve) => { resolveRefresh = resolve; }); },
+  });
+  vm.runInContext(fn, context);
+  vm.runInContext('refreshWorkspaceOnReturn(); refreshWorkspaceOnReturn();', context);
+  assert.equal(refreshes, 1);
+  resolveRefresh(); await Promise.resolve(); await Promise.resolve();
+  now = 2500; vm.runInContext('refreshWorkspaceOnReturn()', context); assert.equal(refreshes, 1);
+  now = 4000; vm.runInContext('refreshWorkspaceOnReturn()', context); assert.equal(refreshes, 2);
+});
+
+test('screen-reader announcer stays quiet on hydration and announces only newly added assistant work', () => {
+  const start = source.indexOf('  function announceNewAssistantTurn(');
+  const end = source.indexOf('  function renderThread(', start);
+  const fn = source.slice(start, end);
+  const announcer = { textContent: '' };
+  const context = vm.createContext({ announcer, $: () => announcer, window: { requestAnimationFrame: (callback: () => void) => callback() } });
+  vm.runInContext(fn, context);
+  const messages = [{ kind: 'user', body: 'hello' }, { kind: 'assistant', body: 'พร้อมทำงาน' }];
+  context.messages = messages;
+  vm.runInContext('announceNewAssistantTurn(messages, 0, false)', context); assert.equal(announcer.textContent, '');
+  vm.runInContext('announceNewAssistantTurn(messages, 1, true)', context); assert.equal(announcer.textContent, 'AWH: พร้อมทำงาน');
+  context.messages = [...messages, { kind: 'user', body: 'ต่อเลย' }]; announcer.textContent = '';
+  vm.runInContext('announceNewAssistantTurn(messages, 2, true)', context); assert.equal(announcer.textContent, '');
 });

@@ -23,6 +23,8 @@ import {
   let conversationRefresh = null;
   let pollingConversation = false;
   let refreshingWorkspace = false;
+  let workspaceReturnRefresh = null;
+  let lastWorkspaceReturnRefreshAt = 0;
   let sendingMessage = false;
   let failedSubmission = null;
   let artifactPreviewRequest = 0;
@@ -788,6 +790,18 @@ import {
     details.append(summary, list); return details;
   }
 
+  function announceNewAssistantTurn(messages, previousCount, sameConversation) {
+    const announcer = $('work-announcer');
+    if (!announcer || !sameConversation || messages.length <= previousCount) return;
+    const added = messages.slice(previousCount).filter((turn) => ['assistant', 'result', 'failure', 'approval'].includes(turn?.kind));
+    const latest = added[added.length - 1];
+    const body = String(latest?.body || '').trim();
+    if (!body) return;
+    const summary = body.length > 180 ? `${body.slice(0, 177)}…` : body;
+    announcer.textContent = '';
+    window.requestAnimationFrame(() => { announcer.textContent = `AWH: ${summary}`; });
+  }
+
   function renderThread(conversation, approvals) {
     const thread = $('work-thread');
     const conversationId = conversation?.conversation?.conversationId || state.selectedConversationId || null;
@@ -906,6 +920,7 @@ import {
       else cursor = cursor.nextElementSibling;
     }
     while (cursor) { const next = cursor.nextElementSibling; cursor.remove(); cursor = next; }
+    announceNewAssistantTurn(visibleMessages, previousMessageCount, sameConversation);
     state.renderedConversationId = conversationId;
     state.threadMessageCount = visibleMessages.length;
     requestAnimationFrame(() => {
@@ -1291,9 +1306,12 @@ import {
     finally { pollingConversation = false; }
   }
 
-  function refreshConversationOnReturn() {
-    if (document.hidden || !state.control?.authenticated || !state.selectedConversationId) return;
-    void pollConversation();
+  function refreshWorkspaceOnReturn() {
+    if (document.hidden || !state.control?.authenticated || workspaceReturnRefresh) return;
+    const now = Date.now();
+    if (now - lastWorkspaceReturnRefreshAt < 1500) return;
+    lastWorkspaceReturnRefreshAt = now;
+    workspaceReturnRefresh = refreshWorkspace(false).finally(() => { workspaceReturnRefresh = null; });
   }
 
   function startWorkspacePolling() {
@@ -1301,9 +1319,9 @@ import {
     if (!state.refreshTimer) state.refreshTimer = window.setInterval(() => { if (!document.hidden) void refreshWorkspace(false); }, 15_000);
   }
 
-  document.addEventListener('visibilitychange', refreshConversationOnReturn);
-  window.addEventListener('pageshow', refreshConversationOnReturn);
-  window.addEventListener('online', refreshConversationOnReturn);
+  document.addEventListener('visibilitychange', refreshWorkspaceOnReturn);
+  window.addEventListener('pageshow', refreshWorkspaceOnReturn);
+  window.addEventListener('online', refreshWorkspaceOnReturn);
 
   async function hydrateAuthenticatedControl({ refreshConversationOnSurface = true } = {}) {
     if (!state.control?.authenticated) return null;
