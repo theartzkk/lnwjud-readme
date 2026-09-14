@@ -15,7 +15,7 @@ final class HubActionGraphService
     {
         $taskId = self::uuid($task['task_id'] ?? null, 'task');
         $projectId = self::uuid($task['project_id'] ?? null, 'project');
-        $goal = self::text($task['goal'] ?? null, 2000, 'งานที่ได้รับมอบหมาย');
+        $goal = self::text($task['goal'] ?? null, 20000, 'งานที่ได้รับมอบหมาย');
         $taskState = strtoupper((string) ($task['state'] ?? 'QUEUED'));
         $progress = max(0, min(100, (int) ($task['progress'] ?? 0)));
         $capability = self::capability($execution['required_capability'] ?? null);
@@ -149,7 +149,7 @@ final class HubActionGraphService
     {
         if (!is_string($value)) return $fallback;
         $text = trim($value);
-        if ($text === '' || strlen($text) > $max || preg_match('/[\x00-\x1f\x7f]/', $text) === 1) return $fallback;
+        if ($text === '' || strlen($text) > $max || preg_match('/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/', $text) === 1) return $fallback;
         if (preg_match('/(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|authorization)\s*[:=]/i', $text) === 1) return $fallback;
         return $text;
     }

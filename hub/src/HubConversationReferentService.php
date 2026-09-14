@@ -67,7 +67,7 @@ final class HubConversationReferentService
     }
     private static function task(array $row): array
     {
-        return ['taskId'=>(string)$row['task_id'],'goal'=>self::safeText($row['goal'] ?? null,2000),
+        return ['taskId'=>(string)$row['task_id'],'goal'=>self::safeText($row['goal'] ?? null,20000),
             'state'=>(string)$row['state'],'resultSummary'=>self::safeText($row['result_summary'] ?? null,1200),
             'updatedAt'=>(string)$row['updated_at']];
     }
@@ -90,7 +90,7 @@ final class HubConversationReferentService
     {
         if (!is_string($value)) return null;
         $text = trim($value);
-        if ($text === '' || strlen($text) > $max || preg_match('/[\x00-\x1f\x7f]/', $text) === 1) return null;
+        if ($text === '' || strlen($text) > $max || preg_match('/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/', $text) === 1) return null;
         if (preg_match('/(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|authorization)\s*[:=]/i', $text) === 1) return null;
         return $text;
     }

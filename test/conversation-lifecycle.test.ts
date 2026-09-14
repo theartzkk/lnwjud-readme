@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 test('conversation lifecycle is reversible and preserves canonical task/artifact authority', async () => {
-  const [migration, service, router, adapter, html, app, styles, dashboard, dashboardCss] = await Promise.all([
+  const [migration, service, router, adapter, html, app, styles, lightCss, dashboard, dashboardCss] = await Promise.all([
     readFile(new URL('../hub/migrations/018_conversation_lifecycle.sql', import.meta.url), 'utf8'),
     readFile(new URL('../hub/src/HubControlPlaneService.php', import.meta.url), 'utf8'),
     readFile(new URL('../hub/src/HubControlPlaneRouter.php', import.meta.url), 'utf8'),
@@ -11,6 +12,7 @@ test('conversation lifecycle is reversible and preserves canonical task/artifact
     readFile(new URL('../web/index.html', import.meta.url), 'utf8'),
     readFile(new URL('../web/app.js', import.meta.url), 'utf8'),
     readFile(new URL('../web/styles.css', import.meta.url), 'utf8'),
+    readFile(new URL('../web/awh-light-system.css', import.meta.url), 'utf8'),
     readFile(new URL('../web/dashboard.js', import.meta.url), 'utf8'),
     readFile(new URL('../web/dashboard.css', import.meta.url), 'utf8'),
   ]);
@@ -39,4 +41,35 @@ test('conversation lifecycle is reversible and preserves canonical task/artifact
   assert.match(styles, /awh-keyboard-open[^}]*\.composer textarea[^}]*min-height:\s*40px/s);
   assert.match(dashboardCss, /repeat\(4,minmax\(0,1fr\)\)/);
   assert.doesNotMatch(styles, /body\.work-active:not\(\.product-dashboard-active\) \.awh-mobile-nav \{ display: none; \}/);
+  assert.match(service, /BROWSER_CONVERSATION_MAX_BYTES\s*=\s*192\s*\*\s*1024/);
+  assert.match(service, /CONVERSATION_MESSAGE_LIMIT\s*=\s*120/);
+  assert.match(service, /ORDER BY sequence_no DESC LIMIT/);
+  assert.match(service, /array_reverse\(\$messageQuery->fetchAll\(\)\)/);
+  assert.match(service, /\$maxBodyBytes = \$kind === 'USER' \? self::GOAL_MAX_BYTES : 800/);
+  assert.match(html, /id="goal-input"[^>]*maxlength="5000"/);
+  assert.match(adapter, /message\.length > 5000/);
+  assert.match(app, /conversation-history-note/);
+  assert.match(app, /state\.conversationAvailable = Boolean\(state\.selectedConversationId\)/);
+  assert.match(app, /ลองโหลดใหม่/);
+  assert.match(styles, /\.composer-count/);
+  assert.match(lightCss, /\.empty-work\{min-height:190px!important/);
+});
+
+test('long conversation projection keeps the newest messages and remains browser bounded', () => {
+  const php = String.raw`
+require 'hub/src/HubControlPlaneService.php';
+$method = new ReflectionMethod(HubControlPlaneService::class, 'boundConversationPayload');
+$method->setAccessible(true);
+$messages=[]; for($i=1;$i<=240;$i++) $messages[]=['messageId'=>(string)$i,'taskId'=>null,'kind'=>'user','sequence'=>$i,'body'=>str_repeat('m',1400),'createdAt'=>'2026-09-14T00:00:00Z'];
+$tasks=[]; for($i=1;$i<=80;$i++) $tasks[]=['taskId'=>(string)$i,'goal'=>str_repeat('g',1800)];
+$payload=['schemaVersion'=>3,'conversation'=>['conversationId'=>'c'],'history'=>['truncated'=>false,'messageCount'=>240,'visibleMessageCount'=>240,'taskCount'=>80,'visibleTaskCount'=>80],'messages'=>$messages,'tasks'=>$tasks,'artifacts'=>[],'attachments'=>[],'approvals'=>[]];
+$out=$method->invoke(null,$payload,192*1024);
+echo json_encode(['bytes'=>strlen(json_encode($out,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)),'first'=>$out['messages'][0]['sequence']??null,'last'=>$out['messages'][count($out['messages'])-1]['sequence']??null,'history'=>$out['history']],JSON_THROW_ON_ERROR);
+`;
+  const result=JSON.parse(execFileSync('php',['-r',php],{cwd:process.cwd(),encoding:'utf8'}));
+  assert.ok(result.bytes <= 192*1024);
+  assert.equal(result.last,240);
+  assert.ok(result.first > 1);
+  assert.equal(result.history.truncated,true);
+  assert.equal(result.history.visibleMessageCount,240-result.first+1);
 });

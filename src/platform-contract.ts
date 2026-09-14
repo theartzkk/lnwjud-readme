@@ -43,7 +43,7 @@ function capability(value: unknown): string { if(typeof value!=='string'||!CAPAB
 
 export function validateActionGraph(graph: ActionGraph): ActionGraph {
   if (!graph || graph.schemaVersion!==1) throw new Error('Action Graph schema is invalid');
-  uuid(graph.graphId,'graphId'); uuid(graph.projectId,'projectId'); boundedText(graph.goal,'goal',2000);
+  uuid(graph.graphId,'graphId'); uuid(graph.projectId,'projectId'); boundedText(graph.goal,'goal',8000);
   if(!Array.isArray(graph.nodes)||graph.nodes.length<1||graph.nodes.length>64) throw new Error('Action Graph nodes are invalid');
   if(!Array.isArray(graph.edges)||graph.edges.length>128) throw new Error('Action Graph edges are invalid');
   const ids=new Set<string>();

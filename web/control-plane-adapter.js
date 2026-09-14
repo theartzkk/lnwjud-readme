@@ -12,7 +12,7 @@ export function safeApiPath(path) {
 
 async function json(response) {
   const body = await response.text();
-  if (body.length > MAX_JSON_BYTES) throw new Error('AWH response exceeds the browser bound');
+  if (body.length > MAX_JSON_BYTES) { const error = new Error('แชทนี้ยาวมาก AWH จะเก็บประวัติเดิมไว้และโหลดเฉพาะช่วงล่าสุด กรุณาลองรีเฟรชอีกครั้ง'); Object.defineProperty(error, 'code', { value: 'RESPONSE_TOO_LARGE', enumerable: false }); throw error; }
   let value;
   try { value = JSON.parse(body); } catch { throw new Error('AWH response is invalid'); }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('AWH response is invalid');
@@ -57,6 +57,7 @@ function safeErrorMessage(value) {
     ROLLBACK_NOT_READY: 'เว็บไซต์นี้ยังไม่มีรุ่นก่อนหน้าที่พร้อมย้อนกลับ',
     CONVERSATION_ACTIVE_TASKS: 'แชทนี้ยังมีงานที่กำลังทำอยู่ กรุณายกเลิกหรือรอให้งานจบก่อนลบ',
     CONVERSATION_LIFECYCLE_NOT_READY: 'ระบบลบและกู้คืนแชทยังไม่พร้อมบน release นี้',
+    RESPONSE_TOO_LARGE: 'แชทนี้ยาวมาก AWH จะเก็บประวัติเดิมไว้และโหลดเฉพาะช่วงล่าสุด',
   })[code] || 'AWH ไม่สามารถดำเนินการได้ในขณะนี้';
 }
 
@@ -143,6 +144,7 @@ export async function loadConversation(conversationId) {
   if (!UUID.test(conversationId)) throw new Error('การสนทนาไม่ถูกต้อง');
   const value = await controlRequest(`/api/v1/control/conversations/thread/${conversationId}`);
   if (![2, 3].includes(value.schemaVersion) || !value.conversation || !Array.isArray(value.messages) || !Array.isArray(value.tasks) || !Array.isArray(value.artifacts) || !Array.isArray(value.attachments) || !Array.isArray(value.approvals)) throw new Error('ประวัติการทำงานของ AWH ไม่ถูกต้อง');
+  if (value.history !== undefined && (!value.history || typeof value.history !== 'object' || Array.isArray(value.history) || typeof value.history.truncated !== 'boolean' || !Number.isInteger(value.history.messageCount) || !Number.isInteger(value.history.visibleMessageCount) || !Number.isInteger(value.history.taskCount) || !Number.isInteger(value.history.visibleTaskCount))) throw new Error('ข้อมูลประวัติแชทของ AWH ไม่ถูกต้อง');
   return value;
 }
 
@@ -344,7 +346,7 @@ export async function uploadConversationAttachments(conversationId, files) {
 }
 
 export async function submitWorkMessage(projectId, conversationId, message, attachmentIds = [], idempotencyKey = `web-${crypto.randomUUID()}`) {
-  if (!UUID.test(projectId) || !UUID.test(conversationId) || typeof message !== 'string' || !message.trim() || message.length > 2000 || !/^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey)) throw new Error('กรุณาเลือกโปรเจกต์และบอกสิ่งที่อยากให้ AWH ช่วย');
+  if (!UUID.test(projectId) || !UUID.test(conversationId) || typeof message !== 'string' || !message.trim() || message.length > 5000 || !/^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey)) throw new Error('กรุณาเลือกโปรเจกต์และบอกสิ่งที่อยากให้ AWH ช่วย');
   if (!Array.isArray(attachmentIds) || attachmentIds.length > 8 || attachmentIds.some((id) => !UUID.test(id))) throw new Error('ไฟล์แนบไม่ถูกต้อง');
   const value = await controlRequest('/api/v1/control/conversations', { method: 'POST', body: JSON.stringify({ schemaVersion: 3, projectId, conversationId, message: message.trim(), attachmentIds, idempotencyKey }) });
   if (value.schemaVersion !== 3 || !Array.isArray(value.messages) || !Array.isArray(value.tasks) || !Array.isArray(value.attachments)) throw new Error('AWH ไม่สามารถบันทึกการสนทนาได้');

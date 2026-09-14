@@ -38,6 +38,19 @@ test('device Work submission uses the existing secure credential boundary and on
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('worker Work client accepts a bounded long owner prompt from the canonical conversation', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awh-workstream-long-prompt-'));
+  try {
+    const response = conversationResponse();
+    response.messages[0] = { ...response.messages[0], body: 'ก'.repeat(5_000) };
+    response.tasks[0] = { ...response.tasks[0], goal: 'ก'.repeat(5_000) };
+    const client = new ControlPlaneWorkerClient('https://hub.example/api/v1', root, new FixtureCredentials(), async () => new Response(JSON.stringify(response), { status: 200 }));
+    const result = await client.readConversation(ids.project);
+    assert.equal(result.messages[0]?.body.length, 5_000);
+    assert.equal(result.tasks[0]?.goal.length, 5_000);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('worker Work client rejects malformed conversation state rather than rendering untrusted task data', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awh-workstream-invalid-'));
   try {

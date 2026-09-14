@@ -236,6 +236,12 @@ import {
   function resizeGoalInput() {
     const input = $('goal-input'); if (!(input instanceof HTMLTextAreaElement)) return;
     input.style.height = 'auto'; input.style.height = `${Math.min(140, Math.max(44, input.scrollHeight))}px`;
+    const counter = $('goal-count');
+    if (counter) {
+      const length = input.value.length;
+      counter.textContent = length >= 4000 ? `${length.toLocaleString('th-TH')}/5,000` : '';
+      counter.classList.toggle('near-limit', length >= 4500);
+    }
   }
 
   function renderInspectionEvidence(artifact) {
@@ -816,6 +822,12 @@ import {
       visibleMessages.push(turn);
       previousCancelledKey = cancelledKey;
     }
+    if (conversation?.history?.truncated === true) {
+      const note = document.createElement('li'); note.className = 'conversation-history-note'; note.dataset.scrollKey = 'history:truncated';
+      const total = Number(conversation.history.messageCount || 0); const visible = Number(conversation.history.visibleMessageCount || visibleMessages.length);
+      note.textContent = total > visible ? `แสดง ${visible} ข้อความล่าสุดจาก ${total} ข้อความ · ประวัติก่อนหน้ายังเก็บไว้อยู่` : 'กำลังแสดงช่วงล่าสุดของการสนทนา · ประวัติก่อนหน้ายังเก็บไว้อยู่';
+      nextThread.append(note);
+    }
     const artifactsByTask = new Map();
     for (const artifact of conversation?.artifacts || []) {
       if (!artifact?.taskId) continue;
@@ -1253,11 +1265,18 @@ import {
       state.workspaceContinuity = workspaceContinuity; state.conversationAvailable = true; renderWorkspace();
       void saveCurrentContext(project.projectId, state.selectedConversationId, 'work').catch(() => undefined);
     } catch (error) {
-      if (request !== conversationRequest || project.projectId !== state.selectedProjectId || selectedId !== state.selectedConversationId) return;
-      // A failed read must not erase the last confirmed thread or the draft.
-      state.conversationAvailable = state.conversation?.conversation?.conversationId === state.selectedConversationId;
+      if (request !== conversationRequest || project.projectId !== state.selectedProjectId) return;
+      // A failed read must never lock the composer when we still know the selected conversation.
+      state.conversationAvailable = Boolean(state.selectedConversationId);
       renderWorkspace();
-      message('goal-message', error instanceof Error ? error.message : 'การเชื่อมต่อขัดข้อง ประวัติเดิมยังอยู่ กดรีเฟรชเพื่อลองอีกครั้ง');
+      const status = $('goal-message');
+      if (status) {
+        const copy = error instanceof Error ? error.message : 'การเชื่อมต่อขัดข้อง ประวัติเดิมยังอยู่';
+        status.replaceChildren(document.createTextNode(copy));
+        const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'text-button'; retry.textContent = 'ลองโหลดใหม่';
+        retry.addEventListener('click', () => { message('goal-message', 'กำลังโหลดแชทล่าสุด…'); void refreshConversation(false); });
+        status.append(' ', retry);
+      }
     }
   }
 
@@ -1447,8 +1466,13 @@ import {
   $('attachment-open').addEventListener('click', () => { if (!$('attachment-input').disabled) $('attachment-input').click(); });
   $('attachment-input').addEventListener('change', () => { addPendingAttachments($('attachment-input').files); $('attachment-input').value = ''; });
   $('goal-input').addEventListener('paste', (event) => {
-    const files = Array.from(event.clipboardData?.files || []); if (!files.length) return;
-    addPendingAttachments(files); message('goal-message', files.length === 1 ? 'แนบไฟล์จากคลิปบอร์ดแล้ว' : `แนบ ${files.length} ไฟล์จากคลิปบอร์ดแล้ว`);
+    const files = Array.from(event.clipboardData?.files || []);
+    if (files.length) { addPendingAttachments(files); message('goal-message', files.length === 1 ? 'แนบไฟล์จากคลิปบอร์ดแล้ว' : `แนบ ${files.length} ไฟล์จากคลิปบอร์ดแล้ว`); return; }
+    const input = $('goal-input'); const pasted = event.clipboardData?.getData('text/plain') || '';
+    if (input instanceof HTMLTextAreaElement && pasted) {
+      const selected = Math.max(0, input.selectionEnd - input.selectionStart); const projected = input.value.length - selected + pasted.length;
+      if (projected > input.maxLength) message('goal-message', `ข้อความยาวเกิน ${input.maxLength.toLocaleString('th-TH')} ตัวอักษร ระบบจะรับได้ถึงขีดจำกัดนี้ กรุณาแบ่งเป็นข้อความถัดไปหากยังมีรายละเอียดเพิ่ม`);
+    }
   });
   const composer = $('goal-form');
   for (const type of ['dragenter', 'dragover']) composer?.addEventListener(type, (event) => {

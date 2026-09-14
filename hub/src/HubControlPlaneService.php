@@ -65,9 +65,13 @@ final class HubControlPlaneService
     private const SESSION_RATE_LIMIT = 5;
     private const LEASE_TTL = 300;
     private const WORKSPACE_LEASE_TTL = 300;
-    // The Desktop worker client rejects responses at 64 KiB.  Keep headroom
-    // for the router request id and headers without weakening that client cap.
+    // Keep browser and worker thread projections bounded at the server so a
+    // long-lived conversation cannot disable the composer on smaller clients.
+    private const BROWSER_CONVERSATION_MAX_BYTES = 192 * 1024;
     private const WORKER_CONVERSATION_MAX_BYTES = 60 * 1024;
+    private const CONVERSATION_MESSAGE_LIMIT = 120;
+    private const CONVERSATION_TASK_LIMIT = 30;
+    private const GOAL_MAX_BYTES = 20 * 1024;
     private const STATES = ['QUEUED', 'WAITING_FOR_WORKER', 'PREPARING', 'RUNNING', 'QA', 'WAITING_FOR_APPROVAL', 'COMPLETED', 'FAILED', 'CANCELLED'];
     private const CONVERSATION_KINDS = ['USER', 'ASSISTANT', 'PROGRESS', 'APPROVAL', 'RESULT', 'FAILURE'];
     private const WORKSPACE_SYNC_STATES = ['CLEAN', 'SYNCED', 'UNSYNCED'];
@@ -895,44 +899,63 @@ final class HubControlPlaneService
 
     private function conversationPayload(array $conversation, string $userId, bool $worker = false): array
     {
-
-        $messageQuery = $this->pdo->prepare('SELECT message_id, task_id, message_kind, sequence_no, body, created_at FROM control_conversation_messages WHERE conversation_id = :conversation ORDER BY sequence_no ASC LIMIT 250');
-        $messageQuery->execute(['conversation' => $conversation['conversation_id']]);
+        $conversationId = (string) $conversation['conversation_id'];
+        $messageCountQuery = $this->pdo->prepare('SELECT COUNT(*) FROM control_conversation_messages WHERE conversation_id = :conversation');
+        $messageCountQuery->execute(['conversation' => $conversationId]); $messageCount = (int) $messageCountQuery->fetchColumn();
+        $messageQuery = $this->pdo->prepare('SELECT message_id, task_id, message_kind, sequence_no, body, created_at FROM control_conversation_messages WHERE conversation_id = :conversation ORDER BY sequence_no DESC LIMIT ' . self::CONVERSATION_MESSAGE_LIMIT);
+        $messageQuery->execute(['conversation' => $conversationId]);
+        $messageRows = array_reverse($messageQuery->fetchAll());
         $messages = array_map(static fn (array $row): array => [
             'messageId' => (string) $row['message_id'], 'taskId' => $row['task_id'] === null ? null : (string) $row['task_id'],
             'kind' => strtolower((string) $row['message_kind']), 'sequence' => (int) $row['sequence_no'],
             'body' => (string) $row['body'], 'createdAt' => (string) $row['created_at'],
-        ], $messageQuery->fetchAll());
-        $taskQuery = $this->pdo->prepare('SELECT * FROM control_tasks WHERE conversation_id = :conversation AND user_id = :user ORDER BY created_at ASC, task_id ASC LIMIT 100');
-        $taskQuery->execute(['conversation' => $conversation['conversation_id'], 'user' => $userId]);
-        $tasks = array_map(fn (array $row): array => $this->taskRow($row), $taskQuery->fetchAll());
+        ], $messageRows);
+        $taskCountQuery = $this->pdo->prepare('SELECT COUNT(*) FROM control_tasks WHERE conversation_id = :conversation AND user_id = :user');
+        $taskCountQuery->execute(['conversation' => $conversationId, 'user' => $userId]); $taskCount = (int) $taskCountQuery->fetchColumn();
+        $taskQuery = $this->pdo->prepare('SELECT * FROM control_tasks WHERE conversation_id = :conversation AND user_id = :user ORDER BY created_at DESC, task_id DESC LIMIT ' . self::CONVERSATION_TASK_LIMIT);
+        $taskQuery->execute(['conversation' => $conversationId, 'user' => $userId]);
+        $taskRows = array_reverse($taskQuery->fetchAll());
+        $tasks = array_map(fn (array $row): array => $this->taskRow($row), $taskRows);
         $taskIds = array_map(static fn (array $task): string => (string) $task['taskId'], $tasks);
         $artifacts = $this->conversationArtifacts($taskIds);
-        $attachments = $this->finalProductSchemaPresent() ? $this->conversationAttachments((string) $conversation['conversation_id'], $userId) : [];
+        $attachments = $this->finalProductSchemaPresent() ? $this->conversationAttachments($conversationId, $userId) : [];
+        $visibleMessageIds = array_fill_keys(array_map(static fn (array $message): string => (string) $message['messageId'], $messages), true);
+        $attachments = array_values(array_filter($attachments, static fn (array $attachment): bool => $attachment['messageId'] === null || isset($visibleMessageIds[(string) $attachment['messageId']])));
         $approvals = $this->conversationApprovals($taskIds);
         $payload = [
             'schemaVersion' => $this->finalProductSchemaPresent() ? 3 : (isset($conversation['title']) ? 2 : 1),
-            'conversation' => ['conversationId' => (string) $conversation['conversation_id'], 'projectId' => (string) $conversation['project_id'], 'title' => isset($conversation['title']) ? (string) $conversation['title'] : 'Work', 'archivedAt' => isset($conversation['archived_at']) && $conversation['archived_at'] !== null ? (string) $conversation['archived_at'] : null, 'origin' => isset($conversation['origin']) ? (string) $conversation['origin'] : 'native', 'createdAt' => (string) $conversation['created_at'], 'updatedAt' => (string) $conversation['updated_at'], 'lastTaskId' => $conversation['last_task_id'] === null ? null : (string) $conversation['last_task_id']],
+            'conversation' => ['conversationId' => $conversationId, 'projectId' => (string) $conversation['project_id'], 'title' => isset($conversation['title']) ? (string) $conversation['title'] : 'Work', 'archivedAt' => isset($conversation['archived_at']) && $conversation['archived_at'] !== null ? (string) $conversation['archived_at'] : null, 'origin' => isset($conversation['origin']) ? (string) $conversation['origin'] : 'native', 'createdAt' => (string) $conversation['created_at'], 'updatedAt' => (string) $conversation['updated_at'], 'lastTaskId' => $conversation['last_task_id'] === null ? null : (string) $conversation['last_task_id']],
+            'history' => ['truncated' => $messageCount > count($messages) || $taskCount > count($tasks), 'messageCount' => $messageCount, 'visibleMessageCount' => count($messages), 'taskCount' => $taskCount, 'visibleTaskCount' => count($tasks)],
             'messages' => $messages, 'tasks' => $tasks, 'artifacts' => $artifacts, 'attachments' => $attachments, 'approvals' => $approvals,
         ];
-        return $worker ? self::boundWorkerConversation($payload) : $payload;
+        return self::boundConversationPayload($payload, $worker ? self::WORKER_CONVERSATION_MAX_BYTES : self::BROWSER_CONVERSATION_MAX_BYTES);
     }
 
-    private static function boundWorkerConversation(array $payload): array
+    private static function boundConversationPayload(array $payload, int $maxBytes): array
     {
         $encode = static fn (array $value): string => json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-        while (strlen($encode($payload)) > self::WORKER_CONVERSATION_MAX_BYTES) {
+        while (strlen($encode($payload)) > $maxBytes) {
             $removed = false;
-            foreach (['messages', 'artifacts', 'attachments', 'approvals', 'tasks'] as $key) {
+            foreach (['artifacts', 'attachments', 'approvals', 'tasks', 'messages'] as $key) {
                 if (is_array($payload[$key] ?? null) && $payload[$key] !== []) {
                     array_shift($payload[$key]);
+                    if (is_array($payload['history'] ?? null)) $payload['history']['truncated'] = true;
                     $removed = true;
                     break;
                 }
             }
-            if (!$removed) throw new HubControlPlaneException('Worker conversation response is too large', 'RESPONSE_TOO_LARGE');
+            if (!$removed) throw new HubControlPlaneException('Conversation response is too large', 'RESPONSE_TOO_LARGE');
+        }
+        if (is_array($payload['history'] ?? null)) {
+            $payload['history']['visibleMessageCount'] = count(is_array($payload['messages'] ?? null) ? $payload['messages'] : []);
+            $payload['history']['visibleTaskCount'] = count(is_array($payload['tasks'] ?? null) ? $payload['tasks'] : []);
         }
         return $payload;
+    }
+
+    private static function boundWorkerConversation(array $payload): array
+    {
+        return self::boundConversationPayload($payload, self::WORKER_CONVERSATION_MAX_BYTES);
     }
 
     private function submitConversationForUser(string $userId, array $payload, ?string $now, bool $worker = false): array
@@ -2688,7 +2711,8 @@ final class HubControlPlaneService
 
     private function appendConversationMessage(string $conversationId, ?string $taskId, string $kind, string $body, string $at, ?string $idempotency = null, ?string $sourceEventId = null): string
     {
-        if (!in_array($kind, self::CONVERSATION_KINDS, true) || $body === '' || strlen($body) > 800 || self::hasUnsafeConversationControl($body)) throw new HubControlPlaneException('Conversation message is invalid', 'FIELD_INVALID');
+        $maxBodyBytes = $kind === 'USER' ? self::GOAL_MAX_BYTES : 800;
+        if (!in_array($kind, self::CONVERSATION_KINDS, true) || $body === '' || strlen($body) > $maxBodyBytes || self::hasUnsafeConversationControl($body)) throw new HubControlPlaneException('Conversation message is invalid', 'FIELD_INVALID');
         $sequence = $this->pdo->prepare('SELECT COALESCE(MAX(sequence_no), 0) + 1 FROM control_conversation_messages WHERE conversation_id = :conversation'); $sequence->execute(['conversation' => $conversationId]);
         $messageId = self::uuidFromBytes(random_bytes(16));
         $this->pdo->prepare('INSERT INTO control_conversation_messages(message_id, conversation_id, task_id, message_kind, sequence_no, body, idempotency_key, source_event_id, metadata_json, created_at) VALUES(:id, :conversation, :task, :kind, :sequence, :body, :key, :event, NULL, :at)')->execute(['id' => $messageId, 'conversation' => $conversationId, 'task' => $taskId, 'kind' => $kind, 'sequence' => (int) $sequence->fetchColumn(), 'body' => $body, 'key' => $idempotency, 'event' => $sourceEventId, 'at' => $at]);
@@ -2724,7 +2748,7 @@ final class HubControlPlaneService
         // Work request. Timestamp/UUID ordering is not a conversation order.
         $q = $this->pdo->prepare('SELECT t.goal FROM control_conversations c JOIN control_tasks t ON t.task_id = c.last_task_id WHERE c.conversation_id = :conversation');
         $q->execute(['conversation' => $conversationId]); $previous = $q->fetchColumn();
-        if (!is_string($previous) || $previous === '' || strlen($previous) + strlen($message) + 80 > 2000) return $message;
+        if (!is_string($previous) || $previous === '' || strlen($previous) + strlen($message) + 80 > self::GOAL_MAX_BYTES) return $message;
         return self::goal('ต่อเนื่องจากงานล่าสุด: ' . $previous . ' | คำขอเพิ่มเติม: ' . $message);
     }
 
@@ -2755,8 +2779,8 @@ final class HubControlPlaneService
     /** @return list<array{attachmentId:string,messageId:?string,kind:string,name:string,mimeType:string,sizeBytes:int,sha256:string,createdAt:string,downloadUrl:string}> */
     private function conversationAttachments(string $conversationId, string $userId): array
     {
-        $q = $this->pdo->prepare('SELECT a.attachment_id, a.message_id, a.kind, a.display_name, a.mime_type, a.size_bytes, a.sha256, a.created_at FROM control_conversation_attachments a JOIN control_conversations c ON c.conversation_id = a.conversation_id WHERE a.conversation_id = :conversation AND c.user_id = :user AND a.deleted_at IS NULL ORDER BY a.created_at, a.attachment_id LIMIT 100');
-        $q->execute(['conversation' => $conversationId, 'user' => $userId]); return array_map([self::class, 'attachmentRow'], $q->fetchAll());
+        $q = $this->pdo->prepare('SELECT a.attachment_id, a.message_id, a.kind, a.display_name, a.mime_type, a.size_bytes, a.sha256, a.created_at FROM control_conversation_attachments a JOIN control_conversations c ON c.conversation_id = a.conversation_id WHERE a.conversation_id = :conversation AND c.user_id = :user AND a.deleted_at IS NULL ORDER BY a.created_at DESC, a.attachment_id DESC LIMIT 100');
+        $q->execute(['conversation' => $conversationId, 'user' => $userId]); return array_reverse(array_map([self::class, 'attachmentRow'], $q->fetchAll()));
     }
 
     /** @param list<string> $attachmentIds */
@@ -2970,7 +2994,7 @@ final class HubControlPlaneService
     {
         $value = trim($message);
         if (self::isContinuousAutonomyRequest($value)) return 6;
-        if ($value === '' || strlen($value) > 2000 || self::hasUnnegatedMutationSignal($value)) return null;
+        if ($value === '' || strlen($value) > self::GOAL_MAX_BYTES || self::hasUnnegatedMutationSignal($value)) return null;
         if (preg_match('/(?:deploy|production|prod\b|billing|permission|สิทธิ์|secret|credential|api\s*key|migration|migrate|schema|ฐานข้อมูล)/iu', $value) === 1) return null;
         $startsSafe = preg_match('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)*(?:ตรวจ|วิเคราะห์|ดู|ค้นหา|อ่าน|สรุป|inspect|review|search|read|summari[sz]e)(?:หน่อย|ให้|ที|ดู)?(?:\s|$|[ก-๙])/iu', $value) === 1;
         $multiStep = preg_match('/(?:จากนั้น|แล้ว(?:ช่วย)?|ต่อด้วย|แล้วค่อย|\band\s+then\b|\bthen\b|\bafter\s+that\b)/iu', $value) === 1;
@@ -3073,7 +3097,7 @@ final class HubControlPlaneService
     private static function exactKeys(array $value, array $allowed): void { $actual = array_keys($value); sort($actual); sort($allowed); if ($actual !== $allowed) throw new HubControlPlaneException('Payload contains unsupported fields', 'SCHEMA_FIELDS'); }
     private static function uuid(string $value): string { if (!preg_match(self::UUID, $value)) throw new HubControlPlaneException('Identifier is invalid', 'ID_INVALID'); return strtolower($value); }
     private static function uuidFromBytes(string $bytes): string { $bytes[6] = chr((ord($bytes[6]) & 15) | 64); $bytes[8] = chr((ord($bytes[8]) & 63) | 128); return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4)); }
-    private static function goal(string $value): string { $value = str_replace(["\r\n", "\r"], "\n", trim($value)); if ($value === '' || strlen($value) > 2000 || self::hasUnsafeConversationControl($value) || preg_match('/(?:^|\s)(?:Bearer\s+|password\s*[=:]|secret\s*[=:]|token\s*[=:]|api[_-]?key\s*[=:])/i', $value)) throw new HubControlPlaneException('Goal is invalid or contains credential material', 'GOAL_INVALID'); return $value; }
+    private static function goal(string $value): string { $value = str_replace(["\r\n", "\r"], "\n", trim($value)); if ($value === '' || strlen($value) > self::GOAL_MAX_BYTES || self::hasUnsafeConversationControl($value) || preg_match('/(?:^|\s)(?:Bearer\s+|password\s*[=:]|secret\s*[=:]|token\s*[=:]|api[_-]?key\s*[=:])/i', $value)) throw new HubControlPlaneException('Goal is invalid or contains credential material', 'GOAL_INVALID'); return $value; }
     private static function idempotency(string $value): string { if (!preg_match('/^[A-Za-z0-9._-]{8,120}$/', $value)) throw new HubControlPlaneException('Idempotency key is invalid', 'IDEMPOTENCY_INVALID'); return $value; }
     /** @return list<string> */
     private static function attachmentIds(mixed $value): array { if (!is_array($value) || array_is_list($value) === false || count($value) > 8) throw new HubControlPlaneException('Attachment references are invalid', 'ATTACHMENT_INVALID'); $out = []; foreach ($value as $id) { if (!is_string($id) || !preg_match(self::UUID, $id)) throw new HubControlPlaneException('Attachment references are invalid', 'ATTACHMENT_INVALID'); $out[] = strtolower($id); } if (count($out) !== count(array_unique($out))) throw new HubControlPlaneException('Attachment references are invalid', 'ATTACHMENT_INVALID'); return $out; }

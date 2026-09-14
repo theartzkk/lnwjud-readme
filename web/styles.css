@@ -358,6 +358,11 @@ body.work-active .composer textarea { min-height: 64px; max-height: 140px; borde
 body.work-active .composer-actions { min-height: 36px; }
 body.work-active .composer-actions .primary-button { min-width: 74px; }
 body.work-active .form-message { min-height: 0; }
+body.work-active .composer-tools { min-width: 0; }
+body.work-active .composer-count { margin-left: auto; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+body.work-active .composer-count.near-limit { color: #b45309; font-weight: 800; }
+body.work-active .conversation-history-note { width: fit-content; max-width: min(94%, 620px); margin: 0 auto 14px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: color-mix(in srgb,var(--surface) 94%,var(--canvas)); font-size: 10px; line-height: 1.35; text-align: center; }
+body.work-active .task-goal, body.work-active .task-summary, body.work-active .form-message { overflow-wrap: anywhere; word-break: break-word; }
 
 /* Work is a fixed conversation viewport; authenticated product surfaces are not. */
 body.work-active.product-dashboard-active {

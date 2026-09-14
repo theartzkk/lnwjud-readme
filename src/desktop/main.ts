@@ -705,7 +705,7 @@ function registerIpc(): void {
   ipcMain.handle(DESKTOP_IPC.trustOwner, async (_event, ownerDisplayName: unknown, deviceName: unknown) => trustLocalOwner(ownerDisplayName, deviceName));
   ipcMain.handle(DESKTOP_IPC.autopilotOverview, async () => autopilotOverview());
   ipcMain.handle(DESKTOP_IPC.autopilotStart, async (_event, goal: unknown) => {
-    if (typeof goal !== 'string' || !goal.trim() || goal.length > 2_000) return { ok: false, error: 'GOAL_INVALID', message: 'Please enter a bounded goal' };
+    if (typeof goal !== 'string' || !goal.trim() || goal.length > 5_000) return { ok: false, error: 'GOAL_INVALID', message: 'Please enter a bounded goal' };
     try {
       const { runner } = await currentAutopilot();
       const task = await runner.start({ goal: goal.trim(), acceptanceCriteria: ['Approved local gates pass', 'A bounded artifact is available', 'A continuity checkpoint is created'] });
