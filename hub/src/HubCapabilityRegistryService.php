@@ -87,7 +87,7 @@ final class HubCapabilityRegistryService
         $this->assertReady(); self::uuid($executionId); $at = self::timestamp($now ?? gmdate('c'));
         $q = $this->pdo->prepare('SELECT e.execution_id,e.task_id,e.project_id,e.vault_revision_id,e.executor_kind,e.required_capability,t.conversation_id FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE e.execution_id=:id');
         $q->execute(['id'=>$executionId]); $row = $q->fetch(); if (!is_array($row)) throw new HubCapabilityRegistryException('Execution was not found', 'EXECUTION_NOT_FOUND');
-        $required = (string)$row['required_capability']; $scope = str_starts_with($required,'project.mutate.') ? 'PROJECT_CANDIDATE' : (in_array((string)$row['executor_kind'],['DEVICE','CODEX'],true) ? 'DEVICE_WORKSPACE' : (preg_match('/^(?:agent\.conversation|project\.(?:read|search)|artifact\.object)$/',$required) ? 'READ' : 'EXTERNAL'));
+        $required = (string)$row['required_capability']; $scope = str_starts_with($required,'project.mutate.') ? 'PROJECT_CANDIDATE' : (in_array((string)$row['executor_kind'],['DEVICE','CODEX'],true) ? 'DEVICE_WORKSPACE' : (preg_match('/^(?:agent\.conversation|project\.(?:read|search)|artifact\.object|qa\.cloud|review\.visual)$/',$required) ? 'READ' : 'EXTERNAL'));
         $conversation = is_string($row['conversation_id'] ?? null) ? (string)$row['conversation_id'] : null; $sessionKey = $conversation === null ? 'task:'.$row['task_id'] : 'conversation:'.$conversation;
         $routeCapability = $required === 'codex:cli' ? 'code.specialist' : $required;
         $route = $this->route($routeCapability,$at); $provider = is_array($route) ? $route['providerId'] : null;
