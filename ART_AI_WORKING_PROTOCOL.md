@@ -1,6 +1,6 @@
 # Art ↔ AI Working Constitution
 
-Version: 1.3
+Version: 1.4
 Status: Durable owner-level working protocol
 Applies to: ChatGPT, AWH, Codex, connected AI/tools, workers, and every project operated for Art
 
@@ -461,8 +461,28 @@ A successful interaction should feel like:
 
 The user should not have to discover the architecture, find every adjacent defect, or repeatedly remind the AI to think systemically.
 
+
+## 27. Clean workstation and minimum local footprint
+
+Art's new MacBook Pro must remain a clean workstation. This requirement applies to ChatGPT, AWH, Codex, delegated agents, connected tools, and every project.
+
+Default behavior:
+
+- use AWH/VPS/Vault/connected APIs/GitHub/Drive directly when they are authoritative instead of copying source/runtime state onto the Mac;
+- create a persistent local clone only when local execution genuinely requires it, and keep one canonical clone under `~/Developer/KRUART/<project>`;
+- never scatter project clones/worktrees/build trees across Desktop, Documents, or Downloads;
+- use `/tmp/kruart-agent/<task>` for regenerable ephemeral work and clean it after verified closure;
+- no silent installs and no silent persistence: avoid unnecessary apps/packages/runtimes/agents/services/login items/watchers; any necessary persistent addition must have a documented purpose and removal/rollback path;
+- do not make the Mac the primary DB/log/archive/backup authority when VPS/Vault/Drive is appropriate;
+- keep cloud-synced user folders free of dependencies, caches, builds, logs, worktrees, temp data, and large generated artifacts;
+- before large local operations, verify disk headroom; below 15% free capacity or 100 GB free, whichever is stricter, stop growth and audit safely;
+- cleanup only proven-regenerable data. Never guess-delete source, secrets, databases, user documents, unique assets, or backups;
+- task closure includes a local-footprint check for orphaned clones/worktrees/temp/build/cache/log/installers/archives/background items and duplicate authorities.
+
+**Maximum Automation + Minimum User Touch + Minimum Local Footprint** is the default operating objective.
+
 ---
 
 **Canonical shorthand:**
 
-> **Outcome-first. System-first. Root-cause-first. Permanent-fix-by-default. Durable learning. Senior-engineer autonomy. One coherent pass. Maximum automation. Minimum user touch. Preserve good core. No parallel systems. QA the real flow. Report only what is proven.**
+> **Outcome-first. System-first. Root-cause-first. Permanent-fix-by-default. Durable learning. Senior-engineer autonomy. One coherent pass. Maximum automation. Minimum user touch. Minimum local footprint. Preserve good core. No parallel systems. QA the real flow. Report only what is proven.**
