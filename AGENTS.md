@@ -49,20 +49,23 @@ Project-specific rules may be stricter but must not silently weaken the owner pr
 - Long-running work must use start + poll/checkpoint semantics rather than one synchronous tool request.
 - Production mutation keeps its existing explicit approval, backup, exact-revision, live-canonical-source, and rollback requirements.
 
+
 ## Clean workstation / minimum local footprint
 
-The new MacBook Pro is a **clean workstation**, not a storage/runtime dumping ground. Minimum Local Footprint is a hard safety invariant.
+Art's new MacBook Pro is a **clean creative/control workstation**, not a source/runtime warehouse. **VPS/AWH/Vault-first** and **Minimum Local Footprint** are hard safety invariants.
 
-- Prefer the current canonical source through AWH/VPS/Vault/connected APIs/GitHub/Drive. Do not clone a repository merely to inspect it or make a remote-safe documentation/config change.
-- If a persistent local clone is genuinely required on Art's new Mac, keep one canonical clone under `~/Developer/KRUART/<project>`. Do not create project clones/worktrees/build trees on Desktop, Documents, or Downloads.
-- Put ephemeral agent work under `/tmp/kruart-agent/<task>` and remove it at closure only when it is proven regenerable and no longer needed.
-- Reuse existing dependencies/caches/tools when safe. Do not silently install apps, Homebrew packages, npm/pip globals, runtimes, agents, extensions, LaunchAgents/daemons, login items, cron jobs, watchers, or background services.
-- If persistence is truly required, record purpose, owner, location, startup mechanism, and exact uninstall/rollback path.
-- Do not use the Mac as the primary database, runtime log warehouse, artifact archive, or backup store when VPS/Vault/Drive is the proper durable authority.
-- Avoid cloud-synced Desktop/Documents for `node_modules`, `vendor`, virtualenvs, build output, caches, logs, worktrees, temp data, and large generated artifacts.
-- Before large downloads/builds/clones, check free disk space. If free space is below 15% of disk capacity or below 100 GB, whichever is stricter, stop creating large local data and perform an evidence-based audit first.
-- Cleanup must be evidence-based: never delete source, credentials, databases, user documents, unique media/assets, backups, or anything whose ownership/recoverability is uncertain. Never use broad wildcard cleanup against user directories.
-- Before closure, verify no unnecessary clone/worktree/temp/build/cache/log/installer/archive/background item or duplicate backup/source-of-truth was introduced.
+- Default persistent project-clone/worktree count on the Mac is **zero**.
+- Prefer the active AWH/VPS/Project Vault authority and direct connected service/API. Use Mac-local execution only when the capability genuinely requires macOS/local hardware/software.
+- GitHub is optional upstream provenance/mirror/review/transport. It is **not** a default runtime dependency, storage authority, execution queue, or required gate. GitHub quota/outage must not block work that can proceed against an already-bound AWH/VPS/Vault revision.
+- Do not clone source onto the Mac merely to inspect/review, make remote-safe docs/config changes, build on VPS, or reach another service.
+- If a Mac-only task truly needs local source/assets, fetch only the bounded working set required; keep it temporary, return durable results to the canonical VPS/Vault/Drive authority, then remove proven-regenerable intermediates.
+- Ephemeral agent work belongs under `/tmp/kruart-agent/<task>`, not Desktop/Documents/Downloads.
+- No silent install and no silent persistence: avoid unnecessary apps/packages/runtimes/agents/services/login items/watchers. Any genuinely necessary persistent addition must have purpose, owner, location, startup mechanism, and exact removal/rollback path.
+- Do not make the Mac the primary repo store, database host, runtime log warehouse, artifact archive, or backup server.
+- Keep cloud-synced user folders free of dependencies, caches, builds, logs, worktrees, temp data, and large generated artifacts.
+- Before large local downloads/renders/builds, verify disk headroom; below 15% free capacity or 100 GB free, whichever is stricter, stop local growth and audit safely.
+- Cleanup only proven-regenerable data. Never guess-delete source, secrets, databases, user documents, unique assets, or backups.
+- Task closure must verify there is no unnecessary local clone/worktree/source copy/temp/build/cache/log/installer/archive/background item or duplicate authority left behind.
 
-When convenience conflicts with keeping Art's Mac clean and safe, choose the cleanest reversible route with the least local footprint.
+**Maximum Automation + Minimum User Touch + Minimum Local Footprint. VPS/AWH/Vault-first. GitHub-optional.**
 
