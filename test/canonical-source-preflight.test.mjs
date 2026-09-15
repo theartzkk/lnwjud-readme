@@ -182,8 +182,8 @@ test('guarded deployment wrapper proves canonical source and binds the proven SH
   assert.ok(deploy > preflight);
   assert.match(source, /--require-mutation-ready/);
   assert.match(source, /const CANONICAL_BRANCH = 'main'/);
-  assert.match(source, /const CANONICAL_REMOTE = 'origin'/);
-  assert.match(source, /const CANONICAL_REPOSITORY = 'theartzkk\/lnwjud-readme'/);
+  assert.match(source, /const CANONICAL_REMOTE = 'vps'/);
+  assert.match(source, /const CANONICAL_REPOSITORY = 'vps\/awh'/);
   assert.match(source, /AWH_RELEASE_COMMIT: provenCanonicalSha/);
   assert.doesNotMatch(source, /AWH_CANONICAL_(?:BRANCH|REMOTE|REPOSITORY)/);
   assert.match(source, /CANONICAL_SOURCE_PREFLIGHT_BLOCKED/);

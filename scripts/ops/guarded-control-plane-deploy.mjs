@@ -3,8 +3,8 @@ import { join } from 'node:path';
 
 const ROOT = process.env.AWH_SOURCE_ROOT || process.cwd();
 const CANONICAL_BRANCH = 'main';
-const CANONICAL_REMOTE = 'origin';
-const CANONICAL_REPOSITORY = 'theartzkk/lnwjud-readme';
+const CANONICAL_REMOTE = 'vps';
+const CANONICAL_REPOSITORY = 'vps/awh';
 const SHA = /^[0-9a-f]{40}$/;
 const deployScript = join(ROOT, 'deploy/awh-control-plane/deploy-control-plane.sh');
 const sourcePreflight = join(ROOT, 'scripts/ops/canonical-source-preflight.mjs');
