@@ -48,3 +48,21 @@ Project-specific rules may be stricter but must not silently weaken the owner pr
 - A platform safety/security gate is terminal for that attempted action: never bypass, disguise, or blind-retry it. Decompose the work into supported typed actions, connected tools, or the reviewed deployment authority.
 - Long-running work must use start + poll/checkpoint semantics rather than one synchronous tool request.
 - Production mutation keeps its existing explicit approval, backup, exact-revision, live-canonical-source, and rollback requirements.
+
+## Clean workstation / minimum local footprint
+
+The new MacBook Pro is a **clean workstation**, not a storage/runtime dumping ground. Minimum Local Footprint is a hard safety invariant.
+
+- Prefer the current canonical source through AWH/VPS/Vault/connected APIs/GitHub/Drive. Do not clone a repository merely to inspect it or make a remote-safe documentation/config change.
+- If a persistent local clone is genuinely required on Art's new Mac, keep one canonical clone under `~/Developer/KRUART/<project>`. Do not create project clones/worktrees/build trees on Desktop, Documents, or Downloads.
+- Put ephemeral agent work under `/tmp/kruart-agent/<task>` and remove it at closure only when it is proven regenerable and no longer needed.
+- Reuse existing dependencies/caches/tools when safe. Do not silently install apps, Homebrew packages, npm/pip globals, runtimes, agents, extensions, LaunchAgents/daemons, login items, cron jobs, watchers, or background services.
+- If persistence is truly required, record purpose, owner, location, startup mechanism, and exact uninstall/rollback path.
+- Do not use the Mac as the primary database, runtime log warehouse, artifact archive, or backup store when VPS/Vault/Drive is the proper durable authority.
+- Avoid cloud-synced Desktop/Documents for `node_modules`, `vendor`, virtualenvs, build output, caches, logs, worktrees, temp data, and large generated artifacts.
+- Before large downloads/builds/clones, check free disk space. If free space is below 15% of disk capacity or below 100 GB, whichever is stricter, stop creating large local data and perform an evidence-based audit first.
+- Cleanup must be evidence-based: never delete source, credentials, databases, user documents, unique media/assets, backups, or anything whose ownership/recoverability is uncertain. Never use broad wildcard cleanup against user directories.
+- Before closure, verify no unnecessary clone/worktree/temp/build/cache/log/installer/archive/background item or duplicate backup/source-of-truth was introduced.
+
+When convenience conflicts with keeping Art's Mac clean and safe, choose the cleanest reversible route with the least local footprint.
+
