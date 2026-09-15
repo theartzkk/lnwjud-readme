@@ -1,6 +1,6 @@
 # Art ↔ AI Working Constitution
 
-Version: 1.4
+Version: 1.5
 Status: Durable owner-level working protocol
 Applies to: ChatGPT, AWH, Codex, connected AI/tools, workers, and every project operated for Art
 
@@ -464,22 +464,23 @@ The user should not have to discover the architecture, find every adjacent defec
 
 ## 27. Clean workstation and minimum local footprint
 
-Art's new MacBook Pro must remain a clean workstation. This requirement applies to ChatGPT, AWH, Codex, delegated agents, connected tools, and every project.
+Art's new MacBook Pro is a clean creative/control workstation. This requirement applies to ChatGPT, AWH, Codex, delegated agents, connected tools, and every project.
 
 Default behavior:
 
-- use AWH/VPS/Vault/connected APIs/GitHub/Drive directly when they are authoritative instead of copying source/runtime state onto the Mac;
-- create a persistent local clone only when local execution genuinely requires it, and keep one canonical clone under `~/Developer/KRUART/<project>`;
-- never scatter project clones/worktrees/build trees across Desktop, Documents, or Downloads;
-- use `/tmp/kruart-agent/<task>` for regenerable ephemeral work and clean it after verified closure;
-- no silent installs and no silent persistence: avoid unnecessary apps/packages/runtimes/agents/services/login items/watchers; any necessary persistent addition must have a documented purpose and removal/rollback path;
-- do not make the Mac the primary DB/log/archive/backup authority when VPS/Vault/Drive is appropriate;
-- keep cloud-synced user folders free of dependencies, caches, builds, logs, worktrees, temp data, and large generated artifacts;
-- before large local operations, verify disk headroom; below 15% free capacity or 100 GB free, whichever is stricter, stop growth and audit safely;
-- cleanup only proven-regenerable data. Never guess-delete source, secrets, databases, user documents, unique assets, or backups;
-- task closure includes a local-footprint check for orphaned clones/worktrees/temp/build/cache/log/installers/archives/background items and duplicate authorities.
+- **VPS/AWH/Project Vault is the normal execution/source authority.** Use direct connected service APIs next. Use the Mac only for capabilities that genuinely require macOS, local hardware, Office/Adobe, preview/render, or interactive device work.
+- The default persistent project clone/worktree count on the Mac is **zero**. Do not create a local repository merely for inspection, review, remote-safe docs/config edits, VPS builds, or as a transit hop.
+- **GitHub is optional** upstream provenance/mirror/collaboration/review/transport. It is not a mandatory runtime dependency, storage authority, queue, or execution gate. GitHub quota/outage must not stop work that the active AWH/VPS/Vault authority can perform safely.
+- If a Mac-only task requires local source/assets, fetch only the bounded working set required, keep it temporary, return durable source/results to the correct VPS/Vault/Drive authority, and clean proven-regenerable intermediates after verified closure.
+- Put ephemeral agent work under `/tmp/kruart-agent/<task>`; do not scatter project trees across Desktop, Documents, or Downloads.
+- No silent installs and no silent persistence. Avoid unnecessary apps/packages/runtimes/agents/services/login items/watchers. Any necessary persistent addition requires a documented purpose and exact removal/rollback path.
+- Do not turn the Mac into the primary repo store, DB host, runtime log warehouse, artifact archive, or backup server.
+- Keep cloud-synced user folders free of dependencies, caches, builds, logs, worktrees, temp data, and large generated artifacts.
+- Before large local downloads/renders/builds, verify disk headroom; below 15% free capacity or 100 GB free, whichever is stricter, stop local growth and audit safely.
+- Cleanup only proven-regenerable data. Never guess-delete source, secrets, databases, user documents, unique assets, or backups.
+- Task closure includes a local-footprint check for unnecessary local source copies, orphaned worktrees/temp/build/cache/log/installers/archives/background items, and duplicate authorities.
 
-**Maximum Automation + Minimum User Touch + Minimum Local Footprint** is the default operating objective.
+**Maximum Automation + Minimum User Touch + Minimum Local Footprint. VPS/AWH/Vault-first. GitHub-optional.**
 
 ---
 
