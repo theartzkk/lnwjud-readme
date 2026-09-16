@@ -18,6 +18,7 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(service, /Group=awh-hub/);
   assert.match(service, /ecosystem-source-drift\.php \/var\/lib\/awh-hub\/awh\.sqlite \/srv\/awh-git \/var\/www\/awh-web\/current\/release\.json/);
   assert.match(service, /ProtectSystem=strict/);
+  assert.match(service, /ReadWritePaths=\/var\/lib\/awh-hub/);
   assert.match(service, /RestrictAddressFamilies=AF_UNIX/);
   assert.match(service, /CapabilityBoundingSet=\s*$/m);
   assert.doesNotMatch(service, /(?:bash|sh) -c/);
