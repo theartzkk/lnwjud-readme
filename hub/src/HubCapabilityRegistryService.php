@@ -73,6 +73,39 @@ final class HubCapabilityRegistryService
         $this->advertiseProvider('device:'.$deviceId,'DEVICE',$name,'OPTIONAL_DEVICE','LOCAL_FREE',60,$mapped,$at,$expires,['deviceId'=>$deviceId,'role'=>'optional-worker']);
     }
 
+    /** @return array{primaryRoute:string,requiresRealDeviceEvidence:bool,realSchoolEvidenceRequired:bool,generatedSchoolRealityAllowed:bool,permanentRepairRequired:bool,mixedBoundary:bool,reason:string} */
+    public static function workProfileForGoal(string $goal): array
+    {
+        $value = function_exists('mb_strtolower') ? mb_strtolower(trim($goal), 'UTF-8') : strtolower(trim($goal));
+        $namedDevice = preg_match('/(?:\\bay(?:-)?student|\\bay(?:-)?teacher|ay[- ]?(?:student|teacher|[0-9]+)|macbook|mac(?:\\s|$)|windows|เครื่อง(?:เด็ก|ครู|นักเรียน|นี้)|คอม(?:พิวเตอร์)?)/u', $value) === 1;
+        $nativeDesktop = preg_match('/(?:after effects?|photoshop|adobe|premiere|office desktop|netsupport|registry|โปรแกรม(?:บน)?เครื่อง|หน้าจอจริง|gui)/u', $value) === 1;
+        $realClient = preg_match('/(?:browser|client|กด(?:ไม่ได้|ไม่ทำงาน)|เข้า(?:เรียน|ระบบ)ไม่ได้|permission|สิทธิ์|ติดตั้ง|install)/u', $value) === 1;
+        $server = preg_match('/(?:nginx|php[- ]?fpm|vps|server|service|systemd|database|db|deploy|deployment|migration|runtime|production)/u', $value) === 1;
+        $files = preg_match('/(?:หา|ค้น|ดึง|ไฟล์|เอกสาร|รายงาน|ประเมิน|drive|project sources?|asset vault)/u', $value) === 1;
+        $schoolVisual = preg_match('/(?:รูป|ภาพ|photo|image|กิจกรรม|โรงเรียน|นักเรียน|ครู|อาคาร|ห้องเรียน|vtr|ประชาสัมพันธ์)/u', $value) === 1;
+        $failure = preg_match('/(?:fail|failed|ล้ม|พัง|ไม่ได้|ไม่ทำงาน|error|ผิดพลาด|ขัดข้อง|ซ้ำ|อีกแล้ว)/u', $value) === 1;
+
+        $device = $namedDevice || $nativeDesktop || $realClient;
+        $mixed = $device && $server;
+        $route = $mixed ? 'DIRECT_PLUS_REMOTE' : ($device ? 'REMOTE_DEVICE' : ($server ? 'VPS_DIRECT' : ($files || $schoolVisual ? 'CONNECTED_FILES' : 'AUTO_FIT')));
+        $reason = match ($route) {
+            'DIRECT_PLUS_REMOTE' => 'server evidence and real-device proof are both required',
+            'REMOTE_DEVICE' => 'the outcome depends on named-device, GUI, native-app or real-client state',
+            'VPS_DIRECT' => 'the outcome is primarily server/runtime/deployment state',
+            'CONNECTED_FILES' => $schoolVisual ? 'verified first-party school files/evidence are required before visual output' : 'the outcome is primarily retrieval from durable files or connected sources',
+            default => 'no stronger route trigger was proven; choose the best-fit authoritative capability',
+        };
+        return [
+            'primaryRoute'=>$route,
+            'requiresRealDeviceEvidence'=>$device,
+            'realSchoolEvidenceRequired'=>$schoolVisual,
+            'generatedSchoolRealityAllowed'=>false,
+            'permanentRepairRequired'=>$failure,
+            'mixedBoundary'=>$mixed,
+            'reason'=>$reason,
+        ];
+    }
+
     /** @return array<string,mixed>|null */
     public function route(string $capability, ?string $now = null): ?array
     {

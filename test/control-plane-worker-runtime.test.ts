@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { ControlPlaneWorkerClient, type WorkerProject, type WorkerTask } from '../src/control-plane-worker-client.js';
-import { buildCodexTaskInstruction, ControlPlaneWorkerRuntime, officeExecutionCapabilities } from '../src/control-plane-worker-runtime.js';
+import { buildCodexTaskInstruction, ownerWorkProfileInstruction, ControlPlaneWorkerRuntime, officeExecutionCapabilities } from '../src/control-plane-worker-runtime.js';
 import { loadOrCreateDeviceIdentity } from '../src/device-identity.js';
 import { execCommand } from '../src/process.js';
 import type { CredentialStore } from '../src/credential-store.js';
@@ -219,4 +219,22 @@ test('worker self-heals a canonical empty Vault from one uniquely named local pr
     assert.deepEqual(client.memoryFiles.map((file) => file.name).sort(), ['ARCHITECTURE.md', 'CURRENT_STATE.md', 'DECISIONS.md', 'HANDOFF.md', 'PROJECT.md', 'TASKS.md']);
     assert.equal(await readFile(join(workspace, 'wip.txt'), 'utf8'), 'must remain local and outside source archive\n');
   } finally { await rm(dataDir, { recursive: true, force: true }); await rm(workspace, { recursive: true, force: true }); }
+});
+
+
+test('owner work profile turns route evidence into explicit worker behavior without overriding authority', () => {
+  const instruction = ownerWorkProfileInstruction({
+    primaryRoute: 'DIRECT_PLUS_REMOTE',
+    requiresRealDeviceEvidence: true,
+    realSchoolEvidenceRequired: true,
+    generatedSchoolRealityAllowed: false,
+    permanentRepairRequired: true,
+    mixedBoundary: true,
+    reason: 'server evidence and real-device proof are both required',
+  });
+  assert.match(instruction, /Primary route: DIRECT_PLUS_REMOTE/);
+  assert.match(instruction, /Real device evidence required: YES/);
+  assert.match(instruction, /Generated school reality allowed: NO/);
+  assert.match(instruction, /Permanent root-cause repair required.*YES/);
+  assert.match(instruction, /verify both sides/);
 });

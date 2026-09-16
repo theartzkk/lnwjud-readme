@@ -34,4 +34,9 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(remote, /SOURCE_DRIFT_VERIFY/);
   assert.match(remote, /ecosystem-source-drift\.php" "\$DB" \/srv\/awh-git "\$WEB_POINTER\/release\.json"/);
   assert.match(telemetry, /'source-drift'.*'Source Authority Drift'.*'awh-source-drift\.timer'/);
+  const drift = await readFile(join(root, 'hub/bin/ecosystem-source-drift.php'), 'utf8');
+  assert.match(drift, /AWH main\/production drift/);
+  assert.match(drift, /AWH Owner Operating Model runtime policy drift/);
+  assert.match(drift, /AWH Owner Operating Model protocol drift/);
+
 });

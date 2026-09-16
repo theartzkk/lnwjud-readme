@@ -34,8 +34,16 @@ if (is_string($runtime) && $runtime!=='') {
     $manifest=json_decode((string)@file_get_contents($runtime),true);
     $awh=$gitRoot.'/awh.git';
     $production=is_dir($awh)?trim((string)shell_exec('git --git-dir='.escapeshellarg($awh).' rev-parse refs/heads/production 2>/dev/null')):'';
+    $main=is_dir($awh)?trim((string)shell_exec('git --git-dir='.escapeshellarg($awh).' rev-parse refs/heads/main 2>/dev/null')):'';
     $source=is_array($manifest)?strtolower((string)($manifest['sourceSha']??'')):'';
     if (!preg_match('/^[0-9a-f]{40}$/',$source) || !hash_equals($source,strtolower($production))) $findings[]='AWH runtime/Git production drift';
+    if (!preg_match('/^[0-9a-f]{40}$/',$main) || !hash_equals(strtolower($main),strtolower($production))) $findings[]='AWH main/production drift';
+    if (preg_match('/^[0-9a-f]{40}$/',$production)) {
+        $policy=(string)shell_exec('git --git-dir='.escapeshellarg($awh).' show '.escapeshellarg($production).':hub/src/HubCapabilityRegistryService.php 2>/dev/null');
+        $protocol=(string)shell_exec('git --git-dir='.escapeshellarg($awh).' show '.escapeshellarg($production).':ART_AI_WORKING_PROTOCOL.md 2>/dev/null');
+        if (!str_contains($policy,"'operatingModel'=>'KRUART_OWNER_OPERATING_MODEL'") || !str_contains($policy,"'operatingModelVersion'=>'2.0'")) $findings[]='AWH Owner Operating Model runtime policy drift';
+        if (!str_contains($protocol,'# KRUART Owner Operating Model') || !str_contains($protocol,'Version: 2.0')) $findings[]='AWH Owner Operating Model protocol drift';
+    }
 }
 $result=['schemaVersion'=>1,'ok'=>$findings===[],'projects'=>count($rows),'projectionRepos'=>count($repos),'findings'=>$findings];
 echo json_encode($result,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE).PHP_EOL;

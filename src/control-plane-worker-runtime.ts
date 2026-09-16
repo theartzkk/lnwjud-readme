@@ -94,6 +94,18 @@ export function buildCodexTaskInstruction(ownerProtocol: string, goal: string): 
   ].join('\n\n');
 }
 
+export function ownerWorkProfileInstruction(profile: import('./control-plane-worker-client.js').OwnerWorkProfile): string {
+  return [
+    'AWH OWNER WORK PROFILE — ADVISORY ROUTING EVIDENCE',
+    'Primary route: ' + profile.primaryRoute + '. ' + profile.reason,
+    'Real device evidence required: ' + (profile.requiresRealDeviceEvidence ? 'YES' : 'NO') + '.',
+    'Verified first-party school evidence required: ' + (profile.realSchoolEvidenceRequired ? 'YES' : 'NO') + '. Generated school reality allowed: NO.',
+    'Permanent root-cause repair required for this symptom: ' + (profile.permanentRepairRequired ? 'YES' : 'NO') + '.',
+    'Mixed server/device boundary: ' + (profile.mixedBoundary ? 'YES — verify both sides' : 'NO') + '.',
+    'This profile does not override approval, Source of Truth, capability availability or platform safety; it prevents generic route-order bias from replacing the evidence the task actually requires.',
+  ].join('\n');
+}
+
 export function capabilityPlanInstruction(plan: WorkerCapabilityPlan | null, workerCapabilities: readonly string[]): string {
   if (!plan || plan.selected.length === 0) return '';
   const lines = ['AWH AUTO CAPABILITY PLAN — ADVISORY, NOT AUTHORITY'];
@@ -388,8 +400,9 @@ export class ControlPlaneWorkerRuntime {
       const materialized = await this.client.materializeCentralExecutionWorkspace(execution.executionId, root); workspace = materialized.workspace;
       if (materialized.taskId !== task.taskId || materialized.projectId !== task.projectId || materialized.vaultRevisionId !== execution.vaultRevisionId) throw new Error('CENTRAL_REVISION_MISMATCH');
       await this.client.update(task.taskId, 'RUNNING', 20, 'Codex is working in an isolated AWH Vault workspace');
+      const workProfile = ownerWorkProfileInstruction(materialized.workProfile);
       const advisory = capabilityPlanInstruction(materialized.capabilityPlan, capabilities);
-      const instruction = [materialized.ownerProtocol, advisory, 'CURRENT OWNER GOAL', task.goal].filter((value) => value.trim() !== '').join('\n\n');
+      const instruction = [materialized.ownerProtocol, workProfile, advisory, 'CURRENT OWNER GOAL', task.goal].filter((value) => value.trim() !== '').join('\n\n');
       const codex = await runCodexGoal(workspace, instruction, 'workspace-write');
       if (codex.code !== 0) throw new Error('CODEX_EXECUTION_FAILED');
       await this.client.update(task.taskId, 'QA', 70, 'AWH is verifying the candidate workspace before any promotion');
