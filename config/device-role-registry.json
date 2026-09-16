@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "defaultRoutingEnabled": true,
+  "devices": [
+    {
+      "key": "vps",
+      "displayName": "ReadyIDC VPS",
+      "role": "PRIMARY_AUTHORITY",
+      "kind": "server",
+      "routingEnabled": true,
+      "requiresOwnerApproval": false,
+      "workloads": ["SOURCE_AUTHORITY", "RUNTIME", "DB", "BUILD", "BACKGROUND", "PROJECT_VAULT"],
+      "purpose": "AWH source, runtime, database, Project Vault, deployment and background execution authority"
+    },
+    {
+      "key": "old-mac",
+      "deviceId": "c5962997-ca8d-4d17-a9db-ebdcfc6d39f2",
+      "displayName": "Art’s Mac",
+      "role": "UTILITY_QA_RECOVERY",
+      "kind": "worker",
+      "routingEnabled": true,
+      "requiresOwnerApproval": false,
+      "workloads": ["UTILITY", "QA", "RECOVERY", "BROWSER_TEST", "LEGACY", "CONTROL"],
+      "purpose": "AWH utility worker, QA, restore verification and legacy compatibility; not production authority"
+    },
+    {
+      "key": "ay-teacher",
+      "deviceId": "de8c3f58-2bc5-43ea-8479-e8d1164ef2f3",
+      "displayName": "AY-TEACHER",
+      "role": "WINDOWS_UTILITY_QA_WORKER",
+      "kind": "worker",
+      "routingEnabled": true,
+      "requiresOwnerApproval": false,
+      "workloads": ["UTILITY", "QA", "WINDOWS", "CLASSROOM", "BROWSER_TEST", "OFFICE"],
+      "purpose": "Windows utility, QA and classroom-specific worker; may be offline without affecting production"
+    },
+    {
+      "key": "m5",
+      "displayName": "MacBook Pro M5",
+      "role": "VIDEO_WORKSTATION",
+      "kind": "external",
+      "routingEnabled": false,
+      "requiresOwnerApproval": true,
+      "workloads": ["VIDEO", "AFTER_EFFECTS", "MEDIA_ENCODER", "COMPOSITING", "RENDER"],
+      "purpose": "Video-only workstation; non-video use requires explicit owner approval"
+    },
+    {
+      "key": "art-pc",
+      "displayName": "Art-PC",
+      "role": "OFFSITE_BACKUP",
+      "kind": "external",
+      "routingEnabled": false,
+      "requiresOwnerApproval": true,
+      "backupConfigured": false,
+      "workloads": ["BACKUP", "RESTORE_REPLICA"],
+      "purpose": "Reserved for encrypted pull-based off-site backup; not production or source authority"
+    }
+  ]
+}

@@ -26,6 +26,7 @@ require_once __DIR__ . '/HubInfrastructureService.php';
 require_once __DIR__ . '/HubEcosystemHealthService.php';
 require_once __DIR__ . '/HubAiGovernanceService.php';
 require_once __DIR__ . '/HubWorkerHealth.php';
+require_once __DIR__ . '/HubDeviceRoleRegistry.php';
 require_once __DIR__ . '/HubStaffOperationsService.php';
 require_once __DIR__ . '/HubThaiGovernmentDocumentService.php';
 require_once __DIR__ . '/HubActionGraphService.php';
@@ -91,6 +92,7 @@ final class HubControlPlaneService
     private readonly ?HubCloudWorkflowService $cloud;
     private readonly ?HubProjectSourceAuthorityService $projectSources;
     private readonly HubBayRemoteUpdateService $bayRemoteUpdate;
+    private readonly HubDeviceRoleRegistry $deviceRoles;
 
     private function __construct(private readonly PDO $pdo, private readonly HubEnrollmentService $enrollment, private readonly string $databasePath)
     {
@@ -118,6 +120,7 @@ final class HubControlPlaneService
         try { HubProjectSourceAuthorityMigration::assertCapabilityReady($pdo, dirname(__DIR__) . '/migrations/019_project_source_authority.sql'); HubVaultSourceAuthorityMigration::assertCapabilityReady($pdo, dirname(__DIR__) . '/migrations/020_vault_source_authority.sql'); $projectSources = new HubProjectSourceAuthorityService($pdo, $cloud); } catch (Throwable) { $projectSources = null; }
         $this->projectSources = $projectSources;
         $this->bayRemoteUpdate = new HubBayRemoteUpdateService();
+        $this->deviceRoles = HubDeviceRoleRegistry::fromEnvironment();
     }
 
     public static function openExisting(string $databasePath): self
@@ -571,6 +574,7 @@ final class HubControlPlaneService
         $integrity = $this->pdo->query('PRAGMA integrity_check')->fetchColumn() === 'ok'; $foreignKeys = $this->pdo->query('PRAGMA foreign_key_check')->fetchAll() === [];
         $recovery = $this->pdo->prepare('SELECT COUNT(*) FROM auth_recovery_codes WHERE user_id = :user AND used_at IS NULL'); $recovery->execute(['user' => $userId]);
         $workers = $this->workersForUser($userId); $readyWorkers = count(array_filter($workers, static fn (array $worker): bool => in_array((string) ($worker['state'] ?? ''), ['READY', 'WORKING'], true)));
+        $deviceRoles = $this->deviceRoles->projection($workers);
         $activeTasks = (int) $this->pdo->query("SELECT COUNT(*) FROM control_tasks WHERE state NOT IN ('COMPLETED','FAILED','CANCELLED')")->fetchColumn();
         $waitingCapability = $this->centralProjectAuthoritySchemaPresent() ? (int) $this->pdo->query("SELECT COUNT(*) FROM control_task_executions WHERE state = 'WAITING_FOR_CAPABILITY' AND COALESCE(last_error_code,'') NOT IN ('BUDGET_EXHAUSTED','PROVIDER_QUOTA_EXHAUSTED')")->fetchColumn() : 0;
         $policyPaused = $this->centralProjectAuthoritySchemaPresent() ? (int) $this->pdo->query("SELECT COUNT(*) FROM control_task_executions WHERE state = 'WAITING_FOR_CAPABILITY' AND last_error_code IN ('BUDGET_EXHAUSTED','PROVIDER_QUOTA_EXHAUSTED')")->fetchColumn() : 0;
@@ -595,7 +599,7 @@ final class HubControlPlaneService
             $ai = ['state' => $aiState, 'monthlyMicrounits' => (int) ($budget['monthlyMicrounits'] ?? 0), 'usedMicrounits' => (int) ($budget['usedMicrounits'] ?? 0), 'remainingMicrounits' => (int) ($budget['remainingMicrounits'] ?? 0)];
         } catch (Throwable) { /* Owner health remains available when provider metadata is unavailable. */ }
 
-        return ['schemaVersion' => 1, 'owner' => $identity, 'product' => $this->productIdentity(), 'database' => ['state' => $integrity && $foreignKeys ? 'HEALTHY' : 'NEEDS_ATTENTION', 'schemaVersion' => (int) $this->pdo->query('PRAGMA user_version')->fetchColumn()], 'backup' => $backup, 'storage' => $storage, 'queue' => ['activeTaskCount' => $activeTasks, 'waitingCapabilityCount' => $waitingCapability, 'policyPausedCount' => $policyPaused], 'aiBudget' => $ai, 'recovery' => ['state' => (int) $recovery->fetchColumn() > 0 ? 'READY' : 'NEEDS_REGENERATION', 'message' => 'Use recovery codes only for account recovery; they are never included in exports.'], 'export' => ['available' => true, 'secretsIncluded' => false, 'sourceFilesIncluded' => false], 'workerSummary' => ['total' => count($workers), 'ready' => $readyWorkers], 'workers' => $workers];
+        return ['schemaVersion' => 1, 'owner' => $identity, 'product' => $this->productIdentity(), 'database' => ['state' => $integrity && $foreignKeys ? 'HEALTHY' : 'NEEDS_ATTENTION', 'schemaVersion' => (int) $this->pdo->query('PRAGMA user_version')->fetchColumn()], 'backup' => $backup, 'storage' => $storage, 'queue' => ['activeTaskCount' => $activeTasks, 'waitingCapabilityCount' => $waitingCapability, 'policyPausedCount' => $policyPaused], 'aiBudget' => $ai, 'recovery' => ['state' => (int) $recovery->fetchColumn() > 0 ? 'READY' : 'NEEDS_REGENERATION', 'message' => 'Use recovery codes only for account recovery; they are never included in exports.'], 'export' => ['available' => true, 'secretsIncluded' => false, 'sourceFilesIncluded' => false], 'workerSummary' => ['total' => count($workers), 'ready' => $readyWorkers], 'workers' => $workers, 'deviceRoles' => $deviceRoles];
     }
 
     /** Owner-only trust projection over existing audit, approval, artifact and checkpoint authorities. */
@@ -692,6 +696,7 @@ final class HubControlPlaneService
             'aiRoutes24h' => $routes,
             'workerSummary' => $health['workerSummary'],
             'workers' => $health['workers'] ?? [],
+            'deviceRoles' => $health['deviceRoles'] ?? ['schemaVersion'=>1,'state'=>'UNAVAILABLE','devices'=>[]],
             'autonomousWork' => $autonomous,
             'executionAuthority' => $executionAuthority,
             'activity' => $activity,
@@ -2291,12 +2296,13 @@ final class HubControlPlaneService
     {
         $sql = "SELECT w.device_id, w.state, w.last_seen_at, w.capabilities_json, w.busy_task_id, d.display_name, d.platform, d.arch, COUNT(DISTINCT dpm.project_id) AS project_count FROM control_workers w JOIN devices d ON d.device_id = w.device_id JOIN device_project_memberships dpm ON dpm.device_id = w.device_id AND dpm.revoked_at IS NULL JOIN user_project_memberships upm ON upm.project_id = dpm.project_id AND upm.user_id = :user AND upm.revoked_at IS NULL WHERE d.revoked_at IS NULL GROUP BY w.device_id, w.state, w.last_seen_at, w.capabilities_json, w.busy_task_id, d.display_name, d.platform, d.arch ORDER BY d.display_name, w.device_id LIMIT 100";
         $q = $this->pdo->prepare($sql); $q->execute(['user' => $userId]); $nowAt = time();
-        return array_map(static function (array $row) use ($nowAt): array {
+        $workers = array_map(static function (array $row) use ($nowAt): array {
             $state = HubWorkerHealth::effectiveState($row['state'] ?? null, $row['last_seen_at'] ?? null, gmdate('c', $nowAt));
             $capabilities = []; try { $raw = json_decode((string) $row['capabilities_json'], true, 32, JSON_THROW_ON_ERROR); if (is_array($raw) && array_is_list($raw)) foreach ($raw as $capability) if (is_string($capability) && preg_match('/^[a-z][a-z0-9:._-]{0,63}$/', $capability)) $capabilities[] = $capability; } catch (Throwable) {}
             $capabilities = array_values(array_unique($capabilities));
             return ['deviceId' => (string) $row['device_id'], 'displayName' => (string) $row['display_name'], 'platform' => (string) $row['platform'], 'arch' => (string) $row['arch'], 'state' => $state, 'lastSeenAt' => (string) $row['last_seen_at'], 'capabilities' => $capabilities, 'detectedTools' => self::workerToolLabels($capabilities), 'boundProjectCount' => (int) $row['project_count'], 'activity' => $state === 'WORKING' ? 'BUSY' : ($state === 'READY' ? 'ONLINE' : ($state === 'STALE' ? 'STALE' : 'OFFLINE'))];
         }, $q->fetchAll());
+        return $this->deviceRoles->decorateWorkers($workers);
     }
 
     /** @param list<string> $capabilities @return list<string> */
@@ -2360,7 +2366,7 @@ final class HubControlPlaneService
                 }
             }
             $stage = 'select';
-            $worker = $this->pdo->prepare('SELECT state, busy_task_id, last_seen_at, capabilities_json FROM control_workers WHERE device_id = :device');
+            $worker = $this->pdo->prepare('SELECT w.state, w.busy_task_id, w.last_seen_at, w.capabilities_json, d.display_name FROM control_workers w JOIN devices d ON d.device_id = w.device_id WHERE w.device_id = :device');
             $worker->execute(['device' => $auth['deviceId']]);
             $workerRow = $worker->fetch();
             if (!is_array($workerRow)) throw new HubControlPlaneException('Worker heartbeat is required before claiming work', 'WORKER_NOT_READY');
@@ -2374,6 +2380,10 @@ final class HubControlPlaneService
                     return ['schemaVersion' => 1, 'task' => $this->taskById((string) $activeTask['task_id'], (string) $auth['userId'])];
                 }
                 $this->pdo->prepare("UPDATE control_workers SET state = 'READY', busy_task_id = NULL, last_seen_at = :at WHERE device_id = :device")->execute(['at' => $at, 'device' => $auth['deviceId']]);
+            }
+            if (!$this->deviceRoles->claimAllowed((string) $auth['deviceId'], (string) ($workerRow['display_name'] ?? ''))) {
+                $this->pdo->exec('COMMIT'); $transactionOpen = false;
+                return ['schemaVersion' => 1, 'task' => null];
             }
             $row = false;
             // M12 central Vault work is claimable only by a currently

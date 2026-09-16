@@ -46,6 +46,7 @@ const tests = [
   'hub/tests/sustainability-foundation.php',
   'hub/tests/staff-operations.php',
   'hub/tests/staff-governor-loop.php',
+  'hub/tests/device-role-registry.php',
 ];
 
 const php = await resolveExecutable('php');

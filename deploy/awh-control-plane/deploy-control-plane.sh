@@ -149,7 +149,7 @@ WEB_RELEASE_FILES=$(node "$ROOT/scripts/list-web-release-files.mjs" | tr '\n' ' 
 FILES="$FILES $WEB_RELEASE_FILES"
 # Desktop artifact paths are declared before the build so remote-reuse mode can
 # deliberately exclude stale local packages while preserving verified lineage.
-FILES="$FILES hub/src/HubStorageGovernanceService.php hub/src/HubExecutionTriageService.php hub/src/HubStaffGovernorService.php hub/src/HubWorkerHealth.php hub/src/HubStaffOperationsService.php hub/src/HubActionGraphService.php hub/src/HubConversationReferentService.php deploy/awh-control-plane/verify-web-release.php dist-web/navigation.js"
+FILES="$FILES hub/src/HubStorageGovernanceService.php hub/src/HubExecutionTriageService.php hub/src/HubStaffGovernorService.php hub/src/HubWorkerHealth.php hub/src/HubDeviceRoleRegistry.php hub/src/HubStaffOperationsService.php hub/src/HubActionGraphService.php hub/src/HubConversationReferentService.php deploy/awh-control-plane/verify-web-release.php dist-web/navigation.js"
 FILES="$FILES dist-web/responsive-layout.css dist-web/review.html dist-web/review.css dist-web/review.js dist-web/panel.html dist-web/panel.css dist-web/panel.js"
 FILES="$FILES hub/src/HubCloudFirstMigration.php hub/src/HubCloudWorkflowService.php hub/migrations/017_cloud_first_control.sql hub/bin/migrate-cloud-first.php .github/workflows/awh-cloud-qa.yml .github/workflows/awh-cloud-review.yml"
 FILES="$FILES hub/src/HubConversationLifecycleMigration.php hub/migrations/018_conversation_lifecycle.sql hub/bin/migrate-conversation-lifecycle.php"
