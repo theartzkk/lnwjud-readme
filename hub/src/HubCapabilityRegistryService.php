@@ -17,7 +17,7 @@ final class HubCapabilityRegistryService
     private const AVAILABILITY = ['ALWAYS_ON','ON_DEMAND','OPTIONAL_DEVICE'];
     private const COST = ['INCLUDED','PREPAID','LOCAL_FREE','METERED'];
     private const ENVELOPE_STATES = ['OPEN','ACTIVE','WAITING','RELEASED','CONFLICT','CANCELLED'];
-    public const EXECUTION_POLICY_VERSION = '1.2.0';
+    public const EXECUTION_POLICY_VERSION = '1.3.0';
 
     public function __construct(private readonly PDO $pdo) {}
 
@@ -205,7 +205,7 @@ final class HubCapabilityRegistryService
     /** @return array<string,mixed> */
     public static function executionPolicy(): array
     {
-        return ['version'=>self::EXECUTION_POLICY_VERSION,'enforcement'=>'MANDATORY','userRestatementRequired'=>false,'planBeforeCall'=>true,'batchFirst'=>true,'maxValuePerCall'=>true,'reuseKnownState'=>true,'deltaFirst'=>true,'redundantPolling'=>false,'blindRetry'=>false,'oneSetupManyUsefulActions'=>true,'remoteDesktopClass'=>'EXPENSIVE_JUSTIFIED_ROUTE','unrestrictedWorkerShell'=>false,'cleanExit'=>true,'minimumUserInterruption'=>true];
+        return ['version'=>self::EXECUTION_POLICY_VERSION,'enforcement'=>'MANDATORY','userRestatementRequired'=>false,'planBeforeCall'=>true,'batchFirst'=>true,'maxValuePerCall'=>true,'reuseKnownState'=>true,'deltaFirst'=>true,'redundantPolling'=>false,'blindRetry'=>false,'oneSetupManyUsefulActions'=>true,'remoteDesktopClass'=>'ALLOWED_HIGH_VALUE_ROUTE','explicitRemoteIntentAllowed'=>true,'headlessExhaustionRequiredBeforeRemote'=>false,'remoteMissionRequired'=>true,'remotePrepareBeforeCall'=>true,'remoteBatchRelatedActions'=>true,'remoteReuseSession'=>true,'remoteVerifyRealOutput'=>true,'remoteRecordDelta'=>true,'remoteTransitHopAllowed'=>false,'quotaAware'=>true,'quotaStateMustBeObserved'=>true,'quotaAdaptiveMode'=>true,'remoteValuePerInvocationMetric'=>true,'permanentFixDefault'=>true,'rootCauseRequired'=>true,'adjacentBlockerAudit'=>true,'regressionRequired'=>true,'temporaryWorkaroundMustBeTracked'=>true,'schoolVisualTruthRequired'=>true,'schoolRealMediaFirst'=>true,'generatedSchoolRealityAllowed'=>false,'foreignSchoolSubstitutionAllowed'=>false,'unrestrictedWorkerShell'=>false,'cleanExit'=>true,'minimumUserInterruption'=>true];
     }
 
     /** @return list<string> */

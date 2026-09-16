@@ -29,6 +29,30 @@ Project-specific rules may be stricter but must not silently weaken the owner pr
 - Do not reinterpret the Golden KRUART family, regenerate approved logos, change the canonical school spelling, or introduce a second design system/framework merely to achieve visual consistency.
 - Exact-revision rendered evidence and the existing deployment/rollback gates remain required; source inspection alone cannot classify a visual change as PASS.
 
+### Remote Mission Efficiency — mandatory
+
+- Remote Desktop / Desktop Commander remains available whenever Art explicitly requests it or when real device/UI evidence materially advances the task. Never require all headless routes to fail first.
+- Treat every invocation as one bounded Remote Mission, not one micro-command: prepare from current Source of Truth and known state, define objective + adjacent checks + safety bounds + success criteria, batch related safe actions, reuse the active session, verify real output, record the observed delta, and cleanly exit.
+- Quota behavior must be evidence-driven. Observe actual quota/availability before conserving. Under normal capacity keep normal access; under constrained capacity increase batching and remove redundant exploration/polling rather than silently lowering completion quality.
+- Never blind-retry Remote Desktop. Distinguish quota, auth, permission, timeout, offline-device and platform-safety blockers before the next call.
+- Device workers remain capability-bounded and must never become unrestricted remote shells.
+
+### Permanent Fix / Root-Cause Closure — mandatory
+
+- Solve the durable cause, not merely the current gate. A command, CI check, deployment, dialog or one-off workflow passing is not sufficient closure when the underlying defect can recur.
+- Audit the full affected path: root cause, shared boundary/config/data contract, adjacent blockers, regression surface, compatibility, rollback and real user-visible behavior.
+- Prefer the smallest durable shared fix over repeated local patches. Do not perform unrelated large refactors where the existing architecture is healthy.
+- A temporary workaround is allowed only when a durable repair cannot safely be completed in the current scope. Mark it as temporary, preserve the real root-cause evidence, state the removal/closure condition, and never silently promote it to the permanent solution.
+- Closure requires real QA of the artifact/runtime/field behavior where feasible, not merely a successful command or test harness.
+
+### Global Visual Truth — mandatory for every project
+
+- Any content that represents โรงเรียนบ้านเอือดใหญ่, its grounds, classrooms, staff, students, activities, documents, devices, systems or real events must use authentic first-party school media/evidence from current Project Sources, KRUART Asset Vault, Drive/files, approved captures or other verified school-owned sources whenever that content is presented as real.
+- Do not use AI-generated images, stock photos, or images of another school/place/person as a substitute for school reality. Never imply such media is a real photo/event/location from โรงเรียนบ้านเอือดใหญ่.
+- If real media is missing, search/reuse verified school sources first. Missing evidence is not permission to fabricate a replacement.
+- Generated illustration/cartoon/concept media is allowed only when Art explicitly requests that mode or the artifact is clearly illustrative; it must not be presented as factual documentary evidence.
+- Preserve original framing/content unless the task explicitly requires editing. For documentary/VTR/evaluation work, keep full originals available before any crop or derivative.
+
 ## Canonical source rule
 
 - Project source authority is singular and must be read from the current AWH Source Authority state. When authority is `AWH_VAULT`, the deliberately bound active Vault revision/content identity is the canonical execution source; GitHub repository/ref data remains mirror/upstream provenance and a later GitHub observation must not steal authority.
@@ -40,11 +64,12 @@ Project-specific rules may be stricter but must not silently weaken the owner pr
 
 ## Block-Free execution rule
 
-- Route work in this order when capabilities permit: AWH server-native/VPS typed execution → direct connected API/connector → central Codex/specialist against a Vault revision → native device-only capability → Remote Desktop only for inherently interactive/device-local work.
-- An online device must never become a hidden dependency for Cloud-capable work. Remote Desktop is prohibited as a transit hop to VPS/GitHub/API/CLI when a direct approved route exists.
+- When Art has not selected a route and equivalent capabilities are available, prefer AWH server-native/VPS typed execution → direct connected API/connector → central Codex/specialist against a Vault revision → native device capability → Remote Desktop / Desktop Commander. This is a default routing preference, not a ban: explicit Remote Desktop intent is allowed immediately.
+- An online device must never become a hidden dependency for Cloud-capable work. Remote Desktop is prohibited only as a gratuitous transit hop to VPS/GitHub/API/CLI when a direct approved route exists; this does not prohibit an explicitly requested or genuinely device-local Remote Mission.
 - GitHub and hosted Actions are optional collaboration/verification paths unless the active source authority or requested operation genuinely requires them; local/VPS QA remains valid evidence when the canonical contract supports it.
 - Prefer typed/approved operations over free-form shell. For repository QA use `project_task_start` with `qa-fast`, `qa-local`, or `qa-full`, then poll task status/logs.
 - When only a terminal boundary is available, prefer the canonical short package scripts (`npm run qa:fast`, `npm run qa:local`, `npm run qa:full`, `npm run typecheck`, `npm run build`) instead of composing raw `node`, shell pipelines, or compound deploy commands.
+- ReadyIDC AWH repository QA/build must use the bounded AWH toolchain at /opt/awh-toolchain/node/bin when present. Do not use the EOL /usr/bin/node runtime to satisfy a repository contract that requires Node >=20; keep the AWH toolchain isolated rather than replacing the system Node globally.
 - A platform safety/security gate is terminal for that attempted action: never bypass, disguise, or blind-retry it. Decompose the work into supported typed actions, connected tools, or the reviewed deployment authority.
 - Long-running work must use start + poll/checkpoint semantics rather than one synchronous tool request.
 - Production mutation keeps its existing explicit approval, backup, exact-revision, live-canonical-source, and rollback requirements.

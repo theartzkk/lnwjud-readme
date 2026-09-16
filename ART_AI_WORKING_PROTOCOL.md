@@ -119,7 +119,7 @@ For ChatGPT, AWH, Codex and delegated agents, choose the lowest-friction authori
 2. **Direct connected provider API/connector** when the work belongs to that service, such as Drive, Gmail, a deployment provider, or another explicitly connected system.
 3. **Central engineering specialist / Codex** against an explicit Vault revision when code-level work requires specialist execution beyond the bounded VPS-native capability.
 4. **Native device worker** only for a capability that truly exists only on that device, operating system, hardware, or installed application, such as Microsoft Office desktop export, school-lab software, Registry/device state, or physical-device verification.
-5. **Remote Desktop / Desktop Commander** only when interactive device-local inspection/action is inherently required or every typed/headless route that preserves the same authority is unavailable. Never choose it merely because a device is online.
+5. **Remote Desktop / Desktop Commander** when Art explicitly requests it or when interactive/device-local evidence materially advances the work. It is an allowed route, not a capability to avoid: do not require every typed/headless route to fail first. Once invoked, maximize value per invocation by preparing from current evidence, batching related safe work, reusing the active session, verifying the real result, recording the delta and exiting cleanly.
 6. **GitHub** is upstream provenance, mirror, collaboration and review unless the active project source authority or the requested action specifically requires GitHub. Hosted CI/Actions must not be a mandatory runtime dependency when equivalent bounded local/VPS QA is available.
 
 Routing invariants:
@@ -130,6 +130,32 @@ Routing invariants:
 - An online Mac/Windows worker is optional for Cloud-capable work and must never become a hidden dependency.
 - Do not create a second queue, executor, source authority or data store merely to avoid a blocked route.
 - If a platform safety/security gate blocks one attempted route, do not disguise or blind-retry it. Move only to another already-approved route that preserves the same authority, scope and safety contract.
+
+### Remote Mission efficiency contract
+
+- Availability is preserved. Remote Desktop / Desktop Commander may be selected whenever Art explicitly asks for it or the task benefits materially from real device/UI state.
+- Prepare before calling: reuse current Source of Truth, prior evidence, device state, logs and known constraints before opening a remote session.
+- One invocation covers one coherent problem cluster: diagnosis, primary fix, safe adjacent blockers, regression checks, real-output QA, delta capture and cleanup.
+- Reuse an active remote session before reconnecting for another related micro-action.
+- Quota conservation uses observed facts only. Do not assume scarcity; when capacity is actually constrained, batch more aggressively and remove redundant exploration without skipping required QA.
+- Classify auth, permission, timeout, offline-device, platform-safety and quota failures before retrying.
+- A device may supply its genuine local capability but must not become a gratuitous bridge to VPS/API/GitHub/CLI when an approved direct route exists.
+
+### Permanent Fix / Root-Cause Closure contract
+
+- The default outcome is a durable repair. Passing the current gate, suppressing one symptom, restarting once, or patching one occurrence does not close a recurring system defect.
+- Establish root cause from evidence, then inspect shared engine/config/data contracts and adjacent blockers before choosing the implementation.
+- Prefer a central/shared correction when multiple symptoms share one cause, while preserving backward compatibility and avoiding gratuitous refactoring.
+- Regression and real-output QA are part of the fix. Production/runtime readiness cannot be inferred from command success alone.
+- Any unavoidable temporary workaround must be explicitly tracked as temporary with its underlying cause, risk, owner/next action and a clear removal condition.
+
+### Global Visual Truth contract
+
+- Across AWH, KRUART, BAY, LearnLab, School Website, VTR, PR, documents and every future project, factual school visuals must come from verified first-party โรงเรียนบ้านเอือดใหญ่ sources.
+- Do not substitute AI-generated, stock, unrelated-person, unrelated-building or other-school imagery and present it as real school evidence.
+- Search Project Sources, KRUART Asset Vault, Drive/files and approved real captures before creating any substitute.
+- Generated illustration/cartoon/concept imagery is permitted only when explicitly requested or clearly presented as illustration, never as documentary truth.
+- If required real visual evidence is unavailable, preserve the gap and report it rather than inventing reality.
 
 ## 7. Tool autonomy without losing safety
 

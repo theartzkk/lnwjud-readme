@@ -16,14 +16,22 @@ test('loads the durable Art AI owner working constitution', async () => {
   assert.match(protocol, /Execution routing authority/);
   assert.match(protocol, /AWH_VAULT.*must not be silently stolen/);
   assert.match(protocol, /GitHub quota\/outage must not block work/);
-  assert.match(protocol, /Remote Desktop \/ Desktop Commander.*only when interactive device-local/s);
+  assert.match(protocol, /Remote Desktop \/ Desktop Commander.*when Art explicitly requests it/s);
+  assert.match(protocol, /Remote Mission efficiency contract/);
+  assert.match(protocol, /Permanent Fix \/ Root-Cause Closure contract/);
+  assert.match(protocol, /Global Visual Truth contract/);
+  assert.match(protocol, /do not require every typed\/headless route to fail first/);
 });
 
 test('agent entry contract preserves Vault-first and device-optional routing', async () => {
   const agents = await readFile(new URL('../AGENTS.md', import.meta.url), 'utf8');
   assert.match(agents, /Project source authority is singular/);
   assert.match(agents, /AWH_VAULT/);
-  assert.match(agents, /Remote Desktop is prohibited as a transit hop/);
+  assert.match(agents, /Remote Desktop \/ Desktop Commander remains available/);
+  assert.match(agents, /Remote Desktop is prohibited only as a gratuitous transit hop/);
+  assert.match(agents, /Permanent Fix \/ Root-Cause Closure/);
+  assert.match(agents, /Global Visual Truth/);
+  assert.match(agents, /AI-generated images, stock photos, or images of another school/);
   assert.match(agents, /online device must never become a hidden dependency/);
   assert.doesNotMatch(agents, /`main` on the reviewed .+ is the AWH canonical source branch/);
 });

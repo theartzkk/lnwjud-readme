@@ -62,12 +62,15 @@ These repositories are deliberately recorded here so they cannot disappear when 
 
 ### Integration invariants
 
+- Global Visual Truth applies to every lane: factual โรงเรียนบ้านเอือดใหญ่ visuals must use verified first-party school media. AI-generated, stock, other-school or unrelated imagery may not be presented as documentary reality; illustrative media is allowed only when explicitly requested or clearly non-documentary.
+- Permanent Fix / Root-Cause Closure applies to every lane: do not close work because one gate passed; resolve the durable cause, audit adjacent shared assumptions, run regression/real QA, and track any temporary workaround until removal.
+
 - Integrate external projects through existing AWH Skills/Capability Registry/provider/QA boundaries.
 - Do not fork an external project into a second AWH Core.
 - Preserve existing Task/Execution/lease/Vault/approval/audit authorities.
 - AWH/VPS remains the preferred execution plane for Cloud-capable work.
 - GitHub remains source mirror/collaboration/review unless the active source contract genuinely requires GitHub.
-- Remote Desktop remains device-only fallback and must not be used as transit to VPS/API/GitHub.
+- Remote Desktop / Desktop Commander remains an allowed interactive/device route and explicit owner-selected route. Do not require headless-route exhaustion before use. Every invocation follows the Remote Mission efficiency contract: prepare → batch related safe work → real-output QA → delta capture → clean exit. Device-as-transit to VPS/API/GitHub remains prohibited when a direct approved route exists.
 - Every promoted integration must record source repository, exact revision/version, license, enabled capability, rollback/disable path, and whether it touches user data.
 
 ## Target ecosystem surface
