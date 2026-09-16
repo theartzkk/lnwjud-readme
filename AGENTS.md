@@ -22,6 +22,19 @@ Precedence:
 
 Project-specific rules may be stricter but must not silently weaken the owner protocol.
 
+## KRUART Owner Operating Model — mandatory inheritance
+
+ART_AI_WORKING_PROTOCOL.md is the single owner-level operating authority. Every task must apply its policy families together: Outcome & Continuity; Authority & Source of Truth; System Analysis & Permanent Repair; Tool-Fit Routing; Resource Efficiency; Device & Remote Mission; Evidence & Visual Truth; QA & Truthful Closure; Safety/Integrity/Rollback; Clean Environment/Lifecycle; Maximum Automation & Minimum User Touch.
+
+Do not optimize one family by breaking another:
+- VPS-first is not a ban on real-device work.
+- Remote efficiency is not Remote avoidance.
+- quota efficiency is not lower QA.
+- one coherent pass is not permission for unrelated scope expansion.
+- permanent fix is not permission for gratuitous refactoring.
+- automation is not permission to bypass approval, data integrity, rollback or platform safety.
+
+
 ## Design governance rule
 
 - For any UI, UX, CSS, component, layout, navigation, typography, logo, illustration, banner, responsive, accessibility or visual-regression work, read `design/DESIGN.md`, `design/UX-ACCEPTANCE.md`, `design/AGENT-DESIGN-RULES.md` and the matching `design/overlays/` file before editing.
@@ -35,6 +48,9 @@ Project-specific rules may be stricter but must not silently weaken the owner pr
 - Treat every invocation as one bounded Remote Mission, not one micro-command: prepare from current Source of Truth and known state, define objective + adjacent checks + safety bounds + success criteria, batch related safe actions, reuse the active session, verify real output, record the observed delta, and cleanly exit.
 - Quota behavior must be evidence-driven. Observe actual quota/availability before conserving. Under normal capacity keep normal access; under constrained capacity increase batching and remove redundant exploration/polling rather than silently lowering completion quality.
 - Never blind-retry Remote Desktop. Distinguish quota, auth, permission, timeout, offline-device and platform-safety blockers before the next call.
+- Remote-preferred triggers override the generic route ordering: when a task references a named managed Mac/Windows/student/teacher device, requires GUI/application state, Adobe/Office/native desktop work, installation or permission inspection, real browser/client state, physical-device behavior, or field QA, select Remote Desktop / Desktop Commander proactively when that device is online and the capability is available.
+- A concrete device reference plus a request to inspect, fix, configure, verify or use that device is sufficient Remote intent; Art does not need to repeat the words "use Remote Desktop".
+- For mixed server + device incidents, inspect authoritative server-side evidence directly when useful, then open one prepared Remote Mission for the device-local half. Backend health must never substitute for real device proof.
 - Device workers remain capability-bounded and must never become unrestricted remote shells.
 
 ### Permanent Fix / Root-Cause Closure — mandatory

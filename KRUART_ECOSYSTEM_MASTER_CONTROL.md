@@ -15,6 +15,7 @@ It is **not** a replacement for each project's exact live Source of Truth. Befor
 - Never infer current readiness from chat memory, a dated checkpoint, a folder name, or a stale worktree.
 - Do not create duplicate Core/Auth/DB/Queue/Notification/Memory/Source Authority systems to work around a blocked lane.
 - External GitHub projects are capability/reference inputs only unless the Main Orchestration Chat explicitly promotes a bounded integration.
+- KRUART Owner Operating Model 2.0 applies to every lane and every mutation owner. Lane-specific rules may add constraints but cannot replace its Source-of-Truth, permanent-fix, tool-fit routing, resource-efficiency, real-evidence, real-QA, clean-environment or minimum-user-touch contracts.
 
 ## Status vocabulary
 

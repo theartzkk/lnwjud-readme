@@ -9,6 +9,10 @@ import { buildProjectContext, initializeProject } from '../src/project-registry.
 test('loads the durable Art AI owner working constitution', async () => {
   const protocol = await loadOwnerProtocol();
   assert.match(protocol, /Art ↔ AI Working Constitution/);
+  assert.match(protocol, /KRUART Owner Operating Model/);
+  assert.match(protocol, /Outcome & continuity/);
+  assert.match(protocol, /Tool-fit execution routing/);
+  assert.match(protocol, /Maximum automation & minimum user touch/);
   assert.match(protocol, new RegExp(`Version: ${OWNER_PROTOCOL_VERSION.replace('.', '\\.')}`));
   assert.match(protocol, /System-first, patch-second/i);
   assert.match(protocol, /ChatGPT-direct contract/);
@@ -16,11 +20,12 @@ test('loads the durable Art AI owner working constitution', async () => {
   assert.match(protocol, /Execution routing authority/);
   assert.match(protocol, /AWH_VAULT.*must not be silently stolen/);
   assert.match(protocol, /GitHub quota\/outage must not block work/);
-  assert.match(protocol, /Remote Desktop \/ Desktop Commander.*when Art explicitly requests it/s);
+  assert.match(protocol, /Remote Desktop \/ Desktop Commander.*is preferred when the requested outcome depends on a named managed device/s);
   assert.match(protocol, /Remote Mission efficiency contract/);
+  assert.match(protocol, /Remote-preferred trigger matrix/);
   assert.match(protocol, /Permanent Fix \/ Root-Cause Closure contract/);
   assert.match(protocol, /Global Visual Truth contract/);
-  assert.match(protocol, /do not require every typed\/headless route to fail first/);
+  assert.match(protocol, /do not require every typed\/headless route to fail first/i);
 });
 
 test('agent entry contract preserves Vault-first and device-optional routing', async () => {
