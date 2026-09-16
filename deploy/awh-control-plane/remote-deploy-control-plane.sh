@@ -1087,5 +1087,15 @@ if test "$CLOUD_FIRST" = 1; then stage CLOUD_FIRST_ROUTE; test "$(sudo sqlite3 "
 if test "$SELF_SUFFICIENT_AI" = 1; then stage AI_GOVERNANCE_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/ai" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; fi
 stage CONTROL_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/session" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403
 if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1 || test "$AUTOMATIONS" = 1 || test "$SELF_SUFFICIENT_AI" = 1 || test "$ACCOUNT_HOSTING" = 1 || test "$CLOUD_FIRST" = 1 || test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1; then DB_MUTATED=1; stage PROJECT_VAULT_SOURCE_SYNC; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_PROJECT_VAULT_ROOT=/var/lib/awh-hub/project-vault /usr/bin/php "$RELEASE/hub/bin/sync-deployed-source-vault.php" "$DB" "$RELEASE/.awh-build/awh-source.zip" "$RELEASE_COMMIT" >/dev/null; fi
+if test -d /srv/awh-git/awh.git; then
+  git --git-dir=/srv/awh-git/awh.git cat-file -e "$RELEASE_COMMIT^{commit}"
+  current_production=$(git --git-dir=/srv/awh-git/awh.git rev-parse refs/heads/production 2>/dev/null || true)
+  if test -n "$current_production"; then
+    git --git-dir=/srv/awh-git/awh.git merge-base --is-ancestor "$current_production" "$RELEASE_COMMIT"
+    git --git-dir=/srv/awh-git/awh.git update-ref refs/heads/production "$RELEASE_COMMIT" "$current_production"
+  else
+    git --git-dir=/srv/awh-git/awh.git update-ref refs/heads/production "$RELEASE_COMMIT"
+  fi
+fi
 stage EXECUTION_AUTHORITY_RELEASE; release_deploy_authority success; stage EXECUTION_AUTHORITY_RELEASED
 SUCCESS=1; printf '%s\n' 'DEPLOY_RESULT=PASS'; trap - EXIT HUP INT TERM; sudo rm -f "$REMOTE_STAGE" "$NGINX_BACKUP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" "$CONTROL_INCLUDE_TMP" "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP"; exit 0

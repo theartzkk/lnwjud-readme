@@ -54,6 +54,11 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(sourceSync, /release-vault:/);
   assert.match(sourceSync, /HubCentralProjectAuthorityMigration::assertCapabilityReady/);
   assert.match(sourceSync, /expireStalePromotionApprovals/);
+  assert.match(sourceSync, /HubProjectSourceAuthorityService/);
+  assert.match(sourceSync, /bindVault\(\$projectId, \(string\) \$state\['activeRevisionId'\]/);
+  assert.match(remoteSource, /cat-file -e "\$RELEASE_COMMIT\^\{commit\}"/);
+  assert.match(remoteSource, /merge-base --is-ancestor "\$current_production" "\$RELEASE_COMMIT"/);
+  assert.match(remoteSource, /update-ref refs\/heads\/production/);
   assert.match(vaultService, /function expireStalePromotionApprovals/);
   assert.doesNotMatch(sourceSync, /in_array\(\$schemaVersion/);
   assert.match(remoteSource, /class_exists\("ZipArchive"\).*\? 0 : 1\);/);
