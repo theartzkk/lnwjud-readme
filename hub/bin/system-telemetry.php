@@ -118,6 +118,7 @@ function telemetrySnapshot(): array
         ['key' => 'php-fpm', 'label' => 'PHP Runtime', 'unit' => 'php8.3-fpm.service'],
         ['key' => 'native-executor', 'label' => 'AWH Agent Runtime', 'unit' => 'awh-native-executor.timer'],
         ['key' => 'backup', 'label' => 'Automatic Backup', 'unit' => 'awh-backup.timer'],
+        ['key' => 'source-drift', 'label' => 'Source Authority Drift', 'unit' => 'awh-source-drift.timer'],
         ['key' => 'fail2ban', 'label' => 'Login Protection', 'unit' => 'fail2ban.service'],
         ['key' => 'updates', 'label' => 'Automatic Updates', 'unit' => 'unattended-upgrades.service'],
     ];

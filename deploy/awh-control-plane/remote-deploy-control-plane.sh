@@ -79,6 +79,8 @@ EXECUTOR_SERVICE_BACKUP=$EXECUTOR_BACKUP_ROOT/awh-native-executor.service.$RELEA
 EXECUTOR_TIMER_BACKUP=$EXECUTOR_BACKUP_ROOT/awh-native-executor.timer.$RELEASE_ID
 HOSTING_SERVICE_UNIT=/etc/systemd/system/awh-hosting-operator.service
 HOSTING_TIMER_UNIT=/etc/systemd/system/awh-hosting-operator.timer
+SOURCE_DRIFT_SERVICE_UNIT=/etc/systemd/system/awh-source-drift.service
+SOURCE_DRIFT_TIMER_UNIT=/etc/systemd/system/awh-source-drift.timer
 HOSTING_SERVICE_BACKUP=$EXECUTOR_BACKUP_ROOT/awh-hosting-operator.service.$RELEASE_ID
 HOSTING_TIMER_BACKUP=$EXECUTOR_BACKUP_ROOT/awh-hosting-operator.timer.$RELEASE_ID
 TOPOLOGY_ARCHIVE=/var/backups/awh-hub/topology-cleanup-$RELEASE_ID
@@ -474,6 +476,7 @@ if test "$AUTOMATIONS" = 1 || test "$SELF_SUFFICIENT_AI" = 1 || test "$CLOUD_FIR
 if test "$CLOUD_FIRST" = 1 || test "$CONVERSATION_LIFECYCLE" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-cloud-first.php"; sudo test -f "$RELEASE/hub/migrations/017_cloud_first_control.sql"; sudo test -f "$RELEASE/hub/src/HubCloudFirstMigration.php"; sudo test -f "$RELEASE/hub/src/HubCloudWorkflowService.php"; sudo test -s "$RELEASE/.awh-build/awh-source.zip"; fi
 if test "$CONVERSATION_LIFECYCLE" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-conversation-lifecycle.php"; sudo test -f "$RELEASE/hub/migrations/018_conversation_lifecycle.sql"; sudo test -f "$RELEASE/hub/src/HubConversationLifecycleMigration.php"; sudo test -f "$RELEASE/hub/src/HubAiAttachmentPreparer.php"; fi
 if test "$PROJECT_SOURCE_AUTHORITY" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-project-source-authority.php"; sudo test -f "$RELEASE/hub/bin/project-source-authority.php"; sudo test -f "$RELEASE/hub/migrations/019_project_source_authority.sql"; sudo test -f "$RELEASE/hub/src/HubProjectSourceAuthorityMigration.php"; sudo test -f "$RELEASE/hub/src/HubProjectSourceAuthorityService.php"; sudo test -f "$RELEASE/hub/src/HubProjectSourceSyncService.php"; sudo test -f "$RELEASE/hub/src/HubAiPassProjectExportService.php"; sudo test -f "$RELEASE/hub/bin/migrate-vault-source-authority.php"; sudo test -f "$RELEASE/hub/bin/bind-vault-source-authority.php"; sudo test -f "$RELEASE/hub/migrations/020_vault_source_authority.sql"; sudo test -f "$RELEASE/hub/src/HubVaultSourceAuthorityMigration.php"; fi
+if test "$PROJECT_SOURCE_AUTHORITY" = 1; then sudo test -f "$RELEASE/deploy/systemd/awh-source-drift.service"; sudo test -f "$RELEASE/deploy/systemd/awh-source-drift.timer"; fi
 if test "$ACCOUNT_HOSTING" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-account-hosting.php"; sudo test -f "$RELEASE/hub/migrations/016_account_hosting.sql"; sudo test -f "$RELEASE/hub/src/HubAccountHostingMigration.php"; sudo test -f "$RELEASE/hub/src/HubTrustPolicy.php"; sudo test -f "$RELEASE/hub/src/HubManagedHostingService.php"; sudo test -f "$RELEASE/hub/src/HubManagedHostingOperator.php"; sudo test -f "$RELEASE/hub/bin/awh-hosting-operator.php"; sudo test -f "$RELEASE/deploy/systemd/awh-hosting-operator.service"; sudo test -f "$RELEASE/deploy/systemd/awh-hosting-operator.timer"; sudo test -s "$RELEASE/.awh-build/awh-source.zip"; fi
 if test "$SELF_SUFFICIENT_AI" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-self-sufficient-ai.php"; sudo test -f "$RELEASE/hub/migrations/015_self_sufficient_ai.sql"; sudo test -f "$RELEASE/hub/src/HubSelfSufficientAiMigration.php"; sudo test -f "$RELEASE/hub/src/HubAiGovernanceService.php"; sudo test -f "$RELEASE/hub/src/HubAiProviderAdapter.php"; sudo test -f "$RELEASE/hub/src/HubOpenAiProviderAdapter.php"; sudo test -f "$RELEASE/hub/src/HubDurableExecutionService.php"; sudo test -f "$RELEASE/hub/src/HubExecutionTriageService.php"; sudo test -f "$RELEASE/hub/src/HubStaffGovernorService.php"; sudo test -f "$RELEASE/hub/src/HubStaffOperationsService.php"; sudo test -f "$RELEASE/deploy/systemd/awh-native-executor.service"; sudo test -f "$RELEASE/deploy/systemd/awh-native-executor.timer"; sudo test -s "$RELEASE/.awh-build/awh-source.zip"; fi
 OWNER_AUTH_SETUP=$RELEASE/hub/bin/setup-owner-auth.php; OWNER_AUTH_RUNTIME=$RELEASE/hub/bin/verify-owner-auth-runtime.php; ASSISTANT_MIGRATION=$RELEASE/hub/bin/migrate-assistant-workstream.php; WORKSPACE_MIGRATION=$RELEASE/hub/bin/migrate-workspace-continuity.php; UNIFIED_MIGRATION=$RELEASE/hub/bin/migrate-unified-workspace.php; FINAL_MIGRATION=$RELEASE/hub/bin/migrate-final-product.php; FOUNDING_MIGRATION=$RELEASE/hub/bin/migrate-founding-memory.php; SELF_SERVICE_MIGRATION=$RELEASE/hub/bin/migrate-self-service.php; CENTRAL_PROJECT_MIGRATION=$RELEASE/hub/bin/migrate-central-project-authority.php; ANYWHERE_MIGRATION=$RELEASE/hub/bin/migrate-anywhere-execution.php; COST_AWARE_MIGRATION=$RELEASE/hub/bin/migrate-cost-aware-ai.php; AUTOMATION_MIGRATION=$RELEASE/hub/bin/migrate-automations.php; SELF_SUFFICIENT_MIGRATION=$RELEASE/hub/bin/migrate-self-sufficient-ai.php; ACCOUNT_HOSTING_MIGRATION=$RELEASE/hub/bin/migrate-account-hosting.php; CLOUD_FIRST_MIGRATION=$RELEASE/hub/bin/migrate-cloud-first.php; CONVERSATION_MIGRATION=$RELEASE/hub/bin/migrate-conversation-lifecycle.php; PROJECT_SOURCE_MIGRATION=$RELEASE/hub/bin/migrate-project-source-authority.php; VAULT_SOURCE_MIGRATION=$RELEASE/hub/bin/migrate-vault-source-authority.php; OWNER_AUTH_TRANSFORM=$RELEASE/deploy/nginx/transform-owner-auth.php; CONTROL_ORIGIN_RENDER=$RELEASE/deploy/nginx/render-control-plane-include.php; CONTROL_INCLUDE=$RELEASE/deploy/nginx/awh-control-plane.conf; CONTROL_INCLUDE_TMP=/tmp/awh-control-include-$RELEASE_ID.conf
@@ -1021,6 +1024,20 @@ elif test "$ACCOUNT_HOSTING" = 1; then
   sudo systemctl is-active --quiet awh-hosting-operator.timer
   stage HOSTING_OPERATOR_UNITS_READY
 fi
+if test "$PROJECT_SOURCE_AUTHORITY" = 1; then
+  stage SOURCE_DRIFT_MONITOR_PREPARE
+  sudo test -d /srv/awh-git
+  command -v setfacl >/dev/null 2>&1
+  sudo setfacl -m u:awh-hub:rx /srv/awh-git
+  sudo -u awh-hub test -x /srv/awh-git
+  sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-source-drift.service" "$SOURCE_DRIFT_SERVICE_UNIT"
+  sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-source-drift.timer" "$SOURCE_DRIFT_TIMER_UNIT"
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now awh-source-drift.timer >/dev/null
+  sudo systemctl is-enabled --quiet awh-source-drift.timer
+  sudo systemctl is-active --quiet awh-source-drift.timer
+  stage SOURCE_DRIFT_MONITOR_READY
+fi
 stage PHP_FPM_RELOAD; reload_awh_php_fpm
 web_pointer_capture; sudo install -d -o awh-hub -g www-data -m 0750 /var/www/awh-web/releases; if sudo test -e "$WEB_RELEASE" || sudo test -L "$WEB_RELEASE"; then exit 20; fi; sudo install -d -o awh-hub -g www-data -m 0750 "$WEB_RELEASE"; WEB_CREATED=1; stage WEB_RELEASE_COPY; sudo cp -a "$RELEASE/dist-web/." "$WEB_RELEASE/"; rehydrate_desktop_artifacts; deduplicate_desktop_artifacts; deduplicate_control_release_desktop_artifacts; sudo chown -R awh-hub:www-data "$WEB_RELEASE"; sudo find "$WEB_RELEASE" -type d -exec chmod 0750 {} +; sudo find "$WEB_RELEASE" -type f -exec chmod 0640 {} +; sudo -n -u awh-hub php "$RELEASE/deploy/awh-control-plane/verify-web-release.php" "$WEB_RELEASE" "$RELEASE_ID" "$RELEASE_COMMIT"; stage WEB_MANIFEST_VERIFIED; stage WEB_ACCESS_READY; verify_web_access; stage WEB_POINTER_SWITCH; sudo rm -f "$WEB_POINTER_TMP"; sudo ln -s "$WEB_RELEASE" "$WEB_POINTER_TMP"; sudo mv -Tf "$WEB_POINTER_TMP" "$WEB_POINTER"; WEB_POINTER_CHANGED=1; test "$(readlink "$WEB_POINTER")" = "$WEB_RELEASE"; stage WEB_RELEASE_STAGED
 stage NGINX_CUTOVER_INSTALL; sudo install -o root -g root -m 0644 "$NGINX_CANDIDATE" "$NGINX_CONFIG"; NGINX_CHANGED=1; stage NGINX_CONFIGURED; sudo nginx -t >/dev/null
@@ -1096,6 +1113,11 @@ if test -d /srv/awh-git/awh.git; then
   else
     git --git-dir=/srv/awh-git/awh.git update-ref refs/heads/production "$RELEASE_COMMIT"
   fi
+fi
+if test "$PROJECT_SOURCE_AUTHORITY" = 1; then
+  stage SOURCE_DRIFT_VERIFY
+  sudo -n -u awh-hub /usr/bin/php "$RELEASE/hub/bin/ecosystem-source-drift.php" "$DB" /srv/awh-git "$WEB_POINTER/release.json" >/dev/null
+  stage SOURCE_DRIFT_VERIFIED
 fi
 stage EXECUTION_AUTHORITY_RELEASE; release_deploy_authority success; stage EXECUTION_AUTHORITY_RELEASED
 SUCCESS=1; printf '%s\n' 'DEPLOY_RESULT=PASS'; trap - EXIT HUP INT TERM; sudo rm -f "$REMOTE_STAGE" "$NGINX_BACKUP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" "$CONTROL_INCLUDE_TMP" "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP"; exit 0
