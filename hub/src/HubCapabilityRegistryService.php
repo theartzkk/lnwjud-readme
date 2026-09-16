@@ -17,6 +17,7 @@ final class HubCapabilityRegistryService
     private const AVAILABILITY = ['ALWAYS_ON','ON_DEMAND','OPTIONAL_DEVICE'];
     private const COST = ['INCLUDED','PREPAID','LOCAL_FREE','METERED'];
     private const ENVELOPE_STATES = ['OPEN','ACTIVE','WAITING','RELEASED','CONFLICT','CANCELLED'];
+    public const EXECUTION_POLICY_VERSION = '1.2.0';
 
     public function __construct(private readonly PDO $pdo) {}
 
@@ -79,7 +80,7 @@ final class HubCapabilityRegistryService
         $sql = "SELECT p.provider_id,p.provider_kind,p.display_name,p.availability_mode,p.cost_class,p.priority,pc.cost_rank,pc.quality_rank,pc.latency_rank,c.maturity FROM control_execution_provider_capabilities pc JOIN control_execution_providers p ON p.provider_id=pc.provider_id JOIN control_capability_catalog c ON c.capability=pc.capability WHERE pc.capability=:cap AND pc.enabled=1 AND p.enabled=1 AND c.enabled=1 AND c.maturity <> 'PLANNED' AND (p.expires_at IS NULL OR p.expires_at>:at) AND (pc.expires_at IS NULL OR pc.expires_at>:at) ORDER BY CASE p.availability_mode WHEN 'ALWAYS_ON' THEN 0 WHEN 'ON_DEMAND' THEN 1 ELSE 2 END, pc.cost_rank, p.priority, pc.latency_rank, pc.quality_rank DESC, p.provider_id LIMIT 1";
         $q = $this->pdo->prepare($sql); $q->execute(['cap'=>$capability,'at'=>$at]); $row = $q->fetch();
         if (!is_array($row)) return null;
-        return ['providerId'=>(string)$row['provider_id'],'kind'=>(string)$row['provider_kind'],'displayName'=>(string)$row['display_name'],'availabilityMode'=>(string)$row['availability_mode'],'costClass'=>(string)$row['cost_class'],'capability'=>$capability,'maturity'=>(string)$row['maturity']];
+        return ['providerId'=>(string)$row['provider_id'],'kind'=>(string)$row['provider_kind'],'displayName'=>(string)$row['display_name'],'availabilityMode'=>(string)$row['availability_mode'],'costClass'=>(string)$row['cost_class'],'capability'=>$capability,'maturity'=>(string)$row['maturity'],'executionPolicyVersion'=>self::EXECUTION_POLICY_VERSION,'batchFirst'=>true,'reuseSession'=>true,'deltaFirst'=>true];
     }
     /** One descriptive envelope per M12 execution; it is not another task queue or lock authority. */
     public function ensureExecutionEnvelope(string $executionId, ?string $now = null): array
@@ -199,8 +200,14 @@ final class HubCapabilityRegistryService
             $q = $this->pdo->prepare("SELECT p.provider_id,p.provider_kind,p.display_name,p.availability_mode,p.cost_class,p.enabled,p.observed_at,p.expires_at,COUNT(pc.capability) AS capability_count FROM control_execution_providers p LEFT JOIN control_execution_provider_capabilities pc ON pc.provider_id=p.provider_id AND pc.enabled=1 WHERE p.enabled=1 AND (p.expires_at IS NULL OR p.expires_at>:at) GROUP BY p.provider_id ORDER BY CASE p.availability_mode WHEN 'ALWAYS_ON' THEN 0 WHEN 'ON_DEMAND' THEN 1 ELSE 2 END,p.priority,p.display_name LIMIT 100");
             $q->execute(['at'=>$at]); foreach ($q->fetchAll() as $row) $providers[] = ['providerId'=>(string)$row['provider_id'],'kind'=>(string)$row['provider_kind'],'displayName'=>(string)$row['display_name'],'availabilityMode'=>(string)$row['availability_mode'],'costClass'=>(string)$row['cost_class'],'capabilityCount'=>(int)$row['capability_count'],'observedAt'=>(string)$row['observed_at'],'expiresAt'=>$row['expires_at']];
         }
-        return ['schemaVersion'=>1,'anywhereFirst'=>true,'deviceRequired'=>false,'summary'=>$summary,'capabilities'=>$items,'providers'=>$providers];
+        return ['schemaVersion'=>1,'anywhereFirst'=>true,'deviceRequired'=>false,'executionPolicy'=>self::executionPolicy(),'summary'=>$summary,'capabilities'=>$items,'providers'=>$providers];
     }
+    /** @return array<string,mixed> */
+    public static function executionPolicy(): array
+    {
+        return ['version'=>self::EXECUTION_POLICY_VERSION,'enforcement'=>'MANDATORY','userRestatementRequired'=>false,'planBeforeCall'=>true,'batchFirst'=>true,'maxValuePerCall'=>true,'reuseKnownState'=>true,'deltaFirst'=>true,'redundantPolling'=>false,'blindRetry'=>false,'oneSetupManyUsefulActions'=>true,'remoteDesktopClass'=>'EXPENSIVE_JUSTIFIED_ROUTE','unrestrictedWorkerShell'=>false,'cleanExit'=>true,'minimumUserInterruption'=>true];
+    }
+
     /** @return list<string> */
     private function mapWorkerCapabilities(array $raw): array
     {
@@ -215,7 +222,8 @@ final class HubCapabilityRegistryService
             if (preg_match('/^(?:office|inspect_workbook|compare_workbook|render_excel|docx_)/',$value)) $out[] = 'document.office';
             if (preg_match('/^(?:pdf_|inspect_pdf|compare_pdf)/',$value)) $out[] = 'document.pdf';
             if (preg_match('/ocr/',$value)) $out[] = 'document.ocr';
-            if (preg_match('/^(?:shell|wsl_|process_|project_(?:dev|test|lint|typecheck|build)|sandbox_exec)/',$value)) $out[] = 'system.shell';
+            // Policy 1.2: workers expose named capabilities only. Generic shell/process
+            // advertisements never become routable AWH capabilities.
         }
         return array_values(array_unique($out));
     }

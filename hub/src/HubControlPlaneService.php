@@ -980,6 +980,7 @@ final class HubControlPlaneService
             'schemaVersion' => $this->finalProductSchemaPresent() ? 3 : (isset($conversation['title']) ? 2 : 1),
             'conversation' => ['conversationId' => $conversationId, 'projectId' => (string) $conversation['project_id'], 'title' => isset($conversation['title']) ? (string) $conversation['title'] : 'Work', 'archivedAt' => isset($conversation['archived_at']) && $conversation['archived_at'] !== null ? (string) $conversation['archived_at'] : null, 'origin' => isset($conversation['origin']) ? (string) $conversation['origin'] : 'native', 'createdAt' => (string) $conversation['created_at'], 'updatedAt' => (string) $conversation['updated_at'], 'lastTaskId' => $conversation['last_task_id'] === null ? null : (string) $conversation['last_task_id']],
             'history' => ['truncated' => $messageCount > count($messages) || $taskCount > count($tasks), 'messageCount' => $messageCount, 'visibleMessageCount' => count($messages), 'taskCount' => $taskCount, 'visibleTaskCount' => count($tasks)],
+            'executionPolicy' => HubCapabilityRegistryService::executionPolicy(),
             'messages' => $messages, 'tasks' => $tasks, 'artifacts' => $artifacts, 'attachments' => $attachments, 'approvals' => $approvals,
         ];
         return self::boundConversationPayload($payload, $worker ? self::WORKER_CONVERSATION_MAX_BYTES : self::BROWSER_CONVERSATION_MAX_BYTES);
