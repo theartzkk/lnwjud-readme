@@ -158,7 +158,7 @@ FILES="$FILES deploy/nginx/awh-edge-hardening.conf deploy/nginx/awh-legacy-contr
 FILES="$FILES deploy/observability/README.md deploy/observability/install-awh-observability.sh deploy/observability/install-honeycomb-watcher.sh deploy/observability/sync-honeycomb-credential.sh deploy/observability/otelcol-awh-preflight.yaml deploy/observability/otelcol-awh-honeycomb.yaml deploy/systemd/awh-observability-sync.service deploy/systemd/awh-observability-sync.path"
 FILES="$FILES hub/src/HubProjectSourceAuthorityMigration.php hub/src/HubProjectSourceAuthorityService.php hub/src/HubProjectSourceSyncService.php hub/src/HubAiPassProjectExportService.php hub/migrations/019_project_source_authority.sql hub/bin/migrate-project-source-authority.php hub/bin/project-source-authority.php"
 FILES="$FILES hub/src/HubVaultSourceAuthorityMigration.php hub/migrations/020_vault_source_authority.sql hub/bin/migrate-vault-source-authority.php hub/bin/bind-vault-source-authority.php"
-FILES="$FILES hub/src/HubEcosystemHealthService.php hub/src/HubEcosystemHealthCollector.php hub/src/HubBayEcosystemHealthConnector.php hub/src/HubDeployExecutionAuthorityService.php hub/bin/deploy-execution-authority.php"
+FILES="$FILES hub/src/HubEcosystemHealthService.php hub/src/HubEcosystemHealthCollector.php hub/src/HubBayEcosystemHealthConnector.php hub/src/HubDeployExecutionAuthorityService.php hub/bin/deploy-execution-authority.php hub/bin/ecosystem-source-drift.php"
 DESKTOP_ARTIFACTS=
 if test "$REUSE_REMOTE_DESKTOP_ARTIFACTS" -eq 1; then
   printf '%s\n' "DESKTOP_ARTIFACT_REUSE=verified-remote-manifest"
