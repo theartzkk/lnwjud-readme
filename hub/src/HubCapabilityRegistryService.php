@@ -73,7 +73,7 @@ final class HubCapabilityRegistryService
         $this->advertiseProvider('device:'.$deviceId,'DEVICE',$name,'OPTIONAL_DEVICE','LOCAL_FREE',60,$mapped,$at,$expires,['deviceId'=>$deviceId,'role'=>'optional-worker']);
     }
 
-    /** @return array{primaryRoute:string,requiresRealDeviceEvidence:bool,realSchoolEvidenceRequired:bool,generatedSchoolRealityAllowed:bool,permanentRepairRequired:bool,mixedBoundary:bool,reason:string} */
+    /** @return array{primaryRoute:string,requiresRealDeviceEvidence:bool,realSchoolEvidenceRequired:bool,generatedSchoolRealityAllowed:bool,permanentRepairRequired:bool,mixedBoundary:bool,evidenceDimensions:array{requiresDeviceState:bool,requiresServerState:bool,requiresConnectedFiles:bool,requiresRealSchoolEvidence:bool,requiresNativeApp:bool,requiresPublicWeb:bool},reason:string} */
     public static function workProfileForGoal(string $goal): array
     {
         $value = function_exists('mb_strtolower') ? mb_strtolower(trim($goal), 'UTF-8') : strtolower(trim($goal));
@@ -82,12 +82,21 @@ final class HubCapabilityRegistryService
         $realClient = preg_match('/(?:browser|client|กด(?:ไม่ได้|ไม่ทำงาน)|เข้า(?:เรียน|ระบบ)ไม่ได้|permission|สิทธิ์|ติดตั้ง|install)/u', $value) === 1;
         $server = preg_match('/(?:nginx|php[- ]?fpm|vps|server|service|systemd|database|db|deploy|deployment|migration|runtime|production)/u', $value) === 1;
         $files = preg_match('/(?:หา|ค้น|ดึง|ไฟล์|เอกสาร|รายงาน|ประเมิน|drive|project sources?|asset vault)/u', $value) === 1;
-        $schoolVisual = preg_match('/(?:รูป|ภาพ|photo|image|กิจกรรม|โรงเรียน|นักเรียน|ครู|อาคาร|ห้องเรียน|vtr|ประชาสัมพันธ์)/u', $value) === 1;
+        $schoolContext = preg_match('/(?:โรงเรียนบ้านเอือดใหญ่|โรงเรียน|นักเรียน|ครู|อาคาร|ห้องเรียน)/u', $value) === 1;
+        $visualEvidenceIntent = preg_match('/(?:รูป|ภาพ|photo|image|กิจกรรม|vtr|ประชาสัมพันธ์|หลักฐาน|media|asset)/u', $value) === 1;
+        $schoolVisual = $schoolContext && $visualEvidenceIntent;
         $failure = preg_match('/(?:fail|failed|ล้ม|พัง|ไม่ได้|ไม่ทำงาน|error|ผิดพลาด|ขัดข้อง|ซ้ำ|อีกแล้ว)/u', $value) === 1;
+        $publicWeb = preg_match('/(?:public web|public site|เว็บไซต์|หน้าเว็บ|production surface|release\.json|https?:\/\/)/u', $value) === 1;
 
-        $device = $namedDevice || $nativeDesktop || $realClient;
-        $mixed = $device && $server;
-        $route = $mixed ? 'DIRECT_PLUS_REMOTE' : ($device ? 'REMOTE_DEVICE' : ($server ? 'VPS_DIRECT' : ($files || $schoolVisual ? 'CONNECTED_FILES' : 'AUTO_FIT')));
+        $requiresDeviceState = $namedDevice || $realClient;
+        $requiresServerState = $server;
+        $requiresConnectedFiles = $files || $schoolVisual;
+        $requiresRealSchoolEvidence = $schoolVisual;
+        $requiresNativeApp = $nativeDesktop;
+        $requiresPublicWeb = $publicWeb;
+        $device = $requiresDeviceState || $requiresNativeApp;
+        $mixed = $device && $requiresServerState;
+        $route = $mixed ? 'DIRECT_PLUS_REMOTE' : ($device ? 'REMOTE_DEVICE' : ($requiresServerState ? 'VPS_DIRECT' : ($requiresConnectedFiles ? 'CONNECTED_FILES' : 'AUTO_FIT')));
         $reason = match ($route) {
             'DIRECT_PLUS_REMOTE' => 'server evidence and real-device proof are both required',
             'REMOTE_DEVICE' => 'the outcome depends on named-device, GUI, native-app or real-client state',
@@ -102,6 +111,14 @@ final class HubCapabilityRegistryService
             'generatedSchoolRealityAllowed'=>false,
             'permanentRepairRequired'=>$failure,
             'mixedBoundary'=>$mixed,
+            'evidenceDimensions'=>[
+                'requiresDeviceState'=>$requiresDeviceState,
+                'requiresServerState'=>$requiresServerState,
+                'requiresConnectedFiles'=>$requiresConnectedFiles,
+                'requiresRealSchoolEvidence'=>$requiresRealSchoolEvidence,
+                'requiresNativeApp'=>$requiresNativeApp,
+                'requiresPublicWeb'=>$requiresPublicWeb,
+            ],
             'reason'=>$reason,
         ];
     }

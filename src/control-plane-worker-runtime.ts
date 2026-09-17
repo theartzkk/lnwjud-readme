@@ -102,6 +102,7 @@ export function ownerWorkProfileInstruction(profile: import('./control-plane-wor
     'Verified first-party school evidence required: ' + (profile.realSchoolEvidenceRequired ? 'YES' : 'NO') + '. Generated school reality allowed: NO.',
     'Permanent root-cause repair required for this symptom: ' + (profile.permanentRepairRequired ? 'YES' : 'NO') + '.',
     'Mixed server/device boundary: ' + (profile.mixedBoundary ? 'YES — verify both sides' : 'NO') + '.',
+    'Evidence dimensions: device-state=' + (profile.evidenceDimensions.requiresDeviceState ? 'YES' : 'NO') + ', server-state=' + (profile.evidenceDimensions.requiresServerState ? 'YES' : 'NO') + ', connected-files=' + (profile.evidenceDimensions.requiresConnectedFiles ? 'YES' : 'NO') + ', real-school-evidence=' + (profile.evidenceDimensions.requiresRealSchoolEvidence ? 'YES' : 'NO') + ', native-app=' + (profile.evidenceDimensions.requiresNativeApp ? 'YES' : 'NO') + ', public-web=' + (profile.evidenceDimensions.requiresPublicWeb ? 'YES' : 'NO') + '.',
     'This profile does not override approval, Source of Truth, capability availability or platform safety; it prevents generic route-order bias from replacing the evidence the task actually requires.',
   ].join('\n');
 }

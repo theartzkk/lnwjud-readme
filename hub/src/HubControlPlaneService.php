@@ -632,6 +632,10 @@ final class HubControlPlaneService
             'type' => (string) $project['type'],
             'sourceRevision' => is_string($project['sourceRevision'] ?? null) ? $project['sourceRevision'] : null,
             'memoryReady' => ($project['memoryReady'] ?? false) === true,
+            'vaultReady' => ($project['vaultReady'] ?? false) === true,
+            'sourceAuthority' => is_string($project['sourceAuthority'] ?? null) ? $project['sourceAuthority'] : null,
+            'sourceAuthorityState' => (string)($project['sourceAuthorityState'] ?? 'UNKNOWN'),
+            'projectClass' => (string)($project['projectClass'] ?? 'PRODUCTION'),
         ], $this->projectsForUser($userId));
         $release = HubInfrastructureService::releaseState();
         $ecosystemHealth = HubEcosystemHealthService::fromEnvironment()->status((string)($release['controlReleaseId'] ?? ''), $now);
@@ -643,8 +647,9 @@ final class HubControlPlaneService
         $active = $this->pdo->prepare("SELECT e.execution_id,e.executor_kind,e.required_capability,e.state,e.updated_at,e.checkpoint_json,t.task_id,t.goal,t.progress FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE t.user_id=:user AND e.state IN ('QUEUED','LEASED','RUNNING','WAITING_FOR_CAPABILITY') ORDER BY e.updated_at DESC LIMIT 12");
         $active->execute(['user' => $userId]); $autonomous = [];
         foreach ($active->fetchAll() as $row) { $checkpoint = json_decode((string)($row['checkpoint_json'] ?? '{}'), true); $continuous = is_array($checkpoint) && is_array($checkpoint['continuation'] ?? null) && ($checkpoint['continuation']['enabled'] ?? false) === true; $autonomous[] = ['taskId'=>(string)$row['task_id'],'executionId'=>(string)$row['execution_id'],'executorKind'=>(string)$row['executor_kind'],'requiredCapability'=>(string)$row['required_capability'],'state'=>(string)$row['state'],'progress'=>(int)$row['progress'],'goal'=>(string)$row['goal'],'continuous'=>$continuous,'updatedAt'=>(string)$row['updated_at']]; }
-        $incident = $this->pdo->prepare("SELECT e.task_id,e.executor_kind,e.last_error_code,e.updated_at,t.goal,t.project_id,p.name AS project_name FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id JOIN projects p ON p.project_id=t.project_id WHERE t.user_id=:user AND e.state='FAILED' ORDER BY e.updated_at DESC LIMIT 12"); $incident->execute(['user'=>$userId]);
-        $incidents = array_map(static fn(array $row): array => ['taskId'=>(string)$row['task_id'],'executorKind'=>(string)$row['executor_kind'],'code'=>(string)($row['last_error_code'] ?? 'EXECUTION_FAILED'),'occurredAt'=>(string)$row['updated_at'],'goal'=>(string)$row['goal'],'projectId'=>(string)$row['project_id'],'projectName'=>(string)$row['project_name']], $incident->fetchAll());
+        $executionTriage = is_array($staff['executionTriage'] ?? null) ? $staff['executionTriage'] : [];
+        $triageCurrent = is_array($executionTriage['current']['items'] ?? null) ? $executionTriage['current']['items'] : [];
+        $incidents = array_map(static fn(array $row): array => ['taskId'=>(string)($row['taskId'] ?? ''),'executionId'=>(string)($row['executionId'] ?? ''),'executorKind'=>(string)($row['executorKind'] ?? ''),'code'=>(string)($row['errorCode'] ?? 'EXECUTION_FAILED'),'occurredAt'=>(string)($row['updatedAt'] ?? ''),'goal'=>(string)($row['goal'] ?? ''),'projectId'=>(string)($row['projectId'] ?? ''),'projectName'=>(string)($row['project'] ?? 'Project'),'classification'=>(string)($row['classification'] ?? 'CURRENT_DEFECT'),'disposition'=>(string)($row['disposition'] ?? 'OPEN_DEFECT'),'reason'=>(string)($row['reason'] ?? '')], array_slice($triageCurrent,0,12));
         $events = $this->pdo->prepare('SELECT e.state,e.progress,e.message,e.occurred_at,t.task_id,t.goal,t.project_id,t.result_summary,t.failure_code,p.name AS project_name FROM control_task_events e JOIN control_tasks t ON t.task_id=e.task_id JOIN projects p ON p.project_id=t.project_id WHERE t.user_id=:user ORDER BY e.occurred_at DESC, e.event_id DESC LIMIT 20'); $events->execute(['user'=>$userId]);
         $activity = array_map(static fn(array $row): array => ['taskId'=>(string)$row['task_id'],'state'=>(string)$row['state'],'progress'=>(int)$row['progress'],'message'=>$row['message'] === null ? null : (string)$row['message'],'occurredAt'=>(string)$row['occurred_at'],'goal'=>(string)$row['goal'],'projectId'=>(string)$row['project_id'],'projectName'=>(string)$row['project_name'],'resultSummary'=>$row['result_summary'] === null ? null : (string)$row['result_summary'],'blocker'=>$row['failure_code'] === null ? null : (string)$row['failure_code']], $events->fetchAll());
         $since = gmdate('c', strtotime($now ?? 'now') - 86400);
@@ -653,7 +658,7 @@ final class HubControlPlaneService
         $failed24h = $countSince("SELECT COUNT(*) FROM control_tasks WHERE user_id=:user AND state='FAILED' AND updated_at>=:since");
         $artifact24h = $countSince('SELECT COUNT(*) FROM control_artifacts a JOIN control_tasks t ON t.task_id=a.task_id WHERE t.user_id=:user AND a.created_at>=:since');
         $approvalCountQuery = $this->pdo->prepare("SELECT COUNT(*) FROM control_approvals a JOIN control_tasks t ON t.task_id=a.task_id WHERE t.user_id=:user AND a.status='PENDING'"); $approvalCountQuery->execute(['user' => $userId]); $pendingApprovals = (int) $approvalCountQuery->fetchColumn();
-        $morningNext = $failed24h > 0 ? 'ตรวจงานที่ล้มเหลวและตัดสินใจ retry ที่อนุญาต' : ($pendingApprovals > 0 ? 'ตรวจรายการที่รอการอนุมัติ' : 'ทำงาน eligible ถัดไปตาม policy และ capability ที่พร้อม');
+        $morningNext = count($incidents) > 0 ? 'ตรวจ current execution blocker จาก canonical triage ก่อนเริ่ม attempt ใหม่' : ($pendingApprovals > 0 ? 'ตรวจรายการที่รอการอนุมัติ' : 'ทำงาน eligible ถัดไปตาม policy และ capability ที่พร้อม');
         $snapshotBrief = ['schemaVersion'=>1,'state'=>'SNAPSHOT_ONLY','persisted'=>false,'generatedAt'=>gmdate('c'),'overnight'=>['completedTasks'=>$completed24h,'failedTasks'=>$failed24h,'recoveredFailures'=>null,'activityEvents'=>count($activity),'artifactsCreated'=>$artifact24h],'attention'=>['pendingApprovals'=>$pendingApprovals,'incidents'=>count($incidents)],'health'=>['database'=>$health['database'],'backup'=>$health['backup'],'storage'=>$health['storage'],'workers'=>$health['workerSummary']],'nextAction'=>$morningNext];
         $persistedBrief = is_array($staff['persistedMorningBrief'] ?? null) ? $staff['persistedMorningBrief'] : [];
         $morningBrief = (($persistedBrief['state'] ?? null) === 'PERSISTED' && is_array($persistedBrief['brief'] ?? null))
@@ -701,6 +706,7 @@ final class HubControlPlaneService
             'executionAuthority' => $executionAuthority,
             'activity' => $activity,
             'incidents' => $incidents,
+            'executionTriage' => $executionTriage,
             'staff' => $staff,
             'governor' => $staff['governor'] ?? ['state'=>'UNKNOWN','decision'=>'UNKNOWN'],
             'selfHealing' => $staff['selfHealing'] ?? ['state'=>'UNKNOWN'],
@@ -3159,7 +3165,25 @@ final class HubControlPlaneService
         $this->pdo->prepare('UPDATE control_session_rate_limits SET attempts = :attempts, blocked_until = :blocked WHERE rate_key = :key')->execute(['attempts' => $attempts, 'blocked' => $blocked, 'key' => $rateKey]);
         if ($blocked !== null) throw new HubControlPlaneException('Control session attempts are temporarily rate limited', 'RATE_LIMITED');
     }
-    private function projectsForUser(string $userId): array { $q = $this->pdo->prepare("SELECT p.project_id, p.name, p.type, p.created_at, p.source_revision, p.observed_at, (SELECT COUNT(*) FROM project_memory pm WHERE pm.project_id = p.project_id AND pm.status = 'present' AND pm.memory_file IN ('CURRENT_STATE.md','PROJECT.md','HANDOFF.md','TASKS.md','ARCHITECTURE.md','DECISIONS.md')) AS memory_present FROM projects p JOIN user_project_memberships m ON m.project_id = p.project_id WHERE m.user_id = :user AND m.revoked_at IS NULL ORDER BY p.name, p.project_id LIMIT 100"); $q->execute(['user' => $userId]); return array_map(static fn (array $row): array => ['projectId' => (string) $row['project_id'], 'name' => (string) $row['name'], 'type' => (string) $row['type'], 'createdAt' => (string) $row['created_at'], 'sourceRevision' => $row['source_revision'] === null ? null : (string) $row['source_revision'], 'observedAt' => (string) $row['observed_at'], 'memoryReady' => (int) $row['memory_present'] === 6], $q->fetchAll()); }
+    /** @return array{vaultReady:bool,sourceAuthority:?string,sourceAuthorityState:string,projectClass:string} */
+    private static function projectSourceHygiene(array $row): array
+    {
+        $name = (string)($row['name'] ?? '');
+        $type = (string)($row['type'] ?? 'general');
+        $authority = is_string($row['canonical_source_authority'] ?? null) && trim((string)$row['canonical_source_authority']) !== '' ? (string)$row['canonical_source_authority'] : null;
+        $vaultReady = is_string($row['active_revision_id'] ?? null) && trim((string)$row['active_revision_id']) !== '';
+        $fieldProof = preg_match('/(?:field\s*proof|หลักฐานภาคสนาม)/iu', $name) === 1;
+        $class = $fieldProof ? 'FIELD_PROOF' : ($type === 'teacher-evaluation' ? 'CONTENT' : 'PRODUCTION');
+        $state = $fieldProof ? 'FIELD_PROOF' : ($authority === 'AWH_VAULT' && $vaultReady ? 'READY' : ($authority !== null && !$vaultReady ? 'BOUND_SOURCE_NOT_INGESTED' : ($vaultReady ? 'VAULT_UNBOUND' : 'NEEDS_SOURCE_INGEST')));
+        return ['vaultReady'=>$vaultReady,'sourceAuthority'=>$authority,'sourceAuthorityState'=>$state,'projectClass'=>$class];
+    }
+
+    private function projectsForUser(string $userId): array
+    {
+        $q = $this->pdo->prepare("SELECT p.project_id,p.name,p.type,p.created_at,p.source_revision,p.observed_at,p.canonical_source_authority,v.active_revision_id,(SELECT COUNT(*) FROM project_memory pm WHERE pm.project_id=p.project_id AND pm.status='present' AND pm.memory_file IN ('CURRENT_STATE.md','PROJECT.md','HANDOFF.md','TASKS.md','ARCHITECTURE.md','DECISIONS.md')) AS memory_present FROM projects p JOIN user_project_memberships m ON m.project_id=p.project_id AND m.user_id=:user AND m.revoked_at IS NULL LEFT JOIN control_project_vaults v ON v.project_id=p.project_id ORDER BY p.name,p.project_id LIMIT 100");
+        $q->execute(['user'=>$userId]);
+        return array_map(static function(array $row): array { $h=self::projectSourceHygiene($row); return ['projectId'=>(string)$row['project_id'],'name'=>(string)$row['name'],'type'=>(string)$row['type'],'createdAt'=>(string)$row['created_at'],'sourceRevision'=>$row['source_revision']===null?null:(string)$row['source_revision'],'observedAt'=>(string)$row['observed_at'],'memoryReady'=>(int)$row['memory_present']===6] + $h; }, $q->fetchAll());
+    }
     private function assertProjectMember(string $userId, string $projectId): void { $this->assertProjectCapability($userId, $projectId, 'project.read'); }
     private function assertProjectCapability(string $userId, string $projectId, string $capability): void { if ($this->finalProductSchemaPresent()) { $q = $this->pdo->prepare('SELECT 1 FROM control_project_capabilities c JOIN control_user_profiles p ON p.user_id = c.user_id WHERE c.user_id = :user AND c.project_id = :project AND c.capability = :capability AND c.revoked_at IS NULL AND p.status = \'ACTIVE\''); $q->execute(['user' => $userId, 'project' => $projectId, 'capability' => $capability]); if ($q->fetchColumn() !== false) return; } else { $q = $this->pdo->prepare('SELECT 1 FROM user_project_memberships WHERE user_id = :user AND project_id = :project AND revoked_at IS NULL'); $q->execute(['user' => $userId, 'project' => $projectId]); if ($q->fetchColumn() !== false) return; } throw new HubControlPlaneException('Project is not authorized', 'PROJECT_FORBIDDEN'); }
     private function assertOwner(string $userId): void { $q = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1'); if (!hash_equals((string) $q->fetchColumn(), $userId)) throw new HubControlPlaneException('Owner access is required', 'OWNER_FORBIDDEN'); }

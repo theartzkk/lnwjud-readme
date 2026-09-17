@@ -230,6 +230,7 @@ test('owner work profile turns route evidence into explicit worker behavior with
     generatedSchoolRealityAllowed: false,
     permanentRepairRequired: true,
     mixedBoundary: true,
+    evidenceDimensions: { requiresDeviceState: true, requiresServerState: true, requiresConnectedFiles: false, requiresRealSchoolEvidence: true, requiresNativeApp: false, requiresPublicWeb: false },
     reason: 'server evidence and real-device proof are both required',
   });
   assert.match(instruction, /Primary route: DIRECT_PLUS_REMOTE/);
@@ -237,4 +238,5 @@ test('owner work profile turns route evidence into explicit worker behavior with
   assert.match(instruction, /Generated school reality allowed: NO/);
   assert.match(instruction, /Permanent root-cause repair required.*YES/);
   assert.match(instruction, /verify both sides/);
+  assert.match(instruction, /device-state=YES, server-state=YES/);
 });
