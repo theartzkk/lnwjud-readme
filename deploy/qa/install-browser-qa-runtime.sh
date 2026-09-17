@@ -3,10 +3,15 @@ set -eu
 MODE=${1:---check}
 PLAYWRIGHT_VERSION=${AWH_PLAYWRIGHT_VERSION:-1.63.0}
 ROOT=${AWH_BROWSER_QA_ROOT:-/opt/awh-tools/browser-qa}
+NODE_ROOT=${AWH_BROWSER_QA_NODE_ROOT:-/opt/awh-tools/remote-desktop/node-v22.22.1-linux-x64}
+NODE_BIN=$NODE_ROOT/bin/node
+NPM_BIN=$NODE_ROOT/bin/npm
 CHROME=${AWH_CHROME_PATH:-}
 fail(){ printf '%s\n' "$1" >&2; exit 1; }
 case "$MODE" in --check|--install) :;; *) fail 'usage: install-browser-qa-runtime.sh [--check|--install]' ;; esac
 [ -n "$CHROME" ] && [ -x "$CHROME" ] || fail AWH_BROWSER_QA_CHROME_REQUIRED
+[ -x "$NODE_BIN" ] && [ -x "$NPM_BIN" ] || fail AWH_BROWSER_QA_NODE20_REQUIRED
+"$NODE_BIN" -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' || fail AWH_BROWSER_QA_NODE20_REQUIRED
 missing(){ ldd "$CHROME" 2>/dev/null | awk '/not found/{print $1}' | sort -u; }
 MISSING=$(missing)
 if [ "$MODE" = --check ]; then
@@ -29,10 +34,10 @@ rm -rf "$ROOT/chrome"; mv "$ROOT/chrome-staged" "$ROOT/chrome"
 CHROME="$ROOT/chrome/$(basename "$CHROME")"
 [ -x "$CHROME" ] || fail AWH_BROWSER_QA_ADOPTED_CHROME_INVALID
 printf '%s\n' '{"name":"awh-browser-qa-runtime","private":true,"version":"1.0.0"}' > "$ROOT/runtime/package.json"
-(cd "$ROOT/runtime" && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --ignore-scripts --no-audit --no-fund --save-exact "playwright@$PLAYWRIGHT_VERSION" >/dev/null)
+(cd "$ROOT/runtime" && PATH="$NODE_ROOT/bin:$PATH" PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 "$NPM_BIN" install --ignore-scripts --no-audit --no-fund --save-exact "playwright@$PLAYWRIGHT_VERSION" >/dev/null)
 ln -sfn "$CHROME" "$ROOT/chrome-current"
 install -d -o root -g root -m 0755 /etc/awh
-printf 'AWH_CHROME_PATH=%s\nAWH_PLAYWRIGHT_MODULE=%s\n' "$ROOT/chrome-current" "$ROOT/runtime/node_modules/playwright/index.mjs" > /etc/awh/browser-qa.env
+printf 'AWH_CHROME_PATH=%s\nAWH_PLAYWRIGHT_MODULE=%s\nAWH_BROWSER_QA_NODE_BIN=%s\n' "$ROOT/chrome-current" "$ROOT/runtime/node_modules/playwright/index.mjs" "$NODE_BIN" > /etc/awh/browser-qa.env
 chmod 0644 /etc/awh/browser-qa.env
 MISSING=$(missing); [ -z "$MISSING" ] || { printf '%s\n' "$MISSING"; fail AWH_BROWSER_QA_SHARED_LIBS_STILL_MISSING; }
 printf '%s\n' "AWH_BROWSER_QA_INSTALL=PASS playwright=$PLAYWRIGHT_VERSION"
