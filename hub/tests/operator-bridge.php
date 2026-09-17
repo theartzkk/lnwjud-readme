@@ -39,6 +39,13 @@ try{
  $pdo->prepare("INSERT INTO control_task_executions VALUES(?,?,?,NULL,'VPS','project.mutate.deploy','RUNNING','writer',?,1,NULL,'{}',NULL,?,?)")->execute([$exec,$task,$project,'2026-09-17T13:00:00+00:00',$now,$now]);
  $pdo->prepare("INSERT INTO control_execution_envelopes VALUES(?,?,?,?,NULL,NULL,'task:writer','PROJECT_CANDIDATE','ACTIVE',NULL,?,?,?)")->execute([$env,$exec,$task,$project,'2026-09-17T13:00:00+00:00',$now,$now]);
  $blocked=$service->handle(['schemaVersion'=>1,'action'=>'project.gate','project'=>$project],$now);ob_assert($blocked['ready']===false&&$blocked['writer']['activeMutationCount']===1,'active mutation envelope blocks gate');$pdo->exec('DELETE FROM control_execution_envelopes; DELETE FROM control_task_executions; DELETE FROM control_tasks');
+ $orphanTask='55555555-5555-4555-8555-555555555555';$orphanExec='66666666-6666-4666-8666-666666666666';
+ $pdo->prepare("INSERT INTO control_tasks VALUES(?,?,?,'orphan writer','RUNNING',NULL,NULL,0,NULL,NULL,'orphan-writer-key',NULL,?,?,NULL)")->execute([$orphanTask,$owner,$project,$now,$now]);
+ $pdo->prepare("INSERT INTO control_task_executions VALUES(?,?,?,NULL,'VPS','project.mutate.assisted','RUNNING','orphan-writer',?,1,NULL,'{}',NULL,?,?)")->execute([$orphanExec,$orphanTask,$project,'2026-09-17T13:00:00+00:00',$now,$now]);
+ $blocked=$service->handle(['schemaVersion'=>1,'action'=>'project.gate','project'=>$project],$now);ob_assert($blocked['ready']===false&&$blocked['writer']['runningMutationExecutionCount']===1,'running mutation without envelope blocks gate');
+ $method=new ReflectionMethod(HubOperatorBridgeService::class,'acquireMutationAuthority');
+ ob_code('OPERATOR_PROJECT_GATE_BLOCKED',fn()=>$method->invoke($service,$project,'Race-proof test','bay.remote_update.install',['test'=>true],$now));
+ $pdo->exec('DELETE FROM control_task_executions; DELETE FROM control_tasks');
  $bay=$service->handle(['schemaVersion'=>1,'action'=>'bay.status'],$now);ob_assert(($bay['remote']['ok']??false)===true&&($bay['projectGate']['ready']??false)===true,'BAY status reuses signed remote authority');
  ob_code('OPERATOR_CONFIRMATION_REQUIRED',fn()=>$service->handle(['schemaVersion'=>1,'action'=>'bay.install','targetVersion'=>'6.0.0-rc.1','targetSha'=>$targetSha,'packageSha256'=>$packageSha],$now));
  $install=$service->handle(['schemaVersion'=>1,'action'=>'bay.install','targetVersion'=>'6.0.0-rc.1','targetSha'=>$targetSha,'packageSha256'=>$packageSha,'confirmation'=>'INSTALL_BAY_UPDATE'],$now);ob_assert($install['state']==='INSTALLED'&&($install['result']['version']??null)==='6.0.0-rc.1','BAY install uses exact staged package identity and PackageManager relay');

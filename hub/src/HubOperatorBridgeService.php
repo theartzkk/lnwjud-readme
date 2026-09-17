@@ -136,6 +136,13 @@ final class HubOperatorBridgeService
             $workspace=$this->pdo->prepare("SELECT owner_device_id FROM control_workspace_leases WHERE project_id=:project AND state='ACTIVE' AND (lease_expires_at IS NULL OR lease_expires_at>:at) LIMIT 1");
             $workspace->execute(['project'=>$projectId,'at'=>$at]);
             if($workspace->fetchColumn()!==false)throw new HubOperatorBridgeException('A workspace writer currently owns this project','OPERATOR_PROJECT_GATE_BLOCKED');
+            // Repeat the mutation check under BEGIN IMMEDIATE so a writer that
+            // appears between the read-only gate and authority acquisition is
+            // still rejected. Missing envelopes are treated as mutating, never
+            // as permission to bypass the single-writer authority.
+            $running=$this->pdo->prepare("SELECT e.execution_id FROM control_task_executions e LEFT JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.project_id=:project AND e.state IN ('LEASED','RUNNING') AND COALESCE(x.mutation_scope,'PROJECT_CANDIDATE')<>'READ' LIMIT 1");
+            $running->execute(['project'=>$projectId]);
+            if($running->fetchColumn()!==false)throw new HubOperatorBridgeException('A mutating execution currently owns this project','OPERATOR_PROJECT_GATE_BLOCKED');
             $owner=$this->pdo->query("SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id=1 AND bootstrap_closed=1")->fetchColumn();
             if(!is_string($owner)||!self::uuidValid($owner))throw new HubOperatorBridgeException('Owner authority is unavailable','OPERATOR_OWNER_UNAVAILABLE');
             $revision=null;$q=$this->pdo->prepare('SELECT active_revision_id FROM control_project_vaults WHERE project_id=:project');$q->execute(['project'=>$projectId]);$v=$q->fetchColumn();if(is_string($v)&&self::uuidValid($v))$revision=$v;
@@ -147,7 +154,7 @@ final class HubOperatorBridgeService
             $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:id,:task,'RUNNING',10,'Guarded operator bridge acquired canonical mutation authority',:at)")->execute(['id'=>self::uuid(),'task'=>$taskId,'at'=>$at]);
             $this->pdo->exec('COMMIT');
             return ['executionId'=>$executionId,'taskId'=>$taskId,'projectId'=>$projectId,'leaseExpiresAt'=>$lease];
-        }catch(Throwable $error){if($this->pdo->inTransaction())$this->pdo->exec('ROLLBACK');if($error instanceof HubOperatorBridgeException)throw $error;throw new HubOperatorBridgeException('Mutation authority could not be acquired','OPERATOR_AUTHORITY_FAILED');}
+        }catch(Throwable $error){try{$this->pdo->exec('ROLLBACK');}catch(Throwable){}if($error instanceof HubOperatorBridgeException)throw $error;throw new HubOperatorBridgeException('Mutation authority could not be acquired','OPERATOR_AUTHORITY_FAILED');}
     }
 
     /** @param array{executionId:string,taskId:string,projectId:string,leaseExpiresAt:string} $authority */
@@ -161,7 +168,7 @@ final class HubOperatorBridgeService
             $this->pdo->prepare('UPDATE control_tasks SET state=:state,lease_expires_at=NULL,progress=100,result_summary=:summary,failure_code=:error,updated_at=:at WHERE task_id=:task')->execute(['state'=>$state,'summary'=>$summary,'error'=>$error,'at'=>$at,'task'=>$authority['taskId']]);
             $this->pdo->prepare('INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:id,:task,:state,100,:message,:at)')->execute(['id'=>self::uuid(),'task'=>$authority['taskId'],'state'=>$state,'message'=>$summary,'at'=>$at]);
             $this->pdo->exec('COMMIT');
-        }catch(Throwable $error){if($this->pdo->inTransaction())$this->pdo->exec('ROLLBACK');throw new HubOperatorBridgeException('Mutation authority could not be released','OPERATOR_AUTHORITY_RELEASE_FAILED');}
+        }catch(Throwable $error){try{$this->pdo->exec('ROLLBACK');}catch(Throwable){}throw new HubOperatorBridgeException('Mutation authority could not be released','OPERATOR_AUTHORITY_RELEASE_FAILED');}
     }
 
     /** @return array<string,mixed> */
