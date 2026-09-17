@@ -14,7 +14,9 @@ test('VPS browser QA runtime is pinned, browser-reuse-only and Thai-ready', asyn
   ]);
   assert.match(install, /PLAYWRIGHT_VERSION=\$\{AWH_PLAYWRIGHT_VERSION:-1\.63\.0\}/);
   assert.match(install, /NODE_ROOT=\$\{AWH_BROWSER_QA_NODE_ROOT:-\/opt\/awh-tools\/remote-desktop\/node-v22\.22\.1-linux-x64\}/);
-  assert.match(install, /AWH_BROWSER_QA_NODE20_REQUIRED/);
+  assert.match(install, /AWH_BROWSER_QA_NODE22_REQUIRED/);
+  assert.match(install, /install-node-runtime\.sh/);
+  assert.match(install, /install-node-runtime\.sh/);
   assert.match(install, /PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1/);
   assert.match(install, /--no-install-recommends/);
   assert.match(install, /fonts-noto-core/);

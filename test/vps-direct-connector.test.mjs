@@ -7,11 +7,17 @@ const root = process.cwd();
 const linux = join(root, 'deploy/remote-worker/linux');
 
 test('VPS direct connector bootstrap stays unprivileged and pinned', async () => {
-  const source = await readFile(join(linux, 'bootstrap-vps-direct-connector.sh'), 'utf8');
+  const [source, nodeRuntime] = await Promise.all([readFile(join(linux, 'bootstrap-vps-direct-connector.sh'), 'utf8'), readFile(join(linux, 'install-node-runtime.sh'), 'utf8')]);
   assert.match(source, /AGENT_VERSION=\$\{AWH_RDC_VERSION:-0\.2\.50\}/);
   assert.match(source, /AGENT_USER=\$\{AWH_RDC_USER:-awh-remote\}/);
   assert.match(source, /runuser -u "\$AGENT_USER"/);
   assert.match(source, /desktop-commander@\$AGENT_VERSION/);
+  assert.match(source, /node-v22\.22\.1-linux-x64/);
+  assert.match(source, /install-node-runtime\.sh/);
+  assert.match(nodeRuntime, /VERSION=22\.22\.1/);
+  assert.match(nodeRuntime, /EXPECTED_SHA=9a6bc82f9b491279147219f6a18add1e18424dce90d41d2a5fcd69d4924ba3aa/);
+  assert.match(nodeRuntime, /https:\/\/nodejs\.org\/download\/release\/v\$\{VERSION\}/);
+  assert.match(nodeRuntime, /sha256sum -c -/);
   assert.match(source, /AWH_VPS_DIRECT_SECURITY=UNPRIVILEGED_NO_SUDO/);
   assert.doesNotMatch(source, /sudoers|NOPASSWD|usermod\s+-aG\s+sudo|exec\s+sudo|npx[^\n]*latest/);
 });
