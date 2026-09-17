@@ -10,7 +10,7 @@ Group=__AGENT_USER__
 Environment=HOME=__AGENT_HOME__
 Environment=NPM_CONFIG_CACHE=__AGENT_HOME__/.npm
 WorkingDirectory=__RUNTIME_ROOT__/agent
-ExecStart=/usr/bin/node __RUNTIME_ROOT__/agent/node_modules/@wonderwhy-er/desktop-commander/dist/index.js remote
+ExecStart=__NODE_ROOT__/bin/node __RUNTIME_ROOT__/agent/node_modules/@wonderwhy-er/desktop-commander/dist/index.js remote
 Restart=always
 RestartSec=5
 TimeoutStopSec=20
