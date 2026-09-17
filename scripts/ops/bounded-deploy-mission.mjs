@@ -124,7 +124,7 @@ async function goldenJourneys(plan,head,deployTail,release,releaseUrl){
     }else if(name==='public-shell'){
       const r=await fetch(base,{cache:'no-store',redirect:'follow'}); pass=r.status===200; evidence=`HTTP_${r.status}`;
     }else if(name==='auth-boundary'){
-      const login=new URL('/api/v1/control/auth/login',base); const session=new URL('/api/v1/control/session',base);
+      const login=new URL('/api/v1/auth/login',base); const session=new URL('/api/v1/control/session',base);
       const [a,b]=await Promise.all([fetch(login,{cache:'no-store',redirect:'manual'}),fetch(session,{cache:'no-store',redirect:'manual'})]);
       pass=a.status===405&&b.status===401; evidence=`login=${a.status},session=${b.status}`;
     }else if(name==='vault-source-authority'){
@@ -172,9 +172,11 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   console.log('MISSION_APPROVALS_CONSUMED=1');
   const deploy=await run(process.execPath,[GUARDED,'--deploy','--approve',...common],{env,forward:true});
   if(deploy.code!==0||!deploy.tail.includes('DEPLOY_RESULT=PASS')||!deploy.tail.includes('DEPLOY_STAGE=BACKUP_VERIFIED')||!deploy.tail.includes('DEPLOY_STAGE=SOURCE_DRIFT_VERIFIED')) throw new Error('MISSION_DEPLOY_FAILED');
+  missionContext.deploy={status:'PASS',backup:'PASS',sourceDrift:'PASS'};
   const url=process.env.AWH_PUBLIC_RELEASE_URL||'https://kruart.online/release.json';
   const response=await fetch(url,{cache:'no-store'}); if(!response.ok)throw new Error('MISSION_PUBLIC_VERIFY_UNAVAILABLE');
   const release=await response.json(); if(release?.sourceSha!==head||release?.sourceState!=='COMMITTED')throw new Error('MISSION_PUBLIC_REVISION_MISMATCH');
+  missionContext.publicRelease={releaseId:release.releaseId??null,sourceSha:release.sourceSha,sourceState:release.sourceState};
   const journeys=await goldenJourneys(plan,head,deploy.tail,release,url);
   await saveCapsule({...baseCapsule,state:'COMPLETED',result:'PASS',deploy:{status:'PASS',backup:'PASS',sourceDrift:'PASS'},publicRelease:{releaseId:release.releaseId??null,sourceSha:release.sourceSha,sourceState:release.sourceState},goldenJourneys:journeys,completedAt:new Date().toISOString()});
   console.log('MISSION_BACKUP=PASS'); console.log('MISSION_SOURCE_DRIFT=PASS'); console.log('MISSION_PUBLIC_VERIFY=PASS'); console.log('MISSION_STATE=COMPLETED'); console.log('MISSION_RESULT=PASS');
@@ -183,7 +185,8 @@ export async function runMission(rawArgs=process.argv.slice(2)){
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   runMission().catch(async(error)=>{
     const code=String(error?.message||error).replace(/[^A-Za-z0-9_.:-]/g,'_').slice(0,160)||'MISSION_FAILED';
-    await recordIncident(code,missionContext);
+    const incident=await recordIncident(code,missionContext);
+    try { await saveCapsule({schemaVersion:1,kind:'release-verification',...missionContext,state:'BLOCKED',result:'BLOCK',failure:{code,incident},completedAt:new Date().toISOString()}); } catch { /* incident evidence remains authoritative */ }
     console.error('MISSION_RESULT=BLOCKED'); console.error(`MISSION_REASON=${code}`); process.exit(1);
   });
 }
