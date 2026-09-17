@@ -2,7 +2,7 @@
 <?php
 declare(strict_types=1);
 $socket=getenv('AWH_OPERATOR_SOCKET');if(!is_string($socket)||$socket==='')$socket='/run/awh-operator-bridge.sock';
-$stageRoot=getenv('AWH_OPERATOR_STAGE_ROOT');if(!is_string($stageRoot)||$stageRoot==='')$stageRoot='/var/lib/awh-operator-staging';
+$stageRoot=getenv('AWH_OPERATOR_STAGE_ROOT');if(!is_string($stageRoot)||$stageRoot==='')$stageRoot='/var/lib/awh-remote/operator-staging';
 $args=$argv;array_shift($args);$cmd=array_shift($args)??'';$request=['schemaVersion'=>1];$cleanup=null;
 $usage=static function():never{fwrite(STDERR,"usage: awh-operator status|projects|gate <project>|verification-store --confirm|verification-regressions|bay-status|bay-stage <package.zip> <version> <source-sha> <package-sha256> --confirm|bay-install <version> <source-sha> <package-sha256> --confirm\n");exit(64);};
 switch($cmd){
