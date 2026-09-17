@@ -1,12 +1,27 @@
 #!/usr/bin/env node
 
 import { access, copyFile, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
-import { constants } from 'node:fs';
+import { constants, existsSync } from 'node:fs';
 import { delimiter, dirname, join, resolve } from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { platform, arch, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { npmLaunchSpec } from './lib/npm-runtime.mjs';
+
+const MIN_NODE_MAJOR = 20;
+const AWH_BOUNDED_NODE = process.env.AWH_NODE_RUNTIME || '/opt/awh-toolchain/node/bin/node';
+const activeNodeMajor = Number.parseInt(process.versions.node.split('.')[0] ?? '0', 10);
+if (activeNodeMajor < MIN_NODE_MAJOR && process.env.AWH_QA_REEXEC !== '1' && existsSync(AWH_BOUNDED_NODE)) {
+  const probe = spawnSync(AWH_BOUNDED_NODE, ['-p', "Number(process.versions.node.split('.')[0])"], { encoding: 'utf8', shell: false });
+  const boundedMajor = Number.parseInt((probe.stdout ?? '').trim(), 10);
+  if (probe.status === 0 && boundedMajor >= MIN_NODE_MAJOR) {
+    const result = spawnSync(AWH_BOUNDED_NODE, [fileURLToPath(import.meta.url), ...process.argv.slice(2)], {
+      stdio: 'inherit', shell: false,
+      env: { ...process.env, AWH_QA_REEXEC: '1', PATH: `${dirname(AWH_BOUNDED_NODE)}${delimiter}${process.env.PATH ?? ''}` },
+    });
+    process.exit(result.status ?? 1);
+  }
+}
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const OUTPUT_DIR = join(ROOT, '.awh-local', 'qa');
@@ -50,7 +65,7 @@ function pathCandidates(command) {
 
 function commonToolCandidates(command) {
   if (process.platform === 'win32') return [];
-  return ['/opt/homebrew/bin', '/usr/local/bin', '/opt/local/bin', '/usr/bin', '/bin'].map((dir) => join(dir, command));
+  return ['/opt/awh-toolchain/node/bin', '/opt/homebrew/bin', '/usr/local/bin', '/opt/local/bin', '/usr/bin', '/bin'].map((dir) => join(dir, command));
 }
 
 async function resolveCommand(command) {
@@ -64,6 +79,7 @@ function nodeSource(path) {
   const normalized = path.replaceAll('\\', '/');
   if (normalized.includes('/.cache/codex-runtimes/') || normalized.includes('/ChatGPT.app/')) return 'embedded/bundled application runtime';
   if (normalized.includes('/.nvm/') || normalized.includes('/.fnm/') || normalized.includes('/.asdf/')) return 'user-managed Node runtime';
+  if (normalized.includes('/opt/awh-toolchain/node/')) return 'AWH bounded Node runtime';
   if (normalized.includes('/opt/homebrew/') || normalized.includes('/usr/local/Cellar/') || normalized.includes('/usr/local/opt/')) return 'Homebrew Node runtime';
   if (normalized.startsWith('/usr/bin/') || normalized.startsWith('/System/')) return 'system Node runtime';
   return 'user-installed Node runtime (source not otherwise identified)';

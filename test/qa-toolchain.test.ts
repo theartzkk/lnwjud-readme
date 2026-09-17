@@ -52,3 +52,13 @@ test('fast QA defers exact-revision deploy contracts only while the candidate is
   assert.match(source, /central-project-authority-deployment\.test\.ts/);
   assert.match(source, /automation-deployment\.test\.ts/);
 });
+
+
+test('local QA self-promotes to the bounded AWH Node runtime instead of failing on stale system Node', async () => {
+  const source = await readFile(new URL('../scripts/qa/awh-local-qa.mjs', import.meta.url), 'utf8');
+  assert.match(source, /AWH_NODE_RUNTIME/);
+  assert.match(source, /\/opt\/awh-toolchain\/node\/bin\/node/);
+  assert.match(source, /AWH_QA_REEXEC/);
+  assert.match(source, /boundedMajor >= MIN_NODE_MAJOR/);
+  assert.match(source, /AWH bounded Node runtime/);
+});

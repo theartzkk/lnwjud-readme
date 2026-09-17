@@ -7,8 +7,8 @@ Current invariant: a browser/ChatGPT/worker transport is never the lifetime auth
 - Task/execution idempotency, leases and bounded retry reuse the existing control-plane tables; no parallel queue exists.
 - Provider/network failure preserves the same task and never fabricates success.
 - Long local commands use start + poll rather than one long transport wait.
-- macOS Remote Worker uses pinned Desktop Commander `0.2.47`, `--persist-session`, LaunchAgent supervision, a five-second recovery loop and no runtime `npx` fallback.
-- The version-locked runtime patch contains only bounded logging, faster channel health checks, local-child recovery and process-spawn error containment.
+- Remote Desktop Commander version is resolved from live endpoint state; historical pins are not assumed current. During critical work, do not auto-upgrade or downgrade a healthy endpoint merely to match stale documentation.
+- Use the standard installed Remote Desktop runtime and its supported persistence/reconnect behavior. Do not add custom watchers, screenshot loops or parallel remote daemons as a transport workaround.
 - Safety/security gates are never bypassed; operations are decomposed into narrower supported actions instead.
 
 Operational success is therefore **gateway failure ≠ job failure**. External ISP/provider/realtime outages can still occur, but accepted AWH work must remain durable and recoverable.
