@@ -3169,6 +3169,7 @@ final class HubControlPlaneService
     private function foundingMemorySchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 10 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_memory_records'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
     private function selfServiceSchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 11 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_provider_credentials'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
     private function centralProjectAuthoritySchemaPresent(): bool { try { return (int) $this->pdo->query('PRAGMA user_version')->fetchColumn() >= 12 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'control_project_vaults'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
+    private function vaultSourceAuthoritySchemaPresent(): bool { try { if ((int) $this->pdo->query('PRAGMA user_version')->fetchColumn() < 21) return false; foreach ($this->pdo->query("PRAGMA table_info('projects')")->fetchAll() as $row) if (($row['name'] ?? null) === 'canonical_source_authority') return true; return false; } catch (Throwable) { return false; } }
     private function anywhereExecutionSchemaPresent(): bool { return HubCapabilityRegistryService::schemaPresent($this->pdo); }
     private function automationSchemaPresent(): bool { try { return (int)$this->pdo->query('PRAGMA user_version')->fetchColumn() >= 15 && $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='control_automations'")->fetchColumn() === 1; } catch (Throwable) { return false; } }
     /** @param callable(HubAutomationRegistryService):array<string,mixed> $operation @return array<string,mixed> */
@@ -3218,7 +3219,13 @@ final class HubControlPlaneService
 
     private function projectsForUser(string $userId): array
     {
-        $q = $this->pdo->prepare("SELECT p.project_id,p.name,p.type,p.created_at,p.source_revision,p.observed_at,p.canonical_source_authority,v.active_revision_id,(SELECT COUNT(*) FROM project_memory pm WHERE pm.project_id=p.project_id AND pm.status='present' AND pm.memory_file IN ('CURRENT_STATE.md','PROJECT.md','HANDOFF.md','TASKS.md','ARCHITECTURE.md','DECISIONS.md')) AS memory_present FROM projects p JOIN user_project_memberships m ON m.project_id=p.project_id AND m.user_id=:user AND m.revoked_at IS NULL LEFT JOIN control_project_vaults v ON v.project_id=p.project_id ORDER BY p.name,p.project_id LIMIT 100");
+        $vaultJoin = $this->centralProjectAuthoritySchemaPresent();
+        $vaultAuthority = $this->vaultSourceAuthoritySchemaPresent();
+        $authoritySelect = $vaultAuthority ? 'p.canonical_source_authority' : 'NULL AS canonical_source_authority';
+        $vaultSelect = $vaultJoin ? 'v.active_revision_id' : 'NULL AS active_revision_id';
+        $vaultClause = $vaultJoin ? ' LEFT JOIN control_project_vaults v ON v.project_id=p.project_id' : '';
+        $sql = "SELECT p.project_id,p.name,p.type,p.created_at,p.source_revision,p.observed_at,$authoritySelect,$vaultSelect,(SELECT COUNT(*) FROM project_memory pm WHERE pm.project_id=p.project_id AND pm.status='present' AND pm.memory_file IN ('CURRENT_STATE.md','PROJECT.md','HANDOFF.md','TASKS.md','ARCHITECTURE.md','DECISIONS.md')) AS memory_present FROM projects p JOIN user_project_memberships m ON m.project_id=p.project_id AND m.user_id=:user AND m.revoked_at IS NULL$vaultClause ORDER BY p.name,p.project_id LIMIT 100";
+        $q = $this->pdo->prepare($sql);
         $q->execute(['user'=>$userId]);
         return array_map(static function(array $row): array { $h=self::projectSourceHygiene($row); return ['projectId'=>(string)$row['project_id'],'name'=>(string)$row['name'],'type'=>(string)$row['type'],'createdAt'=>(string)$row['created_at'],'sourceRevision'=>$row['source_revision']===null?null:(string)$row['source_revision'],'observedAt'=>(string)$row['observed_at'],'memoryReady'=>(int)$row['memory_present']===6] + $h; }, $q->fetchAll());
     }
