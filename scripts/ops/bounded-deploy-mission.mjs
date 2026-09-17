@@ -37,7 +37,20 @@ function run(command,args,{env={},forward=false,input=null}={}){
 }
 
 async function git(args){const r=await run('git',args);if(r.code!==0)throw new Error(`GIT_FAILED:${args[0]}`);return r.tail.trim();}
-async function resolveProduction(){for(const ref of ['refs/heads/production','refs/remotes/vps/production','refs/remotes/origin/production']){const r=await run('git',['rev-parse','--verify',ref]);const sha=r.tail.trim();if(r.code===0&&SHA.test(sha))return sha;}throw new Error('MISSION_PRODUCTION_REF_UNRESOLVED');}
+async function canonicalRemote(){
+  const configured=await run('git',['config','--get','branch.main.remote']);
+  const name=configured.code===0?configured.tail.trim():'';
+  if(name&&name!=='.'){const probe=await run('git',['remote','get-url',name]);if(probe.code===0&&probe.tail.trim()!=='')return name;}
+  for(const candidate of ['vps','origin']){const probe=await run('git',['remote','get-url',candidate]);if(probe.code===0&&probe.tail.trim()!=='')return candidate;}
+  throw new Error('MISSION_CANONICAL_REMOTE_UNRESOLVED');
+}
+async function resolveProduction(){
+  const remote=await canonicalRemote();
+  const live=await run('git',['ls-remote','--exit-code',remote,'refs/heads/production']);
+  const match=live.code===0?live.tail.trim().match(/^([0-9a-f]{40})\s+refs\/heads\/production$/i):null;
+  if(match&&SHA.test(match[1]))return match[1].toLowerCase();
+  throw new Error('MISSION_PRODUCTION_REF_UNRESOLVED');
+}
 
 async function policy(mode,payload){
   const result=await run(process.env.AWH_PHP||'php',[INTELLIGENCE,mode],{input:`${JSON.stringify(payload)}\n`});

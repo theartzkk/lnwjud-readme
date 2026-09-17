@@ -19,6 +19,9 @@ test('bounded deploy mission has one explicit owner approval and a deterministic
 test('mission contract preserves QA, rehearsal, backup, drift and public exact-revision proof',async()=>{
   const source=await readFile(new URL('../scripts/ops/bounded-deploy-mission.mjs',import.meta.url),'utf8');
   assert.match(source,/node:child_process/);
+  assert.match(source,/ls-remote/);
+  assert.match(source,/branch\.main\.remote/);
+  assert.doesNotMatch(source,/refs\/heads\/production','refs\/remotes\/vps\/production/);
   assert.match(source,/new URL\('\/api\/v1\/auth\/login',base\)/);
   assert.doesNotMatch(source,/new URL\('\/api\/v1\/control\/auth\/login',base\)/);
   assert.match(source,/state:'BLOCKED',result:'BLOCK'/);
