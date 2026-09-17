@@ -1,0 +1,14 @@
+#!/usr/bin/php
+<?php
+declare(strict_types=1);
+$socket=getenv('AWH_OPERATOR_SOCKET');if(!is_string($socket)||$socket==='')$socket='/run/awh-operator-bridge.sock';
+$args=$argv;array_shift($args);$cmd=array_shift($args)??'';$request=['schemaVersion'=>1];
+$usage=static function():never{fwrite(STDERR,"usage: awh-operator status|projects|gate <project>|bay-status|bay-install <version> <source-sha> <package-sha256> --confirm\n");exit(64);};
+switch($cmd){
+case 'status':$request['action']='system.status';break;
+case 'projects':$request['action']='projects.list';break;
+case 'gate':$project=array_shift($args);if(!is_string($project)||$project==='')$usage();$request+=['action'=>'project.gate','project'=>$project];break;
+case 'bay-status':$request['action']='bay.status';break;
+case 'bay-install':$version=array_shift($args);$sha=array_shift($args);$package=array_shift($args);$confirm=array_shift($args);if(!is_string($version)||!is_string($sha)||!is_string($package)||$confirm!=='--confirm'||$args!==[])$usage();$request+=['action'=>'bay.install','targetVersion'=>$version,'targetSha'=>$sha,'packageSha256'=>$package,'confirmation'=>'INSTALL_BAY_UPDATE'];break;
+default:$usage();}
+$client=@stream_socket_client('unix://'.$socket,$errno,$errstr,3,STREAM_CLIENT_CONNECT);if(!is_resource($client)){fwrite(STDERR,"AWH_OPERATOR_UNAVAILABLE\n");exit(69);}stream_set_timeout($client,20);$json=json_encode($request,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)."\n";if(fwrite($client,$json)!==strlen($json)){fclose($client);fwrite(STDERR,"AWH_OPERATOR_WRITE_FAILED\n");exit(74);}$raw=fgets($client,1048576);fclose($client);if(!is_string($raw)||$raw===''){fwrite(STDERR,"AWH_OPERATOR_EMPTY_RESPONSE\n");exit(74);}try{$decoded=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){fwrite(STDERR,"AWH_OPERATOR_INVALID_RESPONSE\n");exit(74);}fwrite(STDOUT,json_encode($decoded,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n");exit(($decoded['ok']??false)===true?0:1);

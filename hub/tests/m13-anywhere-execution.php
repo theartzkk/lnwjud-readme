@@ -16,6 +16,7 @@ require_once dirname(__DIR__) . '/src/HubCentralProjectAuthorityMigration.php';
 require_once dirname(__DIR__) . '/src/HubAnywhereExecutionMigration.php';
 require_once dirname(__DIR__) . '/src/HubCapabilityRegistryService.php';
 require_once dirname(__DIR__) . '/src/HubEnrollmentService.php';
+require_once dirname(__DIR__) . '/src/HubControlPlaneService.php';
 
 function m13_assert(bool $condition, string $message): void { if (!$condition) throw new RuntimeException($message); }
 function m13_uuid(): string { $bytes = random_bytes(16); $bytes[6] = chr((ord($bytes[6]) & 15) | 64); $bytes[8] = chr((ord($bytes[8]) & 63) | 128); return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4)); }
@@ -28,6 +29,7 @@ $base = dirname(__DIR__); $now = gmdate('c');
 $owner = '223b45c0-23e1-408d-ae0f-ac5eca7f6900';
 $project = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
 $device = '423b45c0-23e1-408d-ae0f-ac5eca7f6900';
+$writerDevice = '523b45c0-23e1-408d-ae0f-ac5eca7f6900';
 try {
     mkdir($root, 0700, true); $db = $root . '/awh.sqlite';
     $pdo = new PDO('sqlite:' . $db, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
@@ -36,7 +38,9 @@ try {
     $pdo->prepare('INSERT INTO projects(project_id,name,type,created_at,source_revision,observed_at,provenance) VALUES(:id,:name,:type,:at,NULL,:at,:provenance)')->execute(['id'=>$project,'name'=>'Anywhere Fixture','type'=>'php','at'=>$now,'provenance'=>'m13-fixture']);
     m13_assert(HubSchemaMigration::apply($db, $base . '/migrations/001_m3e_enrollment.sql', $now, false, $base . '/schema.sql') === 'applied', 'M3E');
     m13_assert(HubEnrollmentApiMigration::apply($db, $base . '/migrations/002_m3e2_enrollment_api.sql', $now) === 'applied', 'M3E2');
-    HubEnrollmentService::openExisting($db)->initializeOwner($owner, 'Art', [$project], $now);
+    $enrollment=HubEnrollmentService::openExisting($db); $enrollment->initializeOwner($owner, 'Art', [$project], $now);
+    $writerPair=$enrollment->issuePairingCode($owner,[$project],$now);
+    $writerEnrollment=$enrollment->enrollDevice(['schemaVersion'=>1,'pairingCode'=>$writerPair['pairingCode'],'deviceId'=>$writerDevice,'displayName'=>'Writer Windows','platform'=>'win32','arch'=>'x64','appVersion'=>'1.0.0'],$now);
     foreach ([[HubControlPlaneMigration::class,'003_m4_control_plane.sql'],[HubOwnerAuthMigration::class,'004_owner_auth.sql'],[HubAssistantWorkstreamMigration::class,'005_assistant_workstream.sql'],[HubWorkspaceContinuityMigration::class,'006_workspace_continuity.sql'],[HubUnifiedWorkspaceMigration::class,'007_unified_workspace.sql']] as [$migration,$sql]) m13_assert($migration::apply($db, $base . '/migrations/' . $sql, $now) === 'applied', $sql);
     m13_assert(HubFinalProductMigration::apply($db, $base . '/migrations/008_final_product.sql', $now) === 'applied', 'M9');
     m13_assert(HubFoundingMemoryMigration::apply($db, $base . '/migrations/009_founding_memory.sql', $now) === 'applied', 'M10');
@@ -79,6 +83,10 @@ try {
     $leaseUntil = gmdate('c', strtotime($now) + 300);
     $firstAuthority = $registry->activateExecutionAuthority($specialistExecution, $leaseUntil, $now);
     m13_assert(($firstAuthority['granted'] ?? false) === true, 'first mutating execution owns project authority');
+    $control=HubControlPlaneService::openExisting($db);
+    $blockedCheckpoint=['schemaVersion'=>1,'checkpointId'=>'623b45c0-23e1-408d-ae0f-ac5eca7f6900','deviceId'=>$writerDevice,'projectId'=>$project,'taskId'=>null,'baseRevision'=>str_repeat('a',40),'wipRevision'=>str_repeat('b',40),'wipRef'=>'refs/awh/wip/'.$project.'/623b45c0-23e1-408d-ae0f-ac5eca7f6900','treeRevision'=>str_repeat('c',40),'files'=>[['path'=>'src/guard.php','state'=>'modified','sha256'=>str_repeat('d',64),'sizeBytes'=>16]],'artifactRefs'=>[],'syncState'=>'SYNCED'];
+    try{$control->publishWorkspaceCheckpoint((string)$writerEnrollment['accessToken'],$blockedCheckpoint,$now);throw new RuntimeException('workspace writer must be blocked by canonical mutation envelope');}catch(HubControlPlaneException $error){m13_assert($error->codeName==='WORKSPACE_MUTATION_AUTHORITY_HELD','canonical mutation envelope blocks a new workspace writer');}
+    m13_assert((int)$pdo->query("SELECT COUNT(*) FROM control_workspace_checkpoints WHERE checkpoint_id='623b45c0-23e1-408d-ae0f-ac5eca7f6900'")->fetchColumn()===0,'blocked workspace checkpoint rolls back atomically');
     $secondTask = m13_uuid(); $secondExecution = m13_uuid();
     $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'second mutation','WAITING_FOR_WORKER',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$secondTask,'user'=>$owner,'project'=>$project,'key'=>'m13-second-mutation-0001','at'=>$now]);
     $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','project.mutate.assisted','QUEUED',NULL,NULL,0,NULL,'{}',NULL,:at,:at)")->execute(['execution'=>$secondExecution,'task'=>$secondTask,'project'=>$project,'at'=>$now]);
@@ -106,6 +114,8 @@ try {
     m13_assert(($visible['project.mutate.assisted'] ?? null) === 'READY', 'Cloud-assisted source editing is visible as ready');
     m13_assert(($visible['voice.tts'] ?? null) === 'PLANNED' && ($visible['video.render'] ?? null) === 'PLANNED', 'future voice/video capabilities are truthful planned entries');
     m13_assert($pdo->query('PRAGMA integrity_check')->fetchColumn() === 'ok' && $pdo->query('PRAGMA foreign_key_check')->fetchAll() === [], 'M13 preserves database integrity and foreign keys');
+    $releasedCheckpoint=$control->publishWorkspaceCheckpoint((string)$writerEnrollment['accessToken'],$blockedCheckpoint,gmdate('c',strtotime($now)+2));
+    m13_assert(($releasedCheckpoint['workspace']['lease']['active']??false)===true,'workspace writer can acquire only after canonical mutation authority releases');
     fwrite(STDOUT, "AWH M13 Anywhere Execution: PASS\n");
 } finally {
     m13_clean($root);

@@ -2706,6 +2706,7 @@ final class HubControlPlaneService
                 $insert->execute(['id' => $record['checkpointId'], 'project' => $projectId, 'task' => $record['taskId'], 'device' => $auth['deviceId'], 'base' => $record['baseRevision'], 'wip' => $record['wipRevision'], 'ref' => $record['wipRef'], 'tree' => $record['treeRevision'], 'files' => json_encode($record['files'], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR), 'artifacts' => json_encode($record['artifactRefs'], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR), 'state' => $record['syncState'], 'created' => $at, 'durable' => $record['syncState'] === 'UNSYNCED' ? null : $at]);
                 $this->workspaceEvent($projectId, $record['checkpointId'], (string) $auth['deviceId'], 'CHECKPOINT_PUBLISHED', $at);
             }
+            $this->assertNoActiveMutationEnvelope($projectId, $at);
             $lease = $this->pdo->prepare('SELECT owner_device_id, state, lease_expires_at FROM control_workspace_leases WHERE project_id = :project'); $lease->execute(['project' => $projectId]); $current = $lease->fetch();
             if (is_array($current) && $current['state'] === 'ACTIVE' && (string) $current['owner_device_id'] !== $auth['deviceId'] && strtotime((string) $current['lease_expires_at']) > strtotime($at)) throw new HubControlPlaneException('Another device currently owns this workspace', 'WORKSPACE_LEASE_HELD');
             $upsert = $this->pdo->prepare('INSERT INTO control_workspace_leases(project_id, owner_device_id, checkpoint_id, state, lease_expires_at, acquired_at, updated_at) VALUES(:project, :device, :checkpoint, \'ACTIVE\', :expires, :at, :at) ON CONFLICT(project_id) DO UPDATE SET owner_device_id=excluded.owner_device_id, checkpoint_id=excluded.checkpoint_id, state=\'ACTIVE\', lease_expires_at=excluded.lease_expires_at, updated_at=excluded.updated_at');
@@ -2733,6 +2734,7 @@ final class HubControlPlaneService
             if ($checkpointId !== null) {
                 if (!is_array($latest) || (string) $latest['checkpoint_id'] !== $checkpointId || !in_array((string) $latest['sync_state'], ['CLEAN', 'SYNCED'], true)) throw new HubControlPlaneException('Requested workspace checkpoint is not the latest durable state', 'WORKSPACE_CHECKPOINT_STALE');
             } elseif (is_array($latest) && in_array((string) $latest['sync_state'], ['CLEAN', 'SYNCED'], true)) throw new HubControlPlaneException('A durable workspace checkpoint must be selected before takeover', 'WORKSPACE_CHECKPOINT_REQUIRED');
+            $this->assertNoActiveMutationEnvelope($projectId, $at);
             $lease = $this->pdo->prepare('SELECT * FROM control_workspace_leases WHERE project_id = :project'); $lease->execute(['project' => $projectId]); $current = $lease->fetch();
             if (is_array($current) && $current['state'] === 'ACTIVE' && (string) $current['owner_device_id'] !== $auth['deviceId'] && strtotime((string) $current['lease_expires_at']) > strtotime($at)) throw new HubControlPlaneException('Another device currently owns this workspace', 'WORKSPACE_LEASE_HELD');
             if (is_array($current) && $current['state'] === 'ACTIVE' && (string) $current['owner_device_id'] !== $auth['deviceId']) $this->workspaceEvent($projectId, $current['checkpoint_id'] === null ? null : (string) $current['checkpoint_id'], (string) $current['owner_device_id'], 'LEASE_EXPIRED', $at);
@@ -2740,6 +2742,16 @@ final class HubControlPlaneService
             $upsert->execute(['project' => $projectId, 'device' => $auth['deviceId'], 'checkpoint' => $checkpointId, 'expires' => $expires, 'at' => $at]); $this->workspaceEvent($projectId, $checkpointId, (string) $auth['deviceId'], 'LEASE_ACQUIRED', $at); $this->pdo->exec('COMMIT'); $transactionOpen = false;
         } catch (Throwable $error) { if ($transactionOpen) { try { $this->pdo->exec('ROLLBACK'); } catch (Throwable) {} } if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Workspace takeover could not be completed', 'WORKSPACE_LEASE_FAILED'); }
         return ['schemaVersion' => 1, 'workspace' => $this->workspaceState($projectId, $at, true)];
+    }
+
+    /** A workspace writer may never appear while the canonical execution envelope owns a mutation lane. */
+    private function assertNoActiveMutationEnvelope(string $projectId, string $at): void
+    {
+        $table=$this->pdo->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='control_execution_envelopes'")->fetchColumn();
+        if($table===false)return; // Pre-M13 compatibility: workspace continuity existed before execution envelopes.
+        $q=$this->pdo->prepare("SELECT x.execution_id FROM control_execution_envelopes x LEFT JOIN control_task_executions e ON e.execution_id=x.execution_id LEFT JOIN control_tasks t ON t.task_id=x.task_id WHERE x.project_id=:project AND x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) AND COALESCE(e.state,'RUNNING') NOT IN ('COMPLETED','FAILED','CANCELLED') AND COALESCE(t.state,'RUNNING') NOT IN ('COMPLETED','FAILED','CANCELLED') LIMIT 1");
+        $q->execute(['project'=>$projectId,'at'=>$at]);
+        if($q->fetchColumn()!==false)throw new HubControlPlaneException('A canonical mutating execution currently owns this project','WORKSPACE_MUTATION_AUTHORITY_HELD');
     }
 
     public function renewWorkspaceLease(string $token, array $payload, ?string $now = null): array
