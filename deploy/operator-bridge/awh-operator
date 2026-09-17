@@ -2,13 +2,27 @@
 <?php
 declare(strict_types=1);
 $socket=getenv('AWH_OPERATOR_SOCKET');if(!is_string($socket)||$socket==='')$socket='/run/awh-operator-bridge.sock';
-$args=$argv;array_shift($args);$cmd=array_shift($args)??'';$request=['schemaVersion'=>1];
-$usage=static function():never{fwrite(STDERR,"usage: awh-operator status|projects|gate <project>|bay-status|bay-install <version> <source-sha> <package-sha256> --confirm\n");exit(64);};
+$stageRoot=getenv('AWH_OPERATOR_STAGE_ROOT');if(!is_string($stageRoot)||$stageRoot==='')$stageRoot='/var/lib/awh-operator-staging';
+$args=$argv;array_shift($args);$cmd=array_shift($args)??'';$request=['schemaVersion'=>1];$cleanup=null;
+$usage=static function():never{fwrite(STDERR,"usage: awh-operator status|projects|gate <project>|bay-status|bay-stage <package.zip> <version> <source-sha> <package-sha256> --confirm|bay-install <version> <source-sha> <package-sha256> --confirm\n");exit(64);};
 switch($cmd){
 case 'status':$request['action']='system.status';break;
 case 'projects':$request['action']='projects.list';break;
 case 'gate':$project=array_shift($args);if(!is_string($project)||$project==='')$usage();$request+=['action'=>'project.gate','project'=>$project];break;
 case 'bay-status':$request['action']='bay.status';break;
+case 'bay-stage':
+    $package=array_shift($args);$version=array_shift($args);$sha=strtolower((string)array_shift($args));$packageSha=strtolower((string)array_shift($args));$confirm=array_shift($args);
+    if(!is_string($package)||!is_string($version)||$confirm!=='--confirm'||$args!==[]||preg_match('/^[a-f0-9]{40}$/',$sha)!==1||preg_match('/^[a-f0-9]{64}$/',$packageSha)!==1)$usage();
+    $real=realpath($package);$root=realpath($stageRoot);if(!is_string($real)||!is_file($real)||is_link($package)||!is_readable($real)||!is_string($root)||!is_dir($root)||!is_writable($root)){fwrite(STDERR,"AWH_OPERATOR_STAGE_SOURCE_INVALID\n");exit(66);}
+    $size=@filesize($real);$actual=hash_file('sha256',$real);if(!is_int($size)||$size<1||$size>9437184||!is_string($actual)||!hash_equals($packageSha,$actual)){fwrite(STDERR,"AWH_OPERATOR_STAGE_SOURCE_INVALID\n");exit(66);}
+    $stagedName=$packageSha.'.zip';$staged=$root.'/'.$stagedName;if(is_link($staged)||is_dir($staged)){fwrite(STDERR,"AWH_OPERATOR_STAGE_DESTINATION_UNSAFE\n");exit(73);}if(is_file($staged)&&!@unlink($staged)){fwrite(STDERR,"AWH_OPERATOR_STAGE_DESTINATION_BUSY\n");exit(73);}
+    if(!@copy($real,$staged)||!@chmod($staged,0640)||!hash_equals($packageSha,(string)hash_file('sha256',$staged))){@unlink($staged);fwrite(STDERR,"AWH_OPERATOR_STAGE_COPY_FAILED\n");exit(74);}
+    $cleanup=$staged;register_shutdown_function(static function()use(&$cleanup):void{if(is_string($cleanup)&&$cleanup!==''&&is_file($cleanup))@unlink($cleanup);});
+    $request+=['action'=>'bay.stage','targetVersion'=>$version,'targetSha'=>$sha,'packageSha256'=>$packageSha,'stagedFile'=>$stagedName,'confirmation'=>'STAGE_BAY_UPDATE'];break;
 case 'bay-install':$version=array_shift($args);$sha=array_shift($args);$package=array_shift($args);$confirm=array_shift($args);if(!is_string($version)||!is_string($sha)||!is_string($package)||$confirm!=='--confirm'||$args!==[])$usage();$request+=['action'=>'bay.install','targetVersion'=>$version,'targetSha'=>$sha,'packageSha256'=>$package,'confirmation'=>'INSTALL_BAY_UPDATE'];break;
 default:$usage();}
-$client=@stream_socket_client('unix://'.$socket,$errno,$errstr,3,STREAM_CLIENT_CONNECT);if(!is_resource($client)){fwrite(STDERR,"AWH_OPERATOR_UNAVAILABLE\n");exit(69);}stream_set_timeout($client,20);$json=json_encode($request,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)."\n";if(fwrite($client,$json)!==strlen($json)){fclose($client);fwrite(STDERR,"AWH_OPERATOR_WRITE_FAILED\n");exit(74);}$raw=fgets($client,1048576);fclose($client);if(!is_string($raw)||$raw===''){fwrite(STDERR,"AWH_OPERATOR_EMPTY_RESPONSE\n");exit(74);}try{$decoded=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){fwrite(STDERR,"AWH_OPERATOR_INVALID_RESPONSE\n");exit(74);}fwrite(STDOUT,json_encode($decoded,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n");exit(($decoded['ok']??false)===true?0:1);
+$client=@stream_socket_client('unix://'.$socket,$errno,$errstr,3,STREAM_CLIENT_CONNECT);if(!is_resource($client)){fwrite(STDERR,"AWH_OPERATOR_UNAVAILABLE\n");exit(69);}
+stream_set_timeout($client,$cmd==='bay-install'?180:($cmd==='bay-stage'?60:20));
+$json=json_encode($request,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)."\n";if(fwrite($client,$json)!==strlen($json)){fclose($client);fwrite(STDERR,"AWH_OPERATOR_WRITE_FAILED\n");exit(74);}
+$raw=fgets($client,1048576);fclose($client);if(!is_string($raw)||$raw===''){fwrite(STDERR,"AWH_OPERATOR_EMPTY_RESPONSE\n");exit(74);}try{$decoded=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){fwrite(STDERR,"AWH_OPERATOR_INVALID_RESPONSE\n");exit(74);}
+fwrite(STDOUT,json_encode($decoded,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n");exit(($decoded['ok']??false)===true?0:1);

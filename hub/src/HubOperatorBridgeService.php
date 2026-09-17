@@ -13,6 +13,8 @@ final class HubOperatorBridgeException extends RuntimeException
 final class HubOperatorBridgeService
 {
     private const INSTALL_CONFIRMATION='INSTALL_BAY_UPDATE';
+    private const STAGE_CONFIRMATION='STAGE_BAY_UPDATE';
+    private const MAX_BAY_PACKAGE_BYTES=9437184;
     /** @var Closure(string,array<string,mixed>):array<string,mixed> */
     private readonly Closure $poster;
 
@@ -35,6 +37,7 @@ final class HubOperatorBridgeService
             'projects.list'=>$this->projects($at),
             'project.gate'=>$this->projectGate(self::text($request,'project',160),$at),
             'bay.status'=>$this->bayStatus($at),
+            'bay.stage'=>$this->bayStage($request,$at),
             'bay.install'=>$this->bayInstall($request,$at),
             default=>throw new HubOperatorBridgeException('Action is not allowlisted','OPERATOR_ACTION_FORBIDDEN'),
         };
@@ -103,6 +106,42 @@ final class HubOperatorBridgeService
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
+    private function bayStage(array $request,string $at): array
+    {
+        if (($request['confirmation']??null)!==self::STAGE_CONFIRMATION) throw new HubOperatorBridgeException('Explicit BAY stage confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
+        $version=self::text($request,'targetVersion',80); $sha=strtolower(self::text($request,'targetSha',40)); $packageSha=strtolower(self::text($request,'packageSha256',64)); $stagedFile=self::text($request,'stagedFile',96);
+        if(preg_match('/^[0-9A-Za-z][0-9A-Za-z._+-]*$/',$version)!==1||preg_match('/^[a-f0-9]{40}$/',$sha)!==1||preg_match('/^[a-f0-9]{64}$/',$packageSha)!==1||$stagedFile!==$packageSha.'.zip')throw new HubOperatorBridgeException('BAY package identity is invalid','OPERATOR_REQUEST_INVALID');
+        $stageRoot=getenv('AWH_OPERATOR_STAGE_ROOT');if(!is_string($stageRoot)||$stageRoot==='')$stageRoot='/var/lib/awh-operator-staging';
+        $inbox=getenv('AWH_BAY_UPDATE_INBOX');if(!is_string($inbox)||$inbox==='')$inbox='/var/www/bay-staging/current/updates/incoming';
+        $stageReal=realpath($stageRoot);$inboxReal=realpath($inbox);if(!is_string($stageReal)||!is_dir($stageReal)||is_link($stageRoot)||!is_string($inboxReal)||!is_dir($inboxReal)||is_link($inbox))throw new HubOperatorBridgeException('BAY staging paths are unavailable','OPERATOR_BAY_STAGE_UNAVAILABLE');
+        $source=$stageReal.'/'.$stagedFile;$sourceReal=realpath($source);if(!is_string($sourceReal)||dirname($sourceReal)!==$stageReal||is_link($source)||!is_file($sourceReal)||!is_readable($sourceReal))throw new HubOperatorBridgeException('Staged BAY package is unavailable','OPERATOR_BAY_PACKAGE_NOT_READY');
+        $size=@filesize($sourceReal);if(!is_int($size)||$size<1||$size>self::MAX_BAY_PACKAGE_BYTES)throw new HubOperatorBridgeException('Staged BAY package exceeds the safe limit','OPERATOR_BAY_PACKAGE_NOT_READY');
+        $actual=hash_file('sha256',$sourceReal);if(!is_string($actual)||!hash_equals($packageSha,$actual))throw new HubOperatorBridgeException('Staged BAY package checksum mismatch','OPERATOR_BAY_PACKAGE_NOT_READY');
+        if(!class_exists('ZipArchive'))throw new HubOperatorBridgeException('ZIP runtime is unavailable','OPERATOR_BAY_STAGE_UNAVAILABLE');
+        $zip=new ZipArchive();if($zip->open($sourceReal,ZipArchive::RDONLY|ZipArchive::CHECKCONS)!==true)throw new HubOperatorBridgeException('Staged BAY package is invalid','OPERATOR_BAY_PACKAGE_NOT_READY');
+        try{$raw=$zip->getFromName('manifest.json');if(!is_string($raw))throw new HubOperatorBridgeException('Staged BAY manifest is missing','OPERATOR_BAY_PACKAGE_NOT_READY');$manifest=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(HubOperatorBridgeException $e){$zip->close();throw $e;}catch(Throwable){$zip->close();throw new HubOperatorBridgeException('Staged BAY manifest is invalid','OPERATOR_BAY_PACKAGE_NOT_READY');}$zip->close();
+        if(!is_array($manifest)||($manifest['type']??null)!=='core'||($manifest['version']??null)!==$version||strtolower((string)($manifest['source_commit']??''))!==$sha)throw new HubOperatorBridgeException('Staged BAY manifest identity mismatch','OPERATOR_BAY_PACKAGE_NOT_READY');
+        $gate=$this->projectGate('BAY EXCUSE X',$at);if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('BAY project gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');$projectId=(string)($gate['project']['projectId']??'');
+        $authority=$this->acquireMutationAuthority($projectId,'Guarded BAY stage '.$version,'bay.remote_update.stage',['targetVersion'=>$version,'targetSha'=>$sha,'packageSha256'=>$packageSha],$at);$success=false;$destination=null;
+        try{
+            $bay=new HubBayRemoteUpdateService();$statusEnvelope=$bay->status($at);$before=($this->poster)((string)$statusEnvelope['endpoint'],(array)$statusEnvelope['statusRelay']);
+            if(($before['ok']??false)!==true||(($before['preflight']['ready']??false)!==true)||(($before['maintenance']['active']??false)===true))throw new HubOperatorBridgeException('BAY Production preflight is not ready','OPERATOR_BAY_PREFLIGHT_BLOCKED');
+            $current=(string)($before['currentVersion']??'');$deployed=strtolower((string)($before['deployedSha']??''));$from=(string)($manifest['from_version']??'');$base=strtolower((string)($manifest['source_base_commit']??''));
+            if($current===''||$from!==$current||version_compare($version,$current,'<=')||preg_match('/^[a-f0-9]{40}$/',$deployed)!==1||$base===''||!hash_equals($deployed,$base))throw new HubOperatorBridgeException('BAY package baseline does not match Production','OPERATOR_BAY_BASELINE_MISMATCH');
+            $safeVersion=preg_replace('/[^0-9A-Za-z._+-]+/','-',$version);if(!is_string($safeVersion)||$safeVersion==='')throw new HubOperatorBridgeException('BAY package version is invalid','OPERATOR_REQUEST_INVALID');
+            $destination=$inboxReal.'/bay-excuse-x-core-'.$safeVersion.'-'.substr($sha,0,12).'.zip';$tmp=$inboxReal.'/.awh-stage-'.$packageSha.'.tmp';
+            if(is_link($destination)||is_dir($destination)||file_exists($tmp)||is_link($tmp))throw new HubOperatorBridgeException('BAY Update Inbox destination is not clean','OPERATOR_BAY_STAGE_CONFLICT');
+            $input=@fopen($sourceReal,'rb');$output=@fopen($tmp,'xb');if(!is_resource($input)||!is_resource($output)){if(is_resource($input))fclose($input);if(is_resource($output))fclose($output);@unlink($tmp);throw new HubOperatorBridgeException('BAY package could not be staged','OPERATOR_BAY_STAGE_UNAVAILABLE');}
+            $copied=stream_copy_to_stream($input,$output,self::MAX_BAY_PACKAGE_BYTES+1);@fflush($output);if(function_exists('fsync'))@fsync($output);fclose($input);fclose($output);
+            if(!is_int($copied)||$copied!==$size||!@chmod($tmp,0640)||!hash_equals($packageSha,(string)hash_file('sha256',$tmp))||!@rename($tmp,$destination)){@unlink($tmp);@unlink($destination);throw new HubOperatorBridgeException('BAY package staging verification failed','OPERATOR_BAY_STAGE_FAILED');}
+            $afterEnvelope=$bay->status(gmdate('c'));$after=($this->poster)((string)$afterEnvelope['endpoint'],(array)$afterEnvelope['statusRelay']);$matched=false;
+            foreach((array)($after['packages']??[]) as $row){if(is_array($row)&&($row['version']??null)===$version&&strtolower((string)($row['sourceSha']??''))===$sha&&strtolower((string)($row['packageSha256']??''))===$packageSha&&($row['installable']??false)===true){$matched=true;break;}}
+            if(!$matched){@unlink($destination);$destination=null;throw new HubOperatorBridgeException('BAY Update Inbox did not accept exact package','OPERATOR_BAY_PACKAGE_NOT_READY');}
+            $success=true;return ['schemaVersion'=>1,'state'=>'STAGED','gate'=>$gate,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'leaseExpiresAt'=>$authority['leaseExpiresAt']],'package'=>['filename'=>basename($destination),'version'=>$version,'sourceSha'=>$sha,'packageSha256'=>$packageSha,'sizeBytes'=>$size],'before'=>['version'=>$current,'deployedSha'=>$deployed],'observedAt'=>$at];
+        }finally{if(!$success&&is_string($destination)&&is_file($destination))@unlink($destination);$this->releaseMutationAuthority($authority,$success,gmdate('c'));}
+    }
+
+    /** @param array<string,mixed> $request @return array<string,mixed> */
     private function bayInstall(array $request,string $at): array
     {
         if (($request['confirmation']??null)!==self::INSTALL_CONFIRMATION) throw new HubOperatorBridgeException('Explicit BAY install confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
@@ -163,7 +202,7 @@ final class HubOperatorBridgeService
         try{
             $this->pdo->exec('BEGIN IMMEDIATE');
             (new HubCapabilityRegistryService($this->pdo))->updateEnvelopeState($authority['executionId'],'RELEASED',null,$at);
-            $state=$success?'COMPLETED':'FAILED';$summary=$success?'Guarded BAY install completed':'Guarded BAY install failed and released authority';$error=$success?null:'OPERATOR_BAY_INSTALL_FAILED';
+            $state=$success?'COMPLETED':'FAILED';$summary=$success?'Guarded BAY operator mutation completed':'Guarded BAY operator mutation failed and released authority';$error=$success?null:'OPERATOR_BAY_INSTALL_FAILED';
             $this->pdo->prepare('UPDATE control_task_executions SET state=:state,lease_owner=NULL,lease_expires_at=NULL,last_error_code=:error,updated_at=:at WHERE execution_id=:execution')->execute(['state'=>$state,'error'=>$error,'at'=>$at,'execution'=>$authority['executionId']]);
             $this->pdo->prepare('UPDATE control_tasks SET state=:state,lease_expires_at=NULL,progress=100,result_summary=:summary,failure_code=:error,updated_at=:at WHERE task_id=:task')->execute(['state'=>$state,'summary'=>$summary,'error'=>$error,'at'=>$at,'task'=>$authority['taskId']]);
             $this->pdo->prepare('INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:id,:task,:state,100,:message,:at)')->execute(['id'=>self::uuid(),'task'=>$authority['taskId'],'state'=>$state,'message'=>$summary,'at'=>$at]);
