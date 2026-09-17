@@ -91,3 +91,4 @@ Do not optimize one family by breaking another:
 - A platform safety/security gate is terminal for that attempted action: never bypass, disguise, or blind-retry it. Decompose the work into supported typed actions, connected tools, or the reviewed deployment authority.
 - Long-running work must use start + poll/checkpoint semantics rather than one synchronous tool request.
 - Production mutation keeps its existing explicit approval, backup, exact-revision, live-canonical-source, and rollback requirements.
+- One bounded Deploy Mission consumes exactly one Owner approval for its proven exact revision; QA, rehearsal, verified desktop-artifact reuse, backup, guarded activation, live verification and cleanup continue automatically inside that approved scope. Ask again only if the exact revision or approved risk scope changes.

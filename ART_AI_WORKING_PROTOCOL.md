@@ -259,8 +259,8 @@ For significant deployment changes, prefer:
 3. full activation simulation in a safe environment;
 4. failure injection at meaningful stages;
 5. verified rollback;
-6. one bounded production approval;
-7. post-deploy regression and live field validation.
+6. one bounded production approval that covers the proven exact revision and all guarded internal deploy steps;
+7. automatic guarded activation, post-deploy regression, live exact-revision validation and cleanup without another approval unless the revision or risk scope changes.
 
 A local/unit fixture PASS is not equivalent to production readiness.
 

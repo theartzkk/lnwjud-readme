@@ -419,6 +419,7 @@ async function fastQaCheck() {
     'test/automation-deployment.test.ts',
     'test/release-readiness.test.ts',
     'test/release-activator.test.ts',
+    'test/bounded-deploy-mission.test.ts',
   ];
   const result = await runNodeTest(files, 90_000);
   check('fast-contracts', result.code === 0 ? 'PASS' : 'FAIL', result.code === 0 ? 'bounded core security/execution/release contracts passed' : `bounded core contract suite failed with exit code ${result.code}`, started);
