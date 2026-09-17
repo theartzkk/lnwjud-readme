@@ -10,6 +10,10 @@ ep(is_array($p['policyFamilies']??null) && count($p['policyFamilies'])===11,'own
 ep(($p['outcomeFirst']??false)===true && ($p['continuityRequired']??false)===true && ($p['sourceOfTruthFirst']??false)===true && ($p['toolFitRouting']??false)===true,'core operating model');
 ep(($p['oneCoherentPass']??false)===true && ($p['realEvidenceRequired']??false)===true && ($p['realQaRequired']??false)===true,'closure operating model');
 ep(($p['cleanEnvironmentLifecycle']??false)===true && ($p['maximumAutomationMinimumUserTouch']??false)===true,'lifecycle operating model');
+ep(($p['deployMissionMode']??null)==='ONE_BOUNDED_APPROVAL' && ($p['deployMissionApprovalCount']??0)===1,'one approval deploy mission');
+ep(($p['deployMissionPrepareBeforeApproval']??false)===true && ($p['deployMissionApprovalBoundToExactRevision']??false)===true && ($p['deployMissionApprovalBoundToRiskScope']??false)===true,'deploy approval scope');
+ep(($p['deployMissionSameRevisionSameScopeRetryReusesApproval']??false)===true && ($p['deployMissionNewApprovalOnlyOnRevisionOrRiskScopeChange']??false)===true,'deploy approval reuse');
+ep(in_array('LIVE_QA',$p['deployMissionAutoPostApprovalSteps']??[],true) && in_array('CLEANUP',$p['deployMissionAutoPostApprovalSteps']??[],true),'deploy mission automatic closure');
 ep(($p['oneSetupManyUsefulActions']??false)===true && ($p['batchFirst']??false)===true,'call efficiency');
 ep(($p['remoteDesktopClass']??null)==='ALLOWED_HIGH_VALUE_ROUTE','remote semantics');
 ep(($p['explicitRemoteIntentAllowed']??false)===true && ($p['headlessExhaustionRequiredBeforeRemote']??true)===false,'explicit remote remains available');
