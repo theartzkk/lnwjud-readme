@@ -12,6 +12,7 @@ $pdo = new PDO('sqlite:' . $db, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_E
 $rows = $pdo->query("SELECT p.project_id,p.name,p.canonical_source_authority,p.canonical_source_vault_revision_id,p.canonical_source_content_sha256,v.active_revision_id,v.sync_state,v.file_count,r.state,r.content_sha256 FROM projects p JOIN control_project_vaults v USING(project_id) LEFT JOIN control_project_vault_revisions r ON r.revision_id=v.active_revision_id ORDER BY p.name")->fetchAll();
 $repos = ['BAY EXCUSE X'=>'bay-excuse-x.git','BAY Hub'=>'bay-hub.git','BAY LearnLab'=>'bay-learnlab.git','เว็บไซต์โรงเรียน'=>'school-website.git'];
 $findings = [];
+$pending = [];
 foreach ($rows as $row) {
     $name=(string)$row['name']; $vault=(string)$row['active_revision_id']; $sha=strtolower((string)$row['content_sha256']);
     if (($row['canonical_source_authority']??null)!=='AWH_VAULT') $findings[]="$name: authority is not AWH_VAULT";
@@ -36,8 +37,14 @@ if (is_string($runtime) && $runtime!=='') {
     $production=is_dir($awh)?trim((string)shell_exec('git --git-dir='.escapeshellarg($awh).' rev-parse refs/heads/production 2>/dev/null')):'';
     $main=is_dir($awh)?trim((string)shell_exec('git --git-dir='.escapeshellarg($awh).' rev-parse refs/heads/main 2>/dev/null')):'';
     $source=is_array($manifest)?strtolower((string)($manifest['sourceSha']??'')):'';
-    if (!preg_match('/^[0-9a-f]{40}$/',$source) || !hash_equals($source,strtolower($production))) $findings[]='AWH runtime/Git production drift';
-    if (!preg_match('/^[0-9a-f]{40}$/',$main) || !hash_equals(strtolower($main),strtolower($production))) $findings[]='AWH main/production drift';
+    if (!preg_match('/^[0-9a-f]{40}$/',$source) || !preg_match('/^[0-9a-f]{40}$/',$production) || !hash_equals($source,strtolower($production))) $findings[]='AWH runtime/Git production drift';
+    if (!preg_match('/^[0-9a-f]{40}$/',$main) || !preg_match('/^[0-9a-f]{40}$/',$production)) {
+        $findings[]='AWH main/production authority unresolved';
+    } elseif (!hash_equals(strtolower($main),strtolower($production))) {
+        $mergeBase=trim((string)shell_exec('git --git-dir='.escapeshellarg($awh).' merge-base '.escapeshellarg($production).' '.escapeshellarg($main).' 2>/dev/null'));
+        if (preg_match('/^[0-9a-f]{40}$/',$mergeBase) && hash_equals(strtolower($mergeBase),strtolower($production))) $pending[]='AWH main ahead of production';
+        else $findings[]='AWH main/production divergence';
+    }
     if (preg_match('/^[0-9a-f]{40}$/',$production)) {
         $policy=(string)shell_exec('git --git-dir='.escapeshellarg($awh).' show '.escapeshellarg($production).':hub/src/HubCapabilityRegistryService.php 2>/dev/null');
         $protocol=(string)shell_exec('git --git-dir='.escapeshellarg($awh).' show '.escapeshellarg($production).':ART_AI_WORKING_PROTOCOL.md 2>/dev/null');
@@ -45,6 +52,7 @@ if (is_string($runtime) && $runtime!=='') {
         if (!str_contains($protocol,'# KRUART Owner Operating Model') || !str_contains($protocol,'Version: 2.0')) $findings[]='AWH Owner Operating Model protocol drift';
     }
 }
-$result=['schemaVersion'=>1,'ok'=>$findings===[],'projects'=>count($rows),'projectionRepos'=>count($repos),'findings'=>$findings];
+$state=$findings!==[]?'BLOCKED':($pending!==[]?'PENDING_RELEASE':'SYNCED');
+$result=['schemaVersion'=>1,'ok'=>$findings===[],'state'=>$state,'projects'=>count($rows),'projectionRepos'=>count($repos),'findings'=>$findings,'pending'=>$pending];
 echo json_encode($result,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE).PHP_EOL;
 exit($findings===[]?0:2);

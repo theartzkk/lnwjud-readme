@@ -344,6 +344,9 @@ if test "$OWNER_LOGIN_PROOF_REQUIRED" -eq 0; then
       0|[1-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])
         REMOTE_STATUS=$durable_result
         REMOTE_OUTPUT=$(ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes "$TARGET" "test -f '$REMOTE_LOG' && tail -c 16384 '$REMOTE_LOG'" 2>/dev/null || true)
+        # Result/log evidence is captured before clearing transient unit failure
+        # state, so historical attempts do not keep system health permanently red.
+        ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes "$TARGET" "systemctl reset-failed '$REMOTE_UNIT' >/dev/null 2>&1 || true" >/dev/null 2>&1 || true
         break
         ;;
     esac

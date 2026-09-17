@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-import { access, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
-import { platform, arch } from 'node:os';
+import { platform, arch, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { npmLaunchSpec } from './lib/npm-runtime.mjs';
 
@@ -82,8 +82,10 @@ async function discoverNpm() {
   ].filter(Boolean);
   for (const candidate of candidates) {
     if (!(await exists(candidate))) continue;
-    const launch = npmLaunchSpec(candidate, process.execPath);
-    return { ...launch, source: candidate === pathNpm && launch.source === 'native executable' ? 'PATH' : launch.source };
+    let resolvedCandidate = candidate;
+    try { resolvedCandidate = await realpath(candidate); } catch { /* keep original path */ }
+    const launch = npmLaunchSpec(resolvedCandidate, process.execPath);
+    return { ...launch, path: candidate, source: candidate === pathNpm && launch.source === 'native executable' ? 'PATH' : launch.source };
   }
   return null;
 }
@@ -118,7 +120,7 @@ async function toolVersion(info, args = ['--version']) {
 function run(executable, args, options = {}) {
   return new Promise((resolveResult) => {
     const child = spawn(executable, args, {
-      cwd: ROOT,
+      cwd: options.cwd ?? ROOT,
       env: safeEnv(options.env),
       shell: false,
       windowsHide: true,
@@ -251,8 +253,15 @@ async function lockCheck() {
     if (!same || lock.lockfileVersion !== 3) throw new Error('package-lock root metadata does not match package.json');
     const npm = await discoverNpm();
     if (npm) {
-      const result = await run(npm.executable, [...npm.argsPrefix, 'ci', '--dry-run', '--ignore-scripts', '--no-audit', '--no-fund', '--offline'], { timeoutMs: 60_000 });
-      check('lockfile', result.code === 0 ? 'PASS' : 'FAIL', result.code === 0 ? 'package.json/package-lock.json match and npm ci dry-run passed offline' : 'npm ci dry-run failed offline', started);
+      const lockProbe = await mkdtemp(join(tmpdir(), 'awh-lock-probe-'));
+      try {
+        await copyFile(join(ROOT, 'package.json'), join(lockProbe, 'package.json'));
+        await copyFile(join(ROOT, 'package-lock.json'), join(lockProbe, 'package-lock.json'));
+        const result = await run(npm.executable, [...npm.argsPrefix, 'ci', '--dry-run', '--ignore-scripts', '--no-audit', '--no-fund', '--offline'], { timeoutMs: 60_000, cwd: lockProbe });
+        check('lockfile', result.code === 0 ? 'PASS' : 'FAIL', result.code === 0 ? 'package.json/package-lock.json match and isolated npm ci dry-run passed offline' : 'isolated npm ci dry-run failed offline', started);
+      } finally {
+        await rm(lockProbe, { recursive: true, force: true });
+      }
     } else {
       check('lockfile', 'PASS', 'package.json/package-lock.json root metadata matches; npm executable unavailable for dry-run', started);
     }
@@ -421,14 +430,29 @@ async function fastQaCheck() {
     'test/source-drift-systemd.test.ts',
     'test/vps-direct-connector.test.mjs',
     'test/browser-qa-runtime.test.mjs',
-    'test/central-project-authority-deployment.test.ts',
-    'test/automation-deployment.test.ts',
     'test/release-readiness.test.ts',
     'test/release-activator.test.ts',
     'test/bounded-deploy-mission.test.ts',
   ];
   const result = await runNodeTest(files, 90_000);
   check('fast-contracts', result.code === 0 ? 'PASS' : 'FAIL', result.code === 0 ? 'bounded core security/execution/release contracts passed' : `bounded core contract suite failed with exit code ${result.code}`, started);
+  if (result.code !== 0) return;
+
+  const gitStatus = await runGit(['status', '--porcelain']);
+  const deployStarted = Date.now();
+  if (gitStatus.code !== 0) {
+    check('fast-deploy-contracts', 'FAIL', 'Git status is unavailable for exact-revision deploy contracts', deployStarted);
+    return;
+  }
+  if (gitStatus.stdout !== '') {
+    check('fast-deploy-contracts', 'SKIP', 'Exact-revision deploy contracts are deferred until the candidate is committed; dirty fast QA remains valid for iterative work', deployStarted);
+    return;
+  }
+  const deployContracts = await runNodeTest([
+    'test/central-project-authority-deployment.test.ts',
+    'test/automation-deployment.test.ts',
+  ], 90_000);
+  check('fast-deploy-contracts', deployContracts.code === 0 ? 'PASS' : 'FAIL', deployContracts.code === 0 ? 'exact-revision deploy contracts passed on a clean candidate' : `exact-revision deploy contracts failed with exit code ${deployContracts.code}`, deployStarted);
 }
 
 async function finalUatShellCheck() {

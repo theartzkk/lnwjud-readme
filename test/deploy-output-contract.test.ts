@@ -37,6 +37,8 @@ test('modern production deploys run in a server-side durable systemd unit', asyn
   assert.match(deploy, /REMOTE_LOG/);
   assert.match(deploy, /systemctl is-active/);
   assert.match(deploy, /durable_attempt/);
+  assert.match(deploy, /Result\/log evidence is captured before clearing transient unit failure/);
+  assert.match(deploy, /systemctl reset-failed '\$REMOTE_UNIT'/);
   assert.match(runner, /sh "\$SCRIPT" "\$@"/);
   assert.match(runner, /mv -f "\$TMP_RESULT" "\$RESULT"/);
 });

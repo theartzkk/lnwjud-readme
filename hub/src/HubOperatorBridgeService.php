@@ -68,7 +68,7 @@ final class HubOperatorBridgeService
     }
 
     /** @return array<string,mixed> */
-    private function projectGate(string $selector,string $at): array
+    private function projectGate(string $selector,string $at,bool $requireSource=false): array
     {
         $project=$this->resolveProject($selector);
         $id=(string)$project['project_id'];
@@ -90,16 +90,22 @@ final class HubOperatorBridgeService
         $sync=is_array($vaultRow)?(string)($vaultRow['sync_state']??'EMPTY'):'EMPTY';
         $sourceReady=in_array($authority,['AWH_VAULT','GITHUB'],true) && ($authority!=='AWH_VAULT' || ($sync==='SYNCED'&&$activeVault!==null&&$sourceVault!==null&&hash_equals($activeVault,$sourceVault)));
         if($authority==='GITHUB')$sourceReady=$sourceRevision!==null&&preg_match('/^[a-f0-9]{40}$/',$sourceRevision)===1;
+        $vaultReady=$authority!=='AWH_VAULT'||$sync==='SYNCED';
         $checks=[
-            ['key'=>'database','ok'=>$quick==='ok','value'=>$quick],
-            ['key'=>'active_mutations','ok'=>count($activeRows)===0,'value'=>count($activeRows)],
-            ['key'=>'running_mutation_executions','ok'=>$runningCount===0,'value'=>$runningCount],
-            ['key'=>'active_workspace_leases','ok'=>count($workspaceRows)===0,'value'=>count($workspaceRows)],
-            ['key'=>'source_authority','ok'=>$sourceReady,'value'=>$authority??'UNSET'],
-            ['key'=>'vault_sync','ok'=>$authority!=='AWH_VAULT'||$sync==='SYNCED','value'=>$sync],
+            ['key'=>'database','ok'=>$quick==='ok','value'=>$quick,'blocking'=>true],
+            ['key'=>'active_mutations','ok'=>count($activeRows)===0,'value'=>count($activeRows),'blocking'=>true],
+            ['key'=>'running_mutation_executions','ok'=>$runningCount===0,'value'=>$runningCount,'blocking'=>true],
+            ['key'=>'active_workspace_leases','ok'=>count($workspaceRows)===0,'value'=>count($workspaceRows),'blocking'=>true],
+            ['key'=>'source_authority','ok'=>$sourceReady,'value'=>$authority??'UNSET','blocking'=>$requireSource],
+            ['key'=>'vault_sync','ok'=>$vaultReady,'value'=>$sync,'blocking'=>$requireSource&&$authority==='AWH_VAULT'],
         ];
-        $ready=!in_array(false,array_column($checks,'ok'),true);
-        return ['schemaVersion'=>1,'state'=>$ready?'READY':'BLOCKED','ready'=>$ready,'project'=>['projectId'=>$id,'name'=>(string)$project['name'],'type'=>(string)$project['type']],'source'=>['authority'=>$authority,'revision'=>$sourceRevision,'canonicalVaultRevisionId'=>$sourceVault,'activeVaultRevisionId'=>$activeVault,'syncState'=>$sync],'writer'=>['activeMutationCount'=>count($activeRows),'runningMutationExecutionCount'=>$runningCount,'waitingMutationCount'=>$waitingCount,'activeWorkspaceLeaseCount'=>count($workspaceRows),'activeMutations'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'state'=>(string)$r['state'],'capability'=>(string)$r['required_capability'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal']],$activeRows),'workspaceLeases'=>array_map(static fn(array $r):array=>['ownerDeviceId'=>(string)$r['owner_device_id'],'checkpointId'=>$r['checkpoint_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'updatedAt'=>(string)$r['updated_at']],$workspaceRows)],'checks'=>$checks,'observedAt'=>$at];
+        $hardBlocked=false;
+        foreach($checks as $check)if(($check['blocking']??false)===true&&($check['ok']??false)!==true){$hardBlocked=true;break;}
+        $productionReady=!$hardBlocked&&$sourceReady&&$vaultReady;
+        $attention=!$hardBlocked&&(!$sourceReady||!$vaultReady);
+        $ready=!$hardBlocked;
+        $state=$hardBlocked?'BLOCKED':($attention?'ATTENTION':'READY');
+        return ['schemaVersion'=>1,'state'=>$state,'ready'=>$ready,'productionReady'=>$productionReady,'sourceRequired'=>$requireSource,'project'=>['projectId'=>$id,'name'=>(string)$project['name'],'type'=>(string)$project['type']],'source'=>['authority'=>$authority,'revision'=>$sourceRevision,'canonicalVaultRevisionId'=>$sourceVault,'activeVaultRevisionId'=>$activeVault,'syncState'=>$sync],'writer'=>['activeMutationCount'=>count($activeRows),'runningMutationExecutionCount'=>$runningCount,'waitingMutationCount'=>$waitingCount,'activeWorkspaceLeaseCount'=>count($workspaceRows),'activeMutations'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'state'=>(string)$r['state'],'capability'=>(string)$r['required_capability'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal']],$activeRows),'workspaceLeases'=>array_map(static fn(array $r):array=>['ownerDeviceId'=>(string)$r['owner_device_id'],'checkpointId'=>$r['checkpoint_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'updatedAt'=>(string)$r['updated_at']],$workspaceRows)],'checks'=>$checks,'observedAt'=>$at];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
@@ -179,7 +185,7 @@ final class HubOperatorBridgeService
     private function bayStatus(string $at): array
     {
         $bay=new HubBayRemoteUpdateService(); $signed=$bay->status($at); $remote=($this->poster)((string)$signed['endpoint'],(array)$signed['statusRelay']);
-        return ['schemaVersion'=>1,'state'=>'READY','authority'=>'BAY PackageManager/Update Center','remote'=>$remote,'projectGate'=>$this->projectGate('BAY EXCUSE X',$at),'observedAt'=>$at];
+        return ['schemaVersion'=>1,'state'=>'READY','authority'=>'BAY PackageManager/Update Center','remote'=>$remote,'projectGate'=>$this->projectGate('BAY EXCUSE X',$at,true),'observedAt'=>$at];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
@@ -198,7 +204,7 @@ final class HubOperatorBridgeService
         $zip=new ZipArchive();if($zip->open($sourceReal,ZipArchive::RDONLY|ZipArchive::CHECKCONS)!==true)throw new HubOperatorBridgeException('Staged BAY package is invalid','OPERATOR_BAY_PACKAGE_NOT_READY');
         try{$raw=$zip->getFromName('manifest.json');if(!is_string($raw))throw new HubOperatorBridgeException('Staged BAY manifest is missing','OPERATOR_BAY_PACKAGE_NOT_READY');$manifest=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(HubOperatorBridgeException $e){$zip->close();throw $e;}catch(Throwable){$zip->close();throw new HubOperatorBridgeException('Staged BAY manifest is invalid','OPERATOR_BAY_PACKAGE_NOT_READY');}$zip->close();
         if(!is_array($manifest)||($manifest['type']??null)!=='core'||($manifest['version']??null)!==$version||strtolower((string)($manifest['source_commit']??''))!==$sha)throw new HubOperatorBridgeException('Staged BAY manifest identity mismatch','OPERATOR_BAY_PACKAGE_NOT_READY');
-        $gate=$this->projectGate('BAY EXCUSE X',$at);if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('BAY project gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');$projectId=(string)($gate['project']['projectId']??'');
+        $gate=$this->projectGate('BAY EXCUSE X',$at,true);if(($gate['ready']??false)!==true||($gate['productionReady']??false)!==true)throw new HubOperatorBridgeException('BAY project gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');$projectId=(string)($gate['project']['projectId']??'');
         $authority=$this->acquireMutationAuthority($projectId,'Guarded BAY stage '.$version,'bay.remote_update.stage',['targetVersion'=>$version,'targetSha'=>$sha,'packageSha256'=>$packageSha],$at);$success=false;$destination=null;
         try{
             $bay=new HubBayRemoteUpdateService();$statusEnvelope=$bay->status($at);$before=($this->poster)((string)$statusEnvelope['endpoint'],(array)$statusEnvelope['statusRelay']);
@@ -224,7 +230,7 @@ final class HubOperatorBridgeService
         if (($request['confirmation']??null)!==self::INSTALL_CONFIRMATION) throw new HubOperatorBridgeException('Explicit BAY install confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
         $version=self::text($request,'targetVersion',80); $sha=strtolower(self::text($request,'targetSha',40)); $packageSha=strtolower(self::text($request,'packageSha256',64));
         if(preg_match('/^[a-f0-9]{40}$/',$sha)!==1||preg_match('/^[a-f0-9]{64}$/',$packageSha)!==1)throw new HubOperatorBridgeException('BAY package identity is invalid','OPERATOR_REQUEST_INVALID');
-        $gate=$this->projectGate('BAY EXCUSE X',$at); if (($gate['ready']??false)!==true) throw new HubOperatorBridgeException('BAY project gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
+        $gate=$this->projectGate('BAY EXCUSE X',$at,true); if (($gate['ready']??false)!==true || ($gate['productionReady']??false)!==true) throw new HubOperatorBridgeException('BAY project gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
         $projectId=(string)($gate['project']['projectId']??'');
         $authority=$this->acquireMutationAuthority($projectId,'Guarded BAY install '.$version,'bay.remote_update.install',['targetVersion'=>$version,'targetSha'=>$sha,'packageSha256'=>$packageSha],$at);
         $success=false;

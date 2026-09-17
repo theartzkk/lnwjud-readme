@@ -38,7 +38,9 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(deploy, /DEPLOY_DIAGNOSTIC=SOURCE_DRIFT_FINDINGS_/);
   assert.match(telemetry, /'source-drift'.*'Source Authority Drift'.*'awh-source-drift\.timer'/);
   const drift = await readFile(join(root, 'hub/bin/ecosystem-source-drift.php'), 'utf8');
-  assert.match(drift, /AWH main\/production drift/);
+  assert.match(drift, /AWH main ahead of production/);
+  assert.match(drift, /AWH main\/production divergence/);
+  assert.match(drift, /PENDING_RELEASE/);
   assert.match(drift, /AWH Owner Operating Model runtime policy drift/);
   assert.match(drift, /AWH Owner Operating Model protocol drift/);
 

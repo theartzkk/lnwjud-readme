@@ -27,3 +27,28 @@ test('local QA accepts any clean tracked exact-revision branch instead of one hi
   assert.match(source, /status\.stdout === ''/);
   assert.doesNotMatch(source, /branchName === 'awh\/v0\.1-migration'/);
 });
+
+
+test('local QA resolves npm symlinks before choosing the launch runtime', async () => {
+  const source = await readFile(new URL('../scripts/qa/awh-local-qa.mjs', import.meta.url), 'utf8');
+  assert.match(source, /realpath\(candidate\)/);
+  assert.match(source, /npmLaunchSpec\(resolvedCandidate, process\.execPath\)/);
+});
+
+
+test('local QA lockfile probe is isolated from the active workspace', async () => {
+  const source = await readFile(new URL('../scripts/qa/awh-local-qa.mjs', import.meta.url), 'utf8');
+  assert.match(source, /mkdtemp\(join\(tmpdir\(\), 'awh-lock-probe-'\)\)/);
+  assert.match(source, /cwd: lockProbe/);
+  assert.match(source, /rm\(lockProbe, \{ recursive: true, force: true \}\)/);
+});
+
+
+test('fast QA defers exact-revision deploy contracts only while the candidate is dirty', async () => {
+  const source = await readFile(new URL('../scripts/qa/awh-local-qa.mjs', import.meta.url), 'utf8');
+  assert.match(source, /fast-deploy-contracts/);
+  assert.match(source, /runGit\(\['status', '--porcelain'\]\)/);
+  assert.match(source, /deferred until the candidate is committed/);
+  assert.match(source, /central-project-authority-deployment\.test\.ts/);
+  assert.match(source, /automation-deployment\.test\.ts/);
+});
