@@ -1,13 +1,19 @@
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const SHA=/^[0-9a-f]{40}$/;
 const ROOT=process.env.AWH_SOURCE_ROOT||process.cwd();
 const GUARDED=join(ROOT,'scripts/ops/guarded-control-plane-deploy.mjs');
+const INTELLIGENCE=join(ROOT,'hub/bin/verification-intelligence.php');
+const EVIDENCE_DIR=join(ROOT,'.awh-build','verification');
+const EVAL_CATALOG=join(ROOT,'config/kruart-engineering-eval.json');
 const DESKTOP_ARTIFACTS=['dist-web/downloads/AWH-macOS-x64.zip','dist-web/downloads/AWH-Windows-x64.zip','dist-web/downloads/SHA256SUMS.txt'];
 const DEPLOY_MODES=['--compat-refresh','--assistant-workstream','--workspace-continuity','--unified-workspace','--final-product','--founding-memory','--self-service','--central-project-authority','--anywhere-execution','--cost-aware-ai','--automations','--self-sufficient-ai','--account-hosting','--cloud-first','--conversation-lifecycle','--project-source-authority'];
+let missionContext={};
 
 export function desktopImpactForFiles(files){
   return files.some((file)=>/^desktop\//.test(file)||/^src\//.test(file)||file==='package.json'||file==='package-lock.json'||/^scripts\/desktop-/.test(file)||/^scripts\/release\/create-desktop-release-evidence\.mjs$/.test(file)||/^forge\./.test(file)||/^electron(?:\.|\/)/.test(file));
@@ -19,18 +25,121 @@ export function missionModeFromArgs(args){
   return modes[0]??'--project-source-authority';
 }
 
-function run(command,args,{env={},forward=false}={}){
+function run(command,args,{env={},forward=false,input=null}={}){
   return new Promise((resolve)=>{
-    const child=spawn(command,args,{cwd:ROOT,env:{...process.env,...env},shell:false,stdio:['ignore','pipe','pipe']});
+    const child=spawn(command,args,{cwd:ROOT,env:{...process.env,...env},shell:false,stdio:['pipe','pipe','pipe']});
     let tail='';
     const ingest=(chunk,stream)=>{const text=chunk.toString();if(forward)stream.write(text);tail=(tail+text).slice(-262144);};
     child.stdout.on('data',(c)=>ingest(c,process.stdout)); child.stderr.on('data',(c)=>ingest(c,process.stderr));
     child.once('error',(error)=>resolve({code:1,tail,error})); child.once('close',(code)=>resolve({code:code??1,tail}));
+    if(input===null)child.stdin.end();else child.stdin.end(String(input));
   });
 }
 
 async function git(args){const r=await run('git',args);if(r.code!==0)throw new Error(`GIT_FAILED:${args[0]}`);return r.tail.trim();}
 async function resolveProduction(){for(const ref of ['refs/heads/production','refs/remotes/vps/production','refs/remotes/origin/production']){const r=await run('git',['rev-parse','--verify',ref]);const sha=r.tail.trim();if(r.code===0&&SHA.test(sha))return sha;}throw new Error('MISSION_PRODUCTION_REF_UNRESOLVED');}
+
+async function policy(mode,payload){
+  const result=await run(process.env.AWH_PHP||'php',[INTELLIGENCE,mode],{input:`${JSON.stringify(payload)}\n`});
+  if(result.code!==0)throw new Error('MISSION_VERIFICATION_POLICY_FAILED');
+  try{return JSON.parse(result.tail.trim().split(/\r?\n/).filter(Boolean).at(-1));}catch{throw new Error('MISSION_VERIFICATION_POLICY_INVALID');}
+}
+
+export async function verificationPlanForFiles(files){return policy('plan',{files});}
+export async function stabilityForStatuses(statuses){return policy('stability',{statuses});}
+
+async function evalScenariosForFiles(files){
+  const catalog=JSON.parse(await readFile(EVAL_CATALOG,'utf8'));
+  const rows=Array.isArray(catalog?.scenarios)?catalog.scenarios:[];
+  const selected=[];
+  for(const row of rows){
+    if(row?.project!=='AWH'||typeof row?.id!=='string'||!Array.isArray(row?.triggerPatterns))continue;
+    const matched=row.triggerPatterns.some((pattern)=>{
+      try{const re=new RegExp(String(pattern),'i');return files.some((file)=>re.test(file));}catch{return false;}
+    });
+    if(matched)selected.push(row.id);
+  }
+  return [...new Set(selected)].sort();
+}
+
+async function saveCapsule(capsule){
+  await mkdir(EVIDENCE_DIR,{recursive:true});
+  const body=`${JSON.stringify(capsule,null,2)}\n`;
+  const sha=createHash('sha256').update(body).digest('hex');
+  const release=typeof capsule.releaseSha==='string'&&SHA.test(capsule.releaseSha)?capsule.releaseSha.slice(0,12):'unresolved';
+  const path=join(EVIDENCE_DIR,`release-${release}.json`);
+  await writeFile(path,body,{encoding:'utf8',mode:0o600});
+  await writeFile(join(EVIDENCE_DIR,'latest-release-evidence.json'),body,{encoding:'utf8',mode:0o600});
+  console.log(`MISSION_EVIDENCE_CAPSULE=${path}`); console.log(`MISSION_EVIDENCE_SHA256=${sha}`);
+  return {path,sha};
+}
+
+async function recordIncident(code,context={}){
+  let incident;
+  try{incident=await policy('incident',{code,context});}
+  catch{
+    const canonical=JSON.stringify({code:String(code||'MISSION_FAILED'),context});
+    const fingerprint=createHash('sha256').update(canonical).digest('hex');
+    incident={schemaVersion:1,fingerprint,regressionId:`reg-${fingerprint.slice(0,12)}`,code:String(code||'MISSION_FAILED'),context,required:true,policyFallback:true};
+  }
+  try{
+    await mkdir(join(EVIDENCE_DIR,'incidents'),{recursive:true});
+    const path=join(EVIDENCE_DIR,'incidents',`${incident.regressionId}.json`);
+    await writeFile(path,`${JSON.stringify({...incident,createdAt:new Date().toISOString()},null,2)}\n`,{encoding:'utf8',mode:0o600});
+    console.error(`MISSION_INCIDENT_FINGERPRINT=${incident.fingerprint}`);
+    console.error(`MISSION_REGRESSION_CASE=${incident.regressionId}`);
+    return incident;
+  }catch{return incident;}
+}
+
+async function runQa(script,forward=true){const result=await run('npm',['run',script],{forward});return result.code===0?'PASS':'FAIL';}
+
+async function verifyByBudget(plan){
+  const budget=String(plan?.budget||'').toUpperCase();
+  const qaMode=budget==='FAST'?'qa:fast':'qa:local';
+  console.log(`MISSION_QA_MODE=${qaMode}`);
+  const breadth=await runQa(qaMode,true);
+  if(breadth!=='PASS')throw new Error('MISSION_QA_FAILED');
+  let stability={schemaVersion:1,status:'PASS',samples:1,pass:1,fail:0};
+  if(budget==='DEEP'){
+    const samples=[await runQa('qa:fast',true),await runQa('qa:fast',true)];
+    stability=await stabilityForStatuses(samples);
+    console.log(`MISSION_STABILITY_SAMPLES=${stability.samples}`);
+    console.log(`MISSION_STABILITY=${stability.status}`);
+    if(stability.status==='UNSTABLE')throw new Error('MISSION_QA_UNSTABLE');
+    if(stability.status!=='PASS')throw new Error('MISSION_QA_FAILED');
+  }else console.log('MISSION_STABILITY=PASS');
+  console.log('MISSION_QA=PASS');
+  return {mode:qaMode,status:'PASS',stability};
+}
+
+async function goldenJourneys(plan,head,deployTail,release,releaseUrl){
+  const required=Array.isArray(plan?.goldenJourneys)?plan.goldenJourneys:[];
+  const base=new URL(releaseUrl); base.pathname='/'; base.search=''; base.hash='';
+  const results=[];
+  for(const name of required){
+    let pass=false; let evidence='';
+    if(name==='production-identity'){
+      pass=release?.sourceSha===head&&release?.sourceState==='COMMITTED'; evidence=pass?'public release identity matches exact source':'public release identity mismatch';
+    }else if(name==='public-shell'){
+      const r=await fetch(base,{cache:'no-store',redirect:'follow'}); pass=r.status===200; evidence=`HTTP_${r.status}`;
+    }else if(name==='auth-boundary'){
+      const login=new URL('/api/v1/control/auth/login',base); const session=new URL('/api/v1/control/session',base);
+      const [a,b]=await Promise.all([fetch(login,{cache:'no-store',redirect:'manual'}),fetch(session,{cache:'no-store',redirect:'manual'})]);
+      pass=a.status===405&&b.status===401; evidence=`login=${a.status},session=${b.status}`;
+    }else if(name==='vault-source-authority'){
+      pass=deployTail.includes('DEPLOY_STAGE=PROJECT_VAULT_SOURCE_SYNC')&&deployTail.includes('DEPLOY_STAGE=SOURCE_DRIFT_VERIFIED'); evidence=pass?'vault sync and drift verification passed':'vault/source proof missing';
+    }else if(name==='desktop-release-identity'){
+      const rows=Array.isArray(release?.desktopReleases)?release.desktopReleases:[]; pass=rows.length>0&&rows.every((row)=>row?.packageVerification==='VERIFIED'); evidence=pass?`verified=${rows.length}`:'desktop release evidence incomplete';
+    }else{evidence='unknown journey';}
+    results.push({name,status:pass?'PASS':'FAIL',evidence});
+  }
+  const status=results.every((item)=>item.status==='PASS')?'PASS':'FAIL';
+  console.log(`MISSION_GOLDEN_JOURNEYS=${status}`);
+  for(const item of results)console.log(`MISSION_JOURNEY_${item.name.replace(/[^A-Za-z0-9]+/g,'_').toUpperCase()}=${item.status}`);
+  if(status!=='PASS')throw new Error('MISSION_GOLDEN_JOURNEY_FAILED');
+  return {status,results};
+}
 
 export async function runMission(rawArgs=process.argv.slice(2)){
   const approved=rawArgs.includes('--approve');
@@ -39,30 +148,42 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   const unknown=rawArgs.filter((a)=>!['--approve','--cleanup-topology',...DEPLOY_MODES].includes(a));
   if(unknown.length) throw new Error(`MISSION_ARGUMENT_INVALID:${unknown[0]}`);
   const head=(await git(['rev-parse','HEAD'])).toLowerCase(); const main=(await git(['rev-parse','refs/heads/main'])).toLowerCase();
+  missionContext={releaseSha:head};
   if(!SHA.test(head)||head!==main) throw new Error('MISSION_HEAD_NOT_CANONICAL_MAIN');
   const dirty=await git(['status','--porcelain','--untracked-files=all']); if(dirty!=='') throw new Error('MISSION_SOURCE_NOT_CLEAN');
-  const production=(await resolveProduction()).toLowerCase();
+  const production=(await resolveProduction()).toLowerCase(); missionContext.baseSha=production;
   if(production===head){console.log(`MISSION_RELEASE_SHA=${head}`);console.log('MISSION_STATE=ALREADY_CURRENT');console.log('MISSION_RESULT=PASS');return;}
-  const changed=(await git(['diff','--name-only',`${production}..${head}`])).split(/\r?\n/).filter(Boolean);
+  const changed=(await git(['diff','--name-only',`${production}..${head}`])).split(/\r?\n/).filter(Boolean); missionContext.changedFiles=changed.length;
+  const plan=await verificationPlanForFiles(changed); const evalScenarios=await evalScenariosForFiles(changed); missionContext.riskLevel=plan.riskLevel; missionContext.budget=plan.budget;
   const desktopImpact=desktopImpactForFiles(changed); const completeArtifacts=DESKTOP_ARTIFACTS.every((f)=>existsSync(join(ROOT,f)));
   if(desktopImpact&&!completeArtifacts) throw new Error('MISSION_DESKTOP_ARTIFACT_BUILD_REQUIRED');
   const reuse=!desktopImpact;
   console.log(`MISSION_BASE_SHA=${production}`); console.log(`MISSION_RELEASE_SHA=${head}`); console.log(`MISSION_CHANGED_FILES=${changed.length}`);
+  console.log(`MISSION_RISK=${plan.riskLevel}`); console.log(`MISSION_VERIFICATION_BUDGET=${plan.budget}`); console.log(`MISSION_REQUIRED_CHECKS=${plan.requiredChecks.join(',')}`); console.log(`MISSION_EVAL_SCENARIOS=${evalScenarios.join(',')}`);
   console.log(`MISSION_DESKTOP_MODE=${reuse?'REUSE_VERIFIED':'NEW_ARTIFACTS'}`); console.log(`MISSION_MODE=${mode.slice(2)}`);
-  const npm=await run('npm',['run','qa:fast'],{forward:true}); if(npm.code!==0) throw new Error('MISSION_QA_FAILED'); console.log('MISSION_QA=PASS');
+  const qa=await verifyByBudget(plan);
   const common=['--owner-auth',mode]; if(cleanup)common.push('--cleanup-topology');
   const env={AWH_RELEASE_COMMIT:head,...(reuse?{AWH_REUSE_REMOTE_DESKTOP_ARTIFACTS:'1'}:{})};
   const rehearsal=await run(process.execPath,[GUARDED,'--dry-run',...common],{env,forward:true});
   if(rehearsal.code!==0||!rehearsal.tail.includes('_DRY_RUN=PASS')) throw new Error('MISSION_REHEARSAL_FAILED');
   console.log('MISSION_REHEARSAL=PASS');
-  if(!approved){console.log('MISSION_STATE=READY_FOR_APPROVAL');console.log('MISSION_APPROVAL_REQUIRED=1');return;}
+  const baseCapsule={schemaVersion:1,kind:'release-verification',baseSha:production,releaseSha:head,changedFileCount:changed.length,intelligence:plan,evalScenarios,qa,rehearsal:'PASS',desktopMode:reuse?'REUSE_VERIFIED':'NEW_ARTIFACTS',createdAt:new Date().toISOString()};
+  if(!approved){await saveCapsule({...baseCapsule,state:'READY_FOR_APPROVAL',result:'REVIEW'});console.log('MISSION_STATE=READY_FOR_APPROVAL');console.log('MISSION_APPROVAL_REQUIRED=1');return;}
   console.log('MISSION_APPROVALS_CONSUMED=1');
   const deploy=await run(process.execPath,[GUARDED,'--deploy','--approve',...common],{env,forward:true});
   if(deploy.code!==0||!deploy.tail.includes('DEPLOY_RESULT=PASS')||!deploy.tail.includes('DEPLOY_STAGE=BACKUP_VERIFIED')||!deploy.tail.includes('DEPLOY_STAGE=SOURCE_DRIFT_VERIFIED')) throw new Error('MISSION_DEPLOY_FAILED');
   const url=process.env.AWH_PUBLIC_RELEASE_URL||'https://kruart.online/release.json';
   const response=await fetch(url,{cache:'no-store'}); if(!response.ok)throw new Error('MISSION_PUBLIC_VERIFY_UNAVAILABLE');
   const release=await response.json(); if(release?.sourceSha!==head||release?.sourceState!=='COMMITTED')throw new Error('MISSION_PUBLIC_REVISION_MISMATCH');
+  const journeys=await goldenJourneys(plan,head,deploy.tail,release,url);
+  await saveCapsule({...baseCapsule,state:'COMPLETED',result:'PASS',deploy:{status:'PASS',backup:'PASS',sourceDrift:'PASS'},publicRelease:{releaseId:release.releaseId??null,sourceSha:release.sourceSha,sourceState:release.sourceState},goldenJourneys:journeys,completedAt:new Date().toISOString()});
   console.log('MISSION_BACKUP=PASS'); console.log('MISSION_SOURCE_DRIFT=PASS'); console.log('MISSION_PUBLIC_VERIFY=PASS'); console.log('MISSION_STATE=COMPLETED'); console.log('MISSION_RESULT=PASS');
 }
 
-if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){runMission().catch((error)=>{console.error(`MISSION_RESULT=BLOCKED`);console.error(`MISSION_REASON=${String(error?.message||error).replace(/[^A-Za-z0-9_.:-]/g,'_').slice(0,160)}`);process.exit(1);});}
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
+  runMission().catch(async(error)=>{
+    const code=String(error?.message||error).replace(/[^A-Za-z0-9_.:-]/g,'_').slice(0,160)||'MISSION_FAILED';
+    await recordIncident(code,missionContext);
+    console.error('MISSION_RESULT=BLOCKED'); console.error(`MISSION_REASON=${code}`); process.exit(1);
+  });
+}

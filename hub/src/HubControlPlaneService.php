@@ -18,6 +18,7 @@ require_once __DIR__ . '/HubProjectVault.php';
 require_once __DIR__ . '/HubProjectVaultService.php';
 require_once __DIR__ . '/HubDurableExecutionService.php';
 require_once __DIR__ . '/HubVerificationGate.php';
+require_once __DIR__ . '/HubVerificationIntelligence.php';
 require_once __DIR__ . '/HubNativeAgentService.php';
 require_once __DIR__ . '/HubOwnerAuthService.php';
 require_once __DIR__ . '/HubFoundingMemoryService.php';
@@ -2273,7 +2274,9 @@ final class HubControlPlaneService
         if (!is_string($file)) throw new HubControlPlaneException('Candidate report storage is unavailable', 'ARTIFACT_STORAGE_FAILED');
         try {
             $candidateQa = ['status' => (string) $qa['status'], 'workerWorkspaceIsolation' => 'PASS', 'candidateArchiveValidation' => 'PASS', 'manifestIntegrity' => 'PASS', 'projectDefinedTests' => 'NOT_CONFIGURED', 'visualReview' => $qa['visualReview']];
-            $qaEvidence = ['candidate' => $candidateQa];
+            $paths = array_values(array_unique(array_merge($diff['added'], $diff['changed'], $diff['deleted'])));
+            $intelligence = HubVerificationIntelligence::plan($paths);
+            $qaEvidence = ['candidate' => $candidateQa, 'intelligence' => $intelligence];
             $verification = HubVerificationGate::evaluateCandidate($qaEvidence);
             try { HubVerificationGate::assertPromotable($verification); } catch (RuntimeException) { throw new HubControlPlaneException('Candidate verification blocked promotion', 'APPROVAL_EVIDENCE_INVALID'); }
             $report = ['schemaVersion' => 2, 'kind' => 'project-candidate', 'projectId' => (string) $row['project_id'], 'taskId' => (string) $row['task_id'], 'executor' => 'codex:cli', 'baseRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'contentSha256' => $candidate['contentSha256'], 'diff' => $diff, 'qa' => $qaEvidence, 'verification' => $verification, 'createdAt' => $at];

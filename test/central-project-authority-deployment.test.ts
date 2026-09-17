@@ -121,6 +121,7 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(secretPolicy, /Bearer/);
   assert.match(local, /hub\/src\/HubSecretContentPolicy\.php/);
   assert.match(local, /hub\/src\/HubVerificationGate\.php/);
+  assert.match(local, /hub\/src\/HubVerificationIntelligence\.php/);
   assert.match(local, /config\/device-role-registry\.json/);
   assert.match(local, /hub\/src\/HubDeviceRoleRegistry\.php/);
   assert.match(durable, /project\.revision\.promote/);

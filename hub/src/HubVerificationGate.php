@@ -58,6 +58,23 @@ final class HubVerificationGate
             else $reason('visual-review', self::BLOCK, 'Visual review failed or is invalid');
         }
 
+        $intelligence = is_array($qa['intelligence'] ?? null) ? $qa['intelligence'] : null;
+        if ($intelligence !== null) {
+            $risk = strtoupper((string)($intelligence['riskLevel'] ?? ''));
+            $budget = strtoupper((string)($intelligence['budget'] ?? ''));
+            $valid = ($intelligence['schemaVersion'] ?? null) === 1
+                && in_array($risk, ['LOW','MEDIUM','HIGH','CRITICAL'], true)
+                && in_array($budget, ['FAST','STANDARD','DEEP'], true);
+            $reason('verification-intelligence', $valid ? self::PASS : self::BLOCK, $valid ? "Risk $risk uses $budget verification" : 'Verification intelligence is invalid');
+            if ($valid && $budget === 'DEEP') {
+                $stability = is_array($qa['stability'] ?? null) ? strtoupper((string)($qa['stability']['status'] ?? '')) : '';
+                if ($stability === 'PASS') $reason('stability', self::PASS, 'Repeated verification is stable');
+                elseif ($stability === 'UNSTABLE') $reason('stability', self::BLOCK, 'Repeated verification is unstable');
+                elseif ($stability === 'FAIL') $reason('stability', self::BLOCK, 'Repeated verification failed');
+                else $reason('stability', self::REVIEW, 'Deep verification requires repeated stability evidence before autonomous promotion');
+            }
+        }
+
         if (is_array($candidate['files'] ?? null)) {
             foreach ($candidate['files'] as $file) {
                 if (!is_array($file)) { $reason('changed-file-syntax', self::BLOCK, 'Changed-file evidence is malformed'); continue; }

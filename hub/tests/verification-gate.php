@@ -47,6 +47,27 @@ try {
     vg_assert($error->getMessage() === 'VERIFICATION_BLOCKED', 'blocked candidate must fail closed');
 }
 
+
+$deepReview = HubVerificationGate::evaluateCandidate([
+    'candidate' => ['status' => 'PASS', 'projectDefinedTests' => 'PASS'],
+    'intelligence' => ['schemaVersion'=>1,'riskLevel'=>'CRITICAL','budget'=>'DEEP'],
+]);
+vg_assert($deepReview['status'] === 'REVIEW', 'DEEP candidate without repeated stability evidence must REVIEW');
+
+$deepStable = HubVerificationGate::evaluateCandidate([
+    'candidate' => ['status' => 'PASS', 'projectDefinedTests' => 'PASS'],
+    'intelligence' => ['schemaVersion'=>1,'riskLevel'=>'HIGH','budget'=>'DEEP'],
+    'stability' => ['status'=>'PASS'],
+]);
+vg_assert($deepStable['status'] === 'PASS', 'DEEP candidate with stable repeated evidence may PASS');
+
+$deepFlaky = HubVerificationGate::evaluateCandidate([
+    'candidate' => ['status' => 'PASS', 'projectDefinedTests' => 'PASS'],
+    'intelligence' => ['schemaVersion'=>1,'riskLevel'=>'HIGH','budget'=>'DEEP'],
+    'stability' => ['status'=>'UNSTABLE'],
+]);
+vg_assert($deepFlaky['status'] === 'BLOCK', 'UNSTABLE repeated verification must BLOCK');
+
 $unknown = HubVerificationGate::evaluateCandidate(['candidate' => ['status' => 'UNKNOWN']]);
 vg_assert($unknown['status'] === 'BLOCK', 'unknown QA state must BLOCK');
 fwrite(STDOUT, "AWH Verification Gate: PASS\n");

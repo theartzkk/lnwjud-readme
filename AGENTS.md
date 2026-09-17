@@ -92,3 +92,6 @@ Do not optimize one family by breaking another:
 - Long-running work must use start + poll/checkpoint semantics rather than one synchronous tool request.
 - Production mutation keeps its existing explicit approval, backup, exact-revision, live-canonical-source, and rollback requirements.
 - One bounded Deploy Mission consumes exactly one Owner approval for its proven exact revision; QA, rehearsal, verified desktop-artifact reuse, backup, guarded activation, live verification and cleanup continue automatically inside that approved scope. Ask again only if the exact revision or approved risk scope changes.
+- Verification depth is risk-based, not ritual-based: LOW→FAST, MEDIUM→STANDARD, HIGH/CRITICAL→DEEP. Keep the outer workflow one mission; deeper checks remain internal and are selected by the shared verification policy.
+- DEEP verification must detect unstable/flaky evidence. A mixed PASS/FAIL repeat is `UNSTABLE`, never silently retried into PASS.
+- Confirmed execution/deploy failures must emit a deterministic incident fingerprint and regression-case identity; future fixes should turn that identity into a durable regression guard instead of rediscovering the same failure.

@@ -18,5 +18,16 @@ test('bounded deploy mission has one explicit owner approval and a deterministic
 
 test('mission contract preserves QA, rehearsal, backup, drift and public exact-revision proof',async()=>{
   const source=await readFile(new URL('../scripts/ops/bounded-deploy-mission.mjs',import.meta.url),'utf8');
-  for(const marker of ['npm\',[\'run\',\'qa:fast\']','--dry-run','--deploy','--approve','DEPLOY_STAGE=BACKUP_VERIFIED','DEPLOY_STAGE=SOURCE_DRIFT_VERIFIED','MISSION_APPROVALS_CONSUMED=1','MISSION_PUBLIC_VERIFY=PASS','AWH_REUSE_REMOTE_DESKTOP_ARTIFACTS']) assert.match(source,new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+  assert.match(source,/node:child_process/);
+  for(const marker of ['verificationPlanForFiles','MISSION_RISK=','MISSION_VERIFICATION_BUDGET=','MISSION_STABILITY=','MISSION_GOLDEN_JOURNEYS=','MISSION_EVIDENCE_CAPSULE=','MISSION_INCIDENT_FINGERPRINT=','--dry-run','--deploy','--approve','DEPLOY_STAGE=BACKUP_VERIFIED','DEPLOY_STAGE=SOURCE_DRIFT_VERIFIED','MISSION_APPROVALS_CONSUMED=1','MISSION_PUBLIC_VERIFY=PASS','AWH_REUSE_REMOTE_DESKTOP_ARTIFACTS']) assert.match(source,new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+});
+
+
+test('KRUART Engineering Eval catalog is durable, unique and cross-project',async()=>{
+  const catalog=JSON.parse(await readFile(new URL('../config/kruart-engineering-eval.json',import.meta.url),'utf8'));
+  assert.equal(catalog.schemaVersion,1); assert.equal(catalog.name,'KRUART Engineering Eval');
+  assert.ok(Array.isArray(catalog.scenarios)&&catalog.scenarios.length>=20);
+  const ids=catalog.scenarios.map((row)=>row.id); assert.equal(new Set(ids).size,ids.length);
+  for(const project of ['AWH','BAY EXCUSE X','BAY LearnLab','School Website']) assert.ok(catalog.scenarios.some((row)=>row.project===project));
+  for(const row of catalog.scenarios){assert.match(row.id,/^[a-z0-9-]+$/);assert.ok(['MEDIUM','HIGH','CRITICAL'].includes(row.risk));assert.ok(Array.isArray(row.triggerPatterns)&&row.triggerPatterns.length>0);assert.ok(typeof row.evidence==='string'&&row.evidence.length>12);}
 });

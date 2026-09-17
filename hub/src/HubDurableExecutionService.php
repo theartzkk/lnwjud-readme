@@ -11,6 +11,7 @@ require_once __DIR__ . '/HubFoundingMemoryService.php';
 require_once __DIR__ . '/HubCapabilityRegistryService.php';
 require_once __DIR__ . '/HubSecretContentPolicy.php';
 require_once __DIR__ . '/HubVerificationGate.php';
+require_once __DIR__ . '/HubVerificationIntelligence.php';
 require_once __DIR__ . '/HubBackupService.php';
 require_once __DIR__ . '/HubInfrastructureService.php';
 require_once __DIR__ . '/HubStorageGovernanceService.php';
@@ -609,7 +610,9 @@ final class HubDurableExecutionService
         $store = $this->artifacts;
         if ($store === null) throw new HubDurableExecutionException('Artifact object storage is unavailable', 'ARTIFACT_STORAGE_UNAVAILABLE');
         $artifactId = self::uuidFromBytes(random_bytes(16));
-        $qaEvidence = ['workspaceCapture' => 'PASS', 'manifestIntegrity' => 'PASS', 'candidate' => $qa];
+        $paths = array_values(array_unique(array_merge($diff['added'], $diff['changed'], $diff['deleted'])));
+        $intelligence = HubVerificationIntelligence::plan($paths);
+        $qaEvidence = ['workspaceCapture' => 'PASS', 'manifestIntegrity' => 'PASS', 'candidate' => $qa, 'intelligence' => $intelligence];
         $verification = HubVerificationGate::evaluateCandidate($qaEvidence);
         try { HubVerificationGate::assertPromotable($verification); } catch (RuntimeException) { throw new HubDurableExecutionException('Candidate verification blocked promotion', 'CANDIDATE_QA_FAILED'); }
         $report = ['schemaVersion' => 2, 'kind' => 'project-candidate', 'projectId' => (string) $claimed['project_id'], 'taskId' => (string) $claimed['task_id'], 'baseRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'contentSha256' => $candidate['contentSha256'], 'diff' => $diff, 'qa' => $qaEvidence, 'verification' => $verification, 'createdAt' => $at];
