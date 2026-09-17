@@ -1116,7 +1116,13 @@ if test -d /srv/awh-git/awh.git; then
 fi
 if test "$PROJECT_SOURCE_AUTHORITY" = 1; then
   stage SOURCE_DRIFT_VERIFY
-  sudo -n -u awh-hub /usr/bin/php "$RELEASE/hub/bin/ecosystem-source-drift.php" "$DB" /srv/awh-git "$WEB_POINTER/release.json" >/dev/null
+  if drift_output=$(sudo -n -u awh-hub /usr/bin/php "$RELEASE/hub/bin/ecosystem-source-drift.php" "$DB" /srv/awh-git "$WEB_POINTER/release.json" 2>/dev/null); then
+    :
+  else
+    drift_count=$(printf '%s' "$drift_output" | /usr/bin/php -r '$j=json_decode(stream_get_contents(STDIN),true); $n=is_array($j)&&is_array($j["findings"]??null)?count($j["findings"]):0; if($n>0&&$n<100) echo $n;')
+    case "$drift_count" in [1-9]|[1-9][0-9]) printf '%s\n' "DEPLOY_DIAGNOSTIC=SOURCE_DRIFT_FINDINGS_$drift_count" ;; *) printf '%s\n' 'DEPLOY_DIAGNOSTIC=SOURCE_DRIFT_FINDINGS_UNKNOWN' ;; esac
+    exit 2
+  fi
   stage SOURCE_DRIFT_VERIFIED
 fi
 stage EXECUTION_AUTHORITY_RELEASE; release_deploy_authority success; stage EXECUTION_AUTHORITY_RELEASED

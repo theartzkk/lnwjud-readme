@@ -75,7 +75,8 @@ function runDeploy(password, canonicalSha) {
 function safeLines(output) {
   return output.split(/\r?\n/).filter((line) => /^(DEPLOY_STAGE|DEPLOY_FAILED_AT|DEPLOY_RESULT|ROLLBACK|M4_|OWNER_AUTH_)=[A-Za-z0-9_.:-]+$/.test(line)
     || /^DEPLOY_DIAGNOSTIC=OWNER_AUTH_(?:SURFACE|LOGIN)_(?:HTTP_[0-9]{3}|BASIC_CHALLENGE)$/.test(line)
-    || /^DEPLOY_DIAGNOSTIC=OWNER_AUTH_SURFACE_ATTEMPTS_(?:[1-9]|10)$/.test(line));
+    || /^DEPLOY_DIAGNOSTIC=OWNER_AUTH_SURFACE_ATTEMPTS_(?:[1-9]|10)$/.test(line)
+    || /^DEPLOY_DIAGNOSTIC=SOURCE_DRIFT_FINDINGS_(?:[1-9][0-9]?|UNKNOWN)$/.test(line));
 }
 
 function safeCanonicalLines(output) {
