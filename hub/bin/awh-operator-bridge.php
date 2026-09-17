@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/src/HubOperatorBridgeService.php';
 
-const AWH_OPERATOR_MAX_REQUEST = 16384;
+const AWH_OPERATOR_MAX_REQUEST = 262144;
 $database=getenv('AWH_HUB_DB_PATH');
 $auditPath=getenv('AWH_OPERATOR_AUDIT_PATH');
 if(!is_string($auditPath)||$auditPath==='')$auditPath='/var/lib/awh-hub/operator-bridge-audit.jsonl';

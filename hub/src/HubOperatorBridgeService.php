@@ -15,6 +15,8 @@ final class HubOperatorBridgeService
     private const INSTALL_CONFIRMATION='INSTALL_BAY_UPDATE';
     private const STAGE_CONFIRMATION='STAGE_BAY_UPDATE';
     private const MAX_BAY_PACKAGE_BYTES=9437184;
+    private const VERIFICATION_CONFIRMATION='STORE_VERIFICATION_EVIDENCE';
+    private const MAX_VERIFICATION_DOCUMENT_BYTES=196608;
     /** @var Closure(string,array<string,mixed>):array<string,mixed> */
     private readonly Closure $poster;
 
@@ -36,6 +38,8 @@ final class HubOperatorBridgeService
             'system.status'=>$this->systemStatus($at),
             'projects.list'=>$this->projects($at),
             'project.gate'=>$this->projectGate(self::text($request,'project',160),$at),
+            'verification.store'=>$this->verificationStore($request,$at),
+            'verification.regressions'=>$this->verificationRegressions($request,$at),
             'bay.status'=>$this->bayStatus($at),
             'bay.stage'=>$this->bayStage($request,$at),
             'bay.install'=>$this->bayInstall($request,$at),
@@ -96,6 +100,79 @@ final class HubOperatorBridgeService
         ];
         $ready=!in_array(false,array_column($checks,'ok'),true);
         return ['schemaVersion'=>1,'state'=>$ready?'READY':'BLOCKED','ready'=>$ready,'project'=>['projectId'=>$id,'name'=>(string)$project['name'],'type'=>(string)$project['type']],'source'=>['authority'=>$authority,'revision'=>$sourceRevision,'canonicalVaultRevisionId'=>$sourceVault,'activeVaultRevisionId'=>$activeVault,'syncState'=>$sync],'writer'=>['activeMutationCount'=>count($activeRows),'runningMutationExecutionCount'=>$runningCount,'waitingMutationCount'=>$waitingCount,'activeWorkspaceLeaseCount'=>count($workspaceRows),'activeMutations'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'state'=>(string)$r['state'],'capability'=>(string)$r['required_capability'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal']],$activeRows),'workspaceLeases'=>array_map(static fn(array $r):array=>['ownerDeviceId'=>(string)$r['owner_device_id'],'checkpointId'=>$r['checkpoint_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'updatedAt'=>(string)$r['updated_at']],$workspaceRows)],'checks'=>$checks,'observedAt'=>$at];
+    }
+
+    /** @param array<string,mixed> $request @return array<string,mixed> */
+    private function verificationStore(array $request,string $at): array
+    {
+        if (($request['confirmation']??null)!==self::VERIFICATION_CONFIRMATION) throw new HubOperatorBridgeException('Explicit verification evidence confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
+        $document=$request['document']??null;
+        if(!is_array($document)||array_is_list($document))throw new HubOperatorBridgeException('Verification evidence document is invalid','OPERATOR_REQUEST_INVALID');
+        $json=json_encode($document,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+        if(strlen($json)<2||strlen($json)>self::MAX_VERIFICATION_DOCUMENT_BYTES)throw new HubOperatorBridgeException('Verification evidence document exceeds the safe limit','OPERATOR_REQUEST_INVALID');
+        $kind=(string)($document['kind']??'');$bucket='';$identity='';
+        if($kind==='release-verification'){
+            $release=strtolower((string)($document['releaseSha']??''));
+            if(preg_match('/^[a-f0-9]{40}$/',$release)!==1)throw new HubOperatorBridgeException('Release verification identity is invalid','OPERATOR_REQUEST_INVALID');
+            if(($document['state']??null)==='COMPLETED'&&($document['result']??null)==='PASS')$this->assertPublicReleaseIdentity($release);
+            $bucket='releases/'.$release;$identity=$release;
+        }elseif($kind==='verification-incident'){
+            $fingerprint=strtolower((string)($document['fingerprint']??''));$regression=(string)($document['regressionId']??'');
+            if(preg_match('/^[a-f0-9]{64}$/',$fingerprint)!==1||$regression!=='reg-'.substr($fingerprint,0,12))throw new HubOperatorBridgeException('Verification incident identity is invalid','OPERATOR_REQUEST_INVALID');
+            $this->verificationPaths($document['context']['changedPaths']??[]);
+            $bucket='incidents/'.$fingerprint;$identity=$fingerprint;
+        }else throw new HubOperatorBridgeException('Verification evidence kind is not allowlisted','OPERATOR_ACTION_FORBIDDEN');
+        $root=$this->verificationRoot();$directory=$root.'/'.$bucket;
+        if(!is_dir($directory)&&!@mkdir($directory,0700,true))throw new HubOperatorBridgeException('Verification evidence storage is unavailable','OPERATOR_VERIFICATION_STORAGE_UNAVAILABLE');
+        if(is_link($directory))throw new HubOperatorBridgeException('Verification evidence destination is unsafe','OPERATOR_VERIFICATION_STORAGE_UNAVAILABLE');
+        $sha=hash('sha256',$json);$path=$directory.'/'.$sha.'.json';
+        if(!is_file($path)){
+            $tmp=$directory.'/.write-'.$sha.'-'.bin2hex(random_bytes(4));
+            if(@file_put_contents($tmp,$json."\n",LOCK_EX)===false||!@chmod($tmp,0600)||!@rename($tmp,$path)){@unlink($tmp);throw new HubOperatorBridgeException('Verification evidence could not be stored','OPERATOR_VERIFICATION_STORAGE_UNAVAILABLE');}
+        }
+        return ['schemaVersion'=>1,'state'=>'STORED','kind'=>$kind,'identity'=>$identity,'sha256'=>$sha,'relativePath'=>$bucket.'/'.$sha.'.json','observedAt'=>$at];
+    }
+
+    /** @param array<string,mixed> $request @return array<string,mixed> */
+    private function verificationRegressions(array $request,string $at): array
+    {
+        $changed=$this->verificationPaths($request['changedPaths']??[]);$root=$this->verificationRoot(false);$items=[];
+        $incidentRoot=$root.'/incidents';if(!is_dir($incidentRoot))return ['schemaVersion'=>1,'regressions'=>[],'count'=>0,'observedAt'=>$at];
+        $directories=array_slice(array_values(array_filter(glob($incidentRoot.'/*')?:[],static fn(string $p):bool=>is_dir($p)&&!is_link($p))),0,200);
+        foreach($directories as $directory){
+            $files=glob($directory.'/*.json')?:[];usort($files,static fn(string $a,string $b):int=>(@filemtime($b)?:0)<=> (@filemtime($a)?:0));$file=$files[0]??null;if(!is_string($file))continue;
+            $raw=@file_get_contents($file);if(!is_string($raw)||strlen($raw)>self::MAX_VERIFICATION_DOCUMENT_BYTES+2)continue;
+            try{$doc=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}if(!is_array($doc)||($doc['kind']??null)!=='verification-incident')continue;
+            try{$paths=$this->verificationPaths($doc['context']['changedPaths']??[]);}catch(HubOperatorBridgeException){continue;}
+            if(array_intersect($changed,$paths)===[])continue;$items[]=['regressionId'=>(string)($doc['regressionId']??''),'fingerprint'=>(string)($doc['fingerprint']??''),'code'=>(string)($doc['code']??''),'changedPaths'=>$paths];
+            if(count($items)>=50)break;
+        }
+        return ['schemaVersion'=>1,'regressions'=>$items,'count'=>count($items),'observedAt'=>$at];
+    }
+
+    private function assertPublicReleaseIdentity(string $releaseSha): void
+    {
+        $path=getenv('AWH_PUBLIC_RELEASE_MANIFEST');if(!is_string($path)||$path==='')$path='/var/www/awh-web/current/release.json';
+        if(is_link($path)||!is_file($path)||!is_readable($path))throw new HubOperatorBridgeException('Public release identity is unavailable','OPERATOR_VERIFICATION_IDENTITY_UNAVAILABLE');
+        $raw=@file_get_contents($path);if(!is_string($raw)||strlen($raw)>262144)throw new HubOperatorBridgeException('Public release identity is unavailable','OPERATOR_VERIFICATION_IDENTITY_UNAVAILABLE');
+        try{$release=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){throw new HubOperatorBridgeException('Public release identity is invalid','OPERATOR_VERIFICATION_IDENTITY_UNAVAILABLE');}
+        if(!is_array($release)||strtolower((string)($release['sourceSha']??''))!==$releaseSha||($release['sourceState']??null)!=='COMMITTED')throw new HubOperatorBridgeException('Release evidence does not match public Production identity','OPERATOR_VERIFICATION_IDENTITY_MISMATCH');
+    }
+
+    private function verificationRoot(bool $create=true): string
+    {
+        $root=getenv('AWH_VERIFICATION_EVIDENCE_ROOT');if(!is_string($root)||$root==='')$root='/var/lib/awh-hub/verification-evidence';
+        if(is_link($root))throw new HubOperatorBridgeException('Verification evidence root is unsafe','OPERATOR_VERIFICATION_STORAGE_UNAVAILABLE');
+        if(!is_dir($root)&&$create&&!@mkdir($root,0700,true))throw new HubOperatorBridgeException('Verification evidence root is unavailable','OPERATOR_VERIFICATION_STORAGE_UNAVAILABLE');
+        return rtrim($root,'/');
+    }
+
+    /** @return list<string> */
+    private function verificationPaths(mixed $value): array
+    {
+        if(!is_array($value)||!array_is_list($value)||count($value)>80)throw new HubOperatorBridgeException('Verification changed paths are invalid','OPERATOR_REQUEST_INVALID');$out=[];
+        foreach($value as $path){if(!is_string($path)||$path===''||strlen($path)>512||str_contains($path,"\0")||str_starts_with($path,'/')||preg_match('#(?:^|/)\.\.(?:/|$)#',$path))throw new HubOperatorBridgeException('Verification changed path is invalid','OPERATOR_REQUEST_INVALID');$out[]=$path;}
+        return array_values(array_unique($out));
     }
 
     /** @return array<string,mixed> */

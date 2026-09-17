@@ -354,7 +354,7 @@ async function phpHubCheck() {
       return;
     }
   }
-  for (const fixture of ['verification-intelligence.php', 'verification-gate.php', 'candidate-qa-truthfulness.php']) {
+  for (const fixture of ['verification-intelligence.php', 'verification-gate.php', 'verification-evidence-registry.php', 'candidate-qa-truthfulness.php']) {
     const verification = await run(php, [join(ROOT, 'hub', 'tests', fixture)], { timeoutMs: 30_000 });
     if (verification.code !== 0) { check('php-hub', 'FAIL', `PHP verification contract failed for ${fixture}`, started); return; }
   }

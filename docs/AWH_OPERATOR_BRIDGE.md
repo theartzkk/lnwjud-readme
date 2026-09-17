@@ -19,6 +19,10 @@ The operator bridge gives the dedicated `awh-remote` VPS connector a typed, audi
 
 `awh-operator gate "BAY EXCUSE X"`
 
+`awh-operator verification-store --confirm` (reads one bounded evidence JSON document from stdin)
+
+`awh-operator verification-regressions` (reads `{ "changedPaths": [...] }` from stdin)
+
 `awh-operator bay-status`
 
 `awh-operator bay-stage <package.zip> <version> <source-sha> <package-sha256> --confirm`
@@ -36,3 +40,5 @@ The bridge never accepts arbitrary shell input, never uses FTPS when source/pack
 ## Bootstrap
 
 The first activation is intentionally root-installed because a non-privileged connector must not be able to install its own privilege bridge. `deploy/operator-bridge/install.sh` installs the root-owned systemd socket/client, verifies a real `awh-remote` status call, and rolls back units/client on failure. Once activated, normal operator calls require no sudo.
+
+Verification evidence is stored under the existing AWH Hub data root (`/var/lib/awh-hub/verification-evidence`). Incident documents are immutable and keyed by deterministic fingerprint; matching changed paths are returned as regression IDs to later bounded deploy missions. This is evidence/learning state only and does not create a second task queue, source authority, or deployment authority.

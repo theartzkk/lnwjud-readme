@@ -44,6 +44,7 @@ const tests = [
   'hub/tests/promotion-evidence-gate.php',
   'hub/tests/verification-gate.php',
   'hub/tests/verification-intelligence.php',
+  'hub/tests/verification-evidence-registry.php',
   'hub/tests/project-list-schema-compatibility.php',
   'hub/tests/m16-office-provider.php',
   'hub/tests/m17-database-studio.php',

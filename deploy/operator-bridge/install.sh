@@ -6,6 +6,7 @@ SERVICE_UNIT=/etc/systemd/system/awh-operator-bridge@.service
 CLIENT=/usr/local/bin/awh-operator
 BACKUP_ROOT=/var/backups/awh-operator-bridge
 STAGE_ROOT=/var/lib/awh-operator-staging
+EVIDENCE_ROOT=/var/lib/awh-hub/verification-evidence
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 backup="$BACKUP_ROOT/$stamp"
 [ "$(id -u)" -eq 0 ] || { echo AWH_OPERATOR_INSTALL_ROOT_REQUIRED >&2; exit 2; }
@@ -18,8 +19,10 @@ getent group awh-hub >/dev/null; getent group www-data >/dev/null; getent group 
 [ -x "$ROOT/deploy/operator-bridge/awh-operator" ]
 install -d -o root -g root -m 0700 "$backup"
 install -d -o awh-remote -g awh-hub -m 0750 "$STAGE_ROOT"
+install -d -o awh-hub -g awh-hub -m 0700 "$EVIDENCE_ROOT"
 runuser -u awh-remote -- test -w "$STAGE_ROOT"
 runuser -u awh-hub -- test -r "$STAGE_ROOT"
+runuser -u awh-hub -- test -w "$EVIDENCE_ROOT"
 old_socket=0; old_service=0; old_client=0
 [ -e "$SOCKET_UNIT" ] && { cp -a "$SOCKET_UNIT" "$backup/socket"; old_socket=1; }
 [ -e "$SERVICE_UNIT" ] && { cp -a "$SERVICE_UNIT" "$backup/service"; old_service=1; }

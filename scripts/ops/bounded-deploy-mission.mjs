@@ -44,6 +44,34 @@ async function canonicalRemote(){
   for(const candidate of ['vps','origin']){const probe=await run('git',['remote','get-url',candidate]);if(probe.code===0&&probe.tail.trim()!=='')return candidate;}
   throw new Error('MISSION_CANONICAL_REMOTE_UNRESOLVED');
 }
+async function canonicalOperatorHost(){
+  if(process.env.AWH_OPERATOR_HOST&&/^[A-Za-z0-9._@-]{1,160}$/.test(process.env.AWH_OPERATOR_HOST))return process.env.AWH_OPERATOR_HOST;
+  const remote=await canonicalRemote();const probe=await run('git',['remote','get-url',remote]);if(probe.code!==0)return null;
+  const match=probe.tail.trim().match(/^ssh:\/\/([^/]+)\//i);return match&&/^[A-Za-z0-9._@-]{1,160}$/.test(match[1])?match[1]:null;
+}
+
+async function operatorRequest(command,payload,{confirm=false}={}){
+  const host=await canonicalOperatorHost();if(!host)return null;
+  const args=['-o','BatchMode=yes',host,'sudo','-n','-u','awh-remote','/opt/awh-hub/control-plane-current/deploy/operator-bridge/awh-operator',command];if(confirm)args.push('--confirm');
+  const response=await run('ssh',args,{input:`${JSON.stringify(payload)}\n`});if(response.code!==0)return null;
+  try{const decoded=JSON.parse(response.tail.trim());return decoded?.ok===true?decoded.result:null;}catch{return null;}
+}
+
+async function durableRegressions(changedPaths){
+  const result=await operatorRequest('verification-regressions',{changedPaths});
+  if(!result){console.log('MISSION_DURABLE_REGISTRY=BOOTSTRAP_UNAVAILABLE');return [];}
+  missionContext.registryAvailable=true;const rows=Array.isArray(result.regressions)?result.regressions:[];
+  const ids=rows.map((row)=>typeof row?.regressionId==='string'?row.regressionId:'').filter((id)=>/^reg-[a-f0-9]{12}$/.test(id));
+  console.log(`MISSION_DURABLE_REGISTRY=READY`);console.log(`MISSION_DURABLE_REGRESSIONS=${ids.join(',')}`);return [...new Set(ids)].sort();
+}
+
+async function persistDurable(document){
+  if(missionContext.registryAvailable!==true)return null;
+  const result=await operatorRequest('verification-store',document,{confirm:true});
+  if(!result||result.state!=='STORED')throw new Error('MISSION_DURABLE_EVIDENCE_FAILED');
+  console.log(`MISSION_DURABLE_EVIDENCE=${result.relativePath}`);return result;
+}
+
 async function resolveProduction(){
   const remote=await canonicalRemote();
   const live=await run('git',['ls-remote','--exit-code',remote,'refs/heads/production']);
@@ -84,6 +112,7 @@ async function saveCapsule(capsule){
   await writeFile(path,body,{encoding:'utf8',mode:0o600});
   await writeFile(join(EVIDENCE_DIR,'latest-release-evidence.json'),body,{encoding:'utf8',mode:0o600});
   console.log(`MISSION_EVIDENCE_CAPSULE=${path}`); console.log(`MISSION_EVIDENCE_SHA256=${sha}`);
+  await persistDurable(capsule);
   return {path,sha};
 }
 
@@ -98,7 +127,9 @@ async function recordIncident(code,context={}){
   try{
     await mkdir(join(EVIDENCE_DIR,'incidents'),{recursive:true});
     const path=join(EVIDENCE_DIR,'incidents',`${incident.regressionId}.json`);
-    await writeFile(path,`${JSON.stringify({...incident,createdAt:new Date().toISOString()},null,2)}\n`,{encoding:'utf8',mode:0o600});
+    const document={...incident,kind:'verification-incident',createdAt:new Date().toISOString()};
+    await writeFile(path,`${JSON.stringify(document,null,2)}\n`,{encoding:'utf8',mode:0o600});
+    try{await persistDurable(document);}catch{/* primary incident remains locally durable for this run */}
     console.error(`MISSION_INCIDENT_FINGERPRINT=${incident.fingerprint}`);
     console.error(`MISSION_REGRESSION_CASE=${incident.regressionId}`);
     return incident;
@@ -166,8 +197,9 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   const dirty=await git(['status','--porcelain','--untracked-files=all']); if(dirty!=='') throw new Error('MISSION_SOURCE_NOT_CLEAN');
   const production=(await resolveProduction()).toLowerCase(); missionContext.baseSha=production;
   if(production===head){console.log(`MISSION_RELEASE_SHA=${head}`);console.log('MISSION_STATE=ALREADY_CURRENT');console.log('MISSION_RESULT=PASS');return;}
-  const changed=(await git(['diff','--name-only',`${production}..${head}`])).split(/\r?\n/).filter(Boolean); missionContext.changedFiles=changed.length;
-  const plan=await verificationPlanForFiles(changed); const evalScenarios=await evalScenariosForFiles(changed); missionContext.riskLevel=plan.riskLevel; missionContext.budget=plan.budget;
+  const changed=(await git(['diff','--name-only',`${production}..${head}`])).split(/\r?\n/).filter(Boolean); missionContext.changedFiles=changed.length; missionContext.changedPaths=changed.slice(0,80);
+  let plan=await verificationPlanForFiles(changed); const staticEvalScenarios=await evalScenariosForFiles(changed); const durableEvalScenarios=await durableRegressions(missionContext.changedPaths); const evalScenarios=[...new Set([...staticEvalScenarios,...durableEvalScenarios])].sort();
+  if(durableEvalScenarios.length>0){plan={...plan,riskLevel:plan.riskLevel==='CRITICAL'?'CRITICAL':'HIGH',budget:'DEEP',reasons:[...new Set([...(plan.reasons??[]),'durable-incident-regression'])],requiredChecks:[...new Set([...(plan.requiredChecks??[]),'regression','repeat-regression'])]};console.log('MISSION_REGRESSION_REPLAY=DEEP');} missionContext.riskLevel=plan.riskLevel; missionContext.budget=plan.budget;
   const desktopImpact=desktopImpactForFiles(changed); const completeArtifacts=DESKTOP_ARTIFACTS.every((f)=>existsSync(join(ROOT,f)));
   if(desktopImpact&&!completeArtifacts) throw new Error('MISSION_DESKTOP_ARTIFACT_BUILD_REQUIRED');
   const reuse=!desktopImpact;
@@ -186,6 +218,7 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   const deploy=await run(process.execPath,[GUARDED,'--deploy','--approve',...common],{env,forward:true});
   if(deploy.code!==0||!deploy.tail.includes('DEPLOY_RESULT=PASS')||!deploy.tail.includes('DEPLOY_STAGE=BACKUP_VERIFIED')||!deploy.tail.includes('DEPLOY_STAGE=SOURCE_DRIFT_VERIFIED')) throw new Error('MISSION_DEPLOY_FAILED');
   missionContext.deploy={status:'PASS',backup:'PASS',sourceDrift:'PASS'};
+  if(missionContext.registryAvailable!==true){const registry=await operatorRequest('verification-regressions',{changedPaths:missionContext.changedPaths??[]});if(!registry)throw new Error('MISSION_DURABLE_REGISTRY_UNAVAILABLE');missionContext.registryAvailable=true;console.log('MISSION_DURABLE_REGISTRY=READY_AFTER_CUTOVER');}
   const url=process.env.AWH_PUBLIC_RELEASE_URL||'https://kruart.online/release.json';
   const response=await fetch(url,{cache:'no-store'}); if(!response.ok)throw new Error('MISSION_PUBLIC_VERIFY_UNAVAILABLE');
   const release=await response.json(); if(release?.sourceSha!==head||release?.sourceState!=='COMMITTED')throw new Error('MISSION_PUBLIC_REVISION_MISMATCH');

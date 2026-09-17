@@ -11,6 +11,7 @@ Environment=AWH_HUB_DB_PATH=/var/lib/awh-hub/awh.sqlite
 Environment=AWH_PROVIDER_CREDENTIAL_ROOT=/var/lib/awh-hub/provider-credentials
 Environment=AWH_OPERATOR_AUDIT_PATH=/var/lib/awh-hub/operator-bridge-audit.jsonl
 Environment=AWH_OPERATOR_STAGE_ROOT=/var/lib/awh-operator-staging
+Environment=AWH_VERIFICATION_EVIDENCE_ROOT=/var/lib/awh-hub/verification-evidence
 Environment=AWH_BAY_UPDATE_INBOX=/var/www/bay-staging/current/updates/incoming
 ExecStart=/usr/bin/php /opt/awh-hub/control-plane-current/hub/bin/awh-operator-bridge.php
 StandardInput=socket

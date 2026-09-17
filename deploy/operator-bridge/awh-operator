@@ -4,11 +4,15 @@ declare(strict_types=1);
 $socket=getenv('AWH_OPERATOR_SOCKET');if(!is_string($socket)||$socket==='')$socket='/run/awh-operator-bridge.sock';
 $stageRoot=getenv('AWH_OPERATOR_STAGE_ROOT');if(!is_string($stageRoot)||$stageRoot==='')$stageRoot='/var/lib/awh-operator-staging';
 $args=$argv;array_shift($args);$cmd=array_shift($args)??'';$request=['schemaVersion'=>1];$cleanup=null;
-$usage=static function():never{fwrite(STDERR,"usage: awh-operator status|projects|gate <project>|bay-status|bay-stage <package.zip> <version> <source-sha> <package-sha256> --confirm|bay-install <version> <source-sha> <package-sha256> --confirm\n");exit(64);};
+$usage=static function():never{fwrite(STDERR,"usage: awh-operator status|projects|gate <project>|verification-store --confirm|verification-regressions|bay-status|bay-stage <package.zip> <version> <source-sha> <package-sha256> --confirm|bay-install <version> <source-sha> <package-sha256> --confirm\n");exit(64);};
 switch($cmd){
 case 'status':$request['action']='system.status';break;
 case 'projects':$request['action']='projects.list';break;
 case 'gate':$project=array_shift($args);if(!is_string($project)||$project==='')$usage();$request+=['action'=>'project.gate','project'=>$project];break;
+case 'verification-store':
+    $confirm=array_shift($args);if($confirm!=='--confirm'||$args!==[])$usage();$raw=stream_get_contents(STDIN,196610);if(!is_string($raw)||$raw===''||strlen($raw)>196608)$usage();try{$document=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){$usage();}if(!is_array($document)||array_is_list($document))$usage();$request+=['action'=>'verification.store','document'=>$document,'confirmation'=>'STORE_VERIFICATION_EVIDENCE'];break;
+case 'verification-regressions':
+    if($args!==[])$usage();$raw=stream_get_contents(STDIN,65538);if(!is_string($raw)||$raw===''||strlen($raw)>65536)$usage();try{$payload=json_decode($raw,true,16,JSON_THROW_ON_ERROR);}catch(Throwable){$usage();}if(!is_array($payload)||array_is_list($payload)||!is_array($payload['changedPaths']??null))$usage();$request+=['action'=>'verification.regressions','changedPaths'=>$payload['changedPaths']];break;
 case 'bay-status':$request['action']='bay.status';break;
 case 'bay-stage':
     $package=array_shift($args);$version=array_shift($args);$sha=strtolower((string)array_shift($args));$packageSha=strtolower((string)array_shift($args));$confirm=array_shift($args);
