@@ -41,6 +41,7 @@ const tests = [
   'hub/tests/action-graph-projection.php',
   'hub/tests/candidate-qa-truthfulness.php',
   'hub/tests/promotion-evidence-gate.php',
+  'hub/tests/verification-gate.php',
   'hub/tests/m16-office-provider.php',
   'hub/tests/m17-database-studio.php',
   'hub/tests/sustainability-foundation.php',

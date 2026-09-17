@@ -17,6 +17,7 @@ require_once __DIR__ . '/HubArtifactStore.php';
 require_once __DIR__ . '/HubProjectVault.php';
 require_once __DIR__ . '/HubProjectVaultService.php';
 require_once __DIR__ . '/HubDurableExecutionService.php';
+require_once __DIR__ . '/HubVerificationGate.php';
 require_once __DIR__ . '/HubNativeAgentService.php';
 require_once __DIR__ . '/HubOwnerAuthService.php';
 require_once __DIR__ . '/HubFoundingMemoryService.php';
@@ -2270,7 +2271,11 @@ final class HubControlPlaneService
         $artifactId = self::uuidFromBytes(random_bytes(16)); $file = tempnam(sys_get_temp_dir(), 'awh-candidate-');
         if (!is_string($file)) throw new HubControlPlaneException('Candidate report storage is unavailable', 'ARTIFACT_STORAGE_FAILED');
         try {
-            $report = ['schemaVersion' => 2, 'kind' => 'project-candidate', 'projectId' => (string) $row['project_id'], 'taskId' => (string) $row['task_id'], 'executor' => 'codex:cli', 'baseRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'contentSha256' => $candidate['contentSha256'], 'diff' => $diff, 'qa' => ['candidate' => ['status' => (string) $qa['status'], 'workerWorkspaceIsolation' => 'PASS', 'candidateArchiveValidation' => 'PASS', 'manifestIntegrity' => 'PASS', 'projectDefinedTests' => 'NOT_CONFIGURED', 'visualReview' => $qa['visualReview']]], 'createdAt' => $at];
+            $candidateQa = ['status' => (string) $qa['status'], 'workerWorkspaceIsolation' => 'PASS', 'candidateArchiveValidation' => 'PASS', 'manifestIntegrity' => 'PASS', 'projectDefinedTests' => 'NOT_CONFIGURED', 'visualReview' => $qa['visualReview']];
+            $qaEvidence = ['candidate' => $candidateQa];
+            $verification = HubVerificationGate::evaluateCandidate($qaEvidence);
+            try { HubVerificationGate::assertPromotable($verification); } catch (RuntimeException) { throw new HubControlPlaneException('Candidate verification blocked promotion', 'APPROVAL_EVIDENCE_INVALID'); }
+            $report = ['schemaVersion' => 2, 'kind' => 'project-candidate', 'projectId' => (string) $row['project_id'], 'taskId' => (string) $row['task_id'], 'executor' => 'codex:cli', 'baseRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'contentSha256' => $candidate['contentSha256'], 'diff' => $diff, 'qa' => $qaEvidence, 'verification' => $verification, 'createdAt' => $at];
             if (@file_put_contents($file, json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), LOCK_EX) === false) throw new HubControlPlaneException('Candidate report could not be created', 'ARTIFACT_STORAGE_FAILED');
             $stored = $store->storeFile($artifactId, $file);
             $this->pdo->exec('BEGIN IMMEDIATE');
@@ -2293,7 +2298,7 @@ final class HubControlPlaneService
             } else {
                 $this->pdo->prepare("UPDATE control_tasks SET state = 'WAITING_FOR_APPROVAL', progress = 90, result_summary = :summary, failure_code = NULL, assigned_device_id = NULL, lease_expires_at = NULL, updated_at = :at WHERE task_id = :task")->execute(['summary' => $summary, 'at' => $at, 'task' => $row['task_id']]);
                 if (!in_array($qaStatus, ['PASS','REVIEW_REQUIRED'], true)) throw new HubControlPlaneException('Candidate QA status is unavailable', 'APPROVAL_EVIDENCE_INVALID');
-                $scope = json_encode(['taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'expectedActiveRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'artifactId' => $artifactId, 'evidenceSchemaVersion' => 2, 'qaStatus' => $qaStatus], JSON_THROW_ON_ERROR);
+                $scope = json_encode(['taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'expectedActiveRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'contentSha256' => $candidate['contentSha256'], 'artifactId' => $artifactId, 'evidenceSchemaVersion' => 3, 'qaStatus' => $qaStatus], JSON_THROW_ON_ERROR);
                 $this->pdo->prepare("INSERT INTO control_approvals(approval_id, task_id, action, scope_json, status, expires_at, decided_at) VALUES(:id, :task, 'project.revision.promote', :scope, 'PENDING', :expires, NULL)")->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'task' => $row['task_id'], 'scope' => $scope, 'expires' => gmdate('c', strtotime($at) + 86400)]);
                 $eventId = $this->event((string) $row['task_id'], 'WAITING_FOR_APPROVAL', 90, 'Codex candidate revision is ready for owner approval', $at); $this->syncConversationEvent((string) $row['task_id'], $eventId, 'WAITING_FOR_APPROVAL', 90, 'Codex candidate พร้อมตรวจและรออนุมัติ', $summary, $at);
             }
@@ -2539,23 +2544,27 @@ final class HubControlPlaneService
         }
         return ['schemaVersion' => 1, 'approvalId' => (string) $row['approval_id'], 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'action' => (string) $row['action'], 'scope' => $scope, 'status' => $status ?? (string) $row['status'], 'expiresAt' => (string) $row['expires_at'], 'decidedAt' => $row['decided_at'] === null ? null : (string) $row['decided_at']];
     }
-    /** @return array{taskId:string,projectId:string,expectedActiveRevisionId:string,candidateRevisionId:string,artifactId:string,evidenceSchemaVersion:?int,qaStatus:?string} */
+    /** @return array{taskId:string,projectId:string,expectedActiveRevisionId:string,candidateRevisionId:string,contentSha256:?string,artifactId:string,evidenceSchemaVersion:?int,qaStatus:?string} */
     private static function revisionPromotionScope(string $value): array
     {
         try { $scope = json_decode($value, true, 16, JSON_THROW_ON_ERROR); } catch (Throwable) { throw new HubControlPlaneException('Approval scope is invalid', 'APPROVAL_DECISION_FAILED'); }
         if (!is_array($scope)) throw new HubControlPlaneException('Approval scope is invalid', 'APPROVAL_DECISION_FAILED');
         foreach (['taskId', 'projectId', 'expectedActiveRevisionId', 'candidateRevisionId', 'artifactId'] as $key) if (!is_string($scope[$key] ?? null) || preg_match('/^[0-9a-f-]{36}$/i', $scope[$key]) !== 1) throw new HubControlPlaneException('Approval scope is invalid', 'APPROVAL_DECISION_FAILED');
-        $evidenceVersion = $scope['evidenceSchemaVersion'] ?? null; $qaStatus = $scope['qaStatus'] ?? null;
-        if ($evidenceVersion !== null && $evidenceVersion !== 2) throw new HubControlPlaneException('Approval evidence version is invalid', 'APPROVAL_DECISION_FAILED');
+        $evidenceVersion = $scope['evidenceSchemaVersion'] ?? null; $qaStatus = $scope['qaStatus'] ?? null; $contentSha256 = $scope['contentSha256'] ?? null;
+        if ($evidenceVersion !== null && !in_array($evidenceVersion, [2, 3], true)) throw new HubControlPlaneException('Approval evidence version is invalid', 'APPROVAL_DECISION_FAILED');
         if ($qaStatus !== null && (!is_string($qaStatus) || !in_array($qaStatus, ['PASS', 'REVIEW_REQUIRED'], true))) throw new HubControlPlaneException('Approval QA status is invalid', 'APPROVAL_DECISION_FAILED');
         if (($evidenceVersion === null) !== ($qaStatus === null)) throw new HubControlPlaneException('Approval evidence scope is incomplete', 'APPROVAL_DECISION_FAILED');
-        return ['taskId' => strtolower($scope['taskId']), 'projectId' => strtolower($scope['projectId']), 'expectedActiveRevisionId' => strtolower($scope['expectedActiveRevisionId']), 'candidateRevisionId' => strtolower($scope['candidateRevisionId']), 'artifactId' => strtolower($scope['artifactId']), 'evidenceSchemaVersion' => $evidenceVersion, 'qaStatus' => $qaStatus];
+        if ($evidenceVersion === 3 && (!is_string($contentSha256) || preg_match('/^[0-9a-f]{64}$/i', $contentSha256) !== 1)) throw new HubControlPlaneException('Approval content hash is invalid', 'APPROVAL_DECISION_FAILED');
+        if ($evidenceVersion !== 3) $contentSha256 = null;
+        return ['taskId' => strtolower($scope['taskId']), 'projectId' => strtolower($scope['projectId']), 'expectedActiveRevisionId' => strtolower($scope['expectedActiveRevisionId']), 'candidateRevisionId' => strtolower($scope['candidateRevisionId']), 'contentSha256' => $contentSha256 === null ? null : strtolower($contentSha256), 'artifactId' => strtolower($scope['artifactId']), 'evidenceSchemaVersion' => $evidenceVersion, 'qaStatus' => $qaStatus];
     }
 
-    /** @param array{taskId:string,projectId:string,expectedActiveRevisionId:string,candidateRevisionId:string,artifactId:string,evidenceSchemaVersion:?int,qaStatus:?string} $scope */
+    /** @param array{taskId:string,projectId:string,expectedActiveRevisionId:string,candidateRevisionId:string,contentSha256:?string,artifactId:string,evidenceSchemaVersion:?int,qaStatus:?string} $scope */
     private function assertPromotionEvidence(array $scope): void
     {
-        if ($scope['evidenceSchemaVersion'] !== 2) return;
+        $version = $scope['evidenceSchemaVersion'];
+        if ($version === null) return;
+        if (!in_array($version, [2, 3], true)) throw new HubControlPlaneException('Candidate evidence version is unsupported', 'APPROVAL_EVIDENCE_INVALID');
         if ($this->artifactStore === null) throw new HubControlPlaneException('Candidate evidence storage is unavailable', 'APPROVAL_EVIDENCE_UNAVAILABLE');
         $q = $this->pdo->prepare('SELECT a.task_id,a.project_id,a.kind,a.sha256,a.size_bytes,o.storage_key,o.mime_type,o.deleted_at FROM control_artifacts a JOIN control_artifact_objects o ON o.artifact_id=a.artifact_id WHERE a.artifact_id=:artifact');
         $q->execute(['artifact' => $scope['artifactId']]); $row = $q->fetch();
@@ -2564,8 +2573,21 @@ final class HubControlPlaneService
         catch (Throwable) { throw new HubControlPlaneException('Candidate evidence is unavailable', 'APPROVAL_EVIDENCE_UNAVAILABLE'); }
         if (!is_int($size) || $size !== (int)$row['size_bytes'] || !is_string($sha) || !is_string($row['sha256']) || !hash_equals(strtolower((string)$row['sha256']),strtolower($sha)) || !is_string($json) || strlen($json)>1024*1024) throw new HubControlPlaneException('Candidate evidence integrity failed', 'APPROVAL_EVIDENCE_INVALID');
         try { $report=json_decode($json,true,32,JSON_THROW_ON_ERROR); } catch (Throwable) { throw new HubControlPlaneException('Candidate evidence is invalid', 'APPROVAL_EVIDENCE_INVALID'); }
+        if (!is_array($report)) throw new HubControlPlaneException('Candidate evidence is invalid', 'APPROVAL_EVIDENCE_INVALID');
         $qa=is_array($report['qa']['candidate']??null)?$report['qa']['candidate']:null;
-        if (!is_array($report) || ($report['schemaVersion']??null)!==2 || ($report['kind']??null)!=='project-candidate' || !hash_equals((string)($report['taskId']??''),$scope['taskId']) || !hash_equals((string)($report['projectId']??''),$scope['projectId']) || !hash_equals((string)($report['baseRevisionId']??''),$scope['expectedActiveRevisionId']) || !hash_equals((string)($report['candidateRevisionId']??''),$scope['candidateRevisionId']) || !is_array($qa) || !hash_equals((string)($qa['status']??''),(string)$scope['qaStatus'])) throw new HubControlPlaneException('Candidate evidence does not match the approval', 'APPROVAL_EVIDENCE_INVALID');
+        if (($report['schemaVersion']??null)!==2 || ($report['kind']??null)!=='project-candidate' || !hash_equals((string)($report['taskId']??''),$scope['taskId']) || !hash_equals((string)($report['projectId']??''),$scope['projectId']) || !hash_equals((string)($report['baseRevisionId']??''),$scope['expectedActiveRevisionId']) || !hash_equals((string)($report['candidateRevisionId']??''),$scope['candidateRevisionId']) || !is_array($qa) || !hash_equals((string)($qa['status']??''),(string)$scope['qaStatus'])) throw new HubControlPlaneException('Candidate evidence does not match the approval', 'APPROVAL_EVIDENCE_INVALID');
+        if ($version === 2) return;
+
+        $contentSha256 = strtolower((string) ($scope['contentSha256'] ?? ''));
+        if (!preg_match('/^[0-9a-f]{64}$/', $contentSha256) || !hash_equals(strtolower((string)($report['contentSha256']??'')), $contentSha256)) throw new HubControlPlaneException('Candidate content hash does not match the approval', 'APPROVAL_EVIDENCE_INVALID');
+        $verification = is_array($report['verification'] ?? null) ? $report['verification'] : null;
+        $recomputed = HubVerificationGate::evaluateCandidate(is_array($report['qa'] ?? null) ? $report['qa'] : []);
+        if (!is_array($verification) || ($verification['schemaVersion']??null)!==1 || !hash_equals((string)($verification['status']??''),(string)$recomputed['status']) || ($verification['exactRevisionRequired']??null)!==true) throw new HubControlPlaneException('Candidate verification result is invalid', 'APPROVAL_EVIDENCE_INVALID');
+        try { HubVerificationGate::assertPromotable($recomputed); } catch (RuntimeException) { throw new HubControlPlaneException('Candidate verification blocks promotion', 'APPROVAL_EVIDENCE_INVALID'); }
+
+        $revision = $this->pdo->prepare('SELECT project_id,parent_revision_id,content_sha256,state FROM control_project_vault_revisions WHERE revision_id=:revision');
+        $revision->execute(['revision' => $scope['candidateRevisionId']]); $candidate = $revision->fetch();
+        if (!is_array($candidate) || !hash_equals((string)$candidate['project_id'],$scope['projectId']) || !hash_equals((string)$candidate['parent_revision_id'],$scope['expectedActiveRevisionId']) || !hash_equals(strtolower((string)$candidate['content_sha256']),$contentSha256) || (string)$candidate['state'] !== 'CANDIDATE') throw new HubControlPlaneException('Candidate Vault revision does not match verified evidence', 'APPROVAL_EVIDENCE_INVALID');
     }
 
     /** Browser-visible, metadata-only continuity state. Source files remain in Git. */
