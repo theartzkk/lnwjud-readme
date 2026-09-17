@@ -413,6 +413,8 @@ async function fastQaCheck() {
     'test/control-plane-worker-client.test.ts',
     'test/owner-protocol.test.ts',
     'test/source-drift-systemd.test.ts',
+    'test/vps-direct-connector.test.mjs',
+    'test/browser-qa-runtime.test.mjs',
     'test/central-project-authority-deployment.test.ts',
     'test/automation-deployment.test.ts',
     'test/release-readiness.test.ts',

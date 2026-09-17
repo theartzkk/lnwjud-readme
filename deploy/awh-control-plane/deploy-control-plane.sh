@@ -159,6 +159,7 @@ FILES="$FILES deploy/observability/README.md deploy/observability/install-awh-ob
 FILES="$FILES hub/src/HubProjectSourceAuthorityMigration.php hub/src/HubProjectSourceAuthorityService.php hub/src/HubProjectSourceSyncService.php hub/src/HubAiPassProjectExportService.php hub/migrations/019_project_source_authority.sql hub/bin/migrate-project-source-authority.php hub/bin/project-source-authority.php"
 FILES="$FILES hub/src/HubVaultSourceAuthorityMigration.php hub/migrations/020_vault_source_authority.sql hub/bin/migrate-vault-source-authority.php hub/bin/bind-vault-source-authority.php"
 FILES="$FILES hub/src/HubEcosystemHealthService.php hub/src/HubEcosystemHealthCollector.php hub/src/HubBayEcosystemHealthConnector.php hub/src/HubDeployExecutionAuthorityService.php hub/bin/deploy-execution-authority.php hub/bin/ecosystem-source-drift.php deploy/systemd/awh-source-drift.service deploy/systemd/awh-source-drift.timer"
+FILES="$FILES deploy/remote-worker/linux/bootstrap-vps-direct-connector.sh deploy/remote-worker/linux/install-vps-direct-connector.sh deploy/remote-worker/linux/verify-vps-direct-connector.sh deploy/remote-worker/linux/desktop-commander-vps.service.template deploy/qa/install-browser-qa-runtime.sh deploy/qa/verify-browser-qa-runtime.sh scripts/qa/run-vps-chat-continuity.sh"
 DESKTOP_ARTIFACTS=
 if test "$REUSE_REMOTE_DESKTOP_ARTIFACTS" -eq 1; then
   printf '%s\n' "DESKTOP_ARTIFACT_REUSE=verified-remote-manifest"
