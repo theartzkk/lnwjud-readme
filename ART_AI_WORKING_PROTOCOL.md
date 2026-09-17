@@ -156,6 +156,25 @@ Routing invariants:
 - Do not create a second queue, executor, source authority or data store merely to avoid a blocked route.
 - If a platform safety/security gate blocks one attempted route, do not disguise or blind-retry it. Move only to another already-approved route that preserves the same authority, scope and safety contract.
 
+### Current control surface and device-role contract
+
+- **ChatGPT + Remote Desktop / Desktop Commander is the current primary interactive control surface for Art.** AWH remains the durable backend/control plane and may evolve into an equivalent or better UI, but workers must not force Art through the AWH App while ChatGPT is the more usable surface.
+- **ReadyIDC/VPS is the always-on control plane and Source-of-Truth host** for server-native work: canonical source/runtime, database authority, deploy, backup, logs, durable jobs, automation and headless QA. Personal devices are execution endpoints, not replacement authorities.
+- **`ART-MAC-M5` is the current creative/heavy workstation** for VTR, After Effects, Premiere, Photoshop, Illustrator, render, encode, visual preview and other media-heavy/native creative work. Over time it may absorb the personal general-worker role now served by `ART-MAC-INTEL`, but that transition is capability-proven rather than assumed.
+- **`AY-TEACHER` and `ART-MAC-INTEL` are peer GENERAL_WORKER endpoints** for non-video projects such as BAY EXCUSE X, LearnLab, AWH, School Website, browser QA, documents and ordinary development. When Art is at school prefer `AY-TEACHER`; outside school prefer the available personal endpoint until M5 generalization is proven.
+- **M5 clean-machine rule:** do not add custom watchers, screenshot loops, duplicate remote daemons, server runtimes, primary databases, backup stores, persistent logs or speculative agents merely for convenience. Use the standard installed Remote Desktop path and native application capability unless a new component is demonstrably necessary and explicitly approved.
+- **One device, one GUI writer:** at most one active chat/mission may mutate a device GUI at a time. Other chats may inspect durable state, prepare assets, analyze, or execute headless work elsewhere, but they must not race mouse/keyboard/application state on the same endpoint.
+- Reuse one healthy standard Remote Desktop session per endpoint; do not spawn duplicate `remote` instances as a workaround for latency or transport errors. Re-inspect current state after reconnect before continuing a GUI mutation.
+- Cross-device continuity comes from canonical source/checkpoints and durable project state, not manual folder copying. Starting work on AY-TEACHER and resuming on M5/INTEL must preserve the same project identity and revision.
+
+### Gate minimization contract
+
+Hard-block only when continuing could create distinct material damage that is not already prevented elsewhere. The default hard blocks are: platform safety/security; exact Source of Truth/revision for Production mutation; single-writer/mutation authority; data-integrity preconditions; backup/rollback identity; secret/credential boundaries; explicit owner approval for the exact Production revision/scope; and destructive or irreversible operations.
+
+Everything else should prefer state, warning, attention, telemetry or deeper verification instead of blocking reversible work. In particular, candidate/source edits, analysis, tests, build, rehearsal and non-production QA may continue automatically when they are reversible and single-writer. A pending release, Production lag, missing optional/non-production source binding, optional device unavailability, or stale noncritical evidence is not by itself a reason to block candidate work.
+
+Do not introduce a new gate unless it prevents a concrete damage mode not already covered by an existing invariant. Production uses one bounded approval for one proven exact revision and risk scope; after approval, backup, activation, verification and cleanup continue automatically. Ask again only when the exact revision, mutation scope or risk boundary materially changes.
+
 ### Remote Mission efficiency contract
 
 - Availability is preserved. Remote Desktop / Desktop Commander may be selected whenever Art explicitly asks for it or the task benefits materially from real device/UI state.
@@ -454,6 +473,8 @@ AWH should:
 When Art gives an instruction directly to ChatGPT, ChatGPT should apply this Constitution before planning/delegating work.
 
 ChatGPT should treat the prompt as the desired outcome, recover durable project context when available, inspect relevant Source of Truth, and execute/delegate one coherent task rather than converting Art's wording into a narrow literal patch. ChatGPT must apply the Owner Operating Model and choose tools by work-fit: do not avoid Remote Desktop, GitHub or another capability merely because a generic route order exists, and do not select them merely because they are available.
+
+While ChatGPT is Art's preferred control surface, ChatGPT should route work directly to VPS or the capability-fit device and should not require an AWH-UI detour. Apply the current device-role contract automatically from task context so Art does not need to repeat the target device on every chat.
 
 When durable context is not currently accessible, ChatGPT must be transparent rather than pretending to remember or infer critical facts.
 

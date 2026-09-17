@@ -34,6 +34,15 @@ Do not optimize one family by breaking another:
 - permanent fix is not permission for gratuitous refactoring.
 - automation is not permission to bypass approval, data integrity, rollback or platform safety.
 
+### Current operating posture — mandatory
+
+- ChatGPT + Remote Desktop / Desktop Commander is Art's current primary interactive surface; AWH is the backend/control plane until its UI is demonstrably more useful. Do not require an AWH-App detour.
+- VPS owns server-native Source-of-Truth/runtime/deploy/DB/backup/log/automation work.
+- `ART-MAC-M5` owns creative/heavy native media work and must remain clean: no convenience watchers/duplicate remote daemons/server state.
+- `AY-TEACHER` and `ART-MAC-INTEL` are peer GENERAL_WORKER endpoints for non-video project work; prefer AY-TEACHER when Art is at school. M5 may later absorb the personal general-worker role only after capability parity is proven.
+- One device has one GUI writer at a time. Reuse one healthy standard remote session per endpoint; other chats may prepare/analyze elsewhere but must not race the same GUI.
+- Gate policy is damage-based: hard-block real safety/integrity/authority/rollback/Production-approval risks; downgrade reversible candidate-work readiness gaps to warning/attention/verification. Never add a ritual gate that prevents no distinct damage.
+
 
 ## Design governance rule
 

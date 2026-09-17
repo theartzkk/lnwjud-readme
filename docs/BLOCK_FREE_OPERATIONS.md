@@ -13,6 +13,18 @@ Current invariant: a browser/ChatGPT/worker transport is never the lifetime auth
 
 Operational success is therefore **gateway failure ≠ job failure**. External ISP/provider/realtime outages can still occur, but accepted AWH work must remain durable and recoverable.
 
+## Current ChatGPT + device operating mode
+
+ChatGPT is currently Art's preferred interactive control surface. Route from ChatGPT directly to the authoritative VPS or the capability-fit endpoint; do not require the AWH UI merely to satisfy architecture. AWH remains the durable backend/control plane.
+
+Device routing is capability-based: M5 is the clean creative/heavy workstation; AY-TEACHER and ART-MAC-INTEL are peer general workers for non-video projects; VPS owns server-native durable work. Only one chat/mission may actively mutate a given device GUI at once. Reuse one standard Remote Desktop session per endpoint and do not create duplicate remote processes, screenshot loops, custom watchers or similar persistent helpers as a transport workaround.
+
+A ChatGPT response-stream failure and a Remote Desktop transport failure are separate failure domains. Neither should be "fixed" by making the endpoint heavier. On reconnect, re-inspect device/application state, resume from proven durable state, and avoid blind retry or repeated micro-polling.
+
+## Gate minimization
+
+A gate exists only to prevent a concrete damage mode. Keep hard blocks for platform safety/security, Production source/revision identity, single writer, data integrity, backup/rollback, secret boundaries, exact Production approval and destructive/irreversible actions. Reversible candidate work should continue through warnings/attention when the missing condition is not required for safe mutation. Pending release and Production lag are states, not candidate blockers. One exact-revision Production approval covers the bounded deploy mission unless revision, scope or risk changes.
+
 ## Remote Desktop / Desktop Commander — high-value mission policy
 
 Remote access remains available by default when explicitly requested or materially useful for real device/UI work. Block-Free operation means eliminating wasteful micro-sessions and hidden device dependencies, not avoiding Remote Desktop.
