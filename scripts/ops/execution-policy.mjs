@@ -27,6 +27,7 @@ export async function loadExecutionPolicy(path=process.env.AWH_EXECUTION_POLICY|
   for(const key of ['G0','G1','G2','G3'])if(!gates[key])fail('EXECUTION_POLICY_GATES');
   for(const risk of ['LOW','MEDIUM','HIGH','CRITICAL'])if(!['FAST','STANDARD','DEEP'].includes(qa.riskBudget?.[risk]))fail('EXECUTION_POLICY_QA_RISK');
   for(const budget of ['FAST','STANDARD','DEEP'])if(!/^qa:(?:fast|local|full)$/.test(String(qa.scriptByBudget?.[budget]??'')))fail('EXECUTION_POLICY_QA_SCRIPT');
+  if(qa.singleFlight?.enabled!==true||qa.singleFlight.scope!=='PROJECT'||qa.singleFlight.serializeDeepTests!==true||qa.singleFlight.reuseExactShaResult!==true)fail('EXECUTION_POLICY_QA_SINGLEFLIGHT');
   return raw;
 }
 export function qaScriptForBudget(policy,budget){

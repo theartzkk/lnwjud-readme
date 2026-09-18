@@ -105,6 +105,14 @@
       "STANDARD": "qa:fast",
       "DEEP": "qa:local"
     },
-    "fullSuiteOnlyAtReleaseOrExplicitDeep": true
+    "fullSuiteOnlyAtReleaseOrExplicitDeep": true,
+    "singleFlight": {
+      "enabled": true,
+      "scope": "PROJECT",
+      "serializeDeepTests": true,
+      "reuseExactShaResult": true,
+      "staleMinutes": 30,
+      "waitMinutes": 20
+    }
   }
 }
