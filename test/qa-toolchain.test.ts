@@ -20,11 +20,12 @@ test('native npm and npm-cli discovery remain shell-free', () => {
   });
 });
 
-test('local QA accepts any clean tracked exact-revision branch instead of one historical branch name', async () => {
+test('local candidate QA requires a clean exact commit without forcing publication, while full QA keeps upstream identity', async () => {
   const source = await readFile(new URL('../scripts/qa/awh-local-qa.mjs', import.meta.url), 'utf8');
+  assert.match(source, /mode === 'local' \? baseValid && clean : baseValid && clean && exactRemote/);
   assert.match(source, /rev-parse', '@\{u\}'/);
   assert.match(source, /head\.stdout === upstream\.stdout/);
-  assert.match(source, /status\.stdout === ''/);
+  assert.match(source, /localCandidate=true/);
   assert.doesNotMatch(source, /branchName === 'awh\/v0\.1-migration'/);
 });
 
