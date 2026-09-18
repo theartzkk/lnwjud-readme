@@ -25,6 +25,12 @@ export async function loadExecutionPolicy(path=process.env.AWH_EXECUTION_POLICY|
   if(!Number.isInteger(rm.heartbeatProofMaxAgeSeconds)||rm.heartbeatProofMaxAgeSeconds<60||rm.heartbeatProofMaxAgeSeconds>1800)fail('EXECUTION_POLICY_HEARTBEAT_PROOF_AGE');
   const requiredHeartbeatFields=['elapsed','doneSinceLast','currentOperation','stage','proofOfWork','activePidOrApp','lastSaveOrArtifact','nextSteps','blocker'];
   if(!Array.isArray(rm.heartbeatRequiredFields)||requiredHeartbeatFields.some((field)=>!rm.heartbeatRequiredFields.includes(field)))fail('EXECUTION_POLICY_HEARTBEAT_FIELDS');
+  const em=raw.executionModel??{};
+  if(em.name!=='EXECUTION_FIRST'||!Array.isArray(em.appliesTo)||!em.appliesTo.includes('ALL_PROJECTS')||!em.appliesTo.includes('ALL_TASK_TYPES'))fail('EXECUTION_POLICY_MODEL');
+  if(em.oneMissionOwnerPerMutationScope!==true||em.readOnlyConcurrencyAllowed!==true||em.resourceSingleWriter!==true)fail('EXECUTION_POLICY_OWNERSHIP');
+  if(em.sourceOfTruthBeforeMutation!==true||em.resumeFirst!==true||em.subprocessCompletionEndsMission!==false||em.restartAsStateControlForbidden!==true)fail('EXECUTION_POLICY_CONTINUITY');
+  if(em.noParallelCoreSystems!==true||em.cleanupOnClosure!==true||em.closureRequiresCompletionProof!==true)fail('EXECUTION_POLICY_CLOSURE');
+  for(const key of ['CONTROL_PLANE','CREATIVE_NATIVE','GENERAL_ENDPOINT'])if(!Array.isArray(em.routing?.[key])||em.routing[key].length===0)fail('EXECUTION_POLICY_ROUTING');
   for(const key of ['G0','G1','G2','G3'])if(!gates[key])fail('EXECUTION_POLICY_GATES');
   for(const risk of ['LOW','MEDIUM','HIGH','CRITICAL'])if(!['FAST','STANDARD','DEEP'].includes(qa.riskBudget?.[risk]))fail('EXECUTION_POLICY_QA_RISK');
   for(const budget of ['FAST','STANDARD','DEEP'])if(!/^qa:(?:fast|local|full)$/.test(String(qa.scriptByBudget?.[budget]??'')))fail('EXECUTION_POLICY_QA_SCRIPT');

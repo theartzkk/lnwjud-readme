@@ -117,5 +117,40 @@
       "staleMinutes": 30,
       "waitMinutes": 20
     }
+  },
+  "executionModel": {
+    "name": "EXECUTION_FIRST",
+    "appliesTo": [
+      "ALL_PROJECTS",
+      "ALL_TASK_TYPES"
+    ],
+    "oneMissionOwnerPerMutationScope": true,
+    "readOnlyConcurrencyAllowed": true,
+    "resourceSingleWriter": true,
+    "sourceOfTruthBeforeMutation": true,
+    "resumeFirst": true,
+    "subprocessCompletionEndsMission": false,
+    "restartAsStateControlForbidden": true,
+    "noParallelCoreSystems": true,
+    "cleanupOnClosure": true,
+    "closureRequiresCompletionProof": true,
+    "preserveOnCleanup": [
+      "CANONICAL_SOURCE",
+      "VERIFIED_RECOVERY",
+      "VERIFIED_EVIDENCE",
+      "PRODUCTION_RELEASE"
+    ],
+    "routing": {
+      "CONTROL_PLANE": [
+        "vps"
+      ],
+      "CREATIVE_NATIVE": [
+        "m5"
+      ],
+      "GENERAL_ENDPOINT": [
+        "ay-teacher",
+        "art-mac-intel"
+      ]
+    }
   }
 }

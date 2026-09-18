@@ -52,6 +52,27 @@ test('fast path and creative crash guards are machine-enforced',async()=>{
   assert.equal(policy.remoteMission.creativeApplicationSafety.checkpointBeforeTermination,true);
 });
 
+
+test('Execution First is global, single-writer, capability-routed and cleanup-bound',async()=>{
+  const policy=await loadExecutionPolicy();
+  const model=policy.executionModel;
+  assert.equal(model.name,'EXECUTION_FIRST');
+  assert.deepEqual(model.appliesTo,['ALL_PROJECTS','ALL_TASK_TYPES']);
+  assert.equal(model.oneMissionOwnerPerMutationScope,true);
+  assert.equal(model.readOnlyConcurrencyAllowed,true);
+  assert.equal(model.resourceSingleWriter,true);
+  assert.equal(model.restartAsStateControlForbidden,true);
+  assert.equal(model.cleanupOnClosure,true);
+  assert.equal(model.closureRequiresCompletionProof,true);
+  assert.deepEqual(model.routing.CONTROL_PLANE,['vps']);
+  assert.deepEqual(model.routing.CREATIVE_NATIVE,['m5']);
+  assert.deepEqual(model.routing.GENERAL_ENDPOINT,['ay-teacher','art-mac-intel']);
+  const registry=JSON.parse(await readFile(new URL('../config/device-role-registry.json',import.meta.url),'utf8'));
+  const m5=registry.devices.find((d)=>d.key==='m5');
+  assert.equal(m5.routingEnabled,true);
+  assert.ok(m5.workloads.includes('AFTER_EFFECTS'));
+});
+
 test('gate and QA policy encode the simplified G0-G3 model',async()=>{
   const policy=await loadExecutionPolicy();
   assert.equal(policy.gateTiers.G0.ownerApproval,false);
@@ -63,11 +84,13 @@ test('gate and QA policy encode the simplified G0-G3 model',async()=>{
   assert.equal(qaScriptForBudget(policy,'DEEP'),'qa:local');
 });
 
-test('human protocols stay aligned with machine-readable Remote policy',async()=>{
+test('human protocols stay aligned with machine-readable Execution First policy',async()=>{
   const docs=await Promise.all(['ART_AI_WORKING_PROTOCOL.md','AGENTS.md','docs/BLOCK_FREE_OPERATIONS.md'].map(f=>readFile(new URL('../'+f,import.meta.url),'utf8')));
   for(const source of docs){
+    assert.match(source,/Execution First/i);
     assert.match(source,/30.?minute|30 minutes/i);
     assert.match(source,/3.?5 minutes|3–5 minutes|3-5 minutes/i);
-    assert.match(source,/quota.*(?:not|never).*(?:constraint|gate|limit)|quota.*telemetry/i);
+    assert.match(source,/one.*Mission|one.*mutation scope|one.*writer/i);
+    assert.match(source,/cleanup/i);
   }
 });

@@ -70,7 +70,7 @@
       "displayName": "ART-MAC-M5",
       "role": "CREATIVE_PRIMARY_WORKSTATION",
       "kind": "external",
-      "routingEnabled": false,
+      "routingEnabled": true,
       "requiresOwnerApproval": false,
       "workloads": [
         "VIDEO",

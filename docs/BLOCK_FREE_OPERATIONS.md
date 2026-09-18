@@ -29,40 +29,17 @@ Operational tiers: G0 read/inspect/QA runs automatically; G1 reversible candidat
 
 VPS-hosted code promotion must stay on the VPS. ChatGPT should stage an exact bundle/revision and invoke the bounded local source operator; do not require AY-TEACHER, ART-MAC-INTEL or M5 to SSH back into the same VPS.
 
-## Remote Desktop / Desktop Commander — high-value mission policy
+## Execution First / Remote Mission policy
 
-**ChatGPT 30-minute Remote Mission rule:** a continuation request for active Remote work starts one coherent work block targeting approximately 30 minutes of productive execution. ChatGPT must not stop after a few minutes merely to report progress. It should continue in the same turn until the mission is complete, a genuine hard blocker/approval boundary appears, or the platform forcibly interrupts the turn.
+The same Execution First model applies to every KRUART/AWH/BAY/LearnLab/website/document/creative task. One mission owns one mutation scope; device/resource leases prevent parallel writers. Route work by capability, keep long-running work alive across chat/transport interruptions, report assistant-visible evidence-backed heartbeats every 3–5 minutes, and continue without waiting for acknowledgement. Device-bound work normally targets a coherent ~30-minute productive mission (or longer when useful), not 1–2 minute micro-turns.
 
-**Global no-interruption requirement:** after any Remote Desktop/Desktop Commander invocation, ChatGPT must keep the mission moving continuously and must not pause for a ต่อ prompt or wait for acknowledgement. **Interim progress reporting is required and must be non-blocking:** send a detailed heartbeat approximately every 3–5 minutes or when a meaningful milestone completes, covering elapsed / delta since last / current / stage / proof / PID or app / latest save or artifact / next / blocker, then continue execution immediately. This rule applies across all KRUART/AWH/BAY/LearnLab/website/document/creative/device tasks. Use fewer, larger, better-prepared Remote calls because it keeps execution coherent and reduces fragmentation; Remote quota is not a limiting policy and must not reduce required work or QA.
+Subprocess completion never ends the mission by itself. Restart is recovery only, never a way to control state. Creative applications remain in one healthy session and must not be force-terminated for probing/QC. Long processes are polled sparsely (normally every 2–5 minutes) and resumed by PID/session/checkpoint.
 
-**Remote-full-use policy:** Remote Desktop/Desktop Commander is intentionally available at full strength for endpoint work. Prefer it whenever real GUI/device/native-app state materially improves execution or verification. Keep the session productive for roughly 30 minutes or longer when useful, batching actions, reusing the same session/PID, and avoiding redundant reconnects/polls. Do not stop after 1–2 minutes while safe productive work remains, and do not refuse or shorten Remote work for quota reasons. VPS-only work must remain VPS-native so Remote is never wasted as a bridge back to the server.
+QA is risk-based and single-flight; release/deep QA uses an immutable exact SHA in an isolated worktree. Closure requires completion proof and cleanup of transient clones/logs/probes/locks/bundles while preserving canonical source, bounded verified recovery, verified evidence and Production releases.
 
-A child process ending does not close the Remote Mission. Chain the next safe step automatically. Every progress heartbeat must cite fresh execution evidence, and a mission marked ACTIVE may not finalize while a safe next step remains. For scriptable work expected to exceed two minutes, prefer one durable one-shot process/checkpoint over repeated foreground micro-calls; this does not authorize persistent endpoint daemons or watchers.
+ChatGPT UI labels such as `กำลังคิด`, diagnostic text, tool labels or spinners are not progress reports. The owner-facing heartbeat must include elapsed time, stage, concrete delta, current operation, proof, PID/app when relevant, last save/artifact, next steps and blocker.
 
-**Fast/error/crash contract:** when current state is known, begin productive work within ~60 seconds and keep routine preflight to at most two probes. Classify errors before retrying. Transport timeout means resume/inspect the same PID/session first; process-not-found means inspect state before restart. Never use force-quit as normal Adobe workflow cleanup. Creative-app termination requires >=30 seconds of confirmed non-responsiveness from at least two signals and a checkpoint when possible. A termination-induced crash report is controlled termination evidence, not proof that Adobe crashed spontaneously.
-
-Deep/full QA uses a project-scoped single-flight lock. Concurrent same-source runs wait and reuse one result; different-source runs serialize. Dirty source identity includes a content fingerprint so uncommitted changes cannot reuse a clean-HEAD result.
-
-**Detailed heartbeat format:** the owner must be able to understand real progress from the update alone. Include elapsed mission time, current stage (for example 3/7), exact delta since the previous heartbeat, current operation, fresh proof-of-work, active PID/app when applicable, latest canonical save/hash or output artifact, next 1–3 actions, and blocker. For Adobe/VTR, canonical AEP save evidence and latest render/QC artifact are mandatory when available. For release work, exact SHA and current/passed gate are mandatory. Do not fabricate percentages; prefer stage counts and verified deltas. Heartbeats never wait for acknowledgement.
-
-Preferred owner-facing order: `Progress Heartbeat — Stage X/Y`, `Elapsed`, `เสร็จตั้งแต่ครั้งก่อน`, `กำลังทำ`, `Proof`, `ถัดไป`, `Blocker`. A spinner/status line by itself is never a heartbeat.
-ChatGPT UI activity labels such as `กำลังคิด`, `วินิจฉัย...`, `ตรวจสอบ...`, or tool/spinner state are transport/UI telemetry only. They never replace the assistant-visible heartbeat required by this contract.
-
-For long-running render/build/export processes, start once and keep the same process alive. Poll at meaningful checkpoints, normally every **2–5 minutes**; on reconnect, resume from the existing PID/session/checkpoint before considering any restart. Use bounded logs/previews and avoid repeated high-volume evidence reads.
-
-Execution constants live in `config/execution-policy.json`. Long device-bound missions use the VPS-only `ops:mission-state` projection for active device lease, checkpoint, PID/app hint, heartbeat and next step. It stores no command, credential or task queue and creates no endpoint daemon. History is bounded by the machine-readable retention policy and pruned opportunistically by the CLI, so no watcher or permanent background cleanup service is required.
-
-Remote access remains available by default when explicitly requested or materially useful for real device/UI work. Block-Free operation means eliminating wasteful micro-sessions and hidden device dependencies, not avoiding Remote Desktop. Remote quota/call count is observational telemetry only and must never become a hard gate or a reason to stop a productive mission.
-
-For each invocation:
-1. Reuse known Source of Truth, logs and last verified device delta before connecting.
-2. Define one bounded problem cluster and include safe adjacent checks before the call.
-3. Batch related actions and keep the active session instead of reconnecting for each micro-action.
-4. Verify real UI/output and relevant regression before leaving.
-5. Record what changed and what is now known so later work starts delta-first.
-6. Clean task-created temporary state and intentionally leave required apps/services running or stopped.
-
-Remote quota/call count is telemetry only and never changes routing, mission duration, or completion quality. Batching and reduced redundant polling exist to keep execution coherent. Never blind-retry a blocked call, and never use a device merely as a bridge to VPS/API/GitHub/CLI when an approved direct route exists.
+`config/execution-policy.json` is the machine-readable authority for this model.
 
 ## Permanent Fix / Root-Cause Closure
 

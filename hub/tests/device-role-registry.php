@@ -30,8 +30,8 @@ file_put_contents($path, json_encode([
             'displayName' => 'M5',
             'role' => 'CREATIVE_PRIMARY_WORKSTATION',
             'kind' => 'external',
-            'routingEnabled' => false,
-            'requiresOwnerApproval' => true,
+            'routingEnabled' => true,
+            'requiresOwnerApproval' => false,
             'workloads' => ['VIDEO'],
             'purpose' => 'video only',
         ],
@@ -53,6 +53,7 @@ try {
     assertTrue($registry->claimAllowed($workerId), 'registered worker must be routable');
     assertTrue($registry->claimAllowed('22222222-2222-4222-8222-222222222222'), 'unclassified legacy worker must remain backward compatible');
     assertTrue(!$registry->claimAllowed('22222222-2222-4222-8222-222222222222', 'M5'), 'known video workstation must not claim system work');
+    assertTrue($registry->claimAllowed('22222222-2222-4222-8222-222222222222', 'VIDEO'), 'creative workstation must remain routable for declared creative work');
     $workers = $registry->decorateWorkers([[
         'deviceId' => $workerId,
         'displayName' => 'Worker',
