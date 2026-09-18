@@ -89,7 +89,7 @@ async function fixtureRotate(failure: 'none' | 'before' | 'replace' | 'nginx' | 
   const root = await mkdtemp(join(tmpdir(), 'awh-basic-auth-'));
   const target = join(root, 'users'); const backup = join(root, 'users.backup'); const temp = join(root, 'users.tmp');
   const original = 'awh-preview:$apr1$old$oldhash\n';
-  await writeFile(target, original, { mode: 0o640 });
+  await writeFile(target, original, { mode: 0o640 }); await chmod(target, 0o640);
   if (failure === 'symlink') { await rm(target); await symlink(join(root, 'outside'), target); }
   const before = await stat(target).catch(() => null);
   const stage = [];
@@ -101,7 +101,7 @@ async function fixtureRotate(failure: 'none' | 'before' | 'replace' | 'nginx' | 
     if (failure === 'before') throw new Error('HASH_FORMAT');
     await writeFile(backup, original, { mode: 0o600 });
     stage.push('BACKUP_CREATED');
-    await writeFile(temp, 'awh-preview:$apr1$new$newhash\n', { mode: mode });
+    await writeFile(temp, 'awh-preview:$apr1$new$newhash\n', { mode: mode }); await chmod(temp, mode);
     stage.push('TEMP_CREATED');
     if (failure === 'replace') throw new Error('RENAME_FAILED');
     await rename(temp, target); stage.push('ATOMIC_REPLACE');
