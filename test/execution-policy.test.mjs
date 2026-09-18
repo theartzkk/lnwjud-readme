@@ -13,6 +13,8 @@ test('execution policy makes Remote long-running, resume-first and quota-unbound
   assert.equal(policy.remoteMission.processPollSeconds.min,120);
   assert.equal(policy.remoteMission.processPollSeconds.max,300);
   assert.equal(policy.remoteMission.deviceLeaseMinutes>=policy.remoteMission.targetMinutes,true);
+  assert.equal(policy.remoteMission.historyRetentionDays,30);
+  assert.equal(policy.remoteMission.maxHistoryFiles,500);
 });
 
 test('gate and QA policy encode the simplified G0-G3 model',async()=>{

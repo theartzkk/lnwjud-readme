@@ -19,7 +19,9 @@
       "HARD_BLOCKER",
       "OWNER_APPROVAL_REQUIRED",
       "PLATFORM_INTERRUPTION"
-    ]
+    ],
+    "historyRetentionDays": 30,
+    "maxHistoryFiles": 500
   },
   "gateTiers": {
     "G0": {

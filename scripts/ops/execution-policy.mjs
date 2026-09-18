@@ -13,6 +13,8 @@ export async function loadExecutionPolicy(path=process.env.AWH_EXECUTION_POLICY|
   if(!Number.isInteger(rm.progressHeartbeatMinutes?.min)||!Number.isInteger(rm.progressHeartbeatMinutes?.max)||rm.progressHeartbeatMinutes.min<1||rm.progressHeartbeatMinutes.max<rm.progressHeartbeatMinutes.min)fail('EXECUTION_POLICY_HEARTBEAT');
   if(!Number.isInteger(rm.processPollSeconds?.min)||!Number.isInteger(rm.processPollSeconds?.max)||rm.processPollSeconds.min<30||rm.processPollSeconds.max<rm.processPollSeconds.min)fail('EXECUTION_POLICY_POLL');
   if(!Number.isInteger(rm.deviceLeaseMinutes)||rm.deviceLeaseMinutes<rm.targetMinutes||rm.deviceLeaseMinutes>240)fail('EXECUTION_POLICY_LEASE');
+  if(!Number.isInteger(rm.historyRetentionDays)||rm.historyRetentionDays<1||rm.historyRetentionDays>365)fail('EXECUTION_POLICY_HISTORY_RETENTION');
+  if(!Number.isInteger(rm.maxHistoryFiles)||rm.maxHistoryFiles<10||rm.maxHistoryFiles>5000)fail('EXECUTION_POLICY_HISTORY_LIMIT');
   for(const key of ['G0','G1','G2','G3'])if(!gates[key])fail('EXECUTION_POLICY_GATES');
   for(const risk of ['LOW','MEDIUM','HIGH','CRITICAL'])if(!['FAST','STANDARD','DEEP'].includes(qa.riskBudget?.[risk]))fail('EXECUTION_POLICY_QA_RISK');
   for(const budget of ['FAST','STANDARD','DEEP'])if(!/^qa:(?:fast|local|full)$/.test(String(qa.scriptByBudget?.[budget]??'')))fail('EXECUTION_POLICY_QA_SCRIPT');

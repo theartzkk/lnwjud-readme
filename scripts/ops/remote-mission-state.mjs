@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -19,9 +19,23 @@ function expiry(minutes){return new Date(Date.now()+minutes*60000).toISOString()
 function active(row){return row?.status==='ACTIVE'&&Date.parse(row.leaseExpiresAt)>Date.now();}
 async function input(){let raw='';for await(const chunk of process.stdin)raw+=chunk;return raw.trim()?JSON.parse(raw):{};}
 
+async function cleanupHistory(policy){
+  const dir=join(ROOT,'history');await mkdir(dir,{recursive:true,mode:0o700});
+  let entries=[];try{entries=await readdir(dir,{withFileTypes:true});}catch{return;}
+  const rows=[];
+  for(const entry of entries){
+    if(!entry.isFile()||!entry.name.endsWith('.json'))continue;
+    const path=join(dir,entry.name);try{const info=await stat(path);rows.push({path,mtimeMs:info.mtimeMs});}catch{}
+  }
+  rows.sort((a,b)=>b.mtimeMs-a.mtimeMs);
+  const cutoff=Date.now()-policy.remoteMission.historyRetentionDays*86400000;
+  for(let i=0;i<rows.length;i++)if(i>=policy.remoteMission.maxHistoryFiles||rows[i].mtimeMs<cutoff)await rm(rows[i].path,{force:true});
+}
+
 export async function runRemoteMissionCommand(command,payload,policy=null){
   policy=policy??await loadExecutionPolicy();
   await mkdir(join(ROOT,'active'),{recursive:true,mode:0o700});await mkdir(join(ROOT,'history'),{recursive:true,mode:0o700});
+  await cleanupHistory(policy);
   const leaseMinutes=policy.remoteMission.deviceLeaseMinutes;
   if(command==='start'){
     const missionId=id(payload.missionId), deviceId=device(payload.deviceId), path=fileForDevice(deviceId), current=await readJson(path);

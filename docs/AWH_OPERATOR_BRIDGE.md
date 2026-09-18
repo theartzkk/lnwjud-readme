@@ -23,6 +23,8 @@ The operator bridge gives the dedicated `awh-remote` VPS connector a typed, audi
 
 `awh-operator verification-regressions` (reads `{ "changedPaths": [...] }` from stdin)
 
+awh-operator source-promote <repository> <bundle> <expected-main-sha> <target-sha> <bundle-sha256> --confirm
+
 `awh-operator bay-status`
 
 `awh-operator bay-stage <package.zip> <version> <source-sha> <package-sha256> --confirm`
@@ -35,10 +37,10 @@ The operator bridge gives the dedicated `awh-remote` VPS connector a typed, audi
 
 ## Non-goals
 
-The bridge never accepts arbitrary shell input, never uses FTPS when source/package and BAY Production already share the VPS, never grants `awh-remote` sudo, never reads browser sessions, never creates a second lock/queue/auth system, and never writes project source directly. New mutation actions must reuse an existing canonical authority and receive their own regression contract before they are allowlisted.
+The bridge never accepts arbitrary shell input, never uses FTPS when source/package and BAY Production already share the VPS, never grants awh-remote sudo, never reads browser sessions, and never creates a second lock/queue/auth system. Source mutation is limited to the allowlisted source-promote action: checksum-verified bundle, expected-base match, fast-forward-only main, existing single-writer gate, and no production ref mutation. New mutation actions must reuse an existing canonical authority and receive their own regression contract before they are allowlisted.
 
 ## Bootstrap
 
-The first activation is intentionally root-installed because a non-privileged connector must not be able to install its own privilege bridge. `deploy/operator-bridge/install.sh` installs the root-owned systemd socket/client, verifies a real `awh-remote` status call, and rolls back units/client on failure. Once activated, normal operator calls require no sudo.
+The first activation is intentionally root-installed because a non-privileged connector must not be able to install its own privilege bridge. `deploy/operator-bridge/install.sh` installs the root-owned systemd socket/client, verifies a real `awh-remote` status call, and rolls back units/client on failure. Once activated, normal operator calls require no sudo. The one-time Flow Simplification upgrade extends that same root-installed bridge so future ChatGPT/VPS source promotion no longer depends on a personal endpoint or self-SSH hop.
 
 Verification evidence is stored under the existing AWH Hub data root (`/var/lib/awh-hub/verification-evidence`). Incident documents are immutable and keyed by deterministic fingerprint; matching changed paths are returned as regression IDs to later bounded deploy missions. This is evidence/learning state only and does not create a second task queue, source authority, or deployment authority.

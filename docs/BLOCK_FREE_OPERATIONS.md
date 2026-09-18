@@ -39,7 +39,7 @@ VPS-hosted code promotion must stay on the VPS. ChatGPT should stage an exact bu
 
 For long-running render/build/export processes, start once and keep the same process alive. Poll at meaningful checkpoints, normally every **2–5 minutes**; on reconnect, resume from the existing PID/session/checkpoint before considering any restart. Use bounded logs/previews and avoid repeated high-volume evidence reads.
 
-Execution constants live in `config/execution-policy.json`. Long device-bound missions use the VPS-only `ops:mission-state` projection for active device lease, checkpoint, PID/app hint, heartbeat and next step. It stores no command, credential or task queue and creates no endpoint daemon.
+Execution constants live in `config/execution-policy.json`. Long device-bound missions use the VPS-only `ops:mission-state` projection for active device lease, checkpoint, PID/app hint, heartbeat and next step. It stores no command, credential or task queue and creates no endpoint daemon. History is bounded by the machine-readable retention policy and pruned opportunistically by the CLI, so no watcher or permanent background cleanup service is required.
 
 Remote access remains available by default when explicitly requested or materially useful for real device/UI work. Block-Free operation means eliminating wasteful micro-sessions and hidden device dependencies, not avoiding Remote Desktop. Remote quota/call count is observational telemetry only and must never become a hard gate or a reason to stop a productive mission.
 
