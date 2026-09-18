@@ -22,9 +22,31 @@ test('execution policy makes Remote long-running, resume-first and quota-unbound
   assert.match(policy.remoteMission.finalWhileActiveMission,/FORBIDDEN/);
   assert.equal(policy.remoteMission.heartbeatDetailLevel,'DETAILED');
   assert.equal(policy.remoteMission.heartbeatMustContinueAfterSend,true);
+  assert.equal(policy.remoteMission.fastPath.firstProductiveActionTargetSeconds,60);
+  assert.equal(policy.remoteMission.fastPath.maxPreflightProbes,2);
+  assert.equal(policy.remoteMission.errorRecovery.sameActionBlindRetryMax,0);
+  assert.equal(policy.remoteMission.errorRecovery.maxApplicationRestartAttemptsPerMission,1);
+  assert.equal(policy.remoteMission.creativeApplicationSafety.routineForceQuitForbidden,true);
+  assert.equal(policy.remoteMission.creativeApplicationSafety.confirmedHangSignalsRequired,2);
+  assert.equal(policy.remoteMission.creativeApplicationSafety.confirmedHangMinSeconds,30);
+  assert.equal(policy.remoteMission.creativeApplicationSafety.directScriptLaunchWhileGuiInstanceActiveForbidden,true);
+  assert.equal(policy.remoteMission.heartbeatDetailLevel,'DETAILED');
+  assert.equal(policy.remoteMission.heartbeatMustContinueAfterSend,true);
   assert.equal(policy.remoteMission.heartbeatProgressMode,'STAGE_BASED_NO_FALSE_PERCENT');
   assert.equal(policy.remoteMission.heartbeatProofMaxAgeSeconds,300);
   assert.deepEqual(policy.remoteMission.heartbeatRequiredFields,['elapsed','doneSinceLast','currentOperation','stage','proofOfWork','activePidOrApp','lastSaveOrArtifact','nextSteps','blocker']);
+});
+
+test('fast path and creative crash guards are machine-enforced',async()=>{
+  const policy=await loadExecutionPolicy();
+  assert.equal(policy.remoteMission.fastPath.firstProductiveActionTargetSeconds,60);
+  assert.equal(policy.remoteMission.fastPath.maxPreflightProbes,2);
+  assert.equal(policy.remoteMission.errorRecovery.sameActionBlindRetryMax,0);
+  assert.equal(policy.remoteMission.errorRecovery.transportTimeoutResumeFirst,true);
+  assert.equal(policy.remoteMission.creativeApplicationSafety.routineForceQuitForbidden,true);
+  assert.equal(policy.remoteMission.creativeApplicationSafety.confirmedHangMinSeconds,30);
+  assert.equal(policy.remoteMission.creativeApplicationSafety.confirmedHangSignalsRequired,2);
+  assert.equal(policy.remoteMission.creativeApplicationSafety.checkpointBeforeTermination,true);
 });
 
 test('gate and QA policy encode the simplified G0-G3 model',async()=>{

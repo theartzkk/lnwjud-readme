@@ -16,6 +16,11 @@ export async function loadExecutionPolicy(path=process.env.AWH_EXECUTION_POLICY|
   if(!Number.isInteger(rm.historyRetentionDays)||rm.historyRetentionDays<1||rm.historyRetentionDays>365)fail('EXECUTION_POLICY_HISTORY_RETENTION');
   if(!Number.isInteger(rm.maxHistoryFiles)||rm.maxHistoryFiles<10||rm.maxHistoryFiles>5000)fail('EXECUTION_POLICY_HISTORY_LIMIT');
   if(rm.heartbeatDetailLevel!=='DETAILED'||rm.heartbeatMustContinueAfterSend!==true||rm.heartbeatProgressMode!=='STAGE_BASED_NO_FALSE_PERCENT')fail('EXECUTION_POLICY_HEARTBEAT_DETAIL');
+  if(!Array.isArray(rm.heartbeatRequiredFields)||rm.heartbeatRequiredFields.length<9)fail('EXECUTION_POLICY_HEARTBEAT_FIELDS');
+  if(!Number.isInteger(rm.fastPath?.firstProductiveActionTargetSeconds)||rm.fastPath.firstProductiveActionTargetSeconds<15||rm.fastPath.firstProductiveActionTargetSeconds>180||rm.fastPath.maxPreflightProbes!==2||rm.fastPath.preferBatchMutation!==true)fail('EXECUTION_POLICY_FAST_PATH');
+  if(rm.errorRecovery?.classifyBeforeRetry!==true||rm.errorRecovery.sameActionBlindRetryMax!==0||rm.errorRecovery.transportTimeoutResumeFirst!==true||rm.errorRecovery.maxApplicationRestartAttemptsPerMission!==1)fail('EXECUTION_POLICY_ERROR_RECOVERY');
+  if(rm.creativeApplicationSafety?.routineForceQuitForbidden!==true||rm.creativeApplicationSafety.forceQuitRequiresConfirmedHang!==true||rm.creativeApplicationSafety.confirmedHangMinSeconds<30||rm.creativeApplicationSafety.confirmedHangSignalsRequired<2||rm.creativeApplicationSafety.checkpointBeforeTermination!==true||rm.creativeApplicationSafety.directScriptLaunchWhileGuiInstanceActiveForbidden!==true)fail('EXECUTION_POLICY_CREATIVE_SAFETY');
+  if(rm.heartbeatDetailLevel!=='DETAILED'||rm.heartbeatMustContinueAfterSend!==true||rm.heartbeatProgressMode!=='STAGE_BASED_NO_FALSE_PERCENT')fail('EXECUTION_POLICY_HEARTBEAT_DETAIL');
   if(!Number.isInteger(rm.heartbeatProofMaxAgeSeconds)||rm.heartbeatProofMaxAgeSeconds<60||rm.heartbeatProofMaxAgeSeconds>1800)fail('EXECUTION_POLICY_HEARTBEAT_PROOF_AGE');
   const requiredHeartbeatFields=['elapsed','doneSinceLast','currentOperation','stage','proofOfWork','activePidOrApp','lastSaveOrArtifact','nextSteps','blocker'];
   if(!Array.isArray(rm.heartbeatRequiredFields)||requiredHeartbeatFields.some((field)=>!rm.heartbeatRequiredFields.includes(field)))fail('EXECUTION_POLICY_HEARTBEAT_FIELDS');

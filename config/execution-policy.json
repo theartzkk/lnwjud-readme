@@ -41,7 +41,33 @@
       "lastSaveOrArtifact",
       "nextSteps",
       "blocker"
-    ]
+    ],
+    "fastPath": {
+      "firstProductiveActionTargetSeconds": 60,
+      "preflightMaxSeconds": 45,
+      "maxPreflightProbes": 2,
+      "preferBatchMutation": true,
+      "skipRepeatedStateProbeWhenUnchanged": true
+    },
+    "errorRecovery": {
+      "classifyBeforeRetry": true,
+      "sameActionBlindRetryMax": 0,
+      "transportTimeoutResumeFirst": true,
+      "processNotFoundMeansInspectBeforeRestart": true,
+      "maxApplicationRestartAttemptsPerMission": 1,
+      "sameCrashSignatureRetryMax": 0
+    },
+    "creativeApplicationSafety": {
+      "singleInstance": true,
+      "routineForceQuitForbidden": true,
+      "forceQuitRequiresConfirmedHang": true,
+      "confirmedHangMinSeconds": 30,
+      "confirmedHangSignalsRequired": 2,
+      "checkpointBeforeTermination": true,
+      "directScriptLaunchWhileGuiInstanceActiveForbidden": true,
+      "crashAfterExplicitTerminationClassifiesAsControlledTermination": true,
+      "onUnexpectedCrash": "CAPTURE_SIGNATURE_REOPEN_CANONICAL_ONCE_VERIFY_AND_RESUME"
+    }
   },
   "gateTiers": {
     "G0": {
