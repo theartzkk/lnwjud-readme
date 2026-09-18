@@ -8,7 +8,7 @@ The operator bridge gives the dedicated `awh-remote` VPS connector a typed, audi
 - Request handler: `awh-hub`, no Linux capabilities, `NoNewPrivileges=true`.
 - Project mutation gate: existing `control_task_executions`, `control_execution_envelopes`, `control_workspace_leases`, Project Vault and canonical source metadata.
 - BAY stage: VPS-local spool -> exact SHA/manifest/baseline verification -> canonical `updates/incoming`; no FTPS loop and no direct Production overwrite.
-- BAY install: existing `HubBayRemoteUpdateService` -> `remote-update.php` -> BAY Update Inbox -> `PackageManager`.
+- BAY install: existing `HubBayRemoteUpdateService` -> `remote-update.php` -> BAY Production Shadow Update Inbox -> `PackageManager`.
 - Audit: append-only sanitized JSONL under `/var/lib/awh-hub`; no request body, credential, signature or package content is logged.
 
 ## Allowlisted commands
@@ -31,7 +31,7 @@ awh-operator source-promote <repository> <bundle> <expected-main-sha> <target-sh
 
 `awh-operator bay-install <version> <source-sha> <package-sha256> --confirm`
 
-`bay-stage` copies only from the private `/var/lib/awh-remote/operator-staging` spool, verifies ZIP SHA/manifest against live BAY version + deployed SHA, holds the existing BAY single-writer authority, and succeeds only when Update Inbox reports that exact package as installable. The socket handler remains unprivileged and gets supplementary `www-data`/`bay-staging` groups only inside its hardened service namespace.
+`bay-stage` copies only from the private `/var/lib/awh-remote/operator-staging` spool, verifies ZIP SHA/manifest against live BAY version + deployed SHA, holds the existing BAY single-writer authority, and succeeds only when Update Inbox reports that exact package as installable. The installer binds the canonical Production Shadow inbox with an explicit `awh-hub` ACL, keeps the spool setgid to `awh-hub`, and retires transitional host drop-ins with rollback backups. The socket handler remains unprivileged and gets supplementary `www-data` group for the Production Shadow Update Inbox and `bayadmin` only for canonical Git operations inside its hardened service namespace.
 
 `bay-install` is refused unless the project gate is READY, BAY preflight is ready, maintenance is inactive, and the exact version/source/package SHA is already installable in the canonical Update Inbox.
 

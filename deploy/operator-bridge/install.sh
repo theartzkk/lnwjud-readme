@@ -8,12 +8,17 @@ BACKUP_ROOT=/var/backups/awh-operator-bridge
 STAGE_PARENT=/var/lib/awh-remote
 STAGE_ROOT="$STAGE_PARENT/operator-staging"
 EVIDENCE_ROOT=/var/lib/awh-hub/verification-evidence
+BAY_INBOX=/var/www/bay-production-shadow/current/updates/incoming
+DROPIN_DIR=/etc/systemd/system/awh-operator-bridge@.service.d
+LEGACY_DROPIN_A="$DROPIN_DIR/50-bay-production-shadow.conf"
+LEGACY_DROPIN_B="$DROPIN_DIR/bay-production-shadow.conf"
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 backup="$BACKUP_ROOT/$stamp"
 [ "$(id -u)" -eq 0 ] || { echo AWH_OPERATOR_INSTALL_ROOT_REQUIRED >&2; exit 2; }
 getent passwd awh-hub >/dev/null; getent passwd awh-remote >/dev/null
-getent group awh-hub >/dev/null; getent group www-data >/dev/null; getent group bay-staging >/dev/null; getent group bayadmin >/dev/null
+getent group awh-hub >/dev/null; getent group www-data >/dev/null; getent group bayadmin >/dev/null
 command -v getfacl >/dev/null; command -v setfacl >/dev/null
+[ -d "$BAY_INBOX" ]
 [ -r "$ROOT/hub/bin/awh-operator-bridge.php" ]
 [ -r "$ROOT/hub/src/HubOperatorBridgeService.php" ]
 [ -r "$ROOT/deploy/systemd/awh-operator-bridge.socket" ]
@@ -21,13 +26,19 @@ command -v getfacl >/dev/null; command -v setfacl >/dev/null
 [ -x "$ROOT/deploy/operator-bridge/awh-operator" ]
 install -d -o root -g root -m 0700 "$backup"
 getfacl -p "$STAGE_PARENT" >"$backup/stage-parent.acl"
+getfacl -p "$BAY_INBOX" >"$backup/bay-inbox.acl"
+legacy_dropin_a=0; legacy_dropin_b=0
+[ -e "$LEGACY_DROPIN_A" ] && { cp -a "$LEGACY_DROPIN_A" "$backup/legacy-dropin-a.conf"; legacy_dropin_a=1; }
+[ -e "$LEGACY_DROPIN_B" ] && { cp -a "$LEGACY_DROPIN_B" "$backup/legacy-dropin-b.conf"; legacy_dropin_b=1; }
 stage_existed=0; [ -d "$STAGE_ROOT" ] && stage_existed=1
 setfacl -m u:awh-hub:--x "$STAGE_PARENT"
-install -d -o awh-remote -g awh-hub -m 0750 "$STAGE_ROOT"
+setfacl -m u:awh-hub:rwx "$BAY_INBOX"
+install -d -o awh-remote -g awh-hub -m 2750 "$STAGE_ROOT"
 install -d -o awh-hub -g awh-hub -m 0700 "$EVIDENCE_ROOT"
 runuser -u awh-remote -- test -w "$STAGE_ROOT"
 runuser -u awh-hub -- test -r "$STAGE_ROOT"
 runuser -u awh-hub -- test -w "$EVIDENCE_ROOT"
+runuser -u awh-hub -- test -w "$BAY_INBOX"
 [ -d /srv/awh-git ] && runuser -u bayadmin -- test -w /srv/awh-git
 for repo in awh.git bay-excuse-x.git bay-hub.git bay-learnlab.git school-website.git; do
   path="/srv/awh-git/$repo"
@@ -45,6 +56,9 @@ check=
 rollback(){
   [ -n "$check" ] && rm -f "$check" || true
   setfacl --restore="$backup/stage-parent.acl" >/dev/null 2>&1 || true
+  setfacl --restore="$backup/bay-inbox.acl" >/dev/null 2>&1 || true
+  if [ "$legacy_dropin_a" -eq 1 ]; then install -d -o root -g root -m 0755 "$DROPIN_DIR"; cp -a "$backup/legacy-dropin-a.conf" "$LEGACY_DROPIN_A"; else rm -f "$LEGACY_DROPIN_A"; fi
+  if [ "$legacy_dropin_b" -eq 1 ]; then install -d -o root -g root -m 0755 "$DROPIN_DIR"; cp -a "$backup/legacy-dropin-b.conf" "$LEGACY_DROPIN_B"; else rm -f "$LEGACY_DROPIN_B"; fi
   [ "$stage_existed" -eq 0 ] && rmdir "$STAGE_ROOT" >/dev/null 2>&1 || true
   systemctl disable --now awh-operator-bridge.socket >/dev/null 2>&1 || true
   if [ "$old_socket" -eq 1 ]; then cp -a "$backup/socket" "$SOCKET_UNIT"; else rm -f "$SOCKET_UNIT"; fi
@@ -59,6 +73,7 @@ trap finish EXIT HUP INT TERM
 install -o root -g root -m 0644 "$ROOT/deploy/systemd/awh-operator-bridge.socket" "$SOCKET_UNIT"
 install -o root -g root -m 0644 "$ROOT/deploy/systemd/awh-operator-bridge@.service" "$SERVICE_UNIT"
 install -o root -g root -m 0755 "$ROOT/deploy/operator-bridge/awh-operator" "$CLIENT"
+rm -f "$LEGACY_DROPIN_A" "$LEGACY_DROPIN_B"
 systemctl daemon-reload
 systemctl enable --now awh-operator-bridge.socket >/dev/null
 systemctl is-enabled --quiet awh-operator-bridge.socket
