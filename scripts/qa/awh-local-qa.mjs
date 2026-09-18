@@ -329,13 +329,15 @@ async function gitCheck() {
   const exactRemote = tracked && head.stdout === upstream.stdout;
   const validHead = /^[0-9a-f]{40}$/i.test(head.stdout);
   const validBranch = branchName.length > 0 && branchName.length <= 200 && !/[\s\0]/.test(branchName);
-  const baseValid = branch.code === 0 && head.code === 0 && status.code === 0 && validHead && validBranch;
-  const valid = mode === 'fast' ? baseValid : (mode === 'local' ? baseValid && clean : baseValid && clean && exactRemote);
+  const detached = branch.code === 0 && branchName.length === 0;
+  const baseValid = branch.code === 0 && head.code === 0 && status.code === 0 && validHead && (validBranch || detached);
+  const valid = mode === 'fast' ? baseValid : (mode === 'local' ? baseValid && clean : baseValid && clean && validBranch && exactRemote);
+  const refLabel = detached ? 'DETACHED_EXACT_SHA' : branchName;
   const detail = mode === 'fast'
-    ? `branch=${branchName}; HEAD=${head.stdout}; dirty=${!clean}; fastMode=true`
+    ? `branch=${refLabel}; HEAD=${head.stdout}; dirty=${!clean}; fastMode=true`
     : mode === 'local'
-      ? `branch=${branchName}; HEAD=${head.stdout}; clean=${clean}; localCandidate=true; upstreamExact=${exactRemote}`
-      : `branch=${branchName}; HEAD=${head.stdout}; clean=${clean}; upstreamExact=${exactRemote}`;
+      ? `branch=${refLabel}; HEAD=${head.stdout}; clean=${clean}; localCandidate=true; upstreamExact=${exactRemote}`
+      : `branch=${refLabel}; HEAD=${head.stdout}; clean=${clean}; upstreamExact=${exactRemote}`;
   check('git-state', valid ? 'PASS' : 'FAIL', valid ? detail : `Git state is not valid for ${mode} QA (branch=${branchName || 'DETACHED'}; clean=${clean}; upstreamExact=${exactRemote})`, started);
   return { branch: branchName || null, head: head.stdout || null, dirty: !clean, upstream: tracked ? upstream.stdout : null, upstreamExact: exactRemote };
 }

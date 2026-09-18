@@ -20,12 +20,13 @@ test('native npm and npm-cli discovery remain shell-free', () => {
   });
 });
 
-test('local candidate QA requires a clean exact commit without forcing publication, while full QA keeps upstream identity', async () => {
+test('local candidate QA accepts clean detached exact SHA while full QA keeps upstream identity', async () => {
   const source = await readFile(new URL('../scripts/qa/awh-local-qa.mjs', import.meta.url), 'utf8');
-  assert.match(source, /mode === 'local' \? baseValid && clean : baseValid && clean && exactRemote/);
+  assert.match(source, /const detached = branch\.code === 0 && branchName\.length === 0/);
+  assert.match(source, /mode === 'local' \? baseValid && clean : baseValid && clean && validBranch && exactRemote/);
+  assert.match(source, /DETACHED_EXACT_SHA/);
   assert.match(source, /rev-parse', '@\{u\}'/);
   assert.match(source, /head\.stdout === upstream\.stdout/);
-  assert.match(source, /localCandidate=true/);
   assert.doesNotMatch(source, /branchName === 'awh\/v0\.1-migration'/);
 });
 
