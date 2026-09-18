@@ -46,6 +46,7 @@ Deep/full QA uses a project-scoped single-flight lock. Concurrent same-source ru
 **Detailed heartbeat format:** the owner must be able to understand real progress from the update alone. Include elapsed mission time, current stage (for example 3/7), exact delta since the previous heartbeat, current operation, fresh proof-of-work, active PID/app when applicable, latest canonical save/hash or output artifact, next 1–3 actions, and blocker. For Adobe/VTR, canonical AEP save evidence and latest render/QC artifact are mandatory when available. For release work, exact SHA and current/passed gate are mandatory. Do not fabricate percentages; prefer stage counts and verified deltas. Heartbeats never wait for acknowledgement.
 
 Preferred owner-facing order: `Progress Heartbeat — Stage X/Y`, `Elapsed`, `เสร็จตั้งแต่ครั้งก่อน`, `กำลังทำ`, `Proof`, `ถัดไป`, `Blocker`. A spinner/status line by itself is never a heartbeat.
+ChatGPT UI activity labels such as `กำลังคิด`, `วินิจฉัย...`, `ตรวจสอบ...`, or tool/spinner state are transport/UI telemetry only. They never replace the assistant-visible heartbeat required by this contract.
 
 For long-running render/build/export processes, start once and keep the same process alive. Poll at meaningful checkpoints, normally every **2–5 minutes**; on reconnect, resume from the existing PID/session/checkpoint before considering any restart. Use bounded logs/previews and avoid repeated high-volume evidence reads.
 

@@ -22,6 +22,9 @@ test('execution policy makes Remote long-running, resume-first and quota-unbound
   assert.match(policy.remoteMission.finalWhileActiveMission,/FORBIDDEN/);
   assert.equal(policy.remoteMission.heartbeatDetailLevel,'DETAILED');
   assert.equal(policy.remoteMission.heartbeatMustContinueAfterSend,true);
+  assert.equal(policy.remoteMission.assistantVisibleHeartbeatRequired,true);
+  assert.equal(policy.remoteMission.internalStatusUiCountsAsHeartbeat,false);
+  assert.equal(policy.remoteMission.heartbeatMayBeReplacedBySpinner,false);
   assert.equal(policy.remoteMission.fastPath.firstProductiveActionTargetSeconds,60);
   assert.equal(policy.remoteMission.fastPath.maxPreflightProbes,2);
   assert.equal(policy.remoteMission.errorRecovery.sameActionBlindRetryMax,0);

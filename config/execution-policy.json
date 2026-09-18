@@ -67,7 +67,10 @@
       "directScriptLaunchWhileGuiInstanceActiveForbidden": true,
       "crashAfterExplicitTerminationClassifiesAsControlledTermination": true,
       "onUnexpectedCrash": "CAPTURE_SIGNATURE_REOPEN_CANONICAL_ONCE_VERIFY_AND_RESUME"
-    }
+    },
+    "assistantVisibleHeartbeatRequired": true,
+    "internalStatusUiCountsAsHeartbeat": false,
+    "heartbeatMayBeReplacedBySpinner": false
   },
   "gateTiers": {
     "G0": {
