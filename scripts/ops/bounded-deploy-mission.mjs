@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { loadExecutionPolicy, qaScriptForBudget } from './execution-policy.mjs';
 
 const SHA=/^[0-9a-f]{40}$/;
 const ROOT=process.env.AWH_SOURCE_ROOT||process.cwd();
@@ -146,7 +147,8 @@ async function runQa(script,forward=true){const result=await run('npm',['run',sc
 
 async function verifyByBudget(plan){
   const budget=String(plan?.budget||'').toUpperCase();
-  const qaMode=budget==='FAST'?'qa:fast':'qa:local';
+  const executionPolicy=await loadExecutionPolicy();
+  const qaMode=qaScriptForBudget(executionPolicy,budget);
   console.log(`MISSION_QA_MODE=${qaMode}`);
   const breadth=await runQa(qaMode,true);
   if(breadth!=='PASS')throw new Error('MISSION_QA_FAILED');

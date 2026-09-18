@@ -26,7 +26,8 @@ final class HubVerificationIntelligence
         $risk='LOW'; $reasons=[]; $journeys=['production-identity'=>true];
         foreach ($files as $path) {
             $candidate='LOW'; $reason='documentation-or-low-impact';
-            if (preg_match('#^(?:hub/migrations/|deploy/|scripts/ops/|package(?:-lock)?\.json$)#',$path)===1
+            if ($path==='config/execution-policy.json'
+                || preg_match('#^(?:hub/migrations/|deploy/|scripts/ops/|package(?:-lock)?\.json$)#',$path)===1
                 || preg_match('#^hub/src/hub(?:ownerauth|projectvault|controlplane|verification|operatorbridge|providercredential|secret)#',$path)===1
                 || $path==='hub/public/control-plane.php') {
                 $candidate='CRITICAL'; $reason='authority-auth-db-deploy-or-verification';

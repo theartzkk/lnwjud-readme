@@ -63,7 +63,9 @@
     "review:triage": "node scripts/review/triage-aipass-findings.mjs",
     "review:compare": "node scripts/review/compare-visual-evidence.mjs",
     "review:retention": "node scripts/review/cleanup-visual-review-cache.mjs",
-    "review:verify": "node scripts/review/create-visual-verification-pack.mjs"
+    "review:verify": "node scripts/review/create-visual-verification-pack.mjs",
+    "ops:mission-state": "node scripts/ops/remote-mission-state.mjs",
+    "qa:plan": "node scripts/qa/qa-plan.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",

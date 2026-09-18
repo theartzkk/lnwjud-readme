@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "remoteMission": {
+    "targetMinutes": 30,
+    "allowLonger": true,
+    "quotaIsTelemetryOnly": true,
+    "resumeFirst": true,
+    "progressHeartbeatMinutes": {
+      "min": 5,
+      "max": 7
+    },
+    "processPollSeconds": {
+      "min": 120,
+      "max": 300
+    },
+    "deviceLeaseMinutes": 45,
+    "finishEarlyOnlyFor": [
+      "COMPLETE",
+      "HARD_BLOCKER",
+      "OWNER_APPROVAL_REQUIRED",
+      "PLATFORM_INTERRUPTION"
+    ]
+  },
+  "gateTiers": {
+    "G0": {
+      "name": "OBSERVE",
+      "ownerApproval": false
+    },
+    "G1": {
+      "name": "REVERSIBLE_WORK",
+      "ownerApproval": false
+    },
+    "G2": {
+      "name": "REVERSIBLE_PRODUCTION",
+      "ownerApproval": "ONE_EXACT_REVISION_SCOPE"
+    },
+    "G3": {
+      "name": "IRREVERSIBLE_OR_TRUST_BOUNDARY",
+      "ownerApproval": "ACTION_SPECIFIC"
+    }
+  },
+  "sourceAuthority": {
+    "codeOperational": "VPS_GIT_MAIN",
+    "vaultForCode": "SNAPSHOT_EVIDENCE_RECOVERY",
+    "nonGitCanonical": "AWH_VAULT_OR_PROJECT_SOURCES",
+    "personalEndpointTransitForbidden": true
+  },
+  "qa": {
+    "riskBudget": {
+      "LOW": "FAST",
+      "MEDIUM": "STANDARD",
+      "HIGH": "DEEP",
+      "CRITICAL": "DEEP"
+    },
+    "scriptByBudget": {
+      "FAST": "qa:fast",
+      "STANDARD": "qa:fast",
+      "DEEP": "qa:local"
+    },
+    "fullSuiteOnlyAtReleaseOrExplicitDeep": true
+  }
+}
