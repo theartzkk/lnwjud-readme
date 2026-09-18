@@ -7,9 +7,11 @@ final class HubDeviceRoleRegistry
     private const MAX_BYTES = 131072;
     private const ROLES = [
         'PRIMARY_AUTHORITY',
+        'GENERAL_PROJECT_WORKSTATION',
         'UTILITY_QA_RECOVERY',
         'WINDOWS_UTILITY_QA_WORKER',
         'VIDEO_WORKSTATION',
+        'CREATIVE_PRIMARY_WORKSTATION',
         'OFFSITE_BACKUP',
     ];
     private const KINDS = ['server', 'worker', 'external'];

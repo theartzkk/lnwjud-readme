@@ -77,6 +77,38 @@ test('canonical source preflight passes only for live exact clean source', async
   }
 });
 
+test('canonical source preflight accepts the owned local VPS bare Git authority without SSH indirection', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awh-local-vps-source-'));
+  const remote = join(root, 'awh.git');
+  const seed = join(root, 'seed');
+  const work = join(root, 'work');
+  try {
+    await run('git', ['init', '--bare', remote]);
+    await mkdir(seed);
+    await git(seed, 'init');
+    await git(seed, 'config', 'user.email', 'qa@example.invalid');
+    await git(seed, 'config', 'user.name', 'AWH QA');
+    await writeFile(join(seed, 'authority.txt'), 'local-vps\n');
+    await git(seed, 'add', 'authority.txt');
+    await git(seed, 'commit', '-m', 'local authority');
+    await git(seed, 'branch', '-M', 'main');
+    await git(seed, 'remote', 'add', 'vps', remote);
+    await git(seed, 'push', '-u', 'vps', 'main');
+    const sha = (await git(seed, 'rev-parse', 'HEAD')).trim().toLowerCase();
+    await run('git', ['clone', '--branch', 'main', remote, work]);
+    await git(work, 'remote', 'rename', 'origin', 'vps');
+    await git(work, 'remote', 'set-url', 'vps', '/srv/awh-git/awh.git');
+    await git(work, 'config', `url.file://${remote}.insteadOf`, '/srv/awh-git/awh.git');
+    const stdout = await run(process.execPath, [script, '--root', work, '--branch', 'main', '--remote', 'vps', '--repository', 'vps/awh', '--expected-sha', sha, '--require-mutation-ready']);
+    const report = JSON.parse(stdout.split(/\r?\n/, 1)[0]);
+    assert.equal(report.state, 'PASS');
+    assert.equal(report.remoteRepository, 'vps/awh');
+    assert.equal(report.liveSha, sha);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('generated CI evidence directory does not make canonical source dirty', async () => {
   const fx = await fixture();
   try {

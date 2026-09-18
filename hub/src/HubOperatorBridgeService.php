@@ -17,6 +17,15 @@ final class HubOperatorBridgeService
     private const MAX_BAY_PACKAGE_BYTES=9437184;
     private const VERIFICATION_CONFIRMATION='STORE_VERIFICATION_EVIDENCE';
     private const MAX_VERIFICATION_DOCUMENT_BYTES=196608;
+    private const SOURCE_PROMOTE_CONFIRMATION='PROMOTE_CANONICAL_MAIN';
+    private const MAX_SOURCE_BUNDLE_BYTES=134217728;
+    private const SOURCE_REPOSITORIES=[
+        'awh'=>['directory'=>'awh.git','project'=>'Art’s Workspace Hub'],
+        'bay-excuse-x'=>['directory'=>'bay-excuse-x.git','project'=>'BAY EXCUSE X'],
+        'bay-hub'=>['directory'=>'bay-hub.git','project'=>'BAY Hub'],
+        'bay-learnlab'=>['directory'=>'bay-learnlab.git','project'=>'BAY LearnLab'],
+        'school-website'=>['directory'=>'school-website.git','project'=>'เว็บไซต์โรงเรียน'],
+    ];
     /** @var Closure(string,array<string,mixed>):array<string,mixed> */
     private readonly Closure $poster;
 
@@ -40,6 +49,7 @@ final class HubOperatorBridgeService
             'project.gate'=>$this->projectGate(self::text($request,'project',160),$at),
             'verification.store'=>$this->verificationStore($request,$at),
             'verification.regressions'=>$this->verificationRegressions($request,$at),
+            'source.promote'=>$this->sourcePromote($request,$at),
             'bay.status'=>$this->bayStatus($at),
             'bay.stage'=>$this->bayStage($request,$at),
             'bay.install'=>$this->bayInstall($request,$at),
@@ -154,6 +164,37 @@ final class HubOperatorBridgeService
             if(count($items)>=50)break;
         }
         return ['schemaVersion'=>1,'regressions'=>$items,'count'=>count($items),'observedAt'=>$at];
+    }
+
+    /** @param array<string,mixed> $request @return array<string,mixed> */
+    private function sourcePromote(array $request,string $at): array
+    {
+        if(($request['confirmation']??null)!==self::SOURCE_PROMOTE_CONFIRMATION)throw new HubOperatorBridgeException('Explicit source promotion confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
+        $repository=self::key(self::text($request,'repository',80));$config=self::SOURCE_REPOSITORIES[$repository]??null;
+        if(!is_array($config))throw new HubOperatorBridgeException('Source repository is not allowlisted','OPERATOR_SOURCE_REPOSITORY_FORBIDDEN');
+        $expected=self::gitSha(self::text($request,'expectedMainSha',40));$target=self::gitSha(self::text($request,'targetSha',40));$bundleSha=self::sha256(self::text($request,'bundleSha256',64));$stagedFile=self::text($request,'stagedFile',96);
+        if($stagedFile!==$bundleSha.'.bundle'||hash_equals($expected,$target))throw new HubOperatorBridgeException('Source promotion identity is invalid','OPERATOR_REQUEST_INVALID');
+        $stageRoot=getenv('AWH_OPERATOR_STAGE_ROOT');if(!is_string($stageRoot)||$stageRoot==='')$stageRoot='/var/lib/awh-remote/operator-staging';
+        $gitRoot=getenv('AWH_CANONICAL_GIT_ROOT');if(!is_string($gitRoot)||$gitRoot==='')$gitRoot='/srv/awh-git';
+        $stageReal=realpath($stageRoot);$gitReal=realpath($gitRoot);if(!is_string($stageReal)||!is_dir($stageReal)||is_link($stageRoot)||!is_string($gitReal)||!is_dir($gitReal)||is_link($gitRoot))throw new HubOperatorBridgeException('Source promotion roots are unavailable','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');
+        $bundle=$stageReal.'/'.$stagedFile;$bundleReal=realpath($bundle);if(!is_string($bundleReal)||dirname($bundleReal)!==$stageReal||is_link($bundle)||!is_file($bundleReal)||!is_readable($bundleReal))throw new HubOperatorBridgeException('Source bundle is unavailable','OPERATOR_SOURCE_BUNDLE_NOT_READY');
+        $size=@filesize($bundleReal);$actual=hash_file('sha256',$bundleReal);if(!is_int($size)||$size<1||$size>self::MAX_SOURCE_BUNDLE_BYTES||!is_string($actual)||!hash_equals($bundleSha,$actual))throw new HubOperatorBridgeException('Source bundle verification failed','OPERATOR_SOURCE_BUNDLE_NOT_READY');
+        $repo=$gitReal.'/'.$config['directory'];$repoReal=realpath($repo);if(!is_string($repoReal)||dirname($repoReal)!==$gitReal||!is_dir($repoReal)||is_link($repo))throw new HubOperatorBridgeException('Canonical Git repository is unavailable','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');
+        $gate=$this->projectGate((string)$config['project'],$at,false);if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('Project mutation gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
+        $current=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($expected,self::gitSha($current)))throw new HubOperatorBridgeException('Canonical main moved before source promotion','OPERATOR_SOURCE_BASE_MOVED');
+        $heads=$this->runGit($repoReal,['bundle','list-heads',$bundleReal]);$advertised=false;foreach(preg_split('/\r?\n/',$heads)?:[] as $line){$parts=preg_split('/\s+/',trim($line));if(is_array($parts)&&isset($parts[0])&&strtolower((string)$parts[0])===$target){$advertised=true;break;}}
+        if(!$advertised)throw new HubOperatorBridgeException('Target revision is not advertised by source bundle','OPERATOR_SOURCE_BUNDLE_NOT_READY');
+        $projectId=(string)($gate['project']['projectId']??'');$authority=$this->acquireMutationAuthority($projectId,'Fast-forward canonical main '.$repository,'source.promote',['repository'=>$repository,'expectedMainSha'=>$expected,'targetSha'=>$target,'bundleSha256'=>$bundleSha],$at);$success=false;
+        try{
+            $this->runGit($repoReal,['bundle','verify',$bundleReal]);
+            $this->runGit($repoReal,['bundle','unbundle',$bundleReal]);
+            $this->runGit($repoReal,['cat-file','-e',$target.'^{commit}']);
+            $ancestor=$this->runGitResult($repoReal,['merge-base','--is-ancestor',$expected,$target]);if($ancestor['code']!==0)throw new HubOperatorBridgeException('Source promotion is not a fast-forward','OPERATOR_SOURCE_NON_FAST_FORWARD');
+            $before=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($expected,self::gitSha($before)))throw new HubOperatorBridgeException('Canonical main moved during source promotion','OPERATOR_SOURCE_BASE_MOVED');
+            $this->runGit($repoReal,['update-ref','refs/heads/main',$target,$expected]);
+            $after=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($target,self::gitSha($after)))throw new HubOperatorBridgeException('Canonical main did not reach target revision','OPERATOR_SOURCE_PROMOTE_FAILED');
+            $success=true;return ['schemaVersion'=>1,'state'=>'PROMOTED','repository'=>$repository,'previousMainSha'=>$expected,'mainSha'=>$target,'bundleSha256'=>$bundleSha,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'leaseExpiresAt'=>$authority['leaseExpiresAt']],'observedAt'=>$at];
+        }finally{$this->releaseMutationAuthority($authority,$success,gmdate('c'));}
     }
 
     private function assertPublicReleaseIdentity(string $releaseSha): void
@@ -285,7 +326,7 @@ final class HubOperatorBridgeService
         try{
             $this->pdo->exec('BEGIN IMMEDIATE');
             (new HubCapabilityRegistryService($this->pdo))->updateEnvelopeState($authority['executionId'],'RELEASED',null,$at);
-            $state=$success?'COMPLETED':'FAILED';$summary=$success?'Guarded BAY operator mutation completed':'Guarded BAY operator mutation failed and released authority';$error=$success?null:'OPERATOR_BAY_INSTALL_FAILED';
+            $state=$success?'COMPLETED':'FAILED';$summary=$success?'Guarded operator mutation completed':'Guarded operator mutation failed and released authority';$error=$success?null:'OPERATOR_MUTATION_FAILED';
             $this->pdo->prepare('UPDATE control_task_executions SET state=:state,lease_owner=NULL,lease_expires_at=NULL,last_error_code=:error,updated_at=:at WHERE execution_id=:execution')->execute(['state'=>$state,'error'=>$error,'at'=>$at,'execution'=>$authority['executionId']]);
             $this->pdo->prepare('UPDATE control_tasks SET state=:state,lease_expires_at=NULL,progress=100,result_summary=:summary,failure_code=:error,updated_at=:at WHERE task_id=:task')->execute(['state'=>$state,'summary'=>$summary,'error'=>$error,'at'=>$at,'task'=>$authority['taskId']]);
             $this->pdo->prepare('INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:id,:task,:state,100,:message,:at)')->execute(['id'=>self::uuid(),'task'=>$authority['taskId'],'state'=>$state,'message'=>$summary,'at'=>$at]);
@@ -303,6 +344,28 @@ final class HubOperatorBridgeService
         return $matches[0];
     }
 
+
+    /** @param list<string> $args */
+    private function runGit(string $repo,array $args): string
+    {
+        $result=$this->runGitResult($repo,$args);
+        if($result['code']!==0)throw new HubOperatorBridgeException('Bounded Git operation failed','OPERATOR_SOURCE_PROMOTE_FAILED');
+        return $result['stdout'];
+    }
+
+    /** @param list<string> $args @return array{code:int,stdout:string} */
+    private function runGitResult(string $repo,array $args): array
+    {
+        if(!is_dir($repo)||is_link($repo))throw new HubOperatorBridgeException('Canonical Git repository is unavailable','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');
+        $command=array_merge(['/usr/bin/git','--git-dir='.$repo],$args);$pipes=[];
+        $process=@proc_open($command,[0=>['file','/dev/null','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes,null,['LC_ALL'=>'C','PATH'=>'/usr/bin:/bin'],['bypass_shell'=>true]);
+        if(!is_resource($process))throw new HubOperatorBridgeException('Bounded Git runtime is unavailable','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');
+        $stdout=is_resource($pipes[1]??null)?stream_get_contents($pipes[1],65537):'';$stderr=is_resource($pipes[2]??null)?stream_get_contents($pipes[2],65537):'';
+        foreach($pipes as $pipe)if(is_resource($pipe))fclose($pipe);$code=proc_close($process);
+        if(!is_string($stdout)||strlen($stdout)>65536||!is_string($stderr)||strlen($stderr)>65536)throw new HubOperatorBridgeException('Bounded Git output exceeded safe limit','OPERATOR_SOURCE_PROMOTE_FAILED');
+        return ['code'=>(int)$code,'stdout'=>$stdout];
+    }
+
     /** @param array<string,mixed> $payload @return array<string,mixed> */
     private function postJson(string $endpoint,array $payload): array
     {
@@ -317,6 +380,8 @@ final class HubOperatorBridgeService
     /** @param array<string,mixed> $request */
     private static function text(array $request,string $key,int $max): string { $value=$request[$key]??null; if(!is_string($value))throw new HubOperatorBridgeException('Request field is invalid','OPERATOR_REQUEST_INVALID'); $value=trim($value); if($value===''||strlen($value)>$max||str_contains($value,"\0"))throw new HubOperatorBridgeException('Request field is invalid','OPERATOR_REQUEST_INVALID'); return $value; }
     private static function key(string $value): string { $value=mb_strtolower(trim($value),'UTF-8'); return preg_replace('/[^\pL\pN]+/u','-',$value)?:$value; }
+    private static function gitSha(string $value): string { $value=strtolower(trim($value));if(preg_match('/^[a-f0-9]{40}$/',$value)!==1)throw new HubOperatorBridgeException('Git revision is invalid','OPERATOR_REQUEST_INVALID');return $value; }
+    private static function sha256(string $value): string { $value=strtolower(trim($value));if(preg_match('/^[a-f0-9]{64}$/',$value)!==1)throw new HubOperatorBridgeException('SHA-256 identity is invalid','OPERATOR_REQUEST_INVALID');return $value; }
     private static function uuidValid(string $value): bool { return preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i',$value)===1; }
     private static function uuid(): string { $b=random_bytes(16);$b[6]=chr((ord($b[6])&0x0f)|0x40);$b[8]=chr((ord($b[8])&0x3f)|0x80);return vsprintf('%s%s-%s-%s-%s-%s%s%s',str_split(bin2hex($b),4)); }
     private static function timestamp(string $value): string { $t=strtotime($value); if($t===false)throw new HubOperatorBridgeException('Time is invalid','OPERATOR_REQUEST_INVALID'); return gmdate('c',$t); }

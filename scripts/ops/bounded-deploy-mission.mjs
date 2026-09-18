@@ -51,8 +51,14 @@ async function canonicalOperatorHost(){
 }
 
 async function operatorRequest(command,payload,{confirm=false}={}){
+  const local=process.env.AWH_OPERATOR_CLIENT||'/usr/local/bin/awh-operator';
+  if(existsSync(local)){
+    const args=[command];if(confirm)args.push('--confirm');
+    const response=await run(local,args,{input:`${JSON.stringify(payload)}\n`});
+    if(response.code===0){try{const decoded=JSON.parse(response.tail.trim());return decoded?.ok===true?decoded.result:null;}catch{return null;}}
+  }
   const host=await canonicalOperatorHost();if(!host)return null;
-  const args=['-o','BatchMode=yes',host,'sudo','-n','-u','awh-remote','/opt/awh-hub/control-plane-current/deploy/operator-bridge/awh-operator',command];if(confirm)args.push('--confirm');
+  const args=['-o','BatchMode=yes',host,'sudo','-n','-u','awh-remote','/usr/local/bin/awh-operator',command];if(confirm)args.push('--confirm');
   const response=await run('ssh',args,{input:`${JSON.stringify(payload)}\n`});if(response.code!==0)return null;
   try{const decoded=JSON.parse(response.tail.trim());return decoded?.ok===true?decoded.result:null;}catch{return null;}
 }

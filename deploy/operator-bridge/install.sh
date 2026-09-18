@@ -12,7 +12,7 @@ stamp=$(date -u +%Y%m%dT%H%M%SZ)
 backup="$BACKUP_ROOT/$stamp"
 [ "$(id -u)" -eq 0 ] || { echo AWH_OPERATOR_INSTALL_ROOT_REQUIRED >&2; exit 2; }
 getent passwd awh-hub >/dev/null; getent passwd awh-remote >/dev/null
-getent group awh-hub >/dev/null; getent group www-data >/dev/null; getent group bay-staging >/dev/null
+getent group awh-hub >/dev/null; getent group www-data >/dev/null; getent group bay-staging >/dev/null; getent group bayadmin >/dev/null
 command -v getfacl >/dev/null; command -v setfacl >/dev/null
 [ -r "$ROOT/hub/bin/awh-operator-bridge.php" ]
 [ -r "$ROOT/hub/src/HubOperatorBridgeService.php" ]
@@ -28,6 +28,15 @@ install -d -o awh-hub -g awh-hub -m 0700 "$EVIDENCE_ROOT"
 runuser -u awh-remote -- test -w "$STAGE_ROOT"
 runuser -u awh-hub -- test -r "$STAGE_ROOT"
 runuser -u awh-hub -- test -w "$EVIDENCE_ROOT"
+[ -d /srv/awh-git ] && runuser -u bayadmin -- test -w /srv/awh-git
+for repo in awh.git bay-excuse-x.git bay-hub.git bay-learnlab.git school-website.git; do
+  path="/srv/awh-git/$repo"
+  [ -d "$path" ] || continue
+  chgrp -R bayadmin "$path"
+  find "$path" -type d -exec chmod g+s {} +
+  git --git-dir="$path" config core.sharedRepository group
+  runuser -u bayadmin -- git --git-dir="$path" rev-parse --verify refs/heads/main >/dev/null
+done
 old_socket=0; old_service=0; old_client=0
 [ -e "$SOCKET_UNIT" ] && { cp -a "$SOCKET_UNIT" "$backup/socket"; old_socket=1; }
 [ -e "$SERVICE_UNIT" ] && { cp -a "$SERVICE_UNIT" "$backup/service"; old_service=1; }

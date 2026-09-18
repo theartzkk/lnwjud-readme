@@ -25,9 +25,21 @@ A ChatGPT response-stream failure and a Remote Desktop transport failure are sep
 
 A gate exists only to prevent a concrete damage mode. Keep hard blocks for platform safety/security, Production source/revision identity, single writer, data integrity, backup/rollback, secret boundaries, exact Production approval and destructive/irreversible actions. Reversible candidate work should continue through warnings/attention when the missing condition is not required for safe mutation. Pending release and Production lag are states, not candidate blockers. One exact-revision Production approval covers the bounded deploy mission unless revision, scope or risk changes.
 
+Operational tiers: G0 read/inspect/QA runs automatically; G1 reversible candidate work and fast-forward `main` promotion run automatically after deterministic QA/checkpoint; G2 reversible Production gets one exact-revision approval and then closes automatically; G3 destructive/security/identity/DNS/credential operations require explicit action approval. Network route/SSH alias/device availability must be rerouted, not promoted into a safety gate.
+
+VPS-hosted code promotion must stay on the VPS. ChatGPT should stage an exact bundle/revision and invoke the bounded local source operator; do not require AY-TEACHER, ART-MAC-INTEL or M5 to SSH back into the same VPS.
+
 ## Remote Desktop / Desktop Commander — high-value mission policy
 
-Remote access remains available by default when explicitly requested or materially useful for real device/UI work. Block-Free operation means eliminating wasteful micro-sessions and hidden device dependencies, not avoiding Remote Desktop.
+**ChatGPT 30-minute Remote Mission rule:** a continuation request for active Remote work starts one coherent work block targeting approximately 30 minutes of productive execution. ChatGPT must not stop after a few minutes merely to report progress. It should continue in the same turn until the mission is complete, a genuine hard blocker/approval boundary appears, or the platform forcibly interrupts the turn.
+
+**Global no-interruption requirement:** after any Remote Desktop/Desktop Commander invocation, ChatGPT must keep the mission moving continuously and must not pause for interim narration, status reporting, or a ต่อ prompt. This rule applies across all KRUART/AWH/BAY/LearnLab/website/document/creative/device tasks. Use fewer, larger, better-prepared Remote calls because it keeps execution coherent and reduces fragmentation; Remote quota is not a limiting policy and must not reduce required work or QA.
+
+**Remote-full-use policy:** Remote Desktop/Desktop Commander is intentionally available at full strength for endpoint work. Prefer it whenever real GUI/device/native-app state materially improves execution or verification. Keep the session productive for roughly 30 minutes or longer when useful, batching actions, reusing the same session/PID, and avoiding redundant reconnects/polls. Do not stop after 1–2 minutes while safe productive work remains, and do not refuse or shorten Remote work for quota reasons. VPS-only work must remain VPS-native so Remote is never wasted as a bridge back to the server.
+
+For long-running render/build/export processes, start once and keep the same process alive. Poll at meaningful checkpoints, normally every **2–5 minutes**; on reconnect, resume from the existing PID/session/checkpoint before considering any restart. Use bounded logs/previews and avoid repeated high-volume evidence reads.
+
+Remote access remains available by default when explicitly requested or materially useful for real device/UI work. Block-Free operation means eliminating wasteful micro-sessions and hidden device dependencies, not avoiding Remote Desktop. Remote quota/call count is observational telemetry only and must never become a hard gate or a reason to stop a productive mission.
 
 For each invocation:
 1. Reuse known Source of Truth, logs and last verified device delta before connecting.
@@ -37,7 +49,7 @@ For each invocation:
 5. Record what changed and what is now known so later work starts delta-first.
 6. Clean task-created temporary state and intentionally leave required apps/services running or stopped.
 
-Quota adaptation is driven only by observed quota/availability. Normal capacity keeps normal access. Constrained capacity increases batching and eliminates redundant exploration without silently skipping required QA. Never blind-retry a blocked call, and never use a device merely as a bridge to VPS/API/GitHub/CLI when an approved direct route exists.
+Remote quota/call count is telemetry only and never changes routing, mission duration, or completion quality. Batching and reduced redundant polling exist to keep execution coherent. Never blind-retry a blocked call, and never use a device merely as a bridge to VPS/API/GitHub/CLI when an approved direct route exists.
 
 ## Permanent Fix / Root-Cause Closure
 

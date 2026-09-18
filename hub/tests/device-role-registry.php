@@ -18,7 +18,7 @@ file_put_contents($path, json_encode([
             'key' => 'worker',
             'deviceId' => $workerId,
             'displayName' => 'Worker',
-            'role' => 'UTILITY_QA_RECOVERY',
+            'role' => 'GENERAL_PROJECT_WORKSTATION',
             'kind' => 'worker',
             'routingEnabled' => true,
             'requiresOwnerApproval' => false,
@@ -28,7 +28,7 @@ file_put_contents($path, json_encode([
         [
             'key' => 'm5',
             'displayName' => 'M5',
-            'role' => 'VIDEO_WORKSTATION',
+            'role' => 'CREATIVE_PRIMARY_WORKSTATION',
             'kind' => 'external',
             'routingEnabled' => false,
             'requiresOwnerApproval' => true,
@@ -60,7 +60,7 @@ try {
         'lastSeenAt' => gmdate('c'),
         'platform' => 'darwin',
     ]]);
-    assertTrue(($workers[0]['role'] ?? null) === 'UTILITY_QA_RECOVERY', 'worker role must be projected');
+    assertTrue(($workers[0]['role'] ?? null) === 'GENERAL_PROJECT_WORKSTATION', 'worker role must be projected');
     assertTrue(($workers[0]['routingEnabled'] ?? false) === true, 'worker routing state must be projected');
     $projection = $registry->projection($workers);
     assertTrue(($projection['state'] ?? null) === 'READY', 'registry projection must be ready');

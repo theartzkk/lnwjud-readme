@@ -26,7 +26,9 @@ function normalizeRepository(remoteUrl) {
     /^https:\/\/github\.com\/([^/]+)\/([^/]+)$/i,
     /^git@github\.com:([^/]+)\/([^/]+)$/i,
     /^ssh:\/\/(?:git@)?github\.com\/([^/]+)\/([^/]+)$/i,
-    /^ssh:\/\/awh-prod\/srv\/awh-git\/(awh)$/i,
+    /^ssh:\/\/awh-prod\/srv\/awh-git\/([a-z0-9-]+)$/i,
+    /^file:\/\/\/srv\/awh-git\/([a-z0-9-]+)$/i,
+    /^\/srv\/awh-git\/([a-z0-9-]+)$/i,
   ];
   for (const pattern of patterns) {
     const match = normalized.match(pattern);
