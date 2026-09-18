@@ -21,7 +21,12 @@
       "PLATFORM_INTERRUPTION"
     ],
     "historyRetentionDays": 30,
-    "maxHistoryFiles": 500
+    "maxHistoryFiles": 500,
+    "subprocessCompletionEndsMission": false,
+    "heartbeatRequiresProofOfWork": true,
+    "finalWhileActiveMission": "FORBIDDEN_UNLESS_COMPLETE_BLOCKED_APPROVAL_OR_PLATFORM_INTERRUPTION",
+    "autoChainSafeNextStep": true,
+    "durableProcessThresholdSeconds": 120
   },
   "gateTiers": {
     "G0": {
