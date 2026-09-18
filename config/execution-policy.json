@@ -6,8 +6,8 @@
     "quotaIsTelemetryOnly": true,
     "resumeFirst": true,
     "progressHeartbeatMinutes": {
-      "min": 5,
-      "max": 7
+      "min": 3,
+      "max": 5
     },
     "processPollSeconds": {
       "min": 120,
@@ -26,7 +26,22 @@
     "heartbeatRequiresProofOfWork": true,
     "finalWhileActiveMission": "FORBIDDEN_UNLESS_COMPLETE_BLOCKED_APPROVAL_OR_PLATFORM_INTERRUPTION",
     "autoChainSafeNextStep": true,
-    "durableProcessThresholdSeconds": 120
+    "durableProcessThresholdSeconds": 120,
+    "heartbeatDetailLevel": "DETAILED",
+    "heartbeatMustContinueAfterSend": true,
+    "heartbeatProgressMode": "STAGE_BASED_NO_FALSE_PERCENT",
+    "heartbeatProofMaxAgeSeconds": 300,
+    "heartbeatRequiredFields": [
+      "elapsed",
+      "doneSinceLast",
+      "currentOperation",
+      "stage",
+      "proofOfWork",
+      "activePidOrApp",
+      "lastSaveOrArtifact",
+      "nextSteps",
+      "blocker"
+    ]
   },
   "gateTiers": {
     "G0": {

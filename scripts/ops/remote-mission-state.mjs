@@ -8,6 +8,8 @@ const SAFE=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ROOT=process.env.AWH_REMOTE_MISSION_ROOT||'/var/lib/awh-remote/remote-missions';
 function cleanText(v,max=240){if(typeof v!=='string')return null;v=v.trim();if(!v||v.length>max||/[\0\r\n]/.test(v))return null;return v;}
+function cleanList(v,{maxItems=8,maxLength=500}={}){if(!Array.isArray(v))return [];const out=[];for(const item of v){const text=cleanText(item,maxLength);if(text)out.push(text);if(out.length>=maxItems)break;}return out;}
+function cleanStage(v){if(!v||typeof v!=='object')return null;const current=Number(v.current),total=Number(v.total),label=cleanText(v.label,160);if(!Number.isInteger(current)||!Number.isInteger(total)||current<1||total<1||current>total||total>100||!label)return null;return {current,total,label};}
 function id(v){if(!SAFE.test(String(v??'')))throw new Error('MISSION_ID_INVALID');return String(v);}
 function device(v){if(!UUID.test(String(v??'')))throw new Error('MISSION_DEVICE_INVALID');return String(v).toLowerCase();}
 function fileForDevice(deviceId){return join(ROOT,'active',deviceId+'.json');}
@@ -41,7 +43,7 @@ export async function runRemoteMissionCommand(command,payload,policy=null){
     const missionId=id(payload.missionId), deviceId=device(payload.deviceId), path=fileForDevice(deviceId), current=await readJson(path);
     if(active(current)&&current.missionId!==missionId)throw new Error('MISSION_DEVICE_LEASE_HELD');
     const at=now().toISOString();
-    const row={schemaVersion:1,missionId,deviceId,deviceName:cleanText(payload.deviceName,120),project:cleanText(payload.project,120),objective:cleanText(payload.objective,500),status:'ACTIVE',startedAt:current?.missionId===missionId?current.startedAt:at,updatedAt:at,lastHeartbeatAt:at,leaseExpiresAt:expiry(leaseMinutes),app:cleanText(payload.app,120),pid:Number.isInteger(payload.pid)&&payload.pid>0?payload.pid:null,checkpoint:cleanText(payload.checkpoint,500),nextStep:cleanText(payload.nextStep,500),blocker:null};
+    const row={schemaVersion:1,missionId,deviceId,deviceName:cleanText(payload.deviceName,120),project:cleanText(payload.project,120),objective:cleanText(payload.objective,500),status:'ACTIVE',startedAt:current?.missionId===missionId?current.startedAt:at,updatedAt:at,lastHeartbeatAt:at,leaseExpiresAt:expiry(leaseMinutes),heartbeatSequence:current?.missionId===missionId?(Number(current.heartbeatSequence)||0):0,app:cleanText(payload.app,120),pid:Number.isInteger(payload.pid)&&payload.pid>0?payload.pid:null,checkpoint:cleanText(payload.checkpoint,500),nextStep:cleanText(payload.nextStep,500),currentOperation:cleanText(payload.currentOperation,500),stage:cleanStage(payload.stage),doneSinceLast:cleanList(payload.doneSinceLast),proofOfWork:cleanList(payload.proofOfWork),lastSaveOrArtifact:cleanText(payload.lastSaveOrArtifact,500),nextSteps:cleanList(payload.nextSteps,{maxItems:3,maxLength:500}),blocker:null};
     if(!row.deviceName||!row.project||!row.objective)throw new Error('MISSION_METADATA_INVALID');
     await atomicJson(path,row);return row;
   }
@@ -52,9 +54,12 @@ export async function runRemoteMissionCommand(command,payload,policy=null){
   if(command==='heartbeat'){
     if(!active(row))throw new Error('MISSION_LEASE_EXPIRED');
     const at=now().toISOString();
-    const updated={...row,updatedAt:at,lastHeartbeatAt:at,leaseExpiresAt:expiry(leaseMinutes),
+    const proofOfWork=cleanList(payload.proofOfWork);if(policy.remoteMission.heartbeatRequiresProofOfWork===true&&proofOfWork.length===0)throw new Error('MISSION_HEARTBEAT_PROOF_REQUIRED');
+    const updated={...row,updatedAt:at,lastHeartbeatAt:at,leaseExpiresAt:expiry(leaseMinutes),heartbeatSequence:(Number(row.heartbeatSequence)||0)+1,
       checkpoint:cleanText(payload.checkpoint,500)??row.checkpoint,nextStep:cleanText(payload.nextStep,500)??row.nextStep,
-      blocker:payload.blocker===null?null:(cleanText(payload.blocker,500)??row.blocker),
+      currentOperation:cleanText(payload.currentOperation,500)??row.currentOperation,stage:cleanStage(payload.stage)??row.stage,
+      doneSinceLast:cleanList(payload.doneSinceLast),proofOfWork,lastSaveOrArtifact:cleanText(payload.lastSaveOrArtifact,500)??row.lastSaveOrArtifact,
+      nextSteps:cleanList(payload.nextSteps,{maxItems:3,maxLength:500}),blocker:payload.blocker===null?null:(cleanText(payload.blocker,500)??row.blocker),
       app:cleanText(payload.app,120)??row.app,pid:Number.isInteger(payload.pid)&&payload.pid>0?payload.pid:row.pid};
     await atomicJson(path,updated);return updated;
   }

@@ -9,7 +9,7 @@ test('execution policy makes Remote long-running, resume-first and quota-unbound
   assert.equal(policy.remoteMission.allowLonger,true);
   assert.equal(policy.remoteMission.quotaIsTelemetryOnly,true);
   assert.equal(policy.remoteMission.resumeFirst,true);
-  assert.deepEqual(policy.remoteMission.progressHeartbeatMinutes,{min:5,max:7});
+  assert.deepEqual(policy.remoteMission.progressHeartbeatMinutes,{min:3,max:5});
   assert.equal(policy.remoteMission.processPollSeconds.min,120);
   assert.equal(policy.remoteMission.processPollSeconds.max,300);
   assert.equal(policy.remoteMission.deviceLeaseMinutes>=policy.remoteMission.targetMinutes,true);
@@ -20,6 +20,11 @@ test('execution policy makes Remote long-running, resume-first and quota-unbound
   assert.equal(policy.remoteMission.autoChainSafeNextStep,true);
   assert.equal(policy.remoteMission.durableProcessThresholdSeconds,120);
   assert.match(policy.remoteMission.finalWhileActiveMission,/FORBIDDEN/);
+  assert.equal(policy.remoteMission.heartbeatDetailLevel,'DETAILED');
+  assert.equal(policy.remoteMission.heartbeatMustContinueAfterSend,true);
+  assert.equal(policy.remoteMission.heartbeatProgressMode,'STAGE_BASED_NO_FALSE_PERCENT');
+  assert.equal(policy.remoteMission.heartbeatProofMaxAgeSeconds,300);
+  assert.deepEqual(policy.remoteMission.heartbeatRequiredFields,['elapsed','doneSinceLast','currentOperation','stage','proofOfWork','activePidOrApp','lastSaveOrArtifact','nextSteps','blocker']);
 });
 
 test('gate and QA policy encode the simplified G0-G3 model',async()=>{
@@ -37,7 +42,7 @@ test('human protocols stay aligned with machine-readable Remote policy',async()=
   const docs=await Promise.all(['ART_AI_WORKING_PROTOCOL.md','AGENTS.md','docs/BLOCK_FREE_OPERATIONS.md'].map(f=>readFile(new URL('../'+f,import.meta.url),'utf8')));
   for(const source of docs){
     assert.match(source,/30.?minute|30 minutes/i);
-    assert.match(source,/5.?7 minutes|5–7 minutes|5-7 minutes/i);
+    assert.match(source,/3.?5 minutes|3–5 minutes|3-5 minutes/i);
     assert.match(source,/quota.*(?:not|never).*(?:constraint|gate|limit)|quota.*telemetry/i);
   }
 });

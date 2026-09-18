@@ -15,6 +15,10 @@ export async function loadExecutionPolicy(path=process.env.AWH_EXECUTION_POLICY|
   if(!Number.isInteger(rm.deviceLeaseMinutes)||rm.deviceLeaseMinutes<rm.targetMinutes||rm.deviceLeaseMinutes>240)fail('EXECUTION_POLICY_LEASE');
   if(!Number.isInteger(rm.historyRetentionDays)||rm.historyRetentionDays<1||rm.historyRetentionDays>365)fail('EXECUTION_POLICY_HISTORY_RETENTION');
   if(!Number.isInteger(rm.maxHistoryFiles)||rm.maxHistoryFiles<10||rm.maxHistoryFiles>5000)fail('EXECUTION_POLICY_HISTORY_LIMIT');
+  if(rm.heartbeatDetailLevel!=='DETAILED'||rm.heartbeatMustContinueAfterSend!==true||rm.heartbeatProgressMode!=='STAGE_BASED_NO_FALSE_PERCENT')fail('EXECUTION_POLICY_HEARTBEAT_DETAIL');
+  if(!Number.isInteger(rm.heartbeatProofMaxAgeSeconds)||rm.heartbeatProofMaxAgeSeconds<60||rm.heartbeatProofMaxAgeSeconds>1800)fail('EXECUTION_POLICY_HEARTBEAT_PROOF_AGE');
+  const requiredHeartbeatFields=['elapsed','doneSinceLast','currentOperation','stage','proofOfWork','activePidOrApp','lastSaveOrArtifact','nextSteps','blocker'];
+  if(!Array.isArray(rm.heartbeatRequiredFields)||requiredHeartbeatFields.some((field)=>!rm.heartbeatRequiredFields.includes(field)))fail('EXECUTION_POLICY_HEARTBEAT_FIELDS');
   for(const key of ['G0','G1','G2','G3'])if(!gates[key])fail('EXECUTION_POLICY_GATES');
   for(const risk of ['LOW','MEDIUM','HIGH','CRITICAL'])if(!['FAST','STANDARD','DEEP'].includes(qa.riskBudget?.[risk]))fail('EXECUTION_POLICY_QA_RISK');
   for(const budget of ['FAST','STANDARD','DEEP'])if(!/^qa:(?:fast|local|full)$/.test(String(qa.scriptByBudget?.[budget]??'')))fail('EXECUTION_POLICY_QA_SCRIPT');
