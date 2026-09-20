@@ -6,52 +6,29 @@ import { tmpdir } from 'node:os';
 import { loadOwnerProtocol, OWNER_PROTOCOL_VERSION } from '../src/owner-protocol.js';
 import { buildProjectContext, initializeProject } from '../src/project-registry.js';
 
-test('loads the durable Art AI owner working constitution', async () => {
-  const protocol = await loadOwnerProtocol();
-  assert.match(protocol, /Art ↔ AI Working Constitution/);
-  assert.match(protocol, /KRUART Owner Operating Model/);
-  assert.match(protocol, /Outcome & continuity/);
-  assert.match(protocol, /Tool-fit execution routing/);
-  assert.match(protocol, /Maximum automation & minimum user touch/);
-  assert.match(protocol, new RegExp(`Version: ${OWNER_PROTOCOL_VERSION.replace('.', '\\.')}`));
-  assert.match(protocol, /System-first, patch-second/i);
-  assert.match(protocol, /ChatGPT-direct contract/);
-  assert.match(protocol, /AWH-direct contract/);
-  assert.match(protocol, /Execution routing authority/);
-  assert.match(protocol, /AWH_VAULT.*must not be silently stolen/);
-  assert.match(protocol, /GitHub quota\/outage must not block work/);
-  assert.match(protocol, /Remote Desktop \/ Desktop Commander.*is preferred when the requested outcome depends on a named managed device/s);
-  assert.match(protocol, /Execution First — mandatory for every project and task/);
-  assert.match(protocol, /One mutation scope has one Mission Owner\/Writer/);
-  assert.match(protocol, /config\/execution-policy\.json.*machine-readable authority/s);
-  assert.match(protocol, /Permanent Fix \/ Root-Cause Closure contract/);
-  assert.match(protocol, /Global Visual Truth contract/);
-  assert.match(protocol, /do not require every typed\/headless route to fail first/i);
+test('loads durable non-binding AWH working context', async () => {
+  const context = await loadOwnerProtocol();
+  assert.match(context, /# AWH Working Context/);
+  assert.match(context, /Mode: context-only/);
+  assert.match(context, new RegExp(`Version: ${OWNER_PROTOCOL_VERSION.replace('.', '\\.')}`));
+  assert.match(context, /professional judgment/i);
+  assert.match(context, /capabilit/i);
+  assert.doesNotMatch(context, /Art ↔ AI Working Constitution|Execution First — mandatory|KRUART Owner Operating Model/i);
 });
 
-test('agent entry contract preserves Vault-first and device-optional routing', async () => {
+test('agent entry context does not impose workflow', async () => {
   const agents = await readFile(new URL('../AGENTS.md', import.meta.url), 'utf8');
-  assert.match(agents, /Project source authority is singular/);
-  assert.match(agents, /AWH_VAULT/);
-  assert.match(agents, /Execution First — mandatory for every project and task/);
-  assert.match(agents, /VPS\/control plane.*M5.*AY-TEACHER.*ART-MAC-INTEL/s);
-  assert.match(agents, /Never use a personal endpoint as gratuitous transit back to VPS/);
-  assert.match(agents, /Permanent Fix \/ Root-Cause Closure/);
-  assert.match(agents, /Global Visual Truth/);
-  assert.match(agents, /AI-generated images, stock photos, or images of another school/);
-  assert.match(agents, /online device must never become a hidden dependency/);
-  assert.doesNotMatch(agents, /`main` on the reviewed .+ is the AWH canonical source branch/);
+  assert.match(agents, /non-binding working context/i);
+  assert.match(agents, /one active writer per mutation scope/i);
+  assert.doesNotMatch(agents, /30.?minute|3.?5 minutes|Execution First — mandatory/i);
 });
 
-test('injects owner protocol into every bounded project context before project-specific memory', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'awh-owner-protocol-'));
+test('project context carries working context before project memory', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'awh-working-context-'));
   try {
-    await initializeProject(root, { name: 'Protocol Fixture', type: 'general' });
-    const context = await buildProjectContext(root);
-    assert.match(context.ownerProtocol, /Art ↔ AI Working Constitution/);
+    await initializeProject(dir, { name: 'Context Fixture', type: 'general' });
+    const context = await buildProjectContext(dir);
+    assert.match(context.ownerProtocol, /# AWH Working Context/);
     assert.deepEqual(Object.keys(context.memory), ['CURRENT_STATE.md', 'PROJECT.md', 'HANDOFF.md', 'TASKS.md', 'ARCHITECTURE.md', 'DECISIONS.md']);
-    assert.equal(context.project.name, 'Protocol Fixture');
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });

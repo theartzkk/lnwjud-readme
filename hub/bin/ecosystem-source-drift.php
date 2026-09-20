@@ -48,8 +48,8 @@ if (is_string($runtime) && $runtime!=='') {
     if (preg_match('/^[0-9a-f]{40}$/',$production)) {
         $policy=(string)shell_exec('git --git-dir='.escapeshellarg($awh).' show '.escapeshellarg($production).':hub/src/HubCapabilityRegistryService.php 2>/dev/null');
         $protocol=(string)shell_exec('git --git-dir='.escapeshellarg($awh).' show '.escapeshellarg($production).':ART_AI_WORKING_PROTOCOL.md 2>/dev/null');
-        if (!str_contains($policy,"'operatingModel'=>'KRUART_OWNER_OPERATING_MODEL'") || !str_contains($policy,"'operatingModelVersion'=>'2.0'")) $findings[]='AWH Owner Operating Model runtime policy drift';
-        if (!str_contains($protocol,'# KRUART Owner Operating Model') || !str_contains($protocol,'Version: 2.0')) $findings[]='AWH Owner Operating Model protocol drift';
+        if (!str_contains($policy,"'mode'=>'CONTEXT_ONLY'") || !str_contains($policy,"'enforcement'=>'ADVISORY'")) $findings[]='AWH execution context runtime drift';
+        if (!str_contains($protocol,'# AWH Working Context') || !str_contains($protocol,'Mode: context-only')) $findings[]='AWH working context drift';
     }
 }
 $state=$findings!==[]?'BLOCKED':($pending!==[]?'PENDING_RELEASE':'SYNCED');

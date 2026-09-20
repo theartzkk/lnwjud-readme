@@ -17,7 +17,7 @@ final class HubCapabilityRegistryService
     private const AVAILABILITY = ['ALWAYS_ON','ON_DEMAND','OPTIONAL_DEVICE'];
     private const COST = ['INCLUDED','PREPAID','LOCAL_FREE','METERED'];
     private const ENVELOPE_STATES = ['OPEN','ACTIVE','WAITING','RELEASED','CONFLICT','CANCELLED'];
-    public const EXECUTION_POLICY_VERSION = '1.3.0';
+    public const EXECUTION_POLICY_VERSION = '2.0-context';
 
     public function __construct(private readonly PDO $pdo) {}
 
@@ -130,7 +130,7 @@ final class HubCapabilityRegistryService
         $sql = "SELECT p.provider_id,p.provider_kind,p.display_name,p.availability_mode,p.cost_class,p.priority,pc.cost_rank,pc.quality_rank,pc.latency_rank,c.maturity FROM control_execution_provider_capabilities pc JOIN control_execution_providers p ON p.provider_id=pc.provider_id JOIN control_capability_catalog c ON c.capability=pc.capability WHERE pc.capability=:cap AND pc.enabled=1 AND p.enabled=1 AND c.enabled=1 AND c.maturity <> 'PLANNED' AND (p.expires_at IS NULL OR p.expires_at>:at) AND (pc.expires_at IS NULL OR pc.expires_at>:at) ORDER BY CASE p.availability_mode WHEN 'ALWAYS_ON' THEN 0 WHEN 'ON_DEMAND' THEN 1 ELSE 2 END, pc.cost_rank, p.priority, pc.latency_rank, pc.quality_rank DESC, p.provider_id LIMIT 1";
         $q = $this->pdo->prepare($sql); $q->execute(['cap'=>$capability,'at'=>$at]); $row = $q->fetch();
         if (!is_array($row)) return null;
-        return ['providerId'=>(string)$row['provider_id'],'kind'=>(string)$row['provider_kind'],'displayName'=>(string)$row['display_name'],'availabilityMode'=>(string)$row['availability_mode'],'costClass'=>(string)$row['cost_class'],'capability'=>$capability,'maturity'=>(string)$row['maturity'],'executionPolicyVersion'=>self::EXECUTION_POLICY_VERSION,'batchFirst'=>true,'reuseSession'=>true,'deltaFirst'=>true];
+        return ['providerId'=>(string)$row['provider_id'],'kind'=>(string)$row['provider_kind'],'displayName'=>(string)$row['display_name'],'availabilityMode'=>(string)$row['availability_mode'],'costClass'=>(string)$row['cost_class'],'capability'=>$capability,'maturity'=>(string)$row['maturity'],'executionPolicyVersion'=>self::EXECUTION_POLICY_VERSION];
     }
     /** One descriptive envelope per M12 execution; it is not another task queue or lock authority. */
     public function ensureExecutionEnvelope(string $executionId, ?string $now = null): array
@@ -255,7 +255,23 @@ final class HubCapabilityRegistryService
     /** @return array<string,mixed> */
     public static function executionPolicy(): array
     {
-        return ['version'=>self::EXECUTION_POLICY_VERSION,'operatingModel'=>'KRUART_OWNER_OPERATING_MODEL','operatingModelVersion'=>'2.0','policyFamilies'=>['OUTCOME_CONTINUITY','AUTHORITY_SOURCE_TRUTH','SYSTEM_PERMANENT_REPAIR','TOOL_FIT_ROUTING','RESOURCE_EFFICIENCY','DEVICE_REMOTE_MISSION','EVIDENCE_VISUAL_TRUTH','QA_TRUTHFUL_CLOSURE','SAFETY_INTEGRITY_ROLLBACK','CLEAN_ENVIRONMENT_LIFECYCLE','MAX_AUTOMATION_MIN_USER_TOUCH'],'enforcement'=>'MANDATORY','userRestatementRequired'=>false,'planBeforeCall'=>true,'batchFirst'=>true,'maxValuePerCall'=>true,'reuseKnownState'=>true,'deltaFirst'=>true,'redundantPolling'=>false,'blindRetry'=>false,'oneSetupManyUsefulActions'=>true,'remoteDesktopClass'=>'ALLOWED_HIGH_VALUE_ROUTE','explicitRemoteIntentAllowed'=>true,'headlessExhaustionRequiredBeforeRemote'=>false,'remoteMissionRequired'=>true,'remotePrepareBeforeCall'=>true,'remoteBatchRelatedActions'=>true,'remoteReuseSession'=>true,'remoteVerifyRealOutput'=>true,'remoteRecordDelta'=>true,'remoteTransitHopAllowed'=>false,'quotaAware'=>true,'quotaStateMustBeObserved'=>true,'quotaAdaptiveMode'=>true,'remoteValuePerInvocationMetric'=>true,'remotePreferredOnNamedDevice'=>true,'remotePreferredOnGuiState'=>true,'remotePreferredOnNativeDesktopApp'=>true,'remotePreferredOnInstallPermissionState'=>true,'remotePreferredOnRealClientState'=>true,'remotePreferredOnFieldQa'=>true,'deviceReferenceImpliesRemoteIntent'=>true,'mixedBoundaryUsesDirectPlusRemote'=>true,'permanentFixDefault'=>true,'rootCauseRequired'=>true,'adjacentBlockerAudit'=>true,'regressionRequired'=>true,'temporaryWorkaroundMustBeTracked'=>true,'schoolVisualTruthRequired'=>true,'schoolRealMediaFirst'=>true,'generatedSchoolRealityAllowed'=>false,'foreignSchoolSubstitutionAllowed'=>false,'unrestrictedWorkerShell'=>false,'cleanExit'=>true,'outcomeFirst'=>true,'continuityRequired'=>true,'sourceOfTruthFirst'=>true,'toolFitRouting'=>true,'oneCoherentPass'=>true,'realEvidenceRequired'=>true,'realQaRequired'=>true,'cleanEnvironmentLifecycle'=>true,'maximumAutomationMinimumUserTouch'=>true,'minimumUserInterruption'=>true,'deployMissionMode'=>'ONE_BOUNDED_APPROVAL','deployMissionApprovalCount'=>1,'deployMissionPrepareBeforeApproval'=>true,'deployMissionApprovalBoundToExactRevision'=>true,'deployMissionApprovalBoundToRiskScope'=>true,'deployMissionSameRevisionSameScopeRetryReusesApproval'=>true,'deployMissionNewApprovalOnlyOnRevisionOrRiskScopeChange'=>true,'deployMissionAutoPostApprovalSteps'=>['GUARDED_ACTIVATION','IN_SCOPE_MIGRATION_RELOAD','LIVE_QA','SOURCE_DRIFT_VERIFY','DB_SERVICE_PUBLIC_VERIFY','ROLLBACK_IF_REQUIRED','CLEANUP'],'schoolSitePreferredEndpoint'=>'AY-TEACHER','schoolSitePreferenceRequiresExplicitContext'=>true,'schoolSiteTaskWordingAloneIsLocationSignal'=>false,'schoolSiteFallbackWhenUnavailable'=>true,'schoolSiteServerWorkRemainsDirect'=>true,'schoolSiteM5ReservedForCapabilityNeed'=>true,'schoolSiteCreativePreferredEndpoint'=>'M5','schoolSiteCreativeOverridesAyTeacher'=>true,'schoolSiteCreativeKinds'=>['VTR','GRAPHICS','PHOTOSHOP','AFTER_EFFECTS','PREMIERE','MOTION_VIDEO','CREATIVE_MEDIA']];
+        return [
+            'version'=>self::EXECUTION_POLICY_VERSION,
+            'mode'=>'CONTEXT_ONLY',
+            'enforcement'=>'ADVISORY',
+            'userRestatementRequired'=>false,
+            'decisionAuthority'=>'CURRENT_REQUEST_CURRENT_EVIDENCE_CURRENT_CAPABILITIES',
+            'prescriptiveRouting'=>false,
+            'mandatoryToolOrder'=>false,
+            'quotaBudgetingRequired'=>false,
+            'remoteMissionRequired'=>false,
+            'sourceAuthorityRequiredForMutation'=>true,
+            'singleWriterMutationBoundary'=>true,
+            'candidateWorkspaceIsolation'=>true,
+            'exactRevisionPromotion'=>true,
+            'ownerApprovalForCanonicalPromotion'=>true,
+            'actualOutcomeVerification'=>true,
+        ];
     }
 
     /** @return list<string> */

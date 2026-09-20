@@ -8,6 +8,7 @@ BACKUP_ROOT=/var/backups/awh-operator-bridge
 STAGE_PARENT=/var/lib/awh-remote
 STAGE_ROOT="$STAGE_PARENT/operator-staging"
 EVIDENCE_ROOT=/var/lib/awh-hub/verification-evidence
+EXPORT_ROOT=/var/lib/awh-hub/operator-exports
 BAY_INBOX=/var/www/bay-production-shadow/current/updates/incoming
 DROPIN_DIR=/etc/systemd/system/awh-operator-bridge@.service.d
 LEGACY_DROPIN_A="$DROPIN_DIR/50-bay-production-shadow.conf"
@@ -17,6 +18,10 @@ backup="$BACKUP_ROOT/$stamp"
 [ "$(id -u)" -eq 0 ] || { echo AWH_OPERATOR_INSTALL_ROOT_REQUIRED >&2; exit 2; }
 getent passwd awh-hub >/dev/null; getent passwd awh-remote >/dev/null
 getent group awh-hub >/dev/null; getent group www-data >/dev/null; getent group bayadmin >/dev/null
+getent group awh-operator >/dev/null || groupadd --system awh-operator
+usermod -a -G awh-operator awh-hub
+usermod -a -G awh-operator awh-remote
+usermod -a -G awh-operator bayadmin
 command -v getfacl >/dev/null; command -v setfacl >/dev/null
 [ -d "$BAY_INBOX" ]
 [ -r "$ROOT/hub/bin/awh-operator-bridge.php" ]
@@ -34,13 +39,17 @@ stage_existed=0; [ -d "$STAGE_ROOT" ] && stage_existed=1
 [ "$stage_existed" -eq 1 ] && getfacl -p "$STAGE_ROOT" >"$backup/stage-root.acl"
 setfacl -m u:awh-hub:--x "$STAGE_PARENT"
 setfacl -m u:awh-hub:rwx "$BAY_INBOX"
-install -d -o awh-remote -g awh-hub -m 2750 "$STAGE_ROOT"
+install -d -o awh-remote -g awh-operator -m 2770 "$STAGE_ROOT"
+setfacl -m g::rwx,m::rwx "$STAGE_ROOT"
 setfacl -m u:awh-hub:rwx "$STAGE_ROOT"
 install -d -o awh-hub -g awh-hub -m 0700 "$EVIDENCE_ROOT"
+install -d -o awh-hub -g awh-hub -m 0700 "$EXPORT_ROOT"
 runuser -u awh-remote -- test -w "$STAGE_ROOT"
 runuser -u awh-hub -- test -r "$STAGE_ROOT"
 runuser -u awh-hub -- test -w "$STAGE_ROOT"
 runuser -u awh-hub -- test -w "$EVIDENCE_ROOT"
+runuser -u awh-hub -- test -w "$EXPORT_ROOT"
+runuser -u bayadmin -- test -w "$STAGE_ROOT"
 runuser -u awh-hub -G www-data -- test -w "$BAY_INBOX"
 [ -d /srv/awh-git ] && runuser -u bayadmin -- test -w /srv/awh-git
 for repo in awh.git bay-excuse-x.git bay-hub.git bay-learnlab.git school-website.git; do
@@ -85,6 +94,7 @@ systemctl is-active --quiet awh-operator-bridge.socket
 check=$(mktemp /tmp/awh-operator-install-check.XXXXXX)
 chmod 0600 "$check"
 runuser -u awh-remote -- "$CLIENT" status >"$check"
+runuser -u bayadmin -- "$CLIENT" status >/dev/null
 CHECK_FILE="$check" python3 - <<'PY'
 import json, os
 p=json.load(open(os.environ['CHECK_FILE']))

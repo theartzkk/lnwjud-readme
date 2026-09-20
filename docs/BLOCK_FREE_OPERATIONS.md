@@ -1,3 +1,5 @@
+> Historical/architectural reference only. Current execution behavior is defined by live capabilities, current evidence, and context-only working intent; prescriptive workflow text below is non-authoritative.
+
 # AWH Block-Free Operations
 
 Current invariant: a browser/ChatGPT/worker transport is never the lifetime authority of an AWH job.

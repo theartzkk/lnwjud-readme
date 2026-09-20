@@ -69,19 +69,19 @@ test('desktop worker runtime rejects an unregistered project before execution', 
   }
 });
 
-test('Codex task instruction preserves owner protocol precedence before project memory and Goal', () => {
-  const protocol = '# Art ↔ AI Working Constitution\n\nVersion: 1.0\n\nSystem-first, patch-second.';
+test('Codex task instruction carries non-binding working context before project memory and Goal', () => {
+  const protocol = '# AWH Working Context\n\nVersion: 3.0\nMode: context-only\n\nUse professional judgment.';
   const goal = 'แก้ตารางรายงานโดยวิเคราะห์ระบบร่วมทั้งหมดก่อน';
   const instruction = buildCodexTaskInstruction(protocol, goal);
-  const ownerIndex = instruction.indexOf('Art ↔ AI Working Constitution');
-  const memoryIndex = instruction.indexOf('PROJECT CONTEXT CONTRACT');
+  const ownerIndex = instruction.indexOf('AWH Working Context');
+  const memoryIndex = instruction.indexOf('PROJECT CONTEXT');
   const goalIndex = instruction.indexOf('CURRENT OWNER GOAL');
   assert.ok(ownerIndex >= 0);
   assert.ok(memoryIndex > ownerIndex);
   assert.ok(goalIndex > memoryIndex);
   assert.match(instruction, /PROJECT\.md, HANDOFF\.md, TASKS\.md, ARCHITECTURE\.md, DECISIONS\.md/);
-  assert.match(instruction, /system-first and root-cause-first/i);
-  assert.match(instruction, /Do not create a parallel system/i);
+  assert.match(instruction, /professional judgment/i);
+  assert.match(instruction, /No fixed tool order/i);
   assert.match(instruction, new RegExp(goal));
 });
 

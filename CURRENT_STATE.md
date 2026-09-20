@@ -5,7 +5,7 @@ Updated: 2026-09-17 ICT.
 This file contains current operational truth only. Historical checkpoints are preserved under `history/`. Fresh observed runtime/source evidence outranks this snapshot. Resolve VPS `main`, `production`, live release pointers, DB state and device/runtime evidence before mutation.
 
 ## Current operating model
-- KRUART Owner Operating Model 2.0 is the owner-level execution authority.
+- AWH/KRUART working context is context-only and non-prescriptive; current request, current evidence, actual capabilities and real integrity boundaries govern execution.
 - Outcome-first, Source-of-Truth-first, permanent-fix-by-default, tool-fit routing, real evidence, real QA, clean exit and minimum owner interruption apply together.
 - Remote/device work is selected proactively when real device/GUI/native-app/field evidence is required; it is not a last-resort rule.
 

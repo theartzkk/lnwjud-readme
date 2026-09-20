@@ -52,7 +52,7 @@ try {
     $registry = new HubDeviceRoleRegistry($path);
     assertTrue($registry->claimAllowed($workerId), 'registered worker must be routable');
     assertTrue($registry->claimAllowed('22222222-2222-4222-8222-222222222222'), 'unclassified legacy worker must remain backward compatible');
-    assertTrue(!$registry->claimAllowed('22222222-2222-4222-8222-222222222222', 'M5'), 'known video workstation must not claim system work');
+    assertTrue($registry->claimAllowed('22222222-2222-4222-8222-222222222222', 'M5'), 'device role must not hard-block an authenticated capable worker');
     assertTrue($registry->claimAllowed('22222222-2222-4222-8222-222222222222', 'VIDEO'), 'creative workstation must remain routable for declared creative work');
     $workers = $registry->decorateWorkers([[
         'deviceId' => $workerId,

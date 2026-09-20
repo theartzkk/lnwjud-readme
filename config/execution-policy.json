@@ -1,100 +1,15 @@
 {
-  "schemaVersion": 1,
-  "remoteMission": {
-    "targetMinutes": 30,
-    "allowLonger": true,
-    "quotaIsTelemetryOnly": true,
-    "resumeFirst": true,
-    "progressHeartbeatMinutes": {
-      "min": 3,
-      "max": 5
-    },
-    "processPollSeconds": {
-      "min": 120,
-      "max": 300
-    },
+  "schemaVersion": 2,
+  "mode": "CONTEXT_ONLY",
+  "prescriptivePolicy": false,
+  "runtimeDefaults": {
     "deviceLeaseMinutes": 45,
-    "finishEarlyOnlyFor": [
-      "COMPLETE",
-      "HARD_BLOCKER",
-      "OWNER_APPROVAL_REQUIRED",
-      "PLATFORM_INTERRUPTION"
-    ],
     "historyRetentionDays": 30,
-    "maxHistoryFiles": 500,
-    "subprocessCompletionEndsMission": false,
-    "heartbeatRequiresProofOfWork": true,
-    "finalWhileActiveMission": "FORBIDDEN_UNLESS_COMPLETE_BLOCKED_APPROVAL_OR_PLATFORM_INTERRUPTION",
-    "autoChainSafeNextStep": true,
-    "durableProcessThresholdSeconds": 120,
-    "heartbeatDetailLevel": "DETAILED",
-    "heartbeatMustContinueAfterSend": true,
-    "heartbeatProgressMode": "STAGE_BASED_NO_FALSE_PERCENT",
-    "heartbeatProofMaxAgeSeconds": 300,
-    "heartbeatRequiredFields": [
-      "elapsed",
-      "doneSinceLast",
-      "currentOperation",
-      "stage",
-      "proofOfWork",
-      "activePidOrApp",
-      "lastSaveOrArtifact",
-      "nextSteps",
-      "blocker"
-    ],
-    "fastPath": {
-      "firstProductiveActionTargetSeconds": 60,
-      "preflightMaxSeconds": 45,
-      "maxPreflightProbes": 2,
-      "preferBatchMutation": true,
-      "skipRepeatedStateProbeWhenUnchanged": true
-    },
-    "errorRecovery": {
-      "classifyBeforeRetry": true,
-      "sameActionBlindRetryMax": 0,
-      "transportTimeoutResumeFirst": true,
-      "processNotFoundMeansInspectBeforeRestart": true,
-      "maxApplicationRestartAttemptsPerMission": 1,
-      "sameCrashSignatureRetryMax": 0
-    },
-    "creativeApplicationSafety": {
-      "singleInstance": true,
-      "routineForceQuitForbidden": true,
-      "forceQuitRequiresConfirmedHang": true,
-      "confirmedHangMinSeconds": 30,
-      "confirmedHangSignalsRequired": 2,
-      "checkpointBeforeTermination": true,
-      "directScriptLaunchWhileGuiInstanceActiveForbidden": true,
-      "crashAfterExplicitTerminationClassifiesAsControlledTermination": true,
-      "onUnexpectedCrash": "CAPTURE_SIGNATURE_REOPEN_CANONICAL_ONCE_VERIFY_AND_RESUME"
-    },
-    "assistantVisibleHeartbeatRequired": true,
-    "internalStatusUiCountsAsHeartbeat": false,
-    "heartbeatMayBeReplacedBySpinner": false
+    "maxHistoryFiles": 500
   },
-  "gateTiers": {
-    "G0": {
-      "name": "OBSERVE",
-      "ownerApproval": false
-    },
-    "G1": {
-      "name": "REVERSIBLE_WORK",
-      "ownerApproval": false
-    },
-    "G2": {
-      "name": "REVERSIBLE_PRODUCTION",
-      "ownerApproval": "ONE_EXACT_REVISION_SCOPE"
-    },
-    "G3": {
-      "name": "IRREVERSIBLE_OR_TRUST_BOUNDARY",
-      "ownerApproval": "ACTION_SPECIFIC"
-    }
-  },
-  "sourceAuthority": {
-    "codeOperational": "VPS_GIT_MAIN",
-    "vaultForCode": "SNAPSHOT_EVIDENCE_RECOVERY",
-    "nonGitCanonical": "AWH_VAULT_OR_PROJECT_SOURCES",
-    "personalEndpointTransitForbidden": true
+  "integrity": {
+    "singleWriterPerMutationScope": true,
+    "readOnlyConcurrencyAllowed": true
   },
   "qa": {
     "riskBudget": {
@@ -116,41 +31,6 @@
       "reuseExactShaResult": true,
       "staleMinutes": 30,
       "waitMinutes": 20
-    }
-  },
-  "executionModel": {
-    "name": "EXECUTION_FIRST",
-    "appliesTo": [
-      "ALL_PROJECTS",
-      "ALL_TASK_TYPES"
-    ],
-    "oneMissionOwnerPerMutationScope": true,
-    "readOnlyConcurrencyAllowed": true,
-    "resourceSingleWriter": true,
-    "sourceOfTruthBeforeMutation": true,
-    "resumeFirst": true,
-    "subprocessCompletionEndsMission": false,
-    "restartAsStateControlForbidden": true,
-    "noParallelCoreSystems": true,
-    "cleanupOnClosure": true,
-    "closureRequiresCompletionProof": true,
-    "preserveOnCleanup": [
-      "CANONICAL_SOURCE",
-      "VERIFIED_RECOVERY",
-      "VERIFIED_EVIDENCE",
-      "PRODUCTION_RELEASE"
-    ],
-    "routing": {
-      "CONTROL_PLANE": [
-        "vps"
-      ],
-      "CREATIVE_NATIVE": [
-        "m5"
-      ],
-      "GENERAL_ENDPOINT": [
-        "ay-teacher",
-        "art-mac-intel"
-      ]
     }
   }
 }

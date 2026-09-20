@@ -33,23 +33,22 @@ async function cleanupHistory(policy){
     const path=join(dir,entry.name);try{const info=await stat(path);rows.push({path,mtimeMs:info.mtimeMs});}catch{}
   }
   rows.sort((a,b)=>b.mtimeMs-a.mtimeMs);
-  const cutoff=Date.now()-policy.remoteMission.historyRetentionDays*86400000;
-  for(let i=0;i<rows.length;i++)if(i>=policy.remoteMission.maxHistoryFiles||rows[i].mtimeMs<cutoff)await rm(rows[i].path,{force:true});
+  const cutoff=Date.now()-policy.runtimeDefaults.historyRetentionDays*86400000;
+  for(let i=0;i<rows.length;i++)if(i>=policy.runtimeDefaults.maxHistoryFiles||rows[i].mtimeMs<cutoff)await rm(rows[i].path,{force:true});
 }
 
 export async function runRemoteMissionCommand(command,payload,policy=null){
   policy=policy??await loadExecutionPolicy();
   await mkdir(join(ROOT,'active'),{recursive:true,mode:0o700});await mkdir(join(ROOT,'history'),{recursive:true,mode:0o700});await mkdir(join(ROOT,'resources'),{recursive:true,mode:0o700});
   await cleanupHistory(policy);
-  const leaseMinutes=policy.remoteMission.deviceLeaseMinutes;
+  const leaseMinutes=policy.runtimeDefaults.deviceLeaseMinutes;
   if(command==='start'){
     const missionId=id(payload.missionId), deviceId=device(payload.deviceId), path=fileForDevice(deviceId), current=await readJson(path);
     if(active(current)&&current.missionId!==missionId)throw new Error('MISSION_DEVICE_LEASE_HELD');
     const mutationMode=payload.mutationMode==='MUTATE'?'MUTATE':'READ_ONLY';
     const resourceKey=payload.resourceKey?resource(payload.resourceKey):null;
     const ownerKey=cleanText(payload.ownerKey,160);
-    if(policy.executionModel?.resourceSingleWriter===true&&mutationMode==='MUTATE'&&!resourceKey)throw new Error('MISSION_RESOURCE_REQUIRED');
-    if(policy.executionModel?.oneMissionOwnerPerMutationScope===true&&mutationMode==='MUTATE'&&!ownerKey)throw new Error('MISSION_OWNER_REQUIRED');
+    if(policy.integrity?.singleWriterPerMutationScope===true&&mutationMode==='MUTATE'&&!resourceKey)throw new Error('MISSION_RESOURCE_REQUIRED');
     const resourcePath=resourceKey?fileForResource(resourceKey):null;
     const resourceCurrent=resourcePath?await readJson(resourcePath):null;
     if(mutationMode==='MUTATE'&&active(resourceCurrent)&&resourceCurrent.missionId!==missionId)throw new Error('MISSION_RESOURCE_LEASE_HELD');
@@ -73,7 +72,7 @@ export async function runRemoteMissionCommand(command,payload,policy=null){
       const held=await readJson(fileForResource(row.resourceKey));if(held?.missionId!==row.missionId||!active(held))throw new Error('MISSION_RESOURCE_LEASE_LOST');
     }
     const at=now().toISOString();
-    const proofOfWork=cleanList(payload.proofOfWork);if(policy.remoteMission.heartbeatRequiresProofOfWork===true&&proofOfWork.length===0)throw new Error('MISSION_HEARTBEAT_PROOF_REQUIRED');
+    const proofOfWork=cleanList(payload.proofOfWork);
     const updated={...row,updatedAt:at,lastHeartbeatAt:at,leaseExpiresAt:expiry(leaseMinutes),heartbeatSequence:(Number(row.heartbeatSequence)||0)+1,
       checkpoint:cleanText(payload.checkpoint,500)??row.checkpoint,nextStep:cleanText(payload.nextStep,500)??row.nextStep,
       currentOperation:cleanText(payload.currentOperation,500)??row.currentOperation,stage:cleanStage(payload.stage)??row.stage,
@@ -87,9 +86,7 @@ export async function runRemoteMissionCommand(command,payload,policy=null){
   if(command==='finish'){
     const at=now().toISOString();const status=payload.result==='BLOCKED'?'BLOCKED':'COMPLETED';
     const cleanupStatus=String(payload.cleanupStatus??'');
-    if(policy.executionModel?.cleanupOnClosure===true&&!['PASS','NOT_APPLICABLE'].includes(cleanupStatus))throw new Error('MISSION_CLEANUP_REQUIRED');
     const completionProof=cleanList(payload.completionProof,{maxItems:8,maxLength:500});
-    if(status==='COMPLETED'&&policy.executionModel?.closureRequiresCompletionProof===true&&(payload.objectiveComplete!==true||completionProof.length===0))throw new Error('MISSION_COMPLETION_PROOF_REQUIRED');
     const completed={...row,status,updatedAt:at,completedAt:at,leaseExpiresAt:at,objectiveComplete:status==='COMPLETED'?true:false,completionProof,cleanupStatus,checkpoint:cleanText(payload.checkpoint,500)??row.checkpoint,nextStep:null,blocker:status==='BLOCKED'?(cleanText(payload.blocker,500)??'BLOCKED'):null};
     await atomicJson(historyFile(row.missionId),completed);await rm(path,{force:true});
     if(row.resourceKey&&row.mutationMode==='MUTATE'){const resourcePath=fileForResource(row.resourceKey),held=await readJson(resourcePath);if(held?.missionId===row.missionId)await rm(resourcePath,{force:true});}

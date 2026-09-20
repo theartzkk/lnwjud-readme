@@ -503,6 +503,10 @@ async function desktopSmokeCheck(dependenciesReady) {
     check('desktop-smoke', 'FAIL', 'ENVIRONMENT BLOCKER: Electron desktop smoke requires installed project dependencies', started);
     return;
   }
+  if (process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+    check('desktop-smoke', 'SKIP_ENVIRONMENT', 'HEADLESS_SERVER: Electron GUI smoke belongs on an exact-SHA desktop target; server QA does not install GUI libraries solely to satisfy this check', started);
+    return;
+  }
   if (process.platform === 'win32' || process.platform === 'darwin' || process.platform === 'linux') {
     const result = await runScript('desktop:smoke', 45_000);
     if (result.code === 0) check('desktop-smoke', 'PASS', 'Electron desktop smoke marker passed', started);

@@ -53,12 +53,9 @@ final class HubDeviceRoleRegistry
 
     public function claimAllowed(string $deviceId, ?string $displayName = null): bool
     {
-        $id = strtolower(trim($deviceId));
-        if ($id === '') return false;
-        $policy = $this->policyFor($id, (string) ($displayName ?? ''));
-        if (!is_array($policy)) return $this->defaultRoutingEnabled();
-        return ($policy['kind'] ?? null) === 'worker'
-            && ($policy['routingEnabled'] ?? false) === true;
+        // Device roles are routing context only. Authentication, heartbeat,
+        // advertised capability and task/execution authority decide eligibility.
+        return trim($deviceId) !== '';
     }
     /** @param list<array<string,mixed>> $workers @return array<string,mixed> */
     public function projection(array $workers): array

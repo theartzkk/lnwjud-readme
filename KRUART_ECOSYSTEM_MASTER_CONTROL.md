@@ -1,3 +1,5 @@
+> Historical/architectural reference only. Current execution behavior is defined by live capabilities, current evidence, and context-only working intent; prescriptive workflow text below is non-authoritative.
+
 # KRUART Ecosystem Master Control
 
 Updated: 2026-09-14 ICT.

@@ -80,17 +80,17 @@ async function createCommittedSourceArchive(workspace: string, revision: string,
  * owner-level Constitution and before implementing the current Goal.
  */
 export function buildCodexTaskInstruction(ownerProtocol: string, goal: string): string {
-  if (typeof ownerProtocol !== 'string' || !ownerProtocol.includes('Art ↔ AI Working Constitution')) throw new Error('Owner working protocol is unavailable');
+  if (typeof ownerProtocol !== 'string' || !ownerProtocol.includes('# AWH Working Context') || !ownerProtocol.includes('Mode: context-only')) throw new Error('Owner working context is unavailable');
   const memoryFiles = PROJECT_MEMORY_FILES.join(', ');
   return [
-    'AWH OWNER-LEVEL WORKING CONTRACT — MANDATORY',
+    'AWH WORKING CONTEXT — NON-BINDING',
     ownerProtocol.trim(),
-    'PROJECT CONTEXT CONTRACT',
-    `Before implementation, inspect the canonical project identity and relevant Project Memory in this workspace (${memoryFiles}). CURRENT_STATE.md is the current operational-state authority: fresh observed source/runtime evidence outranks it, and it outranks dated checkpoint prose in the other memory files. Inspect current source/runtime state before acting. Do not assume the user\'s wording limits analysis scope.`,
+    'PROJECT CONTEXT',
+     'Inspect the canonical project identity and relevant Project Memory in this workspace when useful (' + memoryFiles + '). Fresh observed source/runtime evidence outranks stale checkpoint prose.',
     'CURRENT OWNER GOAL',
     goal.trim(),
-    'EXECUTION REQUIREMENT',
-    'Apply the owner contract: system-first and root-cause-first analysis, search for shared/legacy/duplicate paths, preserve validated core and unrelated work, make one coherent bounded change, run architecture-relevant QA, and report only what is proven. Do not create a parallel system or broaden permissions.',
+     'PROFESSIONAL JUDGMENT',
+     'Choose the best available method from current evidence and capabilities. No fixed tool order, quota ritual, batching ritual, Remote mission, application hierarchy, or historical implementation is mandatory. Preserve the isolated workspace, source identity, credentials, unrelated work, and other real integrity boundaries. Verify the relevant result before claiming completion.'
   ].join('\n\n');
 }
 

@@ -136,12 +136,20 @@ final class HubOperatorBridgeService
         if(!is_array($row)||($row['state']??null)!=='ACTIVE')throw new HubOperatorBridgeException('Canonical Vault revision is not active','OPERATOR_VAULT_EXPORT_UNAVAILABLE');
         $contentSha=strtolower(trim((string)($row['content_sha256']??'')));if(preg_match('/^[a-f0-9]{64}$/',$contentSha)!==1)throw new HubOperatorBridgeException('Canonical Vault content identity is invalid','OPERATOR_VAULT_EXPORT_UNAVAILABLE');
         $stageRoot=getenv('AWH_OPERATOR_STAGE_ROOT');if(!is_string($stageRoot)||$stageRoot==='')$stageRoot='/var/lib/awh-remote/operator-staging';
+        $exportRoot=getenv('AWH_OPERATOR_EXPORT_ROOT');if(!is_string($exportRoot)||$exportRoot==='')$exportRoot='/var/lib/awh-hub/operator-exports';
         $vaultRoot=getenv('AWH_PROJECT_VAULT_ROOT');if(!is_string($vaultRoot)||$vaultRoot==='')$vaultRoot='/var/lib/awh-hub/project-vault';
-        $stageReal=realpath($stageRoot);$vaultReal=realpath($vaultRoot);
-        if(!is_string($stageReal)||!is_dir($stageReal)||is_link($stageRoot)||!is_writable($stageReal)||!is_string($vaultReal)||!is_dir($vaultReal)||is_link($vaultRoot))throw new HubOperatorBridgeException('Canonical Vault export roots are unavailable','OPERATOR_VAULT_EXPORT_UNAVAILABLE');
-        $stagedFile='vault-'.$revision.'-'.substr($contentSha,0,16).'-'.bin2hex(random_bytes(4)).'.zip';$destination=$stageReal.'/'.$stagedFile;
-        try{$archive=(new HubProjectVault($vaultReal))->archive($projectId,$revision,$destination);}catch(HubProjectVaultException $error){throw new HubOperatorBridgeException('Canonical Vault export failed',$error->codeName);}
-        return ['schemaVersion'=>1,'state'=>'EXPORTED','projectId'=>$projectId,'projectName'=>(string)($project['name']??''),'vaultRevisionId'=>$revision,'contentSha256'=>$contentSha,'stagedFile'=>$stagedFile,'archiveSha256'=>(string)$archive['sha256'],'sizeBytes'=>(int)$archive['sizeBytes'],'fileCount'=>(int)$archive['fileCount'],'observedAt'=>$at];
+        $stageReal=realpath($stageRoot);$exportReal=realpath($exportRoot);$vaultReal=realpath($vaultRoot);
+        if(!is_string($stageReal)||!is_dir($stageReal)||is_link($stageRoot)||!is_writable($stageReal)||!is_string($exportReal)||!is_dir($exportReal)||is_link($exportRoot)||(((int)(@stat($exportReal)['mode']??0)&0o022)!==0)||!is_writable($exportReal)||!is_string($vaultReal)||!is_dir($vaultReal)||is_link($vaultRoot))throw new HubOperatorBridgeException('Canonical Vault export roots are unavailable','OPERATOR_VAULT_EXPORT_UNAVAILABLE');
+        $stagedFile='vault-'.$revision.'-'.substr($contentSha,0,16).'-'.bin2hex(random_bytes(4)).'.zip';$destination=$stageReal.'/'.$stagedFile;$private=$exportReal.'/.'.$stagedFile.'.tmp';
+        try{
+            $archive=(new HubProjectVault($vaultReal))->archive($projectId,$revision,$private);
+            $input=@fopen($private,'rb');$output=@fopen($destination,'xb');
+            if(!is_resource($input)||!is_resource($output)){if(is_resource($input))fclose($input);if(is_resource($output))fclose($output);@unlink($destination);throw new HubOperatorBridgeException('Canonical Vault staging copy could not start','OPERATOR_VAULT_EXPORT_UNAVAILABLE');}
+            $copied=stream_copy_to_stream($input,$output,HubProjectVault::MAX_ARCHIVE_BYTES+1);@fflush($output);if(function_exists('fsync'))@fsync($output);fclose($input);fclose($output);
+            $actual=is_file($destination)?hash_file('sha256',$destination):false;
+            if(!is_int($copied)||$copied!==(int)$archive['sizeBytes']||!is_string($actual)||!hash_equals((string)$archive['sha256'],$actual)||!@chmod($destination,0640)){@unlink($destination);throw new HubOperatorBridgeException('Canonical Vault staging copy failed verification','OPERATOR_VAULT_EXPORT_UNAVAILABLE');}
+            return ['schemaVersion'=>1,'state'=>'EXPORTED','projectId'=>$projectId,'projectName'=>(string)($project['name']??''),'vaultRevisionId'=>$revision,'contentSha256'=>$contentSha,'stagedFile'=>$stagedFile,'archiveSha256'=>(string)$archive['sha256'],'sizeBytes'=>(int)$archive['sizeBytes'],'fileCount'=>(int)$archive['fileCount'],'observedAt'=>$at];
+        }finally{@unlink($private);}
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */

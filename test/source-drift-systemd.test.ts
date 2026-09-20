@@ -41,7 +41,7 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(drift, /AWH main ahead of production/);
   assert.match(drift, /AWH main\/production divergence/);
   assert.match(drift, /PENDING_RELEASE/);
-  assert.match(drift, /AWH Owner Operating Model runtime policy drift/);
-  assert.match(drift, /AWH Owner Operating Model protocol drift/);
+  assert.match(drift, /AWH execution context runtime drift/);
+  assert.match(drift, /AWH working context drift/);
 
 });

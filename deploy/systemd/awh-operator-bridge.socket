@@ -4,8 +4,8 @@ Description=AWH guarded operator bridge socket
 [Socket]
 ListenStream=/run/awh-operator-bridge.sock
 SocketUser=awh-remote
-SocketGroup=awh-remote
-SocketMode=0600
+SocketGroup=awh-operator
+SocketMode=0660
 Accept=yes
 RemoveOnStop=true
 

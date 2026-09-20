@@ -98,5 +98,6 @@
       ],
       "purpose": "Reserved for encrypted pull-based off-site backup; not production or source authority"
     }
-  ]
+  ],
+  "mode": "ADVISORY"
 }

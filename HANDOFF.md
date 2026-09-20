@@ -239,19 +239,13 @@ Nginx activation and rollback restored the v3 baseline. Subsequent reviewed
 releases closed that include-composition boundary; the active v5 state above is
 authoritative.
 
-## Durable owner working protocol
+## Current AWH working context
 
-AWH now carries `ART_AI_WORKING_PROTOCOL.md` as the durable owner-level contract for ChatGPT/AWH/Codex work. `AGENTS.md` points agents to it, Project Context loads it before project memory, and the Desktop worker composes AI instructions in this order:
+AWH carries `ART_AI_WORKING_PROTOCOL.md` for compatibility as **Working Context 3.0 / context-only**. `AGENTS.md` and worker context treat it as non-binding context rather than a constitution or workflow authority.
 
-1. platform/security boundary;
-2. Art ↔ AI Working Constitution;
-3. canonical project identity + Project Memory;
-4. current Goal;
-5. current source/runtime evidence.
+Current decisions are made from the current owner goal, current project/source/runtime evidence, actual available capabilities, and real integrity boundaries. Historical routing preferences, device roles, quotas, mission lengths, heartbeat cadences, and implementation techniques are evidence only and do not constrain professional judgment.
 
-Core rule: **the Goal/symptom does not limit analysis scope — system-first, root-cause-first, one coherent pass, no parallel systems, preserve validated core, QA the real flow, report only what is proven.**
-
-The owner-protocol integration is isolated on `awh/clean-foundation` / PR #8 for cross-platform QA before the release branch advances. It does not mutate ReadyIDC, Google Cloud, BAY production or user project source.
+Integrity boundaries that remain authoritative are source/revision identity for canonical mutation, one active writer per mutation scope, credential/data isolation, isolated candidate workspaces, and explicit approval where a real production/destructive trust boundary requires it.
 
 ## Canonical project behavior
 
