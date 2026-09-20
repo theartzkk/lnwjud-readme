@@ -127,7 +127,7 @@ const sourceProtocol = await readFile(join(ROOT, OWNER_PROTOCOL_FILENAME), 'utf8
 const expectedProtocolVersion = /^Version:\s*([0-9]+\.[0-9]+)\s*$/m.exec(sourceProtocol)?.[1];
 assert(expectedProtocolVersion, 'source owner working protocol version is invalid');
 const packagedProtocol = asar.extractFile(asarPath, OWNER_PROTOCOL_FILENAME).toString('utf8');
-assert(/# AWH Working Context/.test(packagedProtocol) && /Mode: context-only/.test(packagedProtocol) && packaedProtocol.includes(`Version: ${expectedProtocolVersion}`), 'packaged owner working context identity is invalid');
+assert(/# AWH Working Context/.test(packagedProtocol) && /Mode: context-only/.test(packagedProtocol) && packagedProtocol.includes(`Version: ${expectedProtocolVersion}`), 'packaged owner working context identity is invalid');
 assert(/professional judgment/i.test(packagedProtocol) && /capabilit/i.test(packagedProtocol), 'packaged AWH working context is incomplete');
 const packagedDesktopHtml = asar.extractFile(asarPath, 'desktop/index.html').toString('utf8');
 assert(/id="desktop-work-thread"/.test(packagedDesktopHtml) && /id="desktop-work-input"/.test(packagedDesktopHtml), 'packaged renderer does not contain the final project Work surface');
