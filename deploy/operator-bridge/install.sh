@@ -31,14 +31,17 @@ legacy_dropin_a=0; legacy_dropin_b=0
 [ -e "$LEGACY_DROPIN_A" ] && { cp -a "$LEGACY_DROPIN_A" "$backup/legacy-dropin-a.conf"; legacy_dropin_a=1; }
 [ -e "$LEGACY_DROPIN_B" ] && { cp -a "$LEGACY_DROPIN_B" "$backup/legacy-dropin-b.conf"; legacy_dropin_b=1; }
 stage_existed=0; [ -d "$STAGE_ROOT" ] && stage_existed=1
+[ "$stage_existed" -eq 1 ] && getfacl -p "$STAGE_ROOT" >"$backup/stage-root.acl"
 setfacl -m u:awh-hub:--x "$STAGE_PARENT"
 setfacl -m u:awh-hub:rwx "$BAY_INBOX"
 install -d -o awh-remote -g awh-hub -m 2750 "$STAGE_ROOT"
+setfacl -m u:awh-hub:rwx "$STAGE_ROOT"
 install -d -o awh-hub -g awh-hub -m 0700 "$EVIDENCE_ROOT"
 runuser -u awh-remote -- test -w "$STAGE_ROOT"
 runuser -u awh-hub -- test -r "$STAGE_ROOT"
+runuser -u awh-hub -- test -w "$STAGE_ROOT"
 runuser -u awh-hub -- test -w "$EVIDENCE_ROOT"
-runuser -u awh-hub -- test -w "$BAY_INBOX"
+runuser -u awh-hub -G www-data -- test -w "$BAY_INBOX"
 [ -d /srv/awh-git ] && runuser -u bayadmin -- test -w /srv/awh-git
 for repo in awh.git bay-excuse-x.git bay-hub.git bay-learnlab.git school-website.git; do
   path="/srv/awh-git/$repo"
@@ -56,6 +59,7 @@ check=
 rollback(){
   [ -n "$check" ] && rm -f "$check" || true
   setfacl --restore="$backup/stage-parent.acl" >/dev/null 2>&1 || true
+  [ -f "$backup/stage-root.acl" ] && setfacl --restore="$backup/stage-root.acl" >/dev/null 2>&1 || true
   setfacl --restore="$backup/bay-inbox.acl" >/dev/null 2>&1 || true
   if [ "$legacy_dropin_a" -eq 1 ]; then install -d -o root -g root -m 0755 "$DROPIN_DIR"; cp -a "$backup/legacy-dropin-a.conf" "$LEGACY_DROPIN_A"; else rm -f "$LEGACY_DROPIN_A"; fi
   if [ "$legacy_dropin_b" -eq 1 ]; then install -d -o root -g root -m 0755 "$DROPIN_DIR"; cp -a "$backup/legacy-dropin-b.conf" "$LEGACY_DROPIN_B"; else rm -f "$LEGACY_DROPIN_B"; fi

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/HubBayRemoteUpdateService.php';
 require_once __DIR__ . '/HubCapabilityRegistryService.php';
+require_once __DIR__ . '/HubProjectVault.php';
 
 final class HubOperatorBridgeException extends RuntimeException
 {
@@ -16,6 +17,7 @@ final class HubOperatorBridgeService
     private const STAGE_CONFIRMATION='STAGE_BAY_UPDATE';
     private const MAX_BAY_PACKAGE_BYTES=9437184;
     private const VERIFICATION_CONFIRMATION='STORE_VERIFICATION_EVIDENCE';
+    private const VAULT_EXPORT_CONFIRMATION='EXPORT_CANONICAL_VAULT_SOURCE';
     private const MAX_VERIFICATION_DOCUMENT_BYTES=196608;
     private const SOURCE_PROMOTE_CONFIRMATION='PROMOTE_CANONICAL_MAIN';
     private const MAX_SOURCE_BUNDLE_BYTES=134217728;
@@ -49,6 +51,7 @@ final class HubOperatorBridgeService
             'project.gate'=>$this->projectGate(self::text($request,'project',160),$at),
             'verification.store'=>$this->verificationStore($request,$at),
             'verification.regressions'=>$this->verificationRegressions($request,$at),
+            'vault.export'=>$this->vaultExport($request,$at),
             'source.promote'=>$this->sourcePromote($request,$at),
             'bay.status'=>$this->bayStatus($at),
             'bay.stage'=>$this->bayStage($request,$at),
@@ -116,6 +119,29 @@ final class HubOperatorBridgeService
         $ready=!$hardBlocked;
         $state=$hardBlocked?'BLOCKED':($attention?'ATTENTION':'READY');
         return ['schemaVersion'=>1,'state'=>$state,'ready'=>$ready,'productionReady'=>$productionReady,'sourceRequired'=>$requireSource,'project'=>['projectId'=>$id,'name'=>(string)$project['name'],'type'=>(string)$project['type']],'source'=>['authority'=>$authority,'revision'=>$sourceRevision,'canonicalVaultRevisionId'=>$sourceVault,'activeVaultRevisionId'=>$activeVault,'syncState'=>$sync],'writer'=>['activeMutationCount'=>count($activeRows),'runningMutationExecutionCount'=>$runningCount,'waitingMutationCount'=>$waitingCount,'activeWorkspaceLeaseCount'=>count($workspaceRows),'activeMutations'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'state'=>(string)$r['state'],'capability'=>(string)$r['required_capability'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal']],$activeRows),'workspaceLeases'=>array_map(static fn(array $r):array=>['ownerDeviceId'=>(string)$r['owner_device_id'],'checkpointId'=>$r['checkpoint_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'updatedAt'=>(string)$r['updated_at']],$workspaceRows)],'checks'=>$checks,'observedAt'=>$at];
+    }
+
+    /** @param array<string,mixed> $request @return array<string,mixed> */
+    private function vaultExport(array $request,string $at): array
+    {
+        if(($request['confirmation']??null)!==self::VAULT_EXPORT_CONFIRMATION)throw new HubOperatorBridgeException('Explicit canonical Vault export confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
+        $keys=array_keys($request);sort($keys);if($keys!==['action','confirmation','project','schemaVersion'])throw new HubOperatorBridgeException('Canonical Vault export request is invalid','OPERATOR_REQUEST_INVALID');
+        $selector=self::text($request,'project',160);
+        $gate=$this->projectGate($selector,$at,true);
+        if(($gate['productionReady']??false)!==true)throw new HubOperatorBridgeException('Project source gate is not ready','OPERATOR_PROJECT_GATE_BLOCKED');
+        $source=is_array($gate['source']??null)?$gate['source']:[];$project=is_array($gate['project']??null)?$gate['project']:[];
+        $projectId=(string)($project['projectId']??'');$revision=(string)($source['canonicalVaultRevisionId']??'');$active=(string)($source['activeVaultRevisionId']??'');
+        if(($source['authority']??null)!=='AWH_VAULT'||($source['syncState']??null)!=='SYNCED'||preg_match('/^[0-9a-f-]{36}$/i',$projectId)!==1||preg_match('/^[0-9a-f-]{36}$/i',$revision)!==1||!hash_equals($revision,$active))throw new HubOperatorBridgeException('Canonical Vault source is not exportable','OPERATOR_PROJECT_GATE_BLOCKED');
+        $q=$this->pdo->prepare("SELECT content_sha256,state FROM control_project_vault_revisions WHERE revision_id=:revision AND project_id=:project LIMIT 1");$q->execute(['revision'=>$revision,'project'=>$projectId]);$row=$q->fetch();
+        if(!is_array($row)||($row['state']??null)!=='ACTIVE')throw new HubOperatorBridgeException('Canonical Vault revision is not active','OPERATOR_VAULT_EXPORT_UNAVAILABLE');
+        $contentSha=strtolower(trim((string)($row['content_sha256']??'')));if(preg_match('/^[a-f0-9]{64}$/',$contentSha)!==1)throw new HubOperatorBridgeException('Canonical Vault content identity is invalid','OPERATOR_VAULT_EXPORT_UNAVAILABLE');
+        $stageRoot=getenv('AWH_OPERATOR_STAGE_ROOT');if(!is_string($stageRoot)||$stageRoot==='')$stageRoot='/var/lib/awh-remote/operator-staging';
+        $vaultRoot=getenv('AWH_PROJECT_VAULT_ROOT');if(!is_string($vaultRoot)||$vaultRoot==='')$vaultRoot='/var/lib/awh-hub/project-vault';
+        $stageReal=realpath($stageRoot);$vaultReal=realpath($vaultRoot);
+        if(!is_string($stageReal)||!is_dir($stageReal)||is_link($stageRoot)||!is_writable($stageReal)||!is_string($vaultReal)||!is_dir($vaultReal)||is_link($vaultRoot))throw new HubOperatorBridgeException('Canonical Vault export roots are unavailable','OPERATOR_VAULT_EXPORT_UNAVAILABLE');
+        $stagedFile='vault-'.$revision.'-'.substr($contentSha,0,16).'-'.bin2hex(random_bytes(4)).'.zip';$destination=$stageReal.'/'.$stagedFile;
+        try{$archive=(new HubProjectVault($vaultReal))->archive($projectId,$revision,$destination);}catch(HubProjectVaultException $error){throw new HubOperatorBridgeException('Canonical Vault export failed',$error->codeName);}
+        return ['schemaVersion'=>1,'state'=>'EXPORTED','projectId'=>$projectId,'projectName'=>(string)($project['name']??''),'vaultRevisionId'=>$revision,'contentSha256'=>$contentSha,'stagedFile'=>$stagedFile,'archiveSha256'=>(string)$archive['sha256'],'sizeBytes'=>(int)$archive['sizeBytes'],'fileCount'=>(int)$archive['fileCount'],'observedAt'=>$at];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
