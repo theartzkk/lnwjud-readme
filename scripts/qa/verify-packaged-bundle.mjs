@@ -134,7 +134,10 @@ assert(/id="desktop-work-thread"/.test(packagedDesktopHtml) && /id="desktop-work
 const packagedPackage = JSON.parse(asar.extractFile(asarPath, 'package.json').toString('utf8'));
 assert(packagedPackage.version === EXPECTED_VERSION, 'packaged package version is not 1.0.0-rc.1');
 assert(packagedPackage.productName === EXPECTED_PRODUCT, 'packaged productName is not AWH');
-const runtime = platform === process.platform ? await verifyNodeMode(executable, asarPath) : { status: 'SKIP_PLATFORM', reason: `Packaged ${platform} executable cannot run on ${process.platform}` };
+let runtime;
+if (platform !== process.platform) runtime = { status: 'SKIP_PLATFORM', reason: `Packaged ${platform}/x64 executable cannot run on ${process.platform}/${process.arch}` };
+else if (process.arch !== 'x64') runtime = { status: 'SKIP_ARCH', reason: `Packaged ${platform}/x64 executable cannot run natively on ${process.platform}/${process.arch}` };
+else runtime = await verifyNodeMode(executable, asarPath);
 const artifact = await hashTree(bundle);
 assert(artifact.size < MAX_BUNDLE_BYTES, `packaged ${platform} bundle is unexpectedly large: ${artifact.size} bytes`);
 console.log(JSON.stringify({ platform, artifactPath: bundle, artifactName: platform === 'darwin' ? 'AWH.app' : 'AWH-win32-x64', artifactHash: artifact.hash, artifactSize: artifact.size, asarPath, asarHash: createHash('sha256').update(await readFile(asarPath)).digest('hex'), version: packagedPackage.version, productName: packagedPackage.productName, runtime }));
