@@ -4,11 +4,13 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { ART_AGENT_VERSION } from '../src/version.js';
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+const require = createRequire(import.meta.url);
 
 test('AWH packaging configuration keeps Squirrel per-user behavior and public artifact names', async () => {
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
@@ -60,6 +62,16 @@ test('AWH packaging configuration keeps Squirrel per-user behavior and public ar
   assert.match(packagedMcpVerifier, /resources\/app\.asar/);
   assert.match(packagedMcpVerifier, /dist\/index\.js/);
   assert.doesNotMatch(packagedMcpVerifier, /--mcp-stdio/);
+});
+
+test('desktop packaging excludes generated cross-platform release artifacts from app bundles', () => {
+  const forgeConfig = require('../forge.config.cjs') as { packagerConfig?: { ignore?: RegExp[] } };
+  const ignore = forgeConfig.packagerConfig?.ignore ?? [];
+  const isIgnored = (path: string) => ignore.some((pattern) => pattern.test(path));
+  for (const artifact of ['/AWH-macOS-x64.zip', '/AWH-Windows-x64.zip', '/AWH-macOS-arm64.release.json', '/AWH-Windows-x64.release.json', '/SHA256SUMS.txt']) {
+    assert.equal(isIgnored(artifact), true, `generated desktop release artifact must be excluded: ${artifact}`);
+  }
+  assert.equal(isIgnored('/ART_AI_WORKING_PROTOCOL.md'), false, 'required working context must remain packageable');
 });
 
 test('packaged MCP PowerShell verifier parses on Windows', { skip: process.platform !== 'win32' }, () => {

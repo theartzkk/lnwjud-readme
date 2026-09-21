@@ -83,6 +83,8 @@ module.exports = {
       /^\/coverage($|\/)/,
       /^\/dist-web($|\/)/,
       /^\/out($|\/)/,
+      /^\/AWH-(?:macOS|Windows)-[^/]+\.(?:zip|release\.json)$/,
+      /^\/SHA256SUMS\.txt$/,
       /^\/\.github($|\/)/,
       /^\/\.art-agent-build($|\/)/,
       /^\/\.awh-build($|\/)/,
