@@ -1,5 +1,5 @@
 import { access } from 'node:fs/promises';
-import { win32 as pathWin32 } from 'node:path';
+import { join, win32 as pathWin32 } from 'node:path';
 import { resolveExecutable } from './process.js';
 
 export interface WorkerToolProbeOptions {
@@ -74,6 +74,8 @@ export async function discoverWorkerTools(options: WorkerToolProbeOptions = {}):
   }
   if (platform === 'darwin') {
     const apps: Array<[string, string]> = [
+      ['/Applications/lnwjud.app/Contents/MacOS/lnwjud', 'tool.awh-device-gui'],
+      ...(typeof env.HOME === 'string' && env.HOME ? [[join(env.HOME, '.local', 'share', 'bay-remote', 'node_modules', '.bin', 'desktop-commander'), 'tool.awh-device-system'] as [string, string]] : []),
       ['/Applications/Microsoft Word.app/Contents/MacOS/Microsoft Word', 'tool.office.word'],
       ['/Applications/Microsoft Excel.app/Contents/MacOS/Microsoft Excel', 'tool.office.excel'],
       ['/Applications/Microsoft PowerPoint.app/Contents/MacOS/Microsoft PowerPoint', 'tool.office.powerpoint'],

@@ -3,6 +3,11 @@ import { execFile, resolveExecutable } from './process.js';
 
 export type CodexSandbox = 'read-only' | 'workspace-write';
 
+export interface CodexDeviceProviders {
+  guiMcpUrl?: string | null;
+  systemMcpCommand?: string | null;
+}
+
 export interface CodexStatus {
   available: boolean;
   executable: string | null;
@@ -39,6 +44,62 @@ export function buildCodexArgs(workspace: string, sandbox: CodexSandbox): string
     '--config',
     'approval_policy="never"',
   ];
+}
+
+function sanitizedCodexOutput(workspace: string, stdout: string, stderr: string, code: number): string {
+  const output = `${stdout}\n${stderr}`
+    .replaceAll(workspace, '[workspace]')
+    .replace(/(?:Bearer\s+)[A-Za-z0-9._~-]+/gi, 'Bearer [redacted]')
+    .replace(/((?:password|secret|token|api[_-]?key)\s*[=:]\s*)[^\s&]+/gi, '$1[redacted]')
+    .replace(/(?:\/Users\/|\/home\/|[A-Za-z]:[\\/])[^\s'"\`]+/g, '[path]')
+    .replace(/\blnwjud\b/gi, 'AWH Device Runtime')
+    .replace(/Desktop\s+Commander/gi, 'AWH Device Runtime')
+    .slice(-1_200);
+  return output.trim() || (code === 0 ? 'Codex task completed' : `Codex task failed with exit ${code}`);
+}
+
+function validLoopbackMcp(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(url.hostname)
+      && !url.username && !url.password && !url.search && !url.hash && url.pathname === '/mcp'
+      && Number.isInteger(Number(url.port)) && Number(url.port) >= 1024 && Number(url.port) <= 65535;
+  } catch { return false; }
+}
+
+function validAbsoluteExecutable(value: string): boolean {
+  return value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value);
+}
+
+export function buildCodexDeviceArgs(workspace: string, providers: CodexDeviceProviders): string[] {
+  const args = [
+    'exec',
+    '--experimental-json',
+    '--ignore-user-config',
+    '--ephemeral',
+    '--approve-for-me',
+    '--skip-git-repo-check',
+    '--cd',
+    workspace,
+    '--config',
+    'web_search="disabled"',
+  ];
+  let count = 0;
+  if (providers.guiMcpUrl) {
+    if (!validLoopbackMcp(providers.guiMcpUrl)) throw new Error('AWH device GUI MCP endpoint is invalid');
+    args.push('--config', `mcp_servers.awh_device_gui.url=${JSON.stringify(providers.guiMcpUrl)}`);
+    args.push('--config', 'mcp_servers.awh_device_gui.enabled=true');
+    count += 1;
+  }
+  if (providers.systemMcpCommand) {
+    if (!validAbsoluteExecutable(providers.systemMcpCommand) || /[\u0000-\u001f\u007f]/.test(providers.systemMcpCommand)) throw new Error('AWH device system MCP executable is invalid');
+    args.push('--config', `mcp_servers.awh_device_system.command=${JSON.stringify(providers.systemMcpCommand)}`);
+    args.push('--config', 'mcp_servers.awh_device_system.args=[]');
+    args.push('--config', 'mcp_servers.awh_device_system.enabled=true');
+    count += 1;
+  }
+  if (count === 0) throw new Error('AWH device runtime is unavailable');
+  return args;
 }
 
 export function codexEnvironment(): NodeJS.ProcessEnv {
@@ -94,11 +155,12 @@ export async function runCodexGoal(workspace: string, instruction: string, sandb
   if (typeof instruction !== 'string' || !instruction.trim() || instruction.length > MAX_CODEX_INSTRUCTION_CHARS || codexInstructionContainsUnsafeControl(instruction) || codexInstructionContainsSecretValue(instruction)) throw new Error('Codex instruction is invalid');
   const executable = await resolveCodexExecutable();
   const result = await execFile(executable, [...buildCodexArgs(workspace, sandbox), instruction.trim()], workspace, 15 * 60_000, codexEnvironment());
-  const output = `${result.stdout}\n${result.stderr}`
-    .replaceAll(workspace, '[workspace]')
-    .replace(/(?:Bearer\s+)[A-Za-z0-9._~-]+/gi, 'Bearer [redacted]')
-    .replace(/((?:password|secret|token|api[_-]?key)\s*[=:]\s*)[^\s&]+/gi, '$1[redacted]')
-    .replace(/(?:\/Users\/|\/home\/|[A-Za-z]:[\\/])[^\s'"`]+/g, '[path]')
-    .slice(-1_200);
-  return { code: result.code, summary: output.trim() || (result.code === 0 ? 'Codex task completed' : `Codex task failed with exit ${result.code}`) };
+  return { code: result.code, summary: sanitizedCodexOutput(workspace, result.stdout, result.stderr, result.code) };
+}
+
+export async function runCodexDeviceGoal(workspace: string, instruction: string, providers: CodexDeviceProviders): Promise<{ code: number; summary: string }> {
+  if (typeof instruction !== 'string' || !instruction.trim() || instruction.length > MAX_CODEX_INSTRUCTION_CHARS || codexInstructionContainsUnsafeControl(instruction) || codexInstructionContainsSecretValue(instruction)) throw new Error('Codex instruction is invalid');
+  const executable = await resolveCodexExecutable();
+  const result = await execFile(executable, [...buildCodexDeviceArgs(workspace, providers), instruction.trim()], workspace, 15 * 60_000, codexEnvironment());
+  return { code: result.code, summary: sanitizedCodexOutput(workspace, result.stdout, result.stderr, result.code) };
 }

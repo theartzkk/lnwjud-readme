@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { lstat, mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { AutopilotRunner, detectLocalCapabilities } from './autopilot.js';
-import { codexStatus, runCodexGoal } from './codex.js';
+import { codexStatus, runCodexDeviceGoal, runCodexGoal } from './codex.js';
+import { deviceProvidersForCapability, discoverAwhDeviceRuntime } from './device-runtime.js';
 import { loadOrCreateDeviceIdentity } from './device-identity.js';
 import { createCheckpoint } from './changes.js';
 import { createContinuityCheckpoint } from './continuity.js';
@@ -33,7 +34,7 @@ export type WorkerRunResult =
   | { status: 'FAILED'; taskId: string; projectId: string; reason: string };
 
 function boundedSummary(value: string): string {
-  return value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/(?:Bearer\s+)[A-Za-z0-9._~-]+/gi, 'Bearer [redacted]').replace(/((?:password|secret|token|api[_-]?key)\s*[=:]\s*)[^\s&]+/gi, '$1[redacted]').slice(0, 500);
+  return value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/(?:Bearer\s+)[A-Za-z0-9._~-]+/gi, 'Bearer [redacted]').replace(/((?:password|secret|token|api[_-]?key)\s*[=:]\s*)[^\s&]+/gi, '$1[redacted]').replace(/\blnwjud\b/gi, 'AWH Device Runtime').replace(/Desktop\s+Commander/gi, 'AWH Device Runtime').slice(0, 500);
 }
 
 export function isMutationGoal(goal: string): boolean { return MUTATION_GOAL.test(goal); }
@@ -130,6 +131,13 @@ export function officeExecutionCapabilities(platform: NodeJS.Platform | string, 
   ];
 }
 
+export function deviceExecutionCapabilities(tools: readonly string[]): string[] {
+  return [
+    ...(tools.includes('tool.awh-device-gui') ? ['device.screen.inspect', 'device.gui.inspect', 'device.gui.operate', 'browser.automation'] : []),
+    ...(tools.includes('tool.awh-device-system') ? ['workspace.files', 'system.shell', 'device.process'] : []),
+  ];
+}
+
 export async function workerCapabilities(dataDir: string, allowCodex = true): Promise<string[]> {
   const local = await detectLocalCapabilities(dataDir).catch(() => ({ git: false, node: false, php: false, ffmpeg: false, remotion: false, browsers: [] }));
   const codex = allowCodex ? await codexStatus(dataDir).catch(() => ({ available: false, version: null })) : { available: false, version: null };
@@ -140,6 +148,7 @@ export async function workerCapabilities(dataDir: string, allowCodex = true): Pr
     ...(local.php ? ['php:lint'] : []), ...(local.ffmpeg ? ['ffmpeg:probe'] : []),
     ...(local.remotion ? ['remotion'] : []),
     ...officeExecutionCapabilities(process.platform, tools),
+    ...deviceExecutionCapabilities(tools),
     ...(codex.available ? ['codex:cli'] : []),
   ];
   if (codex.available) tools.push('tool.codex');
@@ -229,6 +238,7 @@ export class ControlPlaneWorkerRuntime {
   private async execute(task: WorkerTask, deviceId: string, capabilities: string[]): Promise<WorkerRunResult> {
     if (task.execution?.executorKind === 'CODEX' && task.execution.requiredCapability === 'codex:cli' && task.execution.vaultRevisionId !== null) return this.executeCentralCodex(task, capabilities);
     if (task.execution?.executorKind === 'DEVICE' && /^office\.(?:word|excel|powerpoint)\.pdf$/.test(task.execution.requiredCapability)) return this.executeOfficePdf(task, capabilities);
+    if (task.execution?.executorKind === 'DEVICE' && /^(?:device\.(?:screen\.inspect|gui\.(?:inspect|operate)|process)|browser\.automation|workspace\.files|system\.shell)$/.test(task.execution.requiredCapability)) return this.executeDeviceAutomation(task, capabilities);
     // A bounded lease is what prevents two workers from mutating one task. A
     // Codex run can legitimately exceed the initial five-minute lease, so the
     // already-authenticated worker renews it while it owns the task. Failure
@@ -354,6 +364,59 @@ export class ControlPlaneWorkerRuntime {
       await this.safeUpdate(task, 'FAILED', 0, 'Worker execution failed safely', 'WORKER_EXECUTION_FAILED');
       return { status: 'FAILED', taskId: task.taskId, projectId: task.projectId, reason: boundedSummary(error instanceof Error ? error.message : 'WORKER_EXECUTION_FAILED') };
     } finally { clearInterval(leaseHeartbeat); }
+  }
+
+  /** Provider-neutral device automation. AWH remains the authority; local MCP
+   * providers are implementation details selected by Codex from the device's
+   * configured tool surface. No local source mutation is implied by this path. */
+  private async executeDeviceAutomation(task: WorkerTask, capabilities: string[]): Promise<WorkerRunResult> {
+    const execution = task.execution;
+    if (!execution || execution.executorKind !== 'DEVICE') return { status: 'FAILED', taskId: task.taskId, projectId: task.projectId, reason: 'DEVICE_EXECUTION_INVALID' };
+    if (!this.options.allowExec || !this.options.allowCodex || !capabilities.includes(execution.requiredCapability)) {
+      await this.client.deferCentralExecution(execution.executionId, 'DEVICE_CAPABILITY_UNAVAILABLE').catch(() => undefined);
+      return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason: 'DEVICE_CAPABILITY_UNAVAILABLE' };
+    }
+    const root = join(this.options.dataDir, 'device-task-workspaces', execution.executionId);
+    const heartbeat = setInterval(() => { void this.client.heartbeat(capabilities, 'WORKING').catch(() => undefined); }, 60_000); heartbeat.unref?.();
+    try {
+      await mkdir(root, { recursive: true, mode: 0o700 });
+      await this.client.update(task.taskId, 'RUNNING', 20, 'AWH กำลังใช้อุปกรณ์ที่เชื่อมต่อเพื่อตรวจงานจริง');
+      const instruction = [
+        'AWH DEVICE EXECUTION — PROVIDER-NEUTRAL',
+        'You are executing one already-authorized AWH device task. AWH Cloud remains the task, identity, approval, project and result authority.',
+        'Use the available device MCP tools only as needed. Prefer semantic UI/accessibility for native controls, visual capture for actual appearance, browser automation for web interactions, and the device system provider for files/process/shell work.',
+        'Do not create another queue, login, memory store, database, control plane or parallel source authority. Do not alter project source unless the current owner goal explicitly requires it and the existing AWH approval/source boundary permits it.',
+        'When visual quality is part of the goal, inspect the real rendered screen before concluding and re-inspect after any visible change.',
+        'Never expose upstream provider/product names in the user-facing result; refer to them collectively as AWH Device Runtime.',
+        'CURRENT OWNER GOAL',
+        task.goal.trim(),
+        'VERIFICATION',
+        'Verify the requested outcome on the real device. Return a concise factual result with what was observed or changed and any remaining blocker.'
+      ].join('\n\n');
+      const runtime = await discoverAwhDeviceRuntime();
+      const required = deviceProvidersForCapability(execution.requiredCapability);
+      const providers = {
+        guiMcpUrl: required.gui ? runtime.guiMcpUrl : null,
+        systemMcpCommand: required.system ? runtime.systemMcpCommand : null,
+      };
+      if ((required.gui && !providers.guiMcpUrl) || (required.system && !providers.systemMcpCommand)) {
+        await this.client.deferCentralExecution(execution.executionId, 'DEVICE_CAPABILITY_UNAVAILABLE').catch(() => undefined);
+        return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason: 'DEVICE_CAPABILITY_UNAVAILABLE' };
+      }
+      const codex = await runCodexDeviceGoal(root, instruction, providers);
+      if (codex.code !== 0) throw new Error('DEVICE_AUTOMATION_FAILED');
+      await this.client.update(task.taskId, 'QA', 85, 'AWH กำลังตรวจผลลัพธ์บนอุปกรณ์จริง');
+      const summary = boundedSummary(codex.summary || 'ตรวจและดำเนินงานบนอุปกรณ์ที่เชื่อมต่อเรียบร้อย');
+      await this.client.update(task.taskId, 'COMPLETED', 100, 'ตรวจผลบนอุปกรณ์จริงเรียบร้อย', summary);
+      return { status: 'COMPLETED', taskId: task.taskId, projectId: task.projectId, artifact: null };
+    } catch (error) {
+      const reason = boundedSummary(error instanceof Error ? error.message : 'DEVICE_AUTOMATION_FAILED');
+      await this.client.deferCentralExecution(execution.executionId, 'DEVICE_EXECUTION_FAILED').catch(() => undefined);
+      return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason };
+    } finally {
+      clearInterval(heartbeat);
+      await rm(root, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 
   /** Office export is a non-mutating device capability. The source file is

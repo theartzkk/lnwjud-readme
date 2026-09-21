@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { ControlPlaneWorkerClient, type WorkerProject, type WorkerTask } from '../src/control-plane-worker-client.js';
-import { buildCodexTaskInstruction, ownerWorkProfileInstruction, ControlPlaneWorkerRuntime, officeExecutionCapabilities } from '../src/control-plane-worker-runtime.js';
+import { buildCodexTaskInstruction, deviceExecutionCapabilities, ownerWorkProfileInstruction, ControlPlaneWorkerRuntime, officeExecutionCapabilities } from '../src/control-plane-worker-runtime.js';
 import { loadOrCreateDeviceIdentity } from '../src/device-identity.js';
 import { execCommand } from '../src/process.js';
 import type { CredentialStore } from '../src/credential-store.js';
@@ -239,4 +239,19 @@ test('owner work profile turns route evidence into explicit worker behavior with
   assert.match(instruction, /Permanent root-cause repair required.*YES/);
   assert.match(instruction, /verify both sides/);
   assert.match(instruction, /device-state=YES, server-state=YES/);
+});
+
+
+test('device execution capabilities stay provider-neutral and reflect actual runtime inventory', () => {
+  assert.deepEqual(deviceExecutionCapabilities([]), []);
+  assert.deepEqual(deviceExecutionCapabilities(['tool.awh-device-gui']), [
+    'device.screen.inspect', 'device.gui.inspect', 'device.gui.operate', 'browser.automation',
+  ]);
+  assert.deepEqual(deviceExecutionCapabilities(['tool.awh-device-system']), [
+    'workspace.files', 'system.shell', 'device.process',
+  ]);
+  assert.deepEqual(deviceExecutionCapabilities(['tool.awh-device-gui', 'tool.awh-device-system']), [
+    'device.screen.inspect', 'device.gui.inspect', 'device.gui.operate', 'browser.automation',
+    'workspace.files', 'system.shell', 'device.process',
+  ]);
 });

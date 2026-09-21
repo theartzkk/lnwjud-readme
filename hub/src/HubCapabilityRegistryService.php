@@ -63,7 +63,8 @@ final class HubCapabilityRegistryService
     public function syncDeviceWorker(string $deviceId, array $advertisedCapabilities, string $state, string $now): void
     {
         self::uuid($deviceId); $state = strtoupper($state); if (!in_array($state,['READY','WORKING','OFFLINE'],true)) throw new HubCapabilityRegistryException('Worker state is invalid', 'CAPABILITY_PROVIDER_INVALID');
-        $mapped = $this->mapWorkerCapabilities($advertisedCapabilities); $at = self::timestamp($now); $expires = gmdate('c', strtotime($at) + 180);
+        $at = self::timestamp($now); $this->ensureDeviceFabricCatalog($at);
+        $mapped = $this->mapWorkerCapabilities($advertisedCapabilities); $expires = gmdate('c', strtotime($at) + 180);
         if ($state === 'OFFLINE') {
             $this->pdo->prepare('UPDATE control_execution_providers SET enabled=0, observed_at=:at, expires_at=:at WHERE provider_id=:id')->execute(['at'=>$at,'id'=>'device:'.$deviceId]);
             return;
@@ -272,6 +273,21 @@ final class HubCapabilityRegistryService
             'ownerApprovalForCanonicalPromotion'=>true,
             'actualOutcomeVerification'=>true,
         ];
+    }
+
+    /** Built-in provider-neutral capability labels. The catalog is operational
+     * metadata, so new device capabilities can be registered idempotently
+     * without advancing the persistent DB schema or creating another authority. */
+    private function ensureDeviceFabricCatalog(string $at): void
+    {
+        $rows = [
+            ['device.screen.inspect','device','ตรวจหน้าจอจริง','ตรวจภาพหน้าจอจากอุปกรณ์ที่เชื่อมต่อ','READ','LOW'],
+            ['device.gui.inspect','device','ตรวจ UI บนอุปกรณ์','อ่านหน้าต่างและองค์ประกอบ UI โดยไม่เปลี่ยนสถานะ','READ','LOW'],
+            ['device.gui.operate','device','ควบคุม UI บนอุปกรณ์','โต้ตอบกับโปรแกรมบนอุปกรณ์ตามงานที่ผู้ใช้สั่ง','EXECUTE','MEDIUM'],
+            ['device.process','device','จัดการโปรเซสอุปกรณ์','ตรวจและควบคุมโปรเซสบนอุปกรณ์ที่เชื่อมต่อ','EXECUTE','HIGH'],
+        ];
+        $insert = $this->pdo->prepare("INSERT OR IGNORE INTO control_capability_catalog(capability,source_id,category,display_name,description,mutation_kind,risk_class,maturity,user_visible,enabled,created_at,updated_at) VALUES(:cap,'awh-core',:category,:name,:description,:mutation,:risk,'OPTIONAL',1,1,:at,:at)");
+        foreach ($rows as $row) $insert->execute(['cap'=>$row[0],'category'=>$row[1],'name'=>$row[2],'description'=>$row[3],'mutation'=>$row[4],'risk'=>$row[5],'at'=>$at]);
     }
 
     /** @return list<string> */

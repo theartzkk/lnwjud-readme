@@ -1075,20 +1075,25 @@ final class HubControlPlaneService
                 $taskKey = 'conversation-' . $idempotency;
                 $effectiveGoal = $this->resolveConversationGoal((string) $conversation['conversation_id'], $message);
                 $officeRequest = $this->officeExportRequest($effectiveGoal, $attachmentIds, $userId, $projectId, $messageId);
+                $deviceRequest = self::deviceAutomationRequest($effectiveGoal);
                 $vaultRevision = $this->centralVaultRevision($projectId);
-                $serverInspection = $vaultRevision !== null && self::isServerInspection($effectiveGoal);
-                $serverTextMutation = $vaultRevision !== null && self::isServerTextNormalization($effectiveGoal);
-                $serverAssistedEdit = $vaultRevision !== null && self::isServerAssistedEdit($effectiveGoal);
+                $serverInspection = $deviceRequest === null && $vaultRevision !== null && self::isServerInspection($effectiveGoal);
+                $serverTextMutation = $deviceRequest === null && $vaultRevision !== null && self::isServerTextNormalization($effectiveGoal);
+                $serverAssistedEdit = $deviceRequest === null && $vaultRevision !== null && self::isServerAssistedEdit($effectiveGoal);
                 $taskState = ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'QUEUED' : 'WAITING_FOR_WORKER';
                 $insert = $this->pdo->prepare('INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, :state, NULL, NULL, 0, NULL, NULL, :key, :conversation, :created, :updated, NULL)');
                 $insert->execute(['id' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $effectiveGoal, 'state' => $taskState, 'key' => $taskKey, 'conversation' => $conversation['conversation_id'], 'created' => $at, 'updated' => $at]);
                 if ($officeRequest !== null && $this->centralProjectAuthoritySchemaPresent()) {
                     $officeCheckpoint = self::withCapabilityPlan(['mode' => 'OFFICE_TO_PDF', 'attachmentId' => $officeRequest['attachmentId']], $effectiveGoal, $attachmentIds !== []);
                     $this->execution->enqueue($taskId, $projectId, null, 'DEVICE', $officeRequest['capability'], $officeCheckpoint, $at);
+                } elseif ($deviceRequest !== null && $this->centralProjectAuthoritySchemaPresent()) {
+                    $deviceCheckpoint = self::withCapabilityPlan(['mode' => 'AWH_DEVICE_AUTOMATION', 'deviceMode' => $deviceRequest['mode']], $effectiveGoal, $attachmentIds !== []);
+                    $this->execution->enqueue($taskId, $projectId, null, 'DEVICE', $deviceRequest['capability'], $deviceCheckpoint, $at);
                 } elseif ($vaultRevision !== null) {
                     $checkpoint = self::withCapabilityPlan(['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverAssistedEdit ? 'PROJECT_ASSISTED_EDIT' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST'))], $effectiveGoal, $attachmentIds !== []); $autoSteps = self::agentLoopSteps($effectiveGoal); if ($autoSteps !== null) $checkpoint['continuation'] = ['enabled'=>true,'rootTaskId'=>$taskId,'step'=>0,'maxSteps'=>$autoSteps]; $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverAssistedEdit ? 'project.mutate.assisted' : ($serverInspection ? 'project.read' : 'codex:cli')), $checkpoint, $at);
                 }
-                $this->event($taskId, $taskState, 0, $officeRequest !== null ? 'waiting for Office PDF capability' : ($serverInspection ? 'server inspection queued' : ($serverTextMutation ? 'server text transform queued' : 'specialist execution recorded')), $at);
+                $eventMessage = $officeRequest !== null ? 'waiting for Office PDF capability' : ($deviceRequest !== null ? 'waiting for connected device capability' : ($serverInspection ? 'server inspection queued' : ($serverTextMutation ? 'server text transform queued' : 'specialist execution recorded')));
+                $this->event($taskId, $taskState, 0, $eventMessage, $at);
                 $this->pdo->prepare('UPDATE control_conversations SET last_task_id = :task, updated_at = :at WHERE conversation_id = :conversation')->execute(['task' => $taskId, 'at' => $at, 'conversation' => $conversation['conversation_id']]);
             }
 
@@ -2153,15 +2158,16 @@ final class HubControlPlaneService
         $at = self::timestamp($now ?? gmdate('c')); $row = $this->ownedLeasedSpecialistExecution($token, $deviceId, $executionId, $at); $code = self::portableText((string) ($payload['code'] ?? ''), 'code', 80);
         try {
             $this->pdo->exec('BEGIN IMMEDIATE');
-            $terminal = (int) $row['attempt_count'] >= 3 && !in_array($code, ['CODEX_UNAVAILABLE', 'OFFICE_UNAVAILABLE'], true);
-            $office = (string) $row['executor_kind'] === 'DEVICE';
+            $terminal = (int) $row['attempt_count'] >= 3 && !in_array($code, ['CODEX_UNAVAILABLE', 'OFFICE_UNAVAILABLE', 'DEVICE_CAPABILITY_UNAVAILABLE'], true);
+            $office = (string) $row['executor_kind'] === 'DEVICE' && preg_match('/^office\.(?:word|excel|powerpoint)\.pdf$/',(string)$row['required_capability'])===1;
+            $device = (string) $row['executor_kind'] === 'DEVICE' && !$office;
             $q = $this->pdo->prepare("UPDATE control_task_executions SET state = :state, lease_owner = NULL, lease_expires_at = NULL, last_error_code = :code, updated_at = :at WHERE execution_id = :execution AND state = 'RUNNING' AND lease_owner = :device"); $q->execute(['state' => $terminal ? 'FAILED' : 'WAITING_FOR_CAPABILITY', 'code' => $code, 'at' => $at, 'execution' => $row['execution_id'], 'device' => strtolower($deviceId)]);
             if ($q->rowCount() !== 1) throw new HubControlPlaneException('Central task lease was lost', 'TASK_UPDATE_RACE');
-            $summary = $terminal ? ($office ? 'การแปลงเอกสารไม่สำเร็จหลังจากลองอย่างปลอดภัยครบขีดจำกัด ไฟล์ต้นฉบับไม่ได้ถูกเปลี่ยน' : 'Codex ทำงานไม่สำเร็จหลังจากลองอย่างปลอดภัยครบขีดจำกัด Project Vault หลักยังไม่ถูกเปลี่ยน') : ($office ? 'งานถูกเก็บไว้และกำลังรออุปกรณ์ Windows ที่มี Office พร้อมใช้งาน' : 'งานถูกเก็บไว้และกำลังรอ Codex/worker ที่พร้อม');
+            $summary = $terminal ? ($office ? 'การแปลงเอกสารไม่สำเร็จหลังจากลองอย่างปลอดภัยครบขีดจำกัด ไฟล์ต้นฉบับไม่ได้ถูกเปลี่ยน' : ($device ? 'งานบนอุปกรณ์ไม่สำเร็จหลังจากลองอย่างปลอดภัยครบขีดจำกัด และ AWH ไม่ได้สร้างระบบหรือคิวสำรอง' : 'Codex ทำงานไม่สำเร็จหลังจากลองอย่างปลอดภัยครบขีดจำกัด Project Vault หลักยังไม่ถูกเปลี่ยน')) : ($office ? 'งานถูกเก็บไว้และกำลังรออุปกรณ์ Windows ที่มี Office พร้อมใช้งาน' : ($device ? 'งานถูกเก็บไว้และกำลังรออุปกรณ์ที่มีความสามารถตรงกับงานกลับมาออนไลน์' : 'งานถูกเก็บไว้และกำลังรอ Codex/worker ที่พร้อม'));
             $this->pdo->prepare("UPDATE control_tasks SET state = :state, assigned_device_id = NULL, lease_expires_at = NULL, progress = 0, failure_code = :code, result_summary = :summary, updated_at = :at WHERE task_id = :task")->execute(['state' => $terminal ? 'FAILED' : 'WAITING_FOR_WORKER', 'code' => $code, 'summary' => $summary, 'at' => $at, 'task' => $row['task_id']]);
             $this->pdo->prepare("UPDATE control_workers SET state = 'READY', busy_task_id = NULL, last_seen_at = :at WHERE device_id = :device")->execute(['at' => $at, 'device' => strtolower($deviceId)]);
             if ($this->capabilities !== null) $this->capabilities->updateEnvelopeState((string) $row['execution_id'], $terminal ? 'RELEASED' : 'WAITING', null, $at);
-            $eventState = $terminal ? 'FAILED' : 'WAITING_FOR_WORKER'; $eventId = $this->event((string) $row['task_id'], $eventState, 0, $terminal ? 'specialist execution failed safely' : 'waiting for specialist capability', $at); $this->syncConversationEvent((string) $row['task_id'], $eventId, $eventState, 0, $terminal ? ($office ? 'การแปลงเอกสารหยุดอย่างปลอดภัย และต้นฉบับไม่ถูกเปลี่ยน' : 'Codex ทำงานไม่สำเร็จอย่างปลอดภัย และไม่ได้เปลี่ยน Project หลัก') : ($office ? 'กำลังรออุปกรณ์ Windows ที่มี Office แล้ว AWH จะทำงานต่ออัตโนมัติ' : 'Codex ยังไม่พร้อม งานถูกเก็บไว้และจะทำต่ออัตโนมัติเมื่อ worker ที่เหมาะสมกลับมา'), null, $at);
+            $eventState = $terminal ? 'FAILED' : 'WAITING_FOR_WORKER'; $eventId = $this->event((string) $row['task_id'], $eventState, 0, $terminal ? 'specialist execution failed safely' : 'waiting for specialist capability', $at); $this->syncConversationEvent((string) $row['task_id'], $eventId, $eventState, 0, $terminal ? ($office ? 'การแปลงเอกสารหยุดอย่างปลอดภัย และต้นฉบับไม่ถูกเปลี่ยน' : ($device ? 'งานบนอุปกรณ์หยุดอย่างปลอดภัย โดยงาน Cloud และข้อมูลหลักยังอยู่ตามเดิม' : 'Codex ทำงานไม่สำเร็จอย่างปลอดภัย และไม่ได้เปลี่ยน Project หลัก')) : ($office ? 'กำลังรออุปกรณ์ Windows ที่มี Office แล้ว AWH จะทำงานต่ออัตโนมัติ' : ($device ? 'กำลังรออุปกรณ์ที่เหมาะสม แล้ว AWH จะทำงานต่อจากงานเดิมอัตโนมัติ' : 'Codex ยังไม่พร้อม งานถูกเก็บไว้และจะทำต่ออัตโนมัติเมื่อ worker ที่เหมาะสมกลับมา')), null, $at);
             $this->pdo->exec('COMMIT');
         } catch (Throwable $error) { self::rollbackImmediate($this->pdo); if ($error instanceof HubControlPlaneException) throw $error; throw new HubControlPlaneException('Central task could not be deferred', 'TASK_UPDATE_FAILED'); }
         return $this->taskById((string) $row['task_id'], (string) $row['user_id']);
@@ -2175,7 +2181,8 @@ final class HubControlPlaneService
         $q->execute(['device' => $auth['deviceId'], 'execution' => $executionId, 'now' => self::timestamp($now ?? gmdate('c')), 'user' => $auth['userId']]); $row = $q->fetch();
         if (!is_array($row)) throw new HubControlPlaneException('Specialist task is not assigned to this worker', 'TASK_FORBIDDEN');
         $kind = (string) $row['executor_kind']; $required = (string) $row['required_capability'];
-        if (!(($kind === 'CODEX' && $required === 'codex:cli') || ($kind === 'DEVICE' && preg_match('/^office\.(?:word|excel|powerpoint)\.pdf$/', $required) === 1))) throw new HubControlPlaneException('Specialist task capability is invalid', 'TASK_FORBIDDEN');
+        $deviceAllowed = $kind === 'DEVICE' && preg_match('/^(?:office\.(?:word|excel|powerpoint)\.pdf|device\.(?:screen\.inspect|gui\.(?:inspect|operate)|process)|browser\.automation|workspace\.files|system\.shell)$/', $required) === 1;
+        if (!(($kind === 'CODEX' && $required === 'codex:cli') || $deviceAllowed)) throw new HubControlPlaneException('Specialist task capability is invalid', 'TASK_FORBIDDEN');
         return $row;
     }
 
@@ -2485,6 +2492,22 @@ final class HubControlPlaneService
             if ($update->rowCount() !== 1) throw new HubControlPlaneException('Task update raced with another worker', 'TASK_UPDATE_RACE');
             $eventId = $this->event($taskId, $state, $progress, $message, $at);
             $this->syncConversationEvent($taskId, $eventId, $state, $progress, $message, $result, $at);
+            if ($this->centralProjectAuthoritySchemaPresent() && ($terminal || $releaseWorker)) {
+                $execution = $this->pdo->prepare("SELECT execution_id,executor_kind,required_capability,state,lease_owner FROM control_task_executions WHERE task_id=:task");
+                $execution->execute(['task'=>$taskId]); $executionRow=$execution->fetch();
+                $genericDevice = is_array($executionRow)
+                    && (string)$executionRow['executor_kind']==='DEVICE'
+                    && preg_match('/^(?:device\.(?:screen\.inspect|gui\.(?:inspect|operate)|process)|browser\.automation|workspace\.files|system\.shell)$/',(string)$executionRow['required_capability'])===1
+                    && (string)$executionRow['state']==='RUNNING'
+                    && is_string($executionRow['lease_owner']??null)
+                    && hash_equals(strtolower((string)$executionRow['lease_owner']),strtolower((string)$auth['deviceId']));
+                if ($genericDevice) {
+                    $executionState = $terminal ? ($state==='COMPLETED'?'COMPLETED':'FAILED') : 'WAITING_FOR_CAPABILITY';
+                    $errorCode = $executionState==='FAILED'?'DEVICE_EXECUTION_FAILED':null;
+                    $this->pdo->prepare("UPDATE control_task_executions SET state=:state,lease_owner=NULL,lease_expires_at=NULL,last_error_code=:code,updated_at=:at WHERE execution_id=:execution AND state='RUNNING' AND lease_owner=:device")->execute(['state'=>$executionState,'code'=>$errorCode,'at'=>$at,'execution'=>$executionRow['execution_id'],'device'=>$auth['deviceId']]);
+                    if ($this->capabilities !== null) $this->capabilities->updateEnvelopeState((string)$executionRow['execution_id'],$terminal?'RELEASED':'WAITING',null,$at);
+                }
+            }
             if ($terminal || $releaseWorker) $this->pdo->prepare('UPDATE control_workers SET state = \'READY\', busy_task_id = NULL, last_seen_at = :at WHERE device_id = :device')->execute(['at' => $at, 'device' => $auth['deviceId']]);
             if ($needsApproval) { $check = $this->pdo->prepare("SELECT 1 FROM control_approvals WHERE task_id = :task AND status = 'PENDING'"); $check->execute(['task' => $taskId]); if ($check->fetchColumn() === false) $this->pdo->prepare('INSERT INTO control_approvals(approval_id, task_id, action, scope_json, status, expires_at, decided_at) VALUES(:id, :task, :action, :scope, \'PENDING\', :expires, NULL)')->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'task' => $taskId, 'action' => 'task.execute', 'scope' => json_encode(['taskId' => $taskId, 'projectId' => (string) $row['project_id'], 'goalDigest' => hash('sha256', (string) $row['goal'])], JSON_THROW_ON_ERROR), 'expires' => gmdate('c', strtotime($at) + 3600)]); }
             $this->pdo->exec('COMMIT');
@@ -3136,6 +3159,31 @@ final class HubControlPlaneService
         }
         return false;
     }
+    /** Route only requests that explicitly depend on a connected real device.
+     * Ordinary web/cloud work remains web-first and never requires an Agent. */
+    private static function deviceAutomationRequest(string $message): ?array
+    {
+        $value = trim($message);
+        $server = preg_match('/(?:\bvps\b|server|nginx|php[- ]?fpm|systemd|database|\bdb\b|deploy|deployment|production|migration|schema|เซิร์ฟเวอร์|ฐานข้อมูล|ดีพลอย)/iu', $value) === 1;
+        $sourceMutation = self::hasUnnegatedMutationSignal($value) && preg_match('/(?:source|repo|repository|project|โปรเจกต์|โค้ด|code|git|branch|commit|ไฟล์โปรเจกต์)/iu', $value) === 1;
+        if ($server || $sourceMutation) return null;
+
+        $namedDevice = preg_match('/(?:ART[- ]MAC[- ](?:INTEL|M5)|\bintel\b|\bm5\b|macbook|mac\s*(?:intel|m5)|เครื่อง(?:นี้|จริง|intel|m5|ครู|นักเรียน)|คอม(?:พิวเตอร์)?(?:เครื่องนี้)?)/iu', $value) === 1;
+        $screen = preg_match('/(?:หน้าจอ(?:จริง)?|screen|display|screenshot|ภาพหน้าจอ|visual preview|preview จริง)/iu', $value) === 1;
+        $nativeApp = preg_match('/(?:after effects?|photoshop|premiere|remotion studio|finder|word|excel|powerpoint|โปรแกรม(?:บน)?เครื่อง|native app|\bgui\b|accessibility)/iu', $value) === 1;
+        $localFiles = preg_match('/(?:ไฟล์(?:ใน|บน)เครื่อง|local files?|folder(?: on device)?|โฟลเดอร์(?:ใน|บน)เครื่อง)/iu', $value) === 1;
+        $process = preg_match('/(?:terminal|shell|process|service|เปิด process|ปิด process|คำสั่งระบบ)/iu', $value) === 1;
+        $browserOnDevice = preg_match('/(?:เปิด|ใช้|ทดสอบ|เข้า|กด).{0,40}(?:chrome|safari|edge|browser|เว็บ).{0,40}(?:บนเครื่อง|บน intel|บน m5|เครื่องจริง)|(?:chrome|safari|edge|browser).{0,40}(?:บนเครื่อง|บน intel|บน m5|เครื่องจริง)/iu', $value) === 1;
+
+        if (!$namedDevice && !$screen && !$nativeApp && !$localFiles && !$process && !$browserOnDevice) return null;
+        if ($localFiles) return ['capability'=>'workspace.files','mode'=>'FILES'];
+        if ($process) return ['capability'=>'device.process','mode'=>'PROCESS'];
+        if ($browserOnDevice) return ['capability'=>'browser.automation','mode'=>'BROWSER'];
+        if ($screen && !self::hasUnnegatedMutationSignal($value) && !$nativeApp) return ['capability'=>'device.screen.inspect','mode'=>'SCREEN_INSPECT'];
+        if (($screen || $nativeApp) && !self::hasUnnegatedMutationSignal($value)) return ['capability'=>'device.gui.inspect','mode'=>'GUI_INSPECT'];
+        return ['capability'=>'device.gui.operate','mode'=>'GUI_OPERATE'];
+    }
+
     private static function isServerInspection(string $message): bool { $value = preg_replace('/^(?:(?:ช่วย|กรุณา|โปรด)\s*)+/iu', '', trim($message)) ?? trim($message); return preg_match('/^(?:ตรวจ|วิเคราะห์|ดู|สรุป|สถานะ|ค้นหา|อ่าน|inspect|review|summari[sz]e|status|search|read)(?:หน่อย|ให้|ที|ดู)?(?:\s|$|[ก-๙])/iu', $value) === 1 && !self::hasUnnegatedMutationSignal($value); }
     /** Safe text/code changes can run on the canonical VPS Vault without a local device. */
     private static function isServerAssistedEdit(string $message): bool

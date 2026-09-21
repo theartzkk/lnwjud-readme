@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildCodexArgs, codexEnvironment, codexInstructionContainsSecretValue, codexInstructionContainsUnsafeControl } from '../src/codex.js';
+import { buildCodexArgs, buildCodexDeviceArgs, codexEnvironment, codexInstructionContainsSecretValue, codexInstructionContainsUnsafeControl } from '../src/codex.js';
 
 test('Codex invocation is non-interactive, sandboxed, ephemeral, JSONL, and network-disabled', () => {
   const args = buildCodexArgs('/workspace', 'read-only');
@@ -45,4 +45,20 @@ test('Codex instruction control guard allows normal multiline prompt structure o
   assert.equal(codexInstructionContainsUnsafeControl('OWNER\u000bGOAL'), true);
   assert.equal(codexInstructionContainsUnsafeControl('OWNER\u001fGOAL'), true);
   assert.equal(codexInstructionContainsUnsafeControl('OWNER\u007fGOAL'), true);
+});
+
+
+test('AWH device Codex invocation is isolated from user config and injects only validated providers', () => {
+  const args = buildCodexDeviceArgs('/private/tmp/device-task', {
+    guiMcpUrl: 'http://127.0.0.1:59702/mcp',
+    systemMcpCommand: '/Users/example/.local/share/bay-remote/node_modules/.bin/desktop-commander',
+  });
+  assert.ok(args.includes('--ignore-user-config'));
+  assert.ok(args.includes('--approve-for-me'));
+  assert.equal(args.includes('--dangerously-bypass-approvals-and-sandbox'), false);
+  assert.ok(args.includes('mcp_servers.awh_device_gui.url="http://127.0.0.1:59702/mcp"'));
+  assert.ok(args.includes('mcp_servers.awh_device_system.enabled=true'));
+  assert.throws(() => buildCodexDeviceArgs('/tmp', { guiMcpUrl: 'https://example.com/mcp' }), /invalid/);
+  assert.throws(() => buildCodexDeviceArgs('/tmp', { systemMcpCommand: 'desktop-commander' }), /invalid/);
+  assert.throws(() => buildCodexDeviceArgs('/tmp', {}), /unavailable/);
 });

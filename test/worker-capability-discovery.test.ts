@@ -67,3 +67,18 @@ test('external CLI discovery reports inventory only and never grants an executio
   assert.deepEqual(tools, ['tool.context-mode', 'tool.git', 'tool.teamai']);
   assert.equal(tools.some((value) => value === 'team.harness' || value === 'context.optimize'), false);
 });
+
+
+test('macOS device runtime discovery exposes provider-neutral inventory only when installed', async () => {
+  const home = '/Users/fixture';
+  const paths = new Set([
+    '/Applications/lnwjud.app/Contents/MacOS/lnwjud',
+    '/Users/fixture/.local/share/bay-remote/node_modules/.bin/desktop-commander',
+  ]);
+  const tools = await discoverWorkerTools({
+    platform: 'darwin', env: { HOME: home },
+    commandAvailable: async () => false,
+    pathAvailable: async (path) => paths.has(path),
+  });
+  assert.deepEqual(tools, ['tool.awh-device-gui', 'tool.awh-device-system']);
+});
