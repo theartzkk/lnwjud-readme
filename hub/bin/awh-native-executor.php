@@ -89,6 +89,19 @@ try {
     $staff = $staffService->snapshot(null, $batch, $staffTelemetry, $releaseState, $governorRun, $housekeepingRun);
     $persistedBrief = $staffService->persistMorningBrief($staff['morningBrief']);
     $staff['persistedMorningBrief'] = $persistedBrief;
-    fwrite(STDOUT, json_encode(['status' => ($batch['processed'] === 0 && (int)($cloud['summary']['processed'] ?? 0) === 0) ? 'IDLE' : 'PROCESSED', 'automation' => $automation, 'telemetry' => $telemetry, 'cloud' => $cloud, 'governorRun' => $governorRun, 'executionBatch' => $batch, 'recoveredExecutions' => (int) ($batch['recovered'] ?? 0), 'staff' => ['loop' => $staff['loop'], 'governor' => $staff['governor'], 'selfHealing' => $staff['selfHealing'], 'housekeeping' => $staff['housekeeping'], 'housekeepingRun' => $housekeepingRun, 'report' => $staff['report'], 'morningBrief' => $staff['morningBrief'], 'persistedMorningBrief' => $persistedBrief]], JSON_UNESCAPED_SLASHES) . "\n");
+    $status = ($batch['processed'] === 0 && (int)($cloud['summary']['processed'] ?? 0) === 0) ? 'IDLE' : 'PROCESSED';
+    $shouldLog = $status !== 'IDLE'
+        || (string)($automation['status'] ?? '') !== 'READY'
+        || (string)($telemetry['status'] ?? '') !== 'READY'
+        || !in_array((string)($cloud['status'] ?? ''), ['READY', 'NOT_READY'], true)
+        || (string)($governorRun['state'] ?? '') === 'DEGRADED'
+        || (bool)($governorRun['created'] ?? false)
+        || (int)($batch['recovered'] ?? 0) > 0
+        || (int)($housekeepingRun['quarantined'] ?? 0) > 0
+        || (int)($housekeepingRun['purged'] ?? 0) > 0
+        || (int)($housekeepingRun['blocked'] ?? 0) > 0;
+    if ($shouldLog) {
+        fwrite(STDOUT, json_encode(['status' => $status, 'automation' => $automation, 'telemetry' => $telemetry, 'cloud' => $cloud, 'governorRun' => $governorRun, 'executionBatch' => $batch, 'recoveredExecutions' => (int) ($batch['recovered'] ?? 0), 'staff' => ['loop' => $staff['loop'], 'governor' => $staff['governor'], 'selfHealing' => $staff['selfHealing'], 'housekeeping' => $staff['housekeeping'], 'housekeepingRun' => $housekeepingRun, 'report' => $staff['report'], 'morningBrief' => $staff['morningBrief'], 'persistedMorningBrief' => $persistedBrief]], JSON_UNESCAPED_SLASHES) . "\n");
+    }
 } catch (HubDurableExecutionException|HubProjectVaultException|HubCentralProjectAuthorityMigrationException $error) { fwrite(STDERR, $error->codeName . "\n"); exit(1); }
 catch (Throwable) { fwrite(STDERR, "EXECUTOR_UNAVAILABLE\n"); exit(1); }
