@@ -2668,6 +2668,10 @@ final class HubControlPlaneService
             if(!is_array($row))$this->pdo->prepare('INSERT INTO projects(project_id,name,type,created_at,source_revision,observed_at,provenance) VALUES(:project,:name,:type,:at,:revision,:at,:provenance)')->execute(['project'=>$projectId,'name'=>$name,'type'=>$type,'at'=>$at,'revision'=>$revision,'provenance'=>'portable-owner-device']);
             elseif($revision!==null)$this->pdo->prepare('UPDATE projects SET source_revision=:revision,observed_at=:at WHERE project_id=:project')->execute(['project'=>$projectId,'revision'=>$revision,'at'=>$at]);
             $this->pdo->prepare("INSERT INTO user_project_memberships(user_id,project_id,role,created_at,revoked_at) VALUES(:user,:project,'owner',:at,NULL) ON CONFLICT(user_id,project_id) DO UPDATE SET role='owner',revoked_at=NULL")->execute(['user'=>$auth['userId'],'project'=>$projectId,'at'=>$at]);
+            if($this->finalProductSchemaPresent()){
+                $capability=$this->pdo->prepare('INSERT INTO control_project_capabilities(user_id,project_id,capability,granted_by_user_id,created_at,revoked_at) VALUES(:user,:project,:capability,:owner,:at,NULL) ON CONFLICT(user_id,project_id,capability) DO UPDATE SET granted_by_user_id=excluded.granted_by_user_id,created_at=excluded.created_at,revoked_at=NULL');
+                foreach(['project.read','conversation.write','attachment.upload','approval.decide','deployment.approve'] as $name)$capability->execute(['user'=>$auth['userId'],'project'=>$projectId,'capability'=>$name,'owner'=>$auth['userId'],'at'=>$at]);
+            }
             $this->pdo->prepare("INSERT INTO device_project_memberships(device_id,project_id,role,created_at,revoked_at) VALUES(:device,:project,'owner',:at,NULL) ON CONFLICT(device_id,project_id) DO UPDATE SET role='owner',revoked_at=NULL")->execute(['device'=>$auth['deviceId'],'project'=>$projectId,'at'=>$at]);
             if($this->foundingMemorySchemaPresent()){HubFoundingMemoryMigration::bindSeedProjectsForCurrentSchema($this->pdo,$at);HubFoundingMemoryMigration::reconcileProjectSourceTruth($this->pdo,$projectId,$at);}
             $this->pdo->exec('COMMIT');
