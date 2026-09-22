@@ -246,6 +246,7 @@ test('Owner Brand settings are detailed, revisioned, bounded, and never expose t
   assert.match(html, /id="settings-panel-brand"/);
   for (const id of ['setting-brand-logo-file','setting-brand-icon-file','setting-brand-logo-preview','setting-brand-icon-preview','setting-product-name','setting-short-name','setting-tagline','setting-welcome','setting-starter-prompts','setting-accent','setting-founder-name','setting-founder-credit']) assert.match(html, new RegExp(`id="${id}"`));
   assert.match(html, /PNG \/ JPG \/ WebP/);
+  for (const id of ['brand-history-key','brand-history-load','brand-history-list','logout-all-button','logout-all-message','provider-cost-policy','device-privacy-policy']) assert.match(html, new RegExp(`id=\"${id}\"`));
   assert.match(app, /MAX_BRAND_SOURCE_BYTES = 8 \* 1024 \* 1024/);
   assert.match(app, /MAX_BRAND_DATA_URL_CHARS = 11500/);
   assert.match(app, /async function optimizeBrandImage/);
@@ -255,6 +256,9 @@ test('Owner Brand settings are detailed, revisioned, bounded, and never expose t
   assert.match(app, /canvas\.toDataURL\('image\/webp'/);
   assert.match(app, /pendingBrandAssets/);
   assert.match(app, /productSettingChanged/);
+  assert.match(app, /loadProductSettingHistory/);
+  assert.match(app, /brandHistorySummary/);
+  assert.match(app, /logoutAll\(\)/);
   assert.match(app, /brandLogoDataUrl/);
   assert.match(app, /brandIconDataUrl/);
   assert.match(adapter, /brandLogoDataUrl/);
@@ -289,6 +293,9 @@ test('owner self-service is a focused settings hub whose independent projections
   for (const key of ['backup', 'storage', 'queue', 'aiBudget', 'workerSummary']) assert.match(app, new RegExp(`status\.${key}|status\[.${key}.\]`));
   assert.match(app, /Promise\.allSettled\(requests\)/);
   assert.match(app, /function showSettingsSection/);
+  assert.match(app, /\['account', 'devices'\]\.includes\(section\)/);
+  assert.match(app, /deviceButton\.hidden = false/);
+  assert.match(app, /deviceAction\.hidden = false/);
   assert.match(app, /const host = \$\('memory-host'\)/);
   assert.match(app, /const host = \$\('my-awh-host'\)/);
   assert.match(app, /policy\.insertBefore\(models, enabledRow\)/);
@@ -308,6 +315,10 @@ test('owner self-service is a focused settings hub whose independent projections
   assert.match(fixture, /api\/v1\/auth\/reset-password/);
   assert.match(fixture, /fixtureResetUsed/);
   assert.match(fixture, /auth\/session[^\n]*authenticated:\s*true/);
+  assert.match(fixture, /sessionRole = 'OWNER'/);
+  assert.match(fixture, /username\.trim\(\) === 'teacher'/);
+  assert.match(fixture, /settings\/history/);
+  assert.match(fixture, /logout-all/);
   assert.match(fixture, /control\/automations[^\n]*available:\s*true/);
   assert.match(fixture, /automations\\\/\(\[0-9a-f-\]\{36\}\)\\\/enabled/);
   assert.match(fixture, /automations\\\/\(\[0-9a-f-\]\{36\}\)\\\/archive/);

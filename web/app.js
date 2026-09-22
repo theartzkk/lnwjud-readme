@@ -5,7 +5,7 @@ import {
   cancelTask, changePassword, changeUsername, createConversation, createMemory, createPerson, createProject, createRecoveryCodes, decideApproval,
   exportWorkspace, listAccountRequests, listAuthSessions, listPeople, loadAuthProfile, loadControlData, loadConversation, loadConversationHistory,
   loadConversations, loadDeletedConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus,
-  loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadObservabilityStatus, loadCapabilities, loadSystemReadiness, loadWorkspaceContinuity, login, logout,
+  loadProductSettingHistory, loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadObservabilityStatus, loadCapabilities, loadSystemReadiness, loadWorkspaceContinuity, login, logout, logoutAll,
   recover, registerAccessRequest, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage,
   testProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
   updateProviderCredential, updateProviderPolicy, updateProviderProjectRouting, updateObservabilityCredential, updateConversationLifecycle, uploadConversationAttachments,
@@ -407,10 +407,8 @@ import {
     if ($('profile-display-name')) $('profile-display-name').value = identity.displayName || '';
     const owner = isOwner();
     document.querySelectorAll('.owner-profile-menu-item').forEach((node) => { node.hidden = !owner; });
-    for (const section of ['devices','data']) {
-      const action = document.querySelector(`[data-profile-section="${section}"]`);
-      if (action) action.hidden = !owner;
-    }
+    const deviceAction = document.querySelector('[data-profile-section="devices"]'); if (deviceAction) deviceAction.hidden = false;
+    const dataAction = document.querySelector('[data-profile-section="data"]'); if (dataAction) dataAction.hidden = !owner;
   }
   async function refreshProfileIdentity() {
     const value = await loadAuthProfile();
@@ -1499,12 +1497,13 @@ import {
   }
   function configureSettingsVisibility() {
     const owner = isOwner();
-    for (const section of ['brand', 'ai', 'devices', 'data', 'system', 'people']) {
+    for (const section of ['brand', 'ai', 'data', 'system', 'people']) {
       const button = document.querySelector(`.settings-tab[data-settings-tab="${section}"]`);
       if (button) button.hidden = !owner;
     }
+    const deviceButton = document.querySelector('.settings-tab[data-settings-tab="devices"]'); if (deviceButton) deviceButton.hidden = false;
     document.querySelectorAll('.owner-settings-tab, .owner-settings-action').forEach((element) => { element.hidden = !owner; });
-    if (!owner && !['start', 'account'].includes(document.querySelector('.settings-tab.active')?.dataset.settingsTab || '')) showSettingsSection('account');
+    if (!owner && !['start', 'account', 'devices'].includes(document.querySelector('.settings-tab.active')?.dataset.settingsTab || '')) showSettingsSection('account');
   }
   function openSheet(id) { const sheet = $(id); if (sheet) openAwhDialog(sheet); }
   function closeSheet(id, options = {}) {
@@ -1528,7 +1527,7 @@ import {
     if (!state.control?.authenticated) return;
     openSheet('account-sheet');
     configureSettingsVisibility();
-    const selected = isOwner() ? section : 'account';
+    const selected = isOwner() ? section : (['account', 'devices'].includes(section) ? section : 'account');
     showSettingsSection(settingsSections.includes(selected) ? selected : 'account');
     $('owner-only-settings').hidden = !isOwner();
     $('product-settings-form').hidden = !isOwner();
@@ -1845,6 +1844,30 @@ import {
     finally { button.disabled = false; }
   });
 
+  function brandHistorySummary(key, value) {
+    if (key === 'brandLogoDataUrl' || key === 'brandIconDataUrl') return value ? 'มีไฟล์ภาพที่บันทึกไว้' : 'ใช้ภาพมาตรฐาน';
+    if (Array.isArray(value)) return value.join(' · ').slice(0, 180) || '—';
+    return String(value ?? '—').slice(0, 180);
+  }
+  async function loadBrandHistory() {
+    const list = $('brand-history-list'); if (!list || !isOwner()) return;
+    list.replaceChildren(); const key = $('brand-history-key')?.value || 'productName';
+    try {
+      const data = await loadProductSettingHistory(key); const revisions = Array.isArray(data.revisions) ? data.revisions : [];
+      for (const revision of revisions) {
+        const row = document.createElement('div'); row.className = 'session-item';
+        const copy = document.createElement('div'); const title = document.createElement('strong'); const detail = document.createElement('small');
+        title.textContent = `Revision ${revision.revision}`; detail.textContent = `${date(revision.createdAt)} · ${brandHistorySummary(key, revision.value)}`; copy.append(title, detail); row.append(copy);
+        const restore = document.createElement('button'); restore.type = 'button'; restore.className = 'text-button'; restore.textContent = 'ใช้ค่านี้';
+        restore.addEventListener('click', async () => { if (!confirm('ใช้ค่าจาก revision นี้เป็นค่าปัจจุบัน?')) return; restore.disabled = true; try { state.productSettings = (await updateProductSetting(key, revision.value)).settings; applyProductSettings(); await loadBrandHistory(); message('product-settings-message', 'คืนค่าจากประวัติแล้ว'); } catch (error) { message('product-settings-message', error instanceof Error ? error.message : 'ยังคืนค่าจากประวัติไม่ได้'); } finally { restore.disabled = false; } });
+        row.append(restore); list.append(row);
+      }
+      if (!list.childElementCount) list.textContent = 'ยังไม่มีประวัติการเปลี่ยนค่านี้';
+    } catch (error) { list.textContent = error instanceof Error ? error.message : 'ยังโหลดประวัติแบรนด์ไม่ได้'; }
+  }
+  $('brand-history-load')?.addEventListener('click', () => void loadBrandHistory());
+  $('brand-history-key')?.addEventListener('change', () => void loadBrandHistory());
+
   $('product-settings-reset').addEventListener('click', async () => {
     const button = $('product-settings-reset'); button.disabled = true; message('product-settings-message', 'กำลังคืนค่ามาตรฐาน…');
     try {
@@ -1890,6 +1913,13 @@ import {
       const data = await exportWorkspace(); const blob = new Blob([`${JSON.stringify(data, null, 2)}\n`], { type: 'application/json' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `awh-workspace-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(url);
     } catch (error) { message('product-settings-message', error instanceof Error ? error.message : 'ยังส่งออกข้อมูลไม่ได้'); }
     finally { button.disabled = false; }
+  });
+
+  $('logout-all-button')?.addEventListener('click', async () => {
+    if (!confirm('ออกจาก AWH ทุกอุปกรณ์ รวมอุปกรณ์นี้ด้วย?')) return;
+    const button = $('logout-all-button'); button.disabled = true; message('logout-all-message', 'กำลังเพิกถอนทุกเซสชัน…');
+    try { await logoutAll(); location.assign('./'); }
+    catch (error) { button.disabled = false; message('logout-all-message', error instanceof Error ? error.message : 'ยังออกจากระบบทุกอุปกรณ์ไม่ได้'); }
   });
 
   $('sessions-load').addEventListener('click', async () => {

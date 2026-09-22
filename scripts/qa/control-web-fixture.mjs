@@ -24,8 +24,10 @@ let cloudConfigured = true;
 const fixtureResetToken = 'a'.repeat(43);
 let fixtureResetUsed = false;
 let profileDisplayName = 'Art';
+let sessionRole = 'OWNER';
 const defaultProductSettings = { productName: { value: 'Art’s Workspace Hub' }, shortName: { value: 'AWH' }, tagline: { value: 'Your Projects. One Workspace. Anywhere.' }, welcome: { value: 'เริ่มคุยกับ Art’s Workspace Hub ได้เลย' }, accent: { value: '#ff8a36' }, starterPrompts: { value: ['ตรวจสถานะล่าสุด', 'ทำต่อจากงานล่าสุด', 'ตรวจอย่างเดียว ห้ามแก้'] }, founderName: { value: 'Art' }, founderCredit: { value: 'Founder · Product Creator · System Concept' }, brandLogoDataUrl: { value: null }, brandIconDataUrl: { value: null } };
 let productSettings = structuredClone(defaultProductSettings);
+const productSettingRevisions = Object.fromEntries(Object.keys(defaultProductSettings).map((key) => [key, []]));
 let counter = 0;
 
 if (!Number.isSafeInteger(port) || port < 1024 || port > 65535) throw new Error('AWH_WEB_FIXTURE_PORT is invalid');
@@ -78,6 +80,7 @@ const server = createServer(async (request, response) => {
     if (url.pathname === '/api/v1/auth/login' && request.method === 'POST') {
       const value = await readJson(request);
       if (typeof value.username !== 'string' || typeof value.password !== 'string' || !value.username.trim() || !value.password) return send(response, 401, { code: 'AUTH_FAILED' });
+      sessionRole = value.username.trim() === 'teacher' ? 'TEACHER' : 'OWNER';
       return send(response, 200, { csrfToken: csrf }, { 'Set-Cookie': 'awh_fixture_session=1; Path=/; HttpOnly; SameSite=Strict' });
     }
     if (url.pathname === '/api/v1/auth/reset-password' && request.method === 'POST') {
@@ -86,15 +89,15 @@ const server = createServer(async (request, response) => {
       fixtureResetUsed = true;
       return send(response, 200, { schemaVersion: 1, authenticated: false });
     }
-    if (url.pathname === '/api/v1/auth/session') return session(request) ? send(response, 200, { schemaVersion: 1, authenticated: true, expiresAt: '2026-12-31T00:00:00.000Z', remembered: true, csrfToken: csrf, userId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', username: 'fixture', role: 'OWNER' }) : send(response, 401, { code: 'SESSION_INVALID' });
+    if (url.pathname === '/api/v1/auth/session') return session(request) ? send(response, 200, { schemaVersion: 1, authenticated: true, expiresAt: '2026-12-31T00:00:00.000Z', remembered: true, csrfToken: csrf, userId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', username: 'fixture', role: sessionRole }) : send(response, 401, { code: 'SESSION_INVALID' });
     if (url.pathname === '/api/v1/auth/step-up' && request.method === 'POST') {
       if (!session(request) || !requireCsrf(request, response)) return;
       const value = await readJson(request); if (value.schemaVersion !== 1 || typeof value.password !== 'string' || !value.password) return send(response, 401, { code: 'STEP_UP_FAILED' });
       return send(response, 200, { schemaVersion: 1, verified: true });
     }
-    if (url.pathname === '/api/v1/auth/logout' && request.method === 'POST') {
+    if ((url.pathname === '/api/v1/auth/logout' || url.pathname === '/api/v1/auth/logout-all') && request.method === 'POST') {
       if (!session(request) || !requireCsrf(request, response)) return;
-      return send(response, 200, { ok: true }, { 'Set-Cookie': 'awh_fixture_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict' });
+      return send(response, 200, { schemaVersion: 1, authenticated: false }, { 'Set-Cookie': 'awh_fixture_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict' });
     }
     if (url.pathname === '/bay/data/projects.json') return send(response, 200, { schemaVersion: 'bay.hub.projects.v1', projects: [
       { id: 'bay-excuse-x', name: 'BAY EXCUSE X', type: 'School Platform', icon: '🏫', status: 'active', stage: 'Staging RC', summary: 'ข้อมูลหลักและงานโรงเรียน', primary_action: { label: 'เปิด BAY EXCUSE X', url: 'https://bay.example.invalid/' }, capabilities: ['Identity', 'Students', 'Personnel', 'Classrooms'] },
@@ -126,7 +129,7 @@ const server = createServer(async (request, response) => {
       const content = await readFile(file); response.writeHead(200, { 'Content-Type': mime(file), 'Cache-Control': 'no-store' }); return response.end(content);
     }
     if (!session(request)) return send(response, 401, { code: 'SESSION_INVALID' });
-    if (url.pathname === '/api/v1/control/session') return send(response, 200, { csrfToken: csrf, expiresAt: '2026-12-31T00:00:00.000Z', role: 'OWNER' });
+    if (url.pathname === '/api/v1/control/session') return send(response, 200, { csrfToken: csrf, expiresAt: '2026-12-31T00:00:00.000Z', role: sessionRole });
     if (url.pathname === '/api/v1/control/projects') return send(response, 200, { projects: [project] });
     if (url.pathname === '/api/v1/control/tasks') return send(response, 200, { tasks });
     if (url.pathname === '/api/v1/control/workers') return send(response, 200, { workers: [{ deviceId: '66666666-6666-4666-8666-666666666666', displayName: 'AWH Agent ตัวอย่าง', platform: 'darwin', arch: 'arm64', state: 'READY', lastSeenAt: now, boundProjectCount: 1, capabilities: ['project:context'] }] });
@@ -156,15 +159,21 @@ const server = createServer(async (request, response) => {
       const task = { taskId: taskId(), projectId: project.projectId, conversationId: null, goal: value.kind === 'VISUAL_REVIEW' ? 'Product Review · Visual' : 'Product Review · QA', state: 'RUNNING', progress: 35, capability, revision: cloudRevision, profile: value.kind === 'VISUAL_REVIEW' ? value.profile : null, idempotencyKey: value.idempotencyKey, createdAt: now, updatedAt: now, lastEvent: { message: 'AWH Cloud เริ่มตรวจแล้ว' } };
       tasks.unshift(task); return send(response, 201, task);
     }
+    if (url.pathname === '/api/v1/control/settings/history' && request.method === 'GET') {
+      const key = url.searchParams.get('settingKey'); if (!key || !(key in productSettings)) return send(response, 400, { code: 'FIELD_INVALID' });
+      return send(response, 200, { schemaVersion: 2, settingKey: key, revisions: productSettingRevisions[key] });
+    }
     if (url.pathname === '/api/v1/control/settings' && request.method === 'GET') return send(response, 200, { schemaVersion: 2, settings: productSettings });
     if (url.pathname === '/api/v1/control/settings' && request.method === 'POST') {
       if (!requireCsrf(request, response)) return; const value = await readJson(request);
       if (value.schemaVersion !== 2 || typeof value.settingKey !== 'string' || !(value.settingKey in productSettings)) return send(response, 400, { code: 'FIELD_INVALID' });
+      const previous = structuredClone(productSettings[value.settingKey]?.value ?? null); const revisions = productSettingRevisions[value.settingKey]; revisions.unshift({ revision: revisions.length + 1, value: previous, createdAt: now });
       productSettings[value.settingKey] = { value: value.value }; return send(response, 200, { schemaVersion: 2, settings: productSettings });
     }
     if (url.pathname === '/api/v1/control/settings/reset' && request.method === 'POST') {
       if (!requireCsrf(request, response)) return; const value = await readJson(request);
       if (value.schemaVersion !== 2 || typeof value.settingKey !== 'string' || !(value.settingKey in defaultProductSettings)) return send(response, 400, { code: 'FIELD_INVALID' });
+      const previous = structuredClone(productSettings[value.settingKey]?.value ?? null); const revisions = productSettingRevisions[value.settingKey]; revisions.unshift({ revision: revisions.length + 1, value: previous, createdAt: now });
       productSettings[value.settingKey] = structuredClone(defaultProductSettings[value.settingKey]); return send(response, 200, { schemaVersion: 2, settings: productSettings });
     }
     if (url.pathname === '/api/v1/control/provider' && request.method === 'GET') return send(response, 200, { schemaVersion: 3, provider: { enabled: false, available: false, keyConfigured: false, credential: { lastTestStatus: 'NOT_TESTED' }, budget: { usedMicrounits: 0, monthlyMicrounits: 0, remainingMicrounits: 0, warningMicrounits: 0 }, rates: { inputMicrounitsPerMillion: 0, outputMicrounitsPerMillion: 0 }, models: { fast: 'gpt-5.6-luna', balanced: 'gpt-5.6-terra', strong: 'gpt-5.6-sol' }, usageByProject: [] } });
