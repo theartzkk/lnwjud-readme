@@ -249,6 +249,9 @@ test('Owner Brand settings are detailed, revisioned, bounded, and never expose t
   assert.match(app, /MAX_BRAND_SOURCE_BYTES = 8 \* 1024 \* 1024/);
   assert.match(app, /MAX_BRAND_DATA_URL_CHARS = 11500/);
   assert.match(app, /async function optimizeBrandImage/);
+  assert.match(app, /new FileReader\(\)/);
+  assert.match(app, /reader\.readAsDataURL\(file\)/);
+  assert.doesNotMatch(app, /URL\.createObjectURL\(file\)/);
   assert.match(app, /canvas\.toDataURL\('image\/webp'/);
   assert.match(app, /pendingBrandAssets/);
   assert.match(app, /productSettingChanged/);

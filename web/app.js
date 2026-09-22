@@ -330,10 +330,12 @@ import {
     renderBrandPreview();
   }
   async function decodeBrandImage(file) {
-    const url = URL.createObjectURL(file); const image = new Image();
-    try { await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error('อ่านไฟล์ภาพไม่ได้')); image.src = url; }); return image; }
-    catch (error) { throw error instanceof Error ? error : new Error('อ่านไฟล์ภาพไม่ได้'); }
-    finally { URL.revokeObjectURL(url); }
+    const source = await new Promise((resolve, reject) => {
+      const reader = new FileReader(); reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('อ่านไฟล์ภาพไม่ได้')); reader.onerror = () => reject(new Error('อ่านไฟล์ภาพไม่ได้')); reader.readAsDataURL(file);
+    });
+    const image = new Image();
+    await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error('อ่านไฟล์ภาพไม่ได้')); image.src = source; });
+    return image;
   }
   async function optimizeBrandImage(file, kind) {
     if (!(file instanceof File) || !['image/png','image/jpeg','image/webp'].includes(file.type)) throw new Error('รองรับเฉพาะ PNG, JPG และ WebP');
