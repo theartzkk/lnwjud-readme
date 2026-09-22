@@ -104,12 +104,12 @@ async function verifyNodeMode(executable, asarPath) {
 
 const platform = process.argv[2];
 if (!['darwin', 'win32'].includes(platform)) fail('Usage: verify-packaged-bundle.mjs <darwin|win32>');
-const outputRoot = join(ROOT, 'out', platform === 'darwin' ? 'AWH-darwin-x64' : 'AWH-win32-x64');
-const bundle = platform === 'darwin' ? join(outputRoot, 'AWH.app') : outputRoot;
+const outputRoot = join(ROOT, 'out', platform === 'darwin' ? 'AWH Agent-darwin-x64' : 'AWH Agent-win32-x64');
+const bundle = platform === 'darwin' ? join(outputRoot, 'AWH Agent.app') : outputRoot;
 const executable = platform === 'darwin' ? join(bundle, 'Contents', 'MacOS', 'AWH') : join(bundle, 'AWH.exe');
 const asarPath = platform === 'darwin' ? join(bundle, 'Contents', 'Resources', 'app.asar') : join(bundle, 'resources', 'app.asar');
 assert(await exists(bundle), `packaged bundle not found: ${platform}`);
-assert(await exists(executable), `expected ${platform === 'darwin' ? 'AWH.app/AWH' : 'AWH.exe'} is missing`);
+assert(await exists(executable), `expected ${platform === 'darwin' ? 'AWH Agent.app/AWH' : 'AWH.exe'} is missing`);
 assert(await exists(asarPath), 'packaged app.asar is missing');
 const listing = asar.listPackage(asarPath, { isPack: false });
 const normalizedListing = listing.map((entry) => entry.replaceAll('\\', '/'));
@@ -147,4 +147,4 @@ else if (process.arch !== 'x64') runtime = { status: 'SKIP_ARCH', reason: `Packa
 else runtime = await verifyNodeMode(executable, asarPath);
 const artifact = await hashTree(bundle);
 assert(artifact.size < MAX_BUNDLE_BYTES, `packaged ${platform} bundle is unexpectedly large: ${artifact.size} bytes`);
-console.log(JSON.stringify({ platform, artifactPath: bundle, artifactName: platform === 'darwin' ? 'AWH.app' : 'AWH-win32-x64', artifactHash: artifact.hash, artifactSize: artifact.size, asarPath, asarHash: createHash('sha256').update(await readFile(asarPath)).digest('hex'), version: packagedPackage.version, productName: packagedPackage.productName, runtime }));
+console.log(JSON.stringify({ platform, artifactPath: bundle, artifactName: platform === 'darwin' ? 'AWH Agent.app' : 'AWH Agent-win32-x64', artifactHash: artifact.hash, artifactSize: artifact.size, asarPath, asarHash: createHash('sha256').update(await readFile(asarPath)).digest('hex'), version: packagedPackage.version, productName: packagedPackage.productName, runtime }));
