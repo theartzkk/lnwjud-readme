@@ -356,6 +356,28 @@ web_pointer_capture() {
   fi
 }
 web_pointer_restore() { if test "$WEB_PREVIOUS" = ABSENT; then sudo rm -f "$WEB_POINTER"; test ! -e "$WEB_POINTER" && test ! -L "$WEB_POINTER"; else sudo rm -f "$WEB_POINTER"; sudo ln -s "$WEB_TARGET" "$WEB_POINTER"; test "$(readlink "$WEB_POINTER")" = "$WEB_TARGET"; fi; }
+production_ref_reconcile_live() {
+  repo=/srv/awh-git/awh.git
+  test -d "$repo" || return 0
+  current=$(git --git-dir="$repo" rev-parse refs/heads/production 2>/dev/null || true)
+  test -n "$current" || return 0
+  live_manifest=/var/www/awh-web/current/release.json
+  sudo test -f "$live_manifest" || return 1
+  live_sha=$(sudo -n /usr/bin/php -r '$j=json_decode(file_get_contents($argv[1]),true,32,JSON_THROW_ON_ERROR);$s=strtolower((string)($j["sourceSha"]??""));if(!preg_match("/^[0-9a-f]{40}$/",$s))exit(2);echo $s;' "$live_manifest") || return 1
+  test -n "$live_sha" || return 1
+  git --git-dir="$repo" cat-file -e "$live_sha^{commit}" || return 1
+  test "$current" = "$live_sha" && return 0
+  test "$PREVIOUS_POINTER" = PRESENT || return 1
+  control_manifest="$PREVIOUS_TARGET/dist-web/release.json"
+  sudo test -f "$control_manifest" || return 1
+  control_sha=$(sudo -n /usr/bin/php -r '$j=json_decode(file_get_contents($argv[1]),true,32,JSON_THROW_ON_ERROR);$s=strtolower((string)($j["sourceSha"]??""));if(!preg_match("/^[0-9a-f]{40}$/",$s))exit(2);echo $s;' "$control_manifest") || return 1
+  test "$control_sha" = "$live_sha" || return 1
+  git --git-dir="$repo" merge-base --is-ancestor "$live_sha" "$current" || return 1
+  git --git-dir="$repo" merge-base --is-ancestor "$current" "$RELEASE_COMMIT" || return 1
+  git --git-dir="$repo" update-ref refs/heads/production "$live_sha" "$current" || return 1
+  test "$(git --git-dir="$repo" rev-parse refs/heads/production)" = "$live_sha" || return 1
+  stage PRODUCTION_REF_RECONCILED
+}
 production_ref_restore() {
   test "$PRODUCTION_REF_CHANGED" -eq 1 || return 0
   current=$(git --git-dir=/srv/awh-git/awh.git rev-parse refs/heads/production 2>/dev/null || true)
@@ -467,7 +489,7 @@ rollback() {
 }
 trap rollback EXIT HUP INT TERM
 
-sudo test -f "$DB"; sudo test -f "$REMOTE_STAGE"; pointer_capture; cleanup_loaded_topology; DEPLOY_BASE_VERSION=$(sudo sqlite3 "$DB" 'PRAGMA user_version;'); case "$DEPLOY_BASE_VERSION" in 4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21) ;; *) exit 20 ;; esac; stage PREMUTATION_READY
+sudo test -f "$DB"; sudo test -f "$REMOTE_STAGE"; pointer_capture; production_ref_reconcile_live; cleanup_loaded_topology; DEPLOY_BASE_VERSION=$(sudo sqlite3 "$DB" 'PRAGMA user_version;'); case "$DEPLOY_BASE_VERSION" in 4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21) ;; *) exit 20 ;; esac; stage PREMUTATION_READY
 sudo install -d -o root -g awh-hub -m 0750 /var/backups/awh-hub
 sudo sqlite3 "$DB" ".backup '$BACKUP'"; sudo chown root:root "$BACKUP"; sudo chmod 0600 "$BACKUP"; test "$(sudo sqlite3 "$BACKUP" 'PRAGMA integrity_check;')" = ok; test -z "$(sudo sqlite3 "$BACKUP" 'PRAGMA foreign_key_check;')"; sudo install -d -m 0750 -o root -g root "$CONFIG_BACKUP_ROOT/nginx"; sudo test ! -e "$NGINX_BACKUP"; sudo cp -p "$NGINX_CONFIG" "$NGINX_BACKUP"; sudo chown root:root "$NGINX_BACKUP"; sudo chmod 0600 "$NGINX_BACKUP"; sudo cmp -s "$NGINX_CONFIG" "$NGINX_BACKUP"; NGINX_BACKUP_CREATED=1; stage BACKUP_VERIFIED
 stage RELEASE_PATH_PREFLIGHT
