@@ -80,6 +80,7 @@ final class HubNativeAgentService
     /** @param list<array{role:string,body:string}> $turns @param list<array{name:string,mimeType:string,path:string,sizeBytes:int}> $attachments @param array<string,mixed> $context */
     public function respond(string $userId, string $projectId, string $conversationId, string $messageId, string $request, array $turns, array $attachments, ?string $now = null, array $context = [], array $executionContext = []): array
     {
+        $this->assertOwnerFundedAiUser($userId);
         $at = self::timestamp($now ?? gmdate('c')); $routingPolicy = $this->policy($userId, $at); [$providerId,$route,$model,$governanceRouteId] = $this->modelForExecution($userId,$projectId,$request,$routingPolicy,$executionContext,$at,1200);
         $attemptedProviders = [];
         for ($providerAttempt = 0; $providerAttempt < 2; $providerAttempt++) {
@@ -135,6 +136,7 @@ final class HubNativeAgentService
      */
     public function respondWithTools(string $userId, string $projectId, ?string $conversationId, ?string $messageId, string $request, array $turns, array $attachments, array $context, array $tools, callable $toolExecutor, ?string $now = null, array $executionContext = []): array
     {
+        $this->assertOwnerFundedAiUser($userId);
         if ($tools === [] || count($tools) > 8) throw new HubNativeAgentException('Native tool policy is invalid', 'PROVIDER_POLICY_INVALID');
         $allowed = [];
         foreach ($tools as $tool) {
@@ -450,6 +452,20 @@ final class HubNativeAgentService
     {
         $override = $this->projectRouting($projectId);
         return $override['routingMode'] === 'AUTO' ? $inferred : $override['routingMode'];
+    }
+
+    /** Paid provider dispatch is funded only for the canonical AWH Owner account. */
+    private function assertOwnerFundedAiUser(string $userId): void
+    {
+        try {
+            $q = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1');
+            $owner = $q->fetchColumn();
+        } catch (Throwable) {
+            throw new HubNativeAgentException('AWH Owner AI funding authority is unavailable', 'PROVIDER_ACCOUNT_NOT_FUNDED', ['provider'=>$this->providerId,'operation'=>'dispatch','category'=>'account','retryable'=>false]);
+        }
+        if (!is_string($owner) || !hash_equals($owner, $userId)) {
+            throw new HubNativeAgentException('Paid AWH AI is available only to the canonical Owner account', 'PROVIDER_ACCOUNT_NOT_FUNDED', ['provider'=>$this->providerId,'operation'=>'dispatch','category'=>'account','retryable'=>false]);
+        }
     }
 
     private function selfServiceTablePresent(string $table): bool

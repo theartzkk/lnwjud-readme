@@ -946,6 +946,9 @@ import {
       if (turn.kind === 'assistant' || turn.kind === 'result' || turn.kind === 'failure') {
         const messageActions = document.createElement('div'); messageActions.className = 'message-actions';
         const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'text-button'; copy.textContent = 'คัดลอก'; copy.addEventListener('click', () => { void copyMessageText(turn.body, copy); });
+        if (!isOwner() && /ไม่ใช้ค่า AI ของเจ้าของระบบ/u.test(String(turn.body || ''))) {
+          const chatgpt = document.createElement('a'); chatgpt.className = 'text-button'; chatgpt.href = 'https://chatgpt.com/'; chatgpt.target = '_blank'; chatgpt.rel = 'noopener noreferrer'; chatgpt.textContent = 'เปิด ChatGPT ของฉัน'; messageActions.append(chatgpt);
+        }
         messageActions.append(copy); response.append(messageActions);
       }
       if (task && !['COMPLETED','FAILED','CANCELLED'].includes(task.state)) response.append(renderLiveActivity(task));

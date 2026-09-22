@@ -38,6 +38,7 @@ function safeErrorMessage(value) {
     MEMORY_NOT_FOUND: 'ไม่พบความจำที่ต้องการ',
     STEP_UP_REQUIRED: 'รายการความเสี่ยงสูงนี้ต้องยืนยันตัวตนผู้ดูแลเพิ่มเติม',
     PROVIDER_POLICY_INVALID: 'ตรวจการตั้งค่า AI อีกครั้ง งบและอัตราค่าใช้จ่ายต้องมากกว่า 0 เมื่อเปิดใช้ AI',
+    PROVIDER_ACCOUNT_NOT_FUNDED: 'บัญชีนี้ไม่ใช้ค่า AI ของเจ้าของระบบ ใช้ AWH ต่อได้ตามปกติ หรือเปิด ChatGPT ด้วยบัญชีของคุณเอง',
     PROVIDER_AUTH_FAILED: 'OpenAI ปฏิเสธ API key นี้ กรุณาตรวจ key แล้วลองใหม่',
     PROVIDER_PERMISSION_DENIED: 'บัญชีหรือโปรเจกต์ OpenAI นี้ยังไม่มีสิทธิ์ใช้คำขอที่ตั้งไว้',
     PROVIDER_QUOTA_EXHAUSTED: 'โควตาหรือวงเงินของ OpenAI ยังไม่พร้อม งานจะไม่ถูกอ้างว่าเสร็จแล้ว',

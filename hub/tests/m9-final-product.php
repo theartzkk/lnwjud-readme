@@ -85,6 +85,14 @@ try {
     $accepted = $auth->acceptInvitation(['schemaVersion' => 1, 'invitationCode' => $invite['invitationCode'], 'password' => $collaboratorPassword], $now, 'fixture-invite');
     $collaborator = $auth->login('collaborator', $collaboratorPassword, false, 'fixture-collaborator', $now); $collabServer = m9_browser($collaborator['sessionToken'], $collaborator['csrfToken']);
     m9_assert(m9_control($control, 'GET', '/api/v1/control/projects', ['HTTP_COOKIE' => '__Host-awh_control_session=' . $collaborator['sessionToken'], 'HTTP_SEC_FETCH_SITE' => 'same-origin'])['status'] === 200, 'collaborator can read its granted project');
+    $collabChat = m9_control($control, 'POST', '/api/v1/control/conversations/new', $collabServer, ['schemaVersion' => 2, 'projectId' => $project, 'title' => 'Free account AI boundary']);
+    $collabConversation = json_decode($collabChat['body'], true, 32, JSON_THROW_ON_ERROR)['conversation']['conversationId'];
+    $collabSubmit = m9_control($control, 'POST', '/api/v1/control/conversations', $collabServer, ['schemaVersion' => 2, 'projectId' => $project, 'conversationId' => $collabConversation, 'message' => 'สวัสดี AWH', 'idempotencyKey' => 'm9-collab-chat-0001']);
+    $collabBody = json_decode($collabSubmit['body'], true, 32, JSON_THROW_ON_ERROR); $collabLast = $collabBody['messages'][count($collabBody['messages']) - 1] ?? [];
+    m9_assert($collabSubmit['status'] === 201 && ($collabBody['tasks'] ?? []) === [] && ($collabLast['kind'] ?? null) === 'assistant' && str_contains((string)($collabLast['body'] ?? ''), 'ไม่ใช้ค่า AI ของเจ้าของระบบ'), 'non-owner chat keeps AWH usable without queuing owner-funded AI');
+    $nonOwnerProviderCalls = 0; $nonOwnerAgent = new HubNativeAgentService($pdo, static function (array $payload, string $key) use (&$nonOwnerProviderCalls): array { $nonOwnerProviderCalls++; return ['output_text'=>'must not run','usage'=>['input_tokens'=>1,'output_tokens'=>1]]; });
+    try { $nonOwnerAgent->respond((string)$accepted['userId'], $project, $collabConversation, $conversation, 'ต้องไม่ใช้เงินเจ้าของ', [], [], $now); throw new RuntimeException('non-owner reached paid AI'); } catch (HubNativeAgentException $error) { m9_assert($error->codeName === 'PROVIDER_ACCOUNT_NOT_FUNDED', 'non-owner paid provider dispatch is denied before provider I/O'); }
+    m9_assert($nonOwnerProviderCalls === 0 && (int)$pdo->query("SELECT COUNT(*) FROM control_provider_usage WHERE user_id='" . $accepted['userId'] . "'")->fetchColumn() === 0, 'non-owner denial creates zero provider calls and zero billed usage rows');
     $private = m9_control($control, 'POST', '/api/v1/control/conversations/new', $collabServer, ['schemaVersion' => 2, 'projectId' => $otherProject, 'title' => 'not allowed']);
     m9_assert($private['status'] === 403, 'collaborator cannot access another project');
     $auth->revokeUser($ownerSession['sessionToken'], $ownerSession['csrfToken'], $accepted['userId'], $now);

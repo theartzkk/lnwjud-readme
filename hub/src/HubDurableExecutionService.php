@@ -257,6 +257,7 @@ final class HubDurableExecutionService
             'PROVIDER_PERMISSION_DENIED' => 'OpenAI ยังไม่อนุญาตให้บัญชีหรือโปรเจกต์นี้ใช้คำขอที่ตั้งไว้ งานถูกหยุดไว้โดยไม่อ้างว่าเสร็จแล้ว',
             'PROVIDER_MODEL_UNAVAILABLE' => 'โมเดล AI ที่ตั้งไว้ยังใช้กับบัญชีนี้ไม่ได้ กรุณาเลือกโมเดลอื่นแล้วทดสอบการเชื่อมต่อ',
             'PROVIDER_REQUEST_INVALID' => 'AWH ส่งคำขอ AI ไม่สำเร็จ ระบบหยุดงานไว้โดยไม่อ้างว่าเสร็จแล้ว',
+            'PROVIDER_ACCOUNT_NOT_FUNDED' => 'บัญชีนี้ใช้ AWH โดยไม่ใช้ค่า AI ของเจ้าของระบบ งานถูกหยุดไว้โดยไม่เกิดค่า AI ของเจ้าของ หากต้องการคุยกับ AI ให้เปิด ChatGPT ด้วยบัญชีของคุณเอง',
             default => null,
         };
     }
@@ -371,7 +372,7 @@ final class HubDurableExecutionService
     }
 
     private static function sameGoal(string $a, string $b): bool { $normal = static fn(string $v): string => strtolower(preg_replace('/\s+/u',' ',trim($v)) ?? trim($v)); return $normal($a) === $normal($b); }
-    private static function inspectionFallbackEligible(string $code): bool { return in_array($code, ['PROVIDER_UNAVAILABLE', 'PROVIDER_RATE_LIMITED', 'PROVIDER_FAILED'], true); }
+    private static function inspectionFallbackEligible(string $code): bool { return in_array($code, ['PROVIDER_UNAVAILABLE', 'PROVIDER_RATE_LIMITED', 'PROVIDER_FAILED', 'PROVIDER_ACCOUNT_NOT_FUNDED'], true); }
     private static function highImpactGoal(string $goal): bool { return preg_match('/(?:deploy|production|prod\b|ลบข้อมูล|delete\b|drop\b|billing|ซื้อ|ชำระ|permission|สิทธิ์|secret|credential|api\s*key|rotate|migration|migrate|schema\s+change|ฐานข้อมูล)/iu', $goal) === 1; }
 
     /** @param array<string,mixed> $claimed @param array<string,mixed> $checkpoint */

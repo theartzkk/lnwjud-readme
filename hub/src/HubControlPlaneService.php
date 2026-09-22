@@ -1058,11 +1058,15 @@ final class HubControlPlaneService
                 $answer->execute(['conversation' => $conversation['conversation_id'], 'key' => 'native-answer-' . (string) $existingMessageId]);
                 $needsNativeRetry = $this->finalProductSchemaPresent() && $answer->fetchColumn() === false;
                 $legacyNativeRetry = $needsNativeRetry && !$this->centralProjectAuthoritySchemaPresent();
-                if ($needsNativeRetry && !$legacyNativeRetry && self::isConversationOnly($message, $attachmentIds !== [])) {
-                    $this->queueNativeConversationTask($userId, $projectId, (string) $conversation['conversation_id'], (string) $existingMessageId, $message, $at);
+                if ($needsNativeRetry && self::isConversationOnly($message, $attachmentIds !== [])) {
+                    if ($this->isOwnerUser($userId) && !$legacyNativeRetry) {
+                        $this->queueNativeConversationTask($userId, $projectId, (string) $conversation['conversation_id'], (string) $existingMessageId, $message, $at);
+                    } elseif (!$this->isOwnerUser($userId)) {
+                        $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'ASSISTANT', self::externalFreeAiMessage(), $at, 'native-answer-' . (string) $existingMessageId);
+                    }
                 }
                 $this->pdo->exec('COMMIT'); $transactionOpen = false;
-                if ($legacyNativeRetry) $this->completeNativeConversation($userId, ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => (string) $existingMessageId, 'projectId' => $projectId, 'request' => $message, 'taskId' => null], $at);
+                if ($legacyNativeRetry && $this->isOwnerUser($userId)) $this->completeNativeConversation($userId, ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => (string) $existingMessageId, 'projectId' => $projectId, 'request' => $message, 'taskId' => null], $at);
                 return $schema >= 2 ? $this->conversationByIdForUser($userId, (string) $conversation['conversation_id'], $worker) : $this->conversationForUser($userId, $projectId, $worker);
             }
             $messageId = $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'USER', $message, $at, $idempotency);
@@ -1080,10 +1084,14 @@ final class HubControlPlaneService
                 $serverInspection = $deviceRequest === null && $vaultRevision !== null && self::isServerInspection($effectiveGoal);
                 $serverTextMutation = $deviceRequest === null && $vaultRevision !== null && self::isServerTextNormalization($effectiveGoal);
                 $serverAssistedEdit = $deviceRequest === null && $vaultRevision !== null && self::isServerAssistedEdit($effectiveGoal);
-                $taskState = ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'QUEUED' : 'WAITING_FOR_WORKER';
-                $insert = $this->pdo->prepare('INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, :state, NULL, NULL, 0, NULL, NULL, :key, :conversation, :created, :updated, NULL)');
-                $insert->execute(['id' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $effectiveGoal, 'state' => $taskState, 'key' => $taskKey, 'conversation' => $conversation['conversation_id'], 'created' => $at, 'updated' => $at]);
-                if ($officeRequest !== null && $this->centralProjectAuthoritySchemaPresent()) {
+                $ownerFundedAi = $this->isOwnerUser($userId);
+                $paidAiBlocked = !$ownerFundedAi && $officeRequest === null && $deviceRequest === null && $vaultRevision !== null && !$serverInspection && !$serverTextMutation;
+                $taskState = $paidAiBlocked ? 'FAILED' : (($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'QUEUED' : 'WAITING_FOR_WORKER');
+                $insert = $this->pdo->prepare('INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, :state, NULL, NULL, 0, :summary, :failure, :key, :conversation, :created, :updated, NULL)');
+                $insert->execute(['id' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $effectiveGoal, 'state' => $taskState, 'summary' => $paidAiBlocked ? self::externalFreeAiMessage() : null, 'failure' => $paidAiBlocked ? 'PROVIDER_ACCOUNT_NOT_FUNDED' : null, 'key' => $taskKey, 'conversation' => $conversation['conversation_id'], 'created' => $at, 'updated' => $at]);
+                if ($paidAiBlocked) {
+                    $this->appendConversationMessage((string) $conversation['conversation_id'], $taskId, 'FAILURE', self::externalFreeAiMessage(), $at, 'account-ai-' . $messageId);
+                } elseif ($officeRequest !== null && $this->centralProjectAuthoritySchemaPresent()) {
                     $officeCheckpoint = self::withCapabilityPlan(['mode' => 'OFFICE_TO_PDF', 'attachmentId' => $officeRequest['attachmentId']], $effectiveGoal, $attachmentIds !== []);
                     $this->execution->enqueue($taskId, $projectId, null, 'DEVICE', $officeRequest['capability'], $officeCheckpoint, $at);
                 } elseif ($deviceRequest !== null && $this->centralProjectAuthoritySchemaPresent()) {
@@ -1092,7 +1100,7 @@ final class HubControlPlaneService
                 } elseif ($vaultRevision !== null) {
                     $checkpoint = self::withCapabilityPlan(['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverAssistedEdit ? 'PROJECT_ASSISTED_EDIT' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST'))], $effectiveGoal, $attachmentIds !== []); $autoSteps = self::agentLoopSteps($effectiveGoal); if ($autoSteps !== null) $checkpoint['continuation'] = ['enabled'=>true,'rootTaskId'=>$taskId,'step'=>0,'maxSteps'=>$autoSteps]; $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverAssistedEdit ? 'project.mutate.assisted' : ($serverInspection ? 'project.read' : 'codex:cli')), $checkpoint, $at);
                 }
-                $eventMessage = $officeRequest !== null ? 'waiting for Office PDF capability' : ($deviceRequest !== null ? 'waiting for connected device capability' : ($serverInspection ? 'server inspection queued' : ($serverTextMutation ? 'server text transform queued' : 'specialist execution recorded')));
+                $eventMessage = $paidAiBlocked ? 'owner-funded AI is disabled for this account; no paid provider execution was queued' : ($officeRequest !== null ? 'waiting for Office PDF capability' : ($deviceRequest !== null ? 'waiting for connected device capability' : ($serverInspection ? 'server inspection queued' : ($serverTextMutation ? 'server text transform queued' : 'specialist execution recorded'))));
                 $this->event($taskId, $taskState, 0, $eventMessage, $at);
                 $this->pdo->prepare('UPDATE control_conversations SET last_task_id = :task, updated_at = :at WHERE conversation_id = :conversation')->execute(['task' => $taskId, 'at' => $at, 'conversation' => $conversation['conversation_id']]);
             }
@@ -1100,12 +1108,14 @@ final class HubControlPlaneService
             if ($this->finalProductSchemaPresent()) {
                 if ($this->centralProjectAuthoritySchemaPresent()) {
                     if ($conversationOnly) {
-                        $taskId = $this->queueNativeConversationTask($userId, $projectId, (string) $conversation['conversation_id'], $messageId, $message, $at);
+                        if ($this->isOwnerUser($userId)) $taskId = $this->queueNativeConversationTask($userId, $projectId, (string) $conversation['conversation_id'], $messageId, $message, $at);
+                        else $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'ASSISTANT', self::externalFreeAiMessage(), $at, 'native-answer-' . $messageId);
                     }
                 } else {
                     // Historical pre-M12 schemas have no durable execution table.
                     // Keep their compatibility path isolated from current production.
-                    $nativeRequest = ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => $messageId, 'projectId' => $projectId, 'request' => $message, 'taskId' => $taskId];
+                    if ($this->isOwnerUser($userId)) $nativeRequest = ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => $messageId, 'projectId' => $projectId, 'request' => $message, 'taskId' => $taskId];
+                    elseif ($conversationOnly) $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'ASSISTANT', self::externalFreeAiMessage(), $at, 'native-answer-' . $messageId);
                 }
             } else {
                 $this->appendConversationMessage((string) $conversation['conversation_id'], $taskId, 'ASSISTANT', $this->conversationAnswer($userId, $projectId, $message), $at);
@@ -3120,6 +3130,11 @@ final class HubControlPlaneService
             $out[] = ['id'=>(string)$item['id'],'label'=>substr((string)$item['label'],0,80),'mode'=>substr((string)$item['mode'],0,40),'reason'=>substr((string)$item['reason'],0,220),'requiredTool'=>$tool];
         }
         return $out === [] ? null : ['schemaVersion'=>1,'router'=>'awh.external-capabilities.v1','selected'=>$out];
+    }
+
+    private static function externalFreeAiMessage(): string
+    {
+        return 'บัญชีนี้ใช้ AWH โดยไม่ใช้ค่า AI ของเจ้าของระบบ หากต้องการคุยกับ AI ให้เปิด ChatGPT ด้วยบัญชีของคุณเอง ซึ่งจะใช้สิทธิ์หรือโควตาของบัญชีคุณตามที่มี';
     }
 
     /** Conversation is the default.  A background task is created only for an explicit action request at the start of the turn. */

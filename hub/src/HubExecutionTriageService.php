@@ -63,6 +63,7 @@ final class HubExecutionFailurePolicy
         'PROVIDER_PERMISSION_DENIED',
         'PROVIDER_MODEL_UNAVAILABLE',
         'PROVIDER_POLICY_INVALID',
+        'PROVIDER_ACCOUNT_NOT_FUNDED',
         'CLOUD_PERMISSION_DENIED',
         'CLOUD_WORKFLOW_NOT_FOUND',
     ];
