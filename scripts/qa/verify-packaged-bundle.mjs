@@ -120,6 +120,10 @@ assert(hasEntry('dist/owner-protocol.js'), 'packaged owner protocol runtime is m
 assert(hasEntry('dist/project-registry.js'), 'packaged project context runtime is missing');
 assert(hasEntry(OWNER_PROTOCOL_FILENAME), 'packaged AWH working context is missing');
 assert(hasEntry('desktop/index.html'), 'packaged owner Control Panel renderer is missing');
+assert(hasEntry('desktop/connect.html'), 'packaged AWH Agent bridge renderer is missing');
+assert(hasEntry('desktop/connect.js'), 'packaged AWH Agent bridge script is missing');
+assert(hasEntry('desktop/connect.css'), 'packaged AWH Agent bridge styles are missing');
+assert(hasEntry('desktop/connect-preload.cjs'), 'packaged AWH Agent bridge preload is missing');
 assert(hasEntry('dist/desktop/main.js'), 'packaged Desktop main process is missing');
 assert(!normalizedListing.some((entry) => /^\/?(?:dist-web|out)(?:\/|$)/.test(entry)), 'packaged bundle contains generated release/output directories');
 assert(!normalizedListing.some((entry) => /^\/?\.awh(?:-local)?(?:\/|$)/.test(entry)), 'packaged bundle contains workspace-local AWH state');
@@ -131,6 +135,9 @@ assert(/# AWH Working Context/.test(packagedProtocol) && /Mode: context-only/.te
 assert(/professional judgment/i.test(packagedProtocol) && /capabilit/i.test(packagedProtocol), 'packaged AWH working context is incomplete');
 const packagedDesktopHtml = asar.extractFile(asarPath, 'desktop/index.html').toString('utf8');
 assert(/id="desktop-work-thread"/.test(packagedDesktopHtml) && /id="desktop-work-input"/.test(packagedDesktopHtml), 'packaged renderer does not contain the final project Work surface');
+const packagedConnectHtml = asar.extractFile(asarPath, 'desktop/connect.html').toString('utf8');
+assert(/id="open-awh"/.test(packagedConnectHtml) && /AWH Agent/.test(packagedConnectHtml), 'packaged AWH Agent bridge surface is incomplete');
+assert(!/Projects|Project Memory|Git|Doctor|Secure MCP|AI Work|Autopilot/i.test(packagedConnectHtml), 'packaged AWH Agent bridge leaks advanced desktop controls');
 const packagedPackage = JSON.parse(asar.extractFile(asarPath, 'package.json').toString('utf8'));
 assert(packagedPackage.version === EXPECTED_VERSION, 'packaged package version is not 1.0.0-rc.1');
 assert(packagedPackage.productName === EXPECTED_PRODUCT, 'packaged productName is not AWH');

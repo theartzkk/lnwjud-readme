@@ -59,6 +59,20 @@ test('web build is a generic authenticated Control shell, never a serialized pro
   assert.match(html, /downloads\/AWH-Windows-x64\.zip/);
 });
 
+test('public web presents the local extension as AWH Agent and keeps Desktop as an internal compatibility surface', async () => {
+  const [html, app] = await Promise.all([
+    readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
+    readFile(join(ROOT, 'web', 'app.js'), 'utf8'),
+  ]);
+  assert.match(html, /อุปกรณ์และ AWH Agent/);
+  assert.match(html, /ดาวน์โหลด AWH Agent/);
+  assert.match(html, /AWH ใช้งานหลักผ่านเว็บได้จากทุกอุปกรณ์/);
+  assert.match(html, /AWH Agent เป็นตัวเชื่อมเสริม/);
+  assert.match(app, /ยังไม่มี AWH Agent ที่พร้อมทำงาน/);
+  assert.match(app, /ใช้ AWH Agent เฉพาะงานที่ต้องเข้าถึงไฟล์หรือแอป/);
+  assert.doesNotMatch(`${html}\n${app}`, /AWH Desktop/);
+});
+
 test('one canonical light-first canvas is used by html, body, and the application shell', async () => {
   const [html, css, designSystem] = await Promise.all([
     readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
@@ -218,6 +232,39 @@ test('CONTROL work composer keeps attachment previews, camera-capable file picki
   assert.doesNotMatch(`${html}\n${app}\n${adapter}`, /workspacePath|absolutePath|\/Users\/|[A-Za-z]:\\\\/);
 });
 
+test('Owner Brand settings are detailed, revisioned, bounded, and never expose the legacy engine name', async () => {
+  const [html, app, adapter, css, service, ownerCenter, panel] = await Promise.all([
+    readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
+    readFile(join(ROOT, 'web', 'app.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'control-plane-adapter.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'styles.css'), 'utf8'),
+    readFile(join(ROOT, 'hub', 'src', 'HubControlPlaneService.php'), 'utf8'),
+    readFile(join(ROOT, 'web', 'owner-center.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'panel.html'), 'utf8'),
+  ]);
+  assert.match(html, /data-settings-tab="brand"/);
+  assert.match(html, /id="settings-panel-brand"/);
+  for (const id of ['setting-brand-logo-file','setting-brand-icon-file','setting-brand-logo-preview','setting-brand-icon-preview','setting-product-name','setting-short-name','setting-tagline','setting-welcome','setting-starter-prompts','setting-accent','setting-founder-name','setting-founder-credit']) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(html, /PNG \/ JPG \/ WebP/);
+  assert.match(app, /MAX_BRAND_SOURCE_BYTES = 8 \* 1024 \* 1024/);
+  assert.match(app, /MAX_BRAND_DATA_URL_CHARS = 11500/);
+  assert.match(app, /async function optimizeBrandImage/);
+  assert.match(app, /canvas\.toDataURL\('image\/webp'/);
+  assert.match(app, /pendingBrandAssets/);
+  assert.match(app, /productSettingChanged/);
+  assert.match(app, /brandLogoDataUrl/);
+  assert.match(app, /brandIconDataUrl/);
+  assert.match(adapter, /brandLogoDataUrl/);
+  assert.match(adapter, /brandIconDataUrl/);
+  assert.match(service, /'brandLogoDataUrl' => \['value' => null/);
+  assert.match(service, /'brandIconDataUrl' => \['value' => null/);
+  assert.match(service, /strlen\(\$value\) > 12000/);
+  assert.match(service, /strlen\(\$raw\) > 9000/);
+  assert.match(css, /\.brand-settings-preview/);
+  assert.match(css, /\.brand-upload-grid/);
+  assert.doesNotMatch(`${html}\n${app}\n${ownerCenter}\n${panel}`, /lnwjud/i);
+});
+
 test('owner self-service is a focused settings hub whose independent projections cannot hide AI setup', async () => {
   const [html, app, executionUx, css, fixture] = await Promise.all([
     readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
@@ -226,7 +273,7 @@ test('owner self-service is a focused settings hub whose independent projections
     readFile(join(ROOT, 'web', 'styles.css'), 'utf8'),
     readFile(join(ROOT, 'scripts', 'qa', 'control-web-fixture.mjs'), 'utf8'),
   ]);
-  for (const section of ['start', 'ai', 'account', 'devices', 'data', 'people']) assert.match(html, new RegExp(`data-settings-tab="${section}"`));
+  for (const section of ['start', 'brand', 'ai', 'account', 'devices', 'data', 'people']) assert.match(html, new RegExp(`data-settings-tab="${section}"`));
   assert.match(html, /id="settings-panel-ai"/);
   assert.match(app, /id="provider-api-key"/);
   assert.match(app, /provider-credential-settings/);

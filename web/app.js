@@ -18,6 +18,9 @@ import {
   const MICRO_BAHT = 1000000;
   const DESKTOP_PACKAGES = [['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
   const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, people: [], accountRequests: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
+  const pendingBrandAssets = { logo: undefined, icon: undefined };
+  const MAX_BRAND_SOURCE_BYTES = 8 * 1024 * 1024;
+  const MAX_BRAND_DATA_URL_CHARS = 11500;
   let desktopReleasePromise = null;
   let conversationRequest = 0;
   let conversationRefresh = null;
@@ -294,16 +297,64 @@ import {
   }
 
   function settingValue(key, fallback) { const item = state.productSettings?.[key]; return item && Object.prototype.hasOwnProperty.call(item, 'value') ? item.value : fallback; }
+  function brandImageValue(key) { const value = settingValue(key, null); return typeof value === 'string' && /^data:image\/(?:png|jpeg|webp);base64,/i.test(value) ? value : null; }
+  function rememberDefaultImage(node) { if (node && !node.dataset.awhDefaultSrc) node.dataset.awhDefaultSrc = node.getAttribute('src') || ''; return node?.dataset.awhDefaultSrc || ''; }
+  function setImage(node, value) { if (!node) return; const fallback = rememberDefaultImage(node); node.src = value || fallback; }
+  function setLinkImage(node, value) { if (!node) return; if (!node.dataset.awhDefaultHref) node.dataset.awhDefaultHref = node.getAttribute('href') || ''; node.href = value || node.dataset.awhDefaultHref; }
+  function renderBrandPreview() {
+    const logo = pendingBrandAssets.logo !== undefined ? pendingBrandAssets.logo : brandImageValue('brandLogoDataUrl');
+    const icon = pendingBrandAssets.icon !== undefined ? pendingBrandAssets.icon : brandImageValue('brandIconDataUrl');
+    setImage($('setting-brand-logo-preview'), logo); setImage($('setting-brand-logo-thumb'), logo);
+    setImage($('setting-brand-icon-preview'), icon); setImage($('setting-brand-icon-thumb'), icon);
+    message('setting-brand-preview-name', $('setting-product-name')?.value || settingValue('productName', 'Art’s Workspace Hub'));
+    message('setting-brand-preview-tagline', $('setting-tagline')?.value || settingValue('tagline', 'Your Projects. One Workspace. Anywhere.'));
+    const accent = $('setting-accent')?.value || settingValue('accent', '#ff7a1a'); message('setting-accent-value', accent.toLowerCase());
+  }
   function applyProductSettings() {
     const name = settingValue('productName', 'Art’s Workspace Hub');
     const tagline = settingValue('tagline', 'Your Projects. One Workspace. Anywhere.');
     const accent = settingValue('accent', '#ff7a1a');
+    const logo = brandImageValue('brandLogoDataUrl'); const icon = brandImageValue('brandIconDataUrl');
     document.title = `${name} — Work`; message('product-name', name); message('product-tagline', tagline);
     document.documentElement.style.setProperty('--accent', accent);
-    $('setting-product-name').value = name; $('setting-short-name').value = settingValue('shortName', 'AWH'); $('setting-tagline').value = tagline; $('setting-welcome').value = settingValue('welcome', 'เริ่มคุยกับ Art’s Workspace Hub ได้เลย'); $('setting-accent').value = accent;
+    document.querySelectorAll('[data-awh-brand-logo]').forEach((node) => setImage(node, logo));
+    setLinkImage($('awh-favicon'), icon); setLinkImage($('awh-apple-touch-icon'), icon);
+    if ($('setting-product-name')) $('setting-product-name').value = name;
+    if ($('setting-short-name')) $('setting-short-name').value = settingValue('shortName', 'AWH');
+    if ($('setting-tagline')) $('setting-tagline').value = tagline;
+    if ($('setting-welcome')) $('setting-welcome').value = settingValue('welcome', 'เริ่มคุยกับ Art’s Workspace Hub ได้เลย');
+    if ($('setting-accent')) $('setting-accent').value = accent;
+    if ($('setting-starter-prompts')) $('setting-starter-prompts').value = (settingValue('starterPrompts', []) || []).join('\n');
     const founder = $('setting-founder-name'); if (founder) founder.value = settingValue('founderName', 'Art');
     const founderCredit = $('setting-founder-credit'); if (founderCredit) founderCredit.value = settingValue('founderCredit', 'Founder · Product Creator · System Concept');
+    renderBrandPreview();
   }
+  async function decodeBrandImage(file) {
+    const url = URL.createObjectURL(file); const image = new Image();
+    try { await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error('อ่านไฟล์ภาพไม่ได้')); image.src = url; }); return image; }
+    catch (error) { throw error instanceof Error ? error : new Error('อ่านไฟล์ภาพไม่ได้'); }
+    finally { URL.revokeObjectURL(url); }
+  }
+  async function optimizeBrandImage(file, kind) {
+    if (!(file instanceof File) || !['image/png','image/jpeg','image/webp'].includes(file.type)) throw new Error('รองรับเฉพาะ PNG, JPG และ WebP');
+    if (file.size < 1 || file.size > MAX_BRAND_SOURCE_BYTES) throw new Error('ไฟล์ภาพต้องมีขนาดไม่เกิน 8 MB');
+    const image = await decodeBrandImage(file); const maxWidth = kind === 'icon' ? 256 : 720; const maxHeight = kind === 'icon' ? 256 : 240;
+    let scale = Math.min(1, maxWidth / image.naturalWidth, maxHeight / image.naturalHeight); if (!Number.isFinite(scale) || scale <= 0) throw new Error('ขนาดภาพไม่ถูกต้อง');
+    for (const shrink of [1, .82, .68, .56]) {
+      const width = Math.max(1, Math.round(image.naturalWidth * scale * shrink)); const height = Math.max(1, Math.round(image.naturalHeight * scale * shrink));
+      const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height; const context = canvas.getContext('2d', { alpha: true }); if (!context) throw new Error('Browser ไม่รองรับการเตรียมภาพ');
+      context.drawImage(image, 0, 0, width, height);
+      for (const quality of [.82, .70, .58, .46]) { const value = canvas.toDataURL('image/webp', quality); if (value.length <= MAX_BRAND_DATA_URL_CHARS) return value; }
+    }
+    throw new Error('ภาพยังใหญ่เกินขนาดหลังบีบอัตโนมัติ กรุณาเลือกภาพที่เรียบหรือเล็กลง');
+  }
+  function starterPromptsFromForm() {
+    const lines = ($('setting-starter-prompts')?.value || '').split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+    if (lines.length > 6 || lines.some((value) => value.length > 120)) throw new Error('Prompt เริ่มต้นใส่ได้สูงสุด 6 บรรทัด และแต่ละบรรทัดไม่เกิน 120 ตัวอักษร');
+    return lines;
+  }
+  function productSettingChanged(key, value) { return JSON.stringify(settingValue(key, undefined)) !== JSON.stringify(value); }
+
 
   function isOwner() { return state.control?.role === 'OWNER'; }
   function baht(microunits) { return (Number.isInteger(microunits) ? microunits / MICRO_BAHT : 0).toLocaleString('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -599,7 +650,7 @@ import {
     const provider = state.provider || {}; const credential = provider.credential || {}; const workers = state.ownerStatus?.workers || state.control?.workers || [];
     const ai = provider.available ? 'พร้อมใช้งาน · Auto' : provider.keyConfigured ? `เชื่อมแล้ว · ${credential.lastTestStatus === 'PASS' ? 'ตรวจสอบผ่าน' : 'ต้องทดสอบ'}` : 'ยังไม่เชื่อม API key';
     message('settings-ai-summary', ai);
-    message('settings-device-summary', workers.length ? `${workers.filter((worker) => worker.state === 'READY' || worker.state === 'WORKING').length} เครื่องพร้อมทำงาน` : 'ยังไม่มี AWH Desktop ที่พร้อมทำงาน');
+    message('settings-device-summary', workers.length ? `${workers.filter((worker) => worker.state === 'READY' || worker.state === 'WORKING').length} เครื่องพร้อมทำงาน` : 'ยังไม่มี AWH Agent ที่พร้อมทำงาน');
     const list = $('settings-worker-list'); if (list) {
       list.replaceChildren();
       for (const worker of workers) {
@@ -613,7 +664,7 @@ import {
       if (!list.childElementCount) list.textContent = 'ยังไม่มีอุปกรณ์เสริมที่เชื่อมกับโปรเจกต์';
     }
     const online = workers.filter((worker) => worker?.online || ['READY', 'WORKING', 'ONLINE'].includes(worker?.state)).length;
-    message('settings-worker-message', online > 0 ? `มีอุปกรณ์เสริมพร้อมรับงาน ${online} เครื่อง · งาน Cloud ทำต่อได้โดยไม่ต้องเปิดเครื่อง` : 'งาน Cloud ทำต่อได้ตามปกติ · เปิด AWH Desktop เฉพาะงานที่ต้องใช้ไฟล์หรือแอปบนเครื่อง');
+    message('settings-worker-message', online > 0 ? `มีอุปกรณ์เสริมพร้อมรับงาน ${online} เครื่อง · งาน Cloud ทำต่อได้โดยไม่ต้องเปิดเครื่อง` : 'งานบนเว็บทำต่อได้ตามปกติ · ใช้ AWH Agent เฉพาะงานที่ต้องเข้าถึงไฟล์หรือแอปบนคอมพิวเตอร์เครื่องนั้น');
     renderCapabilitySurface();
     void loadDesktopRelease();
     const readiness = state.systemReadiness;
@@ -1425,7 +1476,7 @@ import {
     finally { refreshingWorkspace = false; }
   }
 
-  const settingsSections = ['start', 'ai', 'account', 'devices', 'data', 'system', 'people'];
+  const settingsSections = ['start', 'brand', 'ai', 'account', 'devices', 'data', 'system', 'people'];
   function showSettingsSection(section = 'start') {
     const selected = settingsSections.includes(section) ? section : 'start';
     for (const name of settingsSections) {
@@ -1446,7 +1497,7 @@ import {
   }
   function configureSettingsVisibility() {
     const owner = isOwner();
-    for (const section of ['ai', 'devices', 'data', 'system', 'people']) {
+    for (const section of ['brand', 'ai', 'devices', 'data', 'system', 'people']) {
       const button = document.querySelector(`.settings-tab[data-settings-tab="${section}"]`);
       if (button) button.hidden = !owner;
     }
@@ -1468,7 +1519,7 @@ import {
     } else if (recoveryRequested) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
     state.resetToken = token;
     $('reset-password-form').hidden = token === null;
-    message('reset-instructions', token ? 'ลิงก์นี้ใช้ได้ครั้งเดียวและจะหมดอายุในเวลาอันสั้น เลือกรหัสผ่านใหม่ที่คุณจำได้' : state.control?.authenticated && recoveryRequested ? 'คุณยังเข้าสู่ระบบอยู่ เปิดแท็บ “บัญชีและความปลอดภัย” เพื่อจัดการรหัสผ่านหรือเตรียมรหัสกู้คืน หากกำลังแก้ปัญหาการเข้าสู่ระบบ ให้ใช้รหัสกู้คืนฉุกเฉินที่เตรียมไว้เท่านั้น' : 'กด “ลืมรหัสผ่าน?” จากหน้าเข้าสู่ระบบ แล้วเปิดลิงก์กู้คืนจาก AWH Desktop ที่เชื่อถือได้ ลิงก์มีอายุสั้นและใช้ได้ครั้งเดียว');
+    message('reset-instructions', token ? 'ลิงก์นี้ใช้ได้ครั้งเดียวและจะหมดอายุในเวลาอันสั้น เลือกรหัสผ่านใหม่ที่คุณจำได้' : state.control?.authenticated && recoveryRequested ? 'คุณยังเข้าสู่ระบบอยู่ เปิดแท็บ “บัญชีและความปลอดภัย” เพื่อจัดการรหัสผ่านหรือเตรียมรหัสกู้คืน หากกำลังแก้ปัญหาการเข้าสู่ระบบ ให้ใช้รหัสกู้คืนฉุกเฉินที่เตรียมไว้เท่านั้น' : 'กด “ลืมรหัสผ่าน?” จากหน้าเข้าสู่ระบบ แล้วเปิดลิงก์กู้คืนจาก AWH Agent บนอุปกรณ์ที่เชื่อถือได้ ลิงก์มีอายุสั้นและใช้ได้ครั้งเดียว');
     openSheet('recovery-sheet');
   }
   async function openAccount(section = 'start') {
@@ -1775,22 +1826,42 @@ import {
   });
 
   $('product-settings-form').addEventListener('submit', async (event) => {
-    event.preventDefault(); message('product-settings-message', 'กำลังบันทึก…');
+    event.preventDefault(); if (!isOwner()) return; const button = $('product-settings-form').querySelector('button[type="submit"]'); button.disabled = true; message('product-settings-message', 'กำลังบันทึกแบรนด์…');
     try {
-      const values = [['productName', $('setting-product-name').value], ['shortName', $('setting-short-name').value], ['tagline', $('setting-tagline').value], ['welcome', $('setting-welcome').value], ['accent', $('setting-accent').value]];
-      for (const [key, value] of values) state.productSettings = (await updateProductSetting(key, value)).settings;
-      applyProductSettings(); message('product-settings-message', 'บันทึกลักษณะของ AWH แล้ว');
+      const values = [
+        ['productName', $('setting-product-name').value.trim()], ['shortName', $('setting-short-name').value.trim()], ['tagline', $('setting-tagline').value.trim()],
+        ['welcome', $('setting-welcome').value.trim()], ['starterPrompts', starterPromptsFromForm()], ['accent', $('setting-accent').value.toLowerCase()],
+        ['founderName', $('setting-founder-name').value.trim()], ['founderCredit', $('setting-founder-credit').value.trim()],
+      ];
+      if (pendingBrandAssets.logo !== undefined) values.push(['brandLogoDataUrl', pendingBrandAssets.logo]);
+      if (pendingBrandAssets.icon !== undefined) values.push(['brandIconDataUrl', pendingBrandAssets.icon]);
+      const changed = values.filter(([key, value]) => productSettingChanged(key, value));
+      for (const [key, value] of changed) state.productSettings = (await updateProductSetting(key, value)).settings;
+      pendingBrandAssets.logo = undefined; pendingBrandAssets.icon = undefined; applyProductSettings();
+      message('product-settings-message', changed.length ? `บันทึกแบรนด์แล้ว · ${changed.length} รายการ` : 'ไม่มีค่าที่เปลี่ยน');
     } catch (error) { message('product-settings-message', error instanceof Error ? error.message : 'ยังบันทึกการตั้งค่าไม่ได้'); }
+    finally { button.disabled = false; }
   });
 
   $('product-settings-reset').addEventListener('click', async () => {
     const button = $('product-settings-reset'); button.disabled = true; message('product-settings-message', 'กำลังคืนค่ามาตรฐาน…');
     try {
-      for (const key of ['productName', 'shortName', 'tagline', 'welcome', 'accent']) state.productSettings = (await resetProductSetting(key)).settings;
-      applyProductSettings(); message('product-settings-message', 'คืนค่ามาตรฐานแล้ว');
+      for (const key of ['productName', 'shortName', 'tagline', 'welcome', 'starterPrompts', 'accent', 'founderName', 'founderCredit', 'brandLogoDataUrl', 'brandIconDataUrl']) state.productSettings = (await resetProductSetting(key)).settings;
+      pendingBrandAssets.logo = undefined; pendingBrandAssets.icon = undefined; applyProductSettings(); message('product-settings-message', 'คืนค่าแบรนด์มาตรฐานแล้ว');
     } catch (error) { message('product-settings-message', error instanceof Error ? error.message : 'ยังคืนค่ามาตรฐานไม่ได้'); }
     finally { button.disabled = false; }
   });
+
+  async function prepareBrandAsset(kind, file) {
+    message('product-settings-message', `กำลังเตรียม${kind === 'icon' ? 'ไอคอน' : 'โลโก้'}…`);
+    const value = await optimizeBrandImage(file, kind); pendingBrandAssets[kind] = value; renderBrandPreview();
+    message('product-settings-message', `เตรียม${kind === 'icon' ? 'ไอคอน' : 'โลโก้'}แล้ว · กด “บันทึกแบรนด์” เพื่อใช้งานจริง`);
+  }
+  $('setting-brand-logo-file')?.addEventListener('change', async (event) => { const file = event.target.files?.[0]; if (!file) return; try { await prepareBrandAsset('logo', file); } catch (error) { message('product-settings-message', error instanceof Error ? error.message : 'เตรียมโลโก้ไม่ได้'); } finally { event.target.value = ''; } });
+  $('setting-brand-icon-file')?.addEventListener('change', async (event) => { const file = event.target.files?.[0]; if (!file) return; try { await prepareBrandAsset('icon', file); } catch (error) { message('product-settings-message', error instanceof Error ? error.message : 'เตรียมไอคอนไม่ได้'); } finally { event.target.value = ''; } });
+  $('setting-brand-logo-remove')?.addEventListener('click', () => { pendingBrandAssets.logo = null; renderBrandPreview(); message('product-settings-message', 'เลือกใช้โลโก้มาตรฐานแล้ว · กดบันทึกเพื่อยืนยัน'); });
+  $('setting-brand-icon-remove')?.addEventListener('click', () => { pendingBrandAssets.icon = null; renderBrandPreview(); message('product-settings-message', 'เลือกใช้ไอคอนมาตรฐานแล้ว · กดบันทึกเพื่อยืนยัน'); });
+  for (const id of ['setting-product-name','setting-tagline','setting-accent']) $(id)?.addEventListener('input', renderBrandPreview);
 
   $('provider-policy-form').addEventListener('submit', async (event) => {
     event.preventDefault(); if (!isOwner()) return; message('provider-message', 'กำลังบันทึกงบ AI…');
@@ -1851,7 +1922,7 @@ import {
 
   $('reset-password-form').addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (!state.resetToken) { message('reset-message', 'กรุณาเปิดลิงก์กู้คืนจาก AWH Desktop ที่เชื่อถือได้ก่อน'); return; }
+    if (!state.resetToken) { message('reset-message', 'กรุณาเปิดลิงก์กู้คืนจาก AWH Agent บนอุปกรณ์ที่เชื่อถือได้ก่อน'); return; }
     if ($('reset-password').value !== $('reset-password-confirm').value) { message('reset-message', 'กรุณายืนยันรหัสผ่านใหม่ให้ตรงกัน'); return; }
     message('reset-message', 'กำลังบันทึกรหัสผ่านใหม่…'); $('reset-password-form').querySelector('button[type="submit"]').disabled = true;
     try {

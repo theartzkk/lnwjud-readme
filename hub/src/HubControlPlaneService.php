@@ -3061,7 +3061,7 @@ final class HubControlPlaneService
 
     private static function productDefaults(): array
     {
-        return ['productName' => ['value' => 'Art’s Workspace Hub', 'revision' => 0, 'updatedAt' => null], 'shortName' => ['value' => 'AWH', 'revision' => 0, 'updatedAt' => null], 'tagline' => ['value' => 'Your Projects. One Workspace. Anywhere.', 'revision' => 0, 'updatedAt' => null], 'accent' => ['value' => '#ff7a1a', 'revision' => 0, 'updatedAt' => null], 'welcome' => ['value' => 'เริ่มคุยกับ Art’s Workspace Hub ได้เลย', 'revision' => 0, 'updatedAt' => null], 'starterPrompts' => ['value' => ['ตรวจสถานะล่าสุด', 'ทำต่อจากงานล่าสุด', 'ตรวจอย่างเดียว ห้ามแก้'], 'revision' => 0, 'updatedAt' => null], 'founderName' => ['value' => 'Art', 'revision' => 0, 'updatedAt' => null], 'founderCredit' => ['value' => 'Founder · Product Creator · System Concept', 'revision' => 0, 'updatedAt' => null]];
+        return ['productName' => ['value' => 'Art’s Workspace Hub', 'revision' => 0, 'updatedAt' => null], 'shortName' => ['value' => 'AWH', 'revision' => 0, 'updatedAt' => null], 'tagline' => ['value' => 'Your Projects. One Workspace. Anywhere.', 'revision' => 0, 'updatedAt' => null], 'accent' => ['value' => '#ff7a1a', 'revision' => 0, 'updatedAt' => null], 'welcome' => ['value' => 'เริ่มคุยกับ Art’s Workspace Hub ได้เลย', 'revision' => 0, 'updatedAt' => null], 'starterPrompts' => ['value' => ['ตรวจสถานะล่าสุด', 'ทำต่อจากงานล่าสุด', 'ตรวจอย่างเดียว ห้ามแก้'], 'revision' => 0, 'updatedAt' => null], 'founderName' => ['value' => 'Art', 'revision' => 0, 'updatedAt' => null], 'founderCredit' => ['value' => 'Founder · Product Creator · System Concept', 'revision' => 0, 'updatedAt' => null], 'brandLogoDataUrl' => ['value' => null, 'revision' => 0, 'updatedAt' => null], 'brandIconDataUrl' => ['value' => null, 'revision' => 0, 'updatedAt' => null]];
     }
 
     private static function conversationTitle(string $value): string { $value = trim($value); if ($value === '' || strlen($value) > 120 || preg_match('/[\x00-\x1f\x7f]/', $value)) throw new HubControlPlaneException('Conversation title is invalid', 'FIELD_INVALID'); return $value; }
@@ -3069,11 +3069,18 @@ final class HubControlPlaneService
     private static function optionalGitSha(mixed $value): ?string { if ($value === null || $value === '') return null; if (!is_string($value) || preg_match('/^[0-9a-f]{40,64}$/i', $value) !== 1) throw new HubControlPlaneException('Source revision is invalid', 'FIELD_INVALID'); return strtolower($value); }
     private static function searchText(string $value): string { $value = trim($value); if ($value === '' || strlen($value) > 120 || preg_match('/[\x00-\x1f\x7f]/', $value)) throw new HubControlPlaneException('Conversation search is invalid', 'FIELD_INVALID'); return $value; }
     private static function escapeLike(string $value): string { return strtr($value, ['\\' => '\\\\', '%' => '\\%', '_' => '\\_']); }
-    private static function settingKey(string $value): string { if (!in_array($value, ['productName', 'shortName', 'tagline', 'accent', 'welcome', 'starterPrompts', 'founderName', 'founderCredit'], true)) throw new HubControlPlaneException('Product setting is not supported', 'FIELD_INVALID'); return $value; }
+    private static function settingKey(string $value): string { if (!in_array($value, ['productName', 'shortName', 'tagline', 'accent', 'welcome', 'starterPrompts', 'founderName', 'founderCredit', 'brandLogoDataUrl', 'brandIconDataUrl'], true)) throw new HubControlPlaneException('Product setting is not supported', 'FIELD_INVALID'); return $value; }
     private static function settingValue(string $key, mixed $value): mixed
     {
         if (in_array($key, ['productName', 'shortName', 'tagline', 'welcome', 'founderName', 'founderCredit'], true)) { if (!is_string($value) || trim($value) === '' || strlen($value) > ($key === 'welcome' ? 240 : 120) || preg_match('/[\x00-\x1f\x7f<>]/', $value)) throw new HubControlPlaneException('Product setting is invalid', 'FIELD_INVALID'); return trim($value); }
         if ($key === 'accent') { if (!is_string($value) || preg_match('/^#[0-9a-f]{6}$/i', $value) !== 1) throw new HubControlPlaneException('Accent color is invalid', 'FIELD_INVALID'); return strtolower($value); }
+        if (in_array($key, ['brandLogoDataUrl', 'brandIconDataUrl'], true)) {
+            if ($value === null) return null;
+            if (!is_string($value) || strlen($value) > 12000 || preg_match('#^data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$#', $value, $match) !== 1) throw new HubControlPlaneException('Brand image is invalid', 'FIELD_INVALID');
+            $raw = base64_decode($match[2], true); if (!is_string($raw) || strlen($raw) < 16 || strlen($raw) > 9000) throw new HubControlPlaneException('Brand image is invalid', 'FIELD_INVALID');
+            $mime = $match[1]; $valid = ($mime === 'png' && str_starts_with($raw, "\x89PNG\r\n\x1a\n")) || ($mime === 'jpeg' && str_starts_with($raw, "\xff\xd8\xff")) || ($mime === 'webp' && substr($raw, 0, 4) === 'RIFF' && substr($raw, 8, 4) === 'WEBP');
+            if (!$valid) throw new HubControlPlaneException('Brand image is invalid', 'FIELD_INVALID'); return $value;
+        }
         if (!is_array($value) || array_is_list($value) === false || count($value) > 6) throw new HubControlPlaneException('Starter prompts are invalid', 'FIELD_INVALID'); $out = []; foreach ($value as $prompt) { if (!is_string($prompt) || trim($prompt) === '' || strlen($prompt) > 120 || preg_match('/[\x00-\x1f\x7f<>]/', $prompt)) throw new HubControlPlaneException('Starter prompt is invalid', 'FIELD_INVALID'); $out[] = trim($prompt); } return $out;
     }
 

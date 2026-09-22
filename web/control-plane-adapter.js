@@ -190,7 +190,7 @@ export async function saveCurrentContext(projectId, conversationId, viewKind = '
 
 export async function loadProductSettings() { return controlRequest('/api/v1/control/settings'); }
 export async function updateProductSetting(settingKey, value) { return controlRequest('/api/v1/control/settings', { method: 'POST', body: JSON.stringify({ schemaVersion: 2, settingKey, value }) }); }
-const PRODUCT_SETTING_KEYS = ['productName', 'shortName', 'tagline', 'accent', 'welcome', 'starterPrompts', 'founderName', 'founderCredit'];
+const PRODUCT_SETTING_KEYS = ['productName', 'shortName', 'tagline', 'accent', 'welcome', 'starterPrompts', 'founderName', 'founderCredit', 'brandLogoDataUrl', 'brandIconDataUrl'];
 export async function loadProductSettingHistory(settingKey) { if (!PRODUCT_SETTING_KEYS.includes(settingKey)) throw new Error('การตั้งค่าไม่ถูกต้อง'); return controlRequest(`/api/v1/control/settings/history?settingKey=${encodeURIComponent(settingKey)}`); }
 export async function resetProductSetting(settingKey) { if (!PRODUCT_SETTING_KEYS.includes(settingKey)) throw new Error('การตั้งค่าไม่ถูกต้อง'); return controlRequest('/api/v1/control/settings/reset', { method: 'POST', body: JSON.stringify({ schemaVersion: 2, settingKey }) }); }
 export async function loadProductIdentity() { return controlRequest('/api/v1/control/product-identity'); }

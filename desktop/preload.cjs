@@ -38,6 +38,7 @@ const CHANNELS = Object.freeze({
   workerRunOnce: 'art-agent:worker-run-once',
   restart: 'art-agent:restart',
   openDataDir: 'art-agent:open-data-dir',
+  openAwhWeb: 'art-agent:open-awh-web',
 });
 
 contextBridge.exposeInMainWorld('artAgent', Object.freeze({
@@ -85,4 +86,5 @@ contextBridge.exposeInMainWorld('artAgent', Object.freeze({
   runWorkerOnce: () => ipcRenderer.invoke(CHANNELS.workerRunOnce),
   restart: () => ipcRenderer.invoke(CHANNELS.restart),
   openDataDir: () => ipcRenderer.invoke(CHANNELS.openDataDir),
+  openAwhWeb: () => ipcRenderer.invoke(CHANNELS.openAwhWeb),
 }));

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AWH Agent — Art’s Workspace Hub</title>
+  <link rel="stylesheet" href="./connect.css" />
+</head>
+<body>
+  <main class="agent-shell">
+    <header class="agent-brand">
+      <img src="../logo-256x256.png" alt="" />
+      <div><strong>AWH Agent</strong><span>Art’s Workspace Hub</span></div>
+      <span id="agent-dot" class="status-dot checking" aria-hidden="true"></span>
+    </header>
+
+    <section class="hero" aria-labelledby="agent-title">
+      <p class="eyebrow">KRUART · CONNECTED WORKSPACE</p>
+      <h1 id="agent-title">เครื่องนี้พร้อมทำงานกับ AWH</h1>
+      <p id="agent-summary" class="muted" role="status" aria-live="polite">กำลังตรวจสถานะการเชื่อมต่อ…</p>
+      <button id="open-awh" class="primary" type="button">เปิด AWH</button>
+      <p id="open-message" class="message" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="status-card" aria-label="สถานะเครื่อง">
+      <div class="status-row"><span>AWH</span><strong id="hub-status">กำลังตรวจ</strong></div>
+      <div class="status-row"><span>อุปกรณ์</span><strong id="device-name">—</strong></div>
+      <div class="status-row"><span>การทำงานบนเครื่อง</span><strong id="worker-status">กำลังตรวจ</strong></div>
+    </section>
+
+    <form id="login-form" class="login-card" hidden>
+      <div><strong>เชื่อมต่อคอมพิวเตอร์เครื่องนี้</strong><p>เข้าสู่ระบบด้วยบัญชี AWH ของคุณเพียงครั้งเดียว</p></div>
+      <label><span>ชื่อผู้ใช้</span><input id="username" type="text" autocomplete="username" maxlength="64" required /></label>
+      <label><span>รหัสผ่าน</span><input id="password" type="password" autocomplete="current-password" maxlength="512" required /></label>
+      <button id="login-button" class="secondary" type="submit">เชื่อมต่อ AWH</button>
+      <p id="login-message" class="message" role="status" aria-live="polite"></p>
+    </form>
+
+    <footer>
+      <button id="refresh-status" class="text-button" type="button">ตรวจสถานะอีกครั้ง</button>
+      <details id="account-details" hidden><summary>บัญชีเครื่องนี้</summary><button id="logout-button" class="text-button danger" type="button">ออกจากระบบเครื่องนี้</button></details>
+      <p>AWH Agent เป็นเพียงสะพานเชื่อมเครื่องกับ AWH งานหลักทั้งหมดใช้งานผ่านเว็บ</p>
+    </footer>
+  </main>
+  <script src="./connect.js"></script>
+</body>
+</html>

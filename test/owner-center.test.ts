@@ -22,7 +22,7 @@ async function build(): Promise<void> {
 
 test('V1.3 owner center unifies existing owner surfaces without a new authority', async () => {
   const source = await readFile(join(ROOT, 'web', 'owner-center.js'), 'utf8');
-  for (const label of ['Projects', 'Source Authority', 'Multi Chat', 'Tasks & Executions', 'Memory', 'Approvals', 'AI & Costs', 'Devices & Workers', 'Users & Roles', 'Security', 'Infrastructure', 'Database Studio', 'Automations', 'Runtime / lnwjud']) assert.match(source, new RegExp(label.replace(/[&/]/g, '\\$&')));
+  for (const label of ['Projects', 'Source Authority', 'Multi Chat', 'Tasks & Executions', 'Memory', 'Approvals', 'AI & Costs', 'Devices & Workers', 'Users & Roles', 'Security', 'Infrastructure', 'Database Studio', 'Automations', 'AWH Runtime']) assert.match(source, new RegExp(label.replace(/[&/]/g, '\\$&')));
   for (const tab of ['data', 'ai', 'devices', 'people', 'account', 'system']) assert.match(source, new RegExp(`openSettings\\('${tab}'\\)`));
   assert.match(source, /project-open/);
   assert.match(source, /conversation-open/);
