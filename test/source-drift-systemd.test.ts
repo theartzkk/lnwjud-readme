@@ -35,6 +35,13 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(remote, /ecosystem-source-drift\.php" "\$DB" \/srv\/awh-git "\$WEB_POINTER\/release\.json"/);
   assert.match(remote, /DEPLOY_DIAGNOSTIC=SOURCE_DRIFT_FINDINGS_/);
   assert.match(remote, /drift_count=/);
+  assert.match(remote, /PRODUCTION_REF_CHANGED=0; PRODUCTION_REF_PREVIOUS=ABSENT; PREVIOUS_PRODUCTION_SHA=/);
+  assert.match(remote, /production_ref_restore\(\)/);
+  assert.match(remote, /test \"\$current\" = \"\$RELEASE_COMMIT\" \|\| return 1/);
+  assert.match(remote, /update-ref refs\/heads\/production \"\$PREVIOUS_PRODUCTION_SHA\" \"\$RELEASE_COMMIT\"/);
+  assert.match(remote, /update-ref -d refs\/heads\/production \"\$RELEASE_COMMIT\"/);
+  assert.match(remote, /if test \"\$PRODUCTION_REF_CHANGED\" -eq 1; then production_ref_restore \|\| ok=0; fi/);
+  assert.match(remote, /PRODUCTION_REF_PREVIOUS=PRESENT[\s\S]*PREVIOUS_PRODUCTION_SHA=\$current_production[\s\S]*PRODUCTION_REF_CHANGED=1/);
   assert.match(deploy, /DEPLOY_DIAGNOSTIC=SOURCE_DRIFT_FINDINGS_/);
   assert.match(telemetry, /'source-drift'.*'Source Authority Drift'.*'awh-source-drift\.timer'/);
   const drift = await readFile(join(root, 'hub/bin/ecosystem-source-drift.php'), 'utf8');

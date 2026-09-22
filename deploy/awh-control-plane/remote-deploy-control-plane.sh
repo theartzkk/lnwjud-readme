@@ -55,7 +55,7 @@ NGINX_CANDIDATE=/tmp/awh-control-nginx-$RELEASE_ID.conf
 WEB_RELEASE=/var/www/awh-web/releases/$RELEASE_ID
 WEB_POINTER=/var/www/awh-web/current
 WEB_POINTER_TMP=/var/www/awh-web/.current-$RELEASE_ID
-RELEASE_CREATED=0; WEB_CREATED=0; DB_MUTATED=0; POINTER_CHANGED=0; WEB_POINTER_CHANGED=0; NGINX_CHANGED=0; NGINX_BACKUP_CREATED=0; TOPOLOGY_ARCHIVED=0; TOPOLOGY_CLEANED=0; SUCCESS=0; CURRENT_STAGE=PREPARE
+RELEASE_CREATED=0; WEB_CREATED=0; DB_MUTATED=0; POINTER_CHANGED=0; WEB_POINTER_CHANGED=0; NGINX_CHANGED=0; NGINX_BACKUP_CREATED=0; TOPOLOGY_ARCHIVED=0; TOPOLOGY_CLEANED=0; PRODUCTION_REF_CHANGED=0; PRODUCTION_REF_PREVIOUS=ABSENT; PREVIOUS_PRODUCTION_SHA=; SUCCESS=0; CURRENT_STAGE=PREPARE
 EXECUTOR_UNITS_INSTALLED=0
 EXECUTOR_UNITS_PREEXISTING=0
 EXECUTOR_TIMER_STOPPED=0
@@ -356,6 +356,19 @@ web_pointer_capture() {
   fi
 }
 web_pointer_restore() { if test "$WEB_PREVIOUS" = ABSENT; then sudo rm -f "$WEB_POINTER"; test ! -e "$WEB_POINTER" && test ! -L "$WEB_POINTER"; else sudo rm -f "$WEB_POINTER"; sudo ln -s "$WEB_TARGET" "$WEB_POINTER"; test "$(readlink "$WEB_POINTER")" = "$WEB_TARGET"; fi; }
+production_ref_restore() {
+  test "$PRODUCTION_REF_CHANGED" -eq 1 || return 0
+  current=$(git --git-dir=/srv/awh-git/awh.git rev-parse refs/heads/production 2>/dev/null || true)
+  test "$current" = "$RELEASE_COMMIT" || return 1
+  if test "$PRODUCTION_REF_PREVIOUS" = PRESENT; then
+    test -n "$PREVIOUS_PRODUCTION_SHA" || return 1
+    git --git-dir=/srv/awh-git/awh.git update-ref refs/heads/production "$PREVIOUS_PRODUCTION_SHA" "$RELEASE_COMMIT"
+    test "$(git --git-dir=/srv/awh-git/awh.git rev-parse refs/heads/production)" = "$PREVIOUS_PRODUCTION_SHA"
+  else
+    git --git-dir=/srv/awh-git/awh.git update-ref -d refs/heads/production "$RELEASE_COMMIT"
+    ! git --git-dir=/srv/awh-git/awh.git show-ref --verify --quiet refs/heads/production
+  fi
+}
 rollback() {
   status=$?
   if test "$SUCCESS" -eq 0; then
@@ -367,6 +380,7 @@ rollback() {
     fi
     if test "$POINTER_CHANGED" -eq 1; then pointer_restore || ok=0; if test "$ok" -eq 1; then restore_previous_control_include || ok=0; fi; fi
     if test "$WEB_POINTER_CHANGED" -eq 1; then web_pointer_restore || ok=0; fi
+    if test "$PRODUCTION_REF_CHANGED" -eq 1; then production_ref_restore || ok=0; fi
     if test "$NGINX_CHANGED" -eq 1; then sudo cp -p "$NGINX_BACKUP" "$NGINX_CONFIG" || ok=0; fi
     if test "$EXECUTOR_UNITS_INSTALLED" -eq 1; then
       sudo systemctl disable --now awh-native-executor.timer >/dev/null 2>&1 || ok=0
@@ -1108,11 +1122,16 @@ if test -d /srv/awh-git/awh.git; then
   git --git-dir=/srv/awh-git/awh.git cat-file -e "$RELEASE_COMMIT^{commit}"
   current_production=$(git --git-dir=/srv/awh-git/awh.git rev-parse refs/heads/production 2>/dev/null || true)
   if test -n "$current_production"; then
+    PRODUCTION_REF_PREVIOUS=PRESENT
+    PREVIOUS_PRODUCTION_SHA=$current_production
     git --git-dir=/srv/awh-git/awh.git merge-base --is-ancestor "$current_production" "$RELEASE_COMMIT"
     git --git-dir=/srv/awh-git/awh.git update-ref refs/heads/production "$RELEASE_COMMIT" "$current_production"
   else
+    PRODUCTION_REF_PREVIOUS=ABSENT
+    PREVIOUS_PRODUCTION_SHA=
     git --git-dir=/srv/awh-git/awh.git update-ref refs/heads/production "$RELEASE_COMMIT"
   fi
+  PRODUCTION_REF_CHANGED=1
 fi
 if test "$PROJECT_SOURCE_AUTHORITY" = 1; then
   stage SOURCE_DRIFT_VERIFY
