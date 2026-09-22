@@ -1,6 +1,7 @@
-import { access } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { join, win32 as pathWin32 } from 'node:path';
-import { resolveExecutable } from './process.js';
+import { execFile, resolveExecutable } from './process.js';
 
 export interface WorkerToolProbeOptions {
   platform?: NodeJS.Platform;
@@ -48,6 +49,56 @@ async function anyPath(paths: string[], available: (path: string) => Promise<boo
   for (const path of paths) if (await available(path)) return true;
   return false;
 }
+
+export interface WorkerOperationalProbeOptions {
+  platform?: NodeJS.Platform;
+  home?: string;
+  readText?: (path: string) => Promise<string>;
+  foregroundApp?: () => Promise<string | null>;
+}
+
+function appCapability(value: string): string | null {
+  const name = value.trim().toLocaleLowerCase('en-US');
+  if (/photoshop/.test(name)) return 'photoshop';
+  if (/after effects/.test(name)) return 'after-effects';
+  if (/premiere/.test(name)) return 'premiere';
+  if (/remotion/.test(name)) return 'remotion';
+  if (/chrome/.test(name)) return 'chrome';
+  if (/safari/.test(name)) return 'safari';
+  return null;
+}
+
+export async function discoverWorkerOperationalCapabilities(options: WorkerOperationalProbeOptions = {}): Promise<string[]> {
+  const platform = options.platform ?? process.platform;
+  const home = options.home ?? homedir();
+  const readText = options.readText ?? (async (path: string) => readFile(path, 'utf8'));
+  let mode: 'off' | 'on' | 'live' | null = null;
+  try {
+    const value = (await readText(join(home, '.kruart', 'ai-control', 'state'))).trim().toLocaleLowerCase('en-US');
+    if (value === 'off' || value === 'on' || value === 'live') mode = value;
+  } catch { /* KRUART mode is optional outside managed KRUART devices. */ }
+  let guiReady = false;
+  try {
+    const registry = JSON.parse(await readText(join(home, '.kruart', 'capability-registry.json'))) as { capabilities?: { gui?: { runtime?: unknown } } };
+    guiReady = registry.capabilities?.gui?.runtime === 'READY';
+  } catch { /* Registry absence must not fabricate readiness. */ }
+  const out: string[] = [];
+  if (mode) out.push(`runtime.ai.${mode}`);
+  if (guiReady) out.push('runtime.gui.ready');
+  if (mode === 'live' && guiReady) out.push('runtime.visual.ready');
+  if (platform === 'darwin') {
+    try {
+      const foreground = options.foregroundApp ?? (async () => {
+        const result = await execFile('/usr/bin/osascript', ['-e', 'tell application "System Events" to get name of first application process whose frontmost is true'], home, 2_000);
+        return result.code === 0 ? result.stdout.trim() || null : null;
+      });
+      const app = appCapability((await foreground()) ?? '');
+      if (app) out.push(`app.foreground.${app}`);
+    } catch { /* Foreground evidence is opportunistic and short-lived. */ }
+  }
+  return [...new Set(out)].sort();
+}
+
 export async function discoverWorkerTools(options: WorkerToolProbeOptions = {}): Promise<string[]> {
   const platform = options.platform ?? process.platform;
   const env = options.env ?? process.env;

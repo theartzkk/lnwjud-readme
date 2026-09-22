@@ -2572,7 +2572,7 @@ final class HubControlPlaneService
             $state = HubWorkerHealth::effectiveState($row['state'] ?? null, $row['last_seen_at'] ?? null, gmdate('c', $nowAt));
             $capabilities = []; try { $raw = json_decode((string) $row['capabilities_json'], true, 32, JSON_THROW_ON_ERROR); if (is_array($raw) && array_is_list($raw)) foreach ($raw as $capability) if (is_string($capability) && preg_match('/^[a-z][a-z0-9:._-]{0,63}$/', $capability)) $capabilities[] = $capability; } catch (Throwable) {}
             $capabilities = array_values(array_unique($capabilities));
-            return ['deviceId' => (string) $row['device_id'], 'displayName' => (string) $row['display_name'], 'platform' => (string) $row['platform'], 'arch' => (string) $row['arch'], 'appVersion' => (string) $row['app_version'], 'state' => $state, 'lastSeenAt' => (string) $row['last_seen_at'], 'capabilities' => $capabilities, 'detectedTools' => self::workerToolLabels($capabilities), 'boundProjectCount' => (int) $row['project_count'], 'activity' => $state === 'WORKING' ? 'BUSY' : ($state === 'READY' ? 'ONLINE' : ($state === 'STALE' ? 'STALE' : 'OFFLINE'))];
+            return ['deviceId' => (string) $row['device_id'], 'displayName' => (string) $row['display_name'], 'platform' => (string) $row['platform'], 'arch' => (string) $row['arch'], 'appVersion' => (string) $row['app_version'], 'state' => $state, 'lastSeenAt' => (string) $row['last_seen_at'], 'capabilities' => $capabilities, 'detectedTools' => self::workerToolLabels($capabilities), 'operationalContext' => self::workerOperationalContext($capabilities), 'boundProjectCount' => (int) $row['project_count'], 'activity' => $state === 'WORKING' ? 'BUSY' : ($state === 'READY' ? 'ONLINE' : ($state === 'STALE' ? 'STALE' : 'OFFLINE'))];
         }, $q->fetchAll());
         return $this->deviceRoles->decorateWorkers($workers);
     }
@@ -2588,6 +2588,26 @@ final class HubControlPlaneService
         ];
         $out = []; foreach ($capabilities as $capability) if (isset($labels[$capability])) $out[] = $labels[$capability];
         return array_values(array_unique($out));
+    }
+
+    /** Runtime signals are heartbeat evidence, not a second device authority. */
+    private static function workerOperationalContext(array $capabilities): array
+    {
+        $mode = 'UNKNOWN';
+        foreach (['OFF'=>'runtime.ai.off','ON'=>'runtime.ai.on','LIVE'=>'runtime.ai.live'] as $label=>$capability) if (in_array($capability,$capabilities,true)) { $mode=$label; break; }
+        $foreground = null;
+        foreach ($capabilities as $capability) if (str_starts_with($capability,'app.foreground.')) { $foreground=substr($capability,strlen('app.foreground.')); break; }
+        return ['aiMode'=>$mode,'guiReady'=>in_array('runtime.gui.ready',$capabilities,true),'visualReady'=>in_array('runtime.visual.ready',$capabilities,true),'foregroundApp'=>$foreground];
+    }
+
+    private static function goalForegroundCapability(string $goal): ?string
+    {
+        $value=strtolower($goal);
+        if (preg_match('/photoshop/u',$value)) return 'app.foreground.photoshop';
+        if (preg_match('/after effects?/u',$value)) return 'app.foreground.after-effects';
+        if (preg_match('/premiere/u',$value)) return 'app.foreground.premiere';
+        if (preg_match('/remotion/u',$value)) return 'app.foreground.remotion';
+        return null;
     }
 
     public function heartbeat(string $token, array $payload, ?string $now = null): array
@@ -2611,6 +2631,27 @@ final class HubControlPlaneService
             }
         }
         return ['schemaVersion' => 1, 'deviceId' => $auth['deviceId'], 'state' => $state, 'lastSeenAt' => $at];
+    }
+
+    /** Prefer fresh LIVE visual authority for GUI work; old workers remain compatible. */
+    private function preferredGuiWorker(string $projectId, string $capability, string $goal, string $at): ?string
+    {
+        if (!in_array($capability,['device.gui.inspect','device.gui.operate'],true)) return null;
+        $q=$this->pdo->prepare("SELECT w.device_id,w.state,w.last_seen_at,w.busy_task_id,w.capabilities_json FROM control_workers w JOIN devices d ON d.device_id=w.device_id JOIN device_project_memberships m ON m.device_id=w.device_id AND m.project_id=:project AND m.revoked_at IS NULL WHERE d.revoked_at IS NULL ORDER BY w.last_seen_at DESC,w.device_id");
+        $q->execute(['project'=>$projectId]); $foreground=self::goalForegroundCapability($goal); $best=null; $bestScore=-1;
+        foreach($q->fetchAll() as $row){
+            if($row['busy_task_id']!==null||HubWorkerHealth::effectiveState($row['state']??null,$row['last_seen_at']??null,$at)!=='READY') continue;
+            try{$caps=json_decode((string)$row['capabilities_json'],true,32,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
+            if(!is_array($caps)||!in_array($capability,$caps,true)) continue;
+            if($capability==='device.gui.operate'&&in_array('runtime.ai.off',$caps,true)) continue;
+            $score=0;
+            if(in_array('runtime.ai.live',$caps,true)) $score+=40; elseif(in_array('runtime.ai.on',$caps,true)) $score+=10;
+            if(in_array('runtime.gui.ready',$caps,true)) $score+=10;
+            if(in_array('runtime.visual.ready',$caps,true)) $score+=20;
+            if($foreground!==null&&in_array($foreground,$caps,true)) $score+=100;
+            if($score>$bestScore){$bestScore=$score;$best=(string)$row['device_id'];}
+        }
+        return $bestScore > 0 ? $best : null;
     }
 
     public function claim(string $token, array $payload, ?string $now = null): array
@@ -2670,6 +2711,8 @@ final class HubControlPlaneService
                 foreach ($deviceWork->fetchAll() as $candidate) {
                     $required = (string) ($candidate['required_capability'] ?? '');
                     if (!in_array($required, $caps, true)) continue;
+                    $preferred = $this->preferredGuiWorker((string)$candidate['project_id'],$required,(string)($candidate['goal']??''),$at);
+                    if ($preferred !== null && !hash_equals($preferred,(string)$auth['deviceId'])) continue;
                     $lease = $this->pdo->prepare("UPDATE control_task_executions SET state = 'RUNNING', lease_owner = :device, lease_expires_at = :expires, attempt_count = attempt_count + 1, last_error_code = NULL, updated_at = :at WHERE task_id = :task AND state = 'WAITING_FOR_CAPABILITY' AND executor_kind = 'DEVICE' AND required_capability = :capability");
                     $lease->execute(['device' => $auth['deviceId'], 'expires' => $expires, 'at' => $at, 'task' => $candidate['task_id'], 'capability' => $required]);
                     if ($lease->rowCount() === 1) { if ($this->capabilities !== null) $this->capabilities->updateEnvelopeState((string) $candidate['execution_id'], 'ACTIVE', $expires, $at, true); $row = $candidate; break; }
