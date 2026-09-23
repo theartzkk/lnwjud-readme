@@ -610,3 +610,9 @@ body.work-active .capability-plan:not([open]){width:max-content;max-width:100%;b
 body.work-active .capability-plan:not([open])>summary{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 body.work-active .capability-plan[open]{padding:8px 10px}
 @media(max-width:680px){body.work-active .live-activity{gap:5px;padding:6px 0 1px}body.work-active .capability-plan{margin-top:2px}body.work-active .composer-stop{min-height:32px;padding:5px 9px;font-size:11px}}
+
+
+/* Web-first installation · native Agent stays optional */
+.web-app-entry{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:grid;gap:7px}
+.web-app-entry .secondary-button{justify-self:start}
+.web-app-entry small{color:var(--muted);font-size:.72rem;line-height:1.5}

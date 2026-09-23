@@ -55,10 +55,9 @@ test('web build is a generic authenticated Control shell, never a serialized pro
   assert.match(app, /hub-read-adapter\.js\?release=fixture-control-sha/);
   assert.match(adapter, /\/api\/v1\/auth\/session/);
   assert.doesNotMatch(adapter, /control-plane-adapter\.js/);
-  assert.match(html, /downloads\/AWH-macOS-arm64\.zip/);
-  assert.match(html, /macOS Apple Silicon/);
-  assert.match(html, /downloads\/AWH-macOS-x64\.zip/);
-  assert.match(html, /downloads\/AWH-Windows-x64\.zip/);
+  assert.match(html, /id="install-web-app"/);
+  assert.match(html, /ไม่ต้องติดตั้งโปรแกรมเพื่อเริ่มใช้งาน/);
+  assert.doesNotMatch(html.match(/<section id="sign-in-view"[\s\S]*?<section id="ecosystem-home-view"/)?.[0] || '', /downloads\/AWH-macOS|downloads\/AWH-Windows/);
 });
 
 test('public web presents the local extension as AWH Agent and keeps Desktop as an internal compatibility surface', async () => {
@@ -67,9 +66,12 @@ test('public web presents the local extension as AWH Agent and keeps Desktop as 
     readFile(join(ROOT, 'web', 'app.js'), 'utf8'),
   ]);
   assert.match(html, /อุปกรณ์และ AWH Agent/);
-  assert.match(html, /ดาวน์โหลด AWH Agent/);
+  assert.match(html, /เชื่อมคอมพิวเตอร์เครื่องนี้/);
   assert.match(html, /AWH ใช้งานหลักผ่านเว็บได้จากทุกอุปกรณ์/);
   assert.match(html, /AWH Agent เป็นตัวเชื่อมเสริม/);
+  assert.match(html, /Internal build เท่านั้น/);
+  assert.match(app, /ADHOC_INTERNAL_ONLY/);
+  assert.match(app, /GATEKEEPER_ACCEPTED/);
   assert.match(app, /ยังไม่มี AWH Agent ที่พร้อมทำงาน/);
   assert.match(app, /ใช้ AWH Agent เฉพาะงานที่ต้องเข้าถึงไฟล์หรือแอป/);
   assert.doesNotMatch(`${html}\n${app}`, /AWH Desktop/);

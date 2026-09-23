@@ -22,6 +22,7 @@ import {
   const MAX_BRAND_SOURCE_BYTES = 8 * 1024 * 1024;
   const MAX_BRAND_DATA_URL_CHARS = 11500;
   let desktopReleasePromise = null;
+  let deferredInstallPrompt = null;
   let conversationRequest = 0;
   let conversationRefresh = null;
   let pollingConversation = false;
@@ -60,6 +61,19 @@ import {
   }
   let pendingPrivilegedAction = null;
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => undefined);
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault(); deferredInstallPrompt = event;
+    const button = $('install-web-app'); if (button) button.hidden = false;
+    message('install-web-app-note', 'ติดตั้ง AWH เป็นแอปจากเว็บได้ · ไม่ต้องลง AWH Agent');
+  });
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null; const button = $('install-web-app'); if (button) button.hidden = true;
+    message('install-web-app-note', 'AWH ถูกติดตั้งเป็น Web App บนอุปกรณ์นี้แล้ว');
+  });
+  {
+    const button = $('install-web-app');
+    if (button && /(Macintosh|iPhone|iPad)/.test(navigator.userAgent)) button.hidden = false;
+  }
 
   function message(id, value = '') { const node = $(id); if (node) node.textContent = value; }
   function safeText(value, fallback = '') { return typeof value === 'string' && value.trim() ? value.trim() : fallback; }
@@ -600,7 +614,10 @@ import {
         if (!path.endsWith('.zip')) continue;
         const proof = desktopReleases.find(item => item?.path === path);
         if (!proof || proof.packageVerification !== 'VERIFIED' || !/^[0-9a-f]{40}$/.test(proof.sourceSha || '') || proof.packageSha256 !== entry.sha256 || proof.sizeBytes !== entry.sizeBytes) files.delete(path);
-        else entry.sourceSha = proof.sourceSha;
+        else {
+          entry.sourceSha = proof.sourceSha;
+          entry.platformTrust = typeof proof.platformTrust === 'string' ? proof.platformTrust : (path.includes('macOS') ? 'ADHOC_INTERNAL_ONLY' : 'PACKAGE_VERIFIED');
+        }
       }
       return { releaseId: manifest.releaseId, sourceSha: manifest.sourceSha, files };
     })().catch((error) => { desktopReleasePromise = null; throw error; });
@@ -608,19 +625,10 @@ import {
   }
 
   async function loadPublicDesktopRelease() {
-    const container = document.querySelector('.login-downloads');
-    if (!(container instanceof HTMLElement)) return;
-    container.hidden = true;
-    try {
-      const release = await loadVerifiedDesktopRelease(); let available = 0;
-      for (const [path, , platform] of DESKTOP_PACKAGES) {
-        const link = document.querySelector(`[data-desktop-package="${platform}"]`); if (!(link instanceof HTMLAnchorElement)) continue;
-        const entry = release.files.get(path); link.hidden = !entry;
-        if (entry) { link.href = `./${path}`; link.dataset.release = release.releaseId; available += 1; }
-        else { link.removeAttribute('href'); delete link.dataset.release; }
-      }
-      container.hidden = available === 0;
-    } catch { container.hidden = true; }
+    // AWH is Web/PWA-first. Native Agent installers are never a public sign-in path.
+    // macOS must additionally carry explicit Apple trust evidence before any future
+    // public exposure; checksum/source provenance alone is not platform trust.
+    return undefined;
   }
 
   async function loadDesktopRelease() {
@@ -630,15 +638,14 @@ import {
       const packages = DESKTOP_PACKAGES.filter(([path]) => files.has(path));
       list.replaceChildren();
       if (!packages.length) throw new Error('verified desktop packages unavailable');
-      message('desktop-release-status', `แพ็กเกจที่มีหลักฐาน Source และ checksum · ${release.releaseId}`);
-      for (const [path, , platform] of DESKTOP_PACKAGES) {
-        const link = document.querySelector(`[data-desktop-package="${platform}"]`); if (link && files.has(path)) { link.href = `./${path}`; link.dataset.release = release.releaseId; link.hidden = false; }
-      }
+      message('desktop-release-status', `AWH Agent เป็นส่วนเสริม · ${release.releaseId}`);
       for (const [path, label] of packages) {
         const entry = files.get(path); const item = document.createElement('div'); item.className = 'session-item';
-        const title = document.createElement('strong'); title.textContent = label;
-        const detail = document.createElement('span'); detail.textContent = `${size(entry.sizeBytes)} · Source ${entry.sourceSha.slice(0, 12)} · SHA-256 ${entry.sha256.slice(0, 12)}…`;
-        const link = document.createElement('a'); link.href = `./${path}`; link.textContent = `ดาวน์โหลด ${label}`; link.setAttribute('download', '');
+        const mac = path.includes('macOS'); const trusted = entry.platformTrust === 'GATEKEEPER_ACCEPTED';
+        const title = document.createElement('strong'); title.textContent = `${label}${mac && !trusted ? ' · Internal' : ''}`;
+        const trust = mac ? (trusted ? 'Apple trust ผ่านแล้ว' : 'ยังไม่ผ่าน Apple Notarization') : 'แพ็กเกจตรวจ Source/Checksum แล้ว';
+        const detail = document.createElement('span'); detail.textContent = `${trust} · ${size(entry.sizeBytes)} · Source ${entry.sourceSha.slice(0, 12)} · SHA-256 ${entry.sha256.slice(0, 12)}…`;
+        const link = document.createElement('a'); link.href = `./${path}`; link.textContent = mac && !trusted ? `ดาวน์โหลด Internal build` : `ดาวน์โหลด ${label}`; link.setAttribute('download', '');
         item.append(title, detail, link); list.append(item);
       }
     } catch {
@@ -1879,6 +1886,16 @@ import {
       message('core-release-message', result.idempotent ? 'มีคำขอรุ่นนี้อยู่แล้ว กรุณาตรวจและอนุมัติรายการด้านล่าง' : 'สร้างคำขอแล้ว กรุณาตรวจรายละเอียดและกด “อนุมัติปล่อยรุ่น” ด้านล่าง');
     } catch (error) { message('core-release-message', error instanceof Error ? error.message : 'ยังสร้างคำขอปล่อยรุ่นไม่ได้'); }
     finally { button.disabled = false; }
+  });
+  $('install-web-app')?.addEventListener('click', async () => {
+    const button = $('install-web-app');
+    if (!deferredInstallPrompt) {
+      message('install-web-app-note', /Macintosh/.test(navigator.userAgent) ? 'บน Safari ให้เลือก File → Add to Dock เพื่อใช้ AWH แบบแอป' : 'ใช้เมนูของเบราว์เซอร์เพื่อเพิ่ม AWH ไปยังหน้าจอหลัก/ติดตั้งเป็นแอป');
+      return;
+    }
+    button.disabled = true;
+    try { await deferredInstallPrompt.prompt(); await deferredInstallPrompt.userChoice; }
+    finally { deferredInstallPrompt = null; button.disabled = false; button.hidden = true; }
   });
   $('recovery-open').addEventListener('click', openPasswordRecovery);
   document.querySelectorAll('[data-close-sheet]').forEach((button) => button.addEventListener('click', () => closeSheet(button.dataset.closeSheet)));
