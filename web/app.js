@@ -5,8 +5,8 @@ import {
   cancelTask, changePassword, changeUsername, createConversation, createMemory, createPerson, createProject, createRecoveryCodes, decideApproval,
   exportWorkspace, listAccountRequests, listAuthSessions, listPeople, loadAuthProfile, loadControlData, loadConversation, loadConversationHistory,
   loadConversations, loadDeletedConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus,
-  loadProductSettingHistory, loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadObservabilityStatus, loadCapabilities, loadSystemReadiness, loadWorkspaceContinuity, login, logout, logoutAll,
-  recover, registerAccessRequest, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage,
+  loadProductSettingHistory, loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadObservabilityStatus, loadCapabilities, loadCoreReleaseStatus, loadInfrastructure, loadSystemReadiness, loadWorkspaceContinuity, login, logout, logoutAll,
+  recover, registerAccessRequest, requestCoreRelease, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage,
   testProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
   updateProviderCredential, updateProviderPolicy, updateProviderProjectRouting, updateObservabilityCredential, updateConversationLifecycle, uploadConversationAttachments,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
@@ -16,8 +16,9 @@ import {
   const MAX_ATTACHMENT_BYTES = 60 * 1024 * 1024;
   const CANCELLABLE_TASK_STATES = new Set(['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL']);
   const MICRO_BAHT = 1000000;
+  const AWH_PROJECT_ID = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
   const DESKTOP_PACKAGES = [['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, people: [], accountRequests: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, coreReleases: null, infrastructure: null, people: [], accountRequests: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
   const pendingBrandAssets = { logo: undefined, icon: undefined };
   const MAX_BRAND_SOURCE_BYTES = 8 * 1024 * 1024;
   const MAX_BRAND_DATA_URL_CHARS = 11500;
@@ -646,6 +647,71 @@ import {
       const note = document.createElement('div'); note.className = 'session-item'; note.textContent = 'AWH จะไม่แสดงลิงก์ที่ตรวจสอบไม่ได้'; list.append(note);
     }
   }
+  function coreReleaseStateLabel(value) {
+    return ({ WAITING_FOR_APPROVAL: 'รอ Owner อนุมัติ', WAITING_FOR_WORKER: 'อนุมัติแล้ว · รอเริ่ม', QUEUED: 'อยู่ในคิว', RUNNING: 'กำลังปล่อยรุ่น', COMPLETED: 'สำเร็จ', FAILED: 'ไม่สำเร็จ', CANCELLED: 'ยกเลิกแล้ว', WAITING_FOR_CAPABILITY: 'รอความพร้อมระบบ' })[value] || value || 'ไม่ทราบสถานะ';
+  }
+  function coreReleaseShortSha(value) { return typeof value === 'string' && /^[0-9a-f]{40}$/i.test(value) ? value.slice(0, 12) : '—'; }
+  function renderCoreReleaseSurface() {
+    const host = $('core-release-current'); const history = $('core-release-history'); const input = $('core-release-sha'); const dot = $('core-release-dot');
+    if (!host || !history || !input) return;
+    const deployment = state.infrastructure?.deployment || {};
+    const project = Array.isArray(state.infrastructure?.projects) ? state.infrastructure.projects.find((item) => item?.projectId === AWH_PROJECT_ID) : null;
+    const productionSha = typeof deployment.controlSourceSha === 'string' && /^[0-9a-f]{40}$/i.test(deployment.controlSourceSha) ? deployment.controlSourceSha.toLowerCase() : null;
+    const sourceSha = typeof project?.sourceRevision === 'string' && /^[0-9a-f]{40}$/i.test(project.sourceRevision) ? project.sourceRevision.toLowerCase() : null;
+    const matched = deployment.sourceState === 'MATCHED' && deployment.pointersMatch === true;
+    if (dot) dot.classList.toggle('attention', !matched);
+    message('core-release-summary', matched ? `Production ${deployment.controlReleaseId || deployment.releaseId || '—'} · Control/Web ตรงกัน` : 'Production ยังยืนยัน Control/Web ให้ตรงกันไม่ได้');
+    host.replaceChildren();
+    for (const [label, value] of [
+      ['Production', `${deployment.controlReleaseId || deployment.releaseId || '—'} · Source ${coreReleaseShortSha(productionSha)}`],
+      ['Source Authority', sourceSha ? `${coreReleaseShortSha(sourceSha)}${sourceSha === productionSha ? ' · ตรงกับ Production' : ' · มีรุ่นใหม่กว่า Production'}` : 'ยังไม่มี Source SHA ที่ยืนยันได้'],
+      ['Rollback', deployment.rollbackReleaseId || 'ยังไม่มีข้อมูล rollback point'],
+    ]) {
+      const row = document.createElement('div'); row.className = 'session-item';
+      const strong = document.createElement('strong'); strong.textContent = label;
+      const detail = document.createElement('span'); detail.textContent = value;
+      row.append(strong, detail); host.append(row);
+    }
+    if (!input.value.trim() && sourceSha) input.value = sourceSha;
+    history.replaceChildren();
+    const releases = Array.isArray(state.coreReleases?.releases) ? state.coreReleases.releases.slice(0, 8) : [];
+    if (!releases.length) {
+      const empty = document.createElement('div'); empty.className = 'session-item'; empty.textContent = 'ยังไม่มีประวัติคำขอปล่อยรุ่นผ่าน Web Admin'; history.append(empty); return;
+    }
+    for (const release of releases) {
+      const row = document.createElement('div'); row.className = 'session-item';
+      const title = document.createElement('strong'); title.textContent = `Source ${coreReleaseShortSha(release.releaseSha)} · ${coreReleaseStateLabel(release.taskState || release.executionState)}`;
+      const detail = document.createElement('span'); detail.textContent = `${release.progress || 0}% · ${date(release.updatedAt)}${release.failureCode ? ` · ${release.failureCode}` : ''}`;
+      row.append(title, detail);
+      if (release.resultSummary) { const summary = document.createElement('small'); summary.textContent = release.resultSummary; row.append(summary); }
+      if (release.approvalId && release.approvalStatus === 'PENDING') {
+        const actions = document.createElement('div'); actions.className = 'form-actions';
+        for (const [decision, label, className] of [['approve', 'อนุมัติปล่อยรุ่น', 'secondary-button'], ['reject', 'ไม่อนุมัติ', 'text-button']]) {
+          const button = document.createElement('button'); button.type = 'button'; button.className = className; button.textContent = label;
+          button.addEventListener('click', async () => {
+            const approve = decision === 'approve';
+            if (!window.confirm(approve ? `อนุมัติให้ AWH ปล่อย Source ${coreReleaseShortSha(release.releaseSha)} ไป Production ใช่หรือไม่?` : 'ไม่อนุมัติคำขอปล่อยรุ่นนี้ใช่หรือไม่?')) return;
+            button.disabled = true; message('core-release-message', approve ? 'กำลังบันทึกการอนุมัติ…' : 'กำลังปฏิเสธคำขอ…');
+            try { await decideApproval(release.approvalId, decision); await refreshCoreReleaseState(); message('core-release-message', approve ? 'อนุมัติแล้ว AWH จะทำ verification, backup และ deploy ผ่าน VPS อัตโนมัติ' : 'ปฏิเสธคำขอแล้ว Production ไม่ถูกเปลี่ยน'); }
+            catch (error) { message('core-release-message', error instanceof Error ? error.message : 'ยังบันทึกการอนุมัติไม่ได้'); }
+            finally { button.disabled = false; }
+          });
+          actions.append(button);
+        }
+        row.append(actions);
+      }
+      history.append(row);
+    }
+  }
+  async function refreshCoreReleaseState() {
+    if (!isOwner()) return;
+    const [releaseResult, infrastructureResult] = await Promise.allSettled([loadCoreReleaseStatus(), loadInfrastructure()]);
+    if (releaseResult.status === 'fulfilled') state.coreReleases = releaseResult.value;
+    if (infrastructureResult.status === 'fulfilled') state.infrastructure = infrastructureResult.value;
+    if (releaseResult.status === 'rejected' || infrastructureResult.status === 'rejected') message('core-release-message', 'โหลดสถานะรุ่นระบบได้ไม่ครบ กรุณารีเฟรชอีกครั้ง');
+    renderCoreReleaseSurface();
+  }
+
   function renderSettingsOverview() {
     const provider = state.provider || {}; const credential = provider.credential || {}; const workers = state.ownerStatus?.workers || state.control?.workers || [];
     const ai = provider.available ? 'พร้อมใช้งาน · Auto' : provider.keyConfigured ? `เชื่อมแล้ว · ${credential.lastTestStatus === 'PASS' ? 'ตรวจสอบผ่าน' : 'ต้องทดสอบ'}` : 'ยังไม่เชื่อม API key';
@@ -666,6 +732,7 @@ import {
     const online = workers.filter((worker) => worker?.online || ['READY', 'WORKING', 'ONLINE'].includes(worker?.state)).length;
     message('settings-worker-message', online > 0 ? `มีอุปกรณ์เสริมพร้อมรับงาน ${online} เครื่อง · งาน Cloud ทำต่อได้โดยไม่ต้องเปิดเครื่อง` : 'งานบนเว็บทำต่อได้ตามปกติ · ใช้ AWH Agent เฉพาะงานที่ต้องเข้าถึงไฟล์หรือแอปบนคอมพิวเตอร์เครื่องนั้น');
     renderCapabilitySurface();
+    renderCoreReleaseSurface();
     void loadDesktopRelease();
     const readiness = state.systemReadiness;
     if (readiness) {
@@ -1550,6 +1617,7 @@ import {
       if (ownerStatusResult.status === 'fulfilled') state.ownerStatus = ownerStatusResult.value;
       if (routingResult.status === 'fulfilled') state.providerRouting = routingResult.value;
       if (state.ownerStatus) renderOwnerSelfService(); else renderSettingsOverview();
+      if (selected === 'system') await refreshCoreReleaseState();
       try { await refreshMemory(); } catch { message('memory-message', 'ยังโหลดความจำไม่ได้ ลองรีเฟรชอีกครั้ง'); }
     } else renderSettingsOverview();
   }
@@ -1774,7 +1842,7 @@ import {
     catch (error) { message('system-check-message', error instanceof Error ? error.message : 'ยังตรวจความพร้อมของ AWH ไม่ได้'); }
     finally { button.disabled = false; }
   });
-  document.querySelectorAll('[data-settings-tab]').forEach((button) => button.addEventListener('click', () => showSettingsSection(button.dataset.settingsTab)));
+  document.querySelectorAll('[data-settings-tab]').forEach((button) => button.addEventListener('click', () => { showSettingsSection(button.dataset.settingsTab); if (button.dataset.settingsTab === 'system' && isOwner()) void refreshCoreReleaseState(); }));
   $('observability-credential-form')?.addEventListener('submit', async (event) => {
     event.preventDefault(); const field = $('observability-api-key'); const button = event.currentTarget.querySelector('button[type="submit"]'); if (!field?.value.trim()) { message('observability-message', 'วาง Honeycomb API key ก่อน'); return; }
     button.disabled = true; message('observability-message', 'กำลังบันทึก key อย่างปลอดภัย…');
@@ -1789,6 +1857,30 @@ import {
     catch (error) { message('observability-message', error instanceof Error ? error.message : 'ยังหยุดการเชื่อมไม่ได้'); }
   });
   $('system-check-inline')?.addEventListener('click', () => $('system-check')?.click());
+  $('core-release-refresh')?.addEventListener('click', async () => {
+    const button = $('core-release-refresh'); button.disabled = true; message('core-release-message', 'กำลังอ่าน Production และ Source Authority…');
+    try { await refreshCoreReleaseState(); message('core-release-message', 'อัปเดตสถานะแล้ว'); }
+    catch (error) { message('core-release-message', error instanceof Error ? error.message : 'ยังรีเฟรชรุ่นระบบไม่ได้'); }
+    finally { button.disabled = false; }
+  });
+  $('core-release-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!isOwner()) { message('core-release-message', 'เฉพาะ Owner เท่านั้นที่ปล่อยรุ่น AWH ได้'); return; }
+    const input = $('core-release-sha'); const button = event.currentTarget.querySelector('button[type="submit"]');
+    const sha = input?.value.trim().toLowerCase() || ''; const cleanup = $('core-release-cleanup')?.checked === true;
+    if (!/^[0-9a-f]{40}$/.test(sha)) { message('core-release-message', 'กรอก Source SHA แบบ 40 ตัวอักษรให้ครบ'); return; }
+    const productionSha = state.infrastructure?.deployment?.controlSourceSha;
+    if (typeof productionSha === 'string' && productionSha.toLowerCase() === sha && state.infrastructure?.deployment?.sourceState === 'MATCHED' && state.infrastructure?.deployment?.pointersMatch === true) { message('core-release-message', 'Production ใช้ Source รุ่นนี้อยู่แล้ว ไม่ต้อง deploy ซ้ำ'); return; }
+    if (!window.confirm(`เตรียม AWH Source ${coreReleaseShortSha(sha)} สำหรับ Production ใช่หรือไม่? ขั้นตอนนี้ยังไม่ deploy จนกว่าจะอนุมัติคำขออีกครั้ง`)) return;
+    button.disabled = true; message('core-release-message', 'กำลังตรวจสิทธิ์และสร้างคำขอปล่อยรุ่น…');
+    try {
+      const result = await withPrivilegedRetry(() => requestCoreRelease(sha, cleanup), 'การปล่อยรุ่น AWH');
+      showSettingsSection('system');
+      await refreshCoreReleaseState();
+      message('core-release-message', result.idempotent ? 'มีคำขอรุ่นนี้อยู่แล้ว กรุณาตรวจและอนุมัติรายการด้านล่าง' : 'สร้างคำขอแล้ว กรุณาตรวจรายละเอียดและกด “อนุมัติปล่อยรุ่น” ด้านล่าง');
+    } catch (error) { message('core-release-message', error instanceof Error ? error.message : 'ยังสร้างคำขอปล่อยรุ่นไม่ได้'); }
+    finally { button.disabled = false; }
+  });
   $('recovery-open').addEventListener('click', openPasswordRecovery);
   document.querySelectorAll('[data-close-sheet]').forEach((button) => button.addEventListener('click', () => closeSheet(button.dataset.closeSheet)));
 

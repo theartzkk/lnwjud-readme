@@ -361,3 +361,24 @@ test('Work renders inspection evidence through the existing same-origin artifact
   assert.match(app, /empty-work[\s\S]{0,180}for \(const turn of visibleMessages\)/);
   assert.doesNotMatch(app, /inspection-evidence[^\n]*(?:localStorage|sessionStorage|Authorization|Bearer)/);
 });
+
+
+test('Owner System settings exposes bounded VPS-native core release control without a parallel deploy path', async () => {
+  const [html, app, adapter, service] = await Promise.all([
+    readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
+    readFile(join(ROOT, 'web', 'app.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'control-plane-adapter.js'), 'utf8'),
+    readFile(join(ROOT, 'hub', 'src', 'HubCoreReleaseService.php'), 'utf8'),
+  ]);
+  for (const id of ['core-release-summary','core-release-current','core-release-form','core-release-sha','core-release-cleanup','core-release-refresh','core-release-message','core-release-history']) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(adapter, /loadCoreReleaseStatus/);
+  assert.match(adapter, /requestCoreRelease/);
+  assert.match(adapter, /\/api\/v1\/control\/system\/releases/);
+  assert.match(app, /withPrivilegedRetry\(\(\) => requestCoreRelease/);
+  assert.match(app, /decideApproval\(release\.approvalId, decision\)/);
+  assert.match(app, /loadInfrastructure\(\)/);
+  assert.match(service, /'deployment\.approve'/);
+  assert.match(service, /'risk'=>'CRITICAL'/);
+  assert.match(service, /'transport'=>'LOCAL'/);
+  assert.doesNotMatch(`${html}\n${app}`, /lnwjud/i);
+});

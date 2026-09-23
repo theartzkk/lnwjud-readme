@@ -37,6 +37,10 @@ function safeErrorMessage(value) {
     MEMORY_SENSITIVE_EXCLUDED: 'AWH ไม่เก็บข้อมูลลับหรือข้อมูลอ่อนไหวไว้ในความจำปกติ',
     MEMORY_NOT_FOUND: 'ไม่พบความจำที่ต้องการ',
     STEP_UP_REQUIRED: 'รายการความเสี่ยงสูงนี้ต้องยืนยันตัวตนผู้ดูแลเพิ่มเติม',
+    CORE_RELEASE_CONFLICT: 'มี AWH release อีกงานกำลังดำเนินอยู่ กรุณารอให้งานเดิมจบก่อน',
+    CORE_RELEASE_NOT_READY: 'ระบบปล่อยรุ่น AWH ยังไม่พร้อม กรุณาตรวจ System Readiness',
+    CORE_RELEASE_INVALID: 'ข้อมูลรุ่น AWH ไม่ถูกต้อง กรุณาใช้ Source SHA แบบ 40 ตัวอักษร',
+    CORE_RELEASE_QUEUE_FAILED: 'ยังสร้างคำขอปล่อยรุ่น AWH ไม่ได้ ระบบจะไม่เปลี่ยน Production',
     PROVIDER_POLICY_INVALID: 'ตรวจการตั้งค่า AI อีกครั้ง งบและอัตราค่าใช้จ่ายต้องมากกว่า 0 เมื่อเปิดใช้ AI',
     PROVIDER_ACCOUNT_NOT_FUNDED: 'บัญชีนี้ไม่ใช้ค่า AI ของเจ้าของระบบ ใช้ AWH ต่อได้ตามปกติ หรือเปิด ChatGPT ด้วยบัญชีของคุณเอง',
     PROVIDER_AUTH_FAILED: 'OpenAI ปฏิเสธ API key นี้ กรุณาตรวจ key แล้วลองใหม่',
@@ -302,6 +306,17 @@ export async function submitCloudTask({ projectId, kind, revision, profile = nul
 }
 export async function loadOwnerSelfServiceStatus() { return controlRequest('/api/v1/control/owner/status'); }
 export async function loadInfrastructure() { return controlRequest('/api/v1/control/infrastructure'); }
+export async function loadCoreReleaseStatus() {
+  const value = await controlRequest('/api/v1/control/system/releases');
+  if (value.schemaVersion !== 1 || value.capability !== 'system.core.release' || !Array.isArray(value.releases) || !value.policy || typeof value.policy !== 'object') throw new Error('สถานะรุ่นระบบ AWH ไม่ถูกต้อง');
+  return value;
+}
+export async function requestCoreRelease(releaseSha, cleanupTopology = false) {
+  if (typeof releaseSha !== 'string' || !/^[0-9a-f]{40}$/i.test(releaseSha) || typeof cleanupTopology !== 'boolean') throw new Error('Source SHA ของรุ่น AWH ไม่ถูกต้อง');
+  const value = await controlRequest('/api/v1/control/system/releases', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, releaseSha: releaseSha.toLowerCase(), cleanupTopology }) });
+  if (value.schemaVersion !== 1 || typeof value.taskId !== 'string' || typeof value.executionId !== 'string' || typeof value.releaseSha !== 'string') throw new Error('AWH ยังยืนยันคำขอปล่อยรุ่นไม่ได้');
+  return value;
+}
 export async function loadSystemReadiness() {
   const value = await controlRequest('/api/v1/control/system/readiness');
   if (value.schemaVersion !== 1 || !['READY', 'PARTIALLY_READY', 'ACTION_REQUIRED'].includes(value.state) || !value.checks || typeof value.checks !== 'object') throw new Error('สถานะความพร้อมของ AWH ไม่ถูกต้อง');
