@@ -6,7 +6,9 @@ import { desktopImpactForFiles, missionModeFromArgs } from '../scripts/ops/bound
 test('bounded deploy mission reuses verified desktop artifacts only for server-safe deltas',()=>{
   assert.equal(desktopImpactForFiles(['hub/src/HubControlPlaneService.php','scripts/ops/example.mjs']),false);
   assert.equal(desktopImpactForFiles(['desktop/index.html']),true);
+  assert.equal(desktopImpactForFiles(['src/worker-capability-discovery.ts']),false);
   assert.equal(desktopImpactForFiles(['src/config.ts']),true);
+  assert.equal(desktopImpactForFiles(['src/control-plane-worker-runtime.ts']),true);
   assert.equal(desktopImpactForFiles(['package-lock.json']),true);
 });
 

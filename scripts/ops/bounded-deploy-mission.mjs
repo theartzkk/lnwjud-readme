@@ -16,8 +16,10 @@ const DESKTOP_ARTIFACTS=['dist-web/downloads/AWH-macOS-arm64.zip','dist-web/down
 const DEPLOY_MODES=['--compat-refresh','--assistant-workstream','--workspace-continuity','--unified-workspace','--final-product','--founding-memory','--self-service','--central-project-authority','--anywhere-execution','--cost-aware-ai','--automations','--self-sufficient-ai','--account-hosting','--cloud-first','--conversation-lifecycle','--project-source-authority'];
 let missionContext={};
 
+const CONNECTOR_ONLY_SRC = new Set(['src/worker-capability-discovery.ts']);
+
 export function desktopImpactForFiles(files){
-  return files.some((file)=>/^desktop\//.test(file)||/^src\//.test(file)||file==='package.json'||file==='package-lock.json'||/^scripts\/desktop-/.test(file)||/^scripts\/release\/create-desktop-release-evidence\.mjs$/.test(file)||/^forge\./.test(file)||/^electron(?:\.|\/)/.test(file));
+  return files.some((file)=>/^desktop\//.test(file)||( /^src\//.test(file) && !CONNECTOR_ONLY_SRC.has(file) )||file==='package.json'||file==='package-lock.json'||/^scripts\/desktop-/.test(file)||/^scripts\/release\/create-desktop-release-evidence\.mjs$/.test(file)||/^forge\./.test(file)||/^electron(?:\.|\/)/.test(file));
 }
 
 export function missionModeFromArgs(args){
