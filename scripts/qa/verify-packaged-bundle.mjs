@@ -104,12 +104,12 @@ async function verifyNodeMode(executable, asarPath) {
 
 const platform = process.argv[2];
 if (!['darwin', 'win32'].includes(platform)) fail('Usage: verify-packaged-bundle.mjs <darwin|win32>');
-const outputRoot = join(ROOT, 'out', platform === 'darwin' ? 'AWH Agent-darwin-x64' : 'AWH Agent-win32-x64');
-const bundle = platform === 'darwin' ? join(outputRoot, 'AWH Agent.app') : outputRoot;
+const outputRoot = join(ROOT, 'out', platform === 'darwin' ? 'AWH-darwin-x64' : 'AWH-win32-x64');
+const bundle = platform === 'darwin' ? join(outputRoot, 'AWH.app') : outputRoot;
 const executable = platform === 'darwin' ? join(bundle, 'Contents', 'MacOS', 'AWH') : join(bundle, 'AWH.exe');
 const asarPath = platform === 'darwin' ? join(bundle, 'Contents', 'Resources', 'app.asar') : join(bundle, 'resources', 'app.asar');
 assert(await exists(bundle), `packaged bundle not found: ${platform}`);
-assert(await exists(executable), `expected ${platform === 'darwin' ? 'AWH Agent.app/AWH' : 'AWH.exe'} is missing`);
+assert(await exists(executable), `expected ${platform === 'darwin' ? 'AWH.app/AWH' : 'AWH.exe'} is missing`);
 assert(await exists(asarPath), 'packaged app.asar is missing');
 const listing = asar.listPackage(asarPath, { isPack: false });
 const normalizedListing = listing.map((entry) => entry.replaceAll('\\', '/'));
@@ -120,10 +120,6 @@ assert(hasEntry('dist/owner-protocol.js'), 'packaged owner protocol runtime is m
 assert(hasEntry('dist/project-registry.js'), 'packaged project context runtime is missing');
 assert(hasEntry(OWNER_PROTOCOL_FILENAME), 'packaged AWH working context is missing');
 assert(hasEntry('desktop/index.html'), 'packaged owner Control Panel renderer is missing');
-assert(hasEntry('desktop/connect.html'), 'packaged AWH Agent bridge renderer is missing');
-assert(hasEntry('desktop/connect.js'), 'packaged AWH Agent bridge script is missing');
-assert(hasEntry('desktop/connect.css'), 'packaged AWH Agent bridge styles are missing');
-assert(hasEntry('desktop/connect-preload.cjs'), 'packaged AWH Agent bridge preload is missing');
 assert(hasEntry('dist/desktop/main.js'), 'packaged Desktop main process is missing');
 assert(!normalizedListing.some((entry) => /^\/?(?:dist-web|out)(?:\/|$)/.test(entry)), 'packaged bundle contains generated release/output directories');
 assert(!normalizedListing.some((entry) => /^\/?\.awh(?:-local)?(?:\/|$)/.test(entry)), 'packaged bundle contains workspace-local AWH state');
@@ -135,9 +131,6 @@ assert(/# AWH Working Context/.test(packagedProtocol) && /Mode: context-only/.te
 assert(/professional judgment/i.test(packagedProtocol) && /capabilit/i.test(packagedProtocol), 'packaged AWH working context is incomplete');
 const packagedDesktopHtml = asar.extractFile(asarPath, 'desktop/index.html').toString('utf8');
 assert(/id="desktop-work-thread"/.test(packagedDesktopHtml) && /id="desktop-work-input"/.test(packagedDesktopHtml), 'packaged renderer does not contain the final project Work surface');
-const packagedConnectHtml = asar.extractFile(asarPath, 'desktop/connect.html').toString('utf8');
-assert(/id="open-awh"/.test(packagedConnectHtml) && /AWH Agent/.test(packagedConnectHtml), 'packaged AWH Agent bridge surface is incomplete');
-assert(!/Projects|Project Memory|Git|Doctor|Secure MCP|AI Work|Autopilot/i.test(packagedConnectHtml), 'packaged AWH Agent bridge leaks advanced desktop controls');
 const packagedPackage = JSON.parse(asar.extractFile(asarPath, 'package.json').toString('utf8'));
 assert(packagedPackage.version === EXPECTED_VERSION, 'packaged package version is not 1.0.0-rc.1');
 assert(packagedPackage.productName === EXPECTED_PRODUCT, 'packaged productName is not AWH');
@@ -147,4 +140,4 @@ else if (process.arch !== 'x64') runtime = { status: 'SKIP_ARCH', reason: `Packa
 else runtime = await verifyNodeMode(executable, asarPath);
 const artifact = await hashTree(bundle);
 assert(artifact.size < MAX_BUNDLE_BYTES, `packaged ${platform} bundle is unexpectedly large: ${artifact.size} bytes`);
-console.log(JSON.stringify({ platform, artifactPath: bundle, artifactName: platform === 'darwin' ? 'AWH Agent.app' : 'AWH Agent-win32-x64', artifactHash: artifact.hash, artifactSize: artifact.size, asarPath, asarHash: createHash('sha256').update(await readFile(asarPath)).digest('hex'), version: packagedPackage.version, productName: packagedPackage.productName, runtime }));
+console.log(JSON.stringify({ platform, artifactPath: bundle, artifactName: platform === 'darwin' ? 'AWH.app' : 'AWH-win32-x64', artifactHash: artifact.hash, artifactSize: artifact.size, asarPath, asarHash: createHash('sha256').update(await readFile(asarPath)).digest('hex'), version: packagedPackage.version, productName: packagedPackage.productName, runtime }));

@@ -65,7 +65,7 @@ const icon = targetPlatform === 'darwin' ? macIcon : windowsIcon;
 
 module.exports = {
   packagerConfig: {
-    name: 'AWH Agent',
+    name: 'AWH',
     executableName: 'AWH',
     appBundleId: 'com.artworkspacehub.awh',
     icon,
@@ -95,9 +95,9 @@ module.exports = {
       name: '@electron-forge/maker-squirrel',
       config: {
         name: 'AWH',
-        title: 'AWH Agent',
+        title: 'Art’s Workspace Hub',
         authors: 'Art’s Workspace Hub',
-        description: 'AWH Agent — secure local bridge for Art’s Workspace Hub on the web.',
+        description: 'Art’s Workspace Hub — a safe-by-default local workspace for projects, memory and approved automation.',
         exe: 'AWH.exe',
         setupExe: 'AWHSetup.exe',
         setupIcon: windowsIcon,

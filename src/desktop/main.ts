@@ -562,21 +562,20 @@ async function runtimeOverview() {
 }
 
 async function createWindow(showOnReady = true): Promise<BrowserWindow> {
-  const compact = !SMOKE_TEST && process.env.AWH_DESKTOP_ADVANCED !== '1';
   const win = new BrowserWindow({
-    width: compact ? 420 : 1180,
-    height: compact ? 560 : 780,
-    minWidth: compact ? 380 : 900,
-    minHeight: compact ? 500 : 640,
+    width: 1180,
+    height: 780,
+    minWidth: 900,
+    minHeight: 640,
     show: false,
-    title: compact ? `AWH Agent — ${PRODUCT.productName}` : `${PRODUCT.desktopName} — ${PRODUCT.productName}`,
-    backgroundColor: compact ? '#f7f6f2' : '#111318',
+    title: `${PRODUCT.desktopName} — ${PRODUCT.productName}`,
+    backgroundColor: '#111318',
     autoHideMenuBar: true,
     webPreferences: {
       ...DESKTOP_WEB_PREFERENCES,
       webSecurity: true,
       allowRunningInsecureContent: false,
-      preload: join(app.getAppPath(), 'desktop', compact ? 'connect-preload.cjs' : 'preload.cjs'),
+      preload: join(app.getAppPath(), 'desktop', 'preload.cjs'),
     },
   });
 
@@ -589,36 +588,20 @@ async function createWindow(showOnReady = true): Promise<BrowserWindow> {
       win.hide();
     }
   });
-  await win.loadFile(join(app.getAppPath(), 'desktop', compact ? 'connect.html' : 'index.html'));
+  await win.loadFile(join(app.getAppPath(), 'desktop', 'index.html'));
   return win;
 }
-
-async function openAwhWeb(): Promise<{ ok: boolean; message: string }> {
-  try {
-    const base = new URL(loadConfig().hubApiBase);
-    const loopback = ['localhost', '127.0.0.1', '::1'].includes(base.hostname);
-    if (base.protocol !== 'https:' && !(loopback && base.protocol === 'http:')) throw new Error('AWH Web must use HTTPS');
-    const url = `${base.origin}/`;
-    await shell.openExternal(url);
-    return { ok: true, message: 'เปิด AWH ใน browser แล้ว' };
-  } catch {
-    return { ok: false, message: 'ยังเปิด AWH Web ไม่ได้ กรุณาตรวจการเชื่อมต่อ AWH Server' };
-  }
-}
-
-function showAgentStatus(): void { mainWindow?.show(); mainWindow?.focus(); }
 
 function createTray(): Tray {
   const image = nativeImage.createFromPath(join(app.getAppPath(), 'logo-256x256.png')).resize({ width: 20, height: 20 });
   const item = new Tray(image);
-  item.setToolTip(`AWH Agent — ${PRODUCT.productName}`);
+  item.setToolTip(`${PRODUCT.desktopName} — ${PRODUCT.productName}`);
   item.setContextMenu(Menu.buildFromTemplate([
-    { label: 'เปิด AWH', click: () => { void openAwhWeb(); } },
-    { label: 'สถานะ AWH Agent', click: showAgentStatus },
+    { label: `เปิด ${PRODUCT.desktopName}`, click: () => { mainWindow?.show(); mainWindow?.focus(); } },
     { type: 'separator' },
     { label: 'ออก', click: () => { quitting = true; app.quit(); } },
   ]));
-  item.on('double-click', showAgentStatus);
+  item.on('double-click', () => { mainWindow?.show(); mainWindow?.focus(); });
   return item;
 }
 
@@ -840,8 +823,6 @@ function registerIpc(): void {
       remoteOperationInFlight = false;
     }
   });
-
-  ipcMain.handle(DESKTOP_IPC.openAwhWeb, async () => openAwhWeb());
 
   ipcMain.handle(DESKTOP_IPC.openDataDir, async () => {
     const config = loadConfig();
