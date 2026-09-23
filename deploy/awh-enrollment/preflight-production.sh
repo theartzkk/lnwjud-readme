@@ -9,13 +9,16 @@
 set -eu
 
 TARGET=$(printenv AWH_DEPLOY_TARGET 2>/dev/null || printf awh-ready)
+TRANSPORT=$(printenv AWH_DEPLOY_TRANSPORT 2>/dev/null || printf ssh)
 
 case "$TARGET" in
-  ''|*[!A-Za-z0-9._-]*) echo "AWH_DEPLOY_TARGET must be an SSH config alias" >&2; exit 2 ;;
+  ''|*[!A-Za-z0-9._-]*) echo "AWH_DEPLOY_TARGET is invalid" >&2; exit 2 ;;
+esac
+case "$TRANSPORT" in
+  ssh|local) : ;;
+  *) echo "AWH_DEPLOY_TRANSPORT must be ssh or local" >&2; exit 2 ;;
 esac
 
-command -v ssh >/dev/null 2>&1 || { echo "ssh is required" >&2; exit 1; }
-ssh -G "$TARGET" >/dev/null 2>&1 || { echo "SSH alias does not resolve: $TARGET" >&2; exit 1; }
 HUB_HOSTNAME=$(printenv AWH_HUB_HOSTNAME 2>/dev/null || true)
 case "$HUB_HOSTNAME" in
   '') ;;
@@ -24,7 +27,15 @@ case "$HUB_HOSTNAME" in
   *) echo "AWH_HUB_HOSTNAME is invalid" >&2; exit 2 ;;
 esac
 
-ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes "$TARGET" sh -s -- "$HUB_HOSTNAME" <<'REMOTE'
+if test "$TRANSPORT" = local; then
+  test "$(id -u)" -eq 0 || { echo "Local production preflight requires root authority" >&2; exit 1; }
+  set -- sh -s -- "$HUB_HOSTNAME"
+else
+  command -v ssh >/dev/null 2>&1 || { echo "ssh is required" >&2; exit 1; }
+  ssh -G "$TARGET" >/dev/null 2>&1 || { echo "SSH alias does not resolve: $TARGET" >&2; exit 1; }
+  set -- ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes "$TARGET" sh -s -- "$HUB_HOSTNAME"
+fi
+"$@" <<'REMOTE'
 set -u
 
 HUB_HOSTNAME=${1:-}

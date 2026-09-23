@@ -57,6 +57,7 @@ if test "$MODE" = dry-run && test "$APPROVED" -eq 1; then echo "--approve requir
 
 ROOT=${AWH_SOURCE_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}
 TARGET=${AWH_DEPLOY_TARGET:-awh-ready}
+TRANSPORT=${AWH_DEPLOY_TRANSPORT:-ssh}
 RELEASE=${AWH_RELEASE_COMMIT:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)}
 HOSTNAME=${AWH_HUB_HOSTNAME:-kruart.online}
 OWNER_USERNAME=${AWH_OWNER_AUTH_USERNAME:-art}
@@ -122,6 +123,8 @@ while :; do
 done
 
 case "$TARGET" in ''|*[!A-Za-z0-9._-]*) echo "AWH_DEPLOY_TARGET is invalid" >&2; exit 2 ;; esac
+case "$TRANSPORT" in ssh|local) : ;; *) echo "AWH_DEPLOY_TRANSPORT must be ssh or local" >&2; exit 2 ;; esac
+if test "$TRANSPORT" = local; then test "$(id -u)" -eq 0 || { echo "Local production deployment requires root authority" >&2; exit 1; }; fi
 case "$RELEASE" in ''|*[!0-9a-fA-F]*) echo "AWH_RELEASE_COMMIT is invalid" >&2; exit 2 ;; esac
 case "$HOSTNAME" in ''|*[!A-Za-z0-9.-]*|.*|*.) echo "AWH_HUB_HOSTNAME is invalid" >&2; exit 2 ;; esac
 case "$HOSTNAME" in *[A-Za-z]*.*) : ;; *) echo "AWH_HUB_HOSTNAME is invalid" >&2; exit 2 ;; esac
@@ -131,7 +134,11 @@ case "$HOSTNAME" in *[A-Za-z]*.*) : ;; *) echo "AWH_HUB_HOSTNAME is invalid" >&2
 command -v node >/dev/null 2>&1 || { echo "node is required to build the CONTROL web release" >&2; exit 1; }
 if test "$REUSE_REMOTE_DESKTOP_ARTIFACTS" -eq 1; then
   DESKTOP_BASE_MANIFEST=$(mktemp "${TMPDIR:-/tmp}/awh-desktop-release-base.XXXXXX")
+  if test "$TRANSPORT" = local; then
+    cat /var/www/awh-web/current/release.json > "$DESKTOP_BASE_MANIFEST"
+  else
   ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" "sudo -n cat /var/www/awh-web/current/release.json" > "$DESKTOP_BASE_MANIFEST"
+  fi
   test -s "$DESKTOP_BASE_MANIFEST" || { echo "Verified production desktop manifest is unavailable" >&2; exit 1; }
 fi
 AWH_RELEASE_COMMIT="$RELEASE" AWH_WEB_RELEASE_ID="$RELEASE_ID" node --import tsx "$ROOT/scripts/build-web-preview.ts" --control >/dev/null
@@ -144,7 +151,7 @@ else
   AWH_RELEASE_ID="$RELEASE_ID" node "$ROOT/scripts/create-web-release-manifest.mjs" "$ROOT/dist-web" >/dev/null
 fi
 
-FILES="hub/public/control-plane.php hub/public/web-gateway.php hub/src/HubReadModel.php hub/src/HubReadRouter.php hub/src/HubWebGateway.php hub/src/HubEnrollmentService.php hub/src/HubEnrollmentApiMigration.php hub/src/HubControlPlaneService.php hub/src/HubThaiGovernmentDocumentService.php hub/assets/thai-government-garuda-v7.png hub/src/HubControlPlaneRouter.php hub/src/HubBrowserOriginPolicy.php hub/src/HubControlPlaneMigration.php hub/src/HubControlPlaneProjectRegistration.php hub/src/HubOwnerAuthMigration.php hub/src/HubOwnerAuthService.php hub/src/HubOwnerAuthRouter.php hub/src/HubAssistantWorkstreamMigration.php hub/src/HubWorkspaceContinuityMigration.php hub/src/HubUnifiedWorkspaceMigration.php hub/src/HubFinalProductMigration.php hub/src/HubFoundingMemorySeed.php hub/src/HubFoundingMemoryMigration.php hub/src/HubFoundingMemoryService.php hub/src/HubSelfServiceMigration.php hub/src/HubCentralProjectAuthorityMigration.php hub/src/HubAnywhereExecutionMigration.php hub/src/HubCapabilityRegistryService.php hub/src/HubCostAwareAiMigration.php hub/src/HubProviderPricingService.php hub/src/HubAutomationMigration.php hub/src/HubAutomationRegistryService.php hub/src/HubAutomationSchedulerService.php hub/src/HubAiProviderAdapter.php hub/src/HubOpenAiProviderAdapter.php hub/src/HubAiGovernanceService.php hub/src/HubAiQualificationService.php hub/src/HubSelfSufficientAiMigration.php hub/src/HubAccountHostingMigration.php hub/src/HubTrustPolicy.php hub/src/HubManagedHostingService.php hub/src/HubManagedHostingOperator.php hub/src/HubProjectVault.php hub/src/HubProjectVaultService.php hub/src/HubDurableExecutionService.php hub/src/HubVerificationGate.php hub/src/HubVerificationIntelligence.php hub/src/HubSecretContentPolicy.php hub/src/HubProviderCredentialStore.php hub/src/HubBayRemoteUpdateService.php hub/src/HubAttachmentStore.php hub/src/HubArtifactStore.php hub/src/HubNativeAgentService.php hub/src/HubAiAttachmentPreparer.php hub/src/HubDatabaseStudioService.php hub/src/HubDatabaseStudioRouter.php hub/src/HubMariaDbReadClient.php hub/src/HubBackupService.php deploy/awh-database/awh-database-inventory.py deploy/awh-database/install-database-inventory.sh deploy/systemd/awh-database-inventory.service deploy/systemd/awh-database-inventory.timer deploy/awh-storage/awh-retention-manager.py deploy/awh-storage/awh-temp-cleanup deploy/awh-storage/awh-storage-guard deploy/awh-storage/awh-restore-drill deploy/systemd/awh-retention.service deploy/systemd/awh-retention.timer deploy/systemd/awh-temp-cleanup.service deploy/systemd/awh-temp-cleanup.timer deploy/systemd/awh-storage-guard.service deploy/systemd/awh-storage-guard.timer deploy/systemd/awh-restore-drill.service deploy/systemd/awh-restore-drill.timer hub/src/HubInfrastructureService.php hub/public/database-studio.php hub/bin/backup.php hub/bin/activate-release.php hub/bin/scheduled-backup.php hub/bin/system-telemetry.php deploy/systemd/awh-backup.service deploy/systemd/awh-backup.timer hub/migrations/001_m3e_enrollment.sql hub/migrations/002_m3e2_enrollment_api.sql hub/migrations/003_m4_control_plane.sql hub/migrations/004_owner_auth.sql hub/migrations/005_assistant_workstream.sql hub/migrations/006_workspace_continuity.sql hub/migrations/007_unified_workspace.sql hub/migrations/008_final_product.sql hub/migrations/009_founding_memory.sql hub/migrations/010_self_service.sql hub/migrations/011_central_project_authority.sql hub/migrations/012_anywhere_execution_fabric.sql hub/migrations/013_cost_aware_ai.sql hub/migrations/014_automations.sql hub/migrations/015_self_sufficient_ai.sql hub/migrations/016_account_hosting.sql hub/bin/migrate-m4.php hub/bin/migrate-owner-auth.php hub/bin/migrate-assistant-workstream.php hub/bin/migrate-workspace-continuity.php hub/bin/migrate-unified-workspace.php hub/bin/migrate-final-product.php hub/bin/migrate-founding-memory.php hub/bin/migrate-self-service.php hub/bin/migrate-central-project-authority.php hub/bin/migrate-anywhere-execution.php hub/bin/migrate-cost-aware-ai.php hub/bin/migrate-automations.php hub/bin/migrate-self-sufficient-ai.php hub/bin/migrate-account-hosting.php hub/bin/awh-hosting-operator.php hub/bin/awh-native-executor.php hub/bin/prune-morning-brief-revisions.php hub/bin/sync-deployed-source-vault.php hub/bin/register-m4-projects.php hub/bin/setup-owner-auth.php hub/bin/verify-owner-auth-runtime.php deploy/systemd/awh-native-executor.service deploy/systemd/awh-native-executor.timer deploy/systemd/awh-hosting-operator.service deploy/systemd/awh-hosting-operator.timer deploy/nginx/awh-control-plane.conf deploy/nginx/render-control-plane-include.php deploy/nginx/transform-owner-auth.php deploy/awh-enrollment/insert-nginx-include.php deploy/awh-control-plane/remote-deploy-control-plane.sh deploy/awh-control-plane/provision-image-input-runtime.sh dist-web/index.html dist-web/styles.css dist-web/awh-design-system.css dist-web/awh-light-system.css dist-web/app.js dist-web/dashboard.css dist-web/dashboard.js dist-web/execution-ux.js dist-web/tool-registry.js dist-web/school-tools.js dist-web/vendor/pdf-lib.min.js dist-web/vendor/qrcode.js dist-web/database.html dist-web/database.css dist-web/database.js dist-web/infrastructure.html dist-web/infrastructure.css dist-web/infrastructure.js dist-web/hosting.html dist-web/hosting.css dist-web/hosting.js dist-web/trust.html dist-web/trust.css dist-web/trust.js dist-web/hub-read-adapter.js dist-web/control-plane-adapter.js dist-web/manifest.webmanifest dist-web/sw.js dist-web/logo-256x256.png dist-web/web-config.json dist-web/data.json dist-web/release.json"
+FILES="hub/public/control-plane.php hub/public/web-gateway.php hub/src/HubReadModel.php hub/src/HubReadRouter.php hub/src/HubWebGateway.php hub/src/HubEnrollmentService.php hub/src/HubEnrollmentApiMigration.php hub/src/HubControlPlaneService.php hub/src/HubThaiGovernmentDocumentService.php hub/assets/thai-government-garuda-v7.png hub/src/HubControlPlaneRouter.php hub/src/HubBrowserOriginPolicy.php hub/src/HubControlPlaneMigration.php hub/src/HubControlPlaneProjectRegistration.php hub/src/HubOwnerAuthMigration.php hub/src/HubOwnerAuthService.php hub/src/HubOwnerAuthRouter.php hub/src/HubAssistantWorkstreamMigration.php hub/src/HubWorkspaceContinuityMigration.php hub/src/HubUnifiedWorkspaceMigration.php hub/src/HubFinalProductMigration.php hub/src/HubFoundingMemorySeed.php hub/src/HubFoundingMemoryMigration.php hub/src/HubFoundingMemoryService.php hub/src/HubSelfServiceMigration.php hub/src/HubCentralProjectAuthorityMigration.php hub/src/HubAnywhereExecutionMigration.php hub/src/HubCapabilityRegistryService.php hub/src/HubCostAwareAiMigration.php hub/src/HubProviderPricingService.php hub/src/HubAutomationMigration.php hub/src/HubAutomationRegistryService.php hub/src/HubAutomationSchedulerService.php hub/src/HubAiProviderAdapter.php hub/src/HubOpenAiProviderAdapter.php hub/src/HubAiGovernanceService.php hub/src/HubAiQualificationService.php hub/src/HubSelfSufficientAiMigration.php hub/src/HubAccountHostingMigration.php hub/src/HubTrustPolicy.php hub/src/HubManagedHostingService.php hub/src/HubManagedHostingOperator.php hub/src/HubCoreReleaseService.php hub/src/HubCoreReleaseOperator.php hub/src/HubProjectVault.php hub/src/HubProjectVaultService.php hub/src/HubDurableExecutionService.php hub/src/HubVerificationGate.php hub/src/HubVerificationIntelligence.php hub/src/HubSecretContentPolicy.php hub/src/HubProviderCredentialStore.php hub/src/HubBayRemoteUpdateService.php hub/src/HubAttachmentStore.php hub/src/HubArtifactStore.php hub/src/HubNativeAgentService.php hub/src/HubAiAttachmentPreparer.php hub/src/HubDatabaseStudioService.php hub/src/HubDatabaseStudioRouter.php hub/src/HubMariaDbReadClient.php hub/src/HubBackupService.php deploy/awh-database/awh-database-inventory.py deploy/awh-database/install-database-inventory.sh deploy/systemd/awh-database-inventory.service deploy/systemd/awh-database-inventory.timer deploy/awh-storage/awh-retention-manager.py deploy/awh-storage/awh-temp-cleanup deploy/awh-storage/awh-storage-guard deploy/awh-storage/awh-restore-drill deploy/systemd/awh-retention.service deploy/systemd/awh-retention.timer deploy/systemd/awh-temp-cleanup.service deploy/systemd/awh-temp-cleanup.timer deploy/systemd/awh-storage-guard.service deploy/systemd/awh-storage-guard.timer deploy/systemd/awh-restore-drill.service deploy/systemd/awh-restore-drill.timer hub/src/HubInfrastructureService.php hub/public/database-studio.php hub/bin/backup.php hub/bin/activate-release.php hub/bin/scheduled-backup.php hub/bin/system-telemetry.php deploy/systemd/awh-backup.service deploy/systemd/awh-backup.timer hub/migrations/001_m3e_enrollment.sql hub/migrations/002_m3e2_enrollment_api.sql hub/migrations/003_m4_control_plane.sql hub/migrations/004_owner_auth.sql hub/migrations/005_assistant_workstream.sql hub/migrations/006_workspace_continuity.sql hub/migrations/007_unified_workspace.sql hub/migrations/008_final_product.sql hub/migrations/009_founding_memory.sql hub/migrations/010_self_service.sql hub/migrations/011_central_project_authority.sql hub/migrations/012_anywhere_execution_fabric.sql hub/migrations/013_cost_aware_ai.sql hub/migrations/014_automations.sql hub/migrations/015_self_sufficient_ai.sql hub/migrations/016_account_hosting.sql hub/bin/migrate-m4.php hub/bin/migrate-owner-auth.php hub/bin/migrate-assistant-workstream.php hub/bin/migrate-workspace-continuity.php hub/bin/migrate-unified-workspace.php hub/bin/migrate-final-product.php hub/bin/migrate-founding-memory.php hub/bin/migrate-self-service.php hub/bin/migrate-central-project-authority.php hub/bin/migrate-anywhere-execution.php hub/bin/migrate-cost-aware-ai.php hub/bin/migrate-automations.php hub/bin/migrate-self-sufficient-ai.php hub/bin/migrate-account-hosting.php hub/bin/awh-hosting-operator.php hub/bin/awh-core-release-run.php hub/bin/awh-native-executor.php hub/bin/prune-morning-brief-revisions.php hub/bin/sync-deployed-source-vault.php hub/bin/register-m4-projects.php hub/bin/setup-owner-auth.php hub/bin/verify-owner-auth-runtime.php deploy/systemd/awh-native-executor.service deploy/systemd/awh-native-executor.timer deploy/systemd/awh-hosting-operator.service deploy/systemd/awh-hosting-operator.timer deploy/nginx/awh-control-plane.conf deploy/nginx/render-control-plane-include.php deploy/nginx/transform-owner-auth.php deploy/awh-enrollment/insert-nginx-include.php deploy/awh-control-plane/remote-deploy-control-plane.sh deploy/awh-control-plane/provision-image-input-runtime.sh dist-web/index.html dist-web/styles.css dist-web/awh-design-system.css dist-web/awh-light-system.css dist-web/app.js dist-web/dashboard.css dist-web/dashboard.js dist-web/execution-ux.js dist-web/tool-registry.js dist-web/school-tools.js dist-web/vendor/pdf-lib.min.js dist-web/vendor/qrcode.js dist-web/database.html dist-web/database.css dist-web/database.js dist-web/infrastructure.html dist-web/infrastructure.css dist-web/infrastructure.js dist-web/hosting.html dist-web/hosting.css dist-web/hosting.js dist-web/trust.html dist-web/trust.css dist-web/trust.js dist-web/hub-read-adapter.js dist-web/control-plane-adapter.js dist-web/manifest.webmanifest dist-web/sw.js dist-web/logo-256x256.png dist-web/web-config.json dist-web/data.json dist-web/release.json"
 WEB_RELEASE_FILES=$(node "$ROOT/scripts/list-web-release-files.mjs" | tr '\n' ' ')
 FILES="$FILES $WEB_RELEASE_FILES"
 # Desktop artifact paths are declared before the build so remote-reuse mode can
@@ -182,7 +189,11 @@ else
       case "$digest" in *[!0-9a-f]*|'') echo "Desktop artifact checksum is invalid" >&2; exit 1 ;; esac
       test "${#digest}" -eq 64 || { echo "Desktop artifact checksum is invalid" >&2; exit 1; }
       name=$(basename "$file")
+      if test "$TRANSPORT" = local; then
+        remote_digest=$(test -f "/var/www/awh-web/desktop-artifacts/$digest-$name" && sha256sum "/var/www/awh-web/desktop-artifacts/$digest-$name" | cut -d' ' -f1 || true)
+      else
       remote_digest=$(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" "sudo test -f '/var/www/awh-web/desktop-artifacts/$digest-$name' && sudo sha256sum '/var/www/awh-web/desktop-artifacts/$digest-$name' | cut -d' ' -f1" 2>/dev/null || true)
+      fi
       if test "$remote_digest" = "$digest"; then
         printf '%s\n' "DESKTOP_ARTIFACT_REUSE=$name"
         continue
@@ -275,10 +286,12 @@ if test "$COMPAT_REFRESH" -eq 1; then test "$OWNER_AUTH" -eq 1 || { echo "Owner-
 test -z "$(git -C "$ROOT" status --porcelain --untracked-files=all)" || { echo "M4 deployment requires a clean committed tree" >&2; exit 1; }
 test "$(git -C "$ROOT" rev-parse HEAD)" = "$RELEASE" || { echo "M4 release lock does not match local HEAD" >&2; exit 1; }
 command -v tar >/dev/null 2>&1 || { echo "tar is required" >&2; exit 1; }
-command -v scp >/dev/null 2>&1 || { echo "scp is required" >&2; exit 1; }
-command -v ssh >/dev/null 2>&1 || { echo "ssh is required" >&2; exit 1; }
+if test "$TRANSPORT" = ssh; then
+  command -v scp >/dev/null 2>&1 || { echo "scp is required" >&2; exit 1; }
+  command -v ssh >/dev/null 2>&1 || { echo "ssh is required" >&2; exit 1; }
+fi
 
-PREFLIGHT_OUTPUT=$(AWH_DEPLOY_TARGET="$TARGET" AWH_HUB_HOSTNAME="$HOSTNAME" sh "$PREFLIGHT") || { echo "M4 preflight failed" >&2; exit 1; }
+PREFLIGHT_OUTPUT=$(AWH_DEPLOY_TARGET="$TARGET" AWH_DEPLOY_TRANSPORT="$TRANSPORT" AWH_HUB_HOSTNAME="$HOSTNAME" sh "$PREFLIGHT") || { echo "M4 preflight failed" >&2; exit 1; }
 printf '%s\n' "$PREFLIGHT_OUTPUT" | grep -q '^db_classification=DB_AUTHORITY_RESOLVED$' || { echo "M4 preflight did not resolve the Hub database" >&2; exit 1; }
 printf '%s\n' "$PREFLIGHT_OUTPUT" | grep -Eq '^backup_classification=(BACKUP_READY|BACKUP_PROVISION_REQUIRED)$' || { echo "M4 backup is not provisionable" >&2; exit 1; }
 NGINX_TOPOLOGY=$(printf '%s\n' "$PREFLIGHT_OUTPUT" | sed -n 's/^nginx_topology=//p' | tail -n 1)
@@ -319,13 +332,29 @@ if test "$CENTRAL_PROJECT_AUTHORITY" -eq 1 || test "$ANYWHERE_EXECUTION" -eq 1 |
   EXTRA_FILES='.awh-build/awh-source.zip .awh-build/release-commit.txt'
 fi
 tar -czf "$BUNDLE" -C "$ROOT" $FILES $EXTRA_FILES
+if test "$TRANSPORT" = local; then
+  cp "$BUNDLE" "$REMOTE_STAGE"
+  cp "$REMOTE_DEPLOY" "$REMOTE_SCRIPT"
+else
 scp -o BatchMode=yes -o StrictHostKeyChecking=yes "$BUNDLE" "$TARGET:$REMOTE_STAGE"
 scp -o BatchMode=yes -o StrictHostKeyChecking=yes "$REMOTE_DEPLOY" "$TARGET:$REMOTE_SCRIPT"
+fi
 set +e
 if test "$OWNER_LOGIN_PROOF_REQUIRED" -eq 0; then
   # Modern extension deploys run inside a transient systemd unit. The unit
   # survives a dropped SSH/client session and writes bounded result evidence
   # that a retry of the exact same release can resume instead of cutting over twice.
+  if test "$TRANSPORT" = local; then
+    cp "$DURABLE_RUNNER" "$REMOTE_RUNNER"
+    existing_result=$(test -f "$REMOTE_RESULT" && cat "$REMOTE_RESULT" 2>/dev/null || true)
+    if test "$existing_result" != 0; then
+      remote_active=$(systemctl is-active "$REMOTE_UNIT" 2>/dev/null || true)
+      if test "$remote_active" != active && test "$remote_active" != activating; then
+        rm -f "$REMOTE_RESULT" "$REMOTE_LOG"; systemctl reset-failed "$REMOTE_UNIT" >/dev/null 2>&1 || true
+        systemd-run --unit="$REMOTE_UNIT" --description="AWH-durable-deploy-$RELEASE_ID" --no-block /bin/sh "$REMOTE_RUNNER" "$REMOTE_RESULT" "$REMOTE_LOG" "$REMOTE_SCRIPT" "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "/opt/awh-hub/control-releases/$RELEASE_ID" "$RELEASE_ID" "$NGINX_CONFIG" "$HOSTNAME" "$AWH_FPM_SOCKET" "$AWH_FPM_SERVICE" "$CLEANUP_TOPOLOGY" "$OWNER_USERNAME" "$OWNER_AUTH" "$REMOTE_SCRIPT" "$COMPAT_REFRESH" "$ASSISTANT_WORKSTREAM" "$WORKSPACE_CONTINUITY" "$UNIFIED_WORKSPACE" "$FINAL_PRODUCT" "$FOUNDING_MEMORY" "$SELF_SERVICE" "$CENTRAL_PROJECT_AUTHORITY" "$RELEASE" "$ANYWHERE_EXECUTION" "$COST_AWARE_AI" "$AUTOMATIONS" "$SELF_SUFFICIENT_AI" "$ACCOUNT_HOSTING" "$CLOUD_FIRST" "$CONVERSATION_LIFECYCLE" "$PROJECT_SOURCE_AUTHORITY" >/dev/null 2>&1
+      fi
+    fi
+  else
   scp -o BatchMode=yes -o StrictHostKeyChecking=yes "$DURABLE_RUNNER" "$TARGET:$REMOTE_RUNNER"
   existing_result=$(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" "test -f '$REMOTE_RESULT' && cat '$REMOTE_RESULT'" 2>/dev/null || true)
   if test "$existing_result" != 0; then
@@ -335,18 +364,19 @@ if test "$OWNER_LOGIN_PROOF_REQUIRED" -eq 0; then
       ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" sudo -n systemd-run --unit="$REMOTE_UNIT" --description="AWH-durable-deploy-$RELEASE_ID" --no-block /bin/sh "$REMOTE_RUNNER" "$REMOTE_RESULT" "$REMOTE_LOG" "$REMOTE_SCRIPT" "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "/opt/awh-hub/control-releases/$RELEASE_ID" "$RELEASE_ID" "$NGINX_CONFIG" "$HOSTNAME" "$AWH_FPM_SOCKET" "$AWH_FPM_SERVICE" "$CLEANUP_TOPOLOGY" "$OWNER_USERNAME" "$OWNER_AUTH" "$REMOTE_SCRIPT" "$COMPAT_REFRESH" "$ASSISTANT_WORKSTREAM" "$WORKSPACE_CONTINUITY" "$UNIFIED_WORKSPACE" "$FINAL_PRODUCT" "$FOUNDING_MEMORY" "$SELF_SERVICE" "$CENTRAL_PROJECT_AUTHORITY" "$RELEASE" "$ANYWHERE_EXECUTION" "$COST_AWARE_AI" "$AUTOMATIONS" "$SELF_SUFFICIENT_AI" "$ACCOUNT_HOSTING" "$CLOUD_FIRST" "$CONVERSATION_LIFECYCLE" "$PROJECT_SOURCE_AUTHORITY" >/dev/null 2>&1
     fi
   fi
+  fi
   REMOTE_STATUS=124
   durable_attempt=0
   while test "$durable_attempt" -lt 120; do
     durable_attempt=$((durable_attempt + 1))
-    durable_result=$(ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes "$TARGET" "test -f '$REMOTE_RESULT' && cat '$REMOTE_RESULT'" 2>/dev/null || true)
+    if test "$TRANSPORT" = local; then durable_result=$(test -f "$REMOTE_RESULT" && cat "$REMOTE_RESULT" 2>/dev/null || true); else durable_result=$(ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes "$TARGET" "test -f '$REMOTE_RESULT' && cat '$REMOTE_RESULT'" 2>/dev/null || true); fi
     case "$durable_result" in
       0|[1-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])
         REMOTE_STATUS=$durable_result
-        REMOTE_OUTPUT=$(ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes "$TARGET" "test -f '$REMOTE_LOG' && tail -c 16384 '$REMOTE_LOG'" 2>/dev/null || true)
+        if test "$TRANSPORT" = local; then REMOTE_OUTPUT=$(test -f "$REMOTE_LOG" && tail -c 16384 "$REMOTE_LOG" 2>/dev/null || true); else REMOTE_OUTPUT=$(ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes "$TARGET" "test -f '$REMOTE_LOG' && tail -c 16384 '$REMOTE_LOG'" 2>/dev/null || true); fi
         # Result/log evidence is captured before clearing transient unit failure
         # state, so historical attempts do not keep system health permanently red.
-        ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes "$TARGET" "systemctl reset-failed '$REMOTE_UNIT' >/dev/null 2>&1 || true" >/dev/null 2>&1 || true
+        if test "$TRANSPORT" = local; then systemctl reset-failed "$REMOTE_UNIT" >/dev/null 2>&1 || true; else ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes "$TARGET" "systemctl reset-failed '$REMOTE_UNIT' >/dev/null 2>&1 || true" >/dev/null 2>&1 || true; fi
         break
         ;;
     esac
@@ -356,7 +386,11 @@ if test "$OWNER_LOGIN_PROOF_REQUIRED" -eq 0; then
 else
   # Owner bootstrap still accepts a one-time password over stdin. Normal M20
   # refreshes never use this legacy synchronous lane.
-  REMOTE_OUTPUT=$(printf '%s\n' "$OWNER_PASSWORD" | ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" sh "$REMOTE_SCRIPT" "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "/opt/awh-hub/control-releases/$RELEASE_ID" "$RELEASE_ID" "$NGINX_CONFIG" "$HOSTNAME" "$AWH_FPM_SOCKET" "$AWH_FPM_SERVICE" "$CLEANUP_TOPOLOGY" "$OWNER_USERNAME" "$OWNER_AUTH" "$REMOTE_SCRIPT" "$COMPAT_REFRESH" "$ASSISTANT_WORKSTREAM" "$WORKSPACE_CONTINUITY" "$UNIFIED_WORKSPACE" "$FINAL_PRODUCT" "$FOUNDING_MEMORY" "$SELF_SERVICE" "$CENTRAL_PROJECT_AUTHORITY" "$RELEASE" "$ANYWHERE_EXECUTION" "$COST_AWARE_AI" "$AUTOMATIONS" "$SELF_SUFFICIENT_AI" "$ACCOUNT_HOSTING" "$CLOUD_FIRST" "$CONVERSATION_LIFECYCLE" "$PROJECT_SOURCE_AUTHORITY")
+  if test "$TRANSPORT" = local; then
+    REMOTE_OUTPUT=$(printf '%s\n' "$OWNER_PASSWORD" | sh "$REMOTE_SCRIPT" "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "/opt/awh-hub/control-releases/$RELEASE_ID" "$RELEASE_ID" "$NGINX_CONFIG" "$HOSTNAME" "$AWH_FPM_SOCKET" "$AWH_FPM_SERVICE" "$CLEANUP_TOPOLOGY" "$OWNER_USERNAME" "$OWNER_AUTH" "$REMOTE_SCRIPT" "$COMPAT_REFRESH" "$ASSISTANT_WORKSTREAM" "$WORKSPACE_CONTINUITY" "$UNIFIED_WORKSPACE" "$FINAL_PRODUCT" "$FOUNDING_MEMORY" "$SELF_SERVICE" "$CENTRAL_PROJECT_AUTHORITY" "$RELEASE" "$ANYWHERE_EXECUTION" "$COST_AWARE_AI" "$AUTOMATIONS" "$SELF_SUFFICIENT_AI" "$ACCOUNT_HOSTING" "$CLOUD_FIRST" "$CONVERSATION_LIFECYCLE" "$PROJECT_SOURCE_AUTHORITY")
+  else
+    REMOTE_OUTPUT=$(printf '%s\n' "$OWNER_PASSWORD" | ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" sh "$REMOTE_SCRIPT" "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "/opt/awh-hub/control-releases/$RELEASE_ID" "$RELEASE_ID" "$NGINX_CONFIG" "$HOSTNAME" "$AWH_FPM_SOCKET" "$AWH_FPM_SERVICE" "$CLEANUP_TOPOLOGY" "$OWNER_USERNAME" "$OWNER_AUTH" "$REMOTE_SCRIPT" "$COMPAT_REFRESH" "$ASSISTANT_WORKSTREAM" "$WORKSPACE_CONTINUITY" "$UNIFIED_WORKSPACE" "$FINAL_PRODUCT" "$FOUNDING_MEMORY" "$SELF_SERVICE" "$CENTRAL_PROJECT_AUTHORITY" "$RELEASE" "$ANYWHERE_EXECUTION" "$COST_AWARE_AI" "$AUTOMATIONS" "$SELF_SUFFICIENT_AI" "$ACCOUNT_HOSTING" "$CLOUD_FIRST" "$CONVERSATION_LIFECYCLE" "$PROJECT_SOURCE_AUTHORITY")
+  fi
   REMOTE_STATUS=$?
 fi
 set -e
