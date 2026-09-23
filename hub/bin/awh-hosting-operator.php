@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/src/HubProjectVault.php';
 require_once dirname(__DIR__) . '/src/HubManagedHostingOperator.php';
 require_once dirname(__DIR__) . '/src/HubCoreReleaseOperator.php';
+require_once dirname(__DIR__) . '/src/HubLearnLabReleaseOperator.php';
 require_once dirname(__DIR__) . '/src/HubEcosystemHealthCollector.php';
 
 $db=getenv('AWH_HUB_DB_PATH');
@@ -22,13 +23,20 @@ try{
         exit(0);
     }
 
+    $learnlab=HubLearnLabReleaseOperator::fromEnvironment($pdo)->tick();
+    if(($learnlab['state']??'IDLE')!=='IDLE'){
+        fwrite(STDOUT,json_encode(['schemaVersion'=>1,'learnLabRelease'=>$learnlab,'hosting'=>['state'=>'PAUSED_FOR_LEARNLAB_RELEASE']],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)."
+");
+        exit(0);
+    }
+
     $ecosystem=['status'=>'UNAVAILABLE'];
     try{$ecosystem=HubEcosystemHealthCollector::fromEnvironment()->refreshIfStale(300);}catch(Throwable){$ecosystem=['status'=>'DEGRADED'];}
     $result=HubManagedHostingOperator::fromEnvironment($pdo)->tick();
     $result['ecosystemHealth']=$ecosystem;
     $state=(string)($result['state']??'UNKNOWN');$health=(string)($ecosystem['status']??'UNKNOWN');
     if($state!=='IDLE'||!in_array($health,['FRESH','REFRESHED'],true))fwrite(STDOUT,json_encode($result,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)."\n");
-}catch(HubCoreReleaseOperatorException|HubCoreReleaseException $e){
+}catch(HubCoreReleaseOperatorException|HubCoreReleaseException|HubLearnLabReleaseOperatorException|HubLearnLabReleaseException $e){
     fwrite(STDERR,$e->codeName."\n");exit(1);
 }catch(HubManagedHostingOperatorException|HubProjectVaultException|HubAccountHostingMigrationException $e){
     fwrite(STDERR,$e->codeName."\n");exit(1);

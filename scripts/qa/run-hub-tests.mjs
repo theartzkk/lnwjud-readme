@@ -38,6 +38,7 @@ const tests = [
   'hub/tests/source-drift-policy.php',
   'hub/tests/operator-bridge.php',
   'hub/tests/core-release-operator.php',
+  'hub/tests/learnlab-release-operator.php',
   'hub/tests/aipass-docx-boundaries.php',
   'hub/tests/continuous-work-supervisor.php',
   'hub/tests/continuous-autochain.php',
@@ -57,6 +58,8 @@ const tests = [
 ];
 
 const php = await resolveExecutable('php');
+const python = await resolveExecutable('python3');
+
 for (const fixture of tests) {
   await new Promise((resolve, reject) => {
     const child = spawn(php, [fixture], { cwd: process.cwd(), shell: false, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
@@ -67,3 +70,14 @@ for (const fixture of tests) {
     child.once('close', (code) => code === 0 || code === 77 ? resolve() : reject(new Error(`${fixture} failed: ${stderr.trim() || `exit ${code ?? -1}`}`)));
   });
 }
+await new Promise((resolve, reject) => {
+  const child = spawn(python, ['hub/tests/learnlab-release-storage-gate.py'], { cwd: process.cwd(), shell: false, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  let stderr = '';
+  child.stdout.pipe(process.stdout);
+  child.stderr.on('data', (chunk) => { stderr += String(chunk).slice(0, 4096); });
+  child.once('error', reject);
+  child.once('close', (code) => {
+    if (code === 0) resolve();
+    else reject(new Error('hub/tests/learnlab-release-storage-gate.py failed: ' + (stderr.trim() || ('exit ' + (code ?? -1)))));
+  });
+});

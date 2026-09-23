@@ -35,6 +35,7 @@ require_once __DIR__ . '/HubActionGraphService.php';
 require_once __DIR__ . '/HubConversationReferentService.php';
 require_once __DIR__ . '/HubManagedHostingService.php';
 require_once __DIR__ . '/HubCoreReleaseService.php';
+require_once __DIR__ . '/HubLearnLabReleaseService.php';
 require_once __DIR__ . '/HubTrustPolicy.php';
 require_once __DIR__ . '/HubCloudFirstMigration.php';
 require_once __DIR__ . '/HubCloudWorkflowService.php';
@@ -94,6 +95,7 @@ final class HubControlPlaneService
     private readonly HubStaffOperationsService $staff;
     private readonly HubManagedHostingService $hosting;
     private readonly HubCoreReleaseService $coreReleases;
+    private readonly HubLearnLabReleaseService $learnLabReleases;
     private readonly ?HubCloudWorkflowService $cloud;
     private readonly ?HubProjectSourceAuthorityService $projectSources;
     private readonly HubBayRemoteUpdateService $bayRemoteUpdate;
@@ -114,6 +116,7 @@ final class HubControlPlaneService
         $this->staff = new HubStaffOperationsService($pdo, $databasePath);
         $this->hosting = HubManagedHostingService::fromPdo($pdo);
         $this->coreReleases = HubCoreReleaseService::fromPdo($pdo);
+        $this->learnLabReleases = HubLearnLabReleaseService::fromPdo($pdo);
         $cloud = null;
         if ($this->artifactStore !== null) {
             try {
@@ -335,6 +338,17 @@ final class HubControlPlaneService
         try { return $this->coreReleases->request($sessionToken,$csrf,$payload); }
         catch (HubCoreReleaseException $error) { throw new HubControlPlaneException('Core release request was rejected',$error->codeName); }
     }
+    public function learnLabReleaseStatusForSession(string $sessionToken): array
+    {
+        try { return $this->learnLabReleases->status($sessionToken); }
+        catch (HubLearnLabReleaseException $error) { throw new HubControlPlaneException('LearnLab release request was rejected',$error->codeName); }
+    }
+    public function requestLearnLabReleaseForSession(string $sessionToken,string $csrf,array $payload): array
+    {
+        try { return $this->learnLabReleases->request($sessionToken,$csrf,$payload); }
+        catch (HubLearnLabReleaseException $error) { throw new HubControlPlaneException('LearnLab release request was rejected',$error->codeName); }
+    }
+
     public function createManagedSiteForSession(string $sessionToken,string $csrf,array $payload): array
     {
         try { return ['schemaVersion'=>1]+$this->hosting->createSite($sessionToken,$csrf,$payload); }

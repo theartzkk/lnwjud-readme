@@ -5,8 +5,8 @@ import {
   cancelTask, changePassword, changeUsername, createConversation, createMemory, createPerson, createProject, createRecoveryCodes, decideApproval,
   exportWorkspace, listAccountRequests, listAuthSessions, listPeople, loadAuthProfile, loadControlData, loadConversation, loadConversationHistory,
   loadConversations, loadDeletedConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus,
-  loadProductSettingHistory, loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadObservabilityStatus, loadCapabilities, loadCoreReleaseStatus, loadInfrastructure, loadSystemReadiness, loadWorkspaceContinuity, login, logout, logoutAll,
-  recover, registerAccessRequest, requestCoreRelease, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage,
+  loadProductSettingHistory, loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadObservabilityStatus, loadCapabilities, loadCoreReleaseStatus, loadLearnLabReleaseStatus, loadInfrastructure, loadSystemReadiness, loadWorkspaceContinuity, login, logout, logoutAll,
+  recover, registerAccessRequest, requestCoreRelease, requestLearnLabRelease, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage,
   testProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
   updateProviderCredential, updateProviderPolicy, updateProviderProjectRouting, updateObservabilityCredential, updateConversationLifecycle, uploadConversationAttachments,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
@@ -17,7 +17,7 @@ import {
   const CANCELLABLE_TASK_STATES = new Set(['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL']);
   const MICRO_BAHT = 1000000;
   const DESKTOP_PACKAGES = [['downloads/AWH-macOS-arm64.zip', 'macOS Apple Silicon', 'mac-arm64'], ['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac-intel'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, coreReleases: null, infrastructure: null, people: [], accountRequests: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, coreReleases: null, learnLabReleases: null, infrastructure: null, people: [], accountRequests: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
   const pendingBrandAssets = { logo: undefined, icon: undefined };
   const MAX_BRAND_SOURCE_BYTES = 8 * 1024 * 1024;
   const MAX_BRAND_DATA_URL_CHARS = 11500;
@@ -752,6 +752,42 @@ import {
     if (infrastructureResult.status === 'fulfilled') state.infrastructure = infrastructureResult.value;
     if (releaseResult.status === 'rejected' || infrastructureResult.status === 'rejected') message('core-release-message', 'โหลดสถานะรุ่นระบบได้ไม่ครบ กรุณารีเฟรชอีกครั้ง');
     renderCoreReleaseSurface();
+  }
+
+  function renderLearnLabReleaseSurface() {
+    const host=$('learnlab-release-current'); const history=$('learnlab-release-history'); const shaInput=$('learnlab-release-sha'); const versionInput=$('learnlab-release-version'); const dot=$('learnlab-release-dot');
+    if(!host||!history||!shaInput||!versionInput)return;
+    const current=state.learnLabReleases?.current||{}; const promotion=state.learnLabReleases?.sourcePromotion||null;
+    const sourceSha=typeof promotion?.sha==='string'&&/^[0-9a-f]{40}$/i.test(promotion.sha)?promotion.sha.toLowerCase():null;
+    const liveSha=typeof current.releaseSha==='string'&&/^[0-9a-f]{40}$/i.test(current.releaseSha)?current.releaseSha.toLowerCase():null;
+    const ready=Boolean(liveSha&&current.runtimeVersion&&Number.isInteger(current.cacheEpoch));
+    if(dot)dot.classList.toggle('attention',!ready||(sourceSha&&sourceSha!==liveSha));
+    message('learnlab-release-summary',ready?'Production '+current.runtimeVersion+' · Source '+coreReleaseShortSha(liveSha)+' · epoch '+current.cacheEpoch:'ยังอ่าน LearnLab Production authority ไม่ครบ');
+    host.replaceChildren();
+    for(const [label,value] of [['Production',ready?current.runtimeVersion+' · '+coreReleaseShortSha(liveSha)+' · epoch '+current.cacheEpoch:'—'],['Source Authority',sourceSha?coreReleaseShortSha(sourceSha)+(sourceSha===liveSha?' · ตรงกับ Production':' · พร้อมเป็น candidate'):'ยังไม่มี Source Promotion audit'],['Runtime',current.runtimeUrl||'—']]){
+      const row=document.createElement('div');row.className='session-item';const strong=document.createElement('strong');strong.textContent=label;const detail=document.createElement('span');detail.textContent=value;row.append(strong,detail);host.append(row);
+    }
+    if(!shaInput.value.trim()&&sourceSha)shaInput.value=sourceSha;
+    history.replaceChildren(); const releases=Array.isArray(state.learnLabReleases?.releases)?state.learnLabReleases.releases.slice(0,8):[];
+    if(!releases.length){const empty=document.createElement('div');empty.className='session-item';empty.textContent='ยังไม่มีประวัติ LearnLab release ผ่าน AWH';history.append(empty);return;}
+    for(const release of releases){
+      const row=document.createElement('div');row.className='session-item';const title=document.createElement('strong');title.textContent=(release.runtimeVersion||'LearnLab')+' · '+coreReleaseShortSha(release.releaseSha)+' · '+coreReleaseStateLabel(release.taskState||release.executionState);
+      const detail=document.createElement('span');detail.textContent=(release.progress||0)+'% · '+date(release.updatedAt)+(release.failureCode?' · '+release.failureCode:'');row.append(title,detail);
+      if(release.resultSummary){const summary=document.createElement('small');summary.textContent=release.resultSummary;row.append(summary);}
+      if(release.approvalId&&release.approvalStatus==='PENDING'){
+        const actions=document.createElement('div');actions.className='form-actions';
+        for(const [decision,label,className] of [['approve','อนุมัติ LearnLab Production','secondary-button'],['reject','ไม่อนุมัติ','text-button']]){
+          const button=document.createElement('button');button.type='button';button.className=className;button.textContent=label;
+          button.addEventListener('click',async()=>{const approve=decision==='approve';if(!window.confirm(approve?'อนุมัติ LearnLab '+release.runtimeVersion+' · '+coreReleaseShortSha(release.releaseSha)+' ขึ้น Production ใช่หรือไม่?':'ไม่อนุมัติคำขอนี้ใช่หรือไม่?'))return;button.disabled=true;message('learnlab-release-message',approve?'กำลังบันทึกการอนุมัติ…':'กำลังปฏิเสธคำขอ…');try{await decideApproval(release.approvalId,decision);await refreshLearnLabReleaseState();message('learnlab-release-message',approve?'อนุมัติแล้ว VPS จะทำ backup, deploy, smoke, Vault sync และ rollback อัตโนมัติเมื่อจำเป็น':'ปฏิเสธคำขอแล้ว Production ไม่ถูกเปลี่ยน');}catch(error){message('learnlab-release-message',error instanceof Error?error.message:'ยังบันทึกการอนุมัติไม่ได้');}finally{button.disabled=false;}});
+          actions.append(button);
+        } row.append(actions);
+      } history.append(row);
+    }
+  }
+  async function refreshLearnLabReleaseState(){
+    if(!isOwner())return;
+    try{state.learnLabReleases=await loadLearnLabReleaseStatus();}catch(error){message('learnlab-release-message',error instanceof Error?error.message:'โหลดสถานะ LearnLab ไม่ได้');}
+    renderLearnLabReleaseSurface();
   }
 
   function renderSettingsOverview() {
@@ -1659,7 +1695,7 @@ import {
       if (ownerStatusResult.status === 'fulfilled') state.ownerStatus = ownerStatusResult.value;
       if (routingResult.status === 'fulfilled') state.providerRouting = routingResult.value;
       if (state.ownerStatus) renderOwnerSelfService(); else renderSettingsOverview();
-      if (selected === 'system') await refreshCoreReleaseState();
+      if (selected === 'system') await Promise.allSettled([refreshCoreReleaseState(), refreshLearnLabReleaseState()]);
       try { await refreshMemory(); } catch { message('memory-message', 'ยังโหลดความจำไม่ได้ ลองรีเฟรชอีกครั้ง'); }
     } else renderSettingsOverview();
   }
@@ -1899,6 +1935,20 @@ import {
     catch (error) { message('observability-message', error instanceof Error ? error.message : 'ยังหยุดการเชื่อมไม่ได้'); }
   });
   $('system-check-inline')?.addEventListener('click', () => $('system-check')?.click());
+  $('learnlab-release-refresh')?.addEventListener('click',async()=>{
+    const button=$('learnlab-release-refresh');button.disabled=true;message('learnlab-release-message','กำลังอ่าน LearnLab Production และ Source Authority…');
+    try{await refreshLearnLabReleaseState();message('learnlab-release-message','อัปเดตสถานะแล้ว');}catch(error){message('learnlab-release-message',error instanceof Error?error.message:'ยังรีเฟรช LearnLab ไม่ได้');}finally{button.disabled=false;}
+  });
+  $('learnlab-release-form')?.addEventListener('submit',async(event)=>{
+    event.preventDefault();if(!isOwner()){message('learnlab-release-message','เฉพาะ Owner เท่านั้นที่ปล่อย LearnLab ได้');return;}
+    const sha=$('learnlab-release-sha')?.value.trim().toLowerCase()||'';const version=$('learnlab-release-version')?.value.trim()||'';const button=event.currentTarget.querySelector('button[type="submit"]');
+    if(!/^[0-9a-f]{40}$/.test(sha)){message('learnlab-release-message','กรอก Source SHA แบบ 40 ตัวอักษรให้ครบ');return;}
+    if(!/^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$/.test(version)){message('learnlab-release-message','กรอก Runtime Version เช่น 0.8.0-rc.58.5');return;}
+    if(!window.confirm('เตรียม BAY LearnLab '+version+' · '+coreReleaseShortSha(sha)+' สำหรับ Production ใช่หรือไม่? ขั้นตอนนี้ยังไม่ deploy จนกว่าจะกดอนุมัติด้านล่าง'))return;
+    button.disabled=true;message('learnlab-release-message','กำลังตรวจสิทธิ์และสร้างคำขอ LearnLab release…');
+    try{const result=await withPrivilegedRetry(()=>requestLearnLabRelease(sha,version),'การปล่อยรุ่น LearnLab');await refreshLearnLabReleaseState();message('learnlab-release-message',result.idempotent?'มีคำขอนี้อยู่แล้ว กรุณาตรวจและอนุมัติด้านล่าง':'สร้างคำขอแล้ว กรุณาตรวจรายละเอียดและกด “อนุมัติ LearnLab Production”');}catch(error){message('learnlab-release-message',error instanceof Error?error.message:'ยังสร้างคำขอ LearnLab ไม่ได้');}finally{button.disabled=false;}
+  });
+
   $('core-release-refresh')?.addEventListener('click', async () => {
     const button = $('core-release-refresh'); button.disabled = true; message('core-release-message', 'กำลังอ่าน Production และ Source Authority…');
     try { await refreshCoreReleaseState(); message('core-release-message', 'อัปเดตสถานะแล้ว'); }

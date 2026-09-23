@@ -152,7 +152,7 @@ final class HubCapabilityRegistryService
         $required = trim($requiredCapability); $kind = strtoupper(trim($executorKind));
         if (preg_match('/^(?:agent\.conversation|project\.(?:read|search)|artifact\.object|qa\.cloud|review\.visual)$/', $required) === 1) return 'READ';
         if ($required === 'source.promote') return 'CANONICAL:SOURCE';
-        if (in_array($required, ['project.mutate.deploy','system.core.release','bay.remote_update.install'], true)) return 'CANONICAL:DEPLOY';
+        if (in_array($required, ['project.mutate.deploy','system.core.release','system.learnlab.release','bay.remote_update.install'], true)) return 'CANONICAL:DEPLOY';
         if ($required === 'bay.remote_update.stage') return 'RESOURCE:RELEASE_STAGE';
         if (str_starts_with($required, 'hosting.')) return 'RESOURCE:HOSTING';
         if (str_starts_with($required, 'project.mutate.')) return 'CANDIDATE';
