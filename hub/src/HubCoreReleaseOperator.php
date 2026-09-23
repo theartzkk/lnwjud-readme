@@ -179,7 +179,8 @@ final class HubCoreReleaseOperator
 
     private function nodeToolchain(): array
     {
-        $candidates=glob('/opt/awh-tools/remote-desktop/node-v*-linux-x64/bin/node')?:[];
+        $candidates=['/opt/awh-toolchain/node/bin/node'];
+        $candidates=array_merge($candidates,glob('/opt/awh-toolchain/node-v*-linux-x64/bin/node')?:[],glob('/opt/awh-tools/remote-desktop/node-v*-linux-x64/bin/node')?:[]);
         $candidates[]='/usr/local/bin/node';$candidates[]='/usr/bin/node';
         foreach(array_unique($candidates) as $node){
             if(!is_file($node)||!is_executable($node))continue;
@@ -198,7 +199,7 @@ final class HubCoreReleaseOperator
             'HOME'=>$home,'npm_config_cache'=>$cache,'NPM_CONFIG_AUDIT'=>'false','NPM_CONFIG_FUND'=>'false',
             'AWH_SOURCE_ROOT'=>$workspace,'AWH_DEPLOY_TARGET'=>'local','AWH_DEPLOY_TRANSPORT'=>'local',
             'AWH_RELEASE_COMMIT'=>$sha,'AWH_HUB_HOSTNAME'=>'kruart.online','AWH_PUBLIC_RELEASE_URL'=>'https://kruart.online/release.json',
-            'AWH_OPERATOR_CLIENT'=>'/usr/local/bin/awh-operator','AWH_OWNER_AUTH_USERNAME'=>$this->ownerUsername(),
+            'AWH_OPERATOR_CLIENT'=>'/usr/local/bin/awh-operator','AWH_OWNER_AUTH_USERNAME'=>$this->ownerUsername(),'AWH_PRIVILEGED_LANE'=>'TYPED_OPERATOR',
             'LC_ALL'=>'C','LANG'=>'C',
         ]);
     }

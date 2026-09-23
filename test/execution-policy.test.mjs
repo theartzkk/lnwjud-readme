@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { loadExecutionPolicy, qaScriptForBudget } from '../scripts/ops/execution-policy.mjs';
+import { loadExecutionPolicy, privilegeLane, qaScriptForBudget, releaseNodeCandidates } from '../scripts/ops/execution-policy.mjs';
 
 test('execution metadata is context-only rather than an AI behavior policy',async()=>{
   const context=await loadExecutionPolicy();
@@ -29,4 +29,21 @@ test('human entry context is non-binding and capability-aware',async()=>{
     assert.doesNotMatch(source,/Execution First — mandatory|OWNER OPERATING MODEL.*MANDATORY/i);
   }
   assert.match(intent,/Mode: context-only/i);
+});
+
+test('central privilege routing fails fast on restricted sessions and never falls back to user console',async()=>{
+  const context=await loadExecutionPolicy();
+  assert.equal(context.privilegeRouting.preflightRequired,true);
+  assert.equal(context.privilegeRouting.defaultPrivilegedLane,'TYPED_OPERATOR');
+  assert.equal(context.privilegeRouting.directSudoFromRestrictedSessionAllowed,false);
+  assert.equal(context.privilegeRouting.userConsoleFallbackAllowed,false);
+  assert.deepEqual(privilegeLane(context,{uid:1000,identity:'awh-remote',noNewPrivileges:true,explicitLane:''}),{lane:'RESTRICTED_SESSION',allowed:false,reason:'NO_NEW_PRIVILEGES'});
+  assert.equal(privilegeLane(context,{uid:0,identity:'root',noNewPrivileges:true,explicitLane:'TYPED_OPERATOR'}).allowed,true);
+});
+
+test('central toolchain routing preserves bounded Node and exact dependency hydration',async()=>{
+  const context=await loadExecutionPolicy();
+  assert.equal(context.toolchainRouting.preserveVerifiedRuntimeAcrossPrivilegeBoundary,true);
+  assert.equal(context.toolchainRouting.dependencyHydration.strategy,'NPM_CI_PREFER_OFFLINE');
+  assert.ok(releaseNodeCandidates(context).includes('/opt/awh-toolchain/node/bin/node'));
 });

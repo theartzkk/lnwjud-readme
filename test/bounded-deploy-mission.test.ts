@@ -32,7 +32,7 @@ test('mission contract preserves QA, rehearsal, backup, drift and public exact-r
   assert.doesNotMatch(source,/budget==='FAST'\?'qa:fast':'qa:local'/);
   assert.match(source,/AWH_OPERATOR_CLIENT.*\/usr\/local\/bin\/awh-operator/);
   assert.match(source,/awh-remote.*\/usr\/local\/bin\/awh-operator/);
-  for(const marker of ['verificationPlanForFiles','MISSION_RISK=','MISSION_VERIFICATION_BUDGET=','MISSION_STABILITY=','MISSION_GOLDEN_JOURNEYS=','MISSION_EVIDENCE_CAPSULE=','MISSION_DURABLE_REGISTRY=','MISSION_DURABLE_EVIDENCE=','verification-regressions','verification-store','MISSION_INCIDENT_FINGERPRINT=','--dry-run','--deploy','--approve','DEPLOY_STAGE=BACKUP_VERIFIED','DEPLOY_STAGE=SOURCE_DRIFT_VERIFIED','MISSION_APPROVALS_CONSUMED=1','MISSION_PUBLIC_VERIFY=PASS','AWH_REUSE_REMOTE_DESKTOP_ARTIFACTS']) assert.match(source,new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+  for(const marker of ['MISSION_PRIVILEGE_LANE=','MISSION_DEPENDENCIES=HYDRATING','MISSION_DEPENDENCY_HYDRATION_FAILED','verificationPlanForFiles','MISSION_RISK=','MISSION_VERIFICATION_BUDGET=','MISSION_STABILITY=','MISSION_GOLDEN_JOURNEYS=','MISSION_EVIDENCE_CAPSULE=','MISSION_DURABLE_REGISTRY=','MISSION_DURABLE_EVIDENCE=','verification-regressions','verification-store','MISSION_INCIDENT_FINGERPRINT=','--dry-run','--deploy','--approve','DEPLOY_STAGE=BACKUP_VERIFIED','DEPLOY_STAGE=SOURCE_DRIFT_VERIFIED','MISSION_APPROVALS_CONSUMED=1','MISSION_PUBLIC_VERIFY=PASS','AWH_REUSE_REMOTE_DESKTOP_ARTIFACTS']) assert.match(source,new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
 });
 
 

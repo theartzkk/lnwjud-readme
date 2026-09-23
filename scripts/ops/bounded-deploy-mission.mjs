@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { loadExecutionPolicy, qaScriptForBudget } from './execution-policy.mjs';
+import { loadExecutionPolicy, privilegeLane, qaScriptForBudget } from './execution-policy.mjs';
 
 const SHA=/^[0-9a-f]{40}$/;
 const ROOT=process.env.AWH_SOURCE_ROOT||process.cwd();
@@ -145,9 +145,31 @@ async function recordIncident(code,context={}){
 
 async function runQa(script,forward=true){const result=await run('npm',['run',script],{forward});return result.code===0?'PASS':'FAIL';}
 
+async function runtimePrivilegeState(policy){
+  let noNewPrivileges=false;
+  if(process.platform==='linux'){
+    try{const status=await readFile('/proc/self/status','utf8');noNewPrivileges=/^NoNewPrivs:\s+1$/m.test(status);}catch{}
+  }
+  const state=privilegeLane(policy,{noNewPrivileges});
+  console.log(`MISSION_PRIVILEGE_LANE=${state.lane}`);
+  if(!state.allowed)throw new Error(`MISSION_PRIVILEGE_LANE_REQUIRED:${state.reason}`);
+  return state;
+}
+
+async function ensureDependencies(policy){
+  if(existsSync(join(ROOT,'node_modules'))){console.log('MISSION_DEPENDENCIES=READY');return;}
+  if(policy?.toolchainRouting?.dependencyHydration?.requiredBeforeDeepQa!==true)throw new Error('MISSION_DEPENDENCIES_MISSING');
+  console.log('MISSION_DEPENDENCIES=HYDRATING');
+  const result=await run('npm',['ci','--ignore-scripts','--no-audit','--no-fund','--prefer-offline'],{forward:true});
+  if(result.code!==0)throw new Error('MISSION_DEPENDENCY_HYDRATION_FAILED');
+  console.log('MISSION_DEPENDENCIES=HYDRATED');
+}
+
 async function verifyByBudget(plan){
   const budget=String(plan?.budget||'').toUpperCase();
   const executionPolicy=await loadExecutionPolicy();
+  await runtimePrivilegeState(executionPolicy);
+  await ensureDependencies(executionPolicy);
   const qaMode=qaScriptForBudget(executionPolicy,budget);
   console.log(`MISSION_QA_MODE=${qaMode}`);
   const breadth=await runQa(qaMode,true);
