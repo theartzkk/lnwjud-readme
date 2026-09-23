@@ -52,13 +52,19 @@ runuser -u awh-hub -- test -w "$EXPORT_ROOT"
 runuser -u bayadmin -- test -w "$STAGE_ROOT"
 runuser -u awh-hub -G www-data -- test -w "$BAY_INBOX"
 [ -d /srv/awh-git ] && runuser -u bayadmin -- test -w /srv/awh-git
-for repo in awh.git bay-excuse-x.git bay-hub.git bay-learnlab.git school-website.git; do
+for repo in awh.git bay-excuse-x.git bay-hub.git bay-learnlab.git bay-assessment.git school-website.git bay-computer-lab.git; do
   path="/srv/awh-git/$repo"
   [ -d "$path" ] || continue
   chgrp -R bayadmin "$path"
-  find "$path" -type d -exec chmod g+s {} +
+  find "$path" -type d -exec chmod g+rwx,g+s {} +
+  find "$path" -type f -exec chmod g+rw {} +
+  find "$path" -type d -exec setfacl -m g::rwx,m::rwx,d:g::rwx,d:m::rwx {} +
+  find "$path" -type f -exec setfacl -m g::rw,m::rw {} +
   git --git-dir="$path" config core.sharedRepository group
+  git config --system --get-all safe.directory | grep -Fx "$path" >/dev/null 2>&1 || git config --system --add safe.directory "$path"
   runuser -u bayadmin -- git --git-dir="$path" rev-parse --verify refs/heads/main >/dev/null
+  runuser -u awh-hub -G bayadmin -- test -w "$path/objects"
+  runuser -u awh-hub -G bayadmin -- test -w "$path/refs/heads"
 done
 old_socket=0; old_service=0; old_client=0
 [ -e "$SOCKET_UNIT" ] && { cp -a "$SOCKET_UNIT" "$backup/socket"; old_socket=1; }

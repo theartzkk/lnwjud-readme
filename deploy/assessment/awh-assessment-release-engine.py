@@ -189,12 +189,26 @@ def health(url):
     for marker in ['data-campaign-delete','data-delete-assignment','data-delete-exam','data-delete-session','data-delete-score-batch']:
         if marker not in app: raise ReleaseError('ASSESSMENT_RELEASE_UI_MARKER_MISSING',marker)
 
+def normalize_canonical_permissions():
+    if not CANON.is_dir(): return
+    run(['/bin/chown','-R','bayadmin:bayadmin',str(CANON)])
+    run(['/usr/bin/find',str(CANON),'-type','d','-exec','/bin/chmod','g+rwx,g+s','{}','+'])
+    run(['/usr/bin/find',str(CANON),'-type','f','-exec','/bin/chmod','g+rw','{}','+'])
+    run(['/usr/bin/find',str(CANON),'-type','d','-exec','/usr/bin/setfacl','-m','g::rwx,m::rwx,d:g::rwx,d:m::rwx','{}','+'])
+    run(['/usr/bin/find',str(CANON),'-type','f','-exec','/usr/bin/setfacl','-m','g::rw,m::rw','{}','+'])
+    safe=run(['/usr/bin/git','config','--system','--get-all','safe.directory'],check=False).stdout.splitlines()
+    if str(CANON) not in safe: run(['/usr/bin/git','config','--system','--add','safe.directory',str(CANON)])
+    run(['/usr/bin/git','--git-dir='+str(CANON),'config','core.sharedRepository','group'])
+
 def create_canonical(work,sha):
-    if CANON.exists(): return False
+    if CANON.exists():
+        normalize_canonical_permissions()
+        return False
     tmp=CANON.with_name('.bay-assessment.git.tmp-'+str(os.getpid())); shutil.rmtree(tmp,ignore_errors=True)
     run(['/usr/bin/git','clone','--bare',str(work),str(tmp)],timeout=180); run(['/usr/bin/git','--git-dir='+str(tmp),'update-ref','refs/heads/main',sha])
     run(['/usr/bin/git','--git-dir='+str(tmp),'symbolic-ref','HEAD','refs/heads/main']); run(['/usr/bin/git','--git-dir='+str(tmp),'config','core.sharedRepository','group'])
-    os.rename(tmp,CANON); run(['/bin/chown','-R','bayadmin:bayadmin',str(CANON)]); run(['/bin/chmod','-R','g+rwX',str(CANON)])
+    os.rename(tmp,CANON)
+    normalize_canonical_permissions()
     return True
 
 def state_path(execution): return WORK/execution/'state.json'
