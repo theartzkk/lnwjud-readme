@@ -14,11 +14,46 @@ function cleanStage(v){if(!v||typeof v!=='object')return null;const current=Numb
 function id(v){if(!SAFE.test(String(v??'')))throw new Error('MISSION_ID_INVALID');return String(v);}
 function device(v){if(!UUID.test(String(v??'')))throw new Error('MISSION_DEVICE_INVALID');return String(v).toLowerCase();}
 function resource(v){if(!SAFE_RESOURCE.test(String(v??'')))throw new Error('MISSION_RESOURCE_INVALID');return String(v);}
-function fileForDevice(deviceId){return join(ROOT,'active',deviceId+'.json');}
+function legacyFileForDevice(deviceId){return join(ROOT,'active',deviceId+'.json');}
+function fileForMission(missionId){return join(ROOT,'active',missionId+'.json');}
 function fileForResource(resourceKey){return join(ROOT,'resources',resourceKey+'.json');}
 function historyFile(missionId){return join(ROOT,'history',missionId+'.json');}
 async function atomicJson(path,value){await mkdir(dirname(path),{recursive:true,mode:0o700});const tmp=path+'.tmp-'+process.pid;await writeFile(tmp,JSON.stringify(value,null,2)+'\n',{mode:0o600});await rename(tmp,path);}
 async function readJson(path){try{return JSON.parse(await readFile(path,'utf8'));}catch{return null;}}
+async function withResourceGuard(resourceKey,operation){
+  const dir=join(ROOT,'resource-guards');await mkdir(dir,{recursive:true,mode:0o700});
+  const guard=join(dir,resourceKey+'.lock');const deadline=Date.now()+2000;
+  for(;;){
+    try{await mkdir(guard,{mode:0o700});break;}
+    catch(error){
+      if(error?.code!=='EEXIST')throw error;
+      try{const info=await stat(guard);if(Date.now()-info.mtimeMs>30000){await rm(guard,{recursive:true,force:true});continue;}}catch{}
+      if(Date.now()>=deadline)throw new Error('MISSION_RESOURCE_BUSY');
+      await new Promise((resolve)=>setTimeout(resolve,25));
+    }
+  }
+  try{return await operation();}finally{await rm(guard,{recursive:true,force:true});}
+}
+async function migrateLegacyDeviceMission(deviceId){
+  const legacy=legacyFileForDevice(deviceId),row=await readJson(legacy);
+  if(!row||!SAFE.test(String(row.missionId??'')))return;
+  const target=fileForMission(String(row.missionId));
+  if(!existsSync(target))await atomicJson(target,row);
+  await rm(legacy,{force:true});
+}
+async function missionRowsForDevice(deviceId){
+  await migrateLegacyDeviceMission(deviceId);
+  let entries=[];try{entries=await readdir(join(ROOT,'active'),{withFileTypes:true});}catch{return [];}
+  const rows=[];
+  for(const entry of entries){if(!entry.isFile()||!entry.name.endsWith('.json'))continue;const path=join(ROOT,'active',entry.name),row=await readJson(path);if(row?.status==='ACTIVE'&&row.deviceId===deviceId)rows.push({path,row});}
+  rows.sort((a,b)=>String(a.row.startedAt??'').localeCompare(String(b.row.startedAt??''))||String(a.row.missionId).localeCompare(String(b.row.missionId)));
+  return rows;
+}
+async function resolveMission(payload){
+  const deviceId=device(payload.deviceId);await migrateLegacyDeviceMission(deviceId);
+  if(payload.missionId){const missionId=id(payload.missionId),path=fileForMission(missionId),row=await readJson(path);if(!row)throw new Error('MISSION_NOT_FOUND');if(row.deviceId!==deviceId)throw new Error('MISSION_DEVICE_MISMATCH');return {deviceId,path,row};}
+  const rows=await missionRowsForDevice(deviceId);if(rows.length===0)throw new Error('MISSION_NOT_FOUND');if(rows.length>1)throw new Error('MISSION_ID_REQUIRED');return {deviceId,...rows[0]};
+}
 function now(){return new Date();}
 function expiry(minutes){return new Date(Date.now()+minutes*60000).toISOString();}
 function active(row){return row?.status==='ACTIVE'&&Date.parse(row.leaseExpiresAt)>Date.now();}
@@ -43,34 +78,40 @@ export async function runRemoteMissionCommand(command,payload,policy=null){
   await cleanupHistory(policy);
   const leaseMinutes=policy.runtimeDefaults.deviceLeaseMinutes;
   if(command==='start'){
-    const missionId=id(payload.missionId), deviceId=device(payload.deviceId), path=fileForDevice(deviceId), current=await readJson(path);
-    if(active(current)&&current.missionId!==missionId)throw new Error('MISSION_DEVICE_LEASE_HELD');
+    const missionId=id(payload.missionId),deviceId=device(payload.deviceId);
+    await migrateLegacyDeviceMission(deviceId);
+    const path=fileForMission(missionId),current=await readJson(path);
+    if(current&&current.deviceId!==deviceId)throw new Error('MISSION_ID_MISMATCH');
     const mutationMode=payload.mutationMode==='MUTATE'?'MUTATE':'READ_ONLY';
     const resourceKey=payload.resourceKey?resource(payload.resourceKey):null;
     const ownerKey=cleanText(payload.ownerKey,160);
     if(policy.integrity?.singleWriterPerMutationScope===true&&mutationMode==='MUTATE'&&!resourceKey)throw new Error('MISSION_RESOURCE_REQUIRED');
     const resourcePath=resourceKey?fileForResource(resourceKey):null;
-    const resourceCurrent=resourcePath?await readJson(resourcePath):null;
-    if(mutationMode==='MUTATE'&&active(resourceCurrent)&&resourceCurrent.missionId!==missionId)throw new Error('MISSION_RESOURCE_LEASE_HELD');
     const at=now().toISOString();
     const row={schemaVersion:1,missionId,deviceId,deviceName:cleanText(payload.deviceName,120),project:cleanText(payload.project,120),objective:cleanText(payload.objective,500),mutationMode,resourceKey,ownerKey,status:'ACTIVE',startedAt:current?.missionId===missionId?current.startedAt:at,updatedAt:at,lastHeartbeatAt:at,leaseExpiresAt:expiry(leaseMinutes),heartbeatSequence:current?.missionId===missionId?(Number(current.heartbeatSequence)||0):0,app:cleanText(payload.app,120),pid:Number.isInteger(payload.pid)&&payload.pid>0?payload.pid:null,checkpoint:cleanText(payload.checkpoint,500),nextStep:cleanText(payload.nextStep,500),currentOperation:cleanText(payload.currentOperation,500),stage:cleanStage(payload.stage),doneSinceLast:cleanList(payload.doneSinceLast),proofOfWork:cleanList(payload.proofOfWork),lastSaveOrArtifact:cleanText(payload.lastSaveOrArtifact,500),nextSteps:cleanList(payload.nextSteps,{maxItems:3,maxLength:500}),blocker:null};
     if(!row.deviceName||!row.project||!row.objective)throw new Error('MISSION_METADATA_INVALID');
-    if(resourcePath&&mutationMode==='MUTATE')await atomicJson(resourcePath,{schemaVersion:1,missionId,resourceKey,project:row.project,ownerKey:row.ownerKey,status:'ACTIVE',updatedAt:at,leaseExpiresAt:row.leaseExpiresAt});
-    try{await atomicJson(path,row);}catch(error){if(resourcePath&&mutationMode==='MUTATE'){const held=await readJson(resourcePath);if(held?.missionId===missionId)await rm(resourcePath,{force:true});}throw error;}
-    return row;
+    if(resourcePath&&mutationMode==='MUTATE')return withResourceGuard(resourceKey,async()=>{
+      const resourceCurrent=await readJson(resourcePath);
+      if(active(resourceCurrent)&&resourceCurrent.missionId!==missionId)throw new Error('MISSION_RESOURCE_LEASE_HELD');
+      await atomicJson(resourcePath,{schemaVersion:1,missionId,resourceKey,project:row.project,ownerKey:row.ownerKey,status:'ACTIVE',updatedAt:at,leaseExpiresAt:row.leaseExpiresAt});
+      try{await atomicJson(path,row);}catch(error){const held=await readJson(resourcePath);if(held?.missionId===missionId)await rm(resourcePath,{force:true});throw error;}
+      return row;
+    });
+    await atomicJson(path,row);return row;
   }
-  const deviceId=device(payload.deviceId), path=fileForDevice(deviceId), row=await readJson(path);
-  if(!row)throw new Error('MISSION_NOT_FOUND');
-  if(payload.missionId&&row.missionId!==id(payload.missionId))throw new Error('MISSION_ID_MISMATCH');
+  const deviceId=device(payload.deviceId);
+  if(command==='status'&&!payload.missionId){
+    const rows=await missionRowsForDevice(deviceId);
+    if(rows.length===0)throw new Error('MISSION_NOT_FOUND');
+    if(rows.length>1)return {schemaVersion:1,deviceId,parallelMissionsAllowed:true,count:rows.length,missions:rows.map(({row})=>({...row,leaseActive:active(row)}))};
+  }
+  const resolved=await resolveMission(payload),path=resolved.path,row=resolved.row;
   if(command==='status'){
     const resourceLease=row.resourceKey&&row.mutationMode==='MUTATE'?await readJson(fileForResource(row.resourceKey)):null;
-    return {...row,leaseActive:active(row),resourceLeaseActive:resourceLease?.missionId===row.missionId&&active(resourceLease)};
+    return {...row,parallelMissionsAllowed:true,leaseActive:active(row),resourceLeaseActive:resourceLease?.missionId===row.missionId&&active(resourceLease)};
   }
   if(command==='heartbeat'){
     if(!active(row))throw new Error('MISSION_LEASE_EXPIRED');
-    if(row.resourceKey&&row.mutationMode==='MUTATE'){
-      const held=await readJson(fileForResource(row.resourceKey));if(held?.missionId!==row.missionId||!active(held))throw new Error('MISSION_RESOURCE_LEASE_LOST');
-    }
     const at=now().toISOString();
     const proofOfWork=cleanList(payload.proofOfWork);
     const updated={...row,updatedAt:at,lastHeartbeatAt:at,leaseExpiresAt:expiry(leaseMinutes),heartbeatSequence:(Number(row.heartbeatSequence)||0)+1,
@@ -79,18 +120,26 @@ export async function runRemoteMissionCommand(command,payload,policy=null){
       doneSinceLast:cleanList(payload.doneSinceLast),proofOfWork,lastSaveOrArtifact:cleanText(payload.lastSaveOrArtifact,500)??row.lastSaveOrArtifact,
       nextSteps:cleanList(payload.nextSteps,{maxItems:3,maxLength:500}),blocker:payload.blocker===null?null:(cleanText(payload.blocker,500)??row.blocker),
       app:cleanText(payload.app,120)??row.app,pid:Number.isInteger(payload.pid)&&payload.pid>0?payload.pid:row.pid};
-    await atomicJson(path,updated);
-    if(updated.resourceKey&&updated.mutationMode==='MUTATE')await atomicJson(fileForResource(updated.resourceKey),{schemaVersion:1,missionId:updated.missionId,resourceKey:updated.resourceKey,project:updated.project,ownerKey:updated.ownerKey,status:'ACTIVE',updatedAt:at,leaseExpiresAt:updated.leaseExpiresAt});
-    return updated;
+    if(updated.resourceKey&&updated.mutationMode==='MUTATE')return withResourceGuard(updated.resourceKey,async()=>{
+      const resourcePath=fileForResource(updated.resourceKey),held=await readJson(resourcePath);
+      if(held?.missionId!==updated.missionId||!active(held))throw new Error('MISSION_RESOURCE_LEASE_LOST');
+      await atomicJson(path,updated);
+      await atomicJson(resourcePath,{schemaVersion:1,missionId:updated.missionId,resourceKey:updated.resourceKey,project:updated.project,ownerKey:updated.ownerKey,status:'ACTIVE',updatedAt:at,leaseExpiresAt:updated.leaseExpiresAt});
+      return updated;
+    });
+    await atomicJson(path,updated);return updated;
   }
   if(command==='finish'){
     const at=now().toISOString();const status=payload.result==='BLOCKED'?'BLOCKED':'COMPLETED';
     const cleanupStatus=String(payload.cleanupStatus??'');
     const completionProof=cleanList(payload.completionProof,{maxItems:8,maxLength:500});
     const completed={...row,status,updatedAt:at,completedAt:at,leaseExpiresAt:at,objectiveComplete:status==='COMPLETED'?true:false,completionProof,cleanupStatus,checkpoint:cleanText(payload.checkpoint,500)??row.checkpoint,nextStep:null,blocker:status==='BLOCKED'?(cleanText(payload.blocker,500)??'BLOCKED'):null};
-    await atomicJson(historyFile(row.missionId),completed);await rm(path,{force:true});
-    if(row.resourceKey&&row.mutationMode==='MUTATE'){const resourcePath=fileForResource(row.resourceKey),held=await readJson(resourcePath);if(held?.missionId===row.missionId)await rm(resourcePath,{force:true});}
-    return completed;
+    if(row.resourceKey&&row.mutationMode==='MUTATE')return withResourceGuard(row.resourceKey,async()=>{
+      const resourcePath=fileForResource(row.resourceKey),held=await readJson(resourcePath);
+      if(held?.missionId!==row.missionId)throw new Error('MISSION_RESOURCE_LEASE_LOST');
+      await atomicJson(historyFile(row.missionId),completed);await rm(path,{force:true});await rm(resourcePath,{force:true});return completed;
+    });
+    await atomicJson(historyFile(row.missionId),completed);await rm(path,{force:true});return completed;
   }
   throw new Error('MISSION_COMMAND_INVALID');
 }

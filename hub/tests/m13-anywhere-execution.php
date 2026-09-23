@@ -82,26 +82,28 @@ try {
     $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'specialist','WAITING_FOR_WORKER',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$specialistTask,'user'=>$owner,'project'=>$project,'key'=>'m13-specialist-task-0001','at'=>$now]);
     $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'CODEX','codex:cli','WAITING_FOR_CAPABILITY',NULL,NULL,0,NULL,'{}',NULL,:at,:at)")->execute(['execution'=>$specialistExecution,'task'=>$specialistTask,'project'=>$project,'at'=>$now]);
     $specialistEnvelope = $registry->ensureExecutionEnvelope($specialistExecution, $now);
-    m13_assert(($specialistEnvelope['providerId'] ?? null) === 'device:' . $device && ($specialistEnvelope['mutationScope'] ?? null) === 'DEVICE_WORKSPACE', 'legacy codex:cli contract resolves through the specialist alias without changing the execution row');
+    m13_assert(($specialistEnvelope['providerId'] ?? null) === 'device:' . $device && ($specialistEnvelope['mutationScope'] ?? null) === 'DEVICE_WORKSPACE', 'legacy codex:cli contract resolves through the specialist alias and standard workspace scope without changing the execution row');
     $leaseUntil = gmdate('c', strtotime($now) + 300);
     $firstAuthority = $registry->activateExecutionAuthority($specialistExecution, $leaseUntil, $now);
     m13_assert(($firstAuthority['granted'] ?? false) === true, 'first mutating execution owns project authority');
     $control=HubControlPlaneService::openExisting($db);
     $blockedCheckpoint=['schemaVersion'=>1,'checkpointId'=>'623b45c0-23e1-408d-ae0f-ac5eca7f6900','deviceId'=>$writerDevice,'projectId'=>$project,'taskId'=>null,'baseRevision'=>str_repeat('a',40),'wipRevision'=>str_repeat('b',40),'wipRef'=>'refs/awh/wip/'.$project.'/623b45c0-23e1-408d-ae0f-ac5eca7f6900','treeRevision'=>str_repeat('c',40),'files'=>[['path'=>'src/guard.php','state'=>'modified','sha256'=>str_repeat('d',64),'sizeBytes'=>16]],'artifactRefs'=>[],'syncState'=>'SYNCED'];
-    try{$control->publishWorkspaceCheckpoint((string)$writerEnrollment['accessToken'],$blockedCheckpoint,$now);throw new RuntimeException('workspace writer must be blocked by canonical mutation envelope');}catch(HubControlPlaneException $error){m13_assert($error->codeName==='WORKSPACE_MUTATION_AUTHORITY_HELD','canonical mutation envelope blocks a new workspace writer');}
-    m13_assert((int)$pdo->query("SELECT COUNT(*) FROM control_workspace_checkpoints WHERE checkpoint_id='623b45c0-23e1-408d-ae0f-ac5eca7f6900'")->fetchColumn()===0,'blocked workspace checkpoint rolls back atomically');
+    $parallelCheckpoint=$control->publishWorkspaceCheckpoint((string)$writerEnrollment['accessToken'],$blockedCheckpoint,$now);
+    m13_assert(($parallelCheckpoint['workspace']['lease']['active']??false)===true,'workspace WIP remains parallel with an isolated workspace execution');
+    m13_assert((int)$pdo->query("SELECT COUNT(*) FROM control_workspace_checkpoints WHERE checkpoint_id='623b45c0-23e1-408d-ae0f-ac5eca7f6900'")->fetchColumn()===1,'parallel workspace checkpoint is stored atomically');
     $secondTask = m13_uuid(); $secondExecution = m13_uuid();
     $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'second mutation','WAITING_FOR_WORKER',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$secondTask,'user'=>$owner,'project'=>$project,'key'=>'m13-second-mutation-0001','at'=>$now]);
     $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','project.mutate.assisted','QUEUED',NULL,NULL,0,NULL,'{}',NULL,:at,:at)")->execute(['execution'=>$secondExecution,'task'=>$secondTask,'project'=>$project,'at'=>$now]);
-    $blockedAuthority = $registry->activateExecutionAuthority($secondExecution, $leaseUntil, $now);
-    m13_assert(($blockedAuthority['granted'] ?? true) === false && ($blockedAuthority['blockingExecutionId'] ?? null) === $specialistExecution, 'second mutation waits behind the active project authority');
-    $readAuthority = $registry->activateExecutionAuthority($legacyExecution, $leaseUntil, $now);
-    m13_assert(($readAuthority['granted'] ?? false) === true && ($readAuthority['mutationScope'] ?? null) === 'READ', 'read execution remains parallel while mutation authority is active');
-    $authorityStatus = $registry->executionAuthorityStatus($now);
-    m13_assert(($authorityStatus['activeMutationCount'] ?? 0) === 1 && ($authorityStatus['waitingMutationCount'] ?? 0) >= 1, 'authority status exposes active and waiting mutation lanes');
-    $registry->updateEnvelopeState($specialistExecution, 'RELEASED', null, $now);
     $secondAuthority = $registry->activateExecutionAuthority($secondExecution, $leaseUntil, $now);
-    m13_assert(($secondAuthority['granted'] ?? false) === true, 'waiting mutation acquires authority after the prior lane releases');
+    m13_assert(($secondAuthority['granted'] ?? false) === true && ($secondAuthority['mutationScope'] ?? null) === 'PROJECT_CANDIDATE' && ($secondAuthority['mutationResource'] ?? null) === 'CANDIDATE', 'candidate mutation runs in parallel with a separate workspace resource');
+    $readAuthority = $registry->activateExecutionAuthority($legacyExecution, $leaseUntil, $now);
+    m13_assert(($readAuthority['granted'] ?? false) === true && ($readAuthority['mutationScope'] ?? null) === 'READ', 'read execution remains parallel while mutations are active');
+    $authorityStatus = $registry->executionAuthorityStatus($now);
+    m13_assert(($authorityStatus['mode'] ?? null) === 'RESOURCE_SCOPED_CONCURRENCY' && ($authorityStatus['activeMutationCount'] ?? 0) === 2 && ($authorityStatus['waitingMutationCount'] ?? -1) === 0, 'authority status exposes parallel non-conflicting resource lanes');
+    m13_assert(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:SOURCE','CANONICAL:SOURCE')===true,'same canonical resource conflicts');
+    m13_assert(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:SOURCE','CANONICAL:DEPLOY')===false,'different canonical resources can progress independently');
+    m13_assert(HubCapabilityRegistryService::mutationResourcesConflict('CANDIDATE','CANONICAL:SOURCE')===false,'isolated candidate work never blocks source promotion');
+    $registry->updateEnvelopeState($specialistExecution, 'RELEASED', null, $now);
     $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED' WHERE execution_id=:id")->execute(['id'=>$secondExecution]);
     $pdo->prepare("UPDATE control_tasks SET state='COMPLETED' WHERE task_id=:id")->execute(['id'=>$secondTask]);
     $pdo->prepare("UPDATE control_execution_envelopes SET state='OPEN',lease_expires_at=NULL WHERE execution_id=:id")->execute(['id'=>$secondExecution]);
@@ -118,7 +120,7 @@ try {
     m13_assert(($visible['voice.tts'] ?? null) === 'PLANNED' && ($visible['video.render'] ?? null) === 'PLANNED', 'future voice/video capabilities are truthful planned entries');
     m13_assert($pdo->query('PRAGMA integrity_check')->fetchColumn() === 'ok' && $pdo->query('PRAGMA foreign_key_check')->fetchAll() === [], 'M13 preserves database integrity and foreign keys');
     $releasedCheckpoint=$control->publishWorkspaceCheckpoint((string)$writerEnrollment['accessToken'],$blockedCheckpoint,gmdate('c',strtotime($now)+2));
-    m13_assert(($releasedCheckpoint['workspace']['lease']['active']??false)===true,'workspace writer can acquire only after canonical mutation authority releases');
+    m13_assert(($releasedCheckpoint['workspace']['lease']['active']??false)===true,'workspace lease remains stable after parallel resource lanes release');
     fwrite(STDOUT, "AWH M13 Anywhere Execution: PASS\n");
 } finally {
     m13_clean($root);

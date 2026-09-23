@@ -700,7 +700,7 @@ final class HubControlPlaneService
             ['key'=>'smoke','label'=>'Smoke Test','pass'=>false,'evidence'=>'visible end-to-end field verification required'],
         ];
         $passed = count(array_filter($checks, static fn(array $item): bool => $item['pass'] === true));
-        $executionAuthority = $this->capabilities !== null ? $this->capabilities->executionAuthorityStatus($now) : ['schemaVersion'=>1,'mode'=>'UNAVAILABLE','parallelReadsAllowed'=>true,'activeMutationCount'=>0,'waitingMutationCount'=>0,'activeMutations'=>[],'waitingMutations'=>[]];
+        $executionAuthority = $this->capabilities !== null ? $this->capabilities->executionAuthorityStatus($now) : ['schemaVersion'=>1,'mode'=>'UNAVAILABLE','parallelReadsAllowed'=>true,'parallelNonConflictingMutationsAllowed'=>false,'mutationBoundary'=>'UNAVAILABLE','activeMutationCount'=>0,'waitingMutationCount'=>0,'activeMutations'=>[],'waitingMutations'=>[]];
         return [
             'schemaVersion' => 1,
             'telemetry' => $telemetry,
@@ -2462,7 +2462,7 @@ final class HubControlPlaneService
                     if (!in_array($required, $caps, true)) continue;
                     $lease = $this->pdo->prepare("UPDATE control_task_executions SET state = 'RUNNING', lease_owner = :device, lease_expires_at = :expires, attempt_count = attempt_count + 1, last_error_code = NULL, updated_at = :at WHERE task_id = :task AND state = 'WAITING_FOR_CAPABILITY' AND executor_kind = 'DEVICE' AND required_capability = :capability");
                     $lease->execute(['device' => $auth['deviceId'], 'expires' => $expires, 'at' => $at, 'task' => $candidate['task_id'], 'capability' => $required]);
-                    if ($lease->rowCount() === 1) { if ($this->capabilities !== null) $this->capabilities->updateEnvelopeState((string) $candidate['execution_id'], 'ACTIVE', $expires, $at); $row = $candidate; break; }
+                    if ($lease->rowCount() === 1) { if ($this->capabilities !== null) $this->capabilities->updateEnvelopeState((string) $candidate['execution_id'], 'ACTIVE', $expires, $at, true); $row = $candidate; break; }
                 }
             }
             if (!is_array($row) && $this->centralProjectAuthoritySchemaPresent() && is_array($caps) && in_array('codex:cli', $caps, true)) {
@@ -2472,7 +2472,7 @@ final class HubControlPlaneService
                     $lease = $this->pdo->prepare("UPDATE control_task_executions SET state = 'RUNNING', lease_owner = :device, lease_expires_at = :expires, attempt_count = attempt_count + 1, last_error_code = NULL, updated_at = :at WHERE task_id = :task AND state = 'WAITING_FOR_CAPABILITY' AND executor_kind = 'CODEX' AND required_capability = 'codex:cli'");
                     $lease->execute(['device' => $auth['deviceId'], 'expires' => $expires, 'at' => $at, 'task' => $candidate['task_id']]);
                     if ($lease->rowCount() === 1) {
-                        if ($this->capabilities !== null) $this->capabilities->updateEnvelopeState((string)$candidate['execution_id'], 'ACTIVE', $expires, $at);
+                        if ($this->capabilities !== null) $this->capabilities->updateEnvelopeState((string)$candidate['execution_id'], 'ACTIVE', $expires, $at, true);
                         $row = $candidate;
                     }
                 }
@@ -2795,14 +2795,14 @@ final class HubControlPlaneService
         return ['schemaVersion' => 1, 'workspace' => $this->workspaceState($projectId, $at, true)];
     }
 
-    /** A workspace writer may never appear while the canonical execution envelope owns a mutation lane. */
+    /** Workspace WIP is parallel unless an active legacy/unknown scope explicitly conflicts. */
     private function assertNoActiveMutationEnvelope(string $projectId, string $at): void
     {
         $table=$this->pdo->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='control_execution_envelopes'")->fetchColumn();
         if($table===false)return; // Pre-M13 compatibility: workspace continuity existed before execution envelopes.
-        $q=$this->pdo->prepare("SELECT x.execution_id FROM control_execution_envelopes x LEFT JOIN control_task_executions e ON e.execution_id=x.execution_id LEFT JOIN control_tasks t ON t.task_id=x.task_id WHERE x.project_id=:project AND x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) AND COALESCE(e.state,'RUNNING') NOT IN ('COMPLETED','FAILED','CANCELLED') AND COALESCE(t.state,'RUNNING') NOT IN ('COMPLETED','FAILED','CANCELLED') LIMIT 1");
+        $q=$this->pdo->prepare("SELECT x.execution_id,x.mutation_scope,e.required_capability,e.executor_kind FROM control_execution_envelopes x LEFT JOIN control_task_executions e ON e.execution_id=x.execution_id LEFT JOIN control_tasks t ON t.task_id=x.task_id WHERE x.project_id=:project AND x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) AND COALESCE(e.state,'RUNNING') NOT IN ('COMPLETED','FAILED','CANCELLED') AND COALESCE(t.state,'RUNNING') NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY x.updated_at,x.execution_id LIMIT 40");
         $q->execute(['project'=>$projectId,'at'=>$at]);
-        if($q->fetchColumn()!==false)throw new HubControlPlaneException('A canonical mutating execution currently owns this project','WORKSPACE_MUTATION_AUTHORITY_HELD');
+        foreach($q->fetchAll() as $row){$resource=HubCapabilityRegistryService::mutationResourceForExecution((string)($row['required_capability']??''),(string)($row['executor_kind']??''));if(HubCapabilityRegistryService::mutationResourcesConflict('WORKSPACE',$resource))throw new HubControlPlaneException('A conflicting execution currently owns this workspace resource','WORKSPACE_MUTATION_AUTHORITY_HELD');}
     }
 
     public function renewWorkspaceLease(string $token, array $payload, ?string $now = null): array

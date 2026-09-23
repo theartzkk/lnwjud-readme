@@ -79,7 +79,7 @@ final class HubDeployExecutionAuthorityService
                 'checkpoint'=>json_encode(['releaseId'=>$releaseId], JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$at
             ]);
             $registry = new HubCapabilityRegistryService($this->pdo);
-            $authority = $registry->activateExecutionAuthority($executionId, $lease, $at);
+            $authority = $registry->activateExecutionAuthority($executionId, $lease, $at, true);
             if (($authority['granted'] ?? false) !== true) {
                 throw new HubDeployExecutionAuthorityException(
                     'Another mutating execution owns this project',

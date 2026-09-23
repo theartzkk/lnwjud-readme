@@ -17,7 +17,7 @@ final class HubCapabilityRegistryService
     private const AVAILABILITY = ['ALWAYS_ON','ON_DEMAND','OPTIONAL_DEVICE'];
     private const COST = ['INCLUDED','PREPAID','LOCAL_FREE','METERED'];
     private const ENVELOPE_STATES = ['OPEN','ACTIVE','WAITING','RELEASED','CONFLICT','CANCELLED'];
-    public const EXECUTION_POLICY_VERSION = '2.0-context';
+    public const EXECUTION_POLICY_VERSION = '2.1-resource';
 
     public function __construct(private readonly PDO $pdo) {}
 
@@ -133,20 +133,62 @@ final class HubCapabilityRegistryService
         if (!is_array($row)) return null;
         return ['providerId'=>(string)$row['provider_id'],'kind'=>(string)$row['provider_kind'],'displayName'=>(string)$row['display_name'],'availabilityMode'=>(string)$row['availability_mode'],'costClass'=>(string)$row['cost_class'],'capability'=>$capability,'maturity'=>(string)$row['maturity'],'executionPolicyVersion'=>self::EXECUTION_POLICY_VERSION];
     }
+    /** Keep the persisted scope compatible with the existing schema enum. */
+    public static function mutationScopeForExecution(string $requiredCapability, string $executorKind): string
+    {
+        $required = trim($requiredCapability); $kind = strtoupper(trim($executorKind));
+        if (preg_match('/^(?:agent\.conversation|project\.(?:read|search)|artifact\.object|qa\.cloud|review\.visual)$/', $required) === 1) return 'READ';
+        if (str_starts_with($required, 'project.mutate.')) return 'PROJECT_CANDIDATE';
+        if (in_array($kind, ['DEVICE','CODEX'], true)) return 'DEVICE_WORKSPACE';
+        return 'EXTERNAL';
+    }
+
+    /**
+     * Derive the coordination resource from canonical execution metadata.
+     * No new lock table or schema column is needed.
+     */
+    public static function mutationResourceForExecution(string $requiredCapability, string $executorKind): string
+    {
+        $required = trim($requiredCapability); $kind = strtoupper(trim($executorKind));
+        if (preg_match('/^(?:agent\.conversation|project\.(?:read|search)|artifact\.object|qa\.cloud|review\.visual)$/', $required) === 1) return 'READ';
+        if ($required === 'source.promote') return 'CANONICAL:SOURCE';
+        if (in_array($required, ['project.mutate.deploy','system.core.release','bay.remote_update.install'], true)) return 'CANONICAL:DEPLOY';
+        if ($required === 'bay.remote_update.stage') return 'RESOURCE:RELEASE_STAGE';
+        if (str_starts_with($required, 'hosting.')) return 'RESOURCE:HOSTING';
+        if (str_starts_with($required, 'project.mutate.')) return 'CANDIDATE';
+        if (in_array($kind, ['DEVICE','CODEX'], true)) return 'WORKSPACE';
+        return 'CANONICAL:PROJECT';
+    }
+
+    /** Serialize only executions whose derived resources actually conflict. */
+    public static function mutationResourcesConflict(string $left, string $right): bool
+    {
+        $left = strtoupper(trim($left)); $right = strtoupper(trim($right));
+        if ($left === 'READ' || $right === 'READ') return false;
+        if ($left === 'CANONICAL:PROJECT' || $right === 'CANONICAL:PROJECT') return true;
+        if (in_array($left, ['CANDIDATE','WORKSPACE'], true) || in_array($right, ['CANDIDATE','WORKSPACE'], true)) return false;
+        $known = static fn(string $resource): bool => str_starts_with($resource, 'CANONICAL:') || str_starts_with($resource, 'RESOURCE:');
+        if (!$known($left) || !$known($right)) return true;
+        return hash_equals($left, $right);
+    }
+
     /** One descriptive envelope per M12 execution; it is not another task queue or lock authority. */
     public function ensureExecutionEnvelope(string $executionId, ?string $now = null): array
     {
         $this->assertReady(); self::uuid($executionId); $at = self::timestamp($now ?? gmdate('c'));
         $q = $this->pdo->prepare('SELECT e.execution_id,e.task_id,e.project_id,e.vault_revision_id,e.executor_kind,e.required_capability,t.conversation_id FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE e.execution_id=:id');
         $q->execute(['id'=>$executionId]); $row = $q->fetch(); if (!is_array($row)) throw new HubCapabilityRegistryException('Execution was not found', 'EXECUTION_NOT_FOUND');
-        $required = (string)$row['required_capability']; $scope = str_starts_with($required,'project.mutate.') ? 'PROJECT_CANDIDATE' : (in_array((string)$row['executor_kind'],['DEVICE','CODEX'],true) ? 'DEVICE_WORKSPACE' : (preg_match('/^(?:agent\.conversation|project\.(?:read|search)|artifact\.object|qa\.cloud|review\.visual)$/',$required) ? 'READ' : 'EXTERNAL'));
+        $required = (string)$row['required_capability']; $scope = self::mutationScopeForExecution($required, (string)$row['executor_kind']);
         $conversation = is_string($row['conversation_id'] ?? null) ? (string)$row['conversation_id'] : null; $sessionKey = $conversation === null ? 'task:'.$row['task_id'] : 'conversation:'.$conversation;
         $routeCapability = $required === 'codex:cli' ? 'code.specialist' : $required;
         $route = $this->route($routeCapability,$at); $provider = is_array($route) ? $route['providerId'] : null;
         $existing = $this->pdo->prepare('SELECT * FROM control_execution_envelopes WHERE execution_id=:id'); $existing->execute(['id'=>$executionId]); $value = $existing->fetch();
         if (is_array($value)) {
-            if (($value['provider_id'] ?? null) === null && $provider !== null && in_array((string)($value['state'] ?? ''),['OPEN','WAITING'],true)) {
-                $this->pdo->prepare("UPDATE control_execution_envelopes SET provider_id=:provider,updated_at=:at WHERE execution_id=:id AND provider_id IS NULL AND state IN ('OPEN','WAITING')")->execute(['provider'=>$provider,'at'=>$at,'id'=>$executionId]);
+            $mutable = in_array((string)($value['state'] ?? ''), ['OPEN','WAITING'], true);
+            $scopeChanged = (string)($value['mutation_scope'] ?? '') !== $scope;
+            $providerMissing = ($value['provider_id'] ?? null) === null && $provider !== null;
+            if ($mutable && ($scopeChanged || $providerMissing)) {
+                $this->pdo->prepare("UPDATE control_execution_envelopes SET mutation_scope=:scope,provider_id=COALESCE(provider_id,:provider),updated_at=:at WHERE execution_id=:id AND state IN ('OPEN','WAITING')")->execute(['scope'=>$scope,'provider'=>$provider,'at'=>$at,'id'=>$executionId]);
                 $existing->execute(['id'=>$executionId]); $refreshed=$existing->fetch(); if (is_array($refreshed)) $value=$refreshed;
             }
             return self::envelopeRow($value);
@@ -177,33 +219,53 @@ final class HubCapabilityRegistryService
     }
 
     /**
-     * Single Execution Authority: reads may run in parallel, but each Project
-     * may have only one live mutating/external workspace lane at a time.  The
-     * existing execution envelope is the lock record; no second queue or lock
-     * table is introduced.
+     * Resource-scoped execution authority. Reads and isolated candidate/workspace
+     * work run in parallel; only executions whose resource scopes conflict are
+     * serialized. The existing envelope remains the sole authority record.
      *
      * @return array{granted:bool,executionId:string,projectId:string,mutationScope:string,blockingExecutionId:?string,blockingTaskId:?string}
      */
-    public function activateExecutionAuthority(string $executionId, ?string $leaseExpiresAt = null, ?string $now = null): array
+    public function activateExecutionAuthority(string $executionId, ?string $leaseExpiresAt = null, ?string $now = null, bool $transactionHeld = false): array
     {
         $this->assertReady(); self::uuid($executionId); $at = self::timestamp($now ?? gmdate('c')); $lease = $leaseExpiresAt === null ? null : self::timestamp($leaseExpiresAt);
-        $this->reconcileExecutionAuthority($at);
-        $envelope = $this->ensureExecutionEnvelope($executionId, $at); $project = (string)$envelope['projectId']; $scope = (string)$envelope['mutationScope'];
-        if ($scope === 'READ') {
-            $this->pdo->prepare("UPDATE control_execution_envelopes SET state='ACTIVE',lease_expires_at=:lease,updated_at=:at WHERE execution_id=:execution AND state IN ('OPEN','WAITING','ACTIVE')")->execute(['lease'=>$lease,'at'=>$at,'execution'=>$executionId]);
-            return ['granted'=>true,'executionId'=>$executionId,'projectId'=>$project,'mutationScope'=>$scope,'blockingExecutionId'=>null,'blockingTaskId'=>null];
+        $ownTransaction = !$transactionHeld;
+        try {
+            if ($ownTransaction) $this->pdo->exec('BEGIN IMMEDIATE');
+            $this->reconcileExecutionAuthority($at);
+            $envelope = $this->ensureExecutionEnvelope($executionId, $at); $project = (string)$envelope['projectId']; $scope = (string)$envelope['mutationScope'];
+            $meta=$this->pdo->prepare('SELECT required_capability,executor_kind FROM control_task_executions WHERE execution_id=:execution');
+            $meta->execute(['execution'=>$executionId]); $metaRow=$meta->fetch();
+            if(!is_array($metaRow))throw new HubCapabilityRegistryException('Execution metadata is unavailable','EXECUTION_NOT_FOUND');
+            $resource=self::mutationResourceForExecution((string)$metaRow['required_capability'],(string)$metaRow['executor_kind']);
+            if ($resource === 'READ') {
+                $this->pdo->prepare("UPDATE control_execution_envelopes SET state='ACTIVE',lease_expires_at=:lease,updated_at=:at WHERE execution_id=:execution AND state IN ('OPEN','WAITING','ACTIVE')")->execute(['lease'=>$lease,'at'=>$at,'execution'=>$executionId]);
+                if ($ownTransaction) $this->pdo->exec('COMMIT');
+                return ['granted'=>true,'executionId'=>$executionId,'projectId'=>$project,'mutationScope'=>$scope,'mutationResource'=>$resource,'blockingExecutionId'=>null,'blockingTaskId'=>null];
+            }
+
+            $holder = $this->pdo->prepare("SELECT x.execution_id,x.task_id,x.mutation_scope,e.required_capability,e.executor_kind FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id WHERE x.project_id=:project AND x.execution_id<>:execution AND x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) ORDER BY x.updated_at,x.execution_id");
+            $holder->execute(['project'=>$project,'execution'=>$executionId,'at'=>$at]);
+            $blocking = null;
+            foreach ($holder->fetchAll() as $candidate) {
+                $candidateResource=self::mutationResourceForExecution((string)$candidate['required_capability'],(string)$candidate['executor_kind']);
+                if (self::mutationResourcesConflict($resource,$candidateResource)) { $candidate['mutation_resource']=$candidateResource; $blocking = $candidate; break; }
+            }
+            if (is_array($blocking)) {
+                $this->pdo->prepare("UPDATE control_execution_envelopes SET state='WAITING',lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution AND state IN ('OPEN','WAITING','CONFLICT')")->execute(['at'=>$at,'execution'=>$executionId]);
+                if ($ownTransaction) $this->pdo->exec('COMMIT');
+                return ['granted'=>false,'executionId'=>$executionId,'projectId'=>$project,'mutationScope'=>$scope,'mutationResource'=>$resource,'blockingMutationResource'=>(string)$blocking['mutation_resource'],'blockingExecutionId'=>(string)$blocking['execution_id'],'blockingTaskId'=>(string)$blocking['task_id']];
+            }
+
+            $claim = $this->pdo->prepare("UPDATE control_execution_envelopes SET state='ACTIVE',lease_expires_at=:lease,updated_at=:at WHERE execution_id=:execution AND state IN ('OPEN','WAITING','ACTIVE')");
+            $claim->execute(['lease'=>$lease,'at'=>$at,'execution'=>$executionId]);
+            if ($claim->rowCount() !== 1) throw new HubCapabilityRegistryException('Execution authority could not be claimed','EXECUTION_ENVELOPE_FAILED');
+            if ($ownTransaction) $this->pdo->exec('COMMIT');
+            return ['granted'=>true,'executionId'=>$executionId,'projectId'=>$project,'mutationScope'=>$scope,'mutationResource'=>$resource,'blockingExecutionId'=>null,'blockingTaskId'=>null];
+        } catch (Throwable $error) {
+            if ($ownTransaction) { try { $this->pdo->exec('ROLLBACK'); } catch (Throwable) {} }
+            if ($error instanceof HubCapabilityRegistryException) throw $error;
+            throw new HubCapabilityRegistryException('Execution authority claim failed','EXECUTION_ENVELOPE_FAILED');
         }
-        // Expired authority never blocks a fresh canonical claim. Lifecycle
-        // recovery still owns the task/execution state; this only releases the
-        // descriptive envelope lock.
-        $this->pdo->prepare("UPDATE control_execution_envelopes SET state='WAITING',lease_expires_at=NULL,updated_at=:at WHERE project_id=:project AND execution_id<>:execution AND mutation_scope<>'READ' AND state='ACTIVE' AND lease_expires_at IS NOT NULL AND lease_expires_at<=:at")->execute(['at'=>$at,'project'=>$project,'execution'=>$executionId]);
-        $claim = $this->pdo->prepare("UPDATE control_execution_envelopes SET state='ACTIVE',lease_expires_at=:lease,updated_at=:at WHERE execution_id=:execution AND state IN ('OPEN','WAITING','ACTIVE') AND NOT EXISTS (SELECT 1 FROM control_execution_envelopes other WHERE other.project_id=:project AND other.execution_id<>:execution AND other.mutation_scope<>'READ' AND other.state='ACTIVE' AND (other.lease_expires_at IS NULL OR other.lease_expires_at>:at))");
-        $claim->execute(['lease'=>$lease,'at'=>$at,'execution'=>$executionId,'project'=>$project]);
-        if ($claim->rowCount() === 1) return ['granted'=>true,'executionId'=>$executionId,'projectId'=>$project,'mutationScope'=>$scope,'blockingExecutionId'=>null,'blockingTaskId'=>null];
-        $this->pdo->prepare("UPDATE control_execution_envelopes SET state='WAITING',lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution AND state IN ('OPEN','WAITING','CONFLICT')")->execute(['at'=>$at,'execution'=>$executionId]);
-        $holder = $this->pdo->prepare("SELECT execution_id,task_id FROM control_execution_envelopes WHERE project_id=:project AND execution_id<>:execution AND mutation_scope<>'READ' AND state='ACTIVE' AND (lease_expires_at IS NULL OR lease_expires_at>:at) ORDER BY updated_at,execution_id LIMIT 1");
-        $holder->execute(['project'=>$project,'execution'=>$executionId,'at'=>$at]); $blocking = $holder->fetch();
-        return ['granted'=>false,'executionId'=>$executionId,'projectId'=>$project,'mutationScope'=>$scope,'blockingExecutionId'=>is_array($blocking)?(string)$blocking['execution_id']:null,'blockingTaskId'=>is_array($blocking)?(string)$blocking['task_id']:null];
     }
 
     /** Owner-safe projection of the existing canonical execution envelopes. */
@@ -211,22 +273,22 @@ final class HubCapabilityRegistryService
     {
         $this->assertReady(); $at = self::timestamp($now ?? gmdate('c'));
         $this->reconcileExecutionAuthority($at);
-        $q = $this->pdo->prepare("SELECT x.execution_id,x.task_id,x.project_id,x.mutation_scope,x.state,x.provider_id,x.lease_expires_at,x.updated_at,t.goal,p.name AS project_name,e.required_capability FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id JOIN control_tasks t ON t.task_id=x.task_id JOIN projects p ON p.project_id=x.project_id WHERE x.mutation_scope<>'READ' AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND ((x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at)) OR x.state IN ('OPEN','WAITING','CONFLICT')) ORDER BY CASE x.state WHEN 'ACTIVE' THEN 0 ELSE 1 END,x.updated_at DESC LIMIT 40");
+        $q = $this->pdo->prepare("SELECT x.execution_id,x.task_id,x.project_id,x.mutation_scope,x.state,x.provider_id,x.lease_expires_at,x.updated_at,t.goal,p.name AS project_name,e.required_capability,e.executor_kind FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id JOIN control_tasks t ON t.task_id=x.task_id JOIN projects p ON p.project_id=x.project_id WHERE x.mutation_scope<>'READ' AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND ((x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at)) OR x.state IN ('OPEN','WAITING','CONFLICT')) ORDER BY CASE x.state WHEN 'ACTIVE' THEN 0 ELSE 1 END,x.updated_at DESC LIMIT 40");
         $q->execute(['at'=>$at]); $active=[]; $waiting=[];
         foreach ($q->fetchAll() as $row) {
-            $item=['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>(string)$row['project_id'],'projectName'=>(string)$row['project_name'],'goal'=>(string)$row['goal'],'mutationScope'=>(string)$row['mutation_scope'],'requiredCapability'=>(string)$row['required_capability'],'providerId'=>$row['provider_id']===null?null:(string)$row['provider_id'],'state'=>(string)$row['state'],'leaseExpiresAt'=>$row['lease_expires_at']===null?null:(string)$row['lease_expires_at'],'updatedAt'=>(string)$row['updated_at']];
+            $item=['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>(string)$row['project_id'],'projectName'=>(string)$row['project_name'],'goal'=>(string)$row['goal'],'mutationScope'=>(string)$row['mutation_scope'],'mutationResource'=>self::mutationResourceForExecution((string)$row['required_capability'],(string)$row['executor_kind']),'requiredCapability'=>(string)$row['required_capability'],'providerId'=>$row['provider_id']===null?null:(string)$row['provider_id'],'state'=>(string)$row['state'],'leaseExpiresAt'=>$row['lease_expires_at']===null?null:(string)$row['lease_expires_at'],'updatedAt'=>(string)$row['updated_at']];
             if ($item['state']==='ACTIVE') $active[]=$item; else $waiting[]=$item;
         }
-        return ['schemaVersion'=>1,'mode'=>'SINGLE_MUTATION_PER_PROJECT','parallelReadsAllowed'=>true,'activeMutationCount'=>count($active),'waitingMutationCount'=>count($waiting),'activeMutations'=>$active,'waitingMutations'=>$waiting];
+        return ['schemaVersion'=>1,'mode'=>'RESOURCE_SCOPED_CONCURRENCY','parallelReadsAllowed'=>true,'parallelNonConflictingMutationsAllowed'=>true,'mutationBoundary'=>'CONFLICTING_RESOURCE','activeMutationCount'=>count($active),'waitingMutationCount'=>count($waiting),'activeMutations'=>$active,'waitingMutations'=>$waiting];
     }
 
-    public function updateEnvelopeState(string $executionId, string $state, ?string $leaseExpiresAt = null, ?string $now = null): void
+    public function updateEnvelopeState(string $executionId, string $state, ?string $leaseExpiresAt = null, ?string $now = null, bool $transactionHeld = false): void
     {
         if (!self::schemaPresent($this->pdo)) return; self::uuid($executionId); $state = strtoupper($state); if (!in_array($state,self::ENVELOPE_STATES,true)) throw new HubCapabilityRegistryException('Execution envelope state is invalid','EXECUTION_ENVELOPE_FAILED');
         $at = self::timestamp($now ?? gmdate('c')); $lease = $leaseExpiresAt === null ? null : self::timestamp($leaseExpiresAt);
         if ($state === 'ACTIVE') {
-            $authority = $this->activateExecutionAuthority($executionId, $lease, $at);
-            if (($authority['granted'] ?? false) !== true) throw new HubCapabilityRegistryException('Another mutating execution already owns this project', 'EXECUTION_AUTHORITY_CONFLICT');
+            $authority = $this->activateExecutionAuthority($executionId, $lease, $at, $transactionHeld);
+            if (($authority['granted'] ?? false) !== true) throw new HubCapabilityRegistryException('Another execution owns a conflicting project resource', 'EXECUTION_AUTHORITY_CONFLICT');
             return;
         }
         $this->pdo->prepare('UPDATE control_execution_envelopes SET state=:state,lease_expires_at=:lease,updated_at=:at WHERE execution_id=:execution')->execute(['state'=>$state,'lease'=>$lease,'at'=>$at,'execution'=>$executionId]);
@@ -268,6 +330,8 @@ final class HubCapabilityRegistryService
             'remoteMissionRequired'=>false,
             'sourceAuthorityRequiredForMutation'=>true,
             'singleWriterMutationBoundary'=>true,
+            'mutationBoundary'=>'CONFLICTING_RESOURCE',
+            'parallelNonConflictingMutationsAllowed'=>true,
             'candidateWorkspaceIsolation'=>true,
             'exactRevisionPromotion'=>true,
             'ownerApprovalForCanonicalPromotion'=>true,
