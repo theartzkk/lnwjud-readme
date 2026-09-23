@@ -36,6 +36,7 @@ require_once __DIR__ . '/HubConversationReferentService.php';
 require_once __DIR__ . '/HubManagedHostingService.php';
 require_once __DIR__ . '/HubCoreReleaseService.php';
 require_once __DIR__ . '/HubLearnLabReleaseService.php';
+require_once __DIR__ . '/HubAssessmentReleaseService.php';
 require_once __DIR__ . '/HubTrustPolicy.php';
 require_once __DIR__ . '/HubCloudFirstMigration.php';
 require_once __DIR__ . '/HubCloudWorkflowService.php';
@@ -96,6 +97,7 @@ final class HubControlPlaneService
     private readonly HubManagedHostingService $hosting;
     private readonly HubCoreReleaseService $coreReleases;
     private readonly HubLearnLabReleaseService $learnLabReleases;
+    private readonly HubAssessmentReleaseService $assessmentReleases;
     private readonly ?HubCloudWorkflowService $cloud;
     private readonly ?HubProjectSourceAuthorityService $projectSources;
     private readonly HubBayRemoteUpdateService $bayRemoteUpdate;
@@ -117,6 +119,7 @@ final class HubControlPlaneService
         $this->hosting = HubManagedHostingService::fromPdo($pdo);
         $this->coreReleases = HubCoreReleaseService::fromPdo($pdo);
         $this->learnLabReleases = HubLearnLabReleaseService::fromPdo($pdo);
+        $this->assessmentReleases = HubAssessmentReleaseService::fromPdo($pdo);
         $cloud = null;
         if ($this->artifactStore !== null) {
             try {
@@ -218,6 +221,8 @@ final class HubControlPlaneService
         catch (Throwable) { $core = ['schemaVersion'=>1,'sourcePromotion'=>null,'releases'=>[]]; }
         try { $learnLab = $this->learnLabReleases->status($sessionToken); }
         catch (Throwable) { $learnLab = ['schemaVersion'=>1,'current'=>null,'sourcePromotion'=>null,'releases'=>[]]; }
+        try { $assessment = $this->assessmentReleases->status($sessionToken); }
+        catch (Throwable) { $assessment = null; }
         $release = HubInfrastructureService::releaseState();
         try { $hosting = $this->hosting->sites($sessionToken); }
         catch (Throwable) { $hosting = ['schemaVersion'=>1,'sites'=>[]]; }
@@ -312,6 +317,34 @@ final class HubControlPlaneService
                     'state'=>'MIGRATION_REQUIRED','current'=>$project['sourceRevision'] ?? null,'candidate'=>null,'approvalRequired'=>false,'actionable'=>false,
                     'reason'=>'Source อยู่ใน AWH Vault แล้ว แต่ Production ยังใช้ legacy BAY Hub deploy path จึงยังไม่เปิด one-click update จนกว่าจะย้ายเข้า typed deploy authority',
                 ];
+            } elseif ($name === 'BAY Assessment') {
+                if(!is_array($assessment)){
+                    $items[]=['key'=>'bay-assessment','projectId'=>$projectId,'name'=>$name,'kind'=>'PRODUCT','adapter'=>'ASSESSMENT_RELEASE',
+                        'state'=>'BLOCKED','current'=>null,'candidate'=>null,'approvalRequired'=>true,'actionable'=>false,
+                        'reason'=>'Assessment release authority ยังไม่พร้อม'];
+                } else {
+                    $currentAssessment=is_array($assessment['current']??null)?$assessment['current']:[];
+                    $candidateAssessment=is_array($assessment['candidate']??null)?$assessment['candidate']:[];
+                    $activeAssessment=null;
+                    foreach((array)($assessment['releases']??[]) as $row){
+                        if(!is_array($row)||in_array((string)($row['taskState']??''),['COMPLETED','FAILED','CANCELLED'],true))continue;
+                        $activeAssessment=$row;break;
+                    }
+                    $currentSha=is_string($currentAssessment['releaseSha']??null)?strtolower((string)$currentAssessment['releaseSha']):null;
+                    $candidateSha=(($candidateAssessment['ready']??false)===true&&is_string($candidateAssessment['releaseSha']??null))?strtolower((string)$candidateAssessment['releaseSha']):null;
+                    $state=$candidateSha!==null&&$currentSha!==null&&!hash_equals($candidateSha,$currentSha)?'UPDATE_AVAILABLE':'CURRENT';
+                    $reason=$state==='CURRENT'?'Production ตรงกับ Assessment source ล่าสุด':'มี Assessment candidate ที่ผ่าน QA พร้อม staging-first release';
+                    if(is_array($activeAssessment)){
+                        $state=(string)($activeAssessment['approvalStatus']??'')==='PENDING'?'WAITING_FOR_APPROVAL':'UPDATING';
+                        $reason=$state==='WAITING_FOR_APPROVAL'?'ผ่าน release boundary แล้วและรอ Owner อนุมัติ':'AWH กำลัง Backup → Staging → Production → Verify';
+                    }
+                    $items[]=[
+                        'key'=>'bay-assessment','projectId'=>$projectId,'name'=>$name,'kind'=>'PRODUCT','adapter'=>'ASSESSMENT_RELEASE',
+                        'state'=>$state,'current'=>$currentSha,'candidate'=>$candidateSha,'candidateVersion'=>$candidateAssessment['runtimeVersion']??null,
+                        'approvalRequired'=>true,'approvalId'=>is_array($activeAssessment)&&is_string($activeAssessment['approvalId']??null)?$activeAssessment['approvalId']:null,
+                        'actionable'=>in_array($state,['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'],true),'reason'=>$reason,'url'=>$currentAssessment['url']??'https://assessment.kruart.online/',
+                    ];
+                }
             } else {
                 $state = ($project['sourceAuthorityState'] ?? 'UNKNOWN') === 'READY' ? 'SOURCE_READY' : 'BLOCKED';
                 $items[] = [
@@ -373,6 +406,16 @@ final class HubControlPlaneService
     {
         try { return $this->learnLabReleases->request($sessionToken,$csrf,$payload); }
         catch (HubLearnLabReleaseException $error) { throw new HubControlPlaneException('LearnLab release request was rejected',$error->codeName); }
+    }
+    public function assessmentReleaseStatusForSession(string $sessionToken): array
+    {
+        try { return $this->assessmentReleases->status($sessionToken); }
+        catch (HubAssessmentReleaseException $error) { throw new HubControlPlaneException('Assessment release request was rejected',$error->codeName); }
+    }
+    public function requestAssessmentReleaseForSession(string $sessionToken,string $csrf,array $payload): array
+    {
+        try { return $this->assessmentReleases->request($sessionToken,$csrf,$payload); }
+        catch (HubAssessmentReleaseException $error) { throw new HubControlPlaneException('Assessment release request was rejected',$error->codeName); }
     }
 
     public function createManagedSiteForSession(string $sessionToken,string $csrf,array $payload): array

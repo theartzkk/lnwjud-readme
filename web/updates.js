@@ -1,6 +1,6 @@
 import {
   createBayRemoteInstallRelay, decideApproval, loadAuthSession, loadBayRemoteUpdateStatus, loadUpdateCenter,
-  managedSiteAction, relayBayRemoteCommand, requestCoreRelease, stepUp,
+  managedSiteAction, relayBayRemoteCommand, requestAssessmentRelease, requestCoreRelease, stepUp,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $=(id)=>document.getElementById(id);
@@ -16,7 +16,7 @@ const stateLabel=(state)=>({
   BASELINE_REQUIRED:'ต้องผูก Production',MIGRATION_REQUIRED:'ต้องย้าย Deploy path',
 })[state]||state||'กำลังตรวจ';
 
-const adapterLabel=(value)=>({CORE_RELEASE:'AWH Core Release',MANAGED_HOSTING:'Managed Hosting',BAY_UPDATE_CENTER:'BAY Update Center',LEARNLAB_RELEASE:'LearnLab Release',LEGACY_DEPLOY:'Legacy deploy',SOURCE_ONLY:'Source only',UNREGISTERED:'ยังไม่ลงทะเบียน',AGENT_MANAGED:'AWH Agent'})[value]||value||'—';
+const adapterLabel=(value)=>({CORE_RELEASE:'AWH Core Release',MANAGED_HOSTING:'Managed Hosting',BAY_UPDATE_CENTER:'BAY Update Center',LEARNLAB_RELEASE:'LearnLab Release',ASSESSMENT_RELEASE:'Assessment Release',LEGACY_DEPLOY:'Legacy deploy',SOURCE_ONLY:'Source only',UNREGISTERED:'ยังไม่ลงทะเบียน',AGENT_MANAGED:'AWH Agent'})[value]||value||'—';
 const activityLabel=(value)=>({ONLINE:'ออนไลน์',BUSY:'กำลังทำงาน',STALE:'ออฟไลน์/ข้อมูลเก่า',OFFLINE:'ออฟไลน์',IDLE:'พร้อม'})[String(value||'').toUpperCase()]||value||'ไม่ทราบสถานะ';
 const short=(value)=>typeof value==='string'&&/^[0-9a-f]{40}$/i.test(value)?value.slice(0,12):value||'—';
 const message=(text)=>{$('updates-message').textContent=text;};
@@ -25,6 +25,9 @@ const friendly=(error)=>{
   return ({
     STEP_UP_REQUIRED:'ต้องยืนยันรหัสผ่าน Owner ก่อนดำเนินการ',
     CORE_RELEASE_CONFLICT:'มี AWH Core Release อื่นกำลังทำอยู่ ระบบจะไม่สร้างรายการซ้ำ',
+    ASSESSMENT_RELEASE_CONFLICT:'มี BAY Assessment release อื่นกำลังทำอยู่ ระบบจะไม่สร้างรายการซ้ำ',
+    ASSESSMENT_RELEASE_TARGET_MOVED:'Assessment candidate เปลี่ยนก่อนเริ่มติดตั้ง ระบบหยุดแบบปลอดภัย กรุณารีเฟรชสถานะ',
+    ASSESSMENT_RELEASE_NOT_READY:'BAY Assessment release authority ยังไม่พร้อม',
     PROJECT_SOURCE_NOT_READY:'Source ของโปรเจคนี้ยังไม่พร้อม Deploy',
     BAY_UPDATE_NOT_GREEN:'BAY source ล่าสุดยังไม่ผ่าน release gate',
     BAY_UPDATE_TARGET_MOVED:'BAY source เปลี่ยนก่อนติดตั้ง กรุณาตรวจใหม่',
@@ -91,6 +94,8 @@ function render(){
     if(item.adapter==='CORE_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(actionButton('อัปเดต AWH',()=>updateAwh(item)));
     else if(item.adapter==='CORE_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('อนุมัติและอัปเดต',()=>approveAwh(item)));
     else if(item.adapter==='LEARNLAB_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('อนุมัติ LearnLab',()=>approveLearnLab(item)));
+    else if(item.adapter==='ASSESSMENT_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate&&item.candidateVersion)actions.append(actionButton('อัปเดต Assessment',()=>updateAssessment(item)));
+    else if(item.adapter==='ASSESSMENT_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('อนุมัติ Assessment',()=>approveAssessment(item)));
     else if(item.adapter==='MANAGED_HOSTING'&&item.state==='UPDATE_AVAILABLE'&&item.siteId)actions.append(actionButton('อัปเดต',()=>updateHosting(item)));
     else if(item.adapter==='BAY_UPDATE_CENTER'&&item.state==='UPDATE_AVAILABLE'&&item.release)actions.append(actionButton('อัปเดต BAY',()=>updateBay(item)));
     if(item.url){const link=document.createElement('a');link.className='secondary-button';link.href=item.url;link.target='_blank';link.rel='noopener';link.textContent='เปิดระบบ';actions.append(link);}
@@ -135,6 +140,21 @@ async function updateAwh(item){
   const request=await privileged(()=>requestCoreRelease(item.candidate,false));
   if(request?.approvalId)await decideApproval(request.approvalId,'approve');
   message('AWH Core Release ถูกอนุมัติแล้ว ระบบกำลังทำ QA, Backup, Deploy และ Verify');
+  await refresh();
+}
+
+async function approveAssessment(item){
+  if(!confirm('ยืนยันให้อัปเดต BAY Assessment เป็นรุ่นที่ผ่าน QA แล้ว?'))return;
+  await decideApproval(item.approvalId,'approve');
+  message('อนุมัติแล้ว AWH จะ Backup → Staging → Verify → Production และ Rollback อัตโนมัติถ้าจำเป็น');
+  await refresh();
+}
+
+async function updateAssessment(item){
+  if(!confirm('อัปเดต BAY Assessment เป็น '+(item.candidateVersion||short(item.candidate))+' ใช่หรือไม่? ระบบจะทดสอบและขึ้น Staging ก่อน Production'))return;
+  const request=await privileged(()=>requestAssessmentRelease(item.candidate,item.candidateVersion));
+  if(request?.approvalId)await decideApproval(request.approvalId,'approve');
+  message('BAY Assessment release ถูกอนุมัติแล้ว ระบบกำลัง QA, Backup, Staging, Deploy และ Verify');
   await refresh();
 }
 
@@ -204,9 +224,13 @@ async function updateAll(){
   try{
     for(const item of ready.filter((row)=>row.adapter==='MANAGED_HOSTING'))await managedSiteAction(item.siteId,'deploy');
     for(const item of ready.filter((row)=>row.adapter==='BAY_UPDATE_CENTER'&&row.release))await updateBay(item,false);
-    for(const item of pending.filter((row)=>['CORE_RELEASE','LEARNLAB_RELEASE'].includes(row.adapter)))await decideApproval(item.approvalId,'approve');
+    for(const item of pending.filter((row)=>['CORE_RELEASE','LEARNLAB_RELEASE','ASSESSMENT_RELEASE'].includes(row.adapter)))await decideApproval(item.approvalId,'approve');
     for(const item of ready.filter((row)=>row.adapter==='CORE_RELEASE')){
       const request=await privileged(()=>requestCoreRelease(item.candidate,false));
+      if(request?.approvalId)await decideApproval(request.approvalId,'approve');
+    }
+    for(const item of ready.filter((row)=>row.adapter==='ASSESSMENT_RELEASE'&&row.candidateVersion)){
+      const request=await privileged(()=>requestAssessmentRelease(item.candidate,item.candidateVersion));
       if(request?.approvalId)await decideApproval(request.approvalId,'approve');
     }
     message('ส่งรายการที่พร้อมเข้าสู่ authority เดิมครบแล้ว AWH จะติดตามสถานะต่อ');

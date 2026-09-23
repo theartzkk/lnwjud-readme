@@ -336,6 +336,18 @@ export async function requestLearnLabRelease(releaseSha, runtimeVersion) {
   if (value.schemaVersion !== 1 || typeof value.taskId !== 'string' || typeof value.executionId !== 'string' || typeof value.releaseSha !== 'string' || typeof value.runtimeVersion !== 'string') throw new Error('AWH ยังยืนยันคำขอปล่อย LearnLab ไม่ได้');
   return value;
 }
+export async function loadAssessmentReleaseStatus() {
+  const value = await controlRequest('/api/v1/control/assessment/releases');
+  const current=value?.current, candidate=value?.candidate;
+  if(value.schemaVersion!==1||value.capability!=='system.assessment.release'||!current||typeof current.runtimeVersion!=='string'||!/^[0-9a-f]{40}$/i.test(current.releaseSha||'')||!candidate||typeof candidate.ready!=='boolean'||!Array.isArray(value.releases)||!value.policy) throw new Error('สถานะรุ่น BAY Assessment ไม่ถูกต้อง');
+  return value;
+}
+export async function requestAssessmentRelease(releaseSha,runtimeVersion) {
+  if(typeof releaseSha!=='string'||!/^[0-9a-f]{40}$/i.test(releaseSha)||typeof runtimeVersion!=='string'||!/^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$/.test(runtimeVersion)) throw new Error('ข้อมูลรุ่น BAY Assessment ไม่ถูกต้อง');
+  const value=await controlRequest('/api/v1/control/assessment/releases',{method:'POST',body:JSON.stringify({schemaVersion:1,releaseSha:releaseSha.toLowerCase(),runtimeVersion})});
+  if(value.schemaVersion!==1||typeof value.taskId!=='string'||typeof value.executionId!=='string'||typeof value.releaseSha!=='string'||typeof value.runtimeVersion!=='string') throw new Error('AWH ยังยืนยันคำขอปล่อย BAY Assessment ไม่ได้');
+  return value;
+}
 
 export async function loadSystemReadiness() {
   const value = await controlRequest('/api/v1/control/system/readiness');
