@@ -126,7 +126,7 @@ final class HubCoreReleaseOperator
             $workRoot=self::WORK_ROOT;$this->safeDirectory($workRoot,0700);
             $workspace=$workRoot.'/'.strtolower($executionId);
             if(file_exists($workspace)||is_link($workspace))$this->removeTree($workspace,$workRoot);
-            $this->run(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'clone','--no-hardlinks','--single-branch','--branch','main',self::SOURCE,$workspace],null,180,'CORE_RELEASE_GIT_CLONE_FAILED');
+            $this->cloneCanonical($workspace,$workRoot);
             $head=trim($this->run(['/usr/bin/git','-C',$workspace,'rev-parse','HEAD'],null,20,'CORE_RELEASE_WORKSPACE_VERIFY_FAILED')['out']);
             if(!hash_equals($sha,strtolower($head)))throw new HubCoreReleaseOperatorException('Cloned source does not match approved release','CORE_RELEASE_SOURCE_MISMATCH');
             $dirty=trim($this->run(['/usr/bin/git','-C',$workspace,'status','--porcelain=v1','--untracked-files=all'],null,20,'CORE_RELEASE_WORKSPACE_VERIFY_FAILED')['out']);
@@ -273,6 +273,21 @@ final class HubCoreReleaseOperator
         $it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::CHILD_FIRST);
         foreach($it as $file){$target=$file->getPathname();if($file->isLink()||$file->isFile())@unlink($target);else @rmdir($target);}
         if(!@rmdir($path)&&is_dir($path))throw new HubCoreReleaseOperatorException('Core release workspace cleanup failed','CORE_RELEASE_WORKSPACE_UNAVAILABLE');
+    }
+
+    private function cloneCanonical(string $workspace,string $workRoot): void
+    {
+        $command=['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'clone','--no-hardlinks','--single-branch','--branch','main',self::SOURCE,$workspace];
+        $last=['code'=>1,'out'=>'','err'=>''];
+        for($attempt=1;$attempt<=2;$attempt++){
+            if(file_exists($workspace)||is_link($workspace))$this->removeTree($workspace,$workRoot);
+            $last=$this->runOptional($command,null,180);
+            if(($last['code']??1)===0)return;
+            if($attempt===1){error_log('AWH core release canonical clone failed once; retrying');usleep(250000);}
+        }
+        $detail=preg_replace('/[^A-Za-z0-9 .:_\/\-]/',' ',substr(trim((string)($last['out']??'')),-512));
+        error_log('AWH core release canonical clone failed after retry; exit='.(int)($last['code']??1).' detail='.trim((string)$detail));
+        throw new HubCoreReleaseOperatorException('Canonical Git clone failed after bounded retry','CORE_RELEASE_GIT_CLONE_FAILED');
     }
 
     private function run(array $command,?array $options=null,int $timeout=120,string $errorCode='CORE_RELEASE_COMMAND_FAILED'): array

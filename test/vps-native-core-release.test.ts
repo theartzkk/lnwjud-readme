@@ -26,6 +26,10 @@ test('VPS-native core release reuses canonical approval and deploy authorities',
   assert.match(operator, /file:\/\/\/srv\/awh-git\/awh\.git/);
   assert.match(operator, /safe\.directory=.*CANONICAL_GIT_DIR/);
   assert.match(operator, /CORE_RELEASE_GIT_MAIN_FAILED/);
+  assert.match(operator, /cloneCanonical/);
+  assert.match(operator, /attempt<=2/);
+  assert.match(operator, /retrying/);
+  assert.match(operator, /CORE_RELEASE_GIT_CLONE_FAILED/);
   assert.match(operator, /CORE_RELEASE_MISSION_COMMAND_FAILED/);
   assert.match(operator, /systemd-run/);
   assert.match(operator, /bounded-deploy-mission\.mjs/);
