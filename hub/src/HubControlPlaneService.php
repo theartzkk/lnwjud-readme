@@ -216,6 +216,8 @@ final class HubControlPlaneService
         $projects = $this->projectsForUser($userId);
         try { $core = $this->coreReleases->status($sessionToken); }
         catch (Throwable) { $core = ['schemaVersion'=>1,'sourcePromotion'=>null,'releases'=>[]]; }
+        try { $learnLab = $this->learnLabReleases->status($sessionToken); }
+        catch (Throwable) { $learnLab = ['schemaVersion'=>1,'current'=>null,'sourcePromotion'=>null,'releases'=>[]]; }
         $release = HubInfrastructureService::releaseState();
         try { $hosting = $this->hosting->sites($sessionToken); }
         catch (Throwable) { $hosting = ['schemaVersion'=>1,'sites'=>[]]; }
@@ -257,7 +259,7 @@ final class HubControlPlaneService
             if (($source['ready'] ?? false) !== true) {
                 $state = 'BLOCKED'; $reason = 'Project Source ยังไม่พร้อม Deploy';
             } elseif (($site['currentReleaseId'] ?? null) === null) {
-                $state = 'UPDATE_AVAILABLE'; $reason = 'Source พร้อมและยังไม่มี Production release';
+                $state = 'BASELINE_REQUIRED'; $reason = 'Source พร้อม แต่ Managed Hosting ยังไม่ได้ผูก Production baseline จึงยังไม่ one-click deploy จนกว่าจะยืนยันรุ่นปัจจุบัน';
             } elseif ($deployedRevision === null || !hash_equals((string) ($activeRevision ?? ''), $deployedRevision)) {
                 $state = 'UPDATE_AVAILABLE'; $reason = 'Project Vault มี revision ใหม่กว่ารุ่นที่เผยแพร่';
             } elseif (!in_array((string) ($site['state'] ?? ''), ['READY','DRAFT'], true)) {
@@ -281,10 +283,34 @@ final class HubControlPlaneService
                     'reason'=>'ตรวจรุ่นและแพ็กเกจจาก BAY Update Inbox แบบ signed browser relay',
                 ];
             } elseif ($name === 'BAY LearnLab') {
+                $currentLearnLab = is_array($learnLab['current'] ?? null) ? $learnLab['current'] : [];
+                $activeLearnLab = null;
+                foreach ((array) ($learnLab['releases'] ?? []) as $row) {
+                    if (!is_array($row) || in_array((string) ($row['taskState'] ?? ''), ['COMPLETED','FAILED','CANCELLED'], true)) continue;
+                    $activeLearnLab = $row;
+                    break;
+                }
+                $learnLabState = 'CURRENT';
+                $learnLabCandidate = null;
+                $learnLabApproval = null;
+                $learnLabReason = 'Production stable/pilot ตรงกัน และ typed LearnLab release authority พร้อมใช้งาน';
+                if (is_array($activeLearnLab)) {
+                    $learnLabCandidate = is_string($activeLearnLab['runtimeVersion'] ?? null) ? (string) $activeLearnLab['runtimeVersion'] : null;
+                    $learnLabApproval = is_string($activeLearnLab['approvalId'] ?? null) ? (string) $activeLearnLab['approvalId'] : null;
+                    $learnLabState = (string) ($activeLearnLab['approvalStatus'] ?? '') === 'PENDING' ? 'WAITING_FOR_APPROVAL' : 'UPDATING';
+                    $learnLabReason = $learnLabState === 'WAITING_FOR_APPROVAL' ? 'LearnLab release ผ่าน typed boundary แล้วและรอ Owner อนุมัติ' : 'LearnLab release controller กำลังทำงาน';
+                }
                 $items[] = [
-                    'key'=>'bay-learnlab','projectId'=>$projectId,'name'=>$name,'kind'=>'PRODUCT','adapter'=>'BAY_PRODUCT',
-                    'state'=>'DELEGATED','current'=>null,'candidate'=>null,'approvalRequired'=>false,'actionable'=>false,
-                    'reason'=>'อัปเดตผ่าน Product package ใน BAY EXCUSE X Update Center',
+                    'key'=>'bay-learnlab','projectId'=>$projectId,'name'=>$name,'kind'=>'PRODUCT','adapter'=>'LEARNLAB_RELEASE',
+                    'state'=>$learnLabState,'current'=>$currentLearnLab['runtimeVersion'] ?? null,'candidate'=>$learnLabCandidate,
+                    'approvalRequired'=>true,'approvalId'=>$learnLabApproval,'actionable'=>$learnLabState==='WAITING_FOR_APPROVAL',
+                    'reason'=>$learnLabReason,'releaseSha'=>$currentLearnLab['releaseSha'] ?? null,
+                ];
+            } elseif ($name === 'BAY Hub') {
+                $items[] = [
+                    'key'=>'bay-hub','projectId'=>$projectId,'name'=>$name,'kind'=>'HUB','adapter'=>'LEGACY_DEPLOY',
+                    'state'=>'MIGRATION_REQUIRED','current'=>$project['sourceRevision'] ?? null,'candidate'=>null,'approvalRequired'=>false,'actionable'=>false,
+                    'reason'=>'Source อยู่ใน AWH Vault แล้ว แต่ Production ยังใช้ legacy BAY Hub deploy path จึงยังไม่เปิด one-click update จนกว่าจะย้ายเข้า typed deploy authority',
                 ];
             } else {
                 $state = ($project['sourceAuthorityState'] ?? 'UNKNOWN') === 'READY' ? 'SOURCE_READY' : 'BLOCKED';
@@ -303,7 +329,7 @@ final class HubControlPlaneService
             if (isset($knownNames[$target['project']])) continue;
             $items[] = [
                 'key'=>'registry-'.$repository,'projectId'=>null,'name'=>(string)$target['project'],'kind'=>(string)$target['kind'],'adapter'=>'UNREGISTERED',
-                'state'=>'BLOCKED','current'=>null,'candidate'=>null,'approvalRequired'=>false,'actionable'=>false,
+                'state'=>'UNREGISTERED','current'=>null,'candidate'=>null,'approvalRequired'=>false,'actionable'=>false,
                 'reason'=>'มี canonical repository แล้ว แต่ยังไม่ได้ลงทะเบียน Project/Vault ใน AWH จึงห้าม Deploy จนกว่าจะผูก authority ให้ครบ',
             ];
         }
@@ -325,7 +351,7 @@ final class HubControlPlaneService
             elseif ($state === 'UPDATE_AVAILABLE') $summary['updateAvailable']++;
             elseif (in_array($state,['UPDATING','WAITING_FOR_APPROVAL'],true)) $summary['updating']++;
             elseif ($state === 'BLOCKED') $summary['blocked']++;
-            elseif (in_array($state,['SOURCE_READY','INTERNAL_MANAGED','REMOTE_CHECK_REQUIRED','DELEGATED'],true)) $summary['attention']++;
+            elseif (in_array($state,['SOURCE_READY','INTERNAL_MANAGED','REMOTE_CHECK_REQUIRED','DELEGATED','BASELINE_REQUIRED','MIGRATION_REQUIRED','UNREGISTERED'],true)) $summary['attention']++;
         }
         return [
             'schemaVersion'=>1,'generatedAt'=>self::timestamp($now ?? gmdate('c')),'summary'=>$summary,'items'=>$items,

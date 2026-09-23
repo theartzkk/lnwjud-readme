@@ -20,7 +20,10 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(service,/hosting->sites/);
   assert.match(service,/workersForUser/);
   assert.match(service,/HubInfrastructureService::releaseState/);
-  for(const adapterName of ['CORE_RELEASE','BAY_UPDATE_CENTER','MANAGED_HOSTING','BAY_PRODUCT','SOURCE_ONLY','AGENT_MANAGED']) assert.match(service,new RegExp(adapterName));
+  assert.match(service,/learnLabReleases->status/);
+  assert.match(service,/BASELINE_REQUIRED/);
+  assert.match(service,/MIGRATION_REQUIRED/);
+  for(const adapterName of ['CORE_RELEASE','BAY_UPDATE_CENTER','MANAGED_HOSTING','LEARNLAB_RELEASE','LEGACY_DEPLOY','SOURCE_ONLY','AGENT_MANAGED']) assert.match(service,new RegExp(adapterName));
   assert.match(hosting,/current_release_revision_id/);
   assert.match(hosting,/currentSourceRevisionId/);
   assert.match(adapter,/loadUpdateCenter/);
@@ -88,4 +91,21 @@ test('Update Center registry is packaged into every control-plane release', asyn
   ]);
   assert.match(local,/hub\/src\/HubUpdateTargetRegistry\.php/);
   assert.match(remote,/RELEASE\/hub\/src\/HubUpdateTargetRegistry\.php/);
+});
+
+test('Update Center mobile surface stays light and legacy baselines remain fail-closed', async()=>{
+  const [css,service,learnLab,script]=await Promise.all([
+    readFile(join(ROOT,'web/updates.css'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubLearnLabReleaseService.php'),'utf8'),
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+  ]);
+  assert.match(css,/html,body\{min-height:100%;background:#f3f8ff!important\}/);
+  assert.match(service,/state = 'BASELINE_REQUIRED'/);
+  assert.match(service,/actionable'=>\$state==='UPDATE_AVAILABLE'/);
+  assert.match(service,/adapter'=>'LEARNLAB_RELEASE'/);
+  assert.match(service,/state'=>'MIGRATION_REQUIRED'/);
+  assert.match(learnLab,/publishedAt/);
+  assert.match(script,/approveLearnLab/);
+  assert.match(script,/ออฟไลน์\/ข้อมูลเก่า/);
 });

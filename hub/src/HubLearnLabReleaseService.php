@@ -152,7 +152,7 @@ final class HubLearnLabReleaseService
             ||strtolower((string)($pilot['release_revision']??''))!==$sha
             ||(string)($pilot['runtime_version']??'')!==$version||(int)($pilot['cache_epoch']??0)!==$epoch)
             throw new HubLearnLabReleaseException('LearnLab pilot/stable authority is not aligned','LEARNLAB_RELEASE_NOT_READY');
-        return ['runtimeVersion'=>$version,'releaseSha'=>$sha,'cacheEpoch'=>$epoch,'runtimeUrl'=>$stable['runtime_url']??null];
+        return ['runtimeVersion'=>$version,'releaseSha'=>$sha,'cacheEpoch'=>$epoch,'runtimeUrl'=>$stable['runtime_url']??null,'publishedAt'=>$stable['published_at']??null];
     }
 
     private static function channelRoot(): string

@@ -4,7 +4,7 @@ sys.dont_write_bytecode=True
 from collections import namedtuple
 from pathlib import Path
 
-engine=Path('/var/lib/awh-remote/workspaces/awh-learnlab-release-operator-20260923/deploy/learnlab/awh-learnlab-release-engine.py')
+engine=Path(__file__).resolve().parents[2] / 'deploy' / 'learnlab' / 'awh-learnlab-release-engine.py'
 spec=importlib.util.spec_from_file_location('awh_learnlab_release_engine',engine)
 mod=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)

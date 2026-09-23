@@ -12,9 +12,12 @@ let stepUpResolver=null;
 const stateLabel=(state)=>({
   CURRENT:'ล่าสุดแล้ว',UPDATE_AVAILABLE:'มีอัปเดต',WAITING_FOR_APPROVAL:'รออนุมัติ',UPDATING:'กำลังอัปเดต',
   BLOCKED:'ต้องตรวจสอบ',SOURCE_READY:'Source พร้อม',REMOTE_CHECK_REQUIRED:'กำลังตรวจ BAY',
-  DELEGATED:'จัดการผ่าน BAY',INTERNAL_MANAGED:'Internal managed',UNREGISTERED:'ยังไม่ลงทะเบียน',
+  DELEGATED:'จัดการผ่าน BAY',INTERNAL_MANAGED:'จัดการภายใน',UNREGISTERED:'ยังไม่ลงทะเบียน',
+  BASELINE_REQUIRED:'ต้องผูก Production',MIGRATION_REQUIRED:'ต้องย้าย Deploy path',
 })[state]||state||'กำลังตรวจ';
 
+const adapterLabel=(value)=>({CORE_RELEASE:'AWH Core Release',MANAGED_HOSTING:'Managed Hosting',BAY_UPDATE_CENTER:'BAY Update Center',LEARNLAB_RELEASE:'LearnLab Release',LEGACY_DEPLOY:'Legacy deploy',SOURCE_ONLY:'Source only',UNREGISTERED:'ยังไม่ลงทะเบียน',AGENT_MANAGED:'AWH Agent'})[value]||value||'—';
+const activityLabel=(value)=>({ONLINE:'ออนไลน์',BUSY:'กำลังทำงาน',STALE:'ออฟไลน์/ข้อมูลเก่า',OFFLINE:'ออฟไลน์',IDLE:'พร้อม'})[String(value||'').toUpperCase()]||value||'ไม่ทราบสถานะ';
 const short=(value)=>typeof value==='string'&&/^[0-9a-f]{40}$/i.test(value)?value.slice(0,12):value||'—';
 const message=(text)=>{$('updates-message').textContent=text;};
 const friendly=(error)=>{
@@ -66,7 +69,7 @@ function renderDevices(item,host){
   for(const device of item.devices){
     const row=document.createElement('div');row.className='device-row';
     const name=document.createElement('span');name.textContent=device.displayName+' · '+device.platform+'/'+device.arch;
-    const status=document.createElement('span');status.textContent=(device.appVersion||'ไม่ทราบรุ่น')+' · '+device.activity;
+    const status=document.createElement('span');status.textContent=(device.appVersion||'ไม่ทราบรุ่น')+' · '+activityLabel(device.activity);
     row.append(name,status);list.append(row);
   }
   host.append(list);
@@ -81,12 +84,13 @@ function render(){
     const h3=document.createElement('h3');h3.textContent=item.name;
     const chip=document.createElement('span');chip.className='update-chip';chip.dataset.state=item.state;chip.textContent=stateLabel(item.state);
     title.append(h3,chip);main.append(title);
-    main.append(meta(item.adapter,item.current?'ใช้อยู่ '+short(item.current):null,item.candidate?'ใหม่ '+short(item.candidate):null));
+    main.append(meta(adapterLabel(item.adapter),item.current?'ใช้อยู่ '+short(item.current):null,item.candidate?'ใหม่ '+short(item.candidate):null));
     const reason=document.createElement('p');reason.className='update-reason';reason.textContent=item.reason||'กำลังตรวจ';main.append(reason);
     renderDevices(item,main);
     const actions=document.createElement('div');actions.className='update-actions';
     if(item.adapter==='CORE_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(actionButton('อัปเดต AWH',()=>updateAwh(item)));
     else if(item.adapter==='CORE_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('อนุมัติและอัปเดต',()=>approveAwh(item)));
+    else if(item.adapter==='LEARNLAB_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('อนุมัติ LearnLab',()=>approveLearnLab(item)));
     else if(item.adapter==='MANAGED_HOSTING'&&item.state==='UPDATE_AVAILABLE'&&item.siteId)actions.append(actionButton('อัปเดต',()=>updateHosting(item)));
     else if(item.adapter==='BAY_UPDATE_CENTER'&&item.state==='UPDATE_AVAILABLE'&&item.release)actions.append(actionButton('อัปเดต BAY',()=>updateBay(item)));
     if(item.url){const link=document.createElement('a');link.className='secondary-button';link.href=item.url;link.target='_blank';link.rel='noopener';link.textContent='เปิดระบบ';actions.append(link);}
@@ -116,6 +120,13 @@ async function approveAwh(item){
   if(!confirm('ยืนยันให้อัปเดต AWH เป็นรุ่นที่ผ่าน verification แล้ว?'))return;
   await decideApproval(item.approvalId,'approve');
   message('อนุมัติแล้ว AWH จะ Backup → Deploy → Verify และ Rollback อัตโนมัติถ้าจำเป็น');
+  await refresh();
+}
+
+async function approveLearnLab(item){
+  if(!confirm('ยืนยัน LearnLab release ที่ผ่าน typed release boundary แล้ว?'))return;
+  await decideApproval(item.approvalId,'approve');
+  message('อนุมัติ LearnLab แล้ว release controller จะ Deploy → Verify และ Rollback อัตโนมัติถ้าจำเป็น');
   await refresh();
 }
 
@@ -193,7 +204,7 @@ async function updateAll(){
   try{
     for(const item of ready.filter((row)=>row.adapter==='MANAGED_HOSTING'))await managedSiteAction(item.siteId,'deploy');
     for(const item of ready.filter((row)=>row.adapter==='BAY_UPDATE_CENTER'&&row.release))await updateBay(item,false);
-    for(const item of pending.filter((row)=>row.adapter==='CORE_RELEASE'))await decideApproval(item.approvalId,'approve');
+    for(const item of pending.filter((row)=>['CORE_RELEASE','LEARNLAB_RELEASE'].includes(row.adapter)))await decideApproval(item.approvalId,'approve');
     for(const item of ready.filter((row)=>row.adapter==='CORE_RELEASE')){
       const request=await privileged(()=>requestCoreRelease(item.candidate,false));
       if(request?.approvalId)await decideApproval(request.approvalId,'approve');
