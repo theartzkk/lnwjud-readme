@@ -45,7 +45,11 @@ test('imported live storage lifecycle stays bounded and protects authorities', a
   assert.doesNotMatch(guard, /\/var\/backups|\/var\/www\/awh-web\/releases|awh\.sqlite/);
   assert.match(temp, /find \/tmp -xdev -maxdepth 1/);
   assert.match(temp, /-mtime \+7/);
-  assert.match(temp, /lsof/);
+  assert.match(temp, /-mmin "\+\$\{DIR_MAX_AGE_MINUTES\}"/);
+  assert.match(temp, /status --porcelain=v1/);
+  assert.match(temp, /cat-file -e "\$\{head\}\^\{commit\}"/);
+  assert.match(temp, /lsof \+D "\$d"/);
+  assert.match(temp, /purged_dirs/);
 });
 
 test('migration manifest forbids blind production cutover and disk clone', async () => {
