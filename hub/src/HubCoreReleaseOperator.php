@@ -22,6 +22,7 @@ final class HubCoreReleaseOperator
     private const LEASE_SECONDS=14400;
     private const WORK_ROOT='/var/lib/awh-hub/core-release-work';
     private const SOURCE='file:///srv/awh-git/awh.git';
+    private const CANONICAL_GIT_DIR='/srv/awh-git/awh.git';
     /** @var Closure(list<string>,?array):array{code:int,out:string,err:string} */
     private readonly Closure $runner;
 
@@ -114,9 +115,9 @@ final class HubCoreReleaseOperator
         $scope=$this->approvedScope((string)$row['task_id'],$checkpoint,$at);
         $sha=(string)$checkpoint['releaseSha'];
         try{
-            $main=trim($this->run(['/usr/bin/git','--git-dir=/srv/awh-git/awh.git','rev-parse','refs/heads/main'],null,20)['out']);
+            $main=trim($this->run(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'rev-parse','refs/heads/main'],null,20,'CORE_RELEASE_GIT_MAIN_FAILED')['out']);
             if(!hash_equals($sha,strtolower($main)))throw new HubCoreReleaseOperatorException('Canonical main moved before release execution','CORE_RELEASE_SOURCE_MOVED');
-            $production=trim($this->run(['/usr/bin/git','--git-dir=/srv/awh-git/awh.git','rev-parse','refs/heads/production'],null,20)['out']);
+            $production=trim($this->run(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'rev-parse','refs/heads/production'],null,20,'CORE_RELEASE_GIT_PRODUCTION_FAILED')['out']);
             if(hash_equals($sha,strtolower($production))){
                 $this->complete($executionId,(string)$row['task_id'],$sha,'Production ใช้ release นี้อยู่แล้ว',$at);
                 return ['schemaVersion'=>1,'state'=>'ALREADY_CURRENT','releaseSha'=>$sha];
@@ -125,10 +126,10 @@ final class HubCoreReleaseOperator
             $workRoot=self::WORK_ROOT;$this->safeDirectory($workRoot,0700);
             $workspace=$workRoot.'/'.strtolower($executionId);
             if(file_exists($workspace)||is_link($workspace))$this->removeTree($workspace,$workRoot);
-            $this->run(['/usr/bin/git','clone','--no-hardlinks','--single-branch','--branch','main',self::SOURCE,$workspace],null,180);
-            $head=trim($this->run(['/usr/bin/git','-C',$workspace,'rev-parse','HEAD'],null,20)['out']);
+            $this->run(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'clone','--no-hardlinks','--single-branch','--branch','main',self::SOURCE,$workspace],null,180,'CORE_RELEASE_GIT_CLONE_FAILED');
+            $head=trim($this->run(['/usr/bin/git','-C',$workspace,'rev-parse','HEAD'],null,20,'CORE_RELEASE_WORKSPACE_VERIFY_FAILED')['out']);
             if(!hash_equals($sha,strtolower($head)))throw new HubCoreReleaseOperatorException('Cloned source does not match approved release','CORE_RELEASE_SOURCE_MISMATCH');
-            $dirty=trim($this->run(['/usr/bin/git','-C',$workspace,'status','--porcelain=v1','--untracked-files=all'],null,20)['out']);
+            $dirty=trim($this->run(['/usr/bin/git','-C',$workspace,'status','--porcelain=v1','--untracked-files=all'],null,20,'CORE_RELEASE_WORKSPACE_VERIFY_FAILED')['out']);
             if($dirty!=='')throw new HubCoreReleaseOperatorException('Cloned source is not clean','CORE_RELEASE_SOURCE_DIRTY');
 
             [$node,$npm]=$this->nodeToolchain();
@@ -136,14 +137,14 @@ final class HubCoreReleaseOperator
             $this->safeDirectory($home,0700);$this->safeDirectory($cache,0700);
             $env=$this->releaseEnv($node,$workspace,$sha,$home,$cache);
             $this->event((string)$row['task_id'],'RUNNING',20,'Source ตรงกับ canonical main กำลังเตรียม verified toolchain',$at);
-            $this->run([$npm,'ci','--ignore-scripts','--no-audit','--no-fund','--prefer-offline'],['cwd'=>$workspace,'env'=>$env],900);
-            $dirty=trim($this->run(['/usr/bin/git','-C',$workspace,'status','--porcelain=v1','--untracked-files=all'],null,20)['out']);
+            $this->run([$npm,'ci','--ignore-scripts','--no-audit','--no-fund','--prefer-offline'],['cwd'=>$workspace,'env'=>$env],900,'CORE_RELEASE_NPM_CI_FAILED');
+            $dirty=trim($this->run(['/usr/bin/git','-C',$workspace,'status','--porcelain=v1','--untracked-files=all'],null,20,'CORE_RELEASE_WORKSPACE_VERIFY_FAILED')['out']);
             if($dirty!=='')throw new HubCoreReleaseOperatorException('Dependency preparation changed tracked source','CORE_RELEASE_SOURCE_DIRTY');
 
             $args=[$node,$workspace.'/scripts/ops/bounded-deploy-mission.mjs','--project-source-authority','--approve'];
             if(($checkpoint['cleanupTopology']??false)===true)$args[]='--cleanup-topology';
             $this->event((string)$row['task_id'],'RUNNING',30,'AWH กำลังรัน bounded QA, backup, rollback และ Production gates',$at);
-            $result=$this->run($args,['cwd'=>$workspace,'env'=>$env],6900);
+            $result=$this->run($args,['cwd'=>$workspace,'env'=>$env],6900,'CORE_RELEASE_MISSION_COMMAND_FAILED');
             if(!str_contains($result['out'],'MISSION_RESULT=PASS'))throw new HubCoreReleaseOperatorException('Bounded release mission did not produce PASS evidence','CORE_RELEASE_MISSION_FAILED');
             $done=self::time(gmdate('c'));$this->complete($executionId,(string)$row['task_id'],$sha,'Deploy สำเร็จและผ่าน Production verification ครบ',$done);
             $this->removeTree($workspace,$workRoot);
@@ -274,10 +275,11 @@ final class HubCoreReleaseOperator
         if(!@rmdir($path)&&is_dir($path))throw new HubCoreReleaseOperatorException('Core release workspace cleanup failed','CORE_RELEASE_WORKSPACE_UNAVAILABLE');
     }
 
-    private function run(array $command,?array $options=null,int $timeout=120): array
+    private function run(array $command,?array $options=null,int $timeout=120,string $errorCode='CORE_RELEASE_COMMAND_FAILED'): array
     {
+        if(preg_match('/^[A-Z0-9_]{3,80}$/',$errorCode)!==1)$errorCode='CORE_RELEASE_COMMAND_FAILED';
         $result=$this->runProcess($command,$options,$timeout);
-        if($result['code']!==0)throw new HubCoreReleaseOperatorException('Typed core release command failed','CORE_RELEASE_COMMAND_FAILED');
+        if($result['code']!==0)throw new HubCoreReleaseOperatorException('Typed core release command failed',$errorCode);
         return $result;
     }
     private function runOptional(array $command,?array $options=null,int $timeout=30): array { return $this->runProcess($command,$options,$timeout); }
