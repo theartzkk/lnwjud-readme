@@ -39,6 +39,8 @@ test('AWH packaging configuration keeps Squirrel per-user behavior and public ar
   assert.match(pkg.scripts?.['desktop:make'] ?? '', /prepare:windows-icon/);
   assert.match(pkg.scripts?.['desktop:package:windows'] ?? '', /prepare:windows-icon/);
   assert.match(pkg.scripts?.['desktop:package:mac:x64'] ?? '', /prepare:mac-icon/);
+  assert.match(pkg.scripts?.['desktop:package:mac:x64'] ?? '', /sign-macos-adhoc/);
+  assert.match(pkg.scripts?.['desktop:package:mac:arm64'] ?? '', /sign-macos-adhoc/);
   assert.match(forge, /@electron-forge\/maker-squirrel/);
   assert.match(forge, /packagerConfig:\s*\{[\s\S]*?name:\s*'AWH Agent'/);
   assert.match(forge, /config:\s*\{[\s\S]*?name:\s*'AWH'/);
