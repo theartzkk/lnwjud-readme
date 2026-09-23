@@ -53,6 +53,10 @@ test('managed-product deploy provisions namespace roots before operator enable',
   assert.match(script,/install -d -o root -g root -m 0750 \/var\/backups\/learnlab-releases \/var\/backups\/bay-assessment/);
   assert.match(script,/HOSTING_NAMESPACE_PATHS=\$\(sed -n 's\/\^ReadWritePaths=\/\/p'/);
   assert.match(script,/HOSTING_NAMESPACE_PATH_MISSING=\$path/);
+  assert.match(script,/case "\$path" in -\*\) continue/);
+  const unit=await readFile(new URL('../deploy/systemd/awh-hosting-operator.service',import.meta.url),'utf8');
+  assert.match(unit,/ReadWritePaths=.*-\/var\/backups\/learnlab-releases/);
+  assert.match(unit,/ReadOnlyPaths=-\/var\/lib\/awh-remote\/handoff/);
   const provision=script.indexOf('PRODUCT_RELEASE_STORAGE_READY');
   const preflight=script.indexOf('HOSTING_NAMESPACE_PATHS_READY');
   const enable=script.indexOf('systemctl enable --now awh-hosting-operator.timer',preflight);

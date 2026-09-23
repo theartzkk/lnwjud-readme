@@ -1044,8 +1044,11 @@ if test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1 ||
   stage PRODUCT_RELEASE_STORAGE_READY
   HOSTING_NAMESPACE_PATHS=$(sed -n 's/^ReadWritePaths=//p' "$RELEASE/deploy/systemd/awh-hosting-operator.service")
   test -n "$HOSTING_NAMESPACE_PATHS"
-  for path in $HOSTING_NAMESPACE_PATHS; do sudo test -e "$path" || { printf '%s
-' "HOSTING_NAMESPACE_PATH_MISSING=$path" >&2; exit 42; }; done
+  for path in $HOSTING_NAMESPACE_PATHS; do
+    case "$path" in -*) continue ;; esac
+    sudo test -e "$path" || { printf '%s
+' "HOSTING_NAMESPACE_PATH_MISSING=$path" >&2; exit 42; }
+  done
   stage HOSTING_NAMESPACE_PATHS_READY
 fi
 if test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$CLOUD_FIRST" = 1; then

@@ -19,11 +19,21 @@ The operator bridge gives the dedicated `awh-remote` VPS connector a typed, audi
 
 `awh-operator gate "BAY EXCUSE X"`
 
+`awh-operator mission-status "Art’s Workspace Hub"`
+
+`awh-operator mission-acquire "Art’s Workspace Hub" "<goal>" --confirm`
+
+`awh-operator mission-renew <execution-id>`
+
+`awh-operator mission-release <execution-id> <success|failure> --confirm`
+
+A project mission reuses the existing task/execution/envelope authority as a two-hour renewable `CANONICAL:PROJECT` lease. A second chat receives the active mission instead of opening another writer. Expired missions fail safe and release their envelope; read-only work remains independent. Source promotion performed by the mission must pass `--mission <execution-id>` so the exact lease is reused rather than creating a nested writer.
+
 `awh-operator verification-store --confirm` (reads one bounded evidence JSON document from stdin)
 
 `awh-operator verification-regressions` (reads `{ "changedPaths": [...] }` from stdin)
 
-awh-operator source-promote <repository> <bundle> <expected-main-sha> <target-sha> <bundle-sha256> --confirm
+`awh-operator source-promote <repository> <bundle> <expected-main-sha> <target-sha> <bundle-sha256> [--mission <execution-id>] --confirm`
 
 `awh-operator bay-status`
 

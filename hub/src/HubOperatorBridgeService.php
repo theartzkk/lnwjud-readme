@@ -22,6 +22,11 @@ final class HubOperatorBridgeService
     private const VAULT_EXPORT_CONFIRMATION='EXPORT_CANONICAL_VAULT_SOURCE';
     private const MAX_VERIFICATION_DOCUMENT_BYTES=196608;
     private const SOURCE_PROMOTE_CONFIRMATION='PROMOTE_CANONICAL_MAIN';
+    private const MISSION_ACQUIRE_CONFIRMATION='ACQUIRE_PROJECT_MISSION';
+    private const MISSION_RELEASE_CONFIRMATION='RELEASE_PROJECT_MISSION';
+    private const MISSION_CAPABILITY='operator.project_mission';
+    private const MISSION_OWNER='operator-mission';
+    private const MISSION_LEASE_SECONDS=7200;
     private const MAX_SOURCE_BUNDLE_BYTES=134217728;
     /** @var Closure(string,array<string,mixed>):array<string,mixed> */
     private readonly Closure $poster;
@@ -47,6 +52,10 @@ final class HubOperatorBridgeService
             'verification.store'=>$this->verificationStore($request,$at),
             'verification.regressions'=>$this->verificationRegressions($request,$at),
             'vault.export'=>$this->vaultExport($request,$at),
+            'mission.status'=>$this->missionStatus(self::text($request,'project',160),$at),
+            'mission.acquire'=>$this->missionAcquire($request,$at),
+            'mission.renew'=>$this->missionRenew($request,$at),
+            'mission.release'=>$this->missionRelease($request,$at),
             'source.promote'=>$this->sourcePromote($request,$at),
             'bay.status'=>$this->bayStatus($at),
             'bay.stage'=>$this->bayStage($request,$at),
@@ -76,14 +85,14 @@ final class HubOperatorBridgeService
     }
 
     /** @return array<string,mixed> */
-    private function projectGate(string $selector,string $at,bool $requireSource=false,?string $capability=null): array
+    private function projectGate(string $selector,string $at,bool $requireSource=false,?string $capability=null,?string $excludeExecutionId=null): array
     {
         $project=$this->resolveProject($selector);
         $id=(string)$project['project_id'];
         $requestedResource=$capability===null?'CANONICAL:PROJECT':HubCapabilityRegistryService::mutationResourceForExecution($capability,'VPS');
         $active=$this->pdo->prepare("SELECT x.execution_id,x.task_id,x.state,x.mutation_scope,x.lease_expires_at,e.state AS execution_state,e.required_capability,e.executor_kind,t.state AS task_state,t.goal FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id JOIN control_tasks t ON t.task_id=x.task_id WHERE x.project_id=:project AND x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY x.updated_at DESC LIMIT 20");
         $active->execute(['project'=>$id,'at'=>$at]); $activeRows=$active->fetchAll();
-        $conflictingRows=[]; foreach($activeRows as $row){$resource=HubCapabilityRegistryService::mutationResourceForExecution((string)$row['required_capability'],(string)$row['executor_kind']);if(HubCapabilityRegistryService::mutationResourcesConflict($requestedResource,$resource)){$row['mutation_resource']=$resource;$conflictingRows[]=$row;}}
+        $conflictingRows=[]; foreach($activeRows as $row){if($excludeExecutionId!==null&&hash_equals($excludeExecutionId,(string)$row['execution_id']))continue;$resource=HubCapabilityRegistryService::mutationResourceForExecution((string)$row['required_capability'],(string)$row['executor_kind']);if(HubCapabilityRegistryService::mutationResourcesConflict($requestedResource,$resource)){$row['mutation_resource']=$resource;$conflictingRows[]=$row;}}
         $running=$this->pdo->prepare("SELECT COUNT(*) FROM control_task_executions e WHERE e.project_id=:project AND e.state IN ('LEASED','RUNNING')");
         $running->execute(['project'=>$id]); $runningCount=(int)$running->fetchColumn();
         $unscoped=$this->pdo->prepare("SELECT COUNT(*) FROM control_task_executions e LEFT JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.project_id=:project AND e.state IN ('LEASED','RUNNING') AND x.execution_id IS NULL");
@@ -199,6 +208,97 @@ final class HubOperatorBridgeService
         return ['schemaVersion'=>1,'regressions'=>$items,'count'=>count($items),'observedAt'=>$at];
     }
 
+    /** @return array<string,mixed> */
+    private function missionStatus(string $selector,string $at): array
+    {
+        $project=$this->resolveProject($selector);$projectId=(string)$project['project_id'];
+        $this->reconcileExpiredMissions($projectId,$at);
+        $mission=$this->activeProjectMission(null,$at,$projectId,false);
+        if($mission===null)return ['schemaVersion'=>1,'state'=>'IDLE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'observedAt'=>$at];
+        return ['schemaVersion'=>1,'state'=>'ACTIVE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'mission'=>$this->missionProjection($mission),'observedAt'=>$at];
+    }
+
+    /** @param array<string,mixed> $request @return array<string,mixed> */
+    private function missionAcquire(array $request,string $at): array
+    {
+        if(($request['confirmation']??null)!==self::MISSION_ACQUIRE_CONFIRMATION)throw new HubOperatorBridgeException('Explicit project mission confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
+        $selector=self::text($request,'project',160);$goal=self::text($request,'goal',500);
+        $project=$this->resolveProject($selector);$projectId=(string)$project['project_id'];
+        $this->reconcileExpiredMissions($projectId,$at);
+        $existing=$this->activeProjectMission(null,$at,$projectId,false);
+        if($existing!==null)return ['schemaVersion'=>1,'state'=>'ALREADY_ACTIVE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'mission'=>$this->missionProjection($existing),'observedAt'=>$at];
+        $gate=$this->projectGate($selector,$at,false,null);
+        if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('Project already has an active mutation or workspace lease','OPERATOR_PROJECT_GATE_BLOCKED');
+        $free=@disk_free_space('/');$total=@disk_total_space('/');
+        if(is_float($free)&&$free<1073741824)throw new HubOperatorBridgeException('VPS free space is below the safe mission reserve','OPERATOR_STORAGE_CRITICAL');
+        $authority=$this->acquireMutationAuthority($projectId,$goal,self::MISSION_CAPABILITY,['mode'=>'OPERATOR_PROJECT_MISSION','goal'=>$goal,'startedAt'=>$at],$at,self::MISSION_LEASE_SECONDS,self::MISSION_OWNER);
+        $mission=$this->activeProjectMission($authority['executionId'],$at,$projectId,true);
+        return ['schemaVersion'=>1,'state'=>'ACQUIRED','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'mission'=>$this->missionProjection($mission),'storage'=>['freeBytes'=>is_float($free)?(int)$free:null,'totalBytes'=>is_float($total)?(int)$total:null],'observedAt'=>$at];
+    }
+
+    /** @param array<string,mixed> $request @return array<string,mixed> */
+    private function missionRenew(array $request,string $at): array
+    {
+        $execution=self::text($request,'executionId',36);if(!self::uuidValid($execution))throw new HubOperatorBridgeException('Mission execution id is invalid','OPERATOR_REQUEST_INVALID');
+        $mission=$this->activeProjectMission($execution,$at,null,true);$lease=gmdate('c',strtotime($at)+self::MISSION_LEASE_SECONDS);
+        try{
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $this->pdo->prepare("UPDATE control_task_executions SET lease_expires_at=:lease,updated_at=:at WHERE execution_id=:execution AND state='RUNNING' AND lease_owner=:owner")->execute(['lease'=>$lease,'at'=>$at,'execution'=>$execution,'owner'=>self::MISSION_OWNER]);
+            $this->pdo->prepare("UPDATE control_tasks SET lease_expires_at=:lease,updated_at=:at WHERE task_id=:task AND state='RUNNING'")->execute(['lease'=>$lease,'at'=>$at,'task'=>$mission['task_id']]);
+            $this->pdo->prepare("UPDATE control_execution_envelopes SET lease_expires_at=:lease,updated_at=:at WHERE execution_id=:execution AND state='ACTIVE'")->execute(['lease'=>$lease,'at'=>$at,'execution'=>$execution]);
+            $this->pdo->exec('COMMIT');
+        }catch(Throwable $error){try{$this->pdo->exec('ROLLBACK');}catch(Throwable){}throw new HubOperatorBridgeException('Project mission could not be renewed','OPERATOR_MISSION_RENEW_FAILED');}
+        $fresh=$this->activeProjectMission($execution,$at,(string)$mission['project_id'],true);
+        return ['schemaVersion'=>1,'state'=>'RENEWED','mission'=>$this->missionProjection($fresh),'observedAt'=>$at];
+    }
+
+    /** @param array<string,mixed> $request @return array<string,mixed> */
+    private function missionRelease(array $request,string $at): array
+    {
+        if(($request['confirmation']??null)!==self::MISSION_RELEASE_CONFIRMATION)throw new HubOperatorBridgeException('Explicit project mission release confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
+        $execution=self::text($request,'executionId',36);if(!self::uuidValid($execution))throw new HubOperatorBridgeException('Mission execution id is invalid','OPERATOR_REQUEST_INVALID');
+        $outcome=self::text($request,'outcome',16);if(!in_array($outcome,['success','failure'],true))throw new HubOperatorBridgeException('Mission outcome is invalid','OPERATOR_REQUEST_INVALID');
+        $mission=$this->activeProjectMission($execution,$at,null,true);
+        $authority=['executionId'=>$execution,'taskId'=>(string)$mission['task_id'],'projectId'=>(string)$mission['project_id'],'leaseExpiresAt'=>(string)$mission['lease_expires_at']];
+        $this->releaseMutationAuthority($authority,$outcome==='success',$at);
+        return ['schemaVersion'=>1,'state'=>$outcome==='success'?'COMPLETED':'FAILED','executionId'=>$execution,'projectId'=>(string)$mission['project_id'],'observedAt'=>$at];
+    }
+
+    private function reconcileExpiredMissions(string $projectId,string $at): void
+    {
+        if(!self::uuidValid($projectId))return;
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id FROM control_task_executions e WHERE e.project_id=:project AND e.required_capability=:capability AND e.lease_owner=:owner AND e.state='RUNNING' AND e.lease_expires_at IS NOT NULL AND e.lease_expires_at<=:at");
+        $q->execute(['project'=>$projectId,'capability'=>self::MISSION_CAPABILITY,'owner'=>self::MISSION_OWNER,'at'=>$at]);$rows=$q->fetchAll();if($rows===[])return;
+        try{
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            foreach($rows as $row){
+                $this->pdo->prepare("UPDATE control_execution_envelopes SET state='RELEASED',lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution")->execute(['at'=>$at,'execution'=>$row['execution_id']]);
+                $this->pdo->prepare("UPDATE control_task_executions SET state='FAILED',lease_owner=NULL,lease_expires_at=NULL,last_error_code='MISSION_LEASE_EXPIRED',updated_at=:at WHERE execution_id=:execution")->execute(['at'=>$at,'execution'=>$row['execution_id']]);
+                $this->pdo->prepare("UPDATE control_tasks SET state='FAILED',lease_expires_at=NULL,progress=100,result_summary='Project mission lease expired safely',failure_code='MISSION_LEASE_EXPIRED',updated_at=:at WHERE task_id=:task")->execute(['at'=>$at,'task'=>$row['task_id']]);
+            }
+            $this->pdo->exec('COMMIT');
+        }catch(Throwable $error){try{$this->pdo->exec('ROLLBACK');}catch(Throwable){}throw new HubOperatorBridgeException('Expired project mission could not be reconciled','OPERATOR_MISSION_RECONCILE_FAILED');}
+    }
+
+    /** @return array<string,mixed>|null */
+    private function activeProjectMission(?string $executionId,string $at,?string $projectId=null,bool $required=true): ?array
+    {
+        $where=["e.required_capability=:capability","e.lease_owner=:owner","e.state='RUNNING'","x.state='ACTIVE'","(e.lease_expires_at IS NULL OR e.lease_expires_at>:at)","(x.lease_expires_at IS NULL OR x.lease_expires_at>:at)"];
+        $params=['capability'=>self::MISSION_CAPABILITY,'owner'=>self::MISSION_OWNER,'at'=>$at];
+        if($executionId!==null){$where[]='e.execution_id=:execution';$params['execution']=$executionId;}
+        if($projectId!==null){$where[]='e.project_id=:project';$params['project']=$projectId;}
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.project_id,e.lease_expires_at,e.checkpoint_json,e.updated_at,t.goal,t.progress,x.state AS envelope_state FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE ".implode(' AND ',$where)." ORDER BY e.updated_at DESC LIMIT 1");
+        $q->execute($params);$row=$q->fetch();if(is_array($row))return $row;
+        if($required)throw new HubOperatorBridgeException('Project mission is not active','OPERATOR_MISSION_NOT_ACTIVE');
+        return null;
+    }
+
+    /** @param array<string,mixed> $row @return array<string,mixed> */
+    private function missionProjection(array $row): array
+    {
+        return ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>(string)$row['project_id'],'goal'=>(string)$row['goal'],'state'=>'RUNNING','progress'=>(int)$row['progress'],'leaseExpiresAt'=>$row['lease_expires_at'],'updatedAt'=>(string)$row['updated_at']];
+    }
+
     /** @param array<string,mixed> $request @return array<string,mixed> */
     private function sourcePromote(array $request,string $at): array
     {
@@ -213,11 +313,15 @@ final class HubOperatorBridgeService
         $bundle=$stageReal.'/'.$stagedFile;$bundleReal=realpath($bundle);if(!is_string($bundleReal)||dirname($bundleReal)!==$stageReal||is_link($bundle)||!is_file($bundleReal)||!is_readable($bundleReal))throw new HubOperatorBridgeException('Source bundle is unavailable','OPERATOR_SOURCE_BUNDLE_NOT_READY');
         $size=@filesize($bundleReal);$actual=hash_file('sha256',$bundleReal);if(!is_int($size)||$size<1||$size>self::MAX_SOURCE_BUNDLE_BYTES||!is_string($actual)||!hash_equals($bundleSha,$actual))throw new HubOperatorBridgeException('Source bundle verification failed','OPERATOR_SOURCE_BUNDLE_NOT_READY');
         $repo=$gitReal.'/'.$config['directory'];$repoReal=realpath($repo);if(!is_string($repoReal)||dirname($repoReal)!==$gitReal||!is_dir($repoReal)||is_link($repo))throw new HubOperatorBridgeException('Canonical Git repository is unavailable','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');
-        $gate=$this->projectGate((string)$config['project'],$at,false,'source.promote');if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('Project mutation gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
+        $projectRecord=$this->resolveProject((string)$config['project']);$projectId=(string)$projectRecord['project_id'];
+        $missionId=is_string($request['missionExecutionId']??null)?trim((string)$request['missionExecutionId']):null;
+        if($missionId!==null&&!self::uuidValid($missionId))throw new HubOperatorBridgeException('Project mission id is invalid','OPERATOR_REQUEST_INVALID');
+        $mission=$missionId===null?null:$this->activeProjectMission($missionId,$at,$projectId,true);
+        $gate=$this->projectGate((string)$config['project'],$at,false,'source.promote',$missionId);if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('Project mutation gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
         $current=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($expected,self::gitSha($current)))throw new HubOperatorBridgeException('Canonical main moved before source promotion','OPERATOR_SOURCE_BASE_MOVED');
         $heads=$this->runGit($repoReal,['bundle','list-heads',$bundleReal]);$advertised=false;foreach(preg_split('/\r?\n/',$heads)?:[] as $line){$parts=preg_split('/\s+/',trim($line));if(is_array($parts)&&isset($parts[0])&&strtolower((string)$parts[0])===$target){$advertised=true;break;}}
         if(!$advertised)throw new HubOperatorBridgeException('Target revision is not advertised by source bundle','OPERATOR_SOURCE_BUNDLE_NOT_READY');
-        $projectId=(string)($gate['project']['projectId']??'');$authority=$this->acquireMutationAuthority($projectId,'Fast-forward canonical main '.$repository,'source.promote',['repository'=>$repository,'expectedMainSha'=>$expected,'targetSha'=>$target,'bundleSha256'=>$bundleSha],$at);$success=false;
+        $authority=$mission===null?$this->acquireMutationAuthority($projectId,'Fast-forward canonical main '.$repository,'source.promote',['repository'=>$repository,'expectedMainSha'=>$expected,'targetSha'=>$target,'bundleSha256'=>$bundleSha],$at):['executionId'=>(string)$mission['execution_id'],'taskId'=>(string)$mission['task_id'],'projectId'=>$projectId,'leaseExpiresAt'=>(string)$mission['lease_expires_at']];$success=false;$releaseAuthority=$mission===null;
         try{
             $this->runGit($repoReal,['bundle','verify',$bundleReal]);
             $this->runGit($repoReal,['bundle','unbundle',$bundleReal]);
@@ -227,8 +331,8 @@ final class HubOperatorBridgeService
             $before=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($expected,self::gitSha($before)))throw new HubOperatorBridgeException('Canonical main moved during source promotion','OPERATOR_SOURCE_BASE_MOVED');
             $this->runGit($repoReal,['update-ref','refs/heads/main',$target,$expected]);
             $after=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($target,self::gitSha($after)))throw new HubOperatorBridgeException('Canonical main did not reach target revision','OPERATOR_SOURCE_PROMOTE_FAILED');
-            $success=true;return ['schemaVersion'=>1,'state'=>'PROMOTED','repository'=>$repository,'previousMainSha'=>$expected,'mainSha'=>$target,'bundleSha256'=>$bundleSha,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'leaseExpiresAt'=>$authority['leaseExpiresAt']],'observedAt'=>$at];
-        }finally{$this->releaseMutationAuthority($authority,$success,gmdate('c'));}
+            $success=true;return ['schemaVersion'=>1,'state'=>'PROMOTED','repository'=>$repository,'previousMainSha'=>$expected,'mainSha'=>$target,'bundleSha256'=>$bundleSha,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'leaseExpiresAt'=>$authority['leaseExpiresAt'],'missionReused'=>$mission!==null],'observedAt'=>$at];
+        }finally{if($releaseAuthority)$this->releaseMutationAuthority($authority,$success,gmdate('c'));}
     }
 
     /** @param array<string,mixed> $gate */
@@ -395,10 +499,11 @@ final class HubOperatorBridgeService
     }
 
     /** @param array<string,mixed> $checkpoint @return array{executionId:string,taskId:string,projectId:string,leaseExpiresAt:string} */
-    private function acquireMutationAuthority(string $projectId,string $goal,string $capability,array $checkpoint,string $at): array
+    private function acquireMutationAuthority(string $projectId,string $goal,string $capability,array $checkpoint,string $at,int $leaseSeconds=300,string $leaseOwner='operator-bridge'): array
     {
         if(!self::uuidValid($projectId)||preg_match('/^[a-z][a-z0-9:._-]{1,63}$/',$capability)!==1)throw new HubOperatorBridgeException('Mutation authority request is invalid','OPERATOR_REQUEST_INVALID');
-        $lease=gmdate('c',strtotime($at)+300); $taskId=self::uuid(); $executionId=self::uuid();
+        if($leaseSeconds<60||$leaseSeconds>14400||preg_match('/^[a-z][a-z0-9-]{2,31}$/',$leaseOwner)!==1)throw new HubOperatorBridgeException('Mutation lease request is invalid','OPERATOR_REQUEST_INVALID');
+        $lease=gmdate('c',strtotime($at)+$leaseSeconds); $taskId=self::uuid(); $executionId=self::uuid();
         try{
             $this->pdo->exec('BEGIN IMMEDIATE');
             // Missing envelopes are an integrity gap and remain fail-closed.
@@ -412,7 +517,7 @@ final class HubOperatorBridgeService
             $revision=null;$q=$this->pdo->prepare('SELECT active_revision_id FROM control_project_vaults WHERE project_id=:project');$q->execute(['project'=>$projectId]);$v=$q->fetchColumn();if(is_string($v)&&self::uuidValid($v))$revision=$v;
             $key='operator-bridge-'.substr(hash('sha256',$executionId),0,48);
             $this->pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,:goal,'RUNNING',NULL,:lease,0,NULL,NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$taskId,'user'=>$owner,'project'=>$projectId,'goal'=>$goal,'lease'=>$lease,'key'=>$key,'at'=>$at]);
-            $this->pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,:revision,'VPS',:capability,'RUNNING','operator-bridge',:lease,1,NULL,:checkpoint,NULL,:at,:at)")->execute(['execution'=>$executionId,'task'=>$taskId,'project'=>$projectId,'revision'=>$revision,'capability'=>$capability,'lease'=>$lease,'checkpoint'=>json_encode($checkpoint,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$at]);
+            $this->pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,:revision,'VPS',:capability,'RUNNING',:owner,:lease,1,NULL,:checkpoint,NULL,:at,:at)")->execute(['execution'=>$executionId,'task'=>$taskId,'project'=>$projectId,'revision'=>$revision,'capability'=>$capability,'owner'=>$leaseOwner,'lease'=>$lease,'checkpoint'=>json_encode($checkpoint,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$at]);
             $registry=new HubCapabilityRegistryService($this->pdo); $claim=$registry->activateExecutionAuthority($executionId,$lease,$at,true);
             if(($claim['granted']??false)!==true)throw new HubOperatorBridgeException('Another execution owns a conflicting project resource','OPERATOR_PROJECT_GATE_BLOCKED');
             $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:id,:task,'RUNNING',10,'Guarded operator bridge acquired canonical mutation authority',:at)")->execute(['id'=>self::uuid(),'task'=>$taskId,'at'=>$at]);
