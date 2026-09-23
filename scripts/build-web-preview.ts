@@ -54,6 +54,7 @@ async function main(): Promise<void> {
   await mkdir(OUTPUT, { recursive: true });
   await mkdir(join(OUTPUT, 'vendor'), { recursive: true });
   await mkdir(join(OUTPUT, 'assets'), { recursive: true });
+  await mkdir(join(OUTPUT, 'device-runtime', 'macos'), { recursive: true });
   const bundledDashboardCss = `${dashboardCss}
 
 /* Owner Center */

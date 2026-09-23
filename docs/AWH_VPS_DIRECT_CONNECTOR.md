@@ -25,7 +25,7 @@ The script:
 
 1. Verifies Node.js 18+ / npx, installing Ubuntu packages only if needed.
 2. Creates `awh-remote` with home `/var/lib/awh-remote`.
-3. Uses pinned Desktop Commander package version `0.2.50`.
+3. Uses pinned Desktop Commander package version `0.2.51`.
 4. Starts the remote agent in the foreground as `awh-remote`.
 
 After the terminal prints the verification URL/code, approve the matching code from the phone. Do not approve a mismatched code.

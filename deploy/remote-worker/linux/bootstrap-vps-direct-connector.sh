@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-AGENT_VERSION=${AWH_RDC_VERSION:-0.2.50}
+AGENT_VERSION=${AWH_RDC_VERSION:-0.2.51}
 AGENT_USER=${AWH_RDC_USER:-awh-remote}
 AGENT_HOME=${AWH_RDC_HOME:-/var/lib/awh-remote}
 RUNTIME_ROOT=${AWH_RDC_RUNTIME_ROOT:-/opt/awh-tools/remote-desktop}

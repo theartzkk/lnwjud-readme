@@ -77,6 +77,34 @@ test('desktop packaging excludes generated cross-platform release artifacts from
   assert.equal(isIgnored('/ART_AI_WORKING_PROTOCOL.md'), false, 'required working context must remain packageable');
 });
 
+test('lightweight AWH Device Runtime is pinned, self-updating and rollback-safe', async () => {
+  const [manifestRaw, updater, supervisor, installer, patch] = await Promise.all([
+    readFile(new URL('../config/device-runtime-release.json', import.meta.url), 'utf8'),
+    readFile(new URL('../deploy/remote-worker/macos/awh-runtime-update.sh', import.meta.url), 'utf8'),
+    readFile(new URL('../deploy/remote-worker/macos/awh-remote-worker.sh', import.meta.url), 'utf8'),
+    readFile(new URL('../deploy/remote-worker/macos/install.sh', import.meta.url), 'utf8'),
+    readFile(new URL('../deploy/remote-worker/macos/runtime-hardening.patch', import.meta.url), 'utf8'),
+  ]);
+  const manifest = JSON.parse(manifestRaw) as { version: string; npmIntegrity: string; package: string; capabilityProfile: string };
+  assert.equal(manifest.version, '0.2.51');
+  assert.equal(manifest.package, '@wonderwhy-er/desktop-commander');
+  assert.match(manifest.npmIntegrity, /^sha512-/);
+  assert.equal(manifest.capabilityProfile, 'full-device-v1');
+  assert.match(updater, /https:\/\/kruart\.online/);
+  assert.match(updater, /release\.json/);
+  assert.match(updater, /npmIntegrity/);
+  assert.match(updater, /package-lock\.json/);
+  assert.match(updater, /runtime\.previous/);
+  assert.match(updater, /AWH_DEVICE_RUNTIME=UPDATED/);
+  assert.doesNotMatch(updater, /@latest|npm\s+update/);
+  assert.match(supervisor, /awh-runtime-update\.sh/);
+  assert.match(supervisor, /UPDATE_INTERVAL=21600/);
+  assert.match(installer, /EXPECTED=0\.2\.51/);
+  assert.match(installer, /awh-runtime-update\.sh/);
+  assert.match(patch, /DC_REMOTE_DEVICE/);
+  assert.match(patch, /previewForRemoteLog/);
+});
+
 test('packaged MCP PowerShell verifier parses on Windows', { skip: process.platform !== 'win32' }, () => {
   const command = [
     '$errors = $null',

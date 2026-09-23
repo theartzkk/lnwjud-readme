@@ -5,7 +5,7 @@ PKG="$ROOT/runtime/node_modules/@wonderwhy-er/desktop-commander"
 SCRIPT="$ROOT/awh-remote-worker.sh"
 PLIST="$HOME/Library/LaunchAgents/com.awh.remote-worker.plist"
 SESSION="$HOME/.desktop-commander-device/device.json"
-EXPECTED=0.2.47
+EXPECTED=0.2.51
 VERSION="$(node -e 'process.stdout.write(require(process.argv[1]).version)' "$PKG/package.json")"
 [ "$VERSION" = "$EXPECTED" ] || { echo "version=FAIL:$VERSION"; exit 1; }
 grep -q -- 'remote --persist-session' "$SCRIPT"

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 MODE=${1:---prepare}
-AGENT_VERSION=${AWH_RDC_VERSION:-0.2.50}
+AGENT_VERSION=${AWH_RDC_VERSION:-0.2.51}
 AGENT_USER=${AWH_RDC_USER:-awh-remote}
 AGENT_HOME=${AWH_RDC_HOME:-/var/lib/awh-remote}
 RUNTIME_ROOT=${AWH_RDC_RUNTIME_ROOT:-/opt/awh-tools/remote-desktop}
@@ -16,7 +16,7 @@ CONFIG=$AGENT_HOME/.claude-server-commander/config.json
 fail(){ printf '%s\n' "$1" >&2; exit 1; }
 case "$MODE" in --prepare|--activate) :;; *) fail 'usage: install-vps-direct-connector.sh [--prepare|--activate]' ;; esac
 [ "$(id -u)" -eq 0 ] || fail AWH_VPS_DIRECT_INSTALL_REQUIRES_ROOT
-[ "$AGENT_VERSION" = 0.2.50 ] || fail AWH_VPS_DIRECT_AGENT_VERSION_UNSUPPORTED
+[ "$AGENT_VERSION" = 0.2.51 ] || fail AWH_VPS_DIRECT_AGENT_VERSION_UNSUPPORTED
 [ "$AGENT_USER" = awh-remote ] || fail AWH_VPS_DIRECT_AGENT_USER_UNSUPPORTED
 [ "$AGENT_HOME" = /var/lib/awh-remote ] || fail AWH_VPS_DIRECT_AGENT_HOME_UNSUPPORTED
 if ! { [ -x "$NODE_BIN" ] && [ -x "$NPM_BIN" ] && "$NODE_BIN" -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22 || (a===22&&b>=12) ? 0 : 1)' 2>/dev/null; }; then
@@ -28,7 +28,7 @@ id "$AGENT_USER" >/dev/null 2>&1 || useradd --system --create-home --home-dir "$
 case " $(id -nG "$AGENT_USER") " in *' sudo '*|*' adm '*) fail AWH_VPS_DIRECT_PRIVILEGED_GROUP_FORBIDDEN;; esac
 install -d -m 0700 -o "$AGENT_USER" -g "$AGENT_USER" "$AGENT_HOME" "$AGENT_HOME/.npm" "$AGENT_HOME/.desktop-commander-device" "$AGENT_HOME/.claude-server-commander"
 install -d -m 0755 -o root -g root "$RUNTIME_ROOT" "$RUNTIME_ROOT/agent"
-printf '%s\n' '{"name":"awh-vps-direct-connector","private":true,"version":"1.0.0","dependencies":{"@wonderwhy-er/desktop-commander":"0.2.50"}}' > "$RUNTIME_ROOT/agent/package.json"
+printf '%s\n' '{"name":"awh-vps-direct-connector","private":true,"version":"1.0.0","dependencies":{"@wonderwhy-er/desktop-commander":"0.2.51"}}' > "$RUNTIME_ROOT/agent/package.json"
 (cd "$RUNTIME_ROOT/agent" && PATH="$NODE_ROOT/bin:$PATH" "$NPM_BIN" install --ignore-scripts --omit=dev --no-audit --no-fund --save-exact "@wonderwhy-er/desktop-commander@$AGENT_VERSION" >/dev/null)
 chown -R root:root "$RUNTIME_ROOT/agent"; chmod -R go-w "$RUNTIME_ROOT/agent"
 cat > "$CONFIG.tmp" <<'JSON'

@@ -8,7 +8,7 @@ const linux = join(root, 'deploy/remote-worker/linux');
 
 test('VPS direct connector bootstrap stays unprivileged and pinned', async () => {
   const [source, nodeRuntime] = await Promise.all([readFile(join(linux, 'bootstrap-vps-direct-connector.sh'), 'utf8'), readFile(join(linux, 'install-node-runtime.sh'), 'utf8')]);
-  assert.match(source, /AGENT_VERSION=\$\{AWH_RDC_VERSION:-0\.2\.50\}/);
+  assert.match(source, /AGENT_VERSION=\$\{AWH_RDC_VERSION:-0\.2\.51\}/);
   assert.match(source, /AGENT_USER=\$\{AWH_RDC_USER:-awh-remote\}/);
   assert.match(source, /runuser -u "\$AGENT_USER"/);
   assert.match(source, /desktop-commander@\$AGENT_VERSION/);
@@ -28,7 +28,7 @@ test('Phase 2 installer persists only a bounded unprivileged service', async () 
     readFile(join(linux, 'desktop-commander-vps.service.template'), 'utf8'),
     readFile(join(linux, 'verify-vps-direct-connector.sh'), 'utf8'),
   ]);
-  assert.match(install, /AGENT_VERSION=\$\{AWH_RDC_VERSION:-0\.2\.50\}/);
+  assert.match(install, /AGENT_VERSION=\$\{AWH_RDC_VERSION:-0\.2\.51\}/);
   assert.match(install, /NODE_ROOT=\$\{AWH_RDC_NODE_ROOT:-\/opt\/awh-tools\/remote-desktop\/node-v22\.22\.1-linux-x64\}/);
   assert.match(install, /AWH_VPS_DIRECT_NODE22_REQUIRED/);
   assert.match(install, /allowedDirectories.*\/srv\/awh-git.*\/tmp/s);

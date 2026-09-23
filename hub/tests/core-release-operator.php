@@ -90,6 +90,18 @@ try{
 
     $running=$pdo->query("SELECT state,lease_owner,attempt_count FROM control_task_executions WHERE execution_id=".$pdo->quote($execution))->fetch();
     cr_assert(is_array($running)&&$running['state']==='RUNNING'&&str_starts_with((string)$running['lease_owner'],'core-release:')&&(int)$running['attempt_count']===1,'dispatcher records one leased transient execution');
+
+    // Finish the fixture execution, then simulate an approved release stranded while the dispatcher heartbeat expires.
+    $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED',lease_owner=NULL,lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution")->execute(['at'=>'2026-09-23T01:01:00+00:00','execution'=>$execution]);
+    $pdo->prepare("UPDATE control_tasks SET state='COMPLETED',progress=100,updated_at=:at WHERE task_id=:task")->execute(['at'=>'2026-09-23T01:01:00+00:00','task'=>$task]);
+    $staleSha=str_repeat('d',40);$nextSha=str_repeat('e',40);
+    $stale=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$staleSha,'cleanupTopology'=>false],'2026-09-23T01:01:10+00:00');
+    $control->decideApproval($session['sessionToken'],$session['csrfToken'],(string)$stale['approvalId'],'APPROVED','2026-09-23T01:01:11+00:00');
+    $next=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$nextSha,'cleanupTopology'=>false],'2026-09-23T01:10:00+00:00');
+    cr_assert(($next['state']??null)==='WAITING_FOR_APPROVAL'&&($next['releaseSha']??null)===$nextSha,'stale approved release is reconciled before a new request');
+    cr_assert($pdo->query("SELECT state FROM control_task_executions WHERE execution_id=".$pdo->quote((string)$stale['executionId']))->fetchColumn()==='FAILED','stale queued release is failed closed');
+    cr_assert($pdo->query("SELECT failure_code FROM control_tasks WHERE task_id=".$pdo->quote((string)$stale['taskId']))->fetchColumn()==='CORE_RELEASE_DISPATCHER_UNAVAILABLE','stale release records dispatcher outage');
+
     cr_assert($pdo->query('PRAGMA integrity_check')->fetchColumn()==='ok'&&$pdo->query('PRAGMA foreign_key_check')->fetchAll()===[],'core release flow preserves database integrity');
 
     fwrite(STDOUT,"AWH core release operator: PASS\n");

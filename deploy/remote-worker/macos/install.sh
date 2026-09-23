@@ -7,7 +7,7 @@ ROOT="$HOME/Library/Application Support/AWH/RemoteWorker"
 RUNTIME="$ROOT/runtime"
 PKG="$RUNTIME/node_modules/@wonderwhy-er/desktop-commander"
 PLIST="$HOME/Library/LaunchAgents/com.awh.remote-worker.plist"
-EXPECTED=0.2.47
+EXPECTED=0.2.51
 mkdir -p "$RUNTIME" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
 if [ ! -f "$RUNTIME/package.json" ]; then
   cat > "$RUNTIME/package.json" <<EOF
@@ -27,6 +27,7 @@ else
   echo 'runtime hardening patch does not match pinned package; refusing partial install' >&2; exit 4
 fi
 install -m 0700 "$HERE/awh-remote-worker.sh" "$ROOT/awh-remote-worker.sh"
+install -m 0700 "$HERE/awh-runtime-update.sh" "$ROOT/awh-runtime-update.sh"
 sed "s|__HOME__|$HOME|g" "$HERE/com.awh.remote-worker.plist.template" > "$PLIST.tmp"
 plutil -lint "$PLIST.tmp" >/dev/null
 mv "$PLIST.tmp" "$PLIST"

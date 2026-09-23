@@ -18,7 +18,7 @@ case " $(id -nG "$AGENT_USER") " in *' sudo '*|*' adm '*) fail AWH_VPS_DIRECT_PR
 [ -x "$NODE_BIN" ] || fail AWH_VPS_DIRECT_NODE22_REQUIRED
 "$NODE_BIN" -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22 || (a===22&&b>=12) ? 0 : 1)' || fail AWH_VPS_DIRECT_NODE22_REQUIRED
 VERSION=$("$NODE_BIN" -e 'process.stdout.write(require(process.argv[1]).version)' "$RUNTIME_ROOT/agent/node_modules/@wonderwhy-er/desktop-commander/package.json")
-[ "$VERSION" = 0.2.50 ] || fail AWH_VPS_DIRECT_AGENT_VERSION_MISMATCH
+[ "$VERSION" = 0.2.51 ] || fail AWH_VPS_DIRECT_AGENT_VERSION_MISMATCH
 "$NODE_BIN" - "$CONFIG" <<'NODE'
 const fs=require('fs'); const c=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const dirs=JSON.stringify(c.allowedDirectories||[]); if(dirs!==JSON.stringify(['/srv/awh-git','/tmp'])) process.exit(2);

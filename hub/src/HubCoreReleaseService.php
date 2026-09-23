@@ -63,6 +63,7 @@ final class HubCoreReleaseService
         if(!preg_match('/^[0-9a-f]{40}$/',$sha))throw new HubCoreReleaseException('Release SHA is invalid','CORE_RELEASE_INVALID');
         $owner=$this->ownerMutation($token,$csrf,$now);
         $at=self::time($now??gmdate('c'));
+        $this->reconcileOrphanedRelease($at);
         $existing=$this->activeRelease();
         if(is_array($existing)){
             $checkpoint=self::checkpoint((string)$existing['checkpoint_json'],false);
@@ -110,6 +111,47 @@ final class HubCoreReleaseService
         catch(HubTrustPolicyException){throw new HubCoreReleaseException('Core release trust policy is unavailable','CORE_RELEASE_INVALID');}
         $user=(string)$row['user_id'];$this->assertOwner($user);$this->assertCapability($user,'deployment.approve');
         return $row;
+    }
+
+    private function reconcileOrphanedRelease(string $at): void
+    {
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.state AS execution_state,e.updated_at,t.state AS task_state,a.approval_id,a.status AS approval_status,a.expires_at
+            FROM control_task_executions e
+            JOIN control_tasks t ON t.task_id=e.task_id
+            LEFT JOIN control_approvals a ON a.task_id=e.task_id AND a.action='deployment.approve'
+            WHERE e.required_capability=:capability
+              AND e.state='QUEUED'
+              AND t.state IN ('WAITING_FOR_APPROVAL','WAITING_FOR_WORKER')
+            ORDER BY e.updated_at DESC LIMIT 1");
+        $q->execute(['capability'=>self::CAPABILITY]);$row=$q->fetch();
+        if(!is_array($row))return;
+        $code=null;$summary=null;$expireApproval=false;
+        $now=strtotime($at);$updated=strtotime((string)$row['updated_at']);
+        if(($row['approval_status']??null)==='PENDING'&&strtotime((string)($row['expires_at']??''))!==false&&strtotime((string)$row['expires_at'])<=$now){
+            $code='CORE_RELEASE_APPROVAL_EXPIRED';$summary='คำขอปล่อยรุ่นหมดอายุและถูกปิดอัตโนมัติ';$expireApproval=true;
+        }elseif(($row['approval_status']??null)==='APPROVED'&&($row['task_state']??null)==='WAITING_FOR_WORKER'&&$updated!==false&&$now-$updated>=300&&!$this->coreDispatcherHeartbeatFresh($at)){
+            $code='CORE_RELEASE_DISPATCHER_UNAVAILABLE';$summary='Core Release dispatcher ไม่พร้อมเกินช่วงปลอดภัย ระบบปิดงานค้างอัตโนมัติ';
+        }
+        if($code===null||$summary===null)return;
+        try{
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            if($expireApproval&&is_string($row['approval_id']??null))$this->pdo->prepare("UPDATE control_approvals SET status='EXPIRED' WHERE approval_id=:approval AND status='PENDING'")->execute(['approval'=>$row['approval_id']]);
+            $u=$this->pdo->prepare("UPDATE control_task_executions SET state='FAILED',lease_owner=NULL,lease_expires_at=NULL,last_error_code=:code,updated_at=:at WHERE execution_id=:execution AND state='QUEUED'");
+            $u->execute(['code'=>$code,'at'=>$at,'execution'=>$row['execution_id']]);
+            if($u->rowCount()===1){
+                $this->pdo->prepare("UPDATE control_tasks SET state='FAILED',progress=0,result_summary=:summary,failure_code=:code,lease_expires_at=NULL,updated_at=:at WHERE task_id=:task AND state IN ('WAITING_FOR_APPROVAL','WAITING_FOR_WORKER')")->execute(['summary'=>$summary,'code'=>$code,'at'=>$at,'task'=>$row['task_id']]);
+                $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:event,:task,'FAILED',0,:message,:at)")->execute(['event'=>self::uuid(),'task'=>$row['task_id'],'message'=>$summary.' · '.$code,'at'=>$at]);
+            }
+            $this->pdo->exec('COMMIT');
+        }catch(Throwable){$this->rollback();}
+    }
+
+    private function coreDispatcherHeartbeatFresh(string $at): bool
+    {
+        $table=$this->pdo->prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='control_executor_capabilities'");
+        $table->execute();if($table->fetchColumn()===false)return true;
+        $q=$this->pdo->prepare("SELECT 1 FROM control_executor_capabilities WHERE executor_id='vps-core-release' AND capability=:capability AND expires_at>:at LIMIT 1");
+        $q->execute(['capability'=>self::CAPABILITY,'at'=>$at]);return $q->fetchColumn()!==false;
     }
 
     private function activeRelease(): ?array

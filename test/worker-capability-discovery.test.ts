@@ -73,7 +73,7 @@ test('macOS device runtime discovery exposes provider-neutral inventory only whe
   const home = '/Users/fixture';
   const paths = new Set([
     '/Applications/lnwjud.app/Contents/MacOS/lnwjud',
-    '/Users/fixture/.local/share/bay-remote/node_modules/.bin/desktop-commander',
+    '/Users/fixture/Library/Application Support/AWH/RemoteWorker/runtime/node_modules/.bin/desktop-commander',
   ]);
   const tools = await discoverWorkerTools({
     platform: 'darwin', env: { HOME: home },
