@@ -52,7 +52,7 @@ final class HubCoreReleaseService
                 'updatedAt'=>(string)$row['updated_at'],
             ];
         }
-        return ['schemaVersion'=>1,'capability'=>self::CAPABILITY,'releases'=>$rows,'policy'=>HubTrustPolicy::describe('system.core.release')];
+        return ['schemaVersion'=>1,'capability'=>self::CAPABILITY,'sourcePromotion'=>$this->latestSourcePromotion(),'releases'=>$rows,'policy'=>HubTrustPolicy::describe('system.core.release')];
     }
 
     public function request(string $token,string $csrf,array $payload,?string $now=null): array
@@ -124,6 +124,18 @@ final class HubCoreReleaseService
             ORDER BY e.updated_at DESC LIMIT 1");
         $q->execute(['capability'=>self::CAPABILITY]);$row=$q->fetch();
         return is_array($row)?$row:null;
+    }
+
+    private function latestSourcePromotion(): ?array
+    {
+        $q=$this->pdo->prepare("SELECT checkpoint_json,updated_at FROM control_task_executions WHERE project_id=:project AND required_capability='source.promote' AND state='COMPLETED' ORDER BY updated_at DESC,execution_id DESC LIMIT 1");
+        $q->execute(['project'=>self::PROJECT_ID]);$row=$q->fetch();
+        if(!is_array($row))return null;
+        try{$checkpoint=json_decode((string)$row['checkpoint_json'],true,16,JSON_THROW_ON_ERROR);}catch(Throwable){return null;}
+        if(!is_array($checkpoint)||array_is_list($checkpoint)||($checkpoint['repository']??null)!=='awh')return null;
+        $target=strtolower((string)($checkpoint['targetSha']??''));$base=strtolower((string)($checkpoint['expectedMainSha']??''));
+        if(preg_match('/^[0-9a-f]{40}$/',$target)!==1||preg_match('/^[0-9a-f]{40}$/',$base)!==1)return null;
+        return ['sha'=>$target,'previousSha'=>$base,'authority'=>'SOURCE_PROMOTION_AUDIT','observedAt'=>(string)$row['updated_at']];
     }
 
     private function ready(): void

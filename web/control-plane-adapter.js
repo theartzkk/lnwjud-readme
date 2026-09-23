@@ -308,7 +308,9 @@ export async function loadOwnerSelfServiceStatus() { return controlRequest('/api
 export async function loadInfrastructure() { return controlRequest('/api/v1/control/infrastructure'); }
 export async function loadCoreReleaseStatus() {
   const value = await controlRequest('/api/v1/control/system/releases');
-  if (value.schemaVersion !== 1 || value.capability !== 'system.core.release' || !Array.isArray(value.releases) || !value.policy || typeof value.policy !== 'object') throw new Error('สถานะรุ่นระบบ AWH ไม่ถูกต้อง');
+  const promotion = value?.sourcePromotion;
+  const promotionValid = promotion == null || (promotion && /^[0-9a-f]{40}$/i.test(promotion.sha || '') && /^[0-9a-f]{40}$/i.test(promotion.previousSha || '') && promotion.authority === 'SOURCE_PROMOTION_AUDIT' && typeof promotion.observedAt === 'string');
+  if (value.schemaVersion !== 1 || value.capability !== 'system.core.release' || !promotionValid || !Array.isArray(value.releases) || !value.policy || typeof value.policy !== 'object') throw new Error('สถานะรุ่นระบบ AWH ไม่ถูกต้อง');
   return value;
 }
 export async function requestCoreRelease(releaseSha, cleanupTopology = false) {

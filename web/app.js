@@ -16,7 +16,6 @@ import {
   const MAX_ATTACHMENT_BYTES = 60 * 1024 * 1024;
   const CANCELLABLE_TASK_STATES = new Set(['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL']);
   const MICRO_BAHT = 1000000;
-  const AWH_PROJECT_ID = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
   const DESKTOP_PACKAGES = [['downloads/AWH-macOS-arm64.zip', 'macOS Apple Silicon', 'mac-arm64'], ['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac-intel'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
   const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, coreReleases: null, infrastructure: null, people: [], accountRequests: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
   const pendingBrandAssets = { logo: undefined, icon: undefined };
@@ -655,16 +654,16 @@ import {
     const host = $('core-release-current'); const history = $('core-release-history'); const input = $('core-release-sha'); const dot = $('core-release-dot');
     if (!host || !history || !input) return;
     const deployment = state.infrastructure?.deployment || {};
-    const project = Array.isArray(state.infrastructure?.projects) ? state.infrastructure.projects.find((item) => item?.projectId === AWH_PROJECT_ID) : null;
+    const promotion = state.coreReleases?.sourcePromotion || null;
     const productionSha = typeof deployment.controlSourceSha === 'string' && /^[0-9a-f]{40}$/i.test(deployment.controlSourceSha) ? deployment.controlSourceSha.toLowerCase() : null;
-    const sourceSha = typeof project?.sourceRevision === 'string' && /^[0-9a-f]{40}$/i.test(project.sourceRevision) ? project.sourceRevision.toLowerCase() : null;
+    const sourceSha = typeof promotion?.sha === 'string' && /^[0-9a-f]{40}$/i.test(promotion.sha) ? promotion.sha.toLowerCase() : null;
     const matched = deployment.sourceState === 'MATCHED' && deployment.pointersMatch === true;
     if (dot) dot.classList.toggle('attention', !matched);
     message('core-release-summary', matched ? `Production ${deployment.controlReleaseId || deployment.releaseId || '—'} · Control/Web ตรงกัน` : 'Production ยังยืนยัน Control/Web ให้ตรงกันไม่ได้');
     host.replaceChildren();
     for (const [label, value] of [
       ['Production', `${deployment.controlReleaseId || deployment.releaseId || '—'} · Source ${coreReleaseShortSha(productionSha)}`],
-      ['Source Authority', sourceSha ? `${coreReleaseShortSha(sourceSha)}${sourceSha === productionSha ? ' · ตรงกับ Production' : ' · มีรุ่นใหม่กว่า Production'}` : 'ยังไม่มี Source SHA ที่ยืนยันได้'],
+      ['Source Authority', sourceSha ? `${coreReleaseShortSha(sourceSha)}${sourceSha === productionSha ? ' · ตรงกับ Production' : ' · มีรุ่นใหม่กว่า Production'}${promotion?.observedAt ? ` · ยืนยัน ${date(promotion.observedAt)}` : ''}` : 'ยังไม่มี Source Promotion ที่ยืนยันได้ · กรอก SHA เองได้'],
       ['Rollback', deployment.rollbackReleaseId || 'ยังไม่มีข้อมูล rollback point'],
     ]) {
       const row = document.createElement('div'); row.className = 'session-item';

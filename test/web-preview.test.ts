@@ -379,6 +379,10 @@ test('Owner System settings exposes bounded VPS-native core release control with
   assert.match(app, /withPrivilegedRetry\(\(\) => requestCoreRelease/);
   assert.match(app, /decideApproval\(release\.approvalId, decision\)/);
   assert.match(app, /loadInfrastructure\(\)/);
+  assert.match(app, /state\.coreReleases\?\.sourcePromotion/);
+  assert.doesNotMatch(app, /AWH_PROJECT_ID/);
+  assert.match(service, /SOURCE_PROMOTION_AUDIT/);
+  assert.match(service, /required_capability='source\.promote'/);
   assert.match(service, /'deployment\.approve'/);
   assert.match(service, /'risk'=>'CRITICAL'/);
   assert.match(service, /'transport'=>'LOCAL'/);
