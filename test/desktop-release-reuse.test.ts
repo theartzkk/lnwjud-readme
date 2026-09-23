@@ -58,7 +58,6 @@ test('web release can carry verified production desktop lineage without local ZI
     assert.equal(manifest.desktopReleases.length, 3);
     const intel = manifest.desktopReleases.find((x: any) => x.path === 'downloads/AWH-macOS-x64.zip');
     assert.equal(intel.packageVerification, 'VERIFIED');
-    assert.equal(intel.platformTrust, 'ADHOC_INTERNAL_ONLY');
     assert.equal(intel.sourceSha, 'b'.repeat(40));
     assert.equal(manifest.files.find((x: any) => x.path === 'downloads/AWH-Windows-x64.zip').sha256, '2'.repeat(64));
     await assert.rejects(readFile(join(root, 'dist-web', 'downloads', 'AWH-Windows-x64.zip')));
@@ -92,7 +91,6 @@ test('verified macOS arm64 overlay can join reused Intel and Windows lineage on 
     });
     const manifest = JSON.parse(await readFile(join(root, 'dist-web', 'release.json'), 'utf8'));
     const arm = manifest.desktopReleases.find((x: any) => x.path === 'downloads/AWH-macOS-arm64.zip');
-    assert.equal(arm.platformTrust, 'ADHOC_INTERNAL_ONLY');
     assert.equal(manifest.desktopReleases.length, 3);
     assert.equal(arm.sourceSha, 'f'.repeat(40));
     assert.equal(arm.packageSha256, armHash);

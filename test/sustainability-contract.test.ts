@@ -96,7 +96,6 @@ test('desktop release evidence is deterministic, exact-revision-bound, and never
     assert.equal(evidence.sizeBytes, payload.length);
     assert.equal(evidence.downloadKey, 'AWH-Windows-x64.zip');
     assert.equal(evidence.packageVerification, 'VERIFIED');
-    assert.equal(evidence.platformTrust, 'PACKAGE_VERIFIED');
     assert.equal(evidence.publicationState, 'NOT_PUBLISHED');
     assert.equal(evidence.updaterStatus, 'FOUNDATION_LOCKED_NOT_ACTIVATED');
     assert.equal('releaseId' in evidence, false);
@@ -112,7 +111,6 @@ test('desktop release evidence is deterministic, exact-revision-bound, and never
     const macArmEvidence = JSON.parse(await readFile(macArmOutput, 'utf8'));
     assert.equal(macArmEvidence.architecture, 'arm64');
     assert.equal(macArmEvidence.downloadKey, 'AWH-macOS-arm64.zip');
-    assert.equal(macArmEvidence.platformTrust, 'ADHOC_INTERNAL_ONLY');
     await assert.rejects(invoke(join(dir, 'bad-sha.json'), 'not-a-sha'), /DESKTOP_RELEASE_EVIDENCE_INVALID/);
   } finally {
     await rm(dir, { recursive: true, force: true });

@@ -42,8 +42,7 @@ function baseDesktopRelease(entry) {
   if (matches.length !== 1) throw new Error(`Verified desktop package provenance is missing or ambiguous: ${entry.path}`);
   const evidence = matches[0];
   if (evidence.packageVerification !== 'VERIFIED' || !/^[0-9a-f]{40}$/.test(evidence.sourceSha ?? '') || evidence.packageSha256 !== entry.sha256 || evidence.sizeBytes !== entry.sizeBytes || typeof evidence.productVersion !== 'string' || evidence.productVersion.trim() === '') throw new Error(`Verified desktop package provenance is invalid: ${entry.path}`);
-  const platformTrust = typeof evidence.platformTrust === 'string' ? evidence.platformTrust : (entry.path.includes('macOS') ? 'ADHOC_INTERNAL_ONLY' : 'PACKAGE_VERIFIED');
-  return { path: entry.path, sourceSha: evidence.sourceSha, productVersion: evidence.productVersion, packageSha256: entry.sha256, sizeBytes: entry.sizeBytes, packageVerification: 'VERIFIED', platformTrust };
+  return { path: entry.path, sourceSha: evidence.sourceSha, productVersion: evidence.productVersion, packageSha256: entry.sha256, sizeBytes: entry.sizeBytes, packageVerification: 'VERIFIED' };
 }
 
 const desktopReleases = [];
@@ -83,8 +82,7 @@ for (const entry of entries.filter(item => item.path.endsWith('.zip'))) {
   try { evidence = JSON.parse(await readFile(join(input, evidencePath), 'utf8')); }
   catch { throw new Error(`Desktop package provenance is missing: ${entry.path}`); }
   if (evidence.kind !== 'AWH_DESKTOP_RELEASE_EVIDENCE' || evidence.authority !== 'CI_PACKAGE_EVIDENCE_ONLY' || evidence.packageVerification !== 'VERIFIED' || !/^[0-9a-f]{40}$/.test(evidence.sourceSha ?? '') || evidence.packageSha256 !== entry.sha256 || evidence.sizeBytes !== entry.sizeBytes || evidence.downloadKey !== entry.path.split('/').at(-1)) throw new Error(`Desktop package provenance is invalid: ${entry.path}`);
-  const platformTrust = typeof evidence.platformTrust === 'string' ? evidence.platformTrust : (entry.path.includes('macOS') ? 'ADHOC_INTERNAL_ONLY' : 'PACKAGE_VERIFIED');
-  desktopReleases.push({ path: entry.path, sourceSha: evidence.sourceSha, productVersion: evidence.productVersion, packageSha256: entry.sha256, sizeBytes: entry.sizeBytes, packageVerification: 'VERIFIED', platformTrust });
+  desktopReleases.push({ path: entry.path, sourceSha: evidence.sourceSha, productVersion: evidence.productVersion, packageSha256: entry.sha256, sizeBytes: entry.sizeBytes, packageVerification: 'VERIFIED' });
 }
 const mode = config.mode;
 if (!['STATIC_PREVIEW', 'HUB_READ', 'CONTROL'].includes(mode)) throw new Error('Web release mode is invalid');
