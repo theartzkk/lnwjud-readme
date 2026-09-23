@@ -101,6 +101,10 @@ test('lightweight AWH Device Runtime is pinned, self-updating and rollback-safe'
   assert.match(supervisor, /UPDATE_INTERVAL=21600/);
   assert.match(installer, /EXPECTED=0\.2\.51/);
   assert.match(installer, /awh-runtime-update\.sh/);
+  assert.match(installer, /\.local\/share\/bay-remote\/node_modules\/\.bin\/desktop-commander/);
+  assert.match(updater, /\.local\/share\/bay-remote\/node_modules\/\.bin\/desktop-commander/);
+  assert.match(installer, /ensure_compat_bin/);
+  assert.match(updater, /ensure_compat_bin/);
   assert.match(patch, /DC_REMOTE_DEVICE/);
   assert.match(patch, /previewForRemoteLog/);
 });

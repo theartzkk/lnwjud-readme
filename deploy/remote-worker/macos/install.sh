@@ -5,9 +5,23 @@ case "$MODE" in --prepare|--activate) ;; *) echo 'usage: install.sh [--prepare|-
 HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 ROOT="$HOME/Library/Application Support/AWH/RemoteWorker"
 RUNTIME="$ROOT/runtime"
+COMPAT_BIN="$HOME/.local/share/bay-remote/node_modules/.bin/desktop-commander"
 PKG="$RUNTIME/node_modules/@wonderwhy-er/desktop-commander"
 PLIST="$HOME/Library/LaunchAgents/com.awh.remote-worker.plist"
 EXPECTED=0.2.51
+
+ensure_compat_bin() {
+  local target="$RUNTIME/node_modules/.bin/desktop-commander"
+  local parent
+  parent="$(dirname "$COMPAT_BIN")"
+  mkdir -p "$parent"
+  if [ -L "$COMPAT_BIN" ]; then
+    rm -f "$COMPAT_BIN"
+    ln -s "$target" "$COMPAT_BIN"
+  elif [ ! -e "$COMPAT_BIN" ]; then
+    ln -s "$target" "$COMPAT_BIN"
+  fi
+}
 mkdir -p "$RUNTIME" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
 if [ ! -f "$RUNTIME/package.json" ]; then
   cat > "$RUNTIME/package.json" <<EOF
@@ -28,6 +42,7 @@ else
 fi
 install -m 0700 "$HERE/awh-remote-worker.sh" "$ROOT/awh-remote-worker.sh"
 install -m 0700 "$HERE/awh-runtime-update.sh" "$ROOT/awh-runtime-update.sh"
+ensure_compat_bin
 sed "s|__HOME__|$HOME|g" "$HERE/com.awh.remote-worker.plist.template" > "$PLIST.tmp"
 plutil -lint "$PLIST.tmp" >/dev/null
 mv "$PLIST.tmp" "$PLIST"

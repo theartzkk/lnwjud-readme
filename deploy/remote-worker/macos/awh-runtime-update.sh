@@ -2,10 +2,24 @@
 set -euo pipefail
 ROOT="${AWH_REMOTE_ROOT:-$HOME/Library/Application Support/AWH/RemoteWorker}"
 RUNTIME="$ROOT/runtime"
+COMPAT_BIN="$HOME/.local/share/bay-remote/node_modules/.bin/desktop-commander"
 BASE="${AWH_RUNTIME_BASE_URL:-https://kruart.online}"
 LOCK="$ROOT/.update.lock"
 TMP="$ROOT/.update.$$"
 LOG="$HOME/Library/Logs/AWH-Remote-Worker.log"
+
+ensure_compat_bin() {
+  local target="$RUNTIME/node_modules/.bin/desktop-commander"
+  local parent
+  parent="$(dirname "$COMPAT_BIN")"
+  mkdir -p "$parent"
+  if [ -L "$COMPAT_BIN" ]; then
+    rm -f "$COMPAT_BIN"
+    ln -s "$target" "$COMPAT_BIN"
+  elif [ ! -e "$COMPAT_BIN" ]; then
+    ln -s "$target" "$COMPAT_BIN"
+  fi
+}
 mkdir -p "$ROOT" "$HOME/Library/Logs"
 cleanup(){ rm -rf "$TMP" 2>/dev/null || true; rmdir "$LOCK" 2>/dev/null || true; }
 if ! mkdir "$LOCK" 2>/dev/null; then
@@ -27,7 +41,7 @@ NODE
 VERSION="$(node -p "require('$TMP/manifest.json').version")"
 INTEGRITY="$(node -p "require('$TMP/manifest.json').npmIntegrity")"
 CURRENT="$(node -e 'try{process.stdout.write(require(process.argv[1]).version)}catch{}' "$RUNTIME/node_modules/@wonderwhy-er/desktop-commander/package.json" 2>/dev/null || true)"
-[ "$CURRENT" != "$VERSION" ] || { echo "AWH_DEVICE_RUNTIME=CURRENT version=$VERSION"; exit 0; }
+if [ "$CURRENT" = "$VERSION" ]; then ensure_compat_bin; echo "AWH_DEVICE_RUNTIME=CURRENT version=$VERSION"; exit 0; fi
 for asset in device-runtime/runtime-hardening.patch device-runtime/macos/awh-remote-worker.sh device-runtime/macos/awh-runtime-update.sh; do
   mkdir -p "$TMP/$(dirname "$asset")"
   curl -fsSL --proto '=https' --tlsv1.2 "$BASE/$asset" -o "$TMP/$asset"
@@ -53,6 +67,7 @@ rm -rf "$PREV"
 if ! mv "$STAGE" "$RUNTIME"; then [ ! -d "$PREV" ] || mv "$PREV" "$RUNTIME"; exit 43; fi
 install -m 0700 "$TMP/device-runtime/macos/awh-remote-worker.sh" "$ROOT/awh-remote-worker.sh"
 install -m 0700 "$TMP/device-runtime/macos/awh-runtime-update.sh" "$ROOT/awh-runtime-update.sh"
+ensure_compat_bin
 pkill -f "desktop-commander remote" 2>/dev/null || true
 printf '%s\n' "$(date '+%Y-%m-%dT%H:%M:%S') AWH Device Runtime updated ${CURRENT:-none} -> $VERSION" >> "$LOG"
 printf '%s\n' "AWH_DEVICE_RUNTIME=UPDATED from=${CURRENT:-none} to=$VERSION"
