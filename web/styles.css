@@ -616,3 +616,14 @@ body.work-active .capability-plan[open]{padding:8px 10px}
 .web-app-entry{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:grid;gap:7px}
 .web-app-entry .secondary-button{justify-self:start}
 .web-app-entry small{color:var(--muted);font-size:.72rem;line-height:1.5}
+
+/* PWA install entry is intentionally visible on the authenticated Home surface. */
+.owner-install-row { border-color: color-mix(in srgb, var(--accent) 32%, var(--line)); background: var(--surface); }
+.owner-install-row .owner-quick-icon { background: #fff; }
+.install-guide-card { max-width: 520px; }
+.install-guide-steps { display: grid; gap: 12px; margin: 18px 0; padding: 0; list-style: none; counter-reset: install-step; }
+.install-guide-steps li { counter-increment: install-step; display: grid; grid-template-columns: 34px 1fr; column-gap: 10px; align-items: start; padding: 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.install-guide-steps li::before { content: counter(install-step); display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; font-weight: 800; background: var(--accent); color: #fff; grid-row: 1 / span 2; }
+.install-guide-steps strong { font-size: .95rem; }
+.install-guide-steps span { color: var(--muted); font-size: .82rem; line-height: 1.45; margin-top: 2px; }
+.install-guide-done { width: 100%; }

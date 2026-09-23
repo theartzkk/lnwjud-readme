@@ -61,19 +61,55 @@ import {
   }
   let pendingPrivilegedAction = null;
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => undefined);
+  function webAppStandalone() {
+    return window.matchMedia?.('(display-mode: standalone)')?.matches === true || navigator.standalone === true;
+  }
+  function installButtons() { return Array.from(document.querySelectorAll('[data-install-web-app]')); }
+  function syncInstallButtons() {
+    const installed = webAppStandalone();
+    for (const button of installButtons()) button.hidden = installed;
+    if (installed) message('install-web-app-note', 'AWH เปิดอยู่ในโหมด Web App แล้ว');
+  }
+  function showInstallGuide() {
+    const ua = navigator.userAgent || '';
+    const copy = $('install-guide-copy');
+    const steps = $('install-guide-steps');
+    if (/iPhone|iPad|iPod/.test(ua)) {
+      if (copy) copy.textContent = 'บน iPhone/iPad ให้เพิ่ม AWH ไปยังหน้าจอโฮมจากเมนูแชร์ของ Safari';
+      if (steps) steps.innerHTML = '<li><strong>แตะปุ่ม แชร์ ↑</strong><span>ที่แถบเครื่องมือของ Safari</span></li><li><strong>เลือก “เพิ่มไปยังหน้าจอโฮม”</strong><span>Add to Home Screen</span></li><li><strong>แตะ “เพิ่ม”</strong><span>แล้วเปิด AWH จากไอคอนบนหน้าจอโฮม</span></li>';
+    } else if (/Macintosh/.test(ua)) {
+      if (copy) copy.textContent = 'บน Safari สำหรับ Mac ให้เพิ่ม AWH ไปยัง Dock เพื่อเปิดเป็นหน้าต่างแอปแยก';
+      if (steps) steps.innerHTML = '<li><strong>เปิดเมนู File</strong><span>จากแถบเมนู Safari</span></li><li><strong>เลือก “Add to Dock…”</strong><span>ตั้งชื่อ AWH ตามต้องการ</span></li><li><strong>กด Add</strong><span>แล้วเปิดจาก Dock หรือ Launchpad ได้เลย</span></li>';
+    } else {
+      if (copy) copy.textContent = 'เบราว์เซอร์นี้ยังไม่เปิด native install prompt ให้ AWH ใช้เมนูของเบราว์เซอร์เพื่อ “Install app” หรือ “Add to Home Screen”';
+    }
+    openSheet('install-guide-sheet');
+  }
+  async function installWebApp() {
+    if (webAppStandalone()) return;
+    if (!deferredInstallPrompt) { showInstallGuide(); return; }
+    const buttons = installButtons();
+    for (const button of buttons) button.disabled = true;
+    try {
+      await deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+    } finally {
+      deferredInstallPrompt = null;
+      for (const button of buttons) button.disabled = false;
+      syncInstallButtons();
+    }
+  }
   window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault(); deferredInstallPrompt = event;
-    const button = $('install-web-app'); if (button) button.hidden = false;
+    syncInstallButtons();
     message('install-web-app-note', 'ติดตั้ง AWH เป็นแอปจากเว็บได้ · ไม่ต้องลง AWH Agent');
   });
   window.addEventListener('appinstalled', () => {
-    deferredInstallPrompt = null; const button = $('install-web-app'); if (button) button.hidden = true;
+    deferredInstallPrompt = null;
+    syncInstallButtons();
     message('install-web-app-note', 'AWH ถูกติดตั้งเป็น Web App บนอุปกรณ์นี้แล้ว');
   });
-  {
-    const button = $('install-web-app');
-    if (button && /(Macintosh|iPhone|iPad)/.test(navigator.userAgent)) button.hidden = false;
-  }
+  syncInstallButtons();
 
   function message(id, value = '') { const node = $(id); if (node) node.textContent = value; }
   function safeText(value, fallback = '') { return typeof value === 'string' && value.trim() ? value.trim() : fallback; }
@@ -1887,16 +1923,7 @@ import {
     } catch (error) { message('core-release-message', error instanceof Error ? error.message : 'ยังสร้างคำขอปล่อยรุ่นไม่ได้'); }
     finally { button.disabled = false; }
   });
-  $('install-web-app')?.addEventListener('click', async () => {
-    const button = $('install-web-app');
-    if (!deferredInstallPrompt) {
-      message('install-web-app-note', /Macintosh/.test(navigator.userAgent) ? 'บน Safari ให้เลือก File → Add to Dock เพื่อใช้ AWH แบบแอป' : 'ใช้เมนูของเบราว์เซอร์เพื่อเพิ่ม AWH ไปยังหน้าจอหลัก/ติดตั้งเป็นแอป');
-      return;
-    }
-    button.disabled = true;
-    try { await deferredInstallPrompt.prompt(); await deferredInstallPrompt.userChoice; }
-    finally { deferredInstallPrompt = null; button.disabled = false; button.hidden = true; }
-  });
+  installButtons().forEach((button) => button.addEventListener('click', installWebApp));
   $('recovery-open').addEventListener('click', openPasswordRecovery);
   document.querySelectorAll('[data-close-sheet]').forEach((button) => button.addEventListener('click', () => closeSheet(button.dataset.closeSheet)));
 

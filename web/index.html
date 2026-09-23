@@ -133,7 +133,7 @@
           <button class="primary-button" type="submit">เข้าสู่ AWH</button><p id="login-message" class="form-message" role="status"></p>
           <div class="auth-secondary-actions"><button id="registration-open" class="secondary-button" type="button">สมัครขอใช้งาน</button><button id="recovery-open" class="text-button" type="button">ลืมรหัสผ่าน?</button></div>
           <div class="web-app-entry" aria-label="ใช้ AWH แบบแอป">
-            <button id="install-web-app" class="secondary-button" type="button">ติดตั้ง AWH บนอุปกรณ์นี้</button>
+            <button id="install-web-app" class="secondary-button" type="button" data-install-web-app>ติดตั้ง AWH บนอุปกรณ์นี้</button>
             <small id="install-web-app-note">AWH ใช้งานผ่านเว็บได้ทันที · ไม่ต้องติดตั้งโปรแกรมเพื่อเริ่มใช้งาน</small>
           </div>
         </form>
@@ -162,6 +162,7 @@
         <section class="owner-quick-panel" aria-labelledby="owner-quick-title">
           <div class="owner-section-title"><div><span>QUICK ACCESS</span><h2 id="owner-quick-title">ทางลัดวันนี้</h2></div></div>
           <div class="owner-quick-list">
+            <button id="install-web-app-home" type="button" class="owner-quick-row owner-install-row" data-install-web-app><span class="owner-quick-icon"><img src="./brand-kruart-workspace.webp?release=__AWH_WEB_RELEASE_ID__" alt="" loading="eager" decoding="async" /></span><span><strong>ติดตั้ง AWH บนอุปกรณ์นี้</strong><small>เพิ่มไปที่หน้าจอโฮมหรือ Dock · ไม่ต้องลง AWH Agent</small></span><b>ติดตั้ง ›</b></button>
             <button id="ecosystem-open-awh" type="button" class="owner-quick-row"><span class="owner-quick-icon"><img src="./brand-awh.webp?release=__AWH_WEB_RELEASE_ID__" alt="" loading="eager" decoding="async" /></span><span><strong>เริ่มทำงาน</strong><small>คุย สั่งงาน และทำต่อจากล่าสุด</small></span><b>เปิด ›</b></button>
             <a class="owner-quick-row" href="https://learn.kruart.online/"><span class="owner-quick-icon"><img src="./logo-bay-learnlab.webp?release=__AWH_WEB_RELEASE_ID__" alt="" loading="eager" decoding="async" /></span><span><strong>เปิด LearnLab</strong><small>ห้องเรียนและการเรียนรู้</small></span><b>เปิด ›</b></a>
             <a class="owner-quick-row" href="https://learn.kruart.online/learnlab/teacher/worksheet-studio.php"><span class="owner-quick-icon"><img src="./bay-icon-apps.svg" alt="" loading="eager" decoding="async" /></span><span><strong>สร้างใบงานดิจิทัล</strong><small>Worksheet Studio สำหรับครู</small></span><b>สร้าง ›</b></a>
@@ -299,6 +300,21 @@
         <section class="account-form"><div class="section-title-row"><div><h3>คำขอใช้งาน</h3><p class="muted">ผู้สมัครตั้งรหัสผ่านเอง แต่จะยังเข้า AWH ไม่ได้จนกว่าคุณจะอนุมัติ</p></div><span id="account-request-count" class="quiet-status"></span></div><div id="account-request-list" class="session-list"></div></section>
         <section class="account-form"><h3>ผู้ใช้งาน</h3><div id="people-list" class="session-list"></div></section>
       </section></div></section>
+
+    <section id="install-guide-sheet" class="sheet install-guide-sheet" hidden aria-modal="true" role="dialog" aria-labelledby="install-guide-title">
+      <div class="sheet-backdrop" data-close-sheet="install-guide-sheet"></div>
+      <div class="sheet-card install-guide-card">
+        <div class="sheet-header"><div><p class="eyebrow">INSTALL AWH</p><h2 id="install-guide-title">ติดตั้ง AWH บนอุปกรณ์นี้</h2></div><button class="icon-button" type="button" data-close-sheet="install-guide-sheet" aria-label="ปิด">ปิด</button></div>
+        <p id="install-guide-copy" class="muted">เพิ่ม AWH ไปยังหน้าจอโฮมหรือ Dock เพื่อเปิดใช้งานเหมือนแอป โดยไม่ต้องติดตั้ง AWH Agent</p>
+        <ol id="install-guide-steps" class="install-guide-steps">
+          <li><strong>แตะปุ่ม แชร์ ↑</strong><span>ที่แถบเครื่องมือของ Safari</span></li>
+          <li><strong>เลือก “เพิ่มไปยังหน้าจอโฮม”</strong><span>Add to Home Screen</span></li>
+          <li><strong>แตะ “เพิ่ม”</strong><span>จากนั้นเปิด AWH จากไอคอนบนหน้าจอโฮมได้เลย</span></li>
+        </ol>
+        <p class="settings-policy-note"><strong>ปลอดภัยกว่า</strong><span>วิธีนี้ใช้ Web App/PWA โดยตรง จึงไม่ผ่าน Gatekeeper และไม่ต้องติดตั้งไฟล์ .app บนเครื่อง</span></p>
+        <button class="primary-button install-guide-done" type="button" data-close-sheet="install-guide-sheet">เข้าใจแล้ว</button>
+      </div>
+    </section>
 
     <section id="registration-sheet" class="sheet" hidden aria-modal="true" role="dialog" aria-labelledby="registration-sheet-title"><div class="sheet-backdrop" data-close-sheet="registration-sheet"></div><div class="sheet-card"><div class="sheet-header"><div><p class="eyebrow">REQUEST ACCESS</p><h2 id="registration-sheet-title">สมัครขอใช้งาน AWH</h2></div><button class="icon-button" type="button" data-close-sheet="registration-sheet" aria-label="ปิด">ปิด</button></div><p class="muted">สำหรับครู ผู้บริหาร บุคลากร หรือผู้ร่วมงานที่โรงเรียนอนุมัติ ผู้ปกครองใช้ BAY Parent Connect และนักเรียนใช้ BAY LearnLab โดยไม่ต้องสร้างบัญชี AWH ซ้ำ</p><form id="registration-form" class="compact-form"><label for="registration-name">ชื่อ–นามสกุล</label><input id="registration-name" maxlength="80" autocomplete="name" required /><label for="registration-username">ชื่อผู้ใช้ที่ต้องการ</label><input id="registration-username" maxlength="63" autocomplete="username" required /><label for="registration-password">รหัสผ่าน</label><input id="registration-password" type="password" minlength="8" autocomplete="new-password" required /><label for="registration-confirm">ยืนยันรหัสผ่าน</label><input id="registration-confirm" type="password" minlength="8" autocomplete="new-password" required /><label for="registration-type">คุณเป็นใคร</label><select id="registration-type"><option value="TEACHER">ครู</option><option value="DIRECTOR">ผู้บริหาร</option><option value="STAFF">บุคลากร</option><option value="OTHER">อื่น ๆ</option></select><label for="registration-email">อีเมล (ถ้ามี)</label><input id="registration-email" type="email" autocomplete="email" /><label for="registration-phone">เบอร์โทร (ถ้ามี)</label><input id="registration-phone" inputmode="tel" autocomplete="tel" /><label for="registration-area">ต้องการใช้ระบบอะไร</label><input id="registration-area" maxlength="120" placeholder="เช่น AWH, ระบบดูแลช่วยเหลือนักเรียน" /><label for="registration-note">รายละเอียดเพิ่มเติม (ถ้ามี)</label><textarea id="registration-note" maxlength="500" rows="3"></textarea><button class="primary-button" type="submit">ส่งคำขอใช้งาน</button><p id="registration-message" class="form-message" role="status"></p></form></div></section>
 
