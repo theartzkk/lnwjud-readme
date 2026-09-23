@@ -64,6 +64,7 @@ const evidence = {
   sizeBytes: packageStat.size,
   downloadKey: expectedName,
   packageVerification: 'VERIFIED',
+  platformTrust: args.platform === 'darwin' ? 'ADHOC_INTERNAL_ONLY' : 'PACKAGE_VERIFIED',
   publicationState: 'NOT_PUBLISHED',
   updaterStatus: 'FOUNDATION_LOCKED_NOT_ACTIVATED',
 };
