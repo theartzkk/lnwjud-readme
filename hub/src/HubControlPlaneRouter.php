@@ -84,6 +84,7 @@ final class HubControlPlaneRouter
                 if (preg_match('#^/api/v1/control/projects/(' . self::UUID . ')/vault$#i', $path, $match) === 1) return self::response(200, $service->projectVault($sessionToken, $match[1]) + ['requestId' => $requestId], $headers);
                 if (preg_match('#^/api/v1/control/projects/(' . self::UUID . ')/source$#i', $path, $match) === 1) return self::response(200, $service->projectSourceAuthority($sessionToken, $match[1]) + ['requestId' => $requestId], $headers);
                 if ($path === '/api/v1/control/system/releases') return self::response(200, $service->coreReleaseStatusForSession($sessionToken) + ['requestId' => $requestId], $headers);
+                if ($path === '/api/v1/control/updates') return self::response(200, $service->updateCenterForSession($sessionToken) + ['requestId' => $requestId], $headers);
                 if ($path === '/api/v1/control/system/readiness') return self::response(200, $service->systemReadiness($sessionToken) + ['requestId' => $requestId], $headers);
                 if ($path === '/api/v1/control/capabilities') return self::response(200, $service->capabilityStatus($sessionToken) + ['requestId' => $requestId], $headers);
                 // Keep the M6 project route stable for already-packaged desktop

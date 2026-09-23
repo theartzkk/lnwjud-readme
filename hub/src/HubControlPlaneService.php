@@ -44,6 +44,7 @@ require_once __DIR__ . '/HubVaultSourceAuthorityMigration.php';
 require_once __DIR__ . '/HubProjectSourceAuthorityService.php';
 require_once __DIR__ . '/HubProjectSourceSyncService.php';
 require_once __DIR__ . '/HubAiPassProjectExportService.php';
+require_once __DIR__ . '/HubUpdateTargetRegistry.php';
 
 final class HubControlPlaneException extends RuntimeException
 {
@@ -203,6 +204,132 @@ final class HubControlPlaneService
         try { return $this->coreReleases->status($sessionToken); }
         catch (HubCoreReleaseException $error) { throw new HubControlPlaneException('Core release request was rejected',$error->codeName); }
     }
+    public function updateCenterForSession(string $sessionToken, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now);
+        $userId = (string) $session['user_id'];
+        $this->assertOwner($userId);
+
+        $projects = $this->projectsForUser($userId);
+        try { $core = $this->coreReleases->status($sessionToken); }
+        catch (Throwable) { $core = ['schemaVersion'=>1,'sourcePromotion'=>null,'releases'=>[]]; }
+        $release = HubInfrastructureService::releaseState();
+        try { $hosting = $this->hosting->sites($sessionToken); }
+        catch (Throwable) { $hosting = ['schemaVersion'=>1,'sites'=>[]]; }
+        $workers = $this->workersForUser($userId);
+
+        $items = [];
+        $covered = [];
+        $production = is_string($release['controlSourceSha'] ?? null) ? (string) $release['controlSourceSha'] : null;
+        $candidate = is_array($core['sourcePromotion'] ?? null) && is_string($core['sourcePromotion']['sha'] ?? null)
+            ? strtolower((string) $core['sourcePromotion']['sha']) : null;
+        $activeCore = null;
+        foreach ((array) ($core['releases'] ?? []) as $row) {
+            if (!is_array($row) || !is_string($row['releaseSha'] ?? null)) continue;
+            if ($candidate !== null && !hash_equals($candidate, strtolower((string) $row['releaseSha']))) continue;
+            if (in_array((string) ($row['taskState'] ?? ''), ['COMPLETED','FAILED','CANCELLED'], true)) continue;
+            $activeCore = $row;
+            break;
+        }
+        $awhState = $candidate !== null && $production !== null && !hash_equals($candidate, $production) ? 'UPDATE_AVAILABLE' : 'CURRENT';
+        if (is_array($activeCore)) $awhState = (string) ($activeCore['approvalStatus'] ?? '') === 'PENDING' ? 'WAITING_FOR_APPROVAL' : 'UPDATING';
+        $items[] = [
+            'key'=>'awh-core','projectId'=>'113b45c0-23e1-408d-ae0f-ac5eca7f6900','name'=>'Art’s Workspace Hub',
+            'kind'=>'CORE','adapter'=>'CORE_RELEASE','state'=>$awhState,'current'=>$production,'candidate'=>$candidate,
+            'approvalRequired'=>true,'approvalId'=>is_array($activeCore) && is_string($activeCore['approvalId'] ?? null) ? $activeCore['approvalId'] : null,
+            'actionable'=>in_array($awhState,['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'],true),
+            'reason'=>$awhState==='CURRENT' ? 'Production ตรงกับ Source Authority ล่าสุด' : ($awhState==='WAITING_FOR_APPROVAL' ? 'ผ่าน verification boundary แล้วและรอ Owner อนุมัติ' : 'มี Source ใหม่พร้อมเข้าสู่ Core Release'),
+        ];
+        $covered['113b45c0-23e1-408d-ae0f-ac5eca7f6900'] = true;
+
+        foreach ((array) ($hosting['sites'] ?? []) as $site) {
+            if (!is_array($site) || !is_string($site['projectId'] ?? null)) continue;
+            $projectId = (string) $site['projectId'];
+            $covered[$projectId] = true;
+            $source = is_array($site['source'] ?? null) ? $site['source'] : [];
+            $activeRevision = is_string($source['revisionId'] ?? null) ? (string) $source['revisionId'] : null;
+            $deployedRevision = is_string($site['currentSourceRevisionId'] ?? null) ? (string) $site['currentSourceRevisionId'] : null;
+            $state = 'CURRENT';
+            $reason = 'Production ใช้ Project Vault รุ่นล่าสุด';
+            if (($source['ready'] ?? false) !== true) {
+                $state = 'BLOCKED'; $reason = 'Project Source ยังไม่พร้อม Deploy';
+            } elseif (($site['currentReleaseId'] ?? null) === null) {
+                $state = 'UPDATE_AVAILABLE'; $reason = 'Source พร้อมและยังไม่มี Production release';
+            } elseif ($deployedRevision === null || !hash_equals((string) ($activeRevision ?? ''), $deployedRevision)) {
+                $state = 'UPDATE_AVAILABLE'; $reason = 'Project Vault มี revision ใหม่กว่ารุ่นที่เผยแพร่';
+            } elseif (!in_array((string) ($site['state'] ?? ''), ['READY','DRAFT'], true)) {
+                $state = 'UPDATING'; $reason = 'Hosting กำลังดำเนินการ';
+            }
+            $items[] = [
+                'key'=>'hosting-'.(string)$site['siteId'],'projectId'=>$projectId,'name'=>(string)($site['name'] ?? $site['projectName'] ?? 'เว็บไซต์'),
+                'kind'=>'HOSTING','adapter'=>'MANAGED_HOSTING','state'=>$state,'current'=>$deployedRevision,'candidate'=>$activeRevision,
+                'approvalRequired'=>false,'siteId'=>(string)$site['siteId'],'actionable'=>$state==='UPDATE_AVAILABLE','reason'=>$reason,'url'=>$site['url'] ?? null,
+            ];
+        }
+
+        foreach ($projects as $project) {
+            $projectId = (string) $project['projectId'];
+            if (isset($covered[$projectId]) || ($project['projectClass'] ?? 'PRODUCTION') !== 'PRODUCTION') continue;
+            $name = (string) $project['name'];
+            if ($name === 'BAY EXCUSE X') {
+                $items[] = [
+                    'key'=>'bay-excuse','projectId'=>$projectId,'name'=>$name,'kind'=>'SYSTEM','adapter'=>'BAY_UPDATE_CENTER',
+                    'state'=>'REMOTE_CHECK_REQUIRED','current'=>null,'candidate'=>null,'approvalRequired'=>false,'actionable'=>false,
+                    'reason'=>'ตรวจรุ่นและแพ็กเกจจาก BAY Update Inbox แบบ signed browser relay',
+                ];
+            } elseif ($name === 'BAY LearnLab') {
+                $items[] = [
+                    'key'=>'bay-learnlab','projectId'=>$projectId,'name'=>$name,'kind'=>'PRODUCT','adapter'=>'BAY_PRODUCT',
+                    'state'=>'DELEGATED','current'=>null,'candidate'=>null,'approvalRequired'=>false,'actionable'=>false,
+                    'reason'=>'อัปเดตผ่าน Product package ใน BAY EXCUSE X Update Center',
+                ];
+            } else {
+                $state = ($project['sourceAuthorityState'] ?? 'UNKNOWN') === 'READY' ? 'SOURCE_READY' : 'BLOCKED';
+                $items[] = [
+                    'key'=>'project-'.$projectId,'projectId'=>$projectId,'name'=>$name,'kind'=>'PROJECT','adapter'=>'SOURCE_ONLY',
+                    'state'=>$state,'current'=>$project['sourceRevision'] ?? null,'candidate'=>null,'approvalRequired'=>false,'actionable'=>false,
+                    'reason'=>$state==='SOURCE_READY' ? 'Source อยู่ใน AWH Vault แล้ว แต่โปรเจคนี้ยังไม่มี deploy adapter ที่ปลอดภัย' : 'Source Authority ยังไม่พร้อม',
+                ];
+            }
+            $covered[$projectId] = true;
+        }
+
+        $knownNames = [];
+        foreach ($projects as $project) $knownNames[(string)$project['name']] = true;
+        foreach (HubUpdateTargetRegistry::repositories() as $repository=>$target) {
+            if (isset($knownNames[$target['project']])) continue;
+            $items[] = [
+                'key'=>'registry-'.$repository,'projectId'=>null,'name'=>(string)$target['project'],'kind'=>(string)$target['kind'],'adapter'=>'UNREGISTERED',
+                'state'=>'BLOCKED','current'=>null,'candidate'=>null,'approvalRequired'=>false,'actionable'=>false,
+                'reason'=>'มี canonical repository แล้ว แต่ยังไม่ได้ลงทะเบียน Project/Vault ใน AWH จึงห้าม Deploy จนกว่าจะผูก authority ให้ครบ',
+            ];
+        }
+
+        $items[] = [
+            'key'=>'awh-agent','projectId'=>null,'name'=>'AWH Agent','kind'=>'AGENT','adapter'=>'AGENT_MANAGED',
+            'state'=>'INTERNAL_MANAGED','current'=>null,'candidate'=>null,'approvalRequired'=>false,'actionable'=>false,
+            'reason'=>'Web/PWA อัปเดตอัตโนมัติ; native Agent ใช้ package evidence และยังไม่เปิด public auto-updater จนกว่า platform trust พร้อม',
+            'devices'=>array_map(static fn(array $worker): array => [
+                'deviceId'=>(string)$worker['deviceId'],'displayName'=>(string)$worker['displayName'],'platform'=>(string)$worker['platform'],
+                'arch'=>(string)$worker['arch'],'appVersion'=>(string)($worker['appVersion'] ?? ''),'state'=>(string)$worker['state'],'activity'=>(string)$worker['activity'],
+            ], $workers),
+        ];
+
+        $summary = ['current'=>0,'updateAvailable'=>0,'updating'=>0,'blocked'=>0,'attention'=>0];
+        foreach ($items as $item) {
+            $state = (string) $item['state'];
+            if ($state === 'CURRENT') $summary['current']++;
+            elseif ($state === 'UPDATE_AVAILABLE') $summary['updateAvailable']++;
+            elseif (in_array($state,['UPDATING','WAITING_FOR_APPROVAL'],true)) $summary['updating']++;
+            elseif ($state === 'BLOCKED') $summary['blocked']++;
+            elseif (in_array($state,['SOURCE_READY','INTERNAL_MANAGED','REMOTE_CHECK_REQUIRED','DELEGATED'],true)) $summary['attention']++;
+        }
+        return [
+            'schemaVersion'=>1,'generatedAt'=>self::timestamp($now ?? gmdate('c')),'summary'=>$summary,'items'=>$items,
+            'policy'=>['singleControlPlane'=>true,'parallelDeployEngine'=>false,'ownerApprovalPreserved'=>true,'rollbackRequired'=>true,'sourceAuthority'=>'AWH_VAULT_OR_EXISTING_ADAPTER'],
+        ];
+    }
+
     public function requestCoreReleaseForSession(string $sessionToken,string $csrf,array $payload): array
     {
         try { return $this->coreReleases->request($sessionToken,$csrf,$payload); }
@@ -2356,13 +2483,13 @@ final class HubControlPlaneService
     /** Workers are visible only through a Project binding the user may read. */
     private function workersForUser(string $userId): array
     {
-        $sql = "SELECT w.device_id, w.state, w.last_seen_at, w.capabilities_json, w.busy_task_id, d.display_name, d.platform, d.arch, COUNT(DISTINCT dpm.project_id) AS project_count FROM control_workers w JOIN devices d ON d.device_id = w.device_id JOIN device_project_memberships dpm ON dpm.device_id = w.device_id AND dpm.revoked_at IS NULL JOIN user_project_memberships upm ON upm.project_id = dpm.project_id AND upm.user_id = :user AND upm.revoked_at IS NULL WHERE d.revoked_at IS NULL GROUP BY w.device_id, w.state, w.last_seen_at, w.capabilities_json, w.busy_task_id, d.display_name, d.platform, d.arch ORDER BY d.display_name, w.device_id LIMIT 100";
+        $sql = "SELECT w.device_id, w.state, w.last_seen_at, w.capabilities_json, w.busy_task_id, d.display_name, d.platform, d.arch, d.app_version, COUNT(DISTINCT dpm.project_id) AS project_count FROM control_workers w JOIN devices d ON d.device_id = w.device_id JOIN device_project_memberships dpm ON dpm.device_id = w.device_id AND dpm.revoked_at IS NULL JOIN user_project_memberships upm ON upm.project_id = dpm.project_id AND upm.user_id = :user AND upm.revoked_at IS NULL WHERE d.revoked_at IS NULL GROUP BY w.device_id, w.state, w.last_seen_at, w.capabilities_json, w.busy_task_id, d.display_name, d.platform, d.arch ORDER BY d.display_name, w.device_id LIMIT 100";
         $q = $this->pdo->prepare($sql); $q->execute(['user' => $userId]); $nowAt = time();
         $workers = array_map(static function (array $row) use ($nowAt): array {
             $state = HubWorkerHealth::effectiveState($row['state'] ?? null, $row['last_seen_at'] ?? null, gmdate('c', $nowAt));
             $capabilities = []; try { $raw = json_decode((string) $row['capabilities_json'], true, 32, JSON_THROW_ON_ERROR); if (is_array($raw) && array_is_list($raw)) foreach ($raw as $capability) if (is_string($capability) && preg_match('/^[a-z][a-z0-9:._-]{0,63}$/', $capability)) $capabilities[] = $capability; } catch (Throwable) {}
             $capabilities = array_values(array_unique($capabilities));
-            return ['deviceId' => (string) $row['device_id'], 'displayName' => (string) $row['display_name'], 'platform' => (string) $row['platform'], 'arch' => (string) $row['arch'], 'state' => $state, 'lastSeenAt' => (string) $row['last_seen_at'], 'capabilities' => $capabilities, 'detectedTools' => self::workerToolLabels($capabilities), 'boundProjectCount' => (int) $row['project_count'], 'activity' => $state === 'WORKING' ? 'BUSY' : ($state === 'READY' ? 'ONLINE' : ($state === 'STALE' ? 'STALE' : 'OFFLINE'))];
+            return ['deviceId' => (string) $row['device_id'], 'displayName' => (string) $row['display_name'], 'platform' => (string) $row['platform'], 'arch' => (string) $row['arch'], 'appVersion' => (string) $row['app_version'], 'state' => $state, 'lastSeenAt' => (string) $row['last_seen_at'], 'capabilities' => $capabilities, 'detectedTools' => self::workerToolLabels($capabilities), 'boundProjectCount' => (int) $row['project_count'], 'activity' => $state === 'WORKING' ? 'BUSY' : ($state === 'READY' ? 'ONLINE' : ($state === 'STALE' ? 'STALE' : 'OFFLINE'))];
         }, $q->fetchAll());
         return $this->deviceRoles->decorateWorkers($workers);
     }

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__.'/HubUpdateTargetRegistry.php';
+
 require_once __DIR__ . '/HubBayRemoteUpdateService.php';
 require_once __DIR__ . '/HubCapabilityRegistryService.php';
 require_once __DIR__ . '/HubProjectVault.php';
@@ -21,13 +23,6 @@ final class HubOperatorBridgeService
     private const MAX_VERIFICATION_DOCUMENT_BYTES=196608;
     private const SOURCE_PROMOTE_CONFIRMATION='PROMOTE_CANONICAL_MAIN';
     private const MAX_SOURCE_BUNDLE_BYTES=134217728;
-    private const SOURCE_REPOSITORIES=[
-        'awh'=>['directory'=>'awh.git','project'=>'Art’s Workspace Hub','projection'=>false],
-        'bay-excuse-x'=>['directory'=>'bay-excuse-x.git','project'=>'BAY EXCUSE X','projection'=>true],
-        'bay-hub'=>['directory'=>'bay-hub.git','project'=>'BAY Hub','projection'=>true],
-        'bay-learnlab'=>['directory'=>'bay-learnlab.git','project'=>'BAY LearnLab','projection'=>true],
-        'school-website'=>['directory'=>'school-website.git','project'=>'เว็บไซต์โรงเรียน','projection'=>true],
-    ];
     /** @var Closure(string,array<string,mixed>):array<string,mixed> */
     private readonly Closure $poster;
 
@@ -208,7 +203,7 @@ final class HubOperatorBridgeService
     private function sourcePromote(array $request,string $at): array
     {
         if(($request['confirmation']??null)!==self::SOURCE_PROMOTE_CONFIRMATION)throw new HubOperatorBridgeException('Explicit source promotion confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
-        $repository=self::key(self::text($request,'repository',80));$config=self::SOURCE_REPOSITORIES[$repository]??null;
+        $repository=self::key(self::text($request,'repository',80));$repositories=HubUpdateTargetRegistry::repositories();$config=$repositories[$repository]??null;
         if(!is_array($config))throw new HubOperatorBridgeException('Source repository is not allowlisted','OPERATOR_SOURCE_REPOSITORY_FORBIDDEN');
         $expected=self::gitSha(self::text($request,'expectedMainSha',40));$target=self::gitSha(self::text($request,'targetSha',40));$bundleSha=self::sha256(self::text($request,'bundleSha256',64));$stagedFile=self::text($request,'stagedFile',96);
         if($stagedFile!==$bundleSha.'.bundle'||hash_equals($expected,$target))throw new HubOperatorBridgeException('Source promotion identity is invalid','OPERATOR_REQUEST_INVALID');

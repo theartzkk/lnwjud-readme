@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#f7f8fb" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://excuse.kruart.online; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <title>ศูนย์อัปเดต · KRUART AWH</title>
+  <link rel="stylesheet" href="./awh-design-system.css?release=__AWH_WEB_RELEASE_ID__" />
+  <link rel="stylesheet" href="./responsive-layout.css?release=__AWH_WEB_RELEASE_ID__" />
+  <link rel="stylesheet" href="./awh-light-system.css?release=__AWH_WEB_RELEASE_ID__" />
+  <link rel="stylesheet" href="./kruart-system.css?release=__AWH_WEB_RELEASE_ID__" />
+  <link rel="stylesheet" href="./updates.css?release=__AWH_WEB_RELEASE_ID__" />
+</head>
+<body>
+  <header class="updates-header">
+    <a class="updates-brand" href="./"><img class="system-brand-icon" src="./logo-256x256.png?release=__AWH_WEB_RELEASE_ID__" alt="" /><strong>AWH</strong></a>
+    <div class="updates-actions"><span id="updates-freshness">กำลังตรวจรุ่น…</span><a class="awh-back-link" data-awh-back href="./panel.html"><span aria-hidden="true">←</span><span>Control Panel</span></a><button id="updates-refresh" type="button">ตรวจอีกครั้ง</button></div>
+  </header>
+
+  <main class="updates-main">
+    <section class="updates-hero">
+      <div><p class="eyebrow">OWNER · UPDATE CENTER</p><h1>อัปเดตทุกระบบจากที่เดียว</h1><p>ไม่ต้องจำ SHA, SSH หรือคำสั่ง Deploy — AWH ใช้ authority เดิมของแต่ละระบบ ตรวจ Source, Backup, Deploy, Verify และ Rollback ตาม policy เดิม</p></div>
+      <div id="updates-overall" class="updates-overall">กำลังตรวจ</div>
+    </section>
+
+    <section class="updates-summary" aria-label="สรุปการอัปเดต">
+      <article><small>พร้อมอัปเดต</small><strong id="summary-update">—</strong></article>
+      <article><small>กำลังทำ / รออนุมัติ</small><strong id="summary-progress">—</strong></article>
+      <article><small>เป็นรุ่นล่าสุด</small><strong id="summary-current">—</strong></article>
+      <article><small>ต้องตรวจเพิ่ม</small><strong id="summary-attention">—</strong></article>
+    </section>
+
+    <section class="updates-primary">
+      <div><h2>รายการอัปเดต</h2><p id="updates-message" class="muted" role="status">AWH จะไม่อัปเดตระบบที่ยังไม่มี authority ที่ยืนยันได้</p></div>
+      <button id="update-all" class="primary-button" type="button" disabled>อัปเดตทั้งหมดที่พร้อม</button>
+    </section>
+
+    <section id="update-list" class="update-list" aria-live="polite"><div class="update-empty">กำลังตรวจทุกระบบ…</div></section>
+
+    <details class="updates-policy">
+      <summary>หลักการอัปเดตแบบยั่งยืน</summary>
+      <div class="updates-policy-grid">
+        <article><strong>Source เดียว</strong><span>ใช้ AWH Vault หรือ authority ที่ลงทะเบียนไว้ ไม่สร้าง source คู่ขนาน</span></article>
+        <article><strong>Deploy เดิม</strong><span>Core Release, BAY Update Center และ Managed Hosting ยังคงเป็นผู้ติดตั้งจริง</span></article>
+        <article><strong>Fail closed</strong><span>ถ้า QA, Backup, Source, Trust หรือ Verify ไม่ผ่าน จะหยุดก่อนเปลี่ยน Production</span></article>
+        <article><strong>Rollback พร้อม</strong><span>ระบบที่ deploy ได้ต้องมี rollback/restore authority ก่อนถูกเรียกว่าอัปเดตอัตโนมัติ</span></article>
+      </div>
+    </details>
+  </main>
+
+  <div id="step-up" class="updates-dialog" hidden>
+    <div class="updates-dialog-card" role="dialog" aria-modal="true" aria-labelledby="step-up-title">
+      <p class="eyebrow">OWNER CONFIRMATION</p><h2 id="step-up-title">ยืนยันรหัสผ่านก่อนอัปเดต AWH</h2><p>ใช้เฉพาะยืนยันสิทธิ์รอบนี้ รหัสผ่านไม่ถูกเก็บในหน้า Update Center</p>
+      <label>รหัสผ่าน<input id="step-up-password" type="password" autocomplete="current-password" /></label>
+      <div class="updates-dialog-actions"><button id="step-up-cancel" class="secondary-button" type="button">ยกเลิก</button><button id="step-up-submit" class="primary-button" type="button">ยืนยันและทำต่อ</button></div>
+      <p id="step-up-message" class="form-message" role="status"></p>
+    </div>
+  </div>
+
+  <script type="module" src="./navigation.js?release=__AWH_WEB_RELEASE_ID__"></script>
+  <script type="module" src="./updates.js?release=__AWH_WEB_RELEASE_ID__"></script>
+</body>
+</html>

@@ -306,6 +306,11 @@ export async function submitCloudTask({ projectId, kind, revision, profile = nul
 }
 export async function loadOwnerSelfServiceStatus() { return controlRequest('/api/v1/control/owner/status'); }
 export async function loadInfrastructure() { return controlRequest('/api/v1/control/infrastructure'); }
+export async function loadUpdateCenter() {
+  const value = await controlRequest('/api/v1/control/updates');
+  if (value.schemaVersion !== 1 || !value.summary || !Array.isArray(value.items) || !value.policy || value.policy.singleControlPlane !== true) throw new Error('สถานะศูนย์อัปเดต AWH ไม่ถูกต้อง');
+  return value;
+}
 export async function loadCoreReleaseStatus() {
   const value = await controlRequest('/api/v1/control/system/releases');
   const promotion = value?.sourcePromotion;
