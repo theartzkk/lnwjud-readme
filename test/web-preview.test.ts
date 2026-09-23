@@ -367,26 +367,29 @@ test('Work renders inspection evidence through the existing same-origin artifact
 });
 
 
-test('Owner System settings exposes bounded VPS-native core release control without a parallel deploy path', async () => {
-  const [html, app, adapter, service] = await Promise.all([
+test('Owner System settings keeps Update Center as the only release UI', async () => {
+  const [html, app, adapter, updates, service] = await Promise.all([
     readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
     readFile(join(ROOT, 'web', 'app.js'), 'utf8'),
     readFile(join(ROOT, 'web', 'control-plane-adapter.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'updates.js'), 'utf8'),
     readFile(join(ROOT, 'hub', 'src', 'HubCoreReleaseService.php'), 'utf8'),
   ]);
-  for (const id of ['core-release-summary','core-release-current','core-release-form','core-release-sha','core-release-cleanup','core-release-refresh','core-release-message','core-release-history']) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(html, /href="\.\/updates\.html"/);
+  for (const id of ['core-release-form','core-release-sha','core-release-cleanup','core-release-refresh','learnlab-release-form','learnlab-release-sha','learnlab-release-version','learnlab-release-refresh']) {
+    assert.doesNotMatch(html, new RegExp('id="' + id + '"'));
+  }
+  assert.doesNotMatch(html, /เตรียมปล่อยรุ่น|เตรียม LearnLab release/);
+  assert.doesNotMatch(app, /requestCoreRelease|requestLearnLabRelease|core-release-form|learnlab-release-form/);
   assert.match(adapter, /loadCoreReleaseStatus/);
   assert.match(adapter, /requestCoreRelease/);
   assert.match(adapter, /\/api\/v1\/control\/system\/releases/);
-  assert.match(app, /withPrivilegedRetry\(\(\) => requestCoreRelease/);
-  assert.match(app, /decideApproval\(release\.approvalId, decision\)/);
-  assert.match(app, /loadInfrastructure\(\)/);
-  assert.match(app, /state\.coreReleases\?\.sourcePromotion/);
-  assert.doesNotMatch(app, /AWH_PROJECT_ID/);
+  assert.match(updates, /requestCoreRelease\(item\.candidate,false\)/);
+  assert.match(updates, /decideApproval\(request\.approvalId,'approve'\)/);
   assert.match(service, /SOURCE_PROMOTION_AUDIT/);
   assert.match(service, /required_capability='source\.promote'/);
   assert.match(service, /'deployment\.approve'/);
   assert.match(service, /'risk'=>'CRITICAL'/);
   assert.match(service, /'transport'=>'LOCAL'/);
-  assert.doesNotMatch(`${html}\n${app}`, /lnwjud/i);
+  assert.doesNotMatch(html + '\n' + app, /lnwjud/i);
 });
