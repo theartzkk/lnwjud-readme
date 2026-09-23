@@ -104,6 +104,13 @@ test('desktop release evidence is deterministic, exact-revision-bound, and never
     assert.doesNotMatch(first, new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     await invoke(outputTwo);
     assert.equal(await readFile(outputTwo, 'utf8'), first);
+    const macArmPackage = join(dir, 'AWH-macOS-arm64.zip');
+    const macArmOutput = join(dir, 'mac-arm64.json');
+    await writeFile(macArmPackage, payload);
+    await execFileAsync(process.execPath, [script, '--platform', 'darwin', '--architecture', 'arm64', '--package', macArmPackage, '--source-sha', sourceSha, '--output', macArmOutput], { cwd: ROOT });
+    const macArmEvidence = JSON.parse(await readFile(macArmOutput, 'utf8'));
+    assert.equal(macArmEvidence.architecture, 'arm64');
+    assert.equal(macArmEvidence.downloadKey, 'AWH-macOS-arm64.zip');
     await assert.rejects(invoke(join(dir, 'bad-sha.json'), 'not-a-sha'), /DESKTOP_RELEASE_EVIDENCE_INVALID/);
   } finally {
     await rm(dir, { recursive: true, force: true });

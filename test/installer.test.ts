@@ -40,9 +40,10 @@ test('AWH packaging configuration keeps Squirrel per-user behavior and public ar
   assert.match(pkg.scripts?.['desktop:package:windows'] ?? '', /prepare:windows-icon/);
   assert.match(pkg.scripts?.['desktop:package:mac:x64'] ?? '', /prepare:mac-icon/);
   assert.match(forge, /@electron-forge\/maker-squirrel/);
-  assert.match(forge, /name:\s*'AWH'/);
+  assert.match(forge, /packagerConfig:\s*\{[\s\S]*?name:\s*'AWH Agent'/);
+  assert.match(forge, /config:\s*\{[\s\S]*?name:\s*'AWH'/);
   assert.match(forge, /executableName:\s*'AWH'/);
-  assert.match(forge, /title:\s*'Art’s Workspace Hub'/);
+  assert.match(forge, /title:\s*'AWH Agent'/);
   assert.match(forge, /authors:\s*'Art’s Workspace Hub'/);
   assert.match(forge, /setupExe:\s*'AWHSetup\.exe'/);
   assert.match(forge, /exe:\s*'AWH\.exe'/);
@@ -68,7 +69,7 @@ test('desktop packaging excludes generated cross-platform release artifacts from
   const forgeConfig = require('../forge.config.cjs') as { packagerConfig?: { ignore?: RegExp[] } };
   const ignore = forgeConfig.packagerConfig?.ignore ?? [];
   const isIgnored = (path: string) => ignore.some((pattern) => pattern.test(path));
-  for (const artifact of ['/AWH-macOS-x64.zip', '/AWH-Windows-x64.zip', '/AWH-macOS-arm64.release.json', '/AWH-Windows-x64.release.json', '/SHA256SUMS.txt']) {
+  for (const artifact of ['/AWH-macOS-x64.zip', '/AWH-macOS-arm64.zip', '/AWH-Windows-x64.zip', '/AWH-macOS-arm64.release.json', '/AWH-Windows-x64.release.json', '/SHA256SUMS.txt']) {
     assert.equal(isIgnored(artifact), true, `generated desktop release artifact must be excluded: ${artifact}`);
   }
   assert.equal(isIgnored('/ART_AI_WORKING_PROTOCOL.md'), false, 'required working context must remain packageable');

@@ -5,6 +5,7 @@ import { basename, resolve } from 'node:path';
 const EXPECTED_PACKAGE = new Map([
   ['win32/x64', 'AWH-Windows-x64.zip'],
   ['darwin/x64', 'AWH-macOS-x64.zip'],
+  ['darwin/arm64', 'AWH-macOS-arm64.zip'],
 ]);
 
 function fail(message) {

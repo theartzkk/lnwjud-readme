@@ -43,4 +43,5 @@ export const DESKTOP_IPC = Object.freeze({
   workerRunOnce: 'art-agent:worker-run-once',
   restart: 'art-agent:restart',
   openDataDir: 'art-agent:open-data-dir',
+  openAwhWeb: 'art-agent:open-awh-web',
 });
