@@ -47,3 +47,14 @@ test('central toolchain routing preserves bounded Node and exact dependency hydr
   assert.equal(context.toolchainRouting.dependencyHydration.strategy,'NPM_CI_PREFER_OFFLINE');
   assert.ok(releaseNodeCandidates(context).includes('/opt/awh-toolchain/node/bin/node'));
 });
+
+test('managed-product deploy provisions namespace roots before operator enable',async()=>{
+  const script=await readFile(new URL('../deploy/awh-control-plane/remote-deploy-control-plane.sh',import.meta.url),'utf8');
+  assert.match(script,/install -d -o root -g root -m 0750 \/var\/backups\/learnlab-releases \/var\/backups\/bay-assessment/);
+  assert.match(script,/HOSTING_NAMESPACE_PATHS=\$\(sed -n 's\/\^ReadWritePaths=\/\/p'/);
+  assert.match(script,/HOSTING_NAMESPACE_PATH_MISSING=\$path/);
+  const provision=script.indexOf('PRODUCT_RELEASE_STORAGE_READY');
+  const preflight=script.indexOf('HOSTING_NAMESPACE_PATHS_READY');
+  const enable=script.indexOf('systemctl enable --now awh-hosting-operator.timer',preflight);
+  assert.ok(provision>0&&preflight>provision&&enable>preflight);
+});

@@ -1039,7 +1039,14 @@ if test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1 ||
   stage HOSTING_TLS_RENEWAL_READY
   sudo install -d -o root -g root -m 0750 /srv/awh-sites /etc/awh-sites
   sudo install -d -o root -g root -m 0755 /var/lib/awh-acme /var/lib/letsencrypt /var/log/letsencrypt /etc/letsencrypt /etc/nginx/sites-available /etc/nginx/sites-enabled
+  sudo install -d -o root -g root -m 0750 /var/backups/learnlab-releases /var/backups/bay-assessment
   sudo test -d /var/lib/awh-acme; sudo test -d /etc/letsencrypt
+  stage PRODUCT_RELEASE_STORAGE_READY
+  HOSTING_NAMESPACE_PATHS=$(sed -n 's/^ReadWritePaths=//p' "$RELEASE/deploy/systemd/awh-hosting-operator.service")
+  test -n "$HOSTING_NAMESPACE_PATHS"
+  for path in $HOSTING_NAMESPACE_PATHS; do sudo test -e "$path" || { printf '%s
+' "HOSTING_NAMESPACE_PATH_MISSING=$path" >&2; exit 42; }; done
+  stage HOSTING_NAMESPACE_PATHS_READY
 fi
 if test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$CLOUD_FIRST" = 1; then
   test "$HOSTING_UNITS_PREEXISTING" -eq 1
