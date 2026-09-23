@@ -11,7 +11,7 @@ const output = resolve(root, process.argv[3] ?? join(input, 'release.json'));
 const releaseContract = JSON.parse(await readFile(join(root, 'scripts', 'web-release-files.json'), 'utf8'));
 const files = releaseContract.required;
 if (!Array.isArray(files) || files.some((name) => typeof name !== 'string' || !name || name.includes('..') || name.startsWith('/'))) throw new Error('AWH web release file contract is invalid');
-const optionalFiles = ['downloads/AWH-macOS-x64.zip', 'downloads/AWH-Windows-x64.zip', 'downloads/SHA256SUMS.txt'];
+const optionalFiles = ['downloads/AWH-macOS-arm64.zip', 'downloads/AWH-macOS-x64.zip', 'downloads/AWH-Windows-x64.zip', 'downloads/SHA256SUMS.txt'];
 const config = JSON.parse(await readFile(join(input, 'web-config.json'), 'utf8'));
 const releaseId = config.releaseId;
 if (!/^[A-Za-z0-9._-]{1,80}$/.test(releaseId ?? '') || (process.env.AWH_RELEASE_ID && process.env.AWH_RELEASE_ID !== releaseId)) throw new Error('Web release identity differs from built assets');
@@ -47,6 +47,7 @@ function baseDesktopRelease(entry) {
 
 const desktopReleases = [];
 const entries = [];
+const localOptionalFiles = new Set();
 for (const name of files) {
   const path = join(input, name);
   const info = await lstat(path);
@@ -55,25 +56,24 @@ for (const name of files) {
   entries.push({ path: name, sha256: createHash('sha256').update(content).digest('hex'), sizeBytes: content.byteLength });
 }
 for (const name of optionalFiles) {
-  if (reuseRemoteDesktop) {
-    entries.push(baseFile(name));
-    continue;
-  }
   const path = join(input, name);
   try {
     const info = await lstat(path);
     if (!info.isFile() || info.isSymbolicLink()) throw new Error(`Release file is not a regular file: ${name}`);
     const content = await readFile(path);
     entries.push({ path: name, sha256: createHash('sha256').update(content).digest('hex'), sizeBytes: content.byteLength });
+    localOptionalFiles.add(name);
+    continue;
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
   }
+  if (reuseRemoteDesktop) entries.push(baseFile(name));
 }
 // Existing CI evidence owns package lineage. Remote-reuse mode may carry that
 // already-verified lineage forward from the currently active production
 // manifest, but a ZIP checksum alone can never supply provenance.
 for (const entry of entries.filter(item => item.path.endsWith('.zip'))) {
-  if (reuseRemoteDesktop) {
+  if (reuseRemoteDesktop && !localOptionalFiles.has(entry.path)) {
     desktopReleases.push(baseDesktopRelease(entry));
     continue;
   }

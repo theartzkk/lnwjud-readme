@@ -17,7 +17,7 @@ import {
   const CANCELLABLE_TASK_STATES = new Set(['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL']);
   const MICRO_BAHT = 1000000;
   const AWH_PROJECT_ID = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
-  const DESKTOP_PACKAGES = [['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
+  const DESKTOP_PACKAGES = [['downloads/AWH-macOS-arm64.zip', 'macOS Apple Silicon', 'mac-arm64'], ['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac-intel'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
   const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, coreReleases: null, infrastructure: null, people: [], accountRequests: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
   const pendingBrandAssets = { logo: undefined, icon: undefined };
   const MAX_BRAND_SOURCE_BYTES = 8 * 1024 * 1024;

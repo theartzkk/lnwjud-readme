@@ -62,8 +62,11 @@ RELEASE=${AWH_RELEASE_COMMIT:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || tru
 HOSTNAME=${AWH_HUB_HOSTNAME:-kruart.online}
 OWNER_USERNAME=${AWH_OWNER_AUTH_USERNAME:-art}
 REUSE_REMOTE_DESKTOP_ARTIFACTS=${AWH_REUSE_REMOTE_DESKTOP_ARTIFACTS:-0}
+ARM64_DESKTOP_OVERLAY=${AWH_DESKTOP_ARM64_OVERLAY:-0}
 case "$REUSE_REMOTE_DESKTOP_ARTIFACTS" in 0|1) : ;; *) echo "AWH_REUSE_REMOTE_DESKTOP_ARTIFACTS must be 0 or 1" >&2; exit 2 ;; esac
-DESKTOP_ARTIFACT_FILES="dist-web/downloads/AWH-macOS-x64.zip dist-web/downloads/AWH-Windows-x64.zip dist-web/downloads/SHA256SUMS.txt"
+case "$ARM64_DESKTOP_OVERLAY" in 0|1) : ;; *) echo "AWH_DESKTOP_ARM64_OVERLAY must be 0 or 1" >&2; exit 2 ;; esac
+test "$ARM64_DESKTOP_OVERLAY" -eq 0 || test "$REUSE_REMOTE_DESKTOP_ARTIFACTS" -eq 1 || { echo "AWH_DESKTOP_ARM64_OVERLAY requires verified desktop reuse" >&2; exit 2; }
+DESKTOP_ARTIFACT_FILES="dist-web/downloads/AWH-macOS-arm64.zip dist-web/downloads/AWH-macOS-x64.zip dist-web/downloads/AWH-Windows-x64.zip dist-web/downloads/SHA256SUMS.txt"
 DESKTOP_BASE_MANIFEST=
 REMOTE_ROOT=/opt/awh-hub
 if test "$PROJECT_SOURCE_AUTHORITY" -eq 1; then RELEASE_ID=m21-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$CONVERSATION_LIFECYCLE" -eq 1; then RELEASE_ID=m19-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$CLOUD_FIRST" -eq 1; then RELEASE_ID=m18-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$ACCOUNT_HOSTING" -eq 1; then RELEASE_ID=m17-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$SELF_SUFFICIENT_AI" -eq 1; then RELEASE_ID=m16-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$AUTOMATIONS" -eq 1; then RELEASE_ID=m15-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$COST_AWARE_AI" -eq 1; then RELEASE_ID=m14-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$ANYWHERE_EXECUTION" -eq 1; then RELEASE_ID=m13-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$CENTRAL_PROJECT_AUTHORITY" -eq 1; then RELEASE_ID=m12-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$SELF_SERVICE" -eq 1; then RELEASE_ID=m11-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$FOUNDING_MEMORY" -eq 1; then RELEASE_ID=m10-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$FINAL_PRODUCT" -eq 1; then RELEASE_ID=m9-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$UNIFIED_WORKSPACE" -eq 1; then RELEASE_ID=m8-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$WORKSPACE_CONTINUITY" -eq 1; then RELEASE_ID=m7-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$ASSISTANT_WORKSTREAM" -eq 1; then RELEASE_ID=m6-$(printf '%s' "$RELEASE" | cut -c1-12); else RELEASE_ID=m4-$(printf '%s' "$RELEASE" | cut -c1-12); fi
@@ -143,9 +146,16 @@ if test "$REUSE_REMOTE_DESKTOP_ARTIFACTS" -eq 1; then
 fi
 AWH_RELEASE_COMMIT="$RELEASE" AWH_WEB_RELEASE_ID="$RELEASE_ID" node --import tsx "$ROOT/scripts/build-web-preview.ts" --control >/dev/null
 if test "$REUSE_REMOTE_DESKTOP_ARTIFACTS" -eq 1; then
-  # Never smuggle stale local desktop bytes into a server-only refresh.
-  rm -f "$ROOT/dist-web/downloads/AWH-macOS-x64.zip" "$ROOT/dist-web/downloads/AWH-Windows-x64.zip" "$ROOT/dist-web/downloads/SHA256SUMS.txt"
+  # Never smuggle stale local x64/Windows bytes into a server-only refresh.
+  rm -f "$ROOT/dist-web/downloads/AWH-macOS-x64.zip" "$ROOT/dist-web/downloads/AWH-Windows-x64.zip"
   rm -f "$ROOT/dist-web/downloads/AWH-macOS-x64.release.json" "$ROOT/dist-web/downloads/AWH-Windows-x64.release.json"
+  if test "$ARM64_DESKTOP_OVERLAY" -eq 1; then
+    test -f "$ROOT/dist-web/downloads/AWH-macOS-arm64.zip" || { echo "Verified macOS arm64 overlay package is missing" >&2; exit 1; }
+    test -f "$ROOT/dist-web/downloads/AWH-macOS-arm64.release.json" || { echo "Verified macOS arm64 overlay evidence is missing" >&2; exit 1; }
+    node "$ROOT/scripts/release/create-desktop-overlay-sums.mjs" "$DESKTOP_BASE_MANIFEST" "$ROOT/dist-web/downloads/AWH-macOS-arm64.zip" "$ROOT/dist-web/downloads/SHA256SUMS.txt" >/dev/null
+  else
+    rm -f "$ROOT/dist-web/downloads/AWH-macOS-arm64.zip" "$ROOT/dist-web/downloads/AWH-macOS-arm64.release.json" "$ROOT/dist-web/downloads/SHA256SUMS.txt"
+  fi
   AWH_DESKTOP_RELEASE_REUSE=1 AWH_DESKTOP_RELEASE_BASE_MANIFEST="$DESKTOP_BASE_MANIFEST" AWH_RELEASE_ID="$RELEASE_ID" node "$ROOT/scripts/create-web-release-manifest.mjs" "$ROOT/dist-web" >/dev/null
 else
   AWH_RELEASE_ID="$RELEASE_ID" node "$ROOT/scripts/create-web-release-manifest.mjs" "$ROOT/dist-web" >/dev/null
@@ -171,13 +181,20 @@ FILES="$FILES deploy/remote-worker/linux/bootstrap-vps-direct-connector.sh deplo
 DESKTOP_ARTIFACTS=
 if test "$REUSE_REMOTE_DESKTOP_ARTIFACTS" -eq 1; then
   printf '%s\n' "DESKTOP_ARTIFACT_REUSE=verified-remote-manifest"
+  if test "$ARM64_DESKTOP_OVERLAY" -eq 1; then
+    for file in dist-web/downloads/AWH-macOS-arm64.zip dist-web/downloads/SHA256SUMS.txt; do
+      test -f "$ROOT/$file" || { echo "Missing verified arm64 overlay artifact: $file" >&2; exit 1; }
+    done
+    DESKTOP_ARTIFACTS=" dist-web/downloads/AWH-macOS-arm64.zip dist-web/downloads/SHA256SUMS.txt"
+    printf '%s\n' "DESKTOP_ARTIFACT_OVERLAY=AWH-macOS-arm64.zip"
+  fi
 else
   desktop_artifact_count=0
   for file in $DESKTOP_ARTIFACT_FILES; do
     if test -f "$ROOT/$file"; then desktop_artifact_count=$((desktop_artifact_count + 1)); fi
   done
   case "$MODE:$desktop_artifact_count" in
-    dry-run:0|*:3) : ;;
+    dry-run:0|*:4) : ;;
     *) echo "Desktop release artifacts must be complete for production deploy" >&2; exit 1 ;;
   esac
   # Desktop packages are content-addressed on ReadyIDC. A backend/web refresh

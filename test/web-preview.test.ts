@@ -55,6 +55,8 @@ test('web build is a generic authenticated Control shell, never a serialized pro
   assert.match(app, /hub-read-adapter\.js\?release=fixture-control-sha/);
   assert.match(adapter, /\/api\/v1\/auth\/session/);
   assert.doesNotMatch(adapter, /control-plane-adapter\.js/);
+  assert.match(html, /downloads\/AWH-macOS-arm64\.zip/);
+  assert.match(html, /macOS Apple Silicon/);
   assert.match(html, /downloads\/AWH-macOS-x64\.zip/);
   assert.match(html, /downloads\/AWH-Windows-x64\.zip/);
 });

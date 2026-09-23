@@ -55,7 +55,7 @@ compact_root() {
   fi
   for release in $(find "$root" -mindepth 1 -maxdepth 1 -type d -print | sort); do
     case "$release" in "$root"/m[0-9]*-[0-9a-fA-F]*) ;; *) continue ;; esac
-    for name in AWH-macOS-x64.zip AWH-Windows-x64.zip SHA256SUMS.txt; do
+    for name in AWH-macOS-arm64.zip AWH-macOS-x64.zip AWH-Windows-x64.zip SHA256SUMS.txt; do
       file="$release/$suffix/$name"
       test -f "$file" && test ! -L "$file" || continue
       scanned=$((scanned + 1))

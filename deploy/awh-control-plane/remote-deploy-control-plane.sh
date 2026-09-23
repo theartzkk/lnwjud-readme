@@ -253,7 +253,7 @@ verify_owner_auth_login() {
 rehydrate_desktop_artifacts() {
   store=/var/www/awh-web/desktop-artifacts
   sudo install -d -o awh-hub -g www-data -m 0750 "$WEB_RELEASE/downloads"
-  for name in AWH-macOS-x64.zip AWH-Windows-x64.zip SHA256SUMS.txt; do
+  for name in AWH-macOS-arm64.zip AWH-macOS-x64.zip AWH-Windows-x64.zip SHA256SUMS.txt; do
     file="$WEB_RELEASE/downloads/$name"
     test -f "$file" && continue
     expected=$(/usr/bin/php -r '$j=json_decode(file_get_contents($argv[1]),true,32,JSON_THROW_ON_ERROR); foreach(($j["files"]??[]) as $f){ if(($f["path"]??null)===$argv[2]){ $h=strtolower((string)($f["sha256"]??"")); if(!preg_match("/^[0-9a-f]{64}$/",$h)) exit(2); echo $h; exit(0); }} exit(3);' "$WEB_RELEASE/release.json" "downloads/$name")
@@ -269,7 +269,7 @@ rehydrate_desktop_artifacts() {
 deduplicate_desktop_artifacts() {
   store=/var/www/awh-web/desktop-artifacts
   sudo install -d -o awh-hub -g www-data -m 0750 "$store"
-  for name in AWH-macOS-x64.zip AWH-Windows-x64.zip SHA256SUMS.txt; do
+  for name in AWH-macOS-arm64.zip AWH-macOS-x64.zip AWH-Windows-x64.zip SHA256SUMS.txt; do
     file="$WEB_RELEASE/downloads/$name"
     sudo test -f "$file" || continue
     digest=$(sudo sha256sum "$file" | cut -d' ' -f1)
@@ -296,7 +296,7 @@ deduplicate_desktop_artifacts() {
 deduplicate_control_release_desktop_artifacts() {
   store=/var/www/awh-web/desktop-artifacts
   sudo install -d -o awh-hub -g www-data -m 0750 "$store"
-  for name in AWH-macOS-x64.zip AWH-Windows-x64.zip SHA256SUMS.txt; do
+  for name in AWH-macOS-arm64.zip AWH-macOS-x64.zip AWH-Windows-x64.zip SHA256SUMS.txt; do
     file="$RELEASE/dist-web/downloads/$name"
     sudo test -f "$file" || continue
     test "$(sudo stat -c %d "$file")" = "$(sudo stat -c %d "$store")" || continue
