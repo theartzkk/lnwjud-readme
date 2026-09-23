@@ -39,6 +39,7 @@ const tests = [
   'hub/tests/operator-bridge.php',
   'hub/tests/core-release-operator.php',
   'hub/tests/learnlab-release-operator.php',
+  'hub/tests/assessment-release-operator.php',
   'hub/tests/aipass-docx-boundaries.php',
   'hub/tests/continuous-work-supervisor.php',
   'hub/tests/continuous-autochain.php',

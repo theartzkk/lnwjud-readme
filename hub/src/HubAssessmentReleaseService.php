@@ -129,8 +129,10 @@ final class HubAssessmentReleaseService
 
     private function currentRuntime(): array
     {
-        $current=realpath(self::PROD_ROOT.'/current');
-        if(!is_string($current)||!is_dir($current)||!str_starts_with($current,self::PROD_ROOT.'/releases/'))throw new HubAssessmentReleaseException('Assessment runtime unavailable','ASSESSMENT_RELEASE_NOT_READY');
+        $root=getenv('AWH_ASSESSMENT_PROD_ROOT');if(!is_string($root)||$root==='')$root=self::PROD_ROOT;
+        $root=rtrim($root,'/');
+        $current=realpath($root.'/current');$rootReal=realpath($root);
+        if(!is_string($rootReal)||!is_string($current)||!is_dir($current)||!str_starts_with($current,$rootReal.'/releases/'))throw new HubAssessmentReleaseException('Assessment runtime unavailable','ASSESSMENT_RELEASE_NOT_READY');
         $package=$current.'/package.json';if(!is_file($package)||is_link($package)||!is_readable($package))throw new HubAssessmentReleaseException('Assessment package unavailable','ASSESSMENT_RELEASE_NOT_READY');
         try{$json=json_decode((string)file_get_contents($package),true,16,JSON_THROW_ON_ERROR);}catch(Throwable){throw new HubAssessmentReleaseException('Assessment package invalid','ASSESSMENT_RELEASE_NOT_READY');}
         $version=(string)($json['version']??'');if($version===''||preg_match('/^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$/',$version)!==1)throw new HubAssessmentReleaseException('Assessment version invalid','ASSESSMENT_RELEASE_NOT_READY');
