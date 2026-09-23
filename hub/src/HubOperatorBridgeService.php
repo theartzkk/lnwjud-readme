@@ -22,11 +22,11 @@ final class HubOperatorBridgeService
     private const SOURCE_PROMOTE_CONFIRMATION='PROMOTE_CANONICAL_MAIN';
     private const MAX_SOURCE_BUNDLE_BYTES=134217728;
     private const SOURCE_REPOSITORIES=[
-        'awh'=>['directory'=>'awh.git','project'=>'Art’s Workspace Hub'],
-        'bay-excuse-x'=>['directory'=>'bay-excuse-x.git','project'=>'BAY EXCUSE X'],
-        'bay-hub'=>['directory'=>'bay-hub.git','project'=>'BAY Hub'],
-        'bay-learnlab'=>['directory'=>'bay-learnlab.git','project'=>'BAY LearnLab'],
-        'school-website'=>['directory'=>'school-website.git','project'=>'เว็บไซต์โรงเรียน'],
+        'awh'=>['directory'=>'awh.git','project'=>'Art’s Workspace Hub','projection'=>false],
+        'bay-excuse-x'=>['directory'=>'bay-excuse-x.git','project'=>'BAY EXCUSE X','projection'=>true],
+        'bay-hub'=>['directory'=>'bay-hub.git','project'=>'BAY Hub','projection'=>true],
+        'bay-learnlab'=>['directory'=>'bay-learnlab.git','project'=>'BAY LearnLab','projection'=>true],
+        'school-website'=>['directory'=>'school-website.git','project'=>'เว็บไซต์โรงเรียน','projection'=>true],
     ];
     /** @var Closure(string,array<string,mixed>):array<string,mixed> */
     private readonly Closure $poster;
@@ -223,12 +223,84 @@ final class HubOperatorBridgeService
             $this->runGit($repoReal,['bundle','verify',$bundleReal]);
             $this->runGit($repoReal,['bundle','unbundle',$bundleReal]);
             $this->runGit($repoReal,['cat-file','-e',$target.'^{commit}']);
+            if(($config['projection']??false)===true)$this->assertVaultProjectionTarget($repoReal,$target,$gate);
             $ancestor=$this->runGitResult($repoReal,['merge-base','--is-ancestor',$expected,$target]);if($ancestor['code']!==0)throw new HubOperatorBridgeException('Source promotion is not a fast-forward','OPERATOR_SOURCE_NON_FAST_FORWARD');
             $before=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($expected,self::gitSha($before)))throw new HubOperatorBridgeException('Canonical main moved during source promotion','OPERATOR_SOURCE_BASE_MOVED');
             $this->runGit($repoReal,['update-ref','refs/heads/main',$target,$expected]);
             $after=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($target,self::gitSha($after)))throw new HubOperatorBridgeException('Canonical main did not reach target revision','OPERATOR_SOURCE_PROMOTE_FAILED');
             $success=true;return ['schemaVersion'=>1,'state'=>'PROMOTED','repository'=>$repository,'previousMainSha'=>$expected,'mainSha'=>$target,'bundleSha256'=>$bundleSha,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'leaseExpiresAt'=>$authority['leaseExpiresAt']],'observedAt'=>$at];
         }finally{$this->releaseMutationAuthority($authority,$success,gmdate('c'));}
+    }
+
+    /** @param array<string,mixed> $gate */
+    private function assertVaultProjectionTarget(string $repo,string $target,array $gate): void
+    {
+        $source=is_array($gate['source']??null)?$gate['source']:[];
+        $project=is_array($gate['project']??null)?$gate['project']:[];
+        $projectId=(string)($project['projectId']??'');
+        $vault=(string)($source['activeVaultRevisionId']??'');
+        $canonical=(string)($source['canonicalVaultRevisionId']??'');
+        if(($source['authority']??null)!=='AWH_VAULT'||($source['syncState']??null)!=='SYNCED'||!self::uuidValid($projectId)||!self::uuidValid($vault)||!hash_equals($vault,$canonical))throw new HubOperatorBridgeException('Vault projection authority is not ready','OPERATOR_SOURCE_PROJECTION_REQUIRED');
+
+        $q=$this->pdo->prepare("SELECT v.file_count,r.content_sha256,r.state FROM control_project_vaults v JOIN control_project_vault_revisions r ON r.project_id=v.project_id AND r.revision_id=v.active_revision_id WHERE v.project_id=:project LIMIT 1");
+        $q->execute(['project'=>$projectId]);$row=$q->fetch();
+        $content=strtolower((string)($row['content_sha256']??''));
+        $fileCount=(int)($row['file_count']??-1);
+        if(!is_array($row)||($row['state']??null)!=='ACTIVE'||preg_match('/^[a-f0-9]{64}$/',$content)!==1||$fileCount<1)throw new HubOperatorBridgeException('Active Vault projection identity is unavailable','OPERATOR_SOURCE_PROJECTION_REQUIRED');
+
+        $parents=preg_split('/\s+/',trim($this->runGit($repo,['rev-list','--parents','-n','1',$target])))?:[];
+        if(count($parents)!==2||strtolower((string)$parents[0])!==$target||preg_match('/^[a-f0-9]{40}$/i',(string)$parents[1])!==1)throw new HubOperatorBridgeException('Projection commit must have exactly one source parent','OPERATOR_SOURCE_PROJECTION_INVALID');
+        $parent=strtolower((string)$parents[1]);
+        $targetTree=strtolower(trim($this->runGit($repo,['rev-parse',$target.'^{tree}'])));
+        $parentTree=strtolower(trim($this->runGit($repo,['rev-parse',$parent.'^{tree}'])));
+        if(!preg_match('/^[a-f0-9]{40}$/',$targetTree)||!hash_equals($targetTree,$parentTree))throw new HubOperatorBridgeException('Projection commit must not alter source bytes','OPERATOR_SOURCE_PROJECTION_INVALID');
+
+        $body=$this->runGit($repo,['show','-s','--format=%B',$target]);
+        foreach([
+            'Vault-Revision: '.$vault,
+            'Content-SHA256: '.$content,
+            'Authority: AWH_VAULT',
+            'Projection: true',
+            'Source-Revision: '.$parent,
+        ] as $line)if(!preg_match('/(?:^|\R)'.preg_quote($line,'/').'(?=\R|$)/',$body))throw new HubOperatorBridgeException('Projection commit does not match active Vault identity','OPERATOR_SOURCE_PROJECTION_INVALID');
+
+        $identity=$this->gitArchiveIdentity($repo,$target);
+        if(($identity['fileCount']??0)!==$fileCount||!hash_equals($content,(string)($identity['contentSha256']??'')))throw new HubOperatorBridgeException('Projection bytes do not match active Vault identity','OPERATOR_SOURCE_PROJECTION_INVALID');
+    }
+
+    /** @return array{contentSha256:string,fileCount:int,contentBytes:int} */
+    private function gitArchiveIdentity(string $repo,string $target): array
+    {
+        if(!class_exists('ZipArchive'))throw new HubOperatorBridgeException('ZIP runtime is unavailable for projection verification','OPERATOR_SOURCE_PROJECTION_REQUIRED');
+        $stageRoot=getenv('AWH_OPERATOR_STAGE_ROOT');if(!is_string($stageRoot)||$stageRoot==='')$stageRoot='/var/lib/awh-remote/operator-staging';
+        $stage=realpath($stageRoot);if(!is_string($stage)||!is_dir($stage)||is_link($stageRoot)||!is_writable($stage))throw new HubOperatorBridgeException('Projection verification staging is unavailable','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');
+        $archive=$stage.'/.projection-'.substr($target,0,12).'-'.bin2hex(random_bytes(6)).'.zip';$zip=null;
+        try{
+            $this->runGit($repo,['archive','--format=zip','--output='.$archive,$target]);
+            if(!is_file($archive)||is_link($archive)||!is_readable($archive))throw new HubOperatorBridgeException('Projection archive could not be verified','OPERATOR_SOURCE_PROJECTION_INVALID');
+            $zip=new ZipArchive();if($zip->open($archive,ZipArchive::RDONLY|ZipArchive::CHECKCONS)!==true)throw new HubOperatorBridgeException('Projection archive is invalid','OPERATOR_SOURCE_PROJECTION_INVALID');
+            if($zip->numFiles<1||$zip->numFiles>HubProjectVault::MAX_FILES)throw new HubOperatorBridgeException('Projection archive file count is invalid','OPERATOR_SOURCE_PROJECTION_INVALID');
+            $manifest=[];$total=0;$seen=[];
+            for($index=0;$index<$zip->numFiles;$index++){
+                $stat=$zip->statIndex($index,ZipArchive::FL_UNCHANGED);
+                if(!is_array($stat)||!is_string($stat['name']??null)||!is_int($stat['size']??null))throw new HubOperatorBridgeException('Projection archive metadata is invalid','OPERATOR_SOURCE_PROJECTION_INVALID');
+                $name=str_replace('\\','/',(string)$stat['name']);if(str_ends_with($name,'/'))continue;
+                if($name===''||str_starts_with($name,'/')||preg_match('#^[A-Za-z]:/#',$name)===1||strlen($name)>900)throw new HubOperatorBridgeException('Projection archive path is unsafe','OPERATOR_SOURCE_PROJECTION_INVALID');
+                $parts=explode('/',$name);foreach($parts as $part)if($part===''||$part==='.'||$part==='..'||strlen($part)>180||preg_match('/[\x00-\x1f\x7f]/',$part))throw new HubOperatorBridgeException('Projection archive path is unsafe','OPERATOR_SOURCE_PROJECTION_INVALID');
+                if(isset($seen[$name]))throw new HubOperatorBridgeException('Projection archive contains duplicate paths','OPERATOR_SOURCE_PROJECTION_INVALID');$seen[$name]=true;
+                $size=(int)$stat['size'];if($size<0||$size>HubProjectVault::MAX_FILE_BYTES)throw new HubOperatorBridgeException('Projection file exceeds safe limit','OPERATOR_SOURCE_PROJECTION_INVALID');
+                $total+=$size;if($total>HubProjectVault::MAX_CONTENT_BYTES)throw new HubOperatorBridgeException('Projection content exceeds safe limit','OPERATOR_SOURCE_PROJECTION_INVALID');
+                $stream=$zip->getStream((string)$stat['name']);if(!is_resource($stream))throw new HubOperatorBridgeException('Projection file could not be read','OPERATOR_SOURCE_PROJECTION_INVALID');
+                $hash=hash_init('sha256');$read=0;
+                try{while(!feof($stream)){$chunk=fread($stream,65536);if($chunk===false)throw new HubOperatorBridgeException('Projection file could not be read','OPERATOR_SOURCE_PROJECTION_INVALID');if($chunk==='')continue;$read+=strlen($chunk);if($read>$size)throw new HubOperatorBridgeException('Projection file size is invalid','OPERATOR_SOURCE_PROJECTION_INVALID');hash_update($hash,$chunk);}}finally{fclose($stream);}
+                if($read!==$size)throw new HubOperatorBridgeException('Projection file size is invalid','OPERATOR_SOURCE_PROJECTION_INVALID');
+                $manifest[]=['path'=>$name,'sha256'=>hash_final($hash),'sizeBytes'=>$read];
+            }
+            if($manifest===[])throw new HubOperatorBridgeException('Projection archive has no files','OPERATOR_SOURCE_PROJECTION_INVALID');
+            usort($manifest,static fn(array $left,array $right):int=>strcmp($left['path'],$right['path']));
+            $json=json_encode(['schemaVersion'=>1,'files'=>$manifest],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+            return ['contentSha256'=>hash('sha256',$json),'fileCount'=>count($manifest),'contentBytes'=>$total];
+        }finally{if($zip instanceof ZipArchive)$zip->close();@unlink($archive);}
     }
 
     private function assertPublicReleaseIdentity(string $releaseSha): void
