@@ -37,11 +37,22 @@ test('VPS-native core release reuses canonical approval and deploy authorities',
   assert.match(operator, /retrying/);
   assert.match(operator, /CORE_RELEASE_GIT_CLONE_FAILED/);
   assert.match(operator, /CORE_RELEASE_MISSION_COMMAND_FAILED/);
+  assert.match(operator, /cleanupTerminalWorkspaces/);
+  assert.match(operator, /state IN \('COMPLETED','FAILED','CANCELLED'\)/);
+  assert.match(operator, /assertStorageHeadroom/);
+  assert.match(operator, /CORE_RELEASE_STORAGE_BLOCKED/);
+  assert.match(operator, /finally\{[\s\S]*removeTree\(\$workspace,\$workRoot\)/);
+  assert.ok(operator.indexOf('$this->assertStorageHeadroom();') < operator.indexOf("[$npm,'ci'"), 'storage preflight must run before npm ci');
   assert.match(operator, /systemd-run/);
   assert.match(operator, /bounded-deploy-mission\.mjs/);
   assert.match(operator, /AWH_DEPLOY_TRANSPORT.*local/s);
   assert.match(operator, /posix_geteuid/);
   assert.match(operator, /Node 22\+/);
+  assert.match(operator, /CORE_RELEASE_STORAGE_BLOCKED/);
+  assert.match(operator, /cleanupTerminalWorkspaces/);
+  assert.match(operator, /finally\s*\{/);
+  assert.match(operator, /removeTree\(\$workspace,\$workRoot\)/);
+  assert.match(operator, /state IN \('COMPLETED','FAILED','CANCELLED'\)/);
   assert.doesNotMatch(operator, /sudo\s|shell_exec|\/bin\/sh/);
   assert.match(runner, /runExecution/);
 

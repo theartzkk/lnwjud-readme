@@ -21,6 +21,8 @@ final class HubCoreReleaseOperator
     private const DISPATCHER='vps-core-release';
     private const LEASE_SECONDS=14400;
     private const WORK_ROOT='/var/lib/awh-hub/core-release-work';
+    private const STORAGE_BLOCK_PERCENT=90;
+    private const MIN_FREE_BYTES=3221225472;
     private const SOURCE='file:///srv/awh-git/awh.git';
     private const CANONICAL_GIT_DIR='/srv/awh-git/awh.git';
     /** @var Closure(list<string>,?array):array{code:int,out:string,err:string} */
@@ -44,6 +46,7 @@ final class HubCoreReleaseOperator
     public function tick(?string $now=null): array
     {
         $this->ready();$at=self::time($now??gmdate('c'));$this->advertise($at);
+        $this->cleanupTerminalWorkspaces();
         $active=$this->active();
         if(is_array($active))return $this->observeActive($active,$at);
         $row=$this->claim($at);
@@ -114,6 +117,7 @@ final class HubCoreReleaseOperator
         $checkpoint=HubCoreReleaseService::checkpoint((string)$row['checkpoint_json']);
         $scope=$this->approvedScope((string)$row['task_id'],$checkpoint,$at);
         $sha=(string)$checkpoint['releaseSha'];
+        $workRoot=self::WORK_ROOT;$workspace=null;
         try{
             $main=trim($this->run(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'rev-parse','refs/heads/main'],null,20,'CORE_RELEASE_GIT_MAIN_FAILED')['out']);
             if(!hash_equals($sha,strtolower($main)))throw new HubCoreReleaseOperatorException('Canonical main moved before release execution','CORE_RELEASE_SOURCE_MOVED');
@@ -123,7 +127,9 @@ final class HubCoreReleaseOperator
                 return ['schemaVersion'=>1,'state'=>'ALREADY_CURRENT','releaseSha'=>$sha];
             }
 
-            $workRoot=self::WORK_ROOT;$this->safeDirectory($workRoot,0700);
+            $this->cleanupTerminalWorkspaces();
+            $this->assertStorageHeadroom();
+            $this->safeDirectory($workRoot,0700);
             $workspace=$workRoot.'/'.strtolower($executionId);
             if(file_exists($workspace)||is_link($workspace))$this->removeTree($workspace,$workRoot);
             $this->cloneCanonical($workspace,$workRoot);
@@ -147,12 +153,15 @@ final class HubCoreReleaseOperator
             $result=$this->run($args,['cwd'=>$workspace,'env'=>$env],6900,'CORE_RELEASE_MISSION_COMMAND_FAILED');
             if(!str_contains($result['out'],'MISSION_RESULT=PASS'))throw new HubCoreReleaseOperatorException('Bounded release mission did not produce PASS evidence','CORE_RELEASE_MISSION_FAILED');
             $done=self::time(gmdate('c'));$this->complete($executionId,(string)$row['task_id'],$sha,'Deploy สำเร็จและผ่าน Production verification ครบ',$done);
-            $this->removeTree($workspace,$workRoot);
             return ['schemaVersion'=>1,'state'=>'COMPLETED','releaseSha'=>$sha,'scope'=>$scope];
         }catch(Throwable $error){
             $code=$error instanceof HubCoreReleaseOperatorException?$error->codeName:'CORE_RELEASE_RUN_FAILED';
             $this->fail($executionId,(string)$row['task_id'],$code,self::time(gmdate('c')));
             throw $error instanceof HubCoreReleaseOperatorException?$error:new HubCoreReleaseOperatorException('Core release runner failed',$code);
+        }finally{
+            if(is_string($workspace)&&(file_exists($workspace)||is_link($workspace))){
+                try{$this->removeTree($workspace,$workRoot);}catch(Throwable $cleanupError){error_log('AWH core release workspace cleanup failed: '.$cleanupError->getMessage());}
+            }
         }
     }
 
@@ -258,6 +267,32 @@ final class HubCoreReleaseOperator
     private function assertRoot(): void
     {
         if(!function_exists('posix_geteuid')||posix_geteuid()!==0)throw new HubCoreReleaseOperatorException('Core release runner requires root authority','CORE_RELEASE_ROOT_REQUIRED');
+    }
+
+    private function assertStorageHeadroom(): void
+    {
+        $total=@disk_total_space('/');$free=@disk_free_space('/');
+        if(!is_float($total)||!is_float($free)||$total<=0||$free<0)throw new HubCoreReleaseOperatorException('Core release storage telemetry is unavailable','CORE_RELEASE_STORAGE_UNAVAILABLE');
+        $usedPercent=(int)floor((1-($free/$total))*100);
+        if($usedPercent>=self::STORAGE_BLOCK_PERCENT||$free<self::MIN_FREE_BYTES)
+            throw new HubCoreReleaseOperatorException('Core release storage headroom is below the safe threshold','CORE_RELEASE_STORAGE_BLOCKED');
+    }
+
+    private function cleanupTerminalWorkspaces(): void
+    {
+        $root=self::WORK_ROOT;
+        if(!is_dir($root)||is_link($root))return;
+        $q=$this->pdo->prepare("SELECT execution_id FROM control_task_executions WHERE required_capability=:capability AND state IN ('COMPLETED','FAILED','CANCELLED')");
+        $q->execute(['capability'=>HubCoreReleaseService::CAPABILITY]);
+        $terminal=[];
+        foreach($q->fetchAll(PDO::FETCH_COLUMN) as $execution)if(is_string($execution)&&self::validUuid($execution))$terminal[strtolower($execution)]=true;
+        $entries=@scandir($root);if(!is_array($entries))return;
+        foreach($entries as $name){
+            $id=strtolower((string)$name);
+            if(!isset($terminal[$id])||!self::validUuid($id))continue;
+            $path=$root.'/'.$id;if(is_link($path)||!is_dir($path))continue;
+            try{$this->removeTree($path,$root);}catch(Throwable $error){error_log('AWH terminal core release workspace cleanup failed: '.$error->getMessage());}
+        }
     }
 
     private function safeDirectory(string $path,int $mode): void
