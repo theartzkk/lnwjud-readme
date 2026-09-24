@@ -12,7 +12,7 @@ import { discoverGitHubProjectSource } from './project-source.js';
 import { ControlPlaneWorkerClient, type WorkerCapabilityPlan, type WorkerProject, type WorkerTask } from './control-plane-worker-client.js';
 import { createUnsyncedWorkspaceCheckpoint, createWorkspaceWipCheckpoint, reconstructWorkspaceWip } from './workspace-continuity.js';
 import { createVaultCandidateArchive } from './vault-transfer.js';
-import { composeWorkerHeartbeatCapabilities, discoverWorkerOperationalCapabilities, discoverWorkerTools } from './worker-capability-discovery.js';
+import { composeWorkerHeartbeatCapabilities, discoverWorkerTools } from './worker-capability-discovery.js';
 import { exportOfficeFileToPdf } from './windows-office-export.js';
 import { execCommand } from './process.js';
 
@@ -142,17 +142,13 @@ export async function workerCapabilities(dataDir: string, allowCodex = true): Pr
   const local = await detectLocalCapabilities(dataDir).catch(() => ({ git: false, node: false, php: false, ffmpeg: false, remotion: false, browsers: [] }));
   const codex = allowCodex ? await codexStatus(dataDir).catch(() => ({ available: false, version: null })) : { available: false, version: null };
   const tools = await discoverWorkerTools().catch((): string[] => []);
-  const operational = await discoverWorkerOperationalCapabilities().catch((): string[] => []);
-  const aiOff = operational.includes('runtime.ai.off');
-  const device = deviceExecutionCapabilities(tools).filter((capability) => !aiOff || capability !== 'device.gui.operate');
   const executable = [
-    ...operational,
     'autopilot:local', 'project:context', 'qa:bounded',
     ...(local.git ? ['git:read'] : []), ...(local.node ? ['node'] : []),
     ...(local.php ? ['php:lint'] : []), ...(local.ffmpeg ? ['ffmpeg:probe'] : []),
     ...(local.remotion ? ['remotion'] : []),
     ...officeExecutionCapabilities(process.platform, tools),
-    ...device,
+    ...deviceExecutionCapabilities(tools),
     ...(codex.available ? ['codex:cli'] : []),
   ];
   if (codex.available) tools.push('tool.codex');
