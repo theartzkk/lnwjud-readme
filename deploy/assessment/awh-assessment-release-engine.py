@@ -38,10 +38,18 @@ def sha256(path):
         for b in iter(lambda:f.read(1024*1024),b''): h.update(b)
     return h.hexdigest()
 
-def atomic_json(path,obj):
+def share_with_parent_group(path):
+    if path.is_symlink(): raise ReleaseError('ASSESSMENT_RELEASE_MANIFEST_PERMISSION_FAILED',str(path))
+    parent=path.parent.stat(); current=path.stat()
+    if current.st_gid!=parent.st_gid: os.chown(path,-1,parent.st_gid)
+    if (path.stat().st_mode & 0o777)!=0o640: os.chmod(path,0o640)
+
+def atomic_json(path,obj,share_parent_group=False):
     path.parent.mkdir(parents=True,exist_ok=True)
     raw=(json.dumps(obj,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode()
-    tmp=path.with_name('.'+path.name+'.tmp-'+str(os.getpid())); tmp.write_bytes(raw); os.chmod(tmp,0o640); os.replace(tmp,path)
+    tmp=path.with_name('.'+path.name+'.tmp-'+str(os.getpid())); tmp.write_bytes(raw); os.chmod(tmp,0o640)
+    if share_parent_group: share_with_parent_group(tmp)
+    os.replace(tmp,path)
     return hashlib.sha256(raw).hexdigest()
 
 def current_link(root):
@@ -128,9 +136,11 @@ def candidate():
         try:
             old=json.loads(MANIFEST.read_text())
             keys=('releaseSha','baseReleaseSha','runtimeVersion','sourceMode','ready','qa')
-            if all(old.get(k)==obj.get(k) for k in keys): return old,sha256(MANIFEST)
+            if all(old.get(k)==obj.get(k) for k in keys):
+                share_with_parent_group(MANIFEST)
+                return old,sha256(MANIFEST)
         except Exception: pass
-    return obj,atomic_json(MANIFEST,obj)
+    return obj,atomic_json(MANIFEST,obj,share_parent_group=True)
 
 def copy_modules(src,dst):
     source=src/'node_modules'; target=dst/'node_modules'

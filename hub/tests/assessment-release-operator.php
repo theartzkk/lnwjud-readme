@@ -100,6 +100,21 @@ try{
 
     $engineSource=(string)file_get_contents(dirname(__DIR__,2).'/deploy/assessment/awh-assessment-release-engine.py');
     ar_assert(str_contains($engineSource,'def normalize_canonical_permissions():')&&str_contains($engineSource,"'/usr/bin/setfacl','-m','g::rwx,m::rwx,d:g::rwx,d:m::rwx'")&&str_contains($engineSource,"'config','--system','--add','safe.directory',str(CANON)")&&str_contains($engineSource,'normalize_canonical_permissions()'),'Assessment canonical Git creation and reuse self-heal source-promotion permissions');
+    $manifestProbe=$root.'/manifest-share/candidate.json';mkdir(dirname($manifestProbe),0700,true);
+    $enginePath=dirname(__DIR__,2).'/deploy/assessment/awh-assessment-release-engine.py';
+    $probe=<<<'PY'
+import importlib.util, pathlib, sys
+engine=pathlib.Path(sys.argv[1]); target=pathlib.Path(sys.argv[2])
+spec=importlib.util.spec_from_file_location('assessment_release_engine',engine)
+module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+module.atomic_json(target,{'schemaVersion':1,'product':'BAY Assessment','ready':True},share_parent_group=True)
+st=target.stat(); parent=target.parent.stat()
+assert (st.st_mode & 0o777)==0o640, oct(st.st_mode & 0o777)
+assert st.st_gid==parent.st_gid, (st.st_gid,parent.st_gid)
+PY;
+    $probeCommand='/usr/bin/python3 -c '.escapeshellarg($probe).' '.escapeshellarg($enginePath).' '.escapeshellarg($manifestProbe);
+    exec($probeCommand,$probeOutput,$probeCode);
+    ar_assert($probeCode===0,'Assessment candidate manifest stays private while inheriting the control-plane group');
 
     $fakeRunner=$root.'/awh-assessment-release-run.php';$fakeEngine=$root.'/awh-assessment-release-engine.py';
     file_put_contents($fakeRunner,"<?php\n");file_put_contents($fakeEngine,"#!/usr/bin/env python3\n");
