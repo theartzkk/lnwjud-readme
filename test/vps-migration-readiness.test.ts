@@ -43,9 +43,15 @@ test('imported live storage lifecycle stays bounded and protects authorities', a
   assert.match(retention, /release pointers changed during run/);
   assert.match(guard, /Never touches backups\/releases\/databases\/artifacts/);
   assert.doesNotMatch(guard, /\/var\/backups|\/var\/www\/awh-web\/releases|awh\.sqlite/);
-  assert.match(temp, /find \/tmp -xdev -maxdepth 1/);
+  assert.match(temp, /TEMP_ROOT=\$\{AWH_TEMP_ROOT:-\/tmp\}/);
+  assert.match(temp, /DIR_MAX_AGE_MINUTES=\$\{AWH_TEMP_DIR_MAX_AGE_MINUTES:-720\}/);
+  assert.match(temp, /find "\$TEMP_ROOT" -xdev -maxdepth 1/);
   assert.match(temp, /-mtime \+7/);
   assert.match(temp, /-mmin "\+\$\{DIR_MAX_AGE_MINUTES\}"/);
+  assert.match(temp, /control_task_executions/);
+  assert.match(temp, /active_mutations/);
+  assert.match(temp, /workspace_cleanup_allowed=false/);
+  assert.match(temp, /state IN \('LEASED','RUNNING'\)/);
   assert.match(temp, /status --porcelain=v1/);
   assert.match(temp, /cat-file -e "\$\{head\}\^\{commit\}"/);
   assert.match(temp, /lsof \+D "\$d"/);
