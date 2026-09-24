@@ -5,7 +5,7 @@ ConditionPathExists=/var/lib/awh-hub/awh.sqlite
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /usr/local/sbin/awh-retention-manager.py --apply
+ExecStart=/usr/bin/python3 /opt/awh-hub/control-plane-current/deploy/awh-storage/awh-retention-manager.py --apply
 User=root
 Group=root
 NoNewPrivileges=true

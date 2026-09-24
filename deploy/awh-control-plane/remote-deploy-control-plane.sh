@@ -1073,6 +1073,21 @@ elif test "$ACCOUNT_HOSTING" = 1; then
   stage HOSTING_OPERATOR_UNITS_READY
 fi
 if test "$PROJECT_SOURCE_AUTHORITY" = 1; then
+  stage MAINTENANCE_RUNTIME_PREPARE
+  for UNIT in awh-backup awh-database-inventory awh-retention awh-temp-cleanup awh-storage-guard awh-restore-drill; do
+    sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/$UNIT.service" "/etc/systemd/system/$UNIT.service"
+    sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/$UNIT.timer" "/etc/systemd/system/$UNIT.timer"
+  done
+  sudo systemctl daemon-reload
+  for UNIT in awh-backup awh-database-inventory awh-retention awh-temp-cleanup awh-storage-guard awh-restore-drill; do
+    sudo systemctl enable --now "$UNIT.timer" >/dev/null
+    sudo systemctl is-enabled --quiet "$UNIT.timer"
+    sudo systemctl is-active --quiet "$UNIT.timer"
+  done
+  for UNIT in awh-backup awh-database-inventory awh-retention awh-temp-cleanup awh-storage-guard awh-restore-drill; do
+    sudo systemctl cat "$UNIT.service" | grep -Fq '/opt/awh-hub/control-plane-current/'
+  done
+  stage MAINTENANCE_RUNTIME_READY
   stage SOURCE_DRIFT_MONITOR_PREPARE
   sudo test -d /srv/awh-git
   command -v setfacl >/dev/null 2>&1

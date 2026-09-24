@@ -28,7 +28,7 @@ fi
 
 # Bounded low-risk self-healing. Never touches backups/releases/databases/artifacts.
 if [[ "$state" == "WARNING" || "$state" == "CRITICAL" ]]; then
-  /usr/local/sbin/awh-temp-cleanup >/dev/null 2>&1 || true
+  /opt/awh-hub/control-plane-current/deploy/awh-storage/awh-temp-cleanup >/dev/null 2>&1 || true
 fi
 if (( used >= BLOCK )); then
   journalctl --vacuum-size=300M >/dev/null 2>&1 || true
