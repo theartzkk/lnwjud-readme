@@ -14,6 +14,12 @@ ep(HubCapabilityRegistryService::mutationResourceForExecution('project.mutate.as
 ep(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:SOURCE','CANONICAL:SOURCE')===true,'same canonical resource serializes');
 ep(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:SOURCE','CANONICAL:DEPLOY')===false,'different canonical resources can proceed independently');
 ep(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:PROJECT','CANDIDATE')===true,'unknown canonical mutations fail closed');
+ep(HubCapabilityRegistryService::mutationResourceIsGlobal('CANONICAL:DEPLOY')===true,'deploy lane is a VPS-global mutation resource');
+ep(HubCapabilityRegistryService::mutationResourceIsGlobal('CANONICAL:SOURCE')===false,'source lane stays project-local');
+ep(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:DEPLOY','project-a','CANONICAL:DEPLOY','project-b')===true,'deploys serialize across projects');
+ep(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:SOURCE','project-a','CANONICAL:DEPLOY','project-a')===true,'source promotion interlocks with same-project deploy');
+ep(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:SOURCE','project-a','CANONICAL:DEPLOY','project-b')===false,'source promotion remains independent from another project deploy');
+ep(HubCapabilityRegistryService::mutationResourcesConflictForProjects('RESOURCE:RELEASE_STAGE','project-a','CANONICAL:DEPLOY','project-a')===true,'release staging interlocks with same-project deploy');
 ep(!isset($p['policyFamilies'])&&!isset($p['planBeforeCall'])&&!isset($p['quotaAware']),'retired owner-model fields are absent');
 $ay=HubCapabilityRegistryService::workProfileForGoal('AY3 เด็กกดเริ่มภารกิจไม่ได้');
 ep(($ay['primaryRoute']??null)==='REMOTE_DEVICE'&&($ay['requiresRealDeviceEvidence']??false)===true,'work profile remains advisory evidence');

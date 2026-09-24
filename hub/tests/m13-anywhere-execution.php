@@ -28,6 +28,7 @@ $root = sys_get_temp_dir() . '/awh-m13-' . bin2hex(random_bytes(6));
 $base = dirname(__DIR__); $now = gmdate('c');
 $owner = '223b45c0-23e1-408d-ae0f-ac5eca7f6900';
 $project = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
+$project2 = '313b45c0-23e1-408d-ae0f-ac5eca7f6900';
 $device = '423b45c0-23e1-408d-ae0f-ac5eca7f6900';
 $writerDevice = '523b45c0-23e1-408d-ae0f-ac5eca7f6900';
 $guiOnDevice = '623b45c0-23e1-408d-ae0f-ac5eca7f6900';
@@ -38,6 +39,7 @@ try {
     $pdo->exec('PRAGMA foreign_keys = ON'); $pdo->exec(file_get_contents($base . '/schema.sql'));
     foreach (['enrollment_rate_limits','device_project_memberships','device_tokens','pairing_projects','pairing_codes','user_project_memberships','device_enrollments','owner_bootstrap','hub_users'] as $table) $pdo->exec('DROP TABLE IF EXISTS ' . $table);
     $pdo->prepare('INSERT INTO projects(project_id,name,type,created_at,source_revision,observed_at,provenance) VALUES(:id,:name,:type,:at,NULL,:at,:provenance)')->execute(['id'=>$project,'name'=>'Anywhere Fixture','type'=>'php','at'=>$now,'provenance'=>'m13-fixture']);
+    $pdo->prepare('INSERT INTO projects(project_id,name,type,created_at,source_revision,observed_at,provenance) VALUES(:id,:name,:type,:at,NULL,:at,:provenance)')->execute(['id'=>$project2,'name'=>'Peer Fixture','type'=>'php','at'=>$now,'provenance'=>'m13-fixture']);
     m13_assert(HubSchemaMigration::apply($db, $base . '/migrations/001_m3e_enrollment.sql', $now, false, $base . '/schema.sql') === 'applied', 'M3E');
     m13_assert(HubEnrollmentApiMigration::apply($db, $base . '/migrations/002_m3e2_enrollment_api.sql', $now) === 'applied', 'M3E2');
     $enrollment=HubEnrollmentService::openExisting($db); $enrollment->initializeOwner($owner, 'Art', [$project], $now);
@@ -129,8 +131,38 @@ try {
     $authorityStatus = $registry->executionAuthorityStatus($now);
     m13_assert(($authorityStatus['mode'] ?? null) === 'RESOURCE_SCOPED_CONCURRENCY' && ($authorityStatus['activeMutationCount'] ?? 0) === 2 && ($authorityStatus['waitingMutationCount'] ?? -1) === 0, 'authority status exposes parallel non-conflicting resource lanes');
     m13_assert(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:SOURCE','CANONICAL:SOURCE')===true,'same canonical resource conflicts');
-    m13_assert(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:SOURCE','CANONICAL:DEPLOY')===false,'different canonical resources can progress independently');
+    m13_assert(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:SOURCE','CANONICAL:DEPLOY')===false,'raw resource comparison stays backwards-compatible');
     m13_assert(HubCapabilityRegistryService::mutationResourcesConflict('CANDIDATE','CANONICAL:SOURCE')===false,'isolated candidate work never blocks source promotion');
+    m13_assert(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:SOURCE',$project,'CANONICAL:DEPLOY',$project)===true,'same-project source and deploy are interlocked');
+    m13_assert(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:DEPLOY',$project,'CANONICAL:DEPLOY',$project2)===true,'shared deploy lane serializes across projects');
+
+    $arbRows=[
+        ['deploy-a',$project,'system.core.release'],
+        ['source-a',$project,'source.promote'],
+        ['source-b',$project2,'source.promote'],
+        ['deploy-b',$project2,'system.assessment.release'],
+    ];
+    $arb=[];
+    foreach($arbRows as [$label,$pid,$cap]){
+        $task=m13_uuid();$execution=m13_uuid();$arb[$label]=[$task,$execution];
+        $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,:goal,'WAITING_FOR_WORKER',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$task,'user'=>$owner,'project'=>$pid,'goal'=>$label,'key'=>'m13-arbitration-'.$label,'at'=>$now]);
+        $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS',:capability,'QUEUED',NULL,NULL,0,NULL,'{}',NULL,:at,:at)")->execute(['execution'=>$execution,'task'=>$task,'project'=>$pid,'capability'=>$cap,'at'=>$now]);
+    }
+    $deployA=$registry->activateExecutionAuthority($arb['deploy-a'][1],$leaseUntil,$now);
+    m13_assert(($deployA['granted']??false)===true,'first project owns shared deploy lane');
+    $sourceA=$registry->activateExecutionAuthority($arb['source-a'][1],$leaseUntil,$now);
+    m13_assert(($sourceA['granted']??true)===false&&($sourceA['blockingProjectId']??null)===$project,'same-project source promotion waits for active deploy');
+    $sourceB=$registry->activateExecutionAuthority($arb['source-b'][1],$leaseUntil,$now);
+    m13_assert(($sourceB['granted']??false)===true,'another project source promotion remains independent from deploy');
+    $registry->updateEnvelopeState($arb['source-b'][1],'RELEASED',null,$now);
+    $deployB=$registry->activateExecutionAuthority($arb['deploy-b'][1],$leaseUntil,$now);
+    m13_assert(($deployB['granted']??true)===false&&($deployB['blockingProjectId']??null)===$project,'second project deploy waits on VPS-global deploy lane');
+    foreach($arb as [$task,$execution]){
+        $registry->updateEnvelopeState($execution,'RELEASED',null,$now);
+        $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED' WHERE execution_id=:id")->execute(['id'=>$execution]);
+        $pdo->prepare("UPDATE control_tasks SET state='COMPLETED' WHERE task_id=:id")->execute(['id'=>$task]);
+    }
+
     $registry->updateEnvelopeState($specialistExecution, 'RELEASED', null, $now);
     $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED' WHERE execution_id=:id")->execute(['id'=>$secondExecution]);
     $pdo->prepare("UPDATE control_tasks SET state='COMPLETED' WHERE task_id=:id")->execute(['id'=>$secondTask]);

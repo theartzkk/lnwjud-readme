@@ -172,6 +172,35 @@ final class HubCapabilityRegistryService
         return hash_equals($left, $right);
     }
 
+    /** Resources that are physically shared across projects on the VPS. */
+    public static function mutationResourceIsGlobal(string $resource): bool
+    {
+        return strtoupper(trim($resource)) === 'CANONICAL:DEPLOY';
+    }
+
+    /**
+     * Apply project identity to resource arbitration.
+     * Candidate/workspace lanes remain isolated. Canonical source cannot move
+     * while the same project's deploy lane is active, and the shared deploy
+     * lane serializes across projects.
+     */
+    public static function mutationResourcesConflictForProjects(string $left,string $leftProject,string $right,string $rightProject): bool
+    {
+        $left=strtoupper(trim($left));$right=strtoupper(trim($right));
+        if($left==='READ'||$right==='READ')return false;
+        $sameProject=hash_equals(strtolower(trim($leftProject)),strtolower(trim($rightProject)));
+        if(!$sameProject){
+            return self::mutationResourceIsGlobal($left)
+                && self::mutationResourceIsGlobal($right)
+                && self::mutationResourcesConflict($left,$right);
+        }
+        if($left==='CANONICAL:PROJECT'||$right==='CANONICAL:PROJECT')return true;
+        if(in_array($left,['CANDIDATE','WORKSPACE'],true)||in_array($right,['CANDIDATE','WORKSPACE'],true))return false;
+        if(($left==='CANONICAL:DEPLOY'&&$right==='CANONICAL:SOURCE')||($right==='CANONICAL:DEPLOY'&&$left==='CANONICAL:SOURCE'))return true;
+        if(($left==='CANONICAL:DEPLOY'&&$right==='RESOURCE:RELEASE_STAGE')||($right==='CANONICAL:DEPLOY'&&$left==='RESOURCE:RELEASE_STAGE'))return true;
+        return self::mutationResourcesConflict($left,$right);
+    }
+
     /** One descriptive envelope per M12 execution; it is not another task queue or lock authority. */
     public function ensureExecutionEnvelope(string $executionId, ?string $now = null): array
     {
@@ -243,17 +272,30 @@ final class HubCapabilityRegistryService
                 return ['granted'=>true,'executionId'=>$executionId,'projectId'=>$project,'mutationScope'=>$scope,'mutationResource'=>$resource,'blockingExecutionId'=>null,'blockingTaskId'=>null];
             }
 
-            $holder = $this->pdo->prepare("SELECT x.execution_id,x.task_id,x.mutation_scope,e.required_capability,e.executor_kind FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id WHERE x.project_id=:project AND x.execution_id<>:execution AND x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) ORDER BY x.updated_at,x.execution_id");
-            $holder->execute(['project'=>$project,'execution'=>$executionId,'at'=>$at]);
-            $blocking = null;
-            foreach ($holder->fetchAll() as $candidate) {
+            $unscoped=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.project_id,e.required_capability,e.executor_kind FROM control_task_executions e LEFT JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.execution_id<>:execution AND e.state IN ('LEASED','RUNNING') AND x.execution_id IS NULL ORDER BY e.updated_at,e.execution_id");
+            $unscoped->execute(['execution'=>$executionId]);
+            $blocking=null;
+            foreach($unscoped->fetchAll() as $candidate){
+                $candidateProject=(string)$candidate['project_id'];
                 $candidateResource=self::mutationResourceForExecution((string)$candidate['required_capability'],(string)$candidate['executor_kind']);
-                if (self::mutationResourcesConflict($resource,$candidateResource)) { $candidate['mutation_resource']=$candidateResource; $blocking = $candidate; break; }
+                if(self::mutationResourcesConflictForProjects($resource,$project,$candidateResource,$candidateProject)){
+                    $candidate['mutation_resource']=$candidateResource;$candidate['unscoped']=true;$blocking=$candidate;break;
+                }
+            }
+
+            if($blocking===null){
+                $holder = $this->pdo->prepare("SELECT x.execution_id,x.task_id,x.project_id,x.mutation_scope,e.required_capability,e.executor_kind FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id WHERE x.execution_id<>:execution AND x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) ORDER BY x.updated_at,x.execution_id");
+                $holder->execute(['execution'=>$executionId,'at'=>$at]);
+                foreach ($holder->fetchAll() as $candidate) {
+                    $candidateProject=(string)$candidate['project_id'];
+                    $candidateResource=self::mutationResourceForExecution((string)$candidate['required_capability'],(string)$candidate['executor_kind']);
+                    if (self::mutationResourcesConflictForProjects($resource,$project,$candidateResource,$candidateProject)) { $candidate['mutation_resource']=$candidateResource; $blocking = $candidate; break; }
+                }
             }
             if (is_array($blocking)) {
                 $this->pdo->prepare("UPDATE control_execution_envelopes SET state='WAITING',lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution AND state IN ('OPEN','WAITING','CONFLICT')")->execute(['at'=>$at,'execution'=>$executionId]);
                 if ($ownTransaction) $this->pdo->exec('COMMIT');
-                return ['granted'=>false,'executionId'=>$executionId,'projectId'=>$project,'mutationScope'=>$scope,'mutationResource'=>$resource,'blockingMutationResource'=>(string)$blocking['mutation_resource'],'blockingExecutionId'=>(string)$blocking['execution_id'],'blockingTaskId'=>(string)$blocking['task_id']];
+                return ['granted'=>false,'executionId'=>$executionId,'projectId'=>$project,'mutationScope'=>$scope,'mutationResource'=>$resource,'blockingMutationResource'=>(string)$blocking['mutation_resource'],'blockingProjectId'=>(string)$blocking['project_id'],'blockingExecutionId'=>(string)$blocking['execution_id'],'blockingTaskId'=>(string)$blocking['task_id']];
             }
 
             $claim = $this->pdo->prepare("UPDATE control_execution_envelopes SET state='ACTIVE',lease_expires_at=:lease,updated_at=:at WHERE execution_id=:execution AND state IN ('OPEN','WAITING','ACTIVE')");

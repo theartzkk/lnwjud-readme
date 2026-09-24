@@ -35,6 +35,8 @@ VPS-hosted code promotion must stay on the VPS. ChatGPT should stage an exact bu
 
 The same Execution First model applies to every KRUART/AWH/BAY/LearnLab/website/document/creative task. One mission owns one mutation scope; device/resource leases prevent parallel writers. Route work by capability, keep long-running work alive across chat/transport interruptions, report assistant-visible evidence-backed heartbeats every 3–5 minutes, and continue without waiting for acknowledgement. Device-bound work normally targets a coherent ~30-minute productive mission (or longer when useful), not 1–2 minute micro-turns.
 
+`remote-mission-state` is only a local device/transport lease and checkpoint aid. Canonical project/task/source/release mutation ownership remains in Hub task/execution/envelope authorities; a local mission file must never be used to override or duplicate that authority.
+
 Subprocess completion never ends the mission by itself. Restart is recovery only, never a way to control state. Creative applications remain in one healthy session and must not be force-terminated for probing/QC. Long processes are polled sparsely (normally every 2–5 minutes) and resumed by PID/session/checkpoint.
 
 QA is risk-based and single-flight; release/deep QA uses an immutable exact SHA in an isolated worktree. Closure requires completion proof and cleanup of transient clones/logs/probes/locks/bundles while preserving canonical source, bounded verified recovery, verified evidence and Production releases.

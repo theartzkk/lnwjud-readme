@@ -10,6 +10,13 @@ test('execution metadata is context-only rather than an AI behavior policy',asyn
   assert.equal(context.prescriptivePolicy,false);
   assert.equal(context.integrity.singleWriterPerMutationScope,true);
   assert.equal(context.integrity.readOnlyConcurrencyAllowed,true);
+  assert.equal(context.integrity.mutationAuthority,'control_execution_envelopes');
+  assert.equal(context.integrity.secondWriterBehavior,'WAIT_OR_JOIN');
+  assert.equal(context.integrity.parallelLockAuthorityAllowed,false);
+  assert.equal(context.integrity.localMissionAuthorityClass,'DEVICE_TRANSPORT_LEASE');
+  assert.ok(context.integrity.globalMutationResources.includes('CANONICAL:DEPLOY'));
+  assert.ok(context.integrity.sameProjectInterlocks.includes('CANONICAL:SOURCE<->CANONICAL:DEPLOY'));
+  assert.ok(context.integrity.sameProjectInterlocks.includes('RESOURCE:RELEASE_STAGE<->CANONICAL:DEPLOY'));
   assert.equal(context.runtimeDefaults.deviceLeaseMinutes,45);
   for(const removed of ['remoteMission','executionModel','gateTiers','sourceAuthority']) assert.equal(Object.hasOwn(context,removed),false);
 });
@@ -62,4 +69,25 @@ test('managed-product deploy provisions namespace roots before operator enable',
   const preflight=script.indexOf('HOSTING_NAMESPACE_PATHS_READY');
   const enable=script.indexOf('systemctl enable --now awh-hosting-operator.timer',preflight);
   assert.ok(provision>0&&preflight>provision&&enable>preflight);
+});
+
+test('document governance has one entry point and no parallel rules authority',async()=>{
+  const root=(name)=>new URL('../'+name,import.meta.url);
+  const [agents,state,handoff,authority,sustainability,operations,release]=await Promise.all([
+    'AGENTS.md','CURRENT_STATE.md','HANDOFF.md','docs/AWH-AUTHORITY-MAP.md',
+    'docs/AWH_SUSTAINABILITY_CONTRACT.md','docs/OPERATIONS.md','docs/RELEASE.md'
+  ].map((name)=>readFile(root(name),'utf8')));
+  await assert.rejects(()=>readFile(root('RULES.md'),'utf8'));
+  assert.match(agents,/single human-readable entry point/i);
+  assert.match(agents,/no parallel `RULES\.md` authority/i);
+  assert.match(agents,/JOIN\/WAIT/i);
+  assert.match(state,/not live authority/i);
+  assert.match(handoff,/continuity context, not runtime authority/i);
+  assert.match(authority,/Normative architecture contract/i);
+  assert.match(authority,/CANONICAL:DEPLOY.*VPS-global/s);
+  assert.match(authority,/CANONICAL:SOURCE.*CANONICAL:DEPLOY/s);
+  assert.match(authority,/remote-mission-state.*transport\/device leases only/s);
+  assert.match(sustainability,/second chat\/worker resumes, joins or waits/i);
+  assert.match(operations,/shared Production deploys serialize across managed projects/i);
+  assert.match(release,/QA or candidate readiness is not Production completion/i);
 });

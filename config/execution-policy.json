@@ -9,7 +9,18 @@
   },
   "integrity": {
     "singleWriterPerMutationScope": true,
-    "readOnlyConcurrencyAllowed": true
+    "readOnlyConcurrencyAllowed": true,
+    "mutationAuthority": "control_execution_envelopes",
+    "secondWriterBehavior": "WAIT_OR_JOIN",
+    "globalMutationResources": [
+      "CANONICAL:DEPLOY"
+    ],
+    "sameProjectInterlocks": [
+      "CANONICAL:SOURCE<->CANONICAL:DEPLOY",
+      "RESOURCE:RELEASE_STAGE<->CANONICAL:DEPLOY"
+    ],
+    "localMissionAuthorityClass": "DEVICE_TRANSPORT_LEASE",
+    "parallelLockAuthorityAllowed": false
   },
   "qa": {
     "riskBudget": {

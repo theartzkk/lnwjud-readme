@@ -27,7 +27,7 @@ test('remote mission state allows parallel missions per device while preserving 
     const deviceId='11111111-1111-4111-8111-111111111111';
     const base={deviceId,deviceName:'VPS',project:'fixture',objective:'bounded work',mutationMode:'MUTATE',ownerKey:null};
     let r=await run(root,'start',{...base,missionId:'mission-a',resourceKey:'project:fixture:source'});
-    assert.equal(r.code,0,r.err);assert.equal(JSON.parse(r.out).status,'ACTIVE');
+    assert.equal(r.code,0,r.err);assert.equal(JSON.parse(r.out).status,'ACTIVE');assert.equal(JSON.parse(r.out).authorityClass,'DEVICE_TRANSPORT_LEASE');
     r=await run(root,'start',{...base,missionId:'mission-b',resourceKey:'project:fixture:web'});
     assert.equal(r.code,0,r.err);assert.equal(JSON.parse(r.out).status,'ACTIVE');
 

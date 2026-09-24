@@ -1,15 +1,44 @@
-# AWH Agent Context
+# AWH Agent Entry Point
 
-Read `ART_AI_WORKING_PROTOCOL.md` as non-binding working context.
+This is the single human-readable entry point for agents working on AWH/KRUART/BAY infrastructure.
 
-Use the current user request, current project/source authority, actual runtime state, available capabilities, and relevant evidence to decide how to work. Do not treat historical plans, old handoffs, tool preferences, device routes, quotas, heartbeat schedules, mission durations, or prior implementation techniques as mandatory.
+## Authority model
 
-Preserve real integrity boundaries when applicable: exact source/revision identity, one active writer per mutation scope, credential/data isolation, candidate workspace isolation, and explicit approval for a real production/destructive trust-boundary action.
+There is no parallel `RULES.md` authority. Use these layers for their specific purpose:
 
-For meaningful work, understand the relevant native, advanced, and version-specific capabilities before defaulting to a familiar shallow method. Inspect the real output that matters to the user.
+1. **Current request** defines the intended outcome. Historical plans never override it.
+2. **Live evidence** defines mutable facts: canonical Git refs, Production refs, public release identity, DB state, services, device state and current leases.
+3. **Normative integrity contracts** define boundaries that must not be bypassed: `docs/AWH-AUTHORITY-MAP.md`, security/release contracts and the machine-enforced execution authority.
+4. **Machine-readable execution contract** is `config/execution-policy.json`; runtime code/tests must enforce the same invariants.
+5. **Working context** in `ART_AI_WORKING_PROTOCOL.md` is non-binding working context: advisory and non-prescriptive.
+6. **`CURRENT_STATE.md`** is the first committed state index; read it before `PROJECT.md`, while remembering it is never live authority.
+7. **`PROJECT.md`**, `HANDOFF.md`, history and dated closure documents are continuity/audit context only.
 
-When consulting durable project memory, `CURRENT_STATE.md` is the freshest state snapshot; `PROJECT.md`, `HANDOFF.md`, `TASKS.md`, `ARCHITECTURE.md`, and `DECISIONS.md` are supporting context whose dated statements may be stale.
+When facts disagree, inspect the live authority. When prose disagrees with enforced integrity contracts, fix the prose or implementation rather than inventing another rule layer.
 
-For visual or design work, `design/DESIGN.md` and `config/kruart-visual-assets.json` provide durable design and asset context; relevant overlays and acceptance references under `design/` may be consulted when useful. These are context and evidence, not a mandatory workflow.
+Use professional judgment and the capabilities actually available now; stale tool, device, workflow or routing preferences are context, not authority.
 
-AWH context informs professional judgment; it does not replace it.
+## Mutation ownership
+
+Read-only work may run concurrently. Mutations must use the canonical Task/Execution/Envelope authorities and **one active writer per mutation scope**, where the scope is the conflicting mutation resource.
+A second chat or worker must **JOIN/WAIT** on an active conflicting authority; it must not create a competing writer.
+
+Project-local candidate/workspace work may remain parallel when isolated. The shared VPS Production deploy lane is global across projects. Canonical source promotion and Production deploy for the same project are interlocked.
+
+Local remote-mission files are device/transport leases only. They never outrank Hub project/source/release authority.
+
+## Release and privilege
+
+Canonical source changes use the typed source-promotion authority. Do not direct-write the bare canonical repository.
+
+Production uses one exact-revision approval for the bounded release scope. QA PASS alone is not Production success. Closure requires exact revision identity through source, artifact, Production/public state and post-deploy verification.
+
+On VPS-native work, use the local typed operator. Do not self-SSH back into the same VPS when the local authority exists. Restricted workers keep `NoNewPrivileges`; recurring privileged actions belong in bounded typed operators.
+
+## Completion
+
+Resume proven durable state after a chat/tool interruption instead of blind retrying or spawning a duplicate mission. Clean transient workspaces and release leases on terminal paths.
+
+Verify the deliverable that matters: runtime/public state for deployments, data integrity for migrations, real rendered/field output for UI/creative work.
+
+Supporting documents may add domain detail, but they cannot create another identity, task queue, mutation lock, source authority, approval authority or Production truth.

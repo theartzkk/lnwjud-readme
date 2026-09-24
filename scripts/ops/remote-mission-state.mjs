@@ -88,12 +88,12 @@ export async function runRemoteMissionCommand(command,payload,policy=null){
     if(policy.integrity?.singleWriterPerMutationScope===true&&mutationMode==='MUTATE'&&!resourceKey)throw new Error('MISSION_RESOURCE_REQUIRED');
     const resourcePath=resourceKey?fileForResource(resourceKey):null;
     const at=now().toISOString();
-    const row={schemaVersion:1,missionId,deviceId,deviceName:cleanText(payload.deviceName,120),project:cleanText(payload.project,120),objective:cleanText(payload.objective,500),mutationMode,resourceKey,ownerKey,status:'ACTIVE',startedAt:current?.missionId===missionId?current.startedAt:at,updatedAt:at,lastHeartbeatAt:at,leaseExpiresAt:expiry(leaseMinutes),heartbeatSequence:current?.missionId===missionId?(Number(current.heartbeatSequence)||0):0,app:cleanText(payload.app,120),pid:Number.isInteger(payload.pid)&&payload.pid>0?payload.pid:null,checkpoint:cleanText(payload.checkpoint,500),nextStep:cleanText(payload.nextStep,500),currentOperation:cleanText(payload.currentOperation,500),stage:cleanStage(payload.stage),doneSinceLast:cleanList(payload.doneSinceLast),proofOfWork:cleanList(payload.proofOfWork),lastSaveOrArtifact:cleanText(payload.lastSaveOrArtifact,500),nextSteps:cleanList(payload.nextSteps,{maxItems:3,maxLength:500}),blocker:null};
+    const row={schemaVersion:1,authorityClass:'DEVICE_TRANSPORT_LEASE',missionId,deviceId,deviceName:cleanText(payload.deviceName,120),project:cleanText(payload.project,120),objective:cleanText(payload.objective,500),mutationMode,resourceKey,ownerKey,status:'ACTIVE',startedAt:current?.missionId===missionId?current.startedAt:at,updatedAt:at,lastHeartbeatAt:at,leaseExpiresAt:expiry(leaseMinutes),heartbeatSequence:current?.missionId===missionId?(Number(current.heartbeatSequence)||0):0,app:cleanText(payload.app,120),pid:Number.isInteger(payload.pid)&&payload.pid>0?payload.pid:null,checkpoint:cleanText(payload.checkpoint,500),nextStep:cleanText(payload.nextStep,500),currentOperation:cleanText(payload.currentOperation,500),stage:cleanStage(payload.stage),doneSinceLast:cleanList(payload.doneSinceLast),proofOfWork:cleanList(payload.proofOfWork),lastSaveOrArtifact:cleanText(payload.lastSaveOrArtifact,500),nextSteps:cleanList(payload.nextSteps,{maxItems:3,maxLength:500}),blocker:null};
     if(!row.deviceName||!row.project||!row.objective)throw new Error('MISSION_METADATA_INVALID');
     if(resourcePath&&mutationMode==='MUTATE')return withResourceGuard(resourceKey,async()=>{
       const resourceCurrent=await readJson(resourcePath);
       if(active(resourceCurrent)&&resourceCurrent.missionId!==missionId)throw new Error('MISSION_RESOURCE_LEASE_HELD');
-      await atomicJson(resourcePath,{schemaVersion:1,missionId,resourceKey,project:row.project,ownerKey:row.ownerKey,status:'ACTIVE',updatedAt:at,leaseExpiresAt:row.leaseExpiresAt});
+      await atomicJson(resourcePath,{schemaVersion:1,authorityClass:'DEVICE_TRANSPORT_LEASE',missionId,resourceKey,project:row.project,ownerKey:row.ownerKey,status:'ACTIVE',updatedAt:at,leaseExpiresAt:row.leaseExpiresAt});
       try{await atomicJson(path,row);}catch(error){const held=await readJson(resourcePath);if(held?.missionId===missionId)await rm(resourcePath,{force:true});throw error;}
       return row;
     });
@@ -124,7 +124,7 @@ export async function runRemoteMissionCommand(command,payload,policy=null){
       const resourcePath=fileForResource(updated.resourceKey),held=await readJson(resourcePath);
       if(held?.missionId!==updated.missionId||!active(held))throw new Error('MISSION_RESOURCE_LEASE_LOST');
       await atomicJson(path,updated);
-      await atomicJson(resourcePath,{schemaVersion:1,missionId:updated.missionId,resourceKey:updated.resourceKey,project:updated.project,ownerKey:updated.ownerKey,status:'ACTIVE',updatedAt:at,leaseExpiresAt:updated.leaseExpiresAt});
+      await atomicJson(resourcePath,{schemaVersion:1,authorityClass:'DEVICE_TRANSPORT_LEASE',missionId:updated.missionId,resourceKey:updated.resourceKey,project:updated.project,ownerKey:updated.ownerKey,status:'ACTIVE',updatedAt:at,leaseExpiresAt:updated.leaseExpiresAt});
       return updated;
     });
     await atomicJson(path,updated);return updated;

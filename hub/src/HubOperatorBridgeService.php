@@ -90,13 +90,26 @@ final class HubOperatorBridgeService
         $project=$this->resolveProject($selector);
         $id=(string)$project['project_id'];
         $requestedResource=$capability===null?'CANONICAL:PROJECT':HubCapabilityRegistryService::mutationResourceForExecution($capability,'VPS');
-        $active=$this->pdo->prepare("SELECT x.execution_id,x.task_id,x.state,x.mutation_scope,x.lease_expires_at,e.state AS execution_state,e.required_capability,e.executor_kind,t.state AS task_state,t.goal FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id JOIN control_tasks t ON t.task_id=x.task_id WHERE x.project_id=:project AND x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY x.updated_at DESC LIMIT 20");
-        $active->execute(['project'=>$id,'at'=>$at]); $activeRows=$active->fetchAll();
-        $conflictingRows=[]; foreach($activeRows as $row){if($excludeExecutionId!==null&&hash_equals($excludeExecutionId,(string)$row['execution_id']))continue;$resource=HubCapabilityRegistryService::mutationResourceForExecution((string)$row['required_capability'],(string)$row['executor_kind']);if(HubCapabilityRegistryService::mutationResourcesConflict($requestedResource,$resource)){$row['mutation_resource']=$resource;$conflictingRows[]=$row;}}
+        $active=$this->pdo->prepare("SELECT x.execution_id,x.task_id,x.project_id,x.state,x.mutation_scope,x.lease_expires_at,e.state AS execution_state,e.required_capability,e.executor_kind,t.state AS task_state,t.goal,p.name AS project_name FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id JOIN control_tasks t ON t.task_id=x.task_id JOIN projects p ON p.project_id=x.project_id WHERE x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY x.updated_at DESC LIMIT 80");
+        $active->execute(['at'=>$at]);$allActiveRows=$active->fetchAll();
+        $activeRows=array_values(array_filter($allActiveRows,static fn(array $row):bool=>hash_equals($id,(string)$row['project_id'])));
+        $conflictingRows=[];
+        foreach($allActiveRows as $row){
+            if($excludeExecutionId!==null&&hash_equals($excludeExecutionId,(string)$row['execution_id']))continue;
+            $resource=HubCapabilityRegistryService::mutationResourceForExecution((string)$row['required_capability'],(string)$row['executor_kind']);
+            if(HubCapabilityRegistryService::mutationResourcesConflictForProjects($requestedResource,$id,$resource,(string)$row['project_id'])){$row['mutation_resource']=$resource;$conflictingRows[]=$row;}
+        }
         $running=$this->pdo->prepare("SELECT COUNT(*) FROM control_task_executions e WHERE e.project_id=:project AND e.state IN ('LEASED','RUNNING')");
         $running->execute(['project'=>$id]); $runningCount=(int)$running->fetchColumn();
         $unscoped=$this->pdo->prepare("SELECT COUNT(*) FROM control_task_executions e LEFT JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.project_id=:project AND e.state IN ('LEASED','RUNNING') AND x.execution_id IS NULL");
         $unscoped->execute(['project'=>$id]); $unscopedCount=(int)$unscoped->fetchColumn();
+        $unscopedGlobal=$this->pdo->prepare("SELECT e.execution_id,e.project_id,e.required_capability,e.executor_kind FROM control_task_executions e LEFT JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.state IN ('LEASED','RUNNING') AND x.execution_id IS NULL ORDER BY e.updated_at,e.execution_id LIMIT 80");
+        $unscopedGlobal->execute();$unscopedConflictCount=0;
+        foreach($unscopedGlobal->fetchAll() as $row){
+            if($excludeExecutionId!==null&&hash_equals($excludeExecutionId,(string)$row['execution_id']))continue;
+            $resource=HubCapabilityRegistryService::mutationResourceForExecution((string)$row['required_capability'],(string)$row['executor_kind']);
+            if(HubCapabilityRegistryService::mutationResourcesConflictForProjects($requestedResource,$id,$resource,(string)$row['project_id']))$unscopedConflictCount++;
+        }
         $workspace=$this->pdo->prepare("SELECT owner_device_id,checkpoint_id,lease_expires_at,updated_at FROM control_workspace_leases WHERE project_id=:project AND state='ACTIVE' AND (lease_expires_at IS NULL OR lease_expires_at>:at) LIMIT 5");
         $workspace->execute(['project'=>$id,'at'=>$at]); $workspaceRows=$workspace->fetchAll();
         $waiting=$this->pdo->prepare("SELECT COUNT(*) FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id JOIN control_tasks t ON t.task_id=x.task_id WHERE x.project_id=:project AND x.mutation_scope<>'READ' AND x.state IN ('OPEN','WAITING','CONFLICT') AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED')");
@@ -115,7 +128,7 @@ final class HubOperatorBridgeService
         $checks=[
             ['key'=>'database','ok'=>$quick==='ok','value'=>$quick,'blocking'=>true],
             ['key'=>'conflicting_mutations','ok'=>count($conflictingRows)===0,'value'=>count($conflictingRows),'blocking'=>true],
-            ['key'=>'unscoped_running_mutations','ok'=>$unscopedCount===0,'value'=>$unscopedCount,'blocking'=>true],
+            ['key'=>'unscoped_running_mutations','ok'=>$unscopedConflictCount===0,'value'=>$unscopedConflictCount,'blocking'=>true],
             ['key'=>'active_workspace_leases','ok'=>count($workspaceRows)===0,'value'=>count($workspaceRows),'blocking'=>$capability===null],
             ['key'=>'source_authority','ok'=>$sourceReady,'value'=>$authority??'UNSET','blocking'=>$requireSource],
             ['key'=>'vault_sync','ok'=>$vaultReady,'value'=>$sync,'blocking'=>$requireSource&&$authority==='AWH_VAULT'],

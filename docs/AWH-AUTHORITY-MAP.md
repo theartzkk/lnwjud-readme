@@ -10,6 +10,28 @@ This document prevents shadow authorities as AWH expands. New Cloud, Hosting, Ac
 
 A new feature may add bounded metadata that belongs uniquely to its domain, but it must not duplicate identity, authentication, project ownership, work scheduling, execution state, credential storage, artifact ownership, approval, or release authority.
 
+## Document and evidence precedence
+
+AWH does not use a second `RULES.md` constitution. `AGENTS.md` is the single agent entry point and routes to the authorities below.
+
+Mutable facts come from live canonical evidence, not prose. The current user request defines intent; live source/runtime evidence defines mutable facts; this Authority Map and security/release contracts define integrity boundaries; `config/execution-policy.json` mirrors enforceable execution invariants. `ART_AI_WORKING_PROTOCOL.md` is advisory. `CURRENT_STATE.md`, `HANDOFF.md`, closure notes and `history/` never override live evidence.
+
+When two documents disagree, do not create a third rule file. Reconcile the lower-authority document or implementation with the live authority and normative contract.
+
+## Mutation authority and concurrency
+
+`control_tasks`, `control_task_executions` and `control_execution_envelopes` remain the sole canonical work/mutation authorities. Resource identity is derived from canonical execution metadata; no second lock database is permitted.
+
+- `READ` is parallel.
+- `CANDIDATE` and `WORKSPACE` are project-local isolated lanes and may run in parallel with canonical work when they do not own canonical state.
+- `CANONICAL:SOURCE` is project-local. Two writers to the same project's canonical source serialize.
+- `CANONICAL:DEPLOY` is a VPS-global Production mutation lane. Production deploy/install operations across managed projects serialize.
+- A project's `CANONICAL:SOURCE` and `CANONICAL:DEPLOY` lanes interlock so canonical main cannot move during that project's Production deploy.
+- A project's `RESOURCE:RELEASE_STAGE` and `CANONICAL:DEPLOY` lanes interlock so staging cannot race the consuming deploy.
+- `CANONICAL:PROJECT` is an umbrella project-local writer and conflicts with other mutations in that project.
+
+A second conflicting chat/worker must wait, join or resume the existing authority. It must not acquire a competing writer. Device-local `remote-mission-state` files are transport/device leases only and cannot authorize project/source/release mutation.
+
 ## Canonical authority table
 
 | Domain | Canonical authority | Allowed extension | Forbidden shadow authority |
