@@ -56,6 +56,7 @@ test('managed-product deploy provisions namespace roots before operator enable',
   assert.match(script,/case "\$path" in -\*\) continue/);
   const unit=await readFile(new URL('../deploy/systemd/awh-hosting-operator.service',import.meta.url),'utf8');
   assert.match(unit,/ReadWritePaths=.*-\/var\/backups\/learnlab-releases/);
+  assert.match(unit,/ReadWritePaths=.*\/etc\/subuid .*\/etc\/subgid/);
   assert.match(unit,/ReadOnlyPaths=-\/var\/lib\/awh-remote\/handoff/);
   const provision=script.indexOf('PRODUCT_RELEASE_STORAGE_READY');
   const preflight=script.indexOf('HOSTING_NAMESPACE_PATHS_READY');
