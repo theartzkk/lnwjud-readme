@@ -174,6 +174,38 @@ test('dirty source and stale approval SHA fail closed', async () => {
   }
 });
 
+test('approved awh-vps SSH alias maps to the canonical VPS repository', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awh-vps-alias-source-'));
+  const remote = join(root, 'awh.git');
+  const seed = join(root, 'seed');
+  const work = join(root, 'work');
+  const canonicalSsh = 'ssh://awh-vps/srv/awh-git/awh.git';
+  try {
+    await run('git', ['init', '--bare', remote]);
+    await mkdir(seed);
+    await git(seed, 'init');
+    await git(seed, 'config', 'user.email', 'qa@example.invalid');
+    await git(seed, 'config', 'user.name', 'AWH QA');
+    await writeFile(join(seed, 'authority.txt'), 'awh-vps-alias\n');
+    await git(seed, 'add', 'authority.txt');
+    await git(seed, 'commit', '-m', 'awh-vps alias fixture');
+    await git(seed, 'branch', '-M', 'main');
+    await git(seed, 'remote', 'add', 'origin', remote);
+    await git(seed, 'push', '-u', 'origin', 'main');
+    const sha = (await git(seed, 'rev-parse', 'HEAD')).trim().toLowerCase();
+    await run('git', ['clone', '--branch', 'main', remote, work]);
+    await git(work, 'remote', 'set-url', 'origin', canonicalSsh);
+    await git(work, 'config', `url.file://${remote}.insteadOf`, canonicalSsh);
+    const stdout = await run(process.execPath, [script, '--root', work, '--branch', 'main', '--remote', 'origin', '--repository', 'vps/awh', '--expected-sha', sha, '--require-mutation-ready']);
+    const report = JSON.parse(stdout.split(/\r?\n/, 1)[0]);
+    assert.equal(report.state, 'PASS');
+    assert.equal(report.remoteRepository, 'vps/awh');
+    assert.equal(report.liveSha, sha);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('repository identity mismatch blocks before remote authority lookup', async () => {
   const fx = await fixture();
   try {
