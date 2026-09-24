@@ -317,6 +317,8 @@ else
   test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;' | head -n 1)" = 3
 fi
 test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='enrollment_rate_limits';")" = 1
+CURRENT_STAGE=POST_SCHEMA_VERIFIED
+stage "$CURRENT_STAGE"
 
 sudo install -d -m 0750 -o root -g root "$CONFIG_BACKUP_ROOT/nginx" "$CONFIG_BACKUP_ROOT/php-fpm"
 sudo test ! -e "$NGINX_BACKUP"
@@ -329,6 +331,8 @@ if sudo test -f "$POOL_PATH"; then
   POOL_BACKUP_CREATED=1
   POOL_EXISTED=1
 fi
+CURRENT_STAGE=CONFIG_BACKUPS_READY
+stage "$CURRENT_STAGE"
 POOL_CHANGED=1
 sudo awk -v hash_file="$BOOTSTRAP_HASH_FILE" '
 BEGIN {
@@ -343,6 +347,8 @@ BEGIN {
 sudo test -s "$POOL_TMP"
 sudo grep -q '^\[awh-hub\]$' "$POOL_TMP"
 sudo grep -Eq 'env\[AWH_ENROLLMENT_BOOTSTRAP_NONCE_HASH\][[:space:]]*=[[:space:]]*[0-9a-fA-F]{64}$' "$POOL_TMP"
+CURRENT_STAGE=POOL_RENDERED
+stage "$CURRENT_STAGE"
 
 # Runtime observability is installed out-of-band in a bounded marker block.
 # Enrollment refreshes preserve that block instead of silently disabling traces.
@@ -360,6 +366,8 @@ if sudo test -f "$POOL_PATH" && { sudo grep -q '^; BEGIN AWH OTEL$' "$POOL_PATH"
   sudo grep -q '^; END AWH OTEL$' "$OTEL_TMP"
   sudo sh -c 'printf "\n" >> "$1"; cat "$2" >> "$1"' sh "$POOL_TMP" "$OTEL_TMP"
 fi
+CURRENT_STAGE=POOL_OBSERVABILITY_READY
+stage "$CURRENT_STAGE"
 
 sudo install -o root -g root -m 0640 "$POOL_TMP" "$POOL_PATH"
 CURRENT_STAGE=FPM_CONFIGURED

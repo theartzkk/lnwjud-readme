@@ -218,6 +218,10 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(remoteDeploy, /sudo -n -u awh-hub test -w "\$DB_PARENT"/);
   assert.match(remoteDeploy, /else[\s\S]*test "\$DB_GROUP" = www-data[\s\S]*test "\$PARENT_GROUP" = www-data/);
   assert.match(remoteDeploy, /ROLLBACK=PASS/);
+  assert.match(remoteDeploy, /POST_SCHEMA_VERIFIED/);
+  assert.match(remoteDeploy, /CONFIG_BACKUPS_READY/);
+  assert.match(remoteDeploy, /POOL_RENDERED/);
+  assert.match(remoteDeploy, /POOL_OBSERVABILITY_READY/);
   assert.match(remoteDeploy, /PHP_FPM_BIN.*-t/);
   assert.match(remoteDeploy, /systemctl reload/);
   assert.match(remoteDeploy, /OTEL_TMP=\$\(sudo mktemp \/tmp\/awh-enrollment-otel/);
