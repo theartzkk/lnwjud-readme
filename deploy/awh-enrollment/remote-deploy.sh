@@ -205,13 +205,24 @@ PARENT_MODE=$(sudo stat -c '%a' "$DB_PARENT")
 PARENT_OWNER=$(sudo stat -c '%U' "$DB_PARENT")
 PARENT_GROUP=$(sudo stat -c '%G' "$DB_PARENT")
 
-# Preserve www-data read access and reject any existing broad group-write mode.
-test "$DB_GROUP" = www-data
-test "$PARENT_GROUP" = www-data
+# Reject broad group-write modes in every path. Compatibility refreshes
+# preserve the current awh-hub ownership model instead of requiring the
+# legacy www-data group used by the first enrollment deployment.
 test $((0$DB_MODE & 0020)) -eq 0
 test $((0$PARENT_MODE & 0020)) -eq 0
 test $((0$DB_MODE & 0600)) -eq $((0600))
 test $((0$PARENT_MODE & 0700)) -eq $((0700))
+if test "$COMPAT_REFRESH" -eq 1; then
+  test "$DB_OWNER" = awh-hub
+  test "$PARENT_OWNER" = awh-hub
+  sudo -n -u awh-hub test -r "$DB"
+  sudo -n -u awh-hub test -w "$DB"
+  sudo -n -u awh-hub test -x "$DB_PARENT"
+  sudo -n -u awh-hub test -w "$DB_PARENT"
+else
+  test "$DB_GROUP" = www-data
+  test "$PARENT_GROUP" = www-data
+fi
 
 sudo install -d -m 0750 -o root -g awh-hub /var/backups/awh-hub
 sudo sqlite3 "$DB" ".backup '$BACKUP'"

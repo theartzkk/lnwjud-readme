@@ -211,6 +211,12 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(remoteDeploy, /rollback\(\)/);
   assert.match(remoteDeploy, /\.restore/);
   assert.match(remoteDeploy, /DB_UID|PARENT_UID/);
+  assert.match(remoteDeploy, /if test "\$COMPAT_REFRESH" -eq 1/);
+  assert.match(remoteDeploy, /test "\$DB_OWNER" = awh-hub/);
+  assert.match(remoteDeploy, /test "\$PARENT_OWNER" = awh-hub/);
+  assert.match(remoteDeploy, /sudo -n -u awh-hub test -r "\$DB"/);
+  assert.match(remoteDeploy, /sudo -n -u awh-hub test -w "\$DB_PARENT"/);
+  assert.match(remoteDeploy, /else[\s\S]*test "\$DB_GROUP" = www-data[\s\S]*test "\$PARENT_GROUP" = www-data/);
   assert.match(remoteDeploy, /ROLLBACK=PASS/);
   assert.match(remoteDeploy, /PHP_FPM_BIN.*-t/);
   assert.match(remoteDeploy, /systemctl reload/);
