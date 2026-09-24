@@ -112,7 +112,7 @@ st=target.stat(); parent=target.parent.stat()
 assert (st.st_mode & 0o777)==0o640, oct(st.st_mode & 0o777)
 assert st.st_gid==parent.st_gid, (st.st_gid,parent.st_gid)
 PY;
-    $probeCommand='/usr/bin/python3 -c '.escapeshellarg($probe).' '.escapeshellarg($enginePath).' '.escapeshellarg($manifestProbe);
+    $probeCommand='PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 -c '.escapeshellarg($probe).' '.escapeshellarg($enginePath).' '.escapeshellarg($manifestProbe);
     exec($probeCommand,$probeOutput,$probeCode);
     ar_assert($probeCode===0,'Assessment candidate manifest stays private while inheriting the control-plane group');
 
