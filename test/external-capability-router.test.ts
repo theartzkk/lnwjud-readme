@@ -53,7 +53,19 @@ test('Work and Night Shift expose capability routing without a parallel control 
   assert.match(styles,/\.capability-chip/);
   assert.match(dashboard,/routedCapabilities/);
   assert.match(dashboard,/Auto capability routing พร้อม/);
-  assert.match(service,/evidenceSchemaVersion' => 2/);
+  assert.match(service,/evidenceSchemaVersion' => 3/);
   assert.match(service,/KRUART_GOLDEN_UI_HALLMARK/);
   assert.doesNotMatch(service,/INSERT INTO .*external_capabil/i);
+});
+
+test('external capability registry remains the extension point instead of hard-coded worker adapters', async () => {
+  const [discovery, registry] = await Promise.all([
+    readFile(join(ROOT,'src/worker-capability-discovery.ts'),'utf8'),
+    readFile(join(ROOT,'src/external-capability-registry.ts'),'utf8'),
+  ]);
+  assert.match(discovery,/externalRegistry/);
+  assert.match(discovery,/OPTIONAL_LOCAL_ADAPTER/);
+  assert.doesNotMatch(discovery,/addCommand\('teamai'|addCommand\('context-mode'/);
+  assert.match(registry,/entries\.length>64/);
+  assert.match(registry,/loadBundledExternalCapabilityRegistry/);
 });

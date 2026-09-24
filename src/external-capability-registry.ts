@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 
 const ID=/^[a-z][a-z0-9._-]{1,63}$/;
 const REPOSITORY=/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -29,7 +30,7 @@ export function validateExternalCapabilityRegistry(value:unknown):ExternalCapabi
   if(!value||typeof value!=='object') throw new Error('External capability registry is invalid');
   const registry=value as ExternalCapabilityRegistry;
   if(registry.schemaVersion!==1||registry.registryId!=='awh.external-capabilities.v1'||registry.controlPlaneAuthority!=='AWH') throw new Error('External capability registry authority is invalid');
-  if(!Array.isArray(registry.entries)||registry.entries.length<1||registry.entries.length>32) throw new Error('External capability registry entries are invalid');
+  if(!Array.isArray(registry.entries)||registry.entries.length<1||registry.entries.length>64) throw new Error('External capability registry entries are invalid');
   const ids=new Set<string>(),caps=new Set<string>();
   for(const entry of registry.entries){
     if(!ID.test(entry.id)||ids.has(entry.id)) throw new Error('External capability id is invalid or duplicated'); ids.add(entry.id);
@@ -52,4 +53,9 @@ export function validateExternalCapabilityRegistry(value:unknown):ExternalCapabi
 }
 export async function loadExternalCapabilityRegistry(path:string):Promise<ExternalCapabilityRegistry>{
   return validateExternalCapabilityRegistry(JSON.parse(await readFile(path,'utf8')));
+}
+
+
+export async function loadBundledExternalCapabilityRegistry():Promise<ExternalCapabilityRegistry>{
+  return loadExternalCapabilityRegistry(fileURLToPath(new URL('../config/external-capabilities.json',import.meta.url)));
 }

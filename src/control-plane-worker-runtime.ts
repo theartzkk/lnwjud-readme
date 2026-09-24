@@ -13,6 +13,7 @@ import { ControlPlaneWorkerClient, type WorkerCapabilityPlan, type WorkerProject
 import { createUnsyncedWorkspaceCheckpoint, createWorkspaceWipCheckpoint, reconstructWorkspaceWip } from './workspace-continuity.js';
 import { createVaultCandidateArchive } from './vault-transfer.js';
 import { composeWorkerHeartbeatCapabilities, discoverWorkerTools } from './worker-capability-discovery.js';
+import { loadBundledExternalCapabilityRegistry } from './external-capability-registry.js';
 import { exportOfficeFileToPdf } from './windows-office-export.js';
 import { execCommand } from './process.js';
 
@@ -141,7 +142,8 @@ export function deviceExecutionCapabilities(tools: readonly string[]): string[] 
 export async function workerCapabilities(dataDir: string, allowCodex = true): Promise<string[]> {
   const local = await detectLocalCapabilities(dataDir).catch(() => ({ git: false, node: false, php: false, ffmpeg: false, remotion: false, browsers: [] }));
   const codex = allowCodex ? await codexStatus(dataDir).catch(() => ({ available: false, version: null })) : { available: false, version: null };
-  const tools = await discoverWorkerTools().catch((): string[] => []);
+  const externalRegistry = await loadBundledExternalCapabilityRegistry().catch(() => null);
+  const tools = await discoverWorkerTools(externalRegistry ? { externalRegistry } : {}).catch((): string[] => []);
   const executable = [
     'autopilot:local', 'project:context', 'qa:bounded',
     ...(local.git ? ['git:read'] : []), ...(local.node ? ['node'] : []),

@@ -34,7 +34,7 @@ curl -fsSL --proto '=https' --tlsv1.2 "$BASE/release.json" -o "$TMP/release.json
 curl -fsSL --proto '=https' --tlsv1.2 "$BASE/device-runtime-release.json" -o "$TMP/manifest.json"
 node - "$TMP/release.json" "$TMP/manifest.json" <<'NODE'
 const fs=require('fs'),c=require('crypto');const r=JSON.parse(fs.readFileSync(process.argv[2])),m=JSON.parse(fs.readFileSync(process.argv[3]));
-if(m.schemaVersion!==1||m.product!=='AWH Device Runtime'||m.channel!=='stable'||m.package!=='@wonderwhy-er/desktop-commander'||!/^\d+\.\d+\.\d+$/.test(m.version)||!/^sha512-/.test(m.npmIntegrity))process.exit(21);
+if(m.schemaVersion!==1||m.product!=='AWH Device Runtime'||m.channel!=='stable'||m.package!=='@wonderwhy-er/desktop-commander'||!/^\d+\.\d+\.\d+$/.test(m.version)||!/^sha512-/.test(m.npmIntegrity)||m.toolDiscoveryMode!=='runtime-native'||m.workerInventoryLimit!==64||m.extensionRegistry!=='config/external-capabilities.json'||m.unknownRuntimeToolPolicy!=='DISCOVER_ONLY_NO_AUTO_EXECUTION_AUTHORITY')process.exit(21);
 const e=(r.files||[]).find(x=>x.path==='device-runtime-release.json');if(!e)process.exit(22);
 if(c.createHash('sha256').update(fs.readFileSync(process.argv[3])).digest('hex')!==e.sha256)process.exit(23);
 NODE

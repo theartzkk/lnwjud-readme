@@ -1,12 +1,14 @@
 import { access } from 'node:fs/promises';
 import { join, win32 as pathWin32 } from 'node:path';
 import { resolveExecutable } from './process.js';
+import type { ExternalCapabilityRegistry } from './external-capability-registry.js';
 
 export interface WorkerToolProbeOptions {
   platform?: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;
   commandAvailable?: (command: string) => Promise<boolean>;
   pathAvailable?: (path: string) => Promise<boolean>;
+  externalRegistry?: ExternalCapabilityRegistry;
 }
 
 const TOOL_ID = /^tool\.[a-z0-9][a-z0-9._-]{0,55}$/;
@@ -61,9 +63,12 @@ export async function discoverWorkerTools(options: WorkerToolProbeOptions = {}):
   await addCommand('php', 'tool.php');
   await addCommand('ffmpeg', 'tool.ffmpeg');
   await addCommand('ffprobe', 'tool.ffprobe');
-  await addCommand('teamai', 'tool.teamai');
-  await addCommand('context-mode', 'tool.context-mode');
   if (await commandAvailable('python3') || await commandAvailable('python')) tools.push('tool.python');
+
+  for (const entry of options.externalRegistry?.entries ?? []) {
+    if (entry.integrationMode !== 'OPTIONAL_LOCAL_ADAPTER' || !entry.command || !entry.workerTool) continue;
+    if (await commandAvailable(entry.command)) tools.push(entry.workerTool);
+  }
 
   if (platform === 'win32') {
     if (await anyPath(windowsOfficeCandidates(env, 'WINWORD.EXE'), pathAvailable)) tools.push('tool.office.word');
@@ -100,8 +105,10 @@ export async function discoverWorkerTools(options: WorkerToolProbeOptions = {}):
   return [...new Set(tools)].filter((value) => TOOL_ID.test(value)).sort();
 }
 
-export function composeWorkerHeartbeatCapabilities(executable: string[], tools: string[], limit = 24): string[] {
-  if (!Number.isInteger(limit) || limit < 1 || limit > 24) throw new Error('Worker capability limit is invalid');
+export const MAX_WORKER_CAPABILITIES = 64;
+
+export function composeWorkerHeartbeatCapabilities(executable: string[], tools: string[], limit = MAX_WORKER_CAPABILITIES): string[] {
+  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_WORKER_CAPABILITIES) throw new Error('Worker capability limit is invalid');
   const values = [...new Set([...executable, ...tools])].filter((value) => /^[a-z][a-z0-9:._-]{0,63}$/.test(value));
   const execution = values.filter((value) => !value.startsWith('tool.'));
   const inventory = values.filter((value) => value.startsWith('tool.'));

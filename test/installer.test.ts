@@ -111,6 +111,10 @@ test('lightweight AWH Device Runtime is pinned, self-updating and rollback-safe'
   assert.equal(manifest.package, '@wonderwhy-er/desktop-commander');
   assert.match(manifest.npmIntegrity, /^sha512-/);
   assert.equal(manifest.capabilityProfile, 'full-device-v1');
+  assert.equal((manifest as any).toolDiscoveryMode, 'runtime-native');
+  assert.equal((manifest as any).workerInventoryLimit, 64);
+  assert.equal((manifest as any).extensionRegistry, 'config/external-capabilities.json');
+  assert.equal((manifest as any).unknownRuntimeToolPolicy, 'DISCOVER_ONLY_NO_AUTO_EXECUTION_AUTHORITY');
   assert.match(updater, /https:\/\/kruart\.online/);
   assert.match(updater, /release\.json/);
   assert.match(updater, /npmIntegrity/);
