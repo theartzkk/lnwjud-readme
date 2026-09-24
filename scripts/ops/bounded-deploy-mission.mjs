@@ -65,8 +65,14 @@ async function operatorRequest(command,payload,{confirm=false}={}){
     const args=[command];if(confirm)args.push('--confirm');
     const invocation=localOperatorInvocation(local,args);
     if(!existsSync(invocation.command))return null;
-    const response=await run(invocation.command,invocation.args,{input:`${JSON.stringify(payload)}\n`});
-    if(response.code===0){try{const decoded=JSON.parse(response.tail.trim());return decoded?.ok===true?decoded.result:null;}catch{return null;}}
+    for(let attempt=1;attempt<=3;attempt++){
+      const response=await run(invocation.command,invocation.args,{input:`${JSON.stringify(payload)}\n`});
+      if(response.code===0){
+        try{const decoded=JSON.parse(response.tail.trim());if(decoded?.ok===true)return decoded.result;}catch{}
+      }
+      if(attempt<3)await new Promise((resolve)=>setTimeout(resolve,attempt*250));
+    }
+    return null;
   }
   const host=await canonicalOperatorHost();if(!host)return null;
   const args=['-o','BatchMode=yes',host,'sudo','-n','-u','awh-remote','/usr/local/bin/awh-operator',command];if(confirm)args.push('--confirm');
