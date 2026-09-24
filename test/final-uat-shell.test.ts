@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -88,13 +88,11 @@ test('every standalone Owner surface has a comfortable shared Back action and sh
   }
 
   const output = await mkdtemp(join(tmpdir(), 'awh-final-uat-shell-'));
-  let releaseCommit = '0000000000000000000000000000000000000000';
-  try { releaseCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore','pipe','ignore'] }).trim(); } catch {}
   try {
     const child = spawn(process.execPath, ['--import', 'tsx', 'scripts/build-web-preview.ts', '--control'], {
       cwd: ROOT,
       shell: false,
-      env: { ...process.env, AWH_WEB_OUTPUT_DIR: output, AWH_WEB_RELEASE_ID: 'final-uat-fixture', AWH_PREVIEW_GENERATED_AT: '2026-08-30T00:00:00.000Z', AWH_RELEASE_COMMIT: releaseCommit },
+      env: { ...process.env, AWH_WEB_OUTPUT_DIR: output, AWH_WEB_RELEASE_ID: 'final-uat-fixture', AWH_PREVIEW_GENERATED_AT: '2026-08-30T00:00:00.000Z' },
       stdio: ['ignore', 'ignore', 'pipe'],
     });
     let stderr = '';

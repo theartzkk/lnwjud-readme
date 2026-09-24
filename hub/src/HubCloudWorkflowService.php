@@ -655,7 +655,8 @@ final class HubCloudWorkflowService
 
     private function repository(): string
     {
-        $value = getenv('AWH_GITHUB_REPOSITORY'); if (!is_string($value) || $value === '') $value = 'theartzkk/lnwjud-readme';
+        $value = getenv('AWH_GITHUB_REPOSITORY');
+        if (!is_string($value) || trim($value) === '') throw new HubCloudWorkflowException('Cloud repository is not configured','CLOUD_CONFIG_INVALID');
         return self::repositoryValue($value);
     }
 

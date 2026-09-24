@@ -10,7 +10,7 @@ import test from 'node:test';
 const execFileAsync = promisify(execFile);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const script = join(repoRoot, 'scripts/ops/canonical-source-preflight.mjs');
-const canonicalRepository = 'theartzkk/lnwjud-readme';
+const canonicalRepository = 'vps/awh';
 const canonicalUrl = `https://github.com/${canonicalRepository}.git`;
 
 async function run(command, args, options = {}) {
@@ -199,7 +199,7 @@ test('owner auth activation proves source before credentials and binds the prove
   assert.match(source, /--require-mutation-ready/);
   assert.match(source, /const CANONICAL_BRANCH = 'main'/);
   assert.match(source, /const CANONICAL_REMOTE = 'origin'/);
-  assert.match(source, /const CANONICAL_REPOSITORY = 'theartzkk\/lnwjud-readme'/);
+  assert.match(source, /const CANONICAL_REPOSITORY = 'vps\/awh'/);
   assert.match(source, /AWH_RELEASE_COMMIT: canonicalSha/);
   assert.doesNotMatch(source, /AWH_CANONICAL_(?:BRANCH|REMOTE|REPOSITORY)/);
 });

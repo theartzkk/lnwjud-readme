@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 const DEFAULT_BRANCH = 'main';
 const DEFAULT_REMOTE = 'origin';
-const DEFAULT_REPOSITORY = 'theartzkk/lnwjud-readme';
+const DEFAULT_REPOSITORY = 'vps/awh';
 const SHA = /^[0-9a-f]{40}$/;
 
 function value(name) {
