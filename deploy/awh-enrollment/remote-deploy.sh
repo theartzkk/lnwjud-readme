@@ -38,6 +38,7 @@ INCLUDE_PATH=$REMOTE_ROOT/enrollment-current/deploy/nginx/awh-enrollment.conf
 NGINX_BACKUP=$CONFIG_BACKUP_ROOT/nginx/awh-preview.conf.pre-m3e2-$RELEASE_ID
 POOL_BACKUP=$CONFIG_BACKUP_ROOT/php-fpm/awh-enrollment.conf.pre-m3e2-$RELEASE_ID
 POOL_TMP=$(sudo mktemp /tmp/awh-enrollment-pool.XXXXXX)
+OTEL_TMP=$(sudo mktemp /tmp/awh-enrollment-otel.XXXXXX)
 NGINX_TMP=$(sudo mktemp /tmp/awh-enrollment-nginx.XXXXXX)
 POINTER_PATH=$REMOTE_ROOT/enrollment-current
 POINTER_STATE=UNSET
@@ -67,7 +68,7 @@ stage() {
 }
 
 cleanup() {
-  sudo rm -f "$POOL_TMP" "$NGINX_TMP" >/dev/null 2>&1 || true
+  sudo rm -f "$POOL_TMP" "$OTEL_TMP" "$NGINX_TMP" >/dev/null 2>&1 || true
 }
 
 run_m3d_health() {
@@ -326,6 +327,24 @@ BEGIN {
 sudo test -s "$POOL_TMP"
 sudo grep -q '^\[awh-hub\]$' "$POOL_TMP"
 sudo grep -Eq 'env\[AWH_ENROLLMENT_BOOTSTRAP_NONCE_HASH\][[:space:]]*=[[:space:]]*[0-9a-fA-F]{64}$' "$POOL_TMP"
+
+# Runtime observability is installed out-of-band in a bounded marker block.
+# Enrollment refreshes preserve that block instead of silently disabling traces.
+if sudo test -f "$POOL_PATH" && { sudo grep -q '^; BEGIN AWH OTEL$' "$POOL_PATH" || sudo grep -q '^; END AWH OTEL$' "$POOL_PATH"; }; then
+  test "$(sudo grep -c '^; BEGIN AWH OTEL$' "$POOL_PATH")" = 1
+  test "$(sudo grep -c '^; END AWH OTEL$' "$POOL_PATH")" = 1
+  ! sudo grep -q '^; BEGIN AWH OTEL$' "$POOL_TMP"
+  sudo awk '
+    /^; BEGIN AWH OTEL$/ { copy=1 }
+    copy { print }
+    /^; END AWH OTEL$/ { copy=0 }
+  ' "$POOL_PATH" | sudo tee "$OTEL_TMP" >/dev/null
+  sudo test -s "$OTEL_TMP"
+  sudo grep -q '^; BEGIN AWH OTEL$' "$OTEL_TMP"
+  sudo grep -q '^; END AWH OTEL$' "$OTEL_TMP"
+  sudo sh -c 'printf "\n" >> "$1"; cat "$2" >> "$1"' sh "$POOL_TMP" "$OTEL_TMP"
+fi
+
 sudo install -o root -g root -m 0640 "$POOL_TMP" "$POOL_PATH"
 CURRENT_STAGE=FPM_CONFIGURED
 stage "$CURRENT_STAGE"
