@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { desktopImpactForFiles, missionModeFromArgs } from '../scripts/ops/bounded-deploy-mission.mjs';
+import { desktopImpactForFiles, localOperatorInvocation, missionModeFromArgs } from '../scripts/ops/bounded-deploy-mission.mjs';
 
 test('bounded deploy mission reuses verified desktop artifacts only for server-safe deltas',()=>{
   assert.equal(desktopImpactForFiles(['hub/src/HubControlPlaneService.php','scripts/ops/example.mjs']),false);
@@ -16,6 +16,19 @@ test('bounded deploy mission has one explicit owner approval and a deterministic
   assert.equal(missionModeFromArgs([]),'--project-source-authority');
   assert.equal(missionModeFromArgs(['--cloud-first']),'--cloud-first');
   assert.throws(()=>missionModeFromArgs(['--cloud-first','--project-source-authority']),/MISSION_MODE_AMBIGUOUS/);
+});
+
+test('root core release demotes typed operator calls to the guarded awh-remote identity',()=>{
+  assert.deepEqual(localOperatorInvocation('/usr/local/bin/awh-operator',['verification-regressions'],{uid:0}),{
+    command:'/usr/sbin/runuser',
+    args:['-u','awh-remote','--','/usr/local/bin/awh-operator','verification-regressions'],
+    identity:'awh-remote',
+  });
+  assert.deepEqual(localOperatorInvocation('/usr/local/bin/awh-operator',['verification-regressions'],{uid:987}),{
+    command:'/usr/local/bin/awh-operator',
+    args:['verification-regressions'],
+    identity:'current',
+  });
 });
 
 test('mission contract preserves QA, rehearsal, backup, drift and public exact-revision proof',async()=>{

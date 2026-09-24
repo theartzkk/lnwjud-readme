@@ -53,11 +53,18 @@ async function canonicalOperatorHost(){
   const match=probe.tail.trim().match(/^ssh:\/\/([^/]+)\//i);return match&&/^[A-Za-z0-9._@-]{1,160}$/.test(match[1])?match[1]:null;
 }
 
+export function localOperatorInvocation(local,args,{uid=typeof process.getuid==='function'?process.getuid():null}={}){
+  if(uid===0)return {command:'/usr/sbin/runuser',args:['-u','awh-remote','--',local,...args],identity:'awh-remote'};
+  return {command:local,args:[...args],identity:'current'};
+}
+
 async function operatorRequest(command,payload,{confirm=false}={}){
   const local=process.env.AWH_OPERATOR_CLIENT||'/usr/local/bin/awh-operator';
   if(existsSync(local)){
     const args=[command];if(confirm)args.push('--confirm');
-    const response=await run(local,args,{input:`${JSON.stringify(payload)}\n`});
+    const invocation=localOperatorInvocation(local,args);
+    if(!existsSync(invocation.command))return null;
+    const response=await run(invocation.command,invocation.args,{input:`${JSON.stringify(payload)}\n`});
     if(response.code===0){try{const decoded=JSON.parse(response.tail.trim());return decoded?.ok===true?decoded.result:null;}catch{return null;}}
   }
   const host=await canonicalOperatorHost();if(!host)return null;
