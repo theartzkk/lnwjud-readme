@@ -82,6 +82,7 @@ function server_metadata(array $lines, array $beforeDepth, array $afterDepth, ar
     $names = [];
     $directAuth = [];
     $directIncludes = [];
+    $directBodySize = [];
     $locations = [];
     $activeLocation = null;
     for ($index = $server['start'] + 1; $index < $server['end']; $index++) {
@@ -94,6 +95,7 @@ function server_metadata(array $lines, array $beforeDepth, array $afterDepth, ar
                 $names = array_merge($names, preg_split('/\s+/', trim($match[1])) ?: []);
             }
             if (preg_match('/^\s*auth_basic(?:_user_file)?\b[^;]*;/i', $line) === 1) $directAuth[] = $index;
+            if (preg_match('/^\s*client_max_body_size\s+[^;]+;/i', $line) === 1) $directBodySize[] = $index;
             if (preg_match('/^\s*include\s+([^;]+);/i', $line, $match) === 1) $directIncludes[] = trim($match[1]);
         }
         if ($activeLocation !== null && $beforeDepth[$index] === $activeLocation['depth'] && $afterDepth[$index] === $activeLocation['depth'] - 1) {
@@ -102,7 +104,7 @@ function server_metadata(array $lines, array $beforeDepth, array $afterDepth, ar
             $activeLocation = null;
         }
     }
-    return ['names' => $names, 'directAuth' => $directAuth, 'directIncludes' => $directIncludes, 'locations' => $locations];
+    return ['names' => $names, 'directAuth' => $directAuth, 'directIncludes' => $directIncludes, 'directBodySize' => $directBodySize, 'locations' => $locations];
 }
 
 function location_matches(string $header, string $path): bool
@@ -154,6 +156,10 @@ if (count($meta['names']) !== 1 || $meta['names'][0] !== $hostname) {
     fwrite(STDERR, "Authoritative AWH HTTPS server name is ambiguous\n");
     exit(6);
 }
+if (count($meta['directBodySize']) > 1) {
+    fwrite(STDERR, "Authoritative AWH upload headroom is duplicated\n");
+    exit(6);
+}
 
 $requiredIncludes = [
     '/opt/awh-hub/enrollment-current/deploy/nginx/awh-enrollment.conf',
@@ -192,11 +198,13 @@ $rewriteLocation = static function (array $location, array &$remove, array &$ins
 };
 
 foreach ($meta['directAuth'] as $index) $remove[$index] = true;
+foreach ($meta['directBodySize'] as $index) $remove[$index] = true;
 for ($index = $target['start'] + 1; $index < $target['end']; $index++) {
     if ($beforeDepth[$index] !== $target['startDepth'] + 1) continue;
     if (preg_match('/^\s*add_header\s+(Strict-Transport-Security|Permissions-Policy|Content-Security-Policy)\b[^;]*;/i', $lines[$index]) === 1) $remove[$index] = true;
 }
 $insertBefore[$target['start'] + 1] = array_merge($insertBefore[$target['start'] + 1] ?? [], [
+    '    client_max_body_size 64m;',
     '    add_header Strict-Transport-Security "max-age=15552000" always;',
     '    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;',
     "    add_header Content-Security-Policy \"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://excuse.kruart.online; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'\" always;",

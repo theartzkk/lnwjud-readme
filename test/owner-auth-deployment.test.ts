@@ -25,6 +25,7 @@ server {
     index index.html;
     ssl_certificate /etc/letsencrypt/live/${HOST}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${HOST}/privkey.pem;
+    client_max_body_size 40m;
     auth_basic "AWH Remote Preview";
     auth_basic_user_file /etc/nginx/.awh-preview-users;
     add_header X-Content-Type-Options "nosniff" always;
@@ -75,6 +76,9 @@ test('owner-auth transformation matches the real ReadyIDC topology and is idempo
     assert.equal(rendered, await readFile(second, 'utf8'));
     const authoritativeHead = rendered.slice(0, rendered.indexOf('    location'));
     assert.match(authoritativeHead, /^    auth_basic off;$/m);
+    assert.match(authoritativeHead, /^    client_max_body_size 64m;$/m);
+    assert.equal((authoritativeHead.match(/client_max_body_size 64m;/g) ?? []).length, 1);
+    assert.doesNotMatch(authoritativeHead, /client_max_body_size 40m;/);
     assert.doesNotMatch(authoritativeHead, /^\s*auth_basic "AWH Remote Preview";/m);
     assert.doesNotMatch(authoritativeHead, /^\s*auth_basic_user_file \/etc\/nginx\/\.awh-preview-users;/m);
     assert.match(rendered, /location \^~ \/api\/v1\/ \{\n        auth_basic "AWH Remote Preview";/);
@@ -105,7 +109,8 @@ test('owner-auth transformation rejects duplicate/outside/ambiguous topology', a
   const duplicateInclude = productionShape().replace(`    include ${CONTROL};`, `    include ${CONTROL};\n    include ${CONTROL};`);
   const outsideInclude = productionShape().replace(`    include ${CONTROL};`, '').replace('    return 301 https://$host$request_uri;', `    include ${CONTROL};\n    return 301 https://$host$request_uri;`);
   const ambiguous = `${productionShape()}\n${productionShape()}`;
-  for (const [index, fixture] of [duplicateLocation, duplicateInclude, outsideInclude, ambiguous].entries()) {
+  const duplicateBodySize = productionShape().replace('    client_max_body_size 40m;', '    client_max_body_size 40m;\n    client_max_body_size 64m;');
+  for (const [index, fixture] of [duplicateLocation, duplicateInclude, outsideInclude, ambiguous, duplicateBodySize].entries()) {
     const root = await mkdtemp(join(tmpdir(), 'awh-owner-auth-reject-'));
     const input = join(root, 'input.conf');
     const output = join(root, 'output.conf');
