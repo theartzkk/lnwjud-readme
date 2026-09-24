@@ -190,6 +190,8 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(nginx, /access_log off/);
   assert.match(nginx, /enrollment-current\/hub\/public\/enrollment\.php/);
   assert.match(nginx, /fastcgi_pass unix:/);
+  assert.match(pool, /php_admin_value\[upload_max_filesize\] = 64M/);
+  assert.match(pool, /php_admin_value\[post_max_size\] = 64M/);
   assert.match(pool, /clear_env = yes/);
   assert.match(pool, /AWH_ENROLLMENT_BOOTSTRAP_NONCE_HASH/);
   assert.match(pool, /REPLACE_WITH_SHA256_HASH_PROVISIONED_OUT_OF_BAND/);
