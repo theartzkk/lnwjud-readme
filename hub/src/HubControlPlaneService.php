@@ -229,6 +229,14 @@ final class HubControlPlaneService
         try { $assessment = $this->assessmentReleases->status($sessionToken); }
         catch (Throwable) { $assessment = null; }
         $release = HubInfrastructureService::releaseState();
+        try { $ownerHealth = $this->ownerSelfServiceStatus($sessionToken, $now); }
+        catch (Throwable) { $ownerHealth = ['storage'=>['state'=>'UNKNOWN','freeBytes'=>null,'usedPercent'=>null]]; }
+        $coreStorage = is_array($ownerHealth['storage'] ?? null) ? $ownerHealth['storage'] : [];
+        $coreFreeBytes = is_int($coreStorage['freeBytes'] ?? null) ? (int) $coreStorage['freeBytes'] : null;
+        $coreUsedPercent = is_int($coreStorage['usedPercent'] ?? null) || is_float($coreStorage['usedPercent'] ?? null) ? (float) $coreStorage['usedPercent'] : null;
+        $coreStorageBlocked = ($coreStorage['state'] ?? null) === 'CRITICAL'
+            || ($coreFreeBytes !== null && $coreFreeBytes < 3221225472)
+            || ($coreUsedPercent !== null && $coreUsedPercent >= 90.0);
         try { $hosting = $this->hosting->sites($sessionToken); }
         catch (Throwable) { $hosting = ['schemaVersion'=>1,'sites'=>[]]; }
         $workers = $this->workersForUser($userId);
@@ -248,12 +256,20 @@ final class HubControlPlaneService
         }
         $awhState = $candidate !== null && $production !== null && !hash_equals($candidate, $production) ? 'UPDATE_AVAILABLE' : 'CURRENT';
         if (is_array($activeCore)) $awhState = (string) ($activeCore['approvalStatus'] ?? '') === 'PENDING' ? 'WAITING_FOR_APPROVAL' : 'UPDATING';
+        if ($coreStorageBlocked && in_array($awhState, ['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'], true)) $awhState = 'BLOCKED';
+        $awhReason = $awhState === 'CURRENT'
+            ? 'Production ตรงกับ Source Authority ล่าสุด'
+            : ($awhState === 'WAITING_FOR_APPROVAL'
+                ? 'ผ่าน verification boundary แล้วและรอ Owner อนุมัติ'
+                : ($awhState === 'BLOCKED'
+                    ? 'Storage ยังไม่ถึง Core Release headroom ที่ปลอดภัย ต้องเหลืออย่างน้อย 3 GB และใช้พื้นที่ต่ำกว่า 90% ก่อนอัปเดต'
+                    : 'มี Source ใหม่พร้อมเข้าสู่ Core Release'));
         $items[] = [
             'key'=>'awh-core','projectId'=>'113b45c0-23e1-408d-ae0f-ac5eca7f6900','name'=>'Art’s Workspace Hub',
             'kind'=>'CORE','adapter'=>'CORE_RELEASE','state'=>$awhState,'current'=>$production,'candidate'=>$candidate,
             'approvalRequired'=>true,'approvalId'=>is_array($activeCore) && is_string($activeCore['approvalId'] ?? null) ? $activeCore['approvalId'] : null,
             'actionable'=>in_array($awhState,['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'],true),
-            'reason'=>$awhState==='CURRENT' ? 'Production ตรงกับ Source Authority ล่าสุด' : ($awhState==='WAITING_FOR_APPROVAL' ? 'ผ่าน verification boundary แล้วและรอ Owner อนุมัติ' : 'มี Source ใหม่พร้อมเข้าสู่ Core Release'),
+            'reason'=>$awhReason,'preflight'=>['storage'=>$coreStorage,'releaseBlocked'=>$coreStorageBlocked],
         ];
         $covered['113b45c0-23e1-408d-ae0f-ac5eca7f6900'] = true;
 

@@ -21,6 +21,12 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(service,/workersForUser/);
   assert.match(service,/HubInfrastructureService::releaseState/);
   assert.match(service,/learnLabReleases->status/);
+  assert.match(service,/ownerSelfServiceStatus/);
+  assert.match(service,/coreStorageBlocked/);
+  assert.match(service,/3221225472/);
+  assert.match(service,/coreUsedPercent.*>= 90\.0/s);
+  assert.match(service,/Core Release headroom/);
+  assert.match(service,/releaseBlocked.*coreStorageBlocked/s);
   assert.match(service,/BASELINE_REQUIRED/);
   assert.match(service,/MIGRATION_REQUIRED/);
   for(const adapterName of ['CORE_RELEASE','BAY_UPDATE_CENTER','MANAGED_HOSTING','LEARNLAB_RELEASE','LEGACY_DEPLOY','SOURCE_ONLY','AGENT_MANAGED']) assert.match(service,new RegExp(adapterName));
