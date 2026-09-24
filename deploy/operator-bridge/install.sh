@@ -94,6 +94,7 @@ install -o root -g root -m 0644 "$ROOT/deploy/systemd/awh-operator-bridge@.servi
 install -o root -g root -m 0755 "$ROOT/deploy/operator-bridge/awh-operator" "$CLIENT"
 rm -f "$LEGACY_DROPIN_A" "$LEGACY_DROPIN_B"
 systemctl daemon-reload
+systemctl reset-failed 'awh-operator-bridge@*.service' >/dev/null 2>&1 || true
 systemctl enable --now awh-operator-bridge.socket >/dev/null
 systemctl is-enabled --quiet awh-operator-bridge.socket
 systemctl is-active --quiet awh-operator-bridge.socket

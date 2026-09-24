@@ -88,6 +88,15 @@ HOSTING_TIMER_BACKUP=$EXECUTOR_BACKUP_ROOT/awh-hosting-operator.timer.$RELEASE_I
 TOPOLOGY_ARCHIVE=/var/backups/awh-hub/topology-cleanup-$RELEASE_ID
 TOPOLOGY_HELPER=/opt/awh-hub/enrollment-current/deploy/awh-enrollment/insert-nginx-include.php
 ENROLLMENT_INCLUDE=/opt/awh-hub/enrollment-current/deploy/nginx/awh-enrollment.conf
+ENROLLMENT_POINTER=$REMOTE_ROOT/enrollment-current
+ENROLLMENT_POINTER_TMP=$REMOTE_ROOT/.enrollment-current-$RELEASE_ID
+ENROLLMENT_RELEASE_ROOT=$REMOTE_ROOT/enrollment-releases
+ENROLLMENT_RELEASE_ID=m3e2-$(printf '%s' "$RELEASE_COMMIT" | cut -c1-12)-core
+ENROLLMENT_RELEASE=$ENROLLMENT_RELEASE_ROOT/$ENROLLMENT_RELEASE_ID
+ENROLLMENT_POINTER_CHANGED=0
+ENROLLMENT_RELEASE_CREATED=0
+ENROLLMENT_PREVIOUS_STATE=ABSENT
+ENROLLMENT_PREVIOUS_TARGET=
 OWNER_AUTH_SETUP=
 OWNER_AUTH_RUNTIME=
 OWNER_AUTH_TRANSFORM=
@@ -134,6 +143,56 @@ cleanup_owner_auth_cookie_files() {
 }
 
 stage() { printf '%s\n' "DEPLOY_STAGE=$1"; CURRENT_STAGE=$1; }
+enrollment_pointer_capture() {
+  ENROLLMENT_PREVIOUS_STATE=ABSENT
+  ENROLLMENT_PREVIOUS_TARGET=
+  if sudo test -L "$ENROLLMENT_POINTER"; then
+    ENROLLMENT_PREVIOUS_TARGET=$(sudo readlink "$ENROLLMENT_POINTER")
+    RESOLVED_ENROLLMENT=$(sudo readlink -f "$ENROLLMENT_POINTER")
+    case "$RESOLVED_ENROLLMENT" in "$ENROLLMENT_RELEASE_ROOT"/*) sudo test -d "$RESOLVED_ENROLLMENT" || return 1 ;; *) return 1 ;; esac
+    ENROLLMENT_PREVIOUS_STATE=PRESENT
+  elif sudo test -e "$ENROLLMENT_POINTER"; then
+    return 1
+  fi
+}
+enrollment_pointer_restore() {
+  sudo rm -f "$ENROLLMENT_POINTER"
+  if test "$ENROLLMENT_PREVIOUS_STATE" = PRESENT; then
+    sudo ln -s "$ENROLLMENT_PREVIOUS_TARGET" "$ENROLLMENT_POINTER"
+    test "$(sudo readlink "$ENROLLMENT_POINTER")" = "$ENROLLMENT_PREVIOUS_TARGET"
+  else
+    sudo test ! -e "$ENROLLMENT_POINTER" && sudo test ! -L "$ENROLLMENT_POINTER"
+  fi
+}
+sync_enrollment_from_release() {
+  test "$PROJECT_SOURCE_AUTHORITY" = 1 || return 0
+  for RELATIVE in hub/public/enrollment.php hub/src/HubEnrollmentService.php hub/src/HubEnrollmentRouter.php hub/src/HubEnrollmentApiMigration.php hub/migrations/002_m3e2_enrollment_api.sql hub/bin/migrate-m3e2.php deploy/nginx/awh-enrollment.conf deploy/php-fpm/awh-enrollment.pool.conf deploy/awh-enrollment/pointer-state.sh deploy/awh-enrollment/insert-nginx-include.php deploy/awh-enrollment/remote-deploy.sh; do
+    sudo test -f "$RELEASE/$RELATIVE" || return 1
+  done
+  sudo install -d -o root -g awh-hub -m 0750 "$ENROLLMENT_RELEASE_ROOT"
+  if sudo test -d "$ENROLLMENT_RELEASE" && ! sudo test -L "$ENROLLMENT_RELEASE"; then
+    EXISTING_ENROLLMENT_SHA=$(sudo -n /usr/bin/php -r '$j=json_decode(file_get_contents($argv[1]),true,16,JSON_THROW_ON_ERROR);echo strtolower((string)($j["sourceSha"]??""));' "$ENROLLMENT_RELEASE/release-source.json" 2>/dev/null || true)
+    test "$EXISTING_ENROLLMENT_SHA" = "$(printf '%s' "$RELEASE_COMMIT" | tr 'A-F' 'a-f')" || return 1
+  else
+    sudo test ! -e "$ENROLLMENT_RELEASE" && sudo test ! -L "$ENROLLMENT_RELEASE"
+    sudo install -d -o awh-hub -g awh-hub -m 0750 "$ENROLLMENT_RELEASE"
+    ENROLLMENT_RELEASE_CREATED=1
+    sudo sh -c "tar -C '$RELEASE' -cf - hub/public/enrollment.php hub/src/HubEnrollmentService.php hub/src/HubEnrollmentRouter.php hub/src/HubEnrollmentApiMigration.php hub/migrations/002_m3e2_enrollment_api.sql hub/bin/migrate-m3e2.php deploy/nginx/awh-enrollment.conf deploy/php-fpm/awh-enrollment.pool.conf deploy/awh-enrollment/pointer-state.sh deploy/awh-enrollment/insert-nginx-include.php deploy/awh-enrollment/remote-deploy.sh | tar -C '$ENROLLMENT_RELEASE' -xf -"
+    sudo chown -R awh-hub:awh-hub "$ENROLLMENT_RELEASE"
+    sudo find "$ENROLLMENT_RELEASE" -type d -exec chmod 0750 {} +
+    sudo find "$ENROLLMENT_RELEASE" -type f -exec chmod 0640 {} +
+    sudo chmod 0750 "$ENROLLMENT_RELEASE/deploy/awh-enrollment/remote-deploy.sh"
+    sudo sh -c "printf '%s\n' '{\"schemaVersion\":1,\"releaseId\":\"$ENROLLMENT_RELEASE_ID\",\"sourceState\":\"COMMITTED\",\"sourceSha\":\"$RELEASE_COMMIT\"}' > '$ENROLLMENT_RELEASE/release-source.json'"
+    sudo chown awh-hub:awh-hub "$ENROLLMENT_RELEASE/release-source.json"
+    sudo chmod 0640 "$ENROLLMENT_RELEASE/release-source.json"
+  fi
+  for RELATIVE in hub/public/enrollment.php hub/src/HubEnrollmentService.php deploy/nginx/awh-enrollment.conf deploy/awh-enrollment/insert-nginx-include.php; do sudo test -f "$ENROLLMENT_RELEASE/$RELATIVE" || return 1; done
+  stage ENROLLMENT_RELEASE_SYNC
+  sudo rm -f "$ENROLLMENT_POINTER_TMP"; sudo ln -s "$ENROLLMENT_RELEASE" "$ENROLLMENT_POINTER_TMP"; sudo mv -Tf "$ENROLLMENT_POINTER_TMP" "$ENROLLMENT_POINTER"
+  ENROLLMENT_POINTER_CHANGED=1
+  test "$(sudo readlink -f "$ENROLLMENT_POINTER")" = "$ENROLLMENT_RELEASE"
+  stage ENROLLMENT_POINTER_SWITCH
+}
 reconcile_provider_credential_storage() {
   CREDENTIAL_DIR=/var/lib/awh-hub/provider-credentials
   sudo test -d "$CREDENTIAL_DIR"
@@ -403,6 +462,7 @@ rollback() {
       sudo sqlite3 "$DB" ".restore '$BACKUP'" >/dev/null || ok=0
     fi
     if test "$POINTER_CHANGED" -eq 1; then pointer_restore || ok=0; if test "$ok" -eq 1; then restore_previous_control_include || ok=0; fi; fi
+    if test "$ENROLLMENT_POINTER_CHANGED" -eq 1; then enrollment_pointer_restore || ok=0; fi
     if test "$WEB_POINTER_CHANGED" -eq 1; then web_pointer_restore || ok=0; fi
     if test "$PRODUCTION_REF_CHANGED" -eq 1; then production_ref_restore || ok=0; fi
     if test "$NGINX_CHANGED" -eq 1; then sudo cp -p "$NGINX_BACKUP" "$NGINX_CONFIG" || ok=0; fi
@@ -439,11 +499,11 @@ rollback() {
         sudo cp -p "$archived" "/etc/nginx/sites-enabled/$(basename "$archived")" || ok=0
       done
     fi
-    if test "$NGINX_CHANGED" -eq 1 || test "$POINTER_CHANGED" -eq 1 || test "$TOPOLOGY_ARCHIVED" -eq 1; then
+    if test "$NGINX_CHANGED" -eq 1 || test "$POINTER_CHANGED" -eq 1 || test "$ENROLLMENT_POINTER_CHANGED" -eq 1 || test "$TOPOLOGY_ARCHIVED" -eq 1; then
       sudo nginx -t >/dev/null || ok=0
     fi
     if test "$ok" -eq 1 && test "$POINTER_CHANGED" -eq 1; then reload_awh_php_fpm || ok=0; fi
-    if test "$ok" -eq 1 && { test "$NGINX_CHANGED" -eq 1 || test "$POINTER_CHANGED" -eq 1 || test "$TOPOLOGY_ARCHIVED" -eq 1; }; then sudo systemctl reload nginx || ok=0; fi
+    if test "$ok" -eq 1 && { test "$NGINX_CHANGED" -eq 1 || test "$POINTER_CHANGED" -eq 1 || test "$ENROLLMENT_POINTER_CHANGED" -eq 1 || test "$TOPOLOGY_ARCHIVED" -eq 1; }; then sudo systemctl reload nginx || ok=0; fi
     if test "$ok" -eq 1; then verify_m3d || ok=0; fi
     # M9/M10 are all-or-nothing v7 extensions. A successful rollback
     # must prove the original M7 authority, not merely that SQLite restored a
@@ -480,7 +540,8 @@ rollback() {
     fi
     if test -n "$DEPLOY_AUTHORITY_EXECUTION"; then release_deploy_authority failure || ok=0; fi
     sudo rm -rf "$RELEASE" "$WEB_RELEASE" >/dev/null 2>&1 || true
-    sudo rm -f "$REMOTE_STAGE" "$POINTER_TMP" "$WEB_POINTER_TMP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" "$CONTROL_INCLUDE_TMP" "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP" >/dev/null 2>&1 || true
+    if test "$ENROLLMENT_RELEASE_CREATED" -eq 1; then sudo rm -rf "$ENROLLMENT_RELEASE" >/dev/null 2>&1 || ok=0; fi
+    sudo rm -f "$REMOTE_STAGE" "$POINTER_TMP" "$WEB_POINTER_TMP" "$ENROLLMENT_POINTER_TMP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" "$CONTROL_INCLUDE_TMP" "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP" >/dev/null 2>&1 || true
     if test "$NGINX_BACKUP_CREATED" -eq 1; then sudo rm -f "$NGINX_BACKUP" || ok=0; fi
     if test "$TOPOLOGY_ARCHIVED" -eq 1; then sudo rm -rf "$TOPOLOGY_ARCHIVE" || ok=0; fi
     cleanup_owner_auth_cookie_files
@@ -492,7 +553,7 @@ rollback() {
 }
 trap rollback EXIT HUP INT TERM
 
-sudo test -f "$DB"; sudo test -f "$REMOTE_STAGE"; pointer_capture; production_ref_reconcile_live; cleanup_loaded_topology; DEPLOY_BASE_VERSION=$(sudo sqlite3 "$DB" 'PRAGMA user_version;'); case "$DEPLOY_BASE_VERSION" in 4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22) ;; *) exit 20 ;; esac; stage PREMUTATION_READY
+sudo test -f "$DB"; sudo test -f "$REMOTE_STAGE"; pointer_capture; enrollment_pointer_capture; production_ref_reconcile_live; cleanup_loaded_topology; DEPLOY_BASE_VERSION=$(sudo sqlite3 "$DB" 'PRAGMA user_version;'); case "$DEPLOY_BASE_VERSION" in 4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22) ;; *) exit 20 ;; esac; stage PREMUTATION_READY
 sudo install -d -o root -g awh-hub -m 0750 /var/backups/awh-hub
 sudo sqlite3 "$DB" ".backup '$BACKUP'"; sudo chown root:root "$BACKUP"; sudo chmod 0600 "$BACKUP"; test "$(sudo sqlite3 "$BACKUP" 'PRAGMA integrity_check;')" = ok; test -z "$(sudo sqlite3 "$BACKUP" 'PRAGMA foreign_key_check;')"; sudo install -d -m 0750 -o root -g root "$CONFIG_BACKUP_ROOT/nginx"; sudo test ! -e "$NGINX_BACKUP"; sudo cp -p "$NGINX_CONFIG" "$NGINX_BACKUP"; sudo chown root:root "$NGINX_BACKUP"; sudo chmod 0600 "$NGINX_BACKUP"; sudo cmp -s "$NGINX_CONFIG" "$NGINX_BACKUP"; NGINX_BACKUP_CREATED=1; stage BACKUP_VERIFIED
 stage RELEASE_PATH_PREFLIGHT
@@ -508,6 +569,7 @@ DEPLOY_AUTHORITY_OUTPUT=$(sudo -u awh-hub /usr/bin/php "$RELEASE/hub/bin/deploy-
 DEPLOY_AUTHORITY_EXECUTION=$(printf '%s\n' "$DEPLOY_AUTHORITY_OUTPUT" | sed -n 's/^DEPLOY_AUTHORITY_EXECUTION_ID=//p' | tail -n 1)
 printf '%s' "$DEPLOY_AUTHORITY_EXECUTION" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' || exit 20
 stage EXECUTION_AUTHORITY_ACQUIRED
+sync_enrollment_from_release; stage RUNTIME_LINEAGE_READY
 if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1 || test "$AUTOMATIONS" = 1 || test "$CLOUD_FIRST" = 1 || test "$CONVERSATION_LIFECYCLE" = 1; then sudo test -f "$RELEASE/hub/src/HubArtifactStore.php"; fi
 if test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1 || test "$AUTOMATIONS" = 1 || test "$CLOUD_FIRST" = 1 || test "$CONVERSATION_LIFECYCLE" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-anywhere-execution.php"; sudo test -f "$RELEASE/hub/migrations/012_anywhere_execution_fabric.sql"; sudo test -f "$RELEASE/hub/src/HubAnywhereExecutionMigration.php"; sudo test -f "$RELEASE/hub/src/HubCapabilityRegistryService.php"; fi
 if test "$COST_AWARE_AI" = 1 || test "$AUTOMATIONS" = 1 || test "$CLOUD_FIRST" = 1 || test "$CONVERSATION_LIFECYCLE" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-cost-aware-ai.php"; sudo test -f "$RELEASE/hub/migrations/013_cost_aware_ai.sql"; sudo test -f "$RELEASE/hub/src/HubCostAwareAiMigration.php"; sudo test -f "$RELEASE/hub/src/HubProviderPricingService.php"; fi

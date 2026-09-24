@@ -49,6 +49,7 @@ final class HubInfrastructureService
     {
         $control = self::pointerRelease('/opt/awh-hub/control-plane-current');
         $web = self::pointerRelease('/var/www/awh-web/current');
+        $enrollment = self::pointerRelease('/opt/awh-hub/enrollment-current');
         $releases = self::releaseNames('/opt/awh-hub/control-releases');
         $staged = array_values(array_filter($releases, static fn (string $id): bool => $id !== $control));
         $rollback = null;
@@ -60,7 +61,19 @@ final class HubInfrastructureService
         }
         $controlSha = self::manifestSource('/opt/awh-hub/control-plane-current/dist-web/release.json', $control);
         $webSha = self::manifestSource('/var/www/awh-web/current/release.json', $web);
-        return ['controlSourceSha' => $controlSha, 'webSourceSha' => $webSha, 'sourceState' => $controlSha === null || $webSha === null ? 'UNKNOWN' : (hash_equals($controlSha, $webSha) ? 'MATCHED' : 'MISMATCH'), 'controlReleaseId' => $control, 'webReleaseId' => $web, 'pointersMatch' => $control !== null && hash_equals($control, (string) $web), 'stagedCandidates' => array_slice($staged, 0, 5), 'rollbackReleaseId' => $rollback];
+        $enrollmentSha = self::manifestSource('/opt/awh-hub/enrollment-current/release-source.json', $enrollment);
+        $enrollmentRef = $enrollmentSha ?? self::releaseSourceRef($enrollment);
+        $sourceState = $controlSha === null || $webSha === null ? 'UNKNOWN' : (hash_equals($controlSha, $webSha) ? 'MATCHED' : 'MISMATCH');
+        $enrollmentMatches = $controlSha !== null && $enrollmentRef !== null ? ($enrollmentSha !== null ? hash_equals($controlSha, $enrollmentSha) : str_starts_with($controlSha, $enrollmentRef)) : null;
+        $componentState = $sourceState === 'UNKNOWN' || $enrollmentMatches === null ? 'UNKNOWN' : ($sourceState === 'MATCHED' && $enrollmentMatches ? 'COHERENT' : 'SPLIT');
+        return [
+            'controlSourceSha' => $controlSha, 'webSourceSha' => $webSha, 'enrollmentSourceSha' => $enrollmentSha, 'enrollmentSourceRef' => $enrollmentRef,
+            'sourceState' => $sourceState, 'componentState' => $componentState,
+            'controlReleaseId' => $control, 'webReleaseId' => $web, 'enrollmentReleaseId' => $enrollment,
+            'pointersMatch' => $control !== null && hash_equals($control, (string) $web),
+            'components' => ['control'=>$control,'web'=>$web,'enrollment'=>$enrollment],
+            'stagedCandidates' => array_slice($staged, 0, 5), 'rollbackReleaseId' => $rollback,
+        ];
     }
 
     /** Read only exact committed provenance; never expand a milestone/short SHA. */
@@ -78,7 +91,13 @@ final class HubInfrastructureService
     private static function pointerRelease(string $pointer): ?string
     {
         $target = @readlink($pointer); if (!is_string($target) || $target === '') return null;
-        $name = basename($target); return preg_match('/^m[0-9]+-[A-Za-z0-9._-]{6,72}$/', $name) === 1 ? $name : null;
+        $name = basename($target); return preg_match('/^m[0-9a-z]+-[A-Za-z0-9._-]{6,72}$/i', $name) === 1 ? $name : null;
+    }
+
+    private static function releaseSourceRef(?string $releaseId): ?string
+    {
+        if ($releaseId === null || preg_match('/^m[0-9a-z]+-([0-9a-f]{7,40})(?:-|$)/i', $releaseId, $match) !== 1) return null;
+        return strtolower((string) $match[1]);
     }
 
     /** @return list<string> */

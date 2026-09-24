@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#f7f8fb" />
+  <meta name="theme-color" content="#f6f8fc" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://excuse.kruart.online; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <title>ศูนย์อัปเดต · KRUART AWH</title>
   <link rel="stylesheet" href="./awh-design-system.css?release=__AWH_WEB_RELEASE_ID__" />
@@ -14,45 +14,69 @@
 </head>
 <body>
   <header class="updates-header">
-    <a class="updates-brand" href="./"><img class="system-brand-icon" src="./logo-256x256.png?release=__AWH_WEB_RELEASE_ID__" alt="" /><strong>AWH</strong></a>
-    <div class="updates-actions"><span id="updates-freshness">กำลังตรวจรุ่น…</span><a class="awh-back-link" data-awh-back href="./panel.html"><span aria-hidden="true">←</span><span>Control Panel</span></a><button id="updates-refresh" type="button">ตรวจอีกครั้ง</button></div>
+    <a class="updates-brand" href="./"><img class="system-brand-icon" src="./logo-256x256.png?release=__AWH_WEB_RELEASE_ID__" alt="" /><span><strong>AWH</strong><small>Update Center</small></span></a>
+    <div class="updates-actions"><span id="updates-freshness">กำลังตรวจสถานะ…</span><a class="awh-back-link" data-awh-back href="./panel.html"><span aria-hidden="true">←</span><span>กลับ Control Panel</span></a><button id="updates-refresh" class="secondary-button" type="button">ตรวจอีกครั้ง</button></div>
   </header>
 
   <main class="updates-main">
+    <nav class="updates-breadcrumb" aria-label="ตำแหน่งปัจจุบัน"><a href="./">AWH</a><span>›</span><a href="./panel.html">Control Panel</a><span>›</span><strong>Update Center</strong></nav>
     <section class="updates-hero">
-      <div><p class="eyebrow">OWNER · UPDATE CENTER</p><h1>อัปเดตทุกระบบจากที่เดียว</h1><p>ไม่ต้องจำ SHA, SSH หรือคำสั่ง Deploy — AWH ใช้ authority เดิมของแต่ละระบบ ตรวจ Source, Backup, Deploy, Verify และ Rollback ตาม policy เดิม</p></div>
-      <div id="updates-overall" class="updates-overall">กำลังตรวจ</div>
+      <div class="updates-hero-copy"><p class="eyebrow">SYSTEM UPDATE</p><h1>ศูนย์อัปเดต</h1><p>อัปเดต AWH และระบบที่เชื่อมต่อจากที่เดียว โดยระบบจะตรวจความพร้อม สำรอง ติดตั้ง ตรวจสอบ และย้อนกลับให้อัตโนมัติเมื่อจำเป็น</p></div>
+      <div class="updates-hero-side"><div id="updates-overall" class="updates-overall" data-tone="checking">กำลังตรวจ</div><button id="update-all" class="primary-button updates-safe-action" type="button" disabled>อัปเดตทั้งหมดอย่างปลอดภัย</button></div>
+    </section>
+
+    <section id="runtime-health" class="runtime-health" data-state="CHECKING" aria-live="polite">
+      <div><span class="health-dot" aria-hidden="true"></span><div><strong id="runtime-health-title">กำลังตรวจความสอดคล้องของระบบ</strong><p id="runtime-health-detail">กำลังเปรียบเทียบ Control, Web และ Enrollment runtime</p></div></div>
+      <button id="runtime-health-details" class="text-button" type="button">ดูรายละเอียด</button>
     </section>
 
     <section class="updates-summary" aria-label="สรุปการอัปเดต">
-      <article><small>พร้อมอัปเดต</small><strong id="summary-update">—</strong></article>
-      <article><small>กำลังทำ / รออนุมัติ</small><strong id="summary-progress">—</strong></article>
-      <article><small>เป็นรุ่นล่าสุด</small><strong id="summary-current">—</strong></article>
-      <article><small>ต้องตรวจเพิ่ม</small><strong id="summary-attention">—</strong></article>
+      <article><small>พร้อมอัปเดต</small><strong id="summary-update">—</strong><span>ติดตั้งได้ตอนนี้</span></article>
+      <article><small>กำลังดำเนินการ</small><strong id="summary-progress">—</strong><span>รวมรายการรออนุมัติ</span></article>
+      <article><small>เป็นรุ่นล่าสุด</small><strong id="summary-current">—</strong><span>ไม่ต้องทำอะไร</span></article>
+      <article><small>ต้องตรวจเพิ่ม</small><strong id="summary-attention">—</strong><span>ระบบจะไม่ฝืนติดตั้ง</span></article>
+    </section>
+
+    <section id="operation-progress" class="operation-progress" hidden aria-live="polite">
+      <div class="operation-progress-head"><div><p class="eyebrow">UPDATE PROGRESS</p><h2 id="operation-progress-title">กำลังอัปเดตระบบ</h2></div><strong id="operation-progress-percent">0%</strong></div>
+      <div class="progress-track" aria-hidden="true"><span id="operation-progress-bar"></span></div>
+      <ol id="operation-steps" class="operation-steps">
+        <li data-step="check">ตรวจความพร้อม</li><li data-step="backup">สำรองข้อมูล</li><li data-step="deploy">ติดตั้ง</li><li data-step="verify">ตรวจสอบ</li><li data-step="activate">เปิดใช้งาน</li>
+      </ol>
+      <p id="operation-progress-message">ระบบกำลังติดตามสถานะจาก release controller</p>
     </section>
 
     <section class="updates-primary">
-      <div><h2>รายการอัปเดต</h2><p id="updates-message" class="muted" role="status">AWH จะไม่อัปเดตระบบที่ยังไม่มี authority ที่ยืนยันได้</p></div>
-      <button id="update-all" class="primary-button" type="button" disabled>อัปเดตทั้งหมดที่พร้อม</button>
+      <div><h2>ระบบของคุณ</h2><p id="updates-message" class="muted" role="status">AWH จะแสดงเฉพาะ action ที่ปลอดภัยตาม authority ของแต่ละระบบ</p></div>
+      <button id="show-attention" class="secondary-button" type="button">แสดงเฉพาะที่ต้องจัดการ</button>
     </section>
 
     <section id="update-list" class="update-list" aria-live="polite"><div class="update-empty">กำลังตรวจทุกระบบ…</div></section>
 
-    <details class="updates-policy">
-      <summary>หลักการอัปเดตแบบยั่งยืน</summary>
+    <details id="advanced-diagnostics" class="updates-policy">
+      <summary>การตั้งค่าขั้นสูงและ Diagnostics</summary>
+      <div class="advanced-intro"><p>ข้อมูลส่วนนี้ใช้สำหรับตรวจสอบเชิงเทคนิคเท่านั้น การอัปเดตตามปกติไม่ต้องใช้ SHA, branch หรือคำสั่ง deploy</p></div>
       <div class="updates-policy-grid">
-        <article><strong>Source เดียว</strong><span>ใช้ AWH Vault หรือ authority ที่ลงทะเบียนไว้ ไม่สร้าง source คู่ขนาน</span></article>
-        <article><strong>Candidate เดียว</strong><span>แสดงและอนุมัติเฉพาะรุ่นล่าสุดจาก authority กลาง รุ่นเก่าถูก supersede อัตโนมัติก่อน worker รับงาน</span></article>
-        <article><strong>Deploy เดิม</strong><span>Core Release, BAY Update Center และ Managed Hosting ยังคงเป็นผู้ติดตั้งจริง</span></article>
-        <article><strong>Fail closed</strong><span>ถ้า QA, Backup, Source, Trust หรือ Verify ไม่ผ่าน จะหยุดก่อนเปลี่ยน Production</span></article>
-        <article><strong>Rollback พร้อม</strong><span>ระบบที่ deploy ได้ต้องมี rollback/restore authority ก่อนถูกเรียกว่าอัปเดตอัตโนมัติ</span></article>
+        <article><strong>Source Authority เดียว</strong><span>ใช้ canonical source ที่ลงทะเบียนแล้ว ไม่สร้าง source คู่ขนาน</span></article>
+        <article><strong>Candidate เดียว</strong><span>อนุมัติเฉพาะรุ่นล่าสุด รุ่นเก่าถูก supersede ก่อน worker รับงาน</span></article>
+        <article><strong>Runtime Coherence</strong><span>Control, Web และ Enrollment ต้องสอดคล้องกัน และสถานะ split ถูกแจ้งทันที</span></article>
+        <article><strong>Fail closed</strong><span>ถ้า QA, Backup, Source, Trust หรือ Verify ไม่ผ่าน ระบบจะหยุดก่อนเปลี่ยน Production</span></article>
+        <article><strong>Rollback พร้อม</strong><span>เก็บ known-good release เพื่อย้อนกลับโดยไม่ต้องเดา component เอง</span></article>
+        <article><strong>Technical details</strong><span>SHA, adapter และ runtime component อยู่ในรายละเอียดของแต่ละระบบ ไม่รบกวน flow ปกติ</span></article>
       </div>
     </details>
   </main>
 
+  <div id="confirm-dialog" class="updates-dialog" hidden>
+    <div class="updates-dialog-card" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <p class="eyebrow">CONFIRM UPDATE</p><h2 id="confirm-title">ยืนยันการดำเนินการ</h2><p id="confirm-message"></p>
+      <div class="updates-dialog-actions"><button id="confirm-cancel" class="secondary-button" type="button">ยกเลิก</button><button id="confirm-submit" class="primary-button" type="button">ยืนยัน</button></div>
+    </div>
+  </div>
+
   <div id="step-up" class="updates-dialog" hidden>
     <div class="updates-dialog-card" role="dialog" aria-modal="true" aria-labelledby="step-up-title">
-      <p class="eyebrow">OWNER CONFIRMATION</p><h2 id="step-up-title">ยืนยันรหัสผ่านก่อนอัปเดต AWH</h2><p>ใช้เฉพาะยืนยันสิทธิ์รอบนี้ รหัสผ่านไม่ถูกเก็บในหน้า Update Center</p>
+      <p class="eyebrow">OWNER CONFIRMATION</p><h2 id="step-up-title">ยืนยันสิทธิ์เจ้าของระบบ</h2><p>เพื่อความปลอดภัย กรุณายืนยันรหัสผ่านเจ้าของระบบก่อนติดตั้ง ระบบใช้รหัสผ่านเฉพาะการยืนยันรอบนี้และไม่เก็บไว้ในหน้า Update Center</p>
       <label>รหัสผ่าน<input id="step-up-password" type="password" autocomplete="current-password" /></label>
       <div class="updates-dialog-actions"><button id="step-up-cancel" class="secondary-button" type="button">ยกเลิก</button><button id="step-up-submit" class="primary-button" type="button">ยืนยันและทำต่อ</button></div>
       <p id="step-up-message" class="form-message" role="status"></p>

@@ -1,6 +1,7 @@
 [Unit]
 Description=AWH guarded operator bridge request
 After=network-online.target
+CollectMode=inactive-or-failed
 
 [Service]
 Type=oneshot

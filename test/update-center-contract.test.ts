@@ -34,8 +34,11 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(hosting,/currentSourceRevisionId/);
   assert.match(adapter,/loadUpdateCenter/);
   assert.match(script,/requestCoreRelease/);
-  assert.match(script,/releaseMeta/);
-  assert.match(script,/รุ่นล่าสุดที่ AWH เลือกแล้ว/);
+  assert.match(script,/technicalDetails/);
+  assert.match(script,/runtimeState/);
+  assert.match(script,/renderProgress/);
+  assert.match(script,/askConfirm/);
+  assert.doesNotMatch(script,/\bconfirm\(/);
   assert.doesNotMatch(script,/อัปเดต AWH เป็น Source/);
   assert.match(script,/decideApproval/);
   assert.match(script,/managedSiteAction/);
@@ -43,10 +46,12 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(script,/relayBayRemoteCommand/);
   assert.match(script,/BAY_INSTALL_OUTCOME_UNKNOWN/);
   assert.doesNotMatch(script,/autoUpdater|setFeedURL|shell_exec|proc_open|exec\(/);
-  assert.match(page,/อัปเดตทั้งหมดที่พร้อม/);
-  assert.match(page,/Source เดียว/);
+  assert.match(page,/อัปเดตทั้งหมดอย่างปลอดภัย/);
+  assert.match(page,/Source Authority เดียว/);
   assert.match(page,/Candidate เดียว/);
-  assert.match(page,/รุ่นเก่าถูก supersede อัตโนมัติ/);
+  assert.match(page,/Runtime Coherence/);
+  assert.match(page,/Technical details/);
+  assert.match(script,/รายละเอียดทางเทคนิค/);
   assert.match(page,/Fail closed/);
   assert.match(page,/Rollback พร้อม/);
 });
@@ -61,7 +66,7 @@ test('Agent visibility is version-aware but public macOS updater remains fail-cl
   assert.match(service,/'appVersion'/);
   assert.match(service,/INTERNAL_MANAGED/);
   assert.match(script,/desktopReleases/);
-  assert.match(script,/macOS native.*Internal/);
+  assert.match(script,/Web\/PWA อัปเดตอัตโนมัติ/);
   assert.match(policy,/FOUNDATION_LOCKED_NOT_ACTIVATED/);
   assert.doesNotMatch(policy,/autoUpdater|setFeedURL/);
 });
@@ -111,14 +116,14 @@ test('Update Center mobile surface stays light and legacy baselines remain fail-
     readFile(join(ROOT,'hub/src/HubLearnLabReleaseService.php'),'utf8'),
     readFile(join(ROOT,'web/updates.js'),'utf8'),
   ]);
-  assert.match(css,/html,body\{min-height:100%;background:#f3f8ff!important\}/);
+  assert.match(css,/html,body\{min-height:100%;background:var\(--update-bg\)!important\}/);
   assert.match(service,/state = 'BASELINE_REQUIRED'/);
   assert.match(service,/actionable'=>\$state==='UPDATE_AVAILABLE'/);
   assert.match(service,/adapter'=>'LEARNLAB_RELEASE'/);
   assert.match(service,/state'=>'MIGRATION_REQUIRED'/);
   assert.match(learnLab,/publishedAt/);
   assert.match(script,/approveLearnLab/);
-  assert.match(script,/ออฟไลน์\/ข้อมูลเก่า/);
+  assert.match(script,/ข้อมูลเก่า/);
 });
 
 
@@ -153,4 +158,31 @@ test('central update authority exposes one latest candidate and supersedes stale
   assert.match(router,/ASSESSMENT_RELEASE_TARGET_MOVED/);
   assert.match(script,/CORE_RELEASE_TARGET_MOVED/);
   assert.match(script,/LEARNLAB_RELEASE_TARGET_MOVED/);
+});
+
+
+test('Update Center detects split runtime and core release syncs exact enrollment lineage atomically', async()=>{
+  const [infra,service,remote,unit,page,script]=await Promise.all([
+    readFile(join(ROOT,'hub/src/HubInfrastructureService.php'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),
+    readFile(join(ROOT,'deploy/awh-control-plane/remote-deploy-control-plane.sh'),'utf8'),
+    readFile(join(ROOT,'deploy/systemd/awh-operator-bridge@.service'),'utf8'),
+    readFile(join(ROOT,'web/updates.html'),'utf8'),
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+  ]);
+  assert.match(infra,/enrollment-current/);
+  assert.match(infra,/componentState/);
+  assert.match(infra,/COHERENT/);
+  assert.match(infra,/SPLIT/);
+  assert.match(infra,/releaseSourceRef/);
+  assert.match(service,/runtimeCoherenceRequired/);
+  assert.match(service,/needsRuntimeRepair/);
+  assert.match(service,/runtimeComponents/);
+  assert.match(remote,/sync_enrollment_from_release/);
+  assert.match(remote,/ENROLLMENT_RELEASE_SYNC/);
+  assert.match(remote,/ENROLLMENT_POINTER_SWITCH/);
+  assert.match(remote,/RUNTIME_LINEAGE_READY/);
+  assert.match(unit,/CollectMode=inactive-or-failed/);
+  assert.match(page,/runtime-health/);
+  assert.match(script,/ปรับ Runtime และอัปเดต/);
 });

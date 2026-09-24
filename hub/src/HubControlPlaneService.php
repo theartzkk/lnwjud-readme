@@ -254,22 +254,28 @@ final class HubControlPlaneService
             $activeCore = $row;
             break;
         }
-        $awhState = $candidate !== null && $production !== null && !hash_equals($candidate, $production) ? 'UPDATE_AVAILABLE' : 'CURRENT';
+        $runtimeState = is_string($release['componentState'] ?? null) ? (string) $release['componentState'] : 'UNKNOWN';
+        $needsRuntimeRepair = $runtimeState === 'SPLIT';
+        $awhState = ($candidate !== null && $production !== null && !hash_equals($candidate, $production)) || ($needsRuntimeRepair && $candidate !== null) ? 'UPDATE_AVAILABLE' : 'CURRENT';
         if (is_array($activeCore)) $awhState = (string) ($activeCore['approvalStatus'] ?? '') === 'PENDING' ? 'WAITING_FOR_APPROVAL' : 'UPDATING';
         if ($coreStorageBlocked && in_array($awhState, ['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'], true)) $awhState = 'BLOCKED';
         $awhReason = $awhState === 'CURRENT'
-            ? 'Production ตรงกับ Source Authority ล่าสุด'
+            ? ($runtimeState === 'COHERENT' ? 'Production ตรงกับ Source Authority ล่าสุดและ Runtime สอดคล้องกัน' : 'Production ตรงกับ Source Authority ล่าสุด แต่ยังยืนยัน Runtime ได้ไม่ครบ')
             : ($awhState === 'WAITING_FOR_APPROVAL'
-                ? 'ผ่าน verification boundary แล้วและรอ Owner อนุมัติ'
+                ? 'ผ่าน verification boundary แล้วและรอ Owner ยืนยัน'
                 : ($awhState === 'BLOCKED'
                     ? 'Storage ยังไม่ถึง Core Release headroom ที่ปลอดภัย ต้องเหลืออย่างน้อย 3 GB และใช้พื้นที่ต่ำกว่า 90% ก่อนอัปเดต'
-                    : 'มี Source ใหม่พร้อมเข้าสู่ Core Release'));
+                    : 'มีรุ่นล่าสุดพร้อมเข้าสู่ Core Release'));
+        if ($needsRuntimeRepair && $awhState === 'UPDATE_AVAILABLE') $awhReason = 'ตรวจพบ Control/Web/Enrollment อยู่คนละรุ่น ระบบจะ reconcile ให้ตรงกับ Source Authority ล่าสุดผ่าน Core Release เดียว';
         $items[] = [
             'key'=>'awh-core','projectId'=>'113b45c0-23e1-408d-ae0f-ac5eca7f6900','name'=>'Art’s Workspace Hub',
             'kind'=>'CORE','adapter'=>'CORE_RELEASE','state'=>$awhState,'current'=>$production,'candidate'=>$candidate,
             'approvalRequired'=>true,'approvalId'=>is_array($activeCore) && is_string($activeCore['approvalId'] ?? null) ? $activeCore['approvalId'] : null,
             'actionable'=>in_array($awhState,['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'],true),
             'reason'=>$awhReason,'preflight'=>['storage'=>$coreStorage,'releaseBlocked'=>$coreStorageBlocked],
+            'runtimeState'=>$runtimeState,'runtimeComponents'=>$release['components'] ?? [],
+            'rollbackReleaseId'=>$release['rollbackReleaseId'] ?? null,'progress'=>is_array($activeCore) ? (int)($activeCore['progress'] ?? 0) : null,
+            'failureCode'=>is_array($activeCore) ? ($activeCore['failureCode'] ?? null) : null,
         ];
         $covered['113b45c0-23e1-408d-ae0f-ac5eca7f6900'] = true;
 
@@ -421,8 +427,17 @@ final class HubControlPlaneService
         }
         return [
             'schemaVersion'=>1,'generatedAt'=>self::timestamp($now ?? gmdate('c')),'summary'=>$summary,'items'=>$items,
+            'runtime'=>[
+                'state'=>$release['componentState'] ?? 'UNKNOWN',
+                'components'=>$release['components'] ?? [],
+                'controlSourceSha'=>$release['controlSourceSha'] ?? null,
+                'webSourceSha'=>$release['webSourceSha'] ?? null,
+                'enrollmentSourceSha'=>$release['enrollmentSourceSha'] ?? null,
+                'enrollmentSourceRef'=>$release['enrollmentSourceRef'] ?? null,
+                'rollbackReleaseId'=>$release['rollbackReleaseId'] ?? null,
+            ],
             'policy'=>['singleControlPlane'=>true,'parallelDeployEngine'=>false,'ownerApprovalPreserved'=>true,'rollbackRequired'=>true,'sourceAuthority'=>'AWH_VAULT_OR_EXISTING_ADAPTER',
-                'singleLatestCandidate'=>true,'stalePendingRelease'=>'AUTO_SUPERSEDE_BEFORE_LEASE','humanShaRequired'=>false],
+                'singleLatestCandidate'=>true,'stalePendingRelease'=>'AUTO_SUPERSEDE_BEFORE_LEASE','humanShaRequired'=>false,'runtimeCoherenceRequired'=>true],
         ];
     }
 
