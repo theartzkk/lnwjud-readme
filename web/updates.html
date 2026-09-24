@@ -46,6 +46,37 @@
       <p id="operation-progress-message">ระบบกำลังติดตามสถานะจาก release controller</p>
     </section>
 
+    <section class="release-infrastructure" aria-labelledby="release-infrastructure-title">
+      <div class="release-infrastructure-head">
+        <div><p class="eyebrow">INFRASTRUCTURE & RELEASE CAPACITY</p><h2 id="release-infrastructure-title">โครงสร้างสำหรับอัปเดตระบบ</h2><p>ดู Production VPS, Release Runner และ headroom ก่อนเริ่มงานหนักจากจุดเดียว โดย AWH ยังเป็น Control Plane เดียว</p></div>
+        <span id="release-infrastructure-state" class="infrastructure-chip" data-state="CHECKING">กำลังตรวจ</span>
+      </div>
+      <div class="release-infrastructure-grid">
+        <article class="infrastructure-card" data-role="production">
+          <div class="infrastructure-card-title"><span class="infra-dot" aria-hidden="true"></span><div><small>PRODUCTION / CONTROL AUTHORITY</small><strong id="production-vps-name">bay-core-01</strong></div></div>
+          <p id="production-vps-state">กำลังอ่าน VPS telemetry…</p>
+          <div class="infrastructure-metrics"><span id="production-storage">Disk —</span><span id="production-memory">RAM —</span><span id="production-cpu">CPU —</span></div>
+        </article>
+        <article class="infrastructure-card" data-role="runner">
+          <div class="infrastructure-card-title"><span class="infra-dot" aria-hidden="true"></span><div><small>BUILD / QA / RELEASE RUNNER</small><strong id="release-runner-name">awh-build-01</strong></div></div>
+          <p id="release-runner-state">กำลังตรวจ Release Runner…</p>
+          <div class="infrastructure-metrics"><span id="release-runner-platform">Runner —</span><span id="release-runner-activity">สถานะ —</span></div>
+        </article>
+        <article class="infrastructure-card" data-role="release">
+          <div class="infrastructure-card-title"><span class="infra-dot" aria-hidden="true"></span><div><small>RELEASE SAFETY</small><strong>ความพร้อมปล่อยรุ่น</strong></div></div>
+          <p id="release-capacity-state">กำลังตรวจ headroom และ mutation authority…</p>
+          <div class="infrastructure-metrics"><span id="release-capacity-storage">Headroom —</span><span id="release-capacity-mutations">Writer —</span></div>
+        </article>
+      </div>
+      <details class="infrastructure-details">
+        <summary>หลักการแบ่งหน้าที่ VPS</summary>
+        <div class="updates-policy-grid">
+          <article><strong>bay-core-01</strong><span>ถือ Production, Control Plane, DB, Vault และ final deploy authority</span></article>
+          <article><strong>awh-build-01</strong><span>รับเฉพาะ Build/QA/Rehearsal แบบ exact SHA และส่ง verified evidence กลับ AWH — ไม่ถือ Production authority</span></article>
+        </div>
+      </details>
+    </section>
+
     <section class="updates-primary">
       <div><h2>ระบบของคุณ</h2><p id="updates-message" class="muted" role="status">AWH จะแสดงเฉพาะ action ที่ปลอดภัยตาม authority ของแต่ละระบบ</p></div>
       <button id="show-attention" class="secondary-button" type="button">แสดงเฉพาะที่ต้องจัดการ</button>

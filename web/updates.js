@@ -78,6 +78,77 @@ function renderRuntimeHealth(){
   }
 }
 
+const pct=(value)=>typeof value==='number'&&Number.isFinite(value)?Math.round(value*10)/10:null;
+const sizeText=(bytes)=>{
+  if(!Number.isFinite(bytes)||bytes<0)return '—';
+  const gib=bytes/(1024**3);
+  return (gib>=10?gib.toFixed(0):gib.toFixed(1))+' GB';
+};
+function runnerWorker(){
+  const desired=String(center?.infrastructure?.releaseRunner?.desiredName||'awh-build-01').toLowerCase();
+  const agent=(center?.items||[]).find((item)=>item.adapter==='AGENT_MANAGED');
+  const workers=Array.isArray(agent?.devices)?agent.devices:[];
+  return workers.find((worker)=>{
+    const text=[worker?.displayName,worker?.name,worker?.deviceName,worker?.executorId,worker?.deviceId].filter(Boolean).join(' ').toLowerCase();
+    return text.includes(desired)||text.includes('release runner')||text.includes('build runner');
+  })||null;
+}
+function renderReleaseInfrastructure(){
+  const chip=$('release-infrastructure-state');
+  if(!chip)return;
+  const telemetry=center?.infrastructure?.telemetry;
+  const server=telemetry?.server;
+  const storage=server?.storage;
+  const memory=server?.memory;
+  const cpu=server?.cpu;
+  const telemetryReady=telemetry?.state==='READY'&&server;
+  const used=pct(storage?.usedPercent);
+  const free=Number(storage?.availableBytes??storage?.freeBytes);
+  const storageBlocked=(used!==null&&used>=90)||(Number.isFinite(free)&&free<3*1024**3);
+  const storageWarn=!storageBlocked&&used!==null&&used>=80;
+  const authority=center?.infrastructure?.executionAuthority||{};
+  const activeMutations=Number(authority.activeMutationCount||0);
+  const waitingMutations=Number(authority.waitingMutationCount||0);
+  const runner=runnerWorker();
+  const runnerOnline=runner&&['ONLINE','IDLE','BUSY','READY'].includes(String(runner.activity||runner.state||'').toUpperCase());
+
+  $('production-vps-name').textContent=server?.host?.name||'bay-core-01';
+  $('production-vps-state').textContent=telemetryReady?'Production telemetry สดและอ่านจาก authority กลาง':telemetry?.state==='STALE'?'Telemetry เก่า — ยังไม่ใช้เป็นหลักฐานปล่อยรุ่น':'ยังยืนยัน Production telemetry ไม่ได้';
+  $('production-storage').textContent='Disk '+(used===null?'—':used+'%')+(Number.isFinite(free)?' · เหลือ '+sizeText(free):'');
+  $('production-memory').textContent='RAM '+(pct(memory?.usedPercent)===null?'—':pct(memory?.usedPercent)+'%');
+  $('production-cpu').textContent='CPU '+(pct(cpu?.usedPercent)===null?'—':pct(cpu?.usedPercent)+'%');
+  const productionCard=document.querySelector('.infrastructure-card[data-role="production"]');
+  productionCard.dataset.state=telemetryReady?(storageBlocked?'BLOCKED':storageWarn?'WARN':'READY'):'UNKNOWN';
+
+  if(runner){
+    $('release-runner-name').textContent=runner.displayName||runner.name||'awh-build-01';
+    $('release-runner-state').textContent=runnerOnline?'เชื่อมแล้ว — พร้อมรับงาน Build/QA ตาม capability ที่ลงทะเบียน':'ลงทะเบียนแล้วแต่ยังไม่พร้อมรับงาน';
+    $('release-runner-platform').textContent=[runner.platform,runner.arch].filter(Boolean).join('/')||'Runner';
+    $('release-runner-activity').textContent='สถานะ '+activityLabel(runner.activity||runner.state);
+  }else{
+    $('release-runner-name').textContent='awh-build-01';
+    $('release-runner-state').textContent='ยังไม่ได้เชื่อม — Production ยังรับ Build/QA ชั่วคราวจนกว่าจะเพิ่ม Runner';
+    $('release-runner-platform').textContent='เป้าหมาย Linux x64 · 4 vCPU / 8 GB / 80–100 GB';
+    $('release-runner-activity').textContent='สถานะ แผนขยายระบบ';
+  }
+  document.querySelector('.infrastructure-card[data-role="runner"]').dataset.state=runnerOnline?'READY':runner?'WARN':'PLANNED';
+
+  const releaseReady=telemetryReady&&!storageBlocked&&activeMutations===0;
+  $('release-capacity-state').textContent=storageBlocked
+    ?'พื้นที่ Production ต่ำกว่า release headroom — ห้ามเริ่มงานหนักจนกว่าจะ reclaim หรือย้าย Build/QA ออก'
+    :activeMutations>0
+      ?'มี mutation กำลังทำงาน ระบบจะ serialize deploy และไม่เปิด writer ซ้ำ'
+      :storageWarn
+        ?'ปล่อยรุ่นได้แบบระวัง แต่ควรย้าย Build/QA ไป Release Runner เพื่อลด disk pressure'
+        :'พร้อมรับ release ตาม exact-SHA และ single-writer policy';
+  $('release-capacity-storage').textContent='Headroom '+(Number.isFinite(free)?sizeText(free):'—');
+  $('release-capacity-mutations').textContent='Writer '+activeMutations+(waitingMutations>0?' · รอ '+waitingMutations:'');
+  document.querySelector('.infrastructure-card[data-role="release"]').dataset.state=storageBlocked?'BLOCKED':releaseReady?'READY':'WARN';
+
+  chip.dataset.state=storageBlocked?'BLOCKED':(!telemetryReady||storageWarn||!runnerOnline?'WARN':'READY');
+  chip.textContent=storageBlocked?'ยังไม่พร้อมปล่อยรุ่น':(!telemetryReady?'กำลังยืนยัน Infrastructure':(!runnerOnline?'Production พร้อม · Runner ยังไม่เชื่อม':storageWarn?'พร้อมแบบมีคำเตือน':'พร้อม'));
+}
+
 function summary(){
   const counts={current:0,update:0,progress:0,attention:0};
   for(const item of center?.items||[]){
@@ -195,7 +266,7 @@ function render(){
   const host=$('update-list');host.replaceChildren();
   for(const item of center?.items||[])host.append(renderCard(item));
   if(!host.childElementCount){const empty=document.createElement('div');empty.className='update-empty';empty.textContent='ยังไม่มีระบบใน Update Center';host.append(empty);}
-  renderRuntimeHealth();summary();renderProgress();
+  renderRuntimeHealth();renderReleaseInfrastructure();summary();renderProgress();
 }
 
 function renderProgress(){

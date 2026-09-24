@@ -240,6 +240,11 @@ final class HubControlPlaneService
         try { $hosting = $this->hosting->sites($sessionToken); }
         catch (Throwable) { $hosting = ['schemaVersion'=>1,'sites'=>[]]; }
         $workers = $this->workersForUser($userId);
+        try { $updateTelemetry = HubInfrastructureService::fromEnvironment()->status($now); }
+        catch (Throwable) { $updateTelemetry = ['state'=>'UNAVAILABLE','generatedAt'=>null,'server'=>null]; }
+        $updateExecutionAuthority = $this->capabilities !== null
+            ? $this->capabilities->executionAuthorityStatus($now)
+            : ['schemaVersion'=>1,'mode'=>'UNAVAILABLE','parallelReadsAllowed'=>true,'parallelNonConflictingMutationsAllowed'=>false,'mutationBoundary'=>'UNAVAILABLE','activeMutationCount'=>0,'waitingMutationCount'=>0,'activeMutations'=>[],'waitingMutations'=>[]];
 
         $items = [];
         $covered = [];
@@ -427,6 +432,11 @@ final class HubControlPlaneService
         }
         return [
             'schemaVersion'=>1,'generatedAt'=>self::timestamp($now ?? gmdate('c')),'summary'=>$summary,'items'=>$items,
+            'infrastructure'=>[
+                'telemetry'=>$updateTelemetry,
+                'executionAuthority'=>$updateExecutionAuthority,
+                'releaseRunner'=>['desiredName'=>'awh-build-01','authorityClass'=>'EXECUTOR_ONLY','productionAuthority'=>false,'controlPlaneAuthority'=>false],
+            ],
             'runtime'=>[
                 'state'=>$release['componentState'] ?? 'UNKNOWN',
                 'components'=>$release['components'] ?? [],

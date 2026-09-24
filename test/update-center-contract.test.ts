@@ -33,6 +33,20 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(hosting,/current_release_revision_id/);
   assert.match(hosting,/currentSourceRevisionId/);
   assert.match(adapter,/loadUpdateCenter/);
+  assert.match(service,/'infrastructure'=>\[/);
+  assert.match(service,/releaseRunner.*awh-build-01.*EXECUTOR_ONLY/s);
+  assert.match(service,/executionAuthorityStatus/);
+  assert.match(script,/center\?\.infrastructure/);
+  assert.doesNotMatch(script,/loadInfrastructure/);
+  assert.match(page,/INFRASTRUCTURE & RELEASE CAPACITY/);
+  assert.match(page,/bay-core-01/);
+  assert.match(page,/awh-build-01/);
+  assert.match(script,/executionAuthority/);
+  assert.match(script,/activeMutationCount/);
+  assert.match(script,/used>=90/);
+  assert.match(script,/3\*1024\*\*3/);
+  assert.match(script,/Production ยังรับ Build\/QA ชั่วคราว/);
+  assert.match(page,/ไม่ถือ Production authority/);
   assert.match(script,/requestCoreRelease/);
   assert.match(script,/technicalDetails/);
   assert.match(script,/runtimeState/);
@@ -54,6 +68,23 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(script,/รายละเอียดทางเทคนิค/);
   assert.match(page,/Fail closed/);
   assert.match(page,/Rollback พร้อม/);
+});
+
+test('Release Runner is visible in Update Center but remains executor-only under the canonical control plane', async()=>{
+  const [authority,page,script]=await Promise.all([
+    readFile(join(ROOT,'docs/AWH-AUTHORITY-MAP.md'),'utf8'),
+    readFile(join(ROOT,'web/updates.html'),'utf8'),
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+  ]);
+  assert.match(authority,/Release Runner \/ Build VPS/);
+  assert.match(authority,/Task → Execution \+ Capability Registry/);
+  assert.match(authority,/second control plane, independent release queue, source authority, Owner approval or Production truth/);
+  assert.match(page,/PRODUCTION \/ CONTROL AUTHORITY/);
+  assert.match(page,/BUILD \/ QA \/ RELEASE RUNNER/);
+  assert.match(script,/runnerWorker/);
+  assert.match(script,/awh-build-01/);
+  assert.match(script,/storageBlocked/);
+  assert.match(script,/activeMutations===0/);
 });
 
 test('Agent visibility is version-aware but public macOS updater remains fail-closed', async()=>{
