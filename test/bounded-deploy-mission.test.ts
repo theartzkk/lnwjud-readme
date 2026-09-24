@@ -90,10 +90,26 @@ test('desktop artifact hydration accepts only exact-SHA verified staged packages
     sums.push(`${hash}  ${file}`);
   }
   await writeFile(join(staged,'SHA256SUMS.txt'),`${sums.join('\n')}\n`);
+
+  const installerFile='AWH-Agent-Beta-macOS-arm64.dmg';
+  const installerEvidence='AWH-Agent-Beta-macOS-arm64.installer.json';
+  const installerBytes=Buffer.from(`beta-installer-${sourceSha}`);
+  const installerHash=createHash('sha256').update(installerBytes).digest('hex');
+  await writeFile(join(staged,installerFile),installerBytes);
+  await writeFile(join(staged,installerEvidence),JSON.stringify({
+    schemaVersion:1,kind:'AWH_DESKTOP_INSTALLER_EVIDENCE',authority:'CI_PACKAGE_EVIDENCE_ONLY',productId:'awh',
+    channel:'beta',platform:'darwin',architecture:'arm64',productVersion:'1.0.0-rc.1',sourceSha,
+    packageSha256:installerHash,sizeBytes:installerBytes.length,downloadKey:installerFile,packageVerification:'VERIFIED',
+    platformTrust:'ADHOC_BETA',notarization:'NOT_NOTARIZED',
+  }));
+
   const stagedProof=await verifyDesktopReleaseArtifacts(staged,sourceSha);
   assert.equal(stagedProof.verified.length,3);
   const hydrated=await hydrateDesktopReleaseArtifacts({sourceRoot,sourceSha,stagingRoot});
   assert.equal(hydrated.verified.length,3);
+  assert.equal(hydrated.installers.length,1);
+  assert.equal(hydrated.installers[0].file,installerFile);
+  assert.equal(await readFile(join(sourceRoot,'dist-web/downloads',installerFile),'utf8'),installerBytes.toString('utf8'));
   assert.equal((await readFile(join(sourceRoot,'dist-web/downloads/SHA256SUMS.txt'),'utf8')).trim(),sums.join('\n'));
 
   const evidencePath=join(staged,'AWH-macOS-arm64.release.json');

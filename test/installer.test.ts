@@ -71,10 +71,31 @@ test('desktop packaging excludes generated cross-platform release artifacts from
   const forgeConfig = require('../forge.config.cjs') as { packagerConfig?: { ignore?: RegExp[] } };
   const ignore = forgeConfig.packagerConfig?.ignore ?? [];
   const isIgnored = (path: string) => ignore.some((pattern) => pattern.test(path));
-  for (const artifact of ['/AWH-macOS-x64.zip', '/AWH-macOS-arm64.zip', '/AWH-Windows-x64.zip', '/AWH-macOS-arm64.release.json', '/AWH-Windows-x64.release.json', '/SHA256SUMS.txt']) {
+  for (const artifact of ['/AWH-macOS-x64.zip', '/AWH-macOS-arm64.zip', '/AWH-Windows-x64.zip', '/AWH-macOS-arm64.release.json', '/AWH-Windows-x64.release.json', '/AWH-Agent-Beta-macOS-arm64.dmg', '/AWH-Agent-Beta-macOS-arm64.installer.json', '/SHA256SUMS.txt']) {
     assert.equal(isIgnored(artifact), true, `generated desktop release artifact must be excluded: ${artifact}`);
   }
   assert.equal(isIgnored('/ART_AI_WORKING_PROTOCOL.md'), false, 'required working context must remain packageable');
+});
+
+test('macOS Beta distribution uses a drag-to-Applications DMG with explicit evidence', async () => {
+  const [pkgRaw, dmg, evidence, web] = await Promise.all([
+    readFile(new URL('../package.json', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/create-macos-dmg.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/release/create-desktop-installer-evidence.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../web/app.js', import.meta.url), 'utf8'),
+  ]);
+  const pkg = JSON.parse(pkgRaw) as { scripts?: Record<string, string> };
+  assert.match(pkg.scripts?.['desktop:make:mac:arm64'] ?? '', /create-macos-dmg\.mjs arm64/);
+  assert.match(pkg.scripts?.['desktop:make:mac:x64'] ?? '', /create-macos-dmg\.mjs x64/);
+  assert.match(dmg, /AWH Agent Beta/);
+  assert.match(dmg, /symlink\('\/Applications'/);
+  assert.match(dmg, /hdiutil/);
+  assert.match(dmg, /AWH-Agent-Beta-macOS-/);
+  assert.match(evidence, /AWH_DESKTOP_INSTALLER_EVIDENCE/);
+  assert.match(evidence, /channel: 'beta'/);
+  assert.match(evidence, /ADHOC_BETA/);
+  assert.match(web, /macOS Apple Silicon · Beta/);
+  assert.match(web, /Beta สำหรับทดสอบ · Source\/Checksum ผ่าน/);
 });
 
 test('lightweight AWH Device Runtime is pinned, self-updating and rollback-safe', async () => {

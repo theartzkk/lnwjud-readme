@@ -387,7 +387,7 @@ final class HubControlPlaneService
         $items[] = [
             'key'=>'awh-agent','projectId'=>null,'name'=>'AWH Agent','kind'=>'AGENT','adapter'=>'AGENT_MANAGED',
             'state'=>'INTERNAL_MANAGED','current'=>null,'candidate'=>null,'approvalRequired'=>false,'actionable'=>false,
-            'reason'=>'Web/PWA อัปเดตอัตโนมัติ; native Agent ใช้ package evidence และยังไม่เปิด public auto-updater จนกว่า platform trust พร้อม',
+            'reason'=>'Web/PWA อัปเดตอัตโนมัติ; AWH Agent native อยู่ในช่องทาง Beta และ Stable จะเปิดเมื่อ platform trust พร้อม',
             'devices'=>array_map(static fn(array $worker): array => [
                 'deviceId'=>(string)$worker['deviceId'],'displayName'=>(string)$worker['displayName'],'platform'=>(string)$worker['platform'],
                 'arch'=>(string)$worker['arch'],'appVersion'=>(string)($worker['appVersion'] ?? ''),'state'=>(string)$worker['state'],'activity'=>(string)$worker['activity'],
