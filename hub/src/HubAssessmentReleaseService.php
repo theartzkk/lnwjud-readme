@@ -62,6 +62,7 @@ final class HubAssessmentReleaseService
         $current=$this->currentRuntime();$base=(string)$current['releaseSha'];
         if(hash_equals($base,$sha))throw new HubAssessmentReleaseException('Assessment is already current','ASSESSMENT_RELEASE_VERSION_STALE');
         $at=self::time($now??gmdate('c'));
+        $this->supersedeQueuedReleaseIfTargetMoved($sha,$at);
         $existing=$this->activeRelease();
         if(is_array($existing)){
             $cp=self::checkpoint((string)$existing['checkpoint_json'],false);
@@ -157,6 +158,34 @@ final class HubAssessmentReleaseService
         catch(HubTrustPolicyException){throw new HubAssessmentReleaseException('Assessment release trust policy unavailable','ASSESSMENT_RELEASE_INVALID');}
         $user=(string)$row['user_id'];$this->assertOwner($user);$this->assertCapability($user,'deployment.approve');return $row;
     }
+    private function supersedeQueuedReleaseIfTargetMoved(string $targetSha,string $at): void
+    {
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.checkpoint_json,a.approval_id,a.status AS approval_status
+            FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id LEFT JOIN control_approvals a ON a.task_id=e.task_id AND a.action='deployment.approve'
+            WHERE e.required_capability=:capability AND e.state IN ('QUEUED','WAITING_FOR_CAPABILITY') AND e.lease_owner IS NULL
+              AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY e.updated_at DESC");
+        $q->execute(['capability'=>self::CAPABILITY]);
+        foreach($q->fetchAll() as $row){
+            $checkpoint=self::checkpoint((string)$row['checkpoint_json'],false);
+            $queuedSha=strtolower((string)($checkpoint['releaseSha']??''));
+            if(preg_match('/^[0-9a-f]{40}$/',$queuedSha)!==1||hash_equals($queuedSha,$targetSha))continue;
+            try{
+                $this->pdo->exec('BEGIN IMMEDIATE');
+                $cancel=$this->pdo->prepare("UPDATE control_task_executions SET state='CANCELLED',lease_owner=NULL,lease_expires_at=NULL,last_error_code='ASSESSMENT_RELEASE_SUPERSEDED',updated_at=:at WHERE execution_id=:execution AND state IN ('QUEUED','WAITING_FOR_CAPABILITY') AND lease_owner IS NULL");
+                $cancel->execute(['at'=>$at,'execution'=>$row['execution_id']]);
+                if($cancel->rowCount()!==1){$this->pdo->exec('ROLLBACK');continue;}
+                $summary='คำขอ Assessment รุ่นเก่าถูกแทนด้วย candidate ล่าสุดโดยอัตโนมัติ';
+                $this->pdo->prepare("UPDATE control_tasks SET state='CANCELLED',progress=0,result_summary=:summary,failure_code=NULL,assigned_device_id=NULL,lease_expires_at=NULL,cancelled_at=:at,updated_at=:at WHERE task_id=:task AND state NOT IN ('COMPLETED','FAILED','CANCELLED')")
+                    ->execute(['summary'=>$summary,'at'=>$at,'task'=>$row['task_id']]);
+                if(($row['approval_status']??null)==='PENDING'&&is_string($row['approval_id']??null))
+                    $this->pdo->prepare("UPDATE control_approvals SET status='EXPIRED' WHERE approval_id=:approval AND status='PENDING'")->execute(['approval'=>$row['approval_id']]);
+                $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:event,:task,'CANCELLED',0,:message,:at)")
+                    ->execute(['event'=>self::uuid(),'task'=>$row['task_id'],'message'=>$summary.' · ASSESSMENT_RELEASE_SUPERSEDED · latest '.substr($targetSha,0,12),'at'=>$at]);
+                $this->pdo->exec('COMMIT');
+            }catch(Throwable){$this->rollback();}
+        }
+    }
+
     private function activeRelease(): ?array
     {
         $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.checkpoint_json,t.state AS task_state,a.approval_id

@@ -67,8 +67,12 @@ final class HubLearnLabReleaseService
         $current=$this->currentRuntime();
         if(version_compare($version,(string)$current['runtimeVersion'],'<='))
             throw new HubLearnLabReleaseException('LearnLab runtime version must advance','LEARNLAB_RELEASE_VERSION_STALE');
+        $latest=$this->latestSourcePromotion();
+        if(!is_array($latest)||!is_string($latest['sha']??null)||!hash_equals((string)$latest['sha'],$sha))
+            throw new HubLearnLabReleaseException('LearnLab release target is no longer canonical','LEARNLAB_RELEASE_TARGET_MOVED');
         $base=(string)$current['releaseSha'];$epoch=(int)$current['cacheEpoch']+1;$vault=$this->currentVaultRevision();
         $at=self::time($now??gmdate('c'));
+        $this->supersedeQueuedReleaseIfTargetMoved($sha,$at);
 
         $existing=$this->activeRelease();
         if(is_array($existing)){
@@ -206,6 +210,35 @@ final class HubLearnLabReleaseService
         }catch(HubOwnerAuthException $error){throw new HubLearnLabReleaseException('LearnLab release authentication needs attention',$error->codeName);}
         catch(HubTrustPolicyException){throw new HubLearnLabReleaseException('LearnLab release trust policy is unavailable','LEARNLAB_RELEASE_INVALID');}
         $user=(string)$row['user_id'];$this->assertOwner($user);$this->assertCapability($user,'deployment.approve');return $row;
+    }
+
+    private function supersedeQueuedReleaseIfTargetMoved(string $targetSha,string $at): void
+    {
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.checkpoint_json,a.approval_id,a.status AS approval_status
+            FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id
+            LEFT JOIN control_approvals a ON a.task_id=e.task_id AND a.action='deployment.approve'
+            WHERE e.required_capability=:capability AND e.state IN ('QUEUED','WAITING_FOR_CAPABILITY') AND e.lease_owner IS NULL
+              AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY e.updated_at DESC");
+        $q->execute(['capability'=>self::CAPABILITY]);
+        foreach($q->fetchAll() as $row){
+            $checkpoint=self::checkpoint((string)$row['checkpoint_json'],false);
+            $queuedSha=strtolower((string)($checkpoint['releaseSha']??''));
+            if(preg_match('/^[0-9a-f]{40}$/',$queuedSha)!==1||hash_equals($queuedSha,$targetSha))continue;
+            try{
+                $this->pdo->exec('BEGIN IMMEDIATE');
+                $cancel=$this->pdo->prepare("UPDATE control_task_executions SET state='CANCELLED',lease_owner=NULL,lease_expires_at=NULL,last_error_code='LEARNLAB_RELEASE_SUPERSEDED',updated_at=:at WHERE execution_id=:execution AND state IN ('QUEUED','WAITING_FOR_CAPABILITY') AND lease_owner IS NULL");
+                $cancel->execute(['at'=>$at,'execution'=>$row['execution_id']]);
+                if($cancel->rowCount()!==1){$this->pdo->exec('ROLLBACK');continue;}
+                $summary='คำขอ LearnLab รุ่นเก่าถูกแทนด้วย Source ล่าสุดโดยอัตโนมัติ';
+                $this->pdo->prepare("UPDATE control_tasks SET state='CANCELLED',progress=0,result_summary=:summary,failure_code=NULL,assigned_device_id=NULL,lease_expires_at=NULL,cancelled_at=:at,updated_at=:at WHERE task_id=:task AND state NOT IN ('COMPLETED','FAILED','CANCELLED')")
+                    ->execute(['summary'=>$summary,'at'=>$at,'task'=>$row['task_id']]);
+                if(($row['approval_status']??null)==='PENDING'&&is_string($row['approval_id']??null))
+                    $this->pdo->prepare("UPDATE control_approvals SET status='EXPIRED' WHERE approval_id=:approval AND status='PENDING'")->execute(['approval'=>$row['approval_id']]);
+                $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:event,:task,'CANCELLED',0,:message,:at)")
+                    ->execute(['event'=>self::uuid(),'task'=>$row['task_id'],'message'=>$summary.' · LEARNLAB_RELEASE_SUPERSEDED · latest '.substr($targetSha,0,12),'at'=>$at]);
+                $this->pdo->exec('COMMIT');
+            }catch(Throwable){$this->rollback();}
+        }
     }
 
     private function activeRelease(): ?array

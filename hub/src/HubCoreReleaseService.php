@@ -63,7 +63,11 @@ final class HubCoreReleaseService
         if(!preg_match('/^[0-9a-f]{40}$/',$sha))throw new HubCoreReleaseException('Release SHA is invalid','CORE_RELEASE_INVALID');
         $owner=$this->ownerMutation($token,$csrf,$now);
         $at=self::time($now??gmdate('c'));
+        $latest=$this->latestSourcePromotion();
+        if(!is_array($latest)||!is_string($latest['sha']??null)||!hash_equals((string)$latest['sha'],$sha))
+            throw new HubCoreReleaseException('Core release target is no longer canonical','CORE_RELEASE_TARGET_MOVED');
         $this->reconcileOrphanedRelease($at);
+        $this->supersedeQueuedReleaseIfTargetMoved($sha,$at);
         $existing=$this->activeRelease();
         if(is_array($existing)){
             $checkpoint=self::checkpoint((string)$existing['checkpoint_json'],false);
@@ -152,6 +156,39 @@ final class HubCoreReleaseService
         $table->execute();if($table->fetchColumn()===false)return true;
         $q=$this->pdo->prepare("SELECT 1 FROM control_executor_capabilities WHERE executor_id='vps-core-release' AND capability=:capability AND expires_at>:at LIMIT 1");
         $q->execute(['capability'=>self::CAPABILITY,'at'=>$at]);return $q->fetchColumn()!==false;
+    }
+
+    private function supersedeQueuedReleaseIfTargetMoved(string $targetSha,string $at): void
+    {
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.state AS execution_state,e.lease_owner,e.checkpoint_json,t.state AS task_state,a.approval_id,a.status AS approval_status
+            FROM control_task_executions e
+            JOIN control_tasks t ON t.task_id=e.task_id
+            LEFT JOIN control_approvals a ON a.task_id=e.task_id AND a.action='deployment.approve'
+            WHERE e.required_capability=:capability
+              AND e.state IN ('QUEUED','WAITING_FOR_CAPABILITY')
+              AND e.lease_owner IS NULL
+              AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED')
+            ORDER BY e.updated_at DESC");
+        $q->execute(['capability'=>self::CAPABILITY]);
+        foreach($q->fetchAll() as $row){
+            $checkpoint=self::checkpoint((string)$row['checkpoint_json'],false);
+            $queuedSha=strtolower((string)($checkpoint['releaseSha']??''));
+            if(preg_match('/^[0-9a-f]{40}$/',$queuedSha)!==1||hash_equals($queuedSha,$targetSha))continue;
+            try{
+                $this->pdo->exec('BEGIN IMMEDIATE');
+                $cancel=$this->pdo->prepare("UPDATE control_task_executions SET state='CANCELLED',lease_owner=NULL,lease_expires_at=NULL,last_error_code='CORE_RELEASE_SUPERSEDED',updated_at=:at WHERE execution_id=:execution AND state IN ('QUEUED','WAITING_FOR_CAPABILITY') AND lease_owner IS NULL");
+                $cancel->execute(['at'=>$at,'execution'=>$row['execution_id']]);
+                if($cancel->rowCount()!==1){$this->pdo->exec('ROLLBACK');continue;}
+                $summary='คำขอ AWH รุ่นเก่าถูกแทนด้วย Source ล่าสุดโดยอัตโนมัติ';
+                $this->pdo->prepare("UPDATE control_tasks SET state='CANCELLED',progress=0,result_summary=:summary,failure_code=NULL,assigned_device_id=NULL,lease_expires_at=NULL,cancelled_at=:at,updated_at=:at WHERE task_id=:task AND state NOT IN ('COMPLETED','FAILED','CANCELLED')")
+                    ->execute(['summary'=>$summary,'at'=>$at,'task'=>$row['task_id']]);
+                if(($row['approval_status']??null)==='PENDING'&&is_string($row['approval_id']??null))
+                    $this->pdo->prepare("UPDATE control_approvals SET status='EXPIRED' WHERE approval_id=:approval AND status='PENDING'")->execute(['approval'=>$row['approval_id']]);
+                $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:event,:task,'CANCELLED',0,:message,:at)")
+                    ->execute(['event'=>self::uuid(),'task'=>$row['task_id'],'message'=>$summary.' · CORE_RELEASE_SUPERSEDED · latest '.substr($targetSha,0,12),'at'=>$at]);
+                $this->pdo->exec('COMMIT');
+            }catch(Throwable){$this->rollback();}
+        }
     }
 
     private function activeRelease(): ?array

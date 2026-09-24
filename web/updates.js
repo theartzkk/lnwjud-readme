@@ -25,6 +25,8 @@ const friendly=(error)=>{
   return ({
     STEP_UP_REQUIRED:'ต้องยืนยันรหัสผ่าน Owner ก่อนดำเนินการ',
     CORE_RELEASE_CONFLICT:'มี AWH Core Release อื่นกำลังทำอยู่ ระบบจะไม่สร้างรายการซ้ำ',
+    CORE_RELEASE_TARGET_MOVED:'AWH รุ่นนี้ถูกแทนด้วยรุ่นล่าสุดแล้ว ระบบจะใช้เฉพาะรุ่นล่าสุดจาก Update Center',
+    LEARNLAB_RELEASE_TARGET_MOVED:'LearnLab source รุ่นนี้ถูกแทนแล้ว ระบบจะใช้เฉพาะ source ล่าสุดจาก Update Center',
     ASSESSMENT_RELEASE_CONFLICT:'มี BAY Assessment release อื่นกำลังทำอยู่ ระบบจะไม่สร้างรายการซ้ำ',
     ASSESSMENT_RELEASE_TARGET_MOVED:'Assessment candidate เปลี่ยนก่อนเริ่มติดตั้ง ระบบหยุดแบบปลอดภัย กรุณารีเฟรชสถานะ',
     ASSESSMENT_RELEASE_NOT_READY:'BAY Assessment release authority ยังไม่พร้อม',
@@ -60,6 +62,13 @@ function meta(...values){
   return host;
 }
 
+function releaseMeta(item){
+  const hash=(value)=>typeof value==='string'&&/^[0-9a-f]{40}$/i.test(value);
+  const current=item.current?(hash(item.current)?'รุ่นใช้งานปัจจุบัน':'ใช้อยู่ '+item.current):null;
+  const candidate=item.candidate?(hash(item.candidate)?'รุ่นล่าสุดที่ AWH เลือกแล้ว':'ใหม่ '+item.candidate):null;
+  return meta(adapterLabel(item.adapter),current,candidate);
+}
+
 function actionButton(text,handler,className='primary-button'){
   const button=document.createElement('button');button.type='button';button.className=className;button.textContent=text;
   button.addEventListener('click',async()=>{button.disabled=true;try{await handler();}catch(error){message(friendly(error));}finally{button.disabled=false;}});
@@ -87,7 +96,7 @@ function render(){
     const h3=document.createElement('h3');h3.textContent=item.name;
     const chip=document.createElement('span');chip.className='update-chip';chip.dataset.state=item.state;chip.textContent=stateLabel(item.state);
     title.append(h3,chip);main.append(title);
-    main.append(meta(adapterLabel(item.adapter),item.current?'ใช้อยู่ '+short(item.current):null,item.candidate?'ใหม่ '+short(item.candidate):null));
+    main.append(releaseMeta(item));
     const reason=document.createElement('p');reason.className='update-reason';reason.textContent=item.reason||'กำลังตรวจ';main.append(reason);
     renderDevices(item,main);
     const actions=document.createElement('div');actions.className='update-actions';
@@ -136,7 +145,7 @@ async function approveLearnLab(item){
 }
 
 async function updateAwh(item){
-  if(!confirm('อัปเดต AWH เป็น Source '+short(item.candidate)+' ใช่หรือไม่? ระบบจะตรวจทุก gate ก่อนเปลี่ยน Production'))return;
+  if(!confirm('อัปเดต AWH เป็นรุ่นล่าสุดที่ AWH ตรวจและเลือกไว้ใช่หรือไม่? ระบบจะตรวจทุก gate ก่อนเปลี่ยน Production'))return;
   const request=await privileged(()=>requestCoreRelease(item.candidate,false));
   if(request?.approvalId)await decideApproval(request.approvalId,'approve');
   message('AWH Core Release ถูกอนุมัติแล้ว ระบบกำลังทำ QA, Backup, Deploy และ Verify');

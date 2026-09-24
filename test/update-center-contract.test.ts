@@ -28,6 +28,9 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(hosting,/currentSourceRevisionId/);
   assert.match(adapter,/loadUpdateCenter/);
   assert.match(script,/requestCoreRelease/);
+  assert.match(script,/releaseMeta/);
+  assert.match(script,/รุ่นล่าสุดที่ AWH เลือกแล้ว/);
+  assert.doesNotMatch(script,/อัปเดต AWH เป็น Source/);
   assert.match(script,/decideApproval/);
   assert.match(script,/managedSiteAction/);
   assert.match(script,/createBayRemoteInstallRelay/);
@@ -36,6 +39,8 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.doesNotMatch(script,/autoUpdater|setFeedURL|shell_exec|proc_open|exec\(/);
   assert.match(page,/อัปเดตทั้งหมดที่พร้อม/);
   assert.match(page,/Source เดียว/);
+  assert.match(page,/Candidate เดียว/);
+  assert.match(page,/รุ่นเก่าถูก supersede อัตโนมัติ/);
   assert.match(page,/Fail closed/);
   assert.match(page,/Rollback พร้อม/);
 });
@@ -108,4 +113,34 @@ test('Update Center mobile surface stays light and legacy baselines remain fail-
   assert.match(learnLab,/publishedAt/);
   assert.match(script,/approveLearnLab/);
   assert.match(script,/ออฟไลน์\/ข้อมูลเก่า/);
+});
+
+
+test('central update authority exposes one latest candidate and supersedes stale pending releases safely', async()=>{
+  const [service,core,learnLab,assessment,router,script]=await Promise.all([
+    readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubCoreReleaseService.php'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubLearnLabReleaseService.php'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubAssessmentReleaseService.php'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubControlPlaneRouter.php'),'utf8'),
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+  ]);
+  assert.match(service,/singleLatestCandidate'=>true/);
+  assert.match(service,/AUTO_SUPERSEDE_BEFORE_LEASE/);
+  assert.match(service,/humanShaRequired'=>false/);
+  assert.match(service,/latestLearnLabSha/);
+  assert.match(service,/candidateSha!==null.*releaseSha/s);
+  for(const release of [core,learnLab,assessment]){
+    assert.match(release,/supersedeQueuedReleaseIfTargetMoved/);
+    assert.match(release,/state='CANCELLED'/);
+    assert.match(release,/lease_owner IS NULL/);
+    assert.match(release,/status='EXPIRED'/);
+  }
+  assert.match(core,/CORE_RELEASE_TARGET_MOVED/);
+  assert.match(learnLab,/LEARNLAB_RELEASE_TARGET_MOVED/);
+  assert.match(router,/CORE_RELEASE_TARGET_MOVED/);
+  assert.match(router,/LEARNLAB_RELEASE_TARGET_MOVED/);
+  assert.match(router,/ASSESSMENT_RELEASE_TARGET_MOVED/);
+  assert.match(script,/CORE_RELEASE_TARGET_MOVED/);
+  assert.match(script,/LEARNLAB_RELEASE_TARGET_MOVED/);
 });

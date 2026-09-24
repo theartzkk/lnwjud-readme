@@ -289,21 +289,31 @@ final class HubControlPlaneService
                 ];
             } elseif ($name === 'BAY LearnLab') {
                 $currentLearnLab = is_array($learnLab['current'] ?? null) ? $learnLab['current'] : [];
+                $learnLabSource = is_array($learnLab['sourcePromotion'] ?? null) ? $learnLab['sourcePromotion'] : [];
+                $latestLearnLabSha = is_string($learnLabSource['sha'] ?? null) ? strtolower((string) $learnLabSource['sha']) : null;
+                $currentLearnLabSha = is_string($currentLearnLab['releaseSha'] ?? null) ? strtolower((string) $currentLearnLab['releaseSha']) : null;
                 $activeLearnLab = null;
                 foreach ((array) ($learnLab['releases'] ?? []) as $row) {
                     if (!is_array($row) || in_array((string) ($row['taskState'] ?? ''), ['COMPLETED','FAILED','CANCELLED'], true)) continue;
+                    $releaseSha = is_string($row['releaseSha'] ?? null) ? strtolower((string) $row['releaseSha']) : null;
+                    if ($latestLearnLabSha !== null && ($releaseSha === null || !hash_equals($latestLearnLabSha,$releaseSha))) continue;
                     $activeLearnLab = $row;
                     break;
                 }
                 $learnLabState = 'CURRENT';
                 $learnLabCandidate = null;
                 $learnLabApproval = null;
-                $learnLabReason = 'Production stable/pilot ตรงกัน และ typed LearnLab release authority พร้อมใช้งาน';
+                $learnLabReason = 'Production stable/pilot ตรงกับ Source Authority ล่าสุด';
+                if ($latestLearnLabSha !== null && $currentLearnLabSha !== null && !hash_equals($latestLearnLabSha,$currentLearnLabSha)) {
+                    $learnLabState = 'SOURCE_READY';
+                    $learnLabCandidate = $latestLearnLabSha;
+                    $learnLabReason = 'มี LearnLab Source ใหม่เพียงรุ่นล่าสุดรอสร้าง typed release; คำขอเก่าจะไม่ถูกนำกลับมาใช้';
+                }
                 if (is_array($activeLearnLab)) {
-                    $learnLabCandidate = is_string($activeLearnLab['runtimeVersion'] ?? null) ? (string) $activeLearnLab['runtimeVersion'] : null;
+                    $learnLabCandidate = is_string($activeLearnLab['runtimeVersion'] ?? null) ? (string) $activeLearnLab['runtimeVersion'] : $latestLearnLabSha;
                     $learnLabApproval = is_string($activeLearnLab['approvalId'] ?? null) ? (string) $activeLearnLab['approvalId'] : null;
                     $learnLabState = (string) ($activeLearnLab['approvalStatus'] ?? '') === 'PENDING' ? 'WAITING_FOR_APPROVAL' : 'UPDATING';
-                    $learnLabReason = $learnLabState === 'WAITING_FOR_APPROVAL' ? 'LearnLab release ผ่าน typed boundary แล้วและรอ Owner อนุมัติ' : 'LearnLab release controller กำลังทำงาน';
+                    $learnLabReason = $learnLabState === 'WAITING_FOR_APPROVAL' ? 'LearnLab รุ่นล่าสุดผ่าน typed boundary แล้วและรอ Owner อนุมัติ' : 'LearnLab release controller กำลังทำงานกับรุ่นล่าสุด';
                 }
                 $items[] = [
                     'key'=>'bay-learnlab','projectId'=>$projectId,'name'=>$name,'kind'=>'PRODUCT','adapter'=>'LEARNLAB_RELEASE',
@@ -325,13 +335,15 @@ final class HubControlPlaneService
                 } else {
                     $currentAssessment=is_array($assessment['current']??null)?$assessment['current']:[];
                     $candidateAssessment=is_array($assessment['candidate']??null)?$assessment['candidate']:[];
+                    $currentSha=is_string($currentAssessment['releaseSha']??null)?strtolower((string)$currentAssessment['releaseSha']):null;
+                    $candidateSha=(($candidateAssessment['ready']??false)===true&&is_string($candidateAssessment['releaseSha']??null))?strtolower((string)$candidateAssessment['releaseSha']):null;
                     $activeAssessment=null;
                     foreach((array)($assessment['releases']??[]) as $row){
                         if(!is_array($row)||in_array((string)($row['taskState']??''),['COMPLETED','FAILED','CANCELLED'],true))continue;
+                        $releaseSha=is_string($row['releaseSha']??null)?strtolower((string)$row['releaseSha']):null;
+                        if($candidateSha!==null&&($releaseSha===null||!hash_equals($candidateSha,$releaseSha)))continue;
                         $activeAssessment=$row;break;
                     }
-                    $currentSha=is_string($currentAssessment['releaseSha']??null)?strtolower((string)$currentAssessment['releaseSha']):null;
-                    $candidateSha=(($candidateAssessment['ready']??false)===true&&is_string($candidateAssessment['releaseSha']??null))?strtolower((string)$candidateAssessment['releaseSha']):null;
                     $state=$candidateSha!==null&&$currentSha!==null&&!hash_equals($candidateSha,$currentSha)?'UPDATE_AVAILABLE':'CURRENT';
                     $reason=$state==='CURRENT'?'Production ตรงกับ Assessment source ล่าสุด':'มี Assessment candidate ที่ผ่าน QA พร้อม staging-first release';
                     if(is_array($activeAssessment)){
@@ -388,7 +400,8 @@ final class HubControlPlaneService
         }
         return [
             'schemaVersion'=>1,'generatedAt'=>self::timestamp($now ?? gmdate('c')),'summary'=>$summary,'items'=>$items,
-            'policy'=>['singleControlPlane'=>true,'parallelDeployEngine'=>false,'ownerApprovalPreserved'=>true,'rollbackRequired'=>true,'sourceAuthority'=>'AWH_VAULT_OR_EXISTING_ADAPTER'],
+            'policy'=>['singleControlPlane'=>true,'parallelDeployEngine'=>false,'ownerApprovalPreserved'=>true,'rollbackRequired'=>true,'sourceAuthority'=>'AWH_VAULT_OR_EXISTING_ADAPTER',
+                'singleLatestCandidate'=>true,'stalePendingRelease'=>'AUTO_SUPERSEDE_BEFORE_LEASE','humanShaRequired'=>false],
         ];
     }
 

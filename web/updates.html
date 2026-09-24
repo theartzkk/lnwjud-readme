@@ -42,6 +42,7 @@
       <summary>หลักการอัปเดตแบบยั่งยืน</summary>
       <div class="updates-policy-grid">
         <article><strong>Source เดียว</strong><span>ใช้ AWH Vault หรือ authority ที่ลงทะเบียนไว้ ไม่สร้าง source คู่ขนาน</span></article>
+        <article><strong>Candidate เดียว</strong><span>แสดงและอนุมัติเฉพาะรุ่นล่าสุดจาก authority กลาง รุ่นเก่าถูก supersede อัตโนมัติก่อน worker รับงาน</span></article>
         <article><strong>Deploy เดิม</strong><span>Core Release, BAY Update Center และ Managed Hosting ยังคงเป็นผู้ติดตั้งจริง</span></article>
         <article><strong>Fail closed</strong><span>ถ้า QA, Backup, Source, Trust หรือ Verify ไม่ผ่าน จะหยุดก่อนเปลี่ยน Production</span></article>
         <article><strong>Rollback พร้อม</strong><span>ระบบที่ deploy ได้ต้องมี rollback/restore authority ก่อนถูกเรียกว่าอัปเดตอัตโนมัติ</span></article>
