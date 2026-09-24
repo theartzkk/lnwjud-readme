@@ -69,11 +69,11 @@ test('external CLI discovery reports inventory only and never grants an executio
 });
 
 
-test('macOS device runtime discovery exposes provider-neutral inventory only when installed', async () => {
+test('macOS device runtime discovery exposes AWH system plus KRUART GUI inventory only when both are installed', async () => {
   const home = '/Users/fixture';
   const paths = new Set([
-    '/Applications/lnwjud.app/Contents/MacOS/lnwjud',
-    '/Users/fixture/.local/share/bay-remote/node_modules/.bin/desktop-commander',
+    '/Users/fixture/.kruart/ai-control/kui',
+    '/Users/fixture/Library/Application Support/AWH/RemoteWorker/runtime/node_modules/.bin/desktop-commander',
   ]);
   const tools = await discoverWorkerTools({
     platform: 'darwin', env: { HOME: home },
@@ -81,4 +81,15 @@ test('macOS device runtime discovery exposes provider-neutral inventory only whe
     pathAvailable: async (path) => paths.has(path),
   });
   assert.deepEqual(tools, ['tool.awh-device-gui', 'tool.awh-device-system']);
+});
+
+test('macOS GUI inventory is not advertised without an executable AWH system provider', async () => {
+  const home = '/Users/fixture';
+  const paths = new Set(['/Users/fixture/.kruart/ai-control/kui']);
+  const tools = await discoverWorkerTools({
+    platform: 'darwin', env: { HOME: home },
+    commandAvailable: async () => false,
+    pathAvailable: async (path) => paths.has(path),
+  });
+  assert.deepEqual(tools, []);
 });

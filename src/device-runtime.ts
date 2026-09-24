@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 export interface AwhDeviceRuntime {
   guiMcpUrl: string | null;
+  guiToolkitCommand: string | null;
   systemMcpCommand: string | null;
 }
 
@@ -63,6 +64,11 @@ export async function discoverAwhDeviceRuntime(options: DeviceRuntimeProbeOption
   const pathAvailable = options.pathAvailable ?? defaultPathAvailable;
   const tcpReady = options.tcpReady ?? defaultTcpReady;
   const guiMcpUrl = platform === 'darwin' ? await discoverGuiMcpUrl(home, tcpReady) : null;
+  const guiToolkitCandidates = platform === 'darwin' ? [join(home, '.kruart', 'ai-control', 'kui')] : [];
+  let guiToolkitCommand: string | null = null;
+  for (const candidate of guiToolkitCandidates) {
+    if (await pathAvailable(candidate)) { guiToolkitCommand = candidate; break; }
+  }
   const systemCandidates = platform === 'darwin' ? [
     join(home, 'Library', 'Application Support', 'AWH', 'RemoteWorker', 'runtime', 'node_modules', '.bin', 'desktop-commander'),
     join(home, '.local', 'share', 'bay-remote', 'node_modules', '.bin', 'desktop-commander'),
@@ -71,7 +77,7 @@ export async function discoverAwhDeviceRuntime(options: DeviceRuntimeProbeOption
   for (const candidate of systemCandidates) {
     if (await pathAvailable(candidate)) { systemMcpCommand = candidate; break; }
   }
-  return { guiMcpUrl, systemMcpCommand };
+  return { guiMcpUrl, guiToolkitCommand, systemMcpCommand };
 }
 
 export function deviceProvidersForCapability(capability: string): { gui: boolean; system: boolean } {

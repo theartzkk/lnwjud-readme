@@ -73,9 +73,20 @@ export async function discoverWorkerTools(options: WorkerToolProbeOptions = {}):
     if (await anyPath(windowsBrowserCandidates(env, 'edge'), pathAvailable)) tools.push('tool.browser.edge');
   }
   if (platform === 'darwin') {
+    const home = typeof env.HOME === 'string' && env.HOME ? env.HOME : null;
+    const systemCandidates = home ? [
+      join(home, 'Library', 'Application Support', 'AWH', 'RemoteWorker', 'runtime', 'node_modules', '.bin', 'desktop-commander'),
+      join(home, '.local', 'share', 'bay-remote', 'node_modules', '.bin', 'desktop-commander'),
+    ] : [];
+    const guiCandidates = [
+      '/Applications/lnwjud.app/Contents/MacOS/lnwjud',
+      ...(home ? [join(home, '.kruart', 'ai-control', 'kui')] : []),
+    ];
+    const systemReady = await anyPath(systemCandidates, pathAvailable);
+    const guiReady = await anyPath(guiCandidates, pathAvailable);
+    if (systemReady) tools.push('tool.awh-device-system');
+    if (guiReady && systemReady) tools.push('tool.awh-device-gui');
     const apps: Array<[string, string]> = [
-      ['/Applications/lnwjud.app/Contents/MacOS/lnwjud', 'tool.awh-device-gui'],
-      ...(typeof env.HOME === 'string' && env.HOME ? [[join(env.HOME, '.local', 'share', 'bay-remote', 'node_modules', '.bin', 'desktop-commander'), 'tool.awh-device-system'] as [string, string]] : []),
       ['/Applications/Microsoft Word.app/Contents/MacOS/Microsoft Word', 'tool.office.word'],
       ['/Applications/Microsoft Excel.app/Contents/MacOS/Microsoft Excel', 'tool.office.excel'],
       ['/Applications/Microsoft PowerPoint.app/Contents/MacOS/Microsoft PowerPoint', 'tool.office.powerpoint'],

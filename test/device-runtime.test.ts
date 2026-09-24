@@ -17,7 +17,7 @@ test('device runtime discovers dynamic loopback GUI MCP and system provider', as
     pathAvailable: async (path) => path === system,
     tcpReady: async (url) => url === 'http://127.0.0.1:59702/mcp',
   });
-  assert.deepEqual(runtime, { guiMcpUrl: 'http://127.0.0.1:59702/mcp', systemMcpCommand: system });
+  assert.deepEqual(runtime, { guiMcpUrl: 'http://127.0.0.1:59702/mcp', guiToolkitCommand: null, systemMcpCommand: system });
 });
 
 test('device runtime rejects non-loopback or unavailable GUI endpoints', async () => {
@@ -26,7 +26,20 @@ test('device runtime rejects non-loopback or unavailable GUI endpoints', async (
   await mkdir(support, { recursive: true });
   await writeFile(join(support, 'lnwjud.yaml'), JSON.stringify({ mcp: { server_urls: [{ url: 'https://example.com/mcp' }] } }));
   const runtime = await discoverAwhDeviceRuntime({ home, platform: 'darwin', pathAvailable: async () => false, tcpReady: async () => true });
-  assert.deepEqual(runtime, { guiMcpUrl: null, systemMcpCommand: null });
+  assert.deepEqual(runtime, { guiMcpUrl: null, guiToolkitCommand: null, systemMcpCommand: null });
+});
+
+test('device runtime discovers KRUART GUI toolkit as a provider-neutral fallback beside AWH system runtime', async () => {
+  const home = '/Users/fixture';
+  const gui = join(home, '.kruart', 'ai-control', 'kui');
+  const system = join(home, 'Library', 'Application Support', 'AWH', 'RemoteWorker', 'runtime', 'node_modules', '.bin', 'desktop-commander');
+  const runtime = await discoverAwhDeviceRuntime({
+    home,
+    platform: 'darwin',
+    pathAvailable: async (path) => path === gui || path === system,
+    tcpReady: async () => false,
+  });
+  assert.deepEqual(runtime, { guiMcpUrl: null, guiToolkitCommand: gui, systemMcpCommand: system });
 });
 
 test('capability selects only the provider class it actually needs', () => {

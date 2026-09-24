@@ -395,15 +395,19 @@ export class ControlPlaneWorkerRuntime {
       ].join('\n\n');
       const runtime = await discoverAwhDeviceRuntime();
       const required = deviceProvidersForCapability(execution.requiredCapability);
+      const guiViaSystem = required.gui && !runtime.guiMcpUrl && runtime.guiToolkitCommand !== null && runtime.systemMcpCommand !== null;
       const providers = {
         guiMcpUrl: required.gui ? runtime.guiMcpUrl : null,
-        systemMcpCommand: required.system ? runtime.systemMcpCommand : null,
+        systemMcpCommand: required.system || guiViaSystem ? runtime.systemMcpCommand : null,
       };
-      if ((required.gui && !providers.guiMcpUrl) || (required.system && !providers.systemMcpCommand)) {
+      if ((required.gui && !providers.guiMcpUrl && !guiViaSystem) || (required.system && !providers.systemMcpCommand)) {
         await this.client.deferCentralExecution(execution.executionId, 'DEVICE_CAPABILITY_UNAVAILABLE').catch(() => undefined);
         return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason: 'DEVICE_CAPABILITY_UNAVAILABLE' };
       }
-      const codex = await runCodexDeviceGoal(root, instruction, providers);
+      const effectiveInstruction = guiViaSystem
+        ? instruction + `\n\nAWH GUI TOOLKIT\nUse the device system MCP shell/process tools to invoke ${runtime.guiToolkitCommand} for GUI inspection and operation. Prefer its snapshot/observe/accessibility/mouse/keyboard/surface commands, verify the visible result after any mutation, and do not bypass the current AI ON/OFF/LIVE guard.`
+        : instruction;
+      const codex = await runCodexDeviceGoal(root, effectiveInstruction, providers);
       if (codex.code !== 0) throw new Error('DEVICE_AUTOMATION_FAILED');
       await this.client.update(task.taskId, 'QA', 85, 'AWH กำลังตรวจผลลัพธ์บนอุปกรณ์จริง');
       const summary = boundedSummary(codex.summary || 'ตรวจและดำเนินงานบนอุปกรณ์ที่เชื่อมต่อเรียบร้อย');
