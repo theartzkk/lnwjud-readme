@@ -444,7 +444,30 @@ final class HubOperatorBridgeService
     private function bayStatus(string $at): array
     {
         $bay=new HubBayRemoteUpdateService(); $signed=$bay->status($at); $remote=($this->poster)((string)$signed['endpoint'],(array)$signed['statusRelay']);
-        return ['schemaVersion'=>1,'state'=>'READY','authority'=>'BAY PackageManager/Update Center','remote'=>$remote,'projectGate'=>$this->projectGate('BAY EXCUSE X',$at,true),'observedAt'=>$at];
+        $gate=$this->projectGate('BAY EXCUSE X',$at,true);$parity=$this->bayProductionSourceParity($remote);
+        $ready=($gate['productionReady']??false)===true&&($parity['ready']??false)===true;
+        return ['schemaVersion'=>1,'state'=>$ready?'READY':'SOURCE_DRIFT','authority'=>'BAY PackageManager/Update Center','remote'=>$remote,'projectGate'=>$gate,'sourceParity'=>$parity,'observedAt'=>$at];
+    }
+
+    /** @param array<string,mixed> $remote @return array<string,mixed> */
+    private function bayProductionSourceParity(array $remote): array
+    {
+        $deployed=strtolower(trim((string)($remote['deployedSha']??'')));
+        $root=getenv('AWH_CANONICAL_GIT_ROOT');if(!is_string($root)||$root==='')$root='/srv/awh-git';
+        $repo=rtrim($root,'/').'/bay-excuse-x.git';
+        if(preg_match('/^[a-f0-9]{40}$/',$deployed)!==1||!is_dir($repo)||is_link($repo))return ['ready'=>false,'deployedSha'=>$deployed?:null,'projectionSha'=>null,'sourceRevision'=>null,'reason'=>'UNRESOLVED'];
+        try{$projection=strtolower(trim($this->runGit($repo,['rev-parse','refs/heads/main'])));$body=$this->runGit($repo,['show','-s','--format=%B',$projection]);}
+        catch(Throwable){return ['ready'=>false,'deployedSha'=>$deployed,'projectionSha'=>null,'sourceRevision'=>null,'reason'=>'PROJECTION_UNAVAILABLE'];}
+        $source=null;if(preg_match('/^Source-Revision:\s*([a-f0-9]{40})\s*$/mi',$body,$m)===1)$source=strtolower($m[1]);
+        $ready=is_string($source)&&hash_equals($source,$deployed);
+        return ['ready'=>$ready,'deployedSha'=>$deployed,'projectionSha'=>$projection,'sourceRevision'=>$source,'reason'=>$ready?'MATCH':'SOURCE_REVISION_DRIFT'];
+    }
+
+    /** @param array<string,mixed> $remote */
+    private function assertBayProductionSourceParity(array $remote): void
+    {
+        $parity=$this->bayProductionSourceParity($remote);
+        if(($parity['ready']??false)!==true)throw new HubOperatorBridgeException('BAY Production source does not match canonical authority','OPERATOR_BAY_SOURCE_DRIFT');
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
@@ -468,6 +491,7 @@ final class HubOperatorBridgeService
         try{
             $bay=new HubBayRemoteUpdateService();$statusEnvelope=$bay->status($at);$before=($this->poster)((string)$statusEnvelope['endpoint'],(array)$statusEnvelope['statusRelay']);
             if(($before['ok']??false)!==true||(($before['preflight']['ready']??false)!==true)||(($before['maintenance']['active']??false)===true))throw new HubOperatorBridgeException('BAY Production preflight is not ready','OPERATOR_BAY_PREFLIGHT_BLOCKED');
+            $this->assertBayProductionSourceParity($before);
             $current=(string)($before['currentVersion']??'');$deployed=strtolower((string)($before['deployedSha']??''));$from=(string)($manifest['from_version']??'');$base=strtolower((string)($manifest['source_base_commit']??''));
             if($current===''||$from!==$current||version_compare($version,$current,'<=')||preg_match('/^[a-f0-9]{40}$/',$deployed)!==1||$base===''||!hash_equals($deployed,$base))throw new HubOperatorBridgeException('BAY package baseline does not match Production','OPERATOR_BAY_BASELINE_MISMATCH');
             $safeVersion=preg_replace('/[^0-9A-Za-z._+-]+/','-',$version);if(!is_string($safeVersion)||$safeVersion==='')throw new HubOperatorBridgeException('BAY package version is invalid','OPERATOR_REQUEST_INVALID');
@@ -496,6 +520,7 @@ final class HubOperatorBridgeService
         try {
             $bay=new HubBayRemoteUpdateService(); $statusEnvelope=$bay->status($at); $before=($this->poster)((string)$statusEnvelope['endpoint'],(array)$statusEnvelope['statusRelay']);
             if (($before['ok']??false)!==true || (($before['preflight']['ready']??false)!==true) || (($before['maintenance']['active']??false)===true)) throw new HubOperatorBridgeException('BAY Production preflight is not ready','OPERATOR_BAY_PREFLIGHT_BLOCKED');
+            $this->assertBayProductionSourceParity($before);
             $package=null; foreach((array)($before['packages']??[]) as $row){if(!is_array($row))continue;if(($row['version']??null)===$version&&strtolower((string)($row['sourceSha']??''))===$sha&&strtolower((string)($row['packageSha256']??''))===$packageSha&&($row['installable']??false)===true){$package=$row;break;}}
             if(!is_array($package)) throw new HubOperatorBridgeException('Exact BAY package is not installable in Update Inbox','OPERATOR_BAY_PACKAGE_NOT_READY');
             $signed=$bay->installRelay($version,$sha,$packageSha,$at); $result=($this->poster)((string)$signed['endpoint'],(array)$signed['relay']);

@@ -141,7 +141,7 @@ final class HubCoreReleaseOperator
             $dirty=trim($this->run(['/usr/bin/git','-C',$workspace,'status','--porcelain=v1','--untracked-files=all'],null,20,'CORE_RELEASE_WORKSPACE_VERIFY_FAILED')['out']);
             if($dirty!=='')throw new HubCoreReleaseOperatorException('Dependency preparation changed tracked source','CORE_RELEASE_SOURCE_DIRTY');
 
-            $args=[$node,$workspace.'/scripts/ops/bounded-deploy-mission.mjs','--project-source-authority','--approve'];
+            $args=[$node,$workspace.'/scripts/ops/bounded-deploy-mission.mjs','--identity-convergence','--approve'];
             if(($checkpoint['cleanupTopology']??false)===true)$args[]='--cleanup-topology';
             $this->event((string)$row['task_id'],'RUNNING',30,'AWH กำลังรัน bounded QA, backup, rollback และ Production gates',$at);
             $result=$this->run($args,['cwd'=>$workspace,'env'=>$env],6900,'CORE_RELEASE_MISSION_COMMAND_FAILED');
@@ -172,7 +172,7 @@ final class HubCoreReleaseOperator
         if(!is_array($row)||(string)$row['status']!=='APPROVED'||!is_string($row['decided_at']))throw new HubCoreReleaseOperatorException('Owner approval is required','CORE_RELEASE_APPROVAL_REQUIRED');
         try{$scope=json_decode((string)$row['scope_json'],true,16,JSON_THROW_ON_ERROR);}catch(Throwable){throw new HubCoreReleaseOperatorException('Approval scope is invalid','CORE_RELEASE_APPROVAL_INVALID');}
         $keys=['cleanupTopology','projectId','releaseMode','releaseSha','risk','schemaVersion','taskId','transport'];$actual=is_array($scope)?array_keys($scope):[];sort($actual);sort($keys);
-        $valid=is_array($scope)&&$actual===$keys&&($scope['schemaVersion']??null)===1&&hash_equals((string)($scope['taskId']??''),$taskId)&&hash_equals((string)($scope['projectId']??''),HubCoreReleaseService::PROJECT_ID)&&hash_equals((string)($scope['releaseSha']??''),(string)$checkpoint['releaseSha'])&&($scope['releaseMode']??null)==='PROJECT_SOURCE_AUTHORITY'&&($scope['transport']??null)==='LOCAL'&&($scope['risk']??null)==='CRITICAL'&&($scope['cleanupTopology']??null)===($checkpoint['cleanupTopology']??null);
+        $valid=is_array($scope)&&$actual===$keys&&($scope['schemaVersion']??null)===1&&hash_equals((string)($scope['taskId']??''),$taskId)&&hash_equals((string)($scope['projectId']??''),HubCoreReleaseService::PROJECT_ID)&&hash_equals((string)($scope['releaseSha']??''),(string)$checkpoint['releaseSha'])&&($scope['releaseMode']??null)==='IDENTITY_CONVERGENCE'&&($scope['transport']??null)==='LOCAL'&&($scope['risk']??null)==='CRITICAL'&&($scope['cleanupTopology']??null)===($checkpoint['cleanupTopology']??null);
         if(!$valid)throw new HubCoreReleaseOperatorException('Approval scope does not match release checkpoint','CORE_RELEASE_APPROVAL_INVALID');
         return $scope;
     }

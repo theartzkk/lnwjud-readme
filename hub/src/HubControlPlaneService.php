@@ -43,6 +43,8 @@ require_once __DIR__ . '/HubCloudWorkflowService.php';
 require_once __DIR__ . '/HubBayRemoteUpdateService.php';
 require_once __DIR__ . '/HubProjectSourceAuthorityMigration.php';
 require_once __DIR__ . '/HubVaultSourceAuthorityMigration.php';
+require_once __DIR__ . '/HubIdentityConvergenceMigration.php';
+require_once __DIR__ . '/HubSchoolIdentityService.php';
 require_once __DIR__ . '/HubProjectSourceAuthorityService.php';
 require_once __DIR__ . '/HubProjectSourceSyncService.php';
 require_once __DIR__ . '/HubAiPassProjectExportService.php';
@@ -101,6 +103,7 @@ final class HubControlPlaneService
     private readonly ?HubCloudWorkflowService $cloud;
     private readonly ?HubProjectSourceAuthorityService $projectSources;
     private readonly HubBayRemoteUpdateService $bayRemoteUpdate;
+    private readonly ?HubSchoolIdentityService $schoolIdentity;
     private readonly HubDeviceRoleRegistry $deviceRoles;
 
     private function __construct(private readonly PDO $pdo, private readonly HubEnrollmentService $enrollment, private readonly string $databasePath)
@@ -132,6 +135,8 @@ final class HubControlPlaneService
         try { HubProjectSourceAuthorityMigration::assertCapabilityReady($pdo, dirname(__DIR__) . '/migrations/019_project_source_authority.sql'); HubVaultSourceAuthorityMigration::assertCapabilityReady($pdo, dirname(__DIR__) . '/migrations/020_vault_source_authority.sql'); $projectSources = new HubProjectSourceAuthorityService($pdo, $cloud); } catch (Throwable) { $projectSources = null; }
         $this->projectSources = $projectSources;
         $this->bayRemoteUpdate = new HubBayRemoteUpdateService();
+        $schoolIdentity=null;try{HubIdentityConvergenceMigration::assertCapabilityReady($pdo,dirname(__DIR__).'/migrations/021_identity_convergence.sql');$schoolIdentity=HubSchoolIdentityService::fromEnvironment($pdo);}catch(Throwable){}
+        $this->schoolIdentity=$schoolIdentity;
         $this->deviceRoles = HubDeviceRoleRegistry::fromEnvironment();
     }
 
@@ -1501,6 +1506,38 @@ final class HubControlPlaneService
         catch(HubBayRemoteUpdateException $error){ throw new HubControlPlaneException('BAY Remote Update status is unavailable',$error->codeName); }
     }
 
+    public function schoolIdentityForSession(string $sessionToken,?string $now=null): array
+    {
+        $session=$this->sessionRow($sessionToken,$now);$service=$this->schoolIdentityService();return ['schemaVersion'=>1,'policy'=>$service->policy(),'school'=>$service->forUser((string)$session['user_id'])];
+    }
+
+    public function schoolIdentityBindingsForSession(string $sessionToken,?string $now=null): array
+    {
+        $session=$this->sessionRow($sessionToken,$now);$this->assertOwner((string)$session['user_id']);$service=$this->schoolIdentityService();return ['schemaVersion'=>1,'policy'=>$service->policy(),'people'=>$service->bindings()];
+    }
+
+    public function schoolIdentityCandidatesForSession(string $sessionToken,?string $now=null): array
+    {
+        $session=$this->sessionRow($sessionToken,$now);$this->assertOwner((string)$session['user_id']);return ['schemaVersion'=>1,'candidates'=>$this->schoolIdentityService()->candidates()];
+    }
+
+    public function bindSchoolIdentityForSession(string $sessionToken,string $csrfToken,string $targetUserId,array $payload,?string $now=null): array
+    {
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now);$this->assertOwner((string)$session['user_id']);self::exactKeys($payload,['bayUserId','schemaVersion']);if(($payload['schemaVersion']??null)!==1||!is_int($payload['bayUserId']??null)||$payload['bayUserId']<1)throw new HubControlPlaneException('School identity binding request is invalid','SCHOOL_IDENTITY_INVALID');
+        try{return ['schemaVersion'=>1,'school'=>$this->schoolIdentityService()->bind((string)$session['user_id'],self::uuid($targetUserId),(int)$payload['bayUserId'],$now)];}catch(HubSchoolIdentityException $e){throw new HubControlPlaneException('School identity binding was rejected',$e->codeName);}
+    }
+
+    public function revokeSchoolIdentityForSession(string $sessionToken,string $csrfToken,string $targetUserId,array $payload,?string $now=null): array
+    {
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now);$this->assertOwner((string)$session['user_id']);self::exactKeys($payload,['schemaVersion']);if(($payload['schemaVersion']??null)!==1)throw new HubControlPlaneException('School identity revoke request is invalid','SCHOOL_IDENTITY_INVALID');
+        try{$this->schoolIdentityService()->revoke(self::uuid($targetUserId),$now);return ['schemaVersion'=>1,'revoked'=>true];}catch(HubSchoolIdentityException $e){throw new HubControlPlaneException('School identity revoke was rejected',$e->codeName);}
+    }
+
+    public function bayCommunicationStatus(string $sessionToken,?string $now=null): array
+    {
+        $session=$this->sessionRow($sessionToken,$now);$this->assertOwner((string)$session['user_id']);try{return ['schemaVersion'=>1,'authority'=>'BAY EXCUSE X','summary'=>$this->schoolIdentityService()->communicationSummary()];}catch(HubSchoolIdentityException $e){throw new HubControlPlaneException('BAY communication status is unavailable',$e->codeName);}
+    }
+
     /** Owner explicit install relay. AWH signs; BAY PackageManager remains the installer. */
     public function createBayRemoteInstallRelay(string $sessionToken,string $csrfToken,array $payload,?string $now=null):array
     {
@@ -1616,6 +1653,11 @@ final class HubControlPlaneService
     private function projectSourceService():HubProjectSourceAuthorityService
     {
         if($this->projectSources===null) throw new HubControlPlaneException('Project Source Authority is not activated','PROJECT_SOURCE_SCHEMA_NOT_READY'); return $this->projectSources;
+    }
+
+    private function schoolIdentityService():HubSchoolIdentityService
+    {
+        if($this->schoolIdentity===null)throw new HubControlPlaneException('Identity convergence is not activated','IDENTITY_CONVERGENCE_NOT_READY');return $this->schoolIdentity;
     }
 
     public function observabilityStatus(string $sessionToken, ?string $now = null): array
@@ -3580,7 +3622,24 @@ final class HubControlPlaneService
         return array_map(static function(array $row): array { $h=self::projectSourceHygiene($row); return ['projectId'=>(string)$row['project_id'],'name'=>(string)$row['name'],'type'=>(string)$row['type'],'createdAt'=>(string)$row['created_at'],'sourceRevision'=>$row['source_revision']===null?null:(string)$row['source_revision'],'observedAt'=>(string)$row['observed_at'],'memoryReady'=>(int)$row['memory_present']===6] + $h; }, $q->fetchAll());
     }
     private function assertProjectMember(string $userId, string $projectId): void { $this->assertProjectCapability($userId, $projectId, 'project.read'); }
-    private function assertProjectCapability(string $userId, string $projectId, string $capability): void { if ($this->finalProductSchemaPresent()) { $q = $this->pdo->prepare('SELECT 1 FROM control_project_capabilities c JOIN control_user_profiles p ON p.user_id = c.user_id WHERE c.user_id = :user AND c.project_id = :project AND c.capability = :capability AND c.revoked_at IS NULL AND p.status = \'ACTIVE\''); $q->execute(['user' => $userId, 'project' => $projectId, 'capability' => $capability]); if ($q->fetchColumn() !== false) return; } else { $q = $this->pdo->prepare('SELECT 1 FROM user_project_memberships WHERE user_id = :user AND project_id = :project AND revoked_at IS NULL'); $q->execute(['user' => $userId, 'project' => $projectId]); if ($q->fetchColumn() !== false) return; } throw new HubControlPlaneException('Project is not authorized', 'PROJECT_FORBIDDEN'); }
+    private function assertProjectCapability(string $userId,string $projectId,string $capability): void
+    {
+        $allowed=false;
+        if($this->finalProductSchemaPresent()){$q=$this->pdo->prepare('SELECT 1 FROM control_project_capabilities c JOIN control_user_profiles p ON p.user_id=c.user_id WHERE c.user_id=:user AND c.project_id=:project AND c.capability=:capability AND c.revoked_at IS NULL AND p.status=\'ACTIVE\'');$q->execute(['user'=>$userId,'project'=>$projectId,'capability'=>$capability]);$allowed=$q->fetchColumn()!==false;}
+        else{$q=$this->pdo->prepare('SELECT 1 FROM user_project_memberships WHERE user_id=:user AND project_id=:project AND revoked_at IS NULL');$q->execute(['user'=>$userId,'project'=>$projectId]);$allowed=$q->fetchColumn()!==false;}
+        if(!$allowed)throw new HubControlPlaneException('Project is not authorized','PROJECT_FORBIDDEN');
+        if($this->isOwnerUser($userId)||$this->schoolIdentity===null||!$this->isSchoolProject($projectId))return;
+        try{
+            $school=$this->schoolIdentity->forUser($userId);if(($school['verified']??false)!==true)throw new HubSchoolIdentityException('Verified BAY identity is required','SCHOOL_IDENTITY_REQUIRED');
+            $permission=match($capability){'project.read','conversation.write','attachment.upload'=>'dashboard.view',default=>null};
+            if(is_string($permission))$this->schoolIdentity->assertPermission($userId,$permission);
+        }catch(HubSchoolIdentityException $e){throw new HubControlPlaneException('School access is not authorized',$e->codeName);}
+    }
+
+    private function isSchoolProject(string $projectId): bool
+    {
+        $q=$this->pdo->prepare('SELECT name,type FROM projects WHERE project_id=:project LIMIT 1');$q->execute(['project'=>$projectId]);$row=$q->fetch();if(!is_array($row))return false;$name=(string)($row['name']??'');return str_starts_with($name,'BAY ')||$name==='BAY EXCUSE X'||$name==='เว็บไซต์โรงเรียน'||(string)($row['type']??'')==='school';
+    }
     private function assertOwner(string $userId): void { $q = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1'); if (!hash_equals((string) $q->fetchColumn(), $userId)) throw new HubControlPlaneException('Owner access is required', 'OWNER_FORBIDDEN'); }
     private function isOwnerUser(string $userId): bool { $q = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1'); $owner = $q->fetchColumn(); return is_string($owner) && hash_equals($owner, $userId); }
     private function profileRole(string $userId): string { $q = $this->pdo->prepare('SELECT system_role FROM control_user_profiles WHERE user_id = :user AND status = \'ACTIVE\''); $q->execute(['user' => $userId]); $role = $q->fetchColumn(); return is_string($role) && in_array($role, ['OWNER','ADMIN','DIRECTOR','TEACHER','STAFF','VIEWER'], true) ? $role : 'STAFF'; }

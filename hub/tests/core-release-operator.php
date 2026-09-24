@@ -13,7 +13,7 @@ foreach ([
 function cr_assert(bool $value,string $message): void { if(!$value)throw new RuntimeException($message); }
 function cr_clean(string $root): void { if(!is_dir($root))return;$it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::CHILD_FIRST);foreach($it as $f){$p=$f->getPathname();$f->isDir()&&!$f->isLink()?@rmdir($p):@unlink($p);}@rmdir($root); }
 
-if(!in_array('sqlite',PDO::getAvailableDrivers(),true)){fwrite(STDOUT,"AWH core release operator: SKIP pdo_sqlite unavailable\n");exit(77);}
+if(!in_array('sqlite',PDO::getAvailableDrivers(),true)){fwrite(STDOUT,"AWH core release operator: SKIP pdo_sqlite unavailable\n");exit(77);}if(!is_executable('/usr/bin/systemd-run')||!is_executable('/usr/bin/git')||!is_executable('/usr/bin/php')){fwrite(STDOUT,"AWH core release operator: SKIP Linux release toolchain unavailable\n");exit(77);}
 
 $root=sys_get_temp_dir().'/awh-core-release-'.bin2hex(random_bytes(6));
 $db=$root.'/awh.sqlite';$base=dirname(__DIR__);$now='2026-09-23T01:00:00+00:00';
@@ -40,8 +40,8 @@ try{
 
     $auth=HubOwnerAuthService::openExisting($db);$auth->provisionInitial('art',$password,$now);
     $session=$auth->login('art',$password,true,'core-release-browser',$now);
-    $service=HubCoreReleaseService::fromPdo($pdo);$sha=str_repeat('a',40);
-    $promoteTask='a13b45c0-23e1-408d-ae0f-ac5eca7f6900';$promoteExecution='b13b45c0-23e1-408d-ae0f-ac5eca7f6900';$promoteBase=str_repeat('b',40);$promoteTarget=str_repeat('c',40);
+    $service=HubCoreReleaseService::fromPdo($pdo);
+    $promoteTask='a13b45c0-23e1-408d-ae0f-ac5eca7f6900';$promoteExecution='b13b45c0-23e1-408d-ae0f-ac5eca7f6900';$promoteBase=str_repeat('b',40);$promoteTarget=str_repeat('c',40);$sha=$promoteTarget;
     $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'Promote canonical AWH main','COMPLETED',NULL,NULL,100,'Guarded operator mutation completed',NULL,'core-release-source-promotion-test',NULL,:at,:at,NULL)")->execute(['task'=>$promoteTask,'user'=>$owner,'project'=>$project,'at'=>$now]);
     $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','source.promote','COMPLETED',NULL,NULL,1,NULL,:checkpoint,NULL,:at,:at)")->execute(['execution'=>$promoteExecution,'task'=>$promoteTask,'project'=>$project,'checkpoint'=>json_encode(['repository'=>'awh','expectedMainSha'=>$promoteBase,'targetSha'=>$promoteTarget,'bundleSha256'=>str_repeat('d',64)],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$now]);
     $sourceStatus=$service->status($session['sessionToken']);
@@ -66,7 +66,7 @@ try{
     cr_assert(is_array($taskRow)&&$taskRow['state']==='WAITING_FOR_APPROVAL'&&(string)$taskRow['project_id']===$project,'task uses canonical AWH project');
     cr_assert(is_array($executionRow)&&$executionRow['state']==='QUEUED'&&$executionRow['executor_kind']==='VPS'&&$executionRow['required_capability']===HubCoreReleaseService::CAPABILITY,'execution uses canonical VPS capability');
     $checkpoint=HubCoreReleaseService::checkpoint((string)$executionRow['checkpoint_json']);
-    cr_assert($checkpoint['releaseSha']===$sha&&$checkpoint['transport']==='LOCAL'&&$checkpoint['releaseMode']==='PROJECT_SOURCE_AUTHORITY','checkpoint binds only approved release identity');
+    cr_assert($checkpoint['releaseSha']===$sha&&$checkpoint['transport']==='LOCAL'&&$checkpoint['releaseMode']==='IDENTITY_CONVERGENCE','checkpoint binds only approved release identity');
     cr_assert(!array_key_exists('command',$checkpoint)&&!array_key_exists('path',$checkpoint)&&!array_key_exists('script',$checkpoint),'browser checkpoint cannot inject command or path');
     cr_assert(is_array($approvalRow)&&$approvalRow['action']==='deployment.approve'&&$approvalRow['status']==='PENDING','canonical deployment approval is created');
 
@@ -95,8 +95,10 @@ try{
     $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED',lease_owner=NULL,lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution")->execute(['at'=>'2026-09-23T01:01:00+00:00','execution'=>$execution]);
     $pdo->prepare("UPDATE control_tasks SET state='COMPLETED',progress=100,updated_at=:at WHERE task_id=:task")->execute(['at'=>'2026-09-23T01:01:00+00:00','task'=>$task]);
     $staleSha=str_repeat('d',40);$nextSha=str_repeat('e',40);
+    $pdo->prepare("UPDATE control_task_executions SET checkpoint_json=:checkpoint,updated_at=:at WHERE execution_id=:execution")->execute(['checkpoint'=>json_encode(['repository'=>'awh','expectedMainSha'=>$promoteTarget,'targetSha'=>$staleSha,'bundleSha256'=>str_repeat('f',64)],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>'2026-09-23T01:01:09+00:00','execution'=>$promoteExecution]);
     $stale=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$staleSha,'cleanupTopology'=>false],'2026-09-23T01:01:10+00:00');
     $control->decideApproval($session['sessionToken'],$session['csrfToken'],(string)$stale['approvalId'],'APPROVED','2026-09-23T01:01:11+00:00');
+    $pdo->prepare("UPDATE control_task_executions SET checkpoint_json=:checkpoint,updated_at=:at WHERE execution_id=:execution")->execute(['checkpoint'=>json_encode(['repository'=>'awh','expectedMainSha'=>$staleSha,'targetSha'=>$nextSha,'bundleSha256'=>str_repeat('1',64)],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>'2026-09-23T01:09:59+00:00','execution'=>$promoteExecution]);
     $next=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$nextSha,'cleanupTopology'=>false],'2026-09-23T01:10:00+00:00');
     cr_assert(($next['state']??null)==='WAITING_FOR_APPROVAL'&&($next['releaseSha']??null)===$nextSha,'stale approved release is reconciled before a new request');
     cr_assert($pdo->query("SELECT state FROM control_task_executions WHERE execution_id=".$pdo->quote((string)$stale['executionId']))->fetchColumn()==='FAILED','stale queued release is failed closed');

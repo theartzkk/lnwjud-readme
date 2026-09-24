@@ -3,10 +3,10 @@ import { executionStatus } from './execution-ux.js?release=__AWH_WEB_RELEASE_ID_
 import { closeAwhDialog, openAwhDialog } from './navigation.js?release=__AWH_WEB_RELEASE_ID__';
 import {
   cancelTask, changePassword, changeUsername, createConversation, createMemory, createPerson, createProject, createRecoveryCodes, decideApproval,
-  exportWorkspace, listAccountRequests, listAuthSessions, listPeople, loadAuthProfile, loadControlData, loadConversation, loadConversationHistory,
-  loadConversations, loadDeletedConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus,
+  bindSchoolIdentity, exportWorkspace, listAccountRequests, listAuthSessions, listPeople, loadAuthProfile, loadBayCommunicationStatus, loadControlData, loadConversation, loadConversationHistory,
+  loadConversations, loadDeletedConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus, loadSchoolIdentityBindings, loadSchoolIdentityCandidates,
   loadProductSettingHistory, loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadObservabilityStatus, loadCapabilities, loadInfrastructure, loadSystemReadiness, loadWorkspaceContinuity, login, logout, logoutAll,
-  recover, registerAccessRequest, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage,
+  recover, registerAccessRequest, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokePerson, revokeSchoolIdentity, saveCurrentContext, stepUp, submitWorkMessage,
   testProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
   updateProviderCredential, updateProviderPolicy, updateProviderProjectRouting, updateObservabilityCredential, updateConversationLifecycle, uploadConversationAttachments,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
@@ -17,7 +17,7 @@ import {
   const CANCELLABLE_TASK_STATES = new Set(['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL']);
   const MICRO_BAHT = 1000000;
   const DESKTOP_PACKAGES = [['downloads/AWH-macOS-arm64.zip', 'macOS Apple Silicon', 'mac-arm64'], ['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac-intel'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, infrastructure: null, people: [], accountRequests: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, infrastructure: null, people: [], accountRequests: [], schoolIdentityBindings: [], schoolIdentityCandidates: [], schoolIdentityPolicy: null, bayCommunication: null, memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
   const pendingBrandAssets = { logo: undefined, icon: undefined };
   const MAX_BRAND_SOURCE_BYTES = 8 * 1024 * 1024;
   const MAX_BRAND_DATA_URL_CHARS = 11500;
@@ -492,7 +492,7 @@ import {
       item.append(label, meta);
       if (person.status === 'ACTIVE' && person.role !== 'OWNER') {
         const editor = document.createElement('details'); editor.className = 'person-access-editor'; const summary = document.createElement('summary'); summary.textContent = 'จัดการสิทธิ์'; editor.append(summary);
-        const role = document.createElement('select'); for (const [value, text] of [['TEACHER','ครู'],['STAFF','บุคลากร'],['DIRECTOR','ผู้บริหาร / ผู้อนุมัติ'],['VIEWER','ดูอย่างเดียว'],['ADMIN','ผู้ดูแลระบบ']]) { const option = document.createElement('option'); option.value=value; option.textContent=text; option.selected=person.role===value; role.append(option); }
+        const role = document.createElement('select'); for (const [value, text] of [['STAFF','สมาชิก'],['VIEWER','ดูอย่างเดียว'],['ADMIN','ผู้ดูแลแพลตฟอร์ม']]) { const option = document.createElement('option'); option.value=value; option.textContent=text; option.selected=person.role===value; role.append(option); }
         const projectBox = document.createElement('div'); projectBox.className='person-projects'; projectBox.dataset.user=person.userId;
         for (const project of state.control?.projects || []) { const row=document.createElement('label'); row.className='check-row'; const input=document.createElement('input'); input.type='checkbox'; input.value=project.projectId; input.checked=Array.isArray(person.projectIds)&&person.projectIds.includes(project.projectId); const text=document.createElement('span'); text.textContent=project.name; row.append(input,text); projectBox.append(row); }
         const actions=document.createElement('div'); actions.className='task-actions'; const save=document.createElement('button'); save.type='button'; save.className='secondary-button'; save.textContent='บันทึกสิทธิ์'; const revoke=document.createElement('button'); revoke.type='button'; revoke.className='text-button'; revoke.textContent='ปิดบัญชี';
@@ -513,7 +513,7 @@ import {
       const title=document.createElement('strong'); title.textContent=request.displayName;
       const meta=document.createElement('span'); meta.textContent=`${personTypeLabel(request.personType)} · @${request.username}${request.requestedArea?` · ${request.requestedArea}`:''}`;
       const controls=document.createElement('div'); controls.className='person-access-editor';
-      const role=document.createElement('select'); for(const [value,text] of [['TEACHER','ครู'],['STAFF','บุคลากร'],['DIRECTOR','ผู้บริหาร / ผู้อนุมัติ'],['VIEWER','ดูอย่างเดียว'],['ADMIN','ผู้ดูแลระบบ']]){const option=document.createElement('option');option.value=value;option.textContent=text;option.selected=(request.personType==='TEACHER'&&value==='TEACHER')||(request.personType==='DIRECTOR'&&value==='DIRECTOR')||(request.personType==='STAFF'&&value==='STAFF')||(['PARENT','STUDENT','OTHER'].includes(request.personType)&&value==='VIEWER');role.append(option);}
+      const role=document.createElement('select'); for(const [value,text] of [['STAFF','สมาชิก'],['VIEWER','ดูอย่างเดียว'],['ADMIN','ผู้ดูแลแพลตฟอร์ม']]){const option=document.createElement('option');option.value=value;option.textContent=text;option.selected=(request.personType==='STAFF'&&value==='STAFF')||(request.personType!=='STAFF'&&value==='VIEWER');role.append(option);}
       const projects=document.createElement('div'); projects.className='person-projects'; for(const project of state.control?.projects||[]){const row=document.createElement('label');row.className='check-row';const input=document.createElement('input');input.type='checkbox';input.value=project.projectId;const text=document.createElement('span');text.textContent=project.name;row.append(input,text);projects.append(row);}
       const actions=document.createElement('div'); actions.className='task-actions'; const approve=document.createElement('button');approve.type='button';approve.className='secondary-button';approve.textContent='อนุมัติ';const reject=document.createElement('button');reject.type='button';reject.className='text-button';reject.textContent='ปฏิเสธ';
       approve.addEventListener('click',async()=>{approve.disabled=true;try{await withPrivilegedRetry(()=>reviewAccountRequest(request.requestId,'APPROVE',role.value,[...projects.querySelectorAll('input:checked')].map(n=>n.value)),'การอนุมัติสิทธิ์ผู้ใช้งาน');state.accountRequests=(await listAccountRequests()).requests||[];state.people=(await listPeople()).people||[];renderPeople();message('people-message','อนุมัติบัญชีแล้ว ผู้สมัครใช้รหัสผ่านที่ตั้งไว้เข้าสู่ระบบได้ทันที');}catch(error){message('people-message',error instanceof Error?error.message:'ยังอนุมัติไม่ได้');approve.disabled=false;}});
@@ -522,6 +522,48 @@ import {
     }
     if(!list.childElementCount) list.textContent='ไม่มีคำขอที่รอพิจารณา';
     const badge=$('account-request-count'); if(badge) badge.textContent=pending.length?String(pending.length):'';
+  }
+
+  async function refreshSchoolAccessSurfaces() {
+    const [bindings,candidates,line]=await Promise.allSettled([loadSchoolIdentityBindings(),loadSchoolIdentityCandidates(),loadBayCommunicationStatus()]);
+    if(bindings.status==='fulfilled'){state.schoolIdentityBindings=bindings.value.people||[];state.schoolIdentityPolicy=bindings.value.policy||null;}else{state.schoolIdentityBindings=[];state.schoolIdentityPolicy=null;}
+    state.schoolIdentityCandidates=candidates.status==='fulfilled'?(candidates.value.candidates||[]):[]; state.bayCommunication=line.status==='fulfilled'?(line.value.summary||null):null;
+    renderSchoolIdentity(); renderBayCommunication();
+  }
+
+  function renderSchoolIdentity() {
+    const list=$('school-identity-list'); if(!list) return; list.replaceChildren(); const policy=$('school-identity-policy');
+    if(policy) policy.textContent=state.schoolIdentityPolicy?(state.schoolIdentityPolicy.platformAuthority+' → '+state.schoolIdentityPolicy.schoolAuthority):'ยังตรวจ authority ไม่ได้';
+    for(const person of state.schoolIdentityBindings){
+      const item=document.createElement('div'); item.className='session-item person-card'; const title=document.createElement('strong'); title.textContent=person.displayName;
+      const school=person.school||{}; const identity=school.identity||null; const meta=document.createElement('span');
+      meta.textContent=school.verified&&identity?('BAY: '+identity.displayName+(identity.positionName?' · '+identity.positionName:'')+(identity.roles?.length?' · '+identity.roles.join(', '):'')):(school.state==='UNAVAILABLE'?'BAY ยังอ่านไม่ได้':'ยังไม่เชื่อม BAY');
+      item.append(title,meta);
+      if(person.status==='ACTIVE'){
+        const controls=document.createElement('div'); controls.className='task-actions';
+        if(school.verified){
+          const revoke=document.createElement('button'); revoke.type='button'; revoke.className='text-button'; revoke.textContent='ยกเลิกการเชื่อม';
+          revoke.addEventListener('click',async()=>{if(!window.confirm('ยกเลิกการเชื่อม BAY ของ “'+person.displayName+'” ใช่หรือไม่?'))return;revoke.disabled=true;try{await withPrivilegedRetry(()=>revokeSchoolIdentity(person.userId),'การยกเลิกตัวตนโรงเรียน');await refreshSchoolAccessSurfaces();message('school-identity-message','ยกเลิกการเชื่อมแล้ว');}catch(error){message('school-identity-message',error instanceof Error?error.message:'ยังยกเลิกการเชื่อมไม่ได้');revoke.disabled=false;}});
+          controls.append(revoke);
+        } else {
+          const select=document.createElement('select'); const blank=document.createElement('option');blank.value='';blank.textContent='เลือกบุคลากรจาก BAY';select.append(blank);
+          for(const candidate of state.schoolIdentityCandidates){const option=document.createElement('option');option.value=String(candidate.bayUserId);option.textContent=candidate.displayName+(candidate.positionName?' · '+candidate.positionName:'');select.append(option);}
+          const link=document.createElement('button');link.type='button';link.className='secondary-button';link.textContent='เชื่อม BAY';
+          link.addEventListener('click',async()=>{const bayUserId=Number(select.value);if(!Number.isInteger(bayUserId)||bayUserId<1){message('school-identity-message','เลือกบุคลากรจาก BAY ก่อน');return;}link.disabled=true;try{await withPrivilegedRetry(()=>bindSchoolIdentity(person.userId,bayUserId),'การเชื่อมตัวตนโรงเรียน');await refreshSchoolAccessSurfaces();message('school-identity-message','เชื่อมตัวตน BAY แล้ว');}catch(error){message('school-identity-message',error instanceof Error?error.message:'ยังเชื่อม BAY ไม่ได้');link.disabled=false;}});
+          controls.append(select,link);
+        }
+        item.append(controls);
+      }
+      list.append(item);
+    }
+    if(!list.childElementCount) list.textContent='ยังไม่มีบัญชี KRUART ที่พร้อมเชื่อม';
+  }
+
+  function renderBayCommunication() {
+    const list=$('bay-line-summary'); if(!list) return; list.replaceChildren(); const summary=state.bayCommunication; const badge=$('bay-line-state');
+    if(!summary){if(badge)badge.textContent='UNAVAILABLE';list.textContent='ยังอ่านสถานะ LINE OA จาก BAY ไม่ได้';return;} if(badge) badge.textContent=summary.state==='READY'?'พร้อมใช้งาน':summary.state;
+    const rows=[['Webhook ล่าสุด',summary.lastWebhookAt?date(summary.lastWebhookAt):'ยังไม่มีข้อมูล'],['ส่ง LINE 24 ชม.',String(summary.lineSent24h??0)],['คิว / ล้มเหลว',String(summary.lineQueued??0)+' / '+String(summary.lineFailed??0)],['Webhook error / redelivery 24 ชม.',String(summary.webhookErrors24h??0)+' / '+String(summary.redeliveries24h??0)],['ผู้ติดตามที่ยินยอม',String(summary.consentedSubscribers??0)],['นักเรียน / ผู้ปกครองที่เชื่อม',String(summary.linkedStudents??0)+' / '+String(summary.linkedGuardians??0)],['บุคลากรที่เชื่อม LINE',String(summary.linkedStaff??0)],['นักเรียน active ใน BAY',String(summary.activeStudents??0)]];
+    for(const [label,value] of rows){const item=document.createElement('div');item.className='session-item';const strong=document.createElement('strong');strong.textContent=label;const span=document.createElement('span');span.textContent=value;item.append(strong,span);list.append(item);}
   }
 
   function memoryScopeLabel(scope) { return ({ owner: 'ความจำของฉัน', constitution: 'หลักการทำงาน', project: 'ความจำของโปรเจกต์', archive: 'บันทึกย้อนหลัง' })[scope] || 'ความจำของ AWH'; }
@@ -1591,6 +1633,7 @@ import {
       if (peopleResult.status === 'fulfilled') state.people = Array.isArray(peopleResult.value.people) ? peopleResult.value.people : [];
       if (accountRequestsResult.status === 'fulfilled') state.accountRequests = Array.isArray(accountRequestsResult.value.requests) ? accountRequestsResult.value.requests : [];
       if (peopleResult.status === 'fulfilled') renderPeople(); else message('people-message', 'ยังโหลดผู้ใช้งานไม่ได้ ลองรีเฟรชอีกครั้ง');
+      await refreshSchoolAccessSurfaces();
       if (ownerStatusResult.status === 'fulfilled') state.ownerStatus = ownerStatusResult.value;
       if (routingResult.status === 'fulfilled') state.providerRouting = routingResult.value;
       if (state.ownerStatus) renderOwnerSelfService(); else renderSettingsOverview();

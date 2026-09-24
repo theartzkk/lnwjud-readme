@@ -113,6 +113,54 @@ final class HubMariaDbReadClient
         return ['databaseName'=>$database,'engine'=>'MARIADB','readOnly'=>true,'serverVersion'=>(string)$pdo->query('SELECT VERSION()')->fetchColumn(),'charset'=>(string)($meta['default_character_set_name']??''),'collation'=>(string)($meta['default_collation_name']??''),'objects'=>['baseTables'=>(int)($types['BASE TABLE']??0),'views'=>(int)($types['VIEW']??0),'rowsEstimate'=>$rowsEstimate,'indexes'=>$indexes,'foreignKeys'=>$foreign,'triggers'=>$triggers,'events'=>$events],'migration'=>['mode'=>'SHADOW_FIRST','productionMutationAllowed'=>false,'dualWriteAllowed'=>false,'requiredBeforeCutover'=>['immutable-dump-and-sha256','exact-row-count-manifest','schema-object-manifest','uploads-checksum-manifest','shadow-restore-reconciliation','critical-flow-smoke','backup-restore-proof','rollback-preserves-post-cutover-writes']]];
     }
 
+    /** @return list<array<string,mixed>> */
+    public function baySchoolPeople(string $database,int $limit=300): array
+    {
+        $limit=max(1,min(500,$limit));$pdo=$this->open($database);$this->assertTables($pdo,$database,['users','personnel','user_roles','roles']);
+        $sql="SELECT u.id bay_user_id,u.personnel_id,u.username,u.status,CONCAT(COALESCE(p.prefix,''),p.first_name,' ',p.last_name) display_name,COALESCE(p.position_name,'') position_name,GROUP_CONCAT(DISTINCT r.role_key ORDER BY r.role_key SEPARATOR ',') role_keys FROM users u JOIN personnel p ON p.id=u.personnel_id LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id AND r.is_active=1 WHERE u.status='active' AND p.employment_status='active' GROUP BY u.id,u.personnel_id,u.username,u.status,p.prefix,p.first_name,p.last_name,p.position_name ORDER BY p.first_name,p.last_name LIMIT ".$limit;
+        $q=$pdo->query($sql);$rows=$q?$q->fetchAll(PDO::FETCH_ASSOC):[];$out=[];foreach($rows?:[] as $row)$out[]=$this->bayPersonProjection($row,false);return $out;
+    }
+
+    /** @return array<string,mixed> */
+    public function baySchoolIdentity(string $database,int $bayUserId): array
+    {
+        if($bayUserId<1)throw new HubMariaDbReadClientException('BAY user id is invalid','DATABASE_REQUEST_INVALID');
+        $pdo=$this->open($database);$this->assertTables($pdo,$database,['users','personnel','user_roles','roles','role_permissions','permissions']);
+        $q=$pdo->prepare("SELECT u.id bay_user_id,u.personnel_id,u.username,u.status,CONCAT(COALESCE(p.prefix,''),p.first_name,' ',p.last_name) display_name,COALESCE(p.position_name,'') position_name,GROUP_CONCAT(DISTINCT r.role_key ORDER BY r.role_key SEPARATOR ',') role_keys FROM users u JOIN personnel p ON p.id=u.personnel_id LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id AND r.is_active=1 WHERE u.id=? AND u.status='active' AND p.employment_status='active' GROUP BY u.id,u.personnel_id,u.username,u.status,p.prefix,p.first_name,p.last_name,p.position_name LIMIT 1");
+        $q->execute([$bayUserId]);$row=$q->fetch(PDO::FETCH_ASSOC);if(!is_array($row))throw new HubMariaDbReadClientException('BAY identity is not active','BAY_IDENTITY_INACTIVE');
+        $p=$pdo->prepare("SELECT DISTINCT pe.permission_key FROM user_roles ur JOIN roles r ON r.id=ur.role_id AND r.is_active=1 JOIN role_permissions rp ON rp.role_id=r.id JOIN permissions pe ON pe.id=rp.permission_id WHERE ur.user_id=? ORDER BY pe.permission_key");$p->execute([$bayUserId]);$row['permissions']=array_values(array_filter(array_map('strval',$p->fetchAll(PDO::FETCH_COLUMN)?:[])));
+        return $this->bayPersonProjection($row,true);
+    }
+
+    /** @return array<string,mixed> */
+    public function bayCommunicationSummary(string $database): array
+    {
+        $pdo=$this->open($database);$tables=$this->tablePresence($pdo,$database,['line_webhook_events','notification_deliveries','line_subscribers','parent_connect_line_student_links','line_account_links','users','personnel','students']);$summary=['state'=>'READY','lastWebhookAt'=>null,'webhookErrors24h'=>0,'redeliveries24h'=>0,'lineQueued'=>0,'lineFailed'=>0,'lineSent24h'=>0,'consentedSubscribers'=>0,'linkedStudents'=>0,'linkedGuardians'=>0,'linkedStaff'=>0,'activeStudents'=>0];
+        try{if($tables['line_webhook_events']){$summary['lastWebhookAt']=$pdo->query('SELECT MAX(received_at) FROM line_webhook_events')?->fetchColumn()?:null;$summary['webhookErrors24h']=$this->bayScalar($pdo,"SELECT COUNT(*) FROM line_webhook_events WHERE processing_status='error' AND received_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 1 DAY)");$summary['redeliveries24h']=$this->bayScalar($pdo,"SELECT COUNT(*) FROM line_webhook_events WHERE is_redelivery=1 AND received_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 1 DAY)");}}catch(Throwable){$summary['state']='PARTIAL';}
+        try{if($tables['notification_deliveries']){$summary['lineQueued']=$this->bayScalar($pdo,"SELECT COUNT(*) FROM notification_deliveries WHERE channel='line' AND status IN ('queued','processing')");$summary['lineFailed']=$this->bayScalar($pdo,"SELECT COUNT(*) FROM notification_deliveries WHERE channel='line' AND status='failed'");$summary['lineSent24h']=$this->bayScalar($pdo,"SELECT COUNT(*) FROM notification_deliveries WHERE channel='line' AND status='sent' AND sent_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 1 DAY)");}}catch(Throwable){$summary['state']='PARTIAL';}
+        try{if($tables['line_subscribers'])$summary['consentedSubscribers']=$this->bayScalar($pdo,"SELECT COUNT(*) FROM line_subscribers WHERE consent_status='consented'");if($tables['parent_connect_line_student_links']){$summary['linkedStudents']=$this->bayScalar($pdo,"SELECT COUNT(DISTINCT student_id) FROM parent_connect_line_student_links WHERE status='active'");$summary['linkedGuardians']=$this->bayScalar($pdo,"SELECT COUNT(DISTINCT guardian_id) FROM parent_connect_line_student_links WHERE status='active' AND guardian_id IS NOT NULL");}}catch(Throwable){$summary['state']='PARTIAL';}
+        try{if($tables['line_account_links']&&$tables['users']&&$tables['personnel'])$summary['linkedStaff']=$this->bayScalar($pdo,"SELECT COUNT(DISTINCT u.personnel_id) FROM line_account_links l JOIN users u ON u.id=l.user_id AND u.status='active' JOIN personnel p ON p.id=u.personnel_id AND p.employment_status='active' WHERE l.account_type='staff' AND l.status='active'");if($tables['students'])$summary['activeStudents']=$this->bayScalar($pdo,"SELECT COUNT(*) FROM students WHERE status='active'");}catch(Throwable){$summary['state']='PARTIAL';}
+        return $summary+['generatedAt'=>gmdate('c'),'dataPolicy'=>['studentPiiExposed'=>false,'credentialsExposed'=>false,'messageBodiesExposed'=>false]];
+    }
+
+    /** @param list<string> $tables */
+    private function assertTables(PDO $pdo,string $database,array $tables): void
+    {
+        $present=$this->tablePresence($pdo,$database,$tables);foreach($tables as $table)if(empty($present[$table]))throw new HubMariaDbReadClientException('BAY schema is unavailable','BAY_IDENTITY_SCHEMA_UNAVAILABLE');
+    }
+    /** @param list<string> $tables @return array<string,bool> */
+    private function tablePresence(PDO $pdo,string $database,array $tables): array
+    {
+        self::databaseName($database);$out=array_fill_keys($tables,false);if($tables===[])return $out;$params=array_merge([$database],$tables);$sql="SELECT table_name FROM information_schema.tables WHERE table_schema=? AND table_name IN (".implode(',',array_fill(0,count($tables),'?')).")";$q=$pdo->prepare($sql);$q->execute($params);foreach($q->fetchAll(PDO::FETCH_COLUMN)?:[] as $name)if(is_string($name)&&array_key_exists($name,$out))$out[$name]=true;return $out;
+    }
+    /** @param array<string,mixed> $row @return array<string,mixed> */
+    private function bayPersonProjection(array $row,bool $withPermissions): array
+    {
+        $roles=array_values(array_filter(array_unique(array_map('trim',explode(',',(string)($row['role_keys']??''))))));$out=['bayUserId'=>(int)$row['bay_user_id'],'personnelId'=>(int)$row['personnel_id'],'displayName'=>self::safeBayText($row['display_name']??'',120),'positionName'=>self::safeBayText($row['position_name']??'',120),'username'=>self::safeBayText($row['username']??'',100),'roles'=>$roles,'active'=>(string)($row['status']??'')==='active'];if($withPermissions)$out['permissions']=array_values(array_filter(array_unique(array_map('strval',(array)($row['permissions']??[])))));return $out;
+    }
+    private function bayScalar(PDO $pdo,string $sql): int{$value=$pdo->query($sql)?->fetchColumn();return is_numeric($value)?max(0,(int)$value):0;}
+    private static function safeBayText(mixed $value,int $max): string{$text=is_string($value)?trim($value):'';$text=preg_replace('/[\x00-\x1F\x7F]/','',$text)??'';return function_exists('mb_substr')?mb_substr($text,0,$max,'UTF-8'):substr($text,0,$max);}
+
     private function open(string $database): PDO
     {
         self::databaseName($database);

@@ -453,6 +453,7 @@ async function fastQaCheck() {
     'test/release-readiness.test.ts',
     'test/release-activator.test.ts',
     'test/bounded-deploy-mission.test.ts',
+    'test/identity-convergence-deployment.test.ts',
     'test/execution-policy.test.mjs',
     'test/remote-mission-state.test.mjs',
     'test/qa-plan.test.mjs',
