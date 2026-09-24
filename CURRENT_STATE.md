@@ -2,7 +2,7 @@
 
 Updated: 2026-09-24 ICT.
 
-This file is **not live authority**. Current-state authority comes from fresh canonical runtime/source evidence. This file records the operating model expected by the current source tree and tells agents where to verify mutable state. Never use a SHA, service state, disk value, schema number, device status or Production claim from prose when the live authority is available.
+This file is **not live authority**. Current-state authority comes from fresh canonical runtime/source evidence. **Fresh observed runtime/source evidence outranks this snapshot.** This file records the operating model expected by the current source tree and tells agents where to verify mutable state. Never use a SHA, service state, disk value, schema number, device status or Production claim from prose when the live authority is available.
 
 ## Verify before mutation
 

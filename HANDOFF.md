@@ -1,5 +1,7 @@
 # AWH Handoff Contract
 
+> **Current-state authority:** Read `CURRENT_STATE.md` first; fresh observed runtime/source evidence outranks this handoff.
+
 Handoff is continuity context, not runtime authority.
 
 Before continuing work:
