@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { desktopImpactForFiles, localOperatorInvocation, missionModeFromArgs } from '../scripts/ops/bounded-deploy-mission.mjs';
+import { hydrateDesktopReleaseArtifacts, verifyDesktopReleaseArtifacts } from '../scripts/release/hydrate-desktop-release-artifacts.mjs';
 
 test('bounded deploy mission reuses verified desktop artifacts only for server-safe deltas',()=>{
   assert.equal(desktopImpactForFiles(['hub/src/HubControlPlaneService.php','scripts/ops/example.mjs']),false);
@@ -58,4 +62,42 @@ test('KRUART Engineering Eval catalog is durable, unique and cross-project',asyn
   const ids=catalog.scenarios.map((row)=>row.id); assert.equal(new Set(ids).size,ids.length);
   for(const project of ['AWH','BAY EXCUSE X','BAY LearnLab','School Website']) assert.ok(catalog.scenarios.some((row)=>row.project===project));
   for(const row of catalog.scenarios){assert.match(row.id,/^[a-z0-9-]+$/);assert.ok(['MEDIUM','HIGH','CRITICAL'].includes(row.risk));assert.ok(Array.isArray(row.triggerPatterns)&&row.triggerPatterns.length>0);assert.ok(typeof row.evidence==='string'&&row.evidence.length>12);}
+});
+
+
+test('desktop artifact hydration accepts only exact-SHA verified staged packages',async()=>{
+  const sourceSha='a'.repeat(40);
+  const root=await mkdtemp(join(tmpdir(),'awh-artifact-hydration-'));
+  const stagingRoot=join(root,'stage');
+  const staged=join(stagingRoot,sourceSha);
+  const sourceRoot=join(root,'source');
+  await mkdir(staged,{recursive:true}); await mkdir(sourceRoot,{recursive:true});
+  const targets=[
+    ['AWH-macOS-arm64.zip','darwin','arm64'],
+    ['AWH-macOS-x64.zip','darwin','x64'],
+    ['AWH-Windows-x64.zip','win32','x64'],
+  ];
+  const sums=[];
+  for(const [file,platform,architecture] of targets){
+    const bytes=Buffer.from(`verified-${platform}-${architecture}-${sourceSha}`);
+    const hash=createHash('sha256').update(bytes).digest('hex');
+    await writeFile(join(staged,file),bytes);
+    await writeFile(join(staged,file.replace(/\.zip$/,'.release.json')),JSON.stringify({
+      schemaVersion:1,kind:'AWH_DESKTOP_RELEASE_EVIDENCE',authority:'CI_PACKAGE_EVIDENCE_ONLY',productId:'awh',platform,architecture,
+      productVersion:'1.0.0-rc.1',sourceSha,packageSha256:hash,sizeBytes:bytes.length,downloadKey:file,packageVerification:'VERIFIED',
+      publicationState:'NOT_PUBLISHED',updaterStatus:'FOUNDATION_LOCKED_NOT_ACTIVATED',
+    }));
+    sums.push(`${hash}  ${file}`);
+  }
+  await writeFile(join(staged,'SHA256SUMS.txt'),`${sums.join('\n')}\n`);
+  const stagedProof=await verifyDesktopReleaseArtifacts(staged,sourceSha);
+  assert.equal(stagedProof.verified.length,3);
+  const hydrated=await hydrateDesktopReleaseArtifacts({sourceRoot,sourceSha,stagingRoot});
+  assert.equal(hydrated.verified.length,3);
+  assert.equal((await readFile(join(sourceRoot,'dist-web/downloads/SHA256SUMS.txt'),'utf8')).trim(),sums.join('\n'));
+
+  const evidencePath=join(staged,'AWH-macOS-arm64.release.json');
+  const evidence=JSON.parse(await readFile(evidencePath,'utf8')); evidence.sourceSha='b'.repeat(40);
+  await writeFile(evidencePath,JSON.stringify(evidence));
+  await assert.rejects(()=>verifyDesktopReleaseArtifacts(staged,sourceSha),/DESKTOP_ARTIFACT_PROVENANCE_MISMATCH/);
 });

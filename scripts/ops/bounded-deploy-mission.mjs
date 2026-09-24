@@ -5,6 +5,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { loadExecutionPolicy, privilegeLane, qaScriptForBudget } from './execution-policy.mjs';
+import { hydrateDesktopReleaseArtifacts, verifyDesktopReleaseArtifacts } from '../release/hydrate-desktop-release-artifacts.mjs';
 
 const SHA=/^[0-9a-f]{40}$/;
 const ROOT=process.env.AWH_SOURCE_ROOT||process.cwd();
@@ -239,8 +240,26 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   const changed=(await git(['diff','--name-only',`${production}..${head}`])).split(/\r?\n/).filter(Boolean); missionContext.changedFiles=changed.length; missionContext.changedPaths=changed.slice(0,80);
   let plan=await verificationPlanForFiles(changed); const staticEvalScenarios=await evalScenariosForFiles(changed); const durableEvalScenarios=await durableRegressions(missionContext.changedPaths); const evalScenarios=[...new Set([...staticEvalScenarios,...durableEvalScenarios])].sort();
   if(durableEvalScenarios.length>0){plan={...plan,riskLevel:plan.riskLevel==='CRITICAL'?'CRITICAL':'HIGH',budget:'DEEP',reasons:[...new Set([...(plan.reasons??[]),'durable-incident-regression'])],requiredChecks:[...new Set([...(plan.requiredChecks??[]),'regression','repeat-regression'])]};console.log('MISSION_REGRESSION_REPLAY=DEEP');} missionContext.riskLevel=plan.riskLevel; missionContext.budget=plan.budget;
-  const desktopImpact=desktopImpactForFiles(changed); const completeArtifacts=DESKTOP_ARTIFACTS.every((f)=>existsSync(join(ROOT,f)));
-  if(desktopImpact&&!completeArtifacts) throw new Error('MISSION_DESKTOP_ARTIFACT_BUILD_REQUIRED');
+  const desktopImpact=desktopImpactForFiles(changed);
+  if(desktopImpact){
+    const downloads=join(ROOT,'dist-web','downloads');
+    const completeArtifacts=DESKTOP_ARTIFACTS.every((f)=>existsSync(join(ROOT,f)));
+    try{
+      if(completeArtifacts){
+        await verifyDesktopReleaseArtifacts(downloads,head);
+        console.log('MISSION_DESKTOP_ARTIFACTS=VERIFIED_EXISTING');
+      }else{
+        console.log('MISSION_DESKTOP_ARTIFACTS=HYDRATING');
+        const hydrated=await hydrateDesktopReleaseArtifacts({sourceRoot:ROOT,sourceSha:head});
+        if(!DESKTOP_ARTIFACTS.every((f)=>existsSync(join(ROOT,f)))||hydrated.verified.length!==3)throw new Error('DESKTOP_ARTIFACT_MISSING');
+        console.log(`MISSION_DESKTOP_ARTIFACTS=HYDRATED:${hydrated.verified.length}`);
+      }
+    }catch(error){
+      const code=String(error?.code||error?.message||'DESKTOP_ARTIFACT_INVALID');
+      if(code.startsWith('DESKTOP_ARTIFACT_MISSING'))throw new Error('MISSION_DESKTOP_ARTIFACT_BUILD_REQUIRED');
+      throw new Error(`MISSION_DESKTOP_ARTIFACT_INVALID:${code}`);
+    }
+  }
   const reuse=!desktopImpact;
   console.log(`MISSION_BASE_SHA=${production}`); console.log(`MISSION_RELEASE_SHA=${head}`); console.log(`MISSION_CHANGED_FILES=${changed.length}`);
   console.log(`MISSION_RISK=${plan.riskLevel}`); console.log(`MISSION_VERIFICATION_BUDGET=${plan.budget}`); console.log(`MISSION_REQUIRED_CHECKS=${plan.requiredChecks.join(',')}`); console.log(`MISSION_EVAL_SCENARIOS=${evalScenarios.join(',')}`);
