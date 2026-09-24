@@ -225,6 +225,10 @@ test('enrollment deployment is isolated, bearer-compatible, and dry-run by defau
   assert.match(remoteDeploy, /\^; END AWH OTEL\$/);
   assert.match(remoteDeploy, /cat "\$2" >> "\$1"/);
   assert.match(remoteDeploy, /sudo rm -f "\$POOL_TMP" "\$OTEL_TMP" "\$NGINX_TMP"/);
+  assert.match(remoteDeploy, /POINTER_HELPER=\$\(mktemp \/tmp\/awh-enrollment-pointer/);
+  assert.match(remoteDeploy, /sudo cat "\$REMOTE_RELEASE\/deploy\/awh-enrollment\/pointer-state\.sh" > "\$POINTER_HELPER"/);
+  assert.match(remoteDeploy, /rm -f "\$POINTER_HELPER"/);
+  assert.doesNotMatch(remoteDeploy, /^\. "\$REMOTE_RELEASE\/deploy\/awh-enrollment\/pointer-state\.sh"$/m);
   assert.match(remoteDeploy, /useradd --system --user-group/);
   assert.match(remoteDeploy, /userdel awh-hub/);
   assert.doesNotMatch(remoteDeploy, /userdel --system awh-hub/);

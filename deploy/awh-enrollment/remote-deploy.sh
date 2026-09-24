@@ -40,6 +40,7 @@ POOL_BACKUP=$CONFIG_BACKUP_ROOT/php-fpm/awh-enrollment.conf.pre-m3e2-$RELEASE_ID
 POOL_TMP=$(sudo mktemp /tmp/awh-enrollment-pool.XXXXXX)
 OTEL_TMP=$(sudo mktemp /tmp/awh-enrollment-otel.XXXXXX)
 NGINX_TMP=$(sudo mktemp /tmp/awh-enrollment-nginx.XXXXXX)
+POINTER_HELPER=$(mktemp /tmp/awh-enrollment-pointer.XXXXXX)
 POINTER_PATH=$REMOTE_ROOT/enrollment-current
 POINTER_STATE=UNSET
 PREVIOUS_TARGET=
@@ -69,6 +70,7 @@ stage() {
 
 cleanup() {
   sudo rm -f "$POOL_TMP" "$OTEL_TMP" "$NGINX_TMP" >/dev/null 2>&1 || true
+  rm -f "$POINTER_HELPER" >/dev/null 2>&1 || true
 }
 
 run_m3d_health() {
@@ -281,7 +283,10 @@ stage "$CURRENT_STAGE"
 CURRENT_STAGE=RELEASE_STAGED
 stage "$CURRENT_STAGE"
 
-. "$REMOTE_RELEASE/deploy/awh-enrollment/pointer-state.sh"
+sudo cat "$REMOTE_RELEASE/deploy/awh-enrollment/pointer-state.sh" > "$POINTER_HELPER"
+chmod 0600 "$POINTER_HELPER"
+test -s "$POINTER_HELPER"
+. "$POINTER_HELPER"
 POINTER_PATH=$REMOTE_ROOT/enrollment-current
 POINTER_SUDO=/usr/bin/sudo
 if ! pointer_capture; then exit 20; fi

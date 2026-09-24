@@ -6,7 +6,7 @@ After=network-online.target
 Type=oneshot
 User=awh-hub
 Group=awh-hub
-SupplementaryGroups=www-data bayadmin
+SupplementaryGroups=www-data bayadmin awh-operator
 Environment=AWH_HUB_DB_PATH=/var/lib/awh-hub/awh.sqlite
 Environment=AWH_PROVIDER_CREDENTIAL_ROOT=/var/lib/awh-hub/provider-credentials
 Environment=AWH_OPERATOR_AUDIT_PATH=/var/lib/awh-hub/operator-bridge-audit.jsonl
