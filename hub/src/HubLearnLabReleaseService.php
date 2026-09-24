@@ -14,6 +14,7 @@ final class HubLearnLabReleaseService
 {
     public const PROJECT_ID='a7285fbd-029b-4d17-9d26-c7497b28a72e';
     public const CAPABILITY='system.learnlab.release';
+    private const CANONICAL_GIT_REPO='/srv/awh-git/bay-learnlab.git';
     private const CHANNEL_ROOT='/srv/bay-learnlab/channels';
 
     private function __construct(private readonly PDO $pdo, private readonly HubOwnerAuthService $auth) {}
@@ -178,16 +179,46 @@ final class HubLearnLabReleaseService
 
     private function latestSourcePromotion(): ?array
     {
-        $q=$this->pdo->prepare("SELECT checkpoint_json,updated_at FROM control_task_executions
-            WHERE project_id=:project AND required_capability='source.promote' AND state='COMPLETED'
-            ORDER BY updated_at DESC,execution_id DESC LIMIT 20");
+        $audit=null;
+        $q=$this->pdo->prepare("SELECT checkpoint_json,updated_at FROM control_task_executions WHERE project_id=:project AND required_capability='source.promote' AND state='COMPLETED' ORDER BY updated_at DESC,execution_id DESC LIMIT 20");
         $q->execute(['project'=>self::PROJECT_ID]);
         foreach($q->fetchAll() as $row){
             try{$checkpoint=json_decode((string)$row['checkpoint_json'],true,16,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
             if(!is_array($checkpoint)||($checkpoint['repository']??null)!=='bay-learnlab')continue;
             $target=strtolower((string)($checkpoint['targetSha']??''));$base=strtolower((string)($checkpoint['expectedMainSha']??''));
-            if(preg_match('/^[0-9a-f]{40}$/',$target)===1&&preg_match('/^[0-9a-f]{40}$/',$base)===1)
-                return ['sha'=>$target,'previousSha'=>$base,'authority'=>'SOURCE_PROMOTION_AUDIT','observedAt'=>(string)$row['updated_at']];
+            if(preg_match('/^[0-9a-f]{40}$/',$target)===1&&preg_match('/^[0-9a-f]{40}$/',$base)===1){
+                $audit=['sha'=>$target,'previousSha'=>$base,'authority'=>'SOURCE_PROMOTION_AUDIT','observedAt'=>(string)$row['updated_at']];
+                break;
+            }
+        }
+        $main=$this->canonicalMainSha();
+        if($main===null)return $audit;
+        if(is_array($audit)&&is_string($audit['sha']??null)&&hash_equals((string)$audit['sha'],$main)){
+            $audit['authority']='CANONICAL_GIT_MAIN_VERIFIED';
+            return $audit;
+        }
+        return ['sha'=>$main,'previousSha'=>is_array($audit)&&is_string($audit['sha']??null)?(string)$audit['sha']:null,
+            'authority'=>'CANONICAL_GIT_MAIN','observedAt'=>is_array($audit)?($audit['observedAt']??null):null];
+    }
+
+    private function canonicalMainSha(): ?string
+    {
+        $configured=getenv('AWH_LEARNLAB_CANONICAL_GIT');
+        $path=is_string($configured)&&$configured!==''?$configured:self::CANONICAL_GIT_REPO;
+        if(!str_starts_with($path,'/')||is_link($path))return null;
+        $repo=realpath($path);if(!is_string($repo)||!is_dir($repo))return null;
+        $ref=$repo.'/refs/heads/main';
+        if(is_file($ref)&&!is_link($ref)&&is_readable($ref)){
+            $sha=strtolower(trim((string)file_get_contents($ref)));
+            if(preg_match('/^[0-9a-f]{40}$/',$sha)===1)return $sha;
+        }
+        $packed=$repo.'/packed-refs';
+        if(!is_file($packed)||is_link($packed)||!is_readable($packed)||filesize($packed)>8*1024*1024)return null;
+        foreach(preg_split('/\r?\n/',(string)file_get_contents($packed))?:[] as $line){
+            if($line===''||$line[0]==='#'||$line[0]==='^')continue;
+            $parts=preg_split('/\s+/',trim($line));
+            if(!is_array($parts)||count($parts)!==2||$parts[1]!=='refs/heads/main')continue;
+            $sha=strtolower((string)$parts[0]);if(preg_match('/^[0-9a-f]{40}$/',$sha)===1)return $sha;
         }
         return null;
     }

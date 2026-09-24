@@ -137,7 +137,11 @@ test('central update authority exposes one latest candidate and supersedes stale
     assert.match(release,/status='EXPIRED'/);
   }
   assert.match(core,/CORE_RELEASE_TARGET_MOVED/);
+  assert.match(core,/CANONICAL_GIT_MAIN/);
+  assert.match(core,/canonicalMainSha/);
   assert.match(learnLab,/LEARNLAB_RELEASE_TARGET_MOVED/);
+  assert.match(learnLab,/CANONICAL_GIT_MAIN/);
+  assert.match(learnLab,/canonicalMainSha/);
   assert.match(router,/CORE_RELEASE_TARGET_MOVED/);
   assert.match(router,/LEARNLAB_RELEASE_TARGET_MOVED/);
   assert.match(router,/ASSESSMENT_RELEASE_TARGET_MOVED/);
