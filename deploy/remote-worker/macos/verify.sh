@@ -31,7 +31,7 @@ if (!stored) process.exit(5); console.log('session_stored=yes');
 NODE
   SESSION_STATE=stored
 fi
-COUNT="$(pgrep -f 'node .*desktop-commander remote' | awk 'NF{n++} END{print n+0}')"
-[ "$COUNT" -le 1 ] || { echo "remote_parents=FAIL:$COUNT"; exit 1; }
+COUNT="$(ps ax -o command= | awk -v needle="$ROOT/runtime/node_modules/.bin/desktop-commander remote --persist-session" '$1=="node" && index($0,needle)>0 {n++} END{print n+0}')"
+[ "$COUNT" -eq 1 ] || { echo "remote_parents=FAIL:$COUNT"; exit 1; }
 launchctl print "gui/$(id -u)/com.awh.remote-worker" >/dev/null 2>&1 || { echo 'launchagent=FAIL'; exit 1; }
 echo "AWH_REMOTE_WORKER_VERIFY=PASS version=$VERSION session=$SESSION_STATE remote_parents=$COUNT"
