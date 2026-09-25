@@ -95,6 +95,12 @@ export async function discoverWorkerTools(options: WorkerToolProbeOptions = {}):
       ['/Applications/Safari.app/Contents/MacOS/Safari', 'tool.browser.safari'],
     ];
     for (const [path, tool] of apps) if (await pathAvailable(path)) tools.push(tool);
+    const photoshopCandidates = [
+      '/Applications/Adobe Photoshop 2026/Adobe Photoshop 2026.app/Contents/MacOS/Adobe Photoshop 2026',
+      '/Applications/Adobe Photoshop 2025/Adobe Photoshop 2025.app/Contents/MacOS/Adobe Photoshop 2025',
+      '/Applications/Adobe Photoshop 2024/Adobe Photoshop 2024.app/Contents/MacOS/Adobe Photoshop 2024',
+    ];
+    if (await anyPath(photoshopCandidates, pathAvailable)) tools.push('tool.adobe.photoshop');
   }
 
   return [...new Set(tools)].filter((value) => TOOL_ID.test(value)).sort();

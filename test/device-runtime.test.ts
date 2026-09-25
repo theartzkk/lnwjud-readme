@@ -57,6 +57,7 @@ test('device runtime prefers the local AWH lnwjud stdio bridge when installed', 
 test('capability selects only the provider class it actually needs', () => {
   assert.deepEqual(deviceProvidersForCapability('device.gui.inspect'), { gui: true, system: false });
   assert.deepEqual(deviceProvidersForCapability('browser.automation'), { gui: true, system: false });
+  assert.deepEqual(deviceProvidersForCapability('creative.photoshop'), { gui: true, system: true });
   assert.deepEqual(deviceProvidersForCapability('workspace.files'), { gui: false, system: true });
   assert.deepEqual(deviceProvidersForCapability('device.process'), { gui: false, system: true });
   assert.deepEqual(deviceProvidersForCapability('unknown.capability'), { gui: false, system: false });

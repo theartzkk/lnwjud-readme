@@ -42,6 +42,19 @@ test('macOS discovery stays metadata-only and deterministic', async () => {
     'tool.office.powerpoint', 'tool.python',
   ]);
 });
+
+test('macOS discovery advertises installed Adobe Photoshop as inventory only', async () => {
+  const paths = new Set([
+    '/Applications/Adobe Photoshop 2026/Adobe Photoshop 2026.app/Contents/MacOS/Adobe Photoshop 2026',
+  ]);
+  const tools = await discoverWorkerTools({
+    platform: 'darwin', env: {},
+    commandAvailable: async () => false,
+    pathAvailable: async (path) => paths.has(path),
+  });
+  assert.deepEqual(tools, ['tool.adobe.photoshop']);
+  assert.equal(tools.includes('creative.photoshop'), false);
+});
 test('heartbeat composition keeps executable capability priority and bounds inventory', () => {
   const executable = ['autopilot:local', 'git:read', 'codex:cli', 'git:read'];
   const tools = Array.from({ length: 30 }, (_, index) => `tool.fixture.${String(index).padStart(2, '0')}`);

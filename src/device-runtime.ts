@@ -91,6 +91,7 @@ export async function discoverAwhDeviceRuntime(options: DeviceRuntimeProbeOption
 }
 
 export function deviceProvidersForCapability(capability: string): { gui: boolean; system: boolean } {
+  if (capability === 'creative.photoshop') return { gui: true, system: true };
   if (/^(?:device\.screen\.inspect|device\.gui\.(?:inspect|operate)|browser\.automation)$/.test(capability)) return { gui: true, system: false };
   if (/^(?:device\.process|workspace\.files|system\.shell)$/.test(capability)) return { gui: false, system: true };
   return { gui: false, system: false };

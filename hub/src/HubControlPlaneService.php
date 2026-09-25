@@ -2787,6 +2787,7 @@ final class HubControlPlaneService
             'tool.ffmpeg' => 'FFmpeg', 'tool.ffprobe' => 'FFprobe', 'tool.codex' => 'ผู้เชี่ยวชาญโค้ด', 'tool.context-mode' => 'Context Optimizer', 'tool.teamai' => 'TeamAI',
             'tool.office.word' => 'Word', 'tool.office.excel' => 'Excel', 'tool.office.powerpoint' => 'PowerPoint',
             'tool.browser.chrome' => 'Chrome', 'tool.browser.edge' => 'Edge', 'tool.browser.safari' => 'Safari',
+            'tool.adobe.photoshop' => 'Adobe Photoshop',
             'tool.awh-device-system' => 'AWH System', 'tool.awh-device-gui' => 'AWH Screen & Apps',
         ];
         $out = []; foreach ($capabilities as $capability) if (isset($labels[$capability])) $out[] = $labels[$capability];
@@ -2839,14 +2840,14 @@ final class HubControlPlaneService
     /** Prefer fresh LIVE visual authority for GUI work; old workers remain compatible. */
     private function preferredGuiWorker(string $projectId, string $capability, string $goal, string $at): ?string
     {
-        if (!in_array($capability,['device.gui.inspect','device.gui.operate'],true)) return null;
+        if (!in_array($capability,['device.gui.inspect','device.gui.operate','creative.photoshop'],true)) return null;
         $q=$this->pdo->prepare("SELECT w.device_id,w.state,w.last_seen_at,w.busy_task_id,w.capabilities_json FROM control_workers w JOIN devices d ON d.device_id=w.device_id JOIN device_project_memberships m ON m.device_id=w.device_id AND m.project_id=:project AND m.revoked_at IS NULL WHERE d.revoked_at IS NULL ORDER BY w.last_seen_at DESC,w.device_id");
         $q->execute(['project'=>$projectId]); $foreground=self::goalForegroundCapability($goal); $best=null; $bestScore=-1;
         foreach($q->fetchAll() as $row){
             if($row['busy_task_id']!==null||HubWorkerHealth::effectiveState($row['state']??null,$row['last_seen_at']??null,$at)!=='READY') continue;
             try{$caps=json_decode((string)$row['capabilities_json'],true,32,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
             if(!is_array($caps)||!in_array($capability,$caps,true)) continue;
-            if($capability==='device.gui.operate'&&in_array('runtime.ai.off',$caps,true)) continue;
+            if(in_array($capability,['device.gui.operate','creative.photoshop'],true)&&in_array('runtime.ai.off',$caps,true)) continue;
             $score=0;
             if(in_array('runtime.ai.live',$caps,true)) $score+=40; elseif(in_array('runtime.ai.on',$caps,true)) $score+=10;
             if(in_array('runtime.gui.ready',$caps,true)) $score+=10;
@@ -3661,12 +3662,14 @@ final class HubControlPlaneService
 
         $namedDevice = preg_match('/(?:ART[- ]MAC[- ](?:INTEL|M5)|\bintel\b|\bm5\b|macbook|mac\s*(?:intel|m5)|เครื่อง(?:นี้|จริง|intel|m5|ครู|นักเรียน)|คอม(?:พิวเตอร์)?(?:เครื่องนี้)?)/iu', $value) === 1;
         $screen = preg_match('/(?:หน้าจอ(?:จริง)?|screen|display|screenshot|ภาพหน้าจอ|visual preview|preview จริง)/iu', $value) === 1;
+        $photoshop = preg_match('/(?:adobe\s*)?photoshop/iu', $value) === 1;
         $nativeApp = preg_match('/(?:after effects?|photoshop|premiere|remotion studio|finder|word|excel|powerpoint|โปรแกรม(?:บน)?เครื่อง|native app|\bgui\b|accessibility)/iu', $value) === 1;
         $localFiles = preg_match('/(?:ไฟล์(?:ใน|บน)เครื่อง|local files?|folder(?: on device)?|โฟลเดอร์(?:ใน|บน)เครื่อง)/iu', $value) === 1;
         $process = preg_match('/(?:terminal|shell|process|service|เปิด process|ปิด process|คำสั่งระบบ)/iu', $value) === 1;
         $browserOnDevice = preg_match('/(?:เปิด|ใช้|ทดสอบ|เข้า|กด).{0,40}(?:chrome|safari|edge|browser|เว็บ).{0,40}(?:บนเครื่อง|บน intel|บน m5|เครื่องจริง)|(?:chrome|safari|edge|browser).{0,40}(?:บนเครื่อง|บน intel|บน m5|เครื่องจริง)/iu', $value) === 1;
 
         if (!$namedDevice && !$screen && !$nativeApp && !$localFiles && !$process && !$browserOnDevice) return null;
+        if ($photoshop) return ['capability'=>'creative.photoshop','mode'=>'PHOTOSHOP'];
         if ($localFiles) return ['capability'=>'workspace.files','mode'=>'FILES'];
         if ($process) return ['capability'=>'device.process','mode'=>'PROCESS'];
         if ($browserOnDevice) return ['capability'=>'browser.automation','mode'=>'BROWSER'];

@@ -132,9 +132,11 @@ export function officeExecutionCapabilities(platform: NodeJS.Platform | string, 
 }
 
 export function deviceExecutionCapabilities(tools: readonly string[]): string[] {
+  const creativePhotoshop = tools.includes('tool.adobe.photoshop') && tools.includes('tool.awh-device-gui') && tools.includes('tool.awh-device-system');
   return [
     ...(tools.includes('tool.awh-device-gui') ? ['device.screen.inspect', 'device.gui.inspect', 'device.gui.operate', 'browser.automation'] : []),
     ...(tools.includes('tool.awh-device-system') ? ['workspace.files', 'system.shell', 'device.process'] : []),
+    ...(creativePhotoshop ? ['creative.photoshop'] : []),
   ];
 }
 
@@ -238,7 +240,7 @@ export class ControlPlaneWorkerRuntime {
   private async execute(task: WorkerTask, deviceId: string, capabilities: string[]): Promise<WorkerRunResult> {
     if (task.execution?.executorKind === 'CODEX' && task.execution.requiredCapability === 'codex:cli' && task.execution.vaultRevisionId !== null) return this.executeCentralCodex(task, capabilities);
     if (task.execution?.executorKind === 'DEVICE' && /^office\.(?:word|excel|powerpoint)\.pdf$/.test(task.execution.requiredCapability)) return this.executeOfficePdf(task, capabilities);
-    if (task.execution?.executorKind === 'DEVICE' && /^(?:device\.(?:screen\.inspect|gui\.(?:inspect|operate)|process)|browser\.automation|workspace\.files|system\.shell)$/.test(task.execution.requiredCapability)) return this.executeDeviceAutomation(task, capabilities);
+    if (task.execution?.executorKind === 'DEVICE' && /^(?:creative\.photoshop|device\.(?:screen\.inspect|gui\.(?:inspect|operate)|process)|browser\.automation|workspace\.files|system\.shell)$/.test(task.execution.requiredCapability)) return this.executeDeviceAutomation(task, capabilities);
     // A bounded lease is what prevents two workers from mutating one task. A
     // Codex run can legitimately exceed the initial five-minute lease, so the
     // already-authenticated worker renews it while it owns the task. Failure
@@ -406,9 +408,12 @@ export class ControlPlaneWorkerRuntime {
         await this.client.deferCentralExecution(execution.executionId, 'DEVICE_CAPABILITY_UNAVAILABLE').catch(() => undefined);
         return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason: 'DEVICE_CAPABILITY_UNAVAILABLE' };
       }
-      const effectiveInstruction = guiViaSystem
+      const photoshopInstruction = execution.requiredCapability === 'creative.photoshop'
+        ? '\n\nADOBE PHOTOSHOP NATIVE WORKFLOW\nUse the installed Adobe Photoshop application as the primary editor. Prefer native, non-destructive Photoshop operations: Select Subject/Remove Background with a layer mask, clipping masks for framed photos, Smart Objects before scaling, adjustment layers for color/tone, and editable layers instead of flattening early. Preserve factual photos and existing text exactly unless the owner asked to change them. Do not replace real school imagery with generated reconstructions. For composition, masking, crop, typography or visual polish, inspect the actual Photoshop canvas before editing, make the change, then re-inspect at useful zoom and verify the final export visually. If an automation script is used for deterministic setup, use Photoshop itself for the visual checkpoint and corrective pass before declaring success.'
+        : '';
+      const effectiveInstruction = (guiViaSystem
         ? instruction + `\n\nAWH GUI TOOLKIT\nUse the device system MCP shell/process tools to invoke ${runtime.guiToolkitCommand} for GUI inspection and operation. Prefer its snapshot/observe/accessibility/mouse/keyboard/surface commands, verify the visible result after any mutation, and do not bypass the current AI ON/OFF/LIVE guard.`
-        : instruction;
+        : instruction) + photoshopInstruction;
       const codex = await runCodexDeviceGoal(root, effectiveInstruction, providers);
       if (codex.code !== 0) throw new Error('DEVICE_AUTOMATION_FAILED');
       await this.client.update(task.taskId, 'QA', 85, 'AWH กำลังตรวจผลลัพธ์บนอุปกรณ์จริง');

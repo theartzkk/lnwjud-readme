@@ -76,7 +76,7 @@ try {
     m13_assert(($cloudRoute['providerId'] ?? null) === 'vps-native' && ($cloudRoute['availabilityMode'] ?? null) === 'ALWAYS_ON', 'Cloud provider is preferred for a core read capability');
 
     $pdo->prepare('INSERT INTO devices(device_id,display_name,platform,arch,app_version,last_seen_at,revoked_at) VALUES(:id,:name,:platform,:arch,:version,:at,NULL)')->execute(['id'=>$device,'name'=>'Optional Mac','platform'=>'darwin','arch'=>'arm64','version'=>'1.0.0','at'=>$now]);
-    $registry->syncDeviceWorker($device, ['project.read','codex:cli','git','browser_debug_context','tool.office.word','tool.office.excel','device.screen.inspect','device.gui.inspect','device.gui.operate','device.process','workspace.files','system.shell'], 'READY', $now);
+    $registry->syncDeviceWorker($device, ['project.read','codex:cli','git','browser_debug_context','tool.office.word','tool.office.excel','tool.adobe.photoshop','device.screen.inspect','device.gui.inspect','device.gui.operate','device.process','workspace.files','system.shell'], 'READY', $now);
     $stillCloud = $registry->route('project.read', $now);
     m13_assert(($stillCloud['providerId'] ?? null) === 'vps-native', 'optional device never becomes a hidden dependency for cloud-capable work');
     $specialist = $registry->route('code.specialist', $now);
@@ -84,7 +84,10 @@ try {
     m13_assert($registry->route('document.office', $now) === null, 'detected Office inventory never grants an executable Office route');
     m13_assert(($registry->route('device.screen.inspect', $now)['providerId'] ?? null) === 'device:' . $device, 'provider-neutral screen inspection is routable only while a device advertises it');
     m13_assert(($registry->route('device.gui.operate', $now)['providerId'] ?? null) === 'device:' . $device, 'provider-neutral GUI operation is routable through the connected device');
-    m13_assert((int)$pdo->query("SELECT COUNT(*) FROM control_capability_catalog WHERE capability IN ('device.screen.inspect','device.gui.inspect','device.gui.operate','device.process') AND source_id='awh-core' AND enabled=1")->fetchColumn() === 4, 'device fabric capability labels are registered without a schema migration');
+    m13_assert(($registry->route('creative.photoshop', $now)['providerId'] ?? null) === 'device:' . $device, 'installed Photoshop inventory maps into the explicit creative Photoshop capability');
+    m13_assert((int)$pdo->query("SELECT COUNT(*) FROM control_capability_catalog WHERE capability IN ('device.screen.inspect','device.gui.inspect','device.gui.operate','creative.photoshop','device.process') AND source_id='awh-core' AND enabled=1")->fetchColumn() === 5, 'device fabric capability labels are registered without a schema migration');
+    $deviceRoute=(new ReflectionClass(HubControlPlaneService::class))->getMethod('deviceAutomationRequest')->invoke(null,'ใช้ Adobe Photoshop ทำวารสารและตรวจภาพจริงบน M5');
+    m13_assert(($deviceRoute['capability']??null)==='creative.photoshop'&&($deviceRoute['mode']??null)==='PHOTOSHOP','Photoshop owner goals route to the explicit creative capability instead of generic GUI automation');
 
     $guiControl=HubControlPlaneService::openExisting($db);
     $guiControl->heartbeat((string)$guiOnEnrollment['accessToken'],['schemaVersion'=>1,'deviceId'=>$guiOnDevice,'state'=>'READY','capabilities'=>['device.gui.operate','runtime.ai.on','runtime.gui.ready']],$now);

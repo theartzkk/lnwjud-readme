@@ -391,6 +391,7 @@ final class HubCapabilityRegistryService
             ['device.screen.inspect','device','ตรวจหน้าจอจริง','ตรวจภาพหน้าจอจากอุปกรณ์ที่เชื่อมต่อ','READ','LOW'],
             ['device.gui.inspect','device','ตรวจ UI บนอุปกรณ์','อ่านหน้าต่างและองค์ประกอบ UI โดยไม่เปลี่ยนสถานะ','READ','LOW'],
             ['device.gui.operate','device','ควบคุม UI บนอุปกรณ์','โต้ตอบกับโปรแกรมบนอุปกรณ์ตามงานที่ผู้ใช้สั่ง','EXECUTE','MEDIUM'],
+            ['creative.photoshop','creative','Adobe Photoshop','แก้ไขภาพและงานออกแบบใน Photoshop บนอุปกรณ์จริงด้วยเลเยอร์ มาสก์ และการตรวจภาพจริง','REPLACE','MEDIUM'],
             ['device.process','device','จัดการโปรเซสอุปกรณ์','ตรวจและควบคุมโปรเซสบนอุปกรณ์ที่เชื่อมต่อ','EXECUTE','HIGH'],
         ];
         $insert = $this->pdo->prepare("INSERT OR IGNORE INTO control_capability_catalog(capability,source_id,category,display_name,description,mutation_kind,risk_class,maturity,user_visible,enabled,created_at,updated_at) VALUES(:cap,'awh-core',:category,:name,:description,:mutation,:risk,'OPTIONAL',1,1,:at,:at)");
@@ -409,6 +410,7 @@ final class HubCapabilityRegistryService
             if (preg_match('/^(?:file|read_file|read_files|write_file|edit_file|apply_patch|copy_file|move_file|delete_file|workspace_)/',$value)) $out[] = 'workspace.files';
             if (preg_match('/^(?:browser|dom_|web_|ui_target_action|capture_screenshot|compare_screenshot|form_context|network_context|console_context)/',$value)) $out[] = 'browser.automation';
             if (preg_match('/^(?:office|inspect_workbook|compare_workbook|render_excel|docx_)/',$value)) $out[] = 'document.office';
+            if ($value === 'tool.adobe.photoshop') $out[] = 'creative.photoshop';
             if (preg_match('/^(?:pdf_|inspect_pdf|compare_pdf)/',$value)) $out[] = 'document.pdf';
             if (preg_match('/ocr/',$value)) $out[] = 'document.ocr';
             // Policy 1.2: workers expose named capabilities only. Generic shell/process

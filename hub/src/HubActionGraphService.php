@@ -128,6 +128,7 @@ final class HubActionGraphService
     private static function executeTitle(string $capability): string
     {
         if ($capability === 'artifact.object') return 'สร้างผลลัพธ์';
+        if ($capability === 'creative.photoshop') return 'แก้ไขงานใน Adobe Photoshop';
         if (str_starts_with($capability, 'office.')) return 'จัดทำไฟล์สำนักงาน';
         if (in_array($capability, ['project.read', 'project.search'], true)) return 'วิเคราะห์ข้อมูล';
         if (str_starts_with($capability, 'project.mutate.')) return 'จัดทำฉบับแก้ไข';
