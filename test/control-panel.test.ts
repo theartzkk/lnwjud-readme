@@ -59,6 +59,9 @@ test('Owner entry and standalone admin pages converge on Control Panel',async()=
   assert.match(app,/awh-settings/);
   assert.match(app,/requestedOwnerSettings/);
   assert.match(infrastructure,/capability-fabric/);
+  assert.doesNotMatch(infrastructure,/lnwjud|Remote Desktop/i);
+  const panelHtml=await readFile(join(ROOT,'web','panel.html'),'utf8');
+  assert.doesNotMatch(panelHtml,/lnwjud|Remote Desktop/i);
   const infrastructureJs=await readFile(join(ROOT,'web','infrastructure.js'),'utf8');
   const controlService=await readFile(join(ROOT,'hub','src','HubControlPlaneService.php'),'utf8');
   assert.match(infrastructureJs,/renderCapabilityFabric/);
