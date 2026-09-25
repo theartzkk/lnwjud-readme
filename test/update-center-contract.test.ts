@@ -217,3 +217,47 @@ test('Update Center detects split runtime and core release syncs exact enrollmen
   assert.match(page,/runtime-health/);
   assert.match(script,/ปรับ Runtime และอัปเดต/);
 });
+
+
+test('Update Center explains the next release, impact, roadmap and history from canonical release metadata', async()=>{
+  const [core,operator,service,page,script,css,roadmap,deploy]=await Promise.all([
+    readFile(join(ROOT,'hub/src/HubCoreReleaseService.php'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubOperatorBridgeService.php'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),
+    readFile(join(ROOT,'web/updates.html'),'utf8'),
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+    readFile(join(ROOT,'web/updates.css'),'utf8'),
+    readFile(join(ROOT,'config/update-roadmap.json'),'utf8'),
+    readFile(join(ROOT,'deploy/awh-control-plane/deploy-control-plane.sh'),'utf8'),
+  ]);
+  assert.match(operator,/releaseNotesForPromotion/);
+  assert.match(operator,/git.*log|\['log'/);
+  assert.match(operator,/changedFileCount/);
+  assert.match(operator,/databaseMigration/);
+  assert.match(operator,/knownIssues/);
+  assert.match(operator,/comingNext/);
+  assert.match(operator,/releaseNotes.*checkpoint|checkpoint=.*releaseNotes/s);
+  assert.match(core,/releaseNotes/);
+  assert.match(core,/fallbackRoadmap/);
+  assert.match(core,/history/);
+  assert.match(service,/'releaseNotes'/);
+  assert.match(service,/'roadmap'/);
+  assert.match(service,/'history'/);
+  assert.match(page,/เวอร์ชันต่อไป/);
+  assert.match(page,/ประวัติการอัปเดต/);
+  assert.match(page,/update-search/);
+  assert.match(page,/data-filter="UPDATE"/);
+  assert.match(script,/renderReleaseNotes/);
+  assert.match(script,/renderRoadmap/);
+  assert.match(script,/renderHistory/);
+  assert.match(script,/ผลกระทบก่อนอัปเดต/);
+  assert.match(script,/สิ่งที่ควรรู้/);
+  assert.match(script,/itemVisible/);
+  assert.match(css,/release-notes/);
+  assert.match(css,/roadmap-card/);
+  assert.match(css,/history-row/);
+  const parsed=JSON.parse(roadmap);
+  assert.equal(parsed.schemaVersion,1);
+  assert.ok(Array.isArray(parsed.comingNext)&&parsed.comingNext.length>=1);
+  assert.match(deploy,/config\/update-roadmap\.json/);
+});

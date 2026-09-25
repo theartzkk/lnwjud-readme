@@ -388,19 +388,20 @@ final class HubOperatorBridgeService
             $this->runGit($repoReal,['cat-file','-e',$target.'^{commit}']);
             if(($config['projection']??false)===true)$this->assertVaultProjectionTarget($repoReal,$target,$gate);
             $ancestor=$this->runGitResult($repoReal,['merge-base','--is-ancestor',$expected,$target]);if($ancestor['code']!==0)throw new HubOperatorBridgeException('Source promotion is not a fast-forward','OPERATOR_SOURCE_NON_FAST_FORWARD');
+            $releaseNotes=$this->releaseNotesForPromotion($repoReal,$repository,$expected,$target,$at);
             $before=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($expected,self::gitSha($before)))throw new HubOperatorBridgeException('Canonical main moved during source promotion','OPERATOR_SOURCE_BASE_MOVED');
             $this->runGit($repoReal,['update-ref','refs/heads/main',$target,$expected]);
             $after=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($target,self::gitSha($after)))throw new HubOperatorBridgeException('Canonical main did not reach target revision','OPERATOR_SOURCE_PROMOTE_FAILED');
             $audit=null;
             if($mission!==null){
-                try{$audit=$this->recordSourcePromotionAudit($projectId,$repository,$expected,$target,$bundleSha,$at);}
+                try{$audit=$this->recordSourcePromotionAudit($projectId,$repository,$expected,$target,$bundleSha,$releaseNotes,$at);}
                 catch(Throwable $error){
                     $rollback=$this->runGitResult($repoReal,['update-ref','refs/heads/main',$expected,$target]);
                     if(($rollback['code']??1)!==0)throw new HubOperatorBridgeException('Canonical source moved but promotion audit failed and rollback could not be verified','OPERATOR_SOURCE_PROMOTE_FAILED');
                     throw $error instanceof HubOperatorBridgeException?$error:new HubOperatorBridgeException('Source promotion audit could not be stored','OPERATOR_SOURCE_PROMOTE_FAILED');
                 }
             }
-            $success=true;return ['schemaVersion'=>1,'state'=>'PROMOTED','repository'=>$repository,'previousMainSha'=>$expected,'mainSha'=>$target,'bundleSha256'=>$bundleSha,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'leaseExpiresAt'=>$authority['leaseExpiresAt'],'missionReused'=>$mission!==null],'audit'=>$audit,'observedAt'=>$at];
+            $success=true;return ['schemaVersion'=>1,'state'=>'PROMOTED','repository'=>$repository,'previousMainSha'=>$expected,'mainSha'=>$target,'bundleSha256'=>$bundleSha,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'leaseExpiresAt'=>$authority['leaseExpiresAt'],'missionReused'=>$mission!==null],'audit'=>$audit,'releaseNotes'=>$releaseNotes,'observedAt'=>$at];
         }finally{if($releaseAuthority)$this->releaseMutationAuthority($authority,$success,gmdate('c'));}
     }
 
@@ -593,7 +594,7 @@ final class HubOperatorBridgeService
     }
 
     /** @return array{executionId:string,taskId:string} */
-    private function recordSourcePromotionAudit(string $projectId,string $repository,string $expected,string $target,string $bundleSha,string $at): array
+    private function recordSourcePromotionAudit(string $projectId,string $repository,string $expected,string $target,string $bundleSha,array $releaseNotes,string $at): array
     {
         $taskId=self::uuid();$executionId=self::uuid();
         try{
@@ -601,7 +602,7 @@ final class HubOperatorBridgeService
             $owner=$this->pdo->query("SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id=1 AND bootstrap_closed=1")->fetchColumn();
             if(!is_string($owner)||!self::uuidValid($owner))throw new HubOperatorBridgeException('Owner authority is unavailable','OPERATOR_OWNER_UNAVAILABLE');
             $revision=null;$q=$this->pdo->prepare('SELECT active_revision_id FROM control_project_vaults WHERE project_id=:project');$q->execute(['project'=>$projectId]);$v=$q->fetchColumn();if(is_string($v)&&self::uuidValid($v))$revision=$v;
-            $checkpoint=['repository'=>$repository,'expectedMainSha'=>$expected,'targetSha'=>$target,'bundleSha256'=>$bundleSha];
+            $checkpoint=['repository'=>$repository,'expectedMainSha'=>$expected,'targetSha'=>$target,'bundleSha256'=>$bundleSha,'releaseNotes'=>$releaseNotes];
             $key='source-promotion-audit-'.substr(hash('sha256',$executionId),0,40);
             $summary='Canonical source promotion completed under durable project mission';
             $this->pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,:goal,'COMPLETED',NULL,NULL,100,:summary,NULL,:key,NULL,:at,:at,NULL)")
@@ -667,6 +668,71 @@ final class HubOperatorBridgeService
         return $matches[0];
     }
 
+
+
+    /** @return array<string,mixed> */
+    private function releaseNotesForPromotion(string $repo,string $repository,string $expected,string $target,string $at): array
+    {
+        $groups=['features'=>[],'improvements'=>[],'fixes'=>[],'internal'=>[]];
+        $commits=[];
+        $log=$this->runGit($repo,['log','--no-merges','--max-count=80','--format=%H%x09%s',$expected.'..'.$target]);
+        foreach(preg_split('/
+?
+/',$log)?:[] as $line){
+            if($line==='')continue;
+            $parts=explode("	",$line,2);if(count($parts)!==2)continue;
+            $sha=strtolower(trim($parts[0]));$subject=trim($parts[1]);
+            if(preg_match('/^[a-f0-9]{40}$/',$sha)!==1||$subject===''||strlen($subject)>220)continue;
+            $category='improvements';
+            if(preg_match('/^feat(?:([^)]{1,50}))?!?:s*/i',$subject))$category='features';
+            elseif(preg_match('/^fix(?:([^)]{1,50}))?!?:s*/i',$subject))$category='fixes';
+            elseif(preg_match('/^(?:chore|docs|test|ci|build)(?:([^)]{1,50}))?!?:s*/i',$subject))$category='internal';
+            elseif(preg_match('/^(?:perf|refactor|style)(?:([^)]{1,50}))?!?:s*/i',$subject))$category='improvements';
+            $label=preg_replace('/^[a-z]+(?:([^)]{1,50}))?!?:s*/i','',$subject)?:$subject;
+            $label=mb_substr(trim($label),0,180,'UTF-8');
+            if(count($groups[$category])<12)$groups[$category][]=$label;
+            if(count($commits)<40)$commits[]=['sha'=>$sha,'category'=>$category,'subject'=>$label];
+        }
+        $paths=array_values(array_filter(preg_split('/
+?
+/',$this->runGit($repo,['diff','--name-only',$expected,$target]))?:[],static fn(string $v):bool=>$v!==''));
+        $paths=array_slice($paths,0,240);
+        $hasMigration=false;$hasService=false;$desktop=false;$auth=false;
+        foreach($paths as $path){
+            if(str_contains($path,'/migrations/')||str_starts_with($path,'hub/migrations/'))$hasMigration=true;
+            if(preg_match('#^deploy/(?:systemd|nginx|php-fpm)/#',$path))$hasService=true;
+            if(preg_match('#^(?:src/desktop/|forge\.|scripts/(?:desktop|release)/|config/(?:device-runtime|full-device-engine))#',$path)||in_array($path,['package.json','package-lock.json'],true))$desktop=true;
+            if(str_contains(strtolower($path),'auth'))$auth=true;
+        }
+        $known=[];$roadmap=[];
+        $roadmapRaw=$this->runGitResult($repo,['show',$target.':config/update-roadmap.json']);
+        if(($roadmapRaw['code']??1)===0&&is_string($roadmapRaw['stdout']??null)&&strlen((string)$roadmapRaw['stdout'])<=65536){
+            try{$cfg=json_decode((string)$roadmapRaw['stdout'],true,16,JSON_THROW_ON_ERROR);}catch(Throwable){$cfg=null;}
+            if(is_array($cfg)){
+                foreach((array)($cfg['knownIssues']??[]) as $value)if(is_string($value)&&trim($value)!==''&&strlen($value)<=220&&count($known)<12)$known[]=trim($value);
+                foreach((array)($cfg['comingNext']??[]) as $entry){
+                    if(!is_array($entry)||count($roadmap)>=8)continue;
+                    $title=is_string($entry['title']??null)?trim((string)$entry['title']):'';
+                    $status=is_string($entry['status']??null)?strtoupper(trim((string)$entry['status'])):'PLANNED';
+                    if($title===''||strlen($title)>160||!in_array($status,['PLANNED','IN_PROGRESS','REVIEW'],true))continue;
+                    $items=[];foreach((array)($entry['items']??[]) as $value)if(is_string($value)&&trim($value)!==''&&strlen($value)<=220&&count($items)<8)$items[]=trim($value);
+                    $roadmap[]=['title'=>$title,'status'=>$status,'items'=>$items];
+                }
+            }
+        }
+        return [
+            'schemaVersion'=>1,'repository'=>$repository,'previousSha'=>$expected,'targetSha'=>$target,'generatedAt'=>$at,
+            'summary'=>$groups,'commits'=>$commits,'changedFileCount'=>count($paths),
+            'impact'=>[
+                'databaseMigration'=>$hasMigration?'AUTOMATIC':'NONE',
+                'serviceReload'=>$hasService?'AUTOMATIC':'NONE',
+                'appRestart'=>$desktop?'MAY_BE_REQUIRED':'NONE',
+                'signIn'=>$auth?'MAY_BE_REQUIRED':'NONE',
+                'plannedDowntime'=>false,
+            ],
+            'knownIssues'=>$known,'comingNext'=>$roadmap,
+        ];
+    }
 
     /** @param list<string> $args */
     private function runGit(string $repo,array $args): string

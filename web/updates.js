@@ -12,6 +12,8 @@ let confirmResolver=null;
 let attentionOnly=false;
 let refreshTimer=null;
 let localOperation=null;
+let filterMode='ALL';
+let searchTerm='';
 
 const stateLabel=(state)=>({
   CURRENT:'ล่าสุดแล้ว',UPDATE_AVAILABLE:'พร้อมอัปเดต',WAITING_FOR_APPROVAL:'รอยืนยัน',UPDATING:'กำลังอัปเดต',
@@ -216,6 +218,117 @@ function actionButton(text,handler,className='primary-button'){
   return button;
 }
 
+
+const noteGroups=[
+  ['features','ฟังก์ชันใหม่','✨'],
+  ['improvements','ปรับปรุง','⚡'],
+  ['fixes','แก้ปัญหา','🔧'],
+  ['internal','ระบบภายใน','🛡️'],
+];
+
+function releaseNoteCount(notes){
+  const summary=notes?.summary||{};
+  return noteGroups.reduce((total,[key])=>total+(Array.isArray(summary[key])?summary[key].length:0),0);
+}
+
+function renderReleaseNotes(item,host){
+  const notes=item?.releaseNotes;
+  if(!notes||typeof notes!=='object')return;
+  const count=releaseNoteCount(notes);
+  const issues=Array.isArray(item.knownIssues)?item.knownIssues:(Array.isArray(notes.knownIssues)?notes.knownIssues:[]);
+  if(count===0&&issues.length===0&&notes?.source==='ROADMAP_FALLBACK')return;
+  const details=document.createElement('details');details.className='release-notes';
+  if(['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'].includes(item.state))details.open=true;
+  const summaryEl=document.createElement('summary');
+  summaryEl.textContent=count>0?'มีอะไรเปลี่ยนในรุ่นนี้ · '+count+' รายการ':'รายละเอียดรุ่นนี้';
+  details.append(summaryEl);
+  const body=document.createElement('div');body.className='release-notes-body';
+  for(const [key,label,icon] of noteGroups){
+    const rows=Array.isArray(notes?.summary?.[key])?notes.summary[key]:[];
+    if(!rows.length)continue;
+    const group=document.createElement('section');group.className='release-note-group';
+    const h=document.createElement('h4');h.textContent=icon+' '+label;
+    const ul=document.createElement('ul');
+    for(const row of rows){const li=document.createElement('li');li.textContent=String(row);ul.append(li);}
+    group.append(h,ul);body.append(group);
+  }
+  const impact=notes?.impact;
+  if(impact&&typeof impact==='object'){
+    const box=document.createElement('section');box.className='release-impact';
+    const h=document.createElement('h4');h.textContent='ผลกระทบก่อนอัปเดต';
+    const chips=[];
+    chips.push(impact.plannedDowntime===false?'ไม่มี downtime ที่วางแผนไว้':'ตรวจช่วงหยุดบริการ');
+    if(impact.databaseMigration==='AUTOMATIC')chips.push('ย้ายฐานข้อมูลให้อัตโนมัติ');
+    if(impact.serviceReload==='AUTOMATIC')chips.push('Reload service ให้อัตโนมัติ');
+    if(impact.appRestart==='MAY_BE_REQUIRED')chips.push('AWH Agent อาจต้องเปิดใหม่');
+    if(impact.signIn==='MAY_BE_REQUIRED')chips.push('อาจต้องลงชื่อเข้าใช้อีกครั้ง');
+    const row=document.createElement('div');row.className='impact-chips';
+    for(const text of chips){const span=document.createElement('span');span.textContent=text;row.append(span);}
+    box.append(h,row);body.append(box);
+  }
+  if(issues.length){
+    const box=document.createElement('section');box.className='known-issues';
+    const h=document.createElement('h4');h.textContent='สิ่งที่ควรรู้';
+    const ul=document.createElement('ul');
+    for(const value of issues){const li=document.createElement('li');li.textContent=String(value);ul.append(li);}
+    box.append(h,ul);body.append(box);
+  }
+  if(Number(notes.changedFileCount)>0){
+    const small=document.createElement('p');small.className='release-note-foot';
+    small.textContent='สรุปจาก exact source '+Number(notes.changedFileCount)+' ไฟล์ · รายละเอียด commit อยู่ใน Diagnostics';
+    body.append(small);
+  }
+  details.append(body);host.append(details);
+}
+
+function itemVisible(item){
+  if(attentionOnly&&!itemNeedsAttention(item))return false;
+  if(searchTerm){
+    const hay=[item.name,item.kind,item.adapter,item.reason].filter(Boolean).join(' ').toLocaleLowerCase('th');
+    if(!hay.includes(searchTerm))return false;
+  }
+  if(filterMode==='UPDATE'&&!['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'].includes(item.state))return false;
+  if(filterMode==='PROGRESS'&&!['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state))return false;
+  if(filterMode==='ATTENTION'&&!itemNeedsAttention(item))return false;
+  return true;
+}
+
+function renderRoadmap(){
+  const host=$('coming-next-list');if(!host)return;
+  host.replaceChildren();
+  const rows=Array.isArray(center?.roadmap)?center.roadmap:[];
+  if(!rows.length){const empty=document.createElement('div');empty.className='update-empty';empty.textContent='ยังไม่มีแผนรุ่นถัดไปที่ประกาศ';host.append(empty);return;}
+  const statusLabel={PLANNED:'วางแผน',IN_PROGRESS:'กำลังพัฒนา',REVIEW:'กำลังตรวจ'};
+  for(const row of rows){
+    const card=document.createElement('article');card.className='roadmap-card';
+    const head=document.createElement('div');head.className='roadmap-head';
+    const h=document.createElement('h3');h.textContent=row.title||'รุ่นถัดไป';
+    const chip=document.createElement('span');chip.className='roadmap-status';chip.dataset.state=String(row.status||'PLANNED');chip.textContent=statusLabel[row.status]||'วางแผน';
+    head.append(h,chip);card.append(head);
+    if(Array.isArray(row.items)&&row.items.length){const ul=document.createElement('ul');for(const value of row.items){const li=document.createElement('li');li.textContent=String(value);ul.append(li);}card.append(ul);}
+    host.append(card);
+  }
+}
+
+function renderHistory(){
+  const host=$('release-history-list');if(!host)return;
+  host.replaceChildren();
+  const rows=Array.isArray(center?.history)?center.history:[];
+  if(!rows.length){const empty=document.createElement('div');empty.className='update-empty';empty.textContent='ยังไม่มีประวัติที่แสดงได้';host.append(empty);return;}
+  const state={COMPLETED:'ติดตั้งสำเร็จ',FAILED:'ไม่สำเร็จ',CANCELLED:'ถูกแทน/ยกเลิก'};
+  for(const row of rows){
+    const item=document.createElement('article');item.className='history-row';item.dataset.state=String(row.state||'');
+    const dot=document.createElement('span');dot.className='history-dot';
+    const copy=document.createElement('div');const strong=document.createElement('strong');strong.textContent=state[row.state]||String(row.state||'ประวัติ');
+    const meta=document.createElement('span');
+    const date=row.updatedAt?new Date(row.updatedAt).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'}):'';
+    meta.textContent=[row.releaseSha?short(row.releaseSha):null,date].filter(Boolean).join(' · ');
+    copy.append(strong,meta);
+    if(row.resultSummary){const p=document.createElement('p');p.textContent=String(row.resultSummary);copy.append(p);}
+    item.append(dot,copy);host.append(item);
+  }
+}
+
 function renderDevices(item,host){
   if(!Array.isArray(item.devices)||item.devices.length===0)return;
   const online=item.devices.filter((device)=>['ONLINE','IDLE','BUSY'].includes(String(device.activity||'').toUpperCase())).length;
@@ -234,7 +347,7 @@ function renderDevices(item,host){
 function renderCard(item){
   const card=document.createElement('article');card.className='update-card';card.dataset.key=item.key;
   card.dataset.attention=String(itemNeedsAttention(item));
-  if(attentionOnly&&!itemNeedsAttention(item))card.hidden=true;
+
   const main=document.createElement('div');main.className='update-card-main';
   const title=document.createElement('div');title.className='update-title';
   const h3=document.createElement('h3');h3.textContent=item.name;
@@ -248,6 +361,7 @@ function renderCard(item){
     warn.textContent='ตรวจพบ Runtime คนละรุ่น ระบบจะจัดการ reconciliation ผ่าน release เดียว ไม่ต้องอัปเดต component แยกเอง';
     main.append(warn);
   }
+  renderReleaseNotes(item,main);
   renderDevices(item,main);
   main.append(technicalDetails(item));
   const actions=document.createElement('div');actions.className='update-actions';
@@ -264,9 +378,9 @@ function renderCard(item){
 
 function render(){
   const host=$('update-list');host.replaceChildren();
-  for(const item of center?.items||[])host.append(renderCard(item));
-  if(!host.childElementCount){const empty=document.createElement('div');empty.className='update-empty';empty.textContent='ยังไม่มีระบบใน Update Center';host.append(empty);}
-  renderRuntimeHealth();renderReleaseInfrastructure();summary();renderProgress();
+  for(const item of center?.items||[])if(itemVisible(item))host.append(renderCard(item));
+  if(!host.childElementCount){const empty=document.createElement('div');empty.className='update-empty';empty.textContent='ไม่พบระบบตามตัวกรองนี้';host.append(empty);}
+  renderRuntimeHealth();renderReleaseInfrastructure();renderRoadmap();renderHistory();summary();renderProgress();
 }
 
 function renderProgress(){
@@ -472,5 +586,14 @@ $('step-up-submit').addEventListener('click',()=>{
   $('step-up').hidden=true;
 });
 $('step-up-password').addEventListener('keydown',(event)=>{if(event.key==='Enter')$('step-up-submit').click();});
+
+$('update-search').addEventListener('input',(event)=>{
+  searchTerm=String(event.target.value||'').trim().toLocaleLowerCase('th');render();
+});
+document.querySelectorAll('.filter-chip').forEach((button)=>button.addEventListener('click',()=>{
+  filterMode=button.dataset.filter||'ALL';
+  document.querySelectorAll('.filter-chip').forEach((chip)=>chip.classList.toggle('is-active',chip===button));
+  render();
+}));
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refresh();});
 void refresh();

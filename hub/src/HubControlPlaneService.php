@@ -281,6 +281,8 @@ final class HubControlPlaneService
             'runtimeState'=>$runtimeState,'runtimeComponents'=>$release['components'] ?? [],
             'rollbackReleaseId'=>$release['rollbackReleaseId'] ?? null,'progress'=>is_array($activeCore) ? (int)($activeCore['progress'] ?? 0) : null,
             'failureCode'=>is_array($activeCore) ? ($activeCore['failureCode'] ?? null) : null,
+            'releaseNotes'=>is_array($core['releaseNotes'] ?? null)?$core['releaseNotes']:null,
+            'knownIssues'=>is_array($core['knownIssues'] ?? null)?$core['knownIssues']:[],
         ];
         $covered['113b45c0-23e1-408d-ae0f-ac5eca7f6900'] = true;
 
@@ -432,6 +434,8 @@ final class HubControlPlaneService
         }
         return [
             'schemaVersion'=>1,'generatedAt'=>self::timestamp($now ?? gmdate('c')),'summary'=>$summary,'items'=>$items,
+            'roadmap'=>is_array($core['roadmap'] ?? null)?$core['roadmap']:[],
+            'history'=>is_array($core['history'] ?? null)?$core['history']:[],
             'infrastructure'=>[
                 'telemetry'=>$updateTelemetry,
                 'executionAuthority'=>$updateExecutionAuthority,

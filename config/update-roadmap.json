@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "knownIssues": [],
+  "comingNext": [
+    {
+      "title": "Release Notes ครบทุกระบบ",
+      "status": "PLANNED",
+      "items": [
+        "เชื่อม BAY EXCUSE, LearnLab, Assessment และ Managed Hosting ให้ส่งรายละเอียดรุ่นด้วยสัญญาเดียวกัน",
+        "ให้ Update Center แสดงความต่างของแต่ละระบบโดยไม่ต้องเปิดหน้าเทคนิค"
+      ]
+    },
+    {
+      "title": "Agent Compatibility",
+      "status": "PLANNED",
+      "items": [
+        "แยกเลขเวอร์ชันแอปออกจาก protocol compatibility",
+        "บอกว่าเครื่องใดต้องอัปเดตจริงและเครื่องใดยังใช้งานร่วมกันได้"
+      ]
+    },
+    {
+      "title": "Release Runner",
+      "status": "PLANNED",
+      "items": [
+        "ย้ายงาน Build และ QA หนักออกจาก Production VPS เมื่อ runner พร้อม",
+        "คง Production authority และ Owner approval ไว้ที่ AWH Control Plane เดิม"
+      ]
+    }
+  ]
+}

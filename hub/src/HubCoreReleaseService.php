@@ -53,7 +53,20 @@ final class HubCoreReleaseService
                 'updatedAt'=>(string)$row['updated_at'],
             ];
         }
-        return ['schemaVersion'=>1,'capability'=>self::CAPABILITY,'sourcePromotion'=>$this->latestSourcePromotion(),'releases'=>$rows,'policy'=>HubTrustPolicy::describe('system.core.release')];
+        $sourcePromotion=$this->latestSourcePromotion();
+        $releaseNotes=is_array($sourcePromotion['releaseNotes']??null)?$sourcePromotion['releaseNotes']:$this->fallbackReleaseNotes();
+        $roadmap=is_array($releaseNotes['comingNext']??null)?$releaseNotes['comingNext']:$this->fallbackRoadmap()['comingNext'];
+        $knownIssues=is_array($releaseNotes['knownIssues']??null)?$releaseNotes['knownIssues']:$this->fallbackRoadmap()['knownIssues'];
+        $history=[];
+        foreach($rows as $row){
+            if(!in_array((string)($row['taskState']??''),['COMPLETED','FAILED','CANCELLED'],true))continue;
+            $history[]=[
+                'releaseSha'=>$row['releaseSha']??null,'state'=>$row['taskState']??null,'resultSummary'=>$row['resultSummary']??null,
+                'failureCode'=>$row['failureCode']??null,'updatedAt'=>$row['updatedAt']??null,
+            ];
+            if(count($history)>=12)break;
+        }
+        return ['schemaVersion'=>1,'capability'=>self::CAPABILITY,'sourcePromotion'=>$sourcePromotion,'releaseNotes'=>$releaseNotes,'roadmap'=>$roadmap,'knownIssues'=>$knownIssues,'history'=>$history,'releases'=>$rows,'policy'=>HubTrustPolicy::describe('system.core.release')];
     }
 
     public function request(string $token,string $csrf,array $payload,?string $now=null): array
@@ -217,6 +230,7 @@ final class HubCoreReleaseService
             $target=strtolower((string)($checkpoint['targetSha']??''));$base=strtolower((string)($checkpoint['expectedMainSha']??''));
             if(preg_match('/^[0-9a-f]{40}$/',$target)===1&&preg_match('/^[0-9a-f]{40}$/',$base)===1){
                 $audit=['sha'=>$target,'previousSha'=>$base,'authority'=>'SOURCE_PROMOTION_AUDIT','observedAt'=>(string)$row['updated_at']];
+                if(is_array($checkpoint['releaseNotes']??null))$audit['releaseNotes']=$checkpoint['releaseNotes'];
                 break;
             }
         }
@@ -250,6 +264,43 @@ final class HubCoreReleaseService
             $sha=strtolower((string)$parts[0]);if(preg_match('/^[0-9a-f]{40}$/',$sha)===1)return $sha;
         }
         return null;
+    }
+
+
+    /** @return array<string,mixed> */
+    private function fallbackReleaseNotes(): array
+    {
+        $roadmap=$this->fallbackRoadmap();
+        return [
+            'schemaVersion'=>1,'repository'=>'awh','previousSha'=>null,'targetSha'=>$this->canonicalMainSha(),
+            'generatedAt'=>null,'summary'=>['features'=>[],'improvements'=>[],'fixes'=>[],'internal'=>[]],
+            'commits'=>[],'changedFileCount'=>0,
+            'impact'=>['databaseMigration'=>'UNKNOWN','serviceReload'=>'UNKNOWN','appRestart'=>'UNKNOWN','signIn'=>'UNKNOWN','plannedDowntime'=>false],
+            'knownIssues'=>$roadmap['knownIssues'],'comingNext'=>$roadmap['comingNext'],'source'=>'ROADMAP_FALLBACK',
+        ];
+    }
+
+    /** @return array{knownIssues:list<string>,comingNext:list<array<string,mixed>>} */
+    private function fallbackRoadmap(): array
+    {
+        $result=['knownIssues'=>[],'comingNext'=>[]];
+        $path=dirname(__DIR__,2).'/config/update-roadmap.json';
+        if(is_link($path)||!is_file($path)||!is_readable($path))return $result;
+        $size=@filesize($path);if(!is_int($size)||$size<2||$size>65536)return $result;
+        try{$data=json_decode((string)file_get_contents($path),true,16,JSON_THROW_ON_ERROR);}catch(Throwable){return $result;}
+        if(!is_array($data)||($data['schemaVersion']??null)!==1)return $result;
+        foreach((array)($data['knownIssues']??[]) as $value){
+            if(is_string($value)&&trim($value)!==''&&strlen($value)<=220&&count($result['knownIssues'])<12)$result['knownIssues'][]=trim($value);
+        }
+        foreach((array)($data['comingNext']??[]) as $entry){
+            if(!is_array($entry)||count($result['comingNext'])>=8)continue;
+            $title=is_string($entry['title']??null)?trim((string)$entry['title']):'';
+            $status=is_string($entry['status']??null)?strtoupper(trim((string)$entry['status'])):'PLANNED';
+            if($title===''||strlen($title)>160||!in_array($status,['PLANNED','IN_PROGRESS','REVIEW'],true))continue;
+            $items=[];foreach((array)($entry['items']??[]) as $value)if(is_string($value)&&trim($value)!==''&&strlen($value)<=220&&count($items)<8)$items[]=trim($value);
+            $result['comingNext'][]=['title'=>$title,'status'=>$status,'items'=>$items];
+        }
+        return $result;
     }
 
     private function ready(): void

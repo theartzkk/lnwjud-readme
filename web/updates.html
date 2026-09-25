@@ -82,7 +82,27 @@
       <button id="show-attention" class="secondary-button" type="button">แสดงเฉพาะที่ต้องจัดการ</button>
     </section>
 
+    <section class="update-controls" aria-label="ค้นหาและกรองระบบ">
+      <label class="update-search"><span>ค้นหาระบบ</span><input id="update-search" type="search" inputmode="search" placeholder="เช่น AWH, LearnLab, Assessment" autocomplete="off" /></label>
+      <div class="update-filters" role="group" aria-label="กรองสถานะ">
+        <button class="filter-chip is-active" data-filter="ALL" type="button">ทั้งหมด</button>
+        <button class="filter-chip" data-filter="UPDATE" type="button">มีอัปเดต</button>
+        <button class="filter-chip" data-filter="PROGRESS" type="button">กำลังทำ</button>
+        <button class="filter-chip" data-filter="ATTENTION" type="button">ต้องตรวจ</button>
+      </div>
+    </section>
+
     <section id="update-list" class="update-list" aria-live="polite"><div class="update-empty">กำลังตรวจทุกระบบ…</div></section>
+
+    <section id="coming-next" class="release-roadmap" aria-labelledby="coming-next-title">
+      <div class="section-heading"><div><p class="eyebrow">COMING NEXT</p><h2 id="coming-next-title">เวอร์ชันต่อไป</h2><p>สิ่งที่อยู่ในแผนพัฒนาถัดไป แยกจากรายการที่พร้อมติดตั้งแล้วเพื่อไม่ให้สับสน</p></div></div>
+      <div id="coming-next-list" class="roadmap-list"><div class="update-empty">ยังไม่มีแผนรุ่นถัดไปที่ประกาศ</div></div>
+    </section>
+
+    <section id="release-history" class="release-history" aria-labelledby="release-history-title">
+      <div class="section-heading"><div><p class="eyebrow">UPDATE HISTORY</p><h2 id="release-history-title">ประวัติการอัปเดต</h2><p>ดูย้อนหลังว่ารุ่นใดติดตั้งสำเร็จ ล้มเหลว หรือถูกแทนด้วยรุ่นใหม่</p></div></div>
+      <div id="release-history-list" class="history-list"><div class="update-empty">ยังไม่มีประวัติที่แสดงได้</div></div>
+    </section>
 
     <details id="advanced-diagnostics" class="updates-policy">
       <summary>การตั้งค่าขั้นสูงและ Diagnostics</summary>
