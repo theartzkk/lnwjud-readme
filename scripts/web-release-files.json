@@ -29,6 +29,7 @@
     "updates.html",
     "updates.css",
     "updates.js",
+    "update-center-metadata.json",
     "trust.html",
     "trust.css",
     "trust.js",
@@ -460,6 +461,10 @@
     [
       "deploy/remote-worker/macos/awh-runtime-update.sh",
       "device-runtime/macos/awh-runtime-update.sh"
+    ],
+    [
+      "web/update-center-metadata.json",
+      "update-center-metadata.json"
     ]
   ]
 }

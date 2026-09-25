@@ -14,6 +14,7 @@ let refreshTimer=null;
 let localOperation=null;
 let filterMode='ALL';
 let searchTerm='';
+let staticMetadata=null;
 
 const stateLabel=(state)=>({
   CURRENT:'ล่าสุดแล้ว',UPDATE_AVAILABLE:'พร้อมอัปเดต',WAITING_FOR_APPROVAL:'รอยืนยัน',UPDATING:'กำลังอัปเดต',
@@ -57,6 +58,26 @@ const friendly=(error)=>{
 
 function itemNeedsAttention(item){
   return item.state!=='CURRENT'&&item.state!=='INTERNAL_MANAGED';
+}
+function applyStaticMetadata(){
+  if(!center||!staticMetadata)return;
+  if(!Array.isArray(center.roadmap)||center.roadmap.length===0)center.roadmap=Array.isArray(staticMetadata.comingNext)?staticMetadata.comingNext:[];
+  if(!Array.isArray(center.history)||center.history.length===0)center.history=Array.isArray(staticMetadata.history)?staticMetadata.history:[];
+  const awh=(center.items||[]).find((item)=>item.key==='awh-core'||item.adapter==='CORE_RELEASE');
+  if(awh){
+    if(!awh.releaseNotes&&staticMetadata.releaseNotes)awh.releaseNotes=staticMetadata.releaseNotes;
+    if((!Array.isArray(awh.knownIssues)||awh.knownIssues.length===0)&&Array.isArray(staticMetadata.knownIssues))awh.knownIssues=staticMetadata.knownIssues;
+  }
+}
+async function loadStaticMetadata(){
+  if(staticMetadata)return staticMetadata;
+  try{
+    const response=await fetch('./update-center-metadata.json',{credentials:'same-origin',cache:'no-store'});
+    if(!response.ok)return null;
+    const data=await response.json();
+    if(data?.schemaVersion!==1)return null;
+    staticMetadata=data;return data;
+  }catch{return null;}
 }
 function runtimeState(){
   if(center?.runtime?.state)return center.runtime.state;
@@ -544,7 +565,9 @@ async function refresh(){
   refreshing=true;$('updates-refresh').disabled=true;$('updates-freshness').textContent='กำลังตรวจทุกระบบ…';
   try{
     await loadAuthSession();
-    center=await loadUpdateCenter();
+    const [liveCenter]=await Promise.all([loadUpdateCenter(),loadStaticMetadata()]);
+    center=liveCenter;
+    applyStaticMetadata();
     $('updates-freshness').textContent='ตรวจล่าสุด '+new Date(center.generatedAt).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
     render();
     await Promise.allSettled([refreshBay(),refreshAgent()]);
