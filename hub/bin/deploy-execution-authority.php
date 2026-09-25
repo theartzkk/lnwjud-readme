@@ -21,6 +21,16 @@ try {
         fwrite(STDOUT, "DEPLOY_AUTHORITY=ACQUIRED\n");
         fwrite(STDOUT, "DEPLOY_AUTHORITY_EXECUTION_ID=" . $result['executionId'] . "\n");
         fwrite(STDOUT, "DEPLOY_AUTHORITY_LEASE_EXPIRES=" . $result['leaseExpiresAt'] . "\n");
+        fwrite(STDOUT, "DEPLOY_AUTHORITY_BORROWED=" . (($result['borrowed'] ?? false) ? '1' : '0') . "\n");
+        exit(0);
+    }
+    if ($action === 'verify') {
+        $execution = $argv[3] ?? '';
+        $seconds = isset($argv[4]) ? (int)$argv[4] : 1800;
+        $result = $service->verify($execution, $seconds);
+        fwrite(STDOUT, "DEPLOY_AUTHORITY=VERIFIED\n");
+        fwrite(STDOUT, "DEPLOY_AUTHORITY_EXECUTION_ID=" . $result['executionId'] . "\n");
+        fwrite(STDOUT, "DEPLOY_AUTHORITY_LEASE_EXPIRES=" . $result['leaseExpiresAt'] . "\n");
         exit(0);
     }
     if ($action === 'release') {
@@ -38,7 +48,7 @@ try {
         fwrite(STDOUT, "DEPLOY_AUTHORITY_EXPIRED_RELEASED=" . $result['releasedExpired'] . "\n");
         exit(0);
     }
-    fwrite(STDERR, "usage: deploy-execution-authority.php acquire <db> <release-id> [lease-seconds] | release <db> <execution-id> <success|failure> | reconcile <db>\n");
+    fwrite(STDERR, "usage: deploy-execution-authority.php acquire <db> <release-id> [lease-seconds] | verify <db> <execution-id> [lease-seconds] | release <db> <execution-id> <success|failure> | reconcile <db>\n");
     exit(2);
 } catch (HubDeployExecutionAuthorityException $error) {
     fwrite(STDERR, "DEPLOY_AUTHORITY_FAILED=" . $error->codeName . "\n");

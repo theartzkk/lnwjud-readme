@@ -2763,10 +2763,10 @@ final class HubControlPlaneService
             // expired (or corrupt null) leases keeps the original task and
             // conversation lineage intact while allowing a compatible worker
             // to resume it deliberately.
-            $stale = $this->pdo->prepare("SELECT task_id FROM control_tasks WHERE state IN ('PREPARING', 'RUNNING', 'QA') AND (lease_expires_at IS NULL OR lease_expires_at <= :at) ORDER BY updated_at, task_id LIMIT 20");
+            $stale = $this->pdo->prepare("SELECT task_id FROM control_tasks WHERE state IN ('PREPARING', 'RUNNING', 'QA') AND assigned_device_id IS NOT NULL AND (lease_expires_at IS NULL OR lease_expires_at <= :at) ORDER BY updated_at, task_id LIMIT 20");
             $stale->execute(['at' => $at]);
             foreach ($stale->fetchAll() as $staleRow) {
-                $release = $this->pdo->prepare("UPDATE control_tasks SET state = 'WAITING_FOR_WORKER', assigned_device_id = NULL, lease_expires_at = NULL, updated_at = :at WHERE task_id = :task AND state IN ('PREPARING', 'RUNNING', 'QA') AND (lease_expires_at IS NULL OR lease_expires_at <= :at)");
+                $release = $this->pdo->prepare("UPDATE control_tasks SET state = 'WAITING_FOR_WORKER', assigned_device_id = NULL, lease_expires_at = NULL, updated_at = :at WHERE task_id = :task AND state IN ('PREPARING', 'RUNNING', 'QA') AND assigned_device_id IS NOT NULL AND (lease_expires_at IS NULL OR lease_expires_at <= :at)");
                 $release->execute(['at' => $at, 'task' => $staleRow['task_id']]);
                 if ($release->rowCount() === 1) {
                     $this->pdo->prepare("UPDATE control_workers SET state = 'READY', busy_task_id = NULL, last_seen_at = :at WHERE busy_task_id = :task")->execute(['at' => $at, 'task' => $staleRow['task_id']]);

@@ -61,10 +61,34 @@ try {
     $pdo->prepare("INSERT INTO projects(project_id,name,type) VALUES(?,?,?)")->execute([$project,'Art’s Workspace Hub','node']);
     $pdo->prepare("INSERT INTO control_project_vaults(project_id,active_revision_id) VALUES(?,?)")->execute([$project,$revision]);
 
+
+    $parentTask = '11111111-1111-4111-8111-111111111111';
+    $parentExecution = '22222222-2222-4222-8222-222222222222';
+    $parentCheckpoint = json_encode(['schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>str_repeat('a',40),'releaseMode'=>'IDENTITY_CONVERGENCE','cleanupTopology'=>false,'transport'=>'LOCAL'], JSON_THROW_ON_ERROR);
+    $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(?,?,?,?, 'RUNNING',NULL,?,35,NULL,NULL,?,NULL,?,?,NULL)")
+        ->execute([$parentTask,$owner,$project,'Core Release parent','2026-09-15T01:00:00+00:00','core-release-parent',$now,$now]);
+    $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(?,?,?,?,'VPS','system.core.release','RUNNING','vps-core-release','2026-09-15T01:00:00+00:00',1,NULL,?,NULL,?,?)")
+        ->execute([$parentExecution,$parentTask,$project,$revision,$parentCheckpoint,$now,$now]);
+
     $service = new HubDeployExecutionAuthorityService($pdo);
+    $borrowed = $service->acquire('m21-aaaaaaaaaaaa', 600, $now);
+    dea_assert($borrowed['borrowed'] === true && $borrowed['executionId'] === $parentExecution, 'Core Release authority is borrowed instead of duplicated');
+    $verified = $service->verify($parentExecution, 600, '2026-09-15T00:30:10+00:00');
+    dea_assert($verified['executionId'] === $parentExecution, 'borrowed authority can be reverified after quiesce');
+    $service->release($parentExecution, false, '2026-09-15T00:30:20+00:00');
+    $parentState = $pdo->prepare("SELECT e.state AS execution,t.state AS task,x.state AS envelope FROM control_task_executions e JOIN control_tasks t USING(task_id) JOIN control_execution_envelopes x USING(execution_id) WHERE e.execution_id=?");
+    $parentState->execute([$parentExecution]);
+    $parentRow=$parentState->fetch();
+    dea_assert($parentRow['execution']==='RUNNING' && $parentRow['task']==='RUNNING' && $parentRow['envelope']==='ACTIVE', 'guarded deploy release cannot terminate borrowed Core Release authority');
+    $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED',lease_owner=NULL,lease_expires_at=NULL WHERE execution_id=?")->execute([$parentExecution]);
+    $pdo->prepare("UPDATE control_tasks SET state='COMPLETED',lease_expires_at=NULL WHERE task_id=?")->execute([$parentTask]);
+    $service->reconcile('2026-09-15T00:30:30+00:00');
+
     $first = $service->acquire('m21-aaaaaaaaaaaa', 600, $now);
-    dea_assert(is_string($first['executionId']) && $first['projectId'] === $project, 'first deploy authority acquired');
-    $active = $pdo->query("SELECT state FROM control_execution_envelopes")->fetchColumn();
+    dea_assert($first['borrowed'] === false && is_string($first['executionId']) && $first['projectId'] === $project, 'first standalone deploy authority acquired');
+    $activeQuery=$pdo->prepare("SELECT state FROM control_execution_envelopes WHERE execution_id=?");
+    $activeQuery->execute([$first['executionId']]);
+    $active = $activeQuery->fetchColumn();
     dea_assert($active === 'ACTIVE', 'first deploy envelope active');
 
     try {

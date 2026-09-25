@@ -267,6 +267,9 @@ test('guarded remote deploy holds canonical execution authority through mutation
   assert.ok(release > cutover && success > release, 'deploy authority must be released before success');
   assert.match(remote, /release_deploy_authority failure/);
   assert.match(remote, /deploy-execution-authority\.php" acquire/);
+  assert.match(remote, /deploy-execution-authority\.php" verify/);
+  assert.match(remote, /DEPLOY_AUTHORITY_BORROWED/);
+  assert.doesNotMatch(remote, /SELECT count\(\*\) FROM control_task_executions WHERE state IN \('LEASED','RUNNING'\).*required_capability <> 'system\.core\.release'/);
   assert.match(remote, /deploy-execution-authority\.php" release/);
   assert.match(validator, /EXECUTION_AUTHORITY_ACQUIRE/);
   assert.match(validator, /EXECUTION_AUTHORITY_RELEASED/);
@@ -279,4 +282,11 @@ test('standard production package entrypoints use canonical guarded paths', asyn
   assert.match(pkg.scripts['ops:owner-auth:activate'], /activate-owner-auth\.mjs --deploy --approve/);
   assert.doesNotMatch(pkg.scripts['ops:final-self-service:activate'], /\bsh deploy\/awh-control-plane\/deploy-control-plane\.sh\b/);
   assert.doesNotMatch(pkg.scripts['ops:project-source:refresh'], /\bsh deploy\/awh-control-plane\/deploy-control-plane\.sh\b/);
+});
+
+test('device lease recovery is scoped to tasks actually assigned to devices', async () => {
+  const service = await readFile(join(repoRoot, 'hub/src/HubControlPlaneService.php'), 'utf8');
+  assert.match(service, /SELECT task_id FROM control_tasks WHERE state IN \('PREPARING', 'RUNNING', 'QA'\) AND assigned_device_id IS NOT NULL/);
+  assert.match(service, /WHERE task_id = :task AND state IN \('PREPARING', 'RUNNING', 'QA'\) AND assigned_device_id IS NOT NULL/);
+  assert.doesNotMatch(service, /SELECT task_id FROM control_tasks WHERE state IN \('PREPARING', 'RUNNING', 'QA'\) AND \(lease_expires_at IS NULL/);
 });

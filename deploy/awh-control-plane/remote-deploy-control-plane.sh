@@ -123,6 +123,12 @@ OWNER_AUTH_SURFACE_BODY=
 CONTROL_ORIGIN_RENDER=
 CONTROL_INCLUDE_TMP=
 DEPLOY_AUTHORITY_EXECUTION=
+DEPLOY_AUTHORITY_BORROWED=0
+
+verify_deploy_authority() {
+  test -n "$DEPLOY_AUTHORITY_EXECUTION" || return 1
+  sudo -u awh-hub /usr/bin/php "$RELEASE/hub/bin/deploy-execution-authority.php" verify "$DB" "$DEPLOY_AUTHORITY_EXECUTION" 1800 >/dev/null
+}
 
 release_deploy_authority() {
   outcome=$1
@@ -567,7 +573,9 @@ sudo test -f "$RELEASE/hub/public/control-plane.php"; sudo test -f "$RELEASE/hub
 stage EXECUTION_AUTHORITY_ACQUIRE
 DEPLOY_AUTHORITY_OUTPUT=$(sudo -u awh-hub /usr/bin/php "$RELEASE/hub/bin/deploy-execution-authority.php" acquire "$DB" "$RELEASE_ID" 1800)
 DEPLOY_AUTHORITY_EXECUTION=$(printf '%s\n' "$DEPLOY_AUTHORITY_OUTPUT" | sed -n 's/^DEPLOY_AUTHORITY_EXECUTION_ID=//p' | tail -n 1)
+DEPLOY_AUTHORITY_BORROWED=$(printf '%s\n' "$DEPLOY_AUTHORITY_OUTPUT" | sed -n 's/^DEPLOY_AUTHORITY_BORROWED=//p' | tail -n 1)
 printf '%s' "$DEPLOY_AUTHORITY_EXECUTION" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' || exit 20
+case "$DEPLOY_AUTHORITY_BORROWED" in 0|1) ;; *) exit 20 ;; esac
 stage EXECUTION_AUTHORITY_ACQUIRED
 sync_enrollment_from_release; stage RUNTIME_LINEAGE_READY
 if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1 || test "$AUTOMATIONS" = 1 || test "$CLOUD_FIRST" = 1 || test "$CONVERSATION_LIFECYCLE" = 1; then sudo test -f "$RELEASE/hub/src/HubArtifactStore.php"; fi
@@ -622,7 +630,7 @@ elif test "$PROJECT_SOURCE_AUTHORITY" = 1; then
   sudo chown root:root "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP"; sudo chmod 0600 "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP"
   sudo systemctl stop awh-native-executor.timer; sudo systemctl stop awh-native-executor.service >/dev/null 2>&1 || true; EXECUTOR_TIMER_STOPPED=1; EXECUTOR_UNITS_PREEXISTING=1
   sudo systemctl stop awh-hosting-operator.timer; sudo systemctl stop awh-hosting-operator.service >/dev/null 2>&1 || true; HOSTING_UNITS_PREEXISTING=1
-  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM control_task_executions WHERE state IN ('LEASED','RUNNING') AND execution_id <> '$DEPLOY_AUTHORITY_EXECUTION' AND required_capability <> 'system.core.release';")" = 0; stage NATIVE_EXECUTOR_QUIESCED; stage HOSTING_OPERATOR_QUIESCED
+  verify_deploy_authority; stage NATIVE_EXECUTOR_QUIESCED; stage HOSTING_OPERATOR_QUIESCED
   DB_MUTATED=1
   if test "$M20_REFRESH" -eq 0; then stage PROJECT_SOURCE_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$PROJECT_SOURCE_MIGRATION" "$DB" >/dev/null; fi
   stage PROJECT_SOURCE_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$PROJECT_SOURCE_MIGRATION" "$DB" >/dev/null
@@ -658,7 +666,7 @@ elif test "$CONVERSATION_LIFECYCLE" = 1; then
   sudo chown root:root "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP"; sudo chmod 0600 "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP"
   sudo systemctl stop awh-native-executor.timer; sudo systemctl stop awh-native-executor.service >/dev/null 2>&1 || true; EXECUTOR_TIMER_STOPPED=1; EXECUTOR_UNITS_PREEXISTING=1
   sudo systemctl stop awh-hosting-operator.timer; sudo systemctl stop awh-hosting-operator.service >/dev/null 2>&1 || true; HOSTING_UNITS_PREEXISTING=1
-  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM control_task_executions WHERE state IN ('LEASED','RUNNING') AND execution_id <> '$DEPLOY_AUTHORITY_EXECUTION' AND required_capability <> 'system.core.release';")" = 0; stage NATIVE_EXECUTOR_QUIESCED; stage HOSTING_OPERATOR_QUIESCED
+  verify_deploy_authority; stage NATIVE_EXECUTOR_QUIESCED; stage HOSTING_OPERATOR_QUIESCED
   DB_MUTATED=1
   if test "$M19_REFRESH" -eq 0; then stage CONVERSATION_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$CONVERSATION_MIGRATION" "$DB" >/dev/null; fi
   stage CONVERSATION_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$CONVERSATION_MIGRATION" "$DB" >/dev/null
@@ -684,7 +692,7 @@ elif test "$CLOUD_FIRST" = 1; then
   sudo cp -p "$EXECUTOR_SERVICE_UNIT" "$EXECUTOR_SERVICE_BACKUP"; sudo cp -p "$EXECUTOR_TIMER_UNIT" "$EXECUTOR_TIMER_BACKUP"; sudo chown root:root "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP"; sudo chmod 0600 "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP"
   sudo systemctl stop awh-native-executor.timer; sudo systemctl stop awh-native-executor.service >/dev/null 2>&1 || true; EXECUTOR_TIMER_STOPPED=1; EXECUTOR_UNITS_PREEXISTING=1
   sudo systemctl stop awh-hosting-operator.timer; sudo systemctl stop awh-hosting-operator.service >/dev/null 2>&1 || true; HOSTING_UNITS_PREEXISTING=1
-  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM control_task_executions WHERE state IN ('LEASED','RUNNING') AND execution_id <> '$DEPLOY_AUTHORITY_EXECUTION' AND required_capability <> 'system.core.release';")" = 0; stage NATIVE_EXECUTOR_QUIESCED; stage HOSTING_OPERATOR_QUIESCED
+  verify_deploy_authority; stage NATIVE_EXECUTOR_QUIESCED; stage HOSTING_OPERATOR_QUIESCED
   DB_MUTATED=1
   if test "$M18_REFRESH" -eq 0; then stage CLOUD_FIRST_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$CLOUD_FIRST_MIGRATION" "$DB" >/dev/null; fi
   stage CLOUD_FIRST_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$CLOUD_FIRST_MIGRATION" "$DB" >/dev/null
@@ -716,7 +724,7 @@ elif test "$ACCOUNT_HOSTING" = 1; then
   sudo systemctl stop awh-native-executor.timer
   sudo systemctl stop awh-native-executor.service >/dev/null 2>&1 || true
   EXECUTOR_TIMER_STOPPED=1
-  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM control_task_executions WHERE state IN ('LEASED','RUNNING') AND execution_id <> '$DEPLOY_AUTHORITY_EXECUTION' AND required_capability <> 'system.core.release';")" = 0
+  verify_deploy_authority
   stage NATIVE_EXECUTOR_QUIESCED
 
   if test "$M17_REFRESH" -eq 0; then
@@ -758,7 +766,7 @@ elif test "$SELF_SUFFICIENT_AI" = 1; then
   sudo install -d -o root -g root -m 0750 "$EXECUTOR_BACKUP_ROOT"; sudo test ! -e "$EXECUTOR_SERVICE_BACKUP"; sudo test ! -e "$EXECUTOR_TIMER_BACKUP"
   sudo cp -p "$EXECUTOR_SERVICE_UNIT" "$EXECUTOR_SERVICE_BACKUP"; sudo cp -p "$EXECUTOR_TIMER_UNIT" "$EXECUTOR_TIMER_BACKUP"; sudo chown root:root "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP"; sudo chmod 0600 "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP"
   EXECUTOR_UNITS_PREEXISTING=1; sudo systemctl stop awh-native-executor.timer; sudo systemctl stop awh-native-executor.service >/dev/null 2>&1 || true; EXECUTOR_TIMER_STOPPED=1
-  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM control_task_executions WHERE state IN ('LEASED','RUNNING') AND execution_id <> '$DEPLOY_AUTHORITY_EXECUTION' AND required_capability <> 'system.core.release';")" = 0; stage NATIVE_EXECUTOR_QUIESCED
+  verify_deploy_authority; stage NATIVE_EXECUTOR_QUIESCED
   DB_MUTATED=1
   if test "$M16_REFRESH" -eq 0; then stage SELF_SUFFICIENT_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$SELF_SUFFICIENT_MIGRATION" "$DB" >/dev/null; fi
   stage SELF_SUFFICIENT_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$SELF_SUFFICIENT_MIGRATION" "$DB" >/dev/null
@@ -782,7 +790,7 @@ elif test "$AUTOMATIONS" = 1; then
   sudo install -d -o root -g root -m 0750 "$EXECUTOR_BACKUP_ROOT"; sudo test ! -e "$EXECUTOR_SERVICE_BACKUP"; sudo test ! -e "$EXECUTOR_TIMER_BACKUP"
   sudo cp -p "$EXECUTOR_SERVICE_UNIT" "$EXECUTOR_SERVICE_BACKUP"; sudo cp -p "$EXECUTOR_TIMER_UNIT" "$EXECUTOR_TIMER_BACKUP"; sudo chown root:root "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP"; sudo chmod 0600 "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP"
   EXECUTOR_UNITS_PREEXISTING=1; sudo systemctl stop awh-native-executor.timer; sudo systemctl stop awh-native-executor.service >/dev/null 2>&1 || true; EXECUTOR_TIMER_STOPPED=1
-  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM control_task_executions WHERE state IN ('LEASED','RUNNING') AND execution_id <> '$DEPLOY_AUTHORITY_EXECUTION' AND required_capability <> 'system.core.release';")" = 0; stage NATIVE_EXECUTOR_QUIESCED
+  verify_deploy_authority; stage NATIVE_EXECUTOR_QUIESCED
   DB_MUTATED=1
   if test "$M15_REFRESH" -eq 0; then stage AUTOMATION_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$AUTOMATION_MIGRATION" "$DB" >/dev/null; fi
   stage AUTOMATION_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$AUTOMATION_MIGRATION" "$DB" >/dev/null
@@ -806,7 +814,7 @@ elif test "$COST_AWARE_AI" = 1; then
   sudo install -d -o root -g root -m 0750 "$EXECUTOR_BACKUP_ROOT"; sudo test ! -e "$EXECUTOR_SERVICE_BACKUP"; sudo test ! -e "$EXECUTOR_TIMER_BACKUP"
   sudo cp -p "$EXECUTOR_SERVICE_UNIT" "$EXECUTOR_SERVICE_BACKUP"; sudo cp -p "$EXECUTOR_TIMER_UNIT" "$EXECUTOR_TIMER_BACKUP"; sudo chown root:root "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP"; sudo chmod 0600 "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP"
   EXECUTOR_UNITS_PREEXISTING=1; sudo systemctl stop awh-native-executor.timer; sudo systemctl stop awh-native-executor.service >/dev/null 2>&1 || true; EXECUTOR_TIMER_STOPPED=1
-  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM control_task_executions WHERE state IN ('LEASED','RUNNING') AND execution_id <> '$DEPLOY_AUTHORITY_EXECUTION' AND required_capability <> 'system.core.release';")" = 0; stage NATIVE_EXECUTOR_QUIESCED
+  verify_deploy_authority; stage NATIVE_EXECUTOR_QUIESCED
   DB_MUTATED=1
   if test "$M14_REFRESH" -eq 0; then stage COST_AWARE_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$COST_AWARE_MIGRATION" "$DB" >/dev/null; fi
   stage COST_AWARE_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$COST_AWARE_MIGRATION" "$DB" >/dev/null
@@ -829,7 +837,7 @@ elif test "$ANYWHERE_EXECUTION" = 1; then
   sudo install -d -o root -g root -m 0750 "$EXECUTOR_BACKUP_ROOT"; sudo test ! -e "$EXECUTOR_SERVICE_BACKUP"; sudo test ! -e "$EXECUTOR_TIMER_BACKUP"
   sudo cp -p "$EXECUTOR_SERVICE_UNIT" "$EXECUTOR_SERVICE_BACKUP"; sudo cp -p "$EXECUTOR_TIMER_UNIT" "$EXECUTOR_TIMER_BACKUP"; sudo chown root:root "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP"; sudo chmod 0600 "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP"
   EXECUTOR_UNITS_PREEXISTING=1; sudo systemctl stop awh-native-executor.timer; sudo systemctl stop awh-native-executor.service >/dev/null 2>&1 || true; EXECUTOR_TIMER_STOPPED=1
-  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM control_task_executions WHERE state IN ('LEASED','RUNNING') AND execution_id <> '$DEPLOY_AUTHORITY_EXECUTION' AND required_capability <> 'system.core.release';")" = 0; stage NATIVE_EXECUTOR_QUIESCED
+  verify_deploy_authority; stage NATIVE_EXECUTOR_QUIESCED
   DB_MUTATED=1
   if test "$M13_REFRESH" -eq 0; then stage ANYWHERE_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$ANYWHERE_MIGRATION" "$DB" >/dev/null; fi
   stage ANYWHERE_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$ANYWHERE_MIGRATION" "$DB" >/dev/null
@@ -865,7 +873,7 @@ elif test "$CENTRAL_PROJECT_AUTHORITY" = 1; then
     sudo systemctl stop awh-native-executor.timer
     sudo systemctl stop awh-native-executor.service >/dev/null 2>&1 || true
     EXECUTOR_TIMER_STOPPED=1
-    test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM control_task_executions WHERE state IN ('LEASED','RUNNING') AND execution_id <> '$DEPLOY_AUTHORITY_EXECUTION' AND required_capability <> 'system.core.release';")" = 0
+    verify_deploy_authority
     stage CENTRAL_PROJECT_MIGRATION_VERIFIED
   else
     DB_MUTATED=1; stage CENTRAL_PROJECT_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$CENTRAL_PROJECT_MIGRATION" "$DB" >/dev/null
