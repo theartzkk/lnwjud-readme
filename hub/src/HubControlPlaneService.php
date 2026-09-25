@@ -970,6 +970,7 @@ final class HubControlPlaneService
         ];
         $passed = count(array_filter($checks, static fn(array $item): bool => $item['pass'] === true));
         $executionAuthority = $this->capabilities !== null ? $this->capabilities->executionAuthorityStatus($now) : ['schemaVersion'=>1,'mode'=>'UNAVAILABLE','parallelReadsAllowed'=>true,'parallelNonConflictingMutationsAllowed'=>false,'mutationBoundary'=>'UNAVAILABLE','activeMutationCount'=>0,'waitingMutationCount'=>0,'activeMutations'=>[],'waitingMutations'=>[]];
+        $capabilityFabric = $this->capabilities !== null ? $this->capabilities->status(true, $now) : ['schemaVersion'=>1,'anywhereFirst'=>true,'deviceRequired'=>false,'summary'=>['ready'=>0,'cloudReady'=>0,'optional'=>0,'planned'=>0],'capabilities'=>[],'providers'=>[]];
         return [
             'schemaVersion' => 1,
             'telemetry' => $telemetry,
@@ -988,6 +989,7 @@ final class HubControlPlaneService
             'deviceRoles' => $health['deviceRoles'] ?? ['schemaVersion'=>1,'state'=>'UNAVAILABLE','devices'=>[]],
             'autonomousWork' => $autonomous,
             'executionAuthority' => $executionAuthority,
+            'capabilityFabric' => $capabilityFabric,
             'activity' => $activity,
             'incidents' => $incidents,
             'executionTriage' => $executionTriage,
@@ -2681,6 +2683,7 @@ final class HubControlPlaneService
             'tool.ffmpeg' => 'FFmpeg', 'tool.ffprobe' => 'FFprobe', 'tool.codex' => 'ผู้เชี่ยวชาญโค้ด', 'tool.context-mode' => 'Context Optimizer', 'tool.teamai' => 'TeamAI',
             'tool.office.word' => 'Word', 'tool.office.excel' => 'Excel', 'tool.office.powerpoint' => 'PowerPoint',
             'tool.browser.chrome' => 'Chrome', 'tool.browser.edge' => 'Edge', 'tool.browser.safari' => 'Safari',
+            'tool.awh-device-system' => 'AWH System', 'tool.awh-device-gui' => 'AWH Screen & Apps',
         ];
         $out = []; foreach ($capabilities as $capability) if (isset($labels[$capability])) $out[] = $labels[$capability];
         return array_values(array_unique($out));

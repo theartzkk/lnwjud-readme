@@ -130,6 +130,11 @@ test('lightweight AWH Device Runtime is pinned, self-updating and rollback-safe'
   assert.match(updater, /\.local\/share\/bay-remote\/node_modules\/\.bin\/desktop-commander/);
   assert.match(installer, /ensure_compat_bin/);
   assert.match(updater, /ensure_compat_bin/);
+  assert.match(installer, /ensure_awh_mcp_child/);
+  assert.match(updater, /ensure_awh_mcp_child/);
+  assert.match(installer, /awh-device-system/);
+  assert.match(updater, /scripts=refreshed mcp_child=awh-device-system/);
+  assert.ok(updater.indexOf('for asset in device-runtime') < updater.indexOf('AWH_DEVICE_RUNTIME=CURRENT'), 'signed runtime scripts must refresh before current-version exit');
   assert.match(patch, /DC_REMOTE_DEVICE/);
   assert.match(patch, /previewForRemoteLog/);
 });

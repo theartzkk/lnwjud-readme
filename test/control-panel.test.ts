@@ -18,7 +18,7 @@ test('Owner Control Panel composes existing authorities without a parallel backe
     readFile(join(ROOT,'web/panel.js'),'utf8'),
     readFile(join(ROOT,'web/panel.css'),'utf8'),
   ]);
-  for(const label of ['Websites','Domains & SSL','Files & Storage','Databases','Backups','Security','Server & Services','Users & Access','AI & Costs','Source Authority'])assert.match(html,new RegExp(label.replace(/[&]/g,'\\&')));
+  for(const label of ['Websites','Domains & SSL','Files & Storage','Databases','Backups','Security','Server & Services','AWH Agent Tools','Users & Access','AI & Costs','Source Authority'])assert.match(html,new RegExp(label.replace(/[&]/g,'\\&')));
   assert.match(js,/requireOwnerSession/);
   assert.match(js,/loadInfrastructure/);
   assert.doesNotMatch(js,/Promise\.allSettled\(\[.*loadInfrastructure/);
@@ -57,6 +57,11 @@ test('Owner entry and standalone admin pages converge on Control Panel',async()=
   for(const page of [hosting,database,infrastructure,trust,review])assert.match(page,/panel\.html/);
   assert.match(app,/awh-settings/);
   assert.match(app,/requestedOwnerSettings/);
+  assert.match(infrastructure,/capability-fabric/);
+  const infrastructureJs=await readFile(join(ROOT,'web','infrastructure.js'),'utf8');
+  const controlService=await readFile(join(ROOT,'hub','src','HubControlPlaneService.php'),'utf8');
+  assert.match(infrastructureJs,/renderCapabilityFabric/);
+  assert.match(controlService,/capabilityFabric/);
 });
 
 

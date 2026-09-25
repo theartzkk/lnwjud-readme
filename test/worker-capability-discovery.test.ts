@@ -81,7 +81,7 @@ test('external CLI discovery is registry-driven and never grants execution autho
 test('macOS device runtime discovery exposes AWH system plus KRUART GUI inventory only when both are installed', async () => {
   const home = '/Users/fixture';
   const paths = new Set([
-    '/Users/fixture/.kruart/ai-control/kui',
+    '/Users/fixture/Library/Application Support/AWH/Engines/lnwjud/current/Contents/MacOS/lnwjud',
     '/Users/fixture/Library/Application Support/AWH/RemoteWorker/runtime/node_modules/.bin/desktop-commander',
   ]);
   const tools = await discoverWorkerTools({

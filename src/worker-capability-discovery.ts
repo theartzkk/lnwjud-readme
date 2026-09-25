@@ -84,6 +84,7 @@ export async function discoverWorkerTools(options: WorkerToolProbeOptions = {}):
       join(home, '.local', 'share', 'bay-remote', 'node_modules', '.bin', 'desktop-commander'),
     ] : [];
     const guiCandidates = [
+      ...(home ? [join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'lnwjud', 'current', 'Contents', 'MacOS', 'lnwjud')] : []),
       '/Applications/lnwjud.app/Contents/MacOS/lnwjud',
       ...(home ? [join(home, '.kruart', 'ai-control', 'kui')] : []),
     ];

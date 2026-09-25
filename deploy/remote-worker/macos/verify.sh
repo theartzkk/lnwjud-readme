@@ -22,6 +22,21 @@ grep -q 'DC_REMOTE_DEVICE' "$PKG/dist/index.js"
 plutil -lint "$PLIST" >/dev/null
 MODE=absent
 if [ -f "$SESSION" ]; then MODE="$(stat -f '%Lp' "$SESSION")"; [ "$MODE" = 600 ] || { echo "session_mode=FAIL:$MODE"; exit 1; }; fi
+LNWJUD_DB="$HOME/Library/Application Support/AWH/DeviceRuntime/lnwjud/lnwjud.sqlite"
+if [ -f "$LNWJUD_DB" ]; then
+  command -v python3 >/dev/null 2>&1 || { echo 'mcp_child=FAIL:python3-unavailable'; exit 1; }
+  AWH_LNWJUD_DB="$LNWJUD_DB" AWH_DEVICE_SYSTEM_COMMAND="$ROOT/runtime/node_modules/.bin/desktop-commander" python3 <<'PYCFG'
+import json, os, sqlite3, sys
+con=sqlite3.connect(os.environ['AWH_LNWJUD_DB'])
+try:
+    row=con.execute("SELECT value FROM settings WHERE key='extensions'").fetchone()
+    cfg=json.loads(row[0]) if row else {}
+    server=(cfg.get('extraMcpServers') or {}).get('awh-device-system') or {}
+    if server.get('command') != os.environ['AWH_DEVICE_SYSTEM_COMMAND']: sys.exit(7)
+finally:
+    con.close()
+PYCFG
+fi
 SESSION_STATE=none
 if [ -f "$SESSION" ]; then
   SESSION_PATH="$SESSION" node <<'NODE'
@@ -34,4 +49,4 @@ fi
 COUNT="$(ps ax -o command= | awk -v needle="$ROOT/runtime/node_modules/.bin/desktop-commander remote --persist-session" '$1=="node" && index($0,needle)>0 {n++} END{print n+0}')"
 [ "$COUNT" -eq 1 ] || { echo "remote_parents=FAIL:$COUNT"; exit 1; }
 launchctl print "gui/$(id -u)/com.awh.remote-worker" >/dev/null 2>&1 || { echo 'launchagent=FAIL'; exit 1; }
-echo "AWH_REMOTE_WORKER_VERIFY=PASS version=$VERSION session=$SESSION_STATE remote_parents=$COUNT"
+echo "AWH_REMOTE_WORKER_VERIFY=PASS version=$VERSION session=$SESSION_STATE remote_parents=$COUNT mcp_child=awh-device-system"
