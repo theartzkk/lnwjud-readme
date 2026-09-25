@@ -10,6 +10,8 @@ require_once __DIR__ . '/HubArtifactStore.php';
 require_once __DIR__ . '/HubFoundingMemoryService.php';
 require_once __DIR__ . '/HubCapabilityRegistryService.php';
 require_once __DIR__ . '/HubSecretContentPolicy.php';
+require_once __DIR__ . '/HubVerificationGate.php';
+require_once __DIR__ . '/HubVerificationIntelligence.php';
 require_once __DIR__ . '/HubBackupService.php';
 require_once __DIR__ . '/HubInfrastructureService.php';
 require_once __DIR__ . '/HubStorageGovernanceService.php';
@@ -170,13 +172,13 @@ final class HubDurableExecutionService
     /** @return list<array<string,mixed>> */
     public function recoverExpired(?string $now = null): array
     {
-        $this->assertReady(); $at = self::timestamp($now ?? gmdate('c')); $q = $this->pdo->prepare("SELECT execution_id, task_id, attempt_count FROM control_task_executions WHERE state IN ('LEASED', 'RUNNING') AND (lease_expires_at IS NULL OR lease_expires_at <= :at) LIMIT 50"); $q->execute(['at' => $at]); $released = [];
+        $this->assertReady(); $at = self::timestamp($now ?? gmdate('c')); $q = $this->pdo->prepare("SELECT execution_id, task_id, attempt_count, executor_kind FROM control_task_executions WHERE state IN ('LEASED', 'RUNNING') AND (lease_expires_at IS NULL OR lease_expires_at <= :at) LIMIT 50"); $q->execute(['at' => $at]); $released = [];
         foreach ($q->fetchAll() as $row) {
             $failed = (int) $row['attempt_count'] >= self::MAX_ATTEMPTS;
             $update = $this->pdo->prepare("UPDATE control_task_executions SET state = CASE WHEN attempt_count >= :max THEN 'FAILED' ELSE 'QUEUED' END, lease_owner = NULL, lease_expires_at = NULL, last_error_code = 'LEASE_EXPIRED', updated_at = :at WHERE execution_id = :id AND state IN ('LEASED', 'RUNNING') AND (lease_expires_at IS NULL OR lease_expires_at <= :at)");
             $update->execute(['max' => self::MAX_ATTEMPTS, 'at' => $at, 'id' => $row['execution_id']]);
             if ($update->rowCount() !== 1) continue;
-            $taskState = $failed ? 'FAILED' : 'WAITING_FOR_WORKER';
+            $taskState = $failed ? 'FAILED' : ((string)($row['executor_kind'] ?? '') === 'VPS' ? 'QUEUED' : 'WAITING_FOR_WORKER');
             $this->pdo->prepare('UPDATE control_tasks SET state=:state, progress=0, failure_code=:code, lease_expires_at=NULL, updated_at=:at WHERE task_id=:task')->execute(['state'=>$taskState,'code'=>'LEASE_EXPIRED','at'=>$at,'task'=>$row['task_id']]);
             $this->event((string) $row['task_id'], $taskState, 0, $failed ? 'expired execution lease reached retry limit' : 'expired execution lease recovered; bounded retry delayed', $at);
             if (HubCapabilityRegistryService::schemaPresent($this->pdo)) (new HubCapabilityRegistryService($this->pdo))->updateEnvelopeState((string) $row['execution_id'], $failed ? 'RELEASED' : 'WAITING', null, $at);
@@ -196,7 +198,7 @@ final class HubDurableExecutionService
             if (!is_array($row)) { $this->pdo->exec('COMMIT'); return null; }
             $update = $this->pdo->prepare("UPDATE control_task_executions SET state = 'RUNNING', lease_owner = :owner, lease_expires_at = :expires, attempt_count = attempt_count + 1, updated_at = :at WHERE execution_id = :id AND state = 'QUEUED'"); $update->execute(['owner' => self::EXECUTOR_ID, 'expires' => $expires, 'at' => $at, 'id' => $row['execution_id']]);
             if ($update->rowCount() !== 1) { $this->pdo->exec('ROLLBACK'); return null; }
-            $this->pdo->prepare("UPDATE control_tasks SET state = 'RUNNING', progress = 15, updated_at = :at WHERE task_id = :task AND state IN ('QUEUED', 'WAITING_FOR_WORKER')")->execute(['at' => $at, 'task' => $row['task_id']]); $this->event((string) $row['task_id'], 'RUNNING', 15, str_starts_with((string) $row['required_capability'], 'project.mutate.') ? 'server-native candidate workspace started' : 'server-native inspection started', $at); if (HubCapabilityRegistryService::schemaPresent($this->pdo)) (new HubCapabilityRegistryService($this->pdo))->updateEnvelopeState((string) $row['execution_id'], 'ACTIVE', $expires, $at); $this->pdo->exec('COMMIT'); return $row;
+            $this->pdo->prepare("UPDATE control_tasks SET state = 'RUNNING', progress = 15, updated_at = :at WHERE task_id = :task AND state IN ('QUEUED', 'WAITING_FOR_WORKER')")->execute(['at' => $at, 'task' => $row['task_id']]); $this->event((string) $row['task_id'], 'RUNNING', 15, str_starts_with((string) $row['required_capability'], 'project.mutate.') ? 'server-native candidate workspace started' : 'server-native inspection started', $at); if (HubCapabilityRegistryService::schemaPresent($this->pdo)) (new HubCapabilityRegistryService($this->pdo))->updateEnvelopeState((string) $row['execution_id'], 'ACTIVE', $expires, $at, true); $this->pdo->exec('COMMIT'); return $row;
         } catch (Throwable $error) { $this->rollbackImmediate(); if ($error instanceof HubDurableExecutionException) throw $error; throw new HubDurableExecutionException('Server execution claim failed', 'EXECUTION_CLAIM_FAILED'); }
     }
 
@@ -229,7 +231,7 @@ final class HubDurableExecutionService
         try {
             $this->pdo->exec('BEGIN IMMEDIATE');
             $this->pdo->prepare('UPDATE control_task_executions SET state = :state, lease_owner = NULL, lease_expires_at = NULL, checkpoint_json = :checkpoint, last_error_code = :code, updated_at = :at WHERE execution_id = :id')->execute(['state' => $state, 'checkpoint' => $checkpoint, 'code' => $code, 'at' => $at, 'id' => $claimed['execution_id']]);
-            $taskState = $terminal ? 'FAILED' : 'WAITING_FOR_WORKER';
+            $taskState = $terminal ? 'FAILED' : ($waiting ? 'WAITING_FOR_WORKER' : 'QUEUED');
             $summary = $terminal ? self::providerFailureSummary($code) : null;
             $this->pdo->prepare('UPDATE control_tasks SET state = :state, progress = 0, failure_code = :code, result_summary = COALESCE(:summary, result_summary), lease_expires_at = NULL, updated_at = :at WHERE task_id = :task')->execute(['state' => $taskState, 'code' => $code, 'summary' => $summary, 'at' => $at, 'task' => $claimed['task_id']]);
             $eventMessage = $retrying ? 'bounded retry queued on the same task' : ($waiting ? 'work preserved; automatic retry paused' : 'server-native execution failed');
@@ -255,6 +257,7 @@ final class HubDurableExecutionService
             'PROVIDER_PERMISSION_DENIED' => 'OpenAI ยังไม่อนุญาตให้บัญชีหรือโปรเจกต์นี้ใช้คำขอที่ตั้งไว้ งานถูกหยุดไว้โดยไม่อ้างว่าเสร็จแล้ว',
             'PROVIDER_MODEL_UNAVAILABLE' => 'โมเดล AI ที่ตั้งไว้ยังใช้กับบัญชีนี้ไม่ได้ กรุณาเลือกโมเดลอื่นแล้วทดสอบการเชื่อมต่อ',
             'PROVIDER_REQUEST_INVALID' => 'AWH ส่งคำขอ AI ไม่สำเร็จ ระบบหยุดงานไว้โดยไม่อ้างว่าเสร็จแล้ว',
+            'PROVIDER_ACCOUNT_NOT_FUNDED' => 'บัญชีนี้ใช้ AWH โดยไม่ใช้ค่า AI ของเจ้าของระบบ งานถูกหยุดไว้โดยไม่เกิดค่า AI ของเจ้าของ หากต้องการคุยกับ AI ให้เปิด ChatGPT ด้วยบัญชีของคุณเอง',
             default => null,
         };
     }
@@ -369,7 +372,7 @@ final class HubDurableExecutionService
     }
 
     private static function sameGoal(string $a, string $b): bool { $normal = static fn(string $v): string => strtolower(preg_replace('/\s+/u',' ',trim($v)) ?? trim($v)); return $normal($a) === $normal($b); }
-    private static function inspectionFallbackEligible(string $code): bool { return in_array($code, ['PROVIDER_UNAVAILABLE', 'PROVIDER_RATE_LIMITED', 'PROVIDER_FAILED'], true); }
+    private static function inspectionFallbackEligible(string $code): bool { return in_array($code, ['PROVIDER_UNAVAILABLE', 'PROVIDER_RATE_LIMITED', 'PROVIDER_FAILED', 'PROVIDER_ACCOUNT_NOT_FUNDED'], true); }
     private static function highImpactGoal(string $goal): bool { return preg_match('/(?:deploy|production|prod\b|ลบข้อมูล|delete\b|drop\b|billing|ซื้อ|ชำระ|permission|สิทธิ์|secret|credential|api\s*key|rotate|migration|migrate|schema\s+change|ฐานข้อมูล)/iu', $goal) === 1; }
 
     /** @param array<string,mixed> $claimed @param array<string,mixed> $checkpoint */
@@ -608,7 +611,12 @@ final class HubDurableExecutionService
         $store = $this->artifacts;
         if ($store === null) throw new HubDurableExecutionException('Artifact object storage is unavailable', 'ARTIFACT_STORAGE_UNAVAILABLE');
         $artifactId = self::uuidFromBytes(random_bytes(16));
-        $report = ['schemaVersion' => 2, 'kind' => 'project-candidate', 'projectId' => (string) $claimed['project_id'], 'taskId' => (string) $claimed['task_id'], 'baseRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'contentSha256' => $candidate['contentSha256'], 'diff' => $diff, 'qa' => ['workspaceCapture' => 'PASS', 'manifestIntegrity' => 'PASS', 'candidate' => $qa], 'createdAt' => $at];
+        $paths = array_values(array_unique(array_merge($diff['added'], $diff['changed'], $diff['deleted'])));
+        $intelligence = HubVerificationIntelligence::plan($paths);
+        $qaEvidence = ['workspaceCapture' => 'PASS', 'manifestIntegrity' => 'PASS', 'candidate' => $qa, 'intelligence' => $intelligence];
+        $verification = HubVerificationGate::evaluateCandidate($qaEvidence);
+        try { HubVerificationGate::assertPromotable($verification); } catch (RuntimeException) { throw new HubDurableExecutionException('Candidate verification blocked promotion', 'CANDIDATE_QA_FAILED'); }
+        $report = ['schemaVersion' => 2, 'kind' => 'project-candidate', 'projectId' => (string) $claimed['project_id'], 'taskId' => (string) $claimed['task_id'], 'baseRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'contentSha256' => $candidate['contentSha256'], 'diff' => $diff, 'qa' => $qaEvidence, 'verification' => $verification, 'createdAt' => $at];
         $file = $workspace . '/.awh-candidate-report.json';
         if (@file_put_contents($file, json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR), LOCK_EX) === false) throw new HubDurableExecutionException('Candidate report could not be created', 'ARTIFACT_STORAGE_FAILED');
         try { $stored = $store->storeFile($artifactId, $file); } catch (HubArtifactStoreException $error) { throw new HubDurableExecutionException('Candidate artifact storage is unavailable', $error->codeName); }
@@ -631,7 +639,7 @@ final class HubDurableExecutionService
             $this->pdo->exec('BEGIN IMMEDIATE');
             $done = $this->pdo->prepare("UPDATE control_task_executions SET state = 'COMPLETED', lease_expires_at = NULL, updated_at = :at, last_error_code = NULL WHERE execution_id = :id AND state = 'RUNNING' AND lease_owner = :owner"); $done->execute(['at' => $at, 'id' => $claimed['execution_id'], 'owner' => self::EXECUTOR_ID]); if ($done->rowCount() !== 1) throw new HubDurableExecutionException('Server execution lease was lost', 'EXECUTION_LEASE_LOST');
             $this->pdo->prepare("UPDATE control_tasks SET state = 'WAITING_FOR_APPROVAL', progress = 90, result_summary = :summary, failure_code = NULL, lease_expires_at = NULL, updated_at = :at WHERE task_id = :task")->execute(['summary' => $summary, 'at' => $at, 'task' => $claimed['task_id']]);
-            $scope = json_encode(['taskId' => (string) $claimed['task_id'], 'projectId' => (string) $claimed['project_id'], 'expectedActiveRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'artifactId' => $artifactId, 'evidenceSchemaVersion' => 2, 'qaStatus' => $qaStatus], JSON_THROW_ON_ERROR);
+            $scope = json_encode(['taskId' => (string) $claimed['task_id'], 'projectId' => (string) $claimed['project_id'], 'expectedActiveRevisionId' => $candidate['parentRevisionId'], 'candidateRevisionId' => $candidate['revisionId'], 'contentSha256' => $candidate['contentSha256'], 'artifactId' => $artifactId, 'evidenceSchemaVersion' => 3, 'qaStatus' => $qaStatus], JSON_THROW_ON_ERROR);
             $this->pdo->prepare("INSERT INTO control_approvals(approval_id, task_id, action, scope_json, status, expires_at, decided_at) VALUES(:id, :task, 'project.revision.promote', :scope, 'PENDING', :expires, NULL)")->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'task' => $claimed['task_id'], 'scope' => $scope, 'expires' => gmdate('c', strtotime($at) + 86400)]);
             $this->event((string) $claimed['task_id'], 'WAITING_FOR_APPROVAL', 90, 'candidate revision is ready for owner approval', $at);
             $this->appendConversationMessage((string) $claimed['conversation_id'], (string) $claimed['task_id'], 'RESULT', $summary . ' [ดูรายงาน candidate]', $at);

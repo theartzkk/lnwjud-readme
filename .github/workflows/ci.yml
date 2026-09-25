@@ -191,7 +191,8 @@ jobs:
       - name: Create portable Windows release evidence
         shell: pwsh
         run: |
-          node scripts/release/create-desktop-release-evidence.mjs --platform win32 --architecture x64 --package AWH-Windows-x64.zip --source-sha $env:GITHUB_SHA --output AWH-Windows-x64.release.json
+          $treeSha = (git rev-parse "$env:GITHUB_SHA^{tree}").Trim()
+          node scripts/release/create-desktop-release-evidence.mjs --platform win32 --architecture x64 --package AWH-Windows-x64.zip --source-sha $env:GITHUB_SHA --source-tree-sha $treeSha --output AWH-Windows-x64.release.json
           Get-Content AWH-Windows-x64.release.json -Raw | Write-Host
       - name: Verify packaged app and Squirrel installer set
         shell: pwsh
@@ -283,23 +284,53 @@ jobs:
       - run: npm run test:desktop-native
       - name: Package macOS x64
         run: npm run desktop:package:mac:x64
-      - name: Verify packaged macOS runtime
-        run: npm run desktop:verify:mac
-      - name: Create portable macOS archive
+      - name: Verify packaged macOS x64 runtime
+        run: node scripts/qa/verify-packaged-bundle.mjs darwin x64
+      - name: Create macOS x64 internal archive and Beta installer
         run: |
-          ditto -c -k --sequesterRsrc --keepParent out/AWH-darwin-x64/AWH.app AWH-macOS-x64.zip
+          ditto -c -k --sequesterRsrc --keepParent "out/AWH Agent-darwin-x64/AWH Agent.app" AWH-macOS-x64.zip
           test -s AWH-macOS-x64.zip
-          shasum -a 256 AWH-macOS-x64.zip
-      - name: Create portable macOS release evidence
+          node scripts/create-macos-dmg.mjs x64
+          cp "out/make/dmg/x64/AWH-Agent-Beta-macOS-x64.dmg" AWH-Agent-Beta-macOS-x64.dmg
+          test -s AWH-Agent-Beta-macOS-x64.dmg
+          source_tree_sha="$(git rev-parse "${GITHUB_SHA}^{tree}")"
+          node scripts/release/create-desktop-release-evidence.mjs --platform darwin --architecture x64 --package AWH-macOS-x64.zip --source-sha "$GITHUB_SHA" --source-tree-sha "$source_tree_sha" --output AWH-macOS-x64.release.json
+          node scripts/release/create-desktop-installer-evidence.mjs --platform darwin --architecture x64 --package AWH-Agent-Beta-macOS-x64.dmg --source-sha "$GITHUB_SHA" --output AWH-Agent-Beta-macOS-x64.installer.json
+          shasum -a 256 AWH-macOS-x64.zip AWH-Agent-Beta-macOS-x64.dmg
+      - name: Package macOS arm64
+        run: npm run desktop:package:mac:arm64
+      - name: Verify packaged macOS arm64 structure
+        run: node scripts/qa/verify-packaged-bundle.mjs darwin arm64
+      - name: Create macOS arm64 internal archive and Beta installer
         run: |
-          node scripts/release/create-desktop-release-evidence.mjs --platform darwin --architecture x64 --package AWH-macOS-x64.zip --source-sha "$GITHUB_SHA" --output AWH-macOS-x64.release.json
-          cat AWH-macOS-x64.release.json
-      - name: Upload macOS portable artifact
+          ditto -c -k --sequesterRsrc --keepParent "out/AWH Agent-darwin-arm64/AWH Agent.app" AWH-macOS-arm64.zip
+          test -s AWH-macOS-arm64.zip
+          node scripts/create-macos-dmg.mjs arm64
+          cp "out/make/dmg/arm64/AWH-Agent-Beta-macOS-arm64.dmg" AWH-Agent-Beta-macOS-arm64.dmg
+          test -s AWH-Agent-Beta-macOS-arm64.dmg
+          source_tree_sha="$(git rev-parse "${GITHUB_SHA}^{tree}")"
+          node scripts/release/create-desktop-release-evidence.mjs --platform darwin --architecture arm64 --package AWH-macOS-arm64.zip --source-sha "$GITHUB_SHA" --source-tree-sha "$source_tree_sha" --output AWH-macOS-arm64.release.json
+          node scripts/release/create-desktop-installer-evidence.mjs --platform darwin --architecture arm64 --package AWH-Agent-Beta-macOS-arm64.dmg --source-sha "$GITHUB_SHA" --output AWH-Agent-Beta-macOS-arm64.installer.json
+          shasum -a 256 AWH-macOS-arm64.zip AWH-Agent-Beta-macOS-arm64.dmg
+      - name: Upload macOS x64 artifact
         uses: actions/upload-artifact@v7
         with:
           name: AWH-macOS-x64
           path: |
             AWH-macOS-x64.zip
             AWH-macOS-x64.release.json
+            AWH-Agent-Beta-macOS-x64.dmg
+            AWH-Agent-Beta-macOS-x64.installer.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload macOS arm64 artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: AWH-macOS-arm64
+          path: |
+            AWH-macOS-arm64.zip
+            AWH-macOS-arm64.release.json
+            AWH-Agent-Beta-macOS-arm64.dmg
+            AWH-Agent-Beta-macOS-arm64.installer.json
           if-no-files-found: error
           retention-days: 14

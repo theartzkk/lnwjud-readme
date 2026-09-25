@@ -22,7 +22,13 @@ test('canonical Dashboard is intent-first with a three-item mobile navigation',a
  assert.match(index,/data-owner-destination="home"/);
  assert.match(index,/data-owner-destination="awh"[^>]*>[\s\S]{0,120}<span>ทำงาน<\/span>/);
  assert.doesNotMatch(index,/Channel และ SHA-256|Source of Truth ของตัวเอง|AI WORKSPACE/);
- assert.match(index,/โปรแกรมสำหรับ Windows และ macOS พร้อมติดตั้ง/);
+ assert.match(index,/ไม่ต้องติดตั้งโปรแกรมเพื่อเริ่มใช้งาน/);
+ assert.match(index,/id="install-web-app"/);
+ assert.match(index,/id="install-web-app-home"/);
+ assert.match(index,/data-install-web-app/);
+ assert.match(index,/id="install-guide-sheet"/);
+ assert.match(index,/เพิ่มไปยังหน้าจอโฮม/);
+ assert.match(index,/ไม่ต้องลง AWH Agent/);
  assert.match(index,/พื้นที่ทำงาน/);
  assert.match(dashboard,/openWork\(command\.value, false\)/);
  assert.match(dashboard,/\$\('attachment-open'\)\?\.click\(\)/);

@@ -27,5 +27,5 @@ test('release retry identity is bound before the web build and strictly bounded'
  assert.match(sw,new RegExp(`awh-shell-m16-${release.slice(0,12)}-r2`));
  await assert.rejects(execFileAsync('/bin/sh',[deploy,'--dry-run','--owner-auth','--self-sufficient-ai'],{cwd:root,env:{...process.env,AWH_SOURCE_ROOT:root,AWH_RELEASE_COMMIT:release,AWH_HUB_HOSTNAME:'awh.example',AWH_RELEASE_ATTEMPT:'r0'}}),/AWH_RELEASE_ATTEMPT must be empty or r1\.\.r999/);
  const remoteSource=await readFile(remote,'utf8');
- assert.match(remoteSource,/m\(4\|6\|7\|8\|9\|10\|11\|12\|13\|14\|15\|16\|17\|18\|19\|20\|21\).*12.*r\[1-9\]/s);
+ assert.match(remoteSource,/m\(4\|6\|7\|8\|9\|10\|11\|12\|13\|14\|15\|16\|17\|18\|19\|20\|21\|22\).*12.*r\[1-9\]/s);
 });

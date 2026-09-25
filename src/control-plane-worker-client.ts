@@ -85,7 +85,8 @@ function boundedTask(value: unknown): WorkerTask {
   return { taskId: task.taskId, projectId: task.projectId, conversationId: task.conversationId === undefined || task.conversationId === null ? null : task.conversationId, goal: task.goal, state: task.state, progress: task.progress, assignedDevice: task.assignedDevice, approvalStatus: task.approvalStatus === undefined ? null : task.approvalStatus as WorkerTask['approvalStatus'], execution };
 }
 
-export interface CentralExecutionPacket { executionId: string; taskId: string; projectId: string; vaultRevisionId: string; ownerProtocol: string; capabilityPlan: WorkerCapabilityPlan | null; }
+export interface OwnerWorkProfile { primaryRoute: 'REMOTE_DEVICE' | 'VPS_DIRECT' | 'CONNECTED_FILES' | 'DIRECT_PLUS_REMOTE' | 'AUTO_FIT'; requiresRealDeviceEvidence: boolean; realSchoolEvidenceRequired: boolean; generatedSchoolRealityAllowed: false; permanentRepairRequired: boolean; mixedBoundary: boolean; evidenceDimensions: { requiresDeviceState: boolean; requiresServerState: boolean; requiresConnectedFiles: boolean; requiresRealSchoolEvidence: boolean; requiresNativeApp: boolean; requiresPublicWeb: boolean }; reason: string; }
+export interface CentralExecutionPacket { executionId: string; taskId: string; projectId: string; vaultRevisionId: string; ownerProtocol: string; workProfile: OwnerWorkProfile; capabilityPlan: WorkerCapabilityPlan | null; }
 
 export interface WorkerConversationMessage { messageId: string; taskId: string | null; kind: 'user' | 'assistant' | 'progress' | 'approval' | 'result' | 'failure'; sequence: number; body: string; createdAt: string; }
 export interface WorkerConversation { conversation: { conversationId: string; projectId: string; createdAt: string; updatedAt: string; lastTaskId: string | null } | null; messages: WorkerConversationMessage[]; tasks: WorkerTask[]; artifacts: Array<Record<string, unknown>>; approvals: Array<Record<string, unknown>>; }
@@ -136,7 +137,7 @@ export class ControlPlaneWorkerClient {
 
   async heartbeat(capabilities: string[], state: 'READY' | 'WORKING' | 'OFFLINE' = 'READY'): Promise<{ deviceId: string; state: string; lastSeenAt: string }> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir);
-    if (!STATE.has(state) || !Array.isArray(capabilities) || capabilities.length > 24 || capabilities.some((value) => typeof value !== 'string' || !CAPABILITY.test(value))) throw new ControlPlaneWorkerError('Worker heartbeat is invalid', 'PAYLOAD_INVALID');
+    if (!STATE.has(state) || !Array.isArray(capabilities) || capabilities.length > 64 || capabilities.some((value) => typeof value !== 'string' || !CAPABILITY.test(value))) throw new ControlPlaneWorkerError('Worker heartbeat is invalid', 'PAYLOAD_INVALID');
     const response = await this.post('/control/workers/heartbeat', { schemaVersion: 1, deviceId: identity.deviceId, state, capabilities: [...new Set(capabilities)] });
     if (response.schemaVersion !== 1 || response.deviceId !== identity.deviceId || typeof response.state !== 'string' || typeof response.lastSeenAt !== 'string') throw new ControlPlaneWorkerError('Worker heartbeat response is invalid', 'RESPONSE_INVALID');
     return { deviceId: identity.deviceId, state: response.state, lastSeenAt: response.lastSeenAt };
@@ -167,8 +168,13 @@ export class ControlPlaneWorkerClient {
     if (!UUID_V4.test(executionId)) throw new ControlPlaneWorkerError('Central execution reference is invalid', 'PAYLOAD_INVALID');
     const response = await this.get(`/control/worker/executions/${executionId}/packet`, true);
     const item = response.execution;
-    if (!item || typeof item !== 'object' || Array.isArray(item) || String((item as Record<string, unknown>).executionId) !== executionId || !UUID_V4.test(String((item as Record<string, unknown>).taskId)) || !UUID_V4.test(String((item as Record<string, unknown>).projectId)) || !UUID_V4.test(String((item as Record<string, unknown>).vaultRevisionId)) || typeof response.ownerProtocol !== 'string' || response.ownerProtocol.length < 1 || response.ownerProtocol.length > 8_000) throw new ControlPlaneWorkerError('Central execution packet is invalid', 'RESPONSE_INVALID');
-    return { executionId, taskId: String((item as Record<string, unknown>).taskId), projectId: String((item as Record<string, unknown>).projectId), vaultRevisionId: String((item as Record<string, unknown>).vaultRevisionId), ownerProtocol: response.ownerProtocol, capabilityPlan: boundedCapabilityPlan(response.capabilityPlan) };
+    const profile = response.workProfile;
+    if (!item || typeof item !== 'object' || Array.isArray(item) || String((item as Record<string, unknown>).executionId) !== executionId || !UUID_V4.test(String((item as Record<string, unknown>).taskId)) || !UUID_V4.test(String((item as Record<string, unknown>).projectId)) || !UUID_V4.test(String((item as Record<string, unknown>).vaultRevisionId)) || typeof response.ownerProtocol !== 'string' || response.ownerProtocol.length < 1 || response.ownerProtocol.length > 8_000 || !profile || typeof profile !== 'object' || Array.isArray(profile)) throw new ControlPlaneWorkerError('Central execution packet is invalid', 'RESPONSE_INVALID');
+    const workProfile = profile as Record<string, unknown>;
+    const allowedRoutes = new Set(['REMOTE_DEVICE','VPS_DIRECT','CONNECTED_FILES','DIRECT_PLUS_REMOTE','AUTO_FIT']);
+    const evidence = workProfile.evidenceDimensions;
+    if (!allowedRoutes.has(String(workProfile.primaryRoute)) || typeof workProfile.requiresRealDeviceEvidence !== 'boolean' || typeof workProfile.realSchoolEvidenceRequired !== 'boolean' || workProfile.generatedSchoolRealityAllowed !== false || typeof workProfile.permanentRepairRequired !== 'boolean' || typeof workProfile.mixedBoundary !== 'boolean' || !evidence || typeof evidence !== 'object' || Array.isArray(evidence) || ['requiresDeviceState','requiresServerState','requiresConnectedFiles','requiresRealSchoolEvidence','requiresNativeApp','requiresPublicWeb'].some((key) => typeof (evidence as Record<string, unknown>)[key] !== 'boolean') || typeof workProfile.reason !== 'string' || workProfile.reason.length < 1 || workProfile.reason.length > 240) throw new ControlPlaneWorkerError('Central execution work profile is invalid', 'RESPONSE_INVALID');
+    return { executionId, taskId: String((item as Record<string, unknown>).taskId), projectId: String((item as Record<string, unknown>).projectId), vaultRevisionId: String((item as Record<string, unknown>).vaultRevisionId), ownerProtocol: response.ownerProtocol, workProfile: workProfile as unknown as OwnerWorkProfile, capabilityPlan: boundedCapabilityPlan(response.capabilityPlan) };
   }
 
   async materializeCentralExecutionWorkspace(executionId: string, root: string): Promise<CentralExecutionPacket & { workspace: string }> {
@@ -286,7 +292,7 @@ export class ControlPlaneWorkerClient {
    */
   async registerProjectBinding(projectId: string, workspaceLabel: string, capabilities: string[], sourceFingerprint: string | null = null): Promise<void> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir);
-    if (!UUID_V4.test(projectId) || typeof workspaceLabel !== 'string' || !workspaceLabel.trim() || workspaceLabel.trim().length > 120 || /[\\/\u0000-\u001f\u007f]/.test(workspaceLabel) || !Array.isArray(capabilities) || capabilities.length > 24 || capabilities.some((value) => typeof value !== 'string' || !CAPABILITY.test(value)) || (sourceFingerprint !== null && !/^[0-9a-f]{40,64}$/i.test(sourceFingerprint))) throw new ControlPlaneWorkerError('Project binding is invalid', 'PAYLOAD_INVALID');
+    if (!UUID_V4.test(projectId) || typeof workspaceLabel !== 'string' || !workspaceLabel.trim() || workspaceLabel.trim().length > 120 || /[\\/\u0000-\u001f\u007f]/.test(workspaceLabel) || !Array.isArray(capabilities) || capabilities.length > 64 || capabilities.some((value) => typeof value !== 'string' || !CAPABILITY.test(value)) || (sourceFingerprint !== null && !/^[0-9a-f]{40,64}$/i.test(sourceFingerprint))) throw new ControlPlaneWorkerError('Project binding is invalid', 'PAYLOAD_INVALID');
     const response = await this.post('/control/worker/projects/bindings', { schemaVersion: 2, deviceId: identity.deviceId, projectId, workspaceLabel: workspaceLabel.trim(), sourceFingerprint, capabilities: [...new Set(capabilities)] });
     if (response.schemaVersion !== 2 || !response.binding || typeof response.binding !== 'object') throw new ControlPlaneWorkerError('Project binding response is invalid', 'RESPONSE_INVALID');
   }

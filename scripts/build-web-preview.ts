@@ -29,13 +29,22 @@ async function main(): Promise<void> {
   const webMode = process.env.AWH_WEB_MODE === 'CONTROL' || process.argv.includes('--control') ? 'CONTROL' : 'UNAVAILABLE';
   const releaseId = process.env.AWH_WEB_RELEASE_ID ?? process.env.AWH_RELEASE_ID ?? 'local';
   if (!/^[A-Za-z0-9._-]{1,80}$/.test(releaseId)) throw new Error('AWH web release identity is invalid');
-  const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
-  const sourceState = execFileSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' }).trim() ? 'DIRTY' : 'COMMITTED';
+  let sourceSha = '';
+  let sourceState = 'DIRTY';
+  try {
+    sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore','pipe','ignore'] }).trim().toLowerCase();
+    sourceState = execFileSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore','pipe','ignore'] }).trim() ? 'DIRTY' : 'COMMITTED';
+  } catch {
+    const locked = String(process.env.AWH_RELEASE_COMMIT ?? '').trim().toLowerCase();
+    if (!/^[0-9a-f]{40}$/.test(locked)) throw new Error('Web source SHA is unavailable; provide AWH_RELEASE_COMMIT for a verified gitless source snapshot');
+    sourceSha = locked;
+    sourceState = 'COMMITTED';
+  }
   if (!/^[0-9a-f]{40}$/.test(sourceSha)) throw new Error('Web source SHA is invalid');
-  if (process.env.AWH_RELEASE_COMMIT && (process.env.AWH_RELEASE_COMMIT !== sourceSha || sourceState !== 'COMMITTED')) throw new Error('Web release source lock is not clean and exact');
+  if (process.env.AWH_RELEASE_COMMIT && (process.env.AWH_RELEASE_COMMIT.toLowerCase() !== sourceSha || sourceState !== 'COMMITTED')) throw new Error('Web release source lock is not clean and exact');
   const data = { schemaVersion: 1, generatedAt: generatedAt(), surface: { mode: webMode, label: 'AWH', status: webMode === 'CONTROL' ? 'Sign in to continue' : 'AWH release is not active' }, product: { name: PRODUCT.productName, shortName: PRODUCT.shortName, tagline: PRODUCT.tagline }, message: webMode === 'CONTROL' ? 'Sign in to access your projects and work.' : 'This AWH release is not configured for Control.' };
-  const [index, styles, designSystem, lightSystem, kruartSystem, responsiveLayout, app, navigation, dashboardCss, ownerCenterCss, automationCss, dashboardJs, ownerCenterJs, automationJs, dashboardGuardrails, executionUx, toolRegistry, schoolTools, hubAdapter, controlAdapter, manifest, serviceWorker, databaseHtml, databaseCss, databaseJs, infrastructureHtml, infrastructureCss, infrastructureJs, hostingHtml, hostingCss, hostingJs, trustHtml, trustCss, trustJs, reviewHtml, reviewCss, reviewJs, panelHtml, panelCss, panelJs, pdfLib, qrCode] = await Promise.all([
-    asset('index.html'), asset('styles.css'), asset('awh-design-system.css'), asset('awh-light-system.css'), asset('kruart-system.css'), asset('responsive-layout.css'), asset('app.js'), asset('navigation.js'), asset('dashboard.css'), asset('owner-center.css'), asset('automation-surface.css'), asset('dashboard.js'), asset('owner-center.js'), asset('automation-surface.js'), asset('dashboard-guardrails.js'), asset('execution-ux.js'), asset('tool-registry.js'), asset('school-tools.js'), asset('hub-read-adapter.js'), asset('control-plane-adapter.js'), asset('manifest.webmanifest'), asset('sw.js'), asset('database.html'), asset('database.css'), asset('database.js'), asset('infrastructure.html'), asset('infrastructure.css'), asset('infrastructure.js'), asset('hosting.html'), asset('hosting.css'), asset('hosting.js'), asset('trust.html'), asset('trust.css'), asset('trust.js'), asset('review.html'), asset('review.css'), asset('review.js'), asset('panel.html'), asset('panel.css'), asset('panel.js'),
+  const [index, styles, designSystem, lightSystem, kruartSystem, responsiveLayout, app, navigation, dashboardCss, ownerCenterCss, automationCss, dashboardJs, ownerCenterJs, automationJs, dashboardGuardrails, executionUx, toolRegistry, schoolTools, hubAdapter, controlAdapter, manifest, serviceWorker, databaseHtml, databaseCss, databaseJs, infrastructureHtml, infrastructureCss, infrastructureJs, hostingHtml, hostingCss, hostingJs, updatesHtml, updatesCss, updatesJs, trustHtml, trustCss, trustJs, reviewHtml, reviewCss, reviewJs, panelHtml, panelCss, panelJs, pdfLib, qrCode] = await Promise.all([
+    asset('index.html'), asset('styles.css'), asset('awh-design-system.css'), asset('awh-light-system.css'), asset('kruart-system.css'), asset('responsive-layout.css'), asset('app.js'), asset('navigation.js'), asset('dashboard.css'), asset('owner-center.css'), asset('automation-surface.css'), asset('dashboard.js'), asset('owner-center.js'), asset('automation-surface.js'), asset('dashboard-guardrails.js'), asset('execution-ux.js'), asset('tool-registry.js'), asset('school-tools.js'), asset('hub-read-adapter.js'), asset('control-plane-adapter.js'), asset('manifest.webmanifest'), asset('sw.js'), asset('database.html'), asset('database.css'), asset('database.js'), asset('infrastructure.html'), asset('infrastructure.css'), asset('infrastructure.js'), asset('hosting.html'), asset('hosting.css'), asset('hosting.js'), asset('updates.html'), asset('updates.css'), asset('updates.js'), asset('trust.html'), asset('trust.css'), asset('trust.js'), asset('review.html'), asset('review.css'), asset('review.js'), asset('panel.html'), asset('panel.css'), asset('panel.js'),
     readFile(join(ROOT, 'node_modules', 'pdf-lib', 'dist', 'pdf-lib.min.js'), 'utf8'),
     readFile(join(ROOT, 'node_modules', 'qrcode-generator', 'qrcode.js'), 'utf8'),
   ]);
@@ -45,6 +54,7 @@ async function main(): Promise<void> {
   await mkdir(OUTPUT, { recursive: true });
   await mkdir(join(OUTPUT, 'vendor'), { recursive: true });
   await mkdir(join(OUTPUT, 'assets'), { recursive: true });
+  await mkdir(join(OUTPUT, 'device-runtime', 'macos'), { recursive: true });
   const bundledDashboardCss = `${dashboardCss}
 
 /* Owner Center */
@@ -89,6 +99,9 @@ ${dashboardGuardrails}`;
     writeFile(join(OUTPUT, 'hosting.html'), renderReleaseAsset(hostingHtml, releaseId), 'utf8'),
     writeFile(join(OUTPUT, 'hosting.css'), hostingCss, 'utf8'),
     writeFile(join(OUTPUT, 'hosting.js'), renderReleaseAsset(hostingJs, releaseId), 'utf8'),
+    writeFile(join(OUTPUT, 'updates.html'), renderReleaseAsset(updatesHtml, releaseId), 'utf8'),
+    writeFile(join(OUTPUT, 'updates.css'), updatesCss, 'utf8'),
+    writeFile(join(OUTPUT, 'updates.js'), renderReleaseAsset(updatesJs, releaseId), 'utf8'),
     writeFile(join(OUTPUT, 'trust.html'), renderReleaseAsset(trustHtml, releaseId), 'utf8'),
     writeFile(join(OUTPUT, 'trust.css'), trustCss, 'utf8'),
     writeFile(join(OUTPUT, 'trust.js'), renderReleaseAsset(trustJs, releaseId), 'utf8'),

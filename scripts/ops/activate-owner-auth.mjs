@@ -6,7 +6,7 @@ import { createProductionCredentialStore, OWNER_AUTH_PASSWORD_CREDENTIAL_KEY } f
 const ROOT = process.env.AWH_SOURCE_ROOT || process.cwd();
 const CANONICAL_BRANCH = 'main';
 const CANONICAL_REMOTE = 'origin';
-const CANONICAL_REPOSITORY = 'theartzkk/lnwjud-readme';
+const CANONICAL_REPOSITORY = 'vps/awh';
 const SHA = /^[0-9a-f]{40}$/;
 const deployScript = join(ROOT, 'deploy/awh-control-plane/deploy-control-plane.sh');
 const canonicalSourceScript = join(ROOT, 'scripts/ops/canonical-source-preflight.mjs');
@@ -22,6 +22,8 @@ const compatibilityRefresh = args.includes('--compat-refresh');
 if (compatibilityRefresh) deployArgs.push('--compat-refresh');
 const projectSourceAuthority = args.includes('--project-source-authority');
 if (projectSourceAuthority) deployArgs.push('--project-source-authority');
+const identityConvergence = args.includes('--identity-convergence');
+if (identityConvergence) deployArgs.push('--identity-convergence');
 const ownerUsername = process.env.AWH_OWNER_AUTH_USERNAME || 'art';
 
 function boundedSpawn(command, commandArgs, options = {}) {
@@ -75,7 +77,8 @@ function runDeploy(password, canonicalSha) {
 function safeLines(output) {
   return output.split(/\r?\n/).filter((line) => /^(DEPLOY_STAGE|DEPLOY_FAILED_AT|DEPLOY_RESULT|ROLLBACK|M4_|OWNER_AUTH_)=[A-Za-z0-9_.:-]+$/.test(line)
     || /^DEPLOY_DIAGNOSTIC=OWNER_AUTH_(?:SURFACE|LOGIN)_(?:HTTP_[0-9]{3}|BASIC_CHALLENGE)$/.test(line)
-    || /^DEPLOY_DIAGNOSTIC=OWNER_AUTH_SURFACE_ATTEMPTS_(?:[1-9]|10)$/.test(line));
+    || /^DEPLOY_DIAGNOSTIC=OWNER_AUTH_SURFACE_ATTEMPTS_(?:[1-9]|10)$/.test(line)
+    || /^DEPLOY_DIAGNOSTIC=SOURCE_DRIFT_FINDINGS_(?:[1-9][0-9]?|UNKNOWN)$/.test(line));
 }
 
 function safeCanonicalLines(output) {

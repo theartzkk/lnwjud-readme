@@ -5,7 +5,7 @@ from pathlib import Path
 STORE=Path('/var/www/awh-web/desktop-artifacts')
 WEB=Path('/var/www/awh-web/releases')
 CTL=Path('/opt/awh-hub/control-releases')
-NAME=re.compile(r'^([0-9a-f]{64})-(AWH-(?:macOS|Windows)-x64\.zip|SHA256SUMS\.txt)$')
+NAME=re.compile(r'^([0-9a-f]{64})-(AWH-(?:macOS-(?:x64|arm64)|Windows-x64)\.zip|SHA256SUMS\.txt)$')
 MIN_AGE_DAYS=14
 
 def fail(msg): raise SystemExit('ARTIFACT_PLAN_ABORT: '+msg)
@@ -32,7 +32,7 @@ for root in (WEB,CTL):
         for row in data.get('files',[]):
             if not isinstance(row,dict): continue
             path=row.get('path'); digest=str(row.get('sha256') or '').lower()
-            if path in ('downloads/AWH-macOS-x64.zip','downloads/AWH-Windows-x64.zip','downloads/SHA256SUMS.txt') and re.fullmatch(r'[0-9a-f]{64}',digest):
+            if path in ('downloads/AWH-macOS-arm64.zip','downloads/AWH-macOS-x64.zip','downloads/AWH-Windows-x64.zip','downloads/SHA256SUMS.txt') and re.fullmatch(r'[0-9a-f]{64}',digest):
                 manifest_refs.add((digest,Path(path).name))
 
 now=time.time(); rows=[]

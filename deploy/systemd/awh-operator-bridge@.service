@@ -1,0 +1,40 @@
+[Unit]
+Description=AWH guarded operator bridge request
+After=network-online.target
+CollectMode=inactive-or-failed
+
+[Service]
+Type=oneshot
+User=awh-hub
+Group=awh-hub
+SupplementaryGroups=www-data bayadmin awh-operator
+Environment=AWH_HUB_DB_PATH=/var/lib/awh-hub/awh.sqlite
+Environment=AWH_PROVIDER_CREDENTIAL_ROOT=/var/lib/awh-hub/provider-credentials
+Environment=AWH_OPERATOR_AUDIT_PATH=/var/lib/awh-hub/operator-bridge-audit.jsonl
+Environment=AWH_OPERATOR_STAGE_ROOT=/var/lib/awh-remote/operator-staging
+Environment=AWH_OPERATOR_EXPORT_ROOT=/var/lib/awh-hub/operator-exports
+Environment=AWH_VERIFICATION_EVIDENCE_ROOT=/var/lib/awh-hub/verification-evidence
+Environment=AWH_PROJECT_VAULT_ROOT=/var/lib/awh-hub/project-vault
+Environment=AWH_CANONICAL_GIT_ROOT=/srv/awh-git
+Environment=AWH_BAY_UPDATE_INBOX=/var/www/bay-production-shadow/current/updates/incoming
+ExecStart=/usr/bin/php -d pcre.jit=0 /opt/awh-hub/control-plane-current/hub/bin/awh-operator-bridge.php
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/awh-hub /var/lib/awh-remote/operator-staging /var/www/bay-production-shadow/current/updates/incoming /srv/awh-git
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+UMask=0007

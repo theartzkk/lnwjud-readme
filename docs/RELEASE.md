@@ -11,6 +11,8 @@ AWH ships as an evergreen product. Web/PWA receives the latest compatible Stable
 
 Every Stable release records product version, Git SHA, web release identity, database schema/migration state, package checksums, backup verification, migration plan, rollback plan and post-deploy health result.
 
+QA or candidate readiness is not Production completion. One exact-revision approval authorizes only the bounded release scope for that revision. The shared VPS Production deploy lane must be exclusively held during activation; same-project source promotion and release staging cannot race it. Production is complete only when canonical Production identity, public release identity and post-deploy verification agree on the exact approved revision.
+
 ## Desktop evergreen rule
 
 Windows keeps the Squirrel identity `AWH` and setup name `AWHSetup.exe`. macOS keeps bundle identifier `com.artworkspacehub.awh`. Users should install Desktop once. The updater transport is intentionally not marked active until a signed/verified release feed and rollback-safe activation path exist.

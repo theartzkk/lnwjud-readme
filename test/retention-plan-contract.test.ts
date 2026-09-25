@@ -11,4 +11,9 @@ test('retention --plan is a zero-mutation inspection mode', async () => {
   assert.match(s,/if APPLY:/);
   assert.match(s,/Path\(str\(p\)\+"\.retain"\)/);
   assert.match(s,/pinnedScheduledBackups/);
+  assert.match(s,/COREWORK=Path\("\/var\/lib\/awh-hub\/core-release-work"\)/);
+  assert.match(s,/required_capability='system\.core\.release'.*state in \('COMPLETED','FAILED','CANCELLED'\)/s);
+  assert.match(s,/UUID_RE\.fullmatch\(execution\)/);
+  assert.match(s,/coreReleaseWorkspaces/);
+  assert.match(s,/core_terminal\.get\(execution\)!=state/);
 });

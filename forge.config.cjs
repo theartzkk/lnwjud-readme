@@ -65,13 +65,14 @@ const icon = targetPlatform === 'darwin' ? macIcon : windowsIcon;
 
 module.exports = {
   packagerConfig: {
-    name: 'AWH',
+    name: 'AWH Agent',
     executableName: 'AWH',
     appBundleId: 'com.artworkspacehub.awh',
     icon,
     ...(electronZipDir ? { electronZipDir } : {}),
     asar: true,
     overwrite: true,
+    extraResource: [path.join(__dirname, '.awh-build', 'awh-device-runtime')],
     ignore: [
       /^\/\.awh($|\/)/,
       /^\/\.awh-local($|\/)/,
@@ -83,6 +84,9 @@ module.exports = {
       /^\/coverage($|\/)/,
       /^\/dist-web($|\/)/,
       /^\/out($|\/)/,
+      /^\/AWH-(?:macOS|Windows)-[^/]+\.(?:zip|release\.json)$/,
+      /^\/AWH-Agent-Beta-macOS-[^/]+\.(?:dmg|installer\.json)$/,
+      /^\/SHA256SUMS\.txt$/,
       /^\/\.github($|\/)/,
       /^\/\.art-agent-build($|\/)/,
       /^\/\.awh-build($|\/)/,
@@ -93,9 +97,9 @@ module.exports = {
       name: '@electron-forge/maker-squirrel',
       config: {
         name: 'AWH',
-        title: 'Art’s Workspace Hub',
+        title: 'AWH Agent',
         authors: 'Art’s Workspace Hub',
-        description: 'Art’s Workspace Hub — a safe-by-default local workspace for projects, memory and approved automation.',
+        description: 'AWH Agent — secure local bridge for Art’s Workspace Hub on the web.',
         exe: 'AWH.exe',
         setupExe: 'AWHSetup.exe',
         setupIcon: windowsIcon,

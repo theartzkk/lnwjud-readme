@@ -4,7 +4,7 @@ After=local-fs.target systemd-journald.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/sbin/awh-storage-guard
+ExecStart=/opt/awh-hub/control-plane-current/deploy/awh-storage/awh-storage-guard
 NoNewPrivileges=true
 PrivateTmp=false
 ProtectSystem=strict

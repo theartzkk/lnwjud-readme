@@ -29,7 +29,7 @@
       ['database', '▦', 'Database Studio', 'ตรวจข้อมูล โครงสร้าง และ migration แบบปลอดภัย'],
       ['product-review', '◈', 'Product Review', 'ตรวจระบบและหน้าจอบน Cloud แล้วรับ Review Pack กลับเข้า AWH', 'Cloud'],
       ['automations', '↯', 'Automations', 'งานตามเวลาและเงื่อนไข', 'กำลังตรวจ'],
-      ['runtime', '⌘', 'Runtime / lnwjud', 'Capability Fabric และรายละเอียดการทำงานขั้นสูง', 'Advanced'],
+      ['runtime', '⌘', 'AWH Runtime', 'Capability Fabric และรายละเอียดการทำงานขั้นสูง', 'Advanced'],
     ] },
   ]);
 
@@ -373,7 +373,7 @@
     launch.id = LAUNCH_ID;
     launch.type = 'button';
     launch.className = 'awh-owner-center-launch';
-    launch.textContent = 'เปิด Control Panel';
+    launch.textContent = 'เปิดศูนย์ดูแลระบบ';
     launch.addEventListener('click', () => { window.location.assign('./panel.html'); });
     heading?.append(launch);
 

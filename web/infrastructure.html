@@ -34,6 +34,13 @@
 
     <section class="infra-section morning-brief-section"><div class="section-heading"><div><span>MORNING BRIEF</span><h2>สรุปสถานะสำหรับเจ้าของ</h2></div><small>ภาพรวมจาก canonical task/activity/health ที่อ่านได้ในรอบนี้</small></div><div id="morning-brief" class="morning-brief"></div></section>
 
+    <section id="capability-fabric" class="infra-section capability-fabric-section">
+      <div class="section-heading"><div><span>AWH AGENT · TOOLS & DEVICES</span><h2>ความสามารถรวมของ AWH Agent</h2></div><small id="capability-fabric-summary">กำลังตรวจเส้นทางงาน…</small></div>
+      <p class="capability-fabric-copy">ใช้งานผ่าน AWH Agent ตัวเดียว ระบบเลือกเครื่องและ execution provider ที่พร้อมให้อัตโนมัติ โดยผู้ใช้ไม่ต้องเลือก backend เอง</p>
+      <div id="capability-fabric-list" class="entity-list"></div>
+      <details class="capability-provider-details"><summary>Advanced · provider health และเส้นทางจริง</summary><div id="capability-provider-list" class="entity-list"></div></details>
+    </section>
+
     <details class="infra-advanced">
       <summary><span><strong>รายละเอียดระบบขั้นสูง</strong><small>AI · Runtime · Deployments · Storage · Security · Domains</small></span><b>เปิดดู</b></summary>
       <div class="infra-advanced-body">
@@ -69,6 +76,7 @@
     <div class="infra-columns">
       <section class="infra-section"><div class="section-heading"><div><span>DATA & RECOVERY</span><h2>ฐานข้อมูลและ Backup</h2></div></div><div id="recovery-list" class="entity-list"></div><a class="action-link" href="./database.html">เปิด Database Studio →</a></section>
       <section class="infra-section"><div class="section-heading"><div><span>WORK & AI</span><h2>งาน อุปกรณ์ และ AI</h2></div></div><div id="runtime-list" class="entity-list"></div></section>
+      <section class="infra-section"><div class="section-heading"><div><span>DEVICE ROLE REGISTRY</span><h2>บทบาทเครื่องและเส้นทางงาน</h2></div><small>M5 สงวนสำหรับวิดีโอ · worker อื่นรับงานระบบตาม policy</small></div><div id="device-role-list" class="entity-list"></div></section>
     </div>
 
       </div>

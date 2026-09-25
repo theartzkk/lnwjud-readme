@@ -1,0 +1,13 @@
+[Unit]
+Description=AWH guarded operator bridge socket
+
+[Socket]
+ListenStream=/run/awh-operator-bridge.sock
+SocketUser=awh-remote
+SocketGroup=awh-operator
+SocketMode=0660
+Accept=yes
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target

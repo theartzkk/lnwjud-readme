@@ -26,7 +26,7 @@ if (!in_array('sqlite', PDO::getAvailableDrivers(), true)) { fwrite(STDOUT, "AWH
 $root = sys_get_temp_dir() . '/awh-m9-' . bin2hex(random_bytes(6)); mkdir($root, 0700, true);
 $db = $root . '/awh.sqlite'; $attachmentRoot = $root . '/attachments'; mkdir($attachmentRoot, 0750, true); $base = dirname(__DIR__); $now = gmdate('c');
 $ownerPassword = 'owner-fixture-' . bin2hex(random_bytes(12)); $collaboratorPassword = 'collaborator-fixture-' . bin2hex(random_bytes(12));
-$project = '113b45c0-23e1-408d-ae0f-ac5eca7f6900'; $otherProject = '723b45c0-23e1-408d-ae0f-ac5eca7f6900'; $owner = '223b45c0-23e1-408d-ae0f-ac5eca7f6900'; $device = '423b45c0-23e1-408d-ae0f-ac5eca7f6900';
+$project = '113b45c0-23e1-408d-ae0f-ac5eca7f6900'; $otherProject = '723b45c0-23e1-408d-ae0f-ac5eca7f6900'; $lateProject = '823b45c0-23e1-408d-ae0f-ac5eca7f6900'; $owner = '223b45c0-23e1-408d-ae0f-ac5eca7f6900'; $device = '423b45c0-23e1-408d-ae0f-ac5eca7f6900';
 putenv('AWH_CONTROL_ORIGIN=https://awh.test'); putenv('AWH_ATTACHMENT_ROOT=' . $attachmentRoot);
 try {
     $pdo = new PDO('sqlite:' . $db, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
@@ -37,7 +37,7 @@ try {
     m9_assert(HubSchemaMigration::apply($db, $base . '/migrations/001_m3e_enrollment.sql', $now, false, $base . '/schema.sql') === 'applied', 'M3E.1');
     m9_assert(HubEnrollmentApiMigration::apply($db, $base . '/migrations/002_m3e2_enrollment_api.sql', $now) === 'applied', 'M3E.2');
     $enrollment = HubEnrollmentService::openExisting($db); $initial = $enrollment->initializeOwner($owner, 'Art Owner', [$project, $otherProject], $now);
-    $enrollment->enrollDevice(['schemaVersion' => 1, 'pairingCode' => $initial['initialPairingCode'], 'deviceId' => $device, 'displayName' => 'Mac', 'platform' => 'darwin', 'arch' => 'arm64', 'appVersion' => '1.0.0'], $now);
+    $enrolled = $enrollment->enrollDevice(['schemaVersion' => 1, 'pairingCode' => $initial['initialPairingCode'], 'deviceId' => $device, 'displayName' => 'Mac', 'platform' => 'darwin', 'arch' => 'arm64', 'appVersion' => '1.0.0'], $now);
     foreach ([[HubControlPlaneMigration::class, '003_m4_control_plane.sql'], [HubOwnerAuthMigration::class, '004_owner_auth.sql'], [HubAssistantWorkstreamMigration::class, '005_assistant_workstream.sql'], [HubWorkspaceContinuityMigration::class, '006_workspace_continuity.sql'], [HubUnifiedWorkspaceMigration::class, '007_unified_workspace.sql']] as [$migration, $sql]) m9_assert($migration::apply($db, $base . '/migrations/' . $sql, $now) === 'applied', $sql);
     m9_assert(HubFinalProductMigration::apply($db, $base . '/migrations/008_final_product.sql', $now) === 'applied', 'M9 migration');
     m9_assert(HubFinalProductMigration::apply($db, $base . '/migrations/008_final_product.sql', $now) === 'already-applied', 'M9 idempotence');
@@ -46,6 +46,10 @@ try {
 
     $auth = HubOwnerAuthService::openExisting($db); $auth->provisionInitial('art', $ownerPassword, $now); $ownerSession = $auth->login('art', $ownerPassword, true, 'fixture-owner', $now);
     $control = HubControlPlaneService::openExisting($db); $browser = m9_browser($ownerSession['sessionToken'], $ownerSession['csrfToken']);
+    $deviceAuth = ['HTTP_AUTHORIZATION' => 'Bearer ' . $enrolled['accessToken'], 'CONTENT_TYPE' => 'application/json'];
+    $lateRegister = m9_control($control, 'POST', '/api/v1/control/worker/projects/register', $deviceAuth, ['schemaVersion' => 2, 'deviceId' => $device, 'project' => ['projectId' => $lateProject, 'name' => 'Late Registered Project', 'type' => 'node', 'sourceRevision' => null]]);
+    m9_assert($lateRegister['status'] === 201, 'owner device can register a project after final-product activation');
+    m9_assert((int) $pdo->query("SELECT COUNT(*) FROM control_project_capabilities WHERE user_id = '$owner' AND project_id = '$lateProject' AND revoked_at IS NULL")->fetchColumn() === 5, 'late owner project registration backfills all final-product capabilities');
     $created = m9_control($control, 'POST', '/api/v1/control/conversations/new', $browser, ['schemaVersion' => 2, 'projectId' => $project, 'title' => 'ภาพและเอกสาร']);
     m9_assert($created['status'] === 201, 'owner creates a canonical conversation'); $conversation = json_decode($created['body'], true, 32, JSON_THROW_ON_ERROR)['conversation']['conversationId'];
 
@@ -81,6 +85,14 @@ try {
     $accepted = $auth->acceptInvitation(['schemaVersion' => 1, 'invitationCode' => $invite['invitationCode'], 'password' => $collaboratorPassword], $now, 'fixture-invite');
     $collaborator = $auth->login('collaborator', $collaboratorPassword, false, 'fixture-collaborator', $now); $collabServer = m9_browser($collaborator['sessionToken'], $collaborator['csrfToken']);
     m9_assert(m9_control($control, 'GET', '/api/v1/control/projects', ['HTTP_COOKIE' => '__Host-awh_control_session=' . $collaborator['sessionToken'], 'HTTP_SEC_FETCH_SITE' => 'same-origin'])['status'] === 200, 'collaborator can read its granted project');
+    $collabChat = m9_control($control, 'POST', '/api/v1/control/conversations/new', $collabServer, ['schemaVersion' => 2, 'projectId' => $project, 'title' => 'Free account AI boundary']);
+    $collabConversation = json_decode($collabChat['body'], true, 32, JSON_THROW_ON_ERROR)['conversation']['conversationId'];
+    $collabSubmit = m9_control($control, 'POST', '/api/v1/control/conversations', $collabServer, ['schemaVersion' => 2, 'projectId' => $project, 'conversationId' => $collabConversation, 'message' => 'สวัสดี AWH', 'idempotencyKey' => 'm9-collab-chat-0001']);
+    $collabBody = json_decode($collabSubmit['body'], true, 32, JSON_THROW_ON_ERROR); $collabLast = $collabBody['messages'][count($collabBody['messages']) - 1] ?? [];
+    m9_assert($collabSubmit['status'] === 201 && ($collabBody['tasks'] ?? []) === [] && ($collabLast['kind'] ?? null) === 'assistant' && str_contains((string)($collabLast['body'] ?? ''), 'ไม่ใช้ค่า AI ของเจ้าของระบบ'), 'non-owner chat keeps AWH usable without queuing owner-funded AI');
+    $nonOwnerProviderCalls = 0; $nonOwnerAgent = new HubNativeAgentService($pdo, static function (array $payload, string $key) use (&$nonOwnerProviderCalls): array { $nonOwnerProviderCalls++; return ['output_text'=>'must not run','usage'=>['input_tokens'=>1,'output_tokens'=>1]]; });
+    try { $nonOwnerAgent->respond((string)$accepted['userId'], $project, $collabConversation, $conversation, 'ต้องไม่ใช้เงินเจ้าของ', [], [], $now); throw new RuntimeException('non-owner reached paid AI'); } catch (HubNativeAgentException $error) { m9_assert($error->codeName === 'PROVIDER_ACCOUNT_NOT_FUNDED', 'non-owner paid provider dispatch is denied before provider I/O'); }
+    m9_assert($nonOwnerProviderCalls === 0 && (int)$pdo->query("SELECT COUNT(*) FROM control_provider_usage WHERE user_id='" . $accepted['userId'] . "'")->fetchColumn() === 0, 'non-owner denial creates zero provider calls and zero billed usage rows');
     $private = m9_control($control, 'POST', '/api/v1/control/conversations/new', $collabServer, ['schemaVersion' => 2, 'projectId' => $otherProject, 'title' => 'not allowed']);
     m9_assert($private['status'] === 403, 'collaborator cannot access another project');
     $auth->revokeUser($ownerSession['sessionToken'], $ownerSession['csrfToken'], $accepted['userId'], $now);

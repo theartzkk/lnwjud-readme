@@ -10,6 +10,37 @@ This document prevents shadow authorities as AWH expands. New Cloud, Hosting, Ac
 
 A new feature may add bounded metadata that belongs uniquely to its domain, but it must not duplicate identity, authentication, project ownership, work scheduling, execution state, credential storage, artifact ownership, approval, or release authority.
 
+## Document and evidence precedence
+
+AWH does not use a second `RULES.md` constitution. `AGENTS.md` is the single agent entry point and routes to the authorities below.
+
+Mutable facts come from live canonical evidence, not prose. The current user request defines intent; live source/runtime evidence defines mutable facts; this Authority Map and security/release contracts define integrity boundaries; `config/execution-policy.json` mirrors enforceable execution invariants. `ART_AI_WORKING_PROTOCOL.md` is advisory. `CURRENT_STATE.md`, `HANDOFF.md`, closure notes and `history/` never override live evidence.
+
+When two documents disagree, do not create a third rule file. Reconcile the lower-authority document or implementation with the live authority and normative contract.
+
+## Mutation authority and concurrency
+
+`control_tasks`, `control_task_executions` and `control_execution_envelopes` remain the sole canonical work/mutation authorities. Resource identity is derived from canonical execution metadata; no second lock database is permitted.
+
+- `READ` is parallel.
+- `CANDIDATE` and `WORKSPACE` are project-local isolated lanes and may run in parallel with canonical work when they do not own canonical state.
+- `CANONICAL:SOURCE` is project-local. Two writers to the same project's canonical source serialize.
+- `CANONICAL:DEPLOY` is a VPS-global Production mutation lane. Production deploy/install operations across managed projects serialize.
+- A project's `CANONICAL:SOURCE` and `CANONICAL:DEPLOY` lanes interlock so canonical main cannot move during that project's Production deploy.
+- A project's `RESOURCE:RELEASE_STAGE` and `CANONICAL:DEPLOY` lanes interlock so staging cannot race the consuming deploy.
+- `CANONICAL:PROJECT` is an umbrella project-local writer and conflicts with other mutations in that project.
+
+A second conflicting chat/worker must wait, join or resume the existing authority. It must not acquire a competing writer. Device-local `remote-mission-state` files are transport/device leases only and cannot authorize project/source/release mutation.
+
+### VPS and release invariants
+
+- A typed release execution that already owns `CANONICAL:DEPLOY` remains the sole deploy writer for its complete release lifecycle. Nested guarded-deploy stages MUST borrow and re-verify that parent authority; they MUST NOT create a second deploy execution that conflicts with the parent.
+- Compatibility upgrades from an older Production runtime may observe a still-running VPS execution whose task was incorrectly demoted to `WAITING_FOR_WORKER`. An exact-revision release controller may revive only that same VPS-native release task, renew its bounded lease, and continue under the same execution id; it must never create a replacement writer.
+- Device lease recovery applies only to tasks with a non-null `assigned_device_id`. VPS-native release/operator tasks are not device work and MUST NOT be demoted by generic worker recovery.
+- Production storage is a release precondition. Core Release must fail before dependency hydration when disk usage is at or above the critical threshold or bounded free-space headroom is insufficient; failed/terminal release workspaces and recreatable caches must be reclaimed without touching active/leased work.
+- Build/QA/rehearsal compute is disposable. A second VPS or device may return artifacts/evidence for an exact revision, but cannot become source, approval, task, release, or Production authority.
+- A release is complete only when canonical main, Production ref, public release identity and post-deploy verification agree on the exact revision. QA PASS alone is never Production truth.
+
 ## Canonical authority table
 
 | Domain | Canonical authority | Allowed extension | Forbidden shadow authority |
@@ -38,6 +69,7 @@ A new feature may add bounded metadata that belongs uniquely to its domain, but 
 | Cloud QA / Visual Review | canonical Task → Execution using Cloud provider capability | GitHub workflow/run id as execution observation | GitHub Actions run treated as AWH task authority |
 | Visual review findings | validated evidence attached to canonical revision/task | review/triage artifact metadata | AiPASS findings as independent issue/source-of-truth database |
 | Production release | existing typed release/deployment authority + exact revision identity | provider deployment evidence | hosting/provider dashboard state alone declaring Production truth |
+| Release Runner / Build VPS | canonical Task → Execution + Capability Registry, bound to exact revision | disposable Build/QA/Rehearsal compute returning verification/artifact evidence | second control plane, independent release queue, source authority, Owner approval or Production truth on the runner |
 | Backup / recovery | canonical backup/recovery mechanisms | domain backup metadata | feature-specific destructive backup/restore authority |
 
 ## Hosting invariants

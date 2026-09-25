@@ -18,6 +18,7 @@ test('desktop IPC exposes fixed high-level channel names only', () => {
     'initializeProject',
     'initializeProjectMemory',
     'locateProject',
+    'openAwhWeb',
     'openDataDir',
     'overview',
     'projectContext',
@@ -91,6 +92,30 @@ test('desktop HTML has a restrictive CSP, remote controls and no inline script',
   assert.match(html, /card-spaced/);
   assert.doesNotMatch(html, /\sstyle=/i);
   assert.doesNotMatch(html, /<script(?![^>]*src=)[^>]*>/i);
+});
+
+test('default desktop surface is a thin AWH Agent bridge and keeps advanced controls out of the renderer', async () => {
+  const main = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  const preload = await readFile(new URL('../desktop/connect-preload.cjs', import.meta.url), 'utf8');
+  const renderer = await readFile(new URL('../desktop/connect.js', import.meta.url), 'utf8');
+  const html = await readFile(new URL('../desktop/connect.html', import.meta.url), 'utf8');
+
+  assert.match(main, /compact \? 'connect\.html' : 'index\.html'/);
+  assert.match(main, /compact \? 'connect-preload\.cjs' : 'preload\.cjs'/);
+  assert.match(main, /AWH_DESKTOP_ADVANCED/);
+  assert.match(main, /ipcMain\.handle\(DESKTOP_IPC\.openAwhWeb/);
+  assert.match(html, /AWH Agent/);
+  assert.match(html, /id="open-awh"/);
+  assert.match(html, /เครื่องนี้พร้อมทำงานกับ AWH/);
+  assert.match(html, /AWH Agent เป็นเพียงสะพานเชื่อมเครื่องกับ AWH/);
+  assert.match(html, /Content-Security-Policy/);
+  assert.doesNotMatch(html, /Projects|Project Memory|Git|Doctor|Secure MCP|AI Work|Autopilot/i);
+  for (const method of ['getEnrollmentState', 'login', 'logout', 'getWorkerState', 'openAwhWeb']) assert.match(preload, new RegExp(`${method}:`));
+  assert.doesNotMatch(preload, /remoteConnect|remoteStop|Autopilot|Project|openDataDir|restart|readFile|writeFile|spawn|process\.env/i);
+  assert.match(renderer, /Promise\.allSettled/);
+  assert.match(renderer, /window\.awhConnect\.openAwhWeb/);
+  assert.match(renderer, /window\.awhConnect\.login/);
+  assert.doesNotMatch(renderer, /setInterval|remoteConnect|remoteStop|child_process|spawn\(|process\.env/i);
 });
 
 test('desktop remote lifecycle stays behind confirmation-gated high-level IPC', async () => {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { win32 as pathWin32 } from 'node:path';
-import { composeWorkerHeartbeatCapabilities, discoverWorkerTools } from '../src/worker-capability-discovery.js';
+import { composeWorkerHeartbeatCapabilities, discoverWorkerTools } from "../src/worker-capability-discovery.js";
 
 test('Windows tool discovery reports installed tools without granting execution', async () => {
   const env = {
@@ -46,24 +46,67 @@ test('heartbeat composition keeps executable capability priority and bounds inve
   const executable = ['autopilot:local', 'git:read', 'codex:cli', 'git:read'];
   const tools = Array.from({ length: 30 }, (_, index) => `tool.fixture.${String(index).padStart(2, '0')}`);
   const heartbeat = composeWorkerHeartbeatCapabilities(executable, tools);
-  assert.equal(heartbeat.length, 24);
+  assert.equal(heartbeat.length, 33);
   assert.deepEqual(heartbeat.slice(0, 3), ['autopilot:local', 'git:read', 'codex:cli']);
   assert.equal(heartbeat.includes('tool.fixture.00'), true);
-  assert.equal(heartbeat.includes('tool.fixture.29'), false);
+  assert.equal(heartbeat.includes('tool.fixture.29'), true);
 });
 
 test('heartbeat composition rejects an invalid limit and drops malformed identifiers', () => {
-  assert.throws(() => composeWorkerHeartbeatCapabilities([], [], 25), /limit/i);
+  assert.throws(() => composeWorkerHeartbeatCapabilities([], [], 65), /limit/i);
   const heartbeat = composeWorkerHeartbeatCapabilities(['git:read', 'bad value'], ['tool.git', 'TOOL.BAD']);
   assert.deepEqual(heartbeat, ['git:read', 'tool.git']);
 });
 
-test('external CLI discovery reports inventory only and never grants an execution capability', async () => {
+test('external CLI discovery is registry-driven and never grants execution authority', async () => {
+  const externalRegistry = {
+    schemaVersion: 1 as const,
+    registryId: 'awh.external-capabilities.v1' as const,
+    controlPlaneAuthority: 'AWH' as const,
+    entries: [
+      { id: 'future-cli', displayName: 'Future CLI', repository: 'Example/future-cli', revision: 'a'.repeat(40), license: 'MIT' as const, capability: 'future.review', integrationMode: 'OPTIONAL_LOCAL_ADAPTER' as const, command: 'future-cli', workerTool: 'tool.future-cli', enabledByDefault: false, approvalRequired: true, hostedServiceAllowed: false, authorityBoundary: 'AWH_EXISTING_CONTROL_PLANE' as const, dataPolicy: 'NO_EXTERNAL_SOURCE_OF_TRUTH' as const, purpose: 'future adapter', rollback: 'disable adapter' },
+      { id: 'reference-only', displayName: 'Reference', repository: 'Example/reference', revision: 'b'.repeat(40), license: 'MIT' as const, capability: 'future.reference', integrationMode: 'REFERENCE_SKILL' as const, command: null, workerTool: null, enabledByDefault: false, approvalRequired: false, hostedServiceAllowed: false, authorityBoundary: 'AWH_EXISTING_CONTROL_PLANE' as const, dataPolicy: 'REFERENCE_ONLY' as const, purpose: 'reference only', rollback: 'remove reference' },
+    ],
+  };
   const tools = await discoverWorkerTools({
-    platform: 'linux', env: {},
-    commandAvailable: async (command) => ['git', 'teamai', 'context-mode'].includes(command),
+    platform: 'linux', env: {}, externalRegistry,
+    commandAvailable: async (command) => ['git', 'future-cli'].includes(command),
     pathAvailable: async () => false,
   });
-  assert.deepEqual(tools, ['tool.context-mode', 'tool.git', 'tool.teamai']);
-  assert.equal(tools.some((value) => value === 'team.harness' || value === 'context.optimize'), false);
+  assert.deepEqual(tools, ['tool.future-cli', 'tool.git']);
+  assert.equal(tools.includes('future.review'), false);
+});
+
+
+test('macOS device runtime discovery exposes AWH system plus KRUART GUI inventory only when both are installed', async () => {
+  const home = '/Users/fixture';
+  const paths = new Set([
+    '/Users/fixture/Library/Application Support/AWH/Engines/lnwjud/current/Contents/MacOS/lnwjud',
+    '/Users/fixture/Library/Application Support/AWH/RemoteWorker/runtime/node_modules/.bin/desktop-commander',
+  ]);
+  const tools = await discoverWorkerTools({
+    platform: 'darwin', env: { HOME: home },
+    commandAvailable: async () => false,
+    pathAvailable: async (path) => paths.has(path),
+  });
+  assert.deepEqual(tools, ['tool.awh-device-gui', 'tool.awh-device-system']);
+});
+
+test('macOS GUI inventory is not advertised without an executable AWH system provider', async () => {
+  const home = '/Users/fixture';
+  const paths = new Set(['/Users/fixture/.kruart/ai-control/kui']);
+  const tools = await discoverWorkerTools({
+    platform: 'darwin', env: { HOME: home },
+    commandAvailable: async () => false,
+    pathAvailable: async (path) => paths.has(path),
+  });
+  assert.deepEqual(tools, []);
+});
+
+test('heartbeat inventory has future headroom without dropping tool discovery', () => {
+  const executable = Array.from({ length: 10 }, (_, index) => 'capability.' + index);
+  const tools = Array.from({ length: 50 }, (_, index) => 'tool.future.' + String(index).padStart(2, '0'));
+  const heartbeat = composeWorkerHeartbeatCapabilities(executable, tools);
+  assert.equal(heartbeat.length, 60);
+  assert.equal(heartbeat.includes('tool.future.49'), true);
 });

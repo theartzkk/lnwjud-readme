@@ -1,9 +1,14 @@
 #!/bin/sh
 set -eu
 
-AGENT_VERSION=${AWH_RDC_VERSION:-0.2.50}
+AGENT_VERSION=${AWH_RDC_VERSION:-0.2.51}
 AGENT_USER=${AWH_RDC_USER:-awh-remote}
 AGENT_HOME=${AWH_RDC_HOME:-/var/lib/awh-remote}
+RUNTIME_ROOT=${AWH_RDC_RUNTIME_ROOT:-/opt/awh-tools/remote-desktop}
+NODE_ROOT=${AWH_RDC_NODE_ROOT:-$RUNTIME_ROOT/node-v22.22.1-linux-x64}
+NODE_BIN=$NODE_ROOT/bin/node
+NPX_BIN=$NODE_ROOT/bin/npx
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 fail() {
   printf '%s\n' "$1" >&2
@@ -14,25 +19,16 @@ if [ "$(id -u)" -ne 0 ]; then
   fail "AWH_VPS_DIRECT_BOOTSTRAP_REQUIRES_ROOT"
 fi
 
-node_major() {
-  node -p "process.versions.node.split('.')[0]" 2>/dev/null || true
-}
-
 ensure_node() {
-  major="$(node_major)"
-  if command -v npx >/dev/null 2>&1 && [ -n "$major" ] && [ "$major" -ge 18 ] 2>/dev/null; then
+  if [ -x "$NODE_BIN" ] && "$NODE_BIN" -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22 || (a===22&&b>=12) ? 0 : 1)' 2>/dev/null; then
     return 0
   fi
-
-  command -v apt-get >/dev/null 2>&1 || fail "AWH_VPS_DIRECT_NODE18_REQUIRED"
-  export DEBIAN_FRONTEND=noninteractive
-  apt-get update
-  apt-get install -y --no-install-recommends nodejs npm ca-certificates
-
-  major="$(node_major)"
-  command -v npx >/dev/null 2>&1 || fail "AWH_VPS_DIRECT_NPX_REQUIRED"
-  [ -n "$major" ] && [ "$major" -ge 18 ] 2>/dev/null || fail "AWH_VPS_DIRECT_NODE18_REQUIRED"
+  [ -x "$HERE/install-node-runtime.sh" ] || fail AWH_VPS_DIRECT_NODE_INSTALLER_MISSING
+  AWH_NODE_RUNTIME_ROOT="$RUNTIME_ROOT" sh "$HERE/install-node-runtime.sh"
+  [ -x "$NODE_BIN" ] && [ -x "$NPX_BIN" ] || fail AWH_VPS_DIRECT_NODE22_REQUIRED
 }
+
+ensure_node
 
 case "$AGENT_VERSION" in
   *[!0-9.]*|'') fail "AWH_VPS_DIRECT_AGENT_VERSION_INVALID" ;;
@@ -45,8 +41,6 @@ case "$AGENT_HOME" in
   /var/lib/awh-remote|/srv/awh-remote) : ;;
   *) fail "AWH_VPS_DIRECT_AGENT_HOME_INVALID" ;;
 esac
-
-ensure_node
 
 if ! id "$AGENT_USER" >/dev/null 2>&1; then
   useradd --system --create-home --home-dir "$AGENT_HOME" --shell /bin/bash "$AGENT_USER"
@@ -64,4 +58,5 @@ printf '%s\n' "AWH_VPS_DIRECT_NEXT=VERIFY_DEVICE_CODE"
 exec runuser -u "$AGENT_USER" -- env \
   HOME="$AGENT_HOME" \
   NPM_CONFIG_CACHE="$AGENT_HOME/.npm" \
-  npx --yes "@wonderwhy-er/desktop-commander@$AGENT_VERSION" remote
+  PATH="$NODE_ROOT/bin:/usr/bin:/bin" \
+  "$NPX_BIN" --yes "@wonderwhy-er/desktop-commander@$AGENT_VERSION" remote

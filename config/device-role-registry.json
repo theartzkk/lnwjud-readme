@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "defaultRoutingEnabled": true,
+  "devices": [
+    {
+      "key": "vps",
+      "deviceId": "673a2f58-81fa-427a-b3cc-1c64aa98fcd2",
+      "displayName": "bay-core-01",
+      "role": "PRIMARY_AUTHORITY",
+      "kind": "server",
+      "routingEnabled": true,
+      "requiresOwnerApproval": false,
+      "workloads": [
+        "SOURCE_AUTHORITY",
+        "RUNTIME",
+        "DB",
+        "BUILD",
+        "BACKGROUND",
+        "PROJECT_VAULT",
+        "DEPLOY",
+        "QA_HEADLESS"
+      ],
+      "purpose": "VPS control plane and operational Source of Truth for code, runtime, database, deploy, backup, automation and headless QA"
+    },
+    {
+      "key": "art-mac-intel",
+      "deviceId": "26b5107b-021d-4a30-8971-00c8db011ffa",
+      "displayName": "ART-MAC-INTEL",
+      "role": "GENERAL_PROJECT_WORKSTATION",
+      "kind": "worker",
+      "routingEnabled": true,
+      "requiresOwnerApproval": false,
+      "workloads": [
+        "GENERAL_PROJECT",
+        "BAY",
+        "LEARNLAB",
+        "AWH",
+        "WEBSITE",
+        "BROWSER_TEST",
+        "QA",
+        "DOCS"
+      ],
+      "purpose": "General project workstation equal to AY-TEACHER; resumes the same VPS-backed project state outside school and remains fallback as M5 generalizes"
+    },
+    {
+      "key": "ay-teacher",
+      "deviceId": "97051766-7be4-4a51-bc18-096085684917",
+      "displayName": "AY-TEACHER",
+      "role": "GENERAL_PROJECT_WORKSTATION",
+      "kind": "worker",
+      "routingEnabled": true,
+      "requiresOwnerApproval": false,
+      "workloads": [
+        "GENERAL_PROJECT",
+        "BAY",
+        "LEARNLAB",
+        "AWH",
+        "WEBSITE",
+        "BROWSER_TEST",
+        "QA",
+        "OFFICE",
+        "CLASSROOM",
+        "WINDOWS"
+      ],
+      "purpose": "Primary school-site general workstation, capability peer of ART-MAC-INTEL for non-video project work and preferred for classroom/LAN/Windows tasks"
+    },
+    {
+      "key": "m5",
+      "deviceId": "a5e185c7-1b52-4852-9776-ca3012f3a6a6",
+      "displayName": "ART-MAC-M5",
+      "role": "CREATIVE_PRIMARY_WORKSTATION",
+      "kind": "external",
+      "routingEnabled": true,
+      "requiresOwnerApproval": false,
+      "workloads": [
+        "VIDEO",
+        "AFTER_EFFECTS",
+        "PREMIERE",
+        "PHOTOSHOP",
+        "MEDIA_ENCODER",
+        "COMPOSITING",
+        "RENDER",
+        "CREATIVE_MEDIA"
+      ],
+      "purpose": "Personal creative/heavy workstation now; long-term personal primary workstation replacing ART-MAC-INTEL after generalization, while staying clean and non-server"
+    },
+    {
+      "key": "art-pc",
+      "displayName": "Art-PC",
+      "role": "OFFSITE_BACKUP",
+      "kind": "external",
+      "routingEnabled": false,
+      "requiresOwnerApproval": true,
+      "backupConfigured": false,
+      "workloads": [
+        "BACKUP",
+        "RESTORE_REPLICA"
+      ],
+      "purpose": "Reserved for encrypted pull-based off-site backup; not production or source authority"
+    }
+  ],
+  "mode": "ADVISORY"
+}

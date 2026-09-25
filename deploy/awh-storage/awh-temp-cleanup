@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
+CANONICAL_AWH_GIT=${AWH_CANONICAL_AWH_GIT:-/srv/awh-git/awh.git}
+HUB_DB=${AWH_HUB_DB_PATH:-/var/lib/awh-hub/awh.sqlite}
+TEMP_ROOT=${AWH_TEMP_ROOT:-/tmp}
+DIR_MAX_AGE_MINUTES=${AWH_TEMP_DIR_MAX_AGE_MINUTES:-720}
 count=0
+dir_count=0
 bytes=0
 while IFS= read -r -d '' f; do
   if command -v lsof >/dev/null 2>&1 && lsof "$f" >/dev/null 2>&1; then
@@ -10,5 +15,35 @@ while IFS= read -r -d '' f; do
   rm -f -- "$f"
   count=$((count+1))
   bytes=$((bytes+size))
-done < <(find /tmp -xdev -maxdepth 1 -type f \( -name 'awh-*' -o -name 'actions-runner-*.tar.gz' \) -mtime +7 -print0)
-logger -t awh-temp-cleanup "purged_files=$count reclaimed_bytes=$bytes"
+done < <(find "$TEMP_ROOT" -xdev -maxdepth 1 -type f \( -name 'awh-*' -o -name 'actions-runner-*.tar.gz' \) -mtime +7 -print0)
+
+# Reclaim stale AWH Git work directories only when they are provably reproducible
+# AND no canonical AWH mutation mission is active. A clean workspace may still be
+# in active use between tool calls, so "git status clean" is never sufficient.
+workspace_cleanup_allowed=false
+active_mutations=unknown
+if [[ -r "$HUB_DB" ]] && command -v sqlite3 >/dev/null 2>&1; then
+  if active_mutations=$(sqlite3 -readonly "$HUB_DB" "SELECT count(*) FROM control_task_executions e JOIN projects p ON p.project_id=e.project_id LEFT JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE p.name='Art’s Workspace Hub' AND e.state IN ('LEASED','RUNNING') AND (x.execution_id IS NULL OR (x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR datetime(x.lease_expires_at)>datetime('now'))));" 2>/dev/null); then
+    [[ "$active_mutations" =~ ^[0-9]+$ ]] && (( active_mutations == 0 )) && workspace_cleanup_allowed=true
+  fi
+fi
+
+if [[ "$workspace_cleanup_allowed" == true ]]; then
+while IFS= read -r -d '' d; do
+  [[ -d "$d/.git" && ! -L "$d/.git" ]] || continue
+  if command -v lsof >/dev/null 2>&1 && lsof +D "$d" >/dev/null 2>&1; then
+    continue
+  fi
+  status=$(git -C "$d" status --porcelain=v1 2>/dev/null || printf '__UNREADABLE__')
+  [[ -z "$status" ]] || continue
+  head=$(git -C "$d" rev-parse HEAD 2>/dev/null || true)
+  [[ "$head" =~ ^[0-9a-f]{40}$ ]] || continue
+  git --git-dir="$CANONICAL_AWH_GIT" cat-file -e "${head}^{commit}" 2>/dev/null || continue
+  size=$(du -sb -- "$d" 2>/dev/null | awk '{print $1}' || echo 0)
+  find "$d" -xdev -depth -delete
+  dir_count=$((dir_count+1))
+  bytes=$((bytes+size))
+done < <(find "$TEMP_ROOT" -xdev -maxdepth 1 -mindepth 1 -type d -name 'awh-*' -mmin "+${DIR_MAX_AGE_MINUTES}" -print0)
+fi
+
+logger -t awh-temp-cleanup "purged_files=$count purged_dirs=$dir_count reclaimed_bytes=$bytes workspace_cleanup_allowed=$workspace_cleanup_allowed active_mutations=$active_mutations"

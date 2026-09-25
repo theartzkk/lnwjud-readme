@@ -4,7 +4,7 @@ After=awh-backup.service local-fs.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/sbin/awh-restore-drill
+ExecStart=/opt/awh-hub/control-plane-current/deploy/awh-storage/awh-restore-drill
 NoNewPrivileges=true
 PrivateTmp=false
 ProtectSystem=strict

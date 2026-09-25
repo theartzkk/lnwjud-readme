@@ -7,10 +7,14 @@ import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 const base = process.env.AWH_CLOSURE_FIXTURE_URL || 'http://127.0.0.1:4174/';
 assert.match(base, /^http:\/\/127\.0\.0\.1:\d+\/$/);
-const { chromium } = await import(pathToFileURL(resolve(process.env.AWH_PLAYWRIGHT_MODULE || 'node_modules/playwright/index.mjs')).href);
+const playwrightModule = process.env.AWH_PLAYWRIGHT_MODULE;
+const chromePath = process.env.AWH_CHROME_PATH;
+assert.ok(playwrightModule, 'AWH_PLAYWRIGHT_MODULE is required; run the VPS browser QA runtime installer');
+assert.ok(chromePath, 'AWH_CHROME_PATH is required; run the VPS browser QA runtime installer');
+const { chromium } = await import(pathToFileURL(resolve(playwrightModule)).href);
 const output = resolve('.awh-local/review/product-closure');
 await mkdir(output, { recursive: true });
-const browser = await chromium.launch({ headless: true, executablePath: process.env.AWH_CHROME_PATH });
+const browser = await chromium.launch({ headless: true, executablePath: chromePath });
 const evidence = { commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), dirty: !!execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim(), environment: 'local-contract-fixture', scenarios: [], errors: [] };
 let page;
 try {

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "product": "AWH Device Runtime",
+  "channel": "stable",
+  "package": "@wonderwhy-er/desktop-commander",
+  "version": "0.2.51",
+  "npmIntegrity": "sha512-BF/ZV06c7mh+tzfJEkQpjcOg6UaQtzp2vRadIpA9hI+WpPDwkQ2ekdY0fbN7I4xOrCQX6NajyEPouEDXFJc1kA==",
+  "minimumVersion": "0.2.50",
+  "checkIntervalSeconds": 21600,
+  "capabilityProfile": "full-device-v1",
+  "toolDiscoveryMode": "runtime-native",
+  "workerInventoryLimit": 64,
+  "extensionRegistry": "config/external-capabilities.json",
+  "unknownRuntimeToolPolicy": "DISCOVER_ONLY_NO_AUTO_EXECUTION_AUTHORITY"
+}

@@ -20,7 +20,8 @@ test('AWH public release identity is distinct from retained legacy compatibility
   assert.equal(pkg.bin.awh, 'dist/index.js');
   assert.equal(pkg.bin['art-agent'], 'dist/index.js');
   assert.doesNotMatch([pkg.productName, pkg.author, pkg.description].join('\n'), /Art Agent/);
-  assert.match(forge, /name:\s*'AWH'/);
+  assert.match(forge, /packagerConfig:\s*\{[\s\S]*?name:\s*'AWH Agent'/);
+  assert.match(forge, /title:\s*'AWH Agent'/);
   assert.match(forge, /executableName:\s*'AWH'/);
   assert.match(forge, /exe:\s*'AWH\.exe'/);
   assert.match(forge, /setupExe:\s*'AWHSetup\.exe'/);

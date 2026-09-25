@@ -63,6 +63,7 @@ final class HubExecutionFailurePolicy
         'PROVIDER_PERMISSION_DENIED',
         'PROVIDER_MODEL_UNAVAILABLE',
         'PROVIDER_POLICY_INVALID',
+        'PROVIDER_ACCOUNT_NOT_FUNDED',
         'CLOUD_PERMISSION_DENIED',
         'CLOUD_WORKFLOW_NOT_FOUND',
     ];
@@ -257,8 +258,8 @@ final class HubExecutionTriageService
 
         $bounded = count($rows) > $limit;
         $rows = array_slice($rows, 0, $limit);
-        $summary = ['historicalExpected'=>0,'obsoleteStale'=>0,'retryable'=>0,'setupRequired'=>0,'blockedCapability'=>0,'policyPaused'=>0,'authRequired'=>0,'externalPolicy'=>0,'currentDefect'=>0,'active'=>0];
-        $currentSummary = ['retryable'=>0,'setupRequired'=>0,'blockedCapability'=>0,'authRequired'=>0,'externalPolicy'=>0,'currentDefect'=>0];
+        $summary = ['historicalExpected'=>0,'obsoleteStale'=>0,'retryable'=>0,'retryExhausted'=>0,'setupRequired'=>0,'blockedCapability'=>0,'policyPaused'=>0,'authRequired'=>0,'externalPolicy'=>0,'currentDefect'=>0,'active'=>0];
+        $currentSummary = ['retryable'=>0,'retryExhausted'=>0,'setupRequired'=>0,'blockedCapability'=>0,'authRequired'=>0,'externalPolicy'=>0,'currentDefect'=>0];
         $items = []; $currentItems = []; $nonAlertingItems = [];
         foreach ($rows as $row) {
             if (!is_array($row)) continue;
@@ -281,6 +282,10 @@ final class HubExecutionTriageService
             } elseif ($state === 'WAITING_FOR_CAPABILITY' && in_array($code, self::SETUP_REQUIRED_CODES, true)) {
                 $classification = 'SETUP_REQUIRED';
                 $reason = 'งานยังถูกเก็บไว้และต้องเติม Owner-controlled project/source configuration ก่อนทำต่อ';
+                $active = true;
+            } elseif ($state === 'WAITING_FOR_CAPABILITY' && $attempts >= 3 && ($policyDecision['automaticRetry'] ?? false) === false && str_contains((string)($policyDecision['reason'] ?? ''), 'bounded automatic retry limit reached')) {
+                $classification = 'RETRY_EXHAUSTED';
+                $reason = 'ครบ bounded automatic retry แล้ว งานยังถูกเก็บไว้แต่จะไม่ลองซ้ำเอง; ต้องเริ่ม attempt ใหม่หลังยืนยัน provider/capability health';
                 $active = true;
             } elseif ($state === 'WAITING_FOR_CAPABILITY') {
                 $classification = 'BLOCKED_CAPABILITY';
@@ -306,6 +311,7 @@ final class HubExecutionTriageService
                 $summary['active']++;
                 $key = match ($classification) {
                     'RETRYABLE' => 'retryable',
+                    'RETRY_EXHAUSTED' => 'retryExhausted',
                     'SETUP_REQUIRED' => 'setupRequired',
                     'BLOCKED_CAPABILITY' => 'blockedCapability',
                     'AUTH_REQUIRED' => 'authRequired',
@@ -315,10 +321,25 @@ final class HubExecutionTriageService
                 $summary[$key]++; $currentSummary[$key]++;
             }
 
+            $disposition = match ($classification) {
+                'HISTORICAL_EXPECTED' => 'EXPECTED_TEST_HISTORY',
+                'OBSOLETE_STALE' => 'SUPERSEDED_OR_STALE',
+                'POLICY_PAUSED' => 'PAUSED_BY_POLICY',
+                'RETRYABLE' => 'AUTO_RETRY_ELIGIBLE',
+                'RETRY_EXHAUSTED' => 'OWNER_RETRY_REQUIRED',
+                'SETUP_REQUIRED' => 'OWNER_SETUP_REQUIRED',
+                'BLOCKED_CAPABILITY' => 'WAITING_CAPABILITY',
+                'AUTH_REQUIRED' => 'OWNER_AUTH_REQUIRED',
+                'EXTERNAL_POLICY' => 'OWNER_POLICY_REQUIRED',
+                default => 'OPEN_DEFECT',
+            };
             $item = [
                 'executionId'=>(string) ($row['execution_id'] ?? ''),
                 'taskId'=>(string) ($row['task_id'] ?? ''),
+                'projectId'=>(string) ($row['project_id'] ?? ''),
+                'executorKind'=>(string) ($row['executor_kind'] ?? ''),
                 'project'=>(string) ($row['project_name'] ?? 'Project'),
+                'goal'=>$goal,
                 'state'=>$state,
                 'requiredCapability'=>(string) ($row['required_capability'] ?? 'UNKNOWN'),
                 'errorCode'=>$code,
@@ -326,6 +347,7 @@ final class HubExecutionTriageService
                 'updatedAt'=>(string) ($row['updated_at'] ?? ''),
                 'ageSeconds'=>$ageSeconds,
                 'classification'=>$classification,
+                'disposition'=>$disposition,
                 'active'=>$active,
                 'failureCategory'=>$policyCategory,
                 'nextEligibleAt'=>$classification === 'RETRYABLE' ? $policyDecision['nextEligibleAt'] : null,
@@ -339,11 +361,12 @@ final class HubExecutionTriageService
         }
 
         $nextAction = $currentSummary['currentDefect'] > 0 ? 'ตรวจ current defect ก่อนทำ attempt ใหม่'
+            : ($currentSummary['retryExhausted'] > 0 ? 'ตรวจ provider/capability health แล้วเริ่ม attempt ใหม่อย่างชัดเจน; ห้าม blind retry'
             : ($currentSummary['authRequired'] > 0 ? 'แก้ provider credential/authentication ผ่าน Owner authority'
             : ($currentSummary['externalPolicy'] > 0 ? 'ตรวจ provider/account/model policy'
             : ($currentSummary['setupRequired'] > 0 ? 'เติม project/source configuration ผ่าน Owner authority'
             : ($currentSummary['retryable'] > 0 ? 'ให้ canonical retry policy พิจารณาหลัง nextEligibleAt'
-            : ($currentSummary['blockedCapability'] > 0 ? 'คงงานไว้จน capability พร้อม' : 'ไม่มี current blocker')))));
+            : ($currentSummary['blockedCapability'] > 0 ? 'คงงานไว้จน capability พร้อม' : 'ไม่มี current blocker'))))));
 
         return [
             'schemaVersion'=>1,

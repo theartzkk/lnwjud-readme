@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "releaseLabel": "Update Center V2",
+  "releaseNotes": {
+    "schemaVersion": 1,
+    "summary": {
+      "features": [
+        "เพิ่ม Release Notes บอกฟังก์ชันใหม่ สิ่งที่ปรับ และสิ่งที่แก้ก่อนกดอัปเดต",
+        "เพิ่มส่วน “เวอร์ชันต่อไป” เพื่อเห็นงานที่กำลังวางแผนโดยไม่ปนกับรุ่นที่พร้อมติดตั้ง",
+        "เพิ่มประวัติการอัปเดตและสถานะย้อนหลังในหน้าเดียว"
+      ],
+      "improvements": [
+        "ปรับหน้า Update Center ให้เป็น Simple-first และซ่อน SHA/ศัพท์เทคนิคไว้ใน Diagnostics",
+        "เพิ่มค้นหาและตัวกรอง มีอัปเดต / กำลังทำ / ต้องตรวจ",
+        "ปรับ Mobile UX ปุ่มใหญ่ อ่านง่าย และลำดับข้อมูลชัดขึ้น",
+        "เพิ่ม Safe Update progress, ผลกระทบก่อนอัปเดต และข้อความผิดพลาดที่อ่านเข้าใจง่าย"
+      ],
+      "fixes": [
+        "ลดความสับสนจากหลายสถานะ release และการแสดงข้อมูลเชิงเทคนิคบนหน้าหลัก",
+        "ทำให้หน้าใหม่ทำงานได้กับ Production API เดิมโดยไม่ต้องเปลี่ยน AWH Agent"
+      ],
+      "internal": [
+        "Release metadata มี fallback ใน web release เพื่อให้หน้า Update Center ไม่ขึ้นกับ backend รุ่นใหม่",
+        "คง authority และการอัปเดตจริงไว้ที่ Control Plane เดิม ไม่สร้าง deploy engine คู่ขนาน"
+      ]
+    },
+    "impact": {
+      "databaseMigration": "NONE",
+      "serviceReload": "NONE",
+      "appRestart": "NONE",
+      "signIn": "NONE",
+      "plannedDowntime": false
+    },
+    "knownIssues": [],
+    "changedFileCount": 4
+  },
+  "knownIssues": [],
+  "comingNext": [
+    {
+      "title": "Release Notes ครบทุกระบบ",
+      "status": "PLANNED",
+      "items": [
+        "ให้ BAY EXCUSE, LearnLab, Assessment และ Managed Hosting ส่งรายละเอียดรุ่นด้วยรูปแบบเดียวกัน",
+        "แสดงความต่าง Production → รุ่นใหม่ของแต่ละระบบโดยไม่ต้องเปิด Diagnostics"
+      ]
+    },
+    {
+      "title": "Agent Compatibility",
+      "status": "PLANNED",
+      "items": [
+        "แยกเลขเวอร์ชันแอปออกจาก protocol compatibility",
+        "บอกว่าเครื่องใดต้องอัปเดตจริงและเครื่องใดยังใช้งานร่วมกันได้"
+      ]
+    },
+    {
+      "title": "Release Runner",
+      "status": "PLANNED",
+      "items": [
+        "ย้ายงาน Build และ QA หนักออกจาก Production VPS เมื่อ runner พร้อม",
+        "คง Production authority และ Owner approval ไว้ที่ AWH Control Plane เดิม"
+      ]
+    }
+  ],
+  "history": []
+}

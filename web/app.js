@@ -3,10 +3,10 @@ import { executionStatus } from './execution-ux.js?release=__AWH_WEB_RELEASE_ID_
 import { closeAwhDialog, openAwhDialog } from './navigation.js?release=__AWH_WEB_RELEASE_ID__';
 import {
   cancelTask, changePassword, changeUsername, createConversation, createMemory, createPerson, createProject, createRecoveryCodes, decideApproval,
-  exportWorkspace, listAccountRequests, listAuthSessions, listPeople, loadAuthProfile, loadControlData, loadConversation, loadConversationHistory,
-  loadConversations, loadDeletedConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus,
-  loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadObservabilityStatus, loadCapabilities, loadSystemReadiness, loadWorkspaceContinuity, login, logout,
-  recover, registerAccessRequest, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokePerson, saveCurrentContext, stepUp, submitWorkMessage,
+  bindSchoolIdentity, exportWorkspace, listAccountRequests, listAuthSessions, listPeople, loadAuthProfile, loadBayCommunicationStatus, loadControlData, loadConversation, loadConversationHistory,
+  loadConversations, loadDeletedConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus, loadSchoolIdentityBindings, loadSchoolIdentityCandidates,
+  loadProductSettingHistory, loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadObservabilityStatus, loadCapabilities, loadInfrastructure, loadSystemReadiness, loadWorkspaceContinuity, login, logout, logoutAll,
+  recover, registerAccessRequest, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokePerson, revokeSchoolIdentity, saveCurrentContext, stepUp, submitWorkMessage,
   testProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
   updateProviderCredential, updateProviderPolicy, updateProviderProjectRouting, updateObservabilityCredential, updateConversationLifecycle, uploadConversationAttachments,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
@@ -16,9 +16,13 @@ import {
   const MAX_ATTACHMENT_BYTES = 60 * 1024 * 1024;
   const CANCELLABLE_TASK_STATES = new Set(['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL']);
   const MICRO_BAHT = 1000000;
-  const DESKTOP_PACKAGES = [['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, people: [], accountRequests: [], memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
+  const DESKTOP_PACKAGES = [['downloads/AWH-Agent-Beta-macOS-arm64.dmg', 'macOS Apple Silicon · Beta', 'mac-arm64'], ['downloads/AWH-Agent-Beta-macOS-x64.dmg', 'macOS Intel · Beta', 'mac-intel'], ['downloads/AWH-Windows-x64.zip', 'Windows x64 · Beta', 'windows']];
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, infrastructure: null, people: [], accountRequests: [], schoolIdentityBindings: [], schoolIdentityCandidates: [], schoolIdentityPolicy: null, bayCommunication: null, memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
+  const pendingBrandAssets = { logo: undefined, icon: undefined };
+  const MAX_BRAND_SOURCE_BYTES = 8 * 1024 * 1024;
+  const MAX_BRAND_DATA_URL_CHARS = 11500;
   let desktopReleasePromise = null;
+  let deferredInstallPrompt = null;
   let conversationRequest = 0;
   let conversationRefresh = null;
   let pollingConversation = false;
@@ -57,6 +61,55 @@ import {
   }
   let pendingPrivilegedAction = null;
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => undefined);
+  function webAppStandalone() {
+    return window.matchMedia?.('(display-mode: standalone)')?.matches === true || navigator.standalone === true;
+  }
+  function installButtons() { return Array.from(document.querySelectorAll('[data-install-web-app]')); }
+  function syncInstallButtons() {
+    const installed = webAppStandalone();
+    for (const button of installButtons()) button.hidden = installed;
+    if (installed) message('install-web-app-note', 'AWH เปิดอยู่ในโหมด Web App แล้ว');
+  }
+  function showInstallGuide() {
+    const ua = navigator.userAgent || '';
+    const copy = $('install-guide-copy');
+    const steps = $('install-guide-steps');
+    if (/iPhone|iPad|iPod/.test(ua)) {
+      if (copy) copy.textContent = 'บน iPhone/iPad ให้เพิ่ม AWH ไปยังหน้าจอโฮมจากเมนูแชร์ของ Safari';
+      if (steps) steps.innerHTML = '<li><strong>แตะปุ่ม แชร์ ↑</strong><span>ที่แถบเครื่องมือของ Safari</span></li><li><strong>เลือก “เพิ่มไปยังหน้าจอโฮม”</strong><span>Add to Home Screen</span></li><li><strong>แตะ “เพิ่ม”</strong><span>แล้วเปิด AWH จากไอคอนบนหน้าจอโฮม</span></li>';
+    } else if (/Macintosh/.test(ua)) {
+      if (copy) copy.textContent = 'บน Safari สำหรับ Mac ให้เพิ่ม AWH ไปยัง Dock เพื่อเปิดเป็นหน้าต่างแอปแยก';
+      if (steps) steps.innerHTML = '<li><strong>เปิดเมนู File</strong><span>จากแถบเมนู Safari</span></li><li><strong>เลือก “Add to Dock…”</strong><span>ตั้งชื่อ AWH ตามต้องการ</span></li><li><strong>กด Add</strong><span>แล้วเปิดจาก Dock หรือ Launchpad ได้เลย</span></li>';
+    } else {
+      if (copy) copy.textContent = 'เบราว์เซอร์นี้ยังไม่เปิด native install prompt ให้ AWH ใช้เมนูของเบราว์เซอร์เพื่อ “Install app” หรือ “Add to Home Screen”';
+    }
+    openSheet('install-guide-sheet');
+  }
+  async function installWebApp() {
+    if (webAppStandalone()) return;
+    if (!deferredInstallPrompt) { showInstallGuide(); return; }
+    const buttons = installButtons();
+    for (const button of buttons) button.disabled = true;
+    try {
+      await deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+    } finally {
+      deferredInstallPrompt = null;
+      for (const button of buttons) button.disabled = false;
+      syncInstallButtons();
+    }
+  }
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault(); deferredInstallPrompt = event;
+    syncInstallButtons();
+    message('install-web-app-note', 'ติดตั้ง AWH เป็นแอปจากเว็บได้ · ไม่ต้องลง AWH Agent');
+  });
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    syncInstallButtons();
+    message('install-web-app-note', 'AWH ถูกติดตั้งเป็น Web App บนอุปกรณ์นี้แล้ว');
+  });
+  syncInstallButtons();
 
   function message(id, value = '') { const node = $(id); if (node) node.textContent = value; }
   function safeText(value, fallback = '') { return typeof value === 'string' && value.trim() ? value.trim() : fallback; }
@@ -294,16 +347,66 @@ import {
   }
 
   function settingValue(key, fallback) { const item = state.productSettings?.[key]; return item && Object.prototype.hasOwnProperty.call(item, 'value') ? item.value : fallback; }
+  function brandImageValue(key) { const value = settingValue(key, null); return typeof value === 'string' && /^data:image\/(?:png|jpeg|webp);base64,/i.test(value) ? value : null; }
+  function rememberDefaultImage(node) { if (node && !node.dataset.awhDefaultSrc) node.dataset.awhDefaultSrc = node.getAttribute('src') || ''; return node?.dataset.awhDefaultSrc || ''; }
+  function setImage(node, value) { if (!node) return; const fallback = rememberDefaultImage(node); node.src = value || fallback; }
+  function setLinkImage(node, value) { if (!node) return; if (!node.dataset.awhDefaultHref) node.dataset.awhDefaultHref = node.getAttribute('href') || ''; node.href = value || node.dataset.awhDefaultHref; }
+  function renderBrandPreview() {
+    const logo = pendingBrandAssets.logo !== undefined ? pendingBrandAssets.logo : brandImageValue('brandLogoDataUrl');
+    const icon = pendingBrandAssets.icon !== undefined ? pendingBrandAssets.icon : brandImageValue('brandIconDataUrl');
+    setImage($('setting-brand-logo-preview'), logo); setImage($('setting-brand-logo-thumb'), logo);
+    setImage($('setting-brand-icon-preview'), icon); setImage($('setting-brand-icon-thumb'), icon);
+    message('setting-brand-preview-name', $('setting-product-name')?.value || settingValue('productName', 'Art’s Workspace Hub'));
+    message('setting-brand-preview-tagline', $('setting-tagline')?.value || settingValue('tagline', 'Your Projects. One Workspace. Anywhere.'));
+    const accent = $('setting-accent')?.value || settingValue('accent', '#ff7a1a'); message('setting-accent-value', accent.toLowerCase());
+  }
   function applyProductSettings() {
     const name = settingValue('productName', 'Art’s Workspace Hub');
     const tagline = settingValue('tagline', 'Your Projects. One Workspace. Anywhere.');
     const accent = settingValue('accent', '#ff7a1a');
+    const logo = brandImageValue('brandLogoDataUrl'); const icon = brandImageValue('brandIconDataUrl');
     document.title = `${name} — Work`; message('product-name', name); message('product-tagline', tagline);
     document.documentElement.style.setProperty('--accent', accent);
-    $('setting-product-name').value = name; $('setting-short-name').value = settingValue('shortName', 'AWH'); $('setting-tagline').value = tagline; $('setting-welcome').value = settingValue('welcome', 'เริ่มคุยกับ Art’s Workspace Hub ได้เลย'); $('setting-accent').value = accent;
+    document.querySelectorAll('[data-awh-brand-logo]').forEach((node) => setImage(node, logo));
+    setLinkImage($('awh-favicon'), icon); setLinkImage($('awh-apple-touch-icon'), icon);
+    if ($('setting-product-name')) $('setting-product-name').value = name;
+    if ($('setting-short-name')) $('setting-short-name').value = settingValue('shortName', 'AWH');
+    if ($('setting-tagline')) $('setting-tagline').value = tagline;
+    if ($('setting-welcome')) $('setting-welcome').value = settingValue('welcome', 'เริ่มคุยกับ Art’s Workspace Hub ได้เลย');
+    if ($('setting-accent')) $('setting-accent').value = accent;
+    if ($('setting-starter-prompts')) $('setting-starter-prompts').value = (settingValue('starterPrompts', []) || []).join('\n');
     const founder = $('setting-founder-name'); if (founder) founder.value = settingValue('founderName', 'Art');
     const founderCredit = $('setting-founder-credit'); if (founderCredit) founderCredit.value = settingValue('founderCredit', 'Founder · Product Creator · System Concept');
+    renderBrandPreview();
   }
+  async function decodeBrandImage(file) {
+    const source = await new Promise((resolve, reject) => {
+      const reader = new FileReader(); reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('อ่านไฟล์ภาพไม่ได้')); reader.onerror = () => reject(new Error('อ่านไฟล์ภาพไม่ได้')); reader.readAsDataURL(file);
+    });
+    const image = new Image();
+    await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error('อ่านไฟล์ภาพไม่ได้')); image.src = source; });
+    return image;
+  }
+  async function optimizeBrandImage(file, kind) {
+    if (!(file instanceof File) || !['image/png','image/jpeg','image/webp'].includes(file.type)) throw new Error('รองรับเฉพาะ PNG, JPG และ WebP');
+    if (file.size < 1 || file.size > MAX_BRAND_SOURCE_BYTES) throw new Error('ไฟล์ภาพต้องมีขนาดไม่เกิน 8 MB');
+    const image = await decodeBrandImage(file); const maxWidth = kind === 'icon' ? 256 : 720; const maxHeight = kind === 'icon' ? 256 : 240;
+    let scale = Math.min(1, maxWidth / image.naturalWidth, maxHeight / image.naturalHeight); if (!Number.isFinite(scale) || scale <= 0) throw new Error('ขนาดภาพไม่ถูกต้อง');
+    for (const shrink of [1, .82, .68, .56]) {
+      const width = Math.max(1, Math.round(image.naturalWidth * scale * shrink)); const height = Math.max(1, Math.round(image.naturalHeight * scale * shrink));
+      const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height; const context = canvas.getContext('2d', { alpha: true }); if (!context) throw new Error('Browser ไม่รองรับการเตรียมภาพ');
+      context.drawImage(image, 0, 0, width, height);
+      for (const quality of [.82, .70, .58, .46]) { const value = canvas.toDataURL('image/webp', quality); if (value.length <= MAX_BRAND_DATA_URL_CHARS) return value; }
+    }
+    throw new Error('ภาพยังใหญ่เกินขนาดหลังบีบอัตโนมัติ กรุณาเลือกภาพที่เรียบหรือเล็กลง');
+  }
+  function starterPromptsFromForm() {
+    const lines = ($('setting-starter-prompts')?.value || '').split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+    if (lines.length > 6 || lines.some((value) => value.length > 120)) throw new Error('Prompt เริ่มต้นใส่ได้สูงสุด 6 บรรทัด และแต่ละบรรทัดไม่เกิน 120 ตัวอักษร');
+    return lines;
+  }
+  function productSettingChanged(key, value) { return JSON.stringify(settingValue(key, undefined)) !== JSON.stringify(value); }
+
 
   function isOwner() { return state.control?.role === 'OWNER'; }
   function baht(microunits) { return (Number.isInteger(microunits) ? microunits / MICRO_BAHT : 0).toLocaleString('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -354,10 +457,8 @@ import {
     if ($('profile-display-name')) $('profile-display-name').value = identity.displayName || '';
     const owner = isOwner();
     document.querySelectorAll('.owner-profile-menu-item').forEach((node) => { node.hidden = !owner; });
-    for (const section of ['devices','data']) {
-      const action = document.querySelector(`[data-profile-section="${section}"]`);
-      if (action) action.hidden = !owner;
-    }
+    const deviceAction = document.querySelector('[data-profile-section="devices"]'); if (deviceAction) deviceAction.hidden = false;
+    const dataAction = document.querySelector('[data-profile-section="data"]'); if (dataAction) dataAction.hidden = !owner;
   }
   async function refreshProfileIdentity() {
     const value = await loadAuthProfile();
@@ -391,7 +492,7 @@ import {
       item.append(label, meta);
       if (person.status === 'ACTIVE' && person.role !== 'OWNER') {
         const editor = document.createElement('details'); editor.className = 'person-access-editor'; const summary = document.createElement('summary'); summary.textContent = 'จัดการสิทธิ์'; editor.append(summary);
-        const role = document.createElement('select'); for (const [value, text] of [['TEACHER','ครู'],['STAFF','บุคลากร'],['DIRECTOR','ผู้บริหาร / ผู้อนุมัติ'],['VIEWER','ดูอย่างเดียว'],['ADMIN','ผู้ดูแลระบบ']]) { const option = document.createElement('option'); option.value=value; option.textContent=text; option.selected=person.role===value; role.append(option); }
+        const role = document.createElement('select'); for (const [value, text] of [['STAFF','สมาชิก'],['VIEWER','ดูอย่างเดียว'],['ADMIN','ผู้ดูแลแพลตฟอร์ม']]) { const option = document.createElement('option'); option.value=value; option.textContent=text; option.selected=person.role===value; role.append(option); }
         const projectBox = document.createElement('div'); projectBox.className='person-projects'; projectBox.dataset.user=person.userId;
         for (const project of state.control?.projects || []) { const row=document.createElement('label'); row.className='check-row'; const input=document.createElement('input'); input.type='checkbox'; input.value=project.projectId; input.checked=Array.isArray(person.projectIds)&&person.projectIds.includes(project.projectId); const text=document.createElement('span'); text.textContent=project.name; row.append(input,text); projectBox.append(row); }
         const actions=document.createElement('div'); actions.className='task-actions'; const save=document.createElement('button'); save.type='button'; save.className='secondary-button'; save.textContent='บันทึกสิทธิ์'; const revoke=document.createElement('button'); revoke.type='button'; revoke.className='text-button'; revoke.textContent='ปิดบัญชี';
@@ -412,7 +513,7 @@ import {
       const title=document.createElement('strong'); title.textContent=request.displayName;
       const meta=document.createElement('span'); meta.textContent=`${personTypeLabel(request.personType)} · @${request.username}${request.requestedArea?` · ${request.requestedArea}`:''}`;
       const controls=document.createElement('div'); controls.className='person-access-editor';
-      const role=document.createElement('select'); for(const [value,text] of [['TEACHER','ครู'],['STAFF','บุคลากร'],['DIRECTOR','ผู้บริหาร / ผู้อนุมัติ'],['VIEWER','ดูอย่างเดียว'],['ADMIN','ผู้ดูแลระบบ']]){const option=document.createElement('option');option.value=value;option.textContent=text;option.selected=(request.personType==='TEACHER'&&value==='TEACHER')||(request.personType==='DIRECTOR'&&value==='DIRECTOR')||(request.personType==='STAFF'&&value==='STAFF')||(['PARENT','STUDENT','OTHER'].includes(request.personType)&&value==='VIEWER');role.append(option);}
+      const role=document.createElement('select'); for(const [value,text] of [['STAFF','สมาชิก'],['VIEWER','ดูอย่างเดียว'],['ADMIN','ผู้ดูแลแพลตฟอร์ม']]){const option=document.createElement('option');option.value=value;option.textContent=text;option.selected=(request.personType==='STAFF'&&value==='STAFF')||(request.personType!=='STAFF'&&value==='VIEWER');role.append(option);}
       const projects=document.createElement('div'); projects.className='person-projects'; for(const project of state.control?.projects||[]){const row=document.createElement('label');row.className='check-row';const input=document.createElement('input');input.type='checkbox';input.value=project.projectId;const text=document.createElement('span');text.textContent=project.name;row.append(input,text);projects.append(row);}
       const actions=document.createElement('div'); actions.className='task-actions'; const approve=document.createElement('button');approve.type='button';approve.className='secondary-button';approve.textContent='อนุมัติ';const reject=document.createElement('button');reject.type='button';reject.className='text-button';reject.textContent='ปฏิเสธ';
       approve.addEventListener('click',async()=>{approve.disabled=true;try{await withPrivilegedRetry(()=>reviewAccountRequest(request.requestId,'APPROVE',role.value,[...projects.querySelectorAll('input:checked')].map(n=>n.value)),'การอนุมัติสิทธิ์ผู้ใช้งาน');state.accountRequests=(await listAccountRequests()).requests||[];state.people=(await listPeople()).people||[];renderPeople();message('people-message','อนุมัติบัญชีแล้ว ผู้สมัครใช้รหัสผ่านที่ตั้งไว้เข้าสู่ระบบได้ทันที');}catch(error){message('people-message',error instanceof Error?error.message:'ยังอนุมัติไม่ได้');approve.disabled=false;}});
@@ -421,6 +522,48 @@ import {
     }
     if(!list.childElementCount) list.textContent='ไม่มีคำขอที่รอพิจารณา';
     const badge=$('account-request-count'); if(badge) badge.textContent=pending.length?String(pending.length):'';
+  }
+
+  async function refreshSchoolAccessSurfaces() {
+    const [bindings,candidates,line]=await Promise.allSettled([loadSchoolIdentityBindings(),loadSchoolIdentityCandidates(),loadBayCommunicationStatus()]);
+    if(bindings.status==='fulfilled'){state.schoolIdentityBindings=bindings.value.people||[];state.schoolIdentityPolicy=bindings.value.policy||null;}else{state.schoolIdentityBindings=[];state.schoolIdentityPolicy=null;}
+    state.schoolIdentityCandidates=candidates.status==='fulfilled'?(candidates.value.candidates||[]):[]; state.bayCommunication=line.status==='fulfilled'?(line.value.summary||null):null;
+    renderSchoolIdentity(); renderBayCommunication();
+  }
+
+  function renderSchoolIdentity() {
+    const list=$('school-identity-list'); if(!list) return; list.replaceChildren(); const policy=$('school-identity-policy');
+    if(policy) policy.textContent=state.schoolIdentityPolicy?(state.schoolIdentityPolicy.platformAuthority+' → '+state.schoolIdentityPolicy.schoolAuthority):'ยังตรวจ authority ไม่ได้';
+    for(const person of state.schoolIdentityBindings){
+      const item=document.createElement('div'); item.className='session-item person-card'; const title=document.createElement('strong'); title.textContent=person.displayName;
+      const school=person.school||{}; const identity=school.identity||null; const meta=document.createElement('span');
+      meta.textContent=school.verified&&identity?('BAY: '+identity.displayName+(identity.positionName?' · '+identity.positionName:'')+(identity.roles?.length?' · '+identity.roles.join(', '):'')):(school.state==='UNAVAILABLE'?'BAY ยังอ่านไม่ได้':'ยังไม่เชื่อม BAY');
+      item.append(title,meta);
+      if(person.status==='ACTIVE'){
+        const controls=document.createElement('div'); controls.className='task-actions';
+        if(school.verified){
+          const revoke=document.createElement('button'); revoke.type='button'; revoke.className='text-button'; revoke.textContent='ยกเลิกการเชื่อม';
+          revoke.addEventListener('click',async()=>{if(!window.confirm('ยกเลิกการเชื่อม BAY ของ “'+person.displayName+'” ใช่หรือไม่?'))return;revoke.disabled=true;try{await withPrivilegedRetry(()=>revokeSchoolIdentity(person.userId),'การยกเลิกตัวตนโรงเรียน');await refreshSchoolAccessSurfaces();message('school-identity-message','ยกเลิกการเชื่อมแล้ว');}catch(error){message('school-identity-message',error instanceof Error?error.message:'ยังยกเลิกการเชื่อมไม่ได้');revoke.disabled=false;}});
+          controls.append(revoke);
+        } else {
+          const select=document.createElement('select'); const blank=document.createElement('option');blank.value='';blank.textContent='เลือกบุคลากรจาก BAY';select.append(blank);
+          for(const candidate of state.schoolIdentityCandidates){const option=document.createElement('option');option.value=String(candidate.bayUserId);option.textContent=candidate.displayName+(candidate.positionName?' · '+candidate.positionName:'');select.append(option);}
+          const link=document.createElement('button');link.type='button';link.className='secondary-button';link.textContent='เชื่อม BAY';
+          link.addEventListener('click',async()=>{const bayUserId=Number(select.value);if(!Number.isInteger(bayUserId)||bayUserId<1){message('school-identity-message','เลือกบุคลากรจาก BAY ก่อน');return;}link.disabled=true;try{await withPrivilegedRetry(()=>bindSchoolIdentity(person.userId,bayUserId),'การเชื่อมตัวตนโรงเรียน');await refreshSchoolAccessSurfaces();message('school-identity-message','เชื่อมตัวตน BAY แล้ว');}catch(error){message('school-identity-message',error instanceof Error?error.message:'ยังเชื่อม BAY ไม่ได้');link.disabled=false;}});
+          controls.append(select,link);
+        }
+        item.append(controls);
+      }
+      list.append(item);
+    }
+    if(!list.childElementCount) list.textContent='ยังไม่มีบัญชี KRUART ที่พร้อมเชื่อม';
+  }
+
+  function renderBayCommunication() {
+    const list=$('bay-line-summary'); if(!list) return; list.replaceChildren(); const summary=state.bayCommunication; const badge=$('bay-line-state');
+    if(!summary){if(badge)badge.textContent='UNAVAILABLE';list.textContent='ยังอ่านสถานะ LINE OA จาก BAY ไม่ได้';return;} if(badge) badge.textContent=summary.state==='READY'?'พร้อมใช้งาน':summary.state;
+    const rows=[['Webhook ล่าสุด',summary.lastWebhookAt?date(summary.lastWebhookAt):'ยังไม่มีข้อมูล'],['ส่ง LINE 24 ชม.',String(summary.lineSent24h??0)],['คิว / ล้มเหลว',String(summary.lineQueued??0)+' / '+String(summary.lineFailed??0)],['Webhook error / redelivery 24 ชม.',String(summary.webhookErrors24h??0)+' / '+String(summary.redeliveries24h??0)],['ผู้ติดตามที่ยินยอม',String(summary.consentedSubscribers??0)],['นักเรียน / ผู้ปกครองที่เชื่อม',String(summary.linkedStudents??0)+' / '+String(summary.linkedGuardians??0)],['บุคลากรที่เชื่อม LINE',String(summary.linkedStaff??0)],['นักเรียน active ใน BAY',String(summary.activeStudents??0)]];
+    for(const [label,value] of rows){const item=document.createElement('div');item.className='session-item';const strong=document.createElement('strong');strong.textContent=label;const span=document.createElement('span');span.textContent=value;item.append(strong,span);list.append(item);}
   }
 
   function memoryScopeLabel(scope) { return ({ owner: 'ความจำของฉัน', constitution: 'หลักการทำงาน', project: 'ความจำของโปรเจกต์', archive: 'บันทึกย้อนหลัง' })[scope] || 'ความจำของ AWH'; }
@@ -543,13 +686,20 @@ import {
         if (!entry || typeof entry.path !== 'string' || !/^(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+$/.test(entry.path) || typeof entry.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(entry.sha256) || !Number.isSafeInteger(entry.sizeBytes) || entry.sizeBytes < 1 || entry.sizeBytes > 1024 * 1024 * 1024 || files.has(entry.path)) throw new Error('release metadata invalid');
         files.set(entry.path, entry);
       }
-      // Keep legacy packages unavailable until their existing CI lineage is supplied.
+      // ZIPs remain internal release artifacts. DMGs are the user-facing Beta installer surface.
       const desktopReleases = Array.isArray(manifest.desktopReleases) ? manifest.desktopReleases : [];
+      const desktopInstallers = Array.isArray(manifest.desktopInstallers) ? manifest.desktopInstallers : [];
       for (const [path, entry] of files) {
-        if (!path.endsWith('.zip')) continue;
-        const proof = desktopReleases.find(item => item?.path === path);
+        if (!path.endsWith('.zip') && !path.endsWith('.dmg')) continue;
+        const proof = path.endsWith('.dmg')
+          ? desktopInstallers.find(item => item?.path === path)
+          : desktopReleases.find(item => item?.path === path);
         if (!proof || proof.packageVerification !== 'VERIFIED' || !/^[0-9a-f]{40}$/.test(proof.sourceSha || '') || proof.packageSha256 !== entry.sha256 || proof.sizeBytes !== entry.sizeBytes) files.delete(path);
-        else entry.sourceSha = proof.sourceSha;
+        else {
+          entry.sourceSha = proof.sourceSha;
+          entry.channel = typeof proof.channel === 'string' ? proof.channel : (path.endsWith('.dmg') ? 'beta' : 'internal');
+          entry.platformTrust = typeof proof.platformTrust === 'string' ? proof.platformTrust : (path.includes('macOS') ? 'ADHOC_INTERNAL_ONLY' : 'PACKAGE_VERIFIED');
+        }
       }
       return { releaseId: manifest.releaseId, sourceSha: manifest.sourceSha, files };
     })().catch((error) => { desktopReleasePromise = null; throw error; });
@@ -557,19 +707,10 @@ import {
   }
 
   async function loadPublicDesktopRelease() {
-    const container = document.querySelector('.login-downloads');
-    if (!(container instanceof HTMLElement)) return;
-    container.hidden = true;
-    try {
-      const release = await loadVerifiedDesktopRelease(); let available = 0;
-      for (const [path, , platform] of DESKTOP_PACKAGES) {
-        const link = document.querySelector(`[data-desktop-package="${platform}"]`); if (!(link instanceof HTMLAnchorElement)) continue;
-        const entry = release.files.get(path); link.hidden = !entry;
-        if (entry) { link.href = `./${path}`; link.dataset.release = release.releaseId; available += 1; }
-        else { link.removeAttribute('href'); delete link.dataset.release; }
-      }
-      container.hidden = available === 0;
-    } catch { container.hidden = true; }
+    // AWH is Web/PWA-first. Native Agent installers are never a public sign-in path.
+    // macOS must additionally carry explicit Apple trust evidence before any future
+    // public exposure; checksum/source provenance alone is not platform trust.
+    return undefined;
   }
 
   async function loadDesktopRelease() {
@@ -579,14 +720,13 @@ import {
       const packages = DESKTOP_PACKAGES.filter(([path]) => files.has(path));
       list.replaceChildren();
       if (!packages.length) throw new Error('verified desktop packages unavailable');
-      message('desktop-release-status', `แพ็กเกจที่มีหลักฐาน Source และ checksum · ${release.releaseId}`);
-      for (const [path, , platform] of DESKTOP_PACKAGES) {
-        const link = document.querySelector(`[data-desktop-package="${platform}"]`); if (link && files.has(path)) { link.href = `./${path}`; link.dataset.release = release.releaseId; link.hidden = false; }
-      }
+      message('desktop-release-status', `AWH Agent เป็นส่วนเสริม · ${release.releaseId}`);
       for (const [path, label] of packages) {
         const entry = files.get(path); const item = document.createElement('div'); item.className = 'session-item';
+        const mac = path.includes('macOS'); const trusted = entry.platformTrust === 'GATEKEEPER_ACCEPTED';
         const title = document.createElement('strong'); title.textContent = label;
-        const detail = document.createElement('span'); detail.textContent = `${size(entry.sizeBytes)} · Source ${entry.sourceSha.slice(0, 12)} · SHA-256 ${entry.sha256.slice(0, 12)}…`;
+        const trust = mac ? (trusted ? 'Stable · Apple notarization ผ่านแล้ว' : 'Beta สำหรับทดสอบ · Source/Checksum ผ่าน') : 'Beta · Source/Checksum ผ่าน';
+        const detail = document.createElement('span'); detail.textContent = `${trust} · ${size(entry.sizeBytes)} · Source ${entry.sourceSha.slice(0, 12)} · SHA-256 ${entry.sha256.slice(0, 12)}…`;
         const link = document.createElement('a'); link.href = `./${path}`; link.textContent = `ดาวน์โหลด ${label}`; link.setAttribute('download', '');
         item.append(title, detail, link); list.append(item);
       }
@@ -599,7 +739,7 @@ import {
     const provider = state.provider || {}; const credential = provider.credential || {}; const workers = state.ownerStatus?.workers || state.control?.workers || [];
     const ai = provider.available ? 'พร้อมใช้งาน · Auto' : provider.keyConfigured ? `เชื่อมแล้ว · ${credential.lastTestStatus === 'PASS' ? 'ตรวจสอบผ่าน' : 'ต้องทดสอบ'}` : 'ยังไม่เชื่อม API key';
     message('settings-ai-summary', ai);
-    message('settings-device-summary', workers.length ? `${workers.filter((worker) => worker.state === 'READY' || worker.state === 'WORKING').length} เครื่องพร้อมทำงาน` : 'ยังไม่มี AWH Desktop ที่พร้อมทำงาน');
+    message('settings-device-summary', workers.length ? `${workers.filter((worker) => worker.state === 'READY' || worker.state === 'WORKING').length} เครื่องพร้อมทำงาน` : 'ยังไม่มี AWH Agent ที่พร้อมทำงาน');
     const list = $('settings-worker-list'); if (list) {
       list.replaceChildren();
       for (const worker of workers) {
@@ -613,8 +753,9 @@ import {
       if (!list.childElementCount) list.textContent = 'ยังไม่มีอุปกรณ์เสริมที่เชื่อมกับโปรเจกต์';
     }
     const online = workers.filter((worker) => worker?.online || ['READY', 'WORKING', 'ONLINE'].includes(worker?.state)).length;
-    message('settings-worker-message', online > 0 ? `มีอุปกรณ์เสริมพร้อมรับงาน ${online} เครื่อง · งาน Cloud ทำต่อได้โดยไม่ต้องเปิดเครื่อง` : 'งาน Cloud ทำต่อได้ตามปกติ · เปิด AWH Desktop เฉพาะงานที่ต้องใช้ไฟล์หรือแอปบนเครื่อง');
+    message('settings-worker-message', online > 0 ? `มีอุปกรณ์เสริมพร้อมรับงาน ${online} เครื่อง · งาน Cloud ทำต่อได้โดยไม่ต้องเปิดเครื่อง` : 'งานบนเว็บทำต่อได้ตามปกติ · ใช้ AWH Agent เฉพาะงานที่ต้องเข้าถึงไฟล์หรือแอปบนคอมพิวเตอร์เครื่องนั้น');
     renderCapabilitySurface();
+    renderCoreReleaseSurface();
     void loadDesktopRelease();
     const readiness = state.systemReadiness;
     if (readiness) {
@@ -946,6 +1087,9 @@ import {
       if (turn.kind === 'assistant' || turn.kind === 'result' || turn.kind === 'failure') {
         const messageActions = document.createElement('div'); messageActions.className = 'message-actions';
         const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'text-button'; copy.textContent = 'คัดลอก'; copy.addEventListener('click', () => { void copyMessageText(turn.body, copy); });
+        if (!isOwner() && /ไม่ใช้ค่า AI ของเจ้าของระบบ/u.test(String(turn.body || ''))) {
+          const chatgpt = document.createElement('a'); chatgpt.className = 'text-button'; chatgpt.href = 'https://chatgpt.com/'; chatgpt.target = '_blank'; chatgpt.rel = 'noopener noreferrer'; chatgpt.textContent = 'เปิด ChatGPT ของฉัน'; messageActions.append(chatgpt);
+        }
         messageActions.append(copy); response.append(messageActions);
       }
       if (task && !['COMPLETED','FAILED','CANCELLED'].includes(task.state)) response.append(renderLiveActivity(task));
@@ -1422,7 +1566,7 @@ import {
     finally { refreshingWorkspace = false; }
   }
 
-  const settingsSections = ['start', 'ai', 'account', 'devices', 'data', 'system', 'people'];
+  const settingsSections = ['start', 'brand', 'ai', 'account', 'devices', 'data', 'system', 'people'];
   function showSettingsSection(section = 'start') {
     const selected = settingsSections.includes(section) ? section : 'start';
     for (const name of settingsSections) {
@@ -1443,12 +1587,13 @@ import {
   }
   function configureSettingsVisibility() {
     const owner = isOwner();
-    for (const section of ['ai', 'devices', 'data', 'system', 'people']) {
+    for (const section of ['brand', 'ai', 'data', 'system', 'people']) {
       const button = document.querySelector(`.settings-tab[data-settings-tab="${section}"]`);
       if (button) button.hidden = !owner;
     }
+    const deviceButton = document.querySelector('.settings-tab[data-settings-tab="devices"]'); if (deviceButton) deviceButton.hidden = false;
     document.querySelectorAll('.owner-settings-tab, .owner-settings-action').forEach((element) => { element.hidden = !owner; });
-    if (!owner && !['start', 'account'].includes(document.querySelector('.settings-tab.active')?.dataset.settingsTab || '')) showSettingsSection('account');
+    if (!owner && !['start', 'account', 'devices'].includes(document.querySelector('.settings-tab.active')?.dataset.settingsTab || '')) showSettingsSection('account');
   }
   function openSheet(id) { const sheet = $(id); if (sheet) openAwhDialog(sheet); }
   function closeSheet(id, options = {}) {
@@ -1465,14 +1610,14 @@ import {
     } else if (recoveryRequested) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
     state.resetToken = token;
     $('reset-password-form').hidden = token === null;
-    message('reset-instructions', token ? 'ลิงก์นี้ใช้ได้ครั้งเดียวและจะหมดอายุในเวลาอันสั้น เลือกรหัสผ่านใหม่ที่คุณจำได้' : state.control?.authenticated && recoveryRequested ? 'คุณยังเข้าสู่ระบบอยู่ เปิดแท็บ “บัญชีและความปลอดภัย” เพื่อจัดการรหัสผ่านหรือเตรียมรหัสกู้คืน หากกำลังแก้ปัญหาการเข้าสู่ระบบ ให้ใช้รหัสกู้คืนฉุกเฉินที่เตรียมไว้เท่านั้น' : 'กด “ลืมรหัสผ่าน?” จากหน้าเข้าสู่ระบบ แล้วเปิดลิงก์กู้คืนจาก AWH Desktop ที่เชื่อถือได้ ลิงก์มีอายุสั้นและใช้ได้ครั้งเดียว');
+    message('reset-instructions', token ? 'ลิงก์นี้ใช้ได้ครั้งเดียวและจะหมดอายุในเวลาอันสั้น เลือกรหัสผ่านใหม่ที่คุณจำได้' : state.control?.authenticated && recoveryRequested ? 'คุณยังเข้าสู่ระบบอยู่ เปิดแท็บ “บัญชีและความปลอดภัย” เพื่อจัดการรหัสผ่านหรือเตรียมรหัสกู้คืน หากกำลังแก้ปัญหาการเข้าสู่ระบบ ให้ใช้รหัสกู้คืนฉุกเฉินที่เตรียมไว้เท่านั้น' : 'กด “ลืมรหัสผ่าน?” จากหน้าเข้าสู่ระบบ แล้วเปิดลิงก์กู้คืนจาก AWH Agent บนอุปกรณ์ที่เชื่อถือได้ ลิงก์มีอายุสั้นและใช้ได้ครั้งเดียว');
     openSheet('recovery-sheet');
   }
   async function openAccount(section = 'start') {
     if (!state.control?.authenticated) return;
     openSheet('account-sheet');
     configureSettingsVisibility();
-    const selected = isOwner() ? section : 'account';
+    const selected = isOwner() ? section : (['account', 'devices'].includes(section) ? section : 'account');
     showSettingsSection(settingsSections.includes(selected) ? selected : 'account');
     $('owner-only-settings').hidden = !isOwner();
     $('product-settings-form').hidden = !isOwner();
@@ -1492,9 +1637,11 @@ import {
       if (peopleResult.status === 'fulfilled') state.people = Array.isArray(peopleResult.value.people) ? peopleResult.value.people : [];
       if (accountRequestsResult.status === 'fulfilled') state.accountRequests = Array.isArray(accountRequestsResult.value.requests) ? accountRequestsResult.value.requests : [];
       if (peopleResult.status === 'fulfilled') renderPeople(); else message('people-message', 'ยังโหลดผู้ใช้งานไม่ได้ ลองรีเฟรชอีกครั้ง');
+      await refreshSchoolAccessSurfaces();
       if (ownerStatusResult.status === 'fulfilled') state.ownerStatus = ownerStatusResult.value;
       if (routingResult.status === 'fulfilled') state.providerRouting = routingResult.value;
       if (state.ownerStatus) renderOwnerSelfService(); else renderSettingsOverview();
+      if (selected === 'system') await Promise.allSettled([refreshCoreReleaseState(), refreshLearnLabReleaseState()]);
       try { await refreshMemory(); } catch { message('memory-message', 'ยังโหลดความจำไม่ได้ ลองรีเฟรชอีกครั้ง'); }
     } else renderSettingsOverview();
   }
@@ -1719,7 +1866,7 @@ import {
     catch (error) { message('system-check-message', error instanceof Error ? error.message : 'ยังตรวจความพร้อมของ AWH ไม่ได้'); }
     finally { button.disabled = false; }
   });
-  document.querySelectorAll('[data-settings-tab]').forEach((button) => button.addEventListener('click', () => showSettingsSection(button.dataset.settingsTab)));
+  document.querySelectorAll('[data-settings-tab]').forEach((button) => button.addEventListener('click', () => { showSettingsSection(button.dataset.settingsTab); }));
   $('observability-credential-form')?.addEventListener('submit', async (event) => {
     event.preventDefault(); const field = $('observability-api-key'); const button = event.currentTarget.querySelector('button[type="submit"]'); if (!field?.value.trim()) { message('observability-message', 'วาง Honeycomb API key ก่อน'); return; }
     button.disabled = true; message('observability-message', 'กำลังบันทึก key อย่างปลอดภัย…');
@@ -1734,6 +1881,7 @@ import {
     catch (error) { message('observability-message', error instanceof Error ? error.message : 'ยังหยุดการเชื่อมไม่ได้'); }
   });
   $('system-check-inline')?.addEventListener('click', () => $('system-check')?.click());
+  installButtons().forEach((button) => button.addEventListener('click', installWebApp));
   $('recovery-open').addEventListener('click', openPasswordRecovery);
   document.querySelectorAll('[data-close-sheet]').forEach((button) => button.addEventListener('click', () => closeSheet(button.dataset.closeSheet)));
 
@@ -1772,22 +1920,66 @@ import {
   });
 
   $('product-settings-form').addEventListener('submit', async (event) => {
-    event.preventDefault(); message('product-settings-message', 'กำลังบันทึก…');
+    event.preventDefault(); if (!isOwner()) return; const button = $('product-settings-form').querySelector('button[type="submit"]'); button.disabled = true; message('product-settings-message', 'กำลังบันทึกแบรนด์…');
     try {
-      const values = [['productName', $('setting-product-name').value], ['shortName', $('setting-short-name').value], ['tagline', $('setting-tagline').value], ['welcome', $('setting-welcome').value], ['accent', $('setting-accent').value]];
-      for (const [key, value] of values) state.productSettings = (await updateProductSetting(key, value)).settings;
-      applyProductSettings(); message('product-settings-message', 'บันทึกลักษณะของ AWH แล้ว');
+      const values = [
+        ['productName', $('setting-product-name').value.trim()], ['shortName', $('setting-short-name').value.trim()], ['tagline', $('setting-tagline').value.trim()],
+        ['welcome', $('setting-welcome').value.trim()], ['starterPrompts', starterPromptsFromForm()], ['accent', $('setting-accent').value.toLowerCase()],
+        ['founderName', $('setting-founder-name').value.trim()], ['founderCredit', $('setting-founder-credit').value.trim()],
+      ];
+      if (pendingBrandAssets.logo !== undefined) values.push(['brandLogoDataUrl', pendingBrandAssets.logo]);
+      if (pendingBrandAssets.icon !== undefined) values.push(['brandIconDataUrl', pendingBrandAssets.icon]);
+      const changed = values.filter(([key, value]) => productSettingChanged(key, value));
+      for (const [key, value] of changed) state.productSettings = (await updateProductSetting(key, value)).settings;
+      pendingBrandAssets.logo = undefined; pendingBrandAssets.icon = undefined; applyProductSettings();
+      message('product-settings-message', changed.length ? `บันทึกแบรนด์แล้ว · ${changed.length} รายการ` : 'ไม่มีค่าที่เปลี่ยน');
     } catch (error) { message('product-settings-message', error instanceof Error ? error.message : 'ยังบันทึกการตั้งค่าไม่ได้'); }
+    finally { button.disabled = false; }
   });
+
+  function brandHistorySummary(key, value) {
+    if (key === 'brandLogoDataUrl' || key === 'brandIconDataUrl') return value ? 'มีไฟล์ภาพที่บันทึกไว้' : 'ใช้ภาพมาตรฐาน';
+    if (Array.isArray(value)) return value.join(' · ').slice(0, 180) || '—';
+    return String(value ?? '—').slice(0, 180);
+  }
+  async function loadBrandHistory() {
+    const list = $('brand-history-list'); if (!list || !isOwner()) return;
+    list.replaceChildren(); const key = $('brand-history-key')?.value || 'productName';
+    try {
+      const data = await loadProductSettingHistory(key); const revisions = Array.isArray(data.revisions) ? data.revisions : [];
+      for (const revision of revisions) {
+        const row = document.createElement('div'); row.className = 'session-item';
+        const copy = document.createElement('div'); const title = document.createElement('strong'); const detail = document.createElement('small');
+        title.textContent = `Revision ${revision.revision}`; detail.textContent = `${date(revision.createdAt)} · ${brandHistorySummary(key, revision.value)}`; copy.append(title, detail); row.append(copy);
+        const restore = document.createElement('button'); restore.type = 'button'; restore.className = 'text-button'; restore.textContent = 'ใช้ค่านี้';
+        restore.addEventListener('click', async () => { if (!confirm('ใช้ค่าจาก revision นี้เป็นค่าปัจจุบัน?')) return; restore.disabled = true; try { state.productSettings = (await updateProductSetting(key, revision.value)).settings; applyProductSettings(); await loadBrandHistory(); message('product-settings-message', 'คืนค่าจากประวัติแล้ว'); } catch (error) { message('product-settings-message', error instanceof Error ? error.message : 'ยังคืนค่าจากประวัติไม่ได้'); } finally { restore.disabled = false; } });
+        row.append(restore); list.append(row);
+      }
+      if (!list.childElementCount) list.textContent = 'ยังไม่มีประวัติการเปลี่ยนค่านี้';
+    } catch (error) { list.textContent = error instanceof Error ? error.message : 'ยังโหลดประวัติแบรนด์ไม่ได้'; }
+  }
+  $('brand-history-load')?.addEventListener('click', () => void loadBrandHistory());
+  $('brand-history-key')?.addEventListener('change', () => void loadBrandHistory());
 
   $('product-settings-reset').addEventListener('click', async () => {
     const button = $('product-settings-reset'); button.disabled = true; message('product-settings-message', 'กำลังคืนค่ามาตรฐาน…');
     try {
-      for (const key of ['productName', 'shortName', 'tagline', 'welcome', 'accent']) state.productSettings = (await resetProductSetting(key)).settings;
-      applyProductSettings(); message('product-settings-message', 'คืนค่ามาตรฐานแล้ว');
+      for (const key of ['productName', 'shortName', 'tagline', 'welcome', 'starterPrompts', 'accent', 'founderName', 'founderCredit', 'brandLogoDataUrl', 'brandIconDataUrl']) state.productSettings = (await resetProductSetting(key)).settings;
+      pendingBrandAssets.logo = undefined; pendingBrandAssets.icon = undefined; applyProductSettings(); message('product-settings-message', 'คืนค่าแบรนด์มาตรฐานแล้ว');
     } catch (error) { message('product-settings-message', error instanceof Error ? error.message : 'ยังคืนค่ามาตรฐานไม่ได้'); }
     finally { button.disabled = false; }
   });
+
+  async function prepareBrandAsset(kind, file) {
+    message('product-settings-message', `กำลังเตรียม${kind === 'icon' ? 'ไอคอน' : 'โลโก้'}…`);
+    const value = await optimizeBrandImage(file, kind); pendingBrandAssets[kind] = value; renderBrandPreview();
+    message('product-settings-message', `เตรียม${kind === 'icon' ? 'ไอคอน' : 'โลโก้'}แล้ว · กด “บันทึกแบรนด์” เพื่อใช้งานจริง`);
+  }
+  $('setting-brand-logo-file')?.addEventListener('change', async (event) => { const file = event.target.files?.[0]; if (!file) return; try { await prepareBrandAsset('logo', file); } catch (error) { message('product-settings-message', error instanceof Error ? error.message : 'เตรียมโลโก้ไม่ได้'); } finally { event.target.value = ''; } });
+  $('setting-brand-icon-file')?.addEventListener('change', async (event) => { const file = event.target.files?.[0]; if (!file) return; try { await prepareBrandAsset('icon', file); } catch (error) { message('product-settings-message', error instanceof Error ? error.message : 'เตรียมไอคอนไม่ได้'); } finally { event.target.value = ''; } });
+  $('setting-brand-logo-remove')?.addEventListener('click', () => { pendingBrandAssets.logo = null; renderBrandPreview(); message('product-settings-message', 'เลือกใช้โลโก้มาตรฐานแล้ว · กดบันทึกเพื่อยืนยัน'); });
+  $('setting-brand-icon-remove')?.addEventListener('click', () => { pendingBrandAssets.icon = null; renderBrandPreview(); message('product-settings-message', 'เลือกใช้ไอคอนมาตรฐานแล้ว · กดบันทึกเพื่อยืนยัน'); });
+  for (const id of ['setting-product-name','setting-tagline','setting-accent']) $(id)?.addEventListener('input', renderBrandPreview);
 
   $('provider-policy-form').addEventListener('submit', async (event) => {
     event.preventDefault(); if (!isOwner()) return; message('provider-message', 'กำลังบันทึกงบ AI…');
@@ -1814,6 +2006,13 @@ import {
       const data = await exportWorkspace(); const blob = new Blob([`${JSON.stringify(data, null, 2)}\n`], { type: 'application/json' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `awh-workspace-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(url);
     } catch (error) { message('product-settings-message', error instanceof Error ? error.message : 'ยังส่งออกข้อมูลไม่ได้'); }
     finally { button.disabled = false; }
+  });
+
+  $('logout-all-button')?.addEventListener('click', async () => {
+    if (!confirm('ออกจาก AWH ทุกอุปกรณ์ รวมอุปกรณ์นี้ด้วย?')) return;
+    const button = $('logout-all-button'); button.disabled = true; message('logout-all-message', 'กำลังเพิกถอนทุกเซสชัน…');
+    try { await logoutAll(); location.assign('./'); }
+    catch (error) { button.disabled = false; message('logout-all-message', error instanceof Error ? error.message : 'ยังออกจากระบบทุกอุปกรณ์ไม่ได้'); }
   });
 
   $('sessions-load').addEventListener('click', async () => {
@@ -1848,7 +2047,7 @@ import {
 
   $('reset-password-form').addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (!state.resetToken) { message('reset-message', 'กรุณาเปิดลิงก์กู้คืนจาก AWH Desktop ที่เชื่อถือได้ก่อน'); return; }
+    if (!state.resetToken) { message('reset-message', 'กรุณาเปิดลิงก์กู้คืนจาก AWH Agent บนอุปกรณ์ที่เชื่อถือได้ก่อน'); return; }
     if ($('reset-password').value !== $('reset-password-confirm').value) { message('reset-message', 'กรุณายืนยันรหัสผ่านใหม่ให้ตรงกัน'); return; }
     message('reset-message', 'กำลังบันทึกรหัสผ่านใหม่…'); $('reset-password-form').querySelector('button[type="submit"]').disabled = true;
     try {

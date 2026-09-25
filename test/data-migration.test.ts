@@ -9,6 +9,7 @@ import {
   DataDirectoryResolutionError,
   inspectDataMigration,
   migrateData,
+  ensureAwhBootstrapDirectoryActive,
   resolveActiveDataDir,
   MIGRATION_MARKER_FILENAME,
   MIGRATION_SCHEMA_VERSION,
@@ -152,6 +153,34 @@ test('uses one active data directory with AWH and legacy compatibility precedenc
     await migrateData({ legacyDir: legacy, awhDir: awh });
     assert.equal(resolveActiveDataDir({}, root), awh);
   } finally { await clean(root); }
+});
+
+test('adopts only the enrollment bootstrap .awh shape when no legacy data exists', async () => {
+  const safe = await fixture();
+  try {
+    await mkdir(join(safe.awh, 'session-credentials'), { recursive: true });
+    await writeFile(join(safe.awh, 'device.json'), '{}');
+    assert.equal(await ensureAwhBootstrapDirectoryActive(safe.root), true);
+    assert.equal(resolveActiveDataDir({}, safe.root), safe.awh);
+  } finally { await cleanFixture(safe.root); }
+
+  const legacyConflict = await fixture();
+  try {
+    await mkdir(join(legacyConflict.awh, 'session-credentials'), { recursive: true });
+    await writeFile(join(legacyConflict.awh, 'device.json'), '{}');
+    await mkdir(legacyConflict.legacy, { recursive: true });
+    await writeFile(join(legacyConflict.legacy, 'settings.json'), '{}');
+    assert.equal(await ensureAwhBootstrapDirectoryActive(legacyConflict.root), false);
+    assert.throws(() => resolveActiveDataDir({}, legacyConflict.root), DataDirectoryResolutionError);
+  } finally { await cleanFixture(legacyConflict.root); }
+
+  const unknown = await fixture();
+  try {
+    await mkdir(unknown.awh, { recursive: true });
+    await writeFile(join(unknown.awh, 'unexpected.json'), '{}');
+    assert.equal(await ensureAwhBootstrapDirectoryActive(unknown.root), false);
+    assert.throws(() => resolveActiveDataDir({}, unknown.root), DataDirectoryResolutionError);
+  } finally { await cleanFixture(unknown.root); }
 });
 
 test('activates the M1.3B clean, legacy, migrated, standalone, and conflict policy without creating directories', async () => {

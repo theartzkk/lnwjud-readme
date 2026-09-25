@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -9,8 +9,10 @@ const execFileAsync = promisify(execFile);
 const root = process.cwd();
 const deploy = join(root, 'deploy/awh-control-plane/deploy-control-plane.sh');
 const remote = join(root, 'deploy/awh-control-plane/remote-deploy-control-plane.sh');
+const phpAvailable = spawnSync(process.env.AWH_PHP || 'php', ['--version'], { stdio: 'ignore', shell: false }).status === 0;
+const phpTest = phpAvailable ? test : test.skip;
 
-test('M12 Central Project Authority supports first activation and truthful v12 source refresh with a private Vault and durable executor', async () => {
+phpTest('M12 Central Project Authority supports first activation and truthful v12 source refresh with a private Vault and durable executor', async () => {
   const release=(await execFileAsync('git',['rev-parse','HEAD'],{cwd:root})).stdout.trim();
   const result = await execFileAsync('/bin/sh', [deploy, '--dry-run', '--central-project-authority'], {
     cwd: root,
@@ -54,6 +56,11 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(sourceSync, /release-vault:/);
   assert.match(sourceSync, /HubCentralProjectAuthorityMigration::assertCapabilityReady/);
   assert.match(sourceSync, /expireStalePromotionApprovals/);
+  assert.match(sourceSync, /HubProjectSourceAuthorityService/);
+  assert.match(sourceSync, /bindVault\(\$projectId, \(string\) \$state\['activeRevisionId'\]/);
+  assert.match(remoteSource, /cat-file -e "\$RELEASE_COMMIT\^\{commit\}"/);
+  assert.match(remoteSource, /merge-base --is-ancestor "\$current_production" "\$RELEASE_COMMIT"/);
+  assert.match(remoteSource, /update-ref refs\/heads\/production/);
   assert.match(vaultService, /function expireStalePromotionApprovals/);
   assert.doesNotMatch(sourceSync, /in_array\(\$schemaVersion/);
   assert.match(remoteSource, /class_exists\("ZipArchive"\).*\? 0 : 1\);/);
@@ -115,6 +122,10 @@ test('M12 Central Project Authority supports first activation and truthful v12 s
   assert.match(secretPolicy, /BEGIN \(\?:RSA \|EC \|OPENSSH \|DSA \)\?PRIVATE KEY/);
   assert.match(secretPolicy, /Bearer/);
   assert.match(local, /hub\/src\/HubSecretContentPolicy\.php/);
+  assert.match(local, /hub\/src\/HubVerificationGate\.php/);
+  assert.match(local, /hub\/src\/HubVerificationIntelligence\.php/);
+  assert.match(local, /config\/device-role-registry\.json/);
+  assert.match(local, /hub\/src\/HubDeviceRoleRegistry\.php/);
   assert.match(durable, /project\.revision\.promote/);
   assert.match(durable, /Native conversation provider failed/);
   assert.doesNotMatch(durable, /catch \(HubNativeAgentException \$error\) \{\s*if \(\$error->codeName === 'BUDGET_EXHAUSTED'\)[\s\S]{0,240}conversationFallback/);

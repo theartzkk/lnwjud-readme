@@ -55,8 +55,26 @@ test('web build is a generic authenticated Control shell, never a serialized pro
   assert.match(app, /hub-read-adapter\.js\?release=fixture-control-sha/);
   assert.match(adapter, /\/api\/v1\/auth\/session/);
   assert.doesNotMatch(adapter, /control-plane-adapter\.js/);
-  assert.match(html, /downloads\/AWH-macOS-x64\.zip/);
-  assert.match(html, /downloads\/AWH-Windows-x64\.zip/);
+  assert.match(html, /id="install-web-app"/);
+  assert.match(html, /ไม่ต้องติดตั้งโปรแกรมเพื่อเริ่มใช้งาน/);
+  assert.doesNotMatch(html.match(/<section id="sign-in-view"[\s\S]*?<section id="ecosystem-home-view"/)?.[0] || '', /downloads\/AWH-macOS|downloads\/AWH-Windows/);
+});
+
+test('public web presents the local extension as AWH Agent and keeps Desktop as an internal compatibility surface', async () => {
+  const [html, app] = await Promise.all([
+    readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
+    readFile(join(ROOT, 'web', 'app.js'), 'utf8'),
+  ]);
+  assert.match(html, /อุปกรณ์และ AWH Agent/);
+  assert.match(html, /เชื่อมคอมพิวเตอร์เครื่องนี้/);
+  assert.match(html, /AWH ใช้งานหลักผ่านเว็บได้จากทุกอุปกรณ์/);
+  assert.match(html, /AWH Agent เป็นตัวเชื่อมเสริม/);
+  assert.match(html, /Internal build เท่านั้น/);
+  assert.match(app, /ADHOC_INTERNAL_ONLY/);
+  assert.match(app, /GATEKEEPER_ACCEPTED/);
+  assert.match(app, /ยังไม่มี AWH Agent ที่พร้อมทำงาน/);
+  assert.match(app, /ใช้ AWH Agent เฉพาะงานที่ต้องเข้าถึงไฟล์หรือแอป/);
+  assert.doesNotMatch(`${html}\n${app}`, /AWH Desktop/);
 });
 
 test('one canonical light-first canvas is used by html, body, and the application shell', async () => {
@@ -218,6 +236,46 @@ test('CONTROL work composer keeps attachment previews, camera-capable file picki
   assert.doesNotMatch(`${html}\n${app}\n${adapter}`, /workspacePath|absolutePath|\/Users\/|[A-Za-z]:\\\\/);
 });
 
+test('Owner Brand settings are detailed, revisioned, bounded, and never expose the legacy engine name', async () => {
+  const [html, app, adapter, css, service, ownerCenter, panel] = await Promise.all([
+    readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
+    readFile(join(ROOT, 'web', 'app.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'control-plane-adapter.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'styles.css'), 'utf8'),
+    readFile(join(ROOT, 'hub', 'src', 'HubControlPlaneService.php'), 'utf8'),
+    readFile(join(ROOT, 'web', 'owner-center.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'panel.html'), 'utf8'),
+  ]);
+  assert.match(html, /data-settings-tab="brand"/);
+  assert.match(html, /id="settings-panel-brand"/);
+  for (const id of ['setting-brand-logo-file','setting-brand-icon-file','setting-brand-logo-preview','setting-brand-icon-preview','setting-product-name','setting-short-name','setting-tagline','setting-welcome','setting-starter-prompts','setting-accent','setting-founder-name','setting-founder-credit']) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(html, /PNG \/ JPG \/ WebP/);
+  for (const id of ['brand-history-key','brand-history-load','brand-history-list','logout-all-button','logout-all-message','provider-cost-policy','device-privacy-policy']) assert.match(html, new RegExp(`id=\"${id}\"`));
+  assert.match(app, /MAX_BRAND_SOURCE_BYTES = 8 \* 1024 \* 1024/);
+  assert.match(app, /MAX_BRAND_DATA_URL_CHARS = 11500/);
+  assert.match(app, /async function optimizeBrandImage/);
+  assert.match(app, /new FileReader\(\)/);
+  assert.match(app, /reader\.readAsDataURL\(file\)/);
+  assert.doesNotMatch(app, /URL\.createObjectURL\(file\)/);
+  assert.match(app, /canvas\.toDataURL\('image\/webp'/);
+  assert.match(app, /pendingBrandAssets/);
+  assert.match(app, /productSettingChanged/);
+  assert.match(app, /loadProductSettingHistory/);
+  assert.match(app, /brandHistorySummary/);
+  assert.match(app, /logoutAll\(\)/);
+  assert.match(app, /brandLogoDataUrl/);
+  assert.match(app, /brandIconDataUrl/);
+  assert.match(adapter, /brandLogoDataUrl/);
+  assert.match(adapter, /brandIconDataUrl/);
+  assert.match(service, /'brandLogoDataUrl' => \['value' => null/);
+  assert.match(service, /'brandIconDataUrl' => \['value' => null/);
+  assert.match(service, /strlen\(\$value\) > 12000/);
+  assert.match(service, /strlen\(\$raw\) > 9000/);
+  assert.match(css, /\.brand-settings-preview/);
+  assert.match(css, /\.brand-upload-grid/);
+  assert.doesNotMatch(`${html}\n${app}\n${ownerCenter}\n${panel}`, /lnwjud/i);
+});
+
 test('owner self-service is a focused settings hub whose independent projections cannot hide AI setup', async () => {
   const [html, app, executionUx, css, fixture] = await Promise.all([
     readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
@@ -226,7 +284,7 @@ test('owner self-service is a focused settings hub whose independent projections
     readFile(join(ROOT, 'web', 'styles.css'), 'utf8'),
     readFile(join(ROOT, 'scripts', 'qa', 'control-web-fixture.mjs'), 'utf8'),
   ]);
-  for (const section of ['start', 'ai', 'account', 'devices', 'data', 'people']) assert.match(html, new RegExp(`data-settings-tab="${section}"`));
+  for (const section of ['start', 'brand', 'ai', 'account', 'devices', 'data', 'people']) assert.match(html, new RegExp(`data-settings-tab="${section}"`));
   assert.match(html, /id="settings-panel-ai"/);
   assert.match(app, /id="provider-api-key"/);
   assert.match(app, /provider-credential-settings/);
@@ -239,6 +297,9 @@ test('owner self-service is a focused settings hub whose independent projections
   for (const key of ['backup', 'storage', 'queue', 'aiBudget', 'workerSummary']) assert.match(app, new RegExp(`status\.${key}|status\[.${key}.\]`));
   assert.match(app, /Promise\.allSettled\(requests\)/);
   assert.match(app, /function showSettingsSection/);
+  assert.match(app, /\['account', 'devices'\]\.includes\(section\)/);
+  assert.match(app, /deviceButton\.hidden = false/);
+  assert.match(app, /deviceAction\.hidden = false/);
   assert.match(app, /const host = \$\('memory-host'\)/);
   assert.match(app, /const host = \$\('my-awh-host'\)/);
   assert.match(app, /policy\.insertBefore\(models, enabledRow\)/);
@@ -258,6 +319,10 @@ test('owner self-service is a focused settings hub whose independent projections
   assert.match(fixture, /api\/v1\/auth\/reset-password/);
   assert.match(fixture, /fixtureResetUsed/);
   assert.match(fixture, /auth\/session[^\n]*authenticated:\s*true/);
+  assert.match(fixture, /sessionRole = 'OWNER'/);
+  assert.match(fixture, /username\.trim\(\) === 'teacher'/);
+  assert.match(fixture, /settings\/history/);
+  assert.match(fixture, /logout-all/);
   assert.match(fixture, /control\/automations[^\n]*available:\s*true/);
   assert.match(fixture, /automations\\\/\(\[0-9a-f-\]\{36\}\)\\\/enabled/);
   assert.match(fixture, /automations\\\/\(\[0-9a-f-\]\{36\}\)\\\/archive/);
@@ -299,4 +364,32 @@ test('Work renders inspection evidence through the existing same-origin artifact
   assert.match(app, /for \(const turn of messages\)[\s\S]{0,420}visibleMessages\.push\(turn\)/);
   assert.match(app, /empty-work[\s\S]{0,180}for \(const turn of visibleMessages\)/);
   assert.doesNotMatch(app, /inspection-evidence[^\n]*(?:localStorage|sessionStorage|Authorization|Bearer)/);
+});
+
+
+test('Owner System settings keeps Update Center as the only release UI', async () => {
+  const [html, app, adapter, updates, service] = await Promise.all([
+    readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
+    readFile(join(ROOT, 'web', 'app.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'control-plane-adapter.js'), 'utf8'),
+    readFile(join(ROOT, 'web', 'updates.js'), 'utf8'),
+    readFile(join(ROOT, 'hub', 'src', 'HubCoreReleaseService.php'), 'utf8'),
+  ]);
+  assert.match(html, /href="\.\/updates\.html"/);
+  for (const id of ['core-release-form','core-release-sha','core-release-cleanup','core-release-refresh','learnlab-release-form','learnlab-release-sha','learnlab-release-version','learnlab-release-refresh']) {
+    assert.doesNotMatch(html, new RegExp('id="' + id + '"'));
+  }
+  assert.doesNotMatch(html, /เตรียมปล่อยรุ่น|เตรียม LearnLab release/);
+  assert.doesNotMatch(app, /requestCoreRelease|requestLearnLabRelease|core-release-form|learnlab-release-form/);
+  assert.match(adapter, /loadCoreReleaseStatus/);
+  assert.match(adapter, /requestCoreRelease/);
+  assert.match(adapter, /\/api\/v1\/control\/system\/releases/);
+  assert.match(updates, /requestCoreRelease\(item\.candidate,false\)/);
+  assert.match(updates, /decideApproval\(request\.approvalId,'approve'\)/);
+  assert.match(service, /SOURCE_PROMOTION_AUDIT/);
+  assert.match(service, /required_capability='source\.promote'/);
+  assert.match(service, /'deployment\.approve'/);
+  assert.match(service, /'risk'=>'CRITICAL'/);
+  assert.match(service, /'transport'=>'LOCAL'/);
+  assert.doesNotMatch(html + '\n' + app, /lnwjud/i);
 });

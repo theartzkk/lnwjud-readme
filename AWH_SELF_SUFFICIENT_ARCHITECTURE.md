@@ -1,3 +1,5 @@
+> Historical/architectural reference only. Current execution behavior is defined by live capabilities, current evidence, and context-only working intent; prescriptive workflow text below is non-authoritative.
+
 # AWH AI Self-Sufficient Workspace Architecture
 
 Status: Canonical design contract for post-blocker development

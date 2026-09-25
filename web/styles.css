@@ -256,6 +256,23 @@ body.work-active .capability-plan { max-width: none; background: #fffaf6; }
 .settings-action:hover { border-color: #65442d; background: #1c1f25; }
 .account-form { display: grid; gap: 9px; margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--line); }
 .account-form h3 { margin: 0 0 2px; font-size: 16px; }
+.settings-policy-note { display: grid; gap: 5px; margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-soft); }
+.settings-policy-note strong { font-size: 13px; color: var(--text); }
+.settings-policy-note span { color: var(--muted); font-size: 12px; line-height: 1.55; }
+.settings-inline-link { display: inline-flex; width: max-content; align-items: center; justify-content: center; text-decoration: none; }
+.danger-zone { border-top-color: color-mix(in srgb, var(--danger) 32%, var(--line)); }
+#brand-history-list .session-item { align-items: center; }
+#brand-history-list .session-item > div { display: grid; gap: 3px; min-width: 0; }
+#brand-history-list .session-item small { color: var(--muted); overflow-wrap: anywhere; }
+.brand-settings-preview{display:grid;grid-template-columns:minmax(110px,180px) minmax(0,1fr) 70px;gap:16px;align-items:center;margin:14px 0 4px;padding:18px;border:1px solid var(--line);border-radius:20px;background:var(--surface-soft)}
+.brand-preview-logo-wrap{display:grid;place-items:center;min-height:82px;padding:10px;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+.brand-preview-logo-wrap img{display:block;max-width:100%;max-height:66px;object-fit:contain}
+.brand-preview-copy{display:grid;gap:5px;min-width:0}.brand-preview-copy strong{font-size:17px;overflow-wrap:anywhere}.brand-preview-copy span{color:var(--muted);font-size:12px;line-height:1.45}
+.brand-preview-icon{width:64px;height:64px;object-fit:contain;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+.brand-upload-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.brand-upload-card{display:grid;grid-template-columns:76px minmax(0,1fr);gap:12px;align-items:center;padding:13px;border:1px solid var(--line);border-radius:16px;background:var(--surface-raised)}
+.brand-upload-card>img{width:76px;height:76px;object-fit:contain;padding:6px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}.brand-upload-card>div{display:grid;gap:6px;min-width:0}.brand-upload-card small{color:var(--muted);font-size:11px;line-height:1.45}.brand-upload-card .secondary-button,.brand-upload-card .text-button{justify-self:start}
+.file-button{display:inline-flex;align-items:center;justify-content:center;cursor:pointer}.brand-color-field{display:flex;align-items:center;gap:10px}.brand-color-field input[type="color"]{width:54px;height:42px;padding:3px}.brand-color-field output{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);font-size:12px}
+@media(max-width:680px){.brand-settings-preview{grid-template-columns:1fr 62px}.brand-preview-logo-wrap{grid-column:1/-1}.brand-upload-grid{grid-template-columns:1fr}.brand-upload-card{grid-template-columns:64px minmax(0,1fr)}.brand-upload-card>img{width:64px;height:64px}}
 .compact-form { display: grid; gap: 9px; margin-top: 14px; }
 .compact-form > .form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .recovery-card { border-color: #4a3b2d; }
@@ -593,3 +610,20 @@ body.work-active .capability-plan:not([open]){width:max-content;max-width:100%;b
 body.work-active .capability-plan:not([open])>summary{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 body.work-active .capability-plan[open]{padding:8px 10px}
 @media(max-width:680px){body.work-active .live-activity{gap:5px;padding:6px 0 1px}body.work-active .capability-plan{margin-top:2px}body.work-active .composer-stop{min-height:32px;padding:5px 9px;font-size:11px}}
+
+
+/* Web-first installation · native Agent stays optional */
+.web-app-entry{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:grid;gap:7px}
+.web-app-entry .secondary-button{justify-self:start}
+.web-app-entry small{color:var(--muted);font-size:.72rem;line-height:1.5}
+
+/* PWA install entry is intentionally visible on the authenticated Home surface. */
+.owner-install-row { border-color: color-mix(in srgb, var(--accent) 32%, var(--line)); background: var(--surface); }
+.owner-install-row .owner-quick-icon { background: #fff; }
+.install-guide-card { max-width: 520px; }
+.install-guide-steps { display: grid; gap: 12px; margin: 18px 0; padding: 0; list-style: none; counter-reset: install-step; }
+.install-guide-steps li { counter-increment: install-step; display: grid; grid-template-columns: 34px 1fr; column-gap: 10px; align-items: start; padding: 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.install-guide-steps li::before { content: counter(install-step); display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; font-weight: 800; background: var(--accent); color: #fff; grid-row: 1 / span 2; }
+.install-guide-steps strong { font-size: .95rem; }
+.install-guide-steps span { color: var(--muted); font-size: .82rem; line-height: 1.45; margin-top: 2px; }
+.install-guide-done { width: 100%; }

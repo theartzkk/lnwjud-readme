@@ -5,7 +5,8 @@ STATE_FILE="$STATE_DIR/storage-guard.state"
 JSON_FILE="$STATE_DIR/storage-guard.json"
 EVENT_FILE="$STATE_DIR/storage-guard-events.log"
 WARN=80
-CRIT=90
+BLOCK=90
+CRIT=95
 RECOVER=75
 
 mkdir -p "$STATE_DIR"
@@ -27,15 +28,17 @@ fi
 
 # Bounded low-risk self-healing. Never touches backups/releases/databases/artifacts.
 if [[ "$state" == "WARNING" || "$state" == "CRITICAL" ]]; then
-  /usr/local/sbin/awh-temp-cleanup >/dev/null 2>&1 || true
+  /opt/awh-hub/control-plane-current/deploy/awh-storage/awh-temp-cleanup >/dev/null 2>&1 || true
 fi
-if [[ "$state" == "CRITICAL" ]]; then
+if (( used >= BLOCK )); then
   journalctl --vacuum-size=300M >/dev/null 2>&1 || true
   apt-get clean >/dev/null 2>&1 || true
 fi
 
 used=$(df -P / | awk 'NR==2{gsub(/%/,"",$5);print $5}')
 avail=$(df -B1 --output=avail / | tail -1 | tr -d ' ')
+release_blocked=false
+if (( used >= BLOCK )); then release_blocked=true; fi
 if (( used >= CRIT )); then
   state=CRITICAL
 elif (( used >= WARN )); then
@@ -46,7 +49,7 @@ fi
 
 printf '%s\n' "$state" > "$STATE_FILE"
 tmp="${JSON_FILE}.tmp"
-printf '{"schemaVersion":1,"checkedAt":"%s","state":"%s","usedPercent":%d,"freeBytes":%s,"totalBytes":%s,"warningPercent":%d,"criticalPercent":%d,"recoveryPercent":%d}\n' "$now" "$state" "$used" "$avail" "$total" "$WARN" "$CRIT" "$RECOVER" > "$tmp"
+printf '{"schemaVersion":1,"checkedAt":"%s","state":"%s","usedPercent":%d,"freeBytes":%s,"totalBytes":%s,"warningPercent":%d,"blockPercent":%d,"criticalPercent":%d,"recoveryPercent":%d,"releaseBlocked":%s}\n' "$now" "$state" "$used" "$avail" "$total" "$WARN" "$BLOCK" "$CRIT" "$RECOVER" "$release_blocked" > "$tmp"
 chmod 0640 "$tmp"
 chown root:awh-hub "$tmp" 2>/dev/null || true
 mv -f "$tmp" "$JSON_FILE"

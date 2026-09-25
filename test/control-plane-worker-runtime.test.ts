@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { ControlPlaneWorkerClient, type WorkerProject, type WorkerTask } from '../src/control-plane-worker-client.js';
-import { buildCodexTaskInstruction, ControlPlaneWorkerRuntime, officeExecutionCapabilities } from '../src/control-plane-worker-runtime.js';
+import { buildCodexTaskInstruction, deviceExecutionCapabilities, ownerWorkProfileInstruction, ControlPlaneWorkerRuntime, officeExecutionCapabilities } from '../src/control-plane-worker-runtime.js';
 import { loadOrCreateDeviceIdentity } from '../src/device-identity.js';
 import { execCommand } from '../src/process.js';
 import type { CredentialStore } from '../src/credential-store.js';
@@ -69,19 +69,19 @@ test('desktop worker runtime rejects an unregistered project before execution', 
   }
 });
 
-test('Codex task instruction preserves owner protocol precedence before project memory and Goal', () => {
-  const protocol = '# Art ↔ AI Working Constitution\n\nVersion: 1.0\n\nSystem-first, patch-second.';
+test('Codex task instruction carries non-binding working context before project memory and Goal', () => {
+  const protocol = '# AWH Working Context\n\nVersion: 3.0\nMode: context-only\n\nUse professional judgment.';
   const goal = 'แก้ตารางรายงานโดยวิเคราะห์ระบบร่วมทั้งหมดก่อน';
   const instruction = buildCodexTaskInstruction(protocol, goal);
-  const ownerIndex = instruction.indexOf('Art ↔ AI Working Constitution');
-  const memoryIndex = instruction.indexOf('PROJECT CONTEXT CONTRACT');
+  const ownerIndex = instruction.indexOf('AWH Working Context');
+  const memoryIndex = instruction.indexOf('PROJECT CONTEXT');
   const goalIndex = instruction.indexOf('CURRENT OWNER GOAL');
   assert.ok(ownerIndex >= 0);
   assert.ok(memoryIndex > ownerIndex);
   assert.ok(goalIndex > memoryIndex);
   assert.match(instruction, /PROJECT\.md, HANDOFF\.md, TASKS\.md, ARCHITECTURE\.md, DECISIONS\.md/);
-  assert.match(instruction, /system-first and root-cause-first/i);
-  assert.match(instruction, /Do not create a parallel system/i);
+  assert.match(instruction, /professional judgment/i);
+  assert.match(instruction, /No fixed tool order/i);
   assert.match(instruction, new RegExp(goal));
 });
 
@@ -219,4 +219,39 @@ test('worker self-heals a canonical empty Vault from one uniquely named local pr
     assert.deepEqual(client.memoryFiles.map((file) => file.name).sort(), ['ARCHITECTURE.md', 'CURRENT_STATE.md', 'DECISIONS.md', 'HANDOFF.md', 'PROJECT.md', 'TASKS.md']);
     assert.equal(await readFile(join(workspace, 'wip.txt'), 'utf8'), 'must remain local and outside source archive\n');
   } finally { await rm(dataDir, { recursive: true, force: true }); await rm(workspace, { recursive: true, force: true }); }
+});
+
+
+test('owner work profile turns route evidence into explicit worker behavior without overriding authority', () => {
+  const instruction = ownerWorkProfileInstruction({
+    primaryRoute: 'DIRECT_PLUS_REMOTE',
+    requiresRealDeviceEvidence: true,
+    realSchoolEvidenceRequired: true,
+    generatedSchoolRealityAllowed: false,
+    permanentRepairRequired: true,
+    mixedBoundary: true,
+    evidenceDimensions: { requiresDeviceState: true, requiresServerState: true, requiresConnectedFiles: false, requiresRealSchoolEvidence: true, requiresNativeApp: false, requiresPublicWeb: false },
+    reason: 'server evidence and real-device proof are both required',
+  });
+  assert.match(instruction, /Primary route: DIRECT_PLUS_REMOTE/);
+  assert.match(instruction, /Real device evidence required: YES/);
+  assert.match(instruction, /Generated school reality allowed: NO/);
+  assert.match(instruction, /Permanent root-cause repair required.*YES/);
+  assert.match(instruction, /verify both sides/);
+  assert.match(instruction, /device-state=YES, server-state=YES/);
+});
+
+
+test('device execution capabilities stay provider-neutral and reflect actual runtime inventory', () => {
+  assert.deepEqual(deviceExecutionCapabilities([]), []);
+  assert.deepEqual(deviceExecutionCapabilities(['tool.awh-device-gui']), [
+    'device.screen.inspect', 'device.gui.inspect', 'device.gui.operate', 'browser.automation',
+  ]);
+  assert.deepEqual(deviceExecutionCapabilities(['tool.awh-device-system']), [
+    'workspace.files', 'system.shell', 'device.process',
+  ]);
+  assert.deepEqual(deviceExecutionCapabilities(['tool.awh-device-gui', 'tool.awh-device-system']), [
+    'device.screen.inspect', 'device.gui.inspect', 'device.gui.operate', 'browser.automation',
+    'workspace.files', 'system.shell', 'device.process',
+  ]);
 });

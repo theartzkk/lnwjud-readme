@@ -1,0 +1,36 @@
+[Unit]
+Description=AWH VPS Direct Connector (bay-core-01)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=__AGENT_USER__
+Group=__AGENT_USER__
+Environment=HOME=__AGENT_HOME__
+Environment=NPM_CONFIG_CACHE=__AGENT_HOME__/.npm
+WorkingDirectory=__RUNTIME_ROOT__/agent
+ExecStart=__NODE_ROOT__/bin/node __RUNTIME_ROOT__/agent/node_modules/@wonderwhy-er/desktop-commander/dist/index.js remote
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths=/srv/awh-git
+ReadWritePaths=__AGENT_HOME__
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

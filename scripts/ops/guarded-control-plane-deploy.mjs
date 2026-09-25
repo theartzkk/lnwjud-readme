@@ -3,8 +3,7 @@ import { join } from 'node:path';
 
 const ROOT = process.env.AWH_SOURCE_ROOT || process.cwd();
 const CANONICAL_BRANCH = 'main';
-const CANONICAL_REMOTE = 'origin';
-const CANONICAL_REPOSITORY = 'theartzkk/lnwjud-readme';
+const CANONICAL_REPOSITORY = 'vps/awh';
 const SHA = /^[0-9a-f]{40}$/;
 const deployScript = join(ROOT, 'deploy/awh-control-plane/deploy-control-plane.sh');
 const sourcePreflight = join(ROOT, 'scripts/ops/canonical-source-preflight.mjs');
@@ -42,6 +41,17 @@ function run(command, commandArgs, { inherit = false, env = {} } = {}) {
   });
 }
 
+async function resolveCanonicalRemote() {
+  const configured = await run('git', ['config', '--get', 'branch.main.remote']);
+  const candidates = [configured.code === 0 ? configured.stdout.trim() : '', 'vps', 'origin'].filter(Boolean);
+  for (const remote of [...new Set(candidates)]) {
+    if (remote === '.') continue;
+    const probe = await run('git', ['remote', 'get-url', remote]);
+    if (probe.code === 0 && probe.stdout.trim() !== '') return remote;
+  }
+  throw new Error('CANONICAL_REMOTE_UNRESOLVED');
+}
+
 function safeSourceLines(output) {
   return output.split(/\r?\n/).filter((line) => /^(CANONICAL_SOURCE_STATE|CANONICAL_SOURCE_REASON|CANONICAL_LIVE_SHA|CANONICAL_HEAD_SHA|CANONICAL_TRACKING_STALE|CANONICAL_WORKTREE_COUNT)=[A-Za-z0-9_.:-]+$/.test(line));
 }
@@ -53,11 +63,12 @@ function canonicalShaFrom(output) {
 }
 
 if (mutation) {
+  const canonicalRemote = await resolveCanonicalRemote();
   const preflightArgs = [
     sourcePreflight,
     '--root', ROOT,
     '--branch', CANONICAL_BRANCH,
-    '--remote', CANONICAL_REMOTE,
+    '--remote', canonicalRemote,
     '--repository', CANONICAL_REPOSITORY,
     '--require-mutation-ready',
   ];

@@ -22,7 +22,7 @@ async function build(): Promise<void> {
 
 test('V1.3 owner center unifies existing owner surfaces without a new authority', async () => {
   const source = await readFile(join(ROOT, 'web', 'owner-center.js'), 'utf8');
-  for (const label of ['Projects', 'Source Authority', 'Multi Chat', 'Tasks & Executions', 'Memory', 'Approvals', 'AI & Costs', 'Devices & Workers', 'Users & Roles', 'Security', 'Infrastructure', 'Database Studio', 'Automations', 'Runtime / lnwjud']) assert.match(source, new RegExp(label.replace(/[&/]/g, '\\$&')));
+  for (const label of ['Projects', 'Source Authority', 'Multi Chat', 'Tasks & Executions', 'Memory', 'Approvals', 'AI & Costs', 'Devices & Workers', 'Users & Roles', 'Security', 'Infrastructure', 'Database Studio', 'Automations', 'AWH Runtime']) assert.match(source, new RegExp(label.replace(/[&/]/g, '\\$&')));
   for (const tab of ['data', 'ai', 'devices', 'people', 'account', 'system']) assert.match(source, new RegExp(`openSettings\\('${tab}'\\)`));
   assert.match(source, /project-open/);
   assert.match(source, /conversation-open/);
@@ -151,7 +151,7 @@ test('AWH Settings opens the reachable Owner Center while the dedicated Control 
   ]);
   assert.match(dashboard, /ตั้งค่า[\s\S]{0,180}awh:open-owner-center/);
   assert.doesNotMatch(dashboard, /ตั้งค่า[\s\S]{0,180}dashboard-owner-center-open.*click/);
-  assert.match(owner, /launch\.textContent = 'เปิด Control Panel'/);
+  assert.match(owner, /launch\.textContent = 'เปิดศูนย์ดูแลระบบ'/);
   assert.match(owner, /window\.location\.assign\('\.\/panel\.html'\)/);
   assert.match(owner, /window\.addEventListener\('awh:open-owner-center', openCenter\)/);
 });

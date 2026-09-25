@@ -26,6 +26,10 @@
     "hosting.html",
     "hosting.css",
     "hosting.js",
+    "updates.html",
+    "updates.css",
+    "updates.js",
+    "update-center-metadata.json",
     "trust.html",
     "trust.css",
     "trust.js",
@@ -119,7 +123,11 @@
     "today-community.webp",
     "web-config.json",
     "external-capabilities.json",
-    "data.json"
+    "data.json",
+    "device-runtime-release.json",
+    "device-runtime/runtime-hardening.patch",
+    "device-runtime/macos/awh-remote-worker.sh",
+    "device-runtime/macos/awh-runtime-update.sh"
   ],
   "sourceCopies": [
     [
@@ -437,6 +445,26 @@
     [
       "web/today-community.webp",
       "today-community.webp"
+    ],
+    [
+      "config/device-runtime-release.json",
+      "device-runtime-release.json"
+    ],
+    [
+      "deploy/remote-worker/macos/runtime-hardening.patch",
+      "device-runtime/runtime-hardening.patch"
+    ],
+    [
+      "deploy/remote-worker/macos/awh-remote-worker.sh",
+      "device-runtime/macos/awh-remote-worker.sh"
+    ],
+    [
+      "deploy/remote-worker/macos/awh-runtime-update.sh",
+      "device-runtime/macos/awh-runtime-update.sh"
+    ],
+    [
+      "web/update-center-metadata.json",
+      "update-center-metadata.json"
     ]
   ]
 }

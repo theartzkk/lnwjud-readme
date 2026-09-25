@@ -38,7 +38,9 @@ INCLUDE_PATH=$REMOTE_ROOT/enrollment-current/deploy/nginx/awh-enrollment.conf
 NGINX_BACKUP=$CONFIG_BACKUP_ROOT/nginx/awh-preview.conf.pre-m3e2-$RELEASE_ID
 POOL_BACKUP=$CONFIG_BACKUP_ROOT/php-fpm/awh-enrollment.conf.pre-m3e2-$RELEASE_ID
 POOL_TMP=$(sudo mktemp /tmp/awh-enrollment-pool.XXXXXX)
+OTEL_TMP=$(sudo mktemp /tmp/awh-enrollment-otel.XXXXXX)
 NGINX_TMP=$(sudo mktemp /tmp/awh-enrollment-nginx.XXXXXX)
+POINTER_HELPER=$(mktemp /tmp/awh-enrollment-pointer.XXXXXX)
 POINTER_PATH=$REMOTE_ROOT/enrollment-current
 POINTER_STATE=UNSET
 PREVIOUS_TARGET=
@@ -67,7 +69,8 @@ stage() {
 }
 
 cleanup() {
-  sudo rm -f "$POOL_TMP" "$NGINX_TMP" >/dev/null 2>&1 || true
+  sudo rm -f "$POOL_TMP" "$OTEL_TMP" "$NGINX_TMP" >/dev/null 2>&1 || true
+  rm -f "$POINTER_HELPER" >/dev/null 2>&1 || true
 }
 
 run_m3d_health() {
@@ -204,13 +207,24 @@ PARENT_MODE=$(sudo stat -c '%a' "$DB_PARENT")
 PARENT_OWNER=$(sudo stat -c '%U' "$DB_PARENT")
 PARENT_GROUP=$(sudo stat -c '%G' "$DB_PARENT")
 
-# Preserve www-data read access and reject any existing broad group-write mode.
-test "$DB_GROUP" = www-data
-test "$PARENT_GROUP" = www-data
+# Reject broad group-write modes in every path. Compatibility refreshes
+# preserve the current awh-hub ownership model instead of requiring the
+# legacy www-data group used by the first enrollment deployment.
 test $((0$DB_MODE & 0020)) -eq 0
 test $((0$PARENT_MODE & 0020)) -eq 0
 test $((0$DB_MODE & 0600)) -eq $((0600))
 test $((0$PARENT_MODE & 0700)) -eq $((0700))
+if test "$COMPAT_REFRESH" -eq 1; then
+  test "$DB_OWNER" = awh-hub
+  test "$PARENT_OWNER" = awh-hub
+  sudo -n -u awh-hub test -r "$DB"
+  sudo -n -u awh-hub test -w "$DB"
+  sudo -n -u awh-hub test -x "$DB_PARENT"
+  sudo -n -u awh-hub test -w "$DB_PARENT"
+else
+  test "$DB_GROUP" = www-data
+  test "$PARENT_GROUP" = www-data
+fi
 
 sudo install -d -m 0750 -o root -g awh-hub /var/backups/awh-hub
 sudo sqlite3 "$DB" ".backup '$BACKUP'"
@@ -269,7 +283,10 @@ stage "$CURRENT_STAGE"
 CURRENT_STAGE=RELEASE_STAGED
 stage "$CURRENT_STAGE"
 
-. "$REMOTE_RELEASE/deploy/awh-enrollment/pointer-state.sh"
+sudo cat "$REMOTE_RELEASE/deploy/awh-enrollment/pointer-state.sh" > "$POINTER_HELPER"
+chmod 0600 "$POINTER_HELPER"
+test -s "$POINTER_HELPER"
+. "$POINTER_HELPER"
 POINTER_PATH=$REMOTE_ROOT/enrollment-current
 POINTER_SUDO=/usr/bin/sudo
 if ! pointer_capture; then exit 20; fi
@@ -300,6 +317,8 @@ else
   test "$(sudo sqlite3 "$DB" 'PRAGMA user_version;' | head -n 1)" = 3
 fi
 test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='enrollment_rate_limits';")" = 1
+CURRENT_STAGE=POST_SCHEMA_VERIFIED
+stage "$CURRENT_STAGE"
 
 sudo install -d -m 0750 -o root -g root "$CONFIG_BACKUP_ROOT/nginx" "$CONFIG_BACKUP_ROOT/php-fpm"
 sudo test ! -e "$NGINX_BACKUP"
@@ -312,6 +331,8 @@ if sudo test -f "$POOL_PATH"; then
   POOL_BACKUP_CREATED=1
   POOL_EXISTED=1
 fi
+CURRENT_STAGE=CONFIG_BACKUPS_READY
+stage "$CURRENT_STAGE"
 POOL_CHANGED=1
 sudo awk -v hash_file="$BOOTSTRAP_HASH_FILE" '
 BEGIN {
@@ -326,6 +347,28 @@ BEGIN {
 sudo test -s "$POOL_TMP"
 sudo grep -q '^\[awh-hub\]$' "$POOL_TMP"
 sudo grep -Eq 'env\[AWH_ENROLLMENT_BOOTSTRAP_NONCE_HASH\][[:space:]]*=[[:space:]]*[0-9a-fA-F]{64}$' "$POOL_TMP"
+CURRENT_STAGE=POOL_RENDERED
+stage "$CURRENT_STAGE"
+
+# Runtime observability is installed out-of-band in a bounded marker block.
+# Enrollment refreshes preserve that block instead of silently disabling traces.
+if sudo test -f "$POOL_PATH" && { sudo grep -q '^; BEGIN AWH OTEL$' "$POOL_PATH" || sudo grep -q '^; END AWH OTEL$' "$POOL_PATH"; }; then
+  test "$(sudo grep -c '^; BEGIN AWH OTEL$' "$POOL_PATH")" = 1
+  test "$(sudo grep -c '^; END AWH OTEL$' "$POOL_PATH")" = 1
+  ! sudo grep -q '^; BEGIN AWH OTEL$' "$POOL_TMP"
+  sudo awk '
+    /^; BEGIN AWH OTEL$/ { copy=1 }
+    copy { print }
+    /^; END AWH OTEL$/ { copy=0 }
+  ' "$POOL_PATH" | sudo tee "$OTEL_TMP" >/dev/null
+  sudo test -s "$OTEL_TMP"
+  sudo grep -q '^; BEGIN AWH OTEL$' "$OTEL_TMP"
+  sudo grep -q '^; END AWH OTEL$' "$OTEL_TMP"
+  sudo sh -c 'printf "\n" >> "$1"; cat "$2" >> "$1"' sh "$POOL_TMP" "$OTEL_TMP"
+fi
+CURRENT_STAGE=POOL_OBSERVABILITY_READY
+stage "$CURRENT_STAGE"
+
 sudo install -o root -g root -m 0640 "$POOL_TMP" "$POOL_PATH"
 CURRENT_STAGE=FPM_CONFIGURED
 stage "$CURRENT_STAGE"

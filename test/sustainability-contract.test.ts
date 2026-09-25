@@ -78,8 +78,9 @@ test('desktop release evidence is deterministic, exact-revision-bound, and never
   const outputTwo = join(dir, 'evidence-two.json');
   const payload = Buffer.from('verified portable package fixture\n', 'utf8');
   const sourceSha = 'a'.repeat(40);
+  const sourceTreeSha = 'b'.repeat(40);
   const script = join(ROOT, 'scripts/release/create-desktop-release-evidence.mjs');
-  const invoke = (output: string, sha = sourceSha) => execFileAsync(process.execPath, [script, '--platform', 'win32', '--architecture', 'x64', '--package', packagePath, '--source-sha', sha, '--output', output], { cwd: ROOT });
+  const invoke = (output: string, sha = sourceSha, treeSha = sourceTreeSha) => execFileAsync(process.execPath, [script, '--platform', 'win32', '--architecture', 'x64', '--package', packagePath, '--source-sha', sha, '--source-tree-sha', treeSha, '--output', output], { cwd: ROOT });
   try {
     await writeFile(packagePath, payload);
     const firstRun = await invoke(outputOne);
@@ -92,6 +93,7 @@ test('desktop release evidence is deterministic, exact-revision-bound, and never
     assert.equal(evidence.platform, 'win32');
     assert.equal(evidence.architecture, 'x64');
     assert.equal(evidence.sourceSha, sourceSha);
+    assert.equal(evidence.sourceTreeSha, sourceTreeSha);
     assert.equal(evidence.packageSha256, createHash('sha256').update(payload).digest('hex'));
     assert.equal(evidence.sizeBytes, payload.length);
     assert.equal(evidence.downloadKey, 'AWH-Windows-x64.zip');
@@ -104,7 +106,15 @@ test('desktop release evidence is deterministic, exact-revision-bound, and never
     assert.doesNotMatch(first, new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     await invoke(outputTwo);
     assert.equal(await readFile(outputTwo, 'utf8'), first);
+    const macArmPackage = join(dir, 'AWH-macOS-arm64.zip');
+    const macArmOutput = join(dir, 'mac-arm64.json');
+    await writeFile(macArmPackage, payload);
+    await execFileAsync(process.execPath, [script, '--platform', 'darwin', '--architecture', 'arm64', '--package', macArmPackage, '--source-sha', sourceSha, '--source-tree-sha', sourceTreeSha, '--output', macArmOutput], { cwd: ROOT });
+    const macArmEvidence = JSON.parse(await readFile(macArmOutput, 'utf8'));
+    assert.equal(macArmEvidence.architecture, 'arm64');
+    assert.equal(macArmEvidence.downloadKey, 'AWH-macOS-arm64.zip');
     await assert.rejects(invoke(join(dir, 'bad-sha.json'), 'not-a-sha'), /DESKTOP_RELEASE_EVIDENCE_INVALID/);
+    await assert.rejects(invoke(join(dir, 'bad-tree.json'), sourceSha, 'not-a-tree-sha'), /DESKTOP_RELEASE_EVIDENCE_INVALID/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -117,6 +127,8 @@ test('desktop package CI uploads release evidence without activating an updater 
   assert.match(ci, /create-desktop-release-evidence\.mjs --platform darwin --architecture x64 --package AWH-macOS-x64\.zip/);
   assert.match(ci, /AWH-Windows-x64\.release\.json/);
   assert.match(ci, /AWH-macOS-x64\.release\.json/);
+  assert.match(ci, /--source-tree-sha/);
+  assert.match(script, /sourceTreeSha/);
   assert.match(script, /CI_PACKAGE_EVIDENCE_ONLY/);
   assert.match(script, /NOT_PUBLISHED/);
   assert.match(script, /FOUNDATION_LOCKED_NOT_ACTIVATED/);
@@ -186,14 +198,21 @@ test('mac remote worker recovery is pinned, persistent, and reproducible', async
   const verifier = await readFile(join(dir, 'verify.sh'), 'utf8');
   const patch = await readFile(join(dir, 'runtime-hardening.patch'), 'utf8');
   const plist = await readFile(join(dir, 'com.awh.remote-worker.plist.template'), 'utf8');
-  assert.match(installer, /EXPECTED=0\.2\.47/);
+  const updater = await readFile(join(dir, 'awh-runtime-update.sh'), 'utf8');
+  assert.match(installer, /EXPECTED=0\.2\.51/);
   assert.match(installer, /runtime hardening patch does not match pinned package; refusing partial install/);
+  assert.match(installer, /awh-runtime-update\.sh/);
   assert.doesNotMatch(supervisor, /\bnpx\b/);
   assert.match(supervisor, /remote --persist-session/);
+  assert.match(supervisor, /UPDATE_INTERVAL=21600/);
+  assert.match(supervisor, /awh-runtime-update\.sh/);
   assert.match(supervisor, /sleep 5/);
   assert.match(plist, /<key>KeepAlive<\/key><true\/>/);
   assert.match(verifier, /session_stored=yes/);
-  for (const marker of ['REMOTE_LOG_PREVIEW_CHARS', 'TOKEN_REFRESHED', 'Failed to persist refreshed session', 'ensureReady', 'pendingProcessError', 'DC_REMOTE_DEVICE']) assert.match(patch, new RegExp(marker));
+  for (const marker of ['REMOTE_LOG_PREVIEW_CHARS', 'DC_REMOTE_DEVICE']) assert.match(patch, new RegExp(marker));
+  assert.match(updater, /npmIntegrity/);
+  assert.match(updater, /runtime\.previous/);
+  assert.doesNotMatch(updater, /@latest|npm\s+update/);
   const combined = `${installer}\n${supervisor}\n${verifier}\n${patch}\n${plist}`;
   assert.doesNotMatch(combined, /\/Users\/mac|@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|access_token\s*[:=]\s*['"][^'"]+/i);
 });

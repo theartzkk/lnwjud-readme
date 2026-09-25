@@ -106,6 +106,10 @@ $insertExecution->execute(['id'=>'e-source','task'=>'t-source','state'=>'WAITING
 $snapshot = (new HubExecutionTriageService($pdo))->snapshot($at);
 failure_policy_assert(($snapshot['schemaVersion'] ?? null) === 1, 'triage keeps the existing schema version because P1 is additive');
 failure_policy_assert(($snapshot['policyVersion'] ?? null) === 'execution-triage-v2', 'existing triage policy version remains compatible');
+$exhausted = null;
+foreach (($snapshot['items'] ?? []) as $item) if (($item['errorCode'] ?? null) === 'PROVIDER_FAILED' && (int)($item['attemptCount'] ?? 0) >= 3) { $exhausted = $item; break; }
+if (is_array($exhausted)) failure_policy_assert(($exhausted['classification'] ?? null) === 'RETRY_EXHAUSTED' && ($exhausted['disposition'] ?? null) === 'OWNER_RETRY_REQUIRED', 'bounded provider retry exhaustion is explicit and remains preserved without blind retry');
+
 failure_policy_assert(($snapshot['failurePolicyVersion'] ?? null) === HubExecutionFailurePolicy::VERSION, 'central failure policy version is exposed separately');
 failure_policy_assert(($snapshot['currentProjectionVersion'] ?? null) === 'execution-triage-current-v2', 'current blocker projection explicitly separates setup and non-alerting policy pauses');
 failure_policy_assert(($snapshot['total'] ?? null) === 4, 'triage audit retains every failed/waiting row');

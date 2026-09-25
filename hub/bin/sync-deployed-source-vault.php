@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/src/HubProjectVaultService.php';
+require_once dirname(__DIR__) . '/src/HubProjectSourceAuthorityService.php';
 
 if ($argc !== 4) {
     fwrite(STDERR, "Usage: php sync-deployed-source-vault.php <database> <source.zip> <release-sha>\n");
@@ -49,6 +50,10 @@ try {
     }
     $state = $service->state($projectId); if (!is_string($state['activeRevisionId'] ?? null)) throw new RuntimeException('Canonical source revision is unavailable');
     $service->expireStalePromotionApprovals($projectId, (string) $state['activeRevisionId'], $at);
+    $columns = array_fill_keys(array_map(static fn(array $row): string => (string) $row['name'], $pdo->query("PRAGMA table_info('projects')")->fetchAll()), true);
+    if (isset($columns['canonical_source_authority'], $columns['canonical_source_content_sha256'])) {
+        (new HubProjectSourceAuthorityService($pdo, null))->bindVault($projectId, (string) $state['activeRevisionId'], $at);
+    }
     $pdo->prepare('UPDATE projects SET source_revision=:release, observed_at=:at, provenance=:provenance WHERE project_id=:project')->execute(['release' => strtolower($releaseSha), 'at' => $at, 'provenance' => 'release-vault:' . substr(strtolower($releaseSha), 0, 12), 'project' => $projectId]);
     $pdo->exec('COMMIT');
 } catch (Throwable $error) {

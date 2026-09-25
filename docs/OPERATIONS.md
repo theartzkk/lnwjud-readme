@@ -2,6 +2,8 @@
 
 AWH operations prefer automated, reversible, observable changes. Production writes are staged; destructive shortcuts are not normal operations.
 
+Operational mutation ownership is enforced by canonical execution envelopes. Reads and isolated candidate/workspace lanes may be parallel; shared Production deploys serialize across managed projects. Device-local mission files coordinate transport only and never replace Hub mutation authority.
+
 ## Daily operating signals
 
 Owner System Health should surface: Hub/database health, current release, latest verified backup, worker availability, waiting capability count, storage pressure and AI budget state. Raw logs and implementation details stay under Advanced.
@@ -13,6 +15,8 @@ Backup → verify → migration dry-run/plan → release stage → health check 
 ## Capacity policy
 
 Do not upgrade VPS from intuition alone. Upgrade only when measured CPU, memory, disk, queue latency or storage thresholds repeatedly demonstrate a bottleneck after software-level fixes.
+
+Core Release performs storage preflight before dependency hydration and reclaims terminal release workspaces. A failed release must not leave an unbounded build workspace behind, and retries are blocked while storage is above the configured release threshold.
 
 ## Device policy
 

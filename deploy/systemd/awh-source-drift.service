@@ -1,0 +1,28 @@
+[Unit]
+Description=AWH canonical source authority drift verification
+After=local-fs.target
+ConditionPathExists=/var/lib/awh-hub/awh.sqlite
+ConditionPathExists=/srv/awh-git
+ConditionPathExists=/opt/awh-hub/control-plane-current/hub/bin/ecosystem-source-drift.php
+
+[Service]
+Type=oneshot
+User=awh-hub
+Group=awh-hub
+ExecStart=/usr/bin/php -d pcre.jit=0 /opt/awh-hub/control-plane-current/hub/bin/ecosystem-source-drift.php /var/lib/awh-hub/awh.sqlite /srv/awh-git /var/www/awh-web/current/release.json
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/awh-hub
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+SystemCallArchitectures=native

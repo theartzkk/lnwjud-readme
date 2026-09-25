@@ -4,11 +4,13 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { ART_AGENT_VERSION } from '../src/version.js';
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+const require = createRequire(import.meta.url);
 
 test('AWH packaging configuration keeps Squirrel per-user behavior and public artifact names', async () => {
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
@@ -37,10 +39,13 @@ test('AWH packaging configuration keeps Squirrel per-user behavior and public ar
   assert.match(pkg.scripts?.['desktop:make'] ?? '', /prepare:windows-icon/);
   assert.match(pkg.scripts?.['desktop:package:windows'] ?? '', /prepare:windows-icon/);
   assert.match(pkg.scripts?.['desktop:package:mac:x64'] ?? '', /prepare:mac-icon/);
+  assert.match(pkg.scripts?.['desktop:package:mac:x64'] ?? '', /sign-macos-adhoc/);
+  assert.match(pkg.scripts?.['desktop:package:mac:arm64'] ?? '', /sign-macos-adhoc/);
   assert.match(forge, /@electron-forge\/maker-squirrel/);
-  assert.match(forge, /name:\s*'AWH'/);
+  assert.match(forge, /packagerConfig:\s*\{[\s\S]*?name:\s*'AWH Agent'/);
+  assert.match(forge, /config:\s*\{[\s\S]*?name:\s*'AWH'/);
   assert.match(forge, /executableName:\s*'AWH'/);
-  assert.match(forge, /title:\s*'Art’s Workspace Hub'/);
+  assert.match(forge, /title:\s*'AWH Agent'/);
   assert.match(forge, /authors:\s*'Art’s Workspace Hub'/);
   assert.match(forge, /setupExe:\s*'AWHSetup\.exe'/);
   assert.match(forge, /exe:\s*'AWH\.exe'/);
@@ -62,6 +67,120 @@ test('AWH packaging configuration keeps Squirrel per-user behavior and public ar
   assert.doesNotMatch(packagedMcpVerifier, /--mcp-stdio/);
 });
 
+test('desktop packaging excludes generated cross-platform release artifacts from app bundles', () => {
+  const forgeConfig = require('../forge.config.cjs') as { packagerConfig?: { ignore?: RegExp[] } };
+  const ignore = forgeConfig.packagerConfig?.ignore ?? [];
+  const isIgnored = (path: string) => ignore.some((pattern) => pattern.test(path));
+  for (const artifact of ['/AWH-macOS-x64.zip', '/AWH-macOS-arm64.zip', '/AWH-Windows-x64.zip', '/AWH-macOS-arm64.release.json', '/AWH-Windows-x64.release.json', '/AWH-Agent-Beta-macOS-arm64.dmg', '/AWH-Agent-Beta-macOS-arm64.installer.json', '/SHA256SUMS.txt']) {
+    assert.equal(isIgnored(artifact), true, `generated desktop release artifact must be excluded: ${artifact}`);
+  }
+  assert.equal(isIgnored('/ART_AI_WORKING_PROTOCOL.md'), false, 'required working context must remain packageable');
+});
+
+test('macOS Beta distribution uses a drag-to-Applications DMG with explicit evidence', async () => {
+  const [pkgRaw, dmg, evidence, web] = await Promise.all([
+    readFile(new URL('../package.json', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/create-macos-dmg.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/release/create-desktop-installer-evidence.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../web/app.js', import.meta.url), 'utf8'),
+  ]);
+  const pkg = JSON.parse(pkgRaw) as { scripts?: Record<string, string> };
+  assert.match(pkg.scripts?.['desktop:make:mac:arm64'] ?? '', /create-macos-dmg\.mjs arm64/);
+  assert.match(pkg.scripts?.['desktop:make:mac:x64'] ?? '', /create-macos-dmg\.mjs x64/);
+  assert.match(dmg, /AWH Agent Beta/);
+  assert.match(dmg, /symlink\('\/Applications'/);
+  assert.match(dmg, /hdiutil/);
+  assert.match(dmg, /AWH-Agent-Beta-macOS-/);
+  assert.match(evidence, /AWH_DESKTOP_INSTALLER_EVIDENCE/);
+  assert.match(evidence, /channel: 'beta'/);
+  assert.match(evidence, /ADHOC_BETA/);
+  assert.match(web, /macOS Apple Silicon · Beta/);
+  assert.match(web, /Beta สำหรับทดสอบ · Source\/Checksum ผ่าน/);
+});
+
+test('full AWH Device Runtime engine is pinned, bundled per platform and AWH-branded', async () => {
+  const [manifestRaw, helper, forge, pkgRaw] = await Promise.all([
+    readFile(new URL('../config/full-device-engine-release.json', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/desktop/prepare-full-device-engine.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../forge.config.cjs', import.meta.url), 'utf8'),
+    readFile(new URL('../package.json', import.meta.url), 'utf8'),
+  ]);
+  const manifest = JSON.parse(manifestRaw) as any;
+  const pkg = JSON.parse(pkgRaw) as any;
+  assert.equal(manifest.engine, 'lnwjud');
+  assert.equal(manifest.version, '5.5.0');
+  assert.equal(manifest.upstreamCommit, '25f79dd417b925285ec84fb3e46e9d029eaa9f29');
+  assert.equal(manifest.minimumToolCount, 250);
+  assert.equal(manifest.dataAuthority, 'AWH');
+  assert.equal(manifest.headlessSecretPolicy.darwin, 'AWH_PRIVATE_FILE_0600');
+  assert.equal(manifest.headlessSecretPolicy.win32, 'OS_SAFE_STORAGE');
+  assert.equal(manifest.assets['darwin-arm64'].sha256, '69a4c0355bb5b2f8cf0c2af89210333e5682e86fa6a62996f49d9a8afe85b7d1');
+  assert.equal(manifest.assets['darwin-x64'].sha256, '0264147848a4eea1df025573f8f3413380784ca88358c51d1be678da994330aa');
+  assert.equal(manifest.assets['win32-x64'].sha256, '04a172af20e755346a31ff9d88e28fbeae8ac8d896fe278ea4aa8fb357363731');
+  assert.equal(manifest.assets['darwin-arm64'].provenanceSha256, '866f102ada7a4a0df8b482fa3dea6adf818459918627e3aea234beb18ffb8518');
+  assert.equal(manifest.assets['darwin-x64'].provenanceSha256, '2bf99ef70536e756e729b7b0984debead6d1ddbbb860e5f874be8f650a7dcd42');
+  assert.equal(manifest.assets['win32-x64'].provenanceSha256, '4ba2d15eedd0a903893418d8016a37a24205d3264eb485baa0c144d1334f6f25');
+  assert.match(helper, /AWH_DEVICE_RUNTIME_HEADLESS/);
+  assert.match(helper, /engine-secret.key/);
+  assert.match(helper, /mode: 384/);
+  assert.match(helper, /AWHDeviceRuntime.exe/);
+  assert.match(helper, /awh-mcp-stdio/);
+  assert.match(helper, /codesign/);
+  assert.match(helper, /sha256/);
+  assert.match(helper, /verifyProvenance/);
+  assert.match(helper, /fileURLToPath/);
+  assert.match(helper, /document\.source\?\.commit!==manifest\.upstreamCommit/);
+  assert.doesNotMatch(helper, /@latest|releases\/latest/);
+  assert.match(forge, /extraResource:[\s\S]*awh-device-runtime/);
+  assert.match(pkg.scripts?.['desktop:package:mac:arm64'] ?? '', /prepare-full-device-engine.mjs --platform=darwin --arch=arm64/);
+  assert.match(pkg.scripts?.['desktop:package:mac:x64'] ?? '', /prepare-full-device-engine.mjs --platform=darwin --arch=x64/);
+  assert.match(pkg.scripts?.['desktop:package:windows'] ?? '', /prepare-full-device-engine.mjs --platform=win32 --arch=x64/);
+  assert.equal(pkg.devDependencies?.['@electron/asar'], '3.2.13');
+  assert.match(helper, /\/usr\/bin\/ditto/);
+  assert.doesNotMatch(helper, /extract-zip|extractZip/);
+});
+
+test('lightweight AWH Device Runtime is pinned, self-updating and rollback-safe', async () => {
+  const [manifestRaw, updater, supervisor, installer, patch] = await Promise.all([
+    readFile(new URL('../config/device-runtime-release.json', import.meta.url), 'utf8'),
+    readFile(new URL('../deploy/remote-worker/macos/awh-runtime-update.sh', import.meta.url), 'utf8'),
+    readFile(new URL('../deploy/remote-worker/macos/awh-remote-worker.sh', import.meta.url), 'utf8'),
+    readFile(new URL('../deploy/remote-worker/macos/install.sh', import.meta.url), 'utf8'),
+    readFile(new URL('../deploy/remote-worker/macos/runtime-hardening.patch', import.meta.url), 'utf8'),
+  ]);
+  const manifest = JSON.parse(manifestRaw) as { version: string; npmIntegrity: string; package: string; capabilityProfile: string };
+  assert.equal(manifest.version, '0.2.51');
+  assert.equal(manifest.package, '@wonderwhy-er/desktop-commander');
+  assert.match(manifest.npmIntegrity, /^sha512-/);
+  assert.equal(manifest.capabilityProfile, 'full-device-v1');
+  assert.equal((manifest as any).toolDiscoveryMode, 'runtime-native');
+  assert.equal((manifest as any).workerInventoryLimit, 64);
+  assert.equal((manifest as any).extensionRegistry, 'config/external-capabilities.json');
+  assert.equal((manifest as any).unknownRuntimeToolPolicy, 'DISCOVER_ONLY_NO_AUTO_EXECUTION_AUTHORITY');
+  assert.match(updater, /https:\/\/kruart\.online/);
+  assert.match(updater, /release\.json/);
+  assert.match(updater, /npmIntegrity/);
+  assert.match(updater, /package-lock\.json/);
+  assert.match(updater, /runtime\.previous/);
+  assert.match(updater, /AWH_DEVICE_RUNTIME=UPDATED/);
+  assert.doesNotMatch(updater, /@latest|npm\s+update/);
+  assert.match(supervisor, /awh-runtime-update\.sh/);
+  assert.match(supervisor, /UPDATE_INTERVAL=21600/);
+  assert.match(installer, /EXPECTED=0\.2\.51/);
+  assert.match(installer, /awh-runtime-update\.sh/);
+  assert.match(installer, /\.local\/share\/bay-remote\/node_modules\/\.bin\/desktop-commander/);
+  assert.match(updater, /\.local\/share\/bay-remote\/node_modules\/\.bin\/desktop-commander/);
+  assert.match(installer, /ensure_compat_bin/);
+  assert.match(updater, /ensure_compat_bin/);
+  assert.match(installer, /ensure_awh_mcp_child/);
+  assert.match(updater, /ensure_awh_mcp_child/);
+  assert.match(installer, /awh-device-system/);
+  assert.match(updater, /scripts=refreshed mcp_child=awh-device-system/);
+  assert.ok(updater.indexOf('for asset in device-runtime') < updater.indexOf('AWH_DEVICE_RUNTIME=CURRENT'), 'signed runtime scripts must refresh before current-version exit');
+  assert.match(patch, /DC_REMOTE_DEVICE/);
+  assert.match(patch, /previewForRemoteLog/);
+});
+
 test('packaged MCP PowerShell verifier parses on Windows', { skip: process.platform !== 'win32' }, () => {
   const command = [
     '$errors = $null',
@@ -80,7 +199,7 @@ test('packaged MCP PowerShell verifier parses on Windows', { skip: process.platf
 test('canonical application artwork is AWH and cannot regress to the legacy lnwjud icon', async () => {
   const [png, svg] = await Promise.all([readFile(new URL('../logo-256x256.png', import.meta.url)), readFile(new URL('../assets/awh-logo.svg', import.meta.url), 'utf8')]);
   const sha = createHash('sha256').update(png).digest('hex');
-  assert.notEqual(sha, 'c788bca8cbbdd153392d398102e7550db4b95d25ccfe45f6cf6edfc1a9577166');
+  assert.equal(sha, 'c7255419c5c6c6f86a064d0fec676998e80823e4ecbdbc43fc4e312bf437e615', 'canonical visible AWH Agent icon must match the Owner-approved artwork');
   assert.match(svg, /aria-label="AWH"/);
   assert.match(svg, /#FF7A1A/i);
 });

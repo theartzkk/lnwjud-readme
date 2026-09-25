@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 2,
+  "mode": "CONTEXT_ONLY",
+  "prescriptivePolicy": false,
+  "runtimeDefaults": {
+    "deviceLeaseMinutes": 45,
+    "historyRetentionDays": 30,
+    "maxHistoryFiles": 500
+  },
+  "integrity": {
+    "singleWriterPerMutationScope": true,
+    "readOnlyConcurrencyAllowed": true,
+    "mutationAuthority": "control_execution_envelopes",
+    "secondWriterBehavior": "WAIT_OR_JOIN",
+    "globalMutationResources": [
+      "CANONICAL:DEPLOY"
+    ],
+    "sameProjectInterlocks": [
+      "CANONICAL:SOURCE<->CANONICAL:DEPLOY",
+      "RESOURCE:RELEASE_STAGE<->CANONICAL:DEPLOY"
+    ],
+    "localMissionAuthorityClass": "DEVICE_TRANSPORT_LEASE",
+    "parallelLockAuthorityAllowed": false
+  },
+  "qa": {
+    "riskBudget": {
+      "LOW": "FAST",
+      "MEDIUM": "STANDARD",
+      "HIGH": "DEEP",
+      "CRITICAL": "DEEP"
+    },
+    "scriptByBudget": {
+      "FAST": "qa:fast",
+      "STANDARD": "qa:fast",
+      "DEEP": "qa:local"
+    },
+    "fullSuiteOnlyAtReleaseOrExplicitDeep": true,
+    "singleFlight": {
+      "enabled": true,
+      "scope": "PROJECT",
+      "serializeDeepTests": true,
+      "reuseExactShaResult": true,
+      "staleMinutes": 30,
+      "waitMinutes": 20
+    }
+  },
+  "privilegeRouting": {
+    "preflightRequired": true,
+    "defaultPrivilegedLane": "TYPED_OPERATOR",
+    "privilegedMutationLanes": [
+      "TYPED_OPERATOR",
+      "OWNER_RELAY"
+    ],
+    "restrictedSessionIdentities": [
+      "awh-remote"
+    ],
+    "noNewPrivilegesFailFast": true,
+    "directSudoFromRestrictedSessionAllowed": false,
+    "userConsoleFallbackAllowed": false,
+    "ownerRelayRequiresExplicitApproval": true
+  },
+  "toolchainRouting": {
+    "preserveVerifiedRuntimeAcrossPrivilegeBoundary": true,
+    "releaseNodeMajorMin": 22,
+    "releaseNodeCandidates": [
+      "/opt/awh-toolchain/node/bin/node",
+      "/opt/awh-toolchain/node-v*-linux-x64/bin/node",
+      "/opt/awh-tools/remote-desktop/node-v*-linux-x64/bin/node",
+      "/usr/local/bin/node",
+      "/usr/bin/node"
+    ],
+    "dependencyHydration": {
+      "requiredBeforeDeepQa": true,
+      "strategy": "NPM_CI_PREFER_OFFLINE",
+      "lockfileExact": true
+    }
+  }
+}

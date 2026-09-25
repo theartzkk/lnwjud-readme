@@ -77,10 +77,13 @@ test('built source and package lineage fail closed before pointer activation', a
     const bytes=Buffer.from('test archive fixture');
     await writeFile(join(output,'downloads/AWH-macOS-x64.zip'),bytes);
     await assert.rejects(run(process.execPath,['scripts/create-web-release-manifest.mjs',output]),/provenance is missing/);
-    const evidence={kind:'AWH_DESKTOP_RELEASE_EVIDENCE',authority:'CI_PACKAGE_EVIDENCE_ONLY',sourceSha,packageVerification:'VERIFIED',packageSha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,downloadKey:'AWH-macOS-x64.zip',productVersion:'1.0.0-rc.1'};
+    const sourceTreeSha='c'.repeat(40);
+    const evidence={kind:'AWH_DESKTOP_RELEASE_EVIDENCE',authority:'CI_PACKAGE_EVIDENCE_ONLY',sourceSha,sourceTreeSha,packageVerification:'VERIFIED',packageSha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,downloadKey:'AWH-macOS-x64.zip',productVersion:'1.0.0-rc.1'};
     await writeFile(join(output,'downloads/AWH-macOS-x64.release.json'),JSON.stringify(evidence));
     await run(process.execPath,['scripts/create-web-release-manifest.mjs',output]);
-    assert.equal(JSON.parse(await readFile(manifestPath,'utf8')).desktopReleases[0].sourceSha,sourceSha);
+    const desktopRelease=JSON.parse(await readFile(manifestPath,'utf8')).desktopReleases[0];
+    assert.equal(desktopRelease.sourceSha,sourceSha);
+    assert.equal(desktopRelease.sourceTreeSha,sourceTreeSha);
     await writeFile(join(output,'downloads/AWH-macOS-x64.zip'),'tamper');
     await assert.rejects(run(process.execPath,['scripts/create-web-release-manifest.mjs',output]),/provenance is invalid/);
   } finally { await rm(output,{recursive:true,force:true}); }

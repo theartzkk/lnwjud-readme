@@ -37,7 +37,12 @@ function safeErrorMessage(value) {
     MEMORY_SENSITIVE_EXCLUDED: 'AWH ไม่เก็บข้อมูลลับหรือข้อมูลอ่อนไหวไว้ในความจำปกติ',
     MEMORY_NOT_FOUND: 'ไม่พบความจำที่ต้องการ',
     STEP_UP_REQUIRED: 'รายการความเสี่ยงสูงนี้ต้องยืนยันตัวตนผู้ดูแลเพิ่มเติม',
+    CORE_RELEASE_CONFLICT: 'มี AWH release อีกงานกำลังดำเนินอยู่ กรุณารอให้งานเดิมจบก่อน',
+    CORE_RELEASE_NOT_READY: 'ระบบปล่อยรุ่น AWH ยังไม่พร้อม กรุณาตรวจ System Readiness',
+    CORE_RELEASE_INVALID: 'ข้อมูลรุ่น AWH ไม่ถูกต้อง กรุณาใช้ Source SHA แบบ 40 ตัวอักษร',
+    CORE_RELEASE_QUEUE_FAILED: 'ยังสร้างคำขอปล่อยรุ่น AWH ไม่ได้ ระบบจะไม่เปลี่ยน Production',
     PROVIDER_POLICY_INVALID: 'ตรวจการตั้งค่า AI อีกครั้ง งบและอัตราค่าใช้จ่ายต้องมากกว่า 0 เมื่อเปิดใช้ AI',
+    PROVIDER_ACCOUNT_NOT_FUNDED: 'บัญชีนี้ไม่ใช้ค่า AI ของเจ้าของระบบ ใช้ AWH ต่อได้ตามปกติ หรือเปิด ChatGPT ด้วยบัญชีของคุณเอง',
     PROVIDER_AUTH_FAILED: 'OpenAI ปฏิเสธ API key นี้ กรุณาตรวจ key แล้วลองใหม่',
     PROVIDER_PERMISSION_DENIED: 'บัญชีหรือโปรเจกต์ OpenAI นี้ยังไม่มีสิทธิ์ใช้คำขอที่ตั้งไว้',
     PROVIDER_QUOTA_EXHAUSTED: 'โควตาหรือวงเงินของ OpenAI ยังไม่พร้อม งานจะไม่ถูกอ้างว่าเสร็จแล้ว',
@@ -48,7 +53,10 @@ function safeErrorMessage(value) {
     PROVIDER_TEST_FAILED: 'ทดสอบ OpenAI ไม่ผ่าน กรุณาตรวจการเชื่อมต่อแล้วลองใหม่',
     REGISTRATION_PENDING: 'คำขอใช้งานนี้อยู่ระหว่างการพิจารณาแล้ว',
     USERNAME_UNAVAILABLE: 'ชื่อผู้ใช้นี้ถูกใช้แล้ว กรุณาเลือกชื่อใหม่',
-    IDENTITY_OWNED_BY_BAY: 'ผู้ปกครองใช้ BAY Parent Connect และนักเรียนใช้ BAY LearnLab โดยไม่สร้างบัญชี AWH ซ้ำ',
+    IDENTITY_OWNED_BY_BAY: 'ตัวตนและบทบาทในโรงเรียนอ้างอิงจาก BAY EXCUSE X ส่วนบัญชีนี้ใช้สำหรับเข้า KRUART/AWH เท่านั้น',
+    SCHOOL_IDENTITY_REQUIRED: 'บัญชี KRUART นี้ยังไม่ได้เชื่อมตัวตนโรงเรียนจาก BAY EXCUSE X',
+    SCHOOL_PERMISSION_FORBIDDEN: 'สิทธิ์จาก BAY EXCUSE X ยังไม่อนุญาตให้ใช้ส่วนนี้',
+    IDENTITY_CONVERGENCE_NOT_READY: 'ระบบเชื่อมตัวตน KRUART ↔ BAY ยังไม่พร้อม',
     REGISTRATION_NOT_FOUND: 'ไม่พบคำขอใช้งานนี้ หรือมีการพิจารณาไปแล้ว',
     PROJECT_SOURCE_NOT_READY: 'โปรเจกต์นี้ยังไม่มี Source ที่พร้อม Deploy AWH จะรอและทำต่อเมื่อ Source พร้อม',
     HOSTING_TLS_UNAVAILABLE: 'HTTPS ของ VPS ยังไม่พร้อมสำหรับที่อยู่นี้ AWH จะไม่เปิดเว็บแบบไม่ปลอดภัย',
@@ -83,7 +91,7 @@ export async function login(username, password, remember = false) {
 }
 
 export async function registerAccessRequest({ displayName, username, password, email = null, phone = null, personType, requestedArea = null, note = null }) {
-  if (typeof displayName !== 'string' || !displayName.trim() || typeof username !== 'string' || !username.trim() || typeof password !== 'string' || password.length < 8 || !['DIRECTOR','TEACHER','STAFF','OTHER'].includes(personType)) throw new Error('กรอกข้อมูลสมัครขอใช้งานให้ครบ');
+  if (typeof displayName !== 'string' || !displayName.trim() || typeof username !== 'string' || !username.trim() || typeof password !== 'string' || password.length < 8 || !['STAFF','OTHER'].includes(personType)) throw new Error('กรอกข้อมูลสมัครขอใช้งานให้ครบ');
   return controlRequest('/api/v1/auth/register', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, displayName: displayName.trim(), username: username.trim(), password, email: email?.trim() || null, phone: phone?.trim() || null, personType, requestedArea: requestedArea?.trim() || null, note: note?.trim() || null }) });
 }
 
@@ -189,7 +197,7 @@ export async function saveCurrentContext(projectId, conversationId, viewKind = '
 
 export async function loadProductSettings() { return controlRequest('/api/v1/control/settings'); }
 export async function updateProductSetting(settingKey, value) { return controlRequest('/api/v1/control/settings', { method: 'POST', body: JSON.stringify({ schemaVersion: 2, settingKey, value }) }); }
-const PRODUCT_SETTING_KEYS = ['productName', 'shortName', 'tagline', 'accent', 'welcome', 'starterPrompts', 'founderName', 'founderCredit'];
+const PRODUCT_SETTING_KEYS = ['productName', 'shortName', 'tagline', 'accent', 'welcome', 'starterPrompts', 'founderName', 'founderCredit', 'brandLogoDataUrl', 'brandIconDataUrl'];
 export async function loadProductSettingHistory(settingKey) { if (!PRODUCT_SETTING_KEYS.includes(settingKey)) throw new Error('การตั้งค่าไม่ถูกต้อง'); return controlRequest(`/api/v1/control/settings/history?settingKey=${encodeURIComponent(settingKey)}`); }
 export async function resetProductSetting(settingKey) { if (!PRODUCT_SETTING_KEYS.includes(settingKey)) throw new Error('การตั้งค่าไม่ถูกต้อง'); return controlRequest('/api/v1/control/settings/reset', { method: 'POST', body: JSON.stringify({ schemaVersion: 2, settingKey }) }); }
 export async function loadProductIdentity() { return controlRequest('/api/v1/control/product-identity'); }
@@ -301,6 +309,49 @@ export async function submitCloudTask({ projectId, kind, revision, profile = nul
 }
 export async function loadOwnerSelfServiceStatus() { return controlRequest('/api/v1/control/owner/status'); }
 export async function loadInfrastructure() { return controlRequest('/api/v1/control/infrastructure'); }
+export async function loadUpdateCenter() {
+  const value = await controlRequest('/api/v1/control/updates');
+  if (value.schemaVersion !== 1 || !value.summary || !Array.isArray(value.items) || !value.policy || value.policy.singleControlPlane !== true) throw new Error('สถานะศูนย์อัปเดต AWH ไม่ถูกต้อง');
+  return value;
+}
+export async function loadCoreReleaseStatus() {
+  const value = await controlRequest('/api/v1/control/system/releases');
+  const promotion = value?.sourcePromotion;
+  const promotionValid = promotion == null || (promotion && /^[0-9a-f]{40}$/i.test(promotion.sha || '') && /^[0-9a-f]{40}$/i.test(promotion.previousSha || '') && promotion.authority === 'SOURCE_PROMOTION_AUDIT' && typeof promotion.observedAt === 'string');
+  if (value.schemaVersion !== 1 || value.capability !== 'system.core.release' || !promotionValid || !Array.isArray(value.releases) || !value.policy || typeof value.policy !== 'object') throw new Error('สถานะรุ่นระบบ AWH ไม่ถูกต้อง');
+  return value;
+}
+export async function requestCoreRelease(releaseSha, cleanupTopology = false) {
+  if (typeof releaseSha !== 'string' || !/^[0-9a-f]{40}$/i.test(releaseSha) || typeof cleanupTopology !== 'boolean') throw new Error('Source SHA ของรุ่น AWH ไม่ถูกต้อง');
+  const value = await controlRequest('/api/v1/control/system/releases', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, releaseSha: releaseSha.toLowerCase(), cleanupTopology }) });
+  if (value.schemaVersion !== 1 || typeof value.taskId !== 'string' || typeof value.executionId !== 'string' || typeof value.releaseSha !== 'string') throw new Error('AWH ยังยืนยันคำขอปล่อยรุ่นไม่ได้');
+  return value;
+}
+export async function loadLearnLabReleaseStatus() {
+  const value = await controlRequest('/api/v1/control/learnlab/releases');
+  const current = value?.current;
+  if (value.schemaVersion !== 1 || value.capability !== 'system.learnlab.release' || !current || typeof current.runtimeVersion !== 'string' || !/^[0-9a-f]{40}$/i.test(current.releaseSha || '') || !Number.isInteger(current.cacheEpoch) || !Array.isArray(value.releases) || !value.policy || typeof value.policy !== 'object') throw new Error('สถานะรุ่น LearnLab ไม่ถูกต้อง');
+  return value;
+}
+export async function requestLearnLabRelease(releaseSha, runtimeVersion) {
+  if (typeof releaseSha !== 'string' || !/^[0-9a-f]{40}$/i.test(releaseSha) || typeof runtimeVersion !== 'string' || !/^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$/.test(runtimeVersion)) throw new Error('ข้อมูลรุ่น LearnLab ไม่ถูกต้อง');
+  const value = await controlRequest('/api/v1/control/learnlab/releases', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, releaseSha: releaseSha.toLowerCase(), runtimeVersion }) });
+  if (value.schemaVersion !== 1 || typeof value.taskId !== 'string' || typeof value.executionId !== 'string' || typeof value.releaseSha !== 'string' || typeof value.runtimeVersion !== 'string') throw new Error('AWH ยังยืนยันคำขอปล่อย LearnLab ไม่ได้');
+  return value;
+}
+export async function loadAssessmentReleaseStatus() {
+  const value = await controlRequest('/api/v1/control/assessment/releases');
+  const current=value?.current, candidate=value?.candidate;
+  if(value.schemaVersion!==1||value.capability!=='system.assessment.release'||!current||typeof current.runtimeVersion!=='string'||!/^[0-9a-f]{40}$/i.test(current.releaseSha||'')||!candidate||typeof candidate.ready!=='boolean'||!Array.isArray(value.releases)||!value.policy) throw new Error('สถานะรุ่น BAY Assessment ไม่ถูกต้อง');
+  return value;
+}
+export async function requestAssessmentRelease(releaseSha,runtimeVersion) {
+  if(typeof releaseSha!=='string'||!/^[0-9a-f]{40}$/i.test(releaseSha)||typeof runtimeVersion!=='string'||!/^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$/.test(runtimeVersion)) throw new Error('ข้อมูลรุ่น BAY Assessment ไม่ถูกต้อง');
+  const value=await controlRequest('/api/v1/control/assessment/releases',{method:'POST',body:JSON.stringify({schemaVersion:1,releaseSha:releaseSha.toLowerCase(),runtimeVersion})});
+  if(value.schemaVersion!==1||typeof value.taskId!=='string'||typeof value.executionId!=='string'||typeof value.releaseSha!=='string'||typeof value.runtimeVersion!=='string') throw new Error('AWH ยังยืนยันคำขอปล่อย BAY Assessment ไม่ได้');
+  return value;
+}
+
 export async function loadSystemReadiness() {
   const value = await controlRequest('/api/v1/control/system/readiness');
   if (value.schemaVersion !== 1 || !['READY', 'PARTIALLY_READY', 'ACTION_REQUIRED'].includes(value.state) || !value.checks || typeof value.checks !== 'object') throw new Error('สถานะความพร้อมของ AWH ไม่ถูกต้อง');
@@ -309,16 +360,28 @@ export async function loadSystemReadiness() {
 export async function listPeople() { return controlRequest('/api/v1/auth/people'); }
 export async function listAccountRequests() { return controlRequest('/api/v1/auth/requests'); }
 export async function createPerson({ displayName, username, password, email = null, phone = null, personType, role, projectIds = [], mustChangePassword = false }) {
-  if (!['ADMIN','DIRECTOR','TEACHER','STAFF','VIEWER'].includes(role) || !['DIRECTOR','TEACHER','STAFF','OTHER'].includes(personType) || !Array.isArray(projectIds) || projectIds.some((id) => !UUID.test(id))) throw new Error('ข้อมูลบัญชีไม่ถูกต้อง');
+  if (!['ADMIN','STAFF','VIEWER'].includes(role) || !['STAFF','OTHER'].includes(personType) || !Array.isArray(projectIds) || projectIds.some((id) => !UUID.test(id))) throw new Error('ข้อมูลบัญชี KRUART ไม่ถูกต้อง');
   return controlRequest('/api/v1/auth/people/create', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, displayName, username, password, email, phone, personType, role, projectIds, mustChangePassword: Boolean(mustChangePassword) }) });
 }
+
+export async function loadSchoolIdentityBindings() { return controlRequest('/api/v1/control/identity/bindings'); }
+export async function loadSchoolIdentityCandidates() { return controlRequest('/api/v1/control/identity/candidates'); }
+export async function bindSchoolIdentity(userId, bayUserId) {
+  if (!UUID.test(userId) || !Number.isInteger(bayUserId) || bayUserId < 1) throw new Error('ข้อมูลเชื่อม BAY ไม่ถูกต้อง');
+  return controlRequest(`/api/v1/control/identity/people/${encodeURIComponent(userId)}/bay`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1, bayUserId }) });
+}
+export async function revokeSchoolIdentity(userId) {
+  if (!UUID.test(userId)) throw new Error('ข้อมูลเชื่อม BAY ไม่ถูกต้อง');
+  return controlRequest(`/api/v1/control/identity/people/${encodeURIComponent(userId)}/bay/revoke`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) });
+}
+export async function loadBayCommunicationStatus() { return controlRequest('/api/v1/control/bay/communication'); }
 export async function reviewAccountRequest(requestId, decision, role = 'VIEWER', projectIds = []) {
-  if (!UUID.test(requestId) || !['APPROVE','REJECT'].includes(decision) || !['ADMIN','DIRECTOR','TEACHER','STAFF','VIEWER'].includes(role) || !Array.isArray(projectIds) || projectIds.some((id) => !UUID.test(id))) throw new Error('ข้อมูลการพิจารณาไม่ถูกต้อง');
+  if (!UUID.test(requestId) || !['APPROVE','REJECT'].includes(decision) || !['ADMIN','STAFF','VIEWER'].includes(role) || !Array.isArray(projectIds) || projectIds.some((id) => !UUID.test(id))) throw new Error('ข้อมูลการพิจารณาไม่ถูกต้อง');
   return controlRequest(`/api/v1/auth/requests/${requestId}/review`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1, decision, role, projectIds }) });
 }
 export async function revokePerson(userId) { if (!UUID.test(userId)) throw new Error('บัญชีไม่ถูกต้อง'); return controlRequest(`/api/v1/auth/people/${userId}/revoke`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
 export async function updatePersonAccess(userId, role, projectIds) {
-  if (!UUID.test(userId) || !['ADMIN','DIRECTOR','TEACHER','STAFF','VIEWER'].includes(role) || !Array.isArray(projectIds) || projectIds.some((id) => !UUID.test(id))) throw new Error('สิทธิ์ผู้ใช้ไม่ถูกต้อง');
+  if (!UUID.test(userId) || !['ADMIN','STAFF','VIEWER'].includes(role) || !Array.isArray(projectIds) || projectIds.some((id) => !UUID.test(id))) throw new Error('สิทธิ์ผู้ใช้ไม่ถูกต้อง');
   return controlRequest(`/api/v1/auth/people/${userId}/access`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1, role, projectIds }) });
 }
 export async function listManagedSites() { return controlRequest('/api/v1/control/hosting/sites'); }

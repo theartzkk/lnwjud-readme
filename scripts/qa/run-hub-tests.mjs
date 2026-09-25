@@ -34,20 +34,35 @@ const tests = [
   'hub/tests/ai-attachment-preparer.php',
   'hub/tests/m20-project-source-authority.php',
   'hub/tests/m21-vault-source-authority.php',
+  'hub/tests/m22-identity-convergence.php',
+  'hub/tests/vault-source-reconcile.php',
+  'hub/tests/deploy-execution-authority.php',
+  'hub/tests/source-drift-policy.php',
+  'hub/tests/operator-bridge.php',
+  'hub/tests/core-release-operator.php',
+  'hub/tests/learnlab-release-operator.php',
+  'hub/tests/assessment-release-operator.php',
   'hub/tests/aipass-docx-boundaries.php',
   'hub/tests/continuous-work-supervisor.php',
   'hub/tests/continuous-autochain.php',
   'hub/tests/action-graph-projection.php',
   'hub/tests/candidate-qa-truthfulness.php',
   'hub/tests/promotion-evidence-gate.php',
+  'hub/tests/verification-gate.php',
+  'hub/tests/verification-intelligence.php',
+  'hub/tests/verification-evidence-registry.php',
+  'hub/tests/project-list-schema-compatibility.php',
   'hub/tests/m16-office-provider.php',
   'hub/tests/m17-database-studio.php',
   'hub/tests/sustainability-foundation.php',
   'hub/tests/staff-operations.php',
   'hub/tests/staff-governor-loop.php',
+  'hub/tests/device-role-registry.php',
 ];
 
 const php = await resolveExecutable('php');
+const python = await resolveExecutable('python3');
+
 for (const fixture of tests) {
   await new Promise((resolve, reject) => {
     const child = spawn(php, [fixture], { cwd: process.cwd(), shell: false, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
@@ -58,3 +73,14 @@ for (const fixture of tests) {
     child.once('close', (code) => code === 0 || code === 77 ? resolve() : reject(new Error(`${fixture} failed: ${stderr.trim() || `exit ${code ?? -1}`}`)));
   });
 }
+await new Promise((resolve, reject) => {
+  const child = spawn(python, ['hub/tests/learnlab-release-storage-gate.py'], { cwd: process.cwd(), shell: false, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  let stderr = '';
+  child.stdout.pipe(process.stdout);
+  child.stderr.on('data', (chunk) => { stderr += String(chunk).slice(0, 4096); });
+  child.once('error', reject);
+  child.once('close', (code) => {
+    if (code === 0) resolve();
+    else reject(new Error('hub/tests/learnlab-release-storage-gate.py failed: ' + (stderr.trim() || ('exit ' + (code ?? -1)))));
+  });
+});

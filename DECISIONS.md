@@ -228,3 +228,13 @@
 - Source and Production identities must remain separate. A newer merged `main` commit is not a Production deployment claim until the live release pointer/manifest proves it.
 - The four recorded external GitHub projects — TeamAI CLI, Hallmark, context-mode, and awesome-claude-design — remain integration backlog items. They may be adapted through existing AWH capability/skills/provider/QA boundaries but may not introduce a second Core/Auth/DB/Queue/Memory/Source Authority or competing Golden UI authority.
 - While the BAY EXCUSE X → VPS migration lane is ACTIVE, that lane alone owns migration mutations. Other chats must consume its handoff rather than repeat capture, restore, deploy, DNS cutover, database mutation, or LINE/LIFF migration work.
+
+## 2026-09-16 — Remote Mission + Permanent Fix + Global Visual Truth V1.3
+
+- Remote Desktop / Desktop Commander is a first-class allowed route for explicit owner intent and materially useful interactive/device-local work. Headless-route exhaustion is not a prerequisite.
+- The optimization target is value per invocation, not minimum call count. Each Remote Mission prepares from known state, batches one coherent problem cluster, verifies real output, records delta and exits cleanly.
+- Quota conservation is evidence-driven and adapts only from observed capacity.
+- Permanent Fix / Root-Cause Closure is the default across every lane. Passing one current gate is not closure when the cause can recur. Shared causes are fixed at the shared boundary where safe, regression/real QA is required, and temporary workarounds remain explicitly tracked until removal.
+- Device workers remain capability-bounded; unrestricted generic shell is not routable AWH capability, and Remote Desktop is not a gratuitous transit bridge when a direct approved route exists.
+- Global Visual Truth is mandatory across every school project: factual representations of โรงเรียนบ้านเอือดใหญ่ must use verified first-party media/evidence. Generated, stock, other-school or unrelated imagery cannot be presented as documentary reality.
+- Illustration/cartoon/concept visuals remain allowed only when explicitly requested or clearly non-documentary; missing real evidence must stay missing rather than be fabricated.

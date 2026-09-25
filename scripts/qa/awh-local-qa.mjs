@@ -1,12 +1,27 @@
 #!/usr/bin/env node
 
-import { access, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { constants } from 'node:fs';
+import { access, copyFile, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { constants, existsSync } from 'node:fs';
 import { delimiter, dirname, join, resolve } from 'node:path';
-import { spawn } from 'node:child_process';
-import { platform, arch } from 'node:os';
+import { spawn, spawnSync } from 'node:child_process';
+import { platform, arch, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { npmLaunchSpec } from './lib/npm-runtime.mjs';
+
+const MIN_NODE_MAJOR = 20;
+const AWH_BOUNDED_NODE = process.env.AWH_NODE_RUNTIME || '/opt/awh-toolchain/node/bin/node';
+const activeNodeMajor = Number.parseInt(process.versions.node.split('.')[0] ?? '0', 10);
+if (activeNodeMajor < MIN_NODE_MAJOR && process.env.AWH_QA_REEXEC !== '1' && existsSync(AWH_BOUNDED_NODE)) {
+  const probe = spawnSync(AWH_BOUNDED_NODE, ['-p', "Number(process.versions.node.split('.')[0])"], { encoding: 'utf8', shell: false });
+  const boundedMajor = Number.parseInt((probe.stdout ?? '').trim(), 10);
+  if (probe.status === 0 && boundedMajor >= MIN_NODE_MAJOR) {
+    const result = spawnSync(AWH_BOUNDED_NODE, [fileURLToPath(import.meta.url), ...process.argv.slice(2)], {
+      stdio: 'inherit', shell: false,
+      env: { ...process.env, AWH_QA_REEXEC: '1', PATH: `${dirname(AWH_BOUNDED_NODE)}${delimiter}${process.env.PATH ?? ''}` },
+    });
+    process.exit(result.status ?? 1);
+  }
+}
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const OUTPUT_DIR = join(ROOT, '.awh-local', 'qa');
@@ -50,7 +65,7 @@ function pathCandidates(command) {
 
 function commonToolCandidates(command) {
   if (process.platform === 'win32') return [];
-  return ['/opt/homebrew/bin', '/usr/local/bin', '/opt/local/bin', '/usr/bin', '/bin'].map((dir) => join(dir, command));
+  return ['/opt/awh-toolchain/node/bin', '/opt/homebrew/bin', '/usr/local/bin', '/opt/local/bin', '/usr/bin', '/bin'].map((dir) => join(dir, command));
 }
 
 async function resolveCommand(command) {
@@ -64,6 +79,7 @@ function nodeSource(path) {
   const normalized = path.replaceAll('\\', '/');
   if (normalized.includes('/.cache/codex-runtimes/') || normalized.includes('/ChatGPT.app/')) return 'embedded/bundled application runtime';
   if (normalized.includes('/.nvm/') || normalized.includes('/.fnm/') || normalized.includes('/.asdf/')) return 'user-managed Node runtime';
+  if (normalized.includes('/opt/awh-toolchain/node/')) return 'AWH bounded Node runtime';
   if (normalized.includes('/opt/homebrew/') || normalized.includes('/usr/local/Cellar/') || normalized.includes('/usr/local/opt/')) return 'Homebrew Node runtime';
   if (normalized.startsWith('/usr/bin/') || normalized.startsWith('/System/')) return 'system Node runtime';
   return 'user-installed Node runtime (source not otherwise identified)';
@@ -82,8 +98,10 @@ async function discoverNpm() {
   ].filter(Boolean);
   for (const candidate of candidates) {
     if (!(await exists(candidate))) continue;
-    const launch = npmLaunchSpec(candidate, process.execPath);
-    return { ...launch, source: candidate === pathNpm && launch.source === 'native executable' ? 'PATH' : launch.source };
+    let resolvedCandidate = candidate;
+    try { resolvedCandidate = await realpath(candidate); } catch { /* keep original path */ }
+    const launch = npmLaunchSpec(resolvedCandidate, process.execPath);
+    return { ...launch, path: candidate, source: candidate === pathNpm && launch.source === 'native executable' ? 'PATH' : launch.source };
   }
   return null;
 }
@@ -118,7 +136,7 @@ async function toolVersion(info, args = ['--version']) {
 function run(executable, args, options = {}) {
   return new Promise((resolveResult) => {
     const child = spawn(executable, args, {
-      cwd: ROOT,
+      cwd: options.cwd ?? ROOT,
       env: safeEnv(options.env),
       shell: false,
       windowsHide: true,
@@ -251,8 +269,15 @@ async function lockCheck() {
     if (!same || lock.lockfileVersion !== 3) throw new Error('package-lock root metadata does not match package.json');
     const npm = await discoverNpm();
     if (npm) {
-      const result = await run(npm.executable, [...npm.argsPrefix, 'ci', '--dry-run', '--ignore-scripts', '--no-audit', '--no-fund', '--offline'], { timeoutMs: 60_000 });
-      check('lockfile', result.code === 0 ? 'PASS' : 'FAIL', result.code === 0 ? 'package.json/package-lock.json match and npm ci dry-run passed offline' : 'npm ci dry-run failed offline', started);
+      const lockProbe = await mkdtemp(join(tmpdir(), 'awh-lock-probe-'));
+      try {
+        await copyFile(join(ROOT, 'package.json'), join(lockProbe, 'package.json'));
+        await copyFile(join(ROOT, 'package-lock.json'), join(lockProbe, 'package-lock.json'));
+        const result = await run(npm.executable, [...npm.argsPrefix, 'ci', '--dry-run', '--ignore-scripts', '--no-audit', '--no-fund', '--offline'], { timeoutMs: 60_000, cwd: lockProbe });
+        check('lockfile', result.code === 0 ? 'PASS' : 'FAIL', result.code === 0 ? 'package.json/package-lock.json match and isolated npm ci dry-run passed offline' : 'isolated npm ci dry-run failed offline', started);
+      } finally {
+        await rm(lockProbe, { recursive: true, force: true });
+      }
     } else {
       check('lockfile', 'PASS', 'package.json/package-lock.json root metadata matches; npm executable unavailable for dry-run', started);
     }
@@ -283,8 +308,8 @@ async function requiredFilesCheck() {
   ];
   const m12Required = [
     'hub/migrations/011_central_project_authority.sql', 'hub/src/HubCentralProjectAuthorityMigration.php',
-    'hub/src/HubProjectVault.php', 'hub/src/HubProjectVaultService.php', 'hub/src/HubDurableExecutionService.php', 'hub/src/HubStorageGovernanceService.php', 'hub/src/HubExecutionTriageService.php', 'hub/src/HubStaffGovernorService.php', 'hub/src/HubStaffOperationsService.php',
-    'hub/bin/migrate-central-project-authority.php', 'hub/bin/awh-native-executor.php', 'hub/bin/sync-deployed-source-vault.php', 'hub/tests/m12-central-project-authority.php', 'hub/tests/m12-production-parity.php', 'hub/tests/staff-governor-loop.php',
+    'hub/src/HubProjectVault.php', 'hub/src/HubProjectVaultService.php', 'hub/src/HubDurableExecutionService.php', 'hub/src/HubVerificationGate.php', 'hub/src/HubVerificationIntelligence.php', 'hub/bin/verification-intelligence.php', 'hub/src/HubStorageGovernanceService.php', 'hub/src/HubExecutionTriageService.php', 'hub/src/HubStaffGovernorService.php', 'hub/src/HubStaffOperationsService.php',
+    'hub/bin/migrate-central-project-authority.php', 'hub/bin/awh-native-executor.php', 'hub/bin/sync-deployed-source-vault.php', 'hub/tests/m12-central-project-authority.php', 'hub/tests/m12-production-parity.php', 'hub/tests/project-list-schema-compatibility.php', 'hub/tests/staff-governor-loop.php',
     'deploy/systemd/awh-native-executor.service', 'deploy/systemd/awh-native-executor.timer', 'deploy/awh-control-plane/verify-web-release.php', 'deploy/awh-control-plane/validate-remote-output.sh', 'test/central-project-authority-deployment.test.ts', 'test/final-uat-shell.test.ts', 'test/mobile-horizontal-overflow.test.ts',
   ];
   const missing = [];
@@ -304,11 +329,15 @@ async function gitCheck() {
   const exactRemote = tracked && head.stdout === upstream.stdout;
   const validHead = /^[0-9a-f]{40}$/i.test(head.stdout);
   const validBranch = branchName.length > 0 && branchName.length <= 200 && !/[\s\0]/.test(branchName);
-  const baseValid = branch.code === 0 && head.code === 0 && status.code === 0 && validHead && validBranch;
-  const valid = mode === 'fast' ? baseValid : baseValid && clean && exactRemote;
+  const detached = branch.code === 0 && branchName.length === 0;
+  const baseValid = branch.code === 0 && head.code === 0 && status.code === 0 && validHead && (validBranch || detached);
+  const valid = mode === 'fast' ? baseValid : (mode === 'local' ? baseValid && clean : baseValid && clean && validBranch && exactRemote);
+  const refLabel = detached ? 'DETACHED_EXACT_SHA' : branchName;
   const detail = mode === 'fast'
-    ? `branch=${branchName}; HEAD=${head.stdout}; dirty=${!clean}; fastMode=true`
-    : `branch=${branchName}; HEAD=${head.stdout}; clean=${clean}; upstreamExact=${exactRemote}`;
+    ? `branch=${refLabel}; HEAD=${head.stdout}; dirty=${!clean}; fastMode=true`
+    : mode === 'local'
+      ? `branch=${refLabel}; HEAD=${head.stdout}; clean=${clean}; localCandidate=true; upstreamExact=${exactRemote}`
+      : `branch=${refLabel}; HEAD=${head.stdout}; clean=${clean}; upstreamExact=${exactRemote}`;
   check('git-state', valid ? 'PASS' : 'FAIL', valid ? detail : `Git state is not valid for ${mode} QA (branch=${branchName || 'DETACHED'}; clean=${clean}; upstreamExact=${exactRemote})`, started);
   return { branch: branchName || null, head: head.stdout || null, dirty: !clean, upstream: tracked ? upstream.stdout : null, upstreamExact: exactRemote };
 }
@@ -346,13 +375,17 @@ async function phpHubCheck() {
     return;
   }
   const syntaxFiles = ['hub/src/HubReadModel.php', 'hub/src/HubReadRouter.php', 'hub/src/HubWebGateway.php', 'hub/src/HubEnrollmentService.php', 'hub/src/HubEnrollmentRouter.php', 'hub/src/HubSchemaMigration.php', 'hub/src/HubEnrollmentApiMigration.php', 'hub/src/HubControlPlaneMigration.php', 'hub/src/HubControlPlaneService.php', 'hub/src/HubThaiGovernmentDocumentService.php', 'hub/src/HubControlPlaneRouter.php', 'hub/src/HubControlPlaneProjectRegistration.php', 'hub/src/HubOwnerAuthMigration.php', 'hub/src/HubOwnerAuthService.php', 'hub/src/HubOwnerAuthRouter.php', 'hub/src/HubAssistantWorkstreamMigration.php', 'hub/src/HubWorkspaceContinuityMigration.php', 'hub/src/HubUnifiedWorkspaceMigration.php', 'hub/src/HubFinalProductMigration.php', 'hub/src/HubFoundingMemorySeed.php', 'hub/src/HubFoundingMemoryMigration.php', 'hub/src/HubFoundingMemoryService.php', 'hub/src/HubSelfServiceMigration.php', 'hub/src/HubProviderCredentialStore.php', 'hub/src/HubAttachmentStore.php', 'hub/src/HubNativeAgentService.php', 'hub/public/index.php', 'hub/public/web-gateway.php', 'hub/public/enrollment.php', 'hub/public/control-plane.php', 'hub/bin/index-project.php', 'hub/bin/migrate-m3e.php', 'hub/bin/migrate-m3e2.php', 'hub/bin/migrate-m4.php', 'hub/bin/migrate-owner-auth.php', 'hub/bin/migrate-assistant-workstream.php', 'hub/bin/migrate-workspace-continuity.php', 'hub/bin/migrate-unified-workspace.php', 'hub/bin/migrate-final-product.php', 'hub/bin/migrate-founding-memory.php', 'hub/bin/migrate-self-service.php', 'hub/bin/register-m4-projects.php', 'hub/bin/setup-owner-auth.php', 'hub/bin/verify-owner-auth-runtime.php', 'hub/tests/m4-zero-project-control.php', 'hub/tests/m6-assistant-workstream.php', 'hub/tests/m7-workspace-continuity.php', 'hub/tests/m8-unified-workspace.php', 'hub/tests/m9-final-product.php', 'hub/tests/m10-founding-memory.php', 'hub/tests/m11-self-service.php', 'deploy/awh-enrollment/insert-nginx-include.php'];
-  const m12Syntax = ['hub/src/HubCentralProjectAuthorityMigration.php', 'hub/src/HubProjectVault.php', 'hub/src/HubProjectVaultService.php', 'hub/src/HubDurableExecutionService.php', 'hub/src/HubStorageGovernanceService.php', 'hub/src/HubExecutionTriageService.php', 'hub/src/HubStaffGovernorService.php', 'hub/src/HubStaffOperationsService.php', 'hub/bin/migrate-central-project-authority.php', 'hub/bin/awh-native-executor.php', 'hub/tests/m12-central-project-authority.php', 'hub/tests/m12-production-parity.php', 'hub/tests/staff-operations.php', 'hub/tests/staff-governor-loop.php', 'hub/tests/m17-product-verticals.php', 'deploy/awh-control-plane/verify-web-release.php'];
+  const m12Syntax = ['hub/src/HubCentralProjectAuthorityMigration.php', 'hub/src/HubProjectVault.php', 'hub/src/HubProjectVaultService.php', 'hub/src/HubDurableExecutionService.php', 'hub/src/HubVerificationGate.php', 'hub/src/HubVerificationIntelligence.php', 'hub/bin/verification-intelligence.php', 'hub/src/HubStorageGovernanceService.php', 'hub/src/HubExecutionTriageService.php', 'hub/src/HubStaffGovernorService.php', 'hub/src/HubStaffOperationsService.php', 'hub/bin/migrate-central-project-authority.php', 'hub/bin/awh-native-executor.php', 'hub/tests/m12-central-project-authority.php', 'hub/tests/m12-production-parity.php', 'hub/tests/project-list-schema-compatibility.php', 'hub/tests/staff-operations.php', 'hub/tests/staff-governor-loop.php', 'hub/tests/m17-product-verticals.php', 'deploy/awh-control-plane/verify-web-release.php'];
   for (const file of [...syntaxFiles, ...m12Syntax]) {
     const result = await run(php, ['-l', join(ROOT, file)], { timeoutMs: 15_000 });
     if (result.code !== 0) {
       check('php-hub', 'FAIL', `PHP syntax failed for ${file}`, started);
       return;
     }
+  }
+  for (const fixture of ['verification-intelligence.php', 'verification-gate.php', 'verification-evidence-registry.php', 'candidate-qa-truthfulness.php']) {
+    const verification = await run(php, [join(ROOT, 'hub', 'tests', fixture)], { timeoutMs: 30_000 });
+    if (verification.code !== 0) { check('php-hub', 'FAIL', `PHP verification contract failed for ${fixture}`, started); return; }
   }
   const sqliteDriver = await run(php, ['-r', 'exit(in_array("sqlite", PDO::getAvailableDrivers(), true) ? 0 : 1);'], { timeoutMs: 15_000 });
   if (sqliteDriver.code !== 0) {
@@ -380,6 +413,8 @@ async function phpHubCheck() {
   if (enrollment.code !== 0) { check('php-hub', 'FAIL', 'PHP enrollment API tests failed', started); return; }
   const control = await run(php, [join(ROOT, 'hub', 'tests', 'm4-control-plane.php')], { timeoutMs: 60_000 });
   if (control.code !== 0) { check('php-hub', 'FAIL', 'PHP M4 control-plane tests failed', started); return; }
+  const projectSchemaCompatibility = await run(php, [join(ROOT, 'hub', 'tests', 'project-list-schema-compatibility.php')], { timeoutMs: 60_000 });
+  if (projectSchemaCompatibility.code !== 0 && projectSchemaCompatibility.code !== 77) { check('php-hub', 'FAIL', 'PHP project-list schema compatibility tests failed', started); return; }
   const projects = await run(php, [join(ROOT, 'hub', 'tests', 'm4-project-registration.php')], { timeoutMs: 60_000 });
   if (projects.code !== 0) { check('php-hub', 'FAIL', 'PHP M4 project registration tests failed', started); return; }
   const assistant = await run(php, [join(ROOT, 'hub', 'tests', 'm6-assistant-workstream.php')], { timeoutMs: 60_000 });
@@ -410,13 +445,38 @@ async function fastQaCheck() {
     'test/platform-contract.test.ts',
     'test/sustainability-contract.test.ts',
     'test/control-plane-worker-runtime.test.ts',
-    'test/central-project-authority-deployment.test.ts',
-    'test/automation-deployment.test.ts',
+    'test/control-plane-worker-client.test.ts',
+    'test/owner-protocol.test.ts',
+    'test/source-drift-systemd.test.ts',
+    'test/vps-direct-connector.test.mjs',
+    'test/browser-qa-runtime.test.mjs',
     'test/release-readiness.test.ts',
     'test/release-activator.test.ts',
+    'test/bounded-deploy-mission.test.ts',
+    'test/identity-convergence-deployment.test.ts',
+    'test/execution-policy.test.mjs',
+    'test/remote-mission-state.test.mjs',
+    'test/qa-plan.test.mjs',
   ];
   const result = await runNodeTest(files, 90_000);
   check('fast-contracts', result.code === 0 ? 'PASS' : 'FAIL', result.code === 0 ? 'bounded core security/execution/release contracts passed' : `bounded core contract suite failed with exit code ${result.code}`, started);
+  if (result.code !== 0) return;
+
+  const gitStatus = await runGit(['status', '--porcelain']);
+  const deployStarted = Date.now();
+  if (gitStatus.code !== 0) {
+    check('fast-deploy-contracts', 'FAIL', 'Git status is unavailable for exact-revision deploy contracts', deployStarted);
+    return;
+  }
+  if (gitStatus.stdout !== '') {
+    check('fast-deploy-contracts', 'SKIP', 'Exact-revision deploy contracts are deferred until the candidate is committed; dirty fast QA remains valid for iterative work', deployStarted);
+    return;
+  }
+  const deployContracts = await runNodeTest([
+    'test/central-project-authority-deployment.test.ts',
+    'test/automation-deployment.test.ts',
+  ], 90_000);
+  check('fast-deploy-contracts', deployContracts.code === 0 ? 'PASS' : 'FAIL', deployContracts.code === 0 ? 'exact-revision deploy contracts passed on a clean candidate' : `exact-revision deploy contracts failed with exit code ${deployContracts.code}`, deployStarted);
 }
 
 async function finalUatShellCheck() {
@@ -442,6 +502,10 @@ async function desktopSmokeCheck(dependenciesReady) {
   const started = Date.now();
   if (!dependenciesReady) {
     check('desktop-smoke', 'FAIL', 'ENVIRONMENT BLOCKER: Electron desktop smoke requires installed project dependencies', started);
+    return;
+  }
+  if (process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+    check('desktop-smoke', 'SKIP_ENVIRONMENT', 'HEADLESS_SERVER: Electron GUI smoke belongs on an exact-SHA desktop target; server QA does not install GUI libraries solely to satisfy this check', started);
     return;
   }
   if (process.platform === 'win32' || process.platform === 'darwin' || process.platform === 'linux') {

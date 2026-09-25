@@ -1,0 +1,61 @@
+#!/usr/bin/php
+<?php
+declare(strict_types=1);
+$socket=getenv('AWH_OPERATOR_SOCKET');if(!is_string($socket)||$socket==='')$socket='/run/awh-operator-bridge.sock';
+$stageRoot=getenv('AWH_OPERATOR_STAGE_ROOT');if(!is_string($stageRoot)||$stageRoot==='')$stageRoot='/var/lib/awh-remote/operator-staging';
+$args=$argv;array_shift($args);$cmd=array_shift($args)??'';$request=['schemaVersion'=>1];$cleanup=null;
+$usage=static function():never{fwrite(STDERR,"usage: awh-operator status|projects|gate <project>|mission-status <project>|mission-acquire <project> <goal> --confirm|mission-renew <execution-id>|mission-release <execution-id> <success|failure> --confirm|vault-export <project> --confirm|vault-import <project> <archive.zip> <expected-vault-revision> <archive-sha256> --mission <execution-id> --confirm|verification-store --confirm|verification-regressions|source-promote <repository> <bundle> <expected-main-sha> <target-sha> <bundle-sha256> [--mission <execution-id>] --confirm|bay-status|bay-stage <package.zip> <version> <source-sha> <package-sha256> --confirm|bay-install <version> <source-sha> <package-sha256> --confirm\n");exit(64);};
+switch($cmd){
+case 'status':$request['action']='system.status';break;
+case 'projects':$request['action']='projects.list';break;
+case 'gate':$project=array_shift($args);if(!is_string($project)||$project==='')$usage();$request+=['action'=>'project.gate','project'=>$project];break;
+case 'vault-export':$project=array_shift($args);$confirm=array_shift($args);if(!is_string($project)||$project===''||$confirm!=='--confirm'||$args!==[])$usage();$request+=['action'=>'vault.export','project'=>$project,'confirmation'=>'EXPORT_CANONICAL_VAULT_SOURCE'];break;
+case 'vault-import':
+    $project=array_shift($args);$archive=array_shift($args);$expected=strtolower((string)array_shift($args));$archiveSha=strtolower((string)array_shift($args));$flag=array_shift($args);$mission=strtolower((string)array_shift($args));$confirm=array_shift($args);
+    if(!is_string($project)||$project===''||!is_string($archive)||$flag!=='--mission'||$confirm!=='--confirm'||$args!==[]||preg_match('/^[0-9a-f-]{36}$/',$expected)!==1||preg_match('/^[a-f0-9]{64}$/',$archiveSha)!==1||preg_match('/^[0-9a-f-]{36}$/',$mission)!==1)$usage();
+    $real=realpath($archive);$root=realpath($stageRoot);if(!is_string($real)||!is_file($real)||is_link($archive)||!is_readable($real)||!is_string($root)||!is_dir($root)||!is_writable($root)){fwrite(STDERR,"AWH_OPERATOR_VAULT_ARCHIVE_INVALID\n");exit(66);}
+    $size=@filesize($real);$actual=hash_file('sha256',$real);if(!is_int($size)||$size<1||$size>134217728||!is_string($actual)||!hash_equals($archiveSha,$actual)){fwrite(STDERR,"AWH_OPERATOR_VAULT_ARCHIVE_INVALID\n");exit(66);}
+    $stagedName=$archiveSha.'.zip';$staged=$root.'/'.$stagedName;if(is_link($staged)||is_dir($staged)){fwrite(STDERR,"AWH_OPERATOR_STAGE_DESTINATION_UNSAFE\n");exit(73);}if(is_file($staged)&&!@unlink($staged)){fwrite(STDERR,"AWH_OPERATOR_STAGE_DESTINATION_BUSY\n");exit(73);}
+    if(!@copy($real,$staged)||!@chmod($staged,0640)||!hash_equals($archiveSha,(string)hash_file('sha256',$staged))){@unlink($staged);fwrite(STDERR,"AWH_OPERATOR_STAGE_COPY_FAILED\n");exit(74);}
+    $cleanup=$staged;register_shutdown_function(static function()use(&$cleanup):void{if(is_string($cleanup)&&$cleanup!==''&&is_file($cleanup))@unlink($cleanup);});
+    $request+=['action'=>'vault.import','project'=>$project,'expectedActiveRevisionId'=>$expected,'archiveSha256'=>$archiveSha,'stagedFile'=>$stagedName,'missionExecutionId'=>$mission,'confirmation'=>'IMPORT_CANONICAL_VAULT_SOURCE'];break;
+case 'mission-status':$project=array_shift($args);if(!is_string($project)||$project===''||$args!==[])$usage();$request+=['action'=>'mission.status','project'=>$project];break;
+case 'mission-acquire':$project=array_shift($args);$goal=array_shift($args);$confirm=array_shift($args);if(!is_string($project)||$project===''||!is_string($goal)||$goal===''||$confirm!=='--confirm'||$args!==[])$usage();$request+=['action'=>'mission.acquire','project'=>$project,'goal'=>$goal,'confirmation'=>'ACQUIRE_PROJECT_MISSION'];break;
+case 'mission-renew':$execution=strtolower((string)array_shift($args));if(preg_match('/^[0-9a-f-]{36}$/',$execution)!==1||$args!==[])$usage();$request+=['action'=>'mission.renew','executionId'=>$execution];break;
+case 'mission-release':$execution=strtolower((string)array_shift($args));$outcome=array_shift($args);$confirm=array_shift($args);if(preg_match('/^[0-9a-f-]{36}$/',$execution)!==1||!in_array($outcome,['success','failure'],true)||$confirm!=='--confirm'||$args!==[])$usage();$request+=['action'=>'mission.release','executionId'=>$execution,'outcome'=>$outcome,'confirmation'=>'RELEASE_PROJECT_MISSION'];break;
+case 'verification-store':
+    $confirm=array_shift($args);if($confirm!=='--confirm'||$args!==[])$usage();$raw=stream_get_contents(STDIN,196610);if(!is_string($raw)||$raw===''||strlen($raw)>196608)$usage();try{$document=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){$usage();}if(!is_array($document)||array_is_list($document))$usage();$request+=['action'=>'verification.store','document'=>$document,'confirmation'=>'STORE_VERIFICATION_EVIDENCE'];break;
+case 'verification-regressions':
+    if($args!==[])$usage();$raw=stream_get_contents(STDIN,65538);if(!is_string($raw)||$raw===''||strlen($raw)>65536)$usage();try{$payload=json_decode($raw,true,16,JSON_THROW_ON_ERROR);}catch(Throwable){$usage();}if(!is_array($payload)||array_is_list($payload)||!is_array($payload['changedPaths']??null))$usage();$request+=['action'=>'verification.regressions','changedPaths'=>$payload['changedPaths']];break;
+case 'source-promote':
+    $repository=array_shift($args);$bundle=array_shift($args);$base=strtolower((string)array_shift($args));$target=strtolower((string)array_shift($args));$bundleSha=strtolower((string)array_shift($args));$mission=null;$next=array_shift($args);
+    if($next==='--mission'){$mission=strtolower((string)array_shift($args));$confirm=array_shift($args);}else{$confirm=$next;}
+    if(!is_string($repository)||preg_match('/^[a-z0-9][a-z0-9-]{0,79}$/',$repository)!==1||!is_string($bundle)||$confirm!=='--confirm'||$args!==[]||preg_match('/^[a-f0-9]{40}$/',$base)!==1||preg_match('/^[a-f0-9]{40}$/',$target)!==1||preg_match('/^[a-f0-9]{64}$/',$bundleSha)!==1||($mission!==null&&preg_match('/^[0-9a-f-]{36}$/',$mission)!==1))$usage();
+    $real=realpath($bundle);$root=realpath($stageRoot);if(!is_string($real)||!is_file($real)||is_link($bundle)||!is_readable($real)||!is_string($root)||!is_dir($root)||!is_writable($root)){fwrite(STDERR,"AWH_OPERATOR_SOURCE_BUNDLE_INVALID
+");exit(66);}
+    $size=@filesize($real);$actual=hash_file('sha256',$real);if(!is_int($size)||$size<1||$size>134217728||!is_string($actual)||!hash_equals($bundleSha,$actual)){fwrite(STDERR,"AWH_OPERATOR_SOURCE_BUNDLE_INVALID
+");exit(66);}
+    $stagedName=$bundleSha.'.bundle';$staged=$root.'/'.$stagedName;if(is_link($staged)||is_dir($staged)){fwrite(STDERR,"AWH_OPERATOR_STAGE_DESTINATION_UNSAFE
+");exit(73);}if(is_file($staged)&&!@unlink($staged)){fwrite(STDERR,"AWH_OPERATOR_STAGE_DESTINATION_BUSY
+");exit(73);}
+    if(!@copy($real,$staged)||!@chmod($staged,0640)||!hash_equals($bundleSha,(string)hash_file('sha256',$staged))){@unlink($staged);fwrite(STDERR,"AWH_OPERATOR_STAGE_COPY_FAILED
+");exit(74);}
+    $cleanup=$staged;register_shutdown_function(static function()use(&$cleanup):void{if(is_string($cleanup)&&$cleanup!==''&&is_file($cleanup))@unlink($cleanup);});
+    $request+=['action'=>'source.promote','repository'=>$repository,'expectedMainSha'=>$base,'targetSha'=>$target,'bundleSha256'=>$bundleSha,'stagedFile'=>$stagedName,'confirmation'=>'PROMOTE_CANONICAL_MAIN'];if($mission!==null)$request['missionExecutionId']=$mission;break;
+case 'bay-status':$request['action']='bay.status';break;
+case 'bay-stage':
+    $package=array_shift($args);$version=array_shift($args);$sha=strtolower((string)array_shift($args));$packageSha=strtolower((string)array_shift($args));$confirm=array_shift($args);
+    if(!is_string($package)||!is_string($version)||$confirm!=='--confirm'||$args!==[]||preg_match('/^[a-f0-9]{40}$/',$sha)!==1||preg_match('/^[a-f0-9]{64}$/',$packageSha)!==1)$usage();
+    $real=realpath($package);$root=realpath($stageRoot);if(!is_string($real)||!is_file($real)||is_link($package)||!is_readable($real)||!is_string($root)||!is_dir($root)||!is_writable($root)){fwrite(STDERR,"AWH_OPERATOR_STAGE_SOURCE_INVALID\n");exit(66);}
+    $size=@filesize($real);$actual=hash_file('sha256',$real);if(!is_int($size)||$size<1||$size>9437184||!is_string($actual)||!hash_equals($packageSha,$actual)){fwrite(STDERR,"AWH_OPERATOR_STAGE_SOURCE_INVALID\n");exit(66);}
+    $stagedName=$packageSha.'.zip';$staged=$root.'/'.$stagedName;if(is_link($staged)||is_dir($staged)){fwrite(STDERR,"AWH_OPERATOR_STAGE_DESTINATION_UNSAFE\n");exit(73);}if(is_file($staged)&&!@unlink($staged)){fwrite(STDERR,"AWH_OPERATOR_STAGE_DESTINATION_BUSY\n");exit(73);}
+    if(!@copy($real,$staged)||!@chmod($staged,0640)||!hash_equals($packageSha,(string)hash_file('sha256',$staged))){@unlink($staged);fwrite(STDERR,"AWH_OPERATOR_STAGE_COPY_FAILED\n");exit(74);}
+    $cleanup=$staged;register_shutdown_function(static function()use(&$cleanup):void{if(is_string($cleanup)&&$cleanup!==''&&is_file($cleanup))@unlink($cleanup);});
+    $request+=['action'=>'bay.stage','targetVersion'=>$version,'targetSha'=>$sha,'packageSha256'=>$packageSha,'stagedFile'=>$stagedName,'confirmation'=>'STAGE_BAY_UPDATE'];break;
+case 'bay-install':$version=array_shift($args);$sha=array_shift($args);$package=array_shift($args);$confirm=array_shift($args);if(!is_string($version)||!is_string($sha)||!is_string($package)||$confirm!=='--confirm'||$args!==[])$usage();$request+=['action'=>'bay.install','targetVersion'=>$version,'targetSha'=>$sha,'packageSha256'=>$package,'confirmation'=>'INSTALL_BAY_UPDATE'];break;
+default:$usage();}
+$client=@stream_socket_client('unix://'.$socket,$errno,$errstr,3,STREAM_CLIENT_CONNECT);if(!is_resource($client)){fwrite(STDERR,"AWH_OPERATOR_UNAVAILABLE\n");exit(69);}
+stream_set_timeout($client,$cmd==='bay-install'?180:(in_array($cmd,['bay-stage','vault-import'],true)?60:20));
+$json=json_encode($request,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)."\n";if(fwrite($client,$json)!==strlen($json)){fclose($client);fwrite(STDERR,"AWH_OPERATOR_WRITE_FAILED\n");exit(74);}
+$raw=fgets($client,1048576);fclose($client);if(!is_string($raw)||$raw===''){fwrite(STDERR,"AWH_OPERATOR_EMPTY_RESPONSE\n");exit(74);}try{$decoded=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){fwrite(STDERR,"AWH_OPERATOR_INVALID_RESPONSE\n");exit(74);}
+fwrite(STDOUT,json_encode($decoded,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n");exit(($decoded['ok']??false)===true?0:1);

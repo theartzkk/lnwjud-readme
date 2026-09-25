@@ -18,7 +18,12 @@ test('Owner Control Panel composes existing authorities without a parallel backe
     readFile(join(ROOT,'web/panel.js'),'utf8'),
     readFile(join(ROOT,'web/panel.css'),'utf8'),
   ]);
-  for(const label of ['Websites','Domains & SSL','Files & Storage','Databases','Backups','Security','Server & Services','Users & Access','AI & Costs','Source Authority'])assert.match(html,new RegExp(label.replace(/[&]/g,'\\&')));
+  for(const label of ['เว็บไซต์','Domains & SSL','ไฟล์และพื้นที่','ฐานข้อมูล','สำรองและกู้คืน','ความปลอดภัย','เซิร์ฟเวอร์และบริการ','อุปกรณ์ที่ช่วยทำงาน','ผู้ใช้และสิทธิ์','AI และการใช้งาน','Source และรุ่นระบบ']) assert.match(html,new RegExp(label.replace(/[&]/g,'\\&')));
+  assert.match(html,/id="cp-agent-tools"/);
+  assert.match(html,/class="cp-nav-advanced"/);
+  assert.match(html,/class="cp-update-group"/);
+  assert.match(html,/id="cp-technical-details" class="cp-technical-details"/);
+  assert.match(js,/revealHashTarget/);
   assert.match(js,/requireOwnerSession/);
   assert.match(js,/loadInfrastructure/);
   assert.doesNotMatch(js,/Promise\.allSettled\(\[.*loadInfrastructure/);
@@ -52,11 +57,21 @@ test('Owner entry and standalone admin pages converge on Control Panel',async()=
   const [owner,hosting,database,infrastructure,trust,review,app]=await Promise.all([
     'owner-center.js','hosting.html','database.html','infrastructure.html','trust.html','review.html','app.js'
   ].map(name=>readFile(join(ROOT,'web',name),'utf8')));
-  assert.match(owner,/เปิด Control Panel/);
+  assert.match(owner,/เปิดศูนย์ดูแลระบบ/);
   assert.match(owner,/window\.location\.assign\('\.\/panel\.html'\)/);
   for(const page of [hosting,database,infrastructure,trust,review])assert.match(page,/panel\.html/);
   assert.match(app,/awh-settings/);
   assert.match(app,/requestedOwnerSettings/);
+  assert.match(infrastructure,/capability-fabric/);
+  assert.doesNotMatch(infrastructure,/lnwjud|Remote Desktop/i);
+  const panelHtml=await readFile(join(ROOT,'web','panel.html'),'utf8');
+  assert.doesNotMatch(panelHtml,/lnwjud|Remote Desktop/i);
+  const infrastructureJs=await readFile(join(ROOT,'web','infrastructure.js'),'utf8');
+  const controlService=await readFile(join(ROOT,'hub','src','HubControlPlaneService.php'),'utf8');
+  assert.match(infrastructureJs,/renderCapabilityFabric/);
+  assert.match(controlService,/capabilityFabric/);
+  const panelJs=await readFile(join(ROOT,'web','panel.js'),'utf8');
+  assert.match(panelJs,/cp-agent-tools/);
 });
 
 
@@ -66,7 +81,7 @@ test('BAY Remote Update stays inside AWH Owner + BAY Update Inbox + PackageManag
     'hub/src/HubBayRemoteUpdateService.php','hub/src/HubControlPlaneService.php',
     'hub/src/HubControlPlaneRouter.php','hub/src/HubTrustPolicy.php'
   ].map(name=>readFile(join(ROOT,name),'utf8')));
-  assert.match(html,/BAY REMOTE UPDATE CONTROL/);
+  assert.match(html,/อัปเดตระบบโรงเรียน/);
   assert.match(html,/system-control-panel\.webp/);
   assert.match(html,/connect-src 'self' https:\/\/excuse\.kruart\.online/);
   const serverCsp=await readFile(join(ROOT,'deploy/nginx/transform-owner-auth.php'),'utf8');

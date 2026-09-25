@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#ffffff" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://excuse.kruart.online; object-src 'none'; base-uri 'none'; form-action 'none'" />
-  <title>Control Panel · KRUART AWH</title>
+  <title>ศูนย์ดูแลระบบ · KRUART AWH</title>
   <link rel="stylesheet" href="./awh-design-system.css?release=__AWH_WEB_RELEASE_ID__" />
   <link rel="stylesheet" href="./awh-light-system.css?release=__AWH_WEB_RELEASE_ID__" />
   <link rel="stylesheet" href="./panel.css?release=__AWH_WEB_RELEASE_ID__" />
@@ -14,97 +14,111 @@
 <body>
   <div class="cp-shell">
     <aside class="cp-sidebar" id="cp-sidebar">
-      <a class="cp-brand" href="./panel.html"><img class="system-brand-icon" src="./logo-256x256.png?release=__AWH_WEB_RELEASE_ID__" alt="" /><div><strong>AWH Control Panel</strong><small>BAY Ecosystem</small></div></a>
+      <a class="cp-brand" href="./panel.html"><img class="system-brand-icon" src="./logo-256x256.png?release=__AWH_WEB_RELEASE_ID__" alt="" /><div><strong>ศูนย์ดูแลระบบ</strong><small>KRUART · AWH</small></div></a>
       <label class="cp-search"><span>⌕</span><input id="cp-search" type="search" placeholder="ค้นหาเมนู…  ⌘K" autocomplete="off" /></label>
-      <nav class="cp-nav" aria-label="Control Panel">
+      <nav class="cp-nav" aria-label="ศูนย์ดูแลระบบ">
         <a class="is-active" href="#overview" data-cp-keywords="dashboard overview สรุป"><span>⌂</span>ภาพรวม</a>
-        <p>เว็บไซต์และข้อมูล</p>
+        <p>งานประจำวัน</p>
         <a href="./hosting.html" data-cp-keywords="website hosting deploy rollback เว็บไซต์ โฮสติ้ง"><span>◎</span>เว็บไซต์</a>
-        <a href="#domains" data-cp-keywords="domain dns ssl https โดเมน"><span>◉</span>Domains & SSL</a>
-        <a href="./?awh-surface=files" data-cp-keywords="files storage artifacts ไฟล์ พื้นที่"><span>▤</span>Files & Storage</a>
-        <a href="./database.html" data-cp-keywords="database sqlite schema ฐานข้อมูล"><span>▦</span>Databases</a>
-        <a href="#backup" data-cp-keywords="backup restore recovery retention สำรอง กู้คืน"><span>↺</span>Backups & Recovery</a>
-        <p>ระบบและความปลอดภัย</p>
-        <a href="./trust.html" data-cp-keywords="security trust session approval ความปลอดภัย"><span>◇</span>Security & Trust</a>
-        <a href="./infrastructure.html" data-cp-keywords="server service cpu memory vps runtime logs เซิร์ฟเวอร์"><span>⌘</span>Server & Services</a>
-        <a href="./?awh-surface=home&awh-settings=people" data-cp-keywords="users roles access people ผู้ใช้ สิทธิ์"><span>♙</span>Users & Access</a>
-        <a href="./?awh-surface=home&awh-settings=ai" data-cp-keywords="ai provider model quota cost automation เอไอ ค่าใช้จ่าย"><span>✦</span>AI & Automations</a>
-        <p>ระบบ BAY</p>
-        <a href="#ecosystem" data-cp-keywords="bay excuse learnlab school ecosystem โรงเรียน"><span>◫</span>BAY Ecosystem</a>
-        <a href="#bay-update" data-cp-keywords="bay update deploy package manager อัปเดต production"><span>⇧</span>BAY Update</a>
-        <a href="./?awh-surface=home#source" data-cp-keywords="source github vault lnwjud advanced runtime"><span>⌁</span>Advanced</a>
+        <a href="./?awh-surface=files" data-cp-keywords="files storage artifacts ไฟล์ พื้นที่"><span>▤</span>ไฟล์และพื้นที่</a>
+        <a href="#backup" data-cp-keywords="backup restore recovery retention สำรอง กู้คืน"><span>↺</span>สำรองและกู้คืน</a>
+        <a href="./?awh-surface=home&awh-settings=people" data-cp-keywords="users roles access people ผู้ใช้ สิทธิ์"><span>♙</span>ผู้ใช้และสิทธิ์</a>
+        <a href="./?awh-surface=home&awh-settings=ai" data-cp-keywords="ai provider model quota cost automation เอไอ ค่าใช้จ่าย"><span>✦</span>AI และการใช้งาน</a>
+        <p>ระบบโรงเรียน</p>
+        <a href="#ecosystem" data-cp-keywords="bay excuse learnlab school ecosystem โรงเรียน"><span>◫</span>ระบบที่เชื่อมกัน</a>
+        <a href="#bay-update" data-cp-keywords="bay update deploy package manager อัปเดต production"><span>⇧</span>อัปเดตระบบ</a>
+        <details class="cp-nav-advanced">
+          <summary><span>⌘</span>ขั้นสูง</summary>
+          <a href="#domains" data-cp-keywords="domain dns ssl https โดเมน">Domains & SSL</a>
+          <a href="./database.html" data-cp-keywords="database sqlite schema ฐานข้อมูล">ฐานข้อมูล</a>
+          <a href="./trust.html" data-cp-keywords="security trust session approval ความปลอดภัย">ความปลอดภัย</a>
+          <a href="./infrastructure.html" data-cp-keywords="server service cpu memory vps runtime logs เซิร์ฟเวอร์">เซิร์ฟเวอร์และบริการ</a>
+          <a href="./infrastructure.html#capability-fabric" data-cp-keywords="awh agent tools devices capabilities execution เครื่องมือ อุปกรณ์">อุปกรณ์ที่ช่วยทำงาน</a>
+          <a href="./?awh-surface=home#source" data-cp-keywords="source github vault advanced runtime">Source และรุ่นระบบ</a>
+        </details>
       </nav>
       <div class="cp-sidebar-foot"><a href="./">← กลับ AWH</a><span id="cp-release">Release —</span></div>
     </aside>
     <main class="cp-main">
       <header class="cp-topbar">
         <button id="cp-menu" class="cp-menu" type="button" aria-label="เปิดเมนู">☰</button>
-        <div><span>OWNER</span><strong>Control Panel</strong></div>
+        <div><span>เจ้าของระบบ</span><strong>ศูนย์ดูแลระบบ</strong></div>
         <div class="cp-top-actions"><span id="cp-updated">กำลังตรวจระบบ…</span><button id="cp-refresh" type="button">รีเฟรช</button></div>
       </header>
       <div class="cp-content">
         <section id="overview" class="cp-hero">
-          <div><span class="cp-eyebrow">AWH · BAY ECOSYSTEM</span><h1>ทุกระบบ อยู่ที่เดียว</h1><p>ดูสุขภาพ จัดการเว็บไซต์ ข้อมูล Backup ผู้ใช้ AI และระบบส่วนกลาง โดยใช้ authority เดิมของแต่ละระบบ</p></div>
+          <div><span class="cp-eyebrow">KRUART · AWH</span><h1>ดูเฉพาะสิ่งที่ต้องจัดการ</h1><p>สุขภาพระบบ อัปเดต สำรองข้อมูล เว็บไซต์ ผู้ใช้ และอุปกรณ์ อยู่ในที่เดียว ส่วนรายละเอียดทางเทคนิคเปิดดูเมื่อจำเป็น</p></div>
           <div class="cp-hero-side"><img data-kruart-art-slot="system.control-panel" src="./system-control-panel.webp?release=__AWH_WEB_RELEASE_ID__" width="2048" height="768" alt="" aria-hidden="true"><div id="cp-overall" class="cp-overall">กำลังตรวจ</div></div>
         </section>
         <section class="cp-metrics" aria-label="ทรัพยากรระบบ">
-          <article><small>CPU</small><strong id="cp-cpu">—</strong><span id="cp-load">Load —</span></article>
-          <article><small>Memory</small><strong id="cp-memory">—</strong><span id="cp-memory-free">—</span></article>
-          <article><small>Storage</small><strong id="cp-storage">—</strong><span id="cp-storage-free">—</span></article>
-          <article><small>Backup</small><strong id="cp-backup">—</strong><span id="cp-backup-time">—</span></article>
+          <article><small>ภาระระบบ</small><strong id="cp-cpu">—</strong><span id="cp-load">กำลังตรวจ…</span></article>
+          <article><small>หน่วยความจำ</small><strong id="cp-memory">—</strong><span id="cp-memory-free">—</span></article>
+          <article><small>พื้นที่</small><strong id="cp-storage">—</strong><span id="cp-storage-free">—</span></article>
+          <article><small>สำรองล่าสุด</small><strong id="cp-backup">—</strong><span id="cp-backup-time">—</span></article>
         </section>
+        <details class="cp-update-group">
+          <summary><span><b>อัปเดตระบบโรงเรียน</b><small>ตรวจรุ่นใหม่และติดตั้งเมื่อพร้อม</small></span><strong id="cp-bay-summary">กำลังตรวจ…</strong></summary>
         <section id="bay-update" class="cp-bay-update" aria-labelledby="cp-bay-title">
           <div class="cp-bay-glow cp-bay-glow-a"></div><div class="cp-bay-glow cp-bay-glow-b"></div>
           <div class="cp-bay-body">
-            <div class="cp-bay-kicker"><span class="cp-bay-dot"></span>BAY REMOTE UPDATE CONTROL</div>
+            <div class="cp-bay-kicker"><span class="cp-bay-dot"></span>อัปเดตระบบโรงเรียน</div>
             <div class="cp-bay-title-row">
-              <div><h2 id="cp-bay-title">อัปเดต BAY จากที่ไหนก็ได้</h2><p>ตรวจ Source, CI, Package และ Production ก่อนทุกครั้ง แล้วส่งงานให้ BAY Update Center ตัวเดิมเป็นผู้ติดตั้ง</p></div>
+              <div><h2 id="cp-bay-title">อัปเดต BAY จากที่ไหนก็ได้</h2><p>ตรวจรุ่นใหม่ สำรองข้อมูล ติดตั้ง และตรวจหลังอัปเดตตามลำดับเดิมโดยอัตโนมัติ</p></div>
               <div id="cp-bay-overall" class="cp-bay-state is-loading">กำลังตรวจ</div>
             </div>
             <div class="cp-bay-version-card">
               <div><small>Production</small><strong id="cp-bay-current-version">—</strong><span id="cp-bay-current-sha">กำลังอ่านสถานะ…</span></div>
               <div class="cp-bay-arrow">→</div>
-              <div><small>Latest verified</small><strong id="cp-bay-latest-version">—</strong><span id="cp-bay-latest-sha">GitHub main</span></div>
+              <div><small>รุ่นใหม่ล่าสุด</small><strong id="cp-bay-latest-version">—</strong><span id="cp-bay-latest-sha">GitHub main</span></div>
             </div>
             <div class="cp-bay-checks" aria-label="ขั้นตอน Remote Update">
-              <div class="cp-bay-check" data-bay-step="source"><b>1</b><span><strong>Source</strong><small id="cp-bay-source-note">กำลังตรวจ</small></span></div>
-              <div class="cp-bay-check" data-bay-step="package"><b>2</b><span><strong>Package</strong><small id="cp-bay-package-note">รอ Source</small></span></div>
-              <div class="cp-bay-check" data-bay-step="backup"><b>3</b><span><strong>Backup</strong><small id="cp-bay-backup-note">รอ Production</small></span></div>
-              <div class="cp-bay-check" data-bay-step="install"><b>4</b><span><strong>Install</strong><small id="cp-bay-install-note">PackageManager</small></span></div>
-              <div class="cp-bay-check" data-bay-step="verify"><b>5</b><span><strong>Verify</strong><small id="cp-bay-verify-note">Post-check</small></span></div>
+              <div class="cp-bay-check" data-bay-step="source"><b>1</b><span><strong>รุ่นต้นฉบับ</strong><small id="cp-bay-source-note">กำลังตรวจ</small></span></div>
+              <div class="cp-bay-check" data-bay-step="package"><b>2</b><span><strong>ชุดอัปเดต</strong><small id="cp-bay-package-note">รอ Source</small></span></div>
+              <div class="cp-bay-check" data-bay-step="backup"><b>3</b><span><strong>สำรองข้อมูล</strong><small id="cp-bay-backup-note">รอ Production</small></span></div>
+              <div class="cp-bay-check" data-bay-step="install"><b>4</b><span><strong>ติดตั้ง</strong><small id="cp-bay-install-note">PackageManager</small></span></div>
+              <div class="cp-bay-check" data-bay-step="verify"><b>5</b><span><strong>ตรวจหลังอัปเดต</strong><small id="cp-bay-verify-note">Post-check</small></span></div>
             </div>
             <div class="cp-bay-actions">
               <button id="cp-bay-update-button" class="cp-bay-primary" type="button" disabled><span>⇧</span><span><strong>ตรวจและอัปเดต Production</strong><small id="cp-bay-button-note">กำลังโหลดข้อมูลล่าสุด…</small></span></button>
               <button id="cp-bay-recheck" class="cp-bay-secondary" type="button">ตรวจใหม่</button>
             </div>
-            <div id="cp-bay-message" role="status" aria-live="polite" class="cp-bay-message">AWH จะไม่ข้าม Backup, Migration, Smoke Test หรือ Rollback ของ BAY</div>
+            <div id="cp-bay-message" role="status" aria-live="polite" class="cp-bay-message">AWH จะสำรองข้อมูล ตรวจความพร้อม ติดตั้ง และตรวจผลก่อนปิดการอัปเดต</div>
           </div>
           <div class="cp-bay-visual" aria-hidden="true">
             <div class="cp-bay-orbit"><span></span><span></span><span></span></div>
             <img data-kruart-art-slot="system.control-panel" src="./system-control-panel.webp?release=__AWH_WEB_RELEASE_ID__" alt="" />
-            <div class="cp-bay-badge"><b>🛡️</b><span><strong>Safe Update</strong><small>PackageManager authority</small></span></div>
+            <div class="cp-bay-badge"><b>🛡️</b><span><strong>อัปเดตอย่างปลอดภัย</strong><small>สำรองและตรวจผลทุกครั้ง</small></span></div>
           </div>
         </section>
+        </details>
         <section id="cp-attention-wrap" class="cp-section cp-attention" hidden>
           <div class="cp-section-head"><div><span>ACTION REQUIRED</span><h2>สิ่งที่ควรดูตอนนี้</h2></div><small>แสดงเฉพาะสิ่งที่ต้องลงมือ</small></div>
           <div id="cp-attention" class="cp-list"></div>
         </section>
         <section class="cp-section">
-          <div class="cp-section-head"><div><span>QUICK ACCESS</span><h2>จัดการระบบ</h2></div><small>เหมือน cPanel แต่ใช้ข้อมูลและสิทธิ์เดิมของ AWH</small></div>
+          <div class="cp-section-head"><div><span>QUICK ACCESS</span><h2>งานดูแลที่ใช้บ่อย</h2></div><small>งานประจำวันก่อน · รายละเอียดเทคนิคอยู่ในขั้นสูง</small></div>
           <div class="cp-tool-grid">
-            <a class="cp-tool" href="./hosting.html" data-cp-keywords="website hosting deploy"><b>◎</b><span><strong>Websites</strong><small id="cp-sites">Managed sites</small></span></a>
-            <a class="cp-tool" href="#domains" data-cp-keywords="domain ssl dns"><b>◉</b><span><strong>Domains & SSL</strong><small id="cp-domains-count">ตรวจ DNS และ HTTPS</small></span></a>
-            <a class="cp-tool" href="./?awh-surface=files" data-cp-keywords="files storage"><b>▤</b><span><strong>Files & Storage</strong><small>ไฟล์ ผลงาน และพื้นที่</small></span></a>
-            <a class="cp-tool" href="./database.html" data-cp-keywords="database schema"><b>▦</b><span><strong>Databases</strong><small id="cp-db">Database Studio</small></span></a>
-            <a class="cp-tool" href="#backup" data-cp-keywords="backup restore recovery"><b>↺</b><span><strong>Backups</strong><small id="cp-backup-card">Backup & recovery</small></span></a>
-            <a class="cp-tool" href="./trust.html" data-cp-keywords="security trust"><b>◇</b><span><strong>Security</strong><small id="cp-security">Trust & protection</small></span></a>
-            <a class="cp-tool" href="./infrastructure.html" data-cp-keywords="server services logs"><b>⌘</b><span><strong>Server & Services</strong><small id="cp-services">VPS runtime</small></span></a>
-            <a class="cp-tool" href="./?awh-surface=home&awh-settings=people" data-cp-keywords="users roles access"><b>♙</b><span><strong>Users & Access</strong><small>บัญชี บทบาท และสิทธิ์</small></span></a>
-            <a class="cp-tool" href="./?awh-surface=home&awh-settings=ai" data-cp-keywords="ai providers costs"><b>✦</b><span><strong>AI & Costs</strong><small id="cp-ai">Provider & routing</small></span></a>
-            <a class="cp-tool" href="./?awh-surface=home#source" data-cp-keywords="source github vault"><b>⌁</b><span><strong>Source Authority</strong><small>GitHub · Vault · exact SHA</small></span></a>
-            <a class="cp-tool" href="#external-capabilities" data-cp-keywords="capabilities integrations teamai hallmark context design"><b>⊕</b><span><strong>External Capabilities</strong><small>Adapters · skills · references</small></span></a>
+            <a class="cp-tool" href="./hosting.html" data-cp-keywords="website hosting deploy"><b>◎</b><span><strong>เว็บไซต์</strong><small id="cp-sites">เว็บไซต์ที่ AWH ดูแล</small></span></a>
+            <a class="cp-tool" href="./?awh-surface=files" data-cp-keywords="files storage"><b>▤</b><span><strong>ไฟล์และพื้นที่</strong><small>ไฟล์ ผลงาน และพื้นที่จัดเก็บ</small></span></a>
+            <a class="cp-tool" href="#backup" data-cp-keywords="backup restore recovery"><b>↺</b><span><strong>สำรองและกู้คืน</strong><small id="cp-backup-card">ดูจุดสำรองและการกู้คืน</small></span></a>
+            <a class="cp-tool" href="./?awh-surface=home&awh-settings=people" data-cp-keywords="users roles access"><b>♙</b><span><strong>ผู้ใช้และสิทธิ์</strong><small>บัญชี บทบาท และสิทธิ์</small></span></a>
+            <a class="cp-tool" href="./?awh-surface=home&awh-settings=ai" data-cp-keywords="ai providers costs"><b>✦</b><span><strong>AI และการใช้งาน</strong><small id="cp-ai">การเชื่อมต่อและการใช้งาน</small></span></a>
           </div>
+          <details class="cp-advanced-tools">
+            <summary>รายละเอียดขั้นสูง</summary>
+            <div class="cp-tool-grid">
+              <a class="cp-tool" href="#domains" data-cp-keywords="domain ssl dns"><b>◉</b><span><strong>Domains & SSL</strong><small id="cp-domains-count">ตรวจ DNS และ HTTPS</small></span></a>
+              <a class="cp-tool" href="./database.html" data-cp-keywords="database schema"><b>▦</b><span><strong>ฐานข้อมูล</strong><small id="cp-db">Database Studio</small></span></a>
+              <a class="cp-tool" href="./trust.html" data-cp-keywords="security trust"><b>◇</b><span><strong>ความปลอดภัย</strong><small id="cp-security">Trust & protection</small></span></a>
+              <a class="cp-tool" href="./infrastructure.html" data-cp-keywords="server services logs"><b>⌘</b><span><strong>เซิร์ฟเวอร์และบริการ</strong><small id="cp-services">VPS runtime</small></span></a>
+              <a class="cp-tool" href="./infrastructure.html#capability-fabric" data-cp-keywords="awh agent tools devices capabilities execution เครื่องมือ อุปกรณ์"><b>◈</b><span><strong>อุปกรณ์ที่ช่วยทำงาน</strong><small id="cp-agent-tools">กำลังตรวจ capabilities…</small></span></a>
+              <a class="cp-tool" href="./?awh-surface=home#source" data-cp-keywords="source github vault"><b>⌁</b><span><strong>Source และรุ่นระบบ</strong><small>GitHub · Vault · exact SHA</small></span></a>
+              <a class="cp-tool" href="#external-capabilities" data-cp-keywords="capabilities integrations teamai hallmark context design"><b>⊕</b><span><strong>ความสามารถเสริม</strong><small>Adapters · skills · references</small></span></a>
+            </div>
+          </details>
         </section>
+        <details id="cp-technical-details" class="cp-technical-details">
+          <summary>รายละเอียดระบบเพิ่มเติม</summary>
         <div class="cp-columns">
           <section id="domains" class="cp-section"><div class="cp-section-head"><div><span>DOMAINS & SSL</span><h2>โดเมน</h2></div><a href="./infrastructure.html">รายละเอียด →</a></div><div id="cp-domain-list" class="cp-list"></div></section>
           <section id="backup" class="cp-section"><div class="cp-section-head"><div><span>BACKUP & RECOVERY</span><h2>การกู้คืน</h2></div><a href="./database.html">Database Studio →</a></div><div id="cp-recovery-list" class="cp-list"></div></section>
@@ -114,7 +128,8 @@
           <section id="ecosystem" class="cp-section"><div class="cp-section-head"><div><span>BAY ECOSYSTEM</span><h2>ระบบที่เชื่อมกัน</h2></div><a href="/bay/status.html">สถานะ →</a></div><div id="cp-ecosystem-list" class="cp-list"></div></section>
         </div>
         <section id="external-capabilities" class="cp-section"><div class="cp-section-head"><div><span>EXTERNAL CAPABILITIES</span><h2>ความสามารถเสริม</h2></div><small>ใช้ AWH authority เดิม · ไม่สร้าง control plane ซ้ำ</small></div><div id="cp-external-capabilities" class="cp-list"></div></section>
-        <section class="cp-footnote"><strong>Single Control Plane</strong><p>Control Panel นี้เป็นชั้นควบคุมและนำทางเท่านั้น ไม่สร้างฐานข้อมูล Login Queue Notification หรือ Source of Truth ชุดใหม่</p></section>
+        <section class="cp-footnote"><strong>Single Control Plane</strong><p>ศูนย์ดูแลระบบนี้เป็นชั้นควบคุมและนำทางเท่านั้น ไม่สร้างฐานข้อมูล Login Queue Notification หรือ Source of Truth ชุดใหม่</p></section>
+        </details>
       </div>
     </main>
   </div>

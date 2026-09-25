@@ -4,7 +4,7 @@ After=local-fs.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/sbin/awh-temp-cleanup
+ExecStart=/opt/awh-hub/control-plane-current/deploy/awh-storage/awh-temp-cleanup
 NoNewPrivileges=true
 PrivateTmp=false
 ProtectSystem=strict

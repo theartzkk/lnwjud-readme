@@ -130,14 +130,17 @@ test('typed M16 deploy output contract accepts verified web manifest evidence an
   assert.notEqual(rejected.code, 0);
 });
 
-test('public Desktop downloads stay hidden until the current Web manifest verifies their bytes', async () => {
+test('public sign-in is Web/PWA-first and native Agent remains an optional verified settings surface', async () => {
   const [html, app] = await Promise.all([read('web/index.html'), read('web/app.js')]);
-  assert.match(html, /class="login-downloads"[^>]*hidden/);
+  const signIn = html.match(/<section id="sign-in-view"[\s\S]*?<section id="ecosystem-home-view"/)?.[0] || '';
+  assert.match(signIn, /id="install-web-app"/);
+  assert.doesNotMatch(signIn, /login-downloads|downloads\/AWH-macOS|downloads\/AWH-Windows/);
   assert.match(app, /async function loadVerifiedDesktopRelease/);
   assert.match(app, /desktopReleasePromise/);
   assert.match(app, /\^\[0-9a-f\]\{64\}\$/);
   assert.match(app, /Number\.isSafeInteger\(entry\.sizeBytes\)/);
-  assert.match(app, /container\.hidden = available === 0/);
-  assert.match(app, /link\.hidden = !entry/);
+  assert.match(app, /ADHOC_INTERNAL_ONLY/);
+  assert.match(app, /GATEKEEPER_ACCEPTED/);
+  assert.match(app, /Web\/PWA-first/);
   assert.match(app, /void loadPublicDesktopRelease\(\)/);
 });

@@ -16,6 +16,7 @@ STORE = Path('/var/www/awh-web/desktop-artifacts')
 CONTROL_POINTER = Path('/opt/awh-hub/control-plane-current')
 WEB_POINTER = Path('/var/www/awh-web/current')
 WANTED = {
+    'downloads/AWH-macOS-arm64.zip',
     'downloads/AWH-macOS-x64.zip',
     'downloads/AWH-Windows-x64.zip',
     'downloads/SHA256SUMS.txt',

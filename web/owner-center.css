@@ -71,3 +71,13 @@ body.awh-teacher-preview #dashboard-owner-command-center { display: none !import
   .awh-teacher-preview-bar { align-items: stretch; gap: .65rem; padding: .75rem; }
   .awh-teacher-preview-bar .awh-command-send { align-self: center; }
 }
+
+/* 2026-09 ecosystem simplification: keep the default owner home outcome-first. */
+.owner-home-secondary{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.owner-home-secondary a,.owner-home-secondary button{min-height:44px;border:1px solid var(--line,rgba(15,23,42,.12));border-radius:12px;background:var(--surface,#fff);padding:10px 14px;color:inherit;font:inherit;font-weight:700;text-decoration:none;cursor:pointer}
+.owner-all-systems{margin:18px 0;border:1px solid var(--line,rgba(15,23,42,.12));border-radius:16px;background:var(--surface,#fff);overflow:hidden}
+.owner-all-systems>summary{min-height:48px;display:flex;align-items:center;padding:0 16px;font-weight:800;cursor:pointer;list-style:none}
+.owner-all-systems>summary::-webkit-details-marker{display:none}
+.owner-all-systems>summary::after{content:"›";margin-left:auto;transition:transform .2s ease}
+.owner-all-systems[open]>summary::after{transform:rotate(90deg)}
+.owner-all-systems>.owner-featured-systems,.owner-all-systems>.owner-systems{margin:0;padding:16px;border-top:1px solid var(--line,rgba(15,23,42,.12))}

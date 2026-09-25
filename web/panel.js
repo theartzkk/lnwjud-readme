@@ -40,6 +40,8 @@ function bayMessage(text,state=''){
 function setBayOverall(text,state=''){
   const node=$('cp-bay-overall');if(!node)return;
   node.className='cp-bay-state'+(state?' is-'+state:'');node.textContent=text;
+  const summary=$('cp-bay-summary');
+  if(summary){summary.textContent=text;summary.dataset.state=state||'ready';}
 }
 function setBayButton({disabled,label,note}){
   const button=$('cp-bay-update-button');if(!button)return;
@@ -212,6 +214,12 @@ async function updateBayProduction(){
 
 function renderServer(data){
   const server=data?.telemetry?.server||null,storage=data?.storage||server?.storage||{},backup=data?.backup||{},db=data?.database||{};
+  const fabric=data?.capabilityFabric||{},fabricSummary=fabric.summary||{};
+  const agentTools=$('cp-agent-tools');
+  if(agentTools){
+    const ready=Number(fabricSummary.ready||0),cloud=Number(fabricSummary.cloudReady||0);
+    agentTools.textContent=ready>0?ready+' capabilities พร้อม'+(cloud>0?' · '+cloud+' cloud-ready':''):'กำลังรอ capability snapshot';
+  }
   if(server){
     $('cp-cpu').textContent=percent(server.cpu?.usedPercent);$('cp-load').textContent='Load '+(server.cpu?.load1??'—');
     $('cp-memory').textContent=percent(server.memory?.usedPercent);$('cp-memory-free').textContent='ว่าง '+bytes(server.memory?.availableBytes);
@@ -310,12 +318,25 @@ function filterMenus(query){
   for(const node of document.querySelectorAll('[data-cp-keywords]')){
     const text=(node.textContent+' '+(node.dataset.cpKeywords||'')).toLowerCase();node.hidden=Boolean(q)&&!text.includes(q);
   }
+  const navAdvanced=document.querySelector('.cp-nav-advanced');
+  if(navAdvanced instanceof HTMLDetailsElement) navAdvanced.open=Boolean(q)&&[...navAdvanced.querySelectorAll('[data-cp-keywords]')].some(node=>!node.hidden);
+}
+function revealHashTarget(hash){
+  const id=String(hash||'').replace(/^#/,'');if(!id)return;
+  const target=document.getElementById(id);if(!target)return;
+  for(let details=target.closest('details');details instanceof HTMLDetailsElement;details=details.parentElement?.closest('details')) details.open=true;
 }
 function installUi(){
   const search=$('cp-search');search?.addEventListener('input',()=>filterMenus(search.value));
   window.addEventListener('keydown',(event)=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'){event.preventDefault();search?.focus();search?.select();}});
   $('cp-menu')?.addEventListener('click',()=>document.body.classList.toggle('cp-menu-open'));
-  document.addEventListener('click',(event)=>{if(window.innerWidth<=840&&document.body.classList.contains('cp-menu-open')&&event.target instanceof HTMLAnchorElement)document.body.classList.remove('cp-menu-open');});
+  document.addEventListener('click',(event)=>{
+    const anchor=event.target instanceof Element?event.target.closest('a[href^="#"]'):null;
+    if(anchor instanceof HTMLAnchorElement) revealHashTarget(anchor.getAttribute('href')||'');
+    if(window.innerWidth<=840&&document.body.classList.contains('cp-menu-open')&&event.target instanceof HTMLAnchorElement)document.body.classList.remove('cp-menu-open');
+  });
+  window.addEventListener('hashchange',()=>revealHashTarget(window.location.hash));
+  if(window.location.hash)queueMicrotask(()=>revealHashTarget(window.location.hash));
   $('cp-refresh')?.addEventListener('click',()=>void load());
   $('cp-bay-recheck')?.addEventListener('click',()=>void loadBayControl());
   $('cp-bay-update-button')?.addEventListener('click',()=>void updateBayProduction());
@@ -339,8 +360,8 @@ async function load(){
       if(secondary[1].status==='fulfilled')renderProvider(secondary[1].value);
     });
   }catch(error){
-    const overall=$('cp-overall');overall.className='cp-overall bad';overall.textContent='Control Panel ต้องตรวจ';
-    attention('ยังโหลด Control Panel ไม่ครบ',error instanceof Error?error.message:'Unknown error','CRITICAL');$('cp-updated').textContent='โหลดข้อมูลไม่สำเร็จ';
+    const overall=$('cp-overall');overall.className='cp-overall bad';overall.textContent='ศูนย์ดูแลระบบต้องตรวจ';
+    attention('ยังโหลดศูนย์ดูแลระบบไม่ครบ',error instanceof Error?error.message:'Unknown error','CRITICAL');$('cp-updated').textContent='โหลดข้อมูลไม่สำเร็จ';
   }finally{if(refresh)refresh.disabled=false;}
 }
 installUi();void load();

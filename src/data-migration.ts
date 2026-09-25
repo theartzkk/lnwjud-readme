@@ -331,6 +331,42 @@ export async function ensureAwhDataDirectoryActive(dataDir: string): Promise<voi
   }
 }
 
+/**
+ * Adopt the narrow enrollment-only .awh shape created by the standalone
+ * RemoteWorker before Desktop was installed. This is not a generic conflict
+ * bypass: legacy data, symlinks, unknown entries, or invalid entry types remain
+ * fail-closed.
+ */
+export async function ensureAwhBootstrapDirectoryActive(home = homedir()): Promise<boolean> {
+  const { legacyDir, awhDir } = defaultPaths(home);
+  const legacy = localDirectoryState(legacyDir);
+  if (legacy.exists || legacy.symlink || legacy.invalidType) return false;
+
+  let entries: string[];
+  try {
+    const info = await lstat(awhDir);
+    if (isSymlink(info) || !info.isDirectory()) return false;
+    entries = await readdir(awhDir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    return false;
+  }
+
+  if (validActiveMarkerSync(join(awhDir, AWH_ACTIVE_MARKER_FILENAME))) return true;
+  const allowed = new Set(['device.json', 'session-credentials']);
+  if (entries.length === 0 || entries.some((entry) => !allowed.has(entry))) return false;
+
+  for (const entry of entries) {
+    const info = await lstat(join(awhDir, entry));
+    if (isSymlink(info)) return false;
+    if (entry === 'device.json' && !info.isFile()) return false;
+    if (entry === 'session-credentials' && !info.isDirectory()) return false;
+  }
+
+  await ensureAwhDataDirectoryActive(awhDir);
+  return true;
+}
+
 /** Select one active data directory. Explicit AWH then legacy overrides are authoritative. */
 export function resolveActiveDataDir(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
   if (env.AWH_DATA_DIR) return resolve(env.AWH_DATA_DIR);

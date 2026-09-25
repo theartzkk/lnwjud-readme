@@ -25,20 +25,34 @@ The script:
 
 1. Verifies Node.js 18+ / npx, installing Ubuntu packages only if needed.
 2. Creates `awh-remote` with home `/var/lib/awh-remote`.
-3. Uses pinned Desktop Commander package version `0.2.50`.
+3. Uses pinned Desktop Commander package version `0.2.51`.
 4. Starts the remote agent in the foreground as `awh-remote`.
 
 After the terminal prints the verification URL/code, approve the matching code from the phone. Do not approve a mismatched code.
 
 ## Phase 2 after pairing
 
-Once the VPS appears online in ChatGPT, finish from the chat itself:
+Phase 2 is source-managed by `install-vps-direct-connector.sh`. It pins the agent, installs a hardened systemd unit, constrains Desktop Commander file roots, grants read-only ACLs to the canonical Git projections, and refuses privileged group membership. It does not install a general sudo rule.
 
-- verify OS / disks / services / active AWH release / DB schema / source SHA;
-- constrain Remote Desktop Commander allowed directories and blocked commands;
-- add a bounded systemd unit for automatic reconnect after reboot;
-- grant only the minimum audited sudo operations actually needed;
-- verify disconnect/reconnect and revoke behavior;
-- keep Mac/Windows as optional workers only.
+To adopt an already-approved session without exposing its contents, run as root on the VPS:
 
-Do not make the device agent root and do not replace AWH's native executor with the connector.
+```sh
+AWH_RDC_SESSION_SOURCE=/path/to/existing/device.json \
+  sh deploy/remote-worker/linux/install-vps-direct-connector.sh --activate
+sh deploy/remote-worker/linux/verify-vps-direct-connector.sh
+```
+
+The session is copied with mode `0600` into `/var/lib/awh-remote`; the source path is never printed. Production mutation remains behind AWH's guarded deployment and approval paths rather than a general-purpose remote sudo capability.
+
+For browser-level UX QA, reuse an existing trusted Chrome tree without downloading another browser:
+
+```sh
+AWH_CHROME_PATH=/absolute/path/to/chrome \
+  sh deploy/qa/install-browser-qa-runtime.sh --install
+sh deploy/qa/verify-browser-qa-runtime.sh
+sh scripts/qa/run-vps-chat-continuity.sh
+```
+
+The browser tree is adopted into `/opt/awh-tools/browser-qa` with hard links on the same filesystem, Playwright is pinned, browser download is disabled, and Thai-capable Noto fonts plus required shared libraries are installed.
+
+Do not make the device agent root and do not replace AWH's native executor with the connector. Mac/Windows remain optional workers only.

@@ -15,11 +15,13 @@ WEB=Path("/var/www/awh-web/releases")
 CTL=Path("/opt/awh-hub/control-releases")
 WEBPTR=Path("/var/www/awh-web/current")
 CTLPTR=Path("/opt/awh-hub/control-plane-current")
+COREWORK=Path("/var/lib/awh-hub/core-release-work")
 STATE=Path("/var/lib/awh-hub/retention-last.json")
 EVENTS=Path("/var/lib/awh-hub/retention-events.log")
 REL_RE=re.compile(r"^(m\d+)-[0-9a-f]{12}(?:-r\d+)?$")
 SCHED_RE=re.compile(r"^awh-(\d{8})T(\d{6})Z\.sqlite$")
 PRE_RE=re.compile(r"^awh\.sqlite\.pre-(.+)$")
+UUID_RE=re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 
 def fail(msg):
     raise SystemExit("RETENTION_ABORT: "+msg)
@@ -50,6 +52,11 @@ if not WEBPTR.is_symlink() or not CTLPTR.is_symlink():
 con=sqlite3.connect(DB)
 try:
     active=con.execute("select count(*) from control_task_executions where state in ('LEASED','RUNNING')").fetchone()[0]
+    core_terminal={
+        str(execution).lower():str(state)
+        for execution,state in con.execute("select execution_id,state from control_task_executions where required_capability='system.core.release' and state in ('COMPLETED','FAILED','CANCELLED')").fetchall()
+        if isinstance(execution,str) and UUID_RE.fullmatch(execution.lower())
+    }
     if active:
         fail(f"{active} active executions")
 except sqlite3.Error as e:
@@ -177,6 +184,15 @@ for mt,p in manual:
         manual_keep.add(p); month_seen.add(ym)
 manual_candidates=[r for r in manual if r[1] not in manual_keep]
 
+core_work=[]
+if COREWORK.is_dir() and not COREWORK.is_symlink():
+    for p in COREWORK.iterdir():
+        execution=p.name.lower()
+        state=core_terminal.get(execution)
+        if state and UUID_RE.fullmatch(execution) and p.is_dir() and not p.is_symlink():
+            core_work.append((p.stat().st_mtime,p,execution,state))
+core_work.sort()
+
 items=[]
 def add(path,kind,extra=None):
     row={"path":str(path),"kind":kind,"bytes":size(path),"mtime":datetime.fromtimestamp(path.stat().st_mtime,timezone.utc).isoformat()}
@@ -196,6 +212,8 @@ for _,p,rid,_ in pre_candidates:
             add(q,"pre-release-companion",{"releaseId":rid})
 for _,p in manual_candidates:
     add(p,"manual-backup")
+for _,p,execution,state in core_work:
+    add(p,"core-release-work",{"executionId":execution,"executionState":state})
 
 stamp=NOW.strftime("%Y%m%dT%H%M%SZ")
 manifest=CFG/f"retention-manifest-{stamp}.json"
@@ -204,7 +222,7 @@ payload={
     "current":{"web":WEBPTR.resolve().name,"control":CTLPTR.resolve().name},
     "protectedReleaseIds":sorted(protected),"releaseKeep":sorted(release_keep),
     "pinnedScheduledBackups":sorted(pinned_scheduled),
-    "counts":{"releasePairs":len(release_candidates),"scheduledBackups":len(scheduled_candidates),"preReleaseBackups":len(pre_candidates),"manualBackups":len(manual_candidates),"items":len(items)},
+    "counts":{"releasePairs":len(release_candidates),"scheduledBackups":len(scheduled_candidates),"preReleaseBackups":len(pre_candidates),"manualBackups":len(manual_candidates),"coreReleaseWorkspaces":len(core_work),"items":len(items)},
     "candidateBytes":sum(x["bytes"] for x in items),"candidates":items
 }
 if not PLAN:
@@ -247,6 +265,12 @@ if APPLY:
     for _,p in manual_candidates:
         if p.parent!=BACK or p.is_symlink() or not p.is_dir() or not p.name.startswith("manual-"):
             fail("unsafe manual backup "+str(p))
+        reclaimed+=size(p)
+        shutil.rmtree(p)
+        deleted+=1
+    for _,p,execution,state in core_work:
+        if p.parent!=COREWORK or p.is_symlink() or not p.is_dir() or not UUID_RE.fullmatch(execution) or core_terminal.get(execution)!=state:
+            fail("unsafe core release workspace "+str(p))
         reclaimed+=size(p)
         shutil.rmtree(p)
         deleted+=1
