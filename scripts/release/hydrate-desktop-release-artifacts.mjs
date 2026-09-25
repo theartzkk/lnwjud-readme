@@ -46,8 +46,16 @@ export const DESKTOP_RELEASE_FILES=[
 ];
 export const DESKTOP_INSTALLER_FILES=INSTALLERS.flatMap((row)=>[row.file,row.evidence]);
 
-export async function verifyDesktopReleaseArtifacts(directory,sourceSha){
-  if(!SHA.test(sourceSha))fail("DESKTOP_ARTIFACT_SOURCE_INVALID");
+function sourceMatches(evidence,sourceSha,sourceTreeSha){
+  const buildSha=String(evidence?.sourceSha||"").toLowerCase();
+  if(!SHA.test(buildSha))return false;
+  if(buildSha===sourceSha)return true;
+  const buildTree=String(evidence?.sourceTreeSha||"").toLowerCase();
+  return SHA.test(sourceTreeSha||"")&&SHA.test(buildTree)&&buildTree===sourceTreeSha;
+}
+
+export async function verifyDesktopReleaseArtifacts(directory,sourceSha,sourceTreeSha=null){
+  if(!SHA.test(sourceSha)||(sourceTreeSha!==null&&!SHA.test(sourceTreeSha)))fail("DESKTOP_ARTIFACT_SOURCE_INVALID");
   const root=resolve(directory);
   const sumsPath=join(root,"SHA256SUMS.txt");
   await regular(sumsPath);
@@ -62,12 +70,12 @@ export async function verifyDesktopReleaseArtifacts(directory,sourceSha){
     const digest=await sha256(packagePath);
     if(!HASH.test(digest)||sums.get(target.file)!==digest)fail("DESKTOP_ARTIFACT_HASH_MISMATCH",target.file);
     if(evidence?.schemaVersion!==1||evidence?.kind!=="AWH_DESKTOP_RELEASE_EVIDENCE"||evidence?.authority!=="CI_PACKAGE_EVIDENCE_ONLY")fail("DESKTOP_ARTIFACT_EVIDENCE_INVALID",target.evidence);
-    if(evidence?.packageVerification!=="VERIFIED"||evidence?.sourceSha!==sourceSha||evidence?.packageSha256!==digest||evidence?.sizeBytes!==stat.size)fail("DESKTOP_ARTIFACT_PROVENANCE_MISMATCH",target.file);
+    if(evidence?.packageVerification!=="VERIFIED"||!sourceMatches(evidence,sourceSha,sourceTreeSha)||evidence?.packageSha256!==digest||evidence?.sizeBytes!==stat.size)fail("DESKTOP_ARTIFACT_PROVENANCE_MISMATCH",target.file);
     if(evidence?.downloadKey!==target.file||evidence?.platform!==target.platform||evidence?.architecture!==target.architecture)fail("DESKTOP_ARTIFACT_TARGET_MISMATCH",target.file);
     if(typeof evidence?.productVersion!=="string"||!evidence.productVersion.trim())fail("DESKTOP_ARTIFACT_VERSION_INVALID",target.file);
-    verified.push({file:target.file,sha256:digest,sizeBytes:stat.size,platform:target.platform,architecture:target.architecture});
+    verified.push({file:target.file,sha256:digest,sizeBytes:stat.size,platform:target.platform,architecture:target.architecture,buildSourceSha:evidence.sourceSha,sourceTreeSha:evidence.sourceTreeSha??null});
   }
-  return {schemaVersion:1,sourceSha,verified};
+  return {schemaVersion:1,sourceSha,sourceTreeSha:sourceTreeSha??null,verified};
 }
 
 export async function verifyDesktopInstallerArtifacts(directory,sourceSha){
@@ -92,10 +100,10 @@ export async function verifyDesktopInstallerArtifacts(directory,sourceSha){
   return {schemaVersion:1,sourceSha,verified};
 }
 
-export async function hydrateDesktopReleaseArtifacts({sourceRoot,sourceSha,stagingRoot=process.env.AWH_DESKTOP_ARTIFACT_STAGING_ROOT||"/var/lib/awh-remote/operator-staging/core-release-artifacts"}){
-  if(!SHA.test(sourceSha))fail("DESKTOP_ARTIFACT_SOURCE_INVALID");
+export async function hydrateDesktopReleaseArtifacts({sourceRoot,sourceSha,sourceTreeSha=null,stagingRoot=process.env.AWH_DESKTOP_ARTIFACT_STAGING_ROOT||"/var/lib/awh-remote/operator-staging/core-release-artifacts"}){
+  if(!SHA.test(sourceSha)||(sourceTreeSha!==null&&!SHA.test(sourceTreeSha)))fail("DESKTOP_ARTIFACT_SOURCE_INVALID");
   const stage=join(resolve(stagingRoot),sourceSha);
-  await verifyDesktopReleaseArtifacts(stage,sourceSha);
+  await verifyDesktopReleaseArtifacts(stage,sourceSha,sourceTreeSha);
   const installerVerification=await verifyDesktopInstallerArtifacts(stage,sourceSha);
   const destination=join(resolve(sourceRoot),"dist-web","downloads");
   await mkdir(destination,{recursive:true,mode:0o750});
@@ -104,7 +112,7 @@ export async function hydrateDesktopReleaseArtifacts({sourceRoot,sourceSha,stagi
     await copyFile(join(stage,item.file),join(destination,item.file));
     await copyFile(join(stage,item.evidence),join(destination,item.evidence));
   }
-  const post=await verifyDesktopReleaseArtifacts(destination,sourceSha);
+  const post=await verifyDesktopReleaseArtifacts(destination,sourceSha,sourceTreeSha);
   const installers=await verifyDesktopInstallerArtifacts(destination,sourceSha);
   return {...post,installers:installers.verified,stagingDirectory:stage,destination};
 }

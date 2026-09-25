@@ -13,7 +13,7 @@ function fail(message) {
 }
 
 function parseArgs(argv) {
-  const allowed = new Set(['platform', 'architecture', 'package', 'source-sha', 'output']);
+  const allowed = new Set(['platform', 'architecture', 'package', 'source-sha', 'source-tree-sha', 'output']);
   const values = new Map();
   for (let index = 0; index < argv.length; index += 2) {
     const key = argv[index];
@@ -40,6 +40,7 @@ const pair = `${args.platform}/${args.architecture}`;
 const expectedName = EXPECTED_PACKAGE.get(pair);
 if (!expectedName) fail('platform/architecture is not a packaged AWH target');
 if (!/^[0-9a-f]{40}$/.test(args['source-sha'])) fail('source SHA must be exact lowercase Git SHA-1');
+if (!/^[0-9a-f]{40}$/.test(args['source-tree-sha'])) fail('source tree SHA must be exact lowercase Git SHA-1');
 
 const packagePath = resolve(args.package);
 const outputPath = resolve(args.output);
@@ -60,6 +61,7 @@ const evidence = {
   architecture: args.architecture,
   productVersion: productVersion(pkg),
   sourceSha: args['source-sha'],
+  sourceTreeSha: args['source-tree-sha'],
   packageSha256: createHash('sha256').update(bytes).digest('hex'),
   sizeBytes: packageStat.size,
   downloadKey: expectedName,

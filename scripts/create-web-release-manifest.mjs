@@ -42,8 +42,8 @@ function baseDesktopRelease(entry) {
   const matches = baseManifest.desktopReleases.filter((item) => item && item.path === entry.path);
   if (matches.length !== 1) throw new Error(`Verified desktop package provenance is missing or ambiguous: ${entry.path}`);
   const evidence = matches[0];
-  if (evidence.packageVerification !== 'VERIFIED' || !/^[0-9a-f]{40}$/.test(evidence.sourceSha ?? '') || evidence.packageSha256 !== entry.sha256 || evidence.sizeBytes !== entry.sizeBytes || typeof evidence.productVersion !== 'string' || evidence.productVersion.trim() === '') throw new Error(`Verified desktop package provenance is invalid: ${entry.path}`);
-  return { path: entry.path, sourceSha: evidence.sourceSha, productVersion: evidence.productVersion, packageSha256: entry.sha256, sizeBytes: entry.sizeBytes, packageVerification: 'VERIFIED' };
+  if (evidence.packageVerification !== 'VERIFIED' || !/^[0-9a-f]{40}$/.test(evidence.sourceSha ?? '') || (evidence.sourceTreeSha !== undefined && !/^[0-9a-f]{40}$/.test(evidence.sourceTreeSha ?? '')) || evidence.packageSha256 !== entry.sha256 || evidence.sizeBytes !== entry.sizeBytes || typeof evidence.productVersion !== 'string' || evidence.productVersion.trim() === '') throw new Error(`Verified desktop package provenance is invalid: ${entry.path}`);
+  return { path: entry.path, sourceSha: evidence.sourceSha, ...(evidence.sourceTreeSha ? { sourceTreeSha: evidence.sourceTreeSha } : {}), productVersion: evidence.productVersion, packageSha256: entry.sha256, sizeBytes: entry.sizeBytes, packageVerification: 'VERIFIED' };
 }
 
 const desktopReleases = [];
@@ -83,8 +83,8 @@ for (const entry of entries.filter(item => item.path.endsWith('.zip'))) {
   let evidence;
   try { evidence = JSON.parse(await readFile(join(input, evidencePath), 'utf8')); }
   catch { throw new Error(`Desktop package provenance is missing: ${entry.path}`); }
-  if (evidence.kind !== 'AWH_DESKTOP_RELEASE_EVIDENCE' || evidence.authority !== 'CI_PACKAGE_EVIDENCE_ONLY' || evidence.packageVerification !== 'VERIFIED' || !/^[0-9a-f]{40}$/.test(evidence.sourceSha ?? '') || evidence.packageSha256 !== entry.sha256 || evidence.sizeBytes !== entry.sizeBytes || evidence.downloadKey !== entry.path.split('/').at(-1)) throw new Error(`Desktop package provenance is invalid: ${entry.path}`);
-  desktopReleases.push({ path: entry.path, sourceSha: evidence.sourceSha, productVersion: evidence.productVersion, packageSha256: entry.sha256, sizeBytes: entry.sizeBytes, packageVerification: 'VERIFIED' });
+  if (evidence.kind !== 'AWH_DESKTOP_RELEASE_EVIDENCE' || evidence.authority !== 'CI_PACKAGE_EVIDENCE_ONLY' || evidence.packageVerification !== 'VERIFIED' || !/^[0-9a-f]{40}$/.test(evidence.sourceSha ?? '') || (evidence.sourceTreeSha !== undefined && !/^[0-9a-f]{40}$/.test(evidence.sourceTreeSha ?? '')) || evidence.packageSha256 !== entry.sha256 || evidence.sizeBytes !== entry.sizeBytes || evidence.downloadKey !== entry.path.split('/').at(-1)) throw new Error(`Desktop package provenance is invalid: ${entry.path}`);
+  desktopReleases.push({ path: entry.path, sourceSha: evidence.sourceSha, ...(evidence.sourceTreeSha ? { sourceTreeSha: evidence.sourceTreeSha } : {}), productVersion: evidence.productVersion, packageSha256: entry.sha256, sizeBytes: entry.sizeBytes, packageVerification: 'VERIFIED' });
 }
 for (const entry of entries.filter(item => item.path.endsWith('.dmg'))) {
   const evidencePath = entry.path.replace(/\.dmg$/, '.installer.json');

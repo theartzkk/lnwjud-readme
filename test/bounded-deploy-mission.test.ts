@@ -69,8 +69,9 @@ test('KRUART Engineering Eval catalog is durable, unique and cross-project',asyn
 });
 
 
-test('desktop artifact hydration accepts only exact-SHA verified staged packages',async()=>{
+test('desktop artifact hydration accepts exact commit or exact tree-equivalent CI packages',async()=>{
   const sourceSha='a'.repeat(40);
+  const sourceTreeSha='c'.repeat(40);
   const root=await mkdtemp(join(tmpdir(),'awh-artifact-hydration-'));
   const stagingRoot=join(root,'stage');
   const staged=join(stagingRoot,sourceSha);
@@ -88,7 +89,7 @@ test('desktop artifact hydration accepts only exact-SHA verified staged packages
     await writeFile(join(staged,file),bytes);
     await writeFile(join(staged,file.replace(/\.zip$/,'.release.json')),JSON.stringify({
       schemaVersion:1,kind:'AWH_DESKTOP_RELEASE_EVIDENCE',authority:'CI_PACKAGE_EVIDENCE_ONLY',productId:'awh',platform,architecture,
-      productVersion:'1.0.0-rc.1',sourceSha,packageSha256:hash,sizeBytes:bytes.length,downloadKey:file,packageVerification:'VERIFIED',
+      productVersion:'1.0.0-rc.1',sourceSha,sourceTreeSha,packageSha256:hash,sizeBytes:bytes.length,downloadKey:file,packageVerification:'VERIFIED',
       publicationState:'NOT_PUBLISHED',updaterStatus:'FOUNDATION_LOCKED_NOT_ACTIVATED',
     }));
     sums.push(`${hash}  ${file}`);
@@ -107,9 +108,9 @@ test('desktop artifact hydration accepts only exact-SHA verified staged packages
     platformTrust:'ADHOC_BETA',notarization:'NOT_NOTARIZED',
   }));
 
-  const stagedProof=await verifyDesktopReleaseArtifacts(staged,sourceSha);
+  const stagedProof=await verifyDesktopReleaseArtifacts(staged,sourceSha,sourceTreeSha);
   assert.equal(stagedProof.verified.length,3);
-  const hydrated=await hydrateDesktopReleaseArtifacts({sourceRoot,sourceSha,stagingRoot});
+  const hydrated=await hydrateDesktopReleaseArtifacts({sourceRoot,sourceSha,sourceTreeSha,stagingRoot});
   assert.equal(hydrated.verified.length,3);
   assert.equal(hydrated.installers.length,1);
   assert.equal(hydrated.installers[0].file,installerFile);
@@ -119,5 +120,12 @@ test('desktop artifact hydration accepts only exact-SHA verified staged packages
   const evidencePath=join(staged,'AWH-macOS-arm64.release.json');
   const evidence=JSON.parse(await readFile(evidencePath,'utf8')); evidence.sourceSha='b'.repeat(40);
   await writeFile(evidencePath,JSON.stringify(evidence));
-  await assert.rejects(()=>verifyDesktopReleaseArtifacts(staged,sourceSha),/DESKTOP_ARTIFACT_PROVENANCE_MISMATCH/);
+  const treeEquivalent=await verifyDesktopReleaseArtifacts(staged,sourceSha,sourceTreeSha);
+  assert.equal(treeEquivalent.verified.length,3);
+  evidence.sourceTreeSha='d'.repeat(40);
+  await writeFile(evidencePath,JSON.stringify(evidence));
+  await assert.rejects(()=>verifyDesktopReleaseArtifacts(staged,sourceSha,sourceTreeSha),/DESKTOP_ARTIFACT_PROVENANCE_MISMATCH/);
+  delete evidence.sourceTreeSha;
+  await writeFile(evidencePath,JSON.stringify(evidence));
+  await assert.rejects(()=>verifyDesktopReleaseArtifacts(staged,sourceSha,sourceTreeSha),/DESKTOP_ARTIFACT_PROVENANCE_MISMATCH/);
 });

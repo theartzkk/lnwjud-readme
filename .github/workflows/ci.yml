@@ -191,7 +191,8 @@ jobs:
       - name: Create portable Windows release evidence
         shell: pwsh
         run: |
-          node scripts/release/create-desktop-release-evidence.mjs --platform win32 --architecture x64 --package AWH-Windows-x64.zip --source-sha $env:GITHUB_SHA --output AWH-Windows-x64.release.json
+          $treeSha = (git rev-parse "$env:GITHUB_SHA^{tree}").Trim()
+          node scripts/release/create-desktop-release-evidence.mjs --platform win32 --architecture x64 --package AWH-Windows-x64.zip --source-sha $env:GITHUB_SHA --source-tree-sha $treeSha --output AWH-Windows-x64.release.json
           Get-Content AWH-Windows-x64.release.json -Raw | Write-Host
       - name: Verify packaged app and Squirrel installer set
         shell: pwsh
@@ -292,7 +293,8 @@ jobs:
           node scripts/create-macos-dmg.mjs x64
           cp "out/make/dmg/x64/AWH-Agent-Beta-macOS-x64.dmg" AWH-Agent-Beta-macOS-x64.dmg
           test -s AWH-Agent-Beta-macOS-x64.dmg
-          node scripts/release/create-desktop-release-evidence.mjs --platform darwin --architecture x64 --package AWH-macOS-x64.zip --source-sha "$GITHUB_SHA" --output AWH-macOS-x64.release.json
+          source_tree_sha="$(git rev-parse "${GITHUB_SHA}^{tree}")"
+          node scripts/release/create-desktop-release-evidence.mjs --platform darwin --architecture x64 --package AWH-macOS-x64.zip --source-sha "$GITHUB_SHA" --source-tree-sha "$source_tree_sha" --output AWH-macOS-x64.release.json
           node scripts/release/create-desktop-installer-evidence.mjs --platform darwin --architecture x64 --package AWH-Agent-Beta-macOS-x64.dmg --source-sha "$GITHUB_SHA" --output AWH-Agent-Beta-macOS-x64.installer.json
           shasum -a 256 AWH-macOS-x64.zip AWH-Agent-Beta-macOS-x64.dmg
       - name: Package macOS arm64
@@ -306,7 +308,8 @@ jobs:
           node scripts/create-macos-dmg.mjs arm64
           cp "out/make/dmg/arm64/AWH-Agent-Beta-macOS-arm64.dmg" AWH-Agent-Beta-macOS-arm64.dmg
           test -s AWH-Agent-Beta-macOS-arm64.dmg
-          node scripts/release/create-desktop-release-evidence.mjs --platform darwin --architecture arm64 --package AWH-macOS-arm64.zip --source-sha "$GITHUB_SHA" --output AWH-macOS-arm64.release.json
+          source_tree_sha="$(git rev-parse "${GITHUB_SHA}^{tree}")"
+          node scripts/release/create-desktop-release-evidence.mjs --platform darwin --architecture arm64 --package AWH-macOS-arm64.zip --source-sha "$GITHUB_SHA" --source-tree-sha "$source_tree_sha" --output AWH-macOS-arm64.release.json
           node scripts/release/create-desktop-installer-evidence.mjs --platform darwin --architecture arm64 --package AWH-Agent-Beta-macOS-arm64.dmg --source-sha "$GITHUB_SHA" --output AWH-Agent-Beta-macOS-arm64.installer.json
           shasum -a 256 AWH-macOS-arm64.zip AWH-Agent-Beta-macOS-arm64.dmg
       - name: Upload macOS x64 artifact
