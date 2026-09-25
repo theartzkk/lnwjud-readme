@@ -223,7 +223,6 @@ const noteGroups=[
   ['features','ฟังก์ชันใหม่','✨'],
   ['improvements','ปรับปรุง','⚡'],
   ['fixes','แก้ปัญหา','🔧'],
-  ['internal','ระบบภายใน','🛡️'],
 ];
 
 function releaseNoteCount(notes){
@@ -235,12 +234,13 @@ function renderReleaseNotes(item,host){
   const notes=item?.releaseNotes;
   if(!notes||typeof notes!=='object')return;
   const count=releaseNoteCount(notes);
+  const internal=Array.isArray(notes?.summary?.internal)?notes.summary.internal:[];
   const issues=Array.isArray(item.knownIssues)?item.knownIssues:(Array.isArray(notes.knownIssues)?notes.knownIssues:[]);
-  if(count===0&&issues.length===0&&notes?.source==='ROADMAP_FALLBACK')return;
+  if(count===0&&internal.length===0&&issues.length===0&&notes?.source==='ROADMAP_FALLBACK')return;
   const details=document.createElement('details');details.className='release-notes';
   if(['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'].includes(item.state))details.open=true;
   const summaryEl=document.createElement('summary');
-  summaryEl.textContent=count>0?'มีอะไรเปลี่ยนในรุ่นนี้ · '+count+' รายการ':'รายละเอียดรุ่นนี้';
+  summaryEl.textContent=count>0?'มีอะไรเปลี่ยนในรุ่นนี้ · '+count+' รายการ':(notes.ownerSummary||'รายละเอียดรุ่นนี้');
   details.append(summaryEl);
   const body=document.createElement('div');body.className='release-notes-body';
   for(const [key,label,icon] of noteGroups){
@@ -251,6 +251,15 @@ function renderReleaseNotes(item,host){
     const ul=document.createElement('ul');
     for(const row of rows){const li=document.createElement('li');li.textContent=String(row);ul.append(li);}
     group.append(h,ul);body.append(group);
+  }
+  if(internal.length){
+    if(count===0){
+      const p=document.createElement('p');p.className='release-internal-note';p.textContent=notes.ownerSummary||'ไม่มีการเปลี่ยนแปลงที่ผู้ใช้เห็น';body.append(p);
+    }
+    const technical=document.createElement('details');technical.className='release-internal';
+    const technicalSummary=document.createElement('summary');technicalSummary.textContent='รายละเอียดงานภายใน · '+internal.length+' รายการ';
+    const ul=document.createElement('ul');for(const value of internal){const li=document.createElement('li');li.textContent=String(value);ul.append(li);}
+    technical.append(technicalSummary,ul);body.append(technical);
   }
   const impact=notes?.impact;
   if(impact&&typeof impact==='object'){

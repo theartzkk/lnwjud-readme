@@ -261,3 +261,35 @@ test('Update Center explains the next release, impact, roadmap and history from 
   assert.ok(Array.isArray(parsed.comingNext)&&parsed.comingNext.length>=1);
   assert.match(deploy,/config\/update-roadmap\.json/);
 });
+
+
+test('every canonical patch requires bounded release details before Update Center can expose it', async()=>{
+  const [registry,operator,core,learnlab,assessment,service,script]=await Promise.all([
+    readFile(join(ROOT,'hub/src/HubUpdateTargetRegistry.php'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubOperatorBridgeService.php'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubCoreReleaseService.php'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubLearnLabReleaseService.php'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubAssessmentReleaseService.php'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+  ]);
+  assert.match(registry,/releaseDetailsReady/);
+  assert.match(registry,/metadataState/);
+  assert.match(registry,/compatibility/);
+  assert.match(registry,/rollback/);
+  assert.match(operator,/OPERATOR_RELEASE_DETAILS_REQUIRED/);
+  assert.match(operator,/BAY release details are required before install/);
+  assert.match(operator,/releaseDetailsForSourceSha/);
+  assert.match(operator,/generatedFrom.*EXACT_GIT_DIFF/s);
+  assert.match(operator,/persistSourcePromotionReleaseNotes/);
+  assert.match(core,/CORE_RELEASE_DETAILS_REQUIRED/);
+  assert.match(learnlab,/LEARNLAB_RELEASE_DETAILS_REQUIRED/);
+  assert.match(assessment,/ASSESSMENT_RELEASE_DETAILS_REQUIRED/);
+  assert.match(service,/releaseDetailsRequired/);
+  assert.match(service,/releaseDetailsReady/);
+  assert.match(service,/รุ่นนี้ยังรอรายละเอียดการเปลี่ยนแปลงก่อนเปิดให้อัปเดต/);
+  assert.match(service,/releaseDetailsRequired'=>true/);
+  assert.doesNotMatch(script,/\['internal','ระบบภายใน','🛡️'\]/);
+  assert.match(script,/รายละเอียดงานภายใน/);
+  assert.match(script,/ไม่มีการเปลี่ยนแปลงที่ผู้ใช้เห็น/);
+});

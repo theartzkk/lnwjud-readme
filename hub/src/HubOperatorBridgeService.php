@@ -389,6 +389,9 @@ final class HubOperatorBridgeService
             if(($config['projection']??false)===true)$this->assertVaultProjectionTarget($repoReal,$target,$gate);
             $ancestor=$this->runGitResult($repoReal,['merge-base','--is-ancestor',$expected,$target]);if($ancestor['code']!==0)throw new HubOperatorBridgeException('Source promotion is not a fast-forward','OPERATOR_SOURCE_NON_FAST_FORWARD');
             $releaseNotes=$this->releaseNotesForPromotion($repoReal,$repository,$expected,$target,$at);
+            if(!HubUpdateTargetRegistry::releaseDetailsReady($releaseNotes,true))
+                throw new HubOperatorBridgeException('Release details are required before source promotion','OPERATOR_RELEASE_DETAILS_REQUIRED');
+            if($releaseAuthority)$this->persistSourcePromotionReleaseNotes((string)$authority['executionId'],$repository,$expected,$target,$bundleSha,$releaseNotes,$at);
             $before=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($expected,self::gitSha($before)))throw new HubOperatorBridgeException('Canonical main moved during source promotion','OPERATOR_SOURCE_BASE_MOVED');
             $this->runGit($repoReal,['update-ref','refs/heads/main',$target,$expected]);
             $after=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($target,self::gitSha($after)))throw new HubOperatorBridgeException('Canonical main did not reach target revision','OPERATOR_SOURCE_PROMOTE_FAILED');
@@ -576,7 +579,10 @@ final class HubOperatorBridgeService
         if(preg_match('/^[a-f0-9]{40}$/',$sha)!==1||preg_match('/^[a-f0-9]{64}$/',$packageSha)!==1)throw new HubOperatorBridgeException('BAY package identity is invalid','OPERATOR_REQUEST_INVALID');
         $gate=$this->projectGate('BAY EXCUSE X',$at,true,'bay.remote_update.install'); if (($gate['ready']??false)!==true || ($gate['productionReady']??false)!==true) throw new HubOperatorBridgeException('BAY project gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
         $projectId=(string)($gate['project']['projectId']??'');
-        $authority=$this->acquireMutationAuthority($projectId,'Guarded BAY install '.$version,'bay.remote_update.install',['targetVersion'=>$version,'targetSha'=>$sha,'packageSha256'=>$packageSha],$at);
+        $releaseNotes=$this->releaseDetailsForSourceSha($projectId,'bay-excuse-x',$sha);
+        if(!HubUpdateTargetRegistry::releaseDetailsReady($releaseNotes))
+            throw new HubOperatorBridgeException('BAY release details are required before install','OPERATOR_RELEASE_DETAILS_REQUIRED');
+        $authority=$this->acquireMutationAuthority($projectId,'Guarded BAY install '.$version,'bay.remote_update.install',['targetVersion'=>$version,'targetSha'=>$sha,'packageSha256'=>$packageSha,'releaseNotes'=>$releaseNotes],$at);
         $success=false;
         try {
             $bay=new HubBayRemoteUpdateService(); $statusEnvelope=$bay->status($at); $before=($this->poster)((string)$statusEnvelope['endpoint'],(array)$statusEnvelope['statusRelay']);
@@ -591,6 +597,31 @@ final class HubOperatorBridgeService
         } finally {
             $this->releaseMutationAuthority($authority,$success,gmdate('c'));
         }
+    }
+
+    /** @return array<string,mixed>|null */
+    private function releaseDetailsForSourceSha(string $projectId,string $repository,string $sha): ?array
+    {
+        if(!self::uuidValid($projectId)||!isset(HubUpdateTargetRegistry::repositories()[$repository])||preg_match('/^[0-9a-f]{40}$/',$sha)!==1)return null;
+        $q=$this->pdo->prepare("SELECT checkpoint_json FROM control_task_executions WHERE project_id=:project AND required_capability='source.promote' AND state='COMPLETED' ORDER BY updated_at DESC,execution_id DESC LIMIT 80");
+        $q->execute(['project'=>$projectId]);
+        foreach($q->fetchAll() as $row){
+            try{$checkpoint=json_decode((string)$row['checkpoint_json'],true,16,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
+            if(!is_array($checkpoint)||($checkpoint['repository']??null)!==$repository)continue;
+            if(!hash_equals($sha,strtolower((string)($checkpoint['targetSha']??''))))continue;
+            $notes=$checkpoint['releaseNotes']??null;
+            return HubUpdateTargetRegistry::releaseDetailsReady($notes)?$notes:null;
+        }
+        return null;
+    }
+
+    /** Persist release details on the source.promote execution when no project mission is reused. */
+    private function persistSourcePromotionReleaseNotes(string $executionId,string $repository,string $expected,string $target,string $bundleSha,array $releaseNotes,string $at): void
+    {
+        $checkpoint=['repository'=>$repository,'expectedMainSha'=>$expected,'targetSha'=>$target,'bundleSha256'=>$bundleSha,'releaseNotes'=>$releaseNotes];
+        $q=$this->pdo->prepare("UPDATE control_task_executions SET checkpoint_json=:checkpoint,updated_at=:at WHERE execution_id=:execution AND required_capability='source.promote' AND state='RUNNING'");
+        $q->execute(['checkpoint'=>json_encode($checkpoint,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$at,'execution'=>$executionId]);
+        if($q->rowCount()!==1)throw new HubOperatorBridgeException('Release details could not be bound to source promotion','OPERATOR_RELEASE_DETAILS_REQUIRED');
     }
 
     /** @return array{executionId:string,taskId:string} */
@@ -676,27 +707,28 @@ final class HubOperatorBridgeService
         $groups=['features'=>[],'improvements'=>[],'fixes'=>[],'internal'=>[]];
         $commits=[];
         $log=$this->runGit($repo,['log','--no-merges','--max-count=80','--format=%H%x09%s',$expected.'..'.$target]);
-        foreach(preg_split('/
-?
-/',$log)?:[] as $line){
+        foreach(preg_split('/\r?\n/',$log)?:[] as $line){
             if($line==='')continue;
-            $parts=explode("	",$line,2);if(count($parts)!==2)continue;
+            $parts=explode("\t",$line,2);if(count($parts)!==2)continue;
             $sha=strtolower(trim($parts[0]));$subject=trim($parts[1]);
             if(preg_match('/^[a-f0-9]{40}$/',$sha)!==1||$subject===''||strlen($subject)>220)continue;
             $category='improvements';
-            if(preg_match('/^feat(?:([^)]{1,50}))?!?:s*/i',$subject))$category='features';
-            elseif(preg_match('/^fix(?:([^)]{1,50}))?!?:s*/i',$subject))$category='fixes';
-            elseif(preg_match('/^(?:chore|docs|test|ci|build)(?:([^)]{1,50}))?!?:s*/i',$subject))$category='internal';
-            elseif(preg_match('/^(?:perf|refactor|style)(?:([^)]{1,50}))?!?:s*/i',$subject))$category='improvements';
-            $label=preg_replace('/^[a-z]+(?:([^)]{1,50}))?!?:s*/i','',$subject)?:$subject;
+            if(preg_match('/^feat(?:\([^)]{1,50}\))?!?:\s*/i',$subject))$category='features';
+            elseif(preg_match('/^fix(?:\([^)]{1,50}\))?!?:\s*/i',$subject))$category='fixes';
+            elseif(preg_match('/^(?:chore|docs|test|ci|build)(?:\([^)]{1,50}\))?!?:\s*/i',$subject))$category='internal';
+            elseif(preg_match('/^(?:perf|refactor|style)(?:\([^)]{1,50}\))?!?:\s*/i',$subject))$category='improvements';
+            $label=preg_replace('/^[a-z]+(?:\([^)]{1,50}\))?!?:\s*/i','',$subject)?:$subject;
             $label=mb_substr(trim($label),0,180,'UTF-8');
+            if($label==='')continue;
             if(count($groups[$category])<12)$groups[$category][]=$label;
             if(count($commits)<40)$commits[]=['sha'=>$sha,'category'=>$category,'subject'=>$label];
         }
-        $paths=array_values(array_filter(preg_split('/
-?
-/',$this->runGit($repo,['diff','--name-only',$expected,$target]))?:[],static fn(string $v):bool=>$v!==''));
+        $paths=array_values(array_filter(preg_split('/\r?\n/',$this->runGit($repo,['diff','--name-only',$expected,$target]))?:[],static fn(string $v):bool=>$v!==''));
         $paths=array_slice($paths,0,240);
+        if(count($groups['features'])+count($groups['improvements'])+count($groups['fixes'])+count($groups['internal'])===0&&count($paths)>0){
+            $areas=[];foreach($paths as $path){$area=explode('/',$path,2)[0]??'';if($area!==''&&!in_array($area,$areas,true)&&count($areas)<4)$areas[]=$area;}
+            $groups['internal'][]='ปรับปรุงแพตช์ในส่วน '.implode(', ',$areas).' ('.count($paths).' ไฟล์)';
+        }
         $hasMigration=false;$hasService=false;$desktop=false;$auth=false;
         foreach($paths as $path){
             if(str_contains($path,'/migrations/')||str_starts_with($path,'hub/migrations/'))$hasMigration=true;
@@ -720,8 +752,13 @@ final class HubOperatorBridgeService
                 }
             }
         }
+        $visible=array_values(array_merge($groups['features'],$groups['improvements'],$groups['fixes']));
+        $userVisible=count($visible)>0;
+        $ownerSummary=$userVisible?(string)$visible[0]:'ไม่มีการเปลี่ยนแปลงที่ผู้ใช้เห็น';
         return [
-            'schemaVersion'=>1,'repository'=>$repository,'previousSha'=>$expected,'targetSha'=>$target,'generatedAt'=>$at,
+            'schemaVersion'=>1,'metadataState'=>'READY','generatedFrom'=>'EXACT_GIT_DIFF',
+            'repository'=>$repository,'previousSha'=>$expected,'targetSha'=>$target,'generatedAt'=>$at,
+            'ownerSummary'=>$ownerSummary,'userVisible'=>$userVisible,
             'summary'=>$groups,'commits'=>$commits,'changedFileCount'=>count($paths),
             'impact'=>[
                 'databaseMigration'=>$hasMigration?'AUTOMATIC':'NONE',
@@ -729,6 +766,16 @@ final class HubOperatorBridgeService
                 'appRestart'=>$desktop?'MAY_BE_REQUIRED':'NONE',
                 'signIn'=>$auth?'MAY_BE_REQUIRED':'NONE',
                 'plannedDowntime'=>false,
+            ],
+            'compatibility'=>[
+                'data'=>$hasMigration?'MIGRATION_REQUIRED':'COMPATIBLE',
+                'runtime'=>$desktop?'RESTART_MAY_BE_REQUIRED':'COMPATIBLE',
+                'authentication'=>$auth?'SIGN_IN_MAY_BE_REQUIRED':'UNCHANGED',
+            ],
+            'rollback'=>[
+                'required'=>true,
+                'strategy'=>'PREVIOUS_VERIFIED_RELEASE_OR_SOURCE',
+                'sourceSha'=>$expected,
             ],
             'knownIssues'=>$known,'comingNext'=>$roadmap,
         ];

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/HubOwnerAuthService.php';
 require_once __DIR__ . '/HubTrustPolicy.php';
+require_once __DIR__ . '/HubUpdateTargetRegistry.php';
 
 final class HubLearnLabReleaseException extends RuntimeException
 {
@@ -71,6 +72,8 @@ final class HubLearnLabReleaseService
         $latest=$this->latestSourcePromotion();
         if(!is_array($latest)||!is_string($latest['sha']??null)||!hash_equals((string)$latest['sha'],$sha))
             throw new HubLearnLabReleaseException('LearnLab release target is no longer canonical','LEARNLAB_RELEASE_TARGET_MOVED');
+        if(!HubUpdateTargetRegistry::releaseDetailsReady($latest['releaseNotes']??null))
+            throw new HubLearnLabReleaseException('LearnLab release details are required before approval','LEARNLAB_RELEASE_DETAILS_REQUIRED');
         $base=(string)$current['releaseSha'];$epoch=(int)$current['cacheEpoch']+1;$vault=$this->currentVaultRevision();
         $at=self::time($now??gmdate('c'));
         $this->supersedeQueuedReleaseIfTargetMoved($sha,$at);
@@ -163,7 +166,7 @@ final class HubLearnLabReleaseService
     private static function channelRoot(): string
     {
         $override=getenv('AWH_LEARNLAB_CHANNEL_ROOT');
-        if(is_string($override)&&$override!==''&&str_starts_with($override,'/')&&!str_contains($override," "))return rtrim($override,'/');
+        if(is_string($override)&&$override!==''&&str_starts_with($override,'/')&&!str_contains($override,""))return rtrim($override,'/');
         return self::CHANNEL_ROOT;
     }
 
@@ -188,6 +191,7 @@ final class HubLearnLabReleaseService
             $target=strtolower((string)($checkpoint['targetSha']??''));$base=strtolower((string)($checkpoint['expectedMainSha']??''));
             if(preg_match('/^[0-9a-f]{40}$/',$target)===1&&preg_match('/^[0-9a-f]{40}$/',$base)===1){
                 $audit=['sha'=>$target,'previousSha'=>$base,'authority'=>'SOURCE_PROMOTION_AUDIT','observedAt'=>(string)$row['updated_at']];
+                if(is_array($checkpoint['releaseNotes']??null))$audit['releaseNotes']=$checkpoint['releaseNotes'];
                 break;
             }
         }

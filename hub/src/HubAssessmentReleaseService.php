@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/HubOwnerAuthService.php';
 require_once __DIR__ . '/HubTrustPolicy.php';
+require_once __DIR__ . '/HubUpdateTargetRegistry.php';
 
 final class HubAssessmentReleaseException extends RuntimeException
 {
@@ -59,6 +60,8 @@ final class HubAssessmentReleaseService
         $candidate=$this->candidate();
         if(($candidate['ready']??false)!==true||!hash_equals((string)$candidate['releaseSha'],$sha)||!hash_equals((string)$candidate['runtimeVersion'],$version))
             throw new HubAssessmentReleaseException('Assessment candidate moved before approval','ASSESSMENT_RELEASE_TARGET_MOVED');
+        if(!HubUpdateTargetRegistry::releaseDetailsReady($candidate['releaseNotes']??null))
+            throw new HubAssessmentReleaseException('Assessment release details are required before approval','ASSESSMENT_RELEASE_DETAILS_REQUIRED');
         $current=$this->currentRuntime();$base=(string)$current['releaseSha'];
         if(hash_equals($base,$sha))throw new HubAssessmentReleaseException('Assessment is already current','ASSESSMENT_RELEASE_VERSION_STALE');
         $at=self::time($now??gmdate('c'));
@@ -125,7 +128,23 @@ final class HubAssessmentReleaseService
         $release=strtolower((string)($v['releaseSha']??''));$base=strtolower((string)($v['baseReleaseSha']??''));$version=(string)($v['runtimeVersion']??'');
         if(preg_match('/^[0-9a-f]{40}$/',$release)!==1||preg_match('/^[0-9a-f]{40}$/',$base)!==1||preg_match('/^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$/',$version)!==1)return ['ready'=>false];
         return ['ready'=>true,'releaseSha'=>$release,'baseReleaseSha'=>$base,'runtimeVersion'=>$version,'sourceMode'=>(string)($v['sourceMode']??'UNKNOWN'),
-            'qa'=>(string)($v['qa']??'UNKNOWN'),'manifestSha256'=>$sha,'observedAt'=>$v['observedAt']??null];
+            'qa'=>(string)($v['qa']??'UNKNOWN'),'manifestSha256'=>$sha,'observedAt'=>$v['observedAt']??null,
+            'releaseNotes'=>$this->releaseDetailsForSha($release)];
+    }
+
+    private function releaseDetailsForSha(string $sha): ?array
+    {
+        $q=$this->pdo->prepare("SELECT checkpoint_json FROM control_task_executions WHERE project_id=:project AND required_capability='source.promote' AND state='COMPLETED' ORDER BY updated_at DESC,execution_id DESC LIMIT 40");
+        $q->execute(['project'=>self::PROJECT_ID]);
+        foreach($q->fetchAll() as $row){
+            try{$checkpoint=json_decode((string)$row['checkpoint_json'],true,16,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
+            if(!is_array($checkpoint)||($checkpoint['repository']??null)!=='bay-assessment')continue;
+            $target=strtolower((string)($checkpoint['targetSha']??''));
+            if(!hash_equals($sha,$target))continue;
+            $notes=$checkpoint['releaseNotes']??null;
+            return HubUpdateTargetRegistry::releaseDetailsReady($notes)?$notes:null;
+        }
+        return null;
     }
 
     private function currentRuntime(): array

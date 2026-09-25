@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/HubOwnerAuthService.php';
 require_once __DIR__ . '/HubTrustPolicy.php';
+require_once __DIR__ . '/HubUpdateTargetRegistry.php';
 
 final class HubCoreReleaseException extends RuntimeException
 {
@@ -80,6 +81,8 @@ final class HubCoreReleaseService
         $latest=$this->latestSourcePromotion();
         if(!is_array($latest)||!is_string($latest['sha']??null)||!hash_equals((string)$latest['sha'],$sha))
             throw new HubCoreReleaseException('Core release target is no longer canonical','CORE_RELEASE_TARGET_MOVED');
+        if(!HubUpdateTargetRegistry::releaseDetailsReady($latest['releaseNotes']??null))
+            throw new HubCoreReleaseException('Core release details are required before approval','CORE_RELEASE_DETAILS_REQUIRED');
         $this->reconcileOrphanedRelease($at);
         $this->supersedeQueuedReleaseIfTargetMoved($sha,$at);
         $existing=$this->activeRelease();

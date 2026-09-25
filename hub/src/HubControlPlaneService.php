@@ -423,6 +423,32 @@ final class HubControlPlaneService
             ], $workers),
         ];
 
+        $releaseDetailsByProject=$this->latestReleaseDetailsByProject();
+        $releaseRequiredProjects=[];
+        foreach($projects as $project){
+            $projectId=(string)($project['projectId']??'');$name=(string)($project['name']??'');
+            if($projectId!==''&&HubUpdateTargetRegistry::byProjectName($name)!==null)$releaseRequiredProjects[$projectId]=true;
+        }
+        foreach($items as &$item){
+            $projectId=is_string($item['projectId']??null)?(string)$item['projectId']:null;
+            $notes=is_array($item['releaseNotes']??null)?$item['releaseNotes']:null;
+            if(!HubUpdateTargetRegistry::releaseDetailsReady($notes)&&$projectId!==null&&is_array($releaseDetailsByProject[$projectId]??null))
+                $notes=$releaseDetailsByProject[$projectId];
+            $required=$projectId!==null&&isset($releaseRequiredProjects[$projectId]);
+            $ready=HubUpdateTargetRegistry::releaseDetailsReady($notes);
+            $item['releaseDetailsRequired']=$required;
+            $item['releaseDetailsReady']=!$required||$ready;
+            if($ready){
+                $item['releaseNotes']=$notes;
+                if(!is_array($item['knownIssues']??null))$item['knownIssues']=is_array($notes['knownIssues']??null)?$notes['knownIssues']:[];
+            }
+            if($required&&!$ready&&in_array((string)($item['state']??''),['UPDATE_AVAILABLE','SOURCE_READY'],true)){
+                $item['state']='BLOCKED';$item['actionable']=false;
+                $item['reason']='รุ่นนี้ยังรอรายละเอียดการเปลี่ยนแปลงก่อนเปิดให้อัปเดต';
+            }
+        }
+        unset($item);
+
         $summary = ['current'=>0,'updateAvailable'=>0,'updating'=>0,'blocked'=>0,'attention'=>0];
         foreach ($items as $item) {
             $state = (string) $item['state'];
@@ -451,8 +477,23 @@ final class HubControlPlaneService
                 'rollbackReleaseId'=>$release['rollbackReleaseId'] ?? null,
             ],
             'policy'=>['singleControlPlane'=>true,'parallelDeployEngine'=>false,'ownerApprovalPreserved'=>true,'rollbackRequired'=>true,'sourceAuthority'=>'AWH_VAULT_OR_EXISTING_ADAPTER',
-                'singleLatestCandidate'=>true,'stalePendingRelease'=>'AUTO_SUPERSEDE_BEFORE_LEASE','humanShaRequired'=>false,'runtimeCoherenceRequired'=>true],
+                'singleLatestCandidate'=>true,'stalePendingRelease'=>'AUTO_SUPERSEDE_BEFORE_LEASE','humanShaRequired'=>false,'runtimeCoherenceRequired'=>true,'releaseDetailsRequired'=>true],
         ];
+    }
+
+    /** @return array<string,array<string,mixed>> */
+    private function latestReleaseDetailsByProject(): array
+    {
+        $result=[];
+        $q=$this->pdo->query("SELECT project_id,checkpoint_json FROM control_task_executions WHERE required_capability='source.promote' AND state='COMPLETED' ORDER BY updated_at DESC,execution_id DESC LIMIT 400");
+        foreach($q->fetchAll() as $row){
+            $projectId=(string)($row['project_id']??'');if($projectId===''||isset($result[$projectId]))continue;
+            try{$checkpoint=json_decode((string)$row['checkpoint_json'],true,16,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
+            if(!is_array($checkpoint)||!is_string($checkpoint['repository']??null)||!isset(HubUpdateTargetRegistry::repositories()[$checkpoint['repository']]))continue;
+            $notes=$checkpoint['releaseNotes']??null;
+            if(HubUpdateTargetRegistry::releaseDetailsReady($notes))$result[$projectId]=$notes;
+        }
+        return $result;
     }
 
     public function requestCoreReleaseForSession(string $sessionToken,string $csrf,array $payload): array
