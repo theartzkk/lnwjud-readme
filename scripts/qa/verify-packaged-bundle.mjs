@@ -13,7 +13,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const EXPECTED_VERSION = '1.0.0-rc.1';
 const EXPECTED_PRODUCT = 'Art’s Workspace Hub';
 const OWNER_PROTOCOL_FILENAME = 'ART_AI_WORKING_PROTOCOL.md';
-const MAX_BUNDLE_BYTES = 900 * 1024 * 1024; // Full-device engine is intentionally bundled; keep a hard <1 GiB safety ceiling.
+const MAX_BUNDLE_BYTES = 500 * 1024 * 1024;
 const require = createRequire(import.meta.url);
 const asar = require('@electron/asar');
 

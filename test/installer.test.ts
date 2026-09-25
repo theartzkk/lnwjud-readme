@@ -98,12 +98,6 @@ test('macOS Beta distribution uses a drag-to-Applications DMG with explicit evid
   assert.match(web, /Beta สำหรับทดสอบ · Source\/Checksum ผ่าน/);
 });
 
-test('packaged bundle safety ceiling accommodates the pinned full-device engine without becoming unbounded', async () => {
-  const verifier = await readFile(new URL('../scripts/qa/verify-packaged-bundle.mjs', import.meta.url), 'utf8');
-  assert.match(verifier, /MAX_BUNDLE_BYTES = 900 \* 1024 \* 1024/);
-  assert.doesNotMatch(verifier, /MAX_BUNDLE_BYTES = (?:Infinity|Number\.MAX_SAFE_INTEGER)/);
-});
-
 test('full AWH Device Runtime engine is pinned, bundled per platform and AWH-branded', async () => {
   const [manifestRaw, helper, forge, pkgRaw] = await Promise.all([
     readFile(new URL('../config/full-device-engine-release.json', import.meta.url), 'utf8'),
