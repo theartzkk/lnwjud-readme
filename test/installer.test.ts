@@ -136,7 +136,8 @@ test('full AWH Device Runtime engine is pinned, bundled per platform and AWH-bra
   assert.match(pkg.scripts?.['desktop:package:mac:x64'] ?? '', /prepare-full-device-engine.mjs --platform=darwin --arch=x64/);
   assert.match(pkg.scripts?.['desktop:package:windows'] ?? '', /prepare-full-device-engine.mjs --platform=win32 --arch=x64/);
   assert.equal(pkg.devDependencies?.['@electron/asar'], '3.2.13');
-  assert.equal(pkg.devDependencies?.['extract-zip'], '2.0.1');
+  assert.match(helper, /\/usr\/bin\/ditto/);
+  assert.doesNotMatch(helper, /extract-zip|extractZip/);
 });
 
 test('lightweight AWH Device Runtime is pinned, self-updating and rollback-safe', async () => {

@@ -7,7 +7,6 @@ import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import extractZip from 'extract-zip';
 import * as asar from '@electron/asar';
 
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
@@ -112,10 +111,10 @@ if(!(await verified(provenanceFile,asset.provenanceSha256)))throw new Error('AWH
 await verifyProvenance(provenanceFile);
 
 if(platform==='darwin'){
-  const extractDir=join(TMP,'mac');await mkdir(extractDir,{recursive:true});await extractZip(cacheFile,{dir:extractDir});
+  const extractDir=join(TMP,'mac');await mkdir(extractDir,{recursive:true});run('/usr/bin/ditto',['-x','-k',cacheFile,extractDir]);
   const candidates=(await readdir(extractDir,{withFileTypes:true})).filter((entry)=>entry.isDirectory()&&entry.name.endsWith('.app'));
   if(candidates.length!==1)throw new Error('Pinned macOS engine archive did not contain exactly one app bundle');
-  const engineApp=join(DEST,'lnwjud.app');await cp(join(extractDir,candidates[0].name),engineApp,{recursive:true,preserveTimestamps:true});await patchMacEngine(engineApp);
+  const engineApp=join(DEST,'lnwjud.app');run('/usr/bin/ditto',[join(extractDir,candidates[0].name),engineApp]);await patchMacEngine(engineApp);
   const wrapper=`#!/bin/sh
 set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
