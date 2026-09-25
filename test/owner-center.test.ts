@@ -151,7 +151,7 @@ test('AWH Settings opens the reachable Owner Center while the dedicated Control 
   ]);
   assert.match(dashboard, /ตั้งค่า[\s\S]{0,180}awh:open-owner-center/);
   assert.doesNotMatch(dashboard, /ตั้งค่า[\s\S]{0,180}dashboard-owner-center-open.*click/);
-  assert.match(owner, /launch\.textContent = 'เปิด Control Panel'/);
+  assert.match(owner, /launch\.textContent = 'เปิดศูนย์ดูแลระบบ'/);
   assert.match(owner, /window\.location\.assign\('\.\/panel\.html'\)/);
   assert.match(owner, /window\.addEventListener\('awh:open-owner-center', openCenter\)/);
 });
