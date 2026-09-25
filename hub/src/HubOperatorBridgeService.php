@@ -7,6 +7,8 @@ require_once __DIR__.'/HubUpdateTargetRegistry.php';
 require_once __DIR__ . '/HubBayRemoteUpdateService.php';
 require_once __DIR__ . '/HubCapabilityRegistryService.php';
 require_once __DIR__ . '/HubProjectVault.php';
+require_once __DIR__ . '/HubProjectVaultService.php';
+require_once __DIR__ . '/HubProjectSourceAuthorityService.php';
 
 final class HubOperatorBridgeException extends RuntimeException
 {
@@ -20,6 +22,8 @@ final class HubOperatorBridgeService
     private const MAX_BAY_PACKAGE_BYTES=9437184;
     private const VERIFICATION_CONFIRMATION='STORE_VERIFICATION_EVIDENCE';
     private const VAULT_EXPORT_CONFIRMATION='EXPORT_CANONICAL_VAULT_SOURCE';
+    private const VAULT_IMPORT_CONFIRMATION='IMPORT_CANONICAL_VAULT_SOURCE';
+    private const MAX_VAULT_IMPORT_BYTES=134217728;
     private const MAX_VERIFICATION_DOCUMENT_BYTES=196608;
     private const SOURCE_PROMOTE_CONFIRMATION='PROMOTE_CANONICAL_MAIN';
     private const MISSION_ACQUIRE_CONFIRMATION='ACQUIRE_PROJECT_MISSION';
@@ -52,6 +56,7 @@ final class HubOperatorBridgeService
             'verification.store'=>$this->verificationStore($request,$at),
             'verification.regressions'=>$this->verificationRegressions($request,$at),
             'vault.export'=>$this->vaultExport($request,$at),
+            'vault.import'=>$this->vaultImport($request,$at),
             'mission.status'=>$this->missionStatus(self::text($request,'project',160),$at),
             'mission.acquire'=>$this->missionAcquire($request,$at),
             'mission.renew'=>$this->missionRenew($request,$at),
@@ -171,6 +176,48 @@ final class HubOperatorBridgeService
             if(!is_int($copied)||$copied!==(int)$archive['sizeBytes']||!is_string($actual)||!hash_equals((string)$archive['sha256'],$actual)||!@chmod($destination,0640)){@unlink($destination);throw new HubOperatorBridgeException('Canonical Vault staging copy failed verification','OPERATOR_VAULT_EXPORT_UNAVAILABLE');}
             return ['schemaVersion'=>1,'state'=>'EXPORTED','projectId'=>$projectId,'projectName'=>(string)($project['name']??''),'vaultRevisionId'=>$revision,'contentSha256'=>$contentSha,'stagedFile'=>$stagedFile,'archiveSha256'=>(string)$archive['sha256'],'sizeBytes'=>(int)$archive['sizeBytes'],'fileCount'=>(int)$archive['fileCount'],'observedAt'=>$at];
         }finally{@unlink($private);}
+    }
+
+    /** @param array<string,mixed> $request @return array<string,mixed> */
+    private function vaultImport(array $request,string $at): array
+    {
+        if(($request['confirmation']??null)!==self::VAULT_IMPORT_CONFIRMATION)throw new HubOperatorBridgeException('Explicit canonical Vault import confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
+        $keys=array_keys($request);sort($keys);if($keys!==['action','archiveSha256','confirmation','expectedActiveRevisionId','missionExecutionId','project','schemaVersion','stagedFile'])throw new HubOperatorBridgeException('Canonical Vault import request is invalid','OPERATOR_REQUEST_INVALID');
+        $selector=self::text($request,'project',160);$archiveSha=self::sha256(self::text($request,'archiveSha256',64));$stagedFile=self::text($request,'stagedFile',80);
+        $expected=strtolower(self::text($request,'expectedActiveRevisionId',36));$missionId=strtolower(self::text($request,'missionExecutionId',36));
+        if(!self::uuidValid($expected)||!self::uuidValid($missionId)||$stagedFile!==$archiveSha.'.zip')throw new HubOperatorBridgeException('Canonical Vault import identity is invalid','OPERATOR_REQUEST_INVALID');
+        $project=$this->resolveProject($selector);$projectId=(string)$project['project_id'];
+        $this->activeProjectMission($missionId,$at,$projectId,true);
+        $gate=$this->projectGate($selector,$at,false,'source.promote',$missionId);if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('Project mutation gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
+        $source=is_array($gate['source']??null)?$gate['source']:[];
+        $active=strtolower((string)($source['activeVaultRevisionId']??''));$canonical=strtolower((string)($source['canonicalVaultRevisionId']??''));
+        if(($source['authority']??null)!=='AWH_VAULT'||!self::uuidValid($active)||!self::uuidValid($canonical)||!hash_equals($expected,$active)||!hash_equals($expected,$canonical))throw new HubOperatorBridgeException('Canonical Vault source moved before import','OPERATOR_VAULT_BASE_MOVED');
+        $stageRoot=getenv('AWH_OPERATOR_STAGE_ROOT');if(!is_string($stageRoot)||$stageRoot==='')$stageRoot='/var/lib/awh-remote/operator-staging';$stageReal=realpath($stageRoot);
+        if(!is_string($stageReal)||!is_dir($stageReal)||is_link($stageRoot))throw new HubOperatorBridgeException('Vault import staging is unavailable','OPERATOR_VAULT_IMPORT_UNAVAILABLE');
+        $archive=$stageReal.'/'.$stagedFile;$archiveReal=realpath($archive);$stat=is_string($archiveReal)?@stat($archiveReal):false;
+        if(!is_string($archiveReal)||dirname($archiveReal)!==$stageReal||is_link($archive)||!is_file($archiveReal)||!is_readable($archiveReal)||!is_array($stat)||(((int)($stat['mode']??0)&0o022)!==0))throw new HubOperatorBridgeException('Vault import archive is unavailable or unsafe','OPERATOR_VAULT_IMPORT_UNAVAILABLE');
+        $size=@filesize($archiveReal);$actual=hash_file('sha256',$archiveReal);if(!is_int($size)||$size<1||$size>self::MAX_VAULT_IMPORT_BYTES||!is_string($actual)||!hash_equals($archiveSha,$actual))throw new HubOperatorBridgeException('Vault import archive failed verification','OPERATOR_VAULT_IMPORT_UNAVAILABLE');
+        $owner=$this->pdo->query("SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id=1 AND bootstrap_closed=1")->fetchColumn();if(!is_string($owner)||!self::uuidValid($owner))throw new HubOperatorBridgeException('AWH Owner identity is unavailable','OPERATOR_VAULT_IMPORT_UNAVAILABLE');
+        try{
+            $vaults=HubProjectVaultService::fromEnvironment($this->pdo);$ingest=$vaults->ingestArchive($projectId,$archiveReal,$owner,null,$expected,$at);$revision=null;$changed=($ingest['changed']??false)===true;
+            if($changed){$revision=is_string($ingest['createdRevisionId']??null)?strtolower((string)$ingest['createdRevisionId']):null;}
+            else{
+                $duplicate=is_string($ingest['duplicateRevisionId']??null)?strtolower((string)$ingest['duplicateRevisionId']):null;if($duplicate===null||!self::uuidValid($duplicate))throw new HubOperatorBridgeException('Vault import duplicate identity is unavailable','OPERATOR_VAULT_IMPORT_FAILED');
+                $q=$this->pdo->prepare('SELECT state,parent_revision_id FROM control_project_vault_revisions WHERE project_id=:project AND revision_id=:revision LIMIT 1');$q->execute(['project'=>$projectId,'revision'=>$duplicate]);$row=$q->fetch();
+                if(!is_array($row))throw new HubOperatorBridgeException('Vault import duplicate revision is unavailable','OPERATOR_VAULT_IMPORT_FAILED');
+                if(($row['state']??null)==='ACTIVE'&&hash_equals($duplicate,$expected)){
+                    $bound=(new HubProjectSourceAuthorityService($this->pdo,null))->bindVault($projectId,$duplicate,$at);
+                    return ['schemaVersion'=>1,'state'=>'CURRENT','projectId'=>$projectId,'projectName'=>(string)$project['name'],'previousVaultRevisionId'=>$expected,'vaultRevisionId'=>$duplicate,'contentSha256'=>(string)($bound['canonicalContentSha256']??''),'archiveSha256'=>$archiveSha,'changed'=>false,'authority'=>'AWH_VAULT','observedAt'=>$at];
+                }
+                if(($row['state']??null)!=='CANDIDATE'||!is_string($row['parent_revision_id']??null)||!hash_equals(strtolower((string)$row['parent_revision_id']),$expected))throw new HubOperatorBridgeException('Vault import would reactivate non-candidate historical bytes','OPERATOR_VAULT_IMPORT_CONFLICT');
+                $revision=$duplicate;
+            }
+            if(!is_string($revision)||!self::uuidValid($revision))throw new HubOperatorBridgeException('Vault import revision identity is invalid','OPERATOR_VAULT_IMPORT_FAILED');
+            $promoted=$vaults->promote($projectId,$revision,$expected,$at);if(($promoted['activeRevisionId']??null)!==$revision||($promoted['syncState']??null)!=='SYNCED')throw new HubOperatorBridgeException('Vault promotion could not be verified','OPERATOR_VAULT_IMPORT_FAILED');
+            $bound=(new HubProjectSourceAuthorityService($this->pdo,null))->bindVault($projectId,$revision,$at);if(($bound['authority']??null)!=='AWH_VAULT'||($bound['canonicalVaultRevisionId']??null)!==$revision||($bound['state']??null)!=='CURRENT')throw new HubOperatorBridgeException('Vault source binding could not be verified','OPERATOR_VAULT_IMPORT_FAILED');
+            return ['schemaVersion'=>1,'state'=>'PROMOTED','projectId'=>$projectId,'projectName'=>(string)$project['name'],'previousVaultRevisionId'=>$expected,'vaultRevisionId'=>$revision,'contentSha256'=>(string)($bound['canonicalContentSha256']??''),'archiveSha256'=>$archiveSha,'sizeBytes'=>$size,'fileCount'=>(int)($promoted['fileCount']??0),'changed'=>true,'authority'=>'AWH_VAULT','missionExecutionId'=>$missionId,'observedAt'=>$at];
+        }catch(HubProjectVaultException $error){$code=$error->codeName==='PROJECT_REVISION_CONFLICT'?'OPERATOR_VAULT_BASE_MOVED':'OPERATOR_VAULT_IMPORT_FAILED';throw new HubOperatorBridgeException('Canonical Vault import failed',$code);}
+        catch(HubProjectSourceAuthorityException){throw new HubOperatorBridgeException('Canonical Vault source binding failed','OPERATOR_VAULT_IMPORT_FAILED');}
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
