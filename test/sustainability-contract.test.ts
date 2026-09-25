@@ -78,9 +78,8 @@ test('desktop release evidence is deterministic, exact-revision-bound, and never
   const outputTwo = join(dir, 'evidence-two.json');
   const payload = Buffer.from('verified portable package fixture\n', 'utf8');
   const sourceSha = 'a'.repeat(40);
-  const sourceTreeSha = 'b'.repeat(40);
   const script = join(ROOT, 'scripts/release/create-desktop-release-evidence.mjs');
-  const invoke = (output: string, sha = sourceSha, treeSha = sourceTreeSha) => execFileAsync(process.execPath, [script, '--platform', 'win32', '--architecture', 'x64', '--package', packagePath, '--source-sha', sha, '--source-tree-sha', treeSha, '--output', output], { cwd: ROOT });
+  const invoke = (output: string, sha = sourceSha) => execFileAsync(process.execPath, [script, '--platform', 'win32', '--architecture', 'x64', '--package', packagePath, '--source-sha', sha, '--output', output], { cwd: ROOT });
   try {
     await writeFile(packagePath, payload);
     const firstRun = await invoke(outputOne);
@@ -93,7 +92,6 @@ test('desktop release evidence is deterministic, exact-revision-bound, and never
     assert.equal(evidence.platform, 'win32');
     assert.equal(evidence.architecture, 'x64');
     assert.equal(evidence.sourceSha, sourceSha);
-    assert.equal(evidence.sourceTreeSha, sourceTreeSha);
     assert.equal(evidence.packageSha256, createHash('sha256').update(payload).digest('hex'));
     assert.equal(evidence.sizeBytes, payload.length);
     assert.equal(evidence.downloadKey, 'AWH-Windows-x64.zip');
@@ -109,12 +107,11 @@ test('desktop release evidence is deterministic, exact-revision-bound, and never
     const macArmPackage = join(dir, 'AWH-macOS-arm64.zip');
     const macArmOutput = join(dir, 'mac-arm64.json');
     await writeFile(macArmPackage, payload);
-    await execFileAsync(process.execPath, [script, '--platform', 'darwin', '--architecture', 'arm64', '--package', macArmPackage, '--source-sha', sourceSha, '--source-tree-sha', sourceTreeSha, '--output', macArmOutput], { cwd: ROOT });
+    await execFileAsync(process.execPath, [script, '--platform', 'darwin', '--architecture', 'arm64', '--package', macArmPackage, '--source-sha', sourceSha, '--output', macArmOutput], { cwd: ROOT });
     const macArmEvidence = JSON.parse(await readFile(macArmOutput, 'utf8'));
     assert.equal(macArmEvidence.architecture, 'arm64');
     assert.equal(macArmEvidence.downloadKey, 'AWH-macOS-arm64.zip');
     await assert.rejects(invoke(join(dir, 'bad-sha.json'), 'not-a-sha'), /DESKTOP_RELEASE_EVIDENCE_INVALID/);
-    await assert.rejects(invoke(join(dir, 'bad-tree.json'), sourceSha, 'not-a-tree-sha'), /DESKTOP_RELEASE_EVIDENCE_INVALID/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -127,8 +124,6 @@ test('desktop package CI uploads release evidence without activating an updater 
   assert.match(ci, /create-desktop-release-evidence\.mjs --platform darwin --architecture x64 --package AWH-macOS-x64\.zip/);
   assert.match(ci, /AWH-Windows-x64\.release\.json/);
   assert.match(ci, /AWH-macOS-x64\.release\.json/);
-  assert.match(ci, /--source-tree-sha/);
-  assert.match(script, /sourceTreeSha/);
   assert.match(script, /CI_PACKAGE_EVIDENCE_ONLY/);
   assert.match(script, /NOT_PUBLISHED/);
   assert.match(script, /FOUNDATION_LOCKED_NOT_ACTIVATED/);

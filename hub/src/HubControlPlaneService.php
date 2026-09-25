@@ -416,7 +416,7 @@ final class HubControlPlaneService
         $items[] = [
             'key'=>'awh-agent','projectId'=>null,'name'=>'AWH Agent','kind'=>'AGENT','adapter'=>'AGENT_MANAGED',
             'state'=>'INTERNAL_MANAGED','current'=>null,'candidate'=>null,'approvalRequired'=>false,'actionable'=>false,
-            'reason'=>'Web/PWA อัปเดตอัตโนมัติ; AWH Agent native อยู่ในช่องทาง Beta และ Stable จะเปิดเมื่อ platform trust พร้อม',
+            'reason'=>'Web/PWA อัปเดตอัตโนมัติ; native Agent ใช้ package evidence และยังไม่เปิด public auto-updater จนกว่า platform trust พร้อม',
             'devices'=>array_map(static fn(array $worker): array => [
                 'deviceId'=>(string)$worker['deviceId'],'displayName'=>(string)$worker['displayName'],'platform'=>(string)$worker['platform'],
                 'arch'=>(string)$worker['arch'],'appVersion'=>(string)($worker['appVersion'] ?? ''),'state'=>(string)$worker['state'],'activity'=>(string)$worker['activity'],
@@ -2716,7 +2716,7 @@ final class HubControlPlaneService
     public function heartbeat(string $token, array $payload, ?string $now = null): array
     {
         self::exactKeys($payload, ['capabilities', 'deviceId', 'schemaVersion', 'state']);
-        if (($payload['schemaVersion'] ?? null) !== 1 || !is_array($payload['capabilities']) || count($payload['capabilities']) > 64) throw new HubControlPlaneException('Worker payload is invalid', 'PAYLOAD_INVALID');
+        if (($payload['schemaVersion'] ?? null) !== 1 || !is_array($payload['capabilities']) || count($payload['capabilities']) > 24) throw new HubControlPlaneException('Worker payload is invalid', 'PAYLOAD_INVALID');
         $deviceId = self::uuid((string) ($payload['deviceId'] ?? '')); $auth = $this->enrollment->authenticateForControlPlane($token, $deviceId, $now); $state = (string) ($payload['state'] ?? 'READY');
         if (!in_array($state, ['READY', 'WORKING', 'OFFLINE'], true)) throw new HubControlPlaneException('Worker state is invalid', 'FIELD_INVALID');
         $caps = [];
@@ -3013,7 +3013,7 @@ final class HubControlPlaneService
     public function registerProjectBinding(string $token, array $payload, ?string $now = null): array
     {
         self::exactKeys($payload, ['capabilities', 'deviceId', 'projectId', 'schemaVersion', 'sourceFingerprint', 'workspaceLabel']);
-        if (($payload['schemaVersion'] ?? null) !== 2 || !is_array($payload['capabilities']) || count($payload['capabilities']) > 64) throw new HubControlPlaneException('Project binding is invalid', 'PAYLOAD_INVALID');
+        if (($payload['schemaVersion'] ?? null) !== 2 || !is_array($payload['capabilities']) || count($payload['capabilities']) > 24) throw new HubControlPlaneException('Project binding is invalid', 'PAYLOAD_INVALID');
         $deviceId = self::uuid((string) ($payload['deviceId'] ?? '')); $projectId = self::uuid((string) ($payload['projectId'] ?? '')); $auth = $this->enrollment->authenticateForControlPlane($token, $deviceId, $now); $this->assertDeviceProjectMember((string) $auth['deviceId'], $projectId); $this->assertUnifiedReady();
         $label = self::portableText((string) ($payload['workspaceLabel'] ?? ''), 'workspaceLabel', 120); $fingerprint = $payload['sourceFingerprint'] === null ? null : self::gitSha((string) $payload['sourceFingerprint']); $caps = [];
         foreach ($payload['capabilities'] as $capability) { if (!is_string($capability) || preg_match('/^[a-z][a-z0-9:._-]{0,63}$/', $capability) !== 1) throw new HubControlPlaneException('Project binding capability is invalid', 'FIELD_INVALID'); $caps[] = $capability; }

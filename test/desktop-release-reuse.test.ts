@@ -103,48 +103,6 @@ test('verified macOS arm64 overlay can join reused Intel and Windows lineage on 
   }
 });
 
-test('local macOS Beta DMG can overlay reused internal desktop lineage', async () => {
-  const root = await fixtureRoot('awh-desktop-beta-installer-');
-  try {
-    const base = join(root, 'base-release.json');
-    await writeFile(base, JSON.stringify(baseManifest()));
-    await mkdir(join(root, 'dist-web', 'downloads'), { recursive: true });
-    const bytes = Buffer.from('beta dmg fixture\n');
-    const path = join(root, 'dist-web', 'downloads', 'AWH-Agent-Beta-macOS-arm64.dmg');
-    const hash = createHash('sha256').update(bytes).digest('hex');
-    await writeFile(path, bytes);
-    await writeFile(join(root, 'dist-web', 'downloads', 'AWH-Agent-Beta-macOS-arm64.installer.json'), JSON.stringify({
-      schemaVersion: 1,
-      kind: 'AWH_DESKTOP_INSTALLER_EVIDENCE',
-      authority: 'CI_PACKAGE_EVIDENCE_ONLY',
-      channel: 'beta',
-      platform: 'darwin',
-      architecture: 'arm64',
-      productVersion: '1.0.0-rc.1',
-      sourceSha: 'f'.repeat(40),
-      packageSha256: hash,
-      sizeBytes: bytes.length,
-      downloadKey: 'AWH-Agent-Beta-macOS-arm64.dmg',
-      packageVerification: 'VERIFIED',
-      platformTrust: 'ADHOC_BETA',
-      notarization: 'NOT_NOTARIZED',
-    }));
-    await execFileAsync(process.execPath, [manifestScript, 'dist-web'], {
-      cwd: root,
-      env: { ...process.env, AWH_RELEASE_ID: 'm21-next', AWH_DESKTOP_RELEASE_REUSE: '1', AWH_DESKTOP_RELEASE_BASE_MANIFEST: base },
-    });
-    const manifest = JSON.parse(await readFile(join(root, 'dist-web', 'release.json'), 'utf8'));
-    assert.equal(manifest.desktopReleases.length, 3);
-    assert.equal(manifest.desktopInstallers.length, 1);
-    assert.equal(manifest.desktopInstallers[0].path, 'downloads/AWH-Agent-Beta-macOS-arm64.dmg');
-    assert.equal(manifest.desktopInstallers[0].channel, 'beta');
-    assert.equal(manifest.desktopInstallers[0].platformTrust, 'ADHOC_BETA');
-    assert.equal(manifest.files.find((x: any) => x.path.endsWith('.dmg')).sha256, hash);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
 test('remote desktop reuse rejects inconsistent production lineage', async () => {
   const root = await fixtureRoot('awh-desktop-reuse-invalid-');
   try {

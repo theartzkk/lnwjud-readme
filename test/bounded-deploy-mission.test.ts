@@ -69,9 +69,8 @@ test('KRUART Engineering Eval catalog is durable, unique and cross-project',asyn
 });
 
 
-test('desktop artifact hydration accepts exact commit or exact tree-equivalent CI packages',async()=>{
+test('desktop artifact hydration accepts only exact-SHA verified staged packages',async()=>{
   const sourceSha='a'.repeat(40);
-  const sourceTreeSha='c'.repeat(40);
   const root=await mkdtemp(join(tmpdir(),'awh-artifact-hydration-'));
   const stagingRoot=join(root,'stage');
   const staged=join(stagingRoot,sourceSha);
@@ -89,43 +88,20 @@ test('desktop artifact hydration accepts exact commit or exact tree-equivalent C
     await writeFile(join(staged,file),bytes);
     await writeFile(join(staged,file.replace(/\.zip$/,'.release.json')),JSON.stringify({
       schemaVersion:1,kind:'AWH_DESKTOP_RELEASE_EVIDENCE',authority:'CI_PACKAGE_EVIDENCE_ONLY',productId:'awh',platform,architecture,
-      productVersion:'1.0.0-rc.1',sourceSha,sourceTreeSha,packageSha256:hash,sizeBytes:bytes.length,downloadKey:file,packageVerification:'VERIFIED',
+      productVersion:'1.0.0-rc.1',sourceSha,packageSha256:hash,sizeBytes:bytes.length,downloadKey:file,packageVerification:'VERIFIED',
       publicationState:'NOT_PUBLISHED',updaterStatus:'FOUNDATION_LOCKED_NOT_ACTIVATED',
     }));
     sums.push(`${hash}  ${file}`);
   }
   await writeFile(join(staged,'SHA256SUMS.txt'),`${sums.join('\n')}\n`);
-
-  const installerFile='AWH-Agent-Beta-macOS-arm64.dmg';
-  const installerEvidence='AWH-Agent-Beta-macOS-arm64.installer.json';
-  const installerBytes=Buffer.from(`beta-installer-${sourceSha}`);
-  const installerHash=createHash('sha256').update(installerBytes).digest('hex');
-  await writeFile(join(staged,installerFile),installerBytes);
-  await writeFile(join(staged,installerEvidence),JSON.stringify({
-    schemaVersion:1,kind:'AWH_DESKTOP_INSTALLER_EVIDENCE',authority:'CI_PACKAGE_EVIDENCE_ONLY',productId:'awh',
-    channel:'beta',platform:'darwin',architecture:'arm64',productVersion:'1.0.0-rc.1',sourceSha,
-    packageSha256:installerHash,sizeBytes:installerBytes.length,downloadKey:installerFile,packageVerification:'VERIFIED',
-    platformTrust:'ADHOC_BETA',notarization:'NOT_NOTARIZED',
-  }));
-
-  const stagedProof=await verifyDesktopReleaseArtifacts(staged,sourceSha,sourceTreeSha);
+  const stagedProof=await verifyDesktopReleaseArtifacts(staged,sourceSha);
   assert.equal(stagedProof.verified.length,3);
-  const hydrated=await hydrateDesktopReleaseArtifacts({sourceRoot,sourceSha,sourceTreeSha,stagingRoot});
+  const hydrated=await hydrateDesktopReleaseArtifacts({sourceRoot,sourceSha,stagingRoot});
   assert.equal(hydrated.verified.length,3);
-  assert.equal(hydrated.installers.length,1);
-  assert.equal(hydrated.installers[0].file,installerFile);
-  assert.equal(await readFile(join(sourceRoot,'dist-web/downloads',installerFile),'utf8'),installerBytes.toString('utf8'));
   assert.equal((await readFile(join(sourceRoot,'dist-web/downloads/SHA256SUMS.txt'),'utf8')).trim(),sums.join('\n'));
 
   const evidencePath=join(staged,'AWH-macOS-arm64.release.json');
   const evidence=JSON.parse(await readFile(evidencePath,'utf8')); evidence.sourceSha='b'.repeat(40);
   await writeFile(evidencePath,JSON.stringify(evidence));
-  const treeEquivalent=await verifyDesktopReleaseArtifacts(staged,sourceSha,sourceTreeSha);
-  assert.equal(treeEquivalent.verified.length,3);
-  evidence.sourceTreeSha='d'.repeat(40);
-  await writeFile(evidencePath,JSON.stringify(evidence));
-  await assert.rejects(()=>verifyDesktopReleaseArtifacts(staged,sourceSha,sourceTreeSha),/DESKTOP_ARTIFACT_PROVENANCE_MISMATCH/);
-  delete evidence.sourceTreeSha;
-  await writeFile(evidencePath,JSON.stringify(evidence));
-  await assert.rejects(()=>verifyDesktopReleaseArtifacts(staged,sourceSha,sourceTreeSha),/DESKTOP_ARTIFACT_PROVENANCE_MISMATCH/);
+  await assert.rejects(()=>verifyDesktopReleaseArtifacts(staged,sourceSha),/DESKTOP_ARTIFACT_PROVENANCE_MISMATCH/);
 });

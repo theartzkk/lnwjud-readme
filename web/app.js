@@ -16,7 +16,7 @@ import {
   const MAX_ATTACHMENT_BYTES = 60 * 1024 * 1024;
   const CANCELLABLE_TASK_STATES = new Set(['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL']);
   const MICRO_BAHT = 1000000;
-  const DESKTOP_PACKAGES = [['downloads/AWH-Agent-Beta-macOS-arm64.dmg', 'macOS Apple Silicon · Beta', 'mac-arm64'], ['downloads/AWH-Agent-Beta-macOS-x64.dmg', 'macOS Intel · Beta', 'mac-intel'], ['downloads/AWH-Windows-x64.zip', 'Windows x64 · Beta', 'windows']];
+  const DESKTOP_PACKAGES = [['downloads/AWH-macOS-arm64.zip', 'macOS Apple Silicon', 'mac-arm64'], ['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac-intel'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
   const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, infrastructure: null, people: [], accountRequests: [], schoolIdentityBindings: [], schoolIdentityCandidates: [], schoolIdentityPolicy: null, bayCommunication: null, memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
   const pendingBrandAssets = { logo: undefined, icon: undefined };
   const MAX_BRAND_SOURCE_BYTES = 8 * 1024 * 1024;
@@ -686,18 +686,14 @@ import {
         if (!entry || typeof entry.path !== 'string' || !/^(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+$/.test(entry.path) || typeof entry.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(entry.sha256) || !Number.isSafeInteger(entry.sizeBytes) || entry.sizeBytes < 1 || entry.sizeBytes > 1024 * 1024 * 1024 || files.has(entry.path)) throw new Error('release metadata invalid');
         files.set(entry.path, entry);
       }
-      // ZIPs remain internal release artifacts. DMGs are the user-facing Beta installer surface.
+      // Keep legacy packages unavailable until their existing CI lineage is supplied.
       const desktopReleases = Array.isArray(manifest.desktopReleases) ? manifest.desktopReleases : [];
-      const desktopInstallers = Array.isArray(manifest.desktopInstallers) ? manifest.desktopInstallers : [];
       for (const [path, entry] of files) {
-        if (!path.endsWith('.zip') && !path.endsWith('.dmg')) continue;
-        const proof = path.endsWith('.dmg')
-          ? desktopInstallers.find(item => item?.path === path)
-          : desktopReleases.find(item => item?.path === path);
+        if (!path.endsWith('.zip')) continue;
+        const proof = desktopReleases.find(item => item?.path === path);
         if (!proof || proof.packageVerification !== 'VERIFIED' || !/^[0-9a-f]{40}$/.test(proof.sourceSha || '') || proof.packageSha256 !== entry.sha256 || proof.sizeBytes !== entry.sizeBytes) files.delete(path);
         else {
           entry.sourceSha = proof.sourceSha;
-          entry.channel = typeof proof.channel === 'string' ? proof.channel : (path.endsWith('.dmg') ? 'beta' : 'internal');
           entry.platformTrust = typeof proof.platformTrust === 'string' ? proof.platformTrust : (path.includes('macOS') ? 'ADHOC_INTERNAL_ONLY' : 'PACKAGE_VERIFIED');
         }
       }
@@ -724,10 +720,10 @@ import {
       for (const [path, label] of packages) {
         const entry = files.get(path); const item = document.createElement('div'); item.className = 'session-item';
         const mac = path.includes('macOS'); const trusted = entry.platformTrust === 'GATEKEEPER_ACCEPTED';
-        const title = document.createElement('strong'); title.textContent = label;
-        const trust = mac ? (trusted ? 'Stable · Apple notarization ผ่านแล้ว' : 'Beta สำหรับทดสอบ · Source/Checksum ผ่าน') : 'Beta · Source/Checksum ผ่าน';
+        const title = document.createElement('strong'); title.textContent = `${label}${mac && !trusted ? ' · Internal' : ''}`;
+        const trust = mac ? (trusted ? 'Apple trust ผ่านแล้ว' : 'ยังไม่ผ่าน Apple Notarization') : 'แพ็กเกจตรวจ Source/Checksum แล้ว';
         const detail = document.createElement('span'); detail.textContent = `${trust} · ${size(entry.sizeBytes)} · Source ${entry.sourceSha.slice(0, 12)} · SHA-256 ${entry.sha256.slice(0, 12)}…`;
-        const link = document.createElement('a'); link.href = `./${path}`; link.textContent = `ดาวน์โหลด ${label}`; link.setAttribute('download', '');
+        const link = document.createElement('a'); link.href = `./${path}`; link.textContent = mac && !trusted ? `ดาวน์โหลด Internal build` : `ดาวน์โหลด ${label}`; link.setAttribute('download', '');
         item.append(title, detail, link); list.append(item);
       }
     } catch {

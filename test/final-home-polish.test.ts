@@ -28,7 +28,7 @@ test('canonical Dashboard is intent-first with a three-item mobile navigation',a
  assert.match(index,/data-install-web-app/);
  assert.match(index,/id="install-guide-sheet"/);
  assert.match(index,/เพิ่มไปยังหน้าจอโฮม/);
- assert.match(index,/ไม่ต้องลง AWH Agent/);
+ assert.doesNotMatch(index,/(?<!ไม่)ต้อง(?:ลง|ติดตั้ง) AWH Agent/);
  assert.match(index,/พื้นที่ทำงาน/);
  assert.match(dashboard,/openWork\(command\.value, false\)/);
  assert.match(dashboard,/\$\('attachment-open'\)\?\.click\(\)/);

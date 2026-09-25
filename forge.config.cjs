@@ -72,7 +72,6 @@ module.exports = {
     ...(electronZipDir ? { electronZipDir } : {}),
     asar: true,
     overwrite: true,
-    extraResource: [path.join(__dirname, '.awh-build', 'awh-device-runtime')],
     ignore: [
       /^\/\.awh($|\/)/,
       /^\/\.awh-local($|\/)/,
@@ -85,7 +84,6 @@ module.exports = {
       /^\/dist-web($|\/)/,
       /^\/out($|\/)/,
       /^\/AWH-(?:macOS|Windows)-[^/]+\.(?:zip|release\.json)$/,
-      /^\/AWH-Agent-Beta-macOS-[^/]+\.(?:dmg|installer\.json)$/,
       /^\/SHA256SUMS\.txt$/,
       /^\/\.github($|\/)/,
       /^\/\.art-agent-build($|\/)/,

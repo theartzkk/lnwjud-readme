@@ -137,7 +137,7 @@ export class ControlPlaneWorkerClient {
 
   async heartbeat(capabilities: string[], state: 'READY' | 'WORKING' | 'OFFLINE' = 'READY'): Promise<{ deviceId: string; state: string; lastSeenAt: string }> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir);
-    if (!STATE.has(state) || !Array.isArray(capabilities) || capabilities.length > 64 || capabilities.some((value) => typeof value !== 'string' || !CAPABILITY.test(value))) throw new ControlPlaneWorkerError('Worker heartbeat is invalid', 'PAYLOAD_INVALID');
+    if (!STATE.has(state) || !Array.isArray(capabilities) || capabilities.length > 24 || capabilities.some((value) => typeof value !== 'string' || !CAPABILITY.test(value))) throw new ControlPlaneWorkerError('Worker heartbeat is invalid', 'PAYLOAD_INVALID');
     const response = await this.post('/control/workers/heartbeat', { schemaVersion: 1, deviceId: identity.deviceId, state, capabilities: [...new Set(capabilities)] });
     if (response.schemaVersion !== 1 || response.deviceId !== identity.deviceId || typeof response.state !== 'string' || typeof response.lastSeenAt !== 'string') throw new ControlPlaneWorkerError('Worker heartbeat response is invalid', 'RESPONSE_INVALID');
     return { deviceId: identity.deviceId, state: response.state, lastSeenAt: response.lastSeenAt };
@@ -292,7 +292,7 @@ export class ControlPlaneWorkerClient {
    */
   async registerProjectBinding(projectId: string, workspaceLabel: string, capabilities: string[], sourceFingerprint: string | null = null): Promise<void> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir);
-    if (!UUID_V4.test(projectId) || typeof workspaceLabel !== 'string' || !workspaceLabel.trim() || workspaceLabel.trim().length > 120 || /[\\/\u0000-\u001f\u007f]/.test(workspaceLabel) || !Array.isArray(capabilities) || capabilities.length > 64 || capabilities.some((value) => typeof value !== 'string' || !CAPABILITY.test(value)) || (sourceFingerprint !== null && !/^[0-9a-f]{40,64}$/i.test(sourceFingerprint))) throw new ControlPlaneWorkerError('Project binding is invalid', 'PAYLOAD_INVALID');
+    if (!UUID_V4.test(projectId) || typeof workspaceLabel !== 'string' || !workspaceLabel.trim() || workspaceLabel.trim().length > 120 || /[\\/\u0000-\u001f\u007f]/.test(workspaceLabel) || !Array.isArray(capabilities) || capabilities.length > 24 || capabilities.some((value) => typeof value !== 'string' || !CAPABILITY.test(value)) || (sourceFingerprint !== null && !/^[0-9a-f]{40,64}$/i.test(sourceFingerprint))) throw new ControlPlaneWorkerError('Project binding is invalid', 'PAYLOAD_INVALID');
     const response = await this.post('/control/worker/projects/bindings', { schemaVersion: 2, deviceId: identity.deviceId, projectId, workspaceLabel: workspaceLabel.trim(), sourceFingerprint, capabilities: [...new Set(capabilities)] });
     if (response.schemaVersion !== 2 || !response.binding || typeof response.binding !== 'object') throw new ControlPlaneWorkerError('Project binding response is invalid', 'RESPONSE_INVALID');
   }

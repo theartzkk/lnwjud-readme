@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { stat, realpath } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
-import { homedir } from 'node:os';
 import { execFile, resolveExecutable, type ExecResult } from './process.js';
 import { PRODUCT } from './product.js';
 
@@ -40,7 +39,6 @@ export interface TunnelReadiness {
   tunnelIdValid: boolean;
   tunnelId?: string;
   packagedMcpReady: boolean;
-  mcpProvider?: 'AWH_DEVICE_RUNTIME' | 'PACKAGED_AWH';
   appExecutable?: string;
   appAsar?: string;
   mcpCommand?: string;
@@ -126,41 +124,6 @@ export function buildPackagedMcpCommand(appExecutable: string, workspace: string
     workspace,
     '--remote-tunnel',
   ].map(quoteTunnelCommandArg).join(' ');
-}
-
-export function bundledDeviceRuntimeLauncher(
-  appExecutable: string,
-  platform: NodeJS.Platform = process.platform,
-): string | undefined {
-  if (!isAbsolute(appExecutable)) return undefined;
-  if (platform === 'darwin') {
-    return join(dirname(dirname(appExecutable)), 'Resources', 'awh-device-runtime', 'awh-mcp-stdio');
-  }
-  if (platform === 'win32') {
-    return join(dirname(appExecutable), 'resources', 'awh-device-runtime', 'awh-mcp-stdio.cmd');
-  }
-  return undefined;
-}
-
-export function installedDeviceRuntimeLauncher(
-  env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
-): string | undefined {
-  const home = env.HOME?.trim() || env.USERPROFILE?.trim() || homedir();
-  if (platform === 'darwin' && home && isAbsolute(home)) {
-    return join(home, 'Library', 'Application Support', 'AWH', 'DeviceRuntime', 'awh-mcp-stdio');
-  }
-  const appData = env.APPDATA?.trim();
-  if (platform === 'win32' && appData && isAbsolute(appData)) {
-    return join(appData, 'AWH', 'DeviceRuntime', 'awh-mcp-stdio.cmd');
-  }
-  return undefined;
-}
-
-export function buildDeviceRuntimeMcpCommand(launcher: string, workspace: string): string {
-  if (!isAbsolute(launcher)) throw new Error('AWH Device Runtime launcher path must be absolute');
-  if (!isAbsolute(workspace)) throw new Error('Remote workspace path must be absolute');
-  return [launcher, '--workspace', workspace].map(quoteTunnelCommandArg).join(' ');
 }
 
 export function tunnelRuntimeAlias(workspace: string): string {
@@ -280,43 +243,19 @@ export async function inspectTunnelReadiness(
   let packagedMcpReady = false;
   let appAsar: string | undefined;
   let mcpCommand: string | undefined;
-  let mcpProvider: 'AWH_DEVICE_RUNTIME' | 'PACKAGED_AWH' | undefined;
-
-  const explicitDeviceLauncher = trimmed(env.AWH_DEVICE_MCP_LAUNCHER);
-  const installedLauncher = installedDeviceRuntimeLauncher(env);
-  const bundledLauncher = bundledDeviceRuntimeLauncher(appExecutable);
-  const deviceCandidates = explicitDeviceLauncher
-    ? [explicitDeviceLauncher]
-    : [installedLauncher, bundledLauncher].filter((value): value is string => typeof value === 'string');
-
-  for (const launcher of deviceCandidates) {
-    if (!isAbsolute(launcher)) continue;
-    if (!(await fileExists(launcher))) continue;
-    packagedMcpReady = true;
-    mcpCommand = buildDeviceRuntimeMcpCommand(launcher, workspace);
-    mcpProvider = 'AWH_DEVICE_RUNTIME';
-    break;
-  }
-  if (explicitDeviceLauncher && !mcpCommand) {
-    blockers.push('Configured AWH Device Runtime launcher was not found');
-  }
-
-  if (!mcpCommand && !explicitDeviceLauncher) {
-    try {
-      const paths = packagedMcpPaths(appExecutable);
-      appAsar = paths.appAsar;
-      if (!(await fileExists(paths.appExecutable))) {
-        blockers.push('Packaged AWH executable was not found');
-      } else if (!(await fileExists(paths.appAsar))) {
-        blockers.push('Packaged resources/app.asar was not found');
-      } else {
-        packagedMcpReady = true;
-        mcpCommand = buildPackagedMcpCommand(paths.appExecutable, workspace);
-        mcpProvider = 'PACKAGED_AWH';
-      }
-    } catch (error) {
-      blockers.push(`Packaged MCP layout is unavailable: ${error instanceof Error ? error.message : String(error)}`);
+  try {
+    const paths = packagedMcpPaths(appExecutable);
+    appAsar = paths.appAsar;
+    if (!(await fileExists(paths.appExecutable))) {
+      blockers.push('Packaged AWH executable was not found');
+    } else if (!(await fileExists(paths.appAsar))) {
+      blockers.push('Packaged resources/app.asar was not found');
+    } else {
+      packagedMcpReady = true;
+      mcpCommand = buildPackagedMcpCommand(paths.appExecutable, workspace);
     }
+  } catch (error) {
+    blockers.push(`Packaged MCP layout is unavailable: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   return {
@@ -331,11 +270,10 @@ export async function inspectTunnelReadiness(
     tunnelIdValid,
     ...(tunnelIdValid && tunnelId ? { tunnelId } : {}),
     packagedMcpReady,
-    ...(mcpProvider ? { mcpProvider } : {}),
     ...(isAbsolute(appExecutable) ? { appExecutable } : {}),
     ...(appAsar ? { appAsar } : {}),
     ...(mcpCommand ? { mcpCommand } : {}),
-    ready: blockers.length === 0 && binaryReady && runtimeKeyValid && tunnelIdValid && packagedMcpReady,
+    ready: binaryReady && runtimeKeyValid && tunnelIdValid && packagedMcpReady,
     blockers,
   };
 }

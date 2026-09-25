@@ -70,8 +70,6 @@ test('Owner entry and standalone admin pages converge on Control Panel',async()=
   const controlService=await readFile(join(ROOT,'hub','src','HubControlPlaneService.php'),'utf8');
   assert.match(infrastructureJs,/renderCapabilityFabric/);
   assert.match(controlService,/capabilityFabric/);
-  const panelJs=await readFile(join(ROOT,'web','panel.js'),'utf8');
-  assert.match(panelJs,/cp-agent-tools/);
 });
 
 

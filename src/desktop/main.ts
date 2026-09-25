@@ -23,7 +23,7 @@ import { loadStoredSettings, saveStoredSettings } from '../settings.js';
 import { loadOrCreateDeviceIdentity, readDeviceIdentity, updateDeviceDisplayName } from '../device-identity.js';
 import { createDesktopCredentialStore, CredentialStoreError } from '../credential-store.js';
 import { EnrollmentClient, EnrollmentClientError, readLocalEnrollmentState } from '../enrollment-client.js';
-import { ensureAwhBootstrapDirectoryActive, ensureAwhDataDirectoryActive } from '../data-migration.js';
+import { ensureAwhDataDirectoryActive } from '../data-migration.js';
 import { AutopilotRunner, detectLocalCapabilities, loadAutopilotTasks, selectAutopilotProfile } from '../autopilot.js';
 import { ControlPlaneWorkerClient } from '../control-plane-worker-client.js';
 import { ControlPlaneWorkerRuntime } from '../control-plane-worker-runtime.js';
@@ -939,7 +939,6 @@ const smokeMarkerReady = SMOKE_TEST
 
 async function startAfterReady(): Promise<void> {
   await smokeMarkerReady;
-  await ensureAwhBootstrapDirectoryActive();
   registerIpc();
   startWorkerLoop();
 

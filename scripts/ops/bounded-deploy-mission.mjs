@@ -238,9 +238,8 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   const unknown=rawArgs.filter((a)=>!['--approve','--cleanup-topology',...DEPLOY_MODES].includes(a));
   if(unknown.length) throw new Error(`MISSION_ARGUMENT_INVALID:${unknown[0]}`);
   const head=(await git(['rev-parse','HEAD'])).toLowerCase(); const main=(await git(['rev-parse','refs/heads/main'])).toLowerCase();
-  const headTree=(await git(['rev-parse',`${head}^{tree}`])).toLowerCase();
-  missionContext={releaseSha:head,sourceTreeSha:headTree};
-  if(!SHA.test(head)||!SHA.test(headTree)||head!==main) throw new Error('MISSION_HEAD_NOT_CANONICAL_MAIN');
+  missionContext={releaseSha:head};
+  if(!SHA.test(head)||head!==main) throw new Error('MISSION_HEAD_NOT_CANONICAL_MAIN');
   const dirty=await git(['status','--porcelain','--untracked-files=all']); if(dirty!=='') throw new Error('MISSION_SOURCE_NOT_CLEAN');
   const production=(await resolveProduction()).toLowerCase(); missionContext.baseSha=production;
   if(production===head){console.log(`MISSION_RELEASE_SHA=${head}`);console.log('MISSION_STATE=ALREADY_CURRENT');console.log('MISSION_RESULT=PASS');return;}
@@ -253,11 +252,11 @@ export async function runMission(rawArgs=process.argv.slice(2)){
     const completeArtifacts=DESKTOP_ARTIFACTS.every((f)=>existsSync(join(ROOT,f)));
     try{
       if(completeArtifacts){
-        await verifyDesktopReleaseArtifacts(downloads,head,headTree);
+        await verifyDesktopReleaseArtifacts(downloads,head);
         console.log('MISSION_DESKTOP_ARTIFACTS=VERIFIED_EXISTING');
       }else{
         console.log('MISSION_DESKTOP_ARTIFACTS=HYDRATING');
-        const hydrated=await hydrateDesktopReleaseArtifacts({sourceRoot:ROOT,sourceSha:head,sourceTreeSha:headTree});
+        const hydrated=await hydrateDesktopReleaseArtifacts({sourceRoot:ROOT,sourceSha:head});
         if(!DESKTOP_ARTIFACTS.every((f)=>existsSync(join(ROOT,f)))||hydrated.verified.length!==3)throw new Error('DESKTOP_ARTIFACT_MISSING');
         console.log(`MISSION_DESKTOP_ARTIFACTS=HYDRATED:${hydrated.verified.length}`);
       }
@@ -268,7 +267,7 @@ export async function runMission(rawArgs=process.argv.slice(2)){
     }
   }
   const reuse=!desktopImpact;
-  console.log(`MISSION_BASE_SHA=${production}`); console.log(`MISSION_RELEASE_SHA=${head}`); console.log(`MISSION_SOURCE_TREE_SHA=${headTree}`); console.log(`MISSION_CHANGED_FILES=${changed.length}`);
+  console.log(`MISSION_BASE_SHA=${production}`); console.log(`MISSION_RELEASE_SHA=${head}`); console.log(`MISSION_CHANGED_FILES=${changed.length}`);
   console.log(`MISSION_RISK=${plan.riskLevel}`); console.log(`MISSION_VERIFICATION_BUDGET=${plan.budget}`); console.log(`MISSION_REQUIRED_CHECKS=${plan.requiredChecks.join(',')}`); console.log(`MISSION_EVAL_SCENARIOS=${evalScenarios.join(',')}`);
   console.log(`MISSION_DESKTOP_MODE=${reuse?'REUSE_VERIFIED':'NEW_ARTIFACTS'}`); console.log(`MISSION_MODE=${mode.slice(2)}`);
   const qa=await verifyByBudget(plan);
@@ -277,7 +276,7 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   const rehearsal=await run(process.execPath,[GUARDED,'--dry-run',...common],{env,forward:true});
   if(rehearsal.code!==0||!rehearsal.tail.includes('_DRY_RUN=PASS')) throw new Error('MISSION_REHEARSAL_FAILED');
   console.log('MISSION_REHEARSAL=PASS');
-  const baseCapsule={schemaVersion:1,kind:'release-verification',baseSha:production,releaseSha:head,sourceTreeSha:headTree,changedFileCount:changed.length,intelligence:plan,evalScenarios,qa,rehearsal:'PASS',desktopMode:reuse?'REUSE_VERIFIED':'NEW_ARTIFACTS',createdAt:new Date().toISOString()};
+  const baseCapsule={schemaVersion:1,kind:'release-verification',baseSha:production,releaseSha:head,changedFileCount:changed.length,intelligence:plan,evalScenarios,qa,rehearsal:'PASS',desktopMode:reuse?'REUSE_VERIFIED':'NEW_ARTIFACTS',createdAt:new Date().toISOString()};
   if(!approved){await saveCapsule({...baseCapsule,state:'READY_FOR_APPROVAL',result:'REVIEW'});console.log('MISSION_STATE=READY_FOR_APPROVAL');console.log('MISSION_APPROVAL_REQUIRED=1');return;}
   console.log('MISSION_APPROVALS_CONSUMED=1');
   const deploy=await run(process.execPath,[GUARDED,'--deploy','--approve',...common],{env,forward:true});
