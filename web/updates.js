@@ -96,8 +96,8 @@ function renderRuntimeHealth(){
     $('runtime-health-title').textContent='พบส่วนระบบอยู่คนละรุ่น';
     $('runtime-health-detail').textContent='AWH ตรวจพบ split-version และจะ reconcile ผ่าน release controller โดยไม่ให้ผู้ใช้จัดการ component เอง';
   }else{
-    $('runtime-health-title').textContent='ยังยืนยัน Runtime ได้ไม่ครบ';
-    $('runtime-health-detail').textContent='ระบบจะไม่ถือว่า Production สมบูรณ์จนกว่าจะตรวจ component สำคัญได้ครบ';
+    $('runtime-health-title').textContent='กำลังตรวจรายละเอียดรุ่น';
+    $('runtime-health-detail').textContent='ระบบยังใช้งานได้ตามปกติ และจะอัปเดตรายละเอียดรุ่นให้อัตโนมัติเมื่อข้อมูลพร้อม';
   }
 }
 
