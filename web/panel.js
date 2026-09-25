@@ -212,6 +212,12 @@ async function updateBayProduction(){
 
 function renderServer(data){
   const server=data?.telemetry?.server||null,storage=data?.storage||server?.storage||{},backup=data?.backup||{},db=data?.database||{};
+  const fabric=data?.capabilityFabric||{},fabricSummary=fabric.summary||{};
+  const agentTools=$('cp-agent-tools');
+  if(agentTools){
+    const ready=Number(fabricSummary.ready||0),cloud=Number(fabricSummary.cloudReady||0);
+    agentTools.textContent=ready>0?ready+' capabilities พร้อม'+(cloud>0?' · '+cloud+' cloud-ready':''):'กำลังรอ capability snapshot';
+  }
   if(server){
     $('cp-cpu').textContent=percent(server.cpu?.usedPercent);$('cp-load').textContent='Load '+(server.cpu?.load1??'—');
     $('cp-memory').textContent=percent(server.memory?.usedPercent);$('cp-memory-free').textContent='ว่าง '+bytes(server.memory?.availableBytes);

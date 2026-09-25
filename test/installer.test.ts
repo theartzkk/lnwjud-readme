@@ -157,7 +157,7 @@ test('packaged MCP PowerShell verifier parses on Windows', { skip: process.platf
 test('canonical application artwork is AWH and cannot regress to the legacy lnwjud icon', async () => {
   const [png, svg] = await Promise.all([readFile(new URL('../logo-256x256.png', import.meta.url)), readFile(new URL('../assets/awh-logo.svg', import.meta.url), 'utf8')]);
   const sha = createHash('sha256').update(png).digest('hex');
-  assert.notEqual(sha, 'c788bca8cbbdd153392d398102e7550db4b95d25ccfe45f6cf6edfc1a9577166');
+  assert.equal(sha, 'c7255419c5c6c6f86a064d0fec676998e80823e4ecbdbc43fc4e312bf437e615', 'canonical visible AWH Agent icon must match the Owner-approved artwork');
   assert.match(svg, /aria-label="AWH"/);
   assert.match(svg, /#FF7A1A/i);
 });
