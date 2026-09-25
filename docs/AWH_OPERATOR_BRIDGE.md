@@ -29,6 +29,8 @@ The operator bridge gives the dedicated `awh-remote` VPS connector a typed, audi
 
 A project mission reuses the existing task/execution/envelope authority as a two-hour renewable `CANONICAL:PROJECT` lease. A second chat receives the active mission instead of opening another writer. Expired missions fail safe and release their envelope; read-only work remains independent. Source promotion performed by the mission must pass `--mission <execution-id>` so the exact lease is reused rather than creating a nested writer.
 
+Core Release follows the same non-nesting rule at the deploy boundary: `system.core.release` owns `CANONICAL:DEPLOY` for the full release lifecycle, and its guarded deploy stage borrows/re-verifies that exact execution instead of opening `project.mutate.deploy` as a second writer. Generic device lease recovery is limited to tasks that actually carry `assigned_device_id`; VPS-native operators and release runners are never treated as abandoned device work.
+
 `awh-operator verification-store --confirm` (reads one bounded evidence JSON document from stdin)
 
 `awh-operator verification-regressions` (reads `{ "changedPaths": [...] }` from stdin)

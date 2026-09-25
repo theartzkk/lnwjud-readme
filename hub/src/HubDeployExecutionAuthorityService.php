@@ -62,7 +62,7 @@ final class HubDeployExecutionAuthorityService
             // A Core Release already owns CANONICAL:DEPLOY. Reuse that exact
             // execution instead of creating a second deploy writer that would
             // deadlock against its parent.
-            $parent = $this->pdo->prepare("SELECT e.execution_id,e.task_id,e.checkpoint_json FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE e.project_id=:project AND e.required_capability='system.core.release' AND e.executor_kind='VPS' AND e.state IN ('LEASED','RUNNING') AND t.state='RUNNING' ORDER BY e.updated_at DESC,e.execution_id DESC");
+            $parent = $this->pdo->prepare("SELECT e.execution_id,e.task_id,e.checkpoint_json FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE e.project_id=:project AND e.required_capability='system.core.release' AND e.executor_kind='VPS' AND e.state IN ('LEASED','RUNNING') AND t.state IN ('RUNNING','WAITING_FOR_WORKER') ORDER BY e.updated_at DESC,e.execution_id DESC");
             $parent->execute(['project'=>$projectId]);
             foreach ($parent->fetchAll() as $candidate) {
                 try { $checkpoint=json_decode((string)$candidate['checkpoint_json'],true,16,JSON_THROW_ON_ERROR); } catch (Throwable) { continue; }
@@ -73,7 +73,7 @@ final class HubDeployExecutionAuthorityService
                 if (($authority['granted']??false)!==true) throw new HubDeployExecutionAuthorityException('Core Release deploy authority is blocked','DEPLOY_AUTHORITY_CONFLICT');
                 $this->pdo->prepare("UPDATE control_task_executions SET lease_expires_at=:lease,updated_at=:at WHERE execution_id=:execution AND state IN ('LEASED','RUNNING')")
                     ->execute(['lease'=>$lease,'at'=>$at,'execution'=>$candidate['execution_id']]);
-                $this->pdo->prepare("UPDATE control_tasks SET lease_expires_at=:lease,updated_at=:at WHERE task_id=:task AND state='RUNNING'")
+                $this->pdo->prepare("UPDATE control_tasks SET state='RUNNING',assigned_device_id=NULL,lease_expires_at=:lease,updated_at=:at WHERE task_id=:task AND state IN ('RUNNING','WAITING_FOR_WORKER')")
                     ->execute(['lease'=>$lease,'at'=>$at,'task'=>$candidate['task_id']]);
                 $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:id,:task,'RUNNING',35,'Guarded deployment borrowed Core Release execution authority',:at)")
                     ->execute(['id'=>self::uuid(),'task'=>$candidate['task_id'],'at'=>$at]);

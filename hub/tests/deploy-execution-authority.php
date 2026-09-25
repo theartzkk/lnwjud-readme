@@ -65,14 +65,16 @@ try {
     $parentTask = '11111111-1111-4111-8111-111111111111';
     $parentExecution = '22222222-2222-4222-8222-222222222222';
     $parentCheckpoint = json_encode(['schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>str_repeat('a',40),'releaseMode'=>'IDENTITY_CONVERGENCE','cleanupTopology'=>false,'transport'=>'LOCAL'], JSON_THROW_ON_ERROR);
-    $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(?,?,?,?, 'RUNNING',NULL,?,35,NULL,NULL,?,NULL,?,?,NULL)")
-        ->execute([$parentTask,$owner,$project,'Core Release parent','2026-09-15T01:00:00+00:00','core-release-parent',$now,$now]);
+    $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(?,?,?,?, 'WAITING_FOR_WORKER',NULL,NULL,35,NULL,NULL,?,NULL,?,?,NULL)")
+        ->execute([$parentTask,$owner,$project,'Core Release parent','core-release-parent',$now,$now]);
     $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(?,?,?,?,'VPS','system.core.release','RUNNING','vps-core-release','2026-09-15T01:00:00+00:00',1,NULL,?,NULL,?,?)")
         ->execute([$parentExecution,$parentTask,$project,$revision,$parentCheckpoint,$now,$now]);
 
     $service = new HubDeployExecutionAuthorityService($pdo);
     $borrowed = $service->acquire('m21-aaaaaaaaaaaa', 600, $now);
     dea_assert($borrowed['borrowed'] === true && $borrowed['executionId'] === $parentExecution, 'Core Release authority is borrowed instead of duplicated');
+    $revived=$pdo->prepare("SELECT state,lease_expires_at,assigned_device_id FROM control_tasks WHERE task_id=?");$revived->execute([$parentTask]);$revivedRow=$revived->fetch();
+    dea_assert($revivedRow['state']==='RUNNING' && is_string($revivedRow['lease_expires_at']) && $revivedRow['assigned_device_id']===null, 'legacy WAITING_FOR_WORKER parent is revived with a bounded VPS lease');
     $verified = $service->verify($parentExecution, 600, '2026-09-15T00:30:10+00:00');
     dea_assert($verified['executionId'] === $parentExecution, 'borrowed authority can be reverified after quiesce');
     $service->release($parentExecution, false, '2026-09-15T00:30:20+00:00');

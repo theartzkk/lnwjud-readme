@@ -32,6 +32,15 @@ When two documents disagree, do not create a third rule file. Reconcile the lowe
 
 A second conflicting chat/worker must wait, join or resume the existing authority. It must not acquire a competing writer. Device-local `remote-mission-state` files are transport/device leases only and cannot authorize project/source/release mutation.
 
+### VPS and release invariants
+
+- A typed release execution that already owns `CANONICAL:DEPLOY` remains the sole deploy writer for its complete release lifecycle. Nested guarded-deploy stages MUST borrow and re-verify that parent authority; they MUST NOT create a second deploy execution that conflicts with the parent.
+- Compatibility upgrades from an older Production runtime may observe a still-running VPS execution whose task was incorrectly demoted to `WAITING_FOR_WORKER`. An exact-revision release controller may revive only that same VPS-native release task, renew its bounded lease, and continue under the same execution id; it must never create a replacement writer.
+- Device lease recovery applies only to tasks with a non-null `assigned_device_id`. VPS-native release/operator tasks are not device work and MUST NOT be demoted by generic worker recovery.
+- Production storage is a release precondition. Core Release must fail before dependency hydration when disk usage is at or above the critical threshold or bounded free-space headroom is insufficient; failed/terminal release workspaces and recreatable caches must be reclaimed without touching active/leased work.
+- Build/QA/rehearsal compute is disposable. A second VPS or device may return artifacts/evidence for an exact revision, but cannot become source, approval, task, release, or Production authority.
+- A release is complete only when canonical main, Production ref, public release identity and post-deploy verification agree on the exact revision. QA PASS alone is never Production truth.
+
 ## Canonical authority table
 
 | Domain | Canonical authority | Allowed extension | Forbidden shadow authority |
