@@ -11,6 +11,8 @@ ep(($p['ownerApprovalForCanonicalPromotion']??false)===true&&($p['actualOutcomeV
 ep(HubCapabilityRegistryService::mutationScopeForExecution('source.promote','VPS')==='EXTERNAL','persisted scope remains schema-compatible');
 ep(HubCapabilityRegistryService::mutationResourceForExecution('source.promote','VPS')==='CANONICAL:SOURCE','source promotion has a canonical source resource');
 ep(HubCapabilityRegistryService::mutationResourceForExecution('project.mutate.assisted','VPS')==='CANDIDATE','candidate mutations are isolated parallel work');
+ep(HubCapabilityRegistryService::mutationResourceForExecution('operator.project_mission','VPS')==='CANDIDATE','project missions are candidate-scoped and do not block canonical deploys');
+ep(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:DEPLOY','project-a','CANDIDATE','project-a')===false,'candidate mission does not block same-project deploy');
 ep(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:SOURCE','CANONICAL:SOURCE')===true,'same canonical resource serializes');
 ep(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:SOURCE','CANONICAL:DEPLOY')===false,'different canonical resources can proceed independently');
 ep(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:PROJECT','CANDIDATE')===true,'unknown canonical mutations fail closed');
