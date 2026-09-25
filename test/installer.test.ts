@@ -98,6 +98,47 @@ test('macOS Beta distribution uses a drag-to-Applications DMG with explicit evid
   assert.match(web, /Beta สำหรับทดสอบ · Source\/Checksum ผ่าน/);
 });
 
+test('full AWH Device Runtime engine is pinned, bundled per platform and AWH-branded', async () => {
+  const [manifestRaw, helper, forge, pkgRaw] = await Promise.all([
+    readFile(new URL('../config/full-device-engine-release.json', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/desktop/prepare-full-device-engine.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../forge.config.cjs', import.meta.url), 'utf8'),
+    readFile(new URL('../package.json', import.meta.url), 'utf8'),
+  ]);
+  const manifest = JSON.parse(manifestRaw) as any;
+  const pkg = JSON.parse(pkgRaw) as any;
+  assert.equal(manifest.engine, 'lnwjud');
+  assert.equal(manifest.version, '5.5.0');
+  assert.equal(manifest.upstreamCommit, '25f79dd417b925285ec84fb3e46e9d029eaa9f29');
+  assert.equal(manifest.minimumToolCount, 250);
+  assert.equal(manifest.dataAuthority, 'AWH');
+  assert.equal(manifest.headlessSecretPolicy.darwin, 'AWH_PRIVATE_FILE_0600');
+  assert.equal(manifest.headlessSecretPolicy.win32, 'OS_SAFE_STORAGE');
+  assert.equal(manifest.assets['darwin-arm64'].sha256, '69a4c0355bb5b2f8cf0c2af89210333e5682e86fa6a62996f49d9a8afe85b7d1');
+  assert.equal(manifest.assets['darwin-x64'].sha256, '0264147848a4eea1df025573f8f3413380784ca88358c51d1be678da994330aa');
+  assert.equal(manifest.assets['win32-x64'].sha256, '04a172af20e755346a31ff9d88e28fbeae8ac8d896fe278ea4aa8fb357363731');
+  assert.equal(manifest.assets['darwin-arm64'].provenanceSha256, '866f102ada7a4a0df8b482fa3dea6adf818459918627e3aea234beb18ffb8518');
+  assert.equal(manifest.assets['darwin-x64'].provenanceSha256, '2bf99ef70536e756e729b7b0984debead6d1ddbbb860e5f874be8f650a7dcd42');
+  assert.equal(manifest.assets['win32-x64'].provenanceSha256, '4ba2d15eedd0a903893418d8016a37a24205d3264eb485baa0c144d1334f6f25');
+  assert.match(helper, /AWH_DEVICE_RUNTIME_HEADLESS/);
+  assert.match(helper, /engine-secret.key/);
+  assert.match(helper, /mode: 384/);
+  assert.match(helper, /AWHDeviceRuntime.exe/);
+  assert.match(helper, /awh-mcp-stdio/);
+  assert.match(helper, /codesign/);
+  assert.match(helper, /sha256/);
+  assert.match(helper, /verifyProvenance/);
+  assert.match(helper, /fileURLToPath/);
+  assert.match(helper, /document\.source\?\.commit!==manifest\.upstreamCommit/);
+  assert.doesNotMatch(helper, /@latest|releases\/latest/);
+  assert.match(forge, /extraResource:[\s\S]*awh-device-runtime/);
+  assert.match(pkg.scripts?.['desktop:package:mac:arm64'] ?? '', /prepare-full-device-engine.mjs --platform=darwin --arch=arm64/);
+  assert.match(pkg.scripts?.['desktop:package:mac:x64'] ?? '', /prepare-full-device-engine.mjs --platform=darwin --arch=x64/);
+  assert.match(pkg.scripts?.['desktop:package:windows'] ?? '', /prepare-full-device-engine.mjs --platform=win32 --arch=x64/);
+  assert.equal(pkg.devDependencies?.['@electron/asar'], '3.2.13');
+  assert.equal(pkg.devDependencies?.['extract-zip'], '2.0.1');
+});
+
 test('lightweight AWH Device Runtime is pinned, self-updating and rollback-safe', async () => {
   const [manifestRaw, updater, supervisor, installer, patch] = await Promise.all([
     readFile(new URL('../config/device-runtime-release.json', import.meta.url), 'utf8'),

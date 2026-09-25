@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "product": "AWH Full Device Engine",
+  "channel": "beta",
+  "engine": "lnwjud",
+  "version": "5.5.0",
+  "upstreamCommit": "25f79dd417b925285ec84fb3e46e9d029eaa9f29",
+  "minimumToolCount": 250,
+  "dataAuthority": "AWH",
+  "headlessSecretPolicy": {
+    "darwin": "AWH_PRIVATE_FILE_0600",
+    "win32": "OS_SAFE_STORAGE"
+  },
+  "assets": {
+    "darwin-arm64": {
+      "filename": "lnwjud-5.5.0-arm64.zip",
+      "sha256": "69a4c0355bb5b2f8cf0c2af89210333e5682e86fa6a62996f49d9a8afe85b7d1",
+      "provenanceFilename": "PROVENANCE-darwin-arm64.json",
+      "provenanceSha256": "866f102ada7a4a0df8b482fa3dea6adf818459918627e3aea234beb18ffb8518"
+    },
+    "darwin-x64": {
+      "filename": "lnwjud-5.5.0-x64.zip",
+      "sha256": "0264147848a4eea1df025573f8f3413380784ca88358c51d1be678da994330aa",
+      "provenanceFilename": "PROVENANCE-darwin-x64.json",
+      "provenanceSha256": "2bf99ef70536e756e729b7b0984debead6d1ddbbb860e5f874be8f650a7dcd42"
+    },
+    "win32-x64": {
+      "filename": "lnwjud-Portable-5.5.0.exe",
+      "sha256": "04a172af20e755346a31ff9d88e28fbeae8ac8d896fe278ea4aa8fb357363731",
+      "provenanceFilename": "PROVENANCE-win32-x64.json",
+      "provenanceSha256": "4ba2d15eedd0a903893418d8016a37a24205d3264eb485baa0c144d1334f6f25"
+    }
+  }
+}

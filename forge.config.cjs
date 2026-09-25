@@ -72,6 +72,7 @@ module.exports = {
     ...(electronZipDir ? { electronZipDir } : {}),
     asar: true,
     overwrite: true,
+    extraResource: [path.join(__dirname, '.awh-build', 'awh-device-runtime')],
     ignore: [
       /^\/\.awh($|\/)/,
       /^\/\.awh-local($|\/)/,

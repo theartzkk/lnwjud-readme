@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test, { type TestContext } from 'node:test';
 import {
+  buildDeviceRuntimeMcpCommand,
   buildPackagedMcpCommand,
+  bundledDeviceRuntimeLauncher,
   connectTunnelRuntime,
   inspectTunnelReadiness,
   packagedMcpPaths,
@@ -83,6 +85,54 @@ test('packaged MCP command is fixed to the packaged entrypoint and remote profil
   assert.match(command, /dist.*index\.js/);
   assert.doesNotMatch(command, /(?:^|\s)(?:cmd|powershell|pwsh|sh|bash)(?:\.exe)?(?:\s|$)/i);
   assert.ok(command.startsWith('"') && command.endsWith('"'));
+});
+
+test('AWH full device engine is the primary MCP provider when an approved launcher exists', async (t) => {
+  const fixture = await packagedFixture(t);
+  const launcher = join(fixture.root, process.platform === 'win32' ? 'awh-mcp-stdio.cmd' : 'awh-mcp-stdio');
+  await writeFile(launcher, 'fixture', 'utf8');
+  const status = await inspectTunnelReadiness(fixture.workspace, fixture.appExecutable, {
+    TUNNEL_CLIENT_BIN: fixture.appExecutable,
+    CONTROL_PLANE_API_KEY: VALID_RUNTIME_KEY,
+    CONTROL_PLANE_TUNNEL_ID: VALID_TUNNEL_ID,
+    AWH_DEVICE_MCP_LAUNCHER: launcher,
+  }, TRUSTED_PROBE);
+
+  assert.equal(status.ready, true);
+  assert.equal(status.mcpProvider, 'AWH_DEVICE_RUNTIME');
+  assert.equal(status.packagedMcpReady, true);
+  assert.equal(status.mcpCommand, buildDeviceRuntimeMcpCommand(launcher, fixture.workspace));
+  assert.doesNotMatch(status.mcpCommand ?? '', /app.asar|--remote-tunnel/);
+});
+
+test('explicit AWH full device engine configuration fails closed instead of silently downgrading', async (t) => {
+  const fixture = await packagedFixture(t);
+  const missing = join(fixture.root, 'missing-awh-runtime');
+  const status = await inspectTunnelReadiness(fixture.workspace, fixture.appExecutable, {
+    TUNNEL_CLIENT_BIN: fixture.appExecutable,
+    CONTROL_PLANE_API_KEY: VALID_RUNTIME_KEY,
+    CONTROL_PLANE_TUNNEL_ID: VALID_TUNNEL_ID,
+    AWH_DEVICE_MCP_LAUNCHER: missing,
+  }, TRUSTED_PROBE);
+
+  assert.equal(status.ready, false);
+  assert.equal(status.mcpProvider, undefined);
+  assert.equal(status.mcpCommand, undefined);
+  assert.ok(status.blockers.includes('Configured AWH Device Runtime launcher was not found'));
+});
+
+test('bundled AWH full device engine paths stay inside the application resources boundary', async (t) => {
+  const fixture = await packagedFixture(t);
+  const macExecutable = join(fixture.root, 'AWH Agent.app', 'Contents', 'MacOS', 'AWH');
+  const windowsExecutable = join(fixture.root, 'AWH.exe');
+  assert.equal(
+    bundledDeviceRuntimeLauncher(macExecutable, 'darwin'),
+    join(fixture.root, 'AWH Agent.app', 'Contents', 'Resources', 'awh-device-runtime', 'awh-mcp-stdio'),
+  );
+  assert.equal(
+    bundledDeviceRuntimeLauncher(windowsExecutable, 'win32'),
+    join(fixture.root, 'resources', 'awh-device-runtime', 'awh-mcp-stdio.cmd'),
+  );
 });
 
 test('tunnel readiness requires explicit trusted binary, restricted runtime key, tunnel id and packaged MCP layout', async (t) => {
