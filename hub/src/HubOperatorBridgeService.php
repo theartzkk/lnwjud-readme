@@ -52,7 +52,7 @@ final class HubOperatorBridgeService
         return match($action){
             'system.status'=>$this->systemStatus($at),
             'projects.list'=>$this->projects($at),
-            'project.gate'=>$this->projectGate(self::text($request,'project',160),$at),
+            'project.gate'=>$this->projectGate(self::text($request,'project',160),$at,false,self::MISSION_CAPABILITY),
             'verification.store'=>$this->verificationStore($request,$at),
             'verification.regressions'=>$this->verificationRegressions($request,$at),
             'vault.export'=>$this->vaultExport($request,$at),
