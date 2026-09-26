@@ -297,6 +297,21 @@ test('every canonical patch requires bounded release details before Update Cente
 });
 
 
+
+test('M21 through M23 release lanes cannot bypass exact enrollment lineage sync', async()=>{
+  const remote=await readFile(join(ROOT,'deploy/awh-control-plane/remote-deploy-control-plane.sh'),'utf8');
+  const start=remote.indexOf('sync_enrollment_from_release() {');
+  const end=remote.indexOf('reconcile_provider_credential_storage() {');
+  assert.ok(start>=0&&end>start);
+  const gate=remote.slice(start,end);
+  for(const mode of ['PROJECT_SOURCE_AUTHORITY','IDENTITY_CONVERGENCE','PLATFORM_HARDENING']){
+    assert.ok(gate.includes(mode),mode+' must participate in enrollment lineage sync');
+  }
+  assert.ok(!gate.includes('test "$PROJECT_SOURCE_AUTHORITY" = 1 || return 0'));
+  assert.match(gate,/ENROLLMENT_RELEASE_SYNC/);
+  assert.match(gate,/ENROLLMENT_POINTER_SWITCH/);
+});
+
 test('control release package contains every file required by atomic enrollment lineage sync', async()=>{
   const [deploy,remote]=await Promise.all([
     readFile(join(ROOT,'deploy/awh-control-plane/deploy-control-plane.sh'),'utf8'),

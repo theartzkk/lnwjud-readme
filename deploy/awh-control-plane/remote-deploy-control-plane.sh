@@ -174,7 +174,9 @@ enrollment_pointer_restore() {
   fi
 }
 sync_enrollment_from_release() {
-  test "$PROJECT_SOURCE_AUTHORITY" = 1 || return 0
+  if test "$PROJECT_SOURCE_AUTHORITY" != 1 && test "$IDENTITY_CONVERGENCE" != 1 && test "$PLATFORM_HARDENING" != 1; then
+    return 0
+  fi
   for RELATIVE in hub/public/enrollment.php hub/src/HubEnrollmentService.php hub/src/HubEnrollmentRouter.php hub/src/HubEnrollmentApiMigration.php hub/migrations/002_m3e2_enrollment_api.sql hub/bin/migrate-m3e2.php deploy/nginx/awh-enrollment.conf deploy/php-fpm/awh-enrollment.pool.conf deploy/awh-enrollment/pointer-state.sh deploy/awh-enrollment/insert-nginx-include.php deploy/awh-enrollment/remote-deploy.sh; do
     sudo test -f "$RELEASE/$RELATIVE" || return 1
   done
