@@ -53,6 +53,7 @@ test('repository governance is a single machine-enforced contract', async () => 
 
   const drift = await readFile(join(root, 'hub/bin/ecosystem-source-drift.php'), 'utf8');
   assert.match(drift, /governanceRepositories/);
+  assert.match(drift, /dirname\(__DIR__, 2\).*repository-governance-contract\.json/s);
   assert.match(drift, /default HEAD drift/);
   assert.match(drift, /project manifest id drift/);
   assert.match(drift, /forbidden parallel authority file/);
@@ -70,6 +71,10 @@ test('repository governance is a single machine-enforced contract', async () => 
 
   const deploy = await readFile(join(root, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'), 'utf8');
   assert.match(deploy, /SOURCE_DRIFT_HOTFIX_RETIRED=0/);
+  assert.match(deploy, /governance_rows=/);
+  assert.match(deploy, /setfacl -m u:awh-hub:r-x,d:u:awh-hub:r-x/);
+  assert.match(deploy, /setfacl -m u:awh-hub:r--/);
+  assert.match(deploy, /test ! -w "\$governed_path"/);
   assert.match(deploy, /SOURCE_DRIFT_HOTFIX_PREEXISTING=1/);
   assert.match(deploy, /SOURCE_DRIFT_OVERRIDE_PREEXISTING=1/);
   assert.match(deploy, /governanceRepositories/);

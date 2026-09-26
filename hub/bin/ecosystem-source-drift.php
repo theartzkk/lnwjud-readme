@@ -87,18 +87,20 @@ if (is_string($runtime) && $runtime!=='') {
 $governanceRepositories = 0;
 $governanceContract = null;
 $awhRepository = $gitRoot . '/awh.git';
-if (is_dir($awhRepository)) {
+$contractPath = dirname(__DIR__, 2) . '/config/repository-governance-contract.json';
+$raw = is_file($contractPath) ? (string) file_get_contents($contractPath) : '';
+if ($raw === '' && is_dir($awhRepository)) {
     $raw = (string) shell_exec('git --git-dir=' . escapeshellarg($awhRepository) . ' show refs/heads/production:config/repository-governance-contract.json 2>/dev/null');
-    if ($raw === '') {
-        $findings[] = 'Repository governance contract is unavailable from AWH production source';
-    } else {
-        try {
-            $decoded = json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
-            if (!is_array($decoded) || array_is_list($decoded) || ($decoded['schemaVersion'] ?? null) !== 1) throw new RuntimeException('invalid repository governance contract');
-            $governanceContract = $decoded;
-        } catch (Throwable) {
-            $findings[] = 'Repository governance contract is invalid';
-        }
+}
+if ($raw === '') {
+    $findings[] = 'Repository governance contract is unavailable from immutable release and AWH production source';
+} else {
+    try {
+        $decoded = json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
+        if (!is_array($decoded) || array_is_list($decoded) || ($decoded['schemaVersion'] ?? null) !== 1) throw new RuntimeException('invalid repository governance contract');
+        $governanceContract = $decoded;
+    } catch (Throwable) {
+        $findings[] = 'Repository governance contract is invalid';
     }
 }
 if (is_array($governanceContract)) {
