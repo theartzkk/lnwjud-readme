@@ -51,6 +51,10 @@ function safeErrorMessage(value) {
     PROVIDER_RATE_LIMITED: 'OpenAI จำกัดการเรียกใช้ชั่วคราว กรุณาลองใหม่ภายหลัง',
     PROVIDER_UNAVAILABLE: 'OpenAI ยังไม่พร้อมตอบในขณะนี้ งานของคุณจะไม่ถูกอ้างว่าเสร็จแล้ว',
     PROVIDER_TEST_FAILED: 'ทดสอบ OpenAI ไม่ผ่าน กรุณาตรวจการเชื่อมต่อแล้วลองใหม่',
+    LINE_CREDENTIAL_INVALID: 'Channel Secret หรือ Access Token ของ LINE ไม่ถูกต้อง',
+    LINE_GATEWAY_NOT_CONFIGURED: 'ยังไม่ได้ตั้งค่า AWH LINE OA',
+    LINE_GATEWAY_SCHEMA_NOT_READY: 'AWH LINE OA ยังไม่พร้อมหลังอัปเดต',
+    LINE_DELIVERY_FAILED: 'LINE ตอบกลับไม่ได้ชั่วคราว กรุณาลองใหม่',
     REGISTRATION_PENDING: 'คำขอใช้งานนี้อยู่ระหว่างการพิจารณาแล้ว',
     USERNAME_UNAVAILABLE: 'ชื่อผู้ใช้นี้ถูกใช้แล้ว กรุณาเลือกชื่อใหม่',
     IDENTITY_OWNED_BY_BAY: 'ตัวตนและบทบาทในโรงเรียนอ้างอิงจาก BAY EXCUSE X ส่วนบัญชีนี้ใช้สำหรับเข้า KRUART/AWH เท่านั้น',
@@ -229,6 +233,10 @@ export async function exportWorkspace() { return controlRequest('/api/v1/control
 export async function loadObservabilityStatus() { return controlRequest('/api/v1/control/observability'); }
 export async function updateObservabilityCredential(action, secret = null) { if (!['SET', 'REMOVE'].includes(action) || (action === 'SET' && (typeof secret !== 'string' || !secret.trim() || secret.length > 4096)) || (action === 'REMOVE' && secret !== null)) throw new Error('Honeycomb API key ไม่ถูกต้อง'); return controlRequest('/api/v1/control/observability/credential', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, action, secret: action === 'SET' ? secret.trim() : null }) }); }
 export async function loadProviderStatus() { return controlRequest('/api/v1/control/provider'); }
+export async function loadLineOaStatus() { return controlRequest('/api/v1/control/line-oa'); }
+export async function configureLineOa(channelSecret, accessToken) { if (typeof channelSecret !== 'string' || channelSecret.trim().length < 16 || typeof accessToken !== 'string' || accessToken.trim().length < 40) throw new Error('กรอก LINE Channel Secret และ Channel Access Token ให้ครบ'); return controlRequest('/api/v1/control/line-oa/credential', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, channelSecret: channelSecret.trim(), accessToken: accessToken.trim() }) }); }
+export async function createLineOaPairing() { return controlRequest('/api/v1/control/line-oa/pairing', { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
+export async function revokeLineOaBinding() { return controlRequest('/api/v1/control/line-oa/revoke', { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
 export async function loadCapabilities() { const value = await controlRequest('/api/v1/control/capabilities'); if (value.schemaVersion !== 1 || !value.summary || !Array.isArray(value.capabilities)) throw new Error('ข้อมูลความสามารถของ AWH ไม่ถูกต้อง'); return value; }
 export async function updateProviderPolicy(policy) { return controlRequest('/api/v1/control/provider', { method: 'POST', body: JSON.stringify(policy) }); }
 export async function updateProviderCredential(action, secret = null) { if (!['SET', 'REMOVE'].includes(action) || (action === 'SET' && (typeof secret !== 'string' || !secret.trim() || secret.length > 512)) || (action === 'REMOVE' && secret !== null)) throw new Error('การตั้งค่า credential ไม่ถูกต้อง'); return controlRequest('/api/v1/control/provider/credential', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, action, secret: action === 'SET' ? secret.trim() : null }) }); }

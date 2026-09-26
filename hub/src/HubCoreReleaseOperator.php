@@ -147,7 +147,7 @@ final class HubCoreReleaseOperator
             $dirty=trim($this->run(['/usr/bin/git','-C',$workspace,'status','--porcelain=v1','--untracked-files=all'],null,20,'CORE_RELEASE_WORKSPACE_VERIFY_FAILED')['out']);
             if($dirty!=='')throw new HubCoreReleaseOperatorException('Dependency preparation changed tracked source','CORE_RELEASE_SOURCE_DIRTY');
 
-            $args=[$node,$workspace.'/scripts/ops/bounded-deploy-mission.mjs','--platform-hardening','--approve'];
+            $args=[$node,$workspace.'/scripts/ops/bounded-deploy-mission.mjs','--line-oa-gateway','--approve'];
             if(($checkpoint['cleanupTopology']??false)===true)$args[]='--cleanup-topology';
             $this->event((string)$row['task_id'],'RUNNING',30,'AWH กำลังรัน bounded QA, backup, rollback และ Production gates',$at);
             $result=$this->run($args,['cwd'=>$workspace,'env'=>$env],6900,'CORE_RELEASE_MISSION_COMMAND_FAILED');

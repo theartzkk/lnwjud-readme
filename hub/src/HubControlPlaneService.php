@@ -50,6 +50,8 @@ require_once __DIR__ . '/HubProjectSourceAuthorityService.php';
 require_once __DIR__ . '/HubProjectSourceSyncService.php';
 require_once __DIR__ . '/HubAiPassProjectExportService.php';
 require_once __DIR__ . '/HubUpdateTargetRegistry.php';
+require_once __DIR__ . '/HubLineOaGatewayMigration.php';
+require_once __DIR__ . '/HubLineOaGatewayService.php';
 
 final class HubControlPlaneException extends RuntimeException
 {
@@ -106,6 +108,7 @@ final class HubControlPlaneService
     private readonly HubBayRemoteUpdateService $bayRemoteUpdate;
     private readonly ?HubSchoolIdentityService $schoolIdentity;
     private readonly HubDeviceRoleRegistry $deviceRoles;
+    private readonly ?HubLineOaGatewayService $lineOa;
 
     private function __construct(private readonly PDO $pdo, private readonly HubEnrollmentService $enrollment, private readonly string $databasePath)
     {
@@ -139,6 +142,8 @@ final class HubControlPlaneService
         $schoolIdentity=null;try{HubIdentityConvergenceMigration::assertCapabilityReady($pdo,dirname(__DIR__).'/migrations/021_identity_convergence.sql');$schoolIdentity=HubSchoolIdentityService::fromEnvironment($pdo);}catch(Throwable){}
         $this->schoolIdentity=$schoolIdentity;
         $this->deviceRoles = HubDeviceRoleRegistry::fromEnvironment();
+        $lineOa=null;try{if(HubLineOaGatewayMigration::schemaPresent($pdo))$lineOa=HubLineOaGatewayService::fromEnvironment($pdo);}catch(Throwable){}
+        $this->lineOa=$lineOa;
     }
 
     public static function openExisting(string $databasePath): self
@@ -1131,6 +1136,44 @@ final class HubControlPlaneService
     {
         $session = $this->authorizeSession($sessionToken, $csrfToken, $now);
         return $this->submitConversationForUser((string) $session['user_id'], $payload, $now);
+    }
+
+    public function lineOaStatus(string $sessionToken, ?string $now = null): array
+    {
+        $session=$this->sessionRow($sessionToken,$now);$userId=(string)$session['user_id'];$this->assertOwner($userId);
+        return $this->lineOaService()->status($userId,$now);
+    }
+
+    public function configureLineOa(string $sessionToken,string $csrfToken,array $payload,?string $now=null): array
+    {
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now);$userId=(string)$session['user_id'];$this->assertOwner($userId);
+        try{HubOwnerAuthService::assertRecentStepUpSession($session,$now);}catch(HubOwnerAuthException){throw new HubControlPlaneException('A recent password confirmation is required','STEP_UP_REQUIRED');}
+        self::exactKeys($payload,['accessToken','channelSecret','schemaVersion']);
+        if(($payload['schemaVersion']??null)!==1)throw new HubControlPlaneException('Unsupported LINE gateway schema','SCHEMA_VERSION');
+        return $this->lineOaService()->configure((string)($payload['channelSecret']??''),(string)($payload['accessToken']??''),$userId,$now);
+    }
+
+    public function openLineOaPairing(string $sessionToken,string $csrfToken,array $payload,?string $now=null): array
+    {
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now);$userId=(string)$session['user_id'];$this->assertOwner($userId);
+        try{HubOwnerAuthService::assertRecentStepUpSession($session,$now);}catch(HubOwnerAuthException){throw new HubControlPlaneException('A recent password confirmation is required','STEP_UP_REQUIRED');}
+        self::exactKeys($payload,['schemaVersion']);if(($payload['schemaVersion']??null)!==1)throw new HubControlPlaneException('Unsupported LINE pairing schema','SCHEMA_VERSION');
+        return ['schemaVersion'=>1,'pairing'=>$this->lineOaService()->openPairing($userId,$now)];
+    }
+
+    public function revokeLineOaBinding(string $sessionToken,string $csrfToken,array $payload,?string $now=null): array
+    {
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now);$userId=(string)$session['user_id'];$this->assertOwner($userId);
+        try{HubOwnerAuthService::assertRecentStepUpSession($session,$now);}catch(HubOwnerAuthException){throw new HubControlPlaneException('A recent password confirmation is required','STEP_UP_REQUIRED');}
+        self::exactKeys($payload,['schemaVersion']);if(($payload['schemaVersion']??null)!==1)throw new HubControlPlaneException('Unsupported LINE revoke schema','SCHEMA_VERSION');
+        $this->lineOaService()->revokeBinding($userId,$now);return $this->lineOaService()->status($userId,$now);
+    }
+
+    public function handleLineOaWebhook(string $signature,string $body,?string $now=null): array
+    {
+        return $this->lineOaService()->handleWebhook($signature,$body,function(string $userId,string $message,string $eventId)use($now):array{
+            return $this->submitLineConversationForUser($userId,$message,$eventId,$now);
+        },$now);
     }
 
     public function automations(string $sessionToken, ?string $now = null): array
@@ -3904,6 +3947,54 @@ final class HubControlPlaneService
     {
         $q=$this->pdo->prepare('SELECT name,type FROM projects WHERE project_id=:project LIMIT 1');$q->execute(['project'=>$projectId]);$row=$q->fetch();if(!is_array($row))return false;$name=(string)($row['name']??'');return str_starts_with($name,'BAY ')||$name==='BAY EXCUSE X'||$name==='เว็บไซต์โรงเรียน'||(string)($row['type']??'')==='school';
     }
+    private function lineOaService(): HubLineOaGatewayService
+    {
+        if($this->lineOa===null)throw new HubControlPlaneException('LINE OA gateway is not ready','LINE_GATEWAY_SCHEMA_NOT_READY');
+        return $this->lineOa;
+    }
+
+    private function submitLineConversationForUser(string $userId,string $message,string $eventId,?string $now=null): array
+    {
+        $this->assertOwner($userId);
+        if(preg_match('/^(?:สถานะระบบ|เช็กระบบ|ตรวจระบบ|system status)$/iu',trim($message))===1)return ['replyText'=>$this->lineSystemStatusText($userId)];
+        if(preg_match('/^(?:สถานะงาน|งานล่าสุด|latest task|task status)$/iu',trim($message))===1)return ['replyText'=>$this->lineLatestTaskText($userId)];
+        $project=$this->lineProjectForMessage($userId,$message);
+        $result=$this->submitConversationForUser($userId,['schemaVersion'=>1,'projectId'=>$project['projectId'],'message'=>$message,'idempotencyKey'=>'line.'.substr(hash('sha256',$eventId),0,48)],$now);
+        $messages=is_array($result['messages']??null)?$result['messages']:[];$last=$messages===[]?null:$messages[array_key_last($messages)];
+        if(is_array($last)&&in_array($last['kind']??null,['assistant','result','failure'],true))return ['replyText'=>(string)$last['body']];
+        $tasks=is_array($result['tasks']??null)?$result['tasks']:[];$task=$tasks===[]?null:$tasks[array_key_last($tasks)];
+        $state=is_array($task)?(string)($task['state']??'RECEIVED'):'RECEIVED';
+        return ['replyText'=>'รับคำสั่งแล้ว ✅'."\n".$project['name']."\n".'สถานะ: '.$state."\n".'งานเดียวกันนี้จะเห็นต่อใน AWH Control Panel'];
+    }
+
+    private function lineProjectForMessage(string $userId,string $message): array
+    {
+        $q=$this->pdo->prepare('SELECT p.project_id,p.name FROM projects p JOIN user_project_memberships m ON m.project_id=p.project_id AND m.user_id=:user AND m.revoked_at IS NULL ORDER BY p.name');$q->execute(['user'=>$userId]);$rows=$q->fetchAll();
+        $patterns=[['/(?:ข้อสอบ|assessment)/iu','BAY Assessment'],['/(?:learn\s*lab|learnlab|ใบงาน)/iu','BAY LearnLab'],['/(?:computer\s*lab|ห้องคอม)/iu','BAY Computer Lab'],['/(?:เว็บไซต์โรงเรียน|school\s*website)/iu','เว็บไซต์โรงเรียน'],['/(?:excuse|สหกรณ์|เช็กชื่อ|ลาเรียน)/iu','BAY EXCUSE'],['/(?:\bAWH\b|workspace\s*hub)/iu','Workspace Hub']];
+        foreach($patterns as [$pattern,$needle])if(preg_match($pattern,$message)===1)foreach($rows as $row)if(stripos((string)$row['name'],$needle)!==false)return ['projectId'=>(string)$row['project_id'],'name'=>(string)$row['name']];
+        foreach($rows as $row)if(stripos((string)$row['name'],'Workspace Hub')!==false)return ['projectId'=>(string)$row['project_id'],'name'=>(string)$row['name']];
+        if($rows===[])throw new HubControlPlaneException('Owner has no project','PROJECT_FORBIDDEN');
+        return ['projectId'=>(string)$rows[0]['project_id'],'name'=>(string)$rows[0]['name']];
+    }
+
+    private function lineLatestTaskText(string $userId): string
+    {
+        $this->assertOwner($userId);$q=$this->pdo->prepare('SELECT t.state,t.progress,t.result_summary,t.failure_code,t.updated_at,p.name FROM control_tasks t JOIN projects p ON p.project_id=t.project_id WHERE t.user_id=:user ORDER BY t.updated_at DESC,t.task_id DESC LIMIT 1');$q->execute(['user'=>$userId]);$row=$q->fetch();
+        if(!is_array($row))return 'ยังไม่มีงานใน AWH';
+        $text='งานล่าสุด · '.(string)$row['name']."\n".'สถานะ: '.(string)$row['state'].' · '.(int)$row['progress'].'%';
+        if(is_string($row['result_summary']??null)&&trim((string)$row['result_summary'])!=='')$text.="\n".self::conversationText((string)$row['result_summary']);
+        elseif(is_string($row['failure_code']??null)&&$row['failure_code']!=='')$text.="\n".'รหัสปัญหา: '.(string)$row['failure_code'];
+        return $text;
+    }
+
+    private function lineSystemStatusText(string $userId): string
+    {
+        $this->assertOwner($userId);$db=(string)$this->pdo->query('PRAGMA quick_check')->fetchColumn();
+        $projects=(int)$this->pdo->query('SELECT COUNT(*) FROM projects')->fetchColumn();$active=(int)$this->pdo->query("SELECT COUNT(*) FROM control_tasks WHERE state IN ('QUEUED','WAITING_FOR_WORKER','PREPARING','RUNNING','QA','WAITING_FOR_APPROVAL')")->fetchColumn();
+        $failed=(int)$this->pdo->query("SELECT COUNT(*) FROM control_tasks WHERE state='FAILED' AND updated_at>=datetime('now','-1 day')")->fetchColumn();
+        return 'AWH พร้อมใช้งาน ✅'."\n".'Database: '.($db==='ok'?'OK':$db)."\n".'โปรเจกต์: '.$projects."\n".'งานที่กำลังเดิน: '.$active."\n".'งานล้มเหลว 24 ชม.: '.$failed;
+    }
+
     private function assertOwner(string $userId): void { $q = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1'); if (!hash_equals((string) $q->fetchColumn(), $userId)) throw new HubControlPlaneException('Owner access is required', 'OWNER_FORBIDDEN'); }
     private function isOwnerUser(string $userId): bool { $q = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1'); $owner = $q->fetchColumn(); return is_string($owner) && hash_equals($owner, $userId); }
     private function profileRole(string $userId): string { $q = $this->pdo->prepare('SELECT system_role FROM control_user_profiles WHERE user_id = :user AND status = \'ACTIVE\''); $q->execute(['user' => $userId]); $role = $q->fetchColumn(); return is_string($role) && in_array($role, ['OWNER','ADMIN','DIRECTOR','TEACHER','STAFF','VIEWER'], true) ? $role : 'STAFF'; }

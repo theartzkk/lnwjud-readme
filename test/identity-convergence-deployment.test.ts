@@ -5,7 +5,7 @@ import test from 'node:test';
 const root=new URL('..',import.meta.url);
 const read=(path:string)=>readFile(new URL('../'+path,import.meta.url),'utf8');
 
-test('M23 is the canonical AWH deploy mode and preserves M22/M21 as compatibility history',async()=>{
+test('M24 LINE OA extends the canonical AWH deploy path while preserving M23/M22/M21 history',async()=>{
   const deploy=await read('deploy/awh-control-plane/deploy-control-plane.sh');
   const remote=await read('deploy/awh-control-plane/remote-deploy-control-plane.sh');
   const mission=await read('scripts/ops/bounded-deploy-mission.mjs');
@@ -17,7 +17,13 @@ test('M23 is the canonical AWH deploy mode and preserves M22/M21 as compatibilit
   assert.match(deploy,/--platform-hardening\) PLATFORM_HARDENING=1/);
   assert.match(deploy,/RELEASE_ID=m23-/);
   assert.match(deploy,/hub\/migrations\/022_platform_hardening\.sql/);
+  assert.match(deploy,/--line-oa-gateway\) LINE_OA_GATEWAY=1/);
+  assert.match(deploy,/RELEASE_ID=m24-/);
+  assert.match(deploy,/hub\/migrations\/023_line_oa_gateway\.sql/);
   assert.match(remote,/IDENTITY_CONVERGENCE=\$\{31\}/);
+  assert.match(remote,/LINE_OA_GATEWAY=\$\{33\}/);
+  assert.match(remote,/m24-line-oa-gateway/);
+  assert.match(remote,/LINE_OA_GATEWAY_MIGRATION_VERIFIED/);
   assert.match(remote,/m22-identity-convergence/);
   assert.match(remote,/IDENTITY_CONVERGENCE_MIGRATION_VERIFIED/);
   const m22Start=remote.indexOf('if test "$IDENTITY_CONVERGENCE" = 1; then\n  # M22 keeps KRUART as platform-login authority');
@@ -37,7 +43,8 @@ test('M23 is the canonical AWH deploy mode and preserves M22/M21 as compatibilit
   assert.match(remote,/platform_authority='KRUART'.*school_authority='BAY_EXCUSE_X'/s);
   assert.match(remote,/control_user_profiles WHERE person_type IN \('TEACHER','DIRECTOR'\) OR system_role IN \('TEACHER','DIRECTOR'\)/);
   assert.match(mission,/return modes\[0\]\?\?'--platform-hardening'/);
-  assert.match(operator,/bounded-deploy-mission\.mjs','--platform-hardening','--approve'/);
+  assert.match(mission,/--line-oa-gateway/);
+  assert.match(operator,/bounded-deploy-mission\.mjs','--line-oa-gateway','--approve'/);
   assert.match(release,/releaseMode'=>'PLATFORM_HARDENING'/);
 });
 
