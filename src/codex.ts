@@ -61,6 +61,8 @@ export function codexEnvironment(): NodeJS.ProcessEnv {
     const value = process.env[name];
     if (value !== undefined) env[name] = value;
   }
+  env.DISABLE_TELEMETRY = '1';
+  env.DO_NOT_TRACK = '1';
   return env;
 }
 
