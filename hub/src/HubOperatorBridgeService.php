@@ -381,6 +381,8 @@ final class HubOperatorBridgeService
         $mission=$missionId===null?null:$this->activeProjectMission($missionId,$at,$projectId,true);
         $gate=$this->projectGate((string)$config['project'],$at,false,'source.promote',$missionId);if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('Project mutation gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
         $current=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($expected,self::gitSha($current)))throw new HubOperatorBridgeException('Canonical main moved before source promotion','OPERATOR_SOURCE_BASE_MOVED');
+        $defaultBranch=is_string($config['defaultBranch']??null)?trim((string)$config['defaultBranch']):'main';if(preg_match('/^[a-z0-9][a-z0-9._\/-]{0,79}$/',$defaultBranch)!==1)throw new HubOperatorBridgeException('Repository default branch contract is invalid','OPERATOR_SOURCE_REPOSITORY_FORBIDDEN');
+        $headBefore=trim($this->runGit($repoReal,['symbolic-ref','HEAD']));if(preg_match('#^refs/heads/[A-Za-z0-9._/-]+$#',$headBefore)!==1)throw new HubOperatorBridgeException('Repository default HEAD is unresolved','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');$headChanged=false;
         $heads=$this->runGit($repoReal,['bundle','list-heads',$bundleReal]);$advertised=false;foreach(preg_split('/\r?\n/',$heads)?:[] as $line){$parts=preg_split('/\s+/',trim($line));if(is_array($parts)&&isset($parts[0])&&strtolower((string)$parts[0])===$target){$advertised=true;break;}}
         if(!$advertised)throw new HubOperatorBridgeException('Target revision is not advertised by source bundle','OPERATOR_SOURCE_BUNDLE_NOT_READY');
         $authority=$mission===null?$this->acquireMutationAuthority($projectId,'Fast-forward canonical main '.$repository,'source.promote',['repository'=>$repository,'expectedMainSha'=>$expected,'targetSha'=>$target,'bundleSha256'=>$bundleSha],$at):['executionId'=>(string)$mission['execution_id'],'taskId'=>(string)$mission['task_id'],'projectId'=>$projectId,'leaseExpiresAt'=>(string)$mission['lease_expires_at']];$success=false;$releaseAuthority=$mission===null;
@@ -397,11 +399,17 @@ final class HubOperatorBridgeService
             $before=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($expected,self::gitSha($before)))throw new HubOperatorBridgeException('Canonical main moved during source promotion','OPERATOR_SOURCE_BASE_MOVED');
             $this->runGit($repoReal,['update-ref','refs/heads/main',$target,$expected]);
             $after=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($target,self::gitSha($after)))throw new HubOperatorBridgeException('Canonical main did not reach target revision','OPERATOR_SOURCE_PROMOTE_FAILED');
+            $expectedHead='refs/heads/'.$defaultBranch;
+            if(!hash_equals($headBefore,$expectedHead)){
+                try{$this->runGit($repoReal,['symbolic-ref','HEAD',$expectedHead]);$headChanged=true;$headAfter=trim($this->runGit($repoReal,['symbolic-ref','HEAD']));if(!hash_equals($headAfter,$expectedHead))throw new HubOperatorBridgeException('Repository default HEAD did not converge','OPERATOR_SOURCE_PROMOTE_FAILED');}
+                catch(Throwable $error){$this->runGitResult($repoReal,['update-ref','refs/heads/main',$expected,$target]);if($headChanged)$this->runGitResult($repoReal,['symbolic-ref','HEAD',$headBefore]);throw $error instanceof HubOperatorBridgeException?$error:new HubOperatorBridgeException('Repository default HEAD could not be reconciled','OPERATOR_SOURCE_PROMOTE_FAILED');}
+            }
             $audit=null;
             if($mission!==null){
                 try{$audit=$this->recordSourcePromotionAudit($projectId,$repository,$expected,$target,$bundleSha,$releaseNotes,$at);}
                 catch(Throwable $error){
                     $rollback=$this->runGitResult($repoReal,['update-ref','refs/heads/main',$expected,$target]);
+                    if($headChanged)$this->runGitResult($repoReal,['symbolic-ref','HEAD',$headBefore]);
                     if(($rollback['code']??1)!==0)throw new HubOperatorBridgeException('Canonical source moved but promotion audit failed and rollback could not be verified','OPERATOR_SOURCE_PROMOTE_FAILED');
                     throw $error instanceof HubOperatorBridgeException?$error:new HubOperatorBridgeException('Source promotion audit could not be stored','OPERATOR_SOURCE_PROMOTE_FAILED');
                 }

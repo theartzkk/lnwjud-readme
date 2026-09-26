@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "authority": "AWH_REPOSITORY_GOVERNANCE",
+  "canonicalSourceBranch": "main",
+  "rules": {
+    "requiredAgentEntrypoint": "AGENTS.md",
+    "liveEvidenceOnlyForMutableFacts": true,
+    "typedSourcePromotionOnly": true,
+    "resourceScopedMutationOwnership": true,
+    "forbidParallelAuthorityFiles": true,
+    "forbiddenAuthorityBasenames": [
+      "RULES.md",
+      "CLAUDE.md",
+      "CODEX.md",
+      "GEMINI.md",
+      "CONSTITUTION.md",
+      "INSTRUCTIONS.md"
+    ],
+    "historicalRoot": "history/",
+    "contextFilesMustDeclareRole": true,
+    "projectManifestPath": ".awh/project.json",
+    "mutableFactPatterns": [
+      "\\b[0-9a-f]{40}\\b",
+      "\\b(?:schema|user_version)\\s*(?:=|version)?\\s*\\d+\\b",
+      "\\bProduction\\s+(?:is|=|at|stays|remains)\\b"
+    ]
+  },
+  "repositories": {
+    "awh": {
+      "project": "Art’s Workspace Hub",
+      "projectId": "113b45c0-23e1-408d-ae0f-ac5eca7f6900",
+      "directory": "awh.git",
+      "canonicalBranch": "main",
+      "defaultHead": "production",
+      "requireProjectManifest": true,
+      "contextFiles": {
+        "ARCHITECTURE.md": "CONTEXT_ONLY_ARCHITECTURE",
+        "PROJECT.md": "CONTEXT_ONLY_PROJECT",
+        "CURRENT_STATE.md": "CONTEXT_ONLY_STATE_INDEX",
+        "HANDOFF.md": "CONTEXT_ONLY_HANDOFF_INDEX",
+        "TASKS.md": "CONTEXT_ONLY_TASK_INDEX",
+        "DECISIONS.md": "HISTORICAL_DECISION_INDEX",
+        "KRUART_ECOSYSTEM_MASTER_CONTROL.md": "HISTORICAL_POINTER"
+      }
+    },
+    "awh-local-agent": {
+      "project": null,
+      "projectId": null,
+      "directory": "awh-local-agent.git",
+      "canonicalBranch": "main",
+      "defaultHead": "main",
+      "requireProjectManifest": false,
+      "contextFiles": {}
+    },
+    "bay-assessment": {
+      "project": "BAY Assessment",
+      "projectId": "6f4920ab-3ca5-4f1e-8e91-8833c68c2d1a",
+      "directory": "bay-assessment.git",
+      "canonicalBranch": "main",
+      "defaultHead": "main",
+      "requireProjectManifest": true,
+      "contextFiles": {
+        "CURRENT_STATE.md": "CONTEXT_ONLY_STATE_INDEX",
+        "HANDOFF.md": "CONTEXT_ONLY_HANDOFF_INDEX",
+        "PROJECT.md": "CONTEXT_ONLY_PROJECT",
+        "TASKS.md": "CONTEXT_ONLY_TASK_INDEX"
+      }
+    },
+    "bay-computer-lab": {
+      "project": "BAY Computer Lab",
+      "projectId": "bcb7e7f1-5b1c-4ae5-a0cf-3d75c46b8a91",
+      "directory": "bay-computer-lab.git",
+      "canonicalBranch": "main",
+      "defaultHead": "main",
+      "requireProjectManifest": true,
+      "contextFiles": {
+        "HANDOFF.md": "CONTEXT_ONLY_HANDOFF_INDEX"
+      }
+    },
+    "bay-excuse-x": {
+      "project": "BAY EXCUSE X",
+      "projectId": "7ee0b9ec-4d2e-435f-92da-fa949afb7c01",
+      "directory": "bay-excuse-x.git",
+      "canonicalBranch": "main",
+      "defaultHead": "main",
+      "requireProjectManifest": true,
+      "contextFiles": {}
+    },
+    "bay-hub": {
+      "project": "BAY Hub",
+      "projectId": "7c6f77f6-7d34-4ff4-a240-896ade56576d",
+      "directory": "bay-hub.git",
+      "canonicalBranch": "main",
+      "defaultHead": "main",
+      "requireProjectManifest": true,
+      "contextFiles": {}
+    },
+    "bay-learnlab": {
+      "project": "BAY LearnLab",
+      "projectId": "a7285fbd-029b-4d17-9d26-c7497b28a72e",
+      "directory": "bay-learnlab.git",
+      "canonicalBranch": "main",
+      "defaultHead": "main",
+      "requireProjectManifest": true,
+      "contextFiles": {}
+    },
+    "school-website": {
+      "project": "เว็บไซต์โรงเรียน",
+      "projectId": "f33d5304-efe1-49bf-a669-72c097ce8465",
+      "directory": "school-website.git",
+      "canonicalBranch": "main",
+      "defaultHead": "main",
+      "requireProjectManifest": true,
+      "contextFiles": {}
+    }
+  },
+  "ignoredRepositories": {
+    "workspaces": "Internal compatibility/storage repository; not a managed product source."
+  },
+  "enforcementMode": "ROLLOUT"
+}

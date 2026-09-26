@@ -1,3 +1,6 @@
+> **Document role: AGENT_ENTRYPOINT**
+> This is the single agent entry point. Repository-level governance is machine-audited from config/repository-governance-contract.json.
+
 # AWH Agent Entry Point
 
 This is the single human-readable entry point for agents working on AWH/KRUART/BAY infrastructure.

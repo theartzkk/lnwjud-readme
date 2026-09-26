@@ -86,6 +86,17 @@ HOSTING_SERVICE_UNIT=/etc/systemd/system/awh-hosting-operator.service
 HOSTING_TIMER_UNIT=/etc/systemd/system/awh-hosting-operator.timer
 SOURCE_DRIFT_SERVICE_UNIT=/etc/systemd/system/awh-source-drift.service
 SOURCE_DRIFT_TIMER_UNIT=/etc/systemd/system/awh-source-drift.timer
+SOURCE_DRIFT_HOTFIX=/usr/local/lib/awh-hotfix/ecosystem-source-drift.php
+SOURCE_DRIFT_OVERRIDE=/etc/systemd/system/awh-source-drift.service.d/20-active-mutation-aware.conf
+SOURCE_DRIFT_HOTFIX_BACKUP=$EXECUTOR_BACKUP_ROOT/ecosystem-source-drift.hotfix.$RELEASE_ID
+SOURCE_DRIFT_OVERRIDE_BACKUP=$EXECUTOR_BACKUP_ROOT/awh-source-drift.override.$RELEASE_ID
+SOURCE_DRIFT_HOTFIX_PREEXISTING=0
+SOURCE_DRIFT_OVERRIDE_PREEXISTING=0
+SOURCE_DRIFT_HOTFIX_RETIRED=0
+OPERATOR_CLIENT=/usr/local/bin/awh-operator
+OPERATOR_CLIENT_BACKUP=$EXECUTOR_BACKUP_ROOT/awh-operator.$RELEASE_ID
+OPERATOR_CLIENT_PREEXISTING=0
+OPERATOR_CLIENT_INSTALLED=0
 HOSTING_SERVICE_BACKUP=$EXECUTOR_BACKUP_ROOT/awh-hosting-operator.service.$RELEASE_ID
 HOSTING_TIMER_BACKUP=$EXECUTOR_BACKUP_ROOT/awh-hosting-operator.timer.$RELEASE_ID
 TOPOLOGY_ARCHIVE=/var/backups/awh-hub/topology-cleanup-$RELEASE_ID
@@ -520,6 +531,28 @@ rollback() {
         sudo install -o root -g root -m 0755 "$PREVIOUS_TARGET/deploy/awh-backup/awh-backup-export" /usr/local/bin/awh-backup-export || ok=0
       else
         sudo rm -f /etc/systemd/system/awh-build.slice /usr/local/bin/awh-backup-export || ok=0
+      fi
+      sudo systemctl daemon-reload || ok=0
+    fi
+    if test "$OPERATOR_CLIENT_INSTALLED" -eq 1; then
+      if test "$OPERATOR_CLIENT_PREEXISTING" -eq 1; then
+        sudo cp -p "$OPERATOR_CLIENT_BACKUP" "$OPERATOR_CLIENT" || ok=0
+      else
+        sudo rm -f "$OPERATOR_CLIENT" || ok=0
+      fi
+    fi
+    if test "$SOURCE_DRIFT_HOTFIX_RETIRED" -eq 1; then
+      if test "$SOURCE_DRIFT_HOTFIX_PREEXISTING" -eq 1; then
+        sudo install -d -o root -g root -m 0755 /usr/local/lib/awh-hotfix || ok=0
+        sudo cp -p "$SOURCE_DRIFT_HOTFIX_BACKUP" "$SOURCE_DRIFT_HOTFIX" || ok=0
+      else
+        sudo rm -f "$SOURCE_DRIFT_HOTFIX" || ok=0
+      fi
+      if test "$SOURCE_DRIFT_OVERRIDE_PREEXISTING" -eq 1; then
+        sudo install -d -o root -g root -m 0755 /etc/systemd/system/awh-source-drift.service.d || ok=0
+        sudo cp -p "$SOURCE_DRIFT_OVERRIDE_BACKUP" "$SOURCE_DRIFT_OVERRIDE" || ok=0
+      else
+        sudo rm -f "$SOURCE_DRIFT_OVERRIDE" || ok=0
       fi
       sudo systemctl daemon-reload || ok=0
     fi
@@ -1246,10 +1279,21 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
     stage PLATFORM_RUNTIME_PREPARE
     sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-build.slice" /etc/systemd/system/awh-build.slice
     sudo install -o root -g root -m 0755 "$RELEASE/deploy/awh-backup/awh-backup-export" /usr/local/bin/awh-backup-export
+    if sudo test -e "$OPERATOR_CLIENT" || sudo test -L "$OPERATOR_CLIENT"; then
+      sudo test -f "$OPERATOR_CLIENT"
+      sudo test ! -L "$OPERATOR_CLIENT"
+      sudo cp -p "$OPERATOR_CLIENT" "$OPERATOR_CLIENT_BACKUP"
+      OPERATOR_CLIENT_PREEXISTING=1
+    fi
+    sudo install -o root -g root -m 0755 "$RELEASE/deploy/operator-bridge/awh-operator" "$OPERATOR_CLIENT"
+    OPERATOR_CLIENT_INSTALLED=1
+    sudo grep -Fq "vault-import" "$OPERATOR_CLIENT"
     PLATFORM_RUNTIME_INSTALLED=1
     sudo systemctl daemon-reload
     sudo systemctl cat awh-build.slice >/dev/null
     sudo test -x /usr/local/bin/awh-backup-export
+    sudo test -x "$OPERATOR_CLIENT"
+    sudo grep -Fq "vault-import" "$OPERATOR_CLIENT"
     stage PLATFORM_RUNTIME_READY
   fi
   stage MAINTENANCE_RUNTIME_READY
@@ -1258,8 +1302,22 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
   command -v setfacl >/dev/null 2>&1
   sudo setfacl -m u:awh-hub:rx /srv/awh-git
   sudo -u awh-hub test -x /srv/awh-git
+  sudo grep -Fq "activeProjects" "$RELEASE/hub/bin/ecosystem-source-drift.php"
+  sudo grep -Fq "governanceRepositories" "$RELEASE/hub/bin/ecosystem-source-drift.php"
+  sudo install -d -o root -g root -m 0750 "$EXECUTOR_BACKUP_ROOT"
+  if sudo test -f "$SOURCE_DRIFT_HOTFIX"; then
+    sudo cp -p "$SOURCE_DRIFT_HOTFIX" "$SOURCE_DRIFT_HOTFIX_BACKUP"
+    SOURCE_DRIFT_HOTFIX_PREEXISTING=1
+  fi
+  if sudo test -f "$SOURCE_DRIFT_OVERRIDE"; then
+    sudo cp -p "$SOURCE_DRIFT_OVERRIDE" "$SOURCE_DRIFT_OVERRIDE_BACKUP"
+    SOURCE_DRIFT_OVERRIDE_PREEXISTING=1
+  fi
   sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-source-drift.service" "$SOURCE_DRIFT_SERVICE_UNIT"
   sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-source-drift.timer" "$SOURCE_DRIFT_TIMER_UNIT"
+  sudo rm -f "$SOURCE_DRIFT_OVERRIDE" "$SOURCE_DRIFT_HOTFIX"
+  SOURCE_DRIFT_HOTFIX_RETIRED=1
+  if sudo test -d /usr/local/lib/awh-hotfix; then sudo rmdir /usr/local/lib/awh-hotfix 2>/dev/null || true; fi
   sudo systemctl daemon-reload
   sudo systemctl enable --now awh-source-drift.timer >/dev/null
   sudo systemctl is-enabled --quiet awh-source-drift.timer
@@ -1365,4 +1423,4 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
   stage SOURCE_DRIFT_VERIFIED
 fi
 stage EXECUTION_AUTHORITY_RELEASE; release_deploy_authority success; stage EXECUTION_AUTHORITY_RELEASED
-SUCCESS=1; printf '%s\n' 'DEPLOY_RESULT=PASS'; trap - EXIT HUP INT TERM; sudo rm -f "$REMOTE_STAGE" "$NGINX_BACKUP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" "$CONTROL_INCLUDE_TMP" "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP"; exit 0
+SUCCESS=1; printf '%s\n' 'DEPLOY_RESULT=PASS'; trap - EXIT HUP INT TERM; sudo rm -f "$REMOTE_STAGE" "$NGINX_BACKUP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" "$CONTROL_INCLUDE_TMP" "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP" "$SOURCE_DRIFT_HOTFIX_BACKUP" "$SOURCE_DRIFT_OVERRIDE_BACKUP" "$OPERATOR_CLIENT_BACKUP"; exit 0

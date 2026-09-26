@@ -1,22 +1,23 @@
-# AWH Handoff Contract
+> **Document role: CONTEXT_ONLY_HANDOFF_INDEX**
+> A handoff is continuity context, not runtime authority, not mutation authority, and not live runtime truth.
 
-> **Current-state authority:** Read `CURRENT_STATE.md` first; fresh observed runtime/source evidence outranks this handoff.
+Current-state authority is indexed by CURRENT_STATE.md and must be re-resolved from live evidence.
 
-Handoff is continuity context, not runtime authority.
+# Handoff Contract
 
-Before continuing work:
+Canonical work ownership lives in AWH Task/Execution/Envelope state. A chat or document cannot reserve a writer by itself.
 
-1. Read `AGENTS.md`.
-2. Inspect the current user request.
-3. Inspect live project mission/mutation ownership.
-4. Inspect canonical source, Production/public identity and relevant runtime evidence.
-5. JOIN/WAIT if a conflicting writer already exists; do not create another mutation authority.
-6. Resume the existing execution/checkpoint when one exists instead of blind retrying.
+When a human-readable handoff is useful, include only:
 
-A handoff may record the last observed SHA, execution id, blocker and evidence, but every mutable fact must be revalidated before use.
+1. project/lane name;
+2. intended outcome;
+3. exact candidate/source identity when known;
+4. completed work;
+5. remaining work;
+6. latest verified evidence and its observation time;
+7. blockers;
+8. temporary artifacts/workspaces that still exist;
+9. one next action;
+10. items that must not be repeated.
 
-Do not use a handoff to authorize Production, bypass an approval/security boundary, direct-write canonical source, replace Hub task/execution authority, or treat a device-local mission file as project authority.
-
-Keep the root handoff short. Detailed dated closure records belong under `history/` or a clearly historical document.
-
-The pre-standardization handoff history from 2026-09-24 is preserved at `history/governance-20260924/HANDOFF.pre-standardization.md`.
+Before resuming, re-resolve mission/gate/source/runtime state. If live evidence differs from the handoff, live evidence wins. Dated handoffs are archived under history/.

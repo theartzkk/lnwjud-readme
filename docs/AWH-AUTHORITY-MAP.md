@@ -72,6 +72,19 @@ A second conflicting chat/worker must wait, join or resume the existing authorit
 | Release Runner / Build VPS | canonical Task → Execution + Capability Registry, bound to exact revision | disposable Build/QA/Rehearsal compute returning verification/artifact evidence | second control plane, independent release queue, source authority, Owner approval or Production truth on the runner |
 | Backup / recovery | canonical backup/recovery mechanisms | domain backup metadata | feature-specific destructive backup/restore authority |
 
+
+## Repository and documentation governance
+
+Repository/document topology is machine-audited by config/repository-governance-contract.json. This contract does not create a second human-readable authority; it makes the entry-point and evidence precedence above enforceable.
+
+- Every managed product repository has one AGENTS.md entry point.
+- Parallel rule/constitution files such as RULES.md, CLAUDE.md, CODEX.md, GEMINI.md, CONSTITUTION.md or INSTRUCTIONS.md are forbidden in governed repositories.
+- Registered products carry a .awh/project.json identity that must match the canonical Project Registry project_id and name exactly.
+- Mutable facts such as current SHA, schema, queue state, device state, service state and Production identity come only from live evidence. Context documents must declare their role and must not masquerade as current-state authority.
+- Historical prose is retained under history/ or through explicit historical-pointer files; old links may survive, but old prose cannot regain execution authority.
+- Canonical source promotion also reconciles each repository's configured default HEAD. A failed promotion restores the previous HEAD and source ref.
+- Runtime compatibility hotfixes must be folded back into immutable release source and retired with rollback-safe deploy logic. Long-lived /usr/local/lib/awh-hotfix overrides are not an acceptable steady state.
+
 ## Hosting invariants
 
 Hosting is **a capability set and project projection on the existing control plane**, not a second SaaS backend inside AWH.

@@ -32,3 +32,11 @@ Desktop is install-once/evergreen. Windows keeps one stable Squirrel package ide
 A production migration begins only after a verified SQLite snapshot exists. Snapshots are created with SQLite snapshot semantics, hashed with SHA-256, paired with a manifest, and verified with integrity and foreign-key checks. Restore drills always materialize into an isolated scratch path; they never replace the production database automatically.
 
 AWH may automate backup creation and verification, but production cutover after restore remains an explicit staged operation with health verification and rollback evidence.
+
+## Documentation and compatibility-debt lifecycle
+
+- AGENTS.md is the sole agent entry point in each governed repository. Machine policy verifies repository identity, default branch, forbidden parallel authority files, and context-document roles.
+- CURRENT_STATE.md, PROJECT.md, HANDOFF.md, TASKS.md and similar continuity files never carry live Production truth. They are indices/context only; live mutable facts must be resolved from canonical runtime/source evidence.
+- Historical checkpoints remain preserved for audit but move under history/ or explicit historical pointers instead of accumulating in root files.
+- A temporary runtime hotfix is allowed only as a bounded compatibility measure with a named canonical replacement. The next verified release must absorb it and remove the override with rollback restoration.
+- Repository default HEAD is contract data, not an accidental side effect of the last branch touched.
