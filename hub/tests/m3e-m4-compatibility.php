@@ -29,7 +29,9 @@ $m4 = dirname(__DIR__) . '/migrations/003_m4_control_plane.sql';
 $projectId = '113b45c0-23e1-408d-ae0f-ac5eca7f6900';
 $ownerId = '223b45c0-23e1-408d-ae0f-ac5eca7f6900';
 $macId = '423b45c0-23e1-408d-ae0f-ac5eca7f6900';
-$now = '2026-08-22T00:00:00.000Z';
+// The HTTP router authenticates device tokens against the real clock, so this
+// compatibility fixture must stay time-relative instead of aging into expiry.
+$now = gmdate('Y-m-d\\TH:i:s.000\\Z');
 
 try {
     $pdo = new PDO('sqlite:' . $database, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
