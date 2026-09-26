@@ -122,3 +122,22 @@
   .cp-line-panel-head{align-items:flex-start}
   .cp-line-panel .cp-row{align-items:flex-start}
 }
+
+/* AWH Agent lives in the Owner Control Panel; infrastructure keeps only VPS diagnostics. */
+.cp-agent-center{scroll-margin-top:82px;background:linear-gradient(180deg,#fff 0%,#f7fbff 100%);border-color:#d7e7f5}
+.cp-agent-center>.cp-inline-message{margin:2px 0 14px}
+.cp-agent-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:14px 0}
+.cp-agent-metrics article{display:grid;gap:4px;min-width:0;padding:14px;border:1px solid #dbe8f4;border-radius:15px;background:#fff}
+.cp-agent-metrics small,.cp-agent-metrics span{color:#617991;font-size:11px;line-height:1.45}
+.cp-agent-metrics strong{color:#11325f;font-size:24px;letter-spacing:-.035em}
+.cp-agent-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.cp-agent-panel{min-width:0;padding:14px;border:1px solid #dbe8f4;border-radius:17px;background:#fff}
+.cp-agent-panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.cp-agent-panel-head>div{display:grid;gap:3px;min-width:0}.cp-agent-panel-head strong{color:#11325f;font-size:14px}.cp-agent-panel-head small{color:#617991;font-size:11px;line-height:1.45}
+.cp-agent-panel .cp-row{padding:10px;background:#f8fbff}.cp-agent-panel .cp-row strong{font-size:12.5px}.cp-agent-panel .cp-row small{font-size:11px}
+.cp-agent-advanced{margin-top:10px;border:1px solid #dbe8f4;border-radius:15px;background:#fff;overflow:hidden}
+.cp-agent-advanced>summary{display:flex;align-items:center;min-height:46px;padding:10px 13px;color:#11325f;font-size:12px;font-weight:850;cursor:pointer;list-style:none}
+.cp-agent-advanced>summary::-webkit-details-marker{display:none}.cp-agent-advanced>summary::after{content:"›";margin-left:auto;transition:transform .2s ease}.cp-agent-advanced[open]>summary::after{transform:rotate(90deg)}
+.cp-agent-advanced>.cp-list{padding:0 12px 12px}
+@media(max-width:900px){.cp-agent-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.cp-agent-grid{grid-template-columns:1fr}}
+@media(max-width:460px){.cp-agent-metrics{gap:7px}.cp-agent-metrics article{padding:12px}.cp-agent-metrics strong{font-size:20px}.cp-agent-panel{padding:12px}.cp-agent-panel-head{align-items:flex-start}}

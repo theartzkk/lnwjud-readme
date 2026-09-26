@@ -24,6 +24,7 @@
         <a href="./?awh-surface=files" data-cp-keywords="files storage artifacts ไฟล์ พื้นที่"><span>▤</span>ไฟล์และพื้นที่</a>
         <a href="#backup" data-cp-keywords="backup restore recovery retention สำรอง กู้คืน"><span>↺</span>สำรองและกู้คืน</a>
         <a href="#users" data-cp-keywords="users roles access people ผู้ใช้ สิทธิ์"><span>♙</span>ผู้ใช้และสิทธิ์</a>
+        <a href="#awh-agent" data-cp-keywords="awh agent devices tools capabilities runtime เครื่องมือ อุปกรณ์"><span>◈</span>AWH Agent</a>
         <a href="#ai" data-cp-keywords="ai provider model quota cost automation เอไอ ค่าใช้จ่าย"><span>✦</span>AI และการใช้งาน</a>
         <p>ระบบโรงเรียน</p>
         <a href="#line-oa" data-cp-keywords="line oa rich menu parent connect สหกรณ์ webhook ai ไลน์"><span>◉</span>LINE OA</a>
@@ -35,7 +36,6 @@
           <a href="./database.html" data-cp-keywords="database sqlite schema ฐานข้อมูล">ฐานข้อมูล</a>
           <a href="./trust.html" data-cp-keywords="security trust session approval ความปลอดภัย">ความปลอดภัย</a>
           <a href="./infrastructure.html" data-cp-keywords="server service cpu memory vps runtime logs เซิร์ฟเวอร์">เซิร์ฟเวอร์และบริการ</a>
-          <a href="./infrastructure.html#capability-fabric" data-cp-keywords="awh agent tools devices capabilities execution เครื่องมือ อุปกรณ์">อุปกรณ์ที่ช่วยทำงาน</a>
           <a href="./?awh-surface=home#source" data-cp-keywords="source github vault advanced runtime">Source และรุ่นระบบ</a>
         </details>
       </nav>
@@ -49,7 +49,7 @@
       </header>
       <div class="cp-content">
         <section id="overview" class="cp-hero">
-          <div><span class="cp-eyebrow">KRUART · AWH</span><h1>ดูเฉพาะสิ่งที่ต้องจัดการ</h1><p>สุขภาพระบบ อัปเดต สำรองข้อมูล เว็บไซต์ ผู้ใช้ และอุปกรณ์ อยู่ในที่เดียว ส่วนรายละเอียดทางเทคนิคเปิดดูเมื่อจำเป็น</p></div>
+          <div><span class="cp-eyebrow">KRUART · AWH</span><h1>ดูเฉพาะสิ่งที่ต้องจัดการ</h1><p>สุขภาพระบบ อัปเดต สำรองข้อมูล เว็บไซต์ ผู้ใช้ และ AWH Agent อยู่ในที่เดียว ส่วนรายละเอียดทางเทคนิคเปิดดูเมื่อจำเป็น</p></div>
           <div class="cp-hero-side"><img data-kruart-art-slot="system.control-panel" src="./system-control-panel.webp?release=__AWH_WEB_RELEASE_ID__" width="2048" height="768" alt="" aria-hidden="true"><div id="cp-overall" class="cp-overall">กำลังตรวจ</div></div>
         </section>
         <section class="cp-metrics" aria-label="ทรัพยากรระบบ">
@@ -57,6 +57,33 @@
           <article><small>หน่วยความจำ</small><strong id="cp-memory">—</strong><span id="cp-memory-free">—</span></article>
           <article><small>พื้นที่</small><strong id="cp-storage">—</strong><span id="cp-storage-free">—</span></article>
           <article><small>สำรองล่าสุด</small><strong id="cp-backup">—</strong><span id="cp-backup-time">—</span></article>
+        </section>
+        <section id="awh-agent" class="cp-section cp-agent-center cp-admin-section" aria-labelledby="cp-agent-title">
+          <div class="cp-section-head">
+            <div><span>AWH AGENT · DEVICE FABRIC</span><h2 id="cp-agent-title">เครื่องและเครื่องมือที่ AWH ใช้งานได้</h2></div>
+            <small id="cp-agent-summary">กำลังตรวจ Agent…</small>
+          </div>
+          <p class="cp-inline-message">ดูสถานะเครื่อง ความสามารถ และเส้นทางงานจากศูนย์เดียว AWH เลือกเครื่องที่พร้อมให้อัตโนมัติ โดยไม่ต้องเข้าแผงควบคุมซ้ำอีกหน้า</p>
+          <div class="cp-agent-metrics" aria-label="สถานะ AWH Agent">
+            <article><small>Agent พร้อม</small><strong id="cp-agent-online">—</strong><span>พร้อมรับงาน / ทั้งหมด</span></article>
+            <article><small>ความสามารถพร้อม</small><strong id="cp-agent-capabilities">—</strong><span>Capability registry</span></article>
+            <article><small>ทำได้จาก Cloud</small><strong id="cp-agent-cloud">—</strong><span>ไม่ต้องรอเครื่อง</span></article>
+            <article><small>งานที่กำลังทำ</small><strong id="cp-agent-queue">—</strong><span id="cp-agent-queue-note">กำลังตรวจคิว…</span></article>
+          </div>
+          <div class="cp-agent-grid">
+            <article class="cp-agent-panel">
+              <div class="cp-agent-panel-head"><div><strong>เครื่องที่เชื่อมกับ AWH</strong><small>สถานะสดจาก Control Plane</small></div><span class="cp-chip" id="cp-agent-device-state">กำลังตรวจ</span></div>
+              <div id="cp-agent-device-list" class="cp-list"></div>
+            </article>
+            <article class="cp-agent-panel">
+              <div class="cp-agent-panel-head"><div><strong>เครื่องมือและความสามารถ</strong><small>โหลดตามงาน ไม่ยัดทุก tool พร้อมกัน</small></div><span class="cp-chip" id="cp-agent-capability-state">กำลังตรวจ</span></div>
+              <div id="cp-agent-capability-list" class="cp-list"></div>
+            </article>
+          </div>
+          <details class="cp-agent-advanced">
+            <summary>เส้นทาง Provider และ Runtime ขั้นสูง</summary>
+            <div id="cp-agent-provider-list" class="cp-list"></div>
+          </details>
         </section>
         <details class="cp-update-group">
           <summary><span><b>อัปเดตระบบโรงเรียน</b><small>ตรวจรุ่นใหม่และติดตั้งเมื่อพร้อม</small></span><strong id="cp-bay-summary">กำลังตรวจ…</strong></summary>
@@ -100,6 +127,7 @@
         <section class="cp-section">
           <div class="cp-section-head"><div><span>QUICK ACCESS</span><h2>งานดูแลที่ใช้บ่อย</h2></div><small>งานประจำวันก่อน · รายละเอียดเทคนิคอยู่ในขั้นสูง</small></div>
           <div class="cp-tool-grid">
+            <a class="cp-tool" href="#awh-agent" data-cp-keywords="awh agent devices tools capabilities"><b>◈</b><span><strong>AWH Agent</strong><small id="cp-agent-tools">กำลังตรวจเครื่องและเครื่องมือ…</small></span></a>
             <a class="cp-tool" href="./hosting.html" data-cp-keywords="website hosting deploy"><b>◎</b><span><strong>เว็บไซต์</strong><small id="cp-sites">เว็บไซต์ที่ AWH ดูแล</small></span></a>
             <a class="cp-tool" href="./?awh-surface=files" data-cp-keywords="files storage"><b>▤</b><span><strong>ไฟล์และพื้นที่</strong><small>ไฟล์ ผลงาน และพื้นที่จัดเก็บ</small></span></a>
             <a class="cp-tool" href="#backup" data-cp-keywords="backup restore recovery"><b>↺</b><span><strong>สำรองและกู้คืน</strong><small id="cp-backup-card">ดูจุดสำรองและการกู้คืน</small></span></a>
@@ -113,7 +141,6 @@
               <a class="cp-tool" href="./database.html" data-cp-keywords="database schema"><b>▦</b><span><strong>ฐานข้อมูล</strong><small id="cp-db">Database Studio</small></span></a>
               <a class="cp-tool" href="./trust.html" data-cp-keywords="security trust"><b>◇</b><span><strong>ความปลอดภัย</strong><small id="cp-security">Trust & protection</small></span></a>
               <a class="cp-tool" href="./infrastructure.html" data-cp-keywords="server services logs"><b>⌘</b><span><strong>เซิร์ฟเวอร์และบริการ</strong><small id="cp-services">VPS runtime</small></span></a>
-              <a class="cp-tool" href="./infrastructure.html#capability-fabric" data-cp-keywords="awh agent tools devices capabilities execution เครื่องมือ อุปกรณ์"><b>◈</b><span><strong>อุปกรณ์ที่ช่วยทำงาน</strong><small id="cp-agent-tools">กำลังตรวจ capabilities…</small></span></a>
               <a class="cp-tool" href="./?awh-surface=home#source" data-cp-keywords="source github vault"><b>⌁</b><span><strong>Source และรุ่นระบบ</strong><small>GitHub · Vault · exact SHA</small></span></a>
               <a class="cp-tool" href="#external-capabilities" data-cp-keywords="capabilities integrations teamai hallmark context design"><b>⊕</b><span><strong>ความสามารถเสริม</strong><small>Adapters · skills · references</small></span></a>
             </div>

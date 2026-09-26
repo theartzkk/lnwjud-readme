@@ -18,8 +18,14 @@ test('Owner Control Panel composes existing authorities without a parallel backe
     readFile(join(ROOT,'web/panel.js'),'utf8'),
     readFile(join(ROOT,'web/panel.css'),'utf8'),
   ]);
-  for(const label of ['เว็บไซต์','Domains & SSL','ไฟล์และพื้นที่','ฐานข้อมูล','สำรองและกู้คืน','ความปลอดภัย','เซิร์ฟเวอร์และบริการ','อุปกรณ์ที่ช่วยทำงาน','ผู้ใช้และสิทธิ์','AI และการใช้งาน','LINE OA','Source และรุ่นระบบ']) assert.match(html,new RegExp(label.replace(/[&]/g,'\\&')));
+  for(const label of ['เว็บไซต์','Domains & SSL','ไฟล์และพื้นที่','ฐานข้อมูล','สำรองและกู้คืน','ความปลอดภัย','เซิร์ฟเวอร์และบริการ','AWH Agent','ผู้ใช้และสิทธิ์','AI และการใช้งาน','LINE OA','Source และรุ่นระบบ']) assert.match(html,new RegExp(label.replace(/[&]/g,'\\&')));
+  assert.match(html,/href="#awh-agent"/);
+  assert.match(html,/id="awh-agent"/);
   assert.match(html,/id="cp-agent-tools"/);
+  assert.match(html,/id="cp-agent-device-list"/);
+  assert.match(html,/id="cp-agent-capability-list"/);
+  assert.doesNotMatch(html,/infrastructure\.html#capability-fabric/);
+  assert.match(js,/renderAgentControl/);
   assert.match(html,/class="cp-nav-advanced"/);
   assert.match(html,/class="cp-update-group"/);
   assert.match(html,/id="cp-technical-details" class="cp-technical-details"/);
@@ -68,7 +74,9 @@ test('Owner entry and standalone admin pages converge on Control Panel',async()=
   for(const page of [hosting,database,infrastructure,trust,review])assert.match(page,/panel\.html/);
   assert.match(app,/awh-settings/);
   assert.match(app,/requestedOwnerSettings/);
-  assert.match(infrastructure,/capability-fabric/);
+  assert.match(infrastructure,/panel\.html#awh-agent/);
+  assert.doesNotMatch(infrastructure,/id="capability-fabric"/);
+  assert.doesNotMatch(infrastructure,/id="device-role-list"/);
   assert.doesNotMatch(infrastructure,/lnwjud|Remote Desktop/i);
   const panelHtml=await readFile(join(ROOT,'web','panel.html'),'utf8');
   assert.doesNotMatch(panelHtml,/lnwjud|Remote Desktop/i);
