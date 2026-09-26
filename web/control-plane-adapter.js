@@ -317,7 +317,7 @@ export async function loadUpdateCenter() {
 export async function loadCoreReleaseStatus() {
   const value = await controlRequest('/api/v1/control/system/releases');
   const promotion = value?.sourcePromotion;
-  const promotionValid = promotion == null || (promotion && /^[0-9a-f]{40}$/i.test(promotion.sha || '') && /^[0-9a-f]{40}$/i.test(promotion.previousSha || '') && promotion.authority === 'SOURCE_PROMOTION_AUDIT' && typeof promotion.observedAt === 'string');
+  const promotionValid = promotion == null || (promotion && /^[0-9a-f]{40}$/i.test(promotion.sha || '') && /^[0-9a-f]{40}$/i.test(promotion.previousSha || '') && ['SOURCE_PROMOTION_AUDIT','CANONICAL_GIT_MAIN_VERIFIED'].includes(promotion.authority) && typeof promotion.observedAt === 'string');
   if (value.schemaVersion !== 1 || value.capability !== 'system.core.release' || !promotionValid || !Array.isArray(value.releases) || !value.policy || typeof value.policy !== 'object') throw new Error('สถานะรุ่นระบบ AWH ไม่ถูกต้อง');
   return value;
 }

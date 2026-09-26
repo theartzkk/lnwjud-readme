@@ -383,6 +383,8 @@ test('Owner System settings keeps Update Center as the only release UI', async (
   assert.doesNotMatch(app, /requestCoreRelease|requestLearnLabRelease|core-release-form|learnlab-release-form/);
   assert.match(adapter, /loadCoreReleaseStatus/);
   assert.match(adapter, /requestCoreRelease/);
+  assert.match(adapter, /SOURCE_PROMOTION_AUDIT/);
+  assert.match(adapter, /CANONICAL_GIT_MAIN_VERIFIED/);
   assert.match(adapter, /\/api\/v1\/control\/system\/releases/);
   assert.match(updates, /requestCoreRelease\(item\.candidate,false\)/);
   assert.match(updates, /decideApproval\(request\.approvalId,'approve'\)/);
