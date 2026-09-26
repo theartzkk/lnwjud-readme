@@ -40,8 +40,9 @@ const MATERIALIZED_FILES_BY_SKILL: Record<string, string[]> = {
 async function exists(path: string): Promise<boolean> {
   try { await lstat(path); return true; } catch { return false; }
 }
-function gitBlobSha(content: Buffer): string {
-  return createHash('sha1').update(Buffer.from(`blob ${content.byteLength}\0`)).update(content).digest('hex');
+function canonicalGitTextBlobSha(content: Buffer): string {
+  const normalized = Buffer.from(content.toString('utf8').replace(/\r\n/g, '\n'), 'utf8');
+  return createHash('sha1').update(Buffer.from(`blob ${normalized.byteLength}\0`)).update(normalized).digest('hex');
 }
 function safeChild(root: string, relativePath: string): string {
   if (!SAFE_RELATIVE.test(relativePath) || relativePath.startsWith('/')) throw new Error('APPROVED_SKILL_PATH_INVALID');
@@ -94,14 +95,14 @@ export async function verifyApprovedAntiSlopPack(root = APPROVED_ANTI_SLOP_ROOT)
     const path = safeChild(root, file.localPath);
     const info = await lstat(path);
     if (!info.isFile() || info.isSymbolicLink()) throw new Error('APPROVED_SKILL_FILE_INVALID');
-    if (gitBlobSha(await readFile(path)) !== file.gitBlobSha) throw new Error('APPROVED_SKILL_INTEGRITY_FAILED');
+    if (canonicalGitTextBlobSha(await readFile(path)) !== file.gitBlobSha) throw new Error('APPROVED_SKILL_INTEGRITY_FAILED');
   }
   for (const file of raw.approvedFiles) {
     if (!file || !SAFE_RELATIVE.test(file.localPath) || !/^[0-9a-f]{40}$/.test(file.gitBlobSha)) throw new Error('APPROVED_SKILL_MANIFEST_INVALID');
     const path = safeChild(root, file.localPath);
     const info = await lstat(path);
     if (!info.isFile() || info.isSymbolicLink()) throw new Error('APPROVED_SKILL_FILE_INVALID');
-    if (gitBlobSha(await readFile(path)) !== file.gitBlobSha) throw new Error('APPROVED_SKILL_INTEGRITY_FAILED');
+    if (canonicalGitTextBlobSha(await readFile(path)) !== file.gitBlobSha) throw new Error('APPROVED_SKILL_INTEGRITY_FAILED');
   }
   const allowed = new Set([...raw.upstreamFiles.map((file) => file.localPath), ...raw.approvedFiles.map((file) => file.localPath)]);
   for (const profile of Object.values(raw.profiles).flat()) {
