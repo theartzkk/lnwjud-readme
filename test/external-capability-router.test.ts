@@ -19,6 +19,7 @@ echo json_encode([
  'design'=>$route->invoke(null,'ปรับ UI mobile ให้สวยและ responsive',false),
  'copy'=>$route->invoke(null,'ปรับ microcopy ให้เป็นธรรมชาติ',false),
  'copySurface'=>$route->invoke(null,'ปรับข้อความหน้าเว็บและ microcopy ให้เป็นธรรมชาติ',false),
+ 'designCopy'=>$route->invoke(null,'ปรับ UI mobile และ microcopy ให้เป็นธรรมชาติ',false),
  'comments'=>$route->invoke(null,'clean up code comments และ jsdoc',false),
  'plain'=>$route->invoke(null,'อธิบายแนวคิดนี้',false),
  'attachment'=>$route->invoke(null,'ดูไฟล์นี้',true),
@@ -32,7 +33,8 @@ echo json_encode([
   assert.deepEqual(result.large.selected.map((item:any)=>item.id),['context.optimize','team.harness']);
   assert.deepEqual(result.design.selected.map((item:any)=>item.id),['design.antislop','design.hallmark','design.reference']);
   assert.deepEqual(result.copy.selected.map((item:any)=>item.id),['copy.antislop']);
-  assert.deepEqual(result.copySurface.selected.map((item:any)=>item.id),['design.antislop','design.hallmark','design.reference','copy.antislop']);
+  assert.deepEqual(result.copySurface.selected.map((item:any)=>item.id),['copy.antislop']);
+  assert.deepEqual(result.designCopy.selected.map((item:any)=>item.id),['design.antislop','design.hallmark','design.reference','copy.antislop']);
   assert.deepEqual(result.comments.selected.map((item:any)=>item.id),['code.antislop']);
   assert.deepEqual(result.plain.selected,[]);
   assert.deepEqual(result.attachment.selected.map((item:any)=>item.id),['context.optimize']);
