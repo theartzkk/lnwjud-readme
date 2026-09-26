@@ -32,5 +32,5 @@ test('release retry identity is bound before the immutable web build and strictl
  assert.match(local,/grep -q "awh-shell-\$RELEASE_ID" "\$WEB_OUTPUT\/sw\.js"/);
  await assert.rejects(execFileAsync('/bin/sh',[deploy,'--dry-run','--owner-auth','--self-sufficient-ai'],{cwd:root,env:{...process.env,AWH_SOURCE_ROOT:root,AWH_RELEASE_COMMIT:release,AWH_HUB_HOSTNAME:'awh.example',AWH_RELEASE_ATTEMPT:'r0'}}),/AWH_RELEASE_ATTEMPT must be empty or r1\.\.r999/);
  const remoteSource=await readFile(remote,'utf8');
- assert.match(remoteSource,/m\(4\|6\|7\|8\|9\|10\|11\|12\|13\|14\|15\|16\|17\|18\|19\|20\|21\|22\).*12.*r\[1-9\]/s);
+ assert.match(remoteSource,/m\(4\|6\|7\|8\|9\|10\|11\|12\|13\|14\|15\|16\|17\|18\|19\|20\|21\|22\|23\).*12.*r\[1-9\]/s);
 });
