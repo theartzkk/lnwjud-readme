@@ -515,18 +515,36 @@ final class HubOperatorBridgeService
         return ['schemaVersion'=>1,'state'=>$ready?'READY':'SOURCE_DRIFT','authority'=>'BAY PackageManager/Update Center','remote'=>$remote,'projectGate'=>$gate,'sourceParity'=>$parity,'observedAt'=>$at];
     }
 
+    /** @return array{projectionSha:string,sourceRevision:string} */
+    private function bayCanonicalSourceIdentity(): array
+    {
+        $root=getenv('AWH_CANONICAL_GIT_ROOT');if(!is_string($root)||$root==='')$root='/srv/awh-git';
+        $repo=rtrim($root,'/').'/bay-excuse-x.git';
+        if(!is_dir($repo)||is_link($repo))throw new HubOperatorBridgeException('BAY canonical source repository is unavailable','OPERATOR_BAY_SOURCE_DRIFT');
+        try{$projection=strtolower(trim($this->runGit($repo,['rev-parse','refs/heads/main'])));$body=$this->runGit($repo,['show','-s','--format=%B',$projection]);}
+        catch(Throwable){throw new HubOperatorBridgeException('BAY canonical source projection is unavailable','OPERATOR_BAY_SOURCE_DRIFT');}
+        $source='';if(preg_match('/^Source-Revision:\s*([a-f0-9]{40})\s*$/mi',$body,$m)===1)$source=strtolower($m[1]);
+        if(preg_match('/^[a-f0-9]{40}$/',$projection)!==1||preg_match('/^[a-f0-9]{40}$/',$source)!==1)throw new HubOperatorBridgeException('BAY canonical source projection is invalid','OPERATOR_BAY_SOURCE_DRIFT');
+        return ['projectionSha'=>$projection,'sourceRevision'=>$source];
+    }
+
     /** @param array<string,mixed> $remote @return array<string,mixed> */
     private function bayProductionSourceParity(array $remote): array
     {
         $deployed=strtolower(trim((string)($remote['deployedSha']??'')));
-        $root=getenv('AWH_CANONICAL_GIT_ROOT');if(!is_string($root)||$root==='')$root='/srv/awh-git';
-        $repo=rtrim($root,'/').'/bay-excuse-x.git';
-        if(preg_match('/^[a-f0-9]{40}$/',$deployed)!==1||!is_dir($repo)||is_link($repo))return ['ready'=>false,'deployedSha'=>$deployed?:null,'projectionSha'=>null,'sourceRevision'=>null,'reason'=>'UNRESOLVED'];
-        try{$projection=strtolower(trim($this->runGit($repo,['rev-parse','refs/heads/main'])));$body=$this->runGit($repo,['show','-s','--format=%B',$projection]);}
+        if(preg_match('/^[a-f0-9]{40}$/',$deployed)!==1)return ['ready'=>false,'deployedSha'=>$deployed?:null,'projectionSha'=>null,'sourceRevision'=>null,'reason'=>'UNRESOLVED'];
+        try{$canonical=$this->bayCanonicalSourceIdentity();}
         catch(Throwable){return ['ready'=>false,'deployedSha'=>$deployed,'projectionSha'=>null,'sourceRevision'=>null,'reason'=>'PROJECTION_UNAVAILABLE'];}
-        $source=null;if(preg_match('/^Source-Revision:\s*([a-f0-9]{40})\s*$/mi',$body,$m)===1)$source=strtolower($m[1]);
-        $ready=is_string($source)&&hash_equals($source,$deployed);
-        return ['ready'=>$ready,'deployedSha'=>$deployed,'projectionSha'=>$projection,'sourceRevision'=>$source,'reason'=>$ready?'MATCH':'SOURCE_REVISION_DRIFT'];
+        $ready=hash_equals($canonical['sourceRevision'],$deployed);
+        return ['ready'=>$ready,'deployedSha'=>$deployed,'projectionSha'=>$canonical['projectionSha'],'sourceRevision'=>$canonical['sourceRevision'],'reason'=>$ready?'MATCH':'SOURCE_REVISION_DRIFT'];
+    }
+
+    /** @return array{projectionSha:string,sourceRevision:string} */
+    private function assertBayCanonicalTarget(string $targetSha): array
+    {
+        $canonical=$this->bayCanonicalSourceIdentity();
+        if(!hash_equals($canonical['sourceRevision'],strtolower($targetSha)))throw new HubOperatorBridgeException('BAY target source does not match canonical authority','OPERATOR_BAY_TARGET_DRIFT');
+        return $canonical;
     }
 
     /** @param array<string,mixed> $remote */
@@ -553,11 +571,11 @@ final class HubOperatorBridgeService
         try{$raw=$zip->getFromName('manifest.json');if(!is_string($raw))throw new HubOperatorBridgeException('Staged BAY manifest is missing','OPERATOR_BAY_PACKAGE_NOT_READY');$manifest=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(HubOperatorBridgeException $e){$zip->close();throw $e;}catch(Throwable){$zip->close();throw new HubOperatorBridgeException('Staged BAY manifest is invalid','OPERATOR_BAY_PACKAGE_NOT_READY');}$zip->close();
         if(!is_array($manifest)||($manifest['type']??null)!=='core'||($manifest['version']??null)!==$version||strtolower((string)($manifest['source_commit']??''))!==$sha)throw new HubOperatorBridgeException('Staged BAY manifest identity mismatch','OPERATOR_BAY_PACKAGE_NOT_READY');
         $gate=$this->projectGate('BAY EXCUSE X',$at,true,'bay.remote_update.stage');if(($gate['ready']??false)!==true||($gate['productionReady']??false)!==true)throw new HubOperatorBridgeException('BAY project gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');$projectId=(string)($gate['project']['projectId']??'');
+        $this->assertBayCanonicalTarget($sha);
         $authority=$this->acquireMutationAuthority($projectId,'Guarded BAY stage '.$version,'bay.remote_update.stage',['targetVersion'=>$version,'targetSha'=>$sha,'packageSha256'=>$packageSha],$at);$success=false;$destination=null;
         try{
             $bay=new HubBayRemoteUpdateService();$statusEnvelope=$bay->status($at);$before=($this->poster)((string)$statusEnvelope['endpoint'],(array)$statusEnvelope['statusRelay']);
             if(($before['ok']??false)!==true||(($before['preflight']['ready']??false)!==true)||(($before['maintenance']['active']??false)===true))throw new HubOperatorBridgeException('BAY Production preflight is not ready','OPERATOR_BAY_PREFLIGHT_BLOCKED');
-            $this->assertBayProductionSourceParity($before);
             $current=(string)($before['currentVersion']??'');$deployed=strtolower((string)($before['deployedSha']??''));$from=(string)($manifest['from_version']??'');$base=strtolower((string)($manifest['source_base_commit']??''));
             if($current===''||$from!==$current||version_compare($version,$current,'<=')||preg_match('/^[a-f0-9]{40}$/',$deployed)!==1||$base===''||!hash_equals($deployed,$base))throw new HubOperatorBridgeException('BAY package baseline does not match Production','OPERATOR_BAY_BASELINE_MISMATCH');
             $safeVersion=preg_replace('/[^0-9A-Za-z._+-]+/','-',$version);if(!is_string($safeVersion)||$safeVersion==='')throw new HubOperatorBridgeException('BAY package version is invalid','OPERATOR_REQUEST_INVALID');
@@ -581,6 +599,7 @@ final class HubOperatorBridgeService
         if(preg_match('/^[a-f0-9]{40}$/',$sha)!==1||preg_match('/^[a-f0-9]{64}$/',$packageSha)!==1)throw new HubOperatorBridgeException('BAY package identity is invalid','OPERATOR_REQUEST_INVALID');
         $gate=$this->projectGate('BAY EXCUSE X',$at,true,'bay.remote_update.install'); if (($gate['ready']??false)!==true || ($gate['productionReady']??false)!==true) throw new HubOperatorBridgeException('BAY project gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
         $projectId=(string)($gate['project']['projectId']??'');
+        $this->assertBayCanonicalTarget($sha);
         $releaseNotes=$this->releaseDetailsForSourceSha($projectId,'bay-excuse-x',$sha);
         if(!HubUpdateTargetRegistry::releaseDetailsReady($releaseNotes))
             throw new HubOperatorBridgeException('BAY release details are required before install','OPERATOR_RELEASE_DETAILS_REQUIRED');
@@ -589,13 +608,15 @@ final class HubOperatorBridgeService
         try {
             $bay=new HubBayRemoteUpdateService(); $statusEnvelope=$bay->status($at); $before=($this->poster)((string)$statusEnvelope['endpoint'],(array)$statusEnvelope['statusRelay']);
             if (($before['ok']??false)!==true || (($before['preflight']['ready']??false)!==true) || (($before['maintenance']['active']??false)===true)) throw new HubOperatorBridgeException('BAY Production preflight is not ready','OPERATOR_BAY_PREFLIGHT_BLOCKED');
-            $this->assertBayProductionSourceParity($before);
             $package=null; foreach((array)($before['packages']??[]) as $row){if(!is_array($row))continue;if(($row['version']??null)===$version&&strtolower((string)($row['sourceSha']??''))===$sha&&strtolower((string)($row['packageSha256']??''))===$packageSha&&($row['installable']??false)===true){$package=$row;break;}}
             if(!is_array($package)) throw new HubOperatorBridgeException('Exact BAY package is not installable in Update Inbox','OPERATOR_BAY_PACKAGE_NOT_READY');
             $signed=$bay->installRelay($version,$sha,$packageSha,$at); $result=($this->poster)((string)$signed['endpoint'],(array)$signed['relay']);
             if (($result['ok']??false)!==true) throw new HubOperatorBridgeException('BAY PackageManager rejected install','OPERATOR_BAY_INSTALL_FAILED');
+            $afterEnvelope=$bay->status(gmdate('c'));$after=($this->poster)((string)$afterEnvelope['endpoint'],(array)$afterEnvelope['statusRelay']);
+            if(($after['ok']??false)!==true)throw new HubOperatorBridgeException('BAY post-install status is unavailable','OPERATOR_BAY_INSTALL_FAILED');
+            $this->assertBayProductionSourceParity($after);
             $success=true;
-            return ['schemaVersion'=>1,'state'=>'INSTALLED','gate'=>$gate,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'leaseExpiresAt'=>$authority['leaseExpiresAt']],'before'=>['version'=>$before['currentVersion']??null,'deployedSha'=>$before['deployedSha']??null],'result'=>$result,'observedAt'=>$at];
+            return ['schemaVersion'=>1,'state'=>'INSTALLED','gate'=>$gate,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'leaseExpiresAt'=>$authority['leaseExpiresAt']],'before'=>['version'=>$before['currentVersion']??null,'deployedSha'=>$before['deployedSha']??null],'after'=>['version'=>$after['currentVersion']??null,'deployedSha'=>$after['deployedSha']??null],'result'=>$result,'observedAt'=>$at];
         } finally {
             $this->releaseMutationAuthority($authority,$success,gmdate('c'));
         }
@@ -605,12 +626,18 @@ final class HubOperatorBridgeService
     private function releaseDetailsForSourceSha(string $projectId,string $repository,string $sha): ?array
     {
         if(!self::uuidValid($projectId)||!isset(HubUpdateTargetRegistry::repositories()[$repository])||preg_match('/^[0-9a-f]{40}$/',$sha)!==1)return null;
+        $root=getenv('AWH_CANONICAL_GIT_ROOT');if(!is_string($root)||$root==='')$root='/srv/awh-git';$repo=rtrim($root,'/').'/'.$repository.'.git';
         $q=$this->pdo->prepare("SELECT checkpoint_json FROM control_task_executions WHERE project_id=:project AND required_capability='source.promote' AND state='COMPLETED' ORDER BY updated_at DESC,execution_id DESC LIMIT 80");
         $q->execute(['project'=>$projectId]);
         foreach($q->fetchAll() as $row){
             try{$checkpoint=json_decode((string)$row['checkpoint_json'],true,16,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
             if(!is_array($checkpoint)||($checkpoint['repository']??null)!==$repository)continue;
-            if(!hash_equals($sha,strtolower((string)($checkpoint['targetSha']??''))))continue;
+            $target=strtolower((string)($checkpoint['targetSha']??''));$matches=preg_match('/^[a-f0-9]{40}$/',$target)===1&&hash_equals($sha,$target);
+            if(!$matches&&preg_match('/^[a-f0-9]{40}$/',$target)===1&&is_dir($repo)&&!is_link($repo)){
+                try{$body=$this->runGit($repo,['show','-s','--format=%B',$target]);if(preg_match('/^Source-Revision:\s*([a-f0-9]{40})\s*$/mi',$body,$m)===1)$matches=hash_equals($sha,strtolower($m[1]));}
+                catch(Throwable){$matches=false;}
+            }
+            if(!$matches)continue;
             $notes=$checkpoint['releaseNotes']??null;
             return HubUpdateTargetRegistry::releaseDetailsReady($notes)?$notes:null;
         }
