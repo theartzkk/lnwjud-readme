@@ -391,6 +391,9 @@ test('Update Center streams canonical release progress in real time with bounded
   assert.match(service,/control_task_events/);
   assert.match(service,/updateCenterLiveForSession/);
   assert.match(service,/updateCenterLiveCursor/);
+  assert.match(service,/ORDER BY rowid DESC LIMIT 1/);
+  assert.match(service,/MAX\(ev\.rowid\)/);
+  assert.doesNotMatch(service,/ORDER BY e\.occurred_at DESC,e\.event_id DESC LIMIT 1/);
   assert.match(service,/'progressEvent'/);
   assert.match(entry,/\/api\/v1\/control\/updates\/stream/);
   assert.match(entry,/text\/event-stream/);

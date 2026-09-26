@@ -491,7 +491,7 @@ final class HubControlPlaneService
     private function latestTaskEventMessage(mixed $taskId): ?array
     {
         if(!is_string($taskId)||preg_match('/^[0-9a-f-]{36}$/i',$taskId)!==1)return null;
-        $q=$this->pdo->prepare('SELECT state,progress,message,occurred_at FROM control_task_events WHERE task_id=:task ORDER BY occurred_at DESC,event_id DESC LIMIT 1');
+        $q=$this->pdo->prepare('SELECT state,progress,message,occurred_at FROM control_task_events WHERE task_id=:task ORDER BY rowid DESC LIMIT 1');
         $q->execute(['task'=>strtolower($taskId)]);$row=$q->fetch();
         if(!is_array($row))return null;
         return [
@@ -517,17 +517,22 @@ final class HubControlPlaneService
 
     private function updateCenterLiveCursor(string $userId): string
     {
-        $task=$this->pdo->prepare("SELECT COALESCE(MAX(updated_at),'') AS updated_at,COUNT(*) AS active_count FROM control_tasks WHERE user_id=:user AND state NOT IN ('COMPLETED','FAILED','CANCELLED')");
+        $capabilities="'system.core.release','system.learnlab.release','system.assessment.release','project.mutate.deploy','bay.remote_update.install','source.promote'";
+        $task=$this->pdo->prepare("SELECT COALESCE(MAX(t.updated_at),'') AS updated_at,COUNT(*) AS active_count
+            FROM control_tasks t WHERE t.user_id=:user AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED')
+            AND EXISTS(SELECT 1 FROM control_task_executions e WHERE e.task_id=t.task_id AND e.required_capability IN ($capabilities))");
         $task->execute(['user'=>$userId]);$taskRow=$task->fetch();
-        $event=$this->pdo->prepare("SELECT e.event_id,e.occurred_at FROM control_task_events e JOIN control_tasks t ON t.task_id=e.task_id WHERE t.user_id=:user ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT 1");
-        $event->execute(['user'=>$userId]);$eventRow=$event->fetch();
-        $execution=$this->pdo->prepare("SELECT COALESCE(MAX(e.updated_at),'') FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE t.user_id=:user AND e.required_capability IN ('system.core.release','system.learnlab.release','system.assessment.release','project.mutate.deploy','bay.remote_update.install','source.promote')");
+        $event=$this->pdo->prepare("SELECT COALESCE(MAX(ev.rowid),0) AS event_seq
+            FROM control_task_events ev JOIN control_tasks t ON t.task_id=ev.task_id
+            WHERE t.user_id=:user
+            AND EXISTS(SELECT 1 FROM control_task_executions e WHERE e.task_id=t.task_id AND e.required_capability IN ($capabilities))");
+        $event->execute(['user'=>$userId]);$eventSeq=(int)($event->fetchColumn()?:0);
+        $execution=$this->pdo->prepare("SELECT COALESCE(MAX(e.updated_at),'') FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE t.user_id=:user AND e.required_capability IN ($capabilities)");
         $execution->execute(['user'=>$userId]);
         $payload=[
             'taskUpdatedAt'=>is_array($taskRow)?(string)($taskRow['updated_at']??''):'',
             'activeCount'=>is_array($taskRow)?(int)($taskRow['active_count']??0):0,
-            'eventId'=>is_array($eventRow)?(string)($eventRow['event_id']??''):'',
-            'eventAt'=>is_array($eventRow)?(string)($eventRow['occurred_at']??''):'',
+            'eventSequence'=>$eventSeq,
             'executionUpdatedAt'=>(string)($execution->fetchColumn()?:''),
         ];
         return hash('sha256',json_encode($payload,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR));
