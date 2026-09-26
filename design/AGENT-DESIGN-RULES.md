@@ -30,6 +30,14 @@ Never treat a screenshot, old branch, generated mockup, reference-only asset or 
 - Do not invent colors, spacing scales, radii or visual metaphors when tokens already cover the need.
 - New tokens require a documented semantic need and deterministic tests.
 - Keep Thai copy in accessible HTML unless an approved immutable brand lockup explicitly contains text.
+## Approved anti-slop filter
+
+- For UI/UX work, AWH may lazy-load the reviewed `design.antislop` capability as a filter after this design authority and the matching product overlay are resolved.
+- Anti-slop may reject generic/template-like choices, invented claims, broken responsive behavior or decoration without purpose. It may not choose a new brand, palette, framework, navigation model or design authority.
+- The upstream Anti Slop install wizard and DURING/AFTER setup question are disabled in AWH. Normal creation/editing uses DURING filtering automatically; AFTER mode is reserved for an explicit audit request.
+- Hallmark, Anti Slop and other reviewers are complementary critics. Exact-revision rendered evidence and the KRUART UX acceptance contract remain the release gate.
+
+
 ## Forbidden drift
 
 Agents must not:
