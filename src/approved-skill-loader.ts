@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { cp, lstat, mkdir, readFile, readdir, rm, rmdir } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { WorkerCapabilityPlan } from './control-plane-worker-client.js';
 
@@ -19,6 +19,7 @@ interface ApprovedSkillManifest {
   };
   profiles: { design: string[]; copy: string[]; code: string[] };
   upstreamFiles: ApprovedSourceFile[];
+  approvedFiles: Array<{ localPath: string; gitBlobSha: string }>;
 }
 
 const SAFE_RELATIVE = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._/-]+$/;
@@ -36,10 +37,24 @@ function gitBlobSha(content: Buffer): string {
 }
 function safeChild(root: string, relativePath: string): string {
   if (!SAFE_RELATIVE.test(relativePath) || relativePath.startsWith('/')) throw new Error('APPROVED_SKILL_PATH_INVALID');
-  const target = resolve(root, relativePath);
-  const normalizedRoot = resolve(root) + '/';
-  if (!target.startsWith(normalizedRoot)) throw new Error('APPROVED_SKILL_PATH_INVALID');
+  const resolvedRoot = resolve(root);
+  const target = resolve(resolvedRoot, relativePath);
+  const rel = relative(resolvedRoot, target);
+  if (!rel || rel.startsWith('..') || isAbsolute(rel)) throw new Error('APPROVED_SKILL_PATH_INVALID');
   return target;
+}
+
+async function listedFiles(root: string, prefix = ''): Promise<string[]> {
+  const out: string[] = [];
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) throw new Error('APPROVED_SKILL_FILE_INVALID');
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const full = join(root, entry.name);
+    if (entry.isDirectory()) out.push(...await listedFiles(full, rel));
+    else if (entry.isFile()) out.push(rel);
+    else throw new Error('APPROVED_SKILL_FILE_INVALID');
+  }
+  return out;
 }
 
 export async function verifyApprovedAntiSlopPack(root = APPROVED_ANTI_SLOP_ROOT): Promise<ApprovedSkillManifest> {
@@ -60,7 +75,10 @@ export async function verifyApprovedAntiSlopPack(root = APPROVED_ANTI_SLOP_ROOT)
     raw.runtimePolicy?.cleanupBeforeCandidateArchive !== true ||
     !Array.isArray(raw.upstreamFiles) ||
     raw.upstreamFiles.length < 1 ||
-    raw.upstreamFiles.length > 32
+    raw.upstreamFiles.length > 32 ||
+    !Array.isArray(raw.approvedFiles) ||
+    raw.approvedFiles.length < 1 ||
+    raw.approvedFiles.length > 16
   ) throw new Error('APPROVED_SKILL_MANIFEST_INVALID');
 
   for (const file of raw.upstreamFiles) {
@@ -68,8 +86,19 @@ export async function verifyApprovedAntiSlopPack(root = APPROVED_ANTI_SLOP_ROOT)
     const path = safeChild(root, file.localPath);
     const info = await lstat(path);
     if (!info.isFile() || info.isSymbolicLink()) throw new Error('APPROVED_SKILL_FILE_INVALID');
-    const content = await readFile(path);
-    if (gitBlobSha(content) !== file.gitBlobSha) throw new Error('APPROVED_SKILL_INTEGRITY_FAILED');
+    if (gitBlobSha(await readFile(path)) !== file.gitBlobSha) throw new Error('APPROVED_SKILL_INTEGRITY_FAILED');
+  }
+  for (const file of raw.approvedFiles) {
+    if (!file || !SAFE_RELATIVE.test(file.localPath) || !/^[0-9a-f]{40}$/.test(file.gitBlobSha)) throw new Error('APPROVED_SKILL_MANIFEST_INVALID');
+    const path = safeChild(root, file.localPath);
+    const info = await lstat(path);
+    if (!info.isFile() || info.isSymbolicLink()) throw new Error('APPROVED_SKILL_FILE_INVALID');
+    if (gitBlobSha(await readFile(path)) !== file.gitBlobSha) throw new Error('APPROVED_SKILL_INTEGRITY_FAILED');
+  }
+  const allowed = new Set([...raw.upstreamFiles.map((file) => file.localPath), ...raw.approvedFiles.map((file) => file.localPath)]);
+  for (const profile of Object.values(raw.profiles).flat()) {
+    const dir = safeChild(root, profile);
+    for (const child of await listedFiles(dir, profile)) if (!allowed.has(child)) throw new Error('APPROVED_SKILL_UNPINNED_FILE');
   }
   return raw;
 }
