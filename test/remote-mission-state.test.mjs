@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -67,5 +67,27 @@ test('simultaneous mission starts serialize only the same resource atomically',a
     const missionId=JSON.parse(winner.out).missionId;
     const done=await run(root,'finish',{deviceId,missionId,result:'PASS'});
     assert.equal(done.code,0,done.err);
+  }finally{await rm(root,{recursive:true,force:true});}
+});
+
+
+test('expired mission leases are reaped before a new writer acquires the same resource',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'awh-mission-expired-'));
+  try{
+    const deviceId='33333333-3333-4333-8333-333333333333';
+    const base={deviceId,deviceName:'VPS',project:'fixture',objective:'expiry proof',mutationMode:'MUTATE',resourceKey:'project:fixture:source',ownerKey:null};
+    let r=await run(root,'start',{...base,missionId:'stale-writer'});
+    assert.equal(r.code,0,r.err);
+    for(const path of [join(root,'active','stale-writer.json'),join(root,'resources','project:fixture:source.json')]){
+      const row=JSON.parse(await readFile(path,'utf8'));row.leaseExpiresAt='2000-01-01T00:00:00.000Z';await writeFile(path,JSON.stringify(row,null,2)+'\n');
+    }
+    r=await run(root,'start',{...base,missionId:'fresh-writer'});
+    assert.equal(r.code,0,r.err);
+    const history=JSON.parse(await readFile(join(root,'history','stale-writer.json'),'utf8'));
+    assert.equal(history.status,'EXPIRED');
+    assert.equal(history.cleanupStatus,'LEASE_EXPIRED_AUTO_REAP');
+    assert.equal(history.blocker,'MISSION_LEASE_EXPIRED');
+    r=await run(root,'finish',{deviceId,missionId:'fresh-writer',result:'PASS'});
+    assert.equal(r.code,0,r.err);
   }finally{await rm(root,{recursive:true,force:true});}
 });

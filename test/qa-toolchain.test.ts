@@ -49,6 +49,9 @@ test('local QA lockfile probe is isolated from the active workspace', async () =
 test('fast QA defers exact-revision deploy contracts only while the candidate is dirty', async () => {
   const source = await readFile(new URL('../scripts/qa/awh-local-qa.mjs', import.meta.url), 'utf8');
   assert.match(source, /fast-deploy-contracts/);
+  assert.match(source, /SIGTERM/);
+  assert.match(source, /SIGKILL/);
+  assert.match(source, /240_000/);
   assert.match(source, /runGit\(\['status', '--porcelain'\]\)/);
   assert.match(source, /deferred until the candidate is committed/);
   assert.match(source, /central-project-authority-deployment\.test\.ts/);

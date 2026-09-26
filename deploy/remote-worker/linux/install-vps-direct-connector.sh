@@ -26,7 +26,7 @@ fi
 [ -x "$NODE_BIN" ] && [ -x "$NPM_BIN" ] || fail AWH_VPS_DIRECT_NODE22_REQUIRED
 id "$AGENT_USER" >/dev/null 2>&1 || useradd --system --create-home --home-dir "$AGENT_HOME" --shell /bin/bash "$AGENT_USER"
 case " $(id -nG "$AGENT_USER") " in *' sudo '*|*' adm '*) fail AWH_VPS_DIRECT_PRIVILEGED_GROUP_FORBIDDEN;; esac
-install -d -m 0700 -o "$AGENT_USER" -g "$AGENT_USER" "$AGENT_HOME" "$AGENT_HOME/.npm" "$AGENT_HOME/.desktop-commander-device" "$AGENT_HOME/.claude-server-commander"
+install -d -m 0700 -o "$AGENT_USER" -g "$AGENT_USER" "$AGENT_HOME" "$AGENT_HOME/.npm" "$AGENT_HOME/tmp" "$AGENT_HOME/.desktop-commander-device" "$AGENT_HOME/.claude-server-commander"
 install -d -m 0755 -o root -g root "$RUNTIME_ROOT" "$RUNTIME_ROOT/agent"
 printf '%s\n' '{"name":"awh-vps-direct-connector","private":true,"version":"1.0.0","dependencies":{"@wonderwhy-er/desktop-commander":"0.2.51"}}' > "$RUNTIME_ROOT/agent/package.json"
 (cd "$RUNTIME_ROOT/agent" && PATH="$NODE_ROOT/bin:$PATH" "$NPM_BIN" install --ignore-scripts --omit=dev --no-audit --no-fund --save-exact "@wonderwhy-er/desktop-commander@$AGENT_VERSION" >/dev/null)

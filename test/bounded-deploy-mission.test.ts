@@ -105,3 +105,18 @@ test('desktop artifact hydration accepts only exact-SHA verified staged packages
   await writeFile(evidencePath,JSON.stringify(evidence));
   await assert.rejects(()=>verifyDesktopReleaseArtifacts(staged,sourceSha),/DESKTOP_ARTIFACT_PROVENANCE_MISMATCH/);
 });
+
+
+test('control-plane dry-run terminates after cleanup instead of surviving SIGTERM', async () => {
+  const source = await readFile('deploy/awh-control-plane/deploy-control-plane.sh', 'utf8');
+  assert.match(source, /trap cleanup EXIT/);
+  assert.match(source, /trap terminate HUP INT TERM/);
+  assert.match(source, /exit 143/);
+  assert.match(source, /AWH_RELEASE_BUILD_LOCK_ROOT/);
+  assert.match(source, /\.awh-local/);
+  assert.match(source, /release build lock root is not writable/);
+  assert.match(source, /AWH_WEB_OUTPUT_DIR="\$WEB_OUTPUT"/);
+  assert.match(source, /WEB_BUILD_ROOT\/\.awh-build\/awh-source\.zip/);
+  assert.match(source, /ASSEMBLY_FILES/);
+  assert.match(source, /tar -czf "\$BUNDLE" -C "\$ROOT" \$SOURCE_FILES -C "\$WEB_BUILD_ROOT" \$ASSEMBLY_FILES/);
+});

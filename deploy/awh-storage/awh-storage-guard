@@ -8,6 +8,9 @@ WARN=80
 BLOCK=90
 CRIT=95
 RECOVER=75
+WARN_FREE=4294967296
+BLOCK_FREE=3221225472
+CRIT_FREE=1610612736
 
 mkdir -p "$STATE_DIR"
 used=$(df -P / | awk 'NR==2{gsub(/%/,"",$5);print $5}')
@@ -16,11 +19,11 @@ total=$(df -B1 --output=size / | tail -1 | tr -d ' ')
 now=$(date --iso-8601=seconds)
 prev=$(cat "$STATE_FILE" 2>/dev/null || echo UNKNOWN)
 
-if (( used >= CRIT )); then
+if (( used >= CRIT || avail < CRIT_FREE )); then
   state=CRITICAL
-elif (( used >= WARN )); then
+elif (( used >= WARN || avail < WARN_FREE )); then
   state=WARNING
-elif [[ "$prev" == "WARNING" || "$prev" == "CRITICAL" ]] && (( used > RECOVER )); then
+elif [[ "$prev" == "WARNING" || "$prev" == "CRITICAL" ]] && (( used > RECOVER || avail < WARN_FREE )); then
   state="$prev"
 else
   state=NORMAL
@@ -30,7 +33,7 @@ fi
 if [[ "$state" == "WARNING" || "$state" == "CRITICAL" ]]; then
   /opt/awh-hub/control-plane-current/deploy/awh-storage/awh-temp-cleanup >/dev/null 2>&1 || true
 fi
-if (( used >= BLOCK )); then
+if (( used >= BLOCK || avail < BLOCK_FREE )); then
   journalctl --vacuum-size=300M >/dev/null 2>&1 || true
   apt-get clean >/dev/null 2>&1 || true
 fi
@@ -38,18 +41,18 @@ fi
 used=$(df -P / | awk 'NR==2{gsub(/%/,"",$5);print $5}')
 avail=$(df -B1 --output=avail / | tail -1 | tr -d ' ')
 release_blocked=false
-if (( used >= BLOCK )); then release_blocked=true; fi
-if (( used >= CRIT )); then
+if (( used >= BLOCK || avail < BLOCK_FREE )); then release_blocked=true; fi
+if (( used >= CRIT || avail < CRIT_FREE )); then
   state=CRITICAL
-elif (( used >= WARN )); then
+elif (( used >= WARN || avail < WARN_FREE )); then
   state=WARNING
-elif (( used <= RECOVER )); then
+elif (( used <= RECOVER && avail >= WARN_FREE )); then
   state=NORMAL
 fi
 
 printf '%s\n' "$state" > "$STATE_FILE"
 tmp="${JSON_FILE}.tmp"
-printf '{"schemaVersion":1,"checkedAt":"%s","state":"%s","usedPercent":%d,"freeBytes":%s,"totalBytes":%s,"warningPercent":%d,"blockPercent":%d,"criticalPercent":%d,"recoveryPercent":%d,"releaseBlocked":%s}\n' "$now" "$state" "$used" "$avail" "$total" "$WARN" "$BLOCK" "$CRIT" "$RECOVER" "$release_blocked" > "$tmp"
+printf '{"schemaVersion":1,"checkedAt":"%s","state":"%s","usedPercent":%d,"freeBytes":%s,"totalBytes":%s,"warningPercent":%d,"blockPercent":%d,"criticalPercent":%d,"recoveryPercent":%d,"warningFreeBytes":%s,"blockFreeBytes":%s,"criticalFreeBytes":%s,"releaseBlocked":%s}\n' "$now" "$state" "$used" "$avail" "$total" "$WARN" "$BLOCK" "$CRIT" "$RECOVER" "$WARN_FREE" "$BLOCK_FREE" "$CRIT_FREE" "$release_blocked" > "$tmp"
 chmod 0640 "$tmp"
 chown root:awh-hub "$tmp" 2>/dev/null || true
 mv -f "$tmp" "$JSON_FILE"

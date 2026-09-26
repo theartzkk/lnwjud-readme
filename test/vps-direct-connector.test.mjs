@@ -40,6 +40,9 @@ test('Phase 2 installer persists only a bounded unprivileged service', async () 
   assert.doesNotMatch(unit, /User=(?:root|bayadmin)/);
   assert.match(unit, /NoNewPrivileges=true/);
   assert.match(unit, /ProtectSystem=strict/);
+  assert.match(unit, /Environment=TMPDIR=__AGENT_HOME__\/tmp/);
+  assert.match(install, /\$AGENT_HOME\/tmp/);
+  assert.match(verify, /AWH_VPS_DIRECT_TMPDIR_MISMATCH/);
   assert.match(unit, /ReadOnlyPaths=\/srv\/awh-git/);
   assert.match(unit, /CapabilityBoundingSet=\s*$/m);
   assert.match(verify, /AWH_VPS_DIRECT_VERIFY=PASS/);

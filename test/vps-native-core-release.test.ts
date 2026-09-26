@@ -61,8 +61,11 @@ test('VPS-native core release reuses canonical approval and deploy authorities',
 
   assert.match(deploy, /AWH_DEPLOY_TRANSPORT:-ssh/);
   assert.match(deploy, /Local production deployment requires root authority/);
-  assert.match(remote, /required_capability <> 'system\.core\.release'/);
-  assert.equal((remote.match(/required_capability <> 'system\.core\.release'/g) ?? []).length, 9);
+  assert.match(remote, /verify_deploy_authority\(\)/);
+  assert.match(remote, /deploy-execution-authority\.php" verify/);
+  assert.match(remote, /DEPLOY_AUTHORITY_BORROWED/);
+  assert.equal((remote.match(/verify_deploy_authority/g) ?? []).length, 10);
+  assert.doesNotMatch(remote, /required_capability <> 'system\.core\.release'/);
 
   for (const file of ['hub/src/HubCoreReleaseService.php','hub/src/HubCoreReleaseOperator.php','hub/bin/awh-core-release-run.php']) {
     assert.ok(deploy.includes(file), `release bundle must include ${file}`);

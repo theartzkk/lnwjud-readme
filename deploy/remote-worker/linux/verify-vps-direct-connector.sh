@@ -13,6 +13,8 @@ fail(){ printf '%s\n' "$1" >&2; exit 1; }
 [ "$(systemctl show desktop-commander-vps.service -p Group --value)" = "$AGENT_USER" ] || fail AWH_VPS_DIRECT_SERVICE_GROUP_MISMATCH
 systemctl is-enabled --quiet desktop-commander-vps.service || fail AWH_VPS_DIRECT_SERVICE_NOT_ENABLED
 systemctl is-active --quiet desktop-commander-vps.service || fail AWH_VPS_DIRECT_SERVICE_NOT_ACTIVE
+systemctl show desktop-commander-vps.service -p Environment --value | grep -Fq "TMPDIR=$AGENT_HOME/tmp" || fail AWH_VPS_DIRECT_TMPDIR_MISMATCH
+[ "$(stat -c '%U:%G:%a' "$AGENT_HOME/tmp")" = "$AGENT_USER:$AGENT_USER:700" ] || fail AWH_VPS_DIRECT_TMPDIR_PERMISSIONS_INVALID
 case " $(id -nG "$AGENT_USER") " in *' sudo '*|*' adm '*) fail AWH_VPS_DIRECT_PRIVILEGED_GROUP_FORBIDDEN;; esac
 [ "$(stat -c '%U:%G:%a' "$SESSION")" = "$AGENT_USER:$AGENT_USER:600" ] || fail AWH_VPS_DIRECT_SESSION_PERMISSIONS_INVALID
 [ -x "$NODE_BIN" ] || fail AWH_VPS_DIRECT_NODE22_REQUIRED

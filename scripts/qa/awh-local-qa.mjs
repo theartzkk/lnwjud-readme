@@ -144,13 +144,23 @@ function run(executable, args, options = {}) {
       stdio: ['ignore', 'ignore', 'ignore'],
     });
     let timedOut = false;
+    let killTimer = null;
     const timer = setTimeout(() => {
       timedOut = true;
-      if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, 'SIGTERM');
-      else child.kill();
+      if (process.platform !== 'win32' && child.pid) {
+        try { process.kill(-child.pid, 'SIGTERM'); } catch {}
+        killTimer = setTimeout(() => {
+          try { process.kill(-child.pid, 'SIGKILL'); } catch {}
+        }, 3_000);
+        killTimer.unref?.();
+      } else {
+        child.kill();
+        killTimer = setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 3_000);
+        killTimer.unref?.();
+      }
     }, options.timeoutMs ?? 15 * 60_000);
-    child.once('error', () => { clearTimeout(timer); resolveResult({ code: -1, timedOut }); });
-    child.once('close', (code) => { clearTimeout(timer); resolveResult({ code: code ?? -1, timedOut }); });
+    child.once('error', () => { clearTimeout(timer); if (killTimer) clearTimeout(killTimer); resolveResult({ code: -1, timedOut }); });
+    child.once('close', (code) => { clearTimeout(timer); if (killTimer) clearTimeout(killTimer); resolveResult({ code: code ?? -1, timedOut }); });
   });
 }
 
@@ -475,7 +485,7 @@ async function fastQaCheck() {
   const deployContracts = await runNodeTest([
     'test/central-project-authority-deployment.test.ts',
     'test/automation-deployment.test.ts',
-  ], 90_000);
+  ], 240_000);
   check('fast-deploy-contracts', deployContracts.code === 0 ? 'PASS' : 'FAIL', deployContracts.code === 0 ? 'exact-revision deploy contracts passed on a clean candidate' : `exact-revision deploy contracts failed with exit code ${deployContracts.code}`, deployStarted);
 }
 

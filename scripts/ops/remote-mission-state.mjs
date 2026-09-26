@@ -59,6 +59,33 @@ function expiry(minutes){return new Date(Date.now()+minutes*60000).toISOString()
 function active(row){return row?.status==='ACTIVE'&&Date.parse(row.leaseExpiresAt)>Date.now();}
 async function input(){let raw='';for await(const chunk of process.stdin)raw+=chunk;return raw.trim()?JSON.parse(raw):{};}
 
+async function reapExpiredMissions(){
+  const dir=join(ROOT,'active');let entries=[];try{entries=await readdir(dir,{withFileTypes:true});}catch{return;}
+  for(const entry of entries){
+    if(!entry.isFile()||!entry.name.endsWith('.json'))continue;
+    const path=join(dir,entry.name),row=await readJson(path);
+    if(row?.status!=='ACTIVE'||active(row))continue;
+    const missionId=String(row?.missionId??'');if(!SAFE.test(missionId))continue;
+    const resourceKey=row.mutationMode==='MUTATE'&&SAFE_RESOURCE.test(String(row.resourceKey??''))?String(row.resourceKey):null;
+    const expire=async(latest)=>{
+      const at=now().toISOString();
+      const expired={...latest,status:'EXPIRED',updatedAt:at,completedAt:at,objectiveComplete:false,completionProof:['device transport lease expired and was reaped automatically'],cleanupStatus:'LEASE_EXPIRED_AUTO_REAP',nextStep:null,blocker:'MISSION_LEASE_EXPIRED'};
+      await atomicJson(historyFile(missionId),expired);await rm(path,{force:true});
+      return expired;
+    };
+    if(resourceKey){
+      await withResourceGuard(resourceKey,async()=>{
+        const latest=await readJson(path);if(!latest||latest.missionId!==missionId||active(latest))return;
+        const resourcePath=fileForResource(resourceKey),held=await readJson(resourcePath);
+        await expire(latest);
+        if(held?.missionId===missionId&&!active(held))await rm(resourcePath,{force:true});
+      });
+    }else{
+      const latest=await readJson(path);if(latest&&latest.missionId===missionId&&!active(latest))await expire(latest);
+    }
+  }
+}
+
 async function cleanupHistory(policy){
   const dir=join(ROOT,'history');await mkdir(dir,{recursive:true,mode:0o700});
   let entries=[];try{entries=await readdir(dir,{withFileTypes:true});}catch{return;}
@@ -75,6 +102,7 @@ async function cleanupHistory(policy){
 export async function runRemoteMissionCommand(command,payload,policy=null){
   policy=policy??await loadExecutionPolicy();
   await mkdir(join(ROOT,'active'),{recursive:true,mode:0o700});await mkdir(join(ROOT,'history'),{recursive:true,mode:0o700});await mkdir(join(ROOT,'resources'),{recursive:true,mode:0o700});
+  if(command==='start'||command==='status')await reapExpiredMissions();
   await cleanupHistory(policy);
   const leaseMinutes=policy.runtimeDefaults.deviceLeaseMinutes;
   if(command==='start'){
