@@ -16,7 +16,7 @@ $qa=new ReflectionMethod(HubControlPlaneService::class,'centralCandidateQa'); $q
 echo json_encode([
  'large'=>$route->invoke(null,'วิเคราะห์ log ทั้งระบบและปิดงาน final deploy',false),
  'design'=>$route->invoke(null,'ปรับ UI mobile ให้สวยและ responsive',false),
- 'copy'=>$route->invoke(null,'ปรับข้อความหน้าเว็บและ microcopy ให้เป็นธรรมชาติ',false),
+ 'copy'=>$route->invoke(null,'ปรับ microcopy ให้เป็นธรรมชาติ',false),
  'comments'=>$route->invoke(null,'clean up code comments และ jsdoc',false),
  'plain'=>$route->invoke(null,'อธิบายแนวคิดนี้',false),
  'attachment'=>$route->invoke(null,'ดูไฟล์นี้',true),
