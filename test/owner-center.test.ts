@@ -23,7 +23,11 @@ async function build(): Promise<void> {
 test('V1.3 owner center unifies existing owner surfaces without a new authority', async () => {
   const source = await readFile(join(ROOT, 'web', 'owner-center.js'), 'utf8');
   for (const label of ['Projects', 'Source Authority', 'Multi Chat', 'Tasks & Executions', 'Memory', 'Approvals', 'AI & Costs', 'Devices & Workers', 'Users & Roles', 'Security', 'Infrastructure', 'Database Studio', 'Automations', 'AWH Runtime']) assert.match(source, new RegExp(label.replace(/[&/]/g, '\\$&')));
-  for (const tab of ['data', 'ai', 'devices', 'people', 'account', 'system']) assert.match(source, new RegExp(`openSettings\\('${tab}'\\)`));
+  for (const tab of ['data', 'account']) assert.match(source, new RegExp(`openSettings\\('${tab}'\\)`));
+  assert.match(source, /action === 'ai'.*panel\.html#ai/);
+  assert.match(source, /action === 'people'.*panel\.html#users/);
+  assert.match(source, /action === 'devices'.*infrastructure\.html#capability-fabric/);
+  assert.match(source, /action === 'runtime'.*panel\.html/);
   assert.match(source, /project-open/);
   assert.match(source, /conversation-open/);
   assert.match(source, /action === 'tasks'.*dashboard-open-tasks/);
@@ -144,14 +148,13 @@ test('V1.3 owner center is bundled into existing dashboard assets and stays mobi
   assert.match(worker, /dashboard\.js\?release=owner-center-fixture/);
   assert.doesNotMatch(`${dashboard}\n${html}`, /__AWH_WEB_RELEASE_ID__/);
 });
-test('AWH Settings opens the reachable Owner Center while the dedicated Control Panel button stays separate', async () => {
+test('AWH primary navigation sends Owner administration directly to Control Panel', async () => {
   const [dashboard, owner] = await Promise.all([
     readFile(join(ROOT, 'web', 'dashboard.js'), 'utf8'),
     readFile(join(ROOT, 'web', 'owner-center.js'), 'utf8'),
   ]);
-  assert.match(dashboard, /ตั้งค่า[\s\S]{0,180}awh:open-owner-center/);
-  assert.doesNotMatch(dashboard, /ตั้งค่า[\s\S]{0,180}dashboard-owner-center-open.*click/);
+  assert.match(dashboard, /ศูนย์ระบบ[\s\S]{0,100}window\.location\.assign\('\.\/panel\.html'\)/);
+  assert.doesNotMatch(dashboard, /'ตั้งค่า'.*awh:open-owner-center/);
   assert.match(owner, /launch\.textContent = 'เปิดศูนย์ดูแลระบบ'/);
   assert.match(owner, /window\.location\.assign\('\.\/panel\.html'\)/);
-  assert.match(owner, /window\.addEventListener\('awh:open-owner-center', openCenter\)/);
 });

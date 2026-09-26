@@ -318,13 +318,13 @@
     if (action === 'tasks') { $('dashboard-open-tasks')?.click(); return; }
     if (action === 'approvals') { $('dashboard-pulse-attention-card')?.click(); return; }
     if (action === 'memory') { openSettings('data'); return; }
-    if (action === 'ai') { openSettings('ai'); return; }
-    if (action === 'devices') { openSettings('devices'); return; }
-    if (action === 'people') { openSettings('people'); return; }
+    if (action === 'ai') { window.location.assign('./panel.html#ai'); return; }
+    if (action === 'devices') { window.location.assign('./infrastructure.html#capability-fabric'); return; }
+    if (action === 'people') { window.location.assign('./panel.html#users'); return; }
     if (action === 'security') { openSettings('account'); return; }
     if (action === 'trust') { window.location.assign('./trust.html'); return; }
     if (action === 'infrastructure') { window.location.assign('./infrastructure.html'); return; }
-    if (action === 'runtime') { openSettings('system'); return; }
+    if (action === 'runtime') { window.location.assign('./panel.html'); return; }
     if (action === 'product-review') { window.location.assign('./review.html'); return; }
     if (action === 'database') window.location.assign('./database.html');
   }

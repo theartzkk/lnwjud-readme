@@ -1,4 +1,4 @@
-import { requireOwnerSession, loadInfrastructure, listManagedSites, loadProviderStatus, loadBayRemoteUpdateStatus, createBayRemoteInstallRelay, relayBayRemoteCommand } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { requireOwnerSession, loadInfrastructure, listManagedSites, loadProviderStatus, updateProviderPolicy, listPeople, listAccountRequests, reviewAccountRequest, revokePerson, loadBayRemoteUpdateStatus, createBayRemoteInstallRelay, relayBayRemoteCommand } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $=(id)=>document.getElementById(id);
 const bytes=(value)=>{const n=Number(value||0);if(!Number.isFinite(n)||n<1)return '—';if(n<1024**2)return Math.round(n/1024)+' KB';if(n<1024**3)return (n/1024**2).toFixed(1)+' MB';return (n/1024**3).toFixed(1)+' GB';};
@@ -289,7 +289,49 @@ function renderSites(sitesData){
   const sites=Array.isArray(sitesData?.sites)?sitesData.sites:[],ready=sites.filter(s=>s.state==='READY').length;
   $('cp-sites').textContent=sites.length?ready+'/'+sites.length+' sites ready':'ยังไม่มี Managed Site';
 }
-function renderProvider(providerData){const provider=providerData?.provider||{};$('cp-ai').textContent=provider.state==='READY'?'AI พร้อม · Auto routing':provider.state||'ยังไม่พร้อม';}
+let cpProvider=null;
+const MICRO_BAHT=1000000;
+function renderProvider(providerData){
+  const provider=providerData?.provider||providerData||{};cpProvider=provider;
+  $('cp-ai').textContent=provider.state==='READY'?'AI พร้อม · Auto routing':provider.state||'ยังไม่พร้อม';
+  const budget=provider.budget||{};
+  if($('cp-ai-enabled'))$('cp-ai-enabled').checked=provider.enabled===true;
+  if($('cp-ai-budget'))$('cp-ai-budget').value=(Number.isInteger(budget.monthlyMicrounits)?budget.monthlyMicrounits/MICRO_BAHT:0).toFixed(2);
+  if($('cp-ai-warning'))$('cp-ai-warning').value=(Number.isInteger(budget.warningMicrounits)?budget.warningMicrounits/MICRO_BAHT:0).toFixed(2);
+  if($('cp-ai-routing'))$('cp-ai-routing').value=['SAVER','BALANCED','QUALITY'].includes(provider.routingStrategy)?provider.routingStrategy:'BALANCED';
+  if($('cp-ai-status'))$('cp-ai-status').textContent=provider.available===true?'พร้อมใช้งาน':provider.keyConfigured===true?'เชื่อม API แล้ว':'ยังไม่ได้เชื่อม API';
+}
+function moneyMicros(id){
+  const value=Number.parseFloat($(id)?.value||'0');
+  if(!Number.isFinite(value)||value<0)throw new Error('กรอกจำนวนเงินให้ถูกต้อง');
+  const result=Math.round(value*MICRO_BAHT);if(!Number.isSafeInteger(result))throw new Error('จำนวนเงินมากเกินไป');return result;
+}
+function personRoleLabel(role){return ({OWNER:'เจ้าของ',ADMIN:'ผู้ดูแลแพลตฟอร์ม',STAFF:'สมาชิก',VIEWER:'ดูอย่างเดียว'})[role]||role||'สมาชิก';}
+async function loadPeopleAccess(){
+  const [peopleData,requestData]=await Promise.all([listPeople(),listAccountRequests()]);
+  const people=Array.isArray(peopleData?.people)?peopleData.people:[];
+  const requests=Array.isArray(requestData?.requests)?requestData.requests.filter(item=>item?.state==='PENDING'):[];
+  if($('cp-people-summary'))$('cp-people-summary').textContent=people.length+' บัญชี · '+requests.length+' คำขอรอ';
+  const peopleHost=$('cp-people-list');if(peopleHost){peopleHost.replaceChildren();for(const person of people){
+    const item=row(person.displayName||person.username,'@'+(person.username||'—')+' · '+(person.status==='ACTIVE'?'ใช้งานอยู่':'ปิดใช้งาน'),personRoleLabel(person.role),person.status==='ACTIVE'?'READY':'');
+    if(person.status==='ACTIVE'&&person.role!=='OWNER'){
+      const button=document.createElement('button');button.type='button';button.className='cp-mini-action';button.textContent='ปิดบัญชี';
+      button.addEventListener('click',async()=>{if(!confirm('ปิดบัญชี “'+(person.displayName||person.username)+'” ใช่หรือไม่?'))return;button.disabled=true;try{await revokePerson(person.userId);await loadPeopleAccess();}catch(error){$('cp-person-message').textContent=error instanceof Error?error.message:'ยังปิดบัญชีไม่ได้';button.disabled=false;}});
+      item.append(button);
+    }
+    peopleHost.append(item);
+  }if(!people.length)empty(peopleHost,'ยังไม่มีบัญชีอื่น');}
+  const requestHost=$('cp-request-list');if(requestHost){requestHost.replaceChildren();for(const request of requests){
+    const detail='@'+(request.username||'—')+(request.requestedArea?' · '+request.requestedArea:'');
+    const item=row(request.displayName||request.username,detail,'รออนุมัติ','WARNING');
+    const actions=document.createElement('div');actions.className='cp-inline-actions';
+    const approve=document.createElement('button');approve.type='button';approve.className='cp-mini-action';approve.textContent='อนุมัติ';
+    const reject=document.createElement('button');reject.type='button';reject.className='cp-mini-action';reject.textContent='ไม่อนุมัติ';
+    approve.addEventListener('click',async()=>{approve.disabled=reject.disabled=true;try{await reviewAccountRequest(request.requestId,'APPROVE','STAFF',[]);await loadPeopleAccess();}catch(error){$('cp-person-message').textContent=error instanceof Error?error.message:'ยังอนุมัติไม่ได้';approve.disabled=reject.disabled=false;}});
+    reject.addEventListener('click',async()=>{approve.disabled=reject.disabled=true;try{await reviewAccountRequest(request.requestId,'REJECT','VIEWER',[]);await loadPeopleAccess();}catch(error){$('cp-person-message').textContent=error instanceof Error?error.message:'ยังปฏิเสธคำขอไม่ได้';approve.disabled=reject.disabled=false;}});
+    actions.append(approve,reject);item.append(actions);requestHost.append(item);
+  }if(!requests.length)empty(requestHost,'ไม่มีคำขอค้าง');}
+}
 async function renderExternalCapabilities(){
   const host=$('cp-external-capabilities');if(!host)return;
   try{
@@ -334,6 +376,17 @@ function installUi(){
   $('cp-refresh')?.addEventListener('click',()=>void load());
   $('cp-bay-recheck')?.addEventListener('click',()=>void loadBayControl());
   $('cp-bay-update-button')?.addEventListener('click',()=>void updateBayProduction());
+  $('cp-ai-form')?.addEventListener('submit',async(event)=>{
+    event.preventDefault();const button=event.currentTarget.querySelector('button[type="submit"]');if(button)button.disabled=true;
+    if($('cp-ai-message'))$('cp-ai-message').textContent='กำลังบันทึก…';
+    try{
+      const models=cpProvider?.models||{fast:'gpt-5.6-luna',balanced:'gpt-5.6-terra',strong:'gpt-5.6-sol'};
+      const result=await updateProviderPolicy({enabled:$('cp-ai-enabled')?.checked===true,modelFast:models.fast,modelBalanced:models.balanced,modelStrong:models.strong,monthlyBudgetMicrounits:moneyMicros('cp-ai-budget'),warningMicrounits:moneyMicros('cp-ai-warning'),routingStrategy:$('cp-ai-routing')?.value||'BALANCED',pricingMode:'CATALOG',serviceTier:'DEFAULT'});
+      renderProvider(result.provider||result);if($('cp-ai-message'))$('cp-ai-message').textContent='บันทึกนโยบาย AI แล้ว';
+    }catch(error){if($('cp-ai-message'))$('cp-ai-message').textContent=error instanceof Error?error.message:'ยังบันทึก AI ไม่ได้';}
+    finally{if(button)button.disabled=false;}
+  });
+
 }
 async function load(){
   const refresh=$('cp-refresh');if(refresh)refresh.disabled=true;
@@ -349,7 +402,7 @@ async function load(){
     void loadBayControl();
     void renderExternalCapabilities();
 
-    Promise.allSettled([listManagedSites(),loadProviderStatus()]).then((secondary)=>{
+    Promise.allSettled([listManagedSites(),loadProviderStatus(),loadPeopleAccess()]).then((secondary)=>{
       if(secondary[0].status==='fulfilled')renderSites(secondary[0].value);
       if(secondary[1].status==='fulfilled')renderProvider(secondary[1].value);
     });

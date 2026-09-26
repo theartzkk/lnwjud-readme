@@ -1240,7 +1240,11 @@ import {
   }
 
   function requestedOwnerSettings() {
-    try { const value = new URL(window.location.href).searchParams.get('awh-settings'); return ['ai','account','devices','data','system','people'].includes(value) ? value : null; } catch { return null; }
+    try {
+      const value = new URL(window.location.href).searchParams.get('awh-settings');
+      if (['ai','system','people','brand'].includes(value)) return 'panel:' + ({ ai: 'ai', system: 'overview', people: 'users', brand: 'overview' })[value];
+      return ['account','devices','data'].includes(value) ? value : null;
+    } catch { return null; }
   }
 
   function authenticatedSurfaceRequested() {
@@ -1592,8 +1596,17 @@ import {
   }
 
   const settingsSections = ['start', 'brand', 'ai', 'account', 'devices', 'data', 'system', 'people'];
-  function showSettingsSection(section = 'start') {
-    const selected = settingsSections.includes(section) ? section : 'start';
+  const focusedSettingsCopy = Object.freeze({
+    brand: ['BRAND', 'แบรนด์ AWH'],
+    ai: ['AI', 'AI และการใช้งาน'],
+    account: ['MY ACCOUNT', 'บัญชีและความปลอดภัย'],
+    devices: ['DEVICES', 'อุปกรณ์และ AWH Agent'],
+    data: ['MY AWH', 'ข้อมูลของฉัน'],
+    system: ['SYSTEM', 'ระบบ'],
+    people: ['PEOPLE & ACCESS', 'ผู้ใช้และสิทธิ์'],
+  });
+  function showSettingsSection(section = 'account') {
+    const selected = settingsSections.includes(section) && section !== 'start' ? section : 'account';
     for (const name of settingsSections) {
       const panel = $(`settings-panel-${name}`); if (panel) panel.hidden = name !== selected;
     }
@@ -1612,13 +1625,11 @@ import {
   }
   function configureSettingsVisibility() {
     const owner = isOwner();
-    for (const section of ['brand', 'ai', 'data', 'system', 'people']) {
-      const button = document.querySelector(`.settings-tab[data-settings-tab="${section}"]`);
-      if (button) button.hidden = !owner;
+    const tabs = document.querySelector('.settings-tabs'); if (tabs) tabs.hidden = true;
+    document.querySelectorAll('.owner-settings-tab, .owner-settings-action').forEach((element) => { element.hidden = true; });
+    if (!owner) {
+      for (const section of ['brand', 'ai', 'data', 'system', 'people']) { const panel = $(`settings-panel-${section}`); if (panel) panel.hidden = true; }
     }
-    const deviceButton = document.querySelector('.settings-tab[data-settings-tab="devices"]'); if (deviceButton) deviceButton.hidden = false;
-    document.querySelectorAll('.owner-settings-tab, .owner-settings-action').forEach((element) => { element.hidden = !owner; });
-    if (!owner && !['start', 'account', 'devices'].includes(document.querySelector('.settings-tab.active')?.dataset.settingsTab || '')) showSettingsSection('account');
   }
   function openSheet(id) { const sheet = $(id); if (sheet) openAwhDialog(sheet); }
   function closeSheet(id, options = {}) {
@@ -1638,12 +1649,15 @@ import {
     message('reset-instructions', token ? 'ลิงก์นี้ใช้ได้ครั้งเดียวและจะหมดอายุในเวลาอันสั้น เลือกรหัสผ่านใหม่ที่คุณจำได้' : state.control?.authenticated && recoveryRequested ? 'คุณยังเข้าสู่ระบบอยู่ เปิดแท็บ “บัญชีและความปลอดภัย” เพื่อจัดการรหัสผ่านหรือเตรียมรหัสกู้คืน หากกำลังแก้ปัญหาการเข้าสู่ระบบ ให้ใช้รหัสกู้คืนฉุกเฉินที่เตรียมไว้เท่านั้น' : 'กด “ลืมรหัสผ่าน?” จากหน้าเข้าสู่ระบบ แล้วเปิดลิงก์กู้คืนจาก AWH Agent บนอุปกรณ์ที่เชื่อถือได้ ลิงก์มีอายุสั้นและใช้ได้ครั้งเดียว');
     openSheet('recovery-sheet');
   }
-  async function openAccount(section = 'start') {
+  async function openAccount(section = 'account') {
     if (!state.control?.authenticated) return;
+    const selected = isOwner() ? (focusedSettingsCopy[section] ? section : 'account') : (['account', 'devices'].includes(section) ? section : 'account');
+    const [eyebrow, title] = focusedSettingsCopy[selected] || focusedSettingsCopy.account;
+    message('account-sheet-eyebrow', eyebrow);
+    message('account-sheet-title', title);
     openSheet('account-sheet');
     configureSettingsVisibility();
-    const selected = isOwner() ? section : (['account', 'devices'].includes(section) ? section : 'account');
-    showSettingsSection(settingsSections.includes(selected) ? selected : 'account');
+    showSettingsSection(selected);
     $('owner-only-settings').hidden = !isOwner();
     $('product-settings-form').hidden = !isOwner();
     try { await refreshProfileIdentity(); }
@@ -1869,6 +1883,8 @@ import {
   document.querySelectorAll('[data-profile-section]').forEach((button) => button.addEventListener('click', async () => {
     const requested = button.dataset.profileSection || 'account';
     closeSheet('profile-menu', { history: false });
+    if (requested === 'people') { window.location.assign('./panel.html#users'); return; }
+    if (requested === 'system') { window.location.assign('./panel.html'); return; }
     await openAccount(requested === 'profile' ? 'account' : requested);
     if (requested === 'profile') window.requestAnimationFrame(() => $('profile-display-name')?.focus());
   }));
@@ -2091,6 +2107,11 @@ import {
     const requestedSettings = requestedOwnerSettings();
     if (window.location.hash === '#awh-recovery' || window.location.hash.startsWith('#awh-reset=')) openPasswordRecovery();
     if (!data?.control?.authenticated) return;
+    if (requestedSettings?.startsWith('panel:')) {
+      const target = requestedSettings.slice('panel:'.length) || 'overview';
+      window.location.replace('./panel.html#' + encodeURIComponent(target));
+      return;
+    }
 
     // First paint is already complete. Hydrate heavier workspace state in the background.
     const hydration = hydrateAuthenticatedControl().catch((error) => {

@@ -278,15 +278,21 @@ test('Owner Brand settings are detailed, revisioned, bounded, and never expose t
   assert.doesNotMatch(`${html}\n${app}\n${ownerCenter}\n${panel}`, /lnwjud/i);
 });
 
-test('owner self-service is a focused settings hub whose independent projections cannot hide AI setup', async () => {
-  const [html, app, executionUx, css, fixture] = await Promise.all([
+test('owner self-service keeps personal account focused while administration converges on Control Panel', async () => {
+  const [html, app, executionUx, css, fixture, panel] = await Promise.all([
     readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
     readFile(join(ROOT, 'web', 'app.js'), 'utf8'),
     readFile(join(ROOT, 'web', 'execution-ux.js'), 'utf8'),
     readFile(join(ROOT, 'web', 'styles.css'), 'utf8'),
     readFile(join(ROOT, 'scripts', 'qa', 'control-web-fixture.mjs'), 'utf8'),
+    readFile(join(ROOT, 'web', 'panel.html'), 'utf8'),
   ]);
-  for (const section of ['start', 'brand', 'ai', 'account', 'devices', 'data', 'people']) assert.match(html, new RegExp(`data-settings-tab="${section}"`));
+  assert.doesNotMatch(html, /การตั้งค่า AWH/);
+  assert.match(html, /id="account-sheet-title">บัญชีของฉัน/);
+  assert.match(html, /class="settings-tabs"[^>]*hidden/);
+  assert.match(html, /id="settings-panel-start" class="settings-panel" hidden/);
+  assert.match(panel, /<section id="users" class="cp-section cp-admin-section">/);
+  assert.match(panel, /<section id="ai" class="cp-section cp-admin-section">/);
   assert.match(html, /id="settings-panel-ai"/);
   assert.match(app, /id="provider-api-key"/);
   assert.match(app, /provider-credential-settings/);
@@ -299,8 +305,8 @@ test('owner self-service is a focused settings hub whose independent projections
   for (const key of ['backup', 'storage', 'queue', 'aiBudget', 'workerSummary']) assert.match(app, new RegExp(`status\.${key}|status\[.${key}.\]`));
   assert.match(app, /Promise\.allSettled\(requests\)/);
   assert.match(app, /function showSettingsSection/);
-  assert.match(app, /\['account', 'devices'\]\.includes\(section\)/);
-  assert.match(app, /deviceButton\.hidden = false/);
+  assert.match(app, /focusedSettingsCopy/);
+  assert.match(app, /const tabs = document\.querySelector\('\.settings-tabs'\); if \(tabs\) tabs\.hidden = true/);
   assert.match(app, /deviceAction\.hidden = false/);
   assert.match(app, /const host = \$\('memory-host'\)/);
   assert.match(app, /const host = \$\('my-awh-host'\)/);

@@ -23,8 +23,8 @@
         <a href="./hosting.html" data-cp-keywords="website hosting deploy rollback เว็บไซต์ โฮสติ้ง"><span>◎</span>เว็บไซต์</a>
         <a href="./?awh-surface=files" data-cp-keywords="files storage artifacts ไฟล์ พื้นที่"><span>▤</span>ไฟล์และพื้นที่</a>
         <a href="#backup" data-cp-keywords="backup restore recovery retention สำรอง กู้คืน"><span>↺</span>สำรองและกู้คืน</a>
-        <a href="./?awh-surface=home&awh-settings=people" data-cp-keywords="users roles access people ผู้ใช้ สิทธิ์"><span>♙</span>ผู้ใช้และสิทธิ์</a>
-        <a href="./?awh-surface=home&awh-settings=ai" data-cp-keywords="ai provider model quota cost automation เอไอ ค่าใช้จ่าย"><span>✦</span>AI และการใช้งาน</a>
+        <a href="#users" data-cp-keywords="users roles access people ผู้ใช้ สิทธิ์"><span>♙</span>ผู้ใช้และสิทธิ์</a>
+        <a href="#ai" data-cp-keywords="ai provider model quota cost automation เอไอ ค่าใช้จ่าย"><span>✦</span>AI และการใช้งาน</a>
         <p>ระบบโรงเรียน</p>
         <a href="#ecosystem" data-cp-keywords="bay excuse learnlab school ecosystem โรงเรียน"><span>◫</span>ระบบที่เชื่อมกัน</a>
         <a href="#bay-update" data-cp-keywords="bay update deploy package manager อัปเดต production"><span>⇧</span>อัปเดตระบบ</a>
@@ -102,8 +102,8 @@
             <a class="cp-tool" href="./hosting.html" data-cp-keywords="website hosting deploy"><b>◎</b><span><strong>เว็บไซต์</strong><small id="cp-sites">เว็บไซต์ที่ AWH ดูแล</small></span></a>
             <a class="cp-tool" href="./?awh-surface=files" data-cp-keywords="files storage"><b>▤</b><span><strong>ไฟล์และพื้นที่</strong><small>ไฟล์ ผลงาน และพื้นที่จัดเก็บ</small></span></a>
             <a class="cp-tool" href="#backup" data-cp-keywords="backup restore recovery"><b>↺</b><span><strong>สำรองและกู้คืน</strong><small id="cp-backup-card">ดูจุดสำรองและการกู้คืน</small></span></a>
-            <a class="cp-tool" href="./?awh-surface=home&awh-settings=people" data-cp-keywords="users roles access"><b>♙</b><span><strong>ผู้ใช้และสิทธิ์</strong><small>บัญชี บทบาท และสิทธิ์</small></span></a>
-            <a class="cp-tool" href="./?awh-surface=home&awh-settings=ai" data-cp-keywords="ai providers costs"><b>✦</b><span><strong>AI และการใช้งาน</strong><small id="cp-ai">การเชื่อมต่อและการใช้งาน</small></span></a>
+            <a class="cp-tool" href="#users" data-cp-keywords="users roles access"><b>♙</b><span><strong>ผู้ใช้และสิทธิ์</strong><small>บัญชี บทบาท และสิทธิ์</small></span></a>
+            <a class="cp-tool" href="#ai" data-cp-keywords="ai providers costs"><b>✦</b><span><strong>AI และการใช้งาน</strong><small id="cp-ai">การเชื่อมต่อและการใช้งาน</small></span></a>
           </div>
           <details class="cp-advanced-tools">
             <summary>รายละเอียดขั้นสูง</summary>
@@ -117,6 +117,24 @@
               <a class="cp-tool" href="#external-capabilities" data-cp-keywords="capabilities integrations teamai hallmark context design"><b>⊕</b><span><strong>ความสามารถเสริม</strong><small>Adapters · skills · references</small></span></a>
             </div>
           </details>
+        </section>
+        <section id="users" class="cp-section cp-admin-section">
+          <div class="cp-section-head"><div><span>PEOPLE & ACCESS</span><h2>ผู้ใช้และสิทธิ์</h2></div><small id="cp-people-summary">กำลังโหลดบัญชี…</small></div>
+          <div class="cp-admin-grid cp-people-grid">
+            <div><h3>บัญชีที่ใช้งาน</h3><p class="cp-inline-message">บัญชี KRUART ใช้สำหรับเข้าสู่ระบบ ส่วนตัวตนและสิทธิ์งานโรงเรียนอ้างอิงจาก BAY EXCUSE X</p><div id="cp-people-list" class="cp-list"></div></div>
+            <div><h3>คำขอใช้งาน</h3><p class="cp-inline-message">ผู้ใช้สมัครและตั้งรหัสของตนเอง จากนั้น Owner อนุมัติที่นี่โดยไม่ต้องเห็นข้อมูลลับ</p><div id="cp-request-list" class="cp-list"></div><p id="cp-person-message" class="cp-inline-message" role="status"></p></div>
+          </div>
+        </section>
+        <section id="ai" class="cp-section cp-admin-section">
+          <div class="cp-section-head"><div><span>AI CONTROL</span><h2>AI และการใช้งาน</h2></div><small id="cp-ai-status">กำลังตรวจ AI…</small></div>
+          <form id="cp-ai-form" class="cp-admin-form cp-ai-form">
+            <label class="cp-toggle"><input id="cp-ai-enabled" type="checkbox" /><span>เปิดใช้ AI ของ AWH</span></label>
+            <label>งบสูงสุดต่อเดือน (บาท)<input id="cp-ai-budget" type="number" min="0" step="0.01" inputmode="decimal" /></label>
+            <label>เตือนเมื่อใช้ถึง (บาท)<input id="cp-ai-warning" type="number" min="0" step="0.01" inputmode="decimal" /></label>
+            <label>รูปแบบการใช้ AI<select id="cp-ai-routing"><option value="SAVER">ประหยัด</option><option value="BALANCED">สมดุล</option><option value="QUALITY">เน้นคุณภาพ</option></select></label>
+            <button class="cp-bay-primary" type="submit"><span>✓</span><span><strong>บันทึกนโยบาย AI</strong><small>ใช้ Provider authority เดิมของ AWH</small></span></button>
+            <p id="cp-ai-message" class="cp-inline-message" role="status"></p>
+          </form>
         </section>
         <details id="cp-technical-details" class="cp-technical-details">
           <summary>รายละเอียดระบบเพิ่มเติม</summary>

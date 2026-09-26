@@ -326,7 +326,7 @@ function mountProductNavigation(dashboard) {
     ['tasks', '↻', 'งานของฉัน', () => openTaskSurface()],
     ['files', '▤', 'ไฟล์', () => openFilesSurface()],
     ['tools', '▦', 'เครื่องมือ', () => { returnHome(); window.setTimeout(() => $('awh-home-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40); }],
-    ['owner', '⌘', 'ตั้งค่า', () => { returnHome(); window.setTimeout(() => window.dispatchEvent(new CustomEvent('awh:open-owner-center')), 40); }],
+    ['owner', '⌘', 'ศูนย์ระบบ', () => window.location.assign('./panel.html')],
   ];
   for (const [destination, icon, label, action] of entries) {
     const item = button('', 'awh-product-nav-item', action);
@@ -550,7 +550,7 @@ function renderOwnerNightShift() {
     if (!value) return 'ขณะนี้ยังไม่มีสิ่งที่ต้องทำต่อ';
     const rules = [
       [/current defect|ข้อบกพร่อง/i, 'ตรวจปัญหาปัจจุบันก่อนให้ AWH ลองทำงานใหม่'],
-      [/credential|authentication|auth/i, 'ตรวจการเชื่อมต่อ AI ในการตั้งค่าของผู้ดูแล'],
+      [/credential|authentication|auth/i, 'ตรวจการเชื่อมต่อ AI ในศูนย์ดูแลระบบ'],
       [/provider.*policy|account.*policy|model.*policy/i, 'ตรวจเงื่อนไขบัญชีและโมเดล AI'],
       [/project\/source configuration|canonical execution schema|read authority/i, 'ตรวจข้อมูลโปรเจกต์และแหล่งงานให้พร้อม'],
       [/retry policy|nextEligibleAt|retry/i, 'ให้ AWH ลองทำงานใหม่เมื่อถึงเวลาที่เหมาะสม'],
