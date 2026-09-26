@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { cp, lstat, mkdir, readFile, readdir, rm, rmdir } from 'node:fs/promises';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { WorkerCapabilityPlan } from './control-plane-worker-client.js';
 
@@ -27,6 +27,14 @@ const PROFILE_BY_CAPABILITY: Record<string, keyof ApprovedSkillManifest['profile
   'design.antislop': 'design',
   'copy.antislop': 'copy',
   'code.antislop': 'code',
+};
+const MATERIALIZED_FILES_BY_SKILL: Record<string, string[]> = {
+  antislop: ['SKILL.md', 'antislop.md', 'VERSION'],
+  'antislop-ui': ['SKILL.md'],
+  'antislop-human': ['SKILL.md'],
+  'antislop-layoutmobile': ['SKILL.md'],
+  'antislop-copywriting': ['SKILL.md'],
+  'antislop-code': ['SKILL.md'],
 };
 
 async function exists(path: string): Promise<boolean> {
@@ -136,8 +144,18 @@ export async function materializeApprovedSkillPlan(plan: WorkerCapabilityPlan | 
       if (!sourceInfo.isDirectory() || sourceInfo.isSymbolicLink()) throw new Error('APPROVED_SKILL_PROFILE_INVALID');
       const destination = join(skillsRoot, name);
       if (await exists(destination)) throw new Error('APPROVED_SKILL_DESTINATION_CONFLICT');
-      await cp(source, destination, { recursive: true, force: false, errorOnExist: true });
+      await mkdir(destination, { recursive: false, mode: 0o700 });
       created.push(destination);
+      const approvedFiles = MATERIALIZED_FILES_BY_SKILL[name];
+      if (!approvedFiles?.length) throw new Error('APPROVED_SKILL_PROFILE_INVALID');
+      for (const relativeFile of approvedFiles) {
+        const sourceFile = safeChild(source, relativeFile);
+        const sourceFileInfo = await lstat(sourceFile);
+        if (!sourceFileInfo.isFile() || sourceFileInfo.isSymbolicLink()) throw new Error('APPROVED_SKILL_FILE_INVALID');
+        const destinationFile = join(destination, relativeFile);
+        await mkdir(dirname(destinationFile), { recursive: true, mode: 0o700 });
+        await cp(sourceFile, destinationFile, { force: false, errorOnExist: true });
+      }
     }
     return { skillNames: names, cleanup };
   } catch (error) {
