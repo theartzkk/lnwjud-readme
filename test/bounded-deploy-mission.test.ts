@@ -4,10 +4,10 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { desktopImpactForFiles, localOperatorInvocation, missionModeFromArgs } from '../scripts/ops/bounded-deploy-mission.mjs';
+import { desktopImpactForFiles, desktopReleaseRequested, localOperatorInvocation, missionModeFromArgs } from '../scripts/ops/bounded-deploy-mission.mjs';
 import { hydrateDesktopReleaseArtifacts, verifyDesktopReleaseArtifacts } from '../scripts/release/hydrate-desktop-release-artifacts.mjs';
 
-test('bounded deploy mission reuses verified desktop artifacts only for server-safe deltas',()=>{
+test('desktop impact detection still identifies native-agent-affecting source changes',()=>{
   assert.equal(desktopImpactForFiles(['hub/src/HubControlPlaneService.php','scripts/ops/example.mjs']),false);
   assert.equal(desktopImpactForFiles(['desktop/index.html']),true);
   assert.equal(desktopImpactForFiles(['src/worker-capability-discovery.ts']),false);
@@ -21,6 +21,13 @@ test('bounded deploy mission has one explicit owner approval and a deterministic
   assert.equal(missionModeFromArgs(['--identity-convergence']),'--identity-convergence');
   assert.equal(missionModeFromArgs(['--cloud-first']),'--cloud-first');
   assert.throws(()=>missionModeFromArgs(['--cloud-first','--project-source-authority']),/MISSION_MODE_AMBIGUOUS/);
+});
+
+test('core/web release reuses verified desktop lineage unless desktop publication is explicitly requested',()=>{
+  assert.equal(desktopReleaseRequested([]),false);
+  assert.equal(desktopReleaseRequested(['--platform-hardening']),false);
+  assert.equal(desktopReleaseRequested(['--desktop-agent-release']),true);
+  assert.equal(desktopReleaseRequested(['--platform-hardening','--desktop-agent-release']),true);
 });
 
 test('root core release demotes typed operator calls to the guarded awh-remote identity',()=>{
