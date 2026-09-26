@@ -5,9 +5,9 @@ import {
   cancelTask, changePassword, changeUsername, createConversation, createMemory, createPerson, createProject, createRecoveryCodes, decideApproval,
   bindSchoolIdentity, exportWorkspace, listAccountRequests, listAuthSessions, listPeople, loadAuthProfile, loadBayCommunicationStatus, loadControlData, loadConversation, loadConversationHistory,
   loadConversations, loadDeletedConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus, loadSchoolIdentityBindings, loadSchoolIdentityCandidates,
-  loadProductSettingHistory, loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadLineOaStatus, loadObservabilityStatus, loadCapabilities, loadInfrastructure, loadSystemReadiness, loadWorkspaceContinuity, login, logout, logoutAll,
+  loadProductSettingHistory, loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadObservabilityStatus, loadCapabilities, loadInfrastructure, loadSystemReadiness, loadWorkspaceContinuity, login, logout, logoutAll,
   recover, registerAccessRequest, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokeDevice, revokePerson, revokeSchoolIdentity, saveCurrentContext, stepUp, submitWorkMessage,
-  testProviderConnection, configureLineOa, createLineOaPairing, revokeLineOaBinding, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
+  testProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
   updateProviderCredential, updateProviderPolicy, updateProviderProjectRouting, updateObservabilityCredential, updateConversationLifecycle, uploadConversationAttachments,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
@@ -17,7 +17,7 @@ import {
   const CANCELLABLE_TASK_STATES = new Set(['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL']);
   const MICRO_BAHT = 1000000;
   const DESKTOP_PACKAGES = [['downloads/AWH-macOS-arm64.zip', 'macOS Apple Silicon', 'mac-arm64'], ['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac-intel'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, lineOa: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, infrastructure: null, people: [], accountRequests: [], schoolIdentityBindings: [], schoolIdentityCandidates: [], schoolIdentityPolicy: null, bayCommunication: null, memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, infrastructure: null, people: [], accountRequests: [], schoolIdentityBindings: [], schoolIdentityCandidates: [], schoolIdentityPolicy: null, bayCommunication: null, memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
   const pendingBrandAssets = { logo: undefined, icon: undefined };
   const MAX_BRAND_SOURCE_BYTES = 8 * 1024 * 1024;
   const MAX_BRAND_DATA_URL_CHARS = 11500;
@@ -649,17 +649,6 @@ import {
       catch (error) { message('provider-credential-message', error instanceof Error ? error.message : 'ยังบันทึกการเลือก AI ไม่ได้'); }
     });
     return section;
-  }
-
-  function renderLineOa() {
-    const value = state.lineOa || {};
-    const status = value.bound ? 'เชื่อม Owner กับ LINE แล้ว ✅' : value.configured ? 'พร้อมจับคู่ LINE กับ Owner' : 'ยังไม่ได้ใส่ Channel Secret / Access Token';
-    message('line-oa-status', status);
-    const dot = $('line-oa-dot'); if (dot) { dot.classList.toggle('good', value.bound === true); dot.classList.toggle('attention', value.configured === true && value.bound !== true); }
-    if ($('line-oa-webhook')) $('line-oa-webhook').value = value.webhookPath ? location.origin + value.webhookPath : '';
-    if ($('line-oa-pair')) $('line-oa-pair').disabled = value.configured !== true || value.bound === true;
-    if ($('line-oa-revoke')) $('line-oa-revoke').disabled = value.bound !== true;
-    const detail = $('line-oa-last-seen'); if (detail) detail.textContent = value.bound && value.lastSeenAt ? `ใช้งานล่าสุด ${new Date(value.lastSeenAt).toLocaleString('th-TH')}` : value.pairingOpen && value.pairingExpiresAt ? `มีรหัสจับคู่ที่ยังใช้ได้ถึง ${new Date(value.pairingExpiresAt).toLocaleTimeString('th-TH')}` : '';
   }
 
   function renderObservability() {
@@ -1663,12 +1652,10 @@ import {
     catch { if (isOwner()) message('product-settings-message', 'ยังโหลดการตั้งค่าลักษณะของ AWH ไม่ได้'); }
     if (isOwner()) {
       ensureOwnerSelfServiceSurface(); ensureProviderSelfServiceSurface();
-      const project = selectedProject(); const requests = [loadProviderStatus(), loadLineOaStatus(), loadObservabilityStatus(), loadCapabilities(), listPeople(), listAccountRequests(), loadOwnerSelfServiceStatus(), project ? loadProviderProjectRouting(project.projectId) : Promise.resolve(null)];
-      const [providerResult, lineOaResult, observabilityResult, capabilitiesResult, peopleResult, accountRequestsResult, ownerStatusResult, routingResult] = await Promise.allSettled(requests);
+      const project = selectedProject(); const requests = [loadProviderStatus(), loadObservabilityStatus(), loadCapabilities(), listPeople(), listAccountRequests(), loadOwnerSelfServiceStatus(), project ? loadProviderProjectRouting(project.projectId) : Promise.resolve(null)];
+      const [providerResult, observabilityResult, capabilitiesResult, peopleResult, accountRequestsResult, ownerStatusResult, routingResult] = await Promise.allSettled(requests);
       if (providerResult.status === 'fulfilled') { state.provider = providerResult.value.provider; renderProvider(); }
       else message('provider-status', 'ยังโหลดสถานะ AI ไม่ได้ ลองรีเฟรชอีกครั้ง');
-      if (lineOaResult.status === 'fulfilled') { state.lineOa = lineOaResult.value; renderLineOa(); }
-      else message('line-oa-status', 'ยังโหลดสถานะ AWH LINE OA ไม่ได้');
       if (observabilityResult.status === 'fulfilled') { state.observability = observabilityResult.value.observability; renderObservability(); }
       else message('observability-status', 'ยังโหลดสถานะ Honeycomb ไม่ได้');
       if (capabilitiesResult.status === 'fulfilled') { state.capabilities = capabilitiesResult.value; renderCapabilitySurface(); }
@@ -1905,25 +1892,6 @@ import {
     finally { button.disabled = false; }
   });
   document.querySelectorAll('[data-settings-tab]').forEach((button) => button.addEventListener('click', () => { showSettingsSection(button.dataset.settingsTab); }));
-  $('line-oa-credential-form')?.addEventListener('submit', async (event) => {
-    event.preventDefault(); const secret=$('line-oa-channel-secret'); const token=$('line-oa-access-token'); const button=event.currentTarget.querySelector('button[type="submit"]');
-    if(!secret?.value.trim()||!token?.value.trim()){message('line-oa-message','กรอก Channel Secret และ Channel Access Token ให้ครบ');return;}
-    button.disabled=true;message('line-oa-message','กำลังบันทึกการเชื่อมต่ออย่างปลอดภัย…');
-    try{state.lineOa=await withPrivilegedRetry(()=>configureLineOa(secret.value,token.value),'การตั้งค่า AWH LINE OA');renderLineOa();message('line-oa-message','บันทึกแล้ว ตั้ง Webhook URL ด้านล่างใน LINE Developers แล้วเปิด Use webhook');}
-    catch(error){message('line-oa-message',error instanceof Error?error.message:'ยังเชื่อม LINE OA ไม่ได้');}
-    finally{secret.value='';token.value='';button.disabled=false;}
-  });
-  $('line-oa-pair')?.addEventListener('click',async()=>{
-    message('line-oa-message','กำลังสร้างรหัสจับคู่…');
-    try{const value=await withPrivilegedRetry(()=>createLineOaPairing(),'การจับคู่ LINE กับ Owner');const code=$('line-oa-pairing-code');if(code){code.hidden=false;code.textContent=value.pairing.code;}state.lineOa=await loadLineOaStatus();renderLineOa();message('line-oa-message','ส่งรหัสนี้เป็นข้อความหา AWH LINE OA ภายใน 10 นาที');}
-    catch(error){message('line-oa-message',error instanceof Error?error.message:'ยังสร้างรหัสจับคู่ไม่ได้');}
-  });
-  $('line-oa-revoke')?.addEventListener('click',async()=>{
-    if(!window.confirm('ยกเลิกการจับคู่ LINE กับ Owner ใช่หรือไม่?'))return;
-    try{state.lineOa=await withPrivilegedRetry(()=>revokeLineOaBinding(),'การยกเลิกการจับคู่ LINE');renderLineOa();const code=$('line-oa-pairing-code');if(code){code.hidden=true;code.textContent='';}message('line-oa-message','ยกเลิกการจับคู่แล้ว');}
-    catch(error){message('line-oa-message',error instanceof Error?error.message:'ยังยกเลิกการจับคู่ไม่ได้');}
-  });
-
   $('observability-credential-form')?.addEventListener('submit', async (event) => {
     event.preventDefault(); const field = $('observability-api-key'); const button = event.currentTarget.querySelector('button[type="submit"]'); if (!field?.value.trim()) { message('observability-message', 'วาง Honeycomb API key ก่อน'); return; }
     button.disabled = true; message('observability-message', 'กำลังบันทึก key อย่างปลอดภัย…');

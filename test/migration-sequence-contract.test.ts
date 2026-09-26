@@ -38,9 +38,7 @@ test('schema migrations have one monotonic authority per user_version', async ()
   assert.equal(new Set(ids).size, ids.length, 'MIGRATION_ID must be globally unique');
   authorities.sort((a, b) => a.version - b.version);
   assert.equal(authorities.at(-1)?.version, prefixes.at(-1)! + 1, 'latest SQL prefix must map to the latest user_version');
-  assert.equal(authorities.at(-1)?.id, 'm24-line-oa-gateway', 'schema 24 is owned by AWH LINE OA gateway');
-  const lineOaGateway = authorities.find((item) => item.version === 24);
-  assert.equal(lineOaGateway?.id, 'm24-line-oa-gateway', 'schema 24 is the AWH LINE OA gateway authority contract');
+  assert.equal(authorities.at(-1)?.id, 'm23-platform-hardening', 'schema 23 is owned by platform hardening');
   const platformHardening = authorities.find((item) => item.version === 23);
   assert.equal(platformHardening?.id, 'm23-platform-hardening', 'schema 23 is the platform hardening authority contract');
   const identityConvergence = authorities.find((item) => item.version === 22);
@@ -55,9 +53,6 @@ test('schema migrations have one monotonic authority per user_version', async ()
   const identitySource = await readFile(new URL('../hub/src/HubIdentityConvergenceMigration.php', import.meta.url), 'utf8');
   assert.match(identitySource, /TARGET_USER_VERSION\s*=\s*22/);
   assert.match(identitySource, /MIGRATION_ID\s*=\s*['"]m22-identity-convergence['"]/);
-  const lineSource = await readFile(new URL('../hub/src/HubLineOaGatewayMigration.php', import.meta.url), 'utf8');
-  assert.match(lineSource, /TARGET_USER_VERSION\s*=\s*24/);
-  assert.match(lineSource, /MIGRATION_ID\s*=\s*['"]m24-line-oa-gateway['"]/);
 });
 
 test('project source authority advances beyond schema 19 without replacing conversation lifecycle', async () => {

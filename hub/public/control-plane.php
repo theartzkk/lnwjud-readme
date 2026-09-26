@@ -91,10 +91,7 @@ try {
         elseif ($workerProjectSource) $projectSourceFile = ['projectSource' => ['tmp_name' => $tmpPath, 'size' => $length]];
         else $candidateFile = ['candidate' => ['tmp_name' => $tmpPath, 'size' => $length]];
         $body = '';
-    } else {
-        $lineWebhook = $path === '/api/v1/integrations/line/awh/webhook' && (string)($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
-        $body = file_get_contents('php://input', false, null, 0, $lineWebhook ? 262145 : 16385);
-    }
+    } else $body = file_get_contents('php://input', false, null, 0, 16385);
     if (str_starts_with($path, '/api/v1/auth/')) {
         $auth = HubOwnerAuthService::openExisting($database);
         $response = HubOwnerAuthRouter::dispatch((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'), (string) ($_SERVER['REQUEST_URI'] ?? '/'), $_SERVER, $auth, is_string($body) ? $body : '');

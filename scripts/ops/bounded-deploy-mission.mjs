@@ -14,7 +14,7 @@ const INTELLIGENCE=join(ROOT,'hub/bin/verification-intelligence.php');
 const EVIDENCE_DIR=join(ROOT,'.awh-build','verification');
 const EVAL_CATALOG=join(ROOT,'config/kruart-engineering-eval.json');
 const DESKTOP_ARTIFACTS=['dist-web/downloads/AWH-macOS-arm64.zip','dist-web/downloads/AWH-macOS-x64.zip','dist-web/downloads/AWH-Windows-x64.zip','dist-web/downloads/SHA256SUMS.txt'];
-const DEPLOY_MODES=['--compat-refresh','--assistant-workstream','--workspace-continuity','--unified-workspace','--final-product','--founding-memory','--self-service','--central-project-authority','--anywhere-execution','--cost-aware-ai','--automations','--self-sufficient-ai','--account-hosting','--cloud-first','--conversation-lifecycle','--project-source-authority','--identity-convergence','--platform-hardening','--line-oa-gateway'];
+const DEPLOY_MODES=['--compat-refresh','--assistant-workstream','--workspace-continuity','--unified-workspace','--final-product','--founding-memory','--self-service','--central-project-authority','--anywhere-execution','--cost-aware-ai','--automations','--self-sufficient-ai','--account-hosting','--cloud-first','--conversation-lifecycle','--project-source-authority','--identity-convergence','--platform-hardening'];
 let missionContext={};
 
 const CONNECTOR_ONLY_SRC = new Set(['src/worker-capability-discovery.ts']);
