@@ -5,11 +5,14 @@ CANONICAL_BAY_GIT=${AWH_CANONICAL_BAY_GIT:-/srv/awh-git/bay-excuse-x.git}
 HUB_DB=${AWH_HUB_DB_PATH:-/var/lib/awh-hub/awh.sqlite}
 TEMP_ROOT=${AWH_TEMP_ROOT:-/tmp}
 REMOTE_TEMP_ROOT=${AWH_REMOTE_TEMP_ROOT:-/var/lib/awh-remote/tmp}
+OPERATOR_STAGE_ROOT=${AWH_OPERATOR_STAGE_ROOT:-/var/lib/awh-remote/operator-staging}
 DIR_MAX_AGE_MINUTES=${AWH_TEMP_DIR_MAX_AGE_MINUTES:-720}
 REMOTE_PRIVATE_MAX_AGE_MINUTES=${AWH_REMOTE_PRIVATE_MAX_AGE_MINUTES:-180}
+OPERATOR_STAGE_MAX_AGE_MINUTES=${AWH_OPERATOR_STAGE_MAX_AGE_MINUTES:-1440}
 count=0
 dir_count=0
 remote_dir_count=0
+operator_dir_count=0
 bytes=0
 
 purge_old_files() {
@@ -57,7 +60,11 @@ reclaim_git_dir() {
   git --git-dir="$canonical" cat-file -e "${head}^{commit}" 2>/dev/null || return 0
   size=$(du -sb -- "$d" 2>/dev/null | awk '{print $1}' || echo 0)
   find "$d" -xdev -depth -delete
-  if [[ "$bucket" == remote ]]; then remote_dir_count=$((remote_dir_count+1)); else dir_count=$((dir_count+1)); fi
+  case "$bucket" in
+    remote) remote_dir_count=$((remote_dir_count+1)) ;;
+    operator) operator_dir_count=$((operator_dir_count+1)) ;;
+    *) dir_count=$((dir_count+1)) ;;
+  esac
   bytes=$((bytes+size))
 }
 
@@ -70,6 +77,23 @@ fi
 # Desktop Commander uses PrivateTmp. Root maintenance can see the physical
 # systemd-private tree. Reclaim only old, clean, canonical-backed Git clones
 # while every canonical mutation lane is idle.
+# Operator staging is an ephemeral handoff/workspace area. Reclaim only old
+# clean clones whose exact HEAD is already present in the canonical origin.
+# Unknown remotes, dirty trees, open files, and non-Git artifacts are preserved.
+if [[ "$global_cleanup_allowed" == true && -d "$OPERATOR_STAGE_ROOT" ]]; then
+  while IFS= read -r -d '' d; do
+    [[ -d "$d/.git" && ! -L "$d/.git" ]] || continue
+    origin=$(git -C "$d" remote get-url origin 2>/dev/null || true)
+    case "$origin" in
+      file:///srv/awh-git/*.git)
+        canonical="/srv/awh-git/${origin#file:///srv/awh-git/}"
+        [[ -d "$canonical" ]] || continue
+        reclaim_git_dir "$d" "$canonical" operator
+        ;;
+    esac
+  done < <(find "$OPERATOR_STAGE_ROOT" -xdev -maxdepth 1 -mindepth 1 -type d -mmin "+${OPERATOR_STAGE_MAX_AGE_MINUTES}" -print0)
+fi
+
 if [[ "$global_cleanup_allowed" == true ]]; then
   for private_tmp in /tmp/systemd-private-*-desktop-commander-vps.service-*/tmp; do
     [[ -d "$private_tmp" ]] || continue
@@ -82,4 +106,4 @@ if [[ "$global_cleanup_allowed" == true ]]; then
   done
 fi
 
-logger -t awh-temp-cleanup "purged_files=$count purged_dirs=$dir_count remote_purged_dirs=$remote_dir_count reclaimed_bytes=$bytes workspace_cleanup_allowed=$workspace_cleanup_allowed active_mutations=$active_mutations global_cleanup_allowed=$global_cleanup_allowed global_active_mutations=$global_active_mutations"
+logger -t awh-temp-cleanup "purged_files=$count purged_dirs=$dir_count remote_purged_dirs=$remote_dir_count operator_purged_dirs=$operator_dir_count reclaimed_bytes=$bytes workspace_cleanup_allowed=$workspace_cleanup_allowed active_mutations=$active_mutations global_cleanup_allowed=$global_cleanup_allowed global_active_mutations=$global_active_mutations"

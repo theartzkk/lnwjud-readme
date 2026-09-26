@@ -49,6 +49,10 @@ test('imported live storage lifecycle stays bounded and protects authorities', a
   assert.match(temp, /TEMP_ROOT=\$\{AWH_TEMP_ROOT:-\/tmp\}/);
   assert.match(temp, /DIR_MAX_AGE_MINUTES=\$\{AWH_TEMP_DIR_MAX_AGE_MINUTES:-720\}/);
   assert.match(temp, /REMOTE_PRIVATE_MAX_AGE_MINUTES=\$\{AWH_REMOTE_PRIVATE_MAX_AGE_MINUTES:-180\}/);
+  assert.match(temp, /OPERATOR_STAGE_MAX_AGE_MINUTES=\$\{AWH_OPERATOR_STAGE_MAX_AGE_MINUTES:-1440\}/);
+  assert.match(temp, /OPERATOR_STAGE_ROOT/);
+  assert.match(temp, /file:\/\/\/srv\/awh-git\/\*\.git/);
+  assert.match(temp, /operator_purged_dirs/);
   assert.match(temp, /desktop-commander-vps\.service/);
   assert.match(temp, /global_active_mutations/);
   assert.match(temp, /CANONICAL_BAY_GIT/);
