@@ -38,6 +38,7 @@ test('approved skill materialization is lazy and cleanup removes AWH skill state
     assert.deepEqual(materialized.skillNames,['antislop','antislop-ui','antislop-human','antislop-layoutmobile']);
     await access(join(workspace,'.codex','skills','antislop','SKILL.md'));
     await access(join(workspace,'.codex','skills','antislop','antislop.md'));
+    await assert.rejects(access(join(workspace,'.codex','skills','antislop-human','contrast-check.py')));
     await materialized.cleanup();
     await assert.rejects(access(join(workspace,'.codex','skills','antislop','SKILL.md')));
   } finally { await rm(root,{recursive:true,force:true}); }
