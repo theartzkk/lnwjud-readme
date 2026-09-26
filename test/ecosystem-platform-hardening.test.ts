@@ -59,6 +59,9 @@ test('platform hardening is wired to runtime rather than documentation only', as
   assert.match(router, /identity\/academic-context/);
   assert.match(bounded, /--platform-hardening/);
   assert.match(bounded, /run-release-qa-isolated\.sh/);
+  const qaRunner = await readFile('scripts/ops/run-release-qa-isolated.sh', 'utf8');
+  assert.match(qaRunner, /\/usr\/bin\/nice -n 10 npm run/);
+  assert.doesNotMatch(qaRunner, /--property=Nice=/);
   assert.match(deploy, /PLATFORM_HARDENING_MIGRATION_VERIFIED/);
   assert.match(deploy, /PLATFORM_RUNTIME_READY/);
   assert.match(health, /'slo'/);
