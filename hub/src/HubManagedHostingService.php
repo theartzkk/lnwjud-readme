@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/HubAccountHostingMigration.php';
 require_once __DIR__ . '/HubOwnerAuthService.php';
 require_once __DIR__ . '/HubTrustPolicy.php';
+require_once __DIR__ . '/HubProviderCredentialStore.php';
 
 final class HubManagedHostingException extends RuntimeException
 {
@@ -38,6 +39,34 @@ final class HubManagedHostingService
     {
         $owner=$this->ownerSession($token); $q=$this->pdo->prepare("SELECT s.*,p.name AS project_name,b.binding_kind,b.host AS binding_host,b.port AS binding_port,b.tls_mode,b.state AS binding_state,d.engine AS db_engine,d.state AS db_state,(SELECT host FROM control_site_bindings x WHERE x.site_id=s.site_id AND x.binding_kind='DOMAIN' AND x.state<>'DISABLED' ORDER BY x.updated_at DESC LIMIT 1) AS domain_host,(SELECT state FROM control_site_bindings x WHERE x.site_id=s.site_id AND x.binding_kind='DOMAIN' AND x.state<>'DISABLED' ORDER BY x.updated_at DESC LIMIT 1) AS domain_state,(SELECT event_name FROM control_site_events e WHERE e.site_id=s.site_id ORDER BY e.occurred_at DESC LIMIT 1) AS last_event_name,(SELECT state FROM control_site_events e WHERE e.site_id=s.site_id ORDER BY e.occurred_at DESC LIMIT 1) AS last_event_state,(SELECT message FROM control_site_events e WHERE e.site_id=s.site_id ORDER BY e.occurred_at DESC LIMIT 1) AS last_event_message,(SELECT occurred_at FROM control_site_events e WHERE e.site_id=s.site_id ORDER BY e.occurred_at DESC LIMIT 1) AS last_event_at,v.active_revision_id AS source_revision_id,COALESCE(v.sync_state,'EMPTY') AS source_sync_state,(SELECT e.last_error_code FROM control_task_executions e WHERE e.project_id=s.project_id AND e.required_capability IN ('hosting.site.provision','hosting.site.deploy') AND e.state IN ('WAITING_FOR_CAPABILITY','FAILED') ORDER BY e.updated_at DESC LIMIT 1) AS source_blocker_code,(SELECT r.vault_revision_id FROM control_site_releases r WHERE r.release_id=s.current_release_id AND r.site_id=s.site_id LIMIT 1) AS current_release_revision_id FROM control_managed_sites s JOIN projects p ON p.project_id=s.project_id LEFT JOIN control_site_bindings b ON b.site_id=s.site_id AND b.is_primary=1 AND b.state<>'DISABLED' LEFT JOIN control_site_database_bindings d ON d.site_id=s.site_id LEFT JOIN control_project_vaults v ON v.project_id=s.project_id WHERE s.created_by_user_id=:owner ORDER BY CASE s.state WHEN 'READY' THEN 0 WHEN 'PROVISIONING' THEN 1 WHEN 'QUEUED' THEN 2 ELSE 3 END,s.updated_at DESC LIMIT 200");
         $q->execute(['owner'=>$owner['user_id']]); $rows=array_map([self::class,'siteRow'],$q->fetchAll()); $root=strtolower(trim((string)(getenv('AWH_ROOT_DOMAIN')?:'kruart.online'))); $now=gmdate('c'); return ['schemaVersion'=>1,'sites'=>$rows,'dns'=>HubDnsProviderAdapter::plan($root),'ecosystem'=>$this->ecosystemStatus($now),'policy'=>HubTrustPolicy::catalog(['hosting.site.create','hosting.site.deploy','hosting.site.rollback','hosting.site.disable','hosting.site.bind_domain'])];
+    }
+
+    public function siteSecrets(string $token,string $siteId): array
+    {
+        $owner=$this->ownerSession($token);$site=$this->siteForOwner($siteId,(string)$owner['user_id']);
+        $values=$this->readSiteSecretBundle((string)$site['site_id']);
+        return ['schemaVersion'=>1,'siteId'=>(string)$site['site_id'],'configured'=>$values!==[],'names'=>array_keys($values),'valuesNeverReturned'=>true];
+    }
+
+    public function updateSiteSecrets(string $token,string $csrf,string $siteId,array $payload,?string $now=null): array
+    {
+        $owner=$this->ownerMutation($token,$csrf,'hosting.site.secrets',$now);$site=$this->siteForOwner($siteId,(string)$owner['user_id']);
+        self::keys($payload,['action','schemaVersion','values']);if(($payload['schemaVersion']??null)!==1||!is_string($payload['action']??null)||!is_array($payload['values']??null)||array_is_list($payload['values']))throw new HubManagedHostingException('Runtime secret request is invalid','HOSTING_SECRET_INVALID');
+        $action=strtoupper(trim((string)$payload['action']));$store=$this->siteSecretStore((string)$site['site_id']);
+        if($action==='CLEAR'){
+            if($payload['values']!==[])throw new HubManagedHostingException('Runtime secret request is invalid','HOSTING_SECRET_INVALID');
+            try{$store->remove();}catch(HubProviderCredentialStoreException $e){throw new HubManagedHostingException('Runtime secrets could not be removed',$e->codeName);}
+            return ['schemaVersion'=>1,'siteId'=>(string)$site['site_id'],'configured'=>false,'names'=>[],'valuesNeverReturned'=>true,'redeployRequired'=>(string)$site['state']==='READY'];
+        }
+        if($action!=='SET'||count($payload['values'])<1||count($payload['values'])>20)throw new HubManagedHostingException('Runtime secret request is invalid','HOSTING_SECRET_INVALID');
+        $merged=$this->readSiteSecretBundle((string)$site['site_id']);
+        foreach($payload['values'] as $name=>$value){
+            if(!is_string($name)||preg_match('/^[A-Z][A-Z0-9_]{1,63}$/',$name)!==1||!is_string($value)||strlen($value)<1||strlen($value)>4096||preg_match('/[\x00-\x20\x7f]/',$value))throw new HubManagedHostingException('Runtime secret request is invalid','HOSTING_SECRET_INVALID');
+            $merged[$name]=$value;
+        }
+        ksort($merged);
+        try{$store->replace(self::encodeSecretBundle($merged));}catch(HubProviderCredentialStoreException $e){throw new HubManagedHostingException('Runtime secrets could not be stored',$e->codeName);}
+        return ['schemaVersion'=>1,'siteId'=>(string)$site['site_id'],'configured'=>true,'names'=>array_keys($merged),'valuesNeverReturned'=>true,'redeployRequired'=>(string)$site['state']==='READY'];
     }
 
     public function createSite(string $token,string $csrf,array $payload,?string $now=null): array
@@ -109,6 +138,29 @@ final class HubManagedHostingService
     private function ownerMutation(string $token,string $csrf,string $action,?string $now): array { $this->ready();try{$row=$this->auth->authorize($token,$csrf,$now);if(HubTrustPolicy::requiresStepUp($action))HubOwnerAuthService::assertRecentStepUpSession($row,$now);}catch(HubOwnerAuthException $error){throw new HubManagedHostingException('Hosting authentication needs attention',$error->codeName);}catch(HubTrustPolicyException){throw new HubManagedHostingException('Hosting trust policy is unavailable','HOSTING_INVALID');}$this->assertOwner((string)$row['user_id']);return $row; }
     private function ready(): void { HubAccountHostingMigration::assertCapabilityReady($this->pdo,dirname(__DIR__).'/migrations/016_account_hosting.sql'); }
     private function assertOwner(string $user): void { $owner=$this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id=1 AND bootstrap_closed=1')->fetchColumn();if(!is_string($owner)||!hash_equals($owner,$user))throw new HubManagedHostingException('Owner access is required','OWNER_FORBIDDEN'); }
+    private function siteSecretStore(string $siteId): HubProviderCredentialStore
+    {
+        return HubProviderCredentialStore::fromEnvironment('hosting.site.'.str_replace('-','',self::uuid($siteId)));
+    }
+
+    private function readSiteSecretBundle(string $siteId): array
+    {
+        try{$raw=$this->siteSecretStore($siteId)->read();}catch(HubProviderCredentialStoreException $e){throw new HubManagedHostingException('Runtime secrets are unavailable',$e->codeName);}
+        if($raw===null)return [];
+        $decoded=strtr($raw,'-_','+/');$decoded.=str_repeat('=',(4-strlen($decoded)%4)%4);$json=base64_decode($decoded,true);
+        if(!is_string($json))throw new HubManagedHostingException('Runtime secret bundle is invalid','HOSTING_SECRET_INVALID');
+        try{$values=json_decode($json,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){throw new HubManagedHostingException('Runtime secret bundle is invalid','HOSTING_SECRET_INVALID');}
+        if(!is_array($values)||array_is_list($values)||count($values)>20)throw new HubManagedHostingException('Runtime secret bundle is invalid','HOSTING_SECRET_INVALID');
+        foreach($values as $name=>$value)if(!is_string($name)||preg_match('/^[A-Z][A-Z0-9_]{1,63}$/',$name)!==1||!is_string($value)||strlen($value)<1||strlen($value)>4096||preg_match('/[\x00-\x20\x7f]/',$value))throw new HubManagedHostingException('Runtime secret bundle is invalid','HOSTING_SECRET_INVALID');
+        ksort($values);return $values;
+    }
+
+    private static function encodeSecretBundle(array $values): string
+    {
+        $json=json_encode($values,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+        return rtrim(strtr(base64_encode($json),'+/','-_'),'=');
+    }
+
     private function assertOwnerProject(string $user,string $project): void { $q=$this->pdo->prepare("SELECT 1 FROM control_project_capabilities WHERE user_id=:user AND project_id=:project AND capability='project.read' AND revoked_at IS NULL");$q->execute(['user'=>$user,'project'=>$project]);if($q->fetchColumn()===false)throw new HubManagedHostingException('Project is not available','PROJECT_FORBIDDEN'); }
     private function activeRevision(string $project): ?string { $q=$this->pdo->prepare("SELECT active_revision_id FROM control_project_vaults WHERE project_id=:project AND sync_state='SYNCED'");$q->execute(['project'=>$project]);$v=$q->fetchColumn();return is_string($v)&&self::validUuid($v)?strtolower($v):null; }
     private function nextPort(): int { $used=array_map('intval',array_column($this->pdo->query("SELECT listen_port FROM control_managed_sites WHERE listen_port IS NOT NULL AND state<>'DISABLED'")->fetchAll(),'listen_port'));for($p=8400;$p<=8999;$p++)if(!in_array($p,$used,true))return $p;throw new HubManagedHostingException('VPS public port pool is full','HOSTING_CAPACITY_FULL'); }

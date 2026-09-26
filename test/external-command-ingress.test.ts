@@ -6,7 +6,8 @@ test('external command ingress is transport-neutral and HMAC bounded', async () 
   const service = await readFile(new URL('../hub/src/HubControlPlaneService.php', import.meta.url), 'utf8');
   const router = await readFile(new URL('../hub/src/HubControlPlaneRouter.php', import.meta.url), 'utf8');
 
-  assert.match(service, /AWH_EXTERNAL_COMMAND_SECRET/);
+  assert.match(service, /HubProviderCredentialStore::fromEnvironment\('external\.command'\)/);
+  assert.doesNotMatch(service, /getenv\('AWH_EXTERNAL_COMMAND_SECRET'\)/);
   assert.match(service, /hash_hmac\('sha256'/);
   assert.match(service, /abs\(\$serverAt-\$requestAt\)>300/);
   assert.match(service, /externalOwnerUserId/);

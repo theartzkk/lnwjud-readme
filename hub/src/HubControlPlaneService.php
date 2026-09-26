@@ -579,6 +579,18 @@ final class HubControlPlaneService
         catch (HubAssessmentReleaseException $error) { throw new HubControlPlaneException('Assessment release request was rejected',$error->codeName); }
     }
 
+    public function managedSiteSecretsForSession(string $sessionToken,string $siteId): array
+    {
+        try { return $this->hosting->siteSecrets($sessionToken,$siteId); }
+        catch (HubManagedHostingException $error) { throw new HubControlPlaneException('Hosting secret request was rejected',$error->codeName); }
+    }
+
+    public function updateManagedSiteSecretsForSession(string $sessionToken,string $csrf,string $siteId,array $payload,?string $now=null): array
+    {
+        try { return $this->hosting->updateSiteSecrets($sessionToken,$csrf,$siteId,$payload,$now); }
+        catch (HubManagedHostingException $error) { throw new HubControlPlaneException('Hosting secret request was rejected',$error->codeName); }
+    }
+
     public function createManagedSiteForSession(string $sessionToken,string $csrf,array $payload): array
     {
         try { return ['schemaVersion'=>1]+$this->hosting->createSite($sessionToken,$csrf,$payload); }
@@ -1131,6 +1143,31 @@ final class HubControlPlaneService
     {
         $session = $this->authorizeSession($sessionToken, $csrfToken, $now);
         return $this->submitConversationForUser((string) $session['user_id'], $payload, $now);
+    }
+
+    public function externalCommandCredentialStatus(string $sessionToken,?string $now=null): array
+    {
+        $session=$this->sessionRow($sessionToken,$now);$this->assertOwner((string)$session['user_id']);
+        try{$configured=HubProviderCredentialStore::fromEnvironment('external.command')->configured();}
+        catch(HubProviderCredentialStoreException){throw new HubControlPlaneException('External command credential store is unavailable','EXTERNAL_COMMAND_CREDENTIAL_FAILED');}
+        return ['schemaVersion'=>1,'configured'=>$configured,'secretNeverReturned'=>true];
+    }
+
+    public function updateExternalCommandCredential(string $sessionToken,string $csrfToken,array $payload,?string $now=null): array
+    {
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now);$this->assertOwner((string)$session['user_id']);
+        self::exactKeys($payload,['action','schemaVersion']);if(($payload['schemaVersion']??null)!==1||!is_string($payload['action']??null))throw new HubControlPlaneException('External command credential request is invalid','EXTERNAL_COMMAND_CREDENTIAL_INVALID');
+        try{if(HubTrustPolicy::requiresStepUp('integration.command.credential'))HubOwnerAuthService::assertRecentStepUpSession($session,$now);}catch(HubOwnerAuthException|HubTrustPolicyException){throw new HubControlPlaneException('A recent password confirmation is required','STEP_UP_REQUIRED');}
+        $action=strtoupper(trim((string)$payload['action']));
+        try{
+            $store=HubProviderCredentialStore::fromEnvironment('external.command');
+            if($action==='ROTATE'){
+                $secret=self::base64url(random_bytes(32));$store->replace($secret);
+                return ['schemaVersion'=>1,'configured'=>true,'oneTimeSecret'=>$secret,'secretNeverReturnedAgain'=>true];
+            }
+            if($action==='REMOVE'){$store->remove();return ['schemaVersion'=>1,'configured'=>false,'oneTimeSecret'=>null,'secretNeverReturnedAgain'=>true];}
+        }catch(HubProviderCredentialStoreException $e){throw new HubControlPlaneException('External command credential could not be changed','EXTERNAL_COMMAND_CREDENTIAL_FAILED');}
+        throw new HubControlPlaneException('External command credential request is invalid','EXTERNAL_COMMAND_CREDENTIAL_INVALID');
     }
 
     public function externalCommand(string $signature,string $timestamp,string $body,?string $now=null): array
@@ -3984,7 +4021,8 @@ final class HubControlPlaneService
     }
     private function authorizeExternalCommand(string $signature,string $timestamp,string $body,?string $now=null): array
     {
-        $secret=getenv('AWH_EXTERNAL_COMMAND_SECRET');
+        try{$secret=HubProviderCredentialStore::fromEnvironment('external.command')->read();}
+        catch(HubProviderCredentialStoreException){throw new HubControlPlaneException('External command ingress credential is unavailable','EXTERNAL_COMMAND_CREDENTIAL_FAILED');}
         if(!is_string($secret)||strlen($secret)<32)throw new HubControlPlaneException('External command ingress is not configured','EXTERNAL_COMMAND_NOT_CONFIGURED');
         if(!preg_match('/^[0-9]{10}$/',$timestamp))throw new HubControlPlaneException('External command timestamp is invalid','EXTERNAL_COMMAND_AUTH_FAILED');
         $requestAt=(int)$timestamp;$serverAt=strtotime(self::timestamp($now??gmdate('c')));
