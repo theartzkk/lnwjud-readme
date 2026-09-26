@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { access, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, win32 as pathWin32 } from 'node:path';
 import { execFile } from './process.js';
@@ -115,9 +116,46 @@ function localBase(platform: NodeJS.Platform, home: string, env: NodeJS.ProcessE
   throw new Error('TOOL_PACK_PLATFORM_UNSUPPORTED');
 }
 
+function toolPackReleaseKey(pack: ToolPackDefinition): string {
+  const fingerprint = createHash('sha256').update(`${pack.packageName}\n${pack.version}\n${pack.integrity}`, 'utf8').digest('hex').slice(0, 16);
+  return `${pack.version}-${fingerprint}`;
+}
+
 export function toolPackRoot(pack: ToolPackDefinition, platform: NodeJS.Platform = process.platform, home = homedir(), env: NodeJS.ProcessEnv = process.env): string {
   const base = localBase(platform, home, env);
-  return platform === 'win32' ? pathWin32.join(base, 'ToolPacks', pack.id) : join(base, 'ToolPacks', pack.id);
+  const parts = ['ToolPacks', pack.id, 'releases', toolPackReleaseKey(pack)];
+  return platform === 'win32' ? pathWin32.join(base, ...parts) : join(base, ...parts);
+}
+
+function toolPackLockPaths(pack: ToolPackDefinition, platform: NodeJS.Platform, home: string, env: NodeJS.ProcessEnv): { parent: string; lock: string } {
+  const base = localBase(platform, home, env);
+  const parts = ['ToolPacks', pack.id, 'locks'];
+  const parent = platform === 'win32' ? pathWin32.join(base, ...parts) : join(base, ...parts);
+  const lock = platform === 'win32' ? pathWin32.join(parent, `${toolPackReleaseKey(pack)}.lock`) : join(parent, `${toolPackReleaseKey(pack)}.lock`);
+  return { parent, lock };
+}
+
+async function acquireToolPackInstallLock(pack: ToolPackDefinition, platform: NodeJS.Platform, home: string, env: NodeJS.ProcessEnv): Promise<() => Promise<void>> {
+  const paths = toolPackLockPaths(pack, platform, home, env);
+  await mkdir(paths.parent, { recursive: true, mode: 0o700 });
+  const deadline = Date.now() + 330_000;
+  for (;;) {
+    try {
+      await mkdir(paths.lock, { mode: 0o700 });
+      const owner = platform === 'win32' ? pathWin32.join(paths.lock, 'owner.json') : join(paths.lock, 'owner.json');
+      await writeFile(owner, JSON.stringify({ schemaVersion: 1, pid: process.pid, acquiredAt: new Date().toISOString(), release: toolPackReleaseKey(pack) }) + '\n', { encoding: 'utf8', mode: 0o600 });
+      return async () => { await rm(paths.lock, { recursive: true, force: true }); };
+    } catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code ?? '') : '';
+      if (code !== 'EEXIST') throw error;
+      try {
+        const info = await stat(paths.lock);
+        if (Date.now() - info.mtimeMs > 600_000) { await rm(paths.lock, { recursive: true, force: true }); continue; }
+      } catch { continue; }
+      if (Date.now() >= deadline) throw new Error('TOOL_PACK_INSTALL_LOCK_TIMEOUT');
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
 }
 
 function toolchainPaths(platform: NodeJS.Platform, arch: string, home: string, env: NodeJS.ProcessEnv): { node: string; npmCli: string } {
@@ -290,21 +328,29 @@ export async function inspectToolPack(pack: ToolPackDefinition, platform: NodeJS
 export async function ensureToolPack(pack: ToolPackDefinition, platform: NodeJS.Platform = process.platform, arch: string = process.arch, home = homedir(), env: NodeJS.ProcessEnv = process.env): Promise<ToolPackStatus> {
   const current = await inspectToolPack(pack, platform, arch, home, env);
   if (current.verified) return current;
-  const root = current.root;
-  const paths = toolchainPaths(platform, arch, home, env);
-  if (!await available(paths.node) || !await available(paths.npmCli)) throw new Error('TOOL_PACK_PRIVATE_NODE_REQUIRED');
-  await mkdir(root, { recursive: true, mode: 0o700 });
-  await writeFile(platform === 'win32' ? pathWin32.join(root, 'package.json') : join(root, 'package.json'), JSON.stringify({
-    name: 'awh-tool-pack-' + pack.id.replace(/[^a-z0-9]+/g, '-'),
-    private: true,
-    version: '1.0.0',
-    dependencies: { [pack.packageName]: pack.version },
-  }, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
-  const install = await execFile(paths.node, [paths.npmCli, 'install', '--ignore-scripts', '--no-audit', '--no-fund', '--save-exact', `${pack.packageName}@${pack.version}`], root, 300_000, { ...env, npm_config_update_notifier: 'false', npm_config_fund: 'false', npm_config_audit: 'false' });
-  if (install.code !== 0) throw new Error('TOOL_PACK_INSTALL_FAILED_' + pack.id.replace(/[^A-Z0-9]/gi, '_').toUpperCase());
-  const next = await inspectToolPack(pack, platform, arch, home, env);
-  if (!next.verified) throw new Error('TOOL_PACK_VERIFY_FAILED_' + pack.id.replace(/[^A-Z0-9]/gi, '_').toUpperCase());
-  return next;
+  const releaseLock = await acquireToolPackInstallLock(pack, platform, home, env);
+  try {
+    const afterLock = await inspectToolPack(pack, platform, arch, home, env);
+    if (afterLock.verified) return afterLock;
+    const root = afterLock.root;
+    const paths = toolchainPaths(platform, arch, home, env);
+    if (!await available(paths.node) || !await available(paths.npmCli)) throw new Error('TOOL_PACK_PRIVATE_NODE_REQUIRED');
+    await mkdir(root, { recursive: true, mode: 0o700 });
+    await writeFile(platform === 'win32' ? pathWin32.join(root, 'package.json') : join(root, 'package.json'), JSON.stringify({
+      name: 'awh-tool-pack-' + pack.id.replace(/[^a-z0-9]+/g, '-'),
+      private: true,
+      version: '1.0.0',
+      awhToolPackRelease: toolPackReleaseKey(pack),
+      dependencies: { [pack.packageName]: pack.version },
+    }, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
+    const install = await execFile(paths.node, [paths.npmCli, 'install', '--ignore-scripts', '--no-audit', '--no-fund', '--save-exact', `${pack.packageName}@${pack.version}`], root, 300_000, { ...env, npm_config_update_notifier: 'false', npm_config_fund: 'false', npm_config_audit: 'false' });
+    if (install.code !== 0) throw new Error('TOOL_PACK_INSTALL_FAILED_' + pack.id.replace(/[^A-Z0-9]/gi, '_').toUpperCase());
+    const next = await inspectToolPack(pack, platform, arch, home, env);
+    if (!next.verified) throw new Error('TOOL_PACK_VERIFY_FAILED_' + pack.id.replace(/[^A-Z0-9]/gi, '_').toUpperCase());
+    return next;
+  } finally {
+    await releaseLock();
+  }
 }
 
 export async function provisionEligibleToolPacks(platform: NodeJS.Platform = process.platform, arch: string = process.arch, home = homedir(), env: NodeJS.ProcessEnv = process.env): Promise<ToolPackStatus[]> {
