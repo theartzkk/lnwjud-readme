@@ -14,6 +14,10 @@
       "CONTINUE_OR_JOIN"
     ],
     "projectMissionIsCoordinationOnly": true,
+    "projectScopedMutationIsolation": true,
+    "crossProjectMutationDefault": "DENY",
+    "crossProjectReadOnlyAllowed": true,
+    "sourcePromotionRequiresTargetProjectMission": true,
     "aggregateActiveCountsAreNotBlockingAuthority": true,
     "releaseTrackScopedDeployOwnership": true,
     "hostGlobalReleaseTrack": "vps-platform",

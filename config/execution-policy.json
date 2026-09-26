@@ -23,6 +23,11 @@
     "parallelLockAuthorityAllowed": false,
     "releaseTrackAuthority": "HubUpdateTargetRegistry::releaseTracks",
     "writerIdentity": "EXECUTION_ID+MUTATION_RESOURCE",
+    "projectScopedMutationIsolation": true,
+    "crossProjectMutationDefault": "DENY",
+    "crossProjectReadOnlyAllowed": true,
+    "sourcePromotionRequiresTargetProjectMission": true,
+    "projectScopeAuthority": "PROJECT_REGISTRY+MISSION_EXECUTION_PROJECT",
     "hostGlobalTrack": "vps-platform"
   },
   "qa": {

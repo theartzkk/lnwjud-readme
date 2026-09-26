@@ -29,7 +29,7 @@ final class HubUpdateTargetRegistry
     {
         return [
             'vps-platform'=>[
-                'name'=>'VPS Update','kind'=>'PLATFORM','repository'=>'awh',
+                'name'=>'VPS Platform','kind'=>'PLATFORM','repository'=>'awh',
                 'sourceRef'=>'refs/heads/main','productionRef'=>'refs/heads/platform/production',
                 'capability'=>'system.platform.release','deployResource'=>'CANONICAL:DEPLOY:VPS_PLATFORM',
                 'versionPrefix'=>'Platform','ownerApprovalRequired'=>true,'hostGlobal'=>true,
@@ -110,6 +110,7 @@ final class HubUpdateTargetRegistry
         foreach($paths as $path){
             if(!is_string($path)||$path===''||str_contains($path,"\0"))return null;
             $track=self::awhPathReleaseTrack($path);
+            if($track==='shared')continue;
             $tracks[$track]=true;
             if(count($tracks)>1)return null;
         }
@@ -118,6 +119,15 @@ final class HubUpdateTargetRegistry
 
     private static function awhPathReleaseTrack(string $path): string
     {
+        $sharedExact=[
+            'hub/src/HubControlPlaneRouter.php',
+            'hub/src/HubControlPlaneService.php',
+            'web/control-plane-adapter.js',
+            'web/updates.js',
+            'test/update-center-contract.test.ts',
+            'test/web-preview.test.ts',
+        ];
+        if(in_array($path,$sharedExact,true))return 'shared';
         $platformExact=[
             'AGENTS.md',
             'config/ecosystem-platform-policy.json',
@@ -125,6 +135,7 @@ final class HubUpdateTargetRegistry
             'config/execution-policy.json',
             'config/repository-governance-contract.json',
             'docs/AWH-AUTHORITY-MAP.md',
+            'docs/AWH_OPERATOR_BRIDGE.md',
             'docs/AWH_SUSTAINABILITY_CONTRACT.md',
             'docs/OPERATIONS.md',
             'docs/RELEASE.md',
@@ -137,15 +148,24 @@ final class HubUpdateTargetRegistry
             'hub/src/HubTrustPolicy.php',
             'hub/src/HubUpdateTargetRegistry.php',
             'hub/tests/assessment-release-operator.php',
+            'hub/tests/core-release-operator.php',
+            'hub/tests/deploy-execution-authority.php',
             'hub/tests/execution-resource-policy.php',
             'hub/tests/learnlab-release-operator.php',
             'hub/tests/m13-anywhere-execution.php',
+            'hub/tests/operator-bridge.php',
+            'scripts/deploy/verify-control-plane-bundle-closure.mjs',
             'scripts/ops/bounded-deploy-mission.mjs',
             'scripts/ops/canonical-source-preflight.mjs',
             'scripts/ops/execution-policy.mjs',
             'scripts/ops/guarded-control-plane-deploy.mjs',
+            'test/account-hosting-deployment.test.ts',
+            'test/central-project-authority-deployment.test.ts',
             'test/ecosystem-platform-hardening.test.ts',
             'test/execution-policy.test.mjs',
+            'test/identity-convergence-deployment.test.ts',
+            'test/repository-governance-contract.test.ts',
+            'test/source-drift-systemd.test.ts',
         ];
         if(in_array($path,$platformExact,true))return 'vps-platform';
         if(str_starts_with($path,'deploy/'))return 'vps-platform';

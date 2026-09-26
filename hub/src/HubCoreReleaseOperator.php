@@ -119,7 +119,7 @@ final class HubCoreReleaseOperator
         $scope=$this->approvedScope((string)$row['task_id'],$checkpoint,$at);
         $sha=(string)$checkpoint['releaseSha'];
         $track=(string)$checkpoint['releaseTrack'];
-        if($track==='vps-platform'){$modeArg='--platform-hardening';$productionRef='refs/heads/platform/production';$expectedCapability=HubCoreReleaseService::PLATFORM_CAPABILITY;$label='VPS Update';}
+        if($track==='vps-platform'){$modeArg='--platform-hardening';$productionRef='refs/heads/platform/production';$expectedCapability=HubCoreReleaseService::PLATFORM_CAPABILITY;$label='VPS Platform';}
         elseif($track==='awh'){$modeArg='--awh-core';$productionRef='refs/heads/production';$expectedCapability=HubCoreReleaseService::CAPABILITY;$label='AWH';}
         else throw new HubCoreReleaseOperatorException('Release track is invalid','CORE_RELEASE_CHECKPOINT_INVALID');
         if(!hash_equals($expectedCapability,(string)$row['required_capability']))throw new HubCoreReleaseOperatorException('Release capability does not match checkpoint track','CORE_RELEASE_CHECKPOINT_INVALID');

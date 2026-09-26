@@ -411,16 +411,23 @@ final class HubOperatorBridgeService
         $size=@filesize($bundleReal);$actual=hash_file('sha256',$bundleReal);if(!is_int($size)||$size<1||$size>self::MAX_SOURCE_BUNDLE_BYTES||!is_string($actual)||!hash_equals($bundleSha,$actual))throw new HubOperatorBridgeException('Source bundle verification failed','OPERATOR_SOURCE_BUNDLE_NOT_READY');
         $repo=$gitReal.'/'.$config['directory'];$repoReal=realpath($repo);if(!is_string($repoReal)||dirname($repoReal)!==$gitReal||!is_dir($repoReal)||is_link($repo))throw new HubOperatorBridgeException('Canonical Git repository is unavailable','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');
         $projectRecord=$this->resolveProject((string)$config['project']);$projectId=(string)$projectRecord['project_id'];
-        $missionId=is_string($request['missionExecutionId']??null)?trim((string)$request['missionExecutionId']):null;
-        if($missionId!==null&&!self::uuidValid($missionId))throw new HubOperatorBridgeException('Project mission id is invalid','OPERATOR_REQUEST_INVALID');
-        $mission=$missionId===null?null:$this->activeProjectMission($missionId,$at,$projectId,true);
+        $missionId=is_string($request['missionExecutionId']??null)?trim((string)$request['missionExecutionId']):'';
+        if(!self::uuidValid($missionId))throw new HubOperatorBridgeException('Source promotion requires the active mission of the target project','OPERATOR_PROJECT_SCOPE_REQUIRED');
+        $mission=$this->activeProjectMission($missionId,$at,$projectId,true);
         $gate=$this->projectGate((string)$config['project'],$at,false,'source.promote',$missionId);if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('Project mutation gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
         $current=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($expected,self::gitSha($current)))throw new HubOperatorBridgeException('Canonical main moved before source promotion','OPERATOR_SOURCE_BASE_MOVED');
         $defaultBranch=is_string($config['defaultBranch']??null)?trim((string)$config['defaultBranch']):'main';if(preg_match('/^[a-z0-9][a-z0-9._\/-]{0,79}$/',$defaultBranch)!==1)throw new HubOperatorBridgeException('Repository default branch contract is invalid','OPERATOR_SOURCE_REPOSITORY_FORBIDDEN');
         $headBefore=trim($this->runGit($repoReal,['symbolic-ref','HEAD']));if(preg_match('#^refs/heads/[A-Za-z0-9._/-]+$#',$headBefore)!==1)throw new HubOperatorBridgeException('Repository default HEAD is unresolved','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');$headChanged=false;
         $heads=$this->runGit($repoReal,['bundle','list-heads',$bundleReal]);$advertised=false;foreach(preg_split('/\r?\n/',$heads)?:[] as $line){$parts=preg_split('/\s+/',trim($line));if(is_array($parts)&&isset($parts[0])&&strtolower((string)$parts[0])===$target){$advertised=true;break;}}
         if(!$advertised)throw new HubOperatorBridgeException('Target revision is not advertised by source bundle','OPERATOR_SOURCE_BUNDLE_NOT_READY');
-        $authority=$mission===null?$this->acquireMutationAuthority($projectId,'Fast-forward canonical main '.$repository,'source.promote',['repository'=>$repository,'expectedMainSha'=>$expected,'targetSha'=>$target,'bundleSha256'=>$bundleSha],$at):['executionId'=>(string)$mission['execution_id'],'taskId'=>(string)$mission['task_id'],'projectId'=>$projectId,'leaseExpiresAt'=>(string)$mission['lease_expires_at']];$success=false;$releaseAuthority=$mission===null;
+        $authority=$this->acquireMutationAuthority(
+            $projectId,
+            'Fast-forward canonical main '.$repository,
+            'source.promote',
+            ['repository'=>$repository,'expectedMainSha'=>$expected,'targetSha'=>$target,'bundleSha256'=>$bundleSha,'missionExecutionId'=>$missionId],
+            $at
+        );
+        $success=false;
         try{
             $this->runGit($repoReal,['bundle','verify',$bundleReal]);
             $this->runGit($repoReal,['bundle','unbundle',$bundleReal]);
@@ -430,7 +437,7 @@ final class HubOperatorBridgeService
             $releaseNotes=$this->releaseNotesForPromotion($repoReal,$repository,$expected,$target,$at);
             if(!HubUpdateTargetRegistry::releaseDetailsReady($releaseNotes,true))
                 throw new HubOperatorBridgeException('Release details are required before source promotion','OPERATOR_RELEASE_DETAILS_REQUIRED');
-            if($releaseAuthority)$this->persistSourcePromotionReleaseNotes((string)$authority['executionId'],$repository,$expected,$target,$bundleSha,$releaseNotes,$at);
+            $this->persistSourcePromotionReleaseNotes((string)$authority['executionId'],$repository,$expected,$target,$bundleSha,$releaseNotes,$missionId,$at);
             $before=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($expected,self::gitSha($before)))throw new HubOperatorBridgeException('Canonical main moved during source promotion','OPERATOR_SOURCE_BASE_MOVED');
             $this->runGit($repoReal,['update-ref','refs/heads/main',$target,$expected]);
             $after=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($target,self::gitSha($after)))throw new HubOperatorBridgeException('Canonical main did not reach target revision','OPERATOR_SOURCE_PROMOTE_FAILED');
@@ -439,18 +446,9 @@ final class HubOperatorBridgeService
                 try{$this->runGit($repoReal,['symbolic-ref','HEAD',$expectedHead]);$headChanged=true;$headAfter=trim($this->runGit($repoReal,['symbolic-ref','HEAD']));if(!hash_equals($headAfter,$expectedHead))throw new HubOperatorBridgeException('Repository default HEAD did not converge','OPERATOR_SOURCE_PROMOTE_FAILED');}
                 catch(Throwable $error){$this->runGitResult($repoReal,['update-ref','refs/heads/main',$expected,$target]);if($headChanged)$this->runGitResult($repoReal,['symbolic-ref','HEAD',$headBefore]);throw $error instanceof HubOperatorBridgeException?$error:new HubOperatorBridgeException('Repository default HEAD could not be reconciled','OPERATOR_SOURCE_PROMOTE_FAILED');}
             }
-            $audit=null;
-            if($mission!==null){
-                try{$audit=$this->recordSourcePromotionAudit($projectId,$repository,$expected,$target,$bundleSha,$releaseNotes,$at);}
-                catch(Throwable $error){
-                    $rollback=$this->runGitResult($repoReal,['update-ref','refs/heads/main',$expected,$target]);
-                    if($headChanged)$this->runGitResult($repoReal,['symbolic-ref','HEAD',$headBefore]);
-                    if(($rollback['code']??1)!==0)throw new HubOperatorBridgeException('Canonical source moved but promotion audit failed and rollback could not be verified','OPERATOR_SOURCE_PROMOTE_FAILED');
-                    throw $error instanceof HubOperatorBridgeException?$error:new HubOperatorBridgeException('Source promotion audit could not be stored','OPERATOR_SOURCE_PROMOTE_FAILED');
-                }
-            }
-            $success=true;return ['schemaVersion'=>1,'state'=>'PROMOTED','repository'=>$repository,'previousMainSha'=>$expected,'mainSha'=>$target,'bundleSha256'=>$bundleSha,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'leaseExpiresAt'=>$authority['leaseExpiresAt'],'missionReused'=>$mission!==null],'audit'=>$audit,'releaseNotes'=>$releaseNotes,'observedAt'=>$at];
-        }finally{if($releaseAuthority)$this->releaseMutationAuthority($authority,$success,gmdate('c'));}
+            $audit=['executionId'=>(string)$authority['executionId'],'taskId'=>(string)$authority['taskId']];
+            $success=true;return ['schemaVersion'=>2,'state'=>'PROMOTED','repository'=>$repository,'previousMainSha'=>$expected,'mainSha'=>$target,'bundleSha256'=>$bundleSha,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'leaseExpiresAt'=>$authority['leaseExpiresAt'],'missionReused'=>false,'missionExecutionId'=>$missionId,'writerType'=>'SOURCE_PROMOTE'],'audit'=>$audit,'releaseNotes'=>$releaseNotes,'observedAt'=>$at];
+        }finally{$this->releaseMutationAuthority($authority,$success,gmdate('c'));}
     }
 
     /** @param array<string,mixed> $gate */
@@ -687,36 +685,13 @@ final class HubOperatorBridgeService
         return null;
     }
 
-    /** Persist release details on the source.promote execution when no project mission is reused. */
-    private function persistSourcePromotionReleaseNotes(string $executionId,string $repository,string $expected,string $target,string $bundleSha,array $releaseNotes,string $at): void
+    /** Persist release details and target-project mission context on the typed source.promote writer. */
+    private function persistSourcePromotionReleaseNotes(string $executionId,string $repository,string $expected,string $target,string $bundleSha,array $releaseNotes,string $missionExecutionId,string $at): void
     {
-        $checkpoint=['repository'=>$repository,'expectedMainSha'=>$expected,'targetSha'=>$target,'bundleSha256'=>$bundleSha,'releaseNotes'=>$releaseNotes];
+        $checkpoint=['repository'=>$repository,'expectedMainSha'=>$expected,'targetSha'=>$target,'bundleSha256'=>$bundleSha,'missionExecutionId'=>$missionExecutionId,'releaseNotes'=>$releaseNotes];
         $q=$this->pdo->prepare("UPDATE control_task_executions SET checkpoint_json=:checkpoint,updated_at=:at WHERE execution_id=:execution AND required_capability='source.promote' AND state='RUNNING'");
         $q->execute(['checkpoint'=>json_encode($checkpoint,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$at,'execution'=>$executionId]);
         if($q->rowCount()!==1)throw new HubOperatorBridgeException('Release details could not be bound to source promotion','OPERATOR_RELEASE_DETAILS_REQUIRED');
-    }
-
-    /** @return array{executionId:string,taskId:string} */
-    private function recordSourcePromotionAudit(string $projectId,string $repository,string $expected,string $target,string $bundleSha,array $releaseNotes,string $at): array
-    {
-        $taskId=self::uuid();$executionId=self::uuid();
-        try{
-            $this->pdo->exec('BEGIN IMMEDIATE');
-            $owner=$this->pdo->query("SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id=1 AND bootstrap_closed=1")->fetchColumn();
-            if(!is_string($owner)||!self::uuidValid($owner))throw new HubOperatorBridgeException('Owner authority is unavailable','OPERATOR_OWNER_UNAVAILABLE');
-            $revision=null;$q=$this->pdo->prepare('SELECT active_revision_id FROM control_project_vaults WHERE project_id=:project');$q->execute(['project'=>$projectId]);$v=$q->fetchColumn();if(is_string($v)&&self::uuidValid($v))$revision=$v;
-            $checkpoint=['repository'=>$repository,'expectedMainSha'=>$expected,'targetSha'=>$target,'bundleSha256'=>$bundleSha,'releaseNotes'=>$releaseNotes];
-            $key='source-promotion-audit-'.substr(hash('sha256',$executionId),0,40);
-            $summary='Canonical source promotion completed under durable project mission';
-            $this->pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,:goal,'COMPLETED',NULL,NULL,100,:summary,NULL,:key,NULL,:at,:at,NULL)")
-                ->execute(['task'=>$taskId,'user'=>$owner,'project'=>$projectId,'goal'=>'Audit canonical source promotion '.$repository.' '.substr($target,0,12),'summary'=>$summary,'key'=>$key,'at'=>$at]);
-            $this->pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,:revision,'VPS','source.promote','COMPLETED',NULL,NULL,1,NULL,:checkpoint,NULL,:at,:at)")
-                ->execute(['execution'=>$executionId,'task'=>$taskId,'project'=>$projectId,'revision'=>$revision,'checkpoint'=>json_encode($checkpoint,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$at]);
-            $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:id,:task,'COMPLETED',100,:message,:at)")
-                ->execute(['id'=>self::uuid(),'task'=>$taskId,'message'=>$summary,'at'=>$at]);
-            $this->pdo->exec('COMMIT');
-            return ['executionId'=>$executionId,'taskId'=>$taskId];
-        }catch(Throwable $error){try{$this->pdo->exec('ROLLBACK');}catch(Throwable){}if($error instanceof HubOperatorBridgeException)throw $error;throw new HubOperatorBridgeException('Source promotion audit could not be stored','OPERATOR_SOURCE_PROMOTE_FAILED');}
     }
 
     /** @param array<string,mixed> $checkpoint @return array{executionId:string,taskId:string,projectId:string,leaseExpiresAt:string} */

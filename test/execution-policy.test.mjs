@@ -17,6 +17,11 @@ test('execution metadata is context-only rather than an AI behavior policy',asyn
   assert.deepEqual(context.integrity.globalMutationResources,['CANONICAL:DEPLOY:VPS_PLATFORM']);
   assert.equal(context.integrity.releaseTrackAuthority,'HubUpdateTargetRegistry::releaseTracks');
   assert.equal(context.integrity.writerIdentity,'EXECUTION_ID+MUTATION_RESOURCE');
+  assert.equal(context.integrity.projectScopedMutationIsolation,true);
+  assert.equal(context.integrity.crossProjectMutationDefault,'DENY');
+  assert.equal(context.integrity.crossProjectReadOnlyAllowed,true);
+  assert.equal(context.integrity.sourcePromotionRequiresTargetProjectMission,true);
+  assert.equal(context.integrity.projectScopeAuthority,'PROJECT_REGISTRY+MISSION_EXECUTION_PROJECT');
   assert.equal(context.integrity.hostGlobalTrack,'vps-platform');
   assert.ok(context.integrity.sameProjectInterlocks.includes('CANONICAL:SOURCE<->CANONICAL:DEPLOY:*'));
   assert.ok(context.integrity.sameProjectInterlocks.includes('RESOURCE:RELEASE_STAGE<->CANONICAL:DEPLOY:*'));

@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once dirname(__DIR__) . '/src/HubCapabilityRegistryService.php';
+require_once dirname(__DIR__) . '/src/HubUpdateTargetRegistry.php';
 function ep(bool $ok,string $m):void{if(!$ok)throw new RuntimeException($m);}
 $p=HubCapabilityRegistryService::executionPolicy();
 ep(($p['version']??null)==='2.2-release-track','release-track concurrency policy version');
@@ -21,5 +22,8 @@ ep(HubCapabilityRegistryService::mutationResourceIsGlobal('CANONICAL:DEPLOY:VPS_
 ep(HubCapabilityRegistryService::mutationResourceIsGlobal('CANONICAL:DEPLOY:AWH')===false,'AWH deploy is not host-global');
 ep(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:SOURCE','CANONICAL:SOURCE')===true,'same canonical resource serializes');
 ep(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:PROJECT','CANDIDATE')===true,'unknown canonical mutations fail closed');
+ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['config/execution-policy.json','hub/src/HubControlPlaneService.php','web/updates.js'])==='vps-platform','Platform-owned change plus shared Update Center integration stays on VPS Platform track');
+ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['web/app.js','hub/src/HubControlPlaneService.php'])==='awh','AWH-owned change plus shared Update Center integration stays on AWH track');
+ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['config/execution-policy.json','web/app.js'])===null,'true mixed AWH and VPS Platform change-set is rejected');
 ep(!isset($p['policyFamilies'])&&!isset($p['planBeforeCall'])&&!isset($p['quotaAware']),'retired owner-model fields are absent');
 echo "AWH Execution Context: PASS\n";

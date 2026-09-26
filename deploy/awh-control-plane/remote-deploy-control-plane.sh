@@ -1340,6 +1340,7 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
   command -v setfacl >/dev/null 2>&1
   sudo setfacl -m u:awh-hub:rx /srv/awh-git
   sudo -u awh-hub test -x /srv/awh-git
+  sudo -u awh-hub test ! -w /srv/awh-git
   governance_rows=$(/usr/bin/php -r '$j=json_decode(file_get_contents($argv[1]),true,32,JSON_THROW_ON_ERROR); foreach(($j["repositories"]??[]) as $r){$d=(string)($r["directory"]??"");$b=(string)($r["canonicalBranch"]??"main"); if($d!==""&&preg_match("/^[a-z0-9][a-z0-9.-]*\.git$/",$d)&&preg_match("/^[a-z0-9][a-z0-9._\/-]{0,79}$/",$b)) echo $d."|".$b.PHP_EOL;}' "$RELEASE/config/repository-governance-contract.json")
   test -n "$governance_rows"
   printf '%s
@@ -1347,10 +1348,12 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
     test -n "$governed_repo"; test -n "$governed_branch"
     governed_path=/srv/awh-git/$governed_repo
     sudo test -d "$governed_path"
-    sudo find "$governed_path" -type d -exec setfacl -m u:awh-hub:r-x,d:u:awh-hub:r-x {} +
-    sudo find "$governed_path" -type f -exec setfacl -m u:awh-hub:r-- {} +
+    sudo setfacl -R -x u:awh-hub "$governed_path" 2>/dev/null || true
+    sudo find "$governed_path" -type d -exec sh -c 'for p do setfacl -x d:u:awh-hub "$p" 2>/dev/null || true; done' sh {} +
     sudo -u awh-hub test -r "$governed_path/HEAD"
-    sudo -u awh-hub test ! -w "$governed_path"
+    sudo -u awh-hub test ! -w "$governed_path/objects"
+    sudo -u awh-hub -g bayadmin test -w "$governed_path/objects"
+    sudo -u awh-hub -g bayadmin test -w "$governed_path/refs/heads"
     sudo -u awh-hub git --git-dir="$governed_path" rev-parse "refs/heads/$governed_branch" >/dev/null
   done
   sudo grep -Fq "activeProjects" "$RELEASE/hub/bin/ecosystem-source-drift.php"
