@@ -69,6 +69,8 @@ test('repository governance is a single machine-enforced contract', async () => 
   assert.match(operator, /headChanged/);
   assert.match(operator, /headBefore/);
 
+  const localDeploy = await readFile(join(root, 'deploy/awh-control-plane/deploy-control-plane.sh'), 'utf8');
+  assert.match(localDeploy, /config\/repository-governance-contract\.json/);
   const deploy = await readFile(join(root, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'), 'utf8');
   assert.match(deploy, /SOURCE_DRIFT_HOTFIX_RETIRED=0/);
   assert.match(deploy, /governance_rows=/);

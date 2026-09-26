@@ -50,6 +50,10 @@ test('control bundle closure fails closed on an omitted PHP dependency',async()=
   await writeFile(join(dir,'B.php'),"<?php\n",'utf8');
   await mkdir(join(dir,'bin'));
   await writeFile(join(dir,'bin','C.php'),"<?php\nrequire_once dirname(__DIR__) . '/B.php';\n",'utf8');
+  await mkdir(join(dir,'hub','bin'),{recursive:true});
+  await mkdir(join(dir,'config'));
+  await writeFile(join(dir,'hub','bin','D.php'),"<?php\n$path = dirname(__DIR__, 2) . '/config/policy.json';\n",'utf8');
+  await writeFile(join(dir,'config','policy.json'),"{\"schemaVersion\":1}\n",'utf8');
   let stderr='';
   try { await execFileAsync(process.execPath,[verifier,dir,'A.php']); }
   catch(error){ stderr=String((error as {stderr?:string}).stderr??''); }
@@ -58,8 +62,12 @@ test('control bundle closure fails closed on an omitted PHP dependency',async()=
   try { await execFileAsync(process.execPath,[verifier,dir,'bin/C.php']); }
   catch(error){ dirnameStderr=String((error as {stderr?:string}).stderr??''); }
   assert.match(dirnameStderr,/CONTROL_BUNDLE_CLOSURE_FAILED bin\/C\.php -> unbundled B\.php/);
-  const pass=await execFileAsync(process.execPath,[verifier,dir,'A.php','B.php','bin/C.php']);
-  assert.match(pass.stdout,/CONTROL_BUNDLE_CLOSURE=PASS files=3/);
+  let runtimeDataStderr='';
+  try { await execFileAsync(process.execPath,[verifier,dir,'hub/bin/D.php']); }
+  catch(error){ runtimeDataStderr=String((error as {stderr?:string}).stderr??''); }
+  assert.match(runtimeDataStderr,/CONTROL_BUNDLE_CLOSURE_FAILED hub\/bin\/D\.php -> unbundled runtime data config\/policy\.json/);
+  const pass=await execFileAsync(process.execPath,[verifier,dir,'A.php','B.php','bin/C.php','hub/bin/D.php','config/policy.json']);
+  assert.match(pass.stdout,/CONTROL_BUNDLE_CLOSURE=PASS files=5/);
  } finally { await rm(dir,{recursive:true,force:true}); }
 });
 

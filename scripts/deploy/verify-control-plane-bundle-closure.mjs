@@ -14,6 +14,7 @@ const dependencyPatterns = [
   { pattern: /(?:require|require_once|include|include_once)\s+__DIR__\s*\.\s*['"]\/([^'"]+)['"]/g, base: (sourcePath) => dirname(sourcePath) },
   { pattern: /(?:require|require_once|include|include_once)\s+dirname\(__DIR__\)\s*\.\s*['"]\/([^'"]+)['"]/g, base: (sourcePath) => resolve(dirname(sourcePath), '..') },
 ];
+const runtimeDataPattern = /dirname\(__DIR__,\s*([1-9][0-9]*)\)\s*\.\s*['"]\/([^'"]+\.(?:json|ya?ml|txt|md))['"]/g;
 
 for (const file of normalized) {
   if (file.includes('\0') || isAbsolute(file) || file.split('/').includes('..')) {
@@ -39,6 +40,23 @@ for (const file of normalized) {
     catch { failures.push(`${file} -> missing source ${dependency}`); continue; }
     if (!normalized.has(dependency)) failures.push(`${file} -> unbundled ${dependency}`);
    }
+  }
+  for (const match of source.matchAll(runtimeDataPattern)) {
+    const levels = Number(match[1]);
+    if (!Number.isInteger(levels) || levels < 1 || levels > 8) {
+      failures.push(`${file} -> runtime data dependency depth is invalid`);
+      continue;
+    }
+    const dependencyPath = resolve(dirname(sourcePath), ...Array(levels).fill('..'), match[2]);
+    const dependencyRelative = relative(root, dependencyPath);
+    if (dependencyRelative === '' || dependencyRelative === '..' || dependencyRelative.startsWith(`..${sep}`) || isAbsolute(dependencyRelative)) {
+      failures.push(`${file} -> runtime data dependency escapes source root`);
+      continue;
+    }
+    const dependency = dependencyRelative.split(sep).join('/');
+    try { await readFile(dependencyPath, 'utf8'); }
+    catch { failures.push(`${file} -> missing runtime data ${dependency}`); continue; }
+    if (!normalized.has(dependency)) failures.push(`${file} -> unbundled runtime data ${dependency}`);
   }
 }
 
