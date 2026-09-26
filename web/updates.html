@@ -63,17 +63,13 @@
 
     <section id="update-list" class="update-list" aria-live="polite"><div class="update-empty">กำลังตรวจทุกระบบ…</div></section>
 
-    <section id="coming-next" class="release-roadmap" aria-labelledby="coming-next-title">
-      <div class="section-heading"><div><p class="eyebrow">COMING NEXT</p><h2 id="coming-next-title">เวอร์ชันต่อไป</h2><p>สิ่งที่อยู่ในแผนพัฒนาถัดไป แยกจากรายการที่พร้อมติดตั้งแล้วเพื่อไม่ให้สับสน</p></div></div>
-      <div id="coming-next-list" class="roadmap-list"><div class="update-empty">ยังไม่มีแผนรุ่นถัดไปที่ประกาศ</div></div>
-    </section>
+    <div class="updates-secondary" aria-label="ข้อมูลเพิ่มเติม">
+      <details id="release-history" class="updates-secondary-panel">
+        <summary><span>ประวัติการอัปเดต</span><small id="release-history-summary">ดูย้อนหลัง</small></summary>
+        <div id="release-history-list" class="history-list"><div class="update-empty">ยังไม่มีประวัติที่แสดงได้</div></div>
+      </details>
 
-    <section id="release-history" class="release-history" aria-labelledby="release-history-title">
-      <div class="section-heading"><div><p class="eyebrow">UPDATE HISTORY</p><h2 id="release-history-title">ประวัติการอัปเดต</h2><p>ดูย้อนหลังว่ารุ่นใดติดตั้งสำเร็จ ล้มเหลว หรือถูกแทนด้วยรุ่นใหม่</p></div></div>
-      <div id="release-history-list" class="history-list"><div class="update-empty">ยังไม่มีประวัติที่แสดงได้</div></div>
-    </section>
-
-    <details id="advanced-diagnostics" class="updates-policy">
+      <details id="advanced-diagnostics" class="updates-policy updates-secondary-panel">
       <summary>รายละเอียดขั้นสูง</summary>
       <div class="advanced-intro"><p>ข้อมูลส่วนนี้ใช้เมื่อต้องตรวจเชิงเทคนิคเท่านั้น การอัปเดตตามปกติไม่ต้องดู VPS, Runner, SHA หรือ branch</p></div>
       <section class="release-infrastructure advanced-infrastructure" aria-labelledby="release-infrastructure-title">
@@ -116,7 +112,8 @@
         <article><strong>Rollback พร้อม</strong><span>เก็บ known-good release เพื่อย้อนกลับโดยไม่ต้องเดา component เอง</span></article>
         <article><strong>Technical details</strong><span>SHA, adapter และ runtime component อยู่ในรายละเอียดของแต่ละระบบ ไม่รบกวน flow ปกติ</span></article>
       </div>
-    </details>
+      </details>
+    </div>
   </main>
 
   <div id="confirm-dialog" class="updates-dialog" hidden>

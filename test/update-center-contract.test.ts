@@ -219,7 +219,7 @@ test('Update Center detects split runtime and core release syncs exact enrollmen
 });
 
 
-test('Update Center explains the next release, impact, roadmap and history from canonical release metadata', async()=>{
+test('Update Center keeps release details per project while roadmap remains backend metadata only', async()=>{
   const [core,operator,service,page,script,css,roadmap,deploy]=await Promise.all([
     readFile(join(ROOT,'hub/src/HubCoreReleaseService.php'),'utf8'),
     readFile(join(ROOT,'hub/src/HubOperatorBridgeService.php'),'utf8'),
@@ -243,18 +243,20 @@ test('Update Center explains the next release, impact, roadmap and history from 
   assert.match(service,/'releaseNotes'/);
   assert.match(service,/'roadmap'/);
   assert.match(service,/'history'/);
-  assert.match(page,/เวอร์ชันต่อไป/);
+  assert.doesNotMatch(page,/id="coming-next"/);
+  assert.match(page,/<details id="release-history"/);
   assert.match(page,/ประวัติการอัปเดต/);
   assert.match(page,/update-search/);
   assert.match(page,/data-filter="UPDATE"/);
   assert.match(script,/renderReleaseNotes/);
-  assert.match(script,/renderRoadmap/);
+  assert.doesNotMatch(script,/function renderRoadmap/);
   assert.match(script,/renderHistory/);
   assert.match(script,/ผลกระทบก่อนอัปเดต/);
   assert.match(script,/สิ่งที่ควรรู้/);
   assert.match(script,/itemVisible/);
   assert.match(css,/release-notes/);
-  assert.match(css,/roadmap-card/);
+  assert.doesNotMatch(css,/roadmap-card/);
+  assert.match(css,/updates-secondary-panel/);
   assert.match(css,/history-row/);
   const parsed=JSON.parse(roadmap);
   assert.equal(parsed.schemaVersion,1);
@@ -319,3 +321,22 @@ test('control release package contains every file required by atomic enrollment 
     assert.ok(deploy.includes(file),file+' must be packaged');
   }
 });
+
+
+test('Update Center owner surface has a durable clutter budget', async()=>{
+  const [page,script]=await Promise.all([
+    readFile(join(ROOT,'web/updates.html'),'utf8'),
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+  ]);
+  assert.doesNotMatch(page,/id="coming-next"/);
+  assert.doesNotMatch(page,/class="release-roadmap"/);
+  assert.match(page,/<details id="release-history" class="updates-secondary-panel">/);
+  assert.match(page,/<details id="advanced-diagnostics" class="updates-policy updates-secondary-panel">/);
+  assert.doesNotMatch(page,/<details id="release-history"[^>]*\sopen(?:\s|>)/);
+  assert.doesNotMatch(page,/<details id="advanced-diagnostics"[^>]*\sopen(?:\s|>)/);
+  assert.ok(script.includes('renderReleaseNotes(item,main)'));
+  assert.doesNotMatch(script,/function renderRoadmap/);
+  assert.ok(script.includes('allRows.slice(0,6)'));
+  assert.ok(script.includes("ล่าสุด '+Math.min(allRows.length,6)+' รายการ"));
+});
+

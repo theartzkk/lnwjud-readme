@@ -302,27 +302,13 @@ function itemVisible(item){
   return true;
 }
 
-function renderRoadmap(){
-  const host=$('coming-next-list');if(!host)return;
-  host.replaceChildren();
-  const rows=Array.isArray(center?.roadmap)?center.roadmap:[];
-  if(!rows.length){const empty=document.createElement('div');empty.className='update-empty';empty.textContent='ยังไม่มีแผนรุ่นถัดไปที่ประกาศ';host.append(empty);return;}
-  const statusLabel={PLANNED:'วางแผน',IN_PROGRESS:'กำลังพัฒนา',REVIEW:'กำลังตรวจ'};
-  for(const row of rows){
-    const card=document.createElement('article');card.className='roadmap-card';
-    const head=document.createElement('div');head.className='roadmap-head';
-    const h=document.createElement('h3');h.textContent=row.title||'รุ่นถัดไป';
-    const chip=document.createElement('span');chip.className='roadmap-status';chip.dataset.state=String(row.status||'PLANNED');chip.textContent=statusLabel[row.status]||'วางแผน';
-    head.append(h,chip);card.append(head);
-    if(Array.isArray(row.items)&&row.items.length){const ul=document.createElement('ul');for(const value of row.items){const li=document.createElement('li');li.textContent=String(value);ul.append(li);}card.append(ul);}
-    host.append(card);
-  }
-}
-
 function renderHistory(){
   const host=$('release-history-list');if(!host)return;
   host.replaceChildren();
-  const rows=Array.isArray(center?.history)?center.history:[];
+  const allRows=Array.isArray(center?.history)?center.history:[];
+  const rows=allRows.slice(0,6);
+  const summary=$('release-history-summary');
+  if(summary)summary.textContent=allRows.length?'ล่าสุด '+Math.min(allRows.length,6)+' รายการ':'ยังไม่มีประวัติ';
   if(!rows.length){const empty=document.createElement('div');empty.className='update-empty';empty.textContent='ยังไม่มีประวัติที่แสดงได้';host.append(empty);return;}
   const state={COMPLETED:'ติดตั้งสำเร็จ',FAILED:'ไม่สำเร็จ',CANCELLED:'ถูกแทน/ยกเลิก'};
   for(const row of rows){
@@ -389,7 +375,7 @@ function render(){
   const host=$('update-list');host.replaceChildren();
   for(const item of center?.items||[])if(itemVisible(item))host.append(renderCard(item));
   if(!host.childElementCount){const empty=document.createElement('div');empty.className='update-empty';empty.textContent='ไม่พบระบบตามตัวกรองนี้';host.append(empty);}
-  renderRuntimeHealth();renderReleaseInfrastructure();renderRoadmap();renderHistory();summary();renderProgress();
+  renderRuntimeHealth();renderReleaseInfrastructure();renderHistory();summary();renderProgress();
 }
 
 function renderProgress(){
