@@ -50,13 +50,19 @@ test('current-state authority prevents historical checkpoints from masquerading 
 test('external capability registry pins sources without creating parallel authority', async () => {
  const registry=await loadExternalCapabilityRegistry(join(process.cwd(),'config','external-capabilities.json'));
  assert.equal(registry.controlPlaneAuthority,'AWH');
- assert.equal(registry.entries.length,4);
+ assert.equal(registry.entries.length,8);
  const byId=new Map(registry.entries.map((entry)=>[entry.id,entry]));
  assert.equal(byId.get('teamai-cli')?.workerTool,'tool.teamai');
  assert.equal(byId.get('context-mode')?.license,'Elastic-2.0');
  assert.equal(byId.get('context-mode')?.hostedServiceAllowed,false);
  assert.equal(byId.get('hallmark')?.integrationMode,'REFERENCE_SKILL');
  assert.equal(byId.get('awesome-claude-design')?.integrationMode,'REFERENCE_CORPUS');
+ assert.equal(byId.get('anti-slop-design')?.integrationMode,'APPROVED_SKILL_PACK');
+ assert.equal(byId.get('anti-slop-design')?.skillProfile,'design');
+ assert.equal(byId.get('anti-slop-copy')?.skillProfile,'copy');
+ assert.equal(byId.get('anti-slop-code')?.skillProfile,'code');
+ assert.equal(byId.get('skills-directory')?.capability,'skill.discovery');
+ assert.equal(byId.get('skills-directory')?.integrationMode,'REFERENCE_CORPUS');
  for(const entry of registry.entries){
    assert.equal(entry.authorityBoundary,'AWH_EXISTING_CONTROL_PLANE');
    assert.equal(entry.enabledByDefault,false);
