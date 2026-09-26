@@ -151,94 +151,12 @@ final class HubMariaDbReadClient
     /** @return array<string,mixed> */
     public function bayCommunicationSummary(string $database): array
     {
-        $pdo=$this->open($database);
-        $tables=$this->tablePresence($pdo,$database,[
-            'line_webhook_events','notification_deliveries','line_subscribers','parent_connect_line_student_links',
-            'line_account_links','users','personnel','students','line_rich_menu_profiles','line_rich_menu_assignments',
-            'line_rich_menu_contexts','integrations','system_settings','audit_logs'
-        ]);
-        $summary=[
-            'state'=>'READY','lastWebhookAt'=>null,'webhookErrors24h'=>0,'redeliveries24h'=>0,
-            'lineQueued'=>0,'lineFailed'=>0,'lineSent24h'=>0,'consentedSubscribers'=>0,'linkedStudents'=>0,
-            'linkedGuardians'=>0,'linkedStaff'=>0,'activeStudents'=>0,
-            'richMenu'=>[
-                'expectedProfiles'=>9,'activeProfiles'=>0,'configuredProfiles'=>0,
-                'assignments'=>['synced'=>0,'pending'=>0,'failed'=>0,'unlinked'=>0],
-                'contexts'=>[],'lastSyncAt'=>null
-            ],
-            'ai'=>[
-                'integrationStatus'=>'inactive','configured'=>false,'model'=>'gpt-5.6-luna',
-                'lastTestAt'=>null,'lastError'=>null,'enabled'=>false,'lineEnabled'=>false,
-                'dailyLimitPerUser'=>6,'dailyLimitGlobal'=>40,'dailyUsageGlobal'=>0,
-                'monthlyLimitGlobal'=>300,'monthlyUsageGlobal'=>0,'maxOutputTokens'=>300
-            ]
-        ];
-
+        $pdo=$this->open($database);$tables=$this->tablePresence($pdo,$database,['line_webhook_events','notification_deliveries','line_subscribers','parent_connect_line_student_links','line_account_links','users','personnel','students']);$summary=['state'=>'READY','lastWebhookAt'=>null,'webhookErrors24h'=>0,'redeliveries24h'=>0,'lineQueued'=>0,'lineFailed'=>0,'lineSent24h'=>0,'consentedSubscribers'=>0,'linkedStudents'=>0,'linkedGuardians'=>0,'linkedStaff'=>0,'activeStudents'=>0];
         try{if($tables['line_webhook_events']){$summary['lastWebhookAt']=$pdo->query('SELECT MAX(received_at) FROM line_webhook_events')?->fetchColumn()?:null;$summary['webhookErrors24h']=$this->bayScalar($pdo,"SELECT COUNT(*) FROM line_webhook_events WHERE processing_status='error' AND received_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 1 DAY)");$summary['redeliveries24h']=$this->bayScalar($pdo,"SELECT COUNT(*) FROM line_webhook_events WHERE is_redelivery=1 AND received_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 1 DAY)");}}catch(Throwable){$summary['state']='PARTIAL';}
         try{if($tables['notification_deliveries']){$summary['lineQueued']=$this->bayScalar($pdo,"SELECT COUNT(*) FROM notification_deliveries WHERE channel='line' AND status IN ('queued','processing')");$summary['lineFailed']=$this->bayScalar($pdo,"SELECT COUNT(*) FROM notification_deliveries WHERE channel='line' AND status='failed'");$summary['lineSent24h']=$this->bayScalar($pdo,"SELECT COUNT(*) FROM notification_deliveries WHERE channel='line' AND status='sent' AND sent_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 1 DAY)");}}catch(Throwable){$summary['state']='PARTIAL';}
         try{if($tables['line_subscribers'])$summary['consentedSubscribers']=$this->bayScalar($pdo,"SELECT COUNT(*) FROM line_subscribers WHERE consent_status='consented'");if($tables['parent_connect_line_student_links']){$summary['linkedStudents']=$this->bayScalar($pdo,"SELECT COUNT(DISTINCT student_id) FROM parent_connect_line_student_links WHERE status='active'");$summary['linkedGuardians']=$this->bayScalar($pdo,"SELECT COUNT(DISTINCT guardian_id) FROM parent_connect_line_student_links WHERE status='active' AND guardian_id IS NOT NULL");}}catch(Throwable){$summary['state']='PARTIAL';}
         try{if($tables['line_account_links']&&$tables['users']&&$tables['personnel'])$summary['linkedStaff']=$this->bayScalar($pdo,"SELECT COUNT(DISTINCT u.personnel_id) FROM line_account_links l JOIN users u ON u.id=l.user_id AND u.status='active' JOIN personnel p ON p.id=u.personnel_id AND p.employment_status='active' WHERE l.account_type='staff' AND l.status='active'");if($tables['students'])$summary['activeStudents']=$this->bayScalar($pdo,"SELECT COUNT(*) FROM students WHERE status='active'");}catch(Throwable){$summary['state']='PARTIAL';}
-
-        $managedProfiles=['cooperative.daily','cooperative.closing','teacher.normal','teacher.exam_submission','teacher.score_entry','parent.normal','parent.result_release','admin.normal','admin.exam_submission'];
-        try{
-            if($tables['line_rich_menu_profiles']){
-                $quoted=implode(',',array_fill(0,count($managedProfiles),'?'));
-                $q=$pdo->prepare("SELECT profile_key,profile_name,rich_menu_id FROM line_rich_menu_profiles WHERE is_active=1 AND profile_key IN ($quoted) ORDER BY priority DESC,profile_key");
-                $q->execute($managedProfiles);$profiles=[];
-                foreach($q->fetchAll(PDO::FETCH_ASSOC)?:[] as $row)$profiles[]=[
-                    'key'=>(string)$row['profile_key'],'name'=>self::safeBayText($row['profile_name']??'',120),
-                    'configured'=>trim((string)($row['rich_menu_id']??''))!==''
-                ];
-                $summary['richMenu']['profiles']=$profiles;
-                $summary['richMenu']['activeProfiles']=count($profiles);
-                $summary['richMenu']['configuredProfiles']=count(array_filter($profiles,static fn(array $r):bool=>$r['configured']));
-            }
-            if($tables['line_rich_menu_assignments']){
-                foreach($pdo->query("SELECT sync_status,COUNT(*) total,MAX(last_sync_at) last_sync_at FROM line_rich_menu_assignments GROUP BY sync_status")->fetchAll(PDO::FETCH_ASSOC)?:[] as $row){
-                    $key=(string)$row['sync_status'];if(array_key_exists($key,$summary['richMenu']['assignments']))$summary['richMenu']['assignments'][$key]=(int)$row['total'];
-                    if(!empty($row['last_sync_at'])&&($summary['richMenu']['lastSyncAt']===null||strcmp((string)$row['last_sync_at'],(string)$summary['richMenu']['lastSyncAt'])>0))$summary['richMenu']['lastSyncAt']=(string)$row['last_sync_at'];
-                }
-            }
-            if($tables['line_rich_menu_contexts']){
-                $contexts=[];
-                foreach($pdo->query("SELECT workspace_key,phase_key,phase_source,COUNT(*) total,MAX(updated_at) updated_at FROM line_rich_menu_contexts WHERE expires_at IS NULL OR expires_at>NOW() GROUP BY workspace_key,phase_key,phase_source ORDER BY workspace_key,phase_key")->fetchAll(PDO::FETCH_ASSOC)?:[] as $row)$contexts[]=[
-                    'workspace'=>self::safeBayText($row['workspace_key']??'',50),'phase'=>self::safeBayText($row['phase_key']??'',80),
-                    'source'=>self::safeBayText($row['phase_source']??'',80),'count'=>(int)$row['total'],'updatedAt'=>(string)($row['updated_at']??'')
-                ];
-                $summary['richMenu']['contexts']=$contexts;
-            }
-        }catch(Throwable){$summary['state']='PARTIAL';}
-
-        try{
-            if($tables['integrations']){
-                $q=$pdo->query("SELECT status,config_json,last_test_at,last_error FROM integrations WHERE integration_key='openai' LIMIT 1");
-                $row=$q?->fetch(PDO::FETCH_ASSOC);
-                if(is_array($row)){
-                    $config=json_decode((string)($row['config_json']??''),true);if(!is_array($config))$config=[];
-                    $summary['ai']['integrationStatus']=(string)($row['status']??'inactive');
-                    $summary['ai']['configured']=isset($config['api_key'])&&is_string($config['api_key'])&&trim($config['api_key'])!=='';
-                    $summary['ai']['model']=self::safeBayText($config['model']??'gpt-5.6-luna',100)?:'gpt-5.6-luna';
-                    $summary['ai']['lastTestAt']=$row['last_test_at']??null;
-                    $summary['ai']['lastError']=isset($row['last_error'])?self::safeBayText($row['last_error'],240):null;
-                }
-            }
-            if($tables['system_settings']){
-                $keys=['ai.enabled','ai.line_enabled','ai.line_daily_limit_per_user','ai.line_daily_limit_global','ai.line_monthly_limit_global','ai.line_max_output_tokens'];
-                $q=$pdo->prepare("SELECT setting_key,setting_value FROM system_settings WHERE setting_key IN (".implode(',',array_fill(0,count($keys),'?')).")");
-                $q->execute($keys);$settings=[];foreach($q->fetchAll(PDO::FETCH_ASSOC)?:[] as $row)$settings[(string)$row['setting_key']]=(string)($row['setting_value']??'');
-                $summary['ai']['enabled']=in_array(strtolower($settings['ai.enabled']??''),['1','true','yes','on'],true);
-                $summary['ai']['lineEnabled']=in_array(strtolower($settings['ai.line_enabled']??''),['1','true','yes','on'],true);
-                foreach(['dailyLimitPerUser'=>'ai.line_daily_limit_per_user','dailyLimitGlobal'=>'ai.line_daily_limit_global','monthlyLimitGlobal'=>'ai.line_monthly_limit_global','maxOutputTokens'=>'ai.line_max_output_tokens'] as $out=>$key)if(isset($settings[$key])&&is_numeric($settings[$key]))$summary['ai'][$out]=(int)$settings[$key];
-            }
-            if($tables['audit_logs']){
-                $summary['ai']['dailyUsageGlobal']=$this->bayScalar($pdo,"SELECT COUNT(*) FROM audit_logs WHERE action_code='ai.line.ask' AND created_at>=CURDATE()");
-                $summary['ai']['monthlyUsageGlobal']=$this->bayScalar($pdo,"SELECT COUNT(*) FROM audit_logs WHERE action_code='ai.line.ask' AND created_at>=DATE_FORMAT(CURDATE(),'%Y-%m-01')");
-            }
-        }catch(Throwable){$summary['state']='PARTIAL';}
-
-        return $summary+['generatedAt'=>gmdate('c'),'dataPolicy'=>[
-            'studentPiiExposed'=>false,'credentialsExposed'=>false,'messageBodiesExposed'=>false,'lineUserIdsExposed'=>false
-        ]];
+        return $summary+['generatedAt'=>gmdate('c'),'dataPolicy'=>['studentPiiExposed'=>false,'credentialsExposed'=>false,'messageBodiesExposed'=>false]];
     }
 
     /** @param list<string> $tables */

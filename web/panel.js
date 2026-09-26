@@ -1,4 +1,4 @@
-import { requireOwnerSession, loadInfrastructure, listManagedSites, loadProviderStatus, updateProviderPolicy, listPeople, listAccountRequests, reviewAccountRequest, revokePerson, loadBayRemoteUpdateStatus, createBayRemoteInstallRelay, relayBayRemoteCommand, loadBayCommunicationStatus } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { requireOwnerSession, loadInfrastructure, listManagedSites, loadProviderStatus, updateProviderPolicy, listPeople, listAccountRequests, reviewAccountRequest, revokePerson, loadBayRemoteUpdateStatus, createBayRemoteInstallRelay, relayBayRemoteCommand } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $=(id)=>document.getElementById(id);
 const bytes=(value)=>{const n=Number(value||0);if(!Number.isFinite(n)||n<1)return '—';if(n<1024**2)return Math.round(n/1024)+' KB';if(n<1024**3)return (n/1024**2).toFixed(1)+' MB';return (n/1024**3).toFixed(1)+' GB';};
@@ -408,103 +408,6 @@ async function renderExternalCapabilities(){
     if(!data.entries.length)empty(host,'ยังไม่มี external capability ที่ลงทะเบียน');
   }catch(error){empty(host,error instanceof Error?error.message:'โหลด external capabilities ไม่สำเร็จ');}
 }
-
-function setLineChip(id,label,state=''){
-  const node=$(id);if(!node)return;
-  node.className='cp-chip '+(state==='good'?'good':state==='bad'?'bad':state==='warn'?'warn':'');
-  node.textContent=label;
-}
-function linePhaseLabel(value){
-  const labels={
-    normal:'ปกติ',exam_submission:'ช่วงส่งข้อสอบ',score_entry:'ช่วงบันทึกคะแนน',
-    result_release:'ช่วงประกาศผล',daily:'งานประจำวัน',closing:'ช่วงปิดยอด'
-  };
-  return labels[String(value||'')]||String(value||'—');
-}
-function lineWorkspaceLabel(value){
-  const labels={teacher:'ครู',parent:'ผู้ปกครอง',cooperative:'สหกรณ์',admin:'ผู้ดูแล'};
-  return labels[String(value||'')]||String(value||'—');
-}
-function renderLineControl(data){
-  const summary=data?.summary||{},rich=summary.richMenu||{},assign=rich.assignments||{},ai=summary.ai||{};
-  const expected=Number(rich.expectedProfiles||9),configured=Number(rich.configuredProfiles||0),activeProfiles=Number(rich.activeProfiles||0);
-  const synced=Number(assign.synced||0),pending=Number(assign.pending||0),failed=Number(assign.failed||0);
-  const guardians=Number(summary.linkedGuardians||0),students=Number(summary.linkedStudents||0);
-
-  if($('cp-line-menu'))$('cp-line-menu').textContent=configured+'/'+expected;
-  if($('cp-line-menu-note'))$('cp-line-menu-note').textContent=activeProfiles+' โปรไฟล์ active';
-  if($('cp-line-sync'))$('cp-line-sync').textContent=String(synced);
-  if($('cp-line-sync-note'))$('cp-line-sync-note').textContent=pending+' รอ · '+failed+' ล้มเหลว';
-  if($('cp-line-parent'))$('cp-line-parent').textContent=String(guardians);
-  if($('cp-line-parent-note'))$('cp-line-parent-note').textContent=students+' นักเรียนที่เชื่อม';
-  const aiReady=ai.configured===true&&ai.integrationStatus==='active'&&ai.enabled===true&&ai.lineEnabled===true;
-  if($('cp-line-ai'))$('cp-line-ai').textContent=aiReady?'พร้อม':'ปิด';
-  if($('cp-line-ai-note'))$('cp-line-ai-note').textContent=Number(ai.dailyUsageGlobal||0)+'/'+Number(ai.dailyLimitGlobal||40)+' ครั้งวันนี้';
-
-  setLineChip('cp-line-profile-state',configured===expected?configured+'/'+expected+' พร้อม':configured+'/'+expected,configured===expected?'good':'warn');
-  setLineChip('cp-line-context-state','AUTO','good');
-  setLineChip('cp-line-health-state',failed>0||Number(summary.webhookErrors24h||0)>0?'ต้องดู':'ปกติ',failed>0||Number(summary.webhookErrors24h||0)>0?'bad':'good');
-  setLineChip('cp-line-ai-state',aiReady?'พร้อม':'ยังไม่พร้อม',aiReady?'good':'warn');
-
-  const profileHost=$('cp-line-profile-list');
-  if(profileHost){
-    profileHost.replaceChildren();
-    const profiles=Array.isArray(rich.profiles)?rich.profiles:[];
-    for(const profile of profiles){
-      profileHost.append(row(profile.name||profile.key,profile.key,profile.configured?'พร้อม':'ยังไม่มี Rich Menu',profile.configured?'READY':'WARNING'));
-    }
-    if(!profiles.length)empty(profileHost,'ยังอ่าน Rich Menu profiles ไม่ได้');
-  }
-
-  const contextHost=$('cp-line-context-list');
-  if(contextHost){
-    contextHost.replaceChildren();
-    const contexts=Array.isArray(rich.contexts)?rich.contexts:[];
-    for(const context of contexts){
-      const title=lineWorkspaceLabel(context.workspace)+' · '+linePhaseLabel(context.phase);
-      const detail=(context.source==='manual_override'?'Manual override':'Auto')+' · '+Number(context.count||0)+' บัญชี'+(context.updatedAt?' · '+date(context.updatedAt):'');
-      contextHost.append(row(title,detail,String(context.count||0),context.source==='manual_override'?'WARNING':'READY'));
-    }
-    if(!contexts.length)empty(contextHost,'ยังไม่มี workspace/phase context ที่ active');
-  }
-
-  const healthHost=$('cp-line-health-list');
-  if(healthHost){
-    healthHost.replaceChildren();
-    healthHost.append(
-      row('Webhook',summary.lastWebhookAt?'ล่าสุด '+date(summary.lastWebhookAt):'ยังไม่พบ event',Number(summary.webhookErrors24h||0)+' errors',Number(summary.webhookErrors24h||0)>0?'ERROR':'READY'),
-      row('การส่ง LINE 24 ชม.','ส่งสำเร็จ '+Number(summary.lineSent24h||0)+' · คิว '+Number(summary.lineQueued||0),Number(summary.lineFailed||0)+' failed',Number(summary.lineFailed||0)>0?'ERROR':'READY'),
-      row('บุคลากรที่เชื่อม LINE','บัญชี staff ที่ active',String(Number(summary.linkedStaff||0)),'READY'),
-      row('Rich Menu sync ล่าสุด',rich.lastSyncAt?date(rich.lastSyncAt):'ยังไม่มี timestamp',failed>0?failed+' failed':'ปกติ',failed>0?'ERROR':'READY')
-    );
-  }
-
-  const aiHost=$('cp-line-ai-list');
-  if(aiHost){
-    aiHost.replaceChildren();
-    aiHost.append(
-      row('โมเดล',String(ai.model||'gpt-5.6-luna'),aiReady?'Active':'Inactive',aiReady?'READY':'WARNING'),
-      row('โควตาวันนี้',Number(ai.dailyUsageGlobal||0)+' / '+Number(ai.dailyLimitGlobal||40)+' ครั้ง','ต่อคน '+Number(ai.dailyLimitPerUser||6),'READY'),
-      row('โควตาเดือนนี้',Number(ai.monthlyUsageGlobal||0)+' / '+Number(ai.monthlyLimitGlobal||300)+' ครั้ง','สูงสุด '+Number(ai.monthlyLimitGlobal||300),'READY'),
-      row('คำตอบ local','ตารางสอน · เช็กชื่อ · สหกรณ์ · LINE health','ไม่ใช้ API','READY')
-    );
-  }
-
-  if($('cp-line-updated'))$('cp-line-updated').textContent='ข้อมูลสดจาก BAY · '+date(summary.generatedAt||data?.generatedAt||new Date().toISOString());
-  if($('cp-line-message'))$('cp-line-message').textContent=summary.state==='PARTIAL'?'อ่านข้อมูลบางส่วนได้ไม่ครบ แต่ไม่กระทบการทำงานของ LINE OA':'ข้อมูลนี้เป็นมุมมองควบคุมจาก KRUART · BAY EXCUSE X ยังเป็น Source of Truth';
-}
-async function loadLineControl(){
-  const button=$('cp-line-refresh');if(button)button.disabled=true;
-  if($('cp-line-updated'))$('cp-line-updated').textContent='กำลังอ่าน BAY EXCUSE X…';
-  try{
-    const data=await loadBayCommunicationStatus();
-    renderLineControl(data);
-  }catch(error){
-    if($('cp-line-message'))$('cp-line-message').textContent=error instanceof Error?error.message:'โหลด LINE OA ไม่สำเร็จ';
-    setLineChip('cp-line-health-state','โหลดไม่สำเร็จ','bad');
-  }finally{if(button)button.disabled=false;}
-}
-
 function filterMenus(query){
   const q=String(query||'').trim().toLowerCase();
   for(const node of document.querySelectorAll('[data-cp-keywords]')){
@@ -532,7 +435,6 @@ function installUi(){
   $('cp-refresh')?.addEventListener('click',()=>void load());
   $('cp-bay-recheck')?.addEventListener('click',()=>void loadBayControl());
   $('cp-bay-update-button')?.addEventListener('click',()=>void updateBayProduction());
-  $('cp-line-refresh')?.addEventListener('click',()=>void loadLineControl());
   $('cp-ai-form')?.addEventListener('submit',async(event)=>{
     event.preventDefault();const button=event.currentTarget.querySelector('button[type="submit"]');if(button)button.disabled=true;
     if($('cp-ai-message'))$('cp-ai-message').textContent='กำลังบันทึก…';
@@ -557,7 +459,6 @@ async function load(){
     renderServer(data);renderDomains(data);renderRecovery(data);renderServices(data);renderEcosystem(data);renderAgentControl(data);
     $('cp-updated').textContent='ตรวจข้อมูลแล้ว · '+Math.max(1,Math.round(performance.now()-started))+' ms';
     void loadBayControl();
-    void loadLineControl();
     void renderExternalCapabilities();
 
     Promise.allSettled([listManagedSites(),loadProviderStatus(),loadPeopleAccess()]).then((secondary)=>{

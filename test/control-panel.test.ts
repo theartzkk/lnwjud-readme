@@ -18,7 +18,7 @@ test('Owner Control Panel composes existing authorities without a parallel backe
     readFile(join(ROOT,'web/panel.js'),'utf8'),
     readFile(join(ROOT,'web/panel.css'),'utf8'),
   ]);
-  for(const label of ['เว็บไซต์','Domains & SSL','ไฟล์และพื้นที่','ฐานข้อมูล','สำรองและกู้คืน','ความปลอดภัย','เซิร์ฟเวอร์และบริการ','AWH Agent','ผู้ใช้และสิทธิ์','AI และการใช้งาน','LINE OA','Source และรุ่นระบบ']) assert.match(html,new RegExp(label.replace(/[&]/g,'\\&')));
+  for(const label of ['เว็บไซต์','Domains & SSL','ไฟล์และพื้นที่','ฐานข้อมูล','สำรองและกู้คืน','ความปลอดภัย','เซิร์ฟเวอร์และบริการ','AWH Agent','ผู้ใช้และสิทธิ์','AI และการใช้งาน','Source และรุ่นระบบ']) assert.match(html,new RegExp(label.replace(/[&]/g,'\\&')));
   assert.match(html,/href="#awh-agent"/);
   assert.match(html,/id="awh-agent"/);
   assert.match(html,/id="cp-agent-tools"/);
@@ -36,12 +36,6 @@ test('Owner Control Panel composes existing authorities without a parallel backe
   assert.doesNotMatch(js,/loadControlData\(\)/);
   assert.match(js,/listManagedSites/);
   assert.match(js,/loadProviderStatus/);
-  assert.match(html,/href="#line-oa"/);
-  assert.match(html,/id="line-oa"/);
-  assert.match(html,/Rich Menu ตามบทบาทและช่วงงาน/);
-  assert.match(js,/loadBayCommunicationStatus/);
-  assert.match(js,/renderLineControl/);
-  assert.match(css,/\.cp-line-oa/);
   assert.match(js,/if\(!session\)\{location\.assign/); assert.ok(js.indexOf('requireOwnerSession()')<js.indexOf('loadInfrastructure()'));
   assert.doesNotMatch(js,/localStorage|sessionStorage|indexedDB|Authorization|Bearer/i);
   assert.doesNotMatch(html,/password|api[_ -]?key|secret/i);
