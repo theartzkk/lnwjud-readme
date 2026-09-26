@@ -54,10 +54,16 @@ export interface WorkerTask {
 
 export interface OfficeExecutionPacket { executionId: string; taskId: string; projectId: string; inputName: string; inputMimeType: string; sizeBytes: number; }
 
+export interface WorkerDeviceToolCatalogItem {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
 export interface WorkerDevicePlan {
   schemaVersion: 1;
   action: {
-    tool: 'finish' | 'accessibility' | 'computer_use' | 'input_event' | 'dom_cdp' | 'shell' | 'read_file' | 'write_file' | 'search_text' | 'process_list' | 'process_start' | 'process_status' | 'process_stop';
+    tool: 'finish' | 'accessibility' | 'computer_use' | 'input_event' | 'dom_cdp' | 'shell' | 'read_file' | 'write_file' | 'search_text' | 'process_list' | 'process_start' | 'process_status' | 'process_stop' | 'mcp_tool';
     arguments: Record<string, unknown>;
     summary: string;
   };
@@ -250,15 +256,21 @@ export class ControlPlaneWorkerClient {
     const response = await this.post(`/control/worker/executions/${executionId}/defer`, { schemaVersion: 1, deviceId: identity.deviceId, code }, true); return boundedTask(response);
   }
 
-  async planDeviceStep(executionId: string, input: { step: number; observationText: string; imageBase64: string | null; imageMimeType: 'image/png' | null; lastResult: string | null }): Promise<WorkerDevicePlan> {
+  async planDeviceStep(executionId: string, input: { step: number; observationText: string; imageBase64: string | null; imageMimeType: 'image/png' | null; lastResult: string | null; toolCatalog?: WorkerDeviceToolCatalogItem[] }): Promise<WorkerDevicePlan> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir);
-    if (!UUID_V4.test(executionId) || !Number.isInteger(input.step) || input.step < 0 || input.step > 15 || typeof input.observationText !== 'string' || input.observationText.length > 32 * 1024 || (input.lastResult !== null && (typeof input.lastResult !== 'string' || input.lastResult.length > 16 * 1024)) || (input.imageBase64 !== null && (input.imageMimeType !== 'image/png' || input.imageBase64.length > 2 * 1024 * 1024 || !/^[A-Za-z0-9+/=]+$/.test(input.imageBase64)))) throw new ControlPlaneWorkerError('Device observation is invalid', 'PAYLOAD_INVALID');
-    const response = await this.post(`/control/worker/executions/${executionId}/device-step`, { schemaVersion: 1, deviceId: identity.deviceId, ...input }, true);
+    const catalog = input.toolCatalog ?? [];
+    const catalogBytes = Buffer.byteLength(JSON.stringify(catalog), 'utf8');
+    if (!UUID_V4.test(executionId) || !Number.isInteger(input.step) || input.step < 0 || input.step > 15 || typeof input.observationText !== 'string' || input.observationText.length > 32 * 1024 || (input.lastResult !== null && (typeof input.lastResult !== 'string' || input.lastResult.length > 16 * 1024)) || (input.imageBase64 !== null && (input.imageMimeType !== 'image/png' || input.imageBase64.length > 2 * 1024 * 1024 || !/^[A-Za-z0-9+/=]+$/.test(input.imageBase64))) || !Array.isArray(catalog) || catalog.length > 48 || catalogBytes > 192 * 1024 || catalog.some((item) => !item || typeof item.name !== 'string' || !/^[A-Za-z0-9_.:-]{1,120}$/.test(item.name) || typeof item.description !== 'string' || item.description.length > 500 || !item.inputSchema || typeof item.inputSchema !== 'object' || Array.isArray(item.inputSchema))) throw new ControlPlaneWorkerError('Device observation is invalid', 'PAYLOAD_INVALID');
+    const response = await this.post(`/control/worker/executions/${executionId}/device-step`, { schemaVersion: 1, deviceId: identity.deviceId, step: input.step, observationText: input.observationText, imageBase64: input.imageBase64, imageMimeType: input.imageMimeType, lastResult: input.lastResult, toolCatalog: catalog }, true);
     const action = response.action;
-    const allowed = new Set(['finish','accessibility','computer_use','input_event','dom_cdp','shell','read_file','write_file','search_text','process_list','process_start','process_status','process_stop']);
+    const allowed = new Set(['finish','accessibility','computer_use','input_event','dom_cdp','shell','read_file','write_file','search_text','process_list','process_start','process_status','process_stop','mcp_tool']);
     if (response.schemaVersion !== 1 || !action || typeof action !== 'object' || Array.isArray(action)) throw new ControlPlaneWorkerError('Device plan response is invalid', 'RESPONSE_INVALID');
     const item = action as Record<string, unknown>;
     if (typeof item.tool !== 'string' || !allowed.has(item.tool) || !item.arguments || typeof item.arguments !== 'object' || Array.isArray(item.arguments) || typeof item.summary !== 'string' || item.summary.length > 500) throw new ControlPlaneWorkerError('Device plan response is invalid', 'RESPONSE_INVALID');
+    if (item.tool === 'mcp_tool') {
+      const args = item.arguments as Record<string, unknown>;
+      if (typeof args.toolName !== 'string' || !/^[A-Za-z0-9_.:-]{1,120}$/.test(args.toolName) || !args.arguments || typeof args.arguments !== 'object' || Array.isArray(args.arguments)) throw new ControlPlaneWorkerError('Device MCP action is invalid', 'RESPONSE_INVALID');
+    }
     return { schemaVersion: 1, action: { tool: item.tool as WorkerDevicePlan['action']['tool'], arguments: item.arguments as Record<string, unknown>, summary: item.summary } };
   }
 

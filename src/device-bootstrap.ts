@@ -9,6 +9,7 @@ import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 import { execFile } from './process.js';
 import { LnwjudDeviceClient, discoverLnwjudLaunchSpec } from './lnwjud-device-client.js';
+import { provisionEligibleToolPacks } from './tool-pack-runtime.js';
 
 // 5.5.0 is the current AWH-qualified device engine. 5.5.3 was evaluated on
 // macOS and rejected because fresh stdio startup stalled at secure-storage
@@ -455,6 +456,10 @@ export async function ensureAwhDeviceRuntime(dataDir: string, platform: NodeJS.P
       engineInstalled = await installMacEngine(home, arch);
     } else engineInstalled = await installWindowsEngine(env);
     const systemInstalled = await ensureSystemMcpRuntime(platform, arch, home, env);
+    // Provision only host-relevant, pinned Tool Packs during the explicit
+    // AWH Agent bootstrap boundary. Heartbeats stay read-only and simply
+    // advertise packs that passed package, host and connector verification.
+    await provisionEligibleToolPacks(platform, arch, home, env);
     const installed = engineInstalled || systemInstalled;
     const spec = await discoverLnwjudLaunchSpec(platform, home, env);
     if (!spec) throw new Error('DEVICE_RUNTIME_LAUNCHER_MISSING');

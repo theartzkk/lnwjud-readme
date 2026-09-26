@@ -2633,7 +2633,10 @@ final class HubControlPlaneService
      * supplies fresh observation evidence; provider credentials never leave Hub. */
     public function planWorkerDeviceStep(string $token, string $deviceId, string $executionId, array $payload, ?string $now = null): array
     {
-        self::exactKeys($payload, ['deviceId','imageBase64','imageMimeType','lastResult','observationText','schemaVersion','step']);
+        $hasToolCatalog = array_key_exists('toolCatalog', $payload);
+        self::exactKeys($payload, $hasToolCatalog
+            ? ['deviceId','imageBase64','imageMimeType','lastResult','observationText','schemaVersion','step','toolCatalog']
+            : ['deviceId','imageBase64','imageMimeType','lastResult','observationText','schemaVersion','step']);
         if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Unsupported device-step schema', 'SCHEMA_VERSION');
         if (!is_string($payload['deviceId'] ?? null) || strtolower((string)$payload['deviceId']) !== strtolower($deviceId)) throw new HubControlPlaneException('Device-step identity does not match worker', 'FIELD_INVALID');
         $step = $payload['step'] ?? null;
@@ -2642,6 +2645,17 @@ final class HubControlPlaneService
         $lastResult = $payload['lastResult'] ?? null;
         if (!is_string($observation) || strlen($observation) > 32768 || preg_match('/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/', $observation)) throw new HubControlPlaneException('Device observation is invalid', 'FIELD_INVALID');
         if ($lastResult !== null && (!is_string($lastResult) || strlen($lastResult) > 16384 || preg_match('/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/', $lastResult))) throw new HubControlPlaneException('Device result evidence is invalid', 'FIELD_INVALID');
+        $toolCatalog = $payload['toolCatalog'] ?? [];
+        if (!is_array($toolCatalog) || !array_is_list($toolCatalog) || count($toolCatalog) > 48) throw new HubControlPlaneException('Device tool catalog is invalid', 'FIELD_INVALID');
+        $toolNames = []; $toolCatalogBytes = 0;
+        foreach ($toolCatalog as $tool) {
+            if (!is_array($tool) || !is_string($tool['name'] ?? null) || preg_match('/^[A-Za-z0-9_.:-]{1,120}$/', (string)$tool['name']) !== 1 || !is_string($tool['description'] ?? null) || strlen((string)$tool['description']) > 500 || preg_match('/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/', (string)$tool['description']) || !is_array($tool['inputSchema'] ?? null)) throw new HubControlPlaneException('Device tool catalog is invalid', 'FIELD_INVALID');
+            $name = (string)$tool['name']; if (isset($toolNames[$name])) throw new HubControlPlaneException('Device tool catalog is invalid', 'FIELD_INVALID'); $toolNames[$name] = true;
+            $encoded = json_encode($tool, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            if (!is_string($encoded) || strlen($encoded) > 8192) throw new HubControlPlaneException('Device tool catalog is too large', 'FIELD_INVALID');
+            $toolCatalogBytes += strlen($encoded);
+        }
+        if ($toolCatalogBytes > 196608) throw new HubControlPlaneException('Device tool catalog is too large', 'FIELD_INVALID');
         $at = self::timestamp($now ?? gmdate('c'));
         $row = $this->ownedLeasedSpecialistExecution($token, $deviceId, $executionId, $at);
         if ((string)$row['executor_kind'] !== 'DEVICE' || preg_match('/^office\./', (string)$row['required_capability']) === 1) throw new HubControlPlaneException('Device planner is not available for this execution', 'TASK_FORBIDDEN');
@@ -2650,11 +2664,15 @@ final class HubControlPlaneService
             'device.screen.inspect', 'device.gui.inspect' => ['accessibility','computer_use'],
             'device.gui.operate', 'creative.photoshop' => ['accessibility','computer_use','input_event'],
             'browser.automation' => ['dom_cdp','accessibility','computer_use','input_event'],
+            'browser.playwright', 'browser.debug', 'creative.premiere', 'creative.aftereffects' => ['mcp_tool'],
             'workspace.files' => ['read_file','write_file','search_text'],
             'system.shell' => ['shell'],
             'device.process' => ['process_list','process_start','process_status','process_stop'],
             default => throw new HubControlPlaneException('Device planner capability is invalid', 'TASK_FORBIDDEN'),
         };
+        $specialized = in_array('mcp_tool', $allowed, true);
+        if ($specialized && count($toolCatalog) < 1) throw new HubControlPlaneException('Specialized device tool catalog is unavailable', 'TASK_FORBIDDEN');
+        if (!$specialized && count($toolCatalog) > 0) throw new HubControlPlaneException('Unexpected specialized device tool catalog', 'FIELD_INVALID');
         $image = $payload['imageBase64'] ?? null; $mime = $payload['imageMimeType'] ?? null; $temporary = null; $attachments = [];
         try {
             if ($image !== null) {
@@ -2684,10 +2702,17 @@ final class HubControlPlaneService
             $photoshopPolicy = $required === 'creative.photoshop'
                 ? 'Photoshop policy: work in the installed Adobe Photoshop application. Prefer non-destructive native editing, Select Subject/Remove Background into a layer mask, clipping masks for framed photos, Smart Objects before scaling, adjustment layers for tonal changes, and editable layers. Preserve factual photos, school logos, names and existing text exactly unless the owner explicitly asked to change them. Never replace real school imagery with generated reconstructions. Inspect the actual canvas before a visual change and verify the visible result after it.'
                 : '';
+            $specializedPolicy = $specialized
+                ? 'Specialized MCP policy: choose only a toolName present in the supplied catalog. Return tool=mcp_tool and argumentsJson exactly as {"toolName":"catalog_name","arguments":{...}}. Use the tool inputSchema as the authority for arguments. Prefer read/list/inspect/snapshot operations before mutations when state is uncertain. Never invent a tool name or parameter.'
+                : '';
+            $catalogPrompt = $specialized ? json_encode($toolCatalog, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : '[not applicable]';
+            if (!is_string($catalogPrompt)) throw new HubControlPlaneException('Device tool catalog could not be encoded', 'FIELD_INVALID');
             $request = implode("\n", [
                 'Plan exactly one next device action for the current owner goal.',
                 'Required capability: '.$required,
                 $photoshopPolicy,
+                $specializedPolicy,
+                'Specialized tool catalog: '.$catalogPrompt,
                 'Step: '.(string)$step.' of 16 maximum.',
                 'Fresh accessibility/device observation:',
                 $observation === '' ? '[no accessibility text available]' : $observation,
@@ -2697,12 +2722,16 @@ final class HubControlPlaneService
                 'Owner goal:',
                 (string)$row['goal'],
             ]);
-            $result = $this->agent->respondWithTools((string)$row['user_id'], (string)$row['project_id'], is_string($row['conversation_id'] ?? null) ? (string)$row['conversation_id'] : null, null, $request, [], $attachments, ['executionId'=>(string)$row['execution_id'],'requiredCapability'=>$required,'step'=>$step,'devicePlanner'=>'hub-managed-v1'], $tools, function(string $name, array $arguments) use (&$action, $allowed): array {
+            $result = $this->agent->respondWithTools((string)$row['user_id'], (string)$row['project_id'], is_string($row['conversation_id'] ?? null) ? (string)$row['conversation_id'] : null, null, $request, [], $attachments, ['executionId'=>(string)$row['execution_id'],'requiredCapability'=>$required,'step'=>$step,'devicePlanner'=>'hub-managed-v2'], $tools, function(string $name, array $arguments) use (&$action, $allowed, $toolNames): array {
                 if ($name !== 'device_action' || $action !== null) throw new HubNativeAgentException('Device planner emitted more than one action', 'PROVIDER_FAILED');
                 $tool = $arguments['tool'] ?? null; $rawArguments = $arguments['argumentsJson'] ?? null; $summary = $arguments['summary'] ?? null;
                 if (!is_string($tool) || (!in_array($tool, $allowed, true) && $tool !== 'finish') || !is_string($rawArguments) || strlen($rawArguments) > 12000 || !is_string($summary) || strlen($summary) > 500) throw new HubNativeAgentException('Device planner action is invalid', 'PROVIDER_FAILED');
                 try { $decoded = json_decode($rawArguments, true, 16, JSON_THROW_ON_ERROR); } catch (Throwable) { throw new HubNativeAgentException('Device planner arguments are invalid', 'PROVIDER_FAILED'); }
-                if (!is_array($decoded) || array_is_list($decoded)) throw new HubNativeAgentException('Device planner arguments are invalid', 'PROVIDER_FAILED');
+                if (!is_array($decoded) || (count($decoded) > 0 && array_is_list($decoded))) throw new HubNativeAgentException('Device planner arguments are invalid', 'PROVIDER_FAILED');
+                if ($tool === 'mcp_tool') {
+                    $toolName = $decoded['toolName'] ?? null; $toolArguments = $decoded['arguments'] ?? null;
+                    if (!is_string($toolName) || !isset($toolNames[$toolName]) || !is_array($toolArguments) || (count($toolArguments) > 0 && array_is_list($toolArguments))) throw new HubNativeAgentException('Device planner selected an invalid specialized tool', 'PROVIDER_FAILED');
+                }
                 $action = ['tool'=>$tool,'arguments'=>$decoded,'summary'=>$summary];
                 return ['accepted'=>true,'execution'=>'deferred-to-authorized-device'];
             }, $at, ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'capability'=>$required,'dataClassification'=>'INTERNAL','retryCount'=>(int)$row['attempt_count'],'routingPolicyVersion'=>'device-v1','promptPolicyVersion'=>'hub-device-planner-v1','toolPolicyVersion'=>'single-action-v1']);
@@ -2746,7 +2775,7 @@ final class HubControlPlaneService
         $q->execute(['device' => $auth['deviceId'], 'execution' => $executionId, 'now' => self::timestamp($now ?? gmdate('c')), 'user' => $auth['userId']]); $row = $q->fetch();
         if (!is_array($row)) throw new HubControlPlaneException('Specialist task is not assigned to this worker', 'TASK_FORBIDDEN');
         $kind = (string) $row['executor_kind']; $required = (string) $row['required_capability'];
-        $deviceAllowed = $kind === 'DEVICE' && preg_match('/^(?:office\.(?:word|excel|powerpoint)\.pdf|device\.(?:screen\.inspect|gui\.(?:inspect|operate)|process)|browser\.automation|workspace\.files|system\.shell|creative\.photoshop)$/', $required) === 1;
+        $deviceAllowed = $kind === 'DEVICE' && preg_match('/^(?:office\.(?:word|excel|powerpoint)\.pdf|device\.(?:screen\.inspect|gui\.(?:inspect|operate)|process)|browser\.(?:automation|playwright|debug)|workspace\.files|system\.shell|creative\.(?:photoshop|premiere|aftereffects))$/', $required) === 1;
         if (!(($kind === 'CODEX' && $required === 'codex:cli') || $deviceAllowed)) throw new HubControlPlaneException('Specialist task capability is invalid', 'TASK_FORBIDDEN');
         return $row;
     }
@@ -2938,6 +2967,8 @@ final class HubControlPlaneService
             'tool.ffmpeg' => 'FFmpeg', 'tool.ffprobe' => 'FFprobe', 'tool.codex' => 'ผู้เชี่ยวชาญโค้ด', 'tool.context-mode' => 'Context Optimizer', 'tool.teamai' => 'TeamAI',
             'tool.office.word' => 'Word', 'tool.office.excel' => 'Excel', 'tool.office.powerpoint' => 'PowerPoint',
             'tool.browser.chrome' => 'Chrome', 'tool.browser.edge' => 'Edge', 'tool.browser.safari' => 'Safari',
+            'tool.pack.playwright' => 'Browser Actions', 'tool.pack.chrome-devtools' => 'Browser Diagnostics',
+            'tool.pack.premiere' => 'Premiere Tools', 'tool.pack.after-effects' => 'After Effects Tools',
             'tool.adobe.photoshop' => 'Adobe Photoshop',
             'tool.awh-device-runtime' => 'AWH Device Runtime', 'tool.remote-desktop-mcp' => 'Remote Desktop MCP',
             'tool.awh-device-system' => 'AWH System', 'tool.awh-device-gui' => 'AWH Screen & Apps',
@@ -3815,13 +3846,21 @@ final class HubControlPlaneService
         $namedDevice = preg_match('/(?:ART[- ]MAC[- ](?:INTEL|M5)|\bintel\b|\bm5\b|macbook|mac\s*(?:intel|m5)|เครื่อง(?:นี้|จริง|intel|m5|ครู|นักเรียน)|คอม(?:พิวเตอร์)?(?:เครื่องนี้)?)/iu', $value) === 1;
         $screen = preg_match('/(?:หน้าจอ(?:จริง)?|screen|display|screenshot|ภาพหน้าจอ|visual preview|preview จริง)/iu', $value) === 1;
         $photoshop = preg_match('/(?:adobe\s*)?photoshop/iu', $value) === 1;
+        $premiere = preg_match('/(?:adobe\s*)?premiere(?:\s*pro)?/iu', $value) === 1;
+        $afterEffects = preg_match('/(?:adobe\s*)?after\s*effects?|\bae\b.{0,18}(?:composition|layer|keyframe|render)/iu', $value) === 1;
+        $browserDebug = preg_match('/(?:chrome\s*devtools|devtools|lighthouse|performance\s*(?:trace|panel)|network\s*(?:request|panel)|console\s*(?:error|message))/iu', $value) === 1;
+        $playwright = preg_match('/(?:playwright|browser\s*e2e|e2e\s*(?:web|browser)|semantic\s*browser|browser\s*automation\s*(?:mcp|test))/iu', $value) === 1;
         $nativeApp = preg_match('/(?:after effects?|photoshop|premiere|remotion studio|finder|word|excel|powerpoint|โปรแกรม(?:บน)?เครื่อง|native app|\bgui\b|accessibility)/iu', $value) === 1;
         $localFiles = preg_match('/(?:ไฟล์(?:ใน|บน)เครื่อง|local files?|folder(?: on device)?|โฟลเดอร์(?:ใน|บน)เครื่อง)/iu', $value) === 1;
         $process = preg_match('/(?:terminal|shell|process|service|เปิด process|ปิด process|คำสั่งระบบ)/iu', $value) === 1;
         $browserOnDevice = preg_match('/(?:เปิด|ใช้|ทดสอบ|เข้า|กด).{0,40}(?:chrome|safari|edge|browser|เว็บ).{0,40}(?:บนเครื่อง|บน intel|บน m5|เครื่องจริง)|(?:chrome|safari|edge|browser).{0,40}(?:บนเครื่อง|บน intel|บน m5|เครื่องจริง)/iu', $value) === 1;
 
-        if (!$namedDevice && !$screen && !$nativeApp && !$localFiles && !$process && !$browserOnDevice) return null;
+        if (!$namedDevice && !$screen && !$nativeApp && !$localFiles && !$process && !$browserOnDevice && !$browserDebug && !$playwright) return null;
         if ($photoshop) return ['capability'=>'creative.photoshop','mode'=>'PHOTOSHOP'];
+        if ($premiere) return ['capability'=>'creative.premiere','mode'=>'PREMIERE'];
+        if ($afterEffects) return ['capability'=>'creative.aftereffects','mode'=>'AFTER_EFFECTS'];
+        if ($browserDebug) return ['capability'=>'browser.debug','mode'=>'BROWSER_DEBUG'];
+        if ($playwright) return ['capability'=>'browser.playwright','mode'=>'BROWSER_ACTIONS'];
         if ($localFiles) return ['capability'=>'workspace.files','mode'=>'FILES'];
         if ($process) return ['capability'=>'device.process','mode'=>'PROCESS'];
         if ($browserOnDevice) return ['capability'=>'browser.automation','mode'=>'BROWSER'];

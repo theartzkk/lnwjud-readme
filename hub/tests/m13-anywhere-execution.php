@@ -85,11 +85,21 @@ try {
     m13_assert(($registry->route('device.screen.inspect', $now)['providerId'] ?? null) === 'device:' . $device, 'provider-neutral screen inspection is routable only while a device advertises it');
     m13_assert(($registry->route('device.gui.operate', $now)['providerId'] ?? null) === 'device:' . $device, 'provider-neutral GUI operation is routable through the connected device');
     m13_assert($registry->route('creative.photoshop', $now) === null, 'Photoshop inventory alone never grants executable creative authority');
-    $registry->syncDeviceWorker($device, ['project.read','codex:cli','git','browser_debug_context','tool.office.word','tool.office.excel','tool.adobe.photoshop','tool.awh-device-runtime','device.screen.inspect','device.gui.inspect','device.gui.operate','device.process','workspace.files','system.shell','creative.photoshop'], 'READY', $now);
+    $registry->syncDeviceWorker($device, ['project.read','codex:cli','git','browser_debug_context','tool.office.word','tool.office.excel','tool.adobe.photoshop','tool.awh-device-runtime','tool.pack.playwright','tool.pack.chrome-devtools','tool.pack.premiere','tool.pack.after-effects','device.screen.inspect','device.gui.inspect','device.gui.operate','device.process','workspace.files','system.shell','creative.photoshop','creative.premiere','creative.aftereffects','browser.playwright','browser.debug'], 'READY', $now);
     m13_assert(($registry->route('creative.photoshop', $now)['providerId'] ?? null) === 'device:' . $device, 'explicit worker creative capability is routable after full local runtime verification');
-    m13_assert((int)$pdo->query("SELECT COUNT(*) FROM control_capability_catalog WHERE capability IN ('device.screen.inspect','device.gui.inspect','device.gui.operate','creative.photoshop','device.process') AND source_id='awh-core' AND enabled=1")->fetchColumn() === 5, 'device fabric capability labels are registered without a schema migration');
-    $deviceRoute=(new ReflectionClass(HubControlPlaneService::class))->getMethod('deviceAutomationRequest')->invoke(null,'ใช้ Adobe Photoshop ทำวารสารและตรวจภาพจริงบน M5');
+    foreach (['creative.premiere','creative.aftereffects','browser.playwright','browser.debug'] as $packCapability) m13_assert(($registry->route($packCapability, $now)['providerId'] ?? null) === 'device:' . $device, 'verified Tool Pack capability is routable: ' . $packCapability);
+    m13_assert((int)$pdo->query("SELECT COUNT(*) FROM control_capability_catalog WHERE capability IN ('device.screen.inspect','device.gui.inspect','device.gui.operate','creative.photoshop','creative.premiere','creative.aftereffects','browser.playwright','browser.debug','device.process') AND source_id='awh-core' AND enabled=1")->fetchColumn() === 9, 'device fabric and lazy Tool Pack capability labels are registered without a schema migration');
+    $router=(new ReflectionClass(HubControlPlaneService::class))->getMethod('deviceAutomationRequest');
+    $deviceRoute=$router->invoke(null,'ใช้ Adobe Photoshop ทำวารสารและตรวจภาพจริงบน M5');
     m13_assert(($deviceRoute['capability']??null)==='creative.photoshop'&&($deviceRoute['mode']??null)==='PHOTOSHOP','Photoshop owner goals route to the explicit creative capability instead of generic GUI automation');
+    $premiereRoute=$router->invoke(null,'ใช้ Adobe Premiere Pro บน M5 ตัด timeline แล้วตรวจ export');
+    m13_assert(($premiereRoute['capability']??null)==='creative.premiere'&&($premiereRoute['mode']??null)==='PREMIERE','Premiere owner goals route to the lazy Premiere Tool Pack');
+    $afterEffectsRoute=$router->invoke(null,'ใช้ Adobe After Effects บน M5 ทำ composition และ keyframe');
+    m13_assert(($afterEffectsRoute['capability']??null)==='creative.aftereffects'&&($afterEffectsRoute['mode']??null)==='AFTER_EFFECTS','After Effects owner goals route to the lazy After Effects Tool Pack');
+    $debugRoute=$router->invoke(null,'เปิด Chrome DevTools ตรวจ network request และ performance บน M5');
+    m13_assert(($debugRoute['capability']??null)==='browser.debug'&&($debugRoute['mode']??null)==='BROWSER_DEBUG','DevTools owner goals route to Browser Diagnostics');
+    $playwrightRoute=$router->invoke(null,'ใช้ Playwright browser E2E บน M5 ทดสอบ flow login');
+    m13_assert(($playwrightRoute['capability']??null)==='browser.playwright'&&($playwrightRoute['mode']??null)==='BROWSER_ACTIONS','Playwright owner goals route to Browser Actions');
 
     $guiControl=HubControlPlaneService::openExisting($db);
     $guiControl->heartbeat((string)$guiOnEnrollment['accessToken'],['schemaVersion'=>1,'deviceId'=>$guiOnDevice,'state'=>'READY','capabilities'=>['device.gui.operate','runtime.ai.on','runtime.gui.ready']],$now);

@@ -5,6 +5,8 @@ import { AutopilotRunner, detectLocalCapabilities } from './autopilot.js';
 import { codexStatus, runCodexGoal } from './codex.js';
 
 import { LnwjudDeviceClient, type DeviceAction } from './lnwjud-device-client.js';
+import { ToolPackClient, type ToolPackToolSummary } from './tool-pack-client.js';
+import { installedToolPackCapabilities, launchToolPackHost, toolPackForCapability } from './tool-pack-runtime.js';
 import { loadOrCreateDeviceIdentity } from './device-identity.js';
 import { createCheckpoint } from './changes.js';
 import { createContinuityCheckpoint } from './continuity.js';
@@ -40,15 +42,38 @@ function boundedSummary(value: string): string {
 
 export function isMutationGoal(goal: string): boolean { return MUTATION_GOAL.test(goal); }
 
-function deviceToolAllowed(capability: string, tool: DeviceAction['tool']): boolean {
+function deviceToolAllowed(capability: string, tool: import('./control-plane-worker-client.js').WorkerDevicePlan['action']['tool']): boolean {
   if (tool === 'finish') return true;
   if (/^device\.(?:screen\.inspect|gui\.inspect)$/.test(capability)) return ['accessibility','computer_use'].includes(tool);
   if (/^(?:device\.gui\.operate|creative\.photoshop)$/.test(capability)) return ['accessibility','computer_use','input_event'].includes(tool);
   if (capability === 'browser.automation') return ['dom_cdp','accessibility','computer_use','input_event'].includes(tool);
+  if (/^(?:browser\.(?:playwright|debug)|creative\.(?:premiere|aftereffects))$/.test(capability)) return tool === 'mcp_tool';
   if (capability === 'workspace.files') return ['read_file','write_file','search_text'].includes(tool);
   if (capability === 'system.shell') return tool === 'shell';
   if (capability === 'device.process') return ['process_list','process_start','process_status','process_stop'].includes(tool);
   return false;
+}
+
+function selectToolPackCatalog(tools: ToolPackToolSummary[], goal: string, capability: string, limit = 36): ToolPackToolSummary[] {
+  const tokens = [...new Set(goal.toLocaleLowerCase('en-US').split(/[^\p{L}\p{N}_-]+/u).filter((value) => value.length >= 3))].slice(0, 32);
+  const preferred: Record<string, RegExp> = {
+    'browser.playwright': /(?:navigate|snapshot|find|click|type|fill|select|upload|wait|evaluate|tabs?|console|network)/i,
+    'browser.debug': /(?:pages?|navigate|snapshot|screenshot|console|network|request|performance|trace|lighthouse|memory|evaluate)/i,
+    'creative.aftereffects': /(?:comp|composition|layer|keyframe|effect|property|snapshot|render|project|footage|expression|diff)/i,
+    'creative.premiere': /(?:search_tools|invoke_tool|capabilit|connect|project|sequence|timeline|clip|track|caption|audio|export|render|marker|effect)/i,
+  };
+  const ranked = tools.map((tool, index) => {
+    const haystack = (tool.name + ' ' + tool.description).toLocaleLowerCase('en-US');
+    let score = preferred[capability]?.test(haystack) ? 30 : 0;
+    for (const token of tokens) if (haystack.includes(token)) score += Math.min(12, token.length);
+    if (/^(?:search|list|get|inspect|read|snapshot|status|health|ping|capabil)/i.test(tool.name)) score += 8;
+    let schemaBytes = Number.POSITIVE_INFINITY;
+    try { schemaBytes = Buffer.byteLength(JSON.stringify(tool.inputSchema), 'utf8'); } catch {}
+    if (schemaBytes <= 8 * 1024) score += 5; else score -= 1000;
+    return { tool, score, index };
+  }).filter((item) => item.score > -500);
+  ranked.sort((a, b) => b.score - a.score || a.index - b.index);
+  return ranked.slice(0, Math.max(1, Math.min(limit, 64))).map((item) => item.tool);
 }
 
 function sameProjectName(left: string, right: string): boolean { return left.trim().toLocaleLowerCase('en-US') === right.trim().toLocaleLowerCase('en-US'); }
@@ -161,6 +186,8 @@ export async function workerCapabilities(dataDir: string, allowCodex = true): Pr
   const local = await detectLocalCapabilities(dataDir).catch(() => ({ git: false, node: false, php: false, ffmpeg: false, remotion: false, browsers: [] }));
   const codex = allowCodex ? await codexStatus(dataDir).catch(() => ({ available: false, version: null })) : { available: false, version: null };
   const tools = await discoverWorkerTools().catch((): string[] => []);
+  const packs = await installedToolPackCapabilities().catch(() => ({ tools: [] as string[], capabilities: [] as string[] }));
+  tools.push(...packs.tools);
   const executable = [
     'autopilot:local', 'project:context', 'qa:bounded',
     ...(local.git ? ['git:read'] : []), ...(local.node ? ['node'] : []),
@@ -168,6 +195,7 @@ export async function workerCapabilities(dataDir: string, allowCodex = true): Pr
     ...(local.remotion ? ['remotion'] : []),
     ...officeExecutionCapabilities(process.platform, tools),
     ...deviceExecutionCapabilities(tools),
+    ...packs.capabilities,
     ...(codex.available ? ['codex:cli'] : []),
   ];
   if (codex.available) tools.push('tool.codex');
@@ -257,7 +285,7 @@ export class ControlPlaneWorkerRuntime {
   private async execute(task: WorkerTask, deviceId: string, capabilities: string[]): Promise<WorkerRunResult> {
     if (task.execution?.executorKind === 'CODEX' && task.execution.requiredCapability === 'codex:cli' && task.execution.vaultRevisionId !== null) return this.executeCentralCodex(task, capabilities);
     if (task.execution?.executorKind === 'DEVICE' && /^office\.(?:word|excel|powerpoint)\.pdf$/.test(task.execution.requiredCapability)) return this.executeOfficePdf(task, capabilities);
-    if (task.execution?.executorKind === 'DEVICE' && /^(?:creative\.photoshop|device\.(?:screen\.inspect|gui\.(?:inspect|operate)|process)|browser\.automation|workspace\.files|system\.shell)$/.test(task.execution.requiredCapability)) return this.executeDeviceAutomation(task, capabilities);
+    if (task.execution?.executorKind === 'DEVICE' && /^(?:creative\.(?:photoshop|premiere|aftereffects)|device\.(?:screen\.inspect|gui\.(?:inspect|operate)|process)|browser\.(?:automation|playwright|debug)|workspace\.files|system\.shell)$/.test(task.execution.requiredCapability)) return this.executeDeviceAutomation(task, capabilities);
     // A bounded lease is what prevents two workers from mutating one task. A
     // Codex run can legitimately exceed the initial five-minute lease, so the
     // already-authenticated worker renews it while it owns the task. Failure
@@ -385,8 +413,9 @@ export class ControlPlaneWorkerRuntime {
     } finally { clearInterval(leaseHeartbeat); }
   }
 
-  /** Hub-managed device automation. The local machine needs AWH Device Runtime only;
-   * all model/provider credentials remain in Hub and never cross the device boundary. */
+  /** Hub-managed device automation. Specialized MCP packs are opened only
+   * for the one selected capability; their large tool surfaces are never
+   * advertised globally. Provider credentials remain in Hub. */
   private async executeDeviceAutomation(task: WorkerTask, capabilities: string[]): Promise<WorkerRunResult> {
     const execution = task.execution;
     if (!execution || execution.executorKind !== 'DEVICE') return { status: 'FAILED', taskId: task.taskId, projectId: task.projectId, reason: 'DEVICE_EXECUTION_INVALID' };
@@ -395,12 +424,62 @@ export class ControlPlaneWorkerRuntime {
       return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason: 'DEVICE_CAPABILITY_UNAVAILABLE' };
     }
     const root = join(this.options.dataDir, 'device-runtime-workspace');
-    const requireVisual = /^(?:creative\.photoshop|device\.(?:screen\.inspect|gui\.(?:inspect|operate))|browser\.automation)$/.test(execution.requiredCapability);
+    const specializedPack = toolPackForCapability(execution.requiredCapability);
+    const requireVisual = /^(?:creative\.(?:photoshop|premiere|aftereffects)|device\.(?:screen\.inspect|gui\.(?:inspect|operate))|browser\.automation)$/.test(execution.requiredCapability);
     const heartbeat = setInterval(() => { void this.client.heartbeat(capabilities, 'WORKING').catch(() => undefined); }, 60_000);
     heartbeat.unref?.();
     let runtime: LnwjudDeviceClient | null = null;
+    let pack: ToolPackClient | null = null;
     try {
       await mkdir(root, { recursive: true, mode: 0o700 });
+      if (specializedPack) {
+        await launchToolPackHost(specializedPack);
+        pack = await ToolPackClient.open(execution.requiredCapability);
+        const allTools = await pack.listTools();
+        const catalog = selectToolPackCatalog(allTools, task.goal, execution.requiredCapability);
+        if (catalog.length < 1) throw new Error('TOOL_PACK_TOOL_CATALOG_EMPTY');
+        runtime = await LnwjudDeviceClient.open(root).catch(() => null);
+        await this.client.update(task.taskId, 'RUNNING', 15, 'AWH โหลดชุดเครื่องมือเฉพาะงานแล้ว กำลังตรวจสภาพแวดล้อมจริง');
+        let lastResult: string | null = null;
+        let packImageBase64: string | null = null;
+        let packImageMimeType: 'image/png' | null = null;
+        for (let step = 0; step < 16; step++) {
+          let observation = { workspaceId: '', text: `AWH specialized tool pack ready: ${specializedPack.id}`, imageBase64: null as string | null, imageMimeType: null as 'image/png' | null };
+          if (runtime) {
+            try { observation = await runtime.observe(root, requireVisual); }
+            catch { /* Specialized MCP remains authoritative when GUI observation is unavailable. */ }
+          }
+          const plan = await this.client.planDeviceStep(execution.executionId, {
+            step,
+            observationText: observation.text,
+            imageBase64: packImageBase64 ?? observation.imageBase64,
+            imageMimeType: packImageMimeType ?? observation.imageMimeType,
+            lastResult,
+            toolCatalog: catalog,
+          });
+          const action = plan.action;
+          if (!deviceToolAllowed(execution.requiredCapability, action.tool)) throw new Error('AWH_DEVICE_ACTION_FORBIDDEN');
+          if (action.tool === 'finish') {
+            await this.client.update(task.taskId, 'QA', 90, 'AWH ตรวจผลจากชุดเครื่องมือเฉพาะงานแล้ว');
+            const summary = boundedSummary(action.summary || lastResult || 'ดำเนินงานด้วยชุดเครื่องมือเฉพาะงานเรียบร้อย');
+            await this.client.update(task.taskId, 'COMPLETED', 100, 'ตรวจผลบนอุปกรณ์จริงเรียบร้อย', summary);
+            return { status: 'COMPLETED', taskId: task.taskId, projectId: task.projectId, artifact: null };
+          }
+          if (action.tool !== 'mcp_tool') throw new Error('TOOL_PACK_ACTION_INVALID');
+          const args = action.arguments;
+          const toolName = typeof args.toolName === 'string' ? args.toolName : '';
+          const toolArguments = args.arguments && typeof args.arguments === 'object' && !Array.isArray(args.arguments) ? args.arguments as Record<string, unknown> : null;
+          if (!toolArguments || !catalog.some((item) => item.name === toolName)) throw new Error('TOOL_PACK_ACTION_NOT_IN_CATALOG');
+          const packResult = await pack.callTool(toolName, toolArguments);
+          lastResult = packResult.text;
+          packImageBase64 = packResult.imageBase64;
+          packImageMimeType = packResult.imageMimeType;
+          const progress = Math.min(82, 20 + Math.round(((step + 1) / 16) * 62));
+          await this.client.update(task.taskId, 'RUNNING', progress, 'AWH กำลังดำเนินการด้วยชุดเครื่องมือเฉพาะงานและตรวจผลทีละขั้น');
+        }
+        throw new Error('AWH_DEVICE_STEP_LIMIT_REACHED');
+      }
+
       runtime = await LnwjudDeviceClient.open(root);
       await this.client.update(task.taskId, 'RUNNING', 15, 'AWH Device Runtime พร้อมแล้ว กำลังตรวจอุปกรณ์จริง');
       let lastResult: string | null = null;
@@ -413,7 +492,7 @@ export class ControlPlaneWorkerRuntime {
           imageMimeType: observation.imageMimeType,
           lastResult,
         });
-        const action = plan.action as DeviceAction;
+        const action = plan.action;
         if (!deviceToolAllowed(execution.requiredCapability, action.tool)) throw new Error('AWH_DEVICE_ACTION_FORBIDDEN');
         if (action.tool === 'finish') {
           await this.client.update(task.taskId, 'QA', 90, 'AWH ตรวจผลบนอุปกรณ์จริงแล้ว');
@@ -421,7 +500,7 @@ export class ControlPlaneWorkerRuntime {
           await this.client.update(task.taskId, 'COMPLETED', 100, 'ตรวจผลบนอุปกรณ์จริงเรียบร้อย', summary);
           return { status: 'COMPLETED', taskId: task.taskId, projectId: task.projectId, artifact: null };
         }
-        lastResult = await runtime.execute(action, observation.workspaceId);
+        lastResult = await runtime.execute(action as DeviceAction, observation.workspaceId);
         const progress = Math.min(82, 20 + Math.round(((step + 1) / 16) * 62));
         await this.client.update(task.taskId, 'RUNNING', progress, 'AWH กำลังดำเนินการและตรวจผลทีละขั้นบนอุปกรณ์จริง');
       }
@@ -432,12 +511,13 @@ export class ControlPlaneWorkerRuntime {
         ? 'AWH_DEVICE_VISUAL_PERMISSION_REQUIRED'
         : reason.includes('PROVIDER_') || reason.includes('BUDGET_') || reason.includes('planner')
           ? 'HUB_DEVICE_PLANNER_UNAVAILABLE'
-          : reason.includes('RUNTIME_UNAVAILABLE') || reason.includes('PROTOCOL_UNAVAILABLE')
+          : reason.includes('TOOL_PACK') || reason.includes('RUNTIME_UNAVAILABLE') || reason.includes('PROTOCOL_UNAVAILABLE')
             ? 'DEVICE_CAPABILITY_UNAVAILABLE'
             : 'DEVICE_EXECUTION_FAILED';
       await this.client.deferCentralExecution(execution.executionId, code).catch(() => undefined);
       return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason };
     } finally {
+      pack?.close();
       runtime?.close();
       clearInterval(heartbeat);
     }

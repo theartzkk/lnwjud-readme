@@ -391,7 +391,11 @@ final class HubCapabilityRegistryService
             ['device.screen.inspect','device','ตรวจหน้าจอจริง','ตรวจภาพหน้าจอจากอุปกรณ์ที่เชื่อมต่อ','READ','LOW'],
             ['device.gui.inspect','device','ตรวจ UI บนอุปกรณ์','อ่านหน้าต่างและองค์ประกอบ UI โดยไม่เปลี่ยนสถานะ','READ','LOW'],
             ['device.gui.operate','device','ควบคุม UI บนอุปกรณ์','โต้ตอบกับโปรแกรมบนอุปกรณ์ตามงานที่ผู้ใช้สั่ง','EXECUTE','MEDIUM'],
+            ['browser.playwright','browser','Browser Actions','ทำงานเว็บด้วย semantic browser automation แบบเลือกโหลดเครื่องมือเฉพาะงาน','EXECUTE','MEDIUM'],
+            ['browser.debug','browser','Browser Diagnostics','ตรวจ Console Network Performance และสถานะเว็บด้วยเครื่องมือ DevTools เฉพาะงาน','READ','LOW'],
             ['creative.photoshop','creative','Adobe Photoshop','แก้ไขภาพและงานออกแบบใน Photoshop บนอุปกรณ์จริงด้วยเลเยอร์ มาสก์ และการตรวจภาพจริง','REPLACE','MEDIUM'],
+            ['creative.premiere','creative','Adobe Premiere Pro','ตัดต่อ ตรวจ timeline caption audio effect และ export ผ่านชุดเครื่องมือ Premiere เฉพาะงาน','REPLACE','MEDIUM'],
+            ['creative.aftereffects','creative','Adobe After Effects','จัดการ composition layer keyframe effect และ render ผ่านชุดเครื่องมือ After Effects เฉพาะงาน','REPLACE','MEDIUM'],
             ['device.process','device','จัดการโปรเซสอุปกรณ์','ตรวจและควบคุมโปรเซสบนอุปกรณ์ที่เชื่อมต่อ','EXECUTE','HIGH'],
         ];
         $insert = $this->pdo->prepare("INSERT OR IGNORE INTO control_capability_catalog(capability,source_id,category,display_name,description,mutation_kind,risk_class,maturity,user_visible,enabled,created_at,updated_at) VALUES(:cap,'awh-core',:category,:name,:description,:mutation,:risk,'OPTIONAL',1,1,:at,:at)");
