@@ -32,7 +32,7 @@ echo json_encode([
   assert.deepEqual(result.large.selected.map((item:any)=>item.id),['context.optimize','team.harness']);
   assert.deepEqual(result.design.selected.map((item:any)=>item.id),['design.antislop','design.hallmark','design.reference']);
   assert.deepEqual(result.copy.selected.map((item:any)=>item.id),['copy.antislop']);
-  assert.deepEqual(result.copySurface.selected.map((item:any)=>item.id),['copy.antislop']);
+  assert.deepEqual(result.copySurface.selected.map((item:any)=>item.id),['design.antislop','design.hallmark','design.reference','copy.antislop']);
   assert.deepEqual(result.comments.selected.map((item:any)=>item.id),['code.antislop']);
   assert.deepEqual(result.plain.selected,[]);
   assert.deepEqual(result.attachment.selected.map((item:any)=>item.id),['context.optimize']);
