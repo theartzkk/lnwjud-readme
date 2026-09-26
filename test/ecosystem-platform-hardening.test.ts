@@ -63,3 +63,20 @@ test('platform hardening is wired to runtime rather than documentation only', as
   assert.match(deploy, /PLATFORM_RUNTIME_READY/);
   assert.match(health, /'slo'/);
 });
+
+test('off-server backup reuses verified backup authority and verifies transport integrity', async () => {
+  const exporter=await read('hub/bin/backup-export.php');
+  const wrapper=await read('deploy/awh-backup/awh-backup-export');
+  const pull=await read('deploy/offsite-backup/macos/awh-backup-pull.sh');
+  const install=await read('deploy/offsite-backup/macos/install.sh');
+  assert.match(exporter,/HubBackupService::latestMetadata/);
+  assert.match(exporter,/HubBackupService::verify/);
+  assert.match(exporter,/Requested backup is not the current verified snapshot/);
+  assert.match(wrapper,/control-plane-current\/hub\/bin\/backup-export\.php/);
+  assert.match(pull,/StrictHostKeyChecking=yes/);
+  assert.match(pull,/shasum -a 256/);
+  assert.match(pull,/AWH_OFFSITE_KEEP/);
+  assert.match(install,/com\.awh\.offsite-backup/);
+  assert.match(install,/StartCalendarInterval/);
+  assert.doesNotMatch(exporter+'\n'+pull,/password=|token=|private[_-]?key/i);
+});
