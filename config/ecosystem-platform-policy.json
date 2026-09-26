@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "platform": "KRUART_AWH_BAY",
+  "releaseRunner": {"strategy":"ISOLATED_PRODUCTION_LANE_WITH_EXTERNAL_HANDOFF","externalCapability":"qa.runner","productionMutationOnly":true,"heavyQaBudgets":["DEEP"],"localIsolation":{"systemdSlice":"awh-build.slice","cpuWeight":20,"ioWeight":10,"nice":10,"memoryHighBytes":2147483648}},
+  "releaseContract": {"artifactFirst":true,"buildOnceDeployExactArtifact":true,"requiredIdentity":["product","version","sourceSha","artifactSha256","schemaVersion","builtAt"],"requiredSafety":["qaStatus","backupRequired","rollbackReady","compatibility"]},
+  "identity": {"platformAuthority":"KRUART","schoolAuthority":"BAY_EXCUSE_X","academicContextAuthority":"BAY_EXCUSE_X","duplicateSchoolIdentityStoresForbidden":true},
+  "navigation": {"singleSharedContract":true,"deadEndsForbidden":true,"requiredEscapeActions":["HOME","BACK_OR_PARENT"],"mobileOperatorFirstClass":true,"studentTeacherAdminInformationArchitectureSeparated":true},
+  "queueLifecycle": {"leaseExpiryMustReconcile":true,"leaseRetryWindowSeconds":86400,"maxEventAttempts":5,"deadLetterRequired":true,"indefiniteQueuedStateForbidden":true},
+  "backup": {"verifiedLocalSnapshotRequired":true,"restoreDrillRequired":true,"offServerMirrorRequired":true,"offServerMode":"PULL","preferredMirrorRole":"ART_MAC_INTEL","freshnessMaxHours":36},
+  "observability": {"availabilityTargetPercent":99.9,"apiP95Ms":1500,"websiteP95Ms":2500,"queueStuckTarget":0,"backupFreshnessMaxHours":36,"healthStates":["HEALTHY","DEGRADED","ACTION_REQUIRED","UNAVAILABLE"]},
+  "eventBus": {"authority":"AWH_DURABLE_OUTBOX","delivery":"AT_LEAST_ONCE","table":"control_domain_events","directCrossProductDatabaseWritesForbidden":true,"idempotencyRequired":true,"deadLetterRequired":true},
+  "operationsCenter": {"singleOwnerSurface":true,"defaultView":"EXCEPTION_ONLY","technicalDiagnosticsProgressiveDisclosure":true,"mustAnswer":["SYSTEM_HEALTH","OWNER_ACTION_REQUIRED","RECENT_CHANGE","ROLLBACK_READINESS"]}
+}
