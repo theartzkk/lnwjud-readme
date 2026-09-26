@@ -17,6 +17,16 @@ test('M22 is the canonical AWH deploy mode and preserves M21 as compatibility hi
   assert.match(remote,/IDENTITY_CONVERGENCE=\$\{31\}/);
   assert.match(remote,/m22-identity-convergence/);
   assert.match(remote,/IDENTITY_CONVERGENCE_MIGRATION_VERIFIED/);
+  const m22Start=remote.indexOf('if test "$IDENTITY_CONVERGENCE" = 1; then\n  # M22 keeps KRUART as platform-login authority');
+  const m22End=remote.indexOf('elif test "$PROJECT_SOURCE_AUTHORITY" = 1; then',m22Start);
+  const m22=remote.slice(m22Start,m22End);
+  assert.ok(m22Start>=0&&m22End>m22Start,'M22 deploy branch is present');
+  assert.match(m22,/cmp -s "\$EXECUTOR_SERVICE_UNIT" "\$PREVIOUS_TARGET\/deploy\/systemd\/awh-native-executor\.service"/);
+  assert.match(m22,/cmp -s "\$HOSTING_SERVICE_UNIT" "\$PREVIOUS_TARGET\/deploy\/systemd\/awh-hosting-operator\.service"/);
+  assert.match(m22,/EXECUTOR_UNITS_PREEXISTING=1/);
+  assert.match(m22,/HOSTING_UNITS_PREEXISTING=1/);
+  assert.match(m22,/stage NATIVE_EXECUTOR_QUIESCED; stage HOSTING_OPERATOR_QUIESCED/);
+  assert.ok(m22.indexOf('EXECUTOR_UNITS_PREEXISTING=1')<m22.indexOf('IDENTITY_CONVERGENCE_MIGRATION_IDEMPOTENT'),'M22 proves runtime rollback authority before migration');
   assert.match(remote,/IDENTITY_CONVERGENCE_ROUTE/);
   assert.match(remote,/SOURCE_DRIFT_MONITOR_READY/);
   assert.match(remote,/SOURCE_DRIFT_VERIFIED/);

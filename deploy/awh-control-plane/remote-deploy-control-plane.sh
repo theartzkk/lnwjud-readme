@@ -599,6 +599,19 @@ if test "$IDENTITY_CONVERGENCE" = 1; then
   IDENTITY_START_VERSION=$(sudo sqlite3 "$DB" 'PRAGMA user_version;'); case "$IDENTITY_START_VERSION" in 21|22) ;; *) exit 20 ;; esac
   test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm21-vault-source-authority' AND schema_version = 21;")" = 1
   if test "$IDENTITY_START_VERSION" = 22; then M22_REFRESH=1; test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm22-identity-convergence' AND schema_version = 22;")" = 1; fi
+  # Prove and preserve both managed operator units before M22 mutates schema or pointers.
+  # Identity convergence is an extension of the live M21 runtime, so post-pointer
+  # refresh is valid only when the current units still match the known-good release.
+  test -f "$EXECUTOR_SERVICE_UNIT" && test -f "$EXECUTOR_TIMER_UNIT" && test -f "$HOSTING_SERVICE_UNIT" && test -f "$HOSTING_TIMER_UNIT"; test "$PREVIOUS_POINTER" = PRESENT
+  sudo cmp -s "$EXECUTOR_SERVICE_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-native-executor.service"; sudo cmp -s "$EXECUTOR_TIMER_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-native-executor.timer"
+  sudo cmp -s "$HOSTING_SERVICE_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-hosting-operator.service"; sudo cmp -s "$HOSTING_TIMER_UNIT" "$PREVIOUS_TARGET/deploy/systemd/awh-hosting-operator.timer"
+  sudo install -d -o root -g root -m 0750 "$EXECUTOR_BACKUP_ROOT"
+  sudo test ! -e "$EXECUTOR_SERVICE_BACKUP"; sudo test ! -e "$EXECUTOR_TIMER_BACKUP"; sudo test ! -e "$HOSTING_SERVICE_BACKUP"; sudo test ! -e "$HOSTING_TIMER_BACKUP"
+  sudo cp -p "$EXECUTOR_SERVICE_UNIT" "$EXECUTOR_SERVICE_BACKUP"; sudo cp -p "$EXECUTOR_TIMER_UNIT" "$EXECUTOR_TIMER_BACKUP"; sudo cp -p "$HOSTING_SERVICE_UNIT" "$HOSTING_SERVICE_BACKUP"; sudo cp -p "$HOSTING_TIMER_UNIT" "$HOSTING_TIMER_BACKUP"
+  sudo chown root:root "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP"; sudo chmod 0600 "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP"
+  sudo systemctl stop awh-native-executor.timer; sudo systemctl stop awh-native-executor.service >/dev/null 2>&1 || true; EXECUTOR_TIMER_STOPPED=1; EXECUTOR_UNITS_PREEXISTING=1
+  sudo systemctl stop awh-hosting-operator.timer; sudo systemctl stop awh-hosting-operator.service >/dev/null 2>&1 || true; HOSTING_UNITS_PREEXISTING=1
+  verify_deploy_authority; stage NATIVE_EXECUTOR_QUIESCED; stage HOSTING_OPERATOR_QUIESCED
   DB_MUTATED=1
   if test "$M22_REFRESH" -eq 0; then stage IDENTITY_CONVERGENCE_MIGRATION_FIRST; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$IDENTITY_MIGRATION" "$DB" >/dev/null; fi
   stage IDENTITY_CONVERGENCE_MIGRATION_IDEMPOTENT; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$IDENTITY_MIGRATION" "$DB" >/dev/null
