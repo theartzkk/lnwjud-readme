@@ -76,6 +76,9 @@ test('off-server backup reuses verified backup authority and verifies transport 
   assert.match(pull,/StrictHostKeyChecking=yes/);
   assert.match(pull,/shasum -a 256/);
   assert.match(pull,/AWH_OFFSITE_KEEP/);
+  assert.match(pull,/\.pull\.lock/);
+  assert.match(pull,/reason=already-running/);
+  assert.match(pull,/shasum -a 256 "\$DEST\/\$file"/);
   assert.match(install,/com\.awh\.offsite-backup/);
   assert.match(install,/StartCalendarInterval/);
   assert.doesNotMatch(exporter+'\n'+pull,/password=|token=|private[_-]?key/i);
