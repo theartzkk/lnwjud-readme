@@ -2585,6 +2585,92 @@ final class HubControlPlaneService
         return $this->taskById((string) $row['task_id'], (string) $row['user_id']);
     }
 
+    /** Hub-managed reasoning for one bounded local-device action. The device
+     * supplies fresh observation evidence; provider credentials never leave Hub. */
+    public function planWorkerDeviceStep(string $token, string $deviceId, string $executionId, array $payload, ?string $now = null): array
+    {
+        self::exactKeys($payload, ['deviceId','imageBase64','imageMimeType','lastResult','observationText','schemaVersion','step']);
+        if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Unsupported device-step schema', 'SCHEMA_VERSION');
+        if (!is_string($payload['deviceId'] ?? null) || strtolower((string)$payload['deviceId']) !== strtolower($deviceId)) throw new HubControlPlaneException('Device-step identity does not match worker', 'FIELD_INVALID');
+        $step = $payload['step'] ?? null;
+        if (!is_int($step) || $step < 0 || $step > 15) throw new HubControlPlaneException('Device-step number is invalid', 'FIELD_INVALID');
+        $observation = $payload['observationText'] ?? null;
+        $lastResult = $payload['lastResult'] ?? null;
+        if (!is_string($observation) || strlen($observation) > 32768 || preg_match('/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/', $observation)) throw new HubControlPlaneException('Device observation is invalid', 'FIELD_INVALID');
+        if ($lastResult !== null && (!is_string($lastResult) || strlen($lastResult) > 16384 || preg_match('/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/', $lastResult))) throw new HubControlPlaneException('Device result evidence is invalid', 'FIELD_INVALID');
+        $at = self::timestamp($now ?? gmdate('c'));
+        $row = $this->ownedLeasedSpecialistExecution($token, $deviceId, $executionId, $at);
+        if ((string)$row['executor_kind'] !== 'DEVICE' || preg_match('/^office\./', (string)$row['required_capability']) === 1) throw new HubControlPlaneException('Device planner is not available for this execution', 'TASK_FORBIDDEN');
+        $required = (string)$row['required_capability'];
+        $allowed = match ($required) {
+            'device.screen.inspect', 'device.gui.inspect' => ['accessibility','computer_use'],
+            'device.gui.operate', 'creative.photoshop' => ['accessibility','computer_use','input_event'],
+            'browser.automation' => ['dom_cdp','accessibility','computer_use','input_event'],
+            'workspace.files' => ['read_file','write_file','search_text'],
+            'system.shell' => ['shell'],
+            'device.process' => ['process_list','process_start','process_status','process_stop'],
+            default => throw new HubControlPlaneException('Device planner capability is invalid', 'TASK_FORBIDDEN'),
+        };
+        $image = $payload['imageBase64'] ?? null; $mime = $payload['imageMimeType'] ?? null; $temporary = null; $attachments = [];
+        try {
+            if ($image !== null) {
+                if (!is_string($image) || $mime !== 'image/png' || strlen($image) > 2 * 1024 * 1024 || preg_match('/^[A-Za-z0-9+\/=]+$/', $image) !== 1) throw new HubControlPlaneException('Device screenshot is invalid', 'FIELD_INVALID');
+                $raw = base64_decode($image, true);
+                if (!is_string($raw) || strlen($raw) < 16 || strlen($raw) > 1536 * 1024 || !str_starts_with($raw, "\x89PNG\r\n\x1a\n")) throw new HubControlPlaneException('Device screenshot is invalid', 'FIELD_INVALID');
+                $temporary = tempnam(sys_get_temp_dir(), 'awh-device-');
+                if (!is_string($temporary) || file_put_contents($temporary, $raw, LOCK_EX) !== strlen($raw)) throw new HubControlPlaneException('Device screenshot workspace is unavailable', 'TASK_WORKSPACE_UNAVAILABLE');
+                @chmod($temporary, 0600);
+                $attachments[] = ['name'=>'device-observation.png','mimeType'=>'image/png','path'=>$temporary,'sizeBytes'=>strlen($raw)];
+            } elseif ($mime !== null) throw new HubControlPlaneException('Device screenshot MIME is invalid', 'FIELD_INVALID');
+            $action = null;
+            $tools = [[
+                'type'=>'function',
+                'name'=>'device_action',
+                'description'=>'Choose exactly one next bounded action on the already-authorized device. Use tool=finish only when the owner goal is visibly or semantically verified complete.',
+                'parameters'=>[
+                    'type'=>'object','additionalProperties'=>false,
+                    'properties'=>[
+                        'tool'=>['type'=>'string','enum'=>array_merge(['finish'],$allowed)],
+                        'argumentsJson'=>['type'=>'string','maxLength'=>12000],
+                        'summary'=>['type'=>'string','maxLength'=>500],
+                    ],
+                    'required'=>['tool','argumentsJson','summary'],
+                ],
+            ]];
+            $photoshopPolicy = $required === 'creative.photoshop'
+                ? 'Photoshop policy: work in the installed Adobe Photoshop application. Prefer non-destructive native editing, Select Subject/Remove Background into a layer mask, clipping masks for framed photos, Smart Objects before scaling, adjustment layers for tonal changes, and editable layers. Preserve factual photos, school logos, names and existing text exactly unless the owner explicitly asked to change them. Never replace real school imagery with generated reconstructions. Inspect the actual canvas before a visual change and verify the visible result after it.'
+                : '';
+            $request = implode("\n", [
+                'Plan exactly one next device action for the current owner goal.',
+                'Required capability: '.$required,
+                $photoshopPolicy,
+                'Step: '.(string)$step.' of 16 maximum.',
+                'Fresh accessibility/device observation:',
+                $observation === '' ? '[no accessibility text available]' : $observation,
+                'Previous action result:',
+                is_string($lastResult) && $lastResult !== '' ? $lastResult : '[none]',
+                'Call device_action exactly once. argumentsJson must be one JSON object accepted by the selected local tool. Prefer semantic accessibility actions over coordinates. For visual work, use the supplied screenshot and verify after changes. Never broaden scope, expose credentials, change source authority, or create another control plane.',
+                'Owner goal:',
+                (string)$row['goal'],
+            ]);
+            $result = $this->agent->respondWithTools((string)$row['user_id'], (string)$row['project_id'], is_string($row['conversation_id'] ?? null) ? (string)$row['conversation_id'] : null, null, $request, [], $attachments, ['executionId'=>(string)$row['execution_id'],'requiredCapability'=>$required,'step'=>$step,'devicePlanner'=>'hub-managed-v1'], $tools, function(string $name, array $arguments) use (&$action, $allowed): array {
+                if ($name !== 'device_action' || $action !== null) throw new HubNativeAgentException('Device planner emitted more than one action', 'PROVIDER_FAILED');
+                $tool = $arguments['tool'] ?? null; $rawArguments = $arguments['argumentsJson'] ?? null; $summary = $arguments['summary'] ?? null;
+                if (!is_string($tool) || (!in_array($tool, $allowed, true) && $tool !== 'finish') || !is_string($rawArguments) || strlen($rawArguments) > 12000 || !is_string($summary) || strlen($summary) > 500) throw new HubNativeAgentException('Device planner action is invalid', 'PROVIDER_FAILED');
+                try { $decoded = json_decode($rawArguments, true, 16, JSON_THROW_ON_ERROR); } catch (Throwable) { throw new HubNativeAgentException('Device planner arguments are invalid', 'PROVIDER_FAILED'); }
+                if (!is_array($decoded) || array_is_list($decoded)) throw new HubNativeAgentException('Device planner arguments are invalid', 'PROVIDER_FAILED');
+                $action = ['tool'=>$tool,'arguments'=>$decoded,'summary'=>$summary];
+                return ['accepted'=>true,'execution'=>'deferred-to-authorized-device'];
+            }, $at, ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'capability'=>$required,'dataClassification'=>'INTERNAL','retryCount'=>(int)$row['attempt_count'],'routingPolicyVersion'=>'device-v1','promptPolicyVersion'=>'hub-device-planner-v1','toolPolicyVersion'=>'single-action-v1']);
+            if ($action === null) $action = ['tool'=>'finish','arguments'=>[],'summary'=>is_string($result['summary'] ?? null) ? substr((string)$result['summary'],0,500) : 'Device task completed'];
+            return ['schemaVersion'=>1,'action'=>$action,'model'=>is_string($result['model'] ?? null)?(string)$result['model']:null,'provider'=>'hub-managed'];
+        } catch (HubNativeAgentException $error) {
+            throw new HubControlPlaneException('Hub-managed device planner is unavailable', $error->codeName, $error->diagnostic);
+        } finally {
+            if (is_string($temporary) && is_file($temporary) && !is_link($temporary)) @unlink($temporary);
+        }
+    }
+
     /** An unavailable or policy-blocked specialist returns work to the one
      * durable capability queue without creating another task. */
     public function deferWorkerExecution(string $token, string $deviceId, string $executionId, array $payload, ?string $now = null): array
@@ -2593,7 +2679,7 @@ final class HubControlPlaneService
         $at = self::timestamp($now ?? gmdate('c')); $row = $this->ownedLeasedSpecialistExecution($token, $deviceId, $executionId, $at); $code = self::portableText((string) ($payload['code'] ?? ''), 'code', 80);
         try {
             $this->pdo->exec('BEGIN IMMEDIATE');
-            $terminal = (int) $row['attempt_count'] >= 3 && !in_array($code, ['CODEX_UNAVAILABLE', 'OFFICE_UNAVAILABLE', 'DEVICE_CAPABILITY_UNAVAILABLE'], true);
+            $terminal = (int) $row['attempt_count'] >= 3 && !in_array($code, ['CODEX_UNAVAILABLE', 'OFFICE_UNAVAILABLE', 'DEVICE_CAPABILITY_UNAVAILABLE', 'HUB_DEVICE_PLANNER_UNAVAILABLE', 'AWH_DEVICE_VISUAL_PERMISSION_REQUIRED'], true);
             $office = (string) $row['executor_kind'] === 'DEVICE' && preg_match('/^office\.(?:word|excel|powerpoint)\.pdf$/',(string)$row['required_capability'])===1;
             $device = (string) $row['executor_kind'] === 'DEVICE' && !$office;
             $q = $this->pdo->prepare("UPDATE control_task_executions SET state = :state, lease_owner = NULL, lease_expires_at = NULL, last_error_code = :code, updated_at = :at WHERE execution_id = :execution AND state = 'RUNNING' AND lease_owner = :device"); $q->execute(['state' => $terminal ? 'FAILED' : 'WAITING_FOR_CAPABILITY', 'code' => $code, 'at' => $at, 'execution' => $row['execution_id'], 'device' => strtolower($deviceId)]);
@@ -2616,7 +2702,7 @@ final class HubControlPlaneService
         $q->execute(['device' => $auth['deviceId'], 'execution' => $executionId, 'now' => self::timestamp($now ?? gmdate('c')), 'user' => $auth['userId']]); $row = $q->fetch();
         if (!is_array($row)) throw new HubControlPlaneException('Specialist task is not assigned to this worker', 'TASK_FORBIDDEN');
         $kind = (string) $row['executor_kind']; $required = (string) $row['required_capability'];
-        $deviceAllowed = $kind === 'DEVICE' && preg_match('/^(?:office\.(?:word|excel|powerpoint)\.pdf|device\.(?:screen\.inspect|gui\.(?:inspect|operate)|process)|browser\.automation|workspace\.files|system\.shell)$/', $required) === 1;
+        $deviceAllowed = $kind === 'DEVICE' && preg_match('/^(?:office\.(?:word|excel|powerpoint)\.pdf|device\.(?:screen\.inspect|gui\.(?:inspect|operate)|process)|browser\.automation|workspace\.files|system\.shell|creative\.photoshop)$/', $required) === 1;
         if (!(($kind === 'CODEX' && $required === 'codex:cli') || $deviceAllowed)) throw new HubControlPlaneException('Specialist task capability is invalid', 'TASK_FORBIDDEN');
         return $row;
     }
@@ -2765,6 +2851,27 @@ final class HubControlPlaneService
         return ['schemaVersion' => 2, 'workers' => $this->workersForUser((string) $session['user_id'])];
     }
 
+    /** Owner-managed device revocation lives on AWH Web. The endpoint Agent
+     * keeps only enrollment/onboarding and never exposes owner control tokens. */
+    public function revokeDeviceForSession(string $sessionToken, string $csrfToken, string $deviceId, array $payload, ?string $now = null): array
+    {
+        self::exactKeys($payload, ['schemaVersion']);
+        if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Unsupported device revocation schema', 'SCHEMA_VERSION');
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now);
+        $userId = (string)$session['user_id']; $this->assertOwner($userId);
+        $deviceId = self::uuid($deviceId);
+        $busy = $this->pdo->prepare("SELECT busy_task_id FROM control_workers WHERE device_id = :device AND busy_task_id IS NOT NULL");
+        $busy->execute(['device'=>$deviceId]);
+        if ($busy->fetchColumn() !== false) throw new HubControlPlaneException('Device is currently running an AWH task', 'WORKER_BUSY');
+        try { $this->enrollment->revokeDeviceForOwnerUser($userId, $deviceId, $now); }
+        catch (HubEnrollmentException $error) { throw new HubControlPlaneException($error->getMessage(), $error->codeName); }
+        $at = self::timestamp($now ?? gmdate('c'));
+        try {
+            $this->pdo->prepare("UPDATE control_workers SET state = 'OFFLINE', busy_task_id = NULL, last_seen_at = :at WHERE device_id = :device")->execute(['at'=>$at,'device'=>$deviceId]);
+        } catch (Throwable) { /* Enrollment revocation is authoritative even if stale worker telemetry remains. */ }
+        return ['schemaVersion'=>1,'revoked'=>true,'deviceId'=>$deviceId];
+    }
+
     /** Workers are visible only through a Project binding the user may read. */
     private function workersForUser(string $userId): array
     {
@@ -2788,6 +2895,7 @@ final class HubControlPlaneService
             'tool.office.word' => 'Word', 'tool.office.excel' => 'Excel', 'tool.office.powerpoint' => 'PowerPoint',
             'tool.browser.chrome' => 'Chrome', 'tool.browser.edge' => 'Edge', 'tool.browser.safari' => 'Safari',
             'tool.adobe.photoshop' => 'Adobe Photoshop',
+            'tool.awh-device-runtime' => 'AWH Device Runtime', 'tool.remote-desktop-mcp' => 'Remote Desktop MCP',
             'tool.awh-device-system' => 'AWH System', 'tool.awh-device-gui' => 'AWH Screen & Apps',
         ];
         $out = []; foreach ($capabilities as $capability) if (isset($labels[$capability])) $out[] = $labels[$capability];

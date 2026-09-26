@@ -257,6 +257,14 @@ test('device execution capabilities stay provider-neutral and reflect actual run
   assert.deepEqual(deviceExecutionCapabilities(['tool.adobe.photoshop']), []);
   assert.deepEqual(deviceExecutionCapabilities(['tool.awh-device-gui', 'tool.awh-device-system', 'tool.adobe.photoshop']), [
     'device.screen.inspect', 'device.gui.inspect', 'device.gui.operate', 'browser.automation',
+    'workspace.files', 'system.shell', 'device.process',
+  ]);
+  assert.deepEqual(deviceExecutionCapabilities(['tool.awh-device-runtime']), [
+    'device.screen.inspect', 'device.gui.inspect', 'device.gui.operate', 'browser.automation',
+    'workspace.files', 'system.shell', 'device.process',
+  ]);
+  assert.deepEqual(deviceExecutionCapabilities(['tool.awh-device-runtime', 'tool.adobe.photoshop']), [
+    'device.screen.inspect', 'device.gui.inspect', 'device.gui.operate', 'browser.automation',
     'workspace.files', 'system.shell', 'device.process', 'creative.photoshop',
   ]);
 });

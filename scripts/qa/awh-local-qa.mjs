@@ -457,6 +457,8 @@ async function fastQaCheck() {
     'test/ecosystem-platform-hardening.test.ts',
     'test/control-plane-worker-runtime.test.ts',
     'test/control-plane-worker-client.test.ts',
+    'test/device-centralization.test.ts',
+    'test/remote-desktop-connector.test.ts',
     'test/owner-protocol.test.ts',
     'test/source-drift-systemd.test.ts',
     'test/vps-direct-connector.test.mjs',

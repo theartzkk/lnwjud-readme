@@ -88,6 +88,13 @@ try {
     api_assert($revoked['status'] === 200, 'owner must be able to revoke a device');
     $afterRevoke = api_response($service, 'POST', '/api/v1/enrollment/token/rotate', api_server(['HTTP_AUTHORIZATION' => 'Bearer ' . json_decode($rotated['body'], true)['accessToken']]), ['schemaVersion' => 1, 'deviceId' => $targetId]);
     api_assert($afterRevoke['status'] === 401, 'revoked device credential must fail closed');
+
+    $webPairing = $service->issuePairingCode($ownerId, [$projectId]);
+    $webDeviceId = '923b45c0-23e1-408d-ae0f-ac5eca7f6900';
+    $webDevice = $service->enrollDevice(['schemaVersion' => 1, 'pairingCode' => $webPairing['pairingCode'], 'deviceId' => $webDeviceId, 'displayName' => 'Web Managed Device', 'platform' => 'darwin', 'arch' => 'arm64', 'appVersion' => '1.0.0']);
+    $service->revokeDeviceForOwnerUser($ownerId, $webDeviceId);
+    try { $service->authenticateForControlPlane($webDevice['accessToken'], $webDeviceId); api_assert(false, 'web owner revocation must reject the old device token'); }
+    catch (HubEnrollmentException $error) { api_assert(in_array($error->codeName, ['TOKEN_REJECTED','TOKEN_INVALID'], true), 'web owner revocation must fail closed at device authentication'); }
     for ($i = 0; $i < 5; $i++) api_response($service, 'POST', '/api/v1/enrollment/devices', api_server(), ['schemaVersion' => 1, 'pairingCode' => 'B'.str_repeat('x', 31), 'deviceId' => '723b45c0-23e1-408d-ae0f-ac5eca7f6900', 'displayName' => 'Rate Test', 'platform' => 'win32', 'arch' => 'x64', 'appVersion' => '0.4.0']);
     $limited = api_response($service, 'POST', '/api/v1/enrollment/devices', api_server(), ['schemaVersion' => 1, 'pairingCode' => 'B'.str_repeat('x', 31), 'deviceId' => '723b45c0-23e1-408d-ae0f-ac5eca7f6900', 'displayName' => 'Rate Test', 'platform' => 'win32', 'arch' => 'x64', 'appVersion' => '0.4.0']);
     api_assert($limited['status'] === 429, 'pairing attempts must be throttled');

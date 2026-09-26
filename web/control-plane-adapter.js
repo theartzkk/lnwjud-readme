@@ -113,6 +113,11 @@ export async function resetPassword(resetToken, newPassword) {
 export async function listAuthSessions() { return controlRequest('/api/v1/auth/sessions'); }
 export async function revokeAuthSession(sessionId) { if (typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId)) throw new Error('เซสชันไม่ถูกต้อง'); return controlRequest(`/api/v1/auth/sessions/${sessionId}/revoke`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
 
+export async function revokeDevice(deviceId) {
+  if (!UUID.test(deviceId)) throw new Error('อุปกรณ์ไม่ถูกต้อง');
+  return controlRequest(`/api/v1/control/devices/${deviceId}/revoke`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) });
+}
+
 export async function loadControlData() {
   const session = await controlRequest('/api/v1/control/session');
   const [projects, tasks, workers, results, artifacts, approvals] = await Promise.all([

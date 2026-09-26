@@ -66,6 +66,21 @@ export async function discoverWorkerTools(options: WorkerToolProbeOptions = {}):
   if (await commandAvailable('python3') || await commandAvailable('python')) tools.push('tool.python');
 
   if (platform === 'win32') {
+    const local = typeof env.LOCALAPPDATA === 'string' && env.LOCALAPPDATA ? env.LOCALAPPDATA : null;
+    const runtimeCandidates = local ? [
+      pathWin32.join(local, 'AWH', 'Engines', 'device-runtime', '5.5.0', 'AWH Device Runtime.exe'),
+      pathWin32.join(local, 'AWH', 'Engines', 'lnwjud', 'current', 'lnwjud.exe'),
+      pathWin32.join(local, 'Programs', 'lnwjud', 'lnwjud.exe'),
+    ] : [];
+    const runtimeReady = await anyPath(runtimeCandidates, pathAvailable);
+    const systemMcpCandidates = local ? [
+      pathWin32.join(local, 'AWH', 'SystemRuntime', 'runtime', 'node_modules', '@wonderwhy-er', 'desktop-commander', 'dist', 'index.js'),
+    ] : [];
+    const systemMcpReady = await anyPath(systemMcpCandidates, pathAvailable);
+    const profile = typeof env.USERPROFILE === 'string' && env.USERPROFILE ? env.USERPROFILE : null;
+    const remoteSessionReady = profile ? await pathAvailable(pathWin32.join(profile, '.desktop-commander-device', 'device.json')) : false;
+    if (runtimeReady) tools.push('tool.awh-device-runtime', 'tool.awh-device-system', 'tool.awh-device-gui');
+    if (systemMcpReady && remoteSessionReady) tools.push('tool.remote-desktop-mcp');
     if (await anyPath(windowsOfficeCandidates(env, 'WINWORD.EXE'), pathAvailable)) tools.push('tool.office.word');
     if (await anyPath(windowsOfficeCandidates(env, 'EXCEL.EXE'), pathAvailable)) tools.push('tool.office.excel');
     if (await anyPath(windowsOfficeCandidates(env, 'POWERPNT.EXE'), pathAvailable)) tools.push('tool.office.powerpoint');
@@ -75,6 +90,7 @@ export async function discoverWorkerTools(options: WorkerToolProbeOptions = {}):
   if (platform === 'darwin') {
     const home = typeof env.HOME === 'string' && env.HOME ? env.HOME : null;
     const systemCandidates = home ? [
+      join(home, '.awh', 'bin', 'awh-system-mcp'),
       join(home, 'Library', 'Application Support', 'AWH', 'RemoteWorker', 'runtime', 'node_modules', '.bin', 'desktop-commander'),
       join(home, '.local', 'share', 'bay-remote', 'node_modules', '.bin', 'desktop-commander'),
     ] : [];
@@ -82,10 +98,19 @@ export async function discoverWorkerTools(options: WorkerToolProbeOptions = {}):
       '/Applications/lnwjud.app/Contents/MacOS/lnwjud',
       ...(home ? [join(home, '.kruart', 'ai-control', 'kui')] : []),
     ];
+    const runtimeCandidates = home ? [
+      join(home, '.awh', 'bin', 'awh-mcp-stdio'),
+      join(home, 'Library', 'Application Support', 'AWH', 'DeviceRuntime', 'awh-mcp-stdio'),
+      join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'lnwjud', 'current', 'Contents', 'Resources', 'lnwjud-mcp-stdio'),
+    ] : [];
+    const runtimeReady = await anyPath(runtimeCandidates, pathAvailable);
     const systemReady = await anyPath(systemCandidates, pathAvailable);
-    const guiReady = await anyPath(guiCandidates, pathAvailable);
-    if (systemReady) tools.push('tool.awh-device-system');
-    if (guiReady && systemReady) tools.push('tool.awh-device-gui');
+    const remoteSessionReady = home ? await pathAvailable(join(home, '.desktop-commander-device', 'device.json')) : false;
+    const guiReady = runtimeReady || await anyPath(guiCandidates, pathAvailable);
+    if (runtimeReady) tools.push('tool.awh-device-runtime');
+    if (systemReady && remoteSessionReady) tools.push('tool.remote-desktop-mcp');
+    if (systemReady || runtimeReady) tools.push('tool.awh-device-system');
+    if (guiReady && (systemReady || runtimeReady)) tools.push('tool.awh-device-gui');
     const apps: Array<[string, string]> = [
       ['/Applications/Microsoft Word.app/Contents/MacOS/Microsoft Word', 'tool.office.word'],
       ['/Applications/Microsoft Excel.app/Contents/MacOS/Microsoft Excel', 'tool.office.excel'],
@@ -111,5 +136,7 @@ export function composeWorkerHeartbeatCapabilities(executable: string[], tools: 
   const values = [...new Set([...executable, ...tools])].filter((value) => /^[a-z][a-z0-9:._-]{0,63}$/.test(value));
   const execution = values.filter((value) => !value.startsWith('tool.'));
   const inventory = values.filter((value) => value.startsWith('tool.'));
-  return [...execution, ...inventory].slice(0, limit);
+  const priority = ['tool.awh-device-runtime','tool.remote-desktop-mcp','tool.awh-device-gui','tool.awh-device-system','tool.adobe.photoshop'];
+  const orderedInventory = [...priority.filter((value) => inventory.includes(value)), ...inventory.filter((value) => !priority.includes(value))];
+  return [...execution, ...orderedInventory].slice(0, limit);
 }

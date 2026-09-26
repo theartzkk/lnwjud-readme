@@ -7,6 +7,7 @@ require_once __DIR__ . '/HubBrowserOriginPolicy.php';
 final class HubControlPlaneRouter
 {
     private const MAX_BODY_BYTES = 16384;
+    private const MAX_DEVICE_STEP_BODY_BYTES = 3 * 1024 * 1024;
     private const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
 
     public static function dispatch(string $method, string $requestUri, array $server, HubControlPlaneService $service, string $body, array $files = []): array
@@ -21,7 +22,9 @@ final class HubControlPlaneRouter
         $workerCandidateUpload = $method === 'POST' && preg_match('#^/api/v1/control/worker/executions/' . self::UUID . '/candidate$#i', $path) === 1;
         $workerOfficeArtifact = $method === 'POST' && preg_match('#^/api/v1/control/worker/executions/' . self::UUID . '/office-artifact$#i', $path) === 1;
         $workerProjectSource = $method === 'POST' && preg_match('#^/api/v1/control/worker/projects/' . self::UUID . '/source/[0-9a-f]{40,64}$#i', $path) === 1;
-        if (!$attachmentUpload && !$workerCandidateUpload && !$workerOfficeArtifact && !$workerProjectSource && strlen($body) > self::MAX_BODY_BYTES) return self::response(413, self::error('BODY_TOO_LARGE', $requestId, 'Control-plane request is too large'), $headers);
+        $workerDeviceStep = $method === 'POST' && preg_match('#^/api/v1/control/worker/executions/' . self::UUID . '/device-step$#i', $path) === 1;
+        $bodyLimit = $workerDeviceStep ? self::MAX_DEVICE_STEP_BODY_BYTES : self::MAX_BODY_BYTES;
+        if (!$attachmentUpload && !$workerCandidateUpload && !$workerOfficeArtifact && !$workerProjectSource && strlen($body) > $bodyLimit) return self::response(413, self::error('BODY_TOO_LARGE', $requestId, 'Control-plane request is too large'), $headers);
         if ($method === 'POST' && (!$attachmentUpload && !$workerCandidateUpload && !$workerOfficeArtifact && !$workerProjectSource && (!isset($server['CONTENT_TYPE']) || !is_string($server['CONTENT_TYPE']) || stripos($server['CONTENT_TYPE'], 'application/json') !== 0))) return self::response(415, self::error('CONTENT_TYPE_REQUIRED', $requestId, 'JSON content type is required'), $headers);
         if ($attachmentUpload && (!isset($server['CONTENT_TYPE']) || !is_string($server['CONTENT_TYPE']) || stripos($server['CONTENT_TYPE'], 'multipart/form-data') !== 0)) return self::response(415, self::error('CONTENT_TYPE_REQUIRED', $requestId, 'Multipart attachment content is required'), $headers);
         if ($workerCandidateUpload && (!isset($server['CONTENT_TYPE']) || !is_string($server['CONTENT_TYPE']) || stripos($server['CONTENT_TYPE'], 'application/octet-stream') !== 0)) return self::response(415, self::error('CONTENT_TYPE_REQUIRED', $requestId, 'Binary candidate content is required'), $headers);
@@ -111,6 +114,7 @@ final class HubControlPlaneRouter
             if (preg_match('#^/api/v1/control/worker/projects/(' . self::UUID . ')/source/([0-9a-f]{40,64})$#i', $path, $match) === 1) return self::response(201, $service->acceptWorkerProjectSource(self::bearer($server), self::workerDevice($server), $match[1], strtolower($match[2]), $files['projectSource'] ?? []) + ['requestId' => $requestId], $headers);
             if (preg_match('#^/api/v1/control/worker/executions/(' . self::UUID . ')/office-artifact$#i', $path, $match) === 1) return self::response(201, $service->acceptOfficeExecutionArtifact(self::bearer($server), self::workerDevice($server), $match[1], $files['officeArtifact'] ?? []) + ['requestId' => $requestId], $headers);
             $payload = self::json($body);
+            if (preg_match('#^/api/v1/control/devices/(' . self::UUID . ')/revoke$#i', $path, $match) === 1) { self::sameOrigin($server); return self::response(200, $service->revokeDeviceForSession(self::cookie($server, '__Host-awh_control_session'), self::csrf($server), $match[1], $payload) + ['requestId' => $requestId], $headers); }
             if ($path === '/api/v1/control/projects') { self::sameOrigin($server); return self::response(201, $service->createProjectForSession(self::cookie($server, '__Host-awh_control_session'), self::csrf($server), $payload) + ['requestId' => $requestId], $headers); }
             if ($path === '/api/v1/control/hosting/sites') { self::sameOrigin($server); return self::response(201, $service->createManagedSiteForSession(self::cookie($server, '__Host-awh_control_session'), self::csrf($server), $payload) + ['requestId' => $requestId], $headers); }
             if ($path === '/api/v1/control/system/releases') { self::sameOrigin($server); return self::response(202, $service->requestCoreReleaseForSession(self::cookie($server, '__Host-awh_control_session'), self::csrf($server), $payload) + ['requestId' => $requestId], $headers); }
@@ -162,6 +166,7 @@ final class HubControlPlaneRouter
             if ($path === '/api/v1/control/worker/workspaces/leases/release') return self::response(200, $service->releaseWorkspaceLease(self::bearer($server), $payload) + ['requestId' => $requestId], $headers);
             if (preg_match('#^/api/v1/control/tasks/(' . self::UUID . ')/artifact$#i', $path, $match) === 1) return self::response(201, $service->addArtifact(self::bearer($server), $match[1], $payload) + ['requestId' => $requestId], $headers);
             if (preg_match('#^/api/v1/control/tasks/(' . self::UUID . ')/update$#i', $path, $match) === 1) return self::response(200, $service->updateTask(self::bearer($server), $match[1], $payload) + ['requestId' => $requestId], $headers);
+            if (preg_match('#^/api/v1/control/worker/executions/(' . self::UUID . ')/device-step$#i', $path, $match) === 1) return self::response(200, $service->planWorkerDeviceStep(self::bearer($server), self::workerDevice($server), $match[1], $payload) + ['requestId' => $requestId], $headers);
             if (preg_match('#^/api/v1/control/worker/executions/(' . self::UUID . ')/defer$#i', $path, $match) === 1) return self::response(200, $service->deferWorkerExecution(self::bearer($server), self::workerDevice($server), $match[1], $payload) + ['requestId' => $requestId], $headers);
             return self::response(404, self::error('NOT_FOUND', $requestId, 'Control-plane route was not found'), $headers);
         } catch (Throwable $error) { return self::exceptionResponse($error, $requestId, $headers); }

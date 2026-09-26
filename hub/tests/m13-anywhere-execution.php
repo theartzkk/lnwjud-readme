@@ -84,7 +84,9 @@ try {
     m13_assert($registry->route('document.office', $now) === null, 'detected Office inventory never grants an executable Office route');
     m13_assert(($registry->route('device.screen.inspect', $now)['providerId'] ?? null) === 'device:' . $device, 'provider-neutral screen inspection is routable only while a device advertises it');
     m13_assert(($registry->route('device.gui.operate', $now)['providerId'] ?? null) === 'device:' . $device, 'provider-neutral GUI operation is routable through the connected device');
-    m13_assert(($registry->route('creative.photoshop', $now)['providerId'] ?? null) === 'device:' . $device, 'installed Photoshop inventory maps into the explicit creative Photoshop capability');
+    m13_assert($registry->route('creative.photoshop', $now) === null, 'Photoshop inventory alone never grants executable creative authority');
+    $registry->syncDeviceWorker($device, ['project.read','codex:cli','git','browser_debug_context','tool.office.word','tool.office.excel','tool.adobe.photoshop','tool.awh-device-runtime','device.screen.inspect','device.gui.inspect','device.gui.operate','device.process','workspace.files','system.shell','creative.photoshop'], 'READY', $now);
+    m13_assert(($registry->route('creative.photoshop', $now)['providerId'] ?? null) === 'device:' . $device, 'explicit worker creative capability is routable after full local runtime verification');
     m13_assert((int)$pdo->query("SELECT COUNT(*) FROM control_capability_catalog WHERE capability IN ('device.screen.inspect','device.gui.inspect','device.gui.operate','creative.photoshop','device.process') AND source_id='awh-core' AND enabled=1")->fetchColumn() === 5, 'device fabric capability labels are registered without a schema migration');
     $deviceRoute=(new ReflectionClass(HubControlPlaneService::class))->getMethod('deviceAutomationRequest')->invoke(null,'ใช้ Adobe Photoshop ทำวารสารและตรวจภาพจริงบน M5');
     m13_assert(($deviceRoute['capability']??null)==='creative.photoshop'&&($deviceRoute['mode']??null)==='PHOTOSHOP','Photoshop owner goals route to the explicit creative capability instead of generic GUI automation');

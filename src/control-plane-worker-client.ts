@@ -54,6 +54,15 @@ export interface WorkerTask {
 
 export interface OfficeExecutionPacket { executionId: string; taskId: string; projectId: string; inputName: string; inputMimeType: string; sizeBytes: number; }
 
+export interface WorkerDevicePlan {
+  schemaVersion: 1;
+  action: {
+    tool: 'finish' | 'accessibility' | 'computer_use' | 'input_event' | 'dom_cdp' | 'shell' | 'read_file' | 'write_file' | 'search_text' | 'process_list' | 'process_start' | 'process_status' | 'process_stop';
+    arguments: Record<string, unknown>;
+    summary: string;
+  };
+}
+
 function apiRoot(value: string): URL {
   let url: URL;
   try { url = new URL(value); } catch { throw new ControlPlaneWorkerError('Worker API URL is invalid', 'API_URL_INVALID'); }
@@ -239,6 +248,18 @@ export class ControlPlaneWorkerClient {
   async deferCentralExecution(executionId: string, code: string): Promise<WorkerTask> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir); if (!UUID_V4.test(executionId) || !/^[A-Z][A-Z0-9_]{2,79}$/.test(code)) throw new ControlPlaneWorkerError('Central execution deferral is invalid', 'PAYLOAD_INVALID');
     const response = await this.post(`/control/worker/executions/${executionId}/defer`, { schemaVersion: 1, deviceId: identity.deviceId, code }, true); return boundedTask(response);
+  }
+
+  async planDeviceStep(executionId: string, input: { step: number; observationText: string; imageBase64: string | null; imageMimeType: 'image/png' | null; lastResult: string | null }): Promise<WorkerDevicePlan> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    if (!UUID_V4.test(executionId) || !Number.isInteger(input.step) || input.step < 0 || input.step > 15 || typeof input.observationText !== 'string' || input.observationText.length > 32 * 1024 || (input.lastResult !== null && (typeof input.lastResult !== 'string' || input.lastResult.length > 16 * 1024)) || (input.imageBase64 !== null && (input.imageMimeType !== 'image/png' || input.imageBase64.length > 2 * 1024 * 1024 || !/^[A-Za-z0-9+/=]+$/.test(input.imageBase64)))) throw new ControlPlaneWorkerError('Device observation is invalid', 'PAYLOAD_INVALID');
+    const response = await this.post(`/control/worker/executions/${executionId}/device-step`, { schemaVersion: 1, deviceId: identity.deviceId, ...input }, true);
+    const action = response.action;
+    const allowed = new Set(['finish','accessibility','computer_use','input_event','dom_cdp','shell','read_file','write_file','search_text','process_list','process_start','process_status','process_stop']);
+    if (response.schemaVersion !== 1 || !action || typeof action !== 'object' || Array.isArray(action)) throw new ControlPlaneWorkerError('Device plan response is invalid', 'RESPONSE_INVALID');
+    const item = action as Record<string, unknown>;
+    if (typeof item.tool !== 'string' || !allowed.has(item.tool) || !item.arguments || typeof item.arguments !== 'object' || Array.isArray(item.arguments) || typeof item.summary !== 'string' || item.summary.length > 500) throw new ControlPlaneWorkerError('Device plan response is invalid', 'RESPONSE_INVALID');
+    return { schemaVersion: 1, action: { tool: item.tool as WorkerDevicePlan['action']['tool'], arguments: item.arguments as Record<string, unknown>, summary: item.summary } };
   }
 
   async projects(): Promise<WorkerProject[]> {

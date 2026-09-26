@@ -17,9 +17,15 @@ function render(enrollment, worker) {
   $('hub-status').textContent = ready ? 'เชื่อมต่อแล้ว' : hubConfigured ? 'พร้อมให้เชื่อมต่อ' : 'ยังไม่ได้ตั้งค่า';
   $('device-name').textContent = enrollment?.displayName || worker?.device?.displayName || 'เครื่องนี้';
   $('worker-status').textContent = worker?.enabled === true ? (worker?.running === true ? 'กำลังทำงาน' : 'พร้อมเมื่อมีคำสั่ง') : 'หยุดอยู่';
+  const remote = worker?.remoteDesktop;
+  $('remote-status').textContent = remote?.state === 'READY'
+    ? 'พร้อมใช้งาน'
+    : remote?.state === 'AUTHORIZATION_REQUIRED'
+      ? 'อนุมัติครั้งแรกใน Browser'
+      : remote?.state === 'STARTING' ? 'กำลังเชื่อมต่อ' : 'ยังไม่พร้อม';
   $('open-awh').disabled = !hubConfigured;
   $('login-form').hidden = enrolled || !hubConfigured;
-  $('account-details').hidden = !enrolled;
+  $('manage-device').disabled = !hubConfigured;
   if (enrolled) { $('password').value = ''; setMessage('login-message', ''); }
 }
 
@@ -38,14 +44,18 @@ async function refresh() {
   } finally { if (token === refreshToken) $('refresh-status').disabled = false; }
 }
 
-$('open-awh').addEventListener('click', async () => {
-  $('open-awh').disabled = true; setMessage('open-message', 'กำลังเปิด AWH…');
+async function openWeb(target) {
+  const button = target === 'devices' ? $('manage-device') : $('open-awh');
+  button.disabled = true; setMessage('open-message', target === 'devices' ? 'กำลังเปิดศูนย์จัดการอุปกรณ์…' : 'กำลังเปิด AWH…');
   try {
-    const result = await window.awhConnect.openAwhWeb();
+    const result = await window.awhConnect.openAwhWeb(target);
     setMessage('open-message', result?.message || (result?.ok ? 'เปิด AWH แล้ว' : 'ยังเปิด AWH ไม่ได้'), result?.ok ? 'success' : 'error');
   } catch { setMessage('open-message', 'ยังเปิด AWH ไม่ได้ กรุณาตรวจการเชื่อมต่อ', 'error'); }
-  finally { $('open-awh').disabled = false; }
-});
+  finally { button.disabled = false; }
+}
+
+$('open-awh').addEventListener('click', () => { void openWeb('home'); });
+$('manage-device').addEventListener('click', () => { void openWeb('devices'); });
 
 $('login-form').addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -58,13 +68,6 @@ $('login-form').addEventListener('submit', async (event) => {
     setMessage('login-message', 'เชื่อมต่อแล้ว', 'success'); await refresh();
   } catch { setMessage('login-message', 'เชื่อมต่อไม่สำเร็จ กรุณาลองอีกครั้ง', 'error'); }
   finally { $('login-button').disabled = false; }
-});
-
-$('logout-button').addEventListener('click', async () => {
-  if (!window.confirm('ออกจากระบบ AWH บนเครื่องนี้ใช่หรือไม่?')) return;
-  $('logout-button').disabled = true;
-  try { await window.awhConnect.logout(); await refresh(); }
-  finally { $('logout-button').disabled = false; }
 });
 
 $('refresh-status').addEventListener('click', () => { void refresh(); });

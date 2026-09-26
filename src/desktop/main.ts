@@ -24,6 +24,8 @@ import { loadOrCreateDeviceIdentity, readDeviceIdentity, updateDeviceDisplayName
 import { createDesktopCredentialStore, CredentialStoreError } from '../credential-store.js';
 import { EnrollmentClient, EnrollmentClientError, readLocalEnrollmentState } from '../enrollment-client.js';
 import { ensureAwhDataDirectoryActive } from '../data-migration.js';
+import { ensureAwhDeviceRuntime } from '../device-bootstrap.js';
+import { ensureRemoteDesktopConnector, remoteDesktopConnectorStatus } from '../remote-desktop-connector.js';
 import { AutopilotRunner, detectLocalCapabilities, loadAutopilotTasks, selectAutopilotProfile } from '../autopilot.js';
 import { ControlPlaneWorkerClient } from '../control-plane-worker-client.js';
 import { ControlPlaneWorkerRuntime } from '../control-plane-worker-runtime.js';
@@ -189,8 +191,11 @@ function controlPlaneWorker(config: ReturnType<typeof loadConfig>): ControlPlane
 
 async function workerState() {
   const config = loadConfig();
-  const identity = await readDeviceIdentity(config.dataDir).catch(() => null);
-  return { enabled: config.controlPlaneWorker, hubConfigured: Boolean(config.hubApiBase), hubAuthority: config.hubApiBase, device: identity ? { idShort: identity.deviceId.slice(0, 8), platform: identity.platform, arch: identity.arch, displayName: identity.displayName } : null, running: workerRunning };
+  const [identity, remoteDesktop] = await Promise.all([
+    readDeviceIdentity(config.dataDir).catch(() => null),
+    remoteDesktopConnectorStatus().catch(() => ({ state: 'UNAVAILABLE', authorized: false, running: false, managed: false, reason: 'STATUS_UNAVAILABLE' } as const)),
+  ]);
+  return { enabled: config.controlPlaneWorker, hubConfigured: Boolean(config.hubApiBase), hubAuthority: config.hubApiBase, device: identity ? { idShort: identity.deviceId.slice(0, 8), platform: identity.platform, arch: identity.arch, displayName: identity.displayName } : null, running: workerRunning, remoteDesktop };
 }
 
 async function runWorkerOnce() {
@@ -305,20 +310,47 @@ async function enrollmentState() {
   }
 }
 
+async function activateConnectedDevicePolicy(): Promise<void> {
+  const config = loadConfig();
+  const stored = loadStoredSettings(config.dataDir);
+  // Installing AWH Agent and explicitly enrolling this machine is the local
+  // consent boundary for Hub-leased device work. Source-writing/Codex remain
+  // separately disabled unless the owner enables those policies elsewhere.
+  await saveStoredSettings(config.dataDir, { ...stored, allowExec: true, controlPlaneWorker: true });
+  workerRuntime = null;
+}
+
+async function ensureConnectedDeviceRuntime(): Promise<void> {
+  const config = loadConfig();
+  const runtime = await ensureAwhDeviceRuntime(config.dataDir);
+  if (runtime.state !== 'READY') return;
+  const enrolled = await enrollmentState().catch(() => ({ enrolled: false }));
+  if (enrolled.enrolled === true) await ensureRemoteDesktopConnector().catch(() => undefined);
+}
+
 async function loginDevice(username: unknown, password: unknown) {
   if (typeof username !== 'string' || typeof password !== 'string') return { ok: false, error: 'AUTH_FAILED', message: 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน' };
   try {
     const config = loadConfig();
     const state = await enrollmentClient(config).login(username, password);
-    if (config.controlPlaneWorker) void runWorkerOnce().catch(() => undefined);
+    await activateConnectedDevicePolicy();
+    startWorkerLoop();
+    void ensureConnectedDeviceRuntime().catch(() => undefined);
+    void runWorkerOnce().catch(() => undefined);
     return { ok: true, hubConfigured: true, ...state };
   } catch (error) { return enrollmentError(error); }
 }
 
 async function pairDevice(pairingCode: unknown) {
   if (typeof pairingCode !== 'string' || !/^[A-Za-z0-9_-]{32,128}$/.test(pairingCode)) return { ok: false, error: 'PAIRING_CODE_INVALID', message: 'Pairing code is invalid' };
-  try { return { ok: true, hubConfigured: true, ...(await enrollmentClient(loadConfig()).pair(pairingCode)) }; }
-  catch (error) { return enrollmentError(error); }
+  try {
+    const state = await enrollmentClient(loadConfig()).pair(pairingCode);
+    await activateConnectedDevicePolicy();
+    startWorkerLoop();
+    void ensureConnectedDeviceRuntime().catch(() => undefined);
+    void runWorkerOnce().catch(() => undefined);
+    return { ok: true, hubConfigured: true, ...state };
+  } catch (error) { return enrollmentError(error); }
 }
 
 async function rotateDevice() {
@@ -562,21 +594,22 @@ async function runtimeOverview() {
 }
 
 async function createWindow(showOnReady = true): Promise<BrowserWindow> {
-  const compact = !SMOKE_TEST && process.env.AWH_DESKTOP_ADVANCED !== '1';
+  // AWH Agent is intentionally a thin local bridge. All management surfaces
+  // live on AWH Web; the desktop package never exposes a second Control Panel.
   const win = new BrowserWindow({
-    width: compact ? 420 : 1180,
-    height: compact ? 560 : 780,
-    minWidth: compact ? 380 : 900,
-    minHeight: compact ? 500 : 640,
+    width: 420,
+    height: 590,
+    minWidth: 380,
+    minHeight: 520,
     show: false,
-    title: compact ? `AWH Agent — ${PRODUCT.productName}` : `${PRODUCT.desktopName} — ${PRODUCT.productName}`,
-    backgroundColor: compact ? '#f7f6f2' : '#111318',
+    title: `AWH Agent — ${PRODUCT.productName}`,
+    backgroundColor: '#f7f6f2',
     autoHideMenuBar: true,
     webPreferences: {
       ...DESKTOP_WEB_PREFERENCES,
       webSecurity: true,
       allowRunningInsecureContent: false,
-      preload: join(app.getAppPath(), 'desktop', compact ? 'connect-preload.cjs' : 'preload.cjs'),
+      preload: join(app.getAppPath(), 'desktop', 'connect-preload.cjs'),
     },
   });
 
@@ -589,40 +622,50 @@ async function createWindow(showOnReady = true): Promise<BrowserWindow> {
       win.hide();
     }
   });
-  await win.loadFile(join(app.getAppPath(), 'desktop', compact ? 'connect.html' : 'index.html'));
+  await win.loadFile(join(app.getAppPath(), 'desktop', 'connect.html'));
   return win;
 }
 
-async function openAwhWeb(): Promise<{ ok: boolean; message: string }> {
+async function openAwhWeb(target: 'home' | 'devices' = 'home'): Promise<{ ok: boolean; message: string }> {
   try {
     const base = new URL(loadConfig().hubApiBase);
     const loopback = ['localhost', '127.0.0.1', '::1'].includes(base.hostname);
     if (base.protocol !== 'https:' && !(loopback && base.protocol === 'http:')) throw new Error('AWH Web must use HTTPS');
-    const url = `${base.origin}/`;
-    await shell.openExternal(url);
-    return { ok: true, message: 'เปิด AWH ใน browser แล้ว' };
+    const path = target === 'devices' ? '/?awh-settings=devices' : '/';
+    await shell.openExternal(new URL(path, base.origin).toString());
+    return { ok: true, message: target === 'devices' ? 'เปิดศูนย์จัดการอุปกรณ์บน AWH แล้ว' : 'เปิด AWH ใน browser แล้ว' };
   } catch {
     return { ok: false, message: 'ยังเปิด AWH Web ไม่ได้ กรุณาตรวจการเชื่อมต่อ AWH Server' };
   }
 }
 
-function showAgentStatus(): void { mainWindow?.show(); mainWindow?.focus(); }
+function showLocalBridge(): void { mainWindow?.show(); mainWindow?.focus(); }
 
 function createTray(): Tray {
   const image = nativeImage.createFromPath(join(app.getAppPath(), 'logo-256x256.png')).resize({ width: 20, height: 20 });
   const item = new Tray(image);
   item.setToolTip(`AWH Agent — ${PRODUCT.productName}`);
   item.setContextMenu(Menu.buildFromTemplate([
-    { label: 'เปิด AWH', click: () => { void openAwhWeb(); } },
-    { label: 'สถานะ AWH Agent', click: showAgentStatus },
+    { label: 'เปิด AWH', click: () => { void openAwhWeb('home'); } },
+    { label: 'จัดการอุปกรณ์บนเว็บ', click: () => { void openAwhWeb('devices'); } },
+    { label: 'ตั้งค่า AWH Agent เครื่องนี้', click: showLocalBridge },
     { type: 'separator' },
     { label: 'ออก', click: () => { quitting = true; app.quit(); } },
   ]));
-  item.on('double-click', showAgentStatus);
+  item.on('double-click', () => { void openAwhWeb('home'); });
   return item;
 }
 
-function registerIpc(): void {
+function registerBridgeIpc(): void {
+  ipcMain.handle(DESKTOP_IPC.enrollmentState, async () => enrollmentState());
+  ipcMain.handle(DESKTOP_IPC.enrollmentLogin, async (_event, username: unknown, password: unknown) => loginDevice(username, password));
+  ipcMain.handle(DESKTOP_IPC.workerState, async () => workerState());
+  ipcMain.handle(DESKTOP_IPC.openAwhWeb, async (_event, target: unknown) => openAwhWeb(target === 'devices' ? 'devices' : 'home'));
+}
+
+/** Historical full desktop Control Panel retained only as source compatibility
+ * for migration tests. Production never registers these IPC handlers. */
+function registerLegacyDesktopIpc(): void {
   ipcMain.handle(DESKTOP_IPC.overview, async () => runtimeOverview());
 
   ipcMain.handle(DESKTOP_IPC.projects, async () => projectsOverview());
@@ -841,7 +884,7 @@ function registerIpc(): void {
     }
   });
 
-  ipcMain.handle(DESKTOP_IPC.openAwhWeb, async () => openAwhWeb());
+  ipcMain.handle(DESKTOP_IPC.openAwhWeb, async (_event, target: unknown) => openAwhWeb(target === 'devices' ? 'devices' : 'home'));
 
   ipcMain.handle(DESKTOP_IPC.openDataDir, async () => {
     const config = loadConfig();
@@ -880,36 +923,28 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   try {
     await writeSmokeMarker({ ok: false, stage: 'renderer-check' });
     const result = await win.webContents.executeJavaScript(`(async () => {
-      const apiReady = typeof window.artAgent?.getOverview === 'function';
-      const requiredDom = ['home-command-form', 'home-command-input', 'desktop-work-thread', 'desktop-work-input', 'desktop-work-form', 'desktop-work-submit', 'desktop-work-project', 'desktop-work-status', 'project-list', 'desktop-task-list', 'artifact-list', 'enrollment-state'].every((id) => Boolean(document.getElementById(id)));
-      const uiPaths = Object.fromEntries(['overview', 'projects', 'autopilot', 'tasks', 'artifacts', 'memory'].map((section) => {
-        document.querySelector('.nav[data-section="' + section + '"]')?.click();
-        return [section, document.getElementById('section-' + section)?.classList.contains('active') === true];
-      }));
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }));
-      const cmdKReady = document.activeElement?.id === 'desktop-work-input' && document.getElementById('section-autopilot')?.classList.contains('active') === true;
-      document.querySelector('.nav[data-section="overview"]')?.click();
-      const overview = apiReady ? await window.artAgent.getOverview() : null;
+      const apiReady = ['getEnrollmentState','login','getWorkerState','openAwhWeb'].every((name) => typeof window.awhConnect?.[name] === 'function');
+      const requiredDom = ['agent-title','agent-summary','open-awh','manage-device','hub-status','device-name','worker-status','remote-status','login-form','refresh-status'].every((id) => Boolean(document.getElementById(id)));
+      const forbiddenDom = ['desktop-work-thread','desktop-work-input','project-list','desktop-task-list','artifact-list','remote-connect','remote-stop'].some((id) => Boolean(document.getElementById(id)));
+      const enrollment = apiReady ? await window.awhConnect.getEnrollmentState() : null;
+      const worker = apiReady ? await window.awhConnect.getWorkerState() : null;
       return {
         apiReady,
         requiredDom,
-        uiPaths,
-        cmdKReady,
+        forbiddenDom,
         title: document.title,
-        overviewName: overview?.name ?? null,
-        overviewVersion: overview?.version ?? null,
-        workspaceValue: document.getElementById('workspace')?.textContent ?? null,
+        enrollmentShape: enrollment && typeof enrollment === 'object',
+        workerShape: worker && typeof worker === 'object',
       };
     })()`, true) as Record<string, unknown>;
 
     if (
       result.apiReady !== true ||
       result.requiredDom !== true ||
-      Object.values(result.uiPaths ?? {}).some((value) => value !== true) ||
-      result.cmdKReady !== true ||
-      result.title !== `${PRODUCT.desktopName} — ${PRODUCT.productName}` ||
-      result.overviewName !== PRODUCT.productName ||
-      result.overviewVersion !== VERSION
+      result.forbiddenDom !== false ||
+      result.title !== `AWH Agent — ${PRODUCT.productName}` ||
+      result.enrollmentShape !== true ||
+      result.workerShape !== true
     ) {
       throw new Error(`Desktop smoke validation failed: ${JSON.stringify(result)}`);
     }
@@ -939,8 +974,7 @@ const smokeMarkerReady = SMOKE_TEST
 
 async function startAfterReady(): Promise<void> {
   await smokeMarkerReady;
-  registerIpc();
-  startWorkerLoop();
+  registerBridgeIpc();
 
   if (SMOKE_TEST) {
     try {
@@ -958,12 +992,24 @@ async function startAfterReady(): Promise<void> {
     return;
   }
 
-  mainWindow = await createWindow(true);
+  if (process.platform === 'darwin') app.dock?.hide();
+  mainWindow = await createWindow(false);
   tray = createTray();
+  startWorkerLoop();
+  const config = loadConfig();
+  const localEnrollment = await enrollmentState().catch(() => ({ ok: false, enrolled: false, hubConfigured: Boolean(config.hubApiBase) }));
+  if (localEnrollment.enrolled !== true) showLocalBridge();
+  void ensureConnectedDeviceRuntime().then(() => {
+    if (loadConfig().controlPlaneWorker) void runWorkerOnce();
+  }).catch(() => undefined);
   app.on('activate', () => {
     void (async () => {
-      if (!mainWindow) mainWindow = await createWindow();
-      mainWindow.show();
+      const state = await enrollmentState().catch(() => ({ enrolled: false }));
+      if (state.enrolled === true) await openAwhWeb('home');
+      else {
+        if (!mainWindow) mainWindow = await createWindow(false);
+        showLocalBridge();
+      }
     })();
   });
 }

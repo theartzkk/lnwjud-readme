@@ -80,6 +80,7 @@ export async function discoverAwhDeviceRuntime(options: DeviceRuntimeProbeOption
     if (await pathAvailable(candidate)) { guiToolkitCommand = candidate; break; }
   }
   const systemCandidates = platform === 'darwin' ? [
+    join(home, '.awh', 'bin', 'awh-system-mcp'),
     join(home, 'Library', 'Application Support', 'AWH', 'RemoteWorker', 'runtime', 'node_modules', '.bin', 'desktop-commander'),
     join(home, '.local', 'share', 'bay-remote', 'node_modules', '.bin', 'desktop-commander'),
   ] : [];

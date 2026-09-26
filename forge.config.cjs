@@ -79,6 +79,10 @@ module.exports = {
       /^\/\.DS_Store$/,
       /^\/src($|\/)/,
       /^\/test($|\/)/,
+      // Historical desktop Control Panel is retained only for source-level
+      // smoke/regression tests. Production ships the thin AWH Agent bridge;
+      // management lives on AWH Web.
+      /^\/desktop\/(?:index\.html|renderer\.js|styles\.css|preload\.cjs)$/,
       /^\/Screenshot($|\/)/,
       /^\/coverage($|\/)/,
       /^\/dist-web($|\/)/,

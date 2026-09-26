@@ -410,7 +410,6 @@ final class HubCapabilityRegistryService
             if (preg_match('/^(?:file|read_file|read_files|write_file|edit_file|apply_patch|copy_file|move_file|delete_file|workspace_)/',$value)) $out[] = 'workspace.files';
             if (preg_match('/^(?:browser|dom_|web_|ui_target_action|capture_screenshot|compare_screenshot|form_context|network_context|console_context)/',$value)) $out[] = 'browser.automation';
             if (preg_match('/^(?:office|inspect_workbook|compare_workbook|render_excel|docx_)/',$value)) $out[] = 'document.office';
-            if ($value === 'tool.adobe.photoshop') $out[] = 'creative.photoshop';
             if (preg_match('/^(?:pdf_|inspect_pdf|compare_pdf)/',$value)) $out[] = 'document.pdf';
             if (preg_match('/ocr/',$value)) $out[] = 'document.ocr';
             // Policy 1.2: workers expose named capabilities only. Generic shell/process

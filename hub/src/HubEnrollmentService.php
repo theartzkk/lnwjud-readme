@@ -292,11 +292,17 @@ final class HubEnrollmentService
     public function revokeDeviceForToken(string $presentedToken, string $targetDeviceId, ?string $now = null): void
     {
         $auth = $this->authenticate($presentedToken, null, $now);
+        $this->revokeDeviceForOwnerUser((string) $auth['user_id'], $targetDeviceId, $now);
+    }
+
+    /** Owner-session bridge for AWH Web. No device token is exposed to the browser. */
+    public function revokeDeviceForOwnerUser(string $ownerUserId, string $targetDeviceId, ?string $now = null): void
+    {
         $targetDeviceId = self::uuid($targetDeviceId, 'deviceId');
-        $this->assertOwner((string) $auth['user_id']);
+        $this->assertOwner($ownerUserId);
         $target = $this->pdo->prepare('SELECT user_id FROM device_enrollments WHERE device_id = :device AND revoked_at IS NULL');
         $target->execute(['device' => $targetDeviceId]);
-        if ($target->fetchColumn() !== $auth['user_id']) throw new HubEnrollmentException('Device is not owned by the authenticated user', 'DEVICE_FORBIDDEN');
+        if ($target->fetchColumn() !== $ownerUserId) throw new HubEnrollmentException('Device is not owned by the authenticated user', 'DEVICE_FORBIDDEN');
         $at = self::timestamp($now ?? gmdate('c'), 'now');
         $this->pdo->beginTransaction();
         try {

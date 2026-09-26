@@ -100,27 +100,29 @@ test('one canonical light-first canvas is used by html, body, and the applicatio
   assert.doesNotMatch(css, /body\s*\{[\s\S]*#ff8a36/);
 });
 
-test('Web and Desktop consume one AWH design contract and expose the same primary product language', async () => {
-  const [designSystem, webHtml, desktopHtml, desktopCss, renderer, smoke] = await Promise.all([
+test('Web owns the full AWH workspace while Desktop ships only the branded local bridge', async () => {
+  const [designSystem, webHtml, connectHtml, connectCss, connectJs, main] = await Promise.all([
     readFile(join(ROOT, 'web', 'awh-design-system.css'), 'utf8'),
     readFile(join(ROOT, 'web', 'index.html'), 'utf8'),
-    readFile(join(ROOT, 'desktop', 'index.html'), 'utf8'),
-    readFile(join(ROOT, 'desktop', 'styles.css'), 'utf8'),
-    readFile(join(ROOT, 'desktop', 'renderer.js'), 'utf8'),
+    readFile(join(ROOT, 'desktop', 'connect.html'), 'utf8'),
+    readFile(join(ROOT, 'desktop', 'connect.css'), 'utf8'),
+    readFile(join(ROOT, 'desktop', 'connect.js'), 'utf8'),
     readFile(join(ROOT, 'src', 'desktop', 'main.ts'), 'utf8'),
   ]);
   for (const token of ['--awh-canvas', '--awh-surface', '--awh-accent', '--awh-success', '--awh-radius-lg', '--awh-space-4']) assert.match(designSystem, new RegExp(token));
   assert.match(webHtml, /awh-design-system\.css/);
-  assert.match(desktopHtml, /\.\.\/web\/awh-design-system\.css/);
-  for (const token of ['--bg: var(--awh-canvas)', '--panel: var(--awh-surface)', '--accent: var(--awh-accent)']) assert.ok(desktopCss.includes(token), `desktop token missing: ${token}`);
-  for (const label of ['AI Work', 'Tasks', 'Files']) {
-    assert.match(webHtml + desktopHtml + renderer, new RegExp(label));
-  }
-  assert.match(desktopHtml, /id="home-command-form"/);
-  assert.match(desktopHtml, /id="section-tasks"/);
-  assert.match(renderer, /function renderTasks/);
-  assert.match(smoke, /home-command-form/);
-  assert.match(smoke, /'tasks'/);
+  assert.match(webHtml, /id="workspace-view"/);
+  assert.match(webHtml, /id="work-thread"/);
+  assert.match(webHtml, /id="artifact-sheet"/);
+  assert.match(webHtml, /id="settings-worker-list"/);
+  assert.match(connectHtml, /AWH Agent/);
+  assert.match(connectHtml, /id="open-awh"/);
+  assert.match(connectHtml, /id="manage-device"/);
+  assert.match(connectJs, /openAwhWeb/);
+  assert.match(connectCss, /agent-shell/);
+  assert.doesNotMatch(connectHtml + connectJs, /home-command-form|section-tasks|renderTasks|AI Work/);
+  assert.match(main, /registerBridgeIpc\(\)/);
+  assert.doesNotMatch(main, /loadFile\([^\n]*desktop[^\n]*index\.html/);
 });
 
 test('web shell uses same-origin cookies only and never stores credentials or bearer state', async () => {

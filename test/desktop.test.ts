@@ -100,9 +100,14 @@ test('default desktop surface is a thin AWH Agent bridge and keeps advanced cont
   const renderer = await readFile(new URL('../desktop/connect.js', import.meta.url), 'utf8');
   const html = await readFile(new URL('../desktop/connect.html', import.meta.url), 'utf8');
 
-  assert.match(main, /compact \? 'connect\.html' : 'index\.html'/);
-  assert.match(main, /compact \? 'connect-preload\.cjs' : 'preload\.cjs'/);
-  assert.match(main, /AWH_DESKTOP_ADVANCED/);
+  assert.doesNotMatch(main, /AWH_DESKTOP_ADVANCED/);
+  assert.match(main, /thin local bridge/);
+  assert.match(main, /preload: join\(app\.getAppPath\(\), 'desktop', 'connect-preload\.cjs'\)/);
+  assert.match(main, /win\.loadFile\(join\(app\.getAppPath\(\), 'desktop', 'connect\.html'\)\)/);
+  assert.equal((main.match(/registerLegacyDesktopIpc\(/g) || []).length, 1);
+  assert.match(main, /registerBridgeIpc\(\)/);
+  assert.match(main, /จัดการอุปกรณ์บนเว็บ/);
+  assert.match(main, /app\.dock\?\.hide\(\)/);
   assert.match(main, /ipcMain\.handle\(DESKTOP_IPC\.openAwhWeb/);
   assert.match(html, /AWH Agent/);
   assert.match(html, /id="open-awh"/);
@@ -110,8 +115,8 @@ test('default desktop surface is a thin AWH Agent bridge and keeps advanced cont
   assert.match(html, /AWH Agent เป็นเพียงสะพานเชื่อมเครื่องกับ AWH/);
   assert.match(html, /Content-Security-Policy/);
   assert.doesNotMatch(html, /Projects|Project Memory|Git|Doctor|Secure MCP|AI Work|Autopilot/i);
-  for (const method of ['getEnrollmentState', 'login', 'logout', 'getWorkerState', 'openAwhWeb']) assert.match(preload, new RegExp(`${method}:`));
-  assert.doesNotMatch(preload, /remoteConnect|remoteStop|Autopilot|Project|openDataDir|restart|readFile|writeFile|spawn|process\.env/i);
+  for (const method of ['getEnrollmentState', 'login', 'getWorkerState', 'openAwhWeb']) assert.match(preload, new RegExp(`${method}:`));
+  assert.doesNotMatch(preload, /logout:|enrollmentRevoke|remoteConnect|remoteStop|Autopilot|Project|openDataDir|restart|readFile|writeFile|spawn|process\.env/i);
   assert.match(renderer, /Promise\.allSettled/);
   assert.match(renderer, /window\.awhConnect\.openAwhWeb/);
   assert.match(renderer, /window\.awhConnect\.login/);
@@ -278,7 +283,8 @@ test('desktop keeps legacy trusted-device setup out of the primary Work surface'
   assert.match(renderer, /input\.type = reveal \? 'text' : 'password'/);
   assert.match(styles, /\.auth-field input \{ width: 100%; min-height: 48px/);
   assert.doesNotMatch(html, /class="toggle-row"[^>]*>[^<]*<span[^>]*>.*enrollment-(?:username|password)/s);
-  assert.match(main, /if \(config\.controlPlaneWorker\) void runWorkerOnce\(\)/);
+  assert.match(main, /await activateConnectedDevicePolicy\(\)/);
+  assert.match(main, /void runWorkerOnce\(\)\.catch/);
 });
 
 test('desktop smoke bootstrap activates a clean AWH data directory before writing its first marker', async () => {
@@ -313,7 +319,8 @@ test('desktop smoke harness isolates data, uses normal macOS LaunchServices, and
   assert.match(qa, /result\.code === 2/);
   assert.match(qa, /GUI_SANDBOX_BLOCKED/);
   assert.match(qa, /interactive GUI validation remains required/);
-  assert.match(main, /uiPaths/);
-  assert.match(main, /cmdKReady/);
+  assert.match(main, /requiredDom/);
+  assert.match(main, /forbiddenDom/);
+  assert.match(main, /window\.awhConnect/);
   assert.match(smoke, /result\.stderr/);
 });

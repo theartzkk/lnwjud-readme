@@ -6,7 +6,7 @@ import {
   bindSchoolIdentity, exportWorkspace, listAccountRequests, listAuthSessions, listPeople, loadAuthProfile, loadBayCommunicationStatus, loadControlData, loadConversation, loadConversationHistory,
   loadConversations, loadDeletedConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus, loadSchoolIdentityBindings, loadSchoolIdentityCandidates,
   loadProductSettingHistory, loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadObservabilityStatus, loadCapabilities, loadInfrastructure, loadSystemReadiness, loadWorkspaceContinuity, login, logout, logoutAll,
-  recover, registerAccessRequest, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokePerson, revokeSchoolIdentity, saveCurrentContext, stepUp, submitWorkMessage,
+  recover, registerAccessRequest, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokeDevice, revokePerson, revokeSchoolIdentity, saveCurrentContext, stepUp, submitWorkMessage,
   testProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
   updateProviderCredential, updateProviderPolicy, updateProviderProjectRouting, updateObservabilityCredential, updateConversationLifecycle, uploadConversationAttachments,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
@@ -740,11 +740,40 @@ import {
       list.replaceChildren();
       for (const worker of workers) {
         const item = document.createElement('div'); item.className = 'session-item';
-        const name = document.createElement('strong'); name.textContent = worker.displayName || 'อุปกรณ์เสริม AWH';
+        const name = document.createElement('strong'); name.textContent = worker.displayName || 'AWH Agent';
+        const capabilities = Array.isArray(worker.capabilities) ? worker.capabilities.filter((value) => typeof value === 'string') : [];
         const tools = Array.isArray(worker.detectedTools) ? worker.detectedTools.filter((value) => typeof value === 'string').slice(0, 5) : [];
-        const toolSummary = tools.length ? ` · พบ ${tools.join(', ')}` : '';
-        const detail = document.createElement('span'); detail.textContent = `${workerStateLabel(worker)}${toolSummary} · ${worker.boundProjectCount || 0} โปรเจกต์`;
-        item.append(name, detail); list.append(item);
+        const runtimeReady = capabilities.includes('tool.awh-device-runtime');
+        const remoteReady = capabilities.includes('tool.remote-desktop-mcp');
+        const readiness = [
+          runtimeReady ? 'Device Runtime ✓' : 'Device Runtime —',
+          remoteReady ? 'Remote Desktop MCP ✓' : runtimeReady ? 'Remote Desktop MCP · รออนุมัติครั้งแรก' : 'Remote Desktop MCP —',
+          capabilities.includes('tool.awh-device-gui') ? 'Screen & Apps ✓' : 'Screen & Apps —',
+        ].join(' · ');
+        const toolSummary = tools.length ? ` · ${tools.join(', ')}` : '';
+        const detail = document.createElement('span'); detail.textContent = `${workerStateLabel(worker)} · ${readiness}${toolSummary} · ${worker.boundProjectCount || 0} โปรเจกต์`;
+        item.append(name, detail);
+        if (isOwner() && typeof worker.deviceId === 'string') {
+          const busy = worker.state === 'WORKING' || worker.activity === 'BUSY';
+          const action = document.createElement('button'); action.type = 'button'; action.className = 'secondary-button';
+          action.textContent = busy ? 'กำลังทำงาน' : 'ยกเลิกการเชื่อมต่อ';
+          action.disabled = busy;
+          action.addEventListener('click', async () => {
+            if (!window.confirm(`ยกเลิกการเชื่อมต่อ ${worker.displayName || 'อุปกรณ์นี้'} กับ AWH ใช่หรือไม่?`)) return;
+            action.disabled = true; action.textContent = 'กำลังยกเลิก…';
+            try {
+              await revokeDevice(worker.deviceId);
+              state.ownerStatus = await loadOwnerSelfServiceStatus();
+              renderSettingsOverview();
+              message('settings-worker-message', 'ยกเลิกการเชื่อมต่ออุปกรณ์แล้ว');
+            } catch (error) {
+              action.disabled = false; action.textContent = 'ยกเลิกการเชื่อมต่อ';
+              message('settings-worker-message', error instanceof Error ? error.message : 'ยังยกเลิกการเชื่อมต่ออุปกรณ์ไม่ได้');
+            }
+          });
+          item.append(action);
+        }
+        list.append(item);
       }
       if (!list.childElementCount) list.textContent = 'ยังไม่มีอุปกรณ์เสริมที่เชื่อมกับโปรเจกต์';
     }

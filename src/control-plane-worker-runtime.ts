@@ -2,8 +2,9 @@ import { createHash } from 'node:crypto';
 import { lstat, mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { AutopilotRunner, detectLocalCapabilities } from './autopilot.js';
-import { codexStatus, runCodexDeviceGoal, runCodexGoal } from './codex.js';
-import { deviceProvidersForCapability, discoverAwhDeviceRuntime } from './device-runtime.js';
+import { codexStatus, runCodexGoal } from './codex.js';
+
+import { LnwjudDeviceClient, type DeviceAction } from './lnwjud-device-client.js';
 import { loadOrCreateDeviceIdentity } from './device-identity.js';
 import { createCheckpoint } from './changes.js';
 import { createContinuityCheckpoint } from './continuity.js';
@@ -38,6 +39,17 @@ function boundedSummary(value: string): string {
 }
 
 export function isMutationGoal(goal: string): boolean { return MUTATION_GOAL.test(goal); }
+
+function deviceToolAllowed(capability: string, tool: DeviceAction['tool']): boolean {
+  if (tool === 'finish') return true;
+  if (/^device\.(?:screen\.inspect|gui\.inspect)$/.test(capability)) return ['accessibility','computer_use'].includes(tool);
+  if (/^(?:device\.gui\.operate|creative\.photoshop)$/.test(capability)) return ['accessibility','computer_use','input_event'].includes(tool);
+  if (capability === 'browser.automation') return ['dom_cdp','accessibility','computer_use','input_event'].includes(tool);
+  if (capability === 'workspace.files') return ['read_file','write_file','search_text'].includes(tool);
+  if (capability === 'system.shell') return tool === 'shell';
+  if (capability === 'device.process') return ['process_list','process_start','process_status','process_stop'].includes(tool);
+  return false;
+}
 
 function sameProjectName(left: string, right: string): boolean { return left.trim().toLocaleLowerCase('en-US') === right.trim().toLocaleLowerCase('en-US'); }
 
@@ -132,10 +144,15 @@ export function officeExecutionCapabilities(platform: NodeJS.Platform | string, 
 }
 
 export function deviceExecutionCapabilities(tools: readonly string[]): string[] {
-  const creativePhotoshop = tools.includes('tool.adobe.photoshop') && tools.includes('tool.awh-device-gui') && tools.includes('tool.awh-device-system');
+  const standalone = tools.includes('tool.awh-device-runtime');
+  const legacyGui = tools.includes('tool.awh-device-gui');
+  const legacySystem = tools.includes('tool.awh-device-system');
+  const guiReady = standalone || legacyGui;
+  const systemReady = standalone || legacySystem;
+  const creativePhotoshop = tools.includes('tool.adobe.photoshop') && standalone;
   return [
-    ...(tools.includes('tool.awh-device-gui') ? ['device.screen.inspect', 'device.gui.inspect', 'device.gui.operate', 'browser.automation'] : []),
-    ...(tools.includes('tool.awh-device-system') ? ['workspace.files', 'system.shell', 'device.process'] : []),
+    ...(guiReady ? ['device.screen.inspect', 'device.gui.inspect', 'device.gui.operate', 'browser.automation'] : []),
+    ...(systemReady ? ['workspace.files', 'system.shell', 'device.process'] : []),
     ...(creativePhotoshop ? ['creative.photoshop'] : []),
   ];
 }
@@ -368,65 +385,61 @@ export class ControlPlaneWorkerRuntime {
     } finally { clearInterval(leaseHeartbeat); }
   }
 
-  /** Provider-neutral device automation. AWH remains the authority; local MCP
-   * providers are implementation details selected by Codex from the device's
-   * configured tool surface. No local source mutation is implied by this path. */
+  /** Hub-managed device automation. The local machine needs AWH Device Runtime only;
+   * all model/provider credentials remain in Hub and never cross the device boundary. */
   private async executeDeviceAutomation(task: WorkerTask, capabilities: string[]): Promise<WorkerRunResult> {
     const execution = task.execution;
     if (!execution || execution.executorKind !== 'DEVICE') return { status: 'FAILED', taskId: task.taskId, projectId: task.projectId, reason: 'DEVICE_EXECUTION_INVALID' };
-    if (!this.options.allowExec || !this.options.allowCodex || !capabilities.includes(execution.requiredCapability)) {
+    if (!this.options.allowExec || !capabilities.includes(execution.requiredCapability)) {
       await this.client.deferCentralExecution(execution.executionId, 'DEVICE_CAPABILITY_UNAVAILABLE').catch(() => undefined);
       return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason: 'DEVICE_CAPABILITY_UNAVAILABLE' };
     }
-    const root = join(this.options.dataDir, 'device-task-workspaces', execution.executionId);
-    const heartbeat = setInterval(() => { void this.client.heartbeat(capabilities, 'WORKING').catch(() => undefined); }, 60_000); heartbeat.unref?.();
+    const root = join(this.options.dataDir, 'device-runtime-workspace');
+    const requireVisual = /^(?:creative\.photoshop|device\.(?:screen\.inspect|gui\.(?:inspect|operate))|browser\.automation)$/.test(execution.requiredCapability);
+    const heartbeat = setInterval(() => { void this.client.heartbeat(capabilities, 'WORKING').catch(() => undefined); }, 60_000);
+    heartbeat.unref?.();
+    let runtime: LnwjudDeviceClient | null = null;
     try {
       await mkdir(root, { recursive: true, mode: 0o700 });
-      await this.client.update(task.taskId, 'RUNNING', 20, 'AWH กำลังใช้อุปกรณ์ที่เชื่อมต่อเพื่อตรวจงานจริง');
-      const instruction = [
-        'AWH DEVICE EXECUTION — PROVIDER-NEUTRAL',
-        'You are executing one already-authorized AWH device task. AWH Cloud remains the task, identity, approval, project and result authority.',
-        'Use the available device MCP tools only as needed. Prefer semantic UI/accessibility for native controls, visual capture for actual appearance, browser automation for web interactions, and the device system provider for files/process/shell work.',
-        'Do not create another queue, login, memory store, database, control plane or parallel source authority. Do not alter project source unless the current owner goal explicitly requires it and the existing AWH approval/source boundary permits it.',
-        'When visual quality is part of the goal, inspect the real rendered screen before concluding and re-inspect after any visible change.',
-        'Never expose upstream provider/product names in the user-facing result; refer to them collectively as AWH Device Runtime.',
-        'CURRENT OWNER GOAL',
-        task.goal.trim(),
-        'VERIFICATION',
-        'Verify the requested outcome on the real device. Return a concise factual result with what was observed or changed and any remaining blocker.'
-      ].join('\n\n');
-      const runtime = await discoverAwhDeviceRuntime();
-      const required = deviceProvidersForCapability(execution.requiredCapability);
-      const guiDirect = required.gui && runtime.guiMcpCommand !== null;
-      const guiViaSystem = required.gui && !guiDirect && !runtime.guiMcpUrl && runtime.guiToolkitCommand !== null && runtime.systemMcpCommand !== null;
-      const providers = {
-        guiMcpUrl: required.gui && !guiDirect ? runtime.guiMcpUrl : null,
-        guiMcpCommand: guiDirect ? runtime.guiMcpCommand : null,
-        systemMcpCommand: required.system || guiViaSystem ? runtime.systemMcpCommand : null,
-      };
-      if ((required.gui && !providers.guiMcpCommand && !providers.guiMcpUrl && !guiViaSystem) || (required.system && !providers.systemMcpCommand)) {
-        await this.client.deferCentralExecution(execution.executionId, 'DEVICE_CAPABILITY_UNAVAILABLE').catch(() => undefined);
-        return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason: 'DEVICE_CAPABILITY_UNAVAILABLE' };
+      runtime = await LnwjudDeviceClient.open(root);
+      await this.client.update(task.taskId, 'RUNNING', 15, 'AWH Device Runtime พร้อมแล้ว กำลังตรวจอุปกรณ์จริง');
+      let lastResult: string | null = null;
+      for (let step = 0; step < 16; step++) {
+        const observation = await runtime.observe(root, requireVisual);
+        const plan = await this.client.planDeviceStep(execution.executionId, {
+          step,
+          observationText: observation.text,
+          imageBase64: observation.imageBase64,
+          imageMimeType: observation.imageMimeType,
+          lastResult,
+        });
+        const action = plan.action as DeviceAction;
+        if (!deviceToolAllowed(execution.requiredCapability, action.tool)) throw new Error('AWH_DEVICE_ACTION_FORBIDDEN');
+        if (action.tool === 'finish') {
+          await this.client.update(task.taskId, 'QA', 90, 'AWH ตรวจผลบนอุปกรณ์จริงแล้ว');
+          const summary = boundedSummary(action.summary || lastResult || 'ตรวจและดำเนินงานบนอุปกรณ์จริงเรียบร้อย');
+          await this.client.update(task.taskId, 'COMPLETED', 100, 'ตรวจผลบนอุปกรณ์จริงเรียบร้อย', summary);
+          return { status: 'COMPLETED', taskId: task.taskId, projectId: task.projectId, artifact: null };
+        }
+        lastResult = await runtime.execute(action, observation.workspaceId);
+        const progress = Math.min(82, 20 + Math.round(((step + 1) / 16) * 62));
+        await this.client.update(task.taskId, 'RUNNING', progress, 'AWH กำลังดำเนินการและตรวจผลทีละขั้นบนอุปกรณ์จริง');
       }
-      const photoshopInstruction = execution.requiredCapability === 'creative.photoshop'
-        ? '\n\nADOBE PHOTOSHOP NATIVE WORKFLOW\nUse the installed Adobe Photoshop application as the primary editor. Prefer native, non-destructive Photoshop operations: Select Subject/Remove Background with a layer mask, clipping masks for framed photos, Smart Objects before scaling, adjustment layers for color/tone, and editable layers instead of flattening early. Preserve factual photos and existing text exactly unless the owner asked to change them. Do not replace real school imagery with generated reconstructions. For composition, masking, crop, typography or visual polish, inspect the actual Photoshop canvas before editing, make the change, then re-inspect at useful zoom and verify the final export visually. If an automation script is used for deterministic setup, use Photoshop itself for the visual checkpoint and corrective pass before declaring success.'
-        : '';
-      const effectiveInstruction = (guiViaSystem
-        ? instruction + `\n\nAWH GUI TOOLKIT\nUse the device system MCP shell/process tools to invoke ${runtime.guiToolkitCommand} for GUI inspection and operation. Prefer its snapshot/observe/accessibility/mouse/keyboard/surface commands, verify the visible result after any mutation, and do not bypass the current AI ON/OFF/LIVE guard.`
-        : instruction) + photoshopInstruction;
-      const codex = await runCodexDeviceGoal(root, effectiveInstruction, providers);
-      if (codex.code !== 0) throw new Error('DEVICE_AUTOMATION_FAILED');
-      await this.client.update(task.taskId, 'QA', 85, 'AWH กำลังตรวจผลลัพธ์บนอุปกรณ์จริง');
-      const summary = boundedSummary(codex.summary || 'ตรวจและดำเนินงานบนอุปกรณ์ที่เชื่อมต่อเรียบร้อย');
-      await this.client.update(task.taskId, 'COMPLETED', 100, 'ตรวจผลบนอุปกรณ์จริงเรียบร้อย', summary);
-      return { status: 'COMPLETED', taskId: task.taskId, projectId: task.projectId, artifact: null };
+      throw new Error('AWH_DEVICE_STEP_LIMIT_REACHED');
     } catch (error) {
-      const reason = boundedSummary(error instanceof Error ? error.message : 'DEVICE_AUTOMATION_FAILED');
-      await this.client.deferCentralExecution(execution.executionId, 'DEVICE_EXECUTION_FAILED').catch(() => undefined);
+      const reason = boundedSummary(error instanceof Error ? error.message : 'DEVICE_EXECUTION_FAILED');
+      const code = reason.includes('VISUAL_PERMISSION_REQUIRED')
+        ? 'AWH_DEVICE_VISUAL_PERMISSION_REQUIRED'
+        : reason.includes('PROVIDER_') || reason.includes('BUDGET_') || reason.includes('planner')
+          ? 'HUB_DEVICE_PLANNER_UNAVAILABLE'
+          : reason.includes('RUNTIME_UNAVAILABLE') || reason.includes('PROTOCOL_UNAVAILABLE')
+            ? 'DEVICE_CAPABILITY_UNAVAILABLE'
+            : 'DEVICE_EXECUTION_FAILED';
+      await this.client.deferCentralExecution(execution.executionId, code).catch(() => undefined);
       return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason };
     } finally {
+      runtime?.close();
       clearInterval(heartbeat);
-      await rm(root, { recursive: true, force: true }).catch(() => undefined);
     }
   }
 
