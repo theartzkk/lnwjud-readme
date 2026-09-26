@@ -13,22 +13,26 @@ test('AWH auto capability router selects approved Anti Slop profiles without rep
 require 'hub/src/HubControlPlaneService.php';
 $route=new ReflectionMethod(HubControlPlaneService::class,'externalCapabilityPlan'); $route->setAccessible(true);
 $qa=new ReflectionMethod(HubControlPlaneService::class,'centralCandidateQa'); $qa->setAccessible(true);
+$roundTrip=new ReflectionMethod(HubControlPlaneService::class,'executionCapabilityPlan'); $roundTrip->setAccessible(true);
 echo json_encode([
  'large'=>$route->invoke(null,'วิเคราะห์ log ทั้งระบบและปิดงาน final deploy',false),
  'design'=>$route->invoke(null,'ปรับ UI mobile ให้สวยและ responsive',false),
  'copy'=>$route->invoke(null,'ปรับ microcopy ให้เป็นธรรมชาติ',false),
+ 'copySurface'=>$route->invoke(null,'ปรับข้อความหน้าเว็บและ microcopy ให้เป็นธรรมชาติ',false),
  'comments'=>$route->invoke(null,'clean up code comments และ jsdoc',false),
  'plain'=>$route->invoke(null,'อธิบายแนวคิดนี้',false),
  'attachment'=>$route->invoke(null,'ดูไฟล์นี้',true),
  'visualQa'=>$qa->invoke(null,['added'=>[],'changed'=>['web/app.js'],'deleted'=>[]]),
  'serverQa'=>$qa->invoke(null,['added'=>[],'changed'=>['src/server.ts'],'deleted'=>[]]),
- 'dataQa'=>$qa->invoke(null,['added'=>[],'changed'=>['config/data.json'],'deleted'=>[]])
+ 'dataQa'=>$qa->invoke(null,['added'=>[],'changed'=>['config/data.json'],'deleted'=>[]]),
+ 'roundTrip'=>$roundTrip->invoke(null,json_encode(['capabilityPlan'=>$route->invoke(null,'ปรับ UI mobile ให้สวยและ responsive',false)], JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE))
 ], JSON_THROW_ON_ERROR|JSON_UNESCAPED_UNICODE);
 `;
   const result=JSON.parse(execFileSync('php',['-r',php],{cwd:ROOT,encoding:'utf8'}));
   assert.deepEqual(result.large.selected.map((item:any)=>item.id),['context.optimize','team.harness']);
   assert.deepEqual(result.design.selected.map((item:any)=>item.id),['design.antislop','design.hallmark','design.reference']);
   assert.deepEqual(result.copy.selected.map((item:any)=>item.id),['copy.antislop']);
+  assert.deepEqual(result.copySurface.selected.map((item:any)=>item.id),['copy.antislop']);
   assert.deepEqual(result.comments.selected.map((item:any)=>item.id),['code.antislop']);
   assert.deepEqual(result.plain.selected,[]);
   assert.deepEqual(result.attachment.selected.map((item:any)=>item.id),['context.optimize']);
@@ -36,6 +40,7 @@ echo json_encode([
   assert.deepEqual(result.visualQa.visualReview.filters,['design.antislop','design.hallmark']);
   assert.equal(result.serverQa.status,'PASS');
   assert.equal(result.dataQa.status,'PASS');
+  assert.deepEqual(result.roundTrip.selected.map((item:any)=>item.id),['design.antislop','design.hallmark','design.reference']);
 });
 
 test('worker advisory prompt treats approved skills as bounded filters and never execution authority', () => {
