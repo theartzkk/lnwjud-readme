@@ -54,3 +54,15 @@ test('tampered vendored upstream content fails closed before materialization', a
     await assert.rejects(verifyApprovedAntiSlopPack(root),/APPROVED_SKILL_INTEGRITY_FAILED/);
   } finally { await rm(root,{recursive:true,force:true}); }
 });
+
+
+test('CRLF checkout normalization preserves approved Git blob identity', async () => {
+  const root=await mkdtemp(join(tmpdir(),'awh-skill-crlf-'));
+  try {
+    await cp(APPROVED_ANTI_SLOP_ROOT,root,{recursive:true});
+    const target=join(root,'antislop-ui','SKILL.md');
+    const original=await readFile(target,'utf8');
+    await writeFile(target,original.replace(/\r?\n/g,'\r\n'),'utf8');
+    await verifyApprovedAntiSlopPack(root);
+  } finally { await rm(root,{recursive:true,force:true}); }
+});
