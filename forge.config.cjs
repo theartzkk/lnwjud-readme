@@ -68,6 +68,9 @@ module.exports = {
     name: 'AWH Agent',
     executableName: 'AWH',
     appBundleId: 'com.artworkspacehub.awh',
+    extendInfo: {
+      CFBundleDisplayName: 'AWH Agent',
+    },
     icon,
     ...(electronZipDir ? { electronZipDir } : {}),
     asar: true,
