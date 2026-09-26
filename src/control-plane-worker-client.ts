@@ -22,15 +22,15 @@ export class ControlPlaneWorkerError extends Error {
 export interface WorkerProject { projectId: string; name: string; type: string; sourceRevision: string | null; vaultReady: boolean; memoryReady: boolean; }
 
 export interface WorkerContinuation { rootTaskId: string; step: number; maxSteps: number; }
-export interface WorkerCapabilityPlanItem { id: 'context.optimize' | 'design.hallmark' | 'design.reference' | 'team.harness'; label: string; mode: string; reason: string; requiredTool: string | null; }
+export interface WorkerCapabilityPlanItem { id: 'context.optimize' | 'design.antislop' | 'copy.antislop' | 'code.antislop' | 'design.hallmark' | 'design.reference' | 'team.harness'; label: string; mode: string; reason: string; requiredTool: string | null; }
 export interface WorkerCapabilityPlan { schemaVersion: 1; router: 'awh.external-capabilities.v1'; selected: WorkerCapabilityPlanItem[]; }
 
 function boundedCapabilityPlan(value: unknown): WorkerCapabilityPlan | null {
   if (value === undefined || value === null) return null;
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ControlPlaneWorkerError('Worker capability plan is invalid', 'RESPONSE_INVALID');
   const plan = value as Record<string, unknown>;
-  if (plan.schemaVersion !== 1 || plan.router !== 'awh.external-capabilities.v1' || !Array.isArray(plan.selected) || plan.selected.length > 4) throw new ControlPlaneWorkerError('Worker capability plan is invalid', 'RESPONSE_INVALID');
-  const allowed = new Set(['context.optimize','design.hallmark','design.reference','team.harness']);
+  if (plan.schemaVersion !== 1 || plan.router !== 'awh.external-capabilities.v1' || !Array.isArray(plan.selected) || plan.selected.length > 8) throw new ControlPlaneWorkerError('Worker capability plan is invalid', 'RESPONSE_INVALID');
+  const allowed = new Set(['context.optimize','design.antislop','copy.antislop','code.antislop','design.hallmark','design.reference','team.harness']);
   const selected = plan.selected.map((entry): WorkerCapabilityPlanItem => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new ControlPlaneWorkerError('Worker capability plan is invalid', 'RESPONSE_INVALID');
     const item = entry as Record<string, unknown>;
