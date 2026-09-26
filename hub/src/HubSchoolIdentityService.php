@@ -75,6 +75,12 @@ final class HubSchoolIdentityService
     }
 
     /** @return array<string,mixed> */
+    public function academicContext(): array
+    {
+        $this->assertSchema();try{return $this->bay->academicContext();}catch(HubBaySchoolAuthorityException $e){throw new HubSchoolIdentityException('BAY academic context is unavailable',$e->codeName);}
+    }
+
+    /** @return array<string,mixed> */
     public function communicationSummary(): array
     {
         $this->assertSchema();try{return $this->bay->communicationSummary();}catch(HubBaySchoolAuthorityException $e){throw new HubSchoolIdentityException('BAY communication authority is unavailable',$e->codeName);}

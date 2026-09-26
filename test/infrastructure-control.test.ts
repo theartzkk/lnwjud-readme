@@ -97,6 +97,7 @@ test('Ecosystem health keeps fail-closed reachable state without raising a false
   const {stdout}=await run('php',['-r',code],{cwd:ROOT,shell:false}); const value=JSON.parse(stdout);
   assert.equal(value.current.bay.services[0].state,'reachable'); assert.equal(value.current.bay.services[0].ok,false);
   assert.equal(value.history.windows['24h'].services.awh.availabilityPercent,100);
+  assert.equal(value.slo.targets.availabilityPercent,99.9); assert.equal(value.slo.targets.apiP95Ms,1500); assert.equal(value.slo.targets.websiteP95Ms,2500); assert.equal(value.slo.windows['24h'].services.awh.state,'PASS');
   assert.ok(!value.alerts.some((item:any)=>item.key.startsWith('service-down-')));
  }finally{await rm(dir,{recursive:true,force:true});}
 });

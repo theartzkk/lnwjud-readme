@@ -8,6 +8,9 @@ test -d "$ROOT"
 cd "$ROOT"
 if test "$(id -u)" -eq 0 && command -v systemd-run >/dev/null 2>&1; then
   unit="awh-release-qa-$$-$(printf '%s' "$SCRIPT" | tr ':' '-')"
-  exec systemd-run --quiet --scope --unit="$unit" --slice=awh-build.slice --property=CPUWeight=20 --property=IOWeight=10 --property=Nice=10 --property=MemoryHigh=2G npm run "$SCRIPT"
+  if systemctl cat awh-build.slice >/dev/null 2>&1; then
+    exec systemd-run --quiet --scope --unit="$unit" --slice=awh-build.slice --property=CPUWeight=20 --property=IOWeight=10 --property=Nice=10 --property=MemoryHigh=2G npm run "$SCRIPT"
+  fi
+  exec systemd-run --quiet --scope --unit="$unit" --property=CPUWeight=20 --property=IOWeight=10 --property=Nice=10 --property=MemoryHigh=2G npm run "$SCRIPT"
 fi
 exec npm run "$SCRIPT"

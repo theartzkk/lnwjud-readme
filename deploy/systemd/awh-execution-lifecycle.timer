@@ -1,9 +1,0 @@
-[Unit]
-Description=Run AWH execution lifecycle reconciliation
-[Timer]
-OnBootSec=5m
-OnUnitActiveSec=5m
-RandomizedDelaySec=30s
-Persistent=true
-[Install]
-WantedBy=timers.target

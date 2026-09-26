@@ -95,8 +95,8 @@ final class HubCoreReleaseService
         }
 
         $task=self::uuid();$execution=self::uuid();$approval=self::uuid();
-        $checkpoint=['schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>$sha,'releaseMode'=>'IDENTITY_CONVERGENCE','cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL'];
-        $scope=['schemaVersion'=>1,'taskId'=>$task,'projectId'=>self::PROJECT_ID,'releaseSha'=>$sha,'releaseMode'=>'IDENTITY_CONVERGENCE','cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL','risk'=>'CRITICAL'];
+        $checkpoint=['schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>$sha,'releaseMode'=>'PLATFORM_HARDENING','cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL'];
+        $scope=['schemaVersion'=>1,'taskId'=>$task,'projectId'=>self::PROJECT_ID,'releaseSha'=>$sha,'releaseMode'=>'PLATFORM_HARDENING','cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL','risk'=>'CRITICAL'];
         $goal='Deploy AWH core release '.substr($sha,0,12).' ผ่าน bounded VPS-native release controller';
         $key='core-release.'.substr($sha,0,12).'.'.substr(str_replace('-','',$task),0,12);
         try{
@@ -336,7 +336,7 @@ final class HubCoreReleaseService
         $keys=['cleanupTopology','mode','releaseMode','releaseSha','schemaVersion','transport'];
         if(!is_array($v)||array_is_list($v)){if(!$strict)return [];throw new HubCoreReleaseException('Core release checkpoint is invalid','CORE_RELEASE_CHECKPOINT_INVALID');}
         $actual=array_keys($v);sort($actual);$expected=$keys;sort($expected);
-        $ok=$actual===$expected&&($v['schemaVersion']??null)===1&&($v['mode']??null)==='CORE_RELEASE'&&($v['releaseMode']??null)==='IDENTITY_CONVERGENCE'&&($v['transport']??null)==='LOCAL'&&is_bool($v['cleanupTopology']??null)&&is_string($v['releaseSha']??null)&&preg_match('/^[0-9a-f]{40}$/',$v['releaseSha'])===1;
+        $ok=$actual===$expected&&($v['schemaVersion']??null)===1&&($v['mode']??null)==='CORE_RELEASE'&&($v['releaseMode']??null)==='PLATFORM_HARDENING'&&($v['transport']??null)==='LOCAL'&&is_bool($v['cleanupTopology']??null)&&is_string($v['releaseSha']??null)&&preg_match('/^[0-9a-f]{40}$/',$v['releaseSha'])===1;
         if(!$ok){if(!$strict)return [];throw new HubCoreReleaseException('Core release checkpoint is invalid','CORE_RELEASE_CHECKPOINT_INVALID');}
         return $v;
     }

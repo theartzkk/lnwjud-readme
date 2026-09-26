@@ -8,6 +8,9 @@ final class HubEcosystemHealthService
     private const MAX_HISTORY_BYTES = 8388608;
     private const MAX_HISTORY_LINES = 2300;
     private const CURRENT_STALE_SECONDS = 900;
+    private const AVAILABILITY_TARGET_PERCENT = 99.9;
+    private const API_P95_TARGET_MS = 1500;
+    private const WEBSITE_P95_TARGET_MS = 2500;
     private const SERVICE_IDS = ['awh', 'bay', 'learnlab', 'website'];
     private const SERVICE_STATES = ['healthy', 'reachable', 'protected', 'degraded', 'down', 'unknown'];
     private const DNS_STATES = ['healthy', 'missing', 'misconfigured', 'unknown'];
@@ -43,6 +46,7 @@ final class HubEcosystemHealthService
         $history = $this->readHistory($reference);
         $summary = $this->summarize($history, $current, $currentReleaseId, $reference);
         $recovery = $this->readRecoveryProof($reference);
+        $slo = $this->slo($summary['windows']);
         $currentGenerated = is_array($current) ? strtotime((string) ($current['generatedAt'] ?? '')) : false;
         $currentState = !is_array($current) ? 'NOT_CONFIGURED'
             : ($currentGenerated === false || $reference - $currentGenerated > self::CURRENT_STALE_SECONDS || $currentGenerated > $reference + 300 ? 'STALE' : 'READY');
@@ -79,6 +83,7 @@ final class HubEcosystemHealthService
                 'deployCorrelation' => $summary['deployCorrelation'],
             ],
             'alerts' => array_slice($this->dedupeAlerts($alerts), 0, 12),
+            'slo' => $slo,
             'recoveryDrill' => $recovery,
         ];
     }
@@ -305,6 +310,35 @@ final class HubEcosystemHealthService
             }
         }
         return ['windows' => $windows, 'deployCorrelation' => $deploy, 'alerts' => $alerts];
+    }
+
+    /** @param array<string,array<string,mixed>> $windows */
+    private function slo(array $windows): array
+    {
+        $result=[];$overall='PASS';$hasJudged=false;$hasCollecting=false;
+        foreach($windows as $label=>$window){
+            $services=[];$windowState='PASS';$windowJudged=false;$windowCollecting=false;
+            foreach(self::SERVICE_IDS as $id){
+                $row=is_array($window['services'][$id]??null)?$window['services'][$id]:[];
+                $samples=(int)($row['sampleCount']??0);$availability=$row['availabilityPercent']??null;$p95=$row['p95Ms']??null;
+                $latencyTarget=$id==='website'?self::WEBSITE_P95_TARGET_MS:self::API_P95_TARGET_MS;
+                if($samples<3||!is_numeric($availability)||!is_numeric($p95)){
+                    $state='COLLECTING';$windowCollecting=true;
+                }else{
+                    $windowJudged=true;$hasJudged=true;
+                    $state=((float)$availability>=self::AVAILABILITY_TARGET_PERCENT&&(int)$p95<=$latencyTarget)?'PASS':'BREACH';
+                    if($state==='BREACH')$windowState='BREACH';
+                }
+                $services[$id]=['state'=>$state,'sampleCount'=>$samples,'availabilityPercent'=>is_numeric($availability)?(float)$availability:null,'availabilityTargetPercent'=>self::AVAILABILITY_TARGET_PERCENT,'p95Ms'=>is_numeric($p95)?(int)$p95:null,'p95TargetMs'=>$latencyTarget];
+            }
+            if($windowState!=='BREACH'&&!$windowJudged)$windowState='COLLECTING';
+            elseif($windowState!=='BREACH'&&$windowCollecting)$windowState='COLLECTING';
+            if($windowState==='BREACH')$overall='BREACH';
+            elseif($windowState==='COLLECTING')$hasCollecting=true;
+            $result[$label]=['state'=>$windowState,'services'=>$services];
+        }
+        if($overall!=='BREACH')$overall=$hasJudged&&!$hasCollecting?'PASS':'COLLECTING';
+        return ['schemaVersion'=>1,'state'=>$overall,'targets'=>['availabilityPercent'=>self::AVAILABILITY_TARGET_PERCENT,'apiP95Ms'=>self::API_P95_TARGET_MS,'websiteP95Ms'=>self::WEBSITE_P95_TARGET_MS],'windows'=>$result];
     }
 
     private function readRecoveryProof(int $reference): array

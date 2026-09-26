@@ -78,6 +78,7 @@ final class HubControlPlaneRouter
                 if ($path === '/api/v1/control/bay/update') return self::response(200, $service->bayRemoteUpdateStatus($sessionToken) + ['requestId' => $requestId], $headers);
                 if ($path === '/api/v1/control/bay/communication') return self::response(200, $service->bayCommunicationStatus($sessionToken) + ['requestId' => $requestId], $headers);
                 if ($path === '/api/v1/control/identity/school') return self::response(200, $service->schoolIdentityForSession($sessionToken) + ['requestId' => $requestId], $headers);
+                if ($path === '/api/v1/control/identity/academic-context') return self::response(200, $service->academicContextForSession($sessionToken) + ['requestId' => $requestId], $headers);
                 if ($path === '/api/v1/control/identity/bindings') return self::response(200, $service->schoolIdentityBindingsForSession($sessionToken) + ['requestId' => $requestId], $headers);
                 if ($path === '/api/v1/control/identity/candidates') return self::response(200, $service->schoolIdentityCandidatesForSession($sessionToken) + ['requestId' => $requestId], $headers);
                 if (preg_match('#^/api/v1/control/provider/projects/(' . self::UUID . ')$#i', $path, $match) === 1) return self::response(200, $service->providerProjectRouting($sessionToken, $match[1]) + ['requestId' => $requestId], $headers);

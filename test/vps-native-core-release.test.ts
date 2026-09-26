@@ -64,7 +64,7 @@ test('VPS-native core release reuses canonical approval and deploy authorities',
   assert.match(remote, /verify_deploy_authority\(\)/);
   assert.match(remote, /deploy-execution-authority\.php" verify/);
   assert.match(remote, /DEPLOY_AUTHORITY_BORROWED/);
-  assert.equal((remote.match(/verify_deploy_authority/g) ?? []).length, 11);
+  assert.equal((remote.match(/verify_deploy_authority/g) ?? []).length, 12);
   assert.doesNotMatch(remote, /required_capability <> 'system\.core\.release'/);
 
   for (const file of ['hub/src/HubCoreReleaseService.php','hub/src/HubCoreReleaseOperator.php','hub/bin/awh-core-release-run.php']) {

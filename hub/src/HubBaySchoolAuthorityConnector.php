@@ -50,6 +50,13 @@ final class HubBaySchoolAuthorityConnector
     }
 
     /** @return array<string,mixed> */
+    public function academicContext(): array
+    {
+        try{return $this->reader->bayAcademicContext($this->database);}
+        catch(HubMariaDbReadClientException $e){throw new HubBaySchoolAuthorityException('BAY academic context is unavailable',$this->map($e->codeName));}
+    }
+
+    /** @return array<string,mixed> */
     public function communicationSummary(): array
     {
         try{return $this->reader->bayCommunicationSummary($this->database);}

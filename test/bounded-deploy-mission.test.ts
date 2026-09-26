@@ -17,7 +17,8 @@ test('bounded deploy mission reuses verified desktop artifacts only for server-s
 });
 
 test('bounded deploy mission has one explicit owner approval and a deterministic default deploy mode',()=>{
-  assert.equal(missionModeFromArgs([]),'--identity-convergence');
+  assert.equal(missionModeFromArgs([]),'--platform-hardening');
+  assert.equal(missionModeFromArgs(['--identity-convergence']),'--identity-convergence');
   assert.equal(missionModeFromArgs(['--cloud-first']),'--cloud-first');
   assert.throws(()=>missionModeFromArgs(['--cloud-first','--project-source-authority']),/MISSION_MODE_AMBIGUOUS/);
 });

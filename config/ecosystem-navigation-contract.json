@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "authority": "KRUART_DESIGN_SYSTEM",
+  "rules": {
+    "deadEndsForbidden": true,
+    "everySecondarySurfaceRequiresEscape": true,
+    "requiredEscapeActions": ["HOME", "BACK_OR_PARENT"],
+    "mobileOperatorFirstClass": true,
+    "progressiveDisclosureRequiredForDiagnostics": true
+  },
+  "personas": {
+    "STUDENT": ["TODAY", "MY_SCORE", "PENDING_WORK", "START"],
+    "TEACHER": ["MY_CLASSES", "TODAY", "REVIEW_QUEUE", "REPORTS"],
+    "ADMIN": ["STATUS", "USERS", "SYSTEMS", "REPORTS"]
+  },
+  "sharedPrimitives": ["HEADER", "BACK", "HOME", "PRIMARY_ACTION", "STATUS", "ERROR_RECOVERY"]
+}

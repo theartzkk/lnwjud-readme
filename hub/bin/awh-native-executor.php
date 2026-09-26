@@ -12,6 +12,7 @@ require_once dirname(__DIR__) . '/src/HubStaffGovernorService.php';
 require_once dirname(__DIR__) . '/src/HubStaffOperationsService.php';
 require_once dirname(__DIR__) . '/src/HubCloudFirstMigration.php';
 require_once dirname(__DIR__) . '/src/HubCloudWorkflowService.php';
+require_once dirname(__DIR__) . '/src/HubExecutionLifecycleService.php';
 require_once __DIR__ . '/system-telemetry.php';
 
 /**
@@ -27,6 +28,16 @@ if (!is_string($database) || $database === '' || str_contains($database, "\0")) 
 try {
     $pdo = new PDO('sqlite:' . $database, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
     $pdo->exec('PRAGMA foreign_keys = ON'); $pdo->exec('PRAGMA busy_timeout = 7500'); $pdo->exec('PRAGMA journal_mode = WAL'); $pdo->exec('PRAGMA synchronous = NORMAL');
+
+    $lifecycle = ['status'=>'NOT_READY','expiredRetryCount'=>0];
+    if ((int)$pdo->query('PRAGMA user_version')->fetchColumn() >= 23) {
+        try {
+            $summary=(new HubExecutionLifecycleService($pdo))->reconcile();
+            $lifecycle=['status'=>'READY','expiredRetryCount'=>(int)($summary['expiredRetryCount']??0)];
+        } catch (Throwable) {
+            $lifecycle=['status'=>'DEGRADED','expiredRetryCount'=>0];
+        }
+    }
 
     $automation = ['status' => 'UNAVAILABLE'];
     $automationReady = (int)$pdo->query('PRAGMA user_version')->fetchColumn() >= 15
@@ -96,12 +107,13 @@ try {
         || !in_array((string)($cloud['status'] ?? ''), ['READY', 'NOT_READY'], true)
         || (string)($governorRun['state'] ?? '') === 'DEGRADED'
         || (bool)($governorRun['created'] ?? false)
+        || (int)($lifecycle['expiredRetryCount'] ?? 0) > 0
         || (int)($batch['recovered'] ?? 0) > 0
         || (int)($housekeepingRun['quarantined'] ?? 0) > 0
         || (int)($housekeepingRun['purged'] ?? 0) > 0
         || (int)($housekeepingRun['blocked'] ?? 0) > 0;
     if ($shouldLog) {
-        fwrite(STDOUT, json_encode(['status' => $status, 'automation' => $automation, 'telemetry' => $telemetry, 'cloud' => $cloud, 'governorRun' => $governorRun, 'executionBatch' => $batch, 'recoveredExecutions' => (int) ($batch['recovered'] ?? 0), 'staff' => ['loop' => $staff['loop'], 'governor' => $staff['governor'], 'selfHealing' => $staff['selfHealing'], 'housekeeping' => $staff['housekeeping'], 'housekeepingRun' => $housekeepingRun, 'report' => $staff['report'], 'morningBrief' => $staff['morningBrief'], 'persistedMorningBrief' => $persistedBrief]], JSON_UNESCAPED_SLASHES) . "\n");
+        fwrite(STDOUT, json_encode(['status' => $status, 'automation' => $automation, 'telemetry' => $telemetry, 'cloud' => $cloud, 'governorRun' => $governorRun, 'executionLifecycle' => $lifecycle, 'executionBatch' => $batch, 'recoveredExecutions' => (int) ($batch['recovered'] ?? 0), 'staff' => ['loop' => $staff['loop'], 'governor' => $staff['governor'], 'selfHealing' => $staff['selfHealing'], 'housekeeping' => $staff['housekeeping'], 'housekeepingRun' => $housekeepingRun, 'report' => $staff['report'], 'morningBrief' => $staff['morningBrief'], 'persistedMorningBrief' => $persistedBrief]], JSON_UNESCAPED_SLASHES) . "\n");
     }
 } catch (HubDurableExecutionException|HubProjectVaultException|HubCentralProjectAuthorityMigrationException $error) { fwrite(STDERR, $error->codeName . "\n"); exit(1); }
 catch (Throwable) { fwrite(STDERR, "EXECUTOR_UNAVAILABLE\n"); exit(1); }

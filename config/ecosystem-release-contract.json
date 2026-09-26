@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "authority": "AWH_UPDATE_CENTER",
+  "strategy": "BUILD_ONCE_DEPLOY_EXACT_ARTIFACT",
+  "requiredArtifactIdentity": [
+    "product",
+    "version",
+    "sourceSha",
+    "artifactSha256",
+    "schemaVersion",
+    "builtAt"
+  ],
+  "requiredReleaseSafety": [
+    "qaStatus",
+    "backupRequired",
+    "rollbackReady",
+    "compatibility"
+  ],
+  "sourceShaPattern": "^[0-9a-f]{40}$",
+  "artifactSha256Pattern": "^[0-9a-f]{64}$",
+  "products": {
+    "awh": {
+      "project": "Art’s Workspace Hub",
+      "kind": "CORE"
+    },
+    "bay-excuse-x": {
+      "project": "BAY EXCUSE X",
+      "kind": "SYSTEM"
+    },
+    "bay-hub": {
+      "project": "BAY Hub",
+      "kind": "HUB"
+    },
+    "bay-learnlab": {
+      "project": "BAY LearnLab",
+      "kind": "PRODUCT"
+    },
+    "bay-assessment": {
+      "project": "BAY Assessment",
+      "kind": "PRODUCT"
+    },
+    "school-website": {
+      "project": "เว็บไซต์โรงเรียน",
+      "kind": "HOSTING"
+    },
+    "bay-computer-lab": {
+      "project": "BAY Computer Lab",
+      "kind": "SYSTEM"
+    }
+  },
+  "rules": {
+    "productionRebuildForbidden": true,
+    "exactArtifactVerificationRequired": true,
+    "rollbackArtifactRequired": true,
+    "ownerReadableReleaseDetailsRequired": true
+  }
+}

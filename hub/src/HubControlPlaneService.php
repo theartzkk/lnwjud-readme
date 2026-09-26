@@ -26,6 +26,7 @@ require_once __DIR__ . '/HubAutomationRegistryService.php';
 require_once __DIR__ . '/HubBackupService.php';
 require_once __DIR__ . '/HubInfrastructureService.php';
 require_once __DIR__ . '/HubEcosystemHealthService.php';
+require_once __DIR__ . '/HubDomainEventService.php';
 require_once __DIR__ . '/HubAiGovernanceService.php';
 require_once __DIR__ . '/HubWorkerHealth.php';
 require_once __DIR__ . '/HubDeviceRoleRegistry.php';
@@ -968,6 +969,7 @@ final class HubControlPlaneService
         ], $this->projectsForUser($userId));
         $release = HubInfrastructureService::releaseState();
         $ecosystemHealth = HubEcosystemHealthService::fromEnvironment()->status((string)($release['controlReleaseId'] ?? ''), $now);
+        try { $domainEvents=(new HubDomainEventService($this->pdo))->stats()+['state'=>'READY']; } catch (Throwable) { $domainEvents=['schemaVersion'=>1,'state'=>'UNAVAILABLE','states'=>['PENDING'=>0,'PROCESSING'=>0,'DELIVERED'=>0,'DEAD'=>0],'pending'=>0,'dead'=>0]; }
         $staff = $this->staff->snapshot($now, null, $telemetry, $release);
         $aiModels = [];
         if ($this->aiGovernance !== null) { try { $aiModels = array_slice($this->aiGovernance->catalog()['models'] ?? [], 0, 40); } catch (Throwable) { $aiModels = []; } }
@@ -1026,6 +1028,7 @@ final class HubControlPlaneService
             'backup' => $health['backup'],
             'storage' => $health['storage'],
             'queue' => $health['queue'],
+            'domainEvents' => $domainEvents,
             'aiBudget' => $health['aiBudget'],
             'aiModels' => $aiModels,
             'aiRoutes24h' => $routes,
@@ -1597,6 +1600,11 @@ final class HubControlPlaneService
     public function schoolIdentityForSession(string $sessionToken,?string $now=null): array
     {
         $session=$this->sessionRow($sessionToken,$now);$service=$this->schoolIdentityService();return ['schemaVersion'=>1,'policy'=>$service->policy(),'school'=>$service->forUser((string)$session['user_id'])];
+    }
+
+    public function academicContextForSession(string $sessionToken,?string $now=null): array
+    {
+        $this->sessionRow($sessionToken,$now);try{return ['schemaVersion'=>1,'authority'=>'BAY EXCUSE X','context'=>$this->schoolIdentityService()->academicContext()];}catch(HubSchoolIdentityException $e){throw new HubControlPlaneException('BAY academic context is unavailable',$e->codeName);}
     }
 
     public function schoolIdentityBindingsForSession(string $sessionToken,?string $now=null): array

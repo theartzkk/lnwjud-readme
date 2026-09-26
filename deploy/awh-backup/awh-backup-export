@@ -1,21 +1,3 @@
 #!/bin/sh
 set -eu
-BACKUP_ROOT=${AWH_HUB_BACKUP_ROOT:-/var/backups/awh-hub}
-mode=${1:-}
-latest=$(find "$BACKUP_ROOT" -maxdepth 1 -type f -name 'awh-*.sqlite.json' -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)
-test -n "$latest" && test -f "$latest" && test ! -L "$latest"
-payload=${latest%.json}
-test -f "$payload" && test ! -L "$payload"
-case "$payload" in "$BACKUP_ROOT"/awh-*.sqlite) ;; *) exit 3 ;; esac
-file=$(basename "$payload")
-sha=$(sha256sum "$payload" | cut -d' ' -f1)
-case "$mode" in
- metadata)
-  /usr/bin/python3 - "$file" "$sha" "$payload" <<'PY'
-import json,os,sys
-print(json.dumps({"schemaVersion":1,"file":sys.argv[1],"sha256":sys.argv[2],"bytes":os.path.getsize(sys.argv[3])},separators=(",",":")))
-PY
-  ;;
- payload) test "${2:-}" = "$file"; exec cat "$payload" ;;
- *) echo "Usage: awh-backup-export metadata | payload <file>" >&2; exit 2 ;;
-esac
+exec /usr/bin/php /opt/awh-hub/control-plane-current/hub/bin/backup-export.php "$@"

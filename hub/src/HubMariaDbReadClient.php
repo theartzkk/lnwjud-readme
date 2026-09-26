@@ -133,6 +133,22 @@ final class HubMariaDbReadClient
     }
 
     /** @return array<string,mixed> */
+    public function bayAcademicContext(string $database): array
+    {
+        $pdo=$this->open($database);
+        $this->assertTables($pdo,$database,['academic_years','terms','classrooms','grade_levels','subjects']);
+        $year=$pdo->query("SELECT id,academic_year,start_date,end_date,status,is_current FROM academic_years ORDER BY is_current DESC,(status='active') DESC,academic_year DESC,id DESC LIMIT 1")?->fetch(PDO::FETCH_ASSOC);
+        if(!is_array($year))throw new HubMariaDbReadClientException('BAY academic context is unavailable','BAY_IDENTITY_SCHEMA_UNAVAILABLE');
+        $yearId=(int)$year['id'];
+        $terms=$pdo->prepare("SELECT id,academic_year_id,term_no,term_name,start_date,end_date,status,is_current FROM terms WHERE academic_year_id=? ORDER BY term_no,id");
+        $terms->execute([$yearId]);
+        $rooms=$pdo->prepare("SELECT c.id,c.academic_year_id,c.grade_level_id,c.room_code,c.room_name,g.level_code,g.level_name,g.short_name grade_short_name,g.sort_order FROM classrooms c JOIN grade_levels g ON g.id=c.grade_level_id WHERE c.academic_year_id=? AND c.is_active=1 AND g.is_active=1 ORDER BY g.sort_order,c.room_name,c.id");
+        $rooms->execute([$yearId]);
+        $subjects=$pdo->query("SELECT id,subject_code,subject_name,short_name,learning_area,subject_type,target_periods FROM subjects WHERE is_active=1 ORDER BY subject_code,subject_name,id");
+        return ['authority'=>'BAY_EXCUSE_X','academicYear'=>['id'=>$yearId,'academicYear'=>(int)$year['academic_year'],'startDate'=>(string)$year['start_date'],'endDate'=>(string)$year['end_date'],'status'=>(string)$year['status'],'isCurrent'=>(int)$year['is_current']===1],'terms'=>array_values($terms->fetchAll(PDO::FETCH_ASSOC)?:[]),'classrooms'=>array_values($rooms->fetchAll(PDO::FETCH_ASSOC)?:[]),'subjects'=>array_values($subjects?->fetchAll(PDO::FETCH_ASSOC)?:[]),'generatedAt'=>gmdate('c'),'dataPolicy'=>['studentPiiExposed'=>false,'schoolIdentityCopied'=>false]];
+    }
+
+    /** @return array<string,mixed> */
     public function bayCommunicationSummary(string $database): array
     {
         $pdo=$this->open($database);$tables=$this->tablePresence($pdo,$database,['line_webhook_events','notification_deliveries','line_subscribers','parent_connect_line_student_links','line_account_links','users','personnel','students']);$summary=['state'=>'READY','lastWebhookAt'=>null,'webhookErrors24h'=>0,'redeliveries24h'=>0,'lineQueued'=>0,'lineFailed'=>0,'lineSent24h'=>0,'consentedSubscribers'=>0,'linkedStudents'=>0,'linkedGuardians'=>0,'linkedStaff'=>0,'activeStudents'=>0];

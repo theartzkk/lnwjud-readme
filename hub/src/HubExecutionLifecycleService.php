@@ -23,10 +23,12 @@ final class HubExecutionLifecycleService
             $projectSql=' AND e.project_id=:project';
             $params['project']=strtolower($projectId);
         }
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE e.state IN ('QUEUED','WAITING_FOR_CAPABILITY') AND t.state IN ('QUEUED','WAITING_FOR_WORKER') AND COALESCE(e.last_error_code,t.failure_code)='LEASE_EXPIRED' AND e.lease_owner IS NULL AND e.updated_at<=:cutoff".$projectSql." ORDER BY e.updated_at,e.execution_id LIMIT 100");
+        $q->execute($params); $rows=$q->fetchAll(PDO::FETCH_ASSOC);
+        if($rows===[]) return ['expiredRetryCount'=>0];
         try{
             $this->pdo->exec('BEGIN IMMEDIATE');
-            $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE e.state IN ('QUEUED','WAITING_FOR_CAPABILITY') AND t.state IN ('QUEUED','WAITING_FOR_WORKER') AND COALESCE(e.last_error_code,t.failure_code)='LEASE_EXPIRED' AND e.lease_owner IS NULL AND e.updated_at<=:cutoff".$projectSql." ORDER BY e.updated_at,e.execution_id LIMIT 100");
-            $q->execute($params); $rows=$q->fetchAll(PDO::FETCH_ASSOC); $count=0;
+            $count=0;
             foreach($rows as $row){
                 $execution=(string)($row['execution_id']??''); $task=(string)($row['task_id']??'');
                 if(!self::uuid($execution)||!self::uuid($task)) continue;

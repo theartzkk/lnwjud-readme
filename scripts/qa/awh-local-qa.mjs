@@ -454,6 +454,7 @@ async function fastQaCheck() {
     'test/process.test.ts',
     'test/platform-contract.test.ts',
     'test/sustainability-contract.test.ts',
+    'test/ecosystem-platform-hardening.test.ts',
     'test/control-plane-worker-runtime.test.ts',
     'test/control-plane-worker-client.test.ts',
     'test/owner-protocol.test.ts',

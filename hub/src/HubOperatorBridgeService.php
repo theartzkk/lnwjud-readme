@@ -6,6 +6,7 @@ require_once __DIR__.'/HubUpdateTargetRegistry.php';
 
 require_once __DIR__ . '/HubBayRemoteUpdateService.php';
 require_once __DIR__ . '/HubCapabilityRegistryService.php';
+require_once __DIR__ . '/HubExecutionLifecycleService.php';
 require_once __DIR__ . '/HubProjectVault.php';
 require_once __DIR__ . '/HubProjectVaultService.php';
 require_once __DIR__ . '/HubProjectSourceAuthorityService.php';
@@ -94,6 +95,7 @@ final class HubOperatorBridgeService
     {
         $project=$this->resolveProject($selector);
         $id=(string)$project['project_id'];
+        (new HubExecutionLifecycleService($this->pdo))->reconcile($id,$at);
         $requestedResource=$capability===null?'CANONICAL:PROJECT':HubCapabilityRegistryService::mutationResourceForExecution($capability,'VPS');
         $active=$this->pdo->prepare("SELECT x.execution_id,x.task_id,x.project_id,x.state,x.mutation_scope,x.lease_expires_at,e.state AS execution_state,e.required_capability,e.executor_kind,t.state AS task_state,t.goal,p.name AS project_name FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id JOIN control_tasks t ON t.task_id=x.task_id JOIN projects p ON p.project_id=x.project_id WHERE x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY x.updated_at DESC LIMIT 80");
         $active->execute(['at'=>$at]);$allActiveRows=$active->fetchAll();

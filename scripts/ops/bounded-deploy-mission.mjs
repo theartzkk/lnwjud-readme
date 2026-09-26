@@ -14,7 +14,7 @@ const INTELLIGENCE=join(ROOT,'hub/bin/verification-intelligence.php');
 const EVIDENCE_DIR=join(ROOT,'.awh-build','verification');
 const EVAL_CATALOG=join(ROOT,'config/kruart-engineering-eval.json');
 const DESKTOP_ARTIFACTS=['dist-web/downloads/AWH-macOS-arm64.zip','dist-web/downloads/AWH-macOS-x64.zip','dist-web/downloads/AWH-Windows-x64.zip','dist-web/downloads/SHA256SUMS.txt'];
-const DEPLOY_MODES=['--compat-refresh','--assistant-workstream','--workspace-continuity','--unified-workspace','--final-product','--founding-memory','--self-service','--central-project-authority','--anywhere-execution','--cost-aware-ai','--automations','--self-sufficient-ai','--account-hosting','--cloud-first','--conversation-lifecycle','--project-source-authority','--identity-convergence'];
+const DEPLOY_MODES=['--compat-refresh','--assistant-workstream','--workspace-continuity','--unified-workspace','--final-product','--founding-memory','--self-service','--central-project-authority','--anywhere-execution','--cost-aware-ai','--automations','--self-sufficient-ai','--account-hosting','--cloud-first','--conversation-lifecycle','--project-source-authority','--identity-convergence','--platform-hardening'];
 let missionContext={};
 
 const CONNECTOR_ONLY_SRC = new Set(['src/worker-capability-discovery.ts']);
@@ -26,7 +26,7 @@ export function desktopImpactForFiles(files){
 export function missionModeFromArgs(args){
   const modes=args.filter((arg)=>DEPLOY_MODES.includes(arg));
   if(modes.length>1) throw new Error('MISSION_MODE_AMBIGUOUS');
-  return modes[0]??'--identity-convergence';
+  return modes[0]??'--platform-hardening';
 }
 
 function run(command,args,{env={},forward=false,input=null}={}){
@@ -159,7 +159,13 @@ async function recordIncident(code,context={}){
   }catch{return incident;}
 }
 
-async function runQa(script,forward=true){const result=await run('npm',['run',script],{forward});return result.code===0?'PASS':'FAIL';}
+async function runQa(script,forward=true){
+  const isolated=join(ROOT,'scripts/ops/run-release-qa-isolated.sh');
+  const result=existsSync(isolated)
+    ? await run(isolated,[ROOT,script],{forward})
+    : await run('npm',['run',script],{forward});
+  return result.code===0?'PASS':'FAIL';
+}
 
 async function runtimePrivilegeState(policy){
   let noNewPrivileges=false;

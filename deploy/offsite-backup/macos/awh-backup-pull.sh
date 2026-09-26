@@ -10,14 +10,14 @@ mkdir -p "$DEST"
 tmp="$DEST/.incoming-$$"
 mkdir "$tmp"
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
-meta=$(ssh -o BatchMode=yes "$HOST" "sudo -n /usr/local/bin/awh-backup-export metadata")
+meta=$(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$HOST" "sudo -n /usr/local/bin/awh-backup-export metadata")
 file=$(printf '%s' "$meta" | /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["file"])')
 sha=$(printf '%s' "$meta" | /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["sha256"])')
-case "$file" in awh-*.sqlite) ;; *) exit 3 ;; esac
+case "$file" in awh-????????T??????Z.sqlite) ;; *) exit 3 ;; esac
 case "$sha" in *[!0-9a-f]*|'') exit 3 ;; esac
 test "${#sha}" -eq 64
 printf '%s\n' "$meta" > "$tmp/$file.json"
-ssh -o BatchMode=yes "$HOST" "sudo -n /usr/local/bin/awh-backup-export payload '$file'" > "$tmp/$file"
+ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$HOST" "sudo -n /usr/local/bin/awh-backup-export payload '$file'" > "$tmp/$file"
 test "$(shasum -a 256 "$tmp/$file" | awk '{print $1}')" = "$sha"
 mv "$tmp/$file" "$DEST/$file"
 mv "$tmp/$file.json" "$DEST/$file.json"

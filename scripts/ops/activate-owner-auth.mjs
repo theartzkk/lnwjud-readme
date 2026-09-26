@@ -23,7 +23,9 @@ if (compatibilityRefresh) deployArgs.push('--compat-refresh');
 const projectSourceAuthority = args.includes('--project-source-authority');
 if (projectSourceAuthority) deployArgs.push('--project-source-authority');
 const identityConvergence = args.includes('--identity-convergence');
+const platformHardening = args.includes('--platform-hardening');
 if (identityConvergence) deployArgs.push('--identity-convergence');
+if (platformHardening) deployArgs.push('--platform-hardening');
 const ownerUsername = process.env.AWH_OWNER_AUTH_USERNAME || 'art';
 
 function boundedSpawn(command, commandArgs, options = {}) {
