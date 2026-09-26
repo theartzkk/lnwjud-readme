@@ -80,5 +80,11 @@
       "sourcePath": "skills/antislop-code/SKILL.md",
       "gitBlobSha": "3d5efdbcc7b491f2c22578e1b8d1199f98d94b9a"
     }
+  ],
+  "approvedFiles": [
+    {
+      "localPath": "antislop/SKILL.md",
+      "gitBlobSha": "b90d0a0f43400217395d219ec321f343f7f37a00"
+    }
   ]
 }
