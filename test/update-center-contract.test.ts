@@ -239,6 +239,10 @@ test('Update Center keeps release details per project while roadmap remains back
   assert.match(operator,/releaseNotes.*checkpoint|checkpoint=.*releaseNotes/s);
   assert.match(core,/releaseNotes/);
   assert.match(core,/fallbackRoadmap/);
+  assert.match(core,/deploymentReleaseNotes/);
+  assert.match(core,/SOURCE_PROMOTION_CHAIN_EXACT_GIT_DIFF/);
+  assert.match(core,/canonicalProductionSha/);
+  assert.match(core,/releaseNotesSha256/);
   assert.match(core,/history/);
   assert.match(service,/'releaseNotes'/);
   assert.match(service,/'roadmap'/);
@@ -252,6 +256,8 @@ test('Update Center keeps release details per project while roadmap remains back
   assert.doesNotMatch(script,/function renderRoadmap/);
   assert.match(script,/renderHistory/);
   assert.match(script,/ผลกระทบก่อนอัปเดต/);
+  assert.match(script,/SEGMENT_TOUCHES/);
+  assert.match(script,/รายการเปลี่ยนไฟล์/);
   assert.match(script,/สิ่งที่ควรรู้/);
   assert.match(script,/itemVisible/);
   assert.match(css,/release-notes/);

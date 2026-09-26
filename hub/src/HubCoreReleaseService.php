@@ -55,7 +55,7 @@ final class HubCoreReleaseService
             ];
         }
         $sourcePromotion=$this->latestSourcePromotion();
-        $releaseNotes=is_array($sourcePromotion['releaseNotes']??null)?$sourcePromotion['releaseNotes']:$this->fallbackReleaseNotes();
+        $releaseNotes=$this->deploymentReleaseNotes($sourcePromotion);
         $roadmap=is_array($releaseNotes['comingNext']??null)?$releaseNotes['comingNext']:$this->fallbackRoadmap()['comingNext'];
         $knownIssues=is_array($releaseNotes['knownIssues']??null)?$releaseNotes['knownIssues']:$this->fallbackRoadmap()['knownIssues'];
         $history=[];
@@ -81,7 +81,8 @@ final class HubCoreReleaseService
         $latest=$this->latestSourcePromotion();
         if(!is_array($latest)||!is_string($latest['sha']??null)||!hash_equals((string)$latest['sha'],$sha))
             throw new HubCoreReleaseException('Core release target is no longer canonical','CORE_RELEASE_TARGET_MOVED');
-        if(!HubUpdateTargetRegistry::releaseDetailsReady($latest['releaseNotes']??null))
+        $deploymentNotes=$this->deploymentReleaseNotes($latest);
+        if(!HubUpdateTargetRegistry::releaseDetailsReady($deploymentNotes))
             throw new HubCoreReleaseException('Core release details are required before approval','CORE_RELEASE_DETAILS_REQUIRED');
         $this->reconcileOrphanedRelease($at);
         $this->supersedeQueuedReleaseIfTargetMoved($sha,$at);
@@ -95,8 +96,10 @@ final class HubCoreReleaseService
         }
 
         $task=self::uuid();$execution=self::uuid();$approval=self::uuid();
-        $checkpoint=['schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>$sha,'releaseMode'=>'PLATFORM_HARDENING','cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL'];
-        $scope=['schemaVersion'=>1,'taskId'=>$task,'projectId'=>self::PROJECT_ID,'releaseSha'=>$sha,'releaseMode'=>'PLATFORM_HARDENING','cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL','risk'=>'CRITICAL'];
+        $notesJson=json_encode($deploymentNotes,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        $notesSha=hash('sha256',$notesJson);
+        $checkpoint=['schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>$sha,'releaseMode'=>'PLATFORM_HARDENING','cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL','releaseNotesSha256'=>$notesSha];
+        $scope=['schemaVersion'=>1,'taskId'=>$task,'projectId'=>self::PROJECT_ID,'releaseSha'=>$sha,'releaseMode'=>'PLATFORM_HARDENING','cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL','risk'=>'CRITICAL','releaseNotesSha256'=>$notesSha];
         $goal='Deploy AWH core release '.substr($sha,0,12).' ผ่าน bounded VPS-native release controller';
         $key='core-release.'.substr($sha,0,12).'.'.substr(str_replace('-','',$task),0,12);
         try{
@@ -249,24 +252,120 @@ final class HubCoreReleaseService
 
     private function canonicalMainSha(): ?string
     {
+        return $this->canonicalRefSha('main');
+    }
+
+    private function canonicalRefSha(string $branch): ?string
+    {
+        if(!in_array($branch,['main','production'],true))return null;
         $configured=getenv('AWH_CORE_CANONICAL_GIT');
         $path=is_string($configured)&&$configured!==''?$configured:self::CANONICAL_GIT_REPO;
         if(!str_starts_with($path,'/')||is_link($path))return null;
         $repo=realpath($path);if(!is_string($repo)||!is_dir($repo))return null;
-        $ref=$repo.'/refs/heads/main';
+        $ref=$repo.'/refs/heads/'.$branch;
         if(is_file($ref)&&!is_link($ref)&&is_readable($ref)){
             $sha=strtolower(trim((string)file_get_contents($ref)));
             if(preg_match('/^[0-9a-f]{40}$/',$sha)===1)return $sha;
         }
         $packed=$repo.'/packed-refs';
         if(!is_file($packed)||is_link($packed)||!is_readable($packed)||filesize($packed)>8*1024*1024)return null;
+        $needle='refs/heads/'.$branch;
         foreach(preg_split('/\r?\n/',(string)file_get_contents($packed))?:[] as $line){
             if($line===''||$line[0]==='#'||$line[0]==='^')continue;
             $parts=preg_split('/\s+/',trim($line));
-            if(!is_array($parts)||count($parts)!==2||$parts[1]!=='refs/heads/main')continue;
+            if(!is_array($parts)||count($parts)!==2||$parts[1]!==$needle)continue;
             $sha=strtolower((string)$parts[0]);if(preg_match('/^[0-9a-f]{40}$/',$sha)===1)return $sha;
         }
         return null;
+    }
+
+
+    /** @return array<string,mixed> */
+    private function deploymentReleaseNotes(?array $latest): array
+    {
+        $main=$this->canonicalMainSha();
+        $production=$this->canonicalProductionSha();
+        $fallback=is_array($latest['releaseNotes']??null)?$latest['releaseNotes']:$this->fallbackReleaseNotes();
+        if($main===null||$production===null||hash_equals($main,$production))return $fallback;
+
+        $q=$this->pdo->prepare("SELECT checkpoint_json,updated_at FROM control_task_executions
+            WHERE project_id=:project AND required_capability='source.promote' AND state='COMPLETED'
+            ORDER BY updated_at DESC,execution_id DESC LIMIT 80");
+        $q->execute(['project'=>self::PROJECT_ID]);
+        $byTarget=[];
+        foreach($q->fetchAll() as $row){
+            try{$checkpoint=json_decode((string)$row['checkpoint_json'],true,16,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
+            if(!is_array($checkpoint)||($checkpoint['repository']??null)!=='awh')continue;
+            $target=strtolower((string)($checkpoint['targetSha']??''));$base=strtolower((string)($checkpoint['expectedMainSha']??''));
+            $notes=$checkpoint['releaseNotes']??null;
+            if(preg_match('/^[0-9a-f]{40}$/',$target)!==1||preg_match('/^[0-9a-f]{40}$/',$base)!==1||!is_array($notes)||!HubUpdateTargetRegistry::releaseDetailsReady($notes,true))continue;
+            if(!isset($byTarget[$target]))$byTarget[$target]=['base'=>$base,'notes'=>$notes,'updatedAt'=>(string)$row['updated_at']];
+        }
+
+        $cursor=$main;$segments=[];$seen=[];
+        for($i=0;$i<40&&!hash_equals($cursor,$production);$i++){
+            if(isset($seen[$cursor])||!isset($byTarget[$cursor]))return $this->incompleteDeploymentReleaseNotes($production,$main);
+            $seen[$cursor]=true;$segment=$byTarget[$cursor];$segments[]=$segment;$cursor=(string)$segment['base'];
+        }
+        if(!hash_equals($cursor,$production)||$segments===[])return $this->incompleteDeploymentReleaseNotes($production,$main);
+        $segments=array_reverse($segments);
+
+        $groups=['features'=>[],'improvements'=>[],'fixes'=>[],'internal'=>[]];$commits=[];$commitSeen=[];$touches=0;
+        $impact=['databaseMigration'=>'NONE','serviceReload'=>'NONE','appRestart'=>'NONE','signIn'=>'NONE','plannedDowntime'=>false];
+        $compat=['data'=>'COMPATIBLE','runtime'=>'COMPATIBLE','authentication'=>'UNCHANGED'];
+        foreach($segments as $segment){
+            $notes=$segment['notes'];
+            foreach(array_keys($groups) as $category)foreach((array)($notes['summary'][$category]??[]) as $label){
+                if(is_string($label)&&trim($label)!==''&&!in_array($label,$groups[$category],true)&&count($groups[$category])<12)$groups[$category][]=trim($label);
+            }
+            foreach((array)($notes['commits']??[]) as $commit){
+                if(!is_array($commit))continue;$sha=strtolower((string)($commit['sha']??''));
+                if(preg_match('/^[0-9a-f]{40}$/',$sha)!==1||isset($commitSeen[$sha])||count($commits)>=40)continue;
+                $commitSeen[$sha]=true;$commits[]=$commit;
+            }
+            $touches+=max(0,(int)($notes['changedFileCount']??0));
+            if(($notes['impact']['databaseMigration']??'NONE')!=='NONE')$impact['databaseMigration']='AUTOMATIC';
+            if(($notes['impact']['serviceReload']??'NONE')!=='NONE')$impact['serviceReload']='AUTOMATIC';
+            if(($notes['impact']['appRestart']??'NONE')!=='NONE')$impact['appRestart']='MAY_BE_REQUIRED';
+            if(($notes['impact']['signIn']??'NONE')!=='NONE')$impact['signIn']='MAY_BE_REQUIRED';
+            $impact['plannedDowntime']=$impact['plannedDowntime']||(($notes['impact']['plannedDowntime']??false)===true);
+            if(($notes['compatibility']['data']??'COMPATIBLE')!=='COMPATIBLE')$compat['data']='MIGRATION_REQUIRED';
+            if(($notes['compatibility']['runtime']??'COMPATIBLE')!=='COMPATIBLE')$compat['runtime']='RESTART_MAY_BE_REQUIRED';
+            if(($notes['compatibility']['authentication']??'UNCHANGED')!=='UNCHANGED')$compat['authentication']='SIGN_IN_MAY_BE_REQUIRED';
+        }
+        $latestNotes=$segments[count($segments)-1]['notes'];
+        $visible=array_values(array_merge($groups['features'],$groups['improvements'],$groups['fixes']));
+        return [
+            'schemaVersion'=>1,'metadataState'=>'READY','generatedFrom'=>'SOURCE_PROMOTION_CHAIN_EXACT_GIT_DIFF',
+            'repository'=>'awh','previousSha'=>$production,'targetSha'=>$main,
+            'generatedAt'=>$latestNotes['generatedAt']??$segments[count($segments)-1]['updatedAt'],
+            'ownerSummary'=>$visible[0]??'ไม่มีการเปลี่ยนแปลงที่ผู้ใช้เห็น','userVisible'=>$visible!==[],
+            'summary'=>$groups,'commits'=>$commits,'changedFileCount'=>$touches,'changedFileCountMode'=>'SEGMENT_TOUCHES','promotionCount'=>count($segments),
+            'impact'=>$impact,'compatibility'=>$compat,
+            'rollback'=>['required'=>true,'strategy'=>'PREVIOUS_VERIFIED_RELEASE_OR_SOURCE','sourceSha'=>$production],
+            'knownIssues'=>is_array($latestNotes['knownIssues']??null)?$latestNotes['knownIssues']:[],
+            'comingNext'=>is_array($latestNotes['comingNext']??null)?$latestNotes['comingNext']:[],
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    private function incompleteDeploymentReleaseNotes(string $production,string $main): array
+    {
+        return [
+            'schemaVersion'=>1,'metadataState'=>'INCOMPLETE','generatedFrom'=>'SOURCE_PROMOTION_CHAIN',
+            'repository'=>'awh','previousSha'=>$production,'targetSha'=>$main,'generatedAt'=>null,
+            'ownerSummary'=>'Release details chain is incomplete','userVisible'=>false,
+            'summary'=>['features'=>[],'improvements'=>[],'fixes'=>[],'internal'=>[]],'commits'=>[],'changedFileCount'=>0,
+            'impact'=>['databaseMigration'=>'UNKNOWN','serviceReload'=>'UNKNOWN','appRestart'=>'UNKNOWN','signIn'=>'UNKNOWN','plannedDowntime'=>false],
+            'compatibility'=>['data'=>'UNKNOWN','runtime'=>'UNKNOWN','authentication'=>'UNKNOWN'],
+            'rollback'=>['required'=>true,'strategy'=>'PREVIOUS_VERIFIED_RELEASE_OR_SOURCE','sourceSha'=>$production],
+            'knownIssues'=>[],'comingNext'=>[],
+        ];
+    }
+
+    private function canonicalProductionSha(): ?string
+    {
+        return $this->canonicalRefSha('production');
     }
 
 

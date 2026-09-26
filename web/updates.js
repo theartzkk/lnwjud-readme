@@ -284,7 +284,7 @@ function renderReleaseNotes(item,host){
   }
   if(Number(notes.changedFileCount)>0){
     const small=document.createElement('p');small.className='release-note-foot';
-    small.textContent='สรุปจาก exact source '+Number(notes.changedFileCount)+' ไฟล์ · รายละเอียด commit อยู่ใน Diagnostics';
+    small.textContent=notes.changedFileCountMode==='SEGMENT_TOUCHES'?'สรุปจาก exact source '+Number(notes.promotionCount||0)+' ช่วง · '+Number(notes.changedFileCount)+' รายการเปลี่ยนไฟล์ · รายละเอียด commit อยู่ใน Diagnostics':'สรุปจาก exact source '+Number(notes.changedFileCount)+' ไฟล์ · รายละเอียด commit อยู่ใน Diagnostics';
     body.append(small);
   }
   details.append(body);host.append(details);
