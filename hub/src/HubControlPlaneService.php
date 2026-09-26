@@ -281,6 +281,7 @@ final class HubControlPlaneService
             'reason'=>$awhReason,'preflight'=>['storage'=>$coreStorage,'releaseBlocked'=>$coreStorageBlocked],
             'runtimeState'=>$runtimeState,'runtimeComponents'=>$release['components'] ?? [],
             'rollbackReleaseId'=>$release['rollbackReleaseId'] ?? null,'progress'=>is_array($activeCore) ? (int)($activeCore['progress'] ?? 0) : null,
+            'progressEvent'=>is_array($activeCore) ? $this->latestTaskEventMessage($activeCore['taskId'] ?? null) : null,
             'failureCode'=>is_array($activeCore) ? ($activeCore['failureCode'] ?? null) : null,
             'releaseNotes'=>is_array($core['releaseNotes'] ?? null)?$core['releaseNotes']:null,
             'knownIssues'=>is_array($core['knownIssues'] ?? null)?$core['knownIssues']:[],
@@ -355,6 +356,8 @@ final class HubControlPlaneService
                     'state'=>$learnLabState,'current'=>$currentLearnLab['runtimeVersion'] ?? null,'candidate'=>$learnLabCandidate,
                     'approvalRequired'=>true,'approvalId'=>$learnLabApproval,'actionable'=>$learnLabState==='WAITING_FOR_APPROVAL',
                     'reason'=>$learnLabReason,'releaseSha'=>$currentLearnLab['releaseSha'] ?? null,
+                    'progress'=>is_array($activeLearnLab)?(int)($activeLearnLab['progress']??0):null,
+                    'progressEvent'=>is_array($activeLearnLab)?$this->latestTaskEventMessage($activeLearnLab['taskId']??null):null,
                 ];
             } elseif ($name === 'BAY Hub') {
                 $items[] = [
@@ -390,6 +393,8 @@ final class HubControlPlaneService
                         'state'=>$state,'current'=>$currentSha,'candidate'=>$candidateSha,'candidateVersion'=>$candidateAssessment['runtimeVersion']??null,
                         'approvalRequired'=>true,'approvalId'=>is_array($activeAssessment)&&is_string($activeAssessment['approvalId']??null)?$activeAssessment['approvalId']:null,
                         'actionable'=>in_array($state,['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'],true),'reason'=>$reason,'url'=>$currentAssessment['url']??'https://assessment.kruart.online/',
+                        'progress'=>is_array($activeAssessment)?(int)($activeAssessment['progress']??0):null,
+                        'progressEvent'=>is_array($activeAssessment)?$this->latestTaskEventMessage($activeAssessment['taskId']??null):null,
                     ];
                 }
             } else {
@@ -480,6 +485,52 @@ final class HubControlPlaneService
             'policy'=>['singleControlPlane'=>true,'parallelDeployEngine'=>false,'ownerApprovalPreserved'=>true,'rollbackRequired'=>true,'sourceAuthority'=>'AWH_VAULT_OR_EXISTING_ADAPTER',
                 'singleLatestCandidate'=>true,'stalePendingRelease'=>'AUTO_SUPERSEDE_BEFORE_LEASE','humanShaRequired'=>false,'runtimeCoherenceRequired'=>true,'releaseDetailsRequired'=>true],
         ];
+    }
+
+    /** @return array{message:?string,occurredAt:string,state:string,progress:int}|null */
+    private function latestTaskEventMessage(mixed $taskId): ?array
+    {
+        if(!is_string($taskId)||preg_match('/^[0-9a-f-]{36}$/i',$taskId)!==1)return null;
+        $q=$this->pdo->prepare('SELECT state,progress,message,occurred_at FROM control_task_events WHERE task_id=:task ORDER BY occurred_at DESC,event_id DESC LIMIT 1');
+        $q->execute(['task'=>strtolower($taskId)]);$row=$q->fetch();
+        if(!is_array($row))return null;
+        return [
+            'message'=>$row['message']===null?null:(string)$row['message'],
+            'occurredAt'=>(string)$row['occurred_at'],
+            'state'=>(string)$row['state'],
+            'progress'=>(int)$row['progress'],
+        ];
+    }
+
+    public function updateCenterLiveForSession(string $sessionToken,?string $cursor=null,?string $now=null): array
+    {
+        $session=$this->sessionRow($sessionToken,$now);$userId=(string)$session['user_id'];$this->assertOwner($userId);
+        $marker=$this->updateCenterLiveCursor($userId);
+        $changed=$cursor===null||preg_match('/^[0-9a-f]{64}$/',$cursor)!==1||!hash_equals($marker,$cursor);
+        return [
+            'schemaVersion'=>1,
+            'cursor'=>$marker,
+            'changed'=>$changed,
+            'snapshot'=>$changed?$this->updateCenterForSession($sessionToken,$now):null,
+        ];
+    }
+
+    private function updateCenterLiveCursor(string $userId): string
+    {
+        $task=$this->pdo->prepare("SELECT COALESCE(MAX(updated_at),'') AS updated_at,COUNT(*) AS active_count FROM control_tasks WHERE user_id=:user AND state NOT IN ('COMPLETED','FAILED','CANCELLED')");
+        $task->execute(['user'=>$userId]);$taskRow=$task->fetch();
+        $event=$this->pdo->prepare("SELECT e.event_id,e.occurred_at FROM control_task_events e JOIN control_tasks t ON t.task_id=e.task_id WHERE t.user_id=:user ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT 1");
+        $event->execute(['user'=>$userId]);$eventRow=$event->fetch();
+        $execution=$this->pdo->prepare("SELECT COALESCE(MAX(e.updated_at),'') FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE t.user_id=:user AND e.required_capability IN ('system.core.release','system.learnlab.release','system.assessment.release','project.mutate.deploy','bay.remote_update.install','source.promote')");
+        $execution->execute(['user'=>$userId]);
+        $payload=[
+            'taskUpdatedAt'=>is_array($taskRow)?(string)($taskRow['updated_at']??''):'',
+            'activeCount'=>is_array($taskRow)?(int)($taskRow['active_count']??0):0,
+            'eventId'=>is_array($eventRow)?(string)($eventRow['event_id']??''):'',
+            'eventAt'=>is_array($eventRow)?(string)($eventRow['occurred_at']??''):'',
+            'executionUpdatedAt'=>(string)($execution->fetchColumn()?:''),
+        ];
+        return hash('sha256',json_encode($payload,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR));
     }
 
     /** @return array<string,array<string,mixed>> */

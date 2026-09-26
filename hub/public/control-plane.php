@@ -11,6 +11,67 @@ require_once dirname(__DIR__) . '/src/HubOwnerAuthRouter.php';
 try {
     $database = getenv('AWH_HUB_DB_PATH') ?: '/var/lib/awh-hub/awh.sqlite';
     $path = (string) (parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?: '');
+    if ($path === '/api/v1/control/updates/stream' && (string) ($_SERVER['REQUEST_METHOD'] ?? '') === 'GET') {
+        if (!HubBrowserOriginPolicy::safeReadAllowed($_SERVER)) {
+            http_response_code(403);
+            header('Content-Type: text/event-stream; charset=utf-8');
+            header('Cache-Control: no-store');
+            echo "event: error
+";
+            echo 'data: {"schemaVersion":1,"code":"ORIGIN_NOT_ALLOWED"}'."
+
+";
+            exit;
+        }
+        $token=is_string($_COOKIE['__Host-awh_control_session']??null)?(string)$_COOKIE['__Host-awh_control_session']:'';
+        $control=HubControlPlaneService::openExisting($database);
+        $initial=$control->updateCenterLiveForSession($token,null);
+        http_response_code(200);
+        header('Content-Type: text/event-stream; charset=utf-8');
+        header('Cache-Control: no-store, no-cache, must-revalidate');
+        header('X-Accel-Buffering: no');
+        header('X-Content-Type-Options: nosniff');
+        header('Referrer-Policy: no-referrer');
+        @set_time_limit(30);
+        @ini_set('zlib.output_compression','0');
+        while(ob_get_level()>0)@ob_end_flush();
+        ob_implicit_flush(true);
+        $cursor=(string)$initial['cursor'];$deadline=microtime(true)+25.0;$lastPing=microtime(true);
+        echo "retry: 1000
+";
+        $initialData=json_encode(['schemaVersion'=>1,'cursor'=>$cursor,'snapshot'=>$initial['snapshot']],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        echo 'id: '.$cursor."
+";
+        echo "event: update
+";
+        echo 'data: '.$initialData."
+
+";
+        @flush();
+        do {
+            $payload=$control->updateCenterLiveForSession($token,$cursor);
+            if(($payload['changed']??false)===true&&is_array($payload['snapshot']??null)){
+                $cursor=(string)$payload['cursor'];
+                $data=json_encode(['schemaVersion'=>1,'cursor'=>$cursor,'snapshot'=>$payload['snapshot']],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+                echo 'id: '.$cursor."
+";
+                echo "event: update
+";
+                echo 'data: '.$data."
+
+";
+                $lastPing=microtime(true);
+            }elseif(microtime(true)-$lastPing>=10.0){
+                echo ': keepalive '.gmdate('c')."
+
+";$lastPing=microtime(true);
+            }
+            @flush();
+            if(connection_aborted())break;
+            usleep(500000);
+        } while(microtime(true)<$deadline);
+        exit;
+    }
     $workerCandidate = preg_match('#^/api/v1/control/worker/executions/[0-9a-f-]{36}/candidate$#i', $path) === 1 && (string) ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
     $workerOfficeArtifact = preg_match('#^/api/v1/control/worker/executions/[0-9a-f-]{36}/office-artifact$#i', $path) === 1 && (string) ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
     $workerProjectSource = preg_match('#^/api/v1/control/worker/projects/[0-9a-f-]{36}/source/[0-9a-f]{40,64}$#i', $path) === 1 && (string) ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';

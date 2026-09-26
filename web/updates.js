@@ -1,6 +1,6 @@
 import {
   createBayRemoteInstallRelay, decideApproval, loadAuthSession, loadBayRemoteUpdateStatus, loadUpdateCenter,
-  managedSiteAction, relayBayRemoteCommand, requestAssessmentRelease, requestCoreRelease, stepUp,
+  managedSiteAction, relayBayRemoteCommand, requestAssessmentRelease, requestCoreRelease, stepUp, subscribeUpdateCenterLive,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $=(id)=>document.getElementById(id);
@@ -14,6 +14,9 @@ let refreshTimer=null;
 let localOperation=null;
 let filterMode='ALL';
 let searchTerm='';
+let stopLiveUpdates=null;
+let liveConnected=false;
+let liveUpdatedAt=0;
 
 const stateLabel=(state)=>({
   CURRENT:'ล่าสุดแล้ว',UPDATE_AVAILABLE:'พร้อมอัปเดต',WAITING_FOR_APPROVAL:'รอยืนยัน',UPDATING:'กำลังอัปเดต',
@@ -378,6 +381,41 @@ function render(){
   renderRuntimeHealth();renderReleaseInfrastructure();renderHistory();summary();renderProgress();
 }
 
+function relativeLiveTime(value){
+  const at=Date.parse(value||'');if(!Number.isFinite(at))return 'กำลังรับสถานะสด';
+  const seconds=Math.max(0,Math.round((Date.now()-at)/1000));
+  if(seconds<2)return 'อัปเดตเมื่อสักครู่';
+  if(seconds<60)return 'อัปเดตเมื่อ '+seconds+' วินาทีที่แล้ว';
+  return 'อัปเดตเมื่อ '+Math.max(1,Math.round(seconds/60))+' นาทีที่แล้ว';
+}
+
+function hasActiveUpdate(){
+  return Boolean(localOperation)||(center?.items||[]).some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state));
+}
+
+function stopLiveStream(){
+  if(stopLiveUpdates){stopLiveUpdates();stopLiveUpdates=null;}
+  liveConnected=false;
+}
+
+function ensureLiveStream(){
+  if(stopLiveUpdates||!hasActiveUpdate())return;
+  stopLiveUpdates=subscribeUpdateCenterLive((snapshot)=>{
+    liveConnected=true;liveUpdatedAt=Date.now();center=snapshot;
+    $('updates-freshness').textContent='สด · '+new Date(snapshot.generatedAt).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    if(!(center?.items||[]).some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)))localOperation=null;
+    render();
+    scheduleRefresh();
+  },()=>{
+    liveConnected=false;
+    scheduleRefresh();
+  });
+}
+
+function syncLiveStream(){
+  if(hasActiveUpdate())ensureLiveStream();else stopLiveStream();
+}
+
 function renderProgress(){
   const active=(center?.items||[]).filter((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state));
   const host=$('operation-progress');
@@ -385,11 +423,15 @@ function renderProgress(){
   host.hidden=false;
   const item=active[0];
   const waiting=item?.state==='WAITING_FOR_APPROVAL';
-  const progress=Math.max(0,Math.min(100,Number(item?.progress??(waiting?5:localOperation?.progress??15))));
+  const progress=Math.max(0,Math.min(100,Number(item?.progressEvent?.progress??item?.progress??(waiting?5:localOperation?.progress??15))));
   $('operation-progress-title').textContent=waiting?'รอยืนยันก่อนติดตั้ง':('กำลังอัปเดต '+(item?.name||localOperation?.name||'ระบบ'));
   $('operation-progress-percent').textContent=Math.round(progress)+'%';
   $('operation-progress-bar').style.width=progress+'%';
-  $('operation-progress-message').textContent=waiting?'ระบบพร้อมแล้วและจะเริ่มติดตั้งหลังยืนยันสิทธิ์':(item?.progressMessage||localOperation?.message||'กำลังติดตามสถานะจาก release controller');
+  const event=item?.progressEvent||null;
+  $('operation-progress-message').textContent=waiting?'ระบบพร้อมแล้วและจะเริ่มติดตั้งหลังยืนยันสิทธิ์':(event?.message||localOperation?.message||'กำลังติดตามสถานะจาก release controller');
+  $('operation-progress-live').textContent=(liveConnected?'● สด · ':'สำรอง · ')+relativeLiveTime(event?.occurredAt||null);
+  host.dataset.active=!waiting&&progress<100?'true':'false';
+  host.dataset.live=liveConnected?'true':'false';
   const thresholds=[10,28,58,86,100];
   [...$('operation-steps').children].forEach((step,index)=>{
     step.dataset.status=progress>=thresholds[index]?'done':(progress>=Math.max(0,thresholds[index]-25)?'active':'pending');
@@ -531,8 +573,10 @@ async function updateAll(){
 
 function scheduleRefresh(){
   clearTimeout(refreshTimer);
-  const active=(center?.items||[]).some((item)=>['UPDATING','WAITING_FOR_APPROVAL','REMOTE_CHECK_REQUIRED'].includes(item.state));
-  refreshTimer=setTimeout(()=>{if(!document.hidden)void refresh();},active?5000:30000);
+  const active=hasActiveUpdate()||(center?.items||[]).some((item)=>item.state==='REMOTE_CHECK_REQUIRED');
+  syncLiveStream();
+  const liveFresh=liveConnected&&(Date.now()-liveUpdatedAt)<4000;
+  refreshTimer=setTimeout(()=>{if(!document.hidden)void refresh();},active?(liveFresh?5000:1000):30000);
 }
 async function refresh(){
   if(refreshing)return;
@@ -590,5 +634,5 @@ document.querySelectorAll('.filter-chip').forEach((button)=>button.addEventListe
   document.querySelectorAll('.filter-chip').forEach((chip)=>chip.classList.toggle('is-active',chip===button));
   render();
 }));
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refresh();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){stopLiveStream();return;}void refresh();});
 void refresh();

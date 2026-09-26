@@ -309,6 +309,22 @@ export async function submitCloudTask({ projectId, kind, revision, profile = nul
 }
 export async function loadOwnerSelfServiceStatus() { return controlRequest('/api/v1/control/owner/status'); }
 export async function loadInfrastructure() { return controlRequest('/api/v1/control/infrastructure'); }
+export function subscribeUpdateCenterLive(onUpdate, onError = null) {
+  if (typeof EventSource === 'undefined' || typeof onUpdate !== 'function') return null;
+  const stream = new EventSource('/api/v1/control/updates/stream', { withCredentials: true });
+  stream.addEventListener('update', (event) => {
+    try {
+      const value = JSON.parse(event.data);
+      if (value?.schemaVersion !== 1 || !value.snapshot || value.snapshot.schemaVersion !== 1) throw new Error('LIVE_UPDATE_INVALID');
+      onUpdate(value.snapshot, value.cursor || null);
+    } catch (error) {
+      if (typeof onError === 'function') onError(error);
+    }
+  });
+  stream.onerror = (error) => { if (typeof onError === 'function') onError(error); };
+  return () => stream.close();
+}
+
 export async function loadUpdateCenter() {
   const value = await controlRequest('/api/v1/control/updates');
   if (value.schemaVersion !== 1 || !value.summary || !Array.isArray(value.items) || !value.policy || value.policy.singleControlPlane !== true) throw new Error('สถานะศูนย์อัปเดต AWH ไม่ถูกต้อง');

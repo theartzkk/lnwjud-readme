@@ -33,6 +33,16 @@ try {
         fwrite(STDOUT, "DEPLOY_AUTHORITY_LEASE_EXPIRES=" . $result['leaseExpiresAt'] . "\n");
         exit(0);
     }
+    if ($action === 'stage') {
+        $execution = $argv[3] ?? '';
+        $stage = strtoupper(trim((string)($argv[4] ?? '')));
+        $result = $service->stage($execution, $stage);
+        fwrite(STDOUT, "DEPLOY_AUTHORITY=STAGE\n");
+        fwrite(STDOUT, "DEPLOY_AUTHORITY_STAGE=" . $stage . "\n");
+        fwrite(STDOUT, "DEPLOY_AUTHORITY_PROGRESS=" . $result['progress'] . "\n");
+        fwrite(STDOUT, "DEPLOY_AUTHORITY_RECORDED=" . (($result['recorded'] ?? false) ? '1' : '0') . "\n");
+        exit(0);
+    }
     if ($action === 'release') {
         $execution = $argv[3] ?? '';
         $outcome = strtolower($argv[4] ?? '');
@@ -48,7 +58,7 @@ try {
         fwrite(STDOUT, "DEPLOY_AUTHORITY_EXPIRED_RELEASED=" . $result['releasedExpired'] . "\n");
         exit(0);
     }
-    fwrite(STDERR, "usage: deploy-execution-authority.php acquire <db> <release-id> [lease-seconds] | verify <db> <execution-id> [lease-seconds] | release <db> <execution-id> <success|failure> | reconcile <db>\n");
+    fwrite(STDERR, "usage: deploy-execution-authority.php acquire <db> <release-id> [lease-seconds] | verify <db> <execution-id> [lease-seconds] | stage <db> <execution-id> <stage> | release <db> <execution-id> <success|failure> | reconcile <db>\n");
     exit(2);
 } catch (HubDeployExecutionAuthorityException $error) {
     fwrite(STDERR, "DEPLOY_AUTHORITY_FAILED=" . $error->codeName . "\n");

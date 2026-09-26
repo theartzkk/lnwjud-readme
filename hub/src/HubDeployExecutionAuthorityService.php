@@ -149,6 +149,77 @@ final class HubDeployExecutionAuthorityService
         }
     }
 
+    /** @return array{recorded:bool,progress:int,message:?string} */
+    public function stage(string $executionId,string $stage,?string $now=null): array
+    {
+        $this->assertSchema();
+        if(!self::validUuid($executionId)||preg_match('/^[A-Z][A-Z0-9_]{2,63}$/',$stage)!==1)
+            throw new HubDeployExecutionAuthorityException('Deploy stage identity is invalid','DEPLOY_AUTHORITY_INVALID');
+        $detail=self::stageDetail($stage);
+        if($detail===null)return ['recorded'=>false,'progress'=>0,'message'=>null];
+        $at=self::timestamp($now??gmdate('c'));
+        $this->pdo->exec('BEGIN IMMEDIATE');
+        try{
+            $q=$this->pdo->prepare("SELECT e.task_id,e.state,e.required_capability,t.state AS task_state,t.progress
+                FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id
+                WHERE e.execution_id=:execution");
+            $q->execute(['execution'=>strtolower($executionId)]);$row=$q->fetch();
+            if(!is_array($row)||!in_array((string)$row['state'],['LEASED','RUNNING'],true)||(string)$row['task_state']!=='RUNNING'
+                ||!in_array((string)$row['required_capability'],['system.core.release','project.mutate.deploy'],true))
+                throw new HubDeployExecutionAuthorityException('Deploy execution is not runnable','DEPLOY_AUTHORITY_INVALID');
+            $currentProgress=(int)$row['progress'];
+            if((int)$detail['progress']<$currentProgress){
+                $this->pdo->exec('COMMIT');
+                return ['recorded'=>false,'progress'=>$currentProgress,'message'=>null];
+            }
+            $progress=max($currentProgress,(int)$detail['progress']);
+            $taskId=(string)$row['task_id'];
+            $last=$this->pdo->prepare("SELECT progress,message FROM control_task_events WHERE task_id=:task ORDER BY occurred_at DESC,event_id DESC LIMIT 1");
+            $last->execute(['task'=>$taskId]);$previous=$last->fetch();
+            if(is_array($previous)&&(int)$previous['progress']===$progress&&(string)($previous['message']??'')===(string)$detail['message']){
+                $this->pdo->exec('COMMIT');
+                return ['recorded'=>false,'progress'=>$progress,'message'=>(string)$detail['message']];
+            }
+            $this->pdo->prepare("UPDATE control_tasks SET progress=:progress,updated_at=:at WHERE task_id=:task AND state='RUNNING'")
+                ->execute(['progress'=>$progress,'at'=>$at,'task'=>$taskId]);
+            $this->pdo->prepare("UPDATE control_task_executions SET updated_at=:at WHERE execution_id=:execution AND state IN ('LEASED','RUNNING')")
+                ->execute(['at'=>$at,'execution'=>strtolower($executionId)]);
+            $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at)
+                VALUES(:id,:task,'RUNNING',:progress,:message,:at)")
+                ->execute(['id'=>self::uuid(),'task'=>$taskId,'progress'=>$progress,'message'=>(string)$detail['message'],'at'=>$at]);
+            $this->pdo->exec('COMMIT');
+            return ['recorded'=>true,'progress'=>$progress,'message'=>(string)$detail['message']];
+        }catch(Throwable $error){
+            $this->rollback();
+            if($error instanceof HubDeployExecutionAuthorityException)throw $error;
+            throw new HubDeployExecutionAuthorityException('Deploy stage could not be recorded');
+        }
+    }
+
+    /** @return array{progress:int,message:string}|null */
+    private static function stageDetail(string $stage): ?array
+    {
+        return match($stage){
+            'EXECUTION_AUTHORITY_ACQUIRED'=>['progress'=>55,'message'=>'สำรองข้อมูลและเตรียมไฟล์รุ่นใหม่เรียบร้อยแล้ว กำลังเริ่มติดตั้ง'],
+            'RUNTIME_LINEAGE_READY'=>['progress'=>60,'message'=>'Runtime lineage พร้อมแล้ว กำลังตรวจ dependency และ migration'],
+            'NATIVE_EXECUTOR_QUIESCED','HOSTING_OPERATOR_QUIESCED'=>['progress'=>64,'message'=>'พัก writer ชั่วคราวอย่างปลอดภัย กำลังปรับระบบ'],
+            'PLATFORM_HARDENING_MIGRATION_VERIFIED','IDENTITY_CONVERGENCE_MIGRATION_VERIFIED','VAULT_SOURCE_MIGRATION_VERIFIED','PROJECTS_READY'=>['progress'=>68,'message'=>'ฐานข้อมูลและ migration ผ่านการตรวจแล้ว'],
+            'CONTROL_POINTER'=>['progress'=>74,'message'=>'เปิด Control Plane รุ่นใหม่แล้ว'],
+            'PLATFORM_RUNTIME_READY','MAINTENANCE_RUNTIME_READY'=>['progress'=>77,'message'=>'Runtime service พร้อมแล้ว'],
+            'PHP_FPM_RELOAD'=>['progress'=>79,'message'=>'กำลังโหลดบริการเว็บรุ่นใหม่'],
+            'WEB_MANIFEST_VERIFIED'=>['progress'=>82,'message'=>'ไฟล์เว็บรุ่นใหม่ผ่าน manifest verification แล้ว'],
+            'WEB_POINTER_SWITCH'=>['progress'=>84,'message'=>'สลับหน้าเว็บไปยังรุ่นใหม่แล้ว'],
+            'NGINX_CONFIGURED','SERVICE_RELOAD'=>['progress'=>88,'message'=>'เปิดบริการรุ่นใหม่แล้ว กำลังตรวจการทำงาน'],
+            'OWNER_AUTH_WEB_SURFACE','CONTROL_ROUTE'=>['progress'=>90,'message'=>'หน้าเว็บและเส้นทาง Control ผ่านการตรวจแล้ว'],
+            'M3D_REGRESSION'=>['progress'=>92,'message'=>'Regression ชุดแรกผ่านแล้ว'],
+            'M3E_POST_SCHEMA_REGRESSION'=>['progress'=>94,'message'=>'Regression หลัง schema ผ่านแล้ว'],
+            'PROJECT_VAULT_SOURCE_SYNC'=>['progress'=>95,'message'=>'Source และ AWH Vault ซิงก์แล้ว'],
+            'SOURCE_DRIFT_VERIFY'=>['progress'=>97,'message'=>'กำลังตรวจ Source drift รอบสุดท้าย'],
+            'SOURCE_DRIFT_VERIFIED'=>['progress'=>99,'message'=>'ตรวจ Source drift ผ่านแล้ว กำลังปิด release'],
+            default=>null,
+        };
+    }
+
     public function release(string $executionId, bool $success, ?string $now = null): void
     {
         $this->assertSchema();
@@ -197,7 +268,7 @@ final class HubDeployExecutionAuthorityService
 
     private function assertSchema(): void
     {
-        foreach (['projects','owner_bootstrap','control_tasks','control_task_executions','control_execution_envelopes'] as $table) {
+        foreach (['projects','owner_bootstrap','control_tasks','control_task_executions','control_execution_envelopes','control_task_events'] as $table) {
             $q = $this->pdo->prepare("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=:name");
             $q->execute(['name'=>$table]);
             if ((int)$q->fetchColumn() !== 1) {

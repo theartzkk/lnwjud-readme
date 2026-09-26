@@ -373,3 +373,46 @@ test('Update Center owner surface has a durable clutter budget', async()=>{
   assert.ok(script.includes("ล่าสุด '+Math.min(allRows.length,6)+' รายการ"));
 });
 
+
+
+test('Update Center streams canonical release progress in real time with bounded fallback', async()=>{
+  const [service,entry,adapter,page,script,css,authority,cli,remote]=await Promise.all([
+    readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),
+    readFile(join(ROOT,'hub/public/control-plane.php'),'utf8'),
+    readFile(join(ROOT,'web/control-plane-adapter.js'),'utf8'),
+    readFile(join(ROOT,'web/updates.html'),'utf8'),
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+    readFile(join(ROOT,'web/updates.css'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubDeployExecutionAuthorityService.php'),'utf8'),
+    readFile(join(ROOT,'hub/bin/deploy-execution-authority.php'),'utf8'),
+    readFile(join(ROOT,'deploy/awh-control-plane/remote-deploy-control-plane.sh'),'utf8'),
+  ]);
+  assert.match(service,/latestTaskEventMessage/);
+  assert.match(service,/control_task_events/);
+  assert.match(service,/updateCenterLiveForSession/);
+  assert.match(service,/updateCenterLiveCursor/);
+  assert.match(service,/'progressEvent'/);
+  assert.match(entry,/\/api\/v1\/control\/updates\/stream/);
+  assert.match(entry,/text\/event-stream/);
+  assert.match(entry,/X-Accel-Buffering/);
+  assert.match(entry,/retry: 1000/);
+  assert.match(entry,/usleep\(500000\)/);
+  assert.match(adapter,/subscribeUpdateCenterLive/);
+  assert.match(adapter,/new EventSource/);
+  assert.match(page,/operation-progress-live/);
+  assert.match(script,/subscribeUpdateCenterLive/);
+  assert.match(script,/progressEvent\?\.progress/);
+  assert.match(script,/liveFresh\?5000:1000/);
+  assert.match(script,/relativeLiveTime/);
+  assert.match(script,/stopLiveStream/);
+  assert.match(css,/update-progress-live/);
+  assert.match(css,/prefers-reduced-motion/);
+  assert.match(authority,/public function stage/);
+  assert.match(authority,/SOURCE_DRIFT_VERIFIED/);
+  assert.match(authority,/late older stage|detail\['progress'\]<\$currentProgress/);
+  assert.match(cli,/\$action === 'stage'/);
+  assert.match(remote,/report_deploy_stage/);
+  assert.match(remote,/deploy-execution-authority\.php" stage/);
+  assert.match(remote,/report_deploy_stage "\$1"/);
+  assert.match(remote,/\|\| true/);
+});

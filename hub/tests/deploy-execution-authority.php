@@ -73,6 +73,16 @@ try {
     $service = new HubDeployExecutionAuthorityService($pdo);
     $borrowed = $service->acquire('m21-aaaaaaaaaaaa', 600, $now);
     dea_assert($borrowed['borrowed'] === true && $borrowed['executionId'] === $parentExecution, 'Core Release authority is borrowed instead of duplicated');
+    $stageStart=$service->stage($parentExecution,'EXECUTION_AUTHORITY_ACQUIRED','2026-09-15T00:30:02+00:00');
+    dea_assert($stageStart['recorded']===true&&$stageStart['progress']===55, 'deploy stage advances borrowed Core Release progress');
+    $stageControl=$service->stage($parentExecution,'CONTROL_POINTER','2026-09-15T00:30:03+00:00');
+    dea_assert($stageControl['recorded']===true&&$stageControl['progress']===74, 'later deploy stage advances progress monotonically');
+    $staleStage=$service->stage($parentExecution,'RUNTIME_LINEAGE_READY','2026-09-15T00:30:04+00:00');
+    dea_assert($staleStage['recorded']===false&&$staleStage['progress']===74&&$staleStage['message']===null, 'late older stage cannot regress progress or message');
+    $liveTask=$pdo->prepare("SELECT progress FROM control_tasks WHERE task_id=?");$liveTask->execute([$parentTask]);
+    dea_assert((int)$liveTask->fetchColumn()===74, 'task progress follows canonical deploy event stage');
+    $liveEvent=$pdo->prepare("SELECT progress,message FROM control_task_events WHERE task_id=? ORDER BY occurred_at DESC,event_id DESC LIMIT 1");$liveEvent->execute([$parentTask]);$liveEventRow=$liveEvent->fetch();
+    dea_assert((int)$liveEventRow['progress']===74&&str_contains((string)$liveEventRow['message'],'Control Plane'), 'latest live event remains the newest meaningful stage');
     $revived=$pdo->prepare("SELECT state,lease_expires_at,assigned_device_id FROM control_tasks WHERE task_id=?");$revived->execute([$parentTask]);$revivedRow=$revived->fetch();
     dea_assert($revivedRow['state']==='RUNNING' && is_string($revivedRow['lease_expires_at']) && $revivedRow['assigned_device_id']===null, 'legacy WAITING_FOR_WORKER parent is revived with a bounded VPS lease');
     $verified = $service->verify($parentExecution, 600, '2026-09-15T00:30:10+00:00');
