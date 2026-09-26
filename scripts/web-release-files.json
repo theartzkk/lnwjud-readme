@@ -5,6 +5,8 @@
     "awh-design-system.css",
     "awh-light-system.css",
     "kruart-system.css",
+    "interaction-feedback.css",
+    "interaction-feedback.js",
     "responsive-layout.css",
     "app.js",
     "navigation.js",
@@ -131,6 +133,14 @@
     "device-runtime/macos/awh-mcp-stdio.sh"
   ],
   "sourceCopies": [
+    [
+      "web/interaction-feedback.js",
+      "interaction-feedback.js"
+    ],
+    [
+      "web/interaction-feedback.css",
+      "interaction-feedback.css"
+    ],
     [
       "web/assets/bay-mark.svg",
       "assets/bay-mark.svg"

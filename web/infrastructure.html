@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="./responsive-layout.css?release=__AWH_WEB_RELEASE_ID__" />
   <link rel="stylesheet" href="./awh-light-system.css?release=__AWH_WEB_RELEASE_ID__" />
   <link rel="stylesheet" href="./kruart-system.css?release=__AWH_WEB_RELEASE_ID__" />
+  <link rel="stylesheet" href="./interaction-feedback.css?release=__AWH_WEB_RELEASE_ID__" />
 </head>
 <body>
   <header class="infra-header"><a class="infra-brand" href="./"><img class="system-brand-icon" src="./logo-256x256.png?release=__AWH_WEB_RELEASE_ID__" alt="" /><strong>AWH</strong></a><div class="infra-actions"><span id="infra-freshness">กำลังตรวจ VPS…</span><a class="awh-back-link" data-awh-back href="./panel.html"><span aria-hidden="true">←</span><span>Control Panel</span></a><button id="infra-refresh" type="button">รีเฟรช</button></div></header>
@@ -84,6 +85,7 @@
 
     <section class="infra-note"><strong>ออกแบบให้ปลอดภัยตั้งแต่ฐาน</strong><p>หน้านี้อ่าน snapshot ที่ถูก sanitize เท่านั้น ไม่มีช่องรันคำสั่ง Linux และไม่มี secret หรือ path ของเซิร์ฟเวอร์ถูกส่งมาที่ browser การเปลี่ยนแปลงสำคัญ เช่น Deploy, Restore หรือแก้ Domain จะใช้ approval และ guarded action แยกต่างหาก</p></section>
   </main>
+  <script src="./interaction-feedback.js?release=__AWH_WEB_RELEASE_ID__" defer></script>
   <script type="module" src="./navigation.js?release=__AWH_WEB_RELEASE_ID__"></script>
   <script type="module" src="./infrastructure.js?release=__AWH_WEB_RELEASE_ID__"></script>
 </body>

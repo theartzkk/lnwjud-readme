@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="./awh-design-system.css?release=__AWH_WEB_RELEASE_ID__" />
   <link rel="stylesheet" href="./awh-light-system.css?release=__AWH_WEB_RELEASE_ID__" />
   <link rel="stylesheet" href="./kruart-system.css?release=__AWH_WEB_RELEASE_ID__" />
+  <link rel="stylesheet" href="./interaction-feedback.css?release=__AWH_WEB_RELEASE_ID__" />
 </head>
 <body class="awh-booting">
   <div id="awh-app" class="app-shell">
@@ -325,6 +326,7 @@
 
     <section id="recovery-sheet" class="sheet" hidden aria-modal="true" role="dialog" aria-labelledby="recovery-sheet-title"><div class="sheet-backdrop" data-close-sheet="recovery-sheet"></div><div class="sheet-card"><div class="sheet-header"><div><p class="eyebrow">RECOVERY</p><h2 id="recovery-sheet-title">ตั้งรหัสผ่านใหม่</h2></div><button class="icon-button" type="button" data-close-sheet="recovery-sheet" aria-label="ปิด">ปิด</button></div><p id="reset-instructions" class="muted">เปิดลิงก์กู้คืนจาก AWH Agent บนอุปกรณ์ที่เชื่อถือได้ แล้วเลือก “ตั้งรหัสผ่านใหม่” ในหน้านี้ ลิงก์มีอายุสั้นและใช้ได้ครั้งเดียว</p><form id="reset-password-form" class="compact-form"><label for="reset-password">รหัสผ่านใหม่</label><input id="reset-password" type="password" autocomplete="new-password" minlength="8" required /><label for="reset-password-confirm">ยืนยันรหัสผ่านใหม่</label><input id="reset-password-confirm" type="password" autocomplete="new-password" minlength="8" required /><button class="primary-button" type="submit">บันทึกรหัสผ่านใหม่</button><p id="reset-message" class="form-message" role="status"></p></form><details class="emergency-recovery"><summary>ใช้รหัสกู้คืนฉุกเฉิน</summary><form id="recovery-form" class="compact-form"><p class="muted">ใช้เฉพาะกรณีฉุกเฉินเมื่อไม่มีอุปกรณ์ AWH ที่เชื่อถือได้</p><label for="recovery-username">ชื่อผู้ใช้</label><input id="recovery-username" autocomplete="username" /><label for="recovery-code">รหัสกู้คืน</label><input id="recovery-code" autocomplete="one-time-code" /><label for="recovery-password">รหัสผ่านใหม่</label><input id="recovery-password" type="password" autocomplete="new-password" /><button class="secondary-button" type="submit">ใช้รหัสกู้คืน</button><p id="recovery-message" class="form-message" role="status"></p></form></details></div></section>
   </div>
+  <script src="./interaction-feedback.js?release=__AWH_WEB_RELEASE_ID__" defer></script>
   <script type="module" src="./app.js?release=__AWH_WEB_RELEASE_ID__"></script>
 </body>
 </html>
