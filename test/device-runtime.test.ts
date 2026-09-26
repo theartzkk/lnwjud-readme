@@ -17,7 +17,7 @@ test('device runtime discovers dynamic loopback GUI MCP and system provider', as
     pathAvailable: async (path) => path === system,
     tcpReady: async (url) => url === 'http://127.0.0.1:59702/mcp',
   });
-  assert.deepEqual(runtime, { guiMcpUrl: 'http://127.0.0.1:59702/mcp', guiToolkitCommand: null, systemMcpCommand: system });
+  assert.deepEqual(runtime, { guiMcpUrl: 'http://127.0.0.1:59702/mcp', guiMcpCommand: null, guiToolkitCommand: null, systemMcpCommand: system });
 });
 
 test('device runtime rejects non-loopback or unavailable GUI endpoints', async () => {
@@ -26,7 +26,7 @@ test('device runtime rejects non-loopback or unavailable GUI endpoints', async (
   await mkdir(support, { recursive: true });
   await writeFile(join(support, 'lnwjud.yaml'), JSON.stringify({ mcp: { server_urls: [{ url: 'https://example.com/mcp' }] } }));
   const runtime = await discoverAwhDeviceRuntime({ home, platform: 'darwin', pathAvailable: async () => false, tcpReady: async () => true });
-  assert.deepEqual(runtime, { guiMcpUrl: null, guiToolkitCommand: null, systemMcpCommand: null });
+  assert.deepEqual(runtime, { guiMcpUrl: null, guiMcpCommand: null, guiToolkitCommand: null, systemMcpCommand: null });
 });
 
 test('device runtime discovers KRUART GUI toolkit as a provider-neutral fallback beside AWH system runtime', async () => {
@@ -39,7 +39,19 @@ test('device runtime discovers KRUART GUI toolkit as a provider-neutral fallback
     pathAvailable: async (path) => path === gui || path === system,
     tcpReady: async () => false,
   });
-  assert.deepEqual(runtime, { guiMcpUrl: null, guiToolkitCommand: gui, systemMcpCommand: system });
+  assert.deepEqual(runtime, { guiMcpUrl: null, guiMcpCommand: null, guiToolkitCommand: gui, systemMcpCommand: system });
+});
+
+test('device runtime prefers the local AWH lnwjud stdio bridge when installed', async () => {
+  const home = '/Users/fixture';
+  const bridge = join(home, '.awh', 'bin', 'awh-mcp-stdio');
+  const runtime = await discoverAwhDeviceRuntime({
+    home,
+    platform: 'darwin',
+    pathAvailable: async (path) => path === bridge,
+    tcpReady: async () => false,
+  });
+  assert.deepEqual(runtime, { guiMcpUrl: null, guiMcpCommand: bridge, guiToolkitCommand: null, systemMcpCommand: null });
 });
 
 test('capability selects only the provider class it actually needs', () => {

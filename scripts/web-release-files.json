@@ -127,7 +127,8 @@
     "device-runtime-release.json",
     "device-runtime/runtime-hardening.patch",
     "device-runtime/macos/awh-remote-worker.sh",
-    "device-runtime/macos/awh-runtime-update.sh"
+    "device-runtime/macos/awh-runtime-update.sh",
+    "device-runtime/macos/awh-mcp-stdio.sh"
   ],
   "sourceCopies": [
     [
@@ -461,6 +462,10 @@
     [
       "deploy/remote-worker/macos/awh-runtime-update.sh",
       "device-runtime/macos/awh-runtime-update.sh"
+    ],
+    [
+      "deploy/remote-worker/macos/awh-mcp-stdio.sh",
+      "device-runtime/macos/awh-mcp-stdio.sh"
     ],
     [
       "web/update-center-metadata.json",

@@ -5,6 +5,7 @@ export type CodexSandbox = 'read-only' | 'workspace-write';
 
 export interface CodexDeviceProviders {
   guiMcpUrl?: string | null;
+  guiMcpCommand?: string | null;
   systemMcpCommand?: string | null;
 }
 
@@ -85,7 +86,13 @@ export function buildCodexDeviceArgs(workspace: string, providers: CodexDevicePr
     'web_search="disabled"',
   ];
   let count = 0;
-  if (providers.guiMcpUrl) {
+  if (providers.guiMcpCommand) {
+    if (!validAbsoluteExecutable(providers.guiMcpCommand) || /[\u0000-\u001f\u007f]/.test(providers.guiMcpCommand)) throw new Error('AWH device GUI MCP executable is invalid');
+    args.push('--config', `mcp_servers.awh_device_gui.command=${JSON.stringify(providers.guiMcpCommand)}`);
+    args.push('--config', 'mcp_servers.awh_device_gui.args=[]');
+    args.push('--config', 'mcp_servers.awh_device_gui.enabled=true');
+    count += 1;
+  } else if (providers.guiMcpUrl) {
     if (!validLoopbackMcp(providers.guiMcpUrl)) throw new Error('AWH device GUI MCP endpoint is invalid');
     args.push('--config', `mcp_servers.awh_device_gui.url=${JSON.stringify(providers.guiMcpUrl)}`);
     args.push('--config', 'mcp_servers.awh_device_gui.enabled=true');

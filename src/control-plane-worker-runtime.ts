@@ -395,12 +395,14 @@ export class ControlPlaneWorkerRuntime {
       ].join('\n\n');
       const runtime = await discoverAwhDeviceRuntime();
       const required = deviceProvidersForCapability(execution.requiredCapability);
-      const guiViaSystem = required.gui && !runtime.guiMcpUrl && runtime.guiToolkitCommand !== null && runtime.systemMcpCommand !== null;
+      const guiDirect = required.gui && runtime.guiMcpCommand !== null;
+      const guiViaSystem = required.gui && !guiDirect && !runtime.guiMcpUrl && runtime.guiToolkitCommand !== null && runtime.systemMcpCommand !== null;
       const providers = {
-        guiMcpUrl: required.gui ? runtime.guiMcpUrl : null,
+        guiMcpUrl: required.gui && !guiDirect ? runtime.guiMcpUrl : null,
+        guiMcpCommand: guiDirect ? runtime.guiMcpCommand : null,
         systemMcpCommand: required.system || guiViaSystem ? runtime.systemMcpCommand : null,
       };
-      if ((required.gui && !providers.guiMcpUrl && !guiViaSystem) || (required.system && !providers.systemMcpCommand)) {
+      if ((required.gui && !providers.guiMcpCommand && !providers.guiMcpUrl && !guiViaSystem) || (required.system && !providers.systemMcpCommand)) {
         await this.client.deferCentralExecution(execution.executionId, 'DEVICE_CAPABILITY_UNAVAILABLE').catch(() => undefined);
         return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason: 'DEVICE_CAPABILITY_UNAVAILABLE' };
       }

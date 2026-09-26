@@ -2,6 +2,8 @@
 set -euo pipefail
 ROOT="${AWH_REMOTE_ROOT:-$HOME/Library/Application Support/AWH/RemoteWorker}"
 RUNTIME="$ROOT/runtime"
+DEVICE_ROOT="$HOME/Library/Application Support/AWH/DeviceRuntime"
+AWH_BIN="$HOME/.awh/bin"
 COMPAT_BIN="$HOME/.local/share/bay-remote/node_modules/.bin/desktop-commander"
 BASE="${AWH_RUNTIME_BASE_URL:-https://kruart.online}"
 LOCK="$ROOT/.update.lock"
@@ -41,14 +43,26 @@ NODE
 VERSION="$(node -p "require('$TMP/manifest.json').version")"
 INTEGRITY="$(node -p "require('$TMP/manifest.json').npmIntegrity")"
 CURRENT="$(node -e 'try{process.stdout.write(require(process.argv[1]).version)}catch{}' "$RUNTIME/node_modules/@wonderwhy-er/desktop-commander/package.json" 2>/dev/null || true)"
-if [ "$CURRENT" = "$VERSION" ]; then ensure_compat_bin; echo "AWH_DEVICE_RUNTIME=CURRENT version=$VERSION"; exit 0; fi
-for asset in device-runtime/runtime-hardening.patch device-runtime/macos/awh-remote-worker.sh device-runtime/macos/awh-runtime-update.sh; do
+for asset in device-runtime/runtime-hardening.patch device-runtime/macos/awh-remote-worker.sh device-runtime/macos/awh-runtime-update.sh device-runtime/macos/awh-mcp-stdio.sh; do
   mkdir -p "$TMP/$(dirname "$asset")"
   curl -fsSL --proto '=https' --tlsv1.2 "$BASE/$asset" -o "$TMP/$asset"
   node - "$TMP/release.json" "$asset" "$TMP/$asset" <<'NODE'
 const fs=require('fs'),c=require('crypto');const r=JSON.parse(fs.readFileSync(process.argv[2])),n=process.argv[3],p=process.argv[4],e=(r.files||[]).find(x=>x.path===n);if(!e)process.exit(31);if(c.createHash('sha256').update(fs.readFileSync(p)).digest('hex')!==e.sha256)process.exit(32);
 NODE
 done
+install_device_bridge() {
+  mkdir -p "$DEVICE_ROOT" "$AWH_BIN"
+  install -m 0700 "$TMP/device-runtime/macos/awh-mcp-stdio.sh" "$DEVICE_ROOT/awh-mcp-stdio"
+  install -m 0700 "$TMP/device-runtime/macos/awh-mcp-stdio.sh" "$AWH_BIN/awh-mcp-stdio"
+}
+if [ "$CURRENT" = "$VERSION" ]; then
+  install -m 0700 "$TMP/device-runtime/macos/awh-remote-worker.sh" "$ROOT/awh-remote-worker.sh"
+  install -m 0700 "$TMP/device-runtime/macos/awh-runtime-update.sh" "$ROOT/awh-runtime-update.sh"
+  install_device_bridge
+  ensure_compat_bin
+  echo "AWH_DEVICE_RUNTIME=CURRENT version=$VERSION bridge=ready"
+  exit 0
+fi
 STAGE="$TMP/runtime"
 mkdir -p "$STAGE"
 printf '%s\n' "{\"name\":\"awh-device-runtime\",\"private\":true,\"version\":\"1.0.0\",\"dependencies\":{\"@wonderwhy-er/desktop-commander\":\"$VERSION\"}}" > "$STAGE/package.json"
@@ -67,6 +81,7 @@ rm -rf "$PREV"
 if ! mv "$STAGE" "$RUNTIME"; then [ ! -d "$PREV" ] || mv "$PREV" "$RUNTIME"; exit 43; fi
 install -m 0700 "$TMP/device-runtime/macos/awh-remote-worker.sh" "$ROOT/awh-remote-worker.sh"
 install -m 0700 "$TMP/device-runtime/macos/awh-runtime-update.sh" "$ROOT/awh-runtime-update.sh"
+install_device_bridge
 ensure_compat_bin
 pkill -f "desktop-commander remote" 2>/dev/null || true
 printf '%s\n' "$(date '+%Y-%m-%dT%H:%M:%S') AWH Device Runtime updated ${CURRENT:-none} -> $VERSION" >> "$LOG"

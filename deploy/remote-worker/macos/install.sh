@@ -5,6 +5,8 @@ case "$MODE" in --prepare|--activate) ;; *) echo 'usage: install.sh [--prepare|-
 HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 ROOT="$HOME/Library/Application Support/AWH/RemoteWorker"
 RUNTIME="$ROOT/runtime"
+DEVICE_ROOT="$HOME/Library/Application Support/AWH/DeviceRuntime"
+AWH_BIN="$HOME/.awh/bin"
 COMPAT_BIN="$HOME/.local/share/bay-remote/node_modules/.bin/desktop-commander"
 PKG="$RUNTIME/node_modules/@wonderwhy-er/desktop-commander"
 PLIST="$HOME/Library/LaunchAgents/com.awh.remote-worker.plist"
@@ -22,7 +24,7 @@ ensure_compat_bin() {
     ln -s "$target" "$COMPAT_BIN"
   fi
 }
-mkdir -p "$RUNTIME" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
+mkdir -p "$RUNTIME" "$DEVICE_ROOT" "$AWH_BIN" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
 if [ ! -f "$RUNTIME/package.json" ]; then
   cat > "$RUNTIME/package.json" <<EOF
 {"name":"awh-desktop-commander-runtime","private":true,"version":"1.0.0","dependencies":{"@wonderwhy-er/desktop-commander":"$EXPECTED"}}
@@ -42,6 +44,8 @@ else
 fi
 install -m 0700 "$HERE/awh-remote-worker.sh" "$ROOT/awh-remote-worker.sh"
 install -m 0700 "$HERE/awh-runtime-update.sh" "$ROOT/awh-runtime-update.sh"
+install -m 0700 "$HERE/awh-mcp-stdio.sh" "$DEVICE_ROOT/awh-mcp-stdio"
+install -m 0700 "$HERE/awh-mcp-stdio.sh" "$AWH_BIN/awh-mcp-stdio"
 ensure_compat_bin
 sed "s|__HOME__|$HOME|g" "$HERE/com.awh.remote-worker.plist.template" > "$PLIST.tmp"
 plutil -lint "$PLIST.tmp" >/dev/null

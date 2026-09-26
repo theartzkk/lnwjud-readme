@@ -58,7 +58,14 @@ test('AWH device Codex invocation is isolated from user config and injects only 
   assert.equal(args.includes('--dangerously-bypass-approvals-and-sandbox'), false);
   assert.ok(args.includes('mcp_servers.awh_device_gui.url="http://127.0.0.1:59702/mcp"'));
   assert.ok(args.includes('mcp_servers.awh_device_system.enabled=true'));
+  const direct = buildCodexDeviceArgs('/private/tmp/device-task', {
+    guiMcpUrl: 'http://127.0.0.1:59702/mcp',
+    guiMcpCommand: '/Users/example/.awh/bin/awh-mcp-stdio',
+  });
+  assert.ok(direct.includes('mcp_servers.awh_device_gui.command="/Users/example/.awh/bin/awh-mcp-stdio"'));
+  assert.equal(direct.some((value) => value.includes('mcp_servers.awh_device_gui.url=')), false);
   assert.throws(() => buildCodexDeviceArgs('/tmp', { guiMcpUrl: 'https://example.com/mcp' }), /invalid/);
+  assert.throws(() => buildCodexDeviceArgs('/tmp', { guiMcpCommand: 'awh-mcp-stdio' }), /invalid/);
   assert.throws(() => buildCodexDeviceArgs('/tmp', { systemMcpCommand: 'desktop-commander' }), /invalid/);
   assert.throws(() => buildCodexDeviceArgs('/tmp', {}), /unavailable/);
 });

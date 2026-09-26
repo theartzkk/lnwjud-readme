@@ -3,6 +3,7 @@ set -euo pipefail
 ROOT="$HOME/Library/Application Support/AWH/RemoteWorker"
 PKG="$ROOT/runtime/node_modules/@wonderwhy-er/desktop-commander"
 SCRIPT="$ROOT/awh-remote-worker.sh"
+BRIDGE="$HOME/Library/Application Support/AWH/DeviceRuntime/awh-mcp-stdio"
 PLIST="$HOME/Library/LaunchAgents/com.awh.remote-worker.plist"
 SESSION="$HOME/.desktop-commander-device/device.json"
 EXPECTED=0.2.51
@@ -19,6 +20,9 @@ grep -q '5000' "$PKG/dist/remote-device/remote-channel.js"
 grep -q 'ensureReady' "$PKG/dist/remote-device/desktop-commander-integration.js"
 grep -q 'pendingProcessError' "$PKG/dist/terminal-manager.js"
 grep -q 'DC_REMOTE_DEVICE' "$PKG/dist/index.js"
+[ -x "$BRIDGE" ] || { echo 'device_bridge=FAIL'; exit 1; }
+grep -q 'AWH_DEVICE_RUNTIME_HEADLESS=1' "$BRIDGE"
+grep -q 'lnwjud-mcp-stdio' "$BRIDGE"
 plutil -lint "$PLIST" >/dev/null
 MODE=absent
 if [ -f "$SESSION" ]; then MODE="$(stat -f '%Lp' "$SESSION")"; [ "$MODE" = 600 ] || { echo "session_mode=FAIL:$MODE"; exit 1; }; fi
