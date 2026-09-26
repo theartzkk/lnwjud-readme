@@ -1133,6 +1133,45 @@ final class HubControlPlaneService
         return $this->submitConversationForUser((string) $session['user_id'], $payload, $now);
     }
 
+    public function externalCommand(string $signature,string $timestamp,string $body,?string $now=null): array
+    {
+        $payload=$this->authorizeExternalCommand($signature,$timestamp,$body,$now);
+        self::exactKeys($payload,['idempotencyKey','message','projectHint','schemaVersion','source']);
+        if(($payload['schemaVersion']??null)!==1)throw new HubControlPlaneException('Unsupported external command schema','SCHEMA_VERSION');
+        $source=self::portableText((string)($payload['source']??''),'source',64);
+        if(!preg_match('/^[a-z0-9][a-z0-9._-]{1,63}$/',$source))throw new HubControlPlaneException('External command source is invalid','FIELD_INVALID');
+        $userId=$this->externalOwnerUserId();
+        $message=self::goal((string)($payload['message']??''));
+        $project=$this->externalProjectForMessage($userId,$message,$payload['projectHint']??null);
+        $result=$this->submitConversationForUser($userId,[
+            'schemaVersion'=>1,
+            'projectId'=>$project['projectId'],
+            'message'=>$message,
+            'idempotencyKey'=>self::idempotency((string)($payload['idempotencyKey']??'')),
+        ],$now);
+        return $this->externalCommandEnvelope($project,$result);
+    }
+
+    public function externalCommandStatus(string $signature,string $timestamp,string $body,?string $now=null): array
+    {
+        $payload=$this->authorizeExternalCommand($signature,$timestamp,$body,$now);
+        self::exactKeys($payload,['schemaVersion','taskId']);
+        if(($payload['schemaVersion']??null)!==1)throw new HubControlPlaneException('Unsupported external status schema','SCHEMA_VERSION');
+        $taskId=self::uuid((string)($payload['taskId']??''));
+        $userId=$this->externalOwnerUserId();
+        $q=$this->pdo->prepare('SELECT task_id,project_id,state,progress,result_summary,failure_code,conversation_id,updated_at FROM control_tasks WHERE task_id=:task AND user_id=:user');
+        $q->execute(['task'=>$taskId,'user'=>$userId]);
+        $task=$q->fetch();
+        if(!is_array($task))throw new HubControlPlaneException('External task is unavailable','TASK_NOT_FOUND');
+        $reply=null;
+        if(is_string($task['conversation_id']??null)){
+            $m=$this->pdo->prepare("SELECT body,kind FROM control_conversation_messages WHERE conversation_id=:conversation AND kind IN ('ASSISTANT','RESULT','FAILURE') ORDER BY created_at DESC,message_id DESC LIMIT 1");
+            $m->execute(['conversation'=>$task['conversation_id']]);$row=$m->fetch();
+            if(is_array($row))$reply=(string)$row['body'];
+        }
+        return ['schemaVersion'=>1,'taskId'=>(string)$task['task_id'],'projectId'=>(string)$task['project_id'],'state'=>(string)$task['state'],'progress'=>(int)$task['progress'],'resultSummary'=>$task['result_summary']===null?null:(string)$task['result_summary'],'failureCode'=>$task['failure_code']===null?null:(string)$task['failure_code'],'replyText'=>$reply,'updatedAt'=>(string)$task['updated_at']];
+    }
+
     public function automations(string $sessionToken, ?string $now = null): array
     {
         $session = $this->sessionRow($sessionToken, $now); $this->assertOwner((string)$session['user_id']);
@@ -3904,6 +3943,63 @@ final class HubControlPlaneService
     {
         $q=$this->pdo->prepare('SELECT name,type FROM projects WHERE project_id=:project LIMIT 1');$q->execute(['project'=>$projectId]);$row=$q->fetch();if(!is_array($row))return false;$name=(string)($row['name']??'');return str_starts_with($name,'BAY ')||$name==='BAY EXCUSE X'||$name==='เว็บไซต์โรงเรียน'||(string)($row['type']??'')==='school';
     }
+    private function authorizeExternalCommand(string $signature,string $timestamp,string $body,?string $now=null): array
+    {
+        $secret=getenv('AWH_EXTERNAL_COMMAND_SECRET');
+        if(!is_string($secret)||strlen($secret)<32)throw new HubControlPlaneException('External command ingress is not configured','EXTERNAL_COMMAND_NOT_CONFIGURED');
+        if(!preg_match('/^[0-9]{10}$/',$timestamp))throw new HubControlPlaneException('External command timestamp is invalid','EXTERNAL_COMMAND_AUTH_FAILED');
+        $requestAt=(int)$timestamp;$serverAt=strtotime(self::timestamp($now??gmdate('c')));
+        if(abs($serverAt-$requestAt)>300)throw new HubControlPlaneException('External command timestamp expired','EXTERNAL_COMMAND_AUTH_FAILED');
+        if(!preg_match('/^[0-9a-f]{64}$/i',$signature))throw new HubControlPlaneException('External command signature is invalid','EXTERNAL_COMMAND_AUTH_FAILED');
+        $expected=hash_hmac('sha256',$timestamp."\n".$body,$secret);
+        if(!hash_equals($expected,strtolower($signature)))throw new HubControlPlaneException('External command signature is invalid','EXTERNAL_COMMAND_AUTH_FAILED');
+        try{$payload=json_decode($body,true,32,JSON_THROW_ON_ERROR);}catch(JsonException){throw new HubControlPlaneException('External command payload is invalid','PAYLOAD_INVALID');}
+        if(!is_array($payload)||array_is_list($payload))throw new HubControlPlaneException('External command payload is invalid','PAYLOAD_INVALID');
+        return $payload;
+    }
+
+    private function externalOwnerUserId(): string
+    {
+        $q=$this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id=1 AND bootstrap_closed=1');
+        $owner=$q->fetchColumn();
+        if(!is_string($owner)||!preg_match(self::UUID,$owner))throw new HubControlPlaneException('Owner identity is unavailable','CONTROL_SCHEMA_NOT_READY');
+        $this->assertOwner($owner);
+        return strtolower($owner);
+    }
+
+    private function externalProjectForMessage(string $userId,string $message,mixed $projectHint): array
+    {
+        $q=$this->pdo->prepare('SELECT p.project_id,p.name FROM projects p JOIN user_project_memberships m ON m.project_id=p.project_id AND m.user_id=:user AND m.revoked_at IS NULL ORDER BY p.name');
+        $q->execute(['user'=>$userId]);$rows=$q->fetchAll();
+        if($rows===[])throw new HubControlPlaneException('Owner has no project','PROJECT_FORBIDDEN');
+        $hint=is_string($projectHint)?trim($projectHint):'';
+        if($hint!==''){
+            if(strlen($hint)>120||preg_match('/[\x00-\x1F\x7F]/',$hint))throw new HubControlPlaneException('Project hint is invalid','FIELD_INVALID');
+            foreach($rows as $row)if(stripos((string)$row['name'],$hint)!==false)return ['projectId'=>(string)$row['project_id'],'name'=>(string)$row['name']];
+        }
+        $patterns=[
+            ['/(?:ข้อสอบ|assessment)/iu','Assessment'],
+            ['/(?:learn\s*lab|learnlab|ใบงาน)/iu','LearnLab'],
+            ['/(?:computer\s*lab|ห้องคอม)/iu','Computer Lab'],
+            ['/(?:เว็บไซต์โรงเรียน|school\s*website)/iu','เว็บไซต์โรงเรียน'],
+            ['/(?:excuse|สหกรณ์|เช็กชื่อ|ลาเรียน)/iu','EXCUSE'],
+            ['/(?:\bAWH\b|workspace\s*hub)/iu','Workspace Hub'],
+        ];
+        foreach($patterns as [$pattern,$needle])if(preg_match($pattern,$message)===1)foreach($rows as $row)if(stripos((string)$row['name'],$needle)!==false)return ['projectId'=>(string)$row['project_id'],'name'=>(string)$row['name']];
+        foreach($rows as $row)if(stripos((string)$row['name'],'Workspace Hub')!==false)return ['projectId'=>(string)$row['project_id'],'name'=>(string)$row['name']];
+        return ['projectId'=>(string)$rows[0]['project_id'],'name'=>(string)$rows[0]['name']];
+    }
+
+    private function externalCommandEnvelope(array $project,array $result): array
+    {
+        $tasks=is_array($result['tasks']??null)?$result['tasks']:[];
+        $task=$tasks===[]?null:$tasks[array_key_last($tasks)];
+        $messages=is_array($result['messages']??null)?$result['messages']:[];
+        $reply=null;
+        for($i=count($messages)-1;$i>=0;$i--){$row=$messages[$i]??null;if(is_array($row)&&in_array($row['kind']??null,['assistant','result','failure','ASSISTANT','RESULT','FAILURE'],true)){$reply=(string)($row['body']??'');break;}}
+        return ['schemaVersion'=>1,'accepted'=>true,'project'=>$project,'conversationId'=>(string)($result['conversationId']??$result['conversation_id']??''),'taskId'=>is_array($task)?(string)($task['taskId']??$task['task_id']??''):null,'state'=>is_array($task)?(string)($task['state']??'RECEIVED'):'RECEIVED','replyText'=>$reply];
+    }
+
     private function assertOwner(string $userId): void { $q = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1'); if (!hash_equals((string) $q->fetchColumn(), $userId)) throw new HubControlPlaneException('Owner access is required', 'OWNER_FORBIDDEN'); }
     private function isOwnerUser(string $userId): bool { $q = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1'); $owner = $q->fetchColumn(); return is_string($owner) && hash_equals($owner, $userId); }
     private function profileRole(string $userId): string { $q = $this->pdo->prepare('SELECT system_role FROM control_user_profiles WHERE user_id = :user AND status = \'ACTIVE\''); $q->execute(['user' => $userId]); $role = $q->fetchColumn(); return is_string($role) && in_array($role, ['OWNER','ADMIN','DIRECTOR','TEACHER','STAFF','VIEWER'], true) ? $role : 'STAFF'; }
