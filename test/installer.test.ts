@@ -44,8 +44,7 @@ test('AWH packaging configuration keeps Squirrel per-user behavior and public ar
   assert.match(forge, /@electron-forge\/maker-squirrel/);
   assert.match(forge, /packagerConfig:\s*\{[\s\S]*?name:\s*'AWH Agent'/);
   assert.match(forge, /config:\s*\{[\s\S]*?name:\s*'AWH'/);
-  assert.match(forge, /executableName:\s*'AWH'/);
-  assert.match(forge, /CFBundleDisplayName:\s*'AWH Agent'/);
+  assert.match(forge, /executableName:\s*targetPlatform === 'darwin' \? 'AWH Agent' : 'AWH'/);
   assert.match(forge, /title:\s*'AWH Agent'/);
   assert.match(forge, /authors:\s*'Art’s Workspace Hub'/);
   assert.match(forge, /setupExe:\s*'AWHSetup\.exe'/);

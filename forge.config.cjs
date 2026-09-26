@@ -66,11 +66,8 @@ const icon = targetPlatform === 'darwin' ? macIcon : windowsIcon;
 module.exports = {
   packagerConfig: {
     name: 'AWH Agent',
-    executableName: 'AWH',
+    executableName: targetPlatform === 'darwin' ? 'AWH Agent' : 'AWH',
     appBundleId: 'com.artworkspacehub.awh',
-    extendInfo: {
-      CFBundleDisplayName: 'AWH Agent',
-    },
     icon,
     ...(electronZipDir ? { electronZipDir } : {}),
     asar: true,

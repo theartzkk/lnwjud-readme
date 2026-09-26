@@ -109,10 +109,10 @@ if (platform === 'win32' && architecture !== 'x64') fail('Windows packaged verif
 if (platform === 'darwin' && !['x64', 'arm64'].includes(architecture)) fail('macOS packaged verification supports x64 or arm64');
 const outputRoot = join(ROOT, 'out', 'AWH Agent-' + platform + '-' + architecture);
 const bundle = platform === 'darwin' ? join(outputRoot, 'AWH Agent.app') : outputRoot;
-const executable = platform === 'darwin' ? join(bundle, 'Contents', 'MacOS', 'AWH') : join(bundle, 'AWH.exe');
+const executable = platform === 'darwin' ? join(bundle, 'Contents', 'MacOS', 'AWH Agent') : join(bundle, 'AWH.exe');
 const asarPath = platform === 'darwin' ? join(bundle, 'Contents', 'Resources', 'app.asar') : join(bundle, 'resources', 'app.asar');
 assert(await exists(bundle), `packaged bundle not found: ${platform}`);
-assert(await exists(executable), `expected ${platform === 'darwin' ? 'AWH Agent.app/AWH' : 'AWH.exe'} is missing`);
+assert(await exists(executable), `expected ${platform === 'darwin' ? 'AWH Agent.app/AWH Agent' : 'AWH.exe'} is missing`);
 assert(await exists(asarPath), 'packaged app.asar is missing');
 const listing = asar.listPackage(asarPath, { isPack: false });
 const normalizedListing = listing.map((entry) => entry.replaceAll('\\', '/'));
