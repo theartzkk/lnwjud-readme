@@ -4,7 +4,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { APPROVED_ANTI_SLOP_ROOT, approvedSkillPackInventory, materializeApprovedSkillPlan, verifyApprovedAntiSlopPack } from '../src/approved-skill-loader.js';
+import { validateExternalCapabilityRegistry } from '../src/external-capability-registry.js';
 import type { WorkerCapabilityPlan } from '../src/control-plane-worker-client.js';
+
+test('external capability registry accepts approved skill trust metadata', async () => {
+  const registry=JSON.parse(await readFile(join(process.cwd(),'config','external-capabilities.json'),'utf8'));
+  const validated=validateExternalCapabilityRegistry(registry);
+  const ids=validated.entries.map((entry)=>entry.id);
+  assert.ok(ids.includes('anti-slop-design'));
+  assert.ok(ids.includes('anti-slop-copy'));
+  assert.ok(ids.includes('anti-slop-code'));
+  assert.ok(ids.includes('skills-directory'));
+});
 
 test('approved Anti Slop pack verifies exact upstream pins and exposes bounded inventory', async () => {
   const manifest=await verifyApprovedAntiSlopPack();
