@@ -26,7 +26,7 @@ const stateLabel=(state)=>({
 })[state]||state||'กำลังตรวจ';
 
 const adapterLabel=(value)=>({
-  PLATFORM_RELEASE:'VPS Update',CORE_RELEASE:'AWH Core Release',MANAGED_HOSTING:'Managed Hosting',BAY_UPDATE_CENTER:'BAY Update Center',
+  PLATFORM_RELEASE:'VPS Platform',CORE_RELEASE:'AWH Core Release',MANAGED_HOSTING:'Managed Hosting',BAY_UPDATE_CENTER:'BAY Update Center',
   LEARNLAB_RELEASE:'LearnLab Release',ASSESSMENT_RELEASE:'Assessment Release',LEGACY_DEPLOY:'Legacy deploy',
   SOURCE_ONLY:'Source only',UNREGISTERED:'ยังไม่ลงทะเบียน',AGENT_MANAGED:'AWH Agent',
 })[value]||value||'—';
@@ -364,7 +364,7 @@ function renderCard(item){
   main.append(technicalDetails(item));
   const actions=document.createElement('div');actions.className='update-actions';
   if(item.adapter==='PLATFORM_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(actionButton('อัปเดต VPS',()=>updatePlatform(item)));
-  else if(item.adapter==='PLATFORM_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยัน VPS Update',()=>approvePlatform(item)));
+  else if(item.adapter==='PLATFORM_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยัน VPS Platform',()=>approvePlatform(item)));
   else if(item.adapter==='CORE_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(actionButton(item.runtimeState==='SPLIT'?'ปรับ Runtime และอัปเดต':'อัปเดต AWH',()=>updateAwh(item)));
   else if(item.adapter==='CORE_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยันและอัปเดต',()=>approveAwh(item)));
   else if(item.adapter==='LEARNLAB_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยัน LearnLab',()=>approveLearnLab(item)));
@@ -477,18 +477,18 @@ async function approveLearnLab(item){
 }
 
 async function approvePlatform(item){
-  if(!await askConfirm('ยืนยัน VPS Update','ระบบจะอัปเดต shared runtime/infrastructure ผ่าน Platform release track โดยไม่ bump AWH release','อัปเดต'))return;
+  if(!await askConfirm('ยืนยัน VPS Platform','ระบบจะอัปเดต shared runtime/infrastructure ผ่าน Platform release track โดยไม่ bump AWH release','อัปเดต'))return;
   await decideApproval(item.approvalId,'approve');
-  localOperation={name:'VPS Update',progress:10,message:'อนุมัติแล้ว กำลังเริ่ม Platform release'};
+  localOperation={name:'VPS Platform',progress:10,message:'อนุมัติแล้ว กำลังเริ่ม Platform release'};
   await refresh();
 }
 
 async function updatePlatform(item){
   if(!await askConfirm('อัปเดต VPS','ระบบจะตรวจ gate สำรองข้อมูล อัปเดต shared runtime/infrastructure และ Verify ก่อนเปลี่ยน Platform production ref','เริ่มอัปเดต'))return;
-  localOperation={name:'VPS Update',progress:6,message:'กำลังสร้างคำขอ Platform release จากรุ่นล่าสุด'};
+  localOperation={name:'VPS Platform',progress:6,message:'กำลังสร้างคำขอ Platform release จากรุ่นล่าสุด'};
   const request=await privileged(()=>requestPlatformRelease(item.candidate,false));
   if(request?.approvalId)await decideApproval(request.approvalId,'approve');
-  message('VPS Update รับคำสั่งแล้ว กำลังตรวจความพร้อม สำรอง อัปเดต และ Verify');
+  message('VPS Platform รับคำสั่งแล้ว กำลังตรวจความพร้อม สำรอง อัปเดต และ Verify');
   await refresh();
 }
 

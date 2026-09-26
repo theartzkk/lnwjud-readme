@@ -19,6 +19,10 @@ test('repository governance is a single machine-enforced contract', async () => 
   assert.equal(contract.rules.blockingDecision, 'WAIT_CONFLICT');
   assert.deepEqual(contract.rules.nonBlockingDecisions, ['CONTINUE','CONTINUE_OR_JOIN']);
   assert.equal(contract.rules.projectMissionIsCoordinationOnly, true);
+  assert.equal(contract.rules.projectScopedMutationIsolation, true);
+  assert.equal(contract.rules.crossProjectMutationDefault, 'DENY');
+  assert.equal(contract.rules.crossProjectReadOnlyAllowed, true);
+  assert.equal(contract.rules.sourcePromotionRequiresTargetProjectMission, true);
   assert.equal(contract.rules.aggregateActiveCountsAreNotBlockingAuthority, true);
   assert.equal(contract.rules.releaseTrackScopedDeployOwnership, true);
   assert.equal(contract.rules.hostGlobalReleaseTrack, 'vps-platform');
@@ -60,6 +64,8 @@ test('repository governance is a single machine-enforced contract', async () => 
   assert.match(agents, /only `WAIT_CONFLICT` is blocking/);
   assert.match(agents, /Project Mission is a coordination lease, not a writer lock/);
   assert.match(agents, /only `VPS Platform` is host-global/);
+  assert.match(agents, /Cross-project mutation is denied by default/);
+  assert.match(agents, /Source promotion requires the exact active mission of the target project/);
 
   const drift = await readFile(join(root, 'hub/bin/ecosystem-source-drift.php'), 'utf8');
   assert.match(drift, /governanceRepositories/);
@@ -84,9 +90,13 @@ test('repository governance is a single machine-enforced contract', async () => 
   const deploy = await readFile(join(root, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'), 'utf8');
   assert.match(deploy, /SOURCE_DRIFT_HOTFIX_RETIRED=0/);
   assert.match(deploy, /governance_rows=/);
-  assert.match(deploy, /setfacl -m u:awh-hub:r-x,d:u:awh-hub:r-x/);
-  assert.match(deploy, /setfacl -m u:awh-hub:r--/);
-  assert.match(deploy, /test ! -w "\$governed_path"/);
+  assert.match(deploy, /setfacl -m u:awh-hub:rx \/srv\/awh-git/);
+  assert.match(deploy, /test ! -w \/srv\/awh-git/);
+  assert.match(deploy, /setfacl -R -x u:awh-hub "\$governed_path"/);
+  assert.match(deploy, /setfacl -x d:u:awh-hub/);
+  assert.match(deploy, /test ! -w "\$governed_path\/objects"/);
+  assert.match(deploy, /-u awh-hub -g bayadmin test -w "\$governed_path\/objects"/);
+  assert.match(deploy, /-u awh-hub -g bayadmin test -w "\$governed_path\/refs\/heads"/);
   assert.match(deploy, /SOURCE_DRIFT_HOTFIX_PREEXISTING=1/);
   assert.match(deploy, /SOURCE_DRIFT_OVERRIDE_PREEXISTING=1/);
   assert.match(deploy, /governanceRepositories/);

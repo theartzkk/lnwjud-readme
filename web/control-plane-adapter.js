@@ -352,13 +352,13 @@ export async function loadPlatformReleaseStatus() {
   const value = await controlRequest('/api/v1/control/system/platform/releases');
   const promotion = value?.sourcePromotion;
   const promotionValid = promotion == null || (promotion && /^[0-9a-f]{40}$/i.test(promotion.sha || '') && /^[0-9a-f]{40}$/i.test(promotion.previousSha || '') && ['SOURCE_PROMOTION_AUDIT','CANONICAL_GIT_MAIN_VERIFIED'].includes(promotion.authority) && typeof promotion.observedAt === 'string');
-  if (value.schemaVersion !== 1 || value.capability !== 'system.platform.release' || value.releaseTrack !== 'vps-platform' || !promotionValid || !Array.isArray(value.releases) || !value.policy || typeof value.policy !== 'object') throw new Error('สถานะรุ่น VPS Update ไม่ถูกต้อง');
+  if (value.schemaVersion !== 1 || value.capability !== 'system.platform.release' || value.releaseTrack !== 'vps-platform' || !promotionValid || !Array.isArray(value.releases) || !value.policy || typeof value.policy !== 'object') throw new Error('สถานะรุ่น VPS Platform ไม่ถูกต้อง');
   return value;
 }
 export async function requestPlatformRelease(releaseSha, cleanupTopology = false) {
-  if (typeof releaseSha !== 'string' || !/^[0-9a-f]{40}$/i.test(releaseSha) || typeof cleanupTopology !== 'boolean') throw new Error('Source SHA ของรุ่น VPS Update ไม่ถูกต้อง');
+  if (typeof releaseSha !== 'string' || !/^[0-9a-f]{40}$/i.test(releaseSha) || typeof cleanupTopology !== 'boolean') throw new Error('Source SHA ของรุ่น VPS Platform ไม่ถูกต้อง');
   const value = await controlRequest('/api/v1/control/system/platform/releases', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, releaseSha: releaseSha.toLowerCase(), cleanupTopology }) });
-  if (value.schemaVersion !== 1 || typeof value.taskId !== 'string' || typeof value.executionId !== 'string' || typeof value.releaseSha !== 'string') throw new Error('VPS Update ยังยืนยันคำขอปล่อยรุ่นไม่ได้');
+  if (value.schemaVersion !== 1 || typeof value.taskId !== 'string' || typeof value.executionId !== 'string' || typeof value.releaseSha !== 'string') throw new Error('VPS Platform ยังยืนยันคำขอปล่อยรุ่นไม่ได้');
   return value;
 }
 export async function loadLearnLabReleaseStatus() {

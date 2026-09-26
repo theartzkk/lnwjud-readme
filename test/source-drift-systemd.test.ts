@@ -30,6 +30,11 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(deploy, /deploy\/systemd\/awh-source-drift\.service/);
   assert.match(deploy, /deploy\/systemd\/awh-source-drift\.timer/);
   assert.match(remote, /setfacl -m u:awh-hub:rx \/srv\/awh-git/);
+  assert.match(remote, /sudo -u awh-hub test ! -w \/srv\/awh-git/);
+  assert.match(remote, /setfacl -R -x u:awh-hub \"\$governed_path\"/);
+  assert.match(remote, /sudo -u awh-hub test ! -w \"\$governed_path\/objects\"/);
+  assert.match(remote, /sudo -u awh-hub -g bayadmin test -w \"\$governed_path\/objects\"/);
+  assert.match(remote, /sudo -u awh-hub -g bayadmin test -w \"\$governed_path\/refs\/heads\"/);
   assert.match(remote, /enable --now awh-source-drift\.timer/);
   assert.match(remote, /VAULT_SOURCE_RECONCILE=.*reconcile-vault-source-authority\.php/);
   assert.match(remote, /stage VAULT_SOURCE_RECONCILE;[\s\S]*\"\$VAULT_SOURCE_RECONCILE\" \"\$DB\" \/srv\/awh-git[\s\S]*stage VAULT_SOURCE_RECONCILED/);

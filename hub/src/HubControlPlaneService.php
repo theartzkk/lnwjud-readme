@@ -274,14 +274,14 @@ final class HubControlPlaneService
         if (is_array($activePlatform)) $platformState=(string)($activePlatform['approvalStatus']??'')==='PENDING'?'WAITING_FOR_APPROVAL':'UPDATING';
         if ($coreStorageBlocked && in_array($platformState,['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'],true)) $platformState='BLOCKED';
         $platformReason = match($platformState) {
-            'CURRENT' => 'VPS Update track ตรงกับรุ่นฐานที่บันทึกไว้',
-            'WAITING_FOR_APPROVAL' => 'VPS Update ผ่าน verification boundary แล้วและรอ Owner ยืนยัน',
-            'UPDATING' => 'VPS Update controller กำลังอัปเดต shared runtime/infrastructure',
+            'CURRENT' => 'VPS Platform track ตรงกับรุ่นฐานที่บันทึกไว้',
+            'WAITING_FOR_APPROVAL' => 'VPS Platform ผ่าน verification boundary แล้วและรอ Owner ยืนยัน',
+            'UPDATING' => 'VPS Platform controller กำลังอัปเดต shared runtime/infrastructure',
             'BLOCKED' => 'Storage ยังไม่ถึง release headroom ที่ปลอดภัย ต้องเหลืออย่างน้อย 3 GB และใช้พื้นที่ต่ำกว่า 90%',
-            default => 'มี VPS Update ใหม่พร้อมเข้าสู่ typed release boundary',
+            default => 'มี VPS Platform ใหม่พร้อมเข้าสู่ typed release boundary',
         };
         $items[]=[
-            'key'=>'vps-platform','projectId'=>null,'name'=>'VPS Update','kind'=>'PLATFORM','adapter'=>'PLATFORM_RELEASE',
+            'key'=>'vps-platform','projectId'=>null,'name'=>'VPS Platform','kind'=>'PLATFORM','adapter'=>'PLATFORM_RELEASE',
             'state'=>$platformState,'current'=>$platformCurrent,'candidate'=>$platformCandidate,
             'releaseDetailsRequired'=>true,'approvalRequired'=>true,'approvalId'=>is_array($activePlatform)&&is_string($activePlatform['approvalId']??null)?$activePlatform['approvalId']:null,
             'actionable'=>in_array($platformState,['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'],true),
