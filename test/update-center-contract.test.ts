@@ -293,3 +293,29 @@ test('every canonical patch requires bounded release details before Update Cente
   assert.match(script,/รายละเอียดงานภายใน/);
   assert.match(script,/ไม่มีการเปลี่ยนแปลงที่ผู้ใช้เห็น/);
 });
+
+
+test('control release package contains every file required by atomic enrollment lineage sync', async()=>{
+  const [deploy,remote]=await Promise.all([
+    readFile(join(ROOT,'deploy/awh-control-plane/deploy-control-plane.sh'),'utf8'),
+    readFile(join(ROOT,'deploy/awh-control-plane/remote-deploy-control-plane.sh'),'utf8'),
+  ]);
+  const required=[
+    'hub/public/enrollment.php',
+    'hub/src/HubEnrollmentService.php',
+    'hub/src/HubEnrollmentRouter.php',
+    'hub/src/HubEnrollmentApiMigration.php',
+    'hub/migrations/002_m3e2_enrollment_api.sql',
+    'hub/bin/migrate-m3e2.php',
+    'deploy/nginx/awh-enrollment.conf',
+    'deploy/php-fpm/awh-enrollment.pool.conf',
+    'deploy/awh-enrollment/pointer-state.sh',
+    'deploy/awh-enrollment/insert-nginx-include.php',
+    'deploy/awh-enrollment/remote-deploy.sh',
+  ];
+  assert.match(remote,/sync_enrollment_from_release/);
+  for(const file of required){
+    assert.ok(remote.includes(file),file+' must be required by enrollment sync');
+    assert.ok(deploy.includes(file),file+' must be packaged');
+  }
+});
