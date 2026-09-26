@@ -73,7 +73,7 @@ test('school document and project factory surfaces use the existing canonical au
   assert.match(app, /localProgressLabel/);
   assert.doesNotMatch(app, /textContent = 'AWH · กำลังตอบ'/);
   assert.match(app, /files: \[\.\.\.state\.pendingAttachments\]/);
-  const generatedService = service.match(/public function createSchoolDocument[\s\S]*?private static function documentText/)?.[0] ?? '';
+  const generatedService = service.match(/public function createSchoolDocument[\s\S]*?public function createProjectFactory/)?.[0] ?? '';
   const generatedUi = tools.match(/export async function openSchoolDocumentTool[\s\S]*?export function mountSchoolTools/)?.[0] ?? '';
   assert.notEqual(generatedService, '');
   assert.notEqual(generatedUi, '');
