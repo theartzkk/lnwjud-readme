@@ -482,10 +482,13 @@ async function fastQaCheck() {
     check('fast-deploy-contracts', 'SKIP', 'Exact-revision deploy contracts are deferred until the candidate is committed; dirty fast QA remains valid for iterative work', deployStarted);
     return;
   }
-  const deployContracts = await runNodeTest([
+  const deployContracts = await run(process.execPath, [
+    '--test-concurrency=1',
+    '--import', 'tsx',
+    '--test',
     'test/central-project-authority-deployment.test.ts',
     'test/automation-deployment.test.ts',
-  ], 240_000);
+  ], { timeoutMs: 300_000 });
   check('fast-deploy-contracts', deployContracts.code === 0 ? 'PASS' : 'FAIL', deployContracts.code === 0 ? 'exact-revision deploy contracts passed on a clean candidate' : `exact-revision deploy contracts failed with exit code ${deployContracts.code}`, deployStarted);
 }
 

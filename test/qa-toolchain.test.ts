@@ -51,7 +51,8 @@ test('fast QA defers exact-revision deploy contracts only while the candidate is
   assert.match(source, /fast-deploy-contracts/);
   assert.match(source, /SIGTERM/);
   assert.match(source, /SIGKILL/);
-  assert.match(source, /240_000/);
+  assert.match(source, /--test-concurrency=1/);
+  assert.match(source, /300_000/);
   assert.match(source, /runGit\(\['status', '--porcelain'\]\)/);
   assert.match(source, /deferred until the candidate is committed/);
   assert.match(source, /central-project-authority-deployment\.test\.ts/);
