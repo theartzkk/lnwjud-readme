@@ -17,7 +17,7 @@ final class HubCapabilityRegistryService
     private const AVAILABILITY = ['ALWAYS_ON','ON_DEMAND','OPTIONAL_DEVICE'];
     private const COST = ['INCLUDED','PREPAID','LOCAL_FREE','METERED'];
     private const ENVELOPE_STATES = ['OPEN','ACTIVE','WAITING','RELEASED','CONFLICT','CANCELLED'];
-    public const EXECUTION_POLICY_VERSION = '2.1-resource';
+    public const EXECUTION_POLICY_VERSION = '2.2-release-track';
 
     public function __construct(private readonly PDO $pdo) {}
 
@@ -153,7 +153,11 @@ final class HubCapabilityRegistryService
         if (preg_match('/^(?:agent\.conversation|project\.(?:read|search)|artifact\.object|qa\.cloud|review\.visual)$/', $required) === 1) return 'READ';
         if ($required === 'source.promote') return 'CANONICAL:SOURCE';
         if ($required === 'operator.project_mission') return 'CANDIDATE';
-        if (in_array($required, ['project.mutate.deploy','system.core.release','system.learnlab.release','system.assessment.release','bay.remote_update.install'], true)) return 'CANONICAL:DEPLOY';
+        if ($required === 'system.platform.release') return 'CANONICAL:DEPLOY:VPS_PLATFORM';
+        if ($required === 'system.core.release') return 'CANONICAL:DEPLOY:AWH';
+        if ($required === 'system.learnlab.release') return 'CANONICAL:DEPLOY:BAY_LEARNLAB';
+        if ($required === 'system.assessment.release') return 'CANONICAL:DEPLOY:BAY_ASSESSMENT';
+        if (in_array($required, ['project.mutate.deploy','bay.remote_update.install'], true)) return 'CANONICAL:DEPLOY:PROJECT';
         if ($required === 'bay.remote_update.stage') return 'RESOURCE:RELEASE_STAGE';
         if (str_starts_with($required, 'hosting.')) return 'RESOURCE:HOSTING';
         if (str_starts_with($required, 'project.mutate.')) return 'CANDIDATE';
@@ -173,32 +177,49 @@ final class HubCapabilityRegistryService
         return hash_equals($left, $right);
     }
 
-    /** Resources that are physically shared across projects on the VPS. */
+    /** Only the VPS Platform track is host-global. Product/AWH deploy tracks are isolated. */
     public static function mutationResourceIsGlobal(string $resource): bool
     {
-        return strtoupper(trim($resource)) === 'CANONICAL:DEPLOY';
+        return strtoupper(trim($resource)) === 'CANONICAL:DEPLOY:VPS_PLATFORM';
+    }
+
+    private static function mutationResourceIsDeploy(string $resource): bool
+    {
+        return str_starts_with(strtoupper(trim($resource)), 'CANONICAL:DEPLOY:');
     }
 
     /**
-     * Apply project identity to resource arbitration.
-     * Candidate/workspace lanes remain isolated. Canonical source cannot move
-     * while the same project's deploy lane is active, and the shared deploy
-     * lane serializes across projects.
+     * Apply project and release-track identity to resource arbitration.
+     * Candidate/workspace lanes remain isolated. A VPS Platform release is
+     * host-global because it can mutate shared runtime/infrastructure. AWH and
+     * managed-product deploys serialize only inside their conflicting track or
+     * project, while same-project source/stage changes interlock with deploy.
      */
     public static function mutationResourcesConflictForProjects(string $left,string $leftProject,string $right,string $rightProject): bool
     {
         $left=strtoupper(trim($left));$right=strtoupper(trim($right));
         if($left==='READ'||$right==='READ')return false;
+        if(in_array($left,['CANDIDATE','WORKSPACE'],true)||in_array($right,['CANDIDATE','WORKSPACE'],true))return false;
+
+        $leftDeploy=self::mutationResourceIsDeploy($left);
+        $rightDeploy=self::mutationResourceIsDeploy($right);
+        if(($leftDeploy&&self::mutationResourceIsGlobal($left))||($rightDeploy&&self::mutationResourceIsGlobal($right))){
+            return $leftDeploy&&$rightDeploy;
+        }
+
         $sameProject=hash_equals(strtolower(trim($leftProject)),strtolower(trim($rightProject)));
         if(!$sameProject){
-            return self::mutationResourceIsGlobal($left)
-                && self::mutationResourceIsGlobal($right)
-                && self::mutationResourcesConflict($left,$right);
+            if($leftDeploy&&$rightDeploy)return false;
+            return false;
         }
+
         if($left==='CANONICAL:PROJECT'||$right==='CANONICAL:PROJECT')return true;
-        if(in_array($left,['CANDIDATE','WORKSPACE'],true)||in_array($right,['CANDIDATE','WORKSPACE'],true))return false;
-        if(($left==='CANONICAL:DEPLOY'&&$right==='CANONICAL:SOURCE')||($right==='CANONICAL:DEPLOY'&&$left==='CANONICAL:SOURCE'))return true;
-        if(($left==='CANONICAL:DEPLOY'&&$right==='RESOURCE:RELEASE_STAGE')||($right==='CANONICAL:DEPLOY'&&$left==='RESOURCE:RELEASE_STAGE'))return true;
+        if(($leftDeploy&&$right==='CANONICAL:SOURCE')||($rightDeploy&&$left==='CANONICAL:SOURCE'))return true;
+        if(($leftDeploy&&$right==='RESOURCE:RELEASE_STAGE')||($rightDeploy&&$left==='RESOURCE:RELEASE_STAGE'))return true;
+        if($leftDeploy&&$rightDeploy){
+            if($left==='CANONICAL:DEPLOY:PROJECT'||$right==='CANONICAL:DEPLOY:PROJECT')return true;
+            return hash_equals($left,$right);
+        }
         return self::mutationResourcesConflict($left,$right);
     }
 
@@ -317,12 +338,25 @@ final class HubCapabilityRegistryService
         $this->assertReady(); $at = self::timestamp($now ?? gmdate('c'));
         $this->reconcileExecutionAuthority($at);
         $q = $this->pdo->prepare("SELECT x.execution_id,x.task_id,x.project_id,x.mutation_scope,x.state,x.provider_id,x.lease_expires_at,x.updated_at,t.goal,p.name AS project_name,e.required_capability,e.executor_kind FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id JOIN control_tasks t ON t.task_id=x.task_id JOIN projects p ON p.project_id=x.project_id WHERE x.mutation_scope<>'READ' AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND ((x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at)) OR x.state IN ('OPEN','WAITING','CONFLICT')) ORDER BY CASE x.state WHEN 'ACTIVE' THEN 0 ELSE 1 END,x.updated_at DESC LIMIT 40");
-        $q->execute(['at'=>$at]); $active=[]; $waiting=[];
+        $q->execute(['at'=>$at]); $active=[]; $waiting=[]; $coordinationActive=[]; $coordinationWaiting=[];
         foreach ($q->fetchAll() as $row) {
             $item=['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>(string)$row['project_id'],'projectName'=>(string)$row['project_name'],'goal'=>(string)$row['goal'],'mutationScope'=>(string)$row['mutation_scope'],'mutationResource'=>self::mutationResourceForExecution((string)$row['required_capability'],(string)$row['executor_kind']),'requiredCapability'=>(string)$row['required_capability'],'providerId'=>$row['provider_id']===null?null:(string)$row['provider_id'],'state'=>(string)$row['state'],'leaseExpiresAt'=>$row['lease_expires_at']===null?null:(string)$row['lease_expires_at'],'updatedAt'=>(string)$row['updated_at']];
-            if ($item['state']==='ACTIVE') $active[]=$item; else $waiting[]=$item;
+            $coordination=hash_equals((string)$row['required_capability'],'operator.project_mission');
+            if ($item['state']==='ACTIVE') {
+                if($coordination)$coordinationActive[]=$item; else $active[]=$item;
+            } else {
+                if($coordination)$coordinationWaiting[]=$item; else $waiting[]=$item;
+            }
         }
-        return ['schemaVersion'=>1,'mode'=>'RESOURCE_SCOPED_CONCURRENCY','parallelReadsAllowed'=>true,'parallelNonConflictingMutationsAllowed'=>true,'mutationBoundary'=>'CONFLICTING_RESOURCE','activeMutationCount'=>count($active),'waitingMutationCount'=>count($waiting),'activeMutations'=>$active,'waitingMutations'=>$waiting];
+        return [
+            'schemaVersion'=>2,'mode'=>'RESOURCE_SCOPED_CONCURRENCY','parallelReadsAllowed'=>true,
+            'parallelNonConflictingMutationsAllowed'=>true,'mutationBoundary'=>'CONFLICTING_RESOURCE',
+            'blockingDecisionAuthority'=>'CONFLICTING_RESOURCE','aggregateCountsAreNotBlockingAuthority'=>true,
+            'activeMutationCount'=>count($active),'waitingMutationCount'=>count($waiting),
+            'activeCoordinationCount'=>count($coordinationActive),'waitingCoordinationCount'=>count($coordinationWaiting),
+            'activeMutations'=>$active,'waitingMutations'=>$waiting,
+            'activeCoordination'=>$coordinationActive,'waitingCoordination'=>$coordinationWaiting,
+        ];
     }
 
     public function updateEnvelopeState(string $executionId, string $state, ?string $leaseExpiresAt = null, ?string $now = null, bool $transactionHeld = false): void

@@ -67,6 +67,7 @@ const expectedRepository = (value('--repository') ?? DEFAULT_REPOSITORY).toLower
 const expectedShaRaw = value('--expected-sha') ?? process.env.AWH_RELEASE_COMMIT;
 const expectedSha = expectedShaRaw ? expectedShaRaw.toLowerCase() : null;
 const requireMutationReady = flag('--require-mutation-ready');
+const allowExpectedAncestor = flag('--allow-expected-ancestor');
 
 if (!/^[A-Za-z0-9._/-]{1,200}$/.test(branch) || branch.startsWith('/') || branch.includes('..')) throw new Error('CANONICAL_BRANCH_INVALID');
 if (!/^[A-Za-z0-9._-]{1,80}$/.test(remote)) throw new Error('CANONICAL_REMOTE_INVALID');
@@ -94,14 +95,18 @@ try {
   const trackingShaRaw = await git(root, ['rev-parse', '--verify', `refs/remotes/${remote}/${branch}`], { optional: true });
   const trackingSha = trackingShaRaw && SHA.test(trackingShaRaw.toLowerCase()) ? trackingShaRaw.toLowerCase() : null;
   const trackingStale = liveSha && trackingSha ? trackingSha !== liveSha : null;
+  let expectedAncestorOfLive = null;
+  if (expectedSha !== null && liveSha !== null && expectedSha !== liveSha && allowExpectedAncestor) {
+    expectedAncestorOfLive = (await git(root, ['merge-base', '--is-ancestor', expectedSha, liveSha], { optional: true })) !== null;
+  }
   const worktreeOutput = await git(root, ['worktree', 'list', '--porcelain']);
   const worktreeCount = worktreeOutput.split(/\r?\n/).filter((line) => line.startsWith('worktree ')).length;
 
   let reason = 'PASS';
   if (!repositoryMatches) reason = 'REMOTE_IDENTITY_MISMATCH';
   else if (!remoteReachable) reason = 'LIVE_CANONICAL_UNAVAILABLE';
-  else if (expectedSha !== null && expectedSha !== liveSha) reason = 'EXPECTED_SHA_MISMATCH';
-  else if (headSha !== liveSha) reason = 'HEAD_STALE';
+  else if (expectedSha !== null && expectedSha !== liveSha && !(allowExpectedAncestor && expectedAncestorOfLive === true)) reason = 'EXPECTED_SHA_MISMATCH';
+  else if (headSha !== (expectedSha ?? liveSha)) reason = 'HEAD_STALE';
   else if (dirty) reason = 'DIRTY_WORKTREE';
 
   const mutationReady = reason === 'PASS';
@@ -116,6 +121,8 @@ try {
     liveSha,
     headSha,
     expectedSha,
+    allowExpectedAncestor,
+    expectedAncestorOfLive,
     trackingSha,
     trackingStale,
     currentBranch,

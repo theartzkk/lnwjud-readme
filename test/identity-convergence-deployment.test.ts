@@ -5,7 +5,7 @@ import test from 'node:test';
 const root=new URL('..',import.meta.url);
 const read=(path:string)=>readFile(new URL('../'+path,import.meta.url),'utf8');
 
-test('M23 is the canonical AWH deploy mode and preserves M22/M21 as compatibility history',async()=>{
+test('VPS Platform is an independent release track while M23/M22/M21 remain compatibility history',async()=>{
   const deploy=await read('deploy/awh-control-plane/deploy-control-plane.sh');
   const remote=await read('deploy/awh-control-plane/remote-deploy-control-plane.sh');
   const mission=await read('scripts/ops/bounded-deploy-mission.mjs');
@@ -15,7 +15,8 @@ test('M23 is the canonical AWH deploy mode and preserves M22/M21 as compatibilit
   assert.match(deploy,/RELEASE_ID=m22-/);
   assert.match(deploy,/hub\/migrations\/021_identity_convergence\.sql/);
   assert.match(deploy,/--platform-hardening\) PLATFORM_HARDENING=1/);
-  assert.match(deploy,/RELEASE_ID=m23-/);
+  assert.match(deploy,/RELEASE_ID=platform-/);
+  assert.doesNotMatch(deploy,/if test \"\$PLATFORM_HARDENING\" -eq 1; then RELEASE_ID=m23-/);
   assert.match(deploy,/hub\/migrations\/022_platform_hardening\.sql/);
   assert.match(remote,/IDENTITY_CONVERGENCE=\$\{31\}/);
   assert.match(remote,/m22-identity-convergence/);
@@ -37,8 +38,11 @@ test('M23 is the canonical AWH deploy mode and preserves M22/M21 as compatibilit
   assert.match(remote,/platform_authority='KRUART'.*school_authority='BAY_EXCUSE_X'/s);
   assert.match(remote,/control_user_profiles WHERE person_type IN \('TEACHER','DIRECTOR'\) OR system_role IN \('TEACHER','DIRECTOR'\)/);
   assert.match(mission,/return modes\[0\]\?\?'--platform-hardening'/);
-  assert.match(operator,/bounded-deploy-mission\.mjs','--platform-hardening','--approve'/);
-  assert.match(release,/releaseMode'=>'PLATFORM_HARDENING'/);
+  assert.match(operator,/\$track==='vps-platform'.*\$modeArg='--platform-hardening'/s);
+  assert.match(operator,/bounded-deploy-mission\.mjs',\$modeArg,'--approve'/);
+  assert.match(release,/platformFromPdo\(PDO \$pdo\).*'PLATFORM_HARDENING','vps-platform','platform\/production','VPS Update'/s);
+  assert.match(remote,/TRACK_REF=refs\/heads\/platform\/production/);
+  assert.match(remote,/RUNTIME_REF=refs\/heads\/runtime\/production/);
 });
 
 test('BAY authority uses the registered read-only MariaDB binding, not release paths or a second credential',async()=>{

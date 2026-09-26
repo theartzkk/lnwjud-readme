@@ -99,6 +99,7 @@ final class HubControlPlaneService
     private readonly HubStaffOperationsService $staff;
     private readonly HubManagedHostingService $hosting;
     private readonly HubCoreReleaseService $coreReleases;
+    private readonly HubCoreReleaseService $platformReleases;
     private readonly HubLearnLabReleaseService $learnLabReleases;
     private readonly HubAssessmentReleaseService $assessmentReleases;
     private readonly ?HubCloudWorkflowService $cloud;
@@ -122,6 +123,7 @@ final class HubControlPlaneService
         $this->staff = new HubStaffOperationsService($pdo, $databasePath);
         $this->hosting = HubManagedHostingService::fromPdo($pdo);
         $this->coreReleases = HubCoreReleaseService::fromPdo($pdo);
+        $this->platformReleases = HubCoreReleaseService::platformFromPdo($pdo);
         $this->learnLabReleases = HubLearnLabReleaseService::fromPdo($pdo);
         $this->assessmentReleases = HubAssessmentReleaseService::fromPdo($pdo);
         $cloud = null;
@@ -216,6 +218,11 @@ final class HubControlPlaneService
         try { return $this->coreReleases->status($sessionToken); }
         catch (HubCoreReleaseException $error) { throw new HubControlPlaneException('Core release request was rejected',$error->codeName); }
     }
+    public function platformReleaseStatusForSession(string $sessionToken): array
+    {
+        try { return $this->platformReleases->status($sessionToken); }
+        catch (HubCoreReleaseException $error) { throw new HubControlPlaneException('Platform release request was rejected',$error->codeName); }
+    }
     public function updateCenterForSession(string $sessionToken, ?string $now = null): array
     {
         $session = $this->sessionRow($sessionToken, $now);
@@ -225,6 +232,8 @@ final class HubControlPlaneService
         $projects = $this->projectsForUser($userId);
         try { $core = $this->coreReleases->status($sessionToken); }
         catch (Throwable) { $core = ['schemaVersion'=>1,'sourcePromotion'=>null,'releases'=>[]]; }
+        try { $platform = $this->platformReleases->status($sessionToken); }
+        catch (Throwable) { $platform = ['schemaVersion'=>1,'sourcePromotion'=>null,'releases'=>[]]; }
         try { $learnLab = $this->learnLabReleases->status($sessionToken); }
         catch (Throwable) { $learnLab = ['schemaVersion'=>1,'current'=>null,'sourcePromotion'=>null,'releases'=>[]]; }
         try { $assessment = $this->assessmentReleases->status($sessionToken); }
@@ -249,7 +258,42 @@ final class HubControlPlaneService
 
         $items = [];
         $covered = [];
-        $production = is_string($release['controlSourceSha'] ?? null) ? (string) $release['controlSourceSha'] : null;
+        $production = is_string($release['controlSourceSha'] ?? null) ? strtolower((string) $release['controlSourceSha']) : null;
+
+        $platformCurrent = is_string($platform['trackProductionSha'] ?? null) ? strtolower((string)$platform['trackProductionSha']) : $production;
+        $platformCandidate = is_array($platform['sourcePromotion'] ?? null) && is_string($platform['sourcePromotion']['sha'] ?? null)
+            ? strtolower((string)$platform['sourcePromotion']['sha']) : null;
+        $activePlatform = null;
+        foreach ((array)($platform['releases'] ?? []) as $row) {
+            if (!is_array($row) || !is_string($row['releaseSha'] ?? null)) continue;
+            if ($platformCandidate !== null && !hash_equals($platformCandidate,strtolower((string)$row['releaseSha']))) continue;
+            if (in_array((string)($row['taskState'] ?? ''),['COMPLETED','FAILED','CANCELLED'],true)) continue;
+            $activePlatform=$row; break;
+        }
+        $platformState = ($platformCandidate !== null && ($platformCurrent === null || !hash_equals($platformCandidate,$platformCurrent))) ? 'UPDATE_AVAILABLE' : 'CURRENT';
+        if (is_array($activePlatform)) $platformState=(string)($activePlatform['approvalStatus']??'')==='PENDING'?'WAITING_FOR_APPROVAL':'UPDATING';
+        if ($coreStorageBlocked && in_array($platformState,['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'],true)) $platformState='BLOCKED';
+        $platformReason = match($platformState) {
+            'CURRENT' => 'VPS Update track ตรงกับรุ่นฐานที่บันทึกไว้',
+            'WAITING_FOR_APPROVAL' => 'VPS Update ผ่าน verification boundary แล้วและรอ Owner ยืนยัน',
+            'UPDATING' => 'VPS Update controller กำลังอัปเดต shared runtime/infrastructure',
+            'BLOCKED' => 'Storage ยังไม่ถึง release headroom ที่ปลอดภัย ต้องเหลืออย่างน้อย 3 GB และใช้พื้นที่ต่ำกว่า 90%',
+            default => 'มี VPS Update ใหม่พร้อมเข้าสู่ typed release boundary',
+        };
+        $items[]=[
+            'key'=>'vps-platform','projectId'=>null,'name'=>'VPS Update','kind'=>'PLATFORM','adapter'=>'PLATFORM_RELEASE',
+            'state'=>$platformState,'current'=>$platformCurrent,'candidate'=>$platformCandidate,
+            'releaseDetailsRequired'=>true,'approvalRequired'=>true,'approvalId'=>is_array($activePlatform)&&is_string($activePlatform['approvalId']??null)?$activePlatform['approvalId']:null,
+            'actionable'=>in_array($platformState,['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'],true),
+            'reason'=>$platformReason,'preflight'=>['storage'=>$coreStorage,'releaseBlocked'=>$coreStorageBlocked],
+            'runtimeSourceSha'=>$production,'progress'=>is_array($activePlatform)?(int)($activePlatform['progress']??0):null,
+            'progressEvent'=>is_array($activePlatform)?$this->latestTaskEventMessage($activePlatform['taskId']??null):null,
+            'failureCode'=>is_array($activePlatform)?($activePlatform['failureCode']??null):null,
+            'releaseNotes'=>is_array($platform['releaseNotes']??null)?$platform['releaseNotes']:null,
+            'knownIssues'=>is_array($platform['knownIssues']??null)?$platform['knownIssues']:[],
+        ];
+
+        $awhCurrent = is_string($core['trackProductionSha'] ?? null) ? strtolower((string)$core['trackProductionSha']) : $production;
         $candidate = is_array($core['sourcePromotion'] ?? null) && is_string($core['sourcePromotion']['sha'] ?? null)
             ? strtolower((string) $core['sourcePromotion']['sha']) : null;
         $activeCore = null;
@@ -262,7 +306,7 @@ final class HubControlPlaneService
         }
         $runtimeState = is_string($release['componentState'] ?? null) ? (string) $release['componentState'] : 'UNKNOWN';
         $needsRuntimeRepair = $runtimeState === 'SPLIT';
-        $awhState = ($candidate !== null && $production !== null && !hash_equals($candidate, $production)) || ($needsRuntimeRepair && $candidate !== null) ? 'UPDATE_AVAILABLE' : 'CURRENT';
+        $awhState = ($candidate !== null && ($awhCurrent === null || !hash_equals($candidate, $awhCurrent))) || ($needsRuntimeRepair && $candidate !== null) ? 'UPDATE_AVAILABLE' : 'CURRENT';
         if (is_array($activeCore)) $awhState = (string) ($activeCore['approvalStatus'] ?? '') === 'PENDING' ? 'WAITING_FOR_APPROVAL' : 'UPDATING';
         if ($coreStorageBlocked && in_array($awhState, ['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'], true)) $awhState = 'BLOCKED';
         $awhReason = $awhState === 'CURRENT'
@@ -275,7 +319,7 @@ final class HubControlPlaneService
         if ($needsRuntimeRepair && $awhState === 'UPDATE_AVAILABLE') $awhReason = 'ตรวจพบ Control/Web/Enrollment อยู่คนละรุ่น ระบบจะ reconcile ให้ตรงกับ Source Authority ล่าสุดผ่าน Core Release เดียว';
         $items[] = [
             'key'=>'awh-core','projectId'=>'113b45c0-23e1-408d-ae0f-ac5eca7f6900','name'=>'Art’s Workspace Hub',
-            'kind'=>'CORE','adapter'=>'CORE_RELEASE','state'=>$awhState,'current'=>$production,'candidate'=>$candidate,
+            'kind'=>'CORE','adapter'=>'CORE_RELEASE','state'=>$awhState,'current'=>$awhCurrent,'candidate'=>$candidate,
             'approvalRequired'=>true,'approvalId'=>is_array($activeCore) && is_string($activeCore['approvalId'] ?? null) ? $activeCore['approvalId'] : null,
             'actionable'=>in_array($awhState,['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'],true),
             'reason'=>$awhReason,'preflight'=>['storage'=>$coreStorage,'releaseBlocked'=>$coreStorageBlocked],
@@ -440,7 +484,7 @@ final class HubControlPlaneService
             $notes=is_array($item['releaseNotes']??null)?$item['releaseNotes']:null;
             if(!HubUpdateTargetRegistry::releaseDetailsReady($notes)&&$projectId!==null&&is_array($releaseDetailsByProject[$projectId]??null))
                 $notes=$releaseDetailsByProject[$projectId];
-            $required=$projectId!==null&&isset($releaseRequiredProjects[$projectId]);
+            $required=(bool)($item['releaseDetailsRequired']??false)||($projectId!==null&&isset($releaseRequiredProjects[$projectId]));
             $ready=HubUpdateTargetRegistry::releaseDetailsReady($notes);
             $item['releaseDetailsRequired']=$required;
             $item['releaseDetailsReady']=!$required||$ready;
@@ -483,7 +527,8 @@ final class HubControlPlaneService
                 'rollbackReleaseId'=>$release['rollbackReleaseId'] ?? null,
             ],
             'policy'=>['singleControlPlane'=>true,'parallelDeployEngine'=>false,'ownerApprovalPreserved'=>true,'rollbackRequired'=>true,'sourceAuthority'=>'AWH_VAULT_OR_EXISTING_ADAPTER',
-                'singleLatestCandidate'=>true,'stalePendingRelease'=>'AUTO_SUPERSEDE_BEFORE_LEASE','humanShaRequired'=>false,'runtimeCoherenceRequired'=>true,'releaseDetailsRequired'=>true],
+                'singleLatestCandidate'=>true,'stalePendingRelease'=>'AUTO_SUPERSEDE_BEFORE_LEASE','humanShaRequired'=>false,'runtimeCoherenceRequired'=>true,'releaseDetailsRequired'=>true,
+                'releaseTrackScopedDeployOwnership'=>true,'hostGlobalReleaseTrack'=>'vps-platform','mutationDecisionAuthority'=>'AWH_EXECUTION_GATE','projectMissionIsCoordinationOnly'=>true],
         ];
     }
 
@@ -557,6 +602,11 @@ final class HubControlPlaneService
     {
         try { return $this->coreReleases->request($sessionToken,$csrf,$payload); }
         catch (HubCoreReleaseException $error) { throw new HubControlPlaneException('Core release request was rejected',$error->codeName); }
+    }
+    public function requestPlatformReleaseForSession(string $sessionToken,string $csrf,array $payload): array
+    {
+        try { return $this->platformReleases->request($sessionToken,$csrf,$payload); }
+        catch (HubCoreReleaseException $error) { throw new HubControlPlaneException('Platform release request was rejected',$error->codeName); }
     }
     public function learnLabReleaseStatusForSession(string $sessionToken): array
     {

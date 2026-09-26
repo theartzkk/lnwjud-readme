@@ -133,7 +133,7 @@ PY;
     ar_assert(in_array('/usr/bin/php',$dispatchCall,true)&&in_array($fakeRunner,$dispatchCall,true)&&in_array($execution,$dispatchCall,true),'dispatcher passes immutable runner and execution UUID only');
     ar_assert(!in_array($releaseSha,$dispatchCall,true)&&!in_array($version,$dispatchCall,true)&&!in_array('sh',$dispatchCall,true),'release identity and shell text are not command arguments');
     ar_assert(in_array('--property=NoNewPrivileges=true',$dispatchCall,true),'privileged release runner preserves NoNewPrivileges');
-    ar_assert(HubCapabilityRegistryService::mutationResourceForExecution(HubAssessmentReleaseService::CAPABILITY,'VPS')==='CANONICAL:DEPLOY','Assessment release serializes on canonical deploy resource');
+    ar_assert(HubCapabilityRegistryService::mutationResourceForExecution(HubAssessmentReleaseService::CAPABILITY,'VPS')==='CANONICAL:DEPLOY:BAY_ASSESSMENT','Assessment release owns its release track');
     ar_assert($pdo->query('PRAGMA integrity_check')->fetchColumn()==='ok'&&$pdo->query('PRAGMA foreign_key_check')->fetchAll()===[],'Assessment release flow preserves DB integrity');
 
     fwrite(STDOUT,"AWH Assessment release operator: PASS\n");

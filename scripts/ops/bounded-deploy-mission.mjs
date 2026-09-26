@@ -14,7 +14,7 @@ const INTELLIGENCE=join(ROOT,'hub/bin/verification-intelligence.php');
 const EVIDENCE_DIR=join(ROOT,'.awh-build','verification');
 const EVAL_CATALOG=join(ROOT,'config/kruart-engineering-eval.json');
 const DESKTOP_ARTIFACTS=['dist-web/downloads/AWH-macOS-arm64.zip','dist-web/downloads/AWH-macOS-x64.zip','dist-web/downloads/AWH-Windows-x64.zip','dist-web/downloads/SHA256SUMS.txt'];
-const DEPLOY_MODES=['--compat-refresh','--assistant-workstream','--workspace-continuity','--unified-workspace','--final-product','--founding-memory','--self-service','--central-project-authority','--anywhere-execution','--cost-aware-ai','--automations','--self-sufficient-ai','--account-hosting','--cloud-first','--conversation-lifecycle','--project-source-authority','--identity-convergence','--platform-hardening'];
+const DEPLOY_MODES=['--compat-refresh','--awh-core','--assistant-workstream','--workspace-continuity','--unified-workspace','--final-product','--founding-memory','--self-service','--central-project-authority','--anywhere-execution','--cost-aware-ai','--automations','--self-sufficient-ai','--account-hosting','--cloud-first','--conversation-lifecycle','--project-source-authority','--identity-convergence','--platform-hardening'];
 let missionContext={};
 
 const CONNECTOR_ONLY_SRC = new Set(['src/worker-capability-discovery.ts']);
@@ -101,10 +101,12 @@ async function persistDurable(document){
 
 async function resolveProduction(){
   const remote=await canonicalRemote();
-  const live=await run('git',['ls-remote','--exit-code',remote,'refs/heads/production']);
-  const match=live.code===0?live.tail.trim().match(/^([0-9a-f]{40})\s+refs\/heads\/production$/i):null;
-  if(match&&SHA.test(match[1]))return match[1].toLowerCase();
-  throw new Error('MISSION_PRODUCTION_REF_UNRESOLVED');
+  for(const ref of ['runtime/production','production']){
+    const live=await run('git',['ls-remote','--exit-code',remote,`refs/heads/${ref}`]);
+    const match=live.code===0?live.tail.trim().match(new RegExp(`^([0-9a-f]{40})\\s+refs/heads/${ref.replaceAll('/','\\/')}$`,'i')):null;
+    if(match&&SHA.test(match[1]))return match[1].toLowerCase();
+  }
+  throw new Error('MISSION_RUNTIME_PRODUCTION_REF_UNRESOLVED');
 }
 
 async function policy(mode,payload){
@@ -246,14 +248,22 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   if(rawArgs.includes('--deploy')||rawArgs.includes('--dry-run')) throw new Error('MISSION_INTERNAL_FLAG_FORBIDDEN');
   const mode=missionModeFromArgs(rawArgs); const cleanup=rawArgs.includes('--cleanup-topology');
   const desktopRelease=desktopReleaseRequested(rawArgs);
+  const trackRelease=mode==='--awh-core'||mode==='--platform-hardening';
   const unknown=rawArgs.filter((a)=>!['--approve','--cleanup-topology','--desktop-agent-release',...DEPLOY_MODES].includes(a));
   if(unknown.length) throw new Error(`MISSION_ARGUMENT_INVALID:${unknown[0]}`);
   const head=(await git(['rev-parse','HEAD'])).toLowerCase(); const main=(await git(['rev-parse','refs/heads/main'])).toLowerCase();
   missionContext={releaseSha:head};
-  if(!SHA.test(head)||head!==main) throw new Error('MISSION_HEAD_NOT_CANONICAL_MAIN');
+  if(!SHA.test(head)||!SHA.test(main)) throw new Error('MISSION_SOURCE_IDENTITY_INVALID');
+  if(head!==main){
+    if(!trackRelease)throw new Error('MISSION_HEAD_NOT_CANONICAL_MAIN');
+    const ancestor=await run('git',['merge-base','--is-ancestor',head,main]);
+    if(ancestor.code!==0)throw new Error('MISSION_RELEASE_NOT_CANONICAL_ANCESTOR');
+  }
   const dirty=await git(['status','--porcelain','--untracked-files=all']); if(dirty!=='') throw new Error('MISSION_SOURCE_NOT_CLEAN');
   const production=(await resolveProduction()).toLowerCase(); missionContext.baseSha=production;
   if(production===head){console.log(`MISSION_RELEASE_SHA=${head}`);console.log('MISSION_STATE=ALREADY_CURRENT');console.log('MISSION_RESULT=PASS');return;}
+  const forward=await run('git',['merge-base','--is-ancestor',production,head]);
+  if(forward.code!==0)throw new Error('MISSION_RELEASE_NOT_FORWARD_FROM_RUNTIME');
   const changed=(await git(['diff','--name-only',`${production}..${head}`])).split(/\r?\n/).filter(Boolean); missionContext.changedFiles=changed.length; missionContext.changedPaths=changed.slice(0,80);
   let plan=await verificationPlanForFiles(changed); const staticEvalScenarios=await evalScenariosForFiles(changed); const durableEvalScenarios=await durableRegressions(missionContext.changedPaths); const evalScenarios=[...new Set([...staticEvalScenarios,...durableEvalScenarios])].sort();
   if(durableEvalScenarios.length>0){plan={...plan,riskLevel:plan.riskLevel==='CRITICAL'?'CRITICAL':'HIGH',budget:'DEEP',reasons:[...new Set([...(plan.reasons??[]),'durable-incident-regression'])],requiredChecks:[...new Set([...(plan.requiredChecks??[]),'regression','repeat-regression'])]};console.log('MISSION_REGRESSION_REPLAY=DEEP');} missionContext.riskLevel=plan.riskLevel; missionContext.budget=plan.budget;

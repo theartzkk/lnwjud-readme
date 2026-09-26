@@ -15,6 +15,13 @@ test('repository governance is a single machine-enforced contract', async () => 
   assert.equal(contract.rules.requiredAgentEntrypoint, 'AGENTS.md');
   assert.equal(contract.rules.typedSourcePromotionOnly, true);
   assert.equal(contract.rules.resourceScopedMutationOwnership, true);
+  assert.equal(contract.rules.mutationDecisionAuthority, 'AWH_EXECUTION_GATE');
+  assert.equal(contract.rules.blockingDecision, 'WAIT_CONFLICT');
+  assert.deepEqual(contract.rules.nonBlockingDecisions, ['CONTINUE','CONTINUE_OR_JOIN']);
+  assert.equal(contract.rules.projectMissionIsCoordinationOnly, true);
+  assert.equal(contract.rules.aggregateActiveCountsAreNotBlockingAuthority, true);
+  assert.equal(contract.rules.releaseTrackScopedDeployOwnership, true);
+  assert.equal(contract.rules.hostGlobalReleaseTrack, 'vps-platform');
   assert.equal(contract.rules.forbidParallelAuthorityFiles, true);
 
   const expected = new Map([
@@ -50,6 +57,9 @@ test('repository governance is a single machine-enforced contract', async () => 
   const agents = await readFile(join(root, 'AGENTS.md'), 'utf8');
   assert.match(agents, /Document role: AGENT_ENTRYPOINT/);
   assert.match(agents, /repository-governance-contract\.json/);
+  assert.match(agents, /only `WAIT_CONFLICT` is blocking/);
+  assert.match(agents, /Project Mission is a coordination lease, not a writer lock/);
+  assert.match(agents, /only `VPS Platform` is host-global/);
 
   const drift = await readFile(join(root, 'hub/bin/ecosystem-source-drift.php'), 'utf8');
   assert.match(drift, /governanceRepositories/);

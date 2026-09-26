@@ -76,9 +76,27 @@ final class HubOperatorBridgeService
         $quick=(string)$this->pdo->query('PRAGMA quick_check')->fetchColumn();
         $schema=(int)$this->pdo->query('PRAGMA user_version')->fetchColumn();
         $projects=(int)$this->pdo->query('SELECT COUNT(*) FROM projects')->fetchColumn();
-        $active=$this->pdo->prepare("SELECT COUNT(*) FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id JOIN control_tasks t ON t.task_id=x.task_id WHERE x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED')");
-        $active->execute(['at'=>$at]);
-        return ['schemaVersion'=>1,'state'=>$quick==='ok'?'READY':'REVIEW','database'=>['quickCheck'=>$quick,'schema'=>$schema],'projects'=>$projects,'activeMutationCount'=>(int)$active->fetchColumn(),'arbitraryShell'=>false,'observedAt'=>$at];
+        $active=$this->pdo->prepare("SELECT
+            SUM(CASE WHEN e.required_capability<>:mission THEN 1 ELSE 0 END) AS writer_count,
+            SUM(CASE WHEN e.required_capability=:mission THEN 1 ELSE 0 END) AS coordination_count
+            FROM control_execution_envelopes x
+            JOIN control_task_executions e ON e.execution_id=x.execution_id
+            JOIN control_tasks t ON t.task_id=x.task_id
+            WHERE x.mutation_scope<>'READ' AND x.state='ACTIVE'
+            AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at)
+            AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED')
+            AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED')");
+        $active->execute(['at'=>$at,'mission'=>self::MISSION_CAPABILITY]);
+        $counts=$active->fetch();
+        return [
+            'schemaVersion'=>2,'state'=>$quick==='ok'?'READY':'REVIEW',
+            'database'=>['quickCheck'=>$quick,'schema'=>$schema],'projects'=>$projects,
+            'activeMutationCount'=>is_array($counts)?(int)($counts['writer_count']??0):0,
+            'activeCoordinationCount'=>is_array($counts)?(int)($counts['coordination_count']??0):0,
+            'aggregateCountsAreNotBlockingAuthority'=>true,
+            'blockingDecisionAuthority'=>'AWH_EXECUTION_GATE',
+            'arbitraryShell'=>false,'observedAt'=>$at
+        ];
     }
 
     /** @return array<string,mixed> */
@@ -100,6 +118,8 @@ final class HubOperatorBridgeService
         $active=$this->pdo->prepare("SELECT x.execution_id,x.task_id,x.project_id,x.state,x.mutation_scope,x.lease_expires_at,e.state AS execution_state,e.required_capability,e.executor_kind,t.state AS task_state,t.goal,p.name AS project_name FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id JOIN control_tasks t ON t.task_id=x.task_id JOIN projects p ON p.project_id=x.project_id WHERE x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY x.updated_at DESC LIMIT 80");
         $active->execute(['at'=>$at]);$allActiveRows=$active->fetchAll();
         $activeRows=array_values(array_filter($allActiveRows,static fn(array $row):bool=>hash_equals($id,(string)$row['project_id'])));
+        $coordinationRows=array_values(array_filter($activeRows,static fn(array $row):bool=>(string)($row['required_capability']??'')===self::MISSION_CAPABILITY));
+        $writerRows=array_values(array_filter($activeRows,static fn(array $row):bool=>(string)($row['required_capability']??'')!==self::MISSION_CAPABILITY));
         $conflictingRows=[];
         foreach($allActiveRows as $row){
             if($excludeExecutionId!==null&&hash_equals($excludeExecutionId,(string)$row['execution_id']))continue;
@@ -114,8 +134,10 @@ final class HubOperatorBridgeService
         $unscopedGlobal->execute();$unscopedConflictCount=0;
         foreach($unscopedGlobal->fetchAll() as $row){
             if($excludeExecutionId!==null&&hash_equals($excludeExecutionId,(string)$row['execution_id']))continue;
+            $candidateProject=(string)$row['project_id'];
+            if(hash_equals($id,$candidateProject)){$unscopedConflictCount++;continue;}
             $resource=HubCapabilityRegistryService::mutationResourceForExecution((string)$row['required_capability'],(string)$row['executor_kind']);
-            if(HubCapabilityRegistryService::mutationResourcesConflictForProjects($requestedResource,$id,$resource,(string)$row['project_id']))$unscopedConflictCount++;
+            if(HubCapabilityRegistryService::mutationResourcesConflictForProjects($requestedResource,$id,$resource,$candidateProject))$unscopedConflictCount++;
         }
         $workspace=$this->pdo->prepare("SELECT owner_device_id,checkpoint_id,lease_expires_at,updated_at FROM control_workspace_leases WHERE project_id=:project AND state='ACTIVE' AND (lease_expires_at IS NULL OR lease_expires_at>:at) LIMIT 5");
         $workspace->execute(['project'=>$id,'at'=>$at]); $workspaceRows=$workspace->fetchAll();
@@ -146,7 +168,8 @@ final class HubOperatorBridgeService
         $attention=!$hardBlocked&&(!$sourceReady||!$vaultReady);
         $ready=!$hardBlocked;
         $state=$hardBlocked?'BLOCKED':($attention?'ATTENTION':'READY');
-        return ['schemaVersion'=>1,'state'=>$state,'ready'=>$ready,'productionReady'=>$productionReady,'sourceRequired'=>$requireSource,'requestedMutationResource'=>$requestedResource,'project'=>['projectId'=>$id,'name'=>(string)$project['name'],'type'=>(string)$project['type']],'source'=>['authority'=>$authority,'revision'=>$sourceRevision,'canonicalVaultRevisionId'=>$sourceVault,'activeVaultRevisionId'=>$activeVault,'syncState'=>$sync],'writer'=>['activeMutationCount'=>count($activeRows),'conflictingMutationCount'=>count($conflictingRows),'runningMutationExecutionCount'=>$runningCount,'unscopedRunningMutationExecutionCount'=>$unscopedCount,'waitingMutationCount'=>$waitingCount,'activeWorkspaceLeaseCount'=>count($workspaceRows),'activeMutations'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'state'=>(string)$r['state'],'scope'=>(string)$r['mutation_scope'],'resource'=>HubCapabilityRegistryService::mutationResourceForExecution((string)$r['required_capability'],(string)$r['executor_kind']),'capability'=>(string)$r['required_capability'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal']],$activeRows),'workspaceLeases'=>array_map(static fn(array $r):array=>['ownerDeviceId'=>(string)$r['owner_device_id'],'checkpointId'=>$r['checkpoint_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'updatedAt'=>(string)$r['updated_at']],$workspaceRows)],'checks'=>$checks,'observedAt'=>$at];
+        $decision=$hardBlocked?'WAIT_CONFLICT':(count($coordinationRows)>0?'CONTINUE_OR_JOIN':'CONTINUE');
+        return ['schemaVersion'=>2,'state'=>$state,'ready'=>$ready,'blocking'=>$hardBlocked,'decision'=>$decision,'decisionAuthority'=>'AWH_EXECUTION_GATE','productionReady'=>$productionReady,'sourceRequired'=>$requireSource,'requestedMutationResource'=>$requestedResource,'project'=>['projectId'=>$id,'name'=>(string)$project['name'],'type'=>(string)$project['type']],'source'=>['authority'=>$authority,'revision'=>$sourceRevision,'canonicalVaultRevisionId'=>$sourceVault,'activeVaultRevisionId'=>$activeVault,'syncState'=>$sync],'writer'=>['activeMutationCount'=>count($writerRows),'conflictingMutationCount'=>count($conflictingRows),'runningMutationExecutionCount'=>count($writerRows),'unscopedRunningMutationExecutionCount'=>$unscopedCount,'waitingMutationCount'=>$waitingCount,'activeWorkspaceLeaseCount'=>count($workspaceRows),'activeMutations'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'state'=>(string)$r['state'],'scope'=>(string)$r['mutation_scope'],'resource'=>HubCapabilityRegistryService::mutationResourceForExecution((string)$r['required_capability'],(string)$r['executor_kind']),'capability'=>(string)$r['required_capability'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal']],$writerRows),'workspaceLeases'=>array_map(static fn(array $r):array=>['ownerDeviceId'=>(string)$r['owner_device_id'],'checkpointId'=>$r['checkpoint_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'updatedAt'=>(string)$r['updated_at']],$workspaceRows)],'coordination'=>['activeMissionCount'=>count($coordinationRows),'blocksMutation'=>false,'rule'=>'PROJECT_MISSIONS_ARE_COORDINATION_ONLY','missions'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal']],$coordinationRows)],'checks'=>$checks,'observedAt'=>$at];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
@@ -275,9 +298,10 @@ final class HubOperatorBridgeService
     {
         $project=$this->resolveProject($selector);$projectId=(string)$project['project_id'];
         $this->reconcileExpiredMissions($projectId,$at);
-        $mission=$this->activeProjectMission(null,$at,$projectId,false);
-        if($mission===null)return ['schemaVersion'=>1,'state'=>'IDLE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'observedAt'=>$at];
-        return ['schemaVersion'=>1,'state'=>'ACTIVE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'mission'=>$this->missionProjection($mission),'observedAt'=>$at];
+        $missions=$this->activeProjectMissions($at,$projectId);
+        if($missions===[])return ['schemaVersion'=>2,'state'=>'IDLE','blocking'=>false,'decision'=>'CONTINUE','decisionAuthority'=>'AWH_EXECUTION_GATE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'activeMissionCount'=>0,'missions'=>[],'observedAt'=>$at];
+        $projected=array_map(fn(array $row):array=>$this->missionProjection($row),$missions);
+        return ['schemaVersion'=>2,'state'=>'COORDINATING','blocking'=>false,'decision'=>'CONTINUE_OR_JOIN','decisionAuthority'=>'AWH_EXECUTION_GATE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'activeMissionCount'=>count($projected),'mission'=>$projected[0],'missions'=>$projected,'rule'=>'PROJECT_MISSIONS_ARE_COORDINATION_ONLY','observedAt'=>$at];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
@@ -287,15 +311,17 @@ final class HubOperatorBridgeService
         $selector=self::text($request,'project',160);$goal=self::text($request,'goal',500);
         $project=$this->resolveProject($selector);$projectId=(string)$project['project_id'];
         $this->reconcileExpiredMissions($projectId,$at);
-        $existing=$this->activeProjectMission(null,$at,$projectId,false);
-        if($existing!==null)return ['schemaVersion'=>1,'state'=>'ALREADY_ACTIVE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'mission'=>$this->missionProjection($existing),'observedAt'=>$at];
-        $gate=$this->projectGate($selector,$at,false,null);
-        if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('Project already has an active mutation or workspace lease','OPERATOR_PROJECT_GATE_BLOCKED');
+        // Project missions are coordination leases, not writer locks. Multiple
+        // independent chats may hold missions in the same project. Canonical
+        // source/deploy/workspace conflicts are enforced by their own typed
+        // mutation resources at the point of mutation.
+        $gate=$this->projectGate($selector,$at,false,self::MISSION_CAPABILITY);
+        if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('Project mission coordination gate is unavailable','OPERATOR_PROJECT_GATE_BLOCKED');
         $free=@disk_free_space('/');$total=@disk_total_space('/');
         if(is_float($free)&&$free<1073741824)throw new HubOperatorBridgeException('VPS free space is below the safe mission reserve','OPERATOR_STORAGE_CRITICAL');
         $authority=$this->acquireMutationAuthority($projectId,$goal,self::MISSION_CAPABILITY,['mode'=>'OPERATOR_PROJECT_MISSION','goal'=>$goal,'startedAt'=>$at],$at,self::MISSION_LEASE_SECONDS,self::MISSION_OWNER);
         $mission=$this->activeProjectMission($authority['executionId'],$at,$projectId,true);
-        return ['schemaVersion'=>1,'state'=>'ACQUIRED','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'mission'=>$this->missionProjection($mission),'storage'=>['freeBytes'=>is_float($free)?(int)$free:null,'totalBytes'=>is_float($total)?(int)$total:null],'observedAt'=>$at];
+        return ['schemaVersion'=>2,'state'=>'ACQUIRED','blocking'=>false,'decision'=>'CONTINUE','decisionAuthority'=>'AWH_EXECUTION_GATE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'mission'=>$this->missionProjection($mission),'rule'=>'PROJECT_MISSIONS_ARE_COORDINATION_ONLY','storage'=>['freeBytes'=>is_float($free)?(int)$free:null,'totalBytes'=>is_float($total)?(int)$total:null],'observedAt'=>$at];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
@@ -340,6 +366,15 @@ final class HubOperatorBridgeService
             }
             $this->pdo->exec('COMMIT');
         }catch(Throwable $error){try{$this->pdo->exec('ROLLBACK');}catch(Throwable){}throw new HubOperatorBridgeException('Expired project mission could not be reconciled','OPERATOR_MISSION_RECONCILE_FAILED');}
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function activeProjectMissions(string $at,string $projectId): array
+    {
+        if(!self::uuidValid($projectId))return [];
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.project_id,e.lease_expires_at,e.checkpoint_json,e.updated_at,t.goal,t.progress,x.state AS envelope_state FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.required_capability=:capability AND e.lease_owner=:owner AND e.state='RUNNING' AND x.state='ACTIVE' AND e.project_id=:project AND (e.lease_expires_at IS NULL OR e.lease_expires_at>:at) AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) ORDER BY e.updated_at DESC,e.execution_id DESC LIMIT 40");
+        $q->execute(['capability'=>self::MISSION_CAPABILITY,'owner'=>self::MISSION_OWNER,'project'=>$projectId,'at'=>$at]);
+        return array_values(array_filter($q->fetchAll(),static fn(mixed $row):bool=>is_array($row)));
     }
 
     /** @return array<string,mixed>|null */
@@ -762,6 +797,8 @@ final class HubOperatorBridgeService
         }
         $paths=array_values(array_filter(preg_split('/\r?\n/',$this->runGit($repo,['diff','--name-only',$expected,$target]))?:[],static fn(string $v):bool=>$v!==''));
         $paths=array_slice($paths,0,240);
+        $releaseTrack=HubUpdateTargetRegistry::releaseTrackForPaths($repository,$paths);
+        if($releaseTrack===null)throw new HubOperatorBridgeException('Source promotion crosses release-track ownership; split the change-set first','OPERATOR_RELEASE_TRACK_MIXED');
         if(count($groups['features'])+count($groups['improvements'])+count($groups['fixes'])+count($groups['internal'])===0&&count($paths)>0){
             $areas=[];foreach($paths as $path){$area=explode('/',$path,2)[0]??'';if($area!==''&&!in_array($area,$areas,true)&&count($areas)<4)$areas[]=$area;}
             $groups['internal'][]='ปรับปรุงแพตช์ในส่วน '.implode(', ',$areas).' ('.count($paths).' ไฟล์)';
@@ -794,7 +831,7 @@ final class HubOperatorBridgeService
         $ownerSummary=$userVisible?(string)$visible[0]:'ไม่มีการเปลี่ยนแปลงที่ผู้ใช้เห็น';
         return [
             'schemaVersion'=>1,'metadataState'=>'READY','generatedFrom'=>'EXACT_GIT_DIFF',
-            'repository'=>$repository,'previousSha'=>$expected,'targetSha'=>$target,'generatedAt'=>$at,
+            'repository'=>$repository,'releaseTrack'=>$releaseTrack,'previousSha'=>$expected,'targetSha'=>$target,'generatedAt'=>$at,
             'ownerSummary'=>$ownerSummary,'userVisible'=>$userVisible,
             'summary'=>$groups,'commits'=>$commits,'changedFileCount'=>count($paths),
             'impact'=>[

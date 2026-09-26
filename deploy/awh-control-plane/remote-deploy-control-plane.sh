@@ -4,7 +4,7 @@
 # only. Raw stderr and all secret-bearing diagnostics are intentionally hidden.
 set -eu
 exec 2>/dev/null
-DB=$1; REMOTE_ROOT=$2; REMOTE_STAGE=$3; RELEASE=$4; RELEASE_ID=$5; NGINX_CONFIG=$6; HOSTNAME=$7; AWH_FPM_SOCKET=$8; AWH_FPM_SERVICE=$9; CLEANUP_TOPOLOGY=${10}; OWNER_USERNAME=${11}; OWNER_AUTH_ENABLED=${12}; REMOTE_SCRIPT=${13}; COMPAT_REFRESH=${14}; ASSISTANT_WORKSTREAM=${15}; WORKSPACE_CONTINUITY=${16}; UNIFIED_WORKSPACE=${17}; FINAL_PRODUCT=${18}; FOUNDING_MEMORY=${19}; SELF_SERVICE=${20}; CENTRAL_PROJECT_AUTHORITY=${21}; RELEASE_COMMIT=${22}; ANYWHERE_EXECUTION=${23}; COST_AWARE_AI=${24}; AUTOMATIONS=${25}; SELF_SUFFICIENT_AI=${26}; ACCOUNT_HOSTING=${27}; CLOUD_FIRST=${28}; CONVERSATION_LIFECYCLE=${29}; PROJECT_SOURCE_AUTHORITY=${30}; IDENTITY_CONVERGENCE=${31}; PLATFORM_HARDENING=${32}
+DB=$1; REMOTE_ROOT=$2; REMOTE_STAGE=$3; RELEASE=$4; RELEASE_ID=$5; NGINX_CONFIG=$6; HOSTNAME=$7; AWH_FPM_SOCKET=$8; AWH_FPM_SERVICE=$9; CLEANUP_TOPOLOGY=${10}; OWNER_USERNAME=${11}; OWNER_AUTH_ENABLED=${12}; REMOTE_SCRIPT=${13}; COMPAT_REFRESH=${14}; ASSISTANT_WORKSTREAM=${15}; WORKSPACE_CONTINUITY=${16}; UNIFIED_WORKSPACE=${17}; FINAL_PRODUCT=${18}; FOUNDING_MEMORY=${19}; SELF_SERVICE=${20}; CENTRAL_PROJECT_AUTHORITY=${21}; RELEASE_COMMIT=${22}; ANYWHERE_EXECUTION=${23}; COST_AWARE_AI=${24}; AUTOMATIONS=${25}; SELF_SUFFICIENT_AI=${26}; ACCOUNT_HOSTING=${27}; CLOUD_FIRST=${28}; CONVERSATION_LIFECYCLE=${29}; PROJECT_SOURCE_AUTHORITY=${30}; IDENTITY_CONVERGENCE=${31}; PLATFORM_HARDENING=${32}; AWH_CORE=${33}
 case "$DB" in /var/lib/awh-hub/*|/opt/awh-hub/*|/srv/awh/*) ;; *) exit 20 ;; esac
 case "$REMOTE_ROOT" in /opt/awh-hub) ;; *) exit 20 ;; esac
 case "$REMOTE_STAGE" in /tmp/awh-control-plane-*.tar.gz) ;; *) exit 20 ;; esac
@@ -26,14 +26,15 @@ case "$CONVERSATION_LIFECYCLE" in 0|1) ;; *) exit 20 ;; esac
 case "$PROJECT_SOURCE_AUTHORITY" in 0|1) ;; *) exit 20 ;; esac
 case "$IDENTITY_CONVERGENCE" in 0|1) ;; *) exit 20 ;; esac
 case "$PLATFORM_HARDENING" in 0|1) ;; *) exit 20 ;; esac
+case "$AWH_CORE" in 0|1) ;; *) exit 20 ;; esac
 case "$RELEASE_COMMIT" in ''|*[!0-9a-fA-F]*) exit 20 ;; esac
 test "${#RELEASE_COMMIT}" -ge 40 && test "${#RELEASE_COMMIT}" -le 64 || exit 20
-EXTENSION_MODE_COUNT=$((ASSISTANT_WORKSTREAM + WORKSPACE_CONTINUITY + UNIFIED_WORKSPACE + FINAL_PRODUCT + FOUNDING_MEMORY + SELF_SERVICE + CENTRAL_PROJECT_AUTHORITY + ANYWHERE_EXECUTION + COST_AWARE_AI + AUTOMATIONS + SELF_SUFFICIENT_AI + ACCOUNT_HOSTING + CLOUD_FIRST + CONVERSATION_LIFECYCLE + PROJECT_SOURCE_AUTHORITY + IDENTITY_CONVERGENCE + PLATFORM_HARDENING))
+EXTENSION_MODE_COUNT=$((AWH_CORE + ASSISTANT_WORKSTREAM + WORKSPACE_CONTINUITY + UNIFIED_WORKSPACE + FINAL_PRODUCT + FOUNDING_MEMORY + SELF_SERVICE + CENTRAL_PROJECT_AUTHORITY + ANYWHERE_EXECUTION + COST_AWARE_AI + AUTOMATIONS + SELF_SUFFICIENT_AI + ACCOUNT_HOSTING + CLOUD_FIRST + CONVERSATION_LIFECYCLE + PROJECT_SOURCE_AUTHORITY + IDENTITY_CONVERGENCE + PLATFORM_HARDENING))
 if test $((COMPAT_REFRESH + EXTENSION_MODE_COUNT)) -gt 1; then exit 20; fi
 OWNER_LOGIN_PROOF_REQUIRED=0
 if test "$EXTENSION_MODE_COUNT" -eq 0; then OWNER_LOGIN_PROOF_REQUIRED=1; fi
-if test "$PLATFORM_HARDENING" = 1; then case "$RELEASE_ID" in m23-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$IDENTITY_CONVERGENCE" = 1; then case "$RELEASE_ID" in m22-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$PROJECT_SOURCE_AUTHORITY" = 1; then case "$RELEASE_ID" in m21-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$CONVERSATION_LIFECYCLE" = 1; then case "$RELEASE_ID" in m19-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$CLOUD_FIRST" = 1; then case "$RELEASE_ID" in m18-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ACCOUNT_HOSTING" = 1; then case "$RELEASE_ID" in m17-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$SELF_SUFFICIENT_AI" = 1; then case "$RELEASE_ID" in m16-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$AUTOMATIONS" = 1; then case "$RELEASE_ID" in m15-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$COST_AWARE_AI" = 1; then case "$RELEASE_ID" in m14-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ANYWHERE_EXECUTION" = 1; then case "$RELEASE_ID" in m13-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$CENTRAL_PROJECT_AUTHORITY" = 1; then case "$RELEASE_ID" in m12-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$SELF_SERVICE" = 1; then case "$RELEASE_ID" in m11-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$FOUNDING_MEMORY" = 1; then case "$RELEASE_ID" in m10-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$FINAL_PRODUCT" = 1; then case "$RELEASE_ID" in m9-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$UNIFIED_WORKSPACE" = 1; then case "$RELEASE_ID" in m8-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$WORKSPACE_CONTINUITY" = 1; then case "$RELEASE_ID" in m7-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ASSISTANT_WORKSTREAM" = 1; then case "$RELEASE_ID" in m6-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; else case "$RELEASE_ID" in m4-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; fi
-printf '%s\n' "$RELEASE_ID" | grep -Eq '^m(4|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23)-[0-9a-fA-F]{12}(-r[1-9][0-9]{0,2})?$' || exit 20
+if test "$PLATFORM_HARDENING" = 1; then case "$RELEASE_ID" in platform-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$AWH_CORE" = 1; then case "$RELEASE_ID" in awh-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$IDENTITY_CONVERGENCE" = 1; then case "$RELEASE_ID" in m22-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$PROJECT_SOURCE_AUTHORITY" = 1; then case "$RELEASE_ID" in m21-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$CONVERSATION_LIFECYCLE" = 1; then case "$RELEASE_ID" in m19-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$CLOUD_FIRST" = 1; then case "$RELEASE_ID" in m18-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ACCOUNT_HOSTING" = 1; then case "$RELEASE_ID" in m17-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$SELF_SUFFICIENT_AI" = 1; then case "$RELEASE_ID" in m16-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$AUTOMATIONS" = 1; then case "$RELEASE_ID" in m15-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$COST_AWARE_AI" = 1; then case "$RELEASE_ID" in m14-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ANYWHERE_EXECUTION" = 1; then case "$RELEASE_ID" in m13-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$CENTRAL_PROJECT_AUTHORITY" = 1; then case "$RELEASE_ID" in m12-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$SELF_SERVICE" = 1; then case "$RELEASE_ID" in m11-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$FOUNDING_MEMORY" = 1; then case "$RELEASE_ID" in m10-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$FINAL_PRODUCT" = 1; then case "$RELEASE_ID" in m9-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$UNIFIED_WORKSPACE" = 1; then case "$RELEASE_ID" in m8-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$WORKSPACE_CONTINUITY" = 1; then case "$RELEASE_ID" in m7-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; elif test "$ASSISTANT_WORKSTREAM" = 1; then case "$RELEASE_ID" in m6-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; else case "$RELEASE_ID" in m4-[0-9a-fA-F]*) ;; *) exit 20 ;; esac; fi
+printf '%s\n' "$RELEASE_ID" | grep -Eq '^(awh|platform|m(4|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23))-[0-9a-fA-F]{12}(-r[1-9][0-9]{0,2})?$' || exit 20
 case "$NGINX_CONFIG" in /etc/nginx/sites-enabled/*) ;; *) exit 20 ;; esac
 case "$HOSTNAME" in ''|*[!A-Za-z0-9.-]*|.*|*.) exit 20 ;; esac
 printf '%s' "$AWH_FPM_SOCKET" | grep -Eq '^/run/php/php[0-9]+\.[0-9]+-fpm-awh\.sock$' || exit 20
@@ -57,7 +58,8 @@ NGINX_CANDIDATE=/tmp/awh-control-nginx-$RELEASE_ID.conf
 WEB_RELEASE=/var/www/awh-web/releases/$RELEASE_ID
 WEB_POINTER=/var/www/awh-web/current
 WEB_POINTER_TMP=/var/www/awh-web/.current-$RELEASE_ID
-RELEASE_CREATED=0; WEB_CREATED=0; DB_MUTATED=0; POINTER_CHANGED=0; WEB_POINTER_CHANGED=0; NGINX_CHANGED=0; NGINX_BACKUP_CREATED=0; TOPOLOGY_ARCHIVED=0; TOPOLOGY_CLEANED=0; PRODUCTION_REF_CHANGED=0; PRODUCTION_REF_PREVIOUS=ABSENT; PREVIOUS_PRODUCTION_SHA=; SUCCESS=0; CURRENT_STAGE=PREPARE
+RELEASE_CREATED=0; WEB_CREATED=0; DB_MUTATED=0; POINTER_CHANGED=0; WEB_POINTER_CHANGED=0; NGINX_CHANGED=0; NGINX_BACKUP_CREATED=0; TOPOLOGY_ARCHIVED=0; TOPOLOGY_CLEANED=0; PRODUCTION_REF_CHANGED=0; PRODUCTION_REF_PREVIOUS=ABSENT; PREVIOUS_PRODUCTION_SHA=; TRACK_REF_CHANGED=0; TRACK_REF_PREVIOUS=ABSENT; PREVIOUS_TRACK_SHA=; RUNTIME_REF=refs/heads/runtime/production; TRACK_REF=refs/heads/production; SUCCESS=0; CURRENT_STAGE=PREPARE
+if test "$PLATFORM_HARDENING" = 1; then TRACK_REF=refs/heads/platform/production; fi
 EXECUTOR_UNITS_INSTALLED=0
 EXECUTOR_UNITS_PREEXISTING=0
 EXECUTOR_TIMER_STOPPED=0
@@ -194,7 +196,7 @@ enrollment_pointer_restore() {
   fi
 }
 sync_enrollment_from_release() {
-  if test "$PROJECT_SOURCE_AUTHORITY" != 1 && test "$IDENTITY_CONVERGENCE" != 1 && test "$PLATFORM_HARDENING" != 1; then
+  if test "$PROJECT_SOURCE_AUTHORITY" != 1 && test "$IDENTITY_CONVERGENCE" != 1 && test "$PLATFORM_HARDENING" != 1 && test "$AWH_CORE" != 1; then
     return 0
   fi
   for RELATIVE in hub/public/enrollment.php hub/src/HubEnrollmentService.php hub/src/HubEnrollmentRouter.php hub/src/HubEnrollmentApiMigration.php hub/migrations/002_m3e2_enrollment_api.sql hub/bin/migrate-m3e2.php deploy/nginx/awh-enrollment.conf deploy/php-fpm/awh-enrollment.pool.conf deploy/awh-enrollment/pointer-state.sh deploy/awh-enrollment/insert-nginx-include.php deploy/awh-enrollment/remote-deploy.sh; do
@@ -451,36 +453,59 @@ web_pointer_restore() { if test "$WEB_PREVIOUS" = ABSENT; then sudo rm -f "$WEB_
 production_ref_reconcile_live() {
   repo=/srv/awh-git/awh.git
   test -d "$repo" || return 0
-  current=$(git --git-dir="$repo" rev-parse refs/heads/production 2>/dev/null || true)
-  test -n "$current" || return 0
+  runtime_current=$(git --git-dir="$repo" rev-parse "$RUNTIME_REF" 2>/dev/null || true)
+  legacy_current=$(git --git-dir="$repo" rev-parse refs/heads/production 2>/dev/null || true)
   live_manifest=/var/www/awh-web/current/release.json
   sudo test -f "$live_manifest" || return 1
   live_sha=$(sudo -n /usr/bin/php -r '$j=json_decode(file_get_contents($argv[1]),true,32,JSON_THROW_ON_ERROR);$s=strtolower((string)($j["sourceSha"]??""));if(!preg_match("/^[0-9a-f]{40}$/",$s))exit(2);echo $s;' "$live_manifest") || return 1
   test -n "$live_sha" || return 1
   git --git-dir="$repo" cat-file -e "$live_sha^{commit}" || return 1
-  test "$current" = "$live_sha" && return 0
   test "$PREVIOUS_POINTER" = PRESENT || return 1
   control_manifest="$PREVIOUS_TARGET/dist-web/release.json"
   sudo test -f "$control_manifest" || return 1
   control_sha=$(sudo -n /usr/bin/php -r '$j=json_decode(file_get_contents($argv[1]),true,32,JSON_THROW_ON_ERROR);$s=strtolower((string)($j["sourceSha"]??""));if(!preg_match("/^[0-9a-f]{40}$/",$s))exit(2);echo $s;' "$control_manifest") || return 1
   test "$control_sha" = "$live_sha" || return 1
-  git --git-dir="$repo" merge-base --is-ancestor "$live_sha" "$current" || return 1
-  git --git-dir="$repo" merge-base --is-ancestor "$current" "$RELEASE_COMMIT" || return 1
-  git --git-dir="$repo" update-ref refs/heads/production "$live_sha" "$current" || return 1
-  test "$(git --git-dir="$repo" rev-parse refs/heads/production)" = "$live_sha" || return 1
-  stage PRODUCTION_REF_RECONCILED
+  git --git-dir="$repo" merge-base --is-ancestor "$live_sha" "$RELEASE_COMMIT" || return 1
+  if test -z "$runtime_current"; then
+    if test -n "$legacy_current"; then
+      git --git-dir="$repo" merge-base --is-ancestor "$live_sha" "$legacy_current" || git --git-dir="$repo" merge-base --is-ancestor "$legacy_current" "$live_sha" || return 1
+    fi
+    git --git-dir="$repo" update-ref "$RUNTIME_REF" "$live_sha" || return 1
+    test "$(git --git-dir="$repo" rev-parse "$RUNTIME_REF")" = "$live_sha" || return 1
+    stage RUNTIME_REF_BOOTSTRAPPED
+    return 0
+  fi
+  test "$runtime_current" = "$live_sha" && return 0
+  git --git-dir="$repo" merge-base --is-ancestor "$live_sha" "$runtime_current" || return 1
+  git --git-dir="$repo" merge-base --is-ancestor "$runtime_current" "$RELEASE_COMMIT" || return 1
+  git --git-dir="$repo" update-ref "$RUNTIME_REF" "$live_sha" "$runtime_current" || return 1
+  test "$(git --git-dir="$repo" rev-parse "$RUNTIME_REF")" = "$live_sha" || return 1
+  stage RUNTIME_REF_RECONCILED
 }
 production_ref_restore() {
   test "$PRODUCTION_REF_CHANGED" -eq 1 || return 0
-  current=$(git --git-dir=/srv/awh-git/awh.git rev-parse refs/heads/production 2>/dev/null || true)
+  current=$(git --git-dir=/srv/awh-git/awh.git rev-parse "$RUNTIME_REF" 2>/dev/null || true)
   test "$current" = "$RELEASE_COMMIT" || return 1
   if test "$PRODUCTION_REF_PREVIOUS" = PRESENT; then
     test -n "$PREVIOUS_PRODUCTION_SHA" || return 1
-    git --git-dir=/srv/awh-git/awh.git update-ref refs/heads/production "$PREVIOUS_PRODUCTION_SHA" "$RELEASE_COMMIT"
-    test "$(git --git-dir=/srv/awh-git/awh.git rev-parse refs/heads/production)" = "$PREVIOUS_PRODUCTION_SHA"
+    git --git-dir=/srv/awh-git/awh.git update-ref "$RUNTIME_REF" "$PREVIOUS_PRODUCTION_SHA" "$RELEASE_COMMIT"
+    test "$(git --git-dir=/srv/awh-git/awh.git rev-parse "$RUNTIME_REF")" = "$PREVIOUS_PRODUCTION_SHA"
   else
-    git --git-dir=/srv/awh-git/awh.git update-ref -d refs/heads/production "$RELEASE_COMMIT"
-    ! git --git-dir=/srv/awh-git/awh.git show-ref --verify --quiet refs/heads/production
+    git --git-dir=/srv/awh-git/awh.git update-ref -d "$RUNTIME_REF" "$RELEASE_COMMIT"
+    ! git --git-dir=/srv/awh-git/awh.git show-ref --verify --quiet "$RUNTIME_REF"
+  fi
+}
+track_ref_restore() {
+  test "$TRACK_REF_CHANGED" -eq 1 || return 0
+  current=$(git --git-dir=/srv/awh-git/awh.git rev-parse "$TRACK_REF" 2>/dev/null || true)
+  test "$current" = "$RELEASE_COMMIT" || return 1
+  if test "$TRACK_REF_PREVIOUS" = PRESENT; then
+    test -n "$PREVIOUS_TRACK_SHA" || return 1
+    git --git-dir=/srv/awh-git/awh.git update-ref "$TRACK_REF" "$PREVIOUS_TRACK_SHA" "$RELEASE_COMMIT"
+    test "$(git --git-dir=/srv/awh-git/awh.git rev-parse "$TRACK_REF")" = "$PREVIOUS_TRACK_SHA"
+  else
+    git --git-dir=/srv/awh-git/awh.git update-ref -d "$TRACK_REF" "$RELEASE_COMMIT"
+    ! git --git-dir=/srv/awh-git/awh.git show-ref --verify --quiet "$TRACK_REF"
   fi
 }
 rollback() {
@@ -495,6 +520,7 @@ rollback() {
     if test "$POINTER_CHANGED" -eq 1; then pointer_restore || ok=0; if test "$ok" -eq 1; then restore_previous_control_include || ok=0; fi; fi
     if test "$ENROLLMENT_POINTER_CHANGED" -eq 1; then enrollment_pointer_restore || ok=0; fi
     if test "$WEB_POINTER_CHANGED" -eq 1; then web_pointer_restore || ok=0; fi
+    if test "$TRACK_REF_CHANGED" -eq 1; then track_ref_restore || ok=0; fi
     if test "$PRODUCTION_REF_CHANGED" -eq 1; then production_ref_restore || ok=0; fi
     if test "$NGINX_CHANGED" -eq 1; then sudo cp -p "$NGINX_BACKUP" "$NGINX_CONFIG" || ok=0; fi
     if test "$EXECUTOR_UNITS_INSTALLED" -eq 1; then
@@ -1166,6 +1192,18 @@ elif test "$ASSISTANT_WORKSTREAM" = 1; then
   test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
   stage ASSISTANT_MIGRATION_VERIFIED
   stage PROJECTS_READY
+elif test "$AWH_CORE" = 1; then
+  # AWH Core release is code/pointer-only on top of an already hardened Platform.
+  # It never replays historical migrations or installs VPS Platform services.
+  stage AWH_CORE_BASELINE
+  CORE_START_VERSION=$(sudo sqlite3 "$DB" 'PRAGMA user_version;'); case "$CORE_START_VERSION" in ''|*[!0-9]*) exit 20 ;; esac
+  test "$CORE_START_VERSION" -ge 23
+  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm23-platform-hardening' AND schema_version = 23;")" = 1
+  test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok
+  test -z "$(sudo sqlite3 "$DB" 'PRAGMA foreign_key_check;')"
+  stage OWNER_AUTH_RUNTIME; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" /usr/bin/php "$OWNER_AUTH_RUNTIME" >/dev/null
+  test "$(sudo sqlite3 "$DB" 'SELECT count(*) FROM owner_bootstrap b JOIN owner_passwords p ON p.user_id = b.owner_user_id WHERE b.singleton_id = 1 AND b.bootstrap_closed = 1 AND p.enabled = 1 AND length(p.password_hash) > 20;')" = 1
+  stage PROJECTS_READY
 elif test "$COMPAT_REFRESH" = 1; then
   # A v5 compatibility refresh is code/pointer-only. It proves the existing
   # M4/M5 capability records and owner binding without replaying migrations,
@@ -1408,23 +1446,42 @@ fi
 if test "$CLOUD_FIRST" = 1; then stage CLOUD_FIRST_ROUTE; test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM control_capability_catalog WHERE capability IN ('qa.cloud','review.visual') AND enabled=1;")" = 2; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/cloud" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; fi
 if test "$SELF_SUFFICIENT_AI" = 1; then stage AI_GOVERNANCE_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/ai" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; fi
 stage CONTROL_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/session" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403
-if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1 || test "$AUTOMATIONS" = 1 || test "$SELF_SUFFICIENT_AI" = 1 || test "$ACCOUNT_HOSTING" = 1 || test "$CLOUD_FIRST" = 1 || test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || test "$PLATFORM_HARDENING" = 1; then DB_MUTATED=1; stage PROJECT_VAULT_SOURCE_SYNC; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_PROJECT_VAULT_ROOT=/var/lib/awh-hub/project-vault /usr/bin/php "$RELEASE/hub/bin/sync-deployed-source-vault.php" "$DB" "$RELEASE/.awh-build/awh-source.zip" "$RELEASE_COMMIT" >/dev/null; fi
+if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || test "$COST_AWARE_AI" = 1 || test "$AUTOMATIONS" = 1 || test "$SELF_SUFFICIENT_AI" = 1 || test "$ACCOUNT_HOSTING" = 1 || test "$CLOUD_FIRST" = 1 || test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || test "$PLATFORM_HARDENING" = 1 || test "$AWH_CORE" = 1; then DB_MUTATED=1; stage PROJECT_VAULT_SOURCE_SYNC; sudo -u awh-hub env AWH_HUB_DB_PATH="$DB" AWH_PROJECT_VAULT_ROOT=/var/lib/awh-hub/project-vault /usr/bin/php "$RELEASE/hub/bin/sync-deployed-source-vault.php" "$DB" "$RELEASE/.awh-build/awh-source.zip" "$RELEASE_COMMIT" >/dev/null; fi
 if test -d /srv/awh-git/awh.git; then
-  git --git-dir=/srv/awh-git/awh.git cat-file -e "$RELEASE_COMMIT^{commit}"
-  current_production=$(git --git-dir=/srv/awh-git/awh.git rev-parse refs/heads/production 2>/dev/null || true)
-  if test -n "$current_production"; then
+  repo=/srv/awh-git/awh.git
+  git --git-dir="$repo" cat-file -e "$RELEASE_COMMIT^{commit}"
+
+  current_runtime=$(git --git-dir="$repo" rev-parse "$RUNTIME_REF" 2>/dev/null || true)
+  if test -n "$current_runtime"; then
     PRODUCTION_REF_PREVIOUS=PRESENT
-    PREVIOUS_PRODUCTION_SHA=$current_production
-    git --git-dir=/srv/awh-git/awh.git merge-base --is-ancestor "$current_production" "$RELEASE_COMMIT"
-    git --git-dir=/srv/awh-git/awh.git update-ref refs/heads/production "$RELEASE_COMMIT" "$current_production"
+    PREVIOUS_PRODUCTION_SHA=$current_runtime
+    git --git-dir="$repo" merge-base --is-ancestor "$current_runtime" "$RELEASE_COMMIT"
+    git --git-dir="$repo" update-ref "$RUNTIME_REF" "$RELEASE_COMMIT" "$current_runtime"
   else
     PRODUCTION_REF_PREVIOUS=ABSENT
     PREVIOUS_PRODUCTION_SHA=
-    git --git-dir=/srv/awh-git/awh.git update-ref refs/heads/production "$RELEASE_COMMIT"
+    git --git-dir="$repo" update-ref "$RUNTIME_REF" "$RELEASE_COMMIT"
   fi
   PRODUCTION_REF_CHANGED=1
+  test "$(git --git-dir="$repo" rev-parse "$RUNTIME_REF")" = "$RELEASE_COMMIT"
+  stage RUNTIME_REF_UPDATED
+
+  current_track=$(git --git-dir="$repo" rev-parse "$TRACK_REF" 2>/dev/null || true)
+  if test -n "$current_track"; then
+    TRACK_REF_PREVIOUS=PRESENT
+    PREVIOUS_TRACK_SHA=$current_track
+    git --git-dir="$repo" merge-base --is-ancestor "$current_track" "$RELEASE_COMMIT"
+    git --git-dir="$repo" update-ref "$TRACK_REF" "$RELEASE_COMMIT" "$current_track"
+  else
+    TRACK_REF_PREVIOUS=ABSENT
+    PREVIOUS_TRACK_SHA=
+    git --git-dir="$repo" update-ref "$TRACK_REF" "$RELEASE_COMMIT"
+  fi
+  TRACK_REF_CHANGED=1
+  test "$(git --git-dir="$repo" rev-parse "$TRACK_REF")" = "$RELEASE_COMMIT"
+  stage RELEASE_TRACK_REF_UPDATED
 fi
-if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || test "$PLATFORM_HARDENING" = 1; then
+if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || test "$PLATFORM_HARDENING" = 1 || test "$AWH_CORE" = 1; then
   stage SOURCE_DRIFT_VERIFY
   if drift_output=$(sudo -n -u awh-hub /usr/bin/php "$RELEASE/hub/bin/ecosystem-source-drift.php" "$DB" /srv/awh-git "$WEB_POINTER/release.json" 2>/dev/null); then
     :

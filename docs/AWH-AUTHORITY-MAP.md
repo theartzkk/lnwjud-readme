@@ -25,16 +25,17 @@ When two documents disagree, do not create a third rule file. Reconcile the lowe
 - `READ` is parallel.
 - `CANDIDATE` and `WORKSPACE` are project-local isolated lanes and may run in parallel with canonical work when they do not own canonical state.
 - `CANONICAL:SOURCE` is project-local. Two writers to the same project's canonical source serialize.
-- `CANONICAL:DEPLOY` is a VPS-global Production mutation lane. Production deploy/install operations across managed projects serialize.
-- A project's `CANONICAL:SOURCE` and `CANONICAL:DEPLOY` lanes interlock so canonical main cannot move during that project's Production deploy.
-- A project's `RESOURCE:RELEASE_STAGE` and `CANONICAL:DEPLOY` lanes interlock so staging cannot race the consuming deploy.
+- Release deploy ownership is track-scoped: `CANONICAL:DEPLOY:AWH`, `CANONICAL:DEPLOY:AWH_AGENT`, `CANONICAL:DEPLOY:BAY_LEARNLAB`, `CANONICAL:DEPLOY:BAY_ASSESSMENT` and project-scoped deploy resources do not block unrelated tracks.
+- `CANONICAL:DEPLOY:VPS_PLATFORM` is host-global because VPS Platform can mutate shared Ubuntu/runtime, Nginx/PHP, systemd, backup/restore, build isolation, Operator Bridge/CLI and infrastructure hardening. While active it fences every other Production deploy.
+- A project's `CANONICAL:SOURCE` interlocks with any deploy resource for that project so canonical source cannot move during its Production activation.
+- A project's `RESOURCE:RELEASE_STAGE` interlocks with any deploy resource for that project so staging cannot race the consuming deploy.
 - `CANONICAL:PROJECT` is an umbrella project-local writer and conflicts with other mutations in that project.
 
 A second conflicting chat/worker must wait, join or resume the existing authority. It must not acquire a competing writer. Device-local `remote-mission-state` files are transport/device leases only and cannot authorize project/source/release mutation.
 
 ### VPS and release invariants
 
-- A typed release execution that already owns `CANONICAL:DEPLOY` remains the sole deploy writer for its complete release lifecycle. Nested guarded-deploy stages MUST borrow and re-verify that parent authority; they MUST NOT create a second deploy execution that conflicts with the parent.
+- A typed release execution that already owns its `CANONICAL:DEPLOY:<TRACK>` resource remains the sole writer for that release lifecycle. Nested guarded-deploy stages MUST borrow and re-verify that parent authority; they MUST NOT create a second writer for the same track.
 - Compatibility upgrades from an older Production runtime may observe a still-running VPS execution whose task was incorrectly demoted to `WAITING_FOR_WORKER`. An exact-revision release controller may revive only that same VPS-native release task, renew its bounded lease, and continue under the same execution id; it must never create a replacement writer.
 - Device lease recovery applies only to tasks with a non-null `assigned_device_id`. VPS-native release/operator tasks are not device work and MUST NOT be demoted by generic worker recovery.
 - Production storage is a release precondition. Core Release must fail before dependency hydration when disk usage is at or above the critical threshold or bounded free-space headroom is insufficient; failed/terminal release workspaces and recreatable caches must be reclaimed without touching active/leased work.

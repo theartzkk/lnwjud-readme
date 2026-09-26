@@ -56,6 +56,10 @@ try {
         event_id TEXT PRIMARY KEY,task_id TEXT NOT NULL,state TEXT NOT NULL,progress INTEGER NOT NULL,
         message TEXT,occurred_at TEXT NOT NULL
     )");
+    $pdo->exec("CREATE TABLE control_approvals(
+        approval_id TEXT PRIMARY KEY,task_id TEXT NOT NULL,action TEXT NOT NULL,scope_json TEXT NOT NULL,status TEXT NOT NULL,
+        expires_at TEXT,decided_at TEXT
+    )");
     $pdo->prepare("INSERT INTO hub_users(user_id) VALUES(?)")->execute([$owner]);
     $pdo->prepare("INSERT INTO owner_bootstrap(singleton_id,owner_user_id,bootstrap_closed) VALUES(1,?,1)")->execute([$owner]);
     $pdo->prepare("INSERT INTO projects(project_id,name,type) VALUES(?,?,?)")->execute([$project,'Art’s Workspace Hub','node']);
@@ -64,14 +68,20 @@ try {
 
     $parentTask = '11111111-1111-4111-8111-111111111111';
     $parentExecution = '22222222-2222-4222-8222-222222222222';
-    $parentCheckpoint = json_encode(['schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>str_repeat('a',40),'releaseMode'=>'IDENTITY_CONVERGENCE','cleanupTopology'=>false,'transport'=>'LOCAL'], JSON_THROW_ON_ERROR);
+    $parentCheckpoint = json_encode([
+        'schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>str_repeat('a',40),
+        'releaseMode'=>'AWH_CORE','releaseTrack'=>'awh','cleanupTopology'=>false,
+        'transport'=>'LOCAL','releaseNotesSha256'=>str_repeat('b',64)
+    ], JSON_THROW_ON_ERROR);
     $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(?,?,?,?, 'WAITING_FOR_WORKER',NULL,NULL,35,NULL,NULL,?,NULL,?,?,NULL)")
-        ->execute([$parentTask,$owner,$project,'Core Release parent','core-release-parent',$now,$now]);
+        ->execute([$parentTask,$owner,$project,'AWH Release parent','awh-release-parent',$now,$now]);
     $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(?,?,?,?,'VPS','system.core.release','RUNNING','vps-core-release','2026-09-15T01:00:00+00:00',1,NULL,?,NULL,?,?)")
         ->execute([$parentExecution,$parentTask,$project,$revision,$parentCheckpoint,$now,$now]);
+    $pdo->prepare("INSERT INTO control_approvals(approval_id,task_id,action,scope_json,status,expires_at,decided_at) VALUES(?,?,'deployment.approve','{}','APPROVED',NULL,?)")
+        ->execute(['aaaaaaaa-1111-4111-8111-111111111111',$parentTask,$now]);
 
     $service = new HubDeployExecutionAuthorityService($pdo);
-    $borrowed = $service->acquire('m21-aaaaaaaaaaaa', 600, $now);
+    $borrowed = $service->acquire('awh-aaaaaaaaaaaa', 600, $now);
     dea_assert($borrowed['borrowed'] === true && $borrowed['executionId'] === $parentExecution, 'Core Release authority is borrowed instead of duplicated');
     $stageStart=$service->stage($parentExecution,'EXECUTION_AUTHORITY_ACQUIRED','2026-09-15T00:30:02+00:00');
     dea_assert($stageStart['recorded']===true&&$stageStart['progress']===55, 'deploy stage advances borrowed Core Release progress');
@@ -95,6 +105,35 @@ try {
     $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED',lease_owner=NULL,lease_expires_at=NULL WHERE execution_id=?")->execute([$parentExecution]);
     $pdo->prepare("UPDATE control_tasks SET state='COMPLETED',lease_expires_at=NULL WHERE task_id=?")->execute([$parentTask]);
     $service->reconcile('2026-09-15T00:30:30+00:00');
+
+    $legacyTask='33333333-3333-4333-8333-333333333333';
+    $legacyExecution='44444444-4444-4444-8444-444444444444';
+    $legacyCheckpoint=json_encode([
+        'schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>str_repeat('d',40),
+        'releaseMode'=>'PLATFORM_HARDENING','cleanupTopology'=>false,'transport'=>'LOCAL',
+        'releaseNotesSha256'=>str_repeat('e',64)
+    ],JSON_THROW_ON_ERROR);
+    $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(?,?,?,?, 'WAITING_FOR_WORKER',NULL,NULL,35,NULL,NULL,?,NULL,?,?,NULL)")
+        ->execute([$legacyTask,$owner,$project,'Legacy Platform Hardening parent','legacy-platform-parent',$now,$now]);
+    $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(?,?,?,?,'VPS','system.core.release','RUNNING','vps-core-release','2026-09-15T01:00:00+00:00',1,NULL,?,NULL,?,?)")
+        ->execute([$legacyExecution,$legacyTask,$project,$revision,$legacyCheckpoint,$now,$now]);
+    try {
+        $service->acquire('platform-dddddddddddd',600,$now);
+        throw new RuntimeException('legacy bootstrap must require Owner approval');
+    } catch (HubDeployExecutionAuthorityException $error) {
+        dea_assert($error->codeName==='DEPLOY_AUTHORITY_PARENT_REQUIRED','unapproved legacy Platform parent cannot bootstrap');
+    }
+    $pdo->prepare("INSERT INTO control_approvals(approval_id,task_id,action,scope_json,status,expires_at,decided_at) VALUES(?,?,'deployment.approve','{}','APPROVED',NULL,?)")
+        ->execute(['bbbbbbbb-2222-4222-8222-222222222222',$legacyTask,$now]);
+    $legacyBorrowed=$service->acquire('platform-dddddddddddd',600,$now);
+    dea_assert($legacyBorrowed['borrowed']===true&&$legacyBorrowed['executionId']===$legacyExecution,'first VPS Update may borrow exact legacy Owner-approved PLATFORM_HARDENING parent');
+    $service->release($legacyExecution,false,'2026-09-15T00:30:35+00:00');
+    $legacyState=$pdo->prepare("SELECT e.state AS execution,t.state AS task,x.state AS envelope FROM control_task_executions e JOIN control_tasks t USING(task_id) JOIN control_execution_envelopes x USING(execution_id) WHERE e.execution_id=?");
+    $legacyState->execute([$legacyExecution]);$legacyRow=$legacyState->fetch();
+    dea_assert($legacyRow['execution']==='RUNNING'&&$legacyRow['task']==='RUNNING'&&$legacyRow['envelope']==='ACTIVE','bootstrap guarded deploy cannot terminate legacy Owner-approved parent');
+    $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED',lease_owner=NULL,lease_expires_at=NULL WHERE execution_id=?")->execute([$legacyExecution]);
+    $pdo->prepare("UPDATE control_tasks SET state='COMPLETED',lease_expires_at=NULL WHERE task_id=?")->execute([$legacyTask]);
+    $service->reconcile('2026-09-15T00:30:40+00:00');
 
     $first = $service->acquire('m21-aaaaaaaaaaaa', 600, $now);
     dea_assert($first['borrowed'] === false && is_string($first['executionId']) && $first['projectId'] === $project, 'first standalone deploy authority acquired');

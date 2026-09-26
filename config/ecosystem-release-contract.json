@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "authority": "AWH_UPDATE_CENTER",
   "strategy": "BUILD_ONCE_DEPLOY_EXACT_ARTIFACT",
   "requiredArtifactIdentity": [
@@ -18,40 +18,52 @@
   ],
   "sourceShaPattern": "^[0-9a-f]{40}$",
   "artifactSha256Pattern": "^[0-9a-f]{64}$",
-  "products": {
+  "releaseTracks": {
+    "vps-platform": {
+      "name": "VPS Platform",
+      "kind": "PLATFORM",
+      "repository": "awh",
+      "productionRef": "refs/heads/platform/production",
+      "independentVersion": true,
+      "independentHistory": true,
+      "independentRollback": true,
+      "ownerApprovalRequired": true
+    },
     "awh": {
-      "project": "Art’s Workspace Hub",
-      "kind": "CORE"
+      "name": "AWH",
+      "kind": "CORE",
+      "repository": "awh",
+      "productionRef": "refs/heads/production",
+      "independentVersion": true,
+      "independentHistory": true,
+      "independentRollback": true,
+      "ownerApprovalRequired": true
     },
-    "bay-excuse-x": {
-      "project": "BAY EXCUSE X",
-      "kind": "SYSTEM"
-    },
-    "bay-hub": {
-      "project": "BAY Hub",
-      "kind": "HUB"
-    },
-    "bay-learnlab": {
-      "project": "BAY LearnLab",
-      "kind": "PRODUCT"
-    },
-    "bay-assessment": {
-      "project": "BAY Assessment",
-      "kind": "PRODUCT"
-    },
-    "school-website": {
-      "project": "เว็บไซต์โรงเรียน",
-      "kind": "HOSTING"
-    },
-    "bay-computer-lab": {
-      "project": "BAY Computer Lab",
-      "kind": "SYSTEM"
+    "awh-agent": {
+      "name": "AWH Agent",
+      "kind": "AGENT",
+      "repository": "awh-local-agent",
+      "productionRef": "refs/heads/main",
+      "independentVersion": true,
+      "independentHistory": true,
+      "independentRollback": true,
+      "ownerApprovalRequired": true
     }
+  },
+  "products": {
+    "awh": {"project": "Art’s Workspace Hub", "kind": "CORE"},
+    "bay-excuse-x": {"project": "BAY EXCUSE X", "kind": "SYSTEM"},
+    "bay-hub": {"project": "BAY Hub", "kind": "HUB"},
+    "bay-learnlab": {"project": "BAY LearnLab", "kind": "PRODUCT"},
+    "bay-assessment": {"project": "BAY Assessment", "kind": "PRODUCT"},
+    "school-website": {"project": "เว็บไซต์โรงเรียน", "kind": "HOSTING"},
+    "bay-computer-lab": {"project": "BAY Computer Lab", "kind": "SYSTEM"}
   },
   "rules": {
     "productionRebuildForbidden": true,
     "exactArtifactVerificationRequired": true,
     "rollbackArtifactRequired": true,
-    "ownerReadableReleaseDetailsRequired": true
+    "ownerReadableReleaseDetailsRequired": true,
+    "releaseTrackIdentityRequired": true
   }
 }

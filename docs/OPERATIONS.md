@@ -2,7 +2,7 @@
 
 AWH operations prefer automated, reversible, observable changes. Production writes are staged; destructive shortcuts are not normal operations.
 
-Operational mutation ownership is enforced by canonical execution envelopes. Reads and isolated candidate/workspace lanes may be parallel; shared Production deploys serialize across managed projects. Device-local mission files coordinate transport only and never replace Hub mutation authority.
+Operational mutation ownership is enforced by canonical execution envelopes and the live AWH Gate decision. Reads and isolated candidate/workspace lanes may be parallel. Project Mission is coordination only and never blocks by itself. Production deploy ownership is release-track scoped; unrelated tracks may proceed concurrently, while `VPS Platform` alone is host-global because it can mutate shared runtime/infrastructure. Device-local mission files coordinate transport only and never replace Hub mutation authority.
 
 ## Daily operating signals
 

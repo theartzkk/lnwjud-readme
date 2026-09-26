@@ -12,6 +12,19 @@ foreach ([
 
 function cr_assert(bool $value,string $message): void { if(!$value)throw new RuntimeException($message); }
 function cr_clean(string $root): void { if(!is_dir($root))return;$it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::CHILD_FIRST);foreach($it as $f){$p=$f->getPathname();$f->isDir()&&!$f->isLink()?@rmdir($p):@unlink($p);}@rmdir($root); }
+function cr_release_notes(string $base,string $target): array {
+    return [
+        'schemaVersion'=>1,'metadataState'=>'READY','generatedFrom'=>'EXACT_GIT_DIFF',
+        'repository'=>'awh','releaseTrack'=>'awh','previousSha'=>$base,'targetSha'=>$target,'generatedAt'=>'2026-09-23T01:00:00+00:00',
+        'ownerSummary'=>'AWH release fixture','userVisible'=>true,
+        'summary'=>['features'=>['Track-scoped release fixture'],'improvements'=>[],'fixes'=>[],'internal'=>[]],
+        'commits'=>[['sha'=>$target,'subject'=>'Track-scoped release fixture']],'changedFileCount'=>1,
+        'impact'=>['databaseMigration'=>'NONE','serviceReload'=>'AUTOMATIC','appRestart'=>'NONE','signIn'=>'NONE','plannedDowntime'=>false],
+        'compatibility'=>['data'=>'COMPATIBLE','runtime'=>'COMPATIBLE','authentication'=>'UNCHANGED'],
+        'rollback'=>['required'=>true,'strategy'=>'PREVIOUS_VERIFIED_RELEASE_OR_SOURCE','sourceSha'=>$base],
+        'knownIssues'=>[],'comingNext'=>[]
+    ];
+}
 
 if(!in_array('sqlite',PDO::getAvailableDrivers(),true)){fwrite(STDOUT,"AWH core release operator: SKIP pdo_sqlite unavailable\n");exit(77);}if(!is_executable('/usr/bin/systemd-run')||!is_executable('/usr/bin/git')||!is_executable('/usr/bin/php')){fwrite(STDOUT,"AWH core release operator: SKIP Linux release toolchain unavailable\n");exit(77);}
 
@@ -44,7 +57,7 @@ try{
     $promoteTask='a13b45c0-23e1-408d-ae0f-ac5eca7f6900';$promoteExecution='b13b45c0-23e1-408d-ae0f-ac5eca7f6900';$promoteBase=str_repeat('b',40);$promoteTarget=str_repeat('c',40);$sha=$promoteTarget;
     $canonicalGit=$root.'/canonical.git';mkdir($canonicalGit.'/refs/heads',0700,true);file_put_contents($canonicalGit.'/refs/heads/main',$promoteTarget."\n");putenv('AWH_CORE_CANONICAL_GIT='.$canonicalGit);
     $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'Promote canonical AWH main','COMPLETED',NULL,NULL,100,'Guarded operator mutation completed',NULL,'core-release-source-promotion-test',NULL,:at,:at,NULL)")->execute(['task'=>$promoteTask,'user'=>$owner,'project'=>$project,'at'=>$now]);
-    $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','source.promote','COMPLETED',NULL,NULL,1,NULL,:checkpoint,NULL,:at,:at)")->execute(['execution'=>$promoteExecution,'task'=>$promoteTask,'project'=>$project,'checkpoint'=>json_encode(['repository'=>'awh','expectedMainSha'=>$promoteBase,'targetSha'=>$promoteTarget,'bundleSha256'=>str_repeat('d',64)],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$now]);
+    $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','source.promote','COMPLETED',NULL,NULL,1,NULL,:checkpoint,NULL,:at,:at)")->execute(['execution'=>$promoteExecution,'task'=>$promoteTask,'project'=>$project,'checkpoint'=>json_encode(['repository'=>'awh','expectedMainSha'=>$promoteBase,'targetSha'=>$promoteTarget,'bundleSha256'=>str_repeat('d',64),'releaseNotes'=>cr_release_notes($promoteBase,$promoteTarget)],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$now]);
     $sourceStatus=$service->status($session['sessionToken']);
     cr_assert(($sourceStatus['sourcePromotion']['sha']??null)===$promoteTarget&&($sourceStatus['sourcePromotion']['previousSha']??null)===$promoteBase&&($sourceStatus['sourcePromotion']['authority']??null)==='CANONICAL_GIT_MAIN_VERIFIED','core release status verifies the successful source-promotion audit against canonical Git main');
     $pdo->prepare('UPDATE control_sessions SET step_up_at=NULL WHERE session_hash=:hash')->execute(['hash'=>hash('sha256',$session['sessionToken'])]);
@@ -67,7 +80,7 @@ try{
     cr_assert(is_array($taskRow)&&$taskRow['state']==='WAITING_FOR_APPROVAL'&&(string)$taskRow['project_id']===$project,'task uses canonical AWH project');
     cr_assert(is_array($executionRow)&&$executionRow['state']==='QUEUED'&&$executionRow['executor_kind']==='VPS'&&$executionRow['required_capability']===HubCoreReleaseService::CAPABILITY,'execution uses canonical VPS capability');
     $checkpoint=HubCoreReleaseService::checkpoint((string)$executionRow['checkpoint_json']);
-    cr_assert($checkpoint['releaseSha']===$sha&&$checkpoint['transport']==='LOCAL'&&$checkpoint['releaseMode']==='IDENTITY_CONVERGENCE','checkpoint binds only approved release identity');
+    cr_assert($checkpoint['releaseSha']===$sha&&$checkpoint['transport']==='LOCAL'&&$checkpoint['releaseMode']==='AWH_CORE'&&$checkpoint['releaseTrack']==='awh','checkpoint binds exact approved AWH release identity');
     cr_assert(!array_key_exists('command',$checkpoint)&&!array_key_exists('path',$checkpoint)&&!array_key_exists('script',$checkpoint),'browser checkpoint cannot inject command or path');
     cr_assert(is_array($approvalRow)&&$approvalRow['action']==='deployment.approve'&&$approvalRow['status']==='PENDING','canonical deployment approval is created');
 
@@ -96,16 +109,34 @@ try{
     $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED',lease_owner=NULL,lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution")->execute(['at'=>'2026-09-23T01:01:00+00:00','execution'=>$execution]);
     $pdo->prepare("UPDATE control_tasks SET state='COMPLETED',progress=100,updated_at=:at WHERE task_id=:task")->execute(['at'=>'2026-09-23T01:01:00+00:00','task'=>$task]);
     $staleSha=str_repeat('d',40);$nextSha=str_repeat('e',40);
-    $pdo->prepare("UPDATE control_task_executions SET checkpoint_json=:checkpoint,updated_at=:at WHERE execution_id=:execution")->execute(['checkpoint'=>json_encode(['repository'=>'awh','expectedMainSha'=>$promoteTarget,'targetSha'=>$staleSha,'bundleSha256'=>str_repeat('f',64)],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>'2026-09-23T01:01:09+00:00','execution'=>$promoteExecution]);
+    $pdo->prepare("UPDATE control_task_executions SET checkpoint_json=:checkpoint,updated_at=:at WHERE execution_id=:execution")->execute(['checkpoint'=>json_encode(['repository'=>'awh','expectedMainSha'=>$promoteTarget,'targetSha'=>$staleSha,'bundleSha256'=>str_repeat('f',64),'releaseNotes'=>cr_release_notes($promoteTarget,$staleSha)],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>'2026-09-23T01:01:09+00:00','execution'=>$promoteExecution]);
     file_put_contents($canonicalGit.'/refs/heads/main',$staleSha."\n");
     $stale=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$staleSha,'cleanupTopology'=>false],'2026-09-23T01:01:10+00:00');
     $control->decideApproval($session['sessionToken'],$session['csrfToken'],(string)$stale['approvalId'],'APPROVED','2026-09-23T01:01:11+00:00');
-    $pdo->prepare("UPDATE control_task_executions SET checkpoint_json=:checkpoint,updated_at=:at WHERE execution_id=:execution")->execute(['checkpoint'=>json_encode(['repository'=>'awh','expectedMainSha'=>$staleSha,'targetSha'=>$nextSha,'bundleSha256'=>str_repeat('1',64)],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>'2026-09-23T01:09:59+00:00','execution'=>$promoteExecution]);
+    $pdo->prepare("UPDATE control_task_executions SET checkpoint_json=:checkpoint,updated_at=:at WHERE execution_id=:execution")->execute(['checkpoint'=>json_encode(['repository'=>'awh','expectedMainSha'=>$staleSha,'targetSha'=>$nextSha,'bundleSha256'=>str_repeat('1',64),'releaseNotes'=>cr_release_notes($staleSha,$nextSha)],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>'2026-09-23T01:09:59+00:00','execution'=>$promoteExecution]);
     file_put_contents($canonicalGit.'/refs/heads/main',$nextSha."\n");
     $next=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$nextSha,'cleanupTopology'=>false],'2026-09-23T01:10:00+00:00');
     cr_assert(($next['state']??null)==='WAITING_FOR_APPROVAL'&&($next['releaseSha']??null)===$nextSha,'stale approved release is reconciled before a new request');
     cr_assert($pdo->query("SELECT state FROM control_task_executions WHERE execution_id=".$pdo->quote((string)$stale['executionId']))->fetchColumn()==='FAILED','stale queued release is failed closed');
     cr_assert($pdo->query("SELECT failure_code FROM control_tasks WHERE task_id=".$pdo->quote((string)$stale['taskId']))->fetchColumn()==='CORE_RELEASE_DISPATCHER_UNAVAILABLE','stale release records dispatcher outage');
+
+    $legacyPlatformSha=str_repeat('f',40);
+    $legacyPlatformTask='c13b45c0-23e1-408d-ae0f-ac5eca7f6900';
+    $legacyPlatformExecution='d13b45c0-23e1-408d-ae0f-ac5eca7f6900';
+    $legacyPlatformNotes=cr_release_notes($nextSha,$legacyPlatformSha);unset($legacyPlatformNotes['releaseTrack']);
+    $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'Legacy Platform source promotion','COMPLETED',NULL,NULL,100,'Legacy source promotion completed',NULL,'legacy-platform-source-promotion',NULL,:at,:at,NULL)")
+        ->execute(['task'=>$legacyPlatformTask,'user'=>$owner,'project'=>$project,'at'=>'2026-09-23T01:20:00+00:00']);
+    $legacyCheckpoint=['repository'=>'awh','expectedMainSha'=>$nextSha,'targetSha'=>$legacyPlatformSha,'bundleSha256'=>str_repeat('2',64),'releaseNotes'=>$legacyPlatformNotes];
+    $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','source.promote','COMPLETED',NULL,NULL,1,NULL,:checkpoint,NULL,:at,:at)")
+        ->execute(['execution'=>$legacyPlatformExecution,'task'=>$legacyPlatformTask,'project'=>$project,'checkpoint'=>json_encode($legacyCheckpoint,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>'2026-09-23T01:20:00+00:00']);
+    if(!is_dir($canonicalGit.'/refs/heads/platform'))mkdir($canonicalGit.'/refs/heads/platform',0700,true);
+    file_put_contents($canonicalGit.'/refs/heads/main',$legacyPlatformSha."\n");
+    file_put_contents($canonicalGit.'/refs/heads/platform/production',$legacyPlatformSha."\n");
+    $platformService=HubCoreReleaseService::platformFromPdo($pdo);
+    $platformStatus=$platformService->status($session['sessionToken']);
+    cr_assert(($platformStatus['sourcePromotion']['sha']??null)===$legacyPlatformSha&&($platformStatus['sourcePromotion']['releaseTrack']??null)==='vps-platform'&&($platformStatus['releaseNotes']['releaseTrack']??null)==='vps-platform','legacy source promotion is inferred as VPS Update after platform bootstrap');
+    $awhAfterBootstrap=$service->status($session['sessionToken']);
+    cr_assert(($awhAfterBootstrap['sourcePromotion']['sha']??null)!==$legacyPlatformSha,'AWH never claims the bootstrapped VPS Update promotion');
 
     cr_assert($pdo->query('PRAGMA integrity_check')->fetchColumn()==='ok'&&$pdo->query('PRAGMA foreign_key_check')->fetchAll()===[],'core release flow preserves database integrity');
 

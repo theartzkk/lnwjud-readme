@@ -26,7 +26,7 @@ Use professional judgment and the capabilities actually available now; stale too
 Read-only work may run concurrently. Mutations must use the canonical Task/Execution/Envelope authorities and **one active writer per mutation scope**, where the scope is the conflicting mutation resource.
 A second chat or worker must **JOIN/WAIT** on an active conflicting authority; it must not create a competing writer.
 
-Project-local candidate/workspace work may remain parallel when isolated. The shared VPS Production deploy lane is global across projects. Canonical source promotion and Production deploy for the same project are interlocked.
+Project-local candidate/workspace work may remain parallel when isolated. Project Mission is a coordination lease, not a writer lock. Clients must use the live AWH Gate decision: only `WAIT_CONFLICT` is blocking; `CONTINUE` and `CONTINUE_OR_JOIN` are non-blocking. Do not infer a lock from active mission or aggregate mutation counts. Production deploy ownership is release-track scoped; only `VPS Platform` is host-global because it can mutate shared runtime/infrastructure. Canonical source promotion and Production deploy for the same project remain interlocked.
 
 Local remote-mission files are device/transport leases only. They never outrank Hub project/source/release authority.
 

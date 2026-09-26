@@ -3,20 +3,155 @@ declare(strict_types=1);
 
 final class HubUpdateTargetRegistry
 {
-    /** @return array<string,array{directory:string,project:string,projection:bool,kind:string,defaultBranch:string}> */
+    /** @return array<string,array{directory:string,project:string,projection:bool,kind:string,defaultBranch:string,releaseTrack:string}> */
     public static function repositories(): array
     {
         return [
-            'awh'=>['directory'=>'awh.git','project'=>'Art’s Workspace Hub','projection'=>false,'kind'=>'CORE','defaultBranch'=>'production'],
-            'bay-excuse-x'=>['directory'=>'bay-excuse-x.git','project'=>'BAY EXCUSE X','projection'=>true,'kind'=>'SYSTEM','defaultBranch'=>'main'],
-            'bay-hub'=>['directory'=>'bay-hub.git','project'=>'BAY Hub','projection'=>true,'kind'=>'HUB','defaultBranch'=>'main'],
-            'bay-learnlab'=>['directory'=>'bay-learnlab.git','project'=>'BAY LearnLab','projection'=>true,'kind'=>'PRODUCT','defaultBranch'=>'main'],
-            'bay-assessment'=>['directory'=>'bay-assessment.git','project'=>'BAY Assessment','projection'=>false,'kind'=>'PRODUCT','defaultBranch'=>'main'],
-            'school-website'=>['directory'=>'school-website.git','project'=>'เว็บไซต์โรงเรียน','projection'=>true,'kind'=>'HOSTING','defaultBranch'=>'main'],
-            'bay-computer-lab'=>['directory'=>'bay-computer-lab.git','project'=>'BAY Computer Lab','projection'=>true,'kind'=>'SYSTEM','defaultBranch'=>'main'],
+            'awh'=>['directory'=>'awh.git','project'=>'Art’s Workspace Hub','projection'=>false,'kind'=>'CORE','defaultBranch'=>'production','releaseTrack'=>'awh'],
+            'bay-excuse-x'=>['directory'=>'bay-excuse-x.git','project'=>'BAY EXCUSE X','projection'=>true,'kind'=>'SYSTEM','defaultBranch'=>'main','releaseTrack'=>'bay-excuse-x'],
+            'bay-hub'=>['directory'=>'bay-hub.git','project'=>'BAY Hub','projection'=>true,'kind'=>'HUB','defaultBranch'=>'main','releaseTrack'=>'bay-hub'],
+            'bay-learnlab'=>['directory'=>'bay-learnlab.git','project'=>'BAY LearnLab','projection'=>true,'kind'=>'PRODUCT','defaultBranch'=>'main','releaseTrack'=>'bay-learnlab'],
+            'bay-assessment'=>['directory'=>'bay-assessment.git','project'=>'BAY Assessment','projection'=>false,'kind'=>'PRODUCT','defaultBranch'=>'main','releaseTrack'=>'bay-assessment'],
+            'school-website'=>['directory'=>'school-website.git','project'=>'เว็บไซต์โรงเรียน','projection'=>true,'kind'=>'HOSTING','defaultBranch'=>'main','releaseTrack'=>'school-website'],
+            'bay-computer-lab'=>['directory'=>'bay-computer-lab.git','project'=>'BAY Computer Lab','projection'=>true,'kind'=>'SYSTEM','defaultBranch'=>'main','releaseTrack'=>'bay-computer-lab'],
         ];
     }
 
+
+    /**
+     * Release tracks are product identities, not repositories. VPS Platform and
+     * AWH intentionally share the current source repository while keeping
+     * independent release refs, capabilities, history and approval scopes.
+     *
+     * @return array<string,array<string,mixed>>
+     */
+    public static function releaseTracks(): array
+    {
+        return [
+            'vps-platform'=>[
+                'name'=>'VPS Update','kind'=>'PLATFORM','repository'=>'awh',
+                'sourceRef'=>'refs/heads/main','productionRef'=>'refs/heads/platform/production',
+                'capability'=>'system.platform.release','deployResource'=>'CANONICAL:DEPLOY:VPS_PLATFORM',
+                'versionPrefix'=>'Platform','ownerApprovalRequired'=>true,'hostGlobal'=>true,
+            ],
+            'awh'=>[
+                'name'=>'AWH','kind'=>'CORE','repository'=>'awh',
+                'sourceRef'=>'refs/heads/main','productionRef'=>'refs/heads/production',
+                'capability'=>'system.core.release','deployResource'=>'CANONICAL:DEPLOY:AWH',
+                'versionPrefix'=>'AWH','ownerApprovalRequired'=>true,'hostGlobal'=>false,
+            ],
+            'awh-agent'=>[
+                'name'=>'AWH Agent','kind'=>'AGENT','repository'=>'awh-local-agent',
+                'sourceRef'=>'refs/heads/main','productionRef'=>'refs/heads/main',
+                'capability'=>'system.agent.release','deployResource'=>'CANONICAL:DEPLOY:AWH_AGENT',
+                'versionPrefix'=>'Agent','ownerApprovalRequired'=>true,'hostGlobal'=>false,
+            ],
+            'bay-excuse-x'=>[
+                'name'=>'BAY EXCUSE','kind'=>'SYSTEM','repository'=>'bay-excuse-x',
+                'sourceRef'=>'refs/heads/main','productionRef'=>null,
+                'capability'=>'bay.remote_update.install','deployResource'=>'CANONICAL:DEPLOY:PROJECT',
+                'versionPrefix'=>'BAY','ownerApprovalRequired'=>true,'hostGlobal'=>false,
+            ],
+            'bay-assessment'=>[
+                'name'=>'BAY Assessment','kind'=>'PRODUCT','repository'=>'bay-assessment',
+                'sourceRef'=>'refs/heads/main','productionRef'=>null,
+                'capability'=>'system.assessment.release','deployResource'=>'CANONICAL:DEPLOY:BAY_ASSESSMENT',
+                'versionPrefix'=>'Assessment','ownerApprovalRequired'=>true,'hostGlobal'=>false,
+            ],
+            'bay-learnlab'=>[
+                'name'=>'BAY LearnLab','kind'=>'PRODUCT','repository'=>'bay-learnlab',
+                'sourceRef'=>'refs/heads/main','productionRef'=>null,
+                'capability'=>'system.learnlab.release','deployResource'=>'CANONICAL:DEPLOY:BAY_LEARNLAB',
+                'versionPrefix'=>'LearnLab','ownerApprovalRequired'=>true,'hostGlobal'=>false,
+            ],
+            'bay-computer-lab'=>[
+                'name'=>'BAY Computer Lab','kind'=>'SYSTEM','repository'=>'bay-computer-lab',
+                'sourceRef'=>'refs/heads/main','productionRef'=>null,
+                'capability'=>'bay.remote_update.install','deployResource'=>'CANONICAL:DEPLOY:PROJECT',
+                'versionPrefix'=>'Computer Lab','ownerApprovalRequired'=>true,'hostGlobal'=>false,
+            ],
+            'school-website'=>[
+                'name'=>'School Website','kind'=>'HOSTING','repository'=>'school-website',
+                'sourceRef'=>'refs/heads/main','productionRef'=>null,
+                'capability'=>'project.mutate.deploy','deployResource'=>'CANONICAL:DEPLOY:PROJECT',
+                'versionPrefix'=>'School','ownerApprovalRequired'=>true,'hostGlobal'=>false,
+            ],
+            'bay-hub'=>[
+                'name'=>'BAY Hub','kind'=>'HUB','repository'=>'bay-hub',
+                'sourceRef'=>'refs/heads/main','productionRef'=>null,
+                'capability'=>'project.mutate.deploy','deployResource'=>'CANONICAL:DEPLOY:PROJECT',
+                'versionPrefix'=>'Hub','ownerApprovalRequired'=>true,'hostGlobal'=>false,
+            ],
+        ];
+    }
+
+    /** @return array<string,mixed>|null */
+    public static function byReleaseTrack(string $track): ?array
+    {
+        $key=strtolower(trim($track));
+        $row=self::releaseTracks()[$key]??null;
+        return is_array($row)?['track'=>$key]+$row:null;
+    }
+
+    /**
+     * Classify one exact source-promotion delta into one release track.
+     * Mixed AWH/VPS Platform deltas are rejected upstream instead of being
+     * hidden inside a single product release.
+     *
+     * @param list<string> $paths
+     */
+    public static function releaseTrackForPaths(string $repository,array $paths): ?string
+    {
+        $repository=strtolower(trim($repository));
+        $repo=self::repositories()[$repository]??null;
+        if(!is_array($repo))return null;
+        if($repository!=='awh')return (string)($repo['releaseTrack']??$repository);
+        $tracks=[];
+        foreach($paths as $path){
+            if(!is_string($path)||$path===''||str_contains($path,"\0"))return null;
+            $track=self::awhPathReleaseTrack($path);
+            $tracks[$track]=true;
+            if(count($tracks)>1)return null;
+        }
+        return count($tracks)===1?(string)array_key_first($tracks):null;
+    }
+
+    private static function awhPathReleaseTrack(string $path): string
+    {
+        $platformExact=[
+            'AGENTS.md',
+            'config/ecosystem-platform-policy.json',
+            'config/ecosystem-release-contract.json',
+            'config/execution-policy.json',
+            'config/repository-governance-contract.json',
+            'docs/AWH-AUTHORITY-MAP.md',
+            'docs/AWH_SUSTAINABILITY_CONTRACT.md',
+            'docs/OPERATIONS.md',
+            'docs/RELEASE.md',
+            'hub/bin/ecosystem-source-drift.php',
+            'hub/src/HubCapabilityRegistryService.php',
+            'hub/src/HubCoreReleaseOperator.php',
+            'hub/src/HubCoreReleaseService.php',
+            'hub/src/HubDeployExecutionAuthorityService.php',
+            'hub/src/HubOperatorBridgeService.php',
+            'hub/src/HubTrustPolicy.php',
+            'hub/src/HubUpdateTargetRegistry.php',
+            'hub/tests/assessment-release-operator.php',
+            'hub/tests/execution-resource-policy.php',
+            'hub/tests/learnlab-release-operator.php',
+            'hub/tests/m13-anywhere-execution.php',
+            'scripts/ops/bounded-deploy-mission.mjs',
+            'scripts/ops/canonical-source-preflight.mjs',
+            'scripts/ops/execution-policy.mjs',
+            'scripts/ops/guarded-control-plane-deploy.mjs',
+            'test/ecosystem-platform-hardening.test.ts',
+            'test/execution-policy.test.mjs',
+        ];
+        if(in_array($path,$platformExact,true))return 'vps-platform';
+        if(str_starts_with($path,'deploy/'))return 'vps-platform';
+        if(str_starts_with($path,'history/governance-'))return 'vps-platform';
+        return 'awh';
+    }
 
     /**
      * Every canonical patch must carry a compact owner-readable change contract.
@@ -50,7 +185,7 @@ final class HubUpdateTargetRegistry
         return preg_match('/^[0-9a-f]{40}$/',$previous)===1;
     }
 
-    /** @return array{repository:string,directory:string,project:string,projection:bool,kind:string,defaultBranch:string}|null */
+    /** @return array{repository:string,directory:string,project:string,projection:bool,kind:string,defaultBranch:string,releaseTrack:string}|null */
     public static function byProjectName(string $name): ?array
     {
         foreach (self::repositories() as $repository=>$row) if ($row['project']===$name) return ['repository'=>$repository]+$row;

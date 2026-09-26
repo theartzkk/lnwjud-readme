@@ -21,18 +21,33 @@ test('M23 platform policy locks long-term ecosystem authorities', async () => {
   assert.equal(p.operationsCenter.defaultView, 'SUMMARY_FIRST_WITH_ATTENTION_FILTER');
 });
 
-test('ecosystem release contract covers every Update Center product family', async () => {
+test('ecosystem release contract covers product families and independent release tracks', async () => {
   const c = await json('config/ecosystem-release-contract.json');
   const registry = await read('hub/src/HubUpdateTargetRegistry.php');
-  const registryKeys=[...registry.matchAll(/^\s*'([^']+)'=>\[/gm)].map((match)=>match[1]);
+  const reposStart=registry.indexOf('public static function repositories');
+  const tracksStart=registry.indexOf('public static function releaseTracks');
+  assert.ok(reposStart>=0&&tracksStart>reposStart);
+  const repositoryBlock=registry.slice(reposStart,tracksStart);
+  const registryKeys=[...repositoryBlock.matchAll(/^\s*'([^']+)'=>\[/gm)].map((match)=>match[1]);
   assert.deepEqual(Object.keys(c.products).sort(), registryKeys.sort());
   for (const [key, row] of Object.entries(c.products as Record<string,{project:string}>)) {
-    assert.equal(registry.includes("'" + key + "'"), true);
+    assert.equal(repositoryBlock.includes("'" + key + "'"), true);
     assert.ok(row.project.length > 0);
   }
+
+  assert.deepEqual(Object.keys(c.releaseTracks).sort(), ['awh','awh-agent','vps-platform']);
+  for(const key of ['vps-platform','awh','awh-agent']){
+    const track=c.releaseTracks[key];
+    assert.equal(track.independentVersion,true);
+    assert.equal(track.independentHistory,true);
+    assert.equal(track.independentRollback,true);
+    assert.equal(track.ownerApprovalRequired,true);
+  }
+  assert.notEqual(c.releaseTracks['vps-platform'].productionRef,c.releaseTracks.awh.productionRef);
   assert.deepEqual(c.requiredArtifactIdentity, ['product','version','sourceSha','artifactSha256','schemaVersion','builtAt']);
   assert.equal(c.rules.productionRebuildForbidden, true);
   assert.equal(c.rules.rollbackArtifactRequired, true);
+  assert.equal(c.rules.releaseTrackIdentityRequired, true);
 });
 
 test('navigation contract forbids dead-end product surfaces', async () => {

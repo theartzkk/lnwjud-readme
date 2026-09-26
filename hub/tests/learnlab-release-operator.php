@@ -107,8 +107,8 @@ try{
     llr_assert(is_array($running)&&$running['state']==='RUNNING'&&str_starts_with((string)$running['lease_owner'],'learnlab-release:')
         &&(int)$running['attempt_count']===1,'dispatcher records one leased transient execution');
 
-    llr_assert(HubCapabilityRegistryService::mutationResourceForExecution(HubLearnLabReleaseService::CAPABILITY,'VPS')==='CANONICAL:DEPLOY','LearnLab release uses canonical deploy resource');
-    llr_assert(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:DEPLOY','CANONICAL:DEPLOY')===true,'LearnLab and core deploys serialize on one writer resource');
+    llr_assert(HubCapabilityRegistryService::mutationResourceForExecution(HubLearnLabReleaseService::CAPABILITY,'VPS')==='CANONICAL:DEPLOY:BAY_LEARNLAB','LearnLab release owns its release track');
+    llr_assert(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:DEPLOY:BAY_LEARNLAB','CANONICAL:DEPLOY:AWH')===false,'LearnLab and AWH use independent deploy resources');
     llr_assert($pdo->query('PRAGMA integrity_check')->fetchColumn()==='ok'&&$pdo->query('PRAGMA foreign_key_check')->fetchAll()===[],'LearnLab release flow preserves database integrity');
 
     fwrite(STDOUT,"AWH LearnLab release operator: PASS\n");

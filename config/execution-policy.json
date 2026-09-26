@@ -13,14 +13,17 @@
     "mutationAuthority": "control_execution_envelopes",
     "secondWriterBehavior": "WAIT_OR_JOIN",
     "globalMutationResources": [
-      "CANONICAL:DEPLOY"
+      "CANONICAL:DEPLOY:VPS_PLATFORM"
     ],
     "sameProjectInterlocks": [
-      "CANONICAL:SOURCE<->CANONICAL:DEPLOY",
-      "RESOURCE:RELEASE_STAGE<->CANONICAL:DEPLOY"
+      "CANONICAL:SOURCE<->CANONICAL:DEPLOY:*",
+      "RESOURCE:RELEASE_STAGE<->CANONICAL:DEPLOY:*"
     ],
     "localMissionAuthorityClass": "DEVICE_TRANSPORT_LEASE",
-    "parallelLockAuthorityAllowed": false
+    "parallelLockAuthorityAllowed": false,
+    "releaseTrackAuthority": "HubUpdateTargetRegistry::releaseTracks",
+    "writerIdentity": "EXECUTION_ID+MUTATION_RESOURCE",
+    "hostGlobalTrack": "vps-platform"
   },
   "qa": {
     "riskBudget": {

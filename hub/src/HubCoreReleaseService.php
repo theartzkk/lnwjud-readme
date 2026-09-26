@@ -22,10 +22,12 @@ final class HubCoreReleaseService
 {
     public const PROJECT_ID='113b45c0-23e1-408d-ae0f-ac5eca7f6900';
     public const CAPABILITY='system.core.release';
+    public const PLATFORM_CAPABILITY='system.platform.release';
     private const CANONICAL_GIT_REPO='/srv/awh-git/awh.git';
 
-    private function __construct(private readonly PDO $pdo, private readonly HubOwnerAuthService $auth) {}
-    public static function fromPdo(PDO $pdo): self { return new self($pdo,HubOwnerAuthService::fromPdo($pdo)); }
+    private function __construct(private readonly PDO $pdo, private readonly HubOwnerAuthService $auth, private readonly string $capability, private readonly string $releaseMode, private readonly string $releaseTrack, private readonly string $productionBranch, private readonly string $displayName) {}
+    public static function fromPdo(PDO $pdo): self { return new self($pdo,HubOwnerAuthService::fromPdo($pdo),self::CAPABILITY,'AWH_CORE','awh','production','AWH'); }
+    public static function platformFromPdo(PDO $pdo): self { return new self($pdo,HubOwnerAuthService::fromPdo($pdo),self::PLATFORM_CAPABILITY,'PLATFORM_HARDENING','vps-platform','platform/production','VPS Update'); }
 
     public function status(string $token): array
     {
@@ -36,7 +38,7 @@ final class HubCoreReleaseService
             LEFT JOIN control_approvals a ON a.task_id=e.task_id AND a.action='deployment.approve'
             WHERE e.project_id=:project AND e.required_capability=:capability AND t.user_id=:owner
             ORDER BY e.updated_at DESC,e.execution_id DESC LIMIT 20");
-        $q->execute(['project'=>self::PROJECT_ID,'capability'=>self::CAPABILITY,'owner'=>$owner['user_id']]);
+        $q->execute(['project'=>self::PROJECT_ID,'capability'=>$this->capability,'owner'=>$owner['user_id']]);
         $rows=[];
         foreach($q->fetchAll() as $row){
             $checkpoint=self::checkpoint((string)$row['checkpoint_json'],false);
@@ -67,7 +69,9 @@ final class HubCoreReleaseService
             ];
             if(count($history)>=12)break;
         }
-        return ['schemaVersion'=>1,'capability'=>self::CAPABILITY,'sourcePromotion'=>$sourcePromotion,'releaseNotes'=>$releaseNotes,'roadmap'=>$roadmap,'knownIssues'=>$knownIssues,'history'=>$history,'releases'=>$rows,'policy'=>HubTrustPolicy::describe('system.core.release')];
+        $runtimeProductionSha=$this->canonicalProductionSha();
+        $trackProductionSha=$this->canonicalRefSha($this->productionBranch);
+        return ['schemaVersion'=>1,'capability'=>$this->capability,'releaseTrack'=>$this->releaseTrack,'displayName'=>$this->displayName,'runtimeProductionSha'=>$runtimeProductionSha,'trackProductionSha'=>$trackProductionSha,'sourcePromotion'=>$sourcePromotion,'releaseNotes'=>$releaseNotes,'roadmap'=>$roadmap,'knownIssues'=>$knownIssues,'history'=>$history,'releases'=>$rows,'policy'=>HubTrustPolicy::describe($this->capability)];
     }
 
     public function request(string $token,string $csrf,array $payload,?string $now=null): array
@@ -82,7 +86,7 @@ final class HubCoreReleaseService
         if(!is_array($latest)||!is_string($latest['sha']??null)||!hash_equals((string)$latest['sha'],$sha))
             throw new HubCoreReleaseException('Core release target is no longer canonical','CORE_RELEASE_TARGET_MOVED');
         $deploymentNotes=$this->deploymentReleaseNotes($latest);
-        if(!HubUpdateTargetRegistry::releaseDetailsReady($deploymentNotes))
+        if(!HubUpdateTargetRegistry::releaseDetailsReady($deploymentNotes,true))
             throw new HubCoreReleaseException('Core release details are required before approval','CORE_RELEASE_DETAILS_REQUIRED');
         $this->reconcileOrphanedRelease($at);
         $this->supersedeQueuedReleaseIfTargetMoved($sha,$at);
@@ -98,16 +102,16 @@ final class HubCoreReleaseService
         $task=self::uuid();$execution=self::uuid();$approval=self::uuid();
         $notesJson=json_encode($deploymentNotes,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
         $notesSha=hash('sha256',$notesJson);
-        $checkpoint=['schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>$sha,'releaseMode'=>'PLATFORM_HARDENING','cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL','releaseNotesSha256'=>$notesSha];
-        $scope=['schemaVersion'=>1,'taskId'=>$task,'projectId'=>self::PROJECT_ID,'releaseSha'=>$sha,'releaseMode'=>'PLATFORM_HARDENING','cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL','risk'=>'CRITICAL','releaseNotesSha256'=>$notesSha];
-        $goal='Deploy AWH core release '.substr($sha,0,12).' ผ่าน bounded VPS-native release controller';
-        $key='core-release.'.substr($sha,0,12).'.'.substr(str_replace('-','',$task),0,12);
+        $checkpoint=['schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>$sha,'releaseMode'=>$this->releaseMode,'releaseTrack'=>$this->releaseTrack,'cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL','releaseNotesSha256'=>$notesSha];
+        $scope=['schemaVersion'=>1,'taskId'=>$task,'projectId'=>self::PROJECT_ID,'releaseSha'=>$sha,'releaseMode'=>$this->releaseMode,'releaseTrack'=>$this->releaseTrack,'cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL','risk'=>'CRITICAL','releaseNotesSha256'=>$notesSha];
+        $goal='Deploy '.$this->displayName.' release '.substr($sha,0,12).' ผ่าน bounded VPS-native release controller';
+        $key=$this->releaseTrack.'.release.'.substr($sha,0,12).'.'.substr(str_replace('-','',$task),0,12);
         try{
             $this->pdo->exec('BEGIN IMMEDIATE');
             $this->pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,:goal,'WAITING_FOR_APPROVAL',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$task,'user'=>$owner['user_id'],'project'=>self::PROJECT_ID,'goal'=>$goal,'key'=>$key,'at'=>$at]);
-            $this->pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS',:capability,'QUEUED',NULL,NULL,0,NULL,:checkpoint,NULL,:at,:at)")->execute(['execution'=>$execution,'task'=>$task,'project'=>self::PROJECT_ID,'capability'=>self::CAPABILITY,'checkpoint'=>json_encode($checkpoint,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$at]);
+            $this->pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS',:capability,'QUEUED',NULL,NULL,0,NULL,:checkpoint,NULL,:at,:at)")->execute(['execution'=>$execution,'task'=>$task,'project'=>self::PROJECT_ID,'capability'=>$this->capability,'checkpoint'=>json_encode($checkpoint,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$at]);
             $this->pdo->prepare("INSERT INTO control_approvals(approval_id,task_id,action,scope_json,status,expires_at,decided_at) VALUES(:approval,:task,'deployment.approve',:scope,'PENDING',:expires,NULL)")->execute(['approval'=>$approval,'task'=>$task,'scope'=>json_encode($scope,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'expires'=>gmdate('c',strtotime($at)+1800)]);
-            $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:event,:task,'WAITING_FOR_APPROVAL',0,:message,:at)")->execute(['event'=>self::uuid(),'task'=>$task,'message'=>'AWH core release ผ่าน verification boundary แล้วและรอ Owner อนุมัติ','at'=>$at]);
+            $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:event,:task,'WAITING_FOR_APPROVAL',0,:message,:at)")->execute(['event'=>self::uuid(),'task'=>$task,'message'=>$this->displayName.' release ผ่าน verification boundary แล้วและรอ Owner อนุมัติ','at'=>$at]);
             $this->pdo->exec('COMMIT');
         }catch(Throwable $error){
             $this->rollback();
@@ -130,7 +134,7 @@ final class HubCoreReleaseService
         $this->ready();
         try{
             $row=$this->auth->authorize($token,$csrf,$now);
-            if(HubTrustPolicy::requiresStepUp('system.core.release'))HubOwnerAuthService::assertRecentStepUpSession($row,$now);
+            if(HubTrustPolicy::requiresStepUp($this->capability))HubOwnerAuthService::assertRecentStepUpSession($row,$now);
         }catch(HubOwnerAuthException $error){throw new HubCoreReleaseException('Core release authentication needs attention',$error->codeName);}
         catch(HubTrustPolicyException){throw new HubCoreReleaseException('Core release trust policy is unavailable','CORE_RELEASE_INVALID');}
         $user=(string)$row['user_id'];$this->assertOwner($user);$this->assertCapability($user,'deployment.approve');
@@ -147,7 +151,7 @@ final class HubCoreReleaseService
               AND e.state='QUEUED'
               AND t.state IN ('WAITING_FOR_APPROVAL','WAITING_FOR_WORKER')
             ORDER BY e.updated_at DESC LIMIT 1");
-        $q->execute(['capability'=>self::CAPABILITY]);$row=$q->fetch();
+        $q->execute(['capability'=>$this->capability]);$row=$q->fetch();
         if(!is_array($row))return;
         $code=null;$summary=null;$expireApproval=false;
         $now=strtotime($at);$updated=strtotime((string)$row['updated_at']);
@@ -175,7 +179,7 @@ final class HubCoreReleaseService
         $table=$this->pdo->prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='control_executor_capabilities'");
         $table->execute();if($table->fetchColumn()===false)return true;
         $q=$this->pdo->prepare("SELECT 1 FROM control_executor_capabilities WHERE executor_id='vps-core-release' AND capability=:capability AND expires_at>:at LIMIT 1");
-        $q->execute(['capability'=>self::CAPABILITY,'at'=>$at]);return $q->fetchColumn()!==false;
+        $q->execute(['capability'=>$this->capability,'at'=>$at]);return $q->fetchColumn()!==false;
     }
 
     private function supersedeQueuedReleaseIfTargetMoved(string $targetSha,string $at): void
@@ -189,7 +193,7 @@ final class HubCoreReleaseService
               AND e.lease_owner IS NULL
               AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED')
             ORDER BY e.updated_at DESC");
-        $q->execute(['capability'=>self::CAPABILITY]);
+        $q->execute(['capability'=>$this->capability]);
         foreach($q->fetchAll() as $row){
             $checkpoint=self::checkpoint((string)$row['checkpoint_json'],false);
             $queuedSha=strtolower((string)($checkpoint['releaseSha']??''));
@@ -221,33 +225,42 @@ final class HubCoreReleaseService
               AND e.state IN ('QUEUED','LEASED','RUNNING','WAITING_FOR_CAPABILITY')
               AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED')
             ORDER BY e.updated_at DESC LIMIT 1");
-        $q->execute(['capability'=>self::CAPABILITY]);$row=$q->fetch();
+        $q->execute(['capability'=>$this->capability]);$row=$q->fetch();
         return is_array($row)?$row:null;
     }
 
     private function latestSourcePromotion(): ?array
     {
         $audit=null;
-        $q=$this->pdo->prepare("SELECT checkpoint_json,updated_at FROM control_task_executions WHERE project_id=:project AND required_capability='source.promote' AND state='COMPLETED' ORDER BY updated_at DESC,execution_id DESC LIMIT 20");
+        $q=$this->pdo->prepare("SELECT checkpoint_json,updated_at FROM control_task_executions WHERE project_id=:project AND required_capability='source.promote' AND state='COMPLETED' ORDER BY updated_at DESC,execution_id DESC LIMIT 80");
         $q->execute(['project'=>self::PROJECT_ID]);
         foreach($q->fetchAll() as $row){
             try{$checkpoint=json_decode((string)$row['checkpoint_json'],true,16,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
             if(!is_array($checkpoint)||($checkpoint['repository']??null)!=='awh')continue;
             $target=strtolower((string)($checkpoint['targetSha']??''));$base=strtolower((string)($checkpoint['expectedMainSha']??''));
-            if(preg_match('/^[0-9a-f]{40}$/',$target)===1&&preg_match('/^[0-9a-f]{40}$/',$base)===1){
-                $audit=['sha'=>$target,'previousSha'=>$base,'authority'=>'SOURCE_PROMOTION_AUDIT','observedAt'=>(string)$row['updated_at']];
-                if(is_array($checkpoint['releaseNotes']??null))$audit['releaseNotes']=$checkpoint['releaseNotes'];
-                break;
+            if(preg_match('/^[0-9a-f]{40}$/',$target)!==1||preg_match('/^[0-9a-f]{40}$/',$base)!==1)continue;
+            $notes=is_array($checkpoint['releaseNotes']??null)?$checkpoint['releaseNotes']:null;
+            $track=is_array($notes)&&is_string($notes['releaseTrack']??null)?strtolower((string)$notes['releaseTrack']):null;
+            if($track===null){
+                $platformProduction=$this->canonicalRefSha('platform/production');
+                $track=is_string($platformProduction)&&hash_equals($platformProduction,$target)?'vps-platform':'awh';
+                if(is_array($notes))$notes=['releaseTrack'=>$track]+$notes;
             }
+            if(!hash_equals($track,$this->releaseTrack))continue;
+            $audit=['sha'=>$target,'previousSha'=>$base,'authority'=>'SOURCE_PROMOTION_AUDIT','releaseTrack'=>$track,'observedAt'=>(string)$row['updated_at']];
+            if(is_array($notes))$audit['releaseNotes']=$notes;
+            break;
         }
-        $main=$this->canonicalMainSha();
-        if($main===null)return $audit;
-        if(is_array($audit)&&is_string($audit['sha']??null)&&hash_equals((string)$audit['sha'],$main)){
-            $audit['authority']='CANONICAL_GIT_MAIN_VERIFIED';
+        if(is_array($audit)){
+            $main=$this->canonicalMainSha();
+            if(is_string($main)&&hash_equals((string)$audit['sha'],$main))$audit['authority']='CANONICAL_GIT_MAIN_VERIFIED';
             return $audit;
         }
-        return ['sha'=>$main,'previousSha'=>is_array($audit)&&is_string($audit['sha']??null)?(string)$audit['sha']:null,
-            'authority'=>'CANONICAL_GIT_MAIN','observedAt'=>is_array($audit)?($audit['observedAt']??null):null];
+        if($this->releaseTrack!=='awh')return null;
+        $main=$this->canonicalMainSha();
+        $platformProduction=$this->canonicalRefSha('platform/production');
+        if(is_string($main)&&is_string($platformProduction)&&hash_equals($main,$platformProduction))return null;
+        return is_string($main)?['sha'=>$main,'previousSha'=>null,'authority'=>'LEGACY_CANONICAL_GIT_MAIN','releaseTrack'=>'awh','observedAt'=>null]:null;
     }
 
     private function canonicalMainSha(): ?string
@@ -257,7 +270,7 @@ final class HubCoreReleaseService
 
     private function canonicalRefSha(string $branch): ?string
     {
-        if(!in_array($branch,['main','production'],true))return null;
+        if(!in_array($branch,['main','production','runtime/production','platform/production'],true))return null;
         $configured=getenv('AWH_CORE_CANONICAL_GIT');
         $path=is_string($configured)&&$configured!==''?$configured:self::CANONICAL_GIT_REPO;
         if(!str_starts_with($path,'/')||is_link($path))return null;
@@ -283,10 +296,10 @@ final class HubCoreReleaseService
     /** @return array<string,mixed> */
     private function deploymentReleaseNotes(?array $latest): array
     {
-        $main=$this->canonicalMainSha();
         $production=$this->canonicalProductionSha();
+        $releaseTarget=is_array($latest)&&is_string($latest['sha']??null)?strtolower((string)$latest['sha']):null;
         $fallback=is_array($latest['releaseNotes']??null)?$latest['releaseNotes']:$this->fallbackReleaseNotes();
-        if($main===null||$production===null||hash_equals($main,$production))return $fallback;
+        if($releaseTarget===null||preg_match('/^[0-9a-f]{40}$/',$releaseTarget)!==1||$production===null||hash_equals($releaseTarget,$production))return $fallback;
 
         $q=$this->pdo->prepare("SELECT checkpoint_json,updated_at FROM control_task_executions
             WHERE project_id=:project AND required_capability='source.promote' AND state='COMPLETED'
@@ -296,24 +309,27 @@ final class HubCoreReleaseService
         foreach($q->fetchAll() as $row){
             try{$checkpoint=json_decode((string)$row['checkpoint_json'],true,16,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
             if(!is_array($checkpoint)||($checkpoint['repository']??null)!=='awh')continue;
-            $target=strtolower((string)($checkpoint['targetSha']??''));$base=strtolower((string)($checkpoint['expectedMainSha']??''));
+            $segmentTarget=strtolower((string)($checkpoint['targetSha']??''));$base=strtolower((string)($checkpoint['expectedMainSha']??''));
             $notes=$checkpoint['releaseNotes']??null;
-            if(preg_match('/^[0-9a-f]{40}$/',$target)!==1||preg_match('/^[0-9a-f]{40}$/',$base)!==1||!is_array($notes)||!HubUpdateTargetRegistry::releaseDetailsReady($notes,true))continue;
-            if(!isset($byTarget[$target]))$byTarget[$target]=['base'=>$base,'notes'=>$notes,'updatedAt'=>(string)$row['updated_at']];
+            if(preg_match('/^[0-9a-f]{40}$/',$segmentTarget)!==1||preg_match('/^[0-9a-f]{40}$/',$base)!==1||!is_array($notes)||!HubUpdateTargetRegistry::releaseDetailsReady($notes,true))continue;
+            $track=is_string($notes['releaseTrack']??null)?strtolower((string)$notes['releaseTrack']):'awh';
+            if(!isset($byTarget[$segmentTarget]))$byTarget[$segmentTarget]=['base'=>$base,'track'=>$track,'notes'=>$notes,'updatedAt'=>(string)$row['updated_at']];
         }
 
-        $cursor=$main;$segments=[];$seen=[];
+        $cursor=$releaseTarget;$segments=[];$seen=[];
         for($i=0;$i<40&&!hash_equals($cursor,$production);$i++){
-            if(isset($seen[$cursor])||!isset($byTarget[$cursor]))return $this->incompleteDeploymentReleaseNotes($production,$main);
+            if(isset($seen[$cursor])||!isset($byTarget[$cursor]))return $this->incompleteDeploymentReleaseNotes($production,$releaseTarget);
             $seen[$cursor]=true;$segment=$byTarget[$cursor];$segments[]=$segment;$cursor=(string)$segment['base'];
         }
-        if(!hash_equals($cursor,$production)||$segments===[])return $this->incompleteDeploymentReleaseNotes($production,$main);
+        if(!hash_equals($cursor,$production)||$segments===[])return $this->incompleteDeploymentReleaseNotes($production,$releaseTarget);
         $segments=array_reverse($segments);
 
-        $groups=['features'=>[],'improvements'=>[],'fixes'=>[],'internal'=>[]];$commits=[];$commitSeen=[];$touches=0;
+        $groups=['features'=>[],'improvements'=>[],'fixes'=>[],'internal'=>[]];$commits=[];$commitSeen=[];$touches=0;$trackSegments=[];
         $impact=['databaseMigration'=>'NONE','serviceReload'=>'NONE','appRestart'=>'NONE','signIn'=>'NONE','plannedDowntime'=>false];
         $compat=['data'=>'COMPATIBLE','runtime'=>'COMPATIBLE','authentication'=>'UNCHANGED'];
         foreach($segments as $segment){
+            if(!hash_equals((string)($segment['track']??''),$this->releaseTrack))return $this->incompleteDeploymentReleaseNotes($production,$releaseTarget);
+            $trackSegments[]=$segment;
             $notes=$segment['notes'];
             foreach(array_keys($groups) as $category)foreach((array)($notes['summary'][$category]??[]) as $label){
                 if(is_string($label)&&trim($label)!==''&&!in_array($label,$groups[$category],true)&&count($groups[$category])<12)$groups[$category][]=trim($label);
@@ -333,14 +349,15 @@ final class HubCoreReleaseService
             if(($notes['compatibility']['runtime']??'COMPATIBLE')!=='COMPATIBLE')$compat['runtime']='RESTART_MAY_BE_REQUIRED';
             if(($notes['compatibility']['authentication']??'UNCHANGED')!=='UNCHANGED')$compat['authentication']='SIGN_IN_MAY_BE_REQUIRED';
         }
-        $latestNotes=$segments[count($segments)-1]['notes'];
+        if($trackSegments===[])return $this->incompleteDeploymentReleaseNotes($production,$releaseTarget);
+        $latestTrackSegment=$trackSegments[count($trackSegments)-1];$latestNotes=$latestTrackSegment['notes'];
         $visible=array_values(array_merge($groups['features'],$groups['improvements'],$groups['fixes']));
         return [
             'schemaVersion'=>1,'metadataState'=>'READY','generatedFrom'=>'SOURCE_PROMOTION_CHAIN_EXACT_GIT_DIFF',
-            'repository'=>'awh','previousSha'=>$production,'targetSha'=>$main,
-            'generatedAt'=>$latestNotes['generatedAt']??$segments[count($segments)-1]['updatedAt'],
+            'repository'=>'awh','releaseTrack'=>$this->releaseTrack,'previousSha'=>$production,'targetSha'=>$releaseTarget,
+            'generatedAt'=>$latestNotes['generatedAt']??$latestTrackSegment['updatedAt'],
             'ownerSummary'=>$visible[0]??'ไม่มีการเปลี่ยนแปลงที่ผู้ใช้เห็น','userVisible'=>$visible!==[],
-            'summary'=>$groups,'commits'=>$commits,'changedFileCount'=>$touches,'changedFileCountMode'=>'SEGMENT_TOUCHES','promotionCount'=>count($segments),
+            'summary'=>$groups,'commits'=>$commits,'changedFileCount'=>$touches,'changedFileCountMode'=>'SEGMENT_TOUCHES','promotionCount'=>count($trackSegments),'chainSegmentCount'=>count($segments),
             'impact'=>$impact,'compatibility'=>$compat,
             'rollback'=>['required'=>true,'strategy'=>'PREVIOUS_VERIFIED_RELEASE_OR_SOURCE','sourceSha'=>$production],
             'knownIssues'=>is_array($latestNotes['knownIssues']??null)?$latestNotes['knownIssues']:[],
@@ -349,11 +366,11 @@ final class HubCoreReleaseService
     }
 
     /** @return array<string,mixed> */
-    private function incompleteDeploymentReleaseNotes(string $production,string $main): array
+    private function incompleteDeploymentReleaseNotes(string $production,string $target): array
     {
         return [
             'schemaVersion'=>1,'metadataState'=>'INCOMPLETE','generatedFrom'=>'SOURCE_PROMOTION_CHAIN',
-            'repository'=>'awh','previousSha'=>$production,'targetSha'=>$main,'generatedAt'=>null,
+            'repository'=>'awh','releaseTrack'=>$this->releaseTrack,'previousSha'=>$production,'targetSha'=>$target,'generatedAt'=>null,
             'ownerSummary'=>'Release details chain is incomplete','userVisible'=>false,
             'summary'=>['features'=>[],'improvements'=>[],'fixes'=>[],'internal'=>[]],'commits'=>[],'changedFileCount'=>0,
             'impact'=>['databaseMigration'=>'UNKNOWN','serviceReload'=>'UNKNOWN','appRestart'=>'UNKNOWN','signIn'=>'UNKNOWN','plannedDowntime'=>false],
@@ -365,7 +382,7 @@ final class HubCoreReleaseService
 
     private function canonicalProductionSha(): ?string
     {
-        return $this->canonicalRefSha('production');
+        return $this->canonicalRefSha('runtime/production') ?? $this->canonicalRefSha('production');
     }
 
 
@@ -432,11 +449,22 @@ final class HubCoreReleaseService
     public static function checkpoint(string $json,bool $strict=true): array
     {
         try{$v=json_decode($json,true,16,JSON_THROW_ON_ERROR);}catch(Throwable){if(!$strict)return [];throw new HubCoreReleaseException('Core release checkpoint is invalid','CORE_RELEASE_CHECKPOINT_INVALID');}
-        $keys=['cleanupTopology','mode','releaseMode','releaseSha','schemaVersion','transport'];
         if(!is_array($v)||array_is_list($v)){if(!$strict)return [];throw new HubCoreReleaseException('Core release checkpoint is invalid','CORE_RELEASE_CHECKPOINT_INVALID');}
-        $actual=array_keys($v);sort($actual);$expected=$keys;sort($expected);
-        $ok=$actual===$expected&&($v['schemaVersion']??null)===1&&($v['mode']??null)==='CORE_RELEASE'&&($v['releaseMode']??null)==='PLATFORM_HARDENING'&&($v['transport']??null)==='LOCAL'&&is_bool($v['cleanupTopology']??null)&&is_string($v['releaseSha']??null)&&preg_match('/^[0-9a-f]{40}$/',$v['releaseSha'])===1;
+        $legacy=['cleanupTopology','mode','releaseMode','releaseSha','schemaVersion','transport'];
+        $legacyNotes=['cleanupTopology','mode','releaseMode','releaseNotesSha256','releaseSha','schemaVersion','transport'];
+        $current=['cleanupTopology','mode','releaseMode','releaseNotesSha256','releaseSha','releaseTrack','schemaVersion','transport'];
+        $actual=array_keys($v);sort($actual);
+        $legacySorted=$legacy;$legacyNotesSorted=$legacyNotes;$currentSorted=$current;
+        sort($legacySorted);sort($legacyNotesSorted);sort($currentSorted);
+        $mode=(string)($v['releaseMode']??'');
+        $track=is_string($v['releaseTrack']??null)?strtolower((string)$v['releaseTrack']):($mode==='AWH_CORE'?'awh':'');
+        $mapping=($mode==='AWH_CORE'&&$track==='awh')||($mode==='PLATFORM_HARDENING'&&$track==='vps-platform');
+        $keysOk=$actual===$currentSorted||(($actual===$legacySorted||$actual===$legacyNotesSorted)&&$mode==='AWH_CORE');
+        $notesSha=$v['releaseNotesSha256']??null;
+        $notesOk=$actual!==$currentSorted||(is_string($notesSha)&&preg_match('/^[0-9a-f]{64}$/',$notesSha)===1);
+        $ok=$keysOk&&$notesOk&&$mapping&&($v['schemaVersion']??null)===1&&($v['mode']??null)==='CORE_RELEASE'&&($v['transport']??null)==='LOCAL'&&is_bool($v['cleanupTopology']??null)&&is_string($v['releaseSha']??null)&&preg_match('/^[0-9a-f]{40}$/',$v['releaseSha'])===1;
         if(!$ok){if(!$strict)return [];throw new HubCoreReleaseException('Core release checkpoint is invalid','CORE_RELEASE_CHECKPOINT_INVALID');}
+        $v['releaseTrack']=$track;
         return $v;
     }
 

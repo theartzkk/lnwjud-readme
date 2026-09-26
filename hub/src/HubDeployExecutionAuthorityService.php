@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/HubCapabilityRegistryService.php';
+require_once __DIR__ . '/HubCoreReleaseService.php';
 
 final class HubDeployExecutionAuthorityException extends RuntimeException
 {
@@ -36,9 +37,13 @@ final class HubDeployExecutionAuthorityService
     public function acquire(string $releaseId, int $leaseSeconds = 1800, ?string $now = null): array
     {
         $this->assertSchema();
-        if (preg_match('/^m[0-9]+-([0-9a-f]{12})(?:-r[1-9][0-9]{0,2})?$/i', $releaseId, $releaseMatch) !== 1) {
+        if (preg_match('/^(awh|platform|m[0-9]+)-([0-9a-f]{12})(?:-r[1-9][0-9]{0,2})?$/i', $releaseId, $releaseMatch) !== 1) {
             throw new HubDeployExecutionAuthorityException('Release identity is invalid', 'DEPLOY_AUTHORITY_INVALID');
         }
+        $releaseFamily = strtolower((string)$releaseMatch[1]);
+        $releasePrefix = strtolower((string)$releaseMatch[2]);
+        $expectedParentCapability = $releaseFamily === 'awh' ? HubCoreReleaseService::CAPABILITY : ($releaseFamily === 'platform' ? HubCoreReleaseService::PLATFORM_CAPABILITY : null);
+        $expectedTrack = $releaseFamily === 'awh' ? 'awh' : ($releaseFamily === 'platform' ? 'vps-platform' : null);
         if ($leaseSeconds < 300 || $leaseSeconds > 3600) {
             throw new HubDeployExecutionAuthorityException('Deploy lease is outside the safety bound', 'DEPLOY_AUTHORITY_INVALID');
         }
@@ -53,32 +58,55 @@ final class HubDeployExecutionAuthorityService
                 throw new HubDeployExecutionAuthorityException('Canonical AWH Project is unavailable', 'DEPLOY_AUTHORITY_PROJECT');
             }
             $projectId = (string) $projects[0]['project_id'];
-            $releasePrefix = strtolower((string) $releaseMatch[1]);
             $owner = $this->pdo->query("SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id=1 AND bootstrap_closed=1")->fetchColumn();
             if (!is_string($owner) || !self::validUuid($owner)) {
                 throw new HubDeployExecutionAuthorityException('Owner authority is unavailable', 'DEPLOY_AUTHORITY_OWNER');
             }
 
-            // A Core Release already owns CANONICAL:DEPLOY. Reuse that exact
-            // execution instead of creating a second deploy writer that would
-            // deadlock against its parent.
-            $parent = $this->pdo->prepare("SELECT e.execution_id,e.task_id,e.checkpoint_json FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE e.project_id=:project AND e.required_capability='system.core.release' AND e.executor_kind='VPS' AND e.state IN ('LEASED','RUNNING') AND t.state IN ('RUNNING','WAITING_FOR_WORKER') ORDER BY e.updated_at DESC,e.execution_id DESC");
-            $parent->execute(['project'=>$projectId]);
+            // AWH and VPS Platform releases must reuse their exact Owner-approved
+            // parent execution. This prevents a nested guarded deploy from creating
+            // a second or broader writer authority.
+            $parent = $this->pdo->prepare("SELECT e.execution_id,e.task_id,e.required_capability,e.checkpoint_json FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE e.project_id=:project AND e.required_capability IN (:core,:platform) AND e.executor_kind='VPS' AND e.state IN ('LEASED','RUNNING') AND t.state IN ('RUNNING','WAITING_FOR_WORKER') AND EXISTS(SELECT 1 FROM control_approvals a WHERE a.task_id=e.task_id AND a.action='deployment.approve' AND a.status='APPROVED') ORDER BY e.updated_at DESC,e.execution_id DESC");
+            $parent->execute(['project'=>$projectId,'core'=>HubCoreReleaseService::CAPABILITY,'platform'=>HubCoreReleaseService::PLATFORM_CAPABILITY]);
             foreach ($parent->fetchAll() as $candidate) {
-                try { $checkpoint=json_decode((string)$candidate['checkpoint_json'],true,16,JSON_THROW_ON_ERROR); } catch (Throwable) { continue; }
+                $candidateCapability=(string)($candidate['required_capability']??'');
+                $legacyPlatformBootstrap=false;
+                try {
+                    if ($expectedParentCapability === null) {
+                        $checkpoint=json_decode((string)$candidate['checkpoint_json'],true,16,JSON_THROW_ON_ERROR);
+                        if(!is_array($checkpoint)||array_is_list($checkpoint))continue;
+                    } elseif (
+                        $releaseFamily==='platform'
+                        && hash_equals(HubCoreReleaseService::CAPABILITY,$candidateCapability)
+                    ) {
+                        $checkpoint=json_decode((string)$candidate['checkpoint_json'],true,16,JSON_THROW_ON_ERROR);
+                        if(!is_array($checkpoint)||array_is_list($checkpoint))continue;
+                        $legacyPlatformBootstrap=($checkpoint['releaseMode']??null)==='PLATFORM_HARDENING'
+                            && !array_key_exists('releaseTrack',$checkpoint);
+                        if(!$legacyPlatformBootstrap)continue;
+                    } else {
+                        $checkpoint=HubCoreReleaseService::checkpoint((string)$candidate['checkpoint_json']);
+                    }
+                } catch (Throwable) { continue; }
                 $sha=strtolower((string)($checkpoint['releaseSha']??''));
+                $candidateTrack=$legacyPlatformBootstrap?'vps-platform':(string)($checkpoint['releaseTrack']??'');
                 if (preg_match('/^[0-9a-f]{40}$/',$sha)!==1 || !hash_equals(substr($sha,0,12),$releasePrefix)) continue;
+                if (is_string($expectedParentCapability) && !hash_equals($expectedParentCapability,$candidateCapability) && !$legacyPlatformBootstrap) continue;
+                if (is_string($expectedTrack) && !hash_equals($expectedTrack,$candidateTrack)) continue;
                 $registry=new HubCapabilityRegistryService($this->pdo);
                 $authority=$registry->activateExecutionAuthority((string)$candidate['execution_id'],$lease,$at,true);
-                if (($authority['granted']??false)!==true) throw new HubDeployExecutionAuthorityException('Core Release deploy authority is blocked','DEPLOY_AUTHORITY_CONFLICT');
+                if (($authority['granted']??false)!==true) throw new HubDeployExecutionAuthorityException('Owner-approved release authority is blocked','DEPLOY_AUTHORITY_CONFLICT');
                 $this->pdo->prepare("UPDATE control_task_executions SET lease_expires_at=:lease,updated_at=:at WHERE execution_id=:execution AND state IN ('LEASED','RUNNING')")
                     ->execute(['lease'=>$lease,'at'=>$at,'execution'=>$candidate['execution_id']]);
                 $this->pdo->prepare("UPDATE control_tasks SET state='RUNNING',assigned_device_id=NULL,lease_expires_at=:lease,updated_at=:at WHERE task_id=:task AND state IN ('RUNNING','WAITING_FOR_WORKER')")
                     ->execute(['lease'=>$lease,'at'=>$at,'task'=>$candidate['task_id']]);
-                $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:id,:task,'RUNNING',35,'Guarded deployment borrowed Core Release execution authority',:at)")
+                $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:id,:task,'RUNNING',35,'Guarded deployment borrowed owner-approved release authority',:at)")
                     ->execute(['id'=>self::uuid(),'task'=>$candidate['task_id'],'at'=>$at]);
                 $this->pdo->exec('COMMIT');
                 return ['executionId'=>(string)$candidate['execution_id'],'taskId'=>(string)$candidate['task_id'],'projectId'=>$projectId,'leaseExpiresAt'=>$lease,'borrowed'=>true];
+            }
+            if ($expectedParentCapability !== null) {
+                throw new HubDeployExecutionAuthorityException('Owner-approved release parent is required for this release track','DEPLOY_AUTHORITY_PARENT_REQUIRED');
             }
 
             $taskId = self::uuid();
@@ -165,7 +193,7 @@ final class HubDeployExecutionAuthorityService
                 WHERE e.execution_id=:execution");
             $q->execute(['execution'=>strtolower($executionId)]);$row=$q->fetch();
             if(!is_array($row)||!in_array((string)$row['state'],['LEASED','RUNNING'],true)||(string)$row['task_state']!=='RUNNING'
-                ||!in_array((string)$row['required_capability'],['system.core.release','project.mutate.deploy'],true))
+                ||!in_array((string)$row['required_capability'],[HubCoreReleaseService::CAPABILITY,HubCoreReleaseService::PLATFORM_CAPABILITY,'project.mutate.deploy'],true))
                 throw new HubDeployExecutionAuthorityException('Deploy execution is not runnable','DEPLOY_AUTHORITY_INVALID');
             $currentProgress=(int)$row['progress'];
             if((int)$detail['progress']<$currentProgress){
@@ -236,9 +264,9 @@ final class HubDeployExecutionAuthorityService
                 $this->pdo->exec('COMMIT');
                 return;
             }
-            // Borrowed Core Release authority is owned by the parent operator;
-            // guarded deploy must never terminate that task itself.
-            if ((string)$row['required_capability']==='system.core.release') {
+            // Borrowed AWH/VPS Platform release authority is owned by the parent
+            // operator; guarded deploy must never terminate that task itself.
+            if (in_array((string)$row['required_capability'],[HubCoreReleaseService::CAPABILITY,HubCoreReleaseService::PLATFORM_CAPABILITY],true)) {
                 $this->pdo->exec('COMMIT');
                 return;
             }

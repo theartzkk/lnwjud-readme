@@ -65,20 +65,22 @@ foreach ($rows as $row) {
 if (is_string($runtime) && $runtime!=='') {
     $manifest=json_decode((string)@file_get_contents($runtime),true);
     $awh=$gitRoot.'/awh.git';
-    $production=is_dir($awh)?trim((string)shell_exec('git --git-dir='.escapeshellarg($awh).' rev-parse refs/heads/production 2>/dev/null')):'';
+    $runtimeProduction=is_dir($awh)?trim((string)shell_exec('git --git-dir='.escapeshellarg($awh).' rev-parse refs/heads/runtime/production 2>/dev/null')):'';
+    $legacyProduction=is_dir($awh)?trim((string)shell_exec('git --git-dir='.escapeshellarg($awh).' rev-parse refs/heads/production 2>/dev/null')):'';
+    if (!preg_match('/^[0-9a-f]{40}$/',$runtimeProduction) && preg_match('/^[0-9a-f]{40}$/',$legacyProduction)) $runtimeProduction=$legacyProduction;
     $main=is_dir($awh)?trim((string)shell_exec('git --git-dir='.escapeshellarg($awh).' rev-parse refs/heads/main 2>/dev/null')):'';
     $source=is_array($manifest)?strtolower((string)($manifest['sourceSha']??'')):'';
-    if (!preg_match('/^[0-9a-f]{40}$/',$source) || !preg_match('/^[0-9a-f]{40}$/',$production) || !hash_equals($source,strtolower($production))) $findings[]='AWH runtime/Git production drift';
-    if (!preg_match('/^[0-9a-f]{40}$/',$main) || !preg_match('/^[0-9a-f]{40}$/',$production)) {
-        $findings[]='AWH main/production authority unresolved';
-    } elseif (!hash_equals(strtolower($main),strtolower($production))) {
-        $mergeBase=trim((string)shell_exec('git --git-dir='.escapeshellarg($awh).' merge-base '.escapeshellarg($production).' '.escapeshellarg($main).' 2>/dev/null'));
-        if (preg_match('/^[0-9a-f]{40}$/',$mergeBase) && hash_equals(strtolower($mergeBase),strtolower($production))) $pending[]='AWH main ahead of production';
-        else $findings[]='AWH main/production divergence';
+    if (!preg_match('/^[0-9a-f]{40}$/',$source) || !preg_match('/^[0-9a-f]{40}$/',$runtimeProduction) || !hash_equals($source,strtolower($runtimeProduction))) $findings[]='AWH runtime/Git runtime-production drift';
+    if (!preg_match('/^[0-9a-f]{40}$/',$main) || !preg_match('/^[0-9a-f]{40}$/',$runtimeProduction)) {
+        $findings[]='AWH main/runtime production authority unresolved';
+    } elseif (!hash_equals(strtolower($main),strtolower($runtimeProduction))) {
+        $mergeBase=trim((string)shell_exec('git --git-dir='.escapeshellarg($awh).' merge-base '.escapeshellarg($runtimeProduction).' '.escapeshellarg($main).' 2>/dev/null'));
+        if (preg_match('/^[0-9a-f]{40}$/',$mergeBase) && hash_equals(strtolower($mergeBase),strtolower($runtimeProduction))) $pending[]='AWH canonical main ahead of runtime production';
+        else $findings[]='AWH main/runtime production divergence';
     }
-    if (preg_match('/^[0-9a-f]{40}$/',$production)) {
-        $policy=(string)shell_exec('git --git-dir='.escapeshellarg($awh).' show '.escapeshellarg($production).':hub/src/HubCapabilityRegistryService.php 2>/dev/null');
-        $protocol=(string)shell_exec('git --git-dir='.escapeshellarg($awh).' show '.escapeshellarg($production).':ART_AI_WORKING_PROTOCOL.md 2>/dev/null');
+    if (preg_match('/^[0-9a-f]{40}$/',$runtimeProduction)) {
+        $policy=(string)shell_exec('git --git-dir='.escapeshellarg($awh).' show '.escapeshellarg($runtimeProduction).':hub/src/HubCapabilityRegistryService.php 2>/dev/null');
+        $protocol=(string)shell_exec('git --git-dir='.escapeshellarg($awh).' show '.escapeshellarg($runtimeProduction).':ART_AI_WORKING_PROTOCOL.md 2>/dev/null');
         if (!str_contains($policy,"'mode'=>'CONTEXT_ONLY'") || !str_contains($policy,"'enforcement'=>'ADVISORY'")) $findings[]='AWH execution context runtime drift';
         if (!str_contains($protocol,'# AWH Working Context') || !str_contains($protocol,'Mode: context-only')) $findings[]='AWH working context drift';
     }
@@ -90,7 +92,8 @@ $awhRepository = $gitRoot . '/awh.git';
 $contractPath = dirname(__DIR__, 2) . '/config/repository-governance-contract.json';
 $raw = is_file($contractPath) ? (string) file_get_contents($contractPath) : '';
 if ($raw === '' && is_dir($awhRepository)) {
-    $raw = (string) shell_exec('git --git-dir=' . escapeshellarg($awhRepository) . ' show refs/heads/production:config/repository-governance-contract.json 2>/dev/null');
+    $raw = (string) shell_exec('git --git-dir=' . escapeshellarg($awhRepository) . ' show refs/heads/runtime/production:config/repository-governance-contract.json 2>/dev/null');
+    if ($raw === '') $raw = (string) shell_exec('git --git-dir=' . escapeshellarg($awhRepository) . ' show refs/heads/production:config/repository-governance-contract.json 2>/dev/null');
 }
 if ($raw === '') {
     $findings[] = 'Repository governance contract is unavailable from immutable release and AWH production source';

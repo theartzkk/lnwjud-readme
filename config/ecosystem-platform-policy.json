@@ -96,5 +96,44 @@
       "RECENT_CHANGE",
       "ROLLBACK_READINESS"
     ]
+  },
+  "releaseTracks": {
+    "authority": "HubUpdateTargetRegistry::releaseTracks",
+    "singleUpdateCenter": true,
+    "tracks": [
+      "vps-platform",
+      "awh",
+      "awh-agent",
+      "bay-excuse-x",
+      "bay-assessment",
+      "bay-learnlab",
+      "bay-computer-lab",
+      "school-website",
+      "bay-hub"
+    ],
+    "vpsPlatformOwns": [
+      "ubuntu-runtime",
+      "nginx-php",
+      "systemd",
+      "backup-restore",
+      "build-isolation",
+      "operator-bridge-cli",
+      "source-drift",
+      "repository-governance",
+      "agents-md-governance",
+      "infrastructure-hardening"
+    ],
+    "awhOwns": [
+      "chat",
+      "control-panel",
+      "projects",
+      "tasks",
+      "approvals",
+      "automations",
+      "awh-ui",
+      "awh-business-logic"
+    ],
+    "crossTrackMutationRequiresSplitChangeSet": true,
+    "chatIsClientNotAuthority": true
   }
 }

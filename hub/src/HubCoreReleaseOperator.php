@@ -19,6 +19,7 @@ final class HubCoreReleaseOperatorException extends RuntimeException
 final class HubCoreReleaseOperator
 {
     private const DISPATCHER='vps-core-release';
+    private const RELEASE_CAPABILITIES=[HubCoreReleaseService::CAPABILITY,HubCoreReleaseService::PLATFORM_CAPABILITY];
     private const LEASE_SECONDS=14400;
     private const WORK_ROOT='/var/lib/awh-hub/core-release-work';
     private const STORAGE_BLOCK_PERCENT=90;
@@ -67,11 +68,11 @@ final class HubCoreReleaseOperator
         try{
             $this->pdo->exec('BEGIN IMMEDIATE');
             $q=$this->pdo->prepare("SELECT e.*,t.goal FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id
-                WHERE e.executor_kind='VPS' AND e.required_capability=:capability AND e.state='QUEUED'
+                WHERE e.executor_kind='VPS' AND e.required_capability IN (:core,:platform) AND e.state='QUEUED'
                   AND t.state='WAITING_FOR_WORKER'
                   AND EXISTS(SELECT 1 FROM control_approvals a WHERE a.task_id=e.task_id AND a.action='deployment.approve' AND a.status='APPROVED')
                 ORDER BY e.created_at,e.execution_id LIMIT 1");
-            $q->execute(['capability'=>HubCoreReleaseService::CAPABILITY]);$row=$q->fetch();
+            $q->execute(['core'=>HubCoreReleaseService::CAPABILITY,'platform'=>HubCoreReleaseService::PLATFORM_CAPABILITY]);$row=$q->fetch();
             if(!is_array($row)){$this->pdo->exec('COMMIT');return null;}
             HubCoreReleaseService::checkpoint((string)$row['checkpoint_json']);
             $u=$this->pdo->prepare("UPDATE control_task_executions SET state='LEASED',lease_owner=:owner,lease_expires_at=:lease,attempt_count=attempt_count+1,updated_at=:at WHERE execution_id=:execution AND state='QUEUED' AND attempt_count<3");
@@ -87,9 +88,9 @@ final class HubCoreReleaseOperator
     {
         $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.state,e.lease_owner,e.lease_expires_at,e.updated_at
             FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id
-            WHERE e.required_capability=:capability AND e.state IN ('LEASED','RUNNING') AND t.state='RUNNING'
+            WHERE e.required_capability IN (:core,:platform) AND e.state IN ('LEASED','RUNNING') AND t.state='RUNNING'
             ORDER BY e.updated_at DESC LIMIT 1");
-        $q->execute(['capability'=>HubCoreReleaseService::CAPABILITY]);$row=$q->fetch();return is_array($row)?$row:null;
+        $q->execute(['core'=>HubCoreReleaseService::CAPABILITY,'platform'=>HubCoreReleaseService::PLATFORM_CAPABILITY]);$row=$q->fetch();return is_array($row)?$row:null;
     }
 
     private function observeActive(array $row,string $at): array
@@ -117,12 +118,21 @@ final class HubCoreReleaseOperator
         $checkpoint=HubCoreReleaseService::checkpoint((string)$row['checkpoint_json']);
         $scope=$this->approvedScope((string)$row['task_id'],$checkpoint,$at);
         $sha=(string)$checkpoint['releaseSha'];
+        $track=(string)$checkpoint['releaseTrack'];
+        if($track==='vps-platform'){$modeArg='--platform-hardening';$productionRef='refs/heads/platform/production';$expectedCapability=HubCoreReleaseService::PLATFORM_CAPABILITY;$label='VPS Update';}
+        elseif($track==='awh'){$modeArg='--awh-core';$productionRef='refs/heads/production';$expectedCapability=HubCoreReleaseService::CAPABILITY;$label='AWH';}
+        else throw new HubCoreReleaseOperatorException('Release track is invalid','CORE_RELEASE_CHECKPOINT_INVALID');
+        if(!hash_equals($expectedCapability,(string)$row['required_capability']))throw new HubCoreReleaseOperatorException('Release capability does not match checkpoint track','CORE_RELEASE_CHECKPOINT_INVALID');
         $workRoot=self::WORK_ROOT;$workspace=null;
         try{
-            $main=trim($this->run(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'rev-parse','refs/heads/main'],null,20,'CORE_RELEASE_GIT_MAIN_FAILED')['out']);
-            if(!hash_equals($sha,strtolower($main)))throw new HubCoreReleaseOperatorException('Canonical main moved before release execution','CORE_RELEASE_SOURCE_MOVED');
-            $production=trim($this->run(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'rev-parse','refs/heads/production'],null,20,'CORE_RELEASE_GIT_PRODUCTION_FAILED')['out']);
-            if(hash_equals($sha,strtolower($production))){
+            $main=strtolower(trim($this->run(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'rev-parse','refs/heads/main'],null,20,'CORE_RELEASE_GIT_MAIN_FAILED')['out']));
+            $target=$this->runOptional(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'cat-file','-e',$sha.'^{commit}'],null,20);
+            $ancestor=$this->runOptional(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'merge-base','--is-ancestor',$sha,$main],null,20);
+            if(($target['code']??1)!==0||($ancestor['code']??1)!==0)throw new HubCoreReleaseOperatorException('Approved release is no longer on canonical main lineage','CORE_RELEASE_SOURCE_MOVED');
+            $runtimeProbe=$this->runOptional(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'rev-parse','refs/heads/runtime/production'],null,20);
+            if(($runtimeProbe['code']??1)!==0)$runtimeProbe=$this->runOptional(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'rev-parse','refs/heads/production'],null,20);
+            $runtimeProduction=(($runtimeProbe['code']??1)===0)?trim((string)$runtimeProbe['out']):'';
+            if($runtimeProduction!==''&&hash_equals($sha,strtolower($runtimeProduction))){
                 $this->complete($executionId,(string)$row['task_id'],$sha,'Production ใช้ release นี้อยู่แล้ว',$at);
                 return ['schemaVersion'=>1,'state'=>'ALREADY_CURRENT','releaseSha'=>$sha];
             }
@@ -133,6 +143,7 @@ final class HubCoreReleaseOperator
             $workspace=$workRoot.'/'.strtolower($executionId);
             if(file_exists($workspace)||is_link($workspace))$this->removeTree($workspace,$workRoot);
             $this->cloneCanonical($workspace,$workRoot);
+            $this->run(['/usr/bin/git','-C',$workspace,'checkout','--detach',$sha],null,30,'CORE_RELEASE_WORKSPACE_VERIFY_FAILED');
             $head=trim($this->run(['/usr/bin/git','-C',$workspace,'rev-parse','HEAD'],null,20,'CORE_RELEASE_WORKSPACE_VERIFY_FAILED')['out']);
             if(!hash_equals($sha,strtolower($head)))throw new HubCoreReleaseOperatorException('Cloned source does not match approved release','CORE_RELEASE_SOURCE_MISMATCH');
             $dirty=trim($this->run(['/usr/bin/git','-C',$workspace,'status','--porcelain=v1','--untracked-files=all'],null,20,'CORE_RELEASE_WORKSPACE_VERIFY_FAILED')['out']);
@@ -142,14 +153,14 @@ final class HubCoreReleaseOperator
             $home='/var/lib/awh-hub/core-release-home';$cache='/var/lib/awh-hub/npm-cache';
             $this->safeDirectory($home,0700);$this->safeDirectory($cache,0700);
             $env=$this->releaseEnv($node,$workspace,$sha,$home,$cache);
-            $this->event((string)$row['task_id'],'RUNNING',20,'Source ตรงกับ canonical main กำลังเตรียม verified toolchain',$at);
+            $this->event((string)$row['task_id'],'RUNNING',20,'Approved '.$label.' release อยู่บน canonical main lineage และกำลังเตรียม verified toolchain',$at);
             $this->run([$npm,'ci','--ignore-scripts','--no-audit','--no-fund','--prefer-offline'],['cwd'=>$workspace,'env'=>$env],900,'CORE_RELEASE_NPM_CI_FAILED');
             $dirty=trim($this->run(['/usr/bin/git','-C',$workspace,'status','--porcelain=v1','--untracked-files=all'],null,20,'CORE_RELEASE_WORKSPACE_VERIFY_FAILED')['out']);
             if($dirty!=='')throw new HubCoreReleaseOperatorException('Dependency preparation changed tracked source','CORE_RELEASE_SOURCE_DIRTY');
 
-            $args=[$node,$workspace.'/scripts/ops/bounded-deploy-mission.mjs','--platform-hardening','--approve'];
+            $args=[$node,$workspace.'/scripts/ops/bounded-deploy-mission.mjs',$modeArg,'--approve'];
             if(($checkpoint['cleanupTopology']??false)===true)$args[]='--cleanup-topology';
-            $this->event((string)$row['task_id'],'RUNNING',30,'AWH กำลังรัน bounded QA, backup, rollback และ Production gates',$at);
+            $this->event((string)$row['task_id'],'RUNNING',30,$label.' กำลังรัน bounded QA, backup, rollback และ Production gates',$at);
             $result=$this->run($args,['cwd'=>$workspace,'env'=>$env],6900,'CORE_RELEASE_MISSION_COMMAND_FAILED');
             if(!str_contains($result['out'],'MISSION_RESULT=PASS'))throw new HubCoreReleaseOperatorException('Bounded release mission did not produce PASS evidence','CORE_RELEASE_MISSION_FAILED');
             $done=self::time(gmdate('c'));$this->complete($executionId,(string)$row['task_id'],$sha,'Deploy สำเร็จและผ่าน Production verification ครบ',$done);
@@ -168,8 +179,8 @@ final class HubCoreReleaseOperator
     private function execution(string $executionId): array
     {
         $q=$this->pdo->prepare("SELECT e.*,t.state AS task_state FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id
-            WHERE e.execution_id=:execution AND e.required_capability=:capability AND e.executor_kind='VPS'");
-        $q->execute(['execution'=>strtolower($executionId),'capability'=>HubCoreReleaseService::CAPABILITY]);$row=$q->fetch();
+            WHERE e.execution_id=:execution AND e.required_capability IN (:core,:platform) AND e.executor_kind='VPS'");
+        $q->execute(['execution'=>strtolower($executionId),'core'=>HubCoreReleaseService::CAPABILITY,'platform'=>HubCoreReleaseService::PLATFORM_CAPABILITY]);$row=$q->fetch();
         if(!is_array($row)||!in_array((string)$row['state'],['LEASED','RUNNING'],true)||(string)$row['task_state']!=='RUNNING')throw new HubCoreReleaseOperatorException('Core release execution is not runnable','CORE_RELEASE_EXECUTION_INVALID');
         return $row;
     }
@@ -180,8 +191,14 @@ final class HubCoreReleaseOperator
         $q->execute(['task'=>$taskId]);$row=$q->fetch();
         if(!is_array($row)||(string)$row['status']!=='APPROVED'||!is_string($row['decided_at']))throw new HubCoreReleaseOperatorException('Owner approval is required','CORE_RELEASE_APPROVAL_REQUIRED');
         try{$scope=json_decode((string)$row['scope_json'],true,16,JSON_THROW_ON_ERROR);}catch(Throwable){throw new HubCoreReleaseOperatorException('Approval scope is invalid','CORE_RELEASE_APPROVAL_INVALID');}
-        $keys=['cleanupTopology','projectId','releaseMode','releaseSha','risk','schemaVersion','taskId','transport'];$actual=is_array($scope)?array_keys($scope):[];sort($actual);sort($keys);
-        $valid=is_array($scope)&&$actual===$keys&&($scope['schemaVersion']??null)===1&&hash_equals((string)($scope['taskId']??''),$taskId)&&hash_equals((string)($scope['projectId']??''),HubCoreReleaseService::PROJECT_ID)&&hash_equals((string)($scope['releaseSha']??''),(string)$checkpoint['releaseSha'])&&($scope['releaseMode']??null)==='PLATFORM_HARDENING'&&($scope['transport']??null)==='LOCAL'&&($scope['risk']??null)==='CRITICAL'&&($scope['cleanupTopology']??null)===($checkpoint['cleanupTopology']??null);
+        $current=['cleanupTopology','projectId','releaseMode','releaseNotesSha256','releaseSha','releaseTrack','risk','schemaVersion','taskId','transport'];
+        $legacy=['cleanupTopology','projectId','releaseMode','releaseSha','risk','schemaVersion','taskId','transport'];
+        $legacyNotes=['cleanupTopology','projectId','releaseMode','releaseNotesSha256','releaseSha','risk','schemaVersion','taskId','transport'];
+        $actual=is_array($scope)?array_keys($scope):[];sort($actual);sort($current);sort($legacy);sort($legacyNotes);
+        $shapeOk=$actual===$current||(($actual===$legacy||$actual===$legacyNotes)&&($checkpoint['releaseTrack']??'')==='awh');
+        $track=is_string($scope['releaseTrack']??null)?strtolower((string)$scope['releaseTrack']):(string)($checkpoint['releaseTrack']??'');
+        $notesOk=!isset($checkpoint['releaseNotesSha256'])||hash_equals((string)$checkpoint['releaseNotesSha256'],(string)($scope['releaseNotesSha256']??$checkpoint['releaseNotesSha256']));
+        $valid=is_array($scope)&&$shapeOk&&$notesOk&&($scope['schemaVersion']??null)===1&&hash_equals((string)($scope['taskId']??''),$taskId)&&hash_equals((string)($scope['projectId']??''),HubCoreReleaseService::PROJECT_ID)&&hash_equals((string)($scope['releaseSha']??''),(string)$checkpoint['releaseSha'])&&hash_equals((string)($scope['releaseMode']??''),(string)($checkpoint['releaseMode']??''))&&hash_equals($track,(string)($checkpoint['releaseTrack']??''))&&($scope['transport']??null)==='LOCAL'&&($scope['risk']??null)==='CRITICAL'&&($scope['cleanupTopology']??null)===($checkpoint['cleanupTopology']??null);
         if(!$valid)throw new HubCoreReleaseOperatorException('Approval scope does not match release checkpoint','CORE_RELEASE_APPROVAL_INVALID');
         return $scope;
     }
@@ -223,9 +240,9 @@ final class HubCoreReleaseOperator
     {
         $q=$this->pdo->prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='control_executor_capabilities'");$q->execute();if($q->fetchColumn()===false)return;
         $expires=gmdate('c',strtotime($at)+180);
-        $this->pdo->prepare("INSERT INTO control_executor_capabilities(executor_id,executor_kind,capability,version,observed_at,expires_at) VALUES(:id,'VPS',:capability,'vps-native-v1',:at,:expires)
-            ON CONFLICT(executor_id,capability) DO UPDATE SET version='vps-native-v1',observed_at=excluded.observed_at,expires_at=excluded.expires_at")
-            ->execute(['id'=>self::DISPATCHER,'capability'=>HubCoreReleaseService::CAPABILITY,'at'=>$at,'expires'=>$expires]);
+        $upsert=$this->pdo->prepare("INSERT INTO control_executor_capabilities(executor_id,executor_kind,capability,version,observed_at,expires_at) VALUES(:id,'VPS',:capability,'vps-native-v2',:at,:expires)
+            ON CONFLICT(executor_id,capability) DO UPDATE SET version='vps-native-v2',observed_at=excluded.observed_at,expires_at=excluded.expires_at");
+        foreach(self::RELEASE_CAPABILITIES as $capability)$upsert->execute(['id'=>self::DISPATCHER,'capability'=>$capability,'at'=>$at,'expires'=>$expires]);
     }
 
     private function complete(string $execution,string $task,string $sha,string $summary,string $at): void
@@ -282,8 +299,8 @@ final class HubCoreReleaseOperator
     {
         $root=self::WORK_ROOT;
         if(!is_dir($root)||is_link($root))return;
-        $q=$this->pdo->prepare("SELECT execution_id FROM control_task_executions WHERE required_capability=:capability AND state IN ('COMPLETED','FAILED','CANCELLED')");
-        $q->execute(['capability'=>HubCoreReleaseService::CAPABILITY]);
+        $q=$this->pdo->prepare("SELECT execution_id FROM control_task_executions WHERE required_capability IN (:core,:platform) AND state IN ('COMPLETED','FAILED','CANCELLED')");
+        $q->execute(['core'=>HubCoreReleaseService::CAPABILITY,'platform'=>HubCoreReleaseService::PLATFORM_CAPABILITY]);
         $terminal=[];
         foreach($q->fetchAll(PDO::FETCH_COLUMN) as $execution)if(is_string($execution)&&self::validUuid($execution))$terminal[strtolower($execution)]=true;
         $entries=@scandir($root);if(!is_array($entries))return;

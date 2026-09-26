@@ -17,6 +17,7 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(router,/\/api\/v1\/control\/updates/);
   assert.match(service,/updateCenterForSession/);
   assert.match(service,/coreReleases->status/);
+  assert.match(service,/platformReleases->status/);
   assert.match(service,/hosting->sites/);
   assert.match(service,/workersForUser/);
   assert.match(service,/HubInfrastructureService::releaseState/);
@@ -29,7 +30,7 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(service,/releaseBlocked.*coreStorageBlocked/s);
   assert.match(service,/BASELINE_REQUIRED/);
   assert.match(service,/MIGRATION_REQUIRED/);
-  for(const adapterName of ['CORE_RELEASE','BAY_UPDATE_CENTER','MANAGED_HOSTING','LEARNLAB_RELEASE','LEGACY_DEPLOY','SOURCE_ONLY','AGENT_MANAGED']) assert.match(service,new RegExp(adapterName));
+  for(const adapterName of ['PLATFORM_RELEASE','CORE_RELEASE','BAY_UPDATE_CENTER','MANAGED_HOSTING','LEARNLAB_RELEASE','LEGACY_DEPLOY','SOURCE_ONLY','AGENT_MANAGED']) assert.match(service,new RegExp(adapterName));
   assert.match(hosting,/current_release_revision_id/);
   assert.match(hosting,/currentSourceRevisionId/);
   assert.match(adapter,/loadUpdateCenter/);
@@ -48,6 +49,10 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(script,/Production ยังรับ Build\/QA ชั่วคราว/);
   assert.match(page,/ไม่ถือ Production authority/);
   assert.match(script,/requestCoreRelease/);
+  assert.match(script,/requestPlatformRelease/);
+  assert.match(router,/\/api\/v1\/control\/system\/platform\/releases/);
+  assert.match(service,/hostGlobalReleaseTrack.*vps-platform/s);
+  assert.match(service,/mutationDecisionAuthority.*AWH_EXECUTION_GATE/s);
   assert.match(script,/technicalDetails/);
   assert.match(script,/runtimeState/);
   assert.match(script,/renderProgress/);

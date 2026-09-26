@@ -10,6 +10,7 @@ const sourcePreflight = join(ROOT, 'scripts/ops/canonical-source-preflight.mjs')
 const args = process.argv.slice(2);
 const mutation = args.includes('--deploy');
 const approved = args.includes('--approve');
+const trackRelease = args.includes('--awh-core') || args.includes('--platform-hardening');
 let provenCanonicalSha = null;
 
 if (approved && !mutation) {
@@ -72,11 +73,14 @@ if (mutation) {
     '--repository', CANONICAL_REPOSITORY,
     '--require-mutation-ready',
   ];
-  if (process.env.AWH_RELEASE_COMMIT) preflightArgs.push('--expected-sha', process.env.AWH_RELEASE_COMMIT);
+  const requestedSha = process.env.AWH_RELEASE_COMMIT?.toLowerCase() ?? null;
+  if (requestedSha) preflightArgs.push('--expected-sha', requestedSha);
+  if (trackRelease && requestedSha) preflightArgs.push('--allow-expected-ancestor');
   const proof = await run(process.execPath, preflightArgs);
   for (const line of safeSourceLines(proof.stdout)) process.stdout.write(`${line}\n`);
-  provenCanonicalSha = canonicalShaFrom(proof.stdout);
-  if (proof.code !== 0 || provenCanonicalSha === null) {
+  const liveSha = canonicalShaFrom(proof.stdout);
+  provenCanonicalSha = requestedSha && trackRelease ? requestedSha : liveSha;
+  if (proof.code !== 0 || provenCanonicalSha === null || !SHA.test(provenCanonicalSha)) {
     process.stderr.write('CANONICAL_SOURCE_PREFLIGHT_BLOCKED\n');
     process.exit(proof.code === 2 ? 2 : 1);
   }

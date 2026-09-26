@@ -146,16 +146,17 @@ try {
     $authorityStatus = $registry->executionAuthorityStatus($now);
     m13_assert(($authorityStatus['mode'] ?? null) === 'RESOURCE_SCOPED_CONCURRENCY' && ($authorityStatus['activeMutationCount'] ?? 0) === 2 && ($authorityStatus['waitingMutationCount'] ?? -1) === 0, 'authority status exposes parallel non-conflicting resource lanes');
     m13_assert(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:SOURCE','CANONICAL:SOURCE')===true,'same canonical resource conflicts');
-    m13_assert(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:SOURCE','CANONICAL:DEPLOY')===false,'raw resource comparison stays backwards-compatible');
+    m13_assert(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:SOURCE','CANONICAL:DEPLOY:AWH')===false,'raw resource comparison stays backwards-compatible');
     m13_assert(HubCapabilityRegistryService::mutationResourcesConflict('CANDIDATE','CANONICAL:SOURCE')===false,'isolated candidate work never blocks source promotion');
-    m13_assert(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:SOURCE',$project,'CANONICAL:DEPLOY',$project)===true,'same-project source and deploy are interlocked');
-    m13_assert(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:DEPLOY',$project,'CANONICAL:DEPLOY',$project2)===true,'shared deploy lane serializes across projects');
+    m13_assert(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:SOURCE',$project,'CANONICAL:DEPLOY:AWH',$project)===true,'same-project source and deploy are interlocked');
+    m13_assert(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:DEPLOY:AWH',$project,'CANONICAL:DEPLOY:BAY_ASSESSMENT',$project2)===false,'independent release tracks may deploy across projects');
 
     $arbRows=[
         ['deploy-a',$project,'system.core.release'],
         ['source-a',$project,'source.promote'],
         ['source-b',$project2,'source.promote'],
         ['deploy-b',$project2,'system.assessment.release'],
+        ['platform',$project2,'system.platform.release'],
     ];
     $arb=[];
     foreach($arbRows as [$label,$pid,$cap]){
@@ -171,7 +172,9 @@ try {
     m13_assert(($sourceB['granted']??false)===true,'another project source promotion remains independent from deploy');
     $registry->updateEnvelopeState($arb['source-b'][1],'RELEASED',null,$now);
     $deployB=$registry->activateExecutionAuthority($arb['deploy-b'][1],$leaseUntil,$now);
-    m13_assert(($deployB['granted']??true)===false&&($deployB['blockingProjectId']??null)===$project,'second project deploy waits on VPS-global deploy lane');
+    m13_assert(($deployB['granted']??false)===true&&($deployB['mutationResource']??null)==='CANONICAL:DEPLOY:BAY_ASSESSMENT','independent Assessment deploy runs alongside AWH deploy');
+    $platform=$registry->activateExecutionAuthority($arb['platform'][1],$leaseUntil,$now);
+    m13_assert(($platform['granted']??true)===false&&in_array(($platform['blockingMutationResource']??null),['CANONICAL:DEPLOY:AWH','CANONICAL:DEPLOY:BAY_ASSESSMENT'],true),'VPS Platform host-global deploy waits while any product deploy is active');
     foreach($arb as [$task,$execution]){
         $registry->updateEnvelopeState($execution,'RELEASED',null,$now);
         $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED' WHERE execution_id=:id")->execute(['id'=>$execution]);

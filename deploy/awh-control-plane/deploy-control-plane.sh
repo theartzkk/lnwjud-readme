@@ -29,6 +29,7 @@ CONVERSATION_LIFECYCLE=0
 PROJECT_SOURCE_AUTHORITY=0
 IDENTITY_CONVERGENCE=0
 PLATFORM_HARDENING=0
+AWH_CORE=0
 for arg in "$@"; do
   case "$arg" in
     --dry-run) MODE=dry-run ;;
@@ -37,6 +38,7 @@ for arg in "$@"; do
     --cleanup-topology) CLEANUP_TOPOLOGY=1 ;;
     --owner-auth) OWNER_AUTH=1 ;;
     --compat-refresh) COMPAT_REFRESH=1 ;;
+    --awh-core) AWH_CORE=1 ;;
     --assistant-workstream) ASSISTANT_WORKSTREAM=1 ;;
     --workspace-continuity) WORKSPACE_CONTINUITY=1 ;;
     --unified-workspace) UNIFIED_WORKSPACE=1 ;;
@@ -54,7 +56,7 @@ for arg in "$@"; do
     --project-source-authority) PROJECT_SOURCE_AUTHORITY=1 ;;
     --identity-convergence) IDENTITY_CONVERGENCE=1 ;;
     --platform-hardening) PLATFORM_HARDENING=1 ;;
-    *) echo "Usage: $0 [--dry-run] | --deploy --approve --owner-auth [--compat-refresh|--assistant-workstream|--workspace-continuity|--unified-workspace|--final-product|--founding-memory|--self-service|--central-project-authority|--anywhere-execution|--cost-aware-ai|--automations|--self-sufficient-ai|--account-hosting|--cloud-first|--conversation-lifecycle|--project-source-authority|--identity-convergence|--platform-hardening] [--cleanup-topology]" >&2; exit 2 ;;
+    *) echo "Usage: $0 [--dry-run] | --deploy --approve --owner-auth [--compat-refresh|--awh-core|--assistant-workstream|--workspace-continuity|--unified-workspace|--final-product|--founding-memory|--self-service|--central-project-authority|--anywhere-execution|--cost-aware-ai|--automations|--self-sufficient-ai|--account-hosting|--cloud-first|--conversation-lifecycle|--project-source-authority|--identity-convergence|--platform-hardening] [--cleanup-topology]" >&2; exit 2 ;;
   esac
 done
 if test "$MODE" = dry-run && test "$APPROVED" -eq 1; then echo "--approve requires --deploy" >&2; exit 2; fi
@@ -73,7 +75,7 @@ test "$ARM64_DESKTOP_OVERLAY" -eq 0 || test "$REUSE_REMOTE_DESKTOP_ARTIFACTS" -e
 DESKTOP_ARTIFACT_FILES="dist-web/downloads/AWH-macOS-arm64.zip dist-web/downloads/AWH-macOS-x64.zip dist-web/downloads/AWH-Windows-x64.zip dist-web/downloads/SHA256SUMS.txt"
 DESKTOP_BASE_MANIFEST=
 REMOTE_ROOT=/opt/awh-hub
-if test "$PLATFORM_HARDENING" -eq 1; then RELEASE_ID=m23-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$IDENTITY_CONVERGENCE" -eq 1; then RELEASE_ID=m22-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$PROJECT_SOURCE_AUTHORITY" -eq 1; then RELEASE_ID=m21-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$CONVERSATION_LIFECYCLE" -eq 1; then RELEASE_ID=m19-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$CLOUD_FIRST" -eq 1; then RELEASE_ID=m18-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$ACCOUNT_HOSTING" -eq 1; then RELEASE_ID=m17-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$SELF_SUFFICIENT_AI" -eq 1; then RELEASE_ID=m16-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$AUTOMATIONS" -eq 1; then RELEASE_ID=m15-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$COST_AWARE_AI" -eq 1; then RELEASE_ID=m14-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$ANYWHERE_EXECUTION" -eq 1; then RELEASE_ID=m13-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$CENTRAL_PROJECT_AUTHORITY" -eq 1; then RELEASE_ID=m12-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$SELF_SERVICE" -eq 1; then RELEASE_ID=m11-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$FOUNDING_MEMORY" -eq 1; then RELEASE_ID=m10-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$FINAL_PRODUCT" -eq 1; then RELEASE_ID=m9-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$UNIFIED_WORKSPACE" -eq 1; then RELEASE_ID=m8-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$WORKSPACE_CONTINUITY" -eq 1; then RELEASE_ID=m7-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$ASSISTANT_WORKSTREAM" -eq 1; then RELEASE_ID=m6-$(printf '%s' "$RELEASE" | cut -c1-12); else RELEASE_ID=m4-$(printf '%s' "$RELEASE" | cut -c1-12); fi
+if test "$PLATFORM_HARDENING" -eq 1; then RELEASE_ID=platform-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$AWH_CORE" -eq 1; then RELEASE_ID=awh-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$IDENTITY_CONVERGENCE" -eq 1; then RELEASE_ID=m22-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$PROJECT_SOURCE_AUTHORITY" -eq 1; then RELEASE_ID=m21-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$CONVERSATION_LIFECYCLE" -eq 1; then RELEASE_ID=m19-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$CLOUD_FIRST" -eq 1; then RELEASE_ID=m18-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$ACCOUNT_HOSTING" -eq 1; then RELEASE_ID=m17-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$SELF_SUFFICIENT_AI" -eq 1; then RELEASE_ID=m16-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$AUTOMATIONS" -eq 1; then RELEASE_ID=m15-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$COST_AWARE_AI" -eq 1; then RELEASE_ID=m14-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$ANYWHERE_EXECUTION" -eq 1; then RELEASE_ID=m13-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$CENTRAL_PROJECT_AUTHORITY" -eq 1; then RELEASE_ID=m12-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$SELF_SERVICE" -eq 1; then RELEASE_ID=m11-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$FOUNDING_MEMORY" -eq 1; then RELEASE_ID=m10-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$FINAL_PRODUCT" -eq 1; then RELEASE_ID=m9-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$UNIFIED_WORKSPACE" -eq 1; then RELEASE_ID=m8-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$WORKSPACE_CONTINUITY" -eq 1; then RELEASE_ID=m7-$(printf '%s' "$RELEASE" | cut -c1-12); elif test "$ASSISTANT_WORKSTREAM" -eq 1; then RELEASE_ID=m6-$(printf '%s' "$RELEASE" | cut -c1-12); else RELEASE_ID=m4-$(printf '%s' "$RELEASE" | cut -c1-12); fi
 # Bind an optional retry identity before any web artifact, backup name or
 # rollback marker is derived. A retry of the same source SHA therefore gets one
 # immutable release identity end-to-end instead of renaming only a remote path.
@@ -393,7 +395,7 @@ if test "$OWNER_LOGIN_PROOF_REQUIRED" -eq 1; then
 fi
 
 EXTRA_FILES=
-if test "$CENTRAL_PROJECT_AUTHORITY" -eq 1 || test "$ANYWHERE_EXECUTION" -eq 1 || test "$COST_AWARE_AI" -eq 1 || test "$AUTOMATIONS" -eq 1 || test "$SELF_SUFFICIENT_AI" -eq 1 || test "$ACCOUNT_HOSTING" -eq 1 || test "$CLOUD_FIRST" -eq 1 || test "$CONVERSATION_LIFECYCLE" -eq 1 || test "$PROJECT_SOURCE_AUTHORITY" -eq 1 || test "$IDENTITY_CONVERGENCE" -eq 1 || test "$PLATFORM_HARDENING" -eq 1; then
+if test "$CENTRAL_PROJECT_AUTHORITY" -eq 1 || test "$ANYWHERE_EXECUTION" -eq 1 || test "$COST_AWARE_AI" -eq 1 || test "$AUTOMATIONS" -eq 1 || test "$SELF_SUFFICIENT_AI" -eq 1 || test "$ACCOUNT_HOSTING" -eq 1 || test "$CLOUD_FIRST" -eq 1 || test "$CONVERSATION_LIFECYCLE" -eq 1 || test "$PROJECT_SOURCE_AUTHORITY" -eq 1 || test "$IDENTITY_CONVERGENCE" -eq 1 || test "$PLATFORM_HARDENING" -eq 1 || test "$AWH_CORE" -eq 1; then
   command -v git >/dev/null 2>&1 || { echo "git is required to build the M12+ immutable source snapshot" >&2; exit 1; }
   mkdir -p "$WEB_BUILD_ROOT/.awh-build"
   git -C "$ROOT" archive --format=zip --output="$WEB_BUILD_ROOT/.awh-build/awh-source.zip" "$RELEASE"
@@ -431,7 +433,7 @@ if test "$OWNER_LOGIN_PROOF_REQUIRED" -eq 0; then
       remote_active=$(systemctl is-active "$REMOTE_UNIT" 2>/dev/null || true)
       if test "$remote_active" != active && test "$remote_active" != activating; then
         rm -f "$REMOTE_RESULT" "$REMOTE_LOG"; systemctl reset-failed "$REMOTE_UNIT" >/dev/null 2>&1 || true
-        systemd-run --unit="$REMOTE_UNIT" --description="AWH-durable-deploy-$RELEASE_ID" --no-block /bin/sh "$REMOTE_RUNNER" "$REMOTE_RESULT" "$REMOTE_LOG" "$REMOTE_SCRIPT" "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "/opt/awh-hub/control-releases/$RELEASE_ID" "$RELEASE_ID" "$NGINX_CONFIG" "$HOSTNAME" "$AWH_FPM_SOCKET" "$AWH_FPM_SERVICE" "$CLEANUP_TOPOLOGY" "$OWNER_USERNAME" "$OWNER_AUTH" "$REMOTE_SCRIPT" "$COMPAT_REFRESH" "$ASSISTANT_WORKSTREAM" "$WORKSPACE_CONTINUITY" "$UNIFIED_WORKSPACE" "$FINAL_PRODUCT" "$FOUNDING_MEMORY" "$SELF_SERVICE" "$CENTRAL_PROJECT_AUTHORITY" "$RELEASE" "$ANYWHERE_EXECUTION" "$COST_AWARE_AI" "$AUTOMATIONS" "$SELF_SUFFICIENT_AI" "$ACCOUNT_HOSTING" "$CLOUD_FIRST" "$CONVERSATION_LIFECYCLE" "$PROJECT_SOURCE_AUTHORITY" "$IDENTITY_CONVERGENCE" "$PLATFORM_HARDENING" >/dev/null 2>&1
+        systemd-run --unit="$REMOTE_UNIT" --description="AWH-durable-deploy-$RELEASE_ID" --no-block /bin/sh "$REMOTE_RUNNER" "$REMOTE_RESULT" "$REMOTE_LOG" "$REMOTE_SCRIPT" "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "/opt/awh-hub/control-releases/$RELEASE_ID" "$RELEASE_ID" "$NGINX_CONFIG" "$HOSTNAME" "$AWH_FPM_SOCKET" "$AWH_FPM_SERVICE" "$CLEANUP_TOPOLOGY" "$OWNER_USERNAME" "$OWNER_AUTH" "$REMOTE_SCRIPT" "$COMPAT_REFRESH" "$ASSISTANT_WORKSTREAM" "$WORKSPACE_CONTINUITY" "$UNIFIED_WORKSPACE" "$FINAL_PRODUCT" "$FOUNDING_MEMORY" "$SELF_SERVICE" "$CENTRAL_PROJECT_AUTHORITY" "$RELEASE" "$ANYWHERE_EXECUTION" "$COST_AWARE_AI" "$AUTOMATIONS" "$SELF_SUFFICIENT_AI" "$ACCOUNT_HOSTING" "$CLOUD_FIRST" "$CONVERSATION_LIFECYCLE" "$PROJECT_SOURCE_AUTHORITY" "$IDENTITY_CONVERGENCE" "$PLATFORM_HARDENING" "$AWH_CORE" >/dev/null 2>&1
       fi
     fi
   else
@@ -441,7 +443,7 @@ if test "$OWNER_LOGIN_PROOF_REQUIRED" -eq 0; then
     remote_active=$(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" "systemctl is-active '$REMOTE_UNIT' 2>/dev/null" 2>/dev/null || true)
     if test "$remote_active" != active && test "$remote_active" != activating; then
       ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" "rm -f '$REMOTE_RESULT' '$REMOTE_LOG'; systemctl reset-failed '$REMOTE_UNIT' >/dev/null 2>&1 || true" >/dev/null 2>&1 || true
-      ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" sudo -n systemd-run --unit="$REMOTE_UNIT" --description="AWH-durable-deploy-$RELEASE_ID" --no-block /bin/sh "$REMOTE_RUNNER" "$REMOTE_RESULT" "$REMOTE_LOG" "$REMOTE_SCRIPT" "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "/opt/awh-hub/control-releases/$RELEASE_ID" "$RELEASE_ID" "$NGINX_CONFIG" "$HOSTNAME" "$AWH_FPM_SOCKET" "$AWH_FPM_SERVICE" "$CLEANUP_TOPOLOGY" "$OWNER_USERNAME" "$OWNER_AUTH" "$REMOTE_SCRIPT" "$COMPAT_REFRESH" "$ASSISTANT_WORKSTREAM" "$WORKSPACE_CONTINUITY" "$UNIFIED_WORKSPACE" "$FINAL_PRODUCT" "$FOUNDING_MEMORY" "$SELF_SERVICE" "$CENTRAL_PROJECT_AUTHORITY" "$RELEASE" "$ANYWHERE_EXECUTION" "$COST_AWARE_AI" "$AUTOMATIONS" "$SELF_SUFFICIENT_AI" "$ACCOUNT_HOSTING" "$CLOUD_FIRST" "$CONVERSATION_LIFECYCLE" "$PROJECT_SOURCE_AUTHORITY" "$IDENTITY_CONVERGENCE" "$PLATFORM_HARDENING" >/dev/null 2>&1
+      ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" sudo -n systemd-run --unit="$REMOTE_UNIT" --description="AWH-durable-deploy-$RELEASE_ID" --no-block /bin/sh "$REMOTE_RUNNER" "$REMOTE_RESULT" "$REMOTE_LOG" "$REMOTE_SCRIPT" "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "/opt/awh-hub/control-releases/$RELEASE_ID" "$RELEASE_ID" "$NGINX_CONFIG" "$HOSTNAME" "$AWH_FPM_SOCKET" "$AWH_FPM_SERVICE" "$CLEANUP_TOPOLOGY" "$OWNER_USERNAME" "$OWNER_AUTH" "$REMOTE_SCRIPT" "$COMPAT_REFRESH" "$ASSISTANT_WORKSTREAM" "$WORKSPACE_CONTINUITY" "$UNIFIED_WORKSPACE" "$FINAL_PRODUCT" "$FOUNDING_MEMORY" "$SELF_SERVICE" "$CENTRAL_PROJECT_AUTHORITY" "$RELEASE" "$ANYWHERE_EXECUTION" "$COST_AWARE_AI" "$AUTOMATIONS" "$SELF_SUFFICIENT_AI" "$ACCOUNT_HOSTING" "$CLOUD_FIRST" "$CONVERSATION_LIFECYCLE" "$PROJECT_SOURCE_AUTHORITY" "$IDENTITY_CONVERGENCE" "$PLATFORM_HARDENING" "$AWH_CORE" >/dev/null 2>&1
     fi
   fi
   fi
@@ -467,9 +469,9 @@ else
   # Owner bootstrap still accepts a one-time password over stdin. Normal M20
   # refreshes never use this legacy synchronous lane.
   if test "$TRANSPORT" = local; then
-    REMOTE_OUTPUT=$(printf '%s\n' "$OWNER_PASSWORD" | sh "$REMOTE_SCRIPT" "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "/opt/awh-hub/control-releases/$RELEASE_ID" "$RELEASE_ID" "$NGINX_CONFIG" "$HOSTNAME" "$AWH_FPM_SOCKET" "$AWH_FPM_SERVICE" "$CLEANUP_TOPOLOGY" "$OWNER_USERNAME" "$OWNER_AUTH" "$REMOTE_SCRIPT" "$COMPAT_REFRESH" "$ASSISTANT_WORKSTREAM" "$WORKSPACE_CONTINUITY" "$UNIFIED_WORKSPACE" "$FINAL_PRODUCT" "$FOUNDING_MEMORY" "$SELF_SERVICE" "$CENTRAL_PROJECT_AUTHORITY" "$RELEASE" "$ANYWHERE_EXECUTION" "$COST_AWARE_AI" "$AUTOMATIONS" "$SELF_SUFFICIENT_AI" "$ACCOUNT_HOSTING" "$CLOUD_FIRST" "$CONVERSATION_LIFECYCLE" "$PROJECT_SOURCE_AUTHORITY" "$IDENTITY_CONVERGENCE" "$PLATFORM_HARDENING")
+    REMOTE_OUTPUT=$(printf '%s\n' "$OWNER_PASSWORD" | sh "$REMOTE_SCRIPT" "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "/opt/awh-hub/control-releases/$RELEASE_ID" "$RELEASE_ID" "$NGINX_CONFIG" "$HOSTNAME" "$AWH_FPM_SOCKET" "$AWH_FPM_SERVICE" "$CLEANUP_TOPOLOGY" "$OWNER_USERNAME" "$OWNER_AUTH" "$REMOTE_SCRIPT" "$COMPAT_REFRESH" "$ASSISTANT_WORKSTREAM" "$WORKSPACE_CONTINUITY" "$UNIFIED_WORKSPACE" "$FINAL_PRODUCT" "$FOUNDING_MEMORY" "$SELF_SERVICE" "$CENTRAL_PROJECT_AUTHORITY" "$RELEASE" "$ANYWHERE_EXECUTION" "$COST_AWARE_AI" "$AUTOMATIONS" "$SELF_SUFFICIENT_AI" "$ACCOUNT_HOSTING" "$CLOUD_FIRST" "$CONVERSATION_LIFECYCLE" "$PROJECT_SOURCE_AUTHORITY" "$IDENTITY_CONVERGENCE" "$PLATFORM_HARDENING" "$AWH_CORE")
   else
-    REMOTE_OUTPUT=$(printf '%s\n' "$OWNER_PASSWORD" | ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" sh "$REMOTE_SCRIPT" "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "/opt/awh-hub/control-releases/$RELEASE_ID" "$RELEASE_ID" "$NGINX_CONFIG" "$HOSTNAME" "$AWH_FPM_SOCKET" "$AWH_FPM_SERVICE" "$CLEANUP_TOPOLOGY" "$OWNER_USERNAME" "$OWNER_AUTH" "$REMOTE_SCRIPT" "$COMPAT_REFRESH" "$ASSISTANT_WORKSTREAM" "$WORKSPACE_CONTINUITY" "$UNIFIED_WORKSPACE" "$FINAL_PRODUCT" "$FOUNDING_MEMORY" "$SELF_SERVICE" "$CENTRAL_PROJECT_AUTHORITY" "$RELEASE" "$ANYWHERE_EXECUTION" "$COST_AWARE_AI" "$AUTOMATIONS" "$SELF_SUFFICIENT_AI" "$ACCOUNT_HOSTING" "$CLOUD_FIRST" "$CONVERSATION_LIFECYCLE" "$PROJECT_SOURCE_AUTHORITY" "$IDENTITY_CONVERGENCE" "$PLATFORM_HARDENING")
+    REMOTE_OUTPUT=$(printf '%s\n' "$OWNER_PASSWORD" | ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" sh "$REMOTE_SCRIPT" "$DB_PATH" "$REMOTE_ROOT" "$REMOTE_STAGE" "/opt/awh-hub/control-releases/$RELEASE_ID" "$RELEASE_ID" "$NGINX_CONFIG" "$HOSTNAME" "$AWH_FPM_SOCKET" "$AWH_FPM_SERVICE" "$CLEANUP_TOPOLOGY" "$OWNER_USERNAME" "$OWNER_AUTH" "$REMOTE_SCRIPT" "$COMPAT_REFRESH" "$ASSISTANT_WORKSTREAM" "$WORKSPACE_CONTINUITY" "$UNIFIED_WORKSPACE" "$FINAL_PRODUCT" "$FOUNDING_MEMORY" "$SELF_SERVICE" "$CENTRAL_PROJECT_AUTHORITY" "$RELEASE" "$ANYWHERE_EXECUTION" "$COST_AWARE_AI" "$AUTOMATIONS" "$SELF_SUFFICIENT_AI" "$ACCOUNT_HOSTING" "$CLOUD_FIRST" "$CONVERSATION_LIFECYCLE" "$PROJECT_SOURCE_AUTHORITY" "$IDENTITY_CONVERGENCE" "$PLATFORM_HARDENING" "$AWH_CORE")
   fi
   REMOTE_STATUS=$?
 fi

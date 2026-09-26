@@ -1,6 +1,6 @@
 import {
   createBayRemoteInstallRelay, decideApproval, loadAuthSession, loadBayRemoteUpdateStatus, loadUpdateCenter,
-  managedSiteAction, relayBayRemoteCommand, requestAssessmentRelease, requestCoreRelease, stepUp, subscribeUpdateCenterLive,
+  managedSiteAction, relayBayRemoteCommand, requestAssessmentRelease, requestCoreRelease, requestPlatformRelease, stepUp, subscribeUpdateCenterLive,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $=(id)=>document.getElementById(id);
@@ -26,7 +26,7 @@ const stateLabel=(state)=>({
 })[state]||state||'กำลังตรวจ';
 
 const adapterLabel=(value)=>({
-  CORE_RELEASE:'AWH Core Release',MANAGED_HOSTING:'Managed Hosting',BAY_UPDATE_CENTER:'BAY Update Center',
+  PLATFORM_RELEASE:'VPS Update',CORE_RELEASE:'AWH Core Release',MANAGED_HOSTING:'Managed Hosting',BAY_UPDATE_CENTER:'BAY Update Center',
   LEARNLAB_RELEASE:'LearnLab Release',ASSESSMENT_RELEASE:'Assessment Release',LEGACY_DEPLOY:'Legacy deploy',
   SOURCE_ONLY:'Source only',UNREGISTERED:'ยังไม่ลงทะเบียน',AGENT_MANAGED:'AWH Agent',
 })[value]||value||'—';
@@ -363,7 +363,9 @@ function renderCard(item){
   renderDevices(item,main);
   main.append(technicalDetails(item));
   const actions=document.createElement('div');actions.className='update-actions';
-  if(item.adapter==='CORE_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(actionButton(item.runtimeState==='SPLIT'?'ปรับ Runtime และอัปเดต':'อัปเดต AWH',()=>updateAwh(item)));
+  if(item.adapter==='PLATFORM_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(actionButton('อัปเดต VPS',()=>updatePlatform(item)));
+  else if(item.adapter==='PLATFORM_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยัน VPS Update',()=>approvePlatform(item)));
+  else if(item.adapter==='CORE_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(actionButton(item.runtimeState==='SPLIT'?'ปรับ Runtime และอัปเดต':'อัปเดต AWH',()=>updateAwh(item)));
   else if(item.adapter==='CORE_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยันและอัปเดต',()=>approveAwh(item)));
   else if(item.adapter==='LEARNLAB_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยัน LearnLab',()=>approveLearnLab(item)));
   else if(item.adapter==='ASSESSMENT_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate&&item.candidateVersion)actions.append(actionButton('อัปเดต Assessment',()=>updateAssessment(item)));
@@ -474,6 +476,22 @@ async function approveLearnLab(item){
   await refresh();
 }
 
+async function approvePlatform(item){
+  if(!await askConfirm('ยืนยัน VPS Update','ระบบจะอัปเดต shared runtime/infrastructure ผ่าน Platform release track โดยไม่ bump AWH release','อัปเดต'))return;
+  await decideApproval(item.approvalId,'approve');
+  localOperation={name:'VPS Update',progress:10,message:'อนุมัติแล้ว กำลังเริ่ม Platform release'};
+  await refresh();
+}
+
+async function updatePlatform(item){
+  if(!await askConfirm('อัปเดต VPS','ระบบจะตรวจ gate สำรองข้อมูล อัปเดต shared runtime/infrastructure และ Verify ก่อนเปลี่ยน Platform production ref','เริ่มอัปเดต'))return;
+  localOperation={name:'VPS Update',progress:6,message:'กำลังสร้างคำขอ Platform release จากรุ่นล่าสุด'};
+  const request=await privileged(()=>requestPlatformRelease(item.candidate,false));
+  if(request?.approvalId)await decideApproval(request.approvalId,'approve');
+  message('VPS Update รับคำสั่งแล้ว กำลังตรวจความพร้อม สำรอง อัปเดต และ Verify');
+  await refresh();
+}
+
 async function updateAwh(item){
   const split=item.runtimeState==='SPLIT';
   const detail=split
@@ -558,7 +576,11 @@ async function updateAll(){
   try{
     for(const item of ready.filter((row)=>row.adapter==='MANAGED_HOSTING'))await managedSiteAction(item.siteId,'deploy');
     for(const item of ready.filter((row)=>row.adapter==='BAY_UPDATE_CENTER'&&row.release))await updateBay(item,false);
-    for(const item of pending.filter((row)=>['CORE_RELEASE','LEARNLAB_RELEASE','ASSESSMENT_RELEASE'].includes(row.adapter)))await decideApproval(item.approvalId,'approve');
+    for(const item of pending.filter((row)=>['PLATFORM_RELEASE','CORE_RELEASE','LEARNLAB_RELEASE','ASSESSMENT_RELEASE'].includes(row.adapter)))await decideApproval(item.approvalId,'approve');
+    for(const item of ready.filter((row)=>row.adapter==='PLATFORM_RELEASE')){
+      const request=await privileged(()=>requestPlatformRelease(item.candidate,false));
+      if(request?.approvalId)await decideApproval(request.approvalId,'approve');
+    }
     for(const item of ready.filter((row)=>row.adapter==='CORE_RELEASE')){
       const request=await privileged(()=>requestCoreRelease(item.candidate,false));
       if(request?.approvalId)await decideApproval(request.approvalId,'approve');

@@ -7,6 +7,16 @@
     "liveEvidenceOnlyForMutableFacts": true,
     "typedSourcePromotionOnly": true,
     "resourceScopedMutationOwnership": true,
+    "mutationDecisionAuthority": "AWH_EXECUTION_GATE",
+    "blockingDecision": "WAIT_CONFLICT",
+    "nonBlockingDecisions": [
+      "CONTINUE",
+      "CONTINUE_OR_JOIN"
+    ],
+    "projectMissionIsCoordinationOnly": true,
+    "aggregateActiveCountsAreNotBlockingAuthority": true,
+    "releaseTrackScopedDeployOwnership": true,
+    "hostGlobalReleaseTrack": "vps-platform",
     "forbidParallelAuthorityFiles": true,
     "forbiddenAuthorityBasenames": [
       "RULES.md",
