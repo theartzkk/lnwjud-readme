@@ -56,6 +56,10 @@ test('BAY authority uses the registered read-only MariaDB binding, not release p
   assert.doesNotMatch(connector,/password|secret/i);
   assert.match(maria,/baySchoolIdentity/);
   assert.match(maria,/bayCommunicationSummary/);
+  assert.match(maria,/line_rich_menu_profiles/);
+  assert.match(maria,/line_rich_menu_contexts/);
+  assert.match(maria,/ai\.line_daily_limit_global/);
+  assert.match(maria,/lineUserIdsExposed'=>false/);
   assert.match(maria,/SELECT DISTINCT pe\.permission_key/);
 });
 
