@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { desktopImpactForFiles, localOperatorInvocation, missionModeFromArgs } from '../scripts/ops/bounded-deploy-mission.mjs';
+import { desktopImpactForFiles, effectiveDeployMode, localOperatorInvocation, missionModeFromArgs } from '../scripts/ops/bounded-deploy-mission.mjs';
 import { hydrateDesktopReleaseArtifacts, verifyDesktopReleaseArtifacts } from '../scripts/release/hydrate-desktop-release-artifacts.mjs';
 
 test('bounded deploy mission reuses verified desktop artifacts only for server-safe deltas',()=>{
@@ -20,6 +20,9 @@ test('bounded deploy mission has one explicit owner approval and a deterministic
   assert.equal(missionModeFromArgs([]),'--platform-hardening');
   assert.equal(missionModeFromArgs(['--identity-convergence']),'--identity-convergence');
   assert.equal(missionModeFromArgs(['--cloud-first']),'--cloud-first');
+  assert.equal(effectiveDeployMode('--platform-hardening',{lineOaGatewayAvailable:true}),'--line-oa-gateway');
+  assert.equal(effectiveDeployMode('--platform-hardening',{lineOaGatewayAvailable:false}),'--platform-hardening');
+  assert.equal(effectiveDeployMode('--line-oa-gateway',{lineOaGatewayAvailable:true}),'--line-oa-gateway');
   assert.throws(()=>missionModeFromArgs(['--cloud-first','--project-source-authority']),/MISSION_MODE_AMBIGUOUS/);
 });
 

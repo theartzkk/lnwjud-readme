@@ -29,6 +29,11 @@ export function missionModeFromArgs(args){
   return modes[0]??'--platform-hardening';
 }
 
+export function effectiveDeployMode(mode,{lineOaGatewayAvailable=existsSync(join(ROOT,'hub','migrations','023_line_oa_gateway.sql'))}={}){
+  if(mode==='--platform-hardening'&&lineOaGatewayAvailable)return '--line-oa-gateway';
+  return mode;
+}
+
 function run(command,args,{env={},forward=false,input=null}={}){
   return new Promise((resolve)=>{
     const child=spawn(command,args,{cwd:ROOT,env:{...process.env,...env},shell:false,stdio:['pipe','pipe','pipe']});
@@ -240,7 +245,8 @@ async function goldenJourneys(plan,head,deployTail,release,releaseUrl){
 export async function runMission(rawArgs=process.argv.slice(2)){
   const approved=rawArgs.includes('--approve');
   if(rawArgs.includes('--deploy')||rawArgs.includes('--dry-run')) throw new Error('MISSION_INTERNAL_FLAG_FORBIDDEN');
-  const mode=missionModeFromArgs(rawArgs); const cleanup=rawArgs.includes('--cleanup-topology');
+  const requestedMode=missionModeFromArgs(rawArgs); const mode=effectiveDeployMode(requestedMode); const cleanup=rawArgs.includes('--cleanup-topology');
+  if(requestedMode!==mode)console.log(`MISSION_MODE_COMPAT=${requestedMode.slice(2)}->${mode.slice(2)}`);
   const unknown=rawArgs.filter((a)=>!['--approve','--cleanup-topology',...DEPLOY_MODES].includes(a));
   if(unknown.length) throw new Error(`MISSION_ARGUMENT_INVALID:${unknown[0]}`);
   const head=(await git(['rev-parse','HEAD'])).toLowerCase(); const main=(await git(['rev-parse','refs/heads/main'])).toLowerCase();
