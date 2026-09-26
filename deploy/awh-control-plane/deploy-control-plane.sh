@@ -393,12 +393,12 @@ if test "$OWNER_LOGIN_PROOF_REQUIRED" -eq 1; then
 fi
 
 EXTRA_FILES=
-if test "$CENTRAL_PROJECT_AUTHORITY" -eq 1 || test "$ANYWHERE_EXECUTION" -eq 1 || test "$COST_AWARE_AI" -eq 1 || test "$AUTOMATIONS" -eq 1 || test "$SELF_SUFFICIENT_AI" -eq 1 || test "$ACCOUNT_HOSTING" -eq 1 || test "$CLOUD_FIRST" -eq 1 || test "$CONVERSATION_LIFECYCLE" -eq 1 || test "$PROJECT_SOURCE_AUTHORITY" -eq 1 || test "$IDENTITY_CONVERGENCE" -eq 1; then
-  command -v git >/dev/null 2>&1 || { echo "git is required to build the M12/M13/M14/M15/M16/M17/M18 source snapshot" >&2; exit 1; }
+if test "$CENTRAL_PROJECT_AUTHORITY" -eq 1 || test "$ANYWHERE_EXECUTION" -eq 1 || test "$COST_AWARE_AI" -eq 1 || test "$AUTOMATIONS" -eq 1 || test "$SELF_SUFFICIENT_AI" -eq 1 || test "$ACCOUNT_HOSTING" -eq 1 || test "$CLOUD_FIRST" -eq 1 || test "$CONVERSATION_LIFECYCLE" -eq 1 || test "$PROJECT_SOURCE_AUTHORITY" -eq 1 || test "$IDENTITY_CONVERGENCE" -eq 1 || test "$PLATFORM_HARDENING" -eq 1; then
+  command -v git >/dev/null 2>&1 || { echo "git is required to build the M12+ immutable source snapshot" >&2; exit 1; }
   mkdir -p "$WEB_BUILD_ROOT/.awh-build"
   git -C "$ROOT" archive --format=zip --output="$WEB_BUILD_ROOT/.awh-build/awh-source.zip" "$RELEASE"
   printf '%s\n' "$RELEASE" > "$WEB_BUILD_ROOT/.awh-build/release-commit.txt"
-  test -s "$WEB_BUILD_ROOT/.awh-build/awh-source.zip" || { echo "M12/M13/M14/M15/M16/M17 exact source snapshot is unavailable" >&2; exit 1; }
+  test -s "$WEB_BUILD_ROOT/.awh-build/awh-source.zip" || { echo "M12+ exact source snapshot is unavailable" >&2; exit 1; }
   grep -Fx "$RELEASE" "$WEB_BUILD_ROOT/.awh-build/release-commit.txt" >/dev/null || { echo "release commit marker is invalid" >&2; exit 1; }
   EXTRA_FILES='.awh-build/awh-source.zip .awh-build/release-commit.txt'
 fi

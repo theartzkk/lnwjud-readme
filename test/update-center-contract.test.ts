@@ -312,6 +312,18 @@ test('M21 through M23 release lanes cannot bypass exact enrollment lineage sync'
   assert.match(gate,/ENROLLMENT_POINTER_SWITCH/);
 });
 
+
+test('M23 platform hardening assembles the immutable source snapshot required by remote verification', async()=>{
+  const deploy=await readFile(join(ROOT,'deploy/awh-control-plane/deploy-control-plane.sh'),'utf8');
+  const start=deploy.indexOf('EXTRA_FILES=');
+  const end=deploy.indexOf('SOURCE_FILES=',start);
+  assert.ok(start>=0&&end>start);
+  const assembly=deploy.slice(start,end);
+  assert.ok(assembly.includes('PLATFORM_HARDENING'));
+  assert.ok(assembly.includes('.awh-build/awh-source.zip'));
+  assert.ok(assembly.includes('.awh-build/release-commit.txt'));
+});
+
 test('control release package contains every file required by atomic enrollment lineage sync', async()=>{
   const [deploy,remote]=await Promise.all([
     readFile(join(ROOT,'deploy/awh-control-plane/deploy-control-plane.sh'),'utf8'),
