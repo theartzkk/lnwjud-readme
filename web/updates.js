@@ -597,11 +597,49 @@ function renderCard(item){
   card.append(main,actions);return card;
 }
 
+const updateStatePriority=(item)=>{
+  const state=String(item?.state||'');
+  if(state==='WAITING_FOR_APPROVAL')return 0;
+  if(state==='UPDATING')return 1;
+  if(state==='UPDATE_AVAILABLE')return 2;
+  if(state==='CURRENT')return 3;
+  if(state==='INTERNAL_MANAGED')return 4;
+  if(state==='SOURCE_READY')return 5;
+  if(state==='REMOTE_CHECK_REQUIRED')return 6;
+  return 7;
+};
+const coreTargetPriority=(item)=>{
+  if(item?.adapter==='CORE_RELEASE')return 0;
+  if(item?.adapter==='PLATFORM_RELEASE')return 1;
+  if(item?.adapter==='AGENT_MANAGED')return 2;
+  return 3;
+};
+function orderedRows(rows,groupKey){
+  return [...rows].sort((a,b)=>{
+    const stateDelta=updateStatePriority(a)-updateStatePriority(b);
+    if(stateDelta!==0)return stateDelta;
+    if(groupKey==='core-control'){
+      const coreDelta=coreTargetPriority(a)-coreTargetPriority(b);
+      if(coreDelta!==0)return coreDelta;
+    }
+    return String(a?.name||'').localeCompare(String(b?.name||''),'th');
+  });
+}
+function reconcileRecoveredActionMessage(){
+  const host=$('updates-message');
+  const awh=primaryItems().find((item)=>item.adapter==='CORE_RELEASE');
+  const text=String(host?.textContent||'').trim();
+  const stale=text==='AWH ไม่สามารถดำเนินการได้ในขณะนี้'||text.startsWith('AWH ยังอัปเดตไม่ได้');
+  if(stale&&awh?.state==='UPDATE_AVAILABLE'&&awh?.candidate){
+    message('AWH พร้อมอัปเดตแล้ว · กด “อัปเดต AWH” ที่การ์ดแรกด้านล่าง','good');
+  }
+}
+
 function render(){
   const host=$('update-list');host.replaceChildren();
   const visible=(center?.items||[]).filter(itemVisible);
   for(const groupKey of ['core-control','line-oa','school-systems','channels-public']){
-    const rows=visible.filter((item)=>updateGroup(item)===groupKey);
+    const rows=orderedRows(visible.filter((item)=>updateGroup(item)===groupKey),groupKey);
     if(!rows.length)continue;
     const section=document.createElement('section');section.className='update-group';section.dataset.group=groupKey;
     const head=document.createElement('div');head.className='update-group-head';
@@ -1020,6 +1058,7 @@ async function refresh(){
     render();
     await Promise.allSettled([refreshBay(),refreshAgent()]);
     if(!primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)))localOperation=null;
+    reconcileRecoveredActionMessage();
   }catch(error){
     message(friendly(error));$('updates-overall').textContent='ตรวจไม่สำเร็จ';$('updates-overall').dataset.tone='bad';
   }finally{
