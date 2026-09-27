@@ -17,6 +17,7 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(service, /User=awh-hub/);
   assert.match(service, /Group=awh-hub/);
   assert.match(service, /ecosystem-source-drift\.php \/var\/lib\/awh-hub\/awh\.sqlite \/srv\/awh-git \/var\/www\/awh-web\/current\/release\.json/);
+  assert.match(service, /SuccessExitStatus=2/);
   assert.match(service, /ProtectSystem=strict/);
   assert.match(service, /ReadWritePaths=\/var\/lib\/awh-hub/);
   assert.match(service, /RestrictAddressFamilies=AF_UNIX/);
@@ -89,7 +90,7 @@ test('project source authority ships a persistent least-privilege drift monitor'
 
 
 test('VPS Platform storage safety is proactive, project-aware and durable', async () => {
-  const [janitor,temp,tempService,tempTimer,guard,guardService,guardTimer,deploy,remote,agents,operations] = await Promise.all([
+  const [janitor,temp,tempService,tempTimer,guard,guardService,guardTimer,deploy,remote,operatorBridge,agents,operations] = await Promise.all([
     readFile(join(root, 'deploy/awh-storage/awh-temp-workspace-janitor.py'), 'utf8'),
     readFile(join(root, 'deploy/awh-storage/awh-temp-cleanup'), 'utf8'),
     readFile(join(root, 'deploy/systemd/awh-temp-cleanup.service'), 'utf8'),
@@ -99,6 +100,7 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
     readFile(join(root, 'deploy/systemd/awh-storage-guard.timer'), 'utf8'),
     readFile(join(root, 'deploy/awh-control-plane/deploy-control-plane.sh'), 'utf8'),
     readFile(join(root, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'), 'utf8'),
+    readFile(join(root, 'hub/src/HubOperatorBridgeService.php'), 'utf8'),
     readFile(join(root, 'AGENTS.md'), 'utf8'),
     readFile(join(root, 'docs/OPERATIONS.md'), 'utf8'),
   ]);
@@ -111,6 +113,8 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(janitor, /\/proc/);
   assert.match(janitor, /head_in_origin/);
   assert.match(janitor, /for-each-ref/);
+  assert.match(janitor, /fresh_active\s*=\s*active_projects\(\)/);
+  assert.match(janitor, /row\["projectId"\]\s+in\s+fresh_active/);
   assert.match(guard, /RECOVER=79/);
   assert.match(janitor, /KEEP_NEWEST/);
   assert.match(janitor, /TARGET_FREE/);
@@ -130,7 +134,20 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(guardService, /ReadWritePaths=.*\/var\/lib\/awh-remote\/tmp/);
   assert.match(guardTimer, /OnUnitActiveSec=10m/);
   assert.match(deploy, /awh-temp-workspace-janitor\.py/);
+  assert.match(deploy, /systemd-run --unit=\"\$REMOTE_UNIT\".*--collect --no-block/);
+  assert.match(deploy, /sudo -n systemd-run --unit=\"\$REMOTE_UNIT\".*--collect --no-block/);
   assert.match(remote, /MAINTENANCE_WORKSPACE_JANITOR_READY/);
+  assert.match(remote, /\/usr\/local\/sbin\/awh-temp-cleanup/);
+  assert.match(remote, /\/usr\/local\/sbin\/awh-storage-guard/);
+  assert.match(remote, /\/usr\/local\/sbin\/awh-retention-manager/);
+  assert.match(remote, /sudo rm -f "\$LEGACY_HELPER"/);
+  assert.match(operatorBridge, /STORAGE_TARGET_FREE_BYTES=6442450944/);
+  assert.match(operatorBridge, /STORAGE_BLOCK_FREE_BYTES=3221225472/);
+  assert.match(operatorBridge, /storageSafetyState/);
+  assert.match(operatorBridge, /AWH_STORAGE_GUARD_STATE/);
+  assert.match(operatorBridge, /'sourceReady'=>\$sourceGateReady/);
+  assert.match(operatorBridge, /'productionReadyDeprecated'=>true/);
+  assert.match(operatorBridge, /'runtimeParityState'=>'NOT_EVALUATED'/);
   assert.match(agents, /Owner Assist Fast Lane/);
   assert.match(operations, /Storage maintenance is proactive/);
 });

@@ -192,6 +192,9 @@ if apply:
         sha = head(path)
         if repo is None or repo.name != row["repo"] or sha != row["head"]:
             continue
+        fresh_active = active_projects()
+        if fresh_active is None or row["projectId"] in fresh_active:
+            continue
         if not clean(path) or not head_in_origin(repo, sha) or open_files(path) or cwd_users(path):
             continue
         shutil.rmtree(path)

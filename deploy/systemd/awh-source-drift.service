@@ -10,6 +10,7 @@ Type=oneshot
 User=awh-hub
 Group=awh-hub
 ExecStart=/usr/bin/php -d pcre.jit=0 /opt/awh-hub/control-plane-current/hub/bin/ecosystem-source-drift.php /var/lib/awh-hub/awh.sqlite /srv/awh-git /var/www/awh-web/current/release.json
+SuccessExitStatus=2
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true

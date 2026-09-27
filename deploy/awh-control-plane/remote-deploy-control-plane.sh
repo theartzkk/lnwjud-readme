@@ -1330,6 +1330,10 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
   for UNIT in awh-backup awh-database-inventory awh-retention awh-temp-cleanup awh-storage-guard awh-restore-drill; do
     sudo systemctl cat "$UNIT.service" | grep -Fq '/opt/awh-hub/control-plane-current/'
   done
+  for LEGACY_HELPER in /usr/local/sbin/awh-temp-cleanup /usr/local/sbin/awh-storage-guard /usr/local/sbin/awh-retention-manager; do
+    sudo rm -f "$LEGACY_HELPER"
+    sudo test ! -e "$LEGACY_HELPER"
+  done
   if test "$PLATFORM_HARDENING" = 1; then
     stage PLATFORM_RUNTIME_PREPARE
     sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-build.slice" /etc/systemd/system/awh-build.slice

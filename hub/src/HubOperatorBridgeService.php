@@ -32,6 +32,10 @@ final class HubOperatorBridgeService
     private const MISSION_CAPABILITY='operator.project_mission';
     private const MISSION_OWNER='operator-mission';
     private const MISSION_LEASE_SECONDS=7200;
+    private const STORAGE_TARGET_FREE_BYTES=6442450944;
+    private const STORAGE_BLOCK_FREE_BYTES=3221225472;
+    private const STORAGE_CRITICAL_FREE_BYTES=1610612736;
+    private const STORAGE_GUARD_MAX_AGE_SECONDS=1800;
     private const MAX_SOURCE_BUNDLE_BYTES=134217728;
     /** @var Closure(string,array<string,mixed>):array<string,mixed> */
     private readonly Closure $poster;
@@ -88,9 +92,11 @@ final class HubOperatorBridgeService
             AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED')");
         $active->execute(['at'=>$at,'mission'=>self::MISSION_CAPABILITY]);
         $counts=$active->fetch();
+        $storage=$this->storageSafetyState($at);
         return [
-            'schemaVersion'=>2,'state'=>$quick==='ok'?'READY':'REVIEW',
+            'schemaVersion'=>2,'state'=>$quick==='ok'&&($storage['releaseBlocked']??false)!==true?'READY':'REVIEW',
             'database'=>['quickCheck'=>$quick,'schema'=>$schema],'projects'=>$projects,
+            'storage'=>$storage,
             'activeMutationCount'=>is_array($counts)?(int)($counts['writer_count']??0):0,
             'activeCoordinationCount'=>is_array($counts)?(int)($counts['coordination_count']??0):0,
             'aggregateCountsAreNotBlockingAuthority'=>true,
@@ -164,12 +170,12 @@ final class HubOperatorBridgeService
         ];
         $hardBlocked=false;
         foreach($checks as $check)if(($check['blocking']??false)===true&&($check['ok']??false)!==true){$hardBlocked=true;break;}
-        $productionReady=!$hardBlocked&&$sourceReady&&$vaultReady;
+        $sourceGateReady=!$hardBlocked&&$sourceReady&&$vaultReady;
         $attention=!$hardBlocked&&(!$sourceReady||!$vaultReady);
         $ready=!$hardBlocked;
         $state=$hardBlocked?'BLOCKED':($attention?'ATTENTION':'READY');
         $decision=$hardBlocked?'WAIT_CONFLICT':(count($coordinationRows)>0?'CONTINUE_OR_JOIN':'CONTINUE');
-        return ['schemaVersion'=>2,'state'=>$state,'ready'=>$ready,'blocking'=>$hardBlocked,'decision'=>$decision,'decisionAuthority'=>'AWH_EXECUTION_GATE','productionReady'=>$productionReady,'sourceRequired'=>$requireSource,'requestedMutationResource'=>$requestedResource,'project'=>['projectId'=>$id,'name'=>(string)$project['name'],'type'=>(string)$project['type']],'source'=>['authority'=>$authority,'revision'=>$sourceRevision,'canonicalVaultRevisionId'=>$sourceVault,'activeVaultRevisionId'=>$activeVault,'syncState'=>$sync],'writer'=>['activeMutationCount'=>count($writerRows),'conflictingMutationCount'=>count($conflictingRows),'runningMutationExecutionCount'=>count($writerRows),'unscopedRunningMutationExecutionCount'=>$unscopedCount,'waitingMutationCount'=>$waitingCount,'activeWorkspaceLeaseCount'=>count($workspaceRows),'activeMutations'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'state'=>(string)$r['state'],'scope'=>(string)$r['mutation_scope'],'resource'=>HubCapabilityRegistryService::mutationResourceForExecution((string)$r['required_capability'],(string)$r['executor_kind']),'capability'=>(string)$r['required_capability'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal']],$writerRows),'workspaceLeases'=>array_map(static fn(array $r):array=>['ownerDeviceId'=>(string)$r['owner_device_id'],'checkpointId'=>$r['checkpoint_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'updatedAt'=>(string)$r['updated_at']],$workspaceRows)],'coordination'=>['activeMissionCount'=>count($coordinationRows),'blocksMutation'=>false,'rule'=>'PROJECT_MISSIONS_ARE_COORDINATION_ONLY','missions'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal']],$coordinationRows)],'checks'=>$checks,'observedAt'=>$at];
+        return ['schemaVersion'=>2,'state'=>$state,'ready'=>$ready,'mutationReady'=>$ready,'sourceReady'=>$sourceGateReady,'blocking'=>$hardBlocked,'decision'=>$decision,'decisionAuthority'=>'AWH_EXECUTION_GATE','productionReady'=>$sourceGateReady,'productionReadyDeprecated'=>true,'runtimeParityState'=>'NOT_EVALUATED','readinessSemantics'=>['ready'=>'MUTATION_GATE','mutationReady'=>'MUTATION_GATE','sourceReady'=>'SOURCE_AUTHORITY_AND_VAULT','productionReady'=>'DEPRECATED_ALIAS_OF_SOURCE_READY','runtimeParityState'=>'SEPARATE_RELEASE_VERIFICATION'],'sourceRequired'=>$requireSource,'requestedMutationResource'=>$requestedResource,'project'=>['projectId'=>$id,'name'=>(string)$project['name'],'type'=>(string)$project['type']],'source'=>['authority'=>$authority,'revision'=>$sourceRevision,'canonicalVaultRevisionId'=>$sourceVault,'activeVaultRevisionId'=>$activeVault,'syncState'=>$sync],'writer'=>['activeMutationCount'=>count($writerRows),'conflictingMutationCount'=>count($conflictingRows),'runningMutationExecutionCount'=>count($writerRows),'unscopedRunningMutationExecutionCount'=>$unscopedCount,'waitingMutationCount'=>$waitingCount,'activeWorkspaceLeaseCount'=>count($workspaceRows),'activeMutations'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'state'=>(string)$r['state'],'scope'=>(string)$r['mutation_scope'],'resource'=>HubCapabilityRegistryService::mutationResourceForExecution((string)$r['required_capability'],(string)$r['executor_kind']),'capability'=>(string)$r['required_capability'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal']],$writerRows),'workspaceLeases'=>array_map(static fn(array $r):array=>['ownerDeviceId'=>(string)$r['owner_device_id'],'checkpointId'=>$r['checkpoint_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'updatedAt'=>(string)$r['updated_at']],$workspaceRows)],'coordination'=>['activeMissionCount'=>count($coordinationRows),'blocksMutation'=>false,'rule'=>'PROJECT_MISSIONS_ARE_COORDINATION_ONLY','missions'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal']],$coordinationRows)],'checks'=>$checks,'observedAt'=>$at];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
@@ -179,7 +185,7 @@ final class HubOperatorBridgeService
         $keys=array_keys($request);sort($keys);if($keys!==['action','confirmation','project','schemaVersion'])throw new HubOperatorBridgeException('Canonical Vault export request is invalid','OPERATOR_REQUEST_INVALID');
         $selector=self::text($request,'project',160);
         $gate=$this->projectGate($selector,$at,true,'artifact.object');
-        if(($gate['productionReady']??false)!==true)throw new HubOperatorBridgeException('Project source gate is not ready','OPERATOR_PROJECT_GATE_BLOCKED');
+        if(($gate['sourceReady']??false)!==true)throw new HubOperatorBridgeException('Project source gate is not ready','OPERATOR_PROJECT_GATE_BLOCKED');
         $source=is_array($gate['source']??null)?$gate['source']:[];$project=is_array($gate['project']??null)?$gate['project']:[];
         $projectId=(string)($project['projectId']??'');$revision=(string)($source['canonicalVaultRevisionId']??'');$active=(string)($source['activeVaultRevisionId']??'');
         if(($source['authority']??null)!=='AWH_VAULT'||($source['syncState']??null)!=='SYNCED'||preg_match('/^[0-9a-f-]{36}$/i',$projectId)!==1||preg_match('/^[0-9a-f-]{36}$/i',$revision)!==1||!hash_equals($revision,$active))throw new HubOperatorBridgeException('Canonical Vault source is not exportable','OPERATOR_PROJECT_GATE_BLOCKED');
@@ -294,6 +300,44 @@ final class HubOperatorBridgeService
     }
 
     /** @return array<string,mixed> */
+    private function storageSafetyState(string $at): array
+    {
+        $free=@disk_free_space('/');$total=@disk_total_space('/');
+        $freeBytes=is_float($free)?(int)$free:null;$totalBytes=is_float($total)?(int)$total:null;
+        $path=getenv('AWH_STORAGE_GUARD_STATE');if(!is_string($path)||$path==='')$path='/var/lib/awh-hub/storage-guard.json';
+        $guardState='UNKNOWN';$guardFresh=false;$guardCheckedAt=null;$guardReleaseBlocked=false;
+        if(is_file($path)&&is_readable($path)&&!is_link($path)){
+            $raw=@file_get_contents($path);
+            if(is_string($raw)&&strlen($raw)<=16384){
+                try{$doc=json_decode($raw,true,16,JSON_THROW_ON_ERROR);}catch(Throwable){$doc=null;}
+                if(is_array($doc)){
+                    $guardCheckedAt=is_string($doc['checkedAt']??null)?(string)$doc['checkedAt']:null;
+                    $stamp=is_string($guardCheckedAt)?strtotime($guardCheckedAt):false;
+                    $guardFresh=$stamp!==false&&abs(strtotime($at)-$stamp)<=self::STORAGE_GUARD_MAX_AGE_SECONDS;
+                    $guardState=is_string($doc['state']??null)?(string)$doc['state']:'UNKNOWN';
+                    $guardReleaseBlocked=$guardFresh&&($doc['releaseBlocked']??false)===true;
+                }
+            }
+        }
+        $diskBlocked=$freeBytes!==null&&$freeBytes<self::STORAGE_BLOCK_FREE_BYTES;
+        $state=$freeBytes===null?'UNKNOWN':($freeBytes<self::STORAGE_CRITICAL_FREE_BYTES?'CRITICAL':($freeBytes<self::STORAGE_TARGET_FREE_BYTES?'WARNING':'OK'));
+        if($guardFresh&&in_array($guardState,['OK','WARNING','CRITICAL'],true)){
+            $rank=['UNKNOWN'=>0,'OK'=>1,'WARNING'=>2,'CRITICAL'=>3];
+            if(($rank[$guardState]??0)>($rank[$state]??0))$state=$guardState;
+        }
+        return [
+            'state'=>$state,'authority'=>'AWH_STORAGE_GUARD+LIVE_DISK',
+            'freeBytes'=>$freeBytes,'totalBytes'=>$totalBytes,
+            'targetFreeBytes'=>self::STORAGE_TARGET_FREE_BYTES,
+            'blockFreeBytes'=>self::STORAGE_BLOCK_FREE_BYTES,
+            'criticalFreeBytes'=>self::STORAGE_CRITICAL_FREE_BYTES,
+            'releaseBlocked'=>$diskBlocked||$guardReleaseBlocked,
+            'guardState'=>$guardState,'guardFresh'=>$guardFresh,'guardCheckedAt'=>$guardCheckedAt,
+            'selfHealAuthority'=>'awh-storage-guard.timer',
+        ];
+    }
+
+    /** @return array<string,mixed> */
     private function missionStatus(string $selector,string $at): array
     {
         $project=$this->resolveProject($selector);$projectId=(string)$project['project_id'];
@@ -317,11 +361,11 @@ final class HubOperatorBridgeService
         // mutation resources at the point of mutation.
         $gate=$this->projectGate($selector,$at,false,self::MISSION_CAPABILITY);
         if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('Project mission coordination gate is unavailable','OPERATOR_PROJECT_GATE_BLOCKED');
-        $free=@disk_free_space('/');$total=@disk_total_space('/');
-        if(is_float($free)&&$free<1073741824)throw new HubOperatorBridgeException('VPS free space is below the safe mission reserve','OPERATOR_STORAGE_CRITICAL');
-        $authority=$this->acquireMutationAuthority($projectId,$goal,self::MISSION_CAPABILITY,['mode'=>'OPERATOR_PROJECT_MISSION','goal'=>$goal,'startedAt'=>$at],$at,self::MISSION_LEASE_SECONDS,self::MISSION_OWNER);
+        $storage=$this->storageSafetyState($at);
+        if(($storage['releaseBlocked']??false)===true)throw new HubOperatorBridgeException('VPS storage safety gate is recovering below the mission reserve','OPERATOR_STORAGE_CRITICAL');
+        $authority=$this->acquireMutationAuthority($projectId,$goal,self::MISSION_CAPABILITY,['mode'=>'OPERATOR_PROJECT_MISSION','goal'=>$goal,'startedAt'=>$at,'storageState'=>$storage['state']??'UNKNOWN'], $at,self::MISSION_LEASE_SECONDS,self::MISSION_OWNER);
         $mission=$this->activeProjectMission($authority['executionId'],$at,$projectId,true);
-        return ['schemaVersion'=>2,'state'=>'ACQUIRED','blocking'=>false,'decision'=>'CONTINUE','decisionAuthority'=>'AWH_EXECUTION_GATE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'mission'=>$this->missionProjection($mission),'rule'=>'PROJECT_MISSIONS_ARE_COORDINATION_ONLY','storage'=>['freeBytes'=>is_float($free)?(int)$free:null,'totalBytes'=>is_float($total)?(int)$total:null],'observedAt'=>$at];
+        return ['schemaVersion'=>2,'state'=>'ACQUIRED','blocking'=>false,'decision'=>'CONTINUE','decisionAuthority'=>'AWH_EXECUTION_GATE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'mission'=>$this->missionProjection($mission),'rule'=>'PROJECT_MISSIONS_ARE_COORDINATION_ONLY','storage'=>$storage,'observedAt'=>$at];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
@@ -552,7 +596,7 @@ final class HubOperatorBridgeService
     {
         $bay=new HubBayRemoteUpdateService(); $signed=$bay->status($at); $remote=($this->poster)((string)$signed['endpoint'],(array)$signed['statusRelay']);
         $gate=$this->projectGate('BAY EXCUSE X',$at,true);$parity=$this->bayProductionSourceParity($remote);
-        $ready=($gate['productionReady']??false)===true&&($parity['ready']??false)===true;
+        $ready=($gate['sourceReady']??false)===true&&($parity['ready']??false)===true;
         return ['schemaVersion'=>1,'state'=>$ready?'READY':'SOURCE_DRIFT','authority'=>'BAY PackageManager/Update Center','remote'=>$remote,'projectGate'=>$gate,'sourceParity'=>$parity,'observedAt'=>$at];
     }
 
@@ -624,7 +668,7 @@ final class HubOperatorBridgeService
         $releaseTrack=strtolower(trim((string)($manifest['release_track']??'bay-excuse-core')));
         $filePrefixes=['bay-excuse-core'=>'bay-excuse-x-core','cooperative-center'=>'bay-cooperative-center','pp-center'=>'bay-pp-center','line-oa'=>'bay-line-oa'];
         if(!isset($filePrefixes[$releaseTrack]))throw new HubOperatorBridgeException('BAY package release track is not allowlisted','OPERATOR_BAY_PACKAGE_NOT_READY');
-        $gate=$this->projectGate('BAY EXCUSE X',$at,true,'bay.remote_update.stage');if(($gate['ready']??false)!==true||($gate['productionReady']??false)!==true)throw new HubOperatorBridgeException('BAY project gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');$projectId=(string)($gate['project']['projectId']??'');
+        $gate=$this->projectGate('BAY EXCUSE X',$at,true,'bay.remote_update.stage');if(($gate['ready']??false)!==true||($gate['sourceReady']??false)!==true)throw new HubOperatorBridgeException('BAY project gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');$projectId=(string)($gate['project']['projectId']??'');
         $this->assertBayCanonicalTarget($sha);
         $releaseNotes=$this->releaseDetailsForSourceSha($projectId,'bay-excuse-x',$sha);
         $sourceTrack=is_array($releaseNotes)?strtolower(trim((string)($releaseNotes['releaseTrack']??''))):'';
@@ -662,7 +706,7 @@ final class HubOperatorBridgeService
         if (($request['confirmation']??null)!==self::INSTALL_CONFIRMATION) throw new HubOperatorBridgeException('Explicit BAY install confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
         $version=self::text($request,'targetVersion',80); $sha=strtolower(self::text($request,'targetSha',40)); $packageSha=strtolower(self::text($request,'packageSha256',64));
         if(preg_match('/^[a-f0-9]{40}$/',$sha)!==1||preg_match('/^[a-f0-9]{64}$/',$packageSha)!==1)throw new HubOperatorBridgeException('BAY package identity is invalid','OPERATOR_REQUEST_INVALID');
-        $gate=$this->projectGate('BAY EXCUSE X',$at,true,'bay.remote_update.install'); if (($gate['ready']??false)!==true || ($gate['productionReady']??false)!==true) throw new HubOperatorBridgeException('BAY project gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
+        $gate=$this->projectGate('BAY EXCUSE X',$at,true,'bay.remote_update.install'); if (($gate['ready']??false)!==true || ($gate['sourceReady']??false)!==true) throw new HubOperatorBridgeException('BAY project gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
         $projectId=(string)($gate['project']['projectId']??'');
         $this->assertBayCanonicalTarget($sha);
         $releaseNotes=$this->releaseDetailsForSourceSha($projectId,'bay-excuse-x',$sha);
