@@ -141,8 +141,10 @@ test('KRUART experience contract prevents navigation and portal drift', async ()
   const index = await read('web/index.html');
   const ownerNav = index.match(/<nav id="owner-global-nav"[\s\S]*?<\/nav>/)?.[0] ?? '';
   const labels = [...ownerNav.matchAll(/<span>([^<]+)<\/span>/g)].map((match) => match[1]);
-  assert.deepEqual(labels, ['หน้าแรก','ทำงาน','ระบบ','ดูแลระบบ']);
+  assert.deepEqual(labels, contract.ownerNavigation.primaryVocabulary);
   const publicNav = index.match(/<nav class="global-nav"[\s\S]*?<\/nav>/)?.[0] ?? '';
+  const publicLabels = [...publicNav.matchAll(/<span>([^<]+)<\/span>/g)].map((match) => match[1]);
+  assert.deepEqual(publicLabels, contract.publicNavigation.primaryVocabulary);
   assert.match(publicNav, /href="https:\/\/learn\.kruart\.online\/"[\s\S]*?<span>เรียนรู้<\/span>/);
   assert.match(publicNav, /href="https:\/\/school\.kruart\.online\/"[\s\S]*?<span>โรงเรียน<\/span>/);
   assert.match(publicNav, /href="\/bay\/apps\.html"[\s\S]*?<span>ระบบ<\/span>/);

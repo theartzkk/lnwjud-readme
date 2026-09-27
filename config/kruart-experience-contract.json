@@ -269,5 +269,9 @@
     ],
     "systemDirectory": "/bay/apps.html",
     "maxPrimaryDestinations": 4
+  },
+  "ownerSecurity": {
+    "passwordStepUp": "PRODUCTION_OR_SENSITIVE_ONLY",
+    "productReviewRequiresPasswordStepUp": false
   }
 }

@@ -248,7 +248,8 @@ test('Owner Brand settings are detailed, revisioned, bounded, and never expose t
     readFile(join(ROOT, 'web', 'owner-center.js'), 'utf8'),
     readFile(join(ROOT, 'web', 'panel.html'), 'utf8'),
   ]);
-  assert.match(html, /data-settings-tab="brand"/);
+  assert.match(panel, /href="\.\/\?awh-settings=brand"/);
+  assert.match(app, /return \['account','devices','data','brand'\]\.includes\(value\) \? value : null/);
   assert.match(html, /id="settings-panel-brand"/);
   for (const id of ['setting-brand-logo-file','setting-brand-icon-file','setting-brand-logo-preview','setting-brand-icon-preview','setting-product-name','setting-short-name','setting-tagline','setting-welcome','setting-starter-prompts','setting-accent','setting-founder-name','setting-founder-credit']) assert.match(html, new RegExp(`id="${id}"`));
   assert.match(html, /PNG \/ JPG \/ WebP/);
@@ -384,6 +385,9 @@ test('Owner System settings keeps Update Center as the only release UI', async (
     readFile(join(ROOT, 'hub', 'src', 'HubCoreReleaseService.php'), 'utf8'),
   ]);
   assert.match(html, /href="\.\/updates\.html"/);
+  const panel = await readFile(join(ROOT, 'web', 'panel.html'), 'utf8');
+  assert.match(panel, /href="\.\/updates\.html#line-oa"/);
+  assert.match(updates, /if\(groupKey==='line-oa'\)section\.id='line-oa'/);
   for (const id of ['core-release-form','core-release-sha','core-release-cleanup','core-release-refresh','learnlab-release-form','learnlab-release-sha','learnlab-release-version','learnlab-release-refresh']) {
     assert.doesNotMatch(html, new RegExp('id="' + id + '"'));
   }

@@ -4,6 +4,9 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 test('conversation lifecycle is reversible and preserves canonical task/artifact authority', async () => {
+  const experience = JSON.parse(await readFile(new URL('../config/kruart-experience-contract.json', import.meta.url), 'utf8'));
+  const awh = experience.products.find((product: any) => product.id === 'awh');
+  assert.ok(awh);
   const [migration, service, router, adapter, html, app, styles, lightCss, dashboard, dashboardCss] = await Promise.all([
     readFile(new URL('../hub/migrations/018_conversation_lifecycle.sql', import.meta.url), 'utf8'),
     readFile(new URL('../hub/src/HubControlPlaneService.php', import.meta.url), 'utf8'),
@@ -47,7 +50,7 @@ test('conversation lifecycle is reversible and preserves canonical task/artifact
   assert.match(dashboard, /focusin/);
   assert.doesNotMatch(styles, /:has\(#goal-input:focus\)/);
   assert.match(styles, /awh-keyboard-open[^}]*\.composer textarea[^}]*min-height:\s*40px/s);
-  assert.match(dashboardCss, /repeat\(4,minmax\(0,1fr\)\)/);
+  assert.match(dashboardCss, new RegExp(`repeat\\(${awh.mobilePrimaryMax},minmax\\(0,1fr\\)\\)`));
   assert.doesNotMatch(styles, /body\.work-active:not\(\.product-dashboard-active\) \.awh-mobile-nav \{ display: none; \}/);
   assert.match(service, /BROWSER_CONVERSATION_MAX_BYTES\s*=\s*192\s*\*\s*1024/);
   assert.match(service, /CONVERSATION_MESSAGE_LIMIT\s*=\s*120/);

@@ -1243,8 +1243,8 @@ import {
   function requestedOwnerSettings() {
     try {
       const value = new URL(window.location.href).searchParams.get('awh-settings');
-      if (['ai','system','people','brand'].includes(value)) return 'panel:' + ({ ai: 'ai', system: 'overview', people: 'users', brand: 'overview' })[value];
-      return ['account','devices','data'].includes(value) ? value : null;
+      if (['ai','system','people'].includes(value)) return 'panel:' + ({ ai: 'ai', system: 'overview', people: 'users' })[value];
+      return ['account','devices','data','brand'].includes(value) ? value : null;
     } catch { return null; }
   }
 

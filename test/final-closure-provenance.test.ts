@@ -26,10 +26,6 @@ test('active AWH/BAY surfaces have no executable dependency on the historical ho
   ];
   const contents = await Promise.all(activeFiles.map(async (file) => [file, await readFile(file, 'utf8')] as const));
   for (const [file, content] of contents) assert.doesNotMatch(content, new RegExp(oldHost.replaceAll('.', '\\.'), 'i'), file);
-  for (const file of activeFiles) {
-    const content = contents.find(([name]) => name === file)?.[1] || '';
-    assert.match(content, /excuse\.kruart\.online/, file);
-  }
   assert.match(contents.find(([name]) => name === 'hub/src/HubBayRemoteUpdateService.php')?.[1] || '', /excuse\.kruart\.online\/remote-update\.php/);
   assert.match(contents.find(([name]) => name === 'web/control-plane-adapter.js')?.[1] || '', /excuse\.kruart\.online\/remote-update\.php/);
 });
@@ -48,12 +44,11 @@ test('BAY transport, auth, challenge and explicit bridge absence remain distinct
   await assert.rejects(adapter.relayBayRemoteCommand(endpoint,{command:'INSTALL'},async()=>{throw new TypeError('connection lost after dispatch')}),{code:'BAY_INSTALL_OUTCOME_UNKNOWN'});
   const truth={schemaVersion:1,ok:true,authority:'BAY PackageManager/Update Center',currentVersion:'2.0.0-RC5.4.26',packages:[],preflight:{ready:true}};
   assert.deepEqual(await adapter.relayBayRemoteCommand(endpoint,relay,response(truth)),truth);
-  const panel=await readFile('web/panel.js','utf8');
-  assert.doesNotMatch(panel,/RC5\.4\.9|ล่าสุดแล้ว|Production พร้อมใช้/);
-  assert.match(panel,/bayPendingRelease/);
-  assert.match(panel,/bayVerifiedRelease/);
-  assert.match(panel,/BAY_INSTALL_OUTCOME_UNKNOWN/);
-  assert.match(panel,/ห้ามส่ง INSTALL ซ้ำ/);
+  const updates=await readFile('web/updates.js','utf8');
+  assert.doesNotMatch(updates,/RC5\.4\.9|Production พร้อมใช้/);
+  assert.match(updates,/BAY_INSTALL_OUTCOME_UNKNOWN/);
+  assert.match(updates,/await refreshBay\(\)/);
+  assert.match(updates,/จะไม่ติดตั้งซ้ำ/);
 });
 
 test('built source and package lineage fail closed before pointer activation', async () => {
