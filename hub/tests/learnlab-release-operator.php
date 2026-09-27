@@ -12,6 +12,7 @@ foreach ([
 ] as $class) require_once dirname(__DIR__) . '/src/' . $class . '.php';
 
 function llr_assert(bool $value,string $message): void { if(!$value)throw new RuntimeException($message); }
+function llr_clean_uuid(): string { $b=random_bytes(16);$b[6]=chr((ord($b[6])&15)|64);$b[8]=chr((ord($b[8])&63)|128);return vsprintf('%s%s-%s-%s-%s-%s%s%s',str_split(bin2hex($b),4)); }
 function llr_clean(string $root): void {
     if(!is_dir($root))return;
     $it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::CHILD_FIRST);
@@ -24,11 +25,11 @@ $root=sys_get_temp_dir().'/awh-learnlab-release-'.bin2hex(random_bytes(6));
 $db=$root.'/awh.sqlite';$base=dirname(__DIR__);$now='2026-09-23T11:50:00+00:00';
 $project=HubLearnLabReleaseService::PROJECT_ID;$owner='223b45c0-23e1-408d-ae0f-ac5eca7f6900';
 $password='learnlab-release-'.bin2hex(random_bytes(10));$vaultRevision='b088db09-1ac5-484d-b707-e9901176b073';
-$artifact=$root.'/artifacts';$vault=$root.'/vault';$workspace=$root.'/workspaces';
-putenv('AWH_ARTIFACT_ROOT='.$artifact);putenv('AWH_PROJECT_VAULT_ROOT='.$vault);putenv('AWH_TASK_WORKSPACE_ROOT='.$workspace);
+$artifact=$root.'/artifacts';$vault=$root.'/vault';$workspace=$root.'/workspaces';$canonical=$root.'/bay-learnlab.git';
+putenv('AWH_ARTIFACT_ROOT='.$artifact);putenv('AWH_PROJECT_VAULT_ROOT='.$vault);putenv('AWH_TASK_WORKSPACE_ROOT='.$workspace);putenv('AWH_LEARNLAB_CANONICAL_GIT='.$canonical);
 
 try{
-    mkdir($root,0700,true);foreach([$artifact,$vault,$workspace] as $d)mkdir($d,0700,true);
+    mkdir($root,0700,true);foreach([$artifact,$vault,$workspace,$canonical.'/refs/heads'] as $d)mkdir($d,0700,true);
     $pdo=new PDO('sqlite:'.$db,null,null,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
     $pdo->exec('PRAGMA foreign_keys=ON');$pdo->exec(file_get_contents($base.'/schema.sql'));
     foreach(['enrollment_rate_limits','device_project_memberships','device_tokens','pairing_projects','pairing_codes','user_project_memberships','device_enrollments','owner_bootstrap','hub_users'] as $table)$pdo->exec('DROP TABLE IF EXISTS '.$table);
@@ -56,7 +57,12 @@ try{
     llr_assert(($status['current']['releaseSha']??null)==='406879b6fee7a1e8a451f24eb3a3d9825a4fe0c9','status reads exact live LearnLab channel authority');
     llr_assert(($status['current']['cacheEpoch']??null)===68,'status reads exact live cache epoch');
 
-    $release=str_repeat('a',40);$version='0.8.1-rc.1';
+    $release=str_repeat('a',40);$version='0.8.1-rc.1';$sourceBase='406879b6fee7a1e8a451f24eb3a3d9825a4fe0c9';
+    file_put_contents($canonical.'/refs/heads/main',$release."\n");
+    $promoteTask=llr_clean_uuid();$promoteExecution=llr_clean_uuid();
+    $releaseNotes=['schemaVersion'=>1,'summary'=>['features'=>[],'improvements'=>[],'fixes'=>['LearnLab release fixture promoted through canonical source authority'],'internal'=>[]],'impact'=>['databaseMigration'=>'NONE','serviceReload'=>'AUTOMATIC','appRestart'=>'NONE','signIn'=>'NONE','plannedDowntime'=>false],'knownIssues'=>[]];
+    $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'source promotion fixture','COMPLETED',NULL,NULL,100,'promoted',NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$promoteTask,'user'=>$owner,'project'=>$project,'key'=>'learnlab-source-promote-fixture','at'=>$now]);
+    $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','source.promote','COMPLETED',NULL,NULL,1,NULL,:checkpoint,NULL,:at,:at)")->execute(['execution'=>$promoteExecution,'task'=>$promoteTask,'project'=>$project,'checkpoint'=>json_encode(['repository'=>'bay-learnlab','expectedMainSha'=>$sourceBase,'targetSha'=>$release,'bundleSha256'=>str_repeat('d',64),'releaseNotes'=>$releaseNotes],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$now]);
     $pdo->prepare('UPDATE control_sessions SET step_up_at=NULL WHERE session_hash=:hash')->execute(['hash'=>hash('sha256',$session['sessionToken'])]);
     try{
         $service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$release,'runtimeVersion'=>$version],$now);
@@ -113,6 +119,6 @@ try{
 
     fwrite(STDOUT,"AWH LearnLab release operator: PASS\n");
 }finally{
-    putenv('AWH_ARTIFACT_ROOT');putenv('AWH_PROJECT_VAULT_ROOT');putenv('AWH_TASK_WORKSPACE_ROOT');llr_clean($root);
+    putenv('AWH_ARTIFACT_ROOT');putenv('AWH_PROJECT_VAULT_ROOT');putenv('AWH_TASK_WORKSPACE_ROOT');putenv('AWH_LEARNLAB_CANONICAL_GIT');llr_clean($root);
 }
 

@@ -12,6 +12,7 @@ foreach ([
 ] as $class) require_once dirname(__DIR__) . '/src/' . $class . '.php';
 
 function ar_assert(bool $value,string $message): void { if(!$value)throw new RuntimeException($message); }
+function ar_uuid(): string { $b=random_bytes(16);$b[6]=chr((ord($b[6])&15)|64);$b[8]=chr((ord($b[8])&63)|128);return vsprintf('%s%s-%s-%s-%s-%s%s%s',str_split(bin2hex($b),4)); }
 function ar_clean(string $root): void {
     if(!is_dir($root))return;
     $it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::CHILD_FIRST);
@@ -60,6 +61,11 @@ try{
         VALUES(:user,:project,'deployment.approve',:owner,:at,NULL)
         ON CONFLICT(user_id,project_id,capability) DO UPDATE SET revoked_at=NULL")
         ->execute(['user'=>$owner,'project'=>$project,'owner'=>$owner,'at'=>$now]);
+
+    $promoteTask=ar_uuid();$promoteExecution=ar_uuid();
+    $releaseNotes=['schemaVersion'=>1,'summary'=>['features'=>[],'improvements'=>[],'fixes'=>['Assessment release fixture promoted through canonical source authority'],'internal'=>[]],'impact'=>['databaseMigration'=>'NONE','serviceReload'=>'AUTOMATIC','appRestart'=>'NONE','signIn'=>'NONE','plannedDowntime'=>false],'knownIssues'=>[]];
+    $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'source promotion fixture','COMPLETED',NULL,NULL,100,'promoted',NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$promoteTask,'user'=>$owner,'project'=>$project,'key'=>'assessment-source-promote-fixture','at'=>$now]);
+    $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','source.promote','COMPLETED',NULL,NULL,1,NULL,:checkpoint,NULL,:at,:at)")->execute(['execution'=>$promoteExecution,'task'=>$promoteTask,'project'=>$project,'checkpoint'=>json_encode(['repository'=>'bay-assessment','expectedMainSha'=>$baseSha,'targetSha'=>$releaseSha,'bundleSha256'=>str_repeat('d',64),'releaseNotes'=>$releaseNotes],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$now]);
 
     $auth=HubOwnerAuthService::openExisting($db);$auth->provisionInitial('art',$password,$now);
     $session=$auth->login('art',$password,true,'assessment-release-browser',$now);
