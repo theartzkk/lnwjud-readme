@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { createPackageWithOptions, extractAll, extractFile } from '@electron/asar';
-import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { createPackageWithOptions, extractAll, extractFile, getRawHeader } from '@electron/asar';
+import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, win32 as pathWin32 } from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -22,6 +22,7 @@ const MAC_ASSETS = {
 } as const;
 const WINDOWS_ASSET = { name: 'lnwjud-Portable-5.5.0.exe', sha256: '04a172af20e755346a31ff9d88e28fbeae8ac8d896fe278ea4aa8fb357363731' } as const;
 const MAC_RUNTIME_EXECUTABLE = 'AWH Device Runtime';
+const AWH_RUNTIME_APP_NAME = 'AWH Device Runtime';
 const WINDOWS_RUNTIME_EXECUTABLE = 'AWH Device Runtime.exe';
 
 const NODE_VERSION = '24.21.0';
@@ -77,13 +78,17 @@ async function findApp(root: string): Promise<string | null> {
 }
 
 const AWH_HEADLESS_PATCH_MARKER = 'AWH_DEVICE_RUNTIME_HEADLESS === "1"';
+const AWH_RUNTIME_NAME_MARKER = `var APP_NAME = "${AWH_RUNTIME_APP_NAME}";`;
+const AWH_RUNTIME_MCP_NAME_MARKER = `var APP_NAME2 = "${AWH_RUNTIME_APP_NAME}";`;
+const AWH_RUNTIME_INSTRUCTIONS_MARKER = 'Continue using AWH Device Runtime tools';
+const AWH_RUNTIME_READY_MARKER = 'AWH Device Runtime MCP stdio ready';
 
 async function patchMacHeadlessRuntime(appRoot: string): Promise<void> {
   const archive = join(appRoot, 'Contents', 'Resources', 'app.asar');
   let currentMain: string;
   try { currentMain = extractFile(archive, 'dist/main/main.js').toString('utf8'); }
   catch { throw new Error('DEVICE_RUNTIME_PATCH_SOURCE_INVALID'); }
-  if (currentMain.includes(AWH_HEADLESS_PATCH_MARKER)) return;
+  if (currentMain.includes(AWH_HEADLESS_PATCH_MARKER) && currentMain.includes(AWH_RUNTIME_NAME_MARKER) && currentMain.includes(AWH_RUNTIME_MCP_NAME_MARKER) && currentMain.includes(AWH_RUNTIME_INSTRUCTIONS_MARKER) && currentMain.includes(AWH_RUNTIME_READY_MARKER)) return;
 
   const functionMarker = 'async function resolveDesktopRuntimeSecrets(dataPath) {\n';
   const requiredTokens = ['path72','mkdirSync8','lstatSync3','readFileSync9','writeFileSync6','randomBytes8','createExplicitKeySecretProtector','CheckpointKeyStore'];
@@ -120,11 +125,20 @@ async function patchMacHeadlessRuntime(appRoot: string): Promise<void> {
   try {
     extractAll(archive, work);
     const mainPath = join(work, 'dist', 'main', 'main.js');
-    await writeFile(mainPath, currentMain.replace(functionMarker, functionMarker + branch), 'utf8');
+    let nextMain = currentMain;
+    if (!nextMain.includes(AWH_HEADLESS_PATCH_MARKER)) nextMain = nextMain.replace(functionMarker, functionMarker + branch);
+    nextMain = nextMain.replace('var APP_NAME = "lnwjud";', AWH_RUNTIME_NAME_MARKER);
+    nextMain = nextMain.replace('var APP_NAME2 = "lnwjud";', AWH_RUNTIME_MCP_NAME_MARKER);
+    nextMain = nextMain.replaceAll('Continue using lnwjud tools', AWH_RUNTIME_INSTRUCTIONS_MARKER);
+    nextMain = nextMain.replaceAll('lnwjud MCP stdio ready', AWH_RUNTIME_READY_MARKER);
+    nextMain = nextMain.replaceAll('lnwjud updated the live MCP tool list', 'AWH Device Runtime updated the live MCP tool list');
+    nextMain = nextMain.replaceAll('? "lnwjud \\u0E2D', '? "AWH Device Runtime \\u0E2D');
+    if (!nextMain.includes(AWH_RUNTIME_NAME_MARKER) || !nextMain.includes(AWH_RUNTIME_MCP_NAME_MARKER) || !nextMain.includes(AWH_RUNTIME_INSTRUCTIONS_MARKER) || !nextMain.includes(AWH_RUNTIME_READY_MARKER)) throw new Error('DEVICE_RUNTIME_REBRAND_NAME_PATCH_FAILED');
+    await writeFile(mainPath, nextMain, 'utf8');
     await rm(next, { force: true });
     await createPackageWithOptions(work, next, { unpack: '{dist/main/*.node,node_modules/@electron-internal/extract-zip/**}' });
     const patched = extractFile(next, 'dist/main/main.js').toString('utf8');
-    if (!patched.includes(AWH_HEADLESS_PATCH_MARKER)) throw new Error('DEVICE_RUNTIME_PATCH_VERIFY_FAILED');
+    if (!patched.includes(AWH_HEADLESS_PATCH_MARKER) || !patched.includes(AWH_RUNTIME_NAME_MARKER) || !patched.includes(AWH_RUNTIME_MCP_NAME_MARKER) || !patched.includes(AWH_RUNTIME_INSTRUCTIONS_MARKER) || !patched.includes(AWH_RUNTIME_READY_MARKER)) throw new Error('DEVICE_RUNTIME_PATCH_VERIFY_FAILED');
     await rm(backup, { force: true });
     await rename(archive, backup);
     try { await rename(next, archive); }
@@ -140,6 +154,7 @@ async function rebrandMacEngine(appRoot: string): Promise<void> {
   const backup = archive + '.awh-upstream';
   await patchMacHeadlessRuntime(appRoot);
   const plist = join(appRoot, 'Contents', 'Info.plist');
+  const asarIntegrity = createHash('sha256').update(getRawHeader(archive).headerString).digest('hex');
   const oldExecutable = join(appRoot, 'Contents', 'MacOS', 'lnwjud');
   const newExecutable = join(appRoot, 'Contents', 'MacOS', MAC_RUNTIME_EXECUTABLE);
   try {
@@ -165,6 +180,21 @@ async function rebrandMacEngine(appRoot: string): Promise<void> {
   }
   const background = await execFile('/usr/bin/plutil', ['-replace', 'LSUIElement', '-bool', 'YES', plist], appRoot, 15_000);
   if (background.code !== 0) throw new Error('DEVICE_RUNTIME_REBRAND_PLIST_FAILED');
+  const integrity = await execFile('/usr/libexec/PlistBuddy', ['-c', `Set :ElectronAsarIntegrity:Resources/app.asar:hash ${asarIntegrity}`, plist], appRoot, 15_000);
+  if (integrity.code !== 0) throw new Error('DEVICE_RUNTIME_REBRAND_ASAR_INTEGRITY_FAILED');
+  const microphone = await execFile('/usr/bin/plutil', ['-replace', 'NSMicrophoneUsageDescription', '-string', 'AWH Device Runtime uses the microphone only for an explicitly requested audio task.', plist], appRoot, 15_000);
+  if (microphone.code !== 0) throw new Error('DEVICE_RUNTIME_REBRAND_PLIST_FAILED');
+  const awhIconCandidates = [
+    typeof process.resourcesPath === 'string' ? join(process.resourcesPath, 'electron.icns') : '',
+    '/Applications/AWH Agent.app/Contents/Resources/electron.icns',
+  ].filter(Boolean);
+  for (const candidate of awhIconCandidates) {
+    try {
+      if (!(await lstat(candidate)).isFile()) continue;
+      await copyFile(candidate, join(appRoot, 'Contents', 'Resources', 'icon.icns'));
+      break;
+    } catch {}
+  }
   // Helper bundle directory/executable names stay upstream-compatible because
   // Electron locates them internally, but their visible Finder/System UI names
   // are branded as AWH Device Runtime.
@@ -181,9 +211,9 @@ async function rebrandMacEngine(appRoot: string): Promise<void> {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
+  await rm(backup, { force: true }).catch(() => undefined);
   const sign = await execFile('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', appRoot], appRoot, 120_000);
   if (sign.code !== 0) throw new Error('DEVICE_RUNTIME_REBRAND_SIGN_FAILED');
-  await rm(backup, { force: true }).catch(() => undefined);
 }
 
 function macBridge(): string {

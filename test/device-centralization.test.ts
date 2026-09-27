@@ -40,7 +40,17 @@ test('fresh device bootstrap provisions rebranded AWH runtime and pinned system 
   assert.match(bootstrap, /internal implementation key unchanged/);
   assert.match(bootstrap, /CFBundleExecutable'.*MAC_RUNTIME_EXECUTABLE/s);
   assert.match(bootstrap, /CFBundleIdentifier'.*online\.kruart\.awh-device-runtime/s);
+  assert.match(bootstrap, /AWH_RUNTIME_NAME_MARKER/);
+  assert.match(bootstrap, /AWH_RUNTIME_MCP_NAME_MARKER/);
+  assert.match(bootstrap, /AWH_RUNTIME_INSTRUCTIONS_MARKER/);
+  assert.match(bootstrap, /AWH_RUNTIME_READY_MARKER/);
+  assert.match(bootstrap, /getRawHeader/);
+  assert.match(bootstrap, /ElectronAsarIntegrity/);
+  assert.match(bootstrap, /AWH Agent\.app.*electron\.icns/s);
+  assert.match(bootstrap, /copyFile\(candidate, join\(appRoot, 'Contents', 'Resources', 'icon\.icns'\)\)/);
+  assert.match(bootstrap, /AWH Device Runtime uses the microphone/);
   assert.match(bootstrap, /LSUIElement/);
+  assert.match(bootstrap, /rm\(backup.*codesign/s);
   assert.match(bootstrap, /codesign/);
   assert.match(bootstrap, /NODE_VERSION = '24\.21\.0'/);
   assert.match(bootstrap, /SYSTEM_MCP_VERSION = '0\.2\.51'/);
