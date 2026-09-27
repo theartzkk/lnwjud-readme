@@ -61,6 +61,19 @@ const friendly=(error)=>{
 function itemNeedsAttention(item){
   return item.state!=='CURRENT'&&item.state!=='INTERNAL_MANAGED';
 }
+const updateGroupMeta={
+  'core-control':{label:'แกนระบบและโครงสร้าง',description:'AWH, AWH Agent และ VPS Platform'},
+  'school-systems':{label:'ระบบงานโรงเรียน',description:'BAY และระบบงานภายในโรงเรียน'},
+  'channels-public':{label:'ช่องทางและเว็บไซต์',description:'LINE OA และระบบสาธารณะ'},
+};
+function updateGroup(item){
+  if(typeof item?.group==='string'&&updateGroupMeta[item.group])return item.group;
+  const key=String(item?.key||'').toLowerCase();
+  const kind=String(item?.kind||'').toUpperCase();
+  if(['vps-platform','awh-core','awh-agent'].includes(key)||['PLATFORM','CORE','AGENT'].includes(kind))return 'core-control';
+  if(key==='line-oa'||['INTEGRATION','HOSTING'].includes(kind))return 'channels-public';
+  return 'school-systems';
+}
 function runtimeState(){
   if(center?.runtime?.state)return center.runtime.state;
   const awh=(center?.items||[]).find((item)=>item.key==='awh-core');
@@ -166,8 +179,7 @@ function summary(){
   $('summary-update').textContent=String(counts.update);
   $('summary-progress').textContent=String(counts.progress);
   $('summary-attention').textContent=String(counts.attention);
-  const actionable=(center?.items||[]).some((item)=>item.actionable===true||item.state==='WAITING_FOR_APPROVAL');
-  $('update-all').disabled=!actionable||refreshing;
+  $('update-all').disabled=refreshing;
   const overall=$('updates-overall');
   if(runtimeState()==='SPLIT'){
     overall.textContent='ต้องปรับ Runtime ให้ตรงกัน';overall.dataset.tone='warn';
@@ -378,7 +390,21 @@ function renderCard(item){
 
 function render(){
   const host=$('update-list');host.replaceChildren();
-  for(const item of center?.items||[])if(itemVisible(item))host.append(renderCard(item));
+  const visible=(center?.items||[]).filter(itemVisible);
+  for(const groupKey of ['core-control','school-systems','channels-public']){
+    const rows=visible.filter((item)=>updateGroup(item)===groupKey);
+    if(!rows.length)continue;
+    const section=document.createElement('section');section.className='update-group';section.dataset.group=groupKey;
+    const head=document.createElement('div');head.className='update-group-head';
+    const title=document.createElement('div');
+    const h2=document.createElement('h2');h2.textContent=updateGroupMeta[groupKey].label;
+    const p=document.createElement('p');p.textContent=updateGroupMeta[groupKey].description;
+    const count=document.createElement('span');count.textContent=rows.length+' ระบบ';
+    title.append(h2,p);head.append(title,count);
+    const list=document.createElement('div');list.className='update-group-list';
+    for(const item of rows)list.append(renderCard(item));
+    section.append(head,list);host.append(section);
+  }
   if(!host.childElementCount){const empty=document.createElement('div');empty.className='update-empty';empty.textContent='ไม่พบระบบตามตัวกรองนี้';host.append(empty);}
   renderRuntimeHealth();renderReleaseInfrastructure();renderHistory();summary();renderProgress();
 }
@@ -579,30 +605,9 @@ async function refreshAgent(){
   }catch{}
   render();
 }
-async function updateAll(){
-  const ready=(center?.items||[]).filter((item)=>item.state==='UPDATE_AVAILABLE'&&item.actionable===true);
-  const pending=(center?.items||[]).filter((item)=>item.state==='WAITING_FOR_APPROVAL'&&item.approvalId);
-  if(!ready.length&&!pending.length)return;
-  if(!await askConfirm('อัปเดตทั้งหมดอย่างปลอดภัย','ดำเนินการ '+(ready.length+pending.length)+' รายการที่พร้อม ระบบจะข้ามรายการ Blocked และใช้ Backup/Verify/Rollback ของแต่ละระบบ','อัปเดตทั้งหมด'))return;
-  $('update-all').disabled=true;localOperation={name:'หลายระบบ',progress:5,message:'กำลังจัดลำดับ dependency และส่งงานไปยัง release authority'};
-  try{
-    for(const item of ready.filter((row)=>row.adapter==='MANAGED_HOSTING'))await managedSiteAction(item.siteId,'deploy');
-    for(const item of ready.filter((row)=>row.adapter==='BAY_UPDATE_CENTER'&&row.release))await updateBay(item,false);
-    for(const item of pending.filter((row)=>['PLATFORM_RELEASE','CORE_RELEASE','LEARNLAB_RELEASE','ASSESSMENT_RELEASE'].includes(row.adapter)))await decideApproval(item.approvalId,'approve');
-    for(const item of ready.filter((row)=>row.adapter==='PLATFORM_RELEASE')){
-      const request=await privileged(()=>requestPlatformRelease(item.candidate,false));
-      if(request?.approvalId)await decideApproval(request.approvalId,'approve');
-    }
-    for(const item of ready.filter((row)=>row.adapter==='CORE_RELEASE')){
-      const request=await privileged(()=>requestCoreRelease(item.candidate,false));
-      if(request?.approvalId)await decideApproval(request.approvalId,'approve');
-    }
-    for(const item of ready.filter((row)=>row.adapter==='ASSESSMENT_RELEASE'&&row.candidateVersion)){
-      const request=await privileged(()=>requestAssessmentRelease(item.candidate,item.candidateVersion));
-      if(request?.approvalId)await decideApproval(request.approvalId,'approve');
-    }
-    message('ส่งทุกรายการที่พร้อมเข้าสู่ release authority แล้ว ระบบจะติดตามต่ออัตโนมัติ');
-  }finally{await refresh();}
+async function refreshAll(){
+  message('กำลังตรวจสถานะล่าสุดของทุกระบบ แต่ละระบบยังคงอัปเดตแยกจากกัน');
+  await refresh();
 }
 
 function scheduleRefresh(){
@@ -630,7 +635,7 @@ async function refresh(){
 }
 
 $('updates-refresh').addEventListener('click',refresh);
-$('update-all').addEventListener('click',updateAll);
+$('update-all').addEventListener('click',refreshAll);
 $('show-attention').addEventListener('click',()=>{
   attentionOnly=!attentionOnly;
   $('show-attention').textContent=attentionOnly?'แสดงทุกระบบ':'แสดงเฉพาะที่ต้องจัดการ';

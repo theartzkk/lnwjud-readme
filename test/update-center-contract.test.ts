@@ -65,7 +65,15 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(script,/relayBayRemoteCommand/);
   assert.match(script,/BAY_INSTALL_OUTCOME_UNKNOWN/);
   assert.doesNotMatch(script,/autoUpdater|setFeedURL|shell_exec|proc_open|exec\(/);
-  assert.match(page,/อัปเดตทั้งหมดอย่างปลอดภัย/);
+  assert.match(page,/ตรวจสถานะทั้งหมด/);
+  assert.match(page,/ติดตั้งแยกตามระบบ/);
+  assert.match(script,/function updateGroup\(/);
+  assert.match(script,/core-control/);
+  assert.match(script,/school-systems/);
+  assert.match(script,/channels-public/);
+  assert.match(script,/function refreshAll\(/);
+  assert.doesNotMatch(script,/function updateAll\(/);
+  assert.doesNotMatch(script,/อัปเดตทั้งหมดอย่างปลอดภัย/);
   assert.match(page,/Source Authority เดียว/);
   assert.match(page,/Candidate เดียว/);
   assert.match(page,/Runtime Coherence/);
