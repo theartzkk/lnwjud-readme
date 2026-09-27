@@ -41,11 +41,18 @@ test('owner username/password auth reuses the M4 cookie and exposes only bounded
 test('M4 control-plane contract is additive and keeps execution bounded', async () => {
   const migration = await readFile(new URL('../hub/migrations/003_m4_control_plane.sql', import.meta.url), 'utf8');
   const service = await readFile(new URL('../hub/src/HubControlPlaneService.php', import.meta.url), 'utf8');
+  const router = await readFile(new URL('../hub/src/HubControlPlaneRouter.php', import.meta.url), 'utf8');
   assert.match(migration, /control_tasks/);
   assert.match(migration, /control_workers/);
   assert.match(migration, /control_approvals/);
   assert.match(migration, /UNIQUE INDEX.*user_idempotency/s);
   assert.match(service, /WAITING_FOR_WORKER/);
+  assert.match(service, /targetDeviceId/);
+  assert.match(service, /executionTargetDeviceId/);
+  assert.match(service, /TARGET_DEVICE_FORBIDDEN/);
+  assert.match(service, /workerDevices/);
+  assert.match(router, /control\/worker\/devices/);
+  assert.match(service, /if \(\$target !== null && !hash_equals\(\$target, \(string\) \$auth\['deviceId'\]\)\) continue/);
   assert.match(service, /BEGIN IMMEDIATE/);
   assert.match(service, /goal/);
   assert.doesNotMatch(service, /shell_exec|passthru|proc_open|popen|system\s*\(/i);

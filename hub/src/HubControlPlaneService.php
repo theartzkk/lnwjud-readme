@@ -1554,6 +1554,13 @@ final class HubControlPlaneService
         return ['schemaVersion' => 1, 'projects' => array_map(static fn (array $row): array => ['projectId' => (string) $row['project_id'], 'name' => (string) $row['name'], 'type' => (string) $row['type'], 'sourceRevision' => $row['source_revision'] === null ? null : (string) $row['source_revision'], 'vaultReady' => (int) $row['vault_ready'] === 1, 'memoryReady' => (int) $row['memory_present'] === 6], $q->fetchAll())];
     }
 
+    /** Device-scoped projection of the owner's enrolled workers for AWH Gateway routing. */
+    public function workerDevices(string $token, string $deviceId, ?string $now = null): array
+    {
+        $auth = $this->enrollment->authenticateForControlPlane($token, self::uuid($deviceId), $now);
+        return ['schemaVersion'=>1,'devices'=>$this->workersForUser((string)$auth['userId'])];
+    }
+
     /** Desktop invokes this only in its privileged main process with the existing M3E credential. */
     public function workerConversation(string $token, string $deviceId, string $projectId, ?string $now = null): array
     {
@@ -1565,13 +1572,19 @@ final class HubControlPlaneService
 
     public function submitWorkerConversation(string $token, array $payload, ?string $now = null): array
     {
-        self::exactKeys($payload, ['deviceId', 'idempotencyKey', 'message', 'projectId', 'schemaVersion']);
+        $schema = $payload['schemaVersion'] ?? null;
+        if ($schema === 1) self::exactKeys($payload, ['deviceId', 'idempotencyKey', 'message', 'projectId', 'schemaVersion']);
+        elseif ($schema === 2) self::exactKeys($payload, ['deviceId', 'idempotencyKey', 'message', 'projectId', 'schemaVersion', 'targetDeviceId']);
+        else throw new HubControlPlaneException('Unsupported worker conversation schema', 'SCHEMA_VERSION');
         $deviceId = self::uuid((string) ($payload['deviceId'] ?? ''));
         $auth = $this->enrollment->authenticateForControlPlane($token, $deviceId, $now);
         $projectId = self::uuid((string) ($payload['projectId'] ?? ''));
         $this->assertDeviceProjectMember((string) $auth['deviceId'], $projectId);
-        unset($payload['deviceId']);
-        return $this->submitConversationForUser((string) $auth['userId'], $payload, $now, true);
+        $targetDeviceId = $schema === 2 ? self::uuid((string) ($payload['targetDeviceId'] ?? '')) : null;
+        if ($targetDeviceId !== null) $this->assertTargetDeviceForUser((string) $auth['userId'], $projectId, $targetDeviceId);
+        unset($payload['deviceId'], $payload['targetDeviceId']);
+        $payload['schemaVersion'] = 1;
+        return $this->submitConversationForUser((string) $auth['userId'], $payload, $now, true, $targetDeviceId);
     }
 
     public function submitTask(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
@@ -1781,7 +1794,7 @@ final class HubControlPlaneService
         return self::boundConversationPayload($payload, self::WORKER_CONVERSATION_MAX_BYTES);
     }
 
-    private function submitConversationForUser(string $userId, array $payload, ?string $now, bool $worker = false): array
+    private function submitConversationForUser(string $userId, array $payload, ?string $now, bool $worker = false, ?string $targetDeviceId = null): array
     {
         $schema = $payload['schemaVersion'] ?? null;
         if ($schema === 1) self::exactKeys($payload, ['idempotencyKey', 'message', 'projectId', 'schemaVersion']);
@@ -1846,6 +1859,7 @@ final class HubControlPlaneService
                 $serverAssistedEdit = $deviceRequest === null && $vaultRevision !== null && self::isServerAssistedEdit($effectiveGoal);
                 $ownerFundedAi = $this->isOwnerUser($userId);
                 $paidAiBlocked = !$ownerFundedAi && $officeRequest === null && $deviceRequest === null && $vaultRevision !== null && !$serverInspection && !$serverTextMutation;
+                if ($targetDeviceId !== null && $officeRequest === null && $deviceRequest === null) throw new HubControlPlaneException('Target device is valid only for device or Office execution', 'TARGET_DEVICE_NOT_APPLICABLE');
                 $taskState = $paidAiBlocked ? 'FAILED' : (($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'QUEUED' : 'WAITING_FOR_WORKER');
                 $insert = $this->pdo->prepare('INSERT INTO control_tasks(task_id, user_id, project_id, goal, state, assigned_device_id, lease_expires_at, progress, result_summary, failure_code, idempotency_key, conversation_id, created_at, updated_at, cancelled_at) VALUES(:id, :user, :project, :goal, :state, NULL, NULL, 0, :summary, :failure, :key, :conversation, :created, :updated, NULL)');
                 $insert->execute(['id' => $taskId, 'user' => $userId, 'project' => $projectId, 'goal' => $effectiveGoal, 'state' => $taskState, 'summary' => $paidAiBlocked ? self::externalFreeAiMessage() : null, 'failure' => $paidAiBlocked ? 'PROVIDER_ACCOUNT_NOT_FUNDED' : null, 'key' => $taskKey, 'conversation' => $conversation['conversation_id'], 'created' => $at, 'updated' => $at]);
@@ -1853,10 +1867,12 @@ final class HubControlPlaneService
                     $this->appendConversationMessage((string) $conversation['conversation_id'], $taskId, 'FAILURE', self::externalFreeAiMessage(), $at, 'account-ai-' . $messageId);
                 } elseif ($officeRequest !== null && $this->centralProjectAuthoritySchemaPresent()) {
                     $officeCheckpoint = self::withCapabilityPlan(['mode' => 'OFFICE_TO_PDF', 'attachmentId' => $officeRequest['attachmentId']], $effectiveGoal, $attachmentIds !== []);
+                    if ($targetDeviceId !== null) $officeCheckpoint['targetDeviceId'] = $targetDeviceId;
                     $officeCheckpoint = $this->withSystemOneDecision($officeCheckpoint, $effectiveGoal);
                     $this->execution->enqueue($taskId, $projectId, null, 'DEVICE', $officeRequest['capability'], $officeCheckpoint, $at);
                 } elseif ($deviceRequest !== null && $this->centralProjectAuthoritySchemaPresent()) {
                     $deviceCheckpoint = self::withCapabilityPlan(['mode' => 'AWH_DEVICE_AUTOMATION', 'deviceMode' => $deviceRequest['mode']], $effectiveGoal, $attachmentIds !== []);
+                    if ($targetDeviceId !== null) $deviceCheckpoint['targetDeviceId'] = $targetDeviceId;
                     $deviceCheckpoint = $this->withSystemOneDecision($deviceCheckpoint, $effectiveGoal);
                     $this->execution->enqueue($taskId, $projectId, null, 'DEVICE', $deviceRequest['capability'], $deviceCheckpoint, $at);
                 } elseif ($vaultRevision !== null) {
@@ -3445,13 +3461,17 @@ final class HubControlPlaneService
             // device-local project binding.
             $caps = []; try { $caps = json_decode((string) $workerRow['capabilities_json'], true, 16, JSON_THROW_ON_ERROR); } catch (Throwable) {}
             if ($this->centralProjectAuthoritySchemaPresent() && is_array($caps)) {
-                $deviceWork = $this->pdo->prepare("SELECT t.*, e.execution_id, e.required_capability FROM control_tasks t JOIN control_task_executions e ON e.task_id = t.task_id JOIN device_project_memberships m ON m.project_id = t.project_id AND m.device_id = :device AND m.revoked_at IS NULL WHERE t.user_id = :user AND t.state = 'WAITING_FOR_WORKER' AND t.assigned_device_id IS NULL AND e.state = 'WAITING_FOR_CAPABILITY' AND e.executor_kind = 'DEVICE' ORDER BY e.created_at, e.execution_id LIMIT 20");
+                $deviceWork = $this->pdo->prepare("SELECT t.*, e.execution_id, e.required_capability, e.checkpoint_json FROM control_tasks t JOIN control_task_executions e ON e.task_id = t.task_id JOIN device_project_memberships m ON m.project_id = t.project_id AND m.device_id = :device AND m.revoked_at IS NULL WHERE t.user_id = :user AND t.state = 'WAITING_FOR_WORKER' AND t.assigned_device_id IS NULL AND e.state = 'WAITING_FOR_CAPABILITY' AND e.executor_kind = 'DEVICE' ORDER BY e.created_at, e.execution_id LIMIT 20");
                 $deviceWork->execute(['device' => $auth['deviceId'], 'user' => $auth['userId']]);
                 foreach ($deviceWork->fetchAll() as $candidate) {
                     $required = (string) ($candidate['required_capability'] ?? '');
                     if (!in_array($required, $caps, true)) continue;
-                    $preferred = $this->preferredGuiWorker((string)$candidate['project_id'],$required,(string)($candidate['goal']??''),$at);
-                    if ($preferred !== null && !hash_equals($preferred,(string)$auth['deviceId'])) continue;
+                    $target = self::executionTargetDeviceId((string) ($candidate['checkpoint_json'] ?? ''));
+                    if ($target !== null && !hash_equals($target, (string) $auth['deviceId'])) continue;
+                    if ($target === null) {
+                        $preferred = $this->preferredGuiWorker((string)$candidate['project_id'],$required,(string)($candidate['goal']??''),$at);
+                        if ($preferred !== null && !hash_equals($preferred,(string)$auth['deviceId'])) continue;
+                    }
                     $lease = $this->pdo->prepare("UPDATE control_task_executions SET state = 'RUNNING', lease_owner = :device, lease_expires_at = :expires, attempt_count = attempt_count + 1, last_error_code = NULL, updated_at = :at WHERE task_id = :task AND state = 'WAITING_FOR_CAPABILITY' AND executor_kind = 'DEVICE' AND required_capability = :capability");
                     $lease->execute(['device' => $auth['deviceId'], 'expires' => $expires, 'at' => $at, 'task' => $candidate['task_id'], 'capability' => $required]);
                     if ($lease->rowCount() === 1) { if ($this->capabilities !== null) $this->capabilities->updateEnvelopeState((string) $candidate['execution_id'], 'ACTIVE', $expires, $at, true); $row = $candidate; break; }
@@ -3863,6 +3883,12 @@ final class HubControlPlaneService
     private static function wipRef(string $value): string { if (preg_match('#^refs/awh/wip/[0-9a-f-]{36}/[0-9a-f-]{36}$#i', $value) !== 1) throw new HubControlPlaneException('Workspace reference is invalid', 'FIELD_INVALID'); return $value; }
     private static function portableRelative(string $value): string { if ($value === '' || strlen($value) > 240 || str_contains($value, "\0") || str_contains($value, '\\') || str_starts_with($value, '/') || preg_match('#^(?:[A-Za-z]:|~)#', $value) || str_contains($value, '..') || preg_match('/(?:^|\/)(?:\.git|node_modules|\.env)(?:\/|$)/i', $value)) throw new HubControlPlaneException('Workspace path is invalid', 'FIELD_INVALID'); return $value; }
     private function assertDeviceProjectMember(string $deviceId, string $projectId): void { $q = $this->pdo->prepare('SELECT 1 FROM device_project_memberships WHERE device_id = :device AND project_id = :project AND revoked_at IS NULL'); $q->execute(['device' => $deviceId, 'project' => $projectId]); if ($q->fetchColumn() === false) throw new HubControlPlaneException('Project is not available to this device', 'PROJECT_FORBIDDEN'); }
+    private function assertTargetDeviceForUser(string $userId, string $projectId, string $deviceId): void
+    {
+        $q = $this->pdo->prepare('SELECT 1 FROM devices d JOIN device_project_memberships dpm ON dpm.device_id=d.device_id AND dpm.project_id=:project AND dpm.revoked_at IS NULL JOIN user_project_memberships upm ON upm.project_id=dpm.project_id AND upm.user_id=:user AND upm.revoked_at IS NULL WHERE d.device_id=:device AND d.revoked_at IS NULL LIMIT 1');
+        $q->execute(['project'=>$projectId,'user'=>$userId,'device'=>$deviceId]);
+        if ($q->fetchColumn() === false) throw new HubControlPlaneException('Target device is not available for this project', 'TARGET_DEVICE_FORBIDDEN');
+    }
 
     private function getOrCreateConversation(string $userId, string $projectId, string $at): array
     {
@@ -4162,6 +4188,14 @@ final class HubControlPlaneService
         $plan = self::externalCapabilityPlan($goal, $hasAttachments);
         if (($plan['selected'] ?? []) !== []) $checkpoint['capabilityPlan'] = $plan;
         return $checkpoint;
+    }
+
+    private static function executionTargetDeviceId(?string $checkpointJson): ?string
+    {
+        if ($checkpointJson === null || $checkpointJson === '') return null;
+        try { $checkpoint = json_decode($checkpointJson, true, 20, JSON_THROW_ON_ERROR); } catch (Throwable) { return null; }
+        $target = is_array($checkpoint) ? ($checkpoint['targetDeviceId'] ?? null) : null;
+        return is_string($target) && preg_match(self::UUID, $target) === 1 ? strtolower($target) : null;
     }
 
     private static function executionCapabilityPlan(?string $checkpointJson): ?array

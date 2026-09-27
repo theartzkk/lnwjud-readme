@@ -20,6 +20,7 @@ export class ControlPlaneWorkerError extends Error {
 }
 
 export interface WorkerProject { projectId: string; name: string; type: string; sourceRevision: string | null; vaultReady: boolean; memoryReady: boolean; }
+export interface WorkerPeer { deviceId: string; displayName: string; platform: string; arch: string; appVersion: string; state: string; lastSeenAt: string; capabilities: string[]; detectedTools: string[]; activity: string; role: string; routingEnabled: boolean; requiresOwnerApproval: boolean; workloads: string[]; purpose: string; }
 
 export interface WorkerContinuation { rootTaskId: string; step: number; maxSteps: number; }
 export interface WorkerCapabilityPlanItem { id: 'context.optimize' | 'design.hallmark' | 'design.reference' | 'team.harness'; label: string; mode: string; reason: string; requiredTool: string | null; }
@@ -274,6 +275,21 @@ export class ControlPlaneWorkerClient {
     return { schemaVersion: 1, action: { tool: item.tool as WorkerDevicePlan['action']['tool'], arguments: item.arguments as Record<string, unknown>, summary: item.summary } };
   }
 
+  async devices(): Promise<WorkerPeer[]> {
+    const identity = await loadOrCreateDeviceIdentity(this.dataDir);
+    const response = await this.get(`/control/worker/devices/${identity.deviceId}`);
+    if (response.schemaVersion !== 1 || !Array.isArray(response.devices) || response.devices.length > 100) throw new ControlPlaneWorkerError('Worker device response is invalid', 'RESPONSE_INVALID');
+    return response.devices.map((value): WorkerPeer => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ControlPlaneWorkerError('Worker device response is invalid', 'RESPONSE_INVALID');
+      const item = value as Record<string, unknown>;
+      const capabilities = Array.isArray(item.capabilities) ? item.capabilities : [];
+      const detectedTools = Array.isArray(item.detectedTools) ? item.detectedTools : [];
+      const workloads = Array.isArray(item.workloads) ? item.workloads : [];
+      if (typeof item.deviceId !== 'string' || !UUID_V4.test(item.deviceId) || typeof item.displayName !== 'string' || item.displayName.length < 1 || item.displayName.length > 120 || typeof item.platform !== 'string' || item.platform.length > 32 || typeof item.arch !== 'string' || item.arch.length > 32 || typeof item.appVersion !== 'string' || item.appVersion.length > 64 || typeof item.state !== 'string' || item.state.length > 32 || typeof item.lastSeenAt !== 'string' || capabilities.length > 128 || capabilities.some((v) => typeof v !== 'string' || !CAPABILITY.test(v)) || detectedTools.length > 64 || detectedTools.some((v) => typeof v !== 'string' || v.length > 80) || typeof item.activity !== 'string' || item.activity.length > 32 || typeof item.role !== 'string' || item.role.length > 64 || typeof item.routingEnabled !== 'boolean' || typeof item.requiresOwnerApproval !== 'boolean' || workloads.length > 32 || workloads.some((v) => typeof v !== 'string' || v.length > 80) || typeof item.purpose !== 'string' || item.purpose.length > 280) throw new ControlPlaneWorkerError('Worker device response is invalid', 'RESPONSE_INVALID');
+      return { deviceId: item.deviceId.toLowerCase(), displayName: item.displayName, platform: item.platform, arch: item.arch, appVersion: item.appVersion, state: item.state, lastSeenAt: item.lastSeenAt, capabilities: capabilities as string[], detectedTools: detectedTools as string[], activity: item.activity, role: item.role, routingEnabled: item.routingEnabled, requiresOwnerApproval: item.requiresOwnerApproval, workloads: workloads as string[], purpose: item.purpose };
+    });
+  }
+
   async projects(): Promise<WorkerProject[]> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir);
     const response = await this.get(`/control/worker/projects/${identity.deviceId}`);
@@ -302,10 +318,12 @@ export class ControlPlaneWorkerClient {
     return boundedConversation(response);
   }
 
-  async submitConversation(projectId: string, message: string, idempotencyKey: string): Promise<WorkerConversation> {
+  async submitConversation(projectId: string, message: string, idempotencyKey: string, targetDeviceId: string | null = null): Promise<WorkerConversation> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir);
-    if (!UUID_V4.test(projectId) || typeof message !== 'string' || message.trim().length < 1 || message.length > 5_000 || !/^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey)) throw new ControlPlaneWorkerError('Worker conversation input is invalid', 'PAYLOAD_INVALID');
-    const response = await this.post('/control/worker/conversations', { schemaVersion: 1, deviceId: identity.deviceId, projectId, message: message.trim(), idempotencyKey });
+    if (!UUID_V4.test(projectId) || typeof message !== 'string' || message.trim().length < 1 || message.length > 5_000 || !/^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey) || (targetDeviceId !== null && !UUID_V4.test(targetDeviceId))) throw new ControlPlaneWorkerError('Worker conversation input is invalid', 'PAYLOAD_INVALID');
+    const response = await this.post('/control/worker/conversations', targetDeviceId === null
+      ? { schemaVersion: 1, deviceId: identity.deviceId, projectId, message: message.trim(), idempotencyKey }
+      : { schemaVersion: 2, deviceId: identity.deviceId, projectId, message: message.trim(), idempotencyKey, targetDeviceId: targetDeviceId.toLowerCase() });
     if (typeof response.schemaVersion !== 'number' || ![1, 2, 3].includes(response.schemaVersion)) throw new ControlPlaneWorkerError('Worker conversation response is invalid', 'RESPONSE_INVALID');
     return boundedConversation(response);
   }
