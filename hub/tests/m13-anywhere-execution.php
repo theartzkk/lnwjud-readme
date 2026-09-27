@@ -100,6 +100,10 @@ try {
     m13_assert(($debugRoute['capability']??null)==='browser.debug'&&($debugRoute['mode']??null)==='BROWSER_DEBUG','DevTools owner goals route to Browser Diagnostics');
     $playwrightRoute=$router->invoke(null,'ใช้ Playwright browser E2E บน M5 ทดสอบ flow login');
     m13_assert(($playwrightRoute['capability']??null)==='browser.playwright'&&($playwrightRoute['mode']??null)==='BROWSER_ACTIONS','Playwright owner goals route to Browser Actions');
+    $shellRoute=$router->invoke(null,'รัน shell บน M5: echo ready');
+    m13_assert(($shellRoute['capability']??null)==='system.shell'&&($shellRoute['mode']??null)==='SHELL','explicit shell owner goals route to system.shell instead of process primitives');
+    $processRoute=$router->invoke(null,'ตรวจ process บน M5 ที่กำลังทำงาน');
+    m13_assert(($processRoute['capability']??null)==='device.process'&&($processRoute['mode']??null)==='PROCESS','process lifecycle owner goals remain on device.process');
 
     $guiControl=HubControlPlaneService::openExisting($db);
     $guiControl->heartbeat((string)$guiOnEnrollment['accessToken'],['schemaVersion'=>1,'deviceId'=>$guiOnDevice,'state'=>'READY','capabilities'=>['device.gui.operate','runtime.ai.on','runtime.gui.ready']],$now);

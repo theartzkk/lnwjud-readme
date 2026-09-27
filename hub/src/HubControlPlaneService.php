@@ -4238,16 +4238,18 @@ final class HubControlPlaneService
         $playwright = preg_match('/(?:playwright|browser\s*e2e|e2e\s*(?:web|browser)|semantic\s*browser|browser\s*automation\s*(?:mcp|test))/iu', $value) === 1;
         $nativeApp = preg_match('/(?:after effects?|photoshop|premiere|remotion studio|finder|word|excel|powerpoint|โปรแกรม(?:บน)?เครื่อง|native app|\bgui\b|accessibility)/iu', $value) === 1;
         $localFiles = preg_match('/(?:ไฟล์(?:ใน|บน)เครื่อง|local files?|folder(?: on device)?|โฟลเดอร์(?:ใน|บน)เครื่อง)/iu', $value) === 1;
-        $process = preg_match('/(?:terminal|shell|process|service|เปิด process|ปิด process|คำสั่งระบบ)/iu', $value) === 1;
+        $shell = preg_match('/(?:terminal|shell|คำสั่งระบบ)/iu', $value) === 1;
+        $process = preg_match('/(?:\bprocess\b|service|เปิด process|ปิด process)/iu', $value) === 1;
         $browserOnDevice = preg_match('/(?:เปิด|ใช้|ทดสอบ|เข้า|กด).{0,40}(?:chrome|safari|edge|browser|เว็บ).{0,40}(?:บนเครื่อง|บน intel|บน m5|เครื่องจริง)|(?:chrome|safari|edge|browser).{0,40}(?:บนเครื่อง|บน intel|บน m5|เครื่องจริง)/iu', $value) === 1;
 
-        if (!$namedDevice && !$screen && !$nativeApp && !$localFiles && !$process && !$browserOnDevice && !$browserDebug && !$playwright) return null;
+        if (!$namedDevice && !$screen && !$nativeApp && !$localFiles && !$shell && !$process && !$browserOnDevice && !$browserDebug && !$playwright) return null;
         if ($photoshop) return ['capability'=>'creative.photoshop','mode'=>'PHOTOSHOP'];
         if ($premiere) return ['capability'=>'creative.premiere','mode'=>'PREMIERE'];
         if ($afterEffects) return ['capability'=>'creative.aftereffects','mode'=>'AFTER_EFFECTS'];
         if ($browserDebug) return ['capability'=>'browser.debug','mode'=>'BROWSER_DEBUG'];
         if ($playwright) return ['capability'=>'browser.playwright','mode'=>'BROWSER_ACTIONS'];
         if ($localFiles) return ['capability'=>'workspace.files','mode'=>'FILES'];
+        if ($shell) return ['capability'=>'system.shell','mode'=>'SHELL'];
         if ($process) return ['capability'=>'device.process','mode'=>'PROCESS'];
         if ($browserOnDevice) return ['capability'=>'browser.automation','mode'=>'BROWSER'];
         if ($screen && !self::hasUnnegatedMutationSignal($value) && !$nativeApp) return ['capability'=>'device.screen.inspect','mode'=>'SCREEN_INSPECT'];
