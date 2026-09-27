@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "authority": "AWH_CONTINUOUS_IMPROVEMENT",
+  "appliesTo": "ALL_MANAGED_PROJECTS",
+  "invariants": {
+    "rootCauseBeforeClosure": true,
+    "sharedCauseFixedAtHighestSharedLayer": true,
+    "temporaryWorkaroundNeverClosure": true,
+    "incidentClassLearning": true,
+    "provenLessonInheritance": true,
+    "newProjectsInheritCurrentBaseline": true,
+    "ownerSecurityBoundariesCannotBeAutoWeakened": true,
+    "unverifiedAutonomousPolicyMutationForbidden": true
+  },
+  "impactScopes": [
+    "PROJECT",
+    "PRODUCT_FAMILY",
+    "ECOSYSTEM",
+    "PLATFORM"
+  ],
+  "closureEvidence": [
+    "rootCause",
+    "canonicalFix",
+    "prevention",
+    "regression",
+    "recovery",
+    "observability"
+  ],
+  "lessonPromotion": {
+    "requiresVerifiedClosure": true,
+    "state": "ENFORCED",
+    "propagation": {
+      "PROJECT": "SAME_PROJECT",
+      "PRODUCT_FAMILY": "MATCHING_PRODUCT_FAMILY",
+      "ECOSYSTEM": "ALL_MANAGED_PROJECTS",
+      "PLATFORM": "ALL_MANAGED_PROJECTS"
+    }
+  },
+  "projectBaseline": {
+    "profile": "KRUART_STANDARD_V1",
+    "registryIdentityRequired": true,
+    "manifestIdentityRequired": true,
+    "agentEntrypointRequired": true,
+    "releaseTrackRequired": true,
+    "policyInheritanceByRegistry": true
+  }
+}
