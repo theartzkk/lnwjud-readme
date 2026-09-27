@@ -58,6 +58,7 @@ final class HubAiGovernanceService
         $this->assertBudget($userId,$projectId,$providerId,$estimatedInputTokens,$estimatedOutputTokens,$at);
         $candidates=$this->candidates($providerId,$capability,$dataClassification,$preferredModels,$estimatedInputTokens,$estimatedOutputTokens,$at);
         if ($candidates===[]) throw new HubAiGovernanceException('No qualified AI model is currently eligible','AI_ROUTE_UNAVAILABLE');
+        $candidates=$this->freeFirstCandidates($candidates,$strategy);
         usort($candidates,fn(array $a,array $b):int=>$this->score($b,$strategy)<=>$this->score($a,$strategy) ?: strcmp((string)$a['model_id'],(string)$b['model_id']));
         $selected=$candidates[0]; $routeId=self::uuid(); $estimated=(int)$selected['estimated_microunits'];
         $reason=$this->reason($selected,$strategy,$preferredModels);
@@ -83,6 +84,7 @@ final class HubAiGovernanceService
             foreach ($this->candidates($provider,$capability,$dataClassification,$preferredModels,$estimatedInputTokens,$estimatedOutputTokens,$at) as $candidate) $candidates[]=$candidate;
         }
         if ($candidates===[]) throw new HubAiGovernanceException('No qualified AI provider is currently eligible','AI_ROUTE_UNAVAILABLE');
+        $candidates=$this->freeFirstCandidates($candidates,$strategy);
         usort($candidates,fn(array $a,array $b):int=>$this->score($b,$strategy)<=>$this->score($a,$strategy) ?: strcmp((string)$a['provider_id'].':'.(string)$a['model_id'],(string)$b['provider_id'].':'.(string)$b['model_id']));
         $selected=null; $budgetError=null;
         foreach ($candidates as $candidate) { try { $this->assertBudget($userId,$projectId,(string)$candidate['provider_id'],$estimatedInputTokens,$estimatedOutputTokens,$at); $selected=$candidate; break; } catch (HubAiGovernanceException $error) { if (!str_starts_with($error->codeName,'AI_BUDGET_')) throw $error; $budgetError=$error; } }
@@ -138,6 +140,14 @@ final class HubAiGovernanceService
         return $rows;
     }
 
+    /** @param list<array<string,mixed>> $candidates @return list<array<string,mixed>> */
+    private function freeFirstCandidates(array $candidates,string $strategy): array
+    {
+        if ($strategy==='OWNER_OVERRIDE') return $candidates;
+        $free=array_values(array_filter($candidates,static fn(array $row):bool=>(int)($row['estimated_microunits']??PHP_INT_MAX)===0));
+        return $free!==[]?$free:$candidates;
+    }
+
     private function score(array $row,string $strategy): int
     {
         $attempts=(int)($row['attempts']??0); $successes=(int)($row['successes']??0); $reliability=$attempts>0?(int)round($successes*100/$attempts):70;
@@ -147,6 +157,7 @@ final class HubAiGovernanceService
 
     private function reason(array $row,string $strategy,array $preferred): string
     {
+        if ($strategy!=='OWNER_OVERRIDE' && (int)($row['estimated_microunits']??PHP_INT_MAX)===0) return 'ZERO_COST_ELIGIBLE';
         if (($row['attempts']??0)>0) return 'OUTCOME_EVIDENCE';
         if (($row['quality_evidence']??50)!==50) return 'QUALIFICATION_EVIDENCE';
         if ($preferred!==[]) return 'CURRENT_POLICY_COMPATIBILITY';
