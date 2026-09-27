@@ -25,7 +25,7 @@ echo json_encode([
 `;
   const result=JSON.parse(execFileSync('php',['-r',php],{cwd:ROOT,encoding:'utf8'}));
   assert.deepEqual(result.large.selected.map((item:any)=>item.id),['context.optimize','team.harness']);
-  assert.deepEqual(result.design.selected.map((item:any)=>item.id),['design.hallmark','design.reference']);
+  assert.deepEqual(result.design.selected.map((item:any)=>item.id),['design.antislop','design.hallmark','design.reference']);
   assert.deepEqual(result.plain.selected,[]);
   assert.deepEqual(result.attachment.selected.map((item:any)=>item.id),['context.optimize']);
   assert.equal(result.visualQa.status,'REVIEW_REQUIRED');
@@ -36,10 +36,13 @@ echo json_encode([
 
 test('worker advisory prompt never turns an external capability into execution authority', () => {
   const plan:WorkerCapabilityPlan={schemaVersion:1,router:'awh.external-capabilities.v1',selected:[
+    {id:'design.antislop',label:'Anti Slop Guard',mode:'APPROVED_SKILL_PACK',reason:'filter generic UI',requiredTool:null},
     {id:'context.optimize',label:'Context Optimizer',mode:'OPTIONAL_LOCAL_ADAPTER',reason:'large output',requiredTool:'tool.context-mode'},
     {id:'team.harness',label:'Team Review',mode:'OPTIONAL_LOCAL_ADAPTER',reason:'multi-perspective review',requiredTool:'tool.teamai'}
   ]};
-  const text=capabilityPlanInstruction(plan,['tool.context-mode']);
+  const text=capabilityPlanInstruction(plan,['tool.context-mode'],['antislop','antislop-ui']);
+  assert.match(text,/Anti Slop Guard.*APPROVED_SKILL_LOADED/s);
+  assert.match(text,/filter, not a style authority/i);
   assert.match(text,/Context Optimizer.*LOCAL_RUNTIME_DETECTED/s);
   assert.match(text,/Team Review.*NATIVE_FALLBACK/s);
   assert.match(text,/ADVISORY, NOT AUTHORITY/);

@@ -7,7 +7,7 @@ const CAPABILITY=/^[a-z][a-z0-9:._-]{0,63}$/;
 const TOOL=/^tool\.[a-z0-9][a-z0-9._-]{0,55}$/;
 const COMMAND=/^[a-z0-9][a-z0-9._-]{0,63}$/;
 
-export type ExternalIntegrationMode='OPTIONAL_LOCAL_ADAPTER'|'REFERENCE_SKILL'|'REFERENCE_CORPUS';
+export type ExternalIntegrationMode='OPTIONAL_LOCAL_ADAPTER'|'REFERENCE_SKILL'|'REFERENCE_CORPUS'|'APPROVED_SKILL_PACK';
 export interface ExternalCapabilityRecord {
   id:string; displayName:string; repository:string; revision:string; license:'MIT'|'Elastic-2.0';
   capability:string; integrationMode:ExternalIntegrationMode; command:string|null; workerTool:string|null;
@@ -15,6 +15,9 @@ export interface ExternalCapabilityRecord {
   authorityBoundary:'AWH_EXISTING_CONTROL_PLANE';
   dataPolicy:'NO_EXTERNAL_SOURCE_OF_TRUTH'|'REFERENCE_ONLY'|'EPHEMERAL_LOCAL_OPTIMIZATION_ONLY';
   purpose:string; rollback:string;
+  vendorRoot?:string; skillProfile?:'design'|'copy'|'code'; reviewState?:'APPROVED';
+  runtimeNetworkAllowed?:boolean; telemetryAllowed?:boolean; persistentInstallAllowed?:boolean;
+  externalDataTransferAllowed?:boolean; userDataAccess?:'TASK_CONTEXT_ONLY';
 }
 export interface ExternalCapabilityRegistry {
   schemaVersion:1; registryId:'awh.external-capabilities.v1'; controlPlaneAuthority:'AWH'; entries:ExternalCapabilityRecord[];
@@ -37,10 +40,15 @@ export function validateExternalCapabilityRegistry(value:unknown):ExternalCapabi
     if(!REPOSITORY.test(entry.repository)||!SHA.test(entry.revision)) throw new Error('External capability source pin is invalid');
     if(!['MIT','Elastic-2.0'].includes(entry.license)) throw new Error('External capability license is invalid');
     if(!CAPABILITY.test(entry.capability)||caps.has(entry.capability)) throw new Error('External capability is invalid or duplicated'); caps.add(entry.capability);
-    if(!['OPTIONAL_LOCAL_ADAPTER','REFERENCE_SKILL','REFERENCE_CORPUS'].includes(entry.integrationMode)) throw new Error('External integration mode is invalid');
+    if(!['OPTIONAL_LOCAL_ADAPTER','REFERENCE_SKILL','REFERENCE_CORPUS','APPROVED_SKILL_PACK'].includes(entry.integrationMode)) throw new Error('External integration mode is invalid');
     if(entry.integrationMode==='OPTIONAL_LOCAL_ADAPTER'){
       if(typeof entry.command!=='string'||!COMMAND.test(entry.command)||typeof entry.workerTool!=='string'||!TOOL.test(entry.workerTool)) throw new Error('Local adapter discovery contract is invalid');
     }else if(entry.command!==null||entry.workerTool!==null) throw new Error('Reference-only integration cannot expose executable tooling');
+    if(entry.integrationMode==='APPROVED_SKILL_PACK'){
+      if(typeof entry.vendorRoot!=='string'||!/^skills\/approved\/[a-z0-9][a-z0-9._-]{1,63}$/.test(entry.vendorRoot)) throw new Error('Approved skill vendor root is invalid');
+      if(!['design','copy','code'].includes(String(entry.skillProfile))||entry.reviewState!=='APPROVED') throw new Error('Approved skill review/profile is invalid');
+      if(entry.runtimeNetworkAllowed!==false||entry.telemetryAllowed!==false||entry.persistentInstallAllowed!==false||entry.externalDataTransferAllowed!==false||entry.userDataAccess!=='TASK_CONTEXT_ONLY') throw new Error('Approved skill runtime boundary is invalid');
+    }
     if(entry.enabledByDefault!==false) throw new Error('External capabilities must be opt-in');
     if(typeof entry.approvalRequired!=='boolean'||entry.hostedServiceAllowed!==false) throw new Error('External capability approval/hosting boundary is invalid');
     if(entry.authorityBoundary!=='AWH_EXISTING_CONTROL_PLANE') throw new Error('External capability cannot own a control plane');

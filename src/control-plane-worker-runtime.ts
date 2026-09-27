@@ -18,6 +18,7 @@ import { createVaultCandidateArchive } from './vault-transfer.js';
 import { composeWorkerHeartbeatCapabilities, discoverWorkerTools } from './worker-capability-discovery.js';
 import { exportOfficeFileToPdf } from './windows-office-export.js';
 import { execCommand } from './process.js';
+import { materializeApprovedSkillPlan, type MaterializedApprovedSkills } from './approved-skill-loader.js';
 
 const MUTATION_GOAL = /(?:\b(?:fix|edit|change|modify|write|render|publish|deploy|delete|remove)\b|แก้|เพิ่ม|ลบ|สร้าง|เรนเดอร์|เผยแพร่|deploy)/iu;
 
@@ -145,13 +146,16 @@ export function ownerWorkProfileInstruction(profile: import('./control-plane-wor
   ].join('\n');
 }
 
-export function capabilityPlanInstruction(plan: WorkerCapabilityPlan | null, workerCapabilities: readonly string[]): string {
+export function capabilityPlanInstruction(plan: WorkerCapabilityPlan | null, workerCapabilities: readonly string[], materializedSkills: readonly string[] = []): string {
   if (!plan || plan.selected.length === 0) return '';
   const lines = ['AWH AUTO CAPABILITY PLAN — ADVISORY, NOT AUTHORITY'];
   for (const item of plan.selected) {
-    const availability = item.requiredTool === null ? 'REFERENCE' : workerCapabilities.includes(item.requiredTool) ? 'LOCAL_RUNTIME_DETECTED' : 'NATIVE_FALLBACK';
+    const availability = item.mode === 'APPROVED_SKILL_PACK' ? (materializedSkills.length > 0 ? 'APPROVED_SKILL_LOADED' : 'APPROVED_SKILL_PENDING') : item.requiredTool === null ? 'REFERENCE' : workerCapabilities.includes(item.requiredTool) ? 'LOCAL_RUNTIME_DETECTED' : 'NATIVE_FALLBACK';
     lines.push(`- ${item.label} [${item.id}] ${availability}: ${item.reason}`);
     if (item.id === 'context.optimize') lines.push('  A local Context Mode runtime may be detected, but use it only when the current Codex/plugin tool surface explicitly exposes the adapter. Never guess opaque CLI flags. Its cache is temporary optimization; current Vault source and raw evidence remain authoritative. Otherwise continue with bounded native context without retry loops.');
+    if (item.id === 'design.antislop') lines.push('  Use the AWH-approved Anti Slop design profile as a filter, not a style authority. KRUART DESIGN.md and the product overlay win. Do not run its installer/wizard, fetch updates, enable network, or persist the skill.');
+    if (item.id === 'copy.antislop') lines.push('  Use the AWH-approved Anti Slop copy profile to remove generic AI-writing patterns while preserving product voice, Thai language quality, and factual source authority.');
+    if (item.id === 'code.antislop') lines.push('  Use the AWH-approved Anti Slop code-comment profile only for comment hygiene. It must not change executable logic or control flow.');
     if (item.id === 'design.hallmark') lines.push('  Apply a Hallmark-style design critique: hierarchy, spacing, typography, contrast, responsive behavior, clutter, excessive badges/cards/gradients, and generic AI-template appearance. Never claim visual PASS from source inspection alone.');
     if (item.id === 'design.reference') lines.push('  Use design-system and DESIGN.md patterns as reference only. KRUART Golden UI, existing product identity, Thai typography, accessibility, and current validated components override external recipes.');
     if (item.id === 'team.harness') lines.push('  Review architecture, security, UX, runtime/deployment and recovery perspectives inside this one AWH execution. Do not create another queue, login, memory, database, approval system or control plane.');
@@ -562,17 +566,19 @@ export class ControlPlaneWorkerRuntime {
       await this.client.deferCentralExecution(execution.executionId, 'CODEX_UNAVAILABLE').catch(() => undefined);
       return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason: 'CODEX_UNAVAILABLE' };
     }
-    const root = join(this.options.dataDir, 'central-task-workspaces'); let workspace: string | null = null; let archive: string | null = null;
+    const root = join(this.options.dataDir, 'central-task-workspaces'); let workspace: string | null = null; let archive: string | null = null; let approvedSkills: MaterializedApprovedSkills | null = null;
     const heartbeat = setInterval(() => { void this.client.heartbeat(capabilities, 'WORKING').catch(() => undefined); }, 60_000); heartbeat.unref?.();
     try {
       const materialized = await this.client.materializeCentralExecutionWorkspace(execution.executionId, root); workspace = materialized.workspace;
       if (materialized.taskId !== task.taskId || materialized.projectId !== task.projectId || materialized.vaultRevisionId !== execution.vaultRevisionId) throw new Error('CENTRAL_REVISION_MISMATCH');
       await this.client.update(task.taskId, 'RUNNING', 20, 'Codex is working in an isolated AWH Vault workspace');
+      approvedSkills = await materializeApprovedSkillPlan(materialized.capabilityPlan, workspace);
       const workProfile = ownerWorkProfileInstruction(materialized.workProfile);
-      const advisory = capabilityPlanInstruction(materialized.capabilityPlan, capabilities);
+      const advisory = capabilityPlanInstruction(materialized.capabilityPlan, capabilities, approvedSkills.skillNames);
       const instruction = [materialized.ownerProtocol, workProfile, advisory, 'CURRENT OWNER GOAL', task.goal].filter((value) => value.trim() !== '').join('\n\n');
       const codex = await runCodexGoal(workspace, instruction, 'workspace-write');
       if (codex.code !== 0) throw new Error('CODEX_EXECUTION_FAILED');
+      await approvedSkills.cleanup(); approvedSkills = null;
       await this.client.update(task.taskId, 'QA', 70, 'AWH is verifying the candidate workspace before any promotion');
       archive = join(root, `${execution.executionId}.candidate.zip`); await createVaultCandidateArchive(workspace, archive);
       const result = await this.client.uploadCentralExecutionCandidate(execution.executionId, archive);
@@ -584,7 +590,7 @@ export class ControlPlaneWorkerRuntime {
       const code = /CODEX|CENTRAL_REVISION_MISMATCH/.test(reason) ? (reason.includes('MISMATCH') ? 'CENTRAL_REVISION_MISMATCH' : 'CODEX_EXECUTION_FAILED') : 'CENTRAL_WORKSPACE_FAILED';
       await this.client.deferCentralExecution(execution.executionId, code).catch(() => undefined);
       return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason: code };
-    } finally { clearInterval(heartbeat); if (archive !== null) await rm(archive, { force: true }).catch(() => undefined); if (workspace !== null) await rm(workspace, { recursive: true, force: true }).catch(() => undefined); }
+    } finally { clearInterval(heartbeat); if (approvedSkills !== null) await approvedSkills.cleanup().catch(() => undefined); if (archive !== null) await rm(archive, { force: true }).catch(() => undefined); if (workspace !== null) await rm(workspace, { recursive: true, force: true }).catch(() => undefined); }
   }
 
   private async safeUpdate(task: WorkerTask, state: 'WAITING_FOR_WORKER' | 'WAITING_FOR_APPROVAL' | 'FAILED', progress: number, message: string, result: string | null): Promise<void> {

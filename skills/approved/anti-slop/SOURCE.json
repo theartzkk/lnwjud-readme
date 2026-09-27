@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "packId": "awh.approved.anti-slop",
+  "approvalState": "APPROVED",
+  "source": {
+    "repository": "miqdadbadjuber/anti-slop",
+    "revision": "a56a8a78229516238375111a799001a5f24953cf",
+    "version": "3.2.18",
+    "license": "MIT"
+  },
+  "authority": {
+    "controlPlane": "AWH",
+    "designAuthority": "KRUART Golden UI / design/DESIGN.md",
+    "role": "FILTER_NOT_STYLE_AUTHORITY"
+  },
+  "runtimePolicy": {
+    "networkAllowed": false,
+    "telemetryAllowed": false,
+    "autoUpdateAllowed": false,
+    "persistentInstallAllowed": false,
+    "scriptAutoExecutionAllowed": false,
+    "externalDataTransferAllowed": false,
+    "materialization": "EPHEMERAL_CODEX_WORKSPACE_ONLY",
+    "cleanupBeforeCandidateArchive": true
+  },
+  "profiles": {
+    "design": [
+      "antislop",
+      "antislop-ui",
+      "antislop-human",
+      "antislop-layoutmobile"
+    ],
+    "copy": [
+      "antislop",
+      "antislop-copywriting"
+    ],
+    "code": [
+      "antislop",
+      "antislop-code"
+    ]
+  },
+  "upstreamFiles": [
+    {
+      "localPath": "antislop/antislop.md",
+      "sourcePath": "skills/antislop/SKILL.md",
+      "gitBlobSha": "08fbc7bd413399349dae23c04eb0c57645fc52d1"
+    },
+    {
+      "localPath": "antislop/VERSION",
+      "sourcePath": "skills/antislop/VERSION",
+      "gitBlobSha": "f05489d3852182a15d855a65c7a4c024fce327ca"
+    },
+    {
+      "localPath": "antislop-ui/SKILL.md",
+      "sourcePath": "skills/antislop-ui/SKILL.md",
+      "gitBlobSha": "b263e8a4df7456d23183a183710c7c71ad393ee0"
+    },
+    {
+      "localPath": "antislop-human/SKILL.md",
+      "sourcePath": "skills/antislop-human/SKILL.md",
+      "gitBlobSha": "028795128b9ddb3cdf9ff44373ddd553ed6596a0"
+    },
+    {
+      "localPath": "antislop-human/contrast-check.py",
+      "sourcePath": "skills/antislop-human/contrast-check.py",
+      "gitBlobSha": "4c936939d47474e9e5e0c6888f7552fef8891e0b"
+    },
+    {
+      "localPath": "antislop-layoutmobile/SKILL.md",
+      "sourcePath": "skills/antislop-layoutmobile/SKILL.md",
+      "gitBlobSha": "6aeaaaf2ab24a14a0faab0a787e46a745fff5c95"
+    },
+    {
+      "localPath": "antislop-copywriting/SKILL.md",
+      "sourcePath": "skills/antislop-copywriting/SKILL.md",
+      "gitBlobSha": "9020bba21099e2dbbc64f6e40d481e4e82e5cd06"
+    },
+    {
+      "localPath": "antislop-code/SKILL.md",
+      "sourcePath": "skills/antislop-code/SKILL.md",
+      "gitBlobSha": "3d5efdbcc7b491f2c22578e1b8d1199f98d94b9a"
+    }
+  ],
+  "approvedFiles": [
+    {
+      "localPath": "antislop/SKILL.md",
+      "gitBlobSha": "b90d0a0f43400217395d219ec321f343f7f37a00"
+    }
+  ]
+}

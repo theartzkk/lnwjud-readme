@@ -4168,12 +4168,17 @@ final class HubControlPlaneService
         };
         $large = $hasAttachments || preg_match('/(?:\b(?:log|logs|diff|tests?|audit|repository|repo|research|analysis|review|overnight|large|full|final|closure)\b|วิเคราะห์|ตรวจสอบ|ละเอียด|ทั้งระบบ|ทั้งหมด|ทั้งโปรเจกต์|ข้ามคืน|รอบสุดท้าย|ปิดงาน)/iu', $value) === 1;
         $design = preg_match('/(?:\b(?:ui|ux|design|visual|layout|responsive|mobile|css|html|banner|theme|typography)\b|ออกแบบ|ดีไซน์|หน้าตา|หน้าเว็บ|ธีม|สวย|สี|ตัวหนังสือ|ฟอนต์|มือถือ|โมบาย|แบนเนอร์)/iu', $value) === 1;
+        $copy = preg_match('/(?:\b(?:copy|copywriting|microcopy|headline|caption|wording|tone|voice)\b|ข้อความ|คำโปรย|แคปชัน|แคปชั่น|สำนวน|ถ้อยคำ)/iu', $value) === 1;
+        $comments = preg_match('/(?:\b(?:code comments?|jsdoc|docblocks?|comment hygiene)\b|คอมเมนต์โค้ด|คำอธิบายโค้ด)/iu', $value) === 1;
         $team = preg_match('/(?:\b(?:audit|security|architecture|deploy|deployment|recovery|release|migration|final|closure|ecosystem|system-wide)\b|ทั้งระบบ|ทุกระบบ|สถาปัตยกรรม|ความปลอดภัย|ดีพลอย|กู้คืน|ย้ายระบบ|ปิดงาน|อีโคซิสเต็ม)/iu', $value) === 1;
         if ($large) $add('context.optimize','Context Optimizer','OPTIONAL_LOCAL_ADAPTER','ลดบริบทซ้ำจาก log/diff/test/research ขนาดใหญ่โดยไม่เปลี่ยน Source of Truth','tool.context-mode');
         if ($design) {
+            $add('design.antislop','Anti Slop Guard','APPROVED_SKILL_PACK','กรอง UI แบบ generic AI โดยไม่แทนที่ KRUART Golden UI');
             $add('design.hallmark','Design Critic','REFERENCE_SKILL','ตรวจ hierarchy, spacing, typography, responsive และความเป็น generic AI ก่อน release');
             $add('design.reference','Design Reference','REFERENCE_CORPUS','ใช้ pattern และ DESIGN.md เป็น reference โดย KRUART Golden UI ยังเป็น authority');
         }
+        if ($copy) $add('copy.antislop','Anti Slop Copy Guard','APPROVED_SKILL_PACK','กรองสำนวน AI สำเร็จรูปโดยคง product voice และข้อเท็จจริง');
+        if ($comments) $add('code.antislop','Anti Slop Code Guard','APPROVED_SKILL_PACK','ลดคอมเมนต์โค้ดที่ฟุ่มเฟือยโดยไม่เปลี่ยน logic');
         if ($team) $add('team.harness','Team Review','OPTIONAL_LOCAL_ADAPTER','ตรวจหลายมุมมองภายใน Task/Execution เดิม ไม่สร้างทีม/คิว/control plane ชุดใหม่','tool.teamai');
         return ['schemaVersion'=>1,'router'=>'awh.external-capabilities.v1','selected'=>$selected];
     }
@@ -4226,8 +4231,8 @@ final class HubControlPlaneService
         try { $checkpoint = json_decode($checkpointJson, true, 20, JSON_THROW_ON_ERROR); } catch (Throwable) { return null; }
         $plan = is_array($checkpoint) && is_array($checkpoint['capabilityPlan'] ?? null) ? $checkpoint['capabilityPlan'] : null;
         if (!is_array($plan) || ($plan['schemaVersion'] ?? null) !== 1 || ($plan['router'] ?? null) !== 'awh.external-capabilities.v1' || !is_array($plan['selected'] ?? null)) return null;
-        $allowed = ['context.optimize','design.hallmark','design.reference','team.harness']; $out = [];
-        foreach (array_slice($plan['selected'],0,4) as $item) {
+        $allowed = ['context.optimize','design.antislop','copy.antislop','code.antislop','design.hallmark','design.reference','team.harness']; $out = [];
+        foreach (array_slice($plan['selected'],0,8) as $item) {
             if (!is_array($item) || !in_array($item['id'] ?? null,$allowed,true) || !is_string($item['label'] ?? null) || !is_string($item['mode'] ?? null) || !is_string($item['reason'] ?? null)) continue;
             $tool = $item['requiredTool'] ?? null; if ($tool !== null && (!is_string($tool) || preg_match('/^tool\.[a-z0-9][a-z0-9._-]{0,55}$/',$tool)!==1)) $tool = null;
             $out[] = ['id'=>(string)$item['id'],'label'=>substr((string)$item['label'],0,80),'mode'=>substr((string)$item['mode'],0,40),'reason'=>substr((string)$item['reason'],0,220),'requiredTool'=>$tool];
