@@ -551,7 +551,8 @@ test('Update Center self-recovers from stale PWA module caches instead of showin
   assert.match(boot,/event\.persisted/);
   assert.match(script,/window\.__AWH_UPDATE_CENTER_BOOT_OK__=true/);
   assert.match(script,/sessionStorage\.removeItem\('awh-update-center-boot-__AWH_WEB_RELEASE_ID__'\)/);
-  assert.match(worker,/const UPDATE_CENTER_PATHS = new Set\(\['\/updates\.html','\/updates\.js','\/updates\.css','\/control-plane-adapter\.js'\]\)/);
+  assert.match(worker,/const UPDATE_CENTER_PATHS = new Set\(\['\/updates\.html','\/updates\.js','\/updates\.css','\/update-center-boot\.js','\/control-plane-adapter\.js'\]\)/);
+  assert.match(worker,/\.\/update-center-boot\.js\?release=__AWH_WEB_RELEASE_ID__/);
   assert.match(worker,/UPDATE_CENTER_PATHS\.has\(url\.pathname\)/);
   assert.match(worker,/fetch\(request,\{cache:'no-store'\}\)/);
   assert.match(worker,/self\.clients\.matchAll\(\{type:'window',includeUncontrolled:true\}\)/);
