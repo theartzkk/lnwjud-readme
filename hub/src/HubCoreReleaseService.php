@@ -457,9 +457,12 @@ final class HubCoreReleaseService
         $legacySorted=$legacy;$legacyNotesSorted=$legacyNotes;$currentSorted=$current;
         sort($legacySorted);sort($legacyNotesSorted);sort($currentSorted);
         $mode=(string)($v['releaseMode']??'');
-        $track=is_string($v['releaseTrack']??null)?strtolower((string)$v['releaseTrack']):($mode==='AWH_CORE'?'awh':'');
+        $track=is_string($v['releaseTrack']??null)
+            ? strtolower((string)$v['releaseTrack'])
+            : match($mode){'AWH_CORE'=>'awh','PLATFORM_HARDENING'=>'vps-platform',default=>''};
         $mapping=($mode==='AWH_CORE'&&$track==='awh')||($mode==='PLATFORM_HARDENING'&&$track==='vps-platform');
-        $keysOk=$actual===$currentSorted||(($actual===$legacySorted||$actual===$legacyNotesSorted)&&$mode==='AWH_CORE');
+        $legacyMode=in_array($mode,['AWH_CORE','PLATFORM_HARDENING'],true);
+        $keysOk=$actual===$currentSorted||(($actual===$legacySorted||$actual===$legacyNotesSorted)&&$legacyMode);
         $notesSha=$v['releaseNotesSha256']??null;
         $notesOk=$actual!==$currentSorted||(is_string($notesSha)&&preg_match('/^[0-9a-f]{64}$/',$notesSha)===1);
         $ok=$keysOk&&$notesOk&&$mapping&&($v['schemaVersion']??null)===1&&($v['mode']??null)==='CORE_RELEASE'&&($v['transport']??null)==='LOCAL'&&is_bool($v['cleanupTopology']??null)&&is_string($v['releaseSha']??null)&&preg_match('/^[0-9a-f]{40}$/',$v['releaseSha'])===1;

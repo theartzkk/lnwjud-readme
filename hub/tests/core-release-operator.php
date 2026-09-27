@@ -54,6 +54,14 @@ try{
     $auth=HubOwnerAuthService::openExisting($db);$auth->provisionInitial('art',$password,$now);
     $session=$auth->login('art',$password,true,'core-release-browser',$now);
     $service=HubCoreReleaseService::fromPdo($pdo);
+    $legacyPlatformCheckpoint=HubCoreReleaseService::checkpoint(json_encode([
+        'schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>str_repeat('a',40),
+        'releaseMode'=>'PLATFORM_HARDENING','cleanupTopology'=>false,'transport'=>'LOCAL',
+        'releaseNotesSha256'=>str_repeat('b',64),
+    ],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR));
+    cr_assert(($legacyPlatformCheckpoint['releaseTrack']??null)==='vps-platform','legacy approved PLATFORM_HARDENING checkpoint is normalized to VPS Platform track');
+    $operatorSource=(string)file_get_contents($base.'/src/HubCoreReleaseOperator.php');
+    cr_assert(str_contains($operatorSource,"in_array(\$checkpointTrack,['awh','vps-platform'],true)"),'legacy approval scope remains valid for exact AWH or VPS Platform parent only');
     $promoteTask='a13b45c0-23e1-408d-ae0f-ac5eca7f6900';$promoteExecution='b13b45c0-23e1-408d-ae0f-ac5eca7f6900';$promoteBase=str_repeat('b',40);$promoteTarget=str_repeat('c',40);$sha=$promoteTarget;
     $canonicalGit=$root.'/canonical.git';mkdir($canonicalGit.'/refs/heads',0700,true);file_put_contents($canonicalGit.'/refs/heads/main',$promoteTarget."\n");putenv('AWH_CORE_CANONICAL_GIT='.$canonicalGit);
     $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'Promote canonical AWH main','COMPLETED',NULL,NULL,100,'Guarded operator mutation completed',NULL,'core-release-source-promotion-test',NULL,:at,:at,NULL)")->execute(['task'=>$promoteTask,'user'=>$owner,'project'=>$project,'at'=>$now]);

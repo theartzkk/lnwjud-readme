@@ -195,8 +195,10 @@ final class HubCoreReleaseOperator
         $legacy=['cleanupTopology','projectId','releaseMode','releaseSha','risk','schemaVersion','taskId','transport'];
         $legacyNotes=['cleanupTopology','projectId','releaseMode','releaseNotesSha256','releaseSha','risk','schemaVersion','taskId','transport'];
         $actual=is_array($scope)?array_keys($scope):[];sort($actual);sort($current);sort($legacy);sort($legacyNotes);
-        $shapeOk=$actual===$current||(($actual===$legacy||$actual===$legacyNotes)&&($checkpoint['releaseTrack']??'')==='awh');
-        $track=is_string($scope['releaseTrack']??null)?strtolower((string)$scope['releaseTrack']):(string)($checkpoint['releaseTrack']??'');
+        $checkpointTrack=(string)($checkpoint['releaseTrack']??'');
+        $legacyTrack=in_array($checkpointTrack,['awh','vps-platform'],true);
+        $shapeOk=$actual===$current||(($actual===$legacy||$actual===$legacyNotes)&&$legacyTrack);
+        $track=is_string($scope['releaseTrack']??null)?strtolower((string)$scope['releaseTrack']):$checkpointTrack;
         $notesOk=!isset($checkpoint['releaseNotesSha256'])||hash_equals((string)$checkpoint['releaseNotesSha256'],(string)($scope['releaseNotesSha256']??$checkpoint['releaseNotesSha256']));
         $valid=is_array($scope)&&$shapeOk&&$notesOk&&($scope['schemaVersion']??null)===1&&hash_equals((string)($scope['taskId']??''),$taskId)&&hash_equals((string)($scope['projectId']??''),HubCoreReleaseService::PROJECT_ID)&&hash_equals((string)($scope['releaseSha']??''),(string)$checkpoint['releaseSha'])&&hash_equals((string)($scope['releaseMode']??''),(string)($checkpoint['releaseMode']??''))&&hash_equals($track,(string)($checkpoint['releaseTrack']??''))&&($scope['transport']??null)==='LOCAL'&&($scope['risk']??null)==='CRITICAL'&&($scope['cleanupTopology']??null)===($checkpoint['cleanupTopology']??null);
         if(!$valid)throw new HubCoreReleaseOperatorException('Approval scope does not match release checkpoint','CORE_RELEASE_APPROVAL_INVALID');
