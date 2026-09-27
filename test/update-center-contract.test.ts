@@ -81,14 +81,13 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(script,/รายละเอียดทางเทคนิค/);
   assert.match(page,/Fail closed/);
   assert.match(page,/Rollback พร้อม/);
-  assert.match(service,/\$key === 'bay-hub'/);
-  assert.match(service,/\['LEGACY_DEPLOY','UNREGISTERED'\]/);
-  assert.doesNotMatch(service,/\['LEGACY_DEPLOY','UNREGISTERED','AGENT_MANAGED'\]/);
-  assert.match(service,/visibility.*ADVANCED/s);
-  assert.match(service,/visibility.*PRIMARY/s);
+  assert.doesNotMatch(service,/\$key === 'bay-hub'/);
+  assert.match(service,/HubUpdateTargetRegistry::releaseVisibility\(\$track\)/);
+  assert.match(service,/\$item\['visibility'\]=\$track===null\?'ADVANCED':HubUpdateTargetRegistry::releaseVisibility\(\$track\)/);
+  assert.match(script,/function itemVisibility\(item\)/);
   assert.match(script,/filterMode==='ADVANCED'/);
   assert.match(script,/visibility==='ADVANCED'/);
-  assert.match(script,/visibility\|\|'PRIMARY'/);
+  assert.match(script,/item\?\.visibility==='PRIMARY'\?'PRIMARY':'ADVANCED'/);
   assert.match(page,/data-filter="ADVANCED"/);
   assert.match(script,/\['vps-platform','awh-core','awh-agent'\]/);
 });
@@ -135,6 +134,10 @@ test('canonical update target registry prevents portfolio systems from disappear
   assert.match(operator,/HubUpdateTargetRegistry::repositories/);
   assert.match(service,/adapter'=>'UNREGISTERED'/);
   assert.match(service,/canonical repository.*Project\/Vault/);
+  assert.match(registry,/'bay-hub'[\s\S]*'visibility'=>'ADVANCED'/);
+  assert.match(registry,/'awh-agent'[\s\S]*'visibility'=>'PRIMARY'/);
+  assert.match(registry,/function releaseVisibility/);
+  assert.match(service,/\$item\['visibility'\]=\$track===null\?'ADVANCED':HubUpdateTargetRegistry::releaseVisibility\(\$track\)/);
 });
 
 test('BAY monorepo surfaces independent BAY Core, LINE OA and Cooperative release tracks', async()=>{
@@ -181,6 +184,20 @@ test('Update Center registry is packaged into every control-plane release', asyn
   ]);
   assert.match(local,/hub\/src\/HubUpdateTargetRegistry\.php/);
   assert.match(remote,/RELEASE\/hub\/src\/HubUpdateTargetRegistry\.php/);
+});
+
+test('Update Center keeps compatibility/internal targets out of the owner summary by default', async()=>{
+  const [html,script,service]=await Promise.all([
+    readFile(join(ROOT,'web/updates.html'),'utf8'),
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),
+  ]);
+  assert.match(html,/data-filter="ADVANCED"[^>]*>ขั้นสูง</);
+  assert.match(script,/function itemVisibility\(item\)/);
+  assert.match(script,/filterMode==='ADVANCED'/);
+  assert.match(script,/for\(const item of primaryItems\(\)\)/);
+  assert.match(script,/primaryItems\(\)\.some\(\(item\)=>\['UPDATING','WAITING_FOR_APPROVAL'\]/);
+  assert.match(service,/\(\$item\['visibility'\] \?\? 'ADVANCED'\) !== 'PRIMARY'/);
 });
 
 test('Update Center mobile surface stays light and legacy baselines remain fail-closed', async()=>{

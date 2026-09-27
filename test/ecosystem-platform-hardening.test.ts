@@ -35,7 +35,7 @@ test('ecosystem release contract covers product families and independent release
     assert.ok(row.project.length > 0);
   }
 
-  const expectedTracks=['awh','awh-agent','awh-line-gateway','bay-assessment','bay-computer-lab','bay-cooperative','bay-excuse-x','bay-learnlab','line-oa','school-website','vps-platform'];
+  const expectedTracks=['awh','awh-agent','awh-line-gateway','bay-assessment','bay-computer-lab','bay-cooperative','bay-excuse-x','bay-hub','bay-learnlab','line-oa','school-website','vps-platform'];
   assert.deepEqual(Object.keys(c.releaseTracks).sort(), expectedTracks);
   for(const key of expectedTracks){
     const track=c.releaseTracks[key];
@@ -47,7 +47,10 @@ test('ecosystem release contract covers product families and independent release
     assert.ok(typeof track.dataOwner==='string'&&track.dataOwner.length>0);
     assert.ok(typeof track.permissionScope==='string'&&track.permissionScope.length>0);
     assert.ok(typeof track.observabilityScope==='string'&&track.observabilityScope.length>0);
+    assert.ok(['PRIMARY','ADVANCED'].includes(track.visibility));
   }
+  assert.equal(c.releaseTracks['bay-hub'].visibility,'ADVANCED');
+  for(const key of expectedTracks.filter((key)=>key!=='bay-hub')) assert.equal(c.releaseTracks[key].visibility,'PRIMARY');
   assert.notEqual(c.releaseTracks['vps-platform'].productionRef,c.releaseTracks.awh.productionRef);
   assert.equal(c.releaseTracks['awh-line-gateway'].sourceAuthority,'AWH_VAULT');
   assert.equal(c.releaseTracks['awh-line-gateway'].repository,null);

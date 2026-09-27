@@ -510,6 +510,30 @@ final class HubControlPlaneService
             ], $workers),
         ];
 
+        $releaseTrackByProjectId=[];
+        foreach($projects as $project){
+            $projectId=is_string($project['projectId']??null)?(string)$project['projectId']:'';
+            $projectName=is_string($project['name']??null)?(string)$project['name']:'';
+            $registry=$projectName!==''?HubUpdateTargetRegistry::byProjectName($projectName):null;
+            if($projectId!==''&&is_array($registry)&&is_string($registry['releaseTrack']??null))
+                $releaseTrackByProjectId[$projectId]=(string)$registry['releaseTrack'];
+        }
+        foreach($items as &$item){
+            $track=null;
+            foreach(['sourceReleaseTrack','releaseTrack','key'] as $field){
+                $candidate=is_string($item[$field]??null)?strtolower(trim((string)$item[$field])):'';
+                if($candidate!==''&&HubUpdateTargetRegistry::byReleaseTrack($candidate)!==null){$track=$candidate;break;}
+            }
+            if($track===null){
+                $projectId=is_string($item['projectId']??null)?(string)$item['projectId']:'';
+                if($projectId!==''&&is_string($releaseTrackByProjectId[$projectId]??null))
+                    $track=$releaseTrackByProjectId[$projectId];
+            }
+            $item['visibility']=$track===null?'ADVANCED':HubUpdateTargetRegistry::releaseVisibility($track);
+            $item['resolvedReleaseTrack']=$track;
+        }
+        unset($item);
+
         $releaseDetailsByProject=$this->latestReleaseDetailsByProject();
         $releaseRequiredProjects=[];
         foreach($projects as $project){
@@ -540,20 +564,9 @@ final class HubControlPlaneService
         }
         unset($item);
 
-        foreach ($items as &$item) {
-            $key = strtolower((string)($item['key'] ?? ''));
-            $adapter = strtoupper((string)($item['adapter'] ?? ''));
-            $item['visibility'] = (
-                $key === 'bay-hub'
-                || str_starts_with($key, 'registry-')
-                || in_array($adapter, ['LEGACY_DEPLOY','UNREGISTERED'], true)
-            ) ? 'ADVANCED' : 'PRIMARY';
-        }
-        unset($item);
-
         $summary = ['current'=>0,'updateAvailable'=>0,'updating'=>0,'blocked'=>0,'attention'=>0];
         foreach ($items as $item) {
-            if (($item['visibility'] ?? 'PRIMARY') !== 'PRIMARY') continue;
+            if (($item['visibility'] ?? 'ADVANCED') !== 'PRIMARY') continue;
             $state = (string) $item['state'];
             if ($state === 'CURRENT') $summary['current']++;
             elseif ($state === 'UPDATE_AVAILABLE') $summary['updateAvailable']++;

@@ -169,10 +169,16 @@ function renderReleaseInfrastructure(){
   chip.textContent=storageBlocked?'ยังไม่พร้อมปล่อยรุ่น':(!telemetryReady?'กำลังยืนยัน Infrastructure':(!runnerOnline?'Production พร้อม · Runner ยังไม่เชื่อม':storageWarn?'พร้อมแบบมีคำเตือน':'พร้อม'));
 }
 
+function itemVisibility(item){
+  return item?.visibility==='PRIMARY'?'PRIMARY':'ADVANCED';
+}
+function primaryItems(){
+  return (center?.items||[]).filter((item)=>itemVisibility(item)==='PRIMARY');
+}
+
 function summary(){
   const counts={current:0,update:0,progress:0,attention:0};
-  for(const item of center?.items||[]){
-    if((item.visibility||'PRIMARY')!=='PRIMARY')continue;
+  for(const item of primaryItems()){
     if(['CURRENT','INTERNAL_MANAGED'].includes(item.state))counts.current++;
     else if(item.state==='UPDATE_AVAILABLE')counts.update++;
     else if(['WAITING_FOR_APPROVAL','UPDATING'].includes(item.state))counts.progress++;
@@ -338,9 +344,10 @@ function renderTargetHistory(item,host){
 }
 
 function itemVisible(item){
-  const visibility=item.visibility||'PRIMARY';
-  if(filterMode==='ADVANCED')return visibility==='ADVANCED';
-  if(visibility==='ADVANCED')return false;
+  const visibility=itemVisibility(item);
+  if(filterMode==='ADVANCED'){
+    if(visibility!=='ADVANCED')return false;
+  }else if(visibility==='ADVANCED')return false;
   if(attentionOnly&&!itemNeedsAttention(item))return false;
   if(searchTerm){
     const hay=[item.name,item.kind,item.adapter,item.reason].filter(Boolean).join(' ').toLocaleLowerCase('th');
@@ -474,7 +481,7 @@ function relativeLiveTime(value){
 }
 
 function hasActiveUpdate(){
-  return Boolean(localOperation)||(center?.items||[]).some((item)=>(item.visibility||'PRIMARY')==='PRIMARY'&&['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state));
+  return Boolean(localOperation)||primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state));
 }
 
 function stopLiveStream(){
@@ -487,7 +494,7 @@ function ensureLiveStream(){
   stopLiveUpdates=subscribeUpdateCenterLive((snapshot)=>{
     liveConnected=true;liveUpdatedAt=Date.now();center=snapshot;
     $('updates-freshness').textContent='สด · '+new Date(snapshot.generatedAt).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-    if(!(center?.items||[]).some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)))localOperation=null;
+    if(!primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)))localOperation=null;
     render();
     scheduleRefresh();
   },()=>{
@@ -793,7 +800,7 @@ async function refreshAll(){
 
 function scheduleRefresh(){
   clearTimeout(refreshTimer);
-  const active=hasActiveUpdate()||(center?.items||[]).some((item)=>(item.visibility||'PRIMARY')==='PRIMARY'&&item.state==='REMOTE_CHECK_REQUIRED');
+  const active=hasActiveUpdate()||primaryItems().some((item)=>item.state==='REMOTE_CHECK_REQUIRED');
   syncLiveStream();
   const liveFresh=liveConnected&&(Date.now()-liveUpdatedAt)<4000;
   refreshTimer=setTimeout(()=>{if(!document.hidden)void refresh();},active?(liveFresh?5000:1000):30000);
@@ -807,7 +814,7 @@ async function refresh(){
     $('updates-freshness').textContent='ตรวจล่าสุด '+new Date(center.generatedAt).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
     render();
     await Promise.allSettled([refreshBay(),refreshAgent()]);
-    if(!(center?.items||[]).some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)))localOperation=null;
+    if(!primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)))localOperation=null;
   }catch(error){
     message(friendly(error));$('updates-overall').textContent='ตรวจไม่สำเร็จ';$('updates-overall').dataset.tone='bad';
   }finally{

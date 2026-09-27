@@ -149,48 +149,64 @@
   ],
   "releaseTracks": [
     {
+      "id": "vps-platform",
+      "ownerProductId": "awh",
+      "visibility": "PRIMARY"
+    },
+    {
       "id": "awh",
-      "ownerProductId": "awh"
+      "ownerProductId": "awh",
+      "visibility": "PRIMARY"
     },
     {
       "id": "awh-agent",
-      "ownerProductId": "awh-agent"
+      "ownerProductId": "awh-agent",
+      "visibility": "PRIMARY"
     },
     {
       "id": "awh-line-gateway",
-      "ownerProductId": "awh-line-gateway"
-    },
-    {
-      "id": "bay-assessment",
-      "ownerProductId": "bay-assessment"
-    },
-    {
-      "id": "bay-computer-lab",
-      "ownerProductId": "bay-computer-lab"
-    },
-    {
-      "id": "bay-cooperative",
-      "ownerProductId": "cooperative"
+      "ownerProductId": "awh-line-gateway",
+      "visibility": "PRIMARY"
     },
     {
       "id": "bay-excuse-x",
-      "ownerProductId": "bay-excuse-x"
-    },
-    {
-      "id": "bay-learnlab",
-      "ownerProductId": "bay-learnlab"
+      "ownerProductId": "bay-excuse-x",
+      "visibility": "PRIMARY"
     },
     {
       "id": "line-oa",
-      "ownerProductId": "bay-line-oa"
+      "ownerProductId": "bay-line-oa",
+      "visibility": "PRIMARY"
+    },
+    {
+      "id": "bay-cooperative",
+      "ownerProductId": "cooperative",
+      "visibility": "PRIMARY"
+    },
+    {
+      "id": "bay-assessment",
+      "ownerProductId": "bay-assessment",
+      "visibility": "PRIMARY"
+    },
+    {
+      "id": "bay-learnlab",
+      "ownerProductId": "bay-learnlab",
+      "visibility": "PRIMARY"
+    },
+    {
+      "id": "bay-computer-lab",
+      "ownerProductId": "bay-computer-lab",
+      "visibility": "PRIMARY"
     },
     {
       "id": "school-website",
-      "ownerProductId": "school-website"
+      "ownerProductId": "school-website",
+      "visibility": "PRIMARY"
     },
     {
-      "id": "vps-platform",
-      "ownerProductId": "awh"
+      "id": "bay-hub",
+      "ownerProductId": "bay-hub",
+      "visibility": "ADVANCED"
     }
   ],
   "interaction": {
@@ -219,5 +235,18 @@
     "rejectMissingInteractionFeedback": true,
     "rejectBottomNavigationOverlap": true,
     "requireVisualVerificationForVisualChanges": true
+  },
+  "releaseGroups": {
+    "line-oa": {
+      "targets": [
+        "awh-line-gateway",
+        "line-oa"
+      ],
+      "approvalMode": "SINGLE_OWNER_STEP_UP",
+      "orchestration": "SEQUENTIAL_VERIFY_EACH",
+      "failurePolicy": "STOP_ON_TARGET_FAILURE",
+      "historyScope": "PER_TARGET",
+      "rollbackScope": "PER_TARGET"
+    }
   }
 }

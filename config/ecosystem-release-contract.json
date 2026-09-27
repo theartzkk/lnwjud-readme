@@ -31,7 +31,8 @@
       "independentVersion": true,
       "independentHistory": true,
       "independentRollback": true,
-      "ownerApprovalRequired": true
+      "ownerApprovalRequired": true,
+      "visibility": "PRIMARY"
     },
     "awh": {
       "name": "AWH",
@@ -45,7 +46,8 @@
       "independentVersion": true,
       "independentHistory": true,
       "independentRollback": true,
-      "ownerApprovalRequired": true
+      "ownerApprovalRequired": true,
+      "visibility": "PRIMARY"
     },
     "awh-agent": {
       "name": "AWH Agent",
@@ -59,7 +61,8 @@
       "independentVersion": true,
       "independentHistory": true,
       "independentRollback": true,
-      "ownerApprovalRequired": true
+      "ownerApprovalRequired": true,
+      "visibility": "PRIMARY"
     },
     "awh-line-gateway": {
       "name": "AWH LINE OA / KRUART LINE Gateway",
@@ -80,7 +83,8 @@
       "independentVersion": true,
       "independentHistory": true,
       "independentRollback": true,
-      "ownerApprovalRequired": true
+      "ownerApprovalRequired": true,
+      "visibility": "PRIMARY"
     },
     "bay-excuse-x": {
       "name": "BAY EXCUSE X",
@@ -95,7 +99,8 @@
       "independentVersion": true,
       "independentHistory": true,
       "independentRollback": true,
-      "ownerApprovalRequired": true
+      "ownerApprovalRequired": true,
+      "visibility": "PRIMARY"
     },
     "line-oa": {
       "name": "BAY Excuse LINE OA",
@@ -111,7 +116,8 @@
       "independentHistory": true,
       "independentRollback": true,
       "ownerApprovalRequired": true,
-      "secretScope": "BAY_EXCUSE_LINE_OA"
+      "secretScope": "BAY_EXCUSE_LINE_OA",
+      "visibility": "PRIMARY"
     },
     "bay-cooperative": {
       "name": "BAY Cooperative Center",
@@ -126,7 +132,8 @@
       "independentVersion": true,
       "independentHistory": true,
       "independentRollback": true,
-      "ownerApprovalRequired": true
+      "ownerApprovalRequired": true,
+      "visibility": "PRIMARY"
     },
     "bay-assessment": {
       "name": "BAY Assessment",
@@ -140,7 +147,8 @@
       "independentVersion": true,
       "independentHistory": true,
       "independentRollback": true,
-      "ownerApprovalRequired": true
+      "ownerApprovalRequired": true,
+      "visibility": "PRIMARY"
     },
     "bay-learnlab": {
       "name": "BAY LearnLab",
@@ -154,7 +162,8 @@
       "independentVersion": true,
       "independentHistory": true,
       "independentRollback": true,
-      "ownerApprovalRequired": true
+      "ownerApprovalRequired": true,
+      "visibility": "PRIMARY"
     },
     "bay-computer-lab": {
       "name": "BAY Computer Lab",
@@ -168,7 +177,8 @@
       "independentVersion": true,
       "independentHistory": true,
       "independentRollback": true,
-      "ownerApprovalRequired": true
+      "ownerApprovalRequired": true,
+      "visibility": "PRIMARY"
     },
     "school-website": {
       "name": "School Website",
@@ -182,7 +192,23 @@
       "independentVersion": true,
       "independentHistory": true,
       "independentRollback": true,
-      "ownerApprovalRequired": true
+      "ownerApprovalRequired": true,
+      "visibility": "PRIMARY"
+    },
+    "bay-hub": {
+      "name": "BAY Hub",
+      "kind": "HUB",
+      "repository": "bay-hub",
+      "productionRef": null,
+      "deploymentAdapter": "SOURCE_ONLY",
+      "dataOwner": "BAY_HUB",
+      "permissionScope": "BAY_HUB",
+      "observabilityScope": "bay-hub",
+      "independentVersion": true,
+      "independentHistory": true,
+      "independentRollback": true,
+      "ownerApprovalRequired": true,
+      "visibility": "ADVANCED"
     }
   },
   "products": {

@@ -30,10 +30,22 @@ for (const product of products) {
   if (product.parentProductId && !known.has(product.parentProductId)) fail(product.id + ' unknown parent');
 }
 
-const expectedTracks = ['awh','awh-agent','awh-line-gateway','bay-assessment','bay-computer-lab','bay-cooperative','bay-excuse-x','bay-learnlab','line-oa','school-website','vps-platform'].sort();
+const releaseContract = JSON.parse(await read('config/ecosystem-release-contract.json'));
+const expectedTracks = Object.keys(releaseContract.releaseTracks ?? {}).sort();
 const tracks = (contract.releaseTracks ?? []).map((track) => track.id);
 if (new Set(tracks).size !== tracks.length) fail('duplicate release track');
-if (JSON.stringify([...tracks].sort()) !== JSON.stringify(expectedTracks)) fail('release tracks drifted');
+if (JSON.stringify([...tracks].sort()) !== JSON.stringify(expectedTracks)) fail('experience/release track ids drifted');
+for (const track of contract.releaseTracks ?? []) {
+  const release = releaseContract.releaseTracks?.[track.id];
+  if (!release) fail(track.id + ' missing from ecosystem release contract');
+  if (!['PRIMARY','ADVANCED'].includes(track.visibility)) fail(track.id + ' invalid visibility');
+  if (track.visibility !== release.visibility) fail(track.id + ' visibility drifted');
+}
+const advancedTracks = (contract.releaseTracks ?? []).filter((track) => track.visibility === 'ADVANCED').map((track) => track.id).sort();
+if (JSON.stringify(advancedTracks) !== JSON.stringify(['bay-hub'])) fail('advanced release tracks drifted');
+const experienceLineTargets = contract.releaseGroups?.['line-oa']?.targets ?? [];
+const releaseLineTargets = (releaseContract.releaseGroups?.['line-oa']?.targets ?? []).map((target) => target.releaseTrack);
+if (JSON.stringify([...experienceLineTargets].sort()) !== JSON.stringify([...releaseLineTargets].sort())) fail('LINE OA group target drift');
 
 if (contract.interaction?.touchTargetPx !== 44) fail('touch target drift');
 if (contract.interaction?.safeAreaRequired !== true) fail('safe-area contract disabled');

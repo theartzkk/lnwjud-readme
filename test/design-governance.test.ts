@@ -125,10 +125,16 @@ test('KRUART experience contract prevents navigation and portal drift', async ()
     if (product.parentProductId) assert.ok(known.has(product.parentProductId));
   }
 
-  const expectedTracks = ['awh','awh-agent','awh-line-gateway','bay-assessment','bay-computer-lab','bay-cooperative','bay-excuse-x','bay-learnlab','line-oa','school-website','vps-platform'];
+  const releaseContract = await json('config/ecosystem-release-contract.json');
+  const expectedTracks = Object.keys(releaseContract.releaseTracks);
   const tracks = contract.releaseTracks.map((track: any) => track.id);
   assert.deepEqual([...tracks].sort(), [...expectedTracks].sort());
   assert.equal(new Set(tracks).size, tracks.length);
+  for (const track of contract.releaseTracks) {
+    assert.equal(track.visibility, releaseContract.releaseTracks[track.id].visibility);
+  }
+  assert.deepEqual(contract.releaseTracks.filter((track: any) => track.visibility === 'ADVANCED').map((track: any) => track.id), ['bay-hub']);
+  assert.deepEqual([...contract.releaseGroups['line-oa'].targets].sort(), ['awh-line-gateway','line-oa']);
   assert.equal(contract.interaction.touchTargetPx, 44);
   assert.equal(contract.interaction.safeAreaRequired, true);
 
