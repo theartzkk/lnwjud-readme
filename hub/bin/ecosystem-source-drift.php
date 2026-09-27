@@ -9,8 +9,14 @@ if ($argc < 3) {
 
 $db = $argv[1]; $gitRoot = rtrim($argv[2], '/'); $runtime = $argv[3] ?? null;
 $pdo = new PDO('sqlite:' . $db, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
-$rows = $pdo->query("SELECT p.project_id,p.name,p.canonical_source_authority,p.canonical_source_vault_revision_id,p.canonical_source_content_sha256,v.active_revision_id,v.sync_state,v.file_count,r.state,r.content_sha256 FROM projects p JOIN control_project_vaults v USING(project_id) LEFT JOIN control_project_vault_revisions r ON r.revision_id=v.active_revision_id ORDER BY p.name")->fetchAll();
+$rows = $pdo->query("SELECT p.project_id,p.name,p.type,p.canonical_source_authority,p.canonical_source_vault_revision_id,p.canonical_source_content_sha256,v.active_revision_id,v.sync_state,v.file_count,r.state,r.content_sha256 FROM projects p JOIN control_project_vaults v USING(project_id) LEFT JOIN control_project_vault_revisions r ON r.revision_id=v.active_revision_id ORDER BY p.name")->fetchAll();
 $repos = ['BAY EXCUSE X'=>'bay-excuse-x.git','BAY Hub'=>'bay-hub.git','BAY LearnLab'=>'bay-learnlab.git','BAY Computer Lab'=>'bay-computer-lab.git','เว็บไซต์โรงเรียน'=>'school-website.git'];
+$projectClass = static function(array $row): string {
+    $name=(string)($row['name']??''); $type=(string)($row['type']??'general');
+    if (preg_match('/(?:field\s*proof|หลักฐานภาคสนาม)/iu',$name)===1) return 'FIELD_PROOF';
+    if ($type==='teacher-evaluation') return 'CONTENT';
+    return 'PRODUCTION';
+};
 $findings = [];
 $pending = [];
 $activeProjects = [];
@@ -21,7 +27,9 @@ try {
     $activeProjects = [];
 }
 foreach ($rows as $row) {
-    $name=(string)$row['name']; $vault=(string)$row['active_revision_id']; $sha=strtolower((string)$row['content_sha256']);
+    $name=(string)$row['name'];
+    if ($projectClass($row)!=='PRODUCTION') continue;
+    $vault=(string)$row['active_revision_id']; $sha=strtolower((string)$row['content_sha256']);
     $authorityFindings=[];
     if (($row['canonical_source_authority']??null)!=='AWH_VAULT') $authorityFindings[]="$name: authority is not AWH_VAULT";
     if (($row['sync_state']??null)!=='SYNCED' || ($row['state']??null)!=='ACTIVE') $authorityFindings[]="$name: Vault is not SYNCED/ACTIVE";
