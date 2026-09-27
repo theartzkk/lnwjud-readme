@@ -5,10 +5,10 @@ import {
   cancelTask, changePassword, changeUsername, createConversation, createMemory, createPerson, createProject, createRecoveryCodes, decideApproval,
   bindSchoolIdentity, exportWorkspace, listAccountRequests, listAuthSessions, listPeople, loadAuthProfile, loadBayCommunicationStatus, loadControlData, loadConversation, loadConversationHistory,
   loadConversations, loadDeletedConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus, loadSchoolIdentityBindings, loadSchoolIdentityCandidates,
-  loadProductSettingHistory, loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadObservabilityStatus, loadCapabilities, loadInfrastructure, loadSystemReadiness, loadWorkspaceContinuity, login, logout, logoutAll,
+  loadProductSettingHistory, loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadDecisionProviderStatus, loadObservabilityStatus, loadCapabilities, loadInfrastructure, loadSystemReadiness, loadWorkspaceContinuity, login, logout, logoutAll,
   recover, registerAccessRequest, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokeDevice, revokePerson, revokeSchoolIdentity, saveCurrentContext, stepUp, submitWorkMessage,
-  testProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
-  updateProviderCredential, updateProviderPolicy, updateProviderProjectRouting, updateObservabilityCredential, updateConversationLifecycle, uploadConversationAttachments,
+  testProviderConnection, testDecisionProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
+  updateProviderCredential, updateDecisionProviderCredential, updateProviderPolicy, updateProviderProjectRouting, updateObservabilityCredential, updateConversationLifecycle, uploadConversationAttachments,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 (() => {
@@ -17,7 +17,7 @@ import {
   const CANCELLABLE_TASK_STATES = new Set(['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL']);
   const MICRO_BAHT = 1000000;
   const DESKTOP_PACKAGES = [['downloads/AWH-macOS-arm64.zip', 'macOS Apple Silicon', 'mac-arm64'], ['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac-intel'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, infrastructure: null, people: [], accountRequests: [], schoolIdentityBindings: [], schoolIdentityCandidates: [], schoolIdentityPolicy: null, bayCommunication: null, memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, decisionProvider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, infrastructure: null, people: [], accountRequests: [], schoolIdentityBindings: [], schoolIdentityCandidates: [], schoolIdentityPolicy: null, bayCommunication: null, memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
   const pendingBrandAssets = { logo: undefined, icon: undefined };
   const MAX_BRAND_SOURCE_BYTES = 8 * 1024 * 1024;
   const MAX_BRAND_DATA_URL_CHARS = 11500;
@@ -423,6 +423,14 @@ import {
     if ($('provider-project-routing')) $('provider-project-routing').value = state.providerRouting?.routingMode || 'AUTO';
     const usage = $('provider-usage'); if (usage) { usage.replaceChildren(); const rows = Array.isArray(provider.usageByProject) ? provider.usageByProject : []; for (const row of rows) { const item = document.createElement('li'); item.textContent = `${row.projectName || 'Project'} · ${baht(row.estimatedMicrounits || 0)}`; usage.append(item); } if (!usage.childElementCount) usage.textContent = 'ยังไม่มีการใช้งานที่คิดค่าใช้จ่าย'; }
   }
+  function renderDecisionProvider() {
+    const provider = state.decisionProvider;
+    if (!provider) { message('jev-status', 'ยังไม่ได้โหลดสถานะ Jev'); return; }
+    const configured = provider.configured === true;
+    message('jev-status', configured ? 'Jev พร้อมช่วยตัดสินใจงานที่ route ยังไม่ชัด · AWH policy ยังเป็น authority' : 'ยังไม่ได้เชื่อม Jev · AWH ใช้ deterministic routing เดิมตามปกติ');
+    const remove = $('jev-credential-remove'); if (remove) remove.disabled = !configured;
+  }
+
   function renderCapabilitySurface() {
     const data = state.capabilities; if (!data) return;
     const host = $('settings-panel-ai'); if (!host) return;
@@ -622,7 +630,7 @@ import {
     if (!enabledRow || enabledRow.parentElement !== policy) throw new Error('AWH provider settings surface is unavailable');
     policy.insertBefore(models, enabledRow);
     const section = document.createElement('section'); section.className = 'account-form'; section.id = 'provider-credential-settings';
-    section.innerHTML = '<h3>การเชื่อมต่อ AI</h3><p class="muted">API key จะถูกส่งครั้งเดียวผ่าน HTTPS และเก็บเฉพาะฝั่ง server; AWH จะไม่แสดงหรือส่งคืน key นี้</p><form id="provider-credential-form" class="compact-form"><label for="provider-api-key">OpenAI API key</label><input id="provider-api-key" type="password" maxlength="512" autocomplete="off" spellcheck="false" /><div class="form-actions"><button class="secondary-button" type="submit">บันทึกหรือแทนที่ key</button><button id="provider-credential-remove" class="text-button" type="button">ลบ key</button><button id="provider-connection-test" class="text-button" type="button">ทดสอบการเชื่อมต่อ</button></div></form><form id="provider-project-routing-form" class="compact-form"><label for="provider-project-routing">AI สำหรับโปรเจกต์ที่เลือก</label><select id="provider-project-routing"><option value="AUTO">Auto (ตามค่า AWH)</option><option value="FAST">ประหยัด · Luna</option><option value="BALANCED">สมดุล · Terra</option><option value="STRONG">งานสำคัญ · Sol</option></select><button class="secondary-button" type="submit">บันทึกการเลือกของโปรเจกต์</button></form><p id="provider-credential-message" class="form-message" role="status"></p>';
+    section.innerHTML = '<h3>การเชื่อมต่อ AI</h3><p class="muted">API key จะถูกส่งครั้งเดียวผ่าน HTTPS และเก็บเฉพาะฝั่ง server; AWH จะไม่แสดงหรือส่งคืน key นี้</p><form id="provider-credential-form" class="compact-form"><label for="provider-api-key">OpenAI API key</label><input id="provider-api-key" type="password" maxlength="512" autocomplete="off" spellcheck="false" /><div class="form-actions"><button class="secondary-button" type="submit">บันทึกหรือแทนที่ key</button><button id="provider-credential-remove" class="text-button" type="button">ลบ key</button><button id="provider-connection-test" class="text-button" type="button">ทดสอบการเชื่อมต่อ</button></div></form><div class="compact-form"><h4>Jev · Decision Layer</h4><p id="jev-status" class="muted">กำลังตรวจสถานะ Jev</p><form id="jev-credential-form" class="compact-form"><label for="jev-api-key">TypeSafe AI API key</label><input id="jev-api-key" type="password" maxlength="4096" autocomplete="off" spellcheck="false" /><div class="form-actions"><button class="secondary-button" type="submit">เชื่อม Jev</button><button id="jev-credential-remove" class="text-button" type="button">ยกเลิกการเชื่อม</button><button id="jev-connection-test" class="text-button" type="button">ทดสอบ Jev</button></div></form><p id="jev-message" class="form-message" role="status"></p><small class="muted">Jev ใช้เฉพาะช่วยจำแนกงานที่ AWH route เดิมยังไม่ชัด และไม่มีสิทธิ์อนุมัติ Deploy, Permission หรือ Owner action</small></div><form id="provider-project-routing-form" class="compact-form"><label for="provider-project-routing">AI สำหรับโปรเจกต์ที่เลือก</label><select id="provider-project-routing"><option value="AUTO">Auto (ตามค่า AWH)</option><option value="FAST">ประหยัด · Luna</option><option value="BALANCED">สมดุล · Terra</option><option value="STRONG">งานสำคัญ · Sol</option></select><button class="secondary-button" type="submit">บันทึกการเลือกของโปรเจกต์</button></form><p id="provider-credential-message" class="form-message" role="status"></p>';
     // Credential setup is the only prerequisite for a first-time owner. Keep it
     // before routing and budget controls so it is reachable immediately on mobile.
     policy.before(section);
@@ -643,6 +651,25 @@ import {
       try { const data = await testProviderConnection(); state.provider = (await loadProviderStatus()).provider; renderProvider(); message('provider-credential-message', data.connection?.status === 'PASS' ? `ทดสอบ Responses API ผ่าน (${data.connection.model || 'โมเดลที่ตั้งไว้'})` : 'ยังไม่ได้ตั้งค่า key'); }
       catch (error) { message('provider-credential-message', error instanceof Error ? error.message : 'ทดสอบการเชื่อมต่อไม่ผ่าน'); }
     });
+    $('jev-credential-form').addEventListener('submit', async (event) => {
+      event.preventDefault(); const field = $('jev-api-key'); if (!field.value.trim()) { message('jev-message', 'วาง TypeSafe AI API key ก่อน'); return; }
+      message('jev-message', 'กำลังบันทึก Jev key อย่างปลอดภัย…');
+      try { const data = await withPrivilegedRetry(()=>updateDecisionProviderCredential('SET', field.value),'การเปลี่ยน Jev credential'); state.decisionProvider = data.decisionProvider; renderDecisionProvider(); message('jev-message', 'เชื่อม Jev แล้ว'); }
+      catch (error) { message('jev-message', error instanceof Error ? error.message : 'ยังเชื่อม Jev ไม่ได้'); }
+      finally { field.value = ''; }
+    });
+    $('jev-credential-remove').addEventListener('click', async () => {
+      if (!window.confirm('ยกเลิกการเชื่อม Jev ใช่หรือไม่? AWH จะกลับไปใช้ routing เดิมทั้งหมด')) return;
+      message('jev-message', 'กำลังยกเลิกการเชื่อม Jev…');
+      try { const data = await withPrivilegedRetry(()=>updateDecisionProviderCredential('REMOVE'),'การลบ Jev credential'); state.decisionProvider = data.decisionProvider; renderDecisionProvider(); message('jev-message', 'ยกเลิก Jev แล้ว · AWH ใช้ routing เดิม'); }
+      catch (error) { message('jev-message', error instanceof Error ? error.message : 'ยังยกเลิก Jev ไม่ได้'); }
+    });
+    $('jev-connection-test').addEventListener('click', async () => {
+      message('jev-message', 'กำลังทดสอบ Jev…');
+      try { const data = await testDecisionProviderConnection(); state.decisionProvider = (await loadDecisionProviderStatus()).decisionProvider; renderDecisionProvider(); message('jev-message', data.connection?.status === 'PASS' ? 'Jev เชื่อมต่อผ่าน' : 'ยังไม่ได้ตั้งค่า Jev key'); }
+      catch (error) { message('jev-message', error instanceof Error ? error.message : 'ทดสอบ Jev ไม่ผ่าน'); }
+    });
+
     $('provider-project-routing-form').addEventListener('submit', async (event) => {
       event.preventDefault(); const project = selectedProject(); if (!project) { message('provider-credential-message', 'เลือกโปรเจกต์ก่อนกำหนด AI'); return; }
       try { state.providerRouting = await updateProviderProjectRouting(project.projectId, $('provider-project-routing').value); renderProvider(); message('provider-credential-message', 'บันทึกการเลือก AI ของโปรเจกต์แล้ว'); }
@@ -1666,10 +1693,12 @@ import {
     catch { if (isOwner()) message('product-settings-message', 'ยังโหลดการตั้งค่าลักษณะของ AWH ไม่ได้'); }
     if (isOwner()) {
       ensureOwnerSelfServiceSurface(); ensureProviderSelfServiceSurface();
-      const project = selectedProject(); const requests = [loadProviderStatus(), loadObservabilityStatus(), loadCapabilities(), listPeople(), listAccountRequests(), loadOwnerSelfServiceStatus(), project ? loadProviderProjectRouting(project.projectId) : Promise.resolve(null)];
-      const [providerResult, observabilityResult, capabilitiesResult, peopleResult, accountRequestsResult, ownerStatusResult, routingResult] = await Promise.allSettled(requests);
+      const project = selectedProject(); const requests = [loadProviderStatus(), loadDecisionProviderStatus(), loadObservabilityStatus(), loadCapabilities(), listPeople(), listAccountRequests(), loadOwnerSelfServiceStatus(), project ? loadProviderProjectRouting(project.projectId) : Promise.resolve(null)];
+      const [providerResult, decisionProviderResult, observabilityResult, capabilitiesResult, peopleResult, accountRequestsResult, ownerStatusResult, routingResult] = await Promise.allSettled(requests);
       if (providerResult.status === 'fulfilled') { state.provider = providerResult.value.provider; renderProvider(); }
       else message('provider-status', 'ยังโหลดสถานะ AI ไม่ได้ ลองรีเฟรชอีกครั้ง');
+      if (decisionProviderResult.status === 'fulfilled') { state.decisionProvider = decisionProviderResult.value.decisionProvider; renderDecisionProvider(); }
+      else message('jev-status', 'ยังโหลดสถานะ Jev ไม่ได้ · AWH ยังใช้ routing เดิมได้ตามปกติ');
       if (observabilityResult.status === 'fulfilled') { state.observability = observabilityResult.value.observability; renderObservability(); }
       else message('observability-status', 'ยังโหลดสถานะ Honeycomb ไม่ได้');
       if (capabilitiesResult.status === 'fulfilled') { state.capabilities = capabilitiesResult.value; renderCapabilitySurface(); }

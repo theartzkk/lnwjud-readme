@@ -12,6 +12,7 @@ require_once __DIR__ . '/HubSelfServiceMigration.php';
 require_once __DIR__ . '/HubCentralProjectAuthorityMigration.php';
 require_once __DIR__ . '/HubAnywhereExecutionMigration.php';
 require_once __DIR__ . '/HubCapabilityRegistryService.php';
+require_once __DIR__ . '/HubSystemOneDecisionService.php';
 require_once __DIR__ . '/HubAttachmentStore.php';
 require_once __DIR__ . '/HubArtifactStore.php';
 require_once __DIR__ . '/HubProjectVault.php';
@@ -94,6 +95,7 @@ final class HubControlPlaneService
     private readonly HubProjectVaultService $vaults;
     private readonly HubDurableExecutionService $execution;
     private readonly ?HubCapabilityRegistryService $capabilities;
+    private readonly HubSystemOneDecisionService $systemOne;
     private readonly ?HubAutomationRegistryService $automations;
     private readonly ?HubAiGovernanceService $aiGovernance;
     private readonly HubStaffOperationsService $staff;
@@ -118,6 +120,7 @@ final class HubControlPlaneService
         $this->artifactStore = $this->centralProjectAuthoritySchemaPresent() ? HubArtifactStore::fromEnvironment() : null;
         $this->execution = new HubDurableExecutionService($pdo, $this->vaults, $this->agent, $this->artifactStore);
         $this->capabilities = HubCapabilityRegistryService::schemaPresent($pdo) ? new HubCapabilityRegistryService($pdo) : null;
+        $this->systemOne = HubSystemOneDecisionService::fromEnvironment();
         $this->automations = $this->automationSchemaPresent() ? new HubAutomationRegistryService($pdo) : null;
         $this->aiGovernance = HubAiGovernanceService::schemaPresent($pdo) ? new HubAiGovernanceService($pdo) : null;
         $this->staff = new HubStaffOperationsService($pdo, $databasePath);
@@ -1661,12 +1664,14 @@ final class HubControlPlaneService
                     $this->appendConversationMessage((string) $conversation['conversation_id'], $taskId, 'FAILURE', self::externalFreeAiMessage(), $at, 'account-ai-' . $messageId);
                 } elseif ($officeRequest !== null && $this->centralProjectAuthoritySchemaPresent()) {
                     $officeCheckpoint = self::withCapabilityPlan(['mode' => 'OFFICE_TO_PDF', 'attachmentId' => $officeRequest['attachmentId']], $effectiveGoal, $attachmentIds !== []);
+                    $officeCheckpoint = $this->withSystemOneDecision($officeCheckpoint, $effectiveGoal);
                     $this->execution->enqueue($taskId, $projectId, null, 'DEVICE', $officeRequest['capability'], $officeCheckpoint, $at);
                 } elseif ($deviceRequest !== null && $this->centralProjectAuthoritySchemaPresent()) {
                     $deviceCheckpoint = self::withCapabilityPlan(['mode' => 'AWH_DEVICE_AUTOMATION', 'deviceMode' => $deviceRequest['mode']], $effectiveGoal, $attachmentIds !== []);
+                    $deviceCheckpoint = $this->withSystemOneDecision($deviceCheckpoint, $effectiveGoal);
                     $this->execution->enqueue($taskId, $projectId, null, 'DEVICE', $deviceRequest['capability'], $deviceCheckpoint, $at);
                 } elseif ($vaultRevision !== null) {
-                    $checkpoint = self::withCapabilityPlan(['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverAssistedEdit ? 'PROJECT_ASSISTED_EDIT' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST'))], $effectiveGoal, $attachmentIds !== []); $autoSteps = self::agentLoopSteps($effectiveGoal); if ($autoSteps !== null) $checkpoint['continuation'] = ['enabled'=>true,'rootTaskId'=>$taskId,'step'=>0,'maxSteps'=>$autoSteps]; $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverAssistedEdit ? 'project.mutate.assisted' : ($serverInspection ? 'project.read' : 'codex:cli')), $checkpoint, $at);
+                    $checkpoint = self::withCapabilityPlan(['mode' => $serverTextMutation ? 'PROJECT_TEXT_NORMALIZE' : ($serverAssistedEdit ? 'PROJECT_ASSISTED_EDIT' : ($serverInspection ? 'PROJECT_INSPECTION' : 'ENGINEERING_SPECIALIST'))], $effectiveGoal, $attachmentIds !== []); $checkpoint = $this->withSystemOneDecision($checkpoint, $effectiveGoal); $autoSteps = self::agentLoopSteps($effectiveGoal); if ($autoSteps !== null) $checkpoint['continuation'] = ['enabled'=>true,'rootTaskId'=>$taskId,'step'=>0,'maxSteps'=>$autoSteps]; $this->execution->enqueue($taskId, $projectId, $vaultRevision, ($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'VPS' : 'CODEX', $serverTextMutation ? 'project.mutate.text' : ($serverAssistedEdit ? 'project.mutate.assisted' : ($serverInspection ? 'project.read' : 'codex:cli')), $checkpoint, $at);
                 }
                 $eventMessage = $paidAiBlocked ? 'owner-funded AI is disabled for this account; no paid provider execution was queued' : ($officeRequest !== null ? 'waiting for Office PDF capability' : ($deviceRequest !== null ? 'waiting for connected device capability' : ($serverInspection ? 'server inspection queued' : ($serverTextMutation ? 'server text transform queued' : 'specialist execution recorded'))));
                 $this->event($taskId, $taskState, 0, $eventMessage, $at);
@@ -2029,6 +2034,37 @@ final class HubControlPlaneService
         catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Provider status is unavailable', $error->codeName); }
     }
 
+    public function systemOneStatus(string $sessionToken, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertFinalReady(); $this->assertOwner((string) $session['user_id']);
+        return ['schemaVersion'=>1, 'decisionProvider'=>$this->systemOne->status()];
+    }
+
+    public function updateSystemOneCredential(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now); self::exactKeys($payload,['action','schemaVersion','secret']);
+        if (($payload['schemaVersion']??null)!==1 || !is_string($payload['action']??null) || (!is_null($payload['secret']??null) && !is_string($payload['secret']))) throw new HubControlPlaneException('Jev credential request is invalid','PROVIDER_CREDENTIAL_INVALID');
+        $this->assertSelfServiceReady(); $this->assertOwner((string)$session['user_id']);
+        try { if (HubTrustPolicy::requiresStepUp('provider.credential')) HubOwnerAuthService::assertRecentStepUpSession($session,$now); } catch (HubOwnerAuthException) { throw new HubControlPlaneException('A recent password confirmation is required','STEP_UP_REQUIRED'); }
+        try {
+            $action=strtoupper((string)$payload['action']);
+            if ($action==='SET' && is_string($payload['secret'])) $this->systemOne->replaceCredential($payload['secret']);
+            elseif ($action==='REMOVE' && $payload['secret']===null) $this->systemOne->removeCredential();
+            else throw new HubProviderCredentialStoreException('Jev credential is invalid','PROVIDER_CREDENTIAL_INVALID');
+            return ['schemaVersion'=>1,'decisionProvider'=>$this->systemOne->status()];
+        } catch (HubProviderCredentialStoreException $error) { throw new HubControlPlaneException('Jev credential could not be changed',$error->codeName); }
+    }
+
+    public function testSystemOneConnection(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
+    {
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now); self::exactKeys($payload,['schemaVersion']);
+        if (($payload['schemaVersion']??null)!==1) throw new HubControlPlaneException('Jev test request is invalid','PROVIDER_POLICY_INVALID');
+        $this->assertSelfServiceReady(); $this->assertOwner((string)$session['user_id']);
+        try { return ['schemaVersion'=>1,'connection'=>$this->systemOne->testConnection()]; }
+        catch (HubTypeSafeDecisionException $error) { throw new HubControlPlaneException('Jev connection test failed',$error->codeName,$error->diagnostic); }
+        catch (HubProviderCredentialStoreException $error) { throw new HubControlPlaneException('Jev credential is unavailable',$error->codeName); }
+    }
+
     public function updateProviderPolicy(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
     {
         $session = $this->authorizeSession($sessionToken, $csrfToken, $now); $this->assertFinalReady(); $this->assertOwner((string) $session['user_id']);
@@ -2088,6 +2124,7 @@ final class HubControlPlaneService
             $created = true;
         }
         $checkpoint = self::withCapabilityPlan(['mode' => 'NATIVE_CONVERSATION', 'messageId' => $messageId], $message);
+        $checkpoint = $this->withSystemOneDecision($checkpoint, $message);
         $this->execution->enqueue($taskId, $projectId, $this->centralVaultRevision($projectId), 'VPS', 'agent.conversation', $checkpoint, $at);
         $this->pdo->prepare('UPDATE control_conversation_messages SET task_id = :task WHERE message_id = :message AND conversation_id = :conversation AND task_id IS NULL')->execute(['task' => $taskId, 'message' => $messageId, 'conversation' => $conversationId]);
         $this->pdo->prepare('UPDATE control_conversations SET last_task_id = :task, updated_at = :at WHERE conversation_id = :conversation')->execute(['task' => $taskId, 'at' => $at, 'conversation' => $conversationId]);
@@ -2657,7 +2694,7 @@ final class HubControlPlaneService
         try { $context = $this->memory->promptContext((string) $row['user_id'], $this->isOwnerUser((string) $row['user_id']), (string) $row['project_id'], (string) $row['goal']); } catch (Throwable) { $context = ['records' => [], 'authorityOrder' => ['live-source', 'active-task-context', 'project-memory']]; }
         $records = [];
         foreach (is_array($context['records'] ?? null) ? $context['records'] : [] as $record) if (is_array($record) && is_string($record['content'] ?? null)) $records[] = ['scope' => (string) ($record['scope'] ?? 'project'), 'category' => (string) ($record['category'] ?? 'MEMORY'), 'content' => substr((string) $record['content'], 0, 700)];
-        return ['schemaVersion' => 1, 'execution' => ['executionId' => (string) $row['execution_id'], 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'vaultRevisionId' => (string) $row['vault_revision_id'], 'requiredCapability' => (string) $row['required_capability']], 'ownerProtocol' => $this->engineeringProtocol($records), 'workProfile' => HubCapabilityRegistryService::workProfileForGoal((string) $row['goal']), 'capabilityPlan' => self::executionCapabilityPlan((string) ($row['checkpoint_json'] ?? '{}')), 'sourceTruth' => is_array($context['sourceTruth'] ?? null) ? $context['sourceTruth'] : null];
+        return ['schemaVersion' => 1, 'execution' => ['executionId' => (string) $row['execution_id'], 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'vaultRevisionId' => (string) $row['vault_revision_id'], 'requiredCapability' => (string) $row['required_capability']], 'ownerProtocol' => $this->engineeringProtocol($records), 'workProfile' => $this->resolvedWorkProfile((string) $row['goal'], (string) ($row['checkpoint_json'] ?? '{}')), 'capabilityPlan' => self::executionCapabilityPlan((string) ($row['checkpoint_json'] ?? '{}')), 'sourceTruth' => is_array($context['sourceTruth'] ?? null) ? $context['sourceTruth'] : null];
     }
 
     /** @return array{name:string,mimeType:string,sizeBytes:int,path:string} */
@@ -3909,6 +3946,33 @@ final class HubControlPlaneService
         }
         if ($team) $add('team.harness','Team Review','OPTIONAL_LOCAL_ADAPTER','ตรวจหลายมุมมองภายใน Task/Execution เดิม ไม่สร้างทีม/คิว/control plane ชุดใหม่','tool.teamai');
         return ['schemaVersion'=>1,'router'=>'awh.external-capabilities.v1','selected'=>$selected];
+    }
+
+    /** @param array<string,mixed> $checkpoint @return array<string,mixed> */
+    private function withSystemOneDecision(array $checkpoint, string $goal): array
+    {
+        $checkpoint['systemOne'] = $this->systemOne->decideGoal($goal);
+        return $checkpoint;
+    }
+
+    /** @return array<string,mixed> */
+    private function resolvedWorkProfile(string $goal, string $checkpointJson): array
+    {
+        $profile = HubCapabilityRegistryService::workProfileForGoal($goal);
+        if (($profile['primaryRoute'] ?? 'AUTO_FIT') !== 'AUTO_FIT') return $profile;
+        try { $checkpoint=json_decode($checkpointJson,true,32,JSON_THROW_ON_ERROR); } catch (Throwable) { return $profile; }
+        $decision=is_array($checkpoint) && is_array($checkpoint['systemOne']??null) ? $checkpoint['systemOne'] : null;
+        if (!is_array($decision) || ($decision['schemaVersion']??null)!==1 || ($decision['policyVersion']??null)!==HubSystemOneDecisionService::POLICY_VERSION || ($decision['state']??null)!=='APPLIED' || ($decision['authority']??null)!=='ADVISORY_ONLY') return $profile;
+        $route=$decision['route']??null; $confidence=$decision['confidence']??null;
+        if (!is_string($route) || !in_array($route,['AUTO_FIT','VPS_DIRECT','REMOTE_DEVICE','CONNECTED_FILES','DIRECT_PLUS_REMOTE'],true) || !is_numeric($confidence) || (float)$confidence < HubSystemOneDecisionService::CONFIDENCE_THRESHOLD) return $profile;
+        if ($route==='AUTO_FIT') return $profile;
+        $profile['primaryRoute']=$route;
+        $profile['reason']='Jev advisory resolved ambiguous work as '.$route.'; deterministic AWH policy remains authority';
+        if ($route==='VPS_DIRECT') $profile['evidenceDimensions']['requiresServerState']=true;
+        elseif ($route==='REMOTE_DEVICE') { $profile['requiresRealDeviceEvidence']=true; $profile['evidenceDimensions']['requiresDeviceState']=true; }
+        elseif ($route==='CONNECTED_FILES') $profile['evidenceDimensions']['requiresConnectedFiles']=true;
+        elseif ($route==='DIRECT_PLUS_REMOTE') { $profile['requiresRealDeviceEvidence']=true; $profile['mixedBoundary']=true; $profile['evidenceDimensions']['requiresDeviceState']=true; $profile['evidenceDimensions']['requiresServerState']=true; }
+        return $profile;
     }
 
     private static function withCapabilityPlan(array $checkpoint, string $goal, bool $hasAttachments = false): array

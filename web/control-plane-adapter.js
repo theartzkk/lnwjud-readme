@@ -58,6 +58,13 @@ function safeErrorMessage(value) {
     PROVIDER_RATE_LIMITED: 'OpenAI จำกัดการเรียกใช้ชั่วคราว กรุณาลองใหม่ภายหลัง',
     PROVIDER_UNAVAILABLE: 'OpenAI ยังไม่พร้อมตอบในขณะนี้ งานของคุณจะไม่ถูกอ้างว่าเสร็จแล้ว',
     PROVIDER_TEST_FAILED: 'ทดสอบ OpenAI ไม่ผ่าน กรุณาตรวจการเชื่อมต่อแล้วลองใหม่',
+    JEV_AUTH_FAILED: 'TypeSafe AI ปฏิเสธ Jev API key กรุณาตรวจ key แล้วลองใหม่',
+    JEV_PERMISSION_DENIED: 'บัญชี TypeSafe AI นี้ยังไม่มีสิทธิ์ใช้ Jev',
+    JEV_RATE_LIMITED: 'Jev จำกัดการเรียกใช้ชั่วคราว AWH จะใช้ routing เดิมแทน',
+    JEV_MODEL_UNAVAILABLE: 'โมเดล Jev ที่ตั้งไว้ยังไม่พร้อมใช้งาน',
+    JEV_REQUEST_INVALID: 'คำขอ Jev ไม่ถูกต้อง AWH จะใช้ routing เดิมแทน',
+    JEV_RESPONSE_INVALID: 'Jev ตอบกลับไม่สมบูรณ์ AWH จะใช้ routing เดิมแทน',
+    JEV_UNAVAILABLE: 'Jev ยังไม่พร้อม AWH จะใช้ routing เดิมแทนโดยงานหลักไม่หยุด',
     REGISTRATION_PENDING: 'คำขอใช้งานนี้อยู่ระหว่างการพิจารณาแล้ว',
     USERNAME_UNAVAILABLE: 'ชื่อผู้ใช้นี้ถูกใช้แล้ว กรุณาเลือกชื่อใหม่',
     IDENTITY_OWNED_BY_BAY: 'ตัวตนและบทบาทในโรงเรียนอ้างอิงจาก BAY EXCUSE X ส่วนบัญชีนี้ใช้สำหรับเข้า KRUART/AWH เท่านั้น',
@@ -237,6 +244,9 @@ export async function exportWorkspace() { return controlRequest('/api/v1/control
 export async function loadObservabilityStatus() { return controlRequest('/api/v1/control/observability'); }
 export async function updateObservabilityCredential(action, secret = null) { if (!['SET', 'REMOVE'].includes(action) || (action === 'SET' && (typeof secret !== 'string' || !secret.trim() || secret.length > 4096)) || (action === 'REMOVE' && secret !== null)) throw new Error('Honeycomb API key ไม่ถูกต้อง'); return controlRequest('/api/v1/control/observability/credential', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, action, secret: action === 'SET' ? secret.trim() : null }) }); }
 export async function loadProviderStatus() { return controlRequest('/api/v1/control/provider'); }
+export async function loadDecisionProviderStatus() { return controlRequest('/api/v1/control/decision-provider'); }
+export async function updateDecisionProviderCredential(action, secret = null) { if (!['SET','REMOVE'].includes(action) || (action === 'SET' && (typeof secret !== 'string' || !secret.trim() || secret.length > 4096)) || (action === 'REMOVE' && secret !== null)) throw new Error('Jev API key ไม่ถูกต้อง'); return controlRequest('/api/v1/control/decision-provider/credential', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, action, secret: action === 'SET' ? secret.trim() : null }) }); }
+export async function testDecisionProviderConnection() { return controlRequest('/api/v1/control/decision-provider/test', { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
 export async function loadCapabilities() { const value = await controlRequest('/api/v1/control/capabilities'); if (value.schemaVersion !== 1 || !value.summary || !Array.isArray(value.capabilities)) throw new Error('ข้อมูลความสามารถของ AWH ไม่ถูกต้อง'); return value; }
 export async function updateProviderPolicy(policy) { return controlRequest('/api/v1/control/provider', { method: 'POST', body: JSON.stringify(policy) }); }
 export async function updateProviderCredential(action, secret = null) { if (!['SET', 'REMOVE'].includes(action) || (action === 'SET' && (typeof secret !== 'string' || !secret.trim() || secret.length > 512)) || (action === 'REMOVE' && secret !== null)) throw new Error('การตั้งค่า credential ไม่ถูกต้อง'); return controlRequest('/api/v1/control/provider/credential', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, action, secret: action === 'SET' ? secret.trim() : null }) }); }
