@@ -23,6 +23,13 @@ export interface DeviceAction {
 
 export interface LnwjudLaunchSpec { command: string; argsPrefix: string[]; }
 
+export function normalizedDeviceActionArguments(action: DeviceAction, workspaceId: string): Record<string, unknown> {
+  const args: Record<string, unknown> = { ...action.arguments };
+  if (['computer_use', 'shell', 'process_list', 'process_start', 'process_status', 'process_stop'].includes(action.tool) && args.workspaceId === undefined) args.workspaceId = workspaceId;
+  if (['accessibility', 'input_event'].includes(action.tool) && args.userConfirmed === undefined) args.userConfirmed = true;
+  return args;
+}
+
 async function exists(path: string): Promise<boolean> {
   try { await access(path); return true; } catch { return false; }
 }
@@ -189,9 +196,7 @@ export class LnwjudDeviceClient {
 
   async execute(action: DeviceAction, workspaceId: string): Promise<string> {
     if (action.tool === 'finish') return boundedText(action.summary) || 'AWH device task completed';
-    const args: Record<string, unknown> = { ...action.arguments };
-    if (['computer_use', 'shell'].includes(action.tool) && args.workspaceId === undefined) args.workspaceId = workspaceId;
-    if (['accessibility', 'input_event'].includes(action.tool) && args.userConfirmed === undefined) args.userConfirmed = true;
+    const args = normalizedDeviceActionArguments(action, workspaceId);
     const response = await this.callTool(action.tool, args, action.tool === 'shell' ? 120_000 : 30_000);
     const record = response && typeof response === 'object' && !Array.isArray(response) ? response as Record<string, unknown> : {};
     const result = record.result && typeof record.result === 'object' && !Array.isArray(record.result) ? record.result as Record<string, unknown> : {};

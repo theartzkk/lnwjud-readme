@@ -7,6 +7,7 @@ import { ControlPlaneWorkerClient, type WorkerProject, type WorkerTask } from '.
 import { buildCodexTaskInstruction, deviceExecutionCapabilities, ownerWorkProfileInstruction, ControlPlaneWorkerRuntime, officeExecutionCapabilities } from '../src/control-plane-worker-runtime.js';
 import { loadOrCreateDeviceIdentity } from '../src/device-identity.js';
 import { execCommand } from '../src/process.js';
+import { normalizedDeviceActionArguments, type DeviceAction } from '../src/lnwjud-device-client.js';
 import type { CredentialStore } from '../src/credential-store.js';
 
 class MemoryCredentials implements CredentialStore {
@@ -37,6 +38,20 @@ test('Office inventory becomes executable only for the matching Windows handler'
   assert.deepEqual(officeExecutionCapabilities('win32', ['tool.office.word']), ['office.word.pdf']);
   assert.deepEqual(officeExecutionCapabilities('win32', ['tool.office.excel', 'tool.office.powerpoint']).sort(), ['office.excel.pdf', 'office.powerpoint.pdf']);
   assert.deepEqual(officeExecutionCapabilities('win32', ['tool.office.word', 'tool.browser.edge']), ['office.word.pdf']);
+});
+
+test('device process primitives inherit the active AWH workspace id without contaminating unrelated tool schemas', () => {
+  const workspaceId = '05304a83-b508-4caf-987a-0ce41f5df404';
+  const action = (tool: DeviceAction['tool'], args: Record<string, unknown> = {}): DeviceAction => ({ tool, arguments: args, summary: 'fixture' });
+
+  for (const tool of ['process_list', 'process_start', 'process_status', 'process_stop', 'computer_use', 'shell'] as const) {
+    assert.equal(normalizedDeviceActionArguments(action(tool), workspaceId).workspaceId, workspaceId);
+  }
+  assert.equal(normalizedDeviceActionArguments(action('process_start', { workspaceId: 'explicit' }), workspaceId).workspaceId, 'explicit');
+  assert.equal(normalizedDeviceActionArguments(action('accessibility'), workspaceId).userConfirmed, true);
+  assert.equal(normalizedDeviceActionArguments(action('input_event'), workspaceId).userConfirmed, true);
+  assert.equal('workspaceId' in normalizedDeviceActionArguments(action('dom_cdp'), workspaceId), false);
+  assert.equal('workspaceId' in normalizedDeviceActionArguments(action('read_file'), workspaceId), false);
 });
 
 test('desktop worker runtime is wired to heartbeat and truthful idle state', async () => {
