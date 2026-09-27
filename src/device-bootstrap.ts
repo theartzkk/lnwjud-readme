@@ -403,6 +403,25 @@ async function verifySystemMcpRuntime(node: string, entry: string, cwd: string, 
   });
 }
 
+async function installAndVerifySystemMcpRuntime(platform: NodeJS.Platform, runtime: string, privateNode: PrivateNodeRuntime, env: NodeJS.ProcessEnv): Promise<void> {
+  await mkdir(runtime, { recursive: true, mode: 0o700 });
+  await writeFile(join(runtime, 'package.json'), JSON.stringify({ name: 'awh-system-runtime', private: true, version: '1.0.0', dependencies: { [SYSTEM_MCP_PACKAGE]: SYSTEM_MCP_VERSION } }, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
+  const install = await execFile(privateNode.node, [privateNode.npmCli, 'install', '--ignore-scripts', '--no-audit', '--no-fund', '--save-exact', `${SYSTEM_MCP_PACKAGE}@${SYSTEM_MCP_VERSION}`], runtime, 300_000, { ...env, npm_config_update_notifier: 'false', npm_config_fund: 'false', npm_config_audit: 'false' });
+  if (install.code !== 0) throw new Error('DEVICE_RUNTIME_SYSTEM_INSTALL_FAILED');
+  const packagePath = platform === 'win32'
+    ? pathWin32.join(runtime, 'node_modules', '@wonderwhy-er', 'desktop-commander', 'package.json')
+    : join(runtime, 'node_modules', '@wonderwhy-er', 'desktop-commander', 'package.json');
+  const entry = platform === 'win32'
+    ? pathWin32.join(runtime, 'node_modules', '@wonderwhy-er', 'desktop-commander', 'dist', 'index.js')
+    : join(runtime, 'node_modules', '@wonderwhy-er', 'desktop-commander', 'dist', 'index.js');
+  const installed = JSON.parse(await readFile(packagePath, 'utf8')) as { version?: unknown };
+  if (installed.version !== SYSTEM_MCP_VERSION) throw new Error('DEVICE_RUNTIME_SYSTEM_VERSION_MISMATCH');
+  const lock = JSON.parse(await readFile(join(runtime, 'package-lock.json'), 'utf8')) as { packages?: Record<string, { version?: string; integrity?: string }> };
+  const row = lock.packages?.['node_modules/@wonderwhy-er/desktop-commander'];
+  if (row?.version !== SYSTEM_MCP_VERSION || row.integrity !== SYSTEM_MCP_INTEGRITY) throw new Error('DEVICE_RUNTIME_SYSTEM_INTEGRITY_FAILED');
+  await verifySystemMcpRuntime(privateNode.node, entry, runtime, env);
+}
+
 async function ensureSystemMcpRuntime(platform: NodeJS.Platform, arch: string, home: string, env: NodeJS.ProcessEnv): Promise<boolean> {
   if (platform === 'win32' && arch !== 'x64') throw new Error('DEVICE_RUNTIME_SYSTEM_ARCH_UNSUPPORTED');
   if (platform === 'darwin' && arch !== 'arm64' && arch !== 'x64') throw new Error('DEVICE_RUNTIME_SYSTEM_ARCH_UNSUPPORTED');
@@ -420,22 +439,26 @@ async function ensureSystemMcpRuntime(platform: NodeJS.Platform, arch: string, h
     current = typeof parsed.version === 'string' ? parsed.version : '';
   } catch {}
   if (current === SYSTEM_MCP_VERSION) {
-    await installSystemMcpBridge(platform, home, env, runtime, privateNode.node);
-    await verifySystemMcpRuntime(privateNode.node, entry, runtime, env);
-    return false;
+    try {
+      await installSystemMcpBridge(platform, home, env, runtime, privateNode.node);
+      await verifySystemMcpRuntime(privateNode.node, entry, runtime, env);
+      return false;
+    } catch {
+      const staged = runtime + '.repair';
+      const previous = runtime + '.previous';
+      await rm(staged, { recursive: true, force: true });
+      await installAndVerifySystemMcpRuntime(platform, staged, privateNode, env);
+      await rm(previous, { recursive: true, force: true });
+      await rename(runtime, previous);
+      try { await rename(staged, runtime); }
+      catch (error) { await rename(previous, runtime).catch(() => undefined); throw error; }
+      await installSystemMcpBridge(platform, home, env, runtime, privateNode.node);
+      await verifySystemMcpRuntime(privateNode.node, entry, runtime, env);
+      return true;
+    }
   }
-  await mkdir(runtime, { recursive: true, mode: 0o700 });
-  await writeFile(join(runtime, 'package.json'), JSON.stringify({ name: 'awh-system-runtime', private: true, version: '1.0.0', dependencies: { [SYSTEM_MCP_PACKAGE]: SYSTEM_MCP_VERSION } }, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
-  const install = await execFile(privateNode.node, [privateNode.npmCli, 'install', '--ignore-scripts', '--no-audit', '--no-fund', '--save-exact', `${SYSTEM_MCP_PACKAGE}@${SYSTEM_MCP_VERSION}`], runtime, 300_000, { ...env, npm_config_update_notifier: 'false', npm_config_fund: 'false', npm_config_audit: 'false' });
-  if (install.code !== 0) throw new Error('DEVICE_RUNTIME_SYSTEM_INSTALL_FAILED');
-  const installed = JSON.parse(await readFile(packagePath, 'utf8')) as { version?: unknown };
-  if (installed.version !== SYSTEM_MCP_VERSION) throw new Error('DEVICE_RUNTIME_SYSTEM_VERSION_MISMATCH');
-  const lockPath = join(runtime, 'package-lock.json');
-  const lock = JSON.parse(await readFile(lockPath, 'utf8')) as { packages?: Record<string, { version?: string; integrity?: string }> };
-  const row = lock.packages?.['node_modules/@wonderwhy-er/desktop-commander'];
-  if (row?.version !== SYSTEM_MCP_VERSION || row.integrity !== SYSTEM_MCP_INTEGRITY) throw new Error('DEVICE_RUNTIME_SYSTEM_INTEGRITY_FAILED');
+  await installAndVerifySystemMcpRuntime(platform, runtime, privateNode, env);
   await installSystemMcpBridge(platform, home, env, runtime, privateNode.node);
-  await verifySystemMcpRuntime(privateNode.node, entry, runtime, env);
   return true;
 }
 
