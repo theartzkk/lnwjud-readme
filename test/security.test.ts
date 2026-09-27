@@ -54,7 +54,7 @@ test('blocks symlink escape for existing write targets', async (t) => {
 
 
 test('large control responses keep endpoint-specific safe errors', async () => {
-  const oversized = JSON.stringify({ schemaVersion: 1, payload: 'x'.repeat(270 * 1024) });
+  const oversized = JSON.stringify({ schemaVersion: 1, payload: 'x'.repeat(800 * 1024) });
   const fetchImpl = async () => new Response(oversized, { status: 200, headers: { 'content-type': 'application/json' } });
 
   await assert.rejects(
@@ -70,5 +70,14 @@ test('large control responses keep endpoint-specific safe errors', async () => {
     (error: unknown) => error instanceof Error
       && (error as Error & { code?: string }).code === 'RESPONSE_TOO_LARGE'
       && error.message.includes('แชทนี้ยาวมาก'),
+  );
+
+  const backendTooLarge = async () => new Response(JSON.stringify({ schemaVersion: 1, error: 'ERROR', code: 'RESPONSE_TOO_LARGE', requestId: 'fixture' }), { status: 413, headers: { 'content-type': 'application/json' } });
+  await assert.rejects(
+    controlRequest('/api/v1/control/infrastructure/summary', {}, backendTooLarge),
+    (error: unknown) => error instanceof Error
+      && (error as Error & { code?: string }).code === 'RESPONSE_TOO_LARGE'
+      && error.message.includes('ข้อมูลของส่วนนี้มีขนาดใหญ่เกินขอบเขต')
+      && !error.message.includes('แชทนี้ยาวมาก'),
   );
 });

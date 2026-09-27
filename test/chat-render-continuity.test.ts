@@ -121,7 +121,7 @@ test('task progress announcer is milestone-based and live activity itself stays 
 
 test('failed submission is recovered into the originating room draft after navigation', () => {
   const start = source.indexOf('  function rememberFailedSubmissionDraft(');
-  const end = source.indexOf('  let pendingPrivilegedAction', start);
+  const end = source.indexOf("  if ('serviceWorker' in navigator", start);
   const fn = source.slice(start, end);
   const file = { name: 'evidence.png' };
   const context = vm.createContext({ composerDrafts: new Map([['p:a', { text: '', attachments: [] }]]), composerDraftKey: 'p:b', projectId: 'p', conversationId: 'a', goal: 'ข้อความที่ส่งไม่สำเร็จ', files: [file] });

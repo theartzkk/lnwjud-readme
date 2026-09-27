@@ -17,7 +17,8 @@ test('P1 Home command center presents real control data with role-aware worker d
   assert.match(dashboard, /data-pulse-target="files"/);
   assert.match(dashboard, /data-product-destination/);
   assert.match(dashboard, /aria-current/);
-  assert.match(dashboard, /loadInfrastructure/);
+  assert.match(dashboard, /loadInfrastructureSummary/);
+  assert.doesNotMatch(dashboard, /\bloadInfrastructure\(/);
   assert.match(dashboard, /dashboard-owner-system-card/);
   assert.match(dashboard, /พร้อมใช้งาน · AI พร้อม/);
   assert.match(dashboard, /พื้นที่ใช้งาน \${storageUsed}% · \${active} งานกำลังดำเนินการ/);

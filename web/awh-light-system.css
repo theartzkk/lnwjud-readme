@@ -34,7 +34,7 @@ body.work-active .assistant-turn::before,.empty-mark,.system-feature-icon{backgr
 .awh-tool-copy small,.awh-pulse-card small,.awh-pulse-card em,.awh-recent-item small,.awh-recent-item time,.awh-artifact-card small,.awh-task-item small,.awh-task-item time,.awh-task-detail p,.awh-file-copy small,.awh-file-copy em{color:#657d99!important}
 .awh-product-nav-item{color:#657d99!important}.awh-product-nav-item:hover,.awh-product-nav-item.is-active{background:#eef6ff!important;color:#11325f!important}
 .awh-mobile-nav{background:rgba(255,255,255,.96)!important;border-color:#dbe8f4!important;box-shadow:0 12px 40px rgba(21,35,58,.12)!important}.awh-mobile-nav-item{color:#657d99!important}.awh-mobile-nav-item.is-active{background:#eef6ff!important;color:#0b3d91!important}
-.sheet-backdrop,.awh-tool-dialog-backdrop,.hosting-confirm{background:rgba(16,24,40,.40)!important}.awh-tool-dialog-card,.hosting-confirm-card{background:#fff!important;color:#11325f!important;border-color:#dbe8f4!important}
+.sheet-backdrop,.awh-tool-dialog-backdrop{background:rgba(16,24,40,.40)!important}.awh-tool-dialog-card{background:#fff!important;color:#11325f!important;border-color:#dbe8f4!important}
 .system-health-card,.system-feature-card{background:#fff!important;color:#11325f!important;border-color:#dbe8f4!important}.system-feature-copy small{color:#657d99!important}
 /* Specialist owner surfaces */
 .studio-shell,.hosting-main,.infra-main,.review-main,.trust-main{color:#11325f!important}.studio-header,.hosting-header,.infra-header,.review-header,.trust-header{background:rgba(255,255,255,.94)!important;border-color:#dbe8f4!important;color:#11325f!important}

@@ -31,16 +31,30 @@ test('Owner Control Panel composes existing authorities without a parallel backe
   assert.match(html,/id="cp-technical-details" class="cp-technical-details"/);
   assert.match(js,/revealHashTarget/);
   assert.match(js,/requireOwnerSession/);
-  assert.match(js,/loadInfrastructure/);
-  assert.doesNotMatch(js,/Promise\.allSettled\(\[.*loadInfrastructure/);
+  assert.match(js,/loadInfrastructureSummary/);
+  assert.doesNotMatch(js,/\bloadInfrastructure\(/);
+  assert.doesNotMatch(js,/Promise\.allSettled\(\[.*loadInfrastructureSummary/);
   assert.doesNotMatch(js,/loadControlData\(\)/);
   assert.match(js,/listManagedSites/);
   assert.match(js,/loadProviderStatus/);
-  assert.match(js,/if\(!session\)\{location\.assign/); assert.ok(js.indexOf('requireOwnerSession()')<js.indexOf('loadInfrastructure()'));
+  assert.match(js,/if\(!session\)\{location\.assign/); assert.ok(js.indexOf('requireOwnerSession()')<js.indexOf('loadInfrastructureSummary()'));
   assert.doesNotMatch(js,/localStorage|sessionStorage|indexedDB|Authorization|Bearer/i);
   assert.doesNotMatch(html,/password|api[_ -]?key|secret/i);
   assert.match(css,/\.cp-sidebar/);
   assert.match(css,/@media\(max-width:840px\)/);
+});
+
+test('Control Panel uses a bounded infrastructure summary route',async()=>{
+  const [adapter,router,service,panel,dashboard]=await Promise.all([
+    'web/control-plane-adapter.js','hub/src/HubControlPlaneRouter.php','hub/src/HubControlPlaneService.php','web/panel.js','web/dashboard.js'
+  ].map(name=>readFile(join(ROOT,name),'utf8')));
+  assert.match(adapter,/loadInfrastructureSummary\(\).*infrastructure\/summary/s);
+  assert.match(router,/\/api\/v1\/control\/infrastructure\/summary.*infrastructureSummary/s);
+  assert.match(service,/function infrastructureSummary\(/);
+  assert.match(service,/'projection'=>'OWNER_SUMMARY'/);
+  assert.match(panel,/loadInfrastructureSummary\(\)/);
+  assert.match(dashboard,/loadInfrastructureSummary\(\)/);
+  assert.doesNotMatch(panel+dashboard,/\bloadInfrastructure\(\)/);
 });
 
 test('Control Panel is emitted into the canonical web release and PWA shell',async()=>{

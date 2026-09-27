@@ -1,4 +1,4 @@
-import { loadControlData, loadConversations, loadInfrastructure } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { loadControlData, loadConversations, loadInfrastructureSummary } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 import { SCHOOL_TOOLS, OWNER_TOOLS } from './tool-registry.js?release=__AWH_WEB_RELEASE_ID__';
 import { LOCAL_TOOL_ACTIONS, mountSchoolTools, openPdfTool, openProjectFactoryTool, openQrTool, openSchoolDocumentTool } from './school-tools.js?release=__AWH_WEB_RELEASE_ID__';
 import { executionStatus } from './execution-ux.js?release=__AWH_WEB_RELEASE_ID__';
@@ -1305,7 +1305,7 @@ async function fetchDashboard() {
   if (!authenticatedWorkspaceActive()) return;
   const control = await loadControlData();
   state.control = control;
-  state.infrastructure = control.role === 'OWNER' ? await loadInfrastructure().catch(() => null) : null;
+  state.infrastructure = control.role === 'OWNER' ? await loadInfrastructureSummary().catch(() => null) : null;
   renderRole();
   renderHomePulse();
   renderAttentionCenter();

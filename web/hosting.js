@@ -4,10 +4,8 @@ const $=(id)=>document.getElementById(id);
 const CANONICAL_DOMAIN='kruart.online';
 let control=null;
 let sites=[];
-let policies={};
 let dnsPlan=null;
 let ecosystem=null;
-let pendingConfirm=null;
 let hostingRefreshInFlight=null;
 let liveRefreshTimer=null;
 
@@ -73,40 +71,8 @@ async function mutate(action,retried=false){
   }
 }
 
-function policy(action){
-  return policies[`hosting.site.${action}`]||{risk:'MEDIUM',confirmationRequired:true,stepUpRequired:false};
-}
-
-function confirmationCopy(site,action){
-  return ({
-    deploy:`อัปเดต “${site.name}” เป็นไฟล์รุ่นล่าสุด โดย AWH จะเก็บรุ่นเดิมไว้เผื่อย้อนกลับ`,
-    rollback:`กลับ “${site.name}” ไปใช้เวอร์ชันก่อนหน้า โดยไม่ลบข้อมูลของเว็บไซต์`,
-    disable:`หยุดเผยแพร่ “${site.name}” ชั่วคราว โดยยังเก็บไฟล์ ข้อมูล และประวัติไว้`,
-    bind_domain:`เชื่อม https://${desiredHost(site.slug||'')} กับ “${site.name}” และเปิดการเชื่อมต่อที่ปลอดภัยเมื่อพร้อม`,
-  })[action]||`ดำเนินการกับ “${site.name}”`;
-}
-
-function confirmationTitle(action){
-  return ({
-    rollback:'กลับไปเวอร์ชันก่อน?',
-    disable:'หยุดเผยแพร่เว็บไซต์?',
-    bind_domain:'เชื่อมชื่อเว็บนี้?',
-    deploy:'อัปเดตเว็บไซต์?',
-  })[action]||'ยืนยันรายการ';
-}
-
-function confirmAction(site,action,handler){
-  const rule=policy(action);
-  if(!rule.confirmationRequired)return mutate(handler);
-  if(liveRefreshTimer){clearTimeout(liveRefreshTimer);liveRefreshTimer=null;}
-  return new Promise((resolve,reject)=>{
-    pendingConfirm={handler,resolve,reject};
-    $('hosting-confirm-title').textContent=confirmationTitle(action);
-    $('hosting-confirm-copy').textContent=confirmationCopy(site,action);
-    $('hosting-confirm-message').textContent='';
-    $('hosting-confirm').hidden=false;
-    setTimeout(()=>$('hosting-confirm-submit').focus(),0);
-  });
+function runAction(handler){
+  return mutate(handler);
 }
 
 function renderEcosystem(){
@@ -161,7 +127,7 @@ function button(text,className,site,action){
   node.addEventListener('click',async()=>{
     node.disabled=true;
     try{
-      await confirmAction(site,action,()=>managedSiteAction(site.siteId,action));
+      await runAction(()=>managedSiteAction(site.siteId,action));
       await refresh();
     }catch(error){
       reportError(error);
@@ -219,7 +185,7 @@ function domainButton(site){
   if(!node.disabled)node.addEventListener('click',async()=>{
     node.disabled=true;
     try{
-      const result=await confirmAction(site,'bind_domain',()=>bindManagedSiteDomain(site.siteId,desiredHost(site.slug||'')));
+      const result=await runAction(()=>bindManagedSiteDomain(site.siteId,desiredHost(site.slug||'')));
       const plan=result?.dnsPlan;
       $('hosting-message').textContent=plan?.target
         ?'รับคำขอแล้ว หากผู้ให้บริการชื่อเว็บต้องตั้งค่าเอง ให้เปิด “รายละเอียดทางเทคนิค” เพื่อดูค่าที่ต้องใช้'
@@ -356,7 +322,7 @@ function needsLiveRefresh(){
 function scheduleLiveRefresh(delay=12000){
   if(liveRefreshTimer)clearTimeout(liveRefreshTimer);
   liveRefreshTimer=null;
-  if(document.hidden||pendingConfirm||!needsLiveRefresh())return;
+  if(document.hidden||!needsLiveRefresh())return;
   liveRefreshTimer=setTimeout(()=>void refreshHostingData(true),delay);
 }
 
@@ -366,7 +332,6 @@ async function refreshHostingData(background=false){
     try{
       const result=await listManagedSites();
       sites=Array.isArray(result.sites)?result.sites:[];
-      policies=result.policy&&typeof result.policy==='object'?result.policy:{};
       dnsPlan=result.dns&&typeof result.dns==='object'?result.dns:null;
       ecosystem=result.ecosystem&&typeof result.ecosystem==='object'?result.ecosystem:null;
       renderEcosystem();
@@ -434,32 +399,6 @@ $('hosting-create-form').addEventListener('submit',async(event)=>{
     reportError(error);
     $('hosting-message').textContent=friendlyError(error,'ยังสร้างเว็บไซต์ไม่ได้ ตรวจข้อมูลที่กรอกแล้วลองอีกครั้ง');
   }finally{submit.disabled=false;}
-});
-
-$('hosting-confirm-submit').addEventListener('click',async()=>{
-  if(!pendingConfirm)return;
-  const current=pendingConfirm;
-  const submit=$('hosting-confirm-submit');
-  submit.disabled=true;
-  $('hosting-confirm-message').textContent='กำลังดำเนินการ…';
-  try{
-    const result=await mutate(current.handler);
-    pendingConfirm=null;
-    $('hosting-confirm').hidden=true;
-    current.resolve(result);
-  }catch(error){
-    reportError(error);
-    $('hosting-confirm-message').textContent=friendlyError(error);
-  }finally{submit.disabled=false;}
-});
-
-$('hosting-confirm-cancel').addEventListener('click',()=>{
-  if(pendingConfirm){
-    pendingConfirm.reject(Object.assign(new Error('cancelled'),{code:'USER_CANCELLED'}));
-    pendingConfirm=null;
-  }
-  $('hosting-confirm').hidden=true;
-  scheduleLiveRefresh(800);
 });
 
 $('hosting-refresh').addEventListener('click',()=>void refresh());

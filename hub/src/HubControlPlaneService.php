@@ -1165,12 +1165,107 @@ final class HubControlPlaneService
         return ['schemaVersion' => 1, 'generatedAt' => $generatedAt, 'summary' => ['authEventCount' => $authCount, 'taskEventCount' => $taskEvents, 'pendingApprovalCount' => $pending, 'failedExecutionCount' => $failed, 'checkpointEventCount' => $checkpoints, 'artifactCount' => (int) $artifact['amount'], 'artifactBytes' => (int) $artifact['bytes']], 'recentAuthEvents' => $recentEvents, 'health' => ['database' => $health['database'], 'backup' => $health['backup']], 'dataPolicy' => ['secretsExposed' => false, 'rawPathsExposed' => false, 'metadataHashesExposed' => false]];
     }
 
+    /** Bounded Owner summary used by Home and Control Center. Optional diagnostics fail soft. */
+    public function infrastructureSummary(string $sessionToken, ?string $now = null): array
+    {
+        $session = $this->sessionRow($sessionToken, $now); $this->assertSelfServiceReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId);
+        $health = $this->ownerSelfServiceStatus($sessionToken, $now);
+
+        try { $telemetry = HubInfrastructureService::fromEnvironment()->status($now); }
+        catch (Throwable) { $telemetry = ['schemaVersion'=>1,'state'=>'UNAVAILABLE','server'=>[]]; }
+        try { $release = HubInfrastructureService::releaseState(); }
+        catch (Throwable) { $release = ['sourceState'=>'UNKNOWN','pointersMatch'=>false,'controlReleaseId'=>null,'webReleaseId'=>null,'controlSourceSha'=>null,'webSourceSha'=>null]; }
+        try { $ecosystemHealth = HubEcosystemHealthService::fromEnvironment()->status((string)($release['controlReleaseId'] ?? ''), $now); }
+        catch (Throwable) { $ecosystemHealth = ['schemaVersion'=>1,'state'=>'UNAVAILABLE','alerts'=>[],'current'=>[],'recoveryDrill'=>['state'=>'UNKNOWN']]; }
+
+        try { $triageFull = (new HubExecutionTriageService($this->pdo))->snapshot($now, 12); }
+        catch (Throwable) { $triageFull = ['schemaVersion'=>1,'state'=>'UNKNOWN','current'=>['state'=>'UNKNOWN','total'=>0,'summary'=>[]],'nextAction'=>'ตรวจ canonical execution state']; }
+        $triageCurrent = is_array($triageFull['current'] ?? null) ? $triageFull['current'] : [];
+        $triage = [
+            'schemaVersion'=>(int)($triageFull['schemaVersion'] ?? 1),
+            'state'=>(string)($triageFull['state'] ?? 'UNKNOWN'),
+            'current'=>[
+                'state'=>(string)($triageCurrent['state'] ?? 'UNKNOWN'),
+                'total'=>(int)($triageCurrent['total'] ?? 0),
+                'summary'=>is_array($triageCurrent['summary'] ?? null) ? $triageCurrent['summary'] : [],
+            ],
+            'nextAction'=>(string)($triageFull['nextAction'] ?? 'ตรวจ canonical execution state'),
+            'bounded'=>true,
+        ];
+
+        $autonomous = [];
+        try {
+            $active = $this->pdo->prepare("SELECT e.execution_id,e.executor_kind,e.required_capability,e.state,e.updated_at,t.task_id,t.goal,t.progress FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE t.user_id=:user AND e.state IN ('QUEUED','LEASED','RUNNING','WAITING_FOR_CAPABILITY') ORDER BY e.updated_at DESC LIMIT 12");
+            $active->execute(['user'=>$userId]);
+            foreach ($active->fetchAll() as $row) $autonomous[] = [
+                'taskId'=>(string)$row['task_id'],'executionId'=>(string)$row['execution_id'],'executorKind'=>(string)$row['executor_kind'],
+                'requiredCapability'=>(string)$row['required_capability'],'state'=>(string)$row['state'],'progress'=>(int)$row['progress'],
+                'goal'=>(string)$row['goal'],'updatedAt'=>(string)$row['updated_at'],
+            ];
+        } catch (Throwable) {}
+
+        try { $executionAuthority = $this->capabilities !== null ? $this->capabilities->executionAuthorityStatus($now) : []; }
+        catch (Throwable) { $executionAuthority = []; }
+        if ($executionAuthority === []) $executionAuthority = ['schemaVersion'=>1,'mode'=>'UNAVAILABLE','activeMutationCount'=>0,'waitingMutationCount'=>0,'parallelReadsAllowed'=>true,'parallelNonConflictingMutationsAllowed'=>false];
+
+        try { $capabilityFabric = $this->capabilities !== null ? $this->capabilities->status(false, $now) : []; }
+        catch (Throwable) { $capabilityFabric = []; }
+        if ($capabilityFabric === []) $capabilityFabric = ['schemaVersion'=>1,'anywhereFirst'=>true,'deviceRequired'=>false,'summary'=>['ready'=>0,'cloudReady'=>0,'optional'=>0,'planned'=>0],'capabilities'=>[],'providers'=>[]];
+        if (is_array($capabilityFabric['capabilities'] ?? null)) $capabilityFabric['capabilities'] = array_slice($capabilityFabric['capabilities'], 0, 40);
+        if (is_array($capabilityFabric['providers'] ?? null)) $capabilityFabric['providers'] = array_slice($capabilityFabric['providers'], 0, 20);
+
+        $since = gmdate('c', strtotime($now ?? 'now') - 86400);
+        $countSince = function (string $sql) use ($userId, $since): int { try { $q=$this->pdo->prepare($sql); $q->execute(['user'=>$userId,'since'=>$since]); return (int)$q->fetchColumn(); } catch (Throwable) { return 0; } };
+        $completed24h = $countSince("SELECT COUNT(*) FROM control_tasks WHERE user_id=:user AND state='COMPLETED' AND updated_at>=:since");
+        $failed24h = $countSince("SELECT COUNT(*) FROM control_tasks WHERE user_id=:user AND state='FAILED' AND updated_at>=:since");
+        $artifact24h = $countSince('SELECT COUNT(*) FROM control_artifacts a JOIN control_tasks t ON t.task_id=a.task_id WHERE t.user_id=:user AND a.created_at>=:since');
+        $pendingApprovals = 0;
+        try { $q=$this->pdo->prepare("SELECT COUNT(*) FROM control_approvals a JOIN control_tasks t ON t.task_id=a.task_id WHERE t.user_id=:user AND a.status='PENDING'"); $q->execute(['user'=>$userId]); $pendingApprovals=(int)$q->fetchColumn(); } catch (Throwable) {}
+        $currentDefects = (int)($triage['current']['summary']['currentDefect'] ?? 0);
+        $nextAction = $currentDefects > 0 ? 'ตรวจปัญหาปัจจุบันก่อนเริ่ม attempt ใหม่' : ($pendingApprovals > 0 ? 'ตรวจรายการที่รอการอนุมัติ' : 'ไม่มี blocker ปัจจุบัน AWH พร้อมทำงานถัดไป');
+        $morningBrief = ['schemaVersion'=>1,'state'=>'SNAPSHOT_ONLY','persisted'=>false,'generatedAt'=>gmdate('c'),'overnight'=>['completedTasks'=>$completed24h,'failedTasks'=>$failed24h,'artifactsCreated'=>$artifact24h],'attention'=>['pendingApprovals'=>$pendingApprovals,'incidents'=>$currentDefects],'nextAction'=>$nextAction];
+
+        $checks = [
+            ['key'=>'database','label'=>'Database','pass'=>($health['database']['state'] ?? null)==='HEALTHY'],
+            ['key'=>'backup','label'=>'Backup','pass'=>($health['backup']['state'] ?? null)==='VERIFIED'],
+            ['key'=>'storage','label'=>'Storage','pass'=>!in_array((string)($health['storage']['state'] ?? 'UNKNOWN'),['CRITICAL','UNKNOWN'],true)],
+            ['key'=>'telemetry','label'=>'VPS Telemetry','pass'=>($telemetry['state'] ?? null)==='READY'],
+            ['key'=>'deploy','label'=>'Deploy','pass'=>($release['sourceState'] ?? 'UNKNOWN')==='MATCHED' && ($release['pointersMatch'] ?? false)===true],
+            ['key'=>'ecosystem-health','label'=>'Ecosystem Health','pass'=>($ecosystemHealth['state'] ?? null)==='READY'],
+        ];
+        $passed=count(array_filter($checks,static fn(array $row):bool=>$row['pass']===true));
+
+        return [
+            'schemaVersion'=>1,
+            'projection'=>'OWNER_SUMMARY',
+            'generatedAt'=>gmdate('c'),
+            'telemetry'=>$telemetry,
+            'ecosystemHealth'=>$ecosystemHealth,
+            'deployment'=>['releaseId'=>HubInfrastructureService::currentReleaseId()] + $release,
+            'database'=>$health['database'],
+            'backup'=>$health['backup'],
+            'storage'=>$health['storage'],
+            'queue'=>$health['queue'],
+            'workerSummary'=>$health['workerSummary'],
+            'workers'=>array_slice(is_array($health['workers'] ?? null)?$health['workers']:[],0,24),
+            'deviceRoles'=>is_array($health['deviceRoles'] ?? null)?$health['deviceRoles']:['schemaVersion'=>1,'state'=>'UNAVAILABLE','devices'=>[]],
+            'autonomousWork'=>$autonomous,
+            'executionAuthority'=>$executionAuthority,
+            'capabilityFabric'=>$capabilityFabric,
+            'morningBrief'=>$morningBrief,
+            'staff'=>['executionTriage'=>$triage],
+            'selfHealing'=>['schemaVersion'=>1,'state'=>'OBSERVE_ONLY','nextAction'=>$nextAction],
+            'productionComplete'=>['passed'=>$passed,'total'=>count($checks),'percent'=>(int)round($passed*100/max(1,count($checks))),'checks'=>$checks],
+        ];
+    }
+
     /** Owner-only VPS/Control Plane projection. No paths, secrets or raw command output cross this boundary. */
     public function infrastructure(string $sessionToken, ?string $now = null): array
     {
         $session = $this->sessionRow($sessionToken, $now); $this->assertSelfServiceReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId);
         $health = $this->ownerSelfServiceStatus($sessionToken, $now);
-        $telemetry = HubInfrastructureService::fromEnvironment()->status($now);
+        try { $telemetry = HubInfrastructureService::fromEnvironment()->status($now); }
+        catch (Throwable) { $telemetry = ['schemaVersion'=>1,'state'=>'UNAVAILABLE','server'=>[]]; }
         $projects = array_map(static fn (array $project): array => [
             'projectId' => (string) $project['projectId'],
             'name' => (string) $project['name'],
@@ -1181,13 +1276,16 @@ final class HubControlPlaneService
             'sourceAuthority' => is_string($project['sourceAuthority'] ?? null) ? $project['sourceAuthority'] : null,
             'sourceAuthorityState' => (string)($project['sourceAuthorityState'] ?? 'UNKNOWN'),
             'projectClass' => (string)($project['projectClass'] ?? 'PRODUCTION'),
-        ], $this->projectsForUser($userId));
-        $release = HubInfrastructureService::releaseState();
-        $ecosystemHealth = HubEcosystemHealthService::fromEnvironment()->status((string)($release['controlReleaseId'] ?? ''), $now);
+        ], array_slice($this->projectsForUser($userId), 0, 80));
+        try { $release = HubInfrastructureService::releaseState(); }
+        catch (Throwable) { $release = ['sourceState'=>'UNKNOWN','pointersMatch'=>false,'controlReleaseId'=>null,'webReleaseId'=>null]; }
+        try { $ecosystemHealth = HubEcosystemHealthService::fromEnvironment()->status((string)($release['controlReleaseId'] ?? ''), $now); }
+        catch (Throwable) { $ecosystemHealth = ['schemaVersion'=>1,'state'=>'UNAVAILABLE','alerts'=>[],'current'=>[],'recoveryDrill'=>['state'=>'UNKNOWN']]; }
         try { $domainEvents=(new HubDomainEventService($this->pdo))->stats()+['state'=>'READY']; } catch (Throwable) { $domainEvents=['schemaVersion'=>1,'state'=>'UNAVAILABLE','states'=>['PENDING'=>0,'PROCESSING'=>0,'DELIVERED'=>0,'DEAD'=>0],'pending'=>0,'dead'=>0]; }
-        $staff = $this->staff->snapshot($now, null, $telemetry, $release);
+        try { $staff = $this->staff->snapshot($now, null, $telemetry, $release); }
+        catch (Throwable) { $staff = ['schemaVersion'=>2,'generatedAt'=>gmdate('c'),'executionTriage'=>[],'governor'=>['state'=>'UNKNOWN','decision'=>'UNKNOWN'],'selfHealing'=>['state'=>'UNKNOWN'],'housekeeping'=>['state'=>'UNKNOWN'],'hostingCenter'=>['state'=>'UNKNOWN'],'managedSites'=>[],'storageGovernance'=>['state'=>'UNKNOWN'],'persistedMorningBrief'=>[]]; }
         $aiModels = [];
-        if ($this->aiGovernance !== null) { try { $aiModels = array_slice($this->aiGovernance->catalog()['models'] ?? [], 0, 40); } catch (Throwable) { $aiModels = []; } }
+        if ($this->aiGovernance !== null) { try { $aiModels = array_slice($this->aiGovernance->catalog()['models'] ?? [], 0, 24); } catch (Throwable) { $aiModels = []; } }
         $routes = ['recent' => 0, 'fallback' => 0];
         if ($this->aiGovernance !== null) { try { $since = gmdate('c', strtotime($now ?? 'now') - 86400); $q = $this->pdo->prepare("SELECT COUNT(*) AS recent, SUM(CASE WHEN decision_state='FALLBACK' THEN 1 ELSE 0 END) AS fallback FROM control_ai_route_decisions WHERE user_id=:user AND created_at>=:since"); $q->execute(['user' => $userId, 'since' => $since]); $r = $q->fetch() ?: []; $routes = ['recent' => (int)($r['recent'] ?? 0), 'fallback' => (int)($r['fallback'] ?? 0)]; } catch (Throwable) { /* M16 visibility is optional on older compatible schemas. */ } }
         $active = $this->pdo->prepare("SELECT e.execution_id,e.executor_kind,e.required_capability,e.state,e.updated_at,e.checkpoint_json,t.task_id,t.goal,t.progress FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE t.user_id=:user AND e.state IN ('QUEUED','LEASED','RUNNING','WAITING_FOR_CAPABILITY') ORDER BY e.updated_at DESC LIMIT 12");
@@ -1234,7 +1332,7 @@ final class HubControlPlaneService
             'blindRetry'=>($executionTriageFull['blindRetry'] ?? false) === true,
             'nextAction'=>(string)($executionTriageFull['nextAction'] ?? 'ตรวจ canonical execution state'),
         ];
-        $events = $this->pdo->prepare('SELECT e.state,e.progress,e.message,e.occurred_at,t.task_id,t.goal,t.project_id,t.result_summary,t.failure_code,p.name AS project_name FROM control_task_events e JOIN control_tasks t ON t.task_id=e.task_id JOIN projects p ON p.project_id=t.project_id WHERE t.user_id=:user ORDER BY e.occurred_at DESC, e.event_id DESC LIMIT 20'); $events->execute(['user'=>$userId]);
+        $events = $this->pdo->prepare('SELECT e.state,e.progress,e.message,e.occurred_at,t.task_id,t.goal,t.project_id,t.result_summary,t.failure_code,p.name AS project_name FROM control_task_events e JOIN control_tasks t ON t.task_id=e.task_id JOIN projects p ON p.project_id=t.project_id WHERE t.user_id=:user ORDER BY e.occurred_at DESC, e.event_id DESC LIMIT 12'); $events->execute(['user'=>$userId]);
         $activity = array_map(static fn(array $row): array => ['taskId'=>(string)$row['task_id'],'state'=>(string)$row['state'],'progress'=>(int)$row['progress'],'message'=>$row['message'] === null ? null : (string)$row['message'],'occurredAt'=>(string)$row['occurred_at'],'goal'=>(string)$row['goal'],'projectId'=>(string)$row['project_id'],'projectName'=>(string)$row['project_name'],'resultSummary'=>$row['result_summary'] === null ? null : (string)$row['result_summary'],'blocker'=>$row['failure_code'] === null ? null : (string)$row['failure_code']], $events->fetchAll());
         $since = gmdate('c', strtotime($now ?? 'now') - 86400);
         $countSince = function (string $sql) use ($userId, $since): int { $q = $this->pdo->prepare($sql); $q->execute(['user' => $userId, 'since' => $since]); return (int) $q->fetchColumn(); };
@@ -1269,8 +1367,12 @@ final class HubControlPlaneService
             ['key'=>'smoke','label'=>'Smoke Test','pass'=>false,'evidence'=>'visible end-to-end field verification required'],
         ];
         $passed = count(array_filter($checks, static fn(array $item): bool => $item['pass'] === true));
-        $executionAuthority = $this->capabilities !== null ? $this->capabilities->executionAuthorityStatus($now) : ['schemaVersion'=>1,'mode'=>'UNAVAILABLE','parallelReadsAllowed'=>true,'parallelNonConflictingMutationsAllowed'=>false,'mutationBoundary'=>'UNAVAILABLE','activeMutationCount'=>0,'waitingMutationCount'=>0,'activeMutations'=>[],'waitingMutations'=>[]];
-        $capabilityFabric = $this->capabilities !== null ? $this->capabilities->status(true, $now) : ['schemaVersion'=>1,'anywhereFirst'=>true,'deviceRequired'=>false,'summary'=>['ready'=>0,'cloudReady'=>0,'optional'=>0,'planned'=>0],'capabilities'=>[],'providers'=>[]];
+        try { $executionAuthority = $this->capabilities !== null ? $this->capabilities->executionAuthorityStatus($now) : []; } catch (Throwable) { $executionAuthority = []; }
+        if ($executionAuthority === []) $executionAuthority = ['schemaVersion'=>1,'mode'=>'UNAVAILABLE','parallelReadsAllowed'=>true,'parallelNonConflictingMutationsAllowed'=>false,'mutationBoundary'=>'UNAVAILABLE','activeMutationCount'=>0,'waitingMutationCount'=>0,'activeMutations'=>[],'waitingMutations'=>[]];
+        try { $capabilityFabric = $this->capabilities !== null ? $this->capabilities->status(true, $now) : []; } catch (Throwable) { $capabilityFabric = []; }
+        if ($capabilityFabric === []) $capabilityFabric = ['schemaVersion'=>1,'anywhereFirst'=>true,'deviceRequired'=>false,'summary'=>['ready'=>0,'cloudReady'=>0,'optional'=>0,'planned'=>0],'capabilities'=>[],'providers'=>[]];
+        if (is_array($capabilityFabric['capabilities'] ?? null)) $capabilityFabric['capabilities'] = array_slice($capabilityFabric['capabilities'], 0, 60);
+        if (is_array($capabilityFabric['providers'] ?? null)) $capabilityFabric['providers'] = array_slice($capabilityFabric['providers'], 0, 30);
         $staffProjection = array_intersect_key($staff, array_flip([
             'schemaVersion','generatedAt','loop','governor','selfHealing','housekeeping',
             'roles','report','canonicalAuthorities','hostingCenter','safety',
@@ -1291,7 +1393,7 @@ final class HubControlPlaneService
             'aiModels' => $aiModels,
             'aiRoutes24h' => $routes,
             'workerSummary' => $health['workerSummary'],
-            'workers' => $health['workers'] ?? [],
+            'workers' => array_slice(is_array($health['workers'] ?? null) ? $health['workers'] : [], 0, 50),
             'deviceRoles' => $health['deviceRoles'] ?? ['schemaVersion'=>1,'state'=>'UNAVAILABLE','devices'=>[]],
             'autonomousWork' => $autonomous,
             'executionAuthority' => $executionAuthority,
@@ -1304,9 +1406,9 @@ final class HubControlPlaneService
             'selfHealing' => $staff['selfHealing'] ?? ['state'=>'UNKNOWN'],
             'housekeeping' => $staff['housekeeping'] ?? ['state'=>'UNKNOWN'],
             'hostingCenter' => $staff['hostingCenter'] ?? ['state'=>'UNKNOWN'],
-            'managedSites' => $staff['managedSites'] ?? [],
+            'managedSites' => array_slice(is_array($staff['managedSites'] ?? null) ? $staff['managedSites'] : [], 0, 50),
             'morningBrief' => $morningBrief,
-            'storageGovernance' => $staff['storageGovernance'],
+            'storageGovernance' => is_array($staff['storageGovernance'] ?? null) ? $staff['storageGovernance'] : ['state'=>'UNKNOWN'],
             'productionComplete' => ['passed'=>$passed,'total'=>count($checks),'percent'=>(int)round($passed*100/count($checks)),'checks'=>$checks],
         ];
     }

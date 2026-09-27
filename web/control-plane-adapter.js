@@ -1,5 +1,7 @@
 const MAX_JSON_BYTES = 256 * 1024;
+const INFRASTRUCTURE_JSON_BYTES = 768 * 1024;
 const CONVERSATION_PATH = /^\/api\/v1\/control\/conversations(?:\/|\?|$)/;
+const INFRASTRUCTURE_PATH = /^\/api\/v1\/control\/infrastructure(?:\/|\?|$)/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 let csrfToken = null;
 
@@ -19,11 +21,12 @@ function responseTooLargeMessage(path) {
 
 async function json(response, path) {
   const body = await response.text();
-  if (body.length > MAX_JSON_BYTES) { const error = new Error(responseTooLargeMessage(path)); Object.defineProperty(error, 'code', { value: 'RESPONSE_TOO_LARGE', enumerable: false }); throw error; }
+  const maxBytes = INFRASTRUCTURE_PATH.test(path) ? INFRASTRUCTURE_JSON_BYTES : MAX_JSON_BYTES;
+  if (body.length > maxBytes) { const error = new Error(responseTooLargeMessage(path)); Object.defineProperty(error, 'code', { value: 'RESPONSE_TOO_LARGE', enumerable: false }); throw error; }
   let value;
   try { value = JSON.parse(body); } catch { throw new Error('AWH response is invalid'); }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('AWH response is invalid');
-  if (!response.ok) { const error = new Error(safeErrorMessage(value)); if (typeof value.code === 'string' && /^[A-Z0-9_]{2,80}$/.test(value.code)) Object.defineProperty(error, 'code', { value: value.code, enumerable: false }); throw error; }
+  if (!response.ok) { const error = new Error(value?.code === 'RESPONSE_TOO_LARGE' ? responseTooLargeMessage(path) : safeErrorMessage(value)); if (typeof value.code === 'string' && /^[A-Z0-9_]{2,80}$/.test(value.code)) Object.defineProperty(error, 'code', { value: value.code, enumerable: false }); throw error; }
   return value;
 }
 
@@ -343,6 +346,7 @@ export async function submitCloudTask({ projectId, kind, revision, profile = nul
   return controlRequest('/api/v1/control/cloud/tasks', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, kind, revision, profile, idempotencyKey }) });
 }
 export async function loadOwnerSelfServiceStatus() { return controlRequest('/api/v1/control/owner/status'); }
+export async function loadInfrastructureSummary() { return controlRequest('/api/v1/control/infrastructure/summary'); }
 export async function loadInfrastructure() { return controlRequest('/api/v1/control/infrastructure'); }
 export function subscribeUpdateCenterLive(onUpdate, onError = null) {
   if (typeof EventSource === 'undefined' || typeof onUpdate !== 'function') return null;

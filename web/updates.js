@@ -67,7 +67,7 @@ const lineOaGroupContract={
     {itemKey:'awh-line-gateway',releaseTrack:'awh-line-gateway'},
     {itemKey:'bay-excuse-line-oa',releaseTrack:'line-oa'},
   ],
-  approvalMode:'SINGLE_OWNER_STEP_UP',
+  approvalMode:'SIGNED_IN_OWNER',
   orchestration:'SEQUENTIAL_VERIFY_EACH',
   failurePolicy:'STOP_ON_TARGET_FAILURE',
   historyScope:'PER_TARGET',
