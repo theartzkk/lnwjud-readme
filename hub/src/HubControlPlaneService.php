@@ -1832,14 +1832,14 @@ final class HubControlPlaneService
                 $needsNativeRetry = $this->finalProductSchemaPresent() && $answer->fetchColumn() === false;
                 $legacyNativeRetry = $needsNativeRetry && !$this->centralProjectAuthoritySchemaPresent();
                 if ($needsNativeRetry && self::isConversationOnly($message, $attachmentIds !== [])) {
-                    if ($this->isOwnerUser($userId) && !$legacyNativeRetry) {
+                    if ($this->canUseNativeConversation($userId,$projectId) && !$legacyNativeRetry) {
                         $this->queueNativeConversationTask($userId, $projectId, (string) $conversation['conversation_id'], (string) $existingMessageId, $message, $at);
-                    } elseif (!$this->isOwnerUser($userId)) {
+                    } elseif (!$this->canUseNativeConversation($userId,$projectId)) {
                         $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'ASSISTANT', self::externalFreeAiMessage(), $at, 'native-answer-' . (string) $existingMessageId);
                     }
                 }
                 $this->pdo->exec('COMMIT'); $transactionOpen = false;
-                if ($legacyNativeRetry && $this->isOwnerUser($userId)) $this->completeNativeConversation($userId, ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => (string) $existingMessageId, 'projectId' => $projectId, 'request' => $message, 'taskId' => null], $at);
+                if ($legacyNativeRetry && $this->canUseNativeConversation($userId,$projectId)) $this->completeNativeConversation($userId, ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => (string) $existingMessageId, 'projectId' => $projectId, 'request' => $message, 'taskId' => null], $at);
                 return $schema >= 2 ? $this->conversationByIdForUser($userId, (string) $conversation['conversation_id'], $worker) : $this->conversationForUser($userId, $projectId, $worker);
             }
             $messageId = $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'USER', $message, $at, $idempotency);
@@ -1857,7 +1857,7 @@ final class HubControlPlaneService
                 $serverInspection = $deviceRequest === null && $vaultRevision !== null && self::isServerInspection($effectiveGoal);
                 $serverTextMutation = $deviceRequest === null && $vaultRevision !== null && self::isServerTextNormalization($effectiveGoal);
                 $serverAssistedEdit = $deviceRequest === null && $vaultRevision !== null && self::isServerAssistedEdit($effectiveGoal);
-                $ownerFundedAi = $this->isOwnerUser($userId);
+                $ownerFundedAi = $this->canUseOwnerFundedAi($userId,$projectId);
                 $paidAiBlocked = !$ownerFundedAi && $officeRequest === null && $deviceRequest === null && $vaultRevision !== null && !$serverInspection && !$serverTextMutation;
                 if ($targetDeviceId !== null && $officeRequest === null && $deviceRequest === null) throw new HubControlPlaneException('Target device is valid only for device or Office execution', 'TARGET_DEVICE_NOT_APPLICABLE');
                 $taskState = $paidAiBlocked ? 'FAILED' : (($serverInspection || $serverTextMutation || $serverAssistedEdit) ? 'QUEUED' : 'WAITING_FOR_WORKER');
@@ -1886,13 +1886,13 @@ final class HubControlPlaneService
             if ($this->finalProductSchemaPresent()) {
                 if ($this->centralProjectAuthoritySchemaPresent()) {
                     if ($conversationOnly) {
-                        if ($this->isOwnerUser($userId)) $taskId = $this->queueNativeConversationTask($userId, $projectId, (string) $conversation['conversation_id'], $messageId, $message, $at);
+                        if ($this->canUseNativeConversation($userId,$projectId)) $taskId = $this->queueNativeConversationTask($userId, $projectId, (string) $conversation['conversation_id'], $messageId, $message, $at);
                         else $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'ASSISTANT', self::externalFreeAiMessage(), $at, 'native-answer-' . $messageId);
                     }
                 } else {
                     // Historical pre-M12 schemas have no durable execution table.
                     // Keep their compatibility path isolated from current production.
-                    if ($this->isOwnerUser($userId)) $nativeRequest = ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => $messageId, 'projectId' => $projectId, 'request' => $message, 'taskId' => $taskId];
+                    if ($this->canUseNativeConversation($userId,$projectId)) $nativeRequest = ['conversationId' => (string) $conversation['conversation_id'], 'messageId' => $messageId, 'projectId' => $projectId, 'request' => $message, 'taskId' => $taskId];
                     elseif ($conversationOnly) $this->appendConversationMessage((string) $conversation['conversation_id'], null, 'ASSISTANT', self::externalFreeAiMessage(), $at, 'native-answer-' . $messageId);
                 }
             } else {
@@ -4465,6 +4465,20 @@ final class HubControlPlaneService
 
     private function assertOwner(string $userId): void { $q = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1'); if (!hash_equals((string) $q->fetchColumn(), $userId)) throw new HubControlPlaneException('Owner access is required', 'OWNER_FORBIDDEN'); }
     private function isOwnerUser(string $userId): bool { $q = $this->pdo->query('SELECT owner_user_id FROM owner_bootstrap WHERE singleton_id = 1 AND bootstrap_closed = 1'); $owner = $q->fetchColumn(); return is_string($owner) && hash_equals($owner, $userId); }
+    private function aiDelegateMode(string $userId,string $projectId): ?string
+    {
+        if($this->isOwnerUser($userId))return 'OWNER';
+        try{
+            $table=(int)$this->pdo->query("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='control_ai_delegates'")->fetchColumn()===1;
+            if(!$table)return null;
+            $q=$this->pdo->prepare("SELECT d.delegate_mode FROM control_ai_delegates d JOIN control_user_profiles p ON p.user_id=d.user_id JOIN control_project_capabilities c ON c.user_id=d.user_id AND c.project_id=d.project_id AND c.capability='conversation.write' AND c.revoked_at IS NULL WHERE d.user_id=:user AND d.project_id=:project AND d.revoked_at IS NULL AND p.status='ACTIVE' LIMIT 1");
+            $q->execute(['user'=>$userId,'project'=>$projectId]);
+            $mode=$q->fetchColumn();
+            return is_string($mode)&&in_array($mode,['OWNER_CHANNEL','SCHOOL_SUPPORT'],true)?$mode:null;
+        }catch(Throwable){return null;}
+    }
+    private function canUseNativeConversation(string $userId,string $projectId): bool { return $this->aiDelegateMode($userId,$projectId)!==null; }
+    private function canUseOwnerFundedAi(string $userId,string $projectId): bool { return in_array($this->aiDelegateMode($userId,$projectId),['OWNER','OWNER_CHANNEL'],true); }
     private function profileRole(string $userId): string { $q = $this->pdo->prepare('SELECT system_role FROM control_user_profiles WHERE user_id = :user AND status = \'ACTIVE\''); $q->execute(['user' => $userId]); $role = $q->fetchColumn(); return is_string($role) && in_array($role, ['OWNER','ADMIN','DIRECTOR','TEACHER','STAFF','VIEWER'], true) ? $role : 'STAFF'; }
 
     /** @return array{displayName:string,username:string} */
