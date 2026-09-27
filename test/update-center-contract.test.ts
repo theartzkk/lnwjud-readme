@@ -191,20 +191,22 @@ test('BAY monorepo surfaces independent BAY Core, LINE OA and Cooperative releas
 });
 
 test('Update Center is a required release asset and survives the PWA build boundary', async()=>{
-  const [build,releaseFiles,worker,index]=await Promise.all([
+  const [build,releaseFiles,worker,index,panel]=await Promise.all([
     readFile(join(ROOT,'scripts/build-web-preview.ts'),'utf8'),
     readFile(join(ROOT,'scripts/web-release-files.json'),'utf8'),
     readFile(join(ROOT,'web/sw.js'),'utf8'),
     readFile(join(ROOT,'web/index.html'),'utf8'),
+    readFile(join(ROOT,'web/panel.html'),'utf8'),
   ]);
   for(const file of ['updates.html','updates.css','updates.js']){
     assert.match(build,new RegExp(file.replace('.','\\.')));
     assert.match(releaseFiles,new RegExp(file.replace('.','\\.')));
     assert.match(worker,new RegExp(file.replace('.','\\.')));
   }
-  assert.match(index,/href="\.\/updates\.html"/);
-  assert.match(index,/ศูนย์อัปเดต/);
-  assert.match(index,/อัปเดตระบบ/);
+  assert.doesNotMatch(index,/data-owner-destination="updates"/);
+  assert.match(index,/data-owner-destination="control"[^>]*href="\.\/panel\.html"/);
+  assert.match(panel,/href="\.\/updates\.html"/);
+  assert.match(panel,/ศูนย์อัปเดต/);
 });
 
 test('Update Center registry is packaged into every control-plane release', async()=>{
