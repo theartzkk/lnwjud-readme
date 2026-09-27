@@ -15,6 +15,7 @@ let searchTerm='';
 let stopLiveUpdates=null;
 let liveConnected=false;
 let liveUpdatedAt=0;
+let lastLiveUiSignature='';
 
 const stateLabel=(state)=>({
   CURRENT:'ล่าสุดแล้ว',UPDATE_AVAILABLE:'พร้อมอัปเดต',WAITING_FOR_APPROVAL:'รอยืนยัน',UPDATING:'กำลังอัปเดต',
@@ -627,13 +628,24 @@ function stopLiveStream(){
   liveConnected=false;
 }
 
+function liveUiSignature(snapshot){
+  const items=Array.isArray(snapshot?.items)?snapshot.items:[];
+  return JSON.stringify(items.map((item)=>[
+    item?.key||null,item?.state||null,item?.current||null,item?.candidate||null,
+    Number(item?.progress??0),item?.progressEvent?.state||null,item?.progressEvent?.progress??null,item?.progressEvent?.message||null,
+  ]));
+}
+
 function ensureLiveStream(){
   if(stopLiveUpdates||!hasActiveUpdate())return;
   stopLiveUpdates=subscribeUpdateCenterLive((snapshot)=>{
-    liveConnected=true;liveUpdatedAt=Date.now();center=normalizeUpdateCenter(snapshot);
+    const normalized=normalizeUpdateCenter(snapshot);
+    const nextSignature=liveUiSignature(normalized);
+    const changed=nextSignature!==lastLiveUiSignature;
+    liveConnected=true;liveUpdatedAt=Date.now();center=normalized;lastLiveUiSignature=nextSignature;
     $('updates-freshness').textContent='สด · '+new Date(snapshot.generatedAt).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     if(!primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)))localOperation=null;
-    render();
+    if(changed)render();else renderProgress();
     scheduleRefresh();
   },()=>{
     liveConnected=false;
@@ -973,8 +985,9 @@ function scheduleRefresh(){
   clearTimeout(refreshTimer);
   const active=hasActiveUpdate()||primaryItems().some((item)=>item.state==='REMOTE_CHECK_REQUIRED');
   syncLiveStream();
-  const liveFresh=liveConnected&&(Date.now()-liveUpdatedAt)<4000;
-  refreshTimer=setTimeout(()=>{if(!document.hidden)void refresh();},active?(liveFresh?5000:1000):30000);
+  const liveFresh=liveConnected&&(Date.now()-liveUpdatedAt)<15000;
+  const delay=active?(liveFresh?60000:15000):60000;
+  refreshTimer=setTimeout(()=>{if(!document.hidden)void refresh();},delay);
 }
 async function refresh(){
   if(refreshing)return;
@@ -982,6 +995,7 @@ async function refresh(){
   try{
     await loadAuthSession();
     center=normalizeUpdateCenter(await loadUpdateCenter());
+    lastLiveUiSignature=liveUiSignature(center);
     $('updates-freshness').textContent='ตรวจล่าสุด '+new Date(center.generatedAt).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
     render();
     await Promise.allSettled([refreshBay(),refreshAgent()]);

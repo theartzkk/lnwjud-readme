@@ -13,15 +13,41 @@ final class HubExecutionLifecycleService
         $this->pdo->exec('PRAGMA busy_timeout=5000');
     }
 
-    /** @return array{expiredRetryCount:int,verifiedCompletionCount:int} */
+    /** @return array{expiredApprovalCount:int,expiredRetryCount:int,verifiedCompletionCount:int} */
     public function reconcile(?string $projectId=null, ?string $now=null): array
     {
         $at=self::timestamp($now??gmdate('c'));
         if($projectId!==null&&!self::uuid($projectId))throw new RuntimeException('Execution lifecycle project id is invalid');
         return [
+            'expiredApprovalCount'=>$this->terminalizeExpiredApprovals($projectId,$at),
             'expiredRetryCount'=>$this->terminalizeExpiredRetries($projectId,$at),
             'verifiedCompletionCount'=>$this->publishVerifiedCompletions($projectId,$at),
         ];
+    }
+
+    private function terminalizeExpiredApprovals(?string $projectId,string $at): int
+    {
+        if(!self::tablePresent($this->pdo,'control_approvals')||!self::tablePresent($this->pdo,'control_task_executions'))return 0;
+        $params=['at'=>$at];$projectSql='';
+        if($projectId!==null){$projectSql=' AND t.project_id=:project';$params['project']=strtolower($projectId);}
+        $q=$this->pdo->prepare("SELECT a.approval_id,a.task_id,e.execution_id FROM control_approvals a JOIN control_tasks t ON t.task_id=a.task_id JOIN control_task_executions e ON e.task_id=t.task_id WHERE a.status='PENDING' AND a.expires_at<=:at AND t.state='WAITING_FOR_APPROVAL' AND e.state IN ('QUEUED','WAITING_FOR_CAPABILITY') AND e.lease_owner IS NULL".$projectSql." ORDER BY a.expires_at,a.approval_id LIMIT 100");
+        $q->execute($params);$rows=$q->fetchAll(PDO::FETCH_ASSOC);
+        if($rows===[])return 0;
+        try{
+            $this->pdo->exec('BEGIN IMMEDIATE');$count=0;
+            foreach($rows as $row){
+                $approval=(string)($row['approval_id']??'');$execution=(string)($row['execution_id']??'');$task=(string)($row['task_id']??'');
+                if(!self::uuid($approval)||!self::uuid($execution)||!self::uuid($task))continue;
+                $expire=$this->pdo->prepare("UPDATE control_approvals SET status='EXPIRED' WHERE approval_id=:approval AND status='PENDING' AND expires_at<=:at");
+                $expire->execute(['approval'=>$approval,'at'=>$at]);if($expire->rowCount()!==1)continue;
+                $this->pdo->prepare("UPDATE control_task_executions SET state='CANCELLED',lease_owner=NULL,lease_expires_at=NULL,last_error_code='APPROVAL_EXPIRED',updated_at=:at WHERE execution_id=:execution AND state IN ('QUEUED','WAITING_FOR_CAPABILITY') AND lease_owner IS NULL")->execute(['at'=>$at,'execution'=>$execution]);
+                $this->pdo->prepare("UPDATE control_tasks SET state='CANCELLED',assigned_device_id=NULL,lease_expires_at=NULL,progress=0,result_summary='Approval expired; stale request cancelled safely and may be requested again',failure_code=NULL,cancelled_at=:at,updated_at=:at WHERE task_id=:task AND state='WAITING_FOR_APPROVAL'")->execute(['at'=>$at,'task'=>$task]);
+                if(self::tablePresent($this->pdo,'control_execution_envelopes'))$this->pdo->prepare("UPDATE control_execution_envelopes SET state='CANCELLED',lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution AND state NOT IN ('RELEASED','CANCELLED')")->execute(['at'=>$at,'execution'=>$execution]);
+                if(self::tablePresent($this->pdo,'control_task_events'))$this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:event,:task,'CANCELLED',0,'expired owner approval cancelled automatically; request may be retried',:at)")->execute(['event'=>self::newUuid(),'task'=>$task,'at'=>$at]);
+                $count++;
+            }
+            $this->pdo->exec('COMMIT');return $count;
+        }catch(Throwable $error){try{$this->pdo->exec('ROLLBACK');}catch(Throwable){}throw $error;}
     }
 
     private function terminalizeExpiredRetries(?string $projectId,string $at): int
