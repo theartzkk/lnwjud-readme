@@ -8,7 +8,7 @@ function expect_true(bool $ok, string $message): void {
 
 $root = sys_get_temp_dir() . '/awh-jev-' . bin2hex(random_bytes(4));
 putenv('AWH_PROVIDER_CREDENTIAL_ROOT=' . $root);
-$store = HubProviderCredentialStore::fromEnvironment('typesafe');
+$store = new HubProviderCredentialStore($root, 'typesafe');
 $store->replace('typesafe-fixture-key-1234567890');
 $calls = 0;
 $adapter = new HubTypeSafeDecisionAdapter(
