@@ -1,6 +1,6 @@
 import {
   createBayRemoteInstallRelay, decideApproval, loadAuthSession, loadBayRemoteUpdateStatus, loadUpdateCenter,
-  managedSiteAction, relayBayRemoteCommand, requestAssessmentRelease, requestCoreRelease, requestPlatformRelease, subscribeUpdateCenterLive,
+  managedSiteAction, relayBayRemoteCommand, requestAssessmentRelease, requestCoreRelease, requestPlatformRelease, stepUp, subscribeUpdateCenterLive,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $=(id)=>document.getElementById(id);
@@ -39,6 +39,7 @@ const message=(text)=>{$('updates-message').textContent=text;};
 const friendly=(error)=>{
   const code=String(error?.code||'').toUpperCase();
   return ({
+    STEP_UP_REQUIRED:'ต้องยืนยันสิทธิ์เจ้าของระบบก่อนทำรายการนี้',
     STEP_UP_CANCELLED:'ยกเลิกการยืนยันสิทธิ์แล้ว',
     CORE_RELEASE_CONFLICT:'มีการอัปเดต AWH อื่นกำลังทำอยู่ ระบบจะไม่สร้างงานซ้ำ',
     CORE_RELEASE_TARGET_MOVED:'มีรุ่นใหม่กว่าเข้ามาแล้ว ระบบยกเลิกรุ่นเก่าอย่างปลอดภัย กรุณาตรวจอีกครั้ง',
@@ -54,6 +55,50 @@ const friendly=(error)=>{
     BAY_COMMAND_REJECTED:'BAY ปฏิเสธคำขออย่างปลอดภัย กรุณาตรวจสถานะ',
   })[code]||error?.message||'ยังทำรายการนี้ไม่ได้';
 };
+
+function requestOwnerStepUp(){
+  const dialog=$('updates-step-up-dialog');
+  const form=$('updates-step-up-form');
+  const password=$('updates-step-up-password');
+  const error=$('updates-step-up-error');
+  const cancel=$('updates-step-up-cancel');
+  const confirm=$('updates-step-up-confirm');
+  if(!dialog||!form||!password||!error||!cancel||!confirm)throw Object.assign(new Error('หน้าต่างยืนยันสิทธิ์ยังไม่พร้อม'),{code:'STEP_UP_UI_UNAVAILABLE'});
+  password.value='';error.hidden=true;error.textContent='';confirm.disabled=false;
+  return new Promise((resolve,reject)=>{
+    let done=false;
+    const cleanup=()=>{form.removeEventListener('submit',submit);cancel.removeEventListener('click',cancelClick);dialog.removeEventListener('cancel',cancelEvent);password.value='';};
+    const finishCancel=()=>{if(done)return;done=true;cleanup();if(dialog.open)dialog.close();reject(Object.assign(new Error('ยกเลิกการยืนยันสิทธิ์แล้ว'),{code:'STEP_UP_CANCELLED'}));};
+    const cancelClick=()=>finishCancel();
+    const cancelEvent=(event)=>{event.preventDefault();finishCancel();};
+    const submit=async(event)=>{
+      event.preventDefault();
+      if(done)return;
+      confirm.disabled=true;error.hidden=true;
+      try{
+        await stepUp(password.value);
+        done=true;cleanup();if(dialog.open)dialog.close();resolve();
+      }catch(stepError){
+        confirm.disabled=false;error.textContent=friendly(stepError);error.hidden=false;password.focus();password.select();
+      }
+    };
+    form.addEventListener('submit',submit);
+    cancel.addEventListener('click',cancelClick);
+    dialog.addEventListener('cancel',cancelEvent);
+    dialog.showModal();
+    setTimeout(()=>password.focus(),0);
+  });
+}
+
+async function runWithStepUp(handler){
+  try{return await handler();}
+  catch(error){
+    if(String(error?.code||'').toUpperCase()!=='STEP_UP_REQUIRED')throw error;
+    message('ต้องยืนยันสิทธิ์เจ้าของระบบก่อน ระบบจะทำรายการเดิมต่อให้อัตโนมัติ');
+    await requestOwnerStepUp();
+    return handler();
+  }
+}
 
 function itemNeedsAttention(item){
   return item.state!=='CURRENT'&&item.state!=='INTERNAL_MANAGED';
@@ -294,7 +339,7 @@ function actionButton(text,handler,className='primary-button'){
   const button=document.createElement('button');button.type='button';button.className=className;button.textContent=text;
   button.addEventListener('click',async()=>{
     button.disabled=true;
-    try{await handler();}
+    try{await runWithStepUp(handler);}
     catch(error){message(friendly(error));}
     finally{button.disabled=false;}
   });

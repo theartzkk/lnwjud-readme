@@ -56,7 +56,13 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(script,/technicalDetails/);
   assert.match(script,/runtimeState/);
   assert.match(script,/renderProgress/);
-  assert.doesNotMatch(script,/askConfirm|askStepUp|\bstepUp\(/);
+  assert.match(page,/id="updates-step-up-dialog"/);
+  assert.match(page,/id="updates-step-up-password"/);
+  assert.match(script,/function requestOwnerStepUp\(\)/);
+  assert.match(script,/async function runWithStepUp\(handler\)/);
+  assert.match(script,/await stepUp\(password\.value\)/);
+  assert.match(script,/await runWithStepUp\(handler\)/);
+  assert.doesNotMatch(script,/askConfirm|askStepUp/);
   const lineBundleStart=script.indexOf('async function updateLineOaBundle');
   const lineBundleEnd=script.indexOf('async function refreshAgent');
   const scriptOutsideLineBundle=lineBundleStart>=0&&lineBundleEnd>lineBundleStart
@@ -111,7 +117,9 @@ test('Update Center module graph imports only symbols exported by the same adapt
     ...Array.from(adapter.matchAll(/export\s+const\s+([A-Za-z0-9_]+)/g),(match)=>match[1]),
   ]);
   for(const name of names)assert.ok(exported.has(name),`Update Center imports missing adapter export: ${name}`);
-  assert.doesNotMatch(script,/\bstepUp\b|askStepUp|step-up-password/);
+  assert.ok(exported.has('stepUp'));
+  assert.match(script,/\bstepUp\b/);
+  assert.doesNotMatch(script,/askStepUp/);
 });
 
 test('Release Runner is visible in Update Center but remains executor-only under the canonical control plane', async()=>{
