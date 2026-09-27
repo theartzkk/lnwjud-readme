@@ -4,6 +4,9 @@ const CHANNELS = Object.freeze({
   enrollmentState: 'art-agent:enrollment-state',
   enrollmentLogin: 'art-agent:enrollment-login',
   workerState: 'art-agent:worker-state',
+  permissionState: 'art-agent:permission-state',
+  permissionAuthorize: 'art-agent:permission-authorize',
+  permissionSettings: 'art-agent:permission-settings',
   openAwhWeb: 'art-agent:open-awh-web',
 });
 
@@ -15,5 +18,8 @@ contextBridge.exposeInMainWorld('awhConnect', Object.freeze({
     typeof password === 'string' ? password.slice(0, 512) : '',
   ),
   getWorkerState: () => ipcRenderer.invoke(CHANNELS.workerState),
+  getPermissionState: () => ipcRenderer.invoke(CHANNELS.permissionState),
+  authorizePermissions: () => ipcRenderer.invoke(CHANNELS.permissionAuthorize),
+  openPermissionSettings: (kind = '') => ipcRenderer.invoke(CHANNELS.permissionSettings, typeof kind === 'string' ? kind : ''),
   openAwhWeb: (target = 'home') => ipcRenderer.invoke(CHANNELS.openAwhWeb, target === 'devices' ? 'devices' : 'home'),
 }));

@@ -23,6 +23,14 @@
       <p id="open-message" class="message" role="status" aria-live="polite"></p>
     </section>
 
+    <section id="permission-card" class="permission-card" aria-labelledby="permission-title" hidden>
+      <div class="permission-head"><div><p class="eyebrow">FIRST-RUN PERMISSIONS</p><h2 id="permission-title">อนุญาตสิทธิ์ให้ครบก่อนใช้งาน</h2></div><span id="permission-badge" class="permission-badge">CHECK</span></div>
+      <p class="muted permission-copy">AWH จะยังไม่รับงานหรือควบคุมเครื่องจนกว่าสิทธิ์ที่จำเป็นจะพร้อมครบ ครั้งต่อไปจะไม่ถามซ้ำหาก macOS ยังอนุญาตอยู่</p>
+      <div id="permission-list" class="permission-list"></div>
+      <div class="permission-actions"><button id="authorize-permissions" class="primary" type="button">อนุญาตทั้งหมด</button><button id="open-permission-settings" class="secondary" type="button">เปิดสิทธิ์ที่ยังขาด</button></div>
+      <p id="permission-message" class="message" role="status" aria-live="polite"></p>
+    </section>
+
     <section class="status-card" aria-label="สถานะเครื่อง">
       <div class="status-row"><span>AWH</span><strong id="hub-status">กำลังตรวจ</strong></div>
       <div class="status-row"><span>อุปกรณ์</span><strong id="device-name">—</strong></div>

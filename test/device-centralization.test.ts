@@ -44,6 +44,15 @@ test('fresh device bootstrap provisions rebranded AWH runtime and pinned system 
   assert.match(bootstrap, /AWH_RUNTIME_MCP_NAME_MARKER/);
   assert.match(bootstrap, /AWH_RUNTIME_INSTRUCTIONS_MARKER/);
   assert.match(bootstrap, /AWH_RUNTIME_READY_MARKER/);
+  assert.match(bootstrap, /AWH_RUNTIME_PERMISSION_MARKER/);
+  assert.match(bootstrap, /--awh-permission-status/);
+  assert.match(bootstrap, /--awh-permission-setup/);
+  assert.match(bootstrap, /isTrustedAccessibilityClient/);
+  assert.match(bootstrap, /getMediaAccessStatus\("screen"\)/);
+  assert.match(bootstrap, /askForMediaAccess\("microphone"\)/);
+  assert.match(bootstrap, /System Events/);
+  assert.match(bootstrap, /NSAppleEventsUsageDescription/);
+  assert.match(bootstrap, /deviceRuntimePermissionStatus/);
   assert.match(bootstrap, /getRawHeader/);
   assert.match(bootstrap, /ElectronAsarIntegrity/);
   assert.match(bootstrap, /AWH Agent\.app.*electron\.icns/s);

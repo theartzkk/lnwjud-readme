@@ -14,6 +14,8 @@ export interface StoredSettings {
    * remote work without removing the local capability policy.
    */
   controlPlaneWorker?: boolean;
+  /** Version of the completed local OS permission onboarding contract. */
+  permissionSetupVersion?: number;
 }
 
 export function settingsPath(dataDir: string): string {
@@ -32,6 +34,7 @@ export function loadStoredSettings(dataDir: string): StoredSettings {
     if (typeof parsed.allowExec === 'boolean') out.allowExec = parsed.allowExec;
     if (typeof parsed.allowCodex === 'boolean') out.allowCodex = parsed.allowCodex;
     if (typeof parsed.controlPlaneWorker === 'boolean') out.controlPlaneWorker = parsed.controlPlaneWorker;
+    if (Number.isSafeInteger(parsed.permissionSetupVersion) && (parsed.permissionSetupVersion as number) >= 1 && (parsed.permissionSetupVersion as number) <= 100) out.permissionSetupVersion = parsed.permissionSetupVersion as number;
     return out;
   } catch {
     return {};
@@ -48,5 +51,7 @@ export async function saveStoredSettings(dataDir: string, settings: StoredSettin
   if (typeof settings.allowExec === 'boolean') normalized.allowExec = settings.allowExec;
   if (typeof settings.allowCodex === 'boolean') normalized.allowCodex = settings.allowCodex;
   if (typeof settings.controlPlaneWorker === 'boolean') normalized.controlPlaneWorker = settings.controlPlaneWorker;
+  const permissionSetupVersion = settings.permissionSetupVersion;
+  if (Number.isSafeInteger(permissionSetupVersion) && (permissionSetupVersion as number) >= 1 && (permissionSetupVersion as number) <= 100) normalized.permissionSetupVersion = permissionSetupVersion as number;
   await writeFile(target, `${JSON.stringify(normalized, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
 }

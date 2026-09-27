@@ -24,7 +24,7 @@ import { loadOrCreateDeviceIdentity, readDeviceIdentity, updateDeviceDisplayName
 import { createDesktopCredentialStore, CredentialStoreError } from '../credential-store.js';
 import { EnrollmentClient, EnrollmentClientError, readLocalEnrollmentState } from '../enrollment-client.js';
 import { ensureAwhDataDirectoryActive } from '../data-migration.js';
-import { ensureAwhDeviceRuntime } from '../device-bootstrap.js';
+import { deviceRuntimePermissionStatus, ensureAwhDeviceRuntime, type DeviceRuntimePermissionStatus } from '../device-bootstrap.js';
 import { ensureRemoteDesktopConnector, remoteDesktopConnectorStatus } from '../remote-desktop-connector.js';
 import { AutopilotRunner, detectLocalCapabilities, loadAutopilotTasks, selectAutopilotProfile } from '../autopilot.js';
 import { ControlPlaneWorkerClient } from '../control-plane-worker-client.js';
@@ -70,6 +70,8 @@ let autopilotRuntime: { key: string; runner: AutopilotRunner } | null = null;
 let workerRuntime: { key: string; runtime: ControlPlaneWorkerRuntime } | null = null;
 let workerTimer: NodeJS.Timeout | null = null;
 let workerRunning = false;
+let startupPermissionsReady = process.platform !== 'darwin';
+const PERMISSION_SETUP_VERSION = 1;
 const MAX_HANDOFF_PREVIEW_CHARS = 4_000;
 
 const require = createRequire(import.meta.url);
@@ -200,6 +202,7 @@ async function workerState() {
 
 async function runWorkerOnce() {
   const config = loadConfig();
+  if (!startupPermissionsReady) return { ok: false, error: 'PERMISSIONS_REQUIRED', message: 'AWH Agent กำลังรอสิทธิ์ของระบบให้ครบก่อนเริ่มทำงานบนเครื่องนี้' };
   if (!config.controlPlaneWorker) return { ok: false, error: 'WORKER_DISABLED', message: 'Worker is disabled in this device policy' };
   if (workerRunning) return { ok: false, error: 'WORKER_BUSY', message: 'Worker is already running' };
   workerRunning = true;
@@ -293,7 +296,7 @@ async function takeOverWorkspace() {
 
 function startWorkerLoop(): void {
   const config = loadConfig();
-  if (!config.controlPlaneWorker || workerTimer) return;
+  if (!startupPermissionsReady || !config.controlPlaneWorker || workerTimer) return;
   void runWorkerOnce();
   workerTimer = setInterval(() => { void runWorkerOnce(); }, 30_000);
   workerTimer.unref?.();
@@ -313,17 +316,110 @@ async function enrollmentState() {
 async function activateConnectedDevicePolicy(): Promise<void> {
   const config = loadConfig();
   const stored = loadStoredSettings(config.dataDir);
-  // Installing AWH Agent and explicitly enrolling this machine is the local
-  // consent boundary for Hub-leased device work. Source-writing/Codex remain
-  // separately disabled unless the owner enables those policies elsewhere.
-  await saveStoredSettings(config.dataDir, { ...stored, allowExec: true, controlPlaneWorker: true });
+  // Explicit enrollment is the local consent boundary for enabling the AWH
+  // capability policy. OS-level control still remains blocked by the startup
+  // permission gate until the user grants the required macOS permissions.
+  await saveStoredSettings(config.dataDir, { ...stored, allowWrite: true, allowExec: true, allowCodex: true, controlPlaneWorker: true });
   workerRuntime = null;
+}
+
+
+type StartupPermissionState = {
+  ready: boolean;
+  platform: NodeJS.Platform;
+  internalReady: boolean;
+  osReady: boolean;
+  setupVersion: number | null;
+  internal: { write: boolean; execute: boolean; codex: boolean; worker: boolean };
+  runtime: DeviceRuntimePermissionStatus | null;
+  missing: string[];
+};
+
+async function startupPermissionState(): Promise<StartupPermissionState> {
+  if (SMOKE_TEST) {
+    startupPermissionsReady = true;
+    return { ready: true, platform: process.platform, internalReady: true, osReady: true, setupVersion: PERMISSION_SETUP_VERSION, internal: { write: true, execute: true, codex: true, worker: true }, runtime: null, missing: [] };
+  }
+  const config = loadConfig();
+  const stored = loadStoredSettings(config.dataDir);
+  const internal = { write: config.allowWrite, execute: config.allowExec, codex: config.allowCodex, worker: config.controlPlaneWorker };
+  const internalReady = internal.write && internal.execute && internal.codex && internal.worker;
+  let runtime: DeviceRuntimePermissionStatus | null = null;
+  let osReady = true;
+  const missing: string[] = [];
+
+  if (process.platform === 'darwin') {
+    const bootstrap = await ensureAwhDeviceRuntime(config.dataDir);
+    if (bootstrap.state === 'READY') {
+      try { runtime = await deviceRuntimePermissionStatus(undefined, false); }
+      catch { runtime = null; }
+    }
+    const automationReady = stored.permissionSetupVersion === PERMISSION_SETUP_VERSION;
+    if (runtime?.accessibility !== true) missing.push('accessibility');
+    if (runtime?.screenCapture !== 'granted') missing.push('screen-recording');
+    if (runtime?.microphone !== 'granted') missing.push('microphone');
+    if (!automationReady) missing.push('automation');
+    osReady = runtime !== null && runtime.accessibility === true && runtime.screenCapture === 'granted' && runtime.microphone === 'granted' && automationReady;
+  }
+
+  if (!internal.write) missing.push('workspace-write');
+  if (!internal.execute) missing.push('approved-execution');
+  if (!internal.codex) missing.push('codex');
+  if (!internal.worker) missing.push('worker');
+
+  const ready = osReady && internalReady;
+  startupPermissionsReady = ready;
+  return { ready, platform: process.platform, internalReady, osReady, setupVersion: stored.permissionSetupVersion ?? null, internal, runtime, missing: [...new Set(missing)] };
+}
+
+async function authorizeStartupPermissions(): Promise<StartupPermissionState & { requested: true }> {
+  const config = loadConfig();
+  const bootstrap = await ensureAwhDeviceRuntime(config.dataDir);
+  let runtime: DeviceRuntimePermissionStatus | null = null;
+  if (bootstrap.state === 'READY' && process.platform === 'darwin') {
+    try { runtime = await deviceRuntimePermissionStatus(undefined, true); } catch { runtime = null; }
+  }
+  const stored = loadStoredSettings(config.dataDir);
+  const permissionSetupComplete = process.platform !== 'darwin' || runtime?.ready === true;
+  await saveStoredSettings(config.dataDir, {
+    ...stored,
+    allowWrite: true,
+    allowExec: true,
+    allowCodex: true,
+    controlPlaneWorker: true,
+    ...(permissionSetupComplete ? { permissionSetupVersion: PERMISSION_SETUP_VERSION } : {}),
+  });
+  workerRuntime = null;
+  const state = await startupPermissionState();
+  if (state.ready) {
+    startWorkerLoop();
+    void ensureConnectedDeviceRuntime().catch(() => undefined);
+    void runWorkerOnce().catch(() => undefined);
+  }
+  return { ...state, requested: true };
+}
+
+async function openStartupPermissionSettings(kind: unknown): Promise<{ ok: boolean }> {
+  if (process.platform !== 'darwin') return { ok: false };
+  const key = typeof kind === 'string' ? kind : '';
+  const panes: Record<string, string> = {
+    accessibility: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
+    'screen-recording': 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture',
+    microphone: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone',
+    automation: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Automation',
+  };
+  const state = await startupPermissionState();
+  const first = state.missing.find((item) => item in panes);
+  const target = panes[key] ?? (first ? panes[first] : undefined);
+  if (!target) return { ok: false };
+  await shell.openExternal(target);
+  return { ok: true };
 }
 
 async function ensureConnectedDeviceRuntime(): Promise<void> {
   const config = loadConfig();
   const runtime = await ensureAwhDeviceRuntime(config.dataDir);
-  if (runtime.state !== 'READY') return;
+  if (runtime.state !== 'READY' || !startupPermissionsReady) return;
   const enrolled = await enrollmentState().catch(() => ({ enrolled: false }));
   if (enrolled.enrolled === true) await ensureRemoteDesktopConnector().catch(() => undefined);
 }
@@ -334,10 +430,13 @@ async function loginDevice(username: unknown, password: unknown) {
     const config = loadConfig();
     const state = await enrollmentClient(config).login(username, password);
     await activateConnectedDevicePolicy();
-    startWorkerLoop();
-    void ensureConnectedDeviceRuntime().catch(() => undefined);
-    void runWorkerOnce().catch(() => undefined);
-    return { ok: true, hubConfigured: true, ...state };
+    const permissions = await startupPermissionState().catch(() => null);
+    if (permissions?.ready === true) {
+      startWorkerLoop();
+      void ensureConnectedDeviceRuntime().catch(() => undefined);
+      void runWorkerOnce().catch(() => undefined);
+    } else showLocalBridge();
+    return { ok: true, hubConfigured: true, permissionsRequired: permissions?.ready !== true, ...state };
   } catch (error) { return enrollmentError(error); }
 }
 
@@ -346,10 +445,13 @@ async function pairDevice(pairingCode: unknown) {
   try {
     const state = await enrollmentClient(loadConfig()).pair(pairingCode);
     await activateConnectedDevicePolicy();
-    startWorkerLoop();
-    void ensureConnectedDeviceRuntime().catch(() => undefined);
-    void runWorkerOnce().catch(() => undefined);
-    return { ok: true, hubConfigured: true, ...state };
+    const permissions = await startupPermissionState().catch(() => null);
+    if (permissions?.ready === true) {
+      startWorkerLoop();
+      void ensureConnectedDeviceRuntime().catch(() => undefined);
+      void runWorkerOnce().catch(() => undefined);
+    } else showLocalBridge();
+    return { ok: true, hubConfigured: true, permissionsRequired: permissions?.ready !== true, ...state };
   } catch (error) { return enrollmentError(error); }
 }
 
@@ -660,6 +762,9 @@ function registerBridgeIpc(): void {
   ipcMain.handle(DESKTOP_IPC.enrollmentState, async () => enrollmentState());
   ipcMain.handle(DESKTOP_IPC.enrollmentLogin, async (_event, username: unknown, password: unknown) => loginDevice(username, password));
   ipcMain.handle(DESKTOP_IPC.workerState, async () => workerState());
+  ipcMain.handle(DESKTOP_IPC.permissionState, async () => startupPermissionState());
+  ipcMain.handle(DESKTOP_IPC.permissionAuthorize, async () => authorizeStartupPermissions());
+  ipcMain.handle(DESKTOP_IPC.permissionSettings, async (_event, kind: unknown) => openStartupPermissionSettings(kind));
   ipcMain.handle(DESKTOP_IPC.openAwhWeb, async (_event, target: unknown) => openAwhWeb(target === 'devices' ? 'devices' : 'home'));
 }
 
@@ -923,8 +1028,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   try {
     await writeSmokeMarker({ ok: false, stage: 'renderer-check' });
     const result = await win.webContents.executeJavaScript(`(async () => {
-      const apiReady = ['getEnrollmentState','login','getWorkerState','openAwhWeb'].every((name) => typeof window.awhConnect?.[name] === 'function');
-      const requiredDom = ['agent-title','agent-summary','open-awh','manage-device','hub-status','device-name','worker-status','remote-status','login-form','refresh-status'].every((id) => Boolean(document.getElementById(id)));
+      const apiReady = ['getEnrollmentState','login','getWorkerState','getPermissionState','authorizePermissions','openPermissionSettings','openAwhWeb'].every((name) => typeof window.awhConnect?.[name] === 'function');
+      const requiredDom = ['agent-title','agent-summary','open-awh','manage-device','permission-card','permission-list','authorize-permissions','open-permission-settings','hub-status','device-name','worker-status','remote-status','login-form','refresh-status'].every((id) => Boolean(document.getElementById(id)));
       const forbiddenDom = ['desktop-work-thread','desktop-work-input','project-list','desktop-task-list','artifact-list','remote-connect','remote-stop'].some((id) => Boolean(document.getElementById(id)));
       const enrollment = apiReady ? await window.awhConnect.getEnrollmentState() : null;
       const worker = apiReady ? await window.awhConnect.getWorkerState() : null;
@@ -995,17 +1100,25 @@ async function startAfterReady(): Promise<void> {
   if (process.platform === 'darwin') app.dock?.hide();
   mainWindow = await createWindow(false);
   tray = createTray();
-  startWorkerLoop();
   const config = loadConfig();
-  const localEnrollment = await enrollmentState().catch(() => ({ ok: false, enrolled: false, hubConfigured: Boolean(config.hubApiBase) }));
-  if (localEnrollment.enrolled !== true) showLocalBridge();
-  void ensureConnectedDeviceRuntime().then(() => {
-    if (loadConfig().controlPlaneWorker) void runWorkerOnce();
-  }).catch(() => undefined);
+  const [localEnrollment, permissions] = await Promise.all([
+    enrollmentState().catch(() => ({ ok: false, enrolled: false, hubConfigured: Boolean(config.hubApiBase) })),
+    startupPermissionState().catch(() => ({ ready: false } as StartupPermissionState)),
+  ]);
+  if (localEnrollment.enrolled !== true || permissions.ready !== true) showLocalBridge();
+  if (permissions.ready === true) {
+    startWorkerLoop();
+    void ensureConnectedDeviceRuntime().then(() => {
+      if (loadConfig().controlPlaneWorker) void runWorkerOnce();
+    }).catch(() => undefined);
+  }
   app.on('activate', () => {
     void (async () => {
-      const state = await enrollmentState().catch(() => ({ enrolled: false }));
-      if (state.enrolled === true) await openAwhWeb('home');
+      const [state, permissionState] = await Promise.all([
+        enrollmentState().catch(() => ({ enrolled: false })),
+        startupPermissionState().catch(() => ({ ready: false } as StartupPermissionState)),
+      ]);
+      if (state.enrolled === true && permissionState.ready === true) await openAwhWeb('home');
       else {
         if (!mainWindow) mainWindow = await createWindow(false);
         showLocalBridge();

@@ -31,6 +31,9 @@ test('desktop IPC exposes fixed high-level channel names only', () => {
     'enrollmentRotate',
     'enrollmentState',
     'ownerPasswordReset',
+    'permissionAuthorize',
+    'permissionSettings',
+    'permissionState',
     'firstRun',
     'trustOwner',
     'autopilotOverview',
@@ -115,11 +118,20 @@ test('default desktop surface is a thin AWH Agent bridge and keeps advanced cont
   assert.match(html, /AWH Agent เป็นเพียงสะพานเชื่อมเครื่องกับ AWH/);
   assert.match(html, /Content-Security-Policy/);
   assert.doesNotMatch(html, /Projects|Project Memory|Git|Doctor|Secure MCP|AI Work|Autopilot/i);
-  for (const method of ['getEnrollmentState', 'login', 'getWorkerState', 'openAwhWeb']) assert.match(preload, new RegExp(`${method}:`));
+  for (const method of ['getEnrollmentState', 'login', 'getWorkerState', 'getPermissionState', 'authorizePermissions', 'openPermissionSettings', 'openAwhWeb']) assert.match(preload, new RegExp(`${method}:`));
   assert.doesNotMatch(preload, /logout:|enrollmentRevoke|remoteConnect|remoteStop|Autopilot|Project|openDataDir|restart|readFile|writeFile|spawn|process\.env/i);
+  assert.match(main, /startupPermissionState/);
+  assert.match(main, /authorizeStartupPermissions/);
+  assert.match(main, /PERMISSIONS_REQUIRED/);
+  assert.match(main, /if \(!startupPermissionsReady \|\| !config\.controlPlaneWorker \|\| workerTimer\) return/);
   assert.match(renderer, /Promise\.allSettled/);
+  assert.match(renderer, /window\.awhConnect\.getPermissionState/);
+  assert.match(renderer, /window\.awhConnect\.authorizePermissions/);
   assert.match(renderer, /window\.awhConnect\.openAwhWeb/);
   assert.match(renderer, /window\.awhConnect\.login/);
+  assert.match(html, /id="permission-card"/);
+  assert.match(html, /id="authorize-permissions"/);
+  assert.match(html, /อนุญาตสิทธิ์ให้ครบก่อนใช้งาน/);
   assert.doesNotMatch(renderer, /setInterval|remoteConnect|remoteStop|child_process|spawn\(|process\.env/i);
 });
 
