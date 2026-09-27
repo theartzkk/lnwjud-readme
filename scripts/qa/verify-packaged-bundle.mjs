@@ -127,7 +127,7 @@ assert(hasEntry('desktop/index.html'), 'packaged owner Control Panel renderer is
 assert(hasEntry('dist/desktop/main.js'), 'packaged Desktop main process is missing');
 assert(!normalizedListing.some((entry) => /^\/?(?:dist-web|out)(?:\/|$)/.test(entry)), 'packaged bundle contains generated release/output directories');
 assert(!normalizedListing.some((entry) => /^\/?\.awh(?:-local)?(?:\/|$)/.test(entry)), 'packaged bundle contains workspace-local AWH state');
-const packagedSkillManifest = JSON.parse(asar.extractFile(asarPath, 'skills/approved/anti-slop/SOURCE.json').toString('utf8'));
+const packagedSkillManifest = JSON.parse(asar.extractFile(asarPath, join('skills', 'approved', 'anti-slop', 'SOURCE.json')).toString('utf8'));
 assert(packagedSkillManifest.packId === 'awh.approved.anti-slop' && packagedSkillManifest.approvalState === 'APPROVED', 'packaged skill trust identity is invalid');
 assert(packagedSkillManifest.source?.revision === 'a56a8a78229516238375111a799001a5f24953cf', 'packaged Anti Slop source pin drifted');
 assert(packagedSkillManifest.runtimePolicy?.networkAllowed === false && packagedSkillManifest.runtimePolicy?.telemetryAllowed === false && packagedSkillManifest.runtimePolicy?.scriptAutoExecutionAllowed === false, 'packaged skill runtime boundary widened');
@@ -137,7 +137,7 @@ assert(expectedProtocolVersion, 'source owner working protocol version is invali
 const packagedProtocol = asar.extractFile(asarPath, OWNER_PROTOCOL_FILENAME).toString('utf8');
 assert(/Art ↔ AI Working Constitution/.test(packagedProtocol) && packagedProtocol.includes(`Version: ${expectedProtocolVersion}`), 'packaged owner working protocol identity is invalid');
 assert(/System-first, patch-second/i.test(packagedProtocol) && /AWH-direct contract/i.test(packagedProtocol), 'packaged owner working protocol contract is incomplete');
-const packagedDesktopHtml = asar.extractFile(asarPath, 'desktop/index.html').toString('utf8');
+const packagedDesktopHtml = asar.extractFile(asarPath, join('desktop', 'index.html')).toString('utf8');
 assert(/id="desktop-work-thread"/.test(packagedDesktopHtml) && /id="desktop-work-input"/.test(packagedDesktopHtml), 'packaged renderer does not contain the final project Work surface');
 const packagedPackage = JSON.parse(asar.extractFile(asarPath, 'package.json').toString('utf8'));
 assert(packagedPackage.version === EXPECTED_VERSION, 'packaged package version is not 1.0.0-rc.1');
