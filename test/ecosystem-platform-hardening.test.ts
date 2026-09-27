@@ -119,8 +119,17 @@ test('platform hardening is wired to runtime rather than documentation only', as
   assert.match(bounded, /--platform-hardening/);
   assert.match(bounded, /run-release-qa-isolated\.sh/);
   const qaRunner = await readFile('scripts/ops/run-release-qa-isolated.sh', 'utf8');
+  assert.match(qaRunner, /git clone --quiet --shared --no-checkout "\$ROOT" "\$QA_ROOT"/);
+  assert.doesNotMatch(qaRunner, /worktree add --detach/);
+  assert.match(qaRunner, /\/opt\/awh-toolchain\/node\/bin/);
+  assert.match(qaRunner, /npm ci --ignore-scripts --no-audit --no-fund --prefer-offline/);
+  assert.match(qaRunner, /QA_EXACT_SHA_REUSE=PASS/);
+  assert.match(qaRunner, /AWH_QA_SINGLEFLIGHT_ROOT/);
   assert.match(qaRunner, /\/usr\/bin\/nice -n 10 npm run/);
+  assert.doesNotMatch(qaRunner, /ln -s[^\n]*node_modules/);
   assert.doesNotMatch(qaRunner, /--property=Nice=/);
+  assert.match(bounded, /MISSION_DEPENDENCIES=ISOLATED_QA/);
+  assert.match(bounded, /MISSION_CANONICAL_MAIN_MOVED/);
   assert.match(deploy, /PLATFORM_HARDENING_MIGRATION_VERIFIED/);
   assert.match(deploy, /PLATFORM_RUNTIME_READY/);
   assert.match(deployOrchestrator, /EXTENSION_MODE_COUNT=\$\(\(AWH_CORE \+ ASSISTANT_WORKSTREAM/);

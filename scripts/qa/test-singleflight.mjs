@@ -54,6 +54,10 @@ export async function withSingleFlight({lockRoot,key,sha,mode='test',runner,wait
   const lock=join(lockRoot,safe(key)+'.lock');
   const resultDir=join(lockRoot,'results');await mkdir(resultDir,{recursive:true,mode:0o700});
   const result=join(resultDir,createHash('sha256').update(`${key}:${sha}:${mode}`).digest('hex')+'.json');
+  const cached=await readableJson(result);
+  if(cached?.sha===sha&&cached?.mode===mode&&cached?.code===0){
+    return {...cached,reused:true,reuseKind:'EXACT_SHA_PASS'};
+  }
   const deadline=Date.now()+waitTimeoutMs;
   for(;;){
     try{

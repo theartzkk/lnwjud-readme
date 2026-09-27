@@ -50,3 +50,17 @@ test('different-sha waiter reclaims lock when owner dies after waiting starts',a
     assert.equal(runs,1);
   }finally{await rm(root,{recursive:true,force:true});}
 });
+
+test('completed PASS is reused immediately for the same exact SHA and mode',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'awh-qa-singleflight-reuse-'));let runs=0;
+  const runner=async()=>{runs++;return 0;};
+  try{
+    const first=await withSingleFlight({lockRoot:root,key:'awh',sha:'b'.repeat(40),mode:'test',runner,pollMs:20});
+    const second=await withSingleFlight({lockRoot:root,key:'awh',sha:'b'.repeat(40),mode:'test',runner,pollMs:20});
+    assert.equal(runs,1);
+    assert.equal(first.reused,false);
+    assert.equal(second.reused,true);
+    assert.equal(second.reuseKind,'EXACT_SHA_PASS');
+    assert.equal(second.code,0);
+  }finally{await rm(root,{recursive:true,force:true});}
+});

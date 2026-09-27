@@ -185,12 +185,20 @@ async function runtimePrivilegeState(policy){
 }
 
 async function ensureDependencies(policy){
+  const isolated=join(ROOT,'scripts/ops/run-release-qa-isolated.sh');
+  if(existsSync(isolated)&&policy?.toolchainRouting?.dependencyHydration?.requiredBeforeDeepQa===true){
+    console.log('MISSION_DEPENDENCIES=ISOLATED_QA');
+    return;
+  }
   if(existsSync(join(ROOT,'node_modules'))){console.log('MISSION_DEPENDENCIES=READY');return;}
   if(policy?.toolchainRouting?.dependencyHydration?.requiredBeforeDeepQa!==true)throw new Error('MISSION_DEPENDENCIES_MISSING');
-  console.log('MISSION_DEPENDENCIES=HYDRATING');
-  const result=await run('npm',['ci','--ignore-scripts','--no-audit','--no-fund','--prefer-offline'],{forward:true});
-  if(result.code!==0)throw new Error('MISSION_DEPENDENCY_HYDRATION_FAILED');
-  console.log('MISSION_DEPENDENCIES=HYDRATED');
+  throw new Error('MISSION_ISOLATED_QA_RUNNER_MISSING');
+}
+
+async function assertCanonicalMainStable(expected){
+  const current=(await git(['rev-parse','refs/heads/main'])).toLowerCase();
+  if(current!==expected)throw new Error('MISSION_CANONICAL_MAIN_MOVED');
+  console.log(`MISSION_CANONICAL_MAIN_STABLE=${current}`);
 }
 
 async function verifyByBudget(plan){
@@ -252,7 +260,7 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   const unknown=rawArgs.filter((a)=>!['--approve','--cleanup-topology','--desktop-agent-release',...DEPLOY_MODES].includes(a));
   if(unknown.length) throw new Error(`MISSION_ARGUMENT_INVALID:${unknown[0]}`);
   const head=(await git(['rev-parse','HEAD'])).toLowerCase(); const main=(await git(['rev-parse','refs/heads/main'])).toLowerCase();
-  missionContext={releaseSha:head};
+  missionContext={releaseSha:head,canonicalMainAtStart:main};
   if(!SHA.test(head)||!SHA.test(main)) throw new Error('MISSION_SOURCE_IDENTITY_INVALID');
   if(head!==main){
     if(!trackRelease)throw new Error('MISSION_HEAD_NOT_CANONICAL_MAIN');
@@ -298,6 +306,7 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   console.log(`MISSION_RISK=${plan.riskLevel}`); console.log(`MISSION_VERIFICATION_BUDGET=${plan.budget}`); console.log(`MISSION_REQUIRED_CHECKS=${plan.requiredChecks.join(',')}`); console.log(`MISSION_EVAL_SCENARIOS=${evalScenarios.join(',')}`);
   console.log(`MISSION_DESKTOP_DELTA=${desktopImpact?'YES':'NO'}`); console.log(`MISSION_DESKTOP_MODE=${reuse?'REUSE_VERIFIED':'NEW_ARTIFACTS'}`); console.log(`MISSION_MODE=${mode.slice(2)}`);
   const qa=await verifyByBudget(plan);
+  await assertCanonicalMainStable(main);
   const common=['--owner-auth',mode]; if(cleanup)common.push('--cleanup-topology');
   const env={AWH_RELEASE_COMMIT:head,...(reuse?{AWH_REUSE_REMOTE_DESKTOP_ARTIFACTS:'1'}:{})};
   const rehearsal=await run(process.execPath,[GUARDED,'--dry-run',...common],{env,forward:true});
@@ -306,6 +315,7 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   const baseCapsule={schemaVersion:1,kind:'release-verification',baseSha:production,releaseSha:head,changedFileCount:changed.length,intelligence:plan,evalScenarios,qa,rehearsal:'PASS',desktopMode:reuse?'REUSE_VERIFIED':'NEW_ARTIFACTS',createdAt:new Date().toISOString()};
   if(!approved){await saveCapsule({...baseCapsule,state:'READY_FOR_APPROVAL',result:'REVIEW'});console.log('MISSION_STATE=READY_FOR_APPROVAL');console.log('MISSION_APPROVAL_REQUIRED=1');return;}
   console.log('MISSION_APPROVALS_CONSUMED=1');
+  await assertCanonicalMainStable(main);
   const deploy=await run(process.execPath,[GUARDED,'--deploy','--approve',...common],{env,forward:true});
   if(deploy.code!==0||!deploy.tail.includes('DEPLOY_RESULT=PASS')||!deploy.tail.includes('DEPLOY_STAGE=BACKUP_VERIFIED')||!deploy.tail.includes('DEPLOY_STAGE=SOURCE_DRIFT_VERIFIED')) throw new Error('MISSION_DEPLOY_FAILED');
   missionContext.deploy={status:'PASS',backup:'PASS',sourceDrift:'PASS'};
