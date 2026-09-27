@@ -18,6 +18,10 @@ test('P1 Tasks surface uses canonical control data and exposes a human-readable 
   assert.match(dashboard, /\/\[ก-๙\]\/u\.test\(task\.lastEvent\.message\)/);
   assert.match(dashboard, /technical\.join/);
   assert.match(dashboard, /safeArtifactDownloadUrl/);
+  assert.match(dashboard, /function taskNeedsOwnerAttention/);
+  assert.match(dashboard, /filter === 'attention'\) return taskNeedsOwnerAttention\(task\)/);
+  assert.doesNotMatch(dashboard, /filter === 'attention'\) return task\?\.state === 'FAILED'/);
+  assert.doesNotMatch(dashboard, /tasks\.filter\(\(item\) => item\?\.state === 'FAILED'\).*slice\(0, 3\)/s);
   assert.doesNotMatch(dashboard, /\bSTATUS_LABELS\b|\bexecutionPlace\b/);
   assert.doesNotMatch(dashboard, /demo|mock|fake/i);
 });

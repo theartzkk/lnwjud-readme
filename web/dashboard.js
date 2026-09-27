@@ -403,29 +403,35 @@ function workspaceSummary(workspace) {
   return 'AWH จะจำโปรเจกต์ ห้องงาน และสถานะล่าสุดให้เมื่อเริ่มทำงาน';
 }
 
+function pendingApprovalTaskIds() {
+  const approvals = Array.isArray(state.control?.approvals) ? state.control.approvals : [];
+  return new Set(
+    approvals
+      .filter((item) => ['PENDING', 'WAITING'].includes(item?.state || item?.status))
+      .map((item) => item?.taskId)
+      .filter(Boolean),
+  );
+}
+
+function taskNeedsOwnerAttention(task) {
+  return task?.state === 'WAITING_FOR_APPROVAL' || pendingApprovalTaskIds().has(task?.taskId);
+}
+
 function pulseAttentionItems() {
   const tasks = Array.isArray(state.control?.tasks) ? state.control.tasks : [];
-  const approvals = Array.isArray(state.control?.approvals) ? state.control.approvals : [];
-  return {
-    failed: tasks.filter((task) => task?.state === 'FAILED').length,
-    approvals: approvals.filter((item) => ['PENDING', 'WAITING'].includes(item?.state || item?.status)).length,
-  };
+  const attention = tasks.filter((task) => taskNeedsOwnerAttention(task)).length;
+  return { failed: 0, approvals: attention };
 }
 
 function attentionCenterItems() {
   const tasks = Array.isArray(state.control?.tasks) ? state.control.tasks : [];
-  const approvals = Array.isArray(state.control?.approvals) ? state.control.approvals : [];
   const projects = Array.isArray(state.control?.projects) ? state.control.projects : [];
   const rows = [];
-  const approvalTaskIds = new Set(approvals.filter((item) => ['PENDING', 'WAITING'].includes(item?.state || item?.status)).map((item) => item?.taskId).filter(Boolean));
-  for (const task of tasks.filter((item) => item?.state === 'WAITING_FOR_APPROVAL' || approvalTaskIds.has(item?.taskId)).sort(compareRecent).slice(0, 3)) {
+  for (const task of tasks.filter((item) => taskNeedsOwnerAttention(item)).sort(compareRecent).slice(0, 3)) {
     const project = projects.find((item) => item.projectId === task.projectId);
     rows.push({ priority: 'DECISION', title: safeText(task.goal, 'งานรอการตัดสินใจ'), detail: `${safeText(project?.name, 'โปรเจกต์')} · รอการอนุมัติ`, actionLabel: 'เปิดงาน', action: () => openTaskSurface('attention', task.taskId) });
   }
-  for (const task of tasks.filter((item) => item?.state === 'FAILED').sort(compareRecent).slice(0, 3)) {
-    const project = projects.find((item) => item.projectId === task.projectId);
-    rows.push({ priority: 'CHECK', title: safeText(task.goal, 'งานที่ต้องตรวจสอบ'), detail: `${safeText(project?.name, 'โปรเจกต์')} · งานหยุดก่อนเสร็จ`, actionLabel: 'ตรวจสอบ', action: () => openTaskSurface('attention', task.taskId) });
-  }
+
   if (state.control?.role === 'OWNER') {
     const infra = state.infrastructure || {};
     if (infra?.database?.state && infra.database.state !== 'HEALTHY') rows.push({ priority: 'SYSTEM', title: 'Database ต้องตรวจสอบ', detail: `สถานะ ${infra.database.state}`, actionLabel: 'เปิดระบบ', action: () => location.assign('./infrastructure.html') });
@@ -584,7 +590,7 @@ function returnHome() {
 
 function taskFilterMatches(task, filter) {
   if (filter === 'active') return ACTIVE_STATES.has(task?.state);
-  if (filter === 'attention') return task?.state === 'FAILED' || task?.state === 'WAITING_FOR_APPROVAL';
+  if (filter === 'attention') return taskNeedsOwnerAttention(task);
   if (filter === 'completed') return task?.state === 'COMPLETED';
   return true;
 }
