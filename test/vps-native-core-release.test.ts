@@ -26,7 +26,8 @@ test('VPS-native core release reuses canonical approval and deploy authorities',
   assert.match(service, /CORE_RELEASE_DISPATCHER_UNAVAILABLE/);
   assert.doesNotMatch(service, /shell_exec|proc_open|popen\s*\(|passthru\s*\(|\/bin\/sh/);
 
-  assert.match(trust, /'system\.core\.release'.*CRITICAL.*true.*true/);
+  assert.match(trust, /'system\.core\.release'.*CRITICAL.*true.*false/);
+  assert.match(trust, /'hosting\.site\.delete'.*CRITICAL.*true.*true/);
   assert.match(router, /\/api\/v1\/control\/system\/releases/);
 
   assert.match(operator, /file:\/\/\/srv\/awh-git\/awh\.git/);

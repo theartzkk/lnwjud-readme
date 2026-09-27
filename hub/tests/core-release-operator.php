@@ -70,16 +70,8 @@ try{
     cr_assert(($sourceStatus['sourcePromotion']['sha']??null)===$promoteTarget&&($sourceStatus['sourcePromotion']['previousSha']??null)===$promoteBase&&($sourceStatus['sourcePromotion']['authority']??null)==='CANONICAL_GIT_MAIN_VERIFIED','core release status verifies the successful source-promotion audit against canonical Git main');
     $pdo->prepare('UPDATE control_sessions SET step_up_at=NULL WHERE session_hash=:hash')->execute(['hash'=>hash('sha256',$session['sessionToken'])]);
 
-    try{
-        $service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$sha,'cleanupTopology'=>false],$now);
-        throw new RuntimeException('core release request bypassed step-up');
-    }catch(HubCoreReleaseException $error){
-        cr_assert($error->codeName==='STEP_UP_REQUIRED','core release requires recent password step-up');
-    }
-
-    $auth->stepUp($session['sessionToken'],$session['csrfToken'],$password);
     $request=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$sha,'cleanupTopology'=>false],$now);
-    cr_assert(($request['state']??null)==='WAITING_FOR_APPROVAL','core release waits for owner approval');
+    cr_assert(($request['state']??null)==='WAITING_FOR_APPROVAL','signed-in Owner can request a core release without repeated password step-up');
     $task=(string)$request['taskId'];$execution=(string)$request['executionId'];$approval=(string)$request['approvalId'];
 
     $taskRow=$pdo->query("SELECT state,progress,project_id FROM control_tasks WHERE task_id=".$pdo->quote($task))->fetch();

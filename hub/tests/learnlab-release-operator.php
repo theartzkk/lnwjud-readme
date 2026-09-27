@@ -64,16 +64,8 @@ try{
     $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'source promotion fixture','COMPLETED',NULL,NULL,100,'promoted',NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$promoteTask,'user'=>$owner,'project'=>$project,'key'=>'learnlab-source-promote-fixture','at'=>$now]);
     $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','source.promote','COMPLETED',NULL,NULL,1,NULL,:checkpoint,NULL,:at,:at)")->execute(['execution'=>$promoteExecution,'task'=>$promoteTask,'project'=>$project,'checkpoint'=>json_encode(['repository'=>'bay-learnlab','expectedMainSha'=>$sourceBase,'targetSha'=>$release,'bundleSha256'=>str_repeat('d',64),'releaseNotes'=>$releaseNotes],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$now]);
     $pdo->prepare('UPDATE control_sessions SET step_up_at=NULL WHERE session_hash=:hash')->execute(['hash'=>hash('sha256',$session['sessionToken'])]);
-    try{
-        $service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$release,'runtimeVersion'=>$version],$now);
-        throw new RuntimeException('LearnLab release bypassed step-up');
-    }catch(HubLearnLabReleaseException $error){
-        llr_assert($error->codeName==='STEP_UP_REQUIRED','LearnLab release requires owner password step-up');
-    }
-
-    $auth->stepUp($session['sessionToken'],$session['csrfToken'],$password);
     $request=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$release,'runtimeVersion'=>$version],$now);
-    llr_assert(($request['state']??null)==='WAITING_FOR_APPROVAL','LearnLab release waits for owner approval');
+    llr_assert(($request['state']??null)==='WAITING_FOR_APPROVAL','signed-in Owner can request LearnLab release without repeated password step-up');
     $task=(string)$request['taskId'];$execution=(string)$request['executionId'];$approval=(string)$request['approvalId'];
 
     $executionRow=$pdo->query("SELECT state,executor_kind,required_capability,checkpoint_json,attempt_count FROM control_task_executions WHERE execution_id=".$pdo->quote($execution))->fetch();

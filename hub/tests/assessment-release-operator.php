@@ -76,16 +76,8 @@ try{
     ar_assert(($status['candidate']['ready']??false)===true&&($status['candidate']['releaseSha']??null)===$releaseSha&&($status['candidate']['runtimeVersion']??null)===$version,'status binds exact QA candidate');
 
     $pdo->prepare('UPDATE control_sessions SET step_up_at=NULL WHERE session_hash=:hash')->execute(['hash'=>hash('sha256',$session['sessionToken'])]);
-    try{
-        $service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$releaseSha,'runtimeVersion'=>$version],$now);
-        throw new RuntimeException('Assessment release bypassed step-up');
-    }catch(HubAssessmentReleaseException $error){
-        ar_assert($error->codeName==='STEP_UP_REQUIRED','Assessment release requires owner step-up');
-    }
-
-    $auth->stepUp($session['sessionToken'],$session['csrfToken'],$password);
     $request=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$releaseSha,'runtimeVersion'=>$version],$now);
-    ar_assert(($request['state']??null)==='WAITING_FOR_APPROVAL','Assessment release waits for canonical owner approval');
+    ar_assert(($request['state']??null)==='WAITING_FOR_APPROVAL','signed-in Owner can request Assessment release without repeated password step-up');
     $task=(string)$request['taskId'];$execution=(string)$request['executionId'];$approval=(string)$request['approvalId'];
 
     $executionRow=$pdo->query("SELECT state,executor_kind,required_capability,checkpoint_json FROM control_task_executions WHERE execution_id=".$pdo->quote($execution))->fetch();
