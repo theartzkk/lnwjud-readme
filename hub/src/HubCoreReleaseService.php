@@ -58,6 +58,7 @@ final class HubCoreReleaseService
         }
         $sourcePromotion=$this->latestSourcePromotion();
         $releaseNotes=$this->deploymentReleaseNotes($sourcePromotion);
+        $releaseDetailsReady=HubUpdateTargetRegistry::releaseDetailsReady($releaseNotes,true);
         $roadmap=is_array($releaseNotes['comingNext']??null)?$releaseNotes['comingNext']:$this->fallbackRoadmap()['comingNext'];
         $knownIssues=is_array($releaseNotes['knownIssues']??null)?$releaseNotes['knownIssues']:$this->fallbackRoadmap()['knownIssues'];
         $history=[];
@@ -71,7 +72,7 @@ final class HubCoreReleaseService
         }
         $runtimeProductionSha=$this->canonicalProductionSha();
         $trackProductionSha=$this->canonicalRefSha($this->productionBranch);
-        return ['schemaVersion'=>1,'capability'=>$this->capability,'releaseTrack'=>$this->releaseTrack,'displayName'=>$this->displayName,'runtimeProductionSha'=>$runtimeProductionSha,'trackProductionSha'=>$trackProductionSha,'sourcePromotion'=>$sourcePromotion,'releaseNotes'=>$releaseNotes,'roadmap'=>$roadmap,'knownIssues'=>$knownIssues,'history'=>$history,'releases'=>$rows,'policy'=>HubTrustPolicy::describe($this->capability)];
+        return ['schemaVersion'=>1,'capability'=>$this->capability,'releaseTrack'=>$this->releaseTrack,'displayName'=>$this->displayName,'runtimeProductionSha'=>$runtimeProductionSha,'trackProductionSha'=>$trackProductionSha,'sourcePromotion'=>$sourcePromotion,'releaseNotes'=>$releaseNotes,'releaseDetailsReady'=>$releaseDetailsReady,'releaseBlocker'=>$releaseDetailsReady?null:'CORE_RELEASE_DETAILS_REQUIRED','roadmap'=>$roadmap,'knownIssues'=>$knownIssues,'history'=>$history,'releases'=>$rows,'policy'=>HubTrustPolicy::describe($this->capability)];
     }
 
     public function request(string $token,string $csrf,array $payload,?string $now=null): array
