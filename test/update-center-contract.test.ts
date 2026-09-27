@@ -57,7 +57,12 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(script,/runtimeState/);
   assert.match(script,/renderProgress/);
   assert.doesNotMatch(script,/askConfirm|askStepUp|\bstepUp\(/);
-  assert.doesNotMatch(script,/\bconfirm\(/);
+  const lineBundleStart=script.indexOf('async function updateLineOaBundle');
+  const lineBundleEnd=script.indexOf('async function refreshAgent');
+  const scriptOutsideLineBundle=lineBundleStart>=0&&lineBundleEnd>lineBundleStart
+    ?script.slice(0,lineBundleStart)+script.slice(lineBundleEnd)
+    :script;
+  assert.doesNotMatch(scriptOutsideLineBundle,/\bconfirm\(/);
   assert.doesNotMatch(script,/อัปเดต AWH เป็น Source/);
   assert.match(script,/decideApproval/);
   assert.match(script,/managedSiteAction/);
@@ -537,6 +542,11 @@ test('Update Center keeps AWH LINE Gateway and BAY Excuse LINE OA as two permane
   assert.match(script,/item\.key='bay-excuse-line-oa'/);
   assert.match(script,/center=normalizeUpdateCenter\(await loadUpdateCenter\(\)\)/);
   assert.match(script,/center=normalizeUpdateCenter\(snapshot\)/);
+  assert.match(script,/function ensureBayLineTarget\(tracks\)/);
+  assert.match(script,/center\.items\.push\(item\)/);
+  assert.match(script,/key:'bay-excuse-line-oa'/);
+  assert.match(script,/releaseTrack:'line-oa'/);
+  assert.match(script,/historyAuthority:'BAY_UPDATE_CENTER:line-oa'/);
   assert.match(script,/function lineOaTargets/);
   assert.match(script,/async function updateLineOaBundle/);
   assert.match(script,/awh-line-gateway/);
@@ -549,6 +559,8 @@ test('Update Center keeps AWH LINE Gateway and BAY Excuse LINE OA as two permane
   const bundle=script.slice(script.indexOf('async function updateLineOaBundle'),script.indexOf('async function refreshAgent'));
   assert.equal((bundle.match(/await stepUp\(password\)/g)||[]).length,0);
   assert.doesNotMatch(bundle,/askStepUp|step-up-password|SINGLE_OWNER_STEP_UP/);
+  assert.equal((bundle.match(/window\.confirm\(/g)||[]).length,1);
+  assert.match(bundle,/โดยไม่แตะ AWH Core, VPS Platform หรือ BAY Excuse Core/);
   assert.doesNotMatch(bundle,/requestCoreRelease|requestPlatformRelease|bay-excuse-core|vps-platform/);
   assert.match(css,/update-group\[data-group="line-oa"\]/);
 });

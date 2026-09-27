@@ -280,6 +280,8 @@ function technicalDetails(item){
   if(item.domain)values.push('domain '+item.domain);
   if(item.webhookPath)values.push('webhook '+item.webhookPath);
   if(item.secretScope)values.push('secret scope '+item.secretScope);
+  if(item.trackSourceSha)values.push('source sha '+short(item.trackSourceSha));
+  if(item.trackInherited)values.push('track state inherited');
   details.append(summary,meta(...values));
   if(item.runtimeComponents&&typeof item.runtimeComponents==='object'){
     const componentValues=Object.entries(item.runtimeComponents).map(([key,value])=>value?key+' '+String(value):null);
@@ -648,13 +650,48 @@ async function updateBay(item){
   await refreshBay();
 }
 
+function ensureBayLineTarget(tracks){
+  const existing=(center?.items||[]).find((item)=>item.key==='bay-excuse-line-oa');
+  if(existing)return existing;
+  const trackState=tracks?.['line-oa'];
+  if(!trackState||typeof trackState!=='object')return null;
+  const bayCore=(center?.items||[]).find((item)=>item.adapter==='BAY_UPDATE_CENTER');
+  if(!bayCore)return null;
+  const item={
+    key:'bay-excuse-line-oa',
+    projectId:bayCore.projectId||null,
+    name:'BAY Excuse LINE OA',
+    kind:'INTEGRATION',
+    adapter:'BAY_UPDATE_CENTER',
+    group:'line-oa',
+    visibility:'PRIMARY',
+    releaseTrack:'line-oa',
+    sourceReleaseTrack:'line-oa',
+    sourceAuthority:'BAY_UPDATE_INBOX',
+    secretScope:'BAY_EXCUSE_LINE_OA',
+    state:'REMOTE_CHECK_REQUIRED',
+    current:null,
+    candidate:null,
+    approvalRequired:false,
+    actionable:false,
+    history:[],
+    historyAuthority:'BAY_UPDATE_CENTER:line-oa',
+    reason:'กำลังตรวจ release track line-oa ของ BAY Excuse',
+  };
+  center.items.push(item);
+  return item;
+}
+
 async function refreshBay(){
-  const items=(center?.items||[]).filter((row)=>row.adapter==='BAY_UPDATE_CENTER');if(!items.length)return;
+  const initialItems=(center?.items||[]).filter((row)=>row.adapter==='BAY_UPDATE_CENTER');if(!initialItems.length)return;
+  let items=initialItems;
   try{
     const bridge=await loadBayRemoteUpdateStatus();
     bayLive=await relayBayRemoteCommand(bridge.endpoint,bridge.statusRelay);
     const packages=Array.isArray(bayLive.packages)?bayLive.packages:[];
     const tracks=bayLive.releaseTracks&&typeof bayLive.releaseTracks==='object'?bayLive.releaseTracks:{};
+    ensureBayLineTarget(tracks);
+    items=(center?.items||[]).filter((row)=>row.adapter==='BAY_UPDATE_CENTER');
     const preflightReady=bayLive.preflight?.ready===true;
     for(const item of items){
       const track=String(item.releaseTrack||'bay-excuse-core');
@@ -662,6 +699,8 @@ async function refreshBay(){
       const current=trackState?.currentVersion||(track==='bay-excuse-core'?bayLive.currentVersion:null);
       const release=packages.find((row)=>row?.installable===true&&String(row.releaseTrack||'bay-excuse-core')===track&&['ready','READY'].includes(String(row.state||row.version_state||'')));
       item.current=current||null;item.release=release||null;item.candidate=release?.version||null;
+      item.trackSourceSha=trackState?.sourceSha||null;
+      item.trackInherited=trackState?.inherited===true;
       item.actionable=Boolean(release)&&preflightReady;
       item.state=item.actionable?'UPDATE_AVAILABLE':(preflightReady?'CURRENT':'BLOCKED');
       item.reason=item.actionable
@@ -752,6 +791,8 @@ async function updateLineOaBundle(){
   const awhNeedsUpdate=awh.state==='UPDATE_AVAILABLE'&&awh.actionable===true;
   const bayNeedsUpdate=bay.state==='UPDATE_AVAILABLE'&&bay.actionable===true&&bay.release;
   if(!awhNeedsUpdate&&!bayNeedsUpdate){message('LINE OA ทั้งสอง target เป็นรุ่นล่าสุดแล้ว');return;}
+  const confirmed=window.confirm('อัปเดต LINE OA ทั้งชุดเฉพาะ 2 target นี้หรือไม่? ระบบจะอัปเดตและ verify ทีละตัว โดยไม่แตะ AWH Core, VPS Platform หรือ BAY Excuse Core');
+  if(!confirmed)return;
 
   let awhVerified=!awhNeedsUpdate;
   try{
