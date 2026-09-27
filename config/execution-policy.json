@@ -28,6 +28,10 @@
     "crossProjectReadOnlyAllowed": true,
     "sourcePromotionRequiresTargetProjectMission": true,
     "projectScopeAuthority": "PROJECT_REGISTRY+MISSION_EXECUTION_PROJECT",
+    "completionAuthority": "HubCompletionAuthorityService",
+    "completionNotificationRequiresVerifiedTerminal": true,
+    "resumeAuthority": "EXECUTION_CHECKPOINT+HEARTBEAT",
+    "terminalStateEvidence": "TASK+EXECUTION+ENVELOPE+APPROVAL+CONTINUATION",
     "hostGlobalTrack": "vps-platform"
   },
   "qa": {

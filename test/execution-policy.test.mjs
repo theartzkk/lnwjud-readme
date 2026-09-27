@@ -22,6 +22,10 @@ test('execution metadata is context-only rather than an AI behavior policy',asyn
   assert.equal(context.integrity.crossProjectReadOnlyAllowed,true);
   assert.equal(context.integrity.sourcePromotionRequiresTargetProjectMission,true);
   assert.equal(context.integrity.projectScopeAuthority,'PROJECT_REGISTRY+MISSION_EXECUTION_PROJECT');
+  assert.equal(context.integrity.completionAuthority,'HubCompletionAuthorityService');
+  assert.equal(context.integrity.completionNotificationRequiresVerifiedTerminal,true);
+  assert.equal(context.integrity.resumeAuthority,'EXECUTION_CHECKPOINT+HEARTBEAT');
+  assert.equal(context.integrity.terminalStateEvidence,'TASK+EXECUTION+ENVELOPE+APPROVAL+CONTINUATION');
   assert.equal(context.integrity.hostGlobalTrack,'vps-platform');
   assert.ok(context.integrity.sameProjectInterlocks.includes('CANONICAL:SOURCE<->CANONICAL:DEPLOY:*'));
   assert.ok(context.integrity.sameProjectInterlocks.includes('RESOURCE:RELEASE_STAGE<->CANONICAL:DEPLOY:*'));

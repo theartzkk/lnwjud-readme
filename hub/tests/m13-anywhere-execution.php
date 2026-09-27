@@ -67,6 +67,13 @@ try {
     m13_assert(is_array($envelope) && $envelope['mutation_scope'] === 'READ' && $envelope['session_key'] === 'task:' . $legacyTask && $envelope['state'] === 'OPEN', 'legacy M12 execution is backfilled without a new task authority');
 
     $registry = new HubCapabilityRegistryService($pdo);
+    $scopeTask=m13_uuid();$scopeExecution=m13_uuid();
+    $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'scope mismatch fixture','WAITING_FOR_WORKER',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$scopeTask,'user'=>$owner,'project'=>$project,'key'=>'m13-scope-mismatch-0001','at'=>$now]);
+    $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','project.mutate.assisted','QUEUED',NULL,NULL,0,NULL,'{}',NULL,:at,:at)")->execute(['execution'=>$scopeExecution,'task'=>$scopeTask,'project'=>$project2,'at'=>$now]);
+    $scopeRejected=false;try{$registry->ensureExecutionEnvelope($scopeExecution,$now);}catch(HubCapabilityRegistryException $e){$scopeRejected=$e->codeName==='EXECUTION_PROJECT_SCOPE_MISMATCH';}
+    m13_assert($scopeRejected,'execution envelope rejects cross-project mutation before authority opens');
+    $pdo->prepare('DELETE FROM control_task_executions WHERE execution_id=:id')->execute(['id'=>$scopeExecution]);
+    $pdo->prepare('DELETE FROM control_tasks WHERE task_id=:id')->execute(['id'=>$scopeTask]);
     $before = $registry->status(false, $now);
     m13_assert(($before['anywhereFirst'] ?? false) === true && ($before['deviceRequired'] ?? true) === false, 'M13 declares anywhere-first without making a device mandatory');
     m13_assert(($registry->route('project.read', $now) ?? null) === null, 'catalog alone never claims an executor is online');

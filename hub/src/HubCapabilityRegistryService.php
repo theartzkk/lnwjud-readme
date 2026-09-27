@@ -227,8 +227,14 @@ final class HubCapabilityRegistryService
     public function ensureExecutionEnvelope(string $executionId, ?string $now = null): array
     {
         $this->assertReady(); self::uuid($executionId); $at = self::timestamp($now ?? gmdate('c'));
-        $q = $this->pdo->prepare('SELECT e.execution_id,e.task_id,e.project_id,e.vault_revision_id,e.executor_kind,e.required_capability,t.conversation_id FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE e.execution_id=:id');
+        $q = $this->pdo->prepare('SELECT e.execution_id,e.task_id,e.project_id,e.vault_revision_id,e.executor_kind,e.required_capability,t.project_id AS task_project_id,t.conversation_id FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE e.execution_id=:id');
         $q->execute(['id'=>$executionId]); $row = $q->fetch(); if (!is_array($row)) throw new HubCapabilityRegistryException('Execution was not found', 'EXECUTION_NOT_FOUND');
+        $executionProject=(string)$row['project_id'];$taskProject=(string)$row['task_project_id'];
+        if(!hash_equals($executionProject,$taskProject))throw new HubCapabilityRegistryException('Execution project scope does not match canonical task','EXECUTION_PROJECT_SCOPE_MISMATCH');
+        if(is_string($row['conversation_id']??null)&&self::tablePresent($this->pdo,'control_conversations')){
+            $cq=$this->pdo->prepare('SELECT project_id FROM control_conversations WHERE conversation_id=:conversation');$cq->execute(['conversation'=>$row['conversation_id']]);$conversationProject=$cq->fetchColumn();
+            if(!is_string($conversationProject)||!hash_equals($executionProject,$conversationProject))throw new HubCapabilityRegistryException('Execution project scope does not match conversation','EXECUTION_PROJECT_SCOPE_MISMATCH');
+        }
         $required = (string)$row['required_capability']; $scope = self::mutationScopeForExecution($required, (string)$row['executor_kind']);
         $conversation = is_string($row['conversation_id'] ?? null) ? (string)$row['conversation_id'] : null; $sessionKey = $conversation === null ? 'task:'.$row['task_id'] : 'conversation:'.$conversation;
         $routeCapability = $required === 'codex:cli' ? 'code.specialist' : $required;
@@ -482,6 +488,11 @@ final class HubCapabilityRegistryService
     private function assertReady(): void
     {
         if (!self::schemaPresent($this->pdo)) throw new HubCapabilityRegistryException('Anywhere Execution capability is not ready', 'ANYWHERE_EXECUTION_SCHEMA_NOT_READY');
+    }
+
+    private static function tablePresent(PDO $pdo,string $table): bool
+    {
+        $q=$pdo->prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=:name");$q->execute(['name'=>$table]);return $q->fetchColumn()!==false;
     }
 
     private static function providerId(string $value): string

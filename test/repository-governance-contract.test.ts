@@ -23,6 +23,10 @@ test('repository governance is a single machine-enforced contract', async () => 
   assert.equal(contract.rules.crossProjectMutationDefault, 'DENY');
   assert.equal(contract.rules.crossProjectReadOnlyAllowed, true);
   assert.equal(contract.rules.sourcePromotionRequiresTargetProjectMission, true);
+  assert.equal(contract.rules.verifiedCompletionAuthority, 'HubCompletionAuthorityService');
+  assert.equal(contract.rules.completionNotificationRequiresVerifiedTerminal, true);
+  assert.equal(contract.rules.heartbeatResumeCursorRequired, true);
+  assert.equal(contract.rules.terminalStateEvidence, 'TASK+EXECUTION+ENVELOPE+APPROVAL+CONTINUATION');
   assert.equal(contract.rules.aggregateActiveCountsAreNotBlockingAuthority, true);
   assert.equal(contract.rules.releaseTrackScopedDeployOwnership, true);
   assert.equal(contract.rules.hostGlobalReleaseTrack, 'vps-platform');
