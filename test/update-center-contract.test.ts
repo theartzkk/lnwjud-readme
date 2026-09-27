@@ -567,6 +567,12 @@ test('Update Center keeps AWH LINE Gateway and BAY Excuse LINE OA as two permane
   assert.match(script,/releaseTrack:'pp-center'/);
   assert.match(script,/BAY runtime รุ่นนี้ยังไม่ประกาศ release track/);
   assert.match(script,/historyAuthority:'BAY_UPDATE_CENTER:'\+definition\.releaseTrack/);
+  assert.match(script,/if\(!trackState&&track!=='bay-excuse-core'\)/);
+  assert.match(script,/item\.actionable=false;item\.state='BLOCKED'/);
+  assert.match(script,/snapshot\.items\.some\(\(item\)=>String\(item\?\.key\|\|''\)==='vps-platform'\)/);
+  assert.match(script,/name:'VPS Platform'.*state:'BLOCKED'/s);
+  assert.match(script,/ศูนย์งานสหกรณ์โรงเรียน/);
+  assert.match(script,/ศูนย์ ปพ\./);
   assert.match(script,/function lineOaTargets/);
   assert.match(script,/async function updateLineOaBundle/);
   assert.match(script,/awh-line-gateway/);
