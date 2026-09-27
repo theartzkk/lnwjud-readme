@@ -34,15 +34,18 @@ test('Owner Control Panel composes existing authorities without a parallel backe
   assert.match(js,/revealHashTarget/);
   assert.match(js,/requireOwnerSession/);
   assert.match(js,/loadInfrastructureSummary/);
+  assert.match(js,/loadInfrastructureCompat/);
+  assert.match(js,/try\{return await loadInfrastructureSummary\(\);\}\s*catch\{return loadInfrastructure\(\);\}/);
   assert.match(js,/loadUpdateCenter/);
   assert.match(js,/renderUpdateSummary/);
   assert.doesNotMatch(js,/loadBayRemoteUpdateStatus|createBayRemoteInstallRelay|relayBayRemoteCommand/);
-  assert.doesNotMatch(js,/\bloadInfrastructure\(/);
   assert.doesNotMatch(js,/Promise\.allSettled\(\[.*loadInfrastructureSummary/);
   assert.doesNotMatch(js,/loadControlData\(\)/);
   assert.match(js,/listManagedSites/);
   assert.match(js,/loadProviderStatus/);
-  assert.match(js,/if\(!session\)\{location\.assign/); assert.ok(js.indexOf('requireOwnerSession()')<js.indexOf('loadInfrastructureSummary()'));
+  assert.match(js,/if\(!session\)\{location\.assign/);
+  const loadBody=js.slice(js.indexOf('async function load(){'));
+  assert.ok(loadBody.indexOf('requireOwnerSession()')<loadBody.indexOf('loadInfrastructureCompat()'));
   assert.doesNotMatch(js,/localStorage|sessionStorage|indexedDB|Authorization|Bearer/i);
   assert.doesNotMatch(html,/password|api[_ -]?key|secret/i);
   assert.match(css,/\.cp-sidebar/);
@@ -58,8 +61,11 @@ test('Control Panel uses a bounded infrastructure summary route',async()=>{
   assert.match(service,/function infrastructureSummary\(/);
   assert.match(service,/'projection'=>'OWNER_SUMMARY'/);
   assert.match(panel,/loadInfrastructureSummary\(\)/);
+  assert.match(panel,/async function loadInfrastructureCompat\(\)/);
+  assert.match(panel,/catch\{return loadInfrastructure\(\);\}/);
   assert.match(dashboard,/loadInfrastructureSummary\(\)/);
-  assert.doesNotMatch(panel+dashboard,/\bloadInfrastructure\(\)/);
+  assert.doesNotMatch(dashboard,/\bloadInfrastructure\(\)/);
+  assert.ok(panel.indexOf('void loadUpdateSummary();')<panel.indexOf('const data=await loadInfrastructureCompat();'));
 });
 
 test('Control Panel is emitted into the canonical web release and PWA shell',async()=>{

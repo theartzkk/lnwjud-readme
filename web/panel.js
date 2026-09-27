@@ -1,4 +1,4 @@
-import { requireOwnerSession, loadInfrastructureSummary, loadUpdateCenter, listManagedSites, loadProviderStatus, updateProviderPolicy, listPeople, listAccountRequests, reviewAccountRequest, revokePerson } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { requireOwnerSession, loadInfrastructureSummary, loadInfrastructure, loadUpdateCenter, listManagedSites, loadProviderStatus, updateProviderPolicy, listPeople, listAccountRequests, reviewAccountRequest, revokePerson } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $=(id)=>document.getElementById(id);
 const bytes=(value)=>{const n=Number(value||0);if(!Number.isFinite(n)||n<1)return '—';if(n<1024**2)return Math.round(n/1024)+' KB';if(n<1024**3)return (n/1024**2).toFixed(1)+' MB';return (n/1024**3).toFixed(1)+' GB';};
@@ -72,6 +72,11 @@ function renderUpdateSummary(snapshot,error=null){
 async function loadUpdateSummary(){
   try{renderUpdateSummary(await loadUpdateCenter());}
   catch(error){renderUpdateSummary(null,error);}
+}
+
+async function loadInfrastructureCompat(){
+  try{return await loadInfrastructureSummary();}
+  catch{return loadInfrastructure();}
 }
 
 function renderServer(data){
@@ -315,10 +320,10 @@ async function load(){
   try{
     const session=await requireOwnerSession();
     if(!session){location.assign('./');return;}
-    const data=await loadInfrastructureSummary();
+    void loadUpdateSummary();
+    const data=await loadInfrastructureCompat();
     renderServer(data);renderDomains(data);renderRecovery(data);renderServices(data);renderEcosystem(data);renderAgentControl(data);
     $('cp-updated').textContent='ตรวจข้อมูลแล้ว · '+Math.max(1,Math.round(performance.now()-started))+' ms';
-    void loadUpdateSummary();
     void renderExternalCapabilities();
 
     Promise.allSettled([listManagedSites(),loadProviderStatus(),loadPeopleAccess()]).then((secondary)=>{
