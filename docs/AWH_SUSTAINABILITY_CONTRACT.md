@@ -19,6 +19,10 @@ AWH is an evergreen product. Production should become useful early, then improve
 - Release tracks are explicit and independent: VPS Platform, AWH, AWH Agent and each BAY product keep their own version, history, rollback and approval scope even when the Update Center presents them on one page.
 - `AGENTS.md` is the single agent entry point. Dated state/handoff/history is evidence only; no `RULES.md` or other prose file may become a parallel constitution.
 - Terminal release workspaces must be reclaimed on success and failure, and Production release must fail before dependency hydration when storage headroom is below the bounded safety threshold.
+- Repeated blockers are engineering defects, not normal workflow. Closure requires root-cause evidence plus permanent prevention, regression coverage, recovery behavior and an observable signal; a temporary unblock never closes the defect by itself.
+- Owner Assist Fast Lane is mandatory when the same failure path has been attempted twice or a short Owner action is materially faster than continued automated retry. The assistant surfaces the blocker and exact next action immediately instead of waiting silently.
+- Unique unpromoted source never lives only in `/tmp`. Durable candidates use `/var/lib/awh-remote/worktrees`; temporary QA/cache trees must be reproducible from canonical source.
+- Storage guard targets at least 6 GiB free space and performs project-aware bounded cleanup before a release/mission reaches the hard storage block. Cleanup fails closed when project authority cannot be resolved and never reclaims dirty, open, active-project or non-canonical workspaces.
 
 ## Release contract
 

@@ -86,5 +86,43 @@
       "strategy": "NPM_CI_PREFER_OFFLINE",
       "lockfileExact": true
     }
+  },
+  "blockerHandling": {
+    "mode": "OWNER_ASSIST_FAST_LANE",
+    "maxSameFailureRetries": 2,
+    "silentWaitAllowed": false,
+    "surfaceOwnerAssistWhenFaster": true,
+    "permanentFixRequiredForRecurringBlocker": true,
+    "closureEvidence": [
+      "rootCause",
+      "prevention",
+      "regression",
+      "recovery",
+      "observability"
+    ],
+    "requiredOwnerAssistFields": [
+      "blocker",
+      "fastestOwnerAction",
+      "estimatedOwnerTime",
+      "resumeAction"
+    ]
+  },
+  "workspaceRouting": {
+    "durableCandidateRoot": "/var/lib/awh-remote/worktrees",
+    "ephemeralRoot": "/tmp",
+    "unpromotedCandidateInEphemeralRootAllowed": false,
+    "ephemeralWorkMustBeReproducible": true
+  },
+  "storageSafety": {
+    "targetFreeBytes": 6442450944,
+    "warningFreeBytes": 6442450944,
+    "blockFreeBytes": 3221225472,
+    "criticalFreeBytes": 1610612736,
+    "tempPressureBytes": 2147483648,
+    "selfHealBeforeBlock": true,
+    "projectAwareJanitor": true,
+    "janitorFailClosedWhenAuthorityUnknown": true,
+    "pressureKeepNewestPerRepo": 2,
+    "pressureMinAgeMinutes": 60
   }
 }

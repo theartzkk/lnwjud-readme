@@ -18,6 +18,10 @@ Do not upgrade VPS from intuition alone. Upgrade only when measured CPU, memory,
 
 Core Release performs storage preflight before dependency hydration and reclaims terminal release workspaces. A failed release must not leave an unbounded build workspace behind, and retries are blocked while storage is above the configured release threshold.
 
+Storage maintenance is proactive: the guard targets 6 GiB free space, checks every 10 minutes, and invokes project-aware cleanup before the hard block. The temp janitor runs every 30 minutes, keeps recent clean workspaces per repository, and deletes only clean canonical-backed workspaces whose project has no active mutation, no open file and no process working directory. Unknown authority is fail-closed. Durable candidates live under `/var/lib/awh-remote/worktrees`; `/tmp` contains only reproducible transients.
+
+When an operation is blocked, retry the identical failure path no more than twice. If an Owner action is materially faster, report the blocker and exact action immediately under Owner Assist Fast Lane, then resume from the durable checkpoint. A workaround is not closure until prevention, regression, recovery and observability are in place.
+
 ## Device policy
 
 Mac/Windows devices are replaceable optional workers. Enrollment, capability discovery, revoke and replacement must not change canonical project identity or require moving Hub data.

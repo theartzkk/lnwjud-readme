@@ -30,6 +30,16 @@ test('repository governance is a single machine-enforced contract', async () => 
   assert.equal(contract.rules.aggregateActiveCountsAreNotBlockingAuthority, true);
   assert.equal(contract.rules.releaseTrackScopedDeployOwnership, true);
   assert.equal(contract.rules.hostGlobalReleaseTrack, 'vps-platform');
+  assert.equal(contract.rules.recurringBlockerRequiresPermanentFix, true);
+  assert.equal(contract.rules.ownerAssistFastLaneRequired, true);
+  assert.equal(contract.rules.maxSameFailureRetriesBeforeEscalation, 2);
+  assert.equal(contract.rules.durableCandidateWorkspaceRequired, true);
+  assert.equal(contract.rules.durableCandidateWorkspaceRoot, '/var/lib/awh-remote/worktrees');
+  assert.equal(contract.rules.ephemeralWorkspaceRoot, '/tmp');
+  assert.equal(contract.rules.unpromotedCandidateInEphemeralRootAllowed, false);
+  assert.equal(contract.rules.maintenanceRuntimeUsesReleasePointerOnly, true);
+  assert.equal(contract.rules.storageSelfHealBeforeBlock, true);
+  assert.equal(contract.rules.storageTargetFreeBytes, 6442450944);
   assert.equal(contract.rules.forbidParallelAuthorityFiles, true);
 
   const expected = new Map([
@@ -70,6 +80,9 @@ test('repository governance is a single machine-enforced contract', async () => 
   assert.match(agents, /only `VPS Platform` is host-global/);
   assert.match(agents, /Cross-project mutation is denied by default/);
   assert.match(agents, /Source promotion requires the exact active mission of the target project/);
+  assert.match(agents, /Owner Assist Fast Lane/);
+  assert.match(agents, /retry the same failure path at most twice/i);
+  assert.match(agents, /\/var\/lib\/awh-remote\/worktrees/);
 
   const drift = await readFile(join(root, 'hub/bin/ecosystem-source-drift.php'), 'utf8');
   assert.match(drift, /governanceRepositories/);

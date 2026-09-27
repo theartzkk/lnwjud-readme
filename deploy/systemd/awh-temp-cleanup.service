@@ -4,9 +4,11 @@ After=local-fs.target
 
 [Service]
 Type=oneshot
+User=root
+Group=root
 ExecStart=/opt/awh-hub/control-plane-current/deploy/awh-storage/awh-temp-cleanup
 NoNewPrivileges=true
 PrivateTmp=false
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/tmp
+ReadWritePaths=/tmp /var/lib/awh-hub /var/lib/awh-remote/tmp /var/lib/awh-remote/operator-staging

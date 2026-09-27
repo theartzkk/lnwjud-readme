@@ -30,6 +30,18 @@ test('execution metadata is context-only rather than an AI behavior policy',asyn
   assert.ok(context.integrity.sameProjectInterlocks.includes('CANONICAL:SOURCE<->CANONICAL:DEPLOY:*'));
   assert.ok(context.integrity.sameProjectInterlocks.includes('RESOURCE:RELEASE_STAGE<->CANONICAL:DEPLOY:*'));
   assert.equal(context.runtimeDefaults.deviceLeaseMinutes,45);
+  assert.equal(context.blockerHandling.mode,'OWNER_ASSIST_FAST_LANE');
+  assert.equal(context.blockerHandling.maxSameFailureRetries,2);
+  assert.equal(context.blockerHandling.silentWaitAllowed,false);
+  assert.equal(context.blockerHandling.permanentFixRequiredForRecurringBlocker,true);
+  assert.deepEqual(context.blockerHandling.closureEvidence,['rootCause','prevention','regression','recovery','observability']);
+  assert.equal(context.workspaceRouting.durableCandidateRoot,'/var/lib/awh-remote/worktrees');
+  assert.equal(context.workspaceRouting.unpromotedCandidateInEphemeralRootAllowed,false);
+  assert.equal(context.storageSafety.targetFreeBytes,6442450944);
+  assert.equal(context.storageSafety.selfHealBeforeBlock,true);
+  assert.equal(context.storageSafety.projectAwareJanitor,true);
+  assert.equal(context.storageSafety.pressureKeepNewestPerRepo,2);
+  assert.equal(context.storageSafety.pressureMinAgeMinutes,60);
   for(const removed of ['remoteMission','executionModel','gateTiers','sourceAuthority']) assert.equal(Object.hasOwn(context,removed),false);
 });
 

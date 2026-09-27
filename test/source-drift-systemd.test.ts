@@ -86,3 +86,51 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(drift, /projectClass\(\$row\)!=='PRODUCTION'/);
 
 });
+
+
+test('VPS Platform storage safety is proactive, project-aware and durable', async () => {
+  const [janitor,temp,tempService,tempTimer,guard,guardService,guardTimer,deploy,remote,agents,operations] = await Promise.all([
+    readFile(join(root, 'deploy/awh-storage/awh-temp-workspace-janitor.py'), 'utf8'),
+    readFile(join(root, 'deploy/awh-storage/awh-temp-cleanup'), 'utf8'),
+    readFile(join(root, 'deploy/systemd/awh-temp-cleanup.service'), 'utf8'),
+    readFile(join(root, 'deploy/systemd/awh-temp-cleanup.timer'), 'utf8'),
+    readFile(join(root, 'deploy/awh-storage/awh-storage-guard'), 'utf8'),
+    readFile(join(root, 'deploy/systemd/awh-storage-guard.service'), 'utf8'),
+    readFile(join(root, 'deploy/systemd/awh-storage-guard.timer'), 'utf8'),
+    readFile(join(root, 'deploy/awh-control-plane/deploy-control-plane.sh'), 'utf8'),
+    readFile(join(root, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'), 'utf8'),
+    readFile(join(root, 'AGENTS.md'), 'utf8'),
+    readFile(join(root, 'docs/OPERATIONS.md'), 'utf8'),
+  ]);
+  assert.match(janitor, /AWH_CANONICAL_ROOT/);
+  assert.match(janitor, /UNKNOWN_FAIL_CLOSED/);
+  assert.match(janitor, /control_task_executions/);
+  assert.match(janitor, /control_execution_envelopes/);
+  assert.match(janitor, /status.*--porcelain-v1|status.*--porcelain=v1/s);
+  assert.match(janitor, /lsof/);
+  assert.match(janitor, /\/proc/);
+  assert.match(janitor, /head_in_origin/);
+  assert.match(janitor, /for-each-ref/);
+  assert.match(guard, /RECOVER=79/);
+  assert.match(janitor, /KEEP_NEWEST/);
+  assert.match(janitor, /TARGET_FREE/);
+  assert.match(janitor, /SKIPPED_PERMISSION/);
+  assert.match(temp, /awh-temp-workspace-janitor\.py/);
+  assert.match(temp, /AWH_STORAGE_PRESSURE/);
+  assert.match(tempService, /User=root/);
+  assert.match(tempService, /ReadWritePaths=.*\/var\/lib\/awh-hub/);
+  assert.match(tempService, /ReadWritePaths=.*\/var\/lib\/awh-remote\/operator-staging/);
+  assert.doesNotMatch(tempService, /\/usr\/local\/sbin\/awh-temp-cleanup/);
+  assert.match(tempTimer, /OnUnitActiveSec=30m/);
+  assert.match(guard, /TARGET_FREE=6442450944/);
+  assert.match(guard, /WARN_FREE=6442450944/);
+  assert.match(guard, /AWH_STORAGE_PRESSURE=1/);
+  assert.match(guard, /AWH_TMP_KEEP_NEWEST_PER_REPO=2/);
+  assert.match(janitor, /AWH_TMP_PRESSURE_MIN_AGE_MINUTES.*60/);
+  assert.match(guardService, /ReadWritePaths=.*\/var\/lib\/awh-remote\/tmp/);
+  assert.match(guardTimer, /OnUnitActiveSec=10m/);
+  assert.match(deploy, /awh-temp-workspace-janitor\.py/);
+  assert.match(remote, /MAINTENANCE_WORKSPACE_JANITOR_READY/);
+  assert.match(agents, /Owner Assist Fast Lane/);
+  assert.match(operations, /Storage maintenance is proactive/);
+});

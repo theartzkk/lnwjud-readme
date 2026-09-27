@@ -1315,6 +1315,8 @@ elif test "$ACCOUNT_HOSTING" = 1; then
 fi
 if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || test "$PLATFORM_HARDENING" = 1; then
   stage MAINTENANCE_RUNTIME_PREPARE
+  sudo test -x "$RELEASE/deploy/awh-storage/awh-temp-workspace-janitor.py"
+  stage MAINTENANCE_WORKSPACE_JANITOR_READY
   for UNIT in awh-backup awh-database-inventory awh-retention awh-temp-cleanup awh-storage-guard awh-restore-drill; do
     sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/$UNIT.service" "/etc/systemd/system/$UNIT.service"
     sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/$UNIT.timer" "/etc/systemd/system/$UNIT.timer"

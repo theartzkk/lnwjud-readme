@@ -42,6 +42,10 @@ On VPS-native work, use the local typed operator. Do not self-SSH back into the 
 
 Resume proven durable state after a chat/tool interruption instead of blind retrying or spawning a duplicate mission. Clean transient workspaces and release leases on terminal paths.
 
+A recurring blocker is never closed by a one-off workaround alone. Before closure, identify the root cause and add durable prevention, regression evidence, recovery behavior and observability. Retry the same failure path at most twice; after that, stop the loop and use Owner Assist Fast Lane when an Owner action is materially faster. State the blocker, the fastest Owner action, the expected Owner time and exactly what resumes afterward. Never wait silently.
+
+Unpromoted candidate source must live under the durable candidate root `/var/lib/awh-remote/worktrees`. `/tmp` is only for reproducible QA/cache/transient material; losing it must never lose unique source. Maintenance commands and systemd units use the immutable release pointer under `/opt/awh-hub/control-plane-current`, never a stale copied helper as authority.
+
 Verify the deliverable that matters: runtime/public state for deployments, data integrity for migrations, real rendered/field output for UI/creative work.
 
 Supporting documents may add domain detail, but they cannot create another identity, task queue, mutation lock, source authority, approval authority or Production truth.

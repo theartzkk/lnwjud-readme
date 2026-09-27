@@ -7,8 +7,9 @@ EVENT_FILE="$STATE_DIR/storage-guard-events.log"
 WARN=80
 BLOCK=90
 CRIT=95
-RECOVER=75
-WARN_FREE=4294967296
+RECOVER=79
+TARGET_FREE=6442450944
+WARN_FREE=6442450944
 BLOCK_FREE=3221225472
 CRIT_FREE=1610612736
 
@@ -31,7 +32,7 @@ fi
 
 # Bounded low-risk self-healing. Never touches backups/releases/databases/artifacts.
 if [[ "$state" == "WARNING" || "$state" == "CRITICAL" ]]; then
-  /opt/awh-hub/control-plane-current/deploy/awh-storage/awh-temp-cleanup >/dev/null 2>&1 || true
+  AWH_STORAGE_PRESSURE=1 AWH_TMP_TARGET_FREE_BYTES="$TARGET_FREE" AWH_TMP_KEEP_NEWEST_PER_REPO=2 /opt/awh-hub/control-plane-current/deploy/awh-storage/awh-temp-cleanup >/dev/null 2>&1 || true
 fi
 if (( used >= BLOCK || avail < BLOCK_FREE )); then
   journalctl --vacuum-size=300M >/dev/null 2>&1 || true
@@ -52,7 +53,7 @@ fi
 
 printf '%s\n' "$state" > "$STATE_FILE"
 tmp="${JSON_FILE}.tmp"
-printf '{"schemaVersion":1,"checkedAt":"%s","state":"%s","usedPercent":%d,"freeBytes":%s,"totalBytes":%s,"warningPercent":%d,"blockPercent":%d,"criticalPercent":%d,"recoveryPercent":%d,"warningFreeBytes":%s,"blockFreeBytes":%s,"criticalFreeBytes":%s,"releaseBlocked":%s}\n' "$now" "$state" "$used" "$avail" "$total" "$WARN" "$BLOCK" "$CRIT" "$RECOVER" "$WARN_FREE" "$BLOCK_FREE" "$CRIT_FREE" "$release_blocked" > "$tmp"
+printf '{"schemaVersion":1,"checkedAt":"%s","state":"%s","usedPercent":%d,"freeBytes":%s,"totalBytes":%s,"warningPercent":%d,"blockPercent":%d,"criticalPercent":%d,"recoveryPercent":%d,"targetFreeBytes":%s,"warningFreeBytes":%s,"blockFreeBytes":%s,"criticalFreeBytes":%s,"releaseBlocked":%s}\n' "$now" "$state" "$used" "$avail" "$total" "$WARN" "$BLOCK" "$CRIT" "$RECOVER" "$TARGET_FREE" "$WARN_FREE" "$BLOCK_FREE" "$CRIT_FREE" "$release_blocked" > "$tmp"
 chmod 0640 "$tmp"
 chown root:awh-hub "$tmp" 2>/dev/null || true
 mv -f "$tmp" "$JSON_FILE"

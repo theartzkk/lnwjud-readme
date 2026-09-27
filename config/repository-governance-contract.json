@@ -41,7 +41,17 @@
       "\\b[0-9a-f]{40}\\b",
       "\\b(?:schema|user_version)\\s*(?:=|version)?\\s*\\d+\\b",
       "\\bProduction\\s+(?:is|=|at|stays|remains)\\b"
-    ]
+    ],
+    "recurringBlockerRequiresPermanentFix": true,
+    "ownerAssistFastLaneRequired": true,
+    "maxSameFailureRetriesBeforeEscalation": 2,
+    "durableCandidateWorkspaceRequired": true,
+    "durableCandidateWorkspaceRoot": "/var/lib/awh-remote/worktrees",
+    "ephemeralWorkspaceRoot": "/tmp",
+    "unpromotedCandidateInEphemeralRootAllowed": false,
+    "maintenanceRuntimeUsesReleasePointerOnly": true,
+    "storageSelfHealBeforeBlock": true,
+    "storageTargetFreeBytes": 6442450944
   },
   "repositories": {
     "awh": {

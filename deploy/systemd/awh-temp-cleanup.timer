@@ -1,9 +1,11 @@
 [Unit]
-Description=Run bounded AWH temp cleanup daily
+Description=Run bounded AWH temp cleanup continuously
 
 [Timer]
-OnCalendar=*-*-* 04:15:00
-RandomizedDelaySec=10m
+OnBootSec=7m
+OnUnitActiveSec=30m
+AccuracySec=2m
+RandomizedDelaySec=1m
 Persistent=true
 Unit=awh-temp-cleanup.service
 

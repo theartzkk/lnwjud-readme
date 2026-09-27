@@ -6,6 +6,8 @@ HUB_DB=${AWH_HUB_DB_PATH:-/var/lib/awh-hub/awh.sqlite}
 TEMP_ROOT=${AWH_TEMP_ROOT:-/tmp}
 REMOTE_TEMP_ROOT=${AWH_REMOTE_TEMP_ROOT:-/var/lib/awh-remote/tmp}
 OPERATOR_STAGE_ROOT=${AWH_OPERATOR_STAGE_ROOT:-/var/lib/awh-remote/operator-staging}
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+WORKSPACE_JANITOR=${AWH_TEMP_WORKSPACE_JANITOR:-$SCRIPT_DIR/awh-temp-workspace-janitor.py}
 DIR_MAX_AGE_MINUTES=${AWH_TEMP_DIR_MAX_AGE_MINUTES:-720}
 REMOTE_PRIVATE_MAX_AGE_MINUTES=${AWH_REMOTE_PRIVATE_MAX_AGE_MINUTES:-180}
 OPERATOR_STAGE_MAX_AGE_MINUTES=${AWH_OPERATOR_STAGE_MAX_AGE_MINUTES:-1440}
@@ -31,6 +33,26 @@ purge_old_files() {
 }
 purge_old_files "$TEMP_ROOT"
 purge_old_files "$REMOTE_TEMP_ROOT"
+
+janitor_state=NOT_AVAILABLE
+janitor_reclaimed=0
+if [[ -f "$WORKSPACE_JANITOR" ]]; then
+  janitor_args=(--apply)
+  if [[ "${AWH_STORAGE_PRESSURE:-0}" == 1 ]]; then janitor_args+=(--pressure); fi
+  set +e
+  janitor_json=$(/usr/bin/python3 "$WORKSPACE_JANITOR" "${janitor_args[@]}" 2>&1)
+  janitor_rc=$?
+  set -e
+  if (( janitor_rc == 0 )); then
+    janitor_state=OK
+    janitor_reclaimed=$(printf '%s' "$janitor_json" | /usr/bin/python3 -c 'import json,sys; print(int(json.load(sys.stdin).get("reclaimedLogicalBytes",0)))' 2>/dev/null || echo 0)
+    [[ "$janitor_reclaimed" =~ ^[0-9]+$ ]] || janitor_reclaimed=0
+    bytes=$((bytes+janitor_reclaimed))
+  else
+    janitor_state=FAILED
+    logger -t awh-temp-cleanup "workspace_janitor_failed rc=$janitor_rc"
+  fi
+fi
 
 workspace_cleanup_allowed=false
 global_cleanup_allowed=false
@@ -106,4 +128,4 @@ if [[ "$global_cleanup_allowed" == true ]]; then
   done
 fi
 
-logger -t awh-temp-cleanup "purged_files=$count purged_dirs=$dir_count remote_purged_dirs=$remote_dir_count operator_purged_dirs=$operator_dir_count reclaimed_bytes=$bytes workspace_cleanup_allowed=$workspace_cleanup_allowed active_mutations=$active_mutations global_cleanup_allowed=$global_cleanup_allowed global_active_mutations=$global_active_mutations"
+logger -t awh-temp-cleanup "purged_files=$count purged_dirs=$dir_count remote_purged_dirs=$remote_dir_count operator_purged_dirs=$operator_dir_count reclaimed_bytes=$bytes workspace_janitor=$janitor_state janitor_reclaimed_bytes=$janitor_reclaimed workspace_cleanup_allowed=$workspace_cleanup_allowed active_mutations=$active_mutations global_cleanup_allowed=$global_cleanup_allowed global_active_mutations=$global_active_mutations"

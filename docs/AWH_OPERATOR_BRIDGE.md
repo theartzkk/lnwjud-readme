@@ -56,3 +56,9 @@ The bridge never accepts arbitrary shell input, never uses FTPS when source/pack
 The first activation is intentionally root-installed because a non-privileged connector must not be able to install its own privilege bridge. `deploy/operator-bridge/install.sh` installs the root-owned systemd socket/client, verifies a real `awh-remote` status call, and rolls back units/client on failure. Once activated, normal operator calls require no sudo. The one-time Flow Simplification upgrade extends that same root-installed bridge so future ChatGPT/VPS source promotion no longer depends on a personal endpoint or self-SSH hop.
 
 Verification evidence is stored under the existing AWH Hub data root (`/var/lib/awh-hub/verification-evidence`). Incident documents are immutable and keyed by deterministic fingerprint; matching changed paths are returned as regression IDs to later bounded deploy missions. This is evidence/learning state only and does not create a second task queue, source authority, or deployment authority.
+
+## Blocker escalation
+
+Operator clients follow the canonical `config/execution-policy.json` blocker contract. The same failing path is attempted at most twice; clients never wait silently or weaken a privilege/storage boundary to make progress. Self-healing authorities run first. If a short Owner action is materially faster, Owner Assist Fast Lane reports the blocker, fastest Owner action, expected Owner time and exact resume action immediately.
+
+`OPERATOR_STORAGE_CRITICAL` is a storage-safety signal, not permission to lower the reserve. The canonical storage guard and project-aware temp janitor must reclaim safe transient capacity first. A recurring operator blocker is not closed until root cause, prevention, regression, recovery and observability evidence exist.
