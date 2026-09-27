@@ -87,7 +87,8 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(script,/function itemVisibility\(item\)/);
   assert.match(script,/filterMode==='ADVANCED'/);
   assert.match(script,/visibility==='ADVANCED'/);
-  assert.match(script,/item\?\.visibility==='PRIMARY'\?'PRIMARY':'ADVANCED'/);
+  assert.match(script,/item\?\.visibility==='ADVANCED'\?'ADVANCED':'PRIMARY'/);
+  assert.doesNotMatch(script,/item\?\.visibility==='PRIMARY'\?'PRIMARY':'ADVANCED'/);
   assert.match(page,/data-filter="ADVANCED"/);
   assert.match(script,/\['vps-platform','awh-core','awh-agent'\]/);
 });

@@ -221,7 +221,7 @@ function renderReleaseInfrastructure(){
 }
 
 function itemVisibility(item){
-  return item?.visibility==='PRIMARY'?'PRIMARY':'ADVANCED';
+  return item?.visibility==='ADVANCED'?'ADVANCED':'PRIMARY';
 }
 function primaryItems(){
   return (center?.items||[]).filter((item)=>itemVisibility(item)==='PRIMARY');
