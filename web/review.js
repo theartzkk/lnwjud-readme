@@ -1,4 +1,4 @@
-import { cancelTask, createAiPassProjectExport, loadCloudStatus, loadControlData, loadProjectSourceAuthority, stepUp, submitCloudTask, updateCloudCredential } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { cancelTask, loadCloudStatus, loadControlData, loadProjectSourceAuthority, stepUp, submitCloudTask, updateCloudCredential } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $ = (id) => document.getElementById(id);
 const ACTIVE = new Set(['QUEUED', 'WAITING_FOR_CAPABILITY', 'WAITING_FOR_WORKER', 'RUNNING', 'LEASED']);
@@ -37,7 +37,6 @@ function renderCloud() {
   const workflowReady = Boolean(canonicalReady && state.source?.workflowCompatible === true);
   const ownerReady = Boolean(cloud?.configured && state.control?.role === 'OWNER' && state.control?.projects?.length);
   for (const id of ['run-cloud-qa', 'run-visual-review']) { const button = $(id); if (button instanceof HTMLButtonElement) button.disabled = state.busy || !ownerReady || !workflowReady; }
-  const aipass = $('run-aipass-export'); if (aipass instanceof HTMLButtonElement) aipass.disabled = state.busy || !ownerReady || !canonicalReady;
 }
 
 function renderRecent() {
@@ -62,7 +61,7 @@ async function refresh({ quiet = false } = {}) {
     if (cloud.configured && projectId) { try { state.source = await loadProjectSourceAuthority(projectId); state.revision = state.source.canonicalRevision || null; } catch { state.source = null; state.revision = null; } }
     renderCloud(); renderRecent();
     if (!quiet) {
-      if (state.source?.canonicalRevision && state.source.workflowCompatible !== true) message('review-action-message', `โปรเจกต์นี้ใช้ Source ของตัวเอง (${state.source.repository}) จึงจะไม่ถูกส่งเข้า workflow ตรวจ AWH ผิดโปรเจกต์; ใช้ “เตรียมแพ็ก AiPASS” ได้โดยตรง`, 'success');
+      if (state.source?.canonicalRevision && state.source.workflowCompatible !== true) message('review-action-message', `โปรเจกต์นี้ใช้ Source ของตัวเอง (${state.source.repository}) จึงจะไม่ถูกส่งเข้า workflow ตรวจ AWH ผิดโปรเจกต์`, 'success');
       else message('review-action-message');
     }
   } catch (error) {
@@ -81,19 +80,6 @@ async function run(kind) {
     message('review-action-message', kind === 'VISUAL_REVIEW' ? 'รับงานแล้ว · AWH Cloud กำลังสร้างหลักฐานและ Review Pack ของโปรเจกต์นี้' : 'รับงานแล้ว · AWH Cloud กำลังตรวจระบบ', 'success');
     await refresh({ quiet: true });
   } catch (error) { message('review-action-message', error instanceof Error ? error.message : 'เริ่มงานตรวจไม่สำเร็จ', 'error'); }
-  finally { state.busy = false; renderCloud(); }
-}
-
-async function exportAiPass() {
-  if (state.busy) return; const projectId = $('review-project')?.value; if (!projectId) { message('review-action-message', 'เลือกโปรเจกต์ก่อน', 'error'); return; }
-  state.busy = true; renderCloud(); message('review-action-message', 'กำลังดึง exact Source ล่าสุดเข้า Canonical Review Cache และทำ sanitizer…');
-  try {
-    const result = await createAiPassProjectExport(projectId, `aipass-review-${projectId.slice(0, 8)}-${Date.now()}`);
-    const artifact = result.artifact; if (!artifact?.downloadUrl) throw new Error('AWH สร้างแพ็กแล้วแต่ไม่พบไฟล์ดาวน์โหลด');
-    state.source = await loadProjectSourceAuthority(projectId); state.revision = state.source.canonicalRevision || null;
-    const link = document.createElement('a'); link.href = artifact.downloadUrl; link.download = artifact.name || ''; link.rel = 'noopener'; document.body.append(link); link.click(); link.remove();
-    message('review-action-message', `พร้อมแล้ว · ${artifact.name || 'AiPASS Review Pack'} แตกไฟล์แล้วแนบ 01 + 02 ทุกส่วนให้ Claude ใน AiPASS ได้เลย`, 'success');
-  } catch (error) { message('review-action-message', error instanceof Error ? error.message : 'สร้าง AiPASS Export ไม่สำเร็จ', 'error'); }
   finally { state.busy = false; renderCloud(); }
 }
 
@@ -119,7 +105,6 @@ $('review-project')?.addEventListener('change', () => refresh());
 $('refresh-review')?.addEventListener('click', () => refresh());
 $('run-cloud-qa')?.addEventListener('click', () => run('QA'));
 $('run-visual-review')?.addEventListener('click', () => run('VISUAL_REVIEW'));
-$('run-aipass-export')?.addEventListener('click', exportAiPass);
 $('save-cloud-credential')?.addEventListener('click', saveCredential);
 window.addEventListener('pagehide', () => { if (state.timer) clearInterval(state.timer); });
 await refresh(); state.timer = window.setInterval(() => refresh({ quiet: true }), 8000);

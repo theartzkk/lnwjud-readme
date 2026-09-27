@@ -47,3 +47,5 @@ Verify the deliverable that matters: runtime/public state for deployments, data 
 Supporting documents may add domain detail, but they cannot create another identity, task queue, mutation lock, source authority, approval authority or Production truth.
 
 For visual/UI work, use `design/DESIGN.md` and the canonical asset registry `config/kruart-visual-assets.json` as domain-specific design governance. They constrain design consistency only and never override live runtime, source, mission, approval or Production authority.
+
+Experience/navigation governance is machine-readable in `config/kruart-experience-contract.json` and is enforced by design governance QA. New top-level surfaces, navigation vocabularies, parent/exit relationships or release tracks must update that contract in the same revision.

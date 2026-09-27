@@ -1,0 +1,211 @@
+{
+  "schemaVersion": 1,
+  "name": "KRUART Experience Contract",
+  "principles": {
+    "frontstage": "one-coherent-ecosystem",
+    "backstage": "independent-products-and-tracks",
+    "taskFirst": true,
+    "existingFirst": true,
+    "oneNavigationVocabularyPerProduct": true,
+    "primaryMobileItemLimit": 5
+  },
+  "navigationSemantics": {
+    "back": "previous-context",
+    "home": "current-product-home",
+    "exit": "parent-product-or-context",
+    "logoIsNotBack": true,
+    "preserveReturnContext": true
+  },
+  "products": [
+    {
+      "id": "awh",
+      "canonicalUrl": "https://kruart.online/",
+      "parentProductId": null,
+      "mobilePrimaryMax": 5,
+      "primaryVocabulary": [
+        "หน้าแรก",
+        "ทำงาน",
+        "ระบบ",
+        "อัปเดต",
+        "ตั้งค่า"
+      ],
+      "publicSurface": false
+    },
+    {
+      "id": "bay-excuse-x",
+      "canonicalUrl": "https://excuse.kruart.online/",
+      "parentProductId": null,
+      "mobilePrimaryMax": 5,
+      "primaryVocabulary": [
+        "วันนี้",
+        "การสอน",
+        "นักเรียน",
+        "สแกน",
+        "เพิ่มเติม"
+      ],
+      "publicSurface": false
+    },
+    {
+      "id": "bay-assessment",
+      "canonicalUrl": "https://assessment.kruart.online/",
+      "parentProductId": "bay-excuse-x",
+      "mobilePrimaryMax": 5,
+      "primaryVocabulary": [
+        "ภาพรวม",
+        "ส่งข้อสอบ",
+        "ข้อสอบ",
+        "ตรวจข้อสอบ",
+        "ผลการสอบ"
+      ],
+      "exitLabel": "BAY",
+      "publicSurface": false
+    },
+    {
+      "id": "bay-computer-lab",
+      "canonicalUrl": "https://lab.kruart.online/",
+      "parentProductId": "bay-excuse-x",
+      "mobilePrimaryMax": 5,
+      "primaryVocabulary": [
+        "วันนี้",
+        "งานของฉัน",
+        "คะแนน",
+        "LearnLab",
+        "เพิ่มเติม"
+      ],
+      "publicSurface": false
+    },
+    {
+      "id": "bay-learnlab",
+      "canonicalUrl": "https://learn.kruart.online/",
+      "parentProductId": "bay-computer-lab",
+      "mobilePrimaryMax": 3,
+      "primaryVocabulary": [
+        "หน้าหลัก",
+        "ภารกิจ",
+        "ความก้าวหน้า"
+      ],
+      "contextualExit": true,
+      "publicSurface": false
+    },
+    {
+      "id": "school-website",
+      "canonicalUrl": "https://school.kruart.online/",
+      "parentProductId": null,
+      "mobilePrimaryMax": 4,
+      "primaryVocabulary": [
+        "หน้าแรก",
+        "ข่าว",
+        "ผู้ปกครอง",
+        "ติดต่อ"
+      ],
+      "publicSurface": true,
+      "forbiddenPublicTerms": [
+        "Control Plane",
+        "BAY Ecosystem",
+        "เปิด AWH",
+        "ดูแลเว็บไซต์ผ่าน AWH"
+      ]
+    },
+    {
+      "id": "bay-hub",
+      "canonicalUrl": "https://kruart.online/bay/apps.html",
+      "rootRedirectUrl": "https://kruart.online/",
+      "parentProductId": "awh",
+      "mobilePrimaryMax": 4,
+      "userFacingProduct": false,
+      "publicSurface": false
+    },
+    {
+      "id": "cooperative",
+      "canonicalUrl": "https://excuse.kruart.online/index.php?page=cooperative-center",
+      "parentProductId": "bay-excuse-x",
+      "mobilePrimaryMax": 5,
+      "publicSurface": false
+    },
+    {
+      "id": "awh-line-gateway",
+      "canonicalUrl": null,
+      "parentProductId": "awh",
+      "mobilePrimaryMax": 0,
+      "channelOnly": true,
+      "publicSurface": false
+    },
+    {
+      "id": "bay-line-oa",
+      "canonicalUrl": null,
+      "parentProductId": "bay-excuse-x",
+      "mobilePrimaryMax": 0,
+      "channelOnly": true,
+      "publicSurface": false
+    }
+  ],
+  "releaseTracks": [
+    {
+      "id": "awh",
+      "ownerProductId": "awh"
+    },
+    {
+      "id": "vps",
+      "ownerProductId": "awh"
+    },
+    {
+      "id": "bay-excuse-x",
+      "ownerProductId": "bay-excuse-x"
+    },
+    {
+      "id": "bay-learnlab",
+      "ownerProductId": "bay-learnlab"
+    },
+    {
+      "id": "bay-assessment",
+      "ownerProductId": "bay-assessment"
+    },
+    {
+      "id": "bay-computer-lab",
+      "ownerProductId": "bay-computer-lab"
+    },
+    {
+      "id": "cooperative",
+      "ownerProductId": "cooperative"
+    },
+    {
+      "id": "school-website",
+      "ownerProductId": "school-website"
+    },
+    {
+      "id": "awh-line-gateway",
+      "ownerProductId": "awh-line-gateway"
+    },
+    {
+      "id": "line-oa",
+      "ownerProductId": "bay-line-oa"
+    }
+  ],
+  "interaction": {
+    "minimumStates": [
+      "idle",
+      "pressed",
+      "loading",
+      "success",
+      "error",
+      "disabled",
+      "offline"
+    ],
+    "pressFeedbackTargetMs": 150,
+    "loadingRevealMs": 140,
+    "longRunningStatusMs": 1800,
+    "touchTargetPx": 44,
+    "safeAreaRequired": true,
+    "ariaLiveForAsyncStatus": true
+  },
+  "experienceGate": {
+    "rejectDuplicatePortalRoots": true,
+    "rejectPrimaryNavigationOverBudget": true,
+    "rejectMissingParentExit": true,
+    "rejectFalseActiveNavigation": true,
+    "rejectPublicInternalTerminology": true,
+    "rejectMissingInteractionFeedback": true,
+    "rejectBottomNavigationOverlap": true,
+    "requireVisualVerificationForVisualChanges": true
+  }
+}

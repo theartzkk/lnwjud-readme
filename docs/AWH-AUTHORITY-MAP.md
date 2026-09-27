@@ -68,7 +68,7 @@ A second conflicting chat/worker must wait, join or resume the existing authorit
 | Hosting customer | canonical Hub user/member | optional customer/account profile keyed by canonical `user_id` | second user/auth authority |
 | DNS/TLS/panel credentials | canonical Credential Store | scoped provider credential records | credentials in hosting tables or browser-local storage |
 | Cloud QA / Visual Review | canonical Task → Execution using Cloud provider capability | GitHub workflow/run id as execution observation | GitHub Actions run treated as AWH task authority |
-| Visual review findings | validated evidence attached to canonical revision/task | review/triage artifact metadata | AiPASS findings as independent issue/source-of-truth database |
+| Visual review findings | validated evidence attached to canonical revision/task | review/triage artifact metadata | review findings as an independent issue/source-of-truth database |
 | Production release | existing typed release/deployment authority + exact revision identity | provider deployment evidence | hosting/provider dashboard state alone declaring Production truth |
 | Release Runner / Build VPS | canonical Task → Execution + Capability Registry, bound to exact revision | disposable Build/QA/Rehearsal compute returning verification/artifact evidence | second control plane, independent release queue, source authority, Owner approval or Production truth on the runner |
 | Backup / recovery | canonical backup/recovery mechanisms | domain backup metadata | feature-specific destructive backup/restore authority |

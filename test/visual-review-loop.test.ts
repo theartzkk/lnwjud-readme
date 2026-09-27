@@ -7,13 +7,13 @@ const read = (path: string) => readFile(new URL(`../${path}`, import.meta.url), 
 test('Visual QA contract is fixture-first and does not grant deployment authority', async () => {
   const constitution = await read('docs/AWH-UX-CONSTITUTION.md');
   const guide = await read('docs/AWH-VISUAL-QA.md');
-  const roles = await read('docs/AWH-AIPASS-MODEL-ROLES.md');
+  const roles = await read('docs/AWH-REVIEW-MODEL-ROLES.md');
   assert.match(constitution, /root.*Project Portfolio Hub|Project Portfolio Hub/i);
   assert.match(constitution, /AWH Workspace.*Chat-first|Chat-first.*AWH Workspace/i);
   assert.match(constitution, /3 mobile destinations|3.*แท็บ|three/i);
   assert.match(constitution, /RUNNING|Worker|Provider|backend/i);
   assert.match(guide, /Render.*Package.*Review|render/i);
-  assert.match(roles, /reviewer, never the Production authority/i);
+  assert.match(roles, /Review is evidence, never Production authority/i);
 });
 
 test('visual renderer binds evidence to a clean exact revision', async () => {
@@ -32,8 +32,8 @@ test('visual renderer binds evidence to a clean exact revision', async () => {
 });
 test('review pack and findings validator preserve fail-closed evidence rules', async () => {
   const pack = await read('scripts/review/create-ai-review-pack.mjs');
-  const validator = await read('scripts/review/validate-aipass-findings.mjs');
-  const schema = JSON.parse(await read('scripts/review/aipass-findings.schema.json'));
+  const validator = await read('scripts/review/validate-review-findings.mjs');
+  const schema = JSON.parse(await read('scripts/review/review-findings.schema.json'));
   assert.match(pack, /AWH_AI_REVIEW_EVIDENCE_DIR/);
   assert.match(pack, /manifest\?\.commit !== commit/);
   assert.match(pack, /manifest\?\.dirty !== false/);

@@ -16,13 +16,13 @@
 <body>
   <header class="review-header">
     <a class="review-brand" href="./"><img class="system-brand-icon" src="./logo-256x256.png?release=__AWH_WEB_RELEASE_ID__" alt="" /><strong>AWH</strong></a>
-    <a class="review-back awh-back-link" data-awh-back href="./panel.html">← Control Panel</a>
+    <a class="review-back awh-back-link" data-awh-back href="./panel.html">← ดูแลระบบ</a>
   </header>
   <main class="review-main">
     <section class="review-hero">
       <p class="review-kicker">OWNER · PRODUCT REVIEW</p>
       <h1>ตรวจโปรเจกต์จากมือถือ</h1>
-      <p>เลือกโปรเจกต์แล้วให้ AWH ยืนยัน Source of Truth ของโปรเจกต์นั้นก่อนทุกครั้ง จากนั้นตรวจบน Cloud หรือเตรียมแพ็กสำหรับ Claude ผ่าน AiPASS ได้จากมือถือโดยไม่ต้องเปิด Mac หรือ Windows</p>
+      <p>เลือกโปรเจกต์แล้วให้ AWH ยืนยัน Source of Truth ของโปรเจกต์นั้นก่อนทุกครั้ง จากนั้นตรวจระบบและหน้าจอบน Cloud ได้จากมือถือโดยไม่ต้องเปิด Mac หรือ Windows</p>
       <div class="review-health" aria-live="polite">
         <span id="cloud-dot" class="review-dot"></span>
         <div><strong id="cloud-state">กำลังตรวจ AWH Cloud</strong><small id="cloud-detail">ตรวจการเชื่อมต่อและ Source revision</small></div>
@@ -35,8 +35,7 @@
       <div class="review-revision"><span>Source ที่จะตรวจ</span><strong id="review-revision">—</strong><small id="review-revision-note">AWH จะยืนยัน exact SHA ก่อนเริ่มทุกครั้ง</small></div>
       <div class="review-choice-grid">
         <article class="review-choice"><div><span class="review-choice-icon">✓</span><div><strong>ตรวจระบบ</strong><p>Typecheck · tests · Hub · build · mobile/release contracts</p></div></div><button id="run-cloud-qa" type="button">เริ่มตรวจระบบ</button></article>
-        <article class="review-choice"><div><span class="review-choice-icon">◈</span><div><strong>ตรวจหน้าจอ</strong><p>มือถือ 390×844 + Desktop พร้อม Review Pack สำหรับ AiPASS</p></div></div><label>ระดับ<select id="review-profile"><option value="daily">ตรวจประจำวัน</option><option value="final">ตรวจ Candidate สุดท้าย</option></select></label><button id="run-visual-review" type="button">สร้าง Review Pack</button></article>
-        <article class="review-choice"><div><span class="review-choice-icon">AI</span><div><strong>ส่งให้ Claude ผ่าน AiPASS</strong><p>ดึง exact GitHub SHA ล่าสุดเข้า Canonical Review Cache แล้วสร้าง DOCX แบบแบ่งส่วนอัตโนมัติ พร้อม secret/PII sanitizer</p></div></div><button id="run-aipass-export" type="button">เตรียมแพ็ก AiPASS</button></article>
+        <article class="review-choice"><div><span class="review-choice-icon">◈</span><div><strong>ตรวจหน้าจอ</strong><p>มือถือ 390×844 + Desktop พร้อมหลักฐานสำหรับ Visual QA</p></div></div><label>ระดับ<select id="review-profile"><option value="daily">ตรวจประจำวัน</option><option value="final">ตรวจ Candidate สุดท้าย</option></select></label><button id="run-visual-review" type="button">สร้าง Review Pack</button></article>
       </div>
       <p id="review-action-message" class="review-message" aria-live="polite"></p>
     </section>

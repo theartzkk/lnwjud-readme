@@ -41,9 +41,13 @@ test('KRUART design governance files and overlays are complete', async () => {
     'design/qa/visual-matrix.json',
     'design/qa/regression-policy.md',
     'design/qa/accessibility-policy.md',
+    'design/qa/experience-policy.md',
+    'config/kruart-experience-contract.json',
     'design/overlays/awh.md',
     'design/overlays/bay-excuse-x.md',
     'design/overlays/bay-learnlab.md',
+    'design/overlays/bay-assessment.md',
+    'design/overlays/bay-computer-lab.md',
     'design/overlays/school-website.md',
     'design/overlays/bay-hub.md',
   ];
@@ -96,4 +100,46 @@ test('canonical school identity and anti-drift language remain exact', async () 
   assert.doesNotMatch(combined, /โรงเรียนบ้านเอื้อดใหญ่/);
   assert.match(agentRules, /must not:[\s\S]*regenerate, redraw or approximate an approved logo/);
   assert.match(agentRules, /claim visual PASS from source inspection alone/);
+});
+
+test('KRUART experience contract prevents navigation and portal drift', async () => {
+  const contract = await json('config/kruart-experience-contract.json');
+  assert.equal(contract.schemaVersion, 1);
+  assert.equal(contract.principles.oneNavigationVocabularyPerProduct, true);
+  assert.equal(contract.navigationSemantics.back, 'previous-context');
+  assert.equal(contract.navigationSemantics.home, 'current-product-home');
+  assert.equal(contract.navigationSemantics.exit, 'parent-product-or-context');
+
+  const products = contract.products as Array<any>;
+  const ids = products.map((product) => product.id);
+  assert.equal(new Set(ids).size, ids.length);
+  const known = new Set(ids);
+  const urls = products.map((product) => product.canonicalUrl).filter(Boolean);
+  assert.equal(new Set(urls).size, urls.length);
+  for (const product of products) {
+    assert.ok(product.mobilePrimaryMax <= 5, product.id + ' mobile nav budget');
+    if (Array.isArray(product.primaryVocabulary)) {
+      assert.ok(product.primaryVocabulary.length <= product.mobilePrimaryMax, product.id + ' primary nav size');
+      assert.equal(new Set(product.primaryVocabulary).size, product.primaryVocabulary.length);
+    }
+    if (product.parentProductId) assert.ok(known.has(product.parentProductId));
+  }
+
+  const expectedTracks = ['awh','vps','bay-excuse-x','bay-learnlab','bay-assessment','bay-computer-lab','cooperative','awh-line-gateway','line-oa','school-website'];
+  const tracks = contract.releaseTracks.map((track: any) => track.id);
+  assert.deepEqual([...tracks].sort(), [...expectedTracks].sort());
+  assert.equal(new Set(tracks).size, tracks.length);
+  assert.equal(contract.interaction.touchTargetPx, 44);
+  assert.equal(contract.interaction.safeAreaRequired, true);
+
+  const index = await read('web/index.html');
+  const ownerNav = index.match(/<nav id="owner-global-nav"[\s\S]*?<\/nav>/)?.[0] ?? '';
+  const labels = [...ownerNav.matchAll(/<span>([^<]+)<\/span>/g)].map((match) => match[1]);
+  assert.deepEqual(labels, ['หน้าแรก','ทำงาน','ระบบ','อัปเดต','ตั้งค่า']);
+  assert.match(index, /href="https:\/\/excuse\.kruart\.online\/"[^>]*><img[^>]+><span>สำหรับครู<\/span>/);
+  assert.doesNotMatch(index, /href="\/bay\/"[^>]*><img[^>]+><span>สำหรับครู<\/span>/);
+
+  const feedback = await read('web/interaction-feedback.js');
+  assert.match(feedback, /kruart-ui-pressed/);
+  assert.match(feedback, /1800/);
 });

@@ -259,15 +259,27 @@ export async function loadProjectSourceAuthority(projectId) {
   if (value.schemaVersion !== 1 || value.projectId !== projectId || !['NOT_CONFIGURED','UNRESOLVED','CURRENT','REMOTE_AHEAD_OR_DIFFERENT'].includes(value.state)) throw new Error('AWH ไม่สามารถยืนยัน Source ของโปรเจกต์นี้ได้');
   return value;
 }
-export async function createAiPassProjectExport(projectId, idempotencyKey = `aipass-${crypto.randomUUID()}`) {
-  if (!UUID.test(projectId) || typeof idempotencyKey !== 'string' || !/^[A-Za-z0-9._-]{8,120}$/.test(idempotencyKey)) throw new Error('คำขอสร้าง AiPASS Export ไม่ถูกต้อง');
-  const value = await controlRequest('/api/v1/control/projects/aipass-export', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, idempotencyKey }) });
-  if (value.schemaVersion !== 1 || !value.artifact || typeof value.artifact.downloadUrl !== 'string') throw new Error('AWH สร้าง AiPASS Export ไม่สมบูรณ์');
-  return value;
-}
 export async function updateProjectSourceAuthority({ projectId, action, repository = null, ref = null }) {
   if (!UUID.test(projectId) || !['BIND','CLEAR'].includes(action)) throw new Error('การกำหนด Source ไม่ถูกต้อง');
   return controlRequest('/api/v1/control/projects/source', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, action, provider: action === 'BIND' ? 'GITHUB' : null, repository: action === 'BIND' ? repository : null, ref: action === 'BIND' ? ref : null }) });
+}
+export async function loadProjectVault(projectId) {
+  if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง');
+  const value = await controlRequest(`/api/v1/control/projects/${projectId}/vault`);
+  if (value.schemaVersion !== 1 || !value.vault || typeof value.vault !== 'object' || !Array.isArray(value.revisions)) throw new Error('สถานะ Project Vault ไม่ถูกต้อง');
+  return value;
+}
+export async function ingestProjectVault({ projectId, attachmentId, expectedActiveRevisionId = null }) {
+  if (!UUID.test(projectId) || !UUID.test(attachmentId) || (expectedActiveRevisionId !== null && !UUID.test(expectedActiveRevisionId))) throw new Error('ข้อมูล Candidate ไม่ถูกต้อง');
+  const value = await controlRequest('/api/v1/control/projects/vault/ingest', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, attachmentId, expectedActiveRevisionId }) });
+  if (value.schemaVersion !== 1 || !value.vault || typeof value.vault !== 'object') throw new Error('AWH ยังยืนยัน Candidate ไม่ได้');
+  return value.vault;
+}
+export async function promoteProjectVaultRevision({ projectId, revisionId, expectedActiveRevisionId }) {
+  if (!UUID.test(projectId) || !UUID.test(revisionId) || !UUID.test(expectedActiveRevisionId)) throw new Error('ข้อมูล revision ไม่ถูกต้อง');
+  const value = await controlRequest('/api/v1/control/projects/vault/promote', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, revisionId, expectedActiveRevisionId }) });
+  if (value.schemaVersion !== 1 || !value.vault || typeof value.vault !== 'object') throw new Error('AWH ยังยืนยันการ Promote ไม่ได้');
+  return value.vault;
 }
 export async function loadBayRemoteUpdateStatus() {
   const value = await controlRequest('/api/v1/control/bay/update');

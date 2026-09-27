@@ -61,35 +61,35 @@ jobs:
             sudo apt-get install -y xvfb
           fi
       - name: Verify review contracts
-        run: node --import tsx --test test/visual-review-loop.test.ts test/visual-review-longterm.test.ts test/aipass-findings-parity.test.ts
+        run: node --import tsx --test test/visual-review-loop.test.ts test/visual-review-longterm.test.ts test/review-findings-parity.test.ts
       - name: Verify Cloud artifact import contract
         run: php hub/tests/m18-cloud-first-control.php
       - name: Verify exact-SHA findings contract
         shell: bash
         run: |
-          fixture="$RUNNER_TEMP/aipass-findings-contract.json"
+          fixture="$RUNNER_TEMP/review-findings-contract.json"
           node -e "const fs=require('fs');fs.writeFileSync(process.argv[1],JSON.stringify({schemaVersion:1,revision:'${{ inputs.revision }}',reviewer:'Cloud contract fixture',verdict:'PASS',scores:{chat:100,mobile:100,agentic:100,artifact:100,recovery:100},findings:[]})+'\n')" "$fixture"
-          node scripts/review/validate-aipass-findings.mjs "$fixture" "${{ inputs.revision }}"
+          node scripts/review/validate-review-findings.mjs "$fixture" "${{ inputs.revision }}"
           rm -f "$fixture"
       - name: Create exact-SHA visual review pack
         env:
           AWH_ELECTRON_BIN: node_modules/electron/dist/electron
         run: |
           revision="${{ inputs.revision }}"
-          out="$RUNNER_TEMP/AWH-AIPASS-REVIEW-${revision}.zip"
+          out="$RUNNER_TEMP/AWH-VISUAL-REVIEW-${revision}.zip"
           xvfb-run -a npm run review:visual -- "$out"
           test -s "$out"
           shasum -a 256 "$out"
-          cp "$out" "AWH-AIPASS-REVIEW-${revision}.zip"
+          cp "$out" "AWH-VISUAL-REVIEW-${revision}.zip"
       - name: Write cloud review metadata
         run: |
           node -e "const fs=require('fs');fs.writeFileSync('AWH-CLOUD-REVIEW.json',JSON.stringify({schemaVersion:1,revision:'${{ inputs.revision }}',executionId:'${{ inputs.execution_id }}',profile:'${{ inputs.review_profile }}',workflow:'awh-cloud-review.yml'},null,2)+'\n')"
       - name: Upload review bundle
         uses: actions/upload-artifact@v7
         with:
-          name: AWH-AIPASS-REVIEW-${{ inputs.revision }}
+          name: AWH-VISUAL-REVIEW-${{ inputs.revision }}
           path: |
-            AWH-AIPASS-REVIEW-${{ inputs.revision }}.zip
+            AWH-VISUAL-REVIEW-${{ inputs.revision }}.zip
             AWH-CLOUD-REVIEW.json
           if-no-files-found: error
           retention-days: 14

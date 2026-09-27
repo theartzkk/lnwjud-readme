@@ -495,6 +495,13 @@ async function fastQaCheck() {
   check('fast-deploy-contracts', deployContracts.code === 0 ? 'PASS' : 'FAIL', deployContracts.code === 0 ? 'exact-revision deploy contracts passed on a clean candidate' : `exact-revision deploy contracts failed with exit code ${deployContracts.code}`, deployStarted);
 }
 
+async function experienceContractCheck() {
+  const started = Date.now();
+  const script = join(ROOT, 'scripts', 'qa', 'experience-contract.mjs');
+  const result = await run(process.execPath, [script], { timeoutMs: 30_000 });
+  check('experience-contract', result.code === 0 ? 'PASS' : 'FAIL', result.code === 0 ? 'KRUART navigation, portal, interaction and release-track contract passed' : 'KRUART experience contract failed', started);
+}
+
 async function finalUatShellCheck() {
   const started = Date.now();
   const result = await runNodeTest(['test/final-uat-shell.test.ts', 'test/mobile-horizontal-overflow.test.ts'], 90_000);
@@ -578,6 +585,7 @@ async function main() {
   process.stdout.write('[RUN] environment and toolchain\n');
   await toolchainCheck();
   await lockCheck();
+  await experienceContractCheck();
   const dependenciesReady = await dependencyCheck();
   if (dependenciesReady) {
     await scriptCheck('typescript', 'typecheck', 'TypeScript typecheck passed');

@@ -98,7 +98,7 @@ body.awh-overlay-open .sheet { padding-bottom: max(0px,env(safe-area-inset-botto
   .awh-home-prompt { padding: 8px 10px; }
 }
 
-/* AiPASS UX P0 — intent-first Home and three-destination mobile navigation. */
+/* KRUART UX P0 — intent-first Home and three-destination mobile navigation. */
 .awh-tools-more{display:none;min-height:44px;margin:12px auto 0;padding:0 14px;border:1px solid rgba(255,255,255,.09);border-radius:12px;background:var(--surface-raised);color:var(--awh-text,#11325f);font:inherit;font-size:12px;font-weight:750;cursor:pointer}
 @media(max-width:760px){
   .product-dashboard{padding-top:max(12px,env(safe-area-inset-top));}

@@ -7,13 +7,13 @@ require_once __DIR__ . '/HubCapabilityRegistryService.php';
 require_once __DIR__ . '/HubArtifactStore.php';
 require_once __DIR__ . '/HubExecutionTriageService.php';
 
-final class HubAiPassFindingsException extends RuntimeException
+final class HubReviewFindingsException extends RuntimeException
 {
     public function __construct(string $message, public readonly string $codeName = 'CLOUD_FINDINGS_INVALID') { parent::__construct($message); }
 }
 
-/** Pure validator for existing scripts/review/aipass-findings.schema.json contract. */
-final class HubAiPassFindingsValidator
+/** Pure validator for existing scripts/review/review-findings.schema.json contract. */
+final class HubReviewFindingsValidator
 {
     private const MAX_BYTES = 65536;
     private const VERDICTS = ['PASS','REVIEW','BLOCK'];
@@ -68,7 +68,7 @@ final class HubAiPassFindingsValidator
         if ($length < $min || $length > $max || trim($value) === '') self::fail($field);
         return $value;
     }
-    private static function fail(string $field): never { throw new HubAiPassFindingsException('AIPass findings are invalid: '.$field); }
+    private static function fail(string $field): never { throw new HubReviewFindingsException('Review findings are invalid: '.$field); }
 }
 
 
@@ -402,7 +402,7 @@ final class HubCloudWorkflowService
         $response = $this->api('GET', '/actions/runs/' . $runId . '/artifacts');
         if (($response['status'] ?? 0) !== 200) throw new HubCloudWorkflowException('Cloud artifact list is unavailable', self::httpCode((int)($response['status'] ?? 0), is_string($response['body'] ?? null) ? (string)$response['body'] : null));
         $body = self::jsonObject((string)($response['body'] ?? ''));
-        $wanted = 'AWH-AIPASS-REVIEW-' . $revision; $artifactRef = null;
+        $wanted = 'AWH-VISUAL-REVIEW-' . $revision; $artifactRef = null;
         foreach (($body['artifacts'] ?? []) as $item) if (is_array($item) && ($item['name'] ?? null) === $wanted && is_int($item['id'] ?? null) && ($item['expired'] ?? false) !== true) { $artifactRef = (int)$item['id']; break; }
         if ($artifactRef === null) throw new HubCloudWorkflowException('Cloud review artifact is missing', 'CLOUD_ARTIFACT_MISSING');
         $download = $this->api('GET', '/actions/artifacts/' . $artifactRef . '/zip', null, true);
@@ -417,15 +417,15 @@ final class HubCloudWorkflowService
             if (!is_string($metadataRaw)) { $zip->close(); throw new HubCloudWorkflowException('Cloud review metadata is missing', 'CLOUD_ARTIFACT_INVALID'); }
             $metadata = self::jsonObject($metadataRaw);
             if (($metadata['schemaVersion'] ?? null)!==1 || ($metadata['revision'] ?? null)!==$revision || ($metadata['executionId'] ?? null)!==$executionId || ($metadata['workflow'] ?? null)!==$workflow || ($metadata['profile'] ?? null)!==$profile) { $zip->close(); throw new HubCloudWorkflowException('Cloud review metadata does not match the execution', 'CLOUD_ARTIFACT_INVALID'); }
-            $findingsRaw = $zip->getFromName('AIPASS-FINDINGS.json');
+            $findingsRaw = $zip->getFromName('REVIEW-FINDINGS.json');
             if ($findingsRaw !== false) {
                 if (!is_string($findingsRaw) || strlen($findingsRaw) > 65536) { $zip->close(); throw new HubCloudWorkflowException('Cloud findings evidence is invalid', 'CLOUD_FINDINGS_INVALID'); }
-                try { HubAiPassFindingsValidator::validateJson($findingsRaw, $revision); }
-                catch (HubAiPassFindingsException $error) { $zip->close(); throw new HubCloudWorkflowException('Cloud findings evidence is invalid', $error->codeName); }
+                try { HubReviewFindingsValidator::validateJson($findingsRaw, $revision); }
+                catch (HubReviewFindingsException $error) { $zip->close(); throw new HubCloudWorkflowException('Cloud findings evidence is invalid', $error->codeName); }
                 $findingsFile = $innerDir . '/findings.json';
                 if (@file_put_contents($findingsFile, $findingsRaw, LOCK_EX) === false || !@chmod($findingsFile, 0600)) { $zip->close(); throw new HubCloudWorkflowException('Cloud findings staging failed', 'CLOUD_ARTIFACT_INVALID'); }
             }
-            $entry = 'AWH-AIPASS-REVIEW-' . $revision . '.zip'; $index = $zip->locateName($entry, ZipArchive::FL_NOCASE); if ($index === false) { $zip->close(); throw new HubCloudWorkflowException('Cloud review pack is missing', 'CLOUD_ARTIFACT_INVALID'); }
+            $entry = 'AWH-VISUAL-REVIEW-' . $revision . '.zip'; $index = $zip->locateName($entry, ZipArchive::FL_NOCASE); if ($index === false) { $zip->close(); throw new HubCloudWorkflowException('Cloud review pack is missing', 'CLOUD_ARTIFACT_INVALID'); }
             $stat = $zip->statIndex((int)$index); $entrySize = is_array($stat) && is_int($stat['size'] ?? null) ? (int)$stat['size'] : 0;
             if ($entrySize < 1 || $entrySize > self::MAX_REVIEW_PACK_BYTES) { $zip->close(); throw new HubCloudWorkflowException('Cloud review pack exceeds the safe limit', 'CLOUD_ARTIFACT_INVALID'); }
             $stream = $zip->getStream($entry); if ($stream === false) { $zip->close(); throw new HubCloudWorkflowException('Cloud review pack is unreadable', 'CLOUD_ARTIFACT_INVALID'); }
@@ -435,7 +435,7 @@ final class HubCloudWorkflowService
             self::validateReviewPackArchive($inner);
             if ($this->cancellationRequested((string)$row['execution_id'])) throw new HubCloudWorkflowException('Cloud result arrived after cancellation','CLOUD_CANCELLED');
             $bundle = [['file'=>$inner,'name'=>$entry,'kind'=>'visual-review-pack','mime'=>'application/zip']];
-            if (isset($findingsFile) && is_file($findingsFile)) $bundle[] = ['file'=>$findingsFile,'name'=>'AIPASS-FINDINGS-'.$revision.'.json','kind'=>'aipass-findings','mime'=>'application/json'];
+            if (isset($findingsFile) && is_file($findingsFile)) $bundle[] = ['file'=>$findingsFile,'name'=>'REVIEW-FINDINGS-'.$revision.'.json','kind'=>'review-findings','mime'=>'application/json'];
             $this->persistArtifactBundle($row, $bundle, $at);
         } finally { @unlink($outer); if (isset($inner) && is_file($inner)) @unlink($inner); if (isset($findingsFile) && is_file($findingsFile)) @unlink($findingsFile); @rmdir($innerDir); }
     }

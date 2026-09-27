@@ -2,12 +2,12 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const file = resolve(process.argv[2] || '');
-if (!process.argv[2]) throw new Error('usage: validate-aipass-findings.mjs <findings.json> [revision]');
+if (!process.argv[2]) throw new Error('usage: validate-review-findings.mjs <findings.json> [revision]');
 const expectedRevision = process.argv[3] || null;
 const raw = readFileSync(file, 'utf8');
-if (Buffer.byteLength(raw) > 65536) throw new Error('AIPASS_FINDINGS_INVALID: document too large');
+if (Buffer.byteLength(raw) > 65536) throw new Error('REVIEW_FINDINGS_INVALID: document too large');
 const value = JSON.parse(raw);
-const fail = (message) => { throw new Error(`AIPASS_FINDINGS_INVALID: ${message}`); };
+const fail = (message) => { throw new Error(`REVIEW_FINDINGS_INVALID: ${message}`); };
 const exactKeys = (object, allowed, optional = []) => {
   if (!object || typeof object !== 'object' || Array.isArray(object)) fail('object');
   for (const key of allowed) if (!optional.includes(key) && !Object.hasOwn(object, key)) fail(`missing ${key}`);

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://awh.local/schema/aipass-findings-v1.json",
-  "title": "AWH AIPass Visual Findings",
+  "$id": "https://awh.local/schema/review-findings-v1.json",
+  "title": "AWH Visual Review Findings",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "revision", "reviewer", "verdict", "scores", "findings"],

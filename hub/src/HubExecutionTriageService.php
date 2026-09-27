@@ -236,7 +236,7 @@ final class HubExecutionTriageService
 {
     private const MAX_ITEMS = 100;
     private const POLICY_PAUSED_CODES = ['BUDGET_EXHAUSTED', 'PROVIDER_QUOTA_EXHAUSTED'];
-    private const SETUP_REQUIRED_CODES = ['PROJECT_SOURCE_NOT_READY', 'PROJECT_VAULT_EMPTY', 'CLOUD_NOT_CONFIGURED', 'AIPASS_SOURCE_NOT_READY'];
+    private const SETUP_REQUIRED_CODES = ['PROJECT_SOURCE_NOT_READY', 'PROJECT_VAULT_EMPTY', 'CLOUD_NOT_CONFIGURED'];
 
     public function __construct(private readonly PDO $pdo) {}
 

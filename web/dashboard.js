@@ -242,16 +242,13 @@ function mountPromptShortcuts(hero) {
 function updateMobileNavigation() {
   const nav = $('awh-mobile-nav');
   if (!(nav instanceof HTMLElement)) return;
-  const dashboard = $(DASHBOARD_ID);
   const dashboardActive = document.body.classList.contains('product-dashboard-active');
-  const explicit = nav.dataset.activeDestination;
-  const activeDestination = explicit === 'tools' ? 'tools'
-    : dashboardActive && ['tasks', 'files'].includes(dashboard?.dataset.view || '') ? 'tasks'
-    : 'work';
+  const activeDestination = dashboardActive ? 'home' : 'work';
   for (const item of nav.querySelectorAll('[data-mobile-destination]')) {
     const active = item.dataset.mobileDestination === activeDestination;
     item.classList.toggle('is-active', active);
-    item.setAttribute('aria-current', active ? 'page' : 'false');
+    if (active) item.setAttribute('aria-current', 'page');
+    else item.removeAttribute('aria-current');
   }
 }
 
@@ -268,14 +265,10 @@ function mountMobileNavigation() {
     return item;
   };
   nav.append(
-    make('✦', 'แชท', 'work', () => openWork()),
-    make('↻', 'งานของฉัน', 'tasks', () => openTaskSurface()),
-    make('▦', 'เครื่องมือ', 'tools', () => {
-      returnHome();
-      nav.dataset.activeDestination = 'tools';
-      updateMobileNavigation();
-      window.setTimeout(() => $('awh-home-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40);
-    }),
+    make('⌂', 'หน้าแรก', 'home', () => returnHome()),
+    make('✦', 'ทำงาน', 'work', () => openWork()),
+    make('▦', 'ระบบ', 'systems', () => window.location.assign('./panel.html#ecosystem')),
+    make('⇧', 'อัปเดต', 'updates', () => window.location.assign('./updates.html')),
   );
   document.body.append(nav);
   let keyboardViewportBaseline = window.visualViewport?.height || window.innerHeight;
@@ -321,12 +314,11 @@ function mountProductNavigation(dashboard) {
   brand.innerHTML = '<span class="awh-product-nav-mark" aria-hidden="true">A</span><span><strong>AWH</strong><small>Workspace</small></span>';
   nav.append(brand);
   const entries = [
-    ['home', '⌂', 'เริ่มงาน', () => returnHome()],
-    ['work', '✦', 'แชท', () => openWork()],
-    ['tasks', '↻', 'งานของฉัน', () => openTaskSurface()],
-    ['files', '▤', 'ไฟล์', () => openFilesSurface()],
-    ['tools', '▦', 'เครื่องมือ', () => { returnHome(); window.setTimeout(() => $('awh-home-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40); }],
-    ['owner', '⌘', 'ศูนย์ระบบ', () => window.location.assign('./panel.html')],
+    ['home', '⌂', 'หน้าแรก', () => returnHome()],
+    ['work', '✦', 'ทำงาน', () => openWork()],
+    ['systems', '▦', 'ระบบ', () => window.location.assign('./panel.html#ecosystem')],
+    ['updates', '⇧', 'อัปเดต', () => window.location.assign('./updates.html')],
+    ['settings', '⌘', 'ตั้งค่า', () => window.location.assign('./panel.html')],
   ];
   for (const [destination, icon, label, action] of entries) {
     const item = button('', 'awh-product-nav-item', action);
@@ -344,17 +336,13 @@ function mountProductNavigation(dashboard) {
 function updateProductNavigation() {
   const nav = $('awh-product-nav');
   if (!nav) return;
-  const dashboard = $(DASHBOARD_ID);
-  const activeDestination = document.body.classList.contains('product-dashboard-active')
-    ? (dashboard?.dataset.view === 'tasks' ? 'tasks' : dashboard?.dataset.view === 'files' ? 'files' : 'home')
-    : 'work';
+  const activeDestination = document.body.classList.contains('product-dashboard-active') ? 'home' : 'work';
   for (const item of nav.querySelectorAll('[data-product-destination]')) {
     const active = item.dataset.productDestination === activeDestination;
     item.classList.toggle('is-active', active);
-    item.setAttribute('aria-current', active ? 'page' : 'false');
+    if (active) item.setAttribute('aria-current', 'page');
+    else item.removeAttribute('aria-current');
   }
-  const owner = nav.querySelector('[data-product-destination="owner"]');
-  if (owner instanceof HTMLElement) owner.hidden = state.control?.role !== 'OWNER';
 }
 
 const DEEP_LINK_SURFACES = new Set(['home', 'work', 'tasks', 'files']);

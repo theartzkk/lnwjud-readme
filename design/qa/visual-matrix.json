@@ -2,11 +2,36 @@
   "schemaVersion": 1,
   "authority": "design/UX-ACCEPTANCE.md",
   "viewports": [
-    { "id": "mobile-390", "width": 390, "height": 844, "required": true },
-    { "id": "mobile-430", "width": 430, "height": 932, "required": true },
-    { "id": "tablet-820", "width": 820, "height": 1180, "required": true },
-    { "id": "desktop-1366", "width": 1366, "height": 768, "required": true },
-    { "id": "desktop-1440", "width": 1440, "height": 900, "required": true }
+    {
+      "id": "mobile-390",
+      "width": 390,
+      "height": 844,
+      "required": true
+    },
+    {
+      "id": "mobile-430",
+      "width": 430,
+      "height": 932,
+      "required": true
+    },
+    {
+      "id": "tablet-820",
+      "width": 820,
+      "height": 1180,
+      "required": true
+    },
+    {
+      "id": "desktop-1366",
+      "width": 1366,
+      "height": 768,
+      "required": true
+    },
+    {
+      "id": "desktop-1440",
+      "width": 1440,
+      "height": 900,
+      "required": true
+    }
   ],
   "universalAssertions": [
     "http-success",
@@ -17,29 +42,81 @@
     "thai-not-clipped",
     "approved-asset-authority",
     "no-unintended-layout-flash",
-    "navigation-owner-correct"
+    "navigation-owner-correct",
+    "parent-exit-correct",
+    "primary-navigation-budget",
+    "interaction-feedback-visible",
+    "mobile-safe-area-clear",
+    "public-internal-terminology-hidden"
   ],
   "surfaces": {
     "awh": {
       "overlay": "design/overlays/awh.md",
-      "scenarios": ["public-root", "authenticated-root-portfolio", "workspace-chat", "tasks", "profile-menu"],
-      "keyboardViewports": ["mobile-390", "mobile-430"]
+      "scenarios": [
+        "public-root",
+        "authenticated-root-portfolio",
+        "workspace-chat",
+        "tasks",
+        "profile-menu"
+      ],
+      "keyboardViewports": [
+        "mobile-390",
+        "mobile-430"
+      ]
     },
     "bay-excuse-x": {
       "overlay": "design/overlays/bay-excuse-x.md",
-      "scenarios": ["dashboard", "attendance", "timetable", "student-care", "control-center"]
+      "scenarios": [
+        "dashboard",
+        "attendance",
+        "timetable",
+        "student-care",
+        "control-center"
+      ]
     },
     "bay-learnlab": {
       "overlay": "design/overlays/bay-learnlab.md",
-      "scenarios": ["student", "teacher-workspace", "classroom-live", "projector"]
+      "scenarios": [
+        "student",
+        "teacher-workspace",
+        "classroom-live",
+        "projector"
+      ]
     },
     "school-website": {
       "overlay": "design/overlays/school-website.md",
-      "scenarios": ["public-home", "news-content", "parent-connect-entry"]
+      "scenarios": [
+        "public-home",
+        "news-content",
+        "parent-connect-entry"
+      ]
     },
     "bay-hub": {
       "overlay": "design/overlays/bay-hub.md",
-      "scenarios": ["ecosystem-home", "release-status"]
+      "scenarios": [
+        "utility-registry-root-redirect",
+        "release-status"
+      ]
+    },
+    "bay-assessment": {
+      "overlay": "design/overlays/bay-assessment.md",
+      "scenarios": [
+        "overview",
+        "submissions",
+        "exam-library",
+        "scan",
+        "results",
+        "mobile-nav"
+      ]
+    },
+    "bay-computer-lab": {
+      "overlay": "design/overlays/bay-computer-lab.md",
+      "scenarios": [
+        "student-home",
+        "student-navigation",
+        "teacher-entry",
+        "learnlab-handoff"
+      ]
     }
   }
 }

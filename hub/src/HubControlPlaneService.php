@@ -50,7 +50,6 @@ require_once __DIR__ . '/HubIdentityConvergenceMigration.php';
 require_once __DIR__ . '/HubSchoolIdentityService.php';
 require_once __DIR__ . '/HubProjectSourceAuthorityService.php';
 require_once __DIR__ . '/HubProjectSourceSyncService.php';
-require_once __DIR__ . '/HubAiPassProjectExportService.php';
 require_once __DIR__ . '/HubUpdateTargetRegistry.php';
 
 final class HubControlPlaneException extends RuntimeException
@@ -1978,23 +1977,6 @@ final class HubControlPlaneService
             }
             throw new HubProjectSourceAuthorityException('Project source request is invalid','PROJECT_SOURCE_INVALID');
         } catch(HubProjectSourceAuthorityException $error){ throw new HubControlPlaneException('Project source could not be changed',$error->codeName); }
-    }
-
-    /** Owner one-click manual bridge: canonical GitHub -> immutable Vault cache -> sanitized AiPASS package artifact. */
-    public function createAiPassProjectExport(string $sessionToken,string $csrfToken,array $payload,?string $now=null):array
-    {
-        $session=$this->authorizeSession($sessionToken,$csrfToken,$now); self::exactKeys($payload,['idempotencyKey','projectId','schemaVersion']);
-        if(($payload['schemaVersion']??null)!==1 || !is_string($payload['projectId']??null) || !is_string($payload['idempotencyKey']??null)) throw new HubControlPlaneException('AiPASS export request is invalid','AIPASS_EXPORT_INVALID');
-        $userId=(string)$session['user_id']; $this->assertOwner($userId); $projectId=self::uuid((string)$payload['projectId']); $this->assertProjectMember($userId,$projectId); $idempotency=self::idempotency((string)$payload['idempotencyKey']);
-        $existing=$this->existingGeneratedTask($userId,$idempotency); if(is_array($existing)) return $existing;
-        $cloud=$this->cloudService(); $source=$this->projectSourceService();
-        try {
-            $sync=(new HubProjectSourceSyncService($this->pdo,$cloud,$source,$this->vaults))->sync($projectId,$now);
-            $export=(new HubAiPassProjectExportService($this->vaults))->build($projectId,$sync,$now);
-        } catch(HubProjectSourceSyncException|HubAiPassProjectExportException|HubProjectSourceAuthorityException|HubProjectVaultException $error){$code=property_exists($error,'codeName')?$error->codeName:'AIPASS_EXPORT_FAILED';throw new HubControlPlaneException('AiPASS review package could not be prepared',$code);}
-        $revision=(string)$sync['canonicalRevision']; $projectName=self::portableText((string)$sync['projectName'],'projectName',120);
-        $pipeline=['mode'=>'AIPASS_MANUAL_REVIEW_EXPORT','requiredCapability'=>'artifact.object','transport'=>'MANUAL_HUMAN_IN_THE_LOOP','provider'=>'TH_AI_PASSPORT','reviewerRecommendation'=>'CLAUDE_OPUS_5','projectName'=>$projectName,'repository'=>$sync['repository'],'ref'=>$sync['ref'],'canonicalRevision'=>$revision,'canonicalVaultRevisionId'=>$sync['canonicalVaultRevisionId'],'sourcePartCount'=>(int)($export['manifest']['sourcePartCount']??0),'redactions'=>$export['manifest']['redactions']??[],'policies'=>$export['manifest']['policies']??[]];
-        return $this->createGeneratedArtifact($userId,$projectId,self::goal('เตรียมแพ็กตรวจอิสระสำหรับ AiPASS: '.$projectName),$idempotency,'aipass-review-export',(string)$export['fileName'],'application/zip',(string)$export['bytes'],$pipeline,$now);
     }
 
     /** GitHub credential is write-only and never persisted in SQLite/browser state. */

@@ -1282,7 +1282,7 @@ import {
     document.querySelectorAll('#owner-global-nav [data-owner-destination]').forEach((node) => {
       const active = node.dataset.ownerDestination === destination;
       node.classList.toggle('is-active', active);
-      node.setAttribute('aria-current', active ? 'page' : 'false');
+      if (active) node.setAttribute('aria-current', 'page'); else node.removeAttribute('aria-current');
     });
   }
 
@@ -1640,7 +1640,7 @@ import {
     let activeButton = null;
     document.querySelectorAll('[data-settings-tab]').forEach((button) => {
       const active = button.dataset.settingsTab === selected;
-      button.classList.toggle('active', active); button.setAttribute('aria-current', active ? 'page' : 'false');
+      button.classList.toggle('active', active); if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
       if (active) activeButton = button;
     });
     window.requestAnimationFrame(() => {
