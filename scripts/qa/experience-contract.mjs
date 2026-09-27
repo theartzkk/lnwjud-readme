@@ -21,7 +21,7 @@ const urls = products.map((product) => product.canonicalUrl).filter(Boolean);
 if (new Set(urls).size !== urls.length) fail('duplicate canonical URL');
 
 for (const product of products) {
-  const minNav = product.channelOnly === true ? 0 : 1;
+  const minNav = product.channelOnly === true || product.navigationless === true ? 0 : 1;
   if (!Number.isInteger(product.mobilePrimaryMax) || product.mobilePrimaryMax < minNav || product.mobilePrimaryMax > 5) fail(product.id + ' mobile navigation budget');
   if (Array.isArray(product.primaryVocabulary)) {
     if (product.primaryVocabulary.length > product.mobilePrimaryMax) fail(product.id + ' primary navigation over budget');
@@ -30,7 +30,7 @@ for (const product of products) {
   if (product.parentProductId && !known.has(product.parentProductId)) fail(product.id + ' unknown parent');
 }
 
-const expectedTracks = ['awh','vps','bay-excuse-x','bay-learnlab','bay-assessment','bay-computer-lab','cooperative','awh-line-gateway','line-oa','school-website'].sort();
+const expectedTracks = ['awh','awh-agent','awh-line-gateway','bay-assessment','bay-computer-lab','bay-cooperative','bay-excuse-x','bay-learnlab','line-oa','school-website','vps-platform'].sort();
 const tracks = (contract.releaseTracks ?? []).map((track) => track.id);
 if (new Set(tracks).size !== tracks.length) fail('duplicate release track');
 if (JSON.stringify([...tracks].sort()) !== JSON.stringify(expectedTracks)) fail('release tracks drifted');

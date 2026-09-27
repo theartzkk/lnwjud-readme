@@ -81,6 +81,16 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(script,/รายละเอียดทางเทคนิค/);
   assert.match(page,/Fail closed/);
   assert.match(page,/Rollback พร้อม/);
+  assert.match(service,/\$key === 'bay-hub'/);
+  assert.match(service,/\['LEGACY_DEPLOY','UNREGISTERED'\]/);
+  assert.doesNotMatch(service,/\['LEGACY_DEPLOY','UNREGISTERED','AGENT_MANAGED'\]/);
+  assert.match(service,/visibility.*ADVANCED/s);
+  assert.match(service,/visibility.*PRIMARY/s);
+  assert.match(script,/filterMode==='ADVANCED'/);
+  assert.match(script,/visibility==='ADVANCED'/);
+  assert.match(script,/visibility\|\|'PRIMARY'/);
+  assert.match(page,/data-filter="ADVANCED"/);
+  assert.match(script,/\['vps-platform','awh-core','awh-agent'\]/);
 });
 
 test('Release Runner is visible in Update Center but remains executor-only under the canonical control plane', async()=>{

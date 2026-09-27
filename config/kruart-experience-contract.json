@@ -32,6 +32,14 @@
       "publicSurface": false
     },
     {
+      "id": "awh-agent",
+      "canonicalUrl": null,
+      "parentProductId": "awh",
+      "mobilePrimaryMax": 0,
+      "navigationless": true,
+      "publicSurface": false
+    },
+    {
       "id": "bay-excuse-x",
       "canonicalUrl": "https://excuse.kruart.online/",
       "parentProductId": null,
@@ -145,16 +153,12 @@
       "ownerProductId": "awh"
     },
     {
-      "id": "vps",
-      "ownerProductId": "awh"
+      "id": "awh-agent",
+      "ownerProductId": "awh-agent"
     },
     {
-      "id": "bay-excuse-x",
-      "ownerProductId": "bay-excuse-x"
-    },
-    {
-      "id": "bay-learnlab",
-      "ownerProductId": "bay-learnlab"
+      "id": "awh-line-gateway",
+      "ownerProductId": "awh-line-gateway"
     },
     {
       "id": "bay-assessment",
@@ -165,20 +169,28 @@
       "ownerProductId": "bay-computer-lab"
     },
     {
-      "id": "cooperative",
+      "id": "bay-cooperative",
       "ownerProductId": "cooperative"
+    },
+    {
+      "id": "bay-excuse-x",
+      "ownerProductId": "bay-excuse-x"
+    },
+    {
+      "id": "bay-learnlab",
+      "ownerProductId": "bay-learnlab"
+    },
+    {
+      "id": "line-oa",
+      "ownerProductId": "bay-line-oa"
     },
     {
       "id": "school-website",
       "ownerProductId": "school-website"
     },
     {
-      "id": "awh-line-gateway",
-      "ownerProductId": "awh-line-gateway"
-    },
-    {
-      "id": "line-oa",
-      "ownerProductId": "bay-line-oa"
+      "id": "vps-platform",
+      "ownerProductId": "awh"
     }
   ],
   "interaction": {

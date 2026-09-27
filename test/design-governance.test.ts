@@ -125,7 +125,7 @@ test('KRUART experience contract prevents navigation and portal drift', async ()
     if (product.parentProductId) assert.ok(known.has(product.parentProductId));
   }
 
-  const expectedTracks = ['awh','vps','bay-excuse-x','bay-learnlab','bay-assessment','bay-computer-lab','cooperative','awh-line-gateway','line-oa','school-website'];
+  const expectedTracks = ['awh','awh-agent','awh-line-gateway','bay-assessment','bay-computer-lab','bay-cooperative','bay-excuse-x','bay-learnlab','line-oa','school-website','vps-platform'];
   const tracks = contract.releaseTracks.map((track: any) => track.id);
   assert.deepEqual([...tracks].sort(), [...expectedTracks].sort());
   assert.equal(new Set(tracks).size, tracks.length);

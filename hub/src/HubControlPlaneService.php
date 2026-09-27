@@ -540,8 +540,20 @@ final class HubControlPlaneService
         }
         unset($item);
 
+        foreach ($items as &$item) {
+            $key = strtolower((string)($item['key'] ?? ''));
+            $adapter = strtoupper((string)($item['adapter'] ?? ''));
+            $item['visibility'] = (
+                $key === 'bay-hub'
+                || str_starts_with($key, 'registry-')
+                || in_array($adapter, ['LEGACY_DEPLOY','UNREGISTERED'], true)
+            ) ? 'ADVANCED' : 'PRIMARY';
+        }
+        unset($item);
+
         $summary = ['current'=>0,'updateAvailable'=>0,'updating'=>0,'blocked'=>0,'attention'=>0];
         foreach ($items as $item) {
+            if (($item['visibility'] ?? 'PRIMARY') !== 'PRIMARY') continue;
             $state = (string) $item['state'];
             if ($state === 'CURRENT') $summary['current']++;
             elseif ($state === 'UPDATE_AVAILABLE') $summary['updateAvailable']++;
