@@ -916,4 +916,6 @@ document.querySelectorAll('.filter-chip').forEach((button)=>button.addEventListe
   render();
 }));
 document.addEventListener('visibilitychange',()=>{if(document.hidden){stopLiveStream();return;}void refresh();});
+window.__AWH_UPDATE_CENTER_BOOT_OK__=true;
+try{sessionStorage.removeItem('awh-update-center-boot-__AWH_WEB_RELEASE_ID__');}catch{}
 void refresh();

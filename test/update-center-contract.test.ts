@@ -533,3 +533,30 @@ test('Update Center keeps AWH LINE Gateway and BAY Excuse LINE OA as two permane
   assert.doesNotMatch(bundle,/requestCoreRelease|requestPlatformRelease|bay-excuse-core|vps-platform/);
   assert.match(css,/update-group\[data-group="line-oa"\]/);
 });
+
+test('Update Center self-recovers from stale PWA module caches instead of showing an empty project list', async()=>{
+  const [page,boot,script,worker,releaseFiles]=await Promise.all([
+    readFile(join(ROOT,'web/updates.html'),'utf8'),
+    readFile(join(ROOT,'web/update-center-boot.js'),'utf8'),
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+    readFile(join(ROOT,'web/sw.js'),'utf8'),
+    readFile(join(ROOT,'scripts/web-release-files.json'),'utf8'),
+  ]);
+  assert.match(page,/update-center-boot\.js\?release=__AWH_WEB_RELEASE_ID__/);
+  assert.doesNotMatch(page,/<script>\s*\(\(\) =>/);
+  assert.match(boot,/window\.__AWH_UPDATE_CENTER_BOOT_OK__=false/);
+  assert.match(boot,/awh-update-center-boot-/);
+  assert.match(boot,/registration\.update\(\)/);
+  assert.match(boot,/url\.searchParams\.set\('boot',RELEASE\)/);
+  assert.match(boot,/event\.persisted/);
+  assert.match(script,/window\.__AWH_UPDATE_CENTER_BOOT_OK__=true/);
+  assert.match(script,/sessionStorage\.removeItem\('awh-update-center-boot-__AWH_WEB_RELEASE_ID__'\)/);
+  assert.match(worker,/const UPDATE_CENTER_PATHS = new Set\(\['\/updates\.html','\/updates\.js','\/updates\.css','\/control-plane-adapter\.js'\]\)/);
+  assert.match(worker,/UPDATE_CENTER_PATHS\.has\(url\.pathname\)/);
+  assert.match(worker,/fetch\(request,\{cache:'no-store'\}\)/);
+  assert.match(worker,/self\.clients\.matchAll\(\{type:'window',includeUncontrolled:true\}\)/);
+  assert.match(worker,/url\.pathname!=='\/updates\.html'/);
+  assert.match(worker,/url\.searchParams\.set\('sw-release',RELEASE_ID\)/);
+  assert.match(worker,/client\.navigate\(url\.toString\(\)\)/);
+  assert.ok(JSON.parse(releaseFiles).required.includes('update-center-boot.js'));
+});
