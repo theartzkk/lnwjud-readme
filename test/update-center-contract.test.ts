@@ -56,13 +56,13 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(script,/technicalDetails/);
   assert.match(script,/runtimeState/);
   assert.match(script,/renderProgress/);
-  assert.match(page,/id="updates-step-up-dialog"/);
-  assert.match(page,/id="updates-step-up-password"/);
-  assert.match(script,/function requestOwnerStepUp\(\)/);
-  assert.match(script,/async function runWithStepUp\(handler\)/);
-  assert.match(script,/await stepUp\(password\.value\)/);
-  assert.match(script,/await runWithStepUp\(handler\)/);
-  assert.match(script,/function actionFeedback\(button,text,tone='info'\)/);
+  assert.doesNotMatch(page,/id="updates-step-up-dialog"/);
+  assert.doesNotMatch(page,/id="updates-step-up-password"/);
+  assert.doesNotMatch(script,/function requestOwnerStepUp\(\)/);
+  assert.doesNotMatch(script,/async function runWithStepUp\(handler\)/);
+  assert.doesNotMatch(script,/await stepUp\(password\.value\)/);
+  assert.doesNotMatch(script,/await runWithStepUp\(handler\)/);
+  assert.match(script,/function actionFeedback\(button,text,tone='info',targetKey=null/);
   assert.match(script,/function actionErrorText\(error,button\)/);
   assert.match(script,/CORE_RELEASE_NOT_READY/);
   assert.match(script,/localOperation=null;const text=actionErrorText/);
@@ -80,13 +80,15 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(script,/relayBayRemoteCommand/);
   assert.match(script,/BAY_INSTALL_OUTCOME_UNKNOWN/);
   assert.doesNotMatch(script,/autoUpdater|setFeedURL|shell_exec|proc_open|exec\(/);
-  assert.match(page,/ตรวจสถานะทั้งหมด/);
+  assert.doesNotMatch(page,/ตรวจสถานะทั้งหมด/);
+  assert.match(page,/สถานะอัปเดตอัตโนมัติ/);
   assert.match(page,/ติดตั้งแยกตามระบบ/);
   assert.match(script,/function updateGroup\(/);
   assert.match(script,/core-control/);
   assert.match(script,/school-systems/);
   assert.match(script,/channels-public/);
-  assert.match(script,/function refreshAll\(/);
+  assert.doesNotMatch(script,/function refreshAll\(/);
+  assert.match(page,/id="updates-refresh"/);
   assert.doesNotMatch(script,/function updateAll\(/);
   assert.doesNotMatch(script,/อัปเดตทั้งหมดอย่างปลอดภัย/);
   assert.match(page,/Source Authority เดียว/);
@@ -122,7 +124,7 @@ test('Update Center module graph imports only symbols exported by the same adapt
   ]);
   for(const name of names)assert.ok(exported.has(name),`Update Center imports missing adapter export: ${name}`);
   assert.ok(exported.has('stepUp'));
-  assert.match(script,/\bstepUp\b/);
+  assert.doesNotMatch(script,/\bstepUp\b/);
   assert.doesNotMatch(script,/askStepUp/);
 });
 
@@ -476,6 +478,46 @@ test('Update Center owner surface has a durable clutter budget', async()=>{
 });
 
 
+
+test('Update Center owner actions keep target-scoped feedback and expose only safe pre-deploy cancellation', async()=>{
+  const [service,hosting,adapter,page,script,css,nginx]=await Promise.all([
+    readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubManagedHostingService.php'),'utf8'),
+    readFile(join(ROOT,'web/control-plane-adapter.js'),'utf8'),
+    readFile(join(ROOT,'web/updates.html'),'utf8'),
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+    readFile(join(ROOT,'web/updates.css'),'utf8'),
+    readFile(join(ROOT,'deploy/nginx/awh-control-plane.conf'),'utf8'),
+  ]);
+  assert.match(service,/'taskId'=>is_array\(\$activeCore\)/);
+  assert.match(service,/'taskState'=>is_array\(\$activeCore\)/);
+  assert.match(service,/'canCancel'=>is_array\(\$activeCore\).*WAITING_FOR_WORKER.*WAITING_FOR_APPROVAL/s);
+  assert.match(service,/'canCancel'=>is_array\(\$activePlatform\)/);
+  assert.match(service,/'canCancel'=>is_array\(\$activeLearnLab\)/);
+  assert.match(service,/'canCancel'=>is_array\(\$activeAssessment\)/);
+  assert.match(service,/\$hostingTaskActive=is_string\(\$site\['taskId'\]\?\?null\)/);
+  assert.match(service,/'taskId'=>\$site\['taskId'\]\?\?null/);
+  assert.match(service,/'canCancel'=>\(\$site\['canCancel'\]\?\?false\)===true/);
+  assert.match(hosting,/active_deploy_task_id/);
+  assert.match(hosting,/active_deploy_task_state/);
+  assert.match(hosting,/hosting\.site\.deploy/);
+  assert.match(hosting,/'canCancel'=>is_string\(\$r\['active_deploy_task_state'\]/);
+  assert.match(adapter,/export async function cancelTask\(taskId\)/);
+  assert.match(script,/const targetFeedback=new Map\(\)/);
+  assert.match(script,/function paintTargetFeedback\(targetKey\)/);
+  assert.match(script,/targetFeedback\.set\(key,\{text,tone\}\)/);
+  assert.match(script,/item\.canCancel===true&&item\.taskId/);
+  assert.match(script,/await cancelTask\(item\.taskId\)/);
+  assert.match(script,/TASK_NOT_CANCELLABLE/);
+  assert.match(script,/item\?\.taskState\|\|event\?\.state/);
+  assert.match(script,/item\?\.canCancel===true/);
+  assert.match(script,/function reconcileTargetFeedback\(item\)/);
+  assert.match(script,/อัปเดตสำเร็จ · เป็นรุ่นล่าสุด/);
+  assert.doesNotMatch(page,/id="update-all"/);
+  assert.match(css,/position:sticky/);
+  assert.match(nginx,/location = \/updates \{/);
+  assert.match(nginx,/return 308 \/updates\.html/);
+});
 
 test('Update Center streams canonical release progress in real time with bounded fallback', async()=>{
   const [service,entry,adapter,page,script,css,authority,cli,remote]=await Promise.all([

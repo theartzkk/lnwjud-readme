@@ -1,5 +1,5 @@
 import {
-  createBayRemoteInstallRelay, decideApproval, loadAuthSession, loadBayRemoteUpdateStatus, loadUpdateCenter,
+  cancelTask, createBayRemoteInstallRelay, decideApproval, loadAuthSession, loadBayRemoteUpdateStatus, loadUpdateCenter,
   managedSiteAction, relayBayRemoteCommand, requestAssessmentRelease, requestCoreRelease, requestPlatformRelease, subscribeUpdateCenterLive,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
@@ -16,12 +16,13 @@ let stopLiveUpdates=null;
 let liveConnected=false;
 let liveUpdatedAt=0;
 let lastLiveUiSignature='';
+const targetFeedback=new Map();
 
 const stateLabel=(state)=>({
   CURRENT:'ล่าสุดแล้ว',UPDATE_AVAILABLE:'พร้อมอัปเดต',WAITING_FOR_APPROVAL:'รอยืนยัน',UPDATING:'กำลังอัปเดต',
-  BLOCKED:'ต้องตรวจสอบ',SOURCE_READY:'Source พร้อม',REMOTE_CHECK_REQUIRED:'กำลังตรวจ',
-  DELEGATED:'จัดการผ่านระบบเดิม',INTERNAL_MANAGED:'จัดการภายใน',UNREGISTERED:'ยังไม่ลงทะเบียน',
-  BASELINE_REQUIRED:'ต้องผูก Production',MIGRATION_REQUIRED:'ต้องย้ายระบบ Deploy',
+  BLOCKED:'ต้องตรวจสอบ',SOURCE_READY:'มีรุ่นรอเตรียม',REMOTE_CHECK_REQUIRED:'กำลังตรวจ',
+  DELEGATED:'ดูแลโดยระบบหลัก',INTERNAL_MANAGED:'ดูแลอัตโนมัติ',UNREGISTERED:'ยังไม่พร้อมใช้งาน',
+  BASELINE_REQUIRED:'ต้องตั้งค่าครั้งแรก',MIGRATION_REQUIRED:'ต้องปรับระบบอัปเดต',
 })[state]||state||'กำลังตรวจ';
 
 const adapterLabel=(value)=>({
@@ -56,6 +57,8 @@ const friendly=(error)=>{
     BAY_INSTALL_OUTCOME_UNKNOWN:'การเชื่อมต่อขาดหลังส่งคำสั่ง ระบบจะตรวจสถานะก่อนและจะไม่ติดตั้งซ้ำ',
     BAY_TRANSPORT_UNAVAILABLE:'ยังติดต่อ BAY Update Center ไม่ได้',
     BAY_COMMAND_REJECTED:'BAY ปฏิเสธคำขออย่างปลอดภัย กรุณาตรวจสถานะ',
+    TASK_NOT_CANCELLABLE:'งานเริ่มขั้นติดตั้งแล้ว จึงหยุดกลางทางไม่ได้ ระบบจะทำให้ถึงจุดตรวจสอบที่ปลอดภัย',
+    TASK_CANCEL_RACE:'งานเริ่มขั้นถัดไปพอดี จึงหยุดกลางทางไม่ได้ ระบบจะติดตามต่ออย่างปลอดภัย',
   })[code]||error?.message||'ยังทำรายการนี้ไม่ได้';
 };
 
@@ -283,7 +286,6 @@ function summary(){
   $('summary-update').textContent=String(counts.update);
   $('summary-progress').textContent=String(counts.progress);
   $('summary-attention').textContent=String(counts.attention);
-  $('update-all').disabled=refreshing;
   const overall=$('updates-overall');
   if(runtimeState()==='SPLIT'){
     overall.textContent='ต้องปรับ Runtime ให้ตรงกัน';overall.dataset.tone='warn';
@@ -334,33 +336,88 @@ function technicalDetails(item){
   return details;
 }
 
-function actionFeedback(button,text,tone='info'){
-  const actions=button.closest('.update-actions');if(!actions)return null;
-  let feedback=actions.querySelector('.update-action-feedback');
-  if(!feedback){feedback=document.createElement('div');feedback.className='update-action-feedback';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');actions.prepend(feedback);}
-  feedback.dataset.tone=tone;feedback.textContent=text;return feedback;
+function paintTargetFeedback(targetKey){
+  if(!targetKey)return;
+  const stored=targetFeedback.get(targetKey);if(!stored)return;
+  const hosts=[];
+  for(const card of [...document.querySelectorAll('.update-card')].filter((card)=>card.dataset.key===targetKey)){
+    const actions=card.querySelector('.update-actions');if(actions)hosts.push(actions);
+  }
+  if(targetKey==='group-line-oa'){
+    const groupActions=document.querySelector('.update-group[data-group="line-oa"] .update-group-head-actions');if(groupActions)hosts.push(groupActions);
+  }
+  for(const actions of hosts){
+    let feedback=actions.querySelector('.update-action-feedback');
+    if(!feedback){feedback=document.createElement('div');feedback.className='update-action-feedback';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');actions.prepend(feedback);}
+    feedback.dataset.tone=stored.tone;feedback.textContent=stored.text;
+  }
+}
+function actionFeedback(button,text,tone='info',targetKey=null){
+  const key=targetKey||button?.dataset?.targetKey||null;
+  if(key)targetFeedback.set(key,{text,tone});
+  const actions=button?.closest?.('.update-actions');
+  if(actions){
+    let feedback=actions.querySelector('.update-action-feedback');
+    if(!feedback){feedback=document.createElement('div');feedback.className='update-action-feedback';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');actions.prepend(feedback);}
+    feedback.dataset.tone=tone;feedback.textContent=text;
+  }
+  paintTargetFeedback(key);
 }
 function actionErrorText(error,button){
   const code=String(error?.code||'').toUpperCase();
   if(code==='CORE_RELEASE_NOT_READY'){
     const platform=(center?.items||[]).find((item)=>item.adapter==='PLATFORM_RELEASE');
-    return 'AWH ยังอัปเดตไม่ได้ · '+(platform?.reason||'VPS Platform release authority ยังไม่พร้อม');
+    return 'AWH ยังอัปเดตไม่ได้ · '+ownerFacingReason(platform);
   }
   return friendly(error);
 }
-function actionButton(text,handler,className='primary-button'){
-  const button=document.createElement('button');button.type='button';button.className=className;button.textContent=text;
+function actionButton(text,handler,className='primary-button',targetKey=null,successText='รับคำสั่งแล้ว · กำลังติดตามสถานะ'){
+  const button=document.createElement('button');button.type='button';button.className=className;button.textContent=text;if(targetKey)button.dataset.targetKey=targetKey;
   button.addEventListener('click',async()=>{
     const initialText=button.textContent;
     button.disabled=true;button.dataset.busy='true';button.setAttribute('aria-busy','true');button.textContent='กำลังตรวจ…';
-    actionFeedback(button,'กำลังตรวจความพร้อมก่อนเริ่มอัปเดต');
-    try{await handler();actionFeedback(button,'รับคำสั่งแล้ว · กำลังติดตามสถานะ','good');}
+    actionFeedback(button,'กำลังตรวจความพร้อมก่อนเริ่มดำเนินการ','info',targetKey);
+    try{await handler();actionFeedback(button,successText,'good',targetKey);}
     catch(error){
-      localOperation=null;const text=actionErrorText(error,button);message(text,'bad');actionFeedback(button,text,'bad');syncLiveStream();renderProgress();
+      localOperation=null;const text=actionErrorText(error,button);message(text,'bad');actionFeedback(button,text,'bad',targetKey);syncLiveStream();renderProgress();
     }
     finally{button.disabled=false;button.removeAttribute('data-busy');button.removeAttribute('aria-busy');button.textContent=initialText;}
   });
   return button;
+}
+function ownerFacingReason(item){
+  if(!item)return 'ระบบที่เกี่ยวข้องยังไม่พร้อม';
+  const reason=String(item.reason||'').trim();
+  if(item.state==='CURRENT')return 'ระบบนี้เป็นรุ่นล่าสุด';
+  if(item.state==='UPDATE_AVAILABLE')return 'มีรุ่นใหม่พร้อมอัปเดต';
+  if(item.state==='UPDATING')return 'ระบบกำลังอัปเดตและตรวจสอบผล';
+  if(item.state==='WAITING_FOR_APPROVAL')return 'พร้อมดำเนินการขั้นถัดไป';
+  if(item.state==='REMOTE_CHECK_REQUIRED')return 'กำลังตรวจสถานะล่าสุด';
+  if(item.state==='INTERNAL_MANAGED')return 'ระบบนี้ดูแลการอัปเดตให้อัตโนมัติ';
+  if(/storage/i.test(reason))return 'พื้นที่สำหรับอัปเดตยังไม่เพียงพอ ระบบจะไม่เริ่มจนกว่าจะปลอดภัย';
+  if(/worker|release controller|authority|lease|mutation|candidate|source sha|exact[- ]sha/i.test(reason))return 'ระบบกำลังตรวจความพร้อมของเส้นทางอัปเดต';
+  return reason||'กำลังตรวจความพร้อม';
+}
+function ownerProgressMessage(item,event,waiting){
+  if(waiting)return 'พร้อมแล้ว · รอการยืนยันก่อนเริ่มขั้นติดตั้ง';
+  const state=String(item?.taskState||event?.state||'').toUpperCase();
+  const mapped={QUEUED:'รับคำสั่งแล้ว · กำลังเข้าคิว',WAITING_FOR_WORKER:'รับคำสั่งแล้ว · กำลังรอคิวอัปเดต',PREPARING:'กำลังตรวจความพร้อมและเตรียมการ',RUNNING:'กำลังติดตั้ง',QA:'กำลังตรวจสอบหลังติดตั้ง',VERIFYING:'กำลังยืนยันผลลัพธ์',RECOVERING:'กำลังทำต่อจากจุดที่ปลอดภัย'}[state];
+  const raw=String(event?.message||'').trim();
+  if(raw&&!/worker|release controller|authority|lease|mutation|candidate|source sha|exact[- ]sha/i.test(raw))return raw;
+  return mapped||localOperation?.message||'กำลังดำเนินการและตรวจผล';
+}
+function reconcileTargetFeedback(item){
+  if(!item?.key||!targetFeedback.has(item.key))return;
+  if(item.state==='CURRENT')targetFeedback.set(item.key,{text:'อัปเดตสำเร็จ · เป็นรุ่นล่าสุด',tone:'good'});
+  else if(item.state==='UPDATING')targetFeedback.set(item.key,{text:ownerProgressMessage(item,item.progressEvent,false)+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
+  else if(item.state==='WAITING_FOR_APPROVAL')targetFeedback.set(item.key,{text:'พร้อมดำเนินการขั้นถัดไป'+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
+}
+async function cancelUpdate(item){
+  if(!item?.taskId||item.canCancel!==true)throw Object.assign(new Error('งานเริ่มขั้นที่หยุดไม่ได้แล้ว'),{code:'TASK_NOT_CANCELLABLE'});
+  await cancelTask(item.taskId);
+  localOperation=null;
+  message('ยกเลิก '+item.name+' แล้ว · ยังไม่มีการหยุด Production กลางขั้นติดตั้ง','good');
+  await refresh();
 }
 
 
@@ -512,6 +569,7 @@ function renderDevices(item,host){
 }
 
 function renderCard(item){
+  reconcileTargetFeedback(item);
   const card=document.createElement('article');card.className='update-card';card.dataset.key=item.key;
   card.dataset.attention=String(itemNeedsAttention(item));
 
@@ -529,7 +587,7 @@ function renderCard(item){
       :'ครู · ผู้ปกครอง · Parent Connect · Rich Menu · LIFF · สหกรณ์';
     main.append(role);
   }
-  const reason=document.createElement('p');reason.className='update-reason';reason.textContent=item.reason||'กำลังตรวจ';main.append(reason);
+  const reason=document.createElement('p');reason.className='update-reason';reason.textContent=ownerFacingReason(item);main.append(reason);
   if(item.runtimeState==='SPLIT'){
     const warn=document.createElement('div');warn.className='runtime-warning';
     warn.textContent='ตรวจพบ Runtime คนละรุ่น ระบบจะจัดการ reconciliation ผ่าน release เดียว ไม่ต้องอัปเดต component แยกเอง';
@@ -540,15 +598,17 @@ function renderCard(item){
   renderTargetHistory(item,main);
   main.append(technicalDetails(item));
   const actions=document.createElement('div');actions.className='update-actions';
-  if(item.adapter==='PLATFORM_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(actionButton('อัปเดต VPS',()=>updatePlatform(item)));
-  else if(item.adapter==='PLATFORM_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยัน VPS Platform',()=>approvePlatform(item)));
-  else if(item.adapter==='CORE_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(actionButton(item.runtimeState==='SPLIT'?'ปรับ Runtime และอัปเดต':'อัปเดต AWH',()=>updateAwh(item)));
-  else if(item.adapter==='CORE_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยันและอัปเดต',()=>approveAwh(item)));
-  else if(item.adapter==='LEARNLAB_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยัน LearnLab',()=>approveLearnLab(item)));
-  else if(item.adapter==='ASSESSMENT_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate&&item.candidateVersion)actions.append(actionButton('อัปเดต Assessment',()=>updateAssessment(item)));
-  else if(item.adapter==='ASSESSMENT_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยัน Assessment',()=>approveAssessment(item)));
-  else if(item.adapter==='MANAGED_HOSTING'&&item.state==='UPDATE_AVAILABLE'&&item.siteId)actions.append(actionButton('อัปเดต',()=>updateHosting(item)));
-  else if(item.adapter==='BAY_UPDATE_CENTER'&&item.state==='UPDATE_AVAILABLE'&&item.release)actions.append(actionButton('อัปเดต '+item.name,()=>updateBay(item)));
+  if(item.adapter==='PLATFORM_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(actionButton('อัปเดต VPS',()=>updatePlatform(item),'primary-button',item.key));
+  else if(item.adapter==='PLATFORM_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยัน VPS Platform',()=>approvePlatform(item),'primary-button',item.key));
+  else if(item.adapter==='CORE_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(actionButton(item.runtimeState==='SPLIT'?'ปรับ Runtime และอัปเดต':'อัปเดต AWH',()=>updateAwh(item),'primary-button',item.key));
+  else if(item.adapter==='CORE_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยันและอัปเดต',()=>approveAwh(item),'primary-button',item.key));
+  else if(item.adapter==='LEARNLAB_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยัน LearnLab',()=>approveLearnLab(item),'primary-button',item.key));
+  else if(item.adapter==='ASSESSMENT_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate&&item.candidateVersion)actions.append(actionButton('อัปเดต Assessment',()=>updateAssessment(item),'primary-button',item.key));
+  else if(item.adapter==='ASSESSMENT_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยัน Assessment',()=>approveAssessment(item),'primary-button',item.key));
+  else if(item.adapter==='MANAGED_HOSTING'&&item.state==='UPDATE_AVAILABLE'&&item.siteId)actions.append(actionButton('อัปเดต',()=>updateHosting(item),'primary-button',item.key));
+  else if(item.adapter==='BAY_UPDATE_CENTER'&&item.state==='UPDATE_AVAILABLE'&&item.release)actions.append(actionButton('อัปเดต '+item.name,()=>updateBay(item),'primary-button',item.key));
+  if(item.canCancel===true&&item.taskId)actions.append(actionButton('ยกเลิก',()=>cancelUpdate(item),'secondary-button',item.key,'ยกเลิกงานแล้ว · ยังไม่มีการเปลี่ยน Production'));
+  const storedFeedback=targetFeedback.get(item.key);if(storedFeedback){const feedback=document.createElement('div');feedback.className='update-action-feedback';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');feedback.dataset.tone=storedFeedback.tone;feedback.textContent=storedFeedback.text;actions.prepend(feedback);}
   if(item.url){const link=document.createElement('a');link.className='secondary-button';link.href=item.url;link.target='_blank';link.rel='noopener';link.textContent='เปิดระบบ';actions.append(link);}
   card.append(main,actions);return card;
 }
@@ -611,10 +671,12 @@ function render(){
       const exactTargets=exactKeys.has('awh-line-gateway')&&exactKeys.has('bay-excuse-line-oa')&&rows.length===2;
       const safeStates=exactTargets&&rows.every((item)=>item.state==='CURRENT'||(item.state==='UPDATE_AVAILABLE'&&item.actionable===true));
       const hasUpdate=rows.some((item)=>item.state==='UPDATE_AVAILABLE'&&item.actionable===true);
-      const button=actionButton('อัปเดต LINE OA ทั้งชุด',updateLineOaBundle,'secondary-button update-group-action');
+      const button=actionButton('อัปเดต LINE OA ทั้งชุด',updateLineOaBundle,'secondary-button update-group-action','group-line-oa');
       button.disabled=!safeStates||!hasUpdate||refreshing;
       button.title=exactTargets?'ยืนยัน Owner ครั้งเดียว แล้วอัปเดตและ verify สอง target ทีละตัว':'รอให้ LINE OA ครบสอง release targets';
       headActions.append(button);
+      const groupFeedback=targetFeedback.get('group-line-oa');
+      if(groupFeedback){const feedback=document.createElement('div');feedback.className='update-action-feedback';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');feedback.dataset.tone=groupFeedback.tone;feedback.textContent=groupFeedback.text;headActions.prepend(feedback);}
     }
     head.append(title,headActions);
     const list=document.createElement('div');list.className='update-group-list';
@@ -645,7 +707,7 @@ function stopLiveStream(){
 function liveUiSignature(snapshot){
   const items=Array.isArray(snapshot?.items)?snapshot.items:[];
   return JSON.stringify(items.map((item)=>[
-    item?.key||null,item?.state||null,item?.current||null,item?.candidate||null,
+    item?.key||null,item?.state||null,item?.current||null,item?.candidate||null,item?.taskId||null,item?.taskState||null,item?.canCancel===true,
     Number(item?.progress??0),item?.progressEvent?.state||null,item?.progressEvent?.progress??null,item?.progressEvent?.message||null,
   ]));
 }
@@ -683,7 +745,7 @@ function renderProgress(){
   $('operation-progress-percent').textContent=Math.round(progress)+'%';
   $('operation-progress-bar').style.width=progress+'%';
   const event=item?.progressEvent||null;
-  $('operation-progress-message').textContent=waiting?'ระบบพร้อมแล้วและจะเริ่มติดตั้งหลังยืนยันสิทธิ์':(event?.message||localOperation?.message||'กำลังติดตามสถานะจาก release controller');
+  $('operation-progress-message').textContent=ownerProgressMessage(item,event,waiting);
   $('operation-progress-live').textContent=(liveConnected?'● สด · ':'สำรอง · ')+relativeLiveTime(event?.occurredAt||null);
   host.dataset.active=!waiting&&progress<100?'true':'false';
   host.dataset.live=liveConnected?'true':'false';
@@ -695,7 +757,7 @@ function renderProgress(){
 
 async function approveAwh(item){
   await decideApproval(item.approvalId,'approve');
-  localOperation={name:'AWH',progress:10,message:'อนุมัติแล้ว กำลังรอ release controller'};
+  localOperation={name:'AWH',progress:10,message:'ยืนยันแล้ว · กำลังเข้าคิวอัปเดต'};
   message('ยืนยันแล้ว ระบบกำลังดำเนินการอัปเดต AWH อย่างปลอดภัย');
   await refresh();
 }
@@ -713,7 +775,7 @@ async function approvePlatform(item){
 }
 
 async function updatePlatform(item){
-  localOperation={name:'VPS Platform',progress:6,message:'กำลังสร้างคำขอ Platform release จากรุ่นล่าสุด'};
+  localOperation={name:'VPS Platform',progress:6,message:'กำลังเตรียม VPS Platform รุ่นล่าสุด'};
   const request=await requestPlatformRelease(item.candidate,false);
   message('VPS Platform รับคำสั่งแล้ว กำลังตรวจความพร้อม สำรอง อัปเดต และ Verify');
   await refresh();
@@ -724,7 +786,7 @@ async function updateAwh(item){
   const detail=split
     ?'ตรวจพบ component บางส่วนอยู่คนละรุ่น ระบบจะใช้ release ล่าสุดเพื่อปรับ Runtime ให้สอดคล้อง แล้วจึง Verify ทั้งชุด'
     :'ระบบจะตรวจทุก gate สำรองข้อมูล ติดตั้ง และ Verify ก่อนเปลี่ยน Production';
-  localOperation={name:'AWH',progress:6,message:'กำลังสร้างคำขอ release จากรุ่นล่าสุด'};
+  localOperation={name:'AWH',progress:6,message:'กำลังเตรียม AWH รุ่นล่าสุด'};
   const request=await requestCoreRelease(item.candidate,false);
   message('AWH รับคำสั่งแล้ว กำลังตรวจความพร้อม สำรอง ติดตั้ง และ Verify');
   await refresh();
@@ -990,10 +1052,6 @@ async function refreshAgent(){
   }catch{}
   render();
 }
-async function refreshAll(){
-  message('กำลังตรวจสถานะล่าสุดของทุกระบบ แต่ละระบบยังคงอัปเดตแยกจากกัน');
-  await refresh();
-}
 
 function scheduleRefresh(){
   clearTimeout(refreshTimer);
@@ -1023,7 +1081,6 @@ async function refresh(){
 }
 
 $('updates-refresh').addEventListener('click',refresh);
-$('update-all').addEventListener('click',refreshAll);
 $('show-attention').addEventListener('click',()=>{
   attentionOnly=!attentionOnly;
   $('show-attention').textContent=attentionOnly?'แสดงทุกระบบ':'แสดงเฉพาะที่ต้องจัดการ';

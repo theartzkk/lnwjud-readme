@@ -289,6 +289,9 @@ final class HubControlPlaneService
             'key'=>'vps-platform','projectId'=>null,'name'=>'VPS Platform','kind'=>'PLATFORM','adapter'=>'PLATFORM_RELEASE',
             'state'=>$platformState,'current'=>$platformCurrent,'candidate'=>$platformCandidate,
             'releaseDetailsRequired'=>true,'approvalRequired'=>true,'approvalId'=>is_array($activePlatform)&&is_string($activePlatform['approvalId']??null)?$activePlatform['approvalId']:null,
+            'taskId'=>is_array($activePlatform)&&is_string($activePlatform['taskId']??null)?$activePlatform['taskId']:null,
+            'taskState'=>is_array($activePlatform)?(string)($activePlatform['taskState']??''):null,
+            'canCancel'=>is_array($activePlatform)&&in_array((string)($activePlatform['taskState']??''),['QUEUED','WAITING_FOR_WORKER','WAITING_FOR_APPROVAL'],true),
             'actionable'=>in_array($platformState,['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'],true),
             'reason'=>$platformReason,'preflight'=>['storage'=>$coreStorage,'releaseBlocked'=>$coreStorageBlocked],
             'runtimeSourceSha'=>$production,'progress'=>is_array($activePlatform)?(int)($activePlatform['progress']??0):null,
@@ -326,6 +329,9 @@ final class HubControlPlaneService
             'key'=>'awh-core','projectId'=>'113b45c0-23e1-408d-ae0f-ac5eca7f6900','name'=>'Art’s Workspace Hub',
             'kind'=>'CORE','adapter'=>'CORE_RELEASE','state'=>$awhState,'current'=>$awhCurrent,'candidate'=>$candidate,
             'approvalRequired'=>true,'approvalId'=>is_array($activeCore) && is_string($activeCore['approvalId'] ?? null) ? $activeCore['approvalId'] : null,
+            'taskId'=>is_array($activeCore)&&is_string($activeCore['taskId']??null)?$activeCore['taskId']:null,
+            'taskState'=>is_array($activeCore)?(string)($activeCore['taskState']??''):null,
+            'canCancel'=>is_array($activeCore)&&in_array((string)($activeCore['taskState']??''),['QUEUED','WAITING_FOR_WORKER','WAITING_FOR_APPROVAL'],true),
             'actionable'=>in_array($awhState,['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'],true),
             'reason'=>$awhReason,'preflight'=>['storage'=>$coreStorage,'releaseBlocked'=>$coreStorageBlocked],
             'runtimeState'=>$runtimeState,'runtimeComponents'=>$release['components'] ?? [],
@@ -346,7 +352,10 @@ final class HubControlPlaneService
             $deployedRevision = is_string($site['currentSourceRevisionId'] ?? null) ? (string) $site['currentSourceRevisionId'] : null;
             $state = 'CURRENT';
             $reason = 'Production ใช้ Project Vault รุ่นล่าสุด';
-            if (($source['ready'] ?? false) !== true) {
+            $hostingTaskActive=is_string($site['taskId']??null)&&is_string($site['taskState']??null);
+            if ($hostingTaskActive) {
+                $state = 'UPDATING'; $reason = 'รับคำสั่งแล้วและกำลังดำเนินการอัปเดต';
+            } elseif (($source['ready'] ?? false) !== true) {
                 $state = 'BLOCKED'; $reason = 'Project Source ยังไม่พร้อม Deploy';
             } elseif (($site['currentReleaseId'] ?? null) === null) {
                 $state = 'BASELINE_REQUIRED'; $reason = 'Source พร้อม แต่ Managed Hosting ยังไม่ได้ผูก Production baseline จึงยังไม่ one-click deploy จนกว่าจะยืนยันรุ่นปัจจุบัน';
@@ -371,7 +380,7 @@ final class HubControlPlaneService
                 'currentSourceRevision'=>$isAwhLineGateway?$deployedRevision:null,
                 'candidateSourceRevision'=>$isAwhLineGateway?$activeRevision:null,
                 'approvalRequired'=>$isAwhLineGateway,
-                'siteId'=>(string)$site['siteId'],'actionable'=>$state==='UPDATE_AVAILABLE','reason'=>$reason,'url'=>$site['url'] ?? null,
+                'siteId'=>(string)$site['siteId'],'taskId'=>$site['taskId']??null,'taskState'=>$site['taskState']??null,'canCancel'=>($site['canCancel']??false)===true,'actionable'=>$state==='UPDATE_AVAILABLE','reason'=>$reason,'url'=>$site['url'] ?? null,
                 'domain'=>$isAwhLineGateway?'line.kruart.online':null,
                 'healthPath'=>$isAwhLineGateway?'/healthz':null,
                 'webhookPath'=>$isAwhLineGateway?'/webhook':null,
@@ -436,7 +445,11 @@ final class HubControlPlaneService
                 $items[] = [
                     'key'=>'bay-learnlab','projectId'=>$projectId,'name'=>$name,'kind'=>'PRODUCT','adapter'=>'LEARNLAB_RELEASE',
                     'state'=>$learnLabState,'current'=>$currentLearnLab['runtimeVersion'] ?? null,'candidate'=>$learnLabCandidate,
-                    'approvalRequired'=>true,'approvalId'=>$learnLabApproval,'actionable'=>$learnLabState==='WAITING_FOR_APPROVAL',
+                    'approvalRequired'=>true,'approvalId'=>$learnLabApproval,
+                    'taskId'=>is_array($activeLearnLab)&&is_string($activeLearnLab['taskId']??null)?$activeLearnLab['taskId']:null,
+                    'taskState'=>is_array($activeLearnLab)?(string)($activeLearnLab['taskState']??''):null,
+                    'canCancel'=>is_array($activeLearnLab)&&in_array((string)($activeLearnLab['taskState']??''),['QUEUED','WAITING_FOR_WORKER','WAITING_FOR_APPROVAL'],true),
+                    'actionable'=>$learnLabState==='WAITING_FOR_APPROVAL',
                     'reason'=>$learnLabReason,'releaseSha'=>$currentLearnLab['releaseSha'] ?? null,
                     'progress'=>is_array($activeLearnLab)?(int)($activeLearnLab['progress']??0):null,
                     'progressEvent'=>is_array($activeLearnLab)?$this->latestTaskEventMessage($activeLearnLab['taskId']??null):null,
@@ -474,6 +487,9 @@ final class HubControlPlaneService
                         'key'=>'bay-assessment','projectId'=>$projectId,'name'=>$name,'kind'=>'PRODUCT','adapter'=>'ASSESSMENT_RELEASE',
                         'state'=>$state,'current'=>$currentSha,'candidate'=>$candidateSha,'candidateVersion'=>$candidateAssessment['runtimeVersion']??null,
                         'approvalRequired'=>true,'approvalId'=>is_array($activeAssessment)&&is_string($activeAssessment['approvalId']??null)?$activeAssessment['approvalId']:null,
+                        'taskId'=>is_array($activeAssessment)&&is_string($activeAssessment['taskId']??null)?$activeAssessment['taskId']:null,
+                        'taskState'=>is_array($activeAssessment)?(string)($activeAssessment['taskState']??''):null,
+                        'canCancel'=>is_array($activeAssessment)&&in_array((string)($activeAssessment['taskState']??''),['QUEUED','WAITING_FOR_WORKER','WAITING_FOR_APPROVAL'],true),
                         'actionable'=>in_array($state,['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'],true),'reason'=>$reason,'url'=>$currentAssessment['url']??'https://assessment.kruart.online/',
                         'progress'=>is_array($activeAssessment)?(int)($activeAssessment['progress']??0):null,
                         'progressEvent'=>is_array($activeAssessment)?$this->latestTaskEventMessage($activeAssessment['taskId']??null):null,
