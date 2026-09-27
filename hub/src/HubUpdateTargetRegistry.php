@@ -68,10 +68,16 @@ final class HubUpdateTargetRegistry
                 'versionPrefix'=>'BAY LINE','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
             ],
             'bay-cooperative'=>[
-                'name'=>'BAY Cooperative Center','kind'=>'PRODUCT','repository'=>'bay-excuse-x',
+                'name'=>'ศูนย์งานสหกรณ์โรงเรียน','kind'=>'PRODUCT','repository'=>'bay-excuse-x',
                 'sourceRef'=>'refs/heads/main','productionRef'=>null,'packageTrack'=>'cooperative-center',
                 'capability'=>'bay.remote_update.install','deployResource'=>'CANONICAL:DEPLOY:BAY_COOPERATIVE',
                 'versionPrefix'=>'Cooperative','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
+            ],
+            'bay-pp'=>[
+                'name'=>'ศูนย์ ปพ.','kind'=>'PRODUCT','repository'=>'bay-excuse-x',
+                'sourceRef'=>'refs/heads/main','productionRef'=>null,'packageTrack'=>'pp-center',
+                'capability'=>'bay.remote_update.install','deployResource'=>'CANONICAL:DEPLOY:BAY_PP',
+                'versionPrefix'=>'PP','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
             ],
             'bay-assessment'=>[
                 'name'=>'BAY Assessment','kind'=>'PRODUCT','repository'=>'bay-assessment',
@@ -200,10 +206,49 @@ final class HubUpdateTargetRegistry
             'tools/ci/run-release-source-validation.sh',
             'tools/ci/validate-deployment-scope.sh',
             'tools/qa/cooperative-release-track-contract.php',
+            'tools/qa/pp-release-track-contract.php',
             'tools/qa/line-oa-release-track-contract.php',
         ];
         if(in_array($path,$sharedExact,true))return 'shared';
         $lower=strtolower($path);
+        $ppExact=[
+            'app/Controllers/AcademicRecordsController.php',
+            'app/Controllers/ReportPoliciesController.php',
+            'app/Core/AcademicDocumentContextService.php',
+            'app/Core/AcademicDocumentEngine.php',
+            'app/Core/AcademicExportService.php',
+            'app/Core/AcademicGoldenSheetPrintService.php',
+            'app/Core/AcademicPrintPackageService.php',
+            'app/Core/AcademicRecordsCenterService.php',
+            'app/Core/AcademicRecordsRepository.php',
+            'app/Core/AcademicRecordsService.php',
+            'app/Core/AcademicScoreNormalizer.php',
+            'app/Core/AcademicScorebookService.php',
+            'app/Core/AcademicSheetWorkspaceService.php',
+            'app/Core/AcademicWorkbookImporter.php',
+            'app/Core/GoldenExcelBridgeService.php',
+            'app/Core/GoldenWorkbookCatalog.php',
+            'views/layouts/pp-app.php',
+            'views/system/report-policies.php',
+            'views/system/academic-workbook-import.php',
+            'views/operations/documents/golden-workbook-sheet.php',
+            'views/operations/documents/grade-class.php',
+            'views/operations/documents/grade-percentage.php',
+        ];
+        if(
+            in_array($path,$ppExact,true)||
+            str_starts_with($lower,'app/data/golden/')||
+            str_starts_with($lower,'app/data/pp56_')||
+            str_starts_with($lower,'assets/academic-records-')||
+            str_starts_with($lower,'assets/academic-workbook-import')||
+            str_starts_with($lower,'assets/pp-app-')||
+            str_starts_with($lower,'assets/pp-production-')||
+            str_starts_with($lower,'assets/rc4-golden-pp')||
+            str_starts_with($lower,'assets/bay-report-image-export')||
+            str_starts_with($lower,'views/academic/pp-')||
+            str_starts_with($lower,'views/academic/records-center')||
+            str_starts_with($lower,'views/academic/subject-golden-workspace')
+        )return 'bay-pp';
         if(
             str_contains($lower,'cooperative')||preg_match('#(?:^|/)coop[-_/]#',$lower)===1||
             str_starts_with($lower,'views/cooperative/')||

@@ -120,7 +120,7 @@
       "visibility": "PRIMARY"
     },
     "bay-cooperative": {
-      "name": "BAY Cooperative Center",
+      "name": "ศูนย์งานสหกรณ์โรงเรียน",
       "kind": "PRODUCT",
       "repository": "bay-excuse-x",
       "productionRef": null,
@@ -129,6 +129,22 @@
       "dataOwner": "BAY_COOPERATIVE",
       "permissionScope": "BAY_COOPERATIVE",
       "observabilityScope": "bay-cooperative",
+      "independentVersion": true,
+      "independentHistory": true,
+      "independentRollback": true,
+      "ownerApprovalRequired": true,
+      "visibility": "PRIMARY"
+    },
+    "bay-pp": {
+      "name": "ศูนย์ ปพ.",
+      "kind": "PRODUCT",
+      "repository": "bay-excuse-x",
+      "productionRef": null,
+      "packageTrack": "pp-center",
+      "deploymentAdapter": "BAY_UPDATE_CENTER",
+      "dataOwner": "BAY_PP",
+      "permissionScope": "BAY_PP",
+      "observabilityScope": "bay-pp",
       "independentVersion": true,
       "independentHistory": true,
       "independentRollback": true,

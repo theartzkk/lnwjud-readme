@@ -147,12 +147,52 @@ function normalizeUpdateCenter(snapshot){
       item.name='BAY Excuse LINE OA';
       item.kind='INTEGRATION';
       item.group='line-oa';
+      item.visibility='PRIMARY';
       item.releaseTrack='line-oa';
       item.sourceAuthority=item.sourceAuthority||'BAY_UPDATE_INBOX';
       item.secretScope=item.secretScope||'BAY_EXCUSE_LINE_OA';
       item.history=Array.isArray(item.history)?item.history:[];
       item.historyAuthority=item.historyAuthority||'BAY_UPDATE_CENTER:line-oa';
+      continue;
     }
+    if(String(item?.releaseTrack||'')==='cooperative-center'||String(item?.key||'')==='bay-cooperative'){
+      item.key='bay-cooperative';
+      item.name='ศูนย์งานสหกรณ์โรงเรียน';
+      item.kind='PRODUCT';
+      item.visibility='PRIMARY';
+      item.releaseTrack='cooperative-center';
+      item.sourceReleaseTrack='bay-cooperative';
+      item.sourceAuthority=item.sourceAuthority||'BAY_UPDATE_INBOX';
+      item.history=Array.isArray(item.history)?item.history:[];
+      item.historyAuthority=item.historyAuthority||'BAY_UPDATE_CENTER:cooperative-center';
+      continue;
+    }
+    if(String(item?.releaseTrack||'')==='pp-center'||String(item?.key||'')==='bay-pp'){
+      item.key='bay-pp';
+      item.name='ศูนย์ ปพ.';
+      item.kind='PRODUCT';
+      item.visibility='PRIMARY';
+      item.releaseTrack='pp-center';
+      item.sourceReleaseTrack='bay-pp';
+      item.sourceAuthority=item.sourceAuthority||'BAY_UPDATE_INBOX';
+      item.history=Array.isArray(item.history)?item.history:[];
+      item.historyAuthority=item.historyAuthority||'BAY_UPDATE_CENTER:pp-center';
+      continue;
+    }
+    if(String(item?.key||'')==='vps-platform'||String(item?.releaseTrack||'')==='vps-platform'){
+      item.key='vps-platform';
+      item.name='VPS Platform';
+      item.kind='PLATFORM';
+      item.visibility='PRIMARY';
+    }
+  }
+  if(!snapshot.items.some((item)=>String(item?.key||'')==='vps-platform')){
+    snapshot.items.unshift({
+      key:'vps-platform',projectId:null,name:'VPS Platform',kind:'PLATFORM',adapter:'PLATFORM_RELEASE',
+      visibility:'PRIMARY',releaseTrack:'vps-platform',state:'BLOCKED',current:null,candidate:null,
+      approvalRequired:true,actionable:false,
+      reason:'VPS Platform release authority ยังไม่ถูกส่งมาจาก Control runtime รุ่นนี้ จึงปิดการอัปเดตแบบ fail-closed',
+    });
   }
   return snapshot;
 }
@@ -695,36 +735,59 @@ async function updateBay(item){
   await refreshBay();
 }
 
-function ensureBayLineTarget(tracks){
-  const existing=(center?.items||[]).find((item)=>item.key==='bay-excuse-line-oa');
-  if(existing)return existing;
-  const trackState=tracks?.['line-oa'];
-  if(!trackState||typeof trackState!=='object')return null;
+const bayCompatTargets=[
+  {key:'bay-excuse-line-oa',name:'BAY Excuse LINE OA',kind:'INTEGRATION',group:'line-oa',releaseTrack:'line-oa',sourceReleaseTrack:'line-oa',secretScope:'BAY_EXCUSE_LINE_OA'},
+  {key:'bay-cooperative',name:'ศูนย์งานสหกรณ์โรงเรียน',kind:'PRODUCT',group:null,releaseTrack:'cooperative-center',sourceReleaseTrack:'bay-cooperative',secretScope:null},
+  {key:'bay-pp',name:'ศูนย์ ปพ.',kind:'PRODUCT',group:null,releaseTrack:'pp-center',sourceReleaseTrack:'bay-pp',secretScope:null},
+];
+
+function ensureBayTrackTargets(tracks){
   const bayCore=(center?.items||[]).find((item)=>item.adapter==='BAY_UPDATE_CENTER');
-  if(!bayCore)return null;
-  const item={
-    key:'bay-excuse-line-oa',
-    projectId:bayCore.projectId||null,
-    name:'BAY Excuse LINE OA',
-    kind:'INTEGRATION',
-    adapter:'BAY_UPDATE_CENTER',
-    group:'line-oa',
-    visibility:'PRIMARY',
-    releaseTrack:'line-oa',
-    sourceReleaseTrack:'line-oa',
-    sourceAuthority:'BAY_UPDATE_INBOX',
-    secretScope:'BAY_EXCUSE_LINE_OA',
-    state:'REMOTE_CHECK_REQUIRED',
-    current:null,
-    candidate:null,
-    approvalRequired:false,
-    actionable:false,
-    history:[],
-    historyAuthority:'BAY_UPDATE_CENTER:line-oa',
-    reason:'กำลังตรวจ release track line-oa ของ BAY Excuse',
-  };
-  center.items.push(item);
-  return item;
+  if(!bayCore)return [];
+  const ensured=[];
+  for(const definition of bayCompatTargets){
+    let item=(center?.items||[]).find((row)=>row.key===definition.key);
+    const trackState=tracks?.[definition.releaseTrack];
+    if(!item){
+      item={
+        key:definition.key,
+        projectId:bayCore.projectId||null,
+        name:definition.name,
+        kind:definition.kind,
+        adapter:'BAY_UPDATE_CENTER',
+        group:definition.group,
+        visibility:'PRIMARY',
+        releaseTrack:definition.releaseTrack,
+        sourceReleaseTrack:definition.sourceReleaseTrack,
+        sourceAuthority:'BAY_UPDATE_INBOX',
+        secretScope:definition.secretScope,
+        state:trackState&&typeof trackState==='object'?'REMOTE_CHECK_REQUIRED':'BLOCKED',
+        current:null,
+        candidate:null,
+        approvalRequired:false,
+        actionable:false,
+        history:[],
+        historyAuthority:'BAY_UPDATE_CENTER:'+definition.releaseTrack,
+        reason:trackState&&typeof trackState==='object'
+          ?'กำลังตรวจ release track '+definition.releaseTrack+' ของ BAY Excuse'
+          :'BAY runtime รุ่นนี้ยังไม่ประกาศ release track '+definition.releaseTrack+' จึงปิดการอัปเดตแบบ fail-closed',
+      };
+      center.items.push(item);
+    }else{
+      item.name=definition.name;
+      item.kind=definition.kind;
+      item.group=definition.group;
+      item.visibility='PRIMARY';
+      item.releaseTrack=definition.releaseTrack;
+      item.sourceReleaseTrack=definition.sourceReleaseTrack;
+      item.sourceAuthority=item.sourceAuthority||'BAY_UPDATE_INBOX';
+      item.secretScope=definition.secretScope;
+      item.history=Array.isArray(item.history)?item.history:[];
+      item.historyAuthority=item.historyAuthority||('BAY_UPDATE_CENTER:'+definition.releaseTrack);
+    }
+    ensured.push(item);
+  }
+  return ensured;
 }
 
 async function refreshBay(){
@@ -735,12 +798,18 @@ async function refreshBay(){
     bayLive=await relayBayRemoteCommand(bridge.endpoint,bridge.statusRelay);
     const packages=Array.isArray(bayLive.packages)?bayLive.packages:[];
     const tracks=bayLive.releaseTracks&&typeof bayLive.releaseTracks==='object'?bayLive.releaseTracks:{};
-    ensureBayLineTarget(tracks);
+    ensureBayTrackTargets(tracks);
     items=(center?.items||[]).filter((row)=>row.adapter==='BAY_UPDATE_CENTER');
     const preflightReady=bayLive.preflight?.ready===true;
     for(const item of items){
       const track=String(item.releaseTrack||'bay-excuse-core');
       const trackState=tracks[track]&&typeof tracks[track]==='object'?tracks[track]:null;
+      if(!trackState&&track!=='bay-excuse-core'){
+        item.current=null;item.release=null;item.candidate=null;item.trackSourceSha=null;item.trackInherited=false;
+        item.actionable=false;item.state='BLOCKED';
+        item.reason='BAY runtime รุ่นนี้ยังไม่ประกาศ release track '+track+' จึงยังไม่อนุญาตให้อัปเดต target นี้';
+        continue;
+      }
       const current=trackState?.currentVersion||(track==='bay-excuse-core'?bayLive.currentVersion:null);
       const release=packages.find((row)=>row?.installable===true&&String(row.releaseTrack||'bay-excuse-core')===track&&['ready','READY'].includes(String(row.state||row.version_state||'')));
       item.current=current||null;item.release=release||null;item.candidate=release?.version||null;

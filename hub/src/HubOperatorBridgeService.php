@@ -579,8 +579,8 @@ final class HubOperatorBridgeService
             $project=$this->resolveProject('BAY EXCUSE X');
             $notes=$this->releaseDetailsForSourceSha((string)$project['project_id'],'bay-excuse-x',$canonical['sourceRevision']);
             $candidate=is_array($notes)?strtolower(trim((string)($notes['releaseTrack']??''))):'';
-            if(in_array($candidate,['bay-excuse-x','line-oa','bay-cooperative'],true))$sourceTrack=$candidate;
-            $packageTrack=match($sourceTrack){'line-oa'=>'line-oa','bay-cooperative'=>'cooperative-center',default=>'bay-excuse-core'};
+            if(in_array($candidate,['bay-excuse-x','line-oa','bay-cooperative','bay-pp'],true))$sourceTrack=$candidate;
+            $packageTrack=match($sourceTrack){'line-oa'=>'line-oa','bay-cooperative'=>'cooperative-center','bay-pp'=>'pp-center',default=>'bay-excuse-core'};
         }catch(Throwable){}
         $track=is_array($remote['releaseTracks'][$packageTrack]??null)?$remote['releaseTracks'][$packageTrack]:[];
         $deployed=strtolower(trim((string)($track['sourceSha']??'')));
@@ -622,13 +622,13 @@ final class HubOperatorBridgeService
         try{$raw=$zip->getFromName('manifest.json');if(!is_string($raw))throw new HubOperatorBridgeException('Staged BAY manifest is missing','OPERATOR_BAY_PACKAGE_NOT_READY');$manifest=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(HubOperatorBridgeException $e){$zip->close();throw $e;}catch(Throwable){$zip->close();throw new HubOperatorBridgeException('Staged BAY manifest is invalid','OPERATOR_BAY_PACKAGE_NOT_READY');}$zip->close();
         if(!is_array($manifest)||($manifest['type']??null)!=='core'||($manifest['version']??null)!==$version||strtolower((string)($manifest['source_commit']??''))!==$sha)throw new HubOperatorBridgeException('Staged BAY manifest identity mismatch','OPERATOR_BAY_PACKAGE_NOT_READY');
         $releaseTrack=strtolower(trim((string)($manifest['release_track']??'bay-excuse-core')));
-        $filePrefixes=['bay-excuse-core'=>'bay-excuse-x-core','cooperative-center'=>'bay-cooperative-center','line-oa'=>'bay-line-oa'];
+        $filePrefixes=['bay-excuse-core'=>'bay-excuse-x-core','cooperative-center'=>'bay-cooperative-center','pp-center'=>'bay-pp-center','line-oa'=>'bay-line-oa'];
         if(!isset($filePrefixes[$releaseTrack]))throw new HubOperatorBridgeException('BAY package release track is not allowlisted','OPERATOR_BAY_PACKAGE_NOT_READY');
         $gate=$this->projectGate('BAY EXCUSE X',$at,true,'bay.remote_update.stage');if(($gate['ready']??false)!==true||($gate['productionReady']??false)!==true)throw new HubOperatorBridgeException('BAY project gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');$projectId=(string)($gate['project']['projectId']??'');
         $this->assertBayCanonicalTarget($sha);
         $releaseNotes=$this->releaseDetailsForSourceSha($projectId,'bay-excuse-x',$sha);
         $sourceTrack=is_array($releaseNotes)?strtolower(trim((string)($releaseNotes['releaseTrack']??''))):'';
-        $expectedTrack=match($sourceTrack){'line-oa'=>'line-oa','bay-cooperative'=>'cooperative-center',default=>'bay-excuse-core'};
+        $expectedTrack=match($sourceTrack){'line-oa'=>'line-oa','bay-cooperative'=>'cooperative-center','bay-pp'=>'pp-center',default=>'bay-excuse-core'};
         if($releaseTrack!==$expectedTrack)throw new HubOperatorBridgeException('BAY package release track does not match canonical source ownership','OPERATOR_BAY_PACKAGE_NOT_READY');
         $authority=$this->acquireMutationAuthority($projectId,'Guarded BAY stage '.$releaseTrack.' '.$version,'bay.remote_update.stage',['releaseTrack'=>$releaseTrack,'targetVersion'=>$version,'targetSha'=>$sha,'packageSha256'=>$packageSha],$at);$success=false;$destination=null;
         try{
@@ -669,7 +669,7 @@ final class HubOperatorBridgeService
         if(!HubUpdateTargetRegistry::releaseDetailsReady($releaseNotes))
             throw new HubOperatorBridgeException('BAY release details are required before install','OPERATOR_RELEASE_DETAILS_REQUIRED');
         $sourceTrack=strtolower(trim((string)($releaseNotes['releaseTrack']??'')));
-        $expectedTrack=match($sourceTrack){'line-oa'=>'line-oa','bay-cooperative'=>'cooperative-center',default=>'bay-excuse-core'};
+        $expectedTrack=match($sourceTrack){'line-oa'=>'line-oa','bay-cooperative'=>'cooperative-center','bay-pp'=>'pp-center',default=>'bay-excuse-core'};
         $authority=$this->acquireMutationAuthority($projectId,'Guarded BAY install '.$expectedTrack.' '.$version,'bay.remote_update.install',['releaseTrack'=>$expectedTrack,'targetVersion'=>$version,'targetSha'=>$sha,'packageSha256'=>$packageSha,'releaseNotes'=>$releaseNotes],$at);
         $success=false;
         try {

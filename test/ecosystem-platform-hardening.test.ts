@@ -23,6 +23,7 @@ test('M23 platform policy locks long-term ecosystem authorities', async () => {
 
 test('ecosystem release contract covers product families and independent release tracks', async () => {
   const c = await json('config/ecosystem-release-contract.json');
+  const policy = await json('config/ecosystem-platform-policy.json');
   const registry = await read('hub/src/HubUpdateTargetRegistry.php');
   const reposStart=registry.indexOf('public static function repositories');
   const tracksStart=registry.indexOf('public static function releaseTracks');
@@ -35,8 +36,9 @@ test('ecosystem release contract covers product families and independent release
     assert.ok(row.project.length > 0);
   }
 
-  const expectedTracks=['awh','awh-agent','awh-line-gateway','bay-assessment','bay-computer-lab','bay-cooperative','bay-excuse-x','bay-hub','bay-learnlab','line-oa','school-website','vps-platform'];
+  const expectedTracks=['awh','awh-agent','awh-line-gateway','bay-assessment','bay-computer-lab','bay-cooperative','bay-excuse-x','bay-hub','bay-learnlab','bay-pp','line-oa','school-website','vps-platform'];
   assert.deepEqual(Object.keys(c.releaseTracks).sort(), expectedTracks);
+  assert.deepEqual([...policy.releaseTracks.tracks].sort(), expectedTracks);
   for(const key of expectedTracks){
     const track=c.releaseTracks[key];
     assert.equal(track.independentVersion,true);
@@ -66,6 +68,10 @@ test('ecosystem release contract covers product families and independent release
   assert.notEqual(c.releaseTracks['awh-line-gateway'].observabilityScope,c.releaseTracks['line-oa'].observabilityScope);
   assert.notEqual(c.releaseTracks['awh-line-gateway'].secretScope,c.releaseTracks['line-oa'].secretScope);
   assert.equal(c.releaseTracks['bay-cooperative'].packageTrack,'cooperative-center');
+  assert.equal(c.releaseTracks['bay-pp'].packageTrack,'pp-center');
+  assert.equal(c.releaseTracks['vps-platform'].visibility,'PRIMARY');
+  assert.equal(c.releaseTracks['bay-cooperative'].visibility,'PRIMARY');
+  assert.equal(c.releaseTracks['bay-pp'].visibility,'PRIMARY');
   assert.equal(c.rules.crossProjectWriteForbidden,true);
   assert.equal(c.rules.dependencyByContractOnly,true);
   assert.equal(c.rules.registryDrivenUpdateCenter,true);

@@ -393,7 +393,8 @@ final class HubControlPlaneService
                 foreach ([
                     ['key'=>'bay-excuse','name'=>'BAY EXCUSE X','kind'=>'SYSTEM','releaseTrack'=>'bay-excuse-core','sourceReleaseTrack'=>'bay-excuse-x','group'=>null,'sourceAuthority'=>'BAY_UPDATE_INBOX','secretScope'=>null],
                     ['key'=>'bay-excuse-line-oa','name'=>'BAY Excuse LINE OA','kind'=>'INTEGRATION','releaseTrack'=>'line-oa','sourceReleaseTrack'=>'line-oa','group'=>'line-oa','sourceAuthority'=>'BAY_UPDATE_INBOX','secretScope'=>'BAY_EXCUSE_LINE_OA'],
-                    ['key'=>'bay-cooperative','name'=>'BAY Cooperative Center','kind'=>'PRODUCT','releaseTrack'=>'cooperative-center','sourceReleaseTrack'=>'bay-cooperative','group'=>null,'sourceAuthority'=>'BAY_UPDATE_INBOX','secretScope'=>null],
+                    ['key'=>'bay-cooperative','name'=>'ศูนย์งานสหกรณ์โรงเรียน','kind'=>'PRODUCT','releaseTrack'=>'cooperative-center','sourceReleaseTrack'=>'bay-cooperative','group'=>null,'sourceAuthority'=>'BAY_UPDATE_INBOX','secretScope'=>null],
+                    ['key'=>'bay-pp','name'=>'ศูนย์ ปพ.','kind'=>'PRODUCT','releaseTrack'=>'pp-center','sourceReleaseTrack'=>'bay-pp','group'=>null,'sourceAuthority'=>'BAY_UPDATE_INBOX','secretScope'=>null],
                 ] as $bayTrack) {
                     $items[] = [
                         'key'=>$bayTrack['key'],'projectId'=>$projectId,'name'=>$bayTrack['name'],'kind'=>$bayTrack['kind'],'adapter'=>'BAY_UPDATE_CENTER',

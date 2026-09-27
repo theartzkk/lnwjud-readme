@@ -182,6 +182,11 @@
       "visibility": "PRIMARY"
     },
     {
+      "id": "bay-pp",
+      "ownerProductId": "bay-excuse-x",
+      "visibility": "PRIMARY"
+    },
+    {
       "id": "bay-assessment",
       "ownerProductId": "bay-assessment",
       "visibility": "PRIMARY"

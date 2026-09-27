@@ -170,7 +170,7 @@ test('canonical update target registry prevents portfolio systems from disappear
   assert.match(service,/\$item\['visibility'\]=\$track===null\?'ADVANCED':HubUpdateTargetRegistry::releaseVisibility\(\$track\)/);
 });
 
-test('BAY monorepo surfaces independent BAY Core, LINE OA and Cooperative release tracks', async()=>{
+test('BAY monorepo surfaces independent BAY Core, LINE OA, Cooperative and PP release tracks', async()=>{
   const [registry,service,script]=await Promise.all([
     readFile(join(ROOT,'hub/src/HubUpdateTargetRegistry.php'),'utf8'),
     readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),
@@ -178,12 +178,16 @@ test('BAY monorepo surfaces independent BAY Core, LINE OA and Cooperative releas
   ]);
   assert.match(registry,/'line-oa'.*'packageTrack'=>'line-oa'/s);
   assert.match(registry,/'bay-cooperative'.*'packageTrack'=>'cooperative-center'/s);
+  assert.match(registry,/'bay-pp'.*'packageTrack'=>'pp-center'/s);
+  assert.match(registry,/'vps-platform'.*'visibility'=>'PRIMARY'/s);
   assert.match(registry,/bayReleaseTrackForPaths/);
   assert.match(registry,/return 'bay-cooperative'/);
+  assert.match(registry,/return 'bay-pp'/);
   assert.match(registry,/return 'line-oa'/);
   assert.match(service,/'releaseTrack'=>'bay-excuse-core'/);
   assert.match(service,/'releaseTrack'=>'line-oa'/);
   assert.match(service,/'releaseTrack'=>'cooperative-center'/);
+  assert.match(service,/'releaseTrack'=>'pp-center'/);
   assert.match(script,/filter\(\(row\)=>row\.adapter==='BAY_UPDATE_CENTER'\)/);
   assert.match(script,/String\(row\.releaseTrack\|\|'bay-excuse-core'\)===track/);
   assert.match(script,/tracks\[track\]/);
@@ -552,11 +556,17 @@ test('Update Center keeps AWH LINE Gateway and BAY Excuse LINE OA as two permane
   assert.match(script,/item\.key='bay-excuse-line-oa'/);
   assert.match(script,/center=normalizeUpdateCenter\(await loadUpdateCenter\(\)\)/);
   assert.match(script,/center=normalizeUpdateCenter\(snapshot\)/);
-  assert.match(script,/function ensureBayLineTarget\(tracks\)/);
+  assert.match(script,/const bayCompatTargets=\[/);
+  assert.match(script,/function ensureBayTrackTargets\(tracks\)/);
   assert.match(script,/center\.items\.push\(item\)/);
   assert.match(script,/key:'bay-excuse-line-oa'/);
   assert.match(script,/releaseTrack:'line-oa'/);
-  assert.match(script,/historyAuthority:'BAY_UPDATE_CENTER:line-oa'/);
+  assert.match(script,/key:'bay-cooperative'/);
+  assert.match(script,/releaseTrack:'cooperative-center'/);
+  assert.match(script,/key:'bay-pp'/);
+  assert.match(script,/releaseTrack:'pp-center'/);
+  assert.match(script,/BAY runtime รุ่นนี้ยังไม่ประกาศ release track/);
+  assert.match(script,/historyAuthority:'BAY_UPDATE_CENTER:'\+definition\.releaseTrack/);
   assert.match(script,/function lineOaTargets/);
   assert.match(script,/async function updateLineOaBundle/);
   assert.match(script,/awh-line-gateway/);
