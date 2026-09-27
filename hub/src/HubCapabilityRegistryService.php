@@ -78,7 +78,7 @@ final class HubCapabilityRegistryService
     public static function workProfileForGoal(string $goal): array
     {
         $value = function_exists('mb_strtolower') ? mb_strtolower(trim($goal), 'UTF-8') : strtolower(trim($goal));
-        $namedDevice = preg_match('/(?:\\bay(?:-)?student|\\bay(?:-)?teacher|ay[- ]?(?:student|teacher|[0-9]+)|art[- ]?mac[- ]?(?:m5|intel)|(?:^|\\s)m5(?:\\s|$)|macbook|mac(?:\\s|$)|windows|เครื่อง(?:เด็ก|ครู|นักเรียน|นี้)|คอม(?:พิวเตอร์)?)/u', $value) === 1;
+        $namedDevice = preg_match('/(?:\\bay(?:-)?student|\\bay(?:-)?teacher|ay[- ]?(?:student|teacher|[0-9]+)|macbook|mac(?:\\s|$)|windows|เครื่อง(?:เด็ก|ครู|นักเรียน|นี้)|คอม(?:พิวเตอร์)?)/u', $value) === 1;
         $nativeDesktop = preg_match('/(?:after effects?|photoshop|adobe|premiere|office desktop|netsupport|registry|โปรแกรม(?:บน)?เครื่อง|หน้าจอจริง|gui)/u', $value) === 1;
         $realClient = preg_match('/(?:browser|client|กด(?:ไม่ได้|ไม่ทำงาน)|เข้า(?:เรียน|ระบบ)ไม่ได้|permission|สิทธิ์|ติดตั้ง|install)/u', $value) === 1;
         $server = preg_match('/(?:nginx|php[- ]?fpm|vps|server|service|systemd|database|db|deploy|deployment|migration|runtime|production)/u', $value) === 1;

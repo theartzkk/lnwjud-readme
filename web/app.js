@@ -425,12 +425,10 @@ import {
   }
   function renderDecisionProvider() {
     const provider = state.decisionProvider;
-    if (!provider) { message('jev-status', 'กำลังตรวจ Local Decision Router'); return; }
-    const local = provider.localRouter || {}; const external = provider.externalFallback || {};
-    const examples = Number.isInteger(local.exampleCount) ? local.exampleCount : 0;
-    const externalLabel = external.configured === true ? 'Jev เชื่อมอยู่เป็น fallback เสริม' : 'Jev ไม่ได้เชื่อมและไม่จำเป็น';
-    message('jev-status', `Local Decision Router พร้อมใช้ · 0 บาทต่อคำขอ · ตัวอย่าง route ${examples} รายการ · ${externalLabel}`);
-    const remove = $('jev-credential-remove'); if (remove) remove.disabled = external.configured !== true;
+    if (!provider) { message('jev-status', 'ยังไม่ได้โหลดสถานะ Jev'); return; }
+    const configured = provider.configured === true;
+    message('jev-status', configured ? 'Jev พร้อมช่วยตัดสินใจงานที่ route ยังไม่ชัด · AWH policy ยังเป็น authority' : 'ยังไม่ได้เชื่อม Jev · AWH ใช้ deterministic routing เดิมตามปกติ');
+    const remove = $('jev-credential-remove'); if (remove) remove.disabled = !configured;
   }
 
   function renderCapabilitySurface() {
@@ -632,7 +630,7 @@ import {
     if (!enabledRow || enabledRow.parentElement !== policy) throw new Error('AWH provider settings surface is unavailable');
     policy.insertBefore(models, enabledRow);
     const section = document.createElement('section'); section.className = 'account-form'; section.id = 'provider-credential-settings';
-    section.innerHTML = '<h3>การเชื่อมต่อ AI</h3><p class="muted">API key จะถูกส่งครั้งเดียวผ่าน HTTPS และเก็บเฉพาะฝั่ง server; AWH จะไม่แสดงหรือส่งคืน key นี้</p><form id="provider-credential-form" class="compact-form"><label for="provider-api-key">OpenAI API key</label><input id="provider-api-key" type="password" maxlength="512" autocomplete="off" spellcheck="false" /><div class="form-actions"><button class="secondary-button" type="submit">บันทึกหรือแทนที่ key</button><button id="provider-credential-remove" class="text-button" type="button">ลบ key</button><button id="provider-connection-test" class="text-button" type="button">ทดสอบการเชื่อมต่อ</button></div></form><div class="compact-form"><h4>Local Decision Router · ฟรี</h4><p id="jev-status" class="muted">กำลังตรวจ Local Decision Router</p><p class="muted">AWH ใช้ hard rules + route memory + local similarity บนระบบของเราเองโดยไม่เสียค่า API เพิ่ม</p><details class="technical-entry"><summary>ขั้นสูง · Jev (ตัวเลือกเสริมแบบเสียเครดิต)</summary><form id="jev-credential-form" class="compact-form"><label for="jev-api-key">TypeSafe AI API key (ไม่จำเป็น)</label><input id="jev-api-key" type="password" maxlength="4096" autocomplete="off" spellcheck="false" /><div class="form-actions"><button class="secondary-button" type="submit">เชื่อม Jev (ตัวเลือกเสริม)</button><button id="jev-credential-remove" class="text-button" type="button">ยกเลิกการเชื่อม</button><button id="jev-connection-test" class="text-button" type="button">ทดสอบ Jev</button></div></form><p id="jev-message" class="form-message" role="status"></p><small class="muted">Jev ใช้เฉพาะเมื่อ local router ยังไม่มั่นใจและมีการตั้งค่าไว้เท่านั้น ไม่มีสิทธิ์อนุมัติ Deploy, Permission หรือ Owner action</small></details></div><form id="provider-project-routing-form" class="compact-form"><label for="provider-project-routing">AI สำหรับโปรเจกต์ที่เลือก</label><select id="provider-project-routing"><option value="AUTO">Auto (ตามค่า AWH)</option><option value="FAST">ประหยัด · Luna</option><option value="BALANCED">สมดุล · Terra</option><option value="STRONG">งานสำคัญ · Sol</option></select><button class="secondary-button" type="submit">บันทึกการเลือกของโปรเจกต์</button></form><p id="provider-credential-message" class="form-message" role="status"></p>';
+    section.innerHTML = '<h3>การเชื่อมต่อ AI</h3><p class="muted">API key จะถูกส่งครั้งเดียวผ่าน HTTPS และเก็บเฉพาะฝั่ง server; AWH จะไม่แสดงหรือส่งคืน key นี้</p><form id="provider-credential-form" class="compact-form"><label for="provider-api-key">OpenAI API key</label><input id="provider-api-key" type="password" maxlength="512" autocomplete="off" spellcheck="false" /><div class="form-actions"><button class="secondary-button" type="submit">บันทึกหรือแทนที่ key</button><button id="provider-credential-remove" class="text-button" type="button">ลบ key</button><button id="provider-connection-test" class="text-button" type="button">ทดสอบการเชื่อมต่อ</button></div></form><div class="compact-form"><h4>Jev · Decision Layer</h4><p id="jev-status" class="muted">กำลังตรวจสถานะ Jev</p><form id="jev-credential-form" class="compact-form"><label for="jev-api-key">TypeSafe AI API key</label><input id="jev-api-key" type="password" maxlength="4096" autocomplete="off" spellcheck="false" /><div class="form-actions"><button class="secondary-button" type="submit">เชื่อม Jev</button><button id="jev-credential-remove" class="text-button" type="button">ยกเลิกการเชื่อม</button><button id="jev-connection-test" class="text-button" type="button">ทดสอบ Jev</button></div></form><p id="jev-message" class="form-message" role="status"></p><small class="muted">Jev ใช้เฉพาะช่วยจำแนกงานที่ AWH route เดิมยังไม่ชัด และไม่มีสิทธิ์อนุมัติ Deploy, Permission หรือ Owner action</small></div><form id="provider-project-routing-form" class="compact-form"><label for="provider-project-routing">AI สำหรับโปรเจกต์ที่เลือก</label><select id="provider-project-routing"><option value="AUTO">Auto (ตามค่า AWH)</option><option value="FAST">ประหยัด · Luna</option><option value="BALANCED">สมดุล · Terra</option><option value="STRONG">งานสำคัญ · Sol</option></select><button class="secondary-button" type="submit">บันทึกการเลือกของโปรเจกต์</button></form><p id="provider-credential-message" class="form-message" role="status"></p>';
     // Credential setup is the only prerequisite for a first-time owner. Keep it
     // before routing and budget controls so it is reachable immediately on mobile.
     policy.before(section);
@@ -661,9 +659,9 @@ import {
       finally { field.value = ''; }
     });
     $('jev-credential-remove').addEventListener('click', async () => {
-      if (!window.confirm('ยกเลิกการเชื่อม Jev ใช่หรือไม่? Local Decision Router ฟรีจะยังทำงานตามปกติ')) return;
+      if (!window.confirm('ยกเลิกการเชื่อม Jev ใช่หรือไม่? AWH จะกลับไปใช้ routing เดิมทั้งหมด')) return;
       message('jev-message', 'กำลังยกเลิกการเชื่อม Jev…');
-      try { const data = await withPrivilegedRetry(()=>updateDecisionProviderCredential('REMOVE'),'การลบ Jev credential'); state.decisionProvider = data.decisionProvider; renderDecisionProvider(); message('jev-message', 'ยกเลิก Jev แล้ว · Local Decision Router ยังทำงานตามปกติ'); }
+      try { const data = await withPrivilegedRetry(()=>updateDecisionProviderCredential('REMOVE'),'การลบ Jev credential'); state.decisionProvider = data.decisionProvider; renderDecisionProvider(); message('jev-message', 'ยกเลิก Jev แล้ว · AWH ใช้ routing เดิม'); }
       catch (error) { message('jev-message', error instanceof Error ? error.message : 'ยังยกเลิก Jev ไม่ได้'); }
     });
     $('jev-connection-test').addEventListener('click', async () => {
@@ -1727,7 +1725,7 @@ import {
       if (providerResult.status === 'fulfilled') { state.provider = providerResult.value.provider; renderProvider(); }
       else message('provider-status', 'ยังโหลดสถานะ AI ไม่ได้ ลองรีเฟรชอีกครั้ง');
       if (decisionProviderResult.status === 'fulfilled') { state.decisionProvider = decisionProviderResult.value.decisionProvider; renderDecisionProvider(); }
-      else message('jev-status', 'ยังโหลดสถานะ Local Decision Router ไม่ได้ · AWH ยังใช้ hard rules เดิมได้ตามปกติ');
+      else message('jev-status', 'ยังโหลดสถานะ Jev ไม่ได้ · AWH ยังใช้ routing เดิมได้ตามปกติ');
       if (observabilityResult.status === 'fulfilled') { state.observability = observabilityResult.value.observability; renderObservability(); }
       else message('observability-status', 'ยังโหลดสถานะ Honeycomb ไม่ได้');
       if (capabilitiesResult.status === 'fulfilled') { state.capabilities = capabilitiesResult.value; renderCapabilitySurface(); }
