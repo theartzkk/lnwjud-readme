@@ -16,8 +16,9 @@ test('VPS-native core release reuses canonical approval and deploy authorities',
 
   assert.match(service, /required_capability.*system\.core\.release|CAPABILITY='system\.core\.release'/s);
   assert.match(service, /'deployment\.approve'/);
-  assert.match(service, /WAITING_FOR_APPROVAL/);
-  assert.match(service, /assertRecentStepUpSession/);
+  assert.match(service, /WAITING_FOR_WORKER/);
+  assert.match(service, /'APPROVED'.*:decided/s);
+  assert.match(service, /HubTrustPolicy::requiresStepUp/);
   assert.match(service, /reconcileOrphanedRelease/);
   assert.match(service, /supersedeQueuedReleaseIfTargetMoved/);
   assert.match(service, /CORE_RELEASE_TARGET_MOVED/);
@@ -26,8 +27,8 @@ test('VPS-native core release reuses canonical approval and deploy authorities',
   assert.match(service, /CORE_RELEASE_DISPATCHER_UNAVAILABLE/);
   assert.doesNotMatch(service, /shell_exec|proc_open|popen\s*\(|passthru\s*\(|\/bin\/sh/);
 
-  assert.match(trust, /'system\.core\.release'.*CRITICAL.*true.*false/);
-  assert.match(trust, /'hosting\.site\.delete'.*CRITICAL.*true.*true/);
+  assert.match(trust, /'system\.core\.release'.*CRITICAL.*false.*false/);
+  assert.match(trust, /'hosting\.site\.delete'.*CRITICAL.*true.*false/);
   assert.match(router, /\/api\/v1\/control\/system\/releases/);
 
   assert.match(operator, /file:\/\/\/srv\/awh-git\/awh\.git/);

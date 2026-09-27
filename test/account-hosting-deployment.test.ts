@@ -72,11 +72,13 @@ test('control bundle closure fails closed on an omitted PHP dependency',async()=
 });
 
 
-test('browser keeps typed high-risk step-up code private while routine Hosting is policy-driven',async()=>{
+test('browser preserves typed legacy step-up errors but current Owner flows do not prompt again',async()=>{
  const fetchImpl=async()=>new Response(JSON.stringify({schemaVersion:1,error:'ERROR',code:'STEP_UP_REQUIRED',requestId:'fixture'}),{status:403,headers:{'Content-Type':'application/json'}});
  await assert.rejects(controlRequest('/api/v1/control/provider/credential',{method:'POST',body:'{}'},fetchImpl),error=>error instanceof Error && error.message==='รายการความเสี่ยงสูงนี้ต้องยืนยันตัวตนผู้ดูแลเพิ่มเติม' && (error as Error & {code?:string}).code==='STEP_UP_REQUIRED' && !error.message.includes('STEP_UP_REQUIRED'));
  const [hosting,app]=await Promise.all([readFile(join(root,'web/hosting.js'),'utf8'),readFile(join(root,'web/app.js'),'utf8')]);
  assert.doesNotMatch(hosting,/requestStepUp|stepUp\(/);
  assert.match(hosting,/confirmationRequired/);
- assert.match(app,/withPrivilegedRetry/); assert.match(app,/เปิดโหมดผู้ดูแลขั้นสูง/); assert.match(app,/pendingPrivilegedAction/);
+ assert.match(app,/withPrivilegedRetry/);
+ assert.match(app,/withPrivilegedRetry\(action\) \{ return action\(\); \}/);
+ assert.doesNotMatch(app,/เปิดโหมดผู้ดูแลขั้นสูง|pendingPrivilegedAction|step-up-password/);
 });

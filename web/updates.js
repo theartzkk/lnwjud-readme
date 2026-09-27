@@ -1,14 +1,12 @@
 import {
   createBayRemoteInstallRelay, decideApproval, loadAuthSession, loadBayRemoteUpdateStatus, loadUpdateCenter,
-  managedSiteAction, relayBayRemoteCommand, requestAssessmentRelease, requestCoreRelease, requestPlatformRelease, stepUp, subscribeUpdateCenterLive,
+  managedSiteAction, relayBayRemoteCommand, requestAssessmentRelease, requestCoreRelease, requestPlatformRelease, subscribeUpdateCenterLive,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $=(id)=>document.getElementById(id);
 let center=null;
 let bayLive=null;
 let refreshing=false;
-let stepUpResolver=null;
-let confirmResolver=null;
 let attentionOnly=false;
 let refreshTimer=null;
 let localOperation=null;
@@ -41,7 +39,6 @@ const message=(text)=>{$('updates-message').textContent=text;};
 const friendly=(error)=>{
   const code=String(error?.code||'').toUpperCase();
   return ({
-    STEP_UP_REQUIRED:'ต้องยืนยันสิทธิ์เจ้าของระบบก่อนติดตั้ง',
     STEP_UP_CANCELLED:'ยกเลิกการยืนยันสิทธิ์แล้ว',
     CORE_RELEASE_CONFLICT:'มีการอัปเดต AWH อื่นกำลังทำอยู่ ระบบจะไม่สร้างงานซ้ำ',
     CORE_RELEASE_TARGET_MOVED:'มีรุ่นใหม่กว่าเข้ามาแล้ว ระบบยกเลิกรุ่นเก่าอย่างปลอดภัย กรุณาตรวจอีกครั้ง',
@@ -583,29 +580,7 @@ function renderProgress(){
   });
 }
 
-function askConfirm(title,text,submitLabel='ยืนยัน'){
-  $('confirm-title').textContent=title;$('confirm-message').textContent=text;$('confirm-submit').textContent=submitLabel;
-  $('confirm-dialog').hidden=false;
-  return new Promise((resolve)=>{confirmResolver=resolve;});
-}
-
-function askStepUp(){
-  $('step-up').hidden=false;$('step-up-password').value='';$('step-up-message').textContent='';
-  setTimeout(()=>$('step-up-password').focus(),0);
-  return new Promise((resolve,reject)=>{stepUpResolver={resolve,reject};});
-}
-
-async function privileged(action){
-  try{return await action();}
-  catch(error){
-    if(error?.code!=='STEP_UP_REQUIRED')throw error;
-    const password=await askStepUp();
-    await stepUp(password);
-    return action();
-  }
-}
 async function approveAwh(item){
-  if(!await askConfirm('ยืนยันการอัปเดต AWH','ระบบจะสำรอง ติดตั้ง ตรวจสอบ และย้อนกลับให้อัตโนมัติหาก verification ไม่ผ่าน','อัปเดต'))return;
   await decideApproval(item.approvalId,'approve');
   localOperation={name:'AWH',progress:10,message:'อนุมัติแล้ว กำลังรอ release controller'};
   message('ยืนยันแล้ว ระบบกำลังดำเนินการอัปเดต AWH อย่างปลอดภัย');
@@ -613,24 +588,20 @@ async function approveAwh(item){
 }
 
 async function approveLearnLab(item){
-  if(!await askConfirm('ยืนยันการอัปเดต LearnLab','ระบบจะใช้ typed release boundary และ rollback เดิมของ LearnLab','อัปเดต'))return;
   await decideApproval(item.approvalId,'approve');
   localOperation={name:'LearnLab',progress:10,message:'อนุมัติแล้ว กำลังเริ่ม release'};
   await refresh();
 }
 
 async function approvePlatform(item){
-  if(!await askConfirm('ยืนยัน VPS Platform','ระบบจะอัปเดต shared runtime/infrastructure ผ่าน Platform release track โดยไม่ bump AWH release','อัปเดต'))return;
   await decideApproval(item.approvalId,'approve');
   localOperation={name:'VPS Platform',progress:10,message:'อนุมัติแล้ว กำลังเริ่ม Platform release'};
   await refresh();
 }
 
 async function updatePlatform(item){
-  if(!await askConfirm('อัปเดต VPS','ระบบจะตรวจ gate สำรองข้อมูล อัปเดต shared runtime/infrastructure และ Verify ก่อนเปลี่ยน Platform production ref','เริ่มอัปเดต'))return;
   localOperation={name:'VPS Platform',progress:6,message:'กำลังสร้างคำขอ Platform release จากรุ่นล่าสุด'};
-  const request=await privileged(()=>requestPlatformRelease(item.candidate,false));
-  if(request?.approvalId)await decideApproval(request.approvalId,'approve');
+  const request=await requestPlatformRelease(item.candidate,false);
   message('VPS Platform รับคำสั่งแล้ว กำลังตรวจความพร้อม สำรอง อัปเดต และ Verify');
   await refresh();
 }
@@ -640,39 +611,32 @@ async function updateAwh(item){
   const detail=split
     ?'ตรวจพบ component บางส่วนอยู่คนละรุ่น ระบบจะใช้ release ล่าสุดเพื่อปรับ Runtime ให้สอดคล้อง แล้วจึง Verify ทั้งชุด'
     :'ระบบจะตรวจทุก gate สำรองข้อมูล ติดตั้ง และ Verify ก่อนเปลี่ยน Production';
-  if(!await askConfirm(split?'ปรับ Runtime และอัปเดต AWH':'อัปเดต AWH',detail,'เริ่มอัปเดต'))return;
   localOperation={name:'AWH',progress:6,message:'กำลังสร้างคำขอ release จากรุ่นล่าสุด'};
-  const request=await privileged(()=>requestCoreRelease(item.candidate,false));
-  if(request?.approvalId)await decideApproval(request.approvalId,'approve');
+  const request=await requestCoreRelease(item.candidate,false);
   message('AWH รับคำสั่งแล้ว กำลังตรวจความพร้อม สำรอง ติดตั้ง และ Verify');
   await refresh();
 }
 async function approveAssessment(item){
-  if(!await askConfirm('ยืนยันการอัปเดต Assessment','ระบบจะ Backup → Staging → Verify → Production และ rollback อัตโนมัติเมื่อจำเป็น','อัปเดต'))return;
   await decideApproval(item.approvalId,'approve');
   localOperation={name:'Assessment',progress:10,message:'อนุมัติแล้ว กำลังเริ่ม release'};
   await refresh();
 }
 
 async function updateAssessment(item){
-  if(!await askConfirm('อัปเดต BAY Assessment','ระบบจะทดสอบ candidate ใน Staging ก่อน Production','เริ่มอัปเดต'))return;
-  const request=await privileged(()=>requestAssessmentRelease(item.candidate,item.candidateVersion));
-  if(request?.approvalId)await decideApproval(request.approvalId,'approve');
+  const request=await requestAssessmentRelease(item.candidate,item.candidateVersion);
   localOperation={name:'Assessment',progress:10,message:'กำลังเตรียม Staging'};
   message('Assessment รับคำสั่งแล้ว กำลังดำเนินการแบบ staging-first');
   await refresh();
 }
 
 async function updateHosting(item){
-  if(!await askConfirm('อัปเดต '+item.name,'ระบบจะเผยแพร่ Project Vault revision ล่าสุดและเก็บรุ่นปัจจุบันไว้เป็น rollback point','อัปเดต'))return;
   await managedSiteAction(item.siteId,'deploy');
   message('ส่ง '+item.name+' เข้าสู่ Managed Hosting แล้ว');
   await refresh();
 }
 
-async function updateBay(item,askConfirmation=true){
+async function updateBay(item){
   const release=item.release;if(!release)return;
-  if(askConfirmation&&!await askConfirm('อัปเดต '+item.name,'ติดตั้ง '+release.version+' ของ '+item.name+' ผ่าน BAY PackageManager ที่ตรวจ release track, checksum และ source แล้ว','อัปเดต'))return;
   const relay=await createBayRemoteInstallRelay({targetVersion:release.version,targetSha:release.sourceSha,packageSha256:release.packageSha256});
   try{
     await relayBayRemoteCommand(relay.endpoint,relay.relay);
@@ -715,7 +679,7 @@ const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
 function lineOaTargets(){
   const group=center?.releaseGroups?.['line-oa'];
   const contractTargets=Array.isArray(group?.targets)?group.targets:[];
-  const exactContract=group?.approvalMode==='SINGLE_OWNER_STEP_UP'
+  const exactContract=group?.approvalMode==='SIGNED_IN_OWNER'
     &&group?.orchestration==='SEQUENTIAL_VERIFY_EACH'
     &&group?.historyScope==='PER_TARGET'
     &&group?.rollbackScope==='PER_TARGET'
@@ -789,11 +753,9 @@ async function updateLineOaBundle(){
   const bayNeedsUpdate=bay.state==='UPDATE_AVAILABLE'&&bay.actionable===true&&bay.release;
   if(!awhNeedsUpdate&&!bayNeedsUpdate){message('LINE OA ทั้งสอง target เป็นรุ่นล่าสุดแล้ว');return;}
 
-  const password=await askStepUp();
-  await stepUp(password);
   let awhVerified=!awhNeedsUpdate;
   try{
-    localOperation={name:'LINE OA ทั้งชุด',progress:8,message:'Owner ยืนยันแล้ว · เริ่มสอง release targets แบบแยก lifecycle'};
+    localOperation={name:'LINE OA ทั้งชุด',progress:8,message:'เริ่มสอง release targets แบบแยก lifecycle'};
     renderProgress();
 
     if(awhNeedsUpdate){
@@ -887,26 +849,6 @@ $('runtime-health-details').addEventListener('click',()=>{
   $('advanced-diagnostics').open=true;
   $('advanced-diagnostics').scrollIntoView({behavior:'smooth',block:'start'});
 });
-$('confirm-cancel').addEventListener('click',()=>{
-  if(confirmResolver){confirmResolver(false);confirmResolver=null;}
-  $('confirm-dialog').hidden=true;
-});
-$('confirm-submit').addEventListener('click',()=>{
-  if(confirmResolver){confirmResolver(true);confirmResolver=null;}
-  $('confirm-dialog').hidden=true;
-});
-$('step-up-cancel').addEventListener('click',()=>{
-  if(stepUpResolver){stepUpResolver.reject(Object.assign(new Error('ยกเลิกการยืนยันสิทธิ์'),{code:'STEP_UP_CANCELLED'}));stepUpResolver=null;}
-  $('step-up').hidden=true;
-});
-$('step-up-submit').addEventListener('click',()=>{
-  const value=$('step-up-password').value;
-  if(!value){$('step-up-message').textContent='กรุณากรอกรหัสผ่าน';return;}
-  if(stepUpResolver){stepUpResolver.resolve(value);stepUpResolver=null;}
-  $('step-up').hidden=true;
-});
-$('step-up-password').addEventListener('keydown',(event)=>{if(event.key==='Enter')$('step-up-submit').click();});
-
 $('update-search').addEventListener('input',(event)=>{
   searchTerm=String(event.target.value||'').trim().toLocaleLowerCase('th');render();
 });

@@ -80,7 +80,7 @@ test('ecosystem release contract covers product families and independent release
     {itemKey:'awh-line-gateway',releaseTrack:'awh-line-gateway'},
     {itemKey:'bay-excuse-line-oa',releaseTrack:'line-oa'},
   ]);
-  assert.equal(c.releaseGroups['line-oa'].approvalMode,'SINGLE_OWNER_STEP_UP');
+  assert.equal(c.releaseGroups['line-oa'].approvalMode,'SIGNED_IN_OWNER');
   assert.equal(c.releaseGroups['line-oa'].orchestration,'SEQUENTIAL_VERIFY_EACH');
   assert.equal(c.releaseGroups['line-oa'].historyScope,'PER_TARGET');
   assert.equal(c.releaseGroups['line-oa'].rollbackScope,'PER_TARGET');

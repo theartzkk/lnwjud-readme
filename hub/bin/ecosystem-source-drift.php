@@ -78,6 +78,24 @@ if (is_string($runtime) && $runtime!=='') {
     if (!preg_match('/^[0-9a-f]{40}$/',$runtimeProduction) && preg_match('/^[0-9a-f]{40}$/',$legacyProduction)) $runtimeProduction=$legacyProduction;
     $main=is_dir($awh)?trim((string)shell_exec('git --git-dir='.escapeshellarg($awh).' rev-parse refs/heads/main 2>/dev/null')):'';
     $source=is_array($manifest)?strtolower((string)($manifest['sourceSha']??'')):'';
+    $releaseId=is_array($manifest)?(string)($manifest['releaseId']??''):'';
+    $manifestFiles=[];
+    if (is_array($manifest['files']??null)) foreach ($manifest['files'] as $entry) {
+        if (is_array($entry) && is_string($entry['path']??null) && is_string($entry['sha256']??null)) $manifestFiles[(string)$entry['path']]=strtolower((string)$entry['sha256']);
+    }
+    if (preg_match('/^[0-9a-f]{40}$/',$runtimeProduction)===1 && preg_match('/^[A-Za-z0-9._-]{1,80}$/',$releaseId)===1) {
+        $runtimeRoot=dirname($runtime);
+        foreach (['updates.html'=>'web/updates.html','updates.js'=>'web/updates.js','control-plane-adapter.js'=>'web/control-plane-adapter.js'] as $asset=>$sourcePath) {
+            $sourceBody=(string)shell_exec('git --git-dir='.escapeshellarg($awh).' show '.escapeshellarg($runtimeProduction.':'.$sourcePath).' 2>/dev/null');
+            $declared=$manifestFiles[$asset]??'';
+            $livePath=$runtimeRoot.'/'.$asset;
+            $liveHash=is_file($livePath)?strtolower((string)@hash_file('sha256',$livePath)):'';
+            if ($sourceBody==='') {$findings[]="AWH web source provenance unavailable: $asset";continue;}
+            $expectedHash=hash('sha256',str_replace('__AWH_WEB_RELEASE_ID__',$releaseId,$sourceBody));
+            if (!preg_match('/^[0-9a-f]{64}$/',$declared) || !hash_equals($expectedHash,$declared)) $findings[]="AWH web source provenance drift: $asset";
+            if (!preg_match('/^[0-9a-f]{64}$/',$liveHash) || !hash_equals($declared,$liveHash)) $findings[]="AWH web runtime/manifest drift: $asset";
+        }
+    }
     if (!preg_match('/^[0-9a-f]{40}$/',$source) || !preg_match('/^[0-9a-f]{40}$/',$runtimeProduction) || !hash_equals($source,strtolower($runtimeProduction))) $findings[]='AWH runtime/Git runtime-production drift';
     if (!preg_match('/^[0-9a-f]{40}$/',$main) || !preg_match('/^[0-9a-f]{40}$/',$runtimeProduction)) {
         $findings[]='AWH main/runtime production authority unresolved';

@@ -56,7 +56,7 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(script,/technicalDetails/);
   assert.match(script,/runtimeState/);
   assert.match(script,/renderProgress/);
-  assert.match(script,/askConfirm/);
+  assert.doesNotMatch(script,/askConfirm|askStepUp|\bstepUp\(/);
   assert.doesNotMatch(script,/\bconfirm\(/);
   assert.doesNotMatch(script,/อัปเดต AWH เป็น Source/);
   assert.match(script,/decideApproval/);
@@ -90,6 +90,22 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(script,/item\?\.visibility==='PRIMARY'\?'PRIMARY':'ADVANCED'/);
   assert.match(page,/data-filter="ADVANCED"/);
   assert.match(script,/\['vps-platform','awh-core','awh-agent'\]/);
+});
+
+test('Update Center module graph imports only symbols exported by the same adapter bundle', async()=>{
+  const [script,adapter]=await Promise.all([
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+    readFile(join(ROOT,'web/control-plane-adapter.js'),'utf8'),
+  ]);
+  const imported=script.match(/import\s*\{([\s\S]*?)\}\s*from\s*['"]\.\/control-plane-adapter\.js\?release=__AWH_WEB_RELEASE_ID__['"]/);
+  assert.ok(imported,'Update Center adapter import must remain explicit and release-bound');
+  const names=(imported?.[1]||'').split(',').map((value)=>value.trim()).filter(Boolean).map((value)=>value.split(/\s+as\s+/)[0]);
+  const exported=new Set([
+    ...Array.from(adapter.matchAll(/export\s+(?:async\s+)?function\s+([A-Za-z0-9_]+)/g),(match)=>match[1]),
+    ...Array.from(adapter.matchAll(/export\s+const\s+([A-Za-z0-9_]+)/g),(match)=>match[1]),
+  ]);
+  for(const name of names)assert.ok(exported.has(name),`Update Center imports missing adapter export: ${name}`);
+  assert.doesNotMatch(script,/\bstepUp\b|askStepUp|step-up-password/);
 });
 
 test('Release Runner is visible in Update Center but remains executor-only under the canonical control plane', async()=>{
@@ -502,7 +518,8 @@ test('Update Center keeps AWH LINE Gateway and BAY Excuse LINE OA as two permane
   assert.match(registry,/'awh-line-gateway'.*'sourceAuthority'=>'AWH_VAULT'.*'siteId'=>'ed911e13-ccfa-44d9-8214-6425cb252240'.*'domain'=>'line\.kruart\.online'/s);
   assert.match(registry,/'line-oa'.*'repository'=>'bay-excuse-x'.*'packageTrack'=>'line-oa'.*'secretScope'=>'BAY_EXCUSE_LINE_OA'/s);
   assert.match(registry,/public static function releaseGroups/);
-  assert.match(registry,/'approvalMode'=>'SINGLE_OWNER_STEP_UP'/);
+  assert.match(registry,/'approvalMode'=>'SIGNED_IN_OWNER'/);
+  assert.doesNotMatch(registry,/SINGLE_OWNER_STEP_UP/);
   assert.match(registry,/'orchestration'=>'SEQUENTIAL_VERIFY_EACH'/);
   assert.match(registry,/'historyScope'=>'PER_TARGET'/);
   assert.match(registry,/'rollbackScope'=>'PER_TARGET'/);
@@ -529,7 +546,8 @@ test('Update Center keeps AWH LINE Gateway and BAY Excuse LINE OA as two permane
   assert.match(script,/currentBay\.releaseTrack\)!=='line-oa'/);
   assert.match(script,/อัปเดต LINE OA ทั้งชุด/);
   const bundle=script.slice(script.indexOf('async function updateLineOaBundle'),script.indexOf('async function refreshAgent'));
-  assert.equal((bundle.match(/await stepUp\(password\)/g)||[]).length,1);
+  assert.equal((bundle.match(/await stepUp\(password\)/g)||[]).length,0);
+  assert.doesNotMatch(bundle,/askStepUp|step-up-password|SINGLE_OWNER_STEP_UP/);
   assert.doesNotMatch(bundle,/requestCoreRelease|requestPlatformRelease|bay-excuse-core|vps-platform/);
   assert.match(css,/update-group\[data-group="line-oa"\]/);
 });

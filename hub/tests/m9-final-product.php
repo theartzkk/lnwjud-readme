@@ -77,10 +77,8 @@ try {
 
     $invitePayload = ['displayName' => 'Collaborator', 'email' => null, 'projectIds' => [$project], 'role' => 'COLLABORATOR', 'username' => 'collaborator'];
     $pdo->prepare('UPDATE control_sessions SET step_up_at = :at WHERE session_hash = :hash')->execute(['at' => gmdate('c', strtotime($now) - 1801), 'hash' => hash('sha256', $ownerSession['sessionToken'])]);
-    try { $auth->inviteUser($ownerSession['sessionToken'], $ownerSession['csrfToken'], $invitePayload, $now); throw new RuntimeException('stale session invited a user'); } catch (HubOwnerAuthException $error) { m9_assert($error->codeName === 'STEP_UP_REQUIRED', 'stale owner session cannot change people'); }
-    $stepUp = $auth->stepUp($ownerSession['sessionToken'], $ownerSession['csrfToken'], $ownerPassword);
-    m9_assert(isset($stepUp['stepUpUntil']), 'password confirmation restores a bounded step-up window');
     $invite = $auth->inviteUser($ownerSession['sessionToken'], $ownerSession['csrfToken'], $invitePayload, $now);
+    m9_assert(isset($invite['invitationId']), 'signed-in Owner session can manage people without repeated password step-up');
     m9_assert(isset($invite['invitationCode']) && !str_contains(json_encode(['id' => $invite['invitationId']], JSON_THROW_ON_ERROR), $invite['invitationCode']), 'invitation code is isolated from normal identifiers');
     $accepted = $auth->acceptInvitation(['schemaVersion' => 1, 'invitationCode' => $invite['invitationCode'], 'password' => $collaboratorPassword], $now, 'fixture-invite');
     $collaborator = $auth->login('collaborator', $collaboratorPassword, false, 'fixture-collaborator', $now); $collabServer = m9_browser($collaborator['sessionToken'], $collaborator['csrfToken']);

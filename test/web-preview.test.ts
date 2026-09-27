@@ -398,7 +398,8 @@ test('Owner System settings keeps Update Center as the only release UI', async (
   assert.match(adapter, /\/api\/v1\/control\/system\/releases/);
   assert.match(updates, /requestCoreRelease\(item\.candidate,false\)/);
   assert.match(updates, /requestPlatformRelease\(item\.candidate,false\)/);
-  assert.match(updates, /decideApproval\(request\.approvalId,'approve'\)/);
+  assert.doesNotMatch(updates, /decideApproval\(request\.approvalId,'approve'\)/);
+  assert.doesNotMatch(updates, /askStepUp|step-up-password|SINGLE_OWNER_STEP_UP/);
   assert.match(service, /SOURCE_PROMOTION_AUDIT/);
   assert.match(service, /required_capability='source\.promote'/);
   assert.match(service, /'deployment\.approve'/);

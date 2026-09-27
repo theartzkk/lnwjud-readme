@@ -224,7 +224,6 @@
   async function clearSource() {
     const select = $('owner-source-project');
     if (!(select instanceof HTMLSelectElement) || !select.value) return;
-    if (!window.confirm('ล้าง canonical Source ของโปรเจกต์นี้? Project Vault และประวัติเดิมจะไม่ถูกลบ')) return;
     sourceMessage('กำลังล้าง Source binding…');
     const api = await sourceApi();
     const state = await api.updateProjectSourceAuthority({ projectId: select.value, action: 'CLEAR' });
@@ -275,7 +274,6 @@
     const revisionId = button.dataset.revisionId || '';
     const expectedActiveRevisionId = button.dataset.expectedActiveRevisionId || '';
     if (!revisionId || !expectedActiveRevisionId) return;
-    if (!window.confirm('เปิดใช้ Candidate นี้เป็น Source ของโปรเจกต์? ขั้นตอนนี้ยังไม่ Deploy Production และสามารถย้อนดู revision เดิมได้')) return;
     button.disabled = true;
     sourceMessage('กำลังเปิดใช้ Candidate โดยตรวจ revision ปัจจุบันก่อน…');
     try {

@@ -79,7 +79,7 @@ async function refresh() {
   renderProjects(); renderList(); return state.available;
 }
 async function toggleAutomation(def) { await controlRequest(`/api/v1/control/automations/${def.automationId}/enabled`,{method:'POST',body:JSON.stringify({schemaVersion:1,enabled:!def.enabled})}); await refresh(); }
-async function archiveAutomation(def) { if (!window.confirm(`Archive “${def.name}” ?`)) return; await controlRequest(`/api/v1/control/automations/${def.automationId}/archive`,{method:'POST',body:JSON.stringify({schemaVersion:1})}); await refresh(); }
+async function archiveAutomation(def) { await controlRequest(`/api/v1/control/automations/${def.automationId}/archive`,{method:'POST',body:JSON.stringify({schemaVersion:1})}); await refresh(); }
 function resetForm() { state.editing=null; const form=$(FORM_ID); if (!(form instanceof HTMLFormElement)) return; form.reset(); form.elements.namedItem('timeAt').value='08:00'; form.elements.namedItem('scheduleKind').value='daily'; $('awh-automation-submit').textContent='สร้าง Automation'; $('awh-automation-cancel-edit').hidden=true; syncScheduleFields(); }
 async function editAutomation(record) {
   const def=record.definition; state.editing=def.automationId; const form=$(FORM_ID); if (!(form instanceof HTMLFormElement)) return;

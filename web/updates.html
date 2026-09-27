@@ -119,22 +119,6 @@
     </div>
   </main>
 
-  <div id="confirm-dialog" class="updates-dialog" hidden>
-    <div class="updates-dialog-card" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
-      <p class="eyebrow">CONFIRM UPDATE</p><h2 id="confirm-title">ยืนยันการดำเนินการ</h2><p id="confirm-message"></p>
-      <div class="updates-dialog-actions"><button id="confirm-cancel" class="secondary-button" type="button">ยกเลิก</button><button id="confirm-submit" class="primary-button" type="button">ยืนยัน</button></div>
-    </div>
-  </div>
-
-  <div id="step-up" class="updates-dialog" hidden>
-    <div class="updates-dialog-card" role="dialog" aria-modal="true" aria-labelledby="step-up-title">
-      <p class="eyebrow">OWNER CONFIRMATION</p><h2 id="step-up-title">ยืนยันสิทธิ์เจ้าของระบบ</h2><p>เพื่อความปลอดภัย กรุณายืนยันรหัสผ่านเจ้าของระบบก่อนติดตั้ง ระบบใช้รหัสผ่านเฉพาะการยืนยันรอบนี้และไม่เก็บไว้ในหน้า Update Center</p>
-      <label>รหัสผ่าน<input id="step-up-password" type="password" autocomplete="current-password" /></label>
-      <div class="updates-dialog-actions"><button id="step-up-cancel" class="secondary-button" type="button">ยกเลิก</button><button id="step-up-submit" class="primary-button" type="button">ยืนยันและทำต่อ</button></div>
-      <p id="step-up-message" class="form-message" role="status"></p>
-    </div>
-  </div>
-
   <script src="./update-center-boot.js?release=__AWH_WEB_RELEASE_ID__" defer></script>
   <script src="./interaction-feedback.js?release=__AWH_WEB_RELEASE_ID__" defer></script>
   <script type="module" src="./navigation.js?release=__AWH_WEB_RELEASE_ID__"></script>

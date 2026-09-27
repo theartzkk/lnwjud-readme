@@ -101,19 +101,19 @@ final class HubLearnLabReleaseService
         try{
             $this->pdo->exec('BEGIN IMMEDIATE');
             $this->pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at)
-                VALUES(:task,:user,:project,:goal,'WAITING_FOR_APPROVAL',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")
+                VALUES(:task,:user,:project,:goal,'WAITING_FOR_WORKER',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")
                 ->execute(['task'=>$task,'user'=>$owner['user_id'],'project'=>self::PROJECT_ID,'goal'=>$goal,'key'=>$key,'at'=>$at]);
             $this->pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at)
                 VALUES(:execution,:task,:project,NULL,'VPS',:capability,'QUEUED',NULL,NULL,0,NULL,:checkpoint,NULL,:at,:at)")
                 ->execute(['execution'=>$execution,'task'=>$task,'project'=>self::PROJECT_ID,'capability'=>self::CAPABILITY,
                     'checkpoint'=>json_encode($checkpoint,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$at]);
             $this->pdo->prepare("INSERT INTO control_approvals(approval_id,task_id,action,scope_json,status,expires_at,decided_at)
-                VALUES(:approval,:task,'deployment.approve',:scope,'PENDING',:expires,NULL)")
+                VALUES(:approval,:task,'deployment.approve',:scope,'APPROVED',:expires,:decided)")
                 ->execute(['approval'=>$approval,'task'=>$task,'scope'=>json_encode($scope,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),
-                    'expires'=>gmdate('c',strtotime($at)+1800)]);
+                    'expires'=>gmdate('c',strtotime($at)+1800),'decided'=>$at]);
             $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at)
-                VALUES(:event,:task,'WAITING_FOR_APPROVAL',0,:message,:at)")
-                ->execute(['event'=>self::uuid(),'task'=>$task,'message'=>'LearnLab release ผ่าน request boundary แล้วและรอ Owner อนุมัติ','at'=>$at]);
+                VALUES(:event,:task,'WAITING_FOR_WORKER',0,:message,:at)")
+                ->execute(['event'=>self::uuid(),'task'=>$task,'message'=>'LearnLab release ได้รับ Owner authority แล้ว กำลังรอ release controller','at'=>$at]);
             $this->pdo->exec('COMMIT');
         }catch(Throwable $error){
             $this->rollback();
@@ -121,7 +121,7 @@ final class HubLearnLabReleaseService
             throw new HubLearnLabReleaseException('LearnLab release request could not be queued','LEARNLAB_RELEASE_QUEUE_FAILED');
         }
         return ['schemaVersion'=>1,'taskId'=>$task,'executionId'=>$execution,'approvalId'=>$approval,
-            'state'=>'WAITING_FOR_APPROVAL','releaseSha'=>$sha,'runtimeVersion'=>$version,'idempotent'=>false];
+            'state'=>'WAITING_FOR_WORKER','releaseSha'=>$sha,'runtimeVersion'=>$version,'idempotent'=>false];
     }
 
     public static function checkpoint(string $json,bool $strict=true): array

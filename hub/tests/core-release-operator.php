@@ -71,26 +71,24 @@ try{
     $pdo->prepare('UPDATE control_sessions SET step_up_at=NULL WHERE session_hash=:hash')->execute(['hash'=>hash('sha256',$session['sessionToken'])]);
 
     $request=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$sha,'cleanupTopology'=>false],$now);
-    cr_assert(($request['state']??null)==='WAITING_FOR_APPROVAL','signed-in Owner can request a core release without repeated password step-up');
+    cr_assert(($request['state']??null)==='WAITING_FOR_WORKER','signed-in Owner request goes directly to the canonical worker queue without repeated password or approval prompts');
     $task=(string)$request['taskId'];$execution=(string)$request['executionId'];$approval=(string)$request['approvalId'];
 
     $taskRow=$pdo->query("SELECT state,progress,project_id FROM control_tasks WHERE task_id=".$pdo->quote($task))->fetch();
     $executionRow=$pdo->query("SELECT state,executor_kind,required_capability,checkpoint_json,attempt_count FROM control_task_executions WHERE execution_id=".$pdo->quote($execution))->fetch();
-    $approvalRow=$pdo->query("SELECT action,status,scope_json FROM control_approvals WHERE approval_id=".$pdo->quote($approval))->fetch();
-    cr_assert(is_array($taskRow)&&$taskRow['state']==='WAITING_FOR_APPROVAL'&&(string)$taskRow['project_id']===$project,'task uses canonical AWH project');
+    $approvalRow=$pdo->query("SELECT action,status,scope_json,decided_at FROM control_approvals WHERE approval_id=".$pdo->quote($approval))->fetch();
+    cr_assert(is_array($taskRow)&&$taskRow['state']==='WAITING_FOR_WORKER'&&(string)$taskRow['project_id']===$project,'task uses canonical AWH project and is immediately dispatchable');
     cr_assert(is_array($executionRow)&&$executionRow['state']==='QUEUED'&&$executionRow['executor_kind']==='VPS'&&$executionRow['required_capability']===HubCoreReleaseService::CAPABILITY,'execution uses canonical VPS capability');
     $checkpoint=HubCoreReleaseService::checkpoint((string)$executionRow['checkpoint_json']);
     cr_assert($checkpoint['releaseSha']===$sha&&$checkpoint['transport']==='LOCAL'&&$checkpoint['releaseMode']==='AWH_CORE'&&$checkpoint['releaseTrack']==='awh','checkpoint binds exact approved AWH release identity');
     cr_assert(!array_key_exists('command',$checkpoint)&&!array_key_exists('path',$checkpoint)&&!array_key_exists('script',$checkpoint),'browser checkpoint cannot inject command or path');
-    cr_assert(is_array($approvalRow)&&$approvalRow['action']==='deployment.approve'&&$approvalRow['status']==='PENDING','canonical deployment approval is created');
+    cr_assert(is_array($approvalRow)&&$approvalRow['action']==='deployment.approve'&&$approvalRow['status']==='APPROVED'&&is_string($approvalRow['decided_at']),'canonical deployment approval is recorded automatically as Owner audit evidence');
 
     $duplicate=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$sha,'cleanupTopology'=>false],$now);
     cr_assert(($duplicate['idempotent']??false)===true&&$duplicate['taskId']===$task,'same active release request is idempotent');
 
     $control=HubControlPlaneService::openExisting($db);
-    $decided=$control->decideApproval($session['sessionToken'],$session['csrfToken'],$approval,'APPROVED',$now);
-    cr_assert(($decided['status']??null)==='APPROVED','owner approval is recorded');
-    cr_assert($pdo->query("SELECT state FROM control_tasks WHERE task_id=".$pdo->quote($task))->fetchColumn()==='WAITING_FOR_WORKER','approved release returns to existing worker queue');
+    cr_assert($pdo->query("SELECT state FROM control_tasks WHERE task_id=".$pdo->quote($task))->fetchColumn()==='WAITING_FOR_WORKER','Owner request is already on the existing worker queue');
 
     $fake=$root.'/awh-core-release-run.php';file_put_contents($fake,"<?php\n");
     $calls=[];
@@ -112,11 +110,10 @@ try{
     $pdo->prepare("UPDATE control_task_executions SET checkpoint_json=:checkpoint,updated_at=:at WHERE execution_id=:execution")->execute(['checkpoint'=>json_encode(['repository'=>'awh','expectedMainSha'=>$promoteTarget,'targetSha'=>$staleSha,'bundleSha256'=>str_repeat('f',64),'releaseNotes'=>cr_release_notes($promoteTarget,$staleSha)],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>'2026-09-23T01:01:09+00:00','execution'=>$promoteExecution]);
     file_put_contents($canonicalGit.'/refs/heads/main',$staleSha."\n");
     $stale=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$staleSha,'cleanupTopology'=>false],'2026-09-23T01:01:10+00:00');
-    $control->decideApproval($session['sessionToken'],$session['csrfToken'],(string)$stale['approvalId'],'APPROVED','2026-09-23T01:01:11+00:00');
     $pdo->prepare("UPDATE control_task_executions SET checkpoint_json=:checkpoint,updated_at=:at WHERE execution_id=:execution")->execute(['checkpoint'=>json_encode(['repository'=>'awh','expectedMainSha'=>$staleSha,'targetSha'=>$nextSha,'bundleSha256'=>str_repeat('1',64),'releaseNotes'=>cr_release_notes($staleSha,$nextSha)],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>'2026-09-23T01:09:59+00:00','execution'=>$promoteExecution]);
     file_put_contents($canonicalGit.'/refs/heads/main',$nextSha."\n");
     $next=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$nextSha,'cleanupTopology'=>false],'2026-09-23T01:10:00+00:00');
-    cr_assert(($next['state']??null)==='WAITING_FOR_APPROVAL'&&($next['releaseSha']??null)===$nextSha,'stale approved release is reconciled before a new request');
+    cr_assert(($next['state']??null)==='WAITING_FOR_WORKER'&&($next['releaseSha']??null)===$nextSha,'stale approved release is reconciled before a new request and the replacement is immediately dispatchable');
     cr_assert($pdo->query("SELECT state FROM control_task_executions WHERE execution_id=".$pdo->quote((string)$stale['executionId']))->fetchColumn()==='FAILED','stale queued release is failed closed');
     cr_assert($pdo->query("SELECT failure_code FROM control_tasks WHERE task_id=".$pdo->quote((string)$stale['taskId']))->fetchColumn()==='CORE_RELEASE_DISPATCHER_UNAVAILABLE','stale release records dispatcher outage');
 

@@ -6,7 +6,7 @@ import {
   bindSchoolIdentity, exportWorkspace, listAccountRequests, listAuthSessions, listPeople, loadAuthProfile, loadBayCommunicationStatus, loadControlData, loadConversation, loadConversationHistory,
   loadConversations, loadDeletedConversations, loadCurrentContext, loadMemory, loadMemoryImportReport, loadOwnerSelfServiceStatus, loadSchoolIdentityBindings, loadSchoolIdentityCandidates,
   loadProductSettingHistory, loadProductSettings, loadProviderProjectRouting, loadProviderStatus, loadDecisionProviderStatus, loadObservabilityStatus, loadCapabilities, loadInfrastructure, loadSystemReadiness, loadWorkspaceContinuity, login, logout, logoutAll,
-  recover, registerAccessRequest, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokeDevice, revokePerson, revokeSchoolIdentity, saveCurrentContext, stepUp, submitWorkMessage,
+  recover, registerAccessRequest, resetPassword, resetProductSetting, reviewAccountRequest, revokeAuthSession, revokeDevice, revokePerson, revokeSchoolIdentity, saveCurrentContext, submitWorkMessage,
   testProviderConnection, testDecisionProviderConnection, updateAuthProfile, updateConversation, updateMemory, updatePersonAccess, updateProductSetting,
   updateProviderCredential, updateDecisionProviderCredential, updateProviderPolicy, updateProviderProjectRouting, updateObservabilityCredential, updateConversationLifecycle, uploadConversationAttachments,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
@@ -59,7 +59,6 @@ import {
     composerDrafts.set(key, { text: recoveredText, attachments: recoveredAttachments });
     return true;
   }
-  let pendingPrivilegedAction = null;
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => undefined);
   function webAppStandalone() {
     return window.matchMedia?.('(display-mode: standalone)')?.matches === true || navigator.standalone === true;
@@ -114,31 +113,7 @@ import {
   function message(id, value = '') { const node = $(id); if (node) node.textContent = value; }
   function safeText(value, fallback = '') { return typeof value === 'string' && value.trim() ? value.trim() : fallback; }
   function date(value) { const time = Date.parse(value || ''); return Number.isFinite(time) ? new Date(time).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : ''; }
-  function ensureStepUpForm() {
-    const existing = $('step-up-form'); if (existing) return existing;
-    const before = $('username-form'); if (!before) throw new Error('AWH account surface is unavailable');
-    const form = document.createElement('form'); form.id = 'step-up-form'; form.className = 'account-form';
-    const title = document.createElement('h3'); title.textContent = 'โหมดผู้ดูแลขั้นสูง';
-    const copy = document.createElement('p'); copy.className = 'muted'; copy.textContent = 'AWH ขอรหัสผ่านซ้ำเฉพาะงานความเสี่ยงสูง เช่น ยกระดับเป็น Admin, จัดการ Secret หรือ Recovery เมื่อยืนยันแล้วโหมดผู้ดูแลขั้นสูงจะใช้ได้ 30 นาที';
-    const label = document.createElement('label'); label.htmlFor = 'step-up-password'; label.textContent = 'รหัสผ่านปัจจุบัน';
-    const password = document.createElement('input'); password.id = 'step-up-password'; password.type = 'password'; password.autocomplete = 'current-password';
-    const actions = document.createElement('div'); actions.className = 'form-actions';
-    const submit = document.createElement('button'); submit.type = 'submit'; submit.className = 'secondary-button'; submit.textContent = 'เปิดโหมดผู้ดูแลขั้นสูง';
-    const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'text-button'; cancel.id = 'step-up-cancel'; cancel.textContent = 'ยกเลิก';
-    actions.append(submit, cancel);
-    const result = document.createElement('p'); result.id = 'step-up-message'; result.className = 'form-message'; result.setAttribute('role', 'status');
-    form.append(title, copy, label, password, actions, result); before.before(form); return form;
-  }
-  async function withPrivilegedRetry(action, label = 'รายการสำคัญ') {
-    try { return await action(); }
-    catch (error) {
-      if (error?.code !== 'STEP_UP_REQUIRED') throw error;
-      await openAccount('account'); ensureStepUpForm();
-      message('step-up-message', `${label} ต้องยืนยันตัวตนเพิ่มเพียงครั้งเดียว จากนั้นโหมดผู้ดูแลขั้นสูงจะใช้ได้ 30 นาที`);
-      $('step-up-password')?.focus();
-      return await new Promise((resolve, reject) => { pendingPrivilegedAction = { action, resolve, reject, label }; });
-    }
-  }
+  async function withPrivilegedRetry(action) { return action(); }
   function selectedProject() { return state.control?.projects?.find((project) => project.projectId === state.selectedProjectId) || null; }
   function preferredProjectId(projects) {
     const available = new Set(projects.map((project) => project.projectId));
@@ -551,7 +526,7 @@ import {
         const controls=document.createElement('div'); controls.className='task-actions';
         if(school.verified){
           const revoke=document.createElement('button'); revoke.type='button'; revoke.className='text-button'; revoke.textContent='ยกเลิกการเชื่อม';
-          revoke.addEventListener('click',async()=>{if(!window.confirm('ยกเลิกการเชื่อม BAY ของ “'+person.displayName+'” ใช่หรือไม่?'))return;revoke.disabled=true;try{await withPrivilegedRetry(()=>revokeSchoolIdentity(person.userId),'การยกเลิกตัวตนโรงเรียน');await refreshSchoolAccessSurfaces();message('school-identity-message','ยกเลิกการเชื่อมแล้ว');}catch(error){message('school-identity-message',error instanceof Error?error.message:'ยังยกเลิกการเชื่อมไม่ได้');revoke.disabled=false;}});
+          revoke.addEventListener('click',async()=>{revoke.disabled=true;try{await withPrivilegedRetry(()=>revokeSchoolIdentity(person.userId),'การยกเลิกตัวตนโรงเรียน');await refreshSchoolAccessSurfaces();message('school-identity-message','ยกเลิกการเชื่อมแล้ว');}catch(error){message('school-identity-message',error instanceof Error?error.message:'ยังยกเลิกการเชื่อมไม่ได้');revoke.disabled=false;}});
           controls.append(revoke);
         } else {
           const select=document.createElement('select'); const blank=document.createElement('option');blank.value='';blank.textContent='เลือกบุคลากรจาก BAY';select.append(blank);
@@ -659,7 +634,6 @@ import {
       finally { field.value = ''; }
     });
     $('jev-credential-remove').addEventListener('click', async () => {
-      if (!window.confirm('ยกเลิกการเชื่อม Jev ใช่หรือไม่? AWH จะกลับไปใช้ routing เดิมทั้งหมด')) return;
       message('jev-message', 'กำลังยกเลิกการเชื่อม Jev…');
       try { const data = await withPrivilegedRetry(()=>updateDecisionProviderCredential('REMOVE'),'การลบ Jev credential'); state.decisionProvider = data.decisionProvider; renderDecisionProvider(); message('jev-message', 'ยกเลิก Jev แล้ว · AWH ใช้ routing เดิม'); }
       catch (error) { message('jev-message', error instanceof Error ? error.message : 'ยังยกเลิก Jev ไม่ได้'); }
@@ -1687,7 +1661,6 @@ import {
   }
   function openSheet(id) { const sheet = $(id); if (sheet) openAwhDialog(sheet); }
   function closeSheet(id, options = {}) {
-    if (id === 'account-sheet' && pendingPrivilegedAction) { const pending = pendingPrivilegedAction; pendingPrivilegedAction = null; pending.reject(new Error('ยกเลิกรายการแล้ว')); }
     const sheet = $(id); if (sheet) closeAwhDialog(sheet, options); if (id === 'artifact-sheet') clearArtifactWorkspace();
   }
   function openPasswordRecovery() {
@@ -1935,7 +1908,6 @@ import {
   });
   $('conversation-delete').addEventListener('click', async () => {
     const conversationId=state.selectedConversationId; const current=state.conversation?.conversation; if(!conversationId||!current)return;
-    if(!window.confirm(`ลบแชท “${current.title||'Work'}” หรือไม่? งานและไฟล์ผลลัพธ์ที่สร้างแล้วจะยังอยู่ และกู้คืนแชทได้จากถังขยะ`)) return;
     const button=$('conversation-delete'); button.disabled=true; message('conversation-title-message','กำลังลบแชท…');
     try { await updateConversationLifecycle(conversationId,'DELETE'); state.selectedConversationId=null; state.conversation=null; state.threadFollowLatest=true; await refreshDeletedConversations(); await refreshConversation(); message('conversation-title-message','ลบแชทแล้ว กู้คืนได้จากถังขยะ'); }
     catch(error){ message('conversation-title-message',error instanceof Error?error.message:'ยังลบแชทไม่ได้'); }
@@ -1980,7 +1952,6 @@ import {
     finally { field.value = ''; button.disabled = false; }
   });
   $('observability-credential-remove')?.addEventListener('click', async () => {
-    if (!window.confirm('หยุดส่ง telemetry ไป Honeycomb ใช่หรือไม่?')) return;
     message('observability-message', 'กำลังหยุดการเชื่อม…');
     try { const data = await withPrivilegedRetry(()=>updateObservabilityCredential('REMOVE'),'การยกเลิก Honeycomb'); state.observability = data.observability; renderObservability(); message('observability-message', 'หยุดการเชื่อมแล้ว และกำลังกลับสู่ local preflight'); refreshObservabilitySoon(); }
     catch (error) { message('observability-message', error instanceof Error ? error.message : 'ยังหยุดการเชื่อมไม่ได้'); }
@@ -2004,24 +1975,6 @@ import {
       $('old-password').value = ''; $('new-password').value = ''; $('confirm-password').value = '';
       message('password-message', 'บันทึกแล้ว กรุณาเข้าสู่ AWH อีกครั้ง'); setTimeout(() => window.location.reload(), 700);
     } catch (error) { message('password-message', error instanceof Error ? error.message : 'เปลี่ยนรหัสผ่านไม่สำเร็จ'); }
-  });
-
-  const stepUpForm = ensureStepUpForm();
-  stepUpForm.addEventListener('submit', async (event) => {
-    event.preventDefault(); const password = $('step-up-password'); message('step-up-message', 'กำลังยืนยันตัวตน…');
-    try {
-      const data = await stepUp(password.value); password.value = '';
-      const pending = pendingPrivilegedAction; pendingPrivilegedAction = null;
-      if (pending) {
-        message('step-up-message', `ยืนยันแล้ว · กำลังทำ ${pending.label} ต่อ…`);
-        try { pending.resolve(await pending.action()); } catch (error) { pending.reject(error); }
-      } else message('step-up-message', `เปิดโหมดผู้ดูแลขั้นสูงแล้ว ใช้ได้ถึง ${date(data.stepUpUntil)}`);
-    } catch (error) { message('step-up-message', error instanceof Error ? error.message : 'ยืนยันตัวตนไม่สำเร็จ'); }
-  });
-  $('step-up-cancel')?.addEventListener('click', () => {
-    const pending = pendingPrivilegedAction; pendingPrivilegedAction = null;
-    if (pending) pending.reject(new Error('ยกเลิกรายการแล้ว'));
-    $('step-up-password').value = ''; message('step-up-message', '');
   });
 
   $('product-settings-form').addEventListener('submit', async (event) => {
@@ -2057,7 +2010,7 @@ import {
         const copy = document.createElement('div'); const title = document.createElement('strong'); const detail = document.createElement('small');
         title.textContent = `Revision ${revision.revision}`; detail.textContent = `${date(revision.createdAt)} · ${brandHistorySummary(key, revision.value)}`; copy.append(title, detail); row.append(copy);
         const restore = document.createElement('button'); restore.type = 'button'; restore.className = 'text-button'; restore.textContent = 'ใช้ค่านี้';
-        restore.addEventListener('click', async () => { if (!confirm('ใช้ค่าจาก revision นี้เป็นค่าปัจจุบัน?')) return; restore.disabled = true; try { state.productSettings = (await updateProductSetting(key, revision.value)).settings; applyProductSettings(); await loadBrandHistory(); message('product-settings-message', 'คืนค่าจากประวัติแล้ว'); } catch (error) { message('product-settings-message', error instanceof Error ? error.message : 'ยังคืนค่าจากประวัติไม่ได้'); } finally { restore.disabled = false; } });
+        restore.addEventListener('click', async () => { restore.disabled = true; try { state.productSettings = (await updateProductSetting(key, revision.value)).settings; applyProductSettings(); await loadBrandHistory(); message('product-settings-message', 'คืนค่าจากประวัติแล้ว'); } catch (error) { message('product-settings-message', error instanceof Error ? error.message : 'ยังคืนค่าจากประวัติไม่ได้'); } finally { restore.disabled = false; } });
         row.append(restore); list.append(row);
       }
       if (!list.childElementCount) list.textContent = 'ยังไม่มีประวัติการเปลี่ยนค่านี้';

@@ -57,7 +57,22 @@ foreach (array_keys($seen) as $assetPath) {
     if (preg_match_all('/[?&]release=([A-Za-z0-9._-]{1,80})/', $content, $matches) === false) awh_web_release_fail('WEB_RELEASE_GRAPH_INVALID');
     foreach (($matches[1] ?? []) as $token) if (!hash_equals($manifestReleaseId, (string) $token)) awh_web_release_fail('WEB_RELEASE_GRAPH_MISMATCH');
 }
-foreach (['index.html','styles.css','awh-design-system.css','responsive-layout.css','app.js','navigation.js','dashboard.css','dashboard.js', 'hosting.html', 'hosting.css', 'hosting.js', 'panel.html', 'panel.css', 'panel.js','web-config.json','data.json','sw.js'] as $required) if (!isset($seen[$required])) awh_web_release_fail('WEB_RELEASE_REQUIRED_FILE_MISSING');
+foreach (['index.html','styles.css','awh-design-system.css','responsive-layout.css','app.js','navigation.js','dashboard.css','dashboard.js','control-plane-adapter.js','hosting.html','hosting.css','hosting.js','updates.html','updates.css','updates.js','panel.html','panel.css','panel.js','web-config.json','data.json','sw.js'] as $required) if (!isset($seen[$required])) awh_web_release_fail('WEB_RELEASE_REQUIRED_FILE_MISSING');
+
+$updatesModule = (string) file_get_contents($root . '/updates.js');
+$controlAdapter = (string) file_get_contents($root . '/control-plane-adapter.js');
+if (preg_match('/import\\s*\\{([^}]*)\\}\\s*from\\s*[\'"]\\.\\/control-plane-adapter\\.js\\?release=[A-Za-z0-9._-]{1,80}[\'"]/s', $updatesModule, $moduleImport) !== 1) awh_web_release_fail('WEB_RELEASE_MODULE_GRAPH_INVALID');
+$adapterExports = [];
+if (preg_match_all('/export\\s+(?:async\\s+)?function\\s+([A-Za-z0-9_]+)/', $controlAdapter, $functionExports) === false) awh_web_release_fail('WEB_RELEASE_MODULE_GRAPH_INVALID');
+if (preg_match_all('/export\\s+const\\s+([A-Za-z0-9_]+)/', $controlAdapter, $constExports) === false) awh_web_release_fail('WEB_RELEASE_MODULE_GRAPH_INVALID');
+foreach (array_merge($functionExports[1] ?? [], $constExports[1] ?? []) as $name) $adapterExports[(string)$name] = true;
+foreach (explode(',', (string)($moduleImport[1] ?? '')) as $rawImport) {
+    $rawImport = trim($rawImport); if ($rawImport === '') continue;
+    $parts = preg_split('/\\s+as\\s+/', $rawImport);
+    $name = trim((string)($parts[0] ?? ''));
+    if ($name === '' || !isset($adapterExports[$name])) awh_web_release_fail('WEB_RELEASE_MODULE_EXPORT_MISSING');
+}
+
 if ($expectedSourceSha !== null) {
     $config = json_decode((string) file_get_contents($root . '/web-config.json'), true);
     if (($config['sourceSha'] ?? null) !== $expectedSourceSha || ($config['sourceState'] ?? null) !== 'COMMITTED' || ($config['releaseId'] ?? null) !== $manifestReleaseId) awh_web_release_fail('WEB_RELEASE_SOURCE_MISMATCH');

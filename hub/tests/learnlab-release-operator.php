@@ -65,7 +65,7 @@ try{
     $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','source.promote','COMPLETED',NULL,NULL,1,NULL,:checkpoint,NULL,:at,:at)")->execute(['execution'=>$promoteExecution,'task'=>$promoteTask,'project'=>$project,'checkpoint'=>json_encode(['repository'=>'bay-learnlab','expectedMainSha'=>$sourceBase,'targetSha'=>$release,'bundleSha256'=>str_repeat('d',64),'releaseNotes'=>$releaseNotes],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$now]);
     $pdo->prepare('UPDATE control_sessions SET step_up_at=NULL WHERE session_hash=:hash')->execute(['hash'=>hash('sha256',$session['sessionToken'])]);
     $request=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$release,'runtimeVersion'=>$version],$now);
-    llr_assert(($request['state']??null)==='WAITING_FOR_APPROVAL','signed-in Owner can request LearnLab release without repeated password step-up');
+    llr_assert(($request['state']??null)==='WAITING_FOR_WORKER','signed-in Owner request goes directly to LearnLab worker queue without repeated password or approval prompts');
     $task=(string)$request['taskId'];$execution=(string)$request['executionId'];$approval=(string)$request['approvalId'];
 
     $executionRow=$pdo->query("SELECT state,executor_kind,required_capability,checkpoint_json,attempt_count FROM control_task_executions WHERE execution_id=".$pdo->quote($execution))->fetch();
@@ -76,17 +76,16 @@ try{
         &&$checkpoint['runtimeVersion']===$version&&$checkpoint['cacheEpoch']===69&&$checkpoint['expectedVaultRevisionId']===$vaultRevision,'checkpoint binds release/base/version/epoch/vault');
     llr_assert(!array_key_exists('command',$checkpoint)&&!array_key_exists('path',$checkpoint)&&!array_key_exists('script',$checkpoint),'browser checkpoint cannot inject shell or path');
 
-    $scope=json_decode((string)$pdo->query("SELECT scope_json FROM control_approvals WHERE approval_id=".$pdo->quote($approval))->fetchColumn(),true,16,JSON_THROW_ON_ERROR);
+    $approvalRow=$pdo->query("SELECT status,scope_json,decided_at FROM control_approvals WHERE approval_id=".$pdo->quote($approval))->fetch();
+    llr_assert(is_array($approvalRow)&&$approvalRow['status']==='APPROVED'&&is_string($approvalRow['decided_at']),'LearnLab Owner approval is captured automatically as audit evidence');
+    $scope=json_decode((string)$approvalRow['scope_json'],true,16,JSON_THROW_ON_ERROR);
     llr_assert(($scope['releaseSha']??null)===$release&&($scope['baseReleaseSha']??null)===$checkpoint['baseReleaseSha']
         &&($scope['runtimeVersion']??null)===$version&&($scope['cacheEpoch']??null)===69&&($scope['expectedVaultRevisionId']??null)===$vaultRevision,'approval scope freezes the exact release identity');
 
     $duplicate=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$release,'runtimeVersion'=>$version],$now);
     llr_assert(($duplicate['idempotent']??false)===true&&$duplicate['taskId']===$task,'same active LearnLab release request is idempotent');
 
-    $control=HubControlPlaneService::openExisting($db);
-    $decided=$control->decideApproval($session['sessionToken'],$session['csrfToken'],$approval,'APPROVED',$now);
-    llr_assert(($decided['status']??null)==='APPROVED','owner approval is recorded by canonical approval flow');
-    llr_assert($pdo->query("SELECT state FROM control_tasks WHERE task_id=".$pdo->quote($task))->fetchColumn()==='WAITING_FOR_WORKER','approved LearnLab release returns to canonical worker queue');
+    llr_assert($pdo->query("SELECT state FROM control_tasks WHERE task_id=".$pdo->quote($task))->fetchColumn()==='WAITING_FOR_WORKER','LearnLab release is already on the canonical worker queue');
 
     $fakeRunner=$root.'/awh-learnlab-release-run.php';$fakeEngine=$root.'/awh-learnlab-release-engine.py';
     file_put_contents($fakeRunner,"<?php\n");file_put_contents($fakeEngine,"#!/usr/bin/env python3\n");

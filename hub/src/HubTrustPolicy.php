@@ -18,15 +18,15 @@ final class HubTrustPolicy
         $decision = strtoupper((string)($context['decision'] ?? ''));
         return match ($action) {
             'hosting.site.create' => self::policy(self::LOW, false, false),
-            'hosting.site.deploy', 'hosting.site.rollback', 'hosting.site.disable', 'hosting.site.bind_domain', 'bay.remote_update.install' => self::policy(self::MEDIUM, true, false),
-            'hosting.site.delete', 'hosting.database.purge', 'hosting.backup.purge' => self::policy(self::CRITICAL, true, true),
-            'system.core.release', 'system.platform.release', 'system.learnlab.release', 'system.assessment.release' => self::policy(self::CRITICAL, true, false),
-            'account.user.create' => self::policy($role === 'ADMIN' ? self::HIGH : self::MEDIUM, false, $role === 'ADMIN'),
-            'account.request.review' => self::policy($decision === 'APPROVE' && $role === 'ADMIN' ? self::HIGH : self::MEDIUM, false, $decision === 'APPROVE' && $role === 'ADMIN'),
-            'account.user.access' => self::policy($role === 'ADMIN' ? self::HIGH : self::MEDIUM, true, $role === 'ADMIN'),
+            'hosting.site.deploy', 'hosting.site.rollback', 'hosting.site.disable', 'hosting.site.bind_domain', 'bay.remote_update.install' => self::policy(self::MEDIUM, false, false),
+            'system.core.release', 'system.platform.release', 'system.learnlab.release', 'system.assessment.release' => self::policy(self::CRITICAL, false, false),
+            'hosting.site.delete', 'hosting.database.purge', 'hosting.backup.purge' => self::policy(self::CRITICAL, true, false),
+            'account.user.create' => self::policy($role === 'ADMIN' ? self::HIGH : self::MEDIUM, false, false),
+            'account.request.review' => self::policy($decision === 'APPROVE' && $role === 'ADMIN' ? self::HIGH : self::MEDIUM, false, false),
+            'account.user.access' => self::policy($role === 'ADMIN' ? self::HIGH : self::MEDIUM, false, false),
             'account.user.revoke' => self::policy(self::MEDIUM, true, false),
-            'auth.recovery.codes', 'auth.owner.identity', 'provider.credential', 'cloud.credential', 'observability.credential', 'hosting.site.secrets', 'integration.command.credential' => self::policy(self::HIGH, true, true),
-            'provider.policy', 'provider.project.routing', 'database.read.sql' => self::policy(self::MEDIUM, true, false),
+            'auth.recovery.codes', 'auth.owner.identity', 'provider.credential', 'cloud.credential', 'observability.credential', 'hosting.site.secrets', 'integration.command.credential' => self::policy(self::HIGH, true, false),
+            'provider.policy', 'provider.project.routing', 'database.read.sql' => self::policy(self::MEDIUM, false, false),
             default => throw new HubTrustPolicyException('Unknown trust action'),
         };
     }

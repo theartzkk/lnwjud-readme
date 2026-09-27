@@ -1,4 +1,4 @@
-import { cancelTask, loadCloudStatus, loadControlData, loadProjectSourceAuthority, stepUp, submitCloudTask, updateCloudCredential } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { cancelTask, loadCloudStatus, loadControlData, loadProjectSourceAuthority, submitCloudTask, updateCloudCredential } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $ = (id) => document.getElementById(id);
 const ACTIVE = new Set(['QUEUED', 'WAITING_FOR_CAPABILITY', 'WAITING_FOR_WORKER', 'RUNNING', 'LEASED']);
@@ -90,12 +90,12 @@ async function stopTask(taskId, button) {
 }
 
 async function saveCredential() {
-  const password = $('cloud-owner-password')?.value || ''; const secret = $('cloud-credential')?.value || '';
-  if (!password || !secret) { message('cloud-setup-message', 'กรอกรหัสผ่าน Owner และ credential ให้ครบ', 'error'); return; }
+  const secret = $('cloud-credential')?.value || '';
+  if (!secret) { message('cloud-setup-message', 'กรอก credential ก่อน', 'error'); return; }
   const button = $('save-cloud-credential'); if (button instanceof HTMLButtonElement) button.disabled = true;
   try {
-    await stepUp(password); await updateCloudCredential('SET', secret);
-    if ($('cloud-owner-password')) $('cloud-owner-password').value = ''; if ($('cloud-credential')) $('cloud-credential').value = '';
+    await updateCloudCredential('SET', secret);
+    if ($('cloud-credential')) $('cloud-credential').value = '';
     message('cloud-setup-message', 'เชื่อม AWH Cloud แล้ว', 'success'); if ($('cloud-setup') instanceof HTMLDetailsElement) $('cloud-setup').open = false; await refresh({ quiet: true });
   } catch (error) { message('cloud-setup-message', error instanceof Error ? error.message : 'เชื่อม AWH Cloud ไม่สำเร็จ', 'error'); }
   finally { if (button instanceof HTMLButtonElement) button.disabled = false; }

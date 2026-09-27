@@ -77,7 +77,7 @@ try{
 
     $pdo->prepare('UPDATE control_sessions SET step_up_at=NULL WHERE session_hash=:hash')->execute(['hash'=>hash('sha256',$session['sessionToken'])]);
     $request=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$releaseSha,'runtimeVersion'=>$version],$now);
-    ar_assert(($request['state']??null)==='WAITING_FOR_APPROVAL','signed-in Owner can request Assessment release without repeated password step-up');
+    ar_assert(($request['state']??null)==='WAITING_FOR_WORKER','signed-in Owner request goes directly to Assessment worker queue without repeated password or approval prompts');
     $task=(string)$request['taskId'];$execution=(string)$request['executionId'];$approval=(string)$request['approvalId'];
 
     $executionRow=$pdo->query("SELECT state,executor_kind,required_capability,checkpoint_json FROM control_task_executions WHERE execution_id=".$pdo->quote($execution))->fetch();
@@ -91,10 +91,9 @@ try{
     $duplicate=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$releaseSha,'runtimeVersion'=>$version],$now);
     ar_assert(($duplicate['idempotent']??false)===true&&$duplicate['taskId']===$task,'same active Assessment release request is idempotent');
 
-    $control=HubControlPlaneService::openExisting($db);
-    $decided=$control->decideApproval($session['sessionToken'],$session['csrfToken'],$approval,'APPROVED',$now);
-    ar_assert(($decided['status']??null)==='APPROVED','owner approval follows canonical approval flow');
-    ar_assert($pdo->query("SELECT state FROM control_tasks WHERE task_id=".$pdo->quote($task))->fetchColumn()==='WAITING_FOR_WORKER','approval returns task to bounded worker queue');
+    $approvalRow=$pdo->query("SELECT status,decided_at FROM control_approvals WHERE approval_id=".$pdo->quote($approval))->fetch();
+    ar_assert(is_array($approvalRow)&&$approvalRow['status']==='APPROVED'&&is_string($approvalRow['decided_at']),'Assessment Owner approval is captured automatically as audit evidence');
+    ar_assert($pdo->query("SELECT state FROM control_tasks WHERE task_id=".$pdo->quote($task))->fetchColumn()==='WAITING_FOR_WORKER','Assessment release is already on the bounded worker queue');
 
     $engineSource=(string)file_get_contents(dirname(__DIR__,2).'/deploy/assessment/awh-assessment-release-engine.py');
     ar_assert(str_contains($engineSource,'def normalize_canonical_permissions():')&&str_contains($engineSource,"'/usr/bin/setfacl','-m','g::rwx,m::rwx,d:g::rwx,d:m::rwx'")&&str_contains($engineSource,"'config','--system','--add','safe.directory',str(CANON)")&&str_contains($engineSource,'normalize_canonical_permissions()'),'Assessment canonical Git creation and reuse self-heal source-promotion permissions');

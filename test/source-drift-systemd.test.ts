@@ -77,6 +77,10 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(drift, /PENDING_RELEASE/);
   assert.match(drift, /AWH execution context runtime drift/);
   assert.match(drift, /AWH working context drift/);
+  assert.match(drift, /AWH web source provenance drift/);
+  assert.match(drift, /AWH web runtime\/manifest drift/);
+  assert.match(drift, /updates\.js.*web\/updates\.js/s);
+  assert.match(drift, /control-plane-adapter\.js.*web\/control-plane-adapter\.js/s);
   assert.match(drift, /teacher-evaluation/);
   assert.match(drift, /FIELD_PROOF/);
   assert.match(drift, /projectClass\(\$row\)!=='PRODUCTION'/);
