@@ -29,12 +29,12 @@ async function exists(path: string): Promise<boolean> {
 
 export async function discoverLnwjudLaunchSpec(platform: NodeJS.Platform = process.platform, home = homedir(), env: NodeJS.ProcessEnv = process.env): Promise<LnwjudLaunchSpec | null> {
   if (platform === 'darwin') {
-    const candidates = [
-      join(home, '.awh', 'bin', 'awh-mcp-stdio'),
-      join(home, 'Library', 'Application Support', 'AWH', 'DeviceRuntime', 'awh-mcp-stdio'),
-      join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'lnwjud', 'current', 'Contents', 'Resources', 'lnwjud-mcp-stdio'),
+    const candidates: LnwjudLaunchSpec[] = [
+      { command: join(home, '.awh', 'bin', 'awh-mcp-stdio'), argsPrefix: [] },
+      { command: join(home, 'Library', 'Application Support', 'AWH', 'DeviceRuntime', 'awh-mcp-stdio'), argsPrefix: [] },
+      { command: join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'lnwjud', 'current', 'Contents', 'MacOS', 'AWH Device Runtime'), argsPrefix: ['--mcp-stdio'] },
     ];
-    for (const command of candidates) if (await exists(command)) return { command, argsPrefix: [] };
+    for (const candidate of candidates) if (await exists(candidate.command)) return candidate;
     return null;
   }
   if (platform === 'win32') {

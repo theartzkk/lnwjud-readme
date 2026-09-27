@@ -22,7 +22,9 @@ grep -q 'pendingProcessError' "$PKG/dist/terminal-manager.js"
 grep -q 'DC_REMOTE_DEVICE' "$PKG/dist/index.js"
 [ -x "$BRIDGE" ] || { echo 'device_bridge=FAIL'; exit 1; }
 grep -q 'AWH_DEVICE_RUNTIME_HEADLESS=1' "$BRIDGE"
-grep -q 'lnwjud-mcp-stdio' "$BRIDGE"
+grep -q 'DeviceRuntime/device-runtime' "$BRIDGE"
+grep -q 'Contents/MacOS/AWH Device Runtime' "$BRIDGE"
+grep -q -- '--mcp-stdio' "$BRIDGE"
 plutil -lint "$PLIST" >/dev/null
 MODE=absent
 if [ -f "$SESSION" ]; then MODE="$(stat -f '%Lp' "$SESSION")"; [ "$MODE" = 600 ] || { echo "session_mode=FAIL:$MODE"; exit 1; }; fi

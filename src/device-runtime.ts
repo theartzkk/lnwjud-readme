@@ -68,7 +68,6 @@ export async function discoverAwhDeviceRuntime(options: DeviceRuntimeProbeOption
   const guiMcpCandidates = platform === 'darwin' ? [
     join(home, '.awh', 'bin', 'awh-mcp-stdio'),
     join(home, 'Library', 'Application Support', 'AWH', 'DeviceRuntime', 'awh-mcp-stdio'),
-    join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'lnwjud', 'current', 'Contents', 'Resources', 'lnwjud-mcp-stdio'),
   ] : [];
   let guiMcpCommand: string | null = null;
   for (const candidate of guiMcpCandidates) {

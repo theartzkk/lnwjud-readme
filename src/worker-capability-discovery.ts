@@ -94,14 +94,10 @@ export async function discoverWorkerTools(options: WorkerToolProbeOptions = {}):
       join(home, 'Library', 'Application Support', 'AWH', 'RemoteWorker', 'runtime', 'node_modules', '.bin', 'desktop-commander'),
       join(home, '.local', 'share', 'bay-remote', 'node_modules', '.bin', 'desktop-commander'),
     ] : [];
-    const guiCandidates = [
-      '/Applications/lnwjud.app/Contents/MacOS/lnwjud',
-      ...(home ? [join(home, '.kruart', 'ai-control', 'kui')] : []),
-    ];
+    const guiCandidates = home ? [join(home, '.kruart', 'ai-control', 'kui')] : [];
     const runtimeCandidates = home ? [
       join(home, '.awh', 'bin', 'awh-mcp-stdio'),
       join(home, 'Library', 'Application Support', 'AWH', 'DeviceRuntime', 'awh-mcp-stdio'),
-      join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'lnwjud', 'current', 'Contents', 'Resources', 'lnwjud-mcp-stdio'),
     ] : [];
     const runtimeReady = await anyPath(runtimeCandidates, pathAvailable);
     const systemReady = await anyPath(systemCandidates, pathAvailable);
