@@ -27,5 +27,6 @@ ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['web/app.js','hub/src/Hu
 ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['config/execution-policy.json','web/app.js'])===null,'true mixed AWH and VPS Platform change-set is rejected');
 ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['scripts/qa/test-singleflight.mjs','test/test-singleflight.test.mjs'])==='vps-platform','QA singleflight infrastructure is VPS Platform-owned');
 ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['scripts/ops/run-release-qa-isolated.sh','test/bounded-deploy-mission.test.ts'])==='vps-platform','isolated release QA runner and mission contract are VPS Platform-owned');
+ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['config/continuous-improvement-policy.json','config/kruart-engineering-eval.json','hub/src/HubVerificationIntelligence.php','hub/tests/verification-intelligence.php'])==='vps-platform','continuous improvement policy, classifier and eval authority are VPS Platform-owned');
 ep(!isset($p['policyFamilies'])&&!isset($p['planBeforeCall'])&&!isset($p['quotaAware']),'retired owner-model fields are absent');
 echo "AWH Execution Context: PASS\n";
