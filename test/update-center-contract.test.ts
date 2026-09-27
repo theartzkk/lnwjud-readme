@@ -452,3 +452,50 @@ test('Update Center streams canonical release progress in real time with bounded
   assert.match(remote,/report_deploy_stage "\$1"/);
   assert.match(remote,/\|\| true/);
 });
+
+test('Update Center keeps AWH LINE Gateway and BAY Excuse LINE OA as two permanent release targets', async()=>{
+  const [registry,contract,service,script,css]=await Promise.all([
+    readFile(join(ROOT,'hub/src/HubUpdateTargetRegistry.php'),'utf8'),
+    readFile(join(ROOT,'config/ecosystem-release-contract.json'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+    readFile(join(ROOT,'web/updates.css'),'utf8'),
+  ]);
+  const release=JSON.parse(contract);
+  const awh=release.releaseTracks['awh-line-gateway'];
+  const bay=release.releaseTracks['line-oa'];
+  assert.equal(awh.sourceAuthority,'AWH_VAULT');
+  assert.equal(awh.repository,null);
+  assert.equal(awh.domain,'line.kruart.online');
+  assert.equal(awh.deploymentAdapter,'MANAGED_HOSTING');
+  assert.equal(bay.repository,'bay-excuse-x');
+  assert.equal(bay.packageTrack,'line-oa');
+  assert.equal(bay.deploymentAdapter,'BAY_UPDATE_CENTER');
+  for(const field of ['dataOwner','permissionScope','observabilityScope','secretScope'])assert.notEqual(awh[field],bay[field]);
+  assert.match(registry,/'awh-line-gateway'.*'sourceAuthority'=>'AWH_VAULT'.*'siteId'=>'ed911e13-ccfa-44d9-8214-6425cb252240'.*'domain'=>'line\.kruart\.online'/s);
+  assert.match(registry,/'line-oa'.*'repository'=>'bay-excuse-x'.*'packageTrack'=>'line-oa'.*'secretScope'=>'BAY_EXCUSE_LINE_OA'/s);
+  assert.match(registry,/public static function releaseGroups/);
+  assert.match(registry,/'approvalMode'=>'SINGLE_OWNER_STEP_UP'/);
+  assert.match(registry,/'orchestration'=>'SEQUENTIAL_VERIFY_EACH'/);
+  assert.match(registry,/'historyScope'=>'PER_TARGET'/);
+  assert.match(registry,/'rollbackScope'=>'PER_TARGET'/);
+  assert.match(service,/'key'=>\$isAwhLineGateway\?'awh-line-gateway'/);
+  assert.match(service,/'bay-excuse-line-oa'.*'releaseTrack'=>'line-oa'.*'group'=>'line-oa'/s);
+  assert.match(service,/managedSiteReleaseHistory/);
+  assert.match(service,/projectVaultPackageVersion/);
+  assert.match(script,/'line-oa':\{label:'LINE OA'/);
+  assert.match(script,/function renderTargetHistory/);
+  assert.match(script,/function lineOaTargets/);
+  assert.match(script,/async function updateLineOaBundle/);
+  assert.match(script,/awh-line-gateway/);
+  assert.match(script,/bay-excuse-line-oa/);
+  assert.match(script,/await managedSiteAction\(awh\.siteId,'deploy'\)/);
+  assert.match(script,/await waitForAwhLineGateway/);
+  assert.match(script,/await waitForBayLineOa/);
+  assert.match(script,/currentBay\.releaseTrack\)!=='line-oa'/);
+  assert.match(script,/อัปเดต LINE OA ทั้งชุด/);
+  const bundle=script.slice(script.indexOf('async function updateLineOaBundle'),script.indexOf('async function refreshAgent'));
+  assert.equal((bundle.match(/await stepUp\(password\)/g)||[]).length,1);
+  assert.doesNotMatch(bundle,/requestCoreRelease|requestPlatformRelease|bay-excuse-core|vps-platform/);
+  assert.match(css,/update-group\[data-group="line-oa"\]/);
+});

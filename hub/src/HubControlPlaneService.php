@@ -356,10 +356,33 @@ final class HubControlPlaneService
             } elseif (!in_array((string) ($site['state'] ?? ''), ['READY','DRAFT'], true)) {
                 $state = 'UPDATING'; $reason = 'Hosting กำลังดำเนินการ';
             }
+            $isAwhLineGateway=$projectId==='124ae148-3ed1-4e45-8f50-75ff45a39e5c'||(string)($site['siteId']??'')==='ed911e13-ccfa-44d9-8214-6425cb252240';
+            $currentAppVersion=$isAwhLineGateway?$this->projectVaultPackageVersion($projectId,$deployedRevision):null;
+            $candidateAppVersion=$isAwhLineGateway?$this->projectVaultPackageVersion($projectId,$activeRevision):null;
             $items[] = [
-                'key'=>'hosting-'.(string)$site['siteId'],'projectId'=>$projectId,'name'=>(string)($site['name'] ?? $site['projectName'] ?? 'เว็บไซต์'),
-                'kind'=>'HOSTING','adapter'=>'MANAGED_HOSTING','state'=>$state,'current'=>$deployedRevision,'candidate'=>$activeRevision,
-                'approvalRequired'=>false,'siteId'=>(string)$site['siteId'],'actionable'=>$state==='UPDATE_AVAILABLE','reason'=>$reason,'url'=>$site['url'] ?? null,
+                'key'=>$isAwhLineGateway?'awh-line-gateway':'hosting-'.(string)$site['siteId'],
+                'projectId'=>$projectId,
+                'name'=>$isAwhLineGateway?'AWH LINE OA / KRUART LINE Gateway':(string)($site['name'] ?? $site['projectName'] ?? 'เว็บไซต์'),
+                'kind'=>$isAwhLineGateway?'INTEGRATION':'HOSTING','adapter'=>'MANAGED_HOSTING',
+                'group'=>$isAwhLineGateway?'line-oa':null,
+                'releaseTrack'=>$isAwhLineGateway?'awh-line-gateway':null,
+                'sourceAuthority'=>$isAwhLineGateway?'AWH_VAULT':null,
+                'state'=>$state,'current'=>$isAwhLineGateway?($currentAppVersion??$deployedRevision):$deployedRevision,
+                'candidate'=>$isAwhLineGateway?($candidateAppVersion??$activeRevision):$activeRevision,
+                'currentSourceRevision'=>$isAwhLineGateway?$deployedRevision:null,
+                'candidateSourceRevision'=>$isAwhLineGateway?$activeRevision:null,
+                'approvalRequired'=>$isAwhLineGateway,
+                'siteId'=>(string)$site['siteId'],'actionable'=>$state==='UPDATE_AVAILABLE','reason'=>$reason,'url'=>$site['url'] ?? null,
+                'domain'=>$isAwhLineGateway?'line.kruart.online':null,
+                'healthPath'=>$isAwhLineGateway?'/healthz':null,
+                'webhookPath'=>$isAwhLineGateway?'/webhook':null,
+                'secretScope'=>$isAwhLineGateway?'KRUART_LINE_GATEWAY':null,
+                'currentReleaseId'=>$site['currentReleaseId']??null,
+                'rollbackReleaseId'=>$site['rollbackReleaseId']??null,
+                'hostingState'=>$isAwhLineGateway?($site['state']??null):null,
+                'lastEvent'=>$isAwhLineGateway&&is_array($site['lastEvent']??null)?$site['lastEvent']:null,
+                'history'=>$isAwhLineGateway?$this->managedSiteReleaseHistory((string)$site['siteId']):[],
+                'historyAuthority'=>$isAwhLineGateway?'MANAGED_HOSTING':null,
             ];
         }
 
@@ -369,14 +392,16 @@ final class HubControlPlaneService
             $name = (string) $project['name'];
             if ($name === 'BAY EXCUSE X') {
                 foreach ([
-                    ['key'=>'bay-excuse','name'=>'BAY EXCUSE X','kind'=>'SYSTEM','releaseTrack'=>'bay-excuse-core','sourceReleaseTrack'=>'bay-excuse-x'],
-                    ['key'=>'line-oa','name'=>'LINE OA','kind'=>'INTEGRATION','releaseTrack'=>'line-oa','sourceReleaseTrack'=>'line-oa'],
-                    ['key'=>'bay-cooperative','name'=>'BAY Cooperative Center','kind'=>'PRODUCT','releaseTrack'=>'cooperative-center','sourceReleaseTrack'=>'bay-cooperative'],
+                    ['key'=>'bay-excuse','name'=>'BAY EXCUSE X','kind'=>'SYSTEM','releaseTrack'=>'bay-excuse-core','sourceReleaseTrack'=>'bay-excuse-x','group'=>null,'sourceAuthority'=>'BAY_UPDATE_INBOX','secretScope'=>null],
+                    ['key'=>'bay-excuse-line-oa','name'=>'BAY Excuse LINE OA','kind'=>'INTEGRATION','releaseTrack'=>'line-oa','sourceReleaseTrack'=>'line-oa','group'=>'line-oa','sourceAuthority'=>'BAY_UPDATE_INBOX','secretScope'=>'BAY_EXCUSE_LINE_OA'],
+                    ['key'=>'bay-cooperative','name'=>'BAY Cooperative Center','kind'=>'PRODUCT','releaseTrack'=>'cooperative-center','sourceReleaseTrack'=>'bay-cooperative','group'=>null,'sourceAuthority'=>'BAY_UPDATE_INBOX','secretScope'=>null],
                 ] as $bayTrack) {
                     $items[] = [
                         'key'=>$bayTrack['key'],'projectId'=>$projectId,'name'=>$bayTrack['name'],'kind'=>$bayTrack['kind'],'adapter'=>'BAY_UPDATE_CENTER',
-                        'releaseTrack'=>$bayTrack['releaseTrack'],'sourceReleaseTrack'=>$bayTrack['sourceReleaseTrack'],
+                        'group'=>$bayTrack['group'],'releaseTrack'=>$bayTrack['releaseTrack'],'sourceReleaseTrack'=>$bayTrack['sourceReleaseTrack'],
+                        'sourceAuthority'=>$bayTrack['sourceAuthority'],'secretScope'=>$bayTrack['secretScope'],
                         'state'=>'REMOTE_CHECK_REQUIRED','current'=>null,'candidate'=>null,'approvalRequired'=>false,'actionable'=>false,
+                        'history'=>[],'historyAuthority'=>'BAY_UPDATE_CENTER:'.$bayTrack['releaseTrack'],
                         'reason'=>'ตรวจรุ่นและแพ็กเกจของ '.$bayTrack['name'].' จาก BAY Update Inbox แบบ signed browser relay',
                     ];
                 }
@@ -527,6 +552,7 @@ final class HubControlPlaneService
         }
         return [
             'schemaVersion'=>1,'generatedAt'=>self::timestamp($now ?? gmdate('c')),'summary'=>$summary,'items'=>$items,
+            'releaseGroups'=>HubUpdateTargetRegistry::releaseGroups(),
             'roadmap'=>is_array($core['roadmap'] ?? null)?$core['roadmap']:[],
             'history'=>is_array($core['history'] ?? null)?$core['history']:[],
             'infrastructure'=>[
@@ -547,6 +573,36 @@ final class HubControlPlaneService
                 'singleLatestCandidate'=>true,'stalePendingRelease'=>'AUTO_SUPERSEDE_BEFORE_LEASE','humanShaRequired'=>false,'runtimeCoherenceRequired'=>true,'releaseDetailsRequired'=>true,
                 'releaseTrackScopedDeployOwnership'=>true,'hostGlobalReleaseTrack'=>'vps-platform','mutationDecisionAuthority'=>'AWH_EXECUTION_GATE','projectMissionIsCoordinationOnly'=>true],
         ];
+    }
+
+    private function projectVaultPackageVersion(string $projectId,mixed $revisionId): ?string
+    {
+        if(!is_string($revisionId)||preg_match('/^[0-9a-f-]{36}$/i',$revisionId)!==1)return null;
+        try{
+            $file=$this->vaults->vault()->readText($projectId,strtolower($revisionId),'package.json');
+            if(($file['truncated']??true)===true)return null;
+            $package=json_decode((string)($file['content']??''),true,16,JSON_THROW_ON_ERROR);
+            $version=is_array($package)&&is_string($package['version']??null)?trim((string)$package['version']):'';
+            return preg_match('/^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$/',$version)===1?$version:null;
+        }catch(Throwable){return null;}
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function managedSiteReleaseHistory(string $siteId,int $limit=8): array
+    {
+        if(preg_match('/^[0-9a-f-]{36}$/i',$siteId)!==1)return [];
+        $limit=max(1,min(20,$limit));
+        $q=$this->pdo->prepare('SELECT release_id,vault_revision_id,content_sha256,state,created_at,activated_at,retired_at FROM control_site_releases WHERE site_id=:site ORDER BY created_at DESC,release_id DESC LIMIT '.$limit);
+        $q->execute(['site'=>strtolower($siteId)]);
+        return array_map(static fn(array $row):array=>[
+            'releaseId'=>(string)$row['release_id'],
+            'sourceRevision'=>(string)$row['vault_revision_id'],
+            'contentSha256'=>(string)$row['content_sha256'],
+            'state'=>(string)$row['state'],
+            'createdAt'=>(string)$row['created_at'],
+            'activatedAt'=>$row['activated_at']===null?null:(string)$row['activated_at'],
+            'retiredAt'=>$row['retired_at']===null?null:(string)$row['retired_at'],
+        ],$q->fetchAll());
     }
 
     /** @return array{message:?string,occurredAt:string,state:string,progress:int}|null */

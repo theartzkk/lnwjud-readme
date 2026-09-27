@@ -63,15 +63,17 @@ function itemNeedsAttention(item){
 }
 const updateGroupMeta={
   'core-control':{label:'แกนระบบและโครงสร้าง',description:'AWH, AWH Agent และ VPS Platform'},
+  'line-oa':{label:'LINE OA',description:'สองระบบอิสระ · AWH Owner Chat และ BAY Excuse สำหรับโรงเรียน'},
   'school-systems':{label:'ระบบงานโรงเรียน',description:'BAY และระบบงานภายในโรงเรียน'},
-  'channels-public':{label:'ช่องทางและเว็บไซต์',description:'LINE OA และระบบสาธารณะ'},
+  'channels-public':{label:'ช่องทางและเว็บไซต์',description:'เว็บไซต์และช่องทางสาธารณะอื่น'},
 };
 function updateGroup(item){
   if(typeof item?.group==='string'&&updateGroupMeta[item.group])return item.group;
   const key=String(item?.key||'').toLowerCase();
   const kind=String(item?.kind||'').toUpperCase();
   if(['vps-platform','awh-core','awh-agent'].includes(key)||['PLATFORM','CORE','AGENT'].includes(kind))return 'core-control';
-  if(key==='line-oa'||['INTEGRATION','HOSTING'].includes(kind))return 'channels-public';
+  if(['awh-line-gateway','bay-excuse-line-oa'].includes(key))return 'line-oa';
+  if(['INTEGRATION','HOSTING'].includes(kind))return 'channels-public';
   return 'school-systems';
 }
 function runtimeState(){
@@ -212,8 +214,14 @@ function technicalDetails(item){
   const details=document.createElement('details');details.className='update-technical';
   const summary=document.createElement('summary');summary.textContent='รายละเอียดทางเทคนิค';
   const values=[adapterLabel(item.adapter),item.current?'current '+short(item.current):null,item.candidate?'candidate '+short(item.candidate):null];
+  if(item.releaseTrack)values.push('track '+item.releaseTrack);
+  if(item.sourceAuthority)values.push('source '+item.sourceAuthority);
+  if(item.currentReleaseId)values.push('release '+item.currentReleaseId);
   if(item.runtimeState)values.push('runtime '+item.runtimeState);
   if(item.rollbackReleaseId)values.push('rollback '+item.rollbackReleaseId);
+  if(item.domain)values.push('domain '+item.domain);
+  if(item.webhookPath)values.push('webhook '+item.webhookPath);
+  if(item.secretScope)values.push('secret scope '+item.secretScope);
   details.append(summary,meta(...values));
   if(item.runtimeComponents&&typeof item.runtimeComponents==='object'){
     const componentValues=Object.entries(item.runtimeComponents).map(([key,value])=>value?key+' '+String(value):null);
@@ -305,6 +313,29 @@ function renderReleaseNotes(item,host){
   details.append(body);host.append(details);
 }
 
+function renderTargetHistory(item,host){
+  if(updateGroup(item)!=='line-oa')return;
+  const details=document.createElement('details');details.className='target-history';
+  const summary=document.createElement('summary');summary.textContent='ประวัติของ '+item.name;
+  const body=document.createElement('div');body.className='target-history-body';
+  const rows=Array.isArray(item.history)?item.history:[];
+  if(rows.length){
+    for(const row of rows.slice(0,6)){
+      const entry=document.createElement('div');entry.className='target-history-row';
+      const strong=document.createElement('strong');strong.textContent=String(row.releaseId||row.version||row.state||'release');
+      const small=document.createElement('small');
+      const when=row.activatedAt||row.createdAt||row.updatedAt;
+      small.textContent=[String(row.state||''),when?new Date(when).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'}):''].filter(Boolean).join(' · ');
+      entry.append(strong,small);body.append(entry);
+    }
+  }else{
+    const p=document.createElement('p');
+    p.textContent='ประวัติของ target นี้แยกจาก LINE OA อีกตัว และอ่านจาก '+String(item.historyAuthority||'release authority ของระบบนี้')+' เท่านั้น';
+    body.append(p);
+  }
+  details.append(summary,body);host.append(details);
+}
+
 function itemVisible(item){
   if(attentionOnly&&!itemNeedsAttention(item))return false;
   if(searchTerm){
@@ -365,6 +396,13 @@ function renderCard(item){
   title.append(h3,chip);main.append(title);
   const version=releaseText(item);
   if(version){const line=document.createElement('div');line.className='update-version';line.textContent=version;main.append(line);}
+  if(item.key==='awh-line-gateway'||item.key==='bay-excuse-line-oa'){
+    const role=document.createElement('p');role.className='update-target-role';
+    role.textContent=item.key==='awh-line-gateway'
+      ?'Owner Chat · line.kruart.online · Webhook /webhook'
+      :'ครู · ผู้ปกครอง · Parent Connect · Rich Menu · LIFF · สหกรณ์';
+    main.append(role);
+  }
   const reason=document.createElement('p');reason.className='update-reason';reason.textContent=item.reason||'กำลังตรวจ';main.append(reason);
   if(item.runtimeState==='SPLIT'){
     const warn=document.createElement('div');warn.className='runtime-warning';
@@ -373,6 +411,7 @@ function renderCard(item){
   }
   renderReleaseNotes(item,main);
   renderDevices(item,main);
+  renderTargetHistory(item,main);
   main.append(technicalDetails(item));
   const actions=document.createElement('div');actions.className='update-actions';
   if(item.adapter==='PLATFORM_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(actionButton('อัปเดต VPS',()=>updatePlatform(item)));
@@ -391,7 +430,7 @@ function renderCard(item){
 function render(){
   const host=$('update-list');host.replaceChildren();
   const visible=(center?.items||[]).filter(itemVisible);
-  for(const groupKey of ['core-control','school-systems','channels-public']){
+  for(const groupKey of ['core-control','line-oa','school-systems','channels-public']){
     const rows=visible.filter((item)=>updateGroup(item)===groupKey);
     if(!rows.length)continue;
     const section=document.createElement('section');section.className='update-group';section.dataset.group=groupKey;
@@ -399,8 +438,21 @@ function render(){
     const title=document.createElement('div');
     const h2=document.createElement('h2');h2.textContent=updateGroupMeta[groupKey].label;
     const p=document.createElement('p');p.textContent=updateGroupMeta[groupKey].description;
-    const count=document.createElement('span');count.textContent=rows.length+' ระบบ';
-    title.append(h2,p);head.append(title,count);
+    title.append(h2,p);
+    const headActions=document.createElement('div');headActions.className='update-group-head-actions';
+    const count=document.createElement('span');count.className='update-group-count';count.textContent=rows.length+' ระบบ';
+    headActions.append(count);
+    if(groupKey==='line-oa'){
+      const exactKeys=new Set(rows.map((item)=>item.key));
+      const exactTargets=exactKeys.has('awh-line-gateway')&&exactKeys.has('bay-excuse-line-oa')&&rows.length===2;
+      const safeStates=exactTargets&&rows.every((item)=>item.state==='CURRENT'||(item.state==='UPDATE_AVAILABLE'&&item.actionable===true));
+      const hasUpdate=rows.some((item)=>item.state==='UPDATE_AVAILABLE'&&item.actionable===true);
+      const button=actionButton('อัปเดต LINE OA ทั้งชุด',updateLineOaBundle,'secondary-button update-group-action');
+      button.disabled=!safeStates||!hasUpdate||refreshing;
+      button.title=exactTargets?'ยืนยัน Owner ครั้งเดียว แล้วอัปเดตและ verify สอง target ทีละตัว':'รอให้ LINE OA ครบสอง release targets';
+      headActions.append(button);
+    }
+    head.append(title,headActions);
     const list=document.createElement('div');list.className='update-group-list';
     for(const item of rows)list.append(renderCard(item));
     section.append(head,list);host.append(section);
@@ -591,6 +643,131 @@ async function refreshBay(){
     for(const item of items){item.state='BLOCKED';item.actionable=false;item.reason=friendly(error);}
   }
   render();
+}
+
+const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
+
+function lineOaTargets(){
+  const group=center?.releaseGroups?.['line-oa'];
+  const contractTargets=Array.isArray(group?.targets)?group.targets:[];
+  const exactContract=group?.approvalMode==='SINGLE_OWNER_STEP_UP'
+    &&group?.orchestration==='SEQUENTIAL_VERIFY_EACH'
+    &&group?.historyScope==='PER_TARGET'
+    &&group?.rollbackScope==='PER_TARGET'
+    &&contractTargets.length===2
+    &&contractTargets.some((row)=>row?.itemKey==='awh-line-gateway'&&row?.releaseTrack==='awh-line-gateway')
+    &&contractTargets.some((row)=>row?.itemKey==='bay-excuse-line-oa'&&row?.releaseTrack==='line-oa');
+  if(!exactContract)throw Object.assign(new Error('LINE OA orchestration contract ไม่พร้อม'),{code:'LINE_OA_BOUNDARY_INVALID'});
+  const awh=(center?.items||[]).find((item)=>item.key==='awh-line-gateway')||null;
+  const bay=(center?.items||[]).find((item)=>item.key==='bay-excuse-line-oa')||null;
+  if(!awh||!bay)throw Object.assign(new Error('LINE OA targets ยังไม่ครบสองระบบ'),{code:'LINE_OA_TARGETS_INCOMPLETE'});
+  if(awh.adapter!=='MANAGED_HOSTING'||awh.releaseTrack!=='awh-line-gateway'||bay.adapter!=='BAY_UPDATE_CENTER'||bay.releaseTrack!=='line-oa'){
+    throw Object.assign(new Error('LINE OA release boundary ไม่ตรงกับ registry'),{code:'LINE_OA_BOUNDARY_INVALID'});
+  }
+  return {awh,bay};
+}
+
+async function waitForAwhLineGateway(targetRevision,previousReleaseId){
+  const deadline=Date.now()+120000;
+  while(Date.now()<deadline){
+    const snapshot=await loadUpdateCenter();
+    center=snapshot;
+    const item=(snapshot.items||[]).find((row)=>row.key==='awh-line-gateway');
+    if(!item)throw Object.assign(new Error('AWH LINE Gateway หายจาก Update Center'),{code:'LINE_OA_TARGETS_INCOMPLETE'});
+    const hostingState=String(item.hostingState||'').toUpperCase();
+    const eventState=String(item.lastEvent?.state||'').toUpperCase();
+    if(item.state==='BLOCKED'||['FAILED','ERROR','DISABLED'].includes(hostingState)||eventState==='FAILED'){
+      throw Object.assign(new Error(item.lastEvent?.message||item.reason||'AWH LINE Gateway verify ไม่ผ่าน'),{code:'LINE_OA_AWH_VERIFY_FAILED'});
+    }
+    const revision=String(item.currentSourceRevision||'');
+    const releaseChanged=!previousReleaseId||String(item.currentReleaseId||'')!==String(previousReleaseId);
+    if(item.state==='CURRENT'&&revision===targetRevision&&releaseChanged){render();return item;}
+    localOperation={name:'LINE OA · AWH Gateway',progress:35,message:'ติดตั้ง AWH LINE Gateway แล้ว กำลัง verify release ของ target นี้'};
+    render();
+    await sleep(1500);
+  }
+  throw Object.assign(new Error('AWH LINE Gateway ยังยืนยัน release ใหม่ไม่ได้ภายในเวลาที่กำหนด'),{code:'LINE_OA_AWH_VERIFY_TIMEOUT'});
+}
+
+async function bayLineStatus(){
+  const bridge=await loadBayRemoteUpdateStatus();
+  return relayBayRemoteCommand(bridge.endpoint,bridge.statusRelay);
+}
+
+async function waitForBayLineOa(target){
+  const deadline=Date.now()+180000;
+  while(Date.now()<deadline){
+    const status=await bayLineStatus();
+    const track=status?.releaseTracks?.['line-oa'];
+    const version=String(track?.currentVersion||'');
+    const sourceSha=String(track?.sourceSha||'').toLowerCase();
+    if(version===target.version&&sourceSha===String(target.sourceSha||'').toLowerCase()){
+      bayLive=status;
+      localOperation={name:'LINE OA · BAY Excuse',progress:92,message:'BAY Excuse LINE OA verify ผ่านแล้ว'};
+      await refreshBay();
+      return track;
+    }
+    if(status?.preflight?.ready===false)throw Object.assign(new Error('BAY Excuse LINE OA preflight ไม่พร้อมหลังติดตั้ง'),{code:'LINE_OA_BAY_VERIFY_FAILED'});
+    localOperation={name:'LINE OA · BAY Excuse',progress:78,message:'กำลัง verify version และ source SHA ของ BAY Excuse LINE OA'};
+    renderProgress();
+    await sleep(2000);
+  }
+  throw Object.assign(new Error('BAY Excuse LINE OA ยังยืนยัน version/source ไม่ได้ภายในเวลาที่กำหนด'),{code:'LINE_OA_BAY_VERIFY_TIMEOUT'});
+}
+
+async function updateLineOaBundle(){
+  const {awh,bay}=lineOaTargets();
+  if(['UPDATING','WAITING_FOR_APPROVAL'].includes(awh.state)||['UPDATING','WAITING_FOR_APPROVAL'].includes(bay.state)){
+    throw Object.assign(new Error('มี LINE OA target กำลังอัปเดตอยู่แล้ว'),{code:'LINE_OA_UPDATE_IN_PROGRESS'});
+  }
+  const awhNeedsUpdate=awh.state==='UPDATE_AVAILABLE'&&awh.actionable===true;
+  const bayNeedsUpdate=bay.state==='UPDATE_AVAILABLE'&&bay.actionable===true&&bay.release;
+  if(!awhNeedsUpdate&&!bayNeedsUpdate){message('LINE OA ทั้งสอง target เป็นรุ่นล่าสุดแล้ว');return;}
+
+  const password=await askStepUp();
+  await stepUp(password);
+  let awhVerified=!awhNeedsUpdate;
+  try{
+    localOperation={name:'LINE OA ทั้งชุด',progress:8,message:'Owner ยืนยันแล้ว · เริ่มสอง release targets แบบแยก lifecycle'};
+    renderProgress();
+
+    if(awhNeedsUpdate){
+      const targetRevision=String(awh.candidateSourceRevision||'');
+      if(!/^[0-9a-f-]{36}$/i.test(targetRevision))throw Object.assign(new Error('AWH LINE Gateway candidate revision ไม่ถูกต้อง'),{code:'LINE_OA_BOUNDARY_INVALID'});
+      const previousReleaseId=awh.currentReleaseId||null;
+      localOperation={name:'LINE OA · AWH Gateway',progress:18,message:'กำลังอัปเดต AWH LINE Gateway ผ่าน Managed Hosting เท่านั้น'};
+      renderProgress();
+      await managedSiteAction(awh.siteId,'deploy');
+      await waitForAwhLineGateway(targetRevision,previousReleaseId);
+      awhVerified=true;
+    }
+
+    await refresh();
+    await refreshBay();
+    const currentBay=(center?.items||[]).find((item)=>item.key==='bay-excuse-line-oa');
+    const bayTarget=currentBay?.release;
+    if(currentBay?.state==='UPDATE_AVAILABLE'&&currentBay.actionable===true&&bayTarget){
+      if(String(currentBay.releaseTrack)!=='line-oa')throw Object.assign(new Error('BAY LINE package ไม่อยู่ track line-oa'),{code:'LINE_OA_BOUNDARY_INVALID'});
+      localOperation={name:'LINE OA · BAY Excuse',progress:58,message:'AWH LINE verify ผ่านแล้ว · กำลังอัปเดต BAY Excuse LINE OA เท่านั้น'};
+      renderProgress();
+      const relay=await createBayRemoteInstallRelay({targetVersion:bayTarget.version,targetSha:bayTarget.sourceSha,packageSha256:bayTarget.packageSha256});
+      try{await relayBayRemoteCommand(relay.endpoint,relay.relay);}
+      catch(error){if(error?.code!=='BAY_INSTALL_OUTCOME_UNKNOWN')throw error;}
+      await waitForBayLineOa(bayTarget);
+    }
+
+    localOperation={name:'LINE OA ทั้งชุด',progress:100,message:'ตรวจครบแล้ว · สอง target ยังคงมี version/history/rollback แยกจากกัน'};
+    message('LINE OA ทั้งชุดตรวจเสร็จแล้ว — แต่ละ target ถูกอัปเดตและ verify แยกกัน');
+    await refresh();
+  }catch(error){
+    localOperation=null;
+    try{await refresh();await refreshBay();}catch{}
+    const prefix=awhVerified?'หยุดที่ target ถัดไป — AWH LINE ที่ verify แล้วคง release ของตัวเองไว้ · ':'หยุดก่อนเริ่ม target ถัดไป — ';
+    throw Object.assign(new Error(prefix+(error?.message||'LINE OA update ไม่ผ่าน')),{code:error?.code||'LINE_OA_GROUP_FAILED'});
+  }finally{
+    localOperation=null;
+    renderProgress();
+  }
 }
 
 async function refreshAgent(){

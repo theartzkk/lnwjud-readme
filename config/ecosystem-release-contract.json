@@ -61,6 +61,27 @@
       "independentRollback": true,
       "ownerApprovalRequired": true
     },
+    "awh-line-gateway": {
+      "name": "AWH LINE OA / KRUART LINE Gateway",
+      "kind": "INTEGRATION",
+      "repository": null,
+      "sourceAuthority": "AWH_VAULT",
+      "projectId": "124ae148-3ed1-4e45-8f50-75ff45a39e5c",
+      "siteId": "ed911e13-ccfa-44d9-8214-6425cb252240",
+      "domain": "line.kruart.online",
+      "healthPath": "/healthz",
+      "webhookPath": "/webhook",
+      "secretScope": "KRUART_LINE_GATEWAY",
+      "productionRef": null,
+      "deploymentAdapter": "MANAGED_HOSTING",
+      "dataOwner": "AWH_LINE_GATEWAY",
+      "permissionScope": "AWH_LINE_GATEWAY",
+      "observabilityScope": "awh-line-gateway",
+      "independentVersion": true,
+      "independentHistory": true,
+      "independentRollback": true,
+      "ownerApprovalRequired": true
+    },
     "bay-excuse-x": {
       "name": "BAY EXCUSE X",
       "kind": "SYSTEM",
@@ -77,19 +98,20 @@
       "ownerApprovalRequired": true
     },
     "line-oa": {
-      "name": "LINE OA",
+      "name": "BAY Excuse LINE OA",
       "kind": "INTEGRATION",
       "repository": "bay-excuse-x",
       "productionRef": null,
       "packageTrack": "line-oa",
       "deploymentAdapter": "BAY_UPDATE_CENTER",
-      "dataOwner": "LINE_OA_GATEWAY",
-      "permissionScope": "LINE_OA",
-      "observabilityScope": "line-oa",
+      "dataOwner": "BAY_EXCUSE_LINE_OA",
+      "permissionScope": "BAY_EXCUSE_LINE_OA",
+      "observabilityScope": "bay-excuse-line-oa",
       "independentVersion": true,
       "independentHistory": true,
       "independentRollback": true,
-      "ownerApprovalRequired": true
+      "ownerApprovalRequired": true,
+      "secretScope": "BAY_EXCUSE_LINE_OA"
     },
     "bay-cooperative": {
       "name": "BAY Cooperative Center",
@@ -164,13 +186,34 @@
     }
   },
   "products": {
-    "awh": {"project": "Art’s Workspace Hub", "kind": "CORE"},
-    "bay-excuse-x": {"project": "BAY EXCUSE X", "kind": "SYSTEM"},
-    "bay-hub": {"project": "BAY Hub", "kind": "HUB"},
-    "bay-learnlab": {"project": "BAY LearnLab", "kind": "PRODUCT"},
-    "bay-assessment": {"project": "BAY Assessment", "kind": "PRODUCT"},
-    "school-website": {"project": "เว็บไซต์โรงเรียน", "kind": "HOSTING"},
-    "bay-computer-lab": {"project": "BAY Computer Lab", "kind": "SYSTEM"}
+    "awh": {
+      "project": "Art’s Workspace Hub",
+      "kind": "CORE"
+    },
+    "bay-excuse-x": {
+      "project": "BAY EXCUSE X",
+      "kind": "SYSTEM"
+    },
+    "bay-hub": {
+      "project": "BAY Hub",
+      "kind": "HUB"
+    },
+    "bay-learnlab": {
+      "project": "BAY LearnLab",
+      "kind": "PRODUCT"
+    },
+    "bay-assessment": {
+      "project": "BAY Assessment",
+      "kind": "PRODUCT"
+    },
+    "school-website": {
+      "project": "เว็บไซต์โรงเรียน",
+      "kind": "HOSTING"
+    },
+    "bay-computer-lab": {
+      "project": "BAY Computer Lab",
+      "kind": "SYSTEM"
+    }
   },
   "rules": {
     "productionRebuildForbidden": true,
@@ -186,6 +229,33 @@
     "observabilityScopePerTrackRequired": true,
     "rollbackScopePerTrackRequired": true,
     "registryDrivenUpdateCenter": true,
-    "updateCenterLayoutMutationForNewTrackForbidden": true
+    "updateCenterLayoutMutationForNewTrackForbidden": true,
+    "groupOrchestrationPreservesIndependentTargets": true,
+    "implicitCrossTrackReleaseForbidden": true
+  },
+  "releaseGroups": {
+    "line-oa": {
+      "name": "LINE OA",
+      "targets": [
+        {
+          "itemKey": "awh-line-gateway",
+          "releaseTrack": "awh-line-gateway"
+        },
+        {
+          "itemKey": "bay-excuse-line-oa",
+          "releaseTrack": "line-oa"
+        }
+      ],
+      "approvalMode": "SINGLE_OWNER_STEP_UP",
+      "orchestration": "SEQUENTIAL_VERIFY_EACH",
+      "failurePolicy": "STOP_ON_TARGET_FAILURE",
+      "historyScope": "PER_TARGET",
+      "rollbackScope": "PER_TARGET",
+      "forbiddenImplicitTargets": [
+        "awh",
+        "vps-platform",
+        "bay-excuse-x"
+      ]
+    }
   }
 }

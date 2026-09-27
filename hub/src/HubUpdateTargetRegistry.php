@@ -46,6 +46,14 @@ final class HubUpdateTargetRegistry
                 'capability'=>'system.agent.release','deployResource'=>'CANONICAL:DEPLOY:AWH_AGENT',
                 'versionPrefix'=>'Agent','ownerApprovalRequired'=>true,'hostGlobal'=>false,
             ],
+            'awh-line-gateway'=>[
+                'name'=>'AWH LINE OA / KRUART LINE Gateway','kind'=>'INTEGRATION','repository'=>null,
+                'sourceAuthority'=>'AWH_VAULT','projectId'=>'124ae148-3ed1-4e45-8f50-75ff45a39e5c',
+                'siteId'=>'ed911e13-ccfa-44d9-8214-6425cb252240','domain'=>'line.kruart.online',
+                'healthPath'=>'/healthz','webhookPath'=>'/webhook','secretScope'=>'KRUART_LINE_GATEWAY',
+                'productionRef'=>null,'capability'=>'hosting.site.deploy','deployResource'=>'RESOURCE:HOSTING',
+                'versionPrefix'=>'LINE Gateway','ownerApprovalRequired'=>true,'hostGlobal'=>false,
+            ],
             'bay-excuse-x'=>[
                 'name'=>'BAY EXCUSE X','kind'=>'SYSTEM','repository'=>'bay-excuse-x',
                 'sourceRef'=>'refs/heads/main','productionRef'=>null,'packageTrack'=>'bay-excuse-core',
@@ -53,10 +61,11 @@ final class HubUpdateTargetRegistry
                 'versionPrefix'=>'BAY','ownerApprovalRequired'=>true,'hostGlobal'=>false,
             ],
             'line-oa'=>[
-                'name'=>'LINE OA','kind'=>'INTEGRATION','repository'=>'bay-excuse-x',
+                'name'=>'BAY Excuse LINE OA','kind'=>'INTEGRATION','repository'=>'bay-excuse-x',
                 'sourceRef'=>'refs/heads/main','productionRef'=>null,'packageTrack'=>'line-oa',
+                'secretScope'=>'BAY_EXCUSE_LINE_OA',
                 'capability'=>'bay.remote_update.install','deployResource'=>'CANONICAL:DEPLOY:LINE_OA',
-                'versionPrefix'=>'LINE','ownerApprovalRequired'=>true,'hostGlobal'=>false,
+                'versionPrefix'=>'BAY LINE','ownerApprovalRequired'=>true,'hostGlobal'=>false,
             ],
             'bay-cooperative'=>[
                 'name'=>'BAY Cooperative Center','kind'=>'PRODUCT','repository'=>'bay-excuse-x',
@@ -93,6 +102,26 @@ final class HubUpdateTargetRegistry
                 'sourceRef'=>'refs/heads/main','productionRef'=>null,
                 'capability'=>'project.mutate.deploy','deployResource'=>'CANONICAL:DEPLOY:PROJECT',
                 'versionPrefix'=>'Hub','ownerApprovalRequired'=>true,'hostGlobal'=>false,
+            ],
+        ];
+    }
+
+    /** @return array<string,array<string,mixed>> */
+    public static function releaseGroups(): array
+    {
+        return [
+            'line-oa'=>[
+                'name'=>'LINE OA',
+                'targets'=>[
+                    ['itemKey'=>'awh-line-gateway','releaseTrack'=>'awh-line-gateway'],
+                    ['itemKey'=>'bay-excuse-line-oa','releaseTrack'=>'line-oa'],
+                ],
+                'approvalMode'=>'SINGLE_OWNER_STEP_UP',
+                'orchestration'=>'SEQUENTIAL_VERIFY_EACH',
+                'failurePolicy'=>'STOP_ON_TARGET_FAILURE',
+                'historyScope'=>'PER_TARGET',
+                'rollbackScope'=>'PER_TARGET',
+                'forbiddenImplicitTargets'=>['awh','vps-platform','bay-excuse-x'],
             ],
         ];
     }
@@ -196,10 +225,13 @@ final class HubUpdateTargetRegistry
     private static function awhPathReleaseTrack(string $path): string
     {
         $sharedExact=[
+            'config/ecosystem-release-contract.json',
             'hub/src/HubControlPlaneRouter.php',
             'hub/src/HubControlPlaneService.php',
+            'hub/src/HubUpdateTargetRegistry.php',
             'web/control-plane-adapter.js',
             'web/updates.js',
+            'test/ecosystem-platform-hardening.test.ts',
             'test/update-center-contract.test.ts',
             'test/web-preview.test.ts',
         ];
