@@ -141,7 +141,7 @@ final class HubUpdateTargetRegistry
             $tracks[$track]=true;
             if(count($tracks)>1)return null;
         }
-        return count($tracks)===1?(string)array_key_first($tracks):null;
+        return count($tracks)===1?(string)array_key_first($tracks):($tracks===[]?'bay-excuse-x':null);
     }
 
     private static function bayPathReleaseTrack(string $path): string
@@ -149,6 +149,7 @@ final class HubUpdateTargetRegistry
         $sharedExact=[
             'VERSION','RELEASE_TRACK',
             'app/Controllers/RemoteUpdateController.php',
+            'app/Core/CoreReleaseTrackState.php',
             'app/Core/IntegrationManager.php',
             'app/Core/PackageManager.php',
             'app/Core/RuntimeMigrations.php',
@@ -163,24 +164,31 @@ final class HubUpdateTargetRegistry
             'tools/ci/build-update-package.py',
             'tools/ci/run-release-source-validation.sh',
             'tools/ci/validate-deployment-scope.sh',
+            'tools/qa/cooperative-release-track-contract.php',
+            'tools/qa/line-oa-release-track-contract.php',
         ];
         if(in_array($path,$sharedExact,true))return 'shared';
         $lower=strtolower($path);
-        if(str_starts_with($lower,'app/resources/line-richmenu/'))return 'line-oa';
         if(
-            str_contains($lower,'cooperative')||str_contains($lower,'/coop-')||
+            str_contains($lower,'cooperative')||preg_match('#(?:^|/)coop[-_/]#',$lower)===1||
             str_starts_with($lower,'views/cooperative/')||
+            str_starts_with($lower,'views/layouts/cooperative')||
             str_starts_with($lower,'assets/bay-coop')||
+            str_starts_with($lower,'assets/cooperative')||
             str_starts_with($lower,'templates/cooperative')
         )return 'bay-cooperative';
+        $base=strtolower(basename($path));
         if(
-            str_contains($lower,'line-oa')||str_contains($lower,'line_webhook')||
-            str_contains($lower,'line-webhook')||str_contains($lower,'/line')||
+            str_starts_with($lower,'app/resources/line-richmenu/')||
+            str_starts_with($lower,'assets/line-')||
+            str_starts_with($lower,'assets/parent-connect')||
+            str_starts_with($lower,'views/parent-connect/')||
             str_starts_with($lower,'line-webhook.php')||
             str_starts_with($lower,'liff-workspace')||
             str_starts_with($lower,'parent-connect')||
-            str_starts_with($lower,'assets/line-')||
-            str_starts_with($lower,'assets/parent-connect')
+            str_contains($base,'richmenu')||
+            preg_match('#(?:^|/)(?:line|liff)[-_]#',$lower)===1||
+            preg_match('/(?:line|parentconnect)[a-z0-9_-]*\.(?:php|js|css)$/',$base)===1
         )return 'line-oa';
         return 'bay-excuse-x';
     }

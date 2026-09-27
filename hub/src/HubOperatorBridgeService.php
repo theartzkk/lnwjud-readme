@@ -572,12 +572,22 @@ final class HubOperatorBridgeService
     /** @param array<string,mixed> $remote @return array<string,mixed> */
     private function bayProductionSourceParity(array $remote): array
     {
-        $deployed=strtolower(trim((string)($remote['deployedSha']??'')));
-        if(preg_match('/^[a-f0-9]{40}$/',$deployed)!==1)return ['ready'=>false,'deployedSha'=>$deployed?:null,'projectionSha'=>null,'sourceRevision'=>null,'reason'=>'UNRESOLVED'];
         try{$canonical=$this->bayCanonicalSourceIdentity();}
-        catch(Throwable){return ['ready'=>false,'deployedSha'=>$deployed,'projectionSha'=>null,'sourceRevision'=>null,'reason'=>'PROJECTION_UNAVAILABLE'];}
+        catch(Throwable){return ['ready'=>false,'deployedSha'=>null,'projectionSha'=>null,'sourceRevision'=>null,'releaseTrack'=>null,'reason'=>'PROJECTION_UNAVAILABLE'];}
+        $packageTrack='bay-excuse-core';$sourceTrack='bay-excuse-x';
+        try{
+            $project=$this->resolveProject('BAY EXCUSE X');
+            $notes=$this->releaseDetailsForSourceSha((string)$project['project_id'],'bay-excuse-x',$canonical['sourceRevision']);
+            $candidate=is_array($notes)?strtolower(trim((string)($notes['releaseTrack']??''))):'';
+            if(in_array($candidate,['bay-excuse-x','line-oa','bay-cooperative'],true))$sourceTrack=$candidate;
+            $packageTrack=match($sourceTrack){'line-oa'=>'line-oa','bay-cooperative'=>'cooperative-center',default=>'bay-excuse-core'};
+        }catch(Throwable){}
+        $track=is_array($remote['releaseTracks'][$packageTrack]??null)?$remote['releaseTracks'][$packageTrack]:[];
+        $deployed=strtolower(trim((string)($track['sourceSha']??'')));
+        if($deployed===''&&$packageTrack==='bay-excuse-core')$deployed=strtolower(trim((string)($remote['deployedSha']??'')));
+        if(preg_match('/^[a-f0-9]{40}$/',$deployed)!==1)return ['ready'=>false,'deployedSha'=>$deployed?:null,'projectionSha'=>$canonical['projectionSha'],'sourceRevision'=>$canonical['sourceRevision'],'releaseTrack'=>$packageTrack,'sourceReleaseTrack'=>$sourceTrack,'reason'=>'UNRESOLVED'];
         $ready=hash_equals($canonical['sourceRevision'],$deployed);
-        return ['ready'=>$ready,'deployedSha'=>$deployed,'projectionSha'=>$canonical['projectionSha'],'sourceRevision'=>$canonical['sourceRevision'],'reason'=>$ready?'MATCH':'SOURCE_REVISION_DRIFT'];
+        return ['ready'=>$ready,'deployedSha'=>$deployed,'projectionSha'=>$canonical['projectionSha'],'sourceRevision'=>$canonical['sourceRevision'],'releaseTrack'=>$packageTrack,'sourceReleaseTrack'=>$sourceTrack,'reason'=>$ready?'MATCH':'SOURCE_REVISION_DRIFT'];
     }
 
     /** @return array{projectionSha:string,sourceRevision:string} */
@@ -611,24 +621,38 @@ final class HubOperatorBridgeService
         $zip=new ZipArchive();if($zip->open($sourceReal,ZipArchive::RDONLY|ZipArchive::CHECKCONS)!==true)throw new HubOperatorBridgeException('Staged BAY package is invalid','OPERATOR_BAY_PACKAGE_NOT_READY');
         try{$raw=$zip->getFromName('manifest.json');if(!is_string($raw))throw new HubOperatorBridgeException('Staged BAY manifest is missing','OPERATOR_BAY_PACKAGE_NOT_READY');$manifest=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(HubOperatorBridgeException $e){$zip->close();throw $e;}catch(Throwable){$zip->close();throw new HubOperatorBridgeException('Staged BAY manifest is invalid','OPERATOR_BAY_PACKAGE_NOT_READY');}$zip->close();
         if(!is_array($manifest)||($manifest['type']??null)!=='core'||($manifest['version']??null)!==$version||strtolower((string)($manifest['source_commit']??''))!==$sha)throw new HubOperatorBridgeException('Staged BAY manifest identity mismatch','OPERATOR_BAY_PACKAGE_NOT_READY');
+        $releaseTrack=strtolower(trim((string)($manifest['release_track']??'bay-excuse-core')));
+        $filePrefixes=['bay-excuse-core'=>'bay-excuse-x-core','cooperative-center'=>'bay-cooperative-center','line-oa'=>'bay-line-oa'];
+        if(!isset($filePrefixes[$releaseTrack]))throw new HubOperatorBridgeException('BAY package release track is not allowlisted','OPERATOR_BAY_PACKAGE_NOT_READY');
         $gate=$this->projectGate('BAY EXCUSE X',$at,true,'bay.remote_update.stage');if(($gate['ready']??false)!==true||($gate['productionReady']??false)!==true)throw new HubOperatorBridgeException('BAY project gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');$projectId=(string)($gate['project']['projectId']??'');
         $this->assertBayCanonicalTarget($sha);
-        $authority=$this->acquireMutationAuthority($projectId,'Guarded BAY stage '.$version,'bay.remote_update.stage',['targetVersion'=>$version,'targetSha'=>$sha,'packageSha256'=>$packageSha],$at);$success=false;$destination=null;
+        $releaseNotes=$this->releaseDetailsForSourceSha($projectId,'bay-excuse-x',$sha);
+        $sourceTrack=is_array($releaseNotes)?strtolower(trim((string)($releaseNotes['releaseTrack']??''))):'';
+        $expectedTrack=match($sourceTrack){'line-oa'=>'line-oa','bay-cooperative'=>'cooperative-center',default=>'bay-excuse-core'};
+        if($releaseTrack!==$expectedTrack)throw new HubOperatorBridgeException('BAY package release track does not match canonical source ownership','OPERATOR_BAY_PACKAGE_NOT_READY');
+        $authority=$this->acquireMutationAuthority($projectId,'Guarded BAY stage '.$releaseTrack.' '.$version,'bay.remote_update.stage',['releaseTrack'=>$releaseTrack,'targetVersion'=>$version,'targetSha'=>$sha,'packageSha256'=>$packageSha],$at);$success=false;$destination=null;
         try{
             $bay=new HubBayRemoteUpdateService();$statusEnvelope=$bay->status($at);$before=($this->poster)((string)$statusEnvelope['endpoint'],(array)$statusEnvelope['statusRelay']);
             if(($before['ok']??false)!==true||(($before['preflight']['ready']??false)!==true)||(($before['maintenance']['active']??false)===true))throw new HubOperatorBridgeException('BAY Production preflight is not ready','OPERATOR_BAY_PREFLIGHT_BLOCKED');
-            $current=(string)($before['currentVersion']??'');$deployed=strtolower((string)($before['deployedSha']??''));$from=(string)($manifest['from_version']??'');$base=strtolower((string)($manifest['source_base_commit']??''));
-            if($current===''||$from!==$current||version_compare($version,$current,'<=')||preg_match('/^[a-f0-9]{40}$/',$deployed)!==1||$base===''||!hash_equals($deployed,$base))throw new HubOperatorBridgeException('BAY package baseline does not match Production','OPERATOR_BAY_BASELINE_MISMATCH');
+            $trackState=is_array($before['releaseTracks'][$releaseTrack]??null)?$before['releaseTracks'][$releaseTrack]:[];
+            $current=(string)($trackState['currentVersion']??'');
+            $deployed=strtolower((string)($trackState['sourceSha']??''));
+            if($releaseTrack==='bay-excuse-core'){
+                if($current==='')$current=(string)($before['currentVersion']??'');
+                if($deployed==='')$deployed=strtolower((string)($before['deployedSha']??''));
+            }
+            $from=(string)($manifest['from_version']??'');$base=strtolower((string)($manifest['source_base_commit']??''));
+            if($current===''||$from!==$current||version_compare($version,$current,'<=')||preg_match('/^[a-f0-9]{40}$/',$deployed)!==1||$base===''||!hash_equals($deployed,$base))throw new HubOperatorBridgeException('BAY '.$releaseTrack.' package baseline does not match Production track','OPERATOR_BAY_BASELINE_MISMATCH');
             $safeVersion=preg_replace('/[^0-9A-Za-z._+-]+/','-',$version);if(!is_string($safeVersion)||$safeVersion==='')throw new HubOperatorBridgeException('BAY package version is invalid','OPERATOR_REQUEST_INVALID');
-            $destination=$inboxReal.'/bay-excuse-x-core-'.$safeVersion.'-'.substr($sha,0,12).'.zip';$tmp=$inboxReal.'/.awh-stage-'.$packageSha.'.tmp';
+            $destination=$inboxReal.'/'.$filePrefixes[$releaseTrack].'-'.$safeVersion.'-'.substr($sha,0,12).'.zip';$tmp=$inboxReal.'/.awh-stage-'.$packageSha.'.tmp';
             if(is_link($destination)||is_dir($destination)||file_exists($tmp)||is_link($tmp))throw new HubOperatorBridgeException('BAY Update Inbox destination is not clean','OPERATOR_BAY_STAGE_CONFLICT');
             $input=@fopen($sourceReal,'rb');$output=@fopen($tmp,'xb');if(!is_resource($input)||!is_resource($output)){if(is_resource($input))fclose($input);if(is_resource($output))fclose($output);@unlink($tmp);throw new HubOperatorBridgeException('BAY package could not be staged','OPERATOR_BAY_STAGE_UNAVAILABLE');}
             $copied=stream_copy_to_stream($input,$output,self::MAX_BAY_PACKAGE_BYTES+1);@fflush($output);if(function_exists('fsync'))@fsync($output);fclose($input);fclose($output);
             if(!is_int($copied)||$copied!==$size||!@chmod($tmp,0640)||!hash_equals($packageSha,(string)hash_file('sha256',$tmp))||!@rename($tmp,$destination)){@unlink($tmp);@unlink($destination);throw new HubOperatorBridgeException('BAY package staging verification failed','OPERATOR_BAY_STAGE_FAILED');}
             $afterEnvelope=$bay->status(gmdate('c'));$after=($this->poster)((string)$afterEnvelope['endpoint'],(array)$afterEnvelope['statusRelay']);$matched=false;
-            foreach((array)($after['packages']??[]) as $row){if(is_array($row)&&($row['version']??null)===$version&&strtolower((string)($row['sourceSha']??''))===$sha&&strtolower((string)($row['packageSha256']??''))===$packageSha&&($row['installable']??false)===true){$matched=true;break;}}
+            foreach((array)($after['packages']??[]) as $row){if(is_array($row)&&($row['version']??null)===$version&&strtolower((string)($row['releaseTrack']??'bay-excuse-core'))===$releaseTrack&&strtolower((string)($row['sourceSha']??''))===$sha&&strtolower((string)($row['packageSha256']??''))===$packageSha&&($row['installable']??false)===true){$matched=true;break;}}
             if(!$matched){@unlink($destination);$destination=null;throw new HubOperatorBridgeException('BAY Update Inbox did not accept exact package','OPERATOR_BAY_PACKAGE_NOT_READY');}
-            $success=true;return ['schemaVersion'=>1,'state'=>'STAGED','gate'=>$gate,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'leaseExpiresAt'=>$authority['leaseExpiresAt']],'package'=>['filename'=>basename($destination),'version'=>$version,'sourceSha'=>$sha,'packageSha256'=>$packageSha,'sizeBytes'=>$size],'before'=>['version'=>$current,'deployedSha'=>$deployed],'observedAt'=>$at];
+            $success=true;return ['schemaVersion'=>1,'state'=>'STAGED','gate'=>$gate,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'leaseExpiresAt'=>$authority['leaseExpiresAt']],'package'=>['filename'=>basename($destination),'releaseTrack'=>$releaseTrack,'version'=>$version,'sourceSha'=>$sha,'packageSha256'=>$packageSha,'sizeBytes'=>$size],'before'=>['releaseTrack'=>$releaseTrack,'version'=>$current,'deployedSha'=>$deployed],'observedAt'=>$at];
         }finally{if(!$success&&is_string($destination)&&is_file($destination))@unlink($destination);$this->releaseMutationAuthority($authority,$success,gmdate('c'));}
     }
 
@@ -644,20 +668,31 @@ final class HubOperatorBridgeService
         $releaseNotes=$this->releaseDetailsForSourceSha($projectId,'bay-excuse-x',$sha);
         if(!HubUpdateTargetRegistry::releaseDetailsReady($releaseNotes))
             throw new HubOperatorBridgeException('BAY release details are required before install','OPERATOR_RELEASE_DETAILS_REQUIRED');
-        $authority=$this->acquireMutationAuthority($projectId,'Guarded BAY install '.$version,'bay.remote_update.install',['targetVersion'=>$version,'targetSha'=>$sha,'packageSha256'=>$packageSha,'releaseNotes'=>$releaseNotes],$at);
+        $sourceTrack=strtolower(trim((string)($releaseNotes['releaseTrack']??'')));
+        $expectedTrack=match($sourceTrack){'line-oa'=>'line-oa','bay-cooperative'=>'cooperative-center',default=>'bay-excuse-core'};
+        $authority=$this->acquireMutationAuthority($projectId,'Guarded BAY install '.$expectedTrack.' '.$version,'bay.remote_update.install',['releaseTrack'=>$expectedTrack,'targetVersion'=>$version,'targetSha'=>$sha,'packageSha256'=>$packageSha,'releaseNotes'=>$releaseNotes],$at);
         $success=false;
         try {
             $bay=new HubBayRemoteUpdateService(); $statusEnvelope=$bay->status($at); $before=($this->poster)((string)$statusEnvelope['endpoint'],(array)$statusEnvelope['statusRelay']);
             if (($before['ok']??false)!==true || (($before['preflight']['ready']??false)!==true) || (($before['maintenance']['active']??false)===true)) throw new HubOperatorBridgeException('BAY Production preflight is not ready','OPERATOR_BAY_PREFLIGHT_BLOCKED');
-            $package=null; foreach((array)($before['packages']??[]) as $row){if(!is_array($row))continue;if(($row['version']??null)===$version&&strtolower((string)($row['sourceSha']??''))===$sha&&strtolower((string)($row['packageSha256']??''))===$packageSha&&($row['installable']??false)===true){$package=$row;break;}}
-            if(!is_array($package)) throw new HubOperatorBridgeException('Exact BAY package is not installable in Update Inbox','OPERATOR_BAY_PACKAGE_NOT_READY');
+            $package=null; foreach((array)($before['packages']??[]) as $row){if(!is_array($row))continue;if(($row['version']??null)===$version&&strtolower((string)($row['releaseTrack']??'bay-excuse-core'))===$expectedTrack&&strtolower((string)($row['sourceSha']??''))===$sha&&strtolower((string)($row['packageSha256']??''))===$packageSha&&($row['installable']??false)===true){$package=$row;break;}}
+            if(!is_array($package)) throw new HubOperatorBridgeException('Exact BAY release-track package is not installable in Update Inbox','OPERATOR_BAY_PACKAGE_NOT_READY');
             $signed=$bay->installRelay($version,$sha,$packageSha,$at); $result=($this->poster)((string)$signed['endpoint'],(array)$signed['relay']);
             if (($result['ok']??false)!==true) throw new HubOperatorBridgeException('BAY PackageManager rejected install','OPERATOR_BAY_INSTALL_FAILED');
             $afterEnvelope=$bay->status(gmdate('c'));$after=($this->poster)((string)$afterEnvelope['endpoint'],(array)$afterEnvelope['statusRelay']);
             if(($after['ok']??false)!==true)throw new HubOperatorBridgeException('BAY post-install status is unavailable','OPERATOR_BAY_INSTALL_FAILED');
             $this->assertBayProductionSourceParity($after);
+            $beforeTrack=is_array($before['releaseTracks'][$expectedTrack]??null)?$before['releaseTracks'][$expectedTrack]:[];
+            $afterTrack=is_array($after['releaseTracks'][$expectedTrack]??null)?$after['releaseTracks'][$expectedTrack]:[];
+            $afterVersion=(string)($afterTrack['currentVersion']??'');
+            $afterSha=strtolower((string)($afterTrack['sourceSha']??''));
+            if($expectedTrack==='bay-excuse-core'){
+                if($afterVersion==='')$afterVersion=(string)($after['currentVersion']??'');
+                if($afterSha==='')$afterSha=strtolower((string)($after['deployedSha']??''));
+            }
+            if($afterVersion!==$version||!hash_equals($sha,$afterSha))throw new HubOperatorBridgeException('BAY release-track post-install identity does not match target','OPERATOR_BAY_INSTALL_FAILED');
             $success=true;
-            return ['schemaVersion'=>1,'state'=>'INSTALLED','gate'=>$gate,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'leaseExpiresAt'=>$authority['leaseExpiresAt']],'before'=>['version'=>$before['currentVersion']??null,'deployedSha'=>$before['deployedSha']??null],'after'=>['version'=>$after['currentVersion']??null,'deployedSha'=>$after['deployedSha']??null],'result'=>$result,'observedAt'=>$at];
+            return ['schemaVersion'=>1,'state'=>'INSTALLED','releaseTrack'=>$expectedTrack,'gate'=>$gate,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'leaseExpiresAt'=>$authority['leaseExpiresAt']],'before'=>['version'=>$beforeTrack['currentVersion']??null,'deployedSha'=>$beforeTrack['sourceSha']??($expectedTrack==='bay-excuse-core'?($before['deployedSha']??null):null)],'after'=>['version'=>$afterVersion,'deployedSha'=>$afterSha],'result'=>$result,'observedAt'=>$at];
         } finally {
             $this->releaseMutationAuthority($authority,$success,gmdate('c'));
         }
