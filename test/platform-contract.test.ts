@@ -50,8 +50,10 @@ test('current-state authority prevents historical checkpoints from masquerading 
 test('external capability registry pins sources without creating parallel authority', async () => {
  const registry=await loadExternalCapabilityRegistry(join(process.cwd(),'config','external-capabilities.json'));
  assert.equal(registry.controlPlaneAuthority,'AWH');
- assert.equal(registry.entries.length,4);
+ assert.ok(registry.entries.length>=8);
  const byId=new Map(registry.entries.map((entry)=>[entry.id,entry]));
+ assert.equal(byId.size,registry.entries.length);
+ for(const required of ['teamai-cli','context-mode','hallmark','awesome-claude-design','anti-slop-design','anti-slop-copy','anti-slop-code','skills-directory']) assert.ok(byId.has(required),`missing external capability ${required}`);
  assert.equal(byId.get('teamai-cli')?.workerTool,'tool.teamai');
  assert.equal(byId.get('context-mode')?.license,'Elastic-2.0');
  assert.equal(byId.get('context-mode')?.hostedServiceAllowed,false);
