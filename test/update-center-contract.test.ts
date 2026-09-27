@@ -62,6 +62,10 @@ test('Update Center reuses canonical release authorities instead of creating a p
   assert.match(script,/async function runWithStepUp\(handler\)/);
   assert.match(script,/await stepUp\(password\.value\)/);
   assert.match(script,/await runWithStepUp\(handler\)/);
+  assert.match(script,/function actionFeedback\(button,text,tone='info'\)/);
+  assert.match(script,/function actionErrorText\(error,button\)/);
+  assert.match(script,/CORE_RELEASE_NOT_READY/);
+  assert.match(script,/localOperation=null;const text=actionErrorText/);
   assert.doesNotMatch(script,/askConfirm|askStepUp/);
   const lineBundleStart=script.indexOf('async function updateLineOaBundle');
   const lineBundleEnd=script.indexOf('async function refreshAgent');
@@ -251,6 +255,8 @@ test('Update Center mobile surface stays light and legacy baselines remain fail-
   assert.match(learnLab,/publishedAt/);
   assert.match(script,/approveLearnLab/);
   assert.match(script,/ข้อมูลเก่า/);
+  assert.match(css,/\.update-action-feedback/);
+  assert.match(css,/button\[data-busy="true"\]::before/);
 });
 
 
@@ -501,7 +507,9 @@ test('Update Center streams canonical release progress in real time with bounded
   assert.match(page,/operation-progress-live/);
   assert.match(script,/subscribeUpdateCenterLive/);
   assert.match(script,/progressEvent\?\.progress/);
-  assert.match(script,/liveFresh\?5000:1000/);
+  assert.match(script,/const liveFresh=liveConnected&&\(Date\.now\(\)-liveUpdatedAt\)<15000/);
+  assert.match(script,/liveFresh\?60000:15000/);
+  assert.match(script,/if\(changed\)render\(\);else renderProgress\(\)/);
   assert.match(script,/relativeLiveTime/);
   assert.match(script,/stopLiveStream/);
   assert.match(css,/update-progress-live/);
@@ -555,7 +563,8 @@ test('Update Center keeps AWH LINE Gateway and BAY Excuse LINE OA as two permane
   assert.match(script,/item\.key='awh-line-gateway'/);
   assert.match(script,/item\.key='bay-excuse-line-oa'/);
   assert.match(script,/center=normalizeUpdateCenter\(await loadUpdateCenter\(\)\)/);
-  assert.match(script,/center=normalizeUpdateCenter\(snapshot\)/);
+  assert.match(script,/const normalized=normalizeUpdateCenter\(snapshot\)/);
+  assert.match(script,/center=normalized/);
   assert.match(script,/const bayCompatTargets=\[/);
   assert.match(script,/function ensureBayTrackTargets\(tracks\)/);
   assert.match(script,/center\.items\.push\(item\)/);

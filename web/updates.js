@@ -35,7 +35,7 @@ const activityLabel=(value)=>({
 
 const hash=(value)=>typeof value==='string'&&/^[0-9a-f]{40}$/i.test(value);
 const short=(value)=>hash(value)?value.slice(0,12):value||'—';
-const message=(text)=>{$('updates-message').textContent=text;};
+const message=(text,tone='info')=>{const host=$('updates-message');host.textContent=text;host.dataset.tone=tone;};
 
 const friendly=(error)=>{
   const code=String(error?.code||'').toUpperCase();
@@ -43,7 +43,9 @@ const friendly=(error)=>{
     STEP_UP_REQUIRED:'ต้องยืนยันสิทธิ์เจ้าของระบบก่อนทำรายการนี้',
     STEP_UP_CANCELLED:'ยกเลิกการยืนยันสิทธิ์แล้ว',
     CORE_RELEASE_CONFLICT:'มีการอัปเดต AWH อื่นกำลังทำอยู่ ระบบจะไม่สร้างงานซ้ำ',
+    CORE_RELEASE_NOT_READY:'AWH ยังไม่พร้อมอัปเดต เพราะ release authority ยังไม่พร้อม',
     CORE_RELEASE_TARGET_MOVED:'มีรุ่นใหม่กว่าเข้ามาแล้ว ระบบยกเลิกรุ่นเก่าอย่างปลอดภัย กรุณาตรวจอีกครั้ง',
+    PLATFORM_RELEASE_NOT_READY:'VPS Platform release authority ยังไม่พร้อม',
     LEARNLAB_RELEASE_TARGET_MOVED:'LearnLab มีรุ่นใหม่กว่าเข้ามาแล้ว กรุณาตรวจอีกครั้ง',
     ASSESSMENT_RELEASE_CONFLICT:'มีการอัปเดต Assessment อื่นกำลังทำอยู่ ระบบจะไม่สร้างงานซ้ำ',
     ASSESSMENT_RELEASE_TARGET_MOVED:'Assessment มี candidate ใหม่กว่า ระบบหยุดรุ่นเก่าอย่างปลอดภัย',
@@ -376,13 +378,31 @@ function technicalDetails(item){
   return details;
 }
 
+function actionFeedback(button,text,tone='info'){
+  const actions=button.closest('.update-actions');if(!actions)return null;
+  let feedback=actions.querySelector('.update-action-feedback');
+  if(!feedback){feedback=document.createElement('div');feedback.className='update-action-feedback';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');actions.prepend(feedback);}
+  feedback.dataset.tone=tone;feedback.textContent=text;return feedback;
+}
+function actionErrorText(error,button){
+  const code=String(error?.code||'').toUpperCase();
+  if(code==='CORE_RELEASE_NOT_READY'){
+    const platform=(center?.items||[]).find((item)=>item.adapter==='PLATFORM_RELEASE');
+    return 'AWH ยังอัปเดตไม่ได้ · '+(platform?.reason||'VPS Platform release authority ยังไม่พร้อม');
+  }
+  return friendly(error);
+}
 function actionButton(text,handler,className='primary-button'){
   const button=document.createElement('button');button.type='button';button.className=className;button.textContent=text;
   button.addEventListener('click',async()=>{
-    button.disabled=true;
-    try{await runWithStepUp(handler);}
-    catch(error){message(friendly(error));}
-    finally{button.disabled=false;}
+    const initialText=button.textContent;
+    button.disabled=true;button.dataset.busy='true';button.setAttribute('aria-busy','true');button.textContent='กำลังตรวจ…';
+    actionFeedback(button,'กำลังตรวจความพร้อมก่อนเริ่มอัปเดต');
+    try{await runWithStepUp(handler);actionFeedback(button,'รับคำสั่งแล้ว · กำลังติดตามสถานะ','good');}
+    catch(error){
+      localOperation=null;const text=actionErrorText(error,button);message(text,'bad');actionFeedback(button,text,'bad');syncLiveStream();renderProgress();
+    }
+    finally{button.disabled=false;button.removeAttribute('data-busy');button.removeAttribute('aria-busy');button.textContent=initialText;}
   });
   return button;
 }
