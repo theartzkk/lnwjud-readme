@@ -371,7 +371,7 @@ function renderCard(item){
   else if(item.adapter==='ASSESSMENT_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate&&item.candidateVersion)actions.append(actionButton('อัปเดต Assessment',()=>updateAssessment(item)));
   else if(item.adapter==='ASSESSMENT_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยัน Assessment',()=>approveAssessment(item)));
   else if(item.adapter==='MANAGED_HOSTING'&&item.state==='UPDATE_AVAILABLE'&&item.siteId)actions.append(actionButton('อัปเดต',()=>updateHosting(item)));
-  else if(item.adapter==='BAY_UPDATE_CENTER'&&item.state==='UPDATE_AVAILABLE'&&item.release)actions.append(actionButton('อัปเดต BAY',()=>updateBay(item)));
+  else if(item.adapter==='BAY_UPDATE_CENTER'&&item.state==='UPDATE_AVAILABLE'&&item.release)actions.append(actionButton('อัปเดต '+item.name,()=>updateBay(item)));
   if(item.url){const link=document.createElement('a');link.className='secondary-button';link.href=item.url;link.target='_blank';link.rel='noopener';link.textContent='เปิดระบบ';actions.append(link);}
   card.append(main,actions);return card;
 }
@@ -529,11 +529,11 @@ async function updateHosting(item){
 
 async function updateBay(item,askConfirmation=true){
   const release=item.release;if(!release)return;
-  if(askConfirmation&&!await askConfirm('อัปเดต BAY EXCUSE X','ติดตั้ง '+release.version+' ผ่าน BAY PackageManager ที่ตรวจ checksum และ source แล้ว','อัปเดต'))return;
+  if(askConfirmation&&!await askConfirm('อัปเดต '+item.name,'ติดตั้ง '+release.version+' ของ '+item.name+' ผ่าน BAY PackageManager ที่ตรวจ release track, checksum และ source แล้ว','อัปเดต'))return;
   const relay=await createBayRemoteInstallRelay({targetVersion:release.version,targetSha:release.sourceSha,packageSha256:release.packageSha256});
   try{
     await relayBayRemoteCommand(relay.endpoint,relay.relay);
-    message('BAY รับคำสั่งติดตั้งแล้ว กำลังตรวจสถานะใหม่');
+    message(item.name+' รับคำสั่งติดตั้งแล้ว กำลังตรวจสถานะใหม่');
   }catch(error){
     if(error?.code==='BAY_INSTALL_OUTCOME_UNKNOWN'){message(friendly(error));await refreshBay();return;}
     throw error;
@@ -542,16 +542,28 @@ async function updateBay(item,askConfirmation=true){
 }
 
 async function refreshBay(){
-  const item=(center?.items||[]).find((row)=>row.adapter==='BAY_UPDATE_CENTER');if(!item)return;
+  const items=(center?.items||[]).filter((row)=>row.adapter==='BAY_UPDATE_CENTER');if(!items.length)return;
   try{
     const bridge=await loadBayRemoteUpdateStatus();
     bayLive=await relayBayRemoteCommand(bridge.endpoint,bridge.statusRelay);
-    const release=(bayLive.packages||[]).find((row)=>row?.installable===true&&['ready','READY'].includes(String(row.state||row.version_state||'')));
-    item.current=bayLive.currentVersion||null;item.release=release||null;item.candidate=release?.version||null;
-    item.actionable=Boolean(release)&&bayLive.preflight?.ready===true;
-    item.state=item.actionable?'UPDATE_AVAILABLE':(bayLive.preflight?.ready===true?'CURRENT':'BLOCKED');
-    item.reason=item.actionable?'มีแพ็กเกจใหม่ที่ผ่านการตรวจและพร้อมติดตั้ง':(item.state==='CURRENT'?'BAY เป็นรุ่นล่าสุดแล้ว':'BAY preflight ยังไม่พร้อม');
-  }catch(error){item.state='BLOCKED';item.actionable=false;item.reason=friendly(error);}
+    const packages=Array.isArray(bayLive.packages)?bayLive.packages:[];
+    const tracks=bayLive.releaseTracks&&typeof bayLive.releaseTracks==='object'?bayLive.releaseTracks:{};
+    const preflightReady=bayLive.preflight?.ready===true;
+    for(const item of items){
+      const track=String(item.releaseTrack||'bay-excuse-core');
+      const trackState=tracks[track]&&typeof tracks[track]==='object'?tracks[track]:null;
+      const current=trackState?.currentVersion||(track==='bay-excuse-core'?bayLive.currentVersion:null);
+      const release=packages.find((row)=>row?.installable===true&&String(row.releaseTrack||'bay-excuse-core')===track&&['ready','READY'].includes(String(row.state||row.version_state||'')));
+      item.current=current||null;item.release=release||null;item.candidate=release?.version||null;
+      item.actionable=Boolean(release)&&preflightReady;
+      item.state=item.actionable?'UPDATE_AVAILABLE':(preflightReady?'CURRENT':'BLOCKED');
+      item.reason=item.actionable
+        ?'มีแพ็กเกจ '+item.name+' ใหม่ที่ผ่านการตรวจและพร้อมติดตั้งแยกจากระบบอื่น'
+        :(item.state==='CURRENT'?item.name+' เป็นรุ่นล่าสุดใน release track ของตัวเอง':item.name+' preflight ยังไม่พร้อม');
+    }
+  }catch(error){
+    for(const item of items){item.state='BLOCKED';item.actionable=false;item.reason=friendly(error);}
+  }
   render();
 }
 

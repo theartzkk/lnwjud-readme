@@ -119,6 +119,26 @@ test('canonical update target registry prevents portfolio systems from disappear
   assert.match(service,/canonical repository.*Project\/Vault/);
 });
 
+test('BAY monorepo surfaces independent BAY Core, LINE OA and Cooperative release tracks', async()=>{
+  const [registry,service,script]=await Promise.all([
+    readFile(join(ROOT,'hub/src/HubUpdateTargetRegistry.php'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+  ]);
+  assert.match(registry,/'line-oa'.*'packageTrack'=>'line-oa'/s);
+  assert.match(registry,/'bay-cooperative'.*'packageTrack'=>'cooperative-center'/s);
+  assert.match(registry,/bayReleaseTrackForPaths/);
+  assert.match(registry,/return 'bay-cooperative'/);
+  assert.match(registry,/return 'line-oa'/);
+  assert.match(service,/'releaseTrack'=>'bay-excuse-core'/);
+  assert.match(service,/'releaseTrack'=>'line-oa'/);
+  assert.match(service,/'releaseTrack'=>'cooperative-center'/);
+  assert.match(script,/filter\(\(row\)=>row\.adapter==='BAY_UPDATE_CENTER'\)/);
+  assert.match(script,/String\(row\.releaseTrack\|\|'bay-excuse-core'\)===track/);
+  assert.match(script,/tracks\[track\]/);
+  assert.match(script,/อัปเดต '\+item\.name/);
+});
+
 test('Update Center is a required release asset and survives the PWA build boundary', async()=>{
   const [build,releaseFiles,worker,index]=await Promise.all([
     readFile(join(ROOT,'scripts/build-web-preview.ts'),'utf8'),

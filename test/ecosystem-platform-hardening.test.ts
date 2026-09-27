@@ -35,15 +35,27 @@ test('ecosystem release contract covers product families and independent release
     assert.ok(row.project.length > 0);
   }
 
-  assert.deepEqual(Object.keys(c.releaseTracks).sort(), ['awh','awh-agent','vps-platform']);
-  for(const key of ['vps-platform','awh','awh-agent']){
+  const expectedTracks=['awh','awh-agent','bay-assessment','bay-computer-lab','bay-cooperative','bay-excuse-x','bay-learnlab','line-oa','school-website','vps-platform'];
+  assert.deepEqual(Object.keys(c.releaseTracks).sort(), expectedTracks);
+  for(const key of expectedTracks){
     const track=c.releaseTracks[key];
     assert.equal(track.independentVersion,true);
     assert.equal(track.independentHistory,true);
     assert.equal(track.independentRollback,true);
     assert.equal(track.ownerApprovalRequired,true);
+    assert.ok(typeof track.deploymentAdapter==='string'&&track.deploymentAdapter.length>0);
+    assert.ok(typeof track.dataOwner==='string'&&track.dataOwner.length>0);
+    assert.ok(typeof track.permissionScope==='string'&&track.permissionScope.length>0);
+    assert.ok(typeof track.observabilityScope==='string'&&track.observabilityScope.length>0);
   }
   assert.notEqual(c.releaseTracks['vps-platform'].productionRef,c.releaseTracks.awh.productionRef);
+  assert.equal(c.releaseTracks['line-oa'].repository,'bay-excuse-x');
+  assert.equal(c.releaseTracks['line-oa'].packageTrack,'line-oa');
+  assert.equal(c.releaseTracks['bay-cooperative'].packageTrack,'cooperative-center');
+  assert.equal(c.rules.crossProjectWriteForbidden,true);
+  assert.equal(c.rules.dependencyByContractOnly,true);
+  assert.equal(c.rules.registryDrivenUpdateCenter,true);
+  assert.equal(c.rules.updateCenterLayoutMutationForNewTrackForbidden,true);
   assert.deepEqual(c.requiredArtifactIdentity, ['product','version','sourceSha','artifactSha256','schemaVersion','builtAt']);
   assert.equal(c.rules.productionRebuildForbidden, true);
   assert.equal(c.rules.rollbackArtifactRequired, true);

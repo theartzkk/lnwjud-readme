@@ -47,10 +47,22 @@ final class HubUpdateTargetRegistry
                 'versionPrefix'=>'Agent','ownerApprovalRequired'=>true,'hostGlobal'=>false,
             ],
             'bay-excuse-x'=>[
-                'name'=>'BAY EXCUSE','kind'=>'SYSTEM','repository'=>'bay-excuse-x',
-                'sourceRef'=>'refs/heads/main','productionRef'=>null,
-                'capability'=>'bay.remote_update.install','deployResource'=>'CANONICAL:DEPLOY:PROJECT',
+                'name'=>'BAY EXCUSE X','kind'=>'SYSTEM','repository'=>'bay-excuse-x',
+                'sourceRef'=>'refs/heads/main','productionRef'=>null,'packageTrack'=>'bay-excuse-core',
+                'capability'=>'bay.remote_update.install','deployResource'=>'CANONICAL:DEPLOY:BAY_EXCUSE',
                 'versionPrefix'=>'BAY','ownerApprovalRequired'=>true,'hostGlobal'=>false,
+            ],
+            'line-oa'=>[
+                'name'=>'LINE OA','kind'=>'INTEGRATION','repository'=>'bay-excuse-x',
+                'sourceRef'=>'refs/heads/main','productionRef'=>null,'packageTrack'=>'line-oa',
+                'capability'=>'bay.remote_update.install','deployResource'=>'CANONICAL:DEPLOY:LINE_OA',
+                'versionPrefix'=>'LINE','ownerApprovalRequired'=>true,'hostGlobal'=>false,
+            ],
+            'bay-cooperative'=>[
+                'name'=>'BAY Cooperative Center','kind'=>'PRODUCT','repository'=>'bay-excuse-x',
+                'sourceRef'=>'refs/heads/main','productionRef'=>null,'packageTrack'=>'cooperative-center',
+                'capability'=>'bay.remote_update.install','deployResource'=>'CANONICAL:DEPLOY:BAY_COOPERATIVE',
+                'versionPrefix'=>'Cooperative','ownerApprovalRequired'=>true,'hostGlobal'=>false,
             ],
             'bay-assessment'=>[
                 'name'=>'BAY Assessment','kind'=>'PRODUCT','repository'=>'bay-assessment',
@@ -105,6 +117,7 @@ final class HubUpdateTargetRegistry
         $repository=strtolower(trim($repository));
         $repo=self::repositories()[$repository]??null;
         if(!is_array($repo))return null;
+        if($repository==='bay-excuse-x')return self::bayReleaseTrackForPaths($paths);
         if($repository!=='awh')return (string)($repo['releaseTrack']??$repository);
         $tracks=[];
         foreach($paths as $path){
@@ -115,6 +128,61 @@ final class HubUpdateTargetRegistry
             if(count($tracks)>1)return null;
         }
         return count($tracks)===1?(string)array_key_first($tracks):null;
+    }
+
+    /** @param list<string> $paths */
+    private static function bayReleaseTrackForPaths(array $paths): ?string
+    {
+        $tracks=[];
+        foreach($paths as $path){
+            if(!is_string($path)||$path===''||str_contains($path,"\0"))return null;
+            $track=self::bayPathReleaseTrack($path);
+            if($track==='shared')continue;
+            $tracks[$track]=true;
+            if(count($tracks)>1)return null;
+        }
+        return count($tracks)===1?(string)array_key_first($tracks):null;
+    }
+
+    private static function bayPathReleaseTrack(string $path): string
+    {
+        $sharedExact=[
+            'VERSION','RELEASE_TRACK',
+            'app/Controllers/RemoteUpdateController.php',
+            'app/Core/IntegrationManager.php',
+            'app/Core/PackageManager.php',
+            'app/Core/RuntimeMigrations.php',
+            'app/Core/UpdateInboxService.php',
+            'app/asset_consolidation_contract.php',
+            'app/asset_load_policy.php',
+            'app/bootstrap.php',
+            'app/cleanup_foundation.php',
+            'app/feature_boundaries.php',
+            'app/navigation_architecture.php',
+            'app/settings_schema.php',
+            'tools/ci/build-update-package.py',
+            'tools/ci/run-release-source-validation.sh',
+            'tools/ci/validate-deployment-scope.sh',
+        ];
+        if(in_array($path,$sharedExact,true))return 'shared';
+        $lower=strtolower($path);
+        if(str_starts_with($lower,'app/resources/line-richmenu/'))return 'line-oa';
+        if(
+            str_contains($lower,'cooperative')||str_contains($lower,'/coop-')||
+            str_starts_with($lower,'views/cooperative/')||
+            str_starts_with($lower,'assets/bay-coop')||
+            str_starts_with($lower,'templates/cooperative')
+        )return 'bay-cooperative';
+        if(
+            str_contains($lower,'line-oa')||str_contains($lower,'line_webhook')||
+            str_contains($lower,'line-webhook')||str_contains($lower,'/line')||
+            str_starts_with($lower,'line-webhook.php')||
+            str_starts_with($lower,'liff-workspace')||
+            str_starts_with($lower,'parent-connect')||
+            str_starts_with($lower,'assets/line-')||
+            str_starts_with($lower,'assets/parent-connect')
+        )return 'line-oa';
+        return 'bay-excuse-x';
     }
 
     private static function awhPathReleaseTrack(string $path): string

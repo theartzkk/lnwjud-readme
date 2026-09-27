@@ -362,11 +362,18 @@ final class HubControlPlaneService
             if (isset($covered[$projectId]) || ($project['projectClass'] ?? 'PRODUCTION') !== 'PRODUCTION') continue;
             $name = (string) $project['name'];
             if ($name === 'BAY EXCUSE X') {
-                $items[] = [
-                    'key'=>'bay-excuse','projectId'=>$projectId,'name'=>$name,'kind'=>'SYSTEM','adapter'=>'BAY_UPDATE_CENTER',
-                    'state'=>'REMOTE_CHECK_REQUIRED','current'=>null,'candidate'=>null,'approvalRequired'=>false,'actionable'=>false,
-                    'reason'=>'ตรวจรุ่นและแพ็กเกจจาก BAY Update Inbox แบบ signed browser relay',
-                ];
+                foreach ([
+                    ['key'=>'bay-excuse','name'=>'BAY EXCUSE X','kind'=>'SYSTEM','releaseTrack'=>'bay-excuse-core','sourceReleaseTrack'=>'bay-excuse-x'],
+                    ['key'=>'line-oa','name'=>'LINE OA','kind'=>'INTEGRATION','releaseTrack'=>'line-oa','sourceReleaseTrack'=>'line-oa'],
+                    ['key'=>'bay-cooperative','name'=>'BAY Cooperative Center','kind'=>'PRODUCT','releaseTrack'=>'cooperative-center','sourceReleaseTrack'=>'bay-cooperative'],
+                ] as $bayTrack) {
+                    $items[] = [
+                        'key'=>$bayTrack['key'],'projectId'=>$projectId,'name'=>$bayTrack['name'],'kind'=>$bayTrack['kind'],'adapter'=>'BAY_UPDATE_CENTER',
+                        'releaseTrack'=>$bayTrack['releaseTrack'],'sourceReleaseTrack'=>$bayTrack['sourceReleaseTrack'],
+                        'state'=>'REMOTE_CHECK_REQUIRED','current'=>null,'candidate'=>null,'approvalRequired'=>false,'actionable'=>false,
+                        'reason'=>'ตรวจรุ่นและแพ็กเกจของ '.$bayTrack['name'].' จาก BAY Update Inbox แบบ signed browser relay',
+                    ];
+                }
             } elseif ($name === 'BAY LearnLab') {
                 $currentLearnLab = is_array($learnLab['current'] ?? null) ? $learnLab['current'] : [];
                 $learnLabSource = is_array($learnLab['sourcePromotion'] ?? null) ? $learnLab['sourcePromotion'] : [];
@@ -482,8 +489,12 @@ final class HubControlPlaneService
         foreach($items as &$item){
             $projectId=is_string($item['projectId']??null)?(string)$item['projectId']:null;
             $notes=is_array($item['releaseNotes']??null)?$item['releaseNotes']:null;
-            if(!HubUpdateTargetRegistry::releaseDetailsReady($notes)&&$projectId!==null&&is_array($releaseDetailsByProject[$projectId]??null))
-                $notes=$releaseDetailsByProject[$projectId];
+            $fallback=$projectId!==null&&is_array($releaseDetailsByProject[$projectId]??null)?$releaseDetailsByProject[$projectId]:null;
+            $expectedTrack=is_string($item['sourceReleaseTrack']??null)?strtolower(trim((string)$item['sourceReleaseTrack'])):null;
+            $fallbackTrack=is_array($fallback)&&is_string($fallback['releaseTrack']??null)?strtolower(trim((string)$fallback['releaseTrack'])):null;
+            $trackMatches=$expectedTrack===null||$fallbackTrack===null||hash_equals($expectedTrack,$fallbackTrack);
+            if(!HubUpdateTargetRegistry::releaseDetailsReady($notes)&&$trackMatches&&is_array($fallback))
+                $notes=$fallback;
             $required=(bool)($item['releaseDetailsRequired']??false)||($projectId!==null&&isset($releaseRequiredProjects[$projectId]));
             $ready=HubUpdateTargetRegistry::releaseDetailsReady($notes);
             $item['releaseDetailsRequired']=$required;
