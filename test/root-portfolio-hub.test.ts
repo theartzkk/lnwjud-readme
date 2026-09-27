@@ -82,5 +82,11 @@ test('authenticated root is an AWH cockpit with live readiness and role-aware na
   assert.match(css, /ecosystem-project-health/);
   assert.match(css, /min-height:44px!important/);
   assert.match(css, /body\.ecosystem-home-active \.kruart-header \.global-nav[\s\S]{0,180}display:none!important/);
-  assert.match(html, /owner-system-directory-link[^>]*>ดูบริการทั้งหมด</);
+  assert.match(html, /owner-system-directory-link[^>]*data-open-systems[^>]*>ดูระบบทั้งหมด</);
+  assert.match(html, /id="ecosystem-systems-directory"/);
+  assert.match(html, /data-owner-destination="systems" href="\.\/#systems"/);
+  assert.match(app, /function openSystemsDirectory/);
+  assert.match(app, /syncOwnerGlobalNavigation\('systems'\)/);
+  assert.match(app, /window\.location\.hash === '#systems'/);
+  assert.doesNotMatch(html, /\/bay\/apps\.html/);
 });

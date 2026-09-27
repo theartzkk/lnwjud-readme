@@ -1309,6 +1309,29 @@ import {
     window.scrollTo({ top: 0, behavior: 'auto' });
   }
 
+  function openSystemsDirectory({ history = true, focusSearch = false } = {}) {
+    if (!state.control?.authenticated) {
+      document.getElementById('kruart-system-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    showEcosystemHome({ replace: true });
+    const details = $('ecosystem-systems-directory');
+    if (details instanceof HTMLDetailsElement) details.open = true;
+    syncOwnerGlobalNavigation('systems');
+    void renderEcosystemPortfolio();
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('awh-surface');
+      url.hash = 'systems';
+      const next = url.pathname + url.search + url.hash;
+      window.history[history ? 'pushState' : 'replaceState']({ ...(window.history.state || {}), awhDirectory: 'systems' }, '', next);
+    } catch {}
+    window.requestAnimationFrame(() => {
+      details?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (focusSearch) window.setTimeout(() => $('ecosystem-search-input')?.focus(), 260);
+    });
+  }
+
   function openAwhWorkspace(surface = 'home', { history = true } = {}) {
     if (!state.control?.authenticated) return;
     const ecosystem = $('ecosystem-home-view');
@@ -1502,7 +1525,7 @@ import {
     if(publicNav) publicNav.hidden=authenticated;
     if(ownerNav) ownerNav.hidden=!authenticated;
     document.querySelectorAll('.owner-only-nav').forEach((node)=>{ node.hidden=!(authenticated&&state.control?.role==='OWNER'); });
-    if (authenticated) syncOwnerGlobalNavigation(authenticatedSurfaceRequested() ? 'awh' : 'home');
+    if (authenticated) syncOwnerGlobalNavigation(authenticatedSurfaceRequested() ? 'awh' : (window.location.hash === '#systems' ? 'systems' : 'home'));
     document.body.classList.toggle('public-home-active', !authenticated);
     if (!authenticated) {
       if ($('ecosystem-home-view')) $('ecosystem-home-view').hidden = true;
@@ -1517,7 +1540,11 @@ import {
       $('workspace-view').hidden = false;
       document.body.classList.add('work-active');
       document.body.classList.remove('ecosystem-home-active');
-    } else showEcosystemHome({ replace: true });
+    } else if (window.location.hash === '#systems') {
+      openSystemsDirectory({ history: false });
+    } else {
+      showEcosystemHome({ replace: true });
+    }
     document.body.classList.remove('awh-booting');
   }
 
@@ -1737,12 +1764,20 @@ import {
   $('ecosystem-open-awh')?.addEventListener('click', () => openAwhWorkspace('home'));
   document.querySelector('#owner-global-nav [data-owner-destination="home"]')?.addEventListener('click', (event) => { event.preventDefault(); showEcosystemHome(); });
   document.querySelector('#owner-global-nav [data-owner-destination="awh"]')?.addEventListener('click', (event) => { event.preventDefault(); openAwhWorkspace('home'); });
+  document.querySelector('#owner-global-nav [data-owner-destination="systems"]')?.addEventListener('click', (event) => { event.preventDefault(); openSystemsDirectory(); });
+  document.querySelectorAll('[data-open-systems]').forEach((link) => link.addEventListener('click', (event) => { event.preventDefault(); openSystemsDirectory(); }));
+  $('kruart-system-search')?.addEventListener('click', (event) => {
+    if (!state.control?.authenticated) return;
+    event.preventDefault();
+    openSystemsDirectory({ focusSearch: true });
+  });
   $('ecosystem-command-form')?.addEventListener('submit', (event) => { event.preventDefault(); const field=$('ecosystem-command-input'); const value=field?.value || ''; if(field) field.value=''; void routeOwnerCommand(value); });
   document.querySelectorAll('[data-owner-command]').forEach((button)=>button.addEventListener('click',()=>routeOwnerCommand(button.dataset.ownerCommand||'')));
   window.addEventListener('awh:return-root-hub', () => showEcosystemHome());
   window.addEventListener('popstate', () => {
     if (!state.control?.authenticated) return;
     if (authenticatedSurfaceRequested()) openAwhWorkspace(new URL(window.location.href).searchParams.get('awh-surface') || 'home', { history: false });
+    else if (window.location.hash === '#systems') openSystemsDirectory({ history: false });
     else showEcosystemHome({ replace: true });
   });
   $('registration-open')?.addEventListener('click', () => { message('registration-message',''); openSheet('registration-sheet'); });
