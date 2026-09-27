@@ -56,6 +56,10 @@ test('mission contract preserves QA, rehearsal, backup, drift and public exact-r
   assert.match(source,/MISSION_DURABLE_REGISTRY_UNAVAILABLE/);
   assert.match(source,/loadExecutionPolicy/);
   assert.match(source,/qaScriptForBudget/);
+  assert.match(source,/async function ensureRehearsalDependencies\(policy\)/);
+  assert.match(source,/MISSION_REHEARSAL_DEPENDENCIES=HYDRATING/);
+  assert.match(source,/npm',\['ci','--ignore-scripts','--no-audit','--no-fund','--prefer-offline'\]/);
+  assert.match(source,/MISSION_REHEARSAL_DEPENDENCIES=HYDRATED/);
   assert.doesNotMatch(source,/budget==='FAST'\?'qa:fast':'qa:local'/);
   assert.match(source,/AWH_OPERATOR_CLIENT.*\/usr\/local\/bin\/awh-operator/);
   assert.match(source,/awh-remote.*\/usr\/local\/bin\/awh-operator/);

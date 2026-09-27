@@ -199,6 +199,15 @@ async function ensureDependencies(policy){
   throw new Error('MISSION_ISOLATED_QA_RUNNER_MISSING');
 }
 
+async function ensureRehearsalDependencies(policy){
+  if(existsSync(join(ROOT,'node_modules','tsx'))){console.log('MISSION_REHEARSAL_DEPENDENCIES=READY');return;}
+  if(policy?.toolchainRouting?.dependencyHydration?.requiredBeforeDeepQa!==true)throw new Error('MISSION_REHEARSAL_DEPENDENCIES_MISSING');
+  console.log('MISSION_REHEARSAL_DEPENDENCIES=HYDRATING');
+  const hydration=await run('npm',['ci','--ignore-scripts','--no-audit','--no-fund','--prefer-offline'],{forward:true});
+  if(hydration.code!==0||!existsSync(join(ROOT,'node_modules','tsx')))throw new Error('MISSION_REHEARSAL_DEPENDENCIES_FAILED');
+  console.log('MISSION_REHEARSAL_DEPENDENCIES=HYDRATED');
+}
+
 async function assertCanonicalMainStable(expected){
   const current=(await git(['rev-parse','refs/heads/main'])).toLowerCase();
   if(current!==expected)throw new Error('MISSION_CANONICAL_MAIN_MOVED');
@@ -313,6 +322,7 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   console.log(`MISSION_DESKTOP_DELTA=${desktopImpact?'YES':'NO'}`); console.log(`MISSION_DESKTOP_MODE=${reuse?'REUSE_VERIFIED':'NEW_ARTIFACTS'}`); console.log(`MISSION_MODE=${mode.slice(2)}`);
   const qa=await verifyByBudget(plan);
   await assertCanonicalMainStable(main);
+  await ensureRehearsalDependencies(await loadExecutionPolicy());
   const common=['--owner-auth',mode]; if(cleanup)common.push('--cleanup-topology');
   const env={AWH_RELEASE_COMMIT:head,...(reuse?{AWH_REUSE_REMOTE_DESKTOP_ARTIFACTS:'1'}:{})};
   const rehearsal=await run(process.execPath,[GUARDED,'--dry-run',...common],{env,forward:true});
