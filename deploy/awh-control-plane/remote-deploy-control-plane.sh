@@ -1348,8 +1348,11 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
     test -n "$governed_repo"; test -n "$governed_branch"
     governed_path=/srv/awh-git/$governed_repo
     sudo test -d "$governed_path"
+    sudo chgrp -R bayadmin "$governed_path"
     sudo setfacl -R -x u:awh-hub "$governed_path" 2>/dev/null || true
     sudo find "$governed_path" -type d -exec sh -c 'for p do setfacl -x d:u:awh-hub "$p" 2>/dev/null || true; done' sh {} +
+    sudo find "$governed_path" -type d -exec chmod g+rwx,g+s,o+rx {} +
+    sudo find "$governed_path" -type f -exec chmod g+rw,o+r {} +
     sudo -u awh-hub test -r "$governed_path/HEAD"
     sudo -u awh-hub test ! -w "$governed_path/objects"
     sudo -u awh-hub -g bayadmin test -w "$governed_path/objects"

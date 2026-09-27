@@ -32,6 +32,9 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(remote, /setfacl -m u:awh-hub:rx \/srv\/awh-git/);
   assert.match(remote, /sudo -u awh-hub test ! -w \/srv\/awh-git/);
   assert.match(remote, /setfacl -R -x u:awh-hub \"\$governed_path\"/);
+  assert.match(remote, /find \"\$governed_path\" -type d -exec chmod g\+rwx,g\+s,o\+rx/);
+  assert.match(remote, /find \"\$governed_path\" -type f -exec chmod g\+rw,o\+r/);
+  assert.match(remote, /sudo -u awh-hub test -r \"\$governed_path\/HEAD\"/);
   assert.match(remote, /sudo -u awh-hub test ! -w \"\$governed_path\/objects\"/);
   assert.match(remote, /sudo -u awh-hub -g bayadmin test -w \"\$governed_path\/objects\"/);
   assert.match(remote, /sudo -u awh-hub -g bayadmin test -w \"\$governed_path\/refs\/heads\"/);

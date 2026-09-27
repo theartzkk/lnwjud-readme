@@ -94,6 +94,9 @@ test('repository governance is a single machine-enforced contract', async () => 
   assert.match(deploy, /test ! -w \/srv\/awh-git/);
   assert.match(deploy, /setfacl -R -x u:awh-hub "\$governed_path"/);
   assert.match(deploy, /setfacl -x d:u:awh-hub/);
+  assert.match(deploy, /chmod g\+rwx,g\+s,o\+rx/);
+  assert.match(deploy, /chmod g\+rw,o\+r/);
+  assert.match(deploy, /test -r "\$governed_path\/HEAD"/);
   assert.match(deploy, /test ! -w "\$governed_path\/objects"/);
   assert.match(deploy, /-u awh-hub -g bayadmin test -w "\$governed_path\/objects"/);
   assert.match(deploy, /-u awh-hub -g bayadmin test -w "\$governed_path\/refs\/heads"/);

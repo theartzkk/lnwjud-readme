@@ -54,14 +54,14 @@ runuser -u awh-hub -G www-data -- test -w "$BAY_INBOX"
 [ -d /srv/awh-git ] && runuser -u bayadmin -- test -w /srv/awh-git
 setfacl -m u:awh-hub:r-x /srv/awh-git
 runuser -u awh-hub -- test -x /srv/awh-git
-for repo in awh.git bay-excuse-x.git bay-hub.git bay-learnlab.git bay-assessment.git school-website.git bay-computer-lab.git; do
+for repo in awh.git awh-local-agent.git bay-excuse-x.git bay-hub.git bay-learnlab.git bay-assessment.git school-website.git bay-computer-lab.git; do
   path="/srv/awh-git/$repo"
   [ -d "$path" ] || continue
   chgrp -R bayadmin "$path"
   setfacl -R -x u:awh-hub "$path" 2>/dev/null || true
   find "$path" -type d -exec sh -c 'for p do setfacl -x d:u:awh-hub "$p" 2>/dev/null || true; done' sh {} +
-  find "$path" -type d -exec chmod g+rwx,g+s {} +
-  find "$path" -type f -exec chmod g+rw {} +
+  find "$path" -type d -exec chmod g+rwx,g+s,o+rx {} +
+  find "$path" -type f -exec chmod g+rw,o+r {} +
   find "$path" -type d -exec setfacl -m g::rwx,m::rwx,d:g::rwx,d:m::rwx {} +
   find "$path" -type f -exec setfacl -m g::rw,m::rw {} +
   git --git-dir="$path" config core.sharedRepository group
