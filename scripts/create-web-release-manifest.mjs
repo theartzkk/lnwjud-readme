@@ -87,7 +87,9 @@ for (const entry of entries.filter(item => item.path.endsWith('.zip'))) {
 const mode = config.mode;
 if (!['STATIC_PREVIEW', 'HUB_READ', 'CONTROL'].includes(mode)) throw new Error('Web release mode is invalid');
 const product = mode === 'CONTROL' ? 'AWH Control Panel' : 'AWH Web Read-Only Preview';
-const manifest = { schemaVersion: 1, releaseId, sourceSha: config.sourceSha, sourceState: config.sourceState, desktopReleases, product, generatedAt: process.env.AWH_PREVIEW_GENERATED_AT ?? new Date().toISOString(), files: entries };
+const digestRows = [...entries].sort((a, b) => a.path.localeCompare(b.path)).map((entry) => `${entry.path}\0${entry.sha256}\0${entry.sizeBytes}\n`).join('');
+const webBundleSha256 = createHash('sha256').update(digestRows).digest('hex');
+const manifest = { schemaVersion: 1, releaseId, sourceSha: config.sourceSha, sourceState: config.sourceState, webBundleSha256, desktopReleases, product, generatedAt: process.env.AWH_PREVIEW_GENERATED_AT ?? new Date().toISOString(), files: entries };
 await mkdir(resolve(output, '..'), { recursive: true });
 await writeFile(output, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 process.stdout.write(`${output}\n`);

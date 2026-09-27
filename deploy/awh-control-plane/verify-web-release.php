@@ -32,6 +32,7 @@ if ($expectedReleaseId !== null && !hash_equals($expectedReleaseId, $manifestRel
 if ($expectedSourceSha !== null && (($manifest['sourceState'] ?? null) !== 'COMMITTED' || !is_string($manifest['sourceSha'] ?? null) || !hash_equals($expectedSourceSha, $manifest['sourceSha']))) awh_web_release_fail('WEB_RELEASE_SOURCE_MISMATCH');
 
 $seen = [];
+$bundleRows = [];
 foreach ($manifest['files'] as $entry) {
     if (!is_array($entry)) awh_web_release_fail('WEB_RELEASE_ENTRY_INVALID');
     $keys = array_keys($entry); sort($keys); if ($keys !== ['path','sha256','sizeBytes']) awh_web_release_fail('WEB_RELEASE_ENTRY_INVALID');
@@ -43,6 +44,18 @@ foreach ($manifest['files'] as $entry) {
     $actualSize = @filesize($file); $actualSha = @hash_file('sha256', $file);
     if (!is_int($actualSize) || $actualSize !== $size || !is_string($actualSha) || !hash_equals($sha, $actualSha)) awh_web_release_fail('WEB_RELEASE_FILE_MISMATCH');
     $seen[$path] = true;
+    $bundleRows[$path] = $path . "\0" . $sha . "\0" . $size . "\n";
+}
+ksort($bundleRows, SORT_STRING);
+$bundleDigest = hash('sha256', implode('', array_values($bundleRows)));
+$declaredBundleDigest = $manifest['webBundleSha256'] ?? null;
+if (!is_string($declaredBundleDigest) || preg_match('/^[0-9a-f]{64}$/D', $declaredBundleDigest) !== 1 || !hash_equals($declaredBundleDigest, $bundleDigest)) awh_web_release_fail('WEB_RELEASE_BUNDLE_MISMATCH');
+foreach (array_keys($seen) as $assetPath) {
+    if (!str_ends_with($assetPath, '.html') && !str_ends_with($assetPath, '.js')) continue;
+    $content = (string) file_get_contents($root . '/' . $assetPath);
+    if (str_contains($content, '__AWH_WEB_RELEASE_ID__')) awh_web_release_fail('WEB_RELEASE_ID_LOCAL_OR_UNRENDERED');
+    if (preg_match_all('/[?&]release=([A-Za-z0-9._-]{1,80})/', $content, $matches) === false) awh_web_release_fail('WEB_RELEASE_GRAPH_INVALID');
+    foreach (($matches[1] ?? []) as $token) if (!hash_equals($manifestReleaseId, (string) $token)) awh_web_release_fail('WEB_RELEASE_GRAPH_MISMATCH');
 }
 foreach (['index.html','styles.css','awh-design-system.css','responsive-layout.css','app.js','navigation.js','dashboard.css','dashboard.js', 'hosting.html', 'hosting.css', 'hosting.js', 'panel.html', 'panel.css', 'panel.js','web-config.json','data.json','sw.js'] as $required) if (!isset($seen[$required])) awh_web_release_fail('WEB_RELEASE_REQUIRED_FILE_MISSING');
 if ($expectedSourceSha !== null) {

@@ -152,7 +152,7 @@ final class HubCoreReleaseOperator
             [$node,$npm]=$this->nodeToolchain();
             $home='/var/lib/awh-hub/core-release-home';$cache='/var/lib/awh-hub/npm-cache';
             $this->safeDirectory($home,0700);$this->safeDirectory($cache,0700);
-            $env=$this->releaseEnv($node,$workspace,$sha,$home,$cache);
+            $env=$this->releaseEnv($node,$workspace,$sha,$home,$cache,(int)($row['attempt_count']??0));
             $this->event((string)$row['task_id'],'RUNNING',20,'Approved '.$label.' release อยู่บน canonical main lineage และกำลังเตรียม verified toolchain',$at);
             $this->run([$npm,'ci','--ignore-scripts','--no-audit','--no-fund','--prefer-offline'],['cwd'=>$workspace,'env'=>$env],900,'CORE_RELEASE_NPM_CI_FAILED');
             $dirty=trim($this->run(['/usr/bin/git','-C',$workspace,'status','--porcelain=v1','--untracked-files=all'],null,20,'CORE_RELEASE_WORKSPACE_VERIFY_FAILED')['out']);
@@ -219,14 +219,16 @@ final class HubCoreReleaseOperator
         throw new HubCoreReleaseOperatorException('Verified Node 22+ release toolchain is unavailable','CORE_RELEASE_TOOLCHAIN_UNAVAILABLE');
     }
 
-    private function releaseEnv(string $node,string $workspace,string $sha,string $home,string $cache): array
+    private function releaseEnv(string $node,string $workspace,string $sha,string $home,string $cache,int $attemptCount): array
     {
+        if($attemptCount<1||$attemptCount>999)throw new HubCoreReleaseOperatorException('Core release attempt identity is invalid','CORE_RELEASE_ATTEMPT_INVALID');
         $base=getenv();if(!is_array($base))$base=[];
         return array_merge($base,[
             'PATH'=>dirname($node).':/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
             'HOME'=>$home,'npm_config_cache'=>$cache,'NPM_CONFIG_AUDIT'=>'false','NPM_CONFIG_FUND'=>'false',
             'AWH_SOURCE_ROOT'=>$workspace,'AWH_DEPLOY_TARGET'=>'local','AWH_DEPLOY_TRANSPORT'=>'local',
-            'AWH_RELEASE_COMMIT'=>$sha,'AWH_HUB_HOSTNAME'=>'kruart.online','AWH_PUBLIC_RELEASE_URL'=>'https://kruart.online/release.json',
+            'AWH_RELEASE_COMMIT'=>$sha,'AWH_RELEASE_ATTEMPT'=>$attemptCount>1?'r'.$attemptCount:'',
+            'AWH_HUB_HOSTNAME'=>'kruart.online','AWH_PUBLIC_RELEASE_URL'=>'https://kruart.online/release.json',
             'AWH_OPERATOR_CLIENT'=>'/usr/local/bin/awh-operator','AWH_OWNER_AUTH_USERNAME'=>$this->ownerUsername(),'AWH_PRIVILEGED_LANE'=>'TYPED_OPERATOR',
             'LC_ALL'=>'C','LANG'=>'C',
         ]);
