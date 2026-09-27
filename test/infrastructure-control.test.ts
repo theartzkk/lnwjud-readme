@@ -27,6 +27,12 @@ test('Infrastructure is an Owner-only sanitized projection and canonical web sur
   assert.match(router,/\/api\/v1\/control\/infrastructure/); assert.match(service,/assertOwner\(\$userId\)/); assert.match(service,/HubInfrastructureService::fromEnvironment/); assert.match(service,/HubInfrastructureService::releaseState/); assert.match(service,/HubEcosystemHealthService::fromEnvironment/); assert.match(service,/'ecosystemHealth'/);
   for(const authority of ['control_ai_route_decisions','control_task_executions','control_task_events']) assert.match(service,new RegExp(authority));
   assert.match(service,/'productionComplete'/); assert.match(service,/HubStaffOperationsService/); assert.doesNotMatch(service,/CREATE TABLE|ALTER TABLE/);
+  assert.match(service,/\$staffProjection = array_intersect_key/);
+  assert.match(service,/\$staffProjection\['executionTriage'\] = \$executionTriage/);
+  assert.match(service,/'projection'=>'INFRASTRUCTURE_SUMMARY'/);
+  assert.match(service,/array_slice\(\$triageCurrent, 0, 12\)/);
+  assert.match(service,/'staff' => \$staffProjection/);
+  assert.doesNotMatch(service,/'staff' => \$staff,/);
   assert.doesNotMatch(`${html}\n${js}`,/localStorage|sessionStorage|Authorization|Bearer\s|shell_exec|<textarea[^>]*(?:terminal|command)|innerHTML/i);
   assert.doesNotMatch(collector,/shell_exec\s*\(|\bexec\s*\(|\bsystem\s*\(/);
   const release=JSON.parse(await readFile(join(output,'release.json'),'utf8')) as {files:Array<{path:string}>};

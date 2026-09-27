@@ -1,4 +1,5 @@
 const MAX_JSON_BYTES = 256 * 1024;
+const CONVERSATION_PATH = /^\/api\/v1\/control\/conversations(?:\/|\?|$)/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 let csrfToken = null;
 
@@ -10,9 +11,15 @@ export function safeApiPath(path) {
   return `${value.pathname}${value.search}`;
 }
 
-async function json(response) {
+function responseTooLargeMessage(path) {
+  return CONVERSATION_PATH.test(path)
+    ? 'แชทนี้ยาวมาก AWH จะเก็บประวัติเดิมไว้และโหลดเฉพาะช่วงล่าสุด กรุณาลองรีเฟรชอีกครั้ง'
+    : 'ข้อมูลของส่วนนี้มีขนาดใหญ่เกินขอบเขตที่ปลอดภัย กรุณารีเฟรชหรือลองเปิดเฉพาะรายละเอียดที่ต้องการ';
+}
+
+async function json(response, path) {
   const body = await response.text();
-  if (body.length > MAX_JSON_BYTES) { const error = new Error('แชทนี้ยาวมาก AWH จะเก็บประวัติเดิมไว้และโหลดเฉพาะช่วงล่าสุด กรุณาลองรีเฟรชอีกครั้ง'); Object.defineProperty(error, 'code', { value: 'RESPONSE_TOO_LARGE', enumerable: false }); throw error; }
+  if (body.length > MAX_JSON_BYTES) { const error = new Error(responseTooLargeMessage(path)); Object.defineProperty(error, 'code', { value: 'RESPONSE_TOO_LARGE', enumerable: false }); throw error; }
   let value;
   try { value = JSON.parse(body); } catch { throw new Error('AWH response is invalid'); }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('AWH response is invalid');
@@ -74,8 +81,9 @@ export async function controlRequest(path, init = {}, fetchImpl = globalThis.fet
   headers.set('Accept', 'application/json');
   if (init.body !== undefined && !(typeof FormData !== 'undefined' && init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
   if (init.method && init.method !== 'GET' && csrfToken) headers.set('X-AWH-CSRF', csrfToken);
-  const response = await fetchImpl(safeApiPath(path), { ...init, headers, credentials: 'include', cache: 'no-store' });
-  const value = await json(response);
+  const safePath = safeApiPath(path);
+  const response = await fetchImpl(safePath, { ...init, headers, credentials: 'include', cache: 'no-store' });
+  const value = await json(response, safePath);
   if (typeof value.csrfToken === 'string' && /^[A-Za-z0-9_-]{32,128}$/.test(value.csrfToken)) csrfToken = value.csrfToken;
   return value;
 }

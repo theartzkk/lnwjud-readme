@@ -1096,9 +1096,47 @@ final class HubControlPlaneService
         $active = $this->pdo->prepare("SELECT e.execution_id,e.executor_kind,e.required_capability,e.state,e.updated_at,e.checkpoint_json,t.task_id,t.goal,t.progress FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE t.user_id=:user AND e.state IN ('QUEUED','LEASED','RUNNING','WAITING_FOR_CAPABILITY') ORDER BY e.updated_at DESC LIMIT 12");
         $active->execute(['user' => $userId]); $autonomous = [];
         foreach ($active->fetchAll() as $row) { $checkpoint = json_decode((string)($row['checkpoint_json'] ?? '{}'), true); $continuous = is_array($checkpoint) && is_array($checkpoint['continuation'] ?? null) && ($checkpoint['continuation']['enabled'] ?? false) === true; $autonomous[] = ['taskId'=>(string)$row['task_id'],'executionId'=>(string)$row['execution_id'],'executorKind'=>(string)$row['executor_kind'],'requiredCapability'=>(string)$row['required_capability'],'state'=>(string)$row['state'],'progress'=>(int)$row['progress'],'goal'=>(string)$row['goal'],'continuous'=>$continuous,'updatedAt'=>(string)$row['updated_at']]; }
-        $executionTriage = is_array($staff['executionTriage'] ?? null) ? $staff['executionTriage'] : [];
-        $triageCurrent = is_array($executionTriage['current']['items'] ?? null) ? $executionTriage['current']['items'] : [];
+        $executionTriageFull = is_array($staff['executionTriage'] ?? null) ? $staff['executionTriage'] : [];
+        $triageCurrent = is_array($executionTriageFull['current']['items'] ?? null) ? $executionTriageFull['current']['items'] : [];
         $incidents = array_map(static fn(array $row): array => ['taskId'=>(string)($row['taskId'] ?? ''),'executionId'=>(string)($row['executionId'] ?? ''),'executorKind'=>(string)($row['executorKind'] ?? ''),'code'=>(string)($row['errorCode'] ?? 'EXECUTION_FAILED'),'occurredAt'=>(string)($row['updatedAt'] ?? ''),'goal'=>(string)($row['goal'] ?? ''),'projectId'=>(string)($row['projectId'] ?? ''),'projectName'=>(string)($row['project'] ?? 'Project'),'classification'=>(string)($row['classification'] ?? 'CURRENT_DEFECT'),'disposition'=>(string)($row['disposition'] ?? 'OPEN_DEFECT'),'reason'=>(string)($row['reason'] ?? '')], array_slice($triageCurrent,0,12));
+        $triageVisibleItems = array_map(static fn(array $row): array => [
+            'executionId'=>(string)($row['executionId'] ?? ''),
+            'taskId'=>(string)($row['taskId'] ?? ''),
+            'project'=>(string)($row['project'] ?? 'Project'),
+            'state'=>(string)($row['state'] ?? 'UNKNOWN'),
+            'requiredCapability'=>(string)($row['requiredCapability'] ?? 'UNKNOWN'),
+            'errorCode'=>(string)($row['errorCode'] ?? 'EXECUTION_FAILED'),
+            'updatedAt'=>(string)($row['updatedAt'] ?? ''),
+            'classification'=>(string)($row['classification'] ?? 'CURRENT_DEFECT'),
+        ], array_slice($triageCurrent, 0, 12));
+        $triageCurrentProjection = is_array($executionTriageFull['current'] ?? null) ? $executionTriageFull['current'] : [];
+        $triageNonAlertingProjection = is_array($executionTriageFull['nonAlerting'] ?? null) ? $executionTriageFull['nonAlerting'] : [];
+        $executionTriage = [
+            'schemaVersion'=>(int)($executionTriageFull['schemaVersion'] ?? 1),
+            'state'=>(string)($executionTriageFull['state'] ?? 'UNKNOWN'),
+            'observedAt'=>$executionTriageFull['observedAt'] ?? null,
+            'summary'=>is_array($executionTriageFull['summary'] ?? null) ? $executionTriageFull['summary'] : [],
+            'total'=>(int)($executionTriageFull['total'] ?? 0),
+            'current'=>[
+                'state'=>(string)($triageCurrentProjection['state'] ?? 'UNKNOWN'),
+                'total'=>(int)($triageCurrentProjection['total'] ?? count($triageVisibleItems)),
+                'summary'=>is_array($triageCurrentProjection['summary'] ?? null) ? $triageCurrentProjection['summary'] : [],
+                'items'=>$triageVisibleItems,
+            ],
+            'nonAlerting'=>[
+                'state'=>(string)($triageNonAlertingProjection['state'] ?? 'UNKNOWN'),
+                'policyPausedCount'=>(int)($triageNonAlertingProjection['policyPausedCount'] ?? 0),
+                'items'=>[],
+            ],
+            'bounded'=>true,
+            'projection'=>'INFRASTRUCTURE_SUMMARY',
+            'policyVersion'=>(string)($executionTriageFull['policyVersion'] ?? 'execution-triage-v2'),
+            'failurePolicyVersion'=>(string)($executionTriageFull['failurePolicyVersion'] ?? ''),
+            'currentProjectionVersion'=>(string)($executionTriageFull['currentProjectionVersion'] ?? ''),
+            'auditHistoryPreserved'=>($executionTriageFull['auditHistoryPreserved'] ?? true) === true,
+            'blindRetry'=>($executionTriageFull['blindRetry'] ?? false) === true,
+            'nextAction'=>(string)($executionTriageFull['nextAction'] ?? 'ตรวจ canonical execution state'),
+        ];
         $events = $this->pdo->prepare('SELECT e.state,e.progress,e.message,e.occurred_at,t.task_id,t.goal,t.project_id,t.result_summary,t.failure_code,p.name AS project_name FROM control_task_events e JOIN control_tasks t ON t.task_id=e.task_id JOIN projects p ON p.project_id=t.project_id WHERE t.user_id=:user ORDER BY e.occurred_at DESC, e.event_id DESC LIMIT 20'); $events->execute(['user'=>$userId]);
         $activity = array_map(static fn(array $row): array => ['taskId'=>(string)$row['task_id'],'state'=>(string)$row['state'],'progress'=>(int)$row['progress'],'message'=>$row['message'] === null ? null : (string)$row['message'],'occurredAt'=>(string)$row['occurred_at'],'goal'=>(string)$row['goal'],'projectId'=>(string)$row['project_id'],'projectName'=>(string)$row['project_name'],'resultSummary'=>$row['result_summary'] === null ? null : (string)$row['result_summary'],'blocker'=>$row['failure_code'] === null ? null : (string)$row['failure_code']], $events->fetchAll());
         $since = gmdate('c', strtotime($now ?? 'now') - 86400);
@@ -1136,6 +1174,11 @@ final class HubControlPlaneService
         $passed = count(array_filter($checks, static fn(array $item): bool => $item['pass'] === true));
         $executionAuthority = $this->capabilities !== null ? $this->capabilities->executionAuthorityStatus($now) : ['schemaVersion'=>1,'mode'=>'UNAVAILABLE','parallelReadsAllowed'=>true,'parallelNonConflictingMutationsAllowed'=>false,'mutationBoundary'=>'UNAVAILABLE','activeMutationCount'=>0,'waitingMutationCount'=>0,'activeMutations'=>[],'waitingMutations'=>[]];
         $capabilityFabric = $this->capabilities !== null ? $this->capabilities->status(true, $now) : ['schemaVersion'=>1,'anywhereFirst'=>true,'deviceRequired'=>false,'summary'=>['ready'=>0,'cloudReady'=>0,'optional'=>0,'planned'=>0],'capabilities'=>[],'providers'=>[]];
+        $staffProjection = array_intersect_key($staff, array_flip([
+            'schemaVersion','generatedAt','loop','governor','selfHealing','housekeeping',
+            'roles','report','canonicalAuthorities','hostingCenter','safety',
+        ]));
+        $staffProjection['executionTriage'] = $executionTriage;
         return [
             'schemaVersion' => 1,
             'telemetry' => $telemetry,
@@ -1159,7 +1202,7 @@ final class HubControlPlaneService
             'activity' => $activity,
             'incidents' => $incidents,
             'executionTriage' => $executionTriage,
-            'staff' => $staff,
+            'staff' => $staffProjection,
             'governor' => $staff['governor'] ?? ['state'=>'UNKNOWN','decision'=>'UNKNOWN'],
             'selfHealing' => $staff['selfHealing'] ?? ['state'=>'UNKNOWN'],
             'housekeeping' => $staff['housekeeping'] ?? ['state'=>'UNKNOWN'],
