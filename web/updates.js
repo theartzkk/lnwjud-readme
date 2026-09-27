@@ -61,6 +61,60 @@ const friendly=(error)=>{
 function itemNeedsAttention(item){
   return item.state!=='CURRENT'&&item.state!=='INTERNAL_MANAGED';
 }
+
+const AWH_LINE_PROJECT_ID='124ae148-3ed1-4e45-8f50-75ff45a39e5c';
+const AWH_LINE_SITE_ID='ed911e13-ccfa-44d9-8214-6425cb252240';
+const lineOaGroupContract={
+  name:'LINE OA',
+  targets:[
+    {itemKey:'awh-line-gateway',releaseTrack:'awh-line-gateway'},
+    {itemKey:'bay-excuse-line-oa',releaseTrack:'line-oa'},
+  ],
+  approvalMode:'SINGLE_OWNER_STEP_UP',
+  orchestration:'SEQUENTIAL_VERIFY_EACH',
+  failurePolicy:'STOP_ON_TARGET_FAILURE',
+  historyScope:'PER_TARGET',
+  rollbackScope:'PER_TARGET',
+  forbiddenImplicitTargets:['awh','vps-platform','bay-excuse-x'],
+};
+
+function normalizeUpdateCenter(snapshot){
+  if(!snapshot||!Array.isArray(snapshot.items))return snapshot;
+  snapshot.releaseGroups={...(snapshot.releaseGroups||{}),'line-oa':snapshot.releaseGroups?.['line-oa']||lineOaGroupContract};
+  for(const item of snapshot.items){
+    const awhLine=String(item?.projectId||'')===AWH_LINE_PROJECT_ID||String(item?.siteId||'')===AWH_LINE_SITE_ID;
+    if(awhLine){
+      item.key='awh-line-gateway';
+      item.name='AWH LINE OA / KRUART LINE Gateway';
+      item.kind='INTEGRATION';
+      item.group='line-oa';
+      item.releaseTrack='awh-line-gateway';
+      item.sourceAuthority='AWH_VAULT';
+      item.domain='line.kruart.online';
+      item.healthPath='/healthz';
+      item.webhookPath='/webhook';
+      item.secretScope='KRUART_LINE_GATEWAY';
+      item.currentSourceRevision=item.currentSourceRevision||item.current||null;
+      item.candidateSourceRevision=item.candidateSourceRevision||item.candidate||null;
+      item.history=Array.isArray(item.history)?item.history:[];
+      item.historyAuthority=item.historyAuthority||'MANAGED_HOSTING';
+      continue;
+    }
+    if(String(item?.releaseTrack||'')==='line-oa'||String(item?.key||'')==='line-oa'){
+      item.key='bay-excuse-line-oa';
+      item.name='BAY Excuse LINE OA';
+      item.kind='INTEGRATION';
+      item.group='line-oa';
+      item.releaseTrack='line-oa';
+      item.sourceAuthority=item.sourceAuthority||'BAY_UPDATE_INBOX';
+      item.secretScope=item.secretScope||'BAY_EXCUSE_LINE_OA';
+      item.history=Array.isArray(item.history)?item.history:[];
+      item.historyAuthority=item.historyAuthority||'BAY_UPDATE_CENTER:line-oa';
+    }
+  }
+  return snapshot;
+}
+
 const updateGroupMeta={
   'core-control':{label:'แกนระบบและโครงสร้าง',description:'AWH, AWH Agent และ VPS Platform'},
   'line-oa':{label:'LINE OA',description:'สองระบบอิสระ · AWH Owner Chat และ BAY Excuse สำหรับโรงเรียน'},
@@ -492,7 +546,7 @@ function stopLiveStream(){
 function ensureLiveStream(){
   if(stopLiveUpdates||!hasActiveUpdate())return;
   stopLiveUpdates=subscribeUpdateCenterLive((snapshot)=>{
-    liveConnected=true;liveUpdatedAt=Date.now();center=snapshot;
+    liveConnected=true;liveUpdatedAt=Date.now();center=normalizeUpdateCenter(snapshot);
     $('updates-freshness').textContent='สด · '+new Date(snapshot.generatedAt).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     if(!primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)))localOperation=null;
     render();
@@ -681,7 +735,7 @@ function lineOaTargets(){
 async function waitForAwhLineGateway(targetRevision,previousReleaseId){
   const deadline=Date.now()+120000;
   while(Date.now()<deadline){
-    const snapshot=await loadUpdateCenter();
+    const snapshot=normalizeUpdateCenter(await loadUpdateCenter());
     center=snapshot;
     const item=(snapshot.items||[]).find((row)=>row.key==='awh-line-gateway');
     if(!item)throw Object.assign(new Error('AWH LINE Gateway หายจาก Update Center'),{code:'LINE_OA_TARGETS_INCOMPLETE'});
@@ -691,7 +745,7 @@ async function waitForAwhLineGateway(targetRevision,previousReleaseId){
       throw Object.assign(new Error(item.lastEvent?.message||item.reason||'AWH LINE Gateway verify ไม่ผ่าน'),{code:'LINE_OA_AWH_VERIFY_FAILED'});
     }
     const revision=String(item.currentSourceRevision||'');
-    const releaseChanged=!previousReleaseId||String(item.currentReleaseId||'')!==String(previousReleaseId);
+    const releaseChanged=!previousReleaseId||!item.currentReleaseId||String(item.currentReleaseId)!==String(previousReleaseId);
     if(item.state==='CURRENT'&&revision===targetRevision&&releaseChanged){render();return item;}
     localOperation={name:'LINE OA · AWH Gateway',progress:35,message:'ติดตั้ง AWH LINE Gateway แล้ว กำลัง verify release ของ target นี้'};
     render();
@@ -810,7 +864,7 @@ async function refresh(){
   refreshing=true;$('updates-refresh').disabled=true;$('updates-freshness').textContent='กำลังตรวจทุกระบบ…';
   try{
     await loadAuthSession();
-    center=await loadUpdateCenter();
+    center=normalizeUpdateCenter(await loadUpdateCenter());
     $('updates-freshness').textContent='ตรวจล่าสุด '+new Date(center.generatedAt).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
     render();
     await Promise.allSettled([refreshBay(),refreshAgent()]);

@@ -512,6 +512,13 @@ test('Update Center keeps AWH LINE Gateway and BAY Excuse LINE OA as two permane
   assert.match(service,/projectVaultPackageVersion/);
   assert.match(script,/'line-oa':\{label:'LINE OA'/);
   assert.match(script,/function renderTargetHistory/);
+  assert.match(script,/function normalizeUpdateCenter/);
+  assert.match(script,/AWH_LINE_PROJECT_ID='124ae148-3ed1-4e45-8f50-75ff45a39e5c'/);
+  assert.match(script,/AWH_LINE_SITE_ID='ed911e13-ccfa-44d9-8214-6425cb252240'/);
+  assert.match(script,/item\.key='awh-line-gateway'/);
+  assert.match(script,/item\.key='bay-excuse-line-oa'/);
+  assert.match(script,/center=normalizeUpdateCenter\(await loadUpdateCenter\(\)\)/);
+  assert.match(script,/center=normalizeUpdateCenter\(snapshot\)/);
   assert.match(script,/function lineOaTargets/);
   assert.match(script,/async function updateLineOaBundle/);
   assert.match(script,/awh-line-gateway/);
