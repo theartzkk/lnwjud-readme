@@ -1459,7 +1459,7 @@ if test -d /srv/awh-git/awh.git; then
   repo=/srv/awh-git/awh.git
   git --git-dir="$repo" cat-file -e "$RELEASE_COMMIT^{commit}"
 
-  current_runtime=$(git --git-dir="$repo" rev-parse "$RUNTIME_REF" 2>/dev/null || true)
+  current_runtime=$(git --git-dir="$repo" rev-parse --verify "$RUNTIME_REF^{commit}" 2>/dev/null || true)
   if test -n "$current_runtime"; then
     PRODUCTION_REF_PREVIOUS=PRESENT
     PREVIOUS_PRODUCTION_SHA=$current_runtime
@@ -1474,7 +1474,7 @@ if test -d /srv/awh-git/awh.git; then
   test "$(git --git-dir="$repo" rev-parse "$RUNTIME_REF")" = "$RELEASE_COMMIT"
   stage RUNTIME_REF_UPDATED
 
-  current_track=$(git --git-dir="$repo" rev-parse "$TRACK_REF" 2>/dev/null || true)
+  current_track=$(git --git-dir="$repo" rev-parse --verify "$TRACK_REF^{commit}" 2>/dev/null || true)
   if test -n "$current_track"; then
     TRACK_REF_PREVIOUS=PRESENT
     PREVIOUS_TRACK_SHA=$current_track

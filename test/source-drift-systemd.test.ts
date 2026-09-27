@@ -55,6 +55,8 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(remote, /RUNTIME_REF=refs\/heads\/runtime\/production/);
   assert.match(remote, /TRACK_REF=refs\/heads\/production/);
   assert.match(remote, /TRACK_REF=refs\/heads\/platform\/production/);
+  assert.match(remote, /rev-parse --verify "\$RUNTIME_REF\^\{commit\}"/);
+  assert.match(remote, /rev-parse --verify "\$TRACK_REF\^\{commit\}"/);
   assert.match(remote, /merge-base --is-ancestor \"\$live_sha\" \"\$runtime_current\"/);
   assert.match(remote, /merge-base --is-ancestor \"\$runtime_current\" \"\$RELEASE_COMMIT\"/);
   assert.match(remote, /update-ref \"\$RUNTIME_REF\" \"\$live_sha\" \"\$runtime_current\"/);
