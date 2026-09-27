@@ -17,14 +17,14 @@ test('authenticated root is the portfolio hub and reuses BAY registry authority'
   assert.match(app, /function safeText\(value, fallback = ''\)/);
   assert.match(app, /showEcosystemHome\(\{ replace: true \}\)/);
   assert.match(app, /if \(authenticatedSurfaceRequested\(\)\)/);
-  assert.match(app, /const isAwhProduct = \(project\) => project\?\.id === 'awh' \|\| project\?\.id === 'kruart-online'/);
+  assert.match(app, /const isAwhProduct = \(project\) => project\?\.id === 'awh'/);
   assert.match(app, /prototype: 'ต้นแบบ'/);
   assert.match(app, /reference: 'อ้างอิง'/);
   assert.match(app, /const projectLifecycle = \(project\) =>/);
   assert.match(app, /lifecycleLabel/);
   assert.match(app, /ecosystem-project-health/);
   assert.match(app, /bay-staging/);
-  assert.match(app, /ไม่พบระบบหรือโปรเจกต์ที่ตรงกับ/);
+  assert.match(app, /ไม่พบระบบหรือบริการที่ตรงกับ/);
   assert.match(app, /openAwhWorkspace\('home'\)/);
   assert.match(app, /syncOwnerGlobalNavigation\('awh'\)/);
   assert.match(app, /syncOwnerGlobalNavigation\('home'\)/);
@@ -32,12 +32,11 @@ test('authenticated root is the portfolio hub and reuses BAY registry authority'
   assert.match(app, /'bay-computer-lab': 'computer-lab'/);
   assert.match(app, /'bay-parent-connect': 'parent-connect'/);
   assert.match(app, /liveDetail = safeText\(live\?\.version\)/);
-  assert.match(app, /dedupeProjectPresentation/);
-  assert.match(app, /const preferredIds = \['bay-excuse-x','bay-learnlab','school-website','bay-computer-lab'\]/);
-  assert.match(app, /!isAwhProduct\(item\)/);
+  assert.doesNotMatch(app, /dedupeProjectPresentation|canonicalProjectId|preferredIds/);
+  assert.match(app, /const directoryProjects = projects\.filter\(\(item\) => !isAwhProduct\(item\)\)/);
   assert.match(html, /data-owner-destination="awh"[^>]*>[\s\S]{0,120}<span>ทำงาน<\/span>/);
-  assert.match(html, /พื้นที่ทำงาน AWH/);
-  assert.match(html, /ส่วนทำงานของ kruart\.online/);
+  assert.match(html, /id="ecosystem-open-awh"/);
+  assert.match(html, /<strong>งานของฉัน<\/strong>/);
   for (const asset of ['project-bay-excuse-x.webp','project-learnlab.webp','project-awh.webp','project-school.webp','project-parent-connect.webp','project-computer-lab.webp']) assert.ok(app.includes(asset));
   for (const logo of ['logo-bay-excuse-x.webp','logo-bay-learnlab.webp','brand-awh.webp','logo-school.webp','logo-bay-computer-lab.webp']) assert.ok(app.includes(logo));
   assert.match(app, /ecosystem-project-media/);
@@ -61,7 +60,7 @@ test('root portfolio does not create a second project or release master authorit
 test('all KRUART login entry points share the canonical login surface', async () => {
   const [html, app] = await Promise.all([read('web/index.html'), read('web/app.js')]);
   const triggers = html.match(/data-open-login/g) || [];
-  assert.ok(triggers.length >= 5);
+  assert.equal(triggers.length, 3);
   assert.match(app, /function openLoginSurface\(\)/);
   assert.match(app, /querySelectorAll\('\[data-open-login\]'\)\.forEach/);
   assert.doesNotMatch(app, /\$\('public-login-open'\)\?\.addEventListener\('click'/);
@@ -82,11 +81,13 @@ test('authenticated root is an AWH cockpit with live readiness and role-aware na
   assert.match(css, /ecosystem-project-health/);
   assert.match(css, /min-height:44px!important/);
   assert.match(css, /body\.ecosystem-home-active \.kruart-header \.global-nav[\s\S]{0,180}display:none!important/);
-  assert.match(html, /owner-system-directory-link[^>]*data-open-systems[^>]*>ดูระบบทั้งหมด</);
+  assert.match(html, /<summary>ระบบทั้งหมด<\/summary>/);
   assert.match(html, /id="ecosystem-systems-directory"/);
   assert.match(html, /data-owner-destination="systems" href="\.\/#systems"/);
   assert.match(app, /function openSystemsDirectory/);
   assert.match(app, /syncOwnerGlobalNavigation\('systems'\)/);
   assert.match(app, /window\.location\.hash === '#systems'/);
-  assert.doesNotMatch(html, /\/bay\/apps\.html/);
+  const ownerNav = html.match(/<nav id="owner-global-nav"[\s\S]*?<\/nav>/)?.[0] ?? '';
+  assert.doesNotMatch(ownerNav, /\/bay\/apps\.html/);
+  assert.match(html, /<nav class="global-nav"[\s\S]*?href="\/bay\/apps\.html"/);
 });

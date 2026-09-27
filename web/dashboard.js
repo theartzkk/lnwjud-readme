@@ -243,7 +243,8 @@ function updateMobileNavigation() {
   const nav = $('awh-mobile-nav');
   if (!(nav instanceof HTMLElement)) return;
   const dashboardActive = document.body.classList.contains('product-dashboard-active');
-  const activeDestination = dashboardActive ? 'home' : 'work';
+  const dashboardView = document.getElementById(DASHBOARD_ID)?.dataset.view;
+  const activeDestination = dashboardActive ? (dashboardView === 'tasks' || dashboardView === 'files' ? 'tasks' : 'tools') : 'work';
   for (const item of nav.querySelectorAll('[data-mobile-destination]')) {
     const active = item.dataset.mobileDestination === activeDestination;
     item.classList.toggle('is-active', active);
@@ -265,10 +266,12 @@ function mountMobileNavigation() {
     return item;
   };
   nav.append(
-    make('⌂', 'หน้าแรก', 'home', () => returnHome()),
-    make('✦', 'ทำงาน', 'work', () => openWork()),
-    make('▦', 'ระบบ', 'systems', () => window.location.assign('./panel.html#ecosystem')),
-    make('⇧', 'อัปเดต', 'updates', () => window.location.assign('./updates.html')),
+    make('✦', 'แชท', 'work', () => openWork()),
+    make('✓', 'งานของฉัน', 'tasks', () => openTaskSurface()),
+    make('▦', 'เครื่องมือ', 'tools', () => {
+      returnHome();
+      window.setTimeout(() => document.getElementById('awh-home-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+    }),
   );
   document.body.append(nav);
   let keyboardViewportBaseline = window.visualViewport?.height || window.innerHeight;
@@ -314,11 +317,12 @@ function mountProductNavigation(dashboard) {
   brand.innerHTML = '<span class="awh-product-nav-mark" aria-hidden="true">A</span><span><strong>AWH</strong><small>Workspace</small></span>';
   nav.append(brand);
   const entries = [
-    ['home', '⌂', 'หน้าแรก', () => returnHome()],
-    ['work', '✦', 'ทำงาน', () => openWork()],
-    ['systems', '▦', 'ระบบ', () => window.location.assign('./panel.html#ecosystem')],
-    ['updates', '⇧', 'อัปเดต', () => window.location.assign('./updates.html')],
-    ['settings', '⌘', 'ตั้งค่า', () => window.location.assign('./panel.html')],
+    ['work', '✦', 'แชท', () => openWork()],
+    ['tasks', '✓', 'งานของฉัน', () => openTaskSurface()],
+    ['tools', '▦', 'เครื่องมือ', () => {
+      returnHome();
+      window.setTimeout(() => document.getElementById('awh-home-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+    }],
   ];
   for (const [destination, icon, label, action] of entries) {
     const item = button('', 'awh-product-nav-item', action);
@@ -336,7 +340,9 @@ function mountProductNavigation(dashboard) {
 function updateProductNavigation() {
   const nav = $('awh-product-nav');
   if (!nav) return;
-  const activeDestination = document.body.classList.contains('product-dashboard-active') ? 'home' : 'work';
+  const dashboardActive = document.body.classList.contains('product-dashboard-active');
+  const dashboardView = document.getElementById(DASHBOARD_ID)?.dataset.view;
+  const activeDestination = dashboardActive ? (dashboardView === 'tasks' || dashboardView === 'files' ? 'tasks' : 'tools') : 'work';
   for (const item of nav.querySelectorAll('[data-product-destination]')) {
     const active = item.dataset.productDestination === activeDestination;
     item.classList.toggle('is-active', active);
@@ -373,8 +379,6 @@ function setDashboardView(view) {
 }
 
 function openWork(prompt = null, submit = false) {
-  const mobileNav = $('awh-mobile-nav');
-  if (mobileNav instanceof HTMLElement) delete mobileNav.dataset.activeDestination;
   document.body.classList.remove('product-dashboard-active');
   const dashboard = $(DASHBOARD_ID);
   if (dashboard) dashboard.hidden = true;
@@ -574,8 +578,6 @@ function renderOwnerNightShift() {
 
 function returnHome() {
   if (!authenticatedWorkspaceActive()) return;
-  const mobileNav = $('awh-mobile-nav');
-  if (mobileNav instanceof HTMLElement) delete mobileNav.dataset.activeDestination;
   const dashboard = $(DASHBOARD_ID);
   if (!dashboard) return;
   setDashboardView('home');
@@ -717,8 +719,6 @@ function renderTaskSurface() {
 
 function openTaskSurface(filter = 'all', taskId = null) {
   if (!authenticatedWorkspaceActive()) return;
-  const mobileNav = $('awh-mobile-nav');
-  if (mobileNav instanceof HTMLElement) delete mobileNav.dataset.activeDestination;
   state.taskFilter = ['all', 'active', 'attention', 'completed'].includes(filter) ? filter : 'all';
   state.selectedTaskId = taskId;
   setDashboardView('tasks');
@@ -769,8 +769,6 @@ function renderFilesSurface() {
 
 function openFilesSurface(query = '') {
   if (!authenticatedWorkspaceActive()) return;
-  const mobileNav = $('awh-mobile-nav');
-  if (mobileNav instanceof HTMLElement) delete mobileNav.dataset.activeDestination;
   state.filesQuery = typeof query === 'string' ? query.slice(0, 120) : '';
   setDashboardView('files');
   const dashboard = $(DASHBOARD_ID);

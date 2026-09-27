@@ -29,21 +29,16 @@
       <nav class="global-nav" aria-label="ทางลัดหลัก">
         <a class="global-nav-item is-active" href="./"><img src="./bay-icon-home.svg" alt="" /><span>หน้าแรก</span></a>
         <a class="global-nav-item" href="https://learn.kruart.online/"><img src="./bay-icon-learnlab.svg" alt="" /><span>เรียนรู้</span></a>
-        <a class="global-nav-item" href="https://excuse.kruart.online/"><img src="./bay-icon-work.svg" alt="" /><span>สำหรับครู</span></a>
-        <a class="global-nav-item" href="https://school.kruart.online/parent/"><img src="./bay-icon-school.svg" alt="" /><span>ผู้ปกครอง</span></a>
-        <a class="global-nav-item" href="https://school.kruart.online/news/"><img src="./bay-icon-web.svg" alt="" /><span>ข่าวสาร</span></a>
-        <a class="global-nav-item global-nav-more" href="#kruart-system-title"><img src="./bay-icon-apps.svg" alt="" /><span>ระบบ</span></a>
+        <a class="global-nav-item" href="https://school.kruart.online/"><img src="./bay-icon-school.svg" alt="" /><span>โรงเรียน</span></a>
+        <a class="global-nav-item global-nav-more" href="/bay/apps.html"><img src="./bay-icon-apps.svg" alt="" /><span>ระบบ</span></a>
       </nav>
       <nav id="owner-global-nav" class="owner-global-nav" aria-label="เมนูหลัก AWH" hidden>
         <a class="owner-nav-item is-active" data-owner-destination="home" href="./"><img src="./bay-icon-home.svg" alt="" /><span>หน้าแรก</span></a>
         <a class="owner-nav-item" data-owner-destination="awh" href="./?awh-surface=home"><img src="./bay-icon-work.svg" alt="" /><span>ทำงาน</span></a>
         <a class="owner-nav-item owner-only-nav" data-owner-destination="systems" href="./#systems" hidden><img src="./bay-icon-apps.svg" alt="" /><span>ระบบ</span></a>
-        <a class="owner-nav-item owner-only-nav" data-owner-destination="updates" href="./updates.html" hidden><img src="./bay-icon-status.svg" alt="" /><span>อัปเดต</span></a>
-        <a class="owner-nav-item owner-only-nav" data-owner-destination="settings" href="./panel.html" hidden><img src="./bay-icon-school.svg" alt="" /><span>ตั้งค่า</span></a>
+        <a class="owner-nav-item owner-only-nav" data-owner-destination="control" href="./panel.html" hidden><img src="./bay-icon-status.svg" alt="" /><span>ดูแลระบบ</span></a>
       </nav>
       <div class="header-actions kruart-header-actions">
-        <a id="kruart-system-search" class="kruart-header-tool" href="#kruart-system-title" aria-label="ค้นหาระบบ"><span aria-hidden="true">⌕</span></a>
-        <a class="kruart-header-tool kruart-bell" href="/bay/status.html" aria-label="สถานะและการแจ้งเตือน"><span aria-hidden="true">♢</span></a>
         <button class="kruart-login-chip" type="button" data-open-login><span class="kruart-login-avatar"><img data-kruart-art-slot="public.account-avatar" src="./account-avatar.webp?release=__AWH_WEB_RELEASE_ID__" alt="" /></span><span><small id="kruart-account-caption">สวัสดีครับ</small><strong id="kruart-account-label">เข้าสู่ระบบ</strong></span><span aria-hidden="true">⌄</span></button>
         <span id="surface-state" class="quiet-status" aria-live="polite">กำลังเชื่อมต่อ</span>
         <button id="account-open" class="icon-button account-button profile-trigger" type="button" aria-label="เปิดเมนูโปรไฟล์" hidden><img class="account-avatar-image" src="./account-avatar.webp?release=__AWH_WEB_RELEASE_ID__" alt="" /><span class="sr-only">โปรไฟล์และบัญชี</span></button>
@@ -64,22 +59,15 @@
               <p class="kruart-awh-title">Art’s Workspace Hub</p>
               <h2>พื้นที่เรียนรู้และการทำงานของเรา</h2>
               <p>เรียนรู้ จัดการงานโรงเรียน เอกสาร และ AI ได้ในที่เดียว</p>
-              <div class="kruart-hero-actions"><button id="public-login-open" class="kruart-primary" type="button" data-open-login>เข้าสู่พื้นที่ของฉัน <span aria-hidden="true">›</span></button><a class="kruart-secondary" href="#kruart-roles">เริ่มใช้งาน</a></div>
+              <div class="kruart-hero-actions"><button id="public-login-open" class="kruart-primary" type="button" data-open-login>เข้าสู่พื้นที่ของฉัน <span aria-hidden="true">›</span></button><a class="kruart-secondary" href="#kruart-roles">เลือกพื้นที่ของคุณ</a></div>
             </div>
             <span class="kruart-hero-tag">LEARN<br />PLAY<br />GROW<br />TOGETHER</span>
           </article>
-          <aside class="kruart-shortcuts" aria-label="ทางลัดวันนี้">
-            <div class="kruart-panel-head"><h2><img class="kruart-heading-icon" src="./bay-icon-work.svg" alt="" /> ทางลัดวันนี้</h2><a href="#kruart-system-title">ดูระบบหลัก ›</a></div>
-            <a class="kruart-shortcut" href="https://learn.kruart.online/"><span class="kruart-shortcut-icon learn"><img src="./bay-icon-learnlab.svg" alt="" /></span><span><strong>เปิด LearnLab</strong><small>เข้าเรียนและทำแบบฝึกหัด</small></span><b>เข้าใช้งาน</b><i>›</i></a>
-            <a class="kruart-shortcut" href="https://learn.kruart.online/learnlab/teacher/worksheet-studio.php"><span class="kruart-shortcut-icon docs"><img src="./bay-icon-apps.svg" alt="" /></span><span><strong>สร้างใบงานดิจิทัล</strong><small>Worksheet Studio · ทำงานได้ วาดได้ ตกแต่งได้</small></span><b>เปิดเครื่องมือ</b><i>›</i></a>
-            <a class="kruart-shortcut" href="https://school.kruart.online/parent/"><span class="kruart-shortcut-icon people"><img src="./bay-icon-school.svg" alt="" /></span><span><strong>Parent Connect</strong><small>ข้อมูลบุตรหลานผ่าน LINE อย่างปลอดภัย</small></span><b>เปิดดู</b><i>›</i></a>
-            <a class="kruart-shortcut" href="/bay/"><span class="kruart-shortcut-icon docs"><img src="./bay-icon-apps.svg" alt="" /></span><span><strong>เอกสารสำคัญ</strong><small>แบบฟอร์มและบริการโรงเรียน</small></span><b>ดูเอกสาร</b><i>›</i></a>
-            <button class="kruart-shortcut" type="button" data-open-login><span class="kruart-shortcut-icon awh"><img src="./bay-icon-work.svg" alt="" /></span><span><strong>ใช้งาน AWH</strong><small>พื้นที่ทำงาน AI และ Automation</small></span><b>เข้าใช้งาน</b><i>›</i></button>
-          </aside>
+
         </div>
 
         <section id="kruart-roles" class="kruart-section kruart-roles-section" aria-labelledby="kruart-role-title">
-          <div class="kruart-section-head"><h2 id="kruart-role-title"><img class="kruart-heading-icon" src="./bay-icon-school.svg" alt="" /> เลือกสิ่งที่คุณต้องการ</h2><p>ทุกคนคือส่วนสำคัญของ KRUART</p></div>
+          <div class="kruart-section-head"><h2 id="kruart-role-title"><img class="kruart-heading-icon" src="./bay-icon-school.svg" alt="" /> เลือกพื้นที่ของคุณ</h2><p>ทุกคนคือส่วนสำคัญของ KRUART</p></div>
           <div class="kruart-role-grid">
             <a class="kruart-role-card student" href="https://learn.kruart.online/"><span class="kruart-role-art" aria-hidden="true"></span><span class="kruart-role-copy"><strong>นักเรียน</strong><small>มาเรียนรู้<br />สู่อนาคตที่ดีกว่า</small><span class="kruart-role-progress"><i></i></span><b>เริ่มได้เลย ›</b></span></a>
             <a class="kruart-role-card teacher" href="https://learn.kruart.online/learnlab/teacher/"><span class="kruart-role-art" aria-hidden="true"></span><span class="kruart-role-copy"><strong>ครู</strong><small>จัดการห้องเรียน<br />สร้างและตรวจใบงาน</small><span class="kruart-role-progress"><i></i></span><b>เข้าพื้นที่ครู ›</b></span></a>
@@ -88,39 +76,14 @@
           </div>
         </section>
 
-        <div class="kruart-lower-grid">
-          <div class="kruart-left-stack">
-            <section class="kruart-section kruart-systems" aria-labelledby="kruart-system-title">
-              <div class="kruart-section-head"><h2 id="kruart-system-title"><img class="kruart-heading-icon" src="./bay-icon-apps.svg" alt="" /> ระบบหลักของเรา</h2></div>
-              <div class="kruart-system-grid">
-                <a href="https://learn.kruart.online/"><span><img class="kruart-system-logo" src="./logo-bay-learnlab.webp?release=__AWH_WEB_RELEASE_ID__" alt="" loading="lazy" decoding="async" /></span><div><strong>BAY LearnLab</strong><small>ห้องเรียนออนไลน์<br />เรียนรู้ได้ทุกที่ ทุกเวลา</small></div><i>›</i></a>
-                <a href="https://excuse.kruart.online/"><span><img class="kruart-system-logo" src="./logo-bay-excuse-x.webp?release=__AWH_WEB_RELEASE_ID__" alt="" loading="lazy" decoding="async" /></span><div><strong>BAY EXCUSE X</strong><small>ระบบแกนกลางโรงเรียน<br />และข้อมูลหลัก</small></div><i>›</i></a>
-                <button type="button" data-open-login><span><img class="kruart-system-logo" src="./logo-256x256.png?release=__AWH_WEB_RELEASE_ID__" alt="" loading="lazy" decoding="async" /></span><div><strong>พื้นที่ทำงาน AWH</strong><small>ส่วนทำงานของ kruart.online<br />AI · Projects · Files · Tasks</small></div><i>›</i></button>
-                <a href="#kruart-system-title"><span><img class="kruart-system-logo" src="./logo-bay-app.webp?release=__AWH_WEB_RELEASE_ID__" alt="" loading="lazy" decoding="async" /></span><div><strong>ระบบหลัก KRUART</strong><small>เลือกทางเข้าระบบที่ต้องการ<br />จากหน้า KRUART นี้</small></div><i>›</i></a>
-              </div>
-            </section>
-
-            <section class="kruart-section kruart-news" aria-labelledby="kruart-news-title">
-              <div class="kruart-section-head"><h2 id="kruart-news-title"><img class="kruart-heading-icon" src="./bay-icon-web.svg" alt="" /> ข่าวและกิจกรรมล่าสุด</h2><a href="https://school.kruart.online/news/">ดูทั้งหมด ›</a></div>
-              <div class="kruart-news-grid">
-                <a href="https://school.kruart.online/news/" class="kruart-news-card news-school"><span class="kruart-news-thumb"></span><span><em>ข่าวประชาสัมพันธ์</em><strong>ติดตามข่าวสารจากโรงเรียน</strong><small>ประกาศและข้อมูลสำหรับนักเรียน ผู้ปกครอง และชุมชน</small></span></a>
-                <a href="https://school.kruart.online/news/" class="kruart-news-card news-activity"><span class="kruart-news-thumb"></span><span><em>กิจกรรม</em><strong>กิจกรรมการเรียนรู้ของเรา</strong><small>เรื่องราวจากห้องเรียนและกิจกรรมของโรงเรียน</small></span></a>
-                <a href="https://school.kruart.online/news/" class="kruart-news-card news-pride"><span class="kruart-news-thumb"></span><span><em>ผลงาน</em><strong>ผลงานและความภาคภูมิใจ</strong><small>พื้นที่รวบรวมผลงานนักเรียน ครู และโรงเรียน</small></span></a>
-              </div>
-            </section>
+        <section class="kruart-section kruart-news" aria-labelledby="kruart-news-title">
+          <div class="kruart-section-head"><h2 id="kruart-news-title"><img class="kruart-heading-icon" src="./bay-icon-web.svg" alt="" /> ข่าวและกิจกรรมล่าสุด</h2><a href="https://school.kruart.online/news/">ดูทั้งหมด ›</a></div>
+          <div class="kruart-news-grid">
+            <a href="https://school.kruart.online/news/" class="kruart-news-card news-school"><span class="kruart-news-thumb"></span><span><em>ข่าวประชาสัมพันธ์</em><strong>ติดตามข่าวสารจากโรงเรียน</strong><small>ประกาศและข้อมูลสำหรับนักเรียน ผู้ปกครอง และชุมชน</small></span></a>
+            <a href="https://school.kruart.online/news/" class="kruart-news-card news-activity"><span class="kruart-news-thumb"></span><span><em>กิจกรรม</em><strong>กิจกรรมการเรียนรู้ของเรา</strong><small>เรื่องราวจากห้องเรียนและกิจกรรมของโรงเรียน</small></span></a>
+            <a href="https://school.kruart.online/news/" class="kruart-news-card news-pride"><span class="kruart-news-thumb"></span><span><em>ผลงาน</em><strong>ผลงานและความภาคภูมิใจ</strong><small>พื้นที่รวบรวมผลงานนักเรียน ครู และโรงเรียน</small></span></a>
           </div>
-
-          <aside class="kruart-today" aria-labelledby="kruart-today-title">
-            <div class="kruart-panel-head"><h2 id="kruart-today-title"><img class="kruart-heading-icon" src="./bay-icon-status.svg" alt="" /> ภาพรวมวันนี้</h2><a href="#kruart-system-title">ดูระบบหลัก ›</a></div>
-            <div class="kruart-today-grid">
-              <a href="https://learn.kruart.online/"><span class="today-icon blue">▦</span><span><strong>เรียนรู้วันนี้</strong><small>เปิด BAY LearnLab</small></span><i>›</i></a>
-              <a href="https://school.kruart.online/news/"><span class="today-icon orange">◖</span><span><strong>ประกาศล่าสุด</strong><small>เปิดเว็บไซต์โรงเรียน</small></span><i>›</i></a>
-              <a href="https://excuse.kruart.online/"><span class="today-icon amber">✓</span><span><strong>งานโรงเรียน</strong><small>เปิด BAY EXCUSE X</small></span><i>›</i></a>
-              <a href="/bay/status.html"><span class="today-icon green">●</span><span><strong>สถานะระบบ</strong><small>ตรวจความพร้อมบริการ</small></span><i>›</i></a>
-            </div>
-            <div class="kruart-today-message"><img data-kruart-art-slot="public.today-message" src="./today-community.webp?release=__AWH_WEB_RELEASE_ID__" alt="" loading="lazy" decoding="async" /><p><strong>พื้นที่เดียวสำหรับทุกคน</strong><small>เรียนรู้ ทำงาน และเชื่อมต่อกับโรงเรียนได้ง่ายขึ้น</small></p></div>
-          </aside>
-        </div>
+        </section>
 
         <section class="kruart-footer-banner" aria-label="Growing Together for Every Learner"><div><strong>Growing Together for Every Learner</strong><small>เพราะการเรียนรู้ที่ดี เริ่มต้นจากการเติบโตไปด้วยกัน</small></div><a href="#kruart-roles">เริ่มต้นเส้นทางของคุณ ›</a></section>
       </section>
@@ -151,12 +114,6 @@
               <input id="ecosystem-command-input" type="text" maxlength="5000" autocomplete="off" placeholder="วันนี้อยากให้ AWH ช่วยอะไร…" />
               <button type="submit" aria-label="เปิดงานนี้ใน AWH">ส่ง <span aria-hidden="true">↑</span></button>
             </form>
-            <div class="owner-command-suggestions" aria-label="คำสั่งแนะนำ">
-              <button type="button" data-owner-command="ช่วยสรุปงานที่ต้องทำวันนี้">งานวันนี้</button>
-              <button type="button" data-owner-command="ช่วยสร้างเอกสารที่ฉันต้องใช้">สร้างเอกสาร</button>
-              <button type="button" data-owner-command="ตรวจสถานะระบบทั้งหมดและบอกเฉพาะสิ่งที่ต้องดู">ตรวจระบบ</button>
-              <button type="button" data-owner-command="เปิดงาน LearnLab ที่เกี่ยวข้องกับวันนี้">LearnLab</button>
-            </div>
           </div>
         </section>
 
@@ -164,25 +121,18 @@
           <div class="owner-section-title"><div><span>START HERE</span><h2 id="owner-quick-title">เริ่มจากตรงนี้</h2></div></div>
           <div class="owner-quick-list">
             <button id="ecosystem-open-awh" type="button" class="owner-quick-row"><span class="owner-quick-icon"><img src="./brand-awh.webp?release=__AWH_WEB_RELEASE_ID__" alt="" loading="eager" decoding="async" /></span><span><strong>งานของฉัน</strong><small>คุยกับ AWH · ทำต่อจากงานล่าสุด · จัดการไฟล์และงาน</small></span><b>เปิด ›</b></button>
-            <a class="owner-quick-row" href="/bay/"><span class="owner-quick-icon"><img src="./logo-bay-excuse-x.webp?release=__AWH_WEB_RELEASE_ID__" alt="" loading="eager" decoding="async" /></span><span><strong>BAY Excuse · งานโรงเรียน</strong><small>นักเรียน · เช็กชื่อ · ตารางสอน · คะแนน · เอกสาร · ผู้ปกครอง</small></span><b>เปิด ›</b></a>
+            <a class="owner-quick-row" href="https://excuse.kruart.online/"><span class="owner-quick-icon"><img src="./logo-bay-excuse-x.webp?release=__AWH_WEB_RELEASE_ID__" alt="" loading="eager" decoding="async" /></span><span><strong>BAY Excuse · งานโรงเรียน</strong><small>นักเรียน · เช็กชื่อ · ตารางสอน · คะแนน · เอกสาร · ผู้ปกครอง</small></span><b>เปิด ›</b></a>
             <a class="owner-quick-row" href="https://learn.kruart.online/"><span class="owner-quick-icon"><img src="./logo-bay-learnlab.webp?release=__AWH_WEB_RELEASE_ID__" alt="" loading="eager" decoding="async" /></span><span><strong>การเรียนรู้</strong><small>LearnLab · ห้องเรียน · ใบงาน · Student Hub</small></span><b>เปิด ›</b></a>
             <a class="owner-quick-row" href="https://school.kruart.online/"><span class="owner-quick-icon"><img src="./logo-school.webp?release=__AWH_WEB_RELEASE_ID__" alt="" loading="eager" decoding="async" /></span><span><strong>เว็บไซต์โรงเรียน</strong><small>ข่าว · บุคลากร · เอกสาร · ผู้ปกครอง · บริการสาธารณะ</small></span><b>เปิด ›</b></a>
-          </div>
-          <div class="owner-home-secondary">
-            <a href="./updates.html">อัปเดตระบบ</a>
-            <button id="install-web-app-home" type="button" data-install-web-app>ติดตั้ง AWH</button>
           </div>
         </section>
 
         <details id="ecosystem-systems-directory" class="owner-all-systems">
-          <summary>ระบบและโปรเจกต์ทั้งหมด</summary>
-          <section class="owner-featured-systems" aria-labelledby="ecosystem-recent-title">
-            <div class="owner-section-title"><div><span>CONNECTED SYSTEMS</span><h2 id="ecosystem-recent-title">ระบบที่ใช้บ่อย</h2></div><a href="#systems" data-open-systems>ดูทั้งหมด ›</a></div>
-            <div id="ecosystem-featured-grid" class="ecosystem-featured-grid"></div>
-          </section>
+          <summary>ระบบทั้งหมด</summary>
           <section class="ecosystem-projects owner-systems" aria-labelledby="ecosystem-projects-title">
-            <div class="owner-section-title"><div><span>PROJECTS</span><h2 id="ecosystem-projects-title">โปรเจกต์และเครื่องมือเพิ่มเติม</h2></div></div>
-            <div class="ecosystem-home-actions owner-system-search"><label class="ecosystem-search-box"><span class="sr-only">ค้นหาโปรเจกต์</span><input id="ecosystem-search-input" type="search" maxlength="80" autocomplete="off" placeholder="ค้นหาระบบหรือโปรเจกต์…" /></label><a class="secondary-button public-link-button owner-system-directory-link" href="#systems" data-open-systems>ดูระบบทั้งหมด</a></div>
+            <div class="owner-section-title"><div><span>CONNECTED SYSTEMS</span><h2 id="ecosystem-projects-title">ระบบและบริการ</h2></div></div>
+            <div class="ecosystem-home-actions owner-system-search"><label class="ecosystem-search-box"><span class="sr-only">ค้นหาระบบ</span><input id="ecosystem-search-input" type="search" maxlength="80" autocomplete="off" placeholder="ค้นหาระบบหรือบริการ…" /></label></div>
+            <div id="ecosystem-featured-grid" class="ecosystem-featured-grid" hidden aria-hidden="true"></div>
             <div id="ecosystem-project-grid" class="ecosystem-project-grid" aria-live="polite"></div>
           </section>
         </details>
@@ -196,11 +146,11 @@
             <div class="today-purple"><span>ต้องตรวจ</span><strong id="ecosystem-pilot-count">—</strong></div>
           </section>
           <div id="ecosystem-live-list" class="owner-live-list" aria-live="polite"><p>กำลังตรวจสถานะระบบ…</p></div>
-          <a class="owner-today-link" href="/bay/status.html">ดูรายละเอียดสถานะ ›</a>
+          <a class="owner-today-link" href="./panel.html#overview">เปิดศูนย์ดูแลระบบ ›</a>
         </aside>
 
         <section id="ecosystem-owner-tools" class="ecosystem-owner-tools owner-control-card" hidden>
-          <div class="owner-control-copy"><p class="eyebrow">OWNER</p><h2>ดูแลระบบ</h2><p>สุขภาพระบบ · อัปเดต · สำรองข้อมูล · อุปกรณ์</p><div class="ecosystem-owner-grid"><a href="./panel.html">เปิดศูนย์ดูแลระบบ</a><a href="./infrastructure.html">รายละเอียดขั้นสูง</a></div></div>
+          <div class="owner-control-copy"><p class="eyebrow">OWNER</p><h2>ดูแลระบบ</h2><p>สุขภาพระบบ · อัปเดต · สำรองข้อมูล · อุปกรณ์</p><div class="ecosystem-owner-grid"><a href="./panel.html">เปิดศูนย์ดูแลระบบ</a></div></div>
           <div class="owner-control-art" aria-hidden="true"></div>
         </section>
 
@@ -230,12 +180,10 @@
           <button class="icon-button profile-menu-close" type="button" data-close-sheet="profile-menu" aria-label="ปิด">×</button>
         </div>
         <div class="profile-menu-actions">
-          <button type="button" class="profile-menu-action" data-profile-section="profile"><span>◉</span><span><strong>โปรไฟล์ของฉัน</strong><small>ชื่อที่แสดงและข้อมูลบัญชี</small></span><b>›</b></button>
-          <button type="button" class="profile-menu-action" data-profile-section="account"><span>⌁</span><span><strong>บัญชีและความปลอดภัย</strong><small>ชื่อผู้ใช้ รหัสผ่าน และการกู้คืน</small></span><b>›</b></button>
+          <button type="button" class="profile-menu-action" data-profile-section="account"><span>◉</span><span><strong>บัญชีของฉัน</strong><small>โปรไฟล์ · ชื่อผู้ใช้ · รหัสผ่าน · การกู้คืน</small></span><b>›</b></button>
           <button type="button" class="profile-menu-action" data-profile-section="devices"><span>▣</span><span><strong>อุปกรณ์</strong><small>เซสชันและ AWH Agent</small></span><b>›</b></button>
           <button type="button" class="profile-menu-action" data-profile-section="data"><span>◎</span><span><strong>ข้อมูลของฉัน</strong><small>ความจำและการส่งออกข้อมูล</small></span><b>›</b></button>
-          <button type="button" class="profile-menu-action owner-profile-menu-item" data-profile-section="people" hidden><span>◌</span><span><strong>ผู้ใช้และสิทธิ์</strong><small>จัดการจากศูนย์ดูแลระบบ</small></span><b>›</b></button>
-          <button type="button" class="profile-menu-action owner-profile-menu-item" data-profile-section="system" hidden><span>⌘</span><span><strong>ศูนย์ดูแลระบบ</strong><small>ระบบ AI อุปกรณ์ และการดูแลทั้งหมด</small></span><b>›</b></button>
+          <button type="button" class="profile-menu-action owner-profile-menu-item" data-profile-section="system" hidden><span>⌘</span><span><strong>ดูแลระบบ</strong><small>อัปเดต · ผู้ใช้ · AI · อุปกรณ์ · โครงสร้างระบบ</small></span><b>›</b></button>
         </div>
         <button id="profile-menu-logout" class="profile-menu-logout" type="button">ออกจาก AWH</button>
       </div>
@@ -243,7 +191,7 @@
 
     <section id="account-sheet" class="sheet" hidden aria-modal="true" role="dialog" aria-labelledby="account-sheet-title"><div class="sheet-backdrop" data-close-sheet="account-sheet"></div><div class="sheet-card account-card focused-account-card"><div class="sheet-header"><div><p id="account-sheet-eyebrow" class="eyebrow">MY ACCOUNT</p><h2 id="account-sheet-title">บัญชีของฉัน</h2></div><button class="icon-button" type="button" data-close-sheet="account-sheet" aria-label="ปิด">ปิด</button></div><nav class="settings-tabs" aria-label="ส่วนบัญชี" hidden></nav>
 
-      <section id="settings-panel-start" class="settings-panel" hidden><div id="settings-start-summary" class="settings-summary" aria-live="polite"><p class="eyebrow">YOUR WORKSPACE</p><h3>พร้อมเริ่มงาน</h3><p class="muted">เลือกสิ่งที่ต้องการตั้งค่าเพียงครั้งเดียว แล้วกลับมาคุยกับ AWH ได้ตามปกติ</p><button id="system-check" class="secondary-button" type="button">ตรวจความพร้อม AWH</button><p id="system-check-message" class="form-message" role="status"></p></div><div class="settings-action-grid"><button type="button" class="settings-action owner-settings-action" data-settings-tab="brand" hidden><strong>แบรนด์และหน้าตา</strong><span>โลโก้ ไอคอน ชื่อ สี ข้อความต้อนรับ และ Prompt เริ่มต้น</span></button><button type="button" class="settings-action" data-settings-tab="ai"><strong>เชื่อมต่อ AI</strong><span id="settings-ai-summary">ตรวจสถานะ AI…</span></button><button type="button" class="settings-action" data-settings-tab="devices"><strong>ดาวน์โหลดและอุปกรณ์</strong><span id="settings-device-summary">ตรวจ AWH Agent…</span></button><button type="button" class="settings-action" data-settings-tab="account"><strong>บัญชีและความปลอดภัย</strong><span>จัดการรหัสผ่าน การกู้คืน และอุปกรณ์ที่ลงชื่อเข้าใช้</span></button><button type="button" class="settings-action" data-settings-tab="data"><strong>ความจำและข้อมูล</strong><span>ดูสิ่งที่ AWH จำ ส่งออก หรือปรับลักษณะผลิตภัณฑ์</span></button><button type="button" class="settings-action owner-settings-action" data-settings-tab="system" hidden><strong>ระบบและฐานข้อมูล</strong><span>ตรวจสุขภาพระบบและจัดการฐานข้อมูล AWH อย่างปลอดภัย</span></button></div></section>
+      <section id="settings-panel-start" class="settings-panel" hidden><div id="settings-start-summary" class="settings-summary" aria-live="polite"><p class="eyebrow">YOUR WORKSPACE</p><h3>พร้อมเริ่มงาน</h3><p class="muted">เลือกสิ่งที่ต้องการตั้งค่าเพียงครั้งเดียว แล้วกลับมาคุยกับ AWH ได้ตามปกติ</p><button id="system-check" class="secondary-button" type="button">ตรวจความพร้อม AWH</button><p id="system-check-message" class="form-message" role="status"></p></div><div class="settings-action-grid"><button type="button" class="settings-action" data-settings-tab="account"><strong>บัญชีและความปลอดภัย</strong><span>โปรไฟล์ รหัสผ่าน การกู้คืน และอุปกรณ์ที่ลงชื่อเข้าใช้</span></button><button type="button" class="settings-action" data-settings-tab="devices"><strong>อุปกรณ์ของฉัน</strong><span id="settings-device-summary">ตรวจ AWH Agent…</span></button><button type="button" class="settings-action" data-settings-tab="data"><strong>ข้อมูลของฉัน</strong><span>ความจำและการส่งออกข้อมูล</span></button></div></section>
 
 
       <section id="settings-panel-brand" class="settings-panel" hidden>

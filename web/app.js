@@ -1285,7 +1285,7 @@ import {
 
   function openSystemsDirectory({ history = true, focusSearch = false } = {}) {
     if (!state.control?.authenticated) {
-      document.getElementById('kruart-system-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      window.location.assign('/bay/apps.html');
       return;
     }
     showEcosystemHome({ replace: true });
@@ -1345,17 +1345,7 @@ import {
     if (state.conversationAvailable) $('goal-form')?.requestSubmit();
   }
 
-  const isAwhProduct = (project) => project?.id === 'awh' || project?.id === 'kruart-online';
-  const canonicalProjectId = (project) => project?.id === 'kruart-online' ? 'awh' : safeText(project?.id);
-  const dedupeProjectPresentation = (projects) => {
-    const seen = new Set();
-    return projects.filter((project) => {
-      const id = canonicalProjectId(project);
-      if (!id || seen.has(id)) return false;
-      seen.add(id);
-      return true;
-    });
-  };
+  const isAwhProduct = (project) => project?.id === 'awh';
 
   const liveProjectService = (project) => {
     if (!project || typeof project !== 'object') return null;
@@ -1373,8 +1363,6 @@ import {
     'school-website-prototype': { banner: './project-school.webp', logo: './logo-school.webp' },
     'bay-computer-lab': { banner: './project-computer-lab.webp', logo: './logo-bay-computer-lab.webp' },
     'bay-parent-connect': { banner: './project-parent-connect.webp', logo: './logo-bay-app.webp' },
-    'kruart-online': { banner: './project-awh.webp', logo: './brand-awh.webp' },
-    'bay-ecosystem': { banner: './project-kruart-workspace.webp', logo: './brand-kruart-workspace.webp' },
   });
   const visualAsset = (path) => path ? path + '?release=__AWH_WEB_RELEASE_ID__' : null;
 
@@ -1393,7 +1381,7 @@ import {
   async function renderEcosystemPortfolio() {
     const grid = $('ecosystem-project-grid');
     const featured = $('ecosystem-featured-grid');
-    if (!grid || !featured || !state.control?.authenticated) return;
+    if (!grid || !state.control?.authenticated) return;
     let projects = [], releases = [], liveServices = [];
     const statusPromise = fetch('/bay/api/status.php', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } })
       .then(async (response) => response.ok ? await response.json() : null)
@@ -1409,7 +1397,7 @@ import {
       releases = Array.isArray(releaseData?.releases) ? releaseData.releases : [];
     } catch {}
     const paint = () => {
-      grid.replaceChildren(); featured.replaceChildren();
+      grid.replaceChildren(); featured?.replaceChildren();
       const liveById = new Map(liveServices.map((service) => [service?.id, service]));
     const safeUrl = (value) => typeof value === 'string' && (/^https:\/\//.test(value) || /^\/(?!\/)/.test(value)) ? value : null;
     const labelFor = (status) => ({ active: 'ใช้งาน', pilot: 'Pilot', prototype: 'ต้นแบบ', reference: 'อ้างอิง', internal: 'ภายใน' })[status] || 'โปรเจกต์';
@@ -1457,23 +1445,20 @@ import {
       article.append(body);
       return article;
     };
-    const presentationProjects = dedupeProjectPresentation(projects);
+    const directoryProjects = projects.filter((item) => !isAwhProduct(item));
     const query = safeText($('ecosystem-search-input')?.value).toLocaleLowerCase('th-TH');
-    const visibleProjects = query ? presentationProjects.filter((project) => [project?.name, project?.type, project?.stage, project?.summary, ...(Array.isArray(project?.capabilities) ? project.capabilities : []), isAwhProduct(project) ? 'kruart.online AWH Art Workspace Hub' : ''].map((value) => safeText(value).toLocaleLowerCase('th-TH')).join(' ').includes(query)) : presentationProjects;
-    const preferredIds = ['bay-excuse-x','bay-learnlab','school-website','bay-computer-lab'];
-    for (const id of preferredIds) { const project=visibleProjects.find((item)=>item?.id===id); if(project) featured.append(card(project,true)); }
-    const remainingProjects = query ? visibleProjects : visibleProjects.filter((item)=>!preferredIds.includes(item?.id) && !isAwhProduct(item));
-    for (const project of remainingProjects) grid.append(card(project,false));
-    if (!visibleProjects.length) { const empty=document.createElement('div'); empty.className='ecosystem-empty'; empty.textContent = projects.length && query ? `ไม่พบระบบหรือโปรเจกต์ที่ตรงกับ “${safeText($('ecosystem-search-input')?.value)}”` : 'ยังโหลดรายการระบบจาก BAY Ecosystem ไม่ได้ โปรดลองอีกครั้ง'; grid.append(empty); }
+    const visibleProjects = query ? directoryProjects.filter((project) => [project?.name, project?.type, project?.stage, project?.summary, ...(Array.isArray(project?.capabilities) ? project.capabilities : [])].map((value) => safeText(value).toLocaleLowerCase('th-TH')).join(' ').includes(query)) : directoryProjects;
+    for (const project of visibleProjects) grid.append(card(project,false));
+    if (!visibleProjects.length) { const empty=document.createElement('div'); empty.className='ecosystem-empty'; empty.textContent = directoryProjects.length && query ? `ไม่พบระบบหรือบริการที่ตรงกับ “${safeText($('ecosystem-search-input')?.value)}”` : 'ยังโหลดรายการระบบจาก BAY Ecosystem ไม่ได้ โปรดลองอีกครั้ง'; grid.append(empty); }
     const set=(id,value)=>{const node=$(id);if(node)node.textContent=String(value)};
     const readyServices = liveServices.filter((item)=>item?.ok===true);
     const attentionServices = liveServices.filter((item)=>item?.ok!==true);
-    set('ecosystem-project-count', presentationProjects.length);
+    set('ecosystem-project-count', directoryProjects.length);
     set('ecosystem-active-count', liveServices.length ? readyServices.length : projects.filter((item)=>item?.status==='active').length);
     set('ecosystem-pilot-count', liveServices.length ? attentionServices.length : projects.filter((item)=>item?.status==='pilot').length);
     set('ecosystem-release-count', releases.length);
     const liveList=$('ecosystem-live-list'); const liveOverall=$('ecosystem-live-overall');
-    if(liveList){ liveList.replaceChildren(); for(const service of liveServices.filter((item)=>item?.critical!==false).slice(0,4)){ const row=document.createElement('div'); row.className=`owner-live-row ${service?.ok===true?'ready':'attention'}`; const dot=document.createElement('i'); const copy=document.createElement('span'); const name=document.createElement('strong'); name.textContent=safeText(service?.name,'ระบบ'); const detail=document.createElement('small'); detail.textContent=service?.ok===true?'พร้อมใช้งาน':safeText(service?.detail,'ต้องตรวจสอบ'); copy.append(name,detail); row.append(dot,copy); liveList.append(row); } if(!liveServices.length){ const p=document.createElement('p'); p.textContent='ยังอ่านสถานะสดไม่ได้ ใช้ Status Center เพื่อตรวจอีกครั้ง'; liveList.append(p); } }
+    if(liveList){ liveList.replaceChildren(); for(const service of liveServices.filter((item)=>item?.critical!==false).slice(0,4)){ const row=document.createElement('div'); row.className=`owner-live-row ${service?.ok===true?'ready':'attention'}`; const dot=document.createElement('i'); const copy=document.createElement('span'); const name=document.createElement('strong'); name.textContent=safeText(service?.name,'ระบบ'); const detail=document.createElement('small'); detail.textContent=service?.ok===true?'พร้อมใช้งาน':safeText(service?.detail,'ต้องตรวจสอบ'); copy.append(name,detail); row.append(dot,copy); liveList.append(row); } if(!liveServices.length){ const p=document.createElement('p'); p.textContent='ยังอ่านสถานะสดไม่ได้ เปิดศูนย์ดูแลระบบเพื่อตรวจอีกครั้ง'; liveList.append(p); } }
     if(liveOverall){ const healthy=liveServices.length>0&&attentionServices.length===0; liveOverall.className=`owner-live-overall ${healthy?'ready':liveServices.length?'attention':'checking'}`; liveOverall.textContent=healthy?'ทุกระบบปกติ':liveServices.length?`${attentionServices.length} จุดต้องดู`:'กำลังตรวจ…'; }
     const ownerTools=$('ecosystem-owner-tools'); if(ownerTools) ownerTools.hidden=state.control?.role!=='OWNER';
     };

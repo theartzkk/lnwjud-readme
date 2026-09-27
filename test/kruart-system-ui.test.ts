@@ -116,9 +116,10 @@ test('KRUART visual asset slots are centralized and all deployed fallbacks exist
   }
   assert.match(css, /--kruart-art-public-hero:url\("\.\/kruart-hero-final\.webp"\)/);
   assert.match(css, /background-image:var\(--kruart-art-public-hero\)!important/);
+  assert.match(css, /body\.public-home-active \.kruart-main-hero\{min-height:320px;background-position:96% top!important\}/);
   assert.match(css, /--kruart-art-system-infrastructure/);
   assert.match(index, /data-kruart-art-slot="public\.account-avatar"[^>]*account-avatar\.webp/);
-  assert.match(index, /data-kruart-art-slot="public\.today-message"[^>]*today-community\.webp/);
+  assert.equal(manifest.slots.some((slot) => slot.id === 'public.today-message'), false);
   assert.match(index, /brand-kruart-workspace\.webp/);
   assert.match(panel, /data-kruart-art-slot="system\.control-panel"[^>]*system-control-panel\.webp/);
   const expectedReady = new Map([

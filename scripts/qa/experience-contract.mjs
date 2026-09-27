@@ -55,10 +55,15 @@ if (contract.experienceGate?.rejectPublicInternalTerminology !== true) fail('pub
 const index = await read('web/index.html');
 const ownerNav = index.match(/<nav id="owner-global-nav"[\s\S]*?<\/nav>/)?.[0] ?? '';
 const ownerLabels = [...ownerNav.matchAll(/<span>([^<]+)<\/span>/g)].map((match) => match[1]);
-const expectedOwner = ['หน้าแรก','ทำงาน','ระบบ','อัปเดต','ตั้งค่า'];
+const expectedOwner = contract.ownerNavigation?.primaryVocabulary ?? ['หน้าแรก','ทำงาน','ระบบ','ดูแลระบบ'];
 if (JSON.stringify(ownerLabels) !== JSON.stringify(expectedOwner)) fail('AWH owner navigation vocabulary drift');
-if (!/href="https:\/\/excuse\.kruart\.online\/"[^>]*><img[^>]+><span>สำหรับครู<\/span>/.test(index)) fail('teacher entry must go directly to BAY');
-if (/href="\/bay\/"[^>]*><img[^>]+><span>สำหรับครู<\/span>/.test(index)) fail('duplicate BAY portal root is exposed as teacher entry');
+const publicNav = index.match(/<nav class="global-nav"[\s\S]*?<\/nav>/)?.[0] ?? '';
+const publicLabels = [...publicNav.matchAll(/<span>([^<]+)<\/span>/g)].map((match) => match[1]);
+const expectedPublic = contract.publicNavigation?.primaryVocabulary ?? ['หน้าแรก','เรียนรู้','โรงเรียน','ระบบ'];
+if (JSON.stringify(publicLabels) !== JSON.stringify(expectedPublic)) fail('public navigation vocabulary drift');
+if (!/href="\/bay\/apps\.html"[^>]*><img[^>]+><span>ระบบ<\/span>/.test(publicNav)) fail('public system directory entry drift');
+if (/สำหรับครู|ผู้ปกครอง|ข่าวสาร/.test(publicNav)) fail('duplicate role/news shortcuts leaked into public primary navigation');
+if (/class="kruart-shortcuts"|class="kruart-section kruart-systems"|class="kruart-today"/.test(index)) fail('duplicate public home shortcut sections returned');
 
 const feedback = await read('web/interaction-feedback.js');
 if (!feedback.includes('kruart-ui-pressed')) fail('shared press feedback missing');

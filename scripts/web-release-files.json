@@ -123,7 +123,6 @@
     "system-control-panel.webp",
     "system-hosting.webp",
     "system-infrastructure.webp",
-    "today-community.webp",
     "web-config.json",
     "external-capabilities.json",
     "data.json",
@@ -453,10 +452,6 @@
     [
       "web/system-infrastructure.webp",
       "system-infrastructure.webp"
-    ],
-    [
-      "web/today-community.webp",
-      "today-community.webp"
     ],
     [
       "config/device-runtime-release.json",

@@ -141,9 +141,16 @@ test('KRUART experience contract prevents navigation and portal drift', async ()
   const index = await read('web/index.html');
   const ownerNav = index.match(/<nav id="owner-global-nav"[\s\S]*?<\/nav>/)?.[0] ?? '';
   const labels = [...ownerNav.matchAll(/<span>([^<]+)<\/span>/g)].map((match) => match[1]);
-  assert.deepEqual(labels, ['หน้าแรก','ทำงาน','ระบบ','อัปเดต','ตั้งค่า']);
-  assert.match(index, /href="https:\/\/excuse\.kruart\.online\/"[^>]*><img[^>]+><span>สำหรับครู<\/span>/);
-  assert.doesNotMatch(index, /href="\/bay\/"[^>]*><img[^>]+><span>สำหรับครู<\/span>/);
+  assert.deepEqual(labels, ['หน้าแรก','ทำงาน','ระบบ','ดูแลระบบ']);
+  const publicNav = index.match(/<nav class="global-nav"[\s\S]*?<\/nav>/)?.[0] ?? '';
+  assert.match(publicNav, /href="https:\/\/learn\.kruart\.online\/"[\s\S]*?<span>เรียนรู้<\/span>/);
+  assert.match(publicNav, /href="https:\/\/school\.kruart\.online\/"[\s\S]*?<span>โรงเรียน<\/span>/);
+  assert.match(publicNav, /href="\/bay\/apps\.html"[\s\S]*?<span>ระบบ<\/span>/);
+  for (const duplicate of ['สำหรับครู','ผู้ปกครอง','ข่าวสาร']) assert.doesNotMatch(publicNav, new RegExp(duplicate));
+  assert.doesNotMatch(index, /class="kruart-shortcuts"/);
+  assert.doesNotMatch(index, /class="kruart-section kruart-systems"/);
+  assert.doesNotMatch(index, /class="kruart-today"/);
+  assert.match(index, /เลือกพื้นที่ของคุณ/);
 
   const feedback = await read('web/interaction-feedback.js');
   assert.match(feedback, /kruart-ui-pressed/);

@@ -9,7 +9,7 @@ test('canonical Dashboard is intent-first with a three-item mobile navigation',a
  for(const technical of ['ค้นหา ⌘K','Memory พร้อม','Project + Chat','ยังไม่มี Project']) assert.ok(!dashboard.includes(technical),`primary UX leaked technical copy: ${technical}`);
  const mobileNav=dashboard.match(/function mountMobileNavigation\(\)[\s\S]*?document\.body\.append\(nav\);/)?.[0]||'';
  for(const label of ['แชท','งานของฉัน','เครื่องมือ']) assert.match(mobileNav,new RegExp(label));
- for(const duplicate of ["'หน้าแรก'","'ไฟล์'"]) assert.doesNotMatch(mobileNav,new RegExp(duplicate));
+ for(const duplicate of ["'หน้าแรก'","'อัปเดต'","'ตั้งค่า'"]) assert.doesNotMatch(mobileNav,new RegExp(duplicate));
  assert.match(constitution,/at most three primary destinations/);
  for(const leaked of ['งาน/AI','Cloud พร้อมใช้งาน','ทุกงาน เริ่มจากตรงนี้']) assert.doesNotMatch(dashboard,new RegExp(leaked));
  assert.match(css,/awh-mobile-nav/); assert.match(css,/repeat\(3,minmax\(0,1fr\)\)/);
@@ -17,14 +17,16 @@ test('canonical Dashboard is intent-first with a three-item mobile navigation',a
  assert.match(dashboard,/แนบไฟล์หรือรูปภาพ/);
  assert.doesNotMatch(dashboard,/kruart-reference-role-staff-hq\.webp/);
  assert.doesNotMatch(dashboard,/hero\.append\(heroArt\)/);
- assert.match(dashboard,/\['home', '⌂', 'เริ่มงาน'/);
- assert.match(dashboard,/dataset\.view === 'files' \? 'files' : 'home'/);
+ const productNav=dashboard.match(/function mountProductNavigation\(dashboard\)[\s\S]*?dashboard\.prepend\(nav\);/)?.[0]||'';
+ for(const label of ['แชท','งานของฉัน','เครื่องมือ']) assert.match(productNav,new RegExp(label));
+ for(const duplicate of ["'หน้าแรก'","'ระบบ'","'อัปเดต'","'ตั้งค่า'"]) assert.doesNotMatch(productNav,new RegExp(duplicate));
+ assert.match(dashboard,/dashboardView === 'tasks' \|\| dashboardView === 'files' \? 'tasks' : 'tools'/);
  assert.match(index,/data-owner-destination="home"/);
  assert.match(index,/data-owner-destination="awh"[^>]*>[\s\S]{0,120}<span>ทำงาน<\/span>/);
  assert.doesNotMatch(index,/Channel และ SHA-256|Source of Truth ของตัวเอง|AI WORKSPACE/);
  assert.match(index,/ไม่ต้องติดตั้งโปรแกรมเพื่อเริ่มใช้งาน/);
  assert.match(index,/id="install-web-app"/);
- assert.match(index,/id="install-web-app-home"/);
+ assert.doesNotMatch(index,/id="install-web-app-home"/);
  assert.match(index,/data-install-web-app/);
  assert.match(index,/id="install-guide-sheet"/);
  assert.match(index,/เพิ่มไปยังหน้าจอโฮม/);
@@ -33,7 +35,7 @@ test('canonical Dashboard is intent-first with a three-item mobile navigation',a
  assert.match(dashboard,/openWork\(command\.value, false\)/);
  assert.match(dashboard,/\$\('attachment-open'\)\?\.click\(\)/);
  assert.match(css,/awh-command-attach/);
- assert.match(index,/href="\.\/infrastructure\.html"/); assert.doesNotMatch(`${dashboard}\n${css}`,/awh-experience-v[23]|final-home-polish/);
+ assert.match(index,/href="\.\/panel\.html"/); assert.doesNotMatch(index,/owner-control-copy[\s\S]{0,500}href="\.\/infrastructure\.html"/); assert.doesNotMatch(`${dashboard}\n${css}`,/awh-experience-v[23]|final-home-polish/);
 });
 
 
@@ -71,7 +73,7 @@ test('KRUART Golden Home ships the approved generated human artwork family and a
     'logo-school.webp','logo-bay-excuse-x.webp','logo-bay-learnlab.webp','logo-bay-computer-lab.webp','logo-bay-app.webp',
     'project-bay-excuse-x.webp','project-learnlab.webp','project-awh.webp','project-school.webp',
     'project-computer-lab.webp','project-parent-connect.webp','project-kruart-online.webp','project-kruart-workspace.webp',
-    'news-school-activity.webp','news-learning.webp','news-pride.webp','today-community.webp',
+    'news-school-activity.webp','news-learning.webp','news-pride.webp',
     'awh-home-hero.webp','owner-control.webp','system-infrastructure.webp','system-hosting.webp','system-control-panel.webp',
   ];
   for (const asset of vaultAssets) {
@@ -84,7 +86,10 @@ test('KRUART Golden Home ships the approved generated human artwork family and a
   assert.match(html, /kruart-brand-logo[^>]*brand-kruart-workspace\.webp/);
   assert.match(html, /kruart-login-avatar[^>]*><img[^>]*src="\.\/account-avatar\.webp/);
   assert.match(html, /kruart-signin-logo[^>]*brand-kruart-workspace\.webp/);
-  assert.match(publicHome, /today-community\.webp/);
+  assert.match(publicHome, /kruart-main-hero/);
+  assert.match(publicHome, /id="kruart-roles"/);
+  assert.match(publicHome, /kruart-section kruart-news/);
+  assert.doesNotMatch(publicHome, /kruart-shortcuts|kruart-systems|kruart-today/);
   assert.match(css, /KRUART generated final artwork authority/);
   assert.match(css, /kruart-main-hero[^\n]*kruart-hero-final\.webp/);
   for (const role of ['student','teacher','parent','staff']) assert.match(css, new RegExp('kruart-role-card\\.'+role+'[\\s\\S]{0,180}kruart-role-'+role+'-final\\.webp'));
@@ -95,9 +100,9 @@ test('KRUART Golden Home ships the approved generated human artwork family and a
   assert.match(css, /body\.public-home-active \.awh-mobile-nav\{display:none!important\}/);
   assert.match(html, /https:\/\/school\.kruart\.online\/news\//);
   assert.match(html, /https:\/\/school\.kruart\.online\/parent\//);
-  for (const quickLogo of ['brand-awh.webp','logo-bay-learnlab.webp','logo-bay-excuse-x.webp','logo-bay-app.webp']) assert.ok(html.includes(quickLogo), quickLogo+' missing from owner quick access');
+  for (const quickLogo of ['brand-awh.webp','logo-bay-learnlab.webp','logo-bay-excuse-x.webp','logo-school.webp']) assert.ok(html.includes(quickLogo), quickLogo+' missing from owner quick access');
   assert.doesNotMatch(html, /banauedyai\.ac\.th\/mainpage/);
   assert.match(finalCss, /Public mobile accessibility closure/);
-  assert.match(finalCss, /body\.public-home-active \.kruart-shortcut small\{font-size:11\.5px!important/);
+  assert.match(finalCss, /body\.public-home-active \.kruart-hero-grid\{grid-template-columns:1fr!important\}/);
   assert.match(finalCss, /body\.public-home-active \.kruart-role-copy>b\{font-size:12px!important/);
 });

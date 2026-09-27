@@ -21,13 +21,11 @@
       "id": "awh",
       "canonicalUrl": "https://kruart.online/",
       "parentProductId": null,
-      "mobilePrimaryMax": 5,
+      "mobilePrimaryMax": 3,
       "primaryVocabulary": [
-        "หน้าแรก",
-        "ทำงาน",
-        "ระบบ",
-        "อัปเดต",
-        "ตั้งค่า"
+        "แชท",
+        "งานของฉัน",
+        "เครื่องมือ"
       ],
       "publicSurface": false
     },
@@ -117,7 +115,7 @@
     {
       "id": "bay-hub",
       "canonicalUrl": "https://kruart.online/bay/apps.html",
-      "rootRedirectUrl": "https://kruart.online/",
+      "rootRedirectUrl": "https://kruart.online/bay/apps.html",
       "parentProductId": "awh",
       "mobilePrimaryMax": 4,
       "userFacingProduct": false,
@@ -248,5 +246,23 @@
       "historyScope": "PER_TARGET",
       "rollbackScope": "PER_TARGET"
     }
+  },
+  "ownerNavigation": {
+    "primaryVocabulary": [
+      "หน้าแรก",
+      "ทำงาน",
+      "ระบบ",
+      "ดูแลระบบ"
+    ]
+  },
+  "publicNavigation": {
+    "primaryVocabulary": [
+      "หน้าแรก",
+      "เรียนรู้",
+      "โรงเรียน",
+      "ระบบ"
+    ],
+    "systemDirectory": "/bay/apps.html",
+    "maxPrimaryDestinations": 4
   }
 }

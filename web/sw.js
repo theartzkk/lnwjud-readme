@@ -8,7 +8,6 @@ const RUNTIME_VISUALS = new Set([
   './kruart-role-staff-final.webp',
   './kruart-footer-final.webp',
   './kruart-logo-final.webp',
-  './today-community.webp',
   './system-infrastructure.webp',
   './system-hosting.webp',
   './system-control-panel.webp',

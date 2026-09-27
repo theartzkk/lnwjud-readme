@@ -114,15 +114,14 @@ test('V1.3 owner center is bundled into existing dashboard assets and stays mobi
   assert.match(worker, /dashboard\.js\?release=owner-center-fixture/);
   assert.doesNotMatch(`${dashboard}\n${html}`, /__AWH_WEB_RELEASE_ID__/);
 });
-test('AWH primary navigation uses the unified Owner taxonomy and direct Control Panel destinations', async () => {
+test('AWH Workspace navigation stays task-first while Owner controls converge on Control Panel', async () => {
   const [dashboard, owner] = await Promise.all([
     readFile(join(ROOT, 'web', 'dashboard.js'), 'utf8'),
     readFile(join(ROOT, 'web', 'owner-center.js'), 'utf8'),
   ]);
-  assert.match(dashboard, /\['systems', '▦', 'ระบบ',[\s\S]{0,120}panel\.html#ecosystem/);
-  assert.match(dashboard, /\['updates', '⇧', 'อัปเดต',[\s\S]{0,120}updates\.html/);
-  assert.match(dashboard, /\['settings', '⌘', 'ตั้งค่า',[\s\S]{0,120}panel\.html/);
-  assert.doesNotMatch(dashboard, /'ศูนย์ระบบ'/);
+  const productNav = dashboard.match(/function mountProductNavigation\(dashboard\)[\s\S]*?dashboard\.prepend\(nav\);/)?.[0] ?? '';
+  for (const label of ['แชท', 'งานของฉัน', 'เครื่องมือ']) assert.match(productNav, new RegExp(label));
+  for (const duplicate of ['ระบบ', 'อัปเดต', 'ตั้งค่า']) assert.doesNotMatch(productNav, new RegExp(duplicate));
   assert.match(owner, /launch\.textContent = 'เปิดศูนย์ดูแลระบบ'/);
   assert.match(owner, /window\.location\.assign\('\.\/panel\.html'\)/);
 });

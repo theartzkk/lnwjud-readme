@@ -107,20 +107,6 @@
       "sourceAvailable": true
     },
     {
-      "id": "public.today-message",
-      "surface": "public",
-      "mode": "html-img",
-      "fallback": "today-community.webp",
-      "target": "800x600",
-      "ratio": "4:3",
-      "priority": "P1",
-      "status": "ready",
-      "safeZone": "subject right; transparent/quiet background preferred",
-      "sourceCandidate": "BAE672AB-B2DA-4CC3-A387-5657BFBA60AD.PNG",
-      "plannedWebAsset": "today-community.webp",
-      "sourceAvailable": true
-    },
-    {
       "id": "public.footer",
       "surface": "public",
       "mode": "css-background",
