@@ -29,6 +29,7 @@
     {"id":"awh-durable-verification-registry","project":"AWH","risk":"CRITICAL","triggerPatterns":["bounded-deploy-mission","operator-bridge","verification-evidence"],"evidence":"Verification incidents and release capsules persist in the bounded AWH evidence registry, and matching changed paths recall deterministic regression IDs."},
     {"id":"school-name-canonical","project":"School Website","risk":"HIGH","triggerPatterns":["school","content","logo"],"evidence":"The school name is exactly โรงเรียนบ้านเอือดใหญ่ everywhere it represents the school."},
     {"id":"school-mobile-no-overflow","project":"School Website","risk":"MEDIUM","triggerPatterns":["css","layout","responsive","mobile"],"evidence":"Critical mobile viewports have no horizontal overflow or clipped controls."},
-    {"id":"school-authentic-media","project":"School Website","risk":"HIGH","triggerPatterns":["image","banner","gallery","hero"],"evidence":"Real school claims use verified first-party school media rather than fabricated documentary imagery."}
+    {"id":"school-authentic-media","project":"School Website","risk":"HIGH","triggerPatterns":["image","banner","gallery","hero"],"evidence":"Real school claims use verified first-party school media rather than fabricated documentary imagery."},
+    {"id":"awh-continuous-improvement-inheritance","project":"AWH","risk":"CRITICAL","triggerPatterns":["continuous-improvement-policy","HubVerificationIntelligence","HubOperatorBridgeService","repository-governance-contract","ecosystem-source-drift"],"evidence":"Classified incidents retain reproducible evidence; only verified closure becomes an inherited lesson/guardrail, and runtime governance proves the current central policy is enforced."}
   ]
 }
