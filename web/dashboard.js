@@ -6,7 +6,7 @@ import { closeAwhDialog, commitAwhSurface, onAwhSurfaceChange, openAwhDialog } f
 
 const DASHBOARD_ID = 'product-dashboard';
 const IMAGE_MAX_BYTES = 30 * 1024 * 1024;
-const ACTIVE_STATES = new Set(['QUEUED', 'WAITING_FOR_WORKER', 'PREPARING', 'RUNNING', 'QA', 'WAITING_FOR_APPROVAL']);
+const ACTIVE_STATES = new Set(['QUEUED', 'WAITING_FOR_WORKER', 'PREPARING', 'RUNNING', 'QA', 'WAITING_FOR_APPROVAL', 'VERIFYING', 'RECOVERING']);
 const state = {
   control: null,
   mounted: false,

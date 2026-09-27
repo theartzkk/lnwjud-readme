@@ -36,6 +36,7 @@ const tests = [
   'hub/tests/m21-vault-source-authority.php',
   'hub/tests/m22-identity-convergence.php',
   'hub/tests/m23-platform-hardening.php',
+  'hub/tests/completion-authority.php',
   'hub/tests/vault-source-reconcile.php',
   'hub/tests/deploy-execution-authority.php',
   'hub/tests/source-drift-policy.php',

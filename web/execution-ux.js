@@ -53,6 +53,7 @@ export function executionStage(task) {
   if (state === 'RUNNING') return 'working';
   if (state === 'QA') return 'qa';
   if (state === 'WAITING_FOR_APPROVAL') return 'approval';
+  if (state === 'VERIFYING' || state === 'RECOVERING') return 'qa';
   if (state === 'COMPLETED') return 'done';
   if (state === 'FAILED' || state === 'CANCELLED') return 'done';
   return 'accepted';
@@ -106,6 +107,8 @@ export function executionStatus(task, workers = []) {
   else if (state === 'RUNNING') { title = 'กำลังทำ'; detail = `${actor} กำลังดำเนินงาน`; }
   else if (state === 'QA') { title = 'กำลังตรวจคุณภาพ'; detail = 'AWH กำลังตรวจผลลัพธ์ก่อนส่งกลับ'; }
   else if (state === 'WAITING_FOR_APPROVAL') { title = 'รอการอนุมัติ'; detail = 'มีการเปลี่ยนแปลงสำคัญที่ต้องยืนยันก่อนดำเนินการต่อ'; }
+  else if (state === 'VERIFYING') { title = 'กำลังยืนยันผลลัพธ์'; detail = eventMessage || 'AWH กำลังยืนยัน execution, authority และงานต่อเนื่องก่อนประกาศว่าเสร็จ'; }
+  else if (state === 'RECOVERING') { title = 'กำลังทำต่อจากจุดเดิม'; detail = eventMessage || 'AWH กำลังกู้ execution จาก heartbeat/checkpoint เดิมโดยไม่เริ่มงานใหม่'; }
   else if (state === 'COMPLETED') { title = 'พร้อมใช้'; detail = result || 'งานเสร็จและผลลัพธ์พร้อมใช้งานแล้ว'; }
   else if (state === 'FAILED') { title = 'กำลังแก้ไข'; detail = failure || result || 'AWH เก็บสถานะไว้แล้วและกำลังหาวิธีทำต่ออย่างปลอดภัย'; }
   else if (state === 'CANCELLED') { title = 'ยกเลิกแล้ว'; detail = 'งานนี้ถูกยกเลิกแล้ว'; }

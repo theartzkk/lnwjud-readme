@@ -18,6 +18,7 @@ require_once __DIR__ . '/HubArtifactStore.php';
 require_once __DIR__ . '/HubProjectVault.php';
 require_once __DIR__ . '/HubProjectVaultService.php';
 require_once __DIR__ . '/HubDurableExecutionService.php';
+require_once __DIR__ . '/HubCompletionAuthorityService.php';
 require_once __DIR__ . '/HubVerificationGate.php';
 require_once __DIR__ . '/HubVerificationIntelligence.php';
 require_once __DIR__ . '/HubNativeAgentService.php';
@@ -94,6 +95,7 @@ final class HubControlPlaneService
     private readonly HubOwnerAuthService $ownerAuth;
     private readonly HubProjectVaultService $vaults;
     private readonly HubDurableExecutionService $execution;
+    private readonly HubCompletionAuthorityService $completion;
     private readonly ?HubCapabilityRegistryService $capabilities;
     private readonly HubSystemOneDecisionService $systemOne;
     private readonly ?HubAutomationRegistryService $automations;
@@ -119,6 +121,7 @@ final class HubControlPlaneService
         $this->vaults = HubProjectVaultService::fromEnvironment($pdo);
         $this->artifactStore = $this->centralProjectAuthoritySchemaPresent() ? HubArtifactStore::fromEnvironment() : null;
         $this->execution = new HubDurableExecutionService($pdo, $this->vaults, $this->agent, $this->artifactStore);
+        $this->completion = new HubCompletionAuthorityService($pdo);
         $this->capabilities = HubCapabilityRegistryService::schemaPresent($pdo) ? new HubCapabilityRegistryService($pdo) : null;
         $this->systemOne = HubSystemOneDecisionService::fromEnvironment();
         $this->automations = $this->automationSchemaPresent() ? new HubAutomationRegistryService($pdo) : null;
@@ -1307,13 +1310,16 @@ final class HubControlPlaneService
         $q->execute(['task'=>$taskId,'user'=>$userId]);
         $task=$q->fetch();
         if(!is_array($task))throw new HubControlPlaneException('External task is unavailable','TASK_NOT_FOUND');
+        $completion=$this->completion->assessTask($taskId,$now);
+        $publicState=(string)($completion['publicState']??$task['state']);
+        $publicProgress=in_array($publicState,['VERIFYING','RECOVERING'],true)?min(99,(int)$task['progress']):(int)$task['progress'];
         $reply=null;
         if(is_string($task['conversation_id']??null)){
-            $m=$this->pdo->prepare("SELECT body,kind FROM control_conversation_messages WHERE conversation_id=:conversation AND kind IN ('ASSISTANT','RESULT','FAILURE') ORDER BY created_at DESC,message_id DESC LIMIT 1");
+            $m=$this->pdo->prepare("SELECT body,message_kind FROM control_conversation_messages WHERE conversation_id=:conversation AND message_kind IN ('ASSISTANT','RESULT','FAILURE') ORDER BY created_at DESC,message_id DESC LIMIT 1");
             $m->execute(['conversation'=>$task['conversation_id']]);$row=$m->fetch();
-            if(is_array($row))$reply=(string)$row['body'];
+            if(is_array($row)&&($publicState==='COMPLETED'||(string)($row['message_kind']??'')!=='RESULT'))$reply=(string)$row['body'];
         }
-        return ['schemaVersion'=>1,'taskId'=>(string)$task['task_id'],'projectId'=>(string)$task['project_id'],'state'=>(string)$task['state'],'progress'=>(int)$task['progress'],'resultSummary'=>$task['result_summary']===null?null:(string)$task['result_summary'],'failureCode'=>$task['failure_code']===null?null:(string)$task['failure_code'],'replyText'=>$reply,'updatedAt'=>(string)$task['updated_at']];
+        return ['schemaVersion'=>1,'taskId'=>(string)$task['task_id'],'projectId'=>(string)$task['project_id'],'state'=>$publicState,'internalState'=>(string)$task['state'],'progress'=>$publicProgress,'resultSummary'=>$publicState==='COMPLETED'&&$task['result_summary']!==null?(string)$task['result_summary']:null,'failureCode'=>$task['failure_code']===null?null:(string)$task['failure_code'],'replyText'=>$reply,'completion'=>$completion,'updatedAt'=>(string)$task['updated_at']];
     }
 
     public function automations(string $sessionToken, ?string $now = null): array
@@ -2317,7 +2323,9 @@ final class HubControlPlaneService
         if ($projectId !== null) { $projectId = self::uuid($projectId); $this->assertProjectMember((string) $session['user_id'], $projectId); $sql .= ' AND project_id = :project'; $params['project'] = $projectId; }
         $sql .= ' ORDER BY updated_at DESC, task_id DESC LIMIT 50';
         $query = $this->pdo->prepare($sql); $query->execute($params);
-        return ['schemaVersion' => 1, 'results' => array_map(fn (array $row): array => $this->taskRow($row), $query->fetchAll())];
+        $projected=array_map(fn (array $row): array => $this->taskRow($row), $query->fetchAll());
+        $projected=array_values(array_filter($projected,static fn(array $row):bool=>in_array((string)($row['state']??''),['COMPLETED','FAILED','WAITING_FOR_APPROVAL'],true)));
+        return ['schemaVersion' => 1, 'results' => $projected];
     }
 
     public function artifacts(string $sessionToken, ?string $taskId = null, ?string $now = null): array
@@ -3332,7 +3340,6 @@ final class HubControlPlaneService
             $update->execute(['state' => $state, 'progress' => $progress, 'result' => $result, 'at' => $at, 'terminal' => $terminal ? 1 : 0, 'release' => $releaseWorker ? 1 : 0, 'task' => $taskId, 'device' => $auth['deviceId']]);
             if ($update->rowCount() !== 1) throw new HubControlPlaneException('Task update raced with another worker', 'TASK_UPDATE_RACE');
             $eventId = $this->event($taskId, $state, $progress, $message, $at);
-            $this->syncConversationEvent($taskId, $eventId, $state, $progress, $message, $result, $at);
             if ($this->centralProjectAuthoritySchemaPresent() && ($terminal || $releaseWorker)) {
                 $execution = $this->pdo->prepare("SELECT execution_id,executor_kind,required_capability,state,lease_owner FROM control_task_executions WHERE task_id=:task");
                 $execution->execute(['task'=>$taskId]); $executionRow=$execution->fetch();
@@ -3351,6 +3358,7 @@ final class HubControlPlaneService
             }
             if ($terminal || $releaseWorker) $this->pdo->prepare('UPDATE control_workers SET state = \'READY\', busy_task_id = NULL, last_seen_at = :at WHERE device_id = :device')->execute(['at' => $at, 'device' => $auth['deviceId']]);
             if ($needsApproval) { $check = $this->pdo->prepare("SELECT 1 FROM control_approvals WHERE task_id = :task AND status = 'PENDING'"); $check->execute(['task' => $taskId]); if ($check->fetchColumn() === false) $this->pdo->prepare('INSERT INTO control_approvals(approval_id, task_id, action, scope_json, status, expires_at, decided_at) VALUES(:id, :task, :action, :scope, \'PENDING\', :expires, NULL)')->execute(['id' => self::uuidFromBytes(random_bytes(16)), 'task' => $taskId, 'action' => 'task.execute', 'scope' => json_encode(['taskId' => $taskId, 'projectId' => (string) $row['project_id'], 'goalDigest' => hash('sha256', (string) $row['goal'])], JSON_THROW_ON_ERROR), 'expires' => gmdate('c', strtotime($at) + 3600)]); }
+            $this->syncConversationEvent($taskId, $eventId, $state, $progress, $message, $result, $at);
             $this->pdo->exec('COMMIT');
             $transactionOpen = false;
         } catch (Throwable $error) {
@@ -3390,10 +3398,14 @@ final class HubControlPlaneService
             $executionQuery->execute(['task' => $row['task_id']]); $executionRow = $executionQuery->fetch();
             if (is_array($executionRow)) $execution = ['executionId' => (string) $executionRow['execution_id'], 'executorKind' => (string) $executionRow['executor_kind'], 'requiredCapability' => (string) $executionRow['required_capability'], 'vaultRevisionId' => $executionRow['vault_revision_id'] === null ? null : (string) $executionRow['vault_revision_id'], 'state' => (string) $executionRow['state'], 'continuation' => self::executionContinuation((string) ($executionRow['checkpoint_json'] ?? '{}')), 'capabilityPlan' => self::executionCapabilityPlan((string) ($executionRow['checkpoint_json'] ?? '{}'))];
         }
-        $actionGraph = HubActionGraphService::project($row, is_array($executionRow) ? $executionRow : null, $approvalStatus === false ? null : (string) $approvalStatus, count($artifactRows));
+        $completion=$this->completion->assessTask((string)$row['task_id']);
+        $publicState=(string)($completion['publicState']??(string)$row['state']);
+        $publicProgress=in_array($publicState,['VERIFYING','RECOVERING'],true)?min(99,(int)$row['progress']):(int)$row['progress'];
+        $publicRow=$row;$publicRow['state']=$publicState;$publicRow['progress']=$publicProgress;
+        $actionGraph = HubActionGraphService::project($publicRow, is_array($executionRow) ? $executionRow : null, $approvalStatus === false ? null : (string) $approvalStatus, count($artifactRows));
         $canCancel = in_array((string) $row['state'], ['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL'], true);
         if ((string) $row['state'] === 'RUNNING' && is_array($executionRow)) $canCancel = (string) $executionRow['state'] === 'RUNNING' && in_array((string) $executionRow['required_capability'], ['qa.cloud', 'review.visual'], true) && is_string($executionRow['lease_owner'] ?? null) && str_starts_with((string) $executionRow['lease_owner'], 'cloud:github-actions:') && !is_string($executionRow['cancellation_requested_at'] ?? null);
-        return ['schemaVersion' => 1, 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'conversationId' => isset($row['conversation_id']) && $row['conversation_id'] !== null ? (string) $row['conversation_id'] : null, 'projectName' => is_array($projectRow) ? (string) $projectRow['name'] : null, 'projectType' => is_array($projectRow) ? (string) $projectRow['type'] : null, 'goal' => (string) $row['goal'], 'state' => (string) $row['state'], 'progress' => (int) $row['progress'], 'canCancel' => $canCancel, 'assignedDevice' => $row['assigned_device_id'] === null ? null : (string) $row['assigned_device_id'], 'approvalStatus' => $approvalStatus === false ? null : (string) $approvalStatus, 'createdAt' => (string) $row['created_at'], 'updatedAt' => (string) $row['updated_at'], 'resultSummary' => $row['result_summary'] === null ? null : (string) $row['result_summary'], 'failureCode' => $row['failure_code'] === null ? null : (string) $row['failure_code'], 'lastEvent' => is_array($eventRow) ? ['state' => (string) $eventRow['state'], 'progress' => (int) $eventRow['progress'], 'message' => $eventRow['message'] === null ? null : (string) $eventRow['message']] : null, 'artifactRefs' => array_map(static fn (array $item): string => (string) $item['artifact_id'], $artifactRows), 'execution' => $execution, 'actionGraph' => $actionGraph];
+        return ['schemaVersion' => 1, 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'conversationId' => isset($row['conversation_id']) && $row['conversation_id'] !== null ? (string) $row['conversation_id'] : null, 'projectName' => is_array($projectRow) ? (string) $projectRow['name'] : null, 'projectType' => is_array($projectRow) ? (string) $projectRow['type'] : null, 'goal' => (string) $row['goal'], 'state' => $publicState, 'internalState'=>(string)$row['state'], 'progress' => $publicProgress, 'canCancel' => $canCancel, 'assignedDevice' => $row['assigned_device_id'] === null ? null : (string) $row['assigned_device_id'], 'approvalStatus' => $approvalStatus === false ? null : (string) $approvalStatus, 'createdAt' => (string) $row['created_at'], 'updatedAt' => (string) $row['updated_at'], 'resultSummary' => $publicState==='COMPLETED'&&$row['result_summary']!==null?(string)$row['result_summary']:null, 'failureCode' => $row['failure_code'] === null ? null : (string) $row['failure_code'], 'lastEvent' => in_array($publicState,['VERIFYING','RECOVERING'],true)?['state'=>$publicState,'progress'=>$publicProgress,'message'=>$publicState==='VERIFYING'?'กำลังยืนยัน execution, authority และ continuation ก่อนประกาศว่าเสร็จ':'กำลังทำต่อจาก heartbeat/checkpoint เดิม']:(is_array($eventRow) ? ['state' => (string) $eventRow['state'], 'progress' => (int) $eventRow['progress'], 'message' => $eventRow['message'] === null ? null : (string) $eventRow['message']] : null), 'artifactRefs' => array_map(static fn (array $item): string => (string) $item['artifact_id'], $artifactRows), 'execution' => $execution, 'completion'=>$completion, 'actionGraph' => $actionGraph];
     }
     private static function artifactRow(array $row): array { $id = (string) $row['artifact_id']; return ['schemaVersion' => 1, 'artifactId' => $id, 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'kind' => (string) $row['kind'], 'name' => (string) $row['name'], 'sha256' => $row['sha256'] === null ? null : (string) $row['sha256'], 'sizeBytes' => (int) $row['size_bytes'], 'relativeRef' => $row['relative_ref'] === null ? null : (string) $row['relative_ref'], 'createdAt' => (string) $row['created_at'], 'downloadUrl' => isset($row['object_artifact_id']) && $row['object_artifact_id'] !== null ? '/api/v1/control/artifacts/' . $id . '/download' : null]; }
     private static function approvalRow(array $row, ?string $status = null): array
@@ -3750,7 +3762,11 @@ final class HubControlPlaneService
         $existing = $this->pdo->prepare('SELECT 1 FROM control_conversation_messages WHERE source_event_id = :event'); $existing->execute(['event' => $eventId]); if ($existing->fetchColumn() !== false) return;
         $kind = 'PROGRESS';
         if ($state === 'WAITING_FOR_APPROVAL') { $kind = 'APPROVAL'; $body = 'ก่อนดำเนินการต่อ AWH ต้องการการอนุมัติสำหรับขอบเขตงานนี้'; }
-        elseif ($state === 'COMPLETED') { $kind = 'RESULT'; $body = $result ?: 'งานเสร็จแล้วและมีผลลัพธ์พร้อมตรวจ'; }
+        elseif ($state === 'COMPLETED') {
+            $completion=$this->completion->assessTask($taskId,$at);
+            if(($completion['verified']??false)===true&&($completion['publicState']??null)==='COMPLETED') { $kind='RESULT'; $body=$result ?: 'งานเสร็จแล้วและผ่านการยืนยัน execution/authority ครบถ้วน'; }
+            else { $kind='PROGRESS'; $progress=min(99,$progress); $reason=(string)($completion['reasonCode']??'VERIFYING'); $body='งานขั้นนี้จบแล้ว แต่ AWH ยังยืนยัน execution, authority และ continuation ก่อนประกาศว่าเสร็จทั้งหมด · '.$reason; }
+        }
         elseif ($state === 'FAILED') { $kind = 'FAILURE'; $body = $result ?: 'งานยังไม่สำเร็จ AWH หยุดไว้โดยปลอดภัยและเก็บสถานะไว้แล้ว'; }
         elseif ($state === 'CANCELLED') { $kind = 'ASSISTANT'; $body = $result ?: 'ยกเลิกงานนี้แล้ว ยังไม่มีการเริ่มงานใหม่'; }
         else { $body = self::workStateMessage($state, $progress, $message); }

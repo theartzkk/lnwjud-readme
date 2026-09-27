@@ -82,12 +82,14 @@ final class HubDurableExecutionService
      * This is not a second queue: every item is still claimed through runOnce()
      * and the existing one-to-one control_task_executions authority.
      *
-     * @return array{processed:int,completed:int,waiting:int,failed:int,recovered:int,results:list<array<string,mixed>>}
+     * @return array{processed:int,completed:int,waiting:int,failed:int,recovered:int,continuationRecovered:int,results:list<array<string,mixed>>}
      */
     public function runBatch(int $maxItems = self::MAX_BATCH_ITEMS, ?string $now = null): array
     {
         if ($maxItems < 1 || $maxItems > self::MAX_BATCH_ITEMS) throw new HubDurableExecutionException('Execution batch bound is invalid', 'EXECUTION_INVALID');
-        $recovered = count($this->recoverExpired($now));
+        $at=self::timestamp($now ?? gmdate('c'));
+        $recovered = count($this->recoverExpired($at));
+        $continuationRecovered=$this->recoverFailedContinuations($at);
         $results = []; $completed = 0; $waiting = 0; $failed = 0;
         for ($i = 0; $i < $maxItems; $i++) {
             $result = $this->runOnce($now);
@@ -98,7 +100,53 @@ final class HubDurableExecutionService
             elseif ($state === 'FAILED') $failed++;
             else $waiting++;
         }
-        return ['processed' => count($results), 'completed' => $completed, 'waiting' => $waiting, 'failed' => $failed, 'recovered' => $recovered, 'results' => $results];
+        return ['processed' => count($results), 'completed' => $completed, 'waiting' => $waiting, 'failed' => $failed, 'recovered' => $recovered, 'continuationRecovered'=>$continuationRecovered, 'results' => $results];
+    }
+
+    private function recoverFailedContinuations(string $at): int
+    {
+        if ($this->continuationMaterializer === null || $this->agent === null) return 0;
+        $q=$this->pdo->prepare("SELECT e.*,t.goal,t.conversation_id,t.user_id,t.result_summary,t.state AS task_state FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id WHERE e.executor_kind='VPS' AND e.state='COMPLETED' AND t.state='COMPLETED' AND e.checkpoint_json LIKE '%\"_continuationOutcome\"%' ORDER BY e.updated_at,e.execution_id LIMIT 40");
+        $q->execute();$count=0;
+        foreach($q->fetchAll(PDO::FETCH_ASSOC) as $row){
+            try{$checkpoint=json_decode((string)$row['checkpoint_json'],true,32,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
+            if(!is_array($checkpoint))continue;
+            $outcome=is_array($checkpoint['_continuationOutcome']??null)?$checkpoint['_continuationOutcome']:null;
+            if(!is_array($outcome)||($outcome['state']??null)!=='FAILED')continue;
+            $attempts=max(0,(int)($outcome['attempts']??0));
+            if($attempts>=3){if($this->failContinuationChain($row,$at))$count++;continue;}
+            $next=is_string($outcome['nextEligibleAt']??null)?strtotime((string)$outcome['nextEligibleAt']):false;
+            if($next!==false&&$next>strtotime($at))continue;
+            $summary=is_string($row['result_summary']??null)&&trim((string)$row['result_summary'])!==''?(string)$row['result_summary']:(string)$row['goal'];
+            $state=$this->continueIfRequested($row,$checkpoint,$summary,$at);
+            if(in_array($state,['CONTINUED','STOPPED','NOT_REQUESTED'],true)){
+                $this->publishAfterContinuation($row,'RESULT',$summary,$state,$at);$count++;continue;
+            }
+            $refresh=$this->pdo->prepare('SELECT checkpoint_json FROM control_task_executions WHERE execution_id=:execution');
+            $refresh->execute(['execution'=>$row['execution_id']]);$fresh=$refresh->fetchColumn();
+            if(is_string($fresh)){
+                try{$cp=json_decode($fresh,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){$cp=[];}
+                $o=is_array($cp['_continuationOutcome']??null)?$cp['_continuationOutcome']:[];
+                if((int)($o['attempts']??0)>=3&&$this->failContinuationChain($row,$at))$count++;
+            }
+        }
+        return $count;
+    }
+
+    /** @param array<string,mixed> $row */
+    private function failContinuationChain(array $row,string $at): bool
+    {
+        $task=(string)($row['task_id']??'');if(preg_match('/^[0-9a-f-]{36}$/i',$task)!==1)return false;
+        try{
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $u=$this->pdo->prepare("UPDATE control_tasks SET state='FAILED',progress=100,failure_code='CONTINUATION_RETRY_EXHAUSTED',lease_expires_at=NULL,updated_at=:at WHERE task_id=:task AND state='COMPLETED'");
+            $u->execute(['at'=>$at,'task'=>$task]);
+            if($u->rowCount()!==1){$this->pdo->exec('COMMIT');return false;}
+            $this->event($task,'FAILED',100,'continuation retry budget exhausted; chain stopped without claiming completion',$at);
+            $conversation=is_string($row['conversation_id']??null)?(string)$row['conversation_id']:'';
+            if($conversation!=='')$this->appendConversationMessage($conversation,$task,'FAILURE','งานขั้นก่อนหน้าถูกเก็บไว้แล้ว แต่ AWH สร้างงานต่อเนื่องไม่สำเร็จครบจำนวน retry จึงหยุด chain ไว้โดยไม่อ้างว่าเสร็จทั้งหมด',$at);
+            $this->pdo->exec('COMMIT');return true;
+        }catch(Throwable){$this->rollbackImmediate();return false;}
     }
 
     /** Claims and completes at most one persisted server-native task. */
@@ -117,12 +165,14 @@ final class HubDurableExecutionService
                 $evidence = is_array($inspection) ? $inspection['evidence'] : ['searches' => [], 'reads' => [], 'fallbackFiles' => array_slice($context['files'], 0, 12)];
                 $this->storeInspectionReport($claimed, $context, $summary, $evidence, $at);
                 $finalSummary = $summary . "\n\nAWH เก็บหลักฐาน inspection แบบอ่านอย่างเดียวไว้กับงานนี้แล้ว";
-                $this->complete($claimed, $finalSummary, 'RESULT', $at);
-                $this->continueIfRequested($claimed, $checkpoint, $finalSummary, $at);
+                $this->complete($claimed, $finalSummary, 'RESULT', $at, false);
+                $continuationOutcome=$this->continueIfRequested($claimed, $checkpoint, $finalSummary, $at);
+                $this->publishAfterContinuation($claimed,'RESULT',$finalSummary,$continuationOutcome,$at);
             } elseif (($checkpoint['mode'] ?? null) === 'NATIVE_CONVERSATION') {
                 $summary = $this->nativeConversation($claimed, $checkpoint, $at);
-                $this->complete($claimed, $summary, 'ASSISTANT', $at);
-                $this->continueIfRequested($claimed, $checkpoint, $summary, $at);
+                $this->complete($claimed, $summary, 'ASSISTANT', $at, false);
+                $continuationOutcome=$this->continueIfRequested($claimed, $checkpoint, $summary, $at);
+                $this->publishAfterContinuation($claimed,'ASSISTANT',$summary,$continuationOutcome,$at);
             } elseif (($checkpoint['mode'] ?? null) === 'PROJECT_TEXT_NORMALIZE') {
                 $this->nativeTextNormalize($claimed, $at);
             } elseif (($checkpoint['mode'] ?? null) === 'PROJECT_ASSISTED_EDIT') {
@@ -208,12 +258,18 @@ final class HubDurableExecutionService
         return HubExecutionFailurePolicy::eligible($row, $at, self::MAX_ATTEMPTS);
     }
 
-    private function complete(array $claimed, string $summary, string $messageKind, string $at): void
+    private function complete(array $claimed, string $summary, string $messageKind, string $at, bool $publishConversation = true): void
     {
         try {
             $this->pdo->exec('BEGIN IMMEDIATE');
-            $update = $this->pdo->prepare("UPDATE control_task_executions SET state = 'COMPLETED', lease_expires_at = NULL, updated_at = :at, last_error_code = NULL WHERE execution_id = :id AND state = 'RUNNING' AND lease_owner = :owner"); $update->execute(['at' => $at, 'id' => $claimed['execution_id'], 'owner' => self::EXECUTOR_ID]); if ($update->rowCount() !== 1) throw new HubDurableExecutionException('Server execution lease was lost', 'EXECUTION_LEASE_LOST');
-            $this->pdo->prepare("UPDATE control_tasks SET state = 'COMPLETED', progress = 100, result_summary = :summary, failure_code = NULL, lease_expires_at = NULL, updated_at = :at WHERE task_id = :task")->execute(['summary' => $summary, 'at' => $at, 'task' => $claimed['task_id']]); $this->event((string) $claimed['task_id'], 'COMPLETED', 100, 'server-native execution completed', $at); $this->appendConversationMessage((string) $claimed['conversation_id'], (string) $claimed['task_id'], $messageKind, $summary, $at); if (HubCapabilityRegistryService::schemaPresent($this->pdo)) (new HubCapabilityRegistryService($this->pdo))->updateEnvelopeState((string) $claimed['execution_id'], 'RELEASED', null, $at); $this->pdo->exec('COMMIT');
+            $update = $this->pdo->prepare("UPDATE control_task_executions SET state = 'COMPLETED', lease_owner = NULL, lease_expires_at = NULL, updated_at = :at, last_error_code = NULL WHERE execution_id = :id AND state = 'RUNNING' AND lease_owner = :owner");
+            $update->execute(['at' => $at, 'id' => $claimed['execution_id'], 'owner' => self::EXECUTOR_ID]);
+            if ($update->rowCount() !== 1) throw new HubDurableExecutionException('Server execution lease was lost', 'EXECUTION_LEASE_LOST');
+            $this->pdo->prepare("UPDATE control_tasks SET state = 'COMPLETED', progress = 100, result_summary = :summary, failure_code = NULL, lease_expires_at = NULL, updated_at = :at WHERE task_id = :task")->execute(['summary' => $summary, 'at' => $at, 'task' => $claimed['task_id']]);
+            $this->event((string) $claimed['task_id'], 'COMPLETED', 100, 'server-native execution completed', $at);
+            if (HubCapabilityRegistryService::schemaPresent($this->pdo)) (new HubCapabilityRegistryService($this->pdo))->updateEnvelopeState((string) $claimed['execution_id'], 'RELEASED', null, $at);
+            if ($publishConversation) $this->appendConversationMessage((string) $claimed['conversation_id'], (string) $claimed['task_id'], $messageKind, $summary, $at);
+            $this->pdo->exec('COMMIT');
         } catch (Throwable $error) { $this->rollbackImmediate(); if ($error instanceof HubDurableExecutionException) throw $error; throw new HubDurableExecutionException('Server execution could not be completed', 'EXECUTION_FAILED'); }
     }
 
@@ -328,22 +384,71 @@ final class HubDurableExecutionService
     }
 
     /** @param array<string,mixed> $claimed @param array<string,mixed> $checkpoint */
-    private function continueIfRequested(array $claimed, array $checkpoint, string $summary, string $at): void
+    private function continueIfRequested(array $claimed, array $checkpoint, string $summary, string $at): string
     {
         $continuation = $checkpoint['continuation'] ?? null;
-        if (!is_array($continuation) || ($continuation['enabled'] ?? false) !== true || $this->continuationMaterializer === null || $this->agent === null) return;
+        if (!is_array($continuation) || ($continuation['enabled'] ?? false) !== true) {
+            $this->recordContinuationOutcome((string)$claimed['execution_id'],'NOT_REQUESTED',$at,null);
+            return 'NOT_REQUESTED';
+        }
         $rootTaskId = is_string($continuation['rootTaskId'] ?? null) ? (string) $continuation['rootTaskId'] : '';
         $step = is_int($continuation['step'] ?? null) ? (int) $continuation['step'] : -1;
         $maxSteps = is_int($continuation['maxSteps'] ?? null) ? (int) $continuation['maxSteps'] : 0;
-        if (preg_match('/^[0-9a-f-]{36}$/i', $rootTaskId) !== 1 || $step < 0 || $maxSteps < 1 || $maxSteps > 8 || $step + 1 >= $maxSteps) return;
+        if (preg_match('/^[0-9a-f-]{36}$/i', $rootTaskId) !== 1 || $step < 0 || $maxSteps < 1 || $maxSteps > 8) {
+            $this->recordContinuationOutcome((string)$claimed['execution_id'],'FAILED',$at,null);
+            return 'FAILED';
+        }
+        if ($step + 1 >= $maxSteps || $this->continuationMaterializer === null || $this->agent === null) {
+            $this->recordContinuationOutcome((string)$claimed['execution_id'],'STOPPED',$at,null);
+            return 'STOPPED';
+        }
         try {
             $nextGoal = $this->planContinuation($claimed, $summary, $at);
-            if ($nextGoal === null || self::sameGoal($nextGoal, (string) $claimed['goal']) || self::highImpactGoal($nextGoal)) return;
-            ($this->continuationMaterializer)(['userId'=>(string)$claimed['user_id'],'projectId'=>(string)$claimed['project_id'],'conversationId'=>is_string($claimed['conversation_id'] ?? null)?(string)$claimed['conversation_id']:null,'parentTaskId'=>(string)$claimed['task_id'],'rootTaskId'=>$rootTaskId,'step'=>$step + 1,'maxSteps'=>$maxSteps,'goal'=>$nextGoal,'at'=>$at]);
+            if ($nextGoal === null || self::sameGoal($nextGoal, (string) $claimed['goal']) || self::highImpactGoal($nextGoal)) {
+                $this->recordContinuationOutcome((string)$claimed['execution_id'],'STOPPED',$at,null);
+                return 'STOPPED';
+            }
+            $next=($this->continuationMaterializer)(['userId'=>(string)$claimed['user_id'],'projectId'=>(string)$claimed['project_id'],'conversationId'=>is_string($claimed['conversation_id'] ?? null)?(string)$claimed['conversation_id']:null,'parentTaskId'=>(string)$claimed['task_id'],'rootTaskId'=>$rootTaskId,'step'=>$step + 1,'maxSteps'=>$maxSteps,'goal'=>$nextGoal,'at'=>$at]);
+            $nextTaskId=is_array($next)&&is_string($next['taskId']??null)?(string)$next['taskId']:null;
+            $this->recordContinuationOutcome((string)$claimed['execution_id'],'CONTINUED',$at,$nextTaskId);
+            return 'CONTINUED';
         } catch (Throwable) {
-            // Continuation is an optimization, never a reason to falsify or roll
-            // back an already-completed canonical task.
+            $this->recordContinuationOutcome((string)$claimed['execution_id'],'FAILED',$at,null);
+            return 'FAILED';
         }
+    }
+
+    private function recordContinuationOutcome(string $executionId,string $state,string $at,?string $nextTaskId): void
+    {
+        if(!in_array($state,['NOT_REQUESTED','STOPPED','CONTINUED','FAILED'],true)) return;
+        $q=$this->pdo->prepare('SELECT checkpoint_json FROM control_task_executions WHERE execution_id=:execution');
+        $q->execute(['execution'=>$executionId]);$json=$q->fetchColumn();
+        if(!is_string($json)) return;
+        try{$checkpoint=json_decode($json,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){return;}
+        if(!is_array($checkpoint)) return;
+        $previous=is_array($checkpoint['_continuationOutcome']??null)?$checkpoint['_continuationOutcome']:[];
+        $attempts=$state==='FAILED'?min(3,max(0,(int)($previous['attempts']??0))+1):max(0,(int)($previous['attempts']??0));
+        $nextEligibleAt=null;
+        if($state==='FAILED'&&$attempts<3)$nextEligibleAt=gmdate('c',strtotime($at)+min(3600,300*(2**max(0,$attempts-1))));
+        $checkpoint['_continuationOutcome']=['state'=>$state,'at'=>$at,'nextTaskId'=>$nextTaskId,'attempts'=>$attempts,'nextEligibleAt'=>$nextEligibleAt];
+        try{$encoded=json_encode($checkpoint,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);}catch(Throwable){return;}
+        $this->pdo->prepare('UPDATE control_task_executions SET checkpoint_json=:checkpoint,updated_at=:at WHERE execution_id=:execution')->execute(['checkpoint'=>$encoded,'at'=>$at,'execution'=>$executionId]);
+    }
+
+    /** @param array<string,mixed> $claimed */
+    private function publishAfterContinuation(array $claimed,string $finalKind,string $summary,string $outcome,string $at): void
+    {
+        $conversation=is_string($claimed['conversation_id']??null)?(string)$claimed['conversation_id']:'';
+        if($conversation==='') return;
+        if($outcome==='CONTINUED'){
+            $this->appendConversationMessage($conversation,(string)$claimed['task_id'],'PROGRESS','งานขั้นนี้ผ่านแล้ว และ AWH ทำขั้นถัดไปต่อจาก checkpoint เดิมโดยยังไม่ประกาศว่าเสร็จทั้งหมด',$at);
+            return;
+        }
+        if($outcome==='FAILED'){
+            $this->appendConversationMessage($conversation,(string)$claimed['task_id'],'PROGRESS','งานขั้นนี้ผ่านแล้ว แต่ continuation ยังยืนยันไม่ได้ AWH เก็บ checkpoint เดิมไว้และยังไม่ประกาศว่าเสร็จทั้งหมด',$at);
+            return;
+        }
+        $this->appendConversationMessage($conversation,(string)$claimed['task_id'],$finalKind,$summary,$at);
     }
 
     /** @param array<string,mixed> $claimed */

@@ -28,11 +28,11 @@ try{
     $manifest=$root.'/release.json';file_put_contents($manifest,json_encode(['sourceSha'=>$production],JSON_THROW_ON_ERROR));
     [$code,$out,$err]=sd_run([PHP_BINARY,dirname(__DIR__).'/bin/ecosystem-source-drift.php',$db,$gitRoot,$manifest]);$json=json_decode(trim($out),true,32,JSON_THROW_ON_ERROR);
     sd_assert($code===0&&($json['ok']??false)===true&&($json['state']??null)==='PENDING_RELEASE'&&($json['findings']??null)===[],'main ahead of production is pending, not drift failure');
-    sd_assert(in_array('AWH main ahead of production',$json['pending']??[],true),'pending release reason is explicit');
+    sd_assert(in_array('AWH canonical main ahead of runtime production',$json['pending']??[],true),'pending release reason is explicit');
     sd_git($work,['checkout','-q','-b','production-next',$production]);file_put_contents($work.'/production-next.txt',"production-next\n");sd_git($work,['add','production-next.txt']);sd_git($work,['commit','-qm','production-next']);$productionNext=sd_git($work,['rev-parse','HEAD']);sd_git($root,['--git-dir='.$gitRoot.'/awh.git','fetch','-q',$work,$productionNext]);sd_git($root,['--git-dir='.$gitRoot.'/awh.git','update-ref','refs/heads/production',$productionNext]);file_put_contents($manifest,json_encode(['sourceSha'=>$productionNext],JSON_THROW_ON_ERROR));
     sd_git($work,['checkout','-q','-b','diverged',$production]);file_put_contents($work.'/diverged.txt',"diverged\n");sd_git($work,['add','diverged.txt']);sd_git($work,['commit','-qm','diverged']);$diverged=sd_git($work,['rev-parse','HEAD']);sd_git($root,['--git-dir='.$gitRoot.'/awh.git','fetch','-q',$work,$diverged]);sd_git($root,['--git-dir='.$gitRoot.'/awh.git','update-ref','refs/heads/main',$diverged]);
     [$code,$out,$err]=sd_run([PHP_BINARY,dirname(__DIR__).'/bin/ecosystem-source-drift.php',$db,$gitRoot,$manifest]);$json=json_decode(trim($out),true,32,JSON_THROW_ON_ERROR);
-    sd_assert($code===2&&($json['state']??null)==='BLOCKED'&&in_array('AWH main/production divergence',$json['findings']??[],true),'true main/production divergence still fails closed');
+    sd_assert($code===2&&($json['state']??null)==='BLOCKED'&&in_array('AWH main/runtime production divergence',$json['findings']??[],true),'true main/runtime production divergence still fails closed');
     echo "AWH Source Drift Policy: PASS\n";
 }finally{
     if(is_dir($root)){foreach(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::CHILD_FIRST) as $f){$t=$f->getPathname();$f->isDir()&&!$f->isLink()?@rmdir($t):@unlink($t);}@rmdir($root);}

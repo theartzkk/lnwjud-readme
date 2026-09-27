@@ -29,13 +29,13 @@ try {
     $pdo = new PDO('sqlite:' . $database, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
     $pdo->exec('PRAGMA foreign_keys = ON'); $pdo->exec('PRAGMA busy_timeout = 7500'); $pdo->exec('PRAGMA journal_mode = WAL'); $pdo->exec('PRAGMA synchronous = NORMAL');
 
-    $lifecycle = ['status'=>'NOT_READY','expiredRetryCount'=>0];
+    $lifecycle = ['status'=>'NOT_READY','expiredRetryCount'=>0,'verifiedCompletionCount'=>0];
     if ((int)$pdo->query('PRAGMA user_version')->fetchColumn() >= 23) {
         try {
             $summary=(new HubExecutionLifecycleService($pdo))->reconcile();
-            $lifecycle=['status'=>'READY','expiredRetryCount'=>(int)($summary['expiredRetryCount']??0)];
+            $lifecycle=['status'=>'READY','expiredRetryCount'=>(int)($summary['expiredRetryCount']??0),'verifiedCompletionCount'=>(int)($summary['verifiedCompletionCount']??0)];
         } catch (Throwable) {
-            $lifecycle=['status'=>'DEGRADED','expiredRetryCount'=>0];
+            $lifecycle=['status'=>'DEGRADED','expiredRetryCount'=>0,'verifiedCompletionCount'=>0];
         }
     }
 
