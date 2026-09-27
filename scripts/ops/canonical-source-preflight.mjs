@@ -27,6 +27,7 @@ function normalizeRepository(remoteUrl) {
     /^git@github\.com:([^/]+)\/([^/]+)$/i,
     /^ssh:\/\/(?:git@)?github\.com\/([^/]+)\/([^/]+)$/i,
     /^ssh:\/\/(?:awh-prod|awh-vps)\/srv\/awh-git\/([a-z0-9-]+)$/i,
+    /^(?:awh-prod|awh-vps):\/srv\/awh-git\/([a-z0-9-]+)$/i,
     /^file:\/\/\/srv\/awh-git\/([a-z0-9-]+)$/i,
     /^\/srv\/awh-git\/([a-z0-9-]+)$/i,
   ];
