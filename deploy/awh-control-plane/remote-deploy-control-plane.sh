@@ -1353,6 +1353,8 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
     sudo find "$governed_path" -type d -exec sh -c 'for p do setfacl -x d:u:awh-hub "$p" 2>/dev/null || true; done' sh {} +
     sudo find "$governed_path" -type d -exec chmod g+rwx,g+s,o+rx {} +
     sudo find "$governed_path" -type f -exec chmod g+rw,o+r {} +
+    sudo find "$governed_path" -type d -exec setfacl -m g::rwx,m::rwx,d:g::rwx,d:m::rwx {} +
+    sudo find "$governed_path" -type f -exec setfacl -m g::rw,m::rw {} +
     sudo -u awh-hub test -r "$governed_path/HEAD"
     sudo -u awh-hub test ! -w "$governed_path/objects"
     sudo -u awh-hub -g bayadmin test -w "$governed_path/objects"
