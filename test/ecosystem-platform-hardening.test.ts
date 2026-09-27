@@ -124,6 +124,11 @@ test('platform hardening is wired to runtime rather than documentation only', as
   assert.match(qaRunner, /\/opt\/awh-toolchain\/node\/bin/);
   assert.match(qaRunner, /npm ci --ignore-scripts --no-audit --no-fund --prefer-offline/);
   assert.match(qaRunner, /QA_EXACT_SHA_REUSE=PASS/);
+  assert.match(qaRunner, /command -v sha256sum/);
+  assert.match(qaRunner, /shasum -a 256/);
+  assert.match(qaRunner, /openssl dgst -sha256/);
+  assert.match(qaRunner, /AWH_RELEASE_QA_EVIDENCE_ROOT/);
+  assert.match(qaRunner, /QA_FAILURE_EVIDENCE=/);
   assert.match(qaRunner, /AWH_QA_SINGLEFLIGHT_ROOT/);
   assert.match(qaRunner, /\/usr\/bin\/nice -n 10 npm run/);
   assert.doesNotMatch(qaRunner, /ln -s[^\n]*node_modules/);
