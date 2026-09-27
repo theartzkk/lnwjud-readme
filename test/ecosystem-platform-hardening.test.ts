@@ -78,6 +78,7 @@ test('platform hardening is wired to runtime rather than documentation only', as
   const router = await read('hub/src/HubControlPlaneRouter.php');
   const bounded = await read('scripts/ops/bounded-deploy-mission.mjs');
   const deploy = await read('deploy/awh-control-plane/remote-deploy-control-plane.sh');
+  const deployOrchestrator = await read('deploy/awh-control-plane/deploy-control-plane.sh');
   const health = await read('hub/src/HubEcosystemHealthService.php');
   const control = await read('hub/src/HubControlPlaneService.php');
   assert.match(executor, /HubExecutionLifecycleService/);
@@ -91,6 +92,8 @@ test('platform hardening is wired to runtime rather than documentation only', as
   assert.doesNotMatch(qaRunner, /--property=Nice=/);
   assert.match(deploy, /PLATFORM_HARDENING_MIGRATION_VERIFIED/);
   assert.match(deploy, /PLATFORM_RUNTIME_READY/);
+  assert.match(deployOrchestrator, /EXTENSION_MODE_COUNT=\$\(\(AWH_CORE \+ ASSISTANT_WORKSTREAM/);
+  assert.match(deployOrchestrator, /if test "\$EXTENSION_MODE_COUNT" -eq 0; then OWNER_LOGIN_PROOF_REQUIRED=1; fi/);
   assert.match(health, /'slo'/);
 });
 
