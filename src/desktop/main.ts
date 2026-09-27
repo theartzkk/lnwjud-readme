@@ -349,11 +349,8 @@ async function startupPermissionState(): Promise<StartupPermissionState> {
   const missing: string[] = [];
 
   if (process.platform === 'darwin') {
-    const bootstrap = await ensureAwhDeviceRuntime(config.dataDir);
-    if (bootstrap.state === 'READY') {
-      try { runtime = await deviceRuntimePermissionStatus(undefined, false); }
-      catch { runtime = null; }
-    }
+    try { runtime = await deviceRuntimePermissionStatus(undefined, false); }
+    catch { runtime = null; }
     const automationReady = stored.permissionSetupVersion === PERMISSION_SETUP_VERSION;
     if (runtime?.accessibility !== true) missing.push('accessibility');
     if (runtime?.screenCapture !== 'granted') missing.push('screen-recording');
@@ -1101,17 +1098,21 @@ async function startAfterReady(): Promise<void> {
   mainWindow = await createWindow(false);
   tray = createTray();
   const config = loadConfig();
-  const [localEnrollment, permissions] = await Promise.all([
-    enrollmentState().catch(() => ({ ok: false, enrolled: false, hubConfigured: Boolean(config.hubApiBase) })),
-    startupPermissionState().catch(() => ({ ready: false } as StartupPermissionState)),
-  ]);
-  if (localEnrollment.enrolled !== true || permissions.ready !== true) showLocalBridge();
-  if (permissions.ready === true) {
+  const localEnrollment = await enrollmentState().catch(() => ({ ok: false, enrolled: false, hubConfigured: Boolean(config.hubApiBase) }));
+  const stored = loadStoredSettings(config.dataDir);
+  const firstPermissionSetup = process.platform === 'darwin' && stored.permissionSetupVersion !== PERMISSION_SETUP_VERSION;
+  if (localEnrollment.enrolled !== true || firstPermissionSetup) showLocalBridge();
+  void (async () => {
+    await ensureAwhDeviceRuntime(config.dataDir);
+    const permissions = await startupPermissionState().catch(() => ({ ready: false } as StartupPermissionState));
+    if (permissions.ready !== true) {
+      showLocalBridge();
+      return;
+    }
     startWorkerLoop();
-    void ensureConnectedDeviceRuntime().then(() => {
-      if (loadConfig().controlPlaneWorker) void runWorkerOnce();
-    }).catch(() => undefined);
-  }
+    await ensureConnectedDeviceRuntime().catch(() => undefined);
+    if (loadConfig().controlPlaneWorker) void runWorkerOnce();
+  })();
   app.on('activate', () => {
     void (async () => {
       const [state, permissionState] = await Promise.all([
