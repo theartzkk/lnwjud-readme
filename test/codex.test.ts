@@ -23,6 +23,8 @@ test('Codex child environment does not forward generic API key variables', () =>
     const env = codexEnvironment();
     assert.equal(env.OPENAI_API_KEY, undefined);
     assert.equal(env.CODEX_API_KEY, undefined);
+    assert.equal(env.DISABLE_TELEMETRY, '1');
+    assert.equal(env.DO_NOT_TRACK, '1');
   } finally {
     if (previousOpenAI === undefined) delete process.env.OPENAI_API_KEY;
     else process.env.OPENAI_API_KEY = previousOpenAI;
