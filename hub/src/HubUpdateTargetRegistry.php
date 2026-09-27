@@ -318,6 +318,7 @@ final class HubUpdateTargetRegistry
             'scripts/ops/canonical-source-preflight.mjs',
             'scripts/ops/execution-policy.mjs',
             'scripts/ops/guarded-control-plane-deploy.mjs',
+            'scripts/qa/test-singleflight.mjs',
             'test/account-hosting-deployment.test.ts',
             'test/central-project-authority-deployment.test.ts',
             'test/ecosystem-platform-hardening.test.ts',
@@ -325,6 +326,7 @@ final class HubUpdateTargetRegistry
             'test/identity-convergence-deployment.test.ts',
             'test/repository-governance-contract.test.ts',
             'test/source-drift-systemd.test.ts',
+            'test/test-singleflight.test.mjs',
         ];
         if(in_array($path,$platformExact,true))return 'vps-platform';
         if(str_starts_with($path,'deploy/'))return 'vps-platform';

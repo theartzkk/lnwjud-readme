@@ -39,6 +39,16 @@ async function projectKey(){
 }
 async function atomicJson(path,value){const tmp=path+'.tmp-'+process.pid;await writeFile(tmp,JSON.stringify(value,null,2)+'\n',{mode:0o600});await import('node:fs/promises').then(fs=>fs.rename(tmp,path));}
 
+async function reclaimStaleLock(lock,staleMs){
+  const owner=await readableJson(join(lock,'owner.json'));
+  const ownerStarted=Date.parse(owner?.startedAt||'');
+  let lockAge=0;try{lockAge=Date.now()-(await stat(lock)).mtimeMs;}catch{return true;}
+  if(!owner&&lockAge<5_000)return false;
+  const stale=(!owner&&lockAge>=5_000)||(!alive(Number(owner?.pid))&&(!Number.isFinite(ownerStarted)||Date.now()-ownerStarted>5_000))||(Number.isFinite(ownerStarted)&&Date.now()-ownerStarted>staleMs);
+  if(stale){await rm(lock,{recursive:true,force:true});return true;}
+  return false;
+}
+
 export async function withSingleFlight({lockRoot,key,sha,mode='test',runner,waitTimeoutMs=20*60_000,staleMs=30*60_000,pollMs=500}){
   await mkdir(lockRoot,{recursive:true,mode:0o700});
   const lock=join(lockRoot,safe(key)+'.lock');
@@ -58,20 +68,26 @@ export async function withSingleFlight({lockRoot,key,sha,mode='test',runner,wait
       return {...capsule,reused:false};
     }catch(e){
       if(e?.code!=='EEXIST')throw e;
+      if(await reclaimStaleLock(lock,staleMs))continue;
       const owner=await readableJson(join(lock,'owner.json'));
-      const ownerStarted=Date.parse(owner?.startedAt||'');
-      let lockAge=0;try{lockAge=Date.now()-(await stat(lock)).mtimeMs;}catch{continue;}
-      if(!owner&&lockAge<5_000){await sleep(pollMs);continue;}
-      const stale=(!owner&&lockAge>=5_000)||(!alive(Number(owner?.pid))&&(!Number.isFinite(ownerStarted)||Date.now()-ownerStarted>5_000))||(Number.isFinite(ownerStarted)&&Date.now()-ownerStarted>staleMs);
-      if(stale){await rm(lock,{recursive:true,force:true});continue;}
       if(Date.now()>deadline)throw new Error('QA_SINGLEFLIGHT_WAIT_TIMEOUT');
-      if(owner.sha===sha&&owner.mode===mode){
-        while(existsSync(lock)&&Date.now()<=deadline)await sleep(pollMs);
+      if(owner?.sha===sha&&owner?.mode===mode){
+        while(existsSync(lock)&&Date.now()<=deadline){
+          await sleep(pollMs);
+          if(await reclaimStaleLock(lock,staleMs))break;
+        }
+        if(Date.now()>deadline)throw new Error('QA_SINGLEFLIGHT_WAIT_TIMEOUT');
         const capsule=await readableJson(result);
         if(capsule?.sha===sha&&capsule?.mode===mode&&Number.isInteger(capsule.code))return {...capsule,reused:true};
         continue;
       }
-      while(existsSync(lock)&&Date.now()<=deadline)await sleep(pollMs);
+      while(existsSync(lock)&&Date.now()<=deadline){
+        await sleep(pollMs);
+        if(await reclaimStaleLock(lock,staleMs))break;
+      }
+      if(Date.now()>deadline)throw new Error('QA_SINGLEFLIGHT_WAIT_TIMEOUT');
+      const capsule=await readableJson(result);
+      if(capsule?.sha===sha&&capsule?.mode===mode&&Number.isInteger(capsule.code))return {...capsule,reused:true};
     }
   }
 }

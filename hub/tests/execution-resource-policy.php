@@ -25,5 +25,6 @@ ep(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:PROJECT','
 ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['config/execution-policy.json','hub/src/HubControlPlaneService.php','web/updates.js'])==='vps-platform','Platform-owned change plus shared Update Center integration stays on VPS Platform track');
 ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['web/app.js','hub/src/HubControlPlaneService.php'])==='awh','AWH-owned change plus shared Update Center integration stays on AWH track');
 ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['config/execution-policy.json','web/app.js'])===null,'true mixed AWH and VPS Platform change-set is rejected');
+ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['scripts/qa/test-singleflight.mjs','test/test-singleflight.test.mjs'])==='vps-platform','QA singleflight infrastructure is VPS Platform-owned');
 ep(!isset($p['policyFamilies'])&&!isset($p['planBeforeCall'])&&!isset($p['quotaAware']),'retired owner-model fields are absent');
 echo "AWH Execution Context: PASS\n";

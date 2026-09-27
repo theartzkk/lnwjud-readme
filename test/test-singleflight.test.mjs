@@ -19,3 +19,34 @@ test('same project+sha test runs are single-flight and reuse the first result',a
     assert.equal(a.code,0);assert.equal(b.code,0);
   }finally{await rm(root,{recursive:true,force:true});}
 });
+
+
+test('same-sha waiter reclaims lock when owner dies after waiting starts',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'awh-qa-singleflight-stale-same-'));
+  const lock=join(root,'awh.lock');
+  try{
+    await import('node:fs/promises').then(fs=>fs.mkdir(lock,{recursive:true}));
+    const startedAt=new Date(Date.now()-10_000).toISOString();
+    await writeFile(join(lock,'owner.json'),JSON.stringify({schemaVersion:1,pid:process.pid,key:'awh',sha:'b'.repeat(40),mode:'test',startedAt}));
+    setTimeout(()=>{void writeFile(join(lock,'owner.json'),JSON.stringify({schemaVersion:1,pid:999999999,key:'awh',sha:'b'.repeat(40),mode:'test',startedAt}));},80);
+    let runs=0;
+    const result=await withSingleFlight({lockRoot:root,key:'awh',sha:'b'.repeat(40),runner:async()=>{runs++;return 0;},pollMs:20,waitTimeoutMs:1500,staleMs:60_000});
+    assert.equal(result.code,0);
+    assert.equal(runs,1);
+  }finally{await rm(root,{recursive:true,force:true});}
+});
+
+test('different-sha waiter reclaims lock when owner dies after waiting starts',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'awh-qa-singleflight-stale-different-'));
+  const lock=join(root,'awh.lock');
+  try{
+    await import('node:fs/promises').then(fs=>fs.mkdir(lock,{recursive:true}));
+    const startedAt=new Date(Date.now()-10_000).toISOString();
+    await writeFile(join(lock,'owner.json'),JSON.stringify({schemaVersion:1,pid:process.pid,key:'awh',sha:'c'.repeat(40),mode:'test',startedAt}));
+    setTimeout(()=>{void writeFile(join(lock,'owner.json'),JSON.stringify({schemaVersion:1,pid:999999999,key:'awh',sha:'c'.repeat(40),mode:'test',startedAt}));},80);
+    let runs=0;
+    const result=await withSingleFlight({lockRoot:root,key:'awh',sha:'d'.repeat(40),runner:async()=>{runs++;return 0;},pollMs:20,waitTimeoutMs:1500,staleMs:60_000});
+    assert.equal(result.code,0);
+    assert.equal(runs,1);
+  }finally{await rm(root,{recursive:true,force:true});}
+});
