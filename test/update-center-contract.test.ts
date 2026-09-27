@@ -586,9 +586,8 @@ test('Update Center self-recovers from stale PWA module caches instead of showin
   assert.match(worker,/\.\/update-center-boot\.js\?release=__AWH_WEB_RELEASE_ID__/);
   assert.match(worker,/UPDATE_CENTER_PATHS\.has\(url\.pathname\)/);
   assert.match(worker,/fetch\(request,\{cache:'no-store'\}\)/);
-  assert.match(worker,/self\.clients\.matchAll\(\{type:'window',includeUncontrolled:true\}\)/);
-  assert.match(worker,/url\.pathname!=='\/updates\.html'/);
-  assert.match(worker,/url\.searchParams\.set\('sw-release',RELEASE_ID\)/);
-  assert.match(worker,/client\.navigate\(url\.toString\(\)\)/);
+  assert.doesNotMatch(worker,/self\.clients\.matchAll\(\{type:'window',includeUncontrolled:true\}\)/);
+  assert.doesNotMatch(worker,/url\.searchParams\.set\('sw-release',RELEASE_ID\)/);
+  assert.doesNotMatch(worker,/client\.navigate\(url\.toString\(\)\)/);
   assert.ok(JSON.parse(releaseFiles).required.includes('update-center-boot.js'));
 });
