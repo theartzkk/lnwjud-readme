@@ -27,11 +27,16 @@ test('Owner Control Panel composes existing authorities without a parallel backe
   assert.doesNotMatch(html,/infrastructure\.html#capability-fabric/);
   assert.match(js,/renderAgentControl/);
   assert.match(html,/class="cp-nav-advanced"/);
-  assert.match(html,/class="cp-update-group"/);
+  assert.match(html,/class="cp-section cp-update-overview"/);
+  assert.match(html,/id="system-updates"/);
+  assert.match(html,/เปิดศูนย์อัปเดต/);
   assert.match(html,/id="cp-technical-details" class="cp-technical-details"/);
   assert.match(js,/revealHashTarget/);
   assert.match(js,/requireOwnerSession/);
   assert.match(js,/loadInfrastructureSummary/);
+  assert.match(js,/loadUpdateCenter/);
+  assert.match(js,/renderUpdateSummary/);
+  assert.doesNotMatch(js,/loadBayRemoteUpdateStatus|createBayRemoteInstallRelay|relayBayRemoteCommand/);
   assert.doesNotMatch(js,/\bloadInfrastructure\(/);
   assert.doesNotMatch(js,/Promise\.allSettled\(\[.*loadInfrastructureSummary/);
   assert.doesNotMatch(js,/loadControlData\(\)/);
@@ -95,25 +100,25 @@ test('Owner entry and standalone admin pages converge on Control Panel',async()=
 });
 
 
-test('BAY Remote Update stays inside AWH Owner + BAY Update Inbox + PackageManager authorities',async()=>{
+test('Owner Home delegates update mutations to Update Center while BAY authorities remain available there',async()=>{
   const [html,js,css,adapter,service,control,router,trust]=await Promise.all([
     'web/panel.html','web/panel.js','web/panel.css','web/control-plane-adapter.js',
     'hub/src/HubBayRemoteUpdateService.php','hub/src/HubControlPlaneService.php',
     'hub/src/HubControlPlaneRouter.php','hub/src/HubTrustPolicy.php'
   ].map(name=>readFile(join(ROOT,name),'utf8')));
-  assert.match(html,/อัปเดตระบบโรงเรียน/);
-  assert.match(html,/system-control-panel\.webp/);
-  assert.match(html,/connect-src 'self' https:\/\/excuse\.kruart\.online/);
-  const serverCsp=await readFile(join(ROOT,'deploy/nginx/transform-owner-auth.php'),'utf8');
-  assert.match(serverCsp,/connect-src 'self' https:\/\/excuse\.kruart\.online/);
-  assert.match(css,/\.cp-bay-update/);
-  assert.match(css,/@media\(max-width:560px\)/);
-  assert.match(js,/loadBayRemoteUpdateStatus/);
-  assert.match(js,/createBayRemoteInstallRelay/);
-  assert.match(js,/relayBayRemoteCommand/);
-  assert.match(js,/Backup → Install → Verify/);
-  assert.match(js,/Auto-stage|auto-stage|Update Inbox/);
-  assert.doesNotMatch(js+adapter,/prepareBayRemoteUpdate|\/bay\/update\/prepare/);
+  assert.match(html,/id="system-updates"/);
+  assert.match(html,/href="\.\/updates\.html"/);
+  assert.match(html,/อ่านสถานะจาก Update Center แห่งเดียว/);
+  assert.doesNotMatch(html,/อัปเดต BAY จากที่ไหนก็ได้|cp-bay-update-button|cp-bay-checks/);
+  assert.match(html,/connect-src 'self';/);
+  assert.doesNotMatch(html,/connect-src 'self' https:\/\/excuse\.kruart\.online/);
+  assert.match(css,/\.cp-update-overview/);
+  assert.match(css,/\.cp-update-counts/);
+  assert.match(js,/loadUpdateCenter/);
+  assert.match(js,/renderUpdateSummary/);
+  assert.match(js,/slice\(0,3\)/);
+  assert.doesNotMatch(js,/loadBayRemoteUpdateStatus|createBayRemoteInstallRelay|relayBayRemoteCommand|updateBayProduction|loadBayControl/);
+  assert.match(adapter,/loadBayRemoteUpdateStatus/);
   assert.match(adapter,/endpoint !== 'https:\/\/excuse\.kruart\.online\/remote-update\.php'/);
   assert.match(adapter,/credentials: 'omit'/);
   assert.match(adapter,/redirect: 'error'/);

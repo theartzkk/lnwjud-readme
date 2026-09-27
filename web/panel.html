@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#ffffff" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://excuse.kruart.online; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <title>ศูนย์ดูแลระบบ · KRUART AWH</title>
   <link rel="stylesheet" href="./awh-design-system.css?release=__AWH_WEB_RELEASE_ID__" />
   <link rel="stylesheet" href="./awh-light-system.css?release=__AWH_WEB_RELEASE_ID__" />
@@ -85,41 +85,26 @@
             <div id="cp-agent-provider-list" class="cp-list"></div>
           </details>
         </section>
-        <details class="cp-update-group">
-          <summary><span><b>อัปเดตระบบโรงเรียน</b><small>ตรวจรุ่นใหม่และติดตั้งเมื่อพร้อม</small></span><strong id="cp-bay-summary">กำลังตรวจ…</strong></summary>
-        <section id="bay-update" class="cp-bay-update" aria-labelledby="cp-bay-title">
-          <div class="cp-bay-glow cp-bay-glow-a"></div><div class="cp-bay-glow cp-bay-glow-b"></div>
-          <div class="cp-bay-body">
-            <div class="cp-bay-kicker"><span class="cp-bay-dot"></span>อัปเดตระบบโรงเรียน</div>
-            <div class="cp-bay-title-row">
-              <div><h2 id="cp-bay-title">อัปเดต BAY จากที่ไหนก็ได้</h2><p>ตรวจรุ่นใหม่ สำรองข้อมูล ติดตั้ง และตรวจหลังอัปเดตตามลำดับเดิมโดยอัตโนมัติ</p></div>
-              <div id="cp-bay-overall" class="cp-bay-state is-loading">กำลังตรวจ</div>
-            </div>
-            <div class="cp-bay-version-card">
-              <div><small>Production</small><strong id="cp-bay-current-version">—</strong><span id="cp-bay-current-sha">กำลังอ่านสถานะ…</span></div>
-              <div class="cp-bay-arrow">→</div>
-              <div><small>รุ่นใหม่ล่าสุด</small><strong id="cp-bay-latest-version">—</strong><span id="cp-bay-latest-sha">GitHub main</span></div>
-            </div>
-            <div class="cp-bay-checks" aria-label="ขั้นตอน Remote Update">
-              <div class="cp-bay-check" data-bay-step="source"><b>1</b><span><strong>รุ่นต้นฉบับ</strong><small id="cp-bay-source-note">กำลังตรวจ</small></span></div>
-              <div class="cp-bay-check" data-bay-step="package"><b>2</b><span><strong>ชุดอัปเดต</strong><small id="cp-bay-package-note">รอ Source</small></span></div>
-              <div class="cp-bay-check" data-bay-step="backup"><b>3</b><span><strong>สำรองข้อมูล</strong><small id="cp-bay-backup-note">รอ Production</small></span></div>
-              <div class="cp-bay-check" data-bay-step="install"><b>4</b><span><strong>ติดตั้ง</strong><small id="cp-bay-install-note">PackageManager</small></span></div>
-              <div class="cp-bay-check" data-bay-step="verify"><b>5</b><span><strong>ตรวจหลังอัปเดต</strong><small id="cp-bay-verify-note">Post-check</small></span></div>
-            </div>
-            <div class="cp-bay-actions">
-              <button id="cp-bay-update-button" class="cp-bay-primary" type="button" disabled><span>⇧</span><span><strong>ตรวจและอัปเดต Production</strong><small id="cp-bay-button-note">กำลังโหลดข้อมูลล่าสุด…</small></span></button>
-              <button id="cp-bay-recheck" class="cp-bay-secondary" type="button">ตรวจใหม่</button>
-            </div>
-            <div id="cp-bay-message" role="status" aria-live="polite" class="cp-bay-message">AWH จะสำรองข้อมูล ตรวจความพร้อม ติดตั้ง และตรวจผลก่อนปิดการอัปเดต</div>
+        <section id="system-updates" class="cp-section cp-update-overview" aria-labelledby="cp-update-title">
+          <div class="cp-section-head">
+            <div><span>SYSTEM UPDATES</span><h2 id="cp-update-title">อัปเดตระบบ</h2></div>
+            <a href="./updates.html">เปิดศูนย์อัปเดต →</a>
           </div>
-          <div class="cp-bay-visual" aria-hidden="true">
-            <div class="cp-bay-orbit"><span></span><span></span><span></span></div>
-            <img data-kruart-art-slot="system.control-panel" src="./system-control-panel.webp?release=__AWH_WEB_RELEASE_ID__" alt="" />
-            <div class="cp-bay-badge"><b>🛡️</b><span><strong>อัปเดตอย่างปลอดภัย</strong><small>สำรองและตรวจผลทุกครั้ง</small></span></div>
+          <div class="cp-update-summary-grid">
+            <article class="cp-update-status-card">
+              <small>สถานะรวม</small>
+              <strong id="cp-update-status">กำลังตรวจ…</strong>
+              <span id="cp-update-meta">อ่านสถานะจาก Update Center แห่งเดียว</span>
+            </article>
+            <div class="cp-update-counts" aria-label="สรุปสถานะอัปเดต">
+              <span><b id="cp-update-current">—</b> ล่าสุด</span>
+              <span><b id="cp-update-ready">—</b> พร้อมอัปเดต</span>
+              <span><b id="cp-update-progress">—</b> กำลังทำ</span>
+              <span><b id="cp-update-attention">—</b> ต้องตรวจ</span>
+            </div>
           </div>
+          <div id="cp-update-items" class="cp-update-items cp-list"><div class="cp-empty">กำลังตรวจรายการที่ต้องสนใจ…</div></div>
         </section>
-        </details>
         <section id="cp-attention-wrap" class="cp-section cp-attention" hidden>
           <div class="cp-section-head"><div><span>ACTION REQUIRED</span><h2>สิ่งที่ควรดูตอนนี้</h2></div><small>แสดงเฉพาะสิ่งที่ต้องลงมือ</small></div>
           <div id="cp-attention" class="cp-list"></div>
