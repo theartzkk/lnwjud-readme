@@ -8,6 +8,7 @@ import { loadExecutionPolicy, privilegeLane, qaScriptForBudget } from './executi
 import { hydrateDesktopReleaseArtifacts, verifyDesktopReleaseArtifacts } from '../release/hydrate-desktop-release-artifacts.mjs';
 
 const SHA=/^[0-9a-f]{40}$/;
+const AWH_PROJECT_ID='113b45c0-23e1-408d-ae0f-ac5eca7f6900';
 const ROOT=process.env.AWH_SOURCE_ROOT||process.cwd();
 const GUARDED=join(ROOT,'scripts/ops/guarded-control-plane-deploy.mjs');
 const INTELLIGENCE=join(ROOT,'hub/bin/verification-intelligence.php');
@@ -84,12 +85,15 @@ async function operatorRequest(command,payload,{confirm=false}={}){
   try{const decoded=JSON.parse(response.tail.trim());return decoded?.ok===true?decoded.result:null;}catch{return null;}
 }
 
-async function durableRegressions(changedPaths){
-  const result=await operatorRequest('verification-regressions',{changedPaths});
-  if(!result){console.log('MISSION_DURABLE_REGISTRY=BOOTSTRAP_UNAVAILABLE');return [];}
+async function durableRegressions(changedPaths,context={}){
+  const result=await operatorRequest('verification-regressions',{changedPaths,...context});
+  if(!result){console.log('MISSION_DURABLE_REGISTRY=BOOTSTRAP_UNAVAILABLE');return {ids:[],requiredChecks:[]};}
   missionContext.registryAvailable=true;const rows=Array.isArray(result.regressions)?result.regressions:[];
   const ids=rows.map((row)=>typeof row?.regressionId==='string'?row.regressionId:'').filter((id)=>/^reg-[a-f0-9]{12}$/.test(id));
-  console.log(`MISSION_DURABLE_REGISTRY=READY`);console.log(`MISSION_DURABLE_REGRESSIONS=${ids.join(',')}`);return [...new Set(ids)].sort();
+  const requiredChecks=rows.flatMap((row)=>Array.isArray(row?.requiredChecks)?row.requiredChecks:[]).filter((check)=>typeof check==='string'&&/^[a-z0-9][a-z0-9._:-]{1,79}$/.test(check));
+  console.log(`MISSION_DURABLE_REGISTRY=READY`);console.log(`MISSION_DURABLE_REGRESSIONS=${ids.join(',')}`);
+  console.log(`MISSION_DURABLE_LESSON_CHECKS=${[...new Set(requiredChecks)].sort().join(',')}`);
+  return {ids:[...new Set(ids)].sort(),requiredChecks:[...new Set(requiredChecks)].sort()};
 }
 
 async function persistDurable(document){
@@ -259,8 +263,10 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   const trackRelease=mode==='--awh-core'||mode==='--platform-hardening';
   const unknown=rawArgs.filter((a)=>!['--approve','--cleanup-topology','--desktop-agent-release',...DEPLOY_MODES].includes(a));
   if(unknown.length) throw new Error(`MISSION_ARGUMENT_INVALID:${unknown[0]}`);
+  const releaseTrack=mode==='--platform-hardening'?'vps-platform':'awh';
+  missionContext={projectId:AWH_PROJECT_ID,releaseTrack};
   const head=(await git(['rev-parse','HEAD'])).toLowerCase(); const main=(await git(['rev-parse','refs/heads/main'])).toLowerCase();
-  missionContext={releaseSha:head,canonicalMainAtStart:main};
+  missionContext={projectId:AWH_PROJECT_ID,releaseTrack,releaseSha:head,canonicalMainAtStart:main};
   if(!SHA.test(head)||!SHA.test(main)) throw new Error('MISSION_SOURCE_IDENTITY_INVALID');
   if(head!==main){
     if(!trackRelease)throw new Error('MISSION_HEAD_NOT_CANONICAL_MAIN');
@@ -273,8 +279,8 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   const forward=await run('git',['merge-base','--is-ancestor',production,head]);
   if(forward.code!==0)throw new Error('MISSION_RELEASE_NOT_FORWARD_FROM_RUNTIME');
   const changed=(await git(['diff','--name-only',`${production}..${head}`])).split(/\r?\n/).filter(Boolean); missionContext.changedFiles=changed.length; missionContext.changedPaths=changed.slice(0,80);
-  let plan=await verificationPlanForFiles(changed); const staticEvalScenarios=await evalScenariosForFiles(changed); const durableEvalScenarios=await durableRegressions(missionContext.changedPaths); const evalScenarios=[...new Set([...staticEvalScenarios,...durableEvalScenarios])].sort();
-  if(durableEvalScenarios.length>0){plan={...plan,riskLevel:plan.riskLevel==='CRITICAL'?'CRITICAL':'HIGH',budget:'DEEP',reasons:[...new Set([...(plan.reasons??[]),'durable-incident-regression'])],requiredChecks:[...new Set([...(plan.requiredChecks??[]),'regression','repeat-regression'])]};console.log('MISSION_REGRESSION_REPLAY=DEEP');} missionContext.riskLevel=plan.riskLevel; missionContext.budget=plan.budget;
+  let plan=await verificationPlanForFiles(changed); const staticEvalScenarios=await evalScenariosForFiles(changed); const durable=await durableRegressions(missionContext.changedPaths,{projectId:missionContext.projectId,releaseTrack:missionContext.releaseTrack}); const durableEvalScenarios=durable.ids; const evalScenarios=[...new Set([...staticEvalScenarios,...durableEvalScenarios])].sort();
+  if(durableEvalScenarios.length>0){plan={...plan,riskLevel:plan.riskLevel==='CRITICAL'?'CRITICAL':'HIGH',budget:'DEEP',reasons:[...new Set([...(plan.reasons??[]),'durable-incident-regression'])],requiredChecks:[...new Set([...(plan.requiredChecks??[]),'regression','repeat-regression',...durable.requiredChecks])]};console.log('MISSION_REGRESSION_REPLAY=DEEP');} missionContext.riskLevel=plan.riskLevel; missionContext.budget=plan.budget;
   const desktopImpact=desktopImpactForFiles(changed);
   // Core/Web and Desktop Agent are independent release tracks. A source delta may
   // affect the desktop product without forcing every Core/Web cutover to rebuild

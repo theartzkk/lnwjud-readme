@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 require_once dirname(__DIR__) . '/src/HubOperatorBridgeService.php';
+require_once dirname(__DIR__) . '/src/HubVerificationIntelligence.php';
 
 function ver_assert(bool $ok,string $message):void{if(!$ok)throw new RuntimeException($message);}
 if(!in_array('sqlite',PDO::getAvailableDrivers(),true)){fwrite(STDOUT,"AWH Verification Evidence Registry: SKIP pdo_sqlite unavailable\n");exit(77);}
@@ -18,6 +19,36 @@ try{
  ver_assert(($query['count']??0)===1&&($query['regressions'][0]['regressionId']??null)===$regression,'matching path must recall incident regression');
  $none=$service->handle(['schemaVersion'=>1,'action'=>'verification.regressions','changedPaths'=>['docs/OTHER.md']]);
  ver_assert(($none['count']??-1)===0,'unrelated path must not inherit regression');
+ $classified=HubVerificationIntelligence::incident('MISSION_PRIVILEGE_LANE_REQUIRED:NO_NEW_PRIVILEGES',[
+  'changedPaths'=>['deploy/awh-control-plane/privilege-route.php'],
+  'releaseTrack'=>'vps-platform','projectId'=>'113b45c0-23e1-408d-ae0f-ac5eca7f6900',
+ ]);
+ $classifiedDoc=[...$classified,'kind'=>'verification-incident','createdAt'=>'2026-09-27T00:00:00Z'];
+ $service->handle(['schemaVersion'=>1,'action'=>'verification.store','document'=>$classifiedDoc,'confirmation'=>'STORE_VERIFICATION_EVIDENCE']);
+ $beforeLesson=$service->handle(['schemaVersion'=>1,'action'=>'verification.regressions','changedPaths'=>['docs/UNRELATED.md'],'releaseTrack'=>'vps-platform','projectId'=>'113b45c0-23e1-408d-ae0f-ac5eca7f6900']);
+ ver_assert(($beforeLesson['count']??-1)===0,'raw classified incident must not propagate globally before verified closure');
+ $lesson=[
+  'schemaVersion'=>1,'kind'=>'verification-lesson',
+  'classFingerprint'=>$classified['classFingerprint'],'lessonId'=>'lesson-'.substr($classified['classFingerprint'],0,12),
+  'problemClass'=>$classified['problemClass'],'impactScope'=>$classified['impactScope'],'rootCauseLayer'=>$classified['rootCauseLayer'],
+  'sourceRegressionId'=>$classified['regressionId'],'releaseTrack'=>'vps-platform','state'=>'ENFORCED',
+  'requiredChecks'=>['privilege-route','repeat-regression'],
+  'closure'=>[
+   'rootCause'=>'Restricted worker attempted a host-global privileged release lane.',
+   'canonicalFix'=>'Route host-global release through the typed privileged operator and approved parent execution.',
+   'prevention'=>'Fail fast before mutation when the runtime lane cannot elevate.',
+   'regression'=>'Replay privilege-route checks for future managed-project releases.',
+   'recovery'=>'Resume from the exact durable release checkpoint after a valid privileged handoff.',
+   'observability'=>'Expose the privilege lane and required handoff in release evidence.',
+  ],
+ ];
+ $storedLesson=$service->handle(['schemaVersion'=>1,'action'=>'verification.store','document'=>$lesson,'confirmation'=>'STORE_VERIFICATION_EVIDENCE']);
+ ver_assert(($storedLesson['kind']??null)==='verification-lesson','verified closure must persist as a durable lesson');
+ $afterLesson=$service->handle(['schemaVersion'=>1,'action'=>'verification.regressions','changedPaths'=>['docs/UNRELATED.md'],'releaseTrack'=>'vps-platform','projectId'=>'113b45c0-23e1-408d-ae0f-ac5eca7f6900']);
+ ver_assert(($afterLesson['count']??0)===1&&($afterLesson['regressions'][0]['source']??null)==='VERIFIED_LESSON','platform lesson must propagate beyond the original file path after verified closure');
+ ver_assert(in_array('privilege-route',$afterLesson['regressions'][0]['requiredChecks']??[],true),'verified lesson must carry its required guardrail checks');
+ try{$invalid=$lesson;unset($invalid['closure']['observability']);$service->handle(['schemaVersion'=>1,'action'=>'verification.store','document'=>$invalid,'confirmation'=>'STORE_VERIFICATION_EVIDENCE']);throw new RuntimeException('incomplete lesson accepted');}
+ catch(HubOperatorBridgeException $error){ver_assert($error->codeName==='OPERATOR_REQUEST_INVALID','incomplete closure must never become an enforced lesson');}
  $release=['schemaVersion'=>1,'kind'=>'release-verification','releaseSha'=>str_repeat('a',40),'state'=>'COMPLETED','result'=>'PASS'];
  $storedRelease=$service->handle(['schemaVersion'=>1,'action'=>'verification.store','document'=>$release,'confirmation'=>'STORE_VERIFICATION_EVIDENCE']);
  ver_assert(($storedRelease['kind']??null)==='release-verification','release evidence must be stored durably');

@@ -132,10 +132,43 @@ if ($raw === '') {
         $findings[] = 'Repository governance contract is invalid';
     }
 }
+$continuousPolicy = null;
+$continuousPolicyPath = dirname(__DIR__, 2) . '/config/continuous-improvement-policy.json';
+$continuousRaw = is_file($continuousPolicyPath) ? (string) file_get_contents($continuousPolicyPath) : '';
+if ($continuousRaw === '' && is_dir($awhRepository)) {
+    $continuousRaw = (string) shell_exec('git --git-dir=' . escapeshellarg($awhRepository) . ' show refs/heads/runtime/production:config/continuous-improvement-policy.json 2>/dev/null');
+    if ($continuousRaw === '') $continuousRaw = (string) shell_exec('git --git-dir=' . escapeshellarg($awhRepository) . ' show refs/heads/production:config/continuous-improvement-policy.json 2>/dev/null');
+}
+if ($continuousRaw === '') {
+    $findings[] = 'AWH continuous-improvement policy is unavailable from immutable release and runtime production source';
+} else {
+    try {
+        $decoded = json_decode($continuousRaw, true, 32, JSON_THROW_ON_ERROR);
+        if (!is_array($decoded) || array_is_list($decoded)
+            || ($decoded['schemaVersion'] ?? null) !== 1
+            || ($decoded['authority'] ?? null) !== 'AWH_CONTINUOUS_IMPROVEMENT'
+            || ($decoded['lessonPromotion']['state'] ?? null) !== 'ENFORCED'
+            || ($decoded['projectBaseline']['policyInheritanceByRegistry'] ?? null) !== true
+            || ($decoded['invariants']['sharedCauseFixedAtHighestSharedLayer'] ?? null) !== true
+            || ($decoded['invariants']['unverifiedAutonomousPolicyMutationForbidden'] ?? null) !== true) {
+            throw new RuntimeException('invalid continuous-improvement policy');
+        }
+        $continuousPolicy = $decoded;
+    } catch (Throwable) {
+        $findings[] = 'AWH continuous-improvement policy is invalid';
+    }
+}
 if (is_array($governanceContract)) {
     $enforcementMode = strtoupper(trim((string)($governanceContract['enforcementMode'] ?? 'ENFORCED')));
     if (!in_array($enforcementMode,['ROLLOUT','ENFORCED'],true)) {$findings[]='Repository governance enforcement mode is invalid';$enforcementMode='ENFORCED';}
     $rules = is_array($governanceContract['rules'] ?? null) ? $governanceContract['rules'] : [];
+    if (($rules['continuousImprovementAuthority'] ?? null) !== 'AWH_CONTINUOUS_IMPROVEMENT'
+        || ($rules['continuousImprovementPolicyPath'] ?? null) !== 'config/continuous-improvement-policy.json'
+        || ($rules['policyInheritanceByRegistry'] ?? null) !== true
+        || ($rules['existingAndFutureManagedRepositoriesInheritGlobalPolicy'] ?? null) !== true
+        || !is_array($continuousPolicy)) {
+        $findings[] = 'Repository governance continuous-improvement inheritance drift';
+    }
     $managed = is_array($governanceContract['repositories'] ?? null) ? $governanceContract['repositories'] : [];
     $requiredAgent = is_string($rules['requiredAgentEntrypoint'] ?? null) ? (string)$rules['requiredAgentEntrypoint'] : 'AGENTS.md';
     $manifestPath = is_string($rules['projectManifestPath'] ?? null) ? (string)$rules['projectManifestPath'] : '.awh/project.json';
@@ -201,6 +234,6 @@ if (is_array($governanceContract)) {
     }
 }
 $state=$findings!==[]?'BLOCKED':($pending!==[]?'PENDING_RELEASE':'SYNCED');
-$result=['schemaVersion'=>1,'ok'=>$findings===[],'state'=>$state,'projects'=>count($rows),'projectionRepos'=>count($repos),'governanceRepositories'=>$governanceRepositories,'governanceEnforcement'=>$governanceContract['enforcementMode']??null,'findings'=>$findings,'pending'=>$pending];
+$result=['schemaVersion'=>2,'ok'=>$findings===[],'state'=>$state,'projects'=>count($rows),'projectionRepos'=>count($repos),'governanceRepositories'=>$governanceRepositories,'governanceEnforcement'=>$governanceContract['enforcementMode']??null,'continuousImprovementAuthority'=>$continuousPolicy['authority']??null,'continuousImprovementState'=>$continuousPolicy['lessonPromotion']['state']??null,'findings'=>$findings,'pending'=>$pending];
 echo json_encode($result,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE).PHP_EOL;
 exit($findings===[]?0:2);

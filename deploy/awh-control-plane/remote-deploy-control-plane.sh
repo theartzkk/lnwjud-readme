@@ -1384,6 +1384,9 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
   done
   sudo grep -Fq "activeProjects" "$RELEASE/hub/bin/ecosystem-source-drift.php"
   sudo grep -Fq "governanceRepositories" "$RELEASE/hub/bin/ecosystem-source-drift.php"
+  sudo grep -Fq "AWH_CONTINUOUS_IMPROVEMENT" "$RELEASE/hub/bin/ecosystem-source-drift.php"
+  sudo test -r "$RELEASE/config/continuous-improvement-policy.json"
+  /usr/bin/php -r '$j=json_decode(file_get_contents($argv[1]),true,32,JSON_THROW_ON_ERROR); if(($j["authority"]??null)!=="AWH_CONTINUOUS_IMPROVEMENT"||($j["lessonPromotion"]["state"]??null)!=="ENFORCED") exit(2);' "$RELEASE/config/continuous-improvement-policy.json"
   sudo install -d -o root -g root -m 0750 "$EXECUTOR_BACKUP_ROOT"
   if sudo test -f "$SOURCE_DRIFT_HOTFIX"; then
     sudo cp -p "$SOURCE_DRIFT_HOTFIX" "$SOURCE_DRIFT_HOTFIX_BACKUP"

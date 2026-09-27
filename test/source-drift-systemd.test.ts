@@ -85,6 +85,11 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(drift, /teacher-evaluation/);
   assert.match(drift, /FIELD_PROOF/);
   assert.match(drift, /projectClass\(\$row\)!=='PRODUCTION'/);
+  assert.match(drift, /AWH_CONTINUOUS_IMPROVEMENT/);
+  assert.match(drift, /continuous-improvement policy is unavailable/);
+  assert.match(drift, /continuousImprovementState/);
+  assert.match(deploy, /config\/continuous-improvement-policy\.json/);
+  assert.match(remote, /AWH_CONTINUOUS_IMPROVEMENT/);
 
 });
 

@@ -41,6 +41,23 @@ test('repository governance is a single machine-enforced contract', async () => 
   assert.equal(contract.rules.storageSelfHealBeforeBlock, true);
   assert.equal(contract.rules.storageTargetFreeBytes, 6442450944);
   assert.equal(contract.rules.forbidParallelAuthorityFiles, true);
+  assert.equal(contract.rules.continuousImprovementAuthority, 'AWH_CONTINUOUS_IMPROVEMENT');
+  assert.equal(contract.rules.continuousImprovementPolicyPath, 'config/continuous-improvement-policy.json');
+  assert.equal(contract.rules.globalGovernanceProfile, 'KRUART_STANDARD_V1');
+  assert.equal(contract.rules.policyInheritanceByRegistry, true);
+  assert.equal(contract.rules.existingAndFutureManagedRepositoriesInheritGlobalPolicy, true);
+  assert.equal(contract.rules.sharedCauseFixAtHighestSharedLayer, true);
+  assert.equal(contract.rules.temporaryWorkaroundNeverClosure, true);
+  assert.equal(contract.rules.provenLessonGuardrailsRequired, true);
+  const continuous = JSON.parse(await readFile(join(root, contract.rules.continuousImprovementPolicyPath), 'utf8'));
+  assert.equal(continuous.authority, 'AWH_CONTINUOUS_IMPROVEMENT');
+  assert.equal(continuous.appliesTo, 'ALL_MANAGED_PROJECTS');
+  assert.equal(continuous.lessonPromotion.state, 'ENFORCED');
+  assert.equal(continuous.lessonPromotion.requiresVerifiedClosure, true);
+  assert.equal(continuous.projectBaseline.profile, 'KRUART_STANDARD_V1');
+  assert.equal(continuous.projectBaseline.policyInheritanceByRegistry, true);
+  assert.equal(continuous.invariants.sharedCauseFixedAtHighestSharedLayer, true);
+  assert.equal(continuous.invariants.unverifiedAutonomousPolicyMutationForbidden, true);
 
   const expected = new Map([
     ['awh', ['113b45c0-23e1-408d-ae0f-ac5eca7f6900', 'production']],
@@ -83,6 +100,9 @@ test('repository governance is a single machine-enforced contract', async () => 
   assert.match(agents, /Owner Assist Fast Lane/);
   assert.match(agents, /retry the same failure path at most twice/i);
   assert.match(agents, /\/var\/lib\/awh-remote\/worktrees/);
+  assert.match(agents, /problem class/);
+  assert.match(agents, /continuous-improvement guardrail/);
+  assert.match(agents, /highest shared layer/);
 
   const drift = await readFile(join(root, 'hub/bin/ecosystem-source-drift.php'), 'utf8');
   assert.match(drift, /governanceRepositories/);
@@ -91,6 +111,8 @@ test('repository governance is a single machine-enforced contract', async () => 
   assert.match(drift, /project manifest id drift/);
   assert.match(drift, /forbidden parallel authority file/);
   assert.match(drift, /active mutation/);
+  assert.match(drift, /AWH_CONTINUOUS_IMPROVEMENT/);
+  assert.match(drift, /continuous-improvement inheritance drift/);
 
   const registry = await readFile(join(root, 'hub/src/HubUpdateTargetRegistry.php'), 'utf8');
   assert.match(registry, /'defaultBranch'=>'production'/);

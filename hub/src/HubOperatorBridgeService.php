@@ -270,6 +270,9 @@ final class HubOperatorBridgeService
             if(preg_match('/^[a-f0-9]{64}$/',$fingerprint)!==1||$regression!=='reg-'.substr($fingerprint,0,12))throw new HubOperatorBridgeException('Verification incident identity is invalid','OPERATOR_REQUEST_INVALID');
             $this->verificationPaths($document['context']['changedPaths']??[]);
             $bucket='incidents/'.$fingerprint;$identity=$fingerprint;
+        }elseif($kind==='verification-lesson'){
+            $lesson=$this->verificationLesson($document);
+            $bucket='lessons/'.(string)$lesson['classFingerprint'];$identity=(string)$lesson['lessonId'];
         }else throw new HubOperatorBridgeException('Verification evidence kind is not allowlisted','OPERATOR_ACTION_FORBIDDEN');
         $root=$this->verificationRoot();$directory=$root.'/'.$bucket;
         if(!is_dir($directory)&&!@mkdir($directory,0700,true))throw new HubOperatorBridgeException('Verification evidence storage is unavailable','OPERATOR_VERIFICATION_STORAGE_UNAVAILABLE');
@@ -285,18 +288,48 @@ final class HubOperatorBridgeService
     /** @param array<string,mixed> $request @return array<string,mixed> */
     private function verificationRegressions(array $request,string $at): array
     {
-        $changed=$this->verificationPaths($request['changedPaths']??[]);$root=$this->verificationRoot(false);$items=[];
-        $incidentRoot=$root.'/incidents';if(!is_dir($incidentRoot))return ['schemaVersion'=>1,'regressions'=>[],'count'=>0,'observedAt'=>$at];
-        $directories=array_slice(array_values(array_filter(glob($incidentRoot.'/*')?:[],static fn(string $p):bool=>is_dir($p)&&!is_link($p))),0,200);
-        foreach($directories as $directory){
-            $files=glob($directory.'/*.json')?:[];usort($files,static fn(string $a,string $b):int=>(@filemtime($b)?:0)<=> (@filemtime($a)?:0));$file=$files[0]??null;if(!is_string($file))continue;
-            $raw=@file_get_contents($file);if(!is_string($raw)||strlen($raw)>self::MAX_VERIFICATION_DOCUMENT_BYTES+2)continue;
-            try{$doc=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}if(!is_array($doc)||($doc['kind']??null)!=='verification-incident')continue;
-            try{$paths=$this->verificationPaths($doc['context']['changedPaths']??[]);}catch(HubOperatorBridgeException){continue;}
-            if(array_intersect($changed,$paths)===[])continue;$items[]=['regressionId'=>(string)($doc['regressionId']??''),'fingerprint'=>(string)($doc['fingerprint']??''),'code'=>(string)($doc['code']??''),'changedPaths'=>$paths];
-            if(count($items)>=50)break;
+        $changed=$this->verificationPaths($request['changedPaths']??[]);
+        $projectId=is_string($request['projectId']??null)?strtolower(trim((string)$request['projectId'])):'';
+        $releaseTrack=is_string($request['releaseTrack']??null)?strtolower(trim((string)$request['releaseTrack'])):'';
+        $productFamily=is_string($request['productFamily']??null)?strtolower(trim((string)$request['productFamily'])):'';
+        if($projectId!==''&&!self::uuidValid($projectId))throw new HubOperatorBridgeException('Verification project identity is invalid','OPERATOR_REQUEST_INVALID');
+        foreach([[$releaseTrack,'release track'],[$productFamily,'product family']] as [$value,$label])if($value!==''&&preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',$value)!==1)throw new HubOperatorBridgeException('Verification '.$label.' is invalid','OPERATOR_REQUEST_INVALID');
+        $root=$this->verificationRoot(false);$items=[];$seen=[];
+        $incidentRoot=$root.'/incidents';
+        if(is_dir($incidentRoot)){
+            $directories=array_slice(array_values(array_filter(glob($incidentRoot.'/*')?:[],static fn(string $p):bool=>is_dir($p)&&!is_link($p))),0,200);
+            foreach($directories as $directory){
+                $doc=$this->latestVerificationDocument($directory,'verification-incident');if($doc===null)continue;
+                try{$paths=$this->verificationPaths($doc['context']['changedPaths']??[]);}catch(HubOperatorBridgeException){continue;}
+                if(array_intersect($changed,$paths)===[])continue;
+                $regression=(string)($doc['regressionId']??'');if(!preg_match('/^reg-[a-f0-9]{12}$/',$regression)||isset($seen[$regression]))continue;
+                $seen[$regression]=true;$items[]=[
+                    'regressionId'=>$regression,'fingerprint'=>(string)($doc['fingerprint']??''),
+                    'code'=>(string)($doc['code']??''),'changedPaths'=>$paths,
+                    'problemClass'=>(string)($doc['problemClass']??''),'impactScope'=>(string)($doc['impactScope']??'PROJECT'),
+                    'source'=>'INCIDENT_PATH','requiredChecks'=>[],
+                ];
+                if(count($items)>=50)break;
+            }
         }
-        return ['schemaVersion'=>1,'regressions'=>$items,'count'=>count($items),'observedAt'=>$at];
+        $lessonRoot=$root.'/lessons';
+        if(is_dir($lessonRoot)&&count($items)<50){
+            $directories=array_slice(array_values(array_filter(glob($lessonRoot.'/*')?:[],static fn(string $p):bool=>is_dir($p)&&!is_link($p))),0,200);
+            foreach($directories as $directory){
+                $doc=$this->latestVerificationDocument($directory,'verification-lesson');if($doc===null||($doc['state']??null)!=='ENFORCED')continue;
+                if(!$this->verificationLessonApplies($doc,$projectId,$releaseTrack,$productFamily))continue;
+                $regression=(string)($doc['sourceRegressionId']??'');if(!preg_match('/^reg-[a-f0-9]{12}$/',$regression)||isset($seen[$regression]))continue;
+                $checks=is_array($doc['requiredChecks']??null)?array_values(array_filter($doc['requiredChecks'],'is_string')):[];
+                $seen[$regression]=true;$items[]=[
+                    'regressionId'=>$regression,'fingerprint'=>(string)($doc['classFingerprint']??''),
+                    'code'=>(string)($doc['problemClass']??''),'changedPaths'=>[],
+                    'problemClass'=>(string)($doc['problemClass']??''),'impactScope'=>(string)($doc['impactScope']??''),
+                    'lessonId'=>(string)($doc['lessonId']??''),'source'=>'VERIFIED_LESSON','requiredChecks'=>$checks,
+                ];
+                if(count($items)>=50)break;
+            }
+        }
+        return ['schemaVersion'=>2,'regressions'=>$items,'count'=>count($items),'observedAt'=>$at];
     }
 
     /** @return array<string,mixed> */
@@ -581,6 +614,77 @@ final class HubOperatorBridgeService
         if(is_link($root))throw new HubOperatorBridgeException('Verification evidence root is unsafe','OPERATOR_VERIFICATION_STORAGE_UNAVAILABLE');
         if(!is_dir($root)&&$create&&!@mkdir($root,0700,true))throw new HubOperatorBridgeException('Verification evidence root is unavailable','OPERATOR_VERIFICATION_STORAGE_UNAVAILABLE');
         return rtrim($root,'/');
+    }
+
+    /** @param array<string,mixed> $document @return array<string,string> */
+    private function verificationLesson(array $document): array
+    {
+        $classFingerprint=strtolower((string)($document['classFingerprint']??''));
+        $lessonId=(string)($document['lessonId']??'');
+        $problemClass=(string)($document['problemClass']??'');
+        $impactScope=strtoupper((string)($document['impactScope']??''));
+        $rootCauseLayer=(string)($document['rootCauseLayer']??'');
+        $sourceRegression=(string)($document['sourceRegressionId']??'');
+        if(preg_match('/^[a-f0-9]{64}$/',$classFingerprint)!==1||$lessonId!=='lesson-'.substr($classFingerprint,0,12))
+            throw new HubOperatorBridgeException('Verification lesson identity is invalid','OPERATOR_REQUEST_INVALID');
+        if(preg_match('/^[A-Z][A-Z0-9_]{2,79}$/',$problemClass)!==1||preg_match('/^[A-Z][A-Z0-9_]{2,79}$/',$rootCauseLayer)!==1)
+            throw new HubOperatorBridgeException('Verification lesson class is invalid','OPERATOR_REQUEST_INVALID');
+        if(!in_array($impactScope,['PROJECT','PRODUCT_FAMILY','ECOSYSTEM','PLATFORM'],true)||($document['state']??null)!=='ENFORCED')
+            throw new HubOperatorBridgeException('Verification lesson scope/state is invalid','OPERATOR_REQUEST_INVALID');
+        if(preg_match('/^reg-[a-f0-9]{12}$/',$sourceRegression)!==1)throw new HubOperatorBridgeException('Verification lesson source is invalid','OPERATOR_REQUEST_INVALID');
+        $closure=$document['closure']??null;
+        if(!is_array($closure)||array_is_list($closure))throw new HubOperatorBridgeException('Verification lesson closure is invalid','OPERATOR_REQUEST_INVALID');
+        foreach(['rootCause','canonicalFix','prevention','regression','recovery','observability'] as $key){
+            $value=$closure[$key]??null;
+            if(!is_string($value)||trim($value)===''||strlen($value)>2000)throw new HubOperatorBridgeException('Verification lesson closure is incomplete','OPERATOR_REQUEST_INVALID');
+        }
+        $checks=$document['requiredChecks']??[];
+        if(!is_array($checks)||!array_is_list($checks)||count($checks)>30)throw new HubOperatorBridgeException('Verification lesson checks are invalid','OPERATOR_REQUEST_INVALID');
+        foreach($checks as $check)if(!is_string($check)||preg_match('/^[a-z0-9][a-z0-9._:-]{1,79}$/',$check)!==1)throw new HubOperatorBridgeException('Verification lesson check is invalid','OPERATOR_REQUEST_INVALID');
+        $projectId=strtolower(trim((string)($document['projectId']??'')));
+        $productFamily=strtolower(trim((string)($document['productFamily']??'')));
+        $releaseTrack=strtolower(trim((string)($document['releaseTrack']??'')));
+        if($impactScope==='PROJECT'&&!self::uuidValid($projectId))throw new HubOperatorBridgeException('Project-scoped lesson needs a project identity','OPERATOR_REQUEST_INVALID');
+        if($impactScope==='PRODUCT_FAMILY'&&preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',$productFamily)!==1)throw new HubOperatorBridgeException('Product-family lesson needs a family identity','OPERATOR_REQUEST_INVALID');
+        if($releaseTrack!==''&&preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',$releaseTrack)!==1)throw new HubOperatorBridgeException('Verification lesson release track is invalid','OPERATOR_REQUEST_INVALID');
+        $source=$this->verificationIncidentByRegression($sourceRegression);
+        if($source===null||!hash_equals($classFingerprint,strtolower((string)($source['classFingerprint']??'')))||$problemClass!==(string)($source['problemClass']??'')||$impactScope!==(string)($source['impactScope']??''))
+            throw new HubOperatorBridgeException('Verification lesson must be backed by a matching classified incident','OPERATOR_VERIFICATION_LESSON_SOURCE_REQUIRED');
+        return ['classFingerprint'=>$classFingerprint,'lessonId'=>$lessonId];
+    }
+
+    /** @return array<string,mixed>|null */
+    private function verificationIncidentByRegression(string $regressionId): ?array
+    {
+        $root=$this->verificationRoot(false).'/incidents';
+        if(!is_dir($root))return null;
+        foreach(array_slice(array_values(array_filter(glob($root.'/*')?:[],static fn(string $p):bool=>is_dir($p)&&!is_link($p))),0,200) as $directory){
+            $doc=$this->latestVerificationDocument($directory,'verification-incident');
+            if(is_array($doc)&&hash_equals($regressionId,(string)($doc['regressionId']??'')))return $doc;
+        }
+        return null;
+    }
+
+    /** @return array<string,mixed>|null */
+    private function latestVerificationDocument(string $directory,string $kind): ?array
+    {
+        $files=glob($directory.'/*.json')?:[];
+        usort($files,static fn(string $a,string $b):int=>(@filemtime($b)?:0)<=> (@filemtime($a)?:0));
+        foreach($files as $file){
+            $raw=@file_get_contents($file);if(!is_string($raw)||strlen($raw)>self::MAX_VERIFICATION_DOCUMENT_BYTES+2)continue;
+            try{$doc=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
+            if(is_array($doc)&&($doc['kind']??null)===$kind)return $doc;
+        }
+        return null;
+    }
+
+    /** @param array<string,mixed> $lesson */
+    private function verificationLessonApplies(array $lesson,string $projectId,string $releaseTrack,string $productFamily): bool
+    {
+        $scope=strtoupper((string)($lesson['impactScope']??''));
+        if($scope==='PROJECT')return $projectId!==''&&hash_equals($projectId,strtolower((string)($lesson['projectId']??'')));
+        if($scope==='PRODUCT_FAMILY')return $productFamily!==''&&hash_equals($productFamily,strtolower((string)($lesson['productFamily']??'')));
+        return in_array($scope,['ECOSYSTEM','PLATFORM'],true);
     }
 
     /** @return list<string> */

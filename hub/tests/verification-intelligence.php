@@ -30,4 +30,21 @@ $b=HubVerificationIntelligence::incident('MISSION_QA_FAILED',['phase'=>'qa','rel
 vi_assert($a['fingerprint']===$b['fingerprint'],'incident fingerprint must be deterministic');
 vi_assert(str_starts_with($a['regressionId'],'reg-')&&$a['required']===true,'incident must produce a required regression case');
 
+$classA=HubVerificationIntelligence::incident('MISSION_PRIVILEGE_LANE_REQUIRED:NO_NEW_PRIVILEGES',[
+    'releaseTrack'=>'vps-platform','projectId'=>'113b45c0-23e1-408d-ae0f-ac5eca7f6900',
+    'releaseSha'=>'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    'changedPaths'=>['scripts/ops/bounded-deploy-mission.mjs','deploy/awh-control-plane/deploy-control-plane.sh'],
+]);
+$classB=HubVerificationIntelligence::incident('MISSION_PRIVILEGE_LANE_REQUIRED:NO_NEW_PRIVILEGES',[
+    'releaseTrack'=>'vps-platform','projectId'=>'113b45c0-23e1-408d-ae0f-ac5eca7f6900',
+    'releaseSha'=>'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    'changedPaths'=>['deploy/awh-control-plane/deploy-control-plane.sh','scripts/ops/bounded-deploy-mission.mjs'],
+]);
+vi_assert($classA['fingerprint']!==$classB['fingerprint'],'different incident instances retain distinct fingerprints');
+vi_assert($classA['classFingerprint']===$classB['classFingerprint'],'same problem class/scope must converge to one class fingerprint');
+vi_assert($classA['problemClass']==='PRIVILEGE_ROUTE_MISMATCH'&&$classA['impactScope']==='PLATFORM','platform privilege failure must classify at platform scope');
+vi_assert(($classA['context']['changedPaths']??[])===['deploy/awh-control-plane/deploy-control-plane.sh','scripts/ops/bounded-deploy-mission.mjs'],'changed paths must survive incident normalization deterministically');
+$workspace=HubVerificationIntelligence::incident('GIT_FAILED:rev-parse',['releaseTrack'=>'vps-platform']);
+vi_assert($workspace['problemClass']==='RELEASE_WORKSPACE_IDENTITY'&&$workspace['rootCauseLayer']==='RELEASE_WORKSPACE','release workspace identity failures must share a durable class');
+
 fwrite(STDOUT,"AWH Verification Intelligence: PASS\n");
