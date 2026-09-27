@@ -15,7 +15,7 @@
 1. `awh/api-independence` remains the only canonical code authority; Production pointers and SQLite remain runtime truth.
 2. No blind merge of stale/diverged branches and no concurrent edits to the active M19 worktree.
 3. Storage cleanup is reference-safe: ACTIVE, current rollback, referenced release, backup, Vault, artifact and UNKNOWN material are protected. Destructive purge requires verified classification; preview/audit comes first.
-4. GitHub Actions/AiPASS are compute/review surfaces only; they do not become a second project/source/runtime authority.
+4. GitHub Actions and external reviewers are compute/review surfaces only; they do not become a second project/source/runtime authority.
 5. Home, Chat, Tasks and Files converge on one workspace/navigation/history authority rather than gaining another shell.
 6. Source/CI PASS never substitutes for rendered iPhone or post-deploy Production field evidence.
 
@@ -106,7 +106,7 @@ Next safe action: re-establish read-only Mac/VPS inspection, verify whether the 
 - Exact-revision TypeScript typecheck PASS; focused migration/Conversation Lifecycle/Cloud-first/mobile/HEIC/storage regression PASS 8/8.
 - Full Node regression at `72ee6e0508c2007dfcfc3cffc9ac02a84c9f738f`: 353 tests, 352 PASS, 1 Windows-only skip, 0 FAIL.
 - Hub/PHP regression PASS through M20 Project Source Authority. Extension-dependent local fixtures remain truthful skips where PHP lacks ZipArchive; Production capability had already been verified available.
-- M20 deployment dry-run PASS at exact code revision with v19→v20 migration gating, source refresh on v20, operator quiesce/resume, exact DB/pointer rollback, Project Source route and AiPASS export route. Production activation still requires explicit approval.
+- M20 deployment dry-run PASS at exact code revision with v19→v20 migration gating, source refresh on v20, operator quiesce/resume, exact DB/pointer rollback, Project Source route and legacy external-review export route. Production activation still requires explicit approval.
 - Rendered review PASS at exact code revision: clean tree, 16 screenshots across 390×844 and 1440×900.
 - Production rollback evidence remains `/var/backups/awh-hub/awh.sqlite.pre-m19-b66ef39cc986`; no Production migration, release compaction, release deletion, or pointer movement was performed in this convergence step.
 
@@ -238,4 +238,4 @@ Next safe action: preserve the healthy M19 Production state while the execution 
 - Exact rollback DB `/var/backups/awh-hub/awh.sqlite.pre-m19-b66ef39cc986` remains protected; daily backup authority is active.
 - M20 Production activation is source/QA/dry-run ready with verified current desktop artifacts, but the normal `--deploy --approve --owner-auth --project-source-authority` invocation is blocked by the execution safety gate. The gate was not bypassed and Production remains healthy on M19.
 
-Next safe action: keep M19 Production stable until the normal owner-auth execution gate permits M20 activation. When it opens, use only the canonical exact-SHA path, then immediately verify schema 20, migration ledger, Control/Web pointers, services, project-source/AiPASS routes, backup and rollback evidence.
+Next safe action: keep M19 Production stable until the normal owner-auth execution gate permits M20 activation. When it opens, use only the canonical exact-SHA path, then immediately verify schema 20, migration ledger, Control/Web pointers, services, project-source and review routes, backup and rollback evidence.

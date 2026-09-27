@@ -46,7 +46,7 @@ Agents must not:
 
 ## Review behavior
 
-Impeccable/AIPass/other AI reviewers are critics, not authorities. Their findings become engineering input only after revision/evidence validation. Deterministic tests, exact-revision browser evidence and Owner acceptance remain the release authority.
+External and AI reviewers are critics, not authorities. Their findings become engineering input only after revision/evidence validation. Deterministic tests, exact-revision browser evidence and Owner acceptance remain the release authority.
 
 ## Definition of done for design work
 
