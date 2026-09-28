@@ -1508,11 +1508,9 @@ if test "$PLATFORM_HARDENING" = 1; then
       if test "$code" != 401 && test "$code" != 403; then platform_routes_ready=0; fi
     done
     if test "$platform_capabilities" = 2 && test "$platform_routes_ready" = 1; then
-      printf '%s\n' "DEPLOY_DIAGNOSTIC=PLATFORM_RUNTIME_VERIFY_ATTEMPTS_$platform_attempt"
       break
     fi
     if test "$platform_attempt" -ge 10; then
-      printf '%s\n' "DEPLOY_DIAGNOSTIC=PLATFORM_RUNTIME_VERIFY_FAILED_CAPABILITIES_${platform_capabilities}_ROUTES_${platform_routes_ready}"
       return 1
     fi
     platform_attempt=$((platform_attempt + 1))
