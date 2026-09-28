@@ -101,15 +101,32 @@ final class HubCoreReleaseService
             throw new HubCoreReleaseException('Another core release is already active','CORE_RELEASE_CONFLICT');
         }
 
+        $completed=$this->completedCurrentRelease($sha,(bool)$payload['cleanupTopology']);
+        if(is_array($completed))return $this->idempotentResponse($completed,$sha);
         $task=self::uuid();$execution=self::uuid();$approval=self::uuid();
         $notesJson=json_encode($deploymentNotes,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
         $notesSha=hash('sha256',$notesJson);
         $checkpoint=['schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>$sha,'releaseMode'=>$this->releaseMode,'releaseTrack'=>$this->releaseTrack,'cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL','releaseNotesSha256'=>$notesSha];
         $scope=['schemaVersion'=>1,'taskId'=>$task,'projectId'=>self::PROJECT_ID,'releaseSha'=>$sha,'releaseMode'=>$this->releaseMode,'releaseTrack'=>$this->releaseTrack,'cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL','risk'=>'CRITICAL','releaseNotesSha256'=>$notesSha];
         $goal='Deploy '.$this->displayName.' release '.substr($sha,0,12).' ผ่าน bounded VPS-native release controller';
-        $key=$this->releaseTrack.'.release.'.substr($sha,0,12).'.'.substr(str_replace('-','',$task),0,12);
         try{
             $this->pdo->exec('BEGIN IMMEDIATE');
+            $concurrent=$this->activeRelease();
+            if(is_array($concurrent)){
+                $concurrentCheckpoint=self::checkpoint((string)$concurrent['checkpoint_json'],false);
+                if(is_string($concurrentCheckpoint['releaseSha']??null)&&hash_equals((string)$concurrentCheckpoint['releaseSha'],$sha)){
+                    $this->pdo->exec('ROLLBACK');
+                    return $this->idempotentResponse($concurrent,$sha);
+                }
+                throw new HubCoreReleaseException('Another core release is already active','CORE_RELEASE_CONFLICT');
+            }
+            $completed=$this->completedCurrentRelease($sha,(bool)$payload['cleanupTopology']);
+            if(is_array($completed)){
+                $this->pdo->exec('ROLLBACK');
+                return $this->idempotentResponse($completed,$sha);
+            }
+            $attempt=$this->releaseAttemptCount($sha,(bool)$payload['cleanupTopology']);
+            $key=$this->releaseTrack.'.release.'.substr($sha,0,12).'.cleanup'.($payload['cleanupTopology']?'1':'0').'.attempt'.$attempt;
             $this->pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,:goal,'WAITING_FOR_WORKER',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$task,'user'=>$owner['user_id'],'project'=>self::PROJECT_ID,'goal'=>$goal,'key'=>$key,'at'=>$at]);
             $this->pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS',:capability,'QUEUED',NULL,NULL,0,NULL,:checkpoint,NULL,:at,:at)")->execute(['execution'=>$execution,'task'=>$task,'project'=>self::PROJECT_ID,'capability'=>$this->capability,'checkpoint'=>json_encode($checkpoint,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$at]);
             $this->pdo->prepare("INSERT INTO control_approvals(approval_id,task_id,action,scope_json,status,expires_at,decided_at) VALUES(:approval,:task,'deployment.approve',:scope,'APPROVED',:expires,:decided)")->execute(['approval'=>$approval,'task'=>$task,'scope'=>json_encode($scope,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'expires'=>gmdate('c',strtotime($at)+1800),'decided'=>$at]);
@@ -236,6 +253,46 @@ final class HubCoreReleaseService
             $existing['task_state']='WAITING_FOR_WORKER';$existing['approval_status']='APPROVED';$existing['decided_at']=$at;
             return $existing;
         }catch(Throwable $error){$this->rollback();throw new HubCoreReleaseException('Legacy release could not resume safely','CORE_RELEASE_QUEUE_FAILED');}
+    }
+
+    /** @return array<string,mixed> */
+    private function idempotentResponse(array $row,string $sha): array
+    {
+        return ['schemaVersion'=>1,'taskId'=>(string)$row['task_id'],'executionId'=>(string)$row['execution_id'],
+            'approvalId'=>$row['approval_id']===null?null:(string)$row['approval_id'],'state'=>(string)$row['task_state'],
+            'releaseSha'=>$sha,'idempotent'=>true];
+    }
+
+    private function completedCurrentRelease(string $sha,bool $cleanupTopology): ?array
+    {
+        $runtime=$this->canonicalProductionSha();$track=$this->canonicalRefSha($this->productionBranch);
+        if(!is_string($runtime)||!is_string($track)||!hash_equals($runtime,$sha)||!hash_equals($track,$sha))return null;
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.checkpoint_json,t.state AS task_state,a.approval_id
+            FROM control_task_executions e
+            JOIN control_tasks t ON t.task_id=e.task_id
+            LEFT JOIN control_approvals a ON a.task_id=e.task_id AND a.action='deployment.approve'
+            WHERE e.project_id=:project AND e.required_capability=:capability AND e.state='COMPLETED' AND t.state='COMPLETED'
+            ORDER BY e.updated_at DESC,e.execution_id DESC LIMIT 20");
+        $q->execute(['project'=>self::PROJECT_ID,'capability'=>$this->capability]);
+        foreach($q->fetchAll() as $row){
+            $checkpoint=self::checkpoint((string)$row['checkpoint_json'],false);
+            if(is_string($checkpoint['releaseSha']??null)&&hash_equals((string)$checkpoint['releaseSha'],$sha)
+                &&($checkpoint['cleanupTopology']??null)===$cleanupTopology)return $row;
+        }
+        return null;
+    }
+
+    private function releaseAttemptCount(string $sha,bool $cleanupTopology): int
+    {
+        $q=$this->pdo->prepare("SELECT checkpoint_json FROM control_task_executions
+            WHERE project_id=:project AND required_capability=:capability ORDER BY created_at ASC,execution_id ASC");
+        $q->execute(['project'=>self::PROJECT_ID,'capability'=>$this->capability]);$count=0;
+        foreach($q->fetchAll() as $row){
+            $checkpoint=self::checkpoint((string)$row['checkpoint_json'],false);
+            if(is_string($checkpoint['releaseSha']??null)&&hash_equals((string)$checkpoint['releaseSha'],$sha)
+                &&($checkpoint['cleanupTopology']??null)===$cleanupTopology)$count++;
+        }
+        return $count;
     }
 
     private function activeRelease(): ?array
