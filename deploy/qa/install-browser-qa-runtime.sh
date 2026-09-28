@@ -1,24 +1,36 @@
 #!/bin/sh
 set -eu
 MODE=${1:---check}
-PLAYWRIGHT_VERSION=${AWH_PLAYWRIGHT_VERSION:-1.63.0}
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+MANIFEST=${AWH_DEVICE_RUNTIME_MANIFEST:-$HERE/../../config/device-runtime-release.json}
+command -v python3 >/dev/null 2>&1 || { printf '%s\n' AWH_BROWSER_QA_PYTHON3_REQUIRED >&2; exit 1; }
+[ -f "$MANIFEST" ] || { printf '%s\n' AWH_BROWSER_QA_MANIFEST_MISSING >&2; exit 1; }
+manifest_value(){ python3 - "$MANIFEST" "$1" <<'PYJSON'
+import json,sys
+value=json.load(open(sys.argv[1],encoding='utf-8'))
+for part in sys.argv[2].split('.'): value=value[part]
+print(value)
+PYJSON
+}
+PLAYWRIGHT_VERSION=${AWH_PLAYWRIGHT_VERSION:-$(manifest_value browserQa.playwrightVersion)}
+NODE_VERSION=$(manifest_value linuxConnector.nodeRuntime.version)
+NODE_MINIMUM=$(manifest_value browserQa.minimumNodeVersion)
 ROOT=${AWH_BROWSER_QA_ROOT:-/opt/awh-tools/browser-qa}
 NODE_INSTALLER=$HERE/../remote-worker/linux/install-node-runtime.sh
-NODE_ROOT=${AWH_BROWSER_QA_NODE_ROOT:-/opt/awh-tools/remote-desktop/node-v22.22.1-linux-x64}
+NODE_ROOT=${AWH_BROWSER_QA_NODE_ROOT:-/opt/awh-tools/remote-desktop/node-v${NODE_VERSION}-linux-x64}
 NODE_BIN=$NODE_ROOT/bin/node
 NPM_BIN=$NODE_ROOT/bin/npm
 CHROME=${AWH_CHROME_PATH:-}
 fail(){ printf '%s\n' "$1" >&2; exit 1; }
 case "$MODE" in --check|--install) :;; *) fail 'usage: install-browser-qa-runtime.sh [--check|--install]' ;; esac
 [ -n "$CHROME" ] && [ -x "$CHROME" ] || fail AWH_BROWSER_QA_CHROME_REQUIRED
-if ! { [ -x "$NODE_BIN" ] && [ -x "$NPM_BIN" ] && "$NODE_BIN" -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22 || (a===22&&b>=12) ? 0 : 1)' 2>/dev/null; }; then
-  [ "$MODE" = --install ] || fail AWH_BROWSER_QA_NODE22_REQUIRED
+if ! { [ -x "$NODE_BIN" ] && [ -x "$NPM_BIN" ] && "$NODE_BIN" -e 'const min=process.argv[1].split(".").map(Number),cur=process.versions.node.split(".").map(Number);for(let i=0;i<3;i++){if((cur[i]||0)>(min[i]||0))process.exit(0);if((cur[i]||0)<(min[i]||0))process.exit(1)}process.exit(0)' "$NODE_MINIMUM" 2>/dev/null; }; then
+  [ "$MODE" = --install ] || fail AWH_BROWSER_QA_NODE_RUNTIME_REQUIRED
   [ "$(id -u)" -eq 0 ] || fail AWH_BROWSER_QA_INSTALL_REQUIRES_ROOT
   [ -x "$NODE_INSTALLER" ] || fail AWH_BROWSER_QA_NODE_INSTALLER_MISSING
   AWH_NODE_RUNTIME_ROOT=$(dirname "$NODE_ROOT") sh "$NODE_INSTALLER"
 fi
-[ -x "$NODE_BIN" ] && [ -x "$NPM_BIN" ] || fail AWH_BROWSER_QA_NODE22_REQUIRED
+[ -x "$NODE_BIN" ] && [ -x "$NPM_BIN" ] || fail AWH_BROWSER_QA_NODE_RUNTIME_REQUIRED
 missing(){ ldd "$CHROME" 2>/dev/null | awk '/not found/{print $1}' | sort -u; }
 MISSING=$(missing)
 if [ "$MODE" = --check ]; then

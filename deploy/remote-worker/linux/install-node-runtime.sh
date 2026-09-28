@@ -1,11 +1,25 @@
 #!/bin/sh
 set -eu
-VERSION=22.22.1
-ARCHIVE=node-v${VERSION}-linux-x64.tar.xz
-EXPECTED_SHA=9a6bc82f9b491279147219f6a18add1e18424dce90d41d2a5fcd69d4924ba3aa
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+MANIFEST=${AWH_DEVICE_RUNTIME_MANIFEST:-$HERE/../../../config/device-runtime-release.json}
+command -v python3 >/dev/null 2>&1 || { printf '%s\n' AWH_NODE_RUNTIME_PYTHON3_REQUIRED >&2; exit 1; }
+[ -f "$MANIFEST" ] || { printf '%s\n' AWH_NODE_RUNTIME_MANIFEST_MISSING >&2; exit 1; }
+manifest_value(){ python3 - "$MANIFEST" "$1" <<'PYJSON'
+import json,sys
+value=json.load(open(sys.argv[1],encoding='utf-8'))
+for part in sys.argv[2].split('.'): value=value[part]
+print(value)
+PYJSON
+}
+VERSION=$(manifest_value linuxConnector.nodeRuntime.version)
+MINIMUM_VERSION=$(manifest_value linuxConnector.nodeRuntime.minimumVersion)
+NAME_TEMPLATE=$(manifest_value linuxConnector.nodeRuntime.asset.nameTemplate)
+ARCHIVE=$(printf '%s' "$NAME_TEMPLATE" | sed "s/{version}/$VERSION/g")
+EXPECTED_SHA=$(manifest_value linuxConnector.nodeRuntime.asset.sha256)
+URL_TEMPLATE=$(manifest_value linuxConnector.nodeRuntime.sourceUrlTemplate)
+URL=$(printf '%s' "$URL_TEMPLATE" | sed "s/{version}/$VERSION/g;s|{asset}|$ARCHIVE|g")
 ROOT=${AWH_NODE_RUNTIME_ROOT:-/opt/awh-tools/remote-desktop}
 TARGET=$ROOT/node-v${VERSION}-linux-x64
-URL=https://nodejs.org/download/release/v${VERSION}/${ARCHIVE}
 fail(){ printf '%s\n' "$1" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || fail AWH_NODE_RUNTIME_INSTALL_REQUIRES_ROOT
 [ "$(uname -s)" = Linux ] || fail AWH_NODE_RUNTIME_UNSUPPORTED_OS

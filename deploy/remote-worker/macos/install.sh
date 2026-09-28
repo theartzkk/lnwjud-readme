@@ -10,7 +10,9 @@ AWH_BIN="$HOME/.awh/bin"
 COMPAT_BIN="$HOME/.local/share/bay-remote/node_modules/.bin/desktop-commander"
 PKG="$RUNTIME/node_modules/@wonderwhy-er/desktop-commander"
 PLIST="$HOME/Library/LaunchAgents/com.awh.remote-worker.plist"
-EXPECTED=0.2.51
+MANIFEST="${AWH_DEVICE_RUNTIME_MANIFEST:-$HERE/../../../config/device-runtime-release.json}"
+[ -f "$MANIFEST" ] || { echo 'AWH_DEVICE_RUNTIME_MANIFEST_MISSING' >&2; exit 3; }
+EXPECTED="$(node -e 'const m=require(process.argv[1]);process.stdout.write(m.version)' "$MANIFEST")"
 
 ensure_compat_bin() {
   local target="$RUNTIME/node_modules/.bin/desktop-commander"

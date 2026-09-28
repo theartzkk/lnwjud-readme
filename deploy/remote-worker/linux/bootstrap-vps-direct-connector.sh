@@ -1,14 +1,26 @@
 #!/bin/sh
 set -eu
 
-AGENT_VERSION=${AWH_RDC_VERSION:-0.2.51}
 AGENT_USER=${AWH_RDC_USER:-awh-remote}
 AGENT_HOME=${AWH_RDC_HOME:-/var/lib/awh-remote}
 RUNTIME_ROOT=${AWH_RDC_RUNTIME_ROOT:-/opt/awh-tools/remote-desktop}
-NODE_ROOT=${AWH_RDC_NODE_ROOT:-$RUNTIME_ROOT/node-v22.22.1-linux-x64}
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+MANIFEST=${AWH_DEVICE_RUNTIME_MANIFEST:-$HERE/../../../config/device-runtime-release.json}
+command -v python3 >/dev/null 2>&1 || { printf '%s\n' AWH_VPS_DIRECT_PYTHON3_REQUIRED >&2; exit 1; }
+[ -f "$MANIFEST" ] || { printf '%s\n' AWH_VPS_DIRECT_MANIFEST_MISSING >&2; exit 1; }
+manifest_value(){ python3 - "$MANIFEST" "$1" <<'PYJSON'
+import json,sys
+value=json.load(open(sys.argv[1],encoding='utf-8'))
+for part in sys.argv[2].split('.'): value=value[part]
+print(value)
+PYJSON
+}
+AGENT_VERSION=${AWH_RDC_VERSION:-$(manifest_value version)}
+NODE_VERSION=$(manifest_value linuxConnector.nodeRuntime.version)
+NODE_MINIMUM=$(manifest_value linuxConnector.nodeRuntime.minimumVersion)
+NODE_ROOT=${AWH_RDC_NODE_ROOT:-$RUNTIME_ROOT/node-v${NODE_VERSION}-linux-x64}
 NODE_BIN=$NODE_ROOT/bin/node
 NPX_BIN=$NODE_ROOT/bin/npx
-HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 fail() {
   printf '%s\n' "$1" >&2
@@ -20,12 +32,12 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 ensure_node() {
-  if [ -x "$NODE_BIN" ] && "$NODE_BIN" -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22 || (a===22&&b>=12) ? 0 : 1)' 2>/dev/null; then
+  if [ -x "$NODE_BIN" ] && "$NODE_BIN" -e 'const min=process.argv[1].split(".").map(Number),cur=process.versions.node.split(".").map(Number);for(let i=0;i<3;i++){if((cur[i]||0)>(min[i]||0))process.exit(0);if((cur[i]||0)<(min[i]||0))process.exit(1)}process.exit(0)' "$NODE_MINIMUM" 2>/dev/null; then
     return 0
   fi
   [ -x "$HERE/install-node-runtime.sh" ] || fail AWH_VPS_DIRECT_NODE_INSTALLER_MISSING
   AWH_NODE_RUNTIME_ROOT="$RUNTIME_ROOT" sh "$HERE/install-node-runtime.sh"
-  [ -x "$NODE_BIN" ] && [ -x "$NPX_BIN" ] || fail AWH_VPS_DIRECT_NODE22_REQUIRED
+  [ -x "$NODE_BIN" ] && [ -x "$NPX_BIN" ] || fail AWH_VPS_DIRECT_NODE_RUNTIME_REQUIRED
 }
 
 ensure_node

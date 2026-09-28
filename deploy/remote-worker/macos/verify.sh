@@ -6,7 +6,10 @@ SCRIPT="$ROOT/awh-remote-worker.sh"
 BRIDGE="$HOME/Library/Application Support/AWH/DeviceRuntime/awh-mcp-stdio"
 PLIST="$HOME/Library/LaunchAgents/com.awh.remote-worker.plist"
 SESSION="$HOME/.desktop-commander-device/device.json"
-EXPECTED=0.2.51
+HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+MANIFEST="${AWH_DEVICE_RUNTIME_MANIFEST:-$HERE/../../../config/device-runtime-release.json}"
+[ -f "$MANIFEST" ] || { echo 'AWH_DEVICE_RUNTIME_MANIFEST_MISSING' >&2; exit 1; }
+EXPECTED="$(node -e 'const m=require(process.argv[1]);process.stdout.write(m.version)' "$MANIFEST")"
 VERSION="$(node -e 'process.stdout.write(require(process.argv[1]).version)' "$PKG/package.json")"
 [ "$VERSION" = "$EXPECTED" ] || { echo "version=FAIL:$VERSION"; exit 1; }
 grep -q -- 'remote --persist-session' "$SCRIPT"
