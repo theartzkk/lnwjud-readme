@@ -91,7 +91,12 @@ final class HubInfrastructureService
     private static function pointerRelease(string $pointer): ?string
     {
         $target = @readlink($pointer); if (!is_string($target) || $target === '') return null;
-        $name = basename($target); return preg_match('/^m[0-9a-z]+-[A-Za-z0-9._-]{6,72}$/i', $name) === 1 ? $name : null;
+        $name = basename($target); return self::validReleaseId($name) ? $name : null;
+    }
+
+    private static function validReleaseId(string $name): bool
+    {
+        return preg_match('/^(?:m[0-9a-z]+-[A-Za-z0-9._-]{6,72}|platform-[0-9a-f]{7,40})$/i', $name) === 1;
     }
 
     private static function releaseSourceRef(?string $releaseId): ?string
@@ -106,7 +111,7 @@ final class HubInfrastructureService
         $items = @scandir($root); if (!is_array($items)) return [];
         $rows = [];
         foreach ($items as $name) {
-            if (preg_match('/^m[0-9]+-[A-Za-z0-9._-]{6,72}$/', $name) !== 1 || !is_dir($root . '/' . $name) || is_link($root . '/' . $name)) continue;
+            if (!self::validReleaseId($name) || !is_dir($root . '/' . $name) || is_link($root . '/' . $name)) continue;
             $time = @filemtime($root . '/' . $name); $rows[] = ['id' => $name, 'time' => is_int($time) ? $time : 0];
         }
         usort($rows, static fn (array $a, array $b): int => $b['time'] <=> $a['time'] ?: strcmp($b['id'], $a['id']));

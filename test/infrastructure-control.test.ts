@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -62,6 +62,17 @@ test('Infrastructure is an Owner-only sanitized projection and canonical web sur
   for(const asset of ['infrastructure.html','infrastructure.css','infrastructure.js']) assert.ok(releaseContract.required.includes(asset),`release contract missing ${asset}`);
   assert.match(sw,/\.\/infrastructure\.html/); assert.match(sw,/\.\/database\.html/);
  }finally{await rm(output,{recursive:true,force:true});}
+});
+
+test('Infrastructure release parser recognizes VPS Platform release identities',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'awh-platform-release-id-')), pointer=join(dir,'current'), target=join(dir,'platform-859f65430271');
+ try{
+  await symlink(target,pointer);
+  const file=join(ROOT,'hub/src/HubInfrastructureService.php');
+  const code='require '+JSON.stringify(file)+'; $r=new ReflectionClass("HubInfrastructureService"); $m=$r->getMethod("pointerRelease"); echo json_encode($m->invoke(null,'+JSON.stringify(pointer)+'));';
+  const {stdout}=await run('php',['-r',code],{cwd:ROOT,shell:false});
+  assert.equal(JSON.parse(stdout),'platform-859f65430271');
+ }finally{await rm(dir,{recursive:true,force:true});}
 });
 
 test('Infrastructure telemetry service accepts a bounded snapshot without exposing its path',async()=>{
