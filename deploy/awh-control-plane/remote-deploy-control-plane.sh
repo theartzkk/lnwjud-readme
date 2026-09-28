@@ -312,15 +312,11 @@ verify_m3e_after_m4() {
   while test "$attempt" -le 10; do
     code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -H 'Content-Type: application/json' -H 'Authorization: Bearer invalid-regression-token' -d '{"schemaVersion":1,"projectIds":["00000000-0000-4000-8000-000000000000"],"ttlSeconds":600}' -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/enrollment/pairing-codes" 2>/dev/null || printf 000)
     if test "$code" = 401; then
-      printf '%s\n' "DEPLOY_DIAGNOSTIC=M3E_POST_SCHEMA_HTTP_${code}"
-      printf '%s\n' "DEPLOY_DIAGNOSTIC=M3E_POST_SCHEMA_ATTEMPTS_${attempt}"
       return 0
     fi
     attempt=$((attempt + 1))
     test "$attempt" -le 10 && sleep 1
   done
-  printf '%s\n' "DEPLOY_DIAGNOSTIC=M3E_POST_SCHEMA_HTTP_${code}"
-  printf '%s\n' 'DEPLOY_DIAGNOSTIC=M3E_POST_SCHEMA_ATTEMPTS_10'
   return 1
 }
 verify_owner_auth_effective_config() { if ! EFFECTIVE_NGINX=$(sudo nginx -T 2>&1); then return 1; fi; test -n "$EFFECTIVE_NGINX"; printf '%s\n' "$EFFECTIVE_NGINX" | grep -q 'location = /api/v1/auth/login {'; printf '%s\n' "$EFFECTIVE_NGINX" | grep -q 'location = /api/v1/auth/session {'; printf '%s\n' "$EFFECTIVE_NGINX" | grep -q 'location = /database-studio.php {'; printf '%s\n' "$EFFECTIVE_NGINX" | grep -q "fastcgi_param AWH_CONTROL_ORIGIN https://${HOSTNAME};"; printf '%s\n' "$EFFECTIVE_NGINX" | grep -q "fastcgi_pass unix:${AWH_FPM_SOCKET};"; }
