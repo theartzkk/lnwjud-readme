@@ -76,6 +76,7 @@ final class HubLearnLabReleaseService
             throw new HubLearnLabReleaseException('LearnLab release details are required before approval','LEARNLAB_RELEASE_DETAILS_REQUIRED');
         $base=(string)$current['releaseSha'];$epoch=(int)$current['cacheEpoch']+1;$vault=$this->currentVaultRevision();
         $at=self::time($now??gmdate('c'));
+        $this->reconcileExpiredLegacyPendingRelease($at);
         $this->supersedeQueuedReleaseIfTargetMoved($sha,$at);
 
         $existing=$this->activeRelease();
@@ -83,6 +84,7 @@ final class HubLearnLabReleaseService
             $checkpoint=self::checkpoint((string)$existing['checkpoint_json'],false);
             if(($checkpoint['releaseSha']??null)===$sha&&($checkpoint['runtimeVersion']??null)===$version
                 &&($checkpoint['baseReleaseSha']??null)===$base&&($checkpoint['cacheEpoch']??null)===$epoch&&($checkpoint['expectedVaultRevisionId']??null)===$vault){
+                $existing=$this->resumeLegacyPendingRelease($existing,(string)$owner['user_id'],$at);
                 return ['schemaVersion'=>1,'taskId'=>(string)$existing['task_id'],'executionId'=>(string)$existing['execution_id'],
                     'approvalId'=>$existing['approval_id']===null?null:(string)$existing['approval_id'],
                     'state'=>(string)$existing['task_state'],'releaseSha'=>$sha,'runtimeVersion'=>$version,'idempotent'=>true];
@@ -247,6 +249,34 @@ final class HubLearnLabReleaseService
         $user=(string)$row['user_id'];$this->assertOwner($user);$this->assertCapability($user,'deployment.approve');return $row;
     }
 
+
+    private function reconcileExpiredLegacyPendingRelease(string $at): void
+    {
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,a.approval_id,a.expires_at
+            FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id
+            JOIN control_approvals a ON a.task_id=e.task_id AND a.action='deployment.approve'
+            WHERE e.required_capability=:capability AND e.state='QUEUED' AND e.lease_owner IS NULL
+              AND t.state='WAITING_FOR_APPROVAL' AND a.status='PENDING'
+            ORDER BY e.updated_at DESC LIMIT 1");
+        $q->execute(['capability'=>self::CAPABILITY]);$row=$q->fetch();if(!is_array($row))return;
+        $expires=strtotime((string)($row['expires_at']??''));if($expires===false||$expires>strtotime($at))return;
+        try{
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $a=$this->pdo->prepare("UPDATE control_approvals SET status='EXPIRED' WHERE approval_id=:approval AND status='PENDING'");
+            $a->execute(['approval'=>$row['approval_id']]);
+            $e=$this->pdo->prepare("UPDATE control_task_executions SET state='FAILED',lease_owner=NULL,lease_expires_at=NULL,last_error_code='LEARNLAB_RELEASE_APPROVAL_EXPIRED',updated_at=:at WHERE execution_id=:execution AND state='QUEUED' AND lease_owner IS NULL");
+            $e->execute(['at'=>$at,'execution'=>$row['execution_id']]);
+            if($e->rowCount()===1){
+                $summary='LearnLab legacy approval หมดอายุ ระบบปิดงานเดิมอัตโนมัติเพื่อให้ Owner กดอัปเดตใหม่ได้ครั้งเดียว';
+                $this->pdo->prepare("UPDATE control_tasks SET state='FAILED',progress=0,result_summary=:summary,failure_code='LEARNLAB_RELEASE_APPROVAL_EXPIRED',lease_expires_at=NULL,updated_at=:at WHERE task_id=:task AND state='WAITING_FOR_APPROVAL'")
+                    ->execute(['summary'=>$summary,'at'=>$at,'task'=>$row['task_id']]);
+                $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:event,:task,'FAILED',0,:message,:at)")
+                    ->execute(['event'=>self::uuid(),'task'=>$row['task_id'],'message'=>$summary,'at'=>$at]);
+            }
+            $this->pdo->exec('COMMIT');
+        }catch(Throwable $error){$this->rollback();throw new HubLearnLabReleaseException('Expired legacy release could not reconcile safely','LEARNLAB_RELEASE_APPROVAL_EXPIRED');}
+    }
+
     private function supersedeQueuedReleaseIfTargetMoved(string $targetSha,string $at): void
     {
         $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.checkpoint_json,a.approval_id,a.status AS approval_status
@@ -276,9 +306,30 @@ final class HubLearnLabReleaseService
         }
     }
 
+    private function resumeLegacyPendingRelease(array $existing,string $ownerUser,string $at): array
+    {
+        if(($existing['task_state']??null)!=='WAITING_FOR_APPROVAL'||($existing['execution_state']??null)!=='QUEUED'||($existing['approval_status']??null)!=='PENDING')return $existing;
+        $task=(string)($existing['task_id']??'');$approval=(string)($existing['approval_id']??'');$user=(string)($existing['user_id']??'');
+        $expires=strtotime((string)($existing['expires_at']??''));
+        if($task===''||$approval===''||$user===''||!hash_equals($user,$ownerUser)||$expires===false||$expires<=strtotime($at))return $existing;
+        try{
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $a=$this->pdo->prepare("UPDATE control_approvals SET status='APPROVED',decided_at=:at WHERE approval_id=:approval AND task_id=:task AND action='deployment.approve' AND status='PENDING' AND expires_at>:at");
+            $a->execute(['at'=>$at,'approval'=>$approval,'task'=>$task]);
+            $t=$this->pdo->prepare("UPDATE control_tasks SET state='WAITING_FOR_WORKER',progress=0,failure_code=NULL,updated_at=:at WHERE task_id=:task AND user_id=:user AND state='WAITING_FOR_APPROVAL'");
+            $t->execute(['at'=>$at,'task'=>$task,'user'=>$ownerUser]);
+            if($a->rowCount()!==1||$t->rowCount()!==1){$this->pdo->exec('ROLLBACK');$fresh=$this->activeRelease();return is_array($fresh)?$fresh:$existing;}
+            $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:event,:task,'WAITING_FOR_WORKER',0,:message,:at)")
+                ->execute(['event'=>self::uuid(),'task'=>$task,'message'=>'LearnLab ใช้คำขอเดิมต่อโดยอัตโนมัติ ไม่สร้าง release ซ้ำ','at'=>$at]);
+            $this->pdo->exec('COMMIT');
+            $existing['task_state']='WAITING_FOR_WORKER';$existing['approval_status']='APPROVED';$existing['decided_at']=$at;
+            return $existing;
+        }catch(Throwable $error){$this->rollback();throw new HubLearnLabReleaseException('Legacy LearnLab release could not resume safely','LEARNLAB_RELEASE_QUEUE_FAILED');}
+    }
+
     private function activeRelease(): ?array
     {
-        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.checkpoint_json,t.state AS task_state,a.approval_id
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.state AS execution_state,e.checkpoint_json,t.state AS task_state,t.user_id,a.approval_id,a.status AS approval_status,a.expires_at,a.decided_at
             FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id
             LEFT JOIN control_approvals a ON a.task_id=e.task_id AND a.action='deployment.approve'
             WHERE e.required_capability=:capability AND e.state IN ('QUEUED','LEASED','RUNNING','WAITING_FOR_CAPABILITY')

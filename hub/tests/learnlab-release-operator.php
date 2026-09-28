@@ -82,8 +82,12 @@ try{
     llr_assert(($scope['releaseSha']??null)===$release&&($scope['baseReleaseSha']??null)===$checkpoint['baseReleaseSha']
         &&($scope['runtimeVersion']??null)===$version&&($scope['cacheEpoch']??null)===69&&($scope['expectedVaultRevisionId']??null)===$vaultRevision,'approval scope freezes the exact release identity');
 
+    $pdo->prepare("UPDATE control_tasks SET state='WAITING_FOR_APPROVAL',updated_at=:at WHERE task_id=:task")->execute(['at'=>$now,'task'=>$task]);
+    $pdo->prepare("UPDATE control_approvals SET status='PENDING',decided_at=NULL,expires_at=:expires WHERE approval_id=:approval")->execute(['expires'=>'2026-09-23T12:10:00+00:00','approval'=>$approval]);
     $duplicate=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$release,'runtimeVersion'=>$version],$now);
-    llr_assert(($duplicate['idempotent']??false)===true&&$duplicate['taskId']===$task,'same active LearnLab release request is idempotent');
+    llr_assert(($duplicate['idempotent']??false)===true&&$duplicate['taskId']===$task&&($duplicate['state']??null)==='WAITING_FOR_WORKER','legacy pending LearnLab release resumes the existing task without duplicate approval');
+    llr_assert($pdo->query("SELECT status FROM control_approvals WHERE approval_id=".$pdo->quote($approval))->fetchColumn()==='APPROVED','LearnLab repeated Update action safely converts legacy pending approval');
+    llr_assert((int)$pdo->query("SELECT count(*) FROM control_task_executions WHERE required_capability='system.learnlab.release'")->fetchColumn()===1,'LearnLab legacy recovery never creates a duplicate execution');
 
     llr_assert($pdo->query("SELECT state FROM control_tasks WHERE task_id=".$pdo->quote($task))->fetchColumn()==='WAITING_FOR_WORKER','LearnLab release is already on the canonical worker queue');
 

@@ -88,8 +88,11 @@ try{
         &&$checkpoint['transport']==='LOCAL'&&$checkpoint['releaseMode']==='IMMUTABLE_NODE','checkpoint freezes release/base/version and bounded transport');
     ar_assert(!array_key_exists('command',$checkpoint)&&!array_key_exists('path',$checkpoint)&&!array_key_exists('script',$checkpoint),'browser cannot inject command or path');
 
+    $pdo->prepare("UPDATE control_tasks SET state='WAITING_FOR_APPROVAL',updated_at=:at WHERE task_id=:task")->execute(['at'=>$now,'task'=>$task]);
+    $pdo->prepare("UPDATE control_approvals SET status='PENDING',decided_at=NULL,expires_at=:expires WHERE approval_id=:approval")->execute(['expires'=>'2026-09-23T13:50:00+00:00','approval'=>$approval]);
     $duplicate=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$releaseSha,'runtimeVersion'=>$version],$now);
-    ar_assert(($duplicate['idempotent']??false)===true&&$duplicate['taskId']===$task,'same active Assessment release request is idempotent');
+    ar_assert(($duplicate['idempotent']??false)===true&&$duplicate['taskId']===$task&&($duplicate['state']??null)==='WAITING_FOR_WORKER','legacy pending Assessment release resumes the existing task without duplicate approval');
+    ar_assert((int)$pdo->query("SELECT count(*) FROM control_task_executions WHERE required_capability='system.assessment.release'")->fetchColumn()===1,'Assessment legacy recovery never creates a duplicate execution');
 
     $approvalRow=$pdo->query("SELECT status,decided_at FROM control_approvals WHERE approval_id=".$pdo->quote($approval))->fetch();
     ar_assert(is_array($approvalRow)&&$approvalRow['status']==='APPROVED'&&is_string($approvalRow['decided_at']),'Assessment Owner approval is captured automatically as audit evidence');

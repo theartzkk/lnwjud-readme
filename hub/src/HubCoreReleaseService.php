@@ -95,6 +95,7 @@ final class HubCoreReleaseService
         if(is_array($existing)){
             $checkpoint=self::checkpoint((string)$existing['checkpoint_json'],false);
             if(is_string($checkpoint['releaseSha']??null)&&hash_equals($checkpoint['releaseSha'],$sha)){
+                $existing=$this->resumeLegacyPendingRelease($existing,(string)$owner['user_id'],$at);
                 return ['schemaVersion'=>1,'taskId'=>(string)$existing['task_id'],'executionId'=>(string)$existing['execution_id'],'approvalId'=>$existing['approval_id']===null?null:(string)$existing['approval_id'],'state'=>(string)$existing['task_state'],'releaseSha'=>$sha,'idempotent'=>true];
             }
             throw new HubCoreReleaseException('Another core release is already active','CORE_RELEASE_CONFLICT');
@@ -216,9 +217,30 @@ final class HubCoreReleaseService
         }
     }
 
+    private function resumeLegacyPendingRelease(array $existing,string $ownerUser,string $at): array
+    {
+        if(($existing['task_state']??null)!=='WAITING_FOR_APPROVAL'||($existing['execution_state']??null)!=='QUEUED'||($existing['approval_status']??null)!=='PENDING')return $existing;
+        $task=(string)($existing['task_id']??'');$approval=(string)($existing['approval_id']??'');$user=(string)($existing['user_id']??'');
+        $expires=strtotime((string)($existing['expires_at']??''));
+        if($task===''||$approval===''||$user===''||!hash_equals($user,$ownerUser)||$expires===false||$expires<=strtotime($at))return $existing;
+        try{
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $a=$this->pdo->prepare("UPDATE control_approvals SET status='APPROVED',decided_at=:at WHERE approval_id=:approval AND task_id=:task AND action='deployment.approve' AND status='PENDING' AND expires_at>:at");
+            $a->execute(['at'=>$at,'approval'=>$approval,'task'=>$task]);
+            $t=$this->pdo->prepare("UPDATE control_tasks SET state='WAITING_FOR_WORKER',progress=0,failure_code=NULL,updated_at=:at WHERE task_id=:task AND user_id=:user AND state='WAITING_FOR_APPROVAL'");
+            $t->execute(['at'=>$at,'task'=>$task,'user'=>$ownerUser]);
+            if($a->rowCount()!==1||$t->rowCount()!==1){$this->pdo->exec('ROLLBACK');$fresh=$this->activeRelease();return is_array($fresh)?$fresh:$existing;}
+            $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:event,:task,'WAITING_FOR_WORKER',0,:message,:at)")
+                ->execute(['event'=>self::uuid(),'task'=>$task,'message'=>$this->displayName.' ใช้คำขอเดิมต่อโดยอัตโนมัติ ไม่สร้าง release ซ้ำ','at'=>$at]);
+            $this->pdo->exec('COMMIT');
+            $existing['task_state']='WAITING_FOR_WORKER';$existing['approval_status']='APPROVED';$existing['decided_at']=$at;
+            return $existing;
+        }catch(Throwable $error){$this->rollback();throw new HubCoreReleaseException('Legacy release could not resume safely','CORE_RELEASE_QUEUE_FAILED');}
+    }
+
     private function activeRelease(): ?array
     {
-        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.checkpoint_json,t.state AS task_state,a.approval_id
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.state AS execution_state,e.checkpoint_json,t.state AS task_state,t.user_id,a.approval_id,a.status AS approval_status,a.expires_at,a.decided_at
             FROM control_task_executions e
             JOIN control_tasks t ON t.task_id=e.task_id
             LEFT JOIN control_approvals a ON a.task_id=e.task_id AND a.action='deployment.approve'

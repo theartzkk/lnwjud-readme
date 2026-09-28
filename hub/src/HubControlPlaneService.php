@@ -280,7 +280,7 @@ final class HubControlPlaneService
         if ($coreStorageBlocked && in_array($platformState,['UPDATE_AVAILABLE','WAITING_FOR_APPROVAL'],true)) $platformState='BLOCKED';
         $platformReason = match($platformState) {
             'CURRENT' => 'VPS Platform track ตรงกับรุ่นฐานที่บันทึกไว้',
-            'WAITING_FOR_APPROVAL' => 'VPS Platform ผ่าน verification boundary แล้วและรอ Owner ยืนยัน',
+            'WAITING_FOR_APPROVAL' => 'พบคำขอ VPS Platform เดิมที่ยังไม่เริ่ม Production · กดทำต่อได้โดยใช้ task เดิม',
             'UPDATING' => 'VPS Platform controller กำลังอัปเดต shared runtime/infrastructure',
             'BLOCKED' => 'Storage ยังไม่ถึง release headroom ที่ปลอดภัย ต้องเหลืออย่างน้อย 3 GB และใช้พื้นที่ต่ำกว่า 90%',
             default => 'มี VPS Platform ใหม่พร้อมเข้าสู่ typed release boundary',
@@ -320,7 +320,7 @@ final class HubControlPlaneService
         $awhReason = $awhState === 'CURRENT'
             ? ($runtimeState === 'COHERENT' ? 'Production ตรงกับ Source Authority ล่าสุดและ Runtime สอดคล้องกัน' : 'Production ตรงกับ Source Authority ล่าสุด แต่ยังยืนยัน Runtime ได้ไม่ครบ')
             : ($awhState === 'WAITING_FOR_APPROVAL'
-                ? 'ผ่าน verification boundary แล้วและรอ Owner ยืนยัน'
+                ? 'พบคำขอ AWH เดิมที่ยังไม่เริ่ม Production · กดทำต่อได้โดยใช้ task เดิม'
                 : ($awhState === 'BLOCKED'
                     ? 'Storage ยังไม่ถึง Core Release headroom ที่ปลอดภัย ต้องเหลืออย่างน้อย 3 GB และใช้พื้นที่ต่ำกว่า 90% ก่อนอัปเดต'
                     : 'มีรุ่นล่าสุดพร้อมเข้าสู่ Core Release'));
@@ -430,21 +430,27 @@ final class HubControlPlaneService
                 $learnLabState = 'CURRENT';
                 $learnLabCandidate = null;
                 $learnLabApproval = null;
+                $learnLabCandidateSha = null;
+                $learnLabCandidateVersion = null;
                 $learnLabReason = 'Production stable/pilot ตรงกับ Source Authority ล่าสุด';
                 if ($latestLearnLabSha !== null && $currentLearnLabSha !== null && !hash_equals($latestLearnLabSha,$currentLearnLabSha)) {
                     $learnLabState = 'SOURCE_READY';
                     $learnLabCandidate = $latestLearnLabSha;
+                    $learnLabCandidateSha = $latestLearnLabSha;
                     $learnLabReason = 'มี LearnLab Source ใหม่เพียงรุ่นล่าสุดรอสร้าง typed release; คำขอเก่าจะไม่ถูกนำกลับมาใช้';
                 }
                 if (is_array($activeLearnLab)) {
                     $learnLabCandidate = is_string($activeLearnLab['runtimeVersion'] ?? null) ? (string) $activeLearnLab['runtimeVersion'] : $latestLearnLabSha;
+                    $learnLabCandidateSha = is_string($activeLearnLab['releaseSha'] ?? null) ? strtolower((string) $activeLearnLab['releaseSha']) : $latestLearnLabSha;
+                    $learnLabCandidateVersion = is_string($activeLearnLab['runtimeVersion'] ?? null) ? (string) $activeLearnLab['runtimeVersion'] : null;
                     $learnLabApproval = is_string($activeLearnLab['approvalId'] ?? null) ? (string) $activeLearnLab['approvalId'] : null;
                     $learnLabState = (string) ($activeLearnLab['approvalStatus'] ?? '') === 'PENDING' ? 'WAITING_FOR_APPROVAL' : 'UPDATING';
-                    $learnLabReason = $learnLabState === 'WAITING_FOR_APPROVAL' ? 'LearnLab รุ่นล่าสุดผ่าน typed boundary แล้วและรอ Owner อนุมัติ' : 'LearnLab release controller กำลังทำงานกับรุ่นล่าสุด';
+                    $learnLabReason = $learnLabState === 'WAITING_FOR_APPROVAL' ? 'พบคำขอ LearnLab เดิมที่ยังไม่เริ่ม Production · Owner กดทำต่อได้โดยใช้ task เดิม' : 'LearnLab release controller กำลังทำงานกับรุ่นล่าสุด';
                 }
                 $items[] = [
                     'key'=>'bay-learnlab','projectId'=>$projectId,'name'=>$name,'kind'=>'PRODUCT','adapter'=>'LEARNLAB_RELEASE',
                     'state'=>$learnLabState,'current'=>$currentLearnLab['runtimeVersion'] ?? null,'candidate'=>$learnLabCandidate,
+                    'candidateReleaseSha'=>$learnLabCandidateSha,'candidateVersion'=>$learnLabCandidateVersion,
                     'approvalRequired'=>true,'approvalId'=>$learnLabApproval,
                     'taskId'=>is_array($activeLearnLab)&&is_string($activeLearnLab['taskId']??null)?$activeLearnLab['taskId']:null,
                     'taskState'=>is_array($activeLearnLab)?(string)($activeLearnLab['taskState']??''):null,
@@ -481,7 +487,7 @@ final class HubControlPlaneService
                     $reason=$state==='CURRENT'?'Production ตรงกับ Assessment source ล่าสุด':'มี Assessment candidate ที่ผ่าน QA พร้อม staging-first release';
                     if(is_array($activeAssessment)){
                         $state=(string)($activeAssessment['approvalStatus']??'')==='PENDING'?'WAITING_FOR_APPROVAL':'UPDATING';
-                        $reason=$state==='WAITING_FOR_APPROVAL'?'ผ่าน release boundary แล้วและรอ Owner อนุมัติ':'AWH กำลัง Backup → Staging → Production → Verify';
+                        $reason=$state==='WAITING_FOR_APPROVAL'?'พบคำขอ Assessment เดิมที่ยังไม่เริ่ม Production · กดทำต่อได้โดยใช้ task เดิม':'AWH กำลัง Backup → Staging → Production → Verify';
                     }
                     $items[]=[
                         'key'=>'bay-assessment','projectId'=>$projectId,'name'=>$name,'kind'=>'PRODUCT','adapter'=>'ASSESSMENT_RELEASE',

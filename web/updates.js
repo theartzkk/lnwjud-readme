@@ -1,6 +1,6 @@
 import {
-  cancelTask, createBayRemoteInstallRelay, decideApproval, loadAuthSession, loadBayRemoteUpdateStatus, loadUpdateCenter,
-  managedSiteAction, relayBayRemoteCommand, requestAssessmentRelease, requestCoreRelease, requestPlatformRelease, subscribeUpdateCenterLive,
+  cancelTask, createBayRemoteInstallRelay, loadAuthSession, loadBayRemoteUpdateStatus, loadUpdateCenter,
+  managedSiteAction, relayBayRemoteCommand, requestAssessmentRelease, requestCoreRelease, requestLearnLabRelease, requestPlatformRelease, subscribeUpdateCenterLive,
 } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $=(id)=>document.getElementById(id);
@@ -19,7 +19,7 @@ let lastLiveUiSignature='';
 const targetFeedback=new Map();
 
 const stateLabel=(state)=>({
-  CURRENT:'ล่าสุดแล้ว',UPDATE_AVAILABLE:'พร้อมอัปเดต',WAITING_FOR_APPROVAL:'รอยืนยัน',UPDATING:'กำลังอัปเดต',
+  CURRENT:'ล่าสุดแล้ว',UPDATE_AVAILABLE:'พร้อมอัปเดต',WAITING_FOR_APPROVAL:'พร้อมทำงานเดิมต่อ',UPDATING:'กำลังอัปเดต',
   BLOCKED:'ต้องตรวจสอบ',SOURCE_READY:'มีรุ่นรอเตรียม',REMOTE_CHECK_REQUIRED:'กำลังตรวจ',
   DELEGATED:'ดูแลโดยระบบหลัก',INTERNAL_MANAGED:'ดูแลอัตโนมัติ',UNREGISTERED:'ยังไม่พร้อมใช้งาน',
   BASELINE_REQUIRED:'ต้องตั้งค่าครั้งแรก',MIGRATION_REQUIRED:'ต้องปรับระบบอัปเดต',
@@ -391,7 +391,7 @@ function ownerFacingReason(item){
   if(item.state==='CURRENT')return 'ระบบนี้เป็นรุ่นล่าสุด';
   if(item.state==='UPDATE_AVAILABLE')return 'มีรุ่นใหม่พร้อมอัปเดต';
   if(item.state==='UPDATING')return 'ระบบกำลังอัปเดตและตรวจสอบผล';
-  if(item.state==='WAITING_FOR_APPROVAL')return 'พร้อมดำเนินการขั้นถัดไป';
+  if(item.state==='WAITING_FOR_APPROVAL')return 'พบงานอัปเดตเดิมที่ยังไม่เริ่ม Production · กดทำต่อได้โดยไม่สร้างงานซ้ำ';
   if(item.state==='REMOTE_CHECK_REQUIRED')return 'กำลังตรวจสถานะล่าสุด';
   if(item.state==='INTERNAL_MANAGED')return 'ระบบนี้ดูแลการอัปเดตให้อัตโนมัติ';
   if(/storage/i.test(reason))return 'พื้นที่สำหรับอัปเดตยังไม่เพียงพอ ระบบจะไม่เริ่มจนกว่าจะปลอดภัย';
@@ -410,7 +410,7 @@ function reconcileTargetFeedback(item){
   if(!item?.key||!targetFeedback.has(item.key))return;
   if(item.state==='CURRENT')targetFeedback.set(item.key,{text:'อัปเดตสำเร็จ · เป็นรุ่นล่าสุด',tone:'good'});
   else if(item.state==='UPDATING')targetFeedback.set(item.key,{text:ownerProgressMessage(item,item.progressEvent,false)+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
-  else if(item.state==='WAITING_FOR_APPROVAL')targetFeedback.set(item.key,{text:'พร้อมดำเนินการขั้นถัดไป'+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
+  else if(item.state==='WAITING_FOR_APPROVAL')targetFeedback.set(item.key,{text:'พบงานเดิมที่ปลอดภัย · กดทำต่อโดยไม่สร้าง release ซ้ำ'+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
 }
 async function cancelUpdate(item){
   if(!item?.taskId||item.canCancel!==true)throw Object.assign(new Error('งานเริ่มขั้นที่หยุดไม่ได้แล้ว'),{code:'TASK_NOT_CANCELLABLE'});
@@ -599,12 +599,12 @@ function renderCard(item){
   main.append(technicalDetails(item));
   const actions=document.createElement('div');actions.className='update-actions';
   if(item.adapter==='PLATFORM_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(actionButton('อัปเดต VPS',()=>updatePlatform(item),'primary-button',item.key));
-  else if(item.adapter==='PLATFORM_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยัน VPS Platform',()=>approvePlatform(item),'primary-button',item.key));
+  else if(item.adapter==='PLATFORM_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.candidate)actions.append(actionButton('ทำต่อ VPS Platform',()=>updatePlatform(item),'primary-button',item.key));
   else if(item.adapter==='CORE_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate)actions.append(actionButton(item.runtimeState==='SPLIT'?'ปรับ Runtime และอัปเดต':'อัปเดต AWH',()=>updateAwh(item),'primary-button',item.key));
-  else if(item.adapter==='CORE_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยันและอัปเดต',()=>approveAwh(item),'primary-button',item.key));
-  else if(item.adapter==='LEARNLAB_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยัน LearnLab',()=>approveLearnLab(item),'primary-button',item.key));
+  else if(item.adapter==='CORE_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.candidate)actions.append(actionButton('ทำต่อ AWH',()=>updateAwh(item),'primary-button',item.key));
+  else if(item.adapter==='LEARNLAB_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.candidateReleaseSha&&item.candidateVersion)actions.append(actionButton('ทำต่อ LearnLab',()=>resumeLearnLab(item),'primary-button',item.key));
   else if(item.adapter==='ASSESSMENT_RELEASE'&&item.state==='UPDATE_AVAILABLE'&&item.candidate&&item.candidateVersion)actions.append(actionButton('อัปเดต Assessment',()=>updateAssessment(item),'primary-button',item.key));
-  else if(item.adapter==='ASSESSMENT_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.approvalId)actions.append(actionButton('ยืนยัน Assessment',()=>approveAssessment(item),'primary-button',item.key));
+  else if(item.adapter==='ASSESSMENT_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.candidate&&item.candidateVersion)actions.append(actionButton('ทำต่อ Assessment',()=>updateAssessment(item),'primary-button',item.key));
   else if(item.adapter==='MANAGED_HOSTING'&&item.state==='UPDATE_AVAILABLE'&&item.siteId)actions.append(actionButton('อัปเดต',()=>updateHosting(item),'primary-button',item.key));
   else if(item.adapter==='BAY_UPDATE_CENTER'&&item.state==='UPDATE_AVAILABLE'&&item.release)actions.append(actionButton('อัปเดต '+item.name,()=>updateBay(item),'primary-button',item.key));
   if(item.canCancel===true&&item.taskId)actions.append(actionButton('ยกเลิก',()=>cancelUpdate(item),'secondary-button',item.key,'ยกเลิกงานแล้ว · ยังไม่มีการเปลี่ยน Production'));
@@ -755,25 +755,6 @@ function renderProgress(){
   });
 }
 
-async function approveAwh(item){
-  await decideApproval(item.approvalId,'approve');
-  localOperation={name:'AWH',progress:10,message:'ยืนยันแล้ว · กำลังเข้าคิวอัปเดต'};
-  message('ยืนยันแล้ว ระบบกำลังดำเนินการอัปเดต AWH อย่างปลอดภัย');
-  await refresh();
-}
-
-async function approveLearnLab(item){
-  await decideApproval(item.approvalId,'approve');
-  localOperation={name:'LearnLab',progress:10,message:'อนุมัติแล้ว กำลังเริ่ม release'};
-  await refresh();
-}
-
-async function approvePlatform(item){
-  await decideApproval(item.approvalId,'approve');
-  localOperation={name:'VPS Platform',progress:10,message:'อนุมัติแล้ว กำลังเริ่ม Platform release'};
-  await refresh();
-}
-
 async function updatePlatform(item){
   localOperation={name:'VPS Platform',progress:6,message:'กำลังเตรียม VPS Platform รุ่นล่าสุด'};
   const request=await requestPlatformRelease(item.candidate,false);
@@ -791,9 +772,10 @@ async function updateAwh(item){
   message('AWH รับคำสั่งแล้ว กำลังตรวจความพร้อม สำรอง ติดตั้ง และ Verify');
   await refresh();
 }
-async function approveAssessment(item){
-  await decideApproval(item.approvalId,'approve');
-  localOperation={name:'Assessment',progress:10,message:'อนุมัติแล้ว กำลังเริ่ม release'};
+async function resumeLearnLab(item){
+  localOperation={name:'LearnLab',progress:6,message:'กำลังทำงานอัปเดตเดิมต่อโดยไม่สร้าง release ซ้ำ'};
+  await requestLearnLabRelease(item.candidateReleaseSha,item.candidateVersion);
+  message('LearnLab รับคำสั่งแล้ว · กำลังทำงานเดิมต่อผ่าน release controller');
   await refresh();
 }
 

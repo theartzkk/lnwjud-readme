@@ -74,7 +74,8 @@ test('Update Center reuses canonical release authorities instead of creating a p
     :script;
   assert.doesNotMatch(scriptOutsideLineBundle,/\bconfirm\(/);
   assert.doesNotMatch(script,/อัปเดต AWH เป็น Source/);
-  assert.match(script,/decideApproval/);
+  assert.doesNotMatch(script,/decideApproval/);
+  assert.match(script,/requestLearnLabRelease/);
   assert.match(script,/managedSiteAction/);
   assert.match(script,/createBayRemoteInstallRelay/);
   assert.match(script,/relayBayRemoteCommand/);
@@ -255,12 +256,46 @@ test('Update Center mobile surface stays light and legacy baselines remain fail-
   assert.match(service,/adapter'=>'LEARNLAB_RELEASE'/);
   assert.match(service,/state'=>'MIGRATION_REQUIRED'/);
   assert.match(learnLab,/publishedAt/);
-  assert.match(script,/approveLearnLab/);
+  assert.match(script,/requestLearnLabRelease/);
+  assert.doesNotMatch(script,/approveLearnLab|approveAwh|approvePlatform|approveAssessment/);
   assert.match(script,/ข้อมูลเก่า/);
   assert.match(css,/\.update-action-feedback/);
   assert.match(css,/button\[data-busy="true"\]::before/);
 });
 
+
+test('release targets recover legacy pending approvals with one repeated Owner Update action', async()=>{
+  const [core,learnLab,assessment,service,script,trust]=await Promise.all([
+    readFile(join(ROOT,'hub/src/HubCoreReleaseService.php'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubLearnLabReleaseService.php'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubAssessmentReleaseService.php'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+    readFile(join(ROOT,'hub/src/HubTrustPolicy.php'),'utf8'),
+  ]);
+  for(const release of [core,learnLab,assessment]){
+    assert.match(release,/resumeLegacyPendingRelease/);
+    assert.match(release,/status='APPROVED',decided_at=:at/);
+    assert.match(release,/state='WAITING_FOR_WORKER'/);
+    assert.match(release,/ไม่สร้าง release ซ้ำ/);
+  }
+  assert.match(core,/t\.user_id,a\.approval_id,a\.status AS approval_status,a\.expires_at/);
+  assert.match(learnLab,/t\.user_id,a\.approval_id,a\.status AS approval_status,a\.expires_at/);
+  assert.match(assessment,/t\.user_id,a\.approval_id,a\.status AS approval_status,a\.expires_at/);
+  assert.match(learnLab,/reconcileExpiredLegacyPendingRelease/);
+  assert.match(learnLab,/LEARNLAB_RELEASE_APPROVAL_EXPIRED/);
+  assert.match(assessment,/reconcileExpiredLegacyPendingRelease/);
+  assert.match(assessment,/ASSESSMENT_RELEASE_APPROVAL_EXPIRED/);
+  assert.match(service,/candidateReleaseSha/);
+  assert.match(service,/candidateVersion/);
+  assert.match(script,/ทำต่อ AWH/);
+  assert.match(script,/ทำต่อ VPS Platform/);
+  assert.match(script,/ทำต่อ LearnLab/);
+  assert.match(script,/ทำต่อ Assessment/);
+  assert.match(script,/requestLearnLabRelease\(item\.candidateReleaseSha,item\.candidateVersion\)/);
+  assert.doesNotMatch(script,/decideApproval/);
+  assert.match(trust,/'system\.core\.release', 'system\.platform\.release', 'system\.learnlab\.release', 'system\.assessment\.release' => self::policy\(self::CRITICAL, false, false\)/);
+});
 
 test('central update authority exposes one latest candidate and supersedes stale pending releases safely', async()=>{
   const [service,core,learnLab,assessment,router,script]=await Promise.all([

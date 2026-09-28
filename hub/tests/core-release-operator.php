@@ -85,8 +85,12 @@ try{
     cr_assert(!array_key_exists('command',$checkpoint)&&!array_key_exists('path',$checkpoint)&&!array_key_exists('script',$checkpoint),'browser checkpoint cannot inject command or path');
     cr_assert(is_array($approvalRow)&&$approvalRow['action']==='deployment.approve'&&$approvalRow['status']==='APPROVED'&&is_string($approvalRow['decided_at']),'canonical deployment approval is recorded automatically as Owner audit evidence');
 
+    $pdo->prepare("UPDATE control_tasks SET state='WAITING_FOR_APPROVAL',updated_at=:at WHERE task_id=:task")->execute(['at'=>$now,'task'=>$task]);
+    $pdo->prepare("UPDATE control_approvals SET status='PENDING',decided_at=NULL,expires_at=:expires WHERE approval_id=:approval")->execute(['expires'=>'2026-09-23T01:20:00+00:00','approval'=>$approval]);
     $duplicate=$service->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$sha,'cleanupTopology'=>false],$now);
-    cr_assert(($duplicate['idempotent']??false)===true&&$duplicate['taskId']===$task,'same active release request is idempotent');
+    cr_assert(($duplicate['idempotent']??false)===true&&$duplicate['taskId']===$task&&($duplicate['state']??null)==='WAITING_FOR_WORKER','same active legacy-pending release resumes the existing task without a second release');
+    cr_assert($pdo->query("SELECT status FROM control_approvals WHERE approval_id=".$pdo->quote($approval))->fetchColumn()==='APPROVED','legacy pending approval is converted into Owner audit evidence by the repeated Update action');
+    cr_assert((int)$pdo->query("SELECT count(*) FROM control_task_executions WHERE required_capability='system.core.release'")->fetchColumn()===1,'legacy recovery never creates a duplicate core release execution');
 
     $control=HubControlPlaneService::openExisting($db);
     cr_assert($pdo->query("SELECT state FROM control_tasks WHERE task_id=".$pdo->quote($task))->fetchColumn()==='WAITING_FOR_WORKER','Owner request is already on the existing worker queue');
