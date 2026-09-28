@@ -974,6 +974,7 @@ function refreshTray(): void {
     { label: 'หยุดงานทันที', accelerator: 'CommandOrControl+Shift+F12', click: () => { void emergencyStop(); } },
     { label: coreUpdateState === 'AVAILABLE' ? `อัปเดต AWH Agent → ${coreUpdateCandidate?.version ?? 'เวอร์ชันใหม่'}` : `AWH Agent ${VERSION} · ${coreUpdateState === 'ERROR' ? 'ตรวจอัปเดตไม่ได้' : 'ล่าสุด'}`, enabled: coreUpdateState === 'AVAILABLE', click: showLocalBridge },
     { label: 'เปิด AWH', click: () => { void openAwhWeb('home'); } },
+    { label: 'จัดการอุปกรณ์บนเว็บ', click: () => { void openAwhWeb('devices'); } },
     { label: 'ตั้งค่าและตรวจสุขภาพเครื่องนี้', click: showLocalBridge },
     { type: 'separator' },
     { label: 'ออก', click: () => { quitting = true; app.quit(); } },
