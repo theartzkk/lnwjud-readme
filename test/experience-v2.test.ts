@@ -11,6 +11,6 @@ test('AWH presentation overlays are removed from the canonical web build',async(
  assert.match(dashboard,/mountMobileNavigation/);
  assert.doesNotMatch(dashboard,/mountWelcome/);
  assert.match(dashboard,/วันนี้อยากให้ช่วยอะไร\?/);
- assert.match(dashboard,/make\('✦', 'แชท', 'work'/);
+ assert.match(dashboard,/make\('✦', 'AWH', 'work'/);
  assert.match(styles,/Canonical Work surface/);
 });
