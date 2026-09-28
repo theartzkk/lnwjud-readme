@@ -386,7 +386,9 @@ test('Owner System settings keeps Update Center as the only release UI', async (
   ]);
   assert.match(html, /href="\.\/updates\.html"/);
   const panel = await readFile(join(ROOT, 'web', 'panel.html'), 'utf8');
-  assert.match(panel, /href="\.\/updates\.html#line-oa"/);
+  assert.match(panel, /href="\.\/updates\.html"/);
+  assert.match(panel, /อ่านสถานะจาก Update Center แห่งเดียว/);
+  assert.doesNotMatch(panel, />LINE OA</);
   assert.match(updates, /if\(groupKey==='line-oa'\)section\.id='line-oa'/);
   for (const id of ['core-release-form','core-release-sha','core-release-cleanup','core-release-refresh','learnlab-release-form','learnlab-release-sha','learnlab-release-version','learnlab-release-refresh']) {
     assert.doesNotMatch(html, new RegExp('id="' + id + '"'));
