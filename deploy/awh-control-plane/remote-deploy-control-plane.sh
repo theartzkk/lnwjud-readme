@@ -1323,6 +1323,12 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
     sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/$UNIT.service" "/etc/systemd/system/$UNIT.service"
     sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/$UNIT.timer" "/etc/systemd/system/$UNIT.timer"
   done
+  for LEGACY_DROPIN in \
+    /etc/systemd/system/awh-temp-cleanup.service.d/20-private-tmp.conf \
+    /etc/systemd/system/awh-retention.service.d/20-ecosystem-storage.conf; do
+    sudo rm -f "$LEGACY_DROPIN"
+    sudo test ! -e "$LEGACY_DROPIN"
+  done
   sudo systemctl daemon-reload
   for UNIT in awh-backup awh-database-inventory awh-retention awh-temp-cleanup awh-storage-guard awh-restore-drill; do
     sudo systemctl enable --now "$UNIT.timer" >/dev/null
@@ -1332,6 +1338,10 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
   for UNIT in awh-backup awh-database-inventory awh-retention awh-temp-cleanup awh-storage-guard awh-restore-drill; do
     sudo systemctl cat "$UNIT.service" | grep -Fq '/opt/awh-hub/control-plane-current/'
   done
+  sudo systemctl show -p ExecStart --value awh-temp-cleanup.service | grep -Fq '/opt/awh-hub/control-plane-current/deploy/awh-storage/awh-temp-cleanup'
+  sudo systemctl show -p ExecStart --value awh-retention.service | grep -Fq '/opt/awh-hub/control-plane-current/deploy/awh-storage/awh-retention-manager.py'
+  ! sudo systemctl show -p ExecStart --value awh-temp-cleanup.service | grep -Fq '/usr/local/sbin/awh-temp-cleanup'
+  ! sudo systemctl show -p ExecStart --value awh-retention.service | grep -Fq '/usr/local/sbin/awh-retention-manager'
   for LEGACY_HELPER in /usr/local/sbin/awh-temp-cleanup /usr/local/sbin/awh-storage-guard /usr/local/sbin/awh-retention-manager; do
     sudo rm -f "$LEGACY_HELPER"
     sudo test ! -e "$LEGACY_HELPER"

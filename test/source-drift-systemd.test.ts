@@ -149,6 +149,11 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(remote, /\/usr\/local\/sbin\/awh-storage-guard/);
   assert.match(remote, /\/usr\/local\/sbin\/awh-retention-manager/);
   assert.match(remote, /sudo rm -f "\$LEGACY_HELPER"/);
+  assert.match(remote, /awh-temp-cleanup\.service\.d\/20-private-tmp\.conf/);
+  assert.match(remote, /awh-retention\.service\.d\/20-ecosystem-storage\.conf/);
+  assert.match(remote, /sudo rm -f "\$LEGACY_DROPIN"/);
+  assert.match(remote, /systemctl show -p ExecStart --value awh-temp-cleanup\.service/);
+  assert.match(remote, /systemctl show -p ExecStart --value awh-retention\.service/);
   assert.match(operatorBridge, /STORAGE_TARGET_FREE_BYTES=6442450944/);
   assert.match(operatorBridge, /STORAGE_BLOCK_FREE_BYTES=3221225472/);
   assert.match(operatorBridge, /storageSafetyState/);
