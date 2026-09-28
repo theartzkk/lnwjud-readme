@@ -381,6 +381,10 @@ test('Update Center keeps release details per project while roadmap remains back
   assert.match(core,/deploymentReleaseNotes/);
   assert.match(core,/SOURCE_PROMOTION_CHAIN_EXACT_GIT_DIFF/);
   assert.match(core,/canonicalProductionSha/);
+  assert.match(core,/Historical source-promotion metadata predates explicit release tracks/);
+  assert.match(core,/\$track='awh'/);
+  assert.match(core,/releaseTrack==='vps-platform'[\s\S]*canonicalRefSha\('platform\/production'\)[\s\S]*canonicalRefSha\('runtime\/production'\)/);
+  assert.match(core,/canonicalRefSha\('production'\) \?\? \$this->canonicalRefSha\('runtime\/production'\)/);
   assert.match(core,/releaseNotesSha256/);
   assert.match(core,/history/);
   assert.match(service,/'releaseNotes'/);

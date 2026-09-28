@@ -265,8 +265,10 @@ final class HubCoreReleaseService
             $notes=is_array($checkpoint['releaseNotes']??null)?$checkpoint['releaseNotes']:null;
             $track=is_array($notes)&&is_string($notes['releaseTrack']??null)?strtolower((string)$notes['releaseTrack']):null;
             if($track===null){
-                $platformProduction=$this->canonicalRefSha('platform/production');
-                $track=is_string($platformProduction)&&hash_equals($platformProduction,$target)?'vps-platform':'awh';
+                // Historical source-promotion metadata predates explicit release tracks.
+                // Keep those records on the legacy AWH source chain; never reclassify
+                // history from today's platform/production pointer.
+                $track='awh';
                 if(is_array($notes))$notes=['releaseTrack'=>$track]+$notes;
             }
             if(!hash_equals($track,$this->releaseTrack))continue;
@@ -405,7 +407,9 @@ final class HubCoreReleaseService
 
     private function canonicalProductionSha(): ?string
     {
-        return $this->canonicalRefSha('runtime/production') ?? $this->canonicalRefSha('production');
+        if($this->releaseTrack==='vps-platform')
+            return $this->canonicalRefSha('platform/production') ?? $this->canonicalRefSha('runtime/production') ?? $this->canonicalRefSha('production');
+        return $this->canonicalRefSha('production') ?? $this->canonicalRefSha('runtime/production');
     }
 
 
