@@ -199,7 +199,16 @@ final class HubManagedHostingOperator
 
     private function phpRuntimePrelude(array $db): string { $rows=["<?php","// AWH managed runtime values; file is outside web root and root-owned."];foreach($db['env'] as $k=>$v){$q=var_export((string)$v,true);$rows[]="putenv('{$k}=' . {$q});";$rows[]="\$_ENV['{$k}'] = {$q};";$rows[]="\$_SERVER['{$k}'] = {$q};";}return implode("\n",$rows)."\n"; }
     private function envFile(array $values): string { $out='';foreach($values as $k=>$v){if(!preg_match('/^[A-Z][A-Z0-9_]{0,63}$/',$k))continue;$out.=$k.'='.str_replace(["\\","\n","\r","\""],["\\\\",'','','\\"'],(string)$v)."\n";}return $out; }
-    private function health(int $port,string $path,string $host): string { $result=$this->run(['/usr/bin/curl','-kfsS','--max-time','12','-o','/dev/null','-w','%{http_code}','-H','Host: '.$host,'https://127.0.0.1:'.$port.$path]);$code=trim($result['out']);if(!preg_match('/^[23]\d\d$/',$code))throw new HubManagedHostingOperatorException('Website health check failed','HOSTING_HEALTH_FAILED');return $code; }
+    private function health(int $port,string $path,string $host): string
+    {
+        for($attempt=0;$attempt<12;$attempt++){
+            $result=$this->runOptional(['/usr/bin/curl','-kfsS','--connect-timeout','1','--max-time','2','-o','/dev/null','-w','%{http_code}','-H','Host: '.$host,'https://127.0.0.1:'.$port.$path]);
+            $code=trim($result['out']);
+            if($result['code']===0&&preg_match('/^[23]\\d\\d$/',$code))return $code;
+            if($attempt<11)usleep(500000);
+        }
+        throw new HubManagedHostingOperatorException('Website health check failed','HOSTING_HEALTH_FAILED');
+    }
     private function ensureSiteIdentity(string $site): string
     {
         $short=substr(str_replace('-','',$site),0,10);$user='awhsite-'.$short;$sitePath=$this->sitePath($site);
