@@ -23,9 +23,9 @@
       "parentProductId": null,
       "mobilePrimaryMax": 3,
       "primaryVocabulary": [
-        "แชท",
-        "งานของฉัน",
-        "เครื่องมือ"
+        "หน้าแรก",
+        "AWH",
+        "งาน"
       ],
       "publicSurface": false
     },
@@ -255,7 +255,7 @@
   "ownerNavigation": {
     "primaryVocabulary": [
       "หน้าแรก",
-      "ทำงาน",
+      "AWH",
       "ระบบ",
       "ดูแลระบบ"
     ]
