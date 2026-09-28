@@ -22,12 +22,14 @@ test('AWH packaging configuration keeps Squirrel per-user behavior and public ar
     scripts?: Record<string, string>;
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
+    engines?: Record<string, string>;
   };
   const forge = (await readFile(new URL('../forge.config.cjs', import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
   const desktop = await readFile(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
   const packagedMcpVerifier = await readFile(new URL('../.github/scripts/verify-packaged-mcp.ps1', import.meta.url), 'utf8');
 
   assert.equal(pkg.version, ART_AGENT_VERSION);
+  assert.equal(pkg.engines?.node, '>=22.12.0');
   assert.equal(pkg.productName, 'Art’s Workspace Hub');
   assert.equal(pkg.author, 'Art’s Workspace Hub');
   assert.match(pkg.description ?? '', /Art’s Workspace Hub/);

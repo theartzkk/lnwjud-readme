@@ -6,9 +6,11 @@ import {
   app,
   BrowserWindow,
   dialog,
+  globalShortcut,
   ipcMain,
   Menu,
   nativeImage,
+  powerMonitor,
   shell,
   Tray,
   type OpenDialogOptions,
@@ -19,12 +21,20 @@ import { codexStatus } from '../codex.js';
 import { explicitWorkspaceEnv, loadConfig } from '../config.js';
 import { gitStatus } from '../git.js';
 import { canonicalWorkspace } from '../security.js';
-import { loadStoredSettings, saveStoredSettings } from '../settings.js';
+import { loadStoredSettings, saveStoredSettings, type AgentRuntimeMode } from '../settings.js';
+import { currentAgentMode, setAgentMode, modeLabel } from '../agent-runtime-policy.js';
+import { emergencyStopForeground } from '../agent-runtime-control.js';
+import { agentRuntimeStatus, recentAgentForegroundAction } from '../agent-runtime-status.js';
+import { appendAgentActivity, readAgentActivity } from '../agent-activity-log.js';
+import { createDiagnosticsBundle } from '../agent-diagnostics.js';
+import { DESKTOP_UPDATE_FOUNDATION } from '../desktop-update-policy.js';
+import { effectiveDesktopUpdateChannel, launchDesktopCoreUpdateSwap, prepareDesktopCoreUpdateSwap, readDesktopCoreUpdateLastResult, resolveDesktopCoreUpdateCandidate, stageDesktopCoreUpdate, writeDesktopCoreUpdateHealth, type DesktopCoreUpdateCandidate } from '../desktop-core-update.js';
+import { prepareCleanReinstall, resetThisDevice } from '../device-maintenance.js';
 import { loadOrCreateDeviceIdentity, readDeviceIdentity, updateDeviceDisplayName } from '../device-identity.js';
 import { createDesktopCredentialStore, CredentialStoreError } from '../credential-store.js';
 import { EnrollmentClient, EnrollmentClientError, readLocalEnrollmentState } from '../enrollment-client.js';
 import { ensureAwhDataDirectoryActive } from '../data-migration.js';
-import { deviceRuntimePermissionStatus, ensureAwhDeviceRuntime, type DeviceRuntimePermissionStatus } from '../device-bootstrap.js';
+import { deviceRuntimePermissionStatus, ensureAwhDeviceRuntime, type DeviceRuntimePermissionStatus, type DeviceBootstrapResult } from '../device-bootstrap.js';
 import { ensureRemoteDesktopConnector, remoteDesktopConnectorStatus } from '../remote-desktop-connector.js';
 import { AutopilotRunner, detectLocalCapabilities, loadAutopilotTasks, selectAutopilotProfile } from '../autopilot.js';
 import { ControlPlaneWorkerClient } from '../control-plane-worker-client.js';
@@ -69,7 +79,20 @@ let lastRemoteRuntime: ReturnType<typeof sanitizedTunnelRuntime> | null = null;
 let autopilotRuntime: { key: string; runner: AutopilotRunner } | null = null;
 let workerRuntime: { key: string; runtime: ControlPlaneWorkerRuntime } | null = null;
 let workerTimer: NodeJS.Timeout | null = null;
+let trayRefreshTimer: NodeJS.Timeout | null = null;
+let liveMonitorTimer: NodeJS.Timeout | null = null;
+let emergencyHotkeyReady = false;
+let previousIdleSeconds = 0;
+let liveSawIdle = false;
 let workerRunning = false;
+let workerConnectionState: 'CHECKING' | 'CONNECTED' | 'OFFLINE' = 'CHECKING';
+let lastWorkerError:string|null=null;
+let lastDeviceRuntimeBootstrap: DeviceBootstrapResult | null = null;
+let coreUpdateCandidate: DesktopCoreUpdateCandidate | null = null;
+let coreUpdateState: 'IDLE' | 'CHECKING' | 'CURRENT' | 'AVAILABLE' | 'STAGING' | 'READY_TO_INSTALL' | 'INSTALLING' | 'ERROR' = 'IDLE';
+let coreUpdateError: string | null = null;
+let coreUpdateLastCheckedAt: string | null = null;
+let coreUpdateTimer: NodeJS.Timeout | null = null;
 let startupPermissionsReady = process.platform !== 'darwin';
 const PERMISSION_SETUP_VERSION = 1;
 const MAX_HANDOFF_PREVIEW_CHARS = 4_000;
@@ -98,6 +121,7 @@ function applySmokeArguments(): void {
 }
 
 applySmokeArguments();
+const CORE_UPDATE_HEALTH_MARKER = argValue('--awh-core-update-health');
 
 function hasExplicitWorkspace(dataDir: string): boolean {
   return Boolean(
@@ -197,7 +221,156 @@ async function workerState() {
     readDeviceIdentity(config.dataDir).catch(() => null),
     remoteDesktopConnectorStatus().catch(() => ({ state: 'UNAVAILABLE', authorized: false, running: false, managed: false, reason: 'STATUS_UNAVAILABLE' } as const)),
   ]);
-  return { enabled: config.controlPlaneWorker, hubConfigured: Boolean(config.hubApiBase), hubAuthority: config.hubApiBase, device: identity ? { idShort: identity.deviceId.slice(0, 8), platform: identity.platform, arch: identity.arch, displayName: identity.displayName } : null, running: workerRunning, remoteDesktop };
+  const mode = currentAgentMode(config.dataDir);
+  const activity = agentRuntimeStatus();
+  return { enabled: config.controlPlaneWorker, hubConfigured: Boolean(config.hubApiBase), hubAuthority: config.hubApiBase, device: identity ? { idShort: identity.deviceId.slice(0, 8), platform: identity.platform, arch: identity.arch, displayName: identity.displayName } : null, running: workerRunning, connection: workerConnectionState, remoteDesktop, mode, activity, emergencyHotkeyReady, lastError:lastWorkerError };
+}
+
+async function checkDesktopCoreUpdate() {
+  if (process.platform !== 'darwin' && process.platform !== 'win32') return { ok: false, state: 'UNSUPPORTED' as const };
+  const config = loadConfig();
+  coreUpdateState = 'CHECKING'; coreUpdateError = null;
+  try {
+    const base = new URL(config.hubApiBase);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    let response: Response;
+    try { response = await fetch(new URL('/release.json', base.origin), { cache: 'no-store', credentials: 'omit', signal: controller.signal }); }
+    finally { clearTimeout(timeout); }
+    if (!response.ok) throw new Error('CORE_UPDATE_RELEASE_UNAVAILABLE');
+    const manifest = await response.json();
+    coreUpdateCandidate = resolveDesktopCoreUpdateCandidate(manifest, VERSION, process.platform, process.arch, base.origin);
+    coreUpdateLastCheckedAt = new Date().toISOString();
+    coreUpdateState = coreUpdateCandidate ? 'AVAILABLE' : 'CURRENT';
+    refreshTray();
+    return { ok: true, state: coreUpdateState, candidate: coreUpdateCandidate };
+  } catch (error) {
+    coreUpdateCandidate = null; coreUpdateState = 'ERROR';
+    coreUpdateError = error instanceof Error ? error.message.replace(/[^A-Z0-9_.-]/gi, '_').slice(0,100) : 'CORE_UPDATE_CHECK_FAILED';
+    coreUpdateLastCheckedAt = new Date().toISOString();
+    refreshTray();
+    return { ok: false, state: coreUpdateState, error: coreUpdateError };
+  }
+}
+
+async function installDesktopCoreUpdate() {
+  if (workerRunning || agentRuntimeStatus().foreground) return { ok: false, error: 'DEVICE_BUSY', message: 'AWH กำลังใช้งานเครื่องอยู่ กรุณาหยุดงานก่อนอัปเดต' };
+  const config = loadConfig();
+  if (!coreUpdateCandidate) {
+    const checked = await checkDesktopCoreUpdate();
+    if (!checked.ok || !coreUpdateCandidate) return { ok: false, error: checked.ok ? 'NO_UPDATE' : checked.error, message: checked.ok ? 'AWH Agent เป็นเวอร์ชันล่าสุดแล้ว' : 'ยังตรวจอัปเดตไม่ได้' };
+  }
+  try {
+    coreUpdateState = 'STAGING'; coreUpdateError = null;
+    const staged = await stageDesktopCoreUpdate(coreUpdateCandidate, config.dataDir);
+    coreUpdateState = 'READY_TO_INSTALL';
+    const plan = await prepareDesktopCoreUpdateSwap(staged, config.dataDir);
+    stopWorkerLoop();
+    emergencyStopForeground();
+    await appendAgentActivity(config.dataDir, { source: 'LOCAL', capability: 'agent.update', provider: 'awh-core', plane: 'BACKGROUND', outcome: 'SUCCESS', mode: currentAgentMode(config.dataDir), activity: 'UPDATING_TOOL_PACK' }).catch(() => undefined);
+    coreUpdateState = 'INSTALLING';
+    launchDesktopCoreUpdateSwap(plan);
+    setTimeout(() => { quitting = true; app.exit(0); }, 350).unref?.();
+    return { ok: true, state: coreUpdateState, version: coreUpdateCandidate.version };
+  } catch (error) {
+    coreUpdateState = 'ERROR';
+    coreUpdateError = error instanceof Error ? error.message.replace(/[^A-Z0-9_.-]/gi, '_').slice(0,100) : 'CORE_UPDATE_INSTALL_FAILED';
+    return { ok: false, state: coreUpdateState, error: coreUpdateError, message: 'อัปเดตยังไม่สำเร็จ รุ่นปัจจุบันยังคงเดิม' };
+  }
+}
+
+function startCoreUpdateLoop(): void {
+  if (coreUpdateTimer || SMOKE_TEST || (process.platform !== 'darwin' && process.platform !== 'win32')) return;
+  const initial = setTimeout(() => { void checkDesktopCoreUpdate(); }, 20_000); initial.unref?.();
+  coreUpdateTimer = setInterval(() => { if (!workerRunning && !agentRuntimeStatus().foreground) void checkDesktopCoreUpdate(); }, 6 * 60 * 60 * 1000);
+  coreUpdateTimer.unref?.();
+}
+
+async function localHealthState() {
+  const config = loadConfig();
+  const [enrollment, permissions] = await Promise.all([
+    enrollmentState().catch(() => ({ enrolled: false, hubConfigured: Boolean(config.hubApiBase) })),
+    startupPermissionState().catch(() => ({ ready: false, missing: ['health-check'] } as unknown as StartupPermissionState)),
+  ]);
+  let toolFabricState: 'READY' | 'OFFLINE' | 'UNPAIRED' = enrollment.enrolled === true ? 'OFFLINE' : 'UNPAIRED';
+  let stableCapabilityCount = 0;
+  if (enrollment.enrolled === true) {
+    try {
+      const catalog = await new ControlPlaneWorkerClient(config.hubApiBase, config.dataDir, createDesktopCredentialStore(config.dataDir)).toolFabricCatalog();
+      stableCapabilityCount = catalog.length; toolFabricState = 'READY'; workerConnectionState = 'CONNECTED';
+    } catch { toolFabricState = 'OFFLINE'; }
+  }
+  const lastUpdateResult = await readDesktopCoreUpdateLastResult(config.dataDir);
+  return {
+    schemaVersion: 1, checkedAt: new Date().toISOString(),
+    agent: { state: 'READY', version: VERSION, platform: process.platform, arch: process.arch },
+    connection: { state: workerConnectionState, paired: enrollment.enrolled === true },
+    runtime: lastDeviceRuntimeBootstrap ?? { state: 'UNKNOWN', version: null, installed: false, verified: false, reason: null },
+    permissions: { ready: permissions.ready, missing: permissions.missing ?? [] },
+    toolFabric: { state: toolFabricState, stableCapabilityCount },
+    update: { channel: effectiveDesktopUpdateChannel(VERSION), policy: DESKTOP_UPDATE_FOUNDATION.status, state: coreUpdateState, candidateVersion: coreUpdateCandidate?.version ?? null, lastCheckedAt: coreUpdateLastCheckedAt, lastResult: lastUpdateResult, error: coreUpdateError },
+    mode: currentAgentMode(config.dataDir), activity: agentRuntimeStatus(), emergencyHotkeyReady, lastError: lastWorkerError,
+  };
+}
+
+async function exportDiagnosticsBundle(): Promise<{ ok: boolean; cancelled?: boolean; fileName?: string; sizeBytes?: number; sha256?: string }> {
+  const config = loadConfig();
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const result = await dialog.showSaveDialog({ title: 'ส่งรายงานปัญหา AWH Agent', defaultPath: join(app.getPath('downloads'), `AWH-Diagnostics-${stamp}.zip`), filters: [{ name: 'AWH Diagnostics', extensions: ['zip'] }] });
+  if (result.canceled || !result.filePath) return { ok: false, cancelled: true };
+  const payload = { schemaVersion: 1, health: await localHealthState(), activity: await readAgentActivity(config.dataDir) };
+  const bundle = await createDiagnosticsBundle(result.filePath, payload);
+  return { ok: true, fileName: result.filePath.split(/[\\/]/).pop() ?? 'AWH-Diagnostics.zip', ...bundle };
+}
+
+async function reinstallRuntimeKeepingPairing() {
+  if (workerRunning) return { ok: false, error: 'WORKER_BUSY', message: 'มีงานกำลังทำอยู่ กรุณาหยุดงานก่อน Reinstall / Upgrade' };
+  const config = loadConfig();
+  stopWorkerLoop();
+  try {
+    const maintenance = await prepareCleanReinstall(config.dataDir, createDesktopCredentialStore(config.dataDir));
+    lastDeviceRuntimeBootstrap = await ensureAwhDeviceRuntime(config.dataDir);
+    const permissions = await startupPermissionState().catch(() => ({ ready: false } as StartupPermissionState));
+    if (permissions.ready) { startWorkerLoop(); void ensureConnectedDeviceRuntime().catch(() => undefined); }
+    return { ok: lastDeviceRuntimeBootstrap.state === 'READY' && maintenance.pairingPreserved, maintenance, runtime: lastDeviceRuntimeBootstrap, permissionsReady: permissions.ready };
+  } catch (error) {
+    lastWorkerError = error instanceof Error ? error.message.replace(/[^A-Z0-9_.-]/gi, '_').slice(0,80) : 'REINSTALL_FAILED';
+    return { ok: false, error: lastWorkerError, message: 'Reinstall / Upgrade ยังตรวจ identity และ pairing ไม่ผ่าน จึงไม่ลบข้อมูลต่อ' };
+  }
+}
+
+async function resetDeviceFromUi() {
+  if (workerRunning) return { ok: false, error: 'WORKER_BUSY', message: 'มีงานกำลังทำอยู่ กรุณาหยุดงานก่อน Reset' };
+  const confirm = await dialog.showMessageBox({ type: 'warning', buttons: ['ยกเลิก', 'Reset this device'], defaultId: 0, cancelId: 0, title: 'Reset this device', message: 'ลบการเชื่อมต่อและตัวตนของ AWH Agent เครื่องนี้?', detail: 'Project/workspace files จะไม่ถูกลบ แต่ Device ID, pairing, runtime และสถานะ Agent เครื่องนี้จะถูกล้างทั้งหมด' });
+  if (confirm.response !== 1) return { ok: false, cancelled: true };
+  const config = loadConfig();
+  stopWorkerLoop();
+  let serverRevoked = false;
+  try { const state = await readLocalEnrollmentState(config.dataDir, createDesktopCredentialStore(config.dataDir)); if (state.enrolled) { await enrollmentClient(config).revoke(); serverRevoked = true; } else serverRevoked = true; } catch { serverRevoked = false; }
+  const maintenance = await resetThisDevice(config.dataDir, createDesktopCredentialStore(config.dataDir));
+  workerRuntime = null; lastDeviceRuntimeBootstrap = null; workerConnectionState = 'CHECKING'; lastWorkerError = serverRevoked ? null : 'REMOTE_REVOKE_NOT_CONFIRMED';
+  setTimeout(() => { app.relaunch(); app.exit(0); }, 450).unref?.();
+  return { ok: true, maintenance, serverRevoked };
+}
+
+async function changeRuntimeMode(mode: AgentRuntimeMode): Promise<{ ok: true; mode: AgentRuntimeMode }> {
+  const config = loadConfig();
+  if(mode==='OFF') emergencyStopForeground();
+  await setAgentMode(config.dataDir, mode);
+  await appendAgentActivity(config.dataDir,{source:'LOCAL',capability:'runtime.mode',provider:null,plane:'BACKGROUND',outcome:'SUCCESS',mode,activity:'IDLE'}).catch(()=>undefined);
+  refreshTray();
+  if (config.controlPlaneWorker && startupPermissionsReady) void runWorkerOnce();
+  return { ok: true, mode };
+}
+
+async function emergencyStop(): Promise<{ ok: true; mode: 'OFF' }> {
+  const config = loadConfig();
+  const activity=agentRuntimeStatus();
+  emergencyStopForeground();
+  await setAgentMode(config.dataDir, 'OFF', true);
+  await appendAgentActivity(config.dataDir,{source:'LOCAL',capability:activity.capability??'runtime.emergency',provider:activity.provider,plane:activity.foreground?'FOREGROUND':'BACKGROUND',outcome:'STOPPED',mode:'OFF',activity:activity.activity}).catch(()=>undefined);
+  refreshTray();
+  return { ok: true, mode: 'OFF' };
 }
 
 async function runWorkerOnce() {
@@ -206,9 +379,10 @@ async function runWorkerOnce() {
   if (!config.controlPlaneWorker) return { ok: false, error: 'WORKER_DISABLED', message: 'Worker is disabled in this device policy' };
   if (workerRunning) return { ok: false, error: 'WORKER_BUSY', message: 'Worker is already running' };
   workerRunning = true;
-  try { return { ok: true, ...(await controlPlaneWorker(config).runOnce()) }; }
-  catch { return { ok: false, error: 'WORKER_RUN_FAILED', message: 'Worker could not complete a safe run' }; }
-  finally { workerRunning = false; }
+  refreshTray();
+  try { const result = await controlPlaneWorker(config).runOnce(); workerConnectionState = 'CONNECTED'; lastWorkerError=null; return { ok: true, ...result }; }
+  catch { workerConnectionState = 'OFFLINE'; lastWorkerError='WORKER_RUN_FAILED'; return { ok: false, error: 'WORKER_RUN_FAILED', message: 'Worker could not complete a safe run' }; }
+  finally { workerRunning = false; refreshTray(); }
 }
 
 async function currentHubWorkClient(): Promise<{ projectId: string; client: ControlPlaneWorkerClient }> {
@@ -294,6 +468,12 @@ async function takeOverWorkspace() {
   } catch { return { ok: false, error: 'WORKSPACE_TAKEOVER_FAILED', message: 'AWH ยังรับ workspace นี้ต่อไม่ได้ เพราะ lease หรือ checkpoint ยังไม่พร้อม' }; }
 }
 
+function stopWorkerLoop(): void {
+  if (workerTimer) clearInterval(workerTimer);
+  workerTimer = null;
+  emergencyStopForeground();
+}
+
 function startWorkerLoop(): void {
   const config = loadConfig();
   if (!startupPermissionsReady || !config.controlPlaneWorker || workerTimer) return;
@@ -372,6 +552,7 @@ async function startupPermissionState(): Promise<StartupPermissionState> {
 async function authorizeStartupPermissions(): Promise<StartupPermissionState & { requested: true }> {
   const config = loadConfig();
   const bootstrap = await ensureAwhDeviceRuntime(config.dataDir);
+  lastDeviceRuntimeBootstrap = bootstrap;
   let runtime: DeviceRuntimePermissionStatus | null = null;
   if (bootstrap.state === 'READY' && process.platform === 'darwin') {
     try { runtime = await deviceRuntimePermissionStatus(undefined, true); } catch { runtime = null; }
@@ -740,18 +921,71 @@ async function openAwhWeb(target: 'home' | 'devices' = 'home'): Promise<{ ok: bo
 
 function showLocalBridge(): void { mainWindow?.show(); mainWindow?.focus(); }
 
-function createTray(): Tray {
-  const image = nativeImage.createFromPath(join(app.getAppPath(), 'logo-256x256.png')).resize({ width: 20, height: 20 });
-  const item = new Tray(image);
-  item.setToolTip(`AWH Agent — ${PRODUCT.productName}`);
-  item.setContextMenu(Menu.buildFromTemplate([
+function startLiveReturnMonitor(): void {
+  if (liveMonitorTimer) return;
+  previousIdleSeconds = powerMonitor.getSystemIdleTime();
+  liveMonitorTimer = setInterval(() => {
+    void (async () => {
+      const config = loadConfig();
+      const mode = currentAgentMode(config.dataDir);
+      const idle = powerMonitor.getSystemIdleTime();
+      if (mode !== 'LIVE') { liveSawIdle = false; previousIdleSeconds = idle; return; }
+      if (idle >= 5) liveSawIdle = true;
+      const humanReturned = liveSawIdle && previousIdleSeconds >= 3 && idle <= 1 && !recentAgentForegroundAction(3500);
+      previousIdleSeconds = idle;
+      if (!humanReturned) return;
+      emergencyStopForeground();
+      await setAgentMode(config.dataDir, 'ON');
+      await appendAgentActivity(config.dataDir, { source:'LOCAL', capability:'runtime.mode', provider:null, plane:'BACKGROUND', outcome:'DEFERRED', mode:'ON', activity:'IDLE' }).catch(() => undefined);
+      refreshTray();
+      if (config.controlPlaneWorker && startupPermissionsReady) void runWorkerOnce();
+    })().catch(() => undefined);
+  }, 1000);
+  liveMonitorTimer.unref?.();
+}
+
+function reconnectAfterSystemResume(): void {
+  workerConnectionState = 'CHECKING';
+  refreshTray();
+  if (loadConfig().controlPlaneWorker && startupPermissionsReady) void runWorkerOnce();
+}
+
+function activityLabel(activity: ReturnType<typeof agentRuntimeStatus>['activity']): string {
+  return ({ IDLE: 'ว่าง', READING_FILES: 'กำลังอ่านไฟล์', CHECKING_WEBSITE: 'กำลังตรวจเว็บไซต์', USING_CHROME: 'กำลังใช้ Chrome', USING_ADOBE: 'กำลังทำงานใน Adobe', EXPORTING: 'กำลัง Export', UPDATING_TOOL_PACK: 'กำลังอัปเดต Tool Pack', RUNNING_PROCESS: 'กำลังรันงานเบื้องหลัง', OTHER: 'กำลังทำงาน' } as const)[activity] ?? 'กำลังทำงาน';
+}
+
+function refreshTray(): void {
+  if (!tray) return;
+  const config = loadConfig();
+  const mode = currentAgentMode(config.dataDir);
+  const activity = agentRuntimeStatus();
+  const connection = workerConnectionState === 'CONNECTED' ? 'Connected' : workerConnectionState === 'OFFLINE' ? 'Offline' : 'Checking';
+  const prominent = mode === 'LIVE' && activity.foreground ? 'LIVE · กำลังควบคุมเครื่อง' : modeLabel(mode);
+  tray.setToolTip(`AWH Agent · ${prominent} · ${connection} · ${activityLabel(activity.activity)}`);
+  if (process.platform === 'darwin') tray.setTitle(` ${mode}`);
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: prominent, enabled: false },
+    { label: `${connection} · ${activityLabel(activity.activity)}`, enabled: false },
+    { type: 'separator' },
+    { label: 'OFF · ไม่รบกวน', type: 'radio', checked: mode === 'OFF', click: () => { void changeRuntimeMode('OFF'); } },
+    { label: 'ON · ใช้งานร่วมกัน', type: 'radio', checked: mode === 'ON', click: () => { void changeRuntimeMode('ON'); } },
+    { label: 'LIVE · ให้ AWH ใช้เครื่องเต็มที่', type: 'radio', checked: mode === 'LIVE', click: () => { void changeRuntimeMode('LIVE'); } },
+    { type: 'separator' },
+    { label: 'หยุดงานทันที', accelerator: 'CommandOrControl+Shift+F12', click: () => { void emergencyStop(); } },
+    { label: coreUpdateState === 'AVAILABLE' ? `อัปเดต AWH Agent → ${coreUpdateCandidate?.version ?? 'เวอร์ชันใหม่'}` : `AWH Agent ${VERSION} · ${coreUpdateState === 'ERROR' ? 'ตรวจอัปเดตไม่ได้' : 'ล่าสุด'}`, enabled: coreUpdateState === 'AVAILABLE', click: showLocalBridge },
     { label: 'เปิด AWH', click: () => { void openAwhWeb('home'); } },
-    { label: 'จัดการอุปกรณ์บนเว็บ', click: () => { void openAwhWeb('devices'); } },
-    { label: 'ตั้งค่า AWH Agent เครื่องนี้', click: showLocalBridge },
+    { label: 'ตั้งค่าและตรวจสุขภาพเครื่องนี้', click: showLocalBridge },
     { type: 'separator' },
     { label: 'ออก', click: () => { quitting = true; app.quit(); } },
   ]));
+}
+
+function createTray(): Tray {
+  const image = nativeImage.createFromPath(join(app.getAppPath(), 'logo-256x256.png')).resize({ width: 20, height: 20 });
+  const item = new Tray(image);
   item.on('double-click', () => { void openAwhWeb('home'); });
+  tray = item;
+  refreshTray();
   return item;
 }
 
@@ -759,6 +993,19 @@ function registerBridgeIpc(): void {
   ipcMain.handle(DESKTOP_IPC.enrollmentState, async () => enrollmentState());
   ipcMain.handle(DESKTOP_IPC.enrollmentLogin, async (_event, username: unknown, password: unknown) => loginDevice(username, password));
   ipcMain.handle(DESKTOP_IPC.workerState, async () => workerState());
+  ipcMain.handle(DESKTOP_IPC.runtimeMode, async () => ({ mode: currentAgentMode(loadConfig().dataDir) }));
+  ipcMain.handle(DESKTOP_IPC.runtimeModeSet, async (_event, mode: unknown) => {
+    if (mode !== 'OFF' && mode !== 'ON' && mode !== 'LIVE') throw new Error('AWH_RUNTIME_MODE_INVALID');
+    return changeRuntimeMode(mode);
+  });
+  ipcMain.handle(DESKTOP_IPC.emergencyStop, async () => emergencyStop());
+  ipcMain.handle(DESKTOP_IPC.activity, async () => ({ current: agentRuntimeStatus(), recent: await readAgentActivity(loadConfig().dataDir) }));
+  ipcMain.handle(DESKTOP_IPC.health, async () => localHealthState());
+  ipcMain.handle(DESKTOP_IPC.diagnosticsExport, async () => exportDiagnosticsBundle());
+  ipcMain.handle(DESKTOP_IPC.updateCheck, async () => checkDesktopCoreUpdate());
+  ipcMain.handle(DESKTOP_IPC.updateInstall, async () => installDesktopCoreUpdate());
+  ipcMain.handle(DESKTOP_IPC.reinstallRuntime, async () => reinstallRuntimeKeepingPairing());
+  ipcMain.handle(DESKTOP_IPC.resetDevice, async () => resetDeviceFromUi());
   ipcMain.handle(DESKTOP_IPC.permissionState, async () => startupPermissionState());
   ipcMain.handle(DESKTOP_IPC.permissionAuthorize, async () => authorizeStartupPermissions());
   ipcMain.handle(DESKTOP_IPC.permissionSettings, async (_event, kind: unknown) => openStartupPermissionSettings(kind));
@@ -1025,8 +1272,8 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   try {
     await writeSmokeMarker({ ok: false, stage: 'renderer-check' });
     const result = await win.webContents.executeJavaScript(`(async () => {
-      const apiReady = ['getEnrollmentState','login','getWorkerState','getPermissionState','authorizePermissions','openPermissionSettings','openAwhWeb'].every((name) => typeof window.awhConnect?.[name] === 'function');
-      const requiredDom = ['agent-title','agent-summary','open-awh','manage-device','permission-card','permission-list','authorize-permissions','open-permission-settings','hub-status','device-name','worker-status','remote-status','login-form','refresh-status'].every((id) => Boolean(document.getElementById(id)));
+      const apiReady = ['getEnrollmentState','login','getWorkerState','getRuntimeMode','setRuntimeMode','emergencyStop','getActivity','getHealth','exportDiagnostics','checkUpdate','installUpdate','reinstallRuntime','resetDevice','getPermissionState','authorizePermissions','openPermissionSettings','openAwhWeb'].every((name) => typeof window.awhConnect?.[name] === 'function');
+      const requiredDom = ['agent-title','agent-summary','open-awh','manage-device','mode-off','mode-on','mode-live','emergency-stop','activity-list','health-grid','check-update','install-update','export-diagnostics','reinstall-runtime','reset-device','permission-card','permission-list','authorize-permissions','open-permission-settings','hub-status','device-name','worker-status','remote-status','login-form','refresh-status'].every((id) => Boolean(document.getElementById(id)));
       const forbiddenDom = ['desktop-work-thread','desktop-work-input','project-list','desktop-task-list','artifact-list','remote-connect','remote-stop'].some((id) => Boolean(document.getElementById(id)));
       const enrollment = apiReady ? await window.awhConnect.getEnrollmentState() : null;
       const worker = apiReady ? await window.awhConnect.getWorkerState() : null;
@@ -1065,7 +1312,7 @@ async function runSmokeTest(win: BrowserWindow): Promise<void> {
   }
 }
 
-app.on('before-quit', () => { quitting = true; });
+app.on('before-quit', () => { quitting = true; globalShortcut.unregisterAll(); if (trayRefreshTimer) clearInterval(trayRefreshTimer); if (liveMonitorTimer) clearInterval(liveMonitorTimer); if (coreUpdateTimer) clearInterval(coreUpdateTimer); });
 app.on('window-all-closed', () => { /* Keep the tray process alive on Windows. */ });
 
 const smokeMarkerReady = SMOKE_TEST
@@ -1097,13 +1344,21 @@ async function startAfterReady(): Promise<void> {
   if (process.platform === 'darwin') app.dock?.hide();
   mainWindow = await createWindow(false);
   tray = createTray();
+  if (CORE_UPDATE_HEALTH_MARKER) await writeDesktopCoreUpdateHealth(loadConfig().dataDir, CORE_UPDATE_HEALTH_MARKER, VERSION);
+  emergencyHotkeyReady = globalShortcut.register('CommandOrControl+Shift+F12', () => { void emergencyStop(); });
+  trayRefreshTimer = setInterval(refreshTray, 2_000);
+  trayRefreshTimer.unref?.();
+  startLiveReturnMonitor();
+  startCoreUpdateLoop();
+  powerMonitor.on('resume', reconnectAfterSystemResume);
+  powerMonitor.on('unlock-screen', reconnectAfterSystemResume);
   const config = loadConfig();
   const localEnrollment = await enrollmentState().catch(() => ({ ok: false, enrolled: false, hubConfigured: Boolean(config.hubApiBase) }));
   const stored = loadStoredSettings(config.dataDir);
   const firstPermissionSetup = process.platform === 'darwin' && stored.permissionSetupVersion !== PERMISSION_SETUP_VERSION;
   if (localEnrollment.enrolled !== true || firstPermissionSetup) showLocalBridge();
   void (async () => {
-    await ensureAwhDeviceRuntime(config.dataDir);
+    lastDeviceRuntimeBootstrap = await ensureAwhDeviceRuntime(config.dataDir);
     const permissions = await startupPermissionState().catch(() => ({ ready: false } as StartupPermissionState));
     if (permissions.ready !== true) {
       showLocalBridge();

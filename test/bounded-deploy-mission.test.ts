@@ -125,7 +125,7 @@ test('desktop artifact hydration accepts only exact-SHA verified staged packages
     await writeFile(join(staged,file.replace(/\.zip$/,'.release.json')),JSON.stringify({
       schemaVersion:1,kind:'AWH_DESKTOP_RELEASE_EVIDENCE',authority:'CI_PACKAGE_EVIDENCE_ONLY',productId:'awh',platform,architecture,
       productVersion:'1.0.0-rc.1',sourceSha,packageSha256:hash,sizeBytes:bytes.length,downloadKey:file,packageVerification:'VERIFIED',
-      publicationState:'NOT_PUBLISHED',updaterStatus:'FOUNDATION_LOCKED_NOT_ACTIVATED',
+      publicationState:'NOT_PUBLISHED',updaterStatus:'SELF_UPDATE_ACTIVE_ROLLBACK_SAFE',
     }));
     sums.push(`${hash}  ${file}`);
   }

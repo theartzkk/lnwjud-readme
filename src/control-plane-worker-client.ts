@@ -50,6 +50,7 @@ export interface WorkerTask {
   progress: number;
   assignedDevice: string | null;
   approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | null;
+  origin: 'AWH_WEB' | 'LINE' | 'AUTOMATION' | 'UNKNOWN';
   execution?: { executionId: string; executorKind: 'VPS' | 'DEVICE' | 'CODEX'; requiredCapability: string; vaultRevisionId: string | null; state: string; continuation: WorkerContinuation | null; capabilityPlan: WorkerCapabilityPlan | null } | null;
 }
 
@@ -145,7 +146,8 @@ function boundedTask(value: unknown): WorkerTask {
     }
     execution = { executionId: item.executionId, executorKind: item.executorKind as 'VPS' | 'DEVICE' | 'CODEX', requiredCapability: item.requiredCapability, vaultRevisionId: item.vaultRevisionId === null ? null : item.vaultRevisionId, state: item.state, continuation, capabilityPlan: boundedCapabilityPlan(item.capabilityPlan) };
   }
-  return { taskId: task.taskId, projectId: task.projectId, conversationId: task.conversationId === undefined || task.conversationId === null ? null : task.conversationId, goal: task.goal, state: task.state, progress: task.progress, assignedDevice: task.assignedDevice, approvalStatus: task.approvalStatus === undefined ? null : task.approvalStatus as WorkerTask['approvalStatus'], execution };
+  const origin=['AWH_WEB','LINE','AUTOMATION','UNKNOWN'].includes(String(task.origin)) ? task.origin as WorkerTask['origin'] : 'UNKNOWN';
+  return { taskId: task.taskId, projectId: task.projectId, conversationId: task.conversationId === undefined || task.conversationId === null ? null : task.conversationId, goal: task.goal, state: task.state, progress: task.progress, assignedDevice: task.assignedDevice, approvalStatus: task.approvalStatus === undefined ? null : task.approvalStatus as WorkerTask['approvalStatus'], origin, execution };
 }
 
 export interface OwnerWorkProfile { primaryRoute: 'REMOTE_DEVICE' | 'VPS_DIRECT' | 'CONNECTED_FILES' | 'DIRECT_PLUS_REMOTE' | 'AUTO_FIT'; requiresRealDeviceEvidence: boolean; realSchoolEvidenceRequired: boolean; generatedSchoolRealityAllowed: false; permanentRepairRequired: boolean; mixedBoundary: boolean; evidenceDimensions: { requiresDeviceState: boolean; requiresServerState: boolean; requiresConnectedFiles: boolean; requiresRealSchoolEvidence: boolean; requiresNativeApp: boolean; requiresPublicWeb: boolean }; reason: string; }

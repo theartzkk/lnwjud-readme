@@ -266,14 +266,43 @@ export class PrivateFileCredentialStore implements CredentialStore {
   async delete(key: string): Promise<void> { await this.ready(); await rm(this.path(key), { force: true }); }
 }
 
+export class MigratingCredentialStore implements CredentialStore {
+  constructor(private readonly primary: CredentialStore, private readonly legacy: CredentialStore) {}
+  async get(key: string): Promise<string | null> {
+    const current = await this.primary.get(key);
+    if (current !== null) return current;
+    const legacyValue = await this.legacy.get(key);
+    if (legacyValue === null) return null;
+    await this.primary.set(key, legacyValue);
+    const verified = await this.primary.get(key);
+    if (verified !== legacyValue) throw new CredentialStoreError('Credential migration could not be verified', 'CREDENTIAL_MIGRATION_FAILED');
+    await this.legacy.delete(key);
+    return legacyValue;
+  }
+  async set(key: string, secret: string): Promise<void> {
+    await this.primary.set(key, secret);
+    if (await this.primary.get(key) !== secret) throw new CredentialStoreError('Credential write could not be verified', 'CREDENTIAL_PERSISTENCE_FAILED');
+    await this.legacy.delete(key);
+  }
+  async delete(key: string): Promise<void> {
+    await this.primary.delete(key);
+    await this.legacy.delete(key);
+    if (await this.primary.get(key) !== null || await this.legacy.get(key) !== null) throw new CredentialStoreError('Credential removal could not be verified', 'CREDENTIAL_PERSISTENCE_FAILED');
+  }
+}
+
 export function createDesktopCredentialStore(
   dataDir: string,
   platformName: NodeJS.Platform = process.platform,
   runner: CredentialProcessRunner = runCredentialProcess,
 ): CredentialStore {
-  // Windows does not expose trustworthy POSIX mode bits for a private file
-  // store. Use the native Credential Manager instead of weakening the 0700/0600
-  // invariant that protects the file-backed desktop session on POSIX systems.
+  // Open Beta requires native OS credential storage. macOS migrates an
+  // existing private-file device token exactly once so reinstall/upgrade keeps
+  // pairing without leaving the token behind after Keychain verification.
+  if (platformName === 'darwin') return new MigratingCredentialStore(
+    new MacKeychainCredentialStore(runner),
+    new PrivateFileCredentialStore(join(dataDir, 'session-credentials')),
+  );
   if (platformName === 'win32') return new WindowsCredentialManagerStore(runner);
   return new PrivateFileCredentialStore(join(dataDir, 'session-credentials'));
 }

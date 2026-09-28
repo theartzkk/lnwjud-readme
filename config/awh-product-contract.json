@@ -25,7 +25,7 @@
       "preview"
     ],
     "evergreenDesktopRequired": true,
-    "updaterStatus": "FOUNDATION_LOCKED_NOT_ACTIVATED",
+    "updaterStatus": "SELF_UPDATE_ACTIVE_ROLLBACK_SAFE",
     "desktopCompatibility": "current-and-previous-minor",
     "stableRequires": [
       "ci",

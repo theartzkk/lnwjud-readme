@@ -9,6 +9,7 @@ import {
   CredentialStoreError,
   InMemoryCredentialStore,
   MacKeychainCredentialStore,
+  MigratingCredentialStore,
   PrivateFileCredentialStore,
   UnavailableCredentialStore,
   WindowsCredentialManagerStore,
@@ -90,19 +91,20 @@ test('desktop session store uses Windows Credential Manager instead of POSIX per
 });
 
 
-test('desktop session store avoids OS Keychain and keeps only a private revocable token file', { skip: process.platform === 'win32' ? 'POSIX permission semantics are not available on Windows' : false }, async () => {
-  const root = await mkdtemp(join(tmpdir(), 'awh-session-store-'));
-  try {
-    const store = createDesktopCredentialStore(root, 'darwin');
-    assert.equal(store instanceof PrivateFileCredentialStore, true);
-    assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY), null);
-    await store.set(DEVICE_TOKEN_CREDENTIAL_KEY, 'revocable-session-token');
-    assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY), 'revocable-session-token');
-    const restartedStore = createDesktopCredentialStore(root, 'darwin');
-    assert.equal(await restartedStore.get(DEVICE_TOKEN_CREDENTIAL_KEY), 'revocable-session-token');
-    const directory = await stat(join(root, 'session-credentials'));
-    assert.equal(directory.mode & 0o077, 0);
-    await store.delete(DEVICE_TOKEN_CREDENTIAL_KEY);
-    assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY), null);
-  } finally { await rm(root, { recursive: true, force: true }); }
+test('macOS desktop credential migration moves a legacy private token into native storage before deleting legacy state', async () => {
+  const primary = new InMemoryCredentialStore();
+  const legacy = new InMemoryCredentialStore();
+  await legacy.set(DEVICE_TOKEN_CREDENTIAL_KEY, 'revocable-session-token');
+  const store = new MigratingCredentialStore(primary, legacy);
+  assert.equal(await store.get(DEVICE_TOKEN_CREDENTIAL_KEY), 'revocable-session-token');
+  assert.equal(await primary.get(DEVICE_TOKEN_CREDENTIAL_KEY), 'revocable-session-token');
+  assert.equal(await legacy.get(DEVICE_TOKEN_CREDENTIAL_KEY), null);
+  await store.delete(DEVICE_TOKEN_CREDENTIAL_KEY);
+  assert.equal(await primary.get(DEVICE_TOKEN_CREDENTIAL_KEY), null);
+});
+
+test('macOS desktop selects the migration wrapper instead of a plaintext session store', () => {
+  const store = createDesktopCredentialStore('/tmp/awh-desktop-credential-fixture', 'darwin', async () => ({ exitCode: 44, stdout: '' }));
+  assert.equal(store instanceof MigratingCredentialStore, true);
+  assert.equal(store instanceof PrivateFileCredentialStore, false);
 });

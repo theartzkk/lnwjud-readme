@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+export type AgentRuntimeMode = 'OFF' | 'ON' | 'LIVE';
+
 export interface StoredSettings {
   defaultWorkspace?: string;
   selectedHubProjectId?: string;
@@ -16,7 +18,12 @@ export interface StoredSettings {
   controlPlaneWorker?: boolean;
   /** Version of the completed local OS permission onboarding contract. */
   permissionSetupVersion?: number;
+  /** Local interruption policy. OS permissions remain independent from this mode. */
+  runtimeMode?: AgentRuntimeMode;
+  runtimeModeUpdatedAt?: string;
+  lastEmergencyStopAt?: string;
 }
+
 
 export function settingsPath(dataDir: string): string {
   return join(dataDir, 'settings.json');
@@ -35,6 +42,9 @@ export function loadStoredSettings(dataDir: string): StoredSettings {
     if (typeof parsed.allowCodex === 'boolean') out.allowCodex = parsed.allowCodex;
     if (typeof parsed.controlPlaneWorker === 'boolean') out.controlPlaneWorker = parsed.controlPlaneWorker;
     if (Number.isSafeInteger(parsed.permissionSetupVersion) && (parsed.permissionSetupVersion as number) >= 1 && (parsed.permissionSetupVersion as number) <= 100) out.permissionSetupVersion = parsed.permissionSetupVersion as number;
+    if (parsed.runtimeMode === 'OFF' || parsed.runtimeMode === 'ON' || parsed.runtimeMode === 'LIVE') out.runtimeMode = parsed.runtimeMode;
+    if (typeof parsed.runtimeModeUpdatedAt === 'string' && Number.isFinite(Date.parse(parsed.runtimeModeUpdatedAt))) out.runtimeModeUpdatedAt = parsed.runtimeModeUpdatedAt;
+    if (typeof parsed.lastEmergencyStopAt === 'string' && Number.isFinite(Date.parse(parsed.lastEmergencyStopAt))) out.lastEmergencyStopAt = parsed.lastEmergencyStopAt;
     return out;
   } catch {
     return {};
@@ -53,5 +63,8 @@ export async function saveStoredSettings(dataDir: string, settings: StoredSettin
   if (typeof settings.controlPlaneWorker === 'boolean') normalized.controlPlaneWorker = settings.controlPlaneWorker;
   const permissionSetupVersion = settings.permissionSetupVersion;
   if (Number.isSafeInteger(permissionSetupVersion) && (permissionSetupVersion as number) >= 1 && (permissionSetupVersion as number) <= 100) normalized.permissionSetupVersion = permissionSetupVersion as number;
+  if (settings.runtimeMode === 'OFF' || settings.runtimeMode === 'ON' || settings.runtimeMode === 'LIVE') normalized.runtimeMode = settings.runtimeMode;
+  if (typeof settings.runtimeModeUpdatedAt === 'string' && Number.isFinite(Date.parse(settings.runtimeModeUpdatedAt))) normalized.runtimeModeUpdatedAt = settings.runtimeModeUpdatedAt;
+  if (typeof settings.lastEmergencyStopAt === 'string' && Number.isFinite(Date.parse(settings.lastEmergencyStopAt))) normalized.lastEmergencyStopAt = settings.lastEmergencyStopAt;
   await writeFile(target, `${JSON.stringify(normalized, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
 }

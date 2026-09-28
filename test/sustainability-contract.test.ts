@@ -8,7 +8,7 @@ import { promisify } from 'node:util';
 import test from 'node:test';
 import { DEFAULT_AWH_HUB_API_BASE } from '../src/config.js';
 import { PRODUCT } from '../src/product.js';
-import { DESKTOP_UPDATE_FOUNDATION, updateIsApplicable, validateDesktopUpdateManifest } from '../src/desktop-update-policy.js';
+import { DESKTOP_UPDATE_FOUNDATION, compareVersions, updateIsApplicable, validateDesktopUpdateManifest } from '../src/desktop-update-policy.js';
 
 const ROOT = process.cwd();
 const execFileAsync = promisify(execFile);
@@ -29,12 +29,12 @@ test('AWH sustainability contract locks durable product and authority identity',
   assert.equal(contract.data.principle, 'Everything replaceable except identity and data');
 });
 
-test('desktop release contract is install-once ready without pretending updater activation', async () => {
+test('desktop release contract activates rollback-safe in-place updates without changing product identity', async () => {
   const contract = JSON.parse(await readFile(join(ROOT, 'config/awh-product-contract.json'), 'utf8'));
   assert.deepEqual(contract.release.channels, ['stable', 'preview']);
   assert.equal(contract.release.defaultChannel, 'stable');
   assert.equal(contract.release.evergreenDesktopRequired, true);
-  assert.equal(contract.release.updaterStatus, 'FOUNDATION_LOCKED_NOT_ACTIVATED');
+  assert.equal(contract.release.updaterStatus, 'SELF_UPDATE_ACTIVE_ROLLBACK_SAFE');
   assert.equal(contract.release.desktopCompatibility, 'current-and-previous-minor');
   assert.equal(DESKTOP_UPDATE_FOUNDATION.status, contract.release.updaterStatus);
   for (const gate of ['ci', 'hub-test', 'package-runtime', 'backup-verified', 'migration-plan', 'rollback-plan']) {
@@ -66,6 +66,9 @@ test('update manifest contract accepts only bounded HTTPS releases and compatibl
   });
   assert.equal(updateIsApplicable('1.0.0', manifest, 'stable'), true);
   assert.equal(updateIsApplicable('1.0.0', manifest, 'preview'), false);
+  assert.equal(compareVersions('1.0.0-rc.10', '1.0.0-rc.2'), 1);
+  assert.equal(compareVersions('1.0.0-rc.2', '1.0.0-rc.10'), -1);
+  assert.equal(compareVersions('1.0.0-rc.10', '1.0.0'), -1);
   assert.equal(updateIsApplicable('1.1.0', manifest, 'stable'), false);
   assert.throws(() => validateDesktopUpdateManifest({ ...manifest, url: 'http://updates.example.invalid/AWH.nupkg' }), /UPDATE_MANIFEST_INVALID/);
   assert.throws(() => validateDesktopUpdateManifest({ ...manifest, sha256: 'short' }), /UPDATE_MANIFEST_INVALID/);
@@ -97,7 +100,7 @@ test('desktop release evidence is deterministic, exact-revision-bound, and never
     assert.equal(evidence.downloadKey, 'AWH-Windows-x64.zip');
     assert.equal(evidence.packageVerification, 'VERIFIED');
     assert.equal(evidence.publicationState, 'NOT_PUBLISHED');
-    assert.equal(evidence.updaterStatus, 'FOUNDATION_LOCKED_NOT_ACTIVATED');
+    assert.equal(evidence.updaterStatus, 'SELF_UPDATE_ACTIVE_ROLLBACK_SAFE');
     assert.equal('releaseId' in evidence, false);
     assert.equal('createdAt' in evidence, false);
     assert.equal('url' in evidence, false);
@@ -130,7 +133,7 @@ test('desktop package CI uploads release evidence without activating an updater 
   assert.match(ci, /AWH-macOS-x64\.release\.json/);
   assert.match(script, /CI_PACKAGE_EVIDENCE_ONLY/);
   assert.match(script, /NOT_PUBLISHED/);
-  assert.match(script, /FOUNDATION_LOCKED_NOT_ACTIVATED/);
+  assert.match(script, /SELF_UPDATE_ACTIVE_ROLLBACK_SAFE/);
   assert.doesNotMatch(`${ci}\n${script}`, /autoUpdater|publish-desktop-release|control_desktop_releases/);
 });
 

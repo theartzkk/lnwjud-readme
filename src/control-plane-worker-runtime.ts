@@ -21,6 +21,10 @@ import { exportOfficeFileToPdf } from './windows-office-export.js';
 import { execCommand } from './process.js';
 import { materializeApprovedSkillPlan, type MaterializedApprovedSkills } from './approved-skill-loader.js';
 import { openManagedMcpTool } from './managed-tool-runtime.js';
+import { currentAgentMode, modeCapability, capabilityPlane, modeAllowsPlane } from './agent-runtime-policy.js';
+import { appendAgentActivity } from './agent-activity-log.js';
+import { foregroundEpoch, registerForegroundStop, assertForegroundEpoch } from './agent-runtime-control.js';
+import { setAgentRuntimeStatus, clearAgentRuntimeStatus, markAgentForegroundAction } from './agent-runtime-status.js';
 
 const MUTATION_GOAL = /(?:\b(?:fix|edit|change|modify|write|render|publish|deploy|delete|remove)\b|แก้|เพิ่ม|ลบ|สร้าง|เรนเดอร์|เผยแพร่|deploy)/iu;
 
@@ -55,6 +59,15 @@ function deviceToolAllowed(capability: string, tool: import('./control-plane-wor
   if (capability === 'system.shell') return tool === 'shell';
   if (capability === 'device.process') return ['process_list','process_start','process_status','process_stop'].includes(tool);
   return false;
+}
+
+function activityForCapability(capability:string): import('./agent-activity-log.js').AgentActivityEvent['activity'] {
+  if(capability==='workspace.files') return 'READING_FILES';
+  if(/^(?:web\.|browser\.)/.test(capability)) return capability==='browser.automation'?'USING_CHROME':'CHECKING_WEBSITE';
+  if(/^creative\./.test(capability)) return 'USING_ADOBE';
+  if(/^(?:system\.shell|device\.process)$/.test(capability)) return 'RUNNING_PROCESS';
+  if(capability==='code.repo') return 'CHECKING_WEBSITE';
+  return 'OTHER';
 }
 
 function selectToolPackCatalog(tools: ToolPackToolSummary[], goal: string, capability: string, limit = 36): ToolPackToolSummary[] {
@@ -232,7 +245,8 @@ export class ControlPlaneWorkerRuntime {
     const identity = await loadOrCreateDeviceIdentity(this.options.dataDir);
     try {
       const managedCatalog = await this.client.toolFabricCatalog().catch(() => []);
-      const capabilities = await workerCapabilities(this.options.dataDir, this.options.allowCodex, managedCatalog.map((item) => item.capability));
+      const mode=currentAgentMode(this.options.dataDir);
+      const capabilities = [...new Set([...(await workerCapabilities(this.options.dataDir, this.options.allowCodex, managedCatalog.map((item) => item.capability))),modeCapability(mode)])];
       await this.client.heartbeat(capabilities, 'READY');
       const projects = await this.client.projects().catch((): WorkerProject[] => []);
       await this.reconcileProjectMemoryMetadata(projects).catch(() => undefined);
@@ -444,26 +458,46 @@ export class ControlPlaneWorkerRuntime {
     const root = join(this.options.dataDir, 'device-runtime-workspace');
     const specializedPack = toolPackForCapability(execution.requiredCapability);
     const requireVisual = /^(?:creative\.(?:photoshop|premiere|aftereffects)|device\.(?:screen\.inspect|gui\.(?:inspect|operate))|browser\.automation)$/.test(execution.requiredCapability);
+    const plane=capabilityPlane(execution.requiredCapability);
+    const startMode=currentAgentMode(this.options.dataDir);
+    const activity=activityForCapability(execution.requiredCapability);
+    if(!modeAllowsPlane(startMode,plane)){
+      await appendAgentActivity(this.options.dataDir,{source:task.origin,capability:execution.requiredCapability,provider:null,plane,outcome:'DEFERRED',mode:startMode,activity}).catch(()=>undefined);
+      await this.client.deferCentralExecution(execution.executionId,'DEVICE_MODE_OFF').catch(()=>undefined);
+      return {status:'WAITING_FOR_WORKER',taskId:task.taskId,projectId:task.projectId,reason:'DEVICE_MODE_OFF'};
+    }
+    const startEpoch=foregroundEpoch();
+    await appendAgentActivity(this.options.dataDir,{source:task.origin,capability:execution.requiredCapability,provider:null,plane,outcome:'STARTED',mode:startMode,activity}).catch(()=>undefined);
+    setAgentRuntimeStatus({activity,capability:execution.requiredCapability,provider:null,foreground:plane==='FOREGROUND'});
     const heartbeat = setInterval(() => { void this.client.heartbeat(capabilities, 'WORKING').catch(() => undefined); }, 60_000);
     heartbeat.unref?.();
     let runtime: LnwjudDeviceClient | null = null;
     let pack: ToolPackClient | null = null;
+    let unregisterRuntimeStop:(()=>void)|null=null;
+    let unregisterPackStop:(()=>void)|null=null;
+    let provider:string|null=null;
     try {
       await mkdir(root, { recursive: true, mode: 0o700 });
       if (specializedPack || execution.requiredCapability === 'code.repo') {
         if (specializedPack) {
           await launchToolPackHost(specializedPack);
           pack = await ToolPackClient.open(execution.requiredCapability);
+          provider=specializedPack.id;
+          setAgentRuntimeStatus({activity,capability:execution.requiredCapability,provider,foreground:plane==='FOREGROUND'});
         } else {
           const packet = await this.client.toolProviderPacket(execution.executionId);
           if (packet.capability !== execution.requiredCapability || packet.plan.runtimeKind !== 'MCP') throw new Error('MANAGED_TOOL_PROVIDER_MISMATCH');
           const managed = await openManagedMcpTool(packet);
           pack = managed.client;
+          provider=packet.plan.providerId;
+          setAgentRuntimeStatus({activity,capability:execution.requiredCapability,provider,foreground:plane==='FOREGROUND'});
         }
+        if(plane==='FOREGROUND') unregisterPackStop=registerForegroundStop(()=>pack?.close());
         const allTools = await pack.listTools();
         const catalog = selectToolPackCatalog(allTools, task.goal, execution.requiredCapability);
         if (catalog.length < 1) throw new Error('TOOL_PACK_TOOL_CATALOG_EMPTY');
         runtime = await LnwjudDeviceClient.open(root).catch(() => null);
+        if(runtime&&plane==='FOREGROUND') unregisterRuntimeStop=registerForegroundStop(()=>runtime?.close());
         await this.client.update(task.taskId, 'RUNNING', 15, 'AWH โหลดชุดเครื่องมือเฉพาะงานแล้ว กำลังตรวจสภาพแวดล้อมจริง');
         let lastResult: string | null = null;
         let packImageBase64: string | null = null;
@@ -488,6 +522,7 @@ export class ControlPlaneWorkerRuntime {
             await this.client.update(task.taskId, 'QA', 90, 'AWH ตรวจผลจากชุดเครื่องมือเฉพาะงานแล้ว');
             const summary = boundedSummary(action.summary || lastResult || 'ดำเนินงานด้วยชุดเครื่องมือเฉพาะงานเรียบร้อย');
             await this.client.update(task.taskId, 'COMPLETED', 100, 'ตรวจผลบนอุปกรณ์จริงเรียบร้อย', summary);
+            await appendAgentActivity(this.options.dataDir,{source:task.origin,capability:execution.requiredCapability,provider,plane,outcome:'SUCCESS',mode:currentAgentMode(this.options.dataDir),activity}).catch(()=>undefined);
             return { status: 'COMPLETED', taskId: task.taskId, projectId: task.projectId, artifact: null };
           }
           if (action.tool !== 'mcp_tool') throw new Error('TOOL_PACK_ACTION_INVALID');
@@ -495,6 +530,7 @@ export class ControlPlaneWorkerRuntime {
           const toolName = typeof args.toolName === 'string' ? args.toolName : '';
           const toolArguments = args.arguments && typeof args.arguments === 'object' && !Array.isArray(args.arguments) ? args.arguments as Record<string, unknown> : null;
           if (!toolArguments || !catalog.some((item) => item.name === toolName)) throw new Error('TOOL_PACK_ACTION_NOT_IN_CATALOG');
+          if(plane==='FOREGROUND'){assertForegroundEpoch(startEpoch);if(!modeAllowsPlane(currentAgentMode(this.options.dataDir),'FOREGROUND'))throw new Error('AWH_DEVICE_MODE_OFF');markAgentForegroundAction();}
           const packResult = await pack.callTool(toolName, toolArguments);
           lastResult = packResult.text;
           packImageBase64 = packResult.imageBase64;
@@ -506,6 +542,9 @@ export class ControlPlaneWorkerRuntime {
       }
 
       runtime = await LnwjudDeviceClient.open(root);
+      provider='awh-device-runtime';
+      setAgentRuntimeStatus({activity,capability:execution.requiredCapability,provider,foreground:plane==='FOREGROUND'});
+      if(plane==='FOREGROUND') unregisterRuntimeStop=registerForegroundStop(()=>runtime?.close());
       await this.client.update(task.taskId, 'RUNNING', 15, 'AWH Device Runtime พร้อมแล้ว กำลังตรวจอุปกรณ์จริง');
       let lastResult: string | null = null;
       for (let step = 0; step < 16; step++) {
@@ -523,27 +562,35 @@ export class ControlPlaneWorkerRuntime {
           await this.client.update(task.taskId, 'QA', 90, 'AWH ตรวจผลบนอุปกรณ์จริงแล้ว');
           const summary = boundedSummary(action.summary || lastResult || 'ตรวจและดำเนินงานบนอุปกรณ์จริงเรียบร้อย');
           await this.client.update(task.taskId, 'COMPLETED', 100, 'ตรวจผลบนอุปกรณ์จริงเรียบร้อย', summary);
+          await appendAgentActivity(this.options.dataDir,{source:task.origin,capability:execution.requiredCapability,provider,plane,outcome:'SUCCESS',mode:currentAgentMode(this.options.dataDir),activity}).catch(()=>undefined);
           return { status: 'COMPLETED', taskId: task.taskId, projectId: task.projectId, artifact: null };
         }
+        if(plane==='FOREGROUND'){assertForegroundEpoch(startEpoch);if(!modeAllowsPlane(currentAgentMode(this.options.dataDir),'FOREGROUND'))throw new Error('AWH_DEVICE_MODE_OFF');markAgentForegroundAction();}
         lastResult = await runtime.execute(action as DeviceAction, observation.workspaceId);
         const progress = Math.min(82, 20 + Math.round(((step + 1) / 16) * 62));
         await this.client.update(task.taskId, 'RUNNING', progress, 'AWH กำลังดำเนินการและตรวจผลทีละขั้นบนอุปกรณ์จริง');
       }
       throw new Error('AWH_DEVICE_STEP_LIMIT_REACHED');
     } catch (error) {
-      const reason = boundedSummary(error instanceof Error ? error.message : 'DEVICE_EXECUTION_FAILED');
-      const code = reason.includes('VISUAL_PERMISSION_REQUIRED')
+      const emergency=plane==='FOREGROUND'&&foregroundEpoch()!==startEpoch;
+      const reason = emergency?'AWH_EMERGENCY_STOPPED':boundedSummary(error instanceof Error ? error.message : 'DEVICE_EXECUTION_FAILED');
+      const code = emergency?'AWH_EMERGENCY_STOPPED':reason.includes('DEVICE_MODE_OFF')
+        ? 'DEVICE_MODE_OFF'
+        : reason.includes('VISUAL_PERMISSION_REQUIRED')
         ? 'AWH_DEVICE_VISUAL_PERMISSION_REQUIRED'
         : reason.includes('PROVIDER_') || reason.includes('BUDGET_') || reason.includes('planner')
           ? 'HUB_DEVICE_PLANNER_UNAVAILABLE'
           : reason.includes('TOOL_PACK') || reason.includes('MANAGED_TOOL') || reason.includes('RUNTIME_UNAVAILABLE') || reason.includes('PROTOCOL_UNAVAILABLE')
             ? 'DEVICE_CAPABILITY_UNAVAILABLE'
             : 'DEVICE_EXECUTION_FAILED';
+      await appendAgentActivity(this.options.dataDir,{source:task.origin,capability:execution.requiredCapability,provider,plane,outcome:emergency?'STOPPED':'DEFERRED',mode:currentAgentMode(this.options.dataDir),activity}).catch(()=>undefined);
       await this.client.deferCentralExecution(execution.executionId, code).catch(() => undefined);
       return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason };
     } finally {
+      unregisterPackStop?.();unregisterRuntimeStop?.();
       pack?.close();
       runtime?.close();
+      clearAgentRuntimeStatus();
       clearInterval(heartbeat);
     }
   }

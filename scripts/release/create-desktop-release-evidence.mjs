@@ -65,7 +65,7 @@ const evidence = {
   downloadKey: expectedName,
   packageVerification: 'VERIFIED',
   publicationState: 'NOT_PUBLISHED',
-  updaterStatus: 'FOUNDATION_LOCKED_NOT_ACTIVATED',
+  updaterStatus: 'SELF_UPDATE_ACTIVE_ROLLBACK_SAFE',
 };
 
 await writeFile(outputPath, `${JSON.stringify(evidence, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
