@@ -131,10 +131,34 @@ final class HubCoreReleaseOperator
             if(($target['code']??1)!==0||($ancestor['code']??1)!==0)throw new HubCoreReleaseOperatorException('Approved release is no longer on canonical main lineage','CORE_RELEASE_SOURCE_MOVED');
             $runtimeProbe=$this->runOptional(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'rev-parse','refs/heads/runtime/production'],null,20);
             if(($runtimeProbe['code']??1)!==0)$runtimeProbe=$this->runOptional(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'rev-parse','refs/heads/production'],null,20);
-            $runtimeProduction=(($runtimeProbe['code']??1)===0)?trim((string)$runtimeProbe['out']):'';
-            if($runtimeProduction!==''&&hash_equals($sha,strtolower($runtimeProduction))){
-                $this->complete($executionId,(string)$row['task_id'],$sha,'Production ใช้ release นี้อยู่แล้ว',$at);
-                return ['schemaVersion'=>1,'state'=>'ALREADY_CURRENT','releaseSha'=>$sha];
+            $runtimeProduction=(($runtimeProbe['code']??1)===0)?strtolower(trim((string)$runtimeProbe['out'])):'';
+            $trackProbe=$this->runOptional(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'rev-parse',$productionRef],null,20);
+            $trackProduction=(($trackProbe['code']??1)===0)?strtolower(trim((string)$trackProbe['out'])):'';
+            $runtimeContainsTarget=$runtimeProduction!==''&&hash_equals($sha,$runtimeProduction);
+            if(!$runtimeContainsTarget&&$runtimeProduction!==''){
+                $contains=$this->runOptional(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'merge-base','--is-ancestor',$sha,$runtimeProduction],null,20);
+                $runtimeContainsTarget=($contains['code']??1)===0;
+            }
+            if($runtimeContainsTarget){
+                if($trackProduction!==''&&hash_equals($sha,$trackProduction)){
+                    $this->complete($executionId,(string)$row['task_id'],$sha,'Production runtime มี release นี้และ release track ตรงกันแล้ว',$at);
+                    return ['schemaVersion'=>1,'state'=>'ALREADY_CURRENT','releaseSha'=>$sha];
+                }
+                if($trackProduction!==''){
+                    $trackForward=$this->runOptional(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'merge-base','--is-ancestor',$trackProduction,$sha],null,20);
+                    if(($trackForward['code']??1)!==0)throw new HubCoreReleaseOperatorException('Release track is not a fast-forward to the approved target','CORE_RELEASE_TRACK_DIVERGED');
+                    $this->run(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'update-ref',$productionRef,$sha,$trackProduction],null,20,'CORE_RELEASE_TRACK_RECONCILE_FAILED');
+                }else{
+                    $this->run(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'update-ref',$productionRef,$sha],null,20,'CORE_RELEASE_TRACK_RECONCILE_FAILED');
+                }
+                $trackAfter=strtolower(trim($this->run(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'rev-parse',$productionRef],null,20,'CORE_RELEASE_TRACK_RECONCILE_FAILED')['out']));
+                if(!hash_equals($sha,$trackAfter))throw new HubCoreReleaseOperatorException('Release track did not reach the approved target','CORE_RELEASE_TRACK_RECONCILE_FAILED');
+                $this->complete($executionId,(string)$row['task_id'],$sha,'Shared Production runtime มี release นี้แล้ว จึงปรับเฉพาะ release track โดยไม่ downgrade runtime',$at);
+                return ['schemaVersion'=>1,'state'=>'TRACK_RECONCILED','releaseSha'=>$sha];
+            }
+            if($runtimeProduction!==''){
+                $runtimeForward=$this->runOptional(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'merge-base','--is-ancestor',$runtimeProduction,$sha],null,20);
+                if(($runtimeForward['code']??1)!==0)throw new HubCoreReleaseOperatorException('Shared Production runtime cannot move backward to the approved target','CORE_RELEASE_RUNTIME_DIVERGED');
             }
 
             $this->cleanupTerminalWorkspaces();

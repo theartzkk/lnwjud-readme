@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { desktopImpactForFiles, desktopReleaseRequested, localOperatorInvocation, missionModeFromArgs } from '../scripts/ops/bounded-deploy-mission.mjs';
+import { desktopImpactForFiles, desktopReleaseRequested, localOperatorInvocation, missionModeFromArgs, productionStateForRefs } from '../scripts/ops/bounded-deploy-mission.mjs';
 import { hydrateDesktopReleaseArtifacts, verifyDesktopReleaseArtifacts } from '../scripts/release/hydrate-desktop-release-artifacts.mjs';
 
 test('desktop impact detection still identifies native-agent-affecting source changes',()=>{
@@ -21,6 +21,22 @@ test('bounded deploy mission has one explicit owner approval and a deterministic
   assert.equal(missionModeFromArgs(['--identity-convergence']),'--identity-convergence');
   assert.equal(missionModeFromArgs(['--cloud-first']),'--cloud-first');
   assert.throws(()=>missionModeFromArgs(['--cloud-first','--project-source-authority']),/MISSION_MODE_AMBIGUOUS/);
+});
+
+test('track releases reconcile both shared runtime and their own production ref before becoming current',()=>{
+  const head='f'.repeat(40); const old='e'.repeat(40);
+  assert.deepEqual(productionStateForRefs('--awh-core',head,{'runtime/production':head,production:old}),{
+    baseSha:head,allCurrent:false,trackRef:'production',trackSha:old,runtimeSha:head,
+  });
+  assert.deepEqual(productionStateForRefs('--awh-core',head,{'runtime/production':old,production:head}),{
+    baseSha:old,allCurrent:false,trackRef:'production',trackSha:head,runtimeSha:old,
+  });
+  assert.deepEqual(productionStateForRefs('--platform-hardening',head,{'runtime/production':old,production:old}),{
+    baseSha:old,allCurrent:false,trackRef:'platform/production',trackSha:null,runtimeSha:old,
+  });
+  assert.deepEqual(productionStateForRefs('--platform-hardening',head,{'runtime/production':head,'platform/production':head,production:old}),{
+    baseSha:head,allCurrent:true,trackRef:'platform/production',trackSha:head,runtimeSha:head,
+  });
 });
 
 test('core/web release reuses verified desktop lineage unless desktop publication is explicitly requested',()=>{
@@ -47,6 +63,14 @@ test('mission contract preserves QA, rehearsal, backup, drift and public exact-r
   const source=await readFile(new URL('../scripts/ops/bounded-deploy-mission.mjs',import.meta.url),'utf8');
   assert.match(source,/node:child_process/);
   assert.match(source,/ls-remote/);
+  assert.match(source,/platform\/production/);
+  assert.match(source,/productionStateForRefs/);
+  const operatorSource=await readFile(new URL('../hub/src/HubCoreReleaseOperator.php',import.meta.url),'utf8');
+  assert.match(operatorSource,/'rev-parse',\$productionRef/);
+  assert.match(operatorSource,/merge-base','--is-ancestor',\$sha,\$runtimeProduction/);
+  assert.match(operatorSource,/'update-ref',\$productionRef,\$sha,\$trackProduction/);
+  assert.match(operatorSource,/CORE_RELEASE_RUNTIME_DIVERGED/);
+  assert.match(operatorSource,/TRACK_RECONCILED/);
   assert.match(source,/branch\.main\.remote/);
   assert.doesNotMatch(source,/refs\/heads\/production','refs\/remotes\/vps\/production/);
   assert.match(source,/new URL\('\/api\/v1\/auth\/login',base\)/);

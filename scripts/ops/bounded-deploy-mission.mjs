@@ -103,14 +103,33 @@ async function persistDurable(document){
   console.log(`MISSION_DURABLE_EVIDENCE=${result.relativePath}`);return result;
 }
 
-async function resolveProduction(){
+export function productionStateForRefs(mode,head,observed={}){
+  const clean=(value)=>typeof value==='string'&&SHA.test(value)?value.toLowerCase():null;
+  const target=clean(head); if(!target)throw new Error('MISSION_SOURCE_IDENTITY_INVALID');
+  const runtime=clean(observed['runtime/production'])||clean(observed.production);
+  const trackRef=mode==='--awh-core'?'production':(mode==='--platform-hardening'?'platform/production':null);
+  if(trackRef!==null){
+    const track=clean(observed[trackRef]);
+    const allCurrent=track===target&&runtime===target;
+    const base=runtime||track;
+    if(!base)throw new Error('MISSION_RUNTIME_PRODUCTION_REF_UNRESOLVED');
+    return {baseSha:base,allCurrent,trackRef,trackSha:track,runtimeSha:runtime};
+  }
+  if(!runtime)throw new Error('MISSION_RUNTIME_PRODUCTION_REF_UNRESOLVED');
+  return {baseSha:runtime,allCurrent:runtime===target,trackRef:null,trackSha:null,runtimeSha:runtime};
+}
+
+async function resolveProduction(mode,head){
   const remote=await canonicalRemote();
-  for(const ref of ['runtime/production','production']){
+  const trackRef=mode==='--awh-core'?'production':(mode==='--platform-hardening'?'platform/production':null);
+  const refs=[...new Set([...(trackRef?[trackRef]:[]),'runtime/production','production'])];
+  const observed={};
+  for(const ref of refs){
     const live=await run('git',['ls-remote','--exit-code',remote,`refs/heads/${ref}`]);
     const match=live.code===0?live.tail.trim().match(new RegExp(`^([0-9a-f]{40})\\s+refs/heads/${ref.replaceAll('/','\\/')}$`,'i')):null;
-    if(match&&SHA.test(match[1]))return match[1].toLowerCase();
+    if(match&&SHA.test(match[1]))observed[ref]=match[1].toLowerCase();
   }
-  throw new Error('MISSION_RUNTIME_PRODUCTION_REF_UNRESOLVED');
+  return productionStateForRefs(mode,head,observed);
 }
 
 async function policy(mode,payload){
@@ -283,8 +302,9 @@ export async function runMission(rawArgs=process.argv.slice(2)){
     if(ancestor.code!==0)throw new Error('MISSION_RELEASE_NOT_CANONICAL_ANCESTOR');
   }
   const dirty=await git(['status','--porcelain','--untracked-files=all']); if(dirty!=='') throw new Error('MISSION_SOURCE_NOT_CLEAN');
-  const production=(await resolveProduction()).toLowerCase(); missionContext.baseSha=production;
-  if(production===head){console.log(`MISSION_RELEASE_SHA=${head}`);console.log('MISSION_STATE=ALREADY_CURRENT');console.log('MISSION_RESULT=PASS');return;}
+  const productionState=await resolveProduction(mode,head); const production=productionState.baseSha.toLowerCase();
+  missionContext.baseSha=production; missionContext.trackRef=productionState.trackRef; missionContext.trackProductionSha=productionState.trackSha; missionContext.runtimeProductionSha=productionState.runtimeSha;
+  if(productionState.allCurrent){console.log(`MISSION_RELEASE_SHA=${head}`);console.log('MISSION_STATE=ALREADY_CURRENT');console.log('MISSION_RESULT=PASS');return;}
   const forward=await run('git',['merge-base','--is-ancestor',production,head]);
   if(forward.code!==0)throw new Error('MISSION_RELEASE_NOT_FORWARD_FROM_RUNTIME');
   const changed=(await git(['diff','--name-only',`${production}..${head}`])).split(/\r?\n/).filter(Boolean); missionContext.changedFiles=changed.length; missionContext.changedPaths=changed.slice(0,80);
