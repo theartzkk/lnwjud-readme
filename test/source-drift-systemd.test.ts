@@ -121,6 +121,9 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(janitor, /fresh_active\s*=\s*active_projects\(\)/);
   assert.match(janitor, /row\["projectId"\]\s+in\s+fresh_active/);
   assert.match(guard, /RECOVER=79/);
+  assert.match(tempService, /ReadWritePaths=.*-\/var\/lib\/awh-remote\/tmp/);
+  assert.match(guardService, /ReadWritePaths=.*-\/var\/lib\/awh-remote\/tmp/);
+  assert.match(remote, /install -d -o awh-remote -g awh-operator -m 2770 \/var\/lib\/awh-remote\/tmp/);
   assert.match(janitor, /KEEP_NEWEST/);
   assert.match(janitor, /TARGET_FREE/);
   assert.match(janitor, /SKIPPED_PERMISSION/);
