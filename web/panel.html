@@ -19,14 +19,11 @@
       <label class="cp-search"><span>⌕</span><input id="cp-search" type="search" placeholder="ค้นหาเมนู…  ⌘K" autocomplete="off" /></label>
       <nav class="cp-nav" aria-label="ศูนย์ดูแลระบบ">
         <a class="is-active" href="#overview" data-cp-keywords="dashboard overview สรุป"><span>⌂</span>ภาพรวม</a>
-        <p>ระบบ</p>
-        <a href="#ecosystem" data-cp-keywords="bay excuse learnlab assessment school ecosystem ระบบ โรงเรียน"><span>◫</span>ระบบที่เชื่อมกัน</a>
-        <a href="#awh-agent" data-cp-keywords="awh agent devices tools capabilities runtime เครื่องมือ อุปกรณ์"><span>◈</span>เครื่องและ AWH Agent</a>
-        <a href="./updates.html#line-oa" data-cp-keywords="line oa parent connect rich menu webhook ไลน์ ผู้ปกครอง"><span>◉</span>LINE OA</a>
-        <a href="./hosting.html" data-cp-keywords="website hosting เว็บไซต์ โฮสติ้ง"><span>◎</span>เว็บไซต์</a>
-        <a href="./updates.html" data-cp-keywords="update deploy package manager อัปเดต production"><span>⇧</span>ศูนย์อัปเดต</a>
-        <p>การเข้าถึง</p>
-        <a href="#users" data-cp-keywords="users roles access people ผู้ใช้ สิทธิ์"><span>♙</span>ผู้ใช้และสิทธิ์</a>
+        <p>ดูแล AWH</p>
+        <a href="./updates.html" data-cp-keywords="update deploy package manager อัปเดต production"><span>⇧</span>อัปเดต</a>
+        <a href="#awh-agent" data-cp-keywords="awh agent devices tools capabilities runtime เครื่องมือ อุปกรณ์"><span>◈</span>อุปกรณ์</a>
+        <a href="./hosting.html" data-cp-keywords="website hosting line channel เว็บไซต์ โฮสติ้ง ช่องทาง"><span>◎</span>เว็บไซต์และช่องทาง</a>
+        <a href="#users" data-cp-keywords="users roles access people ผู้ใช้ สิทธิ์"><span>♙</span>ผู้ใช้</a>
         <details class="cp-nav-advanced">
           <summary><span>⌘</span>ขั้นสูง</summary>
           <a href="#backup" data-cp-keywords="backup restore recovery retention สำรอง กู้คืน">สำรองและกู้คืน</a>
@@ -50,7 +47,7 @@
       </header>
       <div class="cp-content">
         <section id="overview" class="cp-hero">
-          <div><span class="cp-eyebrow">KRUART · AWH</span><h1>ดูเฉพาะสิ่งที่ต้องจัดการ</h1><p>สุขภาพระบบ อัปเดต สำรองข้อมูล เว็บไซต์ ผู้ใช้ และ AWH Agent อยู่ในที่เดียว ส่วนรายละเอียดทางเทคนิคเปิดดูเมื่อจำเป็น</p></div>
+          <div><span class="cp-eyebrow">KRUART · AWH</span><h1>ดูเฉพาะสิ่งที่ต้องจัดการ</h1><p>AWH สรุปสถานะ อัปเดต อุปกรณ์ เว็บไซต์ และผู้ใช้ไว้ตรงนี้ รายละเอียดทางเทคนิคซ่อนไว้จนกว่าจะต้องใช้</p></div>
           <div class="cp-hero-side"><img data-kruart-art-slot="system.control-panel" src="./system-control-panel.webp?release=__AWH_WEB_RELEASE_ID__" width="2048" height="768" alt="" aria-hidden="true"><div id="cp-overall" class="cp-overall">กำลังตรวจ</div></div>
         </section>
         <section class="cp-metrics" aria-label="ทรัพยากรระบบ">
@@ -61,10 +58,10 @@
         </section>
         <section id="awh-agent" class="cp-section cp-agent-center cp-admin-section" aria-labelledby="cp-agent-title">
           <div class="cp-section-head">
-            <div><span>AWH AGENT · DEVICE FABRIC</span><h2 id="cp-agent-title">เครื่องและเครื่องมือที่ AWH ใช้งานได้</h2></div>
+            <div><span>DEVICES</span><h2 id="cp-agent-title">อุปกรณ์ที่ AWH ใช้งานได้</h2></div>
             <small id="cp-agent-summary">กำลังตรวจ Agent…</small>
           </div>
-          <p class="cp-inline-message">ดูสถานะเครื่อง ความสามารถ และเส้นทางงานจากศูนย์เดียว AWH เลือกเครื่องที่พร้อมให้อัตโนมัติ โดยไม่ต้องเข้าแผงควบคุมซ้ำอีกหน้า</p>
+          <p class="cp-inline-message">ดูว่าเครื่องไหนพร้อมใช้งานและ AWH ทำอะไรผ่านเครื่องนั้นได้ ระบบเลือกเส้นทางที่เหมาะสมให้อัตโนมัติ</p>
           <div class="cp-agent-metrics" aria-label="สถานะ AWH Agent">
             <article><small>Agent พร้อม</small><strong id="cp-agent-online">—</strong><span>พร้อมรับงาน / ทั้งหมด</span></article>
             <article><small>ความสามารถพร้อม</small><strong id="cp-agent-capabilities">—</strong><span>Capability registry</span></article>
@@ -113,7 +110,7 @@
         <section class="cp-section">
           <div class="cp-section-head"><div><span>QUICK ACCESS</span><h2>งานดูแลที่ใช้บ่อย</h2></div><small>งานประจำวันก่อน · รายละเอียดเทคนิคอยู่ในขั้นสูง</small></div>
           <div class="cp-tool-grid">
-            <a class="cp-tool" href="#awh-agent" data-cp-keywords="awh agent devices tools capabilities"><b>◈</b><span><strong>AWH Agent</strong><small id="cp-agent-tools">กำลังตรวจเครื่องและเครื่องมือ…</small></span></a>
+            <a class="cp-tool" href="#awh-agent" data-cp-keywords="awh agent devices tools capabilities"><b>◈</b><span><strong>อุปกรณ์</strong><small id="cp-agent-tools">กำลังตรวจเครื่องและความสามารถ…</small></span></a>
             <a class="cp-tool" href="./hosting.html" data-cp-keywords="website hosting deploy"><b>◎</b><span><strong>เว็บไซต์</strong><small id="cp-sites">เว็บไซต์ที่ AWH ดูแล</small></span></a>
             <a class="cp-tool" href="./?awh-surface=files" data-cp-keywords="files storage"><b>▤</b><span><strong>ไฟล์และพื้นที่</strong><small>ไฟล์ ผลงาน และพื้นที่จัดเก็บ</small></span></a>
             <a class="cp-tool" href="#backup" data-cp-keywords="backup restore recovery"><b>↺</b><span><strong>สำรองและกู้คืน</strong><small id="cp-backup-card">ดูจุดสำรองและการกู้คืน</small></span></a>

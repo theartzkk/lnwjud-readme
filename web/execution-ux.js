@@ -110,7 +110,7 @@ export function executionStatus(task, workers = []) {
   else if (state === 'VERIFYING') { title = 'กำลังยืนยันผลลัพธ์'; detail = eventMessage || 'AWH กำลังยืนยัน execution, authority และงานต่อเนื่องก่อนประกาศว่าเสร็จ'; }
   else if (state === 'RECOVERING') { title = 'กำลังทำต่อจากจุดเดิม'; detail = eventMessage || 'AWH กำลังกู้ execution จาก heartbeat/checkpoint เดิมโดยไม่เริ่มงานใหม่'; }
   else if (state === 'COMPLETED') { title = 'พร้อมใช้'; detail = result || 'งานเสร็จและผลลัพธ์พร้อมใช้งานแล้ว'; }
-  else if (state === 'FAILED') { title = 'กำลังแก้ไข'; detail = failure || result || 'AWH เก็บสถานะไว้แล้วและกำลังหาวิธีทำต่ออย่างปลอดภัย'; }
+  else if (state === 'FAILED') { title = 'ทำไม่สำเร็จ'; detail = failure || result || 'งานหยุดแล้วและยังไม่ได้ทำต่ออัตโนมัติ คุณสามารถเปิดรายละเอียดหรือลองทำต่อได้'; }
   else if (state === 'CANCELLED') { title = 'ยกเลิกแล้ว'; detail = 'งานนี้ถูกยกเลิกแล้ว'; }
 
   const eventLooksInternal = eventMessage ? /(?:worker|device|capability|executor|VPS|Codex|อุปกรณ์|เครื่องมือ|เซิร์ฟเวอร์|server)/iu.test(eventMessage) : false;
