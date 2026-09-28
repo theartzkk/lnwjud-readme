@@ -56,7 +56,7 @@ test('Work and Night Shift expose capability routing without a parallel control 
   assert.match(styles,/\.capability-chip/);
   assert.match(dashboard,/routedCapabilities/);
   assert.match(dashboard,/Auto capability routing พร้อม/);
-  assert.match(service,/evidenceSchemaVersion' => 2/);
+  assert.match(service,/evidenceSchemaVersion' => 3/);
   assert.match(service,/KRUART_GOLDEN_UI_HALLMARK/);
   assert.doesNotMatch(service,/INSERT INTO .*external_capabil/i);
 });
