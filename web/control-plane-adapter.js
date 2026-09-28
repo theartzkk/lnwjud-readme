@@ -4,6 +4,7 @@ const CONVERSATION_PATH = /^\/api\/v1\/control\/conversations(?:\/|\?|$)/;
 const INFRASTRUCTURE_PATH = /^\/api\/v1\/control\/infrastructure(?:\/|\?|$)/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 let csrfToken = null;
+let csrfRefreshPromise = null;
 
 export function safeApiPath(path) {
   if (typeof path !== 'string' || path.length < 1 || path.length > 2048 || path.startsWith('//') || path.includes('#') || /%(?:2e|2f|5c)/i.test(path)) throw new Error('AWH control path is not safe');
@@ -86,16 +87,52 @@ function safeErrorMessage(value) {
   })[code] || 'AWH ไม่สามารถดำเนินการได้ในขณะนี้';
 }
 
-export async function controlRequest(path, init = {}, fetchImpl = globalThis.fetch) {
+function rememberCsrf(value) {
+  if (typeof value === 'string' && /^[A-Za-z0-9_-]{32,128}$/.test(value)) csrfToken = value;
+  return csrfToken;
+}
+
+async function refreshCsrf(fetchImpl) {
+  if (!csrfRefreshPromise) {
+    csrfRefreshPromise = (async () => {
+      const safePath = '/api/v1/auth/session';
+      const response = await fetchImpl(safePath, { method: 'GET', headers: new Headers({ Accept: 'application/json' }), credentials: 'include', cache: 'no-store' });
+      const value = await json(response, safePath);
+      const token = rememberCsrf(value.csrfToken);
+      if (!token) { const error = new Error('AWH session verification is unavailable'); Object.defineProperty(error, 'code', { value: 'CSRF_REJECTED', enumerable: false }); throw error; }
+      return token;
+    })().finally(() => { csrfRefreshPromise = null; });
+  }
+  return csrfRefreshPromise;
+}
+
+async function controlRequestAttempt(path, init, fetchImpl, retryCsrf, forcedCsrf = null) {
   const headers = new Headers(init.headers || {});
   headers.set('Accept', 'application/json');
-  if (init.body !== undefined && !(typeof FormData !== 'undefined' && init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
-  if (init.method && init.method !== 'GET' && csrfToken) headers.set('X-AWH-CSRF', csrfToken);
+  const isForm = typeof FormData !== 'undefined' && init.body instanceof FormData;
+  if (init.body !== undefined && !isForm) headers.set('Content-Type', 'application/json');
+  const method = typeof init.method === 'string' ? init.method.toUpperCase() : 'GET';
+  const mutation = method !== 'GET' && method !== 'HEAD';
+  const sharedCsrf = forcedCsrf || csrfToken;
+  if (mutation && sharedCsrf) headers.set('X-AWH-CSRF', sharedCsrf);
   const safePath = safeApiPath(path);
   const response = await fetchImpl(safePath, { ...init, headers, credentials: 'include', cache: 'no-store' });
-  const value = await json(response, safePath);
-  if (typeof value.csrfToken === 'string' && /^[A-Za-z0-9_-]{32,128}$/.test(value.csrfToken)) csrfToken = value.csrfToken;
-  return value;
+  try {
+    const value = await json(response, safePath);
+    rememberCsrf(value.csrfToken);
+    return value;
+  } catch (error) {
+    const replayable = init.body === undefined || typeof init.body === 'string';
+    if (retryCsrf && mutation && replayable && error?.code === 'CSRF_REJECTED') {
+      const refreshed = await refreshCsrf(fetchImpl);
+      return controlRequestAttempt(path, init, fetchImpl, false, refreshed);
+    }
+    throw error;
+  }
+}
+
+export async function controlRequest(path, init = {}, fetchImpl = globalThis.fetch) {
+  return controlRequestAttempt(path, init, fetchImpl, true);
 }
 
 export async function openMobileSession(pairingCode, displayName = 'AWH iPhone', appVersion = 'web') {

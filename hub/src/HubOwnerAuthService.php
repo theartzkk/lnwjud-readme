@@ -97,8 +97,20 @@ final class HubOwnerAuthService
 
     public function session(string $token, ?string $now = null): array
     {
-        $row = $this->sessionRow($token, $now); $now = self::timestamp($now ?? gmdate('c')); $csrf = self::randomToken(24);
-        $this->pdo->prepare('UPDATE control_sessions SET csrf_hash = :csrf, last_seen_at = :at WHERE session_id = :id')->execute(['csrf' => hash('sha256', $csrf), 'at' => $now, 'id' => $row['session_id']]);
+        return $this->sessionWithCsrf($token, null, $now);
+    }
+
+    public function sessionWithCsrf(string $token, ?string $csrf, ?string $now = null): array
+    {
+        $row = $this->sessionRow($token, $now); $now = self::timestamp($now ?? gmdate('c'));
+        $reuse = is_string($csrf) && preg_match('/^[A-Za-z0-9_-]{32,128}$/', $csrf) === 1
+            && hash_equals((string) $row['csrf_hash'], hash('sha256', $csrf));
+        if ($reuse) {
+            $this->pdo->prepare('UPDATE control_sessions SET last_seen_at = :at WHERE session_id = :id')->execute(['at' => $now, 'id' => $row['session_id']]);
+        } else {
+            $csrf = self::randomToken(24);
+            $this->pdo->prepare('UPDATE control_sessions SET csrf_hash = :csrf, last_seen_at = :at WHERE session_id = :id')->execute(['csrf' => hash('sha256', $csrf), 'at' => $now, 'id' => $row['session_id']]);
+        }
         return ['userId' => (string) $row['user_id'], 'expiresAt' => (string) $row['expires_at'], 'csrfToken' => $csrf, 'remembered' => $row['remembered_until'] !== null, 'role' => $this->finalSchemaPresent() ? ($this->profile((string) $row['user_id'])['role'] ?? 'STAFF') : 'OWNER'];
     }
 

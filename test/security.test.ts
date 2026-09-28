@@ -81,3 +81,35 @@ test('large control responses keep endpoint-specific safe errors', async () => {
       && !error.message.includes('แชทนี้ยาวมาก'),
   );
 });
+
+
+test('control mutations recover once when another tab replaces the authenticated session', async () => {
+  const stale = 's'.repeat(32);
+  const fresh = 'f'.repeat(32);
+  const bootstrapFetch = async () => new Response(JSON.stringify({ schemaVersion: 1, authenticated: true, csrfToken: stale }), { status: 200, headers: { 'content-type': 'application/json' } });
+  await controlRequest('/api/v1/auth/session', {}, bootstrapFetch as typeof fetch);
+
+  const calls: Array<{path:string;csrf:string|null}> = [];
+  let mutationAttempt = 0;
+  const fetchImpl = async (input: string | URL | Request, init?: RequestInit) => {
+    const path = String(input);
+    const headers = new Headers(init?.headers);
+    calls.push({ path, csrf: headers.get('X-AWH-CSRF') });
+    if (path === '/api/v1/auth/session') {
+      return new Response(JSON.stringify({ schemaVersion: 1, authenticated: true, csrfToken: fresh }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    mutationAttempt += 1;
+    if (mutationAttempt === 1) {
+      return new Response(JSON.stringify({ schemaVersion: 1, error: 'ERROR', code: 'CSRF_REJECTED' }), { status: 403, headers: { 'content-type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({ schemaVersion: 1, state: 'WAITING_FOR_WORKER' }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+
+  const value = await controlRequest('/api/v1/control/system/releases', { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }, fetchImpl as typeof fetch);
+  assert.equal(value.state, 'WAITING_FOR_WORKER');
+  assert.deepEqual(calls, [
+    { path: '/api/v1/control/system/releases', csrf: stale },
+    { path: '/api/v1/auth/session', csrf: null },
+    { path: '/api/v1/control/system/releases', csrf: fresh },
+  ]);
+});
