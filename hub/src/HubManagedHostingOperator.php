@@ -200,7 +200,18 @@ final class HubManagedHostingOperator
     private function phpRuntimePrelude(array $db): string { $rows=["<?php","// AWH managed runtime values; file is outside web root and root-owned."];foreach($db['env'] as $k=>$v){$q=var_export((string)$v,true);$rows[]="putenv('{$k}=' . {$q});";$rows[]="\$_ENV['{$k}'] = {$q};";$rows[]="\$_SERVER['{$k}'] = {$q};";}return implode("\n",$rows)."\n"; }
     private function envFile(array $values): string { $out='';foreach($values as $k=>$v){if(!preg_match('/^[A-Z][A-Z0-9_]{0,63}$/',$k))continue;$out.=$k.'='.str_replace(["\\","\n","\r","\""],["\\\\",'','','\\"'],(string)$v)."\n";}return $out; }
     private function health(int $port,string $path,string $host): string { $result=$this->run(['/usr/bin/curl','-kfsS','--max-time','12','-o','/dev/null','-w','%{http_code}','-H','Host: '.$host,'https://127.0.0.1:'.$port.$path]);$code=trim($result['out']);if(!preg_match('/^[23]\d\d$/',$code))throw new HubManagedHostingOperatorException('Website health check failed','HOSTING_HEALTH_FAILED');return $code; }
-    private function ensureSiteIdentity(string $site): string { $short=substr(str_replace('-','',$site),0,10);$user='awhsite-'.$short;$check=$this->runOptional(['/usr/bin/id','-u',$user]);if($check['code']!==0)$this->run(['/usr/sbin/useradd','--system','--no-log-init','--home-dir',$this->sitePath($site),'--shell','/usr/sbin/nologin','--user-group',$user]);$this->ensureDirectory($this->sitePath($site),0750);$this->ensureDirectory($this->sitePath($site).'/shared',0750);$this->run(['/bin/chown','-R',$user.':'.$user,$this->sitePath($site).'/shared']);return $user; }
+    private function ensureSiteIdentity(string $site): string
+    {
+        $short=substr(str_replace('-','',$site),0,10);$user='awhsite-'.$short;$sitePath=$this->sitePath($site);
+        $check=$this->runOptional(['/usr/bin/id','-u',$user]);
+        if($check['code']!==0)$this->run(['/usr/sbin/useradd','--system','--no-log-init','--home-dir',$sitePath,'--shell','/usr/sbin/nologin','--user-group',$user]);
+        // The shared hosting root is traverse-only; each site remains isolated by its own runtime group.
+        $this->ensureDirectory($this->siteRoot,0711);
+        $this->ensureDirectory($sitePath,0750);$this->ensureDirectory($sitePath.'/releases',0750);$this->ensureDirectory($sitePath.'/shared',0750);
+        $this->run(['/bin/chown','root:'.$user,$sitePath]);$this->run(['/bin/chown','root:'.$user,$sitePath.'/releases']);
+        $this->run(['/bin/chown','-R',$user.':'.$user,$sitePath.'/shared']);
+        return $user;
+    }
     private function sitePath(string $site): string { if(!self::validUuid($site))throw new HubManagedHostingOperatorException('Site identity is invalid','HOSTING_CHECKPOINT_INVALID');return rtrim($this->siteRoot,'/').'/'.strtolower($site); }
     private function nodeUnit(string $site): string { return 'awh-site-'.substr(str_replace('-','',$site),0,12).'.service'; }
     private function site(string $id): array { if(!self::validUuid($id))throw new HubManagedHostingOperatorException('Site identity is invalid','HOSTING_CHECKPOINT_INVALID');$q=$this->pdo->prepare('SELECT * FROM control_managed_sites WHERE site_id=:site');$q->execute(['site'=>strtolower($id)]);$row=$q->fetch();if(!is_array($row))throw new HubManagedHostingOperatorException('Site was not found','SITE_NOT_FOUND');return $row; }
