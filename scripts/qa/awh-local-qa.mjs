@@ -180,6 +180,7 @@ async function runScript(script, timeoutMs = 15 * 60_000) {
     'test/version.test.ts', 'test/installer.test.ts', 'test/central-project-authority-deployment.test.ts',
   ];
   if (script === 'typecheck') return (await exists(tsc)) ? run(process.execPath, [tsc, '-p', 'tsconfig.json', '--noEmit'], { timeoutMs }) : { code: -1, unavailable: true };
+  if (script === 'chat:typecheck') return (await exists(tsc)) ? run(process.execPath, [tsc, '-p', 'tsconfig.chat.json'], { timeoutMs }) : { code: -1, unavailable: true };
   if (script === 'build') return (await exists(tsc)) ? run(process.execPath, [tsc, '-p', 'tsconfig.json'], { timeoutMs }) : { code: -1, unavailable: true };
   if (script === 'test') return (await exists(tsx)) ? run(process.execPath, ['--test-concurrency=1', '--import', tsx, '--test', ...testFiles], { timeoutMs }) : { code: -1, unavailable: true };
   if (script === 'desktop:smoke') {
@@ -589,6 +590,7 @@ async function main() {
   const dependenciesReady = await dependencyCheck();
   if (dependenciesReady) {
     await scriptCheck('typescript', 'typecheck', 'TypeScript typecheck passed');
+    await scriptCheck('chat-typescript', 'chat:typecheck', 'AWH Chat presentation typecheck passed');
     if (mode === 'fast') {
       await fastQaCheck();
     } else {

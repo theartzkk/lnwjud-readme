@@ -118,3 +118,18 @@
 .cp-update-items{margin-top:10px}.cp-update-items .cp-row{padding:9px 11px}.cp-update-items .cp-row small{display:-webkit-box;overflow:hidden;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 @media(max-width:900px){.cp-update-summary-grid{grid-template-columns:1fr}.cp-update-counts{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:560px){.cp-update-counts{grid-template-columns:repeat(2,minmax(0,1fr))}.cp-update-counts span{min-height:62px}.cp-update-status-card strong{font-size:17px}}
+
+
+/* Control Panel 2.0: detailed health without exposing raw diagnostics by default. */
+.cp-health-center{background:linear-gradient(135deg,#fff 0%,#fbfdff 68%,#fff8ef 100%)}
+.cp-health-matrix{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.cp-health-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;min-width:0;padding:13px 14px;border:1px solid #dce8f3;border-radius:15px;background:#fff}
+.cp-health-state{display:flex;align-items:center;gap:7px;min-width:90px}.cp-health-state i{width:9px;height:9px;border-radius:50%;background:#aab4c0;box-shadow:0 0 0 4px rgba(170,180,192,.14)}.cp-health-state b{color:#5f748d;font-size:10px;letter-spacing:.055em}
+.cp-health-item.good .cp-health-state i{background:var(--cp-good);box-shadow:0 0 0 4px rgba(45,157,104,.12)}.cp-health-item.good .cp-health-state b{color:#237d55}
+.cp-health-item.warn .cp-health-state i{background:var(--cp-warn);box-shadow:0 0 0 4px rgba(188,123,16,.12)}.cp-health-item.warn .cp-health-state b{color:#915c08}
+.cp-health-item.bad{border-color:#f0caca;background:#fffafa}.cp-health-item.bad .cp-health-state i{background:var(--cp-bad);box-shadow:0 0 0 4px rgba(202,69,69,.12)}.cp-health-item.bad .cp-health-state b{color:#a93434}
+.cp-health-copy{display:grid;gap:3px;min-width:0}.cp-health-copy strong{font-size:13px;color:#15345e}.cp-health-copy small{color:#617991;font-size:11px;line-height:1.45;overflow-wrap:anywhere}
+.cp-health-action,.cp-row-action{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:6px 9px;border:1px solid #d7e5f2;border-radius:9px;background:#f8fbff;color:#164f83;font-size:11px;font-weight:750;white-space:nowrap}
+.cp-health-action:hover,.cp-row-action:hover{background:#edf7ff}.cp-row-action{margin-inline-start:auto}
+@media(max-width:900px){.cp-health-matrix{grid-template-columns:1fr}.cp-health-item{grid-template-columns:auto minmax(0,1fr) auto}}
+@media(max-width:520px){.cp-health-item{grid-template-columns:auto minmax(0,1fr);align-items:start}.cp-health-action{grid-column:2;justify-self:start}.cp-health-state{min-width:76px}.cp-health-copy strong{font-size:12.5px}}

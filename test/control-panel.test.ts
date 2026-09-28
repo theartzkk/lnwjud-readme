@@ -27,6 +27,14 @@ test('Owner Control Panel composes existing authorities without a parallel backe
   assert.doesNotMatch(html,/infrastructure\.html#capability-fabric/);
   assert.match(js,/renderAgentControl/);
   assert.match(html,/class="cp-nav-advanced"/);
+  assert.match(html,/id="system-health"/);
+  assert.match(html,/id="cp-health-matrix"/);
+  assert.match(html,/ภาพรวมสุขภาพระบบ/);
+  assert.match(js,/renderHealthMatrix/);
+  assert.match(js,/healthItem\('runtime','AWH Runtime'/);
+  assert.match(js,/healthItem\('database','Database'/);
+  assert.match(js,/healthItem\('backup','Backup & Recovery'/);
+  assert.match(css,/\.cp-health-matrix/);
   assert.match(html,/class="cp-section cp-update-overview"/);
   assert.match(html,/id="system-updates"/);
   assert.match(html,/เปิดศูนย์อัปเดต/);

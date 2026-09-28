@@ -16,9 +16,65 @@ function row(title,detail,label,state=''){
   copy.append(strong,small);item.append(copy,chip);return item;
 }
 function empty(host,text){host.replaceChildren();const n=document.createElement('div');n.className='cp-empty';n.textContent=text;host.append(n);}
-function attention(title,detail,state='WARNING'){
+function attention(title,detail,state='WARNING',action=null){
   const wrap=$('cp-attention-wrap'),host=$('cp-attention');if(!wrap||!host)return;
-  wrap.hidden=false;host.append(row(title,detail,state,state));
+  wrap.hidden=false;
+  const item=row(title,detail,state,state);
+  if(action?.href&&action?.label){
+    const link=document.createElement('a');link.className='cp-row-action';link.href=action.href;link.textContent=action.label;item.append(link);
+  }
+  host.append(item);
+}
+function healthTone(state){
+  const value=String(state||'UNKNOWN').toUpperCase();
+  if(['READY','ACTIVE','HEALTHY','VERIFIED','PASS','MATCHED','ONLINE','NORMAL'].includes(value))return 'good';
+  if(['FAILED','CRITICAL','DOWN','ERROR','INVALID'].includes(value))return 'bad';
+  return 'warn';
+}
+function healthItem(key,title,detail,state,actionLabel,href){
+  const item=document.createElement('article');item.className='cp-health-item '+healthTone(state);item.dataset.healthKey=key;item.setAttribute('role','listitem');
+  const stateWrap=document.createElement('span');stateWrap.className='cp-health-state';
+  const dot=document.createElement('i');dot.setAttribute('aria-hidden','true');
+  const chip=document.createElement('b');chip.textContent=String(state||'UNKNOWN').replaceAll('_',' ');
+  stateWrap.append(dot,chip);
+  const copy=document.createElement('span');copy.className='cp-health-copy';
+  const strong=document.createElement('strong');strong.textContent=title;
+  const small=document.createElement('small');small.textContent=detail||'กำลังตรวจข้อมูล';
+  copy.append(strong,small);
+  const action=document.createElement('a');action.className='cp-health-action';action.href=href;action.textContent=actionLabel;
+  item.append(stateWrap,copy,action);return item;
+}
+function renderHealthMatrix(data){
+  const host=$('cp-health-matrix');if(!host)return;
+  const server=data?.telemetry?.server||{},storage=data?.storage||server?.storage||{},db=data?.database||{},backup=data?.backup||{},deployment=data?.deployment||{};
+  const services=Array.isArray(server?.services)?server.services:[];
+  const criticalServices=services.filter(item=>['nginx','php-fpm','native-executor'].includes(item?.key));
+  const servicesReady=criticalServices.length>0&&criticalServices.every(item=>item?.state==='ACTIVE');
+  const workers=Array.isArray(data?.workers)?data.workers:[];
+  const workerReady=workers.filter(item=>['READY','WORKING'].includes(String(item?.state||''))).length;
+  const domains=Array.isArray(server?.domains)?server.domains:[];
+  const domainReady=domains.length>0&&domains.every(item=>item?.tls===true);
+  const runtimeState=deployment.sourceState==='MATCHED'?'MATCHED':deployment.sourceState||'UNKNOWN';
+  const storageState=storage.state||((Number(storage.usedPercent)>=90)?'CRITICAL':Number(storage.usedPercent)>=80?'WARNING':'NORMAL');
+  const dbState=db.state||'UNKNOWN';
+  const backupState=backup.state||'UNKNOWN';
+  const serviceState=servicesReady?'READY':criticalServices.length?'WARNING':'UNKNOWN';
+  const deviceState=workers.length?(workerReady===workers.length?'READY':workerReady?'WARNING':'OFFLINE'):'UNKNOWN';
+  const domainState=domains.length?(domainReady?'READY':'WARNING'):'UNKNOWN';
+  const rows=[
+    healthItem('runtime','AWH Runtime',deployment.controlReleaseId?('Control '+deployment.controlReleaseId+' · Source '+shortSha(deployment.controlSourceSha)):'ยังยืนยัน runtime ไม่ครบ',runtimeState,'ดูรุ่นระบบ','./updates.html'),
+    healthItem('storage','VPS / Storage',percent(storage.usedPercent)+' ใช้งาน · ว่าง '+bytes(storage.freeBytes),storageState,'ดูเซิร์ฟเวอร์','./infrastructure.html'),
+    healthItem('database','Database','Schema '+(db.schemaVersion??'—')+' · '+dbState,dbState,'เปิด Database Studio','./database.html'),
+    healthItem('backup','Backup & Recovery',backup.latest?('ล่าสุด '+date(backup.latest.verifiedAt)+' · '+bytes(backup.latest.sizeBytes)):'ยังไม่มีหลักฐาน backup ล่าสุด',backupState,'ดูการกู้คืน','#backup'),
+    healthItem('services','Core Services',criticalServices.length?criticalServices.filter(item=>item.state==='ACTIVE').length+'/'+criticalServices.length+' บริการหลักพร้อม':'ยังไม่มี service telemetry',serviceState,'ดูบริการ','./infrastructure.html'),
+    healthItem('devices','AWH Devices',workers.length?workerReady+'/'+workers.length+' เครื่องพร้อม':'ยังไม่มี Agent ที่รายงานสถานะ',deviceState,'ดูอุปกรณ์','#awh-agent'),
+    healthItem('domains','Web / SSL',domains.length?domains.length+' โดเมน · '+domains.filter(item=>item.tls).length+' เปิด HTTPS':'ยังไม่มี domain telemetry',domainState,'ดูเว็บไซต์','./hosting.html'),
+  ];
+  host.replaceChildren(...rows);
+  const badCount=rows.filter(item=>item.classList.contains('bad')).length;
+  const warnCount=rows.filter(item=>item.classList.contains('warn')).length;
+  const summary=$('cp-health-summary');
+  if(summary)summary.textContent=badCount?badCount+' รายการผิดปกติ · '+warnCount+' รายการควรดู':warnCount?warnCount+' รายการควรดู · ที่เหลือปกติ':'ระบบหลักปกติทั้งหมด';
 }
 const shortSha=(value)=>typeof value==='string'&&/^[0-9a-f]{40}$/i.test(value)?value.slice(0,9):'—';
 const updateStateLabel=(state)=>({
@@ -102,10 +158,10 @@ function renderServer(data){
   if(data?.telemetry?.state&&data.telemetry.state!=='READY')warnings.push('Telemetry');
   overall.className='cp-overall '+(warnings.length?(String(storage.state)==='CRITICAL'?'bad':'warn'):'good');
   overall.textContent=warnings.length?warnings.length+' รายการต้องดู':'ระบบหลักปกติ';
-  if(db.state&&db.state!=='HEALTHY')attention('Database ต้องตรวจสอบ','Schema '+(db.schemaVersion??'—')+' · '+db.state,'WARNING');
-  if(backup.state&&backup.state!=='VERIFIED')attention('Backup ยังไม่ Verified',backup.state,'WARNING');
-  if(backup.freshness?.state==='STALE')attention('Backup ล่าสุดเก่าเกินกำหนด','ตรวจ scheduler และพื้นที่ดิสก์','WARNING');
-  if(['WARNING','CRITICAL'].includes(String(storage.state||'')))attention('พื้นที่ VPS เหลือน้อย',percent(storage.usedPercent)+' ใช้งาน · ว่าง '+bytes(storage.freeBytes),storage.state);
+  if(db.state&&db.state!=='HEALTHY')attention('Database ต้องตรวจสอบ','Schema '+(db.schemaVersion??'—')+' · '+db.state,'WARNING',{label:'เปิด Database Studio',href:'./database.html'});
+  if(backup.state&&backup.state!=='VERIFIED')attention('Backup ยังไม่ Verified',backup.state,'WARNING',{label:'ดูการกู้คืน',href:'#backup'});
+  if(backup.freshness?.state==='STALE')attention('Backup ล่าสุดเก่าเกินกำหนด','ตรวจ scheduler และพื้นที่ดิสก์','WARNING',{label:'ดูการกู้คืน',href:'#backup'});
+  if(['WARNING','CRITICAL'].includes(String(storage.state||'')))attention('พื้นที่ VPS เหลือน้อย',percent(storage.usedPercent)+' ใช้งาน · ว่าง '+bytes(storage.freeBytes),storage.state,{label:'ดูพื้นที่',href:'./infrastructure.html'});
 }
 function renderDomains(data){
   const host=$('cp-domain-list');host.replaceChildren();
@@ -322,7 +378,7 @@ async function load(){
     if(!session){location.assign('./');return;}
     void loadUpdateSummary();
     const data=await loadInfrastructureCompat();
-    renderServer(data);renderDomains(data);renderRecovery(data);renderServices(data);renderEcosystem(data);renderAgentControl(data);
+    renderServer(data);renderHealthMatrix(data);renderDomains(data);renderRecovery(data);renderServices(data);renderEcosystem(data);renderAgentControl(data);
     $('cp-updated').textContent='ตรวจข้อมูลแล้ว · '+Math.max(1,Math.round(performance.now()-started))+' ms';
     void renderExternalCapabilities();
 

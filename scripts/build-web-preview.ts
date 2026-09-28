@@ -21,8 +21,8 @@ function withDashboard(index: string): string {
   if (!index.includes('</head>') || !index.includes('</body>')) throw new Error('AWH web shell cannot mount dashboard assets');
   return index
     .replace(/  <link rel="stylesheet" href="\.\/(?:awh-light-system|kruart-system)\.css\?release=__AWH_WEB_RELEASE_ID__" \/>\n?/g, '')
-    .replace('</head>', '  <link rel="stylesheet" href="./dashboard.css?release=__AWH_WEB_RELEASE_ID__" />\n  <link rel="stylesheet" href="./responsive-layout.css?release=__AWH_WEB_RELEASE_ID__" />\n  <link rel="stylesheet" href="./awh-light-system.css?release=__AWH_WEB_RELEASE_ID__" />\n  <link rel="stylesheet" href="./kruart-system.css?release=__AWH_WEB_RELEASE_ID__" />\n</head>')
-    .replace('</body>', '  <script src="./vendor/pdf-lib.min.js?release=__AWH_WEB_RELEASE_ID__"></script>\n  <script src="./vendor/qrcode.js?release=__AWH_WEB_RELEASE_ID__"></script>\n  <script type="module" src="./dashboard.js?release=__AWH_WEB_RELEASE_ID__"></script>\n</body>');
+    .replace('</head>', '  <link rel="stylesheet" href="./dashboard.css?release=__AWH_WEB_RELEASE_ID__" />\n  <link rel="stylesheet" href="./responsive-layout.css?release=__AWH_WEB_RELEASE_ID__" />\n  <link rel="stylesheet" href="./awh-light-system.css?release=__AWH_WEB_RELEASE_ID__" />\n  <link rel="stylesheet" href="./kruart-system.css?release=__AWH_WEB_RELEASE_ID__" />\n  <link rel="stylesheet" href="./chat-ui.css?release=__AWH_WEB_RELEASE_ID__" />\n</head>')
+    .replace('</body>', '  <script src="./vendor/pdf-lib.min.js?release=__AWH_WEB_RELEASE_ID__"></script>\n  <script src="./vendor/qrcode.js?release=__AWH_WEB_RELEASE_ID__"></script>\n  <script type="module" src="./dashboard.js?release=__AWH_WEB_RELEASE_ID__"></script>\n  <script type="module" src="./chat-ui.js?release=__AWH_WEB_RELEASE_ID__"></script>\n</body>');
 }
 
 async function main(): Promise<void> {
@@ -55,6 +55,7 @@ async function main(): Promise<void> {
   await mkdir(join(OUTPUT, 'vendor'), { recursive: true });
   await mkdir(join(OUTPUT, 'assets'), { recursive: true });
   await mkdir(join(OUTPUT, 'device-runtime', 'macos'), { recursive: true });
+  execFileSync(process.execPath, [join(ROOT, 'scripts', 'build-chat-island.mjs'), OUTPUT], { cwd: ROOT, stdio: 'inherit' });
   const bundledDashboardCss = `${dashboardCss}
 
 /* Owner Center */

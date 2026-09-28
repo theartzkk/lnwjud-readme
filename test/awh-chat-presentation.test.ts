@@ -1,0 +1,70 @@
+import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { promisify } from "node:util";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import test, { after } from "node:test";
+
+const runFile = promisify(execFile);
+const ROOT = process.cwd();
+const OUTPUT = await mkdtemp(join(tmpdir(), "awh-chat-presentation-"));
+after(async () => { await rm(OUTPUT, { recursive: true, force: true }); });
+const read = (name: string) => readFile(join(ROOT, name), "utf8");
+
+test("AWH Chat presentation reuses the existing AWH authority", async () => {
+  const [app, bridge, runtime, thread] = await Promise.all([
+    read("web/app.js"), read("web/chat-island/bridge.ts"),
+    read("web/chat-island/runtime.tsx"), read("web/chat-island/thread.tsx"),
+  ]);
+  assert.match(app, /globalThis\.AWH_CHAT_BRIDGE/);
+  assert.match(app, /submitWorkMessage/);
+  assert.match(app, /loadConversations/);
+  assert.match(app, /decideApproval/);
+  assert.match(app, /openArtifactWorkspace/);
+  assert.match(bridge, /type AwhChatBridge/);
+  assert.match(runtime, /useExternalStoreRuntime/);
+  assert.match(runtime, /WebSpeechDictationAdapter/);
+  assert.doesNotMatch(bridge + runtime + thread, /fetch\s*\(/);
+  assert.doesNotMatch(bridge + runtime + thread, /indexedDB|new WebSocket|EventSource/);
+});
+
+test("Chat shell exposes modern assistant UX without raw tool logs by default", async () => {
+  const [thread, css, html] = await Promise.all([
+    read("web/chat-island/thread.tsx"), read("web/chat-island/chat.css"), read("web/index.html"),
+  ]);
+  for (const token of ["ThreadPrimitive", "ComposerPrimitive", "MarkdownTextPrimitive", "TaskCard",
+    "ดูรายละเอียดเครื่องมือ", "อนุญาตครั้งนี้", "Artifact Panel",
+    "awh.chat.draft.v1", "searchConversations", "แยกเป็นแชทใหม่"]) assert.ok(thread.includes(token), token);
+  assert.match(html, /id="awh-chat-root"[^>]*hidden/);
+  assert.match(html, /class="workstream awh-chat-fallback"/);
+  assert.match(html, /id="goal-form" class="composer awh-chat-fallback"/);
+  assert.match(css, /body\.awh-modern-chat-ready/);
+  assert.match(css, /env\(safe-area-inset-bottom\)/);
+  assert.doesNotMatch(thread, /desktop_commander|github\.get_commit|playwright\.browser_navigate/);
+});
+
+test("Chat dependencies are pinned and the release emits one island bundle", async () => {
+  const pkg = JSON.parse(await read("package.json"));
+  assert.equal(pkg.dependencies["@assistant-ui/react"], "0.15.22");
+  assert.equal(pkg.dependencies["@assistant-ui/react-markdown"], "0.14.17");
+  assert.equal(pkg.dependencies.react, "19.3.0");
+  assert.equal(pkg.dependencies["react-dom"], "19.3.0");
+  assert.equal(pkg.devDependencies.esbuild, "0.28.2");
+  await runFile(process.execPath, ["--import", "tsx", "scripts/build-web-preview.ts", "--control"], {
+    cwd: ROOT,
+    env: { ...process.env, AWH_PREVIEW_GENERATED_AT: "2026-09-28T16:55:00.000Z",
+      AWH_WEB_RELEASE_ID: "chat-presentation-test", AWH_WEB_OUTPUT_DIR: OUTPUT },
+  });
+  const [builtHtml, js, css] = await Promise.all([
+    readFile(join(OUTPUT, "index.html"), "utf8"),
+    readFile(join(OUTPUT, "chat-ui.js"), "utf8"),
+    readFile(join(OUTPUT, "chat-ui.css"), "utf8"),
+  ]);
+  assert.match(builtHtml, /chat-ui\.css\?release=chat-presentation-test/);
+  assert.match(builtHtml, /chat-ui\.js\?release=chat-presentation-test/);
+  assert.equal((builtHtml.match(/chat-ui\.js/g) || []).length, 1);
+  assert.ok(js.length > 100000);
+  assert.match(css, /awh-chat-shell/);
+  assert.doesNotMatch(builtHtml + js + css, /__AWH_WEB_RELEASE_ID__/);
+});

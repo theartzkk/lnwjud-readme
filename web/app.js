@@ -37,6 +37,78 @@ import {
   const composerDrafts = new Map();
   const taskAnnouncementState = new Map();
   let composerDraftKey = null;
+  const chatBridgeListeners = new Set();
+  let chatBridgeCurrent = Object.freeze({ schemaVersion: 1, ready: false, authenticated: false, project: null, conversation: null, conversations: [], messages: [], tasks: [], artifacts: [], attachments: [], approvals: [], pendingAttachments: [], sending: false, running: false, canCancel: false, continuity: null, workers: [], error: '' });
+
+  function chatTaskPresentation(task) {
+    if (!task) return null;
+    const status = taskExecutionStatus(task);
+    const plan = Array.isArray(task?.execution?.capabilityPlan?.selected) ? task.execution.capabilityPlan.selected : [];
+    return {
+      taskId: task.taskId, goal: String(task.goal || ''), state: String(task.state || 'UNKNOWN'),
+      progress: Number(status?.progress || 0), title: String(status?.title || 'AWH'),
+      detail: String(status?.detail || ''), canCancel: taskCanCancel(task),
+      updatedAt: task.updatedAt || task.createdAt || null,
+      journey: Array.isArray(status?.journey) ? status.journey.map((step) => ({ label: String(step?.label || ''), state: String(step?.state || 'pending') })) : [],
+      tools: plan.map((item) => ({ id: String(item?.id || ''), label: String(item?.label || item?.id || 'เครื่องมือ'), reason: String(item?.reason || '') })),
+    };
+  }
+
+  function chatBridgeSnapshot() {
+    const project = selectedProject();
+    const conversation = state.conversation || {};
+    const tasks = Array.isArray(conversation.tasks) ? conversation.tasks : [];
+    const taskViews = tasks.map(chatTaskPresentation).filter(Boolean);
+    const workers = Array.isArray(state.control?.workers) ? state.control.workers : [];
+    return {
+      schemaVersion: 1, ready: Boolean(project && state.conversationAvailable),
+      authenticated: state.control?.authenticated === true,
+      project: project ? { projectId: project.projectId, name: project.name || 'AWH' } : null,
+      conversation: conversation?.conversation ? { ...conversation.conversation } : null,
+      conversations: Array.isArray(state.conversations) ? state.conversations.map((item) => ({ ...item })) : [],
+      messages: Array.isArray(conversation.messages) ? conversation.messages.map((item) => ({ ...item })) : [],
+      tasks: taskViews,
+      artifacts: Array.isArray(conversation.artifacts) ? conversation.artifacts.map((item) => ({ ...item })) : [],
+      attachments: Array.isArray(conversation.attachments) ? conversation.attachments.map((item) => ({ ...item })) : [],
+      approvals: Array.isArray(conversation.approvals) ? conversation.approvals.map((item) => ({ ...item })) : [],
+      pendingAttachments: state.pendingAttachments.map((file, index) => ({ index, name: file.name, size: file.size, type: file.type || '' })),
+      sending: sendingMessage,
+      running: sendingMessage || taskViews.some((task) => !['COMPLETED','FAILED','CANCELLED'].includes(task.state)),
+      canCancel: Boolean(activeCancellableTask()), continuity: state.workspaceContinuity ? { ...state.workspaceContinuity } : null,
+      workers: workers.map((worker) => ({ workerId: worker.workerId || worker.deviceId || null, name: worker.name || worker.label || worker.hostname || 'อุปกรณ์', state: worker.state || 'UNKNOWN' })),
+      error: /(?:ไม่สำเร็จ|ขัดข้อง|ผิดพลาด|ไม่สามารถ|ยัง.*ไม่ได้)/.test($('goal-message')?.textContent || '') ? ($('goal-message')?.textContent?.trim() || '') : '',
+    };
+  }
+
+  function publishChatBridge() {
+    chatBridgeCurrent = Object.freeze(chatBridgeSnapshot());
+    for (const listener of [...chatBridgeListeners]) { try { listener(); } catch {} }
+  }
+
+  function installChatBridge() {
+    chatBridgeCurrent = Object.freeze(chatBridgeSnapshot());
+    globalThis.AWH_CHAT_BRIDGE = {
+      version: 1,
+      subscribe(listener) { if (typeof listener !== 'function') return () => {}; chatBridgeListeners.add(listener); return () => chatBridgeListeners.delete(listener); },
+      getSnapshot() { return chatBridgeCurrent; },
+      async sendText(text) { const input = $('goal-input'); const value = String(text || '').trim(); if (!(input instanceof HTMLTextAreaElement) || !value) return; input.value = value; input.dispatchEvent(new Event('input', { bubbles: true })); $('goal-form')?.requestSubmit(); await Promise.resolve(); },
+      addFiles(files) { const count = addPendingAttachments(files); renderPendingAttachments(); publishChatBridge(); return count; },
+      removePendingAttachment(index) { if (!Number.isInteger(index) || index < 0 || index >= state.pendingAttachments.length) return false; state.pendingAttachments.splice(index, 1); renderPendingAttachments(); publishChatBridge(); return true; },
+      pickFiles() { if (!$('attachment-input')?.disabled) $('attachment-input')?.click(); },
+      async cancel() { const task = activeCancellableTask(); if (!task) return; await cancelTask(task.taskId); await refreshConversation(false); publishChatBridge(); },
+      async decide(approvalId, decision) { if (typeof approvalId !== 'string' || !['approve','reject'].includes(decision)) return; await decideApproval(approvalId, decision); await refreshWorkspace(false); publishChatBridge(); },
+      async newConversation() { const project = selectedProject(); if (!project) return; const created = await createConversation(project.projectId, 'การสนทนาใหม่'); state.selectedConversationId = created.conversation.conversationId; state.conversation = created; state.threadFollowLatest = true; await refreshConversation(false); publishChatBridge(); },
+      async searchConversations(query='') { const project = selectedProject(); if (!project) return []; return loadConversations(project.projectId, String(query || '').slice(0,120)); },
+      async switchConversation(conversationId) { if (typeof conversationId !== 'string' || !state.conversations.some((item) => item.conversationId === conversationId)) return; state.selectedConversationId = conversationId; state.conversation = null; state.conversationAvailable = false; renderWorkspace(); await refreshConversation(false); publishChatBridge(); },
+      async renameConversation(conversationId, title) { const current = state.conversations.find((item) => item.conversationId === conversationId) || state.conversation?.conversation; if (!current) return; await updateConversation(conversationId, String(title || current.title || 'Work').slice(0,120), false); await refreshConversation(false); publishChatBridge(); },
+      async archiveConversation(conversationId) { const current = state.conversations.find((item) => item.conversationId === conversationId) || state.conversation?.conversation; if (!current) return; await updateConversation(conversationId, current.title || 'Work', true); if (state.selectedConversationId === conversationId) state.selectedConversationId = null; await refreshConversation(false); publishChatBridge(); },
+      async deleteConversation(conversationId) { await updateConversationLifecycle(conversationId, 'DELETE'); if (state.selectedConversationId === conversationId) { state.selectedConversationId = null; state.conversation = null; } await refreshConversation(false); publishChatBridge(); },
+      openConversationManager() { openConversationSheet(); },
+      openArtifact(artifactId) { const artifact = (state.conversation?.artifacts || []).find((item) => item.artifactId === artifactId); if (artifact) void openArtifactWorkspace(artifact); },
+      async refresh() { await refreshWorkspace(false); publishChatBridge(); },
+    };
+    window.dispatchEvent(new CustomEvent('awh:chat-bridge-ready', { detail: { version: 1 } }));
+  }
 
   function syncComposerDraft() {
     const key = `${state.selectedProjectId}:${state.selectedConversationId}`;
@@ -184,6 +256,7 @@ import {
         const preview = document.createElement('img'); preview.alt = ''; preview.width = 44; preview.height = 44; preview.className = 'attachment-thumbnail'; item.append(preview);
         void attachmentPreviews.get(file).then((url) => { if (url && preview.isConnected) preview.src = url; });
       } const name = document.createElement('span'); name.textContent = `${file.name} · ${size(file.size)}`; const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'ลบ'; remove.setAttribute('aria-label', `ลบ ${file.name}`); remove.addEventListener('click', () => { state.pendingAttachments.splice(index, 1); renderPendingAttachments(); }); item.append(name, remove); list.append(item); });
+    publishChatBridge();
   }
   function renderMessageAttachments(attachments) {
     if (!Array.isArray(attachments) || attachments.length === 0) return null;
@@ -1238,6 +1311,7 @@ import {
     renderConversationSheet();
     renderThread(state.conversation, state.conversation?.approvals || control.approvals);
     publishWorkContext();
+    publishChatBridge();
   }
 
   function requestedOwnerSettings() {
@@ -2103,6 +2177,7 @@ import {
 
   $('logout-button').addEventListener('click', async () => { await logout().catch(() => undefined); window.location.reload(); });
 
+  installChatBridge();
   void loadPublicDesktopRelease();
   loadWebData().then(async (data) => {
     render(data);
