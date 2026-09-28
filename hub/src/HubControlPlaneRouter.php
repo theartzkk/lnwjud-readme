@@ -52,6 +52,8 @@ final class HubControlPlaneRouter
         try {
             if ($method === 'GET') {
                 self::sameOriginIfBrowser($server);
+                if ($path === '/api/v1/control/worker/tool-fabric') return self::response(200, $service->workerToolFabric(self::bearer($server), self::workerDevice($server)) + ['requestId' => $requestId], $headers);
+                if (preg_match('#^/api/v1/control/worker/executions/(' . self::UUID . ')/tool-provider$#i', $path, $match) === 1) return self::response(200, $service->workerToolProviderPacket(self::bearer($server), self::workerDevice($server), $match[1]) + ['requestId' => $requestId], $headers);
                 if (preg_match('#^/api/v1/control/worker/results/(' . self::UUID . ')$#i', $path, $match) === 1) return self::response(200, $service->workerResults(self::bearer($server), $match[1]) + ['requestId' => $requestId], $headers);
                 if (preg_match('#^/api/v1/control/worker/devices/(' . self::UUID . ')$#i', $path, $match) === 1) return self::response(200, $service->workerDevices(self::bearer($server), $match[1]) + ['requestId' => $requestId], $headers);
                 if (preg_match('#^/api/v1/control/worker/projects/(' . self::UUID . ')$#i', $path, $match) === 1) return self::response(200, $service->workerProjects(self::bearer($server), $match[1]) + ['requestId' => $requestId], $headers);
@@ -111,6 +113,7 @@ final class HubControlPlaneRouter
                 if ($path === '/api/v1/control/assessment/releases') return self::response(200, $service->assessmentReleaseStatusForSession($sessionToken) + ['requestId' => $requestId], $headers);
                 if ($path === '/api/v1/control/system/readiness') return self::response(200, $service->systemReadiness($sessionToken) + ['requestId' => $requestId], $headers);
                 if ($path === '/api/v1/control/capabilities') return self::response(200, $service->capabilityStatus($sessionToken) + ['requestId' => $requestId], $headers);
+                if ($path === '/api/v1/control/tool-fabric') return self::response(200, $service->toolCatalog($sessionToken) + ['requestId' => $requestId], $headers);
                 // Keep the M6 project route stable for already-packaged desktop
                 // clients. M8 thread identity has an explicit `thread` segment,
                 // so a project UUID can never be misread as a conversation UUID.
@@ -152,6 +155,7 @@ final class HubControlPlaneRouter
             if ($path === '/api/v1/control/settings/reset') { self::sameOrigin($server); return self::response(200, $service->resetProductSetting(self::cookie($server, '__Host-awh_control_session'), self::csrf($server), $payload) + ['requestId' => $requestId], $headers); }
             if ($path === '/api/v1/control/memory/create') { self::sameOrigin($server); return self::response(201, $service->createMemory(self::cookie($server, '__Host-awh_control_session'), self::csrf($server), $payload) + ['requestId' => $requestId], $headers); }
             if ($path === '/api/v1/control/memory') { self::sameOrigin($server); return self::response(200, $service->updateMemory(self::cookie($server, '__Host-awh_control_session'), self::csrf($server), $payload) + ['requestId' => $requestId], $headers); }
+            if ($path === '/api/v1/control/tool-fabric/lifecycle') { self::sameOrigin($server); return self::response(200, $service->changeToolLifecycle(self::cookie($server, '__Host-awh_control_session'), self::csrf($server), $payload) + ['requestId' => $requestId], $headers); }
             if ($path === '/api/v1/control/provider') { self::sameOrigin($server); return self::response(200, $service->updateProviderPolicy(self::cookie($server, '__Host-awh_control_session'), self::csrf($server), $payload) + ['requestId' => $requestId], $headers); }
             if ($path === '/api/v1/control/provider/credential') { self::sameOrigin($server); return self::response(200, $service->updateProviderCredential(self::cookie($server, '__Host-awh_control_session'), self::csrf($server), $payload) + ['requestId' => $requestId], $headers); }
             if ($path === '/api/v1/control/decision-provider/credential') { self::sameOrigin($server); return self::response(200, $service->updateSystemOneCredential(self::cookie($server, '__Host-awh_control_session'), self::csrf($server), $payload) + ['requestId' => $requestId], $headers); }

@@ -9,7 +9,6 @@ import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 import { execFile } from './process.js';
 import { LnwjudDeviceClient, discoverLnwjudLaunchSpec } from './lnwjud-device-client.js';
-import { provisionEligibleToolPacks } from './tool-pack-runtime.js';
 
 // 5.5.0 is the current AWH-qualified device engine. 5.5.3 was evaluated on
 // macOS and rejected because fresh stdio startup stalled at secure-storage
@@ -618,17 +617,13 @@ export async function ensureAwhDeviceRuntime(dataDir: string, platform: NodeJS.P
     await readinessFile(dataDir, result); return result;
   }
   try {
-    let engineInstalled = false;
     if (platform === 'darwin') {
       if (arch !== 'arm64' && arch !== 'x64') throw new Error('DEVICE_RUNTIME_ARCH_UNSUPPORTED');
-      engineInstalled = await installMacEngine(home, arch);
-    } else engineInstalled = await installWindowsEngine(env);
-    const systemInstalled = await ensureSystemMcpRuntime(platform, arch, home, env);
-    // Provision only host-relevant, pinned Tool Packs during the explicit
-    // AWH Agent bootstrap boundary. Heartbeats stay read-only and simply
-    // advertise packs that passed package, host and connector verification.
-    await provisionEligibleToolPacks(platform, arch, home, env);
-    const installed = engineInstalled || systemInstalled;
+      await installMacEngine(home, arch);
+    } else await installWindowsEngine(env);
+    await ensureSystemMcpRuntime(platform, arch, home, env);
+    // Tool Packs are provisioned lazily on first routed use; Agent bootstrap never installs them eagerly.
+    const installed = true;
     const spec = await discoverLnwjudLaunchSpec(platform, home, env);
     if (!spec) throw new Error('DEVICE_RUNTIME_LAUNCHER_MISSING');
     const smokeRoot = join(dataDir, 'device-runtime-smoke');

@@ -157,3 +157,18 @@ test('Remote Desktop MCP inventory requires both the pinned runtime and a persis
   });
   assert.equal(win.includes('tool.remote-desktop-mcp'), true);
 });
+
+
+test('Media utility discovery reports existing commands as inventory only', async () => {
+  const available=new Set(['ffmpeg','ffprobe','yt-dlp','faster-whisper','magick','exiftool']);
+  const tools=await discoverWorkerTools({
+    platform:'darwin',
+    env:{},
+    commandAvailable:async(command)=>available.has(command),
+    pathAvailable:async()=>false,
+  });
+  for(const tool of ['tool.ffmpeg','tool.ffprobe','tool.media.yt-dlp','tool.media.faster-whisper','tool.media.imagemagick','tool.media.exiftool']) {
+    assert.equal(tools.includes(tool),true,tool);
+  }
+  assert.equal(tools.some((value)=>value.startsWith('media.')),false,'inventory detection must not grant media execution capability');
+});

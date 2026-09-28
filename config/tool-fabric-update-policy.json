@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "policyId": "awh.tool-fabric.update.v1",
+  "authority": "AWH_UPDATE_CENTER",
+  "principles": {
+    "pinnedByDefault": true,
+    "autoInstallLatest": false,
+    "lazyLoad": true,
+    "singleCatalog": true,
+    "rollbackRequired": true,
+    "licenseRecheckOnUpdate": true,
+    "noParallelControlPlane": true
+  },
+  "channels": {
+    "stable": {
+      "promotionRequires": [
+        "upstream_revision_resolved",
+        "license_verified",
+        "package_or_binary_integrity_verified",
+        "mcp_or_cli_smoke_pass",
+        "capability_contract_pass",
+        "regression_pass",
+        "rollback_evidence_ready"
+      ]
+    },
+    "preview": {
+      "promotionRequires": [
+        "upstream_revision_resolved",
+        "license_verified",
+        "smoke_pass"
+      ]
+    }
+  },
+  "updateDiscovery": {
+    "mode": "metadata_only",
+    "defaultCadenceHours": 24,
+    "notifyOn": ["new_release", "security_advisory", "license_change", "breaking_change"],
+    "neverMutateRuntimeDuringDiscovery": true
+  },
+  "installation": {
+    "strategy": "capability_lazy_install",
+    "isolatedToolRoots": true,
+    "atomicReplacement": true,
+    "keepPreviousVerified": 1,
+    "sharedGlobalLatestForbidden": true
+  },
+  "futureToolIntake": {
+    "source": "TOOL_DISCOVERY_INBOX",
+    "requiredFields": ["repository", "revision", "license", "capability", "integrationMode", "dataPolicy", "installPolicy", "rollback"],
+    "states": ["DISCOVERED", "REVIEWED", "APPROVED", "PREVIEW", "STABLE", "REJECTED", "RETIRED"],
+    "defaultState": "DISCOVERED",
+    "autoApproval": false,
+    "duplicateCapabilityCheck": true
+  }
+}

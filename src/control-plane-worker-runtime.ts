@@ -6,7 +6,8 @@ import { codexStatus, runCodexGoal } from './codex.js';
 
 import { LnwjudDeviceClient, type DeviceAction } from './lnwjud-device-client.js';
 import { ToolPackClient, type ToolPackToolSummary } from './tool-pack-client.js';
-import { installedToolPackCapabilities, launchToolPackHost, toolPackForCapability } from './tool-pack-runtime.js';
+import { installedToolPackCapabilities, launchToolPackHost, provisionableToolPackCapabilities, toolPackForCapability } from './tool-pack-runtime.js';
+import { managedStableCapabilities } from './tool-fabric-lifecycle.js';
 import { loadOrCreateDeviceIdentity } from './device-identity.js';
 import { createCheckpoint } from './changes.js';
 import { createContinuityCheckpoint } from './continuity.js';
@@ -19,6 +20,7 @@ import { composeWorkerHeartbeatCapabilities, discoverWorkerTools } from './worke
 import { exportOfficeFileToPdf } from './windows-office-export.js';
 import { execCommand } from './process.js';
 import { materializeApprovedSkillPlan, type MaterializedApprovedSkills } from './approved-skill-loader.js';
+import { openManagedMcpTool } from './managed-tool-runtime.js';
 
 const MUTATION_GOAL = /(?:\b(?:fix|edit|change|modify|write|render|publish|deploy|delete|remove)\b|แก้|เพิ่ม|ลบ|สร้าง|เรนเดอร์|เผยแพร่|deploy)/iu;
 
@@ -48,7 +50,7 @@ function deviceToolAllowed(capability: string, tool: import('./control-plane-wor
   if (/^device\.(?:screen\.inspect|gui\.inspect)$/.test(capability)) return ['accessibility','computer_use'].includes(tool);
   if (/^(?:device\.gui\.operate|creative\.photoshop)$/.test(capability)) return ['accessibility','computer_use','input_event'].includes(tool);
   if (capability === 'browser.automation') return ['dom_cdp','accessibility','computer_use','input_event'].includes(tool);
-  if (/^(?:browser\.(?:playwright|debug)|creative\.(?:premiere|aftereffects))$/.test(capability)) return tool === 'mcp_tool';
+  if (/^(?:web\.(?:interact|debug)|browser\.(?:playwright|debug)|creative\.(?:premiere|aftereffects)|code\.repo)$/.test(capability)) return tool === 'mcp_tool';
   if (capability === 'workspace.files') return ['read_file','write_file','search_text'].includes(tool);
   if (capability === 'system.shell') return tool === 'shell';
   if (capability === 'device.process') return ['process_list','process_start','process_status','process_stop'].includes(tool);
@@ -58,10 +60,13 @@ function deviceToolAllowed(capability: string, tool: import('./control-plane-wor
 function selectToolPackCatalog(tools: ToolPackToolSummary[], goal: string, capability: string, limit = 36): ToolPackToolSummary[] {
   const tokens = [...new Set(goal.toLocaleLowerCase('en-US').split(/[^\p{L}\p{N}_-]+/u).filter((value) => value.length >= 3))].slice(0, 32);
   const preferred: Record<string, RegExp> = {
+    'web.interact': /(?:navigate|snapshot|find|click|type|fill|select|upload|wait|evaluate|tabs?|console|network)/i,
     'browser.playwright': /(?:navigate|snapshot|find|click|type|fill|select|upload|wait|evaluate|tabs?|console|network)/i,
+    'web.debug': /(?:pages?|navigate|snapshot|screenshot|console|network|request|performance|trace|lighthouse|memory|evaluate)/i,
     'browser.debug': /(?:pages?|navigate|snapshot|screenshot|console|network|request|performance|trace|lighthouse|memory|evaluate)/i,
     'creative.aftereffects': /(?:comp|composition|layer|keyframe|effect|property|snapshot|render|project|footage|expression|diff)/i,
     'creative.premiere': /(?:search_tools|invoke_tool|capabilit|connect|project|sequence|timeline|clip|track|caption|audio|export|render|marker|effect)/i,
+    'code.repo': /(?:repo|repository|pull|request|issue|action|workflow|release|branch|commit|file|search|discussion|security)/i,
   };
   const ranked = tools.map((tool, index) => {
     const haystack = (tool.name + ' ' + tool.description).toLocaleLowerCase('en-US');
@@ -150,7 +155,7 @@ export function capabilityPlanInstruction(plan: WorkerCapabilityPlan | null, wor
   if (!plan || plan.selected.length === 0) return '';
   const lines = ['AWH AUTO CAPABILITY PLAN — ADVISORY, NOT AUTHORITY'];
   for (const item of plan.selected) {
-    const availability = item.mode === 'APPROVED_SKILL_PACK' ? (materializedSkills.length > 0 ? 'APPROVED_SKILL_LOADED' : 'APPROVED_SKILL_PENDING') : item.requiredTool === null ? 'REFERENCE' : workerCapabilities.includes(item.requiredTool) ? 'LOCAL_RUNTIME_DETECTED' : 'NATIVE_FALLBACK';
+    const availability = item.mode === 'APPROVED_SKILL_PACK' ? (materializedSkills.length > 0 ? 'APPROVED_SKILL_LOADED' : 'APPROVED_SKILL_PENDING') : workerCapabilities.includes(item.id) ? 'MANAGED_STABLE' : item.requiredTool === null ? 'REFERENCE' : workerCapabilities.includes(item.requiredTool) ? 'INVENTORY_ONLY_NOT_EXECUTION_AUTHORITY' : 'NOT_PROVISIONED';
     lines.push(`- ${item.label} [${item.id}] ${availability}: ${item.reason}`);
     if (item.id === 'context.optimize') lines.push('  A local Context Mode runtime may be detected, but use it only when the current Codex/plugin tool surface explicitly exposes the adapter. Never guess opaque CLI flags. Its cache is temporary optimization; current Vault source and raw evidence remain authoritative. Otherwise continue with bounded native context without retry loops.');
     if (item.id === 'design.antislop') lines.push('  Use the AWH-approved Anti Slop design profile as a filter, not a style authority. KRUART DESIGN.md and the product overlay win. Do not run its installer/wizard, fetch updates, enable network, or persist the skill.');
@@ -159,6 +164,7 @@ export function capabilityPlanInstruction(plan: WorkerCapabilityPlan | null, wor
     if (item.id === 'design.hallmark') lines.push('  Apply a Hallmark-style design critique: hierarchy, spacing, typography, contrast, responsive behavior, clutter, excessive badges/cards/gradients, and generic AI-template appearance. Never claim visual PASS from source inspection alone.');
     if (item.id === 'design.reference') lines.push('  Use design-system and DESIGN.md patterns as reference only. KRUART Golden UI, existing product identity, Thai typography, accessibility, and current validated components override external recipes.');
     if (item.id === 'team.harness') lines.push('  Review architecture, security, UX, runtime/deployment and recovery perspectives inside this one AWH execution. Do not create another queue, login, memory, database, approval system or control plane.');
+    if (['code.semantic','docs.current','code.repo','web.extract','document.quick','document.deep','vision.ocr.th','security.scan','data.query','mcp.qa','local.ai.fallback','browser.session','media.inspect'].includes(item.id)) lines.push('  Tool inventory alone is never execution authority. Use this capability only when AWH Tool Fabric reports a managed Stable provider or a bounded first-party fallback explicitly allowed by the current task.');
   }
   return lines.join('\n');
 }
@@ -186,20 +192,27 @@ export function deviceExecutionCapabilities(tools: readonly string[]): string[] 
   ];
 }
 
-export async function workerCapabilities(dataDir: string, allowCodex = true): Promise<string[]> {
+export async function workerCapabilities(dataDir: string, allowCodex = true, provisionableManaged: readonly string[] = []): Promise<string[]> {
   const local = await detectLocalCapabilities(dataDir).catch(() => ({ git: false, node: false, php: false, ffmpeg: false, remotion: false, browsers: [] }));
   const codex = allowCodex ? await codexStatus(dataDir).catch(() => ({ available: false, version: null })) : { available: false, version: null };
   const tools = await discoverWorkerTools().catch((): string[] => []);
-  const packs = await installedToolPackCapabilities().catch(() => ({ tools: [] as string[], capabilities: [] as string[] }));
+  const [packs, provisionablePacks, managedStable] = await Promise.all([
+    installedToolPackCapabilities().catch(() => ({ tools: [] as string[], capabilities: [] as string[] })),
+    provisionableToolPackCapabilities().catch((): string[] => []),
+    managedStableCapabilities().catch((): string[] => []),
+  ]);
   tools.push(...packs.tools);
   const executable = [
+    ...provisionableManaged.filter((value) => /^[a-z][a-z0-9:._-]{0,63}$/.test(value)),
     'autopilot:local', 'project:context', 'qa:bounded',
     ...(local.git ? ['git:read'] : []), ...(local.node ? ['node'] : []),
     ...(local.php ? ['php:lint'] : []), ...(local.ffmpeg ? ['ffmpeg:probe'] : []),
     ...(local.remotion ? ['remotion'] : []),
     ...officeExecutionCapabilities(process.platform, tools),
     ...deviceExecutionCapabilities(tools),
+    ...provisionablePacks,
     ...packs.capabilities,
+    ...managedStable,
     ...(codex.available ? ['codex:cli'] : []),
   ];
   if (codex.available) tools.push('tool.codex');
@@ -218,7 +231,8 @@ export class ControlPlaneWorkerRuntime {
     this.running = true;
     const identity = await loadOrCreateDeviceIdentity(this.options.dataDir);
     try {
-      const capabilities = await workerCapabilities(this.options.dataDir, this.options.allowCodex);
+      const managedCatalog = await this.client.toolFabricCatalog().catch(() => []);
+      const capabilities = await workerCapabilities(this.options.dataDir, this.options.allowCodex, managedCatalog.map((item) => item.capability));
       await this.client.heartbeat(capabilities, 'READY');
       const projects = await this.client.projects().catch((): WorkerProject[] => []);
       await this.reconcileProjectMemoryMetadata(projects).catch(() => undefined);
@@ -289,7 +303,7 @@ export class ControlPlaneWorkerRuntime {
   private async execute(task: WorkerTask, deviceId: string, capabilities: string[]): Promise<WorkerRunResult> {
     if (task.execution?.executorKind === 'CODEX' && task.execution.requiredCapability === 'codex:cli' && task.execution.vaultRevisionId !== null) return this.executeCentralCodex(task, capabilities);
     if (task.execution?.executorKind === 'DEVICE' && /^office\.(?:word|excel|powerpoint)\.pdf$/.test(task.execution.requiredCapability)) return this.executeOfficePdf(task, capabilities);
-    if (task.execution?.executorKind === 'DEVICE' && /^(?:creative\.(?:photoshop|premiere|aftereffects)|device\.(?:screen\.inspect|gui\.(?:inspect|operate)|process)|browser\.(?:automation|playwright|debug)|workspace\.files|system\.shell)$/.test(task.execution.requiredCapability)) return this.executeDeviceAutomation(task, capabilities);
+    if (task.execution?.executorKind === 'DEVICE' && /^(?:creative\.(?:photoshop|premiere|aftereffects)|device\.(?:screen\.inspect|gui\.(?:inspect|operate)|process)|web\.(?:interact|debug)|browser\.(?:automation|playwright|debug)|workspace\.files|system\.shell|code\.repo)$/.test(task.execution.requiredCapability)) return this.executeDeviceAutomation(task, capabilities);
     // A bounded lease is what prevents two workers from mutating one task. A
     // Codex run can legitimately exceed the initial five-minute lease, so the
     // already-authenticated worker renews it while it owns the task. Failure
@@ -436,9 +450,16 @@ export class ControlPlaneWorkerRuntime {
     let pack: ToolPackClient | null = null;
     try {
       await mkdir(root, { recursive: true, mode: 0o700 });
-      if (specializedPack) {
-        await launchToolPackHost(specializedPack);
-        pack = await ToolPackClient.open(execution.requiredCapability);
+      if (specializedPack || execution.requiredCapability === 'code.repo') {
+        if (specializedPack) {
+          await launchToolPackHost(specializedPack);
+          pack = await ToolPackClient.open(execution.requiredCapability);
+        } else {
+          const packet = await this.client.toolProviderPacket(execution.executionId);
+          if (packet.capability !== execution.requiredCapability || packet.plan.runtimeKind !== 'MCP') throw new Error('MANAGED_TOOL_PROVIDER_MISMATCH');
+          const managed = await openManagedMcpTool(packet);
+          pack = managed.client;
+        }
         const allTools = await pack.listTools();
         const catalog = selectToolPackCatalog(allTools, task.goal, execution.requiredCapability);
         if (catalog.length < 1) throw new Error('TOOL_PACK_TOOL_CATALOG_EMPTY');
@@ -448,7 +469,7 @@ export class ControlPlaneWorkerRuntime {
         let packImageBase64: string | null = null;
         let packImageMimeType: 'image/png' | null = null;
         for (let step = 0; step < 16; step++) {
-          let observation = { workspaceId: '', text: `AWH specialized tool pack ready: ${specializedPack.id}`, imageBase64: null as string | null, imageMimeType: null as 'image/png' | null };
+          let observation = { workspaceId: '', text: `AWH managed capability ready: ${execution.requiredCapability}`, imageBase64: null as string | null, imageMimeType: null as 'image/png' | null };
           if (runtime) {
             try { observation = await runtime.observe(root, requireVisual); }
             catch { /* Specialized MCP remains authoritative when GUI observation is unavailable. */ }
@@ -515,7 +536,7 @@ export class ControlPlaneWorkerRuntime {
         ? 'AWH_DEVICE_VISUAL_PERMISSION_REQUIRED'
         : reason.includes('PROVIDER_') || reason.includes('BUDGET_') || reason.includes('planner')
           ? 'HUB_DEVICE_PLANNER_UNAVAILABLE'
-          : reason.includes('TOOL_PACK') || reason.includes('RUNTIME_UNAVAILABLE') || reason.includes('PROTOCOL_UNAVAILABLE')
+          : reason.includes('TOOL_PACK') || reason.includes('MANAGED_TOOL') || reason.includes('RUNTIME_UNAVAILABLE') || reason.includes('PROTOCOL_UNAVAILABLE')
             ? 'DEVICE_CAPABILITY_UNAVAILABLE'
             : 'DEVICE_EXECUTION_FAILED';
       await this.client.deferCentralExecution(execution.executionId, code).catch(() => undefined);

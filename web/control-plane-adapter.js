@@ -541,3 +541,16 @@ export async function decideApproval(approvalId, decision) {
   if (!UUID.test(approvalId) || !['approve', 'reject'].includes(decision)) throw new Error('การอนุมัติไม่ถูกต้อง');
   return controlRequest(`/api/v1/control/approvals/${approvalId}/${decision}`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) });
 }
+
+export async function loadToolFabricCatalog() {
+  const value = await controlRequest('/api/v1/control/tool-fabric');
+  if (value.schemaVersion !== 1 || value.authority !== 'AWH_UPDATE_CENTER' || value.policy !== 'awh.tool-fabric.update.v1' || !Array.isArray(value.items)) throw new Error('สถานะ Tool Fabric ไม่ถูกต้อง');
+  return value;
+}
+
+export async function changeToolFabricLifecycle(capability, action) {
+  if (typeof capability !== 'string' || !/^[a-z][a-z0-9:._-]{0,63}$/.test(capability) || !['REVIEW','APPROVE','PROMOTE_PREVIEW','PROMOTE_STABLE','ROLLBACK','DISABLE','ENABLE','RETIRE','REJECT'].includes(action)) throw new Error('คำสั่ง Tool Fabric ไม่ถูกต้อง');
+  const value = await controlRequest('/api/v1/control/tool-fabric/lifecycle', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, capability, action }) });
+  if (value.schemaVersion !== 1 || !value.tool || value.tool.capability !== capability) throw new Error('Tool Fabric ยังยืนยันการเปลี่ยนสถานะไม่ได้');
+  return value.tool;
+}

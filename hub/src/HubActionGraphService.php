@@ -131,8 +131,8 @@ final class HubActionGraphService
         if ($capability === 'creative.photoshop') return 'แก้ไขงานใน Adobe Photoshop';
         if ($capability === 'creative.premiere') return 'ตัดต่อและตรวจงานใน Adobe Premiere Pro';
         if ($capability === 'creative.aftereffects') return 'สร้างและตรวจงานใน Adobe After Effects';
-        if ($capability === 'browser.playwright') return 'ทำงานบนเว็บด้วย Browser Actions';
-        if ($capability === 'browser.debug') return 'ตรวจเว็บด้วย Browser Diagnostics';
+        if (in_array($capability, ['web.interact','browser.playwright'], true)) return 'ทำงานบนเว็บด้วย Browser Actions';
+        if (in_array($capability, ['web.debug','browser.debug'], true)) return 'ตรวจเว็บด้วย Browser Diagnostics';
         if (str_starts_with($capability, 'office.')) return 'จัดทำไฟล์สำนักงาน';
         if (in_array($capability, ['project.read', 'project.search'], true)) return 'วิเคราะห์ข้อมูล';
         if (str_starts_with($capability, 'project.mutate.')) return 'จัดทำฉบับแก้ไข';

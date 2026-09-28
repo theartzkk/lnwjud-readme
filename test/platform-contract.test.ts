@@ -62,6 +62,25 @@ test('external capability registry pins sources without creating parallel author
  for(const entry of registry.entries){
    assert.equal(entry.authorityBoundary,'AWH_EXISTING_CONTROL_PLANE');
    assert.equal(entry.enabledByDefault,false);
-   assert.equal(entry.hostedServiceAllowed,false);
+   if(entry.integrationMode==='LAZY_EXTERNAL_SERVICE_CLIENT'){
+     assert.equal(entry.id,'context7-docs');
+     assert.equal(entry.hostedServiceAllowed,true);
+     assert.equal(entry.externalDataTransferAllowed,true);
+   }else assert.equal(entry.hostedServiceAllowed,false);
+ }
+ const github=byId.get('github-mcp');
+ assert.equal(github?.provision?.kind,'GITHUB_RELEASE_BINARY');
+ if(github?.provision?.kind==='GITHUB_RELEASE_BINARY'){
+   assert.equal(github.provision.version,'1.12.2');
+   assert.equal(github.provision.artifacts['darwin-arm64']?.sha256,'7e6c5aec43f26b82d3580e77a4ee26872bcd34b48c9a08d0eaef48b5d0563904');
+   assert.equal(github.provision.artifacts['darwin-x64']?.sha256,'6e73f5c9738050e44318d37aa919cb8ed2e29453d6341e942dc9c40c9c7ced5b');
+   assert.equal(github.provision.artifacts['windows-x64']?.sha256,'c08872e69f700d4219e7b4ab9607d56d7993171519ee32b62fccb8fba0cab673');
+   assert.equal(github.provision.authProviderId,'github-actions');
+ }
+ const inspector=byId.get('mcp-inspector');
+ assert.equal(inspector?.provision?.kind,'NPM_CLI');
+ if(inspector?.provision?.kind==='NPM_CLI'){
+   assert.equal(inspector.provision.version,'2.8.0');
+   assert.match(inspector.provision.integrity,/^sha512-/);
  }
 });

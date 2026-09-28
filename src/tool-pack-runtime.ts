@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { access, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, win32 as pathWin32 } from 'node:path';
 import { execFile } from './process.js';
+import { activateVerifiedToolRelease, inspectToolLifecycle, writeVerifiedToolReleaseManifest } from './tool-fabric-lifecycle.js';
 
 const NODE_VERSION = '24.21.0';
 
@@ -12,10 +13,12 @@ export type ToolPackId = 'browser.playwright' | 'browser.devtools' | 'creative.a
 export interface ToolPackDefinition {
   id: ToolPackId;
   capability: string;
+  legacyCapabilities?: readonly string[];
   inventoryTool: string;
   packageName: string;
   version: string;
   integrity: string;
+  license: 'MIT' | 'Apache-2.0';
   entry: string[];
   args: string[];
   host: 'browser' | 'aftereffects' | 'premiere';
@@ -24,22 +27,26 @@ export interface ToolPackDefinition {
 export const TOOL_PACKS: readonly ToolPackDefinition[] = [
   {
     id: 'browser.playwright',
-    capability: 'browser.playwright',
+    capability: 'web.interact',
+    legacyCapabilities: ['browser.playwright'],
     inventoryTool: 'tool.pack.playwright',
     packageName: '@playwright/mcp',
     version: '0.0.82',
     integrity: 'sha512-OCqftfb8H4dnqm/njbTBRk3seUvUPttOlJUxCtEzXGETYOlRH5Qt3bbXIjmZIuWAxD9RF+yg1ASrPeXvm0y5cA==',
+    license: 'Apache-2.0',
     entry: ['node_modules','@playwright','mcp','cli.js'],
     args: ['--headless','--browser','chrome'],
     host: 'browser',
   },
   {
     id: 'browser.devtools',
-    capability: 'browser.debug',
+    capability: 'web.debug',
+    legacyCapabilities: ['browser.debug'],
     inventoryTool: 'tool.pack.chrome-devtools',
     packageName: 'chrome-devtools-mcp',
     version: '1.10.1',
     integrity: 'sha512-Klw6HWDqHC/XS1JwZldd2r49aUhbUJN9m9Mvcx4SEueIPXtzuQX+QelxAViobv8YUkDZ7HWDrmViR6LeYK0wAw==',
+    license: 'Apache-2.0',
     entry: ['node_modules','chrome-devtools-mcp','build','src','bin','chrome-devtools-mcp.js'],
     args: ['--headless'],
     host: 'browser',
@@ -51,6 +58,7 @@ export const TOOL_PACKS: readonly ToolPackDefinition[] = [
     packageName: '@engine-room/after-effects-mcp',
     version: '0.5.1',
     integrity: 'sha512-BsevU2a3y5kwhyW3OejfzrlHMQdmeocokk0rEFhn25z968sZbxf+mzD8vOw1JpD9Lj2ejLW/kG8xaXdJU/F+rw==',
+    license: 'MIT',
     entry: ['node_modules','@engine-room','after-effects-mcp','bin','server.js'],
     args: [],
     host: 'aftereffects',
@@ -62,6 +70,7 @@ export const TOOL_PACKS: readonly ToolPackDefinition[] = [
     packageName: 'premiere-pro-mcp',
     version: '1.18.2',
     integrity: 'sha512-3BKIZBn2hrVpZ8I41CsBVm9EtoWmDfmupMXXkXaW1cIVm98xOEGy5BUUXT/WiRnbws4ZUE7VR210cFYtUHEEXA==',
+    license: 'MIT',
     entry: ['node_modules','premiere-pro-mcp','dist','index.js'],
     args: [],
     host: 'premiere',
@@ -69,7 +78,7 @@ export const TOOL_PACKS: readonly ToolPackDefinition[] = [
 ] as const;
 
 export function toolPackForCapability(capability: string): ToolPackDefinition | null {
-  return TOOL_PACKS.find((pack) => pack.capability === capability) ?? null;
+  return TOOL_PACKS.find((pack) => pack.capability === capability || pack.legacyCapabilities?.includes(capability)) ?? null;
 }
 
 export async function launchToolPackHost(pack: ToolPackDefinition, platform: NodeJS.Platform = process.platform, home = homedir(), env: NodeJS.ProcessEnv = process.env): Promise<void> {
@@ -123,13 +132,35 @@ function toolPackReleaseKey(pack: ToolPackDefinition): string {
 
 export function toolPackRoot(pack: ToolPackDefinition, platform: NodeJS.Platform = process.platform, home = homedir(), env: NodeJS.ProcessEnv = process.env): string {
   const base = localBase(platform, home, env);
+  const parts = ['ToolPacks', pack.capability, 'releases', toolPackReleaseKey(pack)];
+  return platform === 'win32' ? pathWin32.join(base, ...parts) : join(base, ...parts);
+}
+
+function legacyToolPackRoot(pack: ToolPackDefinition, platform: NodeJS.Platform, home: string, env: NodeJS.ProcessEnv): string | null {
+  if (pack.id === pack.capability) return null;
+  const base = localBase(platform, home, env);
   const parts = ['ToolPacks', pack.id, 'releases', toolPackReleaseKey(pack)];
   return platform === 'win32' ? pathWin32.join(base, ...parts) : join(base, ...parts);
 }
 
+async function adoptLegacyToolPackRelease(pack: ToolPackDefinition, platform: NodeJS.Platform, home: string, env: NodeJS.ProcessEnv): Promise<void> {
+  const legacy = legacyToolPackRoot(pack, platform, home, env);
+  if (!legacy) return;
+  const canonical = toolPackRoot(pack, platform, home, env);
+  if (await available(canonical) || !await available(legacy)) return;
+  const releases = platform === 'win32'
+    ? pathWin32.join(localBase(platform, home, env), 'ToolPacks', pack.capability, 'releases')
+    : join(localBase(platform, home, env), 'ToolPacks', pack.capability, 'releases');
+  await mkdir(releases, { recursive: true, mode: 0o700 });
+  try { await rename(legacy, canonical); }
+  catch {
+    if (!await available(canonical)) throw new Error('TOOL_PACK_LEGACY_ADOPTION_FAILED');
+  }
+}
+
 function toolPackLockPaths(pack: ToolPackDefinition, platform: NodeJS.Platform, home: string, env: NodeJS.ProcessEnv): { parent: string; lock: string } {
   const base = localBase(platform, home, env);
-  const parts = ['ToolPacks', pack.id, 'locks'];
+  const parts = ['ToolPacks', pack.capability, 'locks'];
   const parent = platform === 'win32' ? pathWin32.join(base, ...parts) : join(base, ...parts);
   const lock = platform === 'win32' ? pathWin32.join(parent, `${toolPackReleaseKey(pack)}.lock`) : join(parent, `${toolPackReleaseKey(pack)}.lock`);
   return { parent, lock };
@@ -177,6 +208,7 @@ function entryPath(pack: ToolPackDefinition, root: string, platform: NodeJS.Plat
 export interface ToolPackStatus {
   id: ToolPackId;
   capability: string;
+  legacyCapabilities?: readonly string[];
   inventoryTool: string;
   version: string;
   installed: boolean;
@@ -326,6 +358,7 @@ export async function inspectToolPack(pack: ToolPackDefinition, platform: NodeJS
 }
 
 export async function ensureToolPack(pack: ToolPackDefinition, platform: NodeJS.Platform = process.platform, arch: string = process.arch, home = homedir(), env: NodeJS.ProcessEnv = process.env): Promise<ToolPackStatus> {
+  await adoptLegacyToolPackRelease(pack, platform, home, env);
   const current = await inspectToolPack(pack, platform, arch, home, env);
   if (current.verified) return current;
   const releaseLock = await acquireToolPackInstallLock(pack, platform, home, env);
@@ -353,26 +386,70 @@ export async function ensureToolPack(pack: ToolPackDefinition, platform: NodeJS.
   }
 }
 
+export async function ensureToolPackReady(pack: ToolPackDefinition, platform: NodeJS.Platform = process.platform, arch: string = process.arch, home = homedir(), env: NodeJS.ProcessEnv = process.env): Promise<ToolPackStatus> {
+  const installed = await ensureToolPack(pack, platform, arch, home, env);
+  if (!installed.verified || !installed.hostReady) return installed;
+  await ensureConnector(pack, installed, platform, home, env);
+  return inspectToolPack(pack, platform, arch, home, env);
+}
+
+export async function activateToolPackAfterSmoke(pack: ToolPackDefinition, state: ToolPackStatus, platform: NodeJS.Platform = process.platform, home = homedir(), env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  if (!state.verified || !state.hostReady || !state.connectorReady || !state.node || !state.entry) throw new Error('TOOL_PACK_NOT_VERIFIED_FOR_ACTIVATION');
+  const releaseKey = toolPackReleaseKey(pack);
+  await writeVerifiedToolReleaseManifest({
+    schemaVersion: 1,
+    kind: 'AWH_TOOL_RELEASE',
+    capability: pack.capability,
+    providerId: pack.id,
+    releaseKey,
+    channel: 'stable',
+    version: pack.version,
+    revision: null,
+    license: pack.license,
+    verificationState: 'VERIFIED',
+    checks: { integrity: 'PASS', smoke: 'PASS', capabilityContract: 'PASS', rollback: 'READY' },
+    launch: { command: state.node, args: [state.entry, ...pack.args] },
+  }, platform, home, env);
+  await activateVerifiedToolRelease(pack.capability, releaseKey, platform, home, env);
+}
+
 export async function provisionEligibleToolPacks(platform: NodeJS.Platform = process.platform, arch: string = process.arch, home = homedir(), env: NodeJS.ProcessEnv = process.env): Promise<ToolPackStatus[]> {
   const states: ToolPackStatus[] = [];
   for (const pack of TOOL_PACKS) {
     const state = await inspectToolPack(pack, platform, arch, home, env);
     if (!state.hostReady) { states.push(state); continue; }
     try {
-      const installed = state.verified ? state : await ensureToolPack(pack, platform, arch, home, env);
-      await ensureConnector(pack, installed, platform, home, env);
-      states.push(await inspectToolPack(pack, platform, arch, home, env));
+      const installed = state.verified && state.connectorReady ? state : await ensureToolPackReady(pack, platform, arch, home, env);
+      states.push(installed);
     } catch { states.push(await inspectToolPack(pack, platform, arch, home, env)); }
   }
   return states;
 }
 
-export async function installedToolPackCapabilities(platform: NodeJS.Platform = process.platform, arch: string = process.arch, home = homedir(), env: NodeJS.ProcessEnv = process.env): Promise<{ tools: string[]; capabilities: string[] }> {
+export async function provisionableToolPackCapabilities(platform: NodeJS.Platform = process.platform, home = homedir(), env: NodeJS.ProcessEnv = process.env, hostPathAvailable: (path: string) => Promise<boolean> = available): Promise<string[]> {
+  const capabilities: string[] = [];
+  for (const pack of TOOL_PACKS) {
+    if (await hostReady(pack, platform, home, env, hostPathAvailable)) capabilities.push(pack.capability, ...(pack.legacyCapabilities ?? []));
+  }
+  return [...new Set(capabilities)].sort();
+}
+
+export async function installedToolPackCapabilities(
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+  home = homedir(),
+  env: NodeJS.ProcessEnv = process.env,
+  hostPathAvailable: (path: string) => Promise<boolean> = available,
+): Promise<{ tools: string[]; capabilities: string[] }> {
   const tools: string[] = [];
   const capabilities: string[] = [];
   for (const pack of TOOL_PACKS) {
-    const state = await inspectToolPack(pack, platform, arch, home, env);
-    if (state.verified && state.hostReady && state.connectorReady) { tools.push(pack.inventoryTool); capabilities.push(pack.capability); }
+    const state = await inspectToolPack(pack, platform, arch, home, env, hostPathAvailable);
+    if (!state.verified || !state.hostReady || !state.connectorReady) continue;
+    const lifecycle = await inspectToolLifecycle(pack.capability, platform, home, env);
+    if (lifecycle.current?.releaseKey !== toolPackReleaseKey(pack) || lifecycle.current.channel !== 'stable') continue;
+    tools.push(pack.inventoryTool);
+    capabilities.push(pack.capability, ...(pack.legacyCapabilities ?? []));
   }
-  return { tools: tools.sort(), capabilities: capabilities.sort() };
+  return { tools: tools.sort(), capabilities: [...new Set(capabilities)].sort() };
 }

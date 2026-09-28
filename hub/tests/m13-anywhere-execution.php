@@ -104,9 +104,11 @@ try {
     $afterEffectsRoute=$router->invoke(null,'ใช้ Adobe After Effects บน M5 ทำ composition และ keyframe');
     m13_assert(($afterEffectsRoute['capability']??null)==='creative.aftereffects'&&($afterEffectsRoute['mode']??null)==='AFTER_EFFECTS','After Effects owner goals route to the lazy After Effects Tool Pack');
     $debugRoute=$router->invoke(null,'เปิด Chrome DevTools ตรวจ network request และ performance บน M5');
-    m13_assert(($debugRoute['capability']??null)==='browser.debug'&&($debugRoute['mode']??null)==='BROWSER_DEBUG','DevTools owner goals route to Browser Diagnostics');
+    m13_assert(($debugRoute['capability']??null)==='web.debug'&&($debugRoute['mode']??null)==='BROWSER_DEBUG','DevTools owner goals route to provider-neutral web.debug');
     $playwrightRoute=$router->invoke(null,'ใช้ Playwright browser E2E บน M5 ทดสอบ flow login');
-    m13_assert(($playwrightRoute['capability']??null)==='browser.playwright'&&($playwrightRoute['mode']??null)==='BROWSER_ACTIONS','Playwright owner goals route to Browser Actions');
+    m13_assert(($playwrightRoute['capability']??null)==='web.interact'&&($playwrightRoute['mode']??null)==='BROWSER_ACTIONS','Playwright owner goals route to provider-neutral web.interact');
+    $repoRoute=$router->invoke(null,'ตรวจ GitHub pull requests และ workflow runs ของ repository นี้');
+    m13_assert(($repoRoute['capability']??null)==='code.repo'&&($repoRoute['mode']??null)==='REPO_OPERATIONS','GitHub repo operations route to provider-neutral code.repo before generic source/server handling');
     $shellRoute=$router->invoke(null,'รัน shell บน M5: echo ready');
     m13_assert(($shellRoute['capability']??null)==='system.shell'&&($shellRoute['mode']??null)==='SHELL','explicit shell owner goals route to system.shell instead of process primitives');
     $processRoute=$router->invoke(null,'ตรวจ process บน M5 ที่กำลังทำงาน');
