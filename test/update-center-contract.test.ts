@@ -381,6 +381,8 @@ test('Update Center keeps release details per project while roadmap remains back
   assert.match(core,/deploymentReleaseNotes/);
   assert.match(core,/SOURCE_PROMOTION_CHAIN_EXACT_GIT_DIFF/);
   assert.match(core,/canonicalProductionSha/);
+  assert.match(core,/Source topology can legitimately cross another release track/);
+  assert.match(core,/if\(!hash_equals\(\(string\)\(\$segment\['track'\]\?\?''\),\$this->releaseTrack\)\)continue/);
   assert.match(core,/Historical source-promotion metadata predates explicit release tracks/);
   assert.match(core,/\$track='awh'/);
   assert.match(core,/releaseTrack==='vps-platform'[\s\S]*canonicalRefSha\('platform\/production'\)[\s\S]*canonicalRefSha\('runtime\/production'\)/);

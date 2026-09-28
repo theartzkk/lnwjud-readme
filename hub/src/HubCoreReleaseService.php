@@ -353,7 +353,9 @@ final class HubCoreReleaseService
         $impact=['databaseMigration'=>'NONE','serviceReload'=>'NONE','appRestart'=>'NONE','signIn'=>'NONE','plannedDowntime'=>false];
         $compat=['data'=>'COMPATIBLE','runtime'=>'COMPATIBLE','authentication'=>'UNCHANGED'];
         foreach($segments as $segment){
-            if(!hash_equals((string)($segment['track']??''),$this->releaseTrack))return $this->incompleteDeploymentReleaseNotes($production,$releaseTarget);
+            // Source topology can legitimately cross another release track in the shared repo.
+            // Preserve continuity, but aggregate release details only from this track.
+            if(!hash_equals((string)($segment['track']??''),$this->releaseTrack))continue;
             $trackSegments[]=$segment;
             $notes=$segment['notes'];
             foreach(array_keys($groups) as $category)foreach((array)($notes['summary'][$category]??[]) as $label){
