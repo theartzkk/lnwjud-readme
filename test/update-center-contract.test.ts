@@ -256,6 +256,10 @@ test('Update Center mobile surface stays light and legacy baselines remain fail-
   assert.match(service,/adapter'=>'LEARNLAB_RELEASE'/);
   assert.match(service,/state'=>'MIGRATION_REQUIRED'/);
   assert.match(learnLab,/publishedAt/);
+  assert.match(learnLab,/PUBLICATION_ARTIFACT_VERIFIED/);
+  assert.match(learnLab,/product_artifact_sha256/);
+  assert.match(learnLab,/AWH_PROJECT_VAULT_ROOT/);
+  assert.match(learnLab,/AWH_LEARNLAB_RUNTIME_ROOT/);
   assert.match(script,/requestLearnLabRelease/);
   assert.doesNotMatch(script,/approveLearnLab|approveAwh|approvePlatform|approveAssessment/);
   assert.match(script,/ข้อมูลเก่า/);

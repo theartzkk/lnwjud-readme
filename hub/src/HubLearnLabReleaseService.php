@@ -17,6 +17,8 @@ final class HubLearnLabReleaseService
     public const CAPABILITY='system.learnlab.release';
     private const CANONICAL_GIT_REPO='/srv/awh-git/bay-learnlab.git';
     private const CHANNEL_ROOT='/srv/bay-learnlab/channels';
+    private const RUNTIME_ROOT='/srv/bay-learnlab/runtime';
+    private const PROJECT_VAULT_ROOT='/var/lib/awh-hub/project-vault';
 
     private function __construct(private readonly PDO $pdo, private readonly HubOwnerAuthService $auth) {}
     public static function fromPdo(PDO $pdo): self { return new self($pdo,HubOwnerAuthService::fromPdo($pdo)); }
@@ -199,12 +201,53 @@ final class HubLearnLabReleaseService
         }
         $main=$this->canonicalMainSha();
         if($main===null)return $audit;
+        $published=$this->publicationEquivalentSource($audit);
+        if(is_array($published))return $published;
         if(is_array($audit)&&is_string($audit['sha']??null)&&hash_equals((string)$audit['sha'],$main)){
             $audit['authority']='CANONICAL_GIT_MAIN_VERIFIED';
             return $audit;
         }
         return ['sha'=>$main,'previousSha'=>is_array($audit)&&is_string($audit['sha']??null)?(string)$audit['sha']:null,
             'authority'=>'CANONICAL_GIT_MAIN','observedAt'=>is_array($audit)?($audit['observedAt']??null):null];
+    }
+
+    private function publicationEquivalentSource(?array $audit): ?array
+    {
+        try{$current=$this->currentRuntime();$vaultRevision=$this->currentVaultRevision();}catch(Throwable){return null;}
+        $vaultRoot=getenv('AWH_PROJECT_VAULT_ROOT');
+        $vaultRoot=is_string($vaultRoot)&&$vaultRoot!==''?$vaultRoot:self::PROJECT_VAULT_ROOT;
+        if(!str_starts_with($vaultRoot,'/')||is_link($vaultRoot))return null;
+        $source=$this->readPublication(rtrim($vaultRoot,'/').'/projects/'.self::PROJECT_ID.'/revisions/'.$vaultRevision.'/.runtime-publication.json');
+        if(!is_array($source))return null;
+        $runtimeUrl=is_string($current['runtimeUrl']??null)?(string)$current['runtimeUrl']:'';
+        $urlPath=parse_url($runtimeUrl,PHP_URL_PATH);
+        if(!is_string($urlPath)||$urlPath==='')return null;
+        $publication=basename(dirname(rtrim($urlPath,'/')));
+        if(preg_match('/^[0-9A-Za-z][0-9A-Za-z._-]{5,119}$/',$publication)!==1)return null;
+        $runtimeRoot=getenv('AWH_LEARNLAB_RUNTIME_ROOT');
+        $runtimeRoot=is_string($runtimeRoot)&&$runtimeRoot!==''?$runtimeRoot:self::RUNTIME_ROOT;
+        if(!str_starts_with($runtimeRoot,'/')||is_link($runtimeRoot))return null;
+        $live=$this->readPublication(rtrim($runtimeRoot,'/').'/'.$publication.'/.runtime-publication.json');
+        if(!is_array($live))return null;
+        $digest=strtolower((string)($source['product_artifact_sha256']??''));
+        $liveDigest=strtolower((string)($live['product_artifact_sha256']??''));
+        $sourceRevision=strtolower((string)($source['source_revision']??''));
+        $liveRevision=strtolower((string)($live['source_revision']??''));
+        $version=(string)($source['product_version']??'');$liveVersion=(string)($live['product_version']??'');
+        $currentRevision=strtolower((string)($current['releaseSha']??''));$currentVersion=(string)($current['runtimeVersion']??'');
+        if(($source['product']??null)!=='bay-learnlab'||($live['product']??null)!=='bay-learnlab'
+            ||preg_match('/^[0-9a-f]{64}$/',$digest)!==1||!hash_equals($digest,$liveDigest)
+            ||preg_match('/^[0-9a-f]{40}$/',$sourceRevision)!==1||!hash_equals($sourceRevision,$liveRevision)||!hash_equals($sourceRevision,$currentRevision)
+            ||$version===''||$version!==$liveVersion||$version!==$currentVersion)return null;
+        return ['sha'=>$currentRevision,'previousSha'=>$currentRevision,'authority'=>'PUBLICATION_ARTIFACT_VERIFIED',
+            'observedAt'=>is_array($audit)?($audit['observedAt']??null):null];
+    }
+
+    private function readPublication(string $path): ?array
+    {
+        if(!is_file($path)||is_link($path)||!is_readable($path)||filesize($path)>262144)return null;
+        try{$value=json_decode((string)file_get_contents($path),true,16,JSON_THROW_ON_ERROR);}catch(Throwable){return null;}
+        return is_array($value)&&!array_is_list($value)?$value:null;
     }
 
     private function canonicalMainSha(): ?string
