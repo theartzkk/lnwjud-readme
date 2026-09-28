@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFile } from 'node:fs/promises';
 import { evaluateReleaseReadiness } from '../src/release-readiness.js';
 
 const sha = 'a'.repeat(40);
@@ -33,4 +34,13 @@ test('release readiness reports all missing recovery and identity evidence', () 
   assert.ok(result.reasons.includes('BACKUP_NOT_VERIFIED'));
   assert.ok(result.reasons.includes('RESTORE_DRILL_NOT_PASSED'));
   assert.ok(result.reasons.includes('ROLLBACK_PLAN_NOT_READY'));
+});
+
+test('core release terminalizes a dead transient runner before its lease TTL', async () => {
+  const source = await readFile('hub/src/HubCoreReleaseOperator.php', 'utf8');
+  const terminal = source.indexOf("if(in_array($state,['inactive','failed','unknown','deactivating'],true))");
+  const leaseFallback = source.indexOf("$expires=strtotime((string)($row['lease_expires_at']??''));", terminal);
+  assert.ok(terminal >= 0, 'known terminal systemd states must be recognized explicitly');
+  assert.ok(leaseFallback > terminal, 'dead runner terminalization must happen before ambiguous-status lease fallback');
+  assert.match(source.slice(terminal, leaseFallback), /CORE_RELEASE_RUNNER_LOST/);
 });

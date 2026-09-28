@@ -62,6 +62,10 @@ try{
     cr_assert(($legacyPlatformCheckpoint['releaseTrack']??null)==='vps-platform','legacy approved PLATFORM_HARDENING checkpoint is normalized to VPS Platform track');
     $operatorSource=(string)file_get_contents($base.'/src/HubCoreReleaseOperator.php');
     cr_assert(str_contains($operatorSource,"in_array(\$checkpointTrack,['awh','vps-platform'],true)"),'legacy approval scope remains valid for exact AWH or VPS Platform parent only');
+    cr_assert(str_contains($operatorSource,'$legacyPlatformBootstrap'),'core runner recognizes the bounded legacy Platform bootstrap parent');
+    cr_assert(str_contains($operatorSource,"(\$checkpointRaw['releaseMode']??null)==='PLATFORM_HARDENING'"),'legacy bootstrap compatibility requires PLATFORM_HARDENING mode');
+    cr_assert(str_contains($operatorSource,"!array_key_exists('releaseTrack',\$checkpointRaw)"),'legacy bootstrap compatibility applies only to checkpoints created before releaseTrack existed');
+    cr_assert(str_contains($operatorSource,'$expectedCapability=$legacyPlatformBootstrap?HubCoreReleaseService::CAPABILITY:HubCoreReleaseService::PLATFORM_CAPABILITY'),'legacy Platform parent keeps its original system.core.release approval while modern Platform releases require system.platform.release');
     $promoteTask='a13b45c0-23e1-408d-ae0f-ac5eca7f6900';$promoteExecution='b13b45c0-23e1-408d-ae0f-ac5eca7f6900';$promoteBase=str_repeat('b',40);$promoteTarget=str_repeat('c',40);$sha=$promoteTarget;
     $canonicalGit=$root.'/canonical.git';mkdir($canonicalGit.'/refs/heads',0700,true);file_put_contents($canonicalGit.'/refs/heads/main',$promoteTarget."\n");putenv('AWH_CORE_CANONICAL_GIT='.$canonicalGit);
     $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'Promote canonical AWH main','COMPLETED',NULL,NULL,100,'Guarded operator mutation completed',NULL,'core-release-source-promotion-test',NULL,:at,:at,NULL)")->execute(['task'=>$promoteTask,'user'=>$owner,'project'=>$project,'at'=>$now]);

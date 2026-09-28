@@ -35,6 +35,14 @@ function baseManifest() {
   };
 }
 
+function bytewiseBundleDigest(files: any[]) {
+  const rows = [...files]
+    .sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
+    .map((entry) => `${entry.path}\0${entry.sha256}\0${entry.sizeBytes}\n`)
+    .join('');
+  return createHash('sha256').update(rows).digest('hex');
+}
+
 async function fixtureRoot(prefix: string) {
   const root = await mkdtemp(join(tmpdir(), prefix));
   await mkdir(join(root, 'scripts'), { recursive: true });
@@ -60,6 +68,7 @@ test('web release can carry verified production desktop lineage without local ZI
     assert.equal(intel.packageVerification, 'VERIFIED');
     assert.equal(intel.sourceSha, 'b'.repeat(40));
     assert.equal(manifest.files.find((x: any) => x.path === 'downloads/AWH-Windows-x64.zip').sha256, '2'.repeat(64));
+    assert.equal(manifest.webBundleSha256, bytewiseBundleDigest(manifest.files), 'remote-reuse manifest digest must match PHP SORT_STRING bytewise order');
     await assert.rejects(readFile(join(root, 'dist-web', 'downloads', 'AWH-Windows-x64.zip')));
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -103,6 +103,10 @@ final class HubCoreReleaseOperator
             $this->pdo->prepare("UPDATE control_task_executions SET lease_expires_at=:lease,updated_at=:at WHERE execution_id=:execution AND state IN ('LEASED','RUNNING')")->execute(['lease'=>$lease,'at'=>$at,'execution'=>$row['execution_id']]);
             return ['schemaVersion'=>1,'state'=>'RUNNING','executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'unit'=>$unit];
         }
+        if(in_array($state,['inactive','failed','unknown','deactivating'],true)){
+            $this->fail((string)$row['execution_id'],(string)$row['task_id'],'CORE_RELEASE_RUNNER_LOST',$at);
+            return ['schemaVersion'=>1,'state'=>'FAILED','executionId'=>(string)$row['execution_id'],'code'=>'CORE_RELEASE_RUNNER_LOST'];
+        }
         $expires=strtotime((string)($row['lease_expires_at']??''));
         if($expires!==false&&$expires>strtotime($at))return ['schemaVersion'=>1,'state'=>'RUNNING','executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'unit'=>$unit];
         $this->fail((string)$row['execution_id'],(string)$row['task_id'],'CORE_RELEASE_RUNNER_LOST',$at);
@@ -115,11 +119,17 @@ final class HubCoreReleaseOperator
         $this->assertRoot();
         $at=self::time($now??gmdate('c'));
         $row=$this->execution($executionId);
+        $checkpointRaw=json_decode((string)$row['checkpoint_json'],true,16);
         $checkpoint=HubCoreReleaseService::checkpoint((string)$row['checkpoint_json']);
         $scope=$this->approvedScope((string)$row['task_id'],$checkpoint,$at);
         $sha=(string)$checkpoint['releaseSha'];
         $track=(string)$checkpoint['releaseTrack'];
-        if($track==='vps-platform'){$modeArg='--platform-hardening';$productionRef='refs/heads/platform/production';$expectedCapability=HubCoreReleaseService::PLATFORM_CAPABILITY;$label='VPS Platform';}
+        $legacyPlatformBootstrap=$track==='vps-platform'
+            && hash_equals(HubCoreReleaseService::CAPABILITY,(string)$row['required_capability'])
+            && is_array($checkpointRaw)&&!array_is_list($checkpointRaw)
+            && ($checkpointRaw['releaseMode']??null)==='PLATFORM_HARDENING'
+            && !array_key_exists('releaseTrack',$checkpointRaw);
+        if($track==='vps-platform'){$modeArg='--platform-hardening';$productionRef='refs/heads/platform/production';$expectedCapability=$legacyPlatformBootstrap?HubCoreReleaseService::CAPABILITY:HubCoreReleaseService::PLATFORM_CAPABILITY;$label='VPS Platform';}
         elseif($track==='awh'){$modeArg='--awh-core';$productionRef='refs/heads/production';$expectedCapability=HubCoreReleaseService::CAPABILITY;$label='AWH';}
         else throw new HubCoreReleaseOperatorException('Release track is invalid','CORE_RELEASE_CHECKPOINT_INVALID');
         if(!hash_equals($expectedCapability,(string)$row['required_capability']))throw new HubCoreReleaseOperatorException('Release capability does not match checkpoint track','CORE_RELEASE_CHECKPOINT_INVALID');
