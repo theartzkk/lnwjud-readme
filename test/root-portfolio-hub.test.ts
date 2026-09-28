@@ -34,7 +34,7 @@ test('authenticated root is the portfolio hub and reuses BAY registry authority'
   assert.match(app, /liveDetail = safeText\(live\?\.version\)/);
   assert.doesNotMatch(app, /dedupeProjectPresentation|canonicalProjectId|preferredIds/);
   assert.match(app, /const directoryProjects = projects\.filter\(\(item\) => !isAwhProduct\(item\)\)/);
-  assert.match(html, /data-owner-destination="awh"[^>]*>[\s\S]{0,120}<span>ทำงาน<\/span>/);
+  assert.match(html, /data-owner-destination="awh"[^>]*>[\s\S]{0,120}<span>AWH<\/span>/);
   assert.match(html, /id="ecosystem-open-awh"/);
   assert.match(html, /<strong>งานของฉัน<\/strong>/);
   for (const asset of ['project-bay-excuse-x.webp','project-learnlab.webp','project-awh.webp','project-school.webp','project-parent-connect.webp','project-computer-lab.webp']) assert.ok(app.includes(asset));

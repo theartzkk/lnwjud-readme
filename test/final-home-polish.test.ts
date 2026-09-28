@@ -6,11 +6,11 @@ const read=(p:string)=>readFile(new URL(`../${p}`,import.meta.url),'utf8');
 test('canonical Dashboard follows the AWH navigation contract',async()=>{
  const [dashboard,css,index,constitution,experienceRaw]=await Promise.all([read('web/dashboard.js'),read('web/dashboard.css'),read('web/index.html'),read('docs/AWH-UX-CONSTITUTION.md'),read('config/kruart-experience-contract.json')]);
  const experience=JSON.parse(experienceRaw); const awh=experience.products.find((product:any)=>product.id==='awh'); assert.ok(awh);
- for(const text of ['วันนี้อยากให้ช่วยอะไร?','พิมพ์สิ่งที่อยากให้ช่วย…','สร้างเอกสาร','จัดการ PDF','สร้าง QR','งานของฉัน','เครื่องมือ']) assert.ok(dashboard.includes(text),`missing ${text}`);
+ for(const text of ['วันนี้อยากให้ช่วยอะไร?','พิมพ์สิ่งที่อยากให้ช่วย…','สร้างเอกสาร','จัดการ PDF','สร้าง QR']) assert.ok(dashboard.includes(text),`missing ${text}`);
  for(const technical of ['ค้นหา ⌘K','Memory พร้อม','Project + Chat','ยังไม่มี Project']) assert.ok(!dashboard.includes(technical),`primary UX leaked technical copy: ${technical}`);
  const mobileNav=dashboard.match(/function mountMobileNavigation\(\)[\s\S]*?document\.body\.append\(nav\);/)?.[0]||'';
  for(const label of awh.primaryVocabulary) assert.match(mobileNav,new RegExp(label));
- for(const duplicate of ["'หน้าแรก'","'อัปเดต'","'ตั้งค่า'"]) assert.doesNotMatch(mobileNav,new RegExp(duplicate));
+ for(const duplicate of ["'ระบบ'","'อัปเดต'","'ตั้งค่า'"]) assert.doesNotMatch(mobileNav,new RegExp(duplicate));
  assert.match(constitution,/Inside AWH Workspace, mobile has at most .* primary destinations/);
  for(const leaked of ['งาน/AI','Cloud พร้อมใช้งาน','ทุกงาน เริ่มจากตรงนี้']) assert.doesNotMatch(dashboard,new RegExp(leaked));
  assert.match(css,/awh-mobile-nav/); assert.match(css,new RegExp(`repeat\\(${awh.mobilePrimaryMax},minmax\\(0,1fr\\)\\)`));
@@ -20,10 +20,11 @@ test('canonical Dashboard follows the AWH navigation contract',async()=>{
  assert.doesNotMatch(dashboard,/hero\.append\(heroArt\)/);
  const productNav=dashboard.match(/function mountProductNavigation\(dashboard\)[\s\S]*?dashboard\.prepend\(nav\);/)?.[0]||'';
  for(const label of awh.primaryVocabulary) assert.match(productNav,new RegExp(label));
- for(const duplicate of ["'หน้าแรก'","'ระบบ'","'อัปเดต'","'ตั้งค่า'"]) assert.doesNotMatch(productNav,new RegExp(duplicate));
- assert.match(dashboard,/dashboardView === 'tasks' \|\| dashboardView === 'files' \? 'tasks' : 'tools'/);
+ for(const duplicate of ["'ระบบ'","'อัปเดต'","'ตั้งค่า'"]) assert.doesNotMatch(productNav,new RegExp(duplicate));
+ assert.match(dashboard,/function currentNavigationDestination\(\)/);
+ assert.match(dashboard,/dashboardView === 'tasks' \|\| dashboardView === 'files' \? 'tasks' : 'home'/);
  assert.match(index,/data-owner-destination="home"/);
- assert.match(index,/data-owner-destination="awh"[^>]*>[\s\S]{0,120}<span>ทำงาน<\/span>/);
+ assert.match(index,/data-owner-destination="awh"[^>]*>[\s\S]{0,120}<span>AWH<\/span>/);
  assert.doesNotMatch(index,/Channel และ SHA-256|Source of Truth ของตัวเอง|AI WORKSPACE/);
  assert.match(index,/ไม่ต้องติดตั้งโปรแกรมเพื่อเริ่มใช้งาน/);
  assert.match(index,/id="install-web-app"/);

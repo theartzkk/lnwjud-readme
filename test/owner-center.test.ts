@@ -120,7 +120,7 @@ test('AWH Workspace navigation stays task-first while Owner controls converge on
     readFile(join(ROOT, 'web', 'owner-center.js'), 'utf8'),
   ]);
   const productNav = dashboard.match(/function mountProductNavigation\(dashboard\)[\s\S]*?dashboard\.prepend\(nav\);/)?.[0] ?? '';
-  for (const label of ['แชท', 'งานของฉัน', 'เครื่องมือ']) assert.match(productNav, new RegExp(label));
+  for (const label of ['หน้าแรก', 'AWH', 'งาน']) assert.match(productNav, new RegExp(label));
   for (const duplicate of ['ระบบ', 'อัปเดต', 'ตั้งค่า']) assert.doesNotMatch(productNav, new RegExp(duplicate));
   assert.match(owner, /launch\.textContent = 'เปิดศูนย์ดูแลระบบ'/);
   assert.match(owner, /window\.location\.assign\('\.\/panel\.html'\)/);
