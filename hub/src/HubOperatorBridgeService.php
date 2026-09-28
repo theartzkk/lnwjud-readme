@@ -27,6 +27,7 @@ final class HubOperatorBridgeService
     private const MAX_VAULT_IMPORT_BYTES=134217728;
     private const MAX_VERIFICATION_DOCUMENT_BYTES=196608;
     private const SOURCE_PROMOTE_CONFIRMATION='PROMOTE_CANONICAL_MAIN';
+    private const SOURCE_METADATA_REPAIR_CONFIRMATION='REPAIR_SOURCE_PROMOTION_METADATA';
     private const MISSION_ACQUIRE_CONFIRMATION='ACQUIRE_PROJECT_MISSION';
     private const MISSION_RELEASE_CONFIRMATION='RELEASE_PROJECT_MISSION';
     private const MISSION_CAPABILITY='operator.project_mission';
@@ -67,6 +68,7 @@ final class HubOperatorBridgeService
             'mission.renew'=>$this->missionRenew($request,$at),
             'mission.release'=>$this->missionRelease($request,$at),
             'source.promote'=>$this->sourcePromote($request,$at),
+            'source.metadata-repair'=>$this->sourceMetadataRepair($request,$at),
             'bay.status'=>$this->bayStatus($at),
             'bay.stage'=>$this->bayStage($request,$at),
             'bay.install'=>$this->bayInstall($request,$at),
@@ -471,6 +473,66 @@ final class HubOperatorBridgeService
     private function missionProjection(array $row): array
     {
         return ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>(string)$row['project_id'],'goal'=>(string)$row['goal'],'state'=>'RUNNING','progress'=>(int)$row['progress'],'leaseExpiresAt'=>$row['lease_expires_at'],'updatedAt'=>(string)$row['updated_at']];
+    }
+
+    /** @param array<string,mixed> $request @return array<string,mixed> */
+    private function sourceMetadataRepair(array $request,string $at): array
+    {
+        if(($request['confirmation']??null)!==self::SOURCE_METADATA_REPAIR_CONFIRMATION)
+            throw new HubOperatorBridgeException('Explicit source metadata repair confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
+        $repository=self::key(self::text($request,'repository',80));
+        $repositories=HubUpdateTargetRegistry::repositories();$config=$repositories[$repository]??null;
+        if(!is_array($config))throw new HubOperatorBridgeException('Source repository is not allowlisted','OPERATOR_SOURCE_REPOSITORY_FORBIDDEN');
+        $base=self::gitSha(self::text($request,'baseSha',40));$target=self::gitSha(self::text($request,'targetSha',40));
+        if(hash_equals($base,$target))throw new HubOperatorBridgeException('Metadata repair edge is invalid','OPERATOR_REQUEST_INVALID');
+        $missionId=is_string($request['missionExecutionId']??null)?strtolower(trim((string)$request['missionExecutionId'])):'';
+        if(!self::uuidValid($missionId))throw new HubOperatorBridgeException('Source metadata repair requires the active mission of the target project','OPERATOR_PROJECT_SCOPE_REQUIRED');
+
+        $gitRoot=getenv('AWH_CANONICAL_GIT_ROOT');if(!is_string($gitRoot)||$gitRoot==='')$gitRoot='/srv/awh-git';
+        $gitReal=realpath($gitRoot);if(!is_string($gitReal)||!is_dir($gitReal)||is_link($gitRoot))throw new HubOperatorBridgeException('Source promotion roots are unavailable','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');
+        $repo=$gitReal.'/'.$config['directory'];$repoReal=realpath($repo);if(!is_string($repoReal)||dirname($repoReal)!==$gitReal||!is_dir($repoReal)||is_link($repo))throw new HubOperatorBridgeException('Canonical Git repository is unavailable','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');
+        $projectRecord=$this->resolveProject((string)$config['project']);$projectId=(string)$projectRecord['project_id'];
+        $this->activeProjectMission($missionId,$at,$projectId,true);
+        $gate=$this->projectGate((string)$config['project'],$at,false,'source.promote',$missionId);if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('Project mutation gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
+
+        $main=self::gitSha(trim($this->runGit($repoReal,['rev-parse','refs/heads/main'])));
+        foreach([$base,$target] as $sha){$probe=$this->runGitResult($repoReal,['cat-file','-e',$sha.'^{commit}']);if($probe['code']!==0)throw new HubOperatorBridgeException('Metadata repair revision is unavailable','OPERATOR_SOURCE_METADATA_REPAIR_INVALID');}
+        if($this->runGitResult($repoReal,['merge-base','--is-ancestor',$base,$target])['code']!==0||$this->runGitResult($repoReal,['merge-base','--is-ancestor',$target,$main])['code']!==0)
+            throw new HubOperatorBridgeException('Metadata repair edge is outside canonical main lineage','OPERATOR_SOURCE_METADATA_REPAIR_INVALID');
+
+        $q=$this->pdo->prepare("SELECT execution_id,checkpoint_json,updated_at FROM control_task_executions WHERE project_id=:project AND required_capability='source.promote' AND state='COMPLETED' ORDER BY updated_at DESC,execution_id DESC LIMIT 160");
+        $q->execute(['project'=>$projectId]);$predecessor=false;$successor=false;$existing=null;
+        foreach($q->fetchAll() as $row){
+            try{$checkpoint=json_decode((string)$row['checkpoint_json'],true,16,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
+            if(!is_array($checkpoint)||($checkpoint['repository']??null)!==$repository)continue;
+            $edgeBase=strtolower((string)($checkpoint['expectedMainSha']??''));$edgeTarget=strtolower((string)($checkpoint['targetSha']??''));$notes=$checkpoint['releaseNotes']??null;
+            if(preg_match('/^[0-9a-f]{40}$/',$edgeBase)!==1||preg_match('/^[0-9a-f]{40}$/',$edgeTarget)!==1||!is_array($notes)||!HubUpdateTargetRegistry::releaseDetailsReady($notes,true))continue;
+            if(hash_equals($edgeTarget,$target)&&$existing===null)$existing=['executionId'=>(string)$row['execution_id'],'releaseNotes'=>$notes];
+            if(hash_equals($edgeTarget,$base))$predecessor=true;
+            if(hash_equals($edgeBase,$target))$successor=true;
+        }
+        if(is_array($existing))return ['schemaVersion'=>1,'state'=>'ALREADY_REPAIRED','repository'=>$repository,'baseSha'=>$base,'targetSha'=>$target,'mainSha'=>$main,'audit'=>['executionId'=>$existing['executionId']],'releaseNotes'=>$existing['releaseNotes'],'idempotent'=>true,'sourceBytesChanged'=>false,'observedAt'=>$at];
+        if(!$predecessor&&$repository==='awh'){
+            foreach(['refs/heads/runtime/production','refs/heads/production'] as $ref){$probe=$this->runGitResult($repoReal,['rev-parse','--verify',$ref]);if($probe['code']===0&&preg_match('/^[0-9a-f]{40}$/',strtolower(trim($probe['stdout'])))===1&&hash_equals($base,strtolower(trim($probe['stdout'])))){$predecessor=true;break;}}
+        }
+        if(!$predecessor||!$successor)throw new HubOperatorBridgeException('Metadata repair is not bounded by verified promotion history','OPERATOR_SOURCE_METADATA_REPAIR_BOUNDARY');
+
+        $releaseNotes=$this->releaseNotesForPromotion($repoReal,$repository,$base,$target,$at);
+        $releaseNotes['generatedFrom']='EXACT_GIT_DIFF_METADATA_CHAIN_REPAIR';
+        if(!HubUpdateTargetRegistry::releaseDetailsReady($releaseNotes,true))throw new HubOperatorBridgeException('Release details could not be reconstructed','OPERATOR_RELEASE_DETAILS_REQUIRED');
+        $checkpoint=['repository'=>$repository,'expectedMainSha'=>$base,'targetSha'=>$target,'missionExecutionId'=>$missionId,'releaseNotes'=>$releaseNotes,'metadataRepair'=>true,'repairKind'=>'SOURCE_PROMOTION_CHAIN_GAP'];
+        $authority=$this->acquireMutationAuthority($projectId,'Repair exact source promotion metadata '.$repository.' '.substr($target,0,12),'source.promote',$checkpoint,$at);
+        $success=false;
+        try{
+            $save=$this->pdo->prepare("UPDATE control_task_executions SET checkpoint_json=:checkpoint,updated_at=:at WHERE execution_id=:execution AND required_capability='source.promote' AND state='RUNNING'");
+            $save->execute(['checkpoint'=>json_encode($checkpoint,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),'at'=>$at,'execution'=>$authority['executionId']]);
+            if($save->rowCount()!==1)throw new HubOperatorBridgeException('Metadata repair audit could not be persisted','OPERATOR_SOURCE_METADATA_REPAIR_FAILED');
+            $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:id,:task,'RUNNING',80,:message,:at)")
+                ->execute(['id'=>self::uuid(),'task'=>$authority['taskId'],'message'=>'Release metadata chain repaired from exact canonical Git diff; source bytes unchanged','at'=>$at]);
+            $mainAfter=self::gitSha(trim($this->runGit($repoReal,['rev-parse','refs/heads/main'])));if(!hash_equals($main,$mainAfter))throw new HubOperatorBridgeException('Canonical main moved during metadata repair','OPERATOR_SOURCE_BASE_MOVED');
+            $success=true;
+            return ['schemaVersion'=>1,'state'=>'REPAIRED','repository'=>$repository,'baseSha'=>$base,'targetSha'=>$target,'mainSha'=>$mainAfter,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'missionExecutionId'=>$missionId,'writerType'=>'SOURCE_PROMOTE_METADATA_REPAIR'],'releaseNotes'=>$releaseNotes,'idempotent'=>false,'sourceBytesChanged'=>false,'observedAt'=>$at];
+        }finally{$this->releaseMutationAuthority($authority,$success,gmdate('c'));}
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */

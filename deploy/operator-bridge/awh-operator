@@ -4,7 +4,7 @@ declare(strict_types=1);
 $socket=getenv('AWH_OPERATOR_SOCKET');if(!is_string($socket)||$socket==='')$socket='/run/awh-operator-bridge.sock';
 $stageRoot=getenv('AWH_OPERATOR_STAGE_ROOT');if(!is_string($stageRoot)||$stageRoot==='')$stageRoot='/var/lib/awh-remote/operator-staging';
 $args=$argv;array_shift($args);$cmd=array_shift($args)??'';$request=['schemaVersion'=>1];$cleanup=null;
-$usage=static function():never{fwrite(STDERR,"usage: awh-operator status|projects|gate <project>|mission-status <project>|mission-acquire <project> <goal> --confirm|mission-renew <execution-id>|mission-release <execution-id> <success|failure> --confirm|vault-export <project> --confirm|vault-import <project> <archive.zip> <expected-vault-revision> <archive-sha256> --mission <execution-id> --confirm|verification-store --confirm|verification-regressions|source-promote <repository> <bundle> <expected-main-sha> <target-sha> <bundle-sha256> --mission <execution-id> --confirm|bay-status|bay-stage <package.zip> <version> <source-sha> <package-sha256> --confirm|bay-install <version> <source-sha> <package-sha256> --confirm\n");exit(64);};
+$usage=static function():never{fwrite(STDERR,"usage: awh-operator status|projects|gate <project>|mission-status <project>|mission-acquire <project> <goal> --confirm|mission-renew <execution-id>|mission-release <execution-id> <success|failure> --confirm|vault-export <project> --confirm|vault-import <project> <archive.zip> <expected-vault-revision> <archive-sha256> --mission <execution-id> --confirm|verification-store --confirm|verification-regressions|source-promote <repository> <bundle> <expected-main-sha> <target-sha> <bundle-sha256> --mission <execution-id> --confirm|source-metadata-repair <repository> <base-sha> <target-sha> --mission <execution-id> --confirm|bay-status|bay-stage <package.zip> <version> <source-sha> <package-sha256> --confirm|bay-install <version> <source-sha> <package-sha256> --confirm\n");exit(64);};
 switch($cmd){
 case 'status':$request['action']='system.status';break;
 case 'projects':$request['action']='projects.list';break;
@@ -41,6 +41,10 @@ case 'source-promote':
 ");exit(74);}
     $cleanup=$staged;register_shutdown_function(static function()use(&$cleanup):void{if(is_string($cleanup)&&$cleanup!==''&&is_file($cleanup))@unlink($cleanup);});
     $request+=['action'=>'source.promote','repository'=>$repository,'expectedMainSha'=>$base,'targetSha'=>$target,'bundleSha256'=>$bundleSha,'stagedFile'=>$stagedName,'missionExecutionId'=>$mission,'confirmation'=>'PROMOTE_CANONICAL_MAIN'];break;
+case 'source-metadata-repair':
+    $repository=array_shift($args);$base=strtolower((string)array_shift($args));$target=strtolower((string)array_shift($args));$flag=array_shift($args);$mission=strtolower((string)array_shift($args));$confirm=array_shift($args);
+    if(!is_string($repository)||preg_match('/^[a-z0-9][a-z0-9-]{0,79}$/',$repository)!==1||$flag!=='--mission'||$confirm!=='--confirm'||$args!==[]||preg_match('/^[a-f0-9]{40}$/',$base)!==1||preg_match('/^[a-f0-9]{40}$/',$target)!==1||preg_match('/^[0-9a-f-]{36}$/',$mission)!==1)$usage();
+    $request+=['action'=>'source.metadata-repair','repository'=>$repository,'baseSha'=>$base,'targetSha'=>$target,'missionExecutionId'=>$mission,'confirmation'=>'REPAIR_SOURCE_PROMOTION_METADATA'];break;
 case 'bay-status':$request['action']='bay.status';break;
 case 'bay-stage':
     $package=array_shift($args);$version=array_shift($args);$sha=strtolower((string)array_shift($args));$packageSha=strtolower((string)array_shift($args));$confirm=array_shift($args);
