@@ -2014,14 +2014,50 @@ final class HubControlPlaneService
     public function systemReadiness(string $sessionToken, ?string $now = null): array
     {
         $session = $this->sessionRow($sessionToken, $now); $this->assertCentralProjectAuthorityReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId);
+        $at=self::timestamp($now ?? gmdate('c'));
         $schema = (int) $this->pdo->query('PRAGMA user_version')->fetchColumn(); $integrity = $this->pdo->query('PRAGMA integrity_check')->fetchColumn() === 'ok' && $this->pdo->query('PRAGMA foreign_key_check')->fetchAll() === [];
-        $vaults = $this->pdo->query("SELECT COUNT(*) FROM control_project_vaults WHERE storage_mode = 'VAULT' AND sync_state = 'SYNCED'")->fetchColumn();
-        $waiting = $this->pdo->query("SELECT COUNT(*) FROM control_task_executions WHERE state = 'WAITING_FOR_CAPABILITY' AND COALESCE(last_error_code,'') NOT IN ('BUDGET_EXHAUSTED','PROVIDER_QUOTA_EXHAUSTED')")->fetchColumn();
-        $policyPaused = $this->pdo->query("SELECT COUNT(*) FROM control_task_executions WHERE state = 'WAITING_FOR_CAPABILITY' AND last_error_code IN ('BUDGET_EXHAUSTED','PROVIDER_QUOTA_EXHAUSTED')")->fetchColumn();
-        $executor = $this->pdo->prepare("SELECT 1 FROM control_executor_capabilities WHERE executor_id = 'vps-native' AND capability = 'agent.conversation' AND expires_at > :now LIMIT 1"); $executor->execute(['now' => self::timestamp($now ?? gmdate('c'))]); $nativeReady = $executor->fetchColumn() !== false;
+        $vaults = (int)$this->pdo->query("SELECT COUNT(*) FROM control_project_vaults WHERE storage_mode = 'VAULT' AND sync_state = 'SYNCED'")->fetchColumn();
+        $waiting = (int)$this->pdo->query("SELECT COUNT(*) FROM control_task_executions WHERE state = 'WAITING_FOR_CAPABILITY' AND COALESCE(last_error_code,'') NOT IN ('BUDGET_EXHAUSTED','PROVIDER_QUOTA_EXHAUSTED')")->fetchColumn();
+        $policyPaused = (int)$this->pdo->query("SELECT COUNT(*) FROM control_task_executions WHERE state = 'WAITING_FOR_CAPABILITY' AND last_error_code IN ('BUDGET_EXHAUSTED','PROVIDER_QUOTA_EXHAUSTED')")->fetchColumn();
+        $executor = $this->pdo->prepare("SELECT 1 FROM control_executor_capabilities WHERE executor_id = 'vps-native' AND capability = 'agent.conversation' AND expires_at > :now LIMIT 1"); $executor->execute(['now' => $at]); $nativeReady = $executor->fetchColumn() !== false;
         $fabric = $this->anywhereExecutionSchemaPresent() ? 'READY' : 'NOT_ACTIVATED';
-        $state = !$integrity ? 'ACTION_REQUIRED' : (!$nativeReady || (int) $waiting > 0 ? 'PARTIALLY_READY' : 'READY');
-        return ['schemaVersion' => 1, 'state' => $state, 'checks' => ['hub' => $integrity ? 'READY' : 'ACTION_REQUIRED', 'projectVault' => (int) $vaults > 0 ? 'READY' : 'NOT_CONFIGURED', 'nativeExecutor' => $nativeReady ? 'READY' : 'ACTION_REQUIRED', 'anywhereExecution' => $fabric, 'waitingCapabilityCount' => (int) $waiting, 'policyPausedCount' => (int) $policyPaused, 'schemaVersion' => $schema], 'message' => !$nativeReady ? 'ยังไม่พบ native executor ที่พร้อมทำงาน งานที่รับไว้จะไม่สูญหาย' : ((int) $waiting > 0 ? 'งานบางรายการกำลังรอ capability ที่เหมาะสมและยังไม่สูญหาย' : 'AWH control-plane readiness check completed')];
+        $state = !$integrity ? 'ACTION_REQUIRED' : (!$nativeReady || $waiting > 0 ? 'PARTIALLY_READY' : 'READY');
+
+        $workers=['total'=>0,'ready'=>0,'working'=>0,'stale'=>0,'offline'=>0];
+        try {
+            foreach($this->pdo->query('SELECT state,last_seen_at FROM control_workers')->fetchAll() as $worker){
+                $effective=HubWorkerHealth::effectiveState($worker['state']??null,$worker['last_seen_at']??null,$at);
+                $workers['total']++;
+                if($effective==='READY')$workers['ready']++; elseif($effective==='WORKING')$workers['working']++; elseif($effective==='STALE')$workers['stale']++; else $workers['offline']++;
+            }
+        } catch(Throwable) {}
+
+        $capabilitySummary=['ready'=>0,'cloudReady'=>0,'optional'=>0,'planned'=>0];
+        try {
+            if($this->capabilities!==null){$capabilityState=$this->capabilities->status(false,$at);if(is_array($capabilityState['summary']??null))foreach($capabilitySummary as $key=>$_)$capabilitySummary[$key]=(int)($capabilityState['summary'][$key]??0);}
+        } catch(Throwable) {}
+
+        $providers=[]; try{$providers=$this->agent->providerStatuses($userId,$at);}catch(Throwable){}
+        $providerReady=0;$providerConfigured=0;$freeReady=0;
+        foreach($providers as $provider){
+            if(($provider['keyConfigured']??false)===true)$providerConfigured++;
+            if(($provider['available']??false)===true){$providerReady++;if(($provider['zeroCost']??false)===true)$freeReady++;}
+        }
+
+        $agentFresh=$workers['ready']+$workers['working'];
+        $doctorChecks=[
+            ['id'=>'control-plane','label'=>'AWH Control Plane','state'=>$integrity?'READY':'ACTION_REQUIRED','evidence'=>'schema '.$schema.' · '.($integrity?'database integrity verified':'database integrity failed'),'action'=>$integrity?null:'ตรวจฐานข้อมูลและ foreign-key integrity ก่อนทำงานต่อ'],
+            ['id'=>'project-vault','label'=>'Project Vault','state'=>$vaults>0?'READY':'ATTENTION','evidence'=>$vaults.' synced vault'.($vaults===1?'':'s'),'action'=>$vaults>0?null:'เชื่อม Source/Vault ของโปรเจกต์ที่ต้องใช้งาน'],
+            ['id'=>'vps-executor','label'=>'VPS Executor','state'=>$nativeReady?'READY':'ACTION_REQUIRED','evidence'=>$nativeReady?'fresh agent.conversation capability':'fresh VPS executor capability not observed','action'=>$nativeReady?null:'ตรวจ native executor heartbeat บน VPS'],
+            ['id'=>'agent-fleet','label'=>'AWH Agent','state'=>$agentFresh>0?'READY':'OPTIONAL','evidence'=>$agentFresh.' fresh · '.$workers['stale'].' stale · '.$workers['offline'].' offline','action'=>$agentFresh>0?null:'Cloud-first ยังทำงานได้; เปิด AWH Agent เมื่อมีงานที่ต้องใช้เครื่องจริง'],
+            ['id'=>'capability-fabric','label'=>'Capability Fabric','state'=>$fabric==='READY'?'READY':'ATTENTION','evidence'=>$capabilitySummary['ready'].' ready · '.$capabilitySummary['cloudReady'].' cloud-ready · '.$capabilitySummary['optional'].' optional','action'=>$fabric==='READY'?null:'ตรวจ Anywhere Execution capability registry'],
+            ['id'=>'ai-providers','label'=>'AI Providers','state'=>$providerReady>0?'READY':'OPTIONAL','evidence'=>$providerReady.' available · '.$providerConfigured.' configured · '.$freeReady.' zero-cost ready','action'=>$providerReady>0?null:'AWH core ยังใช้งานได้; เชื่อม provider เมื่อต้องใช้ AI backend'],
+            ['id'=>'waiting-work','label'=>'Waiting Work','state'=>$waiting>0||$policyPaused>0?'ATTENTION':'READY','evidence'=>$waiting.' capability wait · '.$policyPaused.' policy/quota wait','action'=>$waiting>0?'ตรวจ capability ที่งานกำลังรอ':($policyPaused>0?'ตรวจ budget/quota policy':null)],
+        ];
+        $doctorState=(!$integrity||!$nativeReady)?'ACTION_REQUIRED':(($waiting>0||$policyPaused>0)?'ATTENTION':'READY');
+        $doctor=['schemaVersion'=>1,'state'=>$doctorState,'checkedAt'=>$at,'checks'=>$doctorChecks,'agentFleet'=>$workers,'capabilities'=>$capabilitySummary,'providers'=>['available'=>$providerReady,'configured'=>$providerConfigured,'zeroCostReady'=>$freeReady]];
+
+        return ['schemaVersion' => 1, 'state' => $state, 'checks' => ['hub' => $integrity ? 'READY' : 'ACTION_REQUIRED', 'projectVault' => $vaults > 0 ? 'READY' : 'NOT_CONFIGURED', 'nativeExecutor' => $nativeReady ? 'READY' : 'ACTION_REQUIRED', 'anywhereExecution' => $fabric, 'waitingCapabilityCount' => $waiting, 'policyPausedCount' => $policyPaused, 'schemaVersion' => $schema], 'doctor'=>$doctor, 'message' => !$nativeReady ? 'ยังไม่พบ native executor ที่พร้อมทำงาน งานที่รับไว้จะไม่สูญหาย' : ($waiting > 0 ? 'งานบางรายการกำลังรอ capability ที่เหมาะสมและยังไม่สูญหาย' : 'AWH control-plane readiness check completed')];
     }
 
     public function capabilityStatus(string $sessionToken, ?string $now = null): array
@@ -2240,8 +2276,10 @@ final class HubControlPlaneService
     public function providerStatus(string $sessionToken, ?string $now = null): array
     {
         $session = $this->sessionRow($sessionToken, $now); $this->assertFinalReady(); $this->assertOwner((string) $session['user_id']);
-        try { return ['schemaVersion' => 3, 'provider' => $this->agent->status((string) $session['user_id'], $now)]; }
-        catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Provider status is unavailable', $error->codeName); }
+        try {
+            $userId=(string)$session['user_id'];
+            return ['schemaVersion'=>3,'provider'=>$this->agent->status($userId,$now),'providers'=>$this->agent->providerStatuses($userId,$now)];
+        } catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Provider status is unavailable', $error->codeName); }
     }
 
     public function systemOneStatus(string $sessionToken, ?string $now = null): array
@@ -2277,31 +2315,36 @@ final class HubControlPlaneService
 
     public function updateProviderPolicy(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
     {
-        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); $this->assertFinalReady(); $this->assertOwner((string) $session['user_id']);
-        try { return ['schemaVersion' => 3, 'provider' => $this->agent->updatePolicy((string) $session['user_id'], $payload, $now)]; }
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now); $this->assertFinalReady(); $this->assertOwner((string)$session['user_id']);
+        $providerId='openai';
+        if(array_key_exists('providerId',$payload)){ if(!is_string($payload['providerId'])) throw new HubControlPlaneException('Provider identity is invalid','PROVIDER_POLICY_INVALID'); $providerId=self::aiProviderId($payload['providerId']); unset($payload['providerId']); }
+        try { return ['schemaVersion'=>3,'provider'=>$this->agent->updatePolicyForProvider((string)$session['user_id'],$providerId,$payload,$now)]; }
         catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Provider policy is invalid', $error->codeName); }
     }
 
     /** Provider secrets are write-only and only cross this endpoint in memory. */
     public function updateProviderCredential(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
     {
-        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['action', 'schemaVersion', 'secret']);
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now);
+        $keys=['action','schemaVersion','secret']; if(array_key_exists('providerId',$payload))$keys[]='providerId'; self::exactKeys($payload,$keys);
         if (($payload['schemaVersion'] ?? null) !== 1 || !is_string($payload['action'] ?? null) || (!is_null($payload['secret'] ?? null) && !is_string($payload['secret']))) throw new HubControlPlaneException('Provider credential request is invalid', 'PROVIDER_CREDENTIAL_INVALID');
+        $providerId=array_key_exists('providerId',$payload)&&is_string($payload['providerId'])?self::aiProviderId($payload['providerId']):'openai';
         $this->assertSelfServiceReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId);
         try { if (HubTrustPolicy::requiresStepUp('provider.credential')) HubOwnerAuthService::assertRecentStepUpSession($session, $now); } catch (HubOwnerAuthException) { throw new HubControlPlaneException('A recent password confirmation is required', 'STEP_UP_REQUIRED'); }
         $action = strtoupper((string) $payload['action']);
         try {
-            if ($action === 'SET' && is_string($payload['secret'])) return ['schemaVersion' => 1, 'provider' => $this->agent->saveCredential($userId, $payload['secret'], $now)];
-            if ($action === 'REMOVE' && $payload['secret'] === null) return ['schemaVersion' => 1, 'provider' => $this->agent->removeCredential($userId, $now)];
+            if ($action === 'SET' && is_string($payload['secret'])) return ['schemaVersion'=>1,'provider'=>$this->agent->saveCredentialForProvider($userId,$providerId,$payload['secret'],$now)];
+            if ($action === 'REMOVE' && $payload['secret'] === null) return ['schemaVersion'=>1,'provider'=>$this->agent->removeCredentialForProvider($userId,$providerId,$now)];
             throw new HubNativeAgentException('Provider credential request is invalid', 'PROVIDER_CREDENTIAL_INVALID');
         } catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Provider credential could not be changed', $error->codeName); }
     }
 
     public function testProviderConnection(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
     {
-        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['schemaVersion']); if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Provider test request is invalid', 'PROVIDER_POLICY_INVALID');
+        $session=$this->authorizeSession($sessionToken,$csrfToken,$now); $keys=['schemaVersion']; if(array_key_exists('providerId',$payload))$keys[]='providerId'; self::exactKeys($payload,$keys); if (($payload['schemaVersion'] ?? null) !== 1) throw new HubControlPlaneException('Provider test request is invalid', 'PROVIDER_POLICY_INVALID');
+        $providerId=array_key_exists('providerId',$payload)&&is_string($payload['providerId'])?self::aiProviderId($payload['providerId']):'openai';
         $this->assertSelfServiceReady(); $userId = (string) $session['user_id']; $this->assertOwner($userId);
-        try { return ['schemaVersion' => 1, 'connection' => $this->agent->testConnection($userId, $now)]; }
+        try { return ['schemaVersion'=>1,'connection'=>$this->agent->testConnectionForProvider($userId,$providerId,$now)]; }
         catch (HubNativeAgentException $error) { throw new HubControlPlaneException('Provider connection test failed', $error->codeName, $error->diagnostic); }
     }
 
@@ -3613,7 +3656,16 @@ final class HubControlPlaneService
         $actionGraph = HubActionGraphService::project($publicRow, is_array($executionRow) ? $executionRow : null, $approvalStatus === false ? null : (string) $approvalStatus, count($artifactRows));
         $canCancel = in_array((string) $row['state'], ['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL'], true);
         if ((string) $row['state'] === 'RUNNING' && is_array($executionRow)) $canCancel = (string) $executionRow['state'] === 'RUNNING' && in_array((string) $executionRow['required_capability'], ['qa.cloud', 'review.visual'], true) && is_string($executionRow['lease_owner'] ?? null) && str_starts_with((string) $executionRow['lease_owner'], 'cloud:github-actions:') && !is_string($executionRow['cancellation_requested_at'] ?? null);
-        return ['schemaVersion' => 1, 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'conversationId' => isset($row['conversation_id']) && $row['conversation_id'] !== null ? (string) $row['conversation_id'] : null, 'projectName' => is_array($projectRow) ? (string) $projectRow['name'] : null, 'projectType' => is_array($projectRow) ? (string) $projectRow['type'] : null, 'goal' => (string) $row['goal'], 'state' => $publicState, 'internalState'=>(string)$row['state'], 'progress' => $publicProgress, 'canCancel' => $canCancel, 'assignedDevice' => $row['assigned_device_id'] === null ? null : (string) $row['assigned_device_id'], 'approvalStatus' => $approvalStatus === false ? null : (string) $approvalStatus, 'createdAt' => (string) $row['created_at'], 'updatedAt' => (string) $row['updated_at'], 'resultSummary' => $publicState==='COMPLETED'&&$row['result_summary']!==null?(string)$row['result_summary']:null, 'failureCode' => $row['failure_code'] === null ? null : (string) $row['failure_code'], 'lastEvent' => in_array($publicState,['VERIFYING','RECOVERING'],true)?['state'=>$publicState,'progress'=>$publicProgress,'message'=>$publicState==='VERIFYING'?'กำลังยืนยัน execution, authority และ continuation ก่อนประกาศว่าเสร็จ':'กำลังทำต่อจาก heartbeat/checkpoint เดิม']:(is_array($eventRow) ? ['state' => (string) $eventRow['state'], 'progress' => (int) $eventRow['progress'], 'message' => $eventRow['message'] === null ? null : (string) $eventRow['message']] : null), 'artifactRefs' => array_map(static fn (array $item): string => (string) $item['artifact_id'], $artifactRows), 'execution' => $execution, 'completion'=>$completion, 'actionGraph' => $actionGraph];
+        $lastEvent=in_array($publicState,['VERIFYING','RECOVERING'],true)
+            ? ['state'=>$publicState,'progress'=>$publicProgress,'message'=>$publicState==='VERIFYING'?'กำลังยืนยัน execution, authority และ continuation ก่อนประกาศว่าเสร็จ':'กำลังทำต่อจาก heartbeat/checkpoint เดิม']
+            : (is_array($eventRow) ? ['state'=>(string)$eventRow['state'],'progress'=>(int)$eventRow['progress'],'message'=>$eventRow['message']===null?null:(string)$eventRow['message']] : null);
+        $resume=is_array($completion['resume']??null)?$completion['resume']:null;
+        $heartbeatAt=is_array($resume)&&is_string($resume['heartbeatAt']??null)?(string)$resume['heartbeatAt']:(string)$row['updated_at'];
+        $heartbeatFresh=is_array($resume)&&is_bool($resume['heartbeatFresh']??null)?(bool)$resume['heartbeatFresh']:!in_array($publicState,['RECOVERING'],true);
+        $currentMessage=is_array($lastEvent)&&is_string($lastEvent['message']??null)?(string)$lastEvent['message']:null;
+        $continuity=in_array($publicState,['RECOVERING'],true)?'RECOVERING':(in_array($publicState,['VERIFYING'],true)?'VERIFYING':(in_array($publicState,['COMPLETED','FAILED','CANCELLED'],true)?'TERMINAL':'CONTINUOUS'));
+        $mission=['schemaVersion'=>1,'state'=>$publicState,'progress'=>$publicProgress,'currentStep'=>self::workStateMessage($publicState,$publicProgress,$currentMessage),'heartbeatAt'=>$heartbeatAt,'heartbeatFresh'=>$heartbeatFresh,'continuity'=>$continuity,'executorKind'=>is_array($execution)?$execution['executorKind']:null,'requiredCapability'=>is_array($execution)?$execution['requiredCapability']:null,'assignedDevice'=>$row['assigned_device_id']===null?null:(string)$row['assigned_device_id'],'canCancel'=>$canCancel,'updatedAt'=>(string)$row['updated_at']];
+        return ['schemaVersion' => 1, 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'conversationId' => isset($row['conversation_id']) && $row['conversation_id'] !== null ? (string) $row['conversation_id'] : null, 'projectName' => is_array($projectRow) ? (string) $projectRow['name'] : null, 'projectType' => is_array($projectRow) ? (string) $projectRow['type'] : null, 'goal' => (string) $row['goal'], 'state' => $publicState, 'internalState'=>(string)$row['state'], 'progress' => $publicProgress, 'canCancel' => $canCancel, 'assignedDevice' => $row['assigned_device_id'] === null ? null : (string) $row['assigned_device_id'], 'approvalStatus' => $approvalStatus === false ? null : (string) $approvalStatus, 'createdAt' => (string) $row['created_at'], 'updatedAt' => (string) $row['updated_at'], 'resultSummary' => $publicState==='COMPLETED'&&$row['result_summary']!==null?(string)$row['result_summary']:null, 'failureCode' => $row['failure_code'] === null ? null : (string) $row['failure_code'], 'lastEvent'=>$lastEvent, 'mission'=>$mission, 'artifactRefs' => array_map(static fn (array $item): string => (string) $item['artifact_id'], $artifactRows), 'execution' => $execution, 'completion'=>$completion, 'actionGraph' => $actionGraph];
     }
     private static function artifactRow(array $row): array { $id = (string) $row['artifact_id']; return ['schemaVersion' => 1, 'artifactId' => $id, 'taskId' => (string) $row['task_id'], 'projectId' => (string) $row['project_id'], 'kind' => (string) $row['kind'], 'name' => (string) $row['name'], 'sha256' => $row['sha256'] === null ? null : (string) $row['sha256'], 'sizeBytes' => (int) $row['size_bytes'], 'relativeRef' => $row['relative_ref'] === null ? null : (string) $row['relative_ref'], 'createdAt' => (string) $row['created_at'], 'downloadUrl' => isset($row['object_artifact_id']) && $row['object_artifact_id'] !== null ? '/api/v1/control/artifacts/' . $id . '/download' : null]; }
     private static function approvalRow(array $row, ?string $status = null): array
@@ -4238,6 +4290,13 @@ final class HubControlPlaneService
             $out[] = ['id'=>(string)$item['id'],'label'=>substr((string)$item['label'],0,80),'mode'=>substr((string)$item['mode'],0,40),'reason'=>substr((string)$item['reason'],0,220),'requiredTool'=>$tool];
         }
         return $out === [] ? null : ['schemaVersion'=>1,'router'=>'awh.external-capabilities.v1','selected'=>$out];
+    }
+
+    private static function aiProviderId(string $value): string
+    {
+        $value=strtolower(trim($value));
+        if(!in_array($value,['openai','openrouter'],true)) throw new HubControlPlaneException('Provider identity is not allowed','PROVIDER_POLICY_INVALID');
+        return $value;
     }
 
     private static function externalFreeAiMessage(): string

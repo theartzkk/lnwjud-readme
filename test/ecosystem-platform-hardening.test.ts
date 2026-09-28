@@ -163,18 +163,20 @@ test('off-server backup reuses verified backup authority and verifies transport 
   assert.doesNotMatch(exporter+'\n'+pull,/password=|token=|private[_-]?key/i);
 });
 
-test('AWH Core M24 deploy migrates once and keeps schema 24 deployable', async () => {
+test('AWH Core M25 deploy migrates once and keeps schema 25 deployable', async () => {
   const deploy = await read('deploy/awh-control-plane/deploy-control-plane.sh');
   const remote = await read('deploy/awh-control-plane/remote-deploy-control-plane.sh');
   const validator = await read('deploy/awh-control-plane/validate-remote-output.sh');
   assert.match(deploy, /HubConversationDelegateMigration\.php/);
   assert.match(deploy, /AWH_CORE_DRY_RUN=PASS/);
   assert.match(deploy, /migrate-023-if-needed/);
+  assert.match(deploy, /migrate-024-if-needed/);
   assert.match(remote, /23\|24/);
   assert.match(remote, /AWH_CORE_MIGRATION_FIRST/);
   assert.match(remote, /AWH_CORE_MIGRATION_IDEMPOTENT/);
   assert.match(remote, /m24-conversation-delegates/);
+  assert.match(remote, /m25-openrouter-free/);
   assert.match(remote, /PLATFORM_START_VERSION.*22\|23\|24/);
-  assert.match(remote, /PLATFORM_EXPECTED_VERSION=24/);
+  assert.match(remote, /PLATFORM_EXPECTED_VERSION=25/);
   assert.match(validator, /AWH_CORE_MIGRATION_VERIFIED/);
 });

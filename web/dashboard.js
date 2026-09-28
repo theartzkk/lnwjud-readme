@@ -669,9 +669,14 @@ function renderTaskSurface() {
   const journey = renderMiniExecutionJourney(status); detail.append(journey);
   const summary = document.createElement('p'); summary.className = 'awh-task-detail-summary'; summary.textContent = status.detail; detail.append(summary);
   const facts = document.createElement('div'); facts.className = 'awh-task-detail-facts';
+  const mission = task.mission || {};
   appendTaskDetailRow(facts, 'ผู้ดูแลงาน', status.actor);
-  appendTaskDetailRow(facts, 'อัปเดตล่าสุด', formatDate(task.updatedAt || task.createdAt));
-  appendTaskDetailRow(facts, 'ความคืบหน้า', status.progress > 0 ? `${status.progress}%` : null);
+  appendTaskDetailRow(facts, 'กำลังทำ', mission.currentStep || status.detail);
+  appendTaskDetailRow(facts, 'อัปเดตล่าสุด', formatDate(mission.heartbeatAt || task.updatedAt || task.createdAt));
+  appendTaskDetailRow(facts, 'Heartbeat', mission.heartbeatAt ? (mission.heartbeatFresh === false ? 'ขาดช่วง · AWH จะกู้จาก checkpoint' : 'สด') : null);
+  appendTaskDetailRow(facts, 'ความคืบหน้า', Number.isInteger(mission.progress) ? `${mission.progress}%` : status.progress > 0 ? `${status.progress}%` : null);
+  appendTaskDetailRow(facts, 'เส้นทางทำงาน', [mission.executorKind, mission.requiredCapability].filter(Boolean).join(' · ') || null);
+  appendTaskDetailRow(facts, 'ความต่อเนื่อง', mission.continuity === 'RESUMED' ? 'ทำต่อจาก checkpoint เดิม' : mission.continuity === 'CONTINUING' ? 'กำลังทำต่อใน execution เดิม' : null);
   if (task.execution?.continuation && Number.isInteger(task.execution.continuation.step) && Number.isInteger(task.execution.continuation.maxSteps)) appendTaskDetailRow(facts, 'การทำต่ออัตโนมัติ', `ขั้นที่ ${task.execution.continuation.step} จาก ${task.execution.continuation.maxSteps}`);
   detail.append(facts);
   if (task.lastEvent?.message && /[ก-๙]/u.test(task.lastEvent.message)) {
