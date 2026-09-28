@@ -10,7 +10,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const EXPECTED_VERSION = '1.0.0-rc.1';
+const EXPECTED_VERSION = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8')).version;
 const EXPECTED_PRODUCT = 'Art’s Workspace Hub';
 const OWNER_PROTOCOL_FILENAME = 'ART_AI_WORKING_PROTOCOL.md';
 const MAX_BUNDLE_BYTES = 500 * 1024 * 1024;

@@ -3,6 +3,10 @@ import { access, mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, win32 as pathWin32 } from 'node:path';
 import { createInterface, type Interface as ReadLineInterface } from 'node:readline';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const DEVICE_ENGINE_VERSION = (require('../config/device-runtime-release.json') as { deviceEngine: { version: string } }).deviceEngine.version;
 
 const MODERN_PROTOCOL_VERSION = '2026-07-28';
 const MAX_TEXT = 32 * 1024;
@@ -47,7 +51,7 @@ export async function discoverLnwjudLaunchSpec(platform: NodeJS.Platform = proce
   if (platform === 'win32') {
     const local = env.LOCALAPPDATA;
     const candidates = [
-      local ? pathWin32.join(local, 'AWH', 'Engines', 'device-runtime', '5.5.0', 'AWH Device Runtime.exe') : null,
+      local ? pathWin32.join(local, 'AWH', 'Engines', 'device-runtime', DEVICE_ENGINE_VERSION, 'AWH Device Runtime.exe') : null,
       local ? pathWin32.join(local, 'AWH', 'Engines', 'lnwjud', 'current', 'lnwjud.exe') : null,
       local ? pathWin32.join(local, 'Programs', 'lnwjud', 'lnwjud.exe') : null,
     ].filter((value): value is string => Boolean(value));

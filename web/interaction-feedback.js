@@ -118,17 +118,14 @@
     if (activeRequests === 0 && manualTokens.size === 0 && root.dataset.uiNavigating !== 'true') conceal();
   }
 
-  function consumeRecentUserAction() {
+  function isRecentUserAction() {
     const delta = performance.now() - lastInteraction.at;
-    if (delta < 0 || delta >= 500) return null;
-    const element = lastInteraction.element;
-    lastInteraction = { element: null, at: -Infinity };
-    return usable(element) ? element : null;
+    return delta >= 0 && delta < 1400;
   }
 
   if (nativeFetch) {
     window.fetch = async (...args) => {
-      const element = consumeRecentUserAction();
+      const element = isRecentUserAction() ? lastInteraction.element : null;
       const tracked = usable(element);
       if (tracked) beginRequest(element);
       try {

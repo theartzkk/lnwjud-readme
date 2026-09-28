@@ -62,7 +62,7 @@ test('live Action Graph projection replaces generic progress without exposing ca
 
 test('provider failures remain truthful and preserve the task', () => {
   const status = ux.executionStatus({ state: 'FAILED', failureCode: 'PROVIDER_QUOTA_EXHAUSTED', progress: 0 });
-  assert.equal(status.title, 'ทำไม่สำเร็จ');
+  assert.equal(status.title, 'กำลังแก้ไข');
   assert.match(status.detail, /โควตา AI/);
   assert.match(status.detail, /งานยังถูกเก็บไว้/);
   assert.equal(status.journey.some((step: { state: string }) => step.state === 'halted'), true);
@@ -102,5 +102,5 @@ test('Finish-First task phases are human-first and failure UX does not lead with
   assert.match(source, /กำลังทำ/);
   assert.match(source, /กำลังตรวจ/);
   assert.match(source, /พร้อมใช้/);
-  assert.match(source, /ทำไม่สำเร็จ/);
+  assert.match(source, /กำลังแก้ไข/);
 });

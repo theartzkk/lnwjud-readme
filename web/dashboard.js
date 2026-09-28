@@ -239,17 +239,12 @@ function mountPromptShortcuts(hero) {
   hero.append(row);
 }
 
-function currentNavigationDestination() {
-  const dashboardActive = document.body.classList.contains('product-dashboard-active');
-  if (!dashboardActive) return 'work';
-  const dashboardView = document.getElementById(DASHBOARD_ID)?.dataset.view;
-  return dashboardView === 'tasks' || dashboardView === 'files' ? 'tasks' : 'home';
-}
-
 function updateMobileNavigation() {
   const nav = $('awh-mobile-nav');
   if (!(nav instanceof HTMLElement)) return;
-  const activeDestination = currentNavigationDestination();
+  const dashboardActive = document.body.classList.contains('product-dashboard-active');
+  const dashboardView = document.getElementById(DASHBOARD_ID)?.dataset.view;
+  const activeDestination = dashboardActive ? (dashboardView === 'tasks' || dashboardView === 'files' ? 'tasks' : 'tools') : 'work';
   for (const item of nav.querySelectorAll('[data-mobile-destination]')) {
     const active = item.dataset.mobileDestination === activeDestination;
     item.classList.toggle('is-active', active);
@@ -271,9 +266,12 @@ function mountMobileNavigation() {
     return item;
   };
   nav.append(
-    make('⌂', 'หน้าแรก', 'home', () => returnHome()),
-    make('✦', 'AWH', 'work', () => openWork()),
-    make('✓', 'งาน', 'tasks', () => openTaskSurface()),
+    make('✦', 'แชท', 'work', () => openWork()),
+    make('✓', 'งานของฉัน', 'tasks', () => openTaskSurface()),
+    make('▦', 'เครื่องมือ', 'tools', () => {
+      returnHome();
+      window.setTimeout(() => document.getElementById('awh-home-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+    }),
   );
   document.body.append(nav);
   let keyboardViewportBaseline = window.visualViewport?.height || window.innerHeight;
@@ -319,9 +317,12 @@ function mountProductNavigation(dashboard) {
   brand.innerHTML = '<span class="awh-product-nav-mark" aria-hidden="true">A</span><span><strong>AWH</strong><small>Workspace</small></span>';
   nav.append(brand);
   const entries = [
-    ['home', '⌂', 'หน้าแรก', () => returnHome()],
-    ['work', '✦', 'AWH', () => openWork()],
-    ['tasks', '✓', 'งาน', () => openTaskSurface()],
+    ['work', '✦', 'แชท', () => openWork()],
+    ['tasks', '✓', 'งานของฉัน', () => openTaskSurface()],
+    ['tools', '▦', 'เครื่องมือ', () => {
+      returnHome();
+      window.setTimeout(() => document.getElementById('awh-home-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+    }],
   ];
   for (const [destination, icon, label, action] of entries) {
     const item = button('', 'awh-product-nav-item', action);
@@ -331,7 +332,7 @@ function mountProductNavigation(dashboard) {
   }
   const note = document.createElement('p');
   note.className = 'awh-product-nav-note';
-  note.textContent = 'หน้าแรก · AWH · งาน อยู่ในพื้นที่เดียว';
+  note.textContent = 'ทำงานต่อได้ทุกอุปกรณ์';
   nav.append(note);
   dashboard.prepend(nav);
 }
@@ -339,7 +340,9 @@ function mountProductNavigation(dashboard) {
 function updateProductNavigation() {
   const nav = $('awh-product-nav');
   if (!nav) return;
-  const activeDestination = currentNavigationDestination();
+  const dashboardActive = document.body.classList.contains('product-dashboard-active');
+  const dashboardView = document.getElementById(DASHBOARD_ID)?.dataset.view;
+  const activeDestination = dashboardActive ? (dashboardView === 'tasks' || dashboardView === 'files' ? 'tasks' : 'tools') : 'work';
   for (const item of nav.querySelectorAll('[data-product-destination]')) {
     const active = item.dataset.productDestination === activeDestination;
     item.classList.toggle('is-active', active);
@@ -1369,7 +1372,7 @@ function start() {
   const workspace = $('workspace-view');
   if (workspace) new MutationObserver(() => syncSurface().catch(() => undefined)).observe(workspace, { attributes: true, attributeFilter: ['hidden'] });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && document.body.classList.contains('product-dashboard-active')) refreshDashboard().catch(() => undefined); });
-  state.refreshTimer = window.setInterval(() => { if (!document.hidden && document.body.classList.contains('product-dashboard-active')) refreshDashboard().catch(() => undefined); }, 60000);
+  state.refreshTimer = window.setInterval(() => { if (document.body.classList.contains('product-dashboard-active')) refreshDashboard().catch(() => undefined); }, 30000);
   syncSurface().catch(() => undefined);
 }
 

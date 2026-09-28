@@ -1,6 +1,10 @@
 import { access } from 'node:fs/promises';
 import { join, win32 as pathWin32 } from 'node:path';
+import { createRequire } from 'node:module';
 import { resolveExecutable } from './process.js';
+
+const require = createRequire(import.meta.url);
+const DEVICE_ENGINE_VERSION = (require('../config/device-runtime-release.json') as { deviceEngine: { version: string } }).deviceEngine.version;
 
 export interface WorkerToolProbeOptions {
   platform?: NodeJS.Platform;
@@ -68,7 +72,7 @@ export async function discoverWorkerTools(options: WorkerToolProbeOptions = {}):
   if (platform === 'win32') {
     const local = typeof env.LOCALAPPDATA === 'string' && env.LOCALAPPDATA ? env.LOCALAPPDATA : null;
     const runtimeCandidates = local ? [
-      pathWin32.join(local, 'AWH', 'Engines', 'device-runtime', '5.5.0', 'AWH Device Runtime.exe'),
+      pathWin32.join(local, 'AWH', 'Engines', 'device-runtime', DEVICE_ENGINE_VERSION, 'AWH Device Runtime.exe'),
       pathWin32.join(local, 'AWH', 'Engines', 'lnwjud', 'current', 'lnwjud.exe'),
       pathWin32.join(local, 'Programs', 'lnwjud', 'lnwjud.exe'),
     ] : [];

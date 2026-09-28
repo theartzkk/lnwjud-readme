@@ -33,8 +33,9 @@ test('production desktop is a thin AWH Agent bridge and management lives on web'
 
 test('fresh device bootstrap provisions rebranded AWH runtime and pinned system MCP on macOS and Windows', async () => {
   const bootstrap = await source('src/device-bootstrap.ts');
-  assert.match(bootstrap, /lnwjud-Portable-5\.5\.0\.exe/);
-  assert.doesNotMatch(bootstrap, /lnwjud-Setup-5\.5\.0\.exe/);
+  assert.match(bootstrap, /DEVICE_RUNTIME_RELEASE\.deviceEngine\.assets/);
+  assert.match(bootstrap, /engineAsset\('win32-x64'\)/);
+  assert.doesNotMatch(bootstrap, /lnwjud-(?:Portable|Setup)-\d+\.\d+\.\d+/);
   assert.match(bootstrap, /AWH Device Runtime\.exe/);
   assert.match(bootstrap, /CFBundleName'.*lnwjud/s);
   assert.match(bootstrap, /internal implementation key unchanged/);
@@ -61,9 +62,12 @@ test('fresh device bootstrap provisions rebranded AWH runtime and pinned system 
   assert.match(bootstrap, /LSUIElement/);
   assert.match(bootstrap, /rm\(backup.*codesign/s);
   assert.match(bootstrap, /codesign/);
-  assert.match(bootstrap, /NODE_VERSION = '24\.21\.0'/);
-  assert.match(bootstrap, /SYSTEM_MCP_VERSION = '0\.2\.51'/);
-  assert.match(bootstrap, /SYSTEM_MCP_INTEGRITY/);
+  assert.match(bootstrap, /DEVICE_RUNTIME_RELEASE\.nodeRuntime\.version/);
+  assert.match(bootstrap, /DEVICE_RUNTIME_RELEASE\.version/);
+  assert.match(bootstrap, /DEVICE_RUNTIME_RELEASE\.npmIntegrity/);
+  assert.match(bootstrap, /config\/device-runtime-release\.json/);
+  assert.doesNotMatch(bootstrap, /const NODE_VERSION = '\\d+\\./);
+  assert.doesNotMatch(bootstrap, /const SYSTEM_MCP_VERSION = '\\d+\\./);
   assert.match(bootstrap, /awh-system-mcp/);
   assert.match(bootstrap, /pinned-audited-device-runtime/);
 });

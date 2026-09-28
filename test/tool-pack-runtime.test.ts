@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -12,7 +12,8 @@ async function touch(path: string, content = ''): Promise<void> {
 
 async function fixture(home: string, pack: ToolPackDefinition, connector = true): Promise<void> {
   const root = toolPackRoot(pack, 'darwin', home, process.env);
-  await touch(join(home, 'Library', 'Application Support', 'AWH', 'Toolchain', 'node-24.21.0-x64', 'bin', 'node'), '#!/bin/sh\n');
+  const manifest = JSON.parse(await readFile(join(process.cwd(), 'config', 'device-runtime-release.json'), 'utf8')) as { nodeRuntime: { version: string } };
+  await touch(join(home, 'Library', 'Application Support', 'AWH', 'Toolchain', `node-${manifest.nodeRuntime.version}-x64`, 'bin', 'node'), '#!/bin/sh\n');
   await touch(join(root, 'node_modules', ...pack.packageName.split('/'), 'package.json'), JSON.stringify({ name: pack.packageName, version: pack.version }));
   await touch(join(root, ...pack.entry), '#!/usr/bin/env node\n');
   await touch(join(root, 'package-lock.json'), JSON.stringify({ packages: { ['node_modules/' + pack.packageName]: { version: pack.version, integrity: pack.integrity } } }));

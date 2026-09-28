@@ -3,9 +3,11 @@ import { createHash } from 'node:crypto';
 import { access, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, win32 as pathWin32 } from 'node:path';
+import { createRequire } from 'node:module';
 import { execFile } from './process.js';
 
-const NODE_VERSION = '24.21.0';
+const require = createRequire(import.meta.url);
+const NODE_VERSION = (require('../config/device-runtime-release.json') as { nodeRuntime: { version: string } }).nodeRuntime.version;
 
 export type ToolPackId = 'browser.playwright' | 'browser.devtools' | 'creative.aftereffects' | 'creative.premiere';
 

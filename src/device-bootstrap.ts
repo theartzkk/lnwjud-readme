@@ -7,34 +7,64 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, win32 as pathWin32 } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
+import { createRequire } from 'node:module';
 import { execFile } from './process.js';
 import { LnwjudDeviceClient, discoverLnwjudLaunchSpec } from './lnwjud-device-client.js';
 import { provisionEligibleToolPacks } from './tool-pack-runtime.js';
 
-// 5.5.0 is the current AWH-qualified device engine. 5.5.3 was evaluated on
-// macOS and rejected because fresh stdio startup stalled at secure-storage
-// initialization; AWH pins the last verified release instead of auto-upgrading.
-const LNWJUD_VERSION = '5.5.0';
-const RELEASE_BASE = 'https://github.com/engasnm111/lnwjud/releases/download/v5.5.0';
-const MAC_ASSETS = {
-  arm64: { name: 'lnwjud-5.5.0-arm64.zip', sha256: '69a4c0355bb5b2f8cf0c2af89210333e5682e86fa6a62996f49d9a8afe85b7d1' },
-  x64: { name: 'lnwjud-5.5.0-x64.zip', sha256: '0264147848a4eea1df025573f8f3413380784ca88358c51d1be678da994330aa' },
-} as const;
-const WINDOWS_ASSET = { name: 'lnwjud-Portable-5.5.0.exe', sha256: '04a172af20e755346a31ff9d88e28fbeae8ac8d896fe278ea4aa8fb357363731' } as const;
+type RuntimeAssetSpec = { nameTemplate: string; sha256: string };
+type DeviceRuntimeReleaseManifest = {
+  package: string;
+  version: string;
+  npmIntegrity: string;
+  minimumVersion: string;
+  deviceEngine: {
+    version: string;
+    minimumVersion: string;
+    sourceUrlTemplate: string;
+    assets: Record<'darwin-arm64' | 'darwin-x64' | 'win32-x64', RuntimeAssetSpec>;
+  };
+  nodeRuntime: {
+    version: string;
+    minimumVersion: string;
+    sourceUrlTemplate: string;
+    assets: Record<'darwin-arm64' | 'darwin-x64' | 'win32-x64', RuntimeAssetSpec>;
+  };
+};
+const require = createRequire(import.meta.url);
+const DEVICE_RUNTIME_RELEASE = require('../config/device-runtime-release.json') as DeviceRuntimeReleaseManifest;
+const renderReleaseTemplate = (template: string, version: string): string => template.replaceAll('{version}', version);
+
+const LNWJUD_VERSION = DEVICE_RUNTIME_RELEASE.deviceEngine.version;
+const engineAsset = (key: 'darwin-arm64' | 'darwin-x64' | 'win32-x64') => {
+  const spec = DEVICE_RUNTIME_RELEASE.deviceEngine.assets[key];
+  return { name: renderReleaseTemplate(spec.nameTemplate, LNWJUD_VERSION), sha256: spec.sha256 };
+};
+const MAC_ASSETS = { arm64: engineAsset('darwin-arm64'), x64: engineAsset('darwin-x64') } as const;
+const WINDOWS_ASSET = engineAsset('win32-x64');
+const RELEASE_BASE = DEVICE_RUNTIME_RELEASE.deviceEngine.sourceUrlTemplate
+  .replaceAll('{version}', LNWJUD_VERSION)
+  .replace('/{asset}', '');
 const MAC_RUNTIME_EXECUTABLE = 'AWH Device Runtime';
 const AWH_RUNTIME_APP_NAME = 'AWH Device Runtime';
 const WINDOWS_RUNTIME_EXECUTABLE = 'AWH Device Runtime.exe';
 
-const NODE_VERSION = '24.21.0';
-const NODE_RELEASE_BASE = `https://nodejs.org/dist/v${NODE_VERSION}`;
+const NODE_VERSION = DEVICE_RUNTIME_RELEASE.nodeRuntime.version;
+const NODE_RELEASE_BASE = DEVICE_RUNTIME_RELEASE.nodeRuntime.sourceUrlTemplate
+  .replaceAll('{version}', NODE_VERSION)
+  .replace('/{asset}', '');
+const nodeAsset = (key: 'darwin-arm64' | 'darwin-x64' | 'win32-x64') => {
+  const spec = DEVICE_RUNTIME_RELEASE.nodeRuntime.assets[key];
+  return { name: renderReleaseTemplate(spec.nameTemplate, NODE_VERSION), sha256: spec.sha256 };
+};
 const NODE_ASSETS = {
-  'darwin-arm64': { name: `node-v${NODE_VERSION}-darwin-arm64.tar.gz`, sha256: 'bed7eea5325e1108f32ce5228ddd6a5f0f08a499ee42aa7442aea583702f6057' },
-  'darwin-x64': { name: `node-v${NODE_VERSION}-darwin-x64.tar.gz`, sha256: '1462cb3b3046b815cf8ea436d3da450ec1a9f11dac7e5a46b0ada5305d7e8097' },
-  'win32-x64': { name: `node-v${NODE_VERSION}-win-x64.zip`, sha256: '158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541' },
+  'darwin-arm64': nodeAsset('darwin-arm64'),
+  'darwin-x64': nodeAsset('darwin-x64'),
+  'win32-x64': nodeAsset('win32-x64'),
 } as const;
-const SYSTEM_MCP_PACKAGE = '@wonderwhy-er/desktop-commander';
-const SYSTEM_MCP_VERSION = '0.2.51';
-const SYSTEM_MCP_INTEGRITY = 'sha512-BF/ZV06c7mh+tzfJEkQpjcOg6UaQtzp2vRadIpA9hI+WpPDwkQ2ekdY0fbN7I4xOrCQX6NajyEPouEDXFJc1kA==';
+const SYSTEM_MCP_PACKAGE = DEVICE_RUNTIME_RELEASE.package;
+const SYSTEM_MCP_VERSION = DEVICE_RUNTIME_RELEASE.version;
+const SYSTEM_MCP_INTEGRITY = DEVICE_RUNTIME_RELEASE.npmIntegrity;
 
 export interface DeviceBootstrapResult {
   state: 'READY' | 'UNSUPPORTED' | 'FAILED';
@@ -363,7 +393,7 @@ async function installMacEngine(home: string, arch: 'arm64' | 'x64'): Promise<bo
   const root = join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'lnwjud');
   await mkdir(root, { recursive: true, mode: 0o700 });
   const current = join(root, 'current');
-  // Preserve an already-qualified AWH engine (for example 5.5.0-awh1) instead
+  // Preserve an already-qualified AWH engine instead
   // of replacing it with a second upstream copy merely because its directory
   // name carries an AWH suffix.
   try {

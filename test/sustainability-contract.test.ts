@@ -198,7 +198,9 @@ test('mac remote worker recovery is pinned, persistent, and reproducible', async
   const patch = await readFile(join(dir, 'runtime-hardening.patch'), 'utf8');
   const plist = await readFile(join(dir, 'com.awh.remote-worker.plist.template'), 'utf8');
   const updater = await readFile(join(dir, 'awh-runtime-update.sh'), 'utf8');
-  assert.match(installer, /EXPECTED=0\.2\.51/);
+  assert.match(installer, /device-runtime-release\.json/);
+  assert.match(installer, /process\.stdout\.write\(m\.version\)/);
+  assert.doesNotMatch(installer, /^EXPECTED=\d+\.\d+\.\d+$/m);
   assert.match(installer, /runtime hardening patch does not match pinned package; refusing partial install/);
   assert.match(installer, /awh-runtime-update\.sh/);
   assert.doesNotMatch(supervisor, /\bnpx\b/);

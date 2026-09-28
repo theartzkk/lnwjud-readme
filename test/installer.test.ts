@@ -85,11 +85,25 @@ test('lightweight AWH Device Runtime is pinned, self-updating and rollback-safe'
     readFile(new URL('../deploy/remote-worker/macos/install.sh', import.meta.url), 'utf8'),
     readFile(new URL('../deploy/remote-worker/macos/runtime-hardening.patch', import.meta.url), 'utf8'),
   ]);
-  const manifest = JSON.parse(manifestRaw) as { version: string; npmIntegrity: string; package: string; capabilityProfile: string };
-  assert.equal(manifest.version, '0.2.51');
+  const manifest = JSON.parse(manifestRaw) as {
+    version: string;
+    npmIntegrity: string;
+    package: string;
+    capabilityProfile: string;
+    nodeRuntime: { version: string; minimumVersion: string; sourceUrlTemplate: string; assets: Record<string,{nameTemplate:string;sha256:string}> };
+    linuxConnector: { nodeRuntime: { version: string; minimumVersion: string; sourceUrlTemplate: string; asset: {nameTemplate:string;sha256:string} } };
+    browserQa: { playwrightVersion: string; minimumNodeVersion: string };
+  };
+  assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
   assert.equal(manifest.package, '@wonderwhy-er/desktop-commander');
   assert.match(manifest.npmIntegrity, /^sha512-/);
   assert.equal(manifest.capabilityProfile, 'full-device-v1');
+  assert.match(manifest.nodeRuntime.version, /^\d+\.\d+\.\d+$/);
+  assert.match(manifest.nodeRuntime.minimumVersion, /^\d+\.\d+\.\d+$/);
+  assert.match(manifest.nodeRuntime.sourceUrlTemplate, /\{version\}.*\{asset\}/);
+  assert.match(manifest.linuxConnector.nodeRuntime.asset.sha256, /^[0-9a-f]{64}$/);
+  assert.match(manifest.linuxConnector.nodeRuntime.sourceUrlTemplate, /\{version\}.*\{asset\}/);
+  assert.match(manifest.browserQa.playwrightVersion, /^\d+\.\d+\.\d+$/);
   assert.match(updater, /https:\/\/kruart\.online/);
   assert.match(updater, /release\.json/);
   assert.match(updater, /npmIntegrity/);
@@ -99,7 +113,9 @@ test('lightweight AWH Device Runtime is pinned, self-updating and rollback-safe'
   assert.doesNotMatch(updater, /@latest|npm\s+update/);
   assert.match(supervisor, /awh-runtime-update\.sh/);
   assert.match(supervisor, /UPDATE_INTERVAL=21600/);
-  assert.match(installer, /EXPECTED=0\.2\.51/);
+  assert.match(installer, /device-runtime-release\.json/);
+  assert.match(installer, /process\.stdout\.write\(m\.version\)/);
+  assert.doesNotMatch(installer, /^EXPECTED=\d+\.\d+\.\d+$/m);
   assert.match(installer, /awh-runtime-update\.sh/);
   assert.match(installer, /\.local\/share\/bay-remote\/node_modules\/\.bin\/desktop-commander/);
   assert.match(updater, /\.local\/share\/bay-remote\/node_modules\/\.bin\/desktop-commander/);
