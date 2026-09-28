@@ -1499,8 +1499,25 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1; then stage PROJECT_SOURCE_ROUTE; test "
 if test "$IDENTITY_CONVERGENCE" = 1; then stage IDENTITY_CONVERGENCE_ROUTE; for route in /api/v1/control/identity/school /api/v1/control/identity/bindings /api/v1/control/identity/candidates /api/v1/control/bay/communication; do code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME$route" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; done; fi
 if test "$PLATFORM_HARDENING" = 1; then
   stage PLATFORM_HARDENING_ROUTE
-  test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM control_capability_catalog WHERE capability IN ('qa.runner','event.outbox') AND enabled=1;")" = 2
-  for route in /api/v1/control/identity/school /api/v1/control/identity/academic-context /api/v1/control/observability; do code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME$route" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; done
+  platform_attempt=1
+  while test "$platform_attempt" -le 10; do
+    platform_capabilities=$(sudo sqlite3 "$DB" "SELECT count(*) FROM control_capability_catalog WHERE capability IN ('qa.runner','event.outbox') AND enabled=1;")
+    platform_routes_ready=1
+    for route in /api/v1/control/identity/school /api/v1/control/identity/academic-context /api/v1/control/observability; do
+      code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME$route" 2>/dev/null || printf 000)
+      if test "$code" != 401 && test "$code" != 403; then platform_routes_ready=0; fi
+    done
+    if test "$platform_capabilities" = 2 && test "$platform_routes_ready" = 1; then
+      printf '%s\n' "DEPLOY_DIAGNOSTIC=PLATFORM_RUNTIME_VERIFY_ATTEMPTS_$platform_attempt"
+      break
+    fi
+    if test "$platform_attempt" -ge 10; then
+      printf '%s\n' "DEPLOY_DIAGNOSTIC=PLATFORM_RUNTIME_VERIFY_FAILED_CAPABILITIES_${platform_capabilities}_ROUTES_${platform_routes_ready}"
+      return 1
+    fi
+    platform_attempt=$((platform_attempt + 1))
+    sleep 1
+  done
 fi
 if test "$CLOUD_FIRST" = 1; then stage CLOUD_FIRST_ROUTE; test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM control_capability_catalog WHERE capability IN ('qa.cloud','review.visual') AND enabled=1;")" = 2; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/cloud" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; fi
 if test "$SELF_SUFFICIENT_AI" = 1; then stage AI_GOVERNANCE_ROUTE; code=$(curl --silent --max-time 10 --resolve "$HOSTNAME:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$HOSTNAME/api/v1/control/ai" 2>/dev/null || printf 000); test "$code" = 401 || test "$code" = 403; fi

@@ -137,6 +137,8 @@ test('platform hardening is wired to runtime rather than documentation only', as
   assert.match(bounded, /MISSION_CANONICAL_MAIN_MOVED/);
   assert.match(deploy, /PLATFORM_HARDENING_MIGRATION_VERIFIED/);
   assert.match(deploy, /PLATFORM_RUNTIME_READY/);
+  assert.match(deploy, /PLATFORM_RUNTIME_VERIFY_ATTEMPTS_/);
+  assert.match(deploy, /platform_attempt=1[\s\S]*platform_attempt=\$\(\(platform_attempt \+ 1\)\)/);
   assert.match(deployOrchestrator, /EXTENSION_MODE_COUNT=\$\(\(AWH_CORE \+ ASSISTANT_WORKSTREAM/);
   assert.match(deployOrchestrator, /if test "\$EXTENSION_MODE_COUNT" -eq 0; then OWNER_LOGIN_PROOF_REQUIRED=1; fi/);
   assert.match(health, /'slo'/);
