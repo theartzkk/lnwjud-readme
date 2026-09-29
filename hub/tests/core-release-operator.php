@@ -12,10 +12,10 @@ foreach ([
 
 function cr_assert(bool $value,string $message): void { if(!$value)throw new RuntimeException($message); }
 function cr_clean(string $root): void { if(!is_dir($root))return;$it=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::CHILD_FIRST);foreach($it as $f){$p=$f->getPathname();$f->isDir()&&!$f->isLink()?@rmdir($p):@unlink($p);}@rmdir($root); }
-function cr_release_notes(string $base,string $target): array {
+function cr_release_notes(string $base,string $target,string $track='awh'): array {
     return [
         'schemaVersion'=>1,'metadataState'=>'READY','generatedFrom'=>'EXACT_GIT_DIFF',
-        'repository'=>'awh','releaseTrack'=>'awh','previousSha'=>$base,'targetSha'=>$target,'generatedAt'=>'2026-09-23T01:00:00+00:00',
+        'repository'=>'awh','releaseTrack'=>$track,'previousSha'=>$base,'targetSha'=>$target,'generatedAt'=>'2026-09-23T01:00:00+00:00',
         'ownerSummary'=>'AWH release fixture','userVisible'=>true,
         'summary'=>['features'=>['Track-scoped release fixture'],'improvements'=>[],'fixes'=>[],'internal'=>[]],
         'commits'=>[['sha'=>$target,'subject'=>'Track-scoped release fixture']],'changedFileCount'=>1,
@@ -100,8 +100,8 @@ try{
     cr_assert($pdo->query("SELECT state FROM control_tasks WHERE task_id=".$pdo->quote($task))->fetchColumn()==='WAITING_FOR_WORKER','Owner request is already on the existing worker queue');
 
     $fake=$root.'/awh-core-release-run.php';file_put_contents($fake,"<?php\n");
-    $calls=[];
-    $runner=static function(array $command,?array $options=null)use(&$calls):array{$calls[]=$command;return ['code'=>0,'out'=>str_contains(implode(' ',$command),'systemctl is-active')?'inactive\n':'','err'=>''];};
+    $calls=[];$unitState='active';
+    $runner=static function(array $command,?array $options=null)use(&$calls,&$unitState):array{$calls[]=$command;return ['code'=>0,'out'=>str_contains(implode(' ',$command),'systemctl is-active')?$unitState."\n":'','err'=>''];};
     $operator=new HubCoreReleaseOperator($pdo,$fake,$runner);
     $dispatch=$operator->tick('2026-09-23T01:00:01+00:00');
     cr_assert(($dispatch['state']??null)==='DISPATCHED'&&($dispatch['executionId']??null)===$execution,'approved core release is dispatched');
@@ -111,6 +111,40 @@ try{
 
     $running=$pdo->query("SELECT state,lease_owner,attempt_count FROM control_task_executions WHERE execution_id=".$pdo->quote($execution))->fetch();
     cr_assert(is_array($running)&&$running['state']==='RUNNING'&&str_starts_with((string)$running['lease_owner'],'core-release:')&&(int)$running['attempt_count']===1,'dispatcher records one leased transient execution');
+
+    // E2E queue regression: A is RUNNING, a real Platform service request for B must be admitted
+    // as WAITING_FOR_WORKER/QUEUED, remain queued while A is active, then dispatch automatically
+    // on the first operator tick after A reaches a terminal state.
+    $platformBase=$promoteBase;$platformSha=str_repeat('9',40);
+    if(!is_dir($canonicalGit.'/refs/heads/platform'))mkdir($canonicalGit.'/refs/heads/platform',0700,true);
+    file_put_contents($canonicalGit.'/refs/heads/platform/production',$platformBase."\n");
+    file_put_contents($canonicalGit.'/refs/heads/main',$platformSha."\n");
+    $platformPromoteTask='c23b45c0-23e1-408d-ae0f-ac5eca7f6900';$platformPromoteExecution='d23b45c0-23e1-408d-ae0f-ac5eca7f6900';
+    $platformNotes=cr_release_notes($sha,$platformSha,'vps-platform');
+    $pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,'Promote queued Platform fixture','COMPLETED',NULL,NULL,100,'Guarded operator mutation completed',NULL,'queue-e2e-platform-source-promotion',NULL,:at,:at,NULL)")
+        ->execute(['task'=>$platformPromoteTask,'user'=>$owner,'project'=>$project,'at'=>'2026-09-23T01:00:02+00:00']);
+    $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS','source.promote','COMPLETED',NULL,NULL,1,NULL,:checkpoint,NULL,:at,:at)")
+        ->execute(['execution'=>$platformPromoteExecution,'task'=>$platformPromoteTask,'project'=>$project,'checkpoint'=>json_encode(['repository'=>'awh','expectedMainSha'=>$sha,'targetSha'=>$platformSha,'bundleSha256'=>str_repeat('7',64),'releaseNotes'=>$platformNotes],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>'2026-09-23T01:00:02+00:00']);
+    $platformService=HubCoreReleaseService::platformFromPdo($pdo);
+    $queuedB=$platformService->request($session['sessionToken'],$session['csrfToken'],['schemaVersion'=>1,'releaseSha'=>$platformSha,'cleanupTopology'=>false],'2026-09-23T01:00:02+00:00');
+    cr_assert(($queuedB['state']??null)==='WAITING_FOR_WORKER','B request is admitted while A is RUNNING');
+    $queuedBExecution=(string)$queuedB['executionId'];$queuedBTask=(string)$queuedB['taskId'];
+    cr_assert($pdo->query("SELECT state FROM control_task_executions WHERE execution_id=".$pdo->quote($queuedBExecution))->fetchColumn()==='QUEUED','B execution persists as QUEUED behind running A');
+
+    $whileA=$operator->tick('2026-09-23T01:00:03+00:00');
+    cr_assert(($whileA['state']??null)==='RUNNING'&&($whileA['executionId']??null)===$execution,'operator observes A as RUNNING instead of claiming B');
+    cr_assert($pdo->query("SELECT state FROM control_task_executions WHERE execution_id=".$pdo->quote($queuedBExecution))->fetchColumn()==='QUEUED'
+        &&$pdo->query("SELECT state FROM control_tasks WHERE task_id=".$pdo->quote($queuedBTask))->fetchColumn()==='WAITING_FOR_WORKER','B remains queued while A is active');
+
+    $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED',lease_owner=NULL,lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution")->execute(['at'=>'2026-09-23T01:00:04+00:00','execution'=>$execution]);
+    $pdo->prepare("UPDATE control_tasks SET state='COMPLETED',progress=100,updated_at=:at WHERE task_id=:task")->execute(['at'=>'2026-09-23T01:00:04+00:00','task'=>$task]);
+    $afterA=$operator->tick('2026-09-23T01:00:05+00:00');
+    cr_assert(($afterA['state']??null)==='DISPATCHED'&&($afterA['executionId']??null)===$queuedBExecution,'B starts automatically on the next operator tick after A completes');
+    cr_assert($pdo->query("SELECT state FROM control_task_executions WHERE execution_id=".$pdo->quote($queuedBExecution))->fetchColumn()==='RUNNING'
+        &&$pdo->query("SELECT state FROM control_tasks WHERE task_id=".$pdo->quote($queuedBTask))->fetchColumn()==='RUNNING','B transitions QUEUED to RUNNING without a second request');
+    $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED',lease_owner=NULL,lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution")->execute(['at'=>'2026-09-23T01:00:06+00:00','execution'=>$queuedBExecution]);
+    $pdo->prepare("UPDATE control_tasks SET state='COMPLETED',progress=100,updated_at=:at WHERE task_id=:task")->execute(['at'=>'2026-09-23T01:00:06+00:00','task'=>$queuedBTask]);
+    file_put_contents($canonicalGit.'/refs/heads/platform/production',$platformSha."\n");
 
     // Finish the fixture execution, then simulate an approved release stranded while the dispatcher heartbeat expires.
     $pdo->prepare("UPDATE control_task_executions SET state='COMPLETED',lease_owner=NULL,lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution")->execute(['at'=>'2026-09-23T01:01:00+00:00','execution'=>$execution]);
