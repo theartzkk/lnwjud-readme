@@ -359,7 +359,7 @@ async function startupPermissionState(): Promise<StartupPermissionState> {
     if (runtime?.screenCapture !== 'granted') missing.push('screen-recording');
     if (runtime?.microphone !== 'granted') missing.push('microphone');
     if (!automationReady) missing.push('automation');
-    osReady = runtime !== null && runtime.accessibility === true && runtime.screenCapture === 'granted' && runtime.microphone === 'granted' && automationReady;
+    osReady = runtime !== null && runtime.accessibility === true && runtime.screenCapture === 'granted' && automationReady;
   }
 
   if (!internal.write) missing.push('workspace-write');
