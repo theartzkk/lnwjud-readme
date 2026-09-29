@@ -37,7 +37,7 @@ function send(response, status, payload, headers = {}) { response.writeHead(stat
 function session(request) { return /(?:^|;\s*)awh_fixture_session=1(?:;|$)/.test(request.headers.cookie ?? ''); }
 function jsonRequest(request) { return String(request.headers['content-type'] ?? '').toLowerCase().startsWith('application/json'); }
 function requireCsrf(request, response) { if (request.headers['x-awh-csrf'] !== csrf) { send(response, 403, { code: 'CSRF_REJECTED' }); return false; } return true; }
-function summary(conversation) { return { conversationId: conversation.conversationId, projectId: project.projectId, title: conversation.title, archivedAt: null, origin: 'native', createdAt: conversation.createdAt, updatedAt: conversation.updatedAt, lastTaskId: conversation.lastTaskId }; }
+function summary(conversation) { return { conversationId: conversation.conversationId, projectId: project.projectId, title: conversation.title, archivedAt: null, deletedAt: conversation.deleted ? now : null, origin: conversation.origin || 'native', createdAt: conversation.createdAt, updatedAt: conversation.updatedAt, lastTaskId: conversation.lastTaskId }; }
 function thread(conversation) { return { schemaVersion: 3, conversation: summary(conversation), messages: conversation.messages, tasks: tasks.filter((task) => task.conversationId === conversation.conversationId), artifacts: artifacts.filter((artifact) => artifact.conversationId === conversation.conversationId), attachments: attachments.filter((attachment) => attachment.conversationId === conversation.conversationId), approvals: [] }; }
 function attachmentId() { return uuid('33333333-3333-4333-8333'); }
 function conversationId() { return uuid('22222222-2222-4222-8222'); }
@@ -189,12 +189,14 @@ const server = createServer(async (request, response) => {
     if (['/api/v1/control/infrastructure', '/api/v1/control/infrastructure/summary'].includes(url.pathname) && request.method === 'GET') return send(response, 200, { schemaVersion: 1, telemetry: { state: 'READY', generatedAt: now, server: { host: { name: 'awh-hub-01', os: 'Ubuntu 24.04 LTS', uptimeSeconds: 7200 }, cpu: { usedPercent: 8.4, load1: 0.08, load5: 0.05, load15: 0.03 }, memory: { totalBytes: 4294967296, usedBytes: 1288490189, freeBytes: 3006477107, availableBytes: 3006477107, usedPercent: 30 }, swap: { totalBytes: 0, usedBytes: 0, freeBytes: 0, availableBytes: 0, usedPercent: 0 }, storage: { totalBytes: 85899345920, usedBytes: 21474836480, freeBytes: 64424509440, availableBytes: 64424509440, usedPercent: 25 }, services: [{ key: 'nginx', label: 'Web Server', state: 'ACTIVE', startup: 'ENABLED' }, { key: 'php-fpm', label: 'PHP', state: 'ACTIVE', startup: 'ENABLED' }, { key: 'native-executor', label: 'AWH Executor', state: 'ACTIVE', startup: 'ENABLED' }], domains: [], security: { fail2ban: 'ACTIVE', automaticUpdates: 'ACTIVE' } } }, deployment: { releaseId: 'm16-mobile-fixture', controlReleaseId: 'm16-mobile-fixture', webReleaseId: 'm16-mobile-fixture', pointersMatch: true, rollbackReleaseId: 'm16-rollback-fixture', stagedCandidates: [] }, database: { state: 'HEALTHY' }, backup: { state: 'VERIFIED' }, storage: { state: 'READY' }, queue: { active: 0 }, aiBudget: { state: 'READY' }, aiModels: [{ provider: 'openai', model: 'gpt-5.6-luna' }, { provider: 'openai', model: 'gpt-5.6-terra' }, { provider: 'openai', model: 'gpt-5.6-sol' }], workerSummary: { ready: 1 }, workers: [{ displayName: 'AWH Agent ตัวอย่าง', state: 'READY' }], autonomousWork: [], activity: [], incidents: [], staff: {}, governor: { state: 'READY' }, selfHealing: { state: 'OBSERVE_ONLY' }, housekeeping: { state: 'AUDIT_ONLY' }, hostingCenter: { state: 'READINESS_ONLY' }, managedSites: [], morningBrief: { state: 'SNAPSHOT_ONLY' }, storageGovernance: { state: 'GOVERNED' }, productionComplete: { passed: 13, total: 15, percent: 87, checks: [] } });
     if (url.pathname === '/api/v1/control/memory' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, memories: [] });
     if (url.pathname === '/api/v1/control/memory/imports' && request.method === 'GET') return send(response, 200, { imports: [] });
-    if (url.pathname === '/api/v1/control/conversations' && request.method === 'GET') return send(response, 200, { schemaVersion: 2, conversations: conversations.map(summary) });
-    if (url.pathname === '/api/v1/control/conversations/trash' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, conversations: [] });
+    if (url.pathname === '/api/v1/control/conversations' && request.method === 'GET') return send(response, 200, { schemaVersion: 2, conversations: conversations.filter((item) => !item.deleted && item.origin !== 'temporary').map(summary) });
+    if (url.pathname === '/api/v1/control/conversations/trash' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, conversations: conversations.filter((item) => item.deleted && item.origin !== 'temporary').map(summary) });
     if (url.pathname === '/api/v1/control/conversations/new' && request.method === 'POST') {
       if (!requireCsrf(request, response)) return;
-      const value = await readJson(request); if (value.schemaVersion !== 2 || value.projectId !== project.projectId || typeof value.title !== 'string') return send(response, 400, { code: 'PAYLOAD_INVALID' });
-      const conversation = { conversationId: conversationId(), title: value.title.trim() || 'Work', createdAt: now, updatedAt: now, lastTaskId: null, messages: [] }; conversations.unshift(conversation); return send(response, 201, thread(conversation));
+      const value = await readJson(request);
+      const temporary = value.schemaVersion === 3 && value.temporary === true;
+      if (![2, 3].includes(value.schemaVersion) || value.projectId !== project.projectId || typeof value.title !== 'string' || (value.schemaVersion === 3 && typeof value.temporary !== 'boolean')) return send(response, 400, { code: 'PAYLOAD_INVALID' });
+      const conversation = { conversationId: conversationId(), title: value.title.trim() || 'Work', origin: temporary ? 'temporary' : 'native', deleted: false, createdAt: now, updatedAt: now, lastTaskId: null, messages: [] }; conversations.unshift(conversation); return send(response, 201, thread(conversation));
     }
     const attachmentMatch = /^\/api\/v1\/control\/conversations\/thread\/([0-9a-f-]{36})\/attachments$/i.exec(url.pathname);
     if (attachmentMatch && request.method === 'POST') {
@@ -204,9 +206,17 @@ const server = createServer(async (request, response) => {
       const stored = incoming.map(({ name, sizeBytes }) => { const value = { attachmentId: attachmentId(), conversationId: conversation.conversationId, messageId: null, name, mimeType: 'application/octet-stream', sizeBytes, downloadUrl: '', createdAt: now }; value.downloadUrl = `/api/v1/control/attachments/${value.attachmentId}/download`; attachments.push(value); return value; });
       return send(response, 201, { schemaVersion: 3, attachments: stored });
     }
+    const lifecycleMatch = /^\/api\/v1\/control\/conversations\/thread\/([0-9a-f-]{36})\/lifecycle$/i.exec(url.pathname);
+    if (lifecycleMatch && request.method === 'POST') {
+      if (!requireCsrf(request, response)) return;
+      const value = await readJson(request); const conversation = conversations.find((item) => item.conversationId === lifecycleMatch[1]);
+      if (!conversation || value.schemaVersion !== 1 || !['DELETE','RESTORE'].includes(value.action)) return send(response, 400, { code: 'PAYLOAD_INVALID' });
+      conversation.deleted = value.action === 'DELETE'; conversation.updatedAt = now;
+      return send(response, 200, { schemaVersion: 1, conversationId: conversation.conversationId, state: conversation.deleted ? 'DELETED' : 'ACTIVE', deletedAt: conversation.deleted ? now : null });
+    }
     const threadMatch = /^\/api\/v1\/control\/conversations\/thread\/([0-9a-f-]{36})$/i.exec(url.pathname);
     if (threadMatch) {
-      const conversation = conversations.find((item) => item.conversationId === threadMatch[1]); if (!conversation) return send(response, 404, { code: 'NOT_FOUND' });
+      const conversation = conversations.find((item) => item.conversationId === threadMatch[1] && !item.deleted); if (!conversation) return send(response, 404, { code: 'NOT_FOUND' });
       if (request.method === 'GET') return send(response, 200, thread(conversation));
       if (request.method === 'POST') { if (!requireCsrf(request, response)) return; const value = await readJson(request); conversation.title = typeof value.title === 'string' ? value.title.trim() || conversation.title : conversation.title; conversation.updatedAt = now; return send(response, 200, thread(conversation)); }
     }
@@ -241,7 +251,10 @@ const server = createServer(async (request, response) => {
     const downloadMatch = /^\/api\/v1\/control\/attachments\/([0-9a-f-]{36})\/download$/i.exec(url.pathname);
     if (downloadMatch) { const attachment = attachments.find((item) => item.attachmentId === downloadMatch[1]); if (!attachment) return send(response, 404, { code: 'NOT_FOUND' }); response.writeHead(200, { 'Content-Type': attachment.mimeType, 'Content-Disposition': `attachment; filename="${attachment.name}"`, 'Cache-Control': 'private, no-store' }); return response.end('fixture attachment'); }
     const contextMatch = /^\/api\/v1\/control\/contexts\/([0-9a-f-]{36})$/i.exec(url.pathname);
-    if (contextMatch && request.method === 'GET') return send(response, 200, { context: conversations[0] ? { conversationId: conversations[0].conversationId } : null });
+    if (contextMatch && request.method === 'GET') {
+      const remembered = conversations.find((item) => !item.deleted && item.origin !== 'temporary');
+      return send(response, 200, { context: remembered ? { conversationId: remembered.conversationId } : null });
+    }
     if (url.pathname === '/api/v1/control/contexts' && request.method === 'POST') { if (!requireCsrf(request, response)) return; return send(response, 200, { context: true }); }
     const workspaceMatch = /^\/api\/v1\/control\/workspaces\/([0-9a-f-]{36})$/i.exec(url.pathname);
     if (workspaceMatch && request.method === 'GET') return send(response, 200, { schemaVersion: 1, workspace: { state: 'READY', syncState: 'SYNCED', lease: null } });

@@ -38,7 +38,7 @@ import {
   const taskAnnouncementState = new Map();
   let composerDraftKey = null;
   const chatBridgeListeners = new Set();
-  let chatBridgeCurrent = Object.freeze({ schemaVersion: 1, ready: false, authenticated: false, project: null, conversation: null, conversations: [], messages: [], tasks: [], artifacts: [], attachments: [], approvals: [], pendingAttachments: [], sending: false, running: false, canCancel: false, continuity: null, workers: [], error: '' });
+  let chatBridgeCurrent = Object.freeze({ schemaVersion: 1, ready: false, authenticated: false, project: null, conversation: null, conversations: [], messages: [], tasks: [], artifacts: [], attachments: [], approvals: [], pendingAttachments: [], sending: false, running: false, canCancel: false, temporary: false, stream: { phase: 'IDLE', hasIncrementalProgress: false, updatedAt: null }, continuity: null, workers: [], error: '' });
 
   function chatTaskPresentation(task) {
     if (!task) return null;
@@ -59,7 +59,10 @@ import {
     const conversation = state.conversation || {};
     const tasks = Array.isArray(conversation.tasks) ? conversation.tasks : [];
     const taskViews = tasks.map(chatTaskPresentation).filter(Boolean);
+    const activeTask = [...taskViews].reverse().find((task) => !['COMPLETED','FAILED','CANCELLED'].includes(task.state)) || null;
     const workers = Array.isArray(state.control?.workers) ? state.control.workers : [];
+    const temporary = conversation?.conversation?.origin === 'temporary';
+    const streamPhase = sendingMessage ? 'SENDING' : activeTask ? (activeTask.state === 'WAITING_FOR_APPROVAL' ? 'WAITING_FOR_APPROVAL' : 'RUNNING') : 'IDLE';
     return {
       schemaVersion: 1, ready: Boolean(project && state.conversationAvailable),
       authenticated: state.control?.authenticated === true,
@@ -73,8 +76,11 @@ import {
       approvals: Array.isArray(conversation.approvals) ? conversation.approvals.map((item) => ({ ...item })) : [],
       pendingAttachments: state.pendingAttachments.map((file, index) => ({ index, name: file.name, size: file.size, type: file.type || '' })),
       sending: sendingMessage,
-      running: sendingMessage || taskViews.some((task) => !['COMPLETED','FAILED','CANCELLED'].includes(task.state)),
-      canCancel: Boolean(activeCancellableTask()), continuity: state.workspaceContinuity ? { ...state.workspaceContinuity } : null,
+      running: sendingMessage || Boolean(activeTask),
+      canCancel: Boolean(activeCancellableTask()),
+      temporary,
+      stream: { phase: streamPhase, hasIncrementalProgress: Boolean(activeTask), updatedAt: activeTask?.updatedAt || conversation?.conversation?.updatedAt || null },
+      continuity: state.workspaceContinuity ? { ...state.workspaceContinuity } : null,
       workers: workers.map((worker) => ({ workerId: worker.workerId || worker.deviceId || null, name: worker.name || worker.label || worker.hostname || 'อุปกรณ์', state: worker.state || 'UNKNOWN' })),
       error: /(?:ไม่สำเร็จ|ขัดข้อง|ผิดพลาด|ไม่สามารถ|ยัง.*ไม่ได้)/.test($('goal-message')?.textContent || '') ? ($('goal-message')?.textContent?.trim() || '') : '',
     };
@@ -83,6 +89,19 @@ import {
   function publishChatBridge() {
     chatBridgeCurrent = Object.freeze(chatBridgeSnapshot());
     for (const listener of [...chatBridgeListeners]) { try { listener(); } catch {} }
+  }
+
+  function selectedTemporaryConversationId() {
+    const conversation = state.conversation?.conversation;
+    return conversation?.origin === 'temporary' && conversation?.conversationId === state.selectedConversationId ? conversation.conversationId : null;
+  }
+
+  async function retireTemporaryConversation(conversationId) {
+    if (typeof conversationId !== 'string') return;
+    try { await updateConversationLifecycle(conversationId, 'DELETE'); }
+    catch (error) {
+      if (error instanceof Error && /active|กำลังทำงาน|ยัง.*ทำงาน/i.test(error.message)) return;
+    }
   }
 
   function installChatBridge() {
@@ -97,9 +116,10 @@ import {
       pickFiles() { if (!$('attachment-input')?.disabled) $('attachment-input')?.click(); },
       async cancel() { const task = activeCancellableTask(); if (!task) return; await cancelTask(task.taskId); await refreshConversation(false); publishChatBridge(); },
       async decide(approvalId, decision) { if (typeof approvalId !== 'string' || !['approve','reject'].includes(decision)) return; await decideApproval(approvalId, decision); await refreshWorkspace(false); publishChatBridge(); },
-      async newConversation() { const project = selectedProject(); if (!project) return; const created = await createConversation(project.projectId, 'การสนทนาใหม่'); state.selectedConversationId = created.conversation.conversationId; state.conversation = created; state.threadFollowLatest = true; await refreshConversation(false); publishChatBridge(); },
+      async newConversation() { const project = selectedProject(); if (!project) return; const previousTemporary = selectedTemporaryConversationId(); const created = await createConversation(project.projectId, 'การสนทนาใหม่'); state.selectedConversationId = created.conversation.conversationId; state.conversation = created; state.threadFollowLatest = true; await refreshConversation(false); if (previousTemporary && previousTemporary !== state.selectedConversationId) void retireTemporaryConversation(previousTemporary); publishChatBridge(); },
+      async newTemporaryConversation() { const project = selectedProject(); if (!project) return; const previousTemporary = selectedTemporaryConversationId(); const created = await createConversation(project.projectId, 'แชทชั่วคราว', true); state.selectedConversationId = created.conversation.conversationId; state.conversation = created; state.conversationAvailable = true; state.threadFollowLatest = true; await refreshConversation(false); if (previousTemporary && previousTemporary !== state.selectedConversationId) void retireTemporaryConversation(previousTemporary); publishChatBridge(); },
       async searchConversations(query='') { const project = selectedProject(); if (!project) return []; return loadConversations(project.projectId, String(query || '').slice(0,120)); },
-      async switchConversation(conversationId) { if (typeof conversationId !== 'string' || !state.conversations.some((item) => item.conversationId === conversationId)) return; state.selectedConversationId = conversationId; state.conversation = null; state.conversationAvailable = false; renderWorkspace(); await refreshConversation(false); publishChatBridge(); },
+      async switchConversation(conversationId) { if (typeof conversationId !== 'string' || !state.conversations.some((item) => item.conversationId === conversationId)) return; const previousTemporary = selectedTemporaryConversationId(); state.selectedConversationId = conversationId; state.conversation = null; state.conversationAvailable = false; renderWorkspace(); await refreshConversation(false); if (previousTemporary && previousTemporary !== conversationId) void retireTemporaryConversation(previousTemporary); publishChatBridge(); },
       async renameConversation(conversationId, title) { const current = state.conversations.find((item) => item.conversationId === conversationId) || state.conversation?.conversation; if (!current) return; await updateConversation(conversationId, String(title || current.title || 'Work').slice(0,120), false); await refreshConversation(false); publishChatBridge(); },
       async archiveConversation(conversationId) { const current = state.conversations.find((item) => item.conversationId === conversationId) || state.conversation?.conversation; if (!current) return; await updateConversation(conversationId, current.title || 'Work', true); if (state.selectedConversationId === conversationId) state.selectedConversationId = null; await refreshConversation(false); publishChatBridge(); },
       async deleteConversation(conversationId) { await updateConversationLifecycle(conversationId, 'DELETE'); if (state.selectedConversationId === conversationId) { state.selectedConversationId = null; state.conversation = null; } await refreshConversation(false); publishChatBridge(); },
@@ -1594,13 +1614,14 @@ import {
   async function fetchConversation(refreshList = true) {
     const request = ++conversationRequest;
     const selectedId = state.selectedConversationId;
+    const selectedTemporary = state.conversation?.conversation?.origin === 'temporary' && state.conversation?.conversation?.conversationId === selectedId;
     const project = selectedProject();
     if (!project) { state.selectedConversationId = null; state.conversations = []; state.conversation = null; state.conversationAvailable = false; state.workspaceContinuity = null; renderWorkspace(); return; }
     try {
       const [conversations, workspaceContinuity, currentContext] = await Promise.all([loadConversations(project.projectId), loadWorkspaceContinuity(project.projectId), loadCurrentContext(project.projectId)]);
       if (request !== conversationRequest || project.projectId !== state.selectedProjectId || selectedId !== state.selectedConversationId || sendingMessage) return;
       state.conversations = conversations;
-      if (!conversations.some((conversation) => conversation.conversationId === state.selectedConversationId)) {
+      if (!selectedTemporary && !conversations.some((conversation) => conversation.conversationId === state.selectedConversationId)) {
         const remembered = currentContext?.context?.conversationId;
         state.selectedConversationId = conversations.some((conversation) => conversation.conversationId === remembered) ? remembered : conversations[0]?.conversationId || null;
       }
@@ -1615,7 +1636,7 @@ import {
         state.conversation = value;
       }
       state.workspaceContinuity = workspaceContinuity; state.conversationAvailable = true; renderWorkspace();
-      void saveCurrentContext(project.projectId, state.selectedConversationId, 'work').catch(() => undefined);
+      if (state.conversation?.conversation?.origin !== 'temporary') void saveCurrentContext(project.projectId, state.selectedConversationId, 'work').catch(() => undefined);
     } catch (error) {
       if (request !== conversationRequest || project.projectId !== state.selectedProjectId) return;
       // A failed read must never lock the composer when we still know the selected conversation.

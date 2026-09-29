@@ -27,6 +27,8 @@ export type AwhChatSnapshot = {
   sending: boolean;
   running: boolean;
   canCancel: boolean;
+  temporary: boolean;
+  stream: { phase: "IDLE" | "SENDING" | "RUNNING" | "WAITING_FOR_APPROVAL"; hasIncrementalProgress: boolean; updatedAt: string | null };
   continuity: Record<string, any> | null;
   workers: Array<{ workerId: string | null; name: string; state: string }>;
   error: string;
@@ -43,6 +45,7 @@ export type AwhChatBridge = {
   cancel(): Promise<void>;
   decide(approvalId: string, decision: "approve" | "reject"): Promise<void>;
   newConversation(): Promise<void>;
+  newTemporaryConversation(): Promise<void>;
   searchConversations(query?: string): Promise<Array<Record<string, any>>>;
   switchConversation(conversationId: string): Promise<void>;
   renameConversation(conversationId: string, title: string): Promise<void>;
@@ -61,7 +64,8 @@ export const emptySnapshot: AwhChatSnapshot = {
   schemaVersion: 1, ready: false, authenticated: false, project: null,
   conversation: null, conversations: [], messages: [], tasks: [],
   artifacts: [], attachments: [], approvals: [], pendingAttachments: [],
-  sending: false, running: false, canCancel: false, continuity: null,
+  sending: false, running: false, canCancel: false, temporary: false,
+  stream: { phase: "IDLE", hasIncrementalProgress: false, updatedAt: null }, continuity: null,
   workers: [], error: "",
 };
 

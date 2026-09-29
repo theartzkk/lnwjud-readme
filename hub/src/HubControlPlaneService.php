@@ -901,7 +901,8 @@ final class HubControlPlaneService
     {
         $session = $this->sessionRow($sessionToken, $now); $this->assertUnifiedReady();
         $userId = (string) $session['user_id']; $params = ['user' => $userId]; $lifecycle = $this->conversationLifecycleSchemaPresent();
-        $sql = 'SELECT c.conversation_id, c.project_id, c.title, c.archived_at, c.origin, c.created_at, c.updated_at, c.last_task_id, p.name AS project_name' . ($lifecycle ? ', c.deleted_at, c.deleted_by_user_id' : '') . ' FROM control_conversations c JOIN projects p ON p.project_id = c.project_id WHERE c.user_id = :user';
+        if ($lifecycle) $this->expireTemporaryConversations($userId, self::timestamp($now ?? gmdate('c')));
+        $sql = 'SELECT c.conversation_id, c.project_id, c.title, c.archived_at, c.origin, c.created_at, c.updated_at, c.last_task_id, p.name AS project_name' . ($lifecycle ? ', c.deleted_at, c.deleted_by_user_id' : '') . ' FROM control_conversations c JOIN projects p ON p.project_id = c.project_id WHERE c.user_id = :user AND c.origin <> \'temporary\'';
         if ($lifecycle) $sql .= ' AND c.deleted_at IS NULL';
         if ($projectId !== null && $projectId !== '') { $projectId = self::uuid($projectId); $this->assertProjectMember($userId, $projectId); $sql .= ' AND c.project_id = :project'; $params['project'] = $projectId; }
         if ($query !== null && trim($query) !== '') { $needle = self::searchText($query); $sql .= ' AND (c.title LIKE :needle ESCAPE \'\\\' OR EXISTS (SELECT 1 FROM control_conversation_messages m WHERE m.conversation_id = c.conversation_id AND m.body LIKE :needle ESCAPE \'\\\'))'; $params['needle'] = '%' . self::escapeLike($needle) . '%'; }
@@ -914,7 +915,7 @@ final class HubControlPlaneService
     {
         $session = $this->sessionRow($sessionToken, $now); $this->assertConversationLifecycleReady();
         $userId = (string)$session['user_id']; $params = ['user'=>$userId];
-        $sql = 'SELECT c.conversation_id,c.project_id,c.title,c.archived_at,c.origin,c.created_at,c.updated_at,c.last_task_id,c.deleted_at,c.deleted_by_user_id,p.name AS project_name FROM control_conversations c JOIN projects p ON p.project_id=c.project_id WHERE c.user_id=:user AND c.deleted_at IS NOT NULL';
+        $sql = 'SELECT c.conversation_id,c.project_id,c.title,c.archived_at,c.origin,c.created_at,c.updated_at,c.last_task_id,c.deleted_at,c.deleted_by_user_id,p.name AS project_name FROM control_conversations c JOIN projects p ON p.project_id=c.project_id WHERE c.user_id=:user AND c.deleted_at IS NOT NULL AND c.origin <> \'temporary\'';
         if ($projectId !== null && $projectId !== '') { $projectId=self::uuid($projectId); $this->assertProjectMember($userId,$projectId); $sql.=' AND c.project_id=:project'; $params['project']=$projectId; }
         $sql .= ' ORDER BY c.deleted_at DESC,c.conversation_id DESC LIMIT 100'; $q=$this->pdo->prepare($sql); $q->execute($params);
         return ['schemaVersion'=>1,'conversations'=>array_map(fn(array $row):array=>$this->conversationSummaryRow($row),$q->fetchAll())];
@@ -977,12 +978,15 @@ final class HubControlPlaneService
 
     public function createConversation(string $sessionToken, string $csrfToken, array $payload, ?string $now = null): array
     {
-        $session = $this->authorizeSession($sessionToken, $csrfToken, $now); self::exactKeys($payload, ['projectId', 'schemaVersion', 'title']);
-        if (($payload['schemaVersion'] ?? null) !== 2) throw new HubControlPlaneException('Unsupported conversation schema', 'SCHEMA_VERSION');
+        $session = $this->authorizeSession($sessionToken, $csrfToken, $now);
+        $schema = $payload['schemaVersion'] ?? null;
+        if ($schema === 2) { self::exactKeys($payload, ['projectId', 'schemaVersion', 'title']); $temporary = false; }
+        elseif ($schema === 3) { self::exactKeys($payload, ['projectId', 'schemaVersion', 'temporary', 'title']); if (!is_bool($payload['temporary'])) throw new HubControlPlaneException('Temporary conversation flag is invalid', 'FIELD_INVALID'); $temporary = $payload['temporary']; }
+        else throw new HubControlPlaneException('Unsupported conversation schema', 'SCHEMA_VERSION');
         $this->assertUnifiedReady(); $projectId = self::uuid((string) ($payload['projectId'] ?? '')); $this->assertProjectMember((string) $session['user_id'], $projectId);
         $at = self::timestamp($now ?? gmdate('c')); $title = self::conversationTitle((string) ($payload['title'] ?? ''));
-        $id = self::uuidFromBytes(random_bytes(16));
-        $this->pdo->prepare("INSERT INTO control_conversations(conversation_id, user_id, project_id, created_at, updated_at, last_task_id, title, archived_at, origin) VALUES(:id, :user, :project, :at, :at, NULL, :title, NULL, 'native')")->execute(['id' => $id, 'user' => $session['user_id'], 'project' => $projectId, 'at' => $at, 'title' => $title]);
+        $id = self::uuidFromBytes(random_bytes(16)); $origin = $temporary ? 'temporary' : 'native';
+        $this->pdo->prepare("INSERT INTO control_conversations(conversation_id, user_id, project_id, created_at, updated_at, last_task_id, title, archived_at, origin) VALUES(:id, :user, :project, :at, :at, NULL, :title, NULL, :origin)")->execute(['id' => $id, 'user' => $session['user_id'], 'project' => $projectId, 'at' => $at, 'title' => $title, 'origin' => $origin]);
         return $this->conversationByIdForUser((string) $session['user_id'], $id);
     }
 
@@ -1740,7 +1744,7 @@ final class HubControlPlaneService
     {
         $this->assertAssistantReady();
         $this->assertProjectMember($userId, $projectId);
-        $conversationQuery = $this->pdo->prepare($this->unifiedSchemaPresent() ? 'SELECT * FROM control_conversations WHERE user_id = :user AND project_id = :project AND archived_at IS NULL' . ($this->conversationLifecycleSchemaPresent() ? ' AND deleted_at IS NULL' : '') . ' ORDER BY updated_at DESC, conversation_id DESC LIMIT 1' : 'SELECT * FROM control_conversations WHERE user_id = :user AND project_id = :project LIMIT 1');
+        $conversationQuery = $this->pdo->prepare($this->unifiedSchemaPresent() ? 'SELECT * FROM control_conversations WHERE user_id = :user AND project_id = :project AND archived_at IS NULL AND origin <> \'temporary\'' . ($this->conversationLifecycleSchemaPresent() ? ' AND deleted_at IS NULL' : '') . ' ORDER BY updated_at DESC, conversation_id DESC LIMIT 1' : 'SELECT * FROM control_conversations WHERE user_id = :user AND project_id = :project LIMIT 1');
         $conversationQuery->execute(['user' => $userId, 'project' => $projectId]);
         $conversation = $conversationQuery->fetch();
         if (!is_array($conversation)) return ['schemaVersion' => 1, 'conversation' => null, 'messages' => [], 'tasks' => [], 'artifacts' => [], 'attachments' => [], 'approvals' => []];
@@ -4082,6 +4086,21 @@ final class HubControlPlaneService
     private function conversationSummaryRow(array $row): array
     {
         return ['conversationId' => (string) $row['conversation_id'], 'projectId' => (string) $row['project_id'], 'projectName' => (string) $row['project_name'], 'title' => (string) $row['title'], 'archivedAt' => $row['archived_at'] === null ? null : (string) $row['archived_at'], 'deletedAt' => array_key_exists('deleted_at',$row) && $row['deleted_at'] !== null ? (string)$row['deleted_at'] : null, 'origin' => (string) $row['origin'], 'createdAt' => (string) $row['created_at'], 'updatedAt' => (string) $row['updated_at'], 'lastTaskId' => $row['last_task_id'] === null ? null : (string) $row['last_task_id']];
+    }
+
+    private function expireTemporaryConversations(string $userId, string $at): void
+    {
+        if (!$this->conversationLifecycleSchemaPresent()) return;
+        $cutoff = gmdate('c', strtotime($at) - 86400);
+        $this->pdo->prepare("UPDATE control_conversations
+            SET deleted_at=:at,deleted_by_user_id=:user,updated_at=:at
+            WHERE user_id=:user AND origin='temporary' AND deleted_at IS NULL AND updated_at<:cutoff
+              AND NOT EXISTS (
+                SELECT 1 FROM control_tasks t
+                WHERE t.conversation_id=control_conversations.conversation_id
+                  AND t.user_id=:user
+                  AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED')
+              )")->execute(['at'=>$at,'user'=>$userId,'cutoff'=>$cutoff]);
     }
 
     private function currentContextForUser(string $userId, string $projectId): array

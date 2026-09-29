@@ -6,7 +6,7 @@ import {
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import remarkGfm from "remark-gfm";
 import {
-  Archive, ArrowDown, ArrowUp, Check, ChevronRight, Copy, FileText,
+  Archive, ArrowDown, ArrowUp, Check, ChevronRight, Clock3, Copy, FileText,
   Menu, Mic, Paperclip, Pin, PinOff, Plus, Search, Square, X,
 } from "lucide-react";
 import { Button } from "./ui/button";
@@ -169,20 +169,21 @@ function DraftPersistence({ snapshot }: { snapshot: AwhChatSnapshot }) {
   const aui = useAui();
   const text = useAuiState((s) => s.composer.text);
   const conversationId = String(snapshot.conversation?.conversationId || "");
+  const temporary = snapshot.temporary;
   const hydrated = React.useRef(new Set<string>());
   React.useEffect(() => {
-    if (!conversationId || hydrated.current.has(conversationId)) return;
+    if (temporary || !conversationId || hydrated.current.has(conversationId)) return;
     const key = "awh.chat.draft.v1:" + conversationId;
     const saved = localStorage.getItem(key);
     if (saved && !aui.composer.getState().text) aui.composer.setText(saved);
     const frame = window.requestAnimationFrame(() => hydrated.current.add(conversationId));
     return () => window.cancelAnimationFrame(frame);
-  }, [aui, conversationId]);
+  }, [aui, conversationId, temporary]);
   React.useEffect(() => {
-    if (!conversationId || !hydrated.current.has(conversationId)) return;
+    if (temporary || !conversationId || !hydrated.current.has(conversationId)) return;
     const key = "awh.chat.draft.v1:" + conversationId;
     if (text) localStorage.setItem(key, text); else localStorage.removeItem(key);
-  }, [conversationId, text]);
+  }, [conversationId, temporary, text]);
   return null;
 }
 
@@ -220,6 +221,9 @@ function Sidebar({ snapshot, open, onClose }: { snapshot: AwhChatSnapshot; open:
     <Button className="awh-new-chat" variant="secondary" onClick={() => void bridge?.newConversation()}>
       <Plus size={16} /> แชทใหม่
     </Button>
+    <Button className="awh-temp-chat" variant="ghost" onClick={() => void bridge?.newTemporaryConversation()}>
+      <Clock3 size={16} /> แชทชั่วคราว
+    </Button>
     <label className="awh-chat-search"><Search size={15} /><input value={query} onChange={(e) => setQuery(e.target.value)}
       placeholder="ค้นหาแชท" aria-label="ค้นหาการสนทนา" /></label>
     <nav className="awh-thread-list" aria-label="รายการสนทนา">
@@ -245,13 +249,18 @@ function Sidebar({ snapshot, open, onClose }: { snapshot: AwhChatSnapshot; open:
 function ChatHeader({ snapshot, onMenu }: { snapshot: AwhChatSnapshot; onMenu(): void }) {
   const working = snapshot.workers.find((worker) => worker.state === "WORKING");
   const context = working?.name || "AWH Server";
+  const liveLabel = snapshot.stream.phase === "SENDING" ? "กำลังส่ง"
+    : snapshot.stream.phase === "WAITING_FOR_APPROVAL" ? "รอการยืนยัน"
+    : snapshot.stream.phase === "RUNNING" ? "กำลังทำงาน" : null;
   return <header className="awh-chat-header">
     <Button variant="ghost" size="icon" className="awh-menu-button" onClick={onMenu} aria-label="เปิดรายการแชท"><Menu size={18} /></Button>
     <div className="awh-chat-title">
-      <strong>{snapshot.conversation?.title || "AWH Chat"}</strong>
-      <span>{snapshot.project?.name || "เลือกโปรเจกต์"}</span>
+      <strong>{snapshot.temporary ? "แชทชั่วคราว" : snapshot.conversation?.title || "AWH Chat"}</strong>
+      <span>{snapshot.temporary ? "ไม่อยู่ในประวัติ และไม่จำ draft หลังออกจากห้องนี้" : snapshot.project?.name || "เลือกโปรเจกต์"}</span>
     </div>
     <div className="awh-context-chips">
+      {snapshot.temporary && <span className="awh-temporary-chip"><Clock3 size={12} /> ชั่วคราว</span>}
+      {liveLabel && <span className="awh-live-chip"><i aria-hidden="true" />{liveLabel}</span>}
       {snapshot.project && <span>{snapshot.project.name}</span>}
       <span>🖥 {context}</span>
     </div>
@@ -266,6 +275,9 @@ function ThreadSurface({ snapshot }: { snapshot: AwhChatSnapshot }) {
       <ThreadPrimitive.Messages>
         {({ message }) => message.role === "user" ? <UserMessage /> : <AssistantMessage />}
       </ThreadPrimitive.Messages>
+      {snapshot.stream.phase === "SENDING" && <div className="awh-response-pending" role="status" aria-live="polite">
+        <i aria-hidden="true" /><span>AWH กำลังรับคำสั่ง…</span>
+      </div>}
       <ThreadPrimitive.ScrollToBottom className="awh-scroll-latest" aria-label="ไปข้อความล่าสุด" behavior="smooth">
         <ArrowDown size={17} />
       </ThreadPrimitive.ScrollToBottom>

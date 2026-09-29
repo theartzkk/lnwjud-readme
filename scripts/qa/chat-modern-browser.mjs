@@ -82,6 +82,26 @@ try {
   assert.ok((await page.evaluate(() => JSON.parse(localStorage.getItem('awh.chat.pinned.v1') || '[]').length)) >= 1);
   evidence.scenarios.push('search and pin work without a parallel chat database');
 
+  await page.locator('.awh-temp-chat').click();
+  await page.locator('.awh-temporary-chip').waitFor({ state: 'visible' });
+  const temporaryId = await page.evaluate(() => globalThis.AWH_CHAT_BRIDGE?.getSnapshot()?.conversation?.conversationId || null);
+  assert.ok(temporaryId);
+  assert.equal(await page.evaluate(() => globalThis.AWH_CHAT_BRIDGE?.getSnapshot()?.temporary), true);
+  await page.locator('.awh-composer-input').fill('ร่างชั่วคราวที่ห้ามจำ');
+  await page.waitForTimeout(250);
+  const temporaryState = await page.evaluate((id) => ({
+    draft: localStorage.getItem('awh.chat.draft.v1:' + id),
+    listed: globalThis.AWH_CHAT_BRIDGE?.getSnapshot()?.conversations?.some((item) => item.conversationId === id) || false,
+  }), temporaryId);
+  assert.equal(temporaryState.draft, null);
+  assert.equal(temporaryState.listed, false);
+  await page.reload();
+  await page.locator('.awh-chat-shell').waitFor({ state: 'visible' });
+  await page.waitForFunction(() => Boolean(globalThis.AWH_CHAT_BRIDGE?.getSnapshot()?.conversation?.conversationId));
+  assert.equal(await page.evaluate(() => globalThis.AWH_CHAT_BRIDGE?.getSnapshot()?.temporary), false);
+  assert.notEqual(await page.evaluate(() => globalThis.AWH_CHAT_BRIDGE?.getSnapshot()?.conversation?.conversationId || null), temporaryId);
+  evidence.scenarios.push('temporary chat stays out of history, draft storage and reload continuity');
+
   await page.locator('.awh-composer-input').fill('สร้างไฟล์ Word บันทึกข้อความ');
   await page.locator('.awh-send-button').click();
   await page.locator('.awh-artifact-card').waitFor({ state: 'visible' });

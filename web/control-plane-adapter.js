@@ -205,7 +205,7 @@ export async function loadConversations(projectId, query = '') {
   if (!UUID.test(projectId) || (typeof query !== 'string' || query.length > 120)) throw new Error('โปรเจกต์ไม่ถูกต้อง');
   const value = await controlRequest(`/api/v1/control/conversations?projectId=${encodeURIComponent(projectId)}${query ? `&q=${encodeURIComponent(query)}` : ''}`);
   if (value.schemaVersion !== 2 || !Array.isArray(value.conversations)) throw new Error('รายการการสนทนาของ AWH ไม่ถูกต้อง');
-  return value.conversations.filter((conversation) => conversation && UUID.test(conversation.conversationId) && conversation.projectId === projectId);
+  return value.conversations.filter((conversation) => conversation && UUID.test(conversation.conversationId) && conversation.projectId === projectId && conversation.origin !== 'temporary');
 }
 
 export async function loadConversation(conversationId) {
@@ -227,12 +227,15 @@ export async function loadDeletedConversations(projectId) {
   if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง');
   const value = await controlRequest(`/api/v1/control/conversations/trash?projectId=${encodeURIComponent(projectId)}`);
   if (value.schemaVersion !== 1 || !Array.isArray(value.conversations)) throw new Error('ถังขยะแชทของ AWH ไม่ถูกต้อง');
-  return value.conversations.filter((conversation) => conversation && UUID.test(conversation.conversationId) && conversation.projectId === projectId && typeof conversation.deletedAt === 'string');
+  return value.conversations.filter((conversation) => conversation && UUID.test(conversation.conversationId) && conversation.projectId === projectId && conversation.origin !== 'temporary' && typeof conversation.deletedAt === 'string');
 }
 
-export async function createConversation(projectId, title = 'การสนทนาใหม่') {
-  if (!UUID.test(projectId) || typeof title !== 'string' || !title.trim() || title.length > 120) throw new Error('ชื่อการสนทนาไม่ถูกต้อง');
-  return controlRequest('/api/v1/control/conversations/new', { method: 'POST', body: JSON.stringify({ schemaVersion: 2, projectId, title: title.trim() }) });
+export async function createConversation(projectId, title = 'การสนทนาใหม่', temporary = false) {
+  if (!UUID.test(projectId) || typeof title !== 'string' || !title.trim() || title.length > 120 || typeof temporary !== 'boolean') throw new Error('ชื่อการสนทนาไม่ถูกต้อง');
+  const body = temporary
+    ? { schemaVersion: 3, projectId, title: title.trim(), temporary: true }
+    : { schemaVersion: 2, projectId, title: title.trim() };
+  return controlRequest('/api/v1/control/conversations/new', { method: 'POST', body: JSON.stringify(body) });
 }
 
 export async function updateConversation(conversationId, title, archived = false) {

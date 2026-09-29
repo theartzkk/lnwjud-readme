@@ -44,6 +44,26 @@ test("Chat shell exposes modern assistant UX without raw tool logs by default", 
   assert.doesNotMatch(thread, /desktop_commander|github\.get_commit|playwright\.browser_navigate/);
 });
 
+
+test("Temporary Chat stays on the existing conversation authority and out of history", async () => {
+  const [service, adapter, app, bridge, thread] = await Promise.all([
+    read("hub/src/HubControlPlaneService.php"), read("web/control-plane-adapter.js"),
+    read("web/app.js"), read("web/chat-island/bridge.ts"), read("web/chat-island/thread.tsx"),
+  ]);
+  assert.match(service, /origin <> \\'temporary\\'/);
+  assert.match(service, /expireTemporaryConversations/);
+  assert.match(service, /origin = \$temporary \? 'temporary' : 'native'/);
+  assert.match(adapter, /createConversation\(projectId, title = 'การสนทนาใหม่', temporary = false\)/);
+  assert.match(app, /newTemporaryConversation/);
+  assert.match(app, /origin !== 'temporary'/);
+  assert.match(bridge, /temporary: boolean/);
+  assert.match(bridge, /stream: \{ phase:/);
+  assert.match(thread, /แชทชั่วคราว/);
+  assert.match(thread, /snapshot\.temporary/);
+  assert.match(thread, /snapshot\.stream\.phase/);
+  assert.match(thread, /temporary \|\| !conversationId/);
+});
+
 test("Chat dependencies are pinned and the release emits one island bundle", async () => {
   const pkg = JSON.parse(await read("package.json"));
   assert.equal(pkg.dependencies["@assistant-ui/react"], "0.15.22");

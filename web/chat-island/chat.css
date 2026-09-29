@@ -124,3 +124,12 @@ body.awh-modern-chat-ready #awh-chat-root{display:flex!important;min-height:0;fl
   body.awh-modern-chat-ready .artifact-sheet .sheet-backdrop{display:none}
   body.awh-modern-chat-ready .artifact-sheet-card{width:min(46vw,760px);height:100dvh;max-height:100dvh;margin:0;border-radius:20px 0 0 20px;border-right:0;pointer-events:auto;box-shadow:-18px 0 44px rgba(31,48,64,.12)}
 }
+
+/* Temporary Chat + truthful live state. */
+.awh-temp-chat{justify-content:flex-start;width:100%;gap:8px;margin:-4px 0 10px;color:#586675}
+.awh-temporary-chip{display:inline-flex!important;align-items:center;gap:4px;border-color:#e6d7b7!important;background:#fffaf0!important;color:#8a651c!important}
+.awh-live-chip{display:inline-flex!important;align-items:center;gap:6px}
+.awh-live-chip i,.awh-response-pending i{width:7px;height:7px;border-radius:50%;background:#f57922;box-shadow:0 0 0 4px rgba(245,121,34,.10)}
+.awh-response-pending{display:flex;align-items:center;gap:9px;max-width:720px;margin:4px auto 12px;padding:0 18px;color:#707782;font-size:12px}
+.awh-response-pending span{font-style:normal}
+@media(max-width:900px){.awh-temp-chat{margin-bottom:8px}.awh-response-pending{width:100%;padding:0 14px}.awh-temporary-chip{display:inline-flex!important}}

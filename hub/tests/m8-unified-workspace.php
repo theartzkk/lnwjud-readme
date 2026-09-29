@@ -43,6 +43,11 @@ try {
     $pair = $enrollment->issuePairingCode($owner, [$project], $now);
     $session = m8_response($control, 'POST', '/api/v1/control/session', ['CONTENT_TYPE' => 'application/json', 'HTTP_ORIGIN' => 'https://awh.test'], ['schemaVersion' => 1, 'pairingCode' => $pair['pairingCode'], 'displayName' => 'iPhone', 'appVersion' => '1.0.0']);
     m8_assert($session['status'] === 200, 'browser session'); $cookie = m8_cookie($session, '__Host-awh_control_session'); $csrf = m8_cookie($session, 'awh_csrf'); $browser = m8_browser($cookie, $csrf);
+    $temporary = m8_response($control, 'POST', '/api/v1/control/conversations/new', $browser, ['schemaVersion' => 3, 'projectId' => $project, 'title' => 'แชทชั่วคราว', 'temporary' => true]);
+    $temporaryBody = json_decode($temporary['body'], true, 32, JSON_THROW_ON_ERROR); $temporaryId = $temporaryBody['conversation']['conversationId'] ?? '';
+    m8_assert($temporary['status'] === 201 && ($temporaryBody['conversation']['origin'] ?? null) === 'temporary', 'temporary chat reuses the canonical conversation authority');
+    $temporaryIndex = m8_response($control, 'GET', '/api/v1/control/conversations?projectId=' . $project, ['HTTP_COOKIE' => '__Host-awh_control_session=' . $cookie, 'HTTP_SEC_FETCH_SITE' => 'same-origin']);
+    m8_assert($temporaryId !== '' && !str_contains($temporaryIndex['body'], $temporaryId), 'temporary chat stays out of history/search index');
     $created = m8_response($control, 'POST', '/api/v1/control/conversations/new', $browser, ['schemaVersion' => 2, 'projectId' => $project, 'title' => 'ตรวจโปรเจกต์']);
     m8_assert($created['status'] === 201, 'create bounded thread'); $createdBody = json_decode($created['body'], true, 32, JSON_THROW_ON_ERROR); $conversation = $createdBody['conversation']['conversationId'];
     $message = ['schemaVersion' => 2, 'projectId' => $project, 'conversationId' => $conversation, 'message' => 'สถานะ', 'idempotencyKey' => 'm8-status-0001'];
