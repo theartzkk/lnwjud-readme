@@ -5,6 +5,7 @@ import { createPackageWithOptions, extractAll, extractFile, getRawHeader } from 
 import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, win32 as pathWin32 } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 import { createRequire } from 'node:module';
@@ -291,16 +292,19 @@ async function rebrandMacEngine(appRoot: string): Promise<void> {
   if (microphone.code !== 0) throw new Error('DEVICE_RUNTIME_REBRAND_PLIST_FAILED');
   const appleEvents = await execFile('/usr/bin/plutil', ['-replace', 'NSAppleEventsUsageDescription', '-string', 'AWH Device Runtime uses Automation only to control apps you explicitly ask AWH to operate.', plist], appRoot, 15_000);
   if (appleEvents.code !== 0) throw new Error('DEVICE_RUNTIME_REBRAND_PLIST_FAILED');
-  const awhIconCandidates = [
-    typeof process.resourcesPath === 'string' ? join(process.resourcesPath, 'electron.icns') : '',
-    '/Applications/AWH Agent.app/Contents/Resources/electron.icns',
-  ].filter(Boolean);
-  for (const candidate of awhIconCandidates) {
-    try {
-      if (!(await lstat(candidate)).isFile()) continue;
-      await copyFile(candidate, join(appRoot, 'Contents', 'Resources', 'icon.icns'));
-      break;
-    } catch {}
+  const iconWork = await mkdtemp(join(tmpdir(), 'awh-runtime-icon-'));
+  try {
+    const logoSource = join(dirname(fileURLToPath(import.meta.url)), '..', 'logo-256x256.png');
+    const stagedLogo = join(iconWork, 'awh-logo.png');
+    const brandedIcon = join(appRoot, 'Contents', 'Resources', 'AWHDeviceRuntime.icns');
+    await copyFile(logoSource, stagedLogo);
+    const converted = await execFile('/usr/bin/sips', ['-s', 'format', 'icns', stagedLogo, '--out', brandedIcon], appRoot, 30_000);
+    if (converted.code !== 0) throw new Error('DEVICE_RUNTIME_REBRAND_ICON_FAILED');
+    await copyFile(brandedIcon, join(appRoot, 'Contents', 'Resources', 'icon.icns'));
+    const iconPlist = await execFile('/usr/bin/plutil', ['-replace', 'CFBundleIconFile', '-string', 'AWHDeviceRuntime.icns', plist], appRoot, 15_000);
+    if (iconPlist.code !== 0) throw new Error('DEVICE_RUNTIME_REBRAND_ICON_FAILED');
+  } finally {
+    await rm(iconWork, { recursive: true, force: true }).catch(() => undefined);
   }
   // Helper bundle directory/executable names stay upstream-compatible because
   // Electron locates them internally, but their visible Finder/System UI names

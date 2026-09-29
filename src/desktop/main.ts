@@ -70,7 +70,10 @@ let autopilotRuntime: { key: string; runner: AutopilotRunner } | null = null;
 let workerRuntime: { key: string; runtime: ControlPlaneWorkerRuntime } | null = null;
 let workerTimer: NodeJS.Timeout | null = null;
 let workerRunning = false;
+let connectedRuntimeMonitor: NodeJS.Timeout | null = null;
+let connectedRuntimeRepairInFlight = false;
 let startupPermissionsReady = process.platform !== 'darwin';
+const CONNECTED_RUNTIME_RECHECK_MS = 15_000;
 const PERMISSION_SETUP_VERSION = 1;
 const MAX_HANDOFF_PREVIEW_CHARS = 4_000;
 
@@ -419,6 +422,31 @@ async function ensureConnectedDeviceRuntime(): Promise<void> {
   if (runtime.state !== 'READY' || !startupPermissionsReady) return;
   const enrolled = await enrollmentState().catch(() => ({ enrolled: false }));
   if (enrolled.enrolled === true) await ensureRemoteDesktopConnector().catch(() => undefined);
+}
+
+async function healConnectedDeviceRuntime(): Promise<void> {
+  if (connectedRuntimeRepairInFlight) return;
+  connectedRuntimeRepairInFlight = true;
+  try {
+    const config = loadConfig();
+    if (!config.controlPlaneWorker) return;
+    const current = await remoteDesktopConnectorStatus().catch(() => null);
+    if (current?.state === 'READY') return;
+    const permissions = await startupPermissionState().catch(() => null);
+    if (permissions?.ready !== true) return;
+    await ensureConnectedDeviceRuntime();
+  } finally {
+    connectedRuntimeRepairInFlight = false;
+  }
+}
+
+function startConnectedDeviceRuntimeMonitor(): void {
+  if (SMOKE_TEST || connectedRuntimeMonitor) return;
+  const repair = (): void => { void healConnectedDeviceRuntime().catch(() => undefined); };
+  const initial = setTimeout(repair, 3_000);
+  initial.unref?.();
+  connectedRuntimeMonitor = setInterval(repair, CONNECTED_RUNTIME_RECHECK_MS);
+  connectedRuntimeMonitor.unref?.();
 }
 
 async function loginDevice(username: unknown, password: unknown) {
@@ -1097,6 +1125,7 @@ async function startAfterReady(): Promise<void> {
   if (process.platform === 'darwin') app.dock?.hide();
   mainWindow = await createWindow(false);
   tray = createTray();
+  startConnectedDeviceRuntimeMonitor();
   const config = loadConfig();
   const localEnrollment = await enrollmentState().catch(() => ({ ok: false, enrolled: false, hubConfigured: Boolean(config.hubApiBase) }));
   const stored = loadStoredSettings(config.dataDir);
