@@ -354,12 +354,12 @@ async function startupPermissionState(): Promise<StartupPermissionState> {
   if (process.platform === 'darwin') {
     try { runtime = await deviceRuntimePermissionStatus(undefined, false); }
     catch { runtime = null; }
-    const automationReady = stored.permissionSetupVersion === PERMISSION_SETUP_VERSION;
     if (runtime?.accessibility !== true) missing.push('accessibility');
     if (runtime?.screenCapture !== 'granted') missing.push('screen-recording');
-    if (runtime?.microphone !== 'granted') missing.push('microphone');
-    if (!automationReady) missing.push('automation');
-    osReady = runtime !== null && runtime.accessibility === true && runtime.screenCapture === 'granted' && automationReady;
+    // Microphone and Automation are capability-scoped permissions. They are
+    // requested only when a task actually needs audio or app automation;
+    // they must not block the unattended AWH remote/control runtime.
+    osReady = runtime !== null && runtime.accessibility === true && runtime.screenCapture === 'granted';
   }
 
   if (!internal.write) missing.push('workspace-write');
@@ -380,7 +380,7 @@ async function authorizeStartupPermissions(): Promise<StartupPermissionState & {
     try { runtime = await deviceRuntimePermissionStatus(undefined, true); } catch { runtime = null; }
   }
   const stored = loadStoredSettings(config.dataDir);
-  const permissionSetupComplete = process.platform !== 'darwin' || runtime?.ready === true;
+  const permissionSetupComplete = process.platform !== 'darwin' || (runtime?.accessibility === true && runtime?.screenCapture === 'granted');
   await saveStoredSettings(config.dataDir, {
     ...stored,
     allowWrite: true,
