@@ -13,7 +13,7 @@ function m17_control(HubControlPlaneService $control, string $method, string $ur
 
 if (!in_array('sqlite', PDO::getAvailableDrivers(), true)) { fwrite(STDOUT, "AWH M17 product verticals: SKIP pdo_sqlite unavailable\n"); exit(77); }
 
-$root = sys_get_temp_dir() . '/awh-m17-' . bin2hex(random_bytes(6)); $base = dirname(__DIR__); $now = '2026-08-30T06:00:00+00:00'; $db = $root . '/awh.sqlite';
+$root = sys_get_temp_dir() . '/awh-m17-' . bin2hex(random_bytes(6)); $base = dirname(__DIR__); $now = gmdate('c'); $db = $root . '/awh.sqlite';
 $artifactRoot = $root . '/artifacts'; $vaultRoot = $root . '/vault'; $workspaceRoot = $root . '/workspaces'; $owner = '223b45c0-23e1-408d-ae0f-ac5eca7f6900'; $project = '113b45c0-23e1-408d-ae0f-ac5eca7f6900'; $password = 'm17-owner-' . bin2hex(random_bytes(12));
 putenv('AWH_CONTROL_ORIGIN=https://awh.test'); putenv('AWH_ARTIFACT_ROOT=' . $artifactRoot); putenv('AWH_PROJECT_VAULT_ROOT=' . $vaultRoot); putenv('AWH_TASK_WORKSPACE_ROOT=' . $workspaceRoot);
 try {
