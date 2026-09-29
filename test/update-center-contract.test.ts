@@ -592,6 +592,12 @@ test('Update Center streams canonical release progress in real time with bounded
   assert.match(adapter,/subscribeUpdateCenterLive/);
   assert.match(adapter,/new EventSource/);
   assert.match(page,/operation-progress-live/);
+  assert.match(page,/operation-queue/);
+  assert.match(script,/QUEUED_RELEASE_TASK_STATES/);
+  assert.match(script,/รับคำสั่งแล้ว · รอคิวอัปเดต/);
+  assert.match(script,/syncStickyOffset/);
+  assert.match(css,/--updates-header-height/);
+  assert.match(css,/\.operation-queue/);
   assert.match(script,/subscribeUpdateCenterLive/);
   assert.match(script,/progressEvent\?\.progress/);
   assert.match(script,/const liveFresh=liveConnected&&\(Date\.now\(\)-liveUpdatedAt\)<15000/);

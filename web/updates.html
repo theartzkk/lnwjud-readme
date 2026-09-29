@@ -33,7 +33,7 @@
 
     <section class="updates-summary" aria-label="สรุปการอัปเดต">
       <article><small>พร้อมอัปเดต</small><strong id="summary-update">—</strong><span>ติดตั้งได้ตอนนี้</span></article>
-      <article><small>กำลังดำเนินการ</small><strong id="summary-progress">—</strong><span>รวมรายการรออนุมัติ</span></article>
+      <article><small>กำลังดำเนินการ</small><strong id="summary-progress">—</strong><span>รวมงานกำลังทำและรอคิว</span></article>
       <article><small>เป็นรุ่นล่าสุด</small><strong id="summary-current">—</strong><span>ไม่ต้องทำอะไร</span></article>
       <article><small>ต้องตรวจเพิ่ม</small><strong id="summary-attention">—</strong><span>ระบบจะไม่ฝืนติดตั้ง</span></article>
     </section>
@@ -46,6 +46,7 @@
       </ol>
       <p id="operation-progress-message">ระบบกำลังติดตามสถานะจาก release controller</p>
       <small id="operation-progress-live" class="operation-progress-live">กำลังเชื่อมต่อสถานะสด…</small>
+      <div id="operation-queue" class="operation-queue" hidden></div>
     </section>
 
     <section class="updates-primary">

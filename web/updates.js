@@ -17,6 +17,8 @@ let liveConnected=false;
 let liveUpdatedAt=0;
 let lastLiveUiSignature='';
 const targetFeedback=new Map();
+const QUEUED_RELEASE_TASK_STATES=new Set(['QUEUED','WAITING_FOR_WORKER','WAITING_FOR_CAPABILITY']);
+const itemQueued=(item)=>item?.state==='UPDATING'&&QUEUED_RELEASE_TASK_STATES.has(String(item?.taskState||'').toUpperCase());
 
 const stateLabel=(state)=>({
   CURRENT:'ล่าสุดแล้ว',UPDATE_AVAILABLE:'พร้อมอัปเดต',WAITING_FOR_APPROVAL:'พร้อมทำงานเดิมต่อ',UPDATING:'กำลังอัปเดต',
@@ -275,11 +277,11 @@ function primaryItems(){
 }
 
 function summary(){
-  const counts={current:0,update:0,progress:0,attention:0};
+  const counts={current:0,update:0,progress:0,queue:0,attention:0};
   for(const item of primaryItems()){
     if(['CURRENT','INTERNAL_MANAGED'].includes(item.state))counts.current++;
     else if(item.state==='UPDATE_AVAILABLE')counts.update++;
-    else if(['WAITING_FOR_APPROVAL','UPDATING'].includes(item.state))counts.progress++;
+    else if(['WAITING_FOR_APPROVAL','UPDATING'].includes(item.state)){counts.progress++;if(itemQueued(item))counts.queue++;}
     else counts.attention++;
   }
   $('summary-current').textContent=String(counts.current);
@@ -287,10 +289,13 @@ function summary(){
   $('summary-progress').textContent=String(counts.progress);
   $('summary-attention').textContent=String(counts.attention);
   const overall=$('updates-overall');
+  const running=Math.max(0,counts.progress-counts.queue);
   if(runtimeState()==='SPLIT'){
     overall.textContent='ต้องปรับ Runtime ให้ตรงกัน';overall.dataset.tone='warn';
-  }else if(counts.progress>0){
-    overall.textContent='กำลังดำเนินการ';overall.dataset.tone='warn';
+  }else if(running>0){
+    overall.textContent=counts.queue>0?'กำลังดำเนินการ · รอคิว '+counts.queue:'กำลังดำเนินการ';overall.dataset.tone='warn';
+  }else if(counts.queue>0){
+    overall.textContent='รอคิว '+counts.queue+' รายการ';overall.dataset.tone='warn';
   }else if(counts.update>0){
     overall.textContent=counts.update+' รายการพร้อมอัปเดต';overall.dataset.tone='good';
   }else if(counts.attention>0){
@@ -304,6 +309,7 @@ function releaseText(item){
   if(item.current&&item.candidate&&!hash(item.current)&&!hash(item.candidate)&&item.current!==item.candidate)return item.current+' → '+item.candidate;
   if(item.state==='CURRENT'&&item.current&&!hash(item.current))return 'รุ่น '+item.current;
   if(item.state==='UPDATE_AVAILABLE')return 'มีรุ่นใหม่พร้อมติดตั้ง';
+  if(itemQueued(item))return 'รับคำสั่งแล้ว · รอคิวอัปเดต';
   if(item.state==='UPDATING')return 'ระบบกำลังติดตั้งและตรวจสอบ';
   if(item.state==='WAITING_FOR_APPROVAL')return 'พร้อมติดตั้งหลังยืนยัน';
   return '';
@@ -388,6 +394,7 @@ function actionButton(text,handler,className='primary-button',targetKey=null,suc
 function ownerFacingReason(item){
   if(!item)return 'ระบบที่เกี่ยวข้องยังไม่พร้อม';
   const reason=String(item.reason||'').trim();
+  if(itemQueued(item))return 'รับคำสั่งแล้ว · อยู่ในคิวและจะเริ่มอัตโนมัติเมื่อ writer ว่าง';
   if(item.state==='CURRENT')return 'ระบบนี้เป็นรุ่นล่าสุด';
   if(item.state==='UPDATE_AVAILABLE')return 'มีรุ่นใหม่พร้อมอัปเดต';
   if(item.state==='UPDATING')return 'ระบบกำลังอัปเดตและตรวจสอบผล';
@@ -409,6 +416,7 @@ function ownerProgressMessage(item,event,waiting){
 function reconcileTargetFeedback(item){
   if(!item?.key||!targetFeedback.has(item.key))return;
   if(item.state==='CURRENT')targetFeedback.set(item.key,{text:'อัปเดตสำเร็จ · เป็นรุ่นล่าสุด',tone:'good'});
+  else if(itemQueued(item))targetFeedback.set(item.key,{text:'รับคำสั่งแล้ว · รอคิวอัปเดต'+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
   else if(item.state==='UPDATING')targetFeedback.set(item.key,{text:ownerProgressMessage(item,item.progressEvent,false)+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
   else if(item.state==='WAITING_FOR_APPROVAL')targetFeedback.set(item.key,{text:'พบงานเดิมที่ปลอดภัย · กดทำต่อโดยไม่สร้าง release ซ้ำ'+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
 }
@@ -576,7 +584,7 @@ function renderCard(item){
   const main=document.createElement('div');main.className='update-card-main';
   const title=document.createElement('div');title.className='update-title';
   const h3=document.createElement('h3');h3.textContent=item.name;
-  const chip=document.createElement('span');chip.className='update-chip';chip.dataset.state=item.state;chip.textContent=stateLabel(item.state);
+  const chip=document.createElement('span');chip.className='update-chip';chip.dataset.state=itemQueued(item)?'QUEUED':item.state;chip.textContent=itemQueued(item)?'รอคิว':stateLabel(item.state);
   title.append(h3,chip);main.append(title);
   const version=releaseText(item);
   if(version){const line=document.createElement('div');line.className='update-version';line.textContent=version;main.append(line);}
@@ -736,18 +744,28 @@ function syncLiveStream(){
 function renderProgress(){
   const active=(center?.items||[]).filter((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state));
   const host=$('operation-progress');
-  if(!active.length&&!localOperation){host.hidden=true;return;}
+  const queueHost=$('operation-queue');
+  if(!active.length&&!localOperation){host.hidden=true;if(queueHost)queueHost.hidden=true;return;}
   host.hidden=false;
-  const item=active[0];
+  const queued=active.filter(itemQueued);
+  const item=active.find((row)=>row.state==='UPDATING'&&!itemQueued(row))
+    ||active.find((row)=>row.state==='WAITING_FOR_APPROVAL')
+    ||active[0];
   const waiting=item?.state==='WAITING_FOR_APPROVAL';
-  const progress=Math.max(0,Math.min(100,Number(item?.progressEvent?.progress??item?.progress??(waiting?5:localOperation?.progress??15))));
-  $('operation-progress-title').textContent=waiting?'รอยืนยันก่อนติดตั้ง':('กำลังอัปเดต '+(item?.name||localOperation?.name||'ระบบ'));
-  $('operation-progress-percent').textContent=Math.round(progress)+'%';
+  const queuedOnly=itemQueued(item);
+  const progress=queuedOnly?0:Math.max(0,Math.min(100,Number(item?.progressEvent?.progress??item?.progress??(waiting?5:localOperation?.progress??15))));
+  $('operation-progress-title').textContent=waiting?'รอยืนยันก่อนติดตั้ง':queuedOnly?('รอคิวอัปเดต '+(item?.name||localOperation?.name||'ระบบ')):('กำลังอัปเดต '+(item?.name||localOperation?.name||'ระบบ'));
+  $('operation-progress-percent').textContent=queuedOnly?'รอคิว':Math.round(progress)+'%';
   $('operation-progress-bar').style.width=progress+'%';
   const event=item?.progressEvent||null;
   $('operation-progress-message').textContent=ownerProgressMessage(item,event,waiting);
   $('operation-progress-live').textContent=(liveConnected?'● สด · ':'สำรอง · ')+relativeLiveTime(event?.occurredAt||null);
-  host.dataset.active=!waiting&&progress<100?'true':'false';
+  if(queueHost){
+    const names=queued.map((row)=>row.name).filter(Boolean);
+    queueHost.hidden=names.length===0;
+    queueHost.textContent=names.length===0?'':'รอคิว '+names.length+' ระบบ · '+names.join(' · ');
+  }
+  host.dataset.active=!waiting&&!queuedOnly&&progress<100?'true':'false';
   host.dataset.live=liveConnected?'true':'false';
   const thresholds=[10,28,58,86,100];
   [...$('operation-steps').children].forEach((step,index)=>{
@@ -1061,6 +1079,15 @@ async function refresh(){
     refreshing=false;$('updates-refresh').disabled=false;summary();renderProgress();scheduleRefresh();
   }
 }
+
+function syncStickyOffset(){
+  const header=document.querySelector('.updates-header');
+  if(!header)return;
+  document.documentElement.style.setProperty('--updates-header-height',Math.ceil(header.getBoundingClientRect().height)+'px');
+}
+window.addEventListener('resize',syncStickyOffset,{passive:true});
+window.addEventListener('orientationchange',()=>setTimeout(syncStickyOffset,0));
+syncStickyOffset();
 
 $('updates-refresh').addEventListener('click',refresh);
 $('show-attention').addEventListener('click',()=>{
