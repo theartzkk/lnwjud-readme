@@ -44,6 +44,8 @@
     "panel.html",
     "panel.css",
     "panel.js",
+    "panel-live-ui.css",
+    "panel-live-ui.js",
     "manifest.webmanifest",
     "sw.js",
     "logo-256x256.png",

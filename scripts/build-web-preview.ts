@@ -56,6 +56,7 @@ async function main(): Promise<void> {
   await mkdir(join(OUTPUT, 'assets'), { recursive: true });
   await mkdir(join(OUTPUT, 'device-runtime', 'macos'), { recursive: true });
   execFileSync(process.execPath, [join(ROOT, 'scripts', 'build-chat-island.mjs'), OUTPUT], { cwd: ROOT, stdio: 'inherit' });
+  execFileSync(process.execPath, [join(ROOT, 'scripts', 'build-panel-live-island.mjs'), OUTPUT], { cwd: ROOT, stdio: 'inherit' });
   const bundledDashboardCss = `${dashboardCss}
 
 /* Owner Center */

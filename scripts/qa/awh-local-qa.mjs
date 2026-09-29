@@ -181,6 +181,7 @@ async function runScript(script, timeoutMs = 15 * 60_000) {
   ];
   if (script === 'typecheck') return (await exists(tsc)) ? run(process.execPath, [tsc, '-p', 'tsconfig.json', '--noEmit'], { timeoutMs }) : { code: -1, unavailable: true };
   if (script === 'chat:typecheck') return (await exists(tsc)) ? run(process.execPath, [tsc, '-p', 'tsconfig.chat.json'], { timeoutMs }) : { code: -1, unavailable: true };
+  if (script === 'panel:typecheck') return (await exists(tsc)) ? run(process.execPath, [tsc, '-p', 'tsconfig.panel.json'], { timeoutMs }) : { code: -1, unavailable: true };
   if (script === 'build') return (await exists(tsc)) ? run(process.execPath, [tsc, '-p', 'tsconfig.json'], { timeoutMs }) : { code: -1, unavailable: true };
   if (script === 'test') return (await exists(tsx)) ? run(process.execPath, ['--test-concurrency=1', '--import', tsx, '--test', ...testFiles], { timeoutMs }) : { code: -1, unavailable: true };
   if (script === 'desktop:smoke') {
@@ -591,6 +592,7 @@ async function main() {
   if (dependenciesReady) {
     await scriptCheck('typescript', 'typecheck', 'TypeScript typecheck passed');
     await scriptCheck('chat-typescript', 'chat:typecheck', 'AWH Chat presentation typecheck passed');
+    await scriptCheck('panel-typescript', 'panel:typecheck', 'AWH Control Panel live-state typecheck passed');
     if (mode === 'fast') {
       await fastQaCheck();
     } else {

@@ -13,10 +13,15 @@ const OUTPUT=await mkdtemp(join(tmpdir(),'awh-control-panel-'));
 after(async()=>{await rm(OUTPUT,{recursive:true,force:true});});
 
 test('Owner Control Panel composes existing authorities without a parallel backend',async()=>{
-  const [html,js,css]=await Promise.all([
+  const [html,js,css,live,workflow,liveCss,pkg,qa]=await Promise.all([
     readFile(join(ROOT,'web/panel.html'),'utf8'),
     readFile(join(ROOT,'web/panel.js'),'utf8'),
     readFile(join(ROOT,'web/panel.css'),'utf8'),
+    readFile(join(ROOT,'web/panel-live-island/index.tsx'),'utf8'),
+    readFile(join(ROOT,'web/panel-live-island/workflow.ts'),'utf8'),
+    readFile(join(ROOT,'web/panel-live-island/styles.css'),'utf8'),
+    readFile(join(ROOT,'package.json'),'utf8'),
+    readFile(join(ROOT,'scripts/qa/awh-local-qa.mjs'),'utf8'),
   ]);
   for(const label of ['เว็บไซต์','Domains & SSL','ไฟล์และพื้นที่','ฐานข้อมูล','สำรองและกู้คืน','ความปลอดภัย','เซิร์ฟเวอร์และบริการ','ผู้ใช้และสิทธิ์','AI','Source และรุ่นระบบ']) assert.match(html,new RegExp(label.replace(/[&]/g,'\\&')));
   assert.match(html,/AWH Control Panel/);
@@ -28,7 +33,26 @@ test('Owner Control Panel composes existing authorities without a parallel backe
   assert.match(html,/id="cp-command-devices"/);
   assert.match(html,/id="cp-command-sites"/);
   assert.match(js,/renderCommandCenter/);
+  assert.match(html,/id="cp-live-react-root"/);
+  assert.match(html,/panel-live-ui\.css\?release=__AWH_WEB_RELEASE_ID__/);
+  assert.match(html,/panel-live-ui\.js\?release=__AWH_WEB_RELEASE_ID__/);
   assert.match(html,/id="live-controls"/);
+  assert.match(live,/@tanstack\/react-query/);
+  assert.match(live,/@xstate\/react/);
+  assert.match(live,/from "cmdk"/);
+  assert.match(live,/from "sonner"/);
+  assert.match(live,/from "motion\/react"/);
+  assert.match(live,/loadControlData/);
+  assert.match(live,/loadCoreReleaseStatus/);
+  assert.match(live,/managedSiteAction/);
+  assert.match(live,/requestCoreRelease/);
+  assert.match(workflow,/queued/);
+  assert.match(workflow,/deploying/);
+  assert.match(workflow,/verifying/);
+  assert.match(workflow,/rollback/);
+  assert.match(liveCss,/\.panel-live-ready #live-controls\{display:none\}/);
+  for(const dep of ['@tanstack/react-query','@xstate/react','cmdk','sonner','motion','xstate']) assert.match(pkg,new RegExp(dep.replace('/','\\/')));
+  assert.match(qa,/panel:typecheck/);
   assert.match(html,/ควบคุมระบบจริง/);
   for(const id of ['cp-live-tasks','cp-live-approvals','cp-live-sites','cp-live-devices','cp-core-release-button']) assert.match(html,new RegExp('id="'+id+'"'));
   for(const fn of ['loadControlData','cancelTask','decideApproval','revokeDevice','managedSiteAction','loadCoreReleaseStatus','requestCoreRelease','updatePersonAccess']) assert.match(js,new RegExp('\\b'+fn+'\\b'));
@@ -102,15 +126,21 @@ test('Control Panel is emitted into the canonical web release and PWA shell',asy
   await runFile(process.execPath,['--import','tsx','scripts/build-web-preview.ts','--control'],{
     cwd:ROOT,shell:false,env:{...process.env,AWH_PREVIEW_GENERATED_AT:'2026-09-07T12:00:00.000Z',AWH_WEB_RELEASE_ID:'control-panel-fixture',AWH_WEB_OUTPUT_DIR:OUTPUT},
   });
-  const [html,js,sw]=await Promise.all([
+  const [html,js,sw,liveJs,liveCss]=await Promise.all([
     readFile(join(OUTPUT,'panel.html'),'utf8'),
     readFile(join(OUTPUT,'panel.js'),'utf8'),
     readFile(join(OUTPUT,'sw.js'),'utf8'),
+    readFile(join(OUTPUT,'panel-live-ui.js'),'utf8'),
+    readFile(join(OUTPUT,'panel-live-ui.css'),'utf8'),
   ]);
   assert.match(html,/panel\.css\?release=control-panel-fixture/);
   assert.match(html,/panel\.js\?release=control-panel-fixture/);
   assert.match(js,/control-plane-adapter\.js\?release=control-panel-fixture/);
   assert.match(sw,/\.\/panel\.html/);
+  assert.match(sw,/panel-live-ui\.js/);
+  assert.match(sw,/panel-live-ui\.css/);
+  assert.ok(liveJs.length>5000);
+  assert.match(liveCss,/awh-live-toolbar/);
   assert.doesNotMatch(html+js,/__AWH_WEB_RELEASE_ID__/);
 });
 
