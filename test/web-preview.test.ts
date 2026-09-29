@@ -248,7 +248,6 @@ test('Owner Brand settings are detailed, revisioned, bounded, and never expose t
     readFile(join(ROOT, 'web', 'owner-center.js'), 'utf8'),
     readFile(join(ROOT, 'web', 'panel.html'), 'utf8'),
   ]);
-  assert.match(panel, /href="\.\/\?awh-settings=brand"/);
   assert.match(app, /return \['account','devices','data','brand'\]\.includes\(value\) \? value : null/);
   assert.match(html, /id="settings-panel-brand"/);
   for (const id of ['setting-brand-logo-file','setting-brand-icon-file','setting-brand-logo-preview','setting-brand-icon-preview','setting-product-name','setting-short-name','setting-tagline','setting-welcome','setting-starter-prompts','setting-accent','setting-founder-name','setting-founder-credit']) assert.match(html, new RegExp(`id="${id}"`));
@@ -292,8 +291,8 @@ test('owner self-service keeps personal account focused while administration con
   assert.match(html, /id="account-sheet-title">บัญชีของฉัน/);
   assert.match(html, /class="settings-tabs"[^>]*hidden/);
   assert.match(html, /id="settings-panel-start" class="settings-panel" hidden/);
-  assert.match(panel, /<section id="users" class="cp-section cp-admin-section">/);
-  assert.match(panel, /<section id="ai" class="cp-section cp-admin-section">/);
+  assert.match(panel, /<section id="users" class="cp-control-surface cp-admin-section">/);
+  assert.match(panel, /<section id="ai" class="cp-control-surface cp-admin-section">/);
   assert.match(html, /id="settings-panel-ai"/);
   assert.match(app, /id="provider-api-key"/);
   assert.match(app, /provider-credential-settings/);
@@ -387,7 +386,7 @@ test('Owner System settings keeps Update Center as the only release UI', async (
   assert.match(html, /href="\.\/updates\.html"/);
   const panel = await readFile(join(ROOT, 'web', 'panel.html'), 'utf8');
   assert.match(panel, /href="\.\/updates\.html"/);
-  assert.match(panel, /อ่านสถานะจาก Update Center แห่งเดียว/);
+  assert.match(panel, /Update Center →/);
   assert.doesNotMatch(panel, />LINE OA</);
   assert.match(updates, /if\(groupKey==='line-oa'\)section\.id='line-oa'/);
   for (const id of ['core-release-form','core-release-sha','core-release-cleanup','core-release-refresh','learnlab-release-form','learnlab-release-sha','learnlab-release-version','learnlab-release-refresh']) {

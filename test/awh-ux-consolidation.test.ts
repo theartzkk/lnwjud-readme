@@ -37,5 +37,6 @@ test('Control Panel primary navigation is task-oriented and advanced details sta
   assert.match(nav, /class="cp-nav-advanced"/);
   assert.doesNotMatch(nav, />LINE OA</);
   assert.doesNotMatch(nav, />ระบบที่เชื่อมกัน</);
-  assert.match(html, /รายละเอียดทางเทคนิคซ่อนไว้จนกว่าจะต้องใช้/);
+  assert.match(html, /id="cp-technical-details" class="cp-diagnostics"/);
+  assert.match(html, /เปิดรายละเอียด/);
 });

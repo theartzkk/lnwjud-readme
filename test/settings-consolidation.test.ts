@@ -31,8 +31,8 @@ test('owner administration is native to Control Panel and has no Settings bounce
   assert.match(owner,/action === 'ai'.*panel\.html#ai/);
   assert.match(owner,/action === 'people'.*panel\.html#users/);
   assert.match(owner,/action === 'devices'.*infrastructure\.html#capability-fabric/);
-  assert.match(panel,/id="users" class="cp-section cp-admin-section"/);
-  assert.match(panel,/id="ai" class="cp-section cp-admin-section"/);
+  assert.match(panel,/id="users" class="cp-control-surface cp-admin-section"/);
+  assert.match(panel,/id="ai" class="cp-control-surface cp-admin-section"/);
   assert.match(panel,/id="cp-ai-form"/);
   assert.doesNotMatch(panel,/awh-settings=(?:people|ai|system|brand)/);
   assert.match(panelJs,/loadPeopleAccess/);

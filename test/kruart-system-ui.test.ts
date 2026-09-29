@@ -23,7 +23,7 @@ test('owner surfaces use final KRUART branding instead of legacy single-letter m
   for (const html of [database, infra, hosting, trust, panel, review]) {
     assert.match(html, /system-brand-icon[^>]+logo-256x256\.png/);
   }
-  assert.match(panel, /system-control-panel\.webp/);
+  assert.doesNotMatch(panel, /data-kruart-art-slot="system\.control-panel"/);
   assert.doesNotMatch(panel, /kruart-reference-role-staff\.webp/);
 });
 
@@ -121,7 +121,7 @@ test('KRUART visual asset slots are centralized and all deployed fallbacks exist
   assert.match(index, /data-kruart-art-slot="public\.account-avatar"[^>]*account-avatar\.webp/);
   assert.equal(manifest.slots.some((slot) => slot.id === 'public.today-message'), false);
   assert.match(index, /brand-kruart-workspace\.webp/);
-  assert.match(panel, /data-kruart-art-slot="system\.control-panel"[^>]*system-control-panel\.webp/);
+  assert.doesNotMatch(panel, /data-kruart-art-slot="system\.control-panel"/);
   const expectedReady = new Map([
     ['public.news.school','news-school-activity.webp'],['public.news.activity','news-learning.webp'],['public.news.pride','news-pride.webp'],
     ['owner.system.learnlab','project-learnlab.webp'],['owner.system.bay','project-bay-excuse-x.webp'],['owner.system.awh','project-awh.webp'],
