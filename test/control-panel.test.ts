@@ -18,7 +18,16 @@ test('Owner Control Panel composes existing authorities without a parallel backe
     readFile(join(ROOT,'web/panel.js'),'utf8'),
     readFile(join(ROOT,'web/panel.css'),'utf8'),
   ]);
-  for(const label of ['เว็บไซต์','Domains & SSL','ไฟล์และพื้นที่','ฐานข้อมูล','สำรองและกู้คืน','ความปลอดภัย','เซิร์ฟเวอร์และบริการ','AWH Agent','ผู้ใช้และสิทธิ์','AI และการใช้งาน','Source และรุ่นระบบ']) assert.match(html,new RegExp(label.replace(/[&]/g,'\\&')));
+  for(const label of ['เว็บไซต์','Domains & SSL','ไฟล์และพื้นที่','ฐานข้อมูล','สำรองและกู้คืน','ความปลอดภัย','เซิร์ฟเวอร์และบริการ','ผู้ใช้และสิทธิ์','AI','Source และรุ่นระบบ']) assert.match(html,new RegExp(label.replace(/[&]/g,'\\&')));
+  assert.match(html,/AWH Control Panel/);
+  assert.match(html,/COMMAND CENTER/);
+  assert.match(html,/ควบคุม AWH จากที่เดียว/);
+  assert.match(html,/class="cp-command-grid"/);
+  assert.match(html,/id="cp-command-attention-count"/);
+  assert.match(html,/id="cp-command-running"/);
+  assert.match(html,/id="cp-command-devices"/);
+  assert.match(html,/id="cp-command-sites"/);
+  assert.match(js,/renderCommandCenter/);
   assert.match(html,/href="#awh-agent"/);
   assert.match(html,/id="awh-agent"/);
   assert.match(html,/id="cp-agent-tools"/);
@@ -29,16 +38,20 @@ test('Owner Control Panel composes existing authorities without a parallel backe
   assert.match(html,/class="cp-nav-advanced"/);
   assert.match(html,/id="system-health"/);
   assert.match(html,/id="cp-health-matrix"/);
-  assert.match(html,/ภาพรวมสุขภาพระบบ/);
+  assert.match(html,/สุขภาพระบบ/);
   assert.match(js,/renderHealthMatrix/);
   assert.match(js,/healthItem\('runtime','AWH Runtime'/);
   assert.match(js,/healthItem\('database','Database'/);
   assert.match(js,/healthItem\('backup','Backup & Recovery'/);
   assert.match(css,/\.cp-health-matrix/);
-  assert.match(html,/class="cp-section cp-update-overview"/);
-  assert.match(html,/id="system-updates"/);
-  assert.match(html,/เปิดศูนย์อัปเดต/);
-  assert.match(html,/id="cp-technical-details" class="cp-technical-details"/);
+  assert.match(html,/id="operations" class="cp-control-surface"/);
+  assert.match(html,/OPERATIONS/);
+  assert.match(html,/เปิด Update Center/);
+  assert.match(html,/id="cp-technical-details" class="cp-diagnostics"/);
+  assert.match(css,/\.cp-command-hero/);
+  assert.match(css,/\.cp-command-card/);
+  assert.match(css,/\.cp-control-surface/);
+  assert.match(css,/\.cp-diagnostics/);
   assert.match(js,/revealHashTarget/);
   assert.match(js,/requireOwnerSession/);
   assert.match(js,/loadInfrastructureSummary/);
@@ -120,14 +133,14 @@ test('Owner Home delegates update mutations to Update Center while BAY authoriti
     'hub/src/HubBayRemoteUpdateService.php','hub/src/HubControlPlaneService.php',
     'hub/src/HubControlPlaneRouter.php','hub/src/HubTrustPolicy.php'
   ].map(name=>readFile(join(ROOT,name),'utf8')));
-  assert.match(html,/id="system-updates"/);
+  assert.match(html,/id="operations"/);
   assert.match(html,/href="\.\/updates\.html"/);
-  assert.match(html,/อ่านสถานะจาก Update Center แห่งเดียว/);
+  assert.match(html,/งานและอัปเดต/);
   assert.doesNotMatch(html,/อัปเดต BAY จากที่ไหนก็ได้|cp-bay-update-button|cp-bay-checks/);
   assert.match(html,/connect-src 'self';/);
   assert.doesNotMatch(html,/connect-src 'self' https:\/\/excuse\.kruart\.online/);
-  assert.match(css,/\.cp-update-overview/);
-  assert.match(css,/\.cp-update-counts/);
+  assert.match(css,/\.cp-control-surface/);
+  assert.match(css,/\.cp-operation-counts/);
   assert.match(js,/loadUpdateCenter/);
   assert.match(js,/renderUpdateSummary/);
   assert.match(js,/slice\(0,3\)/);

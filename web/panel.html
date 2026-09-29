@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#ffffff" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
-  <title>ศูนย์ดูแลระบบ · KRUART AWH</title>
+  <title>AWH Control Panel · KRUART</title>
   <link rel="stylesheet" href="./awh-design-system.css?release=__AWH_WEB_RELEASE_ID__" />
   <link rel="stylesheet" href="./awh-light-system.css?release=__AWH_WEB_RELEASE_ID__" />
   <link rel="stylesheet" href="./panel.css?release=__AWH_WEB_RELEASE_ID__" />
@@ -15,137 +15,159 @@
 <body>
   <div class="cp-shell">
     <aside class="cp-sidebar" id="cp-sidebar">
-      <a class="cp-brand" href="./panel.html"><img class="system-brand-icon" src="./logo-256x256.png?release=__AWH_WEB_RELEASE_ID__" alt="" /><div><strong>ศูนย์ดูแลระบบ</strong><small>KRUART · AWH</small></div></a>
-      <label class="cp-search"><span>⌕</span><input id="cp-search" type="search" placeholder="ค้นหาเมนู…  ⌘K" autocomplete="off" /></label>
-      <nav class="cp-nav" aria-label="ศูนย์ดูแลระบบ">
-        <a class="is-active" href="#overview" data-cp-keywords="dashboard overview สรุป"><span>⌂</span>ภาพรวม</a>
-        <p>ดูแล AWH</p>
-        <a href="./updates.html" data-cp-keywords="update deploy package manager อัปเดต production"><span>⇧</span>อัปเดต</a>
-        <a href="#awh-agent" data-cp-keywords="awh agent devices tools capabilities runtime เครื่องมือ อุปกรณ์"><span>◈</span>อุปกรณ์</a>
-        <a href="./hosting.html" data-cp-keywords="website hosting line channel เว็บไซต์ โฮสติ้ง ช่องทาง"><span>◎</span>เว็บไซต์และช่องทาง</a>
-        <a href="#users" data-cp-keywords="users roles access people ผู้ใช้ สิทธิ์"><span>♙</span>ผู้ใช้</a>
+      <a class="cp-brand" href="./panel.html">
+        <img class="system-brand-icon" src="./logo-256x256.png?release=__AWH_WEB_RELEASE_ID__" alt="" />
+        <div><strong>AWH Control Panel</strong><small>KRUART · Owner</small></div>
+      </a>
+      <label class="cp-search"><span>⌕</span><input id="cp-search" type="search" placeholder="ค้นหาการควบคุม…  ⌘K" autocomplete="off" /></label>
+      <nav class="cp-nav" aria-label="AWH Control Panel">
+        <a class="is-active" href="#overview" data-cp-keywords="overview command center ภาพรวม ควบคุม"><span>⌂</span>ศูนย์ควบคุม</a>
+        <p>ควบคุม</p>
+        <a href="#operations" data-cp-keywords="jobs tasks updates deploy งาน อัปเดต"><span>⇧</span>งานและอัปเดต</a>
+        <a href="#awh-agent" data-cp-keywords="devices agent tools capabilities อุปกรณ์ เครื่องมือ"><span>◈</span>อุปกรณ์</a>
+        <a href="./hosting.html" data-cp-keywords="website hosting channels line เว็บไซต์ ช่องทาง"><span>◎</span>เว็บไซต์และช่องทาง</a>
+        <a href="#users" data-cp-keywords="users roles access ผู้ใช้ สิทธิ์"><span>♙</span>ผู้ใช้และสิทธิ์</a>
+        <p>ตั้งค่า</p>
+        <a href="#ai" data-cp-keywords="ai provider model budget routing เอไอ"><span>✦</span>AI</a>
         <details class="cp-nav-advanced">
-          <summary><span>⌘</span>ขั้นสูง</summary>
-          <a href="#backup" data-cp-keywords="backup restore recovery retention สำรอง กู้คืน">สำรองและกู้คืน</a>
-          <a href="#ai" data-cp-keywords="ai provider model quota cost automation เอไอ ค่าใช้จ่าย">AI และการใช้งาน</a>
-          <a href="./?awh-settings=brand" data-cp-keywords="brand appearance logo icon แบรนด์ โลโก้ สี">แบรนด์และหน้าตา</a>
+          <summary><span>⌘</span>ระบบขั้นสูง</summary>
+          <a href="#system-health" data-cp-keywords="health runtime database backup storage system">สุขภาพระบบ</a>
+          <a href="#backup" data-cp-keywords="backup restore recovery สำรอง กู้คืน">สำรองและกู้คืน</a>
           <a href="./?awh-surface=files" data-cp-keywords="files storage artifacts ไฟล์ พื้นที่">ไฟล์และพื้นที่</a>
           <a href="#domains" data-cp-keywords="domain dns ssl https โดเมน">Domains & SSL</a>
-          <a href="./database.html" data-cp-keywords="database sqlite schema ฐานข้อมูล">ฐานข้อมูล</a>
-          <a href="./trust.html" data-cp-keywords="security trust session approval ความปลอดภัย">ความปลอดภัย</a>
-          <a href="./infrastructure.html" data-cp-keywords="server service cpu memory vps runtime logs เซิร์ฟเวอร์">เซิร์ฟเวอร์และบริการ</a>
-          <a href="./?awh-surface=home#source" data-cp-keywords="source github vault advanced runtime">Source และรุ่นระบบ</a>
+          <a href="./database.html" data-cp-keywords="database schema ฐานข้อมูล">ฐานข้อมูล</a>
+          <a href="./trust.html" data-cp-keywords="security trust approvals ความปลอดภัย">ความปลอดภัย</a>
+          <a href="./infrastructure.html" data-cp-keywords="server service logs cpu memory vps เซิร์ฟเวอร์">เซิร์ฟเวอร์และบริการ</a>
+          <a href="./?awh-surface=home#source" data-cp-keywords="source github vault revision">Source และรุ่นระบบ</a>
         </details>
       </nav>
-      <div class="cp-sidebar-foot"><a href="./">← กลับ KRUART</a><span id="cp-release">Release —</span></div>
+      <div class="cp-sidebar-foot">
+        <a href="./">← กลับ KRUART</a>
+        <span id="cp-release">Release —</span>
+      </div>
     </aside>
+
     <main class="cp-main">
       <header class="cp-topbar">
         <button id="cp-menu" class="cp-menu" type="button" aria-label="เปิดเมนู">☰</button>
-        <div><span>เจ้าของระบบ</span><strong>ศูนย์ดูแลระบบ</strong></div>
+        <div><span>OWNER CONTROL</span><strong>AWH Control Panel</strong></div>
         <div class="cp-top-actions"><span id="cp-updated">กำลังตรวจระบบ…</span><button id="cp-refresh" type="button">รีเฟรช</button></div>
       </header>
+
       <div class="cp-content">
-        <section id="overview" class="cp-hero">
-          <div><span class="cp-eyebrow">KRUART · AWH</span><h1>ดูเฉพาะสิ่งที่ต้องจัดการ</h1><p>AWH สรุปสถานะ อัปเดต อุปกรณ์ เว็บไซต์ และผู้ใช้ไว้ตรงนี้ รายละเอียดทางเทคนิคซ่อนไว้จนกว่าจะต้องใช้</p></div>
-          <div class="cp-hero-side"><img data-kruart-art-slot="system.control-panel" src="./system-control-panel.webp?release=__AWH_WEB_RELEASE_ID__" width="2048" height="768" alt="" aria-hidden="true"><div id="cp-overall" class="cp-overall">กำลังตรวจ</div></div>
-        </section>
-        <section class="cp-metrics" aria-label="ทรัพยากรระบบ">
-          <article><small>ภาระระบบ</small><strong id="cp-cpu">—</strong><span id="cp-load">กำลังตรวจ…</span></article>
-          <article><small>หน่วยความจำ</small><strong id="cp-memory">—</strong><span id="cp-memory-free">—</span></article>
-          <article><small>พื้นที่</small><strong id="cp-storage">—</strong><span id="cp-storage-free">—</span></article>
-          <article><small>สำรองล่าสุด</small><strong id="cp-backup">—</strong><span id="cp-backup-time">—</span></article>
-        </section>
-        <section id="system-health" class="cp-section cp-health-center" aria-labelledby="cp-health-title">
-          <div class="cp-section-head">
-            <div><span>SYSTEM HEALTH</span><h2 id="cp-health-title">ภาพรวมสุขภาพระบบ</h2></div>
-            <small id="cp-health-summary">กำลังประเมินจากข้อมูลสด…</small>
+        <section id="overview" class="cp-command-hero">
+          <div class="cp-command-copy">
+            <span class="cp-eyebrow">COMMAND CENTER</span>
+            <h1>ควบคุม AWH จากที่เดียว</h1>
+            <p id="cp-command-note">กำลังตรวจสถานะ งาน อุปกรณ์ และสิ่งที่ต้องจัดการ…</p>
+            <div class="cp-command-actions">
+              <a class="cp-command-primary" href="./updates.html">เปิดศูนย์อัปเดต</a>
+              <a class="cp-command-secondary" href="./">เปิด AWH</a>
+            </div>
           </div>
-          <p class="cp-inline-message">ดูสถานะสำคัญจากที่เดียว ถ้ามีสิ่งที่ต้องจัดการ AWH จะบอกเหตุผลและพาไปหน้าที่เกี่ยวข้อง โดยไม่เปิดรายละเอียดเทคนิคทั้งหมดพร้อมกัน</p>
-          <div id="cp-health-matrix" class="cp-health-matrix" role="list" aria-label="สถานะระบบหลัก"></div>
-        </section>
-        <section id="awh-agent" class="cp-section cp-agent-center cp-admin-section" aria-labelledby="cp-agent-title">
-          <div class="cp-section-head">
-            <div><span>DEVICES</span><h2 id="cp-agent-title">อุปกรณ์ที่ AWH ใช้งานได้</h2></div>
-            <small id="cp-agent-summary">กำลังตรวจ Agent…</small>
+          <div class="cp-command-status">
+            <small>สถานะระบบ</small>
+            <div id="cp-overall" class="cp-overall">กำลังตรวจ</div>
+            <strong id="cp-command-summary">กำลังโหลด…</strong>
+            <span>ตรวจจาก Control Plane เดิมแบบสด</span>
           </div>
-          <p class="cp-inline-message">ดูว่าเครื่องไหนพร้อมใช้งานและ AWH ทำอะไรผ่านเครื่องนั้นได้ ระบบเลือกเส้นทางที่เหมาะสมให้อัตโนมัติ</p>
+        </section>
+
+        <section class="cp-command-grid" aria-label="การควบคุมหลัก">
+          <a class="cp-command-card cp-command-card-attention" href="#cp-attention-wrap" data-cp-keywords="attention action required ต้องทำ">
+            <div class="cp-command-icon">!</div>
+            <span><small>ต้องจัดการตอนนี้</small><strong id="cp-command-attention-count">—</strong><em id="cp-command-attention-note">กำลังตรวจ…</em></span>
+            <b>ดู →</b>
+          </a>
+          <a class="cp-command-card" href="#operations" data-cp-keywords="tasks updates operations งาน อัปเดต">
+            <div class="cp-command-icon">⇧</div>
+            <span><small>งานและอัปเดต</small><strong id="cp-command-running">—</strong><em id="cp-update-status">กำลังตรวจ…</em></span>
+            <b>ควบคุม →</b>
+          </a>
+          <a class="cp-command-card" href="#awh-agent" data-cp-keywords="devices agents อุปกรณ์">
+            <div class="cp-command-icon">◈</div>
+            <span><small>อุปกรณ์พร้อมใช้</small><strong id="cp-command-devices">—</strong><em id="cp-agent-summary">กำลังตรวจ Agent…</em></span>
+            <b>จัดการ →</b>
+          </a>
+          <a class="cp-command-card" href="./hosting.html" data-cp-keywords="sites hosting channels เว็บไซต์ ช่องทาง">
+            <div class="cp-command-icon">◎</div>
+            <span><small>เว็บไซต์และช่องทาง</small><strong id="cp-command-sites">—</strong><em id="cp-sites">กำลังตรวจเว็บไซต์…</em></span>
+            <b>จัดการ →</b>
+          </a>
+        </section>
+
+        <section id="cp-attention-wrap" class="cp-command-attention" hidden>
+          <div class="cp-command-section-head">
+            <div><span>ACTION REQUIRED</span><h2>สิ่งที่ต้องจัดการ</h2></div>
+            <small>แสดงเฉพาะเรื่องที่ควรลงมือ</small>
+          </div>
+          <div id="cp-attention" class="cp-list"></div>
+        </section>
+
+        <section id="operations" class="cp-control-surface">
+          <div class="cp-command-section-head">
+            <div><span>OPERATIONS</span><h2>งานและอัปเดต</h2><p>ดูว่างานไหนกำลังทำ งานไหนติด และระบบไหนพร้อมอัปเดต</p></div>
+            <a class="cp-section-action" href="./updates.html">เปิด Update Center →</a>
+          </div>
+          <div class="cp-operations-layout">
+            <article class="cp-operation-focus">
+              <small>สถานะรวม</small>
+              <strong id="cp-update-meta">กำลังอ่าน Update Center…</strong>
+              <div class="cp-operation-counts">
+                <span><b id="cp-update-progress">—</b>กำลังทำ</span>
+                <span><b id="cp-update-ready">—</b>พร้อมอัปเดต</span>
+                <span><b id="cp-update-attention">—</b>ต้องตรวจ</span>
+                <span><b id="cp-update-current">—</b>ล่าสุด</span>
+              </div>
+            </article>
+            <div id="cp-update-items" class="cp-update-items cp-list"><div class="cp-empty">กำลังตรวจรายการ…</div></div>
+          </div>
+        </section>
+
+        <section id="awh-agent" class="cp-control-surface cp-admin-section" aria-labelledby="cp-agent-title">
+          <div class="cp-command-section-head">
+            <div><span>DEVICES</span><h2 id="cp-agent-title">อุปกรณ์และความสามารถ</h2><p>เครื่องไหนพร้อม งานกำลังวิ่งที่ไหน และ AWH ใช้ความสามารถอะไรได้บ้าง</p></div>
+            <span class="cp-surface-state" id="cp-agent-device-state">กำลังตรวจ</span>
+          </div>
           <div class="cp-agent-metrics" aria-label="สถานะ AWH Agent">
-            <article><small>Agent พร้อม</small><strong id="cp-agent-online">—</strong><span>พร้อมรับงาน / ทั้งหมด</span></article>
-            <article><small>ความสามารถพร้อม</small><strong id="cp-agent-capabilities">—</strong><span>Capability registry</span></article>
-            <article><small>ทำได้จาก Cloud</small><strong id="cp-agent-cloud">—</strong><span>ไม่ต้องรอเครื่อง</span></article>
-            <article><small>งานที่กำลังทำ</small><strong id="cp-agent-queue">—</strong><span id="cp-agent-queue-note">กำลังตรวจคิว…</span></article>
+            <article><small>เครื่องพร้อม</small><strong id="cp-agent-online">—</strong><span>พร้อม / ทั้งหมด</span></article>
+            <article><small>ความสามารถพร้อม</small><strong id="cp-agent-capabilities">—</strong><span id="cp-agent-tools">กำลังตรวจ…</span></article>
+            <article><small>Cloud-ready</small><strong id="cp-agent-cloud">—</strong><span>ไม่ต้องรอเครื่อง</span></article>
+            <article><small>งานกำลังทำ</small><strong id="cp-agent-queue">—</strong><span id="cp-agent-queue-note">กำลังตรวจคิว…</span></article>
           </div>
           <div class="cp-agent-grid">
             <article class="cp-agent-panel">
-              <div class="cp-agent-panel-head"><div><strong>เครื่องที่เชื่อมกับ AWH</strong><small>สถานะสดจาก Control Plane</small></div><span class="cp-chip" id="cp-agent-device-state">กำลังตรวจ</span></div>
+              <div class="cp-agent-panel-head"><div><strong>เครื่องที่เชื่อมกับ AWH</strong><small>สถานะสดจาก Control Plane</small></div></div>
               <div id="cp-agent-device-list" class="cp-list"></div>
             </article>
             <article class="cp-agent-panel">
-              <div class="cp-agent-panel-head"><div><strong>เครื่องมือและความสามารถ</strong><small>โหลดตามงาน ไม่ยัดทุก tool พร้อมกัน</small></div><span class="cp-chip" id="cp-agent-capability-state">กำลังตรวจ</span></div>
+              <div class="cp-agent-panel-head"><div><strong>เครื่องมือและความสามารถ</strong><small>แสดงเฉพาะสิ่งที่ใช้งานได้จริง</small></div><span class="cp-chip" id="cp-agent-capability-state">กำลังตรวจ</span></div>
               <div id="cp-agent-capability-list" class="cp-list"></div>
             </article>
           </div>
           <details class="cp-agent-advanced">
-            <summary>เส้นทาง Provider และ Runtime ขั้นสูง</summary>
+            <summary>Provider และ Runtime ขั้นสูง</summary>
             <div id="cp-agent-provider-list" class="cp-list"></div>
           </details>
         </section>
-        <section id="system-updates" class="cp-section cp-update-overview" aria-labelledby="cp-update-title">
-          <div class="cp-section-head">
-            <div><span>SYSTEM UPDATES</span><h2 id="cp-update-title">อัปเดตระบบ</h2></div>
-            <a href="./updates.html">เปิดศูนย์อัปเดต →</a>
+
+        <section id="users" class="cp-control-surface cp-admin-section">
+          <div class="cp-command-section-head">
+            <div><span>PEOPLE & ACCESS</span><h2>ผู้ใช้และสิทธิ์</h2><p>อนุมัติผู้ใช้ ดูบทบาท และปิดบัญชีจากพื้นที่เดียว</p></div>
+            <small id="cp-people-summary">กำลังโหลดบัญชี…</small>
           </div>
-          <div class="cp-update-summary-grid">
-            <article class="cp-update-status-card">
-              <small>สถานะรวม</small>
-              <strong id="cp-update-status">กำลังตรวจ…</strong>
-              <span id="cp-update-meta">อ่านสถานะจาก Update Center แห่งเดียว</span>
-            </article>
-            <div class="cp-update-counts" aria-label="สรุปสถานะอัปเดต">
-              <span><b id="cp-update-current">—</b> ล่าสุด</span>
-              <span><b id="cp-update-ready">—</b> พร้อมอัปเดต</span>
-              <span><b id="cp-update-progress">—</b> กำลังทำ</span>
-              <span><b id="cp-update-attention">—</b> ต้องตรวจ</span>
-            </div>
-          </div>
-          <div id="cp-update-items" class="cp-update-items cp-list"><div class="cp-empty">กำลังตรวจรายการที่ต้องสนใจ…</div></div>
-        </section>
-        <section id="cp-attention-wrap" class="cp-section cp-attention" hidden>
-          <div class="cp-section-head"><div><span>ACTION REQUIRED</span><h2>สิ่งที่ควรดูตอนนี้</h2></div><small>แสดงเฉพาะสิ่งที่ต้องลงมือ</small></div>
-          <div id="cp-attention" class="cp-list"></div>
-        </section>
-        <section class="cp-section">
-          <div class="cp-section-head"><div><span>QUICK ACCESS</span><h2>งานดูแลที่ใช้บ่อย</h2></div><small>งานประจำวันก่อน · รายละเอียดเทคนิคอยู่ในขั้นสูง</small></div>
-          <div class="cp-tool-grid">
-            <a class="cp-tool" href="#awh-agent" data-cp-keywords="awh agent devices tools capabilities"><b>◈</b><span><strong>อุปกรณ์</strong><small id="cp-agent-tools">กำลังตรวจเครื่องและความสามารถ…</small></span></a>
-            <a class="cp-tool" href="./hosting.html" data-cp-keywords="website hosting deploy"><b>◎</b><span><strong>เว็บไซต์</strong><small id="cp-sites">เว็บไซต์ที่ AWH ดูแล</small></span></a>
-            <a class="cp-tool" href="./?awh-surface=files" data-cp-keywords="files storage"><b>▤</b><span><strong>ไฟล์และพื้นที่</strong><small>ไฟล์ ผลงาน และพื้นที่จัดเก็บ</small></span></a>
-            <a class="cp-tool" href="#backup" data-cp-keywords="backup restore recovery"><b>↺</b><span><strong>สำรองและกู้คืน</strong><small id="cp-backup-card">ดูจุดสำรองและการกู้คืน</small></span></a>
-            <a class="cp-tool" href="#users" data-cp-keywords="users roles access"><b>♙</b><span><strong>ผู้ใช้และสิทธิ์</strong><small>บัญชี บทบาท และสิทธิ์</small></span></a>
-            <a class="cp-tool" href="#ai" data-cp-keywords="ai providers costs"><b>✦</b><span><strong>AI และการใช้งาน</strong><small id="cp-ai">การเชื่อมต่อและการใช้งาน</small></span></a>
-          </div>
-          <details class="cp-advanced-tools">
-            <summary>รายละเอียดขั้นสูง</summary>
-            <div class="cp-tool-grid">
-              <a class="cp-tool" href="#domains" data-cp-keywords="domain ssl dns"><b>◉</b><span><strong>Domains & SSL</strong><small id="cp-domains-count">ตรวจ DNS และ HTTPS</small></span></a>
-              <a class="cp-tool" href="./database.html" data-cp-keywords="database schema"><b>▦</b><span><strong>ฐานข้อมูล</strong><small id="cp-db">Database Studio</small></span></a>
-              <a class="cp-tool" href="./trust.html" data-cp-keywords="security trust"><b>◇</b><span><strong>ความปลอดภัย</strong><small id="cp-security">Trust & protection</small></span></a>
-              <a class="cp-tool" href="./infrastructure.html" data-cp-keywords="server services logs"><b>⌘</b><span><strong>เซิร์ฟเวอร์และบริการ</strong><small id="cp-services">VPS runtime</small></span></a>
-              <a class="cp-tool" href="./?awh-surface=home#source" data-cp-keywords="source github vault"><b>⌁</b><span><strong>Source และรุ่นระบบ</strong><small>GitHub · Vault · exact SHA</small></span></a>
-              <a class="cp-tool" href="#external-capabilities" data-cp-keywords="capabilities integrations teamai hallmark context design"><b>⊕</b><span><strong>ความสามารถเสริม</strong><small>Adapters · skills · references</small></span></a>
-            </div>
-          </details>
-        </section>
-        <section id="users" class="cp-section cp-admin-section">
-          <div class="cp-section-head"><div><span>PEOPLE & ACCESS</span><h2>ผู้ใช้และสิทธิ์</h2></div><small id="cp-people-summary">กำลังโหลดบัญชี…</small></div>
           <div class="cp-admin-grid cp-people-grid">
-            <div><h3>บัญชีที่ใช้งาน</h3><p class="cp-inline-message">บัญชี KRUART ใช้สำหรับเข้าสู่ระบบ ส่วนตัวตนและสิทธิ์งานโรงเรียนอ้างอิงจาก BAY EXCUSE X</p><div id="cp-people-list" class="cp-list"></div></div>
-            <div><h3>คำขอใช้งาน</h3><p class="cp-inline-message">ผู้ใช้สมัครและตั้งรหัสของตนเอง จากนั้น Owner อนุมัติที่นี่โดยไม่ต้องเห็นข้อมูลลับ</p><div id="cp-request-list" class="cp-list"></div><p id="cp-person-message" class="cp-inline-message" role="status"></p></div>
+            <div><h3>บัญชีที่ใช้งาน</h3><div id="cp-people-list" class="cp-list"></div></div>
+            <div><h3>คำขอที่รอการตัดสินใจ</h3><div id="cp-request-list" class="cp-list"></div><p id="cp-person-message" class="cp-inline-message" role="status"></p></div>
           </div>
         </section>
-        <section id="ai" class="cp-section cp-admin-section">
-          <div class="cp-section-head"><div><span>AI CONTROL</span><h2>AI และการใช้งาน</h2></div><small id="cp-ai-status">กำลังตรวจ AI…</small></div>
+
+        <section id="ai" class="cp-control-surface cp-admin-section">
+          <div class="cp-command-section-head">
+            <div><span>AI CONTROL</span><h2>AI และงบประมาณ</h2><p>ควบคุมการเปิดใช้ รูปแบบการเลือกโมเดล และเพดานค่าใช้จ่าย</p></div>
+            <small id="cp-ai-status">กำลังตรวจ AI…</small>
+          </div>
+          <div class="cp-setting-summary"><span>สถานะ AI</span><strong id="cp-ai">กำลังตรวจ…</strong></div>
           <form id="cp-ai-form" class="cp-admin-form cp-ai-form">
             <label class="cp-toggle"><input id="cp-ai-enabled" type="checkbox" /><span>เปิดใช้ AI ของ AWH</span></label>
             <label>งบสูงสุดต่อเดือน (บาท)<input id="cp-ai-budget" type="number" min="0" step="0.01" inputmode="decimal" /></label>
@@ -155,18 +177,42 @@
             <p id="cp-ai-message" class="cp-inline-message" role="status"></p>
           </form>
         </section>
-        <details id="cp-technical-details" class="cp-technical-details">
-          <summary>รายละเอียดระบบเพิ่มเติม</summary>
-        <div class="cp-columns">
-          <section id="domains" class="cp-section"><div class="cp-section-head"><div><span>DOMAINS & SSL</span><h2>โดเมน</h2></div><a href="./infrastructure.html">รายละเอียด →</a></div><div id="cp-domain-list" class="cp-list"></div></section>
-          <section id="backup" class="cp-section"><div class="cp-section-head"><div><span>BACKUP & RECOVERY</span><h2>การกู้คืน</h2></div><a href="./database.html">Database Studio →</a></div><div id="cp-recovery-list" class="cp-list"></div></section>
-        </div>
-        <div class="cp-columns">
-          <section class="cp-section"><div class="cp-section-head"><div><span>SERVICES</span><h2>บริการสำคัญ</h2></div><a href="./infrastructure.html">ทั้งหมด →</a></div><div id="cp-service-list" class="cp-list"></div></section>
-          <section id="ecosystem" class="cp-section"><div class="cp-section-head"><div><span>BAY ECOSYSTEM</span><h2>ระบบที่เชื่อมกัน</h2></div><a href="/bay/status.html">สถานะ →</a></div><div id="cp-ecosystem-list" class="cp-list"></div></section>
-        </div>
-        <section id="external-capabilities" class="cp-section"><div class="cp-section-head"><div><span>EXTERNAL CAPABILITIES</span><h2>ความสามารถเสริม</h2></div><small>ใช้ AWH authority เดิม · ไม่สร้าง control plane ซ้ำ</small></div><div id="cp-external-capabilities" class="cp-list"></div></section>
-        <section class="cp-footnote"><strong>Single Control Plane</strong><p>ศูนย์ดูแลระบบนี้เป็นชั้นควบคุมและนำทางเท่านั้น ไม่สร้างฐานข้อมูล Login Queue Notification หรือ Source of Truth ชุดใหม่</p></section>
+
+        <details id="cp-technical-details" class="cp-diagnostics">
+          <summary><span><b>ระบบและ Diagnostics</b><small>CPU, RAM, Storage, Backup, Database, SSL และบริการระบบ</small></span><em>เปิดรายละเอียด</em></summary>
+          <div class="cp-diagnostics-body">
+            <section class="cp-metrics" aria-label="ทรัพยากรระบบ">
+              <article><small>ภาระระบบ</small><strong id="cp-cpu">—</strong><span id="cp-load">กำลังตรวจ…</span></article>
+              <article><small>หน่วยความจำ</small><strong id="cp-memory">—</strong><span id="cp-memory-free">—</span></article>
+              <article><small>พื้นที่</small><strong id="cp-storage">—</strong><span id="cp-storage-free">—</span></article>
+              <article><small>สำรองล่าสุด</small><strong id="cp-backup">—</strong><span id="cp-backup-time">—</span></article>
+            </section>
+
+            <section id="system-health" class="cp-section cp-health-center" aria-labelledby="cp-health-title">
+              <div class="cp-section-head"><div><span>SYSTEM HEALTH</span><h2 id="cp-health-title">สุขภาพระบบ</h2></div><small id="cp-health-summary">กำลังประเมิน…</small></div>
+              <div id="cp-health-matrix" class="cp-health-matrix" role="list" aria-label="สถานะระบบหลัก"></div>
+            </section>
+
+            <div class="cp-columns">
+              <section id="domains" class="cp-section"><div class="cp-section-head"><div><span>DOMAINS & SSL</span><h2>โดเมน</h2></div><a href="./infrastructure.html">รายละเอียด →</a></div><div id="cp-domain-list" class="cp-list"></div></section>
+              <section id="backup" class="cp-section"><div class="cp-section-head"><div><span>BACKUP & RECOVERY</span><h2>การกู้คืน</h2></div><a href="./database.html">Database Studio →</a></div><div id="cp-recovery-list" class="cp-list"></div></section>
+            </div>
+            <div class="cp-columns">
+              <section class="cp-section"><div class="cp-section-head"><div><span>SERVICES</span><h2>บริการสำคัญ</h2></div><a href="./infrastructure.html">ทั้งหมด →</a></div><div id="cp-service-list" class="cp-list"></div></section>
+              <section id="ecosystem" class="cp-section"><div class="cp-section-head"><div><span>BAY ECOSYSTEM</span><h2>ระบบที่เชื่อมกัน</h2></div><a href="/bay/status.html">สถานะ →</a></div><div id="cp-ecosystem-list" class="cp-list"></div></section>
+            </div>
+            <section class="cp-system-links">
+              <a href="./?awh-surface=files"><strong>ไฟล์และพื้นที่</strong><small>เปิด File Center</small></a>
+              <a href="./database.html"><strong>ฐานข้อมูล</strong><small id="cp-db">กำลังตรวจ…</small></a>
+              <a href="./trust.html"><strong>ความปลอดภัย</strong><small id="cp-security">กำลังตรวจ…</small></a>
+              <a href="./infrastructure.html"><strong>เซิร์ฟเวอร์และบริการ</strong><small id="cp-services">กำลังตรวจ…</small></a>
+              <a href="./?awh-surface=home#source"><strong>Source และรุ่นระบบ</strong><small>GitHub · Vault · exact SHA</small></a>
+              <a href="#external-capabilities"><strong>ความสามารถเสริม</strong><small>Adapters · skills · references</small></a>
+            </section>
+            <section id="external-capabilities" class="cp-section"><div class="cp-section-head"><div><span>EXTERNAL CAPABILITIES</span><h2>ความสามารถเสริม</h2></div><small>ใช้ AWH authority เดิม</small></div><div id="cp-external-capabilities" class="cp-list"></div></section>
+            <span id="cp-domains-count" hidden></span>
+            <span id="cp-backup-card" hidden></span>
+          </div>
         </details>
       </div>
     </main>

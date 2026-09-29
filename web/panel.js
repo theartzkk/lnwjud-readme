@@ -76,6 +76,24 @@ function renderHealthMatrix(data){
   const summary=$('cp-health-summary');
   if(summary)summary.textContent=badCount?badCount+' รายการผิดปกติ · '+warnCount+' รายการควรดู':warnCount?warnCount+' รายการควรดู · ที่เหลือปกติ':'ระบบหลักปกติทั้งหมด';
 }
+function renderCommandCenter(data){
+  const server=data?.telemetry?.server||{},storage=data?.storage||server?.storage||{},deployment=data?.deployment||{},queue=data?.queue||{};
+  const workers=Array.isArray(data?.workers)?data.workers:[];
+  const readyWorkers=workers.filter(worker=>['READY','WORKING'].includes(String(worker?.state||''))).length;
+  const attentionCount=document.querySelectorAll('#cp-attention .cp-row').length;
+  const activeTasks=Number(queue.activeTaskCount||0);
+  const summary=$('cp-command-summary'),note=$('cp-command-note');
+  if(summary)summary.textContent=attentionCount?attentionCount+' เรื่องควรจัดการ':'ระบบพร้อมใช้งาน';
+  if(note){
+    const source=deployment.sourceState==='MATCHED'?'รุ่นระบบตรงกัน':'กำลังตรวจรุ่นระบบ';
+    const disk=Number(storage.freeBytes)>0?'พื้นที่ว่าง '+bytes(storage.freeBytes):'กำลังตรวจพื้นที่';
+    note.textContent=source+' · '+activeTasks+' งานกำลังทำ · '+disk;
+  }
+  if($('cp-command-attention-count'))$('cp-command-attention-count').textContent=attentionCount?String(attentionCount):'0';
+  if($('cp-command-attention-note'))$('cp-command-attention-note').textContent=attentionCount?'เปิดดูและจัดการด้านล่าง':'ไม่มีเรื่องเร่งด่วน';
+  if($('cp-command-running'))$('cp-command-running').textContent=String(activeTasks);
+  if($('cp-command-devices'))$('cp-command-devices').textContent=readyWorkers+'/'+workers.length;
+}
 const shortSha=(value)=>typeof value==='string'&&/^[0-9a-f]{40}$/i.test(value)?value.slice(0,9):'—';
 const updateStateLabel=(state)=>({
   CURRENT:'ล่าสุด',INTERNAL_MANAGED:'ล่าสุด',UPDATE_AVAILABLE:'พร้อมอัปเดต',WAITING_FOR_APPROVAL:'รอยืนยัน',UPDATING:'กำลังอัปเดต',
@@ -269,7 +287,8 @@ function renderAgentControl(data){
 
 function renderSites(sitesData){
   const sites=Array.isArray(sitesData?.sites)?sitesData.sites:[],ready=sites.filter(s=>s.state==='READY').length;
-  $('cp-sites').textContent=sites.length?ready+'/'+sites.length+' sites ready':'ยังไม่มี Managed Site';
+  $('cp-sites').textContent=sites.length?ready+'/'+sites.length+' เว็บไซต์พร้อม':'ยังไม่มี Managed Site';
+  if($('cp-command-sites'))$('cp-command-sites').textContent=sites.length?ready+'/'+sites.length:'0';
 }
 let cpProvider=null;
 const MICRO_BAHT=1000000;
@@ -378,7 +397,7 @@ async function load(){
     if(!session){location.assign('./');return;}
     void loadUpdateSummary();
     const data=await loadInfrastructureCompat();
-    renderServer(data);renderHealthMatrix(data);renderDomains(data);renderRecovery(data);renderServices(data);renderEcosystem(data);renderAgentControl(data);
+    renderServer(data);renderHealthMatrix(data);renderDomains(data);renderRecovery(data);renderServices(data);renderEcosystem(data);renderAgentControl(data);renderCommandCenter(data);
     $('cp-updated').textContent='ตรวจข้อมูลแล้ว · '+Math.max(1,Math.round(performance.now()-started))+' ms';
     void renderExternalCapabilities();
 
