@@ -2,6 +2,9 @@
 set -euo pipefail
 CANONICAL_AWH_GIT=${AWH_CANONICAL_AWH_GIT:-/srv/awh-git/awh.git}
 CANONICAL_BAY_GIT=${AWH_CANONICAL_BAY_GIT:-/srv/awh-git/bay-excuse-x.git}
+CANONICAL_ROOT=${AWH_CANONICAL_ROOT:-/srv/awh-git}
+REMOTE_ELECTRON_CACHE=${AWH_REMOTE_ELECTRON_CACHE:-/var/lib/awh-remote/.cache/electron}
+REMOTE_NPM_CACHE=${AWH_REMOTE_NPM_CACHE:-/var/lib/awh-remote/.npm/_cacache}
 HUB_DB=${AWH_HUB_DB_PATH:-/var/lib/awh-hub/awh.sqlite}
 TEMP_ROOT=${AWH_TEMP_ROOT:-/tmp}
 REMOTE_TEMP_ROOT=${AWH_REMOTE_TEMP_ROOT:-/var/lib/awh-remote/tmp}
@@ -11,6 +14,14 @@ WORKSPACE_JANITOR=${AWH_TEMP_WORKSPACE_JANITOR:-$SCRIPT_DIR/awh-temp-workspace-j
 DIR_MAX_AGE_MINUTES=${AWH_TEMP_DIR_MAX_AGE_MINUTES:-720}
 REMOTE_PRIVATE_MAX_AGE_MINUTES=${AWH_REMOTE_PRIVATE_MAX_AGE_MINUTES:-180}
 OPERATOR_STAGE_MAX_AGE_MINUTES=${AWH_OPERATOR_STAGE_MAX_AGE_MINUTES:-1440}
+DEPENDENCY_MAX_AGE_MINUTES=${AWH_DEPENDENCY_MAX_AGE_MINUTES:-720}
+VAULT_EXPORT_MAX_AGE_MINUTES=${AWH_VAULT_EXPORT_MAX_AGE_MINUTES:-360}
+if [[ "${AWH_STORAGE_PRESSURE:-0}" == 1 ]]; then
+  DIR_MAX_AGE_MINUTES=${AWH_PRESSURE_DIR_MAX_AGE_MINUTES:-60}
+  REMOTE_PRIVATE_MAX_AGE_MINUTES=${AWH_PRESSURE_REMOTE_PRIVATE_MAX_AGE_MINUTES:-60}
+  OPERATOR_STAGE_MAX_AGE_MINUTES=${AWH_PRESSURE_OPERATOR_STAGE_MAX_AGE_MINUTES:-60}
+  DEPENDENCY_MAX_AGE_MINUTES=${AWH_PRESSURE_DEPENDENCY_MAX_AGE_MINUTES:-60}
+fi
 count=0
 dir_count=0
 remote_dir_count=0
@@ -33,6 +44,34 @@ purge_old_files() {
 }
 purge_old_files "$TEMP_ROOT"
 purge_old_files "$REMOTE_TEMP_ROOT"
+
+path_in_use() {
+  local path=$1 target cwd
+  if command -v lsof >/dev/null 2>&1 && lsof +D "$path" >/dev/null 2>&1; then
+    return 0
+  fi
+  target=$(realpath -m -- "$path" 2>/dev/null || printf '%s' "$path")
+  for cwd in /proc/[0-9]*/cwd; do
+    [[ -e "$cwd" ]] || continue
+    current=$(readlink "$cwd" 2>/dev/null || true)
+    case "$current" in
+      "$target"|"$target"/*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+purge_old_vault_exports() {
+  [[ -d "$OPERATOR_STAGE_ROOT" ]] || return 0
+  while IFS= read -r -d '' f; do
+    path_in_use "$f" && continue
+    local size
+    size=$(stat -c %s "$f" 2>/dev/null || echo 0)
+    rm -f -- "$f"
+    count=$((count+1))
+    bytes=$((bytes+size))
+  done < <(find "$OPERATOR_STAGE_ROOT" -xdev -maxdepth 1 -type f -name 'vault-*.zip' -mmin "+${VAULT_EXPORT_MAX_AGE_MINUTES}" -print0)
+}
 
 janitor_state=NOT_AVAILABLE
 janitor_reclaimed=0
@@ -59,7 +98,7 @@ global_cleanup_allowed=false
 active_mutations=unknown
 global_active_mutations=unknown
 if [[ -r "$HUB_DB" ]] && command -v sqlite3 >/dev/null 2>&1; then
-  mutation_sql="e.state IN ('LEASED','RUNNING') AND (x.execution_id IS NULL OR (x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR datetime(x.lease_expires_at)>datetime('now'))))"
+  mutation_sql="e.required_capability<>'operator.project_mission' AND e.state IN ('LEASED','RUNNING') AND (x.execution_id IS NULL OR (x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR datetime(x.lease_expires_at)>datetime('now'))))"
   if active_mutations=$(sqlite3 -readonly "$HUB_DB" "SELECT count(*) FROM control_task_executions e JOIN projects p ON p.project_id=e.project_id LEFT JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE p.name='Art’s Workspace Hub' AND $mutation_sql;" 2>/dev/null); then
     [[ "$active_mutations" =~ ^[0-9]+$ ]] && (( active_mutations == 0 )) && workspace_cleanup_allowed=true
   fi
@@ -80,6 +119,7 @@ reclaim_git_dir() {
   head=$(git -C "$d" rev-parse HEAD 2>/dev/null || true)
   [[ "$head" =~ ^[0-9a-f]{40}$ ]] || return 0
   git --git-dir="$canonical" cat-file -e "${head}^{commit}" 2>/dev/null || return 0
+  git --git-dir="$canonical" for-each-ref --format='%(refname)' --contains "$head" refs/heads refs/tags 2>/dev/null | grep -q . || return 0
   size=$(du -sb -- "$d" 2>/dev/null | awk '{print $1}' || echo 0)
   find "$d" -xdev -depth -delete
   case "$bucket" in
@@ -107,13 +147,48 @@ if [[ "$global_cleanup_allowed" == true && -d "$OPERATOR_STAGE_ROOT" ]]; then
     [[ -d "$d/.git" && ! -L "$d/.git" ]] || continue
     origin=$(git -C "$d" remote get-url origin 2>/dev/null || true)
     case "$origin" in
-      file:///srv/awh-git/*.git)
-        canonical="/srv/awh-git/${origin#file:///srv/awh-git/}"
-        [[ -d "$canonical" ]] || continue
-        reclaim_git_dir "$d" "$canonical" operator
-        ;;
+      /srv/awh-git/*.git|file:///srv/awh-git/*.git) canonical="${origin#file://}" ;;
+      "$CANONICAL_ROOT"/*.git) canonical="$origin" ;;
+      file://"$CANONICAL_ROOT"/*.git) canonical="${origin#file://}" ;;
+      *) continue ;;
     esac
+    [[ -d "$canonical" ]] || continue
+    reclaim_git_dir "$d" "$canonical" operator
   done < <(find "$OPERATOR_STAGE_ROOT" -xdev -maxdepth 1 -mindepth 1 -type d -mmin "+${OPERATOR_STAGE_MAX_AGE_MINUTES}" -print0)
+fi
+
+reclaim_dependency_dirs() {
+  local root=$1 d parent size
+  [[ -d "$root" ]] || return 0
+  while IFS= read -r -d '' d; do
+    parent=$(dirname "$d")
+    [[ -f "$parent/package.json" ]] || continue
+    [[ -f "$parent/package-lock.json" || -f "$parent/bun.lock" || -f "$parent/pnpm-lock.yaml" || -f "$parent/yarn.lock" ]] || continue
+    path_in_use "$parent" && continue
+    size=$(du -sb -- "$d" 2>/dev/null | awk '{print $1}' || echo 0)
+    rm -rf -- "$d"
+    bytes=$((bytes+size))
+  done < <(find "$root" -xdev -mindepth 2 -maxdepth 2 -type d -name node_modules -mmin "+${DEPENDENCY_MAX_AGE_MINUTES}" -print0)
+}
+
+purge_regenerable_cache() {
+  local d size
+  for d in "$REMOTE_ELECTRON_CACHE" "$REMOTE_NPM_CACHE"; do
+    [[ -d "$d" ]] || continue
+    path_in_use "$d" && continue
+    size=$(du -sb -- "$d" 2>/dev/null | awk '{print $1}' || echo 0)
+    rm -rf -- "$d"
+    bytes=$((bytes+size))
+  done
+}
+
+if [[ "$global_cleanup_allowed" == true ]]; then
+  reclaim_dependency_dirs "$TEMP_ROOT"
+  reclaim_dependency_dirs "$OPERATOR_STAGE_ROOT"
+  if [[ "${AWH_STORAGE_PRESSURE:-0}" == 1 ]]; then
+    purge_old_vault_exports
+    purge_regenerable_cache
+  fi
 fi
 
 if [[ "$global_cleanup_allowed" == true ]]; then

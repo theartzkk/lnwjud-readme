@@ -113,6 +113,7 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(janitor, /UNKNOWN_FAIL_CLOSED/);
   assert.match(janitor, /control_task_executions/);
   assert.match(janitor, /control_execution_envelopes/);
+  assert.match(janitor, /required_capability <> 'operator\.project_mission'/);
   assert.match(janitor, /status.*--porcelain-v1|status.*--porcelain=v1/s);
   assert.match(janitor, /lsof/);
   assert.match(janitor, /\/proc/);
@@ -137,7 +138,18 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(guard, /TARGET_FREE=6442450944/);
   assert.match(guard, /WARN_FREE=6442450944/);
   assert.match(guard, /AWH_STORAGE_PRESSURE=1/);
-  assert.match(guard, /AWH_TMP_KEEP_NEWEST_PER_REPO=2/);
+  assert.match(guard, /AWH_TMP_KEEP_NEWEST_PER_REPO=1/);
+  assert.match(temp, /AWH_PRESSURE_OPERATOR_STAGE_MAX_AGE_MINUTES:-60/);
+  assert.match(temp, /required_capability<>'operator\.project_mission'/);
+  assert.match(temp, /AWH_REMOTE_ELECTRON_CACHE/);
+  assert.match(temp, /AWH_REMOTE_NPM_CACHE/);
+  assert.match(temp, /reclaim_dependency_dirs/);
+  assert.match(temp, /purge_regenerable_cache/);
+  assert.match(temp, /vault-\*\.zip/);
+  assert.match(temp, /for-each-ref --format='\%\(refname\)' --contains/);
+  assert.match(temp, /AWH_CANONICAL_ROOT/);
+  assert.match(tempService, /awh-remote\/\.cache/);
+  assert.match(guardService, /awh-remote\/\.npm/);
   assert.match(janitor, /AWH_TMP_PRESSURE_MIN_AGE_MINUTES.*60/);
   assert.match(guardService, /ReadWritePaths=.*\/var\/lib\/awh-remote\/tmp/);
   assert.match(guardTimer, /OnUnitActiveSec=10m/);
