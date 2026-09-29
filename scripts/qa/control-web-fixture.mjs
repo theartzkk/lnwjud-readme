@@ -135,7 +135,24 @@ const server = createServer(async (request, response) => {
     if (url.pathname === '/api/v1/control/workers') return send(response, 200, { workers: [{ deviceId: '66666666-6666-4666-8666-666666666666', displayName: 'AWH Agent ตัวอย่าง', platform: 'darwin', arch: 'arm64', state: 'READY', lastSeenAt: now, boundProjectCount: 1, capabilities: ['project:context'] }] });
     if (url.pathname === '/api/v1/control/results') return send(response, 200, { results: tasks.filter((task) => task.state === 'COMPLETED') });
     if (url.pathname === '/api/v1/control/artifacts') return send(response, 200, { artifacts });
-    if (url.pathname === '/api/v1/control/approvals') return send(response, 200, { approvals: [] });
+    if (url.pathname === '/api/v1/control/approvals') return send(response, 200, { approvals: [{ schemaVersion: 1, approvalId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', taskId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', projectId: project.projectId, action: 'deployment.approve', scope: { taskId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', projectId: project.projectId }, status: 'PENDING', expiresAt: '2026-12-31T00:00:00.000Z', decidedAt: null }] });
+    const approvalDecisionMatch = /^\/api\/v1\/control\/approvals\/([0-9a-f-]{36})\/(approve|reject)$/i.exec(url.pathname);
+    if (approvalDecisionMatch && request.method === 'POST') {
+      if (!requireCsrf(request, response)) return;
+      return send(response, 200, { schemaVersion: 1, approvalId: approvalDecisionMatch[1], taskId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', projectId: project.projectId, action: 'deployment.approve', status: approvalDecisionMatch[2] === 'approve' ? 'APPROVED' : 'REJECTED', expiresAt: '2026-12-31T00:00:00.000Z', decidedAt: now });
+    }
+    if (url.pathname === '/api/v1/control/system/releases' && request.method === 'GET') return send(response, 200, {
+      schemaVersion: 1, capability: 'system.core.release', releaseTrack: 'awh',
+      runtimeProductionSha: 'a'.repeat(40), trackProductionSha: 'a'.repeat(40),
+      sourcePromotion: { sha: 'b'.repeat(40), previousSha: 'a'.repeat(40), authority: 'CANONICAL_GIT_MAIN_VERIFIED', observedAt: now },
+      releaseNotes: { schemaVersion: 1, ownerSummary: 'Control Panel fixture' }, releaseDetailsReady: true, releaseBlocker: null,
+      roadmap: [], knownIssues: [], history: [], releases: [], policy: { approvalRequired: true }
+    });
+    if (url.pathname === '/api/v1/control/system/releases' && request.method === 'POST') {
+      if (!requireCsrf(request, response)) return; const value = await readJson(request);
+      if (value.schemaVersion !== 1 || value.releaseSha !== 'b'.repeat(40) || typeof value.cleanupTopology !== 'boolean') return send(response, 400, { code: 'PAYLOAD_INVALID' });
+      return send(response, 201, { schemaVersion: 1, taskId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', executionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', approvalId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', state: 'WAITING_FOR_WORKER', releaseSha: value.releaseSha, idempotent: false });
+    }
     if (url.pathname === '/api/v1/control/automations' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, available: true, automations });
     if (url.pathname === '/api/v1/control/automations' && request.method === 'POST') { if (!requireCsrf(request, response)) return; const value = await readJson(request); const definition = value?.definition; if (value?.schemaVersion !== 1 || !definition || definition.schemaVersion !== 1 || definition.projectId !== project.projectId || typeof definition.name !== 'string' || typeof definition.goal !== 'string') return send(response, 400, { code: 'PAYLOAD_INVALID' }); const automationId = uuid('aaaaaaaa-aaaa-4aaa-8aaa'); const record = { definition: { ...definition, automationId }, state: 'READY', createdAt: now, updatedAt: now }; automations.unshift(record); return send(response, 201, record); }
     const automationMatch = /^\/api\/v1\/control\/automations\/([0-9a-f-]{36})$/i.exec(url.pathname);
@@ -180,9 +197,28 @@ const server = createServer(async (request, response) => {
     if (url.pathname === '/api/v1/control/observability' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, observability: { active: false, credentialConfigured: false, egressConfigured: false, mode: 'LOCAL_PREFLIGHT' } });
     if (url.pathname === '/api/v1/control/capabilities' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, summary: { cloudReady: 2, optional: 1, planned: 0 }, capabilities: [{ capabilityId: 'ai.workspace', displayName: 'AI Workspace', state: 'READY', cloudReady: true, description: 'คุยและทำงานต่อเนื่องจาก AWH Cloud' }, { capabilityId: 'files.workspace', displayName: 'Files', state: 'READY', cloudReady: true, description: 'ไฟล์และผลงานของโปรเจกต์' }, { capabilityId: 'desktop.native', displayName: 'AWH Agent', state: 'OPTIONAL', cloudReady: false, description: 'ใช้เมื่อจำเป็นต้องเข้าถึงแอปหรือไฟล์บนคอมพิวเตอร์เครื่องนั้น' }] });
     if (url.pathname === '/api/v1/control/provider/projects/' + project.projectId && request.method === 'GET') return send(response, 200, { schemaVersion: 1, projectId: project.projectId, routing: { routingMode: 'AUTO' } });
-    if (url.pathname === '/api/v1/auth/people' && request.method === 'GET') return send(response, 200, { people: [{ userId: '77777777-7777-4777-8777-777777777777', displayName: 'Art', role: 'OWNER', status: 'ACTIVE' }] });
+    if (url.pathname === '/api/v1/auth/people' && request.method === 'GET') return send(response, 200, { people: [
+      { userId: '77777777-7777-4777-8777-777777777777', displayName: 'Art', username: 'art', role: 'OWNER', status: 'ACTIVE', projectIds: [project.projectId] },
+      { userId: '12121212-1212-4121-8121-121212121212', displayName: 'ครูตัวอย่าง', username: 'teacher-demo', role: 'STAFF', status: 'ACTIVE', projectIds: [project.projectId] }
+    ] });
+    const accessMatch = /^\/api\/v1\/auth\/people\/([0-9a-f-]{36})\/access$/i.exec(url.pathname);
+    if (accessMatch && request.method === 'POST') {
+      if (!requireCsrf(request, response)) return; const value = await readJson(request);
+      if (value.schemaVersion !== 1 || !['ADMIN','STAFF','VIEWER'].includes(value.role) || !Array.isArray(value.projectIds)) return send(response, 400, { code: 'PAYLOAD_INVALID' });
+      return send(response, 200, { userId: accessMatch[1], role: value.role, projectIds: value.projectIds, reauthenticateUser: true });
+    }
     if (url.pathname === '/api/v1/auth/requests' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, requests: [{ requestId: '88888888-8888-4888-8888-888888888888', displayName: 'ครูตัวอย่าง', username: 'teacher-demo', email: 'teacher@example.invalid', phone: null, personType: 'TEACHER', requestedArea: 'AWH', note: 'ขอใช้งานสำหรับงานโรงเรียน', state: 'PENDING', submittedAt: now, reviewedAt: null }] });
     if (url.pathname === '/api/v1/control/hosting/sites' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, sites: [{ siteId: '99999999-9999-4999-8999-999999999999', name: 'เว็บไซต์ตัวอย่าง', slug: 'school-demo', projectId: project.projectId, projectName: project.name, environment: 'PRODUCTION', runtimeType: 'PHP', runtimeVersion: '8.3', databaseMode: 'MARIADB', state: 'READY', publicMode: 'IP_PORT', port: 8443, primaryHost: 'kruart.online', url: 'https://kruart.online:8443/', backupEnabled: true, currentReleaseId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', rollbackReleaseId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', updatedAt: now }] });
+    const siteActionMatch = /^\/api\/v1\/control\/hosting\/sites\/([0-9a-f-]{36})\/(deploy|rollback|disable)$/i.exec(url.pathname);
+    if (siteActionMatch && request.method === 'POST') {
+      if (!requireCsrf(request, response)) return;
+      return send(response, 202, { schemaVersion: 1, siteId: siteActionMatch[1], action: siteActionMatch[2].toUpperCase(), state: 'QUEUED' });
+    }
+    const revokeDeviceMatch = /^\/api\/v1\/control\/devices\/([0-9a-f-]{36})\/revoke$/i.exec(url.pathname);
+    if (revokeDeviceMatch && request.method === 'POST') {
+      if (!requireCsrf(request, response)) return;
+      return send(response, 200, { schemaVersion: 1, revoked: true, deviceId: revokeDeviceMatch[1] });
+    }
     if (url.pathname === '/api/v1/auth/profile' && request.method === 'GET') return send(response, 200, { identity: { displayName: profileDisplayName, username: 'fixture' } });
     if (url.pathname === '/api/v1/auth/profile' && request.method === 'POST') { if (!requireCsrf(request, response)) return; const value = await readJson(request); if (value.schemaVersion !== 1 || typeof value.displayName !== 'string' || !value.displayName.trim() || value.displayName.trim().length > 80) return send(response, 400, { code: 'PAYLOAD_INVALID' }); profileDisplayName = value.displayName.trim(); return send(response, 200, { identity: { displayName: profileDisplayName, username: 'fixture' } }); }
     if (url.pathname === '/api/v1/control/owner/status' && request.method === 'GET') return send(response, 200, { schemaVersion: 1, product: { founderName: 'Art', founderCredit: 'Founder · Product Creator · System Concept' }, database: { state: 'HEALTHY' }, recovery: { state: 'READY' }, backup: { state: 'DEPLOYMENT_MANAGED' }, workers: [{ displayName: 'AWH Agent ตัวอย่าง', state: 'READY', boundProjectCount: 1 }] });

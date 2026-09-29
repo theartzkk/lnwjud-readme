@@ -1,4 +1,4 @@
-import { requireOwnerSession, loadInfrastructureSummary, loadInfrastructure, loadUpdateCenter, listManagedSites, loadProviderStatus, updateProviderPolicy, listPeople, listAccountRequests, reviewAccountRequest, revokePerson } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { requireOwnerSession, loadInfrastructureSummary, loadInfrastructure, loadUpdateCenter, loadControlData, listManagedSites, loadProviderStatus, updateProviderPolicy, listPeople, listAccountRequests, reviewAccountRequest, revokePerson, updatePersonAccess, cancelTask, decideApproval, revokeDevice, managedSiteAction, loadCoreReleaseStatus, requestCoreRelease } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $=(id)=>document.getElementById(id);
 const bytes=(value)=>{const n=Number(value||0);if(!Number.isFinite(n)||n<1)return '—';if(n<1024**2)return Math.round(n/1024)+' KB';if(n<1024**3)return (n/1024**2).toFixed(1)+' MB';return (n/1024**3).toFixed(1)+' GB';};
@@ -285,6 +285,120 @@ function renderAgentControl(data){
   }
 }
 
+let cpControlData=null;
+let cpSitesData=null;
+let cpCoreRelease=null;
+
+function setControlMessage(text,tone=''){
+  const node=$('cp-control-message');if(!node)return;
+  node.className=tone?'is-'+tone:'';node.textContent=text;
+}
+function makeControlButton(label,run,{tone='',confirmText=null,busyLabel='กำลังทำ…'}={}){
+  const button=document.createElement('button');button.type='button';button.className='cp-control-action'+(tone?' '+tone:'');button.textContent=label;
+  button.addEventListener('click',async()=>{
+    if(confirmText&&!confirm(confirmText))return;
+    const before=button.textContent;button.disabled=true;button.textContent=busyLabel;setControlMessage(busyLabel,'warn');
+    try{await run();setControlMessage('ดำเนินการแล้ว กำลังอัปเดตสถานะ','good');await load();}
+    catch(error){setControlMessage(error instanceof Error?error.message:'ดำเนินการไม่สำเร็จ','bad');button.disabled=false;button.textContent=before;}
+  });
+  return button;
+}
+function taskStateLabel(state){
+  return ({QUEUED:'อยู่ในคิว',WAITING_FOR_WORKER:'รออุปกรณ์',WAITING_FOR_APPROVAL:'รอยืนยัน',RUNNING:'กำลังทำ',VERIFYING:'กำลังตรวจ',RECOVERING:'กำลังกู้ต่อ',COMPLETED:'เสร็จ',FAILED:'ล้มเหลว',CANCELLED:'ยกเลิกแล้ว'})[String(state||'')]||String(state||'—');
+}
+function renderLiveTasks(control){
+  cpControlData=control;
+  const host=$('cp-live-tasks');if(!host)return;
+  const tasks=Array.isArray(control?.tasks)?control.tasks:[];
+  const active=tasks.filter(task=>!['COMPLETED','FAILED','CANCELLED'].includes(String(task?.state||''))).slice(0,8);
+  host.replaceChildren();
+  if($('cp-command-running'))$('cp-command-running').textContent=String(active.length);
+  if(!active.length){empty(host,'ไม่มีงานที่กำลังทำหรือรออยู่');return;}
+  for(const task of active){
+    const detail=[task.projectName,task.lastEvent?.message,Number.isFinite(Number(task.progress))?Math.round(Number(task.progress))+'%':null].filter(Boolean).join(' · ');
+    const item=row(task.goal||'งาน AWH',detail,taskStateLabel(task.state),task.state);
+    if(task.canCancel===true){
+      const actions=document.createElement('span');actions.className='cp-control-actions';
+      actions.append(makeControlButton('ยกเลิก',()=>cancelTask(task.taskId),{tone:'warn',confirmText:'ยกเลิกงาน “'+String(task.goal||'งานนี้')+'” ใช่หรือไม่?',busyLabel:'กำลังยกเลิก…'}));
+      item.append(actions);
+    }
+    host.append(item);
+  }
+}
+function approvalLabel(action){
+  return ({'deployment.approve':'อนุมัติการปล่อยรุ่น','project.revision.promote':'อนุมัติ Source revision'})[String(action||'')]||'อนุมัติการดำเนินการ';
+}
+function renderLiveApprovals(control){
+  const host=$('cp-live-approvals');if(!host)return;
+  const approvals=Array.isArray(control?.approvals)?control.approvals.filter(item=>item?.status==='PENDING'):[];
+  const tasks=new Map((Array.isArray(control?.tasks)?control.tasks:[]).map(task=>[task.taskId,task]));
+  host.replaceChildren();
+  const systemAttention=document.querySelectorAll('#cp-attention .cp-row').length;
+  if($('cp-command-attention-count'))$('cp-command-attention-count').textContent=String(systemAttention+approvals.length);
+  if($('cp-command-attention-note'))$('cp-command-attention-note').textContent=(systemAttention+approvals.length)?(approvals.length?approvals.length+' รายการรอการตัดสินใจ':'เปิดดูและจัดการด้านล่าง'):'ไม่มีเรื่องเร่งด่วน';
+  if(!approvals.length){empty(host,'ไม่มีรายการรออนุมัติ');return;}
+  for(const approval of approvals.slice(0,8)){
+    const task=tasks.get(approval.taskId);
+    const item=row(task?.goal||approvalLabel(approval.action),'หมดอายุ '+date(approval.expiresAt),'รอยืนยัน','WAITING_FOR_APPROVAL');
+    const actions=document.createElement('span');actions.className='cp-control-actions';
+    actions.append(
+      makeControlButton('อนุมัติ',()=>decideApproval(approval.approvalId,'approve'),{confirmText:'อนุมัติรายการนี้ใช่หรือไม่?',busyLabel:'กำลังอนุมัติ…'}),
+      makeControlButton('ไม่อนุมัติ',()=>decideApproval(approval.approvalId,'reject'),{tone:'danger',confirmText:'ปฏิเสธรายการนี้ใช่หรือไม่?',busyLabel:'กำลังปฏิเสธ…'})
+    );
+    item.append(actions);host.append(item);
+  }
+}
+function renderLiveSites(sitesData){
+  cpSitesData=sitesData;
+  const host=$('cp-live-sites');if(!host)return;
+  const sites=Array.isArray(sitesData?.sites)?sitesData.sites:[];
+  host.replaceChildren();
+  if(!sites.length){empty(host,'ยังไม่มี Managed Site');return;}
+  for(const site of sites.slice(0,8)){
+    const detail=[site.url||site.domainHost,site.taskState?('งาน '+taskStateLabel(site.taskState)):null].filter(Boolean).join(' · ')||'Managed Hosting';
+    const item=row(site.name||site.slug,detail,site.state||'UNKNOWN',site.state);
+    const actions=document.createElement('span');actions.className='cp-control-actions';
+    actions.append(makeControlButton('Deploy',()=>managedSiteAction(site.siteId,'deploy'),{confirmText:'Deploy เว็บไซต์ “'+String(site.name||site.slug)+'” ตอนนี้ใช่หรือไม่?',busyLabel:'กำลัง Deploy…'}));
+    if(site.rollbackReleaseId)actions.append(makeControlButton('Rollback',()=>managedSiteAction(site.siteId,'rollback'),{tone:'warn',confirmText:'Rollback เว็บไซต์ “'+String(site.name||site.slug)+'” ไป release ก่อนหน้าใช่หรือไม่?',busyLabel:'กำลัง Rollback…'}));
+    if(site.state!=='DISABLED')actions.append(makeControlButton('ปิด',()=>managedSiteAction(site.siteId,'disable'),{tone:'danger',confirmText:'ปิดเว็บไซต์ “'+String(site.name||site.slug)+'” ใช่หรือไม่? ผู้ใช้จะเข้าใช้งานไม่ได้จนกว่าจะ Deploy ใหม่',busyLabel:'กำลังปิด…'}));
+    item.append(actions);host.append(item);
+  }
+}
+function renderLiveDevices(control){
+  const host=$('cp-live-devices');if(!host)return;
+  const workers=Array.isArray(control?.workers)?control.workers:[];
+  host.replaceChildren();
+  if(!workers.length){empty(host,'ยังไม่มีอุปกรณ์ที่เชื่อมกับ AWH');return;}
+  for(const worker of workers.slice(0,10)){
+    const detail=[worker.platform,worker.appVersion?('Agent '+worker.appVersion):null,worker.lastSeenAt?('ล่าสุด '+date(worker.lastSeenAt)):null].filter(Boolean).join(' · ');
+    const item=row(worker.displayName||'AWH Agent',detail,worker.state==='WORKING'?'กำลังทำงาน':worker.state==='READY'?'พร้อม':worker.state||'OFFLINE',worker.state);
+    if(worker.state!=='WORKING'){
+      const actions=document.createElement('span');actions.className='cp-control-actions';
+      actions.append(makeControlButton('ยกเลิกการเชื่อมต่อ',()=>revokeDevice(worker.deviceId),{tone:'danger',confirmText:'ยกเลิกการเชื่อมต่อ “'+String(worker.displayName||'อุปกรณ์นี้')+'” ใช่หรือไม่? ต้องเชื่อมใหม่ก่อนใช้งานครั้งถัดไป',busyLabel:'กำลังยกเลิก…'}));
+      item.append(actions);
+    }
+    host.append(item);
+  }
+}
+function renderCoreReleaseControl(status){
+  cpCoreRelease=status;
+  const button=$('cp-core-release-button'),message=$('cp-core-release-state');if(!button||!message)return;
+  const target=status?.sourcePromotion?.sha||null;
+  const runtime=status?.runtimeProductionSha||null;
+  const releases=Array.isArray(status?.releases)?status.releases:[];
+  const active=releases.find(item=>!['COMPLETED','FAILED','CANCELLED'].includes(String(item?.taskState||'')));
+  button.disabled=true;button.dataset.releaseSha='';
+  if(active){
+    button.textContent='AWH กำลังอัปเดต '+Math.max(0,Math.min(100,Number(active.progress||0)))+'%';
+    message.textContent=active.resultSummary||'Release controller กำลังทำงาน';return;
+  }
+  if(!target){button.textContent='ยังไม่มีรุ่นพร้อมอัปเดต';message.textContent=status?.releaseBlocker||'ยังไม่พบ canonical release target';return;}
+  if(runtime&&target===runtime){button.textContent='AWH เป็นรุ่นล่าสุด';message.textContent='Production ตรงกับ canonical '+shortSha(target);return;}
+  if(status?.releaseDetailsReady===false){button.textContent='รุ่นนี้ยังปล่อยไม่ได้';message.textContent=status?.releaseBlocker||'Release details ยังไม่พร้อม';return;}
+  button.disabled=false;button.dataset.releaseSha=target;button.textContent='อัปเดต AWH → '+shortSha(target);
+  message.textContent='Production '+shortSha(runtime)+' · รุ่นพร้อม '+shortSha(target)+' · ใช้ Core Release authority เดิม';
+}
+
 function renderSites(sitesData){
   const sites=Array.isArray(sitesData?.sites)?sitesData.sites:[],ready=sites.filter(s=>s.state==='READY').length;
   $('cp-sites').textContent=sites.length?ready+'/'+sites.length+' เว็บไซต์พร้อม':'ยังไม่มี Managed Site';
@@ -316,9 +430,14 @@ async function loadPeopleAccess(){
   const peopleHost=$('cp-people-list');if(peopleHost){peopleHost.replaceChildren();for(const person of people){
     const item=row(person.displayName||person.username,'@'+(person.username||'—')+' · '+(person.status==='ACTIVE'?'ใช้งานอยู่':'ปิดใช้งาน'),personRoleLabel(person.role),person.status==='ACTIVE'?'READY':'');
     if(person.status==='ACTIVE'&&person.role!=='OWNER'){
+      const actions=document.createElement('div');actions.className='cp-inline-actions';
+      const role=document.createElement('select');role.className='cp-role-select';role.setAttribute('aria-label','บทบาทของ '+(person.displayName||person.username));
+      for(const value of ['ADMIN','STAFF','VIEWER']){const option=document.createElement('option');option.value=value;option.textContent=personRoleLabel(value);option.selected=value===person.role;role.append(option);}
+      const save=document.createElement('button');save.type='button';save.className='cp-mini-action';save.textContent='บันทึกสิทธิ์';
+      save.addEventListener('click',async()=>{save.disabled=role.disabled=true;try{await updatePersonAccess(person.userId,role.value,Array.isArray(person.projectIds)?person.projectIds:[]);$('cp-person-message').textContent='เปลี่ยนสิทธิ์แล้ว ผู้ใช้นี้ต้องเข้าสู่ระบบใหม่';await loadPeopleAccess();}catch(error){$('cp-person-message').textContent=error instanceof Error?error.message:'ยังเปลี่ยนสิทธิ์ไม่ได้';save.disabled=role.disabled=false;}});
       const button=document.createElement('button');button.type='button';button.className='cp-mini-action';button.textContent='ปิดบัญชี';
-      button.addEventListener('click',async()=>{if(!confirm('ปิดบัญชี “'+(person.displayName||person.username)+'” ใช่หรือไม่?'))return;button.disabled=true;try{await revokePerson(person.userId);await loadPeopleAccess();}catch(error){$('cp-person-message').textContent=error instanceof Error?error.message:'ยังปิดบัญชีไม่ได้';button.disabled=false;}});
-      item.append(button);
+      button.addEventListener('click',async()=>{if(!confirm('ปิดบัญชี “'+(person.displayName||person.username)+'” ใช่หรือไม่?'))return;button.disabled=role.disabled=save.disabled=true;try{await revokePerson(person.userId);await loadPeopleAccess();}catch(error){$('cp-person-message').textContent=error instanceof Error?error.message:'ยังปิดบัญชีไม่ได้';button.disabled=role.disabled=save.disabled=false;}});
+      actions.append(role,save,button);item.append(actions);
     }
     peopleHost.append(item);
   }if(!people.length)empty(peopleHost,'ยังไม่มีบัญชีอื่น');}
@@ -375,6 +494,23 @@ function installUi(){
   window.addEventListener('hashchange',()=>revealHashTarget(window.location.hash));
   if(window.location.hash)queueMicrotask(()=>revealHashTarget(window.location.hash));
   $('cp-refresh')?.addEventListener('click',()=>void load());
+  $('cp-core-release-button')?.addEventListener('click',async(event)=>{
+    const button=event.currentTarget;
+    const sha=button instanceof HTMLButtonElement?button.dataset.releaseSha||'':'';
+    if(!/^[0-9a-f]{40}$/i.test(sha))return;
+    if(!confirm('อัปเดต AWH Production เป็น '+shortSha(sha)+' ตอนนี้ใช่หรือไม่?'))return;
+    button.disabled=true;const before=button.textContent;button.textContent='กำลังส่งคำขออัปเดต…';
+    try{
+      const result=await requestCoreRelease(sha,false);
+      setControlMessage('ส่งคำขออัปเดต AWH แล้ว','good');
+      if($('cp-core-release-state'))$('cp-core-release-state').textContent='Release controller รับงานแล้ว · '+taskStateLabel(result.state);
+      await load();
+    }catch(error){
+      const message=error instanceof Error?error.message:'ยังเริ่มอัปเดต AWH ไม่ได้';
+      setControlMessage(message,'bad');if($('cp-core-release-state'))$('cp-core-release-state').textContent=message;
+      button.disabled=false;button.textContent=before;
+    }
+  });
   $('cp-ai-form')?.addEventListener('submit',async(event)=>{
     event.preventDefault();const button=event.currentTarget.querySelector('button[type="submit"]');if(button)button.disabled=true;
     if($('cp-ai-message'))$('cp-ai-message').textContent='กำลังบันทึก…';
@@ -401,9 +537,16 @@ async function load(){
     $('cp-updated').textContent='ตรวจข้อมูลแล้ว · '+Math.max(1,Math.round(performance.now()-started))+' ms';
     void renderExternalCapabilities();
 
-    Promise.allSettled([listManagedSites(),loadProviderStatus(),loadPeopleAccess()]).then((secondary)=>{
-      if(secondary[0].status==='fulfilled')renderSites(secondary[0].value);
+    Promise.allSettled([listManagedSites(),loadProviderStatus(),loadPeopleAccess(),loadControlData(),loadCoreReleaseStatus()]).then((secondary)=>{
+      if(secondary[0].status==='fulfilled'){renderSites(secondary[0].value);renderLiveSites(secondary[0].value);}
+      else if($('cp-live-sites'))empty($('cp-live-sites'),'ยังโหลด Managed Sites ไม่สำเร็จ');
       if(secondary[1].status==='fulfilled')renderProvider(secondary[1].value);
+      if(secondary[3].status==='fulfilled'){renderLiveTasks(secondary[3].value);renderLiveApprovals(secondary[3].value);renderLiveDevices(secondary[3].value);}
+      else{
+        for(const id of ['cp-live-tasks','cp-live-approvals','cp-live-devices'])if($(id))empty($(id),'ยังโหลด Control Plane ไม่สำเร็จ');
+      }
+      if(secondary[4].status==='fulfilled')renderCoreReleaseControl(secondary[4].value);
+      else if($('cp-core-release-state'))$('cp-core-release-state').textContent='ยังโหลดสถานะ Core Release ไม่สำเร็จ';
     });
   }catch(error){
     const overall=$('cp-overall');overall.className='cp-overall bad';overall.textContent='ศูนย์ดูแลระบบต้องตรวจ';

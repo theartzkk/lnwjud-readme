@@ -28,6 +28,15 @@ test('Owner Control Panel composes existing authorities without a parallel backe
   assert.match(html,/id="cp-command-devices"/);
   assert.match(html,/id="cp-command-sites"/);
   assert.match(js,/renderCommandCenter/);
+  assert.match(html,/id="live-controls"/);
+  assert.match(html,/ควบคุมระบบจริง/);
+  for(const id of ['cp-live-tasks','cp-live-approvals','cp-live-sites','cp-live-devices','cp-core-release-button']) assert.match(html,new RegExp('id="'+id+'"'));
+  for(const fn of ['loadControlData','cancelTask','decideApproval','revokeDevice','managedSiteAction','loadCoreReleaseStatus','requestCoreRelease','updatePersonAccess']) assert.match(js,new RegExp('\\b'+fn+'\\b'));
+  assert.match(js,/task\.canCancel===true/);
+  assert.match(js,/status==='PENDING'/);
+  assert.match(js,/rollbackReleaseId/);
+  assert.match(js,/worker\.state!=='WORKING'/);
+  assert.match(js,/requestCoreRelease\(sha,false\)/);
   assert.match(html,/href="#awh-agent"/);
   assert.match(html,/id="awh-agent"/);
   assert.match(html,/id="cp-agent-tools"/);
@@ -46,7 +55,7 @@ test('Owner Control Panel composes existing authorities without a parallel backe
   assert.match(css,/\.cp-health-matrix/);
   assert.match(html,/id="operations" class="cp-control-surface"/);
   assert.match(html,/OPERATIONS/);
-  assert.match(html,/เปิด Update Center/);
+  assert.match(html,/Update Center/);
   assert.match(html,/id="cp-technical-details" class="cp-diagnostics"/);
   assert.match(css,/\.cp-command-hero/);
   assert.match(css,/\.cp-command-card/);
@@ -61,7 +70,7 @@ test('Owner Control Panel composes existing authorities without a parallel backe
   assert.match(js,/renderUpdateSummary/);
   assert.doesNotMatch(js,/loadBayRemoteUpdateStatus|createBayRemoteInstallRelay|relayBayRemoteCommand/);
   assert.doesNotMatch(js,/Promise\.allSettled\(\[.*loadInfrastructureSummary/);
-  assert.doesNotMatch(js,/loadControlData\(\)/);
+  assert.match(js,/loadControlData\(\)/);
   assert.match(js,/listManagedSites/);
   assert.match(js,/loadProviderStatus/);
   assert.match(js,/if\(!session\)\{location\.assign/);
@@ -127,7 +136,7 @@ test('Owner entry and standalone admin pages converge on Control Panel',async()=
 });
 
 
-test('Owner Home delegates update mutations to Update Center while BAY authorities remain available there',async()=>{
+test('Owner Control Panel mutates only through existing AWH authorities while BAY authorities remain separate',async()=>{
   const [html,js,css,adapter,service,control,router,trust]=await Promise.all([
     'web/panel.html','web/panel.js','web/panel.css','web/control-plane-adapter.js',
     'hub/src/HubBayRemoteUpdateService.php','hub/src/HubControlPlaneService.php',
@@ -136,6 +145,12 @@ test('Owner Home delegates update mutations to Update Center while BAY authoriti
   assert.match(html,/id="operations"/);
   assert.match(html,/href="\.\/updates\.html"/);
   assert.match(html,/งานและอัปเดต/);
+  assert.match(html,/id="cp-core-release-button"/);
+  assert.match(js,/requestCoreRelease/);
+  assert.match(js,/managedSiteAction/);
+  assert.match(js,/cancelTask/);
+  assert.match(js,/decideApproval/);
+  assert.match(js,/revokeDevice/);
   assert.doesNotMatch(html,/อัปเดต BAY จากที่ไหนก็ได้|cp-bay-update-button|cp-bay-checks/);
   assert.match(html,/connect-src 'self';/);
   assert.doesNotMatch(html,/connect-src 'self' https:\/\/excuse\.kruart\.online/);

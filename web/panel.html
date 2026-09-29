@@ -104,11 +104,40 @@
           <div id="cp-attention" class="cp-list"></div>
         </section>
 
+        <section id="live-controls" class="cp-control-surface cp-live-controls">
+          <div class="cp-command-section-head">
+            <div><span>LIVE CONTROLS</span><h2>ควบคุมระบบจริง</h2><p>ปุ่มในส่วนนี้เรียก authority เดิมของ AWH โดยตรง ไม่ใช่ปุ่มตัวอย่างหรือหน้าสรุป</p></div>
+            <small id="cp-control-message" role="status">พร้อมรับคำสั่ง</small>
+          </div>
+          <div class="cp-live-grid">
+            <article class="cp-live-panel">
+              <div class="cp-live-panel-head"><strong>งานที่กำลังทำ</strong><small>ยกเลิกได้เฉพาะงานที่ backend ระบุว่าปลอดภัย</small></div>
+              <div id="cp-live-tasks" class="cp-list"><div class="cp-empty">กำลังโหลดงาน…</div></div>
+            </article>
+            <article class="cp-live-panel">
+              <div class="cp-live-panel-head"><strong>รายการรอยืนยัน</strong><small>อนุมัติหรือปฏิเสธจาก Control Panel ได้ทันที</small></div>
+              <div id="cp-live-approvals" class="cp-list"><div class="cp-empty">กำลังโหลดรายการ…</div></div>
+            </article>
+            <article class="cp-live-panel">
+              <div class="cp-live-panel-head"><strong>เว็บไซต์ที่ดูแล</strong><small>Deploy, rollback หรือปิดเว็บไซต์ผ่าน Managed Hosting authority</small></div>
+              <div id="cp-live-sites" class="cp-list"><div class="cp-empty">กำลังโหลดเว็บไซต์…</div></div>
+            </article>
+            <article class="cp-live-panel">
+              <div class="cp-live-panel-head"><strong>อุปกรณ์ AWH</strong><small>ยกเลิกการเชื่อมต่อได้เมื่อเครื่องไม่ได้กำลังทำงาน</small></div>
+              <div id="cp-live-devices" class="cp-list"><div class="cp-empty">กำลังโหลดอุปกรณ์…</div></div>
+            </article>
+          </div>
+        </section>
+
         <section id="operations" class="cp-control-surface">
           <div class="cp-command-section-head">
             <div><span>OPERATIONS</span><h2>งานและอัปเดต</h2><p>ดูว่างานไหนกำลังทำ งานไหนติด และระบบไหนพร้อมอัปเดต</p></div>
-            <a class="cp-section-action" href="./updates.html">เปิด Update Center →</a>
+            <div class="cp-section-actions">
+              <button id="cp-core-release-button" class="cp-section-action cp-action-button" type="button" disabled>กำลังตรวจรุ่น AWH…</button>
+              <a class="cp-section-action" href="./updates.html">Update Center →</a>
+            </div>
           </div>
+          <p id="cp-core-release-state" class="cp-inline-message">กำลังตรวจ Production และ canonical source…</p>
           <div class="cp-operations-layout">
             <article class="cp-operation-focus">
               <small>สถานะรวม</small>
