@@ -637,8 +637,11 @@ test('Update Center keeps AWH LINE Gateway and BAY Excuse LINE OA as two permane
   assert.equal(bay.deploymentAdapter,'BAY_UPDATE_CENTER');
   for(const field of ['dataOwner','permissionScope','observabilityScope','secretScope'])assert.notEqual(awh[field],bay[field]);
   assert.match(registry,/'awh-line-gateway'.*'sourceAuthority'=>'AWH_VAULT'.*'siteId'=>'ed911e13-ccfa-44d9-8214-6425cb252240'.*'domain'=>'line\.kruart\.online'/s);
-  assert.match(registry,/'line-oa'.*'repository'=>'bay-excuse-x'.*'packageTrack'=>'line-oa'.*'secretScope'=>'BAY_EXCUSE_LINE_OA'/s);
+  assert.match(registry,/'line-oa'.*'repository'=>'bay-excuse-x'.*'packageTrack'=>'line-oa'.*'secretScope'=>'BAY_EXCUSE_LINE_OA'.*'deploymentAdapter'=>'BAY_UPDATE_CENTER'/s);
+  assert.match(service,/\$resolvedTarget=\$track===null\?null:HubUpdateTargetRegistry::byReleaseTrack\(\$track\)/);
+  assert.match(service,/\$item\['adapter'\]=\(string\)\$resolvedTarget\['deploymentAdapter'\]/);
   assert.match(registry,/public static function releaseGroups/);
+  assert.match(registry,/return count\(\$tracks\)===1\?\(string\)array_key_first\(\$tracks\):\(\$paths===\[\]\?null:'awh'\)/);
   assert.match(registry,/'approvalMode'=>'SIGNED_IN_OWNER'/);
   assert.doesNotMatch(registry,/SINGLE_OWNER_STEP_UP/);
   assert.match(registry,/'orchestration'=>'SEQUENTIAL_VERIFY_EACH'/);

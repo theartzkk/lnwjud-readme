@@ -58,26 +58,26 @@ final class HubUpdateTargetRegistry
                 'name'=>'BAY EXCUSE X','kind'=>'SYSTEM','repository'=>'bay-excuse-x',
                 'sourceRef'=>'refs/heads/main','productionRef'=>null,'packageTrack'=>'bay-excuse-core',
                 'capability'=>'bay.remote_update.install','deployResource'=>'CANONICAL:DEPLOY:BAY_EXCUSE',
-                'versionPrefix'=>'BAY','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
+                'versionPrefix'=>'BAY','deploymentAdapter'=>'BAY_UPDATE_CENTER','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
             ],
             'line-oa'=>[
                 'name'=>'BAY Excuse LINE OA','kind'=>'INTEGRATION','repository'=>'bay-excuse-x',
                 'sourceRef'=>'refs/heads/main','productionRef'=>null,'packageTrack'=>'line-oa',
                 'secretScope'=>'BAY_EXCUSE_LINE_OA',
                 'capability'=>'bay.remote_update.install','deployResource'=>'CANONICAL:DEPLOY:LINE_OA',
-                'versionPrefix'=>'BAY LINE','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
+                'versionPrefix'=>'BAY LINE','deploymentAdapter'=>'BAY_UPDATE_CENTER','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
             ],
             'bay-cooperative'=>[
                 'name'=>'ศูนย์งานสหกรณ์โรงเรียน','kind'=>'PRODUCT','repository'=>'bay-excuse-x',
                 'sourceRef'=>'refs/heads/main','productionRef'=>null,'packageTrack'=>'cooperative-center',
                 'capability'=>'bay.remote_update.install','deployResource'=>'CANONICAL:DEPLOY:BAY_COOPERATIVE',
-                'versionPrefix'=>'Cooperative','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
+                'versionPrefix'=>'Cooperative','deploymentAdapter'=>'BAY_UPDATE_CENTER','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
             ],
             'bay-pp'=>[
                 'name'=>'ศูนย์ ปพ.','kind'=>'PRODUCT','repository'=>'bay-excuse-x',
                 'sourceRef'=>'refs/heads/main','productionRef'=>null,'packageTrack'=>'pp-center',
                 'capability'=>'bay.remote_update.install','deployResource'=>'CANONICAL:DEPLOY:BAY_PP',
-                'versionPrefix'=>'PP','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
+                'versionPrefix'=>'PP','deploymentAdapter'=>'BAY_UPDATE_CENTER','ownerApprovalRequired'=>true,'hostGlobal'=>false,'visibility'=>'PRIMARY',
             ],
             'bay-assessment'=>[
                 'name'=>'BAY Assessment','kind'=>'PRODUCT','repository'=>'bay-assessment',
@@ -168,7 +168,10 @@ final class HubUpdateTargetRegistry
             $tracks[$track]=true;
             if(count($tracks)>1)return null;
         }
-        return count($tracks)===1?(string)array_key_first($tracks):null;
+        // Shared-only Update Center/control-contract maintenance still belongs
+        // to the AWH release track. A real AWH/VPS mixed delta is rejected
+        // above as soon as two non-shared owners are observed.
+        return count($tracks)===1?(string)array_key_first($tracks):($paths===[]?null:'awh');
     }
 
     /** @param list<string> $paths */

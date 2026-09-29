@@ -552,6 +552,9 @@ final class HubControlPlaneService
                 if($projectId!==''&&is_string($releaseTrackByProjectId[$projectId]??null))
                     $track=$releaseTrackByProjectId[$projectId];
             }
+            $resolvedTarget=$track===null?null:HubUpdateTargetRegistry::byReleaseTrack($track);
+            if(is_array($resolvedTarget)&&is_string($resolvedTarget['deploymentAdapter']??null)&&trim((string)$resolvedTarget['deploymentAdapter'])!=='')
+                $item['adapter']=(string)$resolvedTarget['deploymentAdapter'];
             $item['visibility']=$track===null?'ADVANCED':HubUpdateTargetRegistry::releaseVisibility($track);
             $item['resolvedReleaseTrack']=$track;
         }
