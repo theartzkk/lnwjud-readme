@@ -1,3 +1,4 @@
+# Managed by the VPS Platform release path; verified releases reload this unit automatically.
 [Unit]
 Description=AWH bounded native executor tick
 Wants=network-online.target

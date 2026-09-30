@@ -1,4 +1,5 @@
 -- M25 Platform Maintenance Authority: one fail-closed platform-only maintenance state.
+-- Applied idempotently by the VPS Platform release path after M24 while Production remains online.
 CREATE TABLE IF NOT EXISTS control_platform_maintenance (
     singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
     mode TEXT NOT NULL CHECK (mode IN ('NORMAL','PLATFORM_ONLY')),
