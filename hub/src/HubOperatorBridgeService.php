@@ -1111,14 +1111,18 @@ final class HubOperatorBridgeService
         $visible=array_values(array_merge($groups['features'],$groups['improvements'],$groups['fixes']));
         $userVisible=count($visible)>0;
         $ownerSummary=$userVisible?(string)$visible[0]:'ไม่มีการเปลี่ยนแปลงที่ผู้ใช้เห็น';
+        // VPS Platform releases always execute the bounded, idempotent schema
+        // chain and reload managed platform services. Approval metadata must
+        // describe operational behavior, not merely infer it from changed paths.
+        $platformOperationalImpact=$releaseTrack==='vps-platform';
         return [
             'schemaVersion'=>1,'metadataState'=>'READY','generatedFrom'=>'EXACT_GIT_DIFF',
             'repository'=>$repository,'releaseTrack'=>$releaseTrack,'previousSha'=>$expected,'targetSha'=>$target,'generatedAt'=>$at,
             'ownerSummary'=>$ownerSummary,'userVisible'=>$userVisible,
             'summary'=>$groups,'commits'=>$commits,'changedFileCount'=>count($paths),
             'impact'=>[
-                'databaseMigration'=>$hasMigration?'AUTOMATIC':'NONE',
-                'serviceReload'=>$hasService?'AUTOMATIC':'NONE',
+                'databaseMigration'=>($hasMigration||$platformOperationalImpact)?'AUTOMATIC':'NONE',
+                'serviceReload'=>($hasService||$platformOperationalImpact)?'AUTOMATIC':'NONE',
                 'appRestart'=>$desktop?'MAY_BE_REQUIRED':'NONE',
                 'signIn'=>$auth?'MAY_BE_REQUIRED':'NONE',
                 'plannedDowntime'=>false,
