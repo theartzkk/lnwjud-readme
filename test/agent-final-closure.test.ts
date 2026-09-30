@@ -34,8 +34,9 @@ test('Windows device runtime discovery stays inside AWH-managed roots', () => {
 test('core permission bootstrap is Accessibility plus Screen Recording only', () => {
   const source = readFileSync(new URL('../src/device-bootstrap.ts', import.meta.url), 'utf8');
   assert.match(source, /AWH_PERMISSION_BOOTSTRAP_V2/);
-  assert.match(source, /AWH_RUNTIME_PERMISSION_V1_MARKER/);
+  assert.match(source, /const AWH_RUNTIME_PERMISSION_V1_MARKER = 'var AWH_PERMISSION_BOOTSTRAP_V1 = true;';/);
   assert.match(source, /DEVICE_RUNTIME_PERMISSION_V1_MIGRATION_CONTRACT_MISMATCH/);
+  assert.match(source, /if \(nextMain\.includes\(permissionDispatch\)\)[\s\S]*else if \(nextMain\.includes\(runtimeDispatch\)\)/);
   assert.match(source, /const ready = accessibility === true && screenCapture === "granted";/);
   assert.doesNotMatch(source, /askForMediaAccess\("microphone"\)/);
   const desktop = readFileSync(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');

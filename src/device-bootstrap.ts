@@ -125,7 +125,7 @@ const AWH_RUNTIME_MCP_NAME_MARKER = `var APP_NAME2 = "${AWH_RUNTIME_APP_NAME}";`
 const AWH_RUNTIME_INSTRUCTIONS_MARKER = 'Continue using AWH Device Runtime tools';
 const AWH_RUNTIME_READY_MARKER = 'AWH Device Runtime MCP stdio ready';
 const AWH_RUNTIME_PERMISSION_MARKER = 'AWH_PERMISSION_BOOTSTRAP_V2';
-const AWH_RUNTIME_PERMISSION_V1_MARKER = 'AWH_PERMISSION_BOOTSTRAP_V1';
+const AWH_RUNTIME_PERMISSION_V1_MARKER = 'var AWH_PERMISSION_BOOTSTRAP_V1 = true;';
 
 async function patchMacHeadlessRuntime(appRoot: string): Promise<void> {
   const archive = join(appRoot, 'Contents', 'Resources', 'app.asar');
@@ -228,8 +228,11 @@ if (process.argv.includes(AWH_PERMISSION_STATUS_ARG) || process.argv.includes(AW
       nextMain = nextMain.replace(permissionEntry, permissionBootstrap + permissionEntry);
       const runtimeDispatch = 'if (wantsMcpStdio(process.argv)) {';
       const permissionDispatch = 'if (process.argv.includes(AWH_PERMISSION_STATUS_ARG) || process.argv.includes(AWH_PERMISSION_SETUP_ARG)) {';
-      if (nextMain.includes(runtimeDispatch)) nextMain = nextMain.replace(runtimeDispatch, 'if (process.argv.includes(AWH_PERMISSION_STATUS_ARG) || process.argv.includes(AWH_PERMISSION_SETUP_ARG)) {\n      // Permission helper owns this short-lived runtime process.\n    } else if (wantsMcpStdio(process.argv)) {');
-      else if (!nextMain.includes(permissionDispatch)) throw new Error('DEVICE_RUNTIME_PERMISSION_DISPATCH_CONTRACT_MISMATCH');
+      if (nextMain.includes(permissionDispatch)) {
+        // A prior permission bootstrap already owns this dispatch boundary.
+      } else if (nextMain.includes(runtimeDispatch)) {
+        nextMain = nextMain.replace(runtimeDispatch, 'if (process.argv.includes(AWH_PERMISSION_STATUS_ARG) || process.argv.includes(AWH_PERMISSION_SETUP_ARG)) {\n      // Permission helper owns this short-lived runtime process.\n    } else if (wantsMcpStdio(process.argv)) {');
+      } else throw new Error('DEVICE_RUNTIME_PERMISSION_DISPATCH_CONTRACT_MISMATCH');
     }
     nextMain = nextMain.replace('var APP_NAME = "lnwjud";', AWH_RUNTIME_NAME_MARKER);
     nextMain = nextMain.replace('var APP_NAME2 = "lnwjud";', AWH_RUNTIME_MCP_NAME_MARKER);
@@ -525,7 +528,7 @@ function systemMcpEntry(platform: NodeJS.Platform, runtime: string): string {
 async function writeSystemMcpShim(runtime: string): Promise<void> {
   const source = [
     "const fmt=(xs)=>xs.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ');",
-    "for(const k of ['log','info','warn','error','debug']) console[k]=(...xs)=>process.stderr.write('[DC '+k.toUpperCase()+'] '+fmt(xs)+'\n');",
+    "for(const k of ['log','info','warn','error','debug']) console[k]=(...xs)=>process.stderr.write('[DC '+k.toUpperCase()+'] '+fmt(xs)+'\\n');",
     "global.disableOnboarding=true;",
     "const { StdioServerTransport } = await import('./node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js');",
     "const { server } = await import('./node_modules/@wonderwhy-er/desktop-commander/dist/server.js');",
