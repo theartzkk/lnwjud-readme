@@ -265,5 +265,9 @@ test('VPS Platform governed sensors and off-site Restic mirror remain subordinat
   assert.match(offsite, /AWH_OFFSITE_BACKUP=PASS file=\$file restic=\$RESTIC_STATE/);
 
   assert.match(remote, /enable --now awh-gatus\.service awh-beszel\.service/);
+  assert.match(remote, /while test "\$SENSOR_ATTEMPT" -lt 30/);
+  assert.match(remote, /127\.0\.0\.1:8088\/health/);
+  assert.match(remote, /beszel health --url http:\/\/127\.0\.0\.1:8090/);
+  assert.match(remote, /test "\$SENSOR_RUNTIME_READY" = 1/);
   assert.match(remote, /verify-platform-tooling\.sh" --runtime/);
 });

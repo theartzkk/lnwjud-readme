@@ -1415,8 +1415,17 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
     sudo systemctl enable --now awh-gatus.service awh-beszel.service >/dev/null
     sudo systemctl is-enabled --quiet awh-gatus.service
     sudo systemctl is-enabled --quiet awh-beszel.service
-    sudo systemctl is-active --quiet awh-gatus.service
-    sudo systemctl is-active --quiet awh-beszel.service
+    SENSOR_RUNTIME_READY=0
+    SENSOR_ATTEMPT=0
+    while test "$SENSOR_ATTEMPT" -lt 30; do
+      SENSOR_ATTEMPT=$((SENSOR_ATTEMPT+1))
+      if sudo systemctl is-active --quiet awh-gatus.service         && sudo systemctl is-active --quiet awh-beszel.service         && curl -fsS http://127.0.0.1:8088/health 2>/dev/null | grep -Fq '"status":"UP"'         && /var/lib/awh-remote/.local/bin/beszel health --url http://127.0.0.1:8090 2>/dev/null | grep -Fq ok; then
+        SENSOR_RUNTIME_READY=1
+        break
+      fi
+      sleep 1
+    done
+    test "$SENSOR_RUNTIME_READY" = 1
     sudo -u awh-remote "$RELEASE/scripts/ops/verify-platform-tooling.sh" --runtime >/dev/null
     stage PLATFORM_SENSOR_READY
     sudo systemctl cat awh-build.slice >/dev/null
