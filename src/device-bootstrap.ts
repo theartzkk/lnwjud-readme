@@ -125,6 +125,7 @@ const AWH_RUNTIME_MCP_NAME_MARKER = `var APP_NAME2 = "${AWH_RUNTIME_APP_NAME}";`
 const AWH_RUNTIME_INSTRUCTIONS_MARKER = 'Continue using AWH Device Runtime tools';
 const AWH_RUNTIME_READY_MARKER = 'AWH Device Runtime MCP stdio ready';
 const AWH_RUNTIME_PERMISSION_MARKER = 'AWH_PERMISSION_BOOTSTRAP_V2';
+const AWH_RUNTIME_PERMISSION_V1_MARKER = 'AWH_PERMISSION_BOOTSTRAP_V1';
 
 async function patchMacHeadlessRuntime(appRoot: string): Promise<void> {
   const archive = join(appRoot, 'Contents', 'Resources', 'app.asar');
@@ -137,7 +138,7 @@ async function patchMacHeadlessRuntime(appRoot: string): Promise<void> {
   const electronImportMarker = 'import { app, BrowserWindow as BrowserWindow2, clipboard, ClipboardItem, crashReporter, desktopCapturer, dialog, ipcMain, Menu, nativeImage, net, Notification, safeStorage, screen, shell, Tray } from "electron";';
   const requiredTokens = ['path72','mkdirSync8','lstatSync3','readFileSync9','writeFileSync6','randomBytes8','createExplicitKeySecretProtector','CheckpointKeyStore','execFileAsync10','wantsMcpStdio','FACTORY_RESET_APPLY_ARG'];
   if (!currentMain.includes(functionMarker) || requiredTokens.some((token) => !currentMain.includes(token))) throw new Error('DEVICE_RUNTIME_PATCH_CONTRACT_MISMATCH');
-  if (!currentMain.includes(AWH_RUNTIME_PERMISSION_MARKER) && !currentMain.includes(electronImportMarker)) throw new Error('DEVICE_RUNTIME_PERMISSION_IMPORT_CONTRACT_MISMATCH');
+  if (!currentMain.includes(AWH_RUNTIME_PERMISSION_MARKER) && !currentMain.includes(AWH_RUNTIME_PERMISSION_V1_MARKER) && !currentMain.includes(electronImportMarker)) throw new Error('DEVICE_RUNTIME_PERMISSION_IMPORT_CONTRACT_MISMATCH');
 
   const branch = `  if (process.env.AWH_DEVICE_RUNTIME_HEADLESS === "1") {
     const keyDirectory = path72.join(dataPath, "awh-runtime");
@@ -172,6 +173,13 @@ async function patchMacHeadlessRuntime(appRoot: string): Promise<void> {
     const mainPath = join(work, 'dist', 'main', 'main.js');
     let nextMain = currentMain;
     if (!nextMain.includes(AWH_HEADLESS_PATCH_MARKER)) nextMain = nextMain.replace(functionMarker, functionMarker + branch);
+    if (nextMain.includes(AWH_RUNTIME_PERMISSION_V1_MARKER)) {
+      const permissionEntry = 'var factoryResetApplyRequested = process.argv.includes(FACTORY_RESET_APPLY_ARG);';
+      const permissionStart = nextMain.indexOf(AWH_RUNTIME_PERMISSION_V1_MARKER);
+      const permissionEnd = nextMain.indexOf(permissionEntry, permissionStart);
+      if (permissionStart < 0 || permissionEnd < 0) throw new Error('DEVICE_RUNTIME_PERMISSION_V1_MIGRATION_CONTRACT_MISMATCH');
+      nextMain = nextMain.slice(0, permissionStart) + nextMain.slice(permissionEnd);
+    }
     if (!nextMain.includes(AWH_RUNTIME_PERMISSION_MARKER)) {
       nextMain = nextMain.replace(
         'import { app, BrowserWindow as BrowserWindow2, clipboard, ClipboardItem, crashReporter, desktopCapturer, dialog, ipcMain, Menu, nativeImage, net, Notification, safeStorage, screen, shell, Tray } from "electron";',
@@ -179,8 +187,8 @@ async function patchMacHeadlessRuntime(appRoot: string): Promise<void> {
       );
       const lockContract = 'function shouldHoldSingleInstanceLock(argv) {\n  return !wantsMcpStdio(argv);\n}';
       const lockReplacement = 'function shouldHoldSingleInstanceLock(argv) {\n  return !wantsMcpStdio(argv) && !argv.includes("--awh-permission-status") && !argv.includes("--awh-permission-setup");\n}';
-      if (!nextMain.includes(lockContract)) throw new Error('DEVICE_RUNTIME_PERMISSION_LOCK_CONTRACT_MISMATCH');
-      nextMain = nextMain.replace(lockContract, lockReplacement);
+      if (nextMain.includes(lockContract)) nextMain = nextMain.replace(lockContract, lockReplacement);
+      else if (!nextMain.includes(lockReplacement)) throw new Error('DEVICE_RUNTIME_PERMISSION_LOCK_CONTRACT_MISMATCH');
       const permissionEntry = 'var factoryResetApplyRequested = process.argv.includes(FACTORY_RESET_APPLY_ARG);';
       const permissionBootstrap = `
 var AWH_PERMISSION_BOOTSTRAP_V2 = true;
@@ -219,8 +227,9 @@ if (process.argv.includes(AWH_PERMISSION_STATUS_ARG) || process.argv.includes(AW
       if (!nextMain.includes(permissionEntry)) throw new Error('DEVICE_RUNTIME_PERMISSION_PATCH_CONTRACT_MISMATCH');
       nextMain = nextMain.replace(permissionEntry, permissionBootstrap + permissionEntry);
       const runtimeDispatch = 'if (wantsMcpStdio(process.argv)) {';
-      if (!nextMain.includes(runtimeDispatch)) throw new Error('DEVICE_RUNTIME_PERMISSION_DISPATCH_CONTRACT_MISMATCH');
-      nextMain = nextMain.replace(runtimeDispatch, 'if (process.argv.includes(AWH_PERMISSION_STATUS_ARG) || process.argv.includes(AWH_PERMISSION_SETUP_ARG)) {\n      // Permission helper owns this short-lived runtime process.\n    } else if (wantsMcpStdio(process.argv)) {');
+      const permissionDispatch = 'if (process.argv.includes(AWH_PERMISSION_STATUS_ARG) || process.argv.includes(AWH_PERMISSION_SETUP_ARG)) {';
+      if (nextMain.includes(runtimeDispatch)) nextMain = nextMain.replace(runtimeDispatch, 'if (process.argv.includes(AWH_PERMISSION_STATUS_ARG) || process.argv.includes(AWH_PERMISSION_SETUP_ARG)) {\n      // Permission helper owns this short-lived runtime process.\n    } else if (wantsMcpStdio(process.argv)) {');
+      else if (!nextMain.includes(permissionDispatch)) throw new Error('DEVICE_RUNTIME_PERMISSION_DISPATCH_CONTRACT_MISMATCH');
     }
     nextMain = nextMain.replace('var APP_NAME = "lnwjud";', AWH_RUNTIME_NAME_MARKER);
     nextMain = nextMain.replace('var APP_NAME2 = "lnwjud";', AWH_RUNTIME_MCP_NAME_MARKER);
@@ -233,7 +242,7 @@ if (process.argv.includes(AWH_PERMISSION_STATUS_ARG) || process.argv.includes(AW
     await rm(next, { force: true });
     await createPackageWithOptions(work, next, { unpack: '{dist/main/*.node,node_modules/@electron-internal/extract-zip/**}' });
     const patched = extractFile(next, 'dist/main/main.js').toString('utf8');
-    if (!patched.includes(AWH_HEADLESS_PATCH_MARKER) || !patched.includes(AWH_RUNTIME_NAME_MARKER) || !patched.includes(AWH_RUNTIME_MCP_NAME_MARKER) || !patched.includes(AWH_RUNTIME_INSTRUCTIONS_MARKER) || !patched.includes(AWH_RUNTIME_READY_MARKER) || !patched.includes(AWH_RUNTIME_PERMISSION_MARKER)) throw new Error('DEVICE_RUNTIME_PATCH_VERIFY_FAILED');
+    if (!patched.includes(AWH_HEADLESS_PATCH_MARKER) || !patched.includes(AWH_RUNTIME_NAME_MARKER) || !patched.includes(AWH_RUNTIME_MCP_NAME_MARKER) || !patched.includes(AWH_RUNTIME_INSTRUCTIONS_MARKER) || !patched.includes(AWH_RUNTIME_READY_MARKER) || !patched.includes(AWH_RUNTIME_PERMISSION_MARKER) || patched.includes(AWH_RUNTIME_PERMISSION_V1_MARKER)) throw new Error('DEVICE_RUNTIME_PATCH_VERIFY_FAILED');
     await rm(backup, { force: true });
     await rename(archive, backup);
     try { await rename(next, archive); }
