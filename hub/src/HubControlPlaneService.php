@@ -3715,7 +3715,15 @@ final class HubControlPlaneService
         $activityOrigin='AWH_WEB';
         if(is_string($row['idempotency_key']??null)&&str_starts_with((string)$row['idempotency_key'],'automation.'))$activityOrigin='AUTOMATION';
         elseif(is_string($row['conversation_id']??null)){
-            $originQuery=$this->pdo->prepare('SELECT origin FROM control_conversations WHERE conversation_id=:conversation LIMIT 1');$originQuery->execute(['conversation'=>$row['conversation_id']]);$conversationOrigin=$originQuery->fetchColumn();
+            $conversationOrigin=false;
+            try {
+                $originQuery=$this->pdo->prepare('SELECT origin FROM control_conversations WHERE conversation_id=:conversation LIMIT 1');
+                $originQuery->execute(['conversation'=>$row['conversation_id']]);
+                $conversationOrigin=$originQuery->fetchColumn();
+            } catch (Throwable) {
+                // Older compatible conversation schemas predate origin metadata.
+                $conversationOrigin=false;
+            }
             if(is_string($conversationOrigin)&&in_array(strtolower($conversationOrigin),['line','line_oa','line-oa','lineoa'],true))$activityOrigin='LINE';
         }
         $completion=$this->completion->assessTask((string)$row['task_id']);

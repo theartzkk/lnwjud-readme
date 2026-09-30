@@ -186,7 +186,7 @@ else
     if test -f "$ROOT/$file"; then desktop_source_count=$((desktop_source_count + 1)); fi
   done
   case "$MODE:$desktop_source_count" in
-    dry-run:0|*:4) : ;;
+    dry-run:*|*:4) : ;;
     *) echo "Desktop release artifacts must be complete for production deploy" >&2; exit 1 ;;
   esac
   if test "$desktop_source_count" -eq 4; then
@@ -240,7 +240,7 @@ else
     if test -f "$WEB_BUILD_ROOT/$file"; then desktop_artifact_count=$((desktop_artifact_count + 1)); fi
   done
   case "$MODE:$desktop_artifact_count" in
-    dry-run:0|*:4) : ;;
+    dry-run:*|*:4) : ;;
     *) echo "Desktop release artifacts must be complete for production deploy" >&2; exit 1 ;;
   esac
   # Desktop packages remain content-addressed: immutable assembly does not

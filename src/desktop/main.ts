@@ -126,6 +126,13 @@ function applySmokeArguments(): void {
 }
 
 applySmokeArguments();
+if (SMOKE_TEST) {
+  const smokeDataDir = argValue('--smoke-data-dir') ?? process.env.AWH_DATA_DIR;
+  if (smokeDataDir && isAbsolute(smokeDataDir) && !/[\u0000-\u001f\u007f]/.test(smokeDataDir)) {
+    app.setPath('userData', join(smokeDataDir, 'electron-user-data'));
+    app.setPath('sessionData', join(smokeDataDir, 'electron-session-data'));
+  }
+}
 const CORE_UPDATE_HEALTH_MARKER = argValue('--awh-core-update-health');
 
 function hasExplicitWorkspace(dataDir: string): boolean {
