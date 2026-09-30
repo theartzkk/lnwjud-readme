@@ -223,6 +223,15 @@ test('VPS Platform M25 deploy and build isolation stay inside the platform relea
   assert.match(remote, /m25-platform-maintenance-authority/);
   assert.match(remote, /control_platform_maintenance/);
   assert.match(remote, /PLATFORM_START_VERSION.*22\|23\|24\|25/);
+  assert.match(remote, /PLATFORM_CONVERSATION_DELEGATE_MIGRATION_FIRST/);
+  assert.match(remote, /PLATFORM_CONVERSATION_DELEGATE_MIGRATION_IDEMPOTENT/);
+  assert.match(remote, /PLATFORM_MAINTENANCE_MIGRATION_FIRST/);
+  assert.match(remote, /PLATFORM_MAINTENANCE_MIGRATION_IDEMPOTENT/);
+  assert.match(remote, /PLATFORM_SCHEMA_VERSION=.*PRAGMA user_version/);
+  assert.match(remote, /migrate-conversation-delegate\.php/);
+  assert.match(remote, /migrate-platform-maintenance\.php/);
+  assert.match(remote, /name='control_ai_delegates'/);
+  assert.match(remote, /name='control_platform_maintenance'/);
   assert.match(remote, /PLATFORM_EXPECTED_VERSION=25/);
   assert.match(validator, /AWH_CORE_MIGRATION_VERIFIED/);
 });
