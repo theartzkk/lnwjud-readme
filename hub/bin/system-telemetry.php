@@ -119,6 +119,8 @@ function telemetrySnapshot(): array
         ['key' => 'native-executor', 'label' => 'AWH Agent Runtime', 'unit' => 'awh-native-executor.timer'],
         ['key' => 'backup', 'label' => 'Automatic Backup', 'unit' => 'awh-backup.timer'],
         ['key' => 'source-drift', 'label' => 'Source Authority Drift', 'unit' => 'awh-source-drift.timer'],
+        ['key' => 'gatus', 'label' => 'Service Health Sensor', 'unit' => 'awh-gatus.service'],
+        ['key' => 'beszel', 'label' => 'Machine Health Sensor', 'unit' => 'awh-beszel.service'],
         ['key' => 'fail2ban', 'label' => 'Login Protection', 'unit' => 'fail2ban.service'],
         ['key' => 'updates', 'label' => 'Automatic Updates', 'unit' => 'unattended-upgrades.service'],
     ];

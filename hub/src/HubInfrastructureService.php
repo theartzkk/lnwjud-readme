@@ -6,7 +6,7 @@ final class HubInfrastructureService
 {
     private const MAX_SNAPSHOT_BYTES = 262144;
     private const STALE_SECONDS = 180;
-    private const SERVICE_KEYS = ['nginx', 'php-fpm', 'native-executor', 'backup', 'fail2ban', 'updates'];
+    private const SERVICE_KEYS = ['nginx', 'php-fpm', 'native-executor', 'backup', 'source-drift', 'gatus', 'beszel', 'fail2ban', 'updates'];
     private const STATES = ['ACTIVE', 'INACTIVE', 'FAILED', 'ACTIVATING', 'DEACTIVATING', 'RELOADING', 'UNKNOWN'];
     private const STARTUP = ['ENABLED', 'DISABLED', 'STATIC', 'INDIRECT', 'MASKED', 'GENERATED', 'TRANSIENT', 'UNKNOWN'];
 

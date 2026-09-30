@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "authority": "AWH_PLATFORM_TOOLCHAIN",
+  "installRoot": "/var/lib/awh-remote/.local",
+  "tools": {
+    "mise": "2026.9.17",
+    "ripgrep": "15.2.0",
+    "fd": "10.5.0",
+    "yq": "4.54.1",
+    "dust": "1.2.6",
+    "duf": "0.9.1",
+    "btop": "1.4.7",
+    "hyperfine": "1.20.0",
+    "trivy": "0.74.0",
+    "gitleaks": "8.30.1",
+    "syft": "1.52.0",
+    "cosign": "3.1.3",
+    "cue": "0.17.1",
+    "opa": "1.21.0",
+    "conftest": "0.70.1",
+    "uv": "0.12.20",
+    "ansible": "14.4.0",
+    "ansibleCore": "2.21.4",
+    "gatus": "5.37.0",
+    "beszel": "0.20.0",
+    "beszelAgent": "0.20.0",
+    "restic": "0.19.1"
+  },
+  "futureAdapters": {
+    "openobserve": "contract-only",
+    "k3s": "contract-only",
+    "restate": "contract-only",
+    "backstage": "contract-only"
+  },
+  "rules": {
+    "singleAuthority": true,
+    "noParallelDeployEngine": true,
+    "noParallelScheduler": true,
+    "noParallelAuth": true,
+    "productionSigningRequiresExistingVaultCredential": true
+  }
+}
