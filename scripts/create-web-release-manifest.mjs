@@ -60,19 +60,6 @@ for (const name of optionalFiles) {
   try {
     const info = await lstat(path);
     if (!info.isFile() || info.isSymbolicLink()) throw new Error(`Release file is not a regular file: ${name}`);
-    // Desktop ZIPs are optional web assets, but they are release artifacts only
-    // when CI package provenance exists beside them. A stale/unproven local ZIP
-    // must not break or contaminate a web-only dry run.
-    if (name.endsWith('.zip')) {
-      const evidencePath = join(input, name.replace(/\.zip$/, '.release.json'));
-      try {
-        const evidenceInfo = await lstat(evidencePath);
-        if (!evidenceInfo.isFile() || evidenceInfo.isSymbolicLink()) throw new Error(`Desktop package provenance is invalid: ${name}`);
-      } catch (error) {
-        if (error?.code === 'ENOENT') continue;
-        throw error;
-      }
-    }
     const content = await readFile(path);
     entries.push({ path: name, sha256: createHash('sha256').update(content).digest('hex'), sizeBytes: content.byteLength });
     localOptionalFiles.add(name);
