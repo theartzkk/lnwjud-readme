@@ -56,20 +56,25 @@ test "$(git -C "$QA_ROOT" rev-parse HEAD)" = "$SHA"
 test -z "$(git -C "$QA_ROOT" status --porcelain --untracked-files=all)"
 cd "$QA_ROOT"
 echo "QA_ISOLATION=EXACT_SHA sha=$SHA root=$QA_ROOT"
-npm ci --ignore-scripts --no-audit --no-fund --prefer-offline
+run_bounded() {
+  phase=$1
+  shift
+  if test "$(id -u)" -eq 0 && command -v systemd-run >/dev/null 2>&1; then
+    unit="awh-release-qa-$phase-$$-$SCRIPT_SAFE"
+    if systemctl cat awh-build.slice >/dev/null 2>&1; then
+      systemd-run --quiet --scope --collect --unit="$unit" --slice=awh-build.slice /usr/bin/nice -n 10 "$@"
+      return
+    fi
+    systemd-run --quiet --scope --collect --unit="$unit" --property=CPUWeight=10 --property=IOWeight=10 --property=CPUQuota=100% --property=MemoryHigh=1G --property=MemoryMax=1536M --property=TasksMax=1024 /usr/bin/nice -n 10 "$@"
+    return
+  fi
+  "$@"
+}
+run_bounded install npm ci --ignore-scripts --no-audit --no-fund --prefer-offline
 export AWH_QA_SINGLEFLIGHT_ROOT=${AWH_QA_SINGLEFLIGHT_ROOT:-${HOME:-/tmp}/.cache/awh/qa-singleflight}
 mkdir -p "$AWH_QA_SINGLEFLIGHT_ROOT"
 run_qa() {
-  if test "$(id -u)" -eq 0 && command -v systemd-run >/dev/null 2>&1; then
-    unit="awh-release-qa-$$-$SCRIPT_SAFE"
-    if systemctl cat awh-build.slice >/dev/null 2>&1; then
-      systemd-run --quiet --scope --unit="$unit" --slice=awh-build.slice --property=CPUWeight=20 --property=IOWeight=10 --property=MemoryHigh=2G /usr/bin/nice -n 10 npm run "$SCRIPT"
-      return
-    fi
-    systemd-run --quiet --scope --unit="$unit" --property=CPUWeight=20 --property=IOWeight=10 --property=MemoryHigh=2G /usr/bin/nice -n 10 npm run "$SCRIPT"
-    return
-  fi
-  npm run "$SCRIPT"
+  run_bounded qa npm run "$SCRIPT"
 }
 if run_qa; then
   QA_STATUS=0

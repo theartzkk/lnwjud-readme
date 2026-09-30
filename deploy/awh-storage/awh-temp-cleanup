@@ -13,12 +13,14 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 WORKSPACE_JANITOR=${AWH_TEMP_WORKSPACE_JANITOR:-$SCRIPT_DIR/awh-temp-workspace-janitor.py}
 DIR_MAX_AGE_MINUTES=${AWH_TEMP_DIR_MAX_AGE_MINUTES:-720}
 REMOTE_PRIVATE_MAX_AGE_MINUTES=${AWH_REMOTE_PRIVATE_MAX_AGE_MINUTES:-180}
+REMOTE_TRANSIENT_MAX_AGE_MINUTES=${AWH_REMOTE_TRANSIENT_MAX_AGE_MINUTES:-720}
 OPERATOR_STAGE_MAX_AGE_MINUTES=${AWH_OPERATOR_STAGE_MAX_AGE_MINUTES:-1440}
 DEPENDENCY_MAX_AGE_MINUTES=${AWH_DEPENDENCY_MAX_AGE_MINUTES:-720}
 VAULT_EXPORT_MAX_AGE_MINUTES=${AWH_VAULT_EXPORT_MAX_AGE_MINUTES:-360}
 if [[ "${AWH_STORAGE_PRESSURE:-0}" == 1 ]]; then
   DIR_MAX_AGE_MINUTES=${AWH_PRESSURE_DIR_MAX_AGE_MINUTES:-60}
   REMOTE_PRIVATE_MAX_AGE_MINUTES=${AWH_PRESSURE_REMOTE_PRIVATE_MAX_AGE_MINUTES:-60}
+  REMOTE_TRANSIENT_MAX_AGE_MINUTES=${AWH_PRESSURE_REMOTE_TRANSIENT_MAX_AGE_MINUTES:-60}
   OPERATOR_STAGE_MAX_AGE_MINUTES=${AWH_PRESSURE_OPERATOR_STAGE_MAX_AGE_MINUTES:-60}
   DEPENDENCY_MAX_AGE_MINUTES=${AWH_PRESSURE_DEPENDENCY_MAX_AGE_MINUTES:-60}
 fi
@@ -26,6 +28,7 @@ count=0
 dir_count=0
 remote_dir_count=0
 operator_dir_count=0
+remote_transient_dir_count=0
 bytes=0
 
 purge_old_files() {
@@ -106,6 +109,29 @@ if [[ -r "$HUB_DB" ]] && command -v sqlite3 >/dev/null 2>&1; then
     [[ "$global_active_mutations" =~ ^[0-9]+$ ]] && (( global_active_mutations == 0 )) && global_cleanup_allowed=true
   fi
 fi
+
+purge_remote_transient_dirs() {
+  [[ "$global_cleanup_allowed" == true && -d "$REMOTE_TEMP_ROOT" ]] || return 0
+  while IFS= read -r -d '' d; do
+    local name owner size
+    name=$(basename "$d")
+    case "$name" in
+      art-agent-*|awh-worker-*|awh-remote-connector-*|awh-artifact-hydration-*|awh-domain-adopt-*|awh-hub-test-*) ;;
+      *) continue ;;
+    esac
+    owner=$(stat -c %U "$d" 2>/dev/null || true)
+    [[ "$owner" == awh-remote ]] || continue
+    path_in_use "$d" && continue
+    size=$(du -sb -- "$d" 2>/dev/null | awk '{print $1}' || echo 0)
+    find "$d" -xdev -depth -delete 2>/dev/null || true
+    if [[ ! -e "$d" ]]; then
+      remote_transient_dir_count=$((remote_transient_dir_count+1))
+      bytes=$((bytes+size))
+    fi
+  done < <(find "$REMOTE_TEMP_ROOT" -xdev -maxdepth 1 -mindepth 1 -type d -mmin "+${REMOTE_TRANSIENT_MAX_AGE_MINUTES}" -print0)
+}
+
+purge_remote_transient_dirs
 
 reclaim_git_dir() {
   local d=$1 canonical=$2 bucket=$3
@@ -203,4 +229,4 @@ if [[ "$global_cleanup_allowed" == true ]]; then
   done
 fi
 
-logger -t awh-temp-cleanup "purged_files=$count purged_dirs=$dir_count remote_purged_dirs=$remote_dir_count operator_purged_dirs=$operator_dir_count reclaimed_bytes=$bytes workspace_janitor=$janitor_state janitor_reclaimed_bytes=$janitor_reclaimed workspace_cleanup_allowed=$workspace_cleanup_allowed active_mutations=$active_mutations global_cleanup_allowed=$global_cleanup_allowed global_active_mutations=$global_active_mutations"
+logger -t awh-temp-cleanup "purged_files=$count purged_dirs=$dir_count remote_purged_dirs=$remote_dir_count remote_transient_dirs=$remote_transient_dir_count operator_purged_dirs=$operator_dir_count reclaimed_bytes=$bytes workspace_janitor=$janitor_state janitor_reclaimed_bytes=$janitor_reclaimed workspace_cleanup_allowed=$workspace_cleanup_allowed active_mutations=$active_mutations global_cleanup_allowed=$global_cleanup_allowed global_active_mutations=$global_active_mutations"

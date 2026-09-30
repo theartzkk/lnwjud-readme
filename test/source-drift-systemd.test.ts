@@ -140,6 +140,12 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(guard, /AWH_STORAGE_PRESSURE=1/);
   assert.match(guard, /AWH_TMP_KEEP_NEWEST_PER_REPO=1/);
   assert.match(temp, /AWH_PRESSURE_OPERATOR_STAGE_MAX_AGE_MINUTES:-60/);
+  assert.match(temp, /AWH_REMOTE_TRANSIENT_MAX_AGE_MINUTES:-720/);
+  assert.match(temp, /AWH_PRESSURE_REMOTE_TRANSIENT_MAX_AGE_MINUTES:-60/);
+  assert.match(temp, /art-agent-\*\|awh-worker-\*\|awh-remote-connector-\*/);
+  assert.match(temp, /owner.*awh-remote/s);
+  assert.match(temp, /path_in_use \"\$d\"/);
+  assert.match(temp, /remote_transient_dirs=\$remote_transient_dir_count/);
   assert.match(temp, /required_capability<>'operator\.project_mission'/);
   assert.match(temp, /AWH_REMOTE_ELECTRON_CACHE/);
   assert.match(temp, /AWH_REMOTE_NPM_CACHE/);
@@ -175,4 +181,48 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(operatorBridge, /'runtimeParityState'=>'NOT_EVALUATED'/);
   assert.match(agents, /Owner Assist Fast Lane/);
   assert.match(operations, /Storage maintenance is proactive/);
+});
+
+test('VPS Platform M25 deploy and build isolation stay inside the platform release track', async () => {
+  const [policyRaw, slice, qaRunner, deploy, remote, validator] = await Promise.all([
+    readFile(join(root, 'config/ecosystem-platform-policy.json'), 'utf8'),
+    readFile(join(root, 'deploy/systemd/awh-build.slice'), 'utf8'),
+    readFile(join(root, 'scripts/ops/run-release-qa-isolated.sh'), 'utf8'),
+    readFile(join(root, 'deploy/awh-control-plane/deploy-control-plane.sh'), 'utf8'),
+    readFile(join(root, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'), 'utf8'),
+    readFile(join(root, 'deploy/awh-control-plane/validate-remote-output.sh'), 'utf8'),
+  ]);
+  const policy = JSON.parse(policyRaw);
+  assert.equal(policy.releaseRunner.localIsolation.systemdSlice, 'awh-build.slice');
+  assert.equal(policy.releaseRunner.localIsolation.cpuWeight, 10);
+  assert.equal(policy.releaseRunner.localIsolation.cpuQuotaPercent, 100);
+  assert.equal(policy.releaseRunner.localIsolation.memoryHighBytes, 1073741824);
+  assert.equal(policy.releaseRunner.localIsolation.memoryMaxBytes, 1610612736);
+  assert.equal(policy.releaseRunner.localIsolation.tasksMax, 1024);
+  assert.match(slice, /CPUWeight=10/);
+  assert.match(slice, /CPUQuota=100%/);
+  assert.match(slice, /MemoryHigh=1G/);
+  assert.match(slice, /MemoryMax=1536M/);
+  assert.match(slice, /TasksMax=1024/);
+  assert.match(qaRunner, /run_bounded install npm ci --ignore-scripts --no-audit --no-fund --prefer-offline/);
+  assert.match(qaRunner, /run_bounded qa npm run "\$SCRIPT"/);
+  assert.match(qaRunner, /--scope --collect/);
+  assert.match(qaRunner, /--slice=awh-build\.slice/);
+  assert.match(qaRunner, /--property=CPUQuota=100%/);
+  assert.match(qaRunner, /--property=MemoryMax=1536M/);
+  assert.match(deploy, /HubConversationDelegateMigration\.php/);
+  assert.match(deploy, /HubPlatformMaintenanceMigration\.php/);
+  assert.match(deploy, /HubPlatformMaintenanceService\.php/);
+  assert.match(deploy, /AWH_CORE_DRY_RUN=PASS/);
+  assert.match(deploy, /migrate-023-if-needed/);
+  assert.match(deploy, /migrate-024-if-needed/);
+  assert.match(remote, /23\|24\|25/);
+  assert.match(remote, /AWH_CORE_MIGRATION_FIRST/);
+  assert.match(remote, /AWH_CORE_MIGRATION_IDEMPOTENT/);
+  assert.match(remote, /m24-conversation-delegates/);
+  assert.match(remote, /m25-platform-maintenance-authority/);
+  assert.match(remote, /control_platform_maintenance/);
+  assert.match(remote, /PLATFORM_START_VERSION.*22\|23\|24\|25/);
+  assert.match(remote, /PLATFORM_EXPECTED_VERSION=25/);
+  assert.match(validator, /AWH_CORE_MIGRATION_VERIFIED/);
 });

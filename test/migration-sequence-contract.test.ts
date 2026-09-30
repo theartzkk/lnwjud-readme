@@ -38,7 +38,9 @@ test('schema migrations have one monotonic authority per user_version', async ()
   assert.equal(new Set(ids).size, ids.length, 'MIGRATION_ID must be globally unique');
   authorities.sort((a, b) => a.version - b.version);
   assert.equal(authorities.at(-1)?.version, prefixes.at(-1)! + 1, 'latest SQL prefix must map to the latest user_version');
-  assert.equal(authorities.at(-1)?.id, 'm24-conversation-delegates', 'schema 24 is owned by conversation delegates');
+  assert.equal(authorities.at(-1)?.id, 'm25-platform-maintenance-authority', 'schema 25 is owned by platform maintenance authority');
+  const platformMaintenance = authorities.find((item) => item.version === 25);
+  assert.equal(platformMaintenance?.id, 'm25-platform-maintenance-authority', 'schema 25 is the platform maintenance authority contract');
   const conversationDelegate = authorities.find((item) => item.version === 24);
   assert.equal(conversationDelegate?.id, 'm24-conversation-delegates', 'schema 24 is the conversation delegate authority contract');
   const platformHardening = authorities.find((item) => item.version === 23);

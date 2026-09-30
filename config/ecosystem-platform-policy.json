@@ -10,10 +10,13 @@
     ],
     "localIsolation": {
       "systemdSlice": "awh-build.slice",
-      "cpuWeight": 20,
+      "cpuWeight": 10,
+      "cpuQuotaPercent": 100,
       "ioWeight": 10,
       "nice": 10,
-      "memoryHighBytes": 2147483648
+      "memoryHighBytes": 1073741824,
+      "memoryMaxBytes": 1610612736,
+      "tasksMax": 1024
     }
   },
   "releaseContract": {

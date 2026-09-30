@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__.'/HubPlatformMaintenanceService.php';
+
 final class HubCapabilityRegistryException extends RuntimeException
 {
     public function __construct(string $message, public readonly string $codeName = 'CAPABILITY_REGISTRY_FAILED') { parent::__construct($message); }
@@ -17,7 +19,7 @@ final class HubCapabilityRegistryService
     private const AVAILABILITY = ['ALWAYS_ON','ON_DEMAND','OPTIONAL_DEVICE'];
     private const COST = ['INCLUDED','PREPAID','LOCAL_FREE','METERED'];
     private const ENVELOPE_STATES = ['OPEN','ACTIVE','WAITING','RELEASED','CONFLICT','CANCELLED'];
-    public const EXECUTION_POLICY_VERSION = '2.2-release-track';
+    public const EXECUTION_POLICY_VERSION = '2.3-project-admission';
 
     public function __construct(private readonly PDO $pdo) {}
 
@@ -293,7 +295,19 @@ final class HubCapabilityRegistryService
             $meta=$this->pdo->prepare('SELECT required_capability,executor_kind FROM control_task_executions WHERE execution_id=:execution');
             $meta->execute(['execution'=>$executionId]); $metaRow=$meta->fetch();
             if(!is_array($metaRow))throw new HubCapabilityRegistryException('Execution metadata is unavailable','EXECUTION_NOT_FOUND');
-            $resource=self::mutationResourceForExecution((string)$metaRow['required_capability'],(string)$metaRow['executor_kind']);
+            $capability=(string)$metaRow['required_capability'];
+            $resource=self::mutationResourceForExecution($capability,(string)$metaRow['executor_kind']);
+            if($resource!=='READ'&&$capability!=='operator.project_mission'&&!$this->projectSourceReady($project)){
+                $this->pdo->prepare("UPDATE control_execution_envelopes SET state='WAITING',lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution AND state IN ('OPEN','WAITING','CONFLICT','ACTIVE')")->execute(['at'=>$at,'execution'=>$executionId]);
+                if($ownTransaction)$this->pdo->exec('COMMIT');
+                throw new HubCapabilityRegistryException('Project mutation requires a verified canonical source authority','PROJECT_SOURCE_NOT_READY');
+            }
+            $maintenance=new HubPlatformMaintenanceService($this->pdo);
+            if(!$maintenance->mutationAllowed($project,$resource)){
+                $this->pdo->prepare("UPDATE control_execution_envelopes SET state='WAITING',lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution AND state IN ('OPEN','WAITING','CONFLICT','ACTIVE')")->execute(['at'=>$at,'execution'=>$executionId]);
+                if($ownTransaction)$this->pdo->exec('COMMIT');
+                throw new HubCapabilityRegistryException('Product mutation is frozen while VPS Platform maintenance is active','PLATFORM_MAINTENANCE_FREEZE');
+            }
             if ($resource === 'READ') {
                 $this->pdo->prepare("UPDATE control_execution_envelopes SET state='ACTIVE',lease_expires_at=:lease,updated_at=:at WHERE execution_id=:execution AND state IN ('OPEN','WAITING','ACTIVE')")->execute(['lease'=>$lease,'at'=>$at,'execution'=>$executionId]);
                 if ($ownTransaction) $this->pdo->exec('COMMIT');
@@ -483,6 +497,31 @@ final class HubCapabilityRegistryService
     private static function envelopeRow(array $row): array
     {
         return ['envelopeId'=>(string)$row['envelope_id'],'executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>(string)$row['project_id'],'conversationId'=>$row['conversation_id'],'baseRevisionId'=>$row['base_revision_id'],'sessionKey'=>(string)$row['session_key'],'mutationScope'=>(string)$row['mutation_scope'],'state'=>(string)$row['state'],'providerId'=>$row['provider_id'],'leaseExpiresAt'=>$row['lease_expires_at'],'createdAt'=>(string)$row['created_at'],'updatedAt'=>(string)$row['updated_at']];
+    }
+
+    private function projectSourceReady(string $projectId): bool
+    {
+        if(!self::tablePresent($this->pdo,'projects'))return false;
+        $columns=[];
+        foreach($this->pdo->query("PRAGMA table_info('projects')")->fetchAll(PDO::FETCH_ASSOC) as $column){
+            if(is_array($column)&&is_string($column['name']??null))$columns[(string)$column['name']]=true;
+        }
+        if(!isset($columns['canonical_source_authority']))return true;
+        $q=$this->pdo->prepare('SELECT canonical_source_authority,canonical_source_revision,canonical_source_vault_revision_id FROM projects WHERE project_id=:project');
+        $q->execute(['project'=>$projectId]);$row=$q->fetch();
+        if(!is_array($row))return false;
+        $authority=is_string($row['canonical_source_authority']??null)?strtoupper(trim((string)$row['canonical_source_authority'])):'';
+        if($authority==='GITHUB'){
+            $revision=is_string($row['canonical_source_revision']??null)?strtolower(trim((string)$row['canonical_source_revision'])):'';
+            return preg_match('/^[a-f0-9]{40}$/',$revision)===1;
+        }
+        if($authority!=='AWH_VAULT'||!self::tablePresent($this->pdo,'control_project_vaults'))return false;
+        $canonical=is_string($row['canonical_source_vault_revision_id']??null)?strtolower(trim((string)$row['canonical_source_vault_revision_id'])):'';
+        if(preg_match('/^[0-9a-f-]{36}$/',$canonical)!==1)return false;
+        $vault=$this->pdo->prepare('SELECT active_revision_id,sync_state FROM control_project_vaults WHERE project_id=:project');
+        $vault->execute(['project'=>$projectId]);$state=$vault->fetch();
+        $active=is_array($state)&&is_string($state['active_revision_id']??null)?strtolower(trim((string)$state['active_revision_id'])):'';
+        return is_array($state)&&($state['sync_state']??null)==='SYNCED'&&hash_equals($canonical,$active);
     }
 
     private function assertReady(): void

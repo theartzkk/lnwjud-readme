@@ -7,6 +7,7 @@ require_once __DIR__.'/HubUpdateTargetRegistry.php';
 require_once __DIR__ . '/HubBayRemoteUpdateService.php';
 require_once __DIR__ . '/HubCapabilityRegistryService.php';
 require_once __DIR__ . '/HubExecutionLifecycleService.php';
+require_once __DIR__ . '/HubPlatformMaintenanceService.php';
 require_once __DIR__ . '/HubProjectVault.php';
 require_once __DIR__ . '/HubProjectVaultService.php';
 require_once __DIR__ . '/HubProjectSourceAuthorityService.php';
@@ -33,6 +34,8 @@ final class HubOperatorBridgeService
     private const MISSION_CAPABILITY='operator.project_mission';
     private const MISSION_OWNER='operator-mission';
     private const MISSION_LEASE_SECONDS=7200;
+    private const PLATFORM_FREEZE_ENABLE_CONFIRMATION='ENABLE_PLATFORM_MAINTENANCE_FREEZE';
+    private const PLATFORM_FREEZE_DISABLE_CONFIRMATION='DISABLE_PLATFORM_MAINTENANCE_FREEZE';
     private const STORAGE_TARGET_FREE_BYTES=6442450944;
     private const STORAGE_BLOCK_FREE_BYTES=3221225472;
     private const STORAGE_CRITICAL_FREE_BYTES=1610612736;
@@ -59,6 +62,9 @@ final class HubOperatorBridgeService
             'system.status'=>$this->systemStatus($at),
             'projects.list'=>$this->projects($at),
             'project.gate'=>$this->projectGate(self::text($request,'project',160),$at,false,self::MISSION_CAPABILITY),
+            'platform.maintenance.status'=>$this->platformMaintenanceStatus($at),
+            'platform.maintenance.enable'=>$this->platformMaintenanceEnable($request,$at),
+            'platform.maintenance.disable'=>$this->platformMaintenanceDisable($request,$at),
             'verification.store'=>$this->verificationStore($request,$at),
             'verification.regressions'=>$this->verificationRegressions($request,$at),
             'vault.export'=>$this->vaultExport($request,$at),
@@ -95,16 +101,45 @@ final class HubOperatorBridgeService
         $active->execute(['at'=>$at,'mission'=>self::MISSION_CAPABILITY]);
         $counts=$active->fetch();
         $storage=$this->storageSafetyState($at);
+        $maintenance=(new HubPlatformMaintenanceService($this->pdo))->state();
         return [
             'schemaVersion'=>2,'state'=>$quick==='ok'&&($storage['releaseBlocked']??false)!==true?'READY':'REVIEW',
             'database'=>['quickCheck'=>$quick,'schema'=>$schema],'projects'=>$projects,
-            'storage'=>$storage,
+            'storage'=>$storage,'platformMaintenance'=>$maintenance,
             'activeMutationCount'=>is_array($counts)?(int)($counts['writer_count']??0):0,
             'activeCoordinationCount'=>is_array($counts)?(int)($counts['coordination_count']??0):0,
             'aggregateCountsAreNotBlockingAuthority'=>true,
             'blockingDecisionAuthority'=>'AWH_EXECUTION_GATE',
             'arbitraryShell'=>false,'observedAt'=>$at
         ];
+    }
+
+    /** @return array<string,mixed> */
+    private function platformMaintenanceStatus(string $at): array
+    {
+        return ['schemaVersion'=>1,'state'=>(new HubPlatformMaintenanceService($this->pdo))->state(),'observedAt'=>$at];
+    }
+
+    /** @param array<string,mixed> $request @return array<string,mixed> */
+    private function platformMaintenanceEnable(array $request,string $at): array
+    {
+        if(($request['confirmation']??null)!==self::PLATFORM_FREEZE_ENABLE_CONFIRMATION)throw new HubOperatorBridgeException('Explicit platform maintenance confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
+        $keys=array_keys($request);sort($keys);if($keys!==['action','confirmation','project','reason','schemaVersion'])throw new HubOperatorBridgeException('Platform maintenance request is invalid','OPERATOR_REQUEST_INVALID');
+        $project=$this->resolveProject(self::text($request,'project',160));$reason=self::text($request,'reason',500);
+        $active=(new HubCapabilityRegistryService($this->pdo))->executionAuthorityStatus($at);
+        if((int)($active['activeMutationCount']??0)>0)throw new HubOperatorBridgeException('Active mutations must finish before maintenance freeze','OPERATOR_PLATFORM_FREEZE_BUSY');
+        try{$state=(new HubPlatformMaintenanceService($this->pdo))->enable((string)$project['project_id'],$reason,'typed-operator',$at);}catch(HubPlatformMaintenanceException $e){throw new HubOperatorBridgeException($e->getMessage(),$e->codeName);}
+        return ['schemaVersion'=>1,'state'=>$state,'observedAt'=>$at];
+    }
+
+    /** @param array<string,mixed> $request @return array<string,mixed> */
+    private function platformMaintenanceDisable(array $request,string $at): array
+    {
+        if(($request['confirmation']??null)!==self::PLATFORM_FREEZE_DISABLE_CONFIRMATION)throw new HubOperatorBridgeException('Explicit platform maintenance confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
+        $keys=array_keys($request);sort($keys);if($keys!==['action','confirmation','reason','schemaVersion'])throw new HubOperatorBridgeException('Platform maintenance request is invalid','OPERATOR_REQUEST_INVALID');
+        $reason=self::text($request,'reason',500);
+        try{$state=(new HubPlatformMaintenanceService($this->pdo))->disable($reason,'typed-operator',$at);}catch(HubPlatformMaintenanceException $e){throw new HubOperatorBridgeException($e->getMessage(),$e->codeName);}
+        return ['schemaVersion'=>1,'state'=>$state,'observedAt'=>$at];
     }
 
     /** @return array<string,mixed> */
@@ -162,7 +197,11 @@ final class HubOperatorBridgeService
         $sourceReady=in_array($authority,['AWH_VAULT','GITHUB'],true) && ($authority!=='AWH_VAULT' || ($sync==='SYNCED'&&$activeVault!==null&&$sourceVault!==null&&hash_equals($activeVault,$sourceVault)));
         if($authority==='GITHUB')$sourceReady=$sourceRevision!==null&&preg_match('/^[a-f0-9]{40}$/',$sourceRevision)===1;
         $vaultReady=$authority!=='AWH_VAULT'||$sync==='SYNCED';
+        $maintenanceService=new HubPlatformMaintenanceService($this->pdo);
+        $maintenance=$maintenanceService->state();
+        $maintenanceAllowed=$maintenanceService->mutationAllowed($id,$requestedResource);
         $checks=[
+            ['key'=>'platform_maintenance','ok'=>$maintenanceAllowed,'value'=>($maintenance['mode']??'NORMAL'),'blocking'=>true],
             ['key'=>'database','ok'=>$quick==='ok','value'=>$quick,'blocking'=>true],
             ['key'=>'conflicting_mutations','ok'=>count($conflictingRows)===0,'value'=>count($conflictingRows),'blocking'=>true],
             ['key'=>'unscoped_running_mutations','ok'=>$unscopedConflictCount===0,'value'=>$unscopedConflictCount,'blocking'=>true],
@@ -390,17 +429,31 @@ final class HubOperatorBridgeService
         $selector=self::text($request,'project',160);$goal=self::text($request,'goal',500);
         $project=$this->resolveProject($selector);$projectId=(string)$project['project_id'];
         $this->reconcileExpiredMissions($projectId,$at);
-        // Project missions are coordination leases, not writer locks. Multiple
-        // independent chats may hold missions in the same project. Canonical
-        // source/deploy/workspace conflicts are enforced by their own typed
-        // mutation resources at the point of mutation.
+        // Project missions are coordination leases, not writer locks. Until
+        // resource-scoped parallel missions exist, one active mission per project
+        // is the safe default. A repeated request joins and renews the existing
+        // mission instead of creating duplicate coordination state.
+        $existing=$this->activeProjectMissions($at,$projectId);
+        if($existing!==[]){
+            $current=$existing[0];
+            $renewed=$this->missionRenew(['executionId'=>(string)$current['execution_id']],$at);
+            return [
+                'schemaVersion'=>2,'state'=>'JOINED','blocking'=>false,'decision'=>'JOIN_EXISTING',
+                'decisionAuthority'=>'AWH_EXECUTION_GATE',
+                'project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],
+                'requestedGoal'=>$goal,'mission'=>$renewed['mission'],
+                'rule'=>'ONE_ACTIVE_PROJECT_COORDINATION_MISSION',
+                'observedAt'=>$at,
+            ];
+        }
         $gate=$this->projectGate($selector,$at,false,self::MISSION_CAPABILITY);
         if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('Project mission coordination gate is unavailable','OPERATOR_PROJECT_GATE_BLOCKED');
         $storage=$this->storageSafetyState($at);
         if(($storage['releaseBlocked']??false)===true)throw new HubOperatorBridgeException('VPS storage safety gate is recovering below the mission reserve','OPERATOR_STORAGE_CRITICAL');
         $authority=$this->acquireMutationAuthority($projectId,$goal,self::MISSION_CAPABILITY,['mode'=>'OPERATOR_PROJECT_MISSION','goal'=>$goal,'startedAt'=>$at,'storageState'=>$storage['state']??'UNKNOWN'], $at,self::MISSION_LEASE_SECONDS,self::MISSION_OWNER);
         $mission=$this->activeProjectMission($authority['executionId'],$at,$projectId,true);
-        return ['schemaVersion'=>2,'state'=>'ACQUIRED','blocking'=>false,'decision'=>'CONTINUE','decisionAuthority'=>'AWH_EXECUTION_GATE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'mission'=>$this->missionProjection($mission),'rule'=>'PROJECT_MISSIONS_ARE_COORDINATION_ONLY','storage'=>$storage,'observedAt'=>$at];
+        $joined=($authority['joined']??false)===true;
+        return ['schemaVersion'=>2,'state'=>$joined?'JOINED':'ACQUIRED','blocking'=>false,'decision'=>$joined?'JOIN_EXISTING':'CONTINUE','decisionAuthority'=>'AWH_EXECUTION_GATE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'requestedGoal'=>$joined?$goal:null,'mission'=>$this->missionProjection($mission),'rule'=>'ONE_ACTIVE_PROJECT_COORDINATION_MISSION','storage'=>$storage,'observedAt'=>$at];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
@@ -472,7 +525,7 @@ final class HubOperatorBridgeService
     /** @param array<string,mixed> $row @return array<string,mixed> */
     private function missionProjection(array $row): array
     {
-        return ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>(string)$row['project_id'],'goal'=>(string)$row['goal'],'state'=>'RUNNING','progress'=>(int)$row['progress'],'leaseExpiresAt'=>$row['lease_expires_at'],'updatedAt'=>(string)$row['updated_at']];
+        return ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>(string)$row['project_id'],'goal'=>(string)$row['goal'],'state'=>'COORDINATING','executionState'=>'RUNNING','progress'=>(int)$row['progress'],'leaseExpiresAt'=>$row['lease_expires_at'],'updatedAt'=>(string)$row['updated_at']];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
@@ -939,7 +992,7 @@ final class HubOperatorBridgeService
         if($q->rowCount()!==1)throw new HubOperatorBridgeException('Release details could not be bound to source promotion','OPERATOR_RELEASE_DETAILS_REQUIRED');
     }
 
-    /** @param array<string,mixed> $checkpoint @return array{executionId:string,taskId:string,projectId:string,leaseExpiresAt:string} */
+    /** @param array<string,mixed> $checkpoint @return array{executionId:string,taskId:string,projectId:string,leaseExpiresAt:string,joined?:bool} */
     private function acquireMutationAuthority(string $projectId,string $goal,string $capability,array $checkpoint,string $at,int $leaseSeconds=300,string $leaseOwner='operator-bridge'): array
     {
         if(!self::uuidValid($projectId)||preg_match('/^[a-z][a-z0-9:._-]{1,63}$/',$capability)!==1)throw new HubOperatorBridgeException('Mutation authority request is invalid','OPERATOR_REQUEST_INVALID');
@@ -947,6 +1000,15 @@ final class HubOperatorBridgeService
         $lease=gmdate('c',strtotime($at)+$leaseSeconds); $taskId=self::uuid(); $executionId=self::uuid();
         try{
             $this->pdo->exec('BEGIN IMMEDIATE');
+            if($capability===self::MISSION_CAPABILITY){
+                $existing=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.lease_expires_at FROM control_task_executions e JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.project_id=:project AND e.required_capability=:capability AND e.lease_owner=:owner AND e.state='RUNNING' AND x.state='ACTIVE' AND (e.lease_expires_at IS NULL OR e.lease_expires_at>:at) AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) ORDER BY e.updated_at DESC,e.execution_id DESC LIMIT 1");
+                $existing->execute(['project'=>$projectId,'capability'=>self::MISSION_CAPABILITY,'owner'=>self::MISSION_OWNER,'at'=>$at]);
+                $row=$existing->fetch();
+                if(is_array($row)){
+                    $this->pdo->exec('COMMIT');
+                    return ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>$projectId,'leaseExpiresAt'=>(string)$row['lease_expires_at'],'joined'=>true];
+                }
+            }
             // Missing envelopes are an integrity gap and remain fail-closed.
             // Scoped envelopes are arbitrated below by the canonical registry,
             // so unrelated workspace/candidate/resource lanes are not blocked.
@@ -963,7 +1025,7 @@ final class HubOperatorBridgeService
             if(($claim['granted']??false)!==true)throw new HubOperatorBridgeException('Another execution owns a conflicting project resource','OPERATOR_PROJECT_GATE_BLOCKED');
             $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:id,:task,'RUNNING',10,'Guarded operator bridge acquired canonical mutation authority',:at)")->execute(['id'=>self::uuid(),'task'=>$taskId,'at'=>$at]);
             $this->pdo->exec('COMMIT');
-            return ['executionId'=>$executionId,'taskId'=>$taskId,'projectId'=>$projectId,'leaseExpiresAt'=>$lease];
+            return ['executionId'=>$executionId,'taskId'=>$taskId,'projectId'=>$projectId,'leaseExpiresAt'=>$lease,'joined'=>false];
         }catch(Throwable $error){try{$this->pdo->exec('ROLLBACK');}catch(Throwable){}if($error instanceof HubOperatorBridgeException)throw $error;throw new HubOperatorBridgeException('Mutation authority could not be acquired','OPERATOR_AUTHORITY_FAILED');}
     }
 

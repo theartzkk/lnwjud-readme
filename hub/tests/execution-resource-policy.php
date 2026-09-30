@@ -4,7 +4,7 @@ require_once dirname(__DIR__) . '/src/HubCapabilityRegistryService.php';
 require_once dirname(__DIR__) . '/src/HubUpdateTargetRegistry.php';
 function ep(bool $ok,string $m):void{if(!$ok)throw new RuntimeException($m);}
 $p=HubCapabilityRegistryService::executionPolicy();
-ep(($p['version']??null)==='2.2-release-track','release-track concurrency policy version');
+ep(($p['version']??null)==='2.3-project-admission','project-admission execution policy version');
 ep(($p['mode']??null)==='CONTEXT_ONLY'&&($p['enforcement']??null)==='ADVISORY','context is non-prescriptive');
 ep(($p['sourceAuthorityRequiredForMutation']??false)===true&&($p['singleWriterMutationBoundary']??false)===true&&($p['mutationBoundary']??null)==='CONFLICTING_RESOURCE','integrity boundary remains enforced');
 ep(HubCapabilityRegistryService::mutationResourceForExecution('system.platform.release','VPS')==='CANONICAL:DEPLOY:VPS_PLATFORM','platform release has host-global track');

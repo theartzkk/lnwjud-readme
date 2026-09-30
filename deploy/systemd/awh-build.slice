@@ -2,7 +2,9 @@
 Description=AWH bounded build and QA workload
 
 [Slice]
-CPUWeight=20
+CPUWeight=10
+CPUQuota=100%
 IOWeight=10
-MemoryHigh=2G
-TasksMax=2048
+MemoryHigh=1G
+MemoryMax=1536M
+TasksMax=1024
