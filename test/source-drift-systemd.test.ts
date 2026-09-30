@@ -264,7 +264,9 @@ test('VPS Platform governed sensors and off-site Restic mirror remain subordinat
   assert.match(offsite, /forget --keep-last "\$KEEP" --prune --tag awh-offsite/);
   assert.match(offsite, /AWH_OFFSITE_BACKUP=PASS file=\$file restic=\$RESTIC_STATE/);
 
-  assert.match(remote, /enable --now awh-gatus\.service awh-beszel\.service/);
+  assert.match(remote, /systemctl enable awh-gatus\.service awh-beszel\.service/);
+  assert.match(remote, /systemctl start awh-gatus\.service awh-beszel\.service[^\n]*\|\| true/);
+  assert.doesNotMatch(remote, /enable --now awh-gatus\.service awh-beszel\.service/);
   assert.match(remote, /while test "\$SENSOR_ATTEMPT" -lt 30/);
   assert.match(remote, /127\.0\.0\.1:8088\/health/);
   assert.match(remote, /beszel health --url http:\/\/127\.0\.0\.1:8090/);

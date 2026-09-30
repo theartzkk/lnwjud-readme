@@ -1412,9 +1412,13 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
     sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-beszel.service" /etc/systemd/system/awh-beszel.service
     PLATFORM_SENSOR_UNITS_INSTALLED=1
     sudo systemctl daemon-reload
-    sudo systemctl enable --now awh-gatus.service awh-beszel.service >/dev/null
+    sudo systemctl enable awh-gatus.service awh-beszel.service >/dev/null
     sudo systemctl is-enabled --quiet awh-gatus.service
     sudo systemctl is-enabled --quiet awh-beszel.service
+    # Startup convergence is decided by the bounded readiness loop below.
+    # A first start may report failure while Restart=on-failure is already
+    # converging the service, so do not fail the deploy before readiness proof.
+    sudo systemctl start awh-gatus.service awh-beszel.service >/dev/null 2>&1 || true
     SENSOR_RUNTIME_READY=0
     SENSOR_ATTEMPT=0
     while test "$SENSOR_ATTEMPT" -lt 30; do
