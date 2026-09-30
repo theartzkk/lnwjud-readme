@@ -133,3 +133,70 @@ body.awh-modern-chat-ready #awh-chat-root{display:flex!important;min-height:0;fl
 .awh-response-pending{display:flex;align-items:center;gap:9px;max-width:720px;margin:4px auto 12px;padding:0 18px;color:#707782;font-size:12px}
 .awh-response-pending span{font-style:normal}
 @media(max-width:900px){.awh-temp-chat{margin-bottom:8px}.awh-response-pending{width:100%;padding:0 14px}.awh-temporary-chip{display:inline-flex!important}}
+
+
+/* Mobile Safari viewport containment and focus-zoom guard. */
+body.awh-modern-chat-ready,
+body.awh-modern-chat-ready .app-shell,
+body.awh-modern-chat-ready .app-main,
+body.awh-modern-chat-ready #workspace-view,
+#awh-chat-root,
+.awh-chat-shell,
+.awh-chat-main,
+.awh-chat-thread,
+.awh-chat-viewport,
+.awh-chat-header,
+.awh-composer-footer,
+.awh-composer,
+.awh-composer-bar{
+  min-width:0;
+  max-width:100%;
+}
+body.awh-modern-chat-ready,
+body.awh-modern-chat-ready .app-shell,
+body.awh-modern-chat-ready .app-main,
+body.awh-modern-chat-ready #workspace-view,
+#awh-chat-root,
+.awh-chat-shell,
+.awh-chat-main,
+.awh-chat-thread,
+.awh-chat-viewport{
+  overflow-x:hidden;
+}
+#awh-chat-root,
+#awh-chat-root *,
+#awh-chat-root *::before,
+#awh-chat-root *::after{box-sizing:border-box}
+.awh-chat-shell{width:100%}
+.awh-chat-header{overflow:hidden}
+.awh-chat-title{flex:0 1 auto}
+.awh-context-chips{
+  min-width:0;
+  max-width:100%;
+  flex:1 1 auto;
+  justify-content:flex-end;
+}
+.awh-context-chips span{min-width:0;flex:0 1 auto}
+.awh-message,
+.awh-user-bubble,
+.awh-assistant-copy,
+.awh-task-card,
+.awh-artifact-list,
+.awh-composer,
+.awh-composer-bar{min-width:0;max-width:100%}
+.awh-message-actions{max-width:100%;flex-wrap:wrap}
+.awh-task-card-head>div{min-width:0}
+.awh-task-card-head strong,
+.awh-task-card-head small,
+.awh-chat-markdown{overflow-wrap:anywhere;word-break:break-word}
+.awh-chat-markdown{min-width:0;max-width:100%}
+.awh-chat-markdown pre{max-width:100%;overflow:auto}
+.awh-chat-markdown table{display:block;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.awh-pending-files{max-width:100%}
+
+@media(max-width:840px){
+  .awh-chat-shell input,
+  .awh-chat-shell textarea,
+  .awh-chat-shell select{font-size:16px}
+  .awh-composer-input{font-size:16px;line-height:1.5}
+}

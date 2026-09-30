@@ -37,6 +37,27 @@ try {
     await initialStop.waitFor({ state: 'hidden' });
   }
   evidence.scenarios.push('modern assistant-ui island owns the visible Chat surface');
+  for (const viewport of [{ width: 390, height: 844 }, { width: 430, height: 932 }]) {
+    await page.setViewportSize(viewport);
+    const mobileLayout = await page.evaluate(() => {
+      const composer = document.querySelector('.awh-composer-input');
+      const search = document.querySelector('.awh-chat-search input');
+      const clientWidth = document.documentElement.clientWidth;
+      return {
+        clientWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        bodyWidth: document.body.scrollWidth,
+        composerFont: composer ? Number.parseFloat(getComputedStyle(composer).fontSize) : 0,
+        searchFont: search ? Number.parseFloat(getComputedStyle(search).fontSize) : 0,
+      };
+    });
+    assert.ok(mobileLayout.documentWidth <= mobileLayout.clientWidth + 1, JSON.stringify(mobileLayout));
+    assert.ok(mobileLayout.bodyWidth <= mobileLayout.clientWidth + 1, JSON.stringify(mobileLayout));
+    assert.ok(mobileLayout.composerFont >= 16, JSON.stringify(mobileLayout));
+    assert.ok(mobileLayout.searchFont >= 16, JSON.stringify(mobileLayout));
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  evidence.scenarios.push('mobile chat is horizontally contained and text inputs stay at 16px or larger');
   const composer = page.locator('.awh-composer-input');
   await composer.fill('ช่วยตรวจโครงการนี้');
   await page.locator('.awh-send-button').click();
@@ -114,6 +135,15 @@ try {
   await page.waitForFunction(() => document.body.classList.contains('awh-keyboard-open'));
   const box = await page.locator('.awh-composer').boundingBox();
   assert.ok(box && box.y >= 0 && box.y + box.height <= 501);
+  const focusedLayout = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    documentWidth: document.documentElement.scrollWidth,
+    bodyWidth: document.body.scrollWidth,
+    composerFont: Number.parseFloat(getComputedStyle(document.querySelector('.awh-composer-input')).fontSize),
+  }));
+  assert.ok(focusedLayout.documentWidth <= focusedLayout.clientWidth + 1, JSON.stringify(focusedLayout));
+  assert.ok(focusedLayout.bodyWidth <= focusedLayout.clientWidth + 1, JSON.stringify(focusedLayout));
+  assert.ok(focusedLayout.composerFont >= 16, JSON.stringify(focusedLayout));
   await page.screenshot({ path: output + '/mobile-keyboard.png' });
   evidence.scenarios.push('mobile keyboard keeps composer inside the visual viewport');
 
