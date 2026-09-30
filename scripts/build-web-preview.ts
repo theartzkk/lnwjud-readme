@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, relative, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { PRODUCT } from '../src/product.js';
@@ -15,6 +15,20 @@ function isWithin(root: string, candidate: string): boolean {
 if (requestedOutput !== undefined && !isWithin(ROOT, OUTPUT) && !isWithin(tmpdir(), OUTPUT)) throw new Error('AWH web output path is outside the allowed build roots');
 
 async function asset(name: string): Promise<string> { return readFile(join(ROOT, 'web', name), 'utf8'); }
+async function exists(path: string): Promise<boolean> { try { await access(path); return true; } catch { return false; } }
+async function cleanUnprovenDesktopArtifacts(output: string): Promise<void> {
+  const downloads = join(output, 'downloads');
+  let provenPackages = 0;
+  for (const name of ['AWH-macOS-arm64.zip', 'AWH-macOS-x64.zip', 'AWH-Windows-x64.zip']) {
+    const zip = join(downloads, name);
+    const evidence = join(downloads, name.replace(/\.zip$/, '.release.json'));
+    const [hasZip, hasEvidence] = await Promise.all([exists(zip), exists(evidence)]);
+    if (hasZip && hasEvidence) { provenPackages += 1; continue; }
+    if (hasZip) await rm(zip, { force: true });
+    if (hasEvidence) await rm(evidence, { force: true });
+  }
+  if (provenPackages === 0) await rm(join(downloads, 'SHA256SUMS.txt'), { force: true });
+}
 function renderReleaseAsset(source: string, releaseId: string): string { const rendered = source.replaceAll('__AWH_WEB_RELEASE_ID__', releaseId); if (rendered.includes('__AWH_WEB_RELEASE_ID__')) throw new Error('AWH web release identity was not rendered'); return rendered; }
 function generatedAt(): string { const fixed = process.env.AWH_PREVIEW_GENERATED_AT; if (fixed !== undefined && Number.isFinite(Date.parse(fixed))) return fixed; return new Date().toISOString(); }
 function withDashboard(index: string): string {
@@ -52,6 +66,7 @@ async function main(): Promise<void> {
   const releaseContract = JSON.parse(await readFile(join(ROOT, 'scripts', 'web-release-files.json'), 'utf8')) as { sourceCopies: Array<[string,string]> };
   if (!Array.isArray(releaseContract.sourceCopies)) throw new Error('AWH web source-copy contract is invalid');
   await mkdir(OUTPUT, { recursive: true });
+  await cleanUnprovenDesktopArtifacts(OUTPUT);
   await mkdir(join(OUTPUT, 'vendor'), { recursive: true });
   await mkdir(join(OUTPUT, 'assets'), { recursive: true });
   await mkdir(join(OUTPUT, 'device-runtime', 'macos'), { recursive: true });
