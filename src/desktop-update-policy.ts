@@ -5,7 +5,7 @@ export const DESKTOP_UPDATE_FOUNDATION = {
   windowsPackageId: 'AWH',
   channels: ['stable', 'preview'] as const,
   defaultChannel: 'stable' as const,
-  status: 'FOUNDATION_LOCKED_NOT_ACTIVATED' as const,
+  status: 'SELF_UPDATE_ACTIVE_ROLLBACK_SAFE' as const,
 } as const;
 
 export interface DesktopUpdateManifest {
@@ -30,6 +30,22 @@ export function parseVersion(value: string): readonly [number, number, number, s
   return [Number(match[1]), Number(match[2]), Number(match[3]), match[4] ?? null] as const;
 }
 
+function comparePrerelease(left: string, right: string): number {
+  const a = left.split('.');
+  const b = right.split('.');
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const av = a[index]; const bv = b[index];
+    if (av === undefined) return -1;
+    if (bv === undefined) return 1;
+    if (av === bv) continue;
+    const an = /^\d+$/.test(av); const bn = /^\d+$/.test(bv);
+    if (an && bn) return Number(av) < Number(bv) ? -1 : 1;
+    if (an !== bn) return an ? -1 : 1;
+    return av < bv ? -1 : 1;
+  }
+  return 0;
+}
+
 export function compareVersions(left: string, right: string): number {
   const [leftMajor, leftMinor, leftPatch, leftPre] = parseVersion(left);
   const [rightMajor, rightMinor, rightPatch, rightPre] = parseVersion(right);
@@ -39,7 +55,7 @@ export function compareVersions(left: string, right: string): number {
   if (leftPre === rightPre) return 0;
   if (leftPre === null) return 1;
   if (rightPre === null) return -1;
-  return leftPre.localeCompare(rightPre);
+  return comparePrerelease(leftPre, rightPre);
 }
 
 export function validateDesktopUpdateManifest(value: unknown): DesktopUpdateManifest {

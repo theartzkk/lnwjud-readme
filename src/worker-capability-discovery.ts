@@ -59,6 +59,11 @@ export async function discoverWorkerTools(options: WorkerToolProbeOptions = {}):
   const pathAvailable = options.pathAvailable ?? defaultPathAvailable;
   const tools: string[] = [];
   const addCommand = async (command: string, tool: string): Promise<void> => { if (await commandAvailable(command)) tools.push(tool); };
+  const addFirstCommand = async (commands: readonly string[], tool: string): Promise<void> => {
+    for (const command of commands) {
+      if (await commandAvailable(command)) { tools.push(tool); return; }
+    }
+  };
 
   await addCommand('git', 'tool.git');
   await addCommand('node', 'tool.node');
@@ -67,6 +72,22 @@ export async function discoverWorkerTools(options: WorkerToolProbeOptions = {}):
   await addCommand('ffprobe', 'tool.ffprobe');
   await addCommand('teamai', 'tool.teamai');
   await addCommand('context-mode', 'tool.context-mode');
+  await addCommand('serena', 'tool.serena');
+  await addCommand('context7-mcp', 'tool.context7');
+  await addCommand('github-mcp-server', 'tool.github-mcp');
+  await addCommand('crawl4ai', 'tool.crawl4ai');
+  await addCommand('markitdown', 'tool.markitdown');
+  await addCommand('paddleocr', 'tool.paddleocr');
+  await addCommand('trivy', 'tool.trivy');
+  await addCommand('mcp-inspector', 'tool.mcp-inspector');
+  await addCommand('duckdb', 'tool.duckdb');
+  await addCommand('docling', 'tool.docling');
+  await addCommand('ollama', 'tool.ollama');
+  await addCommand('bsk', 'tool.bsk');
+  await addCommand('yt-dlp', 'tool.media.yt-dlp');
+  await addFirstCommand(['faster-whisper','faster_whisper'], 'tool.media.faster-whisper');
+  await addFirstCommand(['magick','convert'], 'tool.media.imagemagick');
+  await addCommand('exiftool', 'tool.media.exiftool');
   if (await commandAvailable('python3') || await commandAvailable('python')) tools.push('tool.python');
 
   if (platform === 'win32') {

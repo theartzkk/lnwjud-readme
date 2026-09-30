@@ -53,6 +53,16 @@ test('desktop IPC exposes fixed high-level channel names only', () => {
     'setPermissions',
     'workerRunOnce',
     'workerState',
+    'activity',
+    'diagnosticsExport',
+    'emergencyStop',
+    'health',
+    'reinstallRuntime',
+    'resetDevice',
+    'runtimeMode',
+    'runtimeModeSet',
+    'updateCheck',
+    'updateInstall',
   ].sort());
 });
 
@@ -109,7 +119,7 @@ test('default desktop surface is a thin AWH Agent bridge and keeps advanced cont
   assert.match(main, /win\.loadFile\(join\(app\.getAppPath\(\), 'desktop', 'connect\.html'\)\)/);
   assert.equal((main.match(/registerLegacyDesktopIpc\(/g) || []).length, 1);
   assert.match(main, /registerBridgeIpc\(\)/);
-  assert.match(main, /จัดการอุปกรณ์บนเว็บ/);
+  assert.match(main, /showLocalBridge/);
   assert.match(main, /app\.dock\?\.hide\(\)/);
   assert.match(main, /ipcMain\.handle\(DESKTOP_IPC\.openAwhWeb/);
   assert.match(html, /AWH Agent/);
@@ -118,7 +128,7 @@ test('default desktop surface is a thin AWH Agent bridge and keeps advanced cont
   assert.match(html, /AWH Agent เป็นเพียงสะพานเชื่อมเครื่องกับ AWH/);
   assert.match(html, /Content-Security-Policy/);
   assert.doesNotMatch(html, /Projects|Project Memory|Git|Doctor|Secure MCP|AI Work|Autopilot/i);
-  for (const method of ['getEnrollmentState', 'login', 'getWorkerState', 'getPermissionState', 'authorizePermissions', 'openPermissionSettings', 'openAwhWeb']) assert.match(preload, new RegExp(`${method}:`));
+  for (const method of ['getEnrollmentState', 'login', 'getWorkerState', 'getRuntimeMode', 'setRuntimeMode', 'emergencyStop', 'getActivity', 'getHealth', 'exportDiagnostics', 'checkUpdate', 'installUpdate', 'reinstallRuntime', 'resetDevice', 'getPermissionState', 'authorizePermissions', 'openPermissionSettings', 'openAwhWeb']) assert.match(preload, new RegExp(`${method}:`));
   assert.doesNotMatch(preload, /logout:|enrollmentRevoke|remoteConnect|remoteStop|Autopilot|Project|openDataDir|restart|readFile|writeFile|spawn|process\.env/i);
   assert.match(main, /startupPermissionState/);
   assert.match(main, /authorizeStartupPermissions/);

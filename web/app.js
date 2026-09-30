@@ -17,7 +17,7 @@ import {
   const CANCELLABLE_TASK_STATES = new Set(['QUEUED', 'WAITING_FOR_WORKER', 'WAITING_FOR_APPROVAL']);
   const MICRO_BAHT = 1000000;
   const DESKTOP_PACKAGES = [['downloads/AWH-macOS-arm64.zip', 'macOS Apple Silicon', 'mac-arm64'], ['downloads/AWH-macOS-x64.zip', 'macOS Intel', 'mac-intel'], ['downloads/AWH-Windows-x64.zip', 'Windows x64', 'windows']];
-  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, decisionProvider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, infrastructure: null, people: [], accountRequests: [], schoolIdentityBindings: [], schoolIdentityCandidates: [], schoolIdentityPolicy: null, bayCommunication: null, memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
+  const state = { control: null, selectedProjectId: null, selectedConversationId: null, conversations: [], deletedConversations: [], conversation: null, conversationAvailable: false, workspaceContinuity: null, productSettings: null, provider: null, providers: [], decisionProvider: null, profile: null, ownerStatus: null, providerRouting: null, observability: null, systemReadiness: null, capabilities: null, infrastructure: null, people: [], accountRequests: [], schoolIdentityBindings: [], schoolIdentityCandidates: [], schoolIdentityPolicy: null, bayCommunication: null, memory: [], memoryImport: null, pendingAttachments: [], refreshTimer: null, conversationTimer: null, resetToken: null, selectedArtifact: null, artifactPreviewUrl: null, renderedConversationId: null, threadMessageCount: 0, threadAnnouncementSequence: 0, threadFollowLatest: true };
   const pendingBrandAssets = { logo: undefined, icon: undefined };
   const MAX_BRAND_SOURCE_BYTES = 8 * 1024 * 1024;
   const MAX_BRAND_DATA_URL_CHARS = 11500;
@@ -491,6 +491,24 @@ import {
     if ($('provider-project-routing')) $('provider-project-routing').value = state.providerRouting?.routingMode || 'AUTO';
     const usage = $('provider-usage'); if (usage) { usage.replaceChildren(); const rows = Array.isArray(provider.usageByProject) ? provider.usageByProject : []; for (const row of rows) { const item = document.createElement('li'); item.textContent = `${row.projectName || 'Project'} · ${baht(row.estimatedMicrounits || 0)}`; usage.append(item); } if (!usage.childElementCount) usage.textContent = 'ยังไม่มีการใช้งานที่คิดค่าใช้จ่าย'; }
   }
+  function providerById(providerId) { return (Array.isArray(state.providers) ? state.providers : []).find((item) => item?.provider === providerId) || null; }
+  function renderOpenRouterProvider() {
+    const provider = providerById('openrouter'); const status = $('openrouter-status'); if (!status) return;
+    if (!provider) { message('openrouter-status', 'ตัวเลือกฟรียังไม่พร้อมในรุ่นนี้'); return; }
+    const credential = provider.credential || {};
+    const stateText = provider.available ? 'พร้อมสำหรับงาน PUBLIC เมื่อผ่าน qualification gate' : provider.keyConfigured ? ('เชื่อม key แล้ว · ' + (credential.lastTestStatus === 'PASS' ? 'ทดสอบผ่าน' : credential.lastTestStatus === 'FAILED' ? 'ทดสอบไม่ผ่าน' : 'ยังไม่ทดสอบ')) : 'ยังไม่ได้เชื่อม OpenRouter key';
+    message('openrouter-status', stateText + ' · 0 บาท/token · PUBLIC only');
+    const enabled = $('openrouter-enabled'); if (enabled) enabled.checked = provider.enabled === true;
+    const remove = $('openrouter-credential-remove'); if (remove) remove.disabled = !provider.keyConfigured;
+  }
+  async function refreshProviderSurfaces() {
+    const value = await loadProviderStatus();
+    state.provider = value?.provider || value;
+    state.providers = Array.isArray(value?.providers) ? value.providers : [state.provider].filter(Boolean);
+    renderProvider(); renderOpenRouterProvider();
+    return value;
+  }
+
   function renderDecisionProvider() {
     const provider = state.decisionProvider;
     if (!provider) { message('jev-status', 'ยังไม่ได้โหลดสถานะ Jev'); return; }
@@ -702,6 +720,9 @@ import {
     // Credential setup is the only prerequisite for a first-time owner. Keep it
     // before routing and budget controls so it is reachable immediately on mobile.
     policy.before(section);
+    const free = document.createElement('section'); free.className = 'account-form'; free.id = 'openrouter-free-settings';
+    free.innerHTML = '<h3>OpenRouter ฟรี <small class="state-chip good">OPTIONAL</small></h3><p id="openrouter-status" class="muted">กำลังตรวจตัวเลือกฟรี…</p><p class="settings-policy-note"><strong>ฟรีเป็นตัวเลือกเสริม ไม่ใช่แกนหลัก</strong><span>AWH อนุญาตเฉพาะ openrouter/free และข้อมูลระดับ PUBLIC เท่านั้น โมเดลจะยังไม่เข้า Production route จนกว่าจะผ่าน qualification gate เดิมของ AWH</span></p><form id="openrouter-credential-form" class="compact-form"><label for="openrouter-api-key">OpenRouter API key</label><input id="openrouter-api-key" type="password" maxlength="512" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-…" /><div class="form-actions"><button class="secondary-button" type="submit">เชื่อมตัวเลือกฟรี</button><button id="openrouter-credential-remove" class="text-button" type="button">ลบ key</button><button id="openrouter-connection-test" class="text-button" type="button">ทดสอบ</button></div></form><form id="openrouter-policy-form" class="compact-form"><label class="check-row"><input id="openrouter-enabled" type="checkbox" /><span>อนุญาตให้ AWH พิจารณา free route หลัง qualification ผ่าน</span></label><button class="secondary-button" type="submit">บันทึกตัวเลือกฟรี</button></form><p id="openrouter-message" class="form-message" role="status"></p>';
+    section.after(free);
     $('provider-credential-form').addEventListener('submit', async (event) => {
       event.preventDefault(); const field = $('provider-api-key'); message('provider-credential-message', 'กำลังบันทึก key อย่างปลอดภัย…');
       try { const data = await withPrivilegedRetry(()=>updateProviderCredential('SET', field.value),'การเปลี่ยน API credential'); state.provider = data.provider; renderProvider(); message('provider-credential-message', 'บันทึก key แล้ว'); }
@@ -719,6 +740,32 @@ import {
       try { const data = await testProviderConnection(); state.provider = (await loadProviderStatus()).provider; renderProvider(); message('provider-credential-message', data.connection?.status === 'PASS' ? `ทดสอบ Responses API ผ่าน (${data.connection.model || 'โมเดลที่ตั้งไว้'})` : 'ยังไม่ได้ตั้งค่า key'); }
       catch (error) { message('provider-credential-message', error instanceof Error ? error.message : 'ทดสอบการเชื่อมต่อไม่ผ่าน'); }
     });
+    $('openrouter-credential-form').addEventListener('submit', async (event) => {
+      event.preventDefault(); const field = $('openrouter-api-key'); if (!field.value.trim()) { message('openrouter-message', 'วาง OpenRouter API key ก่อน'); return; }
+      message('openrouter-message', 'กำลังบันทึก key ฝั่ง server…');
+      try { await withPrivilegedRetry(()=>updateProviderCredential('SET',field.value,'openrouter'),'การเปลี่ยน OpenRouter credential'); await refreshProviderSurfaces(); message('openrouter-message','เชื่อม OpenRouter แล้ว · ทดสอบการเชื่อมต่อก่อนเปิดใช้'); }
+      catch (error) { message('openrouter-message', error instanceof Error ? error.message : 'ยังเชื่อม OpenRouter ไม่ได้'); }
+      finally { field.value=''; }
+    });
+    $('openrouter-credential-remove').addEventListener('click', async () => {
+      message('openrouter-message','กำลังยกเลิก OpenRouter…');
+      try { await withPrivilegedRetry(()=>updateProviderCredential('REMOVE',null,'openrouter'),'การลบ OpenRouter credential'); await refreshProviderSurfaces(); message('openrouter-message','ยกเลิก OpenRouter แล้ว'); }
+      catch (error) { message('openrouter-message', error instanceof Error ? error.message : 'ยังยกเลิกไม่ได้'); }
+    });
+    $('openrouter-connection-test').addEventListener('click', async () => {
+      message('openrouter-message','กำลังทดสอบ free route…');
+      try { const data=await testProviderConnection('openrouter'); await refreshProviderSurfaces(); message('openrouter-message',data.connection?.status==='PASS'?'เชื่อมต่อ openrouter/free ผ่าน · qualification gate ยังทำหน้าที่ตามเดิม':'ยังไม่ได้ตั้งค่า OpenRouter key'); }
+      catch (error) { message('openrouter-message', error instanceof Error ? error.message : 'ทดสอบ free route ไม่ผ่าน'); }
+    });
+    $('openrouter-policy-form').addEventListener('submit', async (event) => {
+      event.preventDefault(); message('openrouter-message','กำลังบันทึก free-first policy…');
+      try {
+        await updateProviderPolicy({enabled:$('openrouter-enabled').checked,modelFast:'openrouter-free',modelBalanced:'openrouter-free',modelStrong:'openrouter-free',monthlyBudgetMicrounits:0,warningMicrounits:0,routingStrategy:'SAVER',pricingMode:'CATALOG',serviceTier:'DEFAULT'},'openrouter');
+        await refreshProviderSurfaces(); message('openrouter-message',$('openrouter-enabled').checked?'เปิดตัวเลือกฟรีแล้ว · AWH จะใช้ได้เมื่อ qualification gate อนุญาต':'ปิดตัวเลือกฟรีแล้ว');
+      } catch (error) { message('openrouter-message', error instanceof Error ? error.message : 'ยังบันทึก free-first policy ไม่ได้'); }
+    });
+    void refreshProviderSurfaces().catch(() => renderOpenRouterProvider());
+
     $('jev-credential-form').addEventListener('submit', async (event) => {
       event.preventDefault(); const field = $('jev-api-key'); if (!field.value.trim()) { message('jev-message', 'วาง TypeSafe AI API key ก่อน'); return; }
       message('jev-message', 'กำลังบันทึก Jev key อย่างปลอดภัย…');
@@ -878,15 +925,23 @@ import {
     void loadDesktopRelease();
     const readiness = state.systemReadiness;
     if (readiness) {
-      const checks = readiness.checks || {};
+      const checks = readiness.checks || {}; const doctor = readiness.doctor || null;
       const waiting = Number.isInteger(checks.waitingCapabilityCount) && checks.waitingCapabilityCount > 0 ? ` · งานใช้ความสามารถเพิ่มเติม ${checks.waitingCapabilityCount} งาน` : '';
-      message('system-check-message', readiness.state === 'READY' ? 'AWH พร้อมทำงาน' : readiness.state === 'PARTIALLY_READY' ? `AWH พร้อมบางส่วน${waiting}` : 'AWH ต้องตรวจสอบบางรายการก่อนเริ่มงาน');
+      const doctorLabel = doctor?.state === 'READY' ? ' · Doctor พร้อม' : doctor?.state === 'ATTENTION' ? ' · Doctor พบจุดที่ควรดู' : doctor?.state === 'ACTION_REQUIRED' ? ' · Doctor พบจุดที่ต้องแก้' : '';
+      message('system-check-message', (readiness.state === 'READY' ? 'AWH พร้อมทำงาน' : readiness.state === 'PARTIALLY_READY' ? `AWH พร้อมบางส่วน${waiting}` : 'AWH ต้องตรวจสอบบางรายการก่อนเริ่มงาน') + doctorLabel);
     }
     const health = $('system-health-details');
     if (health) {
       health.replaceChildren(); const status = state.ownerStatus || {};
       const db = status.database || {}; const backup = status.backup || {}; const storage = status.storage || {}; const queue = status.queue || {}; const aiBudget = status.aiBudget || {}; const workerSummary = status.workerSummary || {};
       const latest = backup.latest || null; const aiTotal = Number(aiBudget.monthlyMicrounits || 0); const aiUsed = Number(aiBudget.usedMicrounits || 0); const aiPercent = aiTotal > 0 ? Math.min(100, Math.round((aiUsed / aiTotal) * 100)) : null;
+      const doctorChecks = Array.isArray(state.systemReadiness?.doctor?.checks) ? state.systemReadiness.doctor.checks : [];
+      for (const check of doctorChecks) {
+        const item = document.createElement('div'); item.className = 'session-item';
+        const strong = document.createElement('strong'); strong.textContent = `${check.state === 'READY' ? '✓' : check.state === 'ACTION_REQUIRED' ? '!' : '•'} ${check.label || check.id || 'Doctor'}`;
+        const detail = document.createElement('span'); detail.textContent = [check.evidence, check.action].filter(Boolean).join(' · ');
+        item.append(strong, detail); health.append(item);
+      }
       const rows = [
         ['ฐานข้อมูล', db.state === 'HEALTHY' ? `ปกติ · Schema ${db.schemaVersion || '—'}` : 'ต้องตรวจสอบ'],
         ['Backup', backup.state === 'VERIFIED' && latest ? `${backup.freshness?.state === 'STALE' ? 'ยืนยันแล้วแต่เก่าเกิน 36 ชม.' : backup.freshness?.state === 'FRESH' ? 'ยืนยันแล้ว · สดใหม่' : 'ยืนยันแล้ว · ยังประเมินอายุไม่ได้'} · ${date(latest.verifiedAt)} · ${size(latest.sizeBytes)}` : backup.state === 'MISSING' ? 'ยังไม่มี backup ที่ยืนยันแล้ว' : backup.state === 'NOT_CONFIGURED' ? 'ยังไม่ได้ตั้งค่า' : 'ต้องตรวจสอบ'],
@@ -1028,17 +1083,21 @@ import {
   }
 
   function renderLiveActivity(task) {
-    const status = taskExecutionStatus(task);
+    const status = taskExecutionStatus(task); const mission = task?.mission || {};
     const activeStep = status.journey.find((step) => step.state === 'active');
     const box = document.createElement('div'); box.className = 'live-activity'; box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'สถานะงาน');
     const headline = document.createElement('div'); headline.className = 'live-activity-headline';
     const pulse = document.createElement('span'); pulse.className = 'live-activity-pulse'; pulse.setAttribute('aria-hidden', 'true');
     const title = document.createElement('strong'); title.textContent = activeStep?.label || status.title; headline.append(pulse, title);
-    const detail = document.createElement('p'); detail.textContent = status.detail;
+    const detail = document.createElement('p'); detail.textContent = mission.currentStep || status.detail;
     box.append(headline, detail);
-    if (status.progress > 0 && status.progress < 100) { const bar = document.createElement('progress'); bar.max = 100; bar.value = status.progress; bar.setAttribute('aria-label', status.detail); box.append(bar); }
+    const progress = Number.isInteger(mission.progress) ? Math.max(0, Math.min(100, mission.progress)) : status.progress;
+    if (progress > 0 && progress < 100) { const bar = document.createElement('progress'); bar.max = 100; bar.value = progress; bar.setAttribute('aria-label', mission.currentStep || status.detail); box.append(bar); }
     box.append(renderExecutionJourney(task));
-    const updated = document.createElement('small'); updated.className = 'live-activity-updated'; updated.textContent = `อัปเดต ${date(task.updatedAt || task.createdAt)}`; box.append(updated);
+    const route = [mission.executorKind, mission.requiredCapability].filter(Boolean).join(' · ');
+    const heartbeat = mission.heartbeatAt ? `${mission.heartbeatFresh === false ? 'heartbeat ขาดช่วง' : 'heartbeat ล่าสุด'} ${date(mission.heartbeatAt)}` : `อัปเดต ${date(task.updatedAt || task.createdAt)}`;
+    const continuity = mission.continuity === 'RESUMED' ? ' · ทำต่อจาก checkpoint เดิม' : '';
+    const updated = document.createElement('small'); updated.className = 'live-activity-updated'; updated.textContent = `${heartbeat}${route ? ` · ${route}` : ''}${continuity}`; box.append(updated);
     return box;
   }
 

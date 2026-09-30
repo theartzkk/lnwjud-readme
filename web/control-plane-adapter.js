@@ -291,9 +291,9 @@ export async function loadDecisionProviderStatus() { return controlRequest('/api
 export async function updateDecisionProviderCredential(action, secret = null) { if (!['SET','REMOVE'].includes(action) || (action === 'SET' && (typeof secret !== 'string' || !secret.trim() || secret.length > 4096)) || (action === 'REMOVE' && secret !== null)) throw new Error('Jev API key ไม่ถูกต้อง'); return controlRequest('/api/v1/control/decision-provider/credential', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, action, secret: action === 'SET' ? secret.trim() : null }) }); }
 export async function testDecisionProviderConnection() { return controlRequest('/api/v1/control/decision-provider/test', { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
 export async function loadCapabilities() { const value = await controlRequest('/api/v1/control/capabilities'); if (value.schemaVersion !== 1 || !value.summary || !Array.isArray(value.capabilities)) throw new Error('ข้อมูลความสามารถของ AWH ไม่ถูกต้อง'); return value; }
-export async function updateProviderPolicy(policy) { return controlRequest('/api/v1/control/provider', { method: 'POST', body: JSON.stringify(policy) }); }
-export async function updateProviderCredential(action, secret = null) { if (!['SET', 'REMOVE'].includes(action) || (action === 'SET' && (typeof secret !== 'string' || !secret.trim() || secret.length > 512)) || (action === 'REMOVE' && secret !== null)) throw new Error('การตั้งค่า credential ไม่ถูกต้อง'); return controlRequest('/api/v1/control/provider/credential', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, action, secret: action === 'SET' ? secret.trim() : null }) }); }
-export async function testProviderConnection() { return controlRequest('/api/v1/control/provider/test', { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) }); }
+export async function updateProviderPolicy(policy, providerId = 'openai') { if (!['openai','openrouter'].includes(providerId)) throw new Error('Provider ไม่ถูกต้อง'); const payload = providerId === 'openai' ? policy : { ...policy, providerId }; return controlRequest('/api/v1/control/provider', { method: 'POST', body: JSON.stringify(payload) }); }
+export async function updateProviderCredential(action, secret = null, providerId = 'openai') { if (!['openai','openrouter'].includes(providerId) || !['SET', 'REMOVE'].includes(action) || (action === 'SET' && (typeof secret !== 'string' || !secret.trim() || secret.length > 512)) || (action === 'REMOVE' && secret !== null)) throw new Error('การตั้งค่า credential ไม่ถูกต้อง'); return controlRequest('/api/v1/control/provider/credential', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, action, secret: action === 'SET' ? secret.trim() : null, ...(providerId === 'openai' ? {} : { providerId }) }) }); }
+export async function testProviderConnection(providerId = 'openai') { if (!['openai','openrouter'].includes(providerId)) throw new Error('Provider ไม่ถูกต้อง'); return controlRequest('/api/v1/control/provider/test', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, ...(providerId === 'openai' ? {} : { providerId }) }) }); }
 export async function loadProviderProjectRouting(projectId) { if (!UUID.test(projectId)) throw new Error('โปรเจกต์ไม่ถูกต้อง'); const value = await controlRequest(`/api/v1/control/provider/projects/${projectId}`); if (value.schemaVersion !== 1 || !value.routing || typeof value.routing !== 'object') throw new Error('การกำหนด AI ของโปรเจกต์ไม่ถูกต้อง'); return value.routing; }
 export async function updateProviderProjectRouting(projectId, routingMode) { if (!UUID.test(projectId) || !['AUTO', 'FAST', 'BALANCED', 'STRONG'].includes(routingMode)) throw new Error('การกำหนด AI ของโปรเจกต์ไม่ถูกต้อง'); const value = await controlRequest('/api/v1/control/provider/project', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, projectId, routingMode }) }); if (value.schemaVersion !== 1 || !value.routing || typeof value.routing !== 'object') throw new Error('การกำหนด AI ของโปรเจกต์ไม่ถูกต้อง'); return value.routing; }
 export async function loadProjectSourceAuthority(projectId) {
@@ -543,4 +543,17 @@ export async function cancelTask(taskId) {
 export async function decideApproval(approvalId, decision) {
   if (!UUID.test(approvalId) || !['approve', 'reject'].includes(decision)) throw new Error('การอนุมัติไม่ถูกต้อง');
   return controlRequest(`/api/v1/control/approvals/${approvalId}/${decision}`, { method: 'POST', body: JSON.stringify({ schemaVersion: 1 }) });
+}
+
+export async function loadToolFabricCatalog() {
+  const value = await controlRequest('/api/v1/control/tool-fabric');
+  if (value.schemaVersion !== 1 || value.authority !== 'AWH_UPDATE_CENTER' || value.policy !== 'awh.tool-fabric.update.v1' || !Array.isArray(value.items)) throw new Error('สถานะ Tool Fabric ไม่ถูกต้อง');
+  return value;
+}
+
+export async function changeToolFabricLifecycle(capability, action) {
+  if (typeof capability !== 'string' || !/^[a-z][a-z0-9:._-]{0,63}$/.test(capability) || !['REVIEW','APPROVE','PROMOTE_PREVIEW','PROMOTE_STABLE','ROLLBACK','DISABLE','ENABLE','RETIRE','REJECT'].includes(action)) throw new Error('คำสั่ง Tool Fabric ไม่ถูกต้อง');
+  const value = await controlRequest('/api/v1/control/tool-fabric/lifecycle', { method: 'POST', body: JSON.stringify({ schemaVersion: 1, capability, action }) });
+  if (value.schemaVersion !== 1 || !value.tool || value.tool.capability !== capability) throw new Error('Tool Fabric ยังยืนยันการเปลี่ยนสถานะไม่ได้');
+  return value.tool;
 }

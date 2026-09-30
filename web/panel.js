@@ -1,4 +1,4 @@
-import { requireOwnerSession, loadInfrastructureSummary, loadInfrastructure, loadUpdateCenter, loadControlData, listManagedSites, loadProviderStatus, updateProviderPolicy, listPeople, listAccountRequests, reviewAccountRequest, revokePerson, updatePersonAccess, cancelTask, decideApproval, revokeDevice, managedSiteAction, loadCoreReleaseStatus, requestCoreRelease } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
+import { requireOwnerSession, loadInfrastructureSummary, loadInfrastructure, loadUpdateCenter, loadControlData, loadToolFabricCatalog, changeToolFabricLifecycle, listManagedSites, loadProviderStatus, updateProviderPolicy, listPeople, listAccountRequests, reviewAccountRequest, revokePerson, updatePersonAccess, cancelTask, decideApproval, revokeDevice, managedSiteAction, loadCoreReleaseStatus, requestCoreRelease } from './control-plane-adapter.js?release=__AWH_WEB_RELEASE_ID__';
 
 const $=(id)=>document.getElementById(id);
 const bytes=(value)=>{const n=Number(value||0);if(!Number.isFinite(n)||n<1)return '—';if(n<1024**2)return Math.round(n/1024)+' KB';if(n<1024**3)return (n/1024**2).toFixed(1)+' MB';return (n/1024**3).toFixed(1)+' GB';};
@@ -455,19 +455,37 @@ async function loadPeopleAccess(){
 async function renderExternalCapabilities(){
   const host=$('cp-external-capabilities');if(!host)return;
   try{
-    const response=await fetch('./external-capabilities.json?release=__AWH_WEB_RELEASE_ID__',{cache:'no-store'});
-    if(!response.ok)throw new Error('External capability registry unavailable');
-    const data=await response.json();
-    if(data?.schemaVersion!==1||data?.registryId!=='awh.external-capabilities.v1'||data?.controlPlaneAuthority!=='AWH'||!Array.isArray(data.entries))throw new Error('External capability registry invalid');
+    const data=await loadToolFabricCatalog();
     host.replaceChildren();
-    for(const item of data.entries){
-      const short=typeof item.revision==='string'?item.revision.slice(0,9):'—';
-      const local=item.integrationMode==='OPTIONAL_LOCAL_ADAPTER';
-      const detail=(local?'Optional local adapter':'Reference only')+' · '+item.repository+' @ '+short+' · '+item.license;
-      host.append(row(item.displayName,detail,local?'Adapter':'Reference','AVAILABLE'));
+    const actionLabel={REVIEW:'Review',APPROVE:'Approve',PROMOTE_PREVIEW:'Preview',PROMOTE_STABLE:'Stable',ROLLBACK:'Rollback',DISABLE:'ปิดใช้',ENABLE:'เปิดใช้',RETIRE:'Retire',REJECT:'Reject'};
+    for(const item of data.items){
+      const stable=item.stableRevision?String(item.stableRevision).slice(0,9):'—';
+      const preview=item.previewRevision?String(item.previewRevision).slice(0,9):'—';
+      const upstream=item.upstreamRevision?String(item.upstreamRevision).slice(0,9):'—';
+      const qa=item.lastQa?.state==='PASS'?'QA PASS':'QA —';
+      const detail=[item.provider,item.runtimeKind,item.license,'ติดตั้ง '+Number(item.installedOnDevices||0)+' เครื่อง','Stable '+stable,item.previewRevision?'Preview '+preview:null,item.updateAvailable?'Upstream '+upstream:null,qa].filter(Boolean).join(' · ');
+      const workflowState=item.intakeState||item.lifecycleState||'UNKNOWN';
+      const state=item.disabled?'DISABLED':item.health||workflowState;
+      const card=row(item.capability,detail,workflowState,state);
+      const actions=document.createElement('div');actions.className='cp-inline-actions';
+      let allowed=[];
+      if(item.disabled&&!['RETIRED','REJECTED'].includes(item.lifecycleState))allowed=['ENABLE'];
+      else if(workflowState==='DISCOVERED')allowed=['REVIEW','REJECT'];
+      else if(workflowState==='REVIEWED')allowed=['APPROVE','REJECT'];
+      else if(workflowState==='APPROVED')allowed=['PROMOTE_PREVIEW','REJECT'];
+      else if(workflowState==='PREVIEW')allowed=['PROMOTE_STABLE','REJECT'];
+      else if(workflowState==='REJECTED'&&item.lifecycleState==='STABLE')allowed=['REVIEW'];
+      else if(item.lifecycleState==='STABLE')allowed=[...(item.rollbackRevision?['ROLLBACK']:[]),'DISABLE','RETIRE'];
+      for(const action of allowed){
+        const button=document.createElement('button');button.type='button';button.className='cp-mini-action';button.textContent=actionLabel[action]||action;
+        button.addEventListener('click',async()=>{button.disabled=true;try{await changeToolFabricLifecycle(item.capability,action);await renderExternalCapabilities();}catch(error){attention('Tool Fabric ยังเปลี่ยนสถานะไม่ได้',(error instanceof Error?error.message:'Unknown error'),'WARNING');button.disabled=false;}});
+        actions.append(button);
+      }
+      if(actions.childElementCount)card.append(actions);
+      host.append(card);
     }
-    if(!data.entries.length)empty(host,'ยังไม่มี external capability ที่ลงทะเบียน');
-  }catch(error){empty(host,error instanceof Error?error.message:'โหลด external capabilities ไม่สำเร็จ');}
+    if(!data.items.length)empty(host,'ยังไม่มี Tool Fabric catalog');
+  }catch(error){empty(host,error instanceof Error?error.message:'โหลด Tool Fabric ไม่สำเร็จ');}
 }
 function filterMenus(query){
   const q=String(query||'').trim().toLowerCase();

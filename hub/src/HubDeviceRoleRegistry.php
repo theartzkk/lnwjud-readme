@@ -57,6 +57,19 @@ final class HubDeviceRoleRegistry
         // advertised capability and task/execution authority decide eligibility.
         return trim($deviceId) !== '';
     }
+
+    public function capabilityAllowed(string $deviceId, ?string $displayName, string $capability): bool
+    {
+        if ($capability === '') return false;
+        $policy = $this->policyFor(strtolower(trim($deviceId)), (string) $displayName);
+        if (!is_array($policy)) return !in_array($capability, ['local.ai.fallback','media.transform','media.transcribe','media.download'], true);
+        $role = (string) ($policy['role'] ?? '');
+        if ($capability === 'local.ai.fallback') return in_array($role, ['CREATIVE_PRIMARY_WORKSTATION','VIDEO_WORKSTATION'], true);
+        if (in_array($capability, ['media.transform','media.transcribe','media.download'], true)) {
+            return in_array($role, ['CREATIVE_PRIMARY_WORKSTATION','VIDEO_WORKSTATION'], true);
+        }
+        return true;
+    }
     /** @param list<array<string,mixed>> $workers @return array<string,mixed> */
     public function projection(array $workers): array
     {
@@ -119,11 +132,11 @@ final class HubDeviceRoleRegistry
         if (isset($byDevice[$deviceId])) return $byDevice[$deviceId];
         $needle = mb_strtolower(trim($displayName), 'UTF-8');
         if ($needle === '') return null;
+        $matches = [];
         foreach ($this->entries() as $entry) {
-            if (($entry['deviceId'] ?? null) !== null) continue;
-            if (mb_strtolower((string) $entry['displayName'], 'UTF-8') === $needle) return $entry;
+            if (mb_strtolower((string) $entry['displayName'], 'UTF-8') === $needle) $matches[] = $entry;
         }
-        return null;
+        return count($matches) === 1 ? $matches[0] : null;
     }
 
     private function defaultRoutingEnabled(): bool

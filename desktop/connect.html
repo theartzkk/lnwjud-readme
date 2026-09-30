@@ -23,6 +23,19 @@
       <p id="open-message" class="message" role="status" aria-live="polite"></p>
     </section>
 
+    <section class="control-card" aria-labelledby="mode-title">
+      <div class="control-head"><div><p class="eyebrow">LOCAL CONTROL</p><h2 id="mode-title">AWH ใช้เครื่องนี้ได้แค่ไหน</h2></div><span id="mode-badge" class="mode-badge off">OFF</span></div>
+      <p class="muted control-copy">สิทธิ์ของระบบกับระดับการรบกวนเป็นคนละเรื่อง เลือกโหมดได้ตลอดโดยไม่ต้องตั้ง permission ใหม่</p>
+      <div class="mode-grid" role="group" aria-label="โหมด AWH Agent">
+        <button id="mode-off" class="mode-button" type="button">OFF<span>ทำงานเบื้องหลังเท่านั้น</span></button>
+        <button id="mode-on" class="mode-button" type="button">ON<span>รบกวนได้เล็กน้อยเมื่อจำเป็น</span></button>
+        <button id="mode-live" class="mode-button" type="button">LIVE<span>ปล่อยเครื่องให้ AWH ใช้เต็มที่</span></button>
+      </div>
+      <button id="emergency-stop" class="emergency-button" type="button">หยุดงานทันทีและเปลี่ยนเป็น OFF</button>
+      <p class="shortcut-hint">Emergency hotkey: ⌘/Ctrl + Shift + F12</p>
+      <p id="mode-message" class="message" role="status" aria-live="polite"></p>
+    </section>
+
     <section id="permission-card" class="permission-card" aria-labelledby="permission-title" hidden>
       <div class="permission-head"><div><p class="eyebrow">FIRST-RUN PERMISSIONS</p><h2 id="permission-title">อนุญาตสิทธิ์ให้ครบก่อนใช้งาน</h2></div><span id="permission-badge" class="permission-badge">CHECK</span></div>
       <p class="muted permission-copy">AWH จะยังไม่รับงานหรือควบคุมเครื่องจนกว่าสิทธิ์ที่จำเป็นจะพร้อมครบ ครั้งต่อไปจะไม่ถามซ้ำหาก macOS ยังอนุญาตอยู่</p>
@@ -34,8 +47,34 @@
     <section class="status-card" aria-label="สถานะเครื่อง">
       <div class="status-row"><span>AWH</span><strong id="hub-status">กำลังตรวจ</strong></div>
       <div class="status-row"><span>อุปกรณ์</span><strong id="device-name">—</strong></div>
+      <div class="status-row"><span>การเชื่อมต่อ</span><strong id="connection-status">กำลังตรวจ</strong></div>
+      <div class="status-row"><span>โหมด</span><strong id="mode-status">OFF</strong></div>
+      <div class="status-row"><span>งานปัจจุบัน</span><strong id="activity-status">ว่าง</strong></div>
       <div class="status-row"><span>การทำงานบนเครื่อง</span><strong id="worker-status">กำลังตรวจ</strong></div>
-      <div class="status-row"><span>Remote Desktop MCP</span><strong id="remote-status">กำลังตรวจ</strong></div>
+      <div class="status-row"><span>AWH Device Runtime</span><strong id="remote-status">กำลังตรวจ</strong></div>
+    </section>
+
+    <section class="activity-card" aria-labelledby="activity-title">
+      <div class="activity-head"><div><p class="eyebrow">PRIVACY · ACTIVITY</p><h2 id="activity-title">กิจกรรมล่าสุดบนเครื่องนี้</h2></div><button id="refresh-activity" class="text-button" type="button">รีเฟรช</button></div>
+      <p class="muted activity-copy">แสดงเฉพาะเวลา แหล่งงาน capability/provider ระดับ foreground/background ผลลัพธ์ และโหมด ไม่เก็บรหัสผ่าน token หรือเนื้อหางานส่วนตัว</p>
+      <div id="activity-list" class="activity-list"><p class="activity-empty">ยังไม่มีกิจกรรม</p></div>
+    </section>
+
+    <section class="health-card" aria-labelledby="health-title">
+      <div class="activity-head"><div><p class="eyebrow">BETA SUPPORT</p><h2 id="health-title">ตรวจสุขภาพ AWH Agent</h2></div><button id="refresh-health" class="text-button" type="button">ตรวจใหม่</button></div>
+      <div id="health-grid" class="health-grid"><p class="activity-empty">กำลังตรวจสุขภาพ…</p></div>
+      <div class="update-actions">
+        <button id="check-update" class="secondary" type="button">ตรวจอัปเดต</button>
+        <button id="install-update" class="primary" type="button" disabled>ติดตั้งอัปเดต</button>
+      </div>
+      <p id="update-message" class="message" role="status" aria-live="polite"></p>
+      <button id="export-diagnostics" class="secondary diagnostics-button" type="button">สร้างรายงานปัญหา</button>
+      <div class="maintenance-actions">
+        <button id="reinstall-runtime" class="secondary" type="button">Reinstall / Upgrade</button>
+        <button id="reset-device" class="danger-button" type="button">Reset this device</button>
+      </div>
+      <p class="maintenance-note">Reinstall / Upgrade เก็บ Device ID + Pairing ไว้ ส่วน Reset จะล้างตัวตนและการเชื่อมต่อของเครื่องนี้ แต่ไม่ลบ Project/Workspace</p>
+      <p id="diagnostics-message" class="message" role="status" aria-live="polite"></p>
     </section>
 
     <form id="login-form" class="login-card" hidden>

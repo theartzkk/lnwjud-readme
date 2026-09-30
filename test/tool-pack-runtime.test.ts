@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
-import { inspectToolPack, TOOL_PACKS, toolPackForCapability, toolPackRoot, type ToolPackDefinition } from '../src/tool-pack-runtime.js';
+import { activateToolPackAfterSmoke, inspectToolPack, installedToolPackCapabilities, provisionableToolPackCapabilities, TOOL_PACKS, toolPackForCapability, toolPackRoot, type ToolPackDefinition } from '../src/tool-pack-runtime.js';
 
 async function touch(path: string, content = ''): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
@@ -27,8 +27,8 @@ async function fixture(home: string, pack: ToolPackDefinition, connector = true)
 
 test('Tool Fabric pins one exact audited package per capability and never uses floating latest tags', () => {
   assert.deepEqual(TOOL_PACKS.map((pack) => [pack.capability, pack.version]), [
-    ['browser.playwright', '0.0.82'],
-    ['browser.debug', '1.10.1'],
+    ['web.interact', '0.0.82'],
+    ['web.debug', '1.10.1'],
     ['creative.aftereffects', '0.5.1'],
     ['creative.premiere', '1.18.2'],
   ]);
@@ -37,8 +37,14 @@ test('Tool Fabric pins one exact audited package per capability and never uses f
     assert.match(pack.integrity, /^sha512-/);
     assert.doesNotMatch(pack.version, /latest|next|beta|\*/i);
     assert.equal(toolPackForCapability(pack.capability)?.id, pack.id);
+    assert.ok(['MIT','Apache-2.0'].includes(pack.license));
   }
+  assert.equal(toolPackForCapability('browser.playwright')?.id, 'browser.playwright');
+  assert.equal(toolPackForCapability('browser.debug')?.id, 'browser.devtools');
   assert.equal(toolPackForCapability('creative.unknown'), null);
+  const browser = toolPackForCapability('web.interact');
+  assert.ok(browser);
+  assert.match(toolPackRoot(browser, 'darwin', '/tmp/awh-tool-pack-root', process.env), /ToolPacks\/web\.interact\/releases\/0\.0\.82-[a-f0-9]{16}$/);
   const premiere = toolPackForCapability('creative.premiere');
   assert.ok(premiere);
   const exactRoot = toolPackRoot(premiere, 'darwin', '/tmp/awh-tool-pack-root', process.env);
@@ -89,4 +95,25 @@ test('Tool Pack integrity mismatch fails closed even when host and connector exi
   assert.equal(state.verified, false);
   assert.equal(state.connectorReady, false);
   assert.equal(state.reason, 'PACKAGE_INTEGRITY_MISMATCH');
+});
+
+
+test('lazy Tool Pack routing separates provisionable capability from verified Stable activation', async (t) => {
+  const home = await mkdtemp(join(tmpdir(), 'awh-tool-pack-lazy-'));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const browserHost = async (path: string) => path.includes('Google Chrome');
+  const provisionable = await provisionableToolPackCapabilities('darwin', home, {}, browserHost);
+  assert.deepEqual(provisionable, ['browser.debug', 'browser.playwright', 'web.debug', 'web.interact']);
+
+  const pack = toolPackForCapability('web.interact');
+  assert.ok(pack);
+  await fixture(home, pack, true);
+  const before = await installedToolPackCapabilities('darwin', 'x64', home, {}, async () => true);
+  assert.deepEqual(before.capabilities, [], 'a package on disk is not executable authority before Stable activation');
+
+  const state = await inspectToolPack(pack, 'darwin', 'x64', home, {}, async () => true);
+  await activateToolPackAfterSmoke(pack, state, 'darwin', home, {});
+  const after = await installedToolPackCapabilities('darwin', 'x64', home, {}, async () => true);
+  assert.deepEqual(after.capabilities, ['browser.playwright', 'web.interact']);
+  assert.deepEqual(after.tools, ['tool.pack.playwright']);
 });

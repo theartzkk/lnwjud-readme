@@ -11,7 +11,6 @@ import { Readable } from 'node:stream';
 import { createRequire } from 'node:module';
 import { execFile } from './process.js';
 import { LnwjudDeviceClient, discoverLnwjudLaunchSpec } from './lnwjud-device-client.js';
-import { provisionEligibleToolPacks } from './tool-pack-runtime.js';
 
 type RuntimeAssetSpec = { nameTemplate: string; sha256: string };
 type DeviceRuntimeReleaseManifest = {
@@ -125,7 +124,7 @@ const AWH_RUNTIME_NAME_MARKER = `var APP_NAME = "${AWH_RUNTIME_APP_NAME}";`;
 const AWH_RUNTIME_MCP_NAME_MARKER = `var APP_NAME2 = "${AWH_RUNTIME_APP_NAME}";`;
 const AWH_RUNTIME_INSTRUCTIONS_MARKER = 'Continue using AWH Device Runtime tools';
 const AWH_RUNTIME_READY_MARKER = 'AWH Device Runtime MCP stdio ready';
-const AWH_RUNTIME_PERMISSION_MARKER = 'AWH_PERMISSION_BOOTSTRAP_V1';
+const AWH_RUNTIME_PERMISSION_MARKER = 'AWH_PERMISSION_BOOTSTRAP_V2';
 
 async function patchMacHeadlessRuntime(appRoot: string): Promise<void> {
   const archive = join(appRoot, 'Contents', 'Resources', 'app.asar');
@@ -184,7 +183,7 @@ async function patchMacHeadlessRuntime(appRoot: string): Promise<void> {
       nextMain = nextMain.replace(lockContract, lockReplacement);
       const permissionEntry = 'var factoryResetApplyRequested = process.argv.includes(FACTORY_RESET_APPLY_ARG);';
       const permissionBootstrap = `
-var AWH_PERMISSION_BOOTSTRAP_V1 = true;
+var AWH_PERMISSION_BOOTSTRAP_V2 = true;
 var AWH_PERMISSION_STATUS_ARG = "--awh-permission-status";
 var AWH_PERMISSION_SETUP_ARG = "--awh-permission-setup";
 async function awhPermissionSnapshot(requestPermissions) {
@@ -195,21 +194,11 @@ async function awhPermissionSnapshot(requestPermissions) {
     try { await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 1, height: 1 }, fetchWindowIcons: false }); } catch {}
     screenCapture = systemPreferences.getMediaAccessStatus("screen");
   }
-  let microphone = process.platform === "darwin" ? systemPreferences.getMediaAccessStatus("microphone") : "granted";
-  if (process.platform === "darwin" && requestPermissions === true && microphone !== "granted") {
-    try { await systemPreferences.askForMediaAccess("microphone"); } catch {}
-    microphone = systemPreferences.getMediaAccessStatus("microphone");
-  }
-  let automation = process.platform === "darwin" ? "unknown" : "granted";
-  if (process.platform === "darwin" && requestPermissions === true) {
-    try {
-      await execFileAsync10("/usr/bin/osascript", ["-e", "tell application \\"System Events\\" to count processes"], { encoding: "utf8", timeout: 15000, maxBuffer: 16384 });
-      automation = "granted";
-    } catch {
-      automation = "denied";
-    }
-  }
-  const ready = accessibility === true && screenCapture === "granted" && microphone === "granted" && (automation === "granted" || requestPermissions !== true);
+  const microphone = process.platform === "darwin" ? systemPreferences.getMediaAccessStatus("microphone") : "granted";
+  // Microphone and Automation are capability-scoped. Core setup must not
+  // prompt for them or use them as readiness gates.
+  const automation = process.platform === "darwin" ? "unknown" : "granted";
+  const ready = accessibility === true && screenCapture === "granted";
   return { schemaVersion: 1, runtime: "AWH Device Runtime", accessibility, screenCapture, microphone, automation, ready, requested: requestPermissions === true };
 }
 async function awhRunPermissionBootstrap() {
@@ -518,10 +507,28 @@ function systemRuntimeRoot(platform: NodeJS.Platform, home: string, env: NodeJS.
   return pathWin32.join(local, 'AWH', 'SystemRuntime', 'runtime');
 }
 
+function systemMcpEntry(platform: NodeJS.Platform, runtime: string): string {
+  return platform === 'win32'
+    ? pathWin32.join(runtime, 'awh-system-mcp.mjs')
+    : join(runtime, 'awh-system-mcp.mjs');
+}
+
+async function writeSystemMcpShim(runtime: string): Promise<void> {
+  const source = [
+    "const fmt=(xs)=>xs.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ');",
+    "for(const k of ['log','info','warn','error','debug']) console[k]=(...xs)=>process.stderr.write('[DC '+k.toUpperCase()+'] '+fmt(xs)+'\n');",
+    "global.disableOnboarding=true;",
+    "const { StdioServerTransport } = await import('./node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js');",
+    "const { server } = await import('./node_modules/@wonderwhy-er/desktop-commander/dist/server.js');",
+    "await server.connect(new StdioServerTransport());",
+    '',
+  ].join('\n');
+  await writeFile(join(runtime, 'awh-system-mcp.mjs'), source, { encoding: 'utf8', mode: 0o600 });
+}
+
 async function installSystemMcpBridge(platform: NodeJS.Platform, home: string, env: NodeJS.ProcessEnv, runtime: string, node: string): Promise<void> {
-  const entry = platform === 'win32'
-    ? pathWin32.join(runtime, 'node_modules', '@wonderwhy-er', 'desktop-commander', 'dist', 'index.js')
-    : join(runtime, 'node_modules', '@wonderwhy-er', 'desktop-commander', 'dist', 'index.js');
+  await writeSystemMcpShim(runtime);
+  const entry = systemMcpEntry(platform, runtime);
   if (platform === 'darwin') {
     const bin = join(home, '.awh', 'bin'); await mkdir(bin, { recursive: true, mode: 0o700 });
     const wrapper = join(bin, 'awh-system-mcp');
@@ -539,6 +546,7 @@ async function verifySystemMcpRuntime(node: string, entry: string, cwd: string, 
   await new Promise<void>((resolve, reject) => {
     const child = spawn(node, [entry], { cwd, shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env });
     let buffer = '';
+    let stderr = '';
     let initialized = false;
     let settled = false;
     const finish = (error?: Error): void => {
@@ -548,8 +556,19 @@ async function verifySystemMcpRuntime(node: string, entry: string, cwd: string, 
       child.kill();
       if (error) reject(error); else resolve();
     };
-    const timer = setTimeout(() => finish(new Error('DEVICE_RUNTIME_SYSTEM_SMOKE_TIMEOUT')), 12_000);
-    child.once('error', (error) => finish(error instanceof Error ? error : new Error('DEVICE_RUNTIME_SYSTEM_SMOKE_FAILED')));
+    const classifyExit = (code: number | null, signal: NodeJS.Signals | null): Error => {
+      if (/ERR_MODULE_NOT_FOUND|Cannot find module/i.test(stderr)) return new Error('DEVICE_RUNTIME_SYSTEM_DEPENDENCY_MISSING');
+      if (signal) return new Error('DEVICE_RUNTIME_SYSTEM_SMOKE_SIGNAL_' + signal.replace(/[^A-Z0-9]/gi, '_').toUpperCase());
+      if (typeof code === 'number') return new Error('DEVICE_RUNTIME_SYSTEM_SMOKE_EXIT_' + code);
+      return new Error('DEVICE_RUNTIME_SYSTEM_SMOKE_EXIT_UNKNOWN');
+    };
+    const timer = setTimeout(() => finish(new Error('DEVICE_RUNTIME_SYSTEM_SMOKE_TIMEOUT')), 30_000);
+    child.once('error', () => finish(new Error('DEVICE_RUNTIME_SYSTEM_SMOKE_SPAWN_FAILED')));
+    child.once('exit', (code, signal) => { if (!settled) finish(classifyExit(code, signal)); });
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk: string) => {
+      stderr = (stderr + chunk).slice(-64 * 1024);
+    });
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk: string) => {
       if (settled) return;
@@ -590,14 +609,13 @@ async function installAndVerifySystemMcpRuntime(platform: NodeJS.Platform, runti
   const packagePath = platform === 'win32'
     ? pathWin32.join(runtime, 'node_modules', '@wonderwhy-er', 'desktop-commander', 'package.json')
     : join(runtime, 'node_modules', '@wonderwhy-er', 'desktop-commander', 'package.json');
-  const entry = platform === 'win32'
-    ? pathWin32.join(runtime, 'node_modules', '@wonderwhy-er', 'desktop-commander', 'dist', 'index.js')
-    : join(runtime, 'node_modules', '@wonderwhy-er', 'desktop-commander', 'dist', 'index.js');
+  const entry = systemMcpEntry(platform, runtime);
   const installed = JSON.parse(await readFile(packagePath, 'utf8')) as { version?: unknown };
   if (installed.version !== SYSTEM_MCP_VERSION) throw new Error('DEVICE_RUNTIME_SYSTEM_VERSION_MISMATCH');
   const lock = JSON.parse(await readFile(join(runtime, 'package-lock.json'), 'utf8')) as { packages?: Record<string, { version?: string; integrity?: string }> };
   const row = lock.packages?.['node_modules/@wonderwhy-er/desktop-commander'];
   if (row?.version !== SYSTEM_MCP_VERSION || row.integrity !== SYSTEM_MCP_INTEGRITY) throw new Error('DEVICE_RUNTIME_SYSTEM_INTEGRITY_FAILED');
+  await writeSystemMcpShim(runtime);
   await verifySystemMcpRuntime(privateNode.node, entry, runtime, env);
 }
 
@@ -609,9 +627,7 @@ async function ensureSystemMcpRuntime(platform: NodeJS.Platform, arch: string, h
   const packagePath = platform === 'win32'
     ? pathWin32.join(runtime, 'node_modules', '@wonderwhy-er', 'desktop-commander', 'package.json')
     : join(runtime, 'node_modules', '@wonderwhy-er', 'desktop-commander', 'package.json');
-  const entry = platform === 'win32'
-    ? pathWin32.join(runtime, 'node_modules', '@wonderwhy-er', 'desktop-commander', 'dist', 'index.js')
-    : join(runtime, 'node_modules', '@wonderwhy-er', 'desktop-commander', 'dist', 'index.js');
+  const entry = systemMcpEntry(platform, runtime);
   let current = '';
   try {
     const parsed = JSON.parse(await readFile(packagePath, 'utf8')) as { version?: unknown };
@@ -652,17 +668,13 @@ export async function ensureAwhDeviceRuntime(dataDir: string, platform: NodeJS.P
     await readinessFile(dataDir, result); return result;
   }
   try {
-    let engineInstalled = false;
     if (platform === 'darwin') {
       if (arch !== 'arm64' && arch !== 'x64') throw new Error('DEVICE_RUNTIME_ARCH_UNSUPPORTED');
-      engineInstalled = await installMacEngine(home, arch);
-    } else engineInstalled = await installWindowsEngine(env);
-    const systemInstalled = await ensureSystemMcpRuntime(platform, arch, home, env);
-    // Provision only host-relevant, pinned Tool Packs during the explicit
-    // AWH Agent bootstrap boundary. Heartbeats stay read-only and simply
-    // advertise packs that passed package, host and connector verification.
-    await provisionEligibleToolPacks(platform, arch, home, env);
-    const installed = engineInstalled || systemInstalled;
+      await installMacEngine(home, arch);
+    } else await installWindowsEngine(env);
+    await ensureSystemMcpRuntime(platform, arch, home, env);
+    // Tool Packs are provisioned lazily on first routed use; Agent bootstrap never installs them eagerly.
+    const installed = true;
     const spec = await discoverLnwjudLaunchSpec(platform, home, env);
     if (!spec) throw new Error('DEVICE_RUNTIME_LAUNCHER_MISSING');
     const smokeRoot = join(dataDir, 'device-runtime-smoke');

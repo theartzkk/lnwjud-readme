@@ -23,15 +23,15 @@ export interface WorkerProject { projectId: string; name: string; type: string; 
 export interface WorkerPeer { deviceId: string; displayName: string; platform: string; arch: string; appVersion: string; state: string; lastSeenAt: string; capabilities: string[]; detectedTools: string[]; activity: string; role: string; routingEnabled: boolean; requiresOwnerApproval: boolean; workloads: string[]; purpose: string; }
 
 export interface WorkerContinuation { rootTaskId: string; step: number; maxSteps: number; }
-export interface WorkerCapabilityPlanItem { id: 'context.optimize' | 'design.hallmark' | 'design.reference' | 'team.harness'; label: string; mode: string; reason: string; requiredTool: string | null; }
+export interface WorkerCapabilityPlanItem { id: string; label: string; mode: string; reason: string; requiredTool: string | null; }
 export interface WorkerCapabilityPlan { schemaVersion: 1; router: 'awh.external-capabilities.v1'; selected: WorkerCapabilityPlanItem[]; }
 
 function boundedCapabilityPlan(value: unknown): WorkerCapabilityPlan | null {
   if (value === undefined || value === null) return null;
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ControlPlaneWorkerError('Worker capability plan is invalid', 'RESPONSE_INVALID');
   const plan = value as Record<string, unknown>;
-  if (plan.schemaVersion !== 1 || plan.router !== 'awh.external-capabilities.v1' || !Array.isArray(plan.selected) || plan.selected.length > 4) throw new ControlPlaneWorkerError('Worker capability plan is invalid', 'RESPONSE_INVALID');
-  const allowed = new Set(['context.optimize','design.hallmark','design.reference','team.harness']);
+  if (plan.schemaVersion !== 1 || plan.router !== 'awh.external-capabilities.v1' || !Array.isArray(plan.selected) || plan.selected.length > 8) throw new ControlPlaneWorkerError('Worker capability plan is invalid', 'RESPONSE_INVALID');
+  const allowed = new Set(['context.optimize','design.antislop','copy.antislop','code.antislop','design.hallmark','design.reference','team.harness','code.semantic','docs.current','code.repo','web.extract','document.quick','document.deep','vision.ocr.th','security.scan','data.query','mcp.qa','local.ai.fallback','browser.session','media.inspect']);
   const selected = plan.selected.map((entry): WorkerCapabilityPlanItem => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new ControlPlaneWorkerError('Worker capability plan is invalid', 'RESPONSE_INVALID');
     const item = entry as Record<string, unknown>;
@@ -50,10 +50,58 @@ export interface WorkerTask {
   progress: number;
   assignedDevice: string | null;
   approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | null;
+  origin: 'AWH_WEB' | 'LINE' | 'AUTOMATION' | 'UNKNOWN';
   execution?: { executionId: string; executorKind: 'VPS' | 'DEVICE' | 'CODEX'; requiredCapability: string; vaultRevisionId: string | null; state: string; continuation: WorkerContinuation | null; capabilityPlan: WorkerCapabilityPlan | null } | null;
 }
 
 export interface OfficeExecutionPacket { executionId: string; taskId: string; projectId: string; inputName: string; inputMimeType: string; sizeBytes: number; }
+
+export interface WorkerToolBinaryArtifact { url:string; sha256:string; archive:'tar.gz'|'zip'; }
+export interface WorkerToolProvisionPlan {
+  capability:string;
+  providerId:string;
+  runtimeKind:'MCP'|'CLI'|'MODEL_RUNTIME';
+  revision:string;
+  version:string;
+  provisionKind:'GITHUB_RELEASE_BINARY'|'NPM_CLI';
+  target:string;
+  artifact?:WorkerToolBinaryArtifact;
+  executable?:string;
+  args?:string[];
+  packageName?:string;
+  integrity?:string;
+  bin?:string;
+  nodeMinimum?:string;
+  authProviderId:string|null;
+  credentialEnv:string|null;
+  networkPolicy:'NONE'|'OUTBOUND_HTTPS_ALLOWED'|'AUTHENTICATED_API_REQUIRED'|'LOCAL_BROWSER_SESSION';
+  license:string;
+}
+export interface WorkerToolProviderPacket {
+  executionId:string;
+  capability:string;
+  plan:WorkerToolProvisionPlan;
+  credential:{envName:string;value:string}|null;
+}
+
+function boundedToolProvisionPlan(value:unknown):WorkerToolProvisionPlan {
+  if(!value||typeof value!=='object'||Array.isArray(value)) throw new ControlPlaneWorkerError('Tool provision plan is invalid','RESPONSE_INVALID');
+  const row=value as Record<string,unknown>;
+  if(typeof row.capability!=='string'||!CAPABILITY.test(row.capability)||typeof row.providerId!=='string'||!/^[a-z][a-z0-9._-]{1,63}$/.test(row.providerId)||!['MCP','CLI','MODEL_RUNTIME'].includes(String(row.runtimeKind))||typeof row.revision!=='string'||!/^[0-9a-f]{40}$/.test(row.revision)||typeof row.version!=='string'||row.version.length<1||row.version.length>80||!['GITHUB_RELEASE_BINARY','NPM_CLI'].includes(String(row.provisionKind))||typeof row.target!=='string'||row.target.length>40||!['NONE','OUTBOUND_HTTPS_ALLOWED','AUTHENTICATED_API_REQUIRED','LOCAL_BROWSER_SESSION'].includes(String(row.networkPolicy))||typeof row.license!=='string'||row.license.length<2||row.license.length>80) throw new ControlPlaneWorkerError('Tool provision plan is invalid','RESPONSE_INVALID');
+  const authProviderId=row.authProviderId===null?null:typeof row.authProviderId==='string'&&/^[a-z][a-z0-9._-]{1,63}$/.test(row.authProviderId)?row.authProviderId:null;
+  const credentialEnv=row.credentialEnv===null?null:typeof row.credentialEnv==='string'&&/^[A-Z][A-Z0-9_]{2,80}$/.test(row.credentialEnv)?row.credentialEnv:null;
+  if((row.authProviderId!==null&&authProviderId===null)||(row.credentialEnv!==null&&credentialEnv===null)||(authProviderId===null)!==(credentialEnv===null)) throw new ControlPlaneWorkerError('Tool credential contract is invalid','RESPONSE_INVALID');
+  const base={capability:row.capability,providerId:row.providerId,runtimeKind:row.runtimeKind as WorkerToolProvisionPlan['runtimeKind'],revision:row.revision,version:row.version,provisionKind:row.provisionKind as WorkerToolProvisionPlan['provisionKind'],target:row.target,authProviderId,credentialEnv,networkPolicy:row.networkPolicy as WorkerToolProvisionPlan['networkPolicy'],license:row.license};
+  if(row.provisionKind==='GITHUB_RELEASE_BINARY'){
+    const artifact=row.artifact;if(!artifact||typeof artifact!=='object'||Array.isArray(artifact)) throw new ControlPlaneWorkerError('Tool binary artifact is invalid','RESPONSE_INVALID');
+    const a=artifact as Record<string,unknown>;
+    if(typeof a.url!=='string'||!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/releases\/download\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(a.url)||typeof a.sha256!=='string'||!/^[0-9a-f]{64}$/.test(a.sha256)||!['tar.gz','zip'].includes(String(a.archive))||typeof row.executable!=='string'||!/^[A-Za-z0-9_.-]{1,100}$/.test(row.executable)||!Array.isArray(row.args)||row.args.length>16||row.args.some((x)=>typeof x!=='string'||x.length>160)) throw new ControlPlaneWorkerError('Tool binary artifact is invalid','RESPONSE_INVALID');
+    return {...base,artifact:{url:a.url,sha256:a.sha256,archive:a.archive as 'tar.gz'|'zip'},executable:row.executable,args:row.args as string[]};
+  }
+  if(typeof row.packageName!=='string'||!/^(@[a-z0-9_.-]+\/)?[a-z0-9_.-]+$/.test(row.packageName)||typeof row.integrity!=='string'||!/^sha512-[A-Za-z0-9+/]+={0,2}$/.test(row.integrity)||typeof row.bin!=='string'||!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(row.bin)||typeof row.nodeMinimum!=='string'||!/^\d+\.\d+\.\d+$/.test(row.nodeMinimum)) throw new ControlPlaneWorkerError('Tool NPM provision plan is invalid','RESPONSE_INVALID');
+  return {...base,packageName:row.packageName,integrity:row.integrity,bin:row.bin,nodeMinimum:row.nodeMinimum};
+}
+
 
 export interface WorkerDeviceToolCatalogItem {
   name: string;
@@ -98,7 +146,8 @@ function boundedTask(value: unknown): WorkerTask {
     }
     execution = { executionId: item.executionId, executorKind: item.executorKind as 'VPS' | 'DEVICE' | 'CODEX', requiredCapability: item.requiredCapability, vaultRevisionId: item.vaultRevisionId === null ? null : item.vaultRevisionId, state: item.state, continuation, capabilityPlan: boundedCapabilityPlan(item.capabilityPlan) };
   }
-  return { taskId: task.taskId, projectId: task.projectId, conversationId: task.conversationId === undefined || task.conversationId === null ? null : task.conversationId, goal: task.goal, state: task.state, progress: task.progress, assignedDevice: task.assignedDevice, approvalStatus: task.approvalStatus === undefined ? null : task.approvalStatus as WorkerTask['approvalStatus'], execution };
+  const origin=['AWH_WEB','LINE','AUTOMATION','UNKNOWN'].includes(String(task.origin)) ? task.origin as WorkerTask['origin'] : 'UNKNOWN';
+  return { taskId: task.taskId, projectId: task.projectId, conversationId: task.conversationId === undefined || task.conversationId === null ? null : task.conversationId, goal: task.goal, state: task.state, progress: task.progress, assignedDevice: task.assignedDevice, approvalStatus: task.approvalStatus === undefined ? null : task.approvalStatus as WorkerTask['approvalStatus'], origin, execution };
 }
 
 export interface OwnerWorkProfile { primaryRoute: 'REMOTE_DEVICE' | 'VPS_DIRECT' | 'CONNECTED_FILES' | 'DIRECT_PLUS_REMOTE' | 'AUTO_FIT'; requiresRealDeviceEvidence: boolean; realSchoolEvidenceRequired: boolean; generatedSchoolRealityAllowed: false; permanentRepairRequired: boolean; mixedBoundary: boolean; evidenceDimensions: { requiresDeviceState: boolean; requiresServerState: boolean; requiresConnectedFiles: boolean; requiresRealSchoolEvidence: boolean; requiresNativeApp: boolean; requiresPublicWeb: boolean }; reason: string; }
@@ -150,6 +199,31 @@ export class ControlPlaneWorkerClient {
   private readonly root: URL;
 
   constructor(private readonly apiBase: string, private readonly dataDir: string, private readonly credentialStore: CredentialStore, private readonly fetchImpl: typeof fetch = fetch) { this.root = apiRoot(apiBase); }
+
+  async toolFabricCatalog(): Promise<WorkerToolProvisionPlan[]> {
+    const response=await this.get('/control/worker/tool-fabric',true);
+    if(response.schemaVersion!==1||response.authority!=='AWH_UPDATE_CENTER'||!Array.isArray(response.items)||response.items.length>32) throw new ControlPlaneWorkerError('Tool Fabric catalog response is invalid','RESPONSE_INVALID');
+    const items=response.items.map(boundedToolProvisionPlan);
+    if(new Set(items.map((item)=>item.capability)).size!==items.length) throw new ControlPlaneWorkerError('Tool Fabric catalog contains duplicate capabilities','RESPONSE_INVALID');
+    return items;
+  }
+
+  async toolProviderPacket(executionId:string): Promise<WorkerToolProviderPacket> {
+    if(!UUID_V4.test(executionId)) throw new ControlPlaneWorkerError('Tool provider execution reference is invalid','PAYLOAD_INVALID');
+    const response=await this.get(`/control/worker/executions/${executionId}/tool-provider`,true);
+    if(response.schemaVersion!==1||response.executionId!==executionId||typeof response.capability!=='string'||!CAPABILITY.test(response.capability)) throw new ControlPlaneWorkerError('Tool provider packet is invalid','RESPONSE_INVALID');
+    const plan=boundedToolProvisionPlan(response.plan);
+    if(plan.capability!==response.capability) throw new ControlPlaneWorkerError('Tool provider packet capability mismatch','RESPONSE_INVALID');
+    let credential:WorkerToolProviderPacket['credential']=null;
+    if(response.credential!==null){
+      if(!response.credential||typeof response.credential!=='object'||Array.isArray(response.credential)) throw new ControlPlaneWorkerError('Tool provider credential is invalid','RESPONSE_INVALID');
+      const row=response.credential as Record<string,unknown>;
+      if(typeof row.envName!=='string'||row.envName!==plan.credentialEnv||typeof row.value!=='string'||row.value.length<16||row.value.length>4096||/[\u0000-\u0020\u007f]/.test(row.value)) throw new ControlPlaneWorkerError('Tool provider credential is invalid','RESPONSE_INVALID');
+      credential={envName:row.envName,value:row.value};
+    }
+    if((plan.authProviderId===null)!==(credential===null)) throw new ControlPlaneWorkerError('Tool provider authentication packet is invalid','RESPONSE_INVALID');
+    return {executionId,capability:response.capability,plan,credential};
+  }
 
   async heartbeat(capabilities: string[], state: 'READY' | 'WORKING' | 'OFFLINE' = 'READY'): Promise<{ deviceId: string; state: string; lastSeenAt: string }> {
     const identity = await loadOrCreateDeviceIdentity(this.dataDir);

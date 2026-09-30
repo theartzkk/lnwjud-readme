@@ -53,7 +53,6 @@ export async function discoverLnwjudLaunchSpec(platform: NodeJS.Platform = proce
     const candidates = [
       local ? pathWin32.join(local, 'AWH', 'Engines', 'device-runtime', DEVICE_ENGINE_VERSION, 'AWH Device Runtime.exe') : null,
       local ? pathWin32.join(local, 'AWH', 'Engines', 'lnwjud', 'current', 'lnwjud.exe') : null,
-      local ? pathWin32.join(local, 'Programs', 'lnwjud', 'lnwjud.exe') : null,
     ].filter((value): value is string => Boolean(value));
     for (const command of candidates) if (await exists(command)) return { command, argsPrefix: ['--mcp-stdio'] };
   }
@@ -103,6 +102,7 @@ export class LnwjudDeviceClient {
   private readonly pending = new Map<string, { resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
   private sequence = 0;
   private stderr = '';
+  private closing = false;
 
   private constructor(spec: LnwjudLaunchSpec, workspace: string) {
     this.process = spawn(spec.command, [...spec.argsPrefix, '--workspace', workspace], { shell: false, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, AWH_DEVICE_RUNTIME_HEADLESS: '1' } });
@@ -209,8 +209,26 @@ export class LnwjudDeviceClient {
   }
 
   close(): void {
+    if (this.closing) return;
+    this.closing = true;
     this.lines.close();
     this.rejectAll(new Error('AWH_DEVICE_RUNTIME_CLOSED'));
-    if (!this.process.killed) this.process.kill();
+    try { this.process.stdin.end(); } catch {}
+    if (this.process.exitCode !== null || this.process.signalCode !== null) return;
+    const pid = this.process.pid;
+    try { this.process.kill('SIGTERM'); } catch {}
+    const force = setTimeout(() => {
+      if (this.process.exitCode !== null || this.process.signalCode !== null) return;
+      if (process.platform === 'win32' && pid) {
+        try {
+          const killer = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { shell: false, windowsHide: true, stdio: 'ignore' });
+          killer.unref();
+        } catch {}
+        return;
+      }
+      try { this.process.kill('SIGKILL'); } catch {}
+    }, 1_500);
+    force.unref?.();
+    this.process.once('exit', () => clearTimeout(force));
   }
 }

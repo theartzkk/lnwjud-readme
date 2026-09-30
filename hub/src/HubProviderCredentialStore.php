@@ -85,7 +85,8 @@ final class HubProviderCredentialStore
     {
         $value=trim($value); $length=strlen($value);
         if ($this->providerId === 'openai' && preg_match('/^sk-[A-Za-z0-9_-]{20,512}$/',$value) !== 1) throw new HubProviderCredentialStoreException('Provider credential is invalid','PROVIDER_CREDENTIAL_INVALID');
-        if ($this->providerId !== 'openai' && ($length < 16 || $length > 4096 || preg_match('/[\x00-\x20\x7f]/',$value))) throw new HubProviderCredentialStoreException('Provider credential is invalid','PROVIDER_CREDENTIAL_INVALID');
+        if ($this->providerId === 'openrouter' && preg_match('/^sk-or-v1-[A-Za-z0-9_-]{20,512}$/',$value) !== 1) throw new HubProviderCredentialStoreException('Provider credential is invalid','PROVIDER_CREDENTIAL_INVALID');
+        if (!in_array($this->providerId,['openai','openrouter'],true) && ($length < 16 || $length > 4096 || preg_match('/[\x00-\x20\x7f]/',$value))) throw new HubProviderCredentialStoreException('Provider credential is invalid','PROVIDER_CREDENTIAL_INVALID');
         return $value;
     }
     private static function provider(string $value): string

@@ -157,7 +157,7 @@ test('Agent visibility is version-aware but public macOS updater remains fail-cl
   assert.match(service,/INTERNAL_MANAGED/);
   assert.match(script,/desktopReleases/);
   assert.match(script,/Web\/PWA อัปเดตอัตโนมัติ/);
-  assert.match(policy,/FOUNDATION_LOCKED_NOT_ACTIVATED/);
+  assert.match(policy,/SELF_UPDATE_ACTIVE_ROLLBACK_SAFE/);
   assert.doesNotMatch(policy,/autoUpdater|setFeedURL/);
 });
 

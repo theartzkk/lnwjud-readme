@@ -13,6 +13,7 @@ require_once dirname(__DIR__) . '/src/HubStaffOperationsService.php';
 require_once dirname(__DIR__) . '/src/HubCloudFirstMigration.php';
 require_once dirname(__DIR__) . '/src/HubCloudWorkflowService.php';
 require_once dirname(__DIR__) . '/src/HubExecutionLifecycleService.php';
+require_once dirname(__DIR__) . '/src/HubToolFabricService.php';
 require_once __DIR__ . '/system-telemetry.php';
 
 /**
@@ -60,6 +61,18 @@ try {
     } catch (Throwable) {
         // Infrastructure visibility is advisory and must never stop task execution.
         $telemetry = ['status' => 'DEGRADED'];
+    }
+
+    $toolFabric = ['status'=>'NOT_READY','summary'=>null];
+    if (HubCapabilityRegistryService::schemaPresent($pdo)) {
+        try {
+            $toolSummary=HubToolFabricService::fromEnvironment($pdo)->discoverDue();
+            $toolFabric=['status'=>'READY','summary'=>$toolSummary];
+        } catch (HubToolFabricException $error) {
+            $toolFabric=['status'=>'DEGRADED','summary'=>['schemaVersion'=>1,'code'=>$error->codeName]];
+        } catch (Throwable) {
+            $toolFabric=['status'=>'DEGRADED','summary'=>['schemaVersion'=>1,'code'=>'TOOL_FABRIC_DISCOVERY_FAILED']];
+        }
     }
 
     $control ??= HubControlPlaneService::openExisting($database);

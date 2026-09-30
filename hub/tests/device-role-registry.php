@@ -54,6 +54,12 @@ try {
     assertTrue($registry->claimAllowed('22222222-2222-4222-8222-222222222222'), 'unclassified legacy worker must remain backward compatible');
     assertTrue($registry->claimAllowed('22222222-2222-4222-8222-222222222222', 'M5'), 'device role must not hard-block an authenticated capable worker');
     assertTrue($registry->claimAllowed('22222222-2222-4222-8222-222222222222', 'VIDEO'), 'creative workstation must remain routable for declared creative work');
+    assertTrue(!$registry->capabilityAllowed($workerId, 'Worker', 'local.ai.fallback'), 'general worker must not provision local AI fallback by default');
+    assertTrue(!$registry->capabilityAllowed($workerId, 'Worker', 'media.transform'), 'general worker must not provision heavy media transform by default');
+    assertTrue($registry->capabilityAllowed('22222222-2222-4222-8222-222222222222', 'M5', 'local.ai.fallback'), 'creative role may use local AI fallback when runtime resource gates also pass');
+    assertTrue($registry->capabilityAllowed('22222222-2222-4222-8222-222222222222', 'M5', 'media.transcribe'), 'creative role may use heavy media tooling');
+    assertTrue(!$registry->capabilityAllowed('33333333-3333-4333-8333-333333333333', 'Unknown', 'local.ai.fallback'), 'unclassified device must fail closed for heavy local AI');
+    assertTrue($registry->capabilityAllowed('33333333-3333-4333-8333-333333333333', 'Unknown', 'code.semantic'), 'unclassified device stays backward compatible for non-heavy capability');
     $workers = $registry->decorateWorkers([[
         'deviceId' => $workerId,
         'displayName' => 'Worker',
@@ -63,6 +69,14 @@ try {
     ]]);
     assertTrue(($workers[0]['role'] ?? null) === 'GENERAL_PROJECT_WORKSTATION', 'worker role must be projected');
     assertTrue(($workers[0]['routingEnabled'] ?? false) === true, 'worker routing state must be projected');
+    $rotated = $registry->decorateWorkers([[
+        'deviceId' => '44444444-4444-4444-8444-444444444444',
+        'displayName' => 'Worker',
+        'state' => 'READY',
+        'lastSeenAt' => gmdate('c'),
+        'platform' => 'darwin',
+    ]]);
+    assertTrue(($rotated[0]['role'] ?? null) === 'GENERAL_PROJECT_WORKSTATION', 'unique display-name fallback must preserve role across device-id rotation');
     $projection = $registry->projection($workers);
     assertTrue(($projection['state'] ?? null) === 'READY', 'registry projection must be ready');
     assertTrue(($projection['backupCoverage']['state'] ?? null) === 'NOT_CONFIGURED', 'off-site backup must stay truthful');

@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface, type Interface as ReadLineInterface } from 'node:readline';
-import { ensureToolPack, toolPackForCapability, type ToolPackDefinition } from './tool-pack-runtime.js';
+import { activateToolPackAfterSmoke, ensureToolPackReady, toolPackForCapability, type ToolPackDefinition } from './tool-pack-runtime.js';
 
 const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 const MAX_TOOL_COUNT = 512;
@@ -50,13 +50,13 @@ export class ToolPackClient {
   private closed = false;
   private stderr = '';
 
-  private constructor(readonly pack: ToolPackDefinition, command: string, entry: string, cwd: string) {
-    this.child = spawn(command, [entry, ...pack.args], {
+  private constructor(readonly id: string, command: string, args: string[], cwd: string, extraEnv: NodeJS.ProcessEnv = {}) {
+    this.child = spawn(command, args, {
       cwd,
       shell: false,
       windowsHide: true,
       stdio: ['pipe','pipe','pipe'],
-      env: { ...process.env, AWH_TOOL_PACK_ID: pack.id, AWH_TOOL_PACK_MODE: 'managed' },
+      env: { ...process.env, ...extraEnv, AWH_TOOL_PACK_ID: id, AWH_TOOL_PACK_MODE: 'managed' },
     });
     this.lines = createInterface({ input: this.child.stdout });
     this.lines.on('line', (line) => this.accept(line));
@@ -72,9 +72,9 @@ export class ToolPackClient {
   static async open(capability: string): Promise<ToolPackClient> {
     const pack = toolPackForCapability(capability);
     if (!pack) throw new Error('TOOL_PACK_CAPABILITY_UNKNOWN');
-    const state = await ensureToolPack(pack);
+    const state = await ensureToolPackReady(pack);
     if (!state.verified || !state.hostReady || !state.connectorReady || !state.node || !state.entry) throw new Error(state.reason || 'TOOL_PACK_UNAVAILABLE');
-    const client = new ToolPackClient(pack, state.node, state.entry, state.root);
+    const client = new ToolPackClient(pack.id, state.node, [state.entry, ...pack.args], state.root);
     try {
       const initialized = await client.request('initialize', {
         protocolVersion: '2025-11-25',
@@ -84,6 +84,30 @@ export class ToolPackClient {
       const error = responseError(initialized);
       if (error) throw new Error('TOOL_PACK_INITIALIZE_FAILED:' + error);
       client.child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} }) + '\n');
+      const smokeTools = await client.listTools();
+      if (smokeTools.length < 1) throw new Error('TOOL_PACK_SMOKE_EMPTY');
+      await activateToolPackAfterSmoke(pack, state);
+      return client;
+    } catch (error) {
+      client.close();
+      throw error;
+    }
+  }
+
+  static async openManaged(id: string, command: string, args: string[], cwd: string, extraEnv: NodeJS.ProcessEnv = {}): Promise<ToolPackClient> {
+    if (!/^[a-z0-9][a-z0-9._-]{1,63}$/.test(id) || typeof command !== 'string' || command.length < 1 || command.length > 500 || !Array.isArray(args) || args.length > 32 || args.some((arg) => typeof arg !== 'string' || arg.length > 500)) throw new Error('TOOL_PACK_MANAGED_LAUNCH_INVALID');
+    const client = new ToolPackClient(id, command, args, cwd, extraEnv);
+    try {
+      const initialized = await client.request('initialize', {
+        protocolVersion: '2025-11-25',
+        capabilities: {},
+        clientInfo: { name: 'AWH Agent Tool Fabric', version: '1' },
+      }, 20_000);
+      const error = responseError(initialized);
+      if (error) throw new Error('TOOL_PACK_INITIALIZE_FAILED:' + error);
+      client.child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} }) + '\n');
+      const smokeTools = await client.listTools();
+      if (smokeTools.length < 1) throw new Error('TOOL_PACK_SMOKE_EMPTY');
       return client;
     } catch (error) {
       client.close();

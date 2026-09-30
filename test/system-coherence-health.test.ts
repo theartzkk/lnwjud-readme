@@ -9,7 +9,7 @@ test('policy-paused AI work does not degrade platform readiness',async()=>{
  assert.match(service,/policyPausedCount/);
  assert.match(service,/COALESCE\(last_error_code,''\) NOT IN \('BUDGET_EXHAUSTED','PROVIDER_QUOTA_EXHAUSTED'\)/);
  assert.match(service,/last_error_code IN \('BUDGET_EXHAUSTED','PROVIDER_QUOTA_EXHAUSTED'\)/);
- assert.match(service,/\$state = !\$integrity \? 'ACTION_REQUIRED' : \(!\$nativeReady \|\| \(int\) \$waiting > 0 \? 'PARTIALLY_READY' : 'READY'\)/);
+ assert.match(service,/\$state\s*=\s*!\$integrity\s*\?\s*'ACTION_REQUIRED'\s*:\s*\(!\$nativeReady\s*\|\|\s*(?:\(int\)\s*)?\$waiting\s*>\s*0\s*\?\s*'PARTIALLY_READY'\s*:\s*'READY'\)/);
 });
 
 test('new control releases share desktop artifact objects instead of duplicating binaries',async()=>{
