@@ -278,5 +278,9 @@ test('VPS Platform governed sensors and off-site Restic mirror remain subordinat
   assert.match(remote, /127\.0\.0\.1:8088\/health/);
   assert.match(remote, /beszel health --url http:\/\/127\.0\.0\.1:8090/);
   assert.match(remote, /test "\$SENSOR_RUNTIME_READY" = 1/);
-  assert.match(remote, /verify-platform-tooling\.sh" --runtime/);
+  assert.match(remote, /mktemp -d \/tmp\/awh-platform-verify\.XXXXXX/);
+  assert.match(remote, /cd "\$d"; "\$1" --runtime/);
+  assert.match(remote, /sh "\$RELEASE\/scripts\/ops\/verify-platform-tooling\.sh"/);
+  assert.match(remote, /24\) test .*m24-conversation-delegates/);
+  assert.match(remote, /25\) test .*m25-platform-maintenance-authority/);
 });

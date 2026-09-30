@@ -639,6 +639,8 @@ rollback() {
         21) test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm21-vault-source-authority' AND schema_version = 21;")" = 1 || ok=0 ;;
         22) test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm22-identity-convergence' AND schema_version = 22;")" = 1 || ok=0 ;;
         23) test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm23-platform-hardening' AND schema_version = 23;")" = 1 || ok=0 ;;
+        24) test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm24-conversation-delegates' AND schema_version = 24;")" = 1 || ok=0 ;;
+        25) test "$(sudo sqlite3 "$DB" "SELECT count(*) FROM awh_schema_migrations WHERE migration_id = 'm25-platform-maintenance-authority' AND schema_version = 25;")" = 1 || ok=0 ;;
         *) ok=0 ;;
       esac
       test "$(sudo sqlite3 "$DB" 'PRAGMA integrity_check;')" = ok || ok=0
@@ -1430,7 +1432,7 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
       sleep 1
     done
     test "$SENSOR_RUNTIME_READY" = 1
-    sudo -u awh-remote "$RELEASE/scripts/ops/verify-platform-tooling.sh" --runtime >/dev/null
+    sudo -u awh-remote sh -c 'set -e; d=$(mktemp -d /tmp/awh-platform-verify.XXXXXX); trap "rm -rf $d" EXIT; cd "$d"; "$1" --runtime' sh "$RELEASE/scripts/ops/verify-platform-tooling.sh" >/dev/null
     stage PLATFORM_SENSOR_READY
     sudo systemctl cat awh-build.slice >/dev/null
     sudo test -x /usr/local/bin/awh-backup-export
