@@ -1,0 +1,21 @@
+[Unit]
+Description=AWH Beszel localhost machine-health sensor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=awh-remote
+Group=awh-operator
+WorkingDirectory=/var/lib/awh-remote/beszel-data
+ExecStart=/var/lib/awh-remote/.local/bin/beszel --dir /var/lib/awh-remote/beszel-data serve --http 127.0.0.1:8090
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/awh-remote/beszel-data
+
+[Install]
+WantedBy=multi-user.target

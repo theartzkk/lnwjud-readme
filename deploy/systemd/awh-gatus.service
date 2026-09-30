@@ -1,0 +1,20 @@
+[Unit]
+Description=AWH Gatus service-health sensor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=awh-remote
+Group=awh-operator
+Environment=GATUS_CONFIG_PATH=/var/lib/awh-remote/.config/gatus/config.yaml
+ExecStart=/var/lib/awh-remote/.local/bin/gatus
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

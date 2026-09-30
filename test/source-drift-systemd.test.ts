@@ -235,3 +235,35 @@ test('VPS Platform M25 deploy and build isolation stay inside the platform relea
   assert.match(remote, /PLATFORM_EXPECTED_VERSION=25/);
   assert.match(validator, /AWH_CORE_MIGRATION_VERIFIED/);
 });
+
+
+test('VPS Platform governed sensors and off-site Restic mirror remain subordinate to existing authorities', async () => {
+  const [gatus, gatusUnit, beszelUnit, offsite, remote] = await Promise.all([
+    readFile(join(root, 'deploy/observability/gatus.yaml'), 'utf8'),
+    readFile(join(root, 'deploy/systemd/awh-gatus.service'), 'utf8'),
+    readFile(join(root, 'deploy/systemd/awh-beszel.service'), 'utf8'),
+    readFile(join(root, 'deploy/offsite-backup/macos/awh-backup-pull.sh'), 'utf8'),
+    readFile(join(root, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'), 'utf8'),
+  ]);
+
+  assert.match(gatus, /address: 127\.0\.0\.1/);
+  assert.match(gatus, /port: 8088/);
+  assert.match(gatus, /name: line-gateway[\s\S]*group: product[\s\S]*https:\/\/line\.kruart\.online\//);
+  assert.match(gatusUnit, /User=awh-remote/);
+  assert.match(gatusUnit, /GATUS_CONFIG_PATH=\/var\/lib\/awh-remote\/\.config\/gatus\/config\.yaml/);
+  assert.match(gatusUnit, /NoNewPrivileges=true/);
+  assert.match(beszelUnit, /127\.0\.0\.1:8090/);
+  assert.match(beszelUnit, /ReadWritePaths=\/var\/lib\/awh-remote\/beszel-data/);
+
+  assert.match(offsite, /awh-backup-export metadata/);
+  assert.match(offsite, /awh-backup-export payload/);
+  assert.match(offsite, /shasum -a 256/);
+  assert.match(offsite, /\/usr\/local\/bin\/restic \/opt\/homebrew\/bin\/restic/);
+  assert.match(offsite, /AWH_RESTIC_MIRROR=PASS/);
+  assert.match(offsite, /restore "\$RESTIC_SNAPSHOT"/);
+  assert.match(offsite, /forget --keep-last "\$KEEP" --prune --tag awh-offsite/);
+  assert.match(offsite, /AWH_OFFSITE_BACKUP=PASS file=\$file restic=\$RESTIC_STATE/);
+
+  assert.match(remote, /enable --now awh-gatus\.service awh-beszel\.service/);
+  assert.match(remote, /verify-platform-tooling\.sh" --runtime/);
+});

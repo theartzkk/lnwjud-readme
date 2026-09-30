@@ -76,6 +76,7 @@ M21_REFRESH=0
 M22_REFRESH=0
 M23_REFRESH=0
 PLATFORM_RUNTIME_INSTALLED=0
+PLATFORM_SENSOR_UNITS_INSTALLED=0
 HOSTING_UNITS_INSTALLED=0
 HOSTING_UNITS_PREEXISTING=0
 DEPLOY_BASE_VERSION=
@@ -577,6 +578,12 @@ rollback() {
       else
         sudo rm -f "$OPERATOR_CLIENT" || ok=0
       fi
+    fi
+    if test "$PLATFORM_SENSOR_UNITS_INSTALLED" -eq 1; then
+      sudo systemctl disable --now awh-gatus.service awh-beszel.service >/dev/null 2>&1 || ok=0
+      sudo rm -f /etc/systemd/system/awh-gatus.service /etc/systemd/system/awh-beszel.service || ok=0
+      sudo rm -f /var/lib/awh-remote/.config/gatus/config.yaml || ok=0
+      sudo systemctl daemon-reload || ok=0
     fi
     if test "$SOURCE_DRIFT_HOTFIX_RETIRED" -eq 1; then
       if test "$SOURCE_DRIFT_HOTFIX_PREEXISTING" -eq 1; then
@@ -1396,7 +1403,22 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
     OPERATOR_CLIENT_INSTALLED=1
     sudo grep -Fq "vault-import" "$OPERATOR_CLIENT"
     PLATFORM_RUNTIME_INSTALLED=1
+    stage PLATFORM_SENSOR_PREPARE
+    sudo test -x /var/lib/awh-remote/.local/bin/gatus
+    sudo test -x /var/lib/awh-remote/.local/bin/beszel
+    sudo install -d -o awh-remote -g awh-operator -m 0750 /var/lib/awh-remote/.config/gatus /var/lib/awh-remote/beszel-data
+    sudo install -o awh-remote -g awh-operator -m 0640 "$RELEASE/deploy/observability/gatus.yaml" /var/lib/awh-remote/.config/gatus/config.yaml
+    sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-gatus.service" /etc/systemd/system/awh-gatus.service
+    sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-beszel.service" /etc/systemd/system/awh-beszel.service
+    PLATFORM_SENSOR_UNITS_INSTALLED=1
     sudo systemctl daemon-reload
+    sudo systemctl enable --now awh-gatus.service awh-beszel.service >/dev/null
+    sudo systemctl is-enabled --quiet awh-gatus.service
+    sudo systemctl is-enabled --quiet awh-beszel.service
+    sudo systemctl is-active --quiet awh-gatus.service
+    sudo systemctl is-active --quiet awh-beszel.service
+    sudo -u awh-remote "$RELEASE/scripts/ops/verify-platform-tooling.sh" --runtime >/dev/null
+    stage PLATFORM_SENSOR_READY
     sudo systemctl cat awh-build.slice >/dev/null
     sudo test -x /usr/local/bin/awh-backup-export
     sudo test -x "$OPERATOR_CLIENT"

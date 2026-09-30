@@ -1,0 +1,45 @@
+metrics: true
+web:
+  address: 127.0.0.1
+  port: 8088
+endpoints:
+  - name: kruart-online
+    group: public
+    url: https://kruart.online/
+    interval: 1m
+    conditions:
+      - "[STATUS] < 500"
+      - "[RESPONSE_TIME] < 5000"
+      - "[CERTIFICATE_EXPIRATION] > 72h"
+  - name: bay-excuse
+    group: public
+    url: https://excuse.kruart.online/index.php?page=login
+    interval: 1m
+    conditions:
+      - "[STATUS] < 500"
+      - "[RESPONSE_TIME] < 5000"
+      - "[CERTIFICATE_EXPIRATION] > 72h"
+  - name: school
+    group: public
+    url: https://school.kruart.online/
+    interval: 1m
+    conditions:
+      - "[STATUS] < 500"
+      - "[RESPONSE_TIME] < 5000"
+      - "[CERTIFICATE_EXPIRATION] > 72h"
+  - name: learnlab
+    group: public
+    url: https://learn.kruart.online/
+    interval: 1m
+    conditions:
+      - "[STATUS] < 500"
+      - "[RESPONSE_TIME] < 5000"
+      - "[CERTIFICATE_EXPIRATION] > 72h"
+  - name: line-gateway
+    group: product
+    url: https://line.kruart.online/
+    interval: 1m
+    conditions:
+      - "[STATUS] < 500"
+      - "[RESPONSE_TIME] < 5000"
+      - "[CERTIFICATE_EXPIRATION] > 72h"
