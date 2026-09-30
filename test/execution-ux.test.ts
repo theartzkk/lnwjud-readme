@@ -47,6 +47,23 @@ test('journey is deterministic from accepted through approval and completion', (
   assert.equal(done.journey.every((step: { state: string }) => step.state === 'done'), true);
 });
 
+test('coordination and external waits are distinct from running execution progress', () => {
+  const coordinating = ux.executionStatus({ state: 'COORDINATING', progress: 0 });
+  assert.equal(coordinating.title, 'กำลังประสานงาน');
+  assert.equal(coordinating.stage, 'preparing');
+  assert.match(coordinating.detail, /execution เดิม/);
+
+  const external = ux.executionStatus({ state: 'WAITING_EXTERNAL', progress: 0 });
+  assert.equal(external.title, 'รอระบบภายนอก');
+  assert.equal(external.needsHumanAction, false);
+  assert.match(external.detail, /checkpoint/);
+
+  const physical = ux.executionStatus({ state: 'WAITING_PHYSICAL_UAT', progress: 0 });
+  assert.equal(physical.title, 'รอทดสอบอุปกรณ์จริง');
+  assert.equal(physical.needsHumanAction, true);
+  assert.match(physical.detail, /ไม่สร้าง candidate/);
+});
+
 test('live Action Graph projection replaces generic progress without exposing capabilities', () => {
   const status = ux.executionStatus({ state: 'RUNNING', progress: 55, actionGraph: { nodes: [
     { nodeId: 'plan', title: 'วางแผนงาน', state: 'COMPLETED', capability: 'agent.plan' },

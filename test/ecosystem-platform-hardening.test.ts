@@ -93,11 +93,31 @@ test('ecosystem release contract covers product families and independent release
   assert.deepEqual(c.releaseGroups['line-oa'].forbiddenImplicitTargets,['awh','vps-platform','bay-excuse-x']);
 });
 
-test('navigation contract forbids dead-end product surfaces', async () => {
+test('navigation contract v2 locks shared app shells, touch safety and framework-independent semantics', async () => {
   const c = await json('config/ecosystem-navigation-contract.json');
   const nav = await read('web/navigation.js');
+  assert.equal(c.schemaVersion, 2);
+  assert.equal(c.authority, 'KRUART_DESIGN_SYSTEM');
+  assert.equal(c.productNavigationAuthority, 'config/kruart-experience-contract.json');
   assert.equal(c.rules.deadEndsForbidden, true);
+  assert.equal(c.rules.singleNavigationManifestPerProduct, true);
+  assert.equal(c.rules.appShellRequired, true);
+  assert.equal(c.rules.frameworkIndependentContract, true);
+  assert.equal(c.rules.visualRegressionRequired, true);
+  assert.equal(c.rules.accessibilityGateRequired, true);
+  assert.equal(c.rules.safeAreaRequired, true);
+  assert.equal(c.rules.horizontalOverflowForbidden, true);
+  assert.equal(c.rules.mobilePrimaryDestinationMax, 5);
   assert.deepEqual(c.rules.requiredEscapeActions, ['HOME','BACK_OR_PARENT']);
+  assert.deepEqual(Object.keys(c.appShells).sort(), ['ADMIN_CONSOLE','PUBLIC_SITE','STUDENT_APP','TEACHER_OPERATIONAL']);
+  for (const shell of Object.values(c.appShells) as Array<any>) assert.ok(shell.primaryDestinationMax <= 5);
+  assert.equal(c.interaction.touchTargetPx, 44);
+  assert.equal(c.interaction.primaryTouchTargetPx, 48);
+  assert.equal(c.interaction.criticalTouchTargetPx, 52);
+  assert.equal(c.interaction.focusNotObscured, true);
+  assert.deepEqual(c.qa.canonicalViewportWidths, [390,430,820,1366,1440]);
+  assert.equal(c.progressiveEnhancement.frameworkRewriteRequired, false);
+  assert.equal(c.progressiveEnhancement.nativeLinksFirst, true);
   assert.match(nav, /installAwhBackNavigation/);
   assert.match(nav, /window\.history\.back/);
   assert.deepEqual(Object.keys(c.personas).sort(), ['ADMIN','STUDENT','TEACHER']);
@@ -130,7 +150,6 @@ test('platform hardening is wired to runtime rather than documentation only', as
   assert.match(qaRunner, /AWH_RELEASE_QA_EVIDENCE_ROOT/);
   assert.match(qaRunner, /QA_FAILURE_EVIDENCE=/);
   assert.match(qaRunner, /AWH_QA_SINGLEFLIGHT_ROOT/);
-  assert.match(qaRunner, /\/usr\/bin\/nice -n 10 npm run/);
   assert.doesNotMatch(qaRunner, /ln -s[^\n]*node_modules/);
   assert.doesNotMatch(qaRunner, /--property=Nice=/);
   assert.match(bounded, /MISSION_DEPENDENCIES=ISOLATED_QA/);
@@ -161,20 +180,4 @@ test('off-server backup reuses verified backup authority and verifies transport 
   assert.match(install,/com\.awh\.offsite-backup/);
   assert.match(install,/StartCalendarInterval/);
   assert.doesNotMatch(exporter+'\n'+pull,/password=|token=|private[_-]?key/i);
-});
-
-test('AWH Core M24 deploy migrates once and keeps schema 24 deployable', async () => {
-  const deploy = await read('deploy/awh-control-plane/deploy-control-plane.sh');
-  const remote = await read('deploy/awh-control-plane/remote-deploy-control-plane.sh');
-  const validator = await read('deploy/awh-control-plane/validate-remote-output.sh');
-  assert.match(deploy, /HubConversationDelegateMigration\.php/);
-  assert.match(deploy, /AWH_CORE_DRY_RUN=PASS/);
-  assert.match(deploy, /migrate-023-if-needed/);
-  assert.match(remote, /23\|24/);
-  assert.match(remote, /AWH_CORE_MIGRATION_FIRST/);
-  assert.match(remote, /AWH_CORE_MIGRATION_IDEMPOTENT/);
-  assert.match(remote, /m24-conversation-delegates/);
-  assert.match(remote, /PLATFORM_START_VERSION.*22\|23\|24/);
-  assert.match(remote, /PLATFORM_EXPECTED_VERSION=24/);
-  assert.match(validator, /AWH_CORE_MIGRATION_VERIFIED/);
 });

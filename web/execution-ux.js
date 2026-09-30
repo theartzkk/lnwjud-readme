@@ -49,10 +49,10 @@ export function executionActor(task, workers = []) {
 
 export function executionStage(task) {
   const state = clean(task?.state) || 'QUEUED';
-  if (state === 'PREPARING') return 'preparing';
+  if (state === 'PREPARING' || state === 'COORDINATING') return 'preparing';
   if (state === 'RUNNING') return 'working';
   if (state === 'QA') return 'qa';
-  if (state === 'WAITING_FOR_APPROVAL') return 'approval';
+  if (state === 'WAITING_FOR_APPROVAL' || state === 'WAITING_EXTERNAL' || state === 'WAITING_PHYSICAL_UAT') return 'approval';
   if (state === 'VERIFYING' || state === 'RECOVERING') return 'qa';
   if (state === 'COMPLETED') return 'done';
   if (state === 'FAILED' || state === 'CANCELLED') return 'done';
@@ -103,6 +103,9 @@ export function executionStatus(task, workers = []) {
   let title = 'AWH รับงานแล้ว';
   let detail = 'กำลังจัดเส้นทางให้เหมาะกับงานนี้';
   if (state === 'WAITING_FOR_WORKER') detail = 'AWH กำลังเตรียมขั้นตอนถัดไปและจะทำต่ออัตโนมัติเมื่อพร้อม';
+  else if (state === 'COORDINATING') { title = 'กำลังประสานงาน'; detail = 'มีงานเดิมของโปรเจกต์นี้อยู่แล้ว AWH จะทำต่อใน execution เดิมโดยไม่สร้างงานซ้ำ'; }
+  else if (state === 'WAITING_EXTERNAL') { title = 'รอระบบภายนอก'; detail = 'AWH เก็บ checkpoint ไว้แล้วและจะทำต่อจากจุดเดิมเมื่อ dependency พร้อม'; }
+  else if (state === 'WAITING_PHYSICAL_UAT') { title = 'รอทดสอบอุปกรณ์จริง'; detail = 'ต้องใช้การทดสอบกับอุปกรณ์จริงก่อนปิดงาน โดยระบบจะไม่สร้าง candidate หรือเริ่ม implementation ซ้ำระหว่างรอ'; }
   else if (state === 'PREPARING') { title = 'กำลังวิเคราะห์'; detail = `${actor} กำลังรวบรวมข้อมูลที่เกี่ยวข้องและเลือกวิธีทำที่เหมาะสม`; }
   else if (state === 'RUNNING') { title = 'กำลังทำ'; detail = `${actor} กำลังดำเนินงาน`; }
   else if (state === 'QA') { title = 'กำลังตรวจคุณภาพ'; detail = 'AWH กำลังตรวจผลลัพธ์ก่อนส่งกลับ'; }
@@ -125,6 +128,7 @@ export function executionStatus(task, workers = []) {
     progress,
     terminal: TERMINAL.has(state),
     needsApproval: state === 'WAITING_FOR_APPROVAL',
+    needsHumanAction: state === 'WAITING_FOR_APPROVAL' || state === 'WAITING_PHYSICAL_UAT',
     journey: executionJourney(task),
   };
 }

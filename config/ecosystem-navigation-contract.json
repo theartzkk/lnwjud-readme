@@ -1,17 +1,92 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "authority": "KRUART_DESIGN_SYSTEM",
+  "productNavigationAuthority": "config/kruart-experience-contract.json",
   "rules": {
     "deadEndsForbidden": true,
     "everySecondarySurfaceRequiresEscape": true,
     "requiredEscapeActions": ["HOME", "BACK_OR_PARENT"],
     "mobileOperatorFirstClass": true,
-    "progressiveDisclosureRequiredForDiagnostics": true
+    "progressiveDisclosureRequiredForDiagnostics": true,
+    "singleNavigationManifestPerProduct": true,
+    "appShellRequired": true,
+    "frameworkIndependentContract": true,
+    "visualRegressionRequired": true,
+    "accessibilityGateRequired": true,
+    "safeAreaRequired": true,
+    "horizontalOverflowForbidden": true,
+    "mobilePrimaryDestinationMax": 5
+  },
+  "navigationSemantics": {
+    "back": "PREVIOUS_CONTEXT",
+    "home": "CURRENT_PRODUCT_HOME",
+    "exit": "PARENT_PRODUCT_OR_CONTEXT",
+    "current": "ARIA_CURRENT_PAGE",
+    "nativeLinksFirst": true,
+    "historyFallbackRequired": true
+  },
+  "interaction": {
+    "touchTargetPx": 44,
+    "primaryTouchTargetPx": 48,
+    "criticalTouchTargetPx": 52,
+    "focusNotObscured": true,
+    "safeAreaInsets": ["TOP", "RIGHT", "BOTTOM", "LEFT"]
+  },
+  "appShells": {
+    "PUBLIC_SITE": {
+      "regions": ["HEADER", "PRIMARY_NAV", "MAIN", "FOOTER"],
+      "mobileNavigation": "DISCLOSURE_OR_PRIMARY_LINKS",
+      "primaryDestinationMax": 5
+    },
+    "TEACHER_OPERATIONAL": {
+      "regions": ["TOP_APP_BAR", "MAIN", "PRIMARY_NAV"],
+      "mobileNavigation": "BOTTOM_NAV",
+      "desktopNavigation": "SIDEBAR_OR_TOP_NAV",
+      "primaryDestinationMax": 5
+    },
+    "STUDENT_APP": {
+      "regions": ["TOP_APP_BAR", "MAIN", "PRIMARY_NAV"],
+      "mobileNavigation": "BOTTOM_NAV",
+      "desktopNavigation": "SIDEBAR_OR_TOP_NAV",
+      "primaryDestinationMax": 5
+    },
+    "ADMIN_CONSOLE": {
+      "regions": ["HEADER", "SIDEBAR", "MAIN"],
+      "mobileNavigation": "DRAWER",
+      "desktopNavigation": "SIDEBAR",
+      "primaryDestinationMax": 5
+    }
   },
   "personas": {
     "STUDENT": ["TODAY", "MY_SCORE", "PENDING_WORK", "START"],
     "TEACHER": ["MY_CLASSES", "TODAY", "REVIEW_QUEUE", "REPORTS"],
     "ADMIN": ["STATUS", "USERS", "SYSTEMS", "REPORTS"]
   },
-  "sharedPrimitives": ["HEADER", "BACK", "HOME", "PRIMARY_ACTION", "STATUS", "ERROR_RECOVERY"]
+  "sharedPrimitives": [
+    "APP_SHELL",
+    "HEADER",
+    "BACK",
+    "HOME",
+    "NAV_ITEM",
+    "PRIMARY_ACTION",
+    "FORM_FIELD",
+    "DIALOG",
+    "SHEET",
+    "EMPTY_STATE",
+    "LOADING",
+    "STATUS",
+    "ERROR_RECOVERY"
+  ],
+  "progressiveEnhancement": {
+    "nativeLinksFirst": true,
+    "viewTransitionsOptional": true,
+    "popoverOptional": true,
+    "frameworkRewriteRequired": false
+  },
+  "qa": {
+    "visualMatrix": "design/qa/visual-matrix.json",
+    "accessibilityPolicy": "design/qa/accessibility-policy.md",
+    "uxAcceptance": "design/UX-ACCEPTANCE.md",
+    "canonicalViewportWidths": [390, 430, 820, 1366, 1440]
+  }
 }
