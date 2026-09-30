@@ -124,7 +124,8 @@ const AWH_RUNTIME_NAME_MARKER = `var APP_NAME = "${AWH_RUNTIME_APP_NAME}";`;
 const AWH_RUNTIME_MCP_NAME_MARKER = `var APP_NAME2 = "${AWH_RUNTIME_APP_NAME}";`;
 const AWH_RUNTIME_INSTRUCTIONS_MARKER = 'Continue using AWH Device Runtime tools';
 const AWH_RUNTIME_READY_MARKER = 'AWH Device Runtime MCP stdio ready';
-const AWH_RUNTIME_PERMISSION_MARKER = 'AWH_PERMISSION_BOOTSTRAP_V2';
+const AWH_RUNTIME_PERMISSION_MARKER = 'AWH_PERMISSION_BOOTSTRAP_V3';
+const AWH_RUNTIME_PERMISSION_V2_MARKER = 'var AWH_PERMISSION_BOOTSTRAP_V2 = true;';
 const AWH_RUNTIME_PERMISSION_V1_MARKER = 'var AWH_PERMISSION_BOOTSTRAP_V1 = true;';
 
 async function patchMacHeadlessRuntime(appRoot: string): Promise<void> {
@@ -138,7 +139,7 @@ async function patchMacHeadlessRuntime(appRoot: string): Promise<void> {
   const electronImportMarker = 'import { app, BrowserWindow as BrowserWindow2, clipboard, ClipboardItem, crashReporter, desktopCapturer, dialog, ipcMain, Menu, nativeImage, net, Notification, safeStorage, screen, shell, Tray } from "electron";';
   const requiredTokens = ['path72','mkdirSync8','lstatSync3','readFileSync9','writeFileSync6','randomBytes8','createExplicitKeySecretProtector','CheckpointKeyStore','execFileAsync10','wantsMcpStdio','FACTORY_RESET_APPLY_ARG'];
   if (!currentMain.includes(functionMarker) || requiredTokens.some((token) => !currentMain.includes(token))) throw new Error('DEVICE_RUNTIME_PATCH_CONTRACT_MISMATCH');
-  if (!currentMain.includes(AWH_RUNTIME_PERMISSION_MARKER) && !currentMain.includes(AWH_RUNTIME_PERMISSION_V1_MARKER) && !currentMain.includes(electronImportMarker)) throw new Error('DEVICE_RUNTIME_PERMISSION_IMPORT_CONTRACT_MISMATCH');
+  if (!currentMain.includes(AWH_RUNTIME_PERMISSION_MARKER) && !currentMain.includes(AWH_RUNTIME_PERMISSION_V2_MARKER) && !currentMain.includes(AWH_RUNTIME_PERMISSION_V1_MARKER) && !currentMain.includes(electronImportMarker)) throw new Error('DEVICE_RUNTIME_PERMISSION_IMPORT_CONTRACT_MISMATCH');
 
   const branch = `  if (process.env.AWH_DEVICE_RUNTIME_HEADLESS === "1") {
     const keyDirectory = path72.join(dataPath, "awh-runtime");
@@ -173,11 +174,15 @@ async function patchMacHeadlessRuntime(appRoot: string): Promise<void> {
     const mainPath = join(work, 'dist', 'main', 'main.js');
     let nextMain = currentMain;
     if (!nextMain.includes(AWH_HEADLESS_PATCH_MARKER)) nextMain = nextMain.replace(functionMarker, functionMarker + branch);
-    if (nextMain.includes(AWH_RUNTIME_PERMISSION_V1_MARKER)) {
+    for (const [legacyMarker, errorCode] of [
+      [AWH_RUNTIME_PERMISSION_V2_MARKER, 'DEVICE_RUNTIME_PERMISSION_V2_MIGRATION_CONTRACT_MISMATCH'],
+      [AWH_RUNTIME_PERMISSION_V1_MARKER, 'DEVICE_RUNTIME_PERMISSION_V1_MIGRATION_CONTRACT_MISMATCH'],
+    ] as const) {
+      if (!nextMain.includes(legacyMarker)) continue;
       const permissionEntry = 'var factoryResetApplyRequested = process.argv.includes(FACTORY_RESET_APPLY_ARG);';
-      const permissionStart = nextMain.indexOf(AWH_RUNTIME_PERMISSION_V1_MARKER);
+      const permissionStart = nextMain.indexOf(legacyMarker);
       const permissionEnd = nextMain.indexOf(permissionEntry, permissionStart);
-      if (permissionStart < 0 || permissionEnd < 0) throw new Error('DEVICE_RUNTIME_PERMISSION_V1_MIGRATION_CONTRACT_MISMATCH');
+      if (permissionStart < 0 || permissionEnd < 0) throw new Error(errorCode);
       nextMain = nextMain.slice(0, permissionStart) + nextMain.slice(permissionEnd);
     }
     if (!nextMain.includes(AWH_RUNTIME_PERMISSION_MARKER)) {
@@ -191,7 +196,7 @@ async function patchMacHeadlessRuntime(appRoot: string): Promise<void> {
       else if (!nextMain.includes(lockReplacement)) throw new Error('DEVICE_RUNTIME_PERMISSION_LOCK_CONTRACT_MISMATCH');
       const permissionEntry = 'var factoryResetApplyRequested = process.argv.includes(FACTORY_RESET_APPLY_ARG);';
       const permissionBootstrap = `
-var AWH_PERMISSION_BOOTSTRAP_V2 = true;
+var AWH_PERMISSION_BOOTSTRAP_V3 = true;
 var AWH_PERMISSION_STATUS_ARG = "--awh-permission-status";
 var AWH_PERMISSION_SETUP_ARG = "--awh-permission-setup";
 async function awhPermissionSnapshot(requestPermissions) {
@@ -213,11 +218,10 @@ async function awhRunPermissionBootstrap() {
   const requestPermissions = process.argv.includes(AWH_PERMISSION_SETUP_ARG);
   try {
     const result = await awhPermissionSnapshot(requestPermissions);
-    process.stdout.write(JSON.stringify(result) + "\\n");
-    app.exit(result.ready ? 0 : 3);
+    const exitCode = result.ready ? 0 : 3;
+    process.stdout.write(JSON.stringify(result) + "\\n", () => process.exit(exitCode));
   } catch (error46) {
-    process.stdout.write(JSON.stringify({ schemaVersion: 1, runtime: "AWH Device Runtime", ready: false, error: error46 instanceof Error ? error46.message : String(error46) }) + "\\n");
-    app.exit(4);
+    process.stdout.write(JSON.stringify({ schemaVersion: 1, runtime: "AWH Device Runtime", ready: false, error: error46 instanceof Error ? error46.message : String(error46) }) + "\\n", () => process.exit(4));
   }
 }
 if (process.argv.includes(AWH_PERMISSION_STATUS_ARG) || process.argv.includes(AWH_PERMISSION_SETUP_ARG)) {
