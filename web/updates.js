@@ -696,11 +696,16 @@ function render(){
 }
 
 function relativeLiveTime(value){
-  const at=Date.parse(value||'');if(!Number.isFinite(at))return 'กำลังรับสถานะสด';
+  const at=Date.parse(value||'');if(!Number.isFinite(at))return 'ยังไม่มี event ล่าสุด';
   const seconds=Math.max(0,Math.round((Date.now()-at)/1000));
   if(seconds<2)return 'อัปเดตเมื่อสักครู่';
   if(seconds<60)return 'อัปเดตเมื่อ '+seconds+' วินาทีที่แล้ว';
   return 'อัปเดตเมื่อ '+Math.max(1,Math.round(seconds/60))+' นาทีที่แล้ว';
+}
+
+function progressEventFresh(event,maxAgeMs=20000){
+  const at=Date.parse(event?.occurredAt||'');
+  return Number.isFinite(at)&&(Date.now()-at)>=0&&(Date.now()-at)<=maxAgeMs;
 }
 
 function hasActiveUpdate(){
@@ -753,20 +758,22 @@ function renderProgress(){
     ||active[0];
   const waiting=item?.state==='WAITING_FOR_APPROVAL';
   const queuedOnly=itemQueued(item);
-  const progress=queuedOnly?0:Math.max(0,Math.min(100,Number(item?.progressEvent?.progress??item?.progress??(waiting?5:localOperation?.progress??15))));
-  $('operation-progress-title').textContent=waiting?'รอยืนยันก่อนติดตั้ง':queuedOnly?('รอคิวอัปเดต '+(item?.name||localOperation?.name||'ระบบ')):('กำลังอัปเดต '+(item?.name||localOperation?.name||'ระบบ'));
+  const localForItem=!item||localOperation?.key===item?.key?localOperation:null;
+  const progress=queuedOnly?0:Math.max(0,Math.min(100,Number(item?.progressEvent?.progress??item?.progress??(waiting?5:localForItem?.progress??15))));
+  $('operation-progress-title').textContent=waiting?'รอยืนยันก่อนติดตั้ง':queuedOnly?('รอคิวอัปเดต '+(item?.name||localForItem?.name||'ระบบ')):('กำลังอัปเดต '+(item?.name||localForItem?.name||'ระบบ'));
   $('operation-progress-percent').textContent=queuedOnly?'รอคิว':Math.round(progress)+'%';
   $('operation-progress-bar').style.width=progress+'%';
   const event=item?.progressEvent||null;
+  const eventFresh=liveConnected&&progressEventFresh(event);
   $('operation-progress-message').textContent=ownerProgressMessage(item,event,waiting);
-  $('operation-progress-live').textContent=(liveConnected?'● สด · ':'สำรอง · ')+relativeLiveTime(event?.occurredAt||null);
+  $('operation-progress-live').textContent=(eventFresh?'● สด · ':(liveConnected?'● เชื่อมต่ออยู่ · ':'สำรอง · '))+relativeLiveTime(event?.occurredAt||null);
   if(queueHost){
     const names=queued.map((row)=>row.name).filter(Boolean);
     queueHost.hidden=names.length===0;
     queueHost.textContent=names.length===0?'':'รอคิว '+names.length+' ระบบ · '+names.join(' · ');
   }
   host.dataset.active=!waiting&&!queuedOnly&&progress<100?'true':'false';
-  host.dataset.live=liveConnected?'true':'false';
+  host.dataset.live=eventFresh?'true':'false';
   const thresholds=[10,28,58,86,100];
   [...$('operation-steps').children].forEach((step,index)=>{
     step.dataset.status=progress>=thresholds[index]?'done':(progress>=Math.max(0,thresholds[index]-25)?'active':'pending');
@@ -774,7 +781,7 @@ function renderProgress(){
 }
 
 async function updatePlatform(item){
-  localOperation={name:'VPS Platform',progress:6,message:'กำลังเตรียม VPS Platform รุ่นล่าสุด'};
+  localOperation={key:item.key,name:'VPS Platform',progress:6,message:'กำลังเตรียม VPS Platform รุ่นล่าสุด'};
   const request=await requestPlatformRelease(item.candidate,false);
   message('VPS Platform รับคำสั่งแล้ว กำลังตรวจความพร้อม สำรอง อัปเดต และ Verify');
   await refresh();
@@ -785,13 +792,13 @@ async function updateAwh(item){
   const detail=split
     ?'ตรวจพบ component บางส่วนอยู่คนละรุ่น ระบบจะใช้ release ล่าสุดเพื่อปรับ Runtime ให้สอดคล้อง แล้วจึง Verify ทั้งชุด'
     :'ระบบจะตรวจทุก gate สำรองข้อมูล ติดตั้ง และ Verify ก่อนเปลี่ยน Production';
-  localOperation={name:'AWH',progress:6,message:'กำลังเตรียม AWH รุ่นล่าสุด'};
+  localOperation={key:item.key,name:'AWH',progress:6,message:'กำลังเตรียม AWH รุ่นล่าสุด'};
   const request=await requestCoreRelease(item.candidate,false);
   message('AWH รับคำสั่งแล้ว กำลังตรวจความพร้อม สำรอง ติดตั้ง และ Verify');
   await refresh();
 }
 async function resumeLearnLab(item){
-  localOperation={name:'LearnLab',progress:6,message:'กำลังทำงานอัปเดตเดิมต่อโดยไม่สร้าง release ซ้ำ'};
+  localOperation={key:item.key,name:'LearnLab',progress:6,message:'กำลังทำงานอัปเดตเดิมต่อโดยไม่สร้าง release ซ้ำ'};
   await requestLearnLabRelease(item.candidateReleaseSha,item.candidateVersion);
   message('LearnLab รับคำสั่งแล้ว · กำลังทำงานเดิมต่อผ่าน release controller');
   await refresh();
@@ -799,7 +806,7 @@ async function resumeLearnLab(item){
 
 async function updateAssessment(item){
   const request=await requestAssessmentRelease(item.candidate,item.candidateVersion);
-  localOperation={name:'Assessment',progress:10,message:'กำลังเตรียม Staging'};
+  localOperation={key:item.key,name:'Assessment',progress:10,message:'กำลังเตรียม Staging'};
   message('Assessment รับคำสั่งแล้ว กำลังดำเนินการแบบ staging-first');
   await refresh();
 }
@@ -952,7 +959,7 @@ async function waitForAwhLineGateway(targetRevision,previousReleaseId){
     const revision=String(item.currentSourceRevision||'');
     const releaseChanged=!previousReleaseId||!item.currentReleaseId||String(item.currentReleaseId)!==String(previousReleaseId);
     if(item.state==='CURRENT'&&revision===targetRevision&&releaseChanged){render();return item;}
-    localOperation={name:'LINE OA · AWH Gateway',progress:35,message:'ติดตั้ง AWH LINE Gateway แล้ว กำลัง verify release ของ target นี้'};
+    localOperation={key:'awh-line-gateway',name:'LINE OA · AWH Gateway',progress:35,message:'ติดตั้ง AWH LINE Gateway แล้ว กำลัง verify release ของ target นี้'};
     render();
     await sleep(1500);
   }
@@ -973,12 +980,12 @@ async function waitForBayLineOa(target){
     const sourceSha=String(track?.sourceSha||'').toLowerCase();
     if(version===target.version&&sourceSha===String(target.sourceSha||'').toLowerCase()){
       bayLive=status;
-      localOperation={name:'LINE OA · BAY Excuse',progress:92,message:'BAY Excuse LINE OA verify ผ่านแล้ว'};
+      localOperation={key:'bay-excuse-line-oa',name:'LINE OA · BAY Excuse',progress:92,message:'BAY Excuse LINE OA verify ผ่านแล้ว'};
       await refreshBay();
       return track;
     }
     if(status?.preflight?.ready===false)throw Object.assign(new Error('BAY Excuse LINE OA preflight ไม่พร้อมหลังติดตั้ง'),{code:'LINE_OA_BAY_VERIFY_FAILED'});
-    localOperation={name:'LINE OA · BAY Excuse',progress:78,message:'กำลัง verify version และ source SHA ของ BAY Excuse LINE OA'};
+    localOperation={key:'bay-excuse-line-oa',name:'LINE OA · BAY Excuse',progress:78,message:'กำลัง verify version และ source SHA ของ BAY Excuse LINE OA'};
     renderProgress();
     await sleep(2000);
   }
@@ -998,14 +1005,14 @@ async function updateLineOaBundle(){
 
   let awhVerified=!awhNeedsUpdate;
   try{
-    localOperation={name:'LINE OA ทั้งชุด',progress:8,message:'เริ่มสอง release targets แบบแยก lifecycle'};
+    localOperation={key:null,name:'LINE OA ทั้งชุด',progress:8,message:'เริ่มสอง release targets แบบแยก lifecycle'};
     renderProgress();
 
     if(awhNeedsUpdate){
       const targetRevision=String(awh.candidateSourceRevision||'');
       if(!/^[0-9a-f-]{36}$/i.test(targetRevision))throw Object.assign(new Error('AWH LINE Gateway candidate revision ไม่ถูกต้อง'),{code:'LINE_OA_BOUNDARY_INVALID'});
       const previousReleaseId=awh.currentReleaseId||null;
-      localOperation={name:'LINE OA · AWH Gateway',progress:18,message:'กำลังอัปเดต AWH LINE Gateway ผ่าน Managed Hosting เท่านั้น'};
+      localOperation={key:'awh-line-gateway',name:'LINE OA · AWH Gateway',progress:18,message:'กำลังอัปเดต AWH LINE Gateway ผ่าน Managed Hosting เท่านั้น'};
       renderProgress();
       await managedSiteAction(awh.siteId,'deploy');
       await waitForAwhLineGateway(targetRevision,previousReleaseId);
@@ -1018,7 +1025,7 @@ async function updateLineOaBundle(){
     const bayTarget=currentBay?.release;
     if(currentBay?.state==='UPDATE_AVAILABLE'&&currentBay.actionable===true&&bayTarget){
       if(String(currentBay.releaseTrack)!=='line-oa')throw Object.assign(new Error('BAY LINE package ไม่อยู่ track line-oa'),{code:'LINE_OA_BOUNDARY_INVALID'});
-      localOperation={name:'LINE OA · BAY Excuse',progress:58,message:'AWH LINE verify ผ่านแล้ว · กำลังอัปเดต BAY Excuse LINE OA เท่านั้น'};
+      localOperation={key:'bay-excuse-line-oa',name:'LINE OA · BAY Excuse',progress:58,message:'AWH LINE verify ผ่านแล้ว · กำลังอัปเดต BAY Excuse LINE OA เท่านั้น'};
       renderProgress();
       const relay=await createBayRemoteInstallRelay({targetVersion:bayTarget.version,targetSha:bayTarget.sourceSha,packageSha256:bayTarget.packageSha256});
       try{await relayBayRemoteCommand(relay.endpoint,relay.relay);}
@@ -1026,7 +1033,7 @@ async function updateLineOaBundle(){
       await waitForBayLineOa(bayTarget);
     }
 
-    localOperation={name:'LINE OA ทั้งชุด',progress:100,message:'ตรวจครบแล้ว · สอง target ยังคงมี version/history/rollback แยกจากกัน'};
+    localOperation={key:null,name:'LINE OA ทั้งชุด',progress:100,message:'ตรวจครบแล้ว · สอง target ยังคงมี version/history/rollback แยกจากกัน'};
     message('LINE OA ทั้งชุดตรวจเสร็จแล้ว — แต่ละ target ถูกอัปเดตและ verify แยกกัน');
     await refresh();
   }catch(error){
@@ -1057,8 +1064,7 @@ function scheduleRefresh(){
   clearTimeout(refreshTimer);
   const active=hasActiveUpdate()||primaryItems().some((item)=>item.state==='REMOTE_CHECK_REQUIRED');
   syncLiveStream();
-  const liveFresh=liveConnected&&(Date.now()-liveUpdatedAt)<15000;
-  const delay=active?(liveFresh?60000:15000):60000;
+  const delay=active?15000:60000;
   refreshTimer=setTimeout(()=>{if(!document.hidden)void refresh();},delay);
 }
 async function refresh(){

@@ -361,8 +361,12 @@ final class HubControlPlaneService
                 $state = 'BASELINE_REQUIRED'; $reason = 'Source พร้อม แต่ Managed Hosting ยังไม่ได้ผูก Production baseline จึงยังไม่ one-click deploy จนกว่าจะยืนยันรุ่นปัจจุบัน';
             } elseif ($deployedRevision === null || !hash_equals((string) ($activeRevision ?? ''), $deployedRevision)) {
                 $state = 'UPDATE_AVAILABLE'; $reason = 'Project Vault มี revision ใหม่กว่ารุ่นที่เผยแพร่';
-            } elseif (!in_array((string) ($site['state'] ?? ''), ['READY','DRAFT'], true)) {
+            } elseif (in_array((string) ($site['state'] ?? ''), ['QUEUED','PROVISIONING'], true)) {
                 $state = 'UPDATING'; $reason = 'Hosting กำลังดำเนินการ';
+            } elseif (in_array((string) ($site['state'] ?? ''), ['FAILED','DEGRADED','DISABLED'], true)) {
+                $state = 'BLOCKED';
+                $lastEventMessage=is_string($site['lastEvent']['message']??null)?trim((string)$site['lastEvent']['message']):'';
+                $reason=$lastEventMessage!==''?$lastEventMessage:'Hosting ต้องตรวจสอบก่อนอัปเดตต่อ';
             }
             $isAwhLineGateway=$projectId==='124ae148-3ed1-4e45-8f50-75ff45a39e5c'||(string)($site['siteId']??'')==='ed911e13-ccfa-44d9-8214-6425cb252240';
             $currentAppVersion=$isAwhLineGateway?$this->projectVaultPackageVersion($projectId,$deployedRevision):null;

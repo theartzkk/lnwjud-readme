@@ -608,8 +608,13 @@ test('Update Center streams canonical release progress in real time with bounded
   assert.match(css,/\.operation-queue/);
   assert.match(script,/subscribeUpdateCenterLive/);
   assert.match(script,/progressEvent\?\.progress/);
-  assert.match(script,/const liveFresh=liveConnected&&\(Date\.now\(\)-liveUpdatedAt\)<15000/);
-  assert.match(script,/liveFresh\?60000:15000/);
+  assert.match(script,/function progressEventFresh/);
+  assert.match(script,/eventFresh=liveConnected&&progressEventFresh\(event\)/);
+  assert.match(script,/เชื่อมต่ออยู่/);
+  assert.match(script,/const delay=active\?15000:60000/);
+  assert.match(script,/localOperation\?\.key===item\?\.key/);
+  assert.match(script,/key:item\.key,name:'VPS Platform'/);
+  assert.match(script,/key:'awh-line-gateway',name:'LINE OA · AWH Gateway'/);
   assert.match(script,/if\(changed\)render\(\);else renderProgress\(\)/);
   assert.match(script,/relativeLiveTime/);
   assert.match(script,/stopLiveStream/);
@@ -656,6 +661,9 @@ test('Update Center keeps AWH LINE Gateway and BAY Excuse LINE OA as two permane
   assert.match(registry,/'historyScope'=>'PER_TARGET'/);
   assert.match(registry,/'rollbackScope'=>'PER_TARGET'/);
   assert.match(service,/'key'=>\$isAwhLineGateway\?'awh-line-gateway'/);
+  assert.match(service,/\['QUEUED','PROVISIONING'\].*\$state = 'UPDATING'/s);
+  assert.match(service,/\['FAILED','DEGRADED','DISABLED'\].*\$state = 'BLOCKED'/s);
+  assert.match(service,/\$lastEventMessage.*Hosting ต้องตรวจสอบก่อนอัปเดตต่อ/s);
   assert.match(service,/'bay-excuse-line-oa'.*'releaseTrack'=>'line-oa'.*'group'=>'line-oa'/s);
   assert.match(service,/managedSiteReleaseHistory/);
   assert.match(service,/projectVaultPackageVersion/);
