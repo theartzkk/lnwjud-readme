@@ -188,6 +188,14 @@ test('BAY monorepo surfaces independent BAY Core, LINE OA, Cooperative and PP re
   assert.match(registry,/'bay-pp'.*'packageTrack'=>'pp-center'/s);
   assert.match(registry,/'vps-platform'.*'visibility'=>'PRIMARY'/s);
   assert.match(registry,/bayReleaseTrackForPaths/);
+  for(const platformPath of [
+    'hub\/bin\/migrate-platform-maintenance\\.php',
+    'hub\/migrations\/024_platform_maintenance\\.sql',
+    'hub\/src\/HubPlatformMaintenanceMigration\\.php',
+    'hub\/src\/HubPlatformMaintenanceService\\.php',
+    'hub\/tests\/m25-platform-maintenance\\.php',
+    'test\/migration-sequence-contract\\.test\\.ts',
+  ]) assert.match(registry,new RegExp(platformPath));
   assert.match(registry,/return 'bay-cooperative'/);
   assert.match(registry,/return 'bay-pp'/);
   assert.match(registry,/return 'line-oa'/);
