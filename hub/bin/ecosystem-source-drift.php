@@ -21,7 +21,7 @@ $findings = [];
 $pending = [];
 $activeProjects = [];
 try {
-    $activeRows = $pdo->query("SELECT DISTINCT project_id FROM control_task_executions WHERE state IN ('LEASED','RUNNING') AND (lease_expires_at IS NULL OR datetime(lease_expires_at)>datetime('now'))")->fetchAll();
+    $activeRows = $pdo->query("SELECT DISTINCT project_id FROM control_task_executions WHERE state IN ('LEASED','RUNNING') AND required_capability<>'operator.project_mission' AND (lease_expires_at IS NULL OR datetime(lease_expires_at)>datetime('now'))")->fetchAll();
     foreach ($activeRows as $activeRow) $activeProjects[(string)$activeRow['project_id']] = true;
 } catch (Throwable) {
     $activeProjects = [];
@@ -233,7 +233,13 @@ if (is_array($governanceContract)) {
         }
     }
 }
+$platformBlockingFindings=array_values(array_filter($findings,static fn(string $item):bool=>
+    str_starts_with($item,'AWH ')
+    || str_starts_with($item,'Art’s Workspace Hub:')
+    || str_starts_with($item,'Repository governance ')
+));
+$externalFindings=array_values(array_filter($findings,static fn(string $item):bool=>!in_array($item,$platformBlockingFindings,true)));
 $state=$findings!==[]?'BLOCKED':($pending!==[]?'PENDING_RELEASE':'SYNCED');
-$result=['schemaVersion'=>2,'ok'=>$findings===[],'state'=>$state,'projects'=>count($rows),'projectionRepos'=>count($repos),'governanceRepositories'=>$governanceRepositories,'governanceEnforcement'=>$governanceContract['enforcementMode']??null,'continuousImprovementAuthority'=>$continuousPolicy['authority']??null,'continuousImprovementState'=>$continuousPolicy['lessonPromotion']['state']??null,'findings'=>$findings,'pending'=>$pending];
+$result=['schemaVersion'=>2,'ok'=>$findings===[],'state'=>$state,'projects'=>count($rows),'projectionRepos'=>count($repos),'governanceRepositories'=>$governanceRepositories,'governanceEnforcement'=>$governanceContract['enforcementMode']??null,'continuousImprovementAuthority'=>$continuousPolicy['authority']??null,'continuousImprovementState'=>$continuousPolicy['lessonPromotion']['state']??null,'findings'=>$findings,'platformBlockingFindings'=>$platformBlockingFindings,'externalFindings'=>$externalFindings,'pending'=>$pending];
 echo json_encode($result,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE).PHP_EOL;
 exit($findings===[]?0:2);

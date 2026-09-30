@@ -51,10 +51,10 @@ if not WEBPTR.is_symlink() or not CTLPTR.is_symlink():
 
 con=sqlite3.connect(DB)
 try:
-    active=con.execute("select count(*) from control_task_executions where state in ('LEASED','RUNNING')").fetchone()[0]
+    active=con.execute("select count(*) from control_task_executions where state in ('LEASED','RUNNING') and required_capability<>'operator.project_mission'").fetchone()[0]
     core_terminal={
         str(execution).lower():str(state)
-        for execution,state in con.execute("select execution_id,state from control_task_executions where required_capability='system.core.release' and state in ('COMPLETED','FAILED','CANCELLED')").fetchall()
+        for execution,state in con.execute("select execution_id,state from control_task_executions where required_capability in ('system.core.release','system.platform.release') and state in ('COMPLETED','FAILED','CANCELLED')").fetchall()
         if isinstance(execution,str) and UUID_RE.fullmatch(execution.lower())
     }
     if active:

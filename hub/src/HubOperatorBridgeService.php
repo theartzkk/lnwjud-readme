@@ -34,6 +34,7 @@ final class HubOperatorBridgeService
     private const MISSION_CAPABILITY='operator.project_mission';
     private const MISSION_OWNER='operator-mission';
     private const MISSION_LEASE_SECONDS=7200;
+    private const MISSION_STALE_SECONDS=300;
     private const PLATFORM_FREEZE_ENABLE_CONFIRMATION='ENABLE_PLATFORM_MAINTENANCE_FREEZE';
     private const PLATFORM_FREEZE_DISABLE_CONFIRMATION='DISABLE_PLATFORM_MAINTENANCE_FREEZE';
     private const STORAGE_TARGET_FREE_BYTES=6442450944;
@@ -157,6 +158,7 @@ final class HubOperatorBridgeService
         $project=$this->resolveProject($selector);
         $id=(string)$project['project_id'];
         (new HubExecutionLifecycleService($this->pdo))->reconcile($id,$at);
+        $this->reconcileStaleMissions($id,$at);
         $requestedResource=$capability===null?'CANONICAL:PROJECT':HubCapabilityRegistryService::mutationResourceForExecution($capability,'VPS');
         $active=$this->pdo->prepare("SELECT x.execution_id,x.task_id,x.project_id,x.state,x.mutation_scope,x.lease_expires_at,e.state AS execution_state,e.required_capability,e.executor_kind,t.state AS task_state,t.goal,p.name AS project_name FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id JOIN control_tasks t ON t.task_id=x.task_id JOIN projects p ON p.project_id=x.project_id WHERE x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY x.updated_at DESC LIMIT 80");
         $active->execute(['at'=>$at]);$allActiveRows=$active->fetchAll();
@@ -415,11 +417,18 @@ final class HubOperatorBridgeService
     private function missionStatus(string $selector,string $at): array
     {
         $project=$this->resolveProject($selector);$projectId=(string)$project['project_id'];
-        $this->reconcileExpiredMissions($projectId,$at);
+        $this->reconcileStaleMissions($projectId,$at);
         $missions=$this->activeProjectMissions($at,$projectId);
-        if($missions===[])return ['schemaVersion'=>2,'state'=>'IDLE','blocking'=>false,'decision'=>'CONTINUE','decisionAuthority'=>'AWH_EXECUTION_GATE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'activeMissionCount'=>0,'missions'=>[],'observedAt'=>$at];
-        $projected=array_map(fn(array $row):array=>$this->missionProjection($row),$missions);
-        return ['schemaVersion'=>2,'state'=>'COORDINATING','blocking'=>false,'decision'=>'CONTINUE_OR_JOIN','decisionAuthority'=>'AWH_EXECUTION_GATE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'activeMissionCount'=>count($projected),'mission'=>$projected[0],'missions'=>$projected,'rule'=>'PROJECT_MISSIONS_ARE_COORDINATION_ONLY','observedAt'=>$at];
+        if($missions!==[]){
+            $projected=array_map(fn(array $row):array=>$this->missionProjection($row),$missions);
+            return ['schemaVersion'=>2,'state'=>'COORDINATING','blocking'=>false,'decision'=>'CONTINUE_OR_JOIN','decisionAuthority'=>'AWH_EXECUTION_GATE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'activeMissionCount'=>count($projected),'resumableMissionCount'=>0,'mission'=>$projected[0],'missions'=>$projected,'rule'=>'PROJECT_MISSIONS_ARE_COORDINATION_ONLY','observedAt'=>$at];
+        }
+        $resumable=$this->resumableProjectMissions($projectId);
+        if($resumable!==[]){
+            $projected=array_map(fn(array $row):array=>$this->missionProjection($row),$resumable);
+            return ['schemaVersion'=>2,'state'=>'STALE_RESUMABLE','blocking'=>false,'decision'=>'RESUME_EXISTING','decisionAuthority'=>'AWH_EXECUTION_GATE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'activeMissionCount'=>0,'resumableMissionCount'=>count($projected),'mission'=>$projected[0],'missions'=>$projected,'rule'=>'STALE_MISSION_RESUMES_SAME_EXECUTION','observedAt'=>$at];
+        }
+        return ['schemaVersion'=>2,'state'=>'IDLE','blocking'=>false,'decision'=>'CONTINUE','decisionAuthority'=>'AWH_EXECUTION_GATE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'activeMissionCount'=>0,'resumableMissionCount'=>0,'missions'=>[],'observedAt'=>$at];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
@@ -428,7 +437,7 @@ final class HubOperatorBridgeService
         if(($request['confirmation']??null)!==self::MISSION_ACQUIRE_CONFIRMATION)throw new HubOperatorBridgeException('Explicit project mission confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
         $selector=self::text($request,'project',160);$goal=self::text($request,'goal',500);
         $project=$this->resolveProject($selector);$projectId=(string)$project['project_id'];
-        $this->reconcileExpiredMissions($projectId,$at);
+        $this->reconcileStaleMissions($projectId,$at);
         // Project missions are coordination leases, not writer locks. Until
         // resource-scoped parallel missions exist, one active mission per project
         // is the safe default. A repeated request joins and renews the existing
@@ -437,12 +446,27 @@ final class HubOperatorBridgeService
         if($existing!==[]){
             $current=$existing[0];
             $renewed=$this->missionRenew(['executionId'=>(string)$current['execution_id']],$at);
+            $scope=$this->missionScopeFromRequest($request,(string)$current['execution_id'],$projectId,$at);
             return [
                 'schemaVersion'=>2,'state'=>'JOINED','blocking'=>false,'decision'=>'JOIN_EXISTING',
                 'decisionAuthority'=>'AWH_EXECUTION_GATE',
                 'project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],
-                'requestedGoal'=>$goal,'mission'=>$renewed['mission'],
+                'requestedGoal'=>$goal,'mission'=>$renewed['mission'],'scope'=>$scope,
                 'rule'=>'ONE_ACTIVE_PROJECT_COORDINATION_MISSION',
+                'observedAt'=>$at,
+            ];
+        }
+        $resumable=$this->resumableProjectMissions($projectId);
+        if($resumable!==[]){
+            $current=$resumable[0];
+            $renewed=$this->missionRenew(['executionId'=>(string)$current['execution_id']],$at);
+            $scope=$this->missionScopeFromRequest($request,(string)$current['execution_id'],$projectId,$at);
+            return [
+                'schemaVersion'=>2,'state'=>'RESUMED','blocking'=>false,'decision'=>'RESUME_EXISTING',
+                'decisionAuthority'=>'AWH_EXECUTION_GATE',
+                'project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],
+                'requestedGoal'=>$goal,'mission'=>$renewed['mission'],'scope'=>$scope,
+                'rule'=>'STALE_MISSION_RESUMES_SAME_EXECUTION',
                 'observedAt'=>$at,
             ];
         }
@@ -453,23 +477,36 @@ final class HubOperatorBridgeService
         $authority=$this->acquireMutationAuthority($projectId,$goal,self::MISSION_CAPABILITY,['mode'=>'OPERATOR_PROJECT_MISSION','goal'=>$goal,'startedAt'=>$at,'storageState'=>$storage['state']??'UNKNOWN'], $at,self::MISSION_LEASE_SECONDS,self::MISSION_OWNER);
         $mission=$this->activeProjectMission($authority['executionId'],$at,$projectId,true);
         $joined=($authority['joined']??false)===true;
-        return ['schemaVersion'=>2,'state'=>$joined?'JOINED':'ACQUIRED','blocking'=>false,'decision'=>$joined?'JOIN_EXISTING':'CONTINUE','decisionAuthority'=>'AWH_EXECUTION_GATE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'requestedGoal'=>$joined?$goal:null,'mission'=>$this->missionProjection($mission),'rule'=>'ONE_ACTIVE_PROJECT_COORDINATION_MISSION','storage'=>$storage,'observedAt'=>$at];
+        $scope=$this->missionScopeFromRequest($request,(string)$authority['executionId'],$projectId,$at);
+        return ['schemaVersion'=>2,'state'=>$joined?'JOINED':'ACQUIRED','blocking'=>false,'decision'=>$joined?'JOIN_EXISTING':'CONTINUE','decisionAuthority'=>'AWH_EXECUTION_GATE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'requestedGoal'=>$joined?$goal:null,'mission'=>$this->missionProjection($mission),'scope'=>$scope,'rule'=>'ONE_ACTIVE_PROJECT_COORDINATION_MISSION','storage'=>$storage,'observedAt'=>$at];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
     private function missionRenew(array $request,string $at): array
     {
         $execution=self::text($request,'executionId',36);if(!self::uuidValid($execution))throw new HubOperatorBridgeException('Mission execution id is invalid','OPERATOR_REQUEST_INVALID');
-        $mission=$this->activeProjectMission($execution,$at,null,true);$lease=gmdate('c',strtotime($at)+self::MISSION_LEASE_SECONDS);
+        $mission=$this->activeProjectMission($execution,$at,null,false);$resuming=false;
+        if($mission===null){$mission=$this->resumableProjectMission($execution,null,true);$resuming=true;}
+        $lease=gmdate('c',strtotime($at)+self::MISSION_LEASE_SECONDS);
+        $checkpoint=self::missionCheckpoint((string)$mission['checkpoint_json'],[
+            'state'=>'RUNNING_HEALTHY','resumedAt'=>$resuming?$at:null,'lastHeartbeatAt'=>$at,'staleReason'=>null,
+        ]);
         try{
             $this->pdo->exec('BEGIN IMMEDIATE');
-            $this->pdo->prepare("UPDATE control_task_executions SET lease_expires_at=:lease,updated_at=:at WHERE execution_id=:execution AND state='RUNNING' AND lease_owner=:owner")->execute(['lease'=>$lease,'at'=>$at,'execution'=>$execution,'owner'=>self::MISSION_OWNER]);
-            $this->pdo->prepare("UPDATE control_tasks SET lease_expires_at=:lease,updated_at=:at WHERE task_id=:task AND state='RUNNING'")->execute(['lease'=>$lease,'at'=>$at,'task'=>$mission['task_id']]);
-            $this->pdo->prepare("UPDATE control_execution_envelopes SET lease_expires_at=:lease,updated_at=:at WHERE execution_id=:execution AND state='ACTIVE'")->execute(['lease'=>$lease,'at'=>$at,'execution'=>$execution]);
+            if($resuming){
+                $this->pdo->prepare("UPDATE control_task_executions SET state='RUNNING',lease_owner=:owner,lease_expires_at=:lease,checkpoint_json=:checkpoint,last_error_code=NULL,updated_at=:at WHERE execution_id=:execution AND state='WAITING_FOR_CAPABILITY'")->execute(['owner'=>self::MISSION_OWNER,'lease'=>$lease,'checkpoint'=>$checkpoint,'at'=>$at,'execution'=>$execution]);
+                $this->pdo->prepare("UPDATE control_tasks SET state='RUNNING',lease_expires_at=:lease,result_summary='Project mission resumed from durable checkpoint',failure_code=NULL,updated_at=:at WHERE task_id=:task AND state='WAITING_FOR_WORKER'")->execute(['lease'=>$lease,'at'=>$at,'task'=>$mission['task_id']]);
+                $this->pdo->prepare("UPDATE control_execution_envelopes SET state='ACTIVE',lease_expires_at=:lease,updated_at=:at WHERE execution_id=:execution AND state='WAITING'")->execute(['lease'=>$lease,'at'=>$at,'execution'=>$execution]);
+                $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:id,:task,'RUNNING',:progress,'Project mission resumed from durable checkpoint',:at)")->execute(['id'=>self::uuid(),'task'=>$mission['task_id'],'progress'=>(int)$mission['progress'],'at'=>$at]);
+            }else{
+                $this->pdo->prepare("UPDATE control_task_executions SET lease_expires_at=:lease,checkpoint_json=:checkpoint,updated_at=:at WHERE execution_id=:execution AND state='RUNNING' AND lease_owner=:owner")->execute(['lease'=>$lease,'checkpoint'=>$checkpoint,'at'=>$at,'execution'=>$execution,'owner'=>self::MISSION_OWNER]);
+                $this->pdo->prepare("UPDATE control_tasks SET lease_expires_at=:lease,updated_at=:at WHERE task_id=:task AND state='RUNNING'")->execute(['lease'=>$lease,'at'=>$at,'task'=>$mission['task_id']]);
+                $this->pdo->prepare("UPDATE control_execution_envelopes SET lease_expires_at=:lease,updated_at=:at WHERE execution_id=:execution AND state='ACTIVE'")->execute(['lease'=>$lease,'at'=>$at,'execution'=>$execution]);
+            }
             $this->pdo->exec('COMMIT');
         }catch(Throwable $error){try{$this->pdo->exec('ROLLBACK');}catch(Throwable){}throw new HubOperatorBridgeException('Project mission could not be renewed','OPERATOR_MISSION_RENEW_FAILED');}
         $fresh=$this->activeProjectMission($execution,$at,(string)$mission['project_id'],true);
-        return ['schemaVersion'=>1,'state'=>'RENEWED','mission'=>$this->missionProjection($fresh),'observedAt'=>$at];
+        return ['schemaVersion'=>2,'state'=>$resuming?'RESUMED':'RENEWED','mission'=>$this->missionProjection($fresh),'observedAt'=>$at];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
@@ -478,34 +515,52 @@ final class HubOperatorBridgeService
         if(($request['confirmation']??null)!==self::MISSION_RELEASE_CONFIRMATION)throw new HubOperatorBridgeException('Explicit project mission release confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
         $execution=self::text($request,'executionId',36);if(!self::uuidValid($execution))throw new HubOperatorBridgeException('Mission execution id is invalid','OPERATOR_REQUEST_INVALID');
         $outcome=self::text($request,'outcome',16);if(!in_array($outcome,['success','failure'],true))throw new HubOperatorBridgeException('Mission outcome is invalid','OPERATOR_REQUEST_INVALID');
-        $mission=$this->activeProjectMission($execution,$at,null,true);
-        $authority=['executionId'=>$execution,'taskId'=>(string)$mission['task_id'],'projectId'=>(string)$mission['project_id'],'leaseExpiresAt'=>(string)$mission['lease_expires_at']];
+        $mission=$this->activeProjectMission($execution,$at,null,false);
+        if($mission===null)$mission=$this->resumableProjectMission($execution,null,true);
+        $authority=['executionId'=>$execution,'taskId'=>(string)$mission['task_id'],'projectId'=>(string)$mission['project_id'],'leaseExpiresAt'=>(string)($mission['lease_expires_at']??'')];
         $this->releaseMutationAuthority($authority,$outcome==='success',$at);
-        return ['schemaVersion'=>1,'state'=>$outcome==='success'?'COMPLETED':'FAILED','executionId'=>$execution,'projectId'=>(string)$mission['project_id'],'observedAt'=>$at];
+        return ['schemaVersion'=>2,'state'=>$outcome==='success'?'COMPLETED':'FAILED','executionId'=>$execution,'projectId'=>(string)$mission['project_id'],'observedAt'=>$at];
     }
 
-    private function reconcileExpiredMissions(string $projectId,string $at): void
+    private function reconcileStaleMissions(string $projectId,string $at): void
     {
         if(!self::uuidValid($projectId))return;
-        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id FROM control_task_executions e WHERE e.project_id=:project AND e.required_capability=:capability AND e.lease_owner=:owner AND e.state='RUNNING' AND e.lease_expires_at IS NOT NULL AND e.lease_expires_at<=:at");
-        $q->execute(['project'=>$projectId,'capability'=>self::MISSION_CAPABILITY,'owner'=>self::MISSION_OWNER,'at'=>$at]);$rows=$q->fetchAll();if($rows===[])return;
+        $cutoff=gmdate('c',strtotime($at)-self::MISSION_STALE_SECONDS);
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.checkpoint_json,e.updated_at,e.lease_expires_at,t.progress FROM control_task_executions e JOIN control_execution_envelopes x ON x.execution_id=e.execution_id JOIN control_tasks t ON t.task_id=e.task_id WHERE e.project_id=:project AND e.required_capability=:capability AND e.lease_owner=:owner AND e.state='RUNNING' AND x.state='ACTIVE' AND (datetime(e.updated_at)<=datetime(:cutoff) OR (e.lease_expires_at IS NOT NULL AND datetime(e.lease_expires_at)<=datetime(:at)) OR (x.lease_expires_at IS NOT NULL AND datetime(x.lease_expires_at)<=datetime(:at)))");
+        $q->execute(['project'=>$projectId,'capability'=>self::MISSION_CAPABILITY,'owner'=>self::MISSION_OWNER,'cutoff'=>$cutoff,'at'=>$at]);$rows=$q->fetchAll();if($rows===[])return;
         try{
             $this->pdo->exec('BEGIN IMMEDIATE');
             foreach($rows as $row){
-                $this->pdo->prepare("UPDATE control_execution_envelopes SET state='RELEASED',lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution")->execute(['at'=>$at,'execution'=>$row['execution_id']]);
-                $this->pdo->prepare("UPDATE control_task_executions SET state='FAILED',lease_owner=NULL,lease_expires_at=NULL,last_error_code='MISSION_LEASE_EXPIRED',updated_at=:at WHERE execution_id=:execution")->execute(['at'=>$at,'execution'=>$row['execution_id']]);
-                $this->pdo->prepare("UPDATE control_tasks SET state='FAILED',lease_expires_at=NULL,progress=100,result_summary='Project mission lease expired safely',failure_code='MISSION_LEASE_EXPIRED',updated_at=:at WHERE task_id=:task")->execute(['at'=>$at,'task'=>$row['task_id']]);
+                $leaseExpired=is_string($row['lease_expires_at']??null)&&strtotime((string)$row['lease_expires_at'])!==false&&strtotime((string)$row['lease_expires_at'])<=strtotime($at);
+                $reason=$leaseExpired?'MISSION_LEASE_EXPIRED':'MISSION_HEARTBEAT_STALE';
+                $checkpoint=self::missionCheckpoint((string)($row['checkpoint_json']??'{}'),[
+                    'state'=>'STALE_RESUMABLE','staleAt'=>$at,'staleReason'=>$reason,'lastHeartbeatAt'=>(string)($row['updated_at']??''),
+                    'nextAutomaticAction'=>'RESUME_SAME_EXECUTION',
+                ]);
+                $this->pdo->prepare("UPDATE control_execution_envelopes SET state='WAITING',lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution AND state='ACTIVE'")->execute(['at'=>$at,'execution'=>$row['execution_id']]);
+                $this->pdo->prepare("UPDATE control_task_executions SET state='WAITING_FOR_CAPABILITY',lease_expires_at=NULL,checkpoint_json=:checkpoint,last_error_code='MISSION_STALE_RESUMABLE',updated_at=:at WHERE execution_id=:execution AND state='RUNNING'")->execute(['checkpoint'=>$checkpoint,'at'=>$at,'execution'=>$row['execution_id']]);
+                $this->pdo->prepare("UPDATE control_tasks SET state='WAITING_FOR_WORKER',lease_expires_at=NULL,result_summary='Project mission is stale but resumable from the same durable execution',failure_code='MISSION_STALE_RESUMABLE',updated_at=:at WHERE task_id=:task AND state='RUNNING'")->execute(['at'=>$at,'task'=>$row['task_id']]);
+                $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:id,:task,'WAITING_FOR_WORKER',:progress,'Project mission heartbeat became stale; same execution is resumable',:at)")->execute(['id'=>self::uuid(),'task'=>$row['task_id'],'progress'=>(int)($row['progress']??0),'at'=>$at]);
             }
             $this->pdo->exec('COMMIT');
-        }catch(Throwable $error){try{$this->pdo->exec('ROLLBACK');}catch(Throwable){}throw new HubOperatorBridgeException('Expired project mission could not be reconciled','OPERATOR_MISSION_RECONCILE_FAILED');}
+        }catch(Throwable $error){try{$this->pdo->exec('ROLLBACK');}catch(Throwable){}throw new HubOperatorBridgeException('Stale project mission could not be reconciled','OPERATOR_MISSION_RECONCILE_FAILED');}
     }
 
     /** @return list<array<string,mixed>> */
     private function activeProjectMissions(string $at,string $projectId): array
     {
         if(!self::uuidValid($projectId))return [];
-        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.project_id,e.lease_expires_at,e.checkpoint_json,e.updated_at,t.goal,t.progress,x.state AS envelope_state FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.required_capability=:capability AND e.lease_owner=:owner AND e.state='RUNNING' AND x.state='ACTIVE' AND e.project_id=:project AND (e.lease_expires_at IS NULL OR e.lease_expires_at>:at) AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) ORDER BY e.updated_at DESC,e.execution_id DESC LIMIT 40");
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.project_id,e.state AS execution_state,e.lease_expires_at,e.checkpoint_json,e.updated_at,t.state AS task_state,t.goal,t.progress,x.state AS envelope_state FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.required_capability=:capability AND e.lease_owner=:owner AND e.state='RUNNING' AND x.state='ACTIVE' AND e.project_id=:project AND (e.lease_expires_at IS NULL OR e.lease_expires_at>:at) AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) ORDER BY e.updated_at DESC,e.execution_id DESC LIMIT 40");
         $q->execute(['capability'=>self::MISSION_CAPABILITY,'owner'=>self::MISSION_OWNER,'project'=>$projectId,'at'=>$at]);
+        return array_values(array_filter($q->fetchAll(),static fn(mixed $row):bool=>is_array($row)));
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function resumableProjectMissions(string $projectId): array
+    {
+        if(!self::uuidValid($projectId))return [];
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.project_id,e.state AS execution_state,e.lease_expires_at,e.checkpoint_json,e.updated_at,t.state AS task_state,t.goal,t.progress,x.state AS envelope_state FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.required_capability=:capability AND e.lease_owner=:owner AND e.state='WAITING_FOR_CAPABILITY' AND t.state='WAITING_FOR_WORKER' AND x.state='WAITING' AND e.project_id=:project ORDER BY e.updated_at DESC,e.execution_id DESC LIMIT 40");
+        $q->execute(['capability'=>self::MISSION_CAPABILITY,'owner'=>self::MISSION_OWNER,'project'=>$projectId]);
         return array_values(array_filter($q->fetchAll(),static fn(mixed $row):bool=>is_array($row)));
     }
 
@@ -516,16 +571,61 @@ final class HubOperatorBridgeService
         $params=['capability'=>self::MISSION_CAPABILITY,'owner'=>self::MISSION_OWNER,'at'=>$at];
         if($executionId!==null){$where[]='e.execution_id=:execution';$params['execution']=$executionId;}
         if($projectId!==null){$where[]='e.project_id=:project';$params['project']=$projectId;}
-        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.project_id,e.lease_expires_at,e.checkpoint_json,e.updated_at,t.goal,t.progress,x.state AS envelope_state FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE ".implode(' AND ',$where)." ORDER BY e.updated_at DESC LIMIT 1");
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.project_id,e.state AS execution_state,e.lease_expires_at,e.checkpoint_json,e.updated_at,t.state AS task_state,t.goal,t.progress,x.state AS envelope_state FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE ".implode(' AND ',$where)." ORDER BY e.updated_at DESC LIMIT 1");
         $q->execute($params);$row=$q->fetch();if(is_array($row))return $row;
         if($required)throw new HubOperatorBridgeException('Project mission is not active','OPERATOR_MISSION_NOT_ACTIVE');
+        return null;
+    }
+
+    /** @return array<string,mixed>|null */
+    private function resumableProjectMission(?string $executionId,?string $projectId=null,bool $required=true): ?array
+    {
+        $where=["e.required_capability=:capability","e.lease_owner=:owner","e.state='WAITING_FOR_CAPABILITY'","t.state='WAITING_FOR_WORKER'","x.state='WAITING'"];
+        $params=['capability'=>self::MISSION_CAPABILITY,'owner'=>self::MISSION_OWNER];
+        if($executionId!==null){$where[]='e.execution_id=:execution';$params['execution']=$executionId;}
+        if($projectId!==null){$where[]='e.project_id=:project';$params['project']=$projectId;}
+        $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.project_id,e.state AS execution_state,e.lease_expires_at,e.checkpoint_json,e.updated_at,t.state AS task_state,t.goal,t.progress,x.state AS envelope_state FROM control_task_executions e JOIN control_tasks t ON t.task_id=e.task_id JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE ".implode(' AND ',$where)." ORDER BY e.updated_at DESC LIMIT 1");
+        $q->execute($params);$row=$q->fetch();if(is_array($row))return $row;
+        if($required)throw new HubOperatorBridgeException('Project mission is not resumable','OPERATOR_MISSION_NOT_ACTIVE');
         return null;
     }
 
     /** @param array<string,mixed> $row @return array<string,mixed> */
     private function missionProjection(array $row): array
     {
-        return ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>(string)$row['project_id'],'goal'=>(string)$row['goal'],'state'=>'COORDINATING','executionState'=>'RUNNING','progress'=>(int)$row['progress'],'leaseExpiresAt'=>$row['lease_expires_at'],'updatedAt'=>(string)$row['updated_at']];
+        $stale=(string)($row['execution_state']??'')==='WAITING_FOR_CAPABILITY'||(string)($row['envelope_state']??'')==='WAITING';
+        return ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>(string)$row['project_id'],'goal'=>(string)$row['goal'],'state'=>$stale?'STALE_RESUMABLE':'COORDINATING','executionState'=>$stale?'STALE_RESUMABLE':'RUNNING','progress'=>(int)$row['progress'],'leaseExpiresAt'=>$row['lease_expires_at'],'updatedAt'=>(string)$row['updated_at'],'ownerActionRequired'=>false,'nextAutomaticAction'=>$stale?'RESUME_SAME_EXECUTION':'CONTINUE'];
+    }
+
+    /** @param array<string,mixed> $request @return array<string,mixed>|null */
+    private function missionScopeFromRequest(array $request,string $missionExecutionId,string $projectId,string $at): ?array
+    {
+        if(!array_key_exists('releaseTrack',$request))return null;
+        $releaseTrack=self::key(self::text($request,'releaseTrack',80));
+        $scopeMode=is_string($request['scopeMode']??null)?strtoupper(trim((string)$request['scopeMode'])):'SINGLE_TRACK';
+        $impacted=[];
+        if(array_key_exists('impactedTracks',$request)){
+            if(!is_array($request['impactedTracks'])||!array_is_list($request['impactedTracks'])||count($request['impactedTracks'])>16)
+                throw new HubOperatorBridgeException('Mission impacted tracks are invalid','OPERATOR_REQUEST_INVALID');
+            foreach($request['impactedTracks'] as $track){
+                if(!is_string($track)||preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',strtolower(trim($track)))!==1)
+                    throw new HubOperatorBridgeException('Mission impacted tracks are invalid','OPERATOR_REQUEST_INVALID');
+                $impacted[]=strtolower(trim($track));
+            }
+        }
+        try{return (new HubScopeAuthorizer($this->pdo))->issueOrResolve($missionExecutionId,$projectId,$releaseTrack,$at,$scopeMode,$impacted);}
+        catch(HubScopeAuthorizerException $error){throw new HubOperatorBridgeException($error->getMessage(),$error->codeName);}
+    }
+
+    /** @param array<string,mixed> $patch */
+    private static function missionCheckpoint(string $raw,array $patch): string
+    {
+        try{$checkpoint=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){$checkpoint=[];}
+        if(!is_array($checkpoint)||array_is_list($checkpoint))$checkpoint=[];
+        $lifecycle=is_array($checkpoint['missionLifecycle']??null)&&!array_is_list($checkpoint['missionLifecycle'])?$checkpoint['missionLifecycle']:[];
+        foreach($patch as $key=>$value){if($value===null)unset($lifecycle[$key]);else $lifecycle[$key]=$value;}
+        $checkpoint['missionLifecycle']=$lifecycle;
+        return json_encode($checkpoint,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
@@ -629,6 +729,13 @@ final class HubOperatorBridgeService
             $releaseNotes=$this->releaseNotesForPromotion($repoReal,$repository,$expected,$target,$at);
             if(!HubUpdateTargetRegistry::releaseDetailsReady($releaseNotes,true))
                 throw new HubOperatorBridgeException('Release details are required before source promotion','OPERATOR_RELEASE_DETAILS_REQUIRED');
+            $changedPaths=array_values(array_filter(preg_split('/\r?\n/',$this->runGit($repoReal,['diff','--name-only',$expected,$target]))?:[],static fn(string $path):bool=>$path!==''));
+            try{
+                $scope=(new HubScopeAuthorizer($this->pdo))->forMission($missionId);
+                (new HubScopeAuthorizer($this->pdo))->assertSourceMutation($scope,$repository,(string)$releaseNotes['releaseTrack'],$changedPaths);
+            }catch(HubScopeAuthorizerException $error){
+                throw new HubOperatorBridgeException($error->getMessage(),$error->codeName);
+            }
             $this->persistSourcePromotionReleaseNotes((string)$authority['executionId'],$repository,$expected,$target,$bundleSha,$releaseNotes,$missionId,$at);
             $before=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($expected,self::gitSha($before)))throw new HubOperatorBridgeException('Canonical main moved during source promotion','OPERATOR_SOURCE_BASE_MOVED');
             $this->runGit($repoReal,['update-ref','refs/heads/main',$target,$expected]);

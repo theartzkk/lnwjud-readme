@@ -47,6 +47,10 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(remote, /SOURCE_DRIFT_VERIFY/);
   assert.match(remote, /ecosystem-source-drift\.php" "\$DB" \/srv\/awh-git "\$WEB_POINTER\/release\.json"/);
   assert.match(remote, /DEPLOY_DIAGNOSTIC=SOURCE_DRIFT_FINDINGS_/);
+  assert.match(remote, /DEPLOY_DIAGNOSTIC=SOURCE_DRIFT_EXTERNAL_/);
+  assert.match(remote, /platform_blocking_count=/);
+  assert.match(remote, /external_count=/);
+  assert.match(remote, /PLATFORM_HARDENING.*platform_blocking_count/s);
   assert.match(remote, /drift_count=/);
   assert.match(remote, /PRODUCTION_REF_CHANGED=0; PRODUCTION_REF_PREVIOUS=ABSENT; PREVIOUS_PRODUCTION_SHA=/);
   assert.match(remote, /production_ref_reconcile_live\(\)/);
@@ -76,6 +80,9 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(drift, /AWH canonical main ahead of runtime production/);
   assert.match(drift, /AWH main\/runtime production divergence/);
   assert.match(drift, /PENDING_RELEASE/);
+  assert.match(drift, /required_capability<>'operator\.project_mission'/);
+  assert.match(drift, /platformBlockingFindings/);
+  assert.match(drift, /externalFindings/);
   assert.match(drift, /AWH execution context runtime drift/);
   assert.match(drift, /AWH working context drift/);
   assert.match(drift, /AWH web source provenance drift/);

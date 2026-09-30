@@ -174,6 +174,26 @@ final class HubUpdateTargetRegistry
         return count($tracks)===1?(string)array_key_first($tracks):($paths===[]?null:'awh');
     }
 
+    /**
+     * Authoritative path ownership projection for mutation-time scope checks.
+     * @param list<string> $paths
+     * @return array{tracks:list<string>,sharedPaths:list<string>,ownedPaths:array<string,string>}
+     */
+    public static function pathOwnership(string $repository,array $paths): array
+    {
+        $repository=strtolower(trim($repository));$tracks=[];$shared=[];$owned=[];
+        if(!isset(self::repositories()[$repository]))return ['tracks'=>[],'sharedPaths'=>[],'ownedPaths'=>[]];
+        foreach($paths as $path){
+            if(!is_string($path)||$path===''||str_contains($path,"\0"))continue;
+            $track=$repository==='bay-excuse-x'?self::bayPathReleaseTrack($path):($repository==='awh'?self::awhPathReleaseTrack($path):(string)(self::repositories()[$repository]['releaseTrack']??$repository));
+            $owned[$path]=$track;
+            if($track==='shared'){$shared[]=$path;continue;}
+            $tracks[$track]=true;
+        }
+        $list=array_keys($tracks);sort($list,SORT_STRING);sort($shared,SORT_STRING);ksort($owned,SORT_STRING);
+        return ['tracks'=>$list,'sharedPaths'=>$shared,'ownedPaths'=>$owned];
+    }
+
     /** @param list<string> $paths */
     private static function bayReleaseTrackForPaths(array $paths): ?string
     {
@@ -387,5 +407,219 @@ final class HubUpdateTargetRegistry
     {
         foreach (self::repositories() as $repository=>$row) if ($row['project']===$name) return ['repository'=>$repository]+$row;
         return null;
+    }
+}
+
+
+final class HubScopeAuthorizerException extends RuntimeException
+{
+    public function __construct(string $message, public readonly string $codeName='SCOPE_AUTHORIZATION_FAILED')
+    {
+        parent::__construct($message);
+    }
+}
+
+final class HubScopeAuthorizer
+{
+    public function __construct(private readonly PDO $pdo)
+    {
+        $this->pdo->exec('PRAGMA foreign_keys=ON');
+        $this->pdo->exec('PRAGMA busy_timeout=5000');
+    }
+
+    /** @return array<string,mixed> */
+    public function issueOrResolve(
+        string $missionExecutionId,
+        string $projectId,
+        string $releaseTrack,
+        string $at,
+        string $scopeMode='SINGLE_TRACK',
+        array $impactedTracks=[]
+    ): array {
+        $missionExecutionId=self::uuid($missionExecutionId);
+        $projectId=self::uuid($projectId);
+        $releaseTrack=self::key($releaseTrack);
+        if(!in_array($scopeMode,['SINGLE_TRACK','MULTI_TRACK_MAINTENANCE'],true))
+            throw new HubScopeAuthorizerException('Scope mode is invalid','SCOPE_MODE_INVALID');
+
+        $track=HubUpdateTargetRegistry::byReleaseTrack($releaseTrack);
+        if(!is_array($track))throw new HubScopeAuthorizerException('Release track is not registered','RELEASE_TRACK_SCOPE_VIOLATION');
+        $repository=is_string($track['repository']??null)?self::key((string)$track['repository']):'';
+        if($repository==='')throw new HubScopeAuthorizerException('Release track has no repository scope','RELEASE_TRACK_SCOPE_VIOLATION');
+        $repo=HubUpdateTargetRegistry::repositories()[$repository]??null;
+        if(!is_array($repo))throw new HubScopeAuthorizerException('Repository scope is not registered','RELEASE_TRACK_SCOPE_VIOLATION');
+
+        $project=$this->projectByName((string)$repo['project']);
+        if(!hash_equals($projectId,(string)$project['project_id']))
+            throw new HubScopeAuthorizerException('Mission project does not own requested release track','PROJECT_SCOPE_VIOLATION');
+
+        $row=$this->mission($missionExecutionId,$projectId);
+        $checkpoint=self::decodeCheckpoint((string)$row['checkpoint_json']);
+        $existing=$checkpoint['scopeEnvelope']??null;
+        if(is_array($existing)&&!array_is_list($existing)){
+            $this->assertEnvelopeIntegrity($existing);
+            if(!hash_equals((string)$existing['projectId'],$projectId))
+                throw new HubScopeAuthorizerException('Mission project scope is immutable','PROJECT_SCOPE_VIOLATION');
+            if(!hash_equals((string)$existing['releaseTrack'],$releaseTrack))
+                throw new HubScopeAuthorizerException('Mission release track scope is immutable','RELEASE_TRACK_SCOPE_VIOLATION');
+            return $existing;
+        }
+
+        $impacted=array_values(array_unique(array_map([self::class,'key'],$impactedTracks)));
+        if($scopeMode==='SINGLE_TRACK')$impacted=[$releaseTrack];
+        else{
+            if(!in_array($releaseTrack,$impacted,true))$impacted[]=$releaseTrack;
+            sort($impacted,SORT_STRING);
+            if(count($impacted)<2)throw new HubScopeAuthorizerException('Multi-track maintenance needs explicit impacted tracks','MULTI_TRACK_MAINTENANCE_INVALID');
+            foreach($impacted as $candidate){
+                $cfg=HubUpdateTargetRegistry::byReleaseTrack($candidate);
+                if(!is_array($cfg)||($cfg['repository']??null)!==$repository)
+                    throw new HubScopeAuthorizerException('Multi-track maintenance must remain inside one shared repository','RELEASE_TRACK_SCOPE_VIOLATION');
+            }
+        }
+
+        $allowed=['TRACK:'.$releaseTrack];
+        if($scopeMode==='MULTI_TRACK_MAINTENANCE')$allowed[]='SHARED:'.$repository;
+        $resource=(string)($track['deployResource']??'CANONICAL:PROJECT');
+        $sourceResource='CANONICAL:SOURCE:'.strtoupper(str_replace('-','_',$repository)).':'.strtoupper(str_replace('-','_',$releaseTrack));
+        $base=[
+            'scopeVersion'=>1,
+            'missionExecutionId'=>$missionExecutionId,
+            'projectId'=>$projectId,
+            'repository'=>$repository,
+            'releaseTrack'=>$releaseTrack,
+            'packageTrack'=>is_string($track['packageTrack']??null)?(string)$track['packageTrack']:null,
+            'allowedPathClasses'=>$allowed,
+            'mutationResources'=>array_values(array_unique([$sourceResource,$resource])),
+            'deployAdapter'=>is_string($track['deploymentAdapter']??null)?(string)$track['deploymentAdapter']:(in_array($releaseTrack,['awh','vps-platform'],true)?'AWH_CONTROL_PLANE':null),
+            'runtimeTarget'=>is_string($track['productionRef']??null)?(string)$track['productionRef']:(is_string($track['domain']??null)?(string)$track['domain']:(is_string($track['packageTrack']??null)?(string)$track['packageTrack']:null)),
+            'scopeMode'=>$scopeMode,
+            'impactedTracks'=>$impacted,
+            'issuedAt'=>self::timestamp($at),
+        ];
+        $digest=hash('sha256',self::canonicalJson($base));
+        $envelope=['scopeId'=>'scope-'.substr($digest,0,32)]+$base+['scopeDigest'=>$digest];
+        $checkpoint['scopeEnvelope']=$envelope;
+
+        try{
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            $fresh=$this->pdo->prepare("SELECT checkpoint_json FROM control_task_executions WHERE execution_id=:execution AND project_id=:project AND required_capability='operator.project_mission' LIMIT 1");
+            $fresh->execute(['execution'=>$missionExecutionId,'project'=>$projectId]);
+            $current=$fresh->fetchColumn();
+            if(!is_string($current))throw new HubScopeAuthorizerException('Mission scope is unavailable','PROJECT_SCOPE_VIOLATION');
+            $currentDecoded=self::decodeCheckpoint($current);
+            if(is_array($currentDecoded['scopeEnvelope']??null)){
+                $this->pdo->exec('ROLLBACK');
+                $resolved=$currentDecoded['scopeEnvelope'];$this->assertEnvelopeIntegrity($resolved);
+                if(!hash_equals((string)$resolved['releaseTrack'],$releaseTrack))
+                    throw new HubScopeAuthorizerException('Mission release track scope is immutable','RELEASE_TRACK_SCOPE_VIOLATION');
+                return $resolved;
+            }
+            $update=$this->pdo->prepare("UPDATE control_task_executions SET checkpoint_json=:checkpoint,updated_at=:at WHERE execution_id=:execution AND project_id=:project AND required_capability='operator.project_mission'");
+            $update->execute(['checkpoint'=>json_encode($checkpoint,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),'at'=>self::timestamp($at),'execution'=>$missionExecutionId,'project'=>$projectId]);
+            if($update->rowCount()!==1)throw new HubScopeAuthorizerException('Mission scope could not be persisted','SCOPE_PERSIST_FAILED');
+            $this->pdo->exec('COMMIT');
+        }catch(Throwable $error){
+            try{$this->pdo->exec('ROLLBACK');}catch(Throwable){}
+            if($error instanceof HubScopeAuthorizerException)throw $error;
+            throw new HubScopeAuthorizerException('Mission scope could not be persisted','SCOPE_PERSIST_FAILED');
+        }
+        return $envelope;
+    }
+
+    /** @param list<string> $paths */
+    public function assertSourceMutation(array $scope,string $repository,string $releaseTrack,array $paths): void
+    {
+        $this->assertEnvelopeIntegrity($scope);
+        $repository=self::key($repository);$releaseTrack=self::key($releaseTrack);
+        if(!hash_equals((string)$scope['repository'],$repository))
+            throw new HubScopeAuthorizerException('Repository differs from active Mission scope','PROJECT_SCOPE_VIOLATION');
+        if(!hash_equals((string)$scope['releaseTrack'],$releaseTrack))
+            throw new HubScopeAuthorizerException('Release track differs from active Mission scope','RELEASE_TRACK_SCOPE_VIOLATION');
+        $ownership=HubUpdateTargetRegistry::pathOwnership($repository,$paths);
+        foreach($ownership['tracks'] as $track)if(!in_array($track,(array)$scope['impactedTracks'],true))
+            throw new HubScopeAuthorizerException('Path is owned by another release track','RELEASE_TRACK_SCOPE_VIOLATION');
+        if(($ownership['sharedPaths']??[])!==[]&&(string)$scope['scopeMode']!=='MULTI_TRACK_MAINTENANCE')
+            throw new HubScopeAuthorizerException('Shared paths require explicit multi-track maintenance scope','REQUIRE_MULTI_TRACK_MAINTENANCE');
+    }
+
+    public function readInspectionAllowed(string $activeProjectId,string $requestedProjectId): bool
+    {
+        self::uuid($activeProjectId);self::uuid($requestedProjectId);
+        return true;
+    }
+
+    /** @return array<string,mixed> */
+    public function forMission(string $missionExecutionId): array
+    {
+        $missionExecutionId=self::uuid($missionExecutionId);
+        $q=$this->pdo->prepare("SELECT checkpoint_json FROM control_task_executions WHERE execution_id=:execution AND required_capability='operator.project_mission' LIMIT 1");
+        $q->execute(['execution'=>$missionExecutionId]);$raw=$q->fetchColumn();
+        if(!is_string($raw))throw new HubScopeAuthorizerException('Mission scope is unavailable','PROJECT_SCOPE_VIOLATION');
+        $checkpoint=self::decodeCheckpoint($raw);$scope=$checkpoint['scopeEnvelope']??null;
+        if(!is_array($scope)||array_is_list($scope))throw new HubScopeAuthorizerException('Mission scope is missing','PROJECT_SCOPE_VIOLATION');
+        $this->assertEnvelopeIntegrity($scope);return $scope;
+    }
+
+    private function mission(string $execution,string $project): array
+    {
+        $q=$this->pdo->prepare("SELECT execution_id,project_id,checkpoint_json,state,lease_owner FROM control_task_executions WHERE execution_id=:execution AND project_id=:project AND required_capability='operator.project_mission' LIMIT 1");
+        $q->execute(['execution'=>$execution,'project'=>$project]);$row=$q->fetch();
+        if(!is_array($row)||!in_array((string)$row['state'],['RUNNING','WAITING_FOR_CAPABILITY'],true)||(string)$row['lease_owner']!=='operator-mission')
+            throw new HubScopeAuthorizerException('Mission execution cannot own a mutation scope','PROJECT_SCOPE_VIOLATION');
+        return $row;
+    }
+
+    private function projectByName(string $name): array
+    {
+        $q=$this->pdo->prepare('SELECT project_id,name FROM projects WHERE name=:name ORDER BY project_id LIMIT 2');
+        $q->execute(['name'=>$name]);$rows=$q->fetchAll();
+        if(count($rows)!==1)throw new HubScopeAuthorizerException('Release-track project is not unique','PROJECT_SCOPE_VIOLATION');
+        return $rows[0];
+    }
+
+    /** @param array<string,mixed> $scope */
+    private function assertEnvelopeIntegrity(array $scope): void
+    {
+        foreach(['scopeId','scopeVersion','missionExecutionId','projectId','repository','releaseTrack','allowedPathClasses','mutationResources','scopeMode','issuedAt','scopeDigest'] as $key)
+            if(!array_key_exists($key,$scope))throw new HubScopeAuthorizerException('Scope envelope is incomplete','SCOPE_INTEGRITY_FAILED');
+        $digest=(string)$scope['scopeDigest'];$copy=$scope;unset($copy['scopeDigest'],$copy['scopeId']);
+        if(!preg_match('/^[a-f0-9]{64}$/',$digest)||!hash_equals($digest,hash('sha256',self::canonicalJson($copy)))||!hash_equals((string)$scope['scopeId'],'scope-'.substr($digest,0,32)))
+            throw new HubScopeAuthorizerException('Scope envelope digest is invalid','SCOPE_INTEGRITY_FAILED');
+    }
+
+    private static function decodeCheckpoint(string $raw): array
+    {
+        try{$decoded=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){$decoded=[];}
+        return is_array($decoded)&&!array_is_list($decoded)?$decoded:[];
+    }
+
+    private static function canonicalJson(array $value): string
+    {
+        ksort($value,SORT_STRING);
+        foreach($value as $key=>$item)if(is_array($item)&&!array_is_list($item))$value[$key]=json_decode(self::canonicalJson($item),true,32,JSON_THROW_ON_ERROR);
+        return json_encode($value,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+    }
+
+    private static function uuid(string $value): string
+    {
+        $value=strtolower(trim($value));
+        if(preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/',$value)!==1)
+            throw new HubScopeAuthorizerException('Scope UUID is invalid','PROJECT_SCOPE_VIOLATION');
+        return $value;
+    }
+
+    private static function key(string $value): string
+    {
+        $value=strtolower(trim($value));
+        if(preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',$value)!==1)
+            throw new HubScopeAuthorizerException('Scope key is invalid','RELEASE_TRACK_SCOPE_VIOLATION');
+        return $value;
+    }
+
+    private static function timestamp(string $value): string
+    {
+        $time=strtotime($value);if($time===false)throw new HubScopeAuthorizerException('Scope time is invalid','SCOPE_INTEGRITY_FAILED');
+        return gmdate('c',$time);
     }
 }

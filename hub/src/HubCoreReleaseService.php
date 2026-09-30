@@ -89,6 +89,13 @@ final class HubCoreReleaseService
         $deploymentNotes=$this->deploymentReleaseNotes($latest);
         if(!HubUpdateTargetRegistry::releaseDetailsReady($deploymentNotes,true))
             throw new HubCoreReleaseException('Core release details are required before approval','CORE_RELEASE_DETAILS_REQUIRED');
+        $missionId=is_string($latest['missionExecutionId']??null)?strtolower((string)$latest['missionExecutionId']):'';
+        $artifactDigest=is_string($latest['artifactDigest']??null)?strtolower((string)$latest['artifactDigest']):'';
+        if(!self::uuidValid($missionId)||preg_match('/^[a-f0-9]{64}$/',$artifactDigest)!==1)
+            throw new HubCoreReleaseException('Release source is missing exact Mission/artifact scope','CORE_RELEASE_SCOPE_REQUIRED');
+        try{$scopeEnvelope=(new HubScopeAuthorizer($this->pdo))->issueOrResolve($missionId,self::PROJECT_ID,$this->releaseTrack,$at);}
+        catch(HubScopeAuthorizerException $error){throw new HubCoreReleaseException($error->getMessage(),$error->codeName);}
+        $scopeId=(string)$scopeEnvelope['scopeId'];
         $this->reconcileOrphanedRelease($at);
         $this->supersedeQueuedReleaseIfTargetMoved($sha,$at);
         $existing=$this->activeRelease();
@@ -106,8 +113,8 @@ final class HubCoreReleaseService
         $task=self::uuid();$execution=self::uuid();$approval=self::uuid();
         $notesJson=json_encode($deploymentNotes,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
         $notesSha=hash('sha256',$notesJson);
-        $checkpoint=['schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>$sha,'releaseMode'=>$this->releaseMode,'releaseTrack'=>$this->releaseTrack,'cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL','releaseNotesSha256'=>$notesSha];
-        $scope=['schemaVersion'=>1,'taskId'=>$task,'projectId'=>self::PROJECT_ID,'releaseSha'=>$sha,'releaseMode'=>$this->releaseMode,'releaseTrack'=>$this->releaseTrack,'cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL','risk'=>'CRITICAL','releaseNotesSha256'=>$notesSha];
+        $checkpoint=['schemaVersion'=>1,'mode'=>'CORE_RELEASE','releaseSha'=>$sha,'releaseMode'=>$this->releaseMode,'releaseTrack'=>$this->releaseTrack,'cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL','releaseNotesSha256'=>$notesSha,'missionExecutionId'=>$missionId,'scopeId'=>$scopeId,'artifactDigest'=>$artifactDigest];
+        $scope=['schemaVersion'=>1,'taskId'=>$task,'projectId'=>self::PROJECT_ID,'releaseSha'=>$sha,'releaseMode'=>$this->releaseMode,'releaseTrack'=>$this->releaseTrack,'cleanupTopology'=>$payload['cleanupTopology'],'transport'=>'LOCAL','risk'=>'CRITICAL','releaseNotesSha256'=>$notesSha,'missionExecutionId'=>$missionId,'scopeId'=>$scopeId,'artifactDigest'=>$artifactDigest];
         $goal='Deploy '.$this->displayName.' release '.substr($sha,0,12).' ผ่าน bounded VPS-native release controller';
         try{
             $this->pdo->exec('BEGIN IMMEDIATE');
@@ -126,7 +133,7 @@ final class HubCoreReleaseService
                 return $this->idempotentResponse($completed,$sha);
             }
             $attempt=$this->releaseAttemptCount($sha,(bool)$payload['cleanupTopology']);
-            $key=$this->releaseTrack.'.release.'.substr($sha,0,12).'.cleanup'.($payload['cleanupTopology']?'1':'0').'.attempt'.$attempt;
+            $key=self::PROJECT_ID.'.'.$this->releaseTrack.'.release.'.substr($sha,0,12).'.'.substr($artifactDigest,0,16).'.cleanup'.($payload['cleanupTopology']?'1':'0').'.attempt'.$attempt;
             $this->pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,:goal,'WAITING_FOR_WORKER',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$task,'user'=>$owner['user_id'],'project'=>self::PROJECT_ID,'goal'=>$goal,'key'=>$key,'at'=>$at]);
             $this->pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS',:capability,'QUEUED',NULL,NULL,0,NULL,:checkpoint,NULL,:at,:at)")->execute(['execution'=>$execution,'task'=>$task,'project'=>self::PROJECT_ID,'capability'=>$this->capability,'checkpoint'=>json_encode($checkpoint,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$at]);
             $this->pdo->prepare("INSERT INTO control_approvals(approval_id,task_id,action,scope_json,status,expires_at,decided_at) VALUES(:approval,:task,'deployment.approve',:scope,'APPROVED',:expires,:decided)")->execute(['approval'=>$approval,'task'=>$task,'scope'=>json_encode($scope,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'expires'=>gmdate('c',strtotime($at)+1800),'decided'=>$at]);
@@ -330,6 +337,10 @@ final class HubCoreReleaseService
             }
             if(!hash_equals($track,$this->releaseTrack))continue;
             $audit=['sha'=>$target,'previousSha'=>$base,'authority'=>'SOURCE_PROMOTION_AUDIT','releaseTrack'=>$track,'observedAt'=>(string)$row['updated_at']];
+            $missionId=is_string($checkpoint['missionExecutionId']??null)?strtolower((string)$checkpoint['missionExecutionId']):null;
+            $bundleSha=is_string($checkpoint['bundleSha256']??null)?strtolower((string)$checkpoint['bundleSha256']):null;
+            if(is_string($missionId)&&preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/',$missionId)===1)$audit['missionExecutionId']=$missionId;
+            if(is_string($bundleSha)&&preg_match('/^[a-f0-9]{64}$/',$bundleSha)===1)$audit['artifactDigest']=$bundleSha;
             if(is_array($notes))$audit['releaseNotes']=$notes;
             break;
         }
@@ -539,19 +550,21 @@ final class HubCoreReleaseService
         $legacy=['cleanupTopology','mode','releaseMode','releaseSha','schemaVersion','transport'];
         $legacyNotes=['cleanupTopology','mode','releaseMode','releaseNotesSha256','releaseSha','schemaVersion','transport'];
         $current=['cleanupTopology','mode','releaseMode','releaseNotesSha256','releaseSha','releaseTrack','schemaVersion','transport'];
+        $scoped=['artifactDigest','cleanupTopology','missionExecutionId','mode','releaseMode','releaseNotesSha256','releaseSha','releaseTrack','schemaVersion','scopeId','transport'];
         $actual=array_keys($v);sort($actual);
-        $legacySorted=$legacy;$legacyNotesSorted=$legacyNotes;$currentSorted=$current;
-        sort($legacySorted);sort($legacyNotesSorted);sort($currentSorted);
+        $legacySorted=$legacy;$legacyNotesSorted=$legacyNotes;$currentSorted=$current;$scopedSorted=$scoped;
+        sort($legacySorted);sort($legacyNotesSorted);sort($currentSorted);sort($scopedSorted);
         $mode=(string)($v['releaseMode']??'');
         $track=is_string($v['releaseTrack']??null)
             ? strtolower((string)$v['releaseTrack'])
             : match($mode){'AWH_CORE'=>'awh','PLATFORM_HARDENING'=>'vps-platform',default=>''};
         $mapping=($mode==='AWH_CORE'&&$track==='awh')||($mode==='PLATFORM_HARDENING'&&$track==='vps-platform');
         $legacyMode=in_array($mode,['AWH_CORE','PLATFORM_HARDENING'],true);
-        $keysOk=$actual===$currentSorted||(($actual===$legacySorted||$actual===$legacyNotesSorted)&&$legacyMode);
+        $keysOk=$actual===$currentSorted||$actual===$scopedSorted||(($actual===$legacySorted||$actual===$legacyNotesSorted)&&$legacyMode);
         $notesSha=$v['releaseNotesSha256']??null;
-        $notesOk=$actual!==$currentSorted||(is_string($notesSha)&&preg_match('/^[0-9a-f]{64}$/',$notesSha)===1);
-        $ok=$keysOk&&$notesOk&&$mapping&&($v['schemaVersion']??null)===1&&($v['mode']??null)==='CORE_RELEASE'&&($v['transport']??null)==='LOCAL'&&is_bool($v['cleanupTopology']??null)&&is_string($v['releaseSha']??null)&&preg_match('/^[0-9a-f]{40}$/',$v['releaseSha'])===1;
+        $notesOk=($actual!==$currentSorted&&$actual!==$scopedSorted)||(is_string($notesSha)&&preg_match('/^[0-9a-f]{64}$/',$notesSha)===1);
+        $scopeOk=$actual!==$scopedSorted||(self::uuidValid((string)($v['missionExecutionId']??''))&&preg_match('/^scope-[a-f0-9]{32}$/',(string)($v['scopeId']??''))===1&&preg_match('/^[a-f0-9]{64}$/',(string)($v['artifactDigest']??''))===1);
+        $ok=$keysOk&&$notesOk&&$scopeOk&&$mapping&&($v['schemaVersion']??null)===1&&($v['mode']??null)==='CORE_RELEASE'&&($v['transport']??null)==='LOCAL'&&is_bool($v['cleanupTopology']??null)&&is_string($v['releaseSha']??null)&&preg_match('/^[0-9a-f]{40}$/',$v['releaseSha'])===1;
         if(!$ok){if(!$strict)return [];throw new HubCoreReleaseException('Core release checkpoint is invalid','CORE_RELEASE_CHECKPOINT_INVALID');}
         $v['releaseTrack']=$track;
         return $v;
@@ -559,6 +572,7 @@ final class HubCoreReleaseService
 
     private static function keys(array $value,array $allowed): void { $actual=array_keys($value);sort($actual);sort($allowed);if($actual!==$allowed)throw new HubCoreReleaseException('Core release fields are invalid','CORE_RELEASE_INVALID'); }
     private static function time(string $value): string { if(strtotime($value)===false)throw new HubCoreReleaseException('Core release time is invalid','CORE_RELEASE_INVALID');return gmdate('c',strtotime($value)); }
+    private static function uuidValid(string $value): bool { return preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i',$value)===1; }
     private static function uuid(): string { $b=random_bytes(16);$b[6]=chr((ord($b[6])&15)|64);$b[8]=chr((ord($b[8])&63)|128);return vsprintf('%s%s-%s-%s-%s-%s%s%s',str_split(bin2hex($b),4)); }
     private function rollback(): void { try{$this->pdo->exec('ROLLBACK');}catch(Throwable){} }
 }

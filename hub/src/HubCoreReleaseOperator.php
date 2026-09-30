@@ -186,7 +186,7 @@ final class HubCoreReleaseOperator
             [$node,$npm]=$this->nodeToolchain();
             $home='/var/lib/awh-hub/core-release-home';$cache='/var/lib/awh-hub/npm-cache';
             $this->safeDirectory($home,0700);$this->safeDirectory($cache,0700);
-            $env=$this->releaseEnv($node,$workspace,$sha,$home,$cache,(int)($row['attempt_count']??0));
+            $env=$this->releaseEnv($node,$workspace,$sha,$home,$cache,(int)($row['attempt_count']??0),$executionId,$track);
             $this->event((string)$row['task_id'],'RUNNING',20,'Approved '.$label.' release อยู่บน canonical main lineage และกำลังเตรียม verified toolchain',$at);
             $this->run([$npm,'ci','--ignore-scripts','--no-audit','--no-fund','--prefer-offline'],['cwd'=>$workspace,'env'=>$env],900,'CORE_RELEASE_NPM_CI_FAILED');
             $dirty=trim($this->run(['/usr/bin/git','-C',$workspace,'status','--porcelain=v1','--untracked-files=all'],null,20,'CORE_RELEASE_WORKSPACE_VERIFY_FAILED')['out']);
@@ -226,16 +226,32 @@ final class HubCoreReleaseOperator
         if(!is_array($row)||(string)$row['status']!=='APPROVED'||!is_string($row['decided_at']))throw new HubCoreReleaseOperatorException('Owner approval is required','CORE_RELEASE_APPROVAL_REQUIRED');
         try{$scope=json_decode((string)$row['scope_json'],true,16,JSON_THROW_ON_ERROR);}catch(Throwable){throw new HubCoreReleaseOperatorException('Approval scope is invalid','CORE_RELEASE_APPROVAL_INVALID');}
         $current=['cleanupTopology','projectId','releaseMode','releaseNotesSha256','releaseSha','releaseTrack','risk','schemaVersion','taskId','transport'];
+        $scoped=['artifactDigest','cleanupTopology','missionExecutionId','projectId','releaseMode','releaseNotesSha256','releaseSha','releaseTrack','risk','schemaVersion','scopeId','taskId','transport'];
         $legacy=['cleanupTopology','projectId','releaseMode','releaseSha','risk','schemaVersion','taskId','transport'];
         $legacyNotes=['cleanupTopology','projectId','releaseMode','releaseNotesSha256','releaseSha','risk','schemaVersion','taskId','transport'];
-        $actual=is_array($scope)?array_keys($scope):[];sort($actual);sort($current);sort($legacy);sort($legacyNotes);
+        $actual=is_array($scope)?array_keys($scope):[];sort($actual);sort($current);sort($scoped);sort($legacy);sort($legacyNotes);
         $checkpointTrack=(string)($checkpoint['releaseTrack']??'');
         $legacyTrack=in_array($checkpointTrack,['awh','vps-platform'],true);
-        $shapeOk=$actual===$current||(($actual===$legacy||$actual===$legacyNotes)&&$legacyTrack);
+        $shapeOk=$actual===$current||$actual===$scoped||(($actual===$legacy||$actual===$legacyNotes)&&$legacyTrack);
         $track=is_string($scope['releaseTrack']??null)?strtolower((string)$scope['releaseTrack']):$checkpointTrack;
         $notesOk=!isset($checkpoint['releaseNotesSha256'])||hash_equals((string)$checkpoint['releaseNotesSha256'],(string)($scope['releaseNotesSha256']??$checkpoint['releaseNotesSha256']));
-        $valid=is_array($scope)&&$shapeOk&&$notesOk&&($scope['schemaVersion']??null)===1&&hash_equals((string)($scope['taskId']??''),$taskId)&&hash_equals((string)($scope['projectId']??''),HubCoreReleaseService::PROJECT_ID)&&hash_equals((string)($scope['releaseSha']??''),(string)$checkpoint['releaseSha'])&&hash_equals((string)($scope['releaseMode']??''),(string)($checkpoint['releaseMode']??''))&&hash_equals($track,(string)($checkpoint['releaseTrack']??''))&&($scope['transport']??null)==='LOCAL'&&($scope['risk']??null)==='CRITICAL'&&($scope['cleanupTopology']??null)===($checkpoint['cleanupTopology']??null);
+        $scopedCheckpoint=isset($checkpoint['scopeId'])||isset($checkpoint['artifactDigest'])||isset($checkpoint['missionExecutionId']);
+        $scopeBindingOk=!$scopedCheckpoint||(
+            preg_match('/^scope-[a-f0-9]{32}$/',(string)($checkpoint['scopeId']??''))===1
+            && preg_match('/^[a-f0-9]{64}$/',(string)($checkpoint['artifactDigest']??''))===1
+            && self::validUuid((string)($checkpoint['missionExecutionId']??''))
+            && hash_equals((string)$checkpoint['scopeId'],(string)($scope['scopeId']??''))
+            && hash_equals((string)$checkpoint['artifactDigest'],(string)($scope['artifactDigest']??''))
+            && hash_equals((string)$checkpoint['missionExecutionId'],(string)($scope['missionExecutionId']??''))
+        );
+        $valid=is_array($scope)&&$shapeOk&&$notesOk&&$scopeBindingOk&&($scope['schemaVersion']??null)===1&&hash_equals((string)($scope['taskId']??''),$taskId)&&hash_equals((string)($scope['projectId']??''),HubCoreReleaseService::PROJECT_ID)&&hash_equals((string)($scope['releaseSha']??''),(string)$checkpoint['releaseSha'])&&hash_equals((string)($scope['releaseMode']??''),(string)($checkpoint['releaseMode']??''))&&hash_equals($track,(string)($checkpoint['releaseTrack']??''))&&($scope['transport']??null)==='LOCAL'&&($scope['risk']??null)==='CRITICAL'&&($scope['cleanupTopology']??null)===($checkpoint['cleanupTopology']??null);
         if(!$valid)throw new HubCoreReleaseOperatorException('Approval scope does not match release checkpoint','CORE_RELEASE_APPROVAL_INVALID');
+        if($scopedCheckpoint){
+            try{$missionScope=(new HubScopeAuthorizer($this->pdo))->forMission((string)$checkpoint['missionExecutionId']);}
+            catch(HubScopeAuthorizerException $error){throw new HubCoreReleaseOperatorException($error->getMessage(),$error->codeName);}
+            if(!hash_equals((string)$missionScope['scopeId'],(string)$checkpoint['scopeId'])||!hash_equals((string)$missionScope['releaseTrack'],(string)$checkpoint['releaseTrack']))
+                throw new HubCoreReleaseOperatorException('Approval scope no longer matches immutable Mission scope','RELEASE_TRACK_SCOPE_VIOLATION');
+        }
         return $scope;
     }
 
@@ -253,15 +269,17 @@ final class HubCoreReleaseOperator
         throw new HubCoreReleaseOperatorException('Verified Node 22+ release toolchain is unavailable','CORE_RELEASE_TOOLCHAIN_UNAVAILABLE');
     }
 
-    private function releaseEnv(string $node,string $workspace,string $sha,string $home,string $cache,int $attemptCount): array
+    private function releaseEnv(string $node,string $workspace,string $sha,string $home,string $cache,int $attemptCount,string $executionId,string $releaseTrack): array
     {
         if($attemptCount<1||$attemptCount>999)throw new HubCoreReleaseOperatorException('Core release attempt identity is invalid','CORE_RELEASE_ATTEMPT_INVALID');
+        if(!self::validUuid($executionId)||!in_array($releaseTrack,['awh','vps-platform'],true))throw new HubCoreReleaseOperatorException('Core release evidence identity is invalid','CORE_RELEASE_CHECKPOINT_INVALID');
         $base=getenv();if(!is_array($base))$base=[];
         return array_merge($base,[
             'PATH'=>dirname($node).':/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
             'HOME'=>$home,'npm_config_cache'=>$cache,'NPM_CONFIG_AUDIT'=>'false','NPM_CONFIG_FUND'=>'false',
             'AWH_SOURCE_ROOT'=>$workspace,'AWH_DEPLOY_TARGET'=>'local','AWH_DEPLOY_TRANSPORT'=>'local',
             'AWH_RELEASE_COMMIT'=>$sha,'AWH_RELEASE_ATTEMPT'=>$attemptCount>1?'r'.$attemptCount:'',
+            'AWH_RELEASE_EXECUTION_ID'=>$executionId,'AWH_RELEASE_TRACK'=>$releaseTrack,
             'AWH_HUB_HOSTNAME'=>'kruart.online','AWH_PUBLIC_RELEASE_URL'=>'https://kruart.online/release.json',
             'AWH_OPERATOR_CLIENT'=>'/usr/local/bin/awh-operator','AWH_OWNER_AUTH_USERNAME'=>$this->ownerUsername(),'AWH_PRIVILEGED_LANE'=>'TYPED_OPERATOR',
             'LC_ALL'=>'C','LANG'=>'C',

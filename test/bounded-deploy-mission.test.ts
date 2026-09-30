@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { desktopImpactForFiles, desktopReleaseRequested, localOperatorInvocation, missionModeFromArgs, productionStateForRefs } from '../scripts/ops/bounded-deploy-mission.mjs';
+import { deployEvidenceFromResult, desktopImpactForFiles, desktopReleaseRequested, localOperatorInvocation, missionModeFromArgs, productionStateForRefs } from '../scripts/ops/bounded-deploy-mission.mjs';
 import { hydrateDesktopReleaseArtifacts, verifyDesktopReleaseArtifacts } from '../scripts/release/hydrate-desktop-release-artifacts.mjs';
 
 test('desktop impact detection still identifies native-agent-affecting source changes',()=>{
@@ -44,6 +44,20 @@ test('core/web release reuses verified desktop lineage unless desktop publicatio
   assert.equal(desktopReleaseRequested(['--platform-hardening']),false);
   assert.equal(desktopReleaseRequested(['--desktop-agent-release']),true);
   assert.equal(desktopReleaseRequested(['--platform-hardening','--desktop-agent-release']),true);
+});
+
+test('failed deploy evidence retains exact terminal stage and rollback proof after transient cleanup',()=>{
+  const evidence=deployEvidenceFromResult({
+    code:1,
+    tail:'DEPLOY_STAGE=PLATFORM_SENSOR_READY\nDEPLOY_STAGE=SOURCE_DRIFT_VERIFY\nDEPLOY_DIAGNOSTIC=SOURCE_DRIFT_FINDINGS_2\nDEPLOY_FAILED_AT=SOURCE_DRIFT_VERIFY\nROLLBACK=PASS\n',
+    stdoutTail:'DEPLOY_STAGE=SOURCE_DRIFT_VERIFY\nDEPLOY_FAILED_AT=SOURCE_DRIFT_VERIFY\nROLLBACK=PASS\n',
+    stderrTail:'DEPLOY_DIAGNOSTIC=SOURCE_DRIFT_FINDINGS_2\n',
+  });
+  assert.deepEqual(evidence,{
+    status:'FAIL',exitCode:1,stage:'SOURCE_DRIFT_VERIFY',failureCode:'SOURCE_DRIFT_FINDINGS_2',
+    stdoutTail:'DEPLOY_STAGE=SOURCE_DRIFT_VERIFY\nDEPLOY_FAILED_AT=SOURCE_DRIFT_VERIFY\nROLLBACK=PASS\n',
+    stderrTail:'DEPLOY_DIAGNOSTIC=SOURCE_DRIFT_FINDINGS_2\n',rollbackState:'PASS',
+  });
 });
 
 test('root core release demotes typed operator calls to the guarded awh-remote identity',()=>{

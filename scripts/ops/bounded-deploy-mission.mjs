@@ -37,12 +37,33 @@ export function desktopReleaseRequested(args){
 function run(command,args,{env={},forward=false,input=null}={}){
   return new Promise((resolve)=>{
     const child=spawn(command,args,{cwd:ROOT,env:{...process.env,...env},shell:false,stdio:['pipe','pipe','pipe']});
-    let tail='';
-    const ingest=(chunk,stream)=>{const text=chunk.toString();if(forward)stream.write(text);tail=(tail+text).slice(-262144);};
-    child.stdout.on('data',(c)=>ingest(c,process.stdout)); child.stderr.on('data',(c)=>ingest(c,process.stderr));
-    child.once('error',(error)=>resolve({code:1,tail,error})); child.once('close',(code)=>resolve({code:code??1,tail}));
+    let tail='';let stdoutTail='';let stderrTail='';
+    const ingest=(chunk,stream,kind)=>{const text=chunk.toString();if(forward)stream.write(text);tail=(tail+text).slice(-262144);if(kind==='stdout')stdoutTail=(stdoutTail+text).slice(-65536);else stderrTail=(stderrTail+text).slice(-65536);};
+    child.stdout.on('data',(c)=>ingest(c,process.stdout,'stdout')); child.stderr.on('data',(c)=>ingest(c,process.stderr,'stderr'));
+    child.once('error',(error)=>resolve({code:1,tail,stdoutTail,stderrTail,error})); child.once('close',(code)=>resolve({code:code??1,tail,stdoutTail,stderrTail}));
     if(input===null)child.stdin.end();else child.stdin.end(String(input));
   });
+}
+
+export function deployEvidenceFromResult(result){
+  const combined=String(result?.tail??'').slice(-32768);
+  const stdoutTail=String(result?.stdoutTail??'').slice(-16384);
+  const stderrTail=String(result?.stderrTail??'').slice(-16384);
+  const lines=combined.split(/\r?\n/).filter(Boolean);
+  const lastValue=(prefix)=>{for(let i=lines.length-1;i>=0;i--){if(lines[i].startsWith(prefix))return lines[i].slice(prefix.length).slice(0,240);}return null;};
+  const failedAt=lastValue('DEPLOY_FAILED_AT=');
+  const lastStage=lastValue('DEPLOY_STAGE=');
+  const diagnostic=lastValue('DEPLOY_DIAGNOSTIC=');
+  const rollback=lastValue('ROLLBACK=');
+  const passed=Number(result?.code??1)===0&&combined.includes('DEPLOY_RESULT=PASS');
+  return {
+    status:passed?'PASS':'FAIL',
+    exitCode:Number.isInteger(result?.code)?result.code:null,
+    stage:failedAt??lastStage??'UNKNOWN',
+    failureCode:passed?null:(diagnostic??(failedAt?`DEPLOY_FAILED_AT:${failedAt}`:'DEPLOY_FAILED')),
+    stdoutTail,stderrTail,
+    rollbackState:rollback??(passed?'NOT_REQUIRED':'UNKNOWN'),
+  };
 }
 
 async function git(args){const r=await run('git',args);if(r.code!==0)throw new Error(`GIT_FAILED:${args[0]}`);return r.tail.trim();}
@@ -292,9 +313,12 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   const unknown=rawArgs.filter((a)=>!['--approve','--cleanup-topology','--desktop-agent-release',...DEPLOY_MODES].includes(a));
   if(unknown.length) throw new Error(`MISSION_ARGUMENT_INVALID:${unknown[0]}`);
   const releaseTrack=mode==='--platform-hardening'?'vps-platform':'awh';
-  missionContext={projectId:AWH_PROJECT_ID,releaseTrack};
+  const executionId=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(process.env.AWH_RELEASE_EXECUTION_ID??'')?String(process.env.AWH_RELEASE_EXECUTION_ID).toLowerCase():null;
+  const scopeId=/^[a-z0-9][a-z0-9._:-]{7,127}$/i.test(process.env.AWH_SCOPE_ID??'')?String(process.env.AWH_SCOPE_ID):null;
+  const startedAt=new Date().toISOString();
+  missionContext={projectId:AWH_PROJECT_ID,releaseTrack,executionId,scopeId,startedAt};
   const head=(await git(['rev-parse','HEAD'])).toLowerCase(); const main=(await git(['rev-parse','refs/heads/main'])).toLowerCase();
-  missionContext={projectId:AWH_PROJECT_ID,releaseTrack,releaseSha:head,canonicalMainAtStart:main};
+  missionContext={projectId:AWH_PROJECT_ID,releaseTrack,executionId,scopeId,startedAt,releaseSha:head,canonicalMainAtStart:main};
   if(!SHA.test(head)||!SHA.test(main)) throw new Error('MISSION_SOURCE_IDENTITY_INVALID');
   if(head!==main){
     if(!trackRelease)throw new Error('MISSION_HEAD_NOT_CANONICAL_MAIN');
@@ -348,20 +372,22 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   const rehearsal=await run(process.execPath,[GUARDED,'--dry-run',...common],{env,forward:true});
   if(rehearsal.code!==0||!rehearsal.tail.includes('_DRY_RUN=PASS')) throw new Error('MISSION_REHEARSAL_FAILED');
   console.log('MISSION_REHEARSAL=PASS');
-  const baseCapsule={schemaVersion:1,kind:'release-verification',baseSha:production,releaseSha:head,changedFileCount:changed.length,intelligence:plan,evalScenarios,qa,rehearsal:'PASS',desktopMode:reuse?'REUSE_VERIFIED':'NEW_ARTIFACTS',createdAt:new Date().toISOString()};
+  const baseCapsule={schemaVersion:1,kind:'release-verification',executionId,scopeId,projectId:AWH_PROJECT_ID,releaseTrack,baseSha:production,releaseSha:head,changedFileCount:changed.length,changedPaths:missionContext.changedPaths??[],intelligence:plan,evalScenarios,qa,rehearsal:'PASS',desktopMode:reuse?'REUSE_VERIFIED':'NEW_ARTIFACTS',startedAt,createdAt:new Date().toISOString()};
   if(!approved){await saveCapsule({...baseCapsule,state:'READY_FOR_APPROVAL',result:'REVIEW'});console.log('MISSION_STATE=READY_FOR_APPROVAL');console.log('MISSION_APPROVAL_REQUIRED=1');return;}
   console.log('MISSION_APPROVALS_CONSUMED=1');
   await assertCanonicalMainStable(main);
   const deploy=await run(process.execPath,[GUARDED,'--deploy','--approve',...common],{env,forward:true});
+  const deployEvidence=deployEvidenceFromResult(deploy);
+  missionContext.deploy=deployEvidence;
   if(deploy.code!==0||!deploy.tail.includes('DEPLOY_RESULT=PASS')||!deploy.tail.includes('DEPLOY_STAGE=BACKUP_VERIFIED')||!deploy.tail.includes('DEPLOY_STAGE=SOURCE_DRIFT_VERIFIED')) throw new Error('MISSION_DEPLOY_FAILED');
-  missionContext.deploy={status:'PASS',backup:'PASS',sourceDrift:'PASS'};
+  missionContext.deploy={...deployEvidence,status:'PASS',backup:'PASS',sourceDrift:'PASS',failureCode:null};
   if(missionContext.registryAvailable!==true){const registry=await operatorRequest('verification-regressions',{changedPaths:missionContext.changedPaths??[]});if(!registry)throw new Error('MISSION_DURABLE_REGISTRY_UNAVAILABLE');missionContext.registryAvailable=true;console.log('MISSION_DURABLE_REGISTRY=READY_AFTER_CUTOVER');}
   const url=process.env.AWH_PUBLIC_RELEASE_URL||'https://kruart.online/release.json';
   const response=await fetch(url,{cache:'no-store'}); if(!response.ok)throw new Error('MISSION_PUBLIC_VERIFY_UNAVAILABLE');
   const release=await response.json(); if(release?.sourceSha!==head||release?.sourceState!=='COMMITTED')throw new Error('MISSION_PUBLIC_REVISION_MISMATCH');
   missionContext.publicRelease={releaseId:release.releaseId??null,sourceSha:release.sourceSha,sourceState:release.sourceState};
   const journeys=await goldenJourneys(plan,head,deploy.tail,release,url);
-  await saveCapsule({...baseCapsule,state:'COMPLETED',result:'PASS',deploy:{status:'PASS',backup:'PASS',sourceDrift:'PASS'},publicRelease:{releaseId:release.releaseId??null,sourceSha:release.sourceSha,sourceState:release.sourceState},goldenJourneys:journeys,completedAt:new Date().toISOString()});
+  await saveCapsule({...baseCapsule,state:'COMPLETED',result:'PASS',deploy:missionContext.deploy,publicRelease:{releaseId:release.releaseId??null,sourceSha:release.sourceSha,sourceState:release.sourceState},goldenJourneys:journeys,completedAt:new Date().toISOString()});
   console.log('MISSION_BACKUP=PASS'); console.log('MISSION_SOURCE_DRIFT=PASS'); console.log('MISSION_PUBLIC_VERIFY=PASS'); console.log('MISSION_STATE=COMPLETED'); console.log('MISSION_RESULT=PASS');
 }
 
