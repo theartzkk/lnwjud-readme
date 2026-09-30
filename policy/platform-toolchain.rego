@@ -21,3 +21,13 @@ deny contains msg if {
   input.futureAdapters[name] != "contract-only"
   msg := sprintf("%s must remain contract-only", [name])
 }
+
+deny contains msg if {
+  input.rules.ansibleInstallAuthority != "uv"
+  msg := "Ansible must remain owned by uv"
+}
+
+deny contains msg if {
+  input.rules.resticRole != "offsite-mirror-only"
+  msg := "Restic must remain a mirror layer, not a backup authority"
+}

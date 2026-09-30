@@ -37,6 +37,8 @@
     "noParallelDeployEngine": true,
     "noParallelScheduler": true,
     "noParallelAuth": true,
-    "productionSigningRequiresExistingVaultCredential": true
+    "productionSigningRequiresExistingVaultCredential": true,
+    "ansibleInstallAuthority": "uv",
+    "resticRole": "offsite-mirror-only"
   }
 }

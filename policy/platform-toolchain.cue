@@ -17,5 +17,7 @@ package platform
     noParallelScheduler: true
     noParallelAuth: true
     productionSigningRequiresExistingVaultCredential: true
+    ansibleInstallAuthority: "uv"
+    resticRole: "offsite-mirror-only"
   }
 }

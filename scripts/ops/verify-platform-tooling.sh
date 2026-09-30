@@ -25,6 +25,8 @@ assert d["schemaVersion"]==1
 assert d["authority"]=="AWH_PLATFORM_TOOLCHAIN"
 assert d["rules"]["singleAuthority"] is True
 assert d["futureAdapters"]["openobserve"]=="contract-only"
+assert d["rules"]["ansibleInstallAuthority"]=="uv"
+assert d["rules"]["resticRole"]=="offsite-mirror-only"
 print("TOOLCHAIN_LOCK=PASS tools=%d" % len(d["tools"]))
 PY
 fi
@@ -33,6 +35,14 @@ fi
 "$LB/syft" version | head -1
 "$LB/conftest" --version | head -1
 "$LB/ansible" --version | head -1
+INSTALL_ROOT=$(dirname "$LB")
+test "$(readlink -f "$LB/ansible")" = "$INSTALL_ROOT/share/uv/tools/ansible/bin/ansible"
+UV_TOOL_BIN_DIR="$INSTALL_ROOT/uv-bin" "$LB/uv" tool list | grep -Fq "ansible v14.4.0"
+if "$LB/mise" ls ansible 2>/dev/null | grep -q .; then
+  echo ANSIBLE_AUTHORITY_CONFLICT
+  exit 1
+fi
+"$LB/restic" version | grep -Fq "restic 0.19.1"
 "$LB/cue" vet "$LOCK" "$ROOT/policy/platform-toolchain.cue" -d "#Lock"
 "$LB/conftest" test "$LOCK" --policy "$ROOT/policy/platform-toolchain.rego" --output stdout
 OPA_DENY=$("$LB/opa" eval --format raw -i "$LOCK" -d "$ROOT/policy/platform-toolchain.rego" "count(data.main.deny)")
