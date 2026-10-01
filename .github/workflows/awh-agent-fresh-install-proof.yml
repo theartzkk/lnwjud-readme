@@ -119,7 +119,7 @@ jobs:
           "AWH_APP_PID=$($app.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           $readyPath = Join-Path $env:AWH_FRESH_DATA 'device-runtime-readiness.json'
           $ready = $null
-          for ($i = 0; $i -lt 180; $i++) {
+          for ($i = 0; $i -lt 360; $i++) {
             if (Test-Path $readyPath) {
               try {
                 $ready = Get-Content $readyPath -Raw | ConvertFrom-Json
@@ -127,9 +127,23 @@ jobs:
               } catch {}
             }
             if ($app.HasExited) { throw "AWH Agent exited before runtime bootstrap completed: $($app.ExitCode)" }
+            if (($i % 15) -eq 0) {
+              $engine = Test-Path (Join-Path $env:LOCALAPPDATA "AWH\Engines\device-runtime\$env:EXPECTED_RUNTIME_VERSION\AWH Device Runtime.exe")
+              $system = Test-Path (Join-Path $env:LOCALAPPDATA 'AWH\SystemRuntime\runtime\node_modules\@wonderwhy-er\desktop-commander\dist\index.js')
+              $nodeCount = @(Get-ChildItem (Join-Path $env:LOCALAPPDATA 'AWH\Toolchain') -Recurse -Filter node.exe -File -ErrorAction SilentlyContinue).Count
+              Write-Host "BOOTSTRAP_PROGRESS iteration=$i engine=$engine systemMcp=$system managedNode=$nodeCount"
+            }
             Start-Sleep -Seconds 2
           }
-          if (-not $ready) { throw 'Device Runtime readiness file was not produced' }
+          if (-not $ready) {
+            Write-Host '=== FRESH DATA DIR ==='
+            Get-ChildItem $env:AWH_FRESH_DATA -Recurse -ErrorAction SilentlyContinue | Select-Object -First 120 FullName,Length | Format-Table -AutoSize | Out-Host
+            Write-Host '=== MANAGED AWH ROOT ==='
+            Get-ChildItem (Join-Path $env:LOCALAPPDATA 'AWH') -Recurse -ErrorAction SilentlyContinue | Select-Object -First 160 FullName,Length | Format-Table -AutoSize | Out-Host
+            $defaultReady = Join-Path $env:USERPROFILE '.awh\device-runtime-readiness.json'
+            if (Test-Path $defaultReady) { Write-Host '=== DEFAULT READINESS ==='; Get-Content $defaultReady -Raw | Write-Host }
+            throw 'Device Runtime readiness file was not produced within the bounded fresh-bootstrap window'
+          }
           $ready | ConvertTo-Json -Depth 8 | Write-Host
           if ($ready.state -ne 'READY' -or $ready.verified -ne $true -or $ready.version -ne $env:EXPECTED_RUNTIME_VERSION) { throw 'Fresh bootstrap did not reach READY/verified state' }
           $runtimeExe = Join-Path $env:LOCALAPPDATA "AWH\Engines\device-runtime\$env:EXPECTED_RUNTIME_VERSION\AWH Device Runtime.exe"
