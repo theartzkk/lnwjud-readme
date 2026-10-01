@@ -415,6 +415,7 @@ function ownerProgressMessage(item,event,waiting){
 }
 function reconcileTargetFeedback(item){
   if(!item?.key||!targetFeedback.has(item.key))return;
+  if(item.state==='UPDATE_AVAILABLE'&&item.actionable===true&&!item.taskId&&!item.approvalId){targetFeedback.delete(item.key);return;}
   if(item.state==='CURRENT')targetFeedback.set(item.key,{text:'อัปเดตสำเร็จ · เป็นรุ่นล่าสุด',tone:'good'});
   else if(itemQueued(item))targetFeedback.set(item.key,{text:'รับคำสั่งแล้ว · รอคิวอัปเดต'+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});
   else if(item.state==='UPDATING')targetFeedback.set(item.key,{text:ownerProgressMessage(item,item.progressEvent,false)+(item.canCancel===true?' · ยกเลิกได้':''),tone:'info'});

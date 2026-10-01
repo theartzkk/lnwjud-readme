@@ -567,6 +567,8 @@ test('Update Center owner actions keep target-scoped feedback and expose only sa
   assert.match(script,/item\?\.taskState\|\|event\?\.state/);
   assert.match(script,/item\?\.canCancel===true/);
   assert.match(script,/function reconcileTargetFeedback\(item\)/);
+  assert.match(script,/item\.state==='UPDATE_AVAILABLE'&&item\.actionable===true&&!item\.taskId&&!item\.approvalId/);
+  assert.match(script,/targetFeedback\.delete\(item\.key\)/);
   assert.match(script,/อัปเดตสำเร็จ · เป็นรุ่นล่าสุด/);
   assert.doesNotMatch(page,/id="update-all"/);
   assert.match(css,/position:sticky/);
