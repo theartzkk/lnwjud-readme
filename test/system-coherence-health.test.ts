@@ -17,6 +17,6 @@ test('new control releases share desktop artifact objects instead of duplicating
  assert.match(remote,/deduplicate_control_release_desktop_artifacts\(\)/);
  assert.match(remote,/\$RELEASE\/dist-web\/downloads\/\$name/);
  assert.match(remote,/\/var\/www\/awh-web\/desktop-artifacts/);
- assert.match(remote,/deduplicate_desktop_artifacts; deduplicate_control_release_desktop_artifacts;/);
+ assert.match(remote,/deduplicate_desktop_artifacts[\s;]+deduplicate_control_release_desktop_artifacts/);
  assert.match(remote,/stat -c %d/); assert.match(remote,/stat -c %i/);
 });
