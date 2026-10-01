@@ -170,7 +170,7 @@ final class HubLearnLabReleaseService
     private static function channelRoot(): string
     {
         $override=getenv('AWH_LEARNLAB_CHANNEL_ROOT');
-        if(is_string($override)&&$override!==''&&str_starts_with($override,'/')&&!str_contains($override,""))return rtrim($override,'/');
+        if(is_string($override)&&$override!==''&&str_starts_with($override,'/')&&!str_contains($override,"\0"))return rtrim($override,'/');
         return self::CHANNEL_ROOT;
     }
 

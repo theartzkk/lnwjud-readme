@@ -25,11 +25,14 @@ $root=sys_get_temp_dir().'/awh-learnlab-release-'.bin2hex(random_bytes(6));
 $db=$root.'/awh.sqlite';$base=dirname(__DIR__);$now='2026-09-23T11:50:00+00:00';
 $project=HubLearnLabReleaseService::PROJECT_ID;$owner='223b45c0-23e1-408d-ae0f-ac5eca7f6900';
 $password='learnlab-release-'.bin2hex(random_bytes(10));$vaultRevision='b088db09-1ac5-484d-b707-e9901176b073';
-$artifact=$root.'/artifacts';$vault=$root.'/vault';$workspace=$root.'/workspaces';$canonical=$root.'/bay-learnlab.git';
-putenv('AWH_ARTIFACT_ROOT='.$artifact);putenv('AWH_PROJECT_VAULT_ROOT='.$vault);putenv('AWH_TASK_WORKSPACE_ROOT='.$workspace);putenv('AWH_LEARNLAB_CANONICAL_GIT='.$canonical);
+$artifact=$root.'/artifacts';$vault=$root.'/vault';$workspace=$root.'/workspaces';$canonical=$root.'/bay-learnlab.git';$channels=$root.'/channels';
+putenv('AWH_ARTIFACT_ROOT='.$artifact);putenv('AWH_PROJECT_VAULT_ROOT='.$vault);putenv('AWH_TASK_WORKSPACE_ROOT='.$workspace);putenv('AWH_LEARNLAB_CANONICAL_GIT='.$canonical);putenv('AWH_LEARNLAB_CHANNEL_ROOT='.$channels);
 
 try{
-    mkdir($root,0700,true);foreach([$artifact,$vault,$workspace,$canonical.'/refs/heads'] as $d)mkdir($d,0700,true);
+    mkdir($root,0700,true);foreach([$artifact,$vault,$workspace,$canonical.'/refs/heads',$channels] as $d)mkdir($d,0700,true);
+    $channel=['release_revision'=>'406879b6fee7a1e8a451f24eb3a3d9825a4fe0c9','runtime_version'=>'0.8.0-rc.68','cache_epoch'=>68,'runtime_url'=>'https://learnlab.kruart.online/releases/fixture/','published_at'=>$now];
+    foreach(['pilot','stable'] as $name)file_put_contents($channels.'/'.$name.'.json',json_encode($channel,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)."
+");
     $pdo=new PDO('sqlite:'.$db,null,null,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
     $pdo->exec('PRAGMA foreign_keys=ON');$pdo->exec(file_get_contents($base.'/schema.sql'));
     foreach(['enrollment_rate_limits','device_project_memberships','device_tokens','pairing_projects','pairing_codes','user_project_memberships','device_enrollments','owner_bootstrap','hub_users'] as $table)$pdo->exec('DROP TABLE IF EXISTS '.$table);
@@ -114,6 +117,6 @@ try{
 
     fwrite(STDOUT,"AWH LearnLab release operator: PASS\n");
 }finally{
-    putenv('AWH_ARTIFACT_ROOT');putenv('AWH_PROJECT_VAULT_ROOT');putenv('AWH_TASK_WORKSPACE_ROOT');putenv('AWH_LEARNLAB_CANONICAL_GIT');llr_clean($root);
+    putenv('AWH_ARTIFACT_ROOT');putenv('AWH_PROJECT_VAULT_ROOT');putenv('AWH_TASK_WORKSPACE_ROOT');putenv('AWH_LEARNLAB_CANONICAL_GIT');putenv('AWH_LEARNLAB_CHANNEL_ROOT');llr_clean($root);
 }
 
