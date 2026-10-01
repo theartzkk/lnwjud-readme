@@ -175,12 +175,26 @@ jobs:
       - run: npm run desktop:make
       - name: Verify packaged Windows runtime
         run: npm run desktop:verify:windows
-      - name: Create portable Windows archive
+      - name: Create install-ready Windows archive
         shell: pwsh
         run: |
-          Remove-Item AWH-Windows-x64.zip -Force -ErrorAction SilentlyContinue
-          Compress-Archive -Path 'out/AWH Agent-win32-x64' -DestinationPath AWH-Windows-x64.zip -CompressionLevel Optimal
-          if (-not (Test-Path AWH-Windows-x64.zip)) { throw 'Portable Windows archive missing' }
+          $bundle = Join-Path $env:RUNNER_TEMP 'awh-windows-x64-bundle'
+          $verify = Join-Path $env:RUNNER_TEMP 'awh-windows-x64-verify'
+          Remove-Item $bundle, $verify, AWH-Windows-x64.zip -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $bundle -Force | Out-Null
+          Copy-Item -LiteralPath 'out/AWH Agent-win32-x64' -Destination (Join-Path $bundle 'AWH Agent-win32-x64') -Recurse -Force
+          $setup = Get-ChildItem -Path out/make -Recurse -Filter AWHSetup.exe | Select-Object -First 1
+          $releases = Get-ChildItem -Path out/make -Recurse -Filter RELEASES | Select-Object -First 1
+          $nupkg = Get-ChildItem -Path out/make -Recurse -Filter *.nupkg | Select-Object -First 1
+          if (-not $setup -or -not $releases -or -not $nupkg) { throw 'Complete Squirrel installer set is required for the public Windows archive' }
+          Copy-Item -LiteralPath $setup.FullName -Destination (Join-Path $bundle 'AWHSetup.exe') -Force
+          Copy-Item -LiteralPath $releases.FullName -Destination (Join-Path $bundle 'RELEASES') -Force
+          Copy-Item -LiteralPath $nupkg.FullName -Destination (Join-Path $bundle $nupkg.Name) -Force
+          Compress-Archive -Path (Join-Path $bundle '*') -DestinationPath AWH-Windows-x64.zip -CompressionLevel Optimal
+          if (-not (Test-Path AWH-Windows-x64.zip)) { throw 'Install-ready Windows archive missing' }
+          Expand-Archive -LiteralPath AWH-Windows-x64.zip -DestinationPath $verify -Force
+          if (-not (Test-Path (Join-Path $verify 'AWHSetup.exe'))) { throw 'AWHSetup.exe missing from Windows archive' }
+          if (-not (Get-ChildItem -Path $verify -Recurse -Filter AWH.exe | Select-Object -First 1)) { throw 'AWH.exe missing from Windows archive' }
           Get-FileHash AWH-Windows-x64.zip -Algorithm SHA256 | Format-List
       - name: Resolve release metadata
         id: version
