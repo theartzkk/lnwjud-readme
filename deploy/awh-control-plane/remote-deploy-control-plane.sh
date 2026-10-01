@@ -1668,7 +1668,7 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
     drift_count=$(printf '%s' "$drift_output" | /usr/bin/php -r '$j=json_decode(stream_get_contents(STDIN),true); $n=is_array($j)&&is_array($j["findings"]??null)?count($j["findings"]):0; if($n>0&&$n<100) echo $n;')
     platform_blocking_count=$(printf '%s' "$drift_output" | /usr/bin/php -r '$j=json_decode(stream_get_contents(STDIN),true); $n=is_array($j)&&is_array($j["platformBlockingFindings"]??null)?count($j["platformBlockingFindings"]):-1; if($n>=0&&$n<100) echo $n;')
     external_count=$(printf '%s' "$drift_output" | /usr/bin/php -r '$j=json_decode(stream_get_contents(STDIN),true); $n=is_array($j)&&is_array($j["externalFindings"]??null)?count($j["externalFindings"]):-1; if($n>=0&&$n<100) echo $n;')
-    if test "$PLATFORM_HARDENING" = 1 && test "$platform_blocking_count" = 0 && test -n "$external_count" && test "$external_count" -gt 0; then
+    if { test "$PLATFORM_HARDENING" = 1 || test "$AWH_CORE" = 1; } && test "$platform_blocking_count" = 0 && test -n "$external_count" && test "$external_count" -gt 0; then
       case "$external_count" in [1-9]|[1-9][0-9]) printf '%s\n' "DEPLOY_DIAGNOSTIC=SOURCE_DRIFT_EXTERNAL_$external_count" ;; *) printf '%s\n' 'DEPLOY_DIAGNOSTIC=SOURCE_DRIFT_EXTERNAL_UNKNOWN' ;; esac
     else
       case "$drift_count" in [1-9]|[1-9][0-9]) printf '%s\n' "DEPLOY_DIAGNOSTIC=SOURCE_DRIFT_FINDINGS_$drift_count" ;; *) printf '%s\n' 'DEPLOY_DIAGNOSTIC=SOURCE_DRIFT_FINDINGS_UNKNOWN' ;; esac

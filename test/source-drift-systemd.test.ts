@@ -52,7 +52,7 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(remote, /DEPLOY_DIAGNOSTIC=SOURCE_DRIFT_EXTERNAL_/);
   assert.match(remote, /platform_blocking_count=/);
   assert.match(remote, /external_count=/);
-  assert.match(remote, /PLATFORM_HARDENING.*platform_blocking_count/s);
+  assert.match(remote, /PLATFORM_HARDENING.*AWH_CORE.*platform_blocking_count/s);
   assert.match(remote, /drift_count=/);
   assert.match(remote, /PRODUCTION_REF_CHANGED=0; PRODUCTION_REF_PREVIOUS=ABSENT; PREVIOUS_PRODUCTION_SHA=/);
   assert.match(remote, /production_ref_reconcile_live\(\)/);
