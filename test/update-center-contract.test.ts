@@ -194,7 +194,9 @@ test('BAY monorepo surfaces independent BAY Core, LINE OA, Cooperative and PP re
     'hub\/src\/HubPlatformMaintenanceMigration\\.php',
     'hub\/src\/HubPlatformMaintenanceService\\.php',
     'hub\/tests\/m25-platform-maintenance\\.php',
+    'test\/deployment-foundation\\.test\\.ts',
     'test\/migration-sequence-contract\\.test\\.ts',
+    'test\/system-coherence-health\\.test\\.ts',
   ]) assert.match(registry,new RegExp(platformPath));
   assert.match(registry,/return 'bay-cooperative'/);
   assert.match(registry,/return 'bay-pp'/);

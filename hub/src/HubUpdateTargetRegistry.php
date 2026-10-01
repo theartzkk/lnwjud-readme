@@ -356,12 +356,14 @@ final class HubUpdateTargetRegistry
             'test/account-hosting-deployment.test.ts',
             'test/bounded-deploy-mission.test.ts',
             'test/central-project-authority-deployment.test.ts',
+            'test/deployment-foundation.test.ts',
             'test/ecosystem-platform-hardening.test.ts',
             'test/execution-policy.test.mjs',
             'test/identity-convergence-deployment.test.ts',
             'test/migration-sequence-contract.test.ts',
             'test/repository-governance-contract.test.ts',
             'test/source-drift-systemd.test.ts',
+            'test/system-coherence-health.test.ts',
             'test/test-singleflight.test.mjs',
         ];
         if(in_array($path,$platformExact,true))return 'vps-platform';
