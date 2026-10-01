@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { lstat, mkdir, readFile, rename, rm, writeFile, chmod } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, posix as pathPosix } from 'node:path';
 import { randomBytes } from 'node:crypto';
 
 const CREDENTIAL_KEY = /^[a-z][a-z0-9._/-]{1,127}$/;
@@ -246,7 +246,11 @@ export class PrivateFileCredentialStore implements CredentialStore {
     if (!root || !root.startsWith('/')) throw new CredentialStoreError('Credential directory is invalid', 'CREDENTIAL_STORE_UNAVAILABLE');
   }
 
-  private path(key: string): string { validateKey(key); return join(this.root, `${key.replace(/[^a-z0-9._-]/g, '__')}.session`); }
+  private path(key: string): string {
+    validateKey(key);
+    const pathJoin = this.root.startsWith('/') ? pathPosix.join : join;
+    return pathJoin(this.root, `${key.replace(/[^a-z0-9._-]/g, '__')}.session`);
+  }
   private async ready(): Promise<void> {
     await mkdir(this.root, { recursive: true, mode: 0o700 });
     const info = await lstat(this.root);
@@ -301,7 +305,7 @@ export function createDesktopCredentialStore(
   // pairing without leaving the token behind after Keychain verification.
   if (platformName === 'darwin') return new MigratingCredentialStore(
     new MacKeychainCredentialStore(runner),
-    new PrivateFileCredentialStore(join(dataDir, 'session-credentials')),
+    new PrivateFileCredentialStore(pathPosix.join(dataDir, 'session-credentials')),
   );
   if (platformName === 'win32') return new WindowsCredentialManagerStore(runner);
   return new PrivateFileCredentialStore(join(dataDir, 'session-credentials'));

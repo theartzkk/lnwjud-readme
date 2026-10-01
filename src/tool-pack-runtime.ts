@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { access, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join, win32 as pathWin32 } from 'node:path';
+import { join, posix as pathPosix, win32 as pathWin32 } from 'node:path';
 import { createRequire } from 'node:module';
 import { execFile } from './process.js';
 import { activateVerifiedToolRelease, inspectToolLifecycle, writeVerifiedToolReleaseManifest } from './tool-fabric-lifecycle.js';
@@ -122,7 +122,7 @@ export async function launchToolPackHost(pack: ToolPackDefinition, platform: Nod
 }
 
 function localBase(platform: NodeJS.Platform, home: string, env: NodeJS.ProcessEnv): string {
-  if (platform === 'darwin') return join(home, 'Library', 'Application Support', 'AWH');
+  if (platform === 'darwin') return pathPosix.join(home, 'Library', 'Application Support', 'AWH');
   if (platform === 'win32' && env.LOCALAPPDATA) return pathWin32.join(env.LOCALAPPDATA, 'AWH');
   throw new Error('TOOL_PACK_PLATFORM_UNSUPPORTED');
 }
@@ -135,14 +135,14 @@ function toolPackReleaseKey(pack: ToolPackDefinition): string {
 export function toolPackRoot(pack: ToolPackDefinition, platform: NodeJS.Platform = process.platform, home = homedir(), env: NodeJS.ProcessEnv = process.env): string {
   const base = localBase(platform, home, env);
   const parts = ['ToolPacks', pack.capability, 'releases', toolPackReleaseKey(pack)];
-  return platform === 'win32' ? pathWin32.join(base, ...parts) : join(base, ...parts);
+  return platform === 'win32' ? pathWin32.join(base, ...parts) : pathPosix.join(base, ...parts);
 }
 
 function legacyToolPackRoot(pack: ToolPackDefinition, platform: NodeJS.Platform, home: string, env: NodeJS.ProcessEnv): string | null {
   if (pack.id === pack.capability) return null;
   const base = localBase(platform, home, env);
   const parts = ['ToolPacks', pack.id, 'releases', toolPackReleaseKey(pack)];
-  return platform === 'win32' ? pathWin32.join(base, ...parts) : join(base, ...parts);
+  return platform === 'win32' ? pathWin32.join(base, ...parts) : pathPosix.join(base, ...parts);
 }
 
 async function adoptLegacyToolPackRelease(pack: ToolPackDefinition, platform: NodeJS.Platform, home: string, env: NodeJS.ProcessEnv): Promise<void> {
