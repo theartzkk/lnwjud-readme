@@ -1415,6 +1415,12 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
     OPERATOR_CLIENT_INSTALLED=1
     sudo grep -Fq "vault-import" "$OPERATOR_CLIENT"
     PLATFORM_RUNTIME_INSTALLED=1
+    stage VPS_DIRECT_CONNECTOR_PREPARE
+    sudo test -x "$RELEASE/deploy/remote-worker/linux/install-vps-direct-connector.sh"
+    sudo test -x "$RELEASE/deploy/remote-worker/linux/verify-vps-direct-connector.sh"
+    sudo "$RELEASE/deploy/remote-worker/linux/install-vps-direct-connector.sh" --prepare
+    sudo "$RELEASE/deploy/remote-worker/linux/verify-vps-direct-connector.sh"
+    stage VPS_DIRECT_CONNECTOR_READY
     stage PLATFORM_SENSOR_PREPARE
     sudo test -x /var/lib/awh-remote/.local/bin/gatus
     sudo test -x /var/lib/awh-remote/.local/bin/beszel

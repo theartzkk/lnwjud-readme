@@ -48,9 +48,10 @@ test('execution metadata is context-only rather than an AI behavior policy',asyn
 test('VPS direct connector exposes durable candidates but keeps canonical source read-only',async()=>{
   const context=await loadExecutionPolicy();
   const durable=context.workspaceRouting.durableCandidateRoot;
-  const [install,verify]=await Promise.all([
+  const [install,verify,platformDeploy]=await Promise.all([
     readFile(new URL('../deploy/remote-worker/linux/install-vps-direct-connector.sh',import.meta.url),'utf8'),
     readFile(new URL('../deploy/remote-worker/linux/verify-vps-direct-connector.sh',import.meta.url),'utf8'),
+    readFile(new URL('../deploy/awh-control-plane/remote-deploy-control-plane.sh',import.meta.url),'utf8'),
   ]);
   assert.equal(durable,'/var/lib/awh-remote/worktrees');
   assert.match(install,/allowedDirectories.*\/srv\/awh-git.*\/var\/lib\/awh-remote\/worktrees.*\/tmp/s);
@@ -59,6 +60,7 @@ test('VPS direct connector exposes durable candidates but keeps canonical source
   assert.match(verify,/AWH_VPS_DIRECT_CANONICAL_SOURCE_WRITABLE/);
   assert.ok(install.includes(durable));
   assert.ok(verify.includes(durable));
+  assert.match(platformDeploy,/stage VPS_DIRECT_CONNECTOR_PREPARE[\s\S]*install-vps-direct-connector\.sh" --prepare[\s\S]*verify-vps-direct-connector\.sh"[\s\S]*stage VPS_DIRECT_CONNECTOR_READY/);
 });
 
 test('QA mapping remains a technical runtime capability',async()=>{
