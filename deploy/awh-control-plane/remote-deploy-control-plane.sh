@@ -1442,7 +1442,18 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
       sleep 1
     done
     test "$SENSOR_RUNTIME_READY" = 1
-    sudo -u awh-remote sh -c 'set -e; d=$(mktemp -d /tmp/awh-platform-verify.XXXXXX); trap "rm -rf $d" EXIT; cd "$d"; "$1" --runtime' sh "$RELEASE/scripts/ops/verify-platform-tooling.sh" >/dev/null
+    sudo sh -c 'set -e
+      d=$(mktemp -d /tmp/awh-platform-verify.XXXXXX)
+      trap '"'"'rm -rf "$d"'"'"' EXIT HUP INT TERM
+      chown awh-remote:awh-operator "$d"
+      chmod 0750 "$d"
+      install -d -o awh-remote -g awh-operator -m 0750 "$d/scripts/ops" "$d/config" "$d/policy"
+      install -o awh-remote -g awh-operator -m 0755 "$1/scripts/ops/verify-platform-tooling.sh" "$d/scripts/ops/verify-platform-tooling.sh"
+      install -o awh-remote -g awh-operator -m 0640 "$1/config/platform-toolchain-lock.json" "$d/config/platform-toolchain-lock.json"
+      install -o awh-remote -g awh-operator -m 0640 "$1/policy/platform-toolchain.cue" "$d/policy/platform-toolchain.cue"
+      install -o awh-remote -g awh-operator -m 0640 "$1/policy/platform-toolchain.rego" "$d/policy/platform-toolchain.rego"
+      runuser -u awh-remote -- "$d/scripts/ops/verify-platform-tooling.sh" --runtime >/dev/null
+    ' sh "$RELEASE"
     stage PLATFORM_SENSOR_READY
     sudo systemctl cat awh-build.slice >/dev/null
     sudo test -x /usr/local/bin/awh-backup-export
