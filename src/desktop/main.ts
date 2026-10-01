@@ -88,6 +88,7 @@ let liveSawIdle = false;
 let workerRunning = false;
 let connectedRuntimeMonitor: NodeJS.Timeout | null = null;
 let connectedRuntimeRepairInFlight = false;
+let deviceRuntimeBootstrapInFlight: Promise<DeviceBootstrapResult> | null = null;
 let agentWatchdog: AgentWatchdogHandle | null = null;
 let workerConnectionState: 'CHECKING' | 'CONNECTED' | 'OFFLINE' = 'CHECKING';
 let lastWorkerError:string|null=null;
@@ -101,6 +102,17 @@ let startupPermissionsReady = process.platform !== 'darwin';
 const CONNECTED_RUNTIME_RECHECK_MS = 15_000;
 const PERMISSION_SETUP_VERSION = 1;
 const MAX_HANDOFF_PREVIEW_CHARS = 4_000;
+
+async function ensureDeviceRuntimeSingleFlight(dataDir: string): Promise<DeviceBootstrapResult> {
+  if (deviceRuntimeBootstrapInFlight) return deviceRuntimeBootstrapInFlight;
+  const pending = ensureAwhDeviceRuntime(dataDir);
+  deviceRuntimeBootstrapInFlight = pending;
+  try {
+    return await pending;
+  } finally {
+    if (deviceRuntimeBootstrapInFlight === pending) deviceRuntimeBootstrapInFlight = null;
+  }
+}
 
 const require = createRequire(import.meta.url);
 const SQUIRREL_STARTUP = process.platform === 'win32' && Boolean(require('electron-squirrel-startup'));
@@ -361,7 +373,7 @@ async function reinstallRuntimeKeepingPairing() {
   stopWorkerLoop();
   try {
     const maintenance = await prepareCleanReinstall(config.dataDir, createDesktopCredentialStore(config.dataDir));
-    lastDeviceRuntimeBootstrap = await ensureAwhDeviceRuntime(config.dataDir);
+    lastDeviceRuntimeBootstrap = await ensureDeviceRuntimeSingleFlight(config.dataDir);
     const permissions = await startupPermissionState().catch(() => ({ ready: false } as StartupPermissionState));
     if (permissions.ready) { startWorkerLoop(); void ensureConnectedDeviceRuntime().catch(() => undefined); }
     return { ok: lastDeviceRuntimeBootstrap.state === 'READY' && maintenance.pairingPreserved, maintenance, runtime: lastDeviceRuntimeBootstrap, permissionsReady: permissions.ready };
@@ -583,7 +595,7 @@ async function startupPermissionState(): Promise<StartupPermissionState> {
 
 async function authorizeStartupPermissions(): Promise<StartupPermissionState & { requested: true }> {
   const config = loadConfig();
-  const bootstrap = await ensureAwhDeviceRuntime(config.dataDir);
+  const bootstrap = await ensureDeviceRuntimeSingleFlight(config.dataDir);
   lastDeviceRuntimeBootstrap = bootstrap;
   let runtime: DeviceRuntimePermissionStatus | null = null;
   if (bootstrap.state === 'READY' && process.platform === 'darwin') {
@@ -628,7 +640,7 @@ async function openStartupPermissionSettings(kind: unknown): Promise<{ ok: boole
 
 async function ensureConnectedDeviceRuntime(): Promise<void> {
   const config = loadConfig();
-  const runtime = await ensureAwhDeviceRuntime(config.dataDir);
+  const runtime = await ensureDeviceRuntimeSingleFlight(config.dataDir);
   if (runtime.state !== 'READY' || !startupPermissionsReady) return;
   const enrolled = await enrollmentState().catch(() => ({ enrolled: false }));
   if (enrolled.enrolled === true) await ensureRemoteDesktopConnector().catch(() => undefined);
@@ -1419,7 +1431,7 @@ async function startAfterReady(): Promise<void> {
   const firstPermissionSetup = process.platform === 'darwin' && stored.permissionSetupVersion !== PERMISSION_SETUP_VERSION;
   if (localEnrollment.enrolled !== true || firstPermissionSetup) showLocalBridge();
   void (async () => {
-    lastDeviceRuntimeBootstrap = await ensureAwhDeviceRuntime(config.dataDir);
+    lastDeviceRuntimeBootstrap = await ensureDeviceRuntimeSingleFlight(config.dataDir);
     const permissions = await startupPermissionState().catch(() => ({ ready: false } as StartupPermissionState));
     if (permissions.ready !== true) {
       showLocalBridge();

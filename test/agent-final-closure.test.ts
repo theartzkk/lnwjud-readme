@@ -55,3 +55,13 @@ test('SystemRuntime smoke classifies exit and dependency failures before timeout
   assert.match(source, /30_000/);
   assert.match(source, /awh-system-mcp\.mjs/);
 });
+
+test('desktop device runtime bootstrap is single-flight across concurrent callers', () => {
+  const source = readFileSync(new URL('../src/desktop/main.ts', import.meta.url), 'utf8');
+  assert.match(source, /let deviceRuntimeBootstrapInFlight: Promise<DeviceBootstrapResult> \| null = null;/);
+  assert.match(source, /async function ensureDeviceRuntimeSingleFlight\(dataDir: string\): Promise<DeviceBootstrapResult>/);
+  assert.match(source, /if \(deviceRuntimeBootstrapInFlight\) return deviceRuntimeBootstrapInFlight;/);
+  assert.match(source, /const pending = ensureAwhDeviceRuntime\(dataDir\);/);
+  assert.equal(source.match(/ensureDeviceRuntimeSingleFlight\(config\.dataDir\)/g)?.length, 4);
+  assert.equal(source.match(/ensureAwhDeviceRuntime\(config\.dataDir\)/g), null);
+});
