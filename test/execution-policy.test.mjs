@@ -65,6 +65,11 @@ test('VPS direct connector exposes durable candidates but keeps canonical source
   assert.match(platformDeploy,/VPS_CONNECTOR_UNIT_BACKUP/);
   assert.match(platformDeploy,/VPS_CONNECTOR_CONFIG_BACKUP/);
   assert.match(platformDeploy,/systemctl restart desktop-commander-vps\.service/);
+  assert.match(platformDeploy,/CONNECTOR_VERIFY_ATTEMPTS=0/);
+  assert.match(platformDeploy,/while test "\$CONNECTOR_VERIFY_ATTEMPTS" -lt 10/);
+  assert.match(platformDeploy,/verify-vps-direct-connector\.sh" >\/dev\/null 2>&1/);
+  assert.match(platformDeploy,/test "\$CONNECTOR_VERIFY_READY" -eq 1/);
+  assert.match(platformDeploy,/VPS_CONNECTOR_UNIT_BACKUP.*VPS_CONNECTOR_CONFIG_BACKUP/s);
   assert.match(install,/CONNECTOR_TMP=\$AGENT_HOME\/tmp/);
   assert.match(install,/install -d -m 2770 -o "\$AGENT_USER" -g awh-operator "\$CONNECTOR_TMP"/);
   assert.doesNotMatch(install,/install -d -m 0700[^\n]*"\$CONNECTOR_TMP"/);

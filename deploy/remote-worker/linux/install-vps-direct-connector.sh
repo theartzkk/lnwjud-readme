@@ -54,15 +54,34 @@ else
   printf '%s\n' "AWH_VPS_DIRECT_PACKAGE=INSTALLED version=$AGENT_VERSION"
 fi
 chown -R root:root "$RUNTIME_ROOT/agent"; chmod -R go-w "$RUNTIME_ROOT/agent"
-cat > "$CONFIG.tmp" <<'JSON'
-{
-  "allowedDirectories": ["/srv/awh-git", "/var/lib/awh-remote/worktrees", "/tmp"],
-  "blockedCommands": ["mkfs","format","mount","umount","fdisk","dd","parted","diskpart","sudo","su","passwd","adduser","useradd","usermod","groupadd","chsh","visudo","shutdown","reboot","halt","poweroff","init","iptables","firewall","netsh","sfc","bcdedit","reg","net","sc","runas","cipher","takeown"],
-  "fileReadLineLimit": 300,
-  "fileWriteLineLimit": 50,
-  "telemetryEnabled": true
-}
-JSON
+# Production activation must not race Desktop Commander's config watcher. Stop the
+# old process before the atomic config cutover; the outer deploy transaction owns
+# rollback/restart if anything below fails.
+if [ "$MODE" = --activate ] && systemctl is-active --quiet desktop-commander-vps.service; then
+  systemctl stop desktop-commander-vps.service
+fi
+rm -f "$CONFIG.tmp"
+python3 - "$CONFIG" "$CONFIG.tmp" <<'PYCONFIG'
+import json, os, sys
+path, tmp = sys.argv[1], sys.argv[2]
+config = {}
+if os.path.exists(path):
+    with open(path, encoding='utf-8') as handle:
+        loaded = json.load(handle)
+    if not isinstance(loaded, dict):
+        raise SystemExit('AWH_VPS_DIRECT_CONFIG_INVALID')
+    config.update(loaded)
+config.update({
+    'allowedDirectories': ['/srv/awh-git', '/var/lib/awh-remote/worktrees', '/tmp'],
+    'blockedCommands': ['mkfs','format','mount','umount','fdisk','dd','parted','diskpart','sudo','su','passwd','adduser','useradd','usermod','groupadd','chsh','visudo','shutdown','reboot','halt','poweroff','init','iptables','firewall','netsh','sfc','bcdedit','reg','net','sc','runas','cipher','takeown'],
+    'fileReadLineLimit': 300,
+    'fileWriteLineLimit': 50,
+    'telemetryEnabled': True,
+})
+with open(tmp, 'w', encoding='utf-8') as handle:
+    json.dump(config, handle, ensure_ascii=False, indent=2)
+    handle.write('\n')
+PYCONFIG
 chown "$AGENT_USER:$AGENT_USER" "$CONFIG.tmp"; chmod 0600 "$CONFIG.tmp"; mv "$CONFIG.tmp" "$CONFIG"
 if [ -n "${AWH_RDC_SESSION_SOURCE:-}" ]; then
   case "$AWH_RDC_SESSION_SOURCE" in /*) :;; *) fail AWH_VPS_DIRECT_SESSION_SOURCE_INVALID;; esac

@@ -692,7 +692,7 @@ rollback() {
     if test -n "$DEPLOY_AUTHORITY_EXECUTION"; then release_deploy_authority failure || ok=0; fi
     sudo rm -rf "$RELEASE" "$WEB_RELEASE" >/dev/null 2>&1 || true
     if test "$ENROLLMENT_RELEASE_CREATED" -eq 1; then sudo rm -rf "$ENROLLMENT_RELEASE" >/dev/null 2>&1 || ok=0; fi
-    sudo rm -f "$REMOTE_STAGE" "$POINTER_TMP" "$WEB_POINTER_TMP" "$ENROLLMENT_POINTER_TMP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" "$CONTROL_INCLUDE_TMP" "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP" >/dev/null 2>&1 || true
+    sudo rm -f "$REMOTE_STAGE" "$POINTER_TMP" "$WEB_POINTER_TMP" "$ENROLLMENT_POINTER_TMP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" "$CONTROL_INCLUDE_TMP" "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP" "$VPS_CONNECTOR_UNIT_BACKUP" "$VPS_CONNECTOR_CONFIG_BACKUP" >/dev/null 2>&1 || true
     if test "$NGINX_BACKUP_CREATED" -eq 1; then sudo rm -f "$NGINX_BACKUP" || ok=0; fi
     if test "$TOPOLOGY_ARCHIVED" -eq 1; then sudo rm -rf "$TOPOLOGY_ARCHIVE" || ok=0; fi
     cleanup_owner_auth_cookie_files
@@ -1463,6 +1463,17 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
     if sudo systemctl is-enabled --quiet desktop-commander-vps.service; then VPS_CONNECTOR_WAS_ENABLED=1; fi
     VPS_CONNECTOR_MUTATION_STARTED=1
     sudo env AWH_VPS_DIRECT_REUSE_ONLY=1 "$RELEASE/deploy/remote-worker/linux/install-vps-direct-connector.sh" --activate
+    CONNECTOR_VERIFY_READY=0
+    CONNECTOR_VERIFY_ATTEMPTS=0
+    while test "$CONNECTOR_VERIFY_ATTEMPTS" -lt 10; do
+      CONNECTOR_VERIFY_ATTEMPTS=$((CONNECTOR_VERIFY_ATTEMPTS + 1))
+      if sudo "$RELEASE/deploy/remote-worker/linux/verify-vps-direct-connector.sh" >/dev/null 2>&1; then
+        CONNECTOR_VERIFY_READY=1
+        break
+      fi
+      sleep 1
+    done
+    test "$CONNECTOR_VERIFY_READY" -eq 1
     sudo "$RELEASE/deploy/remote-worker/linux/verify-vps-direct-connector.sh"
     stage VPS_DIRECT_CONNECTOR_READY
     stage PLATFORM_SENSOR_PREPARE
