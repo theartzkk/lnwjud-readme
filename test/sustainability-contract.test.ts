@@ -123,7 +123,10 @@ test('desktop release evidence is deterministic, exact-revision-bound, and never
 test('desktop package CI uploads release evidence without activating an updater feed', async () => {
   const ci = await readFile(join(ROOT, '.github/workflows/ci.yml'), 'utf8');
   const script = await readFile(join(ROOT, 'scripts/release/create-desktop-release-evidence.mjs'), 'utf8');
-  assert.match(ci, /Compress-Archive -Path 'out\/AWH Agent-win32-x64'/);
+  assert.match(ci, /Create install-ready Windows archive/);
+  assert.match(ci, /Copy-Item -LiteralPath 'out\/AWH Agent-win32-x64'/);
+  assert.match(ci, /AWHSetup\.exe missing from Windows archive/);
+  assert.match(ci, /AWH\.exe missing from Windows archive/);
   assert.match(ci, /'out\/AWH Agent-darwin-x64\/AWH Agent\.app'/);
   assert.match(ci, /'out\/AWH Agent-darwin-arm64\/AWH Agent\.app'/);
   assert.doesNotMatch(ci, /out\/AWH-(?:win32|darwin)|AWH\.app AWH-macOS/);
