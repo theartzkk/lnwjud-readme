@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 MODE=${1:---prepare}
+REUSE_ONLY=${AWH_VPS_DIRECT_REUSE_ONLY:-0}
 AGENT_USER=${AWH_RDC_USER:-awh-remote}
 AGENT_HOME=${AWH_RDC_HOME:-/var/lib/awh-remote}
 RUNTIME_ROOT=${AWH_RDC_RUNTIME_ROOT:-/opt/awh-tools/remote-desktop}
@@ -26,8 +27,10 @@ UNIT=/etc/systemd/system/desktop-commander-vps.service
 SESSION=$AGENT_HOME/.desktop-commander-device/device.json
 CONFIG=$AGENT_HOME/.claude-server-commander/config.json
 CANDIDATE_ROOT=$AGENT_HOME/worktrees
+CONNECTOR_TMP=$AGENT_HOME/tmp
 fail(){ printf '%s\n' "$1" >&2; exit 1; }
 case "$MODE" in --prepare|--activate) :;; *) fail 'usage: install-vps-direct-connector.sh [--prepare|--activate]' ;; esac
+case "$REUSE_ONLY" in 0|1) :;; *) fail AWH_VPS_DIRECT_REUSE_POLICY_INVALID;; esac
 [ "$(id -u)" -eq 0 ] || fail AWH_VPS_DIRECT_INSTALL_REQUIRES_ROOT
 [ "$AGENT_USER" = awh-remote ] || fail AWH_VPS_DIRECT_AGENT_USER_UNSUPPORTED
 [ "$AGENT_HOME" = /var/lib/awh-remote ] || fail AWH_VPS_DIRECT_AGENT_HOME_UNSUPPORTED
@@ -38,10 +41,18 @@ fi
 [ -x "$NODE_BIN" ] && [ -x "$NPM_BIN" ] || fail AWH_VPS_DIRECT_NODE_RUNTIME_REQUIRED
 id "$AGENT_USER" >/dev/null 2>&1 || useradd --system --create-home --home-dir "$AGENT_HOME" --shell /bin/bash "$AGENT_USER"
 case " $(id -nG "$AGENT_USER") " in *' sudo '*|*' adm '*) fail AWH_VPS_DIRECT_PRIVILEGED_GROUP_FORBIDDEN;; esac
-install -d -m 0700 -o "$AGENT_USER" -g "$AGENT_USER" "$AGENT_HOME" "$AGENT_HOME/.npm" "$AGENT_HOME/tmp" "$CANDIDATE_ROOT" "$AGENT_HOME/.desktop-commander-device" "$AGENT_HOME/.claude-server-commander"
+install -d -m 0700 -o "$AGENT_USER" -g "$AGENT_USER" "$AGENT_HOME" "$AGENT_HOME/.npm" "$CANDIDATE_ROOT" "$AGENT_HOME/.desktop-commander-device" "$AGENT_HOME/.claude-server-commander"
+install -d -m 2770 -o "$AGENT_USER" -g awh-operator "$CONNECTOR_TMP"
 install -d -m 0755 -o root -g root "$RUNTIME_ROOT" "$RUNTIME_ROOT/agent"
-printf '{"name":"awh-vps-direct-connector","private":true,"version":"1.0.0","dependencies":{"%s":"%s"}}\n' "$(manifest_value package)" "$AGENT_VERSION" > "$RUNTIME_ROOT/agent/package.json"
-(cd "$RUNTIME_ROOT/agent" && PATH="$NODE_ROOT/bin:$PATH" "$NPM_BIN" install --ignore-scripts --omit=dev --no-audit --no-fund --save-exact "@wonderwhy-er/desktop-commander@$AGENT_VERSION" >/dev/null)
+INSTALLED_AGENT_VERSION=$("$NODE_BIN" -e 'try{process.stdout.write(require(process.argv[1]).version)}catch{process.exit(1)}' "$RUNTIME_ROOT/agent/node_modules/@wonderwhy-er/desktop-commander/package.json" 2>/dev/null || true)
+if [ "$INSTALLED_AGENT_VERSION" = "$AGENT_VERSION" ]; then
+  printf '%s\n' "AWH_VPS_DIRECT_PACKAGE=REUSED version=$AGENT_VERSION"
+else
+  [ "$REUSE_ONLY" -eq 0 ] || fail AWH_VPS_DIRECT_PACKAGE_REUSE_REQUIRED
+  printf '{"name":"awh-vps-direct-connector","private":true,"version":"1.0.0","dependencies":{"%s":"%s"}}\n' "$(manifest_value package)" "$AGENT_VERSION" > "$RUNTIME_ROOT/agent/package.json"
+  (cd "$RUNTIME_ROOT/agent" && PATH="$NODE_ROOT/bin:$PATH" "$NPM_BIN" install --ignore-scripts --omit=dev --no-audit --no-fund --save-exact "@wonderwhy-er/desktop-commander@$AGENT_VERSION" >/dev/null)
+  printf '%s\n' "AWH_VPS_DIRECT_PACKAGE=INSTALLED version=$AGENT_VERSION"
+fi
 chown -R root:root "$RUNTIME_ROOT/agent"; chmod -R go-w "$RUNTIME_ROOT/agent"
 cat > "$CONFIG.tmp" <<'JSON'
 {

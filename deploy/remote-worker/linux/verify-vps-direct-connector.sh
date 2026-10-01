@@ -22,14 +22,18 @@ NODE_BIN=$NODE_ROOT/bin/node
 SESSION=$AGENT_HOME/.desktop-commander-device/device.json
 CONFIG=$AGENT_HOME/.claude-server-commander/config.json
 CANDIDATE_ROOT=$AGENT_HOME/worktrees
+CONNECTOR_TMP=$AGENT_HOME/tmp
 fail(){ printf '%s\n' "$1" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || fail AWH_VPS_DIRECT_VERIFY_REQUIRES_ROOT
 [ "$(systemctl show desktop-commander-vps.service -p User --value)" = "$AGENT_USER" ] || fail AWH_VPS_DIRECT_SERVICE_USER_MISMATCH
 [ "$(systemctl show desktop-commander-vps.service -p Group --value)" = "$AGENT_USER" ] || fail AWH_VPS_DIRECT_SERVICE_GROUP_MISMATCH
 systemctl is-enabled --quiet desktop-commander-vps.service || fail AWH_VPS_DIRECT_SERVICE_NOT_ENABLED
 systemctl is-active --quiet desktop-commander-vps.service || fail AWH_VPS_DIRECT_SERVICE_NOT_ACTIVE
-systemctl show desktop-commander-vps.service -p Environment --value | grep -Fq "TMPDIR=$AGENT_HOME/tmp" || fail AWH_VPS_DIRECT_TMPDIR_MISMATCH
-[ "$(stat -c '%U:%G:%a' "$AGENT_HOME/tmp")" = "$AGENT_USER:$AGENT_USER:700" ] || fail AWH_VPS_DIRECT_TMPDIR_PERMISSIONS_INVALID
+MAIN_PID=$(systemctl show desktop-commander-vps.service -p MainPID --value)
+case "$MAIN_PID" in ''|0|*[!0-9]*) fail AWH_VPS_DIRECT_SERVICE_PID_INVALID;; esac
+tr '\0' '\n' < "/proc/$MAIN_PID/environ" | grep -Fxq "TMPDIR=$CONNECTOR_TMP" || fail AWH_VPS_DIRECT_RUNTIME_TMPDIR_MISMATCH
+systemctl show desktop-commander-vps.service -p Environment --value | grep -Fq "TMPDIR=$CONNECTOR_TMP" || fail AWH_VPS_DIRECT_TMPDIR_MISMATCH
+[ "$(stat -c '%U:%G:%a' "$CONNECTOR_TMP")" = "$AGENT_USER:awh-operator:2770" ] || fail AWH_VPS_DIRECT_TMPDIR_PERMISSIONS_INVALID
 [ "$(stat -c '%U:%G:%a' "$CANDIDATE_ROOT")" = "$AGENT_USER:$AGENT_USER:700" ] || fail AWH_VPS_DIRECT_CANDIDATE_ROOT_PERMISSIONS_INVALID
 runuser -u "$AGENT_USER" -- test -w "$CANDIDATE_ROOT" || fail AWH_VPS_DIRECT_CANDIDATE_ROOT_NOT_WRITABLE
 case " $(id -nG "$AGENT_USER") " in *' sudo '*|*' adm '*) fail AWH_VPS_DIRECT_PRIVILEGED_GROUP_FORBIDDEN;; esac

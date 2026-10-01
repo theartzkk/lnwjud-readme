@@ -85,16 +85,25 @@ case "$RELEASE_ATTEMPT" in
   r[1-9]|r[1-9][0-9]|r[1-9][0-9][0-9]) RELEASE_ID="$RELEASE_ID-$RELEASE_ATTEMPT" ;;
   *) echo "AWH_RELEASE_ATTEMPT must be empty or r1..r999" >&2; exit 2 ;;
 esac
+RELEASE_EXECUTION_ID=${AWH_RELEASE_EXECUTION_ID:-}
+case "$RELEASE_EXECUTION_ID" in
+  '') RUN_ID=$RELEASE_ID ;;
+  ????????-????-4???-[89abAB]???-????????????)
+    RUN_SUFFIX=$(printf '%s' "$RELEASE_EXECUTION_ID" | tr -d '-' | tr 'A-F' 'a-f' | cut -c1-12)
+    RUN_ID="$RELEASE_ID-exec$RUN_SUFFIX"
+    ;;
+  *) echo "AWH_RELEASE_EXECUTION_ID must be empty or a UUIDv4" >&2; exit 2 ;;
+esac
 REMOTE_STAGE=/tmp/awh-control-plane-$RELEASE_ID.tar.gz
 PREFLIGHT=$ROOT/deploy/awh-enrollment/preflight-production.sh
 REMOTE_DEPLOY=$ROOT/deploy/awh-control-plane/remote-deploy-control-plane.sh
 OUTPUT_VALIDATOR=$ROOT/deploy/awh-control-plane/validate-remote-output.sh
 DURABLE_RUNNER=$ROOT/deploy/awh-control-plane/durable-remote-runner.sh
 REMOTE_SCRIPT=/tmp/awh-control-plane-$RELEASE_ID.sh
-REMOTE_RUNNER=/tmp/awh-control-plane-$RELEASE_ID-runner.sh
-REMOTE_RESULT=/tmp/awh-control-plane-$RELEASE_ID.result
-REMOTE_LOG=/tmp/awh-control-plane-$RELEASE_ID.log
-REMOTE_UNIT=awh-control-plane-$RELEASE_ID
+REMOTE_RUNNER=/tmp/awh-control-plane-$RUN_ID-runner.sh
+REMOTE_RESULT=/tmp/awh-control-plane-$RUN_ID.result
+REMOTE_LOG=/tmp/awh-control-plane-$RUN_ID.log
+REMOTE_UNIT=awh-control-plane-$RUN_ID
 BUNDLE=$(mktemp "${TMPDIR:-/tmp}/awh-control-plane.XXXXXX")
 WEB_BUILD_ROOT=
 WEB_OUTPUT=

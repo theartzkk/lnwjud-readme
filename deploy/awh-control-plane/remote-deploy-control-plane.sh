@@ -100,6 +100,15 @@ OPERATOR_CLIENT=/usr/local/bin/awh-operator
 OPERATOR_CLIENT_BACKUP=$EXECUTOR_BACKUP_ROOT/awh-operator.$RELEASE_ID
 OPERATOR_CLIENT_PREEXISTING=0
 OPERATOR_CLIENT_INSTALLED=0
+VPS_CONNECTOR_UNIT=/etc/systemd/system/desktop-commander-vps.service
+VPS_CONNECTOR_CONFIG=/var/lib/awh-remote/.claude-server-commander/config.json
+VPS_CONNECTOR_UNIT_BACKUP=$EXECUTOR_BACKUP_ROOT/desktop-commander-vps.service.$RELEASE_ID
+VPS_CONNECTOR_CONFIG_BACKUP=$EXECUTOR_BACKUP_ROOT/desktop-commander-vps.config.$RELEASE_ID
+VPS_CONNECTOR_UNIT_PREEXISTING=0
+VPS_CONNECTOR_CONFIG_PREEXISTING=0
+VPS_CONNECTOR_MUTATION_STARTED=0
+VPS_CONNECTOR_WAS_ACTIVE=0
+VPS_CONNECTOR_WAS_ENABLED=0
 HOSTING_SERVICE_BACKUP=$EXECUTOR_BACKUP_ROOT/awh-hosting-operator.service.$RELEASE_ID
 HOSTING_TIMER_BACKUP=$EXECUTOR_BACKUP_ROOT/awh-hosting-operator.timer.$RELEASE_ID
 TOPOLOGY_ARCHIVE=/var/backups/awh-hub/topology-cleanup-$RELEASE_ID
@@ -587,6 +596,29 @@ rollback() {
         sudo cp -p "$OPERATOR_CLIENT_BACKUP" "$OPERATOR_CLIENT" || ok=0
       else
         sudo rm -f "$OPERATOR_CLIENT" || ok=0
+      fi
+    fi
+    if test "$VPS_CONNECTOR_MUTATION_STARTED" -eq 1; then
+      if test "$VPS_CONNECTOR_UNIT_PREEXISTING" -eq 1; then
+        sudo cp -p "$VPS_CONNECTOR_UNIT_BACKUP" "$VPS_CONNECTOR_UNIT" || ok=0
+      else
+        sudo rm -f "$VPS_CONNECTOR_UNIT" || ok=0
+      fi
+      if test "$VPS_CONNECTOR_CONFIG_PREEXISTING" -eq 1; then
+        sudo cp -p "$VPS_CONNECTOR_CONFIG_BACKUP" "$VPS_CONNECTOR_CONFIG" || ok=0
+      else
+        sudo rm -f "$VPS_CONNECTOR_CONFIG" || ok=0
+      fi
+      sudo systemctl daemon-reload || ok=0
+      if test "$VPS_CONNECTOR_WAS_ENABLED" -eq 1; then
+        sudo systemctl enable desktop-commander-vps.service >/dev/null 2>&1 || ok=0
+      else
+        sudo systemctl disable desktop-commander-vps.service >/dev/null 2>&1 || true
+      fi
+      if test "$VPS_CONNECTOR_WAS_ACTIVE" -eq 1; then
+        sudo systemctl restart desktop-commander-vps.service || ok=0
+      else
+        sudo systemctl stop desktop-commander-vps.service >/dev/null 2>&1 || true
       fi
     fi
     if test "$PLATFORM_SENSOR_UNITS_INSTALLED" -eq 1; then
@@ -1418,7 +1450,19 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
     stage VPS_DIRECT_CONNECTOR_PREPARE
     sudo test -x "$RELEASE/deploy/remote-worker/linux/install-vps-direct-connector.sh"
     sudo test -x "$RELEASE/deploy/remote-worker/linux/verify-vps-direct-connector.sh"
-    sudo "$RELEASE/deploy/remote-worker/linux/install-vps-direct-connector.sh" --prepare
+    sudo install -d -o root -g root -m 0750 "$EXECUTOR_BACKUP_ROOT"
+    if sudo test -f "$VPS_CONNECTOR_UNIT"; then
+      sudo cp -p "$VPS_CONNECTOR_UNIT" "$VPS_CONNECTOR_UNIT_BACKUP"
+      VPS_CONNECTOR_UNIT_PREEXISTING=1
+    fi
+    if sudo test -f "$VPS_CONNECTOR_CONFIG"; then
+      sudo cp -p "$VPS_CONNECTOR_CONFIG" "$VPS_CONNECTOR_CONFIG_BACKUP"
+      VPS_CONNECTOR_CONFIG_PREEXISTING=1
+    fi
+    if sudo systemctl is-active --quiet desktop-commander-vps.service; then VPS_CONNECTOR_WAS_ACTIVE=1; fi
+    if sudo systemctl is-enabled --quiet desktop-commander-vps.service; then VPS_CONNECTOR_WAS_ENABLED=1; fi
+    VPS_CONNECTOR_MUTATION_STARTED=1
+    sudo env AWH_VPS_DIRECT_REUSE_ONLY=1 "$RELEASE/deploy/remote-worker/linux/install-vps-direct-connector.sh" --activate
     sudo "$RELEASE/deploy/remote-worker/linux/verify-vps-direct-connector.sh"
     stage VPS_DIRECT_CONNECTOR_READY
     stage PLATFORM_SENSOR_PREPARE
@@ -1695,4 +1739,4 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
   stage SOURCE_DRIFT_VERIFIED
 fi
 stage EXECUTION_AUTHORITY_RELEASE; release_deploy_authority success; stage EXECUTION_AUTHORITY_RELEASED
-SUCCESS=1; printf '%s\n' 'DEPLOY_RESULT=PASS'; trap - EXIT HUP INT TERM; sudo rm -f "$REMOTE_STAGE" "$NGINX_BACKUP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" "$CONTROL_INCLUDE_TMP" "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP" "$SOURCE_DRIFT_HOTFIX_BACKUP" "$SOURCE_DRIFT_OVERRIDE_BACKUP" "$OPERATOR_CLIENT_BACKUP"; exit 0
+SUCCESS=1; printf '%s\n' 'DEPLOY_RESULT=PASS'; trap - EXIT HUP INT TERM; sudo rm -f "$REMOTE_STAGE" "$NGINX_BACKUP" "$NGINX_CANDIDATE" "$REMOTE_SCRIPT" "$CONTROL_INCLUDE_TMP" "$EXECUTOR_SERVICE_BACKUP" "$EXECUTOR_TIMER_BACKUP" "$HOSTING_SERVICE_BACKUP" "$HOSTING_TIMER_BACKUP" "$SOURCE_DRIFT_HOTFIX_BACKUP" "$SOURCE_DRIFT_OVERRIDE_BACKUP" "$OPERATOR_CLIENT_BACKUP" "$VPS_CONNECTOR_UNIT_BACKUP" "$VPS_CONNECTOR_CONFIG_BACKUP"; exit 0

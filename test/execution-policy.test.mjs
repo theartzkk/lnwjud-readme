@@ -60,7 +60,27 @@ test('VPS direct connector exposes durable candidates but keeps canonical source
   assert.match(verify,/AWH_VPS_DIRECT_CANONICAL_SOURCE_WRITABLE/);
   assert.ok(install.includes(durable));
   assert.ok(verify.includes(durable));
-  assert.match(platformDeploy,/stage VPS_DIRECT_CONNECTOR_PREPARE[\s\S]*install-vps-direct-connector\.sh" --prepare[\s\S]*verify-vps-direct-connector\.sh"[\s\S]*stage VPS_DIRECT_CONNECTOR_READY/);
+  assert.match(platformDeploy,/stage VPS_DIRECT_CONNECTOR_PREPARE[\s\S]*AWH_VPS_DIRECT_REUSE_ONLY=1[\s\S]*install-vps-direct-connector\.sh" --activate[\s\S]*verify-vps-direct-connector\.sh"[\s\S]*stage VPS_DIRECT_CONNECTOR_READY/);
+  assert.match(platformDeploy,/VPS_CONNECTOR_MUTATION_STARTED=1/);
+  assert.match(platformDeploy,/VPS_CONNECTOR_UNIT_BACKUP/);
+  assert.match(platformDeploy,/VPS_CONNECTOR_CONFIG_BACKUP/);
+  assert.match(platformDeploy,/systemctl restart desktop-commander-vps\.service/);
+  assert.match(install,/CONNECTOR_TMP=\$AGENT_HOME\/tmp/);
+  assert.match(install,/install -d -m 2770 -o "\$AGENT_USER" -g awh-operator "\$CONNECTOR_TMP"/);
+  assert.doesNotMatch(install,/install -d -m 0700[^\n]*"\$CONNECTOR_TMP"/);
+  assert.match(install,/AWH_VPS_DIRECT_PACKAGE=REUSED/);
+  assert.match(install,/AWH_VPS_DIRECT_PACKAGE_REUSE_REQUIRED/);
+  assert.match(verify,/AWH_VPS_DIRECT_RUNTIME_TMPDIR_MISMATCH/);
+  assert.match(verify,/\$AGENT_USER:awh-operator:2770/);
+});
+
+test('durable deploy retry evidence is isolated per release execution',async()=>{
+  const deploy=await readFile(new URL('../deploy/awh-control-plane/deploy-control-plane.sh',import.meta.url),'utf8');
+  assert.match(deploy,/RELEASE_EXECUTION_ID=\$\{AWH_RELEASE_EXECUTION_ID:-\}/);
+  assert.match(deploy,/RUN_ID="\$RELEASE_ID-exec\$RUN_SUFFIX"/);
+  assert.match(deploy,/REMOTE_RESULT=\/tmp\/awh-control-plane-\$RUN_ID\.result/);
+  assert.match(deploy,/REMOTE_LOG=\/tmp\/awh-control-plane-\$RUN_ID\.log/);
+  assert.match(deploy,/REMOTE_STAGE=\/tmp\/awh-control-plane-\$RELEASE_ID\.tar\.gz/);
 });
 
 test('QA mapping remains a technical runtime capability',async()=>{
