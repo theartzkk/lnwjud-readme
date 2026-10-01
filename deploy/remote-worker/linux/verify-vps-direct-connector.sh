@@ -21,6 +21,7 @@ NODE_ROOT=${AWH_RDC_NODE_ROOT:-$RUNTIME_ROOT/node-v${NODE_VERSION}-linux-x64}
 NODE_BIN=$NODE_ROOT/bin/node
 SESSION=$AGENT_HOME/.desktop-commander-device/device.json
 CONFIG=$AGENT_HOME/.claude-server-commander/config.json
+CANDIDATE_ROOT=$AGENT_HOME/worktrees
 fail(){ printf '%s\n' "$1" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || fail AWH_VPS_DIRECT_VERIFY_REQUIRES_ROOT
 [ "$(systemctl show desktop-commander-vps.service -p User --value)" = "$AGENT_USER" ] || fail AWH_VPS_DIRECT_SERVICE_USER_MISMATCH
@@ -29,6 +30,8 @@ systemctl is-enabled --quiet desktop-commander-vps.service || fail AWH_VPS_DIREC
 systemctl is-active --quiet desktop-commander-vps.service || fail AWH_VPS_DIRECT_SERVICE_NOT_ACTIVE
 systemctl show desktop-commander-vps.service -p Environment --value | grep -Fq "TMPDIR=$AGENT_HOME/tmp" || fail AWH_VPS_DIRECT_TMPDIR_MISMATCH
 [ "$(stat -c '%U:%G:%a' "$AGENT_HOME/tmp")" = "$AGENT_USER:$AGENT_USER:700" ] || fail AWH_VPS_DIRECT_TMPDIR_PERMISSIONS_INVALID
+[ "$(stat -c '%U:%G:%a' "$CANDIDATE_ROOT")" = "$AGENT_USER:$AGENT_USER:700" ] || fail AWH_VPS_DIRECT_CANDIDATE_ROOT_PERMISSIONS_INVALID
+runuser -u "$AGENT_USER" -- test -w "$CANDIDATE_ROOT" || fail AWH_VPS_DIRECT_CANDIDATE_ROOT_NOT_WRITABLE
 case " $(id -nG "$AGENT_USER") " in *' sudo '*|*' adm '*) fail AWH_VPS_DIRECT_PRIVILEGED_GROUP_FORBIDDEN;; esac
 [ "$(stat -c '%U:%G:%a' "$SESSION")" = "$AGENT_USER:$AGENT_USER:600" ] || fail AWH_VPS_DIRECT_SESSION_PERMISSIONS_INVALID
 [ -x "$NODE_BIN" ] || fail AWH_VPS_DIRECT_NODE_RUNTIME_REQUIRED
@@ -37,9 +40,10 @@ VERSION=$("$NODE_BIN" -e 'process.stdout.write(require(process.argv[1]).version)
 [ "$VERSION" = "$EXPECTED_AGENT_VERSION" ] || fail AWH_VPS_DIRECT_AGENT_VERSION_MISMATCH
 "$NODE_BIN" - "$CONFIG" <<'NODE'
 const fs=require('fs'); const c=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
-const dirs=JSON.stringify(c.allowedDirectories||[]); if(dirs!==JSON.stringify(['/srv/awh-git','/tmp'])) process.exit(2);
+const dirs=JSON.stringify(c.allowedDirectories||[]); if(dirs!==JSON.stringify(['/srv/awh-git','/var/lib/awh-remote/worktrees','/tmp'])) process.exit(2);
 for(const cmd of ['sudo','su','useradd','usermod','reboot','shutdown']) if(!(c.blockedCommands||[]).includes(cmd)) process.exit(3);
 if(c.fileReadLineLimit!==300 || c.fileWriteLineLimit!==50) process.exit(4);
 NODE
 runuser -u "$AGENT_USER" -- git --git-dir=/srv/awh-git/awh.git rev-parse --verify refs/heads/main >/dev/null || fail AWH_VPS_DIRECT_SOURCE_READ_FAILED
+runuser -u "$AGENT_USER" -- test ! -w /srv/awh-git || fail AWH_VPS_DIRECT_CANONICAL_SOURCE_WRITABLE
 printf '%s\n' "AWH_VPS_DIRECT_VERIFY=PASS version=$VERSION user=$AGENT_USER"

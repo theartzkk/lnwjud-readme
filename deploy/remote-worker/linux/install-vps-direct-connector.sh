@@ -25,6 +25,7 @@ NODE_INSTALLER=$HERE/install-node-runtime.sh
 UNIT=/etc/systemd/system/desktop-commander-vps.service
 SESSION=$AGENT_HOME/.desktop-commander-device/device.json
 CONFIG=$AGENT_HOME/.claude-server-commander/config.json
+CANDIDATE_ROOT=$AGENT_HOME/worktrees
 fail(){ printf '%s\n' "$1" >&2; exit 1; }
 case "$MODE" in --prepare|--activate) :;; *) fail 'usage: install-vps-direct-connector.sh [--prepare|--activate]' ;; esac
 [ "$(id -u)" -eq 0 ] || fail AWH_VPS_DIRECT_INSTALL_REQUIRES_ROOT
@@ -37,14 +38,14 @@ fi
 [ -x "$NODE_BIN" ] && [ -x "$NPM_BIN" ] || fail AWH_VPS_DIRECT_NODE_RUNTIME_REQUIRED
 id "$AGENT_USER" >/dev/null 2>&1 || useradd --system --create-home --home-dir "$AGENT_HOME" --shell /bin/bash "$AGENT_USER"
 case " $(id -nG "$AGENT_USER") " in *' sudo '*|*' adm '*) fail AWH_VPS_DIRECT_PRIVILEGED_GROUP_FORBIDDEN;; esac
-install -d -m 0700 -o "$AGENT_USER" -g "$AGENT_USER" "$AGENT_HOME" "$AGENT_HOME/.npm" "$AGENT_HOME/tmp" "$AGENT_HOME/.desktop-commander-device" "$AGENT_HOME/.claude-server-commander"
+install -d -m 0700 -o "$AGENT_USER" -g "$AGENT_USER" "$AGENT_HOME" "$AGENT_HOME/.npm" "$AGENT_HOME/tmp" "$CANDIDATE_ROOT" "$AGENT_HOME/.desktop-commander-device" "$AGENT_HOME/.claude-server-commander"
 install -d -m 0755 -o root -g root "$RUNTIME_ROOT" "$RUNTIME_ROOT/agent"
 printf '{"name":"awh-vps-direct-connector","private":true,"version":"1.0.0","dependencies":{"%s":"%s"}}\n' "$(manifest_value package)" "$AGENT_VERSION" > "$RUNTIME_ROOT/agent/package.json"
 (cd "$RUNTIME_ROOT/agent" && PATH="$NODE_ROOT/bin:$PATH" "$NPM_BIN" install --ignore-scripts --omit=dev --no-audit --no-fund --save-exact "@wonderwhy-er/desktop-commander@$AGENT_VERSION" >/dev/null)
 chown -R root:root "$RUNTIME_ROOT/agent"; chmod -R go-w "$RUNTIME_ROOT/agent"
 cat > "$CONFIG.tmp" <<'JSON'
 {
-  "allowedDirectories": ["/srv/awh-git", "/tmp"],
+  "allowedDirectories": ["/srv/awh-git", "/var/lib/awh-remote/worktrees", "/tmp"],
   "blockedCommands": ["mkfs","format","mount","umount","fdisk","dd","parted","diskpart","sudo","su","passwd","adduser","useradd","usermod","groupadd","chsh","visudo","shutdown","reboot","halt","poweroff","init","iptables","firewall","netsh","sfc","bcdedit","reg","net","sc","runas","cipher","takeown"],
   "fileReadLineLimit": 300,
   "fileWriteLineLimit": 50,
@@ -67,6 +68,7 @@ if ! command -v setfacl >/dev/null 2>&1; then
   apt-get install -y --no-install-recommends acl >/dev/null
 fi
 [ -d /srv/awh-git ] || fail AWH_VPS_DIRECT_SOURCE_ROOT_MISSING
+[ "$(stat -c '%U:%G:%a' "$CANDIDATE_ROOT")" = "$AGENT_USER:$AGENT_USER:700" ] || fail AWH_VPS_DIRECT_CANDIDATE_ROOT_PERMISSIONS_INVALID
 setfacl -R -m "u:$AGENT_USER:rX" /srv/awh-git
 find /srv/awh-git -type d -exec setfacl -m "d:u:$AGENT_USER:r-x" {} +
 sed -e "s|__AGENT_USER__|$AGENT_USER|g" -e "s|__AGENT_HOME__|$AGENT_HOME|g" -e "s|__RUNTIME_ROOT__|$RUNTIME_ROOT|g" -e "s|__NODE_ROOT__|$NODE_ROOT|g" "$HERE/desktop-commander-vps.service.template" > "$UNIT.tmp"

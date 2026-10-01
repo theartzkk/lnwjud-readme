@@ -45,6 +45,22 @@ test('execution metadata is context-only rather than an AI behavior policy',asyn
   for(const removed of ['remoteMission','executionModel','gateTiers','sourceAuthority']) assert.equal(Object.hasOwn(context,removed),false);
 });
 
+test('VPS direct connector exposes durable candidates but keeps canonical source read-only',async()=>{
+  const context=await loadExecutionPolicy();
+  const durable=context.workspaceRouting.durableCandidateRoot;
+  const [install,verify]=await Promise.all([
+    readFile(new URL('../deploy/remote-worker/linux/install-vps-direct-connector.sh',import.meta.url),'utf8'),
+    readFile(new URL('../deploy/remote-worker/linux/verify-vps-direct-connector.sh',import.meta.url),'utf8'),
+  ]);
+  assert.equal(durable,'/var/lib/awh-remote/worktrees');
+  assert.match(install,/allowedDirectories.*\/srv\/awh-git.*\/var\/lib\/awh-remote\/worktrees.*\/tmp/s);
+  assert.match(install,/CANDIDATE_ROOT=\$AGENT_HOME\/worktrees/);
+  assert.match(verify,/AWH_VPS_DIRECT_CANDIDATE_ROOT_NOT_WRITABLE/);
+  assert.match(verify,/AWH_VPS_DIRECT_CANONICAL_SOURCE_WRITABLE/);
+  assert.ok(install.includes(durable));
+  assert.ok(verify.includes(durable));
+});
+
 test('QA mapping remains a technical runtime capability',async()=>{
   const context=await loadExecutionPolicy();
   assert.equal(qaScriptForBudget(context,'FAST'),'qa:fast');
