@@ -30,6 +30,7 @@ final class HubOperatorBridgeService
     private const SOURCE_PROMOTE_CONFIRMATION='PROMOTE_CANONICAL_MAIN';
     private const SOURCE_METADATA_REPAIR_CONFIRMATION='REPAIR_SOURCE_PROMOTION_METADATA';
     private const MISSION_ACQUIRE_CONFIRMATION='ACQUIRE_PROJECT_MISSION';
+    private const FLOW_START_CONFIRMATION='START_OR_RESUME_PROJECT_FLOW';
     private const MISSION_RELEASE_CONFIRMATION='RELEASE_PROJECT_MISSION';
     private const MISSION_CAPABILITY='operator.project_mission';
     private const MISSION_OWNER='operator-mission';
@@ -63,6 +64,8 @@ final class HubOperatorBridgeService
             'system.status'=>$this->systemStatus($at),
             'projects.list'=>$this->projects($at),
             'project.gate'=>$this->projectGate(self::text($request,'project',160),$at,false,self::MISSION_CAPABILITY),
+            'flow.preflight'=>$this->flowPreflight($request,$at),
+            'flow.start'=>$this->flowStart($request,$at),
             'platform.maintenance.status'=>$this->platformMaintenanceStatus($at),
             'platform.maintenance.enable'=>$this->platformMaintenanceEnable($request,$at),
             'platform.maintenance.disable'=>$this->platformMaintenanceDisable($request,$at),
@@ -261,7 +264,7 @@ final class HubOperatorBridgeService
         $expected=strtolower(self::text($request,'expectedActiveRevisionId',36));$missionId=strtolower(self::text($request,'missionExecutionId',36));
         if(!self::uuidValid($expected)||!self::uuidValid($missionId)||$stagedFile!==$archiveSha.'.zip')throw new HubOperatorBridgeException('Canonical Vault import identity is invalid','OPERATOR_REQUEST_INVALID');
         $project=$this->resolveProject($selector);$projectId=(string)$project['project_id'];
-        $this->activeProjectMission($missionId,$at,$projectId,true);
+        $this->ensureProjectMissionActive($missionId,$at,$projectId);
         $gate=$this->projectGate($selector,$at,false,'source.promote',$missionId);if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('Project mutation gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
         $source=is_array($gate['source']??null)?$gate['source']:[];
         $active=strtolower((string)($source['activeVaultRevisionId']??''));$canonical=strtolower((string)($source['canonicalVaultRevisionId']??''));
@@ -413,6 +416,115 @@ final class HubOperatorBridgeService
         ];
     }
 
+    /** @param array<string,mixed> $request @return array<string,mixed> */
+    private function flowPreflight(array $request,string $at): array
+    {
+        $selector=self::text($request,'project',160);
+        $trackKey=is_string($request['releaseTrack']??null)?strtolower(trim((string)$request['releaseTrack'])):'';
+        if($trackKey!==''&&preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',$trackKey)!==1)throw new HubOperatorBridgeException('Flow release track is invalid','OPERATOR_REQUEST_INVALID');
+        $track=$trackKey===''?null:HubUpdateTargetRegistry::byReleaseTrack($trackKey);
+        if($trackKey!==''&&!is_array($track))throw new HubOperatorBridgeException('Flow release track is not registered','RELEASE_TRACK_SCOPE_VIOLATION');
+
+        $candidateGate=$this->projectGate($selector,$at,false,self::MISSION_CAPABILITY);
+        $deployCapability=is_array($track)&&is_string($track['capability']??null)?(string)$track['capability']:null;
+        $deployGate=$deployCapability===null?$candidateGate:$this->projectGate($selector,$at,false,$deployCapability);
+        $mission=$this->missionStatus($selector,$at);
+        $storage=$this->storageSafetyState($at);
+        $authority=$this->flowReleaseAuthority($track,$at);
+        $existingState=(string)($mission['state']??'IDLE');
+        $existing=$existingState==='STALE_RESUMABLE'?'RESUMABLE':($existingState==='COORDINATING'?'ACTIVE':'NONE');
+        $gateChecks=[];
+        foreach((array)($candidateGate['checks']??[]) as $check){
+            if(!is_array($check)||!is_string($check['key']??null))continue;
+            $gateChecks[(string)$check['key']]=($check['ok']??false)===true;
+        }
+        $blockers=[];
+
+        if(($candidateGate['blocking']??false)===true){
+            $blockers[]=['classification'=>'HARD_STOP','code'=>'PROJECT_MUTATION_GATE_BLOCKED','blocking'=>true,'rootCause'=>'canonical project mutation gate has a conflicting or unsafe state','impact'=>'development mutation must not start','nextAction'=>'RECONCILE_PROJECT_GATE'];
+        }
+        if(($deployGate['blocking']??false)===true&&($candidateGate['blocking']??false)!==true){
+            $blockers[]=['classification'=>'CONTINUE_WITH_WARNING','code'=>'DEPLOY_TARGET_BUSY','blocking'=>false,'rootCause'=>'deploy resource currently conflicts while candidate work remains isolated','impact'=>'development can continue; deployment must wait','nextAction'=>'RECHECK_BEFORE_DEPLOY'];
+        }
+        if(($storage['releaseBlocked']??false)===true){
+            $blockers[]=['classification'=>'AUTO_FIX','code'=>'STORAGE_RESERVE_RECOVERING','blocking'=>true,'rootCause'=>'free space is below the release reserve','impact'=>'new mutating work pauses until deterministic cleanup restores reserve','nextAction'=>'AWH_STORAGE_GUARD_SELF_HEAL'];
+        }elseif(($storage['state']??'UNKNOWN')==='WARNING'){
+            $blockers[]=['classification'=>'CONTINUE_WITH_WARNING','code'=>'STORAGE_WARNING','blocking'=>false,'rootCause'=>'free space is below the preferred operating margin but above the hard release reserve','impact'=>'development can continue with storage self-heal active','nextAction'=>'AWH_STORAGE_GUARD_SELF_HEAL'];
+        }
+        if($existing==='RESUMABLE'){
+            $blockers[]=['classification'=>'AUTO_FIX','code'=>'EXISTING_WORK_RESUMABLE','blocking'=>false,'rootCause'=>'the previous coordination heartbeat is stale but its durable execution is valid','impact'=>'reuse the same Mission/checkpoint instead of creating another','nextAction'=>'RESUME_SAME_EXECUTION'];
+        }elseif($existing==='ACTIVE'){
+            $blockers[]=['classification'=>'AUTO_FIX','code'=>'EXISTING_WORK_ACTIVE','blocking'=>false,'rootCause'=>'an existing coordination Mission already owns this project context','impact'=>'join the existing Mission instead of creating another','nextAction'=>'JOIN_EXISTING'];
+        }
+        if(($authority['state']??'NOT_EVALUATED')==='DEGRADED'){
+            $blockers[]=['classification'=>'CONTINUE_WITH_WARNING','code'=>'DEPLOY_AUTHORITY_DEGRADED','blocking'=>false,'rootCause'=>'the configured deploy capability heartbeat is not currently fresh','impact'=>'development can continue; deployment must wait for the existing authority','nextAction'=>'RECHECK_DEPLOY_AUTHORITY'];
+        }
+        if(($authority['ownerApprovalRequired']??false)===true){
+            $blockers[]=['classification'=>'OWNER_REQUIRED','code'=>'DEPLOY_APPROVAL_REQUIRED_LATER','blocking'=>false,'phase'=>'DEPLOY','rootCause'=>'this release track intentionally requires bounded Owner approval','impact'=>'development and QA can continue without interruption','nextAction'=>'REQUEST_ONCE_WHEN_RELEASE_READY'];
+        }
+
+        $hard=(bool)array_filter($blockers,static fn(array $b):bool=>($b['blocking']??false)===true);
+        if($hard)$decision='HARD_BLOCK';
+        elseif($existing!=='NONE')$decision='RESUME_EXISTING';
+        elseif(array_filter($blockers,static fn(array $b):bool=>($b['classification']??'')==='CONTINUE_WITH_WARNING'))$decision='START_WITH_WARNING';
+        else $decision='START';
+
+        return [
+            'schemaVersion'=>1,'state'=>'PROJECT_READINESS','decision'=>$decision,'blocking'=>$hard,
+            'project'=>$candidateGate['project']??null,'releaseTrack'=>$trackKey===''?null:$trackKey,
+            'readiness'=>[
+                'source'=>($candidateGate['sourceReady']??false)?'READY':'DEGRADED',
+                'writer'=>($candidateGate['blocking']??false)?'BLOCKED':(((int)($candidateGate['writer']['activeMutationCount']??0)>0)?'BUSY':'READY'),
+                'storage'=>($storage['releaseBlocked']??false)?'BLOCKED':(string)($storage['state']??'UNKNOWN'),
+                'authority'=>(string)($authority['state']??'NOT_EVALUATED'),
+                'dependencies'=>($gateChecks['database']??false)?'READY':'DEGRADED',
+                'runtime'=>'NOT_EVALUATED',
+                'existingWork'=>$existing,
+                'deployTarget'=>($deployGate['blocking']??false)?'BLOCKED':match((string)($authority['state']??'NOT_EVALUATED')){'READY'=>'READY','DEGRADED'=>'DEGRADED',default=>'NOT_EVALUATED'},
+                'physicalUat'=>'NOT_EVALUATED',
+            ],
+            'gate'=>$candidateGate,'deployGate'=>$deployGate,'mission'=>$mission,'storage'=>$storage,'authority'=>$authority,
+            'blockers'=>$blockers,'observedAt'=>$at,
+        ];
+    }
+
+    /** @param array<string,mixed> $request @return array<string,mixed> */
+    private function flowStart(array $request,string $at): array
+    {
+        if(($request['confirmation']??null)!==self::FLOW_START_CONFIRMATION)throw new HubOperatorBridgeException('Explicit flow start confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
+        $project=self::text($request,'project',160);$goal=self::text($request,'goal',500);
+        $preflightRequest=['schemaVersion'=>1,'project'=>$project];
+        if(is_string($request['releaseTrack']??null))$preflightRequest['releaseTrack']=$request['releaseTrack'];
+        $preflight=$this->flowPreflight($preflightRequest,$at);
+        if(($preflight['blocking']??true)===true)throw new HubOperatorBridgeException('Project flow is hard-blocked by live readiness','OPERATOR_FLOW_BLOCKED');
+        $missionRequest=['schemaVersion'=>1,'project'=>$project,'goal'=>$goal,'confirmation'=>self::MISSION_ACQUIRE_CONFIRMATION];
+        foreach(['releaseTrack','scopeMode','impactedTracks'] as $key)if(array_key_exists($key,$request))$missionRequest[$key]=$request[$key];
+        $mission=$this->missionAcquire($missionRequest,$at);
+        return ['schemaVersion'=>1,'state'=>(string)($mission['state']??'UNKNOWN'),'decision'=>(string)($mission['decision']??$preflight['decision']),'preflight'=>$preflight,'mission'=>$mission['mission']??null,'scope'=>$mission['scope']??null,'observedAt'=>$at];
+    }
+
+    /** @param array<string,mixed>|null $track @return array<string,mixed> */
+    private function flowReleaseAuthority(?array $track,string $at): array
+    {
+        if(!is_array($track))return ['state'=>'NOT_EVALUATED','capability'=>null,'executorId'=>null,'ownerApprovalRequired'=>false,'ownerActionRequiredNow'=>false];
+        $capability=is_string($track['capability']??null)?(string)$track['capability']:'';
+        $ownerApproval=($track['ownerApprovalRequired']??false)===true;
+        if($capability==='')return ['state'=>'NOT_EVALUATED','capability'=>null,'executorId'=>null,'ownerApprovalRequired'=>$ownerApproval,'ownerActionRequiredNow'=>false];
+        $table=$this->pdo->query("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='control_executor_capabilities'")->fetchColumn();
+        if((int)$table!==1)return ['state'=>'NOT_EVALUATED','capability'=>$capability,'executorId'=>null,'ownerApprovalRequired'=>$ownerApproval,'ownerActionRequiredNow'=>false];
+        $q=$this->pdo->prepare("SELECT executor_id,executor_kind,version,observed_at,expires_at FROM control_executor_capabilities WHERE capability=:capability AND (expires_at IS NULL OR datetime(expires_at)>datetime(:at)) ORDER BY observed_at DESC,executor_id LIMIT 1");
+        $q->execute(['capability'=>$capability,'at'=>$at]);$row=$q->fetch();
+        return [
+            'state'=>is_array($row)?'READY':'DEGRADED','capability'=>$capability,
+            'executorId'=>is_array($row)?(string)$row['executor_id']:null,
+            'executorKind'=>is_array($row)?(string)$row['executor_kind']:null,
+            'version'=>is_array($row)&&is_string($row['version']??null)?(string)$row['version']:null,
+            'observedAt'=>is_array($row)?(string)$row['observed_at']:null,
+            'expiresAt'=>is_array($row)&&is_string($row['expires_at']??null)?(string)$row['expires_at']:null,
+            'ownerApprovalRequired'=>$ownerApproval,'ownerActionRequiredNow'=>false,
+        ];
+    }
+
     /** @return array<string,mixed> */
     private function missionStatus(string $selector,string $at): array
     {
@@ -528,6 +640,16 @@ final class HubOperatorBridgeService
         }catch(Throwable $error){try{$this->pdo->exec('ROLLBACK');}catch(Throwable){}throw new HubOperatorBridgeException('Project mission could not be resumed','OPERATOR_MISSION_RESUME_FAILED');}
         $fresh=$this->activeProjectMission($execution,$at,(string)$mission['project_id'],true);
         return ['schemaVersion'=>2,'state'=>'RESUMED','mission'=>$this->missionProjection($fresh),'observedAt'=>$at];
+    }
+
+    private function ensureProjectMissionActive(string $execution,string $at,string $projectId): bool
+    {
+        $active=$this->activeProjectMission($execution,$at,$projectId,false);
+        if($active!==null)return false;
+        $stale=$this->resumableProjectMission($execution,$projectId,false);
+        if($stale===null)throw new HubOperatorBridgeException('Project mission is not active','OPERATOR_MISSION_NOT_ACTIVE');
+        $this->resumeProjectMission($stale,$at);
+        return true;
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
@@ -666,7 +788,7 @@ final class HubOperatorBridgeService
         $gitReal=realpath($gitRoot);if(!is_string($gitReal)||!is_dir($gitReal)||is_link($gitRoot))throw new HubOperatorBridgeException('Source promotion roots are unavailable','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');
         $repo=$gitReal.'/'.$config['directory'];$repoReal=realpath($repo);if(!is_string($repoReal)||dirname($repoReal)!==$gitReal||!is_dir($repoReal)||is_link($repo))throw new HubOperatorBridgeException('Canonical Git repository is unavailable','OPERATOR_SOURCE_STORAGE_UNAVAILABLE');
         $projectRecord=$this->resolveProject((string)$config['project']);$projectId=(string)$projectRecord['project_id'];
-        $this->activeProjectMission($missionId,$at,$projectId,true);
+        $this->ensureProjectMissionActive($missionId,$at,$projectId);
         $gate=$this->projectGate((string)$config['project'],$at,false,'source.promote',$missionId);if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('Project mutation gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
 
         $main=self::gitSha(trim($this->runGit($repoReal,['rev-parse','refs/heads/main'])));
@@ -726,7 +848,7 @@ final class HubOperatorBridgeService
         $projectRecord=$this->resolveProject((string)$config['project']);$projectId=(string)$projectRecord['project_id'];
         $missionId=is_string($request['missionExecutionId']??null)?trim((string)$request['missionExecutionId']):'';
         if(!self::uuidValid($missionId))throw new HubOperatorBridgeException('Source promotion requires the active mission of the target project','OPERATOR_PROJECT_SCOPE_REQUIRED');
-        $mission=$this->activeProjectMission($missionId,$at,$projectId,true);
+        $missionResumed=$this->ensureProjectMissionActive($missionId,$at,$projectId);
         $gate=$this->projectGate((string)$config['project'],$at,false,'source.promote',$missionId);if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('Project mutation gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
         $current=trim($this->runGit($repoReal,['rev-parse','refs/heads/main']));if(!hash_equals($expected,self::gitSha($current)))throw new HubOperatorBridgeException('Canonical main moved before source promotion','OPERATOR_SOURCE_BASE_MOVED');
         $defaultBranch=is_string($config['defaultBranch']??null)?trim((string)$config['defaultBranch']):'main';if(preg_match('/^[a-z0-9][a-z0-9._\/-]{0,79}$/',$defaultBranch)!==1)throw new HubOperatorBridgeException('Repository default branch contract is invalid','OPERATOR_SOURCE_REPOSITORY_FORBIDDEN');
@@ -767,7 +889,7 @@ final class HubOperatorBridgeService
                 catch(Throwable $error){$this->runGitResult($repoReal,['update-ref','refs/heads/main',$expected,$target]);if($headChanged)$this->runGitResult($repoReal,['symbolic-ref','HEAD',$headBefore]);throw $error instanceof HubOperatorBridgeException?$error:new HubOperatorBridgeException('Repository default HEAD could not be reconciled','OPERATOR_SOURCE_PROMOTE_FAILED');}
             }
             $audit=['executionId'=>(string)$authority['executionId'],'taskId'=>(string)$authority['taskId']];
-            $success=true;return ['schemaVersion'=>2,'state'=>'PROMOTED','repository'=>$repository,'previousMainSha'=>$expected,'mainSha'=>$target,'bundleSha256'=>$bundleSha,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'leaseExpiresAt'=>$authority['leaseExpiresAt'],'missionReused'=>false,'missionExecutionId'=>$missionId,'writerType'=>'SOURCE_PROMOTE'],'audit'=>$audit,'releaseNotes'=>$releaseNotes,'observedAt'=>$at];
+            $success=true;return ['schemaVersion'=>2,'state'=>'PROMOTED','repository'=>$repository,'previousMainSha'=>$expected,'mainSha'=>$target,'bundleSha256'=>$bundleSha,'authority'=>['executionId'=>$authority['executionId'],'taskId'=>$authority['taskId'],'leaseExpiresAt'=>$authority['leaseExpiresAt'],'missionReused'=>false,'missionResumed'=>$missionResumed,'missionExecutionId'=>$missionId,'writerType'=>'SOURCE_PROMOTE'],'audit'=>$audit,'releaseNotes'=>$releaseNotes,'observedAt'=>$at];
         }finally{$this->releaseMutationAuthority($authority,$success,gmdate('c'));}
     }
 

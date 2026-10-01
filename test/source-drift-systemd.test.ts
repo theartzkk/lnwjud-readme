@@ -175,6 +175,8 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(temp, /required_capability<>'operator\.project_mission'/);
   assert.match(temp, /AWH_REMOTE_ELECTRON_CACHE/);
   assert.match(temp, /AWH_REMOTE_NPM_CACHE/);
+  assert.ok(temp.includes('REMOTE_UV_CACHE=' + '$' + '{AWH_REMOTE_UV_CACHE:-/var/lib/awh-remote/.cache/uv}'));
+  assert.ok(temp.includes('\"$REMOTE_NPM_CACHE\" \"$REMOTE_UV_CACHE\"'));
   assert.match(temp, /reclaim_dependency_dirs/);
   assert.match(temp, /purge_regenerable_cache/);
   assert.match(temp, /vault-\*\.zip/);

@@ -5,6 +5,7 @@ CANONICAL_BAY_GIT=${AWH_CANONICAL_BAY_GIT:-/srv/awh-git/bay-excuse-x.git}
 CANONICAL_ROOT=${AWH_CANONICAL_ROOT:-/srv/awh-git}
 REMOTE_ELECTRON_CACHE=${AWH_REMOTE_ELECTRON_CACHE:-/var/lib/awh-remote/.cache/electron}
 REMOTE_NPM_CACHE=${AWH_REMOTE_NPM_CACHE:-/var/lib/awh-remote/.npm/_cacache}
+REMOTE_UV_CACHE=${AWH_REMOTE_UV_CACHE:-/var/lib/awh-remote/.cache/uv}
 HUB_DB=${AWH_HUB_DB_PATH:-/var/lib/awh-hub/awh.sqlite}
 TEMP_ROOT=${AWH_TEMP_ROOT:-/tmp}
 REMOTE_TEMP_ROOT=${AWH_REMOTE_TEMP_ROOT:-/var/lib/awh-remote/tmp}
@@ -199,7 +200,7 @@ reclaim_dependency_dirs() {
 
 purge_regenerable_cache() {
   local d size
-  for d in "$REMOTE_ELECTRON_CACHE" "$REMOTE_NPM_CACHE"; do
+  for d in "$REMOTE_ELECTRON_CACHE" "$REMOTE_NPM_CACHE" "$REMOTE_UV_CACHE"; do
     [[ -d "$d" ]] || continue
     path_in_use "$d" && continue
     size=$(du -sb -- "$d" 2>/dev/null | awk '{print $1}' || echo 0)
