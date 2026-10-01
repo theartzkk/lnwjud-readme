@@ -85,6 +85,23 @@ export function localOperatorInvocation(local,args,{uid=typeof process.getuid===
   return {command:local,args:[...args],identity:'current'};
 }
 
+export function canonicalMainFromObserved(localSha,remoteOutput){
+  const local=typeof localSha==='string'?localSha.trim().toLowerCase():'';
+  if(SHA.test(local))return local;
+  const match=typeof remoteOutput==='string'?remoteOutput.trim().match(/^([0-9a-f]{40})\s+refs\/heads\/main$/i):null;
+  if(match&&SHA.test(match[1]))return match[1].toLowerCase();
+  throw new Error('MISSION_CANONICAL_MAIN_UNRESOLVED');
+}
+
+async function canonicalMainSha(){
+  const local=await run('git',['rev-parse','--verify','refs/heads/main']);
+  if(local.code===0){try{return canonicalMainFromObserved(local.tail,'');}catch{}}
+  const remote=await canonicalRemote();
+  const live=await run('git',['ls-remote','--exit-code',remote,'refs/heads/main']);
+  if(live.code!==0)throw new Error('MISSION_CANONICAL_MAIN_UNRESOLVED');
+  return canonicalMainFromObserved('',live.tail);
+}
+
 async function operatorRequest(command,payload,{confirm=false}={}){
   const local=process.env.AWH_OPERATOR_CLIENT||'/usr/local/bin/awh-operator';
   if(existsSync(local)){
@@ -249,7 +266,7 @@ async function ensureRehearsalDependencies(policy){
 }
 
 async function assertCanonicalMainStable(expected){
-  const current=(await git(['rev-parse','refs/heads/main'])).toLowerCase();
+  const current=await canonicalMainSha();
   if(current!==expected)throw new Error('MISSION_CANONICAL_MAIN_MOVED');
   console.log(`MISSION_CANONICAL_MAIN_STABLE=${current}`);
 }
@@ -317,7 +334,7 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   const scopeId=/^[a-z0-9][a-z0-9._:-]{7,127}$/i.test(process.env.AWH_SCOPE_ID??'')?String(process.env.AWH_SCOPE_ID):null;
   const startedAt=new Date().toISOString();
   missionContext={projectId:AWH_PROJECT_ID,releaseTrack,executionId,scopeId,startedAt};
-  const head=(await git(['rev-parse','HEAD'])).toLowerCase(); const main=(await git(['rev-parse','refs/heads/main'])).toLowerCase();
+  const head=(await git(['rev-parse','HEAD'])).toLowerCase(); const main=await canonicalMainSha();
   missionContext={projectId:AWH_PROJECT_ID,releaseTrack,executionId,scopeId,startedAt,releaseSha:head,canonicalMainAtStart:main};
   if(!SHA.test(head)||!SHA.test(main)) throw new Error('MISSION_SOURCE_IDENTITY_INVALID');
   if(head!==main){

@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { deployEvidenceFromResult, desktopImpactForFiles, desktopReleaseRequested, localOperatorInvocation, missionModeFromArgs, productionStateForRefs } from '../scripts/ops/bounded-deploy-mission.mjs';
+import { canonicalMainFromObserved, deployEvidenceFromResult, desktopImpactForFiles, desktopReleaseRequested, localOperatorInvocation, missionModeFromArgs, productionStateForRefs } from '../scripts/ops/bounded-deploy-mission.mjs';
 import { hydrateDesktopReleaseArtifacts, verifyDesktopReleaseArtifacts } from '../scripts/release/hydrate-desktop-release-artifacts.mjs';
 
 test('desktop impact detection still identifies native-agent-affecting source changes',()=>{
@@ -14,6 +14,14 @@ test('desktop impact detection still identifies native-agent-affecting source ch
   assert.equal(desktopImpactForFiles(['src/config.ts']),true);
   assert.equal(desktopImpactForFiles(['src/control-plane-worker-runtime.ts']),true);
   assert.equal(desktopImpactForFiles(['package-lock.json']),true);
+});
+
+test('durable candidate clones resolve canonical main from exact remote ref when no local main ref exists',()=>{
+  const local='a'.repeat(40); const remote='b'.repeat(40);
+  assert.equal(canonicalMainFromObserved(local,''),local);
+  assert.equal(canonicalMainFromObserved('',`${remote}\trefs/heads/main\n`),remote);
+  assert.throws(()=>canonicalMainFromObserved('','refs/heads/main'),/MISSION_CANONICAL_MAIN_UNRESOLVED/);
+  assert.throws(()=>canonicalMainFromObserved('',`${remote}\trefs/heads/not-main\n`),/MISSION_CANONICAL_MAIN_UNRESOLVED/);
 });
 
 test('bounded deploy mission has one explicit owner approval and a deterministic default deploy mode',()=>{
