@@ -169,7 +169,7 @@ report_deploy_stage() {
   stage_name=$1
   test -n "$DEPLOY_AUTHORITY_EXECUTION" || return 0
   case "$stage_name" in
-    EXECUTION_AUTHORITY_ACQUIRED|RUNTIME_LINEAGE_READY|NATIVE_EXECUTOR_QUIESCED|HOSTING_OPERATOR_QUIESCED|AWH_CORE_MIGRATION_VERIFIED|PLATFORM_HARDENING_MIGRATION_VERIFIED|IDENTITY_CONVERGENCE_MIGRATION_VERIFIED|VAULT_SOURCE_MIGRATION_VERIFIED|PROJECTS_READY|CONTROL_POINTER|PLATFORM_RUNTIME_READY|MAINTENANCE_RUNTIME_READY|PHP_FPM_RELOAD|WEB_MANIFEST_VERIFIED|WEB_POINTER_SWITCH|NGINX_CONFIGURED|SERVICE_RELOAD|OWNER_AUTH_WEB_SURFACE|CONTROL_ROUTE|M3D_REGRESSION|M3E_POST_SCHEMA_REGRESSION|PROJECT_VAULT_SOURCE_SYNC|SOURCE_DRIFT_VERIFY|SOURCE_DRIFT_VERIFIED)
+    EXECUTION_AUTHORITY_ACQUIRED|RUNTIME_LINEAGE_READY|RUNTIME_WEB_SPLIT_ACCEPTED|NATIVE_EXECUTOR_QUIESCED|HOSTING_OPERATOR_QUIESCED|AWH_CORE_MIGRATION_VERIFIED|PLATFORM_HARDENING_MIGRATION_VERIFIED|IDENTITY_CONVERGENCE_MIGRATION_VERIFIED|VAULT_SOURCE_MIGRATION_VERIFIED|PROJECTS_READY|CONTROL_POINTER|PLATFORM_RUNTIME_READY|MAINTENANCE_RUNTIME_READY|PHP_FPM_RELOAD|WEB_MANIFEST_VERIFIED|WEB_POINTER_SWITCH|WEB_POINTER_PRESERVED|NGINX_CONFIGURED|SERVICE_RELOAD|OWNER_AUTH_WEB_SURFACE|CONTROL_ROUTE|M3D_REGRESSION|M3E_POST_SCHEMA_REGRESSION|PROJECT_VAULT_SOURCE_SYNC|SOURCE_DRIFT_VERIFY|SOURCE_DRIFT_VERIFIED)
       sudo -u awh-hub /usr/bin/php "$RELEASE/hub/bin/deploy-execution-authority.php" stage "$DB" "$DEPLOY_AUTHORITY_EXECUTION" "$stage_name" >/dev/null 2>&1 || true
       ;;
   esac
@@ -476,8 +476,18 @@ production_ref_reconcile_live() {
   control_manifest="$PREVIOUS_TARGET/dist-web/release.json"
   sudo test -f "$control_manifest" || return 1
   control_sha=$(sudo -n /usr/bin/php -r '$j=json_decode(file_get_contents($argv[1]),true,32,JSON_THROW_ON_ERROR);$s=strtolower((string)($j["sourceSha"]??""));if(!preg_match("/^[0-9a-f]{40}$/",$s))exit(2);echo $s;' "$control_manifest") || return 1
-  test "$control_sha" = "$live_sha" || return 1
-  git --git-dir="$repo" merge-base --is-ancestor "$live_sha" "$RELEASE_COMMIT" || return 1
+  git --git-dir="$repo" cat-file -e "$control_sha^{commit}" || return 1
+  git --git-dir="$repo" merge-base --is-ancestor "$live_sha" "$control_sha" || return 1
+  git --git-dir="$repo" merge-base --is-ancestor "$control_sha" "$RELEASE_COMMIT" || return 1
+  if test "$control_sha" != "$live_sha"; then
+    platform_current=$(git --git-dir="$repo" rev-parse refs/heads/platform/production 2>/dev/null || true)
+    test -n "$runtime_current" || return 1
+    test "$runtime_current" = "$control_sha" || return 1
+    test "$platform_current" = "$control_sha" || return 1
+    test "$legacy_current" = "$live_sha" || return 1
+    stage RUNTIME_WEB_SPLIT_ACCEPTED
+    return 0
+  fi
   if test -z "$runtime_current"; then
     if test -n "$legacy_current"; then
       git --git-dir="$repo" merge-base --is-ancestor "$live_sha" "$legacy_current" || git --git-dir="$repo" merge-base --is-ancestor "$legacy_current" "$live_sha" || return 1
@@ -1493,7 +1503,40 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
   stage SOURCE_DRIFT_MONITOR_READY
 fi
 stage PHP_FPM_RELOAD; reload_awh_php_fpm
-web_pointer_capture; sudo install -d -o awh-hub -g www-data -m 0750 /var/www/awh-web/releases; if sudo test -e "$WEB_RELEASE" || sudo test -L "$WEB_RELEASE"; then exit 20; fi; sudo install -d -o awh-hub -g www-data -m 0750 "$WEB_RELEASE"; WEB_CREATED=1; stage WEB_RELEASE_COPY; sudo cp -a "$RELEASE/dist-web/." "$WEB_RELEASE/"; rehydrate_desktop_artifacts; deduplicate_desktop_artifacts; deduplicate_control_release_desktop_artifacts; sudo chown -R awh-hub:www-data "$WEB_RELEASE"; sudo find "$WEB_RELEASE" -type d -exec chmod 0750 {} +; sudo find "$WEB_RELEASE" -type f -exec chmod 0640 {} +; sudo -n -u awh-hub php "$RELEASE/deploy/awh-control-plane/verify-web-release.php" "$WEB_RELEASE" "$RELEASE_ID" "$RELEASE_COMMIT"; stage WEB_MANIFEST_VERIFIED; stage WEB_ACCESS_READY; verify_web_access; stage WEB_POINTER_SWITCH; sudo rm -f "$WEB_POINTER_TMP"; sudo ln -s "$WEB_RELEASE" "$WEB_POINTER_TMP"; sudo mv -Tf "$WEB_POINTER_TMP" "$WEB_POINTER"; WEB_POINTER_CHANGED=1; test "$(readlink "$WEB_POINTER")" = "$WEB_RELEASE"; stage WEB_RELEASE_STAGED
+web_pointer_capture
+if test "$PLATFORM_HARDENING" = 1; then
+  test "$WEB_PREVIOUS" = PRESENT
+  PRESERVED_WEB_TARGET=$WEB_TARGET
+  sudo test -f "$WEB_POINTER/release.json"
+  sudo -n -u www-data test -r "$WEB_POINTER/index.html"
+  sudo -n -u www-data test -r "$WEB_POINTER/updates.js"
+  stage WEB_POINTER_PRESERVED
+  test "$(readlink "$WEB_POINTER")" = "$PRESERVED_WEB_TARGET"
+else
+  sudo install -d -o awh-hub -g www-data -m 0750 /var/www/awh-web/releases
+  if sudo test -e "$WEB_RELEASE" || sudo test -L "$WEB_RELEASE"; then exit 20; fi
+  sudo install -d -o awh-hub -g www-data -m 0750 "$WEB_RELEASE"
+  WEB_CREATED=1
+  stage WEB_RELEASE_COPY
+  sudo cp -a "$RELEASE/dist-web/." "$WEB_RELEASE/"
+  rehydrate_desktop_artifacts
+  deduplicate_desktop_artifacts
+  deduplicate_control_release_desktop_artifacts
+  sudo chown -R awh-hub:www-data "$WEB_RELEASE"
+  sudo find "$WEB_RELEASE" -type d -exec chmod 0750 {} +
+  sudo find "$WEB_RELEASE" -type f -exec chmod 0640 {} +
+  sudo -n -u awh-hub php "$RELEASE/deploy/awh-control-plane/verify-web-release.php" "$WEB_RELEASE" "$RELEASE_ID" "$RELEASE_COMMIT"
+  stage WEB_MANIFEST_VERIFIED
+  stage WEB_ACCESS_READY
+  verify_web_access
+  stage WEB_POINTER_SWITCH
+  sudo rm -f "$WEB_POINTER_TMP"
+  sudo ln -s "$WEB_RELEASE" "$WEB_POINTER_TMP"
+  sudo mv -Tf "$WEB_POINTER_TMP" "$WEB_POINTER"
+  WEB_POINTER_CHANGED=1
+  test "$(readlink "$WEB_POINTER")" = "$WEB_RELEASE"
+  stage WEB_RELEASE_STAGED
+fi
 stage NGINX_CUTOVER_INSTALL; sudo install -o root -g root -m 0644 "$NGINX_CANDIDATE" "$NGINX_CONFIG"; NGINX_CHANGED=1; stage NGINX_CONFIGURED; sudo nginx -t >/dev/null
 stage SERVICE_RELOAD; sudo systemctl reload nginx
 stage OWNER_AUTH_EFFECTIVE_CONFIG; verify_owner_auth_effective_config

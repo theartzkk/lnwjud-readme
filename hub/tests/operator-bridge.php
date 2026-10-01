@@ -130,6 +130,8 @@ try{
  ob_assert(strtolower(ob_exec(['/usr/bin/git','--git-dir='.$gitRepo,'rev-parse','refs/heads/main']))===$sourceBase,'content commit cannot bypass AWH Vault projection authority');
  $scopeReleased=$service->handle(['schemaVersion'=>1,'action'=>'mission.release','executionId'=>$scopeMissionId,'outcome'=>'success','confirmation'=>'RELEASE_PROJECT_MISSION'],$now);
  ob_assert(($scopeReleased['state']??null)==='COMPLETED','temporary source-promotion coordination scope releases cleanly');
+ $closedScope=(new HubScopeAuthorizer($pdo))->forMission($scopeMissionId);
+ ob_assert(($closedScope['scopeId']??null)===($scopeMission['scope']['scopeId']??null)&&($closedScope['releaseTrack']??null)==='bay-excuse-x','issued immutable mission scope remains readable after coordination mission release');
  ob_code('OPERATOR_CONFIRMATION_REQUIRED',fn()=>$service->handle(['schemaVersion'=>1,'action'=>'mission.acquire','project'=>'bay-excuse-x','goal'=>'fixture durable mission'],$now));
  $mission=$service->handle(['schemaVersion'=>1,'action'=>'mission.acquire','project'=>'bay-excuse-x','goal'=>'fixture durable mission','releaseTrack'=>'bay-excuse-x','confirmation'=>'ACQUIRE_PROJECT_MISSION'],$now);$missionId=(string)($mission['mission']['executionId']??'');
  ob_assert(($mission['state']??null)==='ACQUIRED'&&($mission['blocking']??true)===false&&($mission['decision']??null)==='CONTINUE'&&preg_match('/^[0-9a-f-]{36}$/',$missionId)===1&&($mission['storage']['authority']??null)==='AWH_STORAGE_GUARD+LIVE_DISK'&&($mission['storage']['releaseBlocked']??true)===false,'first project mission is non-blocking coordination with storage authority evidence');

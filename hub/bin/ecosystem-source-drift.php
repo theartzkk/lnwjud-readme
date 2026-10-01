@@ -75,18 +75,29 @@ if (is_string($runtime) && $runtime!=='') {
     $awh=$gitRoot.'/awh.git';
     $runtimeProduction=is_dir($awh)?trim((string)shell_exec('git --git-dir='.escapeshellarg($awh).' rev-parse refs/heads/runtime/production 2>/dev/null')):'';
     $legacyProduction=is_dir($awh)?trim((string)shell_exec('git --git-dir='.escapeshellarg($awh).' rev-parse refs/heads/production 2>/dev/null')):'';
+    $platformProduction=is_dir($awh)?trim((string)shell_exec('git --git-dir='.escapeshellarg($awh).' rev-parse refs/heads/platform/production 2>/dev/null')):'';
     if (!preg_match('/^[0-9a-f]{40}$/',$runtimeProduction) && preg_match('/^[0-9a-f]{40}$/',$legacyProduction)) $runtimeProduction=$legacyProduction;
     $main=is_dir($awh)?trim((string)shell_exec('git --git-dir='.escapeshellarg($awh).' rev-parse refs/heads/main 2>/dev/null')):'';
     $source=is_array($manifest)?strtolower((string)($manifest['sourceSha']??'')):'';
     $releaseId=is_array($manifest)?(string)($manifest['releaseId']??''):'';
+    $controlManifestPath=getenv('AWH_CONTROL_RELEASE_MANIFEST');
+    if(!is_string($controlManifestPath)||$controlManifestPath==='')$controlManifestPath=str_starts_with($runtime,'/var/www/awh-web/')?'/opt/awh-hub/control-plane-current/dist-web/release.json':$runtime;
+    $controlManifest=json_decode((string)@file_get_contents($controlManifestPath),true);
+    $controlSource=is_array($controlManifest)?strtolower((string)($controlManifest['sourceSha']??'')):'';
+    $intentionalPlatformWebSplit=false;
+    if(preg_match('/^[0-9a-f]{40}$/',$source)===1&&preg_match('/^[0-9a-f]{40}$/',$runtimeProduction)===1&&preg_match('/^[0-9a-f]{40}$/',$controlSource)===1&&preg_match('/^[0-9a-f]{40}$/',$platformProduction)===1&&preg_match('/^[0-9a-f]{40}$/',$legacyProduction)===1&&!hash_equals($source,strtolower($runtimeProduction))&&hash_equals($controlSource,strtolower($runtimeProduction))&&hash_equals(strtolower($platformProduction),strtolower($runtimeProduction))&&hash_equals(strtolower($legacyProduction),$source)){
+        $splitBase=trim((string)shell_exec('git --git-dir='.escapeshellarg($awh).' merge-base '.escapeshellarg($source).' '.escapeshellarg($runtimeProduction).' 2>/dev/null'));
+        $intentionalPlatformWebSplit=preg_match('/^[0-9a-f]{40}$/',$splitBase)===1&&hash_equals(strtolower($splitBase),$source);
+        if($intentionalPlatformWebSplit)$pending[]='AWH web intentionally behind VPS Platform runtime';
+    }
     $manifestFiles=[];
     if (is_array($manifest['files']??null)) foreach ($manifest['files'] as $entry) {
         if (is_array($entry) && is_string($entry['path']??null) && is_string($entry['sha256']??null)) $manifestFiles[(string)$entry['path']]=strtolower((string)$entry['sha256']);
     }
-    if (preg_match('/^[0-9a-f]{40}$/',$runtimeProduction)===1 && preg_match('/^[A-Za-z0-9._-]{1,80}$/',$releaseId)===1) {
+    if (preg_match('/^[0-9a-f]{40}$/',$source)===1 && preg_match('/^[A-Za-z0-9._-]{1,80}$/',$releaseId)===1) {
         $runtimeRoot=dirname($runtime);
         foreach (['updates.html'=>'web/updates.html','updates.js'=>'web/updates.js','control-plane-adapter.js'=>'web/control-plane-adapter.js'] as $asset=>$sourcePath) {
-            $sourceBody=(string)shell_exec('git --git-dir='.escapeshellarg($awh).' show '.escapeshellarg($runtimeProduction.':'.$sourcePath).' 2>/dev/null');
+            $sourceBody=(string)shell_exec('git --git-dir='.escapeshellarg($awh).' show '.escapeshellarg($source.':'.$sourcePath).' 2>/dev/null');
             $declared=$manifestFiles[$asset]??'';
             $livePath=$runtimeRoot.'/'.$asset;
             $liveHash=is_file($livePath)?strtolower((string)@hash_file('sha256',$livePath)):'';
@@ -96,7 +107,8 @@ if (is_string($runtime) && $runtime!=='') {
             if (!preg_match('/^[0-9a-f]{64}$/',$liveHash) || !hash_equals($declared,$liveHash)) $findings[]="AWH web runtime/manifest drift: $asset";
         }
     }
-    if (!preg_match('/^[0-9a-f]{40}$/',$source) || !preg_match('/^[0-9a-f]{40}$/',$runtimeProduction) || !hash_equals($source,strtolower($runtimeProduction))) $findings[]='AWH runtime/Git runtime-production drift';
+    if (!preg_match('/^[0-9a-f]{40}$/',$controlSource) || !preg_match('/^[0-9a-f]{40}$/',$runtimeProduction) || !hash_equals($controlSource,strtolower($runtimeProduction))) $findings[]='AWH runtime/Git runtime-production drift';
+    if (preg_match('/^[0-9a-f]{40}$/',$source)!==1 || preg_match('/^[0-9a-f]{40}$/',$runtimeProduction)!==1 || (!hash_equals($source,strtolower($runtimeProduction))&&!$intentionalPlatformWebSplit)) $findings[]='AWH web/runtime production drift';
     if (!preg_match('/^[0-9a-f]{40}$/',$main) || !preg_match('/^[0-9a-f]{40}$/',$runtimeProduction)) {
         $findings[]='AWH main/runtime production authority unresolved';
     } elseif (!hash_equals(strtolower($main),strtolower($runtimeProduction))) {

@@ -93,8 +93,15 @@ final class HubCoreReleaseService
         $artifactDigest=is_string($latest['artifactDigest']??null)?strtolower((string)$latest['artifactDigest']):'';
         if(!self::uuidValid($missionId)||preg_match('/^[a-f0-9]{64}$/',$artifactDigest)!==1)
             throw new HubCoreReleaseException('Release source is missing exact Mission/artifact scope','CORE_RELEASE_SCOPE_REQUIRED');
-        try{$scopeEnvelope=(new HubScopeAuthorizer($this->pdo))->issueOrResolve($missionId,self::PROJECT_ID,$this->releaseTrack,$at);}
-        catch(HubScopeAuthorizerException $error){throw new HubCoreReleaseException($error->getMessage(),$error->codeName);}
+        try{
+            $scopeEnvelope=(new HubScopeAuthorizer($this->pdo))->forMission($missionId);
+            if(!hash_equals((string)($scopeEnvelope['projectId']??''),self::PROJECT_ID))
+                throw new HubScopeAuthorizerException('Release source Mission belongs to another project','PROJECT_SCOPE_VIOLATION');
+            if(!hash_equals((string)($scopeEnvelope['repository']??''),'awh'))
+                throw new HubScopeAuthorizerException('Release source scope belongs to another repository','PROJECT_SCOPE_VIOLATION');
+            if(!hash_equals((string)($scopeEnvelope['releaseTrack']??''),$this->releaseTrack))
+                throw new HubScopeAuthorizerException('Release source scope belongs to another release track','RELEASE_TRACK_SCOPE_VIOLATION');
+        }catch(HubScopeAuthorizerException $error){throw new HubCoreReleaseException($error->getMessage(),$error->codeName);}
         $scopeId=(string)$scopeEnvelope['scopeId'];
         $this->reconcileOrphanedRelease($at);
         $this->supersedeQueuedReleaseIfTargetMoved($sha,$at);

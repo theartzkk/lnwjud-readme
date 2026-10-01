@@ -6,12 +6,14 @@ import test from 'node:test';
 const root = process.cwd();
 
 test('project source authority ships a persistent least-privilege drift monitor', async () => {
-  const [service, timer, deploy, remote, telemetry] = await Promise.all([
+  const [service, timer, deploy, remote, telemetry, validator, coreRelease] = await Promise.all([
     readFile(join(root, 'deploy/systemd/awh-source-drift.service'), 'utf8'),
     readFile(join(root, 'deploy/systemd/awh-source-drift.timer'), 'utf8'),
     readFile(join(root, 'deploy/awh-control-plane/deploy-control-plane.sh'), 'utf8'),
     readFile(join(root, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'), 'utf8'),
     readFile(join(root, 'hub/bin/system-telemetry.php'), 'utf8'),
+    readFile(join(root, 'deploy/awh-control-plane/validate-remote-output.sh'), 'utf8'),
+    readFile(join(root, 'hub/src/HubCoreReleaseService.php'), 'utf8'),
   ]);
 
   assert.match(service, /User=awh-hub/);
@@ -56,7 +58,19 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(remote, /production_ref_reconcile_live\(\)/);
   assert.match(remote, /live_manifest=\/var\/www\/awh-web\/current\/release\.json/);
   assert.match(remote, /control_manifest=\"\$PREVIOUS_TARGET\/dist-web\/release\.json\"/);
-  assert.match(remote, /test \"\$control_sha\" = \"\$live_sha\" \|\| return 1/);
+  assert.match(remote, /merge-base --is-ancestor \"\$live_sha\" \"\$control_sha\"/);
+  assert.match(remote, /merge-base --is-ancestor \"\$control_sha\" \"\$RELEASE_COMMIT\"/);
+  assert.match(remote, /test \"\$runtime_current\" = \"\$control_sha\" \|\| return 1/);
+  assert.match(remote, /test \"\$platform_current\" = \"\$control_sha\" \|\| return 1/);
+  assert.match(remote, /test \"\$legacy_current\" = \"\$live_sha\" \|\| return 1/);
+  assert.match(remote, /stage RUNTIME_WEB_SPLIT_ACCEPTED/);
+  assert.match(remote, /if test \"\$PLATFORM_HARDENING\" = 1; then[\s\S]*stage WEB_POINTER_PRESERVED[\s\S]*else[\s\S]*stage WEB_POINTER_SWITCH/);
+  assert.match(validator, /RUNTIME_WEB_SPLIT_ACCEPTED/);
+  assert.match(validator, /WEB_POINTER_PRESERVED/);
+  assert.match(coreRelease, /forMission\(\$missionId\)/);
+  assert.doesNotMatch(coreRelease, /issueOrResolve\(\$missionId/);
+  assert.match(coreRelease, /Release source scope belongs to another repository/);
+  assert.match(coreRelease, /Release source scope belongs to another release track/);
   assert.match(remote, /RUNTIME_REF=refs\/heads\/runtime\/production/);
   assert.match(remote, /TRACK_REF=refs\/heads\/production/);
   assert.match(remote, /TRACK_REF=refs\/heads\/platform\/production/);
@@ -87,6 +101,11 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(drift, /AWH working context drift/);
   assert.match(drift, /AWH web source provenance drift/);
   assert.match(drift, /AWH web runtime\/manifest drift/);
+  assert.match(drift, /intentionalPlatformWebSplit/);
+  assert.match(drift, /AWH web intentionally behind VPS Platform runtime/);
+  assert.match(drift, /hash_equals\(\$controlSource,strtolower\(\$runtimeProduction\)\)/);
+  assert.match(drift, /hash_equals\(strtolower\(\$platformProduction\),strtolower\(\$runtimeProduction\)\)/);
+  assert.match(drift, /hash_equals\(strtolower\(\$legacyProduction\),\$source\)/);
   assert.match(drift, /updates\.js.*web\/updates\.js/s);
   assert.match(drift, /control-plane-adapter\.js.*web\/control-plane-adapter\.js/s);
   assert.match(drift, /teacher-evaluation/);
