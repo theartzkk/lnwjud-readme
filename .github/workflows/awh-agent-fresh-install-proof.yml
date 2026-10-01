@@ -148,19 +148,7 @@ jobs:
           $runtimeExe = Join-Path $env:LOCALAPPDATA "AWH\Engines\device-runtime\$env:EXPECTED_RUNTIME_VERSION\AWH Device Runtime.exe"
           if ($ready.state -ne 'READY' -or $ready.verified -ne $true -or $ready.version -ne $env:EXPECTED_RUNTIME_VERSION) {
             if (Test-Path $runtimeExe) {
-              $probe = Join-Path $env:RUNNER_TEMP 'probe-device-runtime.cjs'
-              @'
-              const {spawn}=require('child_process');
-              const exe=process.argv[2], workspace=process.argv[3];
-              const p=spawn(exe,['--mcp-stdio','--workspace',workspace],{env:{...process.env,AWH_DEVICE_RUNTIME_HEADLESS:'1'},stdio:['pipe','pipe','pipe'],windowsHide:true});
-              let b='',e='',n=0; const waits=new Map();
-              p.stderr.on('data',d=>e=(e+d.toString()).slice(-16384));
-              p.stdout.on('data',d=>{b+=d.toString();const a=b.split(/\r?\n/);b=a.pop()||'';for(const l of a){if(!l.startsWith('{'))continue;try{const j=JSON.parse(l),h=waits.get(String(j.id));if(h){waits.delete(String(j.id));h(j)}}catch{}}});
-              const meta={'io.modelcontextprotocol/protocolVersion':'2026-07-28','io.modelcontextprotocol/clientInfo':{name:'AWH Timeout Probe',version:'1'},'io.modelcontextprotocol/clientCapabilities':{extensions:{'io.modelcontextprotocol/tasks':{}}}};
-              function q(method,params={}){const started=Date.now();return new Promise((resolve,reject)=>{const id='d'+(++n),t=setTimeout(()=>reject(Error(method+' TIMEOUT after '+(Date.now()-started)+'ms stderr='+e)),120000);waits.set(id,j=>{clearTimeout(t);console.log(method+'_MS='+(Date.now()-started));resolve(j)});p.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method,params:{...params,_meta:meta}})+'\n')})}
-              (async()=>{const d=await q('server/discover');console.log('DISCOVER='+(d.result?'PASS':'FAIL'));const l=await q('tools/list');console.log('TOOLS='+(l.result?.tools||[]).length);const h=await q('tools/call',{name:'health',arguments:{operation:'check_all'}});console.log('HEALTH='+(h.result?.isError===true?'FAIL':'PASS'));p.kill();})().catch(x=>{console.error('DIRECT_PROBE_ERROR='+x.message);try{p.kill()}catch{};process.exit(2)});
-              '@ | Set-Content -LiteralPath $probe -Encoding utf8
-              node $probe $runtimeExe $env:AWH_FRESH_WORKSPACE
+              node .github/scripts/awh-fresh-probe.cjs $runtimeExe $env:AWH_FRESH_WORKSPACE
               Write-Host "DIRECT_PROBE_EXIT=$LASTEXITCODE"
             }
             throw 'Fresh bootstrap did not reach READY/verified state'
