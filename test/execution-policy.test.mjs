@@ -147,8 +147,8 @@ test('managed-product deploy provisions namespace roots before operator enable',
   assert.match(script,/install -d -o root -g root -m 0750 \/var\/backups\/learnlab-releases \/var\/backups\/bay-assessment/);
   assert.match(script,/HOSTING_NAMESPACE_PATHS=\$\(sed -n 's\/\^ReadWritePaths=\/\/p'/);
   assert.match(script,/HOSTING_NAMESPACE_PATH_MISSING=\$path/);
-  assert.match(script,/case "\$path" in/);
-  assert.match(script,/\/etc\/passwd\+\|\/etc\/shadow\+\|\/etc\/group\+\|\/etc\/gshadow\+\|\/etc\/subuid\+\|\/etc\/subgid\+\) continue/);
+  assert.match(script,/case "\$path" in -\*\) continue ;; esac/);
+  assert.doesNotMatch(script,/\/etc\/passwd\+\|\/etc\/shadow\+\|\/etc\/group\+\|\/etc\/gshadow\+\|\/etc\/subuid\+\|\/etc\/subgid\+\) continue/);
   const unit=await readFile(new URL('../deploy/systemd/awh-hosting-operator.service',import.meta.url),'utf8');
   assert.match(unit,/ReadWritePaths=.*-\/var\/backups\/learnlab-releases/);
   assert.match(unit,/ReadWritePaths=.*\/etc\/subuid .*\/etc\/subgid/);
