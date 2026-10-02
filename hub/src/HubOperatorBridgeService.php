@@ -163,7 +163,7 @@ final class HubOperatorBridgeService
         (new HubExecutionLifecycleService($this->pdo))->reconcile($id,$at);
         $this->reconcileStaleMissions($id,$at);
         $requestedResource=$capability===null?'CANONICAL:PROJECT':HubCapabilityRegistryService::mutationResourceForExecution($capability,'VPS');
-        $active=$this->pdo->prepare("SELECT x.execution_id,x.task_id,x.project_id,x.state,x.mutation_scope,x.lease_expires_at,e.state AS execution_state,e.required_capability,e.executor_kind,t.state AS task_state,t.goal,p.name AS project_name FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id JOIN control_tasks t ON t.task_id=x.task_id JOIN projects p ON p.project_id=x.project_id WHERE x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY x.updated_at DESC LIMIT 80");
+        $active=$this->pdo->prepare("SELECT x.execution_id,x.task_id,x.project_id,x.state,x.mutation_scope,x.lease_expires_at,e.state AS execution_state,e.required_capability,e.executor_kind,e.checkpoint_json,t.state AS task_state,t.goal,p.name AS project_name FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id JOIN control_tasks t ON t.task_id=x.task_id JOIN projects p ON p.project_id=x.project_id WHERE x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY x.updated_at DESC LIMIT 80");
         $active->execute(['at'=>$at]);$allActiveRows=$active->fetchAll();
         $activeRows=array_values(array_filter($allActiveRows,static fn(array $row):bool=>hash_equals($id,(string)$row['project_id'])));
         $coordinationRows=array_values(array_filter($activeRows,static fn(array $row):bool=>(string)($row['required_capability']??'')===self::MISSION_CAPABILITY));
@@ -221,7 +221,7 @@ final class HubOperatorBridgeService
         $ready=!$hardBlocked;
         $state=$hardBlocked?'BLOCKED':($attention?'ATTENTION':'READY');
         $decision=$hardBlocked?'WAIT_CONFLICT':(count($coordinationRows)>0?'CONTINUE_OR_JOIN':'CONTINUE');
-        return ['schemaVersion'=>2,'state'=>$state,'ready'=>$ready,'mutationReady'=>$ready,'sourceReady'=>$sourceGateReady,'blocking'=>$hardBlocked,'decision'=>$decision,'decisionAuthority'=>'AWH_EXECUTION_GATE','productionReady'=>$sourceGateReady,'productionReadyDeprecated'=>true,'runtimeParityState'=>'NOT_EVALUATED','readinessSemantics'=>['ready'=>'MUTATION_GATE','mutationReady'=>'MUTATION_GATE','sourceReady'=>'SOURCE_AUTHORITY_AND_VAULT','productionReady'=>'DEPRECATED_ALIAS_OF_SOURCE_READY','runtimeParityState'=>'SEPARATE_RELEASE_VERIFICATION'],'sourceRequired'=>$requireSource,'requestedMutationResource'=>$requestedResource,'project'=>['projectId'=>$id,'name'=>(string)$project['name'],'type'=>(string)$project['type']],'source'=>['authority'=>$authority,'revision'=>$sourceRevision,'canonicalVaultRevisionId'=>$sourceVault,'activeVaultRevisionId'=>$activeVault,'syncState'=>$sync],'writer'=>['activeMutationCount'=>count($writerRows),'conflictingMutationCount'=>count($conflictingRows),'runningMutationExecutionCount'=>count($writerRows),'unscopedRunningMutationExecutionCount'=>$unscopedCount,'waitingMutationCount'=>$waitingCount,'activeWorkspaceLeaseCount'=>count($workspaceRows),'activeMutations'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'state'=>(string)$r['state'],'scope'=>(string)$r['mutation_scope'],'resource'=>HubCapabilityRegistryService::mutationResourceForExecution((string)$r['required_capability'],(string)$r['executor_kind']),'capability'=>(string)$r['required_capability'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal']],$writerRows),'workspaceLeases'=>array_map(static fn(array $r):array=>['ownerDeviceId'=>(string)$r['owner_device_id'],'checkpointId'=>$r['checkpoint_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'updatedAt'=>(string)$r['updated_at']],$workspaceRows)],'coordination'=>['activeMissionCount'=>count($coordinationRows),'blocksMutation'=>false,'rule'=>'PROJECT_MISSIONS_ARE_COORDINATION_ONLY','missions'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal']],$coordinationRows)],'checks'=>$checks,'observedAt'=>$at];
+        return ['schemaVersion'=>2,'state'=>$state,'ready'=>$ready,'mutationReady'=>$ready,'sourceReady'=>$sourceGateReady,'blocking'=>$hardBlocked,'decision'=>$decision,'decisionAuthority'=>'AWH_EXECUTION_GATE','productionReady'=>$sourceGateReady,'productionReadyDeprecated'=>true,'runtimeParityState'=>'NOT_EVALUATED','readinessSemantics'=>['ready'=>'MUTATION_GATE','mutationReady'=>'MUTATION_GATE','sourceReady'=>'SOURCE_AUTHORITY_AND_VAULT','productionReady'=>'DEPRECATED_ALIAS_OF_SOURCE_READY','runtimeParityState'=>'SEPARATE_RELEASE_VERIFICATION'],'sourceRequired'=>$requireSource,'requestedMutationResource'=>$requestedResource,'project'=>['projectId'=>$id,'name'=>(string)$project['name'],'type'=>(string)$project['type']],'source'=>['authority'=>$authority,'revision'=>$sourceRevision,'canonicalVaultRevisionId'=>$sourceVault,'activeVaultRevisionId'=>$activeVault,'syncState'=>$sync],'writer'=>['activeMutationCount'=>count($writerRows),'conflictingMutationCount'=>count($conflictingRows),'runningMutationExecutionCount'=>count($writerRows),'unscopedRunningMutationExecutionCount'=>$unscopedCount,'waitingMutationCount'=>$waitingCount,'activeWorkspaceLeaseCount'=>count($workspaceRows),'activeMutations'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'state'=>(string)$r['state'],'scope'=>(string)$r['mutation_scope'],'resource'=>HubCapabilityRegistryService::mutationResourceForExecution((string)$r['required_capability'],(string)$r['executor_kind']),'capability'=>(string)$r['required_capability'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal']],$writerRows),'workspaceLeases'=>array_map(static fn(array $r):array=>['ownerDeviceId'=>(string)$r['owner_device_id'],'checkpointId'=>$r['checkpoint_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'updatedAt'=>(string)$r['updated_at']],$workspaceRows)],'coordination'=>['activeMissionCount'=>count($coordinationRows),'blocksMutation'=>false,'mutationDecision'=>$hardBlocked?'WAIT_CONFLICT':'CONTINUE','nextUserAction'=>$hardBlocked?'RESOLVE_CONFLICT':'NONE','rule'=>'PROJECT_MISSIONS_ARE_COORDINATION_ONLY','missions'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal'],'releaseTrack'=>self::missionReleaseTrackFromCheckpoint((string)($r['checkpoint_json']??'')),'ownerActionRequired'=>false,'nextUserAction'=>'NONE'],$coordinationRows)],'checks'=>$checks,'observedAt'=>$at];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
@@ -431,7 +431,13 @@ final class HubOperatorBridgeService
         $mission=$this->missionStatus($selector,$at);
         $storage=$this->storageSafetyState($at);
         $authority=$this->flowReleaseAuthority($track,$at);
-        $existingState=(string)($mission['state']??'IDLE');
+        $matchingMission=null;
+        foreach((array)($mission['missions']??[]) as $candidate){
+            if(!is_array($candidate))continue;
+            $candidateTrack=is_string($candidate['releaseTrack']??null)?(string)$candidate['releaseTrack']:'';
+            if($trackKey===''||($candidateTrack!==''&&hash_equals($trackKey,$candidateTrack))){$matchingMission=$candidate;break;}
+        }
+        $existingState=is_array($matchingMission)?(string)($matchingMission['state']??'IDLE'):'IDLE';
         $existing=$existingState==='STALE_RESUMABLE'?'RESUMABLE':($existingState==='COORDINATING'?'ACTIVE':'NONE');
         $gateChecks=[];
         foreach((array)($candidateGate['checks']??[]) as $check){
@@ -464,13 +470,13 @@ final class HubOperatorBridgeService
         }
 
         $hard=(bool)array_filter($blockers,static fn(array $b):bool=>($b['blocking']??false)===true);
+        $coordinationAction=$existing==='RESUMABLE'?'RESUME_EXISTING':($existing==='ACTIVE'?'JOIN_EXISTING':'START_NEW');
         if($hard)$decision='HARD_BLOCK';
-        elseif($existing!=='NONE')$decision='RESUME_EXISTING';
         elseif(array_filter($blockers,static fn(array $b):bool=>($b['classification']??'')==='CONTINUE_WITH_WARNING'))$decision='START_WITH_WARNING';
         else $decision='START';
 
         return [
-            'schemaVersion'=>1,'state'=>'PROJECT_READINESS','decision'=>$decision,'blocking'=>$hard,
+            'schemaVersion'=>1,'state'=>'PROJECT_READINESS','decision'=>$decision,'blocking'=>$hard,'coordinationAction'=>$coordinationAction,'ownerActionRequired'=>false,'nextUserAction'=>$hard?'RESOLVE_CONFLICT':'NONE',
             'project'=>$candidateGate['project']??null,'releaseTrack'=>$trackKey===''?null:$trackKey,
             'readiness'=>[
                 'source'=>($candidateGate['sourceReady']??false)?'READY':'DEGRADED',
@@ -530,17 +536,18 @@ final class HubOperatorBridgeService
     {
         $project=$this->resolveProject($selector);$projectId=(string)$project['project_id'];
         $this->reconcileStaleMissions($projectId,$at);
-        $missions=$this->activeProjectMissions($at,$projectId);
-        if($missions!==[]){
-            $projected=array_map(fn(array $row):array=>$this->missionProjection($row),$missions);
-            return ['schemaVersion'=>2,'state'=>'COORDINATING','blocking'=>false,'decision'=>'CONTINUE_OR_JOIN','decisionAuthority'=>'AWH_EXECUTION_GATE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'activeMissionCount'=>count($projected),'resumableMissionCount'=>0,'mission'=>$projected[0],'missions'=>$projected,'rule'=>'PROJECT_MISSIONS_ARE_COORDINATION_ONLY','observedAt'=>$at];
+        $activeRows=$this->activeProjectMissions($at,$projectId);
+        $resumableRows=$this->resumableProjectMissions($projectId);
+        $active=array_map(fn(array $row):array=>$this->missionProjection($row),$activeRows);
+        $resumable=array_map(fn(array $row):array=>$this->missionProjection($row),$resumableRows);
+        $all=array_merge($active,$resumable);
+        if($active!==[]){
+            return ['schemaVersion'=>2,'state'=>'COORDINATING','blocking'=>false,'decision'=>'CONTINUE_OR_JOIN','mutationDecision'=>'CONTINUE','coordinationDecision'=>'CONTINUE_OR_JOIN','decisionAuthority'=>'AWH_EXECUTION_GATE','ownerActionRequired'=>false,'nextUserAction'=>'NONE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'activeMissionCount'=>count($active),'resumableMissionCount'=>count($resumable),'mission'=>$active[0],'activeMissions'=>$active,'resumableMissions'=>$resumable,'missions'=>$all,'rule'=>'PROJECT_MISSIONS_ARE_COORDINATION_ONLY','observedAt'=>$at];
         }
-        $resumable=$this->resumableProjectMissions($projectId);
         if($resumable!==[]){
-            $projected=array_map(fn(array $row):array=>$this->missionProjection($row),$resumable);
-            return ['schemaVersion'=>2,'state'=>'STALE_RESUMABLE','blocking'=>false,'decision'=>'RESUME_EXISTING','decisionAuthority'=>'AWH_EXECUTION_GATE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'activeMissionCount'=>0,'resumableMissionCount'=>count($projected),'mission'=>$projected[0],'missions'=>$projected,'rule'=>'STALE_MISSION_RESUMES_SAME_EXECUTION','observedAt'=>$at];
+            return ['schemaVersion'=>2,'state'=>'STALE_RESUMABLE','blocking'=>false,'decision'=>'CONTINUE','mutationDecision'=>'CONTINUE','coordinationDecision'=>'RESUME_EXISTING','decisionAuthority'=>'AWH_EXECUTION_GATE','ownerActionRequired'=>false,'nextUserAction'=>'NONE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'activeMissionCount'=>0,'resumableMissionCount'=>count($resumable),'mission'=>$resumable[0],'activeMissions'=>[],'resumableMissions'=>$resumable,'missions'=>$resumable,'rule'=>'STALE_MISSION_IS_NON_BLOCKING_COORDINATION','observedAt'=>$at];
         }
-        return ['schemaVersion'=>2,'state'=>'IDLE','blocking'=>false,'decision'=>'CONTINUE','decisionAuthority'=>'AWH_EXECUTION_GATE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'activeMissionCount'=>0,'resumableMissionCount'=>0,'missions'=>[],'observedAt'=>$at];
+        return ['schemaVersion'=>2,'state'=>'IDLE','blocking'=>false,'decision'=>'CONTINUE','mutationDecision'=>'CONTINUE','coordinationDecision'=>'START_NEW','decisionAuthority'=>'AWH_EXECUTION_GATE','ownerActionRequired'=>false,'nextUserAction'=>'NONE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'activeMissionCount'=>0,'resumableMissionCount'=>0,'activeMissions'=>[],'resumableMissions'=>[],'missions'=>[],'observedAt'=>$at];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
@@ -549,48 +556,50 @@ final class HubOperatorBridgeService
         if(($request['confirmation']??null)!==self::MISSION_ACQUIRE_CONFIRMATION)throw new HubOperatorBridgeException('Explicit project mission confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
         $selector=self::text($request,'project',160);$goal=self::text($request,'goal',500);
         $project=$this->resolveProject($selector);$projectId=(string)$project['project_id'];
+        $requestedTrack=is_string($request['releaseTrack']??null)?strtolower(trim((string)$request['releaseTrack'])):'';
         $this->reconcileStaleMissions($projectId,$at);
-        // Project missions are coordination leases, not writer locks. Until
-        // resource-scoped parallel missions exist, one active mission per project
-        // is the safe default. A repeated request joins and renews the existing
-        // mission instead of creating duplicate coordination state.
-        $existing=$this->activeProjectMissions($at,$projectId);
-        if($existing!==[]){
-            $current=$existing[0];
+
+        $existing=$this->activeProjectMissions($at,$projectId);$current=null;
+        foreach($existing as $row)if(self::missionMatchesReleaseTrack($row,$requestedTrack===''?null:$requestedTrack)){$current=$row;break;}
+        if(is_array($current)){
             $renewed=$this->missionRenew(['executionId'=>(string)$current['execution_id']],$at);
             $scope=$this->missionScopeFromRequest($request,(string)$current['execution_id'],$projectId,$at);
             return [
-                'schemaVersion'=>2,'state'=>'JOINED','blocking'=>false,'decision'=>'JOIN_EXISTING',
+                'schemaVersion'=>2,'state'=>'JOINED','blocking'=>false,'decision'=>'CONTINUE_OR_JOIN','coordinationAction'=>'JOIN_EXISTING','ownerActionRequired'=>false,'nextUserAction'=>'NONE',
                 'decisionAuthority'=>'AWH_EXECUTION_GATE',
                 'project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],
                 'requestedGoal'=>$goal,'mission'=>$renewed['mission'],'scope'=>$scope,
-                'rule'=>'ONE_ACTIVE_PROJECT_COORDINATION_MISSION',
+                'rule'=>'RELEASE_TRACK_SCOPED_PROJECT_COORDINATION',
                 'observedAt'=>$at,
             ];
         }
-        $resumable=$this->resumableProjectMissions($projectId);
-        if($resumable!==[]){
-            $current=$resumable[0];
+
+        $resumable=$this->resumableProjectMissions($projectId);$current=null;
+        foreach($resumable as $row)if(self::missionMatchesReleaseTrack($row,$requestedTrack===''?null:$requestedTrack)){$current=$row;break;}
+        if(is_array($current)){
             $resumed=$this->resumeProjectMission($current,$at);
             $scope=$this->missionScopeFromRequest($request,(string)$current['execution_id'],$projectId,$at);
             return [
-                'schemaVersion'=>2,'state'=>'RESUMED','blocking'=>false,'decision'=>'RESUME_EXISTING',
+                'schemaVersion'=>2,'state'=>'RESUMED','blocking'=>false,'decision'=>'CONTINUE','coordinationAction'=>'RESUME_EXISTING','ownerActionRequired'=>false,'nextUserAction'=>'NONE',
                 'decisionAuthority'=>'AWH_EXECUTION_GATE',
                 'project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],
                 'requestedGoal'=>$goal,'mission'=>$resumed['mission'],'scope'=>$scope,
-                'rule'=>'STALE_MISSION_RESUMES_SAME_EXECUTION',
+                'rule'=>'STALE_MISSION_RESUMES_SAME_TRACK_EXECUTION',
                 'observedAt'=>$at,
             ];
         }
+
         $gate=$this->projectGate($selector,$at,false,self::MISSION_CAPABILITY);
         if(($gate['ready']??false)!==true)throw new HubOperatorBridgeException('Project mission coordination gate is unavailable','OPERATOR_PROJECT_GATE_BLOCKED');
         $storage=$this->storageSafetyState($at);
         if(($storage['releaseBlocked']??false)===true)throw new HubOperatorBridgeException('VPS storage safety gate is recovering below the mission reserve','OPERATOR_STORAGE_CRITICAL');
-        $authority=$this->acquireMutationAuthority($projectId,$goal,self::MISSION_CAPABILITY,['mode'=>'OPERATOR_PROJECT_MISSION','goal'=>$goal,'startedAt'=>$at,'storageState'=>$storage['state']??'UNKNOWN'], $at,self::MISSION_LEASE_SECONDS,self::MISSION_OWNER);
+        $checkpoint=['mode'=>'OPERATOR_PROJECT_MISSION','goal'=>$goal,'startedAt'=>$at,'storageState'=>$storage['state']??'UNKNOWN'];
+        if($requestedTrack!=='')$checkpoint['requestedReleaseTrack']=$requestedTrack;
+        $authority=$this->acquireMutationAuthority($projectId,$goal,self::MISSION_CAPABILITY,$checkpoint,$at,self::MISSION_LEASE_SECONDS,self::MISSION_OWNER);
         $mission=$this->activeProjectMission($authority['executionId'],$at,$projectId,true);
         $joined=($authority['joined']??false)===true;
         $scope=$this->missionScopeFromRequest($request,(string)$authority['executionId'],$projectId,$at);
-        return ['schemaVersion'=>2,'state'=>$joined?'JOINED':'ACQUIRED','blocking'=>false,'decision'=>$joined?'JOIN_EXISTING':'CONTINUE','decisionAuthority'=>'AWH_EXECUTION_GATE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'requestedGoal'=>$joined?$goal:null,'mission'=>$this->missionProjection($mission),'scope'=>$scope,'rule'=>'ONE_ACTIVE_PROJECT_COORDINATION_MISSION','storage'=>$storage,'observedAt'=>$at];
+        return ['schemaVersion'=>2,'state'=>$joined?'JOINED':'ACQUIRED','blocking'=>false,'decision'=>$joined?'CONTINUE_OR_JOIN':'CONTINUE','coordinationAction'=>$joined?'JOIN_EXISTING':'START_NEW','ownerActionRequired'=>false,'nextUserAction'=>'NONE','decisionAuthority'=>'AWH_EXECUTION_GATE','project'=>['projectId'=>$projectId,'name'=>(string)$project['name']],'requestedGoal'=>$joined?$goal:null,'mission'=>$this->missionProjection($mission),'scope'=>$scope,'rule'=>'RELEASE_TRACK_SCOPED_PROJECT_COORDINATION','storage'=>$storage,'observedAt'=>$at];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
@@ -733,11 +742,29 @@ final class HubOperatorBridgeService
         return null;
     }
 
+    private static function missionReleaseTrackFromCheckpoint(string $raw): ?string
+    {
+        try{$checkpoint=json_decode($raw,true,32,JSON_THROW_ON_ERROR);}catch(Throwable){return null;}
+        if(!is_array($checkpoint)||array_is_list($checkpoint))return null;
+        $scope=$checkpoint['scopeEnvelope']??null;
+        $track=is_array($scope)&&!array_is_list($scope)&&is_string($scope['releaseTrack']??null)?strtolower(trim((string)$scope['releaseTrack'])):(is_string($checkpoint['requestedReleaseTrack']??null)?strtolower(trim((string)$checkpoint['requestedReleaseTrack'])):'');
+        return preg_match('/^[a-z0-9][a-z0-9._-]{0,79}$/',$track)===1?$track:null;
+    }
+
+    /** @param array<string,mixed> $row */
+    private static function missionMatchesReleaseTrack(array $row,?string $releaseTrack): bool
+    {
+        if($releaseTrack===null||$releaseTrack==='')return true;
+        $current=self::missionReleaseTrackFromCheckpoint((string)($row['checkpoint_json']??''));
+        return is_string($current)&&hash_equals($current,$releaseTrack);
+    }
+
     /** @param array<string,mixed> $row @return array<string,mixed> */
     private function missionProjection(array $row): array
     {
         $stale=(string)($row['execution_state']??'')==='WAITING_FOR_CAPABILITY'||(string)($row['envelope_state']??'')==='WAITING';
-        return ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>(string)$row['project_id'],'goal'=>(string)$row['goal'],'state'=>$stale?'STALE_RESUMABLE':'COORDINATING','executionState'=>$stale?'STALE_RESUMABLE':'RUNNING','progress'=>(int)$row['progress'],'leaseExpiresAt'=>$row['lease_expires_at'],'updatedAt'=>(string)$row['updated_at'],'ownerActionRequired'=>false,'nextAutomaticAction'=>$stale?'RESUME_SAME_EXECUTION':'CONTINUE'];
+        $releaseTrack=self::missionReleaseTrackFromCheckpoint((string)($row['checkpoint_json']??''));
+        return ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>(string)$row['project_id'],'goal'=>(string)$row['goal'],'releaseTrack'=>$releaseTrack,'state'=>$stale?'STALE_RESUMABLE':'COORDINATING','executionState'=>$stale?'STALE_RESUMABLE':'RUNNING','progress'=>(int)$row['progress'],'leaseExpiresAt'=>$row['lease_expires_at'],'updatedAt'=>(string)$row['updated_at'],'ownerActionRequired'=>false,'nextUserAction'=>'NONE','nextAutomaticAction'=>$stale?'RESUME_SAME_EXECUTION':'CONTINUE'];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed>|null */
@@ -1251,10 +1278,13 @@ final class HubOperatorBridgeService
         try{
             $this->pdo->exec('BEGIN IMMEDIATE');
             if($capability===self::MISSION_CAPABILITY){
-                $existing=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.lease_expires_at FROM control_task_executions e JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.project_id=:project AND e.required_capability=:capability AND e.lease_owner=:owner AND e.state='RUNNING' AND x.state='ACTIVE' AND (e.lease_expires_at IS NULL OR e.lease_expires_at>:at) AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) ORDER BY e.updated_at DESC,e.execution_id DESC LIMIT 1");
+                $requestedTrack=is_string($checkpoint['requestedReleaseTrack']??null)?strtolower(trim((string)$checkpoint['requestedReleaseTrack'])):'';
+                $existing=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.lease_expires_at,e.checkpoint_json FROM control_task_executions e JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.project_id=:project AND e.required_capability=:capability AND e.lease_owner=:owner AND e.state='RUNNING' AND x.state='ACTIVE' AND (e.lease_expires_at IS NULL OR e.lease_expires_at>:at) AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) ORDER BY e.updated_at DESC,e.execution_id DESC LIMIT 40");
                 $existing->execute(['project'=>$projectId,'capability'=>self::MISSION_CAPABILITY,'owner'=>self::MISSION_OWNER,'at'=>$at]);
-                $row=$existing->fetch();
-                if(is_array($row)){
+                foreach($existing->fetchAll() as $row){
+                    if(!is_array($row))continue;
+                    $currentTrack=self::missionReleaseTrackFromCheckpoint((string)($row['checkpoint_json']??''));
+                    if($requestedTrack!==''&&(!is_string($currentTrack)||!hash_equals($requestedTrack,$currentTrack)))continue;
                     $this->pdo->exec('COMMIT');
                     return ['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>$projectId,'leaseExpiresAt'=>(string)$row['lease_expires_at'],'joined'=>true];
                 }
