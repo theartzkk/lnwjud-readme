@@ -714,7 +714,7 @@ rollback() {
     if test "$NGINX_BACKUP_CREATED" -eq 1; then sudo rm -f "$NGINX_BACKUP" || ok=0; fi
     if test "$TOPOLOGY_ARCHIVED" -eq 1; then sudo rm -rf "$TOPOLOGY_ARCHIVE" || ok=0; fi
     cleanup_owner_auth_cookie_files
-    record_platform_evidence FAILURE "$CURRENT_STAGE"
+    PLATFORM_FLOW_EVIDENCE=/var/lib/awh-remote/handoff/vps-platform-release.final record_platform_evidence FAILURE "$CURRENT_STAGE"
     printf '%s\n' "DEPLOY_FAILED_AT=$CURRENT_STAGE"
     printf '%s\n' "ROLLBACK=$([ "$ok" -eq 1 ] && echo PASS || echo FAIL)"
   fi
