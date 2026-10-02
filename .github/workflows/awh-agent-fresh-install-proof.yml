@@ -1,0 +1,257 @@
+name: AWH Agent Fresh Install Proof
+
+on:
+  push:
+    branches:
+      - verify/awh-agent-fresh-install-73428af7-20261002
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  windows-fresh-install:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      RELEASE_RUN_ID: "37025999006"
+      INSTALLER_ARTIFACT_ID: "11234549622"
+      PORTABLE_ARTIFACT_ID: "11234454652"
+      EXPECTED_SOURCE_SHA: "73428af7ae31c6239d10fb27ccf6061266f00276"
+      EXPECTED_SETUP_SHA256: "9eb67a06217801757326720803b23ab9d3a0819ec78687c1874bb4804a4b9ce3"
+      EXPECTED_NUPKG_SHA256: "85dde968392b52a711422361c2bfa0a1f4fe4d5146fc60e1244f0aa70582b7b0"
+      EXPECTED_PORTABLE_SHA256: "82b0f32ab2463467407d41f9046d6e28f73c97290ec8f66cb5e92b35a0e84235"
+      EXPECTED_VERSION: "1.0.0-rc.1"
+      EXPECTED_RUNTIME_VERSION: "5.5.0"
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download exact successful-run artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          $installerZip = Join-Path $env:RUNNER_TEMP 'installer-artifact.zip'
+          $portableZip = Join-Path $env:RUNNER_TEMP 'portable-artifact.zip'
+          Invoke-WebRequest -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/artifacts/$env:INSTALLER_ARTIFACT_ID/zip" -OutFile $installerZip
+          Invoke-WebRequest -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/artifacts/$env:PORTABLE_ARTIFACT_ID/zip" -OutFile $portableZip
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\installer" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\portable" | Out-Null
+          Expand-Archive -LiteralPath $installerZip -DestinationPath "$env:RUNNER_TEMP\installer" -Force
+          Expand-Archive -LiteralPath $portableZip -DestinationPath "$env:RUNNER_TEMP\portable" -Force
+
+      - name: Verify exact artifact provenance and hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Get-ChildItem "$env:RUNNER_TEMP\installer" -Recurse -Filter AWHSetup.exe | Select-Object -First 1
+          $nupkg = Get-ChildItem "$env:RUNNER_TEMP\installer" -Recurse -Filter '*.nupkg' | Select-Object -First 1
+          $hashFile = Get-ChildItem "$env:RUNNER_TEMP\installer" -Recurse -Filter AWH-SHA256.txt | Select-Object -First 1
+          $portable = Join-Path "$env:RUNNER_TEMP\portable" 'AWH-Windows-x64.zip'
+          $evidence = Join-Path "$env:RUNNER_TEMP\portable" 'AWH-Windows-x64.release.json'
+          if (-not $setup -or -not $nupkg -or -not $hashFile -or -not (Test-Path $portable) -or -not (Test-Path $evidence)) { throw 'Exact release artifact set is incomplete' }
+          $setupHash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $nupkgHash = (Get-FileHash $nupkg.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $portableHash = (Get-FileHash $portable -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($setupHash -ne $env:EXPECTED_SETUP_SHA256) { throw "Setup hash mismatch: $setupHash" }
+          if ($nupkgHash -ne $env:EXPECTED_NUPKG_SHA256) { throw "nupkg hash mismatch: $nupkgHash" }
+          if ($portableHash -ne $env:EXPECTED_PORTABLE_SHA256) { throw "Portable hash mismatch: $portableHash" }
+          $release = Get-Content $evidence -Raw | ConvertFrom-Json
+          if ($release.sourceSha -ne $env:EXPECTED_SOURCE_SHA -or $release.productVersion -ne $env:EXPECTED_VERSION -or $release.packageVerification -ne 'VERIFIED') { throw 'Release evidence mismatch' }
+          if ($release.packageSha256 -ne $env:EXPECTED_PORTABLE_SHA256) { throw 'Release package hash mismatch' }
+          $declared = Get-Content $hashFile.FullName -Raw
+          if ($declared -notmatch $env:EXPECTED_SETUP_SHA256.ToUpperInvariant() -or $declared -notmatch $env:EXPECTED_NUPKG_SHA256.ToUpperInvariant()) { throw 'Installer SHA256 manifest mismatch' }
+          "AWH_EXACT_ARTIFACT_PROVENANCE=PASS"
+      - name: Install AWH Agent into a clean Windows user profile
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installRoot = Join-Path $env:LOCALAPPDATA 'AWH'
+          $dataDir = Join-Path $env:RUNNER_TEMP 'awh-fresh-data'
+          $workspace = Join-Path $env:RUNNER_TEMP 'awh-fresh-workspace'
+          Remove-Item -Recurse -Force $installRoot -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force $dataDir -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force $workspace -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $workspace | Out-Null
+          $setup = Get-ChildItem "$env:RUNNER_TEMP\installer" -Recurse -Filter AWHSetup.exe | Select-Object -First 1
+          $p = Start-Process -FilePath $setup.FullName -ArgumentList '--silent' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "AWHSetup.exe failed with exit $($p.ExitCode)" }
+          $exe = $null
+          for ($i = 0; $i -lt 60; $i++) {
+            if (Test-Path $installRoot) {
+              $exe = Get-ChildItem $installRoot -Recurse -Filter AWH.exe -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -match '\\app-' } |
+                Sort-Object LastWriteTimeUtc -Descending |
+                Select-Object -First 1
+            }
+            if ($exe) { break }
+            Start-Sleep -Seconds 1
+          }
+          if (-not $exe) { throw 'Installed AWH.exe was not found under the Squirrel per-user root' }
+          $links = @(Get-ChildItem (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs') -Recurse -Filter '*.lnk' -ErrorAction SilentlyContinue)
+          $awhLinks = @($links | Where-Object { $_.Name -match '^AWH' })
+          if ($awhLinks.Count -lt 1) { throw 'AWH Start Menu shortcut was not created' }
+          if (@($links | Where-Object { $_.Name -match 'lnwjud|Desktop Commander' }).Count -ne 0) { throw 'Internal engine leaked into Start Menu shortcuts' }
+          "INSTALLED_EXE=$($exe.FullName)"
+          "START_MENU=$($awhLinks.Name -join ',')"
+          "AWH_FRESH_INSTALL=PASS"
+          "AWH_INSTALLED_EXE=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "AWH_FRESH_DATA=$dataDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "AWH_FRESH_WORKSPACE=$workspace" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Launch installed app and verify automatic runtime bootstrap
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $psi = [System.Diagnostics.ProcessStartInfo]::new()
+          $psi.FileName = $env:AWH_INSTALLED_EXE
+          $psi.UseShellExecute = $false
+          $psi.Environment['AWH_DATA_DIR'] = $env:AWH_FRESH_DATA
+          $psi.Environment['AWH_WORKSPACE'] = $env:AWH_FRESH_WORKSPACE
+          $psi.Environment['AWH_ALLOW_WRITE'] = '0'
+          $psi.Environment['AWH_ALLOW_EXEC'] = '0'
+          $psi.Environment['AWH_ALLOW_CODEX'] = '0'
+          $app = [System.Diagnostics.Process]::new()
+          $app.StartInfo = $psi
+          if (-not $app.Start()) { throw 'Installed AWH Agent did not launch' }
+          "AWH_APP_PID=$($app.Id)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $readyPath = Join-Path $env:AWH_FRESH_DATA 'device-runtime-readiness.json'
+          $ready = $null
+          for ($i = 0; $i -lt 360; $i++) {
+            if (Test-Path $readyPath) {
+              try {
+                $ready = Get-Content $readyPath -Raw | ConvertFrom-Json
+                if ($ready.state -eq 'READY' -or $ready.state -eq 'FAILED') { break }
+              } catch {}
+            }
+            if ($app.HasExited) { throw "AWH Agent exited before runtime bootstrap completed: $($app.ExitCode)" }
+            if (($i % 15) -eq 0) {
+              $engine = Test-Path (Join-Path $env:LOCALAPPDATA "AWH\Engines\device-runtime\$env:EXPECTED_RUNTIME_VERSION\AWH Device Runtime.exe")
+              $system = Test-Path (Join-Path $env:LOCALAPPDATA 'AWH\SystemRuntime\runtime\node_modules\@wonderwhy-er\desktop-commander\dist\index.js')
+              $nodeCount = @(Get-ChildItem (Join-Path $env:LOCALAPPDATA 'AWH\Toolchain') -Recurse -Filter node.exe -File -ErrorAction SilentlyContinue).Count
+              Write-Host "BOOTSTRAP_PROGRESS iteration=$i engine=$engine systemMcp=$system managedNode=$nodeCount"
+            }
+            Start-Sleep -Seconds 2
+          }
+          if (-not $ready) {
+            Write-Host '=== FRESH DATA DIR ==='
+            Get-ChildItem $env:AWH_FRESH_DATA -Recurse -ErrorAction SilentlyContinue | Select-Object -First 120 FullName,Length | Format-Table -AutoSize | Out-Host
+            Write-Host '=== MANAGED AWH ROOT ==='
+            Get-ChildItem (Join-Path $env:LOCALAPPDATA 'AWH') -Recurse -ErrorAction SilentlyContinue | Select-Object -First 160 FullName,Length | Format-Table -AutoSize | Out-Host
+            $defaultReady = Join-Path $env:USERPROFILE '.awh\device-runtime-readiness.json'
+            if (Test-Path $defaultReady) { Write-Host '=== DEFAULT READINESS ==='; Get-Content $defaultReady -Raw | Write-Host }
+            throw 'Device Runtime readiness file was not produced within the bounded fresh-bootstrap window'
+          }
+          $ready | ConvertTo-Json -Depth 8 | Write-Host
+          $runtimeExe = Join-Path $env:LOCALAPPDATA "AWH\Engines\device-runtime\$env:EXPECTED_RUNTIME_VERSION\AWH Device Runtime.exe"
+          if ($ready.state -ne 'READY' -or $ready.verified -ne $true -or $ready.version -ne $env:EXPECTED_RUNTIME_VERSION) {
+            throw 'Fresh bootstrap did not reach READY/verified state'
+          }
+          $systemMcp = Join-Path $env:LOCALAPPDATA 'AWH\SystemRuntime\runtime\node_modules\@wonderwhy-er\desktop-commander\dist\index.js'
+          $systemWrapper = Join-Path $env:LOCALAPPDATA 'AWH\bin\awh-system-mcp.cmd'
+          $node = Get-ChildItem (Join-Path $env:LOCALAPPDATA 'AWH\Toolchain') -Recurse -Filter node.exe -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          foreach ($required in @($runtimeExe, $systemMcp, $systemWrapper)) { if (-not (Test-Path $required)) { throw "Missing managed runtime component: $required" } }
+          if (-not $node) { throw 'Managed Node runtime was not provisioned' }
+          if (Get-Process -Name 'lnwjud','Desktop Commander' -ErrorAction SilentlyContinue) { throw 'Standalone internal engine process leaked into user-facing process names' }
+          "AWH_RUNTIME_EXE=$runtimeExe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "AWH_FRESH_BOOTSTRAP=PASS"
+      - name: Verify installed Device Runtime exposes the full tool surface
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $script = Join-Path $env:RUNNER_TEMP 'verify-device-runtime.cjs'
+          @'
+          const { spawn } = require('child_process');
+          const exe = process.argv[2];
+          const workspace = process.argv[3];
+          const child = spawn(exe, ['--mcp-stdio', '--workspace', workspace], {
+            env: { ...process.env, AWH_DEVICE_RUNTIME_HEADLESS: '1' },
+            stdio: ['pipe', 'pipe', 'pipe'],
+            windowsHide: true,
+          });
+          let buffer = '', stderr = '', sequence = 0;
+          const pending = new Map();
+          child.stderr.on('data', d => { stderr = (stderr + d.toString()).slice(-8192); });
+          child.stdout.on('data', d => {
+            buffer += d.toString();
+            const lines = buffer.split(/\r?\n/); buffer = lines.pop() || '';
+            for (const line of lines) {
+              if (!line.startsWith('{')) continue;
+              try {
+                const msg = JSON.parse(line);
+                const handler = pending.get(String(msg.id));
+                if (handler) { pending.delete(String(msg.id)); handler(msg); }
+              } catch {}
+            }
+          });
+          const meta = {
+            'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+            'io.modelcontextprotocol/clientInfo': { name: 'AWH Fresh Install Proof', version: '1' },
+            'io.modelcontextprotocol/clientCapabilities': { extensions: { 'io.modelcontextprotocol/tasks': {} } },
+          };
+          function request(method, params = {}) {
+            return new Promise((resolve, reject) => {
+              const id = 'p' + (++sequence);
+              const timer = setTimeout(() => reject(new Error(method + ' timeout ' + stderr)), 20000);
+              pending.set(id, msg => { clearTimeout(timer); resolve(msg); });
+              child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params: { ...params, _meta: meta } }) + '\n');
+            });
+          }
+          (async () => {
+            const discovered = await request('server/discover');
+            if (!discovered.result) throw new Error('server/discover failed');
+            const listed = await request('tools/list');
+            const tools = listed.result?.tools || [];
+            if (tools.length !== 256) throw new Error('Expected 256 tools, got ' + tools.length);
+            const health = await request('tools/call', { name: 'health', arguments: { operation: 'check_all' } });
+            if (health.result?.isError === true) throw new Error('health tool returned isError');
+            console.log('SERVER_DISCOVER=PASS');
+            console.log('TOOLS=' + tools.length);
+            console.log('REAL_CALL_health=PASS');
+            child.kill();
+          })().catch(error => {
+            console.error(error.stack || error.message);
+            try { child.kill(); } catch {}
+            process.exit(2);
+          });
+          '@ | Set-Content -LiteralPath $script -Encoding utf8
+          node $script $env:AWH_RUNTIME_EXE $env:AWH_FRESH_WORKSPACE
+          if ($LASTEXITCODE -ne 0) { throw 'Installed Device Runtime MCP proof failed' }
+          "AWH_FULL_TOOL_SURFACE=PASS"
+
+      - name: Verify no standalone engine installation leaked
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $forbidden = @(
+            (Join-Path $env:LOCALAPPDATA 'Programs\lnwjud'),
+            (Join-Path $env:LOCALAPPDATA 'Programs\Desktop Commander'),
+            (Join-Path $env:ProgramFiles 'lnwjud'),
+            (Join-Path $env:ProgramFiles 'Desktop Commander')
+          )
+          foreach ($path in $forbidden) {
+            if (Test-Path $path) { throw "Standalone internal engine installation leaked: $path" }
+          }
+          $nuspec = Get-ChildItem "$env:RUNNER_TEMP\installer" -Recurse -Filter '*.nupkg' | Select-Object -First 1
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($nuspec.FullName)
+          try {
+            $entry = $zip.Entries | Where-Object { $_.FullName -eq 'AWH.nuspec' } | Select-Object -First 1
+            if (-not $entry) { throw 'AWH.nuspec missing from installer package' }
+            $reader = [System.IO.StreamReader]::new($entry.Open())
+            try { $xml = $reader.ReadToEnd() } finally { $reader.Dispose() }
+          } finally { $zip.Dispose() }
+          if ($xml -notmatch '<title>AWH Agent</title>') { throw 'Windows installer user-facing title is not AWH Agent' }
+          if ($xml -match '<title>.*lnwjud|<title>.*Desktop Commander') { throw 'Internal engine branding leaked into installer title' }
+          "AWH_BRANDING_ISOLATION=PASS"
+
+      - name: Final proof summary
+        shell: pwsh
+        run: |
+          Write-Host 'AWH_WINDOWS_FRESH_INSTALL_PROOF=PASS'
+          Write-Host "SOURCE_SHA=$env:EXPECTED_SOURCE_SHA"
+          Write-Host "VERSION=$env:EXPECTED_VERSION"
+          Write-Host "RUNTIME=$env:EXPECTED_RUNTIME_VERSION"
+          Write-Host 'TOOLS=256'
