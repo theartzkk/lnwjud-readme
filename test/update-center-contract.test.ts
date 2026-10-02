@@ -762,4 +762,9 @@ test('Update Center owner flow is single-flight, exact-target pinned, and resili
   assert.match(script,/ยังไม่สรุปเป็นปัญหาและจะตรวจซ้ำอัตโนมัติ/);
   assert.match(script,/refresh\(\{manual:true\}\)/);
   assert.match(script,/refresh\(\{initial:true\}\)/);
+  assert.match(script,/if\(progress<23\)return 'กำลังเตรียมเครื่องมือและตรวจรุ่นที่อนุมัติ'/);
+  assert.match(script,/if\(progress<55\)return 'กำลังตรวจ QA สำรองข้อมูล และเตรียม rollback ก่อนติดตั้ง'/);
+  assert.match(script,/if\(progress<88\)return 'กำลังเปิดใช้ Runtime และหน้าเว็บรุ่นใหม่'/);
+  assert.match(script,/กำลัง Verify Production และตรวจการทำงานรอบสุดท้าย/);
+  assert.match(script,/const thresholds=\[22,54,84,98,100\]/);
 });

@@ -477,9 +477,19 @@ function ownerFacingReason(item){
 function ownerProgressMessage(item,event,waiting){
   if(waiting)return 'พร้อมแล้ว · รอการยืนยันก่อนเริ่มขั้นติดตั้ง';
   const state=String(item?.taskState||event?.state||'').toUpperCase();
-  const mapped={QUEUED:'รับคำสั่งแล้ว · กำลังเข้าคิว',WAITING_FOR_WORKER:'รับคำสั่งแล้ว · กำลังรอคิวอัปเดต',PREPARING:'กำลังตรวจความพร้อมและเตรียมการ',RUNNING:'กำลังติดตั้ง',QA:'กำลังตรวจสอบหลังติดตั้ง',VERIFYING:'กำลังยืนยันผลลัพธ์',RECOVERING:'กำลังทำต่อจากจุดที่ปลอดภัย'}[state];
+  const progress=Math.max(0,Math.min(100,Number(event?.progress??item?.progress??localOperation?.progress??0)));
   const raw=String(event?.message||'').trim();
   if(raw&&!/worker|release controller|authority|lease|mutation|candidate|source sha|exact[- ]sha/i.test(raw))return raw;
+  if(state==='RUNNING'){
+    if(progress<23)return 'กำลังเตรียมเครื่องมือและตรวจรุ่นที่อนุมัติ';
+    if(progress<55)return 'กำลังตรวจ QA สำรองข้อมูล และเตรียม rollback ก่อนติดตั้ง';
+    if(progress<60)return 'สำรองข้อมูลพร้อมแล้ว · กำลังเริ่มติดตั้ง';
+    if(progress<74)return 'กำลังตรวจ dependency, migration และเตรียม Runtime';
+    if(progress<88)return 'กำลังเปิดใช้ Runtime และหน้าเว็บรุ่นใหม่';
+    if(progress<99)return 'กำลัง Verify Production และตรวจการทำงานรอบสุดท้าย';
+    return 'ตรวจรอบสุดท้ายผ่านแล้ว · กำลังปิด release';
+  }
+  const mapped={QUEUED:'รับคำสั่งแล้ว · กำลังเข้าคิว',WAITING_FOR_WORKER:'รับคำสั่งแล้ว · กำลังรอคิวอัปเดต',PREPARING:'กำลังตรวจความพร้อมและเตรียมการ',QA:'กำลังตรวจ QA และความพร้อมก่อนติดตั้ง',VERIFYING:'กำลัง Verify Production และยืนยันผลลัพธ์',RECOVERING:'กำลังทำต่อจากจุดที่ปลอดภัย'}[state];
   return mapped||localOperation?.message||'กำลังดำเนินการและตรวจผล';
 }
 function reconcileTargetFeedback(item){
@@ -845,9 +855,10 @@ function renderProgress(){
   }
   host.dataset.active=!waiting&&!queuedOnly&&progress<100?'true':'false';
   host.dataset.live=eventFresh?'true':'false';
-  const thresholds=[10,28,58,86,100];
+  const thresholds=[22,54,84,98,100];
   [...$('operation-steps').children].forEach((step,index)=>{
-    step.dataset.status=progress>=thresholds[index]?'done':(progress>=Math.max(0,thresholds[index]-25)?'active':'pending');
+    const previous=index===0?0:thresholds[index-1];
+    step.dataset.status=progress>=thresholds[index]?'done':(progress>=previous?'active':'pending');
   });
 }
 
