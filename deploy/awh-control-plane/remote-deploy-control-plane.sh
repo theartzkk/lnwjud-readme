@@ -1437,11 +1437,13 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
   done
   for LEGACY_DROPIN in \
     /etc/systemd/system/awh-temp-cleanup.service.d/20-private-tmp.conf \
-    /etc/systemd/system/awh-retention.service.d/20-ecosystem-storage.conf; do
+    /etc/systemd/system/awh-retention.service.d/20-ecosystem-storage.conf \
+    /etc/systemd/system/awh-temp-cleanup.timer.d/20-hourly.conf; do
     sudo rm -f "$LEGACY_DROPIN"
     sudo test ! -e "$LEGACY_DROPIN"
   done
   sudo systemctl daemon-reload
+  ! sudo systemctl show -p DropInPaths --value awh-temp-cleanup.timer | grep -Fq '20-hourly.conf'
   MAINTENANCE_TIMER_UNITS="awh-backup awh-database-inventory awh-retention awh-temp-cleanup awh-storage-guard awh-restore-drill"
   for UNIT in $MAINTENANCE_TIMER_UNITS; do
     sudo systemctl enable --now "$UNIT.timer" >/dev/null

@@ -214,6 +214,8 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(remote, /sudo rm -f "\$LEGACY_HELPER"/);
   assert.match(remote, /awh-temp-cleanup\.service\.d\/20-private-tmp\.conf/);
   assert.match(remote, /awh-retention\.service\.d\/20-ecosystem-storage\.conf/);
+  assert.match(remote, /awh-temp-cleanup\.timer\.d\/20-hourly\.conf/);
+  assert.match(remote, /DropInPaths --value awh-temp-cleanup\.timer/);
   assert.match(remote, /sudo rm -f "\$LEGACY_DROPIN"/);
   assert.match(remote, /systemctl show -p ExecStart --value awh-temp-cleanup\.service/);
   assert.match(remote, /systemctl show -p ExecStart --value awh-retention\.service/);
