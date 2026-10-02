@@ -71,6 +71,18 @@
     "userConsoleFallbackAllowed": false,
     "ownerRelayRequiresExplicitApproval": true
   },
+  "diagnosticAuthority": {
+    "sandboxedConnectorFilesystemViewIsHostAuthority": false,
+    "hostFilesystemIncidentRequiresAuthorityCrossCheck": true,
+    "authoritativeHostSignals": [
+      "TYPED_AWH_OPERATOR",
+      "AWH_STORAGE_GUARD",
+      "BLOCK_DEVICE_STATE",
+      "EFFECTIVE_HOST_SERVICE_NAMESPACE"
+    ],
+    "destructiveHostRepairFromConnectorOnlyEvidenceAllowed": false,
+    "classifyConnectorOnlyFilesystemObservationAs": "SANDBOX_VIEW"
+  },
   "toolchainRouting": {
     "preserveVerifiedRuntimeAcrossPrivilegeBoundary": true,
     "releaseNodeMajorMin": 22,

@@ -40,6 +40,9 @@ test('repository governance is a single machine-enforced contract', async () => 
   assert.equal(contract.rules.maintenanceRuntimeUsesReleasePointerOnly, true);
   assert.equal(contract.rules.storageSelfHealBeforeBlock, true);
   assert.equal(contract.rules.storageTargetFreeBytes, 6442450944);
+  assert.equal(contract.rules.sandboxedConnectorFilesystemViewIsHostAuthority, false);
+  assert.equal(contract.rules.hostFilesystemIncidentRequiresAuthorityCrossCheck, true);
+  assert.equal(contract.rules.destructiveHostRepairFromConnectorOnlyEvidenceAllowed, false);
   assert.equal(contract.rules.forbidParallelAuthorityFiles, true);
   assert.equal(contract.rules.continuousImprovementAuthority, 'AWH_CONTINUOUS_IMPROVEMENT');
   assert.equal(contract.rules.continuousImprovementPolicyPath, 'config/continuous-improvement-policy.json');
@@ -58,6 +61,9 @@ test('repository governance is a single machine-enforced contract', async () => 
   assert.equal(continuous.projectBaseline.policyInheritanceByRegistry, true);
   assert.equal(continuous.invariants.sharedCauseFixedAtHighestSharedLayer, true);
   assert.equal(continuous.invariants.unverifiedAutonomousPolicyMutationForbidden, true);
+  assert.equal(continuous.invariants.sandboxViewNeverHostTruth, true);
+  assert.equal(continuous.invariants.hostFilesystemIncidentRequiresAuthorityCrossCheck, true);
+  assert.equal(continuous.invariants.destructiveHostRepairRequiresCorroboratedHostEvidence, true);
 
   const expected = new Map([
     ['awh', ['113b45c0-23e1-408d-ae0f-ac5eca7f6900', 'production']],
@@ -103,6 +109,9 @@ test('repository governance is a single machine-enforced contract', async () => 
   assert.match(agents, /problem class/);
   assert.match(agents, /continuous-improvement guardrail/);
   assert.match(agents, /highest shared layer/);
+  assert.match(agents, /sandboxed connector.*not host authority/i);
+  assert.match(agents, /SANDBOX_VIEW versus HOST_STATE/);
+  assert.match(agents, /Do not recommend or perform remount, filesystem repair, fsck, reboot/);
 
   const drift = await readFile(join(root, 'hub/bin/ecosystem-source-drift.php'), 'utf8');
   assert.match(drift, /governanceRepositories/);

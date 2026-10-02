@@ -27,6 +27,11 @@ test('execution metadata is context-only rather than an AI behavior policy',asyn
   assert.equal(context.integrity.resumeAuthority,'EXECUTION_CHECKPOINT+HEARTBEAT');
   assert.equal(context.integrity.terminalStateEvidence,'TASK+EXECUTION+ENVELOPE+APPROVAL+CONTINUATION');
   assert.equal(context.integrity.hostGlobalTrack,'vps-platform');
+  assert.equal(context.diagnosticAuthority.sandboxedConnectorFilesystemViewIsHostAuthority,false);
+  assert.equal(context.diagnosticAuthority.hostFilesystemIncidentRequiresAuthorityCrossCheck,true);
+  assert.equal(context.diagnosticAuthority.destructiveHostRepairFromConnectorOnlyEvidenceAllowed,false);
+  assert.equal(context.diagnosticAuthority.classifyConnectorOnlyFilesystemObservationAs,'SANDBOX_VIEW');
+  assert.ok(context.diagnosticAuthority.authoritativeHostSignals.includes('AWH_STORAGE_GUARD'));
   assert.ok(context.integrity.sameProjectInterlocks.includes('CANONICAL:SOURCE<->CANONICAL:DEPLOY:*'));
   assert.ok(context.integrity.sameProjectInterlocks.includes('RESOURCE:RELEASE_STAGE<->CANONICAL:DEPLOY:*'));
   assert.equal(context.runtimeDefaults.deviceLeaseMinutes,45);

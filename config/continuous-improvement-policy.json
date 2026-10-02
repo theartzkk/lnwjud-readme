@@ -10,7 +10,10 @@
     "provenLessonInheritance": true,
     "newProjectsInheritCurrentBaseline": true,
     "ownerSecurityBoundariesCannotBeAutoWeakened": true,
-    "unverifiedAutonomousPolicyMutationForbidden": true
+    "unverifiedAutonomousPolicyMutationForbidden": true,
+    "sandboxViewNeverHostTruth": true,
+    "hostFilesystemIncidentRequiresAuthorityCrossCheck": true,
+    "destructiveHostRepairRequiresCorroboratedHostEvidence": true
   },
   "impactScopes": [
     "PROJECT",

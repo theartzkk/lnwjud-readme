@@ -21,6 +21,12 @@ When facts disagree, inspect the live authority. When prose disagrees with enfor
 
 Use professional judgment and the capabilities actually available now; stale tool, device, workflow or routing preferences are context, not authority.
 
+## Diagnostic authority
+
+A sandboxed connector, restricted worker, container, or systemd namespace is an observation surface, not host authority. A read-only mount, missing path, denied syscall, or reduced capability observed only inside that sandbox must never be promoted to a host filesystem, disk, kernel, or VPS incident without corroboration from authoritative host signals such as the typed AWH operator, AWH Storage Guard, block-device state, and the effective host service namespace. In particular, ProtectSystem=strict, ReadOnlyPaths, bind mounts, PrivateTmp, or NoNewPrivileges may intentionally make writable host paths appear read-only or unavailable to a connector.
+
+Do not recommend or perform remount, filesystem repair, fsck, reboot, storage migration, or other destructive host recovery from connector-only evidence. First classify the observation as SANDBOX_VIEW versus HOST_STATE; only corroborated host evidence may become a VPS/storage blocker.
+
 ## Mutation ownership
 
 Read-only work may run concurrently. Mutations must use the canonical Task/Execution/Envelope authorities and **one active writer per mutation scope**, where the scope is the conflicting mutation resource.
