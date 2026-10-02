@@ -1465,7 +1465,7 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
     sudo env AWH_VPS_DIRECT_REUSE_ONLY=1 "$RELEASE/deploy/remote-worker/linux/install-vps-direct-connector.sh" --activate
     CONNECTOR_VERIFY_READY=0
     CONNECTOR_VERIFY_ATTEMPTS=0
-    while test "$CONNECTOR_VERIFY_ATTEMPTS" -lt 10; do
+    while test "$CONNECTOR_VERIFY_ATTEMPTS" -lt 30; do
       CONNECTOR_VERIFY_ATTEMPTS=$((CONNECTOR_VERIFY_ATTEMPTS + 1))
       if sudo "$RELEASE/deploy/remote-worker/linux/verify-vps-direct-connector.sh" >/dev/null 2>&1; then
         CONNECTOR_VERIFY_READY=1

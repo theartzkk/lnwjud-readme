@@ -23,7 +23,21 @@ SESSION=$AGENT_HOME/.desktop-commander-device/device.json
 CONFIG=$AGENT_HOME/.claude-server-commander/config.json
 CANDIDATE_ROOT=$AGENT_HOME/worktrees
 CONNECTOR_TMP=$AGENT_HOME/tmp
-fail(){ printf '%s\n' "$1" >&2; exit 1; }
+VERIFY_EVIDENCE=${AWH_VPS_DIRECT_VERIFY_EVIDENCE:-$AGENT_HOME/checkpoints/vps-direct-connector-verify.last}
+record_verify(){
+  verify_code=$1
+  evidence_dir=$(dirname -- "$VERIFY_EVIDENCE")
+  if [ -d "$evidence_dir" ]; then
+    evidence_tmp="$VERIFY_EVIDENCE.tmp.$$"
+    {
+      printf '%s %s\n' "$(date --iso-8601=seconds)" "$verify_code" > "$evidence_tmp"
+      chown "$AGENT_USER:awh-operator" "$evidence_tmp"
+      chmod 0640 "$evidence_tmp"
+      mv -f "$evidence_tmp" "$VERIFY_EVIDENCE"
+    } 2>/dev/null || { rm -f "$evidence_tmp" 2>/dev/null || true; true; }
+  fi
+}
+fail(){ record_verify "$1"; printf '%s\n' "$1" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || fail AWH_VPS_DIRECT_VERIFY_REQUIRES_ROOT
 [ "$(systemctl show desktop-commander-vps.service -p User --value)" = "$AGENT_USER" ] || fail AWH_VPS_DIRECT_SERVICE_USER_MISMATCH
 [ "$(systemctl show desktop-commander-vps.service -p Group --value)" = "$AGENT_USER" ] || fail AWH_VPS_DIRECT_SERVICE_GROUP_MISMATCH
@@ -50,4 +64,5 @@ if(c.fileReadLineLimit!==300 || c.fileWriteLineLimit!==50) process.exit(4);
 NODE
 runuser -u "$AGENT_USER" -- git --git-dir=/srv/awh-git/awh.git rev-parse --verify refs/heads/main >/dev/null || fail AWH_VPS_DIRECT_SOURCE_READ_FAILED
 runuser -u "$AGENT_USER" -- test ! -w /srv/awh-git || fail AWH_VPS_DIRECT_CANONICAL_SOURCE_WRITABLE
+record_verify AWH_VPS_DIRECT_VERIFY_PASS
 printf '%s\n' "AWH_VPS_DIRECT_VERIFY=PASS version=$VERSION user=$AGENT_USER"

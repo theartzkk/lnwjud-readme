@@ -66,7 +66,7 @@ test('VPS direct connector exposes durable candidates but keeps canonical source
   assert.match(platformDeploy,/VPS_CONNECTOR_CONFIG_BACKUP/);
   assert.match(platformDeploy,/systemctl restart desktop-commander-vps\.service/);
   assert.match(platformDeploy,/CONNECTOR_VERIFY_ATTEMPTS=0/);
-  assert.match(platformDeploy,/while test "\$CONNECTOR_VERIFY_ATTEMPTS" -lt 10/);
+  assert.match(platformDeploy,/while test "\$CONNECTOR_VERIFY_ATTEMPTS" -lt 30/);
   assert.match(platformDeploy,/verify-vps-direct-connector\.sh" >\/dev\/null 2>&1/);
   assert.match(platformDeploy,/test "\$CONNECTOR_VERIFY_READY" -eq 1/);
   assert.match(platformDeploy,/VPS_CONNECTOR_UNIT_BACKUP.*VPS_CONNECTOR_CONFIG_BACKUP/s);
@@ -77,6 +77,9 @@ test('VPS direct connector exposes durable candidates but keeps canonical source
   assert.match(install,/AWH_VPS_DIRECT_PACKAGE_REUSE_REQUIRED/);
   assert.match(verify,/AWH_VPS_DIRECT_RUNTIME_TMPDIR_MISMATCH/);
   assert.match(verify,/\$AGENT_USER:awh-operator:2770/);
+  assert.match(verify,/AWH_VPS_DIRECT_VERIFY_EVIDENCE/);
+  assert.match(verify,/vps-direct-connector-verify\.last/);
+  assert.match(verify,/record_verify AWH_VPS_DIRECT_VERIFY_PASS/);
 });
 
 test('durable deploy retry evidence is isolated per release execution',async()=>{
