@@ -398,20 +398,28 @@ final class HubOperatorBridgeService
                 }
             }
         }
-        $diskBlocked=$freeBytes!==null&&$freeBytes<self::STORAGE_BLOCK_FREE_BYTES;
-        $state=$freeBytes===null?'UNKNOWN':($freeBytes<self::STORAGE_CRITICAL_FREE_BYTES?'CRITICAL':($freeBytes<self::STORAGE_TARGET_FREE_BYTES?'WARNING':'OK'));
-        if($guardFresh&&in_array($guardState,['OK','WARNING','CRITICAL'],true)){
-            $rank=['UNKNOWN'=>0,'OK'=>1,'WARNING'=>2,'CRITICAL'=>3];
-            if(($rank[$guardState]??0)>($rank[$state]??0))$state=$guardState;
+        $liveReady=$freeBytes!==null&&$totalBytes!==null&&$totalBytes>0&&$freeBytes>=0&&$freeBytes<=$totalBytes;
+        $usedPercent=$liveReady?(int)floor((($totalBytes-$freeBytes)*100)/$totalBytes):null;
+        $diskBlocked=$liveReady&&($usedPercent>=90||$freeBytes<self::STORAGE_BLOCK_FREE_BYTES);
+        $state=$liveReady?($usedPercent>=95||$freeBytes<self::STORAGE_CRITICAL_FREE_BYTES?'CRITICAL':($usedPercent>=80||$freeBytes<self::STORAGE_TARGET_FREE_BYTES?'WARNING':'OK')):'UNKNOWN';
+        // The guard file is a periodic snapshot. Live disk telemetry is the mutation
+        // authority whenever it is available; otherwise a recently verified guard
+        // snapshot is the fail-safe fallback. This prevents a recovered disk from
+        // remaining blocked for STORAGE_GUARD_MAX_AGE_SECONDS after self-heal.
+        $guardFallbackUsed=false;
+        if(!$liveReady&&$guardFresh&&in_array($guardState,['OK','WARNING','CRITICAL'],true)){
+            $state=$guardState;$diskBlocked=$guardReleaseBlocked;$guardFallbackUsed=true;
         }
+        $guardDisagreesWithLive=$liveReady&&$guardFresh&&($guardReleaseBlocked!==$diskBlocked||($guardState!=='UNKNOWN'&&!hash_equals($guardState,$state)));
         return [
             'state'=>$state,'authority'=>'AWH_STORAGE_GUARD+LIVE_DISK',
-            'freeBytes'=>$freeBytes,'totalBytes'=>$totalBytes,
+            'freeBytes'=>$freeBytes,'totalBytes'=>$totalBytes,'usedPercent'=>$usedPercent,
             'targetFreeBytes'=>self::STORAGE_TARGET_FREE_BYTES,
             'blockFreeBytes'=>self::STORAGE_BLOCK_FREE_BYTES,
             'criticalFreeBytes'=>self::STORAGE_CRITICAL_FREE_BYTES,
-            'releaseBlocked'=>$diskBlocked||$guardReleaseBlocked,
+            'releaseBlocked'=>$diskBlocked,
             'guardState'=>$guardState,'guardFresh'=>$guardFresh,'guardCheckedAt'=>$guardCheckedAt,
+            'guardReleaseBlocked'=>$guardReleaseBlocked,'guardFallbackUsed'=>$guardFallbackUsed,'guardDisagreesWithLive'=>$guardDisagreesWithLive,
             'selfHealAuthority'=>'awh-storage-guard.timer',
         ];
     }
