@@ -30,10 +30,10 @@ async function packagedFixture(t: TestContext): Promise<{ root: string; appExecu
   const appExecutable = join(root, process.platform === 'win32' ? 'AWH.exe' : 'AWH');
   const workspace = join(root, 'workspace with spaces');
   const appAsar = join(dirname(appExecutable), 'resources', 'app.asar');
-  await mkdir(dirname(appAsar), { recursive: true });
+  await mkdir(join(appAsar, 'dist'), { recursive: true });
   await mkdir(workspace, { recursive: true });
   await writeFile(appExecutable, 'fixture', 'utf8');
-  await writeFile(appAsar, 'fixture', 'utf8');
+  await writeFile(join(appAsar, 'dist', 'index.js'), 'fixture', 'utf8');
   return { root, appExecutable, workspace };
 }
 

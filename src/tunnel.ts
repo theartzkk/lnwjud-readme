@@ -253,8 +253,8 @@ export async function inspectTunnelReadiness(
     appAsar = paths.appAsar;
     if (!(await fileExists(paths.appExecutable))) {
       blockers.push('Packaged AWH executable was not found');
-    } else if (!(await fileExists(paths.appAsar))) {
-      blockers.push('Packaged resources/app.asar was not found');
+    } else if (!(await fileExists(paths.entrypoint))) {
+      blockers.push('Packaged MCP entrypoint was not found');
     } else {
       packagedMcpReady = true;
       mcpCommand = buildPackagedMcpCommand(paths.appExecutable, workspace);
