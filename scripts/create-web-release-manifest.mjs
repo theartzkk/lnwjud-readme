@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto';
 import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { prepareDesktopReuseFallbacks } from './release/desktop-reuse-fallback.mjs';
 
 const root = resolve(process.cwd());
 const input = resolve(root, process.argv[2] ?? 'dist-web');
@@ -48,6 +49,7 @@ function baseDesktopRelease(entry) {
 const desktopReleases = [];
 const entries = [];
 const localOptionalFiles = new Set();
+const missingOptionalFiles = new Set();
 for (const name of files) {
   const path = join(input, name);
   const info = await lstat(path);
@@ -67,7 +69,22 @@ for (const name of optionalFiles) {
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
   }
-  if (reuseRemoteDesktop) entries.push(baseFile(name));
+  if (reuseRemoteDesktop) {
+    entries.push(baseFile(name));
+    missingOptionalFiles.add(name);
+  }
+}
+if (
+  reuseRemoteDesktop &&
+  process.env.AWH_REUSE_REMOTE_DESKTOP_ARTIFACTS === '1' &&
+  process.env.AWH_DEPLOY_TRANSPORT === 'local'
+) {
+  await prepareDesktopReuseFallbacks({
+    input,
+    baseManifest,
+    releaseSha: config.sourceSha,
+    paths: [...missingOptionalFiles],
+  });
 }
 // Existing CI evidence owns package lineage. Remote-reuse mode may carry that
 // already-verified lineage forward from the currently active production

@@ -134,8 +134,11 @@ test('remote desktop reuse rejects inconsistent production lineage', async () =>
 test('guarded deploy exposes explicit remote artifact reuse without bypassing rehydration', async () => {
   const deploy = await readFile('deploy/awh-control-plane/deploy-control-plane.sh', 'utf8');
   const remote = await readFile('deploy/awh-control-plane/remote-deploy-control-plane.sh', 'utf8');
+  const manifest = await readFile('scripts/create-web-release-manifest.mjs', 'utf8');
+  const releaseFiles = await readFile('scripts/list-web-release-files.mjs', 'utf8');
   assert.match(deploy, /AWH_REUSE_REMOTE_DESKTOP_ARTIFACTS/);
   assert.match(deploy, /cat \/var\/www\/awh-web\/current\/release\.json/);
+  assert.doesNotMatch(deploy, /sudo -n cat \/var\/www\/awh-web\/current\/release\.json/);
   assert.match(deploy, /AWH_DESKTOP_RELEASE_REUSE=1/);
   assert.match(deploy, /DESKTOP_ARTIFACT_REUSE=verified-remote-manifest/);
   assert.match(deploy, /AWH_DESKTOP_ARM64_OVERLAY/);
@@ -144,4 +147,8 @@ test('guarded deploy exposes explicit remote artifact reuse without bypassing re
   assert.match(remote, /AWH-macOS-arm64\.zip/);
   assert.match(remote, /sudo test -f "\$object"/);
   assert.match(remote, /actual=\$\(sudo sha256sum "\$object"/);
+  assert.match(manifest, /prepareDesktopReuseFallbacks/);
+  assert.match(manifest, /AWH_REUSE_REMOTE_DESKTOP_ARTIFACTS/);
+  assert.match(releaseFiles, /consumeDesktopReuseFallbacks/);
+  assert.match(releaseFiles, /AWH_RELEASE_COMMIT/);
 });
