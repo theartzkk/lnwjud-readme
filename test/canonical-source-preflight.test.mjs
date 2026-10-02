@@ -290,15 +290,12 @@ test('guarded deployment wrapper proves canonical source and binds the proven SH
 test('guarded remote deploy holds canonical execution authority through mutation and rollback', async () => {
   const remote = await readFile(join(repoRoot, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'), 'utf8');
   const validator = await readFile(join(repoRoot, 'deploy/awh-control-plane/validate-remote-output.sh'), 'utf8');
-  const artifactGuard = remote.indexOf('Release contains empty systemd artifact');
   const staged = remote.indexOf('stage RELEASE_STAGED');
   const acquire = remote.indexOf('stage EXECUTION_AUTHORITY_ACQUIRE');
   const cutover = remote.indexOf('stage CONTROL_ORIGIN_RENDER');
   const release = remote.lastIndexOf('stage EXECUTION_AUTHORITY_RELEASE;');
   const success = remote.lastIndexOf('SUCCESS=1;');
-  assert.ok(artifactGuard >= 0 && artifactGuard < staged, 'empty systemd artifacts must fail before release staging');
   assert.ok(staged >= 0 && acquire > staged && cutover > acquire, 'deploy authority must be acquired before control mutation');
-  assert.ok(remote.includes('find "$RELEASE/deploy/systemd" -maxdepth 1 -type f -size 0 -print -quit'));
   assert.ok(release > cutover && success > release, 'deploy authority must be released before success');
   assert.match(remote, /release_deploy_authority failure/);
   assert.match(remote, /deploy-execution-authority\.php" acquire/);

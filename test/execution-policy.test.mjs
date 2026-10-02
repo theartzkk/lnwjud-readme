@@ -61,6 +61,10 @@ test('VPS direct connector exposes durable candidates but keeps canonical source
   assert.ok(install.includes(durable));
   assert.ok(verify.includes(durable));
   assert.match(platformDeploy,/stage VPS_DIRECT_CONNECTOR_PREPARE[\s\S]*AWH_VPS_DIRECT_REUSE_ONLY=1[\s\S]*install-vps-direct-connector\.sh" --activate[\s\S]*verify-vps-direct-connector\.sh"[\s\S]*stage VPS_DIRECT_CONNECTOR_READY/);
+  const emptyArtifactGuard=platformDeploy.indexOf('Release contains empty systemd artifact');
+  const releaseStaged=platformDeploy.indexOf('stage RELEASE_STAGED');
+  assert.ok(emptyArtifactGuard>=0&&releaseStaged>emptyArtifactGuard,'empty systemd artifacts must fail before release staging');
+  assert.ok(platformDeploy.includes('find "$RELEASE/deploy/systemd" -maxdepth 1 -type f -size 0 -print -quit'));
   assert.match(platformDeploy,/VPS_CONNECTOR_MUTATION_STARTED=1/);
   assert.match(platformDeploy,/VPS_CONNECTOR_UNIT_BACKUP/);
   assert.match(platformDeploy,/VPS_CONNECTOR_CONFIG_BACKUP/);
