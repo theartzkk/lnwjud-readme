@@ -615,7 +615,7 @@ test('Update Center streams canonical release progress in real time with bounded
   assert.match(script,/function progressEventFresh/);
   assert.match(script,/eventFresh=liveConnected&&progressEventFresh\(event\)/);
   assert.match(script,/เชื่อมต่ออยู่/);
-  assert.match(script,/const delay=active\?15000:60000/);
+  assert.match(script,/const delay=active\?\(liveConnected\?45000:12000\):90000/);
   assert.match(script,/localOperation\?\.key===item\?\.key/);
   assert.match(script,/key:item\.key,name:'VPS Platform'/);
   assert.match(script,/key:'awh-line-gateway',name:'LINE OA · AWH Gateway'/);
@@ -741,4 +741,25 @@ test('Update Center self-recovers from stale PWA module caches instead of showin
   assert.doesNotMatch(worker,/url\.searchParams\.set\('sw-release',RELEASE_ID\)/);
   assert.doesNotMatch(worker,/client\.navigate\(url\.toString\(\)\)/);
   assert.ok(JSON.parse(releaseFiles).required.includes('update-center-boot.js'));
+});
+
+
+test('Update Center owner flow is single-flight, exact-target pinned, and resilient to transient refresh failures', async()=>{
+  const script=await readFile(join(ROOT,'web/updates.js'),'utf8');
+  assert.match(script,/OWNER_OPERATION_STORAGE_KEY='awh-update-center-owner-operation-v1'/);
+  assert.match(script,/OWNER_COMMAND_RECONCILE_MS=120000/);
+  assert.match(script,/function pinAcceptedOperation/);
+  assert.match(script,/function reconcilePinnedOperation/);
+  assert.match(script,/function ownerActionLocked/);
+  assert.match(script,/sessionStorage\.setItem\(OWNER_OPERATION_STORAGE_KEY/);
+  assert.match(script,/ไม่ต้องกดซ้ำ ระบบจะทำต่อและตรวจผลให้อัตโนมัติ/);
+  assert.match(script,/กำลังตรวจความพร้อมและตรึงรุ่นที่จะอัปเดต/);
+  assert.match(script,/button\.disabled=!allowDuringOperation&&ownerActionLocked\(targetKey\)/);
+  assert.match(script,/Boolean\(pinnedOperation\)/);
+  assert.match(script,/const delay=active\?\(liveConnected\?45000:12000\):90000/);
+  assert.match(script,/ใช้สถานะล่าสุด · จะตรวจใหม่อัตโนมัติ/);
+  assert.match(script,/const storageBlocked=Boolean\(telemetryReady\)/);
+  assert.match(script,/ยังไม่สรุปเป็นปัญหาและจะตรวจซ้ำอัตโนมัติ/);
+  assert.match(script,/refresh\(\{manual:true\}\)/);
+  assert.match(script,/refresh\(\{initial:true\}\)/);
 });

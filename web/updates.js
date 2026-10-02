@@ -16,9 +16,66 @@ let stopLiveUpdates=null;
 let liveConnected=false;
 let liveUpdatedAt=0;
 let lastLiveUiSignature='';
+let actionInFlight=false;
 const targetFeedback=new Map();
+const OWNER_OPERATION_STORAGE_KEY='awh-update-center-owner-operation-v1';
+const OWNER_COMMAND_RECONCILE_MS=120000;
 const QUEUED_RELEASE_TASK_STATES=new Set(['QUEUED','WAITING_FOR_WORKER','WAITING_FOR_CAPABILITY']);
 const itemQueued=(item)=>item?.state==='UPDATING'&&QUEUED_RELEASE_TASK_STATES.has(String(item?.taskState||'').toUpperCase());
+function readPinnedOperation(){
+  try{
+    const value=JSON.parse(sessionStorage.getItem(OWNER_OPERATION_STORAGE_KEY)||'null');
+    if(!value||typeof value!=='object'||typeof value.key!=='string'||!Number.isFinite(Number(value.acceptedAt)))return null;
+    if(Date.now()-Number(value.acceptedAt)>OWNER_COMMAND_RECONCILE_MS)return null;
+    return value;
+  }catch{return null;}
+}
+let pinnedOperation=readPinnedOperation();
+function persistPinnedOperation(){
+  try{if(pinnedOperation)sessionStorage.setItem(OWNER_OPERATION_STORAGE_KEY,JSON.stringify(pinnedOperation));else sessionStorage.removeItem(OWNER_OPERATION_STORAGE_KEY);}catch{}
+}
+function pinnedFor(item){
+  return Boolean(pinnedOperation&&item?.key===pinnedOperation.key&&Date.now()-Number(pinnedOperation.acceptedAt||0)<=OWNER_COMMAND_RECONCILE_MS);
+}
+function ownerActionLocked(targetKey){
+  if(actionInFlight||pinnedOperation)return true;
+  const active=primaryItems().filter((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state));
+  if(!active.length)return false;
+  return active.some((item)=>item.key!==targetKey||item.state==='UPDATING');
+}
+function pinAcceptedOperation(item,name,request,progress,messageText){
+  const target=String(item?.candidate||item?.candidateReleaseSha||item?.release?.sourceSha||item?.release?.version||'');
+  pinnedOperation={key:item.key,name,target:target||null,taskId:request?.taskId||null,executionId:request?.executionId||null,acceptedAt:Date.now()};
+  persistPinnedOperation();
+  localOperation={key:item.key,name,progress,message:messageText};
+  targetFeedback.set(item.key,{text:'รับคำสั่งแล้ว · ไม่ต้องกดซ้ำ ระบบจะทำต่อและตรวจผลให้อัตโนมัติ',tone:'info'});
+}
+function reconcilePinnedOperation(){
+  if(!pinnedOperation)return;
+  const item=primaryItems().find((row)=>row.key===pinnedOperation.key);
+  if(!item)return;
+  const target=String(pinnedOperation.target||'');
+  const currentValues=[item.current,item.currentSourceRevision,item.trackSourceSha].filter((value)=>typeof value==='string').map(String);
+  if(item.state==='CURRENT'&&(!target||currentValues.includes(target)||!item.candidate)){
+    targetFeedback.set(item.key,{text:'อัปเดตสำเร็จ · ตรวจ Production แล้ว',tone:'good'});
+    pinnedOperation=null;persistPinnedOperation();localOperation=null;return;
+  }
+  if(['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)){
+    localOperation={key:item.key,name:pinnedOperation.name||item.name,progress:Math.max(8,Number(item?.progressEvent?.progress??item?.progress??8)),message:ownerProgressMessage(item,item.progressEvent,item.state==='WAITING_FOR_APPROVAL')};
+    return;
+  }
+  if(item.state==='BLOCKED'){
+    targetFeedback.set(item.key,{text:'รอบล่าสุดหยุดที่จุดปลอดภัย · Production เดิมยังอยู่ กรุณาดูเหตุผลก่อนลองใหม่',tone:'bad'});
+    pinnedOperation=null;persistPinnedOperation();localOperation=null;return;
+  }
+  const age=Date.now()-Number(pinnedOperation.acceptedAt||0);
+  if(age<OWNER_COMMAND_RECONCILE_MS){
+    localOperation={key:item.key,name:pinnedOperation.name||item.name,progress:8,message:'รับคำสั่งแล้ว · กำลังยืนยันสถานะจาก release controller · ไม่ต้องกดซ้ำ'};
+    return;
+  }
+  targetFeedback.set(item.key,{text:'การทำงานรอบก่อนสิ้นสุดแล้ว แต่ยังมีรุ่นรออัปเดต · ตรวจรายละเอียดก่อนกดใหม่',tone:'info'});
+  pinnedOperation=null;persistPinnedOperation();localOperation=null;
+}
 
 const stateLabel=(state)=>({
   CURRENT:'ล่าสุดแล้ว',UPDATE_AVAILABLE:'พร้อมอัปเดต',WAITING_FOR_APPROVAL:'พร้อมทำงานเดิมต่อ',UPDATING:'กำลังอัปเดต',
@@ -224,8 +281,10 @@ function renderReleaseInfrastructure(){
   const telemetryReady=telemetry?.state==='READY'&&server;
   const used=pct(storage?.usedPercent);
   const free=Number(storage?.availableBytes??storage?.freeBytes);
-  const storageBlocked=(used!==null&&used>=90)||(Number.isFinite(free)&&free<3*1024**3);
-  const storageWarn=!storageBlocked&&used!==null&&used>=80;
+  // Never turn stale/checking telemetry into a hard owner-facing storage failure.
+  // A blocking storage verdict is valid only when the live Production telemetry is READY.
+  const storageBlocked=Boolean(telemetryReady)&&((used!==null&&used>=90)||(Number.isFinite(free)&&free<3*1024**3));
+  const storageWarn=Boolean(telemetryReady)&&!storageBlocked&&used!==null&&used>=80;
   const authority=center?.infrastructure?.executionAuthority||{};
   const activeMutations=Number(authority.activeMutationCount||0);
   const waitingMutations=Number(authority.waitingMutationCount||0);
@@ -254,13 +313,15 @@ function renderReleaseInfrastructure(){
   document.querySelector('.infrastructure-card[data-role="runner"]').dataset.state=runnerOnline?'READY':runner?'WARN':'PLANNED';
 
   const releaseReady=telemetryReady&&!storageBlocked&&activeMutations===0;
-  $('release-capacity-state').textContent=storageBlocked
-    ?'พื้นที่ Production ต่ำกว่า release headroom — ห้ามเริ่มงานหนักจนกว่าจะ reclaim หรือย้าย Build/QA ออก'
-    :activeMutations>0
-      ?'มี mutation กำลังทำงาน ระบบจะ serialize deploy และไม่เปิด writer ซ้ำ'
-      :storageWarn
-        ?'ปล่อยรุ่นได้แบบระวัง แต่ควรย้าย Build/QA ไป Release Runner เพื่อลด disk pressure'
-        :'พร้อมรับ release ตาม exact-SHA และ single-writer policy';
+  $('release-capacity-state').textContent=!telemetryReady
+    ?'กำลังยืนยัน Production telemetry · ยังไม่สรุปเป็นปัญหาและจะตรวจซ้ำอัตโนมัติ'
+    :storageBlocked
+      ?'พื้นที่ Production ต่ำกว่า release headroom — ห้ามเริ่มงานหนักจนกว่าจะ reclaim หรือย้าย Build/QA ออก'
+      :activeMutations>0
+        ?'มี mutation กำลังทำงาน ระบบจะ serialize deploy และไม่เปิด writer ซ้ำ'
+        :storageWarn
+          ?'ปล่อยรุ่นได้แบบระวัง แต่ควรย้าย Build/QA ไป Release Runner เพื่อลด disk pressure'
+          :'พร้อมรับ release ตาม exact-SHA และ single-writer policy';
   $('release-capacity-storage').textContent='Headroom '+(Number.isFinite(free)?sizeText(free):'—');
   $('release-capacity-mutations').textContent='Writer '+activeMutations+(waitingMutations>0?' · รอ '+waitingMutations:'');
   document.querySelector('.infrastructure-card[data-role="release"]').dataset.state=storageBlocked?'BLOCKED':releaseReady?'READY':'WARN';
@@ -279,6 +340,7 @@ function primaryItems(){
 function summary(){
   const counts={current:0,update:0,progress:0,queue:0,attention:0};
   for(const item of primaryItems()){
+    if(pinnedFor(item)){counts.progress++;continue;}
     if(['CURRENT','INTERNAL_MANAGED'].includes(item.state))counts.current++;
     else if(item.state==='UPDATE_AVAILABLE')counts.update++;
     else if(['WAITING_FOR_APPROVAL','UPDATING'].includes(item.state)){counts.progress++;if(itemQueued(item))counts.queue++;}
@@ -306,6 +368,7 @@ function summary(){
 }
 
 function releaseText(item){
+  if(pinnedFor(item))return 'รับคำสั่งแล้ว · กำลังยืนยันสถานะล่าสุด';
   if(item.current&&item.candidate&&!hash(item.current)&&!hash(item.candidate)&&item.current!==item.candidate)return item.current+' → '+item.candidate;
   if(item.state==='CURRENT'&&item.current&&!hash(item.current))return 'รุ่น '+item.current;
   if(item.state==='UPDATE_AVAILABLE')return 'มีรุ่นใหม่พร้อมติดตั้ง';
@@ -377,22 +440,28 @@ function actionErrorText(error,button){
   }
   return friendly(error);
 }
-function actionButton(text,handler,className='primary-button',targetKey=null,successText='รับคำสั่งแล้ว · กำลังติดตามสถานะ'){
+function actionButton(text,handler,className='primary-button',targetKey=null,successText='รับคำสั่งแล้ว · ไม่ต้องกดซ้ำ ระบบจะทำต่อและตรวจผลให้อัตโนมัติ',allowDuringOperation=false){
   const button=document.createElement('button');button.type='button';button.className=className;button.textContent=text;if(targetKey)button.dataset.targetKey=targetKey;
+  if(!allowDuringOperation&&ownerActionLocked(targetKey)){button.disabled=true;button.title='มีงานอัปเดตกำลังดำเนินการ · ระบบจะเปิดปุ่มให้อัตโนมัติเมื่อถึงจุดปลอดภัย';}
   button.addEventListener('click',async()=>{
+    if(!allowDuringOperation&&ownerActionLocked(targetKey)){actionFeedback(button,'มีงานอัปเดตกำลังดำเนินการ · ไม่ต้องกดซ้ำ ระบบจะทำต่อเอง','info',targetKey);return;}
     const initialText=button.textContent;
-    button.disabled=true;button.dataset.busy='true';button.setAttribute('aria-busy','true');button.textContent='กำลังตรวจ…';
-    actionFeedback(button,'กำลังตรวจความพร้อมก่อนเริ่มดำเนินการ','info',targetKey);
+    actionInFlight=true;button.disabled=true;button.dataset.busy='true';button.setAttribute('aria-busy','true');button.textContent='กำลังรับคำสั่ง…';
+    actionFeedback(button,'กำลังตรวจความพร้อมและตรึงรุ่นที่จะอัปเดต','info',targetKey);
     try{await handler();actionFeedback(button,successText,'good',targetKey);}
     catch(error){
-      localOperation=null;const text=actionErrorText(error,button);message(text,'bad');actionFeedback(button,text,'bad',targetKey);syncLiveStream();renderProgress();
+      pinnedOperation=null;persistPinnedOperation();localOperation=null;const text=actionErrorText(error,button);message(text,'bad');actionFeedback(button,text,'bad',targetKey);syncLiveStream();renderProgress();
     }
-    finally{button.disabled=false;button.removeAttribute('data-busy');button.removeAttribute('aria-busy');button.textContent=initialText;}
+    finally{
+      actionInFlight=false;button.removeAttribute('data-busy');button.removeAttribute('aria-busy');button.textContent=initialText;
+      button.disabled=!allowDuringOperation&&ownerActionLocked(targetKey);
+    }
   });
   return button;
 }
 function ownerFacingReason(item){
   if(!item)return 'ระบบที่เกี่ยวข้องยังไม่พร้อม';
+  if(pinnedFor(item))return 'รับคำสั่งแล้ว · ระบบกำลังทำต่อและตรวจผลให้อัตโนมัติ ไม่ต้องกดซ้ำ';
   const reason=String(item.reason||'').trim();
   if(itemQueued(item))return 'รับคำสั่งแล้ว · อยู่ในคิวและจะเริ่มอัตโนมัติเมื่อ writer ว่าง';
   if(item.state==='CURRENT')return 'ระบบนี้เป็นรุ่นล่าสุด';
@@ -585,7 +654,7 @@ function renderCard(item){
   const main=document.createElement('div');main.className='update-card-main';
   const title=document.createElement('div');title.className='update-title';
   const h3=document.createElement('h3');h3.textContent=item.name;
-  const chip=document.createElement('span');chip.className='update-chip';chip.dataset.state=itemQueued(item)?'QUEUED':item.state;chip.textContent=itemQueued(item)?'รอคิว':stateLabel(item.state);
+  const chip=document.createElement('span');chip.className='update-chip';chip.dataset.state=pinnedFor(item)?'UPDATING':(itemQueued(item)?'QUEUED':item.state);chip.textContent=pinnedFor(item)?'รับคำสั่งแล้ว':(itemQueued(item)?'รอคิว':stateLabel(item.state));
   title.append(h3,chip);main.append(title);
   const version=releaseText(item);
   if(version){const line=document.createElement('div');line.className='update-version';line.textContent=version;main.append(line);}
@@ -616,7 +685,7 @@ function renderCard(item){
   else if(item.adapter==='ASSESSMENT_RELEASE'&&item.state==='WAITING_FOR_APPROVAL'&&item.candidate&&item.candidateVersion)actions.append(actionButton('ทำต่อ Assessment',()=>updateAssessment(item),'primary-button',item.key));
   else if(item.adapter==='MANAGED_HOSTING'&&item.state==='UPDATE_AVAILABLE'&&item.siteId)actions.append(actionButton('อัปเดต',()=>updateHosting(item),'primary-button',item.key));
   else if(item.adapter==='BAY_UPDATE_CENTER'&&item.state==='UPDATE_AVAILABLE'&&item.release)actions.append(actionButton('อัปเดต '+item.name,()=>updateBay(item),'primary-button',item.key));
-  if(item.canCancel===true&&item.taskId)actions.append(actionButton('ยกเลิก',()=>cancelUpdate(item),'secondary-button',item.key,'ยกเลิกงานแล้ว · ยังไม่มีการเปลี่ยน Production'));
+  if(item.canCancel===true&&item.taskId)actions.append(actionButton('ยกเลิก',()=>cancelUpdate(item),'secondary-button',item.key,'ยกเลิกงานแล้ว · ยังไม่มีการเปลี่ยน Production',true));
   const storedFeedback=targetFeedback.get(item.key);if(storedFeedback){const feedback=document.createElement('div');feedback.className='update-action-feedback';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');feedback.dataset.tone=storedFeedback.tone;feedback.textContent=storedFeedback.text;actions.prepend(feedback);}
   if(item.url){const link=document.createElement('a');link.className='secondary-button';link.href=item.url;link.target='_blank';link.rel='noopener';link.textContent='เปิดระบบ';actions.append(link);}
   card.append(main,actions);return card;
@@ -710,7 +779,7 @@ function progressEventFresh(event,maxAgeMs=20000){
 }
 
 function hasActiveUpdate(){
-  return Boolean(localOperation)||primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state));
+  return Boolean(localOperation)||Boolean(pinnedOperation)||primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state));
 }
 
 function stopLiveStream(){
@@ -734,7 +803,8 @@ function ensureLiveStream(){
     const changed=nextSignature!==lastLiveUiSignature;
     liveConnected=true;liveUpdatedAt=Date.now();center=normalized;lastLiveUiSignature=nextSignature;
     $('updates-freshness').textContent='สด · '+new Date(snapshot.generatedAt).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-    if(!primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)))localOperation=null;
+    reconcilePinnedOperation();
+    if(!pinnedOperation&&!primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)))localOperation=null;
     if(changed)render();else renderProgress();
     scheduleRefresh();
   },()=>{
@@ -782,9 +852,10 @@ function renderProgress(){
 }
 
 async function updatePlatform(item){
-  localOperation={key:item.key,name:'VPS Platform',progress:6,message:'กำลังเตรียม VPS Platform รุ่นล่าสุด'};
+  localOperation={key:item.key,name:'VPS Platform',progress:6,message:'กำลังตรึงรุ่น VPS Platform ที่เลือกและตรวจความพร้อม'};
   const request=await requestPlatformRelease(item.candidate,false);
-  message('VPS Platform รับคำสั่งแล้ว กำลังตรวจความพร้อม สำรอง อัปเดต และ Verify');
+  pinAcceptedOperation(item,'VPS Platform',request,8,'รับคำสั่งแล้ว · ระบบกำลังตรวจความพร้อม สำรอง ติดตั้ง และ Verify · ไม่ต้องกดซ้ำ');
+  message('VPS Platform รับคำสั่งแล้ว · ระบบจะทำต่อและตรวจผลให้อัตโนมัติ ไม่ต้องกดซ้ำ');
   await refresh();
 }
 
@@ -793,28 +864,31 @@ async function updateAwh(item){
   const detail=split
     ?'ตรวจพบ component บางส่วนอยู่คนละรุ่น ระบบจะใช้ release ล่าสุดเพื่อปรับ Runtime ให้สอดคล้อง แล้วจึง Verify ทั้งชุด'
     :'ระบบจะตรวจทุก gate สำรองข้อมูล ติดตั้ง และ Verify ก่อนเปลี่ยน Production';
-  localOperation={key:item.key,name:'AWH',progress:6,message:'กำลังเตรียม AWH รุ่นล่าสุด'};
+  localOperation={key:item.key,name:'AWH',progress:6,message:'กำลังตรึงรุ่น AWH ที่เลือกและตรวจความพร้อม'};
   const request=await requestCoreRelease(item.candidate,false);
-  message('AWH รับคำสั่งแล้ว กำลังตรวจความพร้อม สำรอง ติดตั้ง และ Verify');
+  pinAcceptedOperation(item,'AWH',request,8,'รับคำสั่งแล้ว · ระบบกำลังตรวจความพร้อม สำรอง ติดตั้ง และ Verify · ไม่ต้องกดซ้ำ');
+  message('AWH รับคำสั่งแล้ว · ระบบจะทำต่อและตรวจผลให้อัตโนมัติ ไม่ต้องกดซ้ำ');
   await refresh();
 }
 async function resumeLearnLab(item){
   localOperation={key:item.key,name:'LearnLab',progress:6,message:'กำลังทำงานอัปเดตเดิมต่อโดยไม่สร้าง release ซ้ำ'};
-  await requestLearnLabRelease(item.candidateReleaseSha,item.candidateVersion);
-  message('LearnLab รับคำสั่งแล้ว · กำลังทำงานเดิมต่อผ่าน release controller');
+  const request=await requestLearnLabRelease(item.candidateReleaseSha,item.candidateVersion);
+  pinAcceptedOperation(item,'LearnLab',request,8,'รับคำสั่งแล้ว · กำลังทำงานเดิมต่อและตรวจผล · ไม่ต้องกดซ้ำ');
+  message('LearnLab รับคำสั่งแล้ว · ระบบจะทำต่อและตรวจผลให้อัตโนมัติ ไม่ต้องกดซ้ำ');
   await refresh();
 }
 
 async function updateAssessment(item){
   const request=await requestAssessmentRelease(item.candidate,item.candidateVersion);
-  localOperation={key:item.key,name:'Assessment',progress:10,message:'กำลังเตรียม Staging'};
-  message('Assessment รับคำสั่งแล้ว กำลังดำเนินการแบบ staging-first');
+  pinAcceptedOperation(item,'Assessment',request,10,'รับคำสั่งแล้ว · กำลังเตรียม Staging และตรวจผล · ไม่ต้องกดซ้ำ');
+  message('Assessment รับคำสั่งแล้ว · ระบบกำลังดำเนินการแบบ staging-first ไม่ต้องกดซ้ำ');
   await refresh();
 }
 
 async function updateHosting(item){
-  await managedSiteAction(item.siteId,'deploy');
-  message('ส่ง '+item.name+' เข้าสู่ Managed Hosting แล้ว');
+  const request=await managedSiteAction(item.siteId,'deploy');
+  pinAcceptedOperation(item,item.name,request,8,'รับคำสั่งแล้ว · Managed Hosting กำลังติดตั้งและตรวจ health · ไม่ต้องกดซ้ำ');
+  message(item.name+' รับคำสั่งแล้ว · ระบบจะติดตั้งและตรวจ health ให้อัตโนมัติ');
   await refresh();
 }
 
@@ -822,10 +896,15 @@ async function updateBay(item){
   const release=item.release;if(!release)return;
   const relay=await createBayRemoteInstallRelay({targetVersion:release.version,targetSha:release.sourceSha,packageSha256:release.packageSha256});
   try{
-    await relayBayRemoteCommand(relay.endpoint,relay.relay);
-    message(item.name+' รับคำสั่งติดตั้งแล้ว กำลังตรวจสถานะใหม่');
+    const request=await relayBayRemoteCommand(relay.endpoint,relay.relay);
+    pinAcceptedOperation(item,item.name,request,8,'รับคำสั่งแล้ว · BAY กำลังติดตั้งและตรวจ version/source · ไม่ต้องกดซ้ำ');
+    message(item.name+' รับคำสั่งติดตั้งแล้ว · ระบบกำลังตรวจสถานะใหม่ ไม่ต้องกดซ้ำ');
   }catch(error){
-    if(error?.code==='BAY_INSTALL_OUTCOME_UNKNOWN'){message(friendly(error));await refreshBay();return;}
+    if(error?.code==='BAY_INSTALL_OUTCOME_UNKNOWN'){
+      pinnedOperation={key:item.key,name:item.name,target:String(item.candidate||release.version||''),taskId:null,executionId:null,acceptedAt:Date.now()};persistPinnedOperation();
+      localOperation={key:item.key,name:item.name,progress:8,message:'ส่งคำสั่งแล้วแต่การเชื่อมต่อขาด · กำลังตรวจผลก่อน ห้ามติดตั้งซ้ำ'};
+      message(friendly(error));await refreshBay();return;
+    }
     throw error;
   }
   await refreshBay();
@@ -1065,23 +1144,32 @@ function scheduleRefresh(){
   clearTimeout(refreshTimer);
   const active=hasActiveUpdate()||primaryItems().some((item)=>item.state==='REMOTE_CHECK_REQUIRED');
   syncLiveStream();
-  const delay=active?15000:60000;
+  const delay=active?(liveConnected?45000:12000):90000;
   refreshTimer=setTimeout(()=>{if(!document.hidden)void refresh();},delay);
 }
-async function refresh(){
+async function refresh(options={}){
   if(refreshing)return;
-  refreshing=true;$('updates-refresh').disabled=true;$('updates-freshness').textContent='กำลังตรวจทุกระบบ…';
+  const manual=options?.manual===true;const initial=options?.initial===true;
+  refreshing=true;$('updates-refresh').disabled=true;
+  if(!center||manual||initial)$('updates-freshness').textContent=manual?'กำลังตรวจสถานะล่าสุด…':'กำลังตรวจทุกระบบ…';
   try{
     await loadAuthSession();
     center=normalizeUpdateCenter(await loadUpdateCenter());
     lastLiveUiSignature=liveUiSignature(center);
+    reconcilePinnedOperation();
     $('updates-freshness').textContent='ตรวจล่าสุด '+new Date(center.generatedAt).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
     render();
     await Promise.allSettled([refreshBay(),refreshAgent()]);
-    if(!primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)))localOperation=null;
+    reconcilePinnedOperation();
+    if(!pinnedOperation&&!primaryItems().some((item)=>['UPDATING','WAITING_FOR_APPROVAL'].includes(item.state)))localOperation=null;
     reconcileRecoveredActionMessage();
   }catch(error){
-    message(friendly(error));$('updates-overall').textContent='ตรวจไม่สำเร็จ';$('updates-overall').dataset.tone='bad';
+    if(center){
+      message('การตรวจรอบล่าสุดขัดข้องชั่วคราว · กำลังใช้สถานะล่าสุดที่ยืนยันได้ และจะลองใหม่อัตโนมัติ','info');
+      $('updates-freshness').textContent='ใช้สถานะล่าสุด · จะตรวจใหม่อัตโนมัติ';
+    }else{
+      message(friendly(error));$('updates-overall').textContent='ตรวจไม่สำเร็จ';$('updates-overall').dataset.tone='bad';
+    }
   }finally{
     refreshing=false;$('updates-refresh').disabled=false;summary();renderProgress();scheduleRefresh();
   }
@@ -1096,7 +1184,7 @@ window.addEventListener('resize',syncStickyOffset,{passive:true});
 window.addEventListener('orientationchange',()=>setTimeout(syncStickyOffset,0));
 syncStickyOffset();
 
-$('updates-refresh').addEventListener('click',refresh);
+$('updates-refresh').addEventListener('click',()=>void refresh({manual:true}));
 $('show-attention').addEventListener('click',()=>{
   attentionOnly=!attentionOnly;
   $('show-attention').textContent=attentionOnly?'แสดงทุกระบบ':'แสดงเฉพาะที่ต้องจัดการ';
@@ -1117,4 +1205,4 @@ document.querySelectorAll('.filter-chip').forEach((button)=>button.addEventListe
 document.addEventListener('visibilitychange',()=>{if(document.hidden){stopLiveStream();return;}void refresh();});
 window.__AWH_UPDATE_CENTER_BOOT_OK__=true;
 try{sessionStorage.removeItem('awh-update-center-boot-__AWH_WEB_RELEASE_ID__');}catch{}
-void refresh();
+void refresh({initial:true});
