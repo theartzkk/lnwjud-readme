@@ -106,9 +106,13 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(drift, /AWH web runtime\/manifest drift/);
   assert.match(drift, /intentionalPlatformWebSplit/);
   assert.match(drift, /AWH web intentionally behind VPS Platform runtime/);
+  assert.match(drift, /intentionalPlatformControlSplit/);
+  assert.match(drift, /AWH Platform control intentionally ahead of Web runtime/);
   assert.match(drift, /hash_equals\(\$controlSource,strtolower\(\$runtimeProduction\)\)/);
+  assert.match(drift, /hash_equals\(\$controlSource,strtolower\(\$platformProduction\)\)/);
   assert.match(drift, /hash_equals\(strtolower\(\$platformProduction\),strtolower\(\$runtimeProduction\)\)/);
   assert.match(drift, /hash_equals\(strtolower\(\$legacyProduction\),\$source\)/);
+  assert.match(drift, /\$controlMatchesRuntime/);
   assert.match(drift, /updates\.js.*web\/updates\.js/s);
   assert.match(drift, /control-plane-adapter\.js.*web\/control-plane-adapter\.js/s);
   assert.match(drift, /teacher-evaluation/);

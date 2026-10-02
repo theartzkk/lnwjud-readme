@@ -37,7 +37,7 @@ legacy_dropin_a=0; legacy_dropin_b=0
 [ -e "$LEGACY_DROPIN_B" ] && { cp -a "$LEGACY_DROPIN_B" "$backup/legacy-dropin-b.conf"; legacy_dropin_b=1; }
 stage_existed=0; [ -d "$STAGE_ROOT" ] && stage_existed=1
 [ "$stage_existed" -eq 1 ] && getfacl -p "$STAGE_ROOT" >"$backup/stage-root.acl"
-setfacl -m u:awh-hub:--x "$STAGE_PARENT"
+setfacl -m u:awh-hub:--x,g:awh-operator:--x,m::--x "$STAGE_PARENT"
 setfacl -m u:awh-hub:rwx "$BAY_INBOX"
 install -d -o awh-remote -g awh-operator -m 2770 "$STAGE_ROOT"
 setfacl -m g::rwx,m::rwx "$STAGE_ROOT"
@@ -79,6 +79,7 @@ check=
 rollback(){
   [ -n "$check" ] && rm -f "$check" || true
   setfacl --restore="$backup/stage-parent.acl" >/dev/null 2>&1 || true
+  setfacl -m u:awh-hub:--x,g:awh-operator:--x,m::--x "$STAGE_PARENT" >/dev/null 2>&1 || true
   [ -f "$backup/stage-root.acl" ] && setfacl --restore="$backup/stage-root.acl" >/dev/null 2>&1 || true
   setfacl --restore="$backup/bay-inbox.acl" >/dev/null 2>&1 || true
   if [ "$legacy_dropin_a" -eq 1 ]; then install -d -o root -g root -m 0755 "$DROPIN_DIR"; cp -a "$backup/legacy-dropin-a.conf" "$LEGACY_DROPIN_A"; else rm -f "$LEGACY_DROPIN_A"; fi

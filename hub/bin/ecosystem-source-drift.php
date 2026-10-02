@@ -90,6 +90,13 @@ if (is_string($runtime) && $runtime!=='') {
         $intentionalPlatformWebSplit=preg_match('/^[0-9a-f]{40}$/',$splitBase)===1&&hash_equals(strtolower($splitBase),$source);
         if($intentionalPlatformWebSplit)$pending[]='AWH web intentionally behind VPS Platform runtime';
     }
+    $intentionalPlatformControlSplit=false;
+    if(preg_match('/^[0-9a-f]{40}$/',$source)===1&&preg_match('/^[0-9a-f]{40}$/',$runtimeProduction)===1&&preg_match('/^[0-9a-f]{40}$/',$controlSource)===1&&preg_match('/^[0-9a-f]{40}$/',$platformProduction)===1&&preg_match('/^[0-9a-f]{40}$/',$legacyProduction)===1&&preg_match('/^[0-9a-f]{40}$/',$main)===1&&hash_equals($source,strtolower($runtimeProduction))&&hash_equals(strtolower($legacyProduction),$source)&&hash_equals($controlSource,strtolower($platformProduction))&&!hash_equals($controlSource,$source)){
+        $webBase=trim((string)shell_exec('git --git-dir='.escapeshellarg($awh).' merge-base '.escapeshellarg($source).' '.escapeshellarg($main).' 2>/dev/null'));
+        $controlBase=trim((string)shell_exec('git --git-dir='.escapeshellarg($awh).' merge-base '.escapeshellarg($controlSource).' '.escapeshellarg($main).' 2>/dev/null'));
+        $intentionalPlatformControlSplit=preg_match('/^[0-9a-f]{40}$/',$webBase)===1&&preg_match('/^[0-9a-f]{40}$/',$controlBase)===1&&hash_equals(strtolower($webBase),$source)&&hash_equals(strtolower($controlBase),$controlSource);
+        if($intentionalPlatformControlSplit)$pending[]='AWH Platform control intentionally ahead of Web runtime';
+    }
     $manifestFiles=[];
     if (is_array($manifest['files']??null)) foreach ($manifest['files'] as $entry) {
         if (is_array($entry) && is_string($entry['path']??null) && is_string($entry['sha256']??null)) $manifestFiles[(string)$entry['path']]=strtolower((string)$entry['sha256']);
@@ -107,7 +114,8 @@ if (is_string($runtime) && $runtime!=='') {
             if (!preg_match('/^[0-9a-f]{64}$/',$liveHash) || !hash_equals($declared,$liveHash)) $findings[]="AWH web runtime/manifest drift: $asset";
         }
     }
-    if (!preg_match('/^[0-9a-f]{40}$/',$controlSource) || !preg_match('/^[0-9a-f]{40}$/',$runtimeProduction) || !hash_equals($controlSource,strtolower($runtimeProduction))) $findings[]='AWH runtime/Git runtime-production drift';
+    $controlMatchesRuntime=preg_match('/^[0-9a-f]{40}$/',$controlSource)===1&&preg_match('/^[0-9a-f]{40}$/',$runtimeProduction)===1&&hash_equals($controlSource,strtolower($runtimeProduction));
+    if (!$controlMatchesRuntime&&!$intentionalPlatformControlSplit) $findings[]='AWH runtime/Git runtime-production drift';
     if (preg_match('/^[0-9a-f]{40}$/',$source)!==1 || preg_match('/^[0-9a-f]{40}$/',$runtimeProduction)!==1 || (!hash_equals($source,strtolower($runtimeProduction))&&!$intentionalPlatformWebSplit)) $findings[]='AWH web/runtime production drift';
     if (!preg_match('/^[0-9a-f]{40}$/',$main) || !preg_match('/^[0-9a-f]{40}$/',$runtimeProduction)) {
         $findings[]='AWH main/runtime production authority unresolved';
