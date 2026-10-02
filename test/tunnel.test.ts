@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test, { type TestContext } from 'node:test';
@@ -15,6 +15,7 @@ import {
   type TunnelBinaryProbe,
   type TunnelCommandRunner,
 } from '../src/tunnel.js';
+import { resolveDesktopTunnelEnvironment } from '../src/tunnel-desktop-config.js';
 
 const VALID_TUNNEL_ID = 'tunnel_0123456789abcdef0123456789abcdef';
 const VALID_RUNTIME_KEY = 'runtime_key-0123456789';
@@ -362,4 +363,73 @@ test('managed stop targets only the deterministic alias and verifies the stopped
   assert.equal(result.connected, false);
   assert.equal(result.state, 'stopped');
   assert.equal(result.processRunning, false);
+});
+
+
+test('desktop tunnel resolver reuses AWH toolchain, profile and macOS Keychain without persisting the raw key', async (t) => {
+  const home = await mkdtemp(join(tmpdir(), 'awh-tunnel-home-'));
+  const dataDir = join(home, '.awh');
+  t.after(() => rm(home, { recursive: true, force: true }));
+  await mkdir(dataDir, { recursive: true });
+  await writeFile(join(dataDir, 'device.json'), JSON.stringify({
+    schemaVersion: 1,
+    deviceId: '01234567-89ab-4cde-8fab-0123456789ab',
+    displayName: 'ART-MAC-INTEL',
+    platform: 'darwin',
+    arch: 'x64',
+    createdAt: '2026-10-02T00:00:00.000Z',
+  }), 'utf8');
+
+  const toolchain = join(home, 'Library', 'Application Support', 'AWH', 'Toolchain');
+  await mkdir(toolchain, { recursive: true });
+  await writeFile(join(toolchain, 'tunnel-client-current'), 'fixture', 'utf8');
+
+  const profileDir = join(home, 'Library', 'Application Support', 'AWH', 'SecureMcpTunnel', 'profiles');
+  await mkdir(profileDir, { recursive: true });
+  await writeFile(join(profileDir, 'awh-agent-intel.yaml'), JSON.stringify({
+    control_plane: { tunnel_id: VALID_TUNNEL_ID },
+  }), 'utf8');
+
+  let credentialReads = 0;
+  const env = await resolveDesktopTunnelEnvironment(dataDir, {}, async (executable, args) => {
+    credentialReads += 1;
+    assert.equal(executable, '/usr/bin/security');
+    assert.deepEqual(args, [
+      'find-generic-password',
+      '-s', 'online.kruart.awh.local-agent.openai-runtime',
+      '-w',
+    ]);
+    return { exitCode: 0, stdout: `${VALID_RUNTIME_KEY}\n` };
+  }, home, 'darwin');
+
+  assert.equal(credentialReads, 1);
+  assert.equal(env.TUNNEL_CLIENT_BIN, join(toolchain, 'tunnel-client-current'));
+
+  assert.equal(env.CONTROL_PLANE_TUNNEL_ID, VALID_TUNNEL_ID);
+  assert.equal(env.CONTROL_PLANE_API_KEY, VALID_RUNTIME_KEY);
+  assert.equal(await readFile(join(profileDir, 'awh-agent-intel.yaml'), 'utf8'), JSON.stringify({
+    control_plane: { tunnel_id: VALID_TUNNEL_ID },
+  }));
+});
+
+test('desktop tunnel resolver preserves explicit runtime inputs instead of widening discovery', async () => {
+  const explicit = {
+    TUNNEL_CLIENT_BIN: '/trusted/tunnel-client',
+    CONTROL_PLANE_TUNNEL_ID: VALID_TUNNEL_ID,
+    CONTROL_PLANE_API_KEY: VALID_RUNTIME_KEY,
+  };
+  const env = await resolveDesktopTunnelEnvironment('/unused', explicit, async () => {
+    throw new Error('credential store should not be read');
+  }, '/unused', 'darwin');
+  assert.equal(env.TUNNEL_CLIENT_BIN, explicit.TUNNEL_CLIENT_BIN);
+  assert.equal(env.CONTROL_PLANE_TUNNEL_ID, explicit.CONTROL_PLANE_TUNNEL_ID);
+  assert.equal(env.CONTROL_PLANE_API_KEY, explicit.CONTROL_PLANE_API_KEY);
+});
+
+
+test('packaged MCP paths resolve the real macOS app bundle Resources directory', () => {
+  const appExecutable = '/Applications/AWH Agent.app/Contents/MacOS/AWH Agent';
+  const paths = packagedMcpPaths(appExecutable);
+  assert.equal(paths.appAsar, '/Applications/AWH Agent.app/Contents/Resources/app.asar');
+  assert.equal(paths.entrypoint, '/Applications/AWH Agent.app/Contents/Resources/app.asar/dist/index.js');
 });

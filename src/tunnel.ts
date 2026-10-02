@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { stat, realpath } from 'node:fs/promises';
-import { dirname, isAbsolute, join } from 'node:path';
+import { basename, dirname, isAbsolute, join } from 'node:path';
 import { execFile, resolveExecutable, type ExecResult } from './process.js';
 import { PRODUCT } from './product.js';
 
@@ -106,7 +106,12 @@ function quoteTunnelCommandArg(value: string): string {
 
 export function packagedMcpPaths(appExecutable: string): { appExecutable: string; appAsar: string; entrypoint: string } {
   if (!isAbsolute(appExecutable)) throw new Error(`Packaged ${PRODUCT.desktopName} executable path must be absolute`);
-  const appAsar = join(dirname(appExecutable), 'resources', 'app.asar');
+  const executableDir = dirname(appExecutable);
+  const contentsDir = dirname(executableDir);
+  const macBundle = basename(executableDir) === 'MacOS' && basename(contentsDir) === 'Contents';
+  const appAsar = macBundle
+    ? join(contentsDir, 'Resources', 'app.asar')
+    : join(executableDir, 'resources', 'app.asar');
   return {
     appExecutable,
     appAsar,

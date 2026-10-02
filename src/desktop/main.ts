@@ -66,6 +66,7 @@ import {
   type TunnelReadiness,
   type TunnelRuntimeStatus,
 } from '../tunnel.js';
+import { resolveDesktopTunnelEnvironment } from '../tunnel-desktop-config.js';
 import { DESKTOP_IPC, DESKTOP_WEB_PREFERENCES } from './security.js';
 import { RELEASE_VERSION } from '../version.js';
 import { PRODUCT } from '../product.js';
@@ -892,7 +893,8 @@ async function runtimeOverview() {
     : { code: -1, stdout: '', stderr: workspaceError ?? 'ยังไม่ได้เลือก workspace' };
   const codex = await codexStatus(workspace ?? process.cwd());
   const remoteTunnel = workspace
-    ? await inspectTunnelReadiness(workspace, process.execPath)
+    ? await resolveDesktopTunnelEnvironment(config.dataDir)
+        .then((tunnelEnv) => inspectTunnelReadiness(workspace!, process.execPath, tunnelEnv))
         .then(sanitizedTunnelReadiness)
         .catch((error: unknown) => ({
           ready: false,
@@ -1245,7 +1247,8 @@ function registerLegacyDesktopIpc(): void {
     try {
       const { config, workspace } = await canonicalRemoteWorkspace();
       const audit = new AuditLog(config.dataDir);
-      const readiness = await inspectTunnelReadiness(workspace, process.execPath);
+      const tunnelEnv = await resolveDesktopTunnelEnvironment(config.dataDir);
+      const readiness = await inspectTunnelReadiness(workspace, process.execPath, tunnelEnv);
       if (!readiness.ready) {
         await audit.write({ tool: 'remote_connect', outcome: 'denied', detail: `not ready: ${readiness.blockers.join('; ')}` });
         return {
@@ -1259,7 +1262,7 @@ function registerLegacyDesktopIpc(): void {
       if (!(await confirmRemoteAction('connect'))) return { ok: false, cancelled: true };
 
       try {
-        const runtime = await connectTunnelRuntime(workspace, process.execPath);
+        const runtime = await connectTunnelRuntime(workspace, process.execPath, tunnelEnv);
         lastRemoteRuntime = sanitizedTunnelRuntime(runtime);
         await audit.write({
           tool: 'remote_connect',
@@ -1290,10 +1293,11 @@ function registerLegacyDesktopIpc(): void {
     try {
       const { config, workspace } = await canonicalRemoteWorkspace();
       const audit = new AuditLog(config.dataDir);
+      const tunnelEnv = await resolveDesktopTunnelEnvironment(config.dataDir);
       if (!(await confirmRemoteAction('stop'))) return { ok: false, cancelled: true };
 
       try {
-        const runtime = await stopTunnelRuntime(workspace);
+        const runtime = await stopTunnelRuntime(workspace, tunnelEnv);
         lastRemoteRuntime = sanitizedTunnelRuntime(runtime);
         const stopped = runtime.processRunning === false && runtime.state === 'stopped';
         await audit.write({
