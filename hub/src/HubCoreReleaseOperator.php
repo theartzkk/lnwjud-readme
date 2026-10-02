@@ -133,6 +133,11 @@ final class HubCoreReleaseOperator
         elseif($track==='awh'){$modeArg='--awh-core';$productionRef='refs/heads/production';$expectedCapability=HubCoreReleaseService::CAPABILITY;$label='AWH';}
         else throw new HubCoreReleaseOperatorException('Release track is invalid','CORE_RELEASE_CHECKPOINT_INVALID');
         if(!hash_equals($expectedCapability,(string)$row['required_capability']))throw new HubCoreReleaseOperatorException('Release capability does not match checkpoint track','CORE_RELEASE_CHECKPOINT_INVALID');
+        $runtimeRepairRequired=false;
+        if($track==='awh'){
+            try{$runtimeRepairRequired=(HubInfrastructureService::releaseState()['componentState']??'UNKNOWN')==='SPLIT';}
+            catch(Throwable){$runtimeRepairRequired=false;}
+        }
         $workRoot=self::WORK_ROOT;$workspace=null;
         try{
             $main=strtolower(trim($this->run(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'rev-parse','refs/heads/main'],null,20,'CORE_RELEASE_GIT_MAIN_FAILED')['out']));
@@ -149,7 +154,7 @@ final class HubCoreReleaseOperator
                 $contains=$this->runOptional(['/usr/bin/git','-c','safe.directory='.self::CANONICAL_GIT_DIR,'--git-dir='.self::CANONICAL_GIT_DIR,'merge-base','--is-ancestor',$sha,$runtimeProduction],null,20);
                 $runtimeContainsTarget=($contains['code']??1)===0;
             }
-            if($runtimeContainsTarget){
+            if($runtimeContainsTarget&&!$runtimeRepairRequired){
                 if($trackProduction!==''&&hash_equals($sha,$trackProduction)){
                     $this->complete($executionId,(string)$row['task_id'],$sha,'Production runtime มี release นี้และ release track ตรงกันแล้ว',$at);
                     return ['schemaVersion'=>1,'state'=>'ALREADY_CURRENT','releaseSha'=>$sha];
