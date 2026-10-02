@@ -60,12 +60,14 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(remote, /control_manifest=\"\$PREVIOUS_TARGET\/dist-web\/release\.json\"/);
   assert.match(remote, /merge-base --is-ancestor \"\$live_sha\" \"\$control_sha\"/);
   assert.match(remote, /merge-base --is-ancestor \"\$control_sha\" \"\$RELEASE_COMMIT\"/);
-  assert.match(remote, /test \"\$runtime_current\" = \"\$control_sha\" \|\| return 1/);
+  assert.match(remote, /test \"\$runtime_current\" = \"\$live_sha\" \|\| return 1/);
   assert.match(remote, /test \"\$platform_current\" = \"\$control_sha\" \|\| return 1/);
   assert.match(remote, /test \"\$legacy_current\" = \"\$live_sha\" \|\| return 1/);
   assert.match(remote, /stage RUNTIME_WEB_SPLIT_ACCEPTED/);
   assert.match(remote, /if test \"\$PLATFORM_HARDENING\" = 1; then[\s\S]*stage WEB_POINTER_PRESERVED[\s\S]*else[\s\S]*stage WEB_POINTER_SWITCH/);
   assert.match(validator, /RUNTIME_WEB_SPLIT_ACCEPTED/);
+  assert.match(remote, /stage RUNTIME_REF_PRESERVED/);
+  assert.match(validator, /RUNTIME_REF_PRESERVED/);
   assert.match(validator, /WEB_POINTER_PRESERVED/);
   assert.match(coreRelease, /forMission\(\$missionId\)/);
   assert.doesNotMatch(coreRelease, /issueOrResolve\(\$missionId/);

@@ -192,8 +192,9 @@ export function productionStateForRefs(mode,head,observed={}){
   const trackRef=mode==='--awh-core'?'production':(mode==='--platform-hardening'?'platform/production':null);
   if(trackRef!==null){
     const track=clean(observed[trackRef]);
-    const allCurrent=track===target&&runtime===target;
-    const base=runtime||track;
+    const platformTrack=mode==='--platform-hardening';
+    const allCurrent=platformTrack ? track===target : track===target&&runtime===target;
+    const base=platformTrack ? (track||runtime) : (runtime||track);
     if(!base)throw new Error('MISSION_RUNTIME_PRODUCTION_REF_UNRESOLVED');
     return {baseSha:base,allCurrent,trackRef,trackSha:track,runtimeSha:runtime};
   }

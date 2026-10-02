@@ -31,7 +31,7 @@ test('bounded deploy mission has one explicit owner approval and a deterministic
   assert.throws(()=>missionModeFromArgs(['--cloud-first','--project-source-authority']),/MISSION_MODE_AMBIGUOUS/);
 });
 
-test('track releases reconcile both shared runtime and their own production ref before becoming current',()=>{
+test('AWH runtime and VPS Platform production are independent release lineages',()=>{
   const head='f'.repeat(40); const old='e'.repeat(40);
   assert.deepEqual(productionStateForRefs('--awh-core',head,{'runtime/production':head,production:old}),{
     baseSha:head,allCurrent:false,trackRef:'production',trackSha:old,runtimeSha:head,
@@ -42,8 +42,11 @@ test('track releases reconcile both shared runtime and their own production ref 
   assert.deepEqual(productionStateForRefs('--platform-hardening',head,{'runtime/production':old,production:old}),{
     baseSha:old,allCurrent:false,trackRef:'platform/production',trackSha:null,runtimeSha:old,
   });
-  assert.deepEqual(productionStateForRefs('--platform-hardening',head,{'runtime/production':head,'platform/production':head,production:old}),{
-    baseSha:head,allCurrent:true,trackRef:'platform/production',trackSha:head,runtimeSha:head,
+  assert.deepEqual(productionStateForRefs('--platform-hardening',head,{'runtime/production':old,'platform/production':head,production:old}),{
+    baseSha:head,allCurrent:true,trackRef:'platform/production',trackSha:head,runtimeSha:old,
+  });
+  assert.deepEqual(productionStateForRefs('--platform-hardening',head,{'runtime/production':old,'platform/production':old,production:old}),{
+    baseSha:old,allCurrent:false,trackRef:'platform/production',trackSha:old,runtimeSha:old,
   });
 });
 
@@ -181,6 +184,29 @@ test('desktop artifact hydration accepts only exact-SHA verified staged packages
   await assert.rejects(()=>verifyDesktopReleaseArtifacts(staged,sourceSha),/DESKTOP_ARTIFACT_PROVENANCE_MISMATCH/);
 });
 
+
+test('platform deploy preserves AWH runtime lineage and exposes pre-mutation failures', async () => {
+  const [remote,validator,service]=await Promise.all([
+    readFile('deploy/awh-control-plane/remote-deploy-control-plane.sh','utf8'),
+    readFile('deploy/awh-control-plane/validate-remote-output.sh','utf8'),
+    readFile('hub/src/HubCoreReleaseService.php','utf8'),
+  ]);
+  assert.match(remote,/test "\$runtime_current" = "\$live_sha"/);
+  assert.match(remote,/test "\$PLATFORM_HARDENING" = 1; then[\s\S]*stage RUNTIME_REF_PRESERVED/);
+  assert.match(remote,/stage RELEASE_TRACK_REF_UPDATED/);
+  assert.match(validator,/RUNTIME_REF_PRESERVED/);
+  assert.match(validator,/ALLOWED_FAILURE_EXTRAS='PREPARE /);
+  assert.match(service,/releaseTrack==='awh'.*!hash_equals\(\$runtime,\$sha\)/s);
+});
+
+test('platform connector helper logs stay out of the strict typed deploy stream', async () => {
+  const remote = await readFile('deploy/awh-control-plane/remote-deploy-control-plane.sh', 'utf8');
+  assert.match(remote, /record_platform_evidence CONNECTOR_INSTALL_PASS/);
+  assert.match(remote, /record_platform_evidence CONNECTOR_VERIFY_PASS/);
+  assert.doesNotMatch(remote, /cat "\$CONNECTOR_INSTALL_LOG"\n/);
+  assert.doesNotMatch(remote, /cat "\$CONNECTOR_VERIFY_LOG"\n/);
+  assert.match(remote, /stage VPS_DIRECT_CONNECTOR_READY/);
+});
 
 test('control-plane dry-run terminates after cleanup instead of surviving SIGTERM', async () => {
   const source = await readFile('deploy/awh-control-plane/deploy-control-plane.sh', 'utf8');

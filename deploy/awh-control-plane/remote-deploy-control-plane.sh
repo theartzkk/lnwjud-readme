@@ -509,7 +509,7 @@ production_ref_reconcile_live() {
   if test "$control_sha" != "$live_sha"; then
     platform_current=$(git --git-dir="$repo" rev-parse refs/heads/platform/production 2>/dev/null || true)
     test -n "$runtime_current" || return 1
-    test "$runtime_current" = "$control_sha" || return 1
+    test "$runtime_current" = "$live_sha" || return 1
     test "$platform_current" = "$control_sha" || return 1
     test "$legacy_current" = "$live_sha" || return 1
     stage RUNTIME_WEB_SPLIT_ACCEPTED
@@ -1489,7 +1489,8 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
       rm -f "$CONNECTOR_INSTALL_LOG"
       exit 1
     fi
-    cat "$CONNECTOR_INSTALL_LOG"
+    CONNECTOR_INSTALL_CODE=$(tail -n 1 "$CONNECTOR_INSTALL_LOG" 2>/dev/null || true)
+    record_platform_evidence CONNECTOR_INSTALL_PASS "$CONNECTOR_INSTALL_CODE"
     rm -f "$CONNECTOR_INSTALL_LOG"
     CONNECTOR_VERIFY_READY=0
     CONNECTOR_VERIFY_ATTEMPTS=0
@@ -1510,7 +1511,6 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
       exit 1
     fi
     record_platform_evidence CONNECTOR_VERIFY_PASS "attempts=$CONNECTOR_VERIFY_ATTEMPTS"
-    cat "$CONNECTOR_VERIFY_LOG"
     rm -f "$CONNECTOR_VERIFY_LOG"
     stage VPS_DIRECT_CONNECTOR_READY
     stage PLATFORM_SENSOR_PREPARE
@@ -1736,19 +1736,25 @@ if test -d /srv/awh-git/awh.git; then
   git --git-dir="$repo" cat-file -e "$RELEASE_COMMIT^{commit}"
 
   current_runtime=$(git --git-dir="$repo" rev-parse --verify "$RUNTIME_REF^{commit}" 2>/dev/null || true)
-  if test -n "$current_runtime"; then
-    PRODUCTION_REF_PREVIOUS=PRESENT
-    PREVIOUS_PRODUCTION_SHA=$current_runtime
-    git --git-dir="$repo" merge-base --is-ancestor "$current_runtime" "$RELEASE_COMMIT"
-    git --git-dir="$repo" update-ref "$RUNTIME_REF" "$RELEASE_COMMIT" "$current_runtime"
+  if test "$PLATFORM_HARDENING" = 1; then
+    test -n "$current_runtime"
+    test "$current_runtime" = "$live_sha"
+    stage RUNTIME_REF_PRESERVED
   else
-    PRODUCTION_REF_PREVIOUS=ABSENT
-    PREVIOUS_PRODUCTION_SHA=
-    git --git-dir="$repo" update-ref "$RUNTIME_REF" "$RELEASE_COMMIT"
+    if test -n "$current_runtime"; then
+      PRODUCTION_REF_PREVIOUS=PRESENT
+      PREVIOUS_PRODUCTION_SHA=$current_runtime
+      git --git-dir="$repo" merge-base --is-ancestor "$current_runtime" "$RELEASE_COMMIT"
+      git --git-dir="$repo" update-ref "$RUNTIME_REF" "$RELEASE_COMMIT" "$current_runtime"
+    else
+      PRODUCTION_REF_PREVIOUS=ABSENT
+      PREVIOUS_PRODUCTION_SHA=
+      git --git-dir="$repo" update-ref "$RUNTIME_REF" "$RELEASE_COMMIT"
+    fi
+    PRODUCTION_REF_CHANGED=1
+    test "$(git --git-dir="$repo" rev-parse "$RUNTIME_REF")" = "$RELEASE_COMMIT"
+    stage RUNTIME_REF_UPDATED
   fi
-  PRODUCTION_REF_CHANGED=1
-  test "$(git --git-dir="$repo" rev-parse "$RUNTIME_REF")" = "$RELEASE_COMMIT"
-  stage RUNTIME_REF_UPDATED
 
   current_track=$(git --git-dir="$repo" rev-parse --verify "$TRACK_REF^{commit}" 2>/dev/null || true)
   if test -n "$current_track"; then

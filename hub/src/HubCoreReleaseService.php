@@ -281,8 +281,8 @@ final class HubCoreReleaseService
     private function completedCurrentRelease(string $sha,bool $cleanupTopology): ?array
     {
         $runtime=$this->canonicalProductionSha();$track=$this->canonicalRefSha($this->productionBranch);
-        if(!is_string($runtime)||!is_string($track)||!hash_equals($runtime,$sha)||!hash_equals($track,$sha))return null;
-        if($this->releaseTrack==='awh'&&$this->awhRuntimeNeedsRepair())return null;
+        if(!is_string($runtime)||!is_string($track)||!hash_equals($track,$sha))return null;
+        if($this->releaseTrack==='awh'&&(!hash_equals($runtime,$sha)||$this->awhRuntimeNeedsRepair()))return null;
         $q=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.checkpoint_json,t.state AS task_state,a.approval_id
             FROM control_task_executions e
             JOIN control_tasks t ON t.task_id=e.task_id
