@@ -397,7 +397,13 @@ rehydrate_desktop_artifacts() {
     case "$expected" in *[!0-9a-f]*|'') return 1 ;; esac
     test "${#expected}" -eq 64 || return 1
     object="$store/$expected-$name"
-    sudo test -f "$object"
+    if ! sudo test -f "$object"; then
+      current="$WEB_POINTER/downloads/$name"
+      sudo test -f "$current"
+      current_actual=$(sudo sha256sum "$current" | cut -d' ' -f1)
+      test "$current_actual" = "$expected"
+      sudo ln "$current" "$object" 2>/dev/null || sudo test -f "$object"
+    fi
     actual=$(sudo sha256sum "$object" | cut -d' ' -f1)
     test "$actual" = "$expected"
     sudo ln "$object" "$file"

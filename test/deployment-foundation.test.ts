@@ -62,6 +62,11 @@ test('M4 control-plane activation package is executable in a local dry-run witho
   assert.match(remote, /rehydrate_desktop_artifacts\(\)/);
   assert.match(remote, /release\.json.*downloads\/\$name/s);
   assert.match(remote, /rehydrate_desktop_artifacts[\s;]+deduplicate_desktop_artifacts/);
+  assert.match(remote, /if ! sudo test -f \"\$object\"; then/);
+  assert.match(remote, /current=\"\$WEB_POINTER\/downloads\/\$name\"/);
+  assert.match(remote, /current_actual=\$\(sudo sha256sum \"\$current\"/);
+  assert.match(remote, /test \"\$current_actual\" = \"\$expected\"/);
+  assert.match(remote, /sudo ln \"\$current\" \"\$object\" 2>\/dev\/null \|\| sudo test -f \"\$object\"/);
   assert.match(remote, /sha256sum \"\$object\"/);
   assert.match(remote, /stage WEB_ACCESS_READY[\s;]+verify_web_access/);
   assert.match(remote, /verify-web-release\.php\" \"\$WEB_RELEASE\" \"\$RELEASE_ID\"/);
