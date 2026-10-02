@@ -170,7 +170,7 @@ if test "$REUSE_REMOTE_DESKTOP_ARTIFACTS" -eq 1; then
   if test "$TRANSPORT" = local; then
     cat /var/www/awh-web/current/release.json > "$DESKTOP_BASE_MANIFEST"
   else
-    ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$TARGET" "sudo -n cat /var/www/awh-web/current/release.json" > "$DESKTOP_BASE_MANIFEST"
+    curl --fail --silent --show-error --max-time 10       --header 'Cache-Control: no-cache'       "https://$HOSTNAME/release.json" > "$DESKTOP_BASE_MANIFEST"
   fi
   test -s "$DESKTOP_BASE_MANIFEST" || { echo "Verified production desktop manifest is unavailable" >&2; exit 1; }
 fi

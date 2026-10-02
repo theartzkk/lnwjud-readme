@@ -191,6 +191,9 @@ test('control-plane dry-run terminates after cleanup instead of surviving SIGTER
   assert.match(source, /\.awh-local/);
   assert.match(source, /release build lock root is not writable/);
   assert.match(source, /AWH_WEB_OUTPUT_DIR="\$WEB_OUTPUT"/);
+  assert.match(source, /Cache-Control: no-cache/);
+  assert.match(source, /https:\/\/\$HOSTNAME\/release\.json/);
+  assert.doesNotMatch(source, /sudo -n cat \/var\/www\/awh-web\/current\/release\.json/);
   assert.match(source, /WEB_BUILD_ROOT\/\.awh-build\/awh-source\.zip/);
   assert.match(source, /ASSEMBLY_FILES/);
   assert.match(source, /tar -czf "\$BUNDLE" -C "\$ROOT" \$SOURCE_FILES -C "\$WEB_BUILD_ROOT" \$ASSEMBLY_FILES/);
