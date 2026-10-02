@@ -56,12 +56,15 @@ case " $(id -nG "$AGENT_USER") " in *' sudo '*|*' adm '*) fail AWH_VPS_DIRECT_PR
 "$NODE_BIN" -e 'const min=process.argv[1].split(".").map(Number),cur=process.versions.node.split(".").map(Number);for(let i=0;i<3;i++){if((cur[i]||0)>(min[i]||0))process.exit(0);if((cur[i]||0)<(min[i]||0))process.exit(1)}process.exit(0)' "$NODE_MINIMUM" || fail AWH_VPS_DIRECT_NODE_RUNTIME_REQUIRED
 VERSION=$("$NODE_BIN" -e 'process.stdout.write(require(process.argv[1]).version)' "$RUNTIME_ROOT/agent/node_modules/@wonderwhy-er/desktop-commander/package.json")
 [ "$VERSION" = "$EXPECTED_AGENT_VERSION" ] || fail AWH_VPS_DIRECT_AGENT_VERSION_MISMATCH
-"$NODE_BIN" - "$CONFIG" <<'NODE'
+if ! "$NODE_BIN" - "$CONFIG" <<'NODE'
 const fs=require('fs'); const c=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const dirs=JSON.stringify(c.allowedDirectories||[]); if(dirs!==JSON.stringify(['/srv/awh-git','/var/lib/awh-remote/worktrees','/tmp'])) process.exit(2);
 for(const cmd of ['sudo','su','useradd','usermod','reboot','shutdown']) if(!(c.blockedCommands||[]).includes(cmd)) process.exit(3);
 if(c.fileReadLineLimit!==300 || c.fileWriteLineLimit!==50) process.exit(4);
 NODE
+then
+  fail AWH_VPS_DIRECT_CONFIG_POLICY_MISMATCH
+fi
 runuser -u "$AGENT_USER" -- git --git-dir=/srv/awh-git/awh.git rev-parse --verify refs/heads/main >/dev/null || fail AWH_VPS_DIRECT_SOURCE_READ_FAILED
 runuser -u "$AGENT_USER" -- test ! -w /srv/awh-git || fail AWH_VPS_DIRECT_CANONICAL_SOURCE_WRITABLE
 record_verify AWH_VPS_DIRECT_VERIFY_PASS

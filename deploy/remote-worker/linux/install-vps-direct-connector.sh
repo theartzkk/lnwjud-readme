@@ -108,6 +108,16 @@ if [ "$MODE" = --activate ]; then
   [ -f "$SESSION" ] || fail AWH_VPS_DIRECT_PAIRING_REQUIRED
   systemctl enable desktop-commander-vps.service >/dev/null
   systemctl restart desktop-commander-vps.service
-  systemctl is-active --quiet desktop-commander-vps.service || fail AWH_VPS_DIRECT_SERVICE_NOT_ACTIVE
+  CONNECTOR_SERVICE_READY=0
+  CONNECTOR_SERVICE_ATTEMPTS=0
+  while test "$CONNECTOR_SERVICE_ATTEMPTS" -lt 30; do
+    CONNECTOR_SERVICE_ATTEMPTS=$((CONNECTOR_SERVICE_ATTEMPTS + 1))
+    if systemctl is-active --quiet desktop-commander-vps.service; then
+      CONNECTOR_SERVICE_READY=1
+      break
+    fi
+    sleep 1
+  done
+  [ "$CONNECTOR_SERVICE_READY" -eq 1 ] || fail AWH_VPS_DIRECT_SERVICE_NOT_ACTIVE
 fi
 printf '%s\n' "AWH_VPS_DIRECT_INSTALL=PASS mode=$MODE version=$AGENT_VERSION user=$AGENT_USER"

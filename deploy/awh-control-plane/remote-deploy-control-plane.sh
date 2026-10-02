@@ -150,6 +150,24 @@ CONTROL_ORIGIN_RENDER=
 CONTROL_INCLUDE_TMP=
 DEPLOY_AUTHORITY_EXECUTION=
 DEPLOY_AUTHORITY_BORROWED=0
+PLATFORM_FLOW_EVIDENCE=/var/lib/awh-remote/handoff/vps-platform-release.last
+
+record_platform_evidence() {
+  evidence_kind=$1
+  evidence_detail=${2:-}
+  (
+    evidence_tmp=$(mktemp /tmp/awh-vps-platform-evidence.XXXXXX)
+    trap 'rm -f "$evidence_tmp"' EXIT HUP INT TERM
+    printf '%s\n' \
+      "timestamp=$(date --iso-8601=seconds)" \
+      "releaseId=$RELEASE_ID" \
+      "releaseSha=$RELEASE_COMMIT" \
+      "stage=$CURRENT_STAGE" \
+      "kind=$evidence_kind" \
+      "detail=$evidence_detail" > "$evidence_tmp"
+    sudo install -o awh-remote -g bayadmin -m 0640 "$evidence_tmp" "$PLATFORM_FLOW_EVIDENCE"
+  ) >/dev/null 2>&1 || true
+}
 
 verify_deploy_authority() {
   test -n "$DEPLOY_AUTHORITY_EXECUTION" || return 1
@@ -183,7 +201,7 @@ report_deploy_stage() {
       ;;
   esac
 }
-stage() { printf '%s\n' "DEPLOY_STAGE=$1"; CURRENT_STAGE=$1; report_deploy_stage "$1"; }
+stage() { printf '%s\n' "DEPLOY_STAGE=$1"; CURRENT_STAGE=$1; report_deploy_stage "$1"; record_platform_evidence STAGE "$1"; }
 enrollment_pointer_capture() {
   ENROLLMENT_PREVIOUS_STATE=ABSENT
   ENROLLMENT_PREVIOUS_TARGET=
@@ -696,6 +714,7 @@ rollback() {
     if test "$NGINX_BACKUP_CREATED" -eq 1; then sudo rm -f "$NGINX_BACKUP" || ok=0; fi
     if test "$TOPOLOGY_ARCHIVED" -eq 1; then sudo rm -rf "$TOPOLOGY_ARCHIVE" || ok=0; fi
     cleanup_owner_auth_cookie_files
+    record_platform_evidence FAILURE "$CURRENT_STAGE"
     printf '%s\n' "DEPLOY_FAILED_AT=$CURRENT_STAGE"
     printf '%s\n' "ROLLBACK=$([ "$ok" -eq 1 ] && echo PASS || echo FAIL)"
   fi
@@ -1462,19 +1481,37 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
     if sudo systemctl is-active --quiet desktop-commander-vps.service; then VPS_CONNECTOR_WAS_ACTIVE=1; fi
     if sudo systemctl is-enabled --quiet desktop-commander-vps.service; then VPS_CONNECTOR_WAS_ENABLED=1; fi
     VPS_CONNECTOR_MUTATION_STARTED=1
-    sudo env AWH_VPS_DIRECT_REUSE_ONLY=1 "$RELEASE/deploy/remote-worker/linux/install-vps-direct-connector.sh" --activate
+    CONNECTOR_INSTALL_LOG=$(mktemp /tmp/awh-vps-connector-install.XXXXXX)
+    if ! sudo env AWH_VPS_DIRECT_REUSE_ONLY=1 "$RELEASE/deploy/remote-worker/linux/install-vps-direct-connector.sh" --activate >"$CONNECTOR_INSTALL_LOG" 2>&1; then
+      CONNECTOR_INSTALL_CODE=$(tail -n 1 "$CONNECTOR_INSTALL_LOG" 2>/dev/null || true)
+      record_platform_evidence CONNECTOR_INSTALL_FAILED "$CONNECTOR_INSTALL_CODE"
+      cat "$CONNECTOR_INSTALL_LOG" >&2 || true
+      rm -f "$CONNECTOR_INSTALL_LOG"
+      exit 1
+    fi
+    cat "$CONNECTOR_INSTALL_LOG"
+    rm -f "$CONNECTOR_INSTALL_LOG"
     CONNECTOR_VERIFY_READY=0
     CONNECTOR_VERIFY_ATTEMPTS=0
+    CONNECTOR_VERIFY_LOG=$(mktemp /tmp/awh-vps-connector-verify.XXXXXX)
     while test "$CONNECTOR_VERIFY_ATTEMPTS" -lt 30; do
       CONNECTOR_VERIFY_ATTEMPTS=$((CONNECTOR_VERIFY_ATTEMPTS + 1))
-      if sudo "$RELEASE/deploy/remote-worker/linux/verify-vps-direct-connector.sh" >/dev/null 2>&1; then
+      if sudo "$RELEASE/deploy/remote-worker/linux/verify-vps-direct-connector.sh" >"$CONNECTOR_VERIFY_LOG" 2>&1; then
         CONNECTOR_VERIFY_READY=1
         break
       fi
       sleep 1
     done
-    test "$CONNECTOR_VERIFY_READY" -eq 1
-    sudo "$RELEASE/deploy/remote-worker/linux/verify-vps-direct-connector.sh"
+    if test "$CONNECTOR_VERIFY_READY" -ne 1; then
+      CONNECTOR_VERIFY_CODE=$(tail -n 1 "$CONNECTOR_VERIFY_LOG" 2>/dev/null || true)
+      record_platform_evidence CONNECTOR_VERIFY_FAILED "$CONNECTOR_VERIFY_CODE"
+      cat "$CONNECTOR_VERIFY_LOG" >&2 || true
+      rm -f "$CONNECTOR_VERIFY_LOG"
+      exit 1
+    fi
+    record_platform_evidence CONNECTOR_VERIFY_PASS "attempts=$CONNECTOR_VERIFY_ATTEMPTS"
+    cat "$CONNECTOR_VERIFY_LOG"
+    rm -f "$CONNECTOR_VERIFY_LOG"
     stage VPS_DIRECT_CONNECTOR_READY
     stage PLATFORM_SENSOR_PREPARE
     sudo test -x /var/lib/awh-remote/.local/bin/gatus

@@ -67,8 +67,14 @@ test('VPS direct connector exposes durable candidates but keeps canonical source
   assert.match(platformDeploy,/systemctl restart desktop-commander-vps\.service/);
   assert.match(platformDeploy,/CONNECTOR_VERIFY_ATTEMPTS=0/);
   assert.match(platformDeploy,/while test "\$CONNECTOR_VERIFY_ATTEMPTS" -lt 30/);
-  assert.match(platformDeploy,/verify-vps-direct-connector\.sh" >\/dev\/null 2>&1/);
-  assert.match(platformDeploy,/test "\$CONNECTOR_VERIFY_READY" -eq 1/);
+  assert.match(install,/CONNECTOR_SERVICE_ATTEMPTS=0/);
+  assert.match(install,/while test "\$CONNECTOR_SERVICE_ATTEMPTS" -lt 30/);
+  assert.match(platformDeploy,/vps-platform-release\.last/);
+  assert.match(platformDeploy,/CONNECTOR_INSTALL_FAILED/);
+  assert.match(platformDeploy,/CONNECTOR_VERIFY_FAILED/);
+  assert.match(platformDeploy,/CONNECTOR_VERIFY_PASS/);
+  assert.match(platformDeploy,/verify-vps-direct-connector\.sh" >"\$CONNECTOR_VERIFY_LOG" 2>&1/);
+  assert.match(platformDeploy,/if test "\$CONNECTOR_VERIFY_READY" -ne 1/);
   assert.match(platformDeploy,/VPS_CONNECTOR_UNIT_BACKUP.*VPS_CONNECTOR_CONFIG_BACKUP/s);
   assert.match(install,/CONNECTOR_TMP=\$AGENT_HOME\/tmp/);
   assert.match(install,/install -d -m 2770 -o "\$AGENT_USER" -g awh-operator "\$CONNECTOR_TMP"/);
@@ -80,6 +86,7 @@ test('VPS direct connector exposes durable candidates but keeps canonical source
   assert.match(verify,/AWH_VPS_DIRECT_VERIFY_EVIDENCE/);
   assert.match(verify,/vps-direct-connector-verify\.last/);
   assert.match(verify,/record_verify AWH_VPS_DIRECT_VERIFY_PASS/);
+  assert.match(verify,/AWH_VPS_DIRECT_CONFIG_POLICY_MISMATCH/);
 });
 
 test('durable deploy retry evidence is isolated per release execution',async()=>{
