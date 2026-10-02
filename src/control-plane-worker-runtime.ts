@@ -49,6 +49,8 @@ function boundedSummary(value: string): string {
 
 export function isMutationGoal(goal: string): boolean { return MUTATION_GOAL.test(goal); }
 
+export function deviceRuntimeWorkspacePath(dataDir: string): string { return join(dataDir, 'device-runtime-smoke'); }
+
 function deviceToolAllowed(capability: string, tool: import('./control-plane-worker-client.js').WorkerDevicePlan['action']['tool']): boolean {
   if (tool === 'finish') return true;
   if (/^device\.(?:screen\.inspect|gui\.inspect)$/.test(capability)) return ['accessibility','computer_use'].includes(tool);
@@ -455,7 +457,7 @@ export class ControlPlaneWorkerRuntime {
       await this.client.deferCentralExecution(execution.executionId, 'DEVICE_CAPABILITY_UNAVAILABLE').catch(() => undefined);
       return { status: 'WAITING_FOR_WORKER', taskId: task.taskId, projectId: task.projectId, reason: 'DEVICE_CAPABILITY_UNAVAILABLE' };
     }
-    const root = join(this.options.dataDir, 'device-runtime-workspace');
+    const root = deviceRuntimeWorkspacePath(this.options.dataDir);
     const specializedPack = toolPackForCapability(execution.requiredCapability);
     const requireVisual = /^(?:creative\.(?:photoshop|premiere|aftereffects)|device\.(?:screen\.inspect|gui\.(?:inspect|operate))|browser\.automation)$/.test(execution.requiredCapability);
     const plane=capabilityPlane(execution.requiredCapability);

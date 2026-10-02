@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { ControlPlaneWorkerClient, type WorkerProject, type WorkerTask } from '../src/control-plane-worker-client.js';
-import { buildCodexTaskInstruction, deviceExecutionCapabilities, ownerWorkProfileInstruction, ControlPlaneWorkerRuntime, officeExecutionCapabilities } from '../src/control-plane-worker-runtime.js';
+import { buildCodexTaskInstruction, deviceExecutionCapabilities, deviceRuntimeWorkspacePath, ownerWorkProfileInstruction, ControlPlaneWorkerRuntime, officeExecutionCapabilities } from '../src/control-plane-worker-runtime.js';
 import { loadOrCreateDeviceIdentity } from '../src/device-identity.js';
 import { execCommand } from '../src/process.js';
 import { normalizedDeviceActionArguments, type DeviceAction } from '../src/lnwjud-device-client.js';
@@ -38,6 +38,10 @@ test('Office inventory becomes executable only for the matching Windows handler'
   assert.deepEqual(officeExecutionCapabilities('win32', ['tool.office.word']), ['office.word.pdf']);
   assert.deepEqual(officeExecutionCapabilities('win32', ['tool.office.excel', 'tool.office.powerpoint']).sort(), ['office.excel.pdf', 'office.powerpoint.pdf']);
   assert.deepEqual(officeExecutionCapabilities('win32', ['tool.office.word', 'tool.browser.edge']), ['office.word.pdf']);
+});
+
+test('device automation reuses the bootstrap runtime workspace so host mutation safety remains aligned', () => {
+  assert.equal(deviceRuntimeWorkspacePath('/tmp/awh-data'), '/tmp/awh-data/device-runtime-smoke');
 });
 
 test('device process primitives inherit the active AWH workspace id without contaminating unrelated tool schemas', () => {
