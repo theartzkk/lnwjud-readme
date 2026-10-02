@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, normalize } from 'node:path';
 import test, { type TestContext } from 'node:test';
 import {
   buildPackagedMcpCommand,
@@ -430,6 +430,6 @@ test('desktop tunnel resolver preserves explicit runtime inputs instead of widen
 test('packaged MCP paths resolve the real macOS app bundle Resources directory', () => {
   const appExecutable = '/Applications/AWH Agent.app/Contents/MacOS/AWH Agent';
   const paths = packagedMcpPaths(appExecutable);
-  assert.equal(paths.appAsar, '/Applications/AWH Agent.app/Contents/Resources/app.asar');
-  assert.equal(paths.entrypoint, '/Applications/AWH Agent.app/Contents/Resources/app.asar/dist/index.js');
+  assert.equal(paths.appAsar, normalize('/Applications/AWH Agent.app/Contents/Resources/app.asar'));
+  assert.equal(paths.entrypoint, normalize('/Applications/AWH Agent.app/Contents/Resources/app.asar/dist/index.js'));
 });

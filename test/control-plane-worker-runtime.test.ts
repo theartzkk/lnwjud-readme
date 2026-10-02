@@ -41,7 +41,7 @@ test('Office inventory becomes executable only for the matching Windows handler'
 });
 
 test('device automation reuses the bootstrap runtime workspace so host mutation safety remains aligned', () => {
-  assert.equal(deviceRuntimeWorkspacePath('/tmp/awh-data'), '/tmp/awh-data/device-runtime-smoke');
+  assert.equal(deviceRuntimeWorkspacePath('/tmp/awh-data'), join('/tmp/awh-data', 'device-runtime-smoke'));
 });
 
 test('device process primitives inherit the active AWH workspace id without contaminating unrelated tool schemas', () => {
