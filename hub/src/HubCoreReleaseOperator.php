@@ -75,6 +75,8 @@ final class HubCoreReleaseOperator
             $q->execute(['core'=>HubCoreReleaseService::CAPABILITY,'platform'=>HubCoreReleaseService::PLATFORM_CAPABILITY]);$row=$q->fetch();
             if(!is_array($row)){$this->pdo->exec('COMMIT');return null;}
             HubCoreReleaseService::checkpoint((string)$row['checkpoint_json']);
+            $authority=(new HubCapabilityRegistryService($this->pdo))->activateExecutionAuthority((string)$row['execution_id'],$lease,$at,true);
+            if(($authority['granted']??false)!==true){$this->pdo->exec('COMMIT');return null;}
             $u=$this->pdo->prepare("UPDATE control_task_executions SET state='LEASED',lease_owner=:owner,lease_expires_at=:lease,attempt_count=attempt_count+1,updated_at=:at WHERE execution_id=:execution AND state='QUEUED' AND attempt_count<3");
             $u->execute(['owner'=>self::DISPATCHER,'lease'=>$lease,'at'=>$at,'execution'=>$row['execution_id']]);
             if($u->rowCount()!==1){$this->pdo->exec('ROLLBACK');return null;}
@@ -312,6 +314,7 @@ final class HubCoreReleaseOperator
             $this->pdo->exec('BEGIN IMMEDIATE');
             $this->pdo->prepare("UPDATE control_task_executions SET state='COMPLETED',lease_owner=NULL,lease_expires_at=NULL,last_error_code=NULL,updated_at=:at WHERE execution_id=:execution")->execute(['at'=>$at,'execution'=>$execution]);
             $this->pdo->prepare("UPDATE control_tasks SET state='COMPLETED',progress=100,result_summary=:summary,failure_code=NULL,lease_expires_at=NULL,updated_at=:at WHERE task_id=:task")->execute(['summary'=>$summary.' · '.substr($sha,0,12),'at'=>$at,'task'=>$task]);
+            $this->pdo->prepare("UPDATE control_execution_envelopes SET state='RELEASED',lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution AND state NOT IN ('RELEASED','CANCELLED')")->execute(['at'=>$at,'execution'=>$execution]);
             $this->event($task,'COMPLETED',100,$summary,$at);$this->pdo->exec('COMMIT');
         }catch(Throwable){$this->rollback();throw new HubCoreReleaseOperatorException('Core release completion could not be recorded','CORE_RELEASE_STATE_FAILED');}
     }
@@ -323,6 +326,7 @@ final class HubCoreReleaseOperator
             $this->pdo->exec('BEGIN IMMEDIATE');
             $this->pdo->prepare("UPDATE control_task_executions SET state='FAILED',lease_owner=NULL,lease_expires_at=NULL,last_error_code=:code,updated_at=:at WHERE execution_id=:execution AND state NOT IN ('COMPLETED','FAILED','CANCELLED')")->execute(['code'=>$safe,'at'=>$at,'execution'=>$execution]);
             $this->pdo->prepare("UPDATE control_tasks SET state='FAILED',progress=0,result_summary='AWH core release หยุดแบบ fail-closed และยังไม่ประกาศว่าสำเร็จ',failure_code=:code,lease_expires_at=NULL,updated_at=:at WHERE task_id=:task AND state NOT IN ('COMPLETED','FAILED','CANCELLED')")->execute(['code'=>$safe,'at'=>$at,'task'=>$task]);
+            $this->pdo->prepare("UPDATE control_execution_envelopes SET state='RELEASED',lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution AND state NOT IN ('RELEASED','CANCELLED')")->execute(['at'=>$at,'execution'=>$execution]);
             $this->event($task,'FAILED',0,'Core release หยุดแบบ fail-closed: '.$safe,$at);$this->pdo->exec('COMMIT');
         }catch(Throwable){$this->rollback();}
     }

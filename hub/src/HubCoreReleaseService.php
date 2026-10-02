@@ -6,6 +6,7 @@ require_once __DIR__ . '/HubOwnerAuthService.php';
 require_once __DIR__ . '/HubTrustPolicy.php';
 require_once __DIR__ . '/HubUpdateTargetRegistry.php';
 require_once __DIR__ . '/HubInfrastructureService.php';
+require_once __DIR__ . '/HubCapabilityRegistryService.php';
 
 final class HubCoreReleaseException extends RuntimeException
 {
@@ -144,6 +145,7 @@ final class HubCoreReleaseService
             $key=self::PROJECT_ID.'.'.$this->releaseTrack.'.release.'.substr($sha,0,12).'.'.substr($artifactDigest,0,16).'.cleanup'.($payload['cleanupTopology']?'1':'0').'.attempt'.$attempt;
             $this->pdo->prepare("INSERT INTO control_tasks(task_id,user_id,project_id,goal,state,assigned_device_id,lease_expires_at,progress,result_summary,failure_code,idempotency_key,conversation_id,created_at,updated_at,cancelled_at) VALUES(:task,:user,:project,:goal,'WAITING_FOR_WORKER',NULL,NULL,0,NULL,NULL,:key,NULL,:at,:at,NULL)")->execute(['task'=>$task,'user'=>$owner['user_id'],'project'=>self::PROJECT_ID,'goal'=>$goal,'key'=>$key,'at'=>$at]);
             $this->pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,lease_owner,lease_expires_at,attempt_count,cancellation_requested_at,checkpoint_json,last_error_code,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS',:capability,'QUEUED',NULL,NULL,0,NULL,:checkpoint,NULL,:at,:at)")->execute(['execution'=>$execution,'task'=>$task,'project'=>self::PROJECT_ID,'capability'=>$this->capability,'checkpoint'=>json_encode($checkpoint,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'at'=>$at]);
+            (new HubCapabilityRegistryService($this->pdo))->ensureExecutionEnvelope($execution,$at);
             $this->pdo->prepare("INSERT INTO control_approvals(approval_id,task_id,action,scope_json,status,expires_at,decided_at) VALUES(:approval,:task,'deployment.approve',:scope,'APPROVED',:expires,:decided)")->execute(['approval'=>$approval,'task'=>$task,'scope'=>json_encode($scope,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),'expires'=>gmdate('c',strtotime($at)+1800),'decided'=>$at]);
             $this->pdo->prepare("INSERT INTO control_task_events(event_id,task_id,state,progress,message,occurred_at) VALUES(:event,:task,'WAITING_FOR_WORKER',0,:message,:at)")->execute(['event'=>self::uuid(),'task'=>$task,'message'=>$this->displayName.' release ได้รับ Owner authority แล้ว กำลังรอ release controller','at'=>$at]);
             $this->pdo->exec('COMMIT');

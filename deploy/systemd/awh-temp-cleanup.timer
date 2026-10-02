@@ -3,6 +3,7 @@ Description=Run bounded AWH temp cleanup continuously
 
 [Timer]
 OnBootSec=7m
+OnActiveSec=30m
 OnUnitActiveSec=30m
 AccuracySec=2m
 RandomizedDelaySec=1m

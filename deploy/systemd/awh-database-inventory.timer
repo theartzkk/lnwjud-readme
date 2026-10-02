@@ -3,6 +3,7 @@ Description=Refresh AWH database fleet inventory
 
 [Timer]
 OnBootSec=2m
+OnActiveSec=15m
 OnUnitActiveSec=15m
 AccuracySec=1m
 RandomizedDelaySec=30s

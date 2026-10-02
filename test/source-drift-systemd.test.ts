@@ -128,7 +128,7 @@ test('project source authority ships a persistent least-privilege drift monitor'
 
 
 test('VPS Platform storage safety is proactive, project-aware and durable', async () => {
-  const [janitor,temp,tempService,tempTimer,guard,guardService,guardTimer,deploy,remote,operatorBridge,agents,operations] = await Promise.all([
+  const [janitor,temp,tempService,tempTimer,guard,guardService,guardTimer,databaseTimer,deploy,remote,operatorBridge,agents,operations] = await Promise.all([
     readFile(join(root, 'deploy/awh-storage/awh-temp-workspace-janitor.py'), 'utf8'),
     readFile(join(root, 'deploy/awh-storage/awh-temp-cleanup'), 'utf8'),
     readFile(join(root, 'deploy/systemd/awh-temp-cleanup.service'), 'utf8'),
@@ -136,6 +136,7 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
     readFile(join(root, 'deploy/awh-storage/awh-storage-guard'), 'utf8'),
     readFile(join(root, 'deploy/systemd/awh-storage-guard.service'), 'utf8'),
     readFile(join(root, 'deploy/systemd/awh-storage-guard.timer'), 'utf8'),
+    readFile(join(root, 'deploy/systemd/awh-database-inventory.timer'), 'utf8'),
     readFile(join(root, 'deploy/awh-control-plane/deploy-control-plane.sh'), 'utf8'),
     readFile(join(root, 'deploy/awh-control-plane/remote-deploy-control-plane.sh'), 'utf8'),
     readFile(join(root, 'hub/src/HubOperatorBridgeService.php'), 'utf8'),
@@ -167,7 +168,10 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(tempService, /ReadWritePaths=.*\/var\/lib\/awh-hub/);
   assert.match(tempService, /ReadWritePaths=.*\/var\/lib\/awh-remote\/operator-staging/);
   assert.doesNotMatch(tempService, /\/usr\/local\/sbin\/awh-temp-cleanup/);
+  assert.match(tempTimer, /OnActiveSec=30m/);
   assert.match(tempTimer, /OnUnitActiveSec=30m/);
+  assert.match(databaseTimer, /OnActiveSec=15m/);
+  assert.match(databaseTimer, /OnUnitActiveSec=15m/);
   assert.match(guard, /TARGET_FREE=6442450944/);
   assert.match(guard, /WARN_FREE=6442450944/);
   assert.match(guard, /AWH_STORAGE_PRESSURE=1/);
@@ -193,6 +197,7 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(guardService, /awh-remote\/\.npm/);
   assert.match(janitor, /AWH_TMP_PRESSURE_MIN_AGE_MINUTES.*60/);
   assert.match(guardService, /ReadWritePaths=.*\/var\/lib\/awh-remote\/tmp/);
+  assert.match(guardTimer, /OnActiveSec=10m/);
   assert.match(guardTimer, /OnUnitActiveSec=10m/);
   assert.match(remote, /systemctl restart "\$UNIT\.timer"/);
   assert.match(remote, /while test "\$MAINTENANCE_TIMER_ATTEMPT" -lt 60/);

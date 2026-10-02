@@ -96,8 +96,11 @@ try{
     $taskRow=$pdo->query("SELECT state,progress,project_id FROM control_tasks WHERE task_id=".$pdo->quote($task))->fetch();
     $executionRow=$pdo->query("SELECT state,executor_kind,required_capability,checkpoint_json,attempt_count FROM control_task_executions WHERE execution_id=".$pdo->quote($execution))->fetch();
     $approvalRow=$pdo->query("SELECT action,status,scope_json,decided_at FROM control_approvals WHERE approval_id=".$pdo->quote($approval))->fetch();
+    $queuedEnvelope=$pdo->query("SELECT state,mutation_scope,lease_expires_at FROM control_execution_envelopes WHERE execution_id=".$pdo->quote($execution))->fetch();
     cr_assert(is_array($taskRow)&&$taskRow['state']==='WAITING_FOR_WORKER'&&(string)$taskRow['project_id']===$project,'task uses canonical AWH project and is immediately dispatchable');
     cr_assert(is_array($executionRow)&&$executionRow['state']==='QUEUED'&&$executionRow['executor_kind']==='VPS'&&$executionRow['required_capability']===HubCoreReleaseService::CAPABILITY,'execution uses canonical VPS capability');
+    cr_assert(is_array($queuedEnvelope)&&$queuedEnvelope['state']==='OPEN'&&$queuedEnvelope['mutation_scope']==='EXTERNAL'&&$queuedEnvelope['lease_expires_at']===null,'queued core release has a canonical execution envelope before dispatcher claim');
+    cr_assert(HubCapabilityRegistryService::mutationResourceForExecution(HubCoreReleaseService::CAPABILITY,'VPS')==='CANONICAL:DEPLOY:AWH','core release envelope maps to the typed AWH deploy resource');
     $checkpoint=HubCoreReleaseService::checkpoint((string)$executionRow['checkpoint_json']);
     cr_assert($checkpoint['releaseSha']===$sha&&$checkpoint['transport']==='LOCAL'&&$checkpoint['releaseMode']==='AWH_CORE'&&$checkpoint['releaseTrack']==='awh','checkpoint binds exact approved AWH release identity');
     cr_assert(!array_key_exists('command',$checkpoint)&&!array_key_exists('path',$checkpoint)&&!array_key_exists('script',$checkpoint),'browser checkpoint cannot inject command or path');
@@ -124,7 +127,9 @@ try{
     cr_assert(!in_array($sha,$calls[0],true)&&!in_array('rm',$calls[0],true)&&!in_array('sh',$calls[0],true),'release SHA and shell text are not command arguments');
 
     $running=$pdo->query("SELECT state,lease_owner,attempt_count FROM control_task_executions WHERE execution_id=".$pdo->quote($execution))->fetch();
+    $activeEnvelope=$pdo->query("SELECT state,mutation_scope,lease_expires_at FROM control_execution_envelopes WHERE execution_id=".$pdo->quote($execution))->fetch();
     cr_assert(is_array($running)&&$running['state']==='RUNNING'&&str_starts_with((string)$running['lease_owner'],'core-release:')&&(int)$running['attempt_count']===1,'dispatcher records one leased transient execution');
+    cr_assert(is_array($activeEnvelope)&&$activeEnvelope['state']==='ACTIVE'&&$activeEnvelope['mutation_scope']==='EXTERNAL'&&is_string($activeEnvelope['lease_expires_at']),'dispatcher activates typed release authority before the execution becomes RUNNING');
 
     // E2E queue regression: A is RUNNING, a real Platform service request for B must be admitted
     // as WAITING_FOR_WORKER/QUEUED, remain queued while A is active, then dispatch automatically

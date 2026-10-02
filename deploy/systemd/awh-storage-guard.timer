@@ -3,6 +3,7 @@ Description=Check AWH VPS storage without ChatGPT automation
 
 [Timer]
 OnBootSec=3m
+OnActiveSec=10m
 OnUnitActiveSec=10m
 AccuracySec=1m
 RandomizedDelaySec=30s
