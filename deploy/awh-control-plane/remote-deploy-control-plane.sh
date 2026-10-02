@@ -1399,7 +1399,10 @@ if test "$PLATFORM_HARDENING" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || test "$
   HOSTING_NAMESPACE_PATHS=$(sed -n 's/^ReadWritePaths=//p' "$RELEASE/deploy/systemd/awh-hosting-operator.service")
   test -n "$HOSTING_NAMESPACE_PATHS"
   for path in $HOSTING_NAMESPACE_PATHS; do
-    case "$path" in -*) continue ;; esac
+    case "$path" in
+      -*) continue ;;
+      /etc/passwd+|/etc/shadow+|/etc/group+|/etc/gshadow+|/etc/subuid+|/etc/subgid+) continue ;;
+    esac
     sudo test -e "$path" || { printf '%s
 ' "HOSTING_NAMESPACE_PATH_MISSING=$path" >&2; exit 42; }
   done
