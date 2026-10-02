@@ -76,8 +76,17 @@ try {
     api_assert($replay['status'] === 409, 'pairing replay must be rejected');
     $forgedRotate = api_response($service, 'POST', '/api/v1/enrollment/token/rotate', api_server(['HTTP_AUTHORIZATION' => 'Bearer ' . $target['accessToken']]), ['schemaVersion' => 1, 'deviceId' => '623b45c0-23e1-408d-ae0f-ac5eca7f6900']);
     api_assert($forgedRotate['status'] === 401, 'forged device identity must be rejected');
+    $expireTarget = $pdo->prepare('UPDATE device_tokens SET expires_at = :expires WHERE token_hash = :hash');
+    $expireTarget->execute(['expires' => gmdate('c', time() - 4 * 86400), 'hash' => hash('sha256', $target['accessToken'])]);
     $rotated = api_response($service, 'POST', '/api/v1/enrollment/token/rotate', api_server(['HTTP_AUTHORIZATION' => 'Bearer ' . $target['accessToken']]), ['schemaVersion' => 1, 'deviceId' => $targetId]);
-    api_assert($rotated['status'] === 200, 'device credential rotation must work');
+    api_assert($rotated['status'] === 200, 'recently expired device credential must recover through rotation-only grace');
+    $latePairing = $service->issuePairingCode($ownerId, [$projectId]);
+    $lateId = 'a23b45c0-23e1-408d-ae0f-ac5eca7f6900';
+    $lateDevice = $service->enrollDevice(['schemaVersion' => 1, 'pairingCode' => $latePairing['pairingCode'], 'deviceId' => $lateId, 'displayName' => 'Late Rotation', 'platform' => 'darwin', 'arch' => 'x64', 'appVersion' => '1.0.0']);
+    $expireTarget->execute(['expires' => gmdate('c', time() - 8 * 86400), 'hash' => hash('sha256', $lateDevice['accessToken'])]);
+    $lateRotate = api_response($service, 'POST', '/api/v1/enrollment/token/rotate', api_server(['HTTP_AUTHORIZATION' => 'Bearer ' . $lateDevice['accessToken']]), ['schemaVersion' => 1, 'deviceId' => $lateId]);
+    api_assert($lateRotate['status'] === 401, 'credential outside rotation grace must remain rejected');
+
     $selfPairing = $service->issuePairingCode($ownerId, [$projectId]);
     $selfDevice = $service->enrollDevice(['schemaVersion' => 1, 'pairingCode' => $selfPairing['pairingCode'], 'deviceId' => '623b45c0-23e1-408d-ae0f-ac5eca7f6900', 'displayName' => 'Self Revoke', 'platform' => 'darwin', 'arch' => 'arm64', 'appVersion' => '0.4.0']);
     $selfRevoked = api_response($service, 'POST', '/api/v1/enrollment/token/revoke', api_server(['HTTP_AUTHORIZATION' => 'Bearer ' . $selfDevice['accessToken']]), ['schemaVersion' => 1, 'deviceId' => '623b45c0-23e1-408d-ae0f-ac5eca7f6900']);

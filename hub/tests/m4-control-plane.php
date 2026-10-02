@@ -49,6 +49,11 @@ try {
     m4_assert($duplicate['status'] === 201 && substr_count($duplicate['body'], 'iphone-demo-0001') === 0, 'duplicate submit must return the existing sanitized task');
     $workerPairing = $enrollment->issuePairingCode($ownerId, [$projectId], $testNow);
     $worker = $enrollment->enrollDevice(['schemaVersion' => 1, 'pairingCode' => $workerPairing['pairingCode'], 'deviceId' => $macId, 'displayName' => 'Mac Worker', 'platform' => 'darwin', 'arch' => 'arm64', 'appVersion' => '0.5.0'], $testNow);
+    $workerTokenExpiry = $pdo->prepare('UPDATE device_tokens SET expires_at = :expires WHERE token_hash = :hash');
+    $workerTokenExpiry->execute(['expires' => gmdate('c', time() - 60), 'hash' => hash('sha256', $worker['accessToken'])]);
+    $expiredHeartbeat = m4_response($control, 'POST', '/api/v1/control/workers/heartbeat', m4_server(['HTTP_AUTHORIZATION' => 'Bearer ' . $worker['accessToken']]), ['schemaVersion' => 1, 'deviceId' => $macId, 'state' => 'READY', 'capabilities' => ['project-memory:read', 'artifact:write']]);
+    m4_assert($expiredHeartbeat['status'] === 401 && str_contains($expiredHeartbeat['body'], 'TOKEN_REJECTED'), 'expired worker credential must surface as a recoverable auth error');
+    $workerTokenExpiry->execute(['expires' => gmdate('c', time() + 30 * 86400), 'hash' => hash('sha256', $worker['accessToken'])]);
     $heartbeat = m4_response($control, 'POST', '/api/v1/control/workers/heartbeat', m4_server(['HTTP_AUTHORIZATION' => 'Bearer ' . $worker['accessToken']]), ['schemaVersion' => 1, 'deviceId' => $macId, 'state' => 'READY', 'capabilities' => ['project-memory:read', 'artifact:write']]);
     m4_assert($heartbeat['status'] === 200, 'enrolled worker heartbeat must be accepted');
     $claim = m4_response($control, 'POST', '/api/v1/control/workers/claim', m4_server(['HTTP_AUTHORIZATION' => 'Bearer ' . $worker['accessToken']]), ['schemaVersion' => 1, 'deviceId' => $macId]);

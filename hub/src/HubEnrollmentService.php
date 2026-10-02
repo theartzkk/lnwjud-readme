@@ -20,6 +20,7 @@ final class HubEnrollmentService
     private const SHA256 = '/^[0-9a-f]{64}$/i';
     private const TTL_SECONDS = 600;
     private const TOKEN_TTL_SECONDS = 2592000;
+    private const TOKEN_ROTATION_GRACE_SECONDS = 604800;
 
     private function __construct(private readonly PDO $pdo, private readonly string $migrationSqlPath)
     {
@@ -266,7 +267,7 @@ final class HubEnrollmentService
 
     public function rotateToken(string $presentedToken, string $deviceId, ?string $now = null): array
     {
-        $auth = $this->authenticate($presentedToken, $deviceId, $now);
+        $auth = $this->authenticateForRotation($presentedToken, $deviceId, $now);
         $now = self::timestamp($now ?? gmdate('c'), 'now');
         $newId = self::uuid(strtolower(sprintf('%08x-%04x-4%03x-%04x-%012x', random_int(0, 0xffffffff), random_int(0, 0xffff), random_int(0, 0xfff), random_int(0x8000, 0xbfff), random_int(0, 0xffffffffffff))), 'tokenId');
         $token = self::base64url(random_bytes(32));
@@ -331,6 +332,27 @@ final class HubEnrollmentService
     {
         $auth = $this->authenticate($presentedToken, $deviceId, $now);
         return ['userId' => (string) $auth['user_id'], 'deviceId' => (string) $auth['device_id'], 'tokenId' => (string) $auth['token_id']];
+    }
+
+    /**
+     * Rotation-only recovery accepts the current device token for a short grace
+     * window after expiry. The token cannot authorize any other API during this
+     * window, and revoked devices/users/tokens still fail closed.
+     */
+    private function authenticateForRotation(string $token, string $deviceId, ?string $now): array
+    {
+        if ($token === '' || strlen($token) > 512 || preg_match('/[\x00-\x1F\x7F]/', $token)) throw new HubEnrollmentException('Device credential is invalid', 'TOKEN_INVALID');
+        $deviceId = self::uuid($deviceId, 'deviceId');
+        $query = $this->pdo->prepare('SELECT t.token_id, t.user_id, t.device_id, t.expires_at, t.revoked_at, t.replaced_by_token_id, e.revoked_at AS enrollment_revoked, u.revoked_at AS user_revoked FROM device_tokens t JOIN device_enrollments e ON e.device_id = t.device_id JOIN hub_users u ON u.user_id = t.user_id WHERE t.token_hash = :hash');
+        $query->execute(['hash' => hash('sha256', $token)]);
+        $row = $query->fetch();
+        $at = strtotime(self::timestamp($now ?? gmdate('c'), 'now'));
+        $expiresAt = is_array($row) ? strtotime((string) $row['expires_at']) : false;
+        if (!is_array($row) || $row['device_id'] !== $deviceId || $row['revoked_at'] !== null || $row['replaced_by_token_id'] !== null || $row['enrollment_revoked'] !== null || $row['user_revoked'] !== null || $expiresAt === false || $expiresAt + self::TOKEN_ROTATION_GRACE_SECONDS <= $at) {
+            throw new HubEnrollmentException('Device credential is not eligible for rotation', 'TOKEN_REJECTED');
+        }
+        $this->pdo->prepare('UPDATE device_tokens SET last_used_at = :at WHERE token_id = :id')->execute(['at' => gmdate('c', $at), 'id' => $row['token_id']]);
+        return $row;
     }
 
     private function authenticate(string $token, ?string $deviceId, ?string $now): array
