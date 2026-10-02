@@ -1442,13 +1442,33 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
     sudo test ! -e "$LEGACY_DROPIN"
   done
   sudo systemctl daemon-reload
-  for UNIT in awh-backup awh-database-inventory awh-retention awh-temp-cleanup awh-storage-guard awh-restore-drill; do
+  MAINTENANCE_TIMER_UNITS="awh-backup awh-database-inventory awh-retention awh-temp-cleanup awh-storage-guard awh-restore-drill"
+  for UNIT in $MAINTENANCE_TIMER_UNITS; do
     sudo systemctl enable --now "$UNIT.timer" >/dev/null
     sudo systemctl restart "$UNIT.timer"
     sudo systemctl is-enabled --quiet "$UNIT.timer"
     sudo systemctl is-active --quiet "$UNIT.timer"
-    test "$(sudo systemctl show -p SubState --value "$UNIT.timer")" = waiting
   done
+  MAINTENANCE_TIMERS_READY=0
+  MAINTENANCE_TIMER_ATTEMPT=0
+  while test "$MAINTENANCE_TIMER_ATTEMPT" -lt 60; do
+    MAINTENANCE_TIMER_ATTEMPT=$((MAINTENANCE_TIMER_ATTEMPT + 1))
+    MAINTENANCE_TIMERS_READY=1
+    for UNIT in $MAINTENANCE_TIMER_UNITS; do
+      if test "$(sudo systemctl show -p SubState --value "$UNIT.timer")" != waiting; then
+        MAINTENANCE_TIMERS_READY=0
+        break
+      fi
+    done
+    test "$MAINTENANCE_TIMERS_READY" -eq 1 && break
+    sleep 1
+  done
+  if test "$MAINTENANCE_TIMERS_READY" -ne 1; then
+    for UNIT in $MAINTENANCE_TIMER_UNITS; do
+      printf '%s\n' "MAINTENANCE_TIMER_NOT_READY=$UNIT:$(sudo systemctl show -p SubState --value "$UNIT.timer")" >&2
+    done
+    exit 43
+  fi
   for UNIT in awh-backup awh-database-inventory awh-retention awh-temp-cleanup awh-storage-guard awh-restore-drill; do
     sudo systemctl cat "$UNIT.service" | grep -Fq '/opt/awh-hub/control-plane-current/'
   done
