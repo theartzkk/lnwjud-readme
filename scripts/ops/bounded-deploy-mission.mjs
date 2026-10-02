@@ -13,6 +13,7 @@ const ROOT=process.env.AWH_SOURCE_ROOT||process.cwd();
 const GUARDED=join(ROOT,'scripts/ops/guarded-control-plane-deploy.mjs');
 const INTELLIGENCE=join(ROOT,'hub/bin/verification-intelligence.php');
 const EVIDENCE_DIR=join(ROOT,'.awh-build','verification');
+const DURABLE_FAILURE_DIR='/var/lib/awh-remote/checkpoints';
 const EVAL_CATALOG=join(ROOT,'config/kruart-engineering-eval.json');
 const DESKTOP_ARTIFACTS=['dist-web/downloads/AWH-macOS-arm64.zip','dist-web/downloads/AWH-macOS-x64.zip','dist-web/downloads/AWH-Windows-x64.zip','dist-web/downloads/SHA256SUMS.txt'];
 const DEPLOY_MODES=['--compat-refresh','--awh-core','--assistant-workstream','--workspace-continuity','--unified-workspace','--final-product','--founding-memory','--self-service','--central-project-authority','--anywhere-execution','--cost-aware-ai','--automations','--self-sufficient-ai','--account-hosting','--cloud-first','--conversation-lifecycle','--project-source-authority','--identity-convergence','--platform-hardening'];
@@ -43,6 +44,49 @@ function run(command,args,{env={},forward=false,input=null}={}){
     child.once('error',(error)=>resolve({code:1,tail,stdoutTail,stderrTail,error})); child.once('close',(code)=>resolve({code:code??1,tail,stdoutTail,stderrTail}));
     if(input===null)child.stdin.end();else child.stdin.end(String(input));
   });
+}
+
+export function sanitizeFailureDiagnostic(value){
+  const secret=/(?:password|passwd|secret|token|cookie|authorization|credential|session[_-]?id)/i;
+  const lines=String(value??'').split(/\r?\n/)
+    .map((line)=>line.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,' ').trim())
+    .filter((line)=>line!==''&&!secret.test(line))
+    .map((line)=>line.slice(0,320));
+  return lines.slice(-16).join('\n').slice(-4096);
+}
+
+export function failureEvidenceDocument(code,context,observedAt=new Date().toISOString()){
+  const releaseTrack=['vps-platform','awh'].includes(context?.releaseTrack)?context.releaseTrack:'unknown';
+  const releaseSha=typeof context?.releaseSha==='string'&&SHA.test(context.releaseSha)?context.releaseSha:null;
+  const executionId=typeof context?.executionId==='string'?context.executionId:null;
+  const rehearsal=context?.rehearsal&&typeof context.rehearsal==='object'?{
+    exitCode:Number.isInteger(context.rehearsal.exitCode)?context.rehearsal.exitCode:null,
+    stdoutTail:sanitizeFailureDiagnostic(context.rehearsal.stdoutTail),
+    stderrTail:sanitizeFailureDiagnostic(context.rehearsal.stderrTail),
+  }:null;
+  const deploy=context?.deploy&&typeof context.deploy==='object'?{
+    status:context.deploy.status??null,
+    exitCode:Number.isInteger(context.deploy.exitCode)?context.deploy.exitCode:null,
+    stage:typeof context.deploy.stage==='string'?context.deploy.stage.slice(0,120):null,
+    failureCode:typeof context.deploy.failureCode==='string'?context.deploy.failureCode.slice(0,160):null,
+    stdoutTail:sanitizeFailureDiagnostic(context.deploy.stdoutTail),
+    stderrTail:sanitizeFailureDiagnostic(context.deploy.stderrTail),
+    rollbackState:typeof context.deploy.rollbackState==='string'?context.deploy.rollbackState.slice(0,80):null,
+  }:null;
+  return {schemaVersion:1,kind:'bounded-release-failure',releaseTrack,releaseSha,executionId,
+    failureCode:String(code??'MISSION_FAILED').slice(0,160),rehearsal,deploy,observedAt};
+}
+
+async function persistFailureEvidence(code,context){
+  if(!['vps-platform','awh'].includes(context?.releaseTrack))return null;
+  const name=context.releaseTrack==='vps-platform'?'vps-platform-release-failure.last':'awh-core-release-failure.last';
+  const document=failureEvidenceDocument(code,context);
+  try{
+    await mkdir(DURABLE_FAILURE_DIR,{recursive:true,mode:0o700});
+    const path=join(DURABLE_FAILURE_DIR,name);
+    await writeFile(path,JSON.stringify(document,null,2)+'\n',{encoding:'utf8',mode:0o644});
+    return path;
+  }catch{return null;}
 }
 
 export function deployEvidenceFromResult(result){
@@ -387,6 +431,11 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   const common=['--owner-auth',mode]; if(cleanup)common.push('--cleanup-topology');
   const env={AWH_RELEASE_COMMIT:head,...(reuse?{AWH_REUSE_REMOTE_DESKTOP_ARTIFACTS:'1'}:{})};
   const rehearsal=await run(process.execPath,[GUARDED,'--dry-run',...common],{env,forward:true});
+  missionContext.rehearsal={
+    exitCode:Number.isInteger(rehearsal.code)?rehearsal.code:null,
+    stdoutTail:sanitizeFailureDiagnostic(rehearsal.stdoutTail),
+    stderrTail:sanitizeFailureDiagnostic(rehearsal.stderrTail),
+  };
   if(rehearsal.code!==0||!rehearsal.tail.includes('_DRY_RUN=PASS')) throw new Error('MISSION_REHEARSAL_FAILED');
   console.log('MISSION_REHEARSAL=PASS');
   const baseCapsule={schemaVersion:1,kind:'release-verification',executionId,scopeId,projectId:AWH_PROJECT_ID,releaseTrack,baseSha:production,releaseSha:head,changedFileCount:changed.length,changedPaths:missionContext.changedPaths??[],intelligence:plan,evalScenarios,qa,rehearsal:'PASS',desktopMode:reuse?'REUSE_VERIFIED':'NEW_ARTIFACTS',startedAt,createdAt:new Date().toISOString()};
@@ -411,8 +460,9 @@ export async function runMission(rawArgs=process.argv.slice(2)){
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   runMission().catch(async(error)=>{
     const code=String(error?.message||error).replace(/[^A-Za-z0-9_.:-]/g,'_').slice(0,160)||'MISSION_FAILED';
+    const durableFailure=await persistFailureEvidence(code,missionContext);
     const incident=await recordIncident(code,missionContext);
-    try { await saveCapsule({schemaVersion:1,kind:'release-verification',...missionContext,state:'BLOCKED',result:'BLOCK',failure:{code,incident},completedAt:new Date().toISOString()}); } catch { /* incident evidence remains authoritative */ }
+    try { await saveCapsule({schemaVersion:1,kind:'release-verification',...missionContext,state:'BLOCKED',result:'BLOCK',failure:{code,incident,durableFailure},completedAt:new Date().toISOString()}); } catch { /* incident evidence remains authoritative */ }
     console.error('MISSION_RESULT=BLOCKED'); console.error(`MISSION_REASON=${code}`); process.exit(1);
   });
 }

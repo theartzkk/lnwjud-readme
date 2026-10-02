@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { canonicalMainFromObserved, deployEvidenceFromResult, desktopImpactForFiles, desktopReleaseRequested, localOperatorInvocation, missionModeFromArgs, productionStateForRefs } from '../scripts/ops/bounded-deploy-mission.mjs';
+import { canonicalMainFromObserved, deployEvidenceFromResult, desktopImpactForFiles, desktopReleaseRequested, failureEvidenceDocument, localOperatorInvocation, missionModeFromArgs, productionStateForRefs, sanitizeFailureDiagnostic } from '../scripts/ops/bounded-deploy-mission.mjs';
 import { hydrateDesktopReleaseArtifacts, verifyDesktopReleaseArtifacts } from '../scripts/release/hydrate-desktop-release-artifacts.mjs';
 
 test('desktop impact detection still identifies native-agent-affecting source changes',()=>{
@@ -66,6 +66,23 @@ test('failed deploy evidence retains exact terminal stage and rollback proof aft
     stdoutTail:'DEPLOY_STAGE=SOURCE_DRIFT_VERIFY\nDEPLOY_FAILED_AT=SOURCE_DRIFT_VERIFY\nROLLBACK=PASS\n',
     stderrTail:'DEPLOY_DIAGNOSTIC=SOURCE_DRIFT_FINDINGS_2\n',rollbackState:'PASS',
   });
+});
+
+test('bounded release failure evidence is durable and redacts sensitive diagnostics',()=>{
+  const diagnostic=sanitizeFailureDiagnostic('Verified production desktop manifest is unavailable\nAuthorization: Bearer top-secret\nDEPLOY_FAILED_AT=MANIFEST_REUSE');
+  assert.match(diagnostic,/Verified production desktop manifest is unavailable/);
+  assert.match(diagnostic,/DEPLOY_FAILED_AT=MANIFEST_REUSE/);
+  assert.doesNotMatch(diagnostic,/Authorization|top-secret/);
+  const doc=failureEvidenceDocument('MISSION_REHEARSAL_FAILED',{
+    releaseTrack:'vps-platform',
+    releaseSha:'a'.repeat(40),
+    executionId:'12345678-1234-4abc-8abc-1234567890ab',
+    rehearsal:{exitCode:1,stdoutTail:'M23_TARGET=local',stderrTail:'password=must-not-persist\nMissing reviewed M4 asset: example'},
+  },'2026-10-02T00:00:00.000Z');
+  assert.equal(doc.failureCode,'MISSION_REHEARSAL_FAILED');
+  assert.equal(doc.rehearsal?.exitCode,1);
+  assert.match(doc.rehearsal?.stderrTail??'',/Missing reviewed M4 asset/);
+  assert.doesNotMatch(doc.rehearsal?.stderrTail??'',/password|must-not-persist/i);
 });
 
 test('root core release demotes typed operator calls to the guarded awh-remote identity',()=>{
