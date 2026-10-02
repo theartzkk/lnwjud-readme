@@ -202,6 +202,31 @@ export function productionStateForRefs(mode,head,observed={}){
   return {baseSha:runtime,allCurrent:runtime===target,trackRef:null,trackSha:null,runtimeSha:runtime};
 }
 
+export function postDeployIdentityForMode(mode,head,productionState,release){
+  const target=typeof head==='string'?head.toLowerCase():'';
+  if(!SHA.test(target))throw new Error('MISSION_SOURCE_IDENTITY_INVALID');
+  if(mode==='--platform-hardening'){
+    const pass=productionState?.trackRef==='platform/production'&&productionState?.trackSha===target;
+    return {
+      pass,
+      evidence:pass?'platform/production matches exact source':'platform/production identity mismatch',
+      sourceSha:productionState?.trackSha??null,
+      sourceState:pass?'COMMITTED':'MISMATCH',
+      releaseId:pass?`platform-${target.slice(0,12)}`:null,
+      authority:'platform/production',
+    };
+  }
+  const pass=release?.sourceSha===target&&release?.sourceState==='COMMITTED';
+  return {
+    pass,
+    evidence:pass?'public release identity matches exact source':'public release identity mismatch',
+    sourceSha:release?.sourceSha??null,
+    sourceState:release?.sourceState??null,
+    releaseId:release?.releaseId??null,
+    authority:'public-release',
+  };
+}
+
 async function resolveProduction(mode,head){
   const remote=await canonicalRemote();
   const trackRef=mode==='--awh-core'?'production':(mode==='--platform-hardening'?'platform/production':null);
@@ -338,14 +363,14 @@ async function verifyByBudget(plan){
   return {mode:qaMode,status:'PASS',stability};
 }
 
-async function goldenJourneys(plan,head,deployTail,release,releaseUrl){
+async function goldenJourneys(plan,head,deployTail,release,releaseUrl,identity){
   const required=Array.isArray(plan?.goldenJourneys)?plan.goldenJourneys:[];
   const base=new URL(releaseUrl); base.pathname='/'; base.search=''; base.hash='';
   const results=[];
   for(const name of required){
     let pass=false; let evidence='';
     if(name==='production-identity'){
-      pass=release?.sourceSha===head&&release?.sourceState==='COMMITTED'; evidence=pass?'public release identity matches exact source':'public release identity mismatch';
+      pass=identity?.pass===true; evidence=identity?.evidence??'production identity unavailable';
     }else if(name==='public-shell'){
       const r=await fetch(base,{cache:'no-store',redirect:'follow'}); pass=r.status===200; evidence=`HTTP_${r.status}`;
     }else if(name==='auth-boundary'){
@@ -451,10 +476,14 @@ export async function runMission(rawArgs=process.argv.slice(2)){
   if(missionContext.registryAvailable!==true){const registry=await operatorRequest('verification-regressions',{changedPaths:missionContext.changedPaths??[]});if(!registry)throw new Error('MISSION_DURABLE_REGISTRY_UNAVAILABLE');missionContext.registryAvailable=true;console.log('MISSION_DURABLE_REGISTRY=READY_AFTER_CUTOVER');}
   const url=process.env.AWH_PUBLIC_RELEASE_URL||'https://kruart.online/release.json';
   const response=await fetch(url,{cache:'no-store'}); if(!response.ok)throw new Error('MISSION_PUBLIC_VERIFY_UNAVAILABLE');
-  const release=await response.json(); if(release?.sourceSha!==head||release?.sourceState!=='COMMITTED')throw new Error('MISSION_PUBLIC_REVISION_MISMATCH');
-  missionContext.publicRelease={releaseId:release.releaseId??null,sourceSha:release.sourceSha,sourceState:release.sourceState};
-  const journeys=await goldenJourneys(plan,head,deploy.tail,release,url);
-  await saveCapsule({...baseCapsule,state:'COMPLETED',result:'PASS',deploy:missionContext.deploy,publicRelease:{releaseId:release.releaseId??null,sourceSha:release.sourceSha,sourceState:release.sourceState},goldenJourneys:journeys,completedAt:new Date().toISOString()});
+  const release=await response.json();
+  const postDeployState=await resolveProduction(mode,head);
+  const identity=postDeployIdentityForMode(mode,head,postDeployState,release);
+  if(identity.pass!==true)throw new Error(mode==='--platform-hardening'?'MISSION_PLATFORM_REVISION_MISMATCH':'MISSION_PUBLIC_REVISION_MISMATCH');
+  missionContext.publicRelease={releaseId:release?.releaseId??null,sourceSha:release?.sourceSha??null,sourceState:release?.sourceState??null};
+  missionContext.productionIdentity=identity;
+  const journeys=await goldenJourneys(plan,head,deploy.tail,release,url,identity);
+  await saveCapsule({...baseCapsule,state:'COMPLETED',result:'PASS',deploy:missionContext.deploy,publicRelease:missionContext.publicRelease,productionIdentity:identity,goldenJourneys:journeys,completedAt:new Date().toISOString()});
   console.log('MISSION_BACKUP=PASS'); console.log('MISSION_SOURCE_DRIFT=PASS'); console.log('MISSION_PUBLIC_VERIFY=PASS'); console.log('MISSION_STATE=COMPLETED'); console.log('MISSION_RESULT=PASS');
 }
 

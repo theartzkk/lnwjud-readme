@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { canonicalMainFromObserved, deployEvidenceFromResult, desktopImpactForFiles, desktopReleaseRequested, failureEvidenceDocument, localOperatorInvocation, missionModeFromArgs, productionStateForRefs, sanitizeFailureDiagnostic } from '../scripts/ops/bounded-deploy-mission.mjs';
+import { canonicalMainFromObserved, deployEvidenceFromResult, desktopImpactForFiles, desktopReleaseRequested, failureEvidenceDocument, localOperatorInvocation, missionModeFromArgs, postDeployIdentityForMode, productionStateForRefs, sanitizeFailureDiagnostic } from '../scripts/ops/bounded-deploy-mission.mjs';
 import { hydrateDesktopReleaseArtifacts, verifyDesktopReleaseArtifacts } from '../scripts/release/hydrate-desktop-release-artifacts.mjs';
 
 test('desktop impact detection still identifies native-agent-affecting source changes',()=>{
@@ -48,6 +48,25 @@ test('AWH runtime and VPS Platform production are independent release lineages',
   assert.deepEqual(productionStateForRefs('--platform-hardening',head,{'runtime/production':old,'platform/production':old,production:old}),{
     baseSha:old,allCurrent:false,trackRef:'platform/production',trackSha:old,runtimeSha:old,
   });
+});
+
+test('VPS Platform post-deploy identity uses platform/production instead of AWH public release.json',()=>{
+  const head='f'.repeat(40); const old='e'.repeat(40);
+  const platformState=productionStateForRefs('--platform-hardening',head,{'runtime/production':old,'platform/production':head,production:old});
+  const identity=postDeployIdentityForMode('--platform-hardening',head,platformState,{releaseId:'awh-old',sourceSha:old,sourceState:'COMMITTED'});
+  assert.equal(identity.pass,true);
+  assert.equal(identity.authority,'platform/production');
+  assert.equal(identity.sourceSha,head);
+  assert.equal(identity.sourceState,'COMMITTED');
+  const stalePlatform=productionStateForRefs('--platform-hardening',head,{'runtime/production':old,'platform/production':old,production:old});
+  assert.equal(postDeployIdentityForMode('--platform-hardening',head,stalePlatform,{sourceSha:head,sourceState:'COMMITTED'}).pass,false);
+});
+
+test('AWH post-deploy identity still requires the public release to match exact source',()=>{
+  const head='f'.repeat(40); const old='e'.repeat(40);
+  const state=productionStateForRefs('--awh-core',head,{'runtime/production':head,production:head});
+  assert.equal(postDeployIdentityForMode('--awh-core',head,state,{releaseId:'awh-head',sourceSha:head,sourceState:'COMMITTED'}).pass,true);
+  assert.equal(postDeployIdentityForMode('--awh-core',head,state,{releaseId:'awh-old',sourceSha:old,sourceState:'COMMITTED'}).pass,false);
 });
 
 test('core/web release reuses verified desktop lineage unless desktop publication is explicitly requested',()=>{
