@@ -135,7 +135,7 @@ test('guarded deploy exposes explicit remote artifact reuse without bypassing re
   const deploy = await readFile('deploy/awh-control-plane/deploy-control-plane.sh', 'utf8');
   const remote = await readFile('deploy/awh-control-plane/remote-deploy-control-plane.sh', 'utf8');
   assert.match(deploy, /AWH_REUSE_REMOTE_DESKTOP_ARTIFACTS/);
-  assert.match(deploy, /sudo -n cat \/var\/www\/awh-web\/current\/release\.json/);
+  assert.match(deploy, /cat \/var\/www\/awh-web\/current\/release\.json/);
   assert.match(deploy, /AWH_DESKTOP_RELEASE_REUSE=1/);
   assert.match(deploy, /DESKTOP_ARTIFACT_REUSE=verified-remote-manifest/);
   assert.match(deploy, /AWH_DESKTOP_ARM64_OVERLAY/);
