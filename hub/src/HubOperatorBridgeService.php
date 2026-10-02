@@ -156,13 +156,13 @@ final class HubOperatorBridgeService
     }
 
     /** @return array<string,mixed> */
-    private function projectGate(string $selector,string $at,bool $requireSource=false,?string $capability=null,?string $excludeExecutionId=null): array
+    private function projectGate(string $selector,string $at,bool $requireSource=false,?string $capability=null,?string $excludeExecutionId=null,?string $requestedResourceOverride=null): array
     {
         $project=$this->resolveProject($selector);
         $id=(string)$project['project_id'];
         (new HubExecutionLifecycleService($this->pdo))->reconcile($id,$at);
         $this->reconcileStaleMissions($id,$at);
-        $requestedResource=$capability===null?'CANONICAL:PROJECT':HubCapabilityRegistryService::mutationResourceForExecution($capability,'VPS');
+        $requestedResource=is_string($requestedResourceOverride)&&$requestedResourceOverride!==''?strtoupper(trim($requestedResourceOverride)):($capability===null?'CANONICAL:PROJECT':HubCapabilityRegistryService::mutationResourceForExecution($capability,'VPS'));
         $active=$this->pdo->prepare("SELECT x.execution_id,x.task_id,x.project_id,x.state,x.mutation_scope,x.lease_expires_at,e.state AS execution_state,e.required_capability,e.executor_kind,e.checkpoint_json,t.state AS task_state,t.goal,p.name AS project_name FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id JOIN control_tasks t ON t.task_id=x.task_id JOIN projects p ON p.project_id=x.project_id WHERE x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY x.updated_at DESC LIMIT 80");
         $active->execute(['at'=>$at]);$allActiveRows=$active->fetchAll();
         $activeRows=array_values(array_filter($allActiveRows,static fn(array $row):bool=>hash_equals($id,(string)$row['project_id'])));
@@ -171,20 +171,20 @@ final class HubOperatorBridgeService
         $conflictingRows=[];
         foreach($allActiveRows as $row){
             if($excludeExecutionId!==null&&hash_equals($excludeExecutionId,(string)$row['execution_id']))continue;
-            $resource=HubCapabilityRegistryService::mutationResourceForExecution((string)$row['required_capability'],(string)$row['executor_kind']);
+            $resource=HubCapabilityRegistryService::mutationResourceForExecution((string)$row['required_capability'],(string)$row['executor_kind'],is_string($row['checkpoint_json']??null)?(string)$row['checkpoint_json']:null);
             if(HubCapabilityRegistryService::mutationResourcesConflictForProjects($requestedResource,$id,$resource,(string)$row['project_id'])){$row['mutation_resource']=$resource;$conflictingRows[]=$row;}
         }
         $running=$this->pdo->prepare("SELECT COUNT(*) FROM control_task_executions e WHERE e.project_id=:project AND e.state IN ('LEASED','RUNNING')");
         $running->execute(['project'=>$id]); $runningCount=(int)$running->fetchColumn();
         $unscoped=$this->pdo->prepare("SELECT COUNT(*) FROM control_task_executions e LEFT JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.project_id=:project AND e.state IN ('LEASED','RUNNING') AND x.execution_id IS NULL");
         $unscoped->execute(['project'=>$id]); $unscopedCount=(int)$unscoped->fetchColumn();
-        $unscopedGlobal=$this->pdo->prepare("SELECT e.execution_id,e.project_id,e.required_capability,e.executor_kind FROM control_task_executions e LEFT JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.state IN ('LEASED','RUNNING') AND x.execution_id IS NULL ORDER BY e.updated_at,e.execution_id LIMIT 80");
+        $unscopedGlobal=$this->pdo->prepare("SELECT e.execution_id,e.project_id,e.required_capability,e.executor_kind,e.checkpoint_json FROM control_task_executions e LEFT JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.state IN ('LEASED','RUNNING') AND x.execution_id IS NULL ORDER BY e.updated_at,e.execution_id LIMIT 80");
         $unscopedGlobal->execute();$unscopedConflictCount=0;
         foreach($unscopedGlobal->fetchAll() as $row){
             if($excludeExecutionId!==null&&hash_equals($excludeExecutionId,(string)$row['execution_id']))continue;
             $candidateProject=(string)$row['project_id'];
             if(hash_equals($id,$candidateProject)){$unscopedConflictCount++;continue;}
-            $resource=HubCapabilityRegistryService::mutationResourceForExecution((string)$row['required_capability'],(string)$row['executor_kind']);
+            $resource=HubCapabilityRegistryService::mutationResourceForExecution((string)$row['required_capability'],(string)$row['executor_kind'],is_string($row['checkpoint_json']??null)?(string)$row['checkpoint_json']:null);
             if(HubCapabilityRegistryService::mutationResourcesConflictForProjects($requestedResource,$id,$resource,$candidateProject))$unscopedConflictCount++;
         }
         $workspace=$this->pdo->prepare("SELECT owner_device_id,checkpoint_id,lease_expires_at,updated_at FROM control_workspace_leases WHERE project_id=:project AND state='ACTIVE' AND (lease_expires_at IS NULL OR lease_expires_at>:at) LIMIT 5");
@@ -221,7 +221,7 @@ final class HubOperatorBridgeService
         $ready=!$hardBlocked;
         $state=$hardBlocked?'BLOCKED':($attention?'ATTENTION':'READY');
         $decision=$hardBlocked?'WAIT_CONFLICT':(count($coordinationRows)>0?'CONTINUE_OR_JOIN':'CONTINUE');
-        return ['schemaVersion'=>2,'state'=>$state,'ready'=>$ready,'mutationReady'=>$ready,'sourceReady'=>$sourceGateReady,'blocking'=>$hardBlocked,'decision'=>$decision,'decisionAuthority'=>'AWH_EXECUTION_GATE','productionReady'=>$sourceGateReady,'productionReadyDeprecated'=>true,'runtimeParityState'=>'NOT_EVALUATED','readinessSemantics'=>['ready'=>'MUTATION_GATE','mutationReady'=>'MUTATION_GATE','sourceReady'=>'SOURCE_AUTHORITY_AND_VAULT','productionReady'=>'DEPRECATED_ALIAS_OF_SOURCE_READY','runtimeParityState'=>'SEPARATE_RELEASE_VERIFICATION'],'sourceRequired'=>$requireSource,'requestedMutationResource'=>$requestedResource,'project'=>['projectId'=>$id,'name'=>(string)$project['name'],'type'=>(string)$project['type']],'source'=>['authority'=>$authority,'revision'=>$sourceRevision,'canonicalVaultRevisionId'=>$sourceVault,'activeVaultRevisionId'=>$activeVault,'syncState'=>$sync],'writer'=>['activeMutationCount'=>count($writerRows),'conflictingMutationCount'=>count($conflictingRows),'runningMutationExecutionCount'=>count($writerRows),'unscopedRunningMutationExecutionCount'=>$unscopedCount,'waitingMutationCount'=>$waitingCount,'activeWorkspaceLeaseCount'=>count($workspaceRows),'activeMutations'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'state'=>(string)$r['state'],'scope'=>(string)$r['mutation_scope'],'resource'=>HubCapabilityRegistryService::mutationResourceForExecution((string)$r['required_capability'],(string)$r['executor_kind']),'capability'=>(string)$r['required_capability'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal']],$writerRows),'workspaceLeases'=>array_map(static fn(array $r):array=>['ownerDeviceId'=>(string)$r['owner_device_id'],'checkpointId'=>$r['checkpoint_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'updatedAt'=>(string)$r['updated_at']],$workspaceRows)],'coordination'=>['activeMissionCount'=>count($coordinationRows),'blocksMutation'=>false,'mutationDecision'=>$hardBlocked?'WAIT_CONFLICT':'CONTINUE','nextUserAction'=>$hardBlocked?'RESOLVE_CONFLICT':'NONE','rule'=>'PROJECT_MISSIONS_ARE_COORDINATION_ONLY','missions'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal'],'releaseTrack'=>self::missionReleaseTrackFromCheckpoint((string)($r['checkpoint_json']??'')),'ownerActionRequired'=>false,'nextUserAction'=>'NONE'],$coordinationRows)],'checks'=>$checks,'observedAt'=>$at];
+        return ['schemaVersion'=>2,'state'=>$state,'ready'=>$ready,'mutationReady'=>$ready,'sourceReady'=>$sourceGateReady,'blocking'=>$hardBlocked,'decision'=>$decision,'decisionAuthority'=>'AWH_EXECUTION_GATE','productionReady'=>$sourceGateReady,'productionReadyDeprecated'=>true,'runtimeParityState'=>'NOT_EVALUATED','readinessSemantics'=>['ready'=>'MUTATION_GATE','mutationReady'=>'MUTATION_GATE','sourceReady'=>'SOURCE_AUTHORITY_AND_VAULT','productionReady'=>'DEPRECATED_ALIAS_OF_SOURCE_READY','runtimeParityState'=>'SEPARATE_RELEASE_VERIFICATION'],'sourceRequired'=>$requireSource,'requestedMutationResource'=>$requestedResource,'project'=>['projectId'=>$id,'name'=>(string)$project['name'],'type'=>(string)$project['type']],'source'=>['authority'=>$authority,'revision'=>$sourceRevision,'canonicalVaultRevisionId'=>$sourceVault,'activeVaultRevisionId'=>$activeVault,'syncState'=>$sync],'writer'=>['activeMutationCount'=>count($writerRows),'conflictingMutationCount'=>count($conflictingRows),'runningMutationExecutionCount'=>count($writerRows),'unscopedRunningMutationExecutionCount'=>$unscopedCount,'waitingMutationCount'=>$waitingCount,'activeWorkspaceLeaseCount'=>count($workspaceRows),'activeMutations'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'state'=>(string)$r['state'],'scope'=>(string)$r['mutation_scope'],'resource'=>HubCapabilityRegistryService::mutationResourceForExecution((string)$r['required_capability'],(string)$r['executor_kind'],is_string($r['checkpoint_json']??null)?(string)$r['checkpoint_json']:null),'capability'=>(string)$r['required_capability'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal']],$writerRows),'workspaceLeases'=>array_map(static fn(array $r):array=>['ownerDeviceId'=>(string)$r['owner_device_id'],'checkpointId'=>$r['checkpoint_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'updatedAt'=>(string)$r['updated_at']],$workspaceRows)],'coordination'=>['activeMissionCount'=>count($coordinationRows),'blocksMutation'=>false,'mutationDecision'=>$hardBlocked?'WAIT_CONFLICT':'CONTINUE','nextUserAction'=>$hardBlocked?'RESOLVE_CONFLICT':'NONE','rule'=>'PROJECT_MISSIONS_ARE_COORDINATION_ONLY','missions'=>array_map(static fn(array $r):array=>['executionId'=>(string)$r['execution_id'],'taskId'=>(string)$r['task_id'],'leaseExpiresAt'=>$r['lease_expires_at'],'goal'=>(string)$r['goal'],'releaseTrack'=>self::missionReleaseTrackFromCheckpoint((string)($r['checkpoint_json']??'')),'ownerActionRequired'=>false,'nextUserAction'=>'NONE'],$coordinationRows)],'checks'=>$checks,'observedAt'=>$at];
     }
 
     /** @param array<string,mixed> $request @return array<string,mixed> */
@@ -435,7 +435,8 @@ final class HubOperatorBridgeService
 
         $candidateGate=$this->projectGate($selector,$at,false,self::MISSION_CAPABILITY);
         $deployCapability=is_array($track)&&is_string($track['capability']??null)?(string)$track['capability']:null;
-        $deployGate=$deployCapability===null?$candidateGate:$this->projectGate($selector,$at,false,$deployCapability);
+        $deployResource=is_array($track)&&is_string($track['deployResource']??null)?(string)$track['deployResource']:null;
+        $deployGate=$deployCapability===null?$candidateGate:$this->projectGate($selector,$at,false,$deployCapability,null,$deployResource);
         $mission=$this->missionStatus($selector,$at);
         $storage=$this->storageSafetyState($at);
         $authority=$this->flowReleaseAuthority($track,$at);
@@ -1210,14 +1211,20 @@ final class HubOperatorBridgeService
         if (($request['confirmation']??null)!==self::INSTALL_CONFIRMATION) throw new HubOperatorBridgeException('Explicit BAY install confirmation is required','OPERATOR_CONFIRMATION_REQUIRED');
         $version=self::text($request,'targetVersion',80); $sha=strtolower(self::text($request,'targetSha',40)); $packageSha=strtolower(self::text($request,'packageSha256',64));
         if(preg_match('/^[a-f0-9]{40}$/',$sha)!==1||preg_match('/^[a-f0-9]{64}$/',$packageSha)!==1)throw new HubOperatorBridgeException('BAY package identity is invalid','OPERATOR_REQUEST_INVALID');
-        $gate=$this->projectGate('BAY EXCUSE X',$at,true,'bay.remote_update.install'); if (($gate['ready']??false)!==true || ($gate['sourceReady']??false)!==true) throw new HubOperatorBridgeException('BAY project gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
-        $projectId=(string)($gate['project']['projectId']??'');
+        $sourceGate=$this->projectGate('BAY EXCUSE X',$at,true,self::MISSION_CAPABILITY);
+        if (($sourceGate['sourceReady']??false)!==true) throw new HubOperatorBridgeException('BAY project source gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
+        $projectId=(string)($sourceGate['project']['projectId']??'');
         $this->assertBayCanonicalTarget($sha);
         $releaseNotes=$this->releaseDetailsForSourceSha($projectId,'bay-excuse-x',$sha);
         if(!HubUpdateTargetRegistry::releaseDetailsReady($releaseNotes))
             throw new HubOperatorBridgeException('BAY release details are required before install','OPERATOR_RELEASE_DETAILS_REQUIRED');
         $sourceTrack=strtolower(trim((string)($releaseNotes['releaseTrack']??'')));
         $expectedTrack=match($sourceTrack){'line-oa'=>'line-oa','bay-cooperative'=>'cooperative-center','bay-pp'=>'pp-center',default=>'bay-excuse-core'};
+        $registryTrack=match($expectedTrack){'line-oa'=>'line-oa','cooperative-center'=>'bay-cooperative','pp-center'=>'bay-pp',default=>'bay-excuse-x'};
+        $trackConfig=HubUpdateTargetRegistry::byReleaseTrack($registryTrack);
+        $deployResource=is_array($trackConfig)&&is_string($trackConfig['deployResource']??null)?(string)$trackConfig['deployResource']:'CANONICAL:DEPLOY:PROJECT';
+        $gate=$this->projectGate('BAY EXCUSE X',$at,true,'bay.remote_update.install',null,$deployResource);
+        if (($gate['ready']??false)!==true || ($gate['sourceReady']??false)!==true) throw new HubOperatorBridgeException('BAY project gate is blocked','OPERATOR_PROJECT_GATE_BLOCKED');
         $authority=$this->acquireMutationAuthority($projectId,'Guarded BAY install '.$expectedTrack.' '.$version,'bay.remote_update.install',['releaseTrack'=>$expectedTrack,'targetVersion'=>$version,'targetSha'=>$sha,'packageSha256'=>$packageSha,'releaseNotes'=>$releaseNotes],$at);
         $success=false;
         try {

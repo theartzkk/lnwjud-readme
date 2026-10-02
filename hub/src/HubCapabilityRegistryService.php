@@ -149,7 +149,7 @@ final class HubCapabilityRegistryService
      * Derive the coordination resource from canonical execution metadata.
      * No new lock table or schema column is needed.
      */
-    public static function mutationResourceForExecution(string $requiredCapability, string $executorKind): string
+    public static function mutationResourceForExecution(string $requiredCapability, string $executorKind, ?string $checkpointJson = null): string
     {
         $required = trim($requiredCapability); $kind = strtoupper(trim($executorKind));
         if (preg_match('/^(?:agent\.conversation|project\.(?:read|search)|artifact\.object|qa\.cloud|review\.visual)$/', $required) === 1) return 'READ';
@@ -159,12 +159,37 @@ final class HubCapabilityRegistryService
         if ($required === 'system.core.release') return 'CANONICAL:DEPLOY:AWH';
         if ($required === 'system.learnlab.release') return 'CANONICAL:DEPLOY:BAY_LEARNLAB';
         if ($required === 'system.assessment.release') return 'CANONICAL:DEPLOY:BAY_ASSESSMENT';
-        if (in_array($required, ['project.mutate.deploy','bay.remote_update.install'], true)) return 'CANONICAL:DEPLOY:PROJECT';
+        if ($required === 'bay.remote_update.install') {
+            $releaseTrack = self::releaseTrackFromCheckpoint($checkpointJson);
+            return match ($releaseTrack) {
+                'bay-excuse-core', 'bay-excuse-x' => 'CANONICAL:DEPLOY:BAY_EXCUSE',
+                'line-oa' => 'CANONICAL:DEPLOY:LINE_OA',
+                'cooperative-center', 'bay-cooperative' => 'CANONICAL:DEPLOY:BAY_COOPERATIVE',
+                'pp-center', 'bay-pp' => 'CANONICAL:DEPLOY:BAY_PP',
+                default => 'CANONICAL:DEPLOY:PROJECT',
+            };
+        }
+        if ($required === 'project.mutate.deploy') return 'CANONICAL:DEPLOY:PROJECT';
         if ($required === 'bay.remote_update.stage') return 'RESOURCE:RELEASE_STAGE';
         if (str_starts_with($required, 'hosting.')) return 'RESOURCE:HOSTING';
         if (str_starts_with($required, 'project.mutate.')) return 'CANDIDATE';
         if (in_array($kind, ['DEVICE','CODEX'], true)) return 'WORKSPACE';
         return 'CANONICAL:PROJECT';
+    }
+
+    private static function releaseTrackFromCheckpoint(?string $checkpointJson): ?string
+    {
+        if (!is_string($checkpointJson) || trim($checkpointJson) === '') return null;
+        try { $checkpoint = json_decode($checkpointJson, true, 32, JSON_THROW_ON_ERROR); }
+        catch (Throwable) { return null; }
+        if (!is_array($checkpoint)) return null;
+        foreach (['releaseTrack','expectedTrack','requestedReleaseTrack'] as $key) {
+            $value = $checkpoint[$key] ?? null;
+            if (!is_string($value)) continue;
+            $value = strtolower(trim($value));
+            if (preg_match('/^[a-z0-9][a-z0-9._-]{1,79}$/', $value) === 1) return $value;
+        }
+        return null;
     }
 
     /** Serialize only executions whose derived resources actually conflict. */
@@ -292,11 +317,11 @@ final class HubCapabilityRegistryService
             if ($ownTransaction) $this->pdo->exec('BEGIN IMMEDIATE');
             $this->reconcileExecutionAuthority($at);
             $envelope = $this->ensureExecutionEnvelope($executionId, $at); $project = (string)$envelope['projectId']; $scope = (string)$envelope['mutationScope'];
-            $meta=$this->pdo->prepare('SELECT required_capability,executor_kind FROM control_task_executions WHERE execution_id=:execution');
+            $meta=$this->pdo->prepare('SELECT required_capability,executor_kind,checkpoint_json FROM control_task_executions WHERE execution_id=:execution');
             $meta->execute(['execution'=>$executionId]); $metaRow=$meta->fetch();
             if(!is_array($metaRow))throw new HubCapabilityRegistryException('Execution metadata is unavailable','EXECUTION_NOT_FOUND');
             $capability=(string)$metaRow['required_capability'];
-            $resource=self::mutationResourceForExecution($capability,(string)$metaRow['executor_kind']);
+            $resource=self::mutationResourceForExecution($capability,(string)$metaRow['executor_kind'],is_string($metaRow['checkpoint_json']??null)?(string)$metaRow['checkpoint_json']:null);
             if($resource!=='READ'&&$capability!=='operator.project_mission'&&!$this->projectSourceReady($project)){
                 $this->pdo->prepare("UPDATE control_execution_envelopes SET state='WAITING',lease_expires_at=NULL,updated_at=:at WHERE execution_id=:execution AND state IN ('OPEN','WAITING','CONFLICT','ACTIVE')")->execute(['at'=>$at,'execution'=>$executionId]);
                 if($ownTransaction)$this->pdo->exec('COMMIT');
@@ -314,23 +339,23 @@ final class HubCapabilityRegistryService
                 return ['granted'=>true,'executionId'=>$executionId,'projectId'=>$project,'mutationScope'=>$scope,'mutationResource'=>$resource,'blockingExecutionId'=>null,'blockingTaskId'=>null];
             }
 
-            $unscoped=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.project_id,e.required_capability,e.executor_kind FROM control_task_executions e LEFT JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.execution_id<>:execution AND e.state IN ('LEASED','RUNNING') AND x.execution_id IS NULL ORDER BY e.updated_at,e.execution_id");
+            $unscoped=$this->pdo->prepare("SELECT e.execution_id,e.task_id,e.project_id,e.required_capability,e.executor_kind,e.checkpoint_json FROM control_task_executions e LEFT JOIN control_execution_envelopes x ON x.execution_id=e.execution_id WHERE e.execution_id<>:execution AND e.state IN ('LEASED','RUNNING') AND x.execution_id IS NULL ORDER BY e.updated_at,e.execution_id");
             $unscoped->execute(['execution'=>$executionId]);
             $blocking=null;
             foreach($unscoped->fetchAll() as $candidate){
                 $candidateProject=(string)$candidate['project_id'];
-                $candidateResource=self::mutationResourceForExecution((string)$candidate['required_capability'],(string)$candidate['executor_kind']);
+                $candidateResource=self::mutationResourceForExecution((string)$candidate['required_capability'],(string)$candidate['executor_kind'],is_string($candidate['checkpoint_json']??null)?(string)$candidate['checkpoint_json']:null);
                 if(self::mutationResourcesConflictForProjects($resource,$project,$candidateResource,$candidateProject)){
                     $candidate['mutation_resource']=$candidateResource;$candidate['unscoped']=true;$blocking=$candidate;break;
                 }
             }
 
             if($blocking===null){
-                $holder = $this->pdo->prepare("SELECT x.execution_id,x.task_id,x.project_id,x.mutation_scope,e.required_capability,e.executor_kind FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id WHERE x.execution_id<>:execution AND x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) ORDER BY x.updated_at,x.execution_id");
+                $holder = $this->pdo->prepare("SELECT x.execution_id,x.task_id,x.project_id,x.mutation_scope,e.required_capability,e.executor_kind,e.checkpoint_json FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id WHERE x.execution_id<>:execution AND x.mutation_scope<>'READ' AND x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at) ORDER BY x.updated_at,x.execution_id");
                 $holder->execute(['execution'=>$executionId,'at'=>$at]);
                 foreach ($holder->fetchAll() as $candidate) {
                     $candidateProject=(string)$candidate['project_id'];
-                    $candidateResource=self::mutationResourceForExecution((string)$candidate['required_capability'],(string)$candidate['executor_kind']);
+                    $candidateResource=self::mutationResourceForExecution((string)$candidate['required_capability'],(string)$candidate['executor_kind'],is_string($candidate['checkpoint_json']??null)?(string)$candidate['checkpoint_json']:null);
                     if (self::mutationResourcesConflictForProjects($resource,$project,$candidateResource,$candidateProject)) { $candidate['mutation_resource']=$candidateResource; $blocking = $candidate; break; }
                 }
             }
@@ -357,10 +382,10 @@ final class HubCapabilityRegistryService
     {
         $this->assertReady(); $at = self::timestamp($now ?? gmdate('c'));
         $this->reconcileExecutionAuthority($at);
-        $q = $this->pdo->prepare("SELECT x.execution_id,x.task_id,x.project_id,x.mutation_scope,x.state,x.provider_id,x.lease_expires_at,x.updated_at,t.goal,p.name AS project_name,e.required_capability,e.executor_kind FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id JOIN control_tasks t ON t.task_id=x.task_id JOIN projects p ON p.project_id=x.project_id WHERE x.mutation_scope<>'READ' AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND ((x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at)) OR x.state IN ('OPEN','WAITING','CONFLICT')) ORDER BY CASE x.state WHEN 'ACTIVE' THEN 0 ELSE 1 END,x.updated_at DESC LIMIT 40");
+        $q = $this->pdo->prepare("SELECT x.execution_id,x.task_id,x.project_id,x.mutation_scope,x.state,x.provider_id,x.lease_expires_at,x.updated_at,t.goal,p.name AS project_name,e.required_capability,e.executor_kind,e.checkpoint_json FROM control_execution_envelopes x JOIN control_task_executions e ON e.execution_id=x.execution_id JOIN control_tasks t ON t.task_id=x.task_id JOIN projects p ON p.project_id=x.project_id WHERE x.mutation_scope<>'READ' AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND t.state NOT IN ('COMPLETED','FAILED','CANCELLED') AND ((x.state='ACTIVE' AND (x.lease_expires_at IS NULL OR x.lease_expires_at>:at)) OR x.state IN ('OPEN','WAITING','CONFLICT')) ORDER BY CASE x.state WHEN 'ACTIVE' THEN 0 ELSE 1 END,x.updated_at DESC LIMIT 40");
         $q->execute(['at'=>$at]); $active=[]; $waiting=[]; $coordinationActive=[]; $coordinationWaiting=[];
         foreach ($q->fetchAll() as $row) {
-            $item=['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>(string)$row['project_id'],'projectName'=>(string)$row['project_name'],'goal'=>(string)$row['goal'],'mutationScope'=>(string)$row['mutation_scope'],'mutationResource'=>self::mutationResourceForExecution((string)$row['required_capability'],(string)$row['executor_kind']),'requiredCapability'=>(string)$row['required_capability'],'providerId'=>$row['provider_id']===null?null:(string)$row['provider_id'],'state'=>(string)$row['state'],'leaseExpiresAt'=>$row['lease_expires_at']===null?null:(string)$row['lease_expires_at'],'updatedAt'=>(string)$row['updated_at']];
+            $item=['executionId'=>(string)$row['execution_id'],'taskId'=>(string)$row['task_id'],'projectId'=>(string)$row['project_id'],'projectName'=>(string)$row['project_name'],'goal'=>(string)$row['goal'],'mutationScope'=>(string)$row['mutation_scope'],'mutationResource'=>self::mutationResourceForExecution((string)$row['required_capability'],(string)$row['executor_kind'],is_string($row['checkpoint_json']??null)?(string)$row['checkpoint_json']:null),'requiredCapability'=>(string)$row['required_capability'],'providerId'=>$row['provider_id']===null?null:(string)$row['provider_id'],'state'=>(string)$row['state'],'leaseExpiresAt'=>$row['lease_expires_at']===null?null:(string)$row['lease_expires_at'],'updatedAt'=>(string)$row['updated_at']];
             $coordination=hash_equals((string)$row['required_capability'],'operator.project_mission');
             if ($item['state']==='ACTIVE') {
                 if($coordination)$coordinationActive[]=$item; else $active[]=$item;

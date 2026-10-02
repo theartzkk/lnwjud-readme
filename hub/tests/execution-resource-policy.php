@@ -11,6 +11,13 @@ ep(HubCapabilityRegistryService::mutationResourceForExecution('system.platform.r
 ep(HubCapabilityRegistryService::mutationResourceForExecution('system.core.release','VPS')==='CANONICAL:DEPLOY:AWH','AWH release has its own track');
 ep(HubCapabilityRegistryService::mutationResourceForExecution('system.learnlab.release','VPS')==='CANONICAL:DEPLOY:BAY_LEARNLAB','LearnLab release has its own track');
 ep(HubCapabilityRegistryService::mutationResourceForExecution('system.assessment.release','VPS')==='CANONICAL:DEPLOY:BAY_ASSESSMENT','Assessment release has its own track');
+ep(HubCapabilityRegistryService::mutationResourceForExecution('bay.remote_update.install','VPS',json_encode(['releaseTrack'=>'bay-excuse-core']))==='CANONICAL:DEPLOY:BAY_EXCUSE','BAY Core install keeps its own deploy track');
+ep(HubCapabilityRegistryService::mutationResourceForExecution('bay.remote_update.install','VPS',json_encode(['releaseTrack'=>'line-oa']))==='CANONICAL:DEPLOY:LINE_OA','LINE OA install keeps its own deploy track');
+ep(HubCapabilityRegistryService::mutationResourceForExecution('bay.remote_update.install','VPS',json_encode(['releaseTrack'=>'cooperative-center']))==='CANONICAL:DEPLOY:BAY_COOPERATIVE','Cooperative install keeps its own deploy track');
+ep(HubCapabilityRegistryService::mutationResourceForExecution('bay.remote_update.install','VPS',json_encode(['releaseTrack'=>'pp-center']))==='CANONICAL:DEPLOY:BAY_PP','PP install keeps its own deploy track');
+ep(HubCapabilityRegistryService::mutationResourceForExecution('bay.remote_update.install','VPS')==='CANONICAL:DEPLOY:PROJECT','legacy BAY install without track metadata remains fail-closed');
+ep(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:DEPLOY:BAY_EXCUSE','bay','CANONICAL:DEPLOY:LINE_OA','bay')===false,'BAY Core and LINE OA deploy tracks do not block each other');
+ep(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:DEPLOY:BAY_EXCUSE','bay','CANONICAL:DEPLOY:BAY_COOPERATIVE','bay')===false,'BAY Core and Cooperative deploy tracks do not block each other');
 ep(HubCapabilityRegistryService::mutationResourceForExecution('source.promote','VPS')==='CANONICAL:SOURCE','source promotion remains canonical-source scoped');
 ep(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:DEPLOY:AWH','project-a','CANDIDATE','project-a')===false,'candidate mission does not block AWH deploy');
 ep(HubCapabilityRegistryService::mutationResourcesConflictForProjects('CANONICAL:DEPLOY:AWH','project-a','CANONICAL:DEPLOY:BAY_LEARNLAB','project-b')===false,'different release tracks can deploy independently');
