@@ -194,7 +194,7 @@ export async function prepareDesktopCoreUpdateSwap(staged:StagedDesktopCoreUpdat
   const suffix=staged.version.replace(/[^0-9A-Za-z.-]/g,'_')+'-'+staged.sourceSha.slice(0,8);
   const nextRoot=join(parent,basename(currentRoot)+'.next-'+suffix),previousRoot=join(parent,basename(currentRoot)+'.previous');
   await rm(nextRoot,{recursive:true,force:true});
-  await cp(staged.extractedAppRoot,nextRoot,{recursive:true,errorOnExist:true,force:false,preserveTimestamps:true});
+  await cp(staged.extractedAppRoot,nextRoot,{recursive:true,errorOnExist:true,force:false,preserveTimestamps:true,verbatimSymlinks:true});
   await access(nextRoot);
   const root=coreUpdateRoot(dataDir);await mkdir(root,{recursive:true,mode:0o700});
   const healthMarker=join(root,'health-'+randomUUID()+'.json'),resultMarker=join(root,'last-result.json');

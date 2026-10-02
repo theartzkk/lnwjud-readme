@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, readFile, readlink, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -54,6 +54,24 @@ test('atomic swap preparation copies next release beside current app and emits r
   const helper=await readFile(plan.helper,'utf8');
   assert.match(helper,/HEALTH_FAILED/);assert.match(helper,/mv "\$PREVIOUS" "\$CURRENT"/);
   assert.equal(plan.previousRoot,current+'.previous');
+});
+
+test('atomic swap preserves macOS framework symlink topology',{skip:process.platform==='win32'},async()=>{
+  const root=await mkdtemp(join(tmpdir(),'awh-core-symlink-'));
+  const current=join(root,'AWH Agent.app'),execPath=join(current,'Contents','MacOS','AWH Agent');
+  const stagedRoot=join(root,'stage','AWH Agent.app'),framework=join(stagedRoot,'Contents','Frameworks','Squirrel.framework');
+  await mkdir(join(current,'Contents','MacOS'),{recursive:true});await writeFile(execPath,'old');
+  await mkdir(join(framework,'Versions','A','Resources'),{recursive:true});
+  await writeFile(join(framework,'Versions','A','Squirrel'),'binary');
+  await symlink('A',join(framework,'Versions','Current'));
+  await symlink('Versions/Current/Resources',join(framework,'Resources'));
+  await symlink('Versions/Current/Squirrel',join(framework,'Squirrel'));
+  const staged:StagedDesktopCoreUpdate={schemaVersion:1,channel:'preview',version:'1.0.0-rc.2',sourceSha:'a'.repeat(40),packageSha256:'b'.repeat(64),sizeBytes:1234,packagePath:'downloads/AWH-macOS-x64.zip',packageUrl:'https://kruart.online/downloads/AWH-macOS-x64.zip',releaseId:'fixture',publishedAt:'2026-09-28T16:30:00Z',stageRoot:join(root,'stage'),packageFile:join(root,'stage','package.zip'),extractedAppRoot:stagedRoot};
+  const plan=await prepareDesktopCoreUpdateSwap(staged,join(root,'.awh'),'darwin',execPath);
+  const copied=join(plan.nextRoot,'Contents','Frameworks','Squirrel.framework');
+  assert.equal(await readlink(join(copied,'Versions','Current')),'A');
+  assert.equal(await readlink(join(copied,'Resources')),'Versions/Current/Resources');
+  assert.equal(await readlink(join(copied,'Squirrel')),'Versions/Current/Squirrel');
 });
 
 test('core update health marker is constrained to AWH update root',async()=>{
