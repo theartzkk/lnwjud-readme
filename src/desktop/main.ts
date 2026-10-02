@@ -36,10 +36,10 @@ import { createDesktopCredentialStore, CredentialStoreError } from '../credentia
 import { EnrollmentClient, EnrollmentClientError, readLocalEnrollmentState } from '../enrollment-client.js';
 import { ensureAwhDataDirectoryActive } from '../data-migration.js';
 import { deviceRuntimePermissionStatus, ensureAwhDeviceRuntime, type DeviceRuntimePermissionStatus, type DeviceBootstrapResult } from '../device-bootstrap.js';
-import { ensureRemoteDesktopConnector, remoteDesktopConnectorStatus } from '../remote-desktop-connector.js';
 import { AutopilotRunner, detectLocalCapabilities, loadAutopilotTasks, selectAutopilotProfile } from '../autopilot.js';
 import { ControlPlaneWorkerClient } from '../control-plane-worker-client.js';
 import { ControlPlaneWorkerRuntime } from '../control-plane-worker-runtime.js';
+import { runWithWorkerCredentialRecovery } from '../worker-credential-recovery.js';
 import { createWorkspaceWipCheckpoint, reconstructWorkspaceWip } from '../workspace-continuity.js';
 import { listArtifacts } from '../artifacts.js';
 import { discoverContinuity } from '../continuity.js';
@@ -86,6 +86,7 @@ let emergencyHotkeyReady = false;
 let previousIdleSeconds = 0;
 let liveSawIdle = false;
 let workerRunning = false;
+let workerCredentialRefreshAttempted = false;
 let connectedRuntimeMonitor: NodeJS.Timeout | null = null;
 let connectedRuntimeRepairInFlight = false;
 let deviceRuntimeBootstrapInFlight: Promise<DeviceBootstrapResult> | null = null;
@@ -241,13 +242,10 @@ function controlPlaneWorker(config: ReturnType<typeof loadConfig>): ControlPlane
 
 async function workerState() {
   const config = loadConfig();
-  const [identity, remoteDesktop] = await Promise.all([
-    readDeviceIdentity(config.dataDir).catch(() => null),
-    remoteDesktopConnectorStatus().catch(() => ({ state: 'UNAVAILABLE', authorized: false, running: false, managed: false, reason: 'STATUS_UNAVAILABLE' } as const)),
-  ]);
+  const identity = await readDeviceIdentity(config.dataDir).catch(() => null);
   const mode = currentAgentMode(config.dataDir);
   const activity = agentRuntimeStatus();
-  return { enabled: config.controlPlaneWorker, hubConfigured: Boolean(config.hubApiBase), hubAuthority: config.hubApiBase, device: identity ? { idShort: identity.deviceId.slice(0, 8), platform: identity.platform, arch: identity.arch, displayName: identity.displayName } : null, running: workerRunning, connection: workerConnectionState, remoteDesktop, mode, activity, emergencyHotkeyReady, lastError:lastWorkerError };
+  return { enabled: config.controlPlaneWorker, hubConfigured: Boolean(config.hubApiBase), hubAuthority: config.hubApiBase, device: identity ? { idShort: identity.deviceId.slice(0, 8), platform: identity.platform, arch: identity.arch, displayName: identity.displayName } : null, running: workerRunning, connection: workerConnectionState, mode, activity, emergencyHotkeyReady, lastError:lastWorkerError };
 }
 
 async function checkDesktopCoreUpdate() {
@@ -424,8 +422,30 @@ async function runWorkerOnce() {
   if (workerRunning) return { ok: false, error: 'WORKER_BUSY', message: 'Worker is already running' };
   workerRunning = true;
   refreshTray();
-  try { const result = await controlPlaneWorker(config).runOnce(); workerConnectionState = 'CONNECTED'; lastWorkerError=null; return { ok: true, ...result }; }
-  catch { workerConnectionState = 'OFFLINE'; lastWorkerError='WORKER_RUN_FAILED'; return { ok: false, error: 'WORKER_RUN_FAILED', message: 'Worker could not complete a safe run' }; }
+  try {
+    if (!workerCredentialRefreshAttempted) {
+      workerCredentialRefreshAttempted = true;
+      try {
+        await enrollmentClient(config).rotate();
+        workerRuntime = null;
+      } catch {
+        // Best-effort startup refresh: an active credential may still be valid.
+        // TOKEN_REJECTED is handled deterministically by the recovery wrapper below.
+      }
+    }
+    const result = await runWithWorkerCredentialRecovery(
+      () => controlPlaneWorker(config).runOnce(),
+      async () => { await enrollmentClient(config).rotate(); workerRuntime = null; },
+    );
+    workerConnectionState = 'CONNECTED'; lastWorkerError = null;
+    return { ok: true, ...result };
+  } catch (error) {
+    workerConnectionState = 'OFFLINE';
+    lastWorkerError = error instanceof Error && 'code' in error && typeof (error as { code?: unknown }).code === 'string'
+      ? String((error as { code: string }).code).slice(0, 80)
+      : 'WORKER_RUN_FAILED';
+    return { ok: false, error: lastWorkerError, message: 'Worker could not complete a safe run' };
+  }
   finally { workerRunning = false; refreshTray(); }
 }
 
@@ -640,10 +660,7 @@ async function openStartupPermissionSettings(kind: unknown): Promise<{ ok: boole
 
 async function ensureConnectedDeviceRuntime(): Promise<void> {
   const config = loadConfig();
-  const runtime = await ensureDeviceRuntimeSingleFlight(config.dataDir);
-  if (runtime.state !== 'READY' || !startupPermissionsReady) return;
-  const enrolled = await enrollmentState().catch(() => ({ enrolled: false }));
-  if (enrolled.enrolled === true) await ensureRemoteDesktopConnector().catch(() => undefined);
+  await ensureDeviceRuntimeSingleFlight(config.dataDir);
 }
 
 async function healConnectedDeviceRuntime(): Promise<void> {
@@ -652,8 +669,6 @@ async function healConnectedDeviceRuntime(): Promise<void> {
   try {
     const config = loadConfig();
     if (!config.controlPlaneWorker) return;
-    const current = await remoteDesktopConnectorStatus().catch(() => null);
-    if (current?.state === 'READY') return;
     const permissions = await startupPermissionState().catch(() => null);
     if (permissions?.ready !== true) return;
     await ensureConnectedDeviceRuntime();

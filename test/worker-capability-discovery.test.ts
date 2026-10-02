@@ -82,7 +82,7 @@ test('external CLI discovery reports inventory only and never grants an executio
 });
 
 
-test('macOS device runtime discovery exposes AWH system plus KRUART GUI inventory only when both are installed', async () => {
+test('macOS device runtime discovery exposes only AWH-owned system and GUI inventory', async () => {
   const home = '/Users/fixture';
   const paths = new Set([
     '/Users/fixture/.kruart/ai-control/kui',
@@ -94,7 +94,7 @@ test('macOS device runtime discovery exposes AWH system plus KRUART GUI inventor
     commandAvailable: async () => false,
     pathAvailable: async (path) => paths.has(path),
   });
-  assert.deepEqual(tools, ['tool.awh-device-gui', 'tool.awh-device-system', 'tool.remote-desktop-mcp']);
+  assert.deepEqual(tools, ['tool.awh-device-gui', 'tool.awh-device-system']);
 });
 
 test('macOS GUI inventory is not advertised without an executable AWH system provider', async () => {
@@ -129,22 +129,16 @@ test('standalone AWH Device Runtime is advertised without Remote Desktop Command
 });
 
 
-test('Remote Desktop MCP inventory requires both the pinned runtime and a persisted authorization session', async () => {
+test('legacy Remote Desktop session files never become an AWH execution capability', async () => {
   const macHome = '/Users/fixture';
   const macRuntime = '/Users/fixture/.awh/bin/awh-system-mcp';
   const macSession = '/Users/fixture/.desktop-commander-device/device.json';
-  const withoutSession = await discoverWorkerTools({
-    platform: 'darwin', env: { HOME: macHome },
-    commandAvailable: async () => false,
-    pathAvailable: async (path) => path === macRuntime,
-  });
-  assert.equal(withoutSession.includes('tool.remote-desktop-mcp'), false);
-  const withSession = await discoverWorkerTools({
+  const mac = await discoverWorkerTools({
     platform: 'darwin', env: { HOME: macHome },
     commandAvailable: async () => false,
     pathAvailable: async (path) => path === macRuntime || path === macSession,
   });
-  assert.equal(withSession.includes('tool.remote-desktop-mcp'), true);
+  assert.equal(mac.includes('tool.remote-desktop-mcp'), false);
 
   const profile = 'C:\\Users\\Fixture';
   const local = profile + '\\AppData\\Local';
@@ -155,7 +149,7 @@ test('Remote Desktop MCP inventory requires both the pinned runtime and a persis
     commandAvailable: async () => false,
     pathAvailable: async (path) => path === winRuntime || path === winSession,
   });
-  assert.equal(win.includes('tool.remote-desktop-mcp'), true);
+  assert.equal(win.includes('tool.remote-desktop-mcp'), false);
 });
 
 
