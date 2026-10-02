@@ -1444,8 +1444,10 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || t
   sudo systemctl daemon-reload
   for UNIT in awh-backup awh-database-inventory awh-retention awh-temp-cleanup awh-storage-guard awh-restore-drill; do
     sudo systemctl enable --now "$UNIT.timer" >/dev/null
+    sudo systemctl restart "$UNIT.timer"
     sudo systemctl is-enabled --quiet "$UNIT.timer"
     sudo systemctl is-active --quiet "$UNIT.timer"
+    test "$(sudo systemctl show -p SubState --value "$UNIT.timer")" = waiting
   done
   for UNIT in awh-backup awh-database-inventory awh-retention awh-temp-cleanup awh-storage-guard awh-restore-drill; do
     sudo systemctl cat "$UNIT.service" | grep -Fq '/opt/awh-hub/control-plane-current/'

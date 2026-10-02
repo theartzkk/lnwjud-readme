@@ -194,6 +194,8 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(janitor, /AWH_TMP_PRESSURE_MIN_AGE_MINUTES.*60/);
   assert.match(guardService, /ReadWritePaths=.*\/var\/lib\/awh-remote\/tmp/);
   assert.match(guardTimer, /OnUnitActiveSec=10m/);
+  assert.match(remote, /systemctl restart "\$UNIT\.timer"/);
+  assert.match(remote, /systemctl show -p SubState --value "\$UNIT\.timer"/);
   assert.match(deploy, /awh-temp-workspace-janitor\.py/);
   assert.match(deploy, /systemd-run --unit=\"\$REMOTE_UNIT\".*--collect --no-block/);
   assert.match(deploy, /sudo -n systemd-run --unit=\"\$REMOTE_UNIT\".*--collect --no-block/);
