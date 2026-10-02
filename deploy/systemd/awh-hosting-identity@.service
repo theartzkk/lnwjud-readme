@@ -1,0 +1,26 @@
+[Unit]
+Description=AWH managed hosting identity provisioner %i
+ConditionPathExists=/var/lib/awh-hub/awh.sqlite
+ConditionPathExists=/usr/sbin/useradd
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+Environment=AWH_HUB_DB_PATH=/var/lib/awh-hub/awh.sqlite
+ExecStart=/usr/bin/php /opt/awh-hub/control-plane-current/deploy/awh-hosting/awh-hosting-identity.php %i
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/etc
+RestrictAddressFamilies=AF_UNIX
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+UMask=0077

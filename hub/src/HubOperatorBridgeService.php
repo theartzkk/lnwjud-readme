@@ -309,7 +309,11 @@ final class HubOperatorBridgeService
         if($kind==='release-verification'){
             $release=strtolower((string)($document['releaseSha']??''));
             if(preg_match('/^[a-f0-9]{40}$/',$release)!==1)throw new HubOperatorBridgeException('Release verification identity is invalid','OPERATOR_REQUEST_INVALID');
-            if(($document['state']??null)==='COMPLETED'&&($document['result']??null)==='PASS')$this->assertPublicReleaseIdentity($release);
+            if(($document['state']??null)==='COMPLETED'&&($document['result']??null)==='PASS'){
+                $track=strtolower(trim((string)($document['releaseTrack']??'awh')));
+                if($track==='vps-platform')$this->assertPlatformReleaseIdentity($release);
+                else $this->assertPublicReleaseIdentity($release);
+            }
             $bucket='releases/'.$release;$identity=$release;
         }elseif($kind==='verification-incident'){
             $fingerprint=strtolower((string)($document['fingerprint']??''));$regression=(string)($document['regressionId']??'');
@@ -1004,6 +1008,16 @@ final class HubOperatorBridgeService
             $json=json_encode(['schemaVersion'=>1,'files'=>$manifest],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
             return ['contentSha256'=>hash('sha256',$json),'fileCount'=>count($manifest),'contentBytes'=>$total];
         }finally{if($zip instanceof ZipArchive)$zip->close();@unlink($archive);}
+    }
+
+    private function assertPlatformReleaseIdentity(string $releaseSha): void
+    {
+        $root=getenv('AWH_CANONICAL_GIT_ROOT');if(!is_string($root)||$root==='')$root='/srv/awh-git';
+        $repo=rtrim($root,'/').'/awh.git';
+        if(!is_dir($repo)||is_link($repo))throw new HubOperatorBridgeException('Platform release identity is unavailable','OPERATOR_VERIFICATION_IDENTITY_UNAVAILABLE');
+        try{$current=strtolower(trim($this->runGit($repo,['rev-parse','refs/heads/platform/production'])));}
+        catch(Throwable){throw new HubOperatorBridgeException('Platform release identity is unavailable','OPERATOR_VERIFICATION_IDENTITY_UNAVAILABLE');}
+        if(preg_match('/^[a-f0-9]{40}$/',$current)!==1||!hash_equals($releaseSha,$current))throw new HubOperatorBridgeException('Release evidence does not match VPS Platform Production identity','OPERATOR_VERIFICATION_IDENTITY_MISMATCH');
     }
 
     private function assertPublicReleaseIdentity(string $releaseSha): void

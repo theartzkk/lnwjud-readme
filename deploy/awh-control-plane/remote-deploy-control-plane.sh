@@ -87,6 +87,9 @@ EXECUTOR_SERVICE_BACKUP=$EXECUTOR_BACKUP_ROOT/awh-native-executor.service.$RELEA
 EXECUTOR_TIMER_BACKUP=$EXECUTOR_BACKUP_ROOT/awh-native-executor.timer.$RELEASE_ID
 HOSTING_SERVICE_UNIT=/etc/systemd/system/awh-hosting-operator.service
 HOSTING_TIMER_UNIT=/etc/systemd/system/awh-hosting-operator.timer
+HOSTING_IDENTITY_UNIT=/etc/systemd/system/awh-hosting-identity@.service
+HOSTING_IDENTITY_INSTALLED=0
+HOSTING_IDENTITY_PREEXISTING=0
 SOURCE_DRIFT_SERVICE_UNIT=/etc/systemd/system/awh-source-drift.service
 SOURCE_DRIFT_TIMER_UNIT=/etc/systemd/system/awh-source-drift.timer
 SOURCE_DRIFT_HOTFIX=/usr/local/lib/awh-hotfix/ecosystem-source-drift.php
@@ -111,6 +114,7 @@ VPS_CONNECTOR_WAS_ACTIVE=0
 VPS_CONNECTOR_WAS_ENABLED=0
 HOSTING_SERVICE_BACKUP=$EXECUTOR_BACKUP_ROOT/awh-hosting-operator.service.$RELEASE_ID
 HOSTING_TIMER_BACKUP=$EXECUTOR_BACKUP_ROOT/awh-hosting-operator.timer.$RELEASE_ID
+HOSTING_IDENTITY_BACKUP=$EXECUTOR_BACKUP_ROOT/awh-hosting-identity@.service.$RELEASE_ID
 TOPOLOGY_ARCHIVE=/var/backups/awh-hub/topology-cleanup-$RELEASE_ID
 TOPOLOGY_HELPER=/opt/awh-hub/enrollment-current/deploy/awh-enrollment/insert-nginx-include.php
 ENROLLMENT_INCLUDE=/opt/awh-hub/enrollment-current/deploy/nginx/awh-enrollment.conf
@@ -599,6 +603,14 @@ rollback() {
       fi
       sudo systemctl daemon-reload || ok=0
     fi
+    if test "$HOSTING_IDENTITY_INSTALLED" -eq 1; then
+      if test "$HOSTING_IDENTITY_PREEXISTING" -eq 1; then
+        sudo cp -p "$HOSTING_IDENTITY_BACKUP" "$HOSTING_IDENTITY_UNIT" || ok=0
+      else
+        sudo rm -f "$HOSTING_IDENTITY_UNIT" || ok=0
+      fi
+      sudo systemctl daemon-reload || ok=0
+    fi
     if test "$HOSTING_UNITS_PREEXISTING" -eq 1; then
       sudo systemctl enable --now awh-hosting-operator.timer >/dev/null 2>&1 || ok=0
       sudo systemctl is-active --quiet awh-hosting-operator.timer || ok=0
@@ -758,7 +770,7 @@ if test "$PROJECT_SOURCE_AUTHORITY" = 1; then sudo test -f "$RELEASE/hub/bin/mig
 if test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || test "$PLATFORM_HARDENING" = 1; then sudo test -f "$RELEASE/deploy/systemd/awh-source-drift.service"; sudo test -f "$RELEASE/deploy/systemd/awh-source-drift.timer"; fi
 if test "$IDENTITY_CONVERGENCE" = 1 || test "$PLATFORM_HARDENING" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-identity-convergence.php"; sudo test -f "$RELEASE/hub/migrations/021_identity_convergence.sql"; sudo test -f "$RELEASE/hub/src/HubIdentityConvergenceMigration.php"; sudo test -f "$RELEASE/hub/src/HubBaySchoolAuthorityConnector.php"; sudo test -f "$RELEASE/hub/src/HubSchoolIdentityService.php"; sudo test -s "$RELEASE/.awh-build/awh-source.zip"; fi
 if test "$PLATFORM_HARDENING" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-platform-hardening.php"; sudo test -f "$RELEASE/hub/bin/migrate-conversation-delegate.php"; sudo test -f "$RELEASE/hub/bin/migrate-platform-maintenance.php"; sudo test -f "$RELEASE/hub/bin/backup-export.php"; sudo test -f "$RELEASE/hub/migrations/022_platform_hardening.sql"; sudo test -f "$RELEASE/hub/migrations/023_conversation_delegate.sql"; sudo test -f "$RELEASE/hub/migrations/024_platform_maintenance.sql"; sudo test -f "$RELEASE/hub/src/HubPlatformHardeningMigration.php"; sudo test -f "$RELEASE/hub/src/HubConversationDelegateMigration.php"; sudo test -f "$RELEASE/hub/src/HubPlatformMaintenanceMigration.php"; sudo test -f "$RELEASE/hub/src/HubPlatformMaintenanceService.php"; sudo test -f "$RELEASE/hub/src/HubExecutionLifecycleService.php"; sudo test -f "$RELEASE/hub/src/HubDomainEventService.php"; sudo test -f "$RELEASE/config/ecosystem-platform-policy.json"; sudo test -f "$RELEASE/config/ecosystem-release-contract.json"; sudo test -f "$RELEASE/config/ecosystem-navigation-contract.json"; sudo test -f "$RELEASE/deploy/systemd/awh-build.slice"; sudo test -f "$RELEASE/deploy/awh-backup/awh-backup-export"; sudo test -f "$RELEASE/scripts/ops/run-release-qa-isolated.sh"; sudo test -s "$RELEASE/.awh-build/awh-source.zip"; fi
-if test "$ACCOUNT_HOSTING" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-account-hosting.php"; sudo test -f "$RELEASE/hub/migrations/016_account_hosting.sql"; sudo test -f "$RELEASE/hub/src/HubAccountHostingMigration.php"; sudo test -f "$RELEASE/hub/src/HubTrustPolicy.php"; sudo test -f "$RELEASE/hub/src/HubManagedHostingService.php"; sudo test -f "$RELEASE/hub/src/HubManagedHostingOperator.php"; sudo test -f "$RELEASE/hub/bin/awh-hosting-operator.php"; sudo test -f "$RELEASE/deploy/systemd/awh-hosting-operator.service"; sudo test -f "$RELEASE/deploy/systemd/awh-hosting-operator.timer"; sudo test -s "$RELEASE/.awh-build/awh-source.zip"; fi
+if test "$ACCOUNT_HOSTING" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-account-hosting.php"; sudo test -f "$RELEASE/hub/migrations/016_account_hosting.sql"; sudo test -f "$RELEASE/hub/src/HubAccountHostingMigration.php"; sudo test -f "$RELEASE/hub/src/HubTrustPolicy.php"; sudo test -f "$RELEASE/hub/src/HubManagedHostingService.php"; sudo test -f "$RELEASE/hub/src/HubManagedHostingOperator.php"; sudo test -f "$RELEASE/hub/bin/awh-hosting-operator.php"; sudo test -f "$RELEASE/deploy/awh-hosting/awh-hosting-identity.php"; sudo test -x "$RELEASE/deploy/awh-hosting/awh-useradd-proxy.php"; sudo test -f "$RELEASE/deploy/systemd/awh-hosting-operator.service"; sudo test -f "$RELEASE/deploy/systemd/awh-hosting-operator.timer"; sudo test -f "$RELEASE/deploy/systemd/awh-hosting-identity@.service"; sudo test -s "$RELEASE/.awh-build/awh-source.zip"; fi
 if test "$SELF_SUFFICIENT_AI" = 1; then sudo test -f "$RELEASE/hub/bin/migrate-self-sufficient-ai.php"; sudo test -f "$RELEASE/hub/migrations/015_self_sufficient_ai.sql"; sudo test -f "$RELEASE/hub/src/HubSelfSufficientAiMigration.php"; sudo test -f "$RELEASE/hub/src/HubAiGovernanceService.php"; sudo test -f "$RELEASE/hub/src/HubAiProviderAdapter.php"; sudo test -f "$RELEASE/hub/src/HubOpenAiProviderAdapter.php"; sudo test -f "$RELEASE/hub/src/HubDurableExecutionService.php"; sudo test -f "$RELEASE/hub/src/HubExecutionTriageService.php"; sudo test -f "$RELEASE/hub/src/HubStaffGovernorService.php"; sudo test -f "$RELEASE/hub/src/HubStaffOperationsService.php"; sudo test -f "$RELEASE/deploy/systemd/awh-native-executor.service"; sudo test -f "$RELEASE/deploy/systemd/awh-native-executor.timer"; sudo test -s "$RELEASE/.awh-build/awh-source.zip"; fi
 OWNER_AUTH_SETUP=$RELEASE/hub/bin/setup-owner-auth.php; OWNER_AUTH_RUNTIME=$RELEASE/hub/bin/verify-owner-auth-runtime.php; ASSISTANT_MIGRATION=$RELEASE/hub/bin/migrate-assistant-workstream.php; WORKSPACE_MIGRATION=$RELEASE/hub/bin/migrate-workspace-continuity.php; UNIFIED_MIGRATION=$RELEASE/hub/bin/migrate-unified-workspace.php; FINAL_MIGRATION=$RELEASE/hub/bin/migrate-final-product.php; FOUNDING_MIGRATION=$RELEASE/hub/bin/migrate-founding-memory.php; SELF_SERVICE_MIGRATION=$RELEASE/hub/bin/migrate-self-service.php; CENTRAL_PROJECT_MIGRATION=$RELEASE/hub/bin/migrate-central-project-authority.php; ANYWHERE_MIGRATION=$RELEASE/hub/bin/migrate-anywhere-execution.php; COST_AWARE_MIGRATION=$RELEASE/hub/bin/migrate-cost-aware-ai.php; AUTOMATION_MIGRATION=$RELEASE/hub/bin/migrate-automations.php; SELF_SUFFICIENT_MIGRATION=$RELEASE/hub/bin/migrate-self-sufficient-ai.php; ACCOUNT_HOSTING_MIGRATION=$RELEASE/hub/bin/migrate-account-hosting.php; CLOUD_FIRST_MIGRATION=$RELEASE/hub/bin/migrate-cloud-first.php; CONVERSATION_MIGRATION=$RELEASE/hub/bin/migrate-conversation-lifecycle.php; PROJECT_SOURCE_MIGRATION=$RELEASE/hub/bin/migrate-project-source-authority.php; VAULT_SOURCE_MIGRATION=$RELEASE/hub/bin/migrate-vault-source-authority.php; VAULT_SOURCE_RECONCILE=$RELEASE/hub/bin/reconcile-vault-source-authority.php; IDENTITY_MIGRATION=$RELEASE/hub/bin/migrate-identity-convergence.php; PLATFORM_MIGRATION=$RELEASE/hub/bin/migrate-platform-hardening.php; CONVERSATION_DELEGATE_MIGRATION=$RELEASE/hub/bin/migrate-conversation-delegate.php; PLATFORM_MAINTENANCE_MIGRATION=$RELEASE/hub/bin/migrate-platform-maintenance.php; OWNER_AUTH_TRANSFORM=$RELEASE/deploy/nginx/transform-owner-auth.php; CONTROL_ORIGIN_RENDER=$RELEASE/deploy/nginx/render-control-plane-include.php; CONTROL_INCLUDE=$RELEASE/deploy/nginx/awh-control-plane.conf; CONTROL_INCLUDE_TMP=/tmp/awh-control-include-$RELEASE_ID.conf
 stage CONTROL_ORIGIN_RENDER; sudo /usr/bin/php "$CONTROL_ORIGIN_RENDER" "$CONTROL_INCLUDE" "$CONTROL_INCLUDE_TMP" "$HOSTNAME" "$AWH_FPM_SOCKET" >/dev/null; sudo test -s "$CONTROL_INCLUDE_TMP"; sudo install -o awh-hub -g awh-hub -m 0644 "$CONTROL_INCLUDE_TMP" "$CONTROL_INCLUDE"; sudo rm -f "$CONTROL_INCLUDE_TMP"; CONTROL_INCLUDE_TMP=
@@ -1384,7 +1396,8 @@ if test "$CENTRAL_PROJECT_AUTHORITY" = 1 || test "$ANYWHERE_EXECUTION" = 1 || te
 fi
 if test "$PLATFORM_HARDENING" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$CLOUD_FIRST" = 1 || test "$ACCOUNT_HOSTING" = 1; then
   stage HOSTING_RUNTIME_READY
-  sudo test -x /usr/sbin/nginx; sudo test -x /usr/bin/curl; sudo test -x /usr/bin/openssl; sudo test -x /usr/bin/certbot
+  sudo test -x /usr/sbin/nginx; sudo test -x /usr/bin/curl; sudo test -x /usr/bin/openssl; sudo test -x /usr/bin/certbot; sudo test -x /usr/sbin/useradd
+  sudo test -f "$RELEASE/deploy/awh-hosting/awh-hosting-identity.php"; sudo test -x "$RELEASE/deploy/awh-hosting/awh-useradd-proxy.php"; sudo test -f "$RELEASE/deploy/systemd/awh-hosting-identity@.service"
   # AUTO_DOMAIN is only durable when Let's Encrypt renewal is actually scheduled.
   sudo systemctl cat certbot.timer >/dev/null
   sudo systemctl enable --now certbot.timer >/dev/null
@@ -1405,12 +1418,23 @@ if test "$PLATFORM_HARDENING" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || test "$
   done
   stage HOSTING_NAMESPACE_PATHS_READY
 fi
+if test "$PLATFORM_HARDENING" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$CLOUD_FIRST" = 1 || test "$ACCOUNT_HOSTING" = 1; then
+  if sudo test -f "$HOSTING_IDENTITY_UNIT"; then
+    HOSTING_IDENTITY_PREEXISTING=1
+    sudo test ! -e "$HOSTING_IDENTITY_BACKUP"
+    sudo cp -p "$HOSTING_IDENTITY_UNIT" "$HOSTING_IDENTITY_BACKUP"
+    sudo chown root:root "$HOSTING_IDENTITY_BACKUP"; sudo chmod 0600 "$HOSTING_IDENTITY_BACKUP"
+  fi
+  sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-hosting-identity@.service" "$HOSTING_IDENTITY_UNIT"
+  HOSTING_IDENTITY_INSTALLED=1
+fi
 if test "$PLATFORM_HARDENING" = 1 || test "$IDENTITY_CONVERGENCE" = 1 || test "$CONVERSATION_LIFECYCLE" = 1 || test "$PROJECT_SOURCE_AUTHORITY" = 1 || test "$CLOUD_FIRST" = 1; then
   test "$HOSTING_UNITS_PREEXISTING" -eq 1
   sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-hosting-operator.service" "$HOSTING_SERVICE_UNIT"
   sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-hosting-operator.timer" "$HOSTING_TIMER_UNIT"
   HOSTING_UNITS_INSTALLED=1
   sudo systemctl daemon-reload
+  sudo systemctl cat 'awh-hosting-identity@.service' >/dev/null
   sudo systemctl enable --now awh-hosting-operator.timer >/dev/null
   sudo systemctl is-enabled --quiet awh-hosting-operator.timer
   sudo systemctl is-active --quiet awh-hosting-operator.timer
@@ -1420,6 +1444,7 @@ elif test "$ACCOUNT_HOSTING" = 1; then
   sudo install -o root -g root -m 0644 "$RELEASE/deploy/systemd/awh-hosting-operator.timer" "$HOSTING_TIMER_UNIT"
   HOSTING_UNITS_INSTALLED=1
   sudo systemctl daemon-reload
+  sudo systemctl cat 'awh-hosting-identity@.service' >/dev/null
   sudo systemctl enable --now awh-hosting-operator.timer >/dev/null
   sudo systemctl is-enabled --quiet awh-hosting-operator.timer
   sudo systemctl is-active --quiet awh-hosting-operator.timer

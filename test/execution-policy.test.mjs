@@ -150,9 +150,13 @@ test('managed-product deploy provisions namespace roots before operator enable',
   assert.match(script,/case "\$path" in -\*\) continue ;; esac/);
   assert.doesNotMatch(script,/\/etc\/passwd\+\|\/etc\/shadow\+\|\/etc\/group\+\|\/etc\/gshadow\+\|\/etc\/subuid\+\|\/etc\/subgid\+\) continue/);
   const unit=await readFile(new URL('../deploy/systemd/awh-hosting-operator.service',import.meta.url),'utf8');
+  const identityUnit=await readFile(new URL('../deploy/systemd/awh-hosting-identity@.service',import.meta.url),'utf8');
   assert.match(unit,/ReadWritePaths=.*-\/var\/backups\/learnlab-releases/);
-  assert.match(unit,/ReadWritePaths=.*\/etc\/subuid .*\/etc\/subgid/);
+  assert.doesNotMatch(unit,/\/etc\/(?:\.pwd\.lock|passwd|shadow|group|gshadow|subuid|subgid)(?:[+\-])?/);
   assert.match(unit,/ReadOnlyPaths=-\/var\/lib\/awh-remote\/handoff/);
+  assert.match(identityUnit,/ProtectSystem=full/);
+  assert.match(identityUnit,/ReadWritePaths=\/etc/);
+  assert.match(identityUnit,/PrivateNetwork=true/);
   const provision=script.indexOf('PRODUCT_RELEASE_STORAGE_READY');
   const preflight=script.indexOf('HOSTING_NAMESPACE_PATHS_READY');
   const enable=script.indexOf('systemctl enable --now awh-hosting-operator.timer',preflight);
