@@ -117,6 +117,15 @@ assert(await exists(asarPath), 'packaged app.asar is missing');
 const listing = asar.listPackage(asarPath, { isPack: false });
 const normalizedListing = listing.map((entry) => entry.replaceAll('\\', '/'));
 const hasEntry = (entry) => normalizedListing.includes(entry) || normalizedListing.includes(`/${entry}`);
+const hasTree = (entry) => normalizedListing.some((value) => value === entry || value === `/${entry}` || value.startsWith(`${entry}/`) || value.startsWith(`/${entry}/`));
+for (const dependency of [
+  'node_modules/@electron/asar',
+  'node_modules/@modelcontextprotocol/server',
+  'node_modules/zod',
+  'node_modules/electron-squirrel-startup',
+]) {
+  assert(hasTree(dependency), `packaged runtime dependency is missing: ${dependency}`);
+}
 assert(hasEntry('dist/index.js'), 'packaged dist/index.js is missing');
 assert(hasEntry('dist/product.js'), 'packaged product runtime is missing');
 assert(hasEntry('dist/owner-protocol.js'), 'packaged owner protocol runtime is missing');

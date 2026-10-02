@@ -86,6 +86,39 @@ export interface DeviceRuntimePermissionStatus {
   error?: string;
 }
 
+function runtimeHealthCapabilities(value: unknown): Record<string, Record<string, unknown>> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('DEVICE_RUNTIME_PERMISSION_HEALTH_INVALID');
+  const result = (value as Record<string, unknown>).result;
+  if (!result || typeof result !== 'object' || Array.isArray(result) || (result as Record<string, unknown>).isError === true) throw new Error('DEVICE_RUNTIME_PERMISSION_HEALTH_INVALID');
+  const structured = (result as Record<string, unknown>).structuredContent;
+  if (!structured || typeof structured !== 'object' || Array.isArray(structured)) throw new Error('DEVICE_RUNTIME_PERMISSION_HEALTH_INVALID');
+  const payload = ((structured as Record<string, unknown>).value ?? structured) as Record<string, unknown>;
+  const capabilities = payload.capabilities;
+  if (!capabilities || typeof capabilities !== 'object' || Array.isArray(capabilities)) throw new Error('DEVICE_RUNTIME_PERMISSION_HEALTH_INVALID');
+  return capabilities as Record<string, Record<string, unknown>>;
+}
+
+export function deviceRuntimePermissionStatusFromHealth(value: unknown): DeviceRuntimePermissionStatus {
+  const capabilities = runtimeHealthCapabilities(value);
+  const input = capabilities.input_event;
+  const window = capabilities.window;
+  const vision = capabilities.vision;
+  const accessibility = input?.available === true && input?.ready === true && window?.available === true && window?.ready === true;
+  const screenCapture = vision?.available === true && vision?.ready === true ? 'granted' : vision?.available === true ? 'denied' : 'unavailable';
+  const ready = accessibility && screenCapture === 'granted';
+  return {
+    schemaVersion: 1,
+    runtime: 'AWH Device Runtime',
+    accessibility,
+    screenCapture,
+    microphone: 'not-required',
+    automation: 'not-required',
+    ready,
+    requested: false,
+    ...(ready ? {} : { error: 'DEVICE_RUNTIME_PERMISSION_NOT_READY' }),
+  };
+}
+
 async function sha256File(path: string): Promise<string> {
   const hash = createHash('sha256');
   await new Promise<void>((resolve, reject) => {
@@ -364,6 +397,14 @@ export async function deviceRuntimePermissionStatus(home = homedir(), requestPer
   if (process.platform !== 'darwin') {
     return { schemaVersion: 1, runtime: 'AWH Device Runtime', accessibility: true, screenCapture: 'granted', microphone: 'granted', automation: 'granted', ready: true, requested: requestPermissions };
   }
+  if (!requestPermissions) {
+    const client = await LnwjudDeviceClient.open(join(home, '.awh', 'device-runtime-smoke'));
+    try {
+      return deviceRuntimePermissionStatusFromHealth(await client.callTool('health', { operation: 'check_all' }, 20_000));
+    } finally {
+      client.close();
+    }
+  }
   const root = join(home, 'Library', 'Application Support', 'AWH', 'Engines', 'lnwjud');
   const current = join(root, 'current');
   let active = current;
@@ -376,7 +417,7 @@ export async function deviceRuntimePermissionStatus(home = homedir(), requestPer
   await mkdir(dataPath, { recursive: true, mode: 0o700 });
   const env: NodeJS.ProcessEnv = { ...process.env, LNWJUD_DATA_PATH: dataPath };
   delete env.ELECTRON_RUN_AS_NODE;
-  const result = await execFile(executable, [requestPermissions ? '--awh-permission-setup' : '--awh-permission-status'], active, requestPermissions ? 120_000 : 30_000, env);
+  const result = await execFile(executable, ['--awh-permission-setup'], active, 120_000, env);
   const line = result.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1);
   if (!line) throw new Error('DEVICE_RUNTIME_PERMISSION_STATUS_MISSING');
   let value: unknown;

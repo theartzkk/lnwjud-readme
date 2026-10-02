@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { deviceRuntimePermissionStatusFromHealth } from '../src/device-bootstrap.js';
 
 async function source(path: string): Promise<string> {
   return readFile(new URL('../' + path, import.meta.url), 'utf8');
@@ -31,6 +32,31 @@ test('production desktop is a thin AWH Agent bridge and management lives on web'
   assert.match(verifier, /must not include the historical desktop Control Panel/);
 });
 
+test('headless runtime health is the non-interactive macOS permission gate', () => {
+  const ready = deviceRuntimePermissionStatusFromHealth({
+    result: { structuredContent: { capabilities: {
+      input_event: { available: true, ready: true },
+      window: { available: true, ready: true },
+      vision: { available: true, ready: true },
+    } } },
+  });
+  assert.equal(ready.accessibility, true);
+  assert.equal(ready.screenCapture, 'granted');
+  assert.equal(ready.ready, true);
+  assert.equal(ready.requested, false);
+
+  const blocked = deviceRuntimePermissionStatusFromHealth({
+    result: { structuredContent: { capabilities: {
+      input_event: { available: true, ready: false, readinessReason: 'permission_denied' },
+      window: { available: true, ready: true },
+      vision: { available: true, ready: false, readinessReason: 'permission_denied' },
+    } } },
+  });
+  assert.equal(blocked.accessibility, false);
+  assert.equal(blocked.screenCapture, 'denied');
+  assert.equal(blocked.ready, false);
+});
+
 test('fresh device bootstrap provisions rebranded AWH runtime and pinned system MCP on macOS and Windows', async () => {
   const bootstrap = await source('src/device-bootstrap.ts');
   assert.match(bootstrap, /DEVICE_RUNTIME_RELEASE\.deviceEngine\.assets/);
@@ -55,6 +81,7 @@ test('fresh device bootstrap provisions rebranded AWH runtime and pinned system 
   assert.match(bootstrap, /const ready = accessibility === true && screenCapture === "granted"/);
   assert.match(bootstrap, /NSAppleEventsUsageDescription/);
   assert.match(bootstrap, /deviceRuntimePermissionStatus/);
+  assert.match(bootstrap, /client\.callTool\('health'.*check_all/s);
   assert.match(bootstrap, /getRawHeader/);
   assert.match(bootstrap, /ElectronAsarIntegrity/);
   assert.match(bootstrap, /logo-256x256\.png/);
