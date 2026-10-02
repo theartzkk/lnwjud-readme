@@ -525,6 +525,12 @@ final class HubOperatorBridgeService
         $capability=is_string($track['capability']??null)?(string)$track['capability']:'';
         $ownerApproval=($track['ownerApprovalRequired']??false)===true;
         if($capability==='')return ['state'=>'NOT_EVALUATED','capability'=>null,'executorId'=>null,'ownerApprovalRequired'=>$ownerApproval,'ownerActionRequiredNow'=>false];
+        if($capability==='bay.remote_update.install')return [
+            'state'=>'READY','capability'=>$capability,'executorId'=>'operator-bridge',
+            'executorKind'=>'VPS','version'=>'typed-bay-update-v1','observedAt'=>$at,'expiresAt'=>null,
+            'ownerApprovalRequired'=>$ownerApproval,'ownerActionRequiredNow'=>false,
+            'authorityMode'=>'BUILTIN_TYPED_OPERATOR_BRIDGE',
+        ];
         $table=$this->pdo->query("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='control_executor_capabilities'")->fetchColumn();
         if((int)$table!==1)return ['state'=>'NOT_EVALUATED','capability'=>$capability,'executorId'=>null,'ownerApprovalRequired'=>$ownerApproval,'ownerActionRequiredNow'=>false];
         $q=$this->pdo->prepare("SELECT executor_id,executor_kind,version,observed_at,expires_at FROM control_executor_capabilities WHERE capability=:capability AND (expires_at IS NULL OR datetime(expires_at)>datetime(:at)) ORDER BY observed_at DESC,executor_id LIMIT 1");
