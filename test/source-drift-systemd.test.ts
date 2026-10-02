@@ -58,8 +58,9 @@ test('project source authority ships a persistent least-privilege drift monitor'
   assert.match(remote, /production_ref_reconcile_live\(\)/);
   assert.match(remote, /live_manifest=\/var\/www\/awh-web\/current\/release\.json/);
   assert.match(remote, /control_manifest=\"\$PREVIOUS_TARGET\/dist-web\/release\.json\"/);
-  assert.match(remote, /merge-base --is-ancestor \"\$live_sha\" \"\$control_sha\"/);
+  assert.match(remote, /merge-base --is-ancestor \"\$live_sha\" \"\$RELEASE_COMMIT\"/);
   assert.match(remote, /merge-base --is-ancestor \"\$control_sha\" \"\$RELEASE_COMMIT\"/);
+  assert.doesNotMatch(remote, /merge-base --is-ancestor \"\$live_sha\" \"\$control_sha\"/);
   assert.match(remote, /test \"\$runtime_current\" = \"\$live_sha\" \|\| return 1/);
   assert.match(remote, /test \"\$platform_current\" = \"\$control_sha\" \|\| return 1/);
   assert.match(remote, /test \"\$legacy_current\" = \"\$live_sha\" \|\| return 1/);

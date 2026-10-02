@@ -504,7 +504,10 @@ production_ref_reconcile_live() {
   sudo test -f "$control_manifest" || return 1
   control_sha=$(sudo -n /usr/bin/php -r '$j=json_decode(file_get_contents($argv[1]),true,32,JSON_THROW_ON_ERROR);$s=strtolower((string)($j["sourceSha"]??""));if(!preg_match("/^[0-9a-f]{40}$/",$s))exit(2);echo $s;' "$control_manifest") || return 1
   git --git-dir="$repo" cat-file -e "$control_sha^{commit}" || return 1
-  git --git-dir="$repo" merge-base --is-ancestor "$live_sha" "$control_sha" || return 1
+  # Web runtime and Platform control are intentionally separate release tracks.
+  # They may diverge from one another, but both deployed lineages must be
+  # ancestors of the exact approved target before a converging Platform release.
+  git --git-dir="$repo" merge-base --is-ancestor "$live_sha" "$RELEASE_COMMIT" || return 1
   git --git-dir="$repo" merge-base --is-ancestor "$control_sha" "$RELEASE_COMMIT" || return 1
   if test "$control_sha" != "$live_sha"; then
     platform_current=$(git --git-dir="$repo" rev-parse refs/heads/platform/production 2>/dev/null || true)
