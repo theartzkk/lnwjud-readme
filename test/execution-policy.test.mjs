@@ -96,6 +96,7 @@ test('durable deploy retry evidence is isolated per release execution',async()=>
   assert.match(deploy,/REMOTE_RESULT=\/tmp\/awh-control-plane-\$RUN_ID\.result/);
   assert.match(deploy,/REMOTE_LOG=\/tmp\/awh-control-plane-\$RUN_ID\.log/);
   assert.match(deploy,/REMOTE_STAGE=\/tmp\/awh-control-plane-\$RELEASE_ID\.tar\.gz/);
+  assert.match(deploy,/config\/device-runtime-release\.json/);
 });
 
 test('QA mapping remains a technical runtime capability',async()=>{
