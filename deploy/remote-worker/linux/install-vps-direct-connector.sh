@@ -97,6 +97,8 @@ if ! command -v setfacl >/dev/null 2>&1; then
   apt-get update >/dev/null
   apt-get install -y --no-install-recommends acl >/dev/null
 fi
+id awh-hub >/dev/null 2>&1 || fail AWH_VPS_DIRECT_OPERATOR_IDENTITY_REQUIRED
+setfacl -m u:awh-hub:--x,g:awh-operator:--x,m::--x "$AGENT_HOME"
 [ -d /srv/awh-git ] || fail AWH_VPS_DIRECT_SOURCE_ROOT_MISSING
 [ "$(stat -c '%U:%G:%a' "$CANDIDATE_ROOT")" = "$AGENT_USER:$AGENT_USER:700" ] || fail AWH_VPS_DIRECT_CANDIDATE_ROOT_PERMISSIONS_INVALID
 setfacl -R -m "u:$AGENT_USER:rX" /srv/awh-git

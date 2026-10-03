@@ -50,6 +50,7 @@ systemctl show desktop-commander-vps.service -p Environment --value | grep -Fq "
 [ "$(stat -c '%U:%G:%a' "$CONNECTOR_TMP")" = "$AGENT_USER:awh-operator:2770" ] || fail AWH_VPS_DIRECT_TMPDIR_PERMISSIONS_INVALID
 [ "$(stat -c '%U:%G:%a' "$CANDIDATE_ROOT")" = "$AGENT_USER:$AGENT_USER:700" ] || fail AWH_VPS_DIRECT_CANDIDATE_ROOT_PERMISSIONS_INVALID
 runuser -u "$AGENT_USER" -- test -w "$CANDIDATE_ROOT" || fail AWH_VPS_DIRECT_CANDIDATE_ROOT_NOT_WRITABLE
+runuser -u awh-hub -- test -x "$AGENT_HOME" || fail AWH_VPS_DIRECT_OPERATOR_STAGE_PARENT_TRAVERSE_MISSING
 case " $(id -nG "$AGENT_USER") " in *' sudo '*|*' adm '*) fail AWH_VPS_DIRECT_PRIVILEGED_GROUP_FORBIDDEN;; esac
 [ "$(stat -c '%U:%G:%a' "$SESSION")" = "$AGENT_USER:$AGENT_USER:600" ] || fail AWH_VPS_DIRECT_SESSION_PERMISSIONS_INVALID
 [ -x "$NODE_BIN" ] || fail AWH_VPS_DIRECT_NODE_RUNTIME_REQUIRED

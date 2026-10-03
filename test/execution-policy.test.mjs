@@ -95,6 +95,8 @@ test('VPS direct connector exposes durable candidates but keeps canonical source
   assert.match(platformDeploy,/VPS_CONNECTOR_UNIT_BACKUP.*VPS_CONNECTOR_CONFIG_BACKUP/s);
   assert.match(install,/CONNECTOR_TMP=\$AGENT_HOME\/tmp/);
   assert.match(install,/install -d -m 2770 -o "\$AGENT_USER" -g awh-operator "\$CONNECTOR_TMP"/);
+  assert.match(install,/setfacl -m u:awh-hub:--x,g:awh-operator:--x,m::--x "\$AGENT_HOME"/);
+  assert.match(verify,/AWH_VPS_DIRECT_OPERATOR_STAGE_PARENT_TRAVERSE_MISSING/);
   assert.doesNotMatch(install,/install -d -m 0700[^\n]*"\$CONNECTOR_TMP"/);
   assert.match(install,/AWH_VPS_DIRECT_PACKAGE=REUSED/);
   assert.match(install,/AWH_VPS_DIRECT_PACKAGE_REUSE_REQUIRED/);
@@ -163,7 +165,8 @@ test('managed-product deploy provisions namespace roots before operator enable',
   assert.doesNotMatch(unit,/\/etc\/(?:\.pwd\.lock|passwd|shadow|group|gshadow|subuid|subgid)(?:[+\-])?/);
   assert.match(unit,/ReadOnlyPaths=-\/var\/lib\/awh-remote\/handoff/);
   assert.match(identityUnit,/ProtectSystem=full/);
-  assert.match(identityUnit,/ReadWritePaths=\/etc/);
+  assert.match(identityUnit,/BindPaths=\/etc:\/etc/);
+  assert.doesNotMatch(identityUnit,/ReadWritePaths=\/etc/);
   assert.match(identityUnit,/PrivateNetwork=true/);
   const provision=script.indexOf('PRODUCT_RELEASE_STORAGE_READY');
   const preflight=script.indexOf('HOSTING_NAMESPACE_PATHS_READY');
