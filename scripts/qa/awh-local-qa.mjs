@@ -596,8 +596,10 @@ async function main() {
     if (mode === 'fast') {
       await fastQaCheck();
     } else {
-      await scriptCheck('tests', 'test', 'unit and security test suite passed');
+      // Production-helper tests import compiled dist modules under plain Node.
+      // Build first so clean immutable release workspaces never depend on stale artifacts.
       await scriptCheck('build', 'build', 'production TypeScript build passed');
+      await scriptCheck('tests', 'test', 'unit and security test suite passed');
     }
     await finalUatShellCheck();
   } else {

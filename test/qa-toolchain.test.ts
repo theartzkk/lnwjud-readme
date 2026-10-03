@@ -60,6 +60,15 @@ test('fast QA defers exact-revision deploy contracts only while the candidate is
 });
 
 
+test('deep QA builds compiled runtime before tests that invoke production helpers', async () => {
+  const source = await readFile(new URL('../scripts/qa/awh-local-qa.mjs', import.meta.url), 'utf8');
+  const build = source.indexOf("await scriptCheck('build', 'build'");
+  const tests = source.indexOf("await scriptCheck('tests', 'test'");
+  assert.ok(build >= 0 && tests >= 0 && build < tests);
+  assert.match(source, /clean immutable release workspaces never depend on stale artifacts/);
+});
+
+
 test('local QA self-promotes to the bounded AWH Node runtime instead of failing on stale system Node', async () => {
   const source = await readFile(new URL('../scripts/qa/awh-local-qa.mjs', import.meta.url), 'utf8');
   assert.match(source, /AWH_NODE_RUNTIME/);
