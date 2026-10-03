@@ -75,6 +75,17 @@ test('desktop fallback fails closed when current manifest identity changes', asy
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
+test('desktop fallback fails closed when current web bundle identity changes', async () => {
+  const f = await fixture();
+  try {
+    await writeFile(join(f.releaseRoot, 'release.json'), JSON.stringify({ ...f.baseManifest, webBundleSha256: 'e'.repeat(64) }));
+    await assert.rejects(
+      prepareDesktopReuseFallbacks({ input: f.input, baseManifest: f.baseManifest, releaseSha, paths: [path], webRoot: f.webRoot, markerRoot: f.markerRoot }),
+      /Verified desktop recovery release is no longer current/,
+    );
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
 test('verified desktop artifact store object keeps remote reuse zero-copy', async () => {
   const f = await fixture();
   try {
