@@ -86,6 +86,8 @@ final class HubCoreReleaseService
         if(!preg_match('/^[0-9a-f]{40}$/',$sha))throw new HubCoreReleaseException('Release SHA is invalid','CORE_RELEASE_INVALID');
         $owner=$this->ownerMutation($token,$csrf,$now);
         $at=self::time($now??gmdate('c'));
+        $completed=$this->completedCurrentRelease($sha,(bool)$payload['cleanupTopology']);
+        if(is_array($completed))return $this->idempotentResponse($completed,$sha);
         $latest=$this->latestSourcePromotion();
         if(!is_array($latest)||!is_string($latest['sha']??null)||!hash_equals((string)$latest['sha'],$sha))
             throw new HubCoreReleaseException('Core release target is no longer canonical','CORE_RELEASE_TARGET_MOVED');
@@ -118,8 +120,6 @@ final class HubCoreReleaseService
             throw new HubCoreReleaseException('Another core release is already active','CORE_RELEASE_CONFLICT');
         }
 
-        $completed=$this->completedCurrentRelease($sha,(bool)$payload['cleanupTopology']);
-        if(is_array($completed))return $this->idempotentResponse($completed,$sha);
         $task=self::uuid();$execution=self::uuid();$approval=self::uuid();
         $notesJson=json_encode($deploymentNotes,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
         $notesSha=hash('sha256',$notesJson);
