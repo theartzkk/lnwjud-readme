@@ -157,6 +157,7 @@ def protected_projects():
         LEFT JOIN control_execution_envelopes x ON x.execution_id=e.execution_id
         WHERE t.state NOT IN ('COMPLETED','FAILED','CANCELLED')
           AND e.state NOT IN ('COMPLETED','FAILED','CANCELLED')
+          AND e.required_capability <> 'operator.project_mission'
           AND (
             e.state IN ('LEASED','RUNNING','WAITING_FOR_CAPABILITY')
             OR (x.execution_id IS NOT NULL AND x.state IN ('OPEN','WAITING','ACTIVE','CONFLICT'))

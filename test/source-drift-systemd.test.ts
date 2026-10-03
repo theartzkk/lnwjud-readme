@@ -157,6 +157,7 @@ test('VPS Platform storage safety is proactive, project-aware and durable', asyn
   assert.match(janitor, /row\["projectId"\]\s+in\s+fresh_active/);
   assert.match(janitor, /AWH_DURABLE_WORKTREE_ROOT.*\/var\/lib\/awh-remote\/worktrees/);
   assert.match(janitor, /protected_projects\(\)/);
+  assert.ok((janitor.match(/required_capability <> 'operator\.project_mission'/g)??[]).length>=2,'coordination-only Missions must not indefinitely pin merged durable worktrees');
   assert.match(janitor, /WAITING_FOR_CAPABILITY/);
   assert.match(janitor, /head_in_canonical_main/);
   assert.match(janitor, /DURABLE_KEEP_NEWEST/);
