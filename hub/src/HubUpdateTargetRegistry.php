@@ -302,6 +302,7 @@ final class HubUpdateTargetRegistry
             'config/ecosystem-release-contract.json',
             'hub/src/HubControlPlaneRouter.php',
             'hub/src/HubControlPlaneService.php',
+            'hub/src/HubDurableExecutionService.php',
             'hub/src/HubUpdateTargetRegistry.php',
             'web/control-plane-adapter.js',
             'web/updates.js',

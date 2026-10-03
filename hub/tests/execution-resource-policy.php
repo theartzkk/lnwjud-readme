@@ -34,6 +34,7 @@ ep(HubCapabilityRegistryService::mutationResourceIsGlobal('CANONICAL:DEPLOY:AWH'
 ep(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:SOURCE','CANONICAL:SOURCE')===true,'same canonical resource serializes');
 ep(HubCapabilityRegistryService::mutationResourcesConflict('CANONICAL:PROJECT','CANDIDATE')===true,'unknown canonical mutations fail closed');
 ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['config/execution-policy.json','hub/src/HubControlPlaneService.php','web/updates.js'])==='vps-platform','Platform-owned change plus shared Update Center integration stays on VPS Platform track');
+ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['config/execution-policy.json','hub/src/HubDurableExecutionService.php'])==='vps-platform','shared durable executor may carry a VPS Platform concurrency fix without creating a mixed-track release');
 ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['web/app.js','hub/src/HubControlPlaneService.php'])==='awh','AWH-owned change plus shared Update Center integration stays on AWH track');
 ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['config/execution-policy.json','web/app.js'])===null,'true mixed AWH and VPS Platform change-set is rejected');
 ep(HubUpdateTargetRegistry::releaseTrackForPaths('awh',['scripts/qa/test-singleflight.mjs','test/test-singleflight.test.mjs'])==='vps-platform','QA singleflight infrastructure is VPS Platform-owned');
