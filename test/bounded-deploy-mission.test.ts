@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -230,6 +231,41 @@ test('platform deploy preserves AWH runtime lineage and exposes pre-mutation fai
   assert.match(validator,/RUNTIME_REF_PRESERVED/);
   assert.match(validator,/ALLOWED_FAILURE_EXTRAS='PREPARE /);
   assert.match(service,/releaseTrack==='awh'.*!hash_equals\(\$runtime,\$sha\)/s);
+});
+
+test('AWH shared-repo release inherits only a verified current platform snapshot', async () => {
+  const service=await readFile('hub/src/HubCoreReleaseService.php','utf8');
+  assert.match(service,/sharedRepoDeploySnapshot/);
+  assert.match(service,/sourcePromotionChainConnects/);
+  assert.match(service,/releaseTrack!==\'awh\'/);
+  assert.match(service,/hash_equals\(\$main,\$platform\)/);
+  assert.match(service,/CANONICAL_SHARED_REPO_MAIN_VERIFIED/);
+  assert.match(service,/trackPromotionSha/);
+  assert.match(service,/isset\(\$seen\[\$cursor\]\)\|\|!isset\(\$byTarget\[\$cursor\]\)/);
+});
+
+test('AWH shared-repo release target is promoted to the current verified platform snapshot', async () => {
+  const root=await mkdtemp(join(tmpdir(),'awh-shared-release-'));
+  try{
+    await mkdir(join(root,'refs/heads/platform'),{recursive:true});
+    const a='1'.repeat(40),b='2'.repeat(40),c='3'.repeat(40),d='4'.repeat(40);
+    await writeFile(join(root,'refs/heads/main'),`${d}\n`);
+    await writeFile(join(root,'refs/heads/platform/production'),`${d}\n`);
+    const servicePath=join(process.cwd(),'hub/src/HubCoreReleaseService.php');
+    const php=`require ${JSON.stringify(servicePath)};
+$pdo=new PDO('sqlite::memory:');
+$pdo->exec("CREATE TABLE control_task_executions(project_id TEXT,required_capability TEXT,state TEXT,updated_at TEXT,execution_id TEXT,checkpoint_json TEXT)");
+$add=function($target,$base,$track,$at)use($pdo){$cp=['repository'=>'awh','targetSha'=>$target,'expectedMainSha'=>$base,'missionExecutionId'=>'11111111-1111-4111-8111-111111111111','bundleSha256'=>str_repeat('a',64),'releaseNotes'=>['releaseTrack'=>$track]];$q=$pdo->prepare('INSERT INTO control_task_executions VALUES(?,?,?,?,?,?)');$q->execute([HubCoreReleaseService::PROJECT_ID,'source.promote','COMPLETED',$at,uniqid(),json_encode($cp)]);};
+$add('${b}','${a}','awh','2026-01-01T00:00:01Z');$add('${c}','${b}','vps-platform','2026-01-01T00:00:02Z');$add('${d}','${c}','vps-platform','2026-01-01T00:00:03Z');
+$r=new ReflectionClass(HubCoreReleaseService::class);$o=$r->newInstanceWithoutConstructor();foreach(['pdo'=>$pdo,'releaseTrack'=>'awh'] as $k=>$v){$r->getProperty($k)->setValue($o,$v);}$m=$r->getMethod('latestSourcePromotion');$match=$m->invoke($o);file_put_contents(getenv('AWH_CORE_CANONICAL_GIT').'/refs/heads/platform/production','${c}\\n');$mismatch=$m->invoke($o);echo json_encode(['match'=>$match,'mismatch'=>$mismatch]);`;
+    const result=JSON.parse(execFileSync('php',['-r',php],{encoding:'utf8',env:{...process.env,AWH_CORE_CANONICAL_GIT:root}}));
+    assert.equal(result.match.sha,d);
+    assert.equal(result.match.trackPromotionSha,b);
+    assert.equal(result.match.authority,'CANONICAL_SHARED_REPO_MAIN_VERIFIED');
+    assert.equal(result.mismatch.sha,b);
+    assert.equal(result.mismatch.trackPromotionSha,undefined);
+    assert.equal(result.mismatch.authority,'SOURCE_PROMOTION_AUDIT');
+  }finally{await rm(root,{recursive:true,force:true});}
 });
 
 test('platform connector helper logs stay out of the strict typed deploy stream', async () => {

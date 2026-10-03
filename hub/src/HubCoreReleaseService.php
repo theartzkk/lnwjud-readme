@@ -365,13 +365,48 @@ final class HubCoreReleaseService
         if(is_array($audit)){
             $main=$this->canonicalMainSha();
             if(is_string($main)&&hash_equals((string)$audit['sha'],$main))$audit['authority']='CANONICAL_GIT_MAIN_VERIFIED';
-            return $audit;
+            return $this->sharedRepoDeploySnapshot($audit);
         }
         if($this->releaseTrack!=='awh')return null;
         $main=$this->canonicalMainSha();
         $platformProduction=$this->canonicalRefSha('platform/production');
         if(is_string($main)&&is_string($platformProduction)&&hash_equals($main,$platformProduction))return null;
         return is_string($main)?['sha'=>$main,'previousSha'=>null,'authority'=>'LEGACY_CANONICAL_GIT_MAIN','releaseTrack'=>'awh','observedAt'=>null]:null;
+    }
+
+    private function sharedRepoDeploySnapshot(array $audit): array
+    {
+        if($this->releaseTrack!=='awh')return $audit;
+        $trackSha=strtolower((string)($audit['sha']??''));
+        $main=$this->canonicalMainSha();$platform=$this->canonicalRefSha('platform/production');
+        if(preg_match('/^[0-9a-f]{40}$/',$trackSha)!==1||!is_string($main)||!is_string($platform))return $audit;
+        if(hash_equals($trackSha,$main)||!hash_equals($main,$platform))return $audit;
+        if(!$this->sourcePromotionChainConnects($main,$trackSha))return $audit;
+        $audit['trackPromotionSha']=$trackSha;
+        $audit['sha']=$main;
+        $audit['authority']='CANONICAL_SHARED_REPO_MAIN_VERIFIED';
+        return $audit;
+    }
+
+    private function sourcePromotionChainConnects(string $target,string $ancestor): bool
+    {
+        if(hash_equals($target,$ancestor))return true;
+        $q=$this->pdo->prepare("SELECT checkpoint_json FROM control_task_executions WHERE project_id=:project AND required_capability='source.promote' AND state='COMPLETED' ORDER BY updated_at DESC,execution_id DESC LIMIT ".self::SOURCE_PROMOTION_CHAIN_LIMIT);
+        $q->execute(['project'=>self::PROJECT_ID]);$byTarget=[];
+        foreach($q->fetchAll() as $row){
+            try{$checkpoint=json_decode((string)$row['checkpoint_json'],true,16,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}
+            if(!is_array($checkpoint)||($checkpoint['repository']??null)!=='awh')continue;
+            $next=strtolower((string)($checkpoint['targetSha']??''));$base=strtolower((string)($checkpoint['expectedMainSha']??''));
+            if(preg_match('/^[0-9a-f]{40}$/',$next)!==1||preg_match('/^[0-9a-f]{40}$/',$base)!==1||isset($byTarget[$next]))continue;
+            $byTarget[$next]=$base;
+        }
+        $cursor=$target;$seen=[];
+        for($i=0;$i<self::SOURCE_PROMOTION_CHAIN_LIMIT;$i++){
+            if(hash_equals($cursor,$ancestor))return true;
+            if(isset($seen[$cursor])||!isset($byTarget[$cursor]))return false;
+            $seen[$cursor]=true;$cursor=(string)$byTarget[$cursor];
+        }
+        return false;
     }
 
     private function canonicalMainSha(): ?string
