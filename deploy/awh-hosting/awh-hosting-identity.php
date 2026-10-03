@@ -22,19 +22,30 @@ try{
         }
         fwrite(STDOUT,"HOSTING_IDENTITY=EXISTING\n");exit(0);
     }
-    $command=['/usr/sbin/useradd','--system','--no-log-init','--no-create-home','--home-dir',$home,'--shell','/usr/sbin/nologin','--user-group',$user];
-    $pipes=[];
-    $process=@proc_open($command,[0=>['file','/dev/null','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes,null,['PATH'=>'/usr/sbin:/usr/bin:/sbin:/bin'],['bypass_shell'=>true]);
-    if(!is_resource($process)){fwrite(STDERR,"HOSTING_IDENTITY_USERADD_UNAVAILABLE\n");exit(5);}
-    foreach([1,2] as $index)if(is_resource($pipes[$index]??null))stream_get_contents($pipes[$index],65537);
-    foreach($pipes as $pipe)if(is_resource($pipe))fclose($pipe);
-    $code=proc_close($process);
-    if($code!==0){fwrite(STDERR,"HOSTING_IDENTITY_USERADD_FAILED\n");exit(6);}
+    $run=static function(array $command): ?int {
+        $pipes=[];
+        $process=@proc_open($command,[0=>['file','/dev/null','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes,null,['PATH'=>'/usr/sbin:/usr/bin:/sbin:/bin'],['bypass_shell'=>true]);
+        if(!is_resource($process))return null;
+        foreach([1,2] as $index)if(is_resource($pipes[$index]??null))stream_get_contents($pipes[$index],65537);
+        foreach($pipes as $pipe)if(is_resource($pipe))fclose($pipe);
+        return proc_close($process);
+    };
+    $group=function_exists('posix_getgrnam')?posix_getgrnam($user):false;
+    if(!is_array($group)){
+        $groupCode=$run(['/usr/sbin/groupadd','--system',$user]);
+        if($groupCode===null){fwrite(STDERR,"HOSTING_IDENTITY_GROUPADD_UNAVAILABLE\n");exit(5);}
+        $group=function_exists('posix_getgrnam')?posix_getgrnam($user):false;
+        if($groupCode!==0&&!is_array($group)){fwrite(STDERR,"HOSTING_IDENTITY_GROUPADD_FAILED\n");exit(6);}
+        if(!is_array($group)){fwrite(STDERR,"HOSTING_IDENTITY_GROUP_VERIFY_FAILED\n");exit(7);}
+    }
+    $userCode=$run(['/usr/sbin/useradd','--system','--no-log-init','--no-create-home','--home-dir',$home,'--shell','/usr/sbin/nologin','--gid',$user,'--no-user-group',$user]);
+    if($userCode===null){fwrite(STDERR,"HOSTING_IDENTITY_USERADD_UNAVAILABLE\n");exit(8);}
+    if($userCode!==0){fwrite(STDERR,"HOSTING_IDENTITY_USERADD_FAILED\n");exit(9);}
     $created=function_exists('posix_getpwnam')?posix_getpwnam($user):false;
-    if(!is_array($created)||(string)($created['dir']??'')!==$home||(string)($created['shell']??'')!=='/usr/sbin/nologin'){
-        fwrite(STDERR,"HOSTING_IDENTITY_VERIFY_FAILED\n");exit(7);
+    if(!is_array($created)||(string)($created['dir']??'')!==$home||(string)($created['shell']??'')!=='/usr/sbin/nologin'||(int)($created['gid']??-1)!==(int)($group['gid']??-2)){
+        fwrite(STDERR,"HOSTING_IDENTITY_VERIFY_FAILED\n");exit(10);
     }
     fwrite(STDOUT,"HOSTING_IDENTITY=CREATED\n");
 }catch(Throwable){
-    fwrite(STDERR,"HOSTING_IDENTITY_FAILED\n");exit(8);
+    fwrite(STDERR,"HOSTING_IDENTITY_FAILED\n");exit(11);
 }

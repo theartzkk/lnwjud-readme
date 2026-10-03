@@ -2,6 +2,7 @@
 Description=AWH managed hosting identity provisioner %i
 ConditionPathExists=/var/lib/awh-hub/awh.sqlite
 ConditionPathExists=/usr/sbin/useradd
+ConditionPathExists=/usr/sbin/groupadd
 
 [Service]
 Type=oneshot
