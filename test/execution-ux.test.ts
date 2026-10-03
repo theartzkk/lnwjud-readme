@@ -47,21 +47,27 @@ test('journey is deterministic from accepted through approval and completion', (
   assert.equal(done.journey.every((step: { state: string }) => step.state === 'done'), true);
 });
 
-test('coordination and external waits are distinct from running execution progress', () => {
+test('coordination and external waits stay distinct without leaking internal workflow language', () => {
   const coordinating = ux.executionStatus({ state: 'COORDINATING', progress: 0 });
-  assert.equal(coordinating.title, 'กำลังประสานงาน');
+  assert.equal(coordinating.title, 'กำลังทำงานต่อ');
   assert.equal(coordinating.stage, 'preparing');
-  assert.match(coordinating.detail, /execution เดิม/);
+  assert.match(coordinating.detail, /ทำต่อจากจุดเดิม/);
 
   const external = ux.executionStatus({ state: 'WAITING_EXTERNAL', progress: 0 });
   assert.equal(external.title, 'รอระบบภายนอก');
   assert.equal(external.needsHumanAction, false);
-  assert.match(external.detail, /checkpoint/);
+  assert.match(external.detail, /ทำต่ออัตโนมัติ/);
 
   const physical = ux.executionStatus({ state: 'WAITING_PHYSICAL_UAT', progress: 0 });
   assert.equal(physical.title, 'รอทดสอบอุปกรณ์จริง');
   assert.equal(physical.needsHumanAction, true);
-  assert.match(physical.detail, /ไม่สร้าง candidate/);
+  assert.match(physical.detail, /เก็บงานเดิมไว้/);
+
+  const verifying = ux.executionStatus({ state: 'VERIFYING', progress: 99, lastEvent: { message: 'กำลังยืนยัน execution และ authority ก่อนปิดงาน' } });
+  const recovering = ux.executionStatus({ state: 'RECOVERING', progress: 20, lastEvent: { message: 'กำลังกู้ execution จาก heartbeat/checkpoint เดิม' } });
+  for (const status of [coordinating, external, physical, verifying, recovering]) {
+    assert.doesNotMatch(status.detail, /execution|authority|heartbeat|checkpoint|candidate|implementation/i);
+  }
 });
 
 test('live Action Graph projection replaces generic progress without exposing capabilities', () => {

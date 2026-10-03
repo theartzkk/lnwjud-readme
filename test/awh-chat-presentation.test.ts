@@ -34,8 +34,12 @@ test("Chat shell exposes modern assistant UX without raw tool logs by default", 
     read("web/chat-island/thread.tsx"), read("web/chat-island/chat.css"), read("web/index.html"),
   ]);
   for (const token of ["ThreadPrimitive", "ComposerPrimitive", "MarkdownTextPrimitive", "TaskCard",
-    "ดูรายละเอียดเครื่องมือ", "อนุญาตครั้งนี้", "Artifact Panel",
-    "awh.chat.draft.v1", "searchConversations", "แยกเป็นแชทใหม่"]) assert.ok(thread.includes(token), token);
+    "รายละเอียดงาน", "ดูรายละเอียดเครื่องมือ", "อนุญาตครั้งนี้", "Artifact Panel",
+    "awh.chat.draft.v1", "searchConversations", "แยกเป็นแชทใหม่", "awh-message-more"]) assert.ok(thread.includes(token), token);
+  assert.doesNotMatch(thread, /task\.progress > 0 && task\.progress < 100/);
+  assert.doesNotMatch(thread, /<progress/);
+  assert.match(thread, /task\?\.state === "FAILED"/);
+  assert.doesNotMatch(thread, /AWH Server|🖥|snapshot\.project && <span>/);
   assert.match(html, /id="awh-chat-root"[^>]*hidden/);
   assert.match(html, /class="workstream awh-chat-fallback"/);
   assert.match(html, /id="goal-form" class="composer awh-chat-fallback"/);

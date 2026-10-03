@@ -1531,6 +1531,21 @@ import {
   };
   const lifecycleLabel = (lifecycle) => ({ production: 'Production', staging: 'Staging', pilot: 'Pilot', prototype: 'ต้นแบบ', internal: 'ภายใน', active: 'ใช้งาน', project: 'โปรเจกต์' })[lifecycle] || 'โปรเจกต์';
 
+  function liveServiceState(service) {
+    if (!service || typeof service !== 'object') return 'checking';
+    if (service.ok === true) return 'ready';
+    const stateValue = safeText(service.state).toLowerCase();
+    const fieldState = safeText(service.field_state).toUpperCase();
+    const authenticatedHealth = safeText(service.authenticated_health).toUpperCase();
+    const hardFailure = service.reachable === false
+      || ['failed', 'down', 'unreachable', 'error', 'critical', 'degraded'].includes(stateValue)
+      || ['FAILED', 'DOWN', 'ERROR', 'CRITICAL', 'DEGRADED'].includes(fieldState)
+      || ['FAILED', 'DOWN', 'ERROR', 'CRITICAL', 'DEGRADED'].includes(authenticatedHealth);
+    if (hardFailure) return 'attention';
+    if (service.reachable === true || stateValue === 'reachable' || fieldState === 'UNKNOWN' || authenticatedHealth === 'UNKNOWN') return 'checking';
+    return 'checking';
+  }
+
   async function renderEcosystemPortfolio() {
     const grid = $('ecosystem-project-grid');
     const featured = $('ecosystem-featured-grid');
@@ -1562,6 +1577,7 @@ import {
       const article = document.createElement('article');
       const lifecycle = projectLifecycle(project);
       article.className = (prominent ? 'ecosystem-project-card featured owner-shortcut-card' : 'ecosystem-project-card') + ' product-' + safeText(project.id,'project').replace(/[^a-z0-9-]/gi,'-') + ' lifecycle-' + lifecycle;
+      article.dataset.projectId = safeText(project.id, 'project');
       const visual = PROJECT_VISUALS[project.id] || null;
       const bannerPath = lifecycle === 'prototype' || lifecycle === 'internal' ? null : visual?.banner;
       if (bannerPath) {
@@ -1584,7 +1600,14 @@ import {
       const badges = document.createElement('span'); badges.className = 'ecosystem-project-badges';
       const status = document.createElement('span'); status.className = 'ecosystem-project-status lifecycle-badge lifecycle-' + lifecycle; status.textContent = lifecycleLabel(lifecycle); badges.append(status);
       const serviceId = liveProjectService(project); const live = serviceId ? liveById.get(serviceId) : null;
-      if (live) { const health=document.createElement('span'); health.className='ecosystem-project-health ' + (live.ok===true?'ready':'attention'); health.textContent=live.ok===true?'● ปกติ':'● ต้องตรวจ'; badges.append(health); article.dataset.liveState=live.ok===true?'ready':'attention'; }
+      if (live) {
+        const liveState = liveServiceState(live);
+        const health=document.createElement('span');
+        health.className='ecosystem-project-health ' + liveState;
+        health.textContent=liveState==='ready'?'● ปกติ':liveState==='attention'?'● ต้องจัดการ':'● ออนไลน์';
+        badges.append(health);
+        article.dataset.liveState=liveState;
+      }
       head.append(badges);
       const title = document.createElement('h3'); title.textContent = safeText(project.name, 'โปรเจกต์');
       const type = document.createElement('small'); const liveDetail = safeText(live?.version); type.textContent = [safeText(project.type), liveDetail || (live ? 'ตรวจสถานะสด' : safeText(project.stage))].filter(Boolean).join(' · ');
@@ -1604,15 +1627,42 @@ import {
     for (const project of visibleProjects) grid.append(card(project,false));
     if (!visibleProjects.length) { const empty=document.createElement('div'); empty.className='ecosystem-empty'; empty.textContent = directoryProjects.length && query ? `ไม่พบระบบหรือบริการที่ตรงกับ “${safeText($('ecosystem-search-input')?.value)}”` : 'ยังโหลดรายการระบบจาก BAY Ecosystem ไม่ได้ โปรดลองอีกครั้ง'; grid.append(empty); }
     const set=(id,value)=>{const node=$(id);if(node)node.textContent=String(value)};
-    const readyServices = liveServices.filter((item)=>item?.ok===true);
-    const attentionServices = liveServices.filter((item)=>item?.ok!==true);
+    const criticalServices = liveServices.filter((item)=>item?.critical!==false);
+    const readyServices = criticalServices.filter((item)=>liveServiceState(item)==='ready');
+    const checkingServices = criticalServices.filter((item)=>liveServiceState(item)==='checking');
+    const attentionServices = criticalServices.filter((item)=>liveServiceState(item)==='attention');
+    const responsiveServices = criticalServices.filter((item)=>item?.ok===true||item?.reachable===true);
     set('ecosystem-project-count', directoryProjects.length);
-    set('ecosystem-active-count', liveServices.length ? readyServices.length : projects.filter((item)=>item?.status==='active').length);
+    set('ecosystem-active-count', liveServices.length ? responsiveServices.length : projects.filter((item)=>item?.status==='active').length);
     set('ecosystem-pilot-count', liveServices.length ? attentionServices.length : projects.filter((item)=>item?.status==='pilot').length);
     set('ecosystem-release-count', releases.length);
     const liveList=$('ecosystem-live-list'); const liveOverall=$('ecosystem-live-overall');
-    if(liveList){ liveList.replaceChildren(); for(const service of liveServices.filter((item)=>item?.critical!==false).slice(0,4)){ const row=document.createElement('div'); row.className=`owner-live-row ${service?.ok===true?'ready':'attention'}`; const dot=document.createElement('i'); const copy=document.createElement('span'); const name=document.createElement('strong'); name.textContent=safeText(service?.name,'ระบบ'); const detail=document.createElement('small'); detail.textContent=service?.ok===true?'พร้อมใช้งาน':safeText(service?.detail,'ต้องตรวจสอบ'); copy.append(name,detail); row.append(dot,copy); liveList.append(row); } if(!liveServices.length){ const p=document.createElement('p'); p.textContent='ยังอ่านสถานะสดไม่ได้ เปิดศูนย์ดูแลระบบเพื่อตรวจอีกครั้ง'; liveList.append(p); } }
-    if(liveOverall){ const healthy=liveServices.length>0&&attentionServices.length===0; liveOverall.className=`owner-live-overall ${healthy?'ready':liveServices.length?'attention':'checking'}`; liveOverall.textContent=healthy?'ทุกระบบปกติ':liveServices.length?`${attentionServices.length} จุดต้องดู`:'กำลังตรวจ…'; }
+    if(liveList){
+      liveList.replaceChildren();
+      for(const service of criticalServices.slice(0,4)){
+        const liveState=liveServiceState(service);
+        const row=document.createElement('div'); row.className=`owner-live-row ${liveState}`;
+        const dot=document.createElement('i'); const copy=document.createElement('span');
+        const name=document.createElement('strong'); name.textContent=safeText(service?.name,'ระบบ');
+        const detail=document.createElement('small');
+        detail.textContent=liveState==='ready'
+          ? 'พร้อมใช้งาน'
+          : liveState==='attention'
+            ? safeText(service?.detail,'ต้องตรวจสอบ')
+            : service?.reachable===true ? 'ออนไลน์ · กำลังยืนยันการใช้งานภายใน' : 'กำลังยืนยันสถานะ';
+        copy.append(name,detail); row.append(dot,copy); liveList.append(row);
+      }
+      if(!liveServices.length){ const p=document.createElement('p'); p.textContent='กำลังยืนยันสถานะระบบ'; liveList.append(p); }
+    }
+    if(liveOverall){
+      const allReady=criticalServices.length>0&&readyServices.length===criticalServices.length;
+      liveOverall.className=`owner-live-overall ${attentionServices.length?'attention':allReady?'ready':'checking'}`;
+      liveOverall.textContent=attentionServices.length
+        ? `${attentionServices.length} เรื่องต้องจัดการ`
+        : allReady
+          ? 'ทุกระบบปกติ'
+          : checkingServices.length ? `ออนไลน์ · กำลังยืนยัน ${checkingServices.length} ระบบ` : 'กำลังตรวจ…';
+    }
     const ownerTools=$('ecosystem-owner-tools'); if(ownerTools) ownerTools.hidden=state.control?.role!=='OWNER';
     };
     paint();

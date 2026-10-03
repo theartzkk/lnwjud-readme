@@ -103,20 +103,20 @@ export function executionStatus(task, workers = []) {
   let title = 'AWH รับงานแล้ว';
   let detail = 'กำลังจัดเส้นทางให้เหมาะกับงานนี้';
   if (state === 'WAITING_FOR_WORKER') detail = 'AWH กำลังเตรียมขั้นตอนถัดไปและจะทำต่ออัตโนมัติเมื่อพร้อม';
-  else if (state === 'COORDINATING') { title = 'กำลังประสานงาน'; detail = 'มีงานเดิมของโปรเจกต์นี้อยู่แล้ว AWH จะทำต่อใน execution เดิมโดยไม่สร้างงานซ้ำ'; }
-  else if (state === 'WAITING_EXTERNAL') { title = 'รอระบบภายนอก'; detail = 'AWH เก็บ checkpoint ไว้แล้วและจะทำต่อจากจุดเดิมเมื่อ dependency พร้อม'; }
-  else if (state === 'WAITING_PHYSICAL_UAT') { title = 'รอทดสอบอุปกรณ์จริง'; detail = 'ต้องใช้การทดสอบกับอุปกรณ์จริงก่อนปิดงาน โดยระบบจะไม่สร้าง candidate หรือเริ่ม implementation ซ้ำระหว่างรอ'; }
+  else if (state === 'COORDINATING') { title = 'กำลังทำงานต่อ'; detail = 'AWH พบงานเดิมของโปรเจกต์นี้และกำลังทำต่อจากจุดเดิมโดยไม่เริ่มซ้ำ'; }
+  else if (state === 'WAITING_EXTERNAL') { title = 'รอระบบภายนอก'; detail = 'AWH เก็บจุดล่าสุดไว้แล้วและจะทำต่ออัตโนมัติเมื่อระบบที่เกี่ยวข้องพร้อม'; }
+  else if (state === 'WAITING_PHYSICAL_UAT') { title = 'รอทดสอบอุปกรณ์จริง'; detail = 'ต้องทดสอบกับอุปกรณ์จริงก่อนสรุปผล AWH จะเก็บงานเดิมไว้และไม่เริ่มซ้ำระหว่างรอ'; }
   else if (state === 'PREPARING') { title = 'กำลังวิเคราะห์'; detail = `${actor} กำลังรวบรวมข้อมูลที่เกี่ยวข้องและเลือกวิธีทำที่เหมาะสม`; }
   else if (state === 'RUNNING') { title = 'กำลังทำ'; detail = `${actor} กำลังดำเนินงาน`; }
   else if (state === 'QA') { title = 'กำลังตรวจคุณภาพ'; detail = 'AWH กำลังตรวจผลลัพธ์ก่อนส่งกลับ'; }
   else if (state === 'WAITING_FOR_APPROVAL') { title = 'รอการอนุมัติ'; detail = 'มีการเปลี่ยนแปลงสำคัญที่ต้องยืนยันก่อนดำเนินการต่อ'; }
-  else if (state === 'VERIFYING') { title = 'กำลังยืนยันผลลัพธ์'; detail = eventMessage || 'AWH กำลังยืนยัน execution, authority และงานต่อเนื่องก่อนประกาศว่าเสร็จ'; }
-  else if (state === 'RECOVERING') { title = 'กำลังทำต่อจากจุดเดิม'; detail = eventMessage || 'AWH กำลังกู้ execution จาก heartbeat/checkpoint เดิมโดยไม่เริ่มงานใหม่'; }
+  else if (state === 'VERIFYING') { title = 'กำลังตรวจให้แน่ใจ'; detail = 'AWH กำลังตรวจผลลัพธ์ให้แน่ใจก่อนส่งกลับ'; }
+  else if (state === 'RECOVERING') { title = 'กำลังทำต่อจากจุดล่าสุด'; detail = 'AWH กำลังทำต่อจากจุดล่าสุดที่บันทึกไว้โดยไม่เริ่มงานใหม่'; }
   else if (state === 'COMPLETED') { title = 'พร้อมใช้'; detail = result || 'งานเสร็จและผลลัพธ์พร้อมใช้งานแล้ว'; }
   else if (state === 'FAILED') { title = 'ทำไม่สำเร็จ'; detail = failure || result || 'งานหยุดแล้วและยังไม่ได้ทำต่ออัตโนมัติ คุณสามารถเปิดรายละเอียดหรือลองทำต่อได้'; }
   else if (state === 'CANCELLED') { title = 'ยกเลิกแล้ว'; detail = 'งานนี้ถูกยกเลิกแล้ว'; }
 
-  const eventLooksInternal = eventMessage ? /(?:worker|device|capability|executor|VPS|Codex|อุปกรณ์|เครื่องมือ|เซิร์ฟเวอร์|server)/iu.test(eventMessage) : false;
+  const eventLooksInternal = eventMessage ? /(?:worker|device|capability|executor|execution|authority|heartbeat|checkpoint|mission|mutation|release[ _-]?track|VPS|Codex|อุปกรณ์|เครื่องมือ|เซิร์ฟเวอร์|server)/iu.test(eventMessage) : false;
   if (eventMessage && /[ก-๙]/u.test(eventMessage) && !eventLooksInternal && !TERMINAL.has(state)) detail = eventMessage;
 
   return {

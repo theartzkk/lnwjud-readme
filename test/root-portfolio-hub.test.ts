@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import vm from 'node:vm';
 
 const read = (path: string) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -90,4 +91,29 @@ test('authenticated root is an AWH cockpit with live readiness and role-aware na
   const ownerNav = html.match(/<nav id="owner-global-nav"[\s\S]*?<\/nav>/)?.[0] ?? '';
   assert.doesNotMatch(ownerNav, /\/bay\/apps\.html/);
   assert.match(html, /<nav class="global-nav"[\s\S]*?href="\/bay\/apps\.html"/);
+  assert.match(html, /<span>ออนไลน์<\/span><strong id="ecosystem-active-count">/);
+  assert.match(html, /<span>ต้องจัดการ<\/span><strong id="ecosystem-pilot-count">/);
+  assert.match(html, /<span>ไปต่อ<\/span><h2 id="owner-quick-title">เริ่มงาน<\/h2>/);
+  assert.doesNotMatch(html, /id="ecosystem-owner-tools"|class="owner-golden-footer"/);
+});
+
+test('owner health keeps reachable unknown services neutral and only flags explicit failures', async () => {
+  const [app, ownerCss] = await Promise.all([read('web/app.js'), read('web/owner-center.css')]);
+  const start = app.indexOf('  function liveServiceState(');
+  const end = app.indexOf('  async function renderEcosystemPortfolio()', start);
+  assert.ok(start > 0 && end > start);
+  const context = vm.createContext({
+    safeText: (value: unknown, fallback = '') => typeof value === 'string' ? value : fallback,
+  });
+  vm.runInContext(app.slice(start, end), context);
+  context.service = { ok: false, reachable: true, state: 'reachable', authenticated_health: 'UNKNOWN', field_state: 'UNKNOWN' };
+  assert.equal(vm.runInContext('liveServiceState(service)', context), 'checking');
+  context.service = { ok: true, reachable: true, state: 'healthy', authenticated_health: 'HEALTHY', field_state: 'READY' };
+  assert.equal(vm.runInContext('liveServiceState(service)', context), 'ready');
+  context.service = { ok: false, reachable: false, state: 'unreachable', authenticated_health: 'UNKNOWN', field_state: 'UNKNOWN' };
+  assert.equal(vm.runInContext('liveServiceState(service)', context), 'attention');
+  assert.match(app, /ออนไลน์ · กำลังยืนยันการใช้งานภายใน/);
+  assert.match(app, /เรื่องต้องจัดการ/);
+  assert.match(app, /article\.dataset\.projectId = safeText\(project\.id, 'project'\)/);
+  assert.match(ownerCss, /\.owner-all-systems\{align-self:start;/);
 });

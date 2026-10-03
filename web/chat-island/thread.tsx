@@ -28,19 +28,12 @@ function TaskCard({ task, approvals = [], artifacts = [] }: {
   const bridge = currentBridge();
   const pendingApproval = approvals.find((item) => item?.status === "PENDING");
   const active = !TERMINAL.has(task.state);
+  const hasDetails = task.journey.length > 0 || task.tools.length > 0;
   return <section className={"awh-task-card " + (task.state === "FAILED" ? "is-failed" : active ? "is-active" : "is-done")}>
     <div className="awh-task-card-head">
       <span className="awh-task-status-dot" aria-hidden="true" />
       <div><strong>{task.title || "AWH"}</strong><small>{task.detail || task.goal}</small></div>
-      {task.progress > 0 && task.progress < 100 && <b>{Math.round(task.progress)}%</b>}
     </div>
-    {task.progress > 0 && task.progress < 100 && <progress max={100} value={task.progress} />}
-    {task.journey.length > 0 && <ol className="awh-task-steps">
-      {task.journey.slice(0, 5).map((step, index) => <li key={index} data-state={step.state}>
-        <span>{step.state === "done" || step.state === "complete" ? <Check size={13} /> : step.state === "active" ? "●" : "○"}</span>
-        <em>{step.label}</em>
-      </li>)}
-    </ol>}
     {pendingApproval && <div className="awh-approval-card">
       <div><strong>ต้องยืนยันก่อนทำต่อ</strong><small>{pendingApproval.reason || "AWH รอการยืนยันตามสิทธิ์ของระบบ"}</small></div>
       <div className="awh-approval-actions">
@@ -54,9 +47,20 @@ function TaskCard({ task, approvals = [], artifacts = [] }: {
         <FileText size={17} /><span><strong>{artifact.name || "ไฟล์ผลลัพธ์"}</strong><small>เปิดใน Artifact Panel</small></span><ChevronRight size={16} />
       </button>)}
     </div>}
-    {task.tools.length > 0 && <details className="awh-task-technical">
-      <summary>ดูรายละเอียดเครื่องมือ</summary>
-      <div>{task.tools.map((tool) => <p key={tool.id}><strong>{tool.label}</strong><span>{tool.reason || tool.id}</span></p>)}</div>
+    {hasDetails && <details className="awh-task-details">
+      <summary>รายละเอียดงาน</summary>
+      <div className="awh-task-details-body">
+        {task.journey.length > 0 && <ol className="awh-task-steps">
+          {task.journey.slice(0, 5).map((step, index) => <li key={index} data-state={step.state}>
+            <span>{step.state === "done" || step.state === "complete" ? <Check size={13} /> : step.state === "active" ? "●" : "○"}</span>
+            <em>{step.label}</em>
+          </li>)}
+        </ol>}
+        {task.tools.length > 0 && <details className="awh-task-technical">
+          <summary>ดูรายละเอียดเครื่องมือ</summary>
+          <div>{task.tools.map((tool) => <p key={tool.id}><strong>{tool.label}</strong><span>{tool.reason || tool.id}</span></p>)}</div>
+        </details>}
+      </div>
     </details>}
   </section>;
 }
@@ -71,11 +75,16 @@ function UserMessage() {
       <ActionBarPrimitive.Root>
         <ActionBarPrimitive.Copy className="awh-message-action" aria-label="คัดลอก"><Copy size={14} /></ActionBarPrimitive.Copy>
       </ActionBarPrimitive.Root>
-      <button type="button" className="awh-message-action" onClick={() => aui.composer.setText(text)}>แก้ไขแล้วส่งใหม่</button>
-      <button type="button" className="awh-message-action" onClick={async () => {
-        const bridge = currentBridge(); if (!bridge || !text.trim()) return;
-        await bridge.newConversation(); await bridge.sendText(text);
-      }}>แยกเป็นแชทใหม่</button>
+      <details className="awh-message-more">
+        <summary aria-label="ตัวเลือกข้อความ"><Menu size={14} /></summary>
+        <div className="awh-message-menu">
+          <button type="button" onClick={() => aui.composer.setText(text)}>แก้ไขแล้วส่งใหม่</button>
+          <button type="button" onClick={async () => {
+            const bridge = currentBridge(); if (!bridge || !text.trim()) return;
+            await bridge.newConversation(); await bridge.sendText(text);
+          }}>แยกเป็นแชทใหม่</button>
+        </div>
+      </details>
     </div>
   </MessagePrimitive.Root>;
 }
@@ -92,7 +101,7 @@ function AssistantMessage() {
       <ActionBarPrimitive.Root>
         <ActionBarPrimitive.Copy className="awh-message-action" aria-label="คัดลอก"><Copy size={14} /></ActionBarPrimitive.Copy>
       </ActionBarPrimitive.Root>
-      {task?.goal && <button type="button" className="awh-message-action"
+      {task?.state === "FAILED" && task.goal && <button type="button" className="awh-message-action"
         onClick={() => void currentBridge()?.sendText(task.goal)}>ลองใหม่</button>}
     </div>
   </MessagePrimitive.Root>;
@@ -247,8 +256,6 @@ function Sidebar({ snapshot, open, onClose }: { snapshot: AwhChatSnapshot; open:
 }
 
 function ChatHeader({ snapshot, onMenu }: { snapshot: AwhChatSnapshot; onMenu(): void }) {
-  const working = snapshot.workers.find((worker) => worker.state === "WORKING");
-  const context = working?.name || "AWH Server";
   const liveLabel = snapshot.stream.phase === "SENDING" ? "กำลังส่ง"
     : snapshot.stream.phase === "WAITING_FOR_APPROVAL" ? "รอการยืนยัน"
     : snapshot.stream.phase === "RUNNING" ? "กำลังทำงาน" : null;
@@ -261,8 +268,6 @@ function ChatHeader({ snapshot, onMenu }: { snapshot: AwhChatSnapshot; onMenu():
     <div className="awh-context-chips">
       {snapshot.temporary && <span className="awh-temporary-chip"><Clock3 size={12} /> ชั่วคราว</span>}
       {liveLabel && <span className="awh-live-chip"><i aria-hidden="true" />{liveLabel}</span>}
-      {snapshot.project && <span>{snapshot.project.name}</span>}
-      <span>🖥 {context}</span>
     </div>
   </header>;
 }
