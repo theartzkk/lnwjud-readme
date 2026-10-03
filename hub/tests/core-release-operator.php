@@ -145,8 +145,17 @@ try{
     $calls=[];$unitState='active';
     $runner=static function(array $command,?array $options=null)use(&$calls,&$unitState):array{$calls[]=$command;return ['code'=>0,'out'=>str_contains(implode(' ',$command),'systemctl is-active')?$unitState."\n":'','err'=>''];};
     $operator=new HubCoreReleaseOperator($pdo,$fake,$runner);
+    $pdo->exec((string)file_get_contents($base.'/migrations/024_platform_maintenance.sql'));
+    $pdo->prepare("UPDATE control_platform_maintenance SET mode='PLATFORM_ONLY',platform_project_id=:project,reason='core release freeze fixture',enabled_at=:at,updated_at=:at,updated_by='test' WHERE singleton_id=1")
+        ->execute(['project'=>$project,'at'=>$now]);
+    $paused=$operator->tick('2026-09-23T01:00:00+00:00');
+    cr_assert(($paused['state']??null)==='IDLE','AWH release dispatcher treats PLATFORM_ONLY maintenance as a non-fatal pause');
+    cr_assert($pdo->query("SELECT state FROM control_task_executions WHERE execution_id=".$pdo->quote($execution))->fetchColumn()==='QUEUED'
+        &&$pdo->query("SELECT state FROM control_tasks WHERE task_id=".$pdo->quote($task))->fetchColumn()==='WAITING_FOR_WORKER','paused AWH release stays queued without poisoning hosting operator health');
+    $pdo->prepare("UPDATE control_platform_maintenance SET mode='NORMAL',platform_project_id=NULL,reason='fixture complete',enabled_at=NULL,updated_at=:at,updated_by='test' WHERE singleton_id=1")
+        ->execute(['at'=>'2026-09-23T01:00:01+00:00']);
     $dispatch=$operator->tick('2026-09-23T01:00:01+00:00');
-    cr_assert(($dispatch['state']??null)==='DISPATCHED'&&($dispatch['executionId']??null)===$execution,'approved core release is dispatched');
+    cr_assert(($dispatch['state']??null)==='DISPATCHED'&&($dispatch['executionId']??null)===$execution,'approved core release is dispatched after platform maintenance clears');
     cr_assert(count($calls)===1&&($calls[0][0]??null)==='/usr/bin/systemd-run','dispatcher uses fixed systemd-run binary');
     cr_assert(in_array('/usr/bin/php',$calls[0],true)&&in_array($fake,$calls[0],true)&&in_array($execution,$calls[0],true),'dispatcher passes only immutable runner and execution UUID');
     cr_assert(!in_array($sha,$calls[0],true)&&!in_array('rm',$calls[0],true)&&!in_array('sh',$calls[0],true),'release SHA and shell text are not command arguments');

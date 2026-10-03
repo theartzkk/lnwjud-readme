@@ -85,7 +85,12 @@ final class HubCoreReleaseOperator
             $this->pdo->prepare("UPDATE control_tasks SET state='RUNNING',progress=5,failure_code=NULL,updated_at=:at WHERE task_id=:task AND state='WAITING_FOR_WORKER'")->execute(['at'=>$at,'task'=>$row['task_id']]);
             $this->event((string)$row['task_id'],'RUNNING',5,'Owner อนุมัติแล้ว AWH กำลังจอง VPS release authority',$at);
             $this->pdo->exec('COMMIT');return $row;
-        }catch(Throwable $error){$this->rollback();if($error instanceof HubCoreReleaseException)throw new HubCoreReleaseOperatorException('Core release checkpoint is invalid',$error->codeName);throw new HubCoreReleaseOperatorException('Core release could not be claimed','CORE_RELEASE_CLAIM_FAILED');}
+        }catch(Throwable $error){
+            $this->rollback();
+            if($error instanceof HubCoreReleaseException)throw new HubCoreReleaseOperatorException('Core release checkpoint is invalid',$error->codeName);
+            if($error instanceof HubCapabilityRegistryException&&$error->codeName==='PLATFORM_MAINTENANCE_FREEZE')return null;
+            throw new HubCoreReleaseOperatorException('Core release could not be claimed','CORE_RELEASE_CLAIM_FAILED');
+        }
     }
 
     private function active(): ?array
