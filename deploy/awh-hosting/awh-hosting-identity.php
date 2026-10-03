@@ -31,19 +31,19 @@ try{
         return proc_close($process);
     };
     $group=function_exists('posix_getgrnam')?posix_getgrnam($user):false;
-    if(!is_array($group)){
-        $groupCode=$run(['/usr/sbin/groupadd','--system',$user]);
-        if($groupCode===null){fwrite(STDERR,"HOSTING_IDENTITY_GROUPADD_UNAVAILABLE\n");exit(5);}
-        $group=function_exists('posix_getgrnam')?posix_getgrnam($user):false;
-        if($groupCode!==0&&!is_array($group)){fwrite(STDERR,"HOSTING_IDENTITY_GROUPADD_FAILED\n");exit(6);}
-        if(!is_array($group)){fwrite(STDERR,"HOSTING_IDENTITY_GROUP_VERIFY_FAILED\n");exit(7);}
+    $command=['/usr/sbin/useradd','--system','--no-log-init','--no-create-home','--home-dir',$home,'--shell','/usr/sbin/nologin'];
+    if(is_array($group)){
+        array_push($command,'--gid',$user,'--no-user-group',$user);
+    }else{
+        array_push($command,'--user-group',$user);
     }
-    $userCode=$run(['/usr/sbin/useradd','--system','--no-log-init','--no-create-home','--home-dir',$home,'--shell','/usr/sbin/nologin','--gid',$user,'--no-user-group',$user]);
-    if($userCode===null){fwrite(STDERR,"HOSTING_IDENTITY_USERADD_UNAVAILABLE\n");exit(8);}
-    if($userCode!==0){fwrite(STDERR,"HOSTING_IDENTITY_USERADD_FAILED\n");exit(9);}
+    $userCode=$run($command);
+    if($userCode===null){fwrite(STDERR,"HOSTING_IDENTITY_USERADD_UNAVAILABLE\n");exit(5);}
+    if($userCode!==0){fwrite(STDERR,"HOSTING_IDENTITY_USERADD_FAILED\n");exit(6);}
     $created=function_exists('posix_getpwnam')?posix_getpwnam($user):false;
-    if(!is_array($created)||(string)($created['dir']??'')!==$home||(string)($created['shell']??'')!=='/usr/sbin/nologin'||(int)($created['gid']??-1)!==(int)($group['gid']??-2)){
-        fwrite(STDERR,"HOSTING_IDENTITY_VERIFY_FAILED\n");exit(10);
+    $createdGroup=function_exists('posix_getgrnam')?posix_getgrnam($user):false;
+    if(!is_array($created)||!is_array($createdGroup)||(string)($created['dir']??'')!==$home||(string)($created['shell']??'')!=='/usr/sbin/nologin'||(int)($created['gid']??-1)!==(int)($createdGroup['gid']??-2)){
+        fwrite(STDERR,"HOSTING_IDENTITY_VERIFY_FAILED\n");exit(7);
     }
     fwrite(STDOUT,"HOSTING_IDENTITY=CREATED\n");
 }catch(Throwable){
