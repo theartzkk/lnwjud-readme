@@ -14,58 +14,62 @@
   <link rel="stylesheet" href="./updates.css?release=__AWH_WEB_RELEASE_ID__" />
 </head>
 <body>
+  <a class="update-skip-link" href="#update-list">ข้ามไปยังรายการระบบ</a>
   <header class="updates-header">
     <a class="updates-brand" href="./"><img class="system-brand-icon" src="./logo-256x256.png?release=__AWH_WEB_RELEASE_ID__" alt="" /><span><strong>AWH</strong><small>Update Center</small></span></a>
-    <div class="updates-actions"><span id="updates-freshness">กำลังตรวจสถานะ…</span><a class="awh-back-link" href="./"><span aria-hidden="true">⌂</span><span>หน้า KRUART</span></a><a class="awh-back-link" data-awh-back href="./panel.html"><span aria-hidden="true">←</span><span>กลับดูแลระบบ</span></a><button id="updates-refresh" class="secondary-button" type="button">ตรวจอีกครั้ง</button></div>
+    <div class="updates-actions"><span id="updates-freshness" role="status" aria-live="polite" aria-atomic="true">กำลังตรวจสถานะ…</span><a class="awh-back-link" href="./"><span aria-hidden="true">⌂</span><span>หน้า KRUART</span></a><a class="awh-back-link" data-awh-back href="./panel.html"><span aria-hidden="true">←</span><span>กลับดูแลระบบ</span></a><button id="updates-refresh" class="secondary-button" type="button" aria-describedby="updates-freshness">ตรวจอีกครั้ง</button></div>
   </header>
 
-  <main class="updates-main">
-    <nav class="updates-breadcrumb" aria-label="ตำแหน่งปัจจุบัน"><a href="./">AWH</a><span>›</span><a href="./panel.html">ดูแลระบบ</a><span>›</span><strong>Update Center</strong></nav>
-    <section class="updates-hero">
-      <div class="updates-hero-copy"><p class="eyebrow">SYSTEM UPDATE</p><h1>ศูนย์อัปเดต</h1><p>ดูสถานะทุกระบบจากที่เดียว แต่ติดตั้งแยกตามระบบ แต่ละระบบมีเวอร์ชัน ประวัติ การตรวจสอบ และ rollback ของตัวเองโดยไม่ลากระบบอื่นไปอัปเดตตาม</p></div>
+  <main id="main-content" class="updates-main">
+    <nav class="updates-breadcrumb" aria-label="ตำแหน่งปัจจุบัน"><a href="./">AWH</a><span aria-hidden="true">›</span><a href="./panel.html">ดูแลระบบ</a><span aria-hidden="true">›</span><strong aria-current="page">Update Center</strong></nav>
+    <section class="updates-hero" aria-labelledby="update-center-title" aria-describedby="update-center-description">
+      <div class="updates-hero-copy"><p class="eyebrow">SYSTEM UPDATE</p><h1 id="update-center-title">ศูนย์อัปเดต</h1><p id="update-center-description">ดูว่าระบบไหนเป็นรุ่นล่าสุด มีรุ่นใหม่ กำลังอัปเดต หรือควรตรวจเพิ่มจากหน้าเดียว ระบบจะจัดคิว สำรอง และตรวจผลให้อัตโนมัติ โดยติดตั้งแยกตามระบบเพื่อไม่ให้ระบบอื่นถูกลากไปอัปเดตตาม</p></div>
       <div class="updates-hero-side"><div id="updates-overall" class="updates-overall" data-tone="checking">กำลังตรวจ</div><small class="updates-hero-hint">สถานะอัปเดตอัตโนมัติ · ใช้ “ตรวจอีกครั้ง” ด้านบนเมื่อต้องการตรวจทันที</small></div>
     </section>
 
-    <section id="runtime-health" class="runtime-health" data-state="CHECKING" aria-live="polite">
-      <div><span class="health-dot" aria-hidden="true"></span><div><strong id="runtime-health-title">กำลังตรวจความสอดคล้องของระบบ</strong><p id="runtime-health-detail">กำลังเปรียบเทียบ Control, Web และ Enrollment runtime</p></div></div>
+    <section id="runtime-health" class="runtime-health" data-state="CHECKING">
+      <div class="runtime-health-status" role="status" aria-live="polite" aria-atomic="true"><span class="health-dot" aria-hidden="true"></span><div><strong id="runtime-health-title">กำลังตรวจความสอดคล้องของระบบ</strong><p id="runtime-health-detail">กำลังตรวจว่าส่วนสำคัญของ AWH ใช้รุ่นที่สอดคล้องกัน</p></div></div>
       <button id="runtime-health-details" class="text-button" type="button">ดูรายละเอียด</button>
     </section>
 
-    <section class="updates-summary" aria-label="สรุปการอัปเดต">
+    <section class="updates-summary" aria-labelledby="updates-summary-title">
+      <h2 id="updates-summary-title" class="update-sr-only">สรุปสถานะการอัปเดต</h2>
       <article><small>พร้อมอัปเดต</small><strong id="summary-update">—</strong><span>ติดตั้งได้ตอนนี้</span></article>
       <article><small>กำลังดำเนินการ</small><strong id="summary-progress">—</strong><span>รวมงานกำลังทำและรอคิว</span></article>
       <article><small>เป็นรุ่นล่าสุด</small><strong id="summary-current">—</strong><span>ไม่ต้องทำอะไร</span></article>
       <article><small>ต้องตรวจเพิ่ม</small><strong id="summary-attention">—</strong><span>ระบบจะไม่ฝืนติดตั้ง</span></article>
     </section>
 
-    <section id="operation-progress" class="operation-progress" hidden aria-live="polite">
+    <section id="operation-progress" class="operation-progress" hidden aria-labelledby="operation-progress-title" aria-describedby="operation-progress-message">
       <div class="operation-progress-head"><div><p class="eyebrow">UPDATE PROGRESS</p><h2 id="operation-progress-title">กำลังอัปเดตระบบ</h2></div><strong id="operation-progress-percent">0%</strong></div>
-      <div class="progress-track" aria-hidden="true"><span id="operation-progress-bar"></span></div>
+      <div id="operation-progress-meter" class="progress-track" role="progressbar" aria-labelledby="operation-progress-title" aria-describedby="operation-progress-message" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="operation-progress-bar" aria-hidden="true"></span></div>
       <ol id="operation-steps" class="operation-steps">
         <li data-step="check">ตรวจความพร้อม</li><li data-step="backup">สำรองข้อมูล</li><li data-step="deploy">ติดตั้ง</li><li data-step="verify">ตรวจสอบ</li><li data-step="activate">เปิดใช้งาน</li>
       </ol>
-      <p id="operation-progress-message">ระบบกำลังติดตามสถานะจาก release controller</p>
+      <p id="operation-progress-message" role="status" aria-live="polite" aria-atomic="true">ระบบกำลังติดตามขั้นตอนอัปเดตล่าสุด</p>
       <small id="operation-progress-live" class="operation-progress-live">กำลังเชื่อมต่อสถานะสด…</small>
       <div id="operation-queue" class="operation-queue" hidden></div>
     </section>
 
-    <section class="updates-primary">
-      <div><h2>อัปเดตที่พร้อมใช้งาน</h2><p id="updates-message" class="muted" role="status">AWH จะแสดงเฉพาะ action ที่ปลอดภัยตาม authority ของแต่ละระบบ</p></div>
-      <button id="show-attention" class="secondary-button" type="button">แสดงเฉพาะที่ต้องจัดการ</button>
+    <section class="updates-primary" aria-labelledby="update-list-heading">
+      <div><h2 id="update-list-heading">ระบบและการอัปเดต</h2><p id="updates-message" class="muted">รายการที่ต้องทำจะแสดงก่อน และแต่ละระบบอัปเดตแยกกันอย่างปลอดภัย</p></div>
+      <button id="show-attention" class="secondary-button" type="button" aria-controls="update-list" aria-pressed="false">แสดงเฉพาะงานที่ต้องทำ</button>
     </section>
 
     <section class="update-controls" aria-label="ค้นหาและกรองระบบ">
-      <label class="update-search"><span>ค้นหาระบบ</span><input id="update-search" type="search" inputmode="search" placeholder="เช่น AWH, LearnLab, Assessment" autocomplete="off" /></label>
+      <label class="update-search"><span>ค้นหาระบบ</span><input id="update-search" type="search" inputmode="search" placeholder="เช่น AWH, LearnLab, Assessment" autocomplete="off" aria-controls="update-list" /></label>
       <div class="update-filters" role="group" aria-label="กรองสถานะ">
-        <button class="filter-chip is-active" data-filter="ALL" type="button">ทั้งหมด</button>
-        <button class="filter-chip" data-filter="UPDATE" type="button">มีอัปเดต</button>
-        <button class="filter-chip" data-filter="PROGRESS" type="button">กำลังทำ</button>
-        <button class="filter-chip" data-filter="ATTENTION" type="button">ต้องตรวจ</button>
-        <button class="filter-chip" data-filter="ADVANCED" type="button">ขั้นสูง</button>
+        <button class="filter-chip is-active" data-filter="ALL" type="button" aria-controls="update-list">ทั้งหมด</button>
+        <button class="filter-chip" data-filter="UPDATE" type="button" aria-controls="update-list">มีอัปเดต</button>
+        <button class="filter-chip" data-filter="PROGRESS" type="button" aria-controls="update-list">กำลังทำ</button>
+        <button class="filter-chip" data-filter="ATTENTION" type="button" aria-controls="update-list">ต้องตรวจ</button>
+        <button class="filter-chip" data-filter="ADVANCED" type="button" aria-controls="update-list">ระบบขั้นสูง</button>
       </div>
+      <p id="filter-result-summary" class="filter-result-summary" role="status" aria-live="polite" aria-atomic="true">กำลังตรวจรายการระบบ…</p>
     </section>
 
-    <section id="update-list" class="update-list" aria-live="polite"><div class="update-empty">กำลังตรวจทุกระบบ…</div></section>
+    <section id="update-list" class="update-list" aria-labelledby="update-list-heading" aria-busy="true"><div class="update-empty">กำลังตรวจทุกระบบ…</div></section>
+    <div id="update-announcer" class="update-sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <div class="updates-secondary" aria-label="ข้อมูลเพิ่มเติม">
       <details id="release-history" class="updates-secondary-panel">
@@ -119,6 +123,18 @@
       </details>
     </div>
   </main>
+
+  <dialog id="update-confirm-dialog" class="updates-dialog" aria-labelledby="update-confirm-title" aria-describedby="update-confirm-description">
+    <form method="dialog" class="updates-dialog-card">
+      <p class="eyebrow">CONFIRM UPDATE</p>
+      <h2 id="update-confirm-title">ยืนยันการอัปเดต</h2>
+      <p id="update-confirm-description">ตรวจรายการก่อนเริ่ม</p>
+      <div class="updates-dialog-actions">
+        <button id="update-confirm-cancel" class="secondary-button" type="submit" value="cancel">ยังไม่อัปเดต</button>
+        <button id="update-confirm-submit" class="primary-button" type="submit" value="confirm">ยืนยันและอัปเดต</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="./update-center-boot.js?release=__AWH_WEB_RELEASE_ID__" defer></script>
   <script src="./interaction-feedback.js?release=__AWH_WEB_RELEASE_ID__" defer></script>

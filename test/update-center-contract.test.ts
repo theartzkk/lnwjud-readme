@@ -245,7 +245,7 @@ test('Update Center keeps compatibility/internal targets out of the owner summar
     readFile(join(ROOT,'web/updates.js'),'utf8'),
     readFile(join(ROOT,'hub/src/HubControlPlaneService.php'),'utf8'),
   ]);
-  assert.match(html,/data-filter="ADVANCED"[^>]*>ขั้นสูง</);
+  assert.match(html,/data-filter="ADVANCED"[^>]*>ระบบขั้นสูง</);
   assert.match(script,/function itemVisibility\(item\)/);
   assert.match(script,/filterMode==='ADVANCED'/);
   assert.match(script,/for\(const item of primaryItems\(\)\)/);
@@ -602,12 +602,49 @@ test('Update Center gives every owner tap immediate tactile and visible feedback
   assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);
   assert.match(css,/details-marker/);
   assert.match(script,/button\.dataset\.operationState=queuedHint\?'queueing':'starting'/);
-  assert.match(script,/button\.setAttribute\('aria-disabled','true'\)/);
+  assert.match(script,/button\.disabled=true;button\.setAttribute\('aria-busy','true'\)/);
   assert.match(script,/กำลังดำเนินการอยู่ · สถานะจะอัปเดตให้อัตโนมัติ/);
   assert.match(script,/function scheduleActionRefresh/);
   assert.match(css,/button\[data-operation-state=\"accepted\"\]/);
   assert.match(css,/update-feedback-dot/);
   assert.doesNotMatch(script,/ห้ามกดซ้ำ|ไม่ต้องกดซ้ำ|ไม่สร้างงานซ้ำ|ห้ามติดตั้งซ้ำ/);
+});
+
+test('Update Center accessibility contract keeps live regions bounded and controls touch-safe', async()=>{
+  const [page,script,css]=await Promise.all([
+    readFile(join(ROOT,'web/updates.html'),'utf8'),
+    readFile(join(ROOT,'web/updates.js'),'utf8'),
+    readFile(join(ROOT,'web/updates.css'),'utf8'),
+  ]);
+  assert.match(page,/class="update-skip-link" href="#update-list"/);
+  assert.match(page,/aria-current="page"/);
+  assert.match(page,/id="operation-progress-meter"[^>]*role="progressbar"[^>]*aria-valuemin="0"[^>]*aria-valuemax="100"/);
+  assert.match(page,/id="update-announcer"[^>]*role="status"[^>]*aria-live="polite"[^>]*aria-atomic="true"/);
+  assert.match(page,/id="filter-result-summary"[^>]*role="status"/);
+  assert.match(page,/id="show-attention"[^>]*aria-controls="update-list"[^>]*aria-pressed="false"/);
+  assert.match(page,/id="update-search"[^>]*aria-controls="update-list"/);
+  assert.doesNotMatch(page,/<section id="update-list"[^>]*aria-live=/);
+  assert.match(page,/<dialog id="update-confirm-dialog"[^>]*aria-labelledby="update-confirm-title"[^>]*aria-describedby="update-confirm-description"/);
+  assert.doesNotMatch(script,/window\.confirm\(/);
+  assert.match(script,/function confirmUpdate/);
+  assert.match(script,/function announce\(text\)/);
+  assert.match(script,/function itemRequiresReview\(item\)/);
+  assert.match(script,/document\.title='มีอัปเดต '\+counts\.update/);
+  assert.match(script,/filterMode==='ATTENTION'&&!itemRequiresReview\(item\)/);
+  assert.match(script,/meter\.setAttribute\('aria-valuenow'/);
+  assert.match(script,/step\.setAttribute\('aria-current','step'\)/);
+  assert.match(script,/card\.setAttribute\('aria-labelledby',h3\.id\)/);
+  assert.match(script,/link\.setAttribute\('aria-label','เปิด '\+item\.name\+' ในแท็บใหม่'\)/);
+  assert.match(script,/button\.disabled=true;button\.setAttribute\('aria-busy','true'\)/);
+  assert.doesNotMatch(script,/aria-disabled/);
+  assert.match(css,/\.update-sr-only/);
+  assert.match(css,/\.update-skip-link:focus/);
+  assert.match(css,/\.filter-chip\{min-height:44px/);
+  assert.match(css,/\.update-search input\{font-size:16px;min-height:48px\}/);
+  assert.match(css,/@media\(pointer:coarse\)/);
+  assert.match(css,/@media\(forced-colors:active\)/);
+  assert.match(css,/summary:focus-visible/);
+  assert.match(css,/env\(safe-area-inset-top\)/);
 });
 
 test('Update Center streams canonical release progress in real time with bounded fallback', async()=>{
@@ -744,7 +781,8 @@ test('Update Center keeps AWH LINE Gateway and BAY Excuse LINE OA as two permane
   const bundle=script.slice(script.indexOf('async function updateLineOaBundle'),script.indexOf('async function refreshAgent'));
   assert.equal((bundle.match(/await stepUp\(password\)/g)||[]).length,0);
   assert.doesNotMatch(bundle,/askStepUp|step-up-password|SINGLE_OWNER_STEP_UP/);
-  assert.equal((bundle.match(/window\.confirm\(/g)||[]).length,1);
+  assert.equal((bundle.match(/window\.confirm\(/g)||[]).length,0);
+  assert.match(bundle,/await confirmUpdate\(\{/);
   assert.match(bundle,/โดยไม่แตะ AWH Core, VPS Platform หรือ BAY Excuse Core/);
   assert.doesNotMatch(bundle,/requestCoreRelease|requestPlatformRelease|bay-excuse-core|vps-platform/);
   assert.match(css,/update-group\[data-group="line-oa"\]/);
@@ -819,11 +857,13 @@ test('Update Center owner flow is per-target, queue-aware, exact-target pinned, 
   assert.match(service,/'activeReleaseSha'=>\$activeCoreSha/);
   assert.match(service,/exact SHA ที่ Owner อนุมัติไว้/);
   assert.match(operator,/WHERE e\.executor_kind='VPS' AND e\.required_capability IN \(:core,:platform\) AND e\.state='QUEUED'/);
-  assert.match(operator,/ORDER BY e\.created_at,e\.execution_id LIMIT 1/);
+  assert.match(operator,/ORDER BY e\.created_at,e\.execution_id LIMIT 25/);
+  assert.match(operator,/foreach\(\$q->fetchAll\(\) as \$row\)/);
+  assert.match(operator,/PLATFORM_MAINTENANCE_FREEZE'\)continue/);
   assert.match(script,/ใช้สถานะล่าสุด · จะตรวจใหม่อัตโนมัติ/);
   assert.match(script,/const storageBlocked=Boolean\(telemetryReady\)/);
   assert.match(script,/if\(progress<23\)return 'กำลังเตรียมเครื่องมือและตรวจรุ่นที่อนุมัติ'/);
-  assert.match(script,/if\(progress<55\)return 'กำลังตรวจ QA สำรองข้อมูล และเตรียม rollback ก่อนติดตั้ง'/);
+  assert.match(script,/if\(progress<55\)return 'กำลังตรวจความพร้อม สำรองข้อมูล และเตรียมจุดย้อนกลับ'/);
   assert.match(script,/const thresholds=\[22,54,84,98,100\]/);
   assert.match(script,/ownerReleaseNoteText/);
   assert.match(script,/แก้สิทธิ์ระบบ Managed Hosting ให้จัดการบัญชีบริการได้อย่างเสถียร/);
