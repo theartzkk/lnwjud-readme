@@ -165,7 +165,8 @@ test('managed-product deploy provisions namespace roots before operator enable',
   assert.doesNotMatch(unit,/\/etc\/(?:\.pwd\.lock|passwd|shadow|group|gshadow|subuid|subgid)(?:[+\-])?/);
   assert.match(unit,/ReadOnlyPaths=-\/var\/lib\/awh-remote\/handoff/);
   assert.match(identityUnit,/ProtectSystem=full/);
-  assert.match(identityUnit,/BindPaths=\/etc:\/etc/);
+  assert.match(identityUnit,/ExecStart=\+\/usr\/bin\/php .*awh-hosting-identity\.php %i/);
+  assert.doesNotMatch(identityUnit,/BindPaths=\/etc:\/etc/);
   assert.doesNotMatch(identityUnit,/ReadWritePaths=\/etc/);
   assert.match(identityUnit,/PrivateNetwork=true/);
   const provision=script.indexOf('PRODUCT_RELEASE_STORAGE_READY');
