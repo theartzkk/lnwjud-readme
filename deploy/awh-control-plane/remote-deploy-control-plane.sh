@@ -1892,7 +1892,7 @@ fi
 if test "$PLATFORM_HARDENING" = 1; then
   stage OPERATOR_BRIDGE_RECONCILE
   sudo test -x "$RELEASE/deploy/operator-bridge/install.sh"
-  sudo env AWH_RELEASE_ROOT="$RELEASE" "$RELEASE/deploy/operator-bridge/install.sh"
+  sudo env AWH_RELEASE_ROOT="$RELEASE" "$RELEASE/deploy/operator-bridge/install.sh" >/dev/null
   sudo -u bayadmin test -x /var/lib/awh-remote
   sudo -u bayadmin test -w /var/lib/awh-remote/operator-staging
   sudo systemctl is-active --quiet awh-operator-bridge.socket

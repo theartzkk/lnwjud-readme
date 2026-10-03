@@ -168,7 +168,7 @@ test('platform hardening is wired to runtime rather than documentation only', as
   assert.doesNotMatch(platformBlock,/cmp -s "\$HOSTING_SERVICE_UNIT" "\$PREVIOUS_TARGET\/deploy\/systemd\/awh-hosting-operator\.service"/);
   assert.match(deploy, /PLATFORM_RUNTIME_READY/);
   assert.match(deploy, /OPERATOR_BRIDGE_RECONCILE/);
-  assert.match(deploy, /sudo env AWH_RELEASE_ROOT="\$RELEASE" "\$RELEASE\/deploy\/operator-bridge\/install\.sh"/);
+  assert.match(deploy, /sudo env AWH_RELEASE_ROOT="\$RELEASE" "\$RELEASE\/deploy\/operator-bridge\/install\.sh" >\/dev\/null/);
   assert.match(deploy, /sudo -u bayadmin test -w \/var\/lib\/awh-remote\/operator-staging/);
   assert.match(deploy, /OPERATOR_BRIDGE_READY/);
   assert.match(deploy, /HOSTING_IDENTITY_RECONCILE/);
