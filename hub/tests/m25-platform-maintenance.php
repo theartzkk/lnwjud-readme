@@ -5,6 +5,7 @@ require_once dirname(__DIR__).'/src/HubConversationDelegateMigration.php';
 require_once dirname(__DIR__).'/src/HubPlatformMaintenanceMigration.php';
 require_once dirname(__DIR__).'/src/HubPlatformMaintenanceService.php';
 require_once dirname(__DIR__).'/src/HubCapabilityRegistryService.php';
+require_once dirname(__DIR__).'/src/HubDurableExecutionService.php';
 
 function m25_assert(bool $ok,string $message):void{
     if(!$ok)throw new RuntimeException($message);
@@ -45,14 +46,27 @@ try{
     $pdo->exec("CREATE INDEX idx_control_ai_delegates_lookup ON control_ai_delegates(user_id,project_id,delegate_mode,revoked_at)");
     $m24=$base.'/migrations/023_conversation_delegate.sql';
     $pdo->prepare("INSERT INTO awh_schema_migrations VALUES('m24-conversation-delegates',24,?,'2026-09-29T00:00:00Z')")->execute([hash_file('sha256',$m24)]);
+    $m12=$base.'/migrations/011_central_project_authority.sql';
+    $pdo->prepare("INSERT INTO awh_schema_migrations VALUES('m12-central-project-authority',12,?,'2026-09-28T00:00:00Z')")->execute([hash_file('sha256',$m12)]);
     $pdo->exec('PRAGMA user_version=24');
     $pdo->exec("CREATE TABLE control_capability_sources(source_id TEXT PRIMARY KEY)");
     $pdo->exec("CREATE TABLE control_capability_catalog(capability TEXT PRIMARY KEY,source_id TEXT,enabled INTEGER,maturity TEXT)");
     $pdo->exec("CREATE TABLE control_execution_providers(provider_id TEXT PRIMARY KEY,provider_kind TEXT,display_name TEXT,availability_mode TEXT,cost_class TEXT,priority INTEGER,enabled INTEGER,observed_at TEXT,expires_at TEXT,metadata_json TEXT)");
     $pdo->exec("CREATE TABLE control_execution_provider_capabilities(provider_id TEXT,capability TEXT,cost_rank INTEGER,quality_rank INTEGER,latency_rank INTEGER,enabled INTEGER,expires_at TEXT,PRIMARY KEY(provider_id,capability))");
-    $pdo->exec("CREATE TABLE control_tasks(task_id TEXT PRIMARY KEY,project_id TEXT NOT NULL,state TEXT NOT NULL,conversation_id TEXT,goal TEXT)");
-    $pdo->exec("CREATE TABLE control_task_executions(execution_id TEXT PRIMARY KEY,task_id TEXT NOT NULL,project_id TEXT NOT NULL,vault_revision_id TEXT,executor_kind TEXT NOT NULL,required_capability TEXT NOT NULL,state TEXT NOT NULL,checkpoint_json TEXT NOT NULL DEFAULT '{}',updated_at TEXT NOT NULL)");
+    $pdo->exec("CREATE TABLE control_tasks(task_id TEXT PRIMARY KEY,user_id TEXT,project_id TEXT NOT NULL,state TEXT NOT NULL,conversation_id TEXT,goal TEXT,lease_expires_at TEXT,progress INTEGER NOT NULL DEFAULT 0,failure_code TEXT,created_at TEXT,updated_at TEXT)");
+    $pdo->exec("CREATE TABLE control_task_executions(execution_id TEXT PRIMARY KEY,task_id TEXT NOT NULL,project_id TEXT NOT NULL,vault_revision_id TEXT,executor_kind TEXT NOT NULL,required_capability TEXT NOT NULL,state TEXT NOT NULL,lease_owner TEXT,lease_expires_at TEXT,attempt_count INTEGER NOT NULL DEFAULT 0,checkpoint_json TEXT NOT NULL DEFAULT '{}',last_error_code TEXT,created_at TEXT,updated_at TEXT NOT NULL)");
+    $pdo->exec("CREATE TABLE control_task_events(event_id TEXT PRIMARY KEY,task_id TEXT NOT NULL,state TEXT NOT NULL,progress INTEGER NOT NULL,message TEXT NOT NULL,occurred_at TEXT NOT NULL)");
     $pdo->exec("CREATE TABLE control_execution_envelopes(envelope_id TEXT PRIMARY KEY,execution_id TEXT UNIQUE,task_id TEXT,project_id TEXT,conversation_id TEXT,base_revision_id TEXT,session_key TEXT,mutation_scope TEXT,state TEXT,provider_id TEXT,lease_expires_at TEXT,created_at TEXT,updated_at TEXT)");
+    // Minimal M12 capability contract required by DurableExecution::claim.
+    $pdo->exec("CREATE TABLE control_project_vault_revisions(revision_id TEXT PRIMARY KEY,project_id TEXT,created_at TEXT,is_active INTEGER DEFAULT 0)");
+    $pdo->exec("CREATE TABLE control_executor_capabilities(executor_id TEXT,executor_kind TEXT,capability TEXT,version TEXT,observed_at TEXT,expires_at TEXT,PRIMARY KEY(executor_id,capability))");
+    $pdo->exec("CREATE TABLE control_artifact_objects(artifact_id TEXT PRIMARY KEY)");
+    $pdo->exec("CREATE TABLE control_desktop_releases(release_id TEXT PRIMARY KEY,is_current INTEGER DEFAULT 0)");
+    $pdo->exec("CREATE INDEX idx_control_project_vault_revisions_active ON control_project_vault_revisions(project_id,is_active)");
+    $pdo->exec("CREATE INDEX idx_control_project_vault_revisions_recent ON control_project_vault_revisions(project_id,created_at)");
+    $pdo->exec("CREATE INDEX idx_control_task_executions_ready ON control_task_executions(state,executor_kind,created_at)");
+    $pdo->exec("CREATE INDEX idx_control_task_executions_project ON control_task_executions(project_id,state)");
+    $pdo->exec("CREATE INDEX idx_control_desktop_releases_current ON control_desktop_releases(is_current)");
 
     $m25=$base.'/migrations/024_platform_maintenance.sql';
     m25_assert(HubPlatformMaintenanceMigration::apply($db,$m25,$now)==='applied','M25 applies after M24');
@@ -75,10 +89,10 @@ try{
     m25_assert($maintenance->mutationAllowed($platform,'CANONICAL:SOURCE','awh')===true,'exact-SHA PLATFORM_ONLY does not block later AWH source promotion');
     m25_assert($maintenance->mutationAllowed($product,'CANONICAL:SOURCE','bay-product')===true,'exact-SHA PLATFORM_ONLY allows independent product source progress');
 
-    $insert=function(string $project,string $capability,string $state='QUEUED')use($pdo,$now):string{
-        $task=m25_uuid();$execution=m25_uuid();
-        $pdo->prepare("INSERT INTO control_tasks(task_id,project_id,state,conversation_id,goal) VALUES(:task,:project,'WAITING_FOR_WORKER',NULL,'fixture')")->execute(['task'=>$task,'project'=>$project]);
-        $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,updated_at) VALUES(:execution,:task,:project,NULL,'VPS',:capability,:state,:at)")->execute(['execution'=>$execution,'task'=>$task,'project'=>$project,'capability'=>$capability,'state'=>$state,'at'=>$now]);
+    $insert=function(string $project,string $capability,string $state='QUEUED',?string $at=null)use($pdo,$now):string{
+        $task=m25_uuid();$execution=m25_uuid();$stamp=$at??$now;
+        $pdo->prepare("INSERT INTO control_tasks(task_id,project_id,state,conversation_id,goal,created_at,updated_at) VALUES(:task,:project,'WAITING_FOR_WORKER',NULL,'fixture',:at,:at)")->execute(['task'=>$task,'project'=>$project,'at'=>$stamp]);
+        $pdo->prepare("INSERT INTO control_task_executions(execution_id,task_id,project_id,vault_revision_id,executor_kind,required_capability,state,created_at,updated_at) VALUES(:execution,:task,:project,NULL,'VPS',:capability,:state,:at,:at)")->execute(['execution'=>$execution,'task'=>$task,'project'=>$project,'capability'=>$capability,'state'=>$state,'at'=>$stamp]);
         return $execution;
     };
     $registry=new HubCapabilityRegistryService($pdo);
@@ -127,6 +141,23 @@ try{
     $sourceLessMission=$insert($sourceless,'operator.project_mission');
     $sourceMission=$registry->activateExecutionAuthority($sourceLessMission,null,gmdate('c',strtotime($now)+63));
     m25_assert(($sourceMission['granted']??false)===true,'source-less project coordination remains available for onboarding');
+
+    // Head-of-line proof on the current source-authority schema. Historical
+    // fixtures are terminalized first so only these two rows participate.
+    $pdo->exec("UPDATE control_task_executions SET state='COMPLETED',lease_owner=NULL,lease_expires_at=NULL");
+    $pdo->exec("UPDATE control_tasks SET state='COMPLETED',progress=100,lease_expires_at=NULL");
+    $pdo->exec("UPDATE control_execution_envelopes SET state='RELEASED',lease_expires_at=NULL");
+    $blockedAt=gmdate('c',strtotime($now)+64);$readyAt=gmdate('c',strtotime($now)+65);$claimAt=gmdate('c',strtotime($now)+66);
+    $holBlocked=$insert($sourceless,'project.mutate.assisted','QUEUED',$blockedAt);
+    $holReady=$insert($product,'project.read','QUEUED',$readyAt);
+    $durable=new HubDurableExecutionService($pdo,new HubProjectVaultService($pdo,new HubProjectVault($root.'/hol-vault')),null,null);
+    $claim=(new ReflectionClass(HubDurableExecutionService::class))->getMethod('claim');$claim->setAccessible(true);
+    $claimed=$claim->invoke($durable,$claimAt);
+    m25_assert(($claimed['execution_id']??null)===$holReady,'native executor skips source-not-ready queue head and claims the next eligible project in the same tick');
+    $blockedRow=$pdo->query("SELECT state,attempt_count FROM control_task_executions WHERE execution_id='$holBlocked'")->fetch();
+    m25_assert(is_array($blockedRow)&&$blockedRow['state']==='QUEUED'&&(int)$blockedRow['attempt_count']===0,'skipped source-not-ready execution stays queued without consuming a retry attempt');
+    $readyRow=$pdo->query("SELECT state,attempt_count FROM control_task_executions WHERE execution_id='$holReady'")->fetch();
+    m25_assert(is_array($readyRow)&&$readyRow['state']==='RUNNING'&&(int)$readyRow['attempt_count']===1,'eligible execution is claimed exactly once after the skipped queue head');
 
     m25_assert($pdo->query('PRAGMA integrity_check')->fetchColumn()==='ok','database integrity remains clean');
     m25_assert($pdo->query('PRAGMA foreign_key_check')->fetchAll()===[],'foreign keys remain clean');
