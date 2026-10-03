@@ -19,6 +19,8 @@ COMMIT_DATE='2026-09-23T12:00:00+00:00'
 COMMIT_MESSAGE='Release BAY Assessment 0.3.0-rc.16: safe edit/delete lifecycle controls'
 SHA40=re.compile(r'^[0-9a-f]{40}$'); SHA64=re.compile(r'^[0-9a-f]{64}$')
 VER=re.compile(r'^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$')
+RELEASE_DIR=re.compile(r'^\d{8}T\d{6}Z-[0-9a-f]{12}$')
+RELEASE_KEEP=max(3,min(30,int(os.environ.get('AWH_ASSESSMENT_RELEASE_KEEP','8'))))
 
 class ReleaseError(RuntimeError):
     def __init__(self,code,detail=''): self.code=code; self.detail=detail; super().__init__(code+(' '+detail if detail else ''))
@@ -221,6 +223,38 @@ def create_canonical(work,sha):
     normalize_canonical_permissions()
     return True
 
+def prune_release_root(root,preserve=None):
+    preserve={Path(p).resolve() for p in (preserve or []) if p}
+    releases=(root/'releases').resolve()
+    root_real=root.resolve()
+    if releases.parent!=root_real or not releases.is_dir() or releases.is_symlink():
+        raise ReleaseError('ASSESSMENT_RELEASE_RETENTION_ROOT_INVALID',str(releases))
+    current=current_link(root).resolve()
+    preserve.add(current)
+    entries=[]
+    for p in releases.iterdir():
+        if p.is_symlink() or not p.is_dir() or not RELEASE_DIR.fullmatch(p.name):
+            continue
+        real=p.resolve()
+        if real.parent!=releases:
+            raise ReleaseError('ASSESSMENT_RELEASE_RETENTION_PATH_INVALID',str(real))
+        entries.append(real)
+    entries.sort(key=lambda x:x.name,reverse=True)
+    keep=set(entries[:RELEASE_KEEP])|preserve
+    removed=[]; kept=[]
+    for path in entries:
+        if path in keep:
+            kept.append(path.name); continue
+        shutil.rmtree(path)
+        removed.append(path.name)
+    return {'root':str(root),'policyKeep':RELEASE_KEEP,'kept':kept,'removed':removed,'current':current.name}
+
+def prune_releases(prod_preserve=None,stage_preserve=None):
+    return {
+        'production':prune_release_root(PROD,prod_preserve),
+        'staging':prune_release_root(STAGE,stage_preserve)
+    }
+
 def state_path(execution): return WORK/execution/'state.json'
 
 def rollback(execution):
@@ -264,9 +298,13 @@ def apply(a):
         db=PROD_STATE/'assessment.sqlite'
         if run(['/usr/bin/sqlite3',str(db),'PRAGMA quick_check;']).stdout.strip()!='ok': raise ReleaseError('ASSESSMENT_RELEASE_DATABASE_POSTCHECK_FAILED')
         if run(['/usr/bin/git','--git-dir='+str(CANON),'rev-parse','refs/heads/main']).stdout.strip().lower()!=a.release_sha: raise ReleaseError('ASSESSMENT_RELEASE_CANONICAL_POSTCHECK_FAILED')
+        try:
+            retention={'ok':True,'report':prune_releases([prod_old,prod_new],[stage_old,stage_new])}
+        except Exception as retention_error:
+            retention={'ok':False,'error':str(retention_error)[:300]}
         return {'state':'LIVE_SMOKE_PASSED','executionId':a.execution_id,'releaseSha':a.release_sha,'runtimeVersion':a.runtime_version,
                 'stagingRelease':str(stage_new),'productionRelease':str(prod_new),'stagingBackup':str(stage_backup),'productionBackup':str(prod_backup),
-                'canonicalCreated':s['canonicalCreated']}
+                'canonicalCreated':s['canonicalCreated'],'retention':retention}
     except Exception:
         rollback(a.execution_id); raise
 
@@ -279,7 +317,7 @@ def finalize(execution):
 
 def main():
     ap=argparse.ArgumentParser(); g=ap.add_mutually_exclusive_group(required=True)
-    for name in ['candidate','apply','rollback','finalize']: g.add_argument('--'+name,action='store_true')
+    for name in ['candidate','apply','rollback','finalize','prune']: g.add_argument('--'+name,action='store_true')
     ap.add_argument('--execution-id'); ap.add_argument('--release-sha'); ap.add_argument('--base-sha'); ap.add_argument('--runtime-version'); ap.add_argument('--manifest-sha')
     a=ap.parse_args()
     try:
@@ -291,9 +329,11 @@ def main():
         elif a.rollback:
             if not a.execution_id: raise ReleaseError('ASSESSMENT_RELEASE_ARGUMENT_INVALID')
             result=rollback(a.execution_id)
-        else:
+        elif a.finalize:
             if not a.execution_id: raise ReleaseError('ASSESSMENT_RELEASE_ARGUMENT_INVALID')
             result=finalize(a.execution_id)
+        else:
+            result={'state':'RETENTION_PRUNED','retention':prune_releases()}
         print(json.dumps({'ok':True,'result':result},ensure_ascii=False,separators=(',',':'))); return 0
     except ReleaseError as e:
         print(json.dumps({'ok':False,'code':e.code,'detail':e.detail},ensure_ascii=False,separators=(',',':'))); return 1

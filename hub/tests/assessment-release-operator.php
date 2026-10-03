@@ -100,6 +100,11 @@ try{
 
     $engineSource=(string)file_get_contents(dirname(__DIR__,2).'/deploy/assessment/awh-assessment-release-engine.py');
     ar_assert(str_contains($engineSource,'def normalize_canonical_permissions():')&&str_contains($engineSource,"'/usr/bin/setfacl','-m','g::rwx,m::rwx,d:g::rwx,d:m::rwx'")&&str_contains($engineSource,"'config','--system','--add','safe.directory',str(CANON)")&&str_contains($engineSource,'normalize_canonical_permissions()'),'Assessment canonical Git creation and reuse self-heal source-promotion permissions');
+    ar_assert(str_contains($engineSource,'RELEASE_KEEP=')&&str_contains($engineSource,'def prune_release_root(')&&str_contains($engineSource,'prune_releases([prod_old,prod_new],[stage_old,stage_new])')&&str_contains($engineSource,"'prune'"),'Assessment release engine keeps bounded releases while preserving current and rollback targets');
+    $backupExporter=(string)file_get_contents(dirname(__DIR__,2).'/deploy/assessment/awh-assessment-backup-export');
+    ar_assert(str_contains($backupExporter,'BAY_ASSESSMENT_VERIFIED_SNAPSHOT')&&str_contains($backupExporter,'manifestSha256')&&str_contains($backupExporter,'tarfile.PAX_FORMAT')&&str_contains($backupExporter,'dereference=True'),'Assessment backup exporter validates a verified snapshot before streaming it offsite');
+    $offsiteSource=(string)file_get_contents(dirname(__DIR__,2).'/deploy/offsite-backup/macos/awh-backup-pull.sh');
+    ar_assert(str_contains($offsiteSource,'--path "$DEST/$file"')&&str_contains($offsiteSource,'awh-assessment-backup-export metadata')&&str_contains($offsiteSource,'bay-assessment-offsite'),'Offsite backup pins Restic verification to the exact snapshot path and mirrors Assessment separately');
     $manifestProbe=$root.'/manifest-share/candidate.json';mkdir(dirname($manifestProbe),0700,true);
     $enginePath=dirname(__DIR__,2).'/deploy/assessment/awh-assessment-release-engine.py';
     $probe=<<<'PY'

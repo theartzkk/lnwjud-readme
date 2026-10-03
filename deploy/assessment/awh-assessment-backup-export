@@ -1,0 +1,134 @@
+#!/usr/bin/python3
+import hashlib, json, os, re, sys, tarfile
+from pathlib import Path
+
+ROOT=Path(os.environ.get('AWH_ASSESSMENT_MAINTENANCE_ROOT','/var/lib/bay-assessment/maintenance')).resolve()
+BACKUPS=(ROOT/'backups').resolve()
+STATE=(ROOT/'state.json').resolve()
+SNAP_RE=re.compile(r'^\d{8}T\d{6}Z-[0-9a-f]{8}$')
+HEX64=re.compile(r'^[0-9a-f]{64}$')
+
+def fail():
+    sys.stderr.write('AWH_ASSESSMENT_BACKUP_EXPORT=FAIL\n')
+    raise SystemExit(1)
+
+def load_json(path):
+    try:
+        if path.is_symlink() or not path.is_file():
+            fail()
+        return json.loads(path.read_text(encoding='utf-8'))
+    except SystemExit:
+        raise
+    except Exception:
+        fail()
+
+def sha256(path):
+    h=hashlib.sha256()
+    with path.open('rb') as f:
+        for chunk in iter(lambda:f.read(1024*1024),b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+def safe_snapshot():
+    state=load_json(STATE)
+    name=str(state.get('lastSnapshot') or '')
+    if not SNAP_RE.fullmatch(name):
+        fail()
+    snap=(BACKUPS/name).resolve()
+    if snap.parent!=BACKUPS or snap.is_symlink() or not snap.is_dir():
+        fail()
+    return name,snap
+
+def validated():
+    name,snap=safe_snapshot()
+    manifest_path=snap/'manifest.json'
+    db_path=snap/'assessment.sqlite'
+    manifest=load_json(manifest_path)
+    if manifest.get('schemaVersion')!=1 or manifest.get('kind')!='BAY_ASSESSMENT_VERIFIED_SNAPSHOT':
+        fail()
+    restore=manifest.get('restoreDrill') or {}
+    if restore.get('dbQuickCheck')!='ok':
+        fail()
+    db_meta=manifest.get('database') or {}
+    db_hash=str(db_meta.get('sha256') or '')
+    if not HEX64.fullmatch(db_hash) or db_path.is_symlink() or not db_path.is_file() or sha256(db_path)!=db_hash:
+        fail()
+    rows=manifest.get('files')
+    if not isinstance(rows,list):
+        fail()
+    total=0
+    seen=set()
+    for row in rows:
+        if not isinstance(row,dict):
+            fail()
+        rel=str(row.get('path') or '').replace('\\','/')
+        if not rel or rel.startswith('/') or '..' in rel.split('/') or rel in seen:
+            fail()
+        seen.add(rel)
+        expected=str(row.get('sha256') or '')
+        size=row.get('size')
+        if not HEX64.fullmatch(expected) or not isinstance(size,int) or size<0:
+            fail()
+        path=(snap/'files'/rel).resolve()
+        files_root=(snap/'files').resolve()
+        if path==files_root or files_root not in path.parents or path.is_symlink() or not path.is_file():
+            fail()
+        st=path.stat()
+        if st.st_size!=size or sha256(path)!=expected:
+            fail()
+        total+=size
+    if int(manifest.get('fileCount',-1))!=len(rows) or int(manifest.get('fileBytes',-1))!=total:
+        fail()
+    meta={
+        'schemaVersion':1,
+        'snapshot':name,
+        'manifestSha256':sha256(manifest_path),
+        'databaseSha256':db_hash,
+        'fileCount':len(rows),
+        'fileBytes':total,
+        'createdAt':manifest.get('createdAt'),
+        'verifiedAt':restore.get('verifiedAt')
+    }
+    return name,snap,manifest,meta
+
+def stream_payload(requested):
+    name,snap,manifest,meta=validated()
+    if requested!=name:
+        fail()
+    out=sys.stdout.buffer
+    with tarfile.open(fileobj=out,mode='w|',format=tarfile.PAX_FORMAT,dereference=True) as tf:
+        for rel in ['assessment.sqlite','manifest.json']:
+            p=snap/rel
+            ti=tf.gettarinfo(str(p),arcname=rel)
+            ti.uid=0; ti.gid=0; ti.uname=''; ti.gname=''
+            with p.open('rb') as f:
+                tf.addfile(ti,f)
+        for row in manifest['files']:
+            rel=str(row['path']).replace('\\','/')
+            p=snap/'files'/rel
+            ti=tf.gettarinfo(str(p),arcname='files/'+rel)
+            ti.uid=0; ti.gid=0; ti.uname=''; ti.gname=''
+            with p.open('rb') as f:
+                tf.addfile(ti,f)
+
+def main():
+    mode=sys.argv[1] if len(sys.argv)>1 else ''
+    if mode=='metadata' and len(sys.argv)==2:
+        _,_,_,meta=validated()
+        print(json.dumps(meta,separators=(',',':'),ensure_ascii=False))
+        return
+    if mode=='payload' and len(sys.argv)==3:
+        stream_payload(sys.argv[2])
+        return
+    sys.stderr.write('Usage: awh-assessment-backup-export metadata | payload <snapshot>\n')
+    raise SystemExit(2)
+
+if __name__=='__main__':
+    try:
+        main()
+    except SystemExit:
+        raise
+    except BrokenPipeError:
+        raise SystemExit(0)
+    except Exception:
+        fail()
