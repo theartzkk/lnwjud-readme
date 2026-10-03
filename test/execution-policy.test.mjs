@@ -209,3 +209,23 @@ test('document governance has one entry point and no parallel rules authority',a
   assert.match(operations,/VPS Platform.*host-global|host-global.*VPS Platform/i);
   assert.match(release,/QA or candidate readiness is not Production completion/i);
 });
+
+
+test('LearnLab FILE_ONLY release keeps QA metadata source-only without widening runtime deploy scope',async()=>{
+  const source=await readFile(new URL('../deploy/learnlab/awh-learnlab-release-engine.py',import.meta.url),'utf8');
+  assert.match(source,/DEPLOY_ALLOWED=\("learnlab\/prototype\/","learnlab\/shared\/","learnlab\/teacher\/","learnlab\/server\/"\)/);
+  assert.match(source,/SOURCE_ONLY_PREFIXES=\("learnlab\/tests\/",\)/);
+  for(const path of [
+    '.github/workflows/learnlab-ci.yml',
+    '.github/workflows/learnlab-product-ci.yml',
+    'learnlab/VERSION',
+    'ops/learnlab-runtime/experience-pilot.example.json',
+  ]) assert.ok(source.includes(JSON.stringify(path)),'source-only allowlist must include '+path);
+  assert.match(source,/if path in DENIED: fail\("LEARNLAB_RELEASE_DIFF_OUT_OF_SCOPE",path\)/);
+  assert.match(source,/if path\.startswith\(DEPLOY_ALLOWED\):\s+deploy_rows\.append\(\(status,path\)\)/s);
+  assert.match(source,/elif path\.startswith\(SOURCE_ONLY_PREFIXES\) or path in SOURCE_ONLY_FILES:\s+source_only_rows\.append\(\(status,path\)\)/s);
+  assert.match(source,/else:\s+fail\("LEARNLAB_RELEASE_DIFF_OUT_OF_SCOPE",path\)/s);
+  assert.match(source,/if not deploy_rows: fail\("LEARNLAB_RELEASE_EMPTY","no deployable changes"\)/);
+  assert.match(source,/"sourceOnlyDiff":\[\{"status":s,"path":p\} for s,p in source_only_rows\]/);
+  assert.doesNotMatch(source,/not path\.startswith\(ALLOWED\)/);
+});

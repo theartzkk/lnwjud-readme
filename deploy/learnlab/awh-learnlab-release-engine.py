@@ -13,7 +13,14 @@ NGINX=Path("/etc/nginx/sites-enabled/kruart-domain-aliases-tls.conf")
 BACKUP_ROOT=Path("/var/backups/learnlab-releases")
 WORK_ROOT=Path("/var/lib/awh-hub/learnlab-release-work")
 DB=Path("/var/lib/awh-hub/awh.sqlite")
-ALLOWED=("learnlab/prototype/","learnlab/shared/","learnlab/teacher/","learnlab/server/")
+DEPLOY_ALLOWED=("learnlab/prototype/","learnlab/shared/","learnlab/teacher/","learnlab/server/")
+SOURCE_ONLY_PREFIXES=("learnlab/tests/",)
+SOURCE_ONLY_FILES={
+    ".github/workflows/learnlab-ci.yml",
+    ".github/workflows/learnlab-product-ci.yml",
+    "learnlab/VERSION",
+    "ops/learnlab-runtime/experience-pilot.example.json",
+}
 DENIED={"learnlab/server/host-adapter.php"}
 SHA_RE=re.compile(r"^[0-9a-f]{40}$")
 VER_RE=re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$")
@@ -88,17 +95,22 @@ def canonical_main(release):
 
 def diff_rows(base,release):
     out=git(["diff","--name-status","--no-renames",base,release,"--"]).stdout
-    rows=[]
+    deploy_rows=[]; source_only_rows=[]
     for raw in out.splitlines():
         if not raw.strip(): continue
         parts=raw.split("\t")
         if len(parts)!=2 or parts[0] not in {"A","M","D"}: fail("LEARNLAB_RELEASE_DIFF_UNSUPPORTED",raw)
         status,path=parts
-        if path in DENIED or not path.startswith(ALLOWED): fail("LEARNLAB_RELEASE_DIFF_OUT_OF_SCOPE",path)
+        if path in DENIED: fail("LEARNLAB_RELEASE_DIFF_OUT_OF_SCOPE",path)
         if ".." in Path(path).parts or "\x00" in path: fail("LEARNLAB_RELEASE_DIFF_UNSAFE",path)
-        rows.append((status,path))
-    if not rows: fail("LEARNLAB_RELEASE_EMPTY","no changes")
-    return rows
+        if path.startswith(DEPLOY_ALLOWED):
+            deploy_rows.append((status,path))
+        elif path.startswith(SOURCE_ONLY_PREFIXES) or path in SOURCE_ONLY_FILES:
+            source_only_rows.append((status,path))
+        else:
+            fail("LEARNLAB_RELEASE_DIFF_OUT_OF_SCOPE",path)
+    if not deploy_rows: fail("LEARNLAB_RELEASE_EMPTY","no deployable changes")
+    return deploy_rows,source_only_rows
 
 def clone_source(work,release):
     src=work/"source"
@@ -274,7 +286,7 @@ def apply_release(execution,release,base,version,epoch):
     storage=storage_gate(); canonical_main(release); current_baseline(base,epoch)
     live=LIVE_LINK.resolve()
     if RELEASE_ROOT.resolve() not in live.parents: fail("LEARNLAB_RELEASE_LIVE_POINTER_INVALID",str(live))
-    rows=diff_rows(base,release); work=WORK_ROOT/execution
+    rows,source_only_rows=diff_rows(base,release); work=WORK_ROOT/execution
     if work.exists(): shutil.rmtree(work)
     work.mkdir(parents=True,mode=0o700); src=clone_source(work,release); validate_live(src,live,rows,base)
     candidate=RELEASE_ROOT/f"bay-staging-learnlab-{version}-{release[:7]}-exact"
@@ -282,7 +294,9 @@ def apply_release(execution,release,base,version,epoch):
     backup=backup_state(execution,release)
     state={"schemaVersion":1,"state":"PREPARED","executionId":execution,"releaseSha":release,"baseReleaseSha":base,
       "runtimeVersion":version,"cacheEpoch":epoch,"candidate":str(candidate),"runtime":"","backup":str(backup),
-      "diff":[{"status":s,"path":p} for s,p in rows],"storage":storage,"preparedAt":now()}
+      "diff":[{"status":s,"path":p} for s,p in rows],
+      "sourceOnlyDiff":[{"status":s,"path":p} for s,p in source_only_rows],
+      "storage":storage,"preparedAt":now()}
     write_json(work/"release-state.json",state)
     try:
         candidate_overlay(src,live,candidate,rows,release); validate_candidate(candidate,rows)
